@@ -40,11 +40,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "fonts/embedded_font.h"
+#include "rt_gui_accessibility_platform.h"
 #include "rt_gui_app_internal.h"
+#include "rt_gui_automation_bridge.h"
+#include "rt_gui_font_platform.h"
 #include "rt_gui_internal.h"
 #include "rt_input.h"
 #include "rt_platform.h"
+#include "rt_result.h"
 #include "rt_time.h"
+#include "rt_videowidget.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
@@ -228,6 +233,32 @@ uint64_t rt_gui_now_ms(void) {
     return (uint64_t)(rt_clock_ticks_us() / 1000);
 }
 
+/// @brief Capture the narrow validated App view consumed by C++ GUI automation.
+/// @details Clearing the destination first gives failure atomicity. The deterministic scheduler
+///          time is preferred after initialization so authored input shares the same temporal
+///          domain as tooltip, notification, and animation work driven by RenderFrame. Opaque
+///          native pointers remain borrowed and are never exposed beyond the current operation.
+/// @param app_ptr Candidate managed App handle.
+/// @param out_view Destination for the validated borrowed view.
+/// @return 1 for a live app with a platform window, otherwise 0.
+int8_t rt_gui_automation_snapshot_app(void *app_ptr, rt_gui_automation_app_view_t *out_view) {
+    RT_ASSERT_MAIN_THREAD();
+    if (!out_view)
+        return 0;
+    memset(out_view, 0, sizeof(*out_view));
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app || !app->window)
+        return 0;
+    double clock_ms = app->scheduler_clock_ms;
+    uint64_t timestamp = !isfinite(clock_ms) || clock_ms <= 0.0 ? rt_gui_now_ms()
+                         : clock_ms >= (double)UINT64_MAX       ? UINT64_MAX
+                                                                : (uint64_t)clock_ms;
+    out_view->window = app->window;
+    out_view->root = app->root;
+    out_view->event_time_ms = timestamp > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)timestamp;
+    return 1;
+}
+
 /// @brief Reset all global widget runtime state to defaults.
 /// @details Zeroes the shared widget runtime state (focus, capture, hover
 ///          tracking), clears the tooltip manager, and restores the dark theme
@@ -279,13 +310,26 @@ static int rt_gui_should_sync_macos_menu(rt_gui_app_t *incoming, rt_gui_app_t *o
 }
 #endif
 
-/// @brief Return the base (unscaled) theme for a given theme kind.
-/// @details Maps the runtime enum to the built-in vg_theme constant. The
-///          returned pointer is a static singleton — do not free it.
-/// @param kind RT_GUI_THEME_DARK or RT_GUI_THEME_LIGHT.
-/// @return Pointer to the corresponding immutable base theme.
-static const vg_theme_t *rt_gui_theme_base(rt_gui_theme_kind_t kind) {
-    return (kind == RT_GUI_THEME_LIGHT) ? vg_theme_light() : vg_theme_dark();
+/// @brief Resolve an app's selected logical theme before DPI scaling and accessibility overlays.
+/// @details System mode maps the app's last synchronized desktop appearance to a built-in
+///          singleton. Custom mode returns the app-owned clone when present; a malformed custom
+///          state safely falls back to dark. NULL also maps to dark. The result is borrowed.
+/// @param app App to inspect; may be NULL.
+/// @return Borrowed non-NULL logical base theme; never destroy this pointer directly.
+const vg_theme_t *rt_gui_app_theme_base(const rt_gui_app_t *app) {
+    if (!app)
+        return vg_theme_dark();
+    switch (app->theme_kind) {
+        case RT_GUI_THEME_LIGHT:
+            return vg_theme_light();
+        case RT_GUI_THEME_SYSTEM:
+            return app->system_prefers_dark ? vg_theme_dark() : vg_theme_light();
+        case RT_GUI_THEME_CUSTOM:
+            return app->custom_theme_base ? app->custom_theme_base : vg_theme_dark();
+        case RT_GUI_THEME_DARK:
+        default:
+            return vg_theme_dark();
+    }
 }
 
 /// @brief Pre-order traversal step over the visible widget tree rooted at @p root.
@@ -305,21 +349,28 @@ static vg_widget_t *rt_gui_next_visible_widget(vg_widget_t *root, vg_widget_t *n
     return node->next_sibling;
 }
 
-/// @brief Iteratively advance per-frame animation state across a widget subtree.
-/// @details Called from the app's render loop with the elapsed time since the
-///          last frame. Three widget types currently maintain time-based state
-///          and need a per-frame tick: TextInput (cursor blink), ProgressBar
-///          (indeterminate animation), and CodeEditor (cursor blink + scroll
-///          animation). Hidden subtrees and zero/negative `dt` short-circuit
-///          so background panels don't burn cycles or accumulate phase drift.
-///          When a new widget type grows time-dependent state, add it to the
-///          switch — the rest of the tree walk is generic.
-static void rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
-    if (!widget || !widget->visible || dt <= 0.0f)
-        return;
+/// @brief Iteratively advance scheduled animation state across a widget subtree.
+/// @details Called before paint with an explicit elapsed time. Every visible widget advances its
+///          generic hover/press/focus motion independently of whether it will paint. Specialized
+///          controls additionally advance cursor, indeterminate, and scrolling animation using
+///          seconds. Invalid deltas become zero and large deltas are capped to 250 ms.
+/// @param widget Root of the retained surface to tick; NULL or hidden roots are skipped.
+/// @param dt Elapsed time in seconds.
+/// @return True if generic state motion remains unsettled and needs another frame.
+static bool rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
+    if (!widget || !widget->visible)
+        return false;
+    if (!isfinite(dt) || dt < 0.0f)
+        dt = 0.0f;
+    if (dt > 0.25f)
+        dt = 0.25f;
 
+    bool animation_active = false;
     for (vg_widget_t *node = widget; node; node = rt_gui_next_visible_widget(widget, node)) {
         if (!node->visible)
+            continue;
+        animation_active |= vg_widget_anim_advance(node, dt * 1000.0f);
+        if (dt <= 0.0f)
             continue;
         switch (node->type) {
             case VG_WIDGET_TEXTINPUT:
@@ -338,6 +389,7 @@ static void rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
                 break;
         }
     }
+    return animation_active;
 }
 
 /// @brief Test whether any widget in a visible subtree has its layout-dirty flag set.
@@ -425,40 +477,7 @@ static bool rt_gui_app_overlays_need_paint(const rt_gui_app_t *app) {
     }
     if (app->manual_tooltip && rt_gui_widget_tree_needs_paint(&app->manual_tooltip->base))
         return true;
-    // A visible standalone context menu forces repaint for the duration it is open so
-    // its hover/selection state always reaches the screen (it is not in app->root).
-    if (app->active_context_menu && app->active_context_menu->is_visible)
-        return true;
-    return false;
-}
-
-/// @brief Whether any overlay is currently on screen (visible), independent of
-///        whether it needs repainting this frame.
-/// @details Overlays (palettes, dialogs, context menu, notifications, tooltips)
-///          paint above the widget tree without damage tracking. A damage-region
-///          repaint of the tree would overwrite the tree area *under* a static
-///          overlay without re-drawing the overlay on top, erasing it — so the
-///          partial path must be disabled whenever any overlay is visible, not
-///          only when one is paint-dirty.
-static bool rt_gui_app_overlays_visible(const rt_gui_app_t *app) {
-    if (!app)
-        return false;
-    for (int i = 0; i < app->command_palette_count; i++) {
-        if (app->command_palettes[i] && app->command_palettes[i]->is_visible)
-            return true;
-    }
-    for (int i = 0; i < app->dialog_count; i++) {
-        if (app->dialog_stack[i] && app->dialog_stack[i]->is_open)
-            return true;
-    }
-    if (app->active_context_menu && app->active_context_menu->is_visible)
-        return true;
-    if (app->notification_manager && app->notification_manager->notification_count > 0)
-        return true;
-    vg_tooltip_manager_t *tooltip_mgr = vg_tooltip_manager_get();
-    if (tooltip_mgr && tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible)
-        return true;
-    if (app->manual_tooltip && app->manual_tooltip->is_visible)
+    if (app->active_context_menu && rt_gui_widget_tree_needs_paint(&app->active_context_menu->base))
         return true;
     return false;
 }
@@ -498,12 +517,158 @@ static void rt_gui_damage_add(rt_gui_damage_t *dmg, float x, float y, float w, f
         dmg->y1 = y1;
 }
 
-/// @brief Whether @p w's current screen bounds (@p x,@p y + its size) differ from
-///        the bounds recorded at its last paint (i.e. it moved or resized).
-static bool rt_gui_widget_bounds_moved(const vg_widget_t *w, float x, float y) {
+/// @brief Add one live widget's conservative visual bounds to a damage union.
+/// @details The toolkit query includes explicit overflow, popup callbacks, theme shadows, focus
+///          glow, and anti-aliased effects. Invalid or empty widgets contribute nothing.
+/// @param dmg Destination union; NULL is ignored.
+/// @param widget Candidate live widget; NULL or retired handles are ignored.
+static void rt_gui_damage_add_widget(rt_gui_damage_t *dmg, vg_widget_t *widget) {
+    if (!dmg || !vg_widget_is_live(widget))
+        return;
+    float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
+    vg_widget_get_visual_bounds(widget, &x, &y, &w, &h);
+    rt_gui_damage_add(dmg, x, y, w, h);
+}
+
+/// @brief Clamp a detached context menu before querying or painting its visual rectangle.
+/// @details Context-menu construction has no window handle, so the lower widget historically
+///          clamped during paint. Retained damage must know the same final rectangle before paint;
+///          applying the idempotent clamp here keeps both paths in agreement.
+/// @param menu Visible detached context menu; NULL is ignored.
+/// @param win_w Current framebuffer width in physical pixels.
+/// @param win_h Current framebuffer height in physical pixels.
+static void rt_gui_clamp_context_menu(vg_contextmenu_t *menu, int32_t win_w, int32_t win_h) {
+    if (!menu || !menu->is_visible)
+        return;
+    float max_x = (float)win_w - menu->base.width;
+    float max_y = (float)win_h - menu->base.height;
+    if (menu->base.x > max_x)
+        menu->base.x = max_x;
+    if (menu->base.y > max_y)
+        menu->base.y = max_y;
+    if (menu->base.x < 0.0f)
+        menu->base.x = 0.0f;
+    if (menu->base.y < 0.0f)
+        menu->base.y = 0.0f;
+}
+
+/// @brief Measure and arrange one detached tooltip into the geometry that its paint callback uses.
+/// @details Tooltip paint consumes `measured_width/height`, while generic visual-bounds queries use
+///          arranged geometry. Synchronizing the two before damage collection prevents a visible
+///          tooltip from reporting an empty rectangle after its font or text changes.
+/// @param tooltip Tooltip to prepare; NULL or hidden tooltips are ignored.
+/// @param win_w Available framebuffer width in physical pixels.
+/// @param win_h Available framebuffer height in physical pixels.
+static void rt_gui_prepare_tooltip(vg_tooltip_t *tooltip, int32_t win_w, int32_t win_h) {
+    if (!tooltip || !tooltip->is_visible)
+        return;
+    vg_widget_measure(&tooltip->base, (float)win_w, (float)win_h);
+    vg_widget_arrange(&tooltip->base,
+                      tooltip->base.x,
+                      tooltip->base.y,
+                      tooltip->base.measured_width,
+                      tooltip->base.measured_height);
+}
+
+/// @brief Collect the current detached-overlay layer's conservative screen-space union.
+/// @details Detached command palettes, dialogs, context menus, notifications, and tooltips are not
+///          descendants of the normal root tree. Modal dialog backdrops contribute the complete
+///          framebuffer; notification managers contribute only their visible toast cards rather
+///          than their full-window positioning surface.
+/// @param app App whose overlay layer is inspected; NULL produces an empty union.
+/// @param tooltip_mgr App-activated tooltip manager; may be NULL.
+/// @param win_w Current framebuffer width in physical pixels.
+/// @param win_h Current framebuffer height in physical pixels.
+/// @param dmg Destination union, initialized or pre-populated by the caller.
+static void rt_gui_collect_detached_overlay_bounds(rt_gui_app_t *app,
+                                                   vg_tooltip_manager_t *tooltip_mgr,
+                                                   int32_t win_w,
+                                                   int32_t win_h,
+                                                   rt_gui_damage_t *dmg) {
+    if (!app || !dmg)
+        return;
+    for (int i = 0; i < app->command_palette_count; ++i) {
+        vg_commandpalette_t *palette = app->command_palettes[i];
+        if (palette && palette->is_visible)
+            rt_gui_damage_add_widget(dmg, &palette->base);
+    }
+    for (int i = 0; i < app->dialog_count; ++i) {
+        vg_dialog_t *dialog = app->dialog_stack[i];
+        if (!dialog || !dialog->is_open)
+            continue;
+        if (dialog->modal && dialog->overlay_color)
+            rt_gui_damage_add(dmg, 0.0f, 0.0f, (float)win_w, (float)win_h);
+        else
+            rt_gui_damage_add_widget(dmg, &dialog->base);
+    }
+    if (app->active_context_menu && app->active_context_menu->is_visible)
+        rt_gui_damage_add_widget(dmg, &app->active_context_menu->base);
+    if (app->notification_manager) {
+        float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
+        if (vg_notification_manager_get_visual_bounds(app->notification_manager, &x, &y, &w, &h)) {
+            rt_gui_damage_add(dmg, x, y, w, h);
+        }
+    }
+    if (tooltip_mgr && tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible) {
+        rt_gui_damage_add_widget(dmg, &tooltip_mgr->active_tooltip->base);
+    }
+    if (app->manual_tooltip && app->manual_tooltip->is_visible)
+        rt_gui_damage_add_widget(dmg, &app->manual_tooltip->base);
+}
+
+/// @brief Test whether the current overlay union differs from the last presented union.
+/// @details A validity transition captures show/hide/removal even after the detached widget pointer
+///          has been cleared. Edge comparisons use half-pixel tolerance to avoid insignificant
+///          floating-point layout noise.
+/// @param app App containing retained overlay state.
+/// @param current Current overlay union.
+/// @return True when a previous or current overlay rectangle must be damaged.
+static bool rt_gui_overlay_bounds_changed(const rt_gui_app_t *app, const rt_gui_damage_t *current) {
+    if (!app || !current)
+        return false;
+    bool previous_valid = app->overlay_last_valid != 0;
+    if (previous_valid != current->any)
+        return true;
+    if (!previous_valid)
+        return false;
+    return fabsf(app->overlay_last_x - current->x0) > 0.5f ||
+           fabsf(app->overlay_last_y - current->y0) > 0.5f ||
+           fabsf(app->overlay_last_w - (current->x1 - current->x0)) > 0.5f ||
+           fabsf(app->overlay_last_h - (current->y1 - current->y0)) > 0.5f;
+}
+
+/// @brief Commit the overlay union associated with a successfully presented retained frame.
+/// @param app App whose retained overlay state is replaced; NULL is ignored.
+/// @param current Current detached-overlay union.
+static void rt_gui_commit_overlay_bounds(rt_gui_app_t *app, const rt_gui_damage_t *current) {
+    if (!app || !current)
+        return;
+    app->overlay_last_valid = current->any ? 1 : 0;
+    if (current->any) {
+        app->overlay_last_x = current->x0;
+        app->overlay_last_y = current->y0;
+        app->overlay_last_w = current->x1 - current->x0;
+        app->overlay_last_h = current->y1 - current->y0;
+    } else {
+        app->overlay_last_x = 0.0f;
+        app->overlay_last_y = 0.0f;
+        app->overlay_last_w = 0.0f;
+        app->overlay_last_h = 0.0f;
+    }
+}
+
+/// @brief Whether a widget's complete visual rectangle differs from its last paint.
+/// @param w Widget whose retained paint record is compared.
+/// @param x Current visual-bounds X in screen pixels.
+/// @param y Current visual-bounds Y in screen pixels.
+/// @param width Current visual-bounds width in screen pixels.
+/// @param height Current visual-bounds height in screen pixels.
+/// @return True when no prior rectangle exists or any edge changed materially.
+static bool rt_gui_widget_bounds_moved(
+    const vg_widget_t *w, float x, float y, float width, float height) {
     return !w->last_paint_valid || fabsf(w->last_paint_x - x) > 0.5f ||
-           fabsf(w->last_paint_y - y) > 0.5f || fabsf(w->last_paint_w - w->width) > 0.5f ||
-           fabsf(w->last_paint_h - w->height) > 0.5f;
+           fabsf(w->last_paint_y - y) > 0.5f || fabsf(w->last_paint_w - width) > 0.5f ||
+           fabsf(w->last_paint_h - height) > 0.5f;
 }
 
 /// @brief Accumulate the damage region for @p widget's subtree into @p dmg (plan 07).
@@ -526,19 +691,25 @@ static void rt_gui_collect_damage(vg_widget_t *widget, rt_gui_damage_t *dmg) {
         if (!node->visible) {
             // Hidden since its last paint → erase the vacated pixels once.
             if (node->last_paint_valid) {
-                rt_gui_damage_add(dmg, node->last_paint_x, node->last_paint_y, node->last_paint_w,
+                rt_gui_damage_add(dmg,
+                                  node->last_paint_x,
+                                  node->last_paint_y,
+                                  node->last_paint_w,
                                   node->last_paint_h);
                 node->last_paint_valid = false;
             }
         } else {
             float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
-            vg_widget_get_screen_bounds(node, &x, &y, &w, &h);
-            bool moved = rt_gui_widget_bounds_moved(node, x, y);
+            vg_widget_get_visual_bounds(node, &x, &y, &w, &h);
+            bool moved = rt_gui_widget_bounds_moved(node, x, y, w, h);
             if (node->needs_paint || moved) {
                 rt_gui_damage_add(dmg, x, y, w, h); // current bounds
                 if (moved && node->last_paint_valid)
-                    rt_gui_damage_add(dmg, node->last_paint_x, node->last_paint_y,
-                                      node->last_paint_w, node->last_paint_h); // vacated bounds
+                    rt_gui_damage_add(dmg,
+                                      node->last_paint_x,
+                                      node->last_paint_y,
+                                      node->last_paint_w,
+                                      node->last_paint_h); // vacated bounds
             }
             descend = node->first_child && !rt_gui_widget_paints_children_internally(node);
         }
@@ -574,16 +745,49 @@ static void rt_gui_app_clear_paint_flags(rt_gui_app_t *app) {
         rt_gui_widget_tree_clear_paint(&tooltip_mgr->active_tooltip->base);
     if (app->manual_tooltip)
         rt_gui_widget_tree_clear_paint(&app->manual_tooltip->base);
+    if (app->active_context_menu)
+        rt_gui_widget_tree_clear_paint(&app->active_context_menu->base);
+}
+
+/// @brief Scale a signed integer theme offset without overflowing its storage type.
+/// @details Elevation offsets are integer pixels even though the remaining spatial tokens are
+///          floats. This helper performs the multiply in double precision, clamps before the
+///          conversion, and rounds to the nearest pixel. Invalid scales use the identity factor.
+/// @param value Logical integer offset from the base theme.
+/// @param scale Effective logical-to-framebuffer scale.
+/// @return Scaled offset clamped to the representable `int` range.
+static int rt_gui_scale_theme_offset(int value, float scale) {
+    if (!isfinite(scale) || scale <= 0.0f)
+        scale = 1.0f;
+    double result = (double)value * (double)scale;
+    if (result >= (double)INT_MAX)
+        return INT_MAX;
+    if (result <= (double)INT_MIN)
+        return INT_MIN;
+    return (int)lround(result);
+}
+
+/// @brief Scale the spatial members of one elevation token in-place.
+/// @details Blur and offsets are distances and therefore follow DPI/user zoom. Alpha is an
+///          opacity and deliberately remains unchanged.
+/// @param elevation Mutable elevation token copied from an unscaled base theme.
+/// @param scale Effective logical-to-framebuffer scale.
+static void rt_gui_scale_elevation(vg_elevation_t *elevation, float scale) {
+    if (!elevation)
+        return;
+    elevation->blur *= scale;
+    elevation->dx = rt_gui_scale_theme_offset(elevation->dx, scale);
+    elevation->dy = rt_gui_scale_theme_offset(elevation->dy, scale);
 }
 
 /// @brief Apply a HiDPI scale factor to all size-sensitive theme fields.
-/// @details Multiplies typography sizes, spacing constants, button/input
-///          heights, padding, and scrollbar width by the given scale. This
-///          ensures the UI is sized in physical pixels, not logical points,
-///          so it renders crisply on Retina/HiDPI displays. A scale <= 0
-///          is clamped to 1.0 (identity) for safety.
+/// @details Multiplies typography, spacing, control metrics, named radii, elevation blur/offset,
+///          and focus-glow width by the given scale. Colors, opacities, gradient strength, and
+///          motion durations are dimensionless or time-based and remain unchanged. This keeps
+///          base themes in logical units while producing a complete per-app framebuffer theme.
+///          A non-finite or non-positive scale is replaced by 1.0.
 /// @param theme Mutable theme to scale in-place.
-/// @param scale HiDPI multiplier (e.g., 2.0 on a Retina display).
+/// @param scale Effective window-scale times user-zoom multiplier.
 static void rt_gui_scale_theme(vg_theme_t *theme, float scale) {
     if (!theme)
         return;
@@ -610,32 +814,197 @@ static void rt_gui_scale_theme(vg_theme_t *theme, float scale) {
     theme->scrollbar.width *= scale;
     theme->scrollbar.min_thumb_size *= scale;
     theme->scrollbar.border_radius *= scale;
+    theme->radius.none *= scale;
+    theme->radius.sm *= scale;
+    theme->radius.md *= scale;
+    theme->radius.lg *= scale;
+    theme->radius.xl *= scale;
+    theme->radius.pill *= scale;
+    rt_gui_scale_elevation(&theme->elevation.level0, scale);
+    rt_gui_scale_elevation(&theme->elevation.level1, scale);
+    rt_gui_scale_elevation(&theme->elevation.level2, scale);
+    rt_gui_scale_elevation(&theme->elevation.level3, scale);
+    theme->focus.glow_width *= scale;
+}
+
+/// @brief Apply per-app accessibility appearance preferences to a mutable theme copy.
+/// @details High contrast replaces every commonly paired surface/text/state token with a
+///          deterministic palette whose normal text pairs exceed WCAG AA. Reduced motion disables
+///          tweening without altering final states or DPI-scaled spatial metrics.
+/// @param app App supplying accessibility preferences; may be NULL.
+/// @param theme Mutable per-app theme copy to update; may be NULL.
+static void rt_gui_apply_accessibility_theme(const rt_gui_app_t *app, vg_theme_t *theme) {
+    if (!app || !theme)
+        return;
+    if (app->accessibility_high_contrast) {
+        theme->colors.bg_primary = 0x000000;
+        theme->colors.bg_secondary = 0x080808;
+        theme->colors.bg_tertiary = 0x121212;
+        theme->colors.bg_hover = 0x1F1F1F;
+        theme->colors.bg_active = 0x003D4D;
+        theme->colors.bg_selected = 0x005066;
+        theme->colors.bg_disabled = 0x181818;
+        theme->colors.fg_primary = 0xFFFFFF;
+        theme->colors.fg_secondary = 0xE6E6E6;
+        theme->colors.fg_tertiary = 0xCCCCCC;
+        theme->colors.fg_disabled = 0xB8B8B8;
+        theme->colors.fg_placeholder = 0xB8B8B8;
+        theme->colors.fg_link = 0x5FE7FF;
+        theme->colors.accent_primary = 0x00D7FF;
+        theme->colors.accent_secondary = 0x7CEBFF;
+        theme->colors.accent_danger = 0xFF6B6B;
+        theme->colors.accent_warning = 0xFFD75F;
+        theme->colors.accent_success = 0x7DFF9B;
+        theme->colors.accent_info = 0x5FE7FF;
+        theme->colors.border_primary = 0xFFFFFF;
+        theme->colors.border_secondary = 0xB8B8B8;
+        theme->colors.border_focus = 0x00D7FF;
+        theme->colors.syntax_keyword = 0x7CEBFF;
+        theme->colors.syntax_type = 0x7DFFDA;
+        theme->colors.syntax_function = 0xFFF08A;
+        theme->colors.syntax_variable = 0xFFFFFF;
+        theme->colors.syntax_string = 0xFFB38A;
+        theme->colors.syntax_number = 0xBFFF9B;
+        theme->colors.syntax_comment = 0xB8B8B8;
+        theme->colors.syntax_operator = 0xFFFFFF;
+        theme->colors.syntax_error = 0xFF6B6B;
+        theme->focus.glow_color = theme->colors.border_focus;
+        theme->gradient.enabled = false;
+    }
+    if (app->accessibility_reduced_motion)
+        theme->motion.enabled = false;
+}
+
+/// @brief Mark every app-owned surface dirty after theme metrics or colors change.
+/// @details Root, detached overlays, dialogs, notifications, tooltips, and the standalone context
+///          menu do not all share one parent tree. Invalidating each surface prevents the idle
+///          render fast path from hiding a theme/scale change and forces measurement wherever
+///          theme-dependent geometry may have changed.
+/// @param app App whose retained GUI surfaces should be invalidated; NULL is a no-op.
+static void rt_gui_invalidate_theme_dependents(rt_gui_app_t *app) {
+    if (!app)
+        return;
+    vg_widget_invalidate_layout(app->root);
+    for (int i = 0; i < app->command_palette_count; ++i) {
+        if (app->command_palettes[i])
+            vg_widget_invalidate_layout(&app->command_palettes[i]->base);
+    }
+    for (int i = 0; i < app->dialog_count; ++i) {
+        if (app->dialog_stack[i])
+            vg_widget_invalidate_layout(&app->dialog_stack[i]->base);
+    }
+    if (app->notification_manager)
+        vg_widget_invalidate_layout(&app->notification_manager->base);
+    if (app->tooltip_manager_state.active_tooltip)
+        vg_widget_invalidate_layout(&app->tooltip_manager_state.active_tooltip->base);
+    if (s_active_app == app) {
+        vg_tooltip_manager_t *tooltip_manager = vg_tooltip_manager_get();
+        if (tooltip_manager && tooltip_manager->active_tooltip)
+            vg_widget_invalidate_layout(&tooltip_manager->active_tooltip->base);
+    }
+    if (app->manual_tooltip)
+        vg_widget_invalidate_layout(&app->manual_tooltip->base);
+    if (app->active_context_menu)
+        vg_widget_invalidate_layout(&app->active_context_menu->base);
+}
+
+/// @brief Return the app's effective logical-to-framebuffer scale.
+/// @details Window scale and user zoom are sanitized independently so an invalid factor cannot
+///          poison the product. The result is also checked for overflow/non-finite values.
+/// @param app App to inspect; NULL returns the identity scale.
+/// @return Positive finite scale suitable for theme and font conversion.
+float rt_gui_app_effective_scale(const rt_gui_app_t *app) {
+    if (!app)
+        return 1.0f;
+    float window_scale = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
+    if (!isfinite(window_scale) || window_scale <= 0.0f)
+        window_scale = 1.0f;
+    float user_scale = app->user_scale;
+    if (!isfinite(user_scale) || user_scale <= 0.0f)
+        user_scale = 1.0f;
+    float effective = window_scale * user_scale;
+    return isfinite(effective) && effective > 0.0f ? effective : 1.0f;
+}
+
+/// @brief Convert the app's logical default font size to framebuffer pixels.
+/// @details The logical value is sanitized before multiplication and the result is checked so a
+///          corrupt app cannot propagate NaN or infinity into text measurement.
+/// @param app App to inspect; NULL returns the 14-pixel compatibility default.
+/// @return Positive finite effective font size.
+float rt_gui_app_effective_font_size(const rt_gui_app_t *app) {
+    float logical_size = app ? app->default_font_size : 14.0f;
+    if (!isfinite(logical_size) || logical_size <= 0.0f)
+        logical_size = 14.0f;
+    float effective_size = logical_size * rt_gui_app_effective_scale(app);
+    return isfinite(effective_size) && effective_size > 0.0f ? effective_size : logical_size;
+}
+
+/// @brief Build one effective per-app theme without publishing it.
+/// @details Clones @p base, applies the effective scale exactly once, then composes high-contrast
+///          and reduced-motion preferences. This isolated allocation step enables atomic custom
+///          palette replacement.
+/// @param app App supplying accessibility preferences; must be non-NULL.
+/// @param base Borrowed logical unscaled palette; must be non-NULL.
+/// @param scale Sanitized positive effective scale.
+/// @return Owned effective theme, or NULL on allocation failure.
+static vg_theme_t *rt_gui_build_effective_theme(const rt_gui_app_t *app,
+                                                const vg_theme_t *base,
+                                                float scale) {
+    if (!app || !base)
+        return NULL;
+    vg_theme_t *theme = vg_theme_create(base->name, base);
+    if (!theme)
+        return NULL;
+    if (!theme->typography.font_regular && vg_font_is_live(app->default_font))
+        theme->typography.font_regular = app->default_font;
+    vg_font_t *bold_fallback =
+        vg_font_is_live(app->role_font_bold) ? app->role_font_bold : app->default_font;
+    vg_font_t *mono_fallback =
+        vg_font_is_live(app->role_font_mono) ? app->role_font_mono : app->default_font;
+    if (!theme->typography.font_bold && vg_font_is_live(bold_fallback))
+        theme->typography.font_bold = bold_fallback;
+    if (!theme->typography.font_mono && vg_font_is_live(mono_fallback))
+        theme->typography.font_mono = mono_fallback;
+    rt_gui_scale_theme(theme, scale);
+    rt_gui_apply_accessibility_theme(app, theme);
+    return theme;
+}
+
+/// @brief Publish a fully built effective theme and retire the previous installed copy.
+/// @details This function performs no allocation. The revision saturates at UINT64_MAX, and all
+///          theme-dependent surfaces are invalidated only after every app cache field is coherent.
+/// @param app App receiving the new theme; must be non-NULL.
+/// @param theme Owned effective theme transferred to the app; must be non-NULL.
+/// @param base Borrowed logical base whose lifetime exceeds this installed cache entry.
+/// @param scale Effective scale used to build @p theme.
+static void rt_gui_commit_effective_theme(rt_gui_app_t *app,
+                                          vg_theme_t *theme,
+                                          const vg_theme_t *base,
+                                          float scale) {
+    vg_theme_t *old_theme = app->theme;
+    app->theme = theme;
+    app->theme_base = base;
+    app->theme_scale = scale;
+    if (app->theme_revision < UINT64_MAX)
+        ++app->theme_revision;
+    if (s_active_app == app)
+        vg_theme_set_current(app->theme);
+    rt_gui_reapply_default_font(app);
+    rt_gui_invalidate_theme_dependents(app);
+    vg_theme_destroy(old_theme);
 }
 
 /// @brief Rebuild and activate the app's scaled theme if the base or scale changed.
-/// @details Creates a fresh mutable copy of the base theme (dark or light),
-///          scales it to the current window's HiDPI factor, and installs it as
-///          the active theme. Skips the rebuild if the base theme and scale
-///          haven't changed since the last call — this avoids redundant
-///          allocations during per-frame render calls. The old theme is
-///          destroyed after the new one is installed.
+/// @details Creates a fresh mutable copy of the logical base, scales it to the current window's
+///          effective HiDPI factor, and applies accessibility preferences. The cached path is
+///          allocation-free. Allocation failure leaves every installed theme/cache field intact.
 /// @param app App whose theme to refresh (no-op if NULL).
 void rt_gui_refresh_theme(rt_gui_app_t *app) {
     if (!app)
         return;
 
-    const vg_theme_t *base = rt_gui_theme_base(app->theme_kind);
-    float scale = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
-    if (!isfinite(scale) || scale <= 0.0f)
-        scale = 1.0f;
-    // Fold the user's UI zoom into the HiDPI scale so one multiply in
-    // rt_gui_scale_theme grows the whole UI (typography, spacing, control
-    // metrics) together. The cache key below embeds it, so changing the zoom
-    // rebuilds the theme on the next frame.
-    float zoom = app->user_scale;
-    if (!isfinite(zoom) || zoom <= 0.0f)
-        zoom = 1.0f;
-    scale *= zoom;
+    const vg_theme_t *base = rt_gui_app_theme_base(app);
+    float scale = rt_gui_app_effective_scale(app);
 
     if (app->theme && app->theme_base == base && app->theme_scale == scale) {
         if (s_active_app == app)
@@ -643,31 +1012,69 @@ void rt_gui_refresh_theme(rt_gui_app_t *app) {
         return;
     }
 
-    vg_theme_t *theme = vg_theme_create(base->name, base);
+    vg_theme_t *theme = rt_gui_build_effective_theme(app, base, scale);
     if (!theme)
         return;
-    rt_gui_scale_theme(theme, scale);
-
-    vg_theme_t *old_theme = app->theme;
-    app->theme = theme;
-    app->theme_base = base;
-    app->theme_scale = scale;
-
-    if (s_active_app == app)
-        vg_theme_set_current(app->theme);
-    if (old_theme)
-        vg_theme_destroy(old_theme);
+    rt_gui_commit_effective_theme(app, theme, base, scale);
 }
 
-/// @brief Switch the app's theme between dark and light.
-/// @details Resets the cached base/scale so the next rt_gui_refresh_theme call
-///          forces a full theme rebuild with the new kind. The refresh is
-///          triggered immediately so the change takes effect this frame.
-/// @param app Target app (no-op if NULL).
-/// @param kind RT_GUI_THEME_DARK or RT_GUI_THEME_LIGHT.
+/// @brief Atomically install an owned logical custom palette into one app.
+/// @details The effective clone is built before any app field changes. Success transfers candidate
+///          ownership, publishes Custom mode and its cache in one main-thread operation, then
+///          destroys the displaced logical palette. Failure leaves candidate caller-owned.
+/// @param app Target app.
+/// @param candidate Owned unscaled custom palette offered for transfer.
+/// @return One on complete installation, otherwise zero.
+int rt_gui_install_custom_theme(rt_gui_app_t *app, vg_theme_t *candidate) {
+    if (!app || !candidate)
+        return 0;
+    float scale = rt_gui_app_effective_scale(app);
+    vg_theme_t *effective = rt_gui_build_effective_theme(app, candidate, scale);
+    if (!effective)
+        return 0;
+    vg_theme_t *old_custom = app->custom_theme_base;
+    app->custom_theme_base = candidate;
+    app->theme_kind = RT_GUI_THEME_CUSTOM;
+    rt_gui_commit_effective_theme(app, effective, candidate, scale);
+    vg_theme_destroy(old_custom);
+    return 1;
+}
+
+/// @brief Synchronize a System-mode app with the platform's current appearance preference.
+/// @details The adapter query is allocation-free. A changed preference invalidates the cached
+///          logical base and refreshes immediately; unchanged or non-System apps are no-ops.
+/// @param app App to synchronize; NULL is accepted.
+void rt_gui_sync_system_theme(rt_gui_app_t *app) {
+    if (!app || app->theme_kind != RT_GUI_THEME_SYSTEM)
+        return;
+    int32_t prefers_dark = rt_gui_accessibility_platform_prefers_dark(app->window) ? 1 : 0;
+    if (prefers_dark == app->system_prefers_dark)
+        return;
+    app->system_prefers_dark = prefers_dark;
+    app->theme_base = NULL;
+    app->theme_scale = 0.0f;
+    rt_gui_refresh_theme(app);
+}
+
+/// @brief Switch the app among dark, light, system, and custom theme modes.
+/// @details Invalid enum values and custom mode without an installed palette are ignored. System
+///          mode samples the platform immediately. A repeated selection still refreshes scale but
+///          avoids forced allocation when the effective base is unchanged.
+/// @param app Target app; NULL is a no-op.
+/// @param kind Requested theme mode.
 void rt_gui_set_theme_kind(rt_gui_app_t *app, rt_gui_theme_kind_t kind) {
     if (!app)
         return;
+    if (kind < RT_GUI_THEME_DARK || kind > RT_GUI_THEME_CUSTOM)
+        return;
+    if (kind == RT_GUI_THEME_CUSTOM && !app->custom_theme_base)
+        return;
+    if (kind == RT_GUI_THEME_SYSTEM)
+        app->system_prefers_dark = rt_gui_accessibility_platform_prefers_dark(app->window) ? 1 : 0;
+    if (app->theme_kind == kind) {
+        rt_gui_refresh_theme(app);
+        return;
+    }
     app->theme_kind = kind;
     app->theme_base = NULL;
     app->theme_scale = 0.0f;
@@ -698,6 +1105,7 @@ void rt_gui_activate_app(rt_gui_app_t *app) {
 #endif
     if (app == s_active_app) {
         s_current_app = app;
+        rt_gui_sync_system_theme(app);
         rt_gui_refresh_theme(app);
         return;
     }
@@ -708,6 +1116,7 @@ void rt_gui_activate_app(rt_gui_app_t *app) {
 
     s_active_app = app;
     s_current_app = app;
+    rt_gui_sync_system_theme(app);
     rt_gui_refresh_theme(app);
     rt_gui_restore_app_runtime_state(app);
 #if RT_PLATFORM_MACOS
@@ -741,6 +1150,14 @@ rt_gui_app_t *rt_gui_app_from_widget(vg_widget_t *widget) {
         }
     }
     return NULL;
+}
+
+/// @brief Return a validated GUI app's current scheduler generation.
+/// @details This isolated-module bridge is side-effect free and returns zero for stale or foreign
+///          pointers. The render scheduler is the sole writer of the generation field.
+uint64_t rt_gui_app_frame_generation_for_owner(void *app_ptr) {
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    return app ? app->frame_generation : 0u;
 }
 
 /// @brief Double the dialog stack capacity when full (amortized O(1) growth).
@@ -958,21 +1375,64 @@ static void rt_gui_app_resize_render(void *userdata, int32_t w, int32_t h) {
     rt_gui_app_render(userdata);
 }
 
-/// @brief Create a new GUI application with a window and root widget container.
+/// @brief Internal reason for an expected GUI application construction failure.
+/// @details The enum stays private to the shared constructor so the compatibility constructor and
+///          `App.TryNew` execute identical cleanup paths while exposing different error channels.
+typedef enum {
+    RT_GUI_APP_CREATE_OK = 0,     ///< Construction completed successfully.
+    RT_GUI_APP_CREATE_STATE = 1,  ///< Managed/native application state could not be allocated.
+    RT_GUI_APP_CREATE_WINDOW = 2, ///< The graphics backend could not create a native window.
+    RT_GUI_APP_CREATE_ROOT = 3,   ///< The root widget container could not be allocated.
+} rt_gui_app_create_error_t;
+
+/// @brief Store a constructor failure reason when the caller requested diagnostics.
+/// @param out_error Optional destination owned by the caller.
+/// @param error Reason to store.
+static void rt_gui_app_set_create_error(rt_gui_app_create_error_t *out_error,
+                                        rt_gui_app_create_error_t error) {
+    if (out_error)
+        *out_error = error;
+}
+
+/// @brief Return the stable public message for one app-construction failure reason.
+/// @param error Failure reason produced by @ref rt_gui_app_create.
+/// @return Process-lifetime NUL-terminated error text.
+static const char *rt_gui_app_create_error_message(rt_gui_app_create_error_t error) {
+    switch (error) {
+        case RT_GUI_APP_CREATE_WINDOW:
+            return "GUI application window could not be created";
+        case RT_GUI_APP_CREATE_ROOT:
+            return "GUI root widget could not be allocated";
+        case RT_GUI_APP_CREATE_STATE:
+        case RT_GUI_APP_CREATE_OK:
+        default:
+            return "GUI application state could not be allocated";
+    }
+}
+
+/// @brief Shared implementation for compatibility and Result-returning app constructors.
 /// @details Allocates the app struct on the GC heap (rt_obj_new_i64), creates a
 ///          platform window via vgfx, sets up a root container widget, registers
 ///          the live-resize callback, applies dark theme by default, and activates
 ///          the app as current. The root widget is NOT given a fixed size — it is
-///          resized dynamically every frame from the physical window dimensions.
+///          resized dynamically every frame from the physical window dimensions. Every failure
+///          path unwinds native resources before publishing the corresponding error reason.
 /// @param title  Window title (runtime string).
 /// @param width  Initial window width in logical pixels (clamped to [1, INT32_MAX]).
 /// @param height Initial window height in logical pixels.
+/// @param out_error Optional destination for an exact construction failure reason.
 /// @return Pointer to the new app, or NULL on failure.
-void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
+static void *rt_gui_app_create(rt_string title,
+                               int64_t width,
+                               int64_t height,
+                               rt_gui_app_create_error_t *out_error) {
     RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_OK);
     rt_gui_app_t *app = (rt_gui_app_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gui_app_t));
-    if (!app)
+    if (!app) {
+        rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_STATE);
         return NULL;
+    }
     memset(app, 0, sizeof(rt_gui_app_t));
     app->magic = RT_GUI_APP_MAGIC;
     rt_obj_set_finalizer(app, rt_gui_app_finalizer);
@@ -996,12 +1456,14 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
         free(app->title);
         app->title = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
+        rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_WINDOW);
         return NULL;
     }
     if (!app->title) {
         vgfx_destroy_window(app->window);
         app->window = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
+        rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_STATE);
         return NULL;
     }
 
@@ -1021,12 +1483,18 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
         free(app->title);
         app->title = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
+        rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_ROOT);
         return NULL;
     }
 
     app->theme_kind = RT_GUI_THEME_DARK;
+    app->system_prefers_dark = rt_gui_accessibility_platform_prefers_dark(app->window) ? 1 : 0;
     app->user_scale = 1.0f;
+    app->accessibility_high_contrast = rt_gui_accessibility_platform_high_contrast(app->window);
+    app->accessibility_reduced_motion = rt_gui_accessibility_platform_reduced_motion(app->window);
     app->root->user_data = app;
+    vg_widget_set_accessible_role(app->root, VG_ACCESSIBLE_ROLE_APPLICATION);
+    vg_widget_set_accessible_name(app->root, app->title);
     app->shortcuts_global_enabled = 1;
     app->manual_tooltip_delay_ms = 500;
 
@@ -1043,11 +1511,60 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
         free(app->title);
         app->title = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
+        rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_STATE);
         return NULL;
     }
 
+    rt_gui_accessibility_platform_attach(app->window, app->root);
     rt_gui_activate_app(app);
+    app->theme_reported_revision = app->theme_revision;
     return app;
+}
+
+/// @brief Report whether this runtime contains the GUI backend.
+/// @details Graphics-enabled builds return true without touching the window system. This keeps
+///          startup capability checks deterministic even on headless hosts.
+/// @return Always 1 in this implementation branch.
+int64_t rt_gui_system_is_available(void) {
+    return 1;
+}
+
+/// @brief Return the GUI capability failure reason for a graphics-enabled runtime.
+/// @details Backend initialization is attempted only by app construction, so compilation-level
+///          availability has no explanatory error text.
+/// @return Caller-owned empty runtime string.
+rt_string rt_gui_system_get_unavailable_reason(void) {
+    return rt_str_empty();
+}
+
+/// @brief Create a GUI app through the compatibility nullable constructor.
+/// @details Expected construction failures retain the historical NULL result. New code can use
+///          @ref rt_gui_app_try_new to receive a stable error value.
+/// @param title Window title.
+/// @param width Initial logical width.
+/// @param height Initial logical height.
+/// @return New application handle, or NULL on failure.
+void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
+    return rt_gui_app_create(title, width, height, NULL);
+}
+
+/// @brief Create a GUI app and encode expected construction failure in `Viper.Result`.
+/// @details The Result retains a successful app handle. The constructor's temporary reference is
+///          released after wrapping so ownership is transferred exactly once to the Result.
+/// @param title Window title.
+/// @param width Initial logical width.
+/// @param height Initial logical height.
+/// @return Caller-owned Result containing the app or an exact error string.
+void *rt_gui_app_try_new(rt_string title, int64_t width, int64_t height) {
+    rt_gui_app_create_error_t error = RT_GUI_APP_CREATE_OK;
+    void *app = rt_gui_app_create(title, width, height, &error);
+    if (!app)
+        return rt_result_err_str(rt_const_cstr(rt_gui_app_create_error_message(error)));
+
+    void *result = rt_result_ok(app);
+    if (rt_obj_release_check0(app))
+        rt_obj_free(app);
+    return result;
 }
 
 /// @brief GC finalizer for GUI apps. Mirrors explicit Destroy so native windows
@@ -1058,45 +1575,54 @@ static void rt_gui_app_finalizer(void *app_ptr) {
         rt_gui_app_destroy(app_ptr);
 }
 
-/// @brief Lazily load the default font on first use.
-/// @details Tries the embedded JetBrains Mono Regular first (always available
-///          because it's compiled into the binary). If that fails, falls back to
-///          well-known system font paths on macOS, Linux, and Windows. The font
-///          size is stored in logical points; the window/canvas backend owns
-///          HiDPI coordinate scaling.
-///          Once loaded, the font is marked as owned by the app and freed in
-///          rt_gui_app_destroy. Subsequent calls are no-ops if the font is
-///          already loaded.
+/// @brief Install app-owned regular, bold, and monospace typography fallbacks lazily.
+/// @details Proportional regular/bold roles use the zero-dependency host adapter first. Regular
+///          and mono fall back to independent copies of embedded JetBrains Mono; bold falls back
+///          to an independent embedded copy and finally aliases regular only if allocation/parsing
+///          fails. All role metadata stores the app's logical point size. Missing roles in the
+///          current effective theme are populated without overriding explicit custom roles.
+///          Ownership flags prevent double destruction when a fallback aliases regular.
 void rt_gui_ensure_default_font(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!s_current_app || s_current_app->default_font)
         return;
-
-    // Try the embedded JetBrains Mono Regular first (always available).
-    s_current_app->default_font =
-        vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
-    if (s_current_app->default_font) {
-        s_current_app->default_font_owned = 1;
-        s_current_app->default_font_size = 14.0f;
+    rt_gui_app_t *app = s_current_app;
+    app->default_font_size = 14.0f;
+    app->default_font = rt_gui_font_platform_load_system_ui(false);
+    if (!app->default_font)
+        app->default_font = vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
+    if (!app->default_font)
         return;
+    app->default_font_owned = 1;
+    vg_font_set_logical_size(app->default_font, app->default_font_size);
+
+    app->role_font_bold = rt_gui_font_platform_load_system_ui(true);
+    if (!app->role_font_bold)
+        app->role_font_bold = vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
+    if (app->role_font_bold) {
+        app->role_font_bold_owned = 1;
+        vg_font_set_logical_size(app->role_font_bold, app->default_font_size);
+    } else {
+        app->role_font_bold = app->default_font;
+        app->role_font_bold_owned = 0;
     }
 
-    // Fall back to system fonts if the embedded data somehow fails.
-    const char *font_paths[] = {"/System/Library/Fonts/Menlo.ttc",
-                                "/System/Library/Fonts/SFNSMono.ttf",
-                                "/System/Library/Fonts/Monaco.dfont",
-                                "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-                                "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
-                                "C:\\Windows\\Fonts\\consola.ttf",
-                                "C:\\Windows\\Fonts\\cour.ttf",
-                                NULL};
-    for (int i = 0; font_paths[i]; i++) {
-        s_current_app->default_font = vg_font_load_file(font_paths[i]);
-        if (s_current_app->default_font) {
-            s_current_app->default_font_owned = 1;
-            s_current_app->default_font_size = 14.0f;
-            break;
-        }
+    app->role_font_mono = vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
+    if (app->role_font_mono) {
+        app->role_font_mono_owned = 1;
+        vg_font_set_logical_size(app->role_font_mono, app->default_font_size);
+    } else {
+        app->role_font_mono = app->default_font;
+        app->role_font_mono_owned = 0;
+    }
+
+    if (app->theme) {
+        if (!app->theme->typography.font_regular)
+            app->theme->typography.font_regular = app->default_font;
+        if (!app->theme->typography.font_bold)
+            app->theme->typography.font_bold = app->role_font_bold;
+        if (!app->theme->typography.font_mono)
+            app->theme->typography.font_mono = app->role_font_mono;
     }
 }
 
@@ -1124,6 +1650,7 @@ void rt_gui_app_destroy(void *app_ptr) {
     if (app->window)
         vgfx_set_resize_callback(app->window, NULL, NULL);
     rt_gui_features_cleanup(app);
+    rt_videowidget_forget_app(app);
 
     for (int i = 0; i < app->dialog_count; i++) {
         if (app->dialog_stack[i]) {
@@ -1169,6 +1696,7 @@ void rt_gui_app_destroy(void *app_ptr) {
 
     free(app->title);
     app->title = NULL;
+    rt_gui_accessibility_platform_detach(app->window);
     if (app->root) {
         rt_widget_forget_runtime_refs(app, app->root);
         vg_widget_destroy(app->root);
@@ -1180,27 +1708,55 @@ void rt_gui_app_destroy(void *app_ptr) {
         vg_theme_destroy(app->theme);
         app->theme = NULL;
     }
-    if (app->default_font && app->default_font_owned) {
-        int default_is_retired = 0;
-        for (int i = 0; i < app->retired_font_count; i++) {
-            if (app->retired_fonts[i] == app->default_font) {
-                default_is_retired = 1;
+    if (app->custom_theme_base) {
+        vg_theme_destroy(app->custom_theme_base);
+        app->custom_theme_base = NULL;
+    }
+    vg_font_t *owned_role_fonts[3] = {
+        app->default_font_owned ? app->default_font : NULL,
+        app->role_font_bold_owned ? app->role_font_bold : NULL,
+        app->role_font_mono_owned ? app->role_font_mono : NULL,
+    };
+    for (size_t role = 0; role < sizeof(owned_role_fonts) / sizeof(owned_role_fonts[0]); ++role) {
+        vg_font_t *font = owned_role_fonts[role];
+        if (!font)
+            continue;
+        int duplicate = 0;
+        for (size_t earlier = 0; earlier < role; ++earlier) {
+            if (owned_role_fonts[earlier] == font) {
+                duplicate = 1;
                 break;
             }
         }
-        if (!default_is_retired && vg_font_is_live(app->default_font)) {
-            if (!rt_gui_retire_font_in_other_apps(app, app->default_font))
-                vg_font_destroy(app->default_font);
+        if (duplicate)
+            continue;
+        int already_retired = 0;
+        for (int i = 0; i < app->retired_font_count; ++i) {
+            if (app->retired_fonts[i] == font) {
+                already_retired = 1;
+                break;
+            }
         }
-        app->default_font = NULL;
+        if (!already_retired && vg_font_is_live(font) &&
+            !rt_gui_retire_font_in_other_apps(app, font)) {
+            vg_font_destroy(font);
+        }
     }
+    app->default_font = NULL;
+    app->role_font_bold = NULL;
+    app->role_font_mono = NULL;
+    app->default_font_owned = 0;
+    app->role_font_bold_owned = 0;
+    app->role_font_mono_owned = 0;
     for (int i = 0; i < app->retired_font_count; i++) {
         if (app->retired_fonts[i] && vg_font_is_live(app->retired_fonts[i]) &&
             !rt_gui_retire_font_in_other_apps(app, app->retired_fonts[i]))
             vg_font_destroy(app->retired_fonts[i]);
     }
     free(app->retired_fonts);
+    free(app->retired_font_generations);
     app->retired_fonts = NULL;
+    app->retired_font_generations = NULL;
     app->retired_font_count = 0;
     app->retired_font_cap = 0;
     if (app->window) {
@@ -1508,6 +2064,76 @@ static void rt_gui_layout_command_palette(rt_gui_app_t *app,
     vg_widget_arrange(&palette->base, (win_w - pw) / 2.0f, win_h * 0.15f, pw, ph);
 }
 
+/// @brief Synchronize a detached context menu's style, measured size, and clamped position.
+/// @details Runtime-owned theme/font inheritance is applied before damage collection so the
+///          retained rectangle exactly matches the subsequent paint. Unchanged theme and font
+///          values are idempotent and do not create perpetual dirty frames.
+/// @param app Owning app; NULL is ignored.
+/// @param win_w Current framebuffer width in physical pixels.
+/// @param win_h Current framebuffer height in physical pixels.
+/// @param effective_font_size Effective inherited font size in physical pixels.
+static void rt_gui_prepare_context_menu(rt_gui_app_t *app,
+                                        int32_t win_w,
+                                        int32_t win_h,
+                                        float effective_font_size) {
+    if (!app || !app->active_context_menu || !app->active_context_menu->is_visible)
+        return;
+    vg_contextmenu_t *menu = app->active_context_menu;
+    vg_contextmenu_apply_theme(menu, app->theme);
+    vg_font_t *font = rt_gui_font_handle_checked(app->default_font);
+    if (font)
+        vg_contextmenu_set_font(menu, font, effective_font_size);
+    if (menu->base.needs_layout || menu->base.width <= 0.0f || menu->base.height <= 0.0f) {
+        float x = menu->base.x;
+        float y = menu->base.y;
+        vg_widget_measure(&menu->base, (float)win_w, (float)win_h);
+        vg_widget_arrange(&menu->base, x, y, menu->base.measured_width, menu->base.measured_height);
+    }
+    rt_gui_clamp_context_menu(menu, win_w, win_h);
+}
+
+/// @brief Paint every visible detached overlay in stable compositor Z order.
+/// @details The caller owns clearing and any active clip limit. Painting every overlay is required
+///          even when only the normal root is dirty: a root repaint beneath a static overlay must
+///          restore the overlay pixels intersecting that damage rectangle. The function performs
+///          no allocation beyond allocations intrinsic to individual legacy paint callbacks.
+/// @param app App whose detached overlay layer is painted; NULL is ignored.
+/// @param tooltip_mgr Activated tooltip manager; may be NULL.
+static void rt_gui_paint_detached_overlays(rt_gui_app_t *app, vg_tooltip_manager_t *tooltip_mgr) {
+    if (!app)
+        return;
+    for (int i = 0; i < app->command_palette_count; ++i) {
+        vg_commandpalette_t *palette = app->command_palettes[i];
+        if (palette && palette->is_visible && palette->base.vtable && palette->base.vtable->paint)
+            palette->base.vtable->paint(&palette->base, (void *)app->window);
+    }
+    for (int i = 0; i < app->dialog_count; ++i) {
+        vg_dialog_t *dialog = app->dialog_stack[i];
+        if (dialog && dialog->is_open && dialog->base.vtable && dialog->base.vtable->paint)
+            dialog->base.vtable->paint(&dialog->base, (void *)app->window);
+    }
+    if (app->active_context_menu && app->active_context_menu->is_visible) {
+        vg_widget_t *menu = &app->active_context_menu->base;
+        if (menu->vtable && menu->vtable->paint)
+            menu->vtable->paint(menu, (void *)app->window);
+    }
+    if (app->notification_manager && app->notification_manager->base.vtable &&
+        app->notification_manager->base.vtable->paint) {
+        app->notification_manager->base.vtable->paint(&app->notification_manager->base,
+                                                      (void *)app->window);
+    }
+    if (tooltip_mgr && tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible) {
+        vg_widget_t *tooltip = &tooltip_mgr->active_tooltip->base;
+        if (tooltip->vtable && tooltip->vtable->paint)
+            tooltip->vtable->paint(tooltip, (void *)app->window);
+    }
+    if (app->manual_tooltip && app->manual_tooltip->is_visible) {
+        vg_widget_t *tooltip = &app->manual_tooltip->base;
+        if (tooltip->vtable && tooltip->vtable->paint)
+            tooltip->vtable->paint(tooltip, (void *)app->window);
+    }
+}
+
 /// @brief Test if a screen-space point falls within the command palette bounds.
 /// @details Used to determine whether mouse events should be routed to the
 ///          palette or dismissed (clicks outside close the palette).
@@ -1562,7 +2188,9 @@ void rt_gui_app_poll(void *app_ptr) {
 
     // Poll events
     vgfx_event_t event;
+    bool processed_event = false;
     while (vgfx_poll_event(app->window, &event)) {
+        processed_event = true;
         app->last_event_time_ms = (uint64_t)event.time_ms;
         if (event.type == VGFX_EVENT_KEY_DOWN) {
             rt_keyboard_on_vgfx_key_down((int64_t)event.data.key.key);
@@ -1742,6 +2370,12 @@ void rt_gui_app_poll(void *app_ptr) {
         }
     }
 
+    // User-driven close/remove handlers can retire lightweight tab or item records without
+    // entering a public removal wrapper. Collect only after an actual dispatch batch so idle polls
+    // retain their zero-traversal fast path.
+    if (processed_event && app->root)
+        rt_gui_collect_retired_subhandles(app->root);
+
     // Recompute the absolute delta after this frame's events so Mouse.DeltaX/Y
     // describe the same frame as Mouse.X/Y instead of lagging one poll behind.
     rt_mouse_finalize_frame();
@@ -1772,21 +2406,23 @@ void rt_gui_app_render(void *app_ptr) {
 
     // Ensure a default font is available for widget rendering.
     rt_gui_ensure_default_font();
+    rt_gui_sync_system_theme(app);
     rt_gui_refresh_theme(app);
+    float effective_font_size = rt_gui_app_effective_font_size(app);
 
     if (app->notification_manager && app->default_font) {
         vg_notification_manager_set_font(
-            app->notification_manager, app->default_font, app->default_font_size);
+            app->notification_manager, app->default_font, effective_font_size);
     }
     for (int i = 0; i < app->command_palette_count; i++) {
         if (app->command_palettes[i] && app->default_font) {
             vg_commandpalette_set_font(
-                app->command_palettes[i], app->default_font, app->default_font_size);
+                app->command_palettes[i], app->default_font, effective_font_size);
         }
     }
     if (app->manual_tooltip && app->default_font) {
         app->manual_tooltip->font = app->default_font;
-        app->manual_tooltip->font_size = app->default_font_size;
+        app->manual_tooltip->font_size = effective_font_size;
     }
 
     // Cache window dimensions once — reused for layout and dialog centering.
@@ -1794,12 +2430,38 @@ void rt_gui_app_render(void *app_ptr) {
     vgfx_get_size(app->window, &win_w, &win_h);
     uint64_t now_ms = rt_gui_now_ms();
     float dt = 0.0f;
-    if (app->last_render_time_ms > 0 && now_ms > app->last_render_time_ms) {
-        dt = (float)(now_ms - app->last_render_time_ms) / 1000.0f;
+    double scheduler_delta_ms = 0.0;
+    if (app->frame_delta_override_pending) {
+        double delta_ms = app->frame_delta_override_ms;
+        app->frame_delta_override_pending = 0;
+        app->frame_delta_override_ms = 0.0;
+        if (!isfinite(delta_ms) || delta_ms < 0.0)
+            delta_ms = 0.0;
+        app->scheduler_elapsed_ms += delta_ms;
+        scheduler_delta_ms = delta_ms;
+        double animation_delta_ms = delta_ms > 250.0 ? 250.0 : delta_ms;
+        dt = (float)(animation_delta_ms / 1000.0);
+    } else if (app->last_render_time_ms > 0 && now_ms > app->last_render_time_ms) {
+        scheduler_delta_ms = (double)(now_ms - app->last_render_time_ms);
+        dt = (float)scheduler_delta_ms / 1000.0f;
         if (dt > 0.25f)
             dt = 0.25f;
+        app->scheduler_elapsed_ms += scheduler_delta_ms;
     }
+    if (!isfinite(app->scheduler_clock_ms) || app->scheduler_clock_ms <= 0.0)
+        app->scheduler_clock_ms = (double)now_ms;
+    if (scheduler_delta_ms > (double)UINT64_MAX - app->scheduler_clock_ms)
+        app->scheduler_clock_ms = (double)UINT64_MAX;
+    else
+        app->scheduler_clock_ms += scheduler_delta_ms;
+    uint64_t scheduler_now_ms = app->scheduler_clock_ms >= (double)UINT64_MAX
+                                    ? UINT64_MAX
+                                    : (uint64_t)app->scheduler_clock_ms;
     app->last_render_time_ms = now_ms;
+    app->animations_active = 0;
+    app->frame_generation = app->frame_generation == UINT64_MAX ? 1u : app->frame_generation + 1u;
+    rt_videowidget_update_app(app, (double)dt, app->frame_generation);
+    rt_minimap_sync_app(app);
 
     bool did_layout = false;
     bool size_changed = false;
@@ -1811,15 +2473,14 @@ void rt_gui_app_render(void *app_ptr) {
             app->last_layout_height = win_h;
             did_layout = true;
         }
-        rt_gui_tick_widget_tree(app->root, dt);
+        app->animations_active |= rt_gui_tick_widget_tree(app->root, dt);
     }
 
-    size_changed = app->last_layout_width != win_w || app->last_layout_height != win_h;
     for (int i = 0; i < app->command_palette_count; i++) {
         vg_commandpalette_t *palette = app->command_palettes[i];
         if (!palette || !palette->is_visible)
             continue;
-        rt_gui_tick_widget_tree(&palette->base, dt);
+        app->animations_active |= rt_gui_tick_widget_tree(&palette->base, dt);
         rt_gui_layout_command_palette(app, palette, win_w, win_h);
     }
 
@@ -1827,9 +2488,9 @@ void rt_gui_app_render(void *app_ptr) {
         vg_dialog_t *dlg = app->dialog_stack[i];
         if (!dlg || !dlg->is_open)
             continue;
-        rt_gui_tick_widget_tree(&dlg->base, dt);
+        app->animations_active |= rt_gui_tick_widget_tree(&dlg->base, dt);
         if (app->default_font) {
-            vg_dialog_set_font(dlg, app->default_font, app->default_font_size);
+            vg_dialog_set_font(dlg, app->default_font, effective_font_size);
         }
         if (dlg->base.measured_width < 1.0f || dlg->base.needs_layout) {
             vg_widget_measure(&dlg->base, (float)win_w, (float)win_h);
@@ -1852,56 +2513,93 @@ void rt_gui_app_render(void *app_ptr) {
         app->notification_manager->base.y = 0.0f;
         app->notification_manager->base.width = (float)win_w;
         app->notification_manager->base.height = (float)win_h;
-        vg_notification_manager_update(app->notification_manager, now_ms);
+        vg_notification_manager_update(app->notification_manager, scheduler_now_ms);
+        app->animations_active |= rt_gui_tick_widget_tree(&app->notification_manager->base, dt);
     }
 
     vg_tooltip_manager_t *tooltip_mgr = vg_tooltip_manager_get();
-    vg_tooltip_manager_update(tooltip_mgr, now_ms);
+    vg_tooltip_manager_update(tooltip_mgr, scheduler_now_ms);
+    if (tooltip_mgr->active_tooltip)
+        app->animations_active |= rt_gui_tick_widget_tree(&tooltip_mgr->active_tooltip->base, dt);
     if (tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible &&
         app->default_font) {
         tooltip_mgr->active_tooltip->font = app->default_font;
-        tooltip_mgr->active_tooltip->font_size = app->default_font_size;
+        tooltip_mgr->active_tooltip->font_size = effective_font_size;
     }
     if (app->manual_tooltip && app->manual_tooltip->is_visible && app->default_font) {
         app->manual_tooltip->font = app->default_font;
-        app->manual_tooltip->font_size = app->default_font_size;
+        app->manual_tooltip->font_size = effective_font_size;
     }
+    rt_gui_prepare_tooltip(tooltip_mgr ? tooltip_mgr->active_tooltip : NULL, win_w, win_h);
+    rt_gui_prepare_tooltip(app->manual_tooltip, win_w, win_h);
+    rt_gui_prepare_context_menu(app, win_w, win_h, effective_font_size);
+    if (app->manual_tooltip)
+        app->animations_active |= rt_gui_tick_widget_tree(&app->manual_tooltip->base, dt);
+    if (app->active_context_menu)
+        app->animations_active |= rt_gui_tick_widget_tree(&app->active_context_menu->base, dt);
 
     bool root_needs_paint = rt_gui_widget_tree_needs_paint(app->root);
     bool overlays_need_paint = rt_gui_app_overlays_need_paint(app);
-    if (!did_layout && !size_changed && !root_needs_paint && !overlays_need_paint) {
+    rt_gui_damage_t overlay_current = {0};
+    rt_gui_collect_detached_overlay_bounds(app, tooltip_mgr, win_w, win_h, &overlay_current);
+    bool overlay_bounds_changed = rt_gui_overlay_bounds_changed(app, &overlay_current);
+    bool overlay_layer_needs_damage = overlays_need_paint || overlay_bounds_changed;
+    if (!did_layout && !size_changed && !root_needs_paint && !overlay_layer_needs_damage) {
         vgfx_pump_events(app->window);
         // Nothing to repaint this frame. Pace the frame anyway so an idle GUI
         // does not busy-loop a CPU core: with an FPS cap we sleep to the frame
         // deadline; uncapped, we take a 1ms anti-spin floor. Presentation is
         // skipped because the framebuffer is unchanged.
         vgfx_frame_pace(app->window, 1);
+        rt_gui_collect_retired_fonts(app);
         return;
     }
 
     vg_theme_t *theme = vg_theme_get_current();
     vgfx_color_t theme_bg = theme ? theme->colors.bg_secondary : 0xFF1E1E1E;
 
-    // Choose full-window vs. damage-region (partial) repaint. Partial is only safe
-    // when nothing structural changed this frame: no layout (widgets can move), no
-    // resize, and no overlay on screen (overlays paint above the tree without their
-    // own damage tracking). Otherwise we repaint just the bounding rect of the dirty
-    // widgets, leaning on the retained software framebuffer for untouched pixels.
+    // Choose full-window vs. damage-region (partial) repaint. A framebuffer resize
+    // still requires a full frame. Layout and detached overlays are safe on the
+    // partial path because current/previous visual rectangles are retained below and
+    // all paint callbacks execute beneath a compositor-owned clip limit.
     // did_layout is intentionally NOT a veto: the editor marks needs_layout on
     // every keystroke to recompute content metrics, but that layout is idempotent
     // (no widget moves), so rt_gui_collect_damage — which diffs each widget's
     // current bounds against its last-paint bounds — reports only the truly changed
     // region. A real reflow that moves widgets shows up as large damage and
-    // collapses to a full repaint below. Window resize (framebuffer realloc) and
-    // any on-screen overlay still force the full path.
-    bool overlay_on_screen = overlays_need_paint || rt_gui_app_overlays_visible(app);
-    bool use_partial = app->partial_paint_enabled && !size_changed && !overlay_on_screen;
+    // collapses to a full repaint below. Window resize (framebuffer realloc) remains
+    // the only structural veto.
+    bool use_partial = app->partial_paint_enabled && !size_changed;
     int32_t dmg_x = 0, dmg_y = 0, dmg_w = 0, dmg_h = 0;
     if (use_partial) {
         rt_gui_damage_t dmg = {0};
         rt_gui_collect_damage(app->root, &dmg);
+        if (overlay_layer_needs_damage) {
+            if (app->overlay_last_valid) {
+                rt_gui_damage_add(&dmg,
+                                  app->overlay_last_x,
+                                  app->overlay_last_y,
+                                  app->overlay_last_w,
+                                  app->overlay_last_h);
+            }
+            if (overlay_current.any) {
+                rt_gui_damage_add(&dmg,
+                                  overlay_current.x0,
+                                  overlay_current.y0,
+                                  overlay_current.x1 - overlay_current.x0,
+                                  overlay_current.y1 - overlay_current.y0);
+            }
+        }
         if (!dmg.any) {
-            use_partial = false;
+            // A dirty flag can legitimately collapse to no pixels (for example a newly
+            // created notification at opacity zero). Avoid a full repaint while still
+            // consuming the retained state so the next animation tick starts cleanly.
+            rt_gui_app_clear_paint_flags(app);
+            rt_gui_commit_overlay_bounds(app, &overlay_current);
+            vgfx_pump_events(app->window);
+            vgfx_frame_pace(app->window, 1);
+            rt_gui_collect_retired_fonts(app);
+            return;
         } else {
             float fx0 = dmg.x0 - 1.0f, fy0 = dmg.y0 - 1.0f; // 1px slack for AA edge rims
             float fx1 = dmg.x1 + 1.0f, fy1 = dmg.y1 + 1.0f;
@@ -1929,21 +2627,29 @@ void rt_gui_app_render(void *app_ptr) {
         }
     }
 
+    if (use_partial && !vgfx_push_clip_limit(app->window, dmg_x, dmg_y, dmg_w, dmg_h))
+        use_partial = false;
+
     if (use_partial) {
-        // Clip to the damage rect, clear only that rect, and repaint the tree. Every
-        // vgfx primitive honors the clip, so widgets outside the rect write nothing
-        // and their retained framebuffer pixels survive. Overlays are absent here by
-        // the guard above, so no second-pass overlay paint is needed.
-        vgfx_set_clip(app->window, dmg_x, dmg_y, dmg_w, dmg_h);
+        // Clear only the damage rectangle and repaint every retained layer. The clip
+        // limit survives widget-local vgfx_set_clip/vgfx_clear_clip pairs, so no paint
+        // callback can escape the compositor damage region. Static detached overlays
+        // are repainted under the same limit to restore portions intersecting dirty
+        // normal content.
         vgfx_cls(app->window, theme_bg);
-        if (app->root)
+        if (app->root) {
             render_widget_tree(app->window, app->root, 0.0f, 0.0f);
-        vgfx_clear_clip(app->window);
+            render_widget_overlay_tree(app->window, app->root, 0.0f, 0.0f);
+        }
+        rt_gui_paint_detached_overlays(app, tooltip_mgr);
+        vgfx_pop_clip_limit(app->window);
         app->frames_partial++;
         app->last_damage_w = (float)dmg_w;
         app->last_damage_h = (float)dmg_h;
         rt_gui_app_clear_paint_flags(app);
+        rt_gui_commit_overlay_bounds(app, &overlay_current);
         vgfx_update(app->window);
+        rt_gui_collect_retired_fonts(app);
         return;
     }
 
@@ -1966,66 +2672,194 @@ void rt_gui_app_render(void *app_ptr) {
         render_widget_overlay_tree(app->window, app->root, 0.0f, 0.0f);
     }
 
-    for (int i = 0; i < app->command_palette_count; i++) {
-        vg_commandpalette_t *palette = app->command_palettes[i];
-        if (!palette || !palette->is_visible)
-            continue;
-        if (palette->base.vtable && palette->base.vtable->paint) {
-            palette->base.vtable->paint(&palette->base, (void *)app->window);
-        }
-    }
-
-    for (int i = 0; i < app->dialog_count; i++) {
-        vg_dialog_t *dlg = app->dialog_stack[i];
-        if (!dlg || !dlg->is_open)
-            continue;
-        if (dlg->base.vtable && dlg->base.vtable->paint) {
-            dlg->base.vtable->paint(&dlg->base, (void *)app->window);
-        }
-    }
-
-    // Standalone context menu overlay (e.g. file-tree right-click), above palettes and
-    // dialogs. It is not in app->root, so the overlay tree walk never reaches it;
-    // contextmenu_paint clamps its position to the window.
-    if (app->active_context_menu && app->active_context_menu->is_visible) {
-        vg_contextmenu_apply_theme(app->active_context_menu, app->theme);
-        vg_font_t *font = rt_gui_font_handle_checked(app->default_font);
-        if (font)
-            vg_contextmenu_set_font(app->active_context_menu, font, app->default_font_size);
-        vg_widget_t *menu_widget = &app->active_context_menu->base;
-        if (menu_widget->vtable && menu_widget->vtable->paint) {
-            menu_widget->vtable->paint(menu_widget, (void *)app->window);
-        }
-    }
-
-    if (app->notification_manager) {
-        if (app->notification_manager->base.vtable &&
-            app->notification_manager->base.vtable->paint) {
-            app->notification_manager->base.vtable->paint(&app->notification_manager->base,
-                                                          (void *)app->window);
-        }
-    }
-
-    if (tooltip_mgr->active_tooltip && tooltip_mgr->active_tooltip->is_visible) {
-        vg_widget_measure(&tooltip_mgr->active_tooltip->base, (float)win_w, (float)win_h);
-        if (tooltip_mgr->active_tooltip->base.vtable &&
-            tooltip_mgr->active_tooltip->base.vtable->paint) {
-            tooltip_mgr->active_tooltip->base.vtable->paint(&tooltip_mgr->active_tooltip->base,
-                                                            (void *)app->window);
-        }
-    }
-
-    if (app->manual_tooltip && app->manual_tooltip->is_visible) {
-        vg_widget_measure(&app->manual_tooltip->base, (float)win_w, (float)win_h);
-        if (app->manual_tooltip->base.vtable && app->manual_tooltip->base.vtable->paint) {
-            app->manual_tooltip->base.vtable->paint(&app->manual_tooltip->base,
-                                                    (void *)app->window);
-        }
-    }
+    rt_gui_paint_detached_overlays(app, tooltip_mgr);
 
     // Present
     rt_gui_app_clear_paint_flags(app);
+    rt_gui_commit_overlay_bounds(app, &overlay_current);
     vgfx_update(app->window);
+    rt_gui_collect_retired_fonts(app);
+}
+
+/// @brief Merge a candidate delay into an optional nearest-deadline value.
+/// @details Negative candidates represent no deadline and are ignored. Non-negative values replace
+///          an absent deadline or a later existing value.
+/// @param current Current deadline, using -1 for none.
+/// @param candidate Candidate deadline, using -1 for none.
+/// @return Earliest non-negative deadline, or -1 when both inputs are absent.
+static int64_t rt_gui_min_deadline_ms(int64_t current, int64_t candidate) {
+    if (candidate < 0)
+        return current;
+    return current < 0 || candidate < current ? candidate : current;
+}
+
+/// @brief Convert a remaining fractional-second timer to a non-negative millisecond deadline.
+/// @details Uses ceiling so the scheduler never wakes early and spins on a timer that has not yet
+///          crossed its threshold. Expired/non-finite values request immediate work.
+/// @param remaining_seconds Time remaining until a widget timer fires.
+/// @return Non-negative millisecond delay.
+static int64_t rt_gui_seconds_to_deadline_ms(float remaining_seconds) {
+    if (!isfinite(remaining_seconds) || remaining_seconds <= 0.0f)
+        return 0;
+    double milliseconds = ceil((double)remaining_seconds * 1000.0);
+    return milliseconds >= (double)INT64_MAX ? INT64_MAX : (int64_t)milliseconds;
+}
+
+/// @brief Find the next specialized timer deadline in a visible widget subtree.
+/// @details Covers caret blink, indeterminate progress, and editor drag-autoscroll sources. Generic
+///          hover/press/focus motion is represented by `app->animations_active`. The traversal is
+///          allocation-free and short-circuits when immediate work is discovered.
+/// @param root Retained surface root to inspect; NULL or hidden roots have no deadline.
+/// @return Delay in milliseconds, or -1 when the subtree has no scheduled timer.
+static int64_t rt_gui_widget_tree_next_deadline_ms(vg_widget_t *root) {
+    if (!root || !root->visible)
+        return -1;
+    int64_t deadline_ms = -1;
+    for (vg_widget_t *node = root; node; node = rt_gui_next_visible_widget(root, node)) {
+        if (!node->visible)
+            continue;
+        int64_t candidate = -1;
+        switch (node->type) {
+            case VG_WIDGET_TEXTINPUT: {
+                vg_textinput_t *input = (vg_textinput_t *)node;
+                if (node->state & VG_STATE_FOCUSED)
+                    candidate = rt_gui_seconds_to_deadline_ms(0.5f - input->cursor_blink_time);
+                break;
+            }
+            case VG_WIDGET_PROGRESS: {
+                vg_progressbar_t *progress = (vg_progressbar_t *)node;
+                if (progress->style == VG_PROGRESS_INDETERMINATE)
+                    candidate = 16;
+                break;
+            }
+            case VG_WIDGET_CODEEDITOR: {
+                vg_codeeditor_t *editor = (vg_codeeditor_t *)node;
+                if (editor->selection_dragging)
+                    candidate = 16;
+                else if (node->state & VG_STATE_FOCUSED)
+                    candidate = rt_gui_seconds_to_deadline_ms(0.5f - editor->cursor_blink_time);
+                break;
+            }
+            case VG_WIDGET_OUTPUTPANE: {
+                vg_outputpane_t *pane = (vg_outputpane_t *)node;
+                if (pane->terminal_mode && pane->has_focus)
+                    candidate = rt_gui_seconds_to_deadline_ms(0.5f - pane->caret_blink_time);
+                break;
+            }
+            default:
+                break;
+        }
+        deadline_ms = rt_gui_min_deadline_ms(deadline_ms, candidate);
+        if (deadline_ms == 0)
+            return 0;
+    }
+    return deadline_ms;
+}
+
+/// @brief Compute the nearest currently-known app scheduler deadline.
+/// @details Dirty retained state and unsettled generic motion require an immediate frame. Clean
+///          surfaces are scanned for specialized timer sources so `PollWait` cannot sleep past a
+///          caret blink, drag-autoscroll, or indeterminate-progress update.
+/// @param app Valid live GUI app.
+/// @return Milliseconds until work, 0 for immediate work, or -1 when none is known.
+static int64_t rt_gui_app_next_deadline_ms(const rt_gui_app_t *app) {
+    if (!app)
+        return -1;
+    if (app->animations_active || rt_gui_widget_tree_needs_layout(app->root) ||
+        rt_gui_widget_tree_needs_paint(app->root) || rt_gui_app_overlays_need_paint(app)) {
+        return 0;
+    }
+    uint64_t scheduler_now_ms =
+        isfinite(app->scheduler_clock_ms) && app->scheduler_clock_ms > 0.0
+            ? (app->scheduler_clock_ms >= (double)UINT64_MAX ? UINT64_MAX
+                                                             : (uint64_t)app->scheduler_clock_ms)
+            : rt_gui_now_ms();
+    int64_t deadline_ms = rt_gui_widget_tree_next_deadline_ms(app->root);
+    for (int i = 0; i < app->command_palette_count && deadline_ms != 0; ++i) {
+        if (app->command_palettes[i])
+            deadline_ms = rt_gui_min_deadline_ms(
+                deadline_ms, rt_gui_widget_tree_next_deadline_ms(&app->command_palettes[i]->base));
+    }
+    for (int i = 0; i < app->dialog_count && deadline_ms != 0; ++i) {
+        if (app->dialog_stack[i])
+            deadline_ms = rt_gui_min_deadline_ms(
+                deadline_ms, rt_gui_widget_tree_next_deadline_ms(&app->dialog_stack[i]->base));
+    }
+    if (app->notification_manager)
+        deadline_ms = rt_gui_min_deadline_ms(
+            deadline_ms, rt_gui_widget_tree_next_deadline_ms(&app->notification_manager->base));
+    deadline_ms = rt_gui_min_deadline_ms(
+        deadline_ms,
+        vg_notification_manager_next_deadline_ms(app->notification_manager, scheduler_now_ms));
+    const vg_tooltip_manager_t *tooltip_manager =
+        rt_gui_get_active_app() == app ? vg_tooltip_manager_get() : &app->tooltip_manager_state;
+    if (tooltip_manager->active_tooltip)
+        deadline_ms = rt_gui_min_deadline_ms(
+            deadline_ms,
+            rt_gui_widget_tree_next_deadline_ms(&tooltip_manager->active_tooltip->base));
+    deadline_ms = rt_gui_min_deadline_ms(
+        deadline_ms, vg_tooltip_manager_next_deadline_ms(tooltip_manager, scheduler_now_ms));
+    if (app->manual_tooltip)
+        deadline_ms = rt_gui_min_deadline_ms(
+            deadline_ms, rt_gui_widget_tree_next_deadline_ms(&app->manual_tooltip->base));
+    if (app->active_context_menu)
+        deadline_ms = rt_gui_min_deadline_ms(
+            deadline_ms, rt_gui_widget_tree_next_deadline_ms(&app->active_context_menu->base));
+    deadline_ms = rt_gui_min_deadline_ms(deadline_ms, rt_videowidget_next_deadline_ms(app));
+    return deadline_ms;
+}
+
+/// @brief Poll, schedule, and render one real-time GUI frame.
+/// @details Invalid apps and accepted close requests return false without touching stale state.
+/// @param app_ptr Runtime-facing app handle.
+/// @return 1 while the app remains runnable; otherwise 0.
+int64_t rt_gui_app_run_frame(void *app_ptr) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app)
+        return 0;
+    rt_gui_app_poll(app);
+    if (rt_gui_app_should_close(app))
+        return 0;
+    rt_gui_app_render(app);
+    return rt_gui_app_should_close(app) ? 0 : 1;
+}
+
+/// @brief Poll and render one frame using a one-shot deterministic delta.
+/// @details The render path consumes the override exactly once. Invalid values are normalized here
+///          and checked again at consumption so no NaN/negative time reaches widget schedulers.
+/// @param app_ptr Runtime-facing app handle.
+/// @param delta_ms Requested deterministic elapsed time in milliseconds.
+/// @return 1 while the app remains runnable; otherwise 0.
+int64_t rt_gui_app_run_frame_with_delta(void *app_ptr, double delta_ms) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (!app)
+        return 0;
+    if (!isfinite(delta_ms) || delta_ms < 0.0)
+        delta_ms = 0.0;
+    app->frame_delta_override_ms = delta_ms;
+    app->frame_delta_override_pending = 1;
+    return rt_gui_app_run_frame(app);
+}
+
+/// @brief Query the app's central scheduler deadline without consuming it.
+/// @param app_ptr Runtime-facing app handle.
+/// @return Milliseconds until work, 0 for immediate work, or -1 for none/invalid.
+int64_t rt_gui_app_get_next_deadline_ms(void *app_ptr) {
+    RT_ASSERT_MAIN_THREAD();
+    return rt_gui_app_next_deadline_ms(rt_gui_app_handle_checked(app_ptr));
+}
+
+/// @brief Select the app used by app-scoped GUI services and widget constructors.
+/// @details Handle validation occurs before activation so stale pointers cannot displace a live
+///          current application.
+/// @param app_ptr Runtime-facing app handle; invalid values are ignored.
+void rt_gui_app_make_current(void *app_ptr) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_gui_app_t *app = rt_gui_app_handle_checked(app_ptr);
+    if (app)
+        rt_gui_activate_app(app);
 }
 
 /// @brief `App.PollWait` — block up to timeout_ms for OS events, then poll.
@@ -2047,6 +2881,9 @@ int64_t rt_gui_app_poll_wait(void *app_ptr, int64_t timeout_ms) {
         timeout_ms = 0;
     if (timeout_ms > 1000)
         timeout_ms = 1000;
+    int64_t deadline_ms = rt_gui_app_next_deadline_ms(app);
+    if (deadline_ms >= 0 && timeout_ms > deadline_ms)
+        timeout_ms = deadline_ms;
     int32_t had_events = vgfx_wait_events(app->window, (int32_t)timeout_ms);
     rt_gui_app_poll(app_ptr);
     return had_events ? 1 : 0;
@@ -2091,30 +2928,11 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     app->default_font = new_font;
     app->default_font_size = (float)rt_gui_sanitize_font_size(size, 14.0);
     app->default_font_owned = 0;
-
-    if (app->root && app->default_font) {
-        rt_gui_apply_font_to_widget(app->root, app->default_font, app->default_font_size);
+    if (app->theme && (!app->theme_base || !app->theme_base->typography.font_regular ||
+                       app->theme->typography.font_regular == old_font)) {
+        app->theme->typography.font_regular = new_font;
     }
-
-    if (app->notification_manager && app->default_font) {
-        vg_notification_manager_set_font(
-            app->notification_manager, app->default_font, app->default_font_size);
-    }
-    for (int i = 0; i < app->command_palette_count; i++) {
-        if (app->command_palettes[i] && app->default_font) {
-            vg_commandpalette_set_font(
-                app->command_palettes[i], app->default_font, app->default_font_size);
-        }
-    }
-    if (app->manual_tooltip && app->default_font) {
-        app->manual_tooltip->font = app->default_font;
-        app->manual_tooltip->font_size = app->default_font_size;
-    }
-    for (int i = 0; i < app->dialog_count; i++) {
-        if (app->dialog_stack[i] && app->default_font) {
-            vg_dialog_set_font(app->dialog_stack[i], app->default_font, app->default_font_size);
-        }
-    }
+    rt_gui_reapply_default_font(app);
     if (old_owned && old_font && old_font != app->default_font)
         rt_gui_retire_font(app, old_font);
 }
@@ -2201,16 +3019,19 @@ static void render_widget_tree(vgfx_window_t window,
             widget->_paint_screen_space = was_screen_space;
         }
 
-        // Record the absolute paint bounds for damage-region move detection
-        // (plan 07). rt_gui_collect_damage diffs these against next frame's bounds.
-        widget->last_paint_x = abs_x;
-        widget->last_paint_y = abs_y;
-        widget->last_paint_w = widget->width;
-        widget->last_paint_h = widget->height;
-        widget->last_paint_valid = true;
-
         widget->x = rel_x;
         widget->y = rel_y;
+
+        // Record complete visual bounds after restoring retained coordinates.
+        // The query includes shadows, focus glow, and any popup drawn later by the
+        // overlay pass, allowing the next frame to repair both moved and vacated pixels.
+        float visual_x = 0.0f, visual_y = 0.0f, visual_w = 0.0f, visual_h = 0.0f;
+        vg_widget_get_visual_bounds(widget, &visual_x, &visual_y, &visual_w, &visual_h);
+        widget->last_paint_x = visual_x;
+        widget->last_paint_y = visual_y;
+        widget->last_paint_w = visual_w;
+        widget->last_paint_h = visual_h;
+        widget->last_paint_valid = visual_w > 0.0f && visual_h > 0.0f;
 
         if (rt_gui_widget_paints_children_internally(widget))
             continue;
@@ -2283,6 +3104,12 @@ static void render_widget_overlay_tree(vgfx_window_t window,
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
+/// @brief Stub: graphics-disabled applications have no scheduler generation.
+uint64_t rt_gui_app_frame_generation_for_owner(void *app_ptr) {
+    (void)app_ptr;
+    return 0u;
+}
+
 // ===========================================================================
 // Headless stubs — match the public-API prototypes above so that
 // non-graphical builds (server / CLI / ViperDOS) link cleanly. Each
@@ -2291,6 +3118,18 @@ static void render_widget_overlay_tree(vgfx_window_t window,
 // ===========================================================================
 
 rt_gui_app_t *s_current_app = NULL;
+
+/// @brief Stub capability query for a graphics-disabled runtime.
+/// @return Always 0 because no GUI backend is compiled into this branch.
+int64_t rt_gui_system_is_available(void) {
+    return 0;
+}
+
+/// @brief Return the stable reason that GUI support is unavailable.
+/// @return Caller-owned runtime string containing the graphics-disabled capability message.
+rt_string rt_gui_system_get_unavailable_reason(void) {
+    return rt_const_cstr("GUI support is not available in this build");
+}
 
 /// @brief Stub: graphics disabled — no-op; modal dialog management requires a live app.
 void rt_gui_set_active_dialog(void *dlg) {
@@ -2303,6 +3142,18 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     (void)width;
     (void)height;
     return NULL;
+}
+
+/// @brief Stub fallible constructor that reports unavailable GUI support without trapping.
+/// @param title Ignored window title.
+/// @param width Ignored initial width.
+/// @param height Ignored initial height.
+/// @return Caller-owned `Result.ErrStr` containing the stable capability message.
+void *rt_gui_app_try_new(rt_string title, int64_t width, int64_t height) {
+    (void)title;
+    (void)width;
+    (void)height;
+    return rt_result_err_str(rt_const_cstr("GUI support is not available in this build"));
 }
 
 /// @brief No-op stub: default font loading (graphics disabled).
@@ -2333,6 +3184,40 @@ int64_t rt_gui_app_poll_wait(void *app_ptr, int64_t timeout_ms) {
 
 /// @brief Render the app.
 void rt_gui_app_render(void *app_ptr) {
+    (void)app_ptr;
+}
+
+/// @brief Stub: a graphics-disabled app cannot run a GUI frame.
+/// @details The handle is ignored and no polling, timing, or rendering work occurs.
+/// @param app_ptr Ignored app handle.
+/// @return Always 0 because GUI construction is unavailable.
+int64_t rt_gui_app_run_frame(void *app_ptr) {
+    (void)app_ptr;
+    return 0;
+}
+
+/// @brief Stub: deterministic GUI frames are unavailable without graphics.
+/// @details Both arguments are ignored; no scheduler state exists in this build configuration.
+/// @param app_ptr Ignored app handle.
+/// @param delta_ms Ignored deterministic elapsed time.
+/// @return Always 0.
+int64_t rt_gui_app_run_frame_with_delta(void *app_ptr, double delta_ms) {
+    (void)app_ptr;
+    (void)delta_ms;
+    return 0;
+}
+
+/// @brief Stub: report that no graphics-disabled GUI deadline exists.
+/// @param app_ptr Ignored app handle.
+/// @return Always -1.
+int64_t rt_gui_app_get_next_deadline_ms(void *app_ptr) {
+    (void)app_ptr;
+    return -1;
+}
+
+/// @brief Stub: no app can become current without a GUI backend.
+/// @param app_ptr Ignored app handle.
+void rt_gui_app_make_current(void *app_ptr) {
     (void)app_ptr;
 }
 

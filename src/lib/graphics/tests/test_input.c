@@ -24,6 +24,7 @@
 #include "vgfx_internal.h"
 #include "vgfx_mock.h"
 #include <limits.h>
+#include <string.h>
 
 /* T16: Keyboard Input (Mock Backend) */
 void test_keyboard_input(void) {
@@ -180,6 +181,43 @@ void test_event_queue_basic(void) {
     /* Queue should be empty */
     ok = vgfx_poll_event(win, &ev);
     ASSERT_EQ(ok, 0);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+/* T19b: Public authored-event posting */
+void test_event_queue_public_post(void) {
+    TEST_BEGIN("T19b: Event Queue - Public Post");
+
+    vgfx_window_params_t params = {
+        .width = 640, .height = 480, .title = "Test", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_event_t authored = {0};
+    authored.type = VGFX_EVENT_KEY_DOWN;
+    authored.time_ms = INT64_C(1234567);
+    authored.data.key.key = VGFX_KEY_K;
+    authored.data.key.is_repeat = 1;
+    authored.data.key.modifiers = VGFX_MOD_CTRL | VGFX_MOD_SHIFT;
+
+    ASSERT_EQ(vgfx_post_event(win, &authored), 1);
+    vgfx_event_t observed = {0};
+    ASSERT_EQ(vgfx_poll_event(win, &observed), 1);
+    ASSERT_EQ(observed.type, VGFX_EVENT_KEY_DOWN);
+    ASSERT_EQ(observed.time_ms, INT64_C(1234567));
+    ASSERT_EQ(observed.data.key.key, VGFX_KEY_K);
+    ASSERT_EQ(observed.data.key.is_repeat, 1);
+    ASSERT_EQ(observed.data.key.modifiers, VGFX_MOD_CTRL | VGFX_MOD_SHIFT);
+    ASSERT_EQ(vgfx_poll_event(win, &observed), 0);
+
+    authored.type = VGFX_EVENT_NONE;
+    ASSERT_EQ(vgfx_post_event(win, &authored), 0);
+    authored.type = (vgfx_event_type_t)(VGFX_EVENT_FILE_DROP + 1);
+    ASSERT_EQ(vgfx_post_event(win, &authored), 0);
+    ASSERT_EQ(vgfx_post_event(NULL, &authored), 0);
+    ASSERT_EQ(vgfx_post_event(win, NULL), 0);
 
     vgfx_destroy_window(win);
     TEST_END();
@@ -387,6 +425,73 @@ void test_text_input_event(void) {
     ASSERT_EQ(vgfx_poll_event(win, &ev), 1);
     ASSERT_EQ(ev.type, VGFX_EVENT_TEXT_INPUT);
     ASSERT_EQ(ev.data.text.codepoint, 'A');
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+/// @brief Verify allocation-free IME lifecycle payloads and update coalescing.
+/// @details Drives the mock adapter through start, two consecutive preedit updates, commit, and
+///          cancel. The primary queue must preserve lifecycle boundaries, expose the newest
+///          preedit only, retain codepoint selection/replacement metadata, and mark oversized
+///          inline UTF-8 deterministically rather than overflowing storage.
+void test_composition_lifecycle_events(void) {
+    TEST_BEGIN("T23b: IME Composition Lifecycle Events");
+
+    vgfx_window_params_t params = {
+        .width = 320, .height = 240, .title = "IME", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_mock_inject_composition_start(win, 2, 3);
+    vgfx_mock_inject_composition_update(win, "e\xCC\x81", 0, 2);
+    vgfx_mock_inject_composition_update(win, "\xE6\xBC\xA2\xE5\xAD\x97", 2, 0);
+    vgfx_mock_inject_composition_commit(win, "\xE6\xBC\xA2\xE5\xAD\x97");
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+
+    vgfx_event_t event;
+    ASSERT_EQ(vgfx_poll_event(win, &event), 1);
+    ASSERT_EQ(event.type, VGFX_EVENT_COMPOSITION_START);
+    ASSERT_EQ(event.data.composition.replacement_start, 2);
+    ASSERT_EQ(event.data.composition.replacement_length, 3);
+
+    ASSERT_EQ(vgfx_poll_event(win, &event), 1);
+    ASSERT_EQ(event.type, VGFX_EVENT_COMPOSITION_UPDATE);
+    ASSERT_EQ(strcmp(event.data.composition.text, "\xE6\xBC\xA2\xE5\xAD\x97"), 0);
+    ASSERT_EQ(event.data.composition.text_length, 6);
+    ASSERT_EQ(event.data.composition.selection_start, 2);
+    ASSERT_EQ(event.data.composition.selection_length, 0);
+
+    ASSERT_EQ(vgfx_poll_event(win, &event), 1);
+    ASSERT_EQ(event.type, VGFX_EVENT_COMPOSITION_COMMIT);
+    ASSERT_EQ(strcmp(event.data.composition.text, "\xE6\xBC\xA2\xE5\xAD\x97"), 0);
+    ASSERT_EQ(vgfx_poll_event(win, &event), 0);
+
+    vgfx_mock_inject_composition_start(win, -1, -1);
+    vgfx_mock_inject_composition_cancel(win);
+    ASSERT_EQ(vgfx_pump_events(win), 1);
+    ASSERT_EQ(vgfx_poll_event(win, &event), 1);
+    ASSERT_EQ(event.type, VGFX_EVENT_COMPOSITION_START);
+    ASSERT_EQ(event.data.composition.replacement_start, -1);
+    ASSERT_EQ(vgfx_poll_event(win, &event), 1);
+    ASSERT_EQ(event.type, VGFX_EVENT_COMPOSITION_CANCEL);
+
+    char oversized[VGFX_COMPOSITION_TEXT_CAPACITY + 8];
+    memset(oversized, 'x', sizeof(oversized));
+    ASSERT_EQ(vgfx_internal_init_composition_event(&event,
+                                                   VGFX_EVENT_COMPOSITION_UPDATE,
+                                                   10,
+                                                   oversized,
+                                                   sizeof(oversized),
+                                                   0,
+                                                   0,
+                                                   -1,
+                                                   -1,
+                                                   0),
+              1);
+    ASSERT_EQ(event.data.composition.truncated, 1);
+    ASSERT_EQ(event.data.composition.text_length, VGFX_COMPOSITION_TEXT_CAPACITY - 1);
+    ASSERT_EQ(event.data.composition.text[VGFX_COMPOSITION_TEXT_CAPACITY - 1], '\0');
 
     vgfx_destroy_window(win);
     TEST_END();
@@ -667,6 +772,7 @@ int main(void) {
     test_mouse_position_coord_scale_is_logical();
     test_mouse_button();
     test_event_queue_basic();
+    test_event_queue_public_post();
     test_event_queue_overflow();
     test_event_queue_flush_and_clear_wrappers();
     test_first_limited_update_waits_for_deadline();
@@ -674,6 +780,7 @@ int main(void) {
     test_resize_event_scaled_logical();
     test_pump_events_without_present();
     test_text_input_event();
+    test_composition_lifecycle_events();
     test_scroll_event();
     test_scroll_updates_mouse_position();
     test_focus_state_sync();

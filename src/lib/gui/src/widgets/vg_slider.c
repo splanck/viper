@@ -389,8 +389,10 @@ void vg_slider_set_value(vg_slider_t *slider, float value) {
 
     slider->base.needs_paint = true;
 
-    if (old != value && slider->on_change) {
-        slider->on_change(&slider->base, value, slider->on_change_data);
+    if (old != value) {
+        vg_widget_note_change(&slider->base);
+        if (slider->on_change)
+            slider->on_change(&slider->base, value, slider->on_change_data);
     }
 }
 
@@ -417,10 +419,17 @@ void vg_slider_set_range(vg_slider_t *slider, float min_val, float max_val) {
         min_val = max_val;
         max_val = tmp;
     }
+    float old_min = slider->min_value;
+    float old_max = slider->max_value;
+    uint64_t old_change_revision = slider->base.change_revision;
     slider->min_value = min_val;
     slider->max_value = max_val;
     // Re-clamp current value
     vg_slider_set_value(slider, slider->value);
+    if ((old_min != min_val || old_max != max_val) &&
+        old_change_revision == slider->base.change_revision) {
+        vg_widget_note_revision(&slider->base);
+    }
     slider->base.needs_paint = true;
 }
 
@@ -431,8 +440,12 @@ void vg_slider_set_range(vg_slider_t *slider, float min_val, float max_val) {
 void vg_slider_set_step(vg_slider_t *slider, float step) {
     if (!slider)
         return;
+    float old_step = slider->step;
+    uint64_t old_change_revision = slider->base.change_revision;
     slider->step = isfinite(step) && step > 0 ? step : 0;
     vg_slider_set_value(slider, slider->value);
+    if (old_step != slider->step && old_change_revision == slider->base.change_revision)
+        vg_widget_note_revision(&slider->base);
     slider->base.needs_paint = true;
 }
 

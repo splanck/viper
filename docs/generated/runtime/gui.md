@@ -6,6 +6,239 @@
 
 ## Classes
 
+<a id="viper-gui-align"></a>
+### `Viper.GUI.Align`
+
+Defines cross-axis alignment constants for GUI layout containers.
+
+`Viper.GUI.Align` is a static typed-constant surface. Its stable values are accepted by VBox,
+HBox, and Flex alignment methods while legacy integer values remain source-compatible.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-align-start"></a>`Start` | `i64` | read-only |
+| <a id="viper-gui-align-center"></a>`Center` | `i64` | read-only |
+| <a id="viper-gui-align-end"></a>`End` | `i64` | read-only |
+| <a id="viper-gui-align-stretch"></a>`Stretch` | `i64` | read-only |
+
+<a id="viper-gui-justify"></a>
+### `Viper.GUI.Justify`
+
+Defines main-axis distribution constants for GUI layout containers.
+
+`Viper.GUI.Justify` names the six stable packing and free-space distribution policies accepted
+by VBox, HBox, and Flex instead of requiring application code to embed magic integers.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-justify-start"></a>`Start` | `i64` | read-only |
+| <a id="viper-gui-justify-center"></a>`Center` | `i64` | read-only |
+| <a id="viper-gui-justify-end"></a>`End` | `i64` | read-only |
+| <a id="viper-gui-justify-spacebetween"></a>`SpaceBetween` | `i64` | read-only |
+| <a id="viper-gui-justify-spacearound"></a>`SpaceAround` | `i64` | read-only |
+| <a id="viper-gui-justify-spaceevenly"></a>`SpaceEvenly` | `i64` | read-only |
+
+<a id="viper-gui-flexdirection"></a>
+### `Viper.GUI.FlexDirection`
+
+Defines stable main-axis directions for Flex layout.
+
+`Viper.GUI.FlexDirection` uses a public row/column-first ordinal order and the runtime converts
+it explicitly to lower toolkit enums, insulating applications from internal enum layout.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-flexdirection-row"></a>`Row` | `i64` | read-only |
+| <a id="viper-gui-flexdirection-column"></a>`Column` | `i64` | read-only |
+| <a id="viper-gui-flexdirection-rowreverse"></a>`RowReverse` | `i64` | read-only |
+| <a id="viper-gui-flexdirection-columnreverse"></a>`ColumnReverse` | `i64` | read-only |
+
+<a id="viper-gui-flexwrap"></a>
+### `Viper.GUI.FlexWrap`
+
+Defines line-wrapping policies for Flex layout.
+
+`Viper.GUI.FlexWrap` distinguishes one-line layout, forward wrapping, and reverse cross-axis
+wrapping through stable read-only integer properties.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-flexwrap-nowrap"></a>`NoWrap` | `i64` | read-only |
+| <a id="viper-gui-flexwrap-wrap"></a>`Wrap` | `i64` | read-only |
+| <a id="viper-gui-flexwrap-wrapreverse"></a>`WrapReverse` | `i64` | read-only |
+
+<a id="viper-gui-dock"></a>
+### `Viper.GUI.Dock`
+
+Defines edge and fill placement constants for DockPanel children.
+
+`Viper.GUI.Dock` names each public DockPanel placement. The runtime translates these zero-based
+values to the toolkit's internal enum, whose zero value is reserved for undocked widgets.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-dock-left"></a>`Left` | `i64` | read-only |
+| <a id="viper-gui-dock-top"></a>`Top` | `i64` | read-only |
+| <a id="viper-gui-dock-right"></a>`Right` | `i64` | read-only |
+| <a id="viper-gui-dock-bottom"></a>`Bottom` | `i64` | read-only |
+| <a id="viper-gui-dock-fill"></a>`Fill` | `i64` | read-only |
+
+<a id="viper-gui-thememode"></a>
+### `Viper.GUI.ThemeMode`
+
+Defines built-in, system-following, and custom GUI theme modes.
+
+`Viper.GUI.ThemeMode` values are accepted by Theme.SetMode and returned by Theme.GetMode. Custom
+identifies an installed application palette, while System follows platform appearance changes.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-thememode-dark"></a>`Dark` | `i64` | read-only |
+| <a id="viper-gui-thememode-light"></a>`Light` | `i64` | read-only |
+| <a id="viper-gui-thememode-system"></a>`System` | `i64` | read-only |
+| <a id="viper-gui-thememode-custom"></a>`Custom` | `i64` | read-only |
+
+<a id="viper-gui-accessiblerole"></a>
+### `Viper.GUI.AccessibleRole`
+
+Defines semantic accessibility roles for GUI widgets.
+
+`Viper.GUI.AccessibleRole` publishes the complete stable role vocabulary consumed by
+Widget.SetAccessibleRole and emitted by accessibility snapshots and native platform adapters.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-accessiblerole-none"></a>`None` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-application"></a>`Application` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-window"></a>`Window` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-group"></a>`Group` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-label"></a>`Label` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-button"></a>`Button` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-checkbox"></a>`CheckBox` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-radiobutton"></a>`RadioButton` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-textbox"></a>`TextBox` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-searchbox"></a>`SearchBox` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-combobox"></a>`ComboBox` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-list"></a>`List` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-listitem"></a>`ListItem` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-tree"></a>`Tree` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-treeitem"></a>`TreeItem` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-tablist"></a>`TabList` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-tab"></a>`Tab` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-table"></a>`Table` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-row"></a>`Row` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-cell"></a>`Cell` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-slider"></a>`Slider` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-progressbar"></a>`ProgressBar` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-dialog"></a>`Dialog` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-alert"></a>`Alert` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-menu"></a>`Menu` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-menuitem"></a>`MenuItem` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-toolbar"></a>`ToolBar` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-statusbar"></a>`StatusBar` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-image"></a>`Image` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-video"></a>`Video` | `i64` | read-only |
+| <a id="viper-gui-accessiblerole-link"></a>`Link` | `i64` | read-only |
+
+<a id="viper-gui-liveregionmode"></a>
+### `Viper.GUI.LiveRegionMode`
+
+Defines accessibility live-region announcement urgency.
+
+`Viper.GUI.LiveRegionMode` values configure automatic widget announcements and explicit
+Accessibility.Announce calls as off, queued/polite, or interrupting/assertive.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-liveregionmode-off"></a>`Off` | `i64` | read-only |
+| <a id="viper-gui-liveregionmode-polite"></a>`Polite` | `i64` | read-only |
+| <a id="viper-gui-liveregionmode-assertive"></a>`Assertive` | `i64` | read-only |
+
+<a id="viper-gui-dialogbuttonrole"></a>
+### `Viper.GUI.DialogButtonRole`
+
+Defines semantic roles for custom message-box buttons.
+
+`Viper.GUI.DialogButtonRole` drives localized styling, Enter/Escape behavior, and terminal
+outcome classification without inspecting translated button labels.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-dialogbuttonrole-normal"></a>`Normal` | `i64` | read-only |
+| <a id="viper-gui-dialogbuttonrole-default"></a>`Default` | `i64` | read-only |
+| <a id="viper-gui-dialogbuttonrole-cancel"></a>`Cancel` | `i64` | read-only |
+| <a id="viper-gui-dialogbuttonrole-destructive"></a>`Destructive` | `i64` | read-only |
+| <a id="viper-gui-dialogbuttonrole-accept"></a>`Accept` | `i64` | read-only |
+| <a id="viper-gui-dialogbuttonrole-reject"></a>`Reject` | `i64` | read-only |
+| <a id="viper-gui-dialogbuttonrole-help"></a>`Help` | `i64` | read-only |
+
+<a id="viper-gui-dialogstatus"></a>
+### `Viper.GUI.DialogStatus`
+
+Defines the shared asynchronous dialog lifecycle states.
+
+`Viper.GUI.DialogStatus` is returned by FileDialog and MessageBox status APIs. Terminal states
+distinguish acceptance, cancellation, and operational failure while Idle permits reuse.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-dialogstatus-idle"></a>`Idle` | `i64` | read-only |
+| <a id="viper-gui-dialogstatus-open"></a>`Open` | `i64` | read-only |
+| <a id="viper-gui-dialogstatus-accepted"></a>`Accepted` | `i64` | read-only |
+| <a id="viper-gui-dialogstatus-cancelled"></a>`Cancelled` | `i64` | read-only |
+| <a id="viper-gui-dialogstatus-failed"></a>`Failed` | `i64` | read-only |
+
+<a id="viper-gui-imagefilter"></a>
+### `Viper.GUI.ImageFilter`
+
+Defines deterministic and interpolated GUI image sampling modes.
+
+`Viper.GUI.ImageFilter` values configure Image scaling as nearest-neighbour or bilinear while
+leaving source Pixels ownership and decoded image storage unchanged.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-imagefilter-nearest"></a>`Nearest` | `i64` | read-only |
+| <a id="viper-gui-imagefilter-bilinear"></a>`Bilinear` | `i64` | read-only |
+
+<a id="viper-gui-sortdirection"></a>
+### `Viper.GUI.SortDirection`
+
+Defines normalized tabular sort directions.
+
+`Viper.GUI.SortDirection` is returned by Grid.GetSortDirection and can represent no active sort,
+increasing order, or decreasing order without application-owned magic integers.
+
+#### Properties
+
+| Property | Type | Access |
+|---|---|---|
+| <a id="viper-gui-sortdirection-none"></a>`None` | `i64` | read-only |
+| <a id="viper-gui-sortdirection-ascending"></a>`Ascending` | `i64` | read-only |
+| <a id="viper-gui-sortdirection-descending"></a>`Descending` | `i64` | read-only |
+
 <a id="viper-gui-container"></a>
 ### `Viper.GUI.Container`
 
@@ -21,6 +254,72 @@ construct the class directly. Its public surface exposes operations including `S
 |---|---|---|
 | <a id="viper-gui-container-setspacing"></a>`SetSpacing` | `void(f64)` | `Viper.GUI.Container.SetSpacing` |
 | <a id="viper-gui-container-setpadding"></a>`SetPadding` | `void(f64)` | `Viper.GUI.Container.SetPadding` |
+
+<a id="viper-gui-flex"></a>
+### `Viper.GUI.Flex`
+
+Provides a wrapping Flexbox-style layout container.
+
+Create `Viper.GUI.Flex` through its registered constructor. Direction, wrap, alignment,
+justification, gap, and padding values are validated at the runtime boundary; all distances
+use logical units.
+
+Constructor: `Viper.GUI.Flex.New`
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-gui-flex-setdirection"></a>`SetDirection` | `void(i64)` | `Viper.GUI.Flex.SetDirection` |
+| <a id="viper-gui-flex-setwrap"></a>`SetWrap` | `void(i64)` | `Viper.GUI.Flex.SetWrap` |
+| <a id="viper-gui-flex-setalign"></a>`SetAlign` | `void(i64)` | `Viper.GUI.Flex.SetAlign` |
+| <a id="viper-gui-flex-setjustify"></a>`SetJustify` | `void(i64)` | `Viper.GUI.Flex.SetJustify` |
+| <a id="viper-gui-flex-setgap"></a>`SetGap` | `void(f64)` | `Viper.GUI.Flex.SetGap` |
+| <a id="viper-gui-flex-setpadding"></a>`SetPadding` | `void(f64)` | `Viper.GUI.Flex.SetPadding` |
+| <a id="viper-gui-flex-new"></a>`New` | `obj()` | `Viper.GUI.Flex.New` |
+
+<a id="viper-gui-layoutgrid"></a>
+### `Viper.GUI.LayoutGrid`
+
+Provides fixed, auto/content, and fractional two-dimensional layout tracks.
+
+`Viper.GUI.LayoutGrid` is distinct from the tabular data `Viper.GUI.Grid`. Children must be
+attached through `Widget.AddChild` before `Place`; invalid placement is atomic and returns
+false. Positive track sizes are logical fixed units, zero is auto, and negative is fractional.
+
+Constructor: `Viper.GUI.LayoutGrid.New`
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-gui-layoutgrid-setrows"></a>`SetRows` | `void(i64)` | `Viper.GUI.LayoutGrid.SetRows` |
+| <a id="viper-gui-layoutgrid-setcolumns"></a>`SetColumns` | `void(i64)` | `Viper.GUI.LayoutGrid.SetColumns` |
+| <a id="viper-gui-layoutgrid-setrowsize"></a>`SetRowSize` | `void(i64,f64)` | `Viper.GUI.LayoutGrid.SetRowSize` |
+| <a id="viper-gui-layoutgrid-setcolumnsize"></a>`SetColumnSize` | `void(i64,f64)` | `Viper.GUI.LayoutGrid.SetColumnSize` |
+| <a id="viper-gui-layoutgrid-setgap"></a>`SetGap` | `void(f64,f64)` | `Viper.GUI.LayoutGrid.SetGap` |
+| <a id="viper-gui-layoutgrid-setpadding"></a>`SetPadding` | `void(f64)` | `Viper.GUI.LayoutGrid.SetPadding` |
+| <a id="viper-gui-layoutgrid-place"></a>`Place` | `i1(obj,i64,i64,i64,i64)` | `Viper.GUI.LayoutGrid.Place` |
+| <a id="viper-gui-layoutgrid-new"></a>`New` | `obj()` | `Viper.GUI.LayoutGrid.New` |
+
+<a id="viper-gui-dockpanel"></a>
+### `Viper.GUI.DockPanel`
+
+Provides edge-claiming DockPanel layout.
+
+`DockChild` attaches a detached widget or updates an existing direct child. Cross-parent moves,
+invalid dock constants, and allocation failure return false without changing either tree.
+
+Constructor: `Viper.GUI.DockPanel.New`
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-gui-dockpanel-setpadding"></a>`SetPadding` | `void(f64)` | `Viper.GUI.DockPanel.SetPadding` |
+| <a id="viper-gui-dockpanel-setgap"></a>`SetGap` | `void(f64)` | `Viper.GUI.DockPanel.SetGap` |
+| <a id="viper-gui-dockpanel-dockchild"></a>`DockChild` | `i1(obj,i64)` | `Viper.GUI.DockPanel.DockChild` |
+| <a id="viper-gui-dockpanel-new"></a>`New` | `obj()` | `Viper.GUI.DockPanel.New` |
 
 <a id="viper-gui-clipboardtext"></a>
 ### `Viper.GUI.ClipboardText`
@@ -99,13 +398,23 @@ Constructor: `Viper.GUI.MessageBox.New`
 | <a id="viper-gui-messagebox-question"></a>`Question` | `i64(str,str)` | `Viper.GUI.MessageBox.Question` |
 | <a id="viper-gui-messagebox-confirm"></a>`Confirm` | `i64(str,str)` | `Viper.GUI.MessageBox.Confirm` |
 | <a id="viper-gui-messagebox-prompt"></a>`Prompt` | `str(str,str)` | `Viper.GUI.MessageBox.Prompt` |
+| <a id="viper-gui-messagebox-promptoption"></a>`PromptOption` | `obj<Viper.Option>(str,str)` | `Viper.GUI.MessageBox.PromptOption` |
 | <a id="viper-gui-messagebox-new"></a>`New` | `obj(str,str,i64)` | `Viper.GUI.MessageBox.New` |
 | <a id="viper-gui-messagebox-newinfo"></a>`NewInfo` | `obj(str,str)` | `Viper.GUI.MessageBox.NewInfo` |
 | <a id="viper-gui-messagebox-newwarning"></a>`NewWarning` | `obj(str,str)` | `Viper.GUI.MessageBox.NewWarning` |
 | <a id="viper-gui-messagebox-newerror"></a>`NewError` | `obj(str,str)` | `Viper.GUI.MessageBox.NewError` |
 | <a id="viper-gui-messagebox-newquestion"></a>`NewQuestion` | `obj(str,str)` | `Viper.GUI.MessageBox.NewQuestion` |
 | <a id="viper-gui-messagebox-addbutton"></a>`AddButton` | `void(str,i64)` | `Viper.GUI.MessageBox.AddButton` |
-| <a id="viper-gui-messagebox-setdefaultbutton"></a>`SetDefaultButton` | `void(i64)` | `Viper.GUI.MessageBox.SetDefaultButton` |
+| <a id="viper-gui-messagebox-addbuttonwithrole"></a>`AddButtonWithRole` | `void(str,i64,i64)` | `Viper.GUI.MessageBox.AddButtonWithRole` |
+| <a id="viper-gui-messagebox-setbuttonrole"></a>`SetButtonRole` | `i1(i64,i64)` | `Viper.GUI.MessageBox.SetButtonRole` |
+| <a id="viper-gui-messagebox-setcancelbutton"></a>`SetCancelButton` | `i1(i64)` | `Viper.GUI.MessageBox.SetCancelButton` |
+| <a id="viper-gui-messagebox-setdefaultbutton"></a>`SetDefaultButton` | `i1(i64)` | `Viper.GUI.MessageBox.SetDefaultButton` |
+| <a id="viper-gui-messagebox-showasync"></a>`ShowAsync` | `i1()` | `Viper.GUI.MessageBox.ShowAsync` |
+| <a id="viper-gui-messagebox-isopen"></a>`IsOpen` | `i1()` | `Viper.GUI.MessageBox.IsOpen` |
+| <a id="viper-gui-messagebox-wascompleted"></a>`WasCompleted` | `i1()` | `Viper.GUI.MessageBox.WasCompleted` |
+| <a id="viper-gui-messagebox-getstatus"></a>`GetStatus` | `i64()` | `Viper.GUI.MessageBox.GetStatus` |
+| <a id="viper-gui-messagebox-getresult"></a>`GetResult` | `i64()` | `Viper.GUI.MessageBox.GetResult` |
+| <a id="viper-gui-messagebox-geterror"></a>`GetError` | `str()` | `Viper.GUI.MessageBox.GetError` |
 | <a id="viper-gui-messagebox-show"></a>`Show` | `i64()` | `Viper.GUI.MessageBox.Show` |
 | <a id="viper-gui-messagebox-destroy"></a>`Destroy` | `void()` | `Viper.GUI.MessageBox.Destroy` |
 
@@ -131,11 +440,15 @@ Constructor: `Viper.GUI.FileDialog.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-gui-filedialog-open"></a>`Open` | `str(str,str,str)` | `Viper.GUI.FileDialog.Open` |
+| <a id="viper-gui-filedialog-openoption"></a>`OpenOption` | `obj<Viper.Option>(str,str,str)` | `Viper.GUI.FileDialog.OpenOption` |
 | <a id="viper-gui-filedialog-openmultiple"></a>`OpenMultiple` | `str(str,str,str)` | `Viper.GUI.FileDialog.OpenMultiple` |
+| <a id="viper-gui-filedialog-openmultipleseq"></a>`OpenMultipleSeq` | `obj<Viper.Collections.Seq>(str,str,str)` | `Viper.GUI.FileDialog.OpenMultipleSeq` |
 | <a id="viper-gui-filedialog-pathlistcount"></a>`PathListCount` | `i64(str)` | `Viper.GUI.FileDialog.PathListCount` |
 | <a id="viper-gui-filedialog-pathlistget"></a>`PathListGet` | `str(str,i64)` | `Viper.GUI.FileDialog.PathListGet` |
 | <a id="viper-gui-filedialog-save"></a>`Save` | `str(str,str,str,str)` | `Viper.GUI.FileDialog.Save` |
+| <a id="viper-gui-filedialog-saveoption"></a>`SaveOption` | `obj<Viper.Option>(str,str,str,str)` | `Viper.GUI.FileDialog.SaveOption` |
 | <a id="viper-gui-filedialog-selectfolder"></a>`SelectFolder` | `str(str,str)` | `Viper.GUI.FileDialog.SelectFolder` |
+| <a id="viper-gui-filedialog-selectfolderoption"></a>`SelectFolderOption` | `obj<Viper.Option>(str,str)` | `Viper.GUI.FileDialog.SelectFolderOption` |
 | <a id="viper-gui-filedialog-new"></a>`New` | `obj(i64)` | `Viper.GUI.FileDialog.New` |
 | <a id="viper-gui-filedialog-newopen"></a>`NewOpen` | `obj()` | `Viper.GUI.FileDialog.NewOpen` |
 | <a id="viper-gui-filedialog-newsave"></a>`NewSave` | `obj()` | `Viper.GUI.FileDialog.NewSave` |
@@ -146,6 +459,17 @@ Constructor: `Viper.GUI.FileDialog.New`
 | <a id="viper-gui-filedialog-addfilter"></a>`AddFilter` | `void(str,str)` | `Viper.GUI.FileDialog.AddFilter` |
 | <a id="viper-gui-filedialog-setdefaultname"></a>`SetDefaultName` | `void(str)` | `Viper.GUI.FileDialog.SetDefaultName` |
 | <a id="viper-gui-filedialog-setmultiple"></a>`SetMultiple` | `void(i1)` | `Viper.GUI.FileDialog.SetMultiple` |
+| <a id="viper-gui-filedialog-setshowhidden"></a>`SetShowHidden` | `void(i1)` | `Viper.GUI.FileDialog.SetShowHidden` |
+| <a id="viper-gui-filedialog-setconfirmoverwrite"></a>`SetConfirmOverwrite` | `void(i1)` | `Viper.GUI.FileDialog.SetConfirmOverwrite` |
+| <a id="viper-gui-filedialog-setdefaultextension"></a>`SetDefaultExtension` | `void(str)` | `Viper.GUI.FileDialog.SetDefaultExtension` |
+| <a id="viper-gui-filedialog-addbookmark"></a>`AddBookmark` | `void(str)` | `Viper.GUI.FileDialog.AddBookmark` |
+| <a id="viper-gui-filedialog-clearbookmarks"></a>`ClearBookmarks` | `void()` | `Viper.GUI.FileDialog.ClearBookmarks` |
+| <a id="viper-gui-filedialog-showasync"></a>`ShowAsync` | `i1()` | `Viper.GUI.FileDialog.ShowAsync` |
+| <a id="viper-gui-filedialog-isopen"></a>`IsOpen` | `i1()` | `Viper.GUI.FileDialog.IsOpen` |
+| <a id="viper-gui-filedialog-wascompleted"></a>`WasCompleted` | `i1()` | `Viper.GUI.FileDialog.WasCompleted` |
+| <a id="viper-gui-filedialog-getstatus"></a>`GetStatus` | `i64()` | `Viper.GUI.FileDialog.GetStatus` |
+| <a id="viper-gui-filedialog-geterror"></a>`GetError` | `str()` | `Viper.GUI.FileDialog.GetError` |
+| <a id="viper-gui-filedialog-getpaths"></a>`GetPaths` | `obj<Viper.Collections.Seq>()` | `Viper.GUI.FileDialog.GetPaths` |
 | <a id="viper-gui-filedialog-show"></a>`Show` | `i64()` | `Viper.GUI.FileDialog.Show` |
 | <a id="viper-gui-filedialog-getpath"></a>`GetPath` | `str()` | `Viper.GUI.FileDialog.GetPath` |
 | <a id="viper-gui-filedialog-getpathat"></a>`GetPathAt` | `str(i64)` | `Viper.GUI.FileDialog.GetPathAt` |
@@ -199,6 +523,14 @@ Constructor: `Viper.GUI.TestHarness.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-gui-testharness-clear"></a>`Clear` | `void()` | `Viper.GUI.TestHarness.Clear` |
+| <a id="viper-gui-testharness-bindapp"></a>`BindApp` | `i1(obj)` | `Viper.GUI.TestHarness.BindApp` |
+| <a id="viper-gui-testharness-unbindapp"></a>`UnbindApp` | `void()` | `Viper.GUI.TestHarness.UnbindApp` |
+| <a id="viper-gui-testharness-dispatchpending"></a>`DispatchPending` | `i64()` | `Viper.GUI.TestHarness.DispatchPending` |
+| <a id="viper-gui-testharness-renderframe"></a>`RenderFrame` | `i1(f64)` | `Viper.GUI.TestHarness.RenderFrame` |
+| <a id="viper-gui-testharness-capturepixels"></a>`CapturePixels` | `obj<Viper.Graphics.Pixels>(i64,i64,i64,i64)` | `Viper.GUI.TestHarness.CapturePixels` |
+| <a id="viper-gui-testharness-capturehash"></a>`CaptureHash` | `str(i64,i64,i64,i64)` | `Viper.GUI.TestHarness.CaptureHash` |
+| <a id="viper-gui-testharness-compareregion"></a>`CompareRegion` | `obj<Viper.Collections.Map>(obj,i64,i64,i64)` | `Viper.GUI.TestHarness.CompareRegion` |
+| <a id="viper-gui-testharness-getaccessibilitysnapshot"></a>`GetAccessibilitySnapshot` | `obj<Viper.Collections.Map>()` | `Viper.GUI.TestHarness.GetAccessibilitySnapshot` |
 | <a id="viper-gui-testharness-tick"></a>`Tick` | `i64(i64)` | `Viper.GUI.TestHarness.Tick` |
 | <a id="viper-gui-testharness-registerwidget"></a>`RegisterWidget` | `void(str,str,str,i64,i64,i64,i64)` | `Viper.GUI.TestHarness.RegisterWidget` |
 | <a id="viper-gui-testharness-findbyid"></a>`FindById` | `obj<Viper.Option>(str)` | `Viper.GUI.TestHarness.FindById` |
@@ -229,6 +561,10 @@ Constructor: `Viper.GUI.VirtualList.New`
 |---|---|---|
 | <a id="viper-gui-virtuallist-setcount"></a>`SetCount` | `void(i64)` | `Viper.GUI.VirtualList.SetCount` |
 | <a id="viper-gui-virtuallist-setrowid"></a>`SetRowId` | `void(i64,str)` | `Viper.GUI.VirtualList.SetRowId` |
+| <a id="viper-gui-virtuallist-setrowtext"></a>`SetRowText` | `void(i64,str)` | `Viper.GUI.VirtualList.SetRowText` |
+| <a id="viper-gui-virtuallist-invalidaterow"></a>`InvalidateRow` | `void(i64)` | `Viper.GUI.VirtualList.InvalidateRow` |
+| <a id="viper-gui-virtuallist-bind"></a>`Bind` | `i1(obj)` | `Viper.GUI.VirtualList.Bind` |
+| <a id="viper-gui-virtuallist-unbind"></a>`Unbind` | `void()` | `Viper.GUI.VirtualList.Unbind` |
 | <a id="viper-gui-virtuallist-visiblerange"></a>`VisibleRange` | `obj<Viper.Collections.Map>(i64)` | `Viper.GUI.VirtualList.VisibleRange` |
 | <a id="viper-gui-virtuallist-selectid"></a>`SelectId` | `void(str)` | `Viper.GUI.VirtualList.SelectId` |
 | <a id="viper-gui-virtuallist-getselectedid"></a>`GetSelectedId` | `str()` | `Viper.GUI.VirtualList.GetSelectedId` |
@@ -251,12 +587,17 @@ Constructor: `Viper.GUI.VirtualTree.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-gui-virtualtree-addnode"></a>`AddNode` | `void(str,str,str)` | `Viper.GUI.VirtualTree.AddNode` |
+| <a id="viper-gui-virtualtree-movenode"></a>`MoveNode` | `i1(str,str)` | `Viper.GUI.VirtualTree.MoveNode` |
+| <a id="viper-gui-virtualtree-setnodetext"></a>`SetNodeText` | `i1(str,str)` | `Viper.GUI.VirtualTree.SetNodeText` |
 | <a id="viper-gui-virtualtree-expand"></a>`Expand` | `obj<Viper.Collections.Map>(str)` | `Viper.GUI.VirtualTree.Expand` |
 | <a id="viper-gui-virtualtree-collapse"></a>`Collapse` | `void(str)` | `Viper.GUI.VirtualTree.Collapse` |
 | <a id="viper-gui-virtualtree-selectid"></a>`SelectId` | `void(str)` | `Viper.GUI.VirtualTree.SelectId` |
 | <a id="viper-gui-virtualtree-getselectedid"></a>`GetSelectedId` | `str()` | `Viper.GUI.VirtualTree.GetSelectedId` |
 | <a id="viper-gui-virtualtree-visiblerows"></a>`VisibleRows` | `obj<Viper.Collections.Seq>()` | `Viper.GUI.VirtualTree.VisibleRows` |
+| <a id="viper-gui-virtualtree-visiblerowsrange"></a>`VisibleRowsRange` | `obj<Viper.Collections.Seq>(i64,i64)` | `Viper.GUI.VirtualTree.VisibleRowsRange` |
 | <a id="viper-gui-virtualtree-refreshsubtree"></a>`RefreshSubtree` | `void(str)` | `Viper.GUI.VirtualTree.RefreshSubtree` |
+| <a id="viper-gui-virtualtree-bind"></a>`Bind` | `i1(obj)` | `Viper.GUI.VirtualTree.Bind` |
+| <a id="viper-gui-virtualtree-unbind"></a>`Unbind` | `void()` | `Viper.GUI.VirtualTree.Unbind` |
 | <a id="viper-gui-virtualtree-new"></a>`New` | `obj<Viper.GUI.VirtualTree>()` | `Viper.GUI.VirtualTree.New` |
 
 <a id="viper-gui-commandstate"></a>
@@ -343,8 +684,8 @@ Constructor: `Viper.GUI.CommandRegistry.New`
 Provides Accessibility constants and static operations for graphical user interfaces.
 
 `Viper.GUI.Accessibility` is a static runtime surface and does not require an instance.
-Its public surface exposes operations including `ContrastRatio`, `MeetsContrast`,
-`HighContrastTokens`.
+Its public surface exposes contrast analysis, deterministic semantic-tree snapshots,
+accessibility preferences, and live-region announcements.
 
 #### Methods
 
@@ -353,6 +694,14 @@ Its public surface exposes operations including `ContrastRatio`, `MeetsContrast`
 | <a id="viper-gui-accessibility-contrastratio"></a>`ContrastRatio` | `f64(i64,i64)` | `Viper.GUI.Accessibility.ContrastRatio` |
 | <a id="viper-gui-accessibility-meetscontrast"></a>`MeetsContrast` | `i1(i64,i64,f64)` | `Viper.GUI.Accessibility.MeetsContrast` |
 | <a id="viper-gui-accessibility-highcontrasttokens"></a>`HighContrastTokens` | `obj<Viper.Collections.Map>()` | `Viper.GUI.Accessibility.HighContrastTokens` |
+| <a id="viper-gui-accessibility-snapshot"></a>`Snapshot` | `obj<Viper.Collections.Map>(obj)` | `Viper.GUI.Accessibility.Snapshot` |
+| <a id="viper-gui-accessibility-sethighcontrast"></a>`SetHighContrast` | `void(i1)` | `Viper.GUI.Accessibility.SetHighContrast` |
+| <a id="viper-gui-accessibility-ishighcontrast"></a>`IsHighContrast` | `i1()` | `Viper.GUI.Accessibility.IsHighContrast` |
+| <a id="viper-gui-accessibility-setreducedmotion"></a>`SetReducedMotion` | `void(i1)` | `Viper.GUI.Accessibility.SetReducedMotion` |
+| <a id="viper-gui-accessibility-isreducedmotion"></a>`IsReducedMotion` | `i1()` | `Viper.GUI.Accessibility.IsReducedMotion` |
+| <a id="viper-gui-accessibility-getsystemhighcontrast"></a>`GetSystemHighContrast` | `i1()` | `Viper.GUI.Accessibility.GetSystemHighContrast` |
+| <a id="viper-gui-accessibility-getsystemreducedmotion"></a>`GetSystemReducedMotion` | `i1()` | `Viper.GUI.Accessibility.GetSystemReducedMotion` |
+| <a id="viper-gui-accessibility-announce"></a>`Announce` | `void(obj,str,i64)` | `Viper.GUI.Accessibility.Announce` |
 
 <a id="viper-gui-tooltip"></a>
 ### `Viper.GUI.Tooltip`
@@ -451,11 +800,31 @@ Constructor: `Viper.GUI.Minimap.New`
 | <a id="viper-gui-minimap-getwidth"></a>`GetWidth` | `i64()` | `Viper.GUI.Minimap.GetWidth` |
 | <a id="viper-gui-minimap-setscale"></a>`SetScale` | `void(f64)` | `Viper.GUI.Minimap.SetScale` |
 | <a id="viper-gui-minimap-setshowslider"></a>`SetShowSlider` | `void(i1)` | `Viper.GUI.Minimap.SetShowSlider` |
+| <a id="viper-gui-minimap-getsourcerevision"></a>`GetSourceRevision` | `i64()` | `Viper.GUI.Minimap.GetSourceRevision` |
+| <a id="viper-gui-minimap-invalidatelines"></a>`InvalidateLines` | `void(i64,i64)` | `Viper.GUI.Minimap.InvalidateLines` |
+| <a id="viper-gui-minimap-setmaximumcachedlines"></a>`SetMaximumCachedLines` | `void(i64)` | `Viper.GUI.Minimap.SetMaximumCachedLines` |
+| <a id="viper-gui-minimap-getcachedlinecount"></a>`GetCachedLineCount` | `i64()` | `Viper.GUI.Minimap.GetCachedLineCount` |
 | <a id="viper-gui-minimap-addmarker"></a>`AddMarker` | `void(i64,i64,i64)` | `Viper.GUI.Minimap.AddMarker` |
 | <a id="viper-gui-minimap-removemarkers"></a>`RemoveMarkers` | `void(i64)` | `Viper.GUI.Minimap.RemoveMarkers` |
 | <a id="viper-gui-minimap-clearmarkers"></a>`ClearMarkers` | `void()` | `Viper.GUI.Minimap.ClearMarkers` |
 | <a id="viper-gui-minimap-destroy"></a>`Destroy` | `void()` | `Viper.GUI.Minimap.Destroy` |
 | <a id="viper-gui-minimap-new"></a>`New` | `obj(obj)` | `Viper.GUI.Minimap.New` |
+
+<a id="viper-gui-system"></a>
+### `Viper.GUI.System`
+
+Reports whether GUI support is available in the current runtime build.
+
+`Viper.GUI.System` is a side-effect-free static capability surface. Querying it never opens a
+display connection or creates a window; use `Viper.GUI.App.TryNew` to report backend-specific
+construction failure.
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-gui-system-isavailable"></a>`IsAvailable` | `i1()` | `Viper.GUI.System.IsAvailable` |
+| <a id="viper-gui-system-getunavailablereason"></a>`GetUnavailableReason` | `str()` | `Viper.GUI.System.GetUnavailableReason` |
 
 <a id="viper-gui-app"></a>
 ### `Viper.GUI.App`
@@ -463,8 +832,9 @@ Constructor: `Viper.GUI.Minimap.New`
 Owns a GUI application window, event loop, root widget, and rendering lifecycle.
 
 Create `Viper.GUI.App` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes properties such as `ShouldClose`,
-`Root` and operations including `Poll`, `PollWait`, `Render`, `SetFont`.
+with the instance members below. `RunFrame` integrates polling, scheduling, damage rendering,
+and presentation; `RunFrameWithDelta` supplies deterministic test time. `GetNextDeadlineMs`
+allows efficient waits, while the legacy `Poll`, `PollWait`, and `Render` calls remain intact.
 
 Constructor: `Viper.GUI.App.New`
 
@@ -479,9 +849,14 @@ Constructor: `Viper.GUI.App.New`
 
 | Method | Signature | Runtime target |
 |---|---|---|
+| <a id="viper-gui-app-trynew"></a>`TryNew` | `obj<Viper.Result>(str,i64,i64)` | `Viper.GUI.App.TryNew` |
 | <a id="viper-gui-app-poll"></a>`Poll` | `void()` | `Viper.GUI.App.Poll` |
 | <a id="viper-gui-app-pollwait"></a>`PollWait` | `i1(i64)` | `Viper.GUI.App.PollWait` |
 | <a id="viper-gui-app-render"></a>`Render` | `void()` | `Viper.GUI.App.Render` |
+| <a id="viper-gui-app-runframe"></a>`RunFrame` | `i1()` | `Viper.GUI.App.RunFrame` |
+| <a id="viper-gui-app-runframewithdelta"></a>`RunFrameWithDelta` | `i1(f64)` | `Viper.GUI.App.RunFrameWithDelta` |
+| <a id="viper-gui-app-getnextdeadlinems"></a>`GetNextDeadlineMs` | `i64()` | `Viper.GUI.App.GetNextDeadlineMs` |
+| <a id="viper-gui-app-makecurrent"></a>`MakeCurrent` | `void()` | `Viper.GUI.App.MakeCurrent` |
 | <a id="viper-gui-app-setfont"></a>`SetFont` | `void(obj,f64)` | `Viper.GUI.App.SetFont` |
 | <a id="viper-gui-app-destroy"></a>`Destroy` | `void()` | `Viper.GUI.App.Destroy` |
 | <a id="viper-gui-app-getwidth"></a>`GetWidth` | `i64()` | `Viper.GUI.App.GetWidth` |
@@ -493,6 +868,7 @@ Constructor: `Viper.GUI.App.New`
 | <a id="viper-gui-app-tophysical"></a>`ToPhysical` | `i64(i64)` | `Viper.GUI.App.ToPhysical` |
 | <a id="viper-gui-app-setuiscale"></a>`SetUiScale` | `void(f64)` | `Viper.GUI.App.SetUiScale` |
 | <a id="viper-gui-app-getuiscale"></a>`GetUiScale` | `f64()` | `Viper.GUI.App.GetUiScale` |
+| <a id="viper-gui-app-geteffectivescale"></a>`GetEffectiveScale` | `f64()` | `Viper.GUI.App.GetEffectiveScale` |
 | <a id="viper-gui-app-setwheelspeed"></a>`SetWheelSpeed` | `void(f64)` | `Viper.GUI.App.SetWheelSpeed` |
 | <a id="viper-gui-app-getwheelspeed"></a>`GetWheelSpeed` | `f64()` | `Viper.GUI.App.GetWheelSpeed` |
 | <a id="viper-gui-app-getx"></a>`GetX` | `i64()` | `Viper.GUI.App.GetX` |
@@ -512,6 +888,7 @@ Constructor: `Viper.GUI.App.New`
 | <a id="viper-gui-app-getmonitorheight"></a>`GetMonitorHeight` | `i64()` | `Viper.GUI.App.GetMonitorHeight` |
 | <a id="viper-gui-app-setwindowsize"></a>`SetWindowSize` | `void(i64,i64)` | `Viper.GUI.App.SetWindowSize` |
 | <a id="viper-gui-app-getfontsize"></a>`GetFontSize` | `f64()` | `Viper.GUI.App.GetFontSize` |
+| <a id="viper-gui-app-getlogicalfontsize"></a>`GetLogicalFontSize` | `f64()` | `Viper.GUI.App.GetLogicalFontSize` |
 | <a id="viper-gui-app-setfontsize"></a>`SetFontSize` | `void(f64)` | `Viper.GUI.App.SetFontSize` |
 | <a id="viper-gui-app-settitle"></a>`SetTitle` | `void(str)` | `Viper.GUI.App.SetTitle` |
 | <a id="viper-gui-app-gettitle"></a>`GetTitle` | `str()` | `Viper.GUI.App.GetTitle` |
@@ -531,25 +908,33 @@ Constructor: `Viper.GUI.App.New`
 
 Provides font loading.
 
-`Viper.GUI.Font` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Load`,
-`Destroy`.
+`Viper.GUI.Font` exposes managed file fonts plus zero-dependency regular and bold system UI
+roles. System-role construction returns `Viper.Result`, preserves the requested logical-point
+size across DPI changes, and falls back to Viper's embedded font when host faces are absent.
+`Destroy` is idempotent and uses presentation-generation retirement while retained GUI
+surfaces still reference the backing face. Legacy path loading remains available.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-gui-font-load"></a>`Load` | `obj(str)` | `Viper.GUI.Font.Load` |
+| <a id="viper-gui-font-loadsystemui"></a>`LoadSystemUi` | `obj<Viper.Result>(f64)` | `Viper.GUI.Font.LoadSystemUi` |
+| <a id="viper-gui-font-loadsystemuibold"></a>`LoadSystemUiBold` | `obj<Viper.Result>(f64)` | `Viper.GUI.Font.LoadSystemUiBold` |
+| <a id="viper-gui-font-getlogicalsize"></a>`GetLogicalSize` | `f64(obj)` | `Viper.GUI.Font.GetLogicalSize` |
 | <a id="viper-gui-font-destroy"></a>`Destroy` | `void()` | `Viper.GUI.Font.Destroy` |
 
 <a id="viper-gui-widget"></a>
 ### `Viper.GUI.Widget`
 
-Provides base widget class.
+Provides safe widget geometry, hierarchy, identity, state, and accessibility APIs.
 
-`Viper.GUI.Widget` exposes a registry-backed runtime surface without requiring callers to
-construct the class directly. Its public surface exposes operations including `Destroy`,
-`SetVisible`, `SetEnabled`, `SetSize`.
+`Viper.GUI.Widget` is the common borrowed handle for controls created by concrete GUI classes.
+New layout and bounds operations use logical units while legacy integer getters retain their
+framebuffer-unit compatibility contract. Hierarchy lookup returns explicit `Viper.Option`
+values; removing or clearing children detaches without destroying them and transfers ownership
+back to the caller. IDs are stable for the live widget, names are copied UTF-8, and invalid or
+stale handles follow the documented empty/no-op contract.
 
 #### Methods
 
@@ -561,9 +946,17 @@ construct the class directly. Its public surface exposes operations including `D
 | <a id="viper-gui-widget-setsize"></a>`SetSize` | `void(i64,i64)` | `Viper.GUI.Widget.SetSize` |
 | <a id="viper-gui-widget-setpreferredsize"></a>`SetPreferredSize` | `void(f64,f64)` | `Viper.GUI.Widget.SetPreferredSize` |
 | <a id="viper-gui-widget-setmaxsize"></a>`SetMaxSize` | `void(f64,f64)` | `Viper.GUI.Widget.SetMaxSize` |
+| <a id="viper-gui-widget-setminsize"></a>`SetMinSize` | `void(f64,f64)` | `Viper.GUI.Widget.SetMinSize` |
+| <a id="viper-gui-widget-getminwidth"></a>`GetMinWidth` | `f64()` | `Viper.GUI.Widget.GetMinWidth` |
+| <a id="viper-gui-widget-getminheight"></a>`GetMinHeight` | `f64()` | `Viper.GUI.Widget.GetMinHeight` |
 | <a id="viper-gui-widget-setflex"></a>`SetFlex` | `void(f64)` | `Viper.GUI.Widget.SetFlex` |
 | <a id="viper-gui-widget-setposition"></a>`SetPosition` | `void(i64,i64)` | `Viper.GUI.Widget.SetPosition` |
 | <a id="viper-gui-widget-addchild"></a>`AddChild` | `void(obj)` | `Viper.GUI.Widget.AddChild` |
+| <a id="viper-gui-widget-getparentoption"></a>`GetParentOption` | `obj<Viper.Option>()` | `Viper.GUI.Widget.GetParentOption` |
+| <a id="viper-gui-widget-getchildcount"></a>`GetChildCount` | `i64()` | `Viper.GUI.Widget.GetChildCount` |
+| <a id="viper-gui-widget-getchildatoption"></a>`GetChildAtOption` | `obj<Viper.Option>(i64)` | `Viper.GUI.Widget.GetChildAtOption` |
+| <a id="viper-gui-widget-removechild"></a>`RemoveChild` | `i1(obj)` | `Viper.GUI.Widget.RemoveChild` |
+| <a id="viper-gui-widget-clearchildren"></a>`ClearChildren` | `void()` | `Viper.GUI.Widget.ClearChildren` |
 | <a id="viper-gui-widget-ishovered"></a>`IsHovered` | `i1()` | `Viper.GUI.Widget.IsHovered` |
 | <a id="viper-gui-widget-ispressed"></a>`IsPressed` | `i1()` | `Viper.GUI.Widget.IsPressed` |
 | <a id="viper-gui-widget-isfocused"></a>`IsFocused` | `i1()` | `Viper.GUI.Widget.IsFocused` |
@@ -576,10 +969,42 @@ construct the class directly. Its public surface exposes operations including `D
 | <a id="viper-gui-widget-getx"></a>`GetX` | `i64()` | `Viper.GUI.Widget.GetX` |
 | <a id="viper-gui-widget-gety"></a>`GetY` | `i64()` | `Viper.GUI.Widget.GetY` |
 | <a id="viper-gui-widget-getflex"></a>`GetFlex` | `f64()` | `Viper.GUI.Widget.GetFlex` |
+| <a id="viper-gui-widget-getlogicalx"></a>`GetLogicalX` | `f64()` | `Viper.GUI.Widget.GetLogicalX` |
+| <a id="viper-gui-widget-getlogicaly"></a>`GetLogicalY` | `f64()` | `Viper.GUI.Widget.GetLogicalY` |
+| <a id="viper-gui-widget-getlogicalwidth"></a>`GetLogicalWidth` | `f64()` | `Viper.GUI.Widget.GetLogicalWidth` |
+| <a id="viper-gui-widget-getlogicalheight"></a>`GetLogicalHeight` | `f64()` | `Viper.GUI.Widget.GetLogicalHeight` |
+| <a id="viper-gui-widget-getscreenx"></a>`GetScreenX` | `f64()` | `Viper.GUI.Widget.GetScreenX` |
+| <a id="viper-gui-widget-getscreeny"></a>`GetScreenY` | `f64()` | `Viper.GUI.Widget.GetScreenY` |
+| <a id="viper-gui-widget-getscreenwidth"></a>`GetScreenWidth` | `f64()` | `Viper.GUI.Widget.GetScreenWidth` |
+| <a id="viper-gui-widget-getscreenheight"></a>`GetScreenHeight` | `f64()` | `Viper.GUI.Widget.GetScreenHeight` |
 | <a id="viper-gui-widget-setmargin"></a>`SetMargin` | `void(i64)` | `Viper.GUI.Widget.SetMargin` |
+| <a id="viper-gui-widget-setpadding"></a>`SetPadding` | `void(f64)` | `Viper.GUI.Widget.SetPadding` |
+| <a id="viper-gui-widget-setpaddingedges"></a>`SetPaddingEdges` | `void(f64,f64,f64,f64)` | `Viper.GUI.Widget.SetPaddingEdges` |
+| <a id="viper-gui-widget-setmarginedges"></a>`SetMarginEdges` | `void(f64,f64,f64,f64)` | `Viper.GUI.Widget.SetMarginEdges` |
 | <a id="viper-gui-widget-settabindex"></a>`SetTabIndex` | `void(i64)` | `Viper.GUI.Widget.SetTabIndex` |
 | <a id="viper-gui-widget-setcursor"></a>`SetCursor` | `void(i64)` | `Viper.GUI.Widget.SetCursor` |
 | <a id="viper-gui-widget-resetcursor"></a>`ResetCursor` | `void()` | `Viper.GUI.Widget.ResetCursor` |
+| <a id="viper-gui-widget-setname"></a>`SetName` | `void(str)` | `Viper.GUI.Widget.SetName` |
+| <a id="viper-gui-widget-getname"></a>`GetName` | `str()` | `Viper.GUI.Widget.GetName` |
+| <a id="viper-gui-widget-getid"></a>`GetId` | `i64()` | `Viper.GUI.Widget.GetId` |
+| <a id="viper-gui-widget-findbyidoption"></a>`FindByIdOption` | `obj<Viper.Option>(i64)` | `Viper.GUI.Widget.FindByIdOption` |
+| <a id="viper-gui-widget-findbynameoption"></a>`FindByNameOption` | `obj<Viper.Option>(str)` | `Viper.GUI.Widget.FindByNameOption` |
+| <a id="viper-gui-widget-hittest"></a>`HitTest` | `i1(f64,f64)` | `Viper.GUI.Widget.HitTest` |
+| <a id="viper-gui-widget-invalidatepaint"></a>`InvalidatePaint` | `void()` | `Viper.GUI.Widget.InvalidatePaint` |
+| <a id="viper-gui-widget-invalidatelayout"></a>`InvalidateLayout` | `void()` | `Viper.GUI.Widget.InvalidateLayout` |
+| <a id="viper-gui-widget-setaccessiblerole"></a>`SetAccessibleRole` | `void(i64)` | `Viper.GUI.Widget.SetAccessibleRole` |
+| <a id="viper-gui-widget-getaccessiblerole"></a>`GetAccessibleRole` | `i64()` | `Viper.GUI.Widget.GetAccessibleRole` |
+| <a id="viper-gui-widget-setaccessiblename"></a>`SetAccessibleName` | `void(str)` | `Viper.GUI.Widget.SetAccessibleName` |
+| <a id="viper-gui-widget-getaccessiblename"></a>`GetAccessibleName` | `str()` | `Viper.GUI.Widget.GetAccessibleName` |
+| <a id="viper-gui-widget-setaccessibledescription"></a>`SetAccessibleDescription` | `void(str)` | `Viper.GUI.Widget.SetAccessibleDescription` |
+| <a id="viper-gui-widget-getaccessibledescription"></a>`GetAccessibleDescription` | `str()` | `Viper.GUI.Widget.GetAccessibleDescription` |
+| <a id="viper-gui-widget-setaccessiblevalue"></a>`SetAccessibleValue` | `void(str)` | `Viper.GUI.Widget.SetAccessibleValue` |
+| <a id="viper-gui-widget-getaccessiblevalue"></a>`GetAccessibleValue` | `str()` | `Viper.GUI.Widget.GetAccessibleValue` |
+| <a id="viper-gui-widget-setaccessiblelabelfor"></a>`SetAccessibleLabelFor` | `void(obj)` | `Viper.GUI.Widget.SetAccessibleLabelFor` |
+| <a id="viper-gui-widget-clearaccessiblelabelfor"></a>`ClearAccessibleLabelFor` | `void()` | `Viper.GUI.Widget.ClearAccessibleLabelFor` |
+| <a id="viper-gui-widget-setliveregion"></a>`SetLiveRegion` | `void(i64)` | `Viper.GUI.Widget.SetLiveRegion` |
+| <a id="viper-gui-widget-getliveregion"></a>`GetLiveRegion` | `i64()` | `Viper.GUI.Widget.GetLiveRegion` |
+| <a id="viper-gui-widget-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.Widget.GetRevision` |
 | <a id="viper-gui-widget-settooltip"></a>`SetTooltip` | `void(str)` | `Viper.GUI.Widget.SetTooltip` |
 | <a id="viper-gui-widget-settooltiprich"></a>`SetTooltipRich` | `void(str,str)` | `Viper.GUI.Widget.SetTooltipRich` |
 | <a id="viper-gui-widget-cleartooltip"></a>`ClearTooltip` | `void()` | `Viper.GUI.Widget.ClearTooltip` |
@@ -600,7 +1025,7 @@ Provides text label widget.
 
 Create `Viper.GUI.Label` values through its registered constructor and use the returned object
 with the instance members below. Its public surface exposes operations including `SetText`,
-`SetFont`, `SetColor`, `SetWordWrap`.
+`SetFont`, `SetColor`, `SetWordWrap`, alignment, truncation, and selectable text access.
 
 Constructor: `Viper.GUI.Label.New`
 
@@ -612,6 +1037,12 @@ Constructor: `Viper.GUI.Label.New`
 | <a id="viper-gui-label-setfont"></a>`SetFont` | `void(obj,f64)` | `Viper.GUI.Label.SetFont` |
 | <a id="viper-gui-label-setcolor"></a>`SetColor` | `void(i64)` | `Viper.GUI.Label.SetColor` |
 | <a id="viper-gui-label-setwordwrap"></a>`SetWordWrap` | `void(i1)` | `Viper.GUI.Label.SetWordWrap` |
+| <a id="viper-gui-label-setalignment"></a>`SetAlignment` | `void(i64)` | `Viper.GUI.Label.SetAlignment` |
+| <a id="viper-gui-label-getalignment"></a>`GetAlignment` | `i64()` | `Viper.GUI.Label.GetAlignment` |
+| <a id="viper-gui-label-setellipsis"></a>`SetEllipsis` | `void(i1)` | `Viper.GUI.Label.SetEllipsis` |
+| <a id="viper-gui-label-setmaxlines"></a>`SetMaxLines` | `void(i64)` | `Viper.GUI.Label.SetMaxLines` |
+| <a id="viper-gui-label-setselectable"></a>`SetSelectable` | `void(i1)` | `Viper.GUI.Label.SetSelectable` |
+| <a id="viper-gui-label-getselectedtext"></a>`GetSelectedText` | `str()` | `Viper.GUI.Label.GetSelectedText` |
 | <a id="viper-gui-label-new"></a>`New` | `obj(obj,str)` | `Viper.GUI.Label.New` |
 
 <a id="viper-gui-button"></a>
@@ -642,8 +1073,10 @@ Constructor: `Viper.GUI.Button.New`
 Provides text input field widget.
 
 Create `Viper.GUI.TextInput` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Text`
-and operations including `SetText`, `SetPlaceholder`, `SetFont`.
+object with the instance members below. Text positions and limits use Unicode extended
+grapheme clusters so user-perceived characters are never split. The editor supports selection,
+one-step-per-edit undo/redo, password/read-only/multiline modes, independent change and submit
+edges, monotonic revisions, and observable native IME preedit without exposing mutable buffers.
 
 Constructor: `Viper.GUI.TextInput.New`
 
@@ -660,6 +1093,34 @@ Constructor: `Viper.GUI.TextInput.New`
 | <a id="viper-gui-textinput-settext"></a>`SetText` | `void(str)` | `Viper.GUI.TextInput.SetText` |
 | <a id="viper-gui-textinput-setplaceholder"></a>`SetPlaceholder` | `void(str)` | `Viper.GUI.TextInput.SetPlaceholder` |
 | <a id="viper-gui-textinput-setfont"></a>`SetFont` | `void(obj,f64)` | `Viper.GUI.TextInput.SetFont` |
+| <a id="viper-gui-textinput-setmaxlength"></a>`SetMaxLength` | `void(i64)` | `Viper.GUI.TextInput.SetMaxLength` |
+| <a id="viper-gui-textinput-getmaxlength"></a>`GetMaxLength` | `i64()` | `Viper.GUI.TextInput.GetMaxLength` |
+| <a id="viper-gui-textinput-setpassword"></a>`SetPassword` | `void(i1)` | `Viper.GUI.TextInput.SetPassword` |
+| <a id="viper-gui-textinput-ispassword"></a>`IsPassword` | `i1()` | `Viper.GUI.TextInput.IsPassword` |
+| <a id="viper-gui-textinput-setreadonly"></a>`SetReadOnly` | `void(i1)` | `Viper.GUI.TextInput.SetReadOnly` |
+| <a id="viper-gui-textinput-isreadonly"></a>`IsReadOnly` | `i1()` | `Viper.GUI.TextInput.IsReadOnly` |
+| <a id="viper-gui-textinput-setmultiline"></a>`SetMultiline` | `void(i1)` | `Viper.GUI.TextInput.SetMultiline` |
+| <a id="viper-gui-textinput-ismultiline"></a>`IsMultiline` | `i1()` | `Viper.GUI.TextInput.IsMultiline` |
+| <a id="viper-gui-textinput-setcursor"></a>`SetCursor` | `void(i64)` | `Viper.GUI.TextInput.SetCursor` |
+| <a id="viper-gui-textinput-getcursor"></a>`GetCursor` | `i64()` | `Viper.GUI.TextInput.GetCursor` |
+| <a id="viper-gui-textinput-selectrange"></a>`SelectRange` | `void(i64,i64)` | `Viper.GUI.TextInput.SelectRange` |
+| <a id="viper-gui-textinput-clearselection"></a>`ClearSelection` | `void()` | `Viper.GUI.TextInput.ClearSelection` |
+| <a id="viper-gui-textinput-getselectionstart"></a>`GetSelectionStart` | `i64()` | `Viper.GUI.TextInput.GetSelectionStart` |
+| <a id="viper-gui-textinput-getselectionend"></a>`GetSelectionEnd` | `i64()` | `Viper.GUI.TextInput.GetSelectionEnd` |
+| <a id="viper-gui-textinput-getselectedtext"></a>`GetSelectedText` | `str()` | `Viper.GUI.TextInput.GetSelectedText` |
+| <a id="viper-gui-textinput-inserttext"></a>`InsertText` | `i1(str)` | `Viper.GUI.TextInput.InsertText` |
+| <a id="viper-gui-textinput-deleteselection"></a>`DeleteSelection` | `i1()` | `Viper.GUI.TextInput.DeleteSelection` |
+| <a id="viper-gui-textinput-undo"></a>`Undo` | `i1()` | `Viper.GUI.TextInput.Undo` |
+| <a id="viper-gui-textinput-redo"></a>`Redo` | `i1()` | `Viper.GUI.TextInput.Redo` |
+| <a id="viper-gui-textinput-canundo"></a>`CanUndo` | `i1()` | `Viper.GUI.TextInput.CanUndo` |
+| <a id="viper-gui-textinput-canredo"></a>`CanRedo` | `i1()` | `Viper.GUI.TextInput.CanRedo` |
+| <a id="viper-gui-textinput-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.TextInput.WasChanged` |
+| <a id="viper-gui-textinput-wassubmitted"></a>`WasSubmitted` | `i1()` | `Viper.GUI.TextInput.WasSubmitted` |
+| <a id="viper-gui-textinput-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.TextInput.GetRevision` |
+| <a id="viper-gui-textinput-iscomposing"></a>`IsComposing` | `i1()` | `Viper.GUI.TextInput.IsComposing` |
+| <a id="viper-gui-textinput-getcompositiontext"></a>`GetCompositionText` | `str()` | `Viper.GUI.TextInput.GetCompositionText` |
+| <a id="viper-gui-textinput-getcompositionstart"></a>`GetCompositionStart` | `i64()` | `Viper.GUI.TextInput.GetCompositionStart` |
+| <a id="viper-gui-textinput-getcompositionlength"></a>`GetCompositionLength` | `i64()` | `Viper.GUI.TextInput.GetCompositionLength` |
 | <a id="viper-gui-textinput-new"></a>`New` | `obj(obj)` | `Viper.GUI.TextInput.New` |
 
 <a id="viper-gui-checkbox"></a>
@@ -682,6 +1143,8 @@ Constructor: `Viper.GUI.Checkbox.New`
 | <a id="viper-gui-checkbox-setindeterminate"></a>`SetIndeterminate` | `void(i1)` | `Viper.GUI.Checkbox.SetIndeterminate` |
 | <a id="viper-gui-checkbox-isindeterminate"></a>`IsIndeterminate` | `i1()` | `Viper.GUI.Checkbox.IsIndeterminate` |
 | <a id="viper-gui-checkbox-settext"></a>`SetText` | `void(str)` | `Viper.GUI.Checkbox.SetText` |
+| <a id="viper-gui-checkbox-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.Checkbox.WasChanged` |
+| <a id="viper-gui-checkbox-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.Checkbox.GetRevision` |
 | <a id="viper-gui-checkbox-new"></a>`New` | `obj(obj,str)` | `Viper.GUI.Checkbox.New` |
 
 <a id="viper-gui-scrollview"></a>
@@ -712,7 +1175,9 @@ Provides tree view widget.
 
 Create `Viper.GUI.TreeView` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes operations including
-`AddNode`, `RemoveNode`, `Clear`, `PruneRetiredNodes`.
+`AddNode`, `RemoveNode`, `Toggle`, `ScrollTo`, lazy-child request polling, and activation
+payload lookup. Node-returning event payloads use `Viper.Option`, remain independent from their
+compatibility `Was*` edges, and preserve the tree-owned lifetime contract.
 
 Constructor: `Viper.GUI.TreeView.New`
 
@@ -726,17 +1191,27 @@ Constructor: `Viper.GUI.TreeView.New`
 | <a id="viper-gui-treeview-pruneretirednodes"></a>`PruneRetiredNodes` | `void()` | `Viper.GUI.TreeView.PruneRetiredNodes` |
 | <a id="viper-gui-treeview-expand"></a>`Expand` | `void(obj)` | `Viper.GUI.TreeView.Expand` |
 | <a id="viper-gui-treeview-collapse"></a>`Collapse` | `void(obj)` | `Viper.GUI.TreeView.Collapse` |
+| <a id="viper-gui-treeview-toggle"></a>`Toggle` | `void(obj)` | `Viper.GUI.TreeView.Toggle` |
 | <a id="viper-gui-treeview-select"></a>`Select` | `void(obj)` | `Viper.GUI.TreeView.Select` |
+| <a id="viper-gui-treeview-scrollto"></a>`ScrollTo` | `void(obj)` | `Viper.GUI.TreeView.ScrollTo` |
 | <a id="viper-gui-treeview-setfont"></a>`SetFont` | `void(obj,f64)` | `Viper.GUI.TreeView.SetFont` |
 | <a id="viper-gui-treeview-getselected"></a>`GetSelected` | `obj()` | `Viper.GUI.TreeView.GetSelected` |
 | <a id="viper-gui-treeview-getnodeat"></a>`GetNodeAt` | `obj(i64,i64)` | `Viper.GUI.TreeView.GetNodeAt` |
 | <a id="viper-gui-treeview-wasselectionchanged"></a>`WasSelectionChanged` | `i1()` | `Viper.GUI.TreeView.WasSelectionChanged` |
+| <a id="viper-gui-treeview-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.TreeView.WasChanged` |
+| <a id="viper-gui-treeview-wasactivated"></a>`WasActivated` | `i1()` | `Viper.GUI.TreeView.WasActivated` |
+| <a id="viper-gui-treeview-wasloadchildrenrequested"></a>`WasLoadChildrenRequested` | `i1()` | `Viper.GUI.TreeView.WasLoadChildrenRequested` |
+| <a id="viper-gui-treeview-getloadrequestednodeoption"></a>`GetLoadRequestedNodeOption` | `obj<Viper.Option>()` | `Viper.GUI.TreeView.GetLoadRequestedNodeOption` |
+| <a id="viper-gui-treeview-getactivatednodeoption"></a>`GetActivatedNodeOption` | `obj<Viper.Option>()` | `Viper.GUI.TreeView.GetActivatedNodeOption` |
+| <a id="viper-gui-treeview-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.TreeView.GetRevision` |
 | <a id="viper-gui-treeview-setdragdropenabled"></a>`SetDragDropEnabled` | `void(i1)` | `Viper.GUI.TreeView.SetDragDropEnabled` |
 | <a id="viper-gui-treeview-wasdropreceived"></a>`WasDropReceived` | `i1()` | `Viper.GUI.TreeView.WasDropReceived` |
 | <a id="viper-gui-treeview-getdropsourcedata"></a>`GetDropSourceData` | `str()` | `Viper.GUI.TreeView.GetDropSourceData` |
 | <a id="viper-gui-treeview-getdroptargetdata"></a>`GetDropTargetData` | `str()` | `Viper.GUI.TreeView.GetDropTargetData` |
 | <a id="viper-gui-treeview-getdropposition"></a>`GetDropPosition` | `i64()` | `Viper.GUI.TreeView.GetDropPosition` |
 | <a id="viper-gui-treeview-cleardrop"></a>`ClearDrop` | `void()` | `Viper.GUI.TreeView.ClearDrop` |
+| <a id="viper-gui-treeview-setvirtualmodel"></a>`SetVirtualModel` | `i1(obj)` | `Viper.GUI.TreeView.SetVirtualModel` |
+| <a id="viper-gui-treeview-clearvirtualmodel"></a>`ClearVirtualModel` | `void()` | `Viper.GUI.TreeView.ClearVirtualModel` |
 | <a id="viper-gui-treeview-new"></a>`New` | `obj(obj)` | `Viper.GUI.TreeView.New` |
 
 <a id="viper-gui-treeview-node"></a>
@@ -746,13 +1221,24 @@ Provides tree view node (returned by AddNode).
 
 `Viper.GUI.TreeView.Node` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes operations including `GetText`,
-`SetData`, `GetData`, `IsExpanded`.
+`SetText`, UTF-8 icon text, lazy-child/loading state, stable identifiers, string data, and
+expansion inspection. Nodes are borrowed tree-owned subobjects; removed or pruned handles stay
+safely inert and return empty/false values.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-gui-treeview-node-gettext"></a>`GetText` | `str()` | `Viper.GUI.TreeView.Node.GetText` |
+| <a id="viper-gui-treeview-node-settext"></a>`SetText` | `void(str)` | `Viper.GUI.TreeView.Node.SetText` |
+| <a id="viper-gui-treeview-node-seticon"></a>`SetIcon` | `void(str)` | `Viper.GUI.TreeView.Node.SetIcon` |
+| <a id="viper-gui-treeview-node-geticon"></a>`GetIcon` | `str()` | `Viper.GUI.TreeView.Node.GetIcon` |
+| <a id="viper-gui-treeview-node-sethaschildren"></a>`SetHasChildren` | `void(i1)` | `Viper.GUI.TreeView.Node.SetHasChildren` |
+| <a id="viper-gui-treeview-node-haschildren"></a>`HasChildren` | `i1()` | `Viper.GUI.TreeView.Node.HasChildren` |
+| <a id="viper-gui-treeview-node-setloading"></a>`SetLoading` | `void(i1)` | `Viper.GUI.TreeView.Node.SetLoading` |
+| <a id="viper-gui-treeview-node-isloading"></a>`IsLoading` | `i1()` | `Viper.GUI.TreeView.Node.IsLoading` |
+| <a id="viper-gui-treeview-node-setstableid"></a>`SetStableId` | `void(str)` | `Viper.GUI.TreeView.Node.SetStableId` |
+| <a id="viper-gui-treeview-node-getstableid"></a>`GetStableId` | `str()` | `Viper.GUI.TreeView.Node.GetStableId` |
 | <a id="viper-gui-treeview-node-setdata"></a>`SetData` | `void(str)` | `Viper.GUI.TreeView.Node.SetData` |
 | <a id="viper-gui-treeview-node-getdata"></a>`GetData` | `str()` | `Viper.GUI.TreeView.Node.GetData` |
 | <a id="viper-gui-treeview-node-isexpanded"></a>`IsExpanded` | `i1()` | `Viper.GUI.TreeView.Node.IsExpanded` |
@@ -764,7 +1250,8 @@ Provides tab bar widget.
 
 Create `Viper.GUI.TabBar` values through its registered constructor and use the returned object
 with the instance members below. Its public surface exposes properties such as `TabCount` and
-operations including `AddTab`, `RemoveTab`, `PruneRetiredTabs`, `SetActive`.
+operations including lifecycle-safe tab access, font control, and independently observable
+active/close/reorder interactions.
 
 Constructor: `Viper.GUI.TabBar.New`
 
@@ -785,11 +1272,17 @@ Constructor: `Viper.GUI.TabBar.New`
 | <a id="viper-gui-tabbar-getactive"></a>`GetActive` | `obj()` | `Viper.GUI.TabBar.GetActive` |
 | <a id="viper-gui-tabbar-getactiveindex"></a>`GetActiveIndex` | `i64()` | `Viper.GUI.TabBar.GetActiveIndex` |
 | <a id="viper-gui-tabbar-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.TabBar.WasChanged` |
+| <a id="viper-gui-tabbar-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.TabBar.GetRevision` |
 | <a id="viper-gui-tabbar-wascloseclicked"></a>`WasCloseClicked` | `i1()` | `Viper.GUI.TabBar.WasCloseClicked` |
 | <a id="viper-gui-tabbar-getcloseclickedindex"></a>`GetCloseClickedIndex` | `i64()` | `Viper.GUI.TabBar.GetCloseClickedIndex` |
 | <a id="viper-gui-tabbar-gettabat"></a>`GetTabAt` | `obj<Viper.GUI.Tab>(i64)` | `Viper.GUI.TabBar.GetTabAt` |
 | <a id="viper-gui-tabbar-gettabindexat"></a>`GetTabIndexAt` | `i64(i64,i64)` | `Viper.GUI.TabBar.GetTabIndexAt` |
 | <a id="viper-gui-tabbar-setautoclose"></a>`SetAutoClose` | `void(i1)` | `Viper.GUI.TabBar.SetAutoClose` |
+| <a id="viper-gui-tabbar-setfont"></a>`SetFont` | `void(obj,f64)` | `Viper.GUI.TabBar.SetFont` |
+| <a id="viper-gui-tabbar-wasreordered"></a>`WasReordered` | `i1()` | `Viper.GUI.TabBar.WasReordered` |
+| <a id="viper-gui-tabbar-getreorderedfrom"></a>`GetReorderedFrom` | `i64()` | `Viper.GUI.TabBar.GetReorderedFrom` |
+| <a id="viper-gui-tabbar-getreorderedto"></a>`GetReorderedTo` | `i64()` | `Viper.GUI.TabBar.GetReorderedTo` |
+| <a id="viper-gui-tabbar-movetab"></a>`MoveTab` | `i1(i64,i64)` | `Viper.GUI.TabBar.MoveTab` |
 | <a id="viper-gui-tabbar-new"></a>`New` | `obj(obj)` | `Viper.GUI.TabBar.New` |
 
 <a id="viper-gui-tab"></a>
@@ -798,14 +1291,21 @@ Constructor: `Viper.GUI.TabBar.New`
 Provides tab item.
 
 `Viper.GUI.Tab` exposes a registry-backed runtime surface without requiring callers to construct
-the class directly. Its public surface exposes operations including `SetTitle`, `SetTooltip`,
-`SetModified`.
+the class directly. Titles, byte-exact application data, close state, stable IDs, tooltips, and
+modified state remain available while the managed subhandle targets a live tab.
 
 #### Methods
 
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-gui-tab-settitle"></a>`SetTitle` | `void(str)` | `Viper.GUI.Tab.SetTitle` |
+| <a id="viper-gui-tab-gettitle"></a>`GetTitle` | `str()` | `Viper.GUI.Tab.GetTitle` |
+| <a id="viper-gui-tab-setdata"></a>`SetData` | `void(str)` | `Viper.GUI.Tab.SetData` |
+| <a id="viper-gui-tab-getdata"></a>`GetData` | `str()` | `Viper.GUI.Tab.GetData` |
+| <a id="viper-gui-tab-setclosable"></a>`SetClosable` | `void(i1)` | `Viper.GUI.Tab.SetClosable` |
+| <a id="viper-gui-tab-isclosable"></a>`IsClosable` | `i1()` | `Viper.GUI.Tab.IsClosable` |
+| <a id="viper-gui-tab-setstableid"></a>`SetStableId` | `void(str)` | `Viper.GUI.Tab.SetStableId` |
+| <a id="viper-gui-tab-getstableid"></a>`GetStableId` | `str()` | `Viper.GUI.Tab.GetStableId` |
 | <a id="viper-gui-tab-settooltip"></a>`SetTooltip` | `void(str)` | `Viper.GUI.Tab.SetTooltip` |
 | <a id="viper-gui-tab-setmodified"></a>`SetModified` | `void(i1)` | `Viper.GUI.Tab.SetModified` |
 
@@ -816,7 +1316,8 @@ Provides split pane container.
 
 Create `Viper.GUI.SplitPane` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `First`,
-`Second` and operations including `SetPosition`, `GetPosition`.
+`Second` and operations for logical-unit minimums, orientation, divider position, and
+reversible first/second collapse.
 
 Constructor: `Viper.GUI.SplitPane.New`
 
@@ -833,6 +1334,15 @@ Constructor: `Viper.GUI.SplitPane.New`
 |---|---|---|
 | <a id="viper-gui-splitpane-setposition"></a>`SetPosition` | `void(f64)` | `Viper.GUI.SplitPane.SetPosition` |
 | <a id="viper-gui-splitpane-getposition"></a>`GetPosition` | `f64()` | `Viper.GUI.SplitPane.GetPosition` |
+| <a id="viper-gui-splitpane-setminfirst"></a>`SetMinFirst` | `void(f64)` | `Viper.GUI.SplitPane.SetMinFirst` |
+| <a id="viper-gui-splitpane-setminsecond"></a>`SetMinSecond` | `void(f64)` | `Viper.GUI.SplitPane.SetMinSecond` |
+| <a id="viper-gui-splitpane-getminfirst"></a>`GetMinFirst` | `f64()` | `Viper.GUI.SplitPane.GetMinFirst` |
+| <a id="viper-gui-splitpane-getminsecond"></a>`GetMinSecond` | `f64()` | `Viper.GUI.SplitPane.GetMinSecond` |
+| <a id="viper-gui-splitpane-getorientation"></a>`GetOrientation` | `i64()` | `Viper.GUI.SplitPane.GetOrientation` |
+| <a id="viper-gui-splitpane-collapsefirst"></a>`CollapseFirst` | `void()` | `Viper.GUI.SplitPane.CollapseFirst` |
+| <a id="viper-gui-splitpane-collapsesecond"></a>`CollapseSecond` | `void()` | `Viper.GUI.SplitPane.CollapseSecond` |
+| <a id="viper-gui-splitpane-restore"></a>`Restore` | `void()` | `Viper.GUI.SplitPane.Restore` |
+| <a id="viper-gui-splitpane-getcollapsedside"></a>`GetCollapsedSide` | `i64()` | `Viper.GUI.SplitPane.GetCollapsedSide` |
 | <a id="viper-gui-splitpane-new"></a>`New` | `obj(obj,i64)` | `Viper.GUI.SplitPane.New` |
 
 <a id="viper-gui-editorbuffer"></a>
@@ -916,7 +1426,7 @@ Constructor: `Viper.GUI.CodeEditor.New`
 | <a id="viper-gui-codeeditor-clearguttericon"></a>`ClearGutterIcon` | `void(i64,i64)` | `Viper.GUI.CodeEditor.ClearGutterIcon` |
 | <a id="viper-gui-codeeditor-clearguttericons"></a>`ClearGutterIcons` | `void(i64)` | `Viper.GUI.CodeEditor.ClearGutterIcons` |
 | <a id="viper-gui-codeeditor-wasgutterclicked"></a>`WasGutterClicked` | `i1()` | `Viper.GUI.CodeEditor.WasGutterClicked` |
-| <a id="viper-gui-codeeditor-takegutterclick"></a>`TakeGutterClick` | `obj()` | `Viper.GUI.CodeEditor.TakeGutterClick` |
+| <a id="viper-gui-codeeditor-takegutterclick"></a>`TakeGutterClick` | `obj<Viper.Collections.Map>()` | `Viper.GUI.CodeEditor.TakeGutterClick` |
 | <a id="viper-gui-codeeditor-getgutterclickline"></a>`GetGutterClickLine` | `i64()` | `Viper.GUI.CodeEditor.GetGutterClickLine` |
 | <a id="viper-gui-codeeditor-getgutterclickslot"></a>`GetGutterClickSlot` | `i64()` | `Viper.GUI.CodeEditor.GetGutterClickSlot` |
 | <a id="viper-gui-codeeditor-setshowfoldgutter"></a>`SetShowFoldGutter` | `void(i1)` | `Viper.GUI.CodeEditor.SetShowFoldGutter` |
@@ -974,6 +1484,7 @@ Constructor: `Viper.GUI.CodeEditor.New`
 | <a id="viper-gui-codeeditor-replacewordatcursor"></a>`ReplaceWordAtCursor` | `void(str)` | `Viper.GUI.CodeEditor.ReplaceWordAtCursor` |
 | <a id="viper-gui-codeeditor-getline"></a>`GetLine` | `str(i64)` | `Viper.GUI.CodeEditor.GetLine` |
 | <a id="viper-gui-codeeditor-resetperfstats"></a>`ResetPerfStats` | `void()` | `Viper.GUI.CodeEditor.ResetPerfStats` |
+| <a id="viper-gui-codeeditor-getperfstats"></a>`GetPerfStats` | `obj<Viper.Collections.Map>()` | `Viper.GUI.CodeEditor.GetPerfStats` |
 | <a id="viper-gui-codeeditor-getfulltextcopycount"></a>`GetFullTextCopyCount` | `i64()` | `Viper.GUI.CodeEditor.GetFullTextCopyCount` |
 | <a id="viper-gui-codeeditor-getlayoutlinearscancount"></a>`GetLayoutLinearScanCount` | `i64()` | `Viper.GUI.CodeEditor.GetLayoutLinearScanCount` |
 | <a id="viper-gui-codeeditor-getsyntaxhighlightcallcount"></a>`GetSyntaxHighlightCallCount` | `i64()` | `Viper.GUI.CodeEditor.GetSyntaxHighlightCallCount` |
@@ -1011,6 +1522,8 @@ Constructor: `Viper.GUI.Dropdown.New`
 | <a id="viper-gui-dropdown-clear"></a>`Clear` | `void()` | `Viper.GUI.Dropdown.Clear` |
 | <a id="viper-gui-dropdown-setselected"></a>`SetSelected` | `void(i64)` | `Viper.GUI.Dropdown.SetSelected` |
 | <a id="viper-gui-dropdown-setplaceholder"></a>`SetPlaceholder` | `void(str)` | `Viper.GUI.Dropdown.SetPlaceholder` |
+| <a id="viper-gui-dropdown-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.Dropdown.WasChanged` |
+| <a id="viper-gui-dropdown-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.Dropdown.GetRevision` |
 | <a id="viper-gui-dropdown-new"></a>`New` | `obj(obj)` | `Viper.GUI.Dropdown.New` |
 
 <a id="viper-gui-slider"></a>
@@ -1037,6 +1550,8 @@ Constructor: `Viper.GUI.Slider.New`
 | <a id="viper-gui-slider-setvalue"></a>`SetValue` | `void(f64)` | `Viper.GUI.Slider.SetValue` |
 | <a id="viper-gui-slider-setrange"></a>`SetRange` | `void(f64,f64)` | `Viper.GUI.Slider.SetRange` |
 | <a id="viper-gui-slider-setstep"></a>`SetStep` | `void(f64)` | `Viper.GUI.Slider.SetStep` |
+| <a id="viper-gui-slider-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.Slider.WasChanged` |
+| <a id="viper-gui-slider-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.Slider.GetRevision` |
 | <a id="viper-gui-slider-new"></a>`New` | `obj(obj,i64)` | `Viper.GUI.Slider.New` |
 
 <a id="viper-gui-progressbar"></a>
@@ -1098,12 +1613,19 @@ Constructor: `Viper.GUI.ListBox.New`
 | <a id="viper-gui-listbox-setmultiselect"></a>`SetMultiSelect` | `void(i1)` | `Viper.GUI.ListBox.SetMultiSelect` |
 | <a id="viper-gui-listbox-getselectedtext"></a>`GetSelectedText` | `str()` | `Viper.GUI.ListBox.GetSelectedText` |
 | <a id="viper-gui-listbox-wasselectionchanged"></a>`WasSelectionChanged` | `i1()` | `Viper.GUI.ListBox.WasSelectionChanged` |
+| <a id="viper-gui-listbox-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.ListBox.WasChanged` |
+| <a id="viper-gui-listbox-wasactivated"></a>`WasActivated` | `i1()` | `Viper.GUI.ListBox.WasActivated` |
+| <a id="viper-gui-listbox-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.ListBox.GetRevision` |
 | <a id="viper-gui-listbox-itemgettext"></a>`ItemGetText` | `str(obj)` | `Viper.GUI.ListBox.ItemGetText` |
 | <a id="viper-gui-listbox-itemsettext"></a>`ItemSetText` | `void(obj,str)` | `Viper.GUI.ListBox.ItemSetText` |
 | <a id="viper-gui-listbox-itemgetdata"></a>`ItemGetData` | `str(obj)` | `Viper.GUI.ListBox.ItemGetData` |
 | <a id="viper-gui-listbox-itemsetdata"></a>`ItemSetData` | `void(obj,str)` | `Viper.GUI.ListBox.ItemSetData` |
 | <a id="viper-gui-listbox-itemsettextcolor"></a>`ItemSetTextColor` | `void(obj,i64)` | `Viper.GUI.ListBox.ItemSetTextColor` |
 | <a id="viper-gui-listbox-setfont"></a>`SetFont` | `void(obj,f64)` | `Viper.GUI.ListBox.SetFont` |
+| <a id="viper-gui-listbox-setvirtualmodel"></a>`SetVirtualModel` | `i1(obj)` | `Viper.GUI.ListBox.SetVirtualModel` |
+| <a id="viper-gui-listbox-clearvirtualmodel"></a>`ClearVirtualModel` | `void()` | `Viper.GUI.ListBox.ClearVirtualModel` |
+| <a id="viper-gui-listbox-getvisiblefirst"></a>`GetVisibleFirst` | `i64()` | `Viper.GUI.ListBox.GetVisibleFirst` |
+| <a id="viper-gui-listbox-getvisiblecount"></a>`GetVisibleCount` | `i64()` | `Viper.GUI.ListBox.GetVisibleCount` |
 | <a id="viper-gui-listbox-new"></a>`New` | `obj(obj)` | `Viper.GUI.ListBox.New` |
 
 <a id="viper-gui-outputpane"></a>
@@ -1153,8 +1675,9 @@ Constructor: `Viper.GUI.OutputPane.New`
 Provides Grid functionality for graphical user interfaces.
 
 Create `Viper.GUI.Grid` values through its registered constructor and use the returned object
-with the instance members below. Its public surface exposes properties such as `RowCount`,
-`ColumnCount` and operations including `SetColumns`, `SetHeader`, `SetCell`, `GetCell`.
+with the instance members below. Dense compatibility tables remain display-only until selection,
+sorting, resizing, or editing is enabled. Sparse virtual rows materialize only supplied cells,
+while viewport, selection, sort, resize, edit, scroll, edge, and revision state remain queryable.
 
 Constructor: `Viper.GUI.Grid.New`
 
@@ -1176,6 +1699,35 @@ Constructor: `Viper.GUI.Grid.New`
 | <a id="viper-gui-grid-clear"></a>`Clear` | `void()` | `Viper.GUI.Grid.Clear` |
 | <a id="viper-gui-grid-setfont"></a>`SetFont` | `void(obj,f64)` | `Viper.GUI.Grid.SetFont` |
 | <a id="viper-gui-grid-getcolumnwidth"></a>`GetColumnWidth` | `i64(i64)` | `Viper.GUI.Grid.GetColumnWidth` |
+| <a id="viper-gui-grid-setviewportrows"></a>`SetViewportRows` | `void(i64,i64)` | `Viper.GUI.Grid.SetViewportRows` |
+| <a id="viper-gui-grid-setvirtualrowcount"></a>`SetVirtualRowCount` | `void(i64)` | `Viper.GUI.Grid.SetVirtualRowCount` |
+| <a id="viper-gui-grid-setvirtualcell"></a>`SetVirtualCell` | `void(i64,i64,str)` | `Viper.GUI.Grid.SetVirtualCell` |
+| <a id="viper-gui-grid-setselectable"></a>`SetSelectable` | `void(i1)` | `Viper.GUI.Grid.SetSelectable` |
+| <a id="viper-gui-grid-getselectedrow"></a>`GetSelectedRow` | `i64()` | `Viper.GUI.Grid.GetSelectedRow` |
+| <a id="viper-gui-grid-getselectedcolumn"></a>`GetSelectedColumn` | `i64()` | `Viper.GUI.Grid.GetSelectedColumn` |
+| <a id="viper-gui-grid-selectcell"></a>`SelectCell` | `i1(i64,i64)` | `Viper.GUI.Grid.SelectCell` |
+| <a id="viper-gui-grid-clearselection"></a>`ClearSelection` | `void()` | `Viper.GUI.Grid.ClearSelection` |
+| <a id="viper-gui-grid-wasselectionchanged"></a>`WasSelectionChanged` | `i1()` | `Viper.GUI.Grid.WasSelectionChanged` |
+| <a id="viper-gui-grid-wasactivated"></a>`WasActivated` | `i1()` | `Viper.GUI.Grid.WasActivated` |
+| <a id="viper-gui-grid-setsortable"></a>`SetSortable` | `void(i64,i1)` | `Viper.GUI.Grid.SetSortable` |
+| <a id="viper-gui-grid-setsort"></a>`SetSort` | `void(i64,i64)` | `Viper.GUI.Grid.SetSort` |
+| <a id="viper-gui-grid-getsortcolumn"></a>`GetSortColumn` | `i64()` | `Viper.GUI.Grid.GetSortColumn` |
+| <a id="viper-gui-grid-getsortdirection"></a>`GetSortDirection` | `i64()` | `Viper.GUI.Grid.GetSortDirection` |
+| <a id="viper-gui-grid-wassortchanged"></a>`WasSortChanged` | `i1()` | `Viper.GUI.Grid.WasSortChanged` |
+| <a id="viper-gui-grid-setcolumnwidth"></a>`SetColumnWidth` | `void(i64,f64)` | `Viper.GUI.Grid.SetColumnWidth` |
+| <a id="viper-gui-grid-setcolumnresizable"></a>`SetColumnResizable` | `void(i64,i1)` | `Viper.GUI.Grid.SetColumnResizable` |
+| <a id="viper-gui-grid-wascolumnresized"></a>`WasColumnResized` | `i1()` | `Viper.GUI.Grid.WasColumnResized` |
+| <a id="viper-gui-grid-getresizedcolumn"></a>`GetResizedColumn` | `i64()` | `Viper.GUI.Grid.GetResizedColumn` |
+| <a id="viper-gui-grid-seteditable"></a>`SetEditable` | `void(i1)` | `Viper.GUI.Grid.SetEditable` |
+| <a id="viper-gui-grid-beginedit"></a>`BeginEdit` | `i1(i64,i64)` | `Viper.GUI.Grid.BeginEdit` |
+| <a id="viper-gui-grid-commitedit"></a>`CommitEdit` | `i1(str)` | `Viper.GUI.Grid.CommitEdit` |
+| <a id="viper-gui-grid-canceledit"></a>`CancelEdit` | `void()` | `Viper.GUI.Grid.CancelEdit` |
+| <a id="viper-gui-grid-isediting"></a>`IsEditing` | `i1()` | `Viper.GUI.Grid.IsEditing` |
+| <a id="viper-gui-grid-wascelledited"></a>`WasCellEdited` | `i1()` | `Viper.GUI.Grid.WasCellEdited` |
+| <a id="viper-gui-grid-scrolltorow"></a>`ScrollToRow` | `void(i64)` | `Viper.GUI.Grid.ScrollToRow` |
+| <a id="viper-gui-grid-getscrollrow"></a>`GetScrollRow` | `i64()` | `Viper.GUI.Grid.GetScrollRow` |
+| <a id="viper-gui-grid-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.Grid.WasChanged` |
+| <a id="viper-gui-grid-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.Grid.GetRevision` |
 | <a id="viper-gui-grid-new"></a>`New` | `obj(obj)` | `Viper.GUI.Grid.New` |
 
 <a id="viper-gui-popuplist"></a>
@@ -1223,8 +1775,8 @@ Constructor: `Viper.GUI.PopupList.New`
 Provides radio button group.
 
 Create `Viper.GUI.RadioGroup` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes operations including
-`Destroy`.
+object with the instance members below. Selected-index edges are independent from the
+non-consuming membership/selection revision.
 
 Constructor: `Viper.GUI.RadioGroup.New`
 
@@ -1233,6 +1785,11 @@ Constructor: `Viper.GUI.RadioGroup.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="viper-gui-radiogroup-destroy"></a>`Destroy` | `void()` | `Viper.GUI.RadioGroup.Destroy` |
+| <a id="viper-gui-radiogroup-getselectedindex"></a>`GetSelectedIndex` | `i64()` | `Viper.GUI.RadioGroup.GetSelectedIndex` |
+| <a id="viper-gui-radiogroup-setselectedindex"></a>`SetSelectedIndex` | `i1(i64)` | `Viper.GUI.RadioGroup.SetSelectedIndex` |
+| <a id="viper-gui-radiogroup-getcount"></a>`GetCount` | `i64()` | `Viper.GUI.RadioGroup.GetCount` |
+| <a id="viper-gui-radiogroup-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.RadioGroup.WasChanged` |
+| <a id="viper-gui-radiogroup-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.RadioGroup.GetRevision` |
 | <a id="viper-gui-radiogroup-new"></a>`New` | `obj()` | `Viper.GUI.RadioGroup.New` |
 
 <a id="viper-gui-radiobutton"></a>
@@ -1241,8 +1798,8 @@ Constructor: `Viper.GUI.RadioGroup.New`
 Provides radio button widget.
 
 Create `Viper.GUI.RadioButton` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes operations including
-`IsSelected`, `SetSelected`.
+object with the instance members below. It exposes selected state, visible text, byte-exact
+application data, an independent change edge, and a non-consuming revision.
 
 Constructor: `Viper.GUI.RadioButton.New`
 
@@ -1252,6 +1809,12 @@ Constructor: `Viper.GUI.RadioButton.New`
 |---|---|---|
 | <a id="viper-gui-radiobutton-isselected"></a>`IsSelected` | `i1()` | `Viper.GUI.RadioButton.IsSelected` |
 | <a id="viper-gui-radiobutton-setselected"></a>`SetSelected` | `void(i1)` | `Viper.GUI.RadioButton.SetSelected` |
+| <a id="viper-gui-radiobutton-settext"></a>`SetText` | `void(str)` | `Viper.GUI.RadioButton.SetText` |
+| <a id="viper-gui-radiobutton-gettext"></a>`GetText` | `str()` | `Viper.GUI.RadioButton.GetText` |
+| <a id="viper-gui-radiobutton-setdata"></a>`SetData` | `void(str)` | `Viper.GUI.RadioButton.SetData` |
+| <a id="viper-gui-radiobutton-getdata"></a>`GetData` | `str()` | `Viper.GUI.RadioButton.GetData` |
+| <a id="viper-gui-radiobutton-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.RadioButton.WasChanged` |
+| <a id="viper-gui-radiobutton-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.RadioButton.GetRevision` |
 | <a id="viper-gui-radiobutton-new"></a>`New` | `obj(obj,str,obj)` | `Viper.GUI.RadioButton.New` |
 
 <a id="viper-gui-spinner"></a>
@@ -1279,7 +1842,89 @@ Constructor: `Viper.GUI.Spinner.New`
 | <a id="viper-gui-spinner-setrange"></a>`SetRange` | `void(f64,f64)` | `Viper.GUI.Spinner.SetRange` |
 | <a id="viper-gui-spinner-setstep"></a>`SetStep` | `void(f64)` | `Viper.GUI.Spinner.SetStep` |
 | <a id="viper-gui-spinner-setdecimals"></a>`SetDecimals` | `void(i64)` | `Viper.GUI.Spinner.SetDecimals` |
+| <a id="viper-gui-spinner-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.Spinner.WasChanged` |
+| <a id="viper-gui-spinner-wassubmitted"></a>`WasSubmitted` | `i1()` | `Viper.GUI.Spinner.WasSubmitted` |
+| <a id="viper-gui-spinner-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.Spinner.GetRevision` |
 | <a id="viper-gui-spinner-new"></a>`New` | `obj(obj)` | `Viper.GUI.Spinner.New` |
+
+<a id="viper-gui-colorswatch"></a>
+### `Viper.GUI.ColorSwatch`
+
+Displays and selects one opaque RGB color with keyboard and pointer parity.
+
+Colors use the stable public `0x00RRGGBB` representation; upper bits supplied to the
+constructor or setter are ignored. Color and selected-state transitions share an independent
+consumable change edge and advance a non-consuming revision. The control exposes a semantic
+button role, high-contrast focus visuals, and Space/Enter activation.
+
+Constructor: `Viper.GUI.ColorSwatch.New`
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-gui-colorswatch-setcolor"></a>`SetColor` | `void(i64)` | `Viper.GUI.ColorSwatch.SetColor` |
+| <a id="viper-gui-colorswatch-getcolor"></a>`GetColor` | `i64()` | `Viper.GUI.ColorSwatch.GetColor` |
+| <a id="viper-gui-colorswatch-setselected"></a>`SetSelected` | `void(i1)` | `Viper.GUI.ColorSwatch.SetSelected` |
+| <a id="viper-gui-colorswatch-isselected"></a>`IsSelected` | `i1()` | `Viper.GUI.ColorSwatch.IsSelected` |
+| <a id="viper-gui-colorswatch-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.ColorSwatch.WasChanged` |
+| <a id="viper-gui-colorswatch-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.ColorSwatch.GetRevision` |
+| <a id="viper-gui-colorswatch-new"></a>`New` | `obj(obj,i64)` | `Viper.GUI.ColorSwatch.New` |
+
+<a id="viper-gui-colorpalette"></a>
+### `Viper.GUI.ColorPalette`
+
+Stores, displays, and keyboard-navigates an editable palette of opaque RGB colors.
+
+Palette entries use `0x00RRGGBB`, are copied into owned storage, and retain insertion order.
+Removal compacts later entries and preserves a surviving selected color's logical selection.
+Arrow/Home/End navigation and Space/Enter activation match pointer behavior. Structural and
+selection changes share a consumable edge and advance the non-consuming revision.
+
+Constructor: `Viper.GUI.ColorPalette.New`
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-gui-colorpalette-addcolor"></a>`AddColor` | `void(i64)` | `Viper.GUI.ColorPalette.AddColor` |
+| <a id="viper-gui-colorpalette-removecolor"></a>`RemoveColor` | `i1(i64)` | `Viper.GUI.ColorPalette.RemoveColor` |
+| <a id="viper-gui-colorpalette-clear"></a>`Clear` | `void()` | `Viper.GUI.ColorPalette.Clear` |
+| <a id="viper-gui-colorpalette-getcolorcount"></a>`GetColorCount` | `i64()` | `Viper.GUI.ColorPalette.GetColorCount` |
+| <a id="viper-gui-colorpalette-getcolorat"></a>`GetColorAt` | `i64(i64)` | `Viper.GUI.ColorPalette.GetColorAt` |
+| <a id="viper-gui-colorpalette-setselectedindex"></a>`SetSelectedIndex` | `void(i64)` | `Viper.GUI.ColorPalette.SetSelectedIndex` |
+| <a id="viper-gui-colorpalette-getselectedindex"></a>`GetSelectedIndex` | `i64()` | `Viper.GUI.ColorPalette.GetSelectedIndex` |
+| <a id="viper-gui-colorpalette-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.ColorPalette.WasChanged` |
+| <a id="viper-gui-colorpalette-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.ColorPalette.GetRevision` |
+| <a id="viper-gui-colorpalette-new"></a>`New` | `obj(obj)` | `Viper.GUI.ColorPalette.New` |
+
+<a id="viper-gui-colorpicker"></a>
+### `Viper.GUI.ColorPicker`
+
+Edits RGB color components and an independently represented optional alpha channel.
+
+The public color value is `0x00RRGGBB`; alpha remains a separate value in `[0,255]` and is
+preserved by `SetColor`. The picker renders channel labels and values using the app font,
+supports keyboard channel navigation and adjustment, exposes semantic color text, and keeps
+sliders and preview synchronized before publishing one component-change edge.
+
+Constructor: `Viper.GUI.ColorPicker.New`
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-gui-colorpicker-setcolor"></a>`SetColor` | `void(i64)` | `Viper.GUI.ColorPicker.SetColor` |
+| <a id="viper-gui-colorpicker-getcolor"></a>`GetColor` | `i64()` | `Viper.GUI.ColorPicker.GetColor` |
+| <a id="viper-gui-colorpicker-setalphaenabled"></a>`SetAlphaEnabled` | `void(i1)` | `Viper.GUI.ColorPicker.SetAlphaEnabled` |
+| <a id="viper-gui-colorpicker-isalphaenabled"></a>`IsAlphaEnabled` | `i1()` | `Viper.GUI.ColorPicker.IsAlphaEnabled` |
+| <a id="viper-gui-colorpicker-getred"></a>`GetRed` | `i64()` | `Viper.GUI.ColorPicker.GetRed` |
+| <a id="viper-gui-colorpicker-getgreen"></a>`GetGreen` | `i64()` | `Viper.GUI.ColorPicker.GetGreen` |
+| <a id="viper-gui-colorpicker-getblue"></a>`GetBlue` | `i64()` | `Viper.GUI.ColorPicker.GetBlue` |
+| <a id="viper-gui-colorpicker-getalpha"></a>`GetAlpha` | `i64()` | `Viper.GUI.ColorPicker.GetAlpha` |
+| <a id="viper-gui-colorpicker-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.ColorPicker.WasChanged` |
+| <a id="viper-gui-colorpicker-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.ColorPicker.GetRevision` |
+| <a id="viper-gui-colorpicker-new"></a>`New` | `obj(obj)` | `Viper.GUI.ColorPicker.New` |
 
 <a id="viper-gui-image"></a>
 ### `Viper.GUI.Image`
@@ -1302,14 +1947,19 @@ Constructor: `Viper.GUI.Image.New`
 | <a id="viper-gui-image-setopacity"></a>`SetOpacity` | `void(f64)` | `Viper.GUI.Image.SetOpacity` |
 | <a id="viper-gui-image-loadfile"></a>`LoadFile` | `i64(str)` | `Viper.GUI.Image.LoadFile` |
 | <a id="viper-gui-image-new"></a>`New` | `obj(obj)` | `Viper.GUI.Image.New` |
+| <a id="viper-gui-image-trysetpixels"></a>`TrySetPixels` | `i1(obj,obj,i64,i64)` | `Viper.GUI.Image.TrySetPixels` |
+| <a id="viper-gui-image-updateregion"></a>`UpdateRegion` | `i1(obj,obj,i64,i64,i64,i64,i64,i64)` | `Viper.GUI.Image.UpdateRegion` |
+| <a id="viper-gui-image-setfilter"></a>`SetFilter` | `void(obj,i64)` | `Viper.GUI.Image.SetFilter` |
+| <a id="viper-gui-image-getfilter"></a>`GetFilter` | `i64(obj)` | `Viper.GUI.Image.GetFilter` |
 
 <a id="viper-gui-theme"></a>
 ### `Viper.GUI.Theme`
 
-Provides theme control.
+Selects built-in, system-following, or validated custom GUI themes.
 
-`Viper.GUI.Theme` is a static runtime surface and does not require an instance. Its public
-Its public surface exposes operations including `SetDark`, `SetLight`, `GetName`.
+`Viper.GUI.Theme` is an app-scoped static surface. Dark and Light are deterministic; System
+follows the host appearance; Custom deep-copies a validated logical `ThemePalette`. Installed
+themes are DPI-scaled per app, accessibility-adjusted, revisioned, and invalidated immediately.
 
 #### Methods
 
@@ -1318,6 +1968,42 @@ Its public surface exposes operations including `SetDark`, `SetLight`, `GetName`
 | <a id="viper-gui-theme-setdark"></a>`SetDark` | `void()` | `Viper.GUI.Theme.SetDark` |
 | <a id="viper-gui-theme-setlight"></a>`SetLight` | `void()` | `Viper.GUI.Theme.SetLight` |
 | <a id="viper-gui-theme-getname"></a>`GetName` | `str()` | `Viper.GUI.Theme.GetName` |
+| <a id="viper-gui-theme-setmode"></a>`SetMode` | `void(i64)` | `Viper.GUI.Theme.SetMode` |
+| <a id="viper-gui-theme-getmode"></a>`GetMode` | `i64()` | `Viper.GUI.Theme.GetMode` |
+| <a id="viper-gui-theme-followsystem"></a>`FollowSystem` | `void()` | `Viper.GUI.Theme.FollowSystem` |
+| <a id="viper-gui-theme-setpalette"></a>`SetPalette` | `i1(obj)` | `Viper.GUI.Theme.SetPalette` |
+| <a id="viper-gui-theme-getpalette"></a>`GetPalette` | `obj()` | `Viper.GUI.Theme.GetPalette` |
+| <a id="viper-gui-theme-resetcustom"></a>`ResetCustom` | `void()` | `Viper.GUI.Theme.ResetCustom` |
+| <a id="viper-gui-theme-waschanged"></a>`WasChanged` | `i1()` | `Viper.GUI.Theme.WasChanged` |
+| <a id="viper-gui-theme-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.Theme.GetRevision` |
+
+<a id="viper-gui-themepalette"></a>
+### `Viper.GUI.ThemePalette`
+
+Owns an independently mutable, logical GUI theme palette.
+
+Color and numeric fields use stable lower-camel token names. Recognized invalid values remain
+diagnosable through `Validate`; unknown tokens return false. Palettes clone independently,
+borrow only live font roles, validate normal-text contrast, and are copied again when installed
+so later palette edits cannot mutate an active app implicitly.
+
+Constructor: `Viper.GUI.ThemePalette.New`
+
+#### Methods
+
+| Method | Signature | Runtime target |
+|---|---|---|
+| <a id="viper-gui-themepalette-fromdark"></a>`FromDark` | `obj()` | `Viper.GUI.ThemePalette.FromDark` |
+| <a id="viper-gui-themepalette-fromlight"></a>`FromLight` | `obj()` | `Viper.GUI.ThemePalette.FromLight` |
+| <a id="viper-gui-themepalette-clone"></a>`Clone` | `obj()` | `Viper.GUI.ThemePalette.Clone` |
+| <a id="viper-gui-themepalette-setcolor"></a>`SetColor` | `i1(str,i64)` | `Viper.GUI.ThemePalette.SetColor` |
+| <a id="viper-gui-themepalette-getcolor"></a>`GetColor` | `i64(str)` | `Viper.GUI.ThemePalette.GetColor` |
+| <a id="viper-gui-themepalette-setmetric"></a>`SetMetric` | `i1(str,f64)` | `Viper.GUI.ThemePalette.SetMetric` |
+| <a id="viper-gui-themepalette-getmetric"></a>`GetMetric` | `f64(str)` | `Viper.GUI.ThemePalette.GetMetric` |
+| <a id="viper-gui-themepalette-setmotionenabled"></a>`SetMotionEnabled` | `void(i1)` | `Viper.GUI.ThemePalette.SetMotionEnabled` |
+| <a id="viper-gui-themepalette-setfontroles"></a>`SetFontRoles` | `void(obj,obj,obj)` | `Viper.GUI.ThemePalette.SetFontRoles` |
+| <a id="viper-gui-themepalette-validate"></a>`Validate` | `obj<Viper.Result>()` | `Viper.GUI.ThemePalette.Validate` |
+| <a id="viper-gui-themepalette-new"></a>`New` | `obj()` | `Viper.GUI.ThemePalette.New` |
 
 <a id="viper-gui-vbox"></a>
 ### `Viper.GUI.VBox`
@@ -1336,6 +2022,10 @@ Constructor: `Viper.GUI.VBox.New`
 |---|---|---|
 | <a id="viper-gui-vbox-setspacing"></a>`SetSpacing` | `void(f64)` | `Viper.GUI.Container.SetSpacing` |
 | <a id="viper-gui-vbox-setpadding"></a>`SetPadding` | `void(f64)` | `Viper.GUI.Container.SetPadding` |
+| <a id="viper-gui-vbox-setalign"></a>`SetAlign` | `void(i64)` | `Viper.GUI.VBox.SetAlign` |
+| <a id="viper-gui-vbox-getalign"></a>`GetAlign` | `i64()` | `Viper.GUI.VBox.GetAlign` |
+| <a id="viper-gui-vbox-setjustify"></a>`SetJustify` | `void(i64)` | `Viper.GUI.VBox.SetJustify` |
+| <a id="viper-gui-vbox-getjustify"></a>`GetJustify` | `i64()` | `Viper.GUI.VBox.GetJustify` |
 | <a id="viper-gui-vbox-new"></a>`New` | `obj()` | `Viper.GUI.VBox.New` |
 
 <a id="viper-gui-hbox"></a>
@@ -1355,6 +2045,10 @@ Constructor: `Viper.GUI.HBox.New`
 |---|---|---|
 | <a id="viper-gui-hbox-setspacing"></a>`SetSpacing` | `void(f64)` | `Viper.GUI.Container.SetSpacing` |
 | <a id="viper-gui-hbox-setpadding"></a>`SetPadding` | `void(f64)` | `Viper.GUI.Container.SetPadding` |
+| <a id="viper-gui-hbox-setalign"></a>`SetAlign` | `void(i64)` | `Viper.GUI.HBox.SetAlign` |
+| <a id="viper-gui-hbox-getalign"></a>`GetAlign` | `i64()` | `Viper.GUI.HBox.GetAlign` |
+| <a id="viper-gui-hbox-setjustify"></a>`SetJustify` | `void(i64)` | `Viper.GUI.HBox.SetJustify` |
+| <a id="viper-gui-hbox-getjustify"></a>`GetJustify` | `i64()` | `Viper.GUI.HBox.GetJustify` |
 | <a id="viper-gui-hbox-new"></a>`New` | `obj()` | `Viper.GUI.HBox.New` |
 
 <a id="viper-gui-menubar"></a>
@@ -1665,8 +2359,9 @@ Constructor: `Viper.GUI.FloatingPanel.New`
 Provides Video Widget functionality for graphical user interfaces.
 
 Create `Viper.GUI.VideoWidget` values through its registered constructor and use the returned
-object with the instance members below. Its public surface exposes properties such as `Root`,
-`ShowControls`, `Loop` and operations including `Destroy`, `Play`, `Pause`, `Stop`.
+object with the instance members below. App scheduling is enabled by default, manual updates
+remain compatible, frame storage is reused, and independent load/failure/buffering/end/seek
+edges can be consumed without changing the non-consuming revision.
 
 Constructor: `Viper.GUI.VideoWidget.New`
 
@@ -1690,6 +2385,18 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | <a id="viper-gui-videowidget-pause"></a>`Pause` | `void()` | `Viper.GUI.VideoWidget.Pause` |
 | <a id="viper-gui-videowidget-stop"></a>`Stop` | `void()` | `Viper.GUI.VideoWidget.Stop` |
 | <a id="viper-gui-videowidget-update"></a>`Update` | `void(f64)` | `Viper.GUI.VideoWidget.Update` |
+| <a id="viper-gui-videowidget-setautoupdate"></a>`SetAutoUpdate` | `void(i1)` | `Viper.GUI.VideoWidget.SetAutoUpdate` |
+| <a id="viper-gui-videowidget-isautoupdate"></a>`IsAutoUpdate` | `i1()` | `Viper.GUI.VideoWidget.IsAutoUpdate` |
+| <a id="viper-gui-videowidget-wasloaded"></a>`WasLoaded` | `i1()` | `Viper.GUI.VideoWidget.WasLoaded` |
+| <a id="viper-gui-videowidget-wasfailed"></a>`WasFailed` | `i1()` | `Viper.GUI.VideoWidget.WasFailed` |
+| <a id="viper-gui-videowidget-wasbufferingchanged"></a>`WasBufferingChanged` | `i1()` | `Viper.GUI.VideoWidget.WasBufferingChanged` |
+| <a id="viper-gui-videowidget-wasended"></a>`WasEnded` | `i1()` | `Viper.GUI.VideoWidget.WasEnded` |
+| <a id="viper-gui-videowidget-wasseeked"></a>`WasSeeked` | `i1()` | `Viper.GUI.VideoWidget.WasSeeked` |
+| <a id="viper-gui-videowidget-geterror"></a>`GetError` | `str()` | `Viper.GUI.VideoWidget.GetError` |
+| <a id="viper-gui-videowidget-getrevision"></a>`GetRevision` | `i64()` | `Viper.GUI.VideoWidget.GetRevision` |
+| <a id="viper-gui-videowidget-setcontrolsautohide"></a>`SetControlsAutoHide` | `void(i1)` | `Viper.GUI.VideoWidget.SetControlsAutoHide` |
+| <a id="viper-gui-videowidget-setfullscreen"></a>`SetFullscreen` | `void(i1)` | `Viper.GUI.VideoWidget.SetFullscreen` |
+| <a id="viper-gui-videowidget-isfullscreen"></a>`IsFullscreen` | `i1()` | `Viper.GUI.VideoWidget.IsFullscreen` |
 | <a id="viper-gui-videowidget-setvolume"></a>`SetVolume` | `void(f64)` | `Viper.GUI.VideoWidget.SetVolume` |
 | <a id="viper-gui-videowidget-setvisible"></a>`SetVisible` | `void(i1)` | `Viper.GUI.VideoWidget.SetVisible` |
 | <a id="viper-gui-videowidget-setenabled"></a>`SetEnabled` | `void(i1)` | `Viper.GUI.VideoWidget.SetEnabled` |
@@ -1706,12 +2413,19 @@ Constructor: `Viper.GUI.VideoWidget.New`
 
 | Function | Signature | Runtime symbol |
 |---|---|---|
+| `Viper.GUI.System.IsAvailable` | `i1()` | `rt_gui_system_is_available` |
+| `Viper.GUI.System.GetUnavailableReason` | `str()` | `rt_gui_system_get_unavailable_reason` |
 | `Viper.GUI.App.New` | `obj(str,i64,i64)` | `rt_gui_app_new` |
+| `Viper.GUI.App.TryNew` | `obj<Viper.Result>(str,i64,i64)` | `rt_gui_app_try_new` |
 | `Viper.GUI.App.Destroy` | `void(obj)` | `rt_gui_app_destroy` |
 | <a id="viper-gui-app-get-shouldclose"></a>`Viper.GUI.App.get_ShouldClose` | `i1(obj)` | `rt_gui_app_should_close` |
 | `Viper.GUI.App.Poll` | `void(obj)` | `rt_gui_app_poll` |
 | `Viper.GUI.App.PollWait` | `i1(obj,i64)` | `rt_gui_app_poll_wait` |
 | `Viper.GUI.App.Render` | `void(obj)` | `rt_gui_app_render` |
+| `Viper.GUI.App.RunFrame` | `i1(obj)` | `rt_gui_app_run_frame` |
+| `Viper.GUI.App.RunFrameWithDelta` | `i1(obj,f64)` | `rt_gui_app_run_frame_with_delta` |
+| `Viper.GUI.App.GetNextDeadlineMs` | `i64(obj)` | `rt_gui_app_get_next_deadline_ms` |
+| `Viper.GUI.App.MakeCurrent` | `void(obj)` | `rt_gui_app_make_current` |
 | <a id="viper-gui-app-get-root"></a>`Viper.GUI.App.get_Root` | `obj<Viper.GUI.Widget>(obj)` | `rt_gui_app_get_root` |
 | `Viper.GUI.App.SetFont` | `void(obj,obj,f64)` | `rt_gui_app_set_font` |
 | `Viper.GUI.App.GetWidth` | `i64(obj)` | `rt_app_get_width` |
@@ -1723,6 +2437,7 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.App.ToPhysical` | `i64(obj,i64)` | `rt_app_to_physical` |
 | `Viper.GUI.App.SetUiScale` | `void(obj,f64)` | `rt_app_set_ui_scale` |
 | `Viper.GUI.App.GetUiScale` | `f64(obj)` | `rt_app_get_ui_scale` |
+| `Viper.GUI.App.GetEffectiveScale` | `f64(obj)` | `rt_app_get_effective_scale` |
 | `Viper.GUI.App.SetWheelSpeed` | `void(obj,f64)` | `rt_app_set_wheel_speed` |
 | `Viper.GUI.App.GetWheelSpeed` | `f64(obj)` | `rt_app_get_wheel_speed` |
 | `Viper.GUI.App.GetX` | `i64(obj)` | `rt_app_get_x` |
@@ -1742,6 +2457,7 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.App.GetMonitorHeight` | `i64(obj)` | `rt_app_get_monitor_height` |
 | `Viper.GUI.App.SetWindowSize` | `void(obj,i64,i64)` | `rt_app_set_window_size` |
 | `Viper.GUI.App.GetFontSize` | `f64(obj)` | `rt_app_get_font_size` |
+| `Viper.GUI.App.GetLogicalFontSize` | `f64(obj)` | `rt_app_get_logical_font_size` |
 | `Viper.GUI.App.SetFontSize` | `void(obj,f64)` | `rt_app_set_font_size` |
 | `Viper.GUI.App.SetTitle` | `void(obj,str)` | `rt_app_set_title` |
 | `Viper.GUI.App.GetTitle` | `str(obj)` | `rt_app_get_title` |
@@ -1752,6 +2468,9 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.App.GetPaintFramesPartial` | `i64(obj)` | `rt_app_get_paint_frames_partial` |
 | `Viper.GUI.App.SetPartialPaint` | `void(obj,i1)` | `rt_app_set_partial_paint` |
 | `Viper.GUI.Font.Load` | `obj(str)` | `rt_font_load` |
+| `Viper.GUI.Font.LoadSystemUi` | `obj<Viper.Result>(f64)` | `rt_font_load_system_ui` |
+| `Viper.GUI.Font.LoadSystemUiBold` | `obj<Viper.Result>(f64)` | `rt_font_load_system_ui_bold` |
+| `Viper.GUI.Font.GetLogicalSize` | `f64(obj)` | `rt_font_get_logical_size` |
 | `Viper.GUI.Font.Destroy` | `void(obj)` | `rt_font_destroy` |
 | `Viper.GUI.Widget.Destroy` | `void(obj)` | `rt_widget_destroy` |
 | `Viper.GUI.Widget.SetVisible` | `void(obj,i1)` | `rt_widget_set_visible` |
@@ -1759,8 +2478,16 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.Widget.SetSize` | `void(obj,i64,i64)` | `rt_widget_set_size` |
 | `Viper.GUI.Widget.SetPreferredSize` | `void(obj,f64,f64)` | `rt_widget_set_preferred_size` |
 | `Viper.GUI.Widget.SetMaxSize` | `void(obj,f64,f64)` | `rt_widget_set_max_size` |
+| `Viper.GUI.Widget.SetMinSize` | `void(obj,f64,f64)` | `rt_widget_set_min_size` |
+| `Viper.GUI.Widget.GetMinWidth` | `f64(obj)` | `rt_widget_get_min_width` |
+| `Viper.GUI.Widget.GetMinHeight` | `f64(obj)` | `rt_widget_get_min_height` |
 | `Viper.GUI.Widget.SetFlex` | `void(obj,f64)` | `rt_widget_set_flex` |
 | `Viper.GUI.Widget.AddChild` | `void(obj,obj)` | `rt_widget_add_child` |
+| `Viper.GUI.Widget.GetParentOption` | `obj<Viper.Option>(obj)` | `rt_widget_get_parent_option` |
+| `Viper.GUI.Widget.GetChildCount` | `i64(obj)` | `rt_widget_get_child_count` |
+| `Viper.GUI.Widget.GetChildAtOption` | `obj<Viper.Option>(obj,i64)` | `rt_widget_get_child_at_option` |
+| `Viper.GUI.Widget.RemoveChild` | `i1(obj,obj)` | `rt_widget_remove_child` |
+| `Viper.GUI.Widget.ClearChildren` | `void(obj)` | `rt_widget_clear_children` |
 | `Viper.GUI.Widget.IsHovered` | `i1(obj)` | `rt_widget_is_hovered` |
 | `Viper.GUI.Widget.IsPressed` | `i1(obj)` | `rt_widget_is_pressed` |
 | `Viper.GUI.Widget.IsFocused` | `i1(obj)` | `rt_widget_is_focused` |
@@ -1774,15 +2501,53 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.Widget.GetX` | `i64(obj)` | `rt_widget_get_x` |
 | `Viper.GUI.Widget.GetY` | `i64(obj)` | `rt_widget_get_y` |
 | `Viper.GUI.Widget.GetFlex` | `f64(obj)` | `rt_widget_get_flex` |
+| `Viper.GUI.Widget.GetLogicalX` | `f64(obj)` | `rt_widget_get_logical_x` |
+| `Viper.GUI.Widget.GetLogicalY` | `f64(obj)` | `rt_widget_get_logical_y` |
+| `Viper.GUI.Widget.GetLogicalWidth` | `f64(obj)` | `rt_widget_get_logical_width` |
+| `Viper.GUI.Widget.GetLogicalHeight` | `f64(obj)` | `rt_widget_get_logical_height` |
+| `Viper.GUI.Widget.GetScreenX` | `f64(obj)` | `rt_widget_get_screen_x` |
+| `Viper.GUI.Widget.GetScreenY` | `f64(obj)` | `rt_widget_get_screen_y` |
+| `Viper.GUI.Widget.GetScreenWidth` | `f64(obj)` | `rt_widget_get_screen_width` |
+| `Viper.GUI.Widget.GetScreenHeight` | `f64(obj)` | `rt_widget_get_screen_height` |
 | `Viper.GUI.Widget.SetMargin` | `void(obj,i64)` | `rt_widget_set_margin` |
+| `Viper.GUI.Widget.SetPadding` | `void(obj,f64)` | `rt_widget_set_padding` |
+| `Viper.GUI.Widget.SetPaddingEdges` | `void(obj,f64,f64,f64,f64)` | `rt_widget_set_padding_edges` |
+| `Viper.GUI.Widget.SetMarginEdges` | `void(obj,f64,f64,f64,f64)` | `rt_widget_set_margin_edges` |
 | `Viper.GUI.Widget.SetTabIndex` | `void(obj,i64)` | `rt_widget_set_tab_index` |
 | `Viper.GUI.Widget.SetCursor` | `void(obj,i64)` | `rt_widget_set_cursor` |
 | `Viper.GUI.Widget.ResetCursor` | `void(obj)` | `rt_widget_reset_cursor` |
+| `Viper.GUI.Widget.SetName` | `void(obj,str)` | `rt_widget_set_name` |
+| `Viper.GUI.Widget.GetName` | `str(obj)` | `rt_widget_get_name` |
+| `Viper.GUI.Widget.GetId` | `i64(obj)` | `rt_widget_get_id` |
+| `Viper.GUI.Widget.FindByIdOption` | `obj<Viper.Option>(obj,i64)` | `rt_widget_find_by_id_option` |
+| `Viper.GUI.Widget.FindByNameOption` | `obj<Viper.Option>(obj,str)` | `rt_widget_find_by_name_option` |
+| `Viper.GUI.Widget.HitTest` | `i1(obj,f64,f64)` | `rt_widget_hit_test` |
+| `Viper.GUI.Widget.InvalidatePaint` | `void(obj)` | `rt_widget_invalidate_paint` |
+| `Viper.GUI.Widget.InvalidateLayout` | `void(obj)` | `rt_widget_invalidate_layout` |
+| `Viper.GUI.Widget.SetAccessibleRole` | `void(obj,i64)` | `rt_widget_set_accessible_role` |
+| `Viper.GUI.Widget.GetAccessibleRole` | `i64(obj)` | `rt_widget_get_accessible_role` |
+| `Viper.GUI.Widget.SetAccessibleName` | `void(obj,str)` | `rt_widget_set_accessible_name` |
+| `Viper.GUI.Widget.GetAccessibleName` | `str(obj)` | `rt_widget_get_accessible_name` |
+| `Viper.GUI.Widget.SetAccessibleDescription` | `void(obj,str)` | `rt_widget_set_accessible_description` |
+| `Viper.GUI.Widget.GetAccessibleDescription` | `str(obj)` | `rt_widget_get_accessible_description` |
+| `Viper.GUI.Widget.SetAccessibleValue` | `void(obj,str)` | `rt_widget_set_accessible_value` |
+| `Viper.GUI.Widget.GetAccessibleValue` | `str(obj)` | `rt_widget_get_accessible_value` |
+| `Viper.GUI.Widget.SetAccessibleLabelFor` | `void(obj,obj)` | `rt_widget_set_accessible_label_for` |
+| `Viper.GUI.Widget.ClearAccessibleLabelFor` | `void(obj)` | `rt_widget_clear_accessible_label_for` |
+| `Viper.GUI.Widget.SetLiveRegion` | `void(obj,i64)` | `rt_widget_set_live_region` |
+| `Viper.GUI.Widget.GetLiveRegion` | `i64(obj)` | `rt_widget_get_live_region` |
+| `Viper.GUI.Widget.GetRevision` | `i64(obj)` | `rt_widget_get_revision` |
 | `Viper.GUI.Label.New` | `obj(obj,str)` | `rt_label_new` |
 | `Viper.GUI.Label.SetText` | `void(obj,str)` | `rt_label_set_text` |
 | `Viper.GUI.Label.SetFont` | `void(obj,obj,f64)` | `rt_label_set_font` |
 | `Viper.GUI.Label.SetColor` | `void(obj,i64)` | `rt_label_set_color` |
 | `Viper.GUI.Label.SetWordWrap` | `void(obj,i1)` | `rt_label_set_word_wrap` |
+| `Viper.GUI.Label.SetAlignment` | `void(obj,i64)` | `rt_label_set_alignment` |
+| `Viper.GUI.Label.GetAlignment` | `i64(obj)` | `rt_label_get_alignment` |
+| `Viper.GUI.Label.SetEllipsis` | `void(obj,i1)` | `rt_label_set_ellipsis` |
+| `Viper.GUI.Label.SetMaxLines` | `void(obj,i64)` | `rt_label_set_max_lines` |
+| `Viper.GUI.Label.SetSelectable` | `void(obj,i1)` | `rt_label_set_selectable` |
+| `Viper.GUI.Label.GetSelectedText` | `str(obj)` | `rt_label_get_selected_text` |
 | `Viper.GUI.Button.New` | `obj(obj,str)` | `rt_button_new` |
 | `Viper.GUI.Button.SetText` | `void(obj,str)` | `rt_button_set_text` |
 | `Viper.GUI.Button.SetFont` | `void(obj,obj,f64)` | `rt_button_set_font` |
@@ -1794,12 +2559,42 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | <a id="viper-gui-textinput-get-text"></a>`Viper.GUI.TextInput.get_Text` | `str(obj)` | `rt_textinput_get_text` |
 | `Viper.GUI.TextInput.SetPlaceholder` | `void(obj,str)` | `rt_textinput_set_placeholder` |
 | `Viper.GUI.TextInput.SetFont` | `void(obj,obj,f64)` | `rt_textinput_set_font` |
+| `Viper.GUI.TextInput.SetMaxLength` | `void(obj,i64)` | `rt_textinput_set_max_length` |
+| `Viper.GUI.TextInput.GetMaxLength` | `i64(obj)` | `rt_textinput_get_max_length` |
+| `Viper.GUI.TextInput.SetPassword` | `void(obj,i1)` | `rt_textinput_set_password` |
+| `Viper.GUI.TextInput.IsPassword` | `i1(obj)` | `rt_textinput_is_password` |
+| `Viper.GUI.TextInput.SetReadOnly` | `void(obj,i1)` | `rt_textinput_set_read_only` |
+| `Viper.GUI.TextInput.IsReadOnly` | `i1(obj)` | `rt_textinput_is_read_only` |
+| `Viper.GUI.TextInput.SetMultiline` | `void(obj,i1)` | `rt_textinput_set_multiline` |
+| `Viper.GUI.TextInput.IsMultiline` | `i1(obj)` | `rt_textinput_is_multiline` |
+| `Viper.GUI.TextInput.SetCursor` | `void(obj,i64)` | `rt_textinput_set_cursor` |
+| `Viper.GUI.TextInput.GetCursor` | `i64(obj)` | `rt_textinput_get_cursor` |
+| `Viper.GUI.TextInput.SelectRange` | `void(obj,i64,i64)` | `rt_textinput_select_range` |
+| `Viper.GUI.TextInput.ClearSelection` | `void(obj)` | `rt_textinput_clear_selection` |
+| `Viper.GUI.TextInput.GetSelectionStart` | `i64(obj)` | `rt_textinput_get_selection_start` |
+| `Viper.GUI.TextInput.GetSelectionEnd` | `i64(obj)` | `rt_textinput_get_selection_end` |
+| `Viper.GUI.TextInput.GetSelectedText` | `str(obj)` | `rt_textinput_get_selected_text` |
+| `Viper.GUI.TextInput.InsertText` | `i1(obj,str)` | `rt_textinput_insert_text` |
+| `Viper.GUI.TextInput.DeleteSelection` | `i1(obj)` | `rt_textinput_delete_selection` |
+| `Viper.GUI.TextInput.Undo` | `i1(obj)` | `rt_textinput_undo` |
+| `Viper.GUI.TextInput.Redo` | `i1(obj)` | `rt_textinput_redo` |
+| `Viper.GUI.TextInput.CanUndo` | `i1(obj)` | `rt_textinput_can_undo` |
+| `Viper.GUI.TextInput.CanRedo` | `i1(obj)` | `rt_textinput_can_redo` |
+| `Viper.GUI.TextInput.WasChanged` | `i1(obj)` | `rt_textinput_was_changed` |
+| `Viper.GUI.TextInput.WasSubmitted` | `i1(obj)` | `rt_textinput_was_submitted` |
+| `Viper.GUI.TextInput.GetRevision` | `i64(obj)` | `rt_textinput_get_revision` |
+| `Viper.GUI.TextInput.IsComposing` | `i1(obj)` | `rt_textinput_is_composing` |
+| `Viper.GUI.TextInput.GetCompositionText` | `str(obj)` | `rt_textinput_get_composition_text` |
+| `Viper.GUI.TextInput.GetCompositionStart` | `i64(obj)` | `rt_textinput_get_composition_start` |
+| `Viper.GUI.TextInput.GetCompositionLength` | `i64(obj)` | `rt_textinput_get_composition_length` |
 | `Viper.GUI.Checkbox.New` | `obj(obj,str)` | `rt_checkbox_new` |
 | `Viper.GUI.Checkbox.SetChecked` | `void(obj,i1)` | `rt_checkbox_set_checked` |
 | `Viper.GUI.Checkbox.IsChecked` | `i1(obj)` | `rt_checkbox_is_checked` |
 | `Viper.GUI.Checkbox.SetText` | `void(obj,str)` | `rt_checkbox_set_text` |
 | `Viper.GUI.Checkbox.SetIndeterminate` | `void(obj,i1)` | `rt_checkbox_set_indeterminate` |
 | `Viper.GUI.Checkbox.IsIndeterminate` | `i1(obj)` | `rt_checkbox_is_indeterminate` |
+| `Viper.GUI.Checkbox.WasChanged` | `i1(obj)` | `rt_checkbox_was_changed` |
+| `Viper.GUI.Checkbox.GetRevision` | `i64(obj)` | `rt_checkbox_get_revision` |
 | `Viper.GUI.ScrollView.New` | `obj(obj)` | `rt_scrollview_new` |
 | `Viper.GUI.ScrollView.SetScroll` | `void(obj,f64,f64)` | `rt_scrollview_set_scroll` |
 | `Viper.GUI.ScrollView.SetContentSize` | `void(obj,f64,f64)` | `rt_scrollview_set_content_size` |
@@ -1812,11 +2607,19 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.TreeView.PruneRetiredNodes` | `void(obj)` | `rt_treeview_prune_retired_nodes` |
 | `Viper.GUI.TreeView.Expand` | `void(obj,obj)` | `rt_treeview_expand` |
 | `Viper.GUI.TreeView.Collapse` | `void(obj,obj)` | `rt_treeview_collapse` |
+| `Viper.GUI.TreeView.Toggle` | `void(obj,obj)` | `rt_treeview_toggle` |
 | `Viper.GUI.TreeView.Select` | `void(obj,obj)` | `rt_treeview_select` |
+| `Viper.GUI.TreeView.ScrollTo` | `void(obj,obj)` | `rt_treeview_scroll_to` |
 | `Viper.GUI.TreeView.SetFont` | `void(obj,obj,f64)` | `rt_treeview_set_font` |
 | `Viper.GUI.TreeView.GetSelected` | `obj(obj)` | `rt_treeview_get_selected` |
 | `Viper.GUI.TreeView.GetNodeAt` | `obj(obj,i64,i64)` | `rt_treeview_get_node_at` |
 | `Viper.GUI.TreeView.WasSelectionChanged` | `i1(obj)` | `rt_treeview_was_selection_changed` |
+| `Viper.GUI.TreeView.WasChanged` | `i1(obj)` | `rt_treeview_was_changed` |
+| `Viper.GUI.TreeView.WasActivated` | `i1(obj)` | `rt_treeview_was_activated` |
+| `Viper.GUI.TreeView.WasLoadChildrenRequested` | `i1(obj)` | `rt_treeview_was_load_children_requested` |
+| `Viper.GUI.TreeView.GetLoadRequestedNodeOption` | `obj<Viper.Option>(obj)` | `rt_treeview_get_load_requested_node_option` |
+| `Viper.GUI.TreeView.GetActivatedNodeOption` | `obj<Viper.Option>(obj)` | `rt_treeview_get_activated_node_option` |
+| `Viper.GUI.TreeView.GetRevision` | `i64(obj)` | `rt_treeview_get_revision` |
 | `Viper.GUI.TreeView.SetDragDropEnabled` | `void(obj,i1)` | `rt_treeview_set_drag_drop_enabled` |
 | `Viper.GUI.TreeView.WasDropReceived` | `i1(obj)` | `rt_treeview_was_drop_received` |
 | `Viper.GUI.TreeView.GetDropSourceData` | `str(obj)` | `rt_treeview_get_drop_source_data` |
@@ -1824,6 +2627,15 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.TreeView.GetDropPosition` | `i64(obj)` | `rt_treeview_get_drop_position` |
 | `Viper.GUI.TreeView.ClearDrop` | `void(obj)` | `rt_treeview_clear_drop` |
 | `Viper.GUI.TreeView.Node.GetText` | `str(obj)` | `rt_treeview_node_get_text` |
+| `Viper.GUI.TreeView.Node.SetText` | `void(obj,str)` | `rt_treeview_node_set_text` |
+| `Viper.GUI.TreeView.Node.SetIcon` | `void(obj,str)` | `rt_treeview_node_set_icon` |
+| `Viper.GUI.TreeView.Node.GetIcon` | `str(obj)` | `rt_treeview_node_get_icon` |
+| `Viper.GUI.TreeView.Node.SetHasChildren` | `void(obj,i1)` | `rt_treeview_node_set_has_children` |
+| `Viper.GUI.TreeView.Node.HasChildren` | `i1(obj)` | `rt_treeview_node_has_children` |
+| `Viper.GUI.TreeView.Node.SetLoading` | `void(obj,i1)` | `rt_treeview_node_set_loading` |
+| `Viper.GUI.TreeView.Node.IsLoading` | `i1(obj)` | `rt_treeview_node_is_loading` |
+| `Viper.GUI.TreeView.Node.SetStableId` | `void(obj,str)` | `rt_treeview_node_set_stable_id` |
+| `Viper.GUI.TreeView.Node.GetStableId` | `str(obj)` | `rt_treeview_node_get_stable_id` |
 | `Viper.GUI.TreeView.Node.SetData` | `void(obj,str)` | `rt_treeview_node_set_data` |
 | `Viper.GUI.TreeView.Node.GetData` | `str(obj)` | `rt_treeview_node_get_data` |
 | `Viper.GUI.TreeView.Node.IsExpanded` | `i1(obj)` | `rt_treeview_node_is_expanded` |
@@ -1835,18 +2647,40 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.TabBar.GetActive` | `obj(obj)` | `rt_tabbar_get_active` |
 | `Viper.GUI.TabBar.GetActiveIndex` | `i64(obj)` | `rt_tabbar_get_active_index` |
 | `Viper.GUI.TabBar.WasChanged` | `i1(obj)` | `rt_tabbar_was_changed` |
+| `Viper.GUI.TabBar.GetRevision` | `i64(obj)` | `rt_tabbar_get_revision` |
 | <a id="viper-gui-tabbar-get-tabcount"></a>`Viper.GUI.TabBar.get_TabCount` | `i64(obj)` | `rt_tabbar_get_tab_count` |
 | `Viper.GUI.TabBar.WasCloseClicked` | `i1(obj)` | `rt_tabbar_was_close_clicked` |
 | `Viper.GUI.TabBar.GetCloseClickedIndex` | `i64(obj)` | `rt_tabbar_get_close_clicked_index` |
 | `Viper.GUI.TabBar.GetTabAt` | `obj<Viper.GUI.Tab>(obj,i64)` | `rt_tabbar_get_tab_at` |
 | `Viper.GUI.TabBar.GetTabIndexAt` | `i64(obj,i64,i64)` | `rt_tabbar_get_tab_index_at` |
 | `Viper.GUI.TabBar.SetAutoClose` | `void(obj,i1)` | `rt_tabbar_set_auto_close` |
+| `Viper.GUI.TabBar.SetFont` | `void(obj,obj,f64)` | `rt_tabbar_set_font` |
+| `Viper.GUI.TabBar.WasReordered` | `i1(obj)` | `rt_tabbar_was_reordered` |
+| `Viper.GUI.TabBar.GetReorderedFrom` | `i64(obj)` | `rt_tabbar_get_reordered_from` |
+| `Viper.GUI.TabBar.GetReorderedTo` | `i64(obj)` | `rt_tabbar_get_reordered_to` |
+| `Viper.GUI.TabBar.MoveTab` | `i1(obj,i64,i64)` | `rt_tabbar_move_tab` |
 | `Viper.GUI.Tab.SetTitle` | `void(obj,str)` | `rt_tab_set_title` |
+| `Viper.GUI.Tab.GetTitle` | `str(obj)` | `rt_tab_get_title` |
+| `Viper.GUI.Tab.SetData` | `void(obj,str)` | `rt_tab_set_data` |
+| `Viper.GUI.Tab.GetData` | `str(obj)` | `rt_tab_get_data` |
+| `Viper.GUI.Tab.SetClosable` | `void(obj,i1)` | `rt_tab_set_closable` |
+| `Viper.GUI.Tab.IsClosable` | `i1(obj)` | `rt_tab_is_closable` |
+| `Viper.GUI.Tab.SetStableId` | `void(obj,str)` | `rt_tab_set_stable_id` |
+| `Viper.GUI.Tab.GetStableId` | `str(obj)` | `rt_tab_get_stable_id` |
 | `Viper.GUI.Tab.SetTooltip` | `void(obj,str)` | `rt_tab_set_tooltip` |
 | `Viper.GUI.Tab.SetModified` | `void(obj,i1)` | `rt_tab_set_modified` |
 | `Viper.GUI.SplitPane.New` | `obj(obj,i64)` | `rt_splitpane_new` |
 | `Viper.GUI.SplitPane.SetPosition` | `void(obj,f64)` | `rt_splitpane_set_position` |
 | `Viper.GUI.SplitPane.GetPosition` | `f64(obj)` | `rt_splitpane_get_position` |
+| `Viper.GUI.SplitPane.SetMinFirst` | `void(obj,f64)` | `rt_splitpane_set_min_first` |
+| `Viper.GUI.SplitPane.SetMinSecond` | `void(obj,f64)` | `rt_splitpane_set_min_second` |
+| `Viper.GUI.SplitPane.GetMinFirst` | `f64(obj)` | `rt_splitpane_get_min_first` |
+| `Viper.GUI.SplitPane.GetMinSecond` | `f64(obj)` | `rt_splitpane_get_min_second` |
+| `Viper.GUI.SplitPane.GetOrientation` | `i64(obj)` | `rt_splitpane_get_orientation` |
+| `Viper.GUI.SplitPane.CollapseFirst` | `void(obj)` | `rt_splitpane_collapse_first` |
+| `Viper.GUI.SplitPane.CollapseSecond` | `void(obj)` | `rt_splitpane_collapse_second` |
+| `Viper.GUI.SplitPane.Restore` | `void(obj)` | `rt_splitpane_restore` |
+| `Viper.GUI.SplitPane.GetCollapsedSide` | `i64(obj)` | `rt_splitpane_get_collapsed_side` |
 | <a id="viper-gui-splitpane-get-first"></a>`Viper.GUI.SplitPane.get_First` | `obj<Viper.GUI.Widget>(obj)` | `rt_splitpane_get_first` |
 | <a id="viper-gui-splitpane-get-second"></a>`Viper.GUI.SplitPane.get_Second` | `obj<Viper.GUI.Widget>(obj)` | `rt_splitpane_get_second` |
 | `Viper.GUI.CodeEditor.New` | `obj(obj)` | `rt_codeeditor_new` |
@@ -1875,11 +2709,15 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | <a id="viper-gui-dropdown-get-selected"></a>`Viper.GUI.Dropdown.get_Selected` | `i64(obj)` | `rt_dropdown_get_selected` |
 | <a id="viper-gui-dropdown-get-selectedtext"></a>`Viper.GUI.Dropdown.get_SelectedText` | `str(obj)` | `rt_dropdown_get_selected_text` |
 | `Viper.GUI.Dropdown.SetPlaceholder` | `void(obj,str)` | `rt_dropdown_set_placeholder` |
+| `Viper.GUI.Dropdown.WasChanged` | `i1(obj)` | `rt_dropdown_was_changed` |
+| `Viper.GUI.Dropdown.GetRevision` | `i64(obj)` | `rt_dropdown_get_revision` |
 | `Viper.GUI.Slider.New` | `obj(obj,i64)` | `rt_slider_new` |
 | `Viper.GUI.Slider.SetValue` | `void(obj,f64)` | `rt_slider_set_value` |
 | <a id="viper-gui-slider-get-value"></a>`Viper.GUI.Slider.get_Value` | `f64(obj)` | `rt_slider_get_value` |
 | `Viper.GUI.Slider.SetRange` | `void(obj,f64,f64)` | `rt_slider_set_range` |
 | `Viper.GUI.Slider.SetStep` | `void(obj,f64)` | `rt_slider_set_step` |
+| `Viper.GUI.Slider.WasChanged` | `i1(obj)` | `rt_slider_was_changed` |
+| `Viper.GUI.Slider.GetRevision` | `i64(obj)` | `rt_slider_get_revision` |
 | `Viper.GUI.ProgressBar.New` | `obj(obj)` | `rt_progressbar_new` |
 | `Viper.GUI.ProgressBar.SetValue` | `void(obj,f64)` | `rt_progressbar_set_value` |
 | <a id="viper-gui-progressbar-get-value"></a>`Viper.GUI.ProgressBar.get_Value` | `f64(obj)` | `rt_progressbar_get_value` |
@@ -1899,6 +2737,9 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.ListBox.SetMultiSelect` | `void(obj,i1)` | `rt_listbox_set_multi_select` |
 | `Viper.GUI.ListBox.GetSelectedText` | `str(obj)` | `rt_listbox_get_selected_text` |
 | `Viper.GUI.ListBox.WasSelectionChanged` | `i1(obj)` | `rt_listbox_was_selection_changed` |
+| `Viper.GUI.ListBox.WasChanged` | `i1(obj)` | `rt_listbox_was_changed` |
+| `Viper.GUI.ListBox.WasActivated` | `i1(obj)` | `rt_listbox_was_activated` |
+| `Viper.GUI.ListBox.GetRevision` | `i64(obj)` | `rt_listbox_get_revision` |
 | `Viper.GUI.ListBox.ItemGetText` | `str(obj)` | `rt_listbox_item_get_text` |
 | `Viper.GUI.ListBox.ItemSetText` | `void(obj,str)` | `rt_listbox_item_set_text` |
 | `Viper.GUI.ListBox.ItemGetData` | `str(obj)` | `rt_listbox_item_get_data` |
@@ -1935,6 +2776,35 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.Grid.GetColumnWidth` | `i64(obj,i64)` | `rt_datagrid_get_column_width` |
 | <a id="viper-gui-grid-get-rowcount"></a>`Viper.GUI.Grid.get_RowCount` | `i64(obj)` | `rt_datagrid_get_row_count` |
 | <a id="viper-gui-grid-get-columncount"></a>`Viper.GUI.Grid.get_ColumnCount` | `i64(obj)` | `rt_datagrid_get_column_count` |
+| `Viper.GUI.Grid.SetViewportRows` | `void(obj,i64,i64)` | `rt_datagrid_set_viewport_rows` |
+| `Viper.GUI.Grid.SetVirtualRowCount` | `void(obj,i64)` | `rt_datagrid_set_virtual_row_count` |
+| `Viper.GUI.Grid.SetVirtualCell` | `void(obj,i64,i64,str)` | `rt_datagrid_set_virtual_cell` |
+| `Viper.GUI.Grid.SetSelectable` | `void(obj,i1)` | `rt_datagrid_set_selectable` |
+| `Viper.GUI.Grid.GetSelectedRow` | `i64(obj)` | `rt_datagrid_get_selected_row` |
+| `Viper.GUI.Grid.GetSelectedColumn` | `i64(obj)` | `rt_datagrid_get_selected_column` |
+| `Viper.GUI.Grid.SelectCell` | `i1(obj,i64,i64)` | `rt_datagrid_select_cell` |
+| `Viper.GUI.Grid.ClearSelection` | `void(obj)` | `rt_datagrid_clear_selection` |
+| `Viper.GUI.Grid.WasSelectionChanged` | `i1(obj)` | `rt_datagrid_was_selection_changed` |
+| `Viper.GUI.Grid.WasActivated` | `i1(obj)` | `rt_datagrid_was_activated` |
+| `Viper.GUI.Grid.SetSortable` | `void(obj,i64,i1)` | `rt_datagrid_set_sortable` |
+| `Viper.GUI.Grid.SetSort` | `void(obj,i64,i64)` | `rt_datagrid_set_sort` |
+| `Viper.GUI.Grid.GetSortColumn` | `i64(obj)` | `rt_datagrid_get_sort_column` |
+| `Viper.GUI.Grid.GetSortDirection` | `i64(obj)` | `rt_datagrid_get_sort_direction` |
+| `Viper.GUI.Grid.WasSortChanged` | `i1(obj)` | `rt_datagrid_was_sort_changed` |
+| `Viper.GUI.Grid.SetColumnWidth` | `void(obj,i64,f64)` | `rt_datagrid_set_column_width` |
+| `Viper.GUI.Grid.SetColumnResizable` | `void(obj,i64,i1)` | `rt_datagrid_set_column_resizable` |
+| `Viper.GUI.Grid.WasColumnResized` | `i1(obj)` | `rt_datagrid_was_column_resized` |
+| `Viper.GUI.Grid.GetResizedColumn` | `i64(obj)` | `rt_datagrid_get_resized_column` |
+| `Viper.GUI.Grid.SetEditable` | `void(obj,i1)` | `rt_datagrid_set_editable` |
+| `Viper.GUI.Grid.BeginEdit` | `i1(obj,i64,i64)` | `rt_datagrid_begin_edit` |
+| `Viper.GUI.Grid.CommitEdit` | `i1(obj,str)` | `rt_datagrid_commit_edit` |
+| `Viper.GUI.Grid.CancelEdit` | `void(obj)` | `rt_datagrid_cancel_edit` |
+| `Viper.GUI.Grid.IsEditing` | `i1(obj)` | `rt_datagrid_is_editing` |
+| `Viper.GUI.Grid.WasCellEdited` | `i1(obj)` | `rt_datagrid_was_cell_edited` |
+| `Viper.GUI.Grid.ScrollToRow` | `void(obj,i64)` | `rt_datagrid_scroll_to_row` |
+| `Viper.GUI.Grid.GetScrollRow` | `i64(obj)` | `rt_datagrid_get_scroll_row` |
+| `Viper.GUI.Grid.WasChanged` | `i1(obj)` | `rt_datagrid_was_changed` |
+| `Viper.GUI.Grid.GetRevision` | `i64(obj)` | `rt_datagrid_get_revision` |
 | `Viper.GUI.PopupList.New` | `obj(obj)` | `rt_popuplist_new` |
 | `Viper.GUI.PopupList.AddItem` | `void(obj,str)` | `rt_popuplist_add_item` |
 | `Viper.GUI.PopupList.Clear` | `void(obj)` | `rt_popuplist_clear` |
@@ -1955,29 +2825,198 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.PopupList.IsVisible` | `i1(obj)` | `rt_popuplist_is_visible` |
 | `Viper.GUI.RadioGroup.New` | `obj()` | `rt_radiogroup_new` |
 | `Viper.GUI.RadioGroup.Destroy` | `void(obj)` | `rt_radiogroup_destroy` |
+| `Viper.GUI.RadioGroup.GetSelectedIndex` | `i64(obj)` | `rt_radiogroup_get_selected_index` |
+| `Viper.GUI.RadioGroup.SetSelectedIndex` | `i1(obj,i64)` | `rt_radiogroup_set_selected_index` |
+| `Viper.GUI.RadioGroup.GetCount` | `i64(obj)` | `rt_radiogroup_get_count` |
+| `Viper.GUI.RadioGroup.WasChanged` | `i1(obj)` | `rt_radiogroup_was_changed` |
+| `Viper.GUI.RadioGroup.GetRevision` | `i64(obj)` | `rt_radiogroup_get_revision` |
 | `Viper.GUI.RadioButton.New` | `obj(obj,str,obj)` | `rt_radiobutton_new` |
 | `Viper.GUI.RadioButton.IsSelected` | `i1(obj)` | `rt_radiobutton_is_selected` |
 | `Viper.GUI.RadioButton.SetSelected` | `void(obj,i1)` | `rt_radiobutton_set_selected` |
+| `Viper.GUI.RadioButton.SetText` | `void(obj,str)` | `rt_radiobutton_set_text` |
+| `Viper.GUI.RadioButton.GetText` | `str(obj)` | `rt_radiobutton_get_text` |
+| `Viper.GUI.RadioButton.SetData` | `void(obj,str)` | `rt_radiobutton_set_data` |
+| `Viper.GUI.RadioButton.GetData` | `str(obj)` | `rt_radiobutton_get_data` |
+| `Viper.GUI.RadioButton.WasChanged` | `i1(obj)` | `rt_radiobutton_was_changed` |
+| `Viper.GUI.RadioButton.GetRevision` | `i64(obj)` | `rt_radiobutton_get_revision` |
 | `Viper.GUI.Spinner.New` | `obj(obj)` | `rt_spinner_new` |
 | `Viper.GUI.Spinner.SetValue` | `void(obj,f64)` | `rt_spinner_set_value` |
 | <a id="viper-gui-spinner-get-value"></a>`Viper.GUI.Spinner.get_Value` | `f64(obj)` | `rt_spinner_get_value` |
 | `Viper.GUI.Spinner.SetRange` | `void(obj,f64,f64)` | `rt_spinner_set_range` |
 | `Viper.GUI.Spinner.SetStep` | `void(obj,f64)` | `rt_spinner_set_step` |
 | `Viper.GUI.Spinner.SetDecimals` | `void(obj,i64)` | `rt_spinner_set_decimals` |
+| `Viper.GUI.Spinner.WasChanged` | `i1(obj)` | `rt_spinner_was_changed` |
+| `Viper.GUI.Spinner.WasSubmitted` | `i1(obj)` | `rt_spinner_was_submitted` |
+| `Viper.GUI.Spinner.GetRevision` | `i64(obj)` | `rt_spinner_get_revision` |
+| `Viper.GUI.ColorSwatch.New` | `obj(obj,i64)` | `rt_colorswatch_new` |
+| `Viper.GUI.ColorSwatch.SetColor` | `void(obj,i64)` | `rt_colorswatch_set_color` |
+| `Viper.GUI.ColorSwatch.GetColor` | `i64(obj)` | `rt_colorswatch_get_color` |
+| `Viper.GUI.ColorSwatch.SetSelected` | `void(obj,i1)` | `rt_colorswatch_set_selected` |
+| `Viper.GUI.ColorSwatch.IsSelected` | `i1(obj)` | `rt_colorswatch_is_selected` |
+| `Viper.GUI.ColorSwatch.WasChanged` | `i1(obj)` | `rt_colorswatch_was_changed` |
+| `Viper.GUI.ColorSwatch.GetRevision` | `i64(obj)` | `rt_colorswatch_get_revision` |
+| `Viper.GUI.ColorPalette.New` | `obj(obj)` | `rt_colorpalette_new` |
+| `Viper.GUI.ColorPalette.AddColor` | `void(obj,i64)` | `rt_colorpalette_add_color` |
+| `Viper.GUI.ColorPalette.RemoveColor` | `i1(obj,i64)` | `rt_colorpalette_remove_color` |
+| `Viper.GUI.ColorPalette.Clear` | `void(obj)` | `rt_colorpalette_clear` |
+| `Viper.GUI.ColorPalette.GetColorCount` | `i64(obj)` | `rt_colorpalette_get_color_count` |
+| `Viper.GUI.ColorPalette.GetColorAt` | `i64(obj,i64)` | `rt_colorpalette_get_color_at` |
+| `Viper.GUI.ColorPalette.SetSelectedIndex` | `void(obj,i64)` | `rt_colorpalette_set_selected_index` |
+| `Viper.GUI.ColorPalette.GetSelectedIndex` | `i64(obj)` | `rt_colorpalette_get_selected_index` |
+| `Viper.GUI.ColorPalette.WasChanged` | `i1(obj)` | `rt_colorpalette_was_changed` |
+| `Viper.GUI.ColorPalette.GetRevision` | `i64(obj)` | `rt_colorpalette_get_revision` |
+| `Viper.GUI.ColorPicker.New` | `obj(obj)` | `rt_colorpicker_new` |
+| `Viper.GUI.ColorPicker.SetColor` | `void(obj,i64)` | `rt_colorpicker_set_color` |
+| `Viper.GUI.ColorPicker.GetColor` | `i64(obj)` | `rt_colorpicker_get_color` |
+| `Viper.GUI.ColorPicker.SetAlphaEnabled` | `void(obj,i1)` | `rt_colorpicker_set_alpha_enabled` |
+| `Viper.GUI.ColorPicker.IsAlphaEnabled` | `i1(obj)` | `rt_colorpicker_is_alpha_enabled` |
+| `Viper.GUI.ColorPicker.GetRed` | `i64(obj)` | `rt_colorpicker_get_red` |
+| `Viper.GUI.ColorPicker.GetGreen` | `i64(obj)` | `rt_colorpicker_get_green` |
+| `Viper.GUI.ColorPicker.GetBlue` | `i64(obj)` | `rt_colorpicker_get_blue` |
+| `Viper.GUI.ColorPicker.GetAlpha` | `i64(obj)` | `rt_colorpicker_get_alpha` |
+| `Viper.GUI.ColorPicker.WasChanged` | `i1(obj)` | `rt_colorpicker_was_changed` |
+| `Viper.GUI.ColorPicker.GetRevision` | `i64(obj)` | `rt_colorpicker_get_revision` |
 | `Viper.GUI.Image.New` | `obj(obj)` | `rt_image_new` |
 | `Viper.GUI.Image.SetPixels` | `void(obj,obj,i64,i64)` | `rt_image_set_pixels` |
+| `Viper.GUI.Image.TrySetPixels` | `i1(obj,obj,i64,i64)` | `rt_image_try_set_pixels` |
+| `Viper.GUI.Image.UpdateRegion` | `i1(obj,obj,i64,i64,i64,i64,i64,i64)` | `rt_image_update_region` |
 | `Viper.GUI.Image.Clear` | `void(obj)` | `rt_image_clear` |
 | `Viper.GUI.Image.SetScaleMode` | `void(obj,i64)` | `rt_image_set_scale_mode` |
+| `Viper.GUI.Image.SetFilter` | `void(obj,i64)` | `rt_image_set_filter` |
+| `Viper.GUI.Image.GetFilter` | `i64(obj)` | `rt_image_get_filter` |
 | `Viper.GUI.Image.SetOpacity` | `void(obj,f64)` | `rt_image_set_opacity` |
 | `Viper.GUI.Image.LoadFile` | `i64(obj,str)` | `rt_image_load_file` |
 | `Viper.GUI.FloatingPanel.Destroy` | `void(obj)` | `rt_floatingpanel_destroy` |
 | `Viper.GUI.Theme.SetDark` | `void()` | `rt_theme_set_dark` |
 | `Viper.GUI.Theme.SetLight` | `void()` | `rt_theme_set_light` |
 | `Viper.GUI.Theme.GetName` | `str()` | `rt_theme_get_name` |
+| `Viper.GUI.Theme.SetMode` | `void(i64)` | `rt_theme_set_mode` |
+| `Viper.GUI.Theme.GetMode` | `i64()` | `rt_theme_get_mode` |
+| `Viper.GUI.Theme.FollowSystem` | `void()` | `rt_theme_follow_system` |
+| `Viper.GUI.Theme.SetPalette` | `i1(obj)` | `rt_theme_set_palette` |
+| `Viper.GUI.Theme.GetPalette` | `obj()` | `rt_theme_get_palette` |
+| `Viper.GUI.Theme.ResetCustom` | `void()` | `rt_theme_reset_custom` |
+| `Viper.GUI.Theme.WasChanged` | `i1()` | `rt_theme_was_changed` |
+| `Viper.GUI.Theme.GetRevision` | `i64()` | `rt_theme_get_revision` |
+| `Viper.GUI.ThemePalette.New` | `obj()` | `rt_theme_palette_new` |
+| `Viper.GUI.ThemePalette.FromDark` | `obj()` | `rt_theme_palette_from_dark` |
+| `Viper.GUI.ThemePalette.FromLight` | `obj()` | `rt_theme_palette_from_light` |
+| `Viper.GUI.ThemePalette.Clone` | `obj(obj)` | `rt_theme_palette_clone` |
+| `Viper.GUI.ThemePalette.SetColor` | `i1(obj,str,i64)` | `rt_theme_palette_set_color` |
+| `Viper.GUI.ThemePalette.GetColor` | `i64(obj,str)` | `rt_theme_palette_get_color` |
+| `Viper.GUI.ThemePalette.SetMetric` | `i1(obj,str,f64)` | `rt_theme_palette_set_metric` |
+| `Viper.GUI.ThemePalette.GetMetric` | `f64(obj,str)` | `rt_theme_palette_get_metric` |
+| `Viper.GUI.ThemePalette.SetMotionEnabled` | `void(obj,i1)` | `rt_theme_palette_set_motion_enabled` |
+| `Viper.GUI.ThemePalette.SetFontRoles` | `void(obj,obj,obj,obj)` | `rt_theme_palette_set_font_roles` |
+| `Viper.GUI.ThemePalette.Validate` | `obj<Viper.Result>(obj)` | `rt_theme_palette_validate` |
+| <a id="viper-gui-align-get-start"></a>`Viper.GUI.Align.get_Start` | `i64()` | `rt_gui_align_start` |
+| <a id="viper-gui-align-get-center"></a>`Viper.GUI.Align.get_Center` | `i64()` | `rt_gui_align_center` |
+| <a id="viper-gui-align-get-end"></a>`Viper.GUI.Align.get_End` | `i64()` | `rt_gui_align_end` |
+| <a id="viper-gui-align-get-stretch"></a>`Viper.GUI.Align.get_Stretch` | `i64()` | `rt_gui_align_stretch` |
+| <a id="viper-gui-justify-get-start"></a>`Viper.GUI.Justify.get_Start` | `i64()` | `rt_gui_justify_start` |
+| <a id="viper-gui-justify-get-center"></a>`Viper.GUI.Justify.get_Center` | `i64()` | `rt_gui_justify_center` |
+| <a id="viper-gui-justify-get-end"></a>`Viper.GUI.Justify.get_End` | `i64()` | `rt_gui_justify_end` |
+| <a id="viper-gui-justify-get-spacebetween"></a>`Viper.GUI.Justify.get_SpaceBetween` | `i64()` | `rt_gui_justify_space_between` |
+| <a id="viper-gui-justify-get-spacearound"></a>`Viper.GUI.Justify.get_SpaceAround` | `i64()` | `rt_gui_justify_space_around` |
+| <a id="viper-gui-justify-get-spaceevenly"></a>`Viper.GUI.Justify.get_SpaceEvenly` | `i64()` | `rt_gui_justify_space_evenly` |
+| <a id="viper-gui-flexdirection-get-row"></a>`Viper.GUI.FlexDirection.get_Row` | `i64()` | `rt_gui_flex_direction_row` |
+| <a id="viper-gui-flexdirection-get-column"></a>`Viper.GUI.FlexDirection.get_Column` | `i64()` | `rt_gui_flex_direction_column` |
+| <a id="viper-gui-flexdirection-get-rowreverse"></a>`Viper.GUI.FlexDirection.get_RowReverse` | `i64()` | `rt_gui_flex_direction_row_reverse` |
+| <a id="viper-gui-flexdirection-get-columnreverse"></a>`Viper.GUI.FlexDirection.get_ColumnReverse` | `i64()` | `rt_gui_flex_direction_column_reverse` |
+| <a id="viper-gui-flexwrap-get-nowrap"></a>`Viper.GUI.FlexWrap.get_NoWrap` | `i64()` | `rt_gui_flex_wrap_no_wrap` |
+| <a id="viper-gui-flexwrap-get-wrap"></a>`Viper.GUI.FlexWrap.get_Wrap` | `i64()` | `rt_gui_flex_wrap_wrap` |
+| <a id="viper-gui-flexwrap-get-wrapreverse"></a>`Viper.GUI.FlexWrap.get_WrapReverse` | `i64()` | `rt_gui_flex_wrap_wrap_reverse` |
+| <a id="viper-gui-dock-get-left"></a>`Viper.GUI.Dock.get_Left` | `i64()` | `rt_gui_dock_left` |
+| <a id="viper-gui-dock-get-top"></a>`Viper.GUI.Dock.get_Top` | `i64()` | `rt_gui_dock_top` |
+| <a id="viper-gui-dock-get-right"></a>`Viper.GUI.Dock.get_Right` | `i64()` | `rt_gui_dock_right` |
+| <a id="viper-gui-dock-get-bottom"></a>`Viper.GUI.Dock.get_Bottom` | `i64()` | `rt_gui_dock_bottom` |
+| <a id="viper-gui-dock-get-fill"></a>`Viper.GUI.Dock.get_Fill` | `i64()` | `rt_gui_dock_fill` |
+| <a id="viper-gui-thememode-get-dark"></a>`Viper.GUI.ThemeMode.get_Dark` | `i64()` | `rt_gui_theme_mode_dark` |
+| <a id="viper-gui-thememode-get-light"></a>`Viper.GUI.ThemeMode.get_Light` | `i64()` | `rt_gui_theme_mode_light` |
+| <a id="viper-gui-thememode-get-system"></a>`Viper.GUI.ThemeMode.get_System` | `i64()` | `rt_gui_theme_mode_system` |
+| <a id="viper-gui-thememode-get-custom"></a>`Viper.GUI.ThemeMode.get_Custom` | `i64()` | `rt_gui_theme_mode_custom` |
+| <a id="viper-gui-accessiblerole-get-none"></a>`Viper.GUI.AccessibleRole.get_None` | `i64()` | `rt_gui_accessible_role_none` |
+| <a id="viper-gui-accessiblerole-get-application"></a>`Viper.GUI.AccessibleRole.get_Application` | `i64()` | `rt_gui_accessible_role_application` |
+| <a id="viper-gui-accessiblerole-get-window"></a>`Viper.GUI.AccessibleRole.get_Window` | `i64()` | `rt_gui_accessible_role_window` |
+| <a id="viper-gui-accessiblerole-get-group"></a>`Viper.GUI.AccessibleRole.get_Group` | `i64()` | `rt_gui_accessible_role_group` |
+| <a id="viper-gui-accessiblerole-get-label"></a>`Viper.GUI.AccessibleRole.get_Label` | `i64()` | `rt_gui_accessible_role_label` |
+| <a id="viper-gui-accessiblerole-get-button"></a>`Viper.GUI.AccessibleRole.get_Button` | `i64()` | `rt_gui_accessible_role_button` |
+| <a id="viper-gui-accessiblerole-get-checkbox"></a>`Viper.GUI.AccessibleRole.get_CheckBox` | `i64()` | `rt_gui_accessible_role_check_box` |
+| <a id="viper-gui-accessiblerole-get-radiobutton"></a>`Viper.GUI.AccessibleRole.get_RadioButton` | `i64()` | `rt_gui_accessible_role_radio_button` |
+| <a id="viper-gui-accessiblerole-get-textbox"></a>`Viper.GUI.AccessibleRole.get_TextBox` | `i64()` | `rt_gui_accessible_role_text_box` |
+| <a id="viper-gui-accessiblerole-get-searchbox"></a>`Viper.GUI.AccessibleRole.get_SearchBox` | `i64()` | `rt_gui_accessible_role_search_box` |
+| <a id="viper-gui-accessiblerole-get-combobox"></a>`Viper.GUI.AccessibleRole.get_ComboBox` | `i64()` | `rt_gui_accessible_role_combo_box` |
+| <a id="viper-gui-accessiblerole-get-list"></a>`Viper.GUI.AccessibleRole.get_List` | `i64()` | `rt_gui_accessible_role_list` |
+| <a id="viper-gui-accessiblerole-get-listitem"></a>`Viper.GUI.AccessibleRole.get_ListItem` | `i64()` | `rt_gui_accessible_role_list_item` |
+| <a id="viper-gui-accessiblerole-get-tree"></a>`Viper.GUI.AccessibleRole.get_Tree` | `i64()` | `rt_gui_accessible_role_tree` |
+| <a id="viper-gui-accessiblerole-get-treeitem"></a>`Viper.GUI.AccessibleRole.get_TreeItem` | `i64()` | `rt_gui_accessible_role_tree_item` |
+| <a id="viper-gui-accessiblerole-get-tablist"></a>`Viper.GUI.AccessibleRole.get_TabList` | `i64()` | `rt_gui_accessible_role_tab_list` |
+| <a id="viper-gui-accessiblerole-get-tab"></a>`Viper.GUI.AccessibleRole.get_Tab` | `i64()` | `rt_gui_accessible_role_tab` |
+| <a id="viper-gui-accessiblerole-get-table"></a>`Viper.GUI.AccessibleRole.get_Table` | `i64()` | `rt_gui_accessible_role_table` |
+| <a id="viper-gui-accessiblerole-get-row"></a>`Viper.GUI.AccessibleRole.get_Row` | `i64()` | `rt_gui_accessible_role_row` |
+| <a id="viper-gui-accessiblerole-get-cell"></a>`Viper.GUI.AccessibleRole.get_Cell` | `i64()` | `rt_gui_accessible_role_cell` |
+| <a id="viper-gui-accessiblerole-get-slider"></a>`Viper.GUI.AccessibleRole.get_Slider` | `i64()` | `rt_gui_accessible_role_slider` |
+| <a id="viper-gui-accessiblerole-get-progressbar"></a>`Viper.GUI.AccessibleRole.get_ProgressBar` | `i64()` | `rt_gui_accessible_role_progress_bar` |
+| <a id="viper-gui-accessiblerole-get-dialog"></a>`Viper.GUI.AccessibleRole.get_Dialog` | `i64()` | `rt_gui_accessible_role_dialog` |
+| <a id="viper-gui-accessiblerole-get-alert"></a>`Viper.GUI.AccessibleRole.get_Alert` | `i64()` | `rt_gui_accessible_role_alert` |
+| <a id="viper-gui-accessiblerole-get-menu"></a>`Viper.GUI.AccessibleRole.get_Menu` | `i64()` | `rt_gui_accessible_role_menu` |
+| <a id="viper-gui-accessiblerole-get-menuitem"></a>`Viper.GUI.AccessibleRole.get_MenuItem` | `i64()` | `rt_gui_accessible_role_menu_item` |
+| <a id="viper-gui-accessiblerole-get-toolbar"></a>`Viper.GUI.AccessibleRole.get_ToolBar` | `i64()` | `rt_gui_accessible_role_tool_bar` |
+| <a id="viper-gui-accessiblerole-get-statusbar"></a>`Viper.GUI.AccessibleRole.get_StatusBar` | `i64()` | `rt_gui_accessible_role_status_bar` |
+| <a id="viper-gui-accessiblerole-get-image"></a>`Viper.GUI.AccessibleRole.get_Image` | `i64()` | `rt_gui_accessible_role_image` |
+| <a id="viper-gui-accessiblerole-get-video"></a>`Viper.GUI.AccessibleRole.get_Video` | `i64()` | `rt_gui_accessible_role_video` |
+| <a id="viper-gui-accessiblerole-get-link"></a>`Viper.GUI.AccessibleRole.get_Link` | `i64()` | `rt_gui_accessible_role_link` |
+| <a id="viper-gui-liveregionmode-get-off"></a>`Viper.GUI.LiveRegionMode.get_Off` | `i64()` | `rt_gui_live_region_mode_off` |
+| <a id="viper-gui-liveregionmode-get-polite"></a>`Viper.GUI.LiveRegionMode.get_Polite` | `i64()` | `rt_gui_live_region_mode_polite` |
+| <a id="viper-gui-liveregionmode-get-assertive"></a>`Viper.GUI.LiveRegionMode.get_Assertive` | `i64()` | `rt_gui_live_region_mode_assertive` |
+| <a id="viper-gui-dialogbuttonrole-get-normal"></a>`Viper.GUI.DialogButtonRole.get_Normal` | `i64()` | `rt_gui_dialog_button_role_normal` |
+| <a id="viper-gui-dialogbuttonrole-get-default"></a>`Viper.GUI.DialogButtonRole.get_Default` | `i64()` | `rt_gui_dialog_button_role_default` |
+| <a id="viper-gui-dialogbuttonrole-get-cancel"></a>`Viper.GUI.DialogButtonRole.get_Cancel` | `i64()` | `rt_gui_dialog_button_role_cancel` |
+| <a id="viper-gui-dialogbuttonrole-get-destructive"></a>`Viper.GUI.DialogButtonRole.get_Destructive` | `i64()` | `rt_gui_dialog_button_role_destructive` |
+| <a id="viper-gui-dialogbuttonrole-get-accept"></a>`Viper.GUI.DialogButtonRole.get_Accept` | `i64()` | `rt_gui_dialog_button_role_accept` |
+| <a id="viper-gui-dialogbuttonrole-get-reject"></a>`Viper.GUI.DialogButtonRole.get_Reject` | `i64()` | `rt_gui_dialog_button_role_reject` |
+| <a id="viper-gui-dialogbuttonrole-get-help"></a>`Viper.GUI.DialogButtonRole.get_Help` | `i64()` | `rt_gui_dialog_button_role_help` |
+| <a id="viper-gui-dialogstatus-get-idle"></a>`Viper.GUI.DialogStatus.get_Idle` | `i64()` | `rt_gui_dialog_status_idle` |
+| <a id="viper-gui-dialogstatus-get-open"></a>`Viper.GUI.DialogStatus.get_Open` | `i64()` | `rt_gui_dialog_status_open` |
+| <a id="viper-gui-dialogstatus-get-accepted"></a>`Viper.GUI.DialogStatus.get_Accepted` | `i64()` | `rt_gui_dialog_status_accepted` |
+| <a id="viper-gui-dialogstatus-get-cancelled"></a>`Viper.GUI.DialogStatus.get_Cancelled` | `i64()` | `rt_gui_dialog_status_cancelled` |
+| <a id="viper-gui-dialogstatus-get-failed"></a>`Viper.GUI.DialogStatus.get_Failed` | `i64()` | `rt_gui_dialog_status_failed` |
+| <a id="viper-gui-imagefilter-get-nearest"></a>`Viper.GUI.ImageFilter.get_Nearest` | `i64()` | `rt_gui_image_filter_nearest` |
+| <a id="viper-gui-imagefilter-get-bilinear"></a>`Viper.GUI.ImageFilter.get_Bilinear` | `i64()` | `rt_gui_image_filter_bilinear` |
+| <a id="viper-gui-sortdirection-get-none"></a>`Viper.GUI.SortDirection.get_None` | `i64()` | `rt_gui_sort_direction_none` |
+| <a id="viper-gui-sortdirection-get-ascending"></a>`Viper.GUI.SortDirection.get_Ascending` | `i64()` | `rt_gui_sort_direction_ascending` |
+| <a id="viper-gui-sortdirection-get-descending"></a>`Viper.GUI.SortDirection.get_Descending` | `i64()` | `rt_gui_sort_direction_descending` |
 | `Viper.GUI.VBox.New` | `obj()` | `rt_vbox_new` |
 | `Viper.GUI.HBox.New` | `obj()` | `rt_hbox_new` |
 | `Viper.GUI.Container.SetSpacing` | `void(obj,f64)` | `rt_container_set_spacing` |
 | `Viper.GUI.Container.SetPadding` | `void(obj,f64)` | `rt_container_set_padding` |
+| `Viper.GUI.VBox.SetAlign` | `void(obj,i64)` | `rt_vbox_set_align` |
+| `Viper.GUI.VBox.GetAlign` | `i64(obj)` | `rt_vbox_get_align` |
+| `Viper.GUI.VBox.SetJustify` | `void(obj,i64)` | `rt_vbox_set_justify` |
+| `Viper.GUI.VBox.GetJustify` | `i64(obj)` | `rt_vbox_get_justify` |
+| `Viper.GUI.HBox.SetAlign` | `void(obj,i64)` | `rt_hbox_set_align` |
+| `Viper.GUI.HBox.GetAlign` | `i64(obj)` | `rt_hbox_get_align` |
+| `Viper.GUI.HBox.SetJustify` | `void(obj,i64)` | `rt_hbox_set_justify` |
+| `Viper.GUI.HBox.GetJustify` | `i64(obj)` | `rt_hbox_get_justify` |
+| `Viper.GUI.Flex.New` | `obj()` | `rt_flex_new` |
+| `Viper.GUI.Flex.SetDirection` | `void(obj,i64)` | `rt_flex_set_direction` |
+| `Viper.GUI.Flex.SetWrap` | `void(obj,i64)` | `rt_flex_set_wrap` |
+| `Viper.GUI.Flex.SetAlign` | `void(obj,i64)` | `rt_flex_set_align` |
+| `Viper.GUI.Flex.SetJustify` | `void(obj,i64)` | `rt_flex_set_justify` |
+| `Viper.GUI.Flex.SetGap` | `void(obj,f64)` | `rt_flex_set_gap` |
+| `Viper.GUI.Flex.SetPadding` | `void(obj,f64)` | `rt_flex_set_padding` |
+| `Viper.GUI.LayoutGrid.New` | `obj()` | `rt_layoutgrid_new` |
+| `Viper.GUI.LayoutGrid.SetRows` | `void(obj,i64)` | `rt_layoutgrid_set_rows` |
+| `Viper.GUI.LayoutGrid.SetColumns` | `void(obj,i64)` | `rt_layoutgrid_set_columns` |
+| `Viper.GUI.LayoutGrid.SetRowSize` | `void(obj,i64,f64)` | `rt_layoutgrid_set_row_size` |
+| `Viper.GUI.LayoutGrid.SetColumnSize` | `void(obj,i64,f64)` | `rt_layoutgrid_set_column_size` |
+| `Viper.GUI.LayoutGrid.SetGap` | `void(obj,f64,f64)` | `rt_layoutgrid_set_gap` |
+| `Viper.GUI.LayoutGrid.SetPadding` | `void(obj,f64)` | `rt_layoutgrid_set_padding` |
+| `Viper.GUI.LayoutGrid.Place` | `i1(obj,obj,i64,i64,i64,i64)` | `rt_layoutgrid_place` |
+| `Viper.GUI.DockPanel.New` | `obj()` | `rt_dockpanel_new` |
+| `Viper.GUI.DockPanel.SetPadding` | `void(obj,f64)` | `rt_dockpanel_set_padding` |
+| `Viper.GUI.DockPanel.SetGap` | `void(obj,f64)` | `rt_dockpanel_set_gap` |
+| `Viper.GUI.DockPanel.DockChild` | `i1(obj,obj,i64)` | `rt_dockpanel_dock_child` |
 | `Viper.GUI.ClipboardText.SetText` | `void(str)` | `rt_clipboard_set_text` |
 | `Viper.GUI.ClipboardText.GetText` | `str()` | `rt_clipboard_get_text` |
 | `Viper.GUI.ClipboardText.HasText` | `i1()` | `rt_clipboard_has_text` |
@@ -2106,7 +3145,7 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.CodeEditor.SetGutterBar` | `void(obj,i64,i64,i64)` | `rt_codeeditor_set_gutter_bar` |
 | `Viper.GUI.CodeEditor.ClearGutterIcons` | `void(obj,i64)` | `rt_codeeditor_clear_all_gutter_icons` |
 | `Viper.GUI.CodeEditor.WasGutterClicked` | `i1(obj)` | `rt_codeeditor_was_gutter_clicked` |
-| `Viper.GUI.CodeEditor.TakeGutterClick` | `obj(obj)` | `rt_codeeditor_take_gutter_click` |
+| `Viper.GUI.CodeEditor.TakeGutterClick` | `obj<Viper.Collections.Map>(obj)` | `rt_codeeditor_take_gutter_click` |
 | `Viper.GUI.CodeEditor.GetGutterClickLine` | `i64(obj)` | `rt_codeeditor_get_gutter_clicked_line` |
 | `Viper.GUI.CodeEditor.GetGutterClickSlot` | `i64(obj)` | `rt_codeeditor_get_gutter_clicked_slot` |
 | `Viper.GUI.CodeEditor.AddFoldRegion` | `void(obj,i64,i64)` | `rt_codeeditor_add_fold_region` |
@@ -2174,6 +3213,7 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.CodeEditor.SetCursorPositionAt` | `void(obj,i64,i64,i64)` | `rt_codeeditor_set_cursor_position_at` |
 | `Viper.GUI.CodeEditor.SetCursorSelection` | `void(obj,i64,i64,i64,i64,i64)` | `rt_codeeditor_set_cursor_selection` |
 | `Viper.GUI.CodeEditor.ResetPerfStats` | `void(obj)` | `rt_codeeditor_reset_perf_stats` |
+| `Viper.GUI.CodeEditor.GetPerfStats` | `obj<Viper.Collections.Map>(obj)` | `rt_codeeditor_get_perf_stats` |
 | `Viper.GUI.CodeEditor.GetFullTextCopyCount` | `i64(obj)` | `rt_codeeditor_get_full_text_copy_count` |
 | `Viper.GUI.CodeEditor.GetLayoutLinearScanCount` | `i64(obj)` | `rt_codeeditor_get_layout_linear_scan_count` |
 | `Viper.GUI.CodeEditor.GetSyntaxHighlightCallCount` | `i64(obj)` | `rt_codeeditor_get_syntax_highlight_call_count` |
@@ -2196,21 +3236,35 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.MessageBox.Question` | `i64(str,str)` | `rt_messagebox_question` |
 | `Viper.GUI.MessageBox.Confirm` | `i64(str,str)` | `rt_messagebox_confirm` |
 | `Viper.GUI.MessageBox.Prompt` | `str(str,str)` | `rt_messagebox_prompt` |
+| `Viper.GUI.MessageBox.PromptOption` | `obj<Viper.Option>(str,str)` | `rt_messagebox_prompt_option` |
 | `Viper.GUI.MessageBox.New` | `obj(str,str,i64)` | `rt_messagebox_new` |
 | `Viper.GUI.MessageBox.NewInfo` | `obj(str,str)` | `rt_messagebox_new_info` |
 | `Viper.GUI.MessageBox.NewWarning` | `obj(str,str)` | `rt_messagebox_new_warning` |
 | `Viper.GUI.MessageBox.NewError` | `obj(str,str)` | `rt_messagebox_new_error` |
 | `Viper.GUI.MessageBox.NewQuestion` | `obj(str,str)` | `rt_messagebox_new_question` |
 | `Viper.GUI.MessageBox.AddButton` | `void(obj,str,i64)` | `rt_messagebox_add_button` |
-| `Viper.GUI.MessageBox.SetDefaultButton` | `void(obj,i64)` | `rt_messagebox_set_default_button` |
+| `Viper.GUI.MessageBox.AddButtonWithRole` | `void(obj,str,i64,i64)` | `rt_messagebox_add_button_with_role` |
+| `Viper.GUI.MessageBox.SetButtonRole` | `i1(obj,i64,i64)` | `rt_messagebox_set_button_role` |
+| `Viper.GUI.MessageBox.SetCancelButton` | `i1(obj,i64)` | `rt_messagebox_set_cancel_button` |
+| `Viper.GUI.MessageBox.SetDefaultButton` | `i1(obj,i64)` | `rt_messagebox_set_default_button` |
+| `Viper.GUI.MessageBox.ShowAsync` | `i1(obj)` | `rt_messagebox_show_async` |
+| `Viper.GUI.MessageBox.IsOpen` | `i1(obj)` | `rt_messagebox_is_open` |
+| `Viper.GUI.MessageBox.WasCompleted` | `i1(obj)` | `rt_messagebox_was_completed` |
+| `Viper.GUI.MessageBox.GetStatus` | `i64(obj)` | `rt_messagebox_get_status` |
+| `Viper.GUI.MessageBox.GetResult` | `i64(obj)` | `rt_messagebox_get_result` |
+| `Viper.GUI.MessageBox.GetError` | `str(obj)` | `rt_messagebox_get_error` |
 | `Viper.GUI.MessageBox.Show` | `i64(obj)` | `rt_messagebox_show` |
 | `Viper.GUI.MessageBox.Destroy` | `void(obj)` | `rt_messagebox_destroy` |
 | `Viper.GUI.FileDialog.Open` | `str(str,str,str)` | `rt_filedialog_open` |
+| `Viper.GUI.FileDialog.OpenOption` | `obj<Viper.Option>(str,str,str)` | `rt_filedialog_open_option` |
 | `Viper.GUI.FileDialog.OpenMultiple` | `str(str,str,str)` | `rt_filedialog_open_multiple` |
+| `Viper.GUI.FileDialog.OpenMultipleSeq` | `obj<Viper.Collections.Seq>(str,str,str)` | `rt_filedialog_open_multiple_seq` |
 | `Viper.GUI.FileDialog.PathListCount` | `i64(str)` | `rt_filedialog_path_list_count` |
 | `Viper.GUI.FileDialog.PathListGet` | `str(str,i64)` | `rt_filedialog_path_list_get` |
 | `Viper.GUI.FileDialog.Save` | `str(str,str,str,str)` | `rt_filedialog_save` |
+| `Viper.GUI.FileDialog.SaveOption` | `obj<Viper.Option>(str,str,str,str)` | `rt_filedialog_save_option` |
 | `Viper.GUI.FileDialog.SelectFolder` | `str(str,str)` | `rt_filedialog_select_folder` |
+| `Viper.GUI.FileDialog.SelectFolderOption` | `obj<Viper.Option>(str,str)` | `rt_filedialog_select_folder_option` |
 | `Viper.GUI.FileDialog.New` | `obj(i64)` | `rt_filedialog_new` |
 | `Viper.GUI.FileDialog.NewOpen` | `obj()` | `rt_filedialog_new_open` |
 | `Viper.GUI.FileDialog.NewSave` | `obj()` | `rt_filedialog_new_save` |
@@ -2221,6 +3275,17 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.FileDialog.AddFilter` | `void(obj,str,str)` | `rt_filedialog_add_filter` |
 | `Viper.GUI.FileDialog.SetDefaultName` | `void(obj,str)` | `rt_filedialog_set_default_name` |
 | `Viper.GUI.FileDialog.SetMultiple` | `void(obj,i1)` | `rt_filedialog_set_multiple` |
+| `Viper.GUI.FileDialog.SetShowHidden` | `void(obj,i1)` | `rt_filedialog_set_show_hidden` |
+| `Viper.GUI.FileDialog.SetConfirmOverwrite` | `void(obj,i1)` | `rt_filedialog_set_confirm_overwrite` |
+| `Viper.GUI.FileDialog.SetDefaultExtension` | `void(obj,str)` | `rt_filedialog_set_default_extension` |
+| `Viper.GUI.FileDialog.AddBookmark` | `void(obj,str)` | `rt_filedialog_add_bookmark` |
+| `Viper.GUI.FileDialog.ClearBookmarks` | `void(obj)` | `rt_filedialog_clear_bookmarks` |
+| `Viper.GUI.FileDialog.ShowAsync` | `i1(obj)` | `rt_filedialog_show_async` |
+| `Viper.GUI.FileDialog.IsOpen` | `i1(obj)` | `rt_filedialog_is_open` |
+| `Viper.GUI.FileDialog.WasCompleted` | `i1(obj)` | `rt_filedialog_was_completed` |
+| `Viper.GUI.FileDialog.GetStatus` | `i64(obj)` | `rt_filedialog_get_status` |
+| `Viper.GUI.FileDialog.GetError` | `str(obj)` | `rt_filedialog_get_error` |
+| `Viper.GUI.FileDialog.GetPaths` | `obj<Viper.Collections.Seq>(obj)` | `rt_filedialog_get_paths` |
 | `Viper.GUI.FileDialog.Show` | `i64(obj)` | `rt_filedialog_show` |
 | `Viper.GUI.FileDialog.GetPath` | `str(obj)` | `rt_filedialog_get_path` |
 | <a id="viper-gui-filedialog-get-pathcount"></a>`Viper.GUI.FileDialog.get_PathCount` | `i64(obj)` | `rt_filedialog_get_path_count` |
@@ -2269,6 +3334,14 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.CommandPalette.SetClientFiltered` | `void(obj,i1)` | `rt_commandpalette_set_client_filtered` |
 | `Viper.GUI.TestHarness.New` | `obj<Viper.GUI.TestHarness>()` | `rt_gui_test_harness_new` |
 | `Viper.GUI.TestHarness.Clear` | `void(obj)` | `rt_gui_test_harness_clear` |
+| `Viper.GUI.TestHarness.BindApp` | `i1(obj,obj)` | `rt_gui_test_harness_bind_app` |
+| `Viper.GUI.TestHarness.UnbindApp` | `void(obj)` | `rt_gui_test_harness_unbind_app` |
+| `Viper.GUI.TestHarness.DispatchPending` | `i64(obj)` | `rt_gui_test_harness_dispatch_pending` |
+| `Viper.GUI.TestHarness.RenderFrame` | `i1(obj,f64)` | `rt_gui_test_harness_render_frame` |
+| `Viper.GUI.TestHarness.CapturePixels` | `obj<Viper.Graphics.Pixels>(obj,i64,i64,i64,i64)` | `rt_gui_test_harness_capture_pixels` |
+| `Viper.GUI.TestHarness.CaptureHash` | `str(obj,i64,i64,i64,i64)` | `rt_gui_test_harness_capture_hash` |
+| `Viper.GUI.TestHarness.CompareRegion` | `obj<Viper.Collections.Map>(obj,obj,i64,i64,i64)` | `rt_gui_test_harness_compare_region` |
+| `Viper.GUI.TestHarness.GetAccessibilitySnapshot` | `obj<Viper.Collections.Map>(obj)` | `rt_gui_test_harness_get_accessibility_snapshot` |
 | `Viper.GUI.TestHarness.Tick` | `i64(obj,i64)` | `rt_gui_test_harness_tick` |
 | `Viper.GUI.TestHarness.RegisterWidget` | `void(obj,str,str,str,i64,i64,i64,i64)` | `rt_gui_test_harness_register_widget` |
 | `Viper.GUI.TestHarness.FindById` | `obj<Viper.Option>(obj,str)` | `rt_gui_test_harness_find_by_id_option` |
@@ -2283,18 +3356,33 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.VirtualList.New` | `obj<Viper.GUI.VirtualList>(i64,i64,i64)` | `rt_virtual_list_new` |
 | `Viper.GUI.VirtualList.SetCount` | `void(obj,i64)` | `rt_virtual_list_set_count` |
 | `Viper.GUI.VirtualList.SetRowId` | `void(obj,i64,str)` | `rt_virtual_list_set_row_id` |
+| `Viper.GUI.VirtualList.SetRowText` | `void(obj,i64,str)` | `rt_virtual_list_set_row_text` |
+| `Viper.GUI.VirtualList.InvalidateRow` | `void(obj,i64)` | `rt_virtual_list_invalidate_row` |
+| `Viper.GUI.VirtualList.Bind` | `i1(obj,obj)` | `rt_virtual_list_bind` |
+| `Viper.GUI.VirtualList.Unbind` | `void(obj)` | `rt_virtual_list_unbind` |
+| `Viper.GUI.ListBox.SetVirtualModel` | `i1(obj,obj)` | `rt_listbox_set_virtual_model` |
+| `Viper.GUI.ListBox.ClearVirtualModel` | `void(obj)` | `rt_listbox_clear_virtual_model` |
+| `Viper.GUI.ListBox.GetVisibleFirst` | `i64(obj)` | `rt_listbox_get_visible_first` |
+| `Viper.GUI.ListBox.GetVisibleCount` | `i64(obj)` | `rt_listbox_get_visible_count` |
 | `Viper.GUI.VirtualList.VisibleRange` | `obj<Viper.Collections.Map>(obj,i64)` | `rt_virtual_list_visible_range` |
 | `Viper.GUI.VirtualList.SelectId` | `void(obj,str)` | `rt_virtual_list_select_id` |
 | `Viper.GUI.VirtualList.GetSelectedId` | `str(obj)` | `rt_virtual_list_get_selected_id` |
 | `Viper.GUI.VirtualList.GetSelectedIndex` | `i64(obj)` | `rt_virtual_list_get_selected_index` |
 | `Viper.GUI.VirtualTree.New` | `obj<Viper.GUI.VirtualTree>()` | `rt_virtual_tree_new` |
 | `Viper.GUI.VirtualTree.AddNode` | `void(obj,str,str,str)` | `rt_virtual_tree_add_node` |
+| `Viper.GUI.VirtualTree.MoveNode` | `i1(obj,str,str)` | `rt_virtual_tree_move_node` |
+| `Viper.GUI.VirtualTree.SetNodeText` | `i1(obj,str,str)` | `rt_virtual_tree_set_node_text` |
 | `Viper.GUI.VirtualTree.Expand` | `obj<Viper.Collections.Map>(obj,str)` | `rt_virtual_tree_expand` |
 | `Viper.GUI.VirtualTree.Collapse` | `void(obj,str)` | `rt_virtual_tree_collapse` |
 | `Viper.GUI.VirtualTree.SelectId` | `void(obj,str)` | `rt_virtual_tree_select_id` |
 | `Viper.GUI.VirtualTree.GetSelectedId` | `str(obj)` | `rt_virtual_tree_get_selected_id` |
 | `Viper.GUI.VirtualTree.VisibleRows` | `obj<Viper.Collections.Seq>(obj)` | `rt_virtual_tree_visible_rows` |
+| `Viper.GUI.VirtualTree.VisibleRowsRange` | `obj<Viper.Collections.Seq>(obj,i64,i64)` | `rt_virtual_tree_visible_rows_range` |
 | `Viper.GUI.VirtualTree.RefreshSubtree` | `void(obj,str)` | `rt_virtual_tree_refresh_subtree` |
+| `Viper.GUI.VirtualTree.Bind` | `i1(obj,obj)` | `rt_virtual_tree_bind` |
+| `Viper.GUI.VirtualTree.Unbind` | `void(obj)` | `rt_virtual_tree_unbind` |
+| `Viper.GUI.TreeView.SetVirtualModel` | `i1(obj,obj)` | `rt_treeview_set_virtual_model` |
+| `Viper.GUI.TreeView.ClearVirtualModel` | `void(obj)` | `rt_treeview_clear_virtual_model` |
 | `Viper.GUI.CommandState.New` | `obj<Viper.GUI.CommandState>(str,str)` | `rt_command_state_new` |
 | `Viper.GUI.CommandState.SetEnabled` | `void(obj,i1)` | `rt_command_state_set_enabled` |
 | `Viper.GUI.CommandState.GetEnabled` | `i1(obj)` | `rt_command_state_get_enabled` |
@@ -2328,6 +3416,14 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.Accessibility.ContrastRatio` | `f64(i64,i64)` | `rt_accessibility_contrast_ratio` |
 | `Viper.GUI.Accessibility.MeetsContrast` | `i1(i64,i64,f64)` | `rt_accessibility_meets_contrast` |
 | `Viper.GUI.Accessibility.HighContrastTokens` | `obj<Viper.Collections.Map>()` | `rt_accessibility_high_contrast_tokens` |
+| `Viper.GUI.Accessibility.Snapshot` | `obj<Viper.Collections.Map>(obj)` | `rt_accessibility_snapshot` |
+| `Viper.GUI.Accessibility.SetHighContrast` | `void(i1)` | `rt_accessibility_set_high_contrast` |
+| `Viper.GUI.Accessibility.IsHighContrast` | `i1()` | `rt_accessibility_is_high_contrast` |
+| `Viper.GUI.Accessibility.SetReducedMotion` | `void(i1)` | `rt_accessibility_set_reduced_motion` |
+| `Viper.GUI.Accessibility.IsReducedMotion` | `i1()` | `rt_accessibility_is_reduced_motion` |
+| `Viper.GUI.Accessibility.GetSystemHighContrast` | `i1()` | `rt_accessibility_get_system_high_contrast` |
+| `Viper.GUI.Accessibility.GetSystemReducedMotion` | `i1()` | `rt_accessibility_get_system_reduced_motion` |
+| `Viper.GUI.Accessibility.Announce` | `void(obj,str,i64)` | `rt_accessibility_announce` |
 | `Viper.GUI.Tooltip.Show` | `void(str,i64,i64)` | `rt_tooltip_show` |
 | `Viper.GUI.Tooltip.ShowRich` | `void(str,str,i64,i64)` | `rt_tooltip_show_rich` |
 | `Viper.GUI.Tooltip.Hide` | `void()` | `rt_tooltip_hide` |
@@ -2370,6 +3466,10 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.Minimap.GetWidth` | `i64(obj)` | `rt_minimap_get_width` |
 | `Viper.GUI.Minimap.SetScale` | `void(obj,f64)` | `rt_minimap_set_scale` |
 | `Viper.GUI.Minimap.SetShowSlider` | `void(obj,i1)` | `rt_minimap_set_show_slider` |
+| `Viper.GUI.Minimap.GetSourceRevision` | `i64(obj)` | `rt_minimap_get_source_revision` |
+| `Viper.GUI.Minimap.InvalidateLines` | `void(obj,i64,i64)` | `rt_minimap_invalidate_lines` |
+| `Viper.GUI.Minimap.SetMaximumCachedLines` | `void(obj,i64)` | `rt_minimap_set_maximum_cached_lines` |
+| `Viper.GUI.Minimap.GetCachedLineCount` | `i64(obj)` | `rt_minimap_get_cached_line_count` |
 | `Viper.GUI.Minimap.AddMarker` | `void(obj,i64,i64,i64)` | `rt_minimap_add_marker` |
 | `Viper.GUI.Minimap.RemoveMarkers` | `void(obj,i64)` | `rt_minimap_remove_markers` |
 | `Viper.GUI.Minimap.ClearMarkers` | `void(obj)` | `rt_minimap_clear_markers` |
@@ -2391,6 +3491,18 @@ Constructor: `Viper.GUI.VideoWidget.New`
 | `Viper.GUI.VideoWidget.Pause` | `void(obj)` | `rt_videowidget_pause` |
 | `Viper.GUI.VideoWidget.Stop` | `void(obj)` | `rt_videowidget_stop` |
 | `Viper.GUI.VideoWidget.Update` | `void(obj,f64)` | `rt_videowidget_update` |
+| `Viper.GUI.VideoWidget.SetAutoUpdate` | `void(obj,i1)` | `rt_videowidget_set_auto_update` |
+| `Viper.GUI.VideoWidget.IsAutoUpdate` | `i1(obj)` | `rt_videowidget_is_auto_update` |
+| `Viper.GUI.VideoWidget.WasLoaded` | `i1(obj)` | `rt_videowidget_was_loaded` |
+| `Viper.GUI.VideoWidget.WasFailed` | `i1(obj)` | `rt_videowidget_was_failed` |
+| `Viper.GUI.VideoWidget.WasBufferingChanged` | `i1(obj)` | `rt_videowidget_was_buffering_changed` |
+| `Viper.GUI.VideoWidget.WasEnded` | `i1(obj)` | `rt_videowidget_was_ended` |
+| `Viper.GUI.VideoWidget.WasSeeked` | `i1(obj)` | `rt_videowidget_was_seeked` |
+| `Viper.GUI.VideoWidget.GetError` | `str(obj)` | `rt_videowidget_get_error` |
+| `Viper.GUI.VideoWidget.GetRevision` | `i64(obj)` | `rt_videowidget_get_revision` |
+| `Viper.GUI.VideoWidget.SetControlsAutoHide` | `void(obj,i1)` | `rt_videowidget_set_controls_auto_hide` |
+| `Viper.GUI.VideoWidget.SetFullscreen` | `void(obj,i1)` | `rt_videowidget_set_fullscreen` |
+| `Viper.GUI.VideoWidget.IsFullscreen` | `i1(obj)` | `rt_videowidget_is_fullscreen` |
 | <a id="viper-gui-videowidget-set-showcontrols"></a>`Viper.GUI.VideoWidget.set_ShowControls` | `void(obj,i1)` | `rt_videowidget_set_show_controls` |
 | <a id="viper-gui-videowidget-set-loop"></a>`Viper.GUI.VideoWidget.set_Loop` | `void(obj,i1)` | `rt_videowidget_set_loop` |
 | <a id="viper-gui-videowidget-get-showcontrols"></a>`Viper.GUI.VideoWidget.get_ShowControls` | `i1(obj)` | `rt_videowidget_get_show_controls` |

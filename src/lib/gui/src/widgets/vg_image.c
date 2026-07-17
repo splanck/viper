@@ -6,8 +6,9 @@
 //===----------------------------------------------------------------------===//
 //
 // File: lib/gui/src/widgets/vg_image.c
-// Purpose: Image widget implementation — renders RGBA pixel data onto a widget
-//          surface with configurable scale modes and per-widget opacity.
+// Purpose: Image widget implementation — atomically stores and incrementally
+//          updates RGBA pixels, caches deterministic resized output, and renders
+//          with configurable scale modes, filters, and opacity.
 // Key invariants:
 //   - Stored pixels are always 32-bit RGBA (4 bytes per pixel), unpremultiplied.
 //   - VG_IMAGE_SCALE_NONE draws at the image's natural size from widget origin.
@@ -15,9 +16,11 @@
 //   - VG_IMAGE_SCALE_FILL scales uniformly to fill, cropping excess pixels.
 //   - opacity is clamped to [0.0, 1.0]; 0.0 = fully transparent, 1.0 = opaque.
 //   - paint respects the canvas clip rectangle reported by ViperGFX.
+//   - Failed validation/allocation never replaces or partially mutates pixels.
+//   - Nearest and bilinear resize output is deterministic and cacheable.
 // Ownership/Lifetime:
-//   - image->pixels is heap-allocated via vg_image_set_pixels and freed in
-//     image_destroy or vg_image_clear; the widget does not borrow pixel data.
+//   - Source and scaled buffers are owned by the image and freed by destroy;
+//     caller-supplied buffers are copied and never retained.
 // Links: lib/gui/include/vg_widgets.h,
 //        lib/gui/include/vg_widget.h
 //
@@ -56,6 +59,187 @@ static int clampi(int value, int min_value, int max_value) {
     if (value > max_value)
         return max_value;
     return value;
+}
+
+/// @brief Validate RGBA dimensions and calculate their required byte count.
+/// @param width Positive image width.
+/// @param height Positive image height.
+/// @param out_size Receives width times height times four on success.
+/// @return true when the dimensions are positive and all arithmetic fits size_t.
+static bool image_rgba_size(int width, int height, size_t *out_size) {
+    if (width <= 0 || height <= 0 || !out_size)
+        return false;
+    const size_t w = (size_t)width;
+    const size_t h = (size_t)height;
+    if (w > SIZE_MAX / h || w * h > SIZE_MAX / 4u)
+        return false;
+    *out_size = w * h * 4u;
+    return true;
+}
+
+/// @brief Advance a saturating unsigned revision counter.
+/// @param revision Counter to update; NULL is ignored.
+static void image_revision_advance(uint64_t *revision) {
+    if (revision && *revision != UINT64_MAX)
+        ++*revision;
+}
+
+/// @brief Test whether all pixels in an RGBA buffer have full alpha.
+/// @param pixels RGBA source bytes.
+/// @param byte_count Total byte count, which must be divisible by four.
+/// @return true for an empty buffer or when every alpha byte equals 255.
+static bool image_pixels_are_opaque(const uint8_t *pixels, size_t byte_count) {
+    if (!pixels)
+        return byte_count == 0;
+    for (size_t offset = 3u; offset < byte_count; offset += 4u) {
+        if (pixels[offset] != 255u)
+            return false;
+    }
+    return true;
+}
+
+/// @brief Invalidate cached resize metadata without releasing reusable storage.
+/// @param image Image whose next resized paint must regenerate cached pixels.
+static void image_invalidate_scaled_cache(vg_image_t *image) {
+    if (!image)
+        return;
+    image->scaled_width = 0;
+    image->scaled_height = 0;
+    image->scaled_revision = 0;
+}
+
+/// @brief Record a source-content mutation and schedule the required retained work.
+/// @param image Mutated image.
+/// @param layout_changed true when intrinsic dimensions changed and layout must rerun.
+static void image_note_content_change(vg_image_t *image, bool layout_changed) {
+    if (!image)
+        return;
+    image_revision_advance(&image->content_revision);
+    image_invalidate_scaled_cache(image);
+    vg_widget_note_revision(&image->base);
+    if (layout_changed)
+        vg_widget_invalidate_layout(&image->base);
+    else
+        vg_widget_invalidate(&image->base);
+}
+
+/// @brief Interpolate two channel values with an unsigned 16.16 fraction.
+/// @param a Channel value at the lower coordinate.
+/// @param b Channel value at the upper coordinate.
+/// @param fraction Fraction in the inclusive range 0..65535.
+/// @return Rounded interpolated channel value.
+static uint8_t image_lerp_channel(uint8_t a, uint8_t b, uint32_t fraction) {
+    const uint32_t inverse = 65536u - fraction;
+    return (uint8_t)(((uint32_t)a * inverse + (uint32_t)b * fraction + 32768u) >> 16u);
+}
+
+/// @brief Map a destination pixel center to a clamped 16.16 source coordinate.
+/// @details Quotient/remainder decomposition avoids overflowing a shifted 64-bit numerator and is
+///          portable to compilers without a 128-bit integer extension.
+/// @param position Zero-based destination coordinate.
+/// @param source_extent Positive source dimension.
+/// @param dest_extent Positive destination dimension.
+/// @return Source coordinate in unsigned 16.16 units, clamped to the final source pixel.
+static int64_t image_center_coordinate_16(int position, int source_extent, int dest_extent) {
+    const int64_t numerator = (int64_t)(2 * (int64_t)position + 1) * source_extent;
+    const int64_t denominator = 2 * (int64_t)dest_extent;
+    const int64_t whole = numerator / denominator;
+    const int64_t remainder = numerator % denominator;
+    int64_t coordinate = whole * 65536 + (remainder * 65536) / denominator - 32768;
+    const int64_t maximum = (int64_t)(source_extent - 1) * 65536;
+    if (coordinate < 0)
+        coordinate = 0;
+    if (coordinate > maximum)
+        coordinate = maximum;
+    return coordinate;
+}
+
+/// @brief Sample one resized source pixel with the image's active filter.
+/// @param image Image containing valid source pixels.
+/// @param dest_x Zero-based coordinate in the resized output.
+/// @param dest_y Zero-based coordinate in the resized output.
+/// @param dest_width Positive resized width.
+/// @param dest_height Positive resized height.
+/// @param out_rgba Four-byte destination receiving straight RGBA.
+static void image_sample_resized(const vg_image_t *image,
+                                 int dest_x,
+                                 int dest_y,
+                                 int dest_width,
+                                 int dest_height,
+                                 uint8_t out_rgba[4]) {
+    const int source_width = image->img_width;
+    const int source_height = image->img_height;
+    if (image->filter == VG_IMAGE_FILTER_NEAREST) {
+        const int source_x =
+            clampi((int)(((int64_t)dest_x * source_width) / dest_width), 0, source_width - 1);
+        const int source_y =
+            clampi((int)(((int64_t)dest_y * source_height) / dest_height), 0, source_height - 1);
+        memcpy(out_rgba,
+               image->pixels + ((size_t)source_y * (size_t)source_width + (size_t)source_x) * 4u,
+               4u);
+        return;
+    }
+
+    const int64_t source_x_16 = image_center_coordinate_16(dest_x, source_width, dest_width);
+    const int64_t source_y_16 = image_center_coordinate_16(dest_y, source_height, dest_height);
+    const int x0 = (int)(source_x_16 >> 16u);
+    const int y0 = (int)(source_y_16 >> 16u);
+    const int x1 = x0 + 1 < source_width ? x0 + 1 : x0;
+    const int y1 = y0 + 1 < source_height ? y0 + 1 : y0;
+    const uint32_t fraction_x = (uint32_t)(source_x_16 & 0xFFFF);
+    const uint32_t fraction_y = (uint32_t)(source_y_16 & 0xFFFF);
+    const uint8_t *p00 = image->pixels + ((size_t)y0 * (size_t)source_width + (size_t)x0) * 4u;
+    const uint8_t *p10 = image->pixels + ((size_t)y0 * (size_t)source_width + (size_t)x1) * 4u;
+    const uint8_t *p01 = image->pixels + ((size_t)y1 * (size_t)source_width + (size_t)x0) * 4u;
+    const uint8_t *p11 = image->pixels + ((size_t)y1 * (size_t)source_width + (size_t)x1) * 4u;
+    for (size_t channel = 0; channel < 4u; ++channel) {
+        const uint8_t top = image_lerp_channel(p00[channel], p10[channel], fraction_x);
+        const uint8_t bottom = image_lerp_channel(p01[channel], p11[channel], fraction_x);
+        out_rgba[channel] = image_lerp_channel(top, bottom, fraction_y);
+    }
+}
+
+/// @brief Materialize or reuse the deterministic resized-pixel cache.
+/// @details Allocation failure is non-fatal; callers can fall back to direct sampling. The prior
+///          cache remains owned and valid until a replacement allocation succeeds.
+/// @param image Image with valid source pixels.
+/// @param width Positive target width.
+/// @param height Positive target height.
+/// @return Borrowed cache pointer, or NULL if dimensions are invalid or allocation failed.
+static const uint8_t *image_scaled_cache(vg_image_t *image, int width, int height) {
+    size_t required = 0;
+    if (!image || !image->pixels || !image_rgba_size(width, height, &required))
+        return NULL;
+    if (image->scaled_pixels && image->scaled_width == width && image->scaled_height == height &&
+        image->scaled_revision == image->content_revision &&
+        image->scaled_filter == image->filter) {
+        return image->scaled_pixels;
+    }
+
+    if (required > image->scaled_capacity) {
+        uint8_t *replacement = (uint8_t *)malloc(required);
+        if (!replacement)
+            return NULL;
+        free(image->scaled_pixels);
+        image->scaled_pixels = replacement;
+        image->scaled_capacity = required;
+    }
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            image_sample_resized(image,
+                                 x,
+                                 y,
+                                 width,
+                                 height,
+                                 image->scaled_pixels +
+                                     ((size_t)y * (size_t)width + (size_t)x) * 4u);
+        }
+    }
+    image->scaled_width = width;
+    image->scaled_height = height;
+    image->scaled_revision = image->content_revision;
+    image->scaled_filter = image->filter;
+    return image->scaled_pixels;
 }
 
 /// @brief Read a little-endian uint16 from an unaligned byte pointer.
@@ -160,8 +344,7 @@ static bool image_load_bmp(vg_image_t *image, const char *path) {
         }
     }
 
-    vg_image_set_pixels(image, rgba, width, height);
-    ok = image->pixels != NULL;
+    ok = vg_image_try_set_pixels(image, rgba, width, height);
 
 cleanup:
     free(row);
@@ -221,8 +404,7 @@ static bool image_load_platform(vg_image_t *image, const char *path) {
     if (ctx) {
         CGContextDrawImage(ctx, CGRectMake(0.0, 0.0, (CGFloat)width, (CGFloat)height), cg_image);
         image_unpremultiply_rgba(pixels, width, height);
-        vg_image_set_pixels(image, pixels, (int)width, (int)height);
-        ok = image->pixels != NULL;
+        ok = vg_image_try_set_pixels(image, pixels, (int)width, (int)height);
     }
 
     if (ctx)
@@ -259,7 +441,11 @@ static void image_blend_pixel(uint8_t *dst, const uint8_t *src, uint8_t alpha) {
 static void image_destroy(vg_widget_t *widget) {
     vg_image_t *image = (vg_image_t *)widget;
     free(image->pixels);
+    free(image->scaled_pixels);
     image->pixels = NULL;
+    image->scaled_pixels = NULL;
+    image->pixel_capacity = 0;
+    image->scaled_capacity = 0;
     image->img_width = 0;
     image->img_height = 0;
 }
@@ -358,33 +544,83 @@ static void image_paint(vg_widget_t *widget, void *canvas) {
     if (end_y > clip_y + clip_h)
         end_y = clip_y + clip_h;
 
-    for (int fb_y = start_y; fb_y < end_y; fb_y++) {
-        for (int fb_x = start_x; fb_x < end_x; fb_x++) {
-            int sx = 0;
-            int sy = 0;
+    if (start_x >= end_x || start_y >= end_y)
+        return;
 
-            if (image->scale_mode == VG_IMAGE_SCALE_NONE) {
-                sx = fb_x - (int)draw_x;
-                sy = fb_y - (int)draw_y;
-                if (sx < 0 || sx >= sw || sy < 0 || sy >= sh)
+    const bool integer_rect = draw_x == floorf(draw_x) && draw_y == floorf(draw_y) &&
+                              draw_w == floorf(draw_w) && draw_h == floorf(draw_h) &&
+                              draw_w > 0.0f && draw_h > 0.0f && draw_w <= (float)INT_MAX &&
+                              draw_h <= (float)INT_MAX;
+    const int raster_width = integer_rect ? (int)draw_w : 0;
+    const int raster_height = integer_rect ? (int)draw_h : 0;
+    const int raster_x = integer_rect ? (int)draw_x : 0;
+    const int raster_y = integer_rect ? (int)draw_y : 0;
+
+    /* The common unscaled opaque path is a clipped row copy with no per-pixel arithmetic. */
+    if (integer_rect && raster_width == sw && raster_height == sh && image->pixels_opaque &&
+        opacity == 255u) {
+        const int source_x = start_x - raster_x;
+        for (int fb_y = start_y; fb_y < end_y; ++fb_y) {
+            const int source_y = fb_y - raster_y;
+            memcpy(fb.pixels + (size_t)fb_y * (size_t)fb.stride + (size_t)start_x * 4u,
+                   image->pixels + ((size_t)source_y * (size_t)sw + (size_t)source_x) * 4u,
+                   (size_t)(end_x - start_x) * 4u);
+        }
+        return;
+    }
+
+    const uint8_t *scaled = NULL;
+    if (integer_rect && (raster_width != sw || raster_height != sh))
+        scaled = image_scaled_cache(image, raster_width, raster_height);
+
+    if (scaled && image->pixels_opaque && opacity == 255u) {
+        const int source_x = start_x - raster_x;
+        for (int fb_y = start_y; fb_y < end_y; ++fb_y) {
+            const int source_y = fb_y - raster_y;
+            memcpy(fb.pixels + (size_t)fb_y * (size_t)fb.stride + (size_t)start_x * 4u,
+                   scaled + ((size_t)source_y * (size_t)raster_width + (size_t)source_x) * 4u,
+                   (size_t)(end_x - start_x) * 4u);
+        }
+        return;
+    }
+
+    for (int fb_y = start_y; fb_y < end_y; ++fb_y) {
+        for (int fb_x = start_x; fb_x < end_x; ++fb_x) {
+            uint8_t sampled[4];
+            const uint8_t *src = NULL;
+            if (integer_rect) {
+                const int local_x = fb_x - raster_x;
+                const int local_y = fb_y - raster_y;
+                if (local_x < 0 || local_x >= raster_width || local_y < 0 ||
+                    local_y >= raster_height) {
                     continue;
+                }
+                if (scaled) {
+                    src = scaled + ((size_t)local_y * (size_t)raster_width + (size_t)local_x) * 4u;
+                } else if (raster_width == sw && raster_height == sh) {
+                    src = image->pixels + ((size_t)local_y * (size_t)sw + (size_t)local_x) * 4u;
+                } else {
+                    image_sample_resized(
+                        image, local_x, local_y, raster_width, raster_height, sampled);
+                    src = sampled;
+                }
             } else {
-                const float u = draw_w > 0.0f ? ((float)fb_x - draw_x) / draw_w : 0.0f;
-                const float v = draw_h > 0.0f ? ((float)fb_y - draw_y) / draw_h : 0.0f;
-                sx = clampi((int)(u * sw), 0, sw - 1);
-                sy = clampi((int)(v * sh), 0, sh - 1);
+                const int fallback_width = clampi((int)ceilf(draw_w), 1, INT_MAX);
+                const int fallback_height = clampi((int)ceilf(draw_h), 1, INT_MAX);
+                const int local_x = clampi((int)((float)fb_x - draw_x), 0, fallback_width - 1);
+                const int local_y = clampi((int)((float)fb_y - draw_y), 0, fallback_height - 1);
+                image_sample_resized(
+                    image, local_x, local_y, fallback_width, fallback_height, sampled);
+                src = sampled;
             }
 
-            const uint8_t *src = &image->pixels[(sy * sw + sx) * 4];
             uint8_t alpha = src[3];
-            if (alpha == 0)
+            if (alpha == 0u)
                 continue;
-
             alpha = (uint8_t)(((uint32_t)alpha * opacity + 127u) / 255u);
-            if (alpha == 0)
+            if (alpha == 0u)
                 continue;
-
-            uint8_t *dst = &fb.pixels[fb_y * fb.stride + fb_x * 4];
+            uint8_t *dst = fb.pixels + (size_t)fb_y * (size_t)fb.stride + (size_t)fb_x * 4u;
             image_blend_pixel(dst, src, alpha);
         }
     }
@@ -406,6 +642,10 @@ vg_image_t *vg_image_create(vg_widget_t *parent) {
     vg_widget_init(&image->base, VG_WIDGET_IMAGE, &g_image_vtable);
 
     image->scale_mode = VG_IMAGE_SCALE_FIT;
+    image->filter = VG_IMAGE_FILTER_NEAREST;
+    image->scaled_filter = VG_IMAGE_FILTER_NEAREST;
+    image->pixels_opaque = true;
+    image->content_revision = 1u;
     image->opacity = 1.0f;
     image->bg_color = 0x00000000;
 
@@ -418,9 +658,10 @@ vg_image_t *vg_image_create(vg_widget_t *parent) {
 
 /// @brief Replace the image's pixel data with a copy of the supplied buffer.
 ///
-/// @details Any previously held pixel buffer is freed before the new data is
-///          copied.  Passing NULL pixels or non-positive dimensions clears the
-///          image and marks it for re-layout and repaint.
+/// @details Passing NULL pixels or non-positive dimensions clears the image and
+///          marks it for re-layout and repaint. Valid data forwards to the atomic
+///          @ref vg_image_try_set_pixels path and preserves the previous image if
+///          allocation fails.
 ///
 /// @param image  The image widget to update.
 /// @param pixels Pointer to width×height RGBA pixels (4 bytes per pixel,
@@ -432,37 +673,152 @@ void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, in
         return;
 
     if (!pixels || width <= 0 || height <= 0) {
+        vg_image_clear(image);
+        return;
+    }
+
+    (void)vg_image_try_set_pixels(image, pixels, width, height);
+}
+
+/// @brief Atomically replace the image's pixels, reusing sufficient storage.
+/// @details All validation and any required allocation precede mutation. An identical update is a
+///          successful no-op and does not advance revisions or dirty retained state.
+/// @param image Image widget to mutate.
+/// @param pixels Complete straight-alpha RGBA source buffer.
+/// @param width Positive source width.
+/// @param height Positive source height.
+/// @return true after a complete copy; false with the old state intact on failure.
+bool vg_image_try_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, int height) {
+    size_t size = 0;
+    if (!image || !pixels || !image_rgba_size(width, height, &size))
+        return false;
+
+    if (image->pixels && image->img_width == width && image->img_height == height &&
+        memcmp(image->pixels, pixels, size) == 0) {
+        return true;
+    }
+
+    uint8_t *target = image->pixels;
+    size_t target_capacity = image->pixel_capacity;
+    if (!target || size > target_capacity) {
+        target = (uint8_t *)malloc(size);
+        if (!target)
+            return false;
+        memcpy(target, pixels, size);
+    } else {
+        memmove(target, pixels, size);
+    }
+
+    const bool layout_changed = image->img_width != width || image->img_height != height;
+    if (target != image->pixels) {
         free(image->pixels);
-        image->pixels = NULL;
-        image->img_width = 0;
-        image->img_height = 0;
-        image->base.needs_layout = true;
-        image->base.needs_paint = true;
-        return;
+        image->pixels = target;
+        image->pixel_capacity = size;
     }
-
-    size_t w = (size_t)width;
-    size_t h = (size_t)height;
-    if (w > SIZE_MAX / h || w * h > SIZE_MAX / 4) {
-        image->base.needs_layout = true;
-        image->base.needs_paint = true;
-        return;
-    }
-    size_t size = w * h * 4;
-    uint8_t *new_pixels = malloc(size);
-    if (!new_pixels) {
-        image->base.needs_layout = true;
-        image->base.needs_paint = true;
-        return;
-    }
-
-    memcpy(new_pixels, pixels, size);
-    free(image->pixels);
-    image->pixels = new_pixels;
     image->img_width = width;
     image->img_height = height;
-    image->base.needs_layout = true;
-    image->base.needs_paint = true;
+    image->pixels_opaque = image_pixels_are_opaque(image->pixels, size);
+    image_note_content_change(image, layout_changed);
+    return true;
+}
+
+/// @brief Determine whether two pointer-sized byte ranges overlap.
+/// @param first Start of the first range.
+/// @param first_size Size of the first range in bytes.
+/// @param second Start of the second range.
+/// @param second_size Size of the second range in bytes.
+/// @return true when the ranges share at least one byte.
+static bool image_ranges_overlap(const void *first,
+                                 size_t first_size,
+                                 const void *second,
+                                 size_t second_size) {
+    if (!first || !second || first_size == 0u || second_size == 0u)
+        return false;
+    const uintptr_t first_start = (uintptr_t)first;
+    const uintptr_t second_start = (uintptr_t)second;
+    const uintptr_t first_end =
+        first_size > UINTPTR_MAX - first_start ? UINTPTR_MAX : first_start + (uintptr_t)first_size;
+    const uintptr_t second_end = second_size > UINTPTR_MAX - second_start
+                                     ? UINTPTR_MAX
+                                     : second_start + (uintptr_t)second_size;
+    return first_start < second_end && second_start < first_end;
+}
+
+/// @brief Copy a validated source rectangle into an existing image atomically.
+/// @details A temporary buffer is used only when caller storage overlaps the owned destination.
+///          Invalid rectangles and overlap-buffer allocation failure leave destination bytes and
+///          revisions unchanged.
+bool vg_image_update_region(vg_image_t *image,
+                            const uint8_t *pixels,
+                            int source_width,
+                            int source_height,
+                            int source_x,
+                            int source_y,
+                            int width,
+                            int height,
+                            int dest_x,
+                            int dest_y) {
+    size_t source_size = 0;
+    size_t destination_size = 0;
+    size_t region_size = 0;
+    if (!image || !image->pixels || !pixels ||
+        !image_rgba_size(source_width, source_height, &source_size) ||
+        !image_rgba_size(image->img_width, image->img_height, &destination_size) ||
+        !image_rgba_size(width, height, &region_size) || source_x < 0 || source_y < 0 ||
+        dest_x < 0 || dest_y < 0 || source_x > source_width - width ||
+        source_y > source_height - height || dest_x > image->img_width - width ||
+        dest_y > image->img_height - height) {
+        return false;
+    }
+
+    const uint8_t *copy_source = pixels;
+    int copy_stride = source_width;
+    uint8_t *temporary = NULL;
+    if (image_ranges_overlap(pixels, source_size, image->pixels, destination_size)) {
+        temporary = (uint8_t *)malloc(region_size);
+        if (!temporary)
+            return false;
+        for (int row = 0; row < height; ++row) {
+            memcpy(temporary + (size_t)row * (size_t)width * 4u,
+                   pixels +
+                       ((size_t)(source_y + row) * (size_t)source_width + (size_t)source_x) * 4u,
+                   (size_t)width * 4u);
+        }
+        copy_source = temporary;
+        copy_stride = width;
+        source_x = 0;
+        source_y = 0;
+    }
+
+    bool identical = true;
+    for (int row = 0; row < height; ++row) {
+        const uint8_t *source_row =
+            copy_source + ((size_t)(source_y + row) * (size_t)copy_stride + (size_t)source_x) * 4u;
+        const uint8_t *dest_row =
+            image->pixels +
+            ((size_t)(dest_y + row) * (size_t)image->img_width + (size_t)dest_x) * 4u;
+        if (memcmp(source_row, dest_row, (size_t)width * 4u) != 0) {
+            identical = false;
+            break;
+        }
+    }
+    if (identical) {
+        free(temporary);
+        return true;
+    }
+
+    for (int row = 0; row < height; ++row) {
+        const uint8_t *source_row =
+            copy_source + ((size_t)(source_y + row) * (size_t)copy_stride + (size_t)source_x) * 4u;
+        uint8_t *dest_row =
+            image->pixels +
+            ((size_t)(dest_y + row) * (size_t)image->img_width + (size_t)dest_x) * 4u;
+        memcpy(dest_row, source_row, (size_t)width * 4u);
+    }
+    free(temporary);
+    image->pixels_opaque = image_pixels_are_opaque(image->pixels, destination_size);
+    image_note_content_change(image, false);
+    return true;
 }
 
 /// @brief Load an image from a file path into the widget's pixel buffer.
@@ -490,12 +846,15 @@ bool vg_image_load_file(vg_image_t *image, const char *path) {
 void vg_image_clear(vg_image_t *image) {
     if (!image)
         return;
+    if (!image->pixels && image->img_width == 0 && image->img_height == 0)
+        return;
     free(image->pixels);
     image->pixels = NULL;
+    image->pixel_capacity = 0;
     image->img_width = 0;
     image->img_height = 0;
-    image->base.needs_layout = true;
-    image->base.needs_paint = true;
+    image->pixels_opaque = true;
+    image_note_content_change(image, true);
 }
 
 /// @brief Set how pixel data is scaled to fill the widget bounds.
@@ -508,8 +867,32 @@ void vg_image_clear(vg_image_t *image) {
 void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode) {
     if (!image)
         return;
+    if (mode < VG_IMAGE_SCALE_NONE || mode > VG_IMAGE_SCALE_STRETCH)
+        mode = VG_IMAGE_SCALE_FIT;
+    if (image->scale_mode == mode)
+        return;
     image->scale_mode = mode;
-    image->base.needs_paint = true;
+    vg_widget_note_revision(&image->base);
+    vg_widget_invalidate(&image->base);
+}
+
+/// @brief Set nearest or bilinear resize filtering and invalidate scaled output.
+void vg_image_set_filter(vg_image_t *image, vg_image_filter_t filter) {
+    if (!image)
+        return;
+    if (filter != VG_IMAGE_FILTER_BILINEAR)
+        filter = VG_IMAGE_FILTER_NEAREST;
+    if (image->filter == filter)
+        return;
+    image->filter = filter;
+    image_invalidate_scaled_cache(image);
+    vg_widget_note_revision(&image->base);
+    vg_widget_invalidate(&image->base);
+}
+
+/// @brief Return the active image resize filter.
+vg_image_filter_t vg_image_get_filter(const vg_image_t *image) {
+    return image ? image->filter : VG_IMAGE_FILTER_NEAREST;
 }
 
 /// @brief Set the overall opacity applied when blending the image onto the canvas.
@@ -527,6 +910,9 @@ void vg_image_set_opacity(vg_image_t *image, float opacity) {
         opacity = 0;
     if (opacity > 1)
         opacity = 1;
+    if (image->opacity == opacity)
+        return;
     image->opacity = opacity;
-    image->base.needs_paint = true;
+    vg_widget_note_revision(&image->base);
+    vg_widget_invalidate(&image->base);
 }

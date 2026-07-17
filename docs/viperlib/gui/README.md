@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-16
 ---
 
 # GUI Widgets
@@ -20,8 +20,9 @@ last-verified: 2026-07-14
 | [Basic Widgets](widgets.md) | Label, Button, TextInput, Checkbox, Slider, RadioButton, and more |
 | [Containers & Advanced](containers.md) | ScrollView, SplitPane, FloatingPanel, TabBar, TreeView, and CodeEditor |
 | [Application Components](application.md) | MenuBar, Toolbar, StatusBar, Breadcrumb, Minimap, dialogs, notifications, utilities, themes, VideoWidget, and IDE helpers |
+| [Themes and Palettes](themes.md) | Dark/light/system modes, custom tokens, validation, scaling, and accessibility composition |
 
-Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, focus rejection through hidden/disabled ancestors, edge-triggered tab close events, trailing-newline preservation in `CodeEditor`, safer list/dropdown/toolbar/statusbar/menu capacity handling, GUI text conversion that renders embedded NUL bytes as U+FFFD instead of truncating visible labels, drag/drop and path/filter C-string payloads that reject embedded NUL bytes, concrete widget classes exposing the common `Widget` layout/state/tooltip/drag-drop methods directly, fallback layout for simple widgets that receive runtime children through `AddChild`, active menu shortcut dispatch on non-native menu bars, per-frame shortcut trigger retention, runtime-managed subobject handles that stay safe after owner destruction, a `Command`/`CommandRegistry` binding layer that routes a menu item, toolbar button, keyboard shortcut and command-palette entry to one action, and corrected edge reporting for ListBox/TreeView removals.
+Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, focus rejection through hidden/disabled ancestors, complete accessible `ColorSwatch`/`ColorPalette`/`ColorPicker` classes, edge-triggered tab close events, trailing-newline preservation in `CodeEditor`, safer list/dropdown/toolbar/statusbar/menu capacity handling, GUI text conversion that renders embedded NUL bytes as U+FFFD instead of truncating visible labels, drag/drop and path/filter C-string payloads that reject embedded NUL bytes, concrete widget classes exposing the common `Widget` layout/state/tooltip/drag-drop methods directly, fallback layout for simple widgets that receive runtime children through `AddChild`, active menu shortcut dispatch on non-native menu bars, per-frame shortcut trigger retention, runtime-managed subobject handles that stay safe after owner destruction, a `Command`/`CommandRegistry` binding layer that routes a menu item, toolbar button, keyboard shortcut and command-palette entry to one action, and corrected edge reporting for ListBox/TreeView removals.
 
 ## Complete Example (Zia)
 

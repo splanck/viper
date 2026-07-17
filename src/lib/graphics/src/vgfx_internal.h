@@ -287,6 +287,32 @@ struct vgfx_window {
     /// @details Only valid when clip_enabled is non-zero.
     int32_t clip_h;
 
+    /// @brief Whether a compositor-owned upper clip bound is active.
+    /// @details While set, ordinary set/clear operations cannot enlarge the effective clip beyond
+    ///          `clip_limit_*`. The scope is single-depth and allocation-free.
+    int32_t clip_limit_enabled;
+
+    /// @brief Physical-pixel X coordinate of the active clip limit.
+    int32_t clip_limit_x;
+
+    /// @brief Physical-pixel Y coordinate of the active clip limit.
+    int32_t clip_limit_y;
+
+    /// @brief Physical-pixel width of the active clip limit; zero denotes an empty limit.
+    int32_t clip_limit_w;
+
+    /// @brief Physical-pixel height of the active clip limit; zero denotes an empty limit.
+    int32_t clip_limit_h;
+
+    /// @brief Clip-enabled flag captured when the current limit scope began.
+    int32_t clip_limit_saved_enabled;
+
+    /// @brief Captured pre-scope clip rectangle, restored verbatim by the matching pop.
+    int32_t clip_limit_saved_x;
+    int32_t clip_limit_saved_y;
+    int32_t clip_limit_saved_w;
+    int32_t clip_limit_saved_h;
+
     //===------------------------------------------------------------------===//
     // Timing
     //===------------------------------------------------------------------===//
@@ -598,6 +624,34 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
 /// @pre  msg != NULL
 /// @post vgfx_get_last_error() returns code, vgfx_get_last_error_message() returns msg
 void vgfx_internal_set_error(vgfx_error_t code, const char *msg);
+
+/// @brief Initialize one allocation-free native IME composition event.
+/// @details Clears the complete event value, validates the lifecycle type, copies at most
+///          `VGFX_COMPOSITION_TEXT_CAPACITY - 1` bytes, backs up to a UTF-8 codepoint boundary
+///          when truncation is required, and stores all selection/replacement metadata. Native
+///          adapters should pass valid UTF-8; this helper guarantees bounded storage and a NUL
+///          terminator but deliberately does not perform Unicode normalization.
+/// @param event Destination value to initialize; must not be NULL.
+/// @param type One of the four `VGFX_EVENT_COMPOSITION_*` lifecycle types.
+/// @param time_ms Monotonic event timestamp in milliseconds.
+/// @param text Borrowed UTF-8 bytes; NULL is accepted only with @p text_length equal to zero.
+/// @param text_length Number of readable bytes at @p text, excluding any terminator.
+/// @param selection_start Preedit selection start in Unicode codepoints.
+/// @param selection_length Preedit selection length in Unicode codepoints.
+/// @param replacement_start Committed-text codepoint start, or -1 for current selection.
+/// @param replacement_length Committed-text codepoint length, or -1 with sentinel start.
+/// @param modifiers Active `VGFX_MOD_*` mask.
+/// @return One when initialized; zero for a NULL destination, invalid type, or invalid text pair.
+int vgfx_internal_init_composition_event(vgfx_event_t *event,
+                                         vgfx_event_type_t type,
+                                         int64_t time_ms,
+                                         const char *text,
+                                         size_t text_length,
+                                         int32_t selection_start,
+                                         int32_t selection_length,
+                                         int32_t replacement_start,
+                                         int32_t replacement_length,
+                                         int modifiers);
 
 /// @brief Enqueue an event into the window's synchronized ring buffer.
 /// @details Attempts to add the event to the queue. If the queue is full, the

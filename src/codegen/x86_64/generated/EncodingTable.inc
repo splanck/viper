@@ -17,7 +17,7 @@
 // Description: Contains EncodingRow entries describing instruction encoding
 //              forms, operand patterns, and encoding flags for each MOpcode.
 //
-// Links: docs/il/il-guide.md#reference, codegen/x86_64/Emit.cpp
+// Links: docs/il-guide.md#reference, codegen/x86_64/Emit.cpp
 //
 //===----------------------------------------------------------------------===//
 

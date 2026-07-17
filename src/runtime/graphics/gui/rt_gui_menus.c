@@ -105,7 +105,7 @@ static void rt_contextmenu_apply_app_defaults(vg_contextmenu_t *menu) {
             rt_gui_ensure_default_font();
         vg_font_t *font = rt_gui_font_handle_checked(app->default_font);
         if (font)
-            vg_contextmenu_set_font(menu, font, app->default_font_size);
+            vg_contextmenu_set_font(menu, font, rt_gui_app_effective_font_size(app));
     } else {
         vg_contextmenu_apply_theme(menu, NULL);
     }
@@ -243,7 +243,7 @@ void *rt_menubar_new(void *parent) {
             rt_gui_activate_app(app);
         rt_gui_ensure_default_font();
         if (app && app->default_font)
-            vg_menubar_set_font(mb, app->default_font, app->default_font_size);
+            vg_menubar_set_font(mb, app->default_font, rt_gui_app_effective_font_size(app));
         mb->native_main_menu = rt_gui_macos_menu_register_menubar(mb);
         if (mb->native_main_menu) {
             mb->base.constraints.min_height = 0.0f;
@@ -291,6 +291,7 @@ void rt_menubar_remove_menu(void *menubar, void *menu) {
     if (!mb || !m || m->owner_menubar != mb)
         return;
     vg_menubar_remove_menu(mb, m);
+    rt_gui_collect_retired_subhandles(&mb->base);
     rt_gui_menu_sync_menubar(mb);
 }
 
@@ -409,6 +410,8 @@ void rt_menu_remove_item(void *menu, void *item) {
     if (!m || !mi)
         return;
     vg_menu_remove_item(m, mi);
+    if (m->owner_menubar)
+        rt_gui_collect_retired_subhandles(&m->owner_menubar->base);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
 }
 
@@ -419,6 +422,8 @@ void rt_menu_clear(void *menu) {
     if (!m)
         return;
     vg_menu_clear(m);
+    if (m->owner_menubar)
+        rt_gui_collect_retired_subhandles(&m->owner_menubar->base);
     rt_gui_menu_sync_menubar(rt_gui_menu_owner_from_menu(m));
 }
 
@@ -781,6 +786,7 @@ void rt_contextmenu_clear(void *menu) {
     if (cm) {
         rt_gui_invalidate_contextmenu_contents(cm);
         vg_contextmenu_clear(cm);
+        rt_gui_collect_retired_subhandles(&cm->base);
     }
 }
 

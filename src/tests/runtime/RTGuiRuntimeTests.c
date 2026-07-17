@@ -6,14 +6,30 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTGuiRuntimeTests.c
-// Purpose: Regression tests for GUI runtime app-scoped state.
+// Purpose: Regression tests for GUI runtime app-scoped state, public widget
+//          contracts, lifetime validation, scaling, events, and virtualization.
+// Key invariants:
+//   - Public handles are type/liveness checked before every dereference.
+//   - Logical geometry crosses into the physical toolkit exactly once.
+//   - Consuming one event edge never consumes a distinct edge or revision.
+// Ownership/Lifetime:
+//   - Each test owns its fake app/widget tree and releases returned runtime
+//     strings/objects when the corresponding API transfers ownership.
+// Links: runtime/graphics/gui/rt_gui.h,
+//        runtime/graphics/gui/rt_gui_internal.h
 //
 //===----------------------------------------------------------------------===//
 
+#include "../../runtime/graphics/gui/rt_gui_app_internal.h"
 #include "../../runtime/graphics/gui/rt_gui_internal.h"
 #include "rt_gui.h"
+#include "rt_gui_constants.h"
+#include "rt_gui_ide.h"
 #include "rt_map.h"
+#include "rt_option.h"
 #include "rt_pixels.h"
+#include "rt_result.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 
 #include <assert.h>
@@ -55,17 +71,26 @@ typedef struct {
     char **selected_paths;
     size_t selected_count;
     int64_t result;
+    int64_t status;
+    const char *error;
+    uint64_t completed_edges;
 } rt_filedialog_data_view_t;
 
 typedef struct {
     uint64_t magic;
     vg_dialog_t *dialog;
     int64_t result;
+    int64_t status;
+    const char *error;
+    uint64_t completed_edges;
     int64_t default_button;
     int has_default_button;
+    int64_t cancel_button;
+    int has_cancel_button;
     rt_gui_app_t *owner_app;
     vg_dialog_button_def_t *custom_buttons;
     int64_t *custom_button_ids;
+    int64_t *custom_button_roles;
     size_t custom_button_count;
     size_t custom_button_cap;
 } rt_messagebox_data_view_t;
@@ -94,9 +119,36 @@ static char *test_strdup_local(const char *s) {
     return copy;
 }
 
+static int s_expect_vm_trap = 0;
+static char s_expected_vm_trap_message[256];
+
+/// @brief Test override for the runtime trap sink with opt-in expected-trap capture.
+/// @details Production runtime calls normally remain fatal to this test process. A test that
+///          explicitly sets @ref s_expect_vm_trap captures one stable message and lets the native
+///          entry point return, allowing atomic postcondition checks after validation failures.
+/// @param msg Stable runtime diagnostic supplied by the trap dispatcher.
 void vm_trap(const char *msg) {
-    (void)msg;
+    if (s_expect_vm_trap) {
+        snprintf(
+            s_expected_vm_trap_message, sizeof(s_expected_vm_trap_message), "%s", msg ? msg : "");
+        return;
+    }
     assert(0 && "unexpected vm_trap");
+}
+
+/// @brief Begin capture of exactly one expected runtime trap.
+/// @details Clears any prior message so a missing trap is observable by the matching assertion.
+static void begin_expected_vm_trap(void) {
+    s_expected_vm_trap_message[0] = '\0';
+    s_expect_vm_trap = 1;
+}
+
+/// @brief Finish expected-trap capture and verify its exact public diagnostic.
+/// @param expected Exact UTF-8 diagnostic required by the runtime contract.
+static void end_expected_vm_trap(const char *expected) {
+    s_expect_vm_trap = 0;
+    assert(expected);
+    assert(strcmp(s_expected_vm_trap_message, expected) == 0);
 }
 
 static void reset_fake_app(rt_gui_app_t *app) {
@@ -115,13 +167,381 @@ static void cleanup_fake_app(rt_gui_app_t *app) {
         app->root = NULL;
     }
     if (app->theme) {
+        if (vg_theme_get_current() == app->theme)
+            vg_theme_set_current(vg_theme_dark());
         vg_theme_destroy(app->theme);
         app->theme = NULL;
     }
+    if (app->custom_theme_base) {
+        vg_theme_destroy(app->custom_theme_base);
+        app->custom_theme_base = NULL;
+    }
     free(app->retired_fonts);
+    free(app->retired_font_generations);
     app->retired_fonts = NULL;
+    app->retired_font_generations = NULL;
     app->retired_font_count = 0;
     app->retired_font_cap = 0;
+}
+
+/// @brief Release one test-owned runtime object and run its finalizer at zero references.
+/// @details Runtime `Result` values retain object payloads. Tests use this helper to exercise the
+///          production ownership path instead of leaking a result or manually freeing its payload.
+/// @param object Runtime-managed object returned by a public runtime function, or NULL.
+static void release_test_runtime_object(void *object) {
+    if (object && rt_obj_release_check0(object))
+        rt_obj_free(object);
+}
+
+/// @brief Verify capability discovery, fallible construction, and the integrated frame scheduler.
+/// @details The display-backed GUI test target guarantees that the graphics implementation is
+///          linked. `TryNew` must therefore return `Result.Ok`, retain the app while the result is
+///          alive, and expose an empty unavailability reason. The new frame primitive must consume
+///          deterministic time once, expose retained deadlines, and preserve app-current state.
+///          Explicit destruction remains safe before the owning result is released.
+static void test_gui_capability_and_try_new_success(void) {
+    assert(rt_gui_system_is_available() == 1);
+    rt_string reason = rt_gui_system_get_unavailable_reason();
+    assert(reason);
+    assert(rt_str_len(reason) == 0);
+    rt_str_release_maybe(reason);
+
+    void *result = rt_gui_app_try_new(rt_const_cstr("GUI TryNew Contract"), 96, 64);
+    assert(result);
+    assert(rt_result_is_ok(result) == 1);
+
+    void *app = rt_result_ok_value(result);
+    assert(app);
+    assert(rt_gui_app_get_root(app));
+    rt_gui_app_t *app_state = (rt_gui_app_t *)app;
+    rt_gui_app_make_current(app);
+    assert(rt_gui_get_active_app() == app_state);
+    assert(rt_gui_app_get_next_deadline_ms(app) == 0);
+    assert(rt_gui_app_run_frame_with_delta(app, 16.5) == 1);
+    assert(app_state->scheduler_elapsed_ms == 16.5);
+    assert(rt_gui_app_get_next_deadline_ms(app) == -1);
+    vg_widget_invalidate(app_state->root);
+    assert(rt_gui_app_get_next_deadline_ms(app) == 0);
+    assert(rt_gui_app_run_frame(app) == 1);
+    rt_gui_app_destroy(app);
+    release_test_runtime_object(result);
+
+    printf("test_gui_capability_and_try_new_success: PASSED\n");
+}
+
+/// @brief Verify every typed GUI constant getter returns its documented stable public ordinal.
+/// @details This exhaustive list prevents internal toolkit enum reordering, graphics capability,
+///          or registry refactoring from silently changing values persisted by applications.
+static void test_gui_typed_constant_ordinals(void) {
+#define ASSERT_GUI_CONSTANT(function_name, expected) assert(function_name() == (expected))
+    ASSERT_GUI_CONSTANT(rt_gui_align_start, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_align_center, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_align_end, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_align_stretch, 3);
+    ASSERT_GUI_CONSTANT(rt_gui_justify_start, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_justify_center, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_justify_end, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_justify_space_between, 3);
+    ASSERT_GUI_CONSTANT(rt_gui_justify_space_around, 4);
+    ASSERT_GUI_CONSTANT(rt_gui_justify_space_evenly, 5);
+    ASSERT_GUI_CONSTANT(rt_gui_flex_direction_row, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_flex_direction_column, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_flex_direction_row_reverse, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_flex_direction_column_reverse, 3);
+    ASSERT_GUI_CONSTANT(rt_gui_flex_wrap_no_wrap, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_flex_wrap_wrap, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_flex_wrap_wrap_reverse, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_dock_left, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_dock_top, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_dock_right, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_dock_bottom, 3);
+    ASSERT_GUI_CONSTANT(rt_gui_dock_fill, 4);
+    ASSERT_GUI_CONSTANT(rt_gui_theme_mode_dark, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_theme_mode_light, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_theme_mode_system, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_theme_mode_custom, 3);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_none, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_application, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_window, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_group, 3);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_label, 4);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_button, 5);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_check_box, 6);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_radio_button, 7);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_text_box, 8);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_search_box, 9);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_combo_box, 10);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_list, 11);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_list_item, 12);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_tree, 13);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_tree_item, 14);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_tab_list, 15);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_tab, 16);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_table, 17);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_row, 18);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_cell, 19);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_slider, 20);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_progress_bar, 21);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_dialog, 22);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_alert, 23);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_menu, 24);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_menu_item, 25);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_tool_bar, 26);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_status_bar, 27);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_image, 28);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_video, 29);
+    ASSERT_GUI_CONSTANT(rt_gui_accessible_role_link, 30);
+    ASSERT_GUI_CONSTANT(rt_gui_live_region_mode_off, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_live_region_mode_polite, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_live_region_mode_assertive, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_button_role_normal, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_button_role_default, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_button_role_cancel, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_button_role_destructive, 3);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_button_role_accept, 4);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_button_role_reject, 5);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_button_role_help, 6);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_status_idle, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_status_open, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_status_accepted, 2);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_status_cancelled, 3);
+    ASSERT_GUI_CONSTANT(rt_gui_dialog_status_failed, 4);
+    ASSERT_GUI_CONSTANT(rt_gui_image_filter_nearest, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_image_filter_bilinear, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_sort_direction_none, 0);
+    ASSERT_GUI_CONSTANT(rt_gui_sort_direction_ascending, 1);
+    ASSERT_GUI_CONSTANT(rt_gui_sort_direction_descending, -1);
+#undef ASSERT_GUI_CONSTANT
+    printf("test_gui_typed_constant_ordinals: PASSED\n");
+}
+
+/// @brief Verify TestHarness drives a live App and observes its real rendered/semantic output.
+/// @details Binding must retain and validate the App, deterministic RenderFrame must route a
+///          journaled click through the same platform queue and App.Poll path as native input, and
+///          framebuffer captures must be deep, hash-stable, clipped, and tolerance-comparable.
+///          The accessibility result must be the real root tree rather than the empty unbound
+///          schema. Unbinding then restores safe unavailable results without erasing legacy state.
+static void test_app_bound_test_harness_uses_real_runtime_paths(void) {
+    void *result = rt_gui_app_try_new(rt_const_cstr("App-bound Harness Contract"), 160, 100);
+    assert(result && rt_result_is_ok(result) == 1);
+    void *app = rt_result_ok_value(result);
+    assert(app);
+    void *root = rt_gui_app_get_root(app);
+    assert(root);
+    void *button = rt_button_new(root, rt_const_cstr("Harness Button"));
+    assert(button);
+    rt_widget_set_position(button, 12, 10);
+    rt_widget_set_size(button, 96, 32);
+    rt_widget_set_accessible_name(button, rt_const_cstr("Harness Action"));
+
+    void *harness = rt_gui_test_harness_new();
+    assert(harness);
+    assert(rt_gui_test_harness_bind_app(harness, app) == 1);
+    assert(rt_gui_test_harness_render_frame(harness, 0.0) == 1);
+
+    vg_widget_t *button_widget = rt_gui_widget_handle_checked(button);
+    assert(button_widget);
+    int64_t click_x = (int64_t)button_widget->x + 4;
+    int64_t click_y = (int64_t)button_widget->y + 4;
+    rt_gui_test_harness_send_mouse(
+        harness, rt_const_cstr("click"), click_x, click_y, VGFX_MOUSE_LEFT);
+    assert(rt_gui_test_harness_render_frame(harness, 16.0) == 1);
+    assert(rt_widget_was_clicked(button) == 1);
+
+    void *capture = rt_gui_test_harness_capture_pixels(harness, 0, 0, 160, 100);
+    assert(capture);
+    assert(rt_pixels_width(capture) == 160);
+    assert(rt_pixels_height(capture) == 100);
+    const uint32_t *captured = rt_pixels_raw_buffer(capture);
+    assert(captured);
+    size_t nonzero = 0;
+    for (size_t index = 0; index < 160u * 100u; ++index)
+        nonzero += captured[index] != 0u ? 1u : 0u;
+    assert(nonzero > 0u);
+
+    rt_string first_hash = rt_gui_test_harness_capture_hash(harness, 0, 0, 160, 100);
+    rt_string second_hash = rt_gui_test_harness_capture_hash(harness, 0, 0, 160, 100);
+    assert(first_hash && second_hash);
+    assert(rt_str_len(first_hash) == 16);
+    assert(strcmp(rt_string_cstr(first_hash), rt_string_cstr(second_hash)) == 0);
+    rt_str_release_maybe(first_hash);
+    rt_str_release_maybe(second_hash);
+
+    void *comparison = rt_gui_test_harness_compare_region(harness, capture, 0, 0, 0);
+    assert(comparison);
+    assert(rt_map_get_int(comparison, rt_const_cstr("schemaVersion")) == 1);
+    assert(rt_map_get_bool(comparison, rt_const_cstr("matches")) == 1);
+    assert(rt_map_get_int(comparison, rt_const_cstr("differentPixels")) == 0);
+    release_test_runtime_object(comparison);
+
+    uint32_t original = captured[0];
+    rt_pixels_set_rgba(capture, 0, 0, (int64_t)(original ^ UINT32_C(0x000000FF)));
+    comparison = rt_gui_test_harness_compare_region(harness, capture, 0, 0, 0);
+    assert(comparison);
+    assert(rt_map_get_bool(comparison, rt_const_cstr("matches")) == 0);
+    assert(rt_map_get_int(comparison, rt_const_cstr("differentPixels")) == 1);
+    assert(rt_map_get_int(comparison, rt_const_cstr("maxChannelDelta")) > 0);
+    release_test_runtime_object(comparison);
+
+    void *semantic = rt_gui_test_harness_get_accessibility_snapshot(harness);
+    assert(semantic);
+    assert(rt_map_get_int(semantic, rt_const_cstr("schemaVersion")) == 1);
+    assert(rt_map_has(semantic, rt_const_cstr("children")) == 1);
+    release_test_runtime_object(semantic);
+
+    rt_gui_test_harness_unbind_app(harness);
+    assert(rt_gui_test_harness_capture_pixels(harness, 0, 0, 1, 1) == NULL);
+    semantic = rt_gui_test_harness_get_accessibility_snapshot(harness);
+    assert(semantic);
+    assert(rt_map_get_int(semantic, rt_const_cstr("schemaVersion")) == 1);
+    assert(rt_map_has(semantic, rt_const_cstr("children")) == 0);
+    release_test_runtime_object(semantic);
+
+    release_test_runtime_object(capture);
+    release_test_runtime_object(harness);
+    rt_gui_app_destroy(app);
+    release_test_runtime_object(result);
+    printf("test_app_bound_test_harness_uses_real_runtime_paths: PASSED\n");
+}
+
+/// @brief Verify detached tooltip show/hide frames remain damage-limited and idle
+/// deterministically.
+/// @details The first app frame initializes the framebuffer through the full path. Showing and
+///          hiding a compact manual tooltip must then increment only the partial counter, retain
+///          and clear the overlay union respectively, and leave both counters unchanged on the
+///          following idle frame.
+static void test_detached_tooltip_uses_retained_overlay_damage(void) {
+    void *result = rt_gui_app_try_new(rt_const_cstr("Overlay Damage Contract"), 320, 180);
+    assert(result && rt_result_is_ok(result) == 1);
+    void *app = rt_result_ok_value(result);
+    assert(app);
+    rt_gui_app_t *state = (rt_gui_app_t *)app;
+    rt_gui_app_make_current(app);
+    rt_app_set_partial_paint(app, 1);
+
+    assert(rt_gui_app_run_frame_with_delta(app, 0.0) == 1);
+    uint64_t full_before = state->frames_full;
+    uint64_t partial_before = state->frames_partial;
+    assert(full_before >= 1);
+
+    rt_tooltip_show(rt_const_cstr("Damage tracked tooltip"), 24, 24);
+    assert(state->manual_tooltip && state->manual_tooltip->is_visible);
+    assert(rt_gui_app_run_frame_with_delta(app, 16.0) == 1);
+    assert(state->frames_full == full_before);
+    assert(state->frames_partial == partial_before + 1);
+    assert(state->overlay_last_valid == 1);
+    assert(state->last_damage_w > 0.0f && state->last_damage_w < 320.0f);
+    assert(state->last_damage_h > 0.0f && state->last_damage_h < 180.0f);
+
+    rt_tooltip_hide();
+    assert(rt_gui_app_run_frame_with_delta(app, 16.0) == 1);
+    assert(state->frames_full == full_before);
+    assert(state->frames_partial == partial_before + 2);
+    assert(state->overlay_last_valid == 0);
+
+    uint64_t full_idle = state->frames_full;
+    uint64_t partial_idle = state->frames_partial;
+    assert(rt_gui_app_run_frame_with_delta(app, 16.0) == 1);
+    assert(state->frames_full == full_idle);
+    assert(state->frames_partial == partial_idle);
+
+    rt_gui_app_destroy(app);
+    release_test_runtime_object(result);
+    printf("test_detached_tooltip_uses_retained_overlay_damage: PASSED\n");
+}
+
+/// @brief Verify deterministic frame deltas drive toast animation and expiry through one clock.
+/// @details A newly created toast requests immediate initialization, then 16 ms entrance ticks.
+///          Advancing 300 deterministic milliseconds must settle the entrance and leave exactly
+///          700 ms until expiry. The final expiry and exit animation are likewise exposed through
+///          App.GetNextDeadlineMs, proving PollWait cannot sleep through overlay-only timers.
+static void test_deterministic_scheduler_drives_notification_deadlines(void) {
+    void *result = rt_gui_app_try_new(rt_const_cstr("Notification Scheduler Contract"), 240, 120);
+    assert(result && rt_result_is_ok(result) == 1);
+    void *app = rt_result_ok_value(result);
+    assert(app);
+    rt_gui_app_make_current(app);
+    assert(rt_gui_app_run_frame_with_delta(app, 0.0) == 1);
+
+    void *toast = rt_toast_new(rt_const_cstr("Scheduled"), RT_TOAST_INFO, 1000);
+    assert(toast);
+    assert(rt_gui_app_get_next_deadline_ms(app) == 0);
+    assert(rt_gui_app_run_frame_with_delta(app, 0.0) == 1);
+    assert(rt_gui_app_get_next_deadline_ms(app) == 16);
+    assert(rt_gui_app_run_frame_with_delta(app, 300.0) == 1);
+    assert(rt_gui_app_get_next_deadline_ms(app) == 700);
+    assert(rt_gui_app_run_frame_with_delta(app, 699.0) == 1);
+    assert(rt_gui_app_get_next_deadline_ms(app) == 1);
+    assert(rt_gui_app_run_frame_with_delta(app, 1.0) == 1);
+    assert(rt_gui_app_get_next_deadline_ms(app) == 16);
+    assert(rt_gui_app_run_frame_with_delta(app, 300.0) == 1);
+    assert(rt_gui_app_get_next_deadline_ms(app) == -1);
+
+    release_test_runtime_object(toast);
+    rt_gui_app_destroy(app);
+    release_test_runtime_object(result);
+    printf("test_deterministic_scheduler_drives_notification_deadlines: PASSED\n");
+}
+
+/// @brief Stress stable subhandle hashing and verify per-retirement-group automatic reclamation.
+/// @details Thousands of ListBox records exercise bounded expected-O(1) identity lookup. Retired
+///          records remain while wrappers are live and drain automatically as wrappers finalize.
+///          Two independent TreeView subtrees prove that an unrelated stale wrapper does not pin
+///          an unwrapped retirement group owned by the same widget.
+static void test_indexed_subhandles_reclaim_after_last_wrapper(void) {
+    const size_t baseline = rt_gui_subhandle_debug_live_count();
+    const size_t item_count = 2048;
+    void **handles = (void **)calloc(item_count, sizeof(*handles));
+    vg_listbox_item_t **items = (vg_listbox_item_t **)calloc(item_count, sizeof(*items));
+    assert(handles && items);
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+
+    for (size_t i = 0; i < item_count; ++i) {
+        items[i] = vg_listbox_add_item(listbox, "row", NULL);
+        assert(items[i]);
+        handles[i] = rt_gui_wrap_listbox_item(items[i]);
+        assert(handles[i]);
+    }
+    rt_gui_subhandle_debug_reset_probes();
+    for (size_t i = 0; i < item_count; ++i)
+        assert(rt_gui_wrap_listbox_item(items[i]) == handles[i]);
+    size_t capacity = rt_gui_subhandle_debug_index_capacity();
+    assert(capacity >= item_count);
+    assert(rt_gui_subhandle_debug_max_probes() > 0);
+    assert(rt_gui_subhandle_debug_max_probes() < 64);
+
+    while (listbox->first_item)
+        vg_listbox_remove_item(listbox, listbox->first_item);
+    rt_gui_collect_retired_subhandles(&listbox->base);
+    assert(listbox->retired_items != NULL);
+
+    for (size_t i = 0; i < item_count; ++i)
+        release_test_runtime_object(handles[i]);
+    free(handles);
+    free(items);
+    assert(listbox->retired_items == NULL);
+    assert(rt_gui_subhandle_debug_live_count() == baseline);
+    vg_widget_destroy(&listbox->base);
+
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    assert(tree);
+    vg_tree_node_t *held_root = vg_treeview_add_node(tree, NULL, "held");
+    vg_tree_node_t *free_root = vg_treeview_add_node(tree, NULL, "free");
+    assert(held_root && free_root);
+    void *held_handle = rt_gui_wrap_tree_node(held_root);
+    assert(held_handle);
+    vg_treeview_remove_node(tree, held_root);
+    vg_treeview_remove_node(tree, free_root);
+    rt_gui_collect_retired_subhandles(&tree->base);
+    assert(tree->retired_nodes == held_root);
+    assert(held_root->retired_next == NULL);
+
+    release_test_runtime_object(held_handle);
+    assert(tree->retired_nodes == NULL);
+    assert(rt_gui_subhandle_debug_live_count() == baseline);
+    vg_widget_destroy(&tree->base);
+    printf("test_indexed_subhandles_reclaim_after_last_wrapper: PASSED\n");
 }
 
 static void test_shortcuts_are_app_scoped(void) {
@@ -248,6 +668,7 @@ static void test_default_font_is_applied_to_text_widgets(void) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)rt_checkbox_new(app.root, rt_const_cstr("check"));
     vg_dropdown_t *dropdown = (vg_dropdown_t *)rt_dropdown_new(app.root);
     vg_listbox_t *listbox = (vg_listbox_t *)rt_listbox_new(app.root);
+    vg_datagrid_t *grid = (vg_datagrid_t *)rt_datagrid_new(app.root);
     void *group = rt_radiogroup_new();
     vg_radiobutton_t *radio =
         (vg_radiobutton_t *)rt_radiobutton_new(app.root, rt_const_cstr("radio"), group);
@@ -262,11 +683,200 @@ static void test_default_font_is_applied_to_text_widgets(void) {
            dropdown->font_size == app.default_font_size);
     assert(listbox && listbox->font == app.default_font &&
            listbox->font_size == app.default_font_size);
+    assert(grid && grid->font == app.default_font && grid->font_size == app.default_font_size);
     assert(radio && radio->font == app.default_font && radio->font_size == app.default_font_size);
 
     rt_radiogroup_destroy(group);
     cleanup_fake_app(&app);
     printf("test_default_font_is_applied_to_text_widgets: PASSED\n");
+}
+
+/// @brief Verify the complete public TextInput editing and observation surface.
+/// @details Exercises Unicode grapheme indices with combining, emoji-family, and flag clusters;
+///          selection copies; mode flags; max-length enforcement; atomic insert/history calls;
+///          independent change/submission edges; monotonic revisions; and read-only IME preedit
+///          observation. Native composition creation is driven through the lower toolkit because
+///          public applications receive that state from platform IME events rather than creating
+///          synthetic composition sessions themselves.
+static void test_textinput_runtime_exposes_complete_grapheme_editor(void) {
+    static const char text[] = "e\xCC\x81"
+                               "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D"
+                               "\xF0\x9F\x91\xA7\xE2\x80\x8D\xF0\x9F\x91\xA6"
+                               "\xF0\x9F\x87\xBA\xF0\x9F\x87\xB8"
+                               "Z";
+    static const char selected_expected[] =
+        "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D"
+        "\xF0\x9F\x91\xA7\xE2\x80\x8D\xF0\x9F\x91\xA6"
+        "\xF0\x9F\x87\xBA\xF0\x9F\x87\xB8";
+    static const char preedit[] = "\xE6\xBC\xA2\xE5\xAD\x97";
+
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_textinput_t *input = (vg_textinput_t *)rt_textinput_new(app.root);
+    assert(input);
+    assert(rt_textinput_get_max_length(input) == 0);
+    assert(rt_textinput_get_cursor(input) == 0);
+    const int64_t initial_revision = rt_textinput_get_revision(input);
+    assert(initial_revision >= 0);
+
+    rt_textinput_set_password(input, 1);
+    rt_textinput_set_read_only(input, 0);
+    rt_textinput_set_multiline(input, 1);
+    assert(rt_textinput_is_password(input) == 1);
+    assert(rt_textinput_is_read_only(input) == 0);
+    assert(rt_textinput_is_multiline(input) == 1);
+
+    rt_textinput_set_max_length(input, 4);
+    assert(rt_textinput_get_max_length(input) == 4);
+    rt_textinput_set_text(input, rt_const_cstr(text));
+    assert(rt_textinput_get_cursor(input) == 4);
+    assert(rt_textinput_was_changed(input) == 1);
+    assert(rt_textinput_was_changed(input) == 0);
+
+    rt_textinput_set_cursor(input, 1);
+    assert(rt_textinput_get_cursor(input) == 1);
+    rt_textinput_select_range(input, 1, 3);
+    assert(rt_textinput_get_selection_start(input) == 1);
+    assert(rt_textinput_get_selection_end(input) == 3);
+    rt_string selection = rt_textinput_get_selected_text(input);
+    assert(selection);
+    assert(strcmp(rt_string_cstr(selection), selected_expected) == 0);
+    rt_str_release_maybe(selection);
+
+    assert(rt_textinput_delete_selection(input) == 1);
+    assert(rt_textinput_can_undo(input) == 1);
+    assert(rt_textinput_can_redo(input) == 0);
+    const int64_t edit_revision = rt_textinput_get_revision(input);
+    assert(edit_revision > initial_revision);
+    assert(rt_textinput_undo(input) == 1);
+    assert(rt_textinput_can_redo(input) == 1);
+    assert(rt_textinput_redo(input) == 1);
+    assert(rt_textinput_get_revision(input) > edit_revision);
+
+    rt_textinput_clear_selection(input);
+    assert(rt_textinput_get_selection_start(input) == rt_textinput_get_cursor(input));
+    assert(rt_textinput_get_selection_end(input) == rt_textinput_get_cursor(input));
+    rt_textinput_set_read_only(input, 1);
+    assert(rt_textinput_is_read_only(input) == 1);
+    assert(rt_textinput_insert_text(input, rt_const_cstr("blocked")) == 0);
+    rt_textinput_set_read_only(input, 0);
+    rt_textinput_set_max_length(input, 0);
+    assert(rt_textinput_insert_text(input, rt_const_cstr("Q")) == 1);
+
+    assert(vg_textinput_composition_start(input, 1, 0));
+    assert(vg_textinput_composition_update(input, preedit, 1, 1));
+    assert(rt_textinput_is_composing(input) == 1);
+    assert(rt_textinput_get_composition_start(input) == 1);
+    assert(rt_textinput_get_composition_length(input) == 2);
+    rt_string composition = rt_textinput_get_composition_text(input);
+    assert(composition);
+    assert(strcmp(rt_string_cstr(composition), preedit) == 0);
+    rt_str_release_maybe(composition);
+    assert(vg_textinput_composition_cancel(input));
+    assert(rt_textinput_is_composing(input) == 0);
+
+    rt_textinput_set_multiline(input, 0);
+    vg_event_t enter = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, 0);
+    assert(input->base.vtable->handle_event(&input->base, &enter));
+    assert(rt_textinput_was_submitted(input) == 1);
+    assert(rt_textinput_was_submitted(input) == 0);
+    assert(rt_textinput_was_changed(input) == 1);
+    assert(rt_textinput_was_changed(input) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_textinput_runtime_exposes_complete_grapheme_editor: PASSED\n");
+}
+
+/// @brief Verify UI zoom rebuilds every spatial theme token and reapplies logical fonts.
+/// @details Starts from a clean retained tree so the test also covers the idle-render regression:
+///          changing only UI scale must dirty layout and paint immediately. Spatial tokens and
+///          the inherited default font double at 2x, while opacity and millisecond motion tokens
+///          remain unchanged. The explicit public scale/font getters report their documented
+///          logical and effective units.
+static void test_ui_scale_invalidates_and_scales_complete_theme(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.default_font = (vg_font_t *)0x1;
+    app.default_font_size = 14.0f;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_label_t *label = (vg_label_t *)rt_label_new(app.root, rt_const_cstr("scaled"));
+    assert(label);
+    assert(label->font_size == 14.0f);
+    assert(app.theme);
+    uint64_t initial_revision = app.theme_revision;
+    const vg_theme_t *base = vg_theme_dark();
+
+    app.root->needs_layout = false;
+    app.root->needs_paint = false;
+    rt_app_set_ui_scale(&app, 2.0);
+
+    assert(rt_app_get_ui_scale(&app) == 2.0);
+    assert(rt_app_get_effective_scale(&app) == 2.0);
+    assert(rt_app_get_font_size(&app) == 14.0);
+    assert(rt_app_get_logical_font_size(&app) == 14.0);
+    assert(app.theme_revision == initial_revision + 1);
+    assert(app.theme_scale == 2.0f);
+    assert(app.theme->spacing.md == base->spacing.md * 2.0f);
+    assert(app.theme->radius.sm == base->radius.sm * 2.0f);
+    assert(app.theme->radius.pill == base->radius.pill * 2.0f);
+    assert(app.theme->elevation.level2.blur == base->elevation.level2.blur * 2.0f);
+    assert(app.theme->elevation.level2.dx == base->elevation.level2.dx * 2);
+    assert(app.theme->elevation.level2.dy == base->elevation.level2.dy * 2);
+    assert(app.theme->elevation.level2.alpha == base->elevation.level2.alpha);
+    assert(app.theme->focus.glow_width == base->focus.glow_width * 2.0f);
+    assert(app.theme->focus.glow_alpha == base->focus.glow_alpha);
+    assert(app.theme->motion.hover_ms == base->motion.hover_ms);
+    assert(app.theme->motion.press_ms == base->motion.press_ms);
+    assert(app.theme->motion.focus_ms == base->motion.focus_ms);
+    assert(label->font_size == 28.0f);
+    assert(app.root->needs_layout);
+    assert(app.root->needs_paint);
+
+    cleanup_fake_app(&app);
+    printf("test_ui_scale_invalidates_and_scales_complete_theme: PASSED\n");
+}
+
+/// @brief Verify the central deadline query covers retained dirtiness and specialized timers.
+/// @details A focused text input exposes its remaining 500 ms caret interval, an indeterminate
+///          progress bar tightens that deadline to one 60 Hz frame, and any dirty retained node
+///          requests immediate work. This prevents `PollWait` from oversleeping GUI-owned timers.
+static void test_gui_scheduler_reports_nearest_widget_deadline(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_textinput_t *input = vg_textinput_create(app.root);
+    vg_progressbar_t *progress = vg_progressbar_create(app.root);
+    assert(input && progress);
+    input->base.state |= VG_STATE_FOCUSED;
+    input->cursor_blink_time = 0.25f;
+    app.root->needs_layout = false;
+    app.root->needs_paint = false;
+    input->base.needs_layout = false;
+    input->base.needs_paint = false;
+    progress->base.needs_layout = false;
+    progress->base.needs_paint = false;
+
+    assert(rt_gui_app_get_next_deadline_ms(&app) == 250);
+    progress->style = VG_PROGRESS_INDETERMINATE;
+    assert(rt_gui_app_get_next_deadline_ms(&app) == 16);
+    vg_widget_invalidate(&input->base);
+    assert(rt_gui_app_get_next_deadline_ms(&app) == 0);
+
+    cleanup_fake_app(&app);
+    printf("test_gui_scheduler_reports_nearest_widget_deadline: PASSED\n");
 }
 
 static void test_default_font_is_applied_to_complex_text_widgets(void) {
@@ -652,6 +1262,61 @@ static void test_codeeditor_runtime_supports_multicursor_editing(void) {
 
     cleanup_fake_app(&app);
     printf("test_codeeditor_runtime_supports_multicursor_editing: PASSED\n");
+}
+
+/// @brief Verify CodeEditor.GetPerfStats publishes every raw counter under stable keys.
+/// @details A seeded lower-editor snapshot makes each field independently distinguishable. The
+///          consolidated Map must preserve all nine values, agree with legacy aggregate getters,
+///          and retain its complete schema after ResetPerfStats clears the underlying counters.
+static void test_codeeditor_consolidated_perf_stats_schema(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_codeeditor_t *editor = (vg_codeeditor_t *)rt_codeeditor_new(app.root);
+    assert(editor);
+    editor->perf_stats.total_height_linear_scans = 11;
+    editor->perf_stats.total_visual_row_linear_scans = 12;
+    editor->perf_stats.visual_row_linear_scans = 13;
+    editor->perf_stats.locate_visual_row_linear_scans = 14;
+    editor->perf_stats.line_highlight_calls = 15;
+    editor->perf_stats.syntax_state_line_scans = 16;
+    editor->perf_stats.highlight_span_checks = 17;
+    editor->perf_stats.full_text_copies = 18;
+    editor->perf_stats.full_text_copy_bytes = 19;
+
+    void *stats = rt_codeeditor_get_perf_stats(editor);
+    assert(stats);
+    assert(rt_map_get_int(stats, rt_const_cstr("schemaVersion")) == 1);
+    assert(rt_map_get_int(stats, rt_const_cstr("totalHeightLinearScans")) == 11);
+    assert(rt_map_get_int(stats, rt_const_cstr("totalVisualRowLinearScans")) == 12);
+    assert(rt_map_get_int(stats, rt_const_cstr("visualRowLinearScans")) == 13);
+    assert(rt_map_get_int(stats, rt_const_cstr("locateVisualRowLinearScans")) == 14);
+    assert(rt_map_get_int(stats, rt_const_cstr("lineHighlightCalls")) == 15);
+    assert(rt_map_get_int(stats, rt_const_cstr("syntaxStateLineScans")) == 16);
+    assert(rt_map_get_int(stats, rt_const_cstr("highlightSpanChecks")) == 17);
+    assert(rt_map_get_int(stats, rt_const_cstr("fullTextCopies")) == 18);
+    assert(rt_map_get_int(stats, rt_const_cstr("fullTextCopyBytes")) == 19);
+    assert(rt_codeeditor_get_layout_linear_scan_count(editor) == 50);
+    assert(rt_codeeditor_get_syntax_highlight_call_count(editor) == 15);
+    assert(rt_codeeditor_get_syntax_state_line_scan_count(editor) == 16);
+    assert(rt_codeeditor_get_highlight_span_check_count(editor) == 17);
+    assert(rt_codeeditor_get_full_text_copy_count(editor) == 18);
+    assert(rt_codeeditor_get_full_text_copy_byte_count(editor) == 19);
+    release_test_runtime_object(stats);
+
+    rt_codeeditor_reset_perf_stats(editor);
+    stats = rt_codeeditor_get_perf_stats(editor);
+    assert(stats);
+    assert(rt_map_get_int(stats, rt_const_cstr("schemaVersion")) == 1);
+    assert(rt_map_get_int(stats, rt_const_cstr("totalHeightLinearScans")) == 0);
+    assert(rt_map_get_int(stats, rt_const_cstr("fullTextCopyBytes")) == 0);
+    release_test_runtime_object(stats);
+
+    cleanup_fake_app(&app);
+    printf("test_codeeditor_consolidated_perf_stats_schema: PASSED\n");
 }
 
 static void test_codeeditor_set_text_round_trips_embedded_nuls(void) {
@@ -1285,6 +1950,9 @@ static void test_image_set_pixels_converts_viper_pixels_to_rgba(void) {
     assert(image->pixels[1] == 0x22);
     assert(image->pixels[2] == 0x33);
     assert(image->pixels[3] == 0x44);
+    assert(rt_image_get_filter(image) == RT_IMAGE_FILTER_NEAREST);
+    rt_image_set_filter(image, RT_IMAGE_FILTER_BILINEAR);
+    assert(rt_image_get_filter(image) == RT_IMAGE_FILTER_BILINEAR);
 
     rt_image_set_pixels(image, NULL, 0, 0);
     assert(image->pixels == NULL);
@@ -1292,7 +1960,55 @@ static void test_image_set_pixels_converts_viper_pixels_to_rgba(void) {
     assert(image->img_height == 0);
 
     vg_widget_destroy(&image->base);
+    if (rt_obj_release_check0(pixels))
+        rt_obj_free(pixels);
     printf("test_image_set_pixels_converts_viper_pixels_to_rgba: PASSED\n");
+}
+
+/// @brief Verify status-returning image upload and source/destination region conversion.
+/// @details Invalid regions must preserve both pixel bytes and the lower content revision.
+static void test_image_atomic_runtime_mutation_contract(void) {
+    void *initial = rt_pixels_new(2, 2);
+    void *patch = rt_pixels_new(2, 2);
+    assert(initial && patch);
+    rt_pixels_set(initial, 0, 0, 0x010203FF);
+    rt_pixels_set(initial, 1, 0, 0x111213FF);
+    rt_pixels_set(initial, 0, 1, 0x212223FF);
+    rt_pixels_set(initial, 1, 1, 0x313233FF);
+    rt_pixels_set(patch, 0, 0, 0xA0A1A2FF);
+    rt_pixels_set(patch, 1, 0, 0xB0B1B280);
+    rt_pixels_set(patch, 0, 1, 0xC0C1C2FF);
+    rt_pixels_set(patch, 1, 1, 0xD0D1D2FF);
+
+    vg_image_t *image = vg_image_create(NULL);
+    assert(image);
+    assert(rt_image_try_set_pixels(image, initial, 0, 0) == 1);
+    uint8_t *storage = image->pixels;
+    const size_t capacity = image->pixel_capacity;
+    assert(rt_image_try_set_pixels(image, initial, 2, 2) == 1);
+    assert(image->pixels == storage && image->pixel_capacity == capacity);
+
+    assert(rt_image_update_region(image, patch, 1, 0, 1, 1, 0, 1) == 1);
+    assert(image->pixels[8] == 0xB0);
+    assert(image->pixels[9] == 0xB1);
+    assert(image->pixels[10] == 0xB2);
+    assert(image->pixels[11] == 0x80);
+    const uint64_t revision = image->content_revision;
+    uint8_t snapshot[16];
+    memcpy(snapshot, image->pixels, sizeof(snapshot));
+
+    assert(rt_image_update_region(image, patch, 1, 1, 2, 1, 0, 0) == 0);
+    assert(memcmp(image->pixels, snapshot, sizeof(snapshot)) == 0);
+    assert(image->content_revision == revision);
+    assert(rt_image_try_set_pixels(image, NULL, 0, 0) == 0);
+    assert(memcmp(image->pixels, snapshot, sizeof(snapshot)) == 0);
+
+    vg_widget_destroy(&image->base);
+    if (rt_obj_release_check0(initial))
+        rt_obj_free(initial);
+    if (rt_obj_release_check0(patch))
+        rt_obj_free(patch);
+    printf("test_image_atomic_runtime_mutation_contract: PASSED\n");
 }
 
 static void test_treeview_and_listbox_data_preserve_embedded_nuls(void) {
@@ -1496,6 +2212,47 @@ static void test_removed_listbox_and_treeview_handles_are_inert(void) {
     printf("test_removed_listbox_and_treeview_handles_are_inert: PASSED\n");
 }
 
+/// @brief Verify explicit tombstone pruning invalidates retained runtime wrappers before free.
+/// @details Tree-node and tab wrappers may outlive removal because they are managed runtime
+///          objects. The public prune operations must therefore clear the wrapper target before
+///          reclaiming the lower-toolkit tombstone. Calls through those retained wrappers must
+///          remain inert rather than inspecting reclaimed storage.
+static void test_pruned_tree_and_tab_runtime_handles_are_inert(void) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    assert(tree);
+    vg_tree_node_t *node = vg_treeview_add_node(tree, NULL, "node");
+    assert(node);
+    void *node_handle = rt_gui_wrap_tree_node(node);
+    assert(node_handle);
+
+    rt_treeview_remove_node(tree, node_handle);
+    assert(tree->retired_nodes);
+    rt_treeview_prune_retired_nodes(tree);
+    assert(tree->retired_nodes == NULL);
+    assert(rt_gui_tree_node_from_handle(node_handle) == NULL);
+    assert(rt_str_len(rt_treeview_node_get_text(node_handle)) == 0);
+    rt_treeview_node_set_data(node_handle, rt_const_cstr("ignored"));
+
+    vg_tabbar_t *tabbar = vg_tabbar_create(NULL);
+    assert(tabbar);
+    vg_tab_t *tab = vg_tabbar_add_tab(tabbar, "tab", true);
+    assert(tab);
+    void *tab_handle = rt_gui_wrap_tab(tab);
+    assert(tab_handle);
+
+    rt_tabbar_remove_tab(tabbar, tab_handle);
+    assert(tabbar->retired_tabs);
+    rt_tabbar_prune_retired_tabs(tabbar);
+    assert(tabbar->retired_tabs == NULL);
+    assert(rt_gui_tab_from_handle(tab_handle) == NULL);
+    rt_tab_set_title(tab_handle, rt_const_cstr("ignored"));
+    rt_tab_set_modified(tab_handle, 1);
+
+    vg_widget_destroy(&tabbar->base);
+    vg_widget_destroy(&tree->base);
+    printf("test_pruned_tree_and_tab_runtime_handles_are_inert: PASSED\n");
+}
+
 static void test_listbox_and_treeview_reject_foreign_child_handles(void) {
     vg_listbox_t *list_a = vg_listbox_create(NULL);
     vg_listbox_t *list_b = vg_listbox_create(NULL);
@@ -1532,6 +2289,393 @@ static void test_listbox_and_treeview_reject_foreign_child_handles(void) {
     vg_widget_destroy(&list_b->base);
     vg_widget_destroy(&list_a->base);
     printf("test_listbox_and_treeview_reject_foreign_child_handles: PASSED\n");
+}
+
+/// @brief Verify the complete managed TreeView node model and independent event payloads.
+/// @details Covers allocation-safe display text, exact UTF-8 icon round-tripping, stable IDs,
+///          materialized and lazy child state, loading, toggle/scroll behavior, monotonic
+///          revisions, independent lazy-load and activation edges, Option payload liveness, and
+///          stale-node behavior after removal. The test intentionally reads event payloads before
+///          their `Was*` edges to ensure those observer domains do not consume each other.
+static void test_treeview_complete_node_and_lazy_event_contract(void) {
+    vg_treeview_t *tree = (vg_treeview_t *)rt_treeview_new(NULL);
+    assert(tree);
+    void *node = rt_treeview_add_node(tree, NULL, rt_const_cstr("Original"));
+    assert(node);
+
+    int64_t revision = rt_treeview_get_revision(tree);
+    rt_string visible_with_nul = rt_string_from_bytes("A\0B", 3);
+    assert(visible_with_nul);
+    rt_treeview_node_set_text(node, visible_with_nul);
+    rt_str_release_maybe(visible_with_nul);
+    rt_string value = rt_treeview_node_get_text(node);
+    static const char expected_visible[] = {'A', (char)0xEF, (char)0xBF, (char)0xBD, 'B'};
+    assert(value && rt_str_len(value) == (int64_t)sizeof(expected_visible));
+    assert(memcmp(rt_string_cstr(value), expected_visible, sizeof(expected_visible)) == 0);
+    rt_str_release_maybe(value);
+    assert(rt_treeview_get_revision(tree) > revision);
+
+    rt_treeview_node_set_icon(node, rt_const_cstr("📁"));
+    value = rt_treeview_node_get_icon(node);
+    assert(value && strcmp(rt_string_cstr(value), "📁") == 0);
+    rt_str_release_maybe(value);
+
+    rt_treeview_node_set_stable_id(node, rt_const_cstr("project/src"));
+    value = rt_treeview_node_get_stable_id(node);
+    assert(value && strcmp(rt_string_cstr(value), "project/src") == 0);
+    rt_str_release_maybe(value);
+    rt_string invalid_id = rt_string_from_bytes("bad\0id", 6);
+    assert(invalid_id);
+    rt_treeview_node_set_stable_id(node, invalid_id);
+    rt_str_release_maybe(invalid_id);
+    value = rt_treeview_node_get_stable_id(node);
+    assert(value && strcmp(rt_string_cstr(value), "project/src") == 0);
+    rt_str_release_maybe(value);
+
+    assert(rt_treeview_node_has_children(node) == 0);
+    rt_treeview_node_set_has_children(node, 1);
+    assert(rt_treeview_node_has_children(node) == 1);
+    assert(rt_treeview_node_is_loading(node) == 0);
+    assert(rt_treeview_was_load_children_requested(tree) == 0);
+
+    revision = rt_treeview_get_revision(tree);
+    rt_treeview_toggle(tree, node);
+    assert(rt_treeview_node_is_expanded(node) == 1);
+    assert(rt_treeview_node_is_loading(node) == 1);
+    assert(rt_treeview_get_revision(tree) > revision);
+    void *option = rt_treeview_get_load_requested_node_option(tree);
+    assert(option && rt_option_is_some(option) == 1);
+    assert(rt_option_unwrap(option) == node);
+    release_test_runtime_object(option);
+    assert(rt_treeview_was_load_children_requested(tree) == 1);
+    assert(rt_treeview_was_load_children_requested(tree) == 0);
+
+    rt_treeview_node_set_loading(node, 0);
+    assert(rt_treeview_node_is_loading(node) == 0);
+    rt_treeview_toggle(tree, node);
+    assert(rt_treeview_node_is_expanded(node) == 0);
+    rt_treeview_toggle(tree, node);
+    assert(rt_treeview_was_load_children_requested(tree) == 1);
+    rt_treeview_node_set_loading(node, 0);
+
+    // Real children keep the affordance visible even when callers clear the lazy placeholder.
+    void *child = rt_treeview_add_node(tree, node, rt_const_cstr("Child"));
+    assert(child);
+    rt_treeview_node_set_has_children(node, 0);
+    assert(rt_treeview_node_has_children(node) == 1);
+
+    rt_treeview_select(tree, node);
+    vg_event_t enter = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, VG_MOD_NONE);
+    assert(vg_event_send(&tree->base, &enter));
+    option = rt_treeview_get_activated_node_option(tree);
+    assert(option && rt_option_is_some(option) == 1);
+    assert(rt_option_unwrap(option) == node);
+    release_test_runtime_object(option);
+    assert(rt_treeview_was_activated(tree) == 1);
+    assert(rt_treeview_was_activated(tree) == 0);
+
+    // A short viewport makes ScrollTo observable while retaining logical ownership checks.
+    tree->base.height = tree->row_height;
+    rt_treeview_scroll_to(tree, child);
+    assert(tree->scroll_y >= 0.0f);
+
+    rt_treeview_remove_node(tree, node);
+    option = rt_treeview_get_load_requested_node_option(tree);
+    assert(option && rt_option_is_none(option) == 1);
+    release_test_runtime_object(option);
+    option = rt_treeview_get_activated_node_option(tree);
+    assert(option && rt_option_is_none(option) == 1);
+    release_test_runtime_object(option);
+    assert(rt_str_len(rt_treeview_node_get_text(node)) == 0);
+    assert(rt_str_len(rt_treeview_node_get_icon(node)) == 0);
+    assert(rt_str_len(rt_treeview_node_get_stable_id(node)) == 0);
+    assert(rt_treeview_node_has_children(node) == 0);
+    assert(rt_treeview_node_is_loading(node) == 0);
+
+    vg_widget_destroy(&tree->base);
+    printf("test_treeview_complete_node_and_lazy_event_contract: PASSED\n");
+}
+
+/// @brief Verify complete tab, split-pane, radio-group, and selectable-label runtime contracts.
+/// @details Exercises managed tab metadata and byte-exact payloads, reorder edge/payload
+///          independence, logical split minima and reversible collapse, radio-group membership and
+///          selected-index revisions, per-radio text/data, UTF-8-safe wrapped ellipsis, alignment,
+///          and keyboard label selection. This is the recommendation-29 end-to-end regression.
+static void test_complete_tab_split_radio_label_contracts(void) {
+    vg_font_t *font =
+        vg_font_load_file("../../../src/runtime/graphics/text/fonts/JetBrainsMono-Regular.ttf");
+    if (!font)
+        font = vg_font_load_file("src/runtime/graphics/text/fonts/JetBrainsMono-Regular.ttf");
+    assert(font);
+
+    vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(NULL);
+    assert(tabbar);
+    void *first_tab = rt_tabbar_add_tab(tabbar, rt_const_cstr("First"), 1);
+    void *second_tab = rt_tabbar_add_tab(tabbar, rt_const_cstr("Second"), 0);
+    void *third_tab = rt_tabbar_add_tab(tabbar, rt_const_cstr("Third"), 1);
+    assert(first_tab && second_tab && third_tab);
+    rt_tabbar_set_font(tabbar, font, 15.0);
+    assert(tabbar->font == font);
+    assert(tabbar->font_size == 15.0f);
+
+    rt_string visible_with_nul = rt_string_from_bytes("A\0B", 3);
+    assert(visible_with_nul);
+    rt_tab_set_title(first_tab, visible_with_nul);
+    rt_str_release_maybe(visible_with_nul);
+    rt_string value = rt_tab_get_title(first_tab);
+    static const char expected_visible[] = {'A', (char)0xEF, (char)0xBF, (char)0xBD, 'B'};
+    assert(value && rt_str_len(value) == (int64_t)sizeof(expected_visible));
+    assert(memcmp(rt_string_cstr(value), expected_visible, sizeof(expected_visible)) == 0);
+    rt_str_release_maybe(value);
+
+    rt_string exact_data = rt_string_from_bytes("x\0y", 3);
+    assert(exact_data);
+    rt_tab_set_data(first_tab, exact_data);
+    rt_str_release_maybe(exact_data);
+    value = rt_tab_get_data(first_tab);
+    assert(value && rt_str_len(value) == 3 && memcmp(rt_string_cstr(value), "x\0y", 3) == 0);
+    rt_str_release_maybe(value);
+    assert(rt_tab_is_closable(second_tab) == 0);
+    rt_tab_set_closable(second_tab, 1);
+    assert(rt_tab_is_closable(second_tab) == 1);
+
+    rt_tab_set_stable_id(first_tab, rt_const_cstr("editor:first"));
+    value = rt_tab_get_stable_id(first_tab);
+    assert(value && strcmp(rt_string_cstr(value), "editor:first") == 0);
+    rt_str_release_maybe(value);
+    rt_string invalid_id = rt_string_from_bytes("bad\0id", 6);
+    assert(invalid_id);
+    rt_tab_set_stable_id(first_tab, invalid_id);
+    rt_str_release_maybe(invalid_id);
+    value = rt_tab_get_stable_id(first_tab);
+    assert(value && strcmp(rt_string_cstr(value), "editor:first") == 0);
+    rt_str_release_maybe(value);
+
+    int64_t revision = rt_tabbar_get_revision(tabbar);
+    assert(rt_tabbar_was_reordered(tabbar) == 0);
+    assert(rt_tabbar_move_tab(tabbar, 0, 2) == 1);
+    assert(rt_tabbar_get_reordered_from(tabbar) == 0);
+    assert(rt_tabbar_get_reordered_to(tabbar) == 2);
+    assert(rt_tabbar_get_revision(tabbar) > revision);
+    assert(rt_tabbar_was_reordered(tabbar) == 1);
+    assert(rt_tabbar_was_reordered(tabbar) == 0);
+    assert(rt_tabbar_get_tab_at(tabbar, 2) == first_tab);
+    assert(rt_tabbar_move_tab(tabbar, 2, 2) == 0);
+
+    vg_splitpane_t *split = (vg_splitpane_t *)rt_splitpane_new(NULL, 1);
+    assert(split && rt_splitpane_get_orientation(split) == 0);
+    rt_splitpane_set_min_first(split, 24.5);
+    rt_splitpane_set_min_second(split, 31.25);
+    assert(fabs(rt_splitpane_get_min_first(split) - 24.5) < 0.001);
+    assert(fabs(rt_splitpane_get_min_second(split) - 31.25) < 0.001);
+    rt_splitpane_set_position(split, 0.3);
+    revision = rt_widget_get_revision(split);
+    vg_widget_arrange(&split->base, 0.0f, 0.0f, 300.0f, 100.0f);
+    rt_splitpane_collapse_first(split);
+    assert(rt_splitpane_get_collapsed_side(split) == 1);
+    assert(rt_splitpane_get_position(split) == 0.0);
+    vg_widget_arrange(&split->base, 0.0f, 0.0f, 300.0f, 100.0f);
+    assert(vg_splitpane_get_first(split)->width == 0.0f);
+    rt_splitpane_collapse_second(split);
+    assert(rt_splitpane_get_collapsed_side(split) == 2);
+    vg_widget_arrange(&split->base, 0.0f, 0.0f, 300.0f, 100.0f);
+    assert(vg_splitpane_get_second(split)->width == 0.0f);
+    rt_splitpane_restore(split);
+    assert(rt_splitpane_get_collapsed_side(split) == 0);
+    assert(fabs(rt_splitpane_get_position(split) - 0.3) < 0.001);
+    assert(rt_widget_get_revision(split) > revision);
+    vg_splitpane_t *vertical = (vg_splitpane_t *)rt_splitpane_new(NULL, 0);
+    assert(vertical && rt_splitpane_get_orientation(vertical) == 1);
+
+    void *group = rt_radiogroup_new();
+    assert(group);
+    vg_radiobutton_t *first_radio =
+        (vg_radiobutton_t *)rt_radiobutton_new(NULL, rt_const_cstr("One"), group);
+    vg_radiobutton_t *second_radio =
+        (vg_radiobutton_t *)rt_radiobutton_new(NULL, rt_const_cstr("Two"), group);
+    assert(first_radio && second_radio);
+    assert(rt_radiogroup_get_count(group) == 2);
+    assert(rt_radiogroup_get_selected_index(group) == -1);
+    assert(rt_radiogroup_was_changed(group) == 0);
+    revision = rt_radiogroup_get_revision(group);
+    assert(rt_radiogroup_set_selected_index(group, 0) == 1);
+    assert(rt_radiobutton_is_selected(first_radio) == 1);
+    assert(rt_radiogroup_get_selected_index(group) == 0);
+    assert(rt_radiogroup_get_revision(group) > revision);
+    assert(rt_radiogroup_was_changed(group) == 1);
+    assert(rt_radiogroup_was_changed(group) == 0);
+    revision = rt_radiogroup_get_revision(group);
+    assert(rt_radiogroup_set_selected_index(group, 2) == 0);
+    assert(rt_radiogroup_get_revision(group) == revision);
+
+    rt_radiobutton_set_text(first_radio, rt_const_cstr("Primary"));
+    value = rt_radiobutton_get_text(first_radio);
+    assert(value && strcmp(rt_string_cstr(value), "Primary") == 0);
+    rt_str_release_maybe(value);
+    exact_data = rt_string_from_bytes("r\0d", 3);
+    assert(exact_data);
+    rt_radiobutton_set_data(first_radio, exact_data);
+    rt_str_release_maybe(exact_data);
+    value = rt_radiobutton_get_data(first_radio);
+    assert(value && rt_str_len(value) == 3 && memcmp(rt_string_cstr(value), "r\0d", 3) == 0);
+    rt_str_release_maybe(value);
+    assert(rt_radiogroup_set_selected_index(group, 1) == 1);
+    assert(rt_radiogroup_was_changed(group) == 1);
+    rt_widget_destroy(first_radio);
+    assert(rt_radiogroup_get_count(group) == 1);
+    assert(rt_radiogroup_get_selected_index(group) == 0);
+    assert(rt_radiogroup_was_changed(group) == 1);
+
+    vg_label_t *label = (vg_label_t *)rt_label_new(NULL, rt_const_cstr("alpha beta gamma delta"));
+    assert(label);
+    rt_label_set_font(label, font, 14.0);
+    rt_label_set_alignment(label, 2);
+    assert(rt_label_get_alignment(label) == 2);
+    rt_label_set_word_wrap(label, 1);
+    rt_label_set_max_lines(label, 1);
+    rt_label_set_ellipsis(label, 1);
+    vg_widget_measure(&label->base, 55.0f, 100.0f);
+    assert(label->wrap_line_count == 1 && label->wrap_truncated);
+    size_t rendered_len = strlen(label->wrap_line_bufs[0]);
+    assert(rendered_len >= 3);
+    assert(memcmp(label->wrap_line_bufs[0] + rendered_len - 3, "\xE2\x80\xA6", 3) == 0);
+    rt_label_set_selectable(label, 1);
+    vg_event_t select_all = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_A, 0, VG_MOD_CTRL);
+    assert(vg_event_send(&label->base, &select_all));
+    value = rt_label_get_selected_text(label);
+    assert(value && strcmp(rt_string_cstr(value), "alpha beta gamma delta") == 0);
+    rt_str_release_maybe(value);
+    vg_event_t escape = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ESCAPE, 0, VG_MOD_NONE);
+    assert(vg_event_send(&label->base, &escape));
+    value = rt_label_get_selected_text(label);
+    assert(value && rt_str_len(value) == 0);
+    rt_str_release_maybe(value);
+    rt_label_set_max_lines(label, -1);
+    assert(label->max_lines == 0);
+    rt_label_set_selectable(label, 0);
+
+    rt_widget_destroy(label);
+    rt_widget_destroy(second_radio);
+    assert(rt_radiogroup_get_count(group) == 0);
+    assert(rt_radiogroup_get_selected_index(group) == -1);
+    rt_radiogroup_destroy(group);
+    release_test_runtime_object(group);
+    rt_widget_destroy(split);
+    rt_widget_destroy(vertical);
+    rt_widget_destroy(tabbar);
+    release_test_runtime_object(first_tab);
+    release_test_runtime_object(second_tab);
+    release_test_runtime_object(third_tab);
+    vg_font_destroy(font);
+    printf("test_complete_tab_split_radio_label_contracts: PASSED\n");
+}
+
+/// @brief Verify the complete managed ColorSwatch, ColorPalette, and ColorPicker contracts.
+/// @details Exercises the public `0x00RRGGBB` boundary, separate alpha preservation, type-safe
+///          invalid-handle behavior, palette compaction, keyboard component editing, semantic
+///          roles/values, independent consumable change edges, and non-consuming revisions. This
+///          is the recommendation-30 end-to-end runtime regression.
+static void test_complete_public_color_control_contracts(void) {
+    vg_colorswatch_t *swatch =
+        (vg_colorswatch_t *)rt_colorswatch_new(NULL, (int64_t)0x123456ABCDEFULL);
+    assert(swatch);
+    assert(swatch->color == 0xFFABCDEFu);
+    assert(rt_colorswatch_get_color(swatch) == 0x00ABCDEF);
+    assert(vg_widget_get_accessible_role(&swatch->base) == VG_ACCESSIBLE_ROLE_BUTTON);
+    assert(strcmp(vg_widget_get_accessible_value(&swatch->base), "#ABCDEF") == 0);
+    assert(rt_colorswatch_was_changed(swatch) == 0);
+    int64_t revision = rt_colorswatch_get_revision(swatch);
+    rt_colorswatch_set_color(swatch, (int64_t)0xFFFF00112233ULL);
+    assert(swatch->color == 0xFF112233u);
+    assert(rt_colorswatch_get_color(swatch) == 0x00112233);
+    assert(rt_colorswatch_get_revision(swatch) > revision);
+    assert(rt_colorswatch_was_changed(swatch) == 1);
+    assert(rt_colorswatch_was_changed(swatch) == 0);
+    revision = rt_colorswatch_get_revision(swatch);
+    rt_colorswatch_set_color(swatch, (int64_t)0x9900112233ULL);
+    assert(rt_colorswatch_get_revision(swatch) == revision);
+    rt_colorswatch_set_selected(swatch, 1);
+    assert(rt_colorswatch_is_selected(swatch) == 1);
+    assert(rt_colorswatch_was_changed(swatch) == 1);
+    assert(rt_colorswatch_get_revision(swatch) > revision);
+
+    vg_colorpalette_t *palette = (vg_colorpalette_t *)rt_colorpalette_new(NULL);
+    assert(palette);
+    assert(vg_widget_get_accessible_role(&palette->base) == VG_ACCESSIBLE_ROLE_LIST);
+    assert(rt_colorpalette_get_color_count(palette) == 0);
+    rt_colorpalette_add_color(palette, (int64_t)0xAB00112233ULL);
+    rt_colorpalette_add_color(palette, 0x00445566);
+    rt_colorpalette_add_color(palette, 0x00000000);
+    assert(rt_colorpalette_get_color_count(palette) == 3);
+    assert(rt_colorpalette_get_color_at(palette, 0) == 0x00112233);
+    assert(rt_colorpalette_get_color_at(palette, 1) == 0x00445566);
+    assert(rt_colorpalette_get_color_at(palette, 2) == 0);
+    assert(rt_colorpalette_get_color_at(palette, -1) == 0);
+    assert(rt_colorpalette_get_color_at(palette, INT64_MAX) == 0);
+    assert(rt_colorpalette_was_changed(palette) == 1);
+    assert(rt_colorpalette_was_changed(palette) == 0);
+    revision = rt_colorpalette_get_revision(palette);
+    rt_colorpalette_set_selected_index(palette, 1);
+    assert(rt_colorpalette_get_selected_index(palette) == 1);
+    assert(strcmp(vg_widget_get_accessible_value(&palette->base), "2 of 3, #445566") == 0);
+    assert(rt_colorpalette_get_revision(palette) > revision);
+    assert(rt_colorpalette_was_changed(palette) == 1);
+    assert(rt_colorpalette_remove_color(palette, 0) == 1);
+    assert(rt_colorpalette_get_selected_index(palette) == 0);
+    assert(rt_colorpalette_get_color_at(palette, 0) == 0x00445566);
+    assert(rt_colorpalette_remove_color(palette, 7) == 0);
+    assert(rt_colorpalette_remove_color(palette, 0) == 1);
+    assert(rt_colorpalette_get_selected_index(palette) == -1);
+    rt_colorpalette_clear(palette);
+    assert(rt_colorpalette_get_color_count(palette) == 0);
+    assert(rt_colorpalette_was_changed(palette) == 1);
+
+    vg_colorpicker_t *picker = (vg_colorpicker_t *)rt_colorpicker_new(NULL);
+    assert(picker);
+    assert(vg_widget_get_accessible_role(&picker->base) == VG_ACCESSIBLE_ROLE_GROUP);
+    assert(rt_colorpicker_get_color(picker) == 0);
+    assert(rt_colorpicker_get_red(picker) == 0);
+    assert(rt_colorpicker_get_green(picker) == 0);
+    assert(rt_colorpicker_get_blue(picker) == 0);
+    assert(rt_colorpicker_get_alpha(picker) == 255);
+    assert(rt_colorpicker_is_alpha_enabled(picker) == 0);
+    assert(rt_colorpicker_was_changed(picker) == 0);
+
+    vg_colorpicker_set_alpha(picker, 77);
+    assert(rt_colorpicker_get_alpha(picker) == 77);
+    assert(rt_colorpicker_was_changed(picker) == 1);
+    revision = rt_colorpicker_get_revision(picker);
+    rt_colorpicker_set_color(picker, (int64_t)0xDEAD00336699ULL);
+    assert(rt_colorpicker_get_color(picker) == 0x00336699);
+    assert(rt_colorpicker_get_red(picker) == 0x33);
+    assert(rt_colorpicker_get_green(picker) == 0x66);
+    assert(rt_colorpicker_get_blue(picker) == 0x99);
+    assert(rt_colorpicker_get_alpha(picker) == 77);
+    assert(strcmp(vg_widget_get_accessible_value(&picker->base), "#336699 alpha 77") == 0);
+    assert(rt_colorpicker_get_revision(picker) > revision);
+    assert(rt_colorpicker_was_changed(picker) == 1);
+    assert(rt_colorpicker_was_changed(picker) == 0);
+
+    revision = rt_colorpicker_get_revision(picker);
+    rt_colorpicker_set_alpha_enabled(picker, 1);
+    assert(rt_colorpicker_is_alpha_enabled(picker) == 1);
+    assert(rt_colorpicker_get_revision(picker) > revision);
+    assert(rt_colorpicker_was_changed(picker) == 0);
+    vg_event_t shifted_right = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_RIGHT, 0, VG_MOD_SHIFT);
+    assert(picker->base.vtable->handle_event(&picker->base, &shifted_right));
+    assert(rt_colorpicker_get_red(picker) == 0x3D);
+    assert(rt_colorpicker_was_changed(picker) == 1);
+
+    // Every entry point validates exact live widget type rather than blindly casting.
+    assert(rt_colorpicker_get_color(swatch) == 0);
+    assert(rt_colorpalette_get_selected_index(swatch) == -1);
+    assert(rt_colorswatch_is_selected(picker) == 0);
+    assert(rt_colorpicker_get_alpha(NULL) == 0);
+
+    vg_widget_destroy(&picker->base);
+    vg_widget_destroy(&palette->base);
+    vg_widget_destroy(&swatch->base);
+    printf("test_complete_public_color_control_contracts: PASSED\n");
 }
 
 static void test_contextmenu_separator_returns_item_handle(void) {
@@ -1848,6 +2992,66 @@ static void test_font_destroy_defers_live_app_font(void) {
     app.default_font = NULL;
     cleanup_fake_app(&app);
     printf("test_font_destroy_defers_live_app_font: PASSED\n");
+}
+
+/// @brief Verify managed system-role fonts, logical metadata, palette retention, and generation GC.
+/// @details The test does not create a native window. It exercises deterministic embedded fallback
+///          as necessary, proves Result can safely own Font payloads, proves ThemePalette retains
+///          managed wrappers, and then verifies a backing font survives explicit Destroy while an
+///          app references it but is reclaimed after a later unused frame generation.
+static void test_managed_system_fonts_and_generation_retirement(void) {
+    void *regular_result = rt_font_load_system_ui(13.5);
+    assert(regular_result && rt_result_is_ok(regular_result));
+    void *regular = rt_result_unwrap(regular_result);
+    assert(rt_gui_font_handle_is_managed(regular));
+    assert(fabs(rt_font_get_logical_size(regular) - 13.5) < 0.0001);
+
+    void *palette = rt_theme_palette_new();
+    assert(palette);
+    rt_theme_palette_set_font_roles(palette, regular, regular, regular);
+    release_test_runtime_object(regular_result);
+    assert(rt_gui_font_handle_is_managed(regular));
+    assert(rt_gui_font_handle_checked(regular));
+    release_test_runtime_object(palette);
+    assert(!rt_gui_font_handle_is_managed(regular));
+
+    void *invalid = rt_font_load_system_ui(NAN);
+    assert(invalid && rt_result_is_err(invalid));
+    assert(strcmp(rt_string_cstr(rt_result_unwrap_err_str(invalid)),
+                  "font size must be finite and between 1 and 512 logical points") == 0);
+    release_test_runtime_object(invalid);
+
+    void *bold_result = rt_font_load_system_ui_bold(16.0);
+    assert(bold_result && rt_result_is_ok(bold_result));
+    void *bold = rt_result_unwrap(bold_result);
+    vg_font_t *backing = rt_gui_font_handle_checked(bold);
+    assert(backing && vg_font_is_live(backing));
+    assert(fabs(rt_font_get_logical_size(bold) - 16.0) < 0.0001);
+
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.default_font = backing;
+    rt_gui_activate_app(&app);
+    rt_font_destroy(bold);
+    assert(rt_font_get_logical_size(bold) == 0.0);
+    assert(app.retired_font_count == 1);
+    assert(app.retired_fonts[0] == backing);
+    assert(vg_font_is_live(backing));
+
+    app.default_font = NULL;
+    if (app.theme) {
+        if (vg_theme_get_current() == app.theme)
+            vg_theme_set_current(vg_theme_dark());
+        vg_theme_destroy(app.theme);
+        app.theme = NULL;
+    }
+    app.frame_generation = 1;
+    rt_gui_collect_retired_fonts(&app);
+    assert(app.retired_font_count == 0);
+    assert(!vg_font_is_live(backing));
+    release_test_runtime_object(bold_result);
+    cleanup_fake_app(&app);
+    printf("test_managed_system_fonts_and_generation_retirement: PASSED\n");
 }
 
 static void test_detached_widgets_do_not_inherit_current_app_font(void) {
@@ -2253,6 +3457,37 @@ static void test_minimap_editor_destroy_unbinds_target(void) {
     printf("test_minimap_editor_destroy_unbinds_target: PASSED\n");
 }
 
+/// @brief Verify the public Minimap source-revision and bounded-cache management contract.
+/// @details Content changes are observed without consuming the revision; invalid ranges remain
+///          inert, and disabling the cache reports zero entries deterministically.
+static void test_minimap_revision_and_cache_runtime_contract(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    void *editor = rt_codeeditor_new(app.root);
+    void *minimap = rt_minimap_new(app.root);
+    assert(editor && minimap);
+    rt_minimap_bind_editor(minimap, editor);
+    const int64_t initial_revision = rt_minimap_get_source_revision(minimap);
+    assert(initial_revision > 0);
+    assert(rt_minimap_get_source_revision(minimap) == initial_revision);
+
+    rt_codeeditor_set_text(editor, rt_const_cstr("alpha\nbeta\ngamma"));
+    const int64_t content_revision = rt_minimap_get_source_revision(minimap);
+    assert(content_revision > initial_revision);
+    assert(rt_minimap_get_source_revision(minimap) == content_revision);
+    rt_minimap_invalidate_lines(minimap, 1, 1);
+    rt_minimap_invalidate_lines(minimap, -1, 2);
+    rt_minimap_invalidate_lines(minimap, 0, 0);
+    rt_minimap_set_maximum_cached_lines(minimap, 0);
+    assert(rt_minimap_get_cached_line_count(minimap) == 0);
+    rt_minimap_set_maximum_cached_lines(minimap, 16);
+    assert(rt_minimap_get_cached_line_count(minimap) == 0);
+
+    rt_minimap_destroy(minimap);
+    cleanup_fake_app(&app);
+    printf("test_minimap_revision_and_cache_runtime_contract: PASSED\n");
+}
+
 static void test_type_specific_widget_apis_reject_wrong_types(void) {
     rt_gui_app_t app;
     reset_fake_app(&app);
@@ -2522,8 +3757,8 @@ static void test_messagebox_custom_button_ids_preserve_zero_and_i64(void) {
     assert(view->custom_button_count == 2);
     assert(view->custom_button_ids[0] == 0);
     assert(view->custom_button_ids[1] == large_id);
-    assert(view->custom_buttons[0].result == (vg_dialog_result_t)1);
-    assert(view->custom_buttons[1].result == (vg_dialog_result_t)2);
+    assert(view->custom_buttons[0].result == VG_DIALOG_RESULT_CUSTOM_1);
+    assert(view->custom_buttons[1].result == (vg_dialog_result_t)(VG_DIALOG_RESULT_CUSTOM_1 + 1));
     assert(view->custom_buttons[0].is_default == false);
     assert(view->custom_buttons[1].is_default == false);
 
@@ -2531,12 +3766,134 @@ static void test_messagebox_custom_button_ids_preserve_zero_and_i64(void) {
     assert(view->custom_buttons[1].is_default == true);
 
     vg_dialog_set_custom_buttons(view->dialog, view->custom_buttons, view->custom_button_count);
-    assert(view->dialog->custom_buttons[0].result == (vg_dialog_result_t)1);
-    assert(view->dialog->custom_buttons[1].result == (vg_dialog_result_t)2);
+    assert(view->dialog->custom_buttons[0].result == VG_DIALOG_RESULT_CUSTOM_1);
+    assert(view->dialog->custom_buttons[1].result ==
+           (vg_dialog_result_t)(VG_DIALOG_RESULT_CUSTOM_1 + 1));
 
     rt_messagebox_destroy(box);
     cleanup_fake_app(&app);
     printf("test_messagebox_custom_button_ids_preserve_zero_and_i64: PASSED\n");
+}
+
+/// @brief Verify localizable button roles, unique IDs, and exactly-once async completion state.
+/// @details Uses non-English labels to prove Enter/Escape semantics derive from roles rather than
+///          text. Lower close callbacks are invoked directly so the state machine is deterministic
+///          and does not require human input from the display-backed test runner.
+static void test_messagebox_semantic_roles_and_async_state(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *box =
+        rt_messagebox_new_question(rt_const_cstr("Lokalisierung"), rt_const_cstr("Fortfahren?"));
+    assert(box);
+    rt_messagebox_add_button_with_role(
+        box, rt_const_cstr("Abbrechen"), 41, RT_GUI_DIALOG_BUTTON_CANCEL);
+    rt_messagebox_add_button_with_role(
+        box, rt_const_cstr("Weiter"), 42, RT_GUI_DIALOG_BUTTON_DEFAULT);
+
+    rt_messagebox_data_view_t *view = (rt_messagebox_data_view_t *)box;
+    assert(view->custom_button_count == 2);
+    assert(view->custom_button_roles[0] == RT_GUI_DIALOG_BUTTON_CANCEL);
+    assert(view->custom_button_roles[1] == RT_GUI_DIALOG_BUTTON_DEFAULT);
+    assert(view->custom_buttons[0].is_cancel);
+    assert(view->custom_buttons[1].is_default);
+    assert(rt_messagebox_set_cancel_button(box, 41) == 1);
+    assert(rt_messagebox_set_default_button(box, 42) == 1);
+    assert(rt_messagebox_set_button_role(box, 42, RT_GUI_DIALOG_BUTTON_ACCEPT) == 1);
+    assert(rt_messagebox_set_button_role(box, 999, RT_GUI_DIALOG_BUTTON_NORMAL) == 0);
+
+    begin_expected_vm_trap();
+    rt_messagebox_add_button_with_role(
+        box, rt_const_cstr("Duplikat"), 42, RT_GUI_DIALOG_BUTTON_NORMAL);
+    end_expected_vm_trap("Message box button ID must be unique: 42");
+    assert(view->custom_button_count == 2);
+
+    vg_dialog_show(view->dialog);
+    view->status = RT_GUI_DIALOG_STATUS_OPEN;
+    vg_dialog_close(view->dialog, view->custom_buttons[1].result);
+    assert(rt_messagebox_is_open(box) == 0);
+    assert(rt_messagebox_get_status(box) == RT_GUI_DIALOG_STATUS_ACCEPTED);
+    assert(rt_messagebox_get_result(box) == 42);
+    assert(rt_messagebox_was_completed(box) == 1);
+    assert(rt_messagebox_was_completed(box) == 0);
+
+    vg_dialog_show(view->dialog);
+    view->status = RT_GUI_DIALOG_STATUS_OPEN;
+    vg_dialog_close(view->dialog, view->custom_buttons[0].result);
+    assert(rt_messagebox_get_status(box) == RT_GUI_DIALOG_STATUS_CANCELLED);
+    assert(rt_messagebox_get_result(box) == 41);
+    assert(rt_messagebox_was_completed(box) == 1);
+
+    assert(rt_messagebox_show_async(box) == 0);
+    assert(rt_messagebox_get_status(box) == RT_GUI_DIALOG_STATUS_FAILED);
+    assert(rt_messagebox_was_completed(box) == 1);
+    rt_string error = rt_messagebox_get_error(box);
+    assert(strcmp(rt_string_cstr(error), "No active GUI application is available") == 0);
+    rt_string_unref(error);
+
+    rt_messagebox_destroy(box);
+    cleanup_fake_app(&app);
+    printf("test_messagebox_semantic_roles_and_async_state: PASSED\n");
+}
+
+/// @brief Verify complete cross-platform FileDialog configuration and asynchronous result
+/// snapshots.
+/// @details Exercises retained lower fields directly, forces an accepted callback with a path that
+///          contains a semicolon, and verifies GetPaths returns an independently owned sequence.
+static void test_filedialog_complete_async_contract(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    void *dialog = rt_filedialog_new_save();
+    assert(dialog);
+    rt_filedialog_data_view_t *view = (rt_filedialog_data_view_t *)dialog;
+    assert(view->dialog);
+
+    rt_filedialog_set_show_hidden(dialog, 1);
+    rt_filedialog_set_confirm_overwrite(dialog, 1);
+    rt_filedialog_set_default_extension(dialog, rt_const_cstr(".zia"));
+    rt_filedialog_clear_bookmarks(dialog);
+    rt_filedialog_add_bookmark(dialog, rt_const_cstr("/tmp/Viper Projects"));
+    assert(view->dialog->show_hidden);
+    assert(view->dialog->confirm_overwrite);
+    assert(strcmp(view->dialog->default_extension, ".zia") == 0);
+    assert(view->dialog->bookmark_count == 1);
+    assert(strcmp(view->dialog->bookmarks[0].path, "/tmp/Viper Projects") == 0);
+
+    assert(rt_filedialog_show_async(dialog) == 0);
+    assert(rt_filedialog_get_status(dialog) == RT_GUI_DIALOG_STATUS_FAILED);
+    assert(rt_filedialog_was_completed(dialog) == 1);
+    assert(rt_filedialog_was_completed(dialog) == 0);
+
+    vg_dialog_show(&view->dialog->base);
+    view->status = RT_GUI_DIALOG_STATUS_OPEN;
+    view->dialog->selected_files = (char **)calloc(1, sizeof(char *));
+    assert(view->dialog->selected_files);
+    view->dialog->selected_files[0] = test_strdup_local("/tmp/a;b.zia");
+    assert(view->dialog->selected_files[0]);
+    view->dialog->selected_file_count = 1;
+    vg_dialog_close(&view->dialog->base, VG_DIALOG_RESULT_OK);
+
+    assert(rt_filedialog_get_status(dialog) == RT_GUI_DIALOG_STATUS_ACCEPTED);
+    assert(rt_filedialog_is_open(dialog) == 0);
+    assert(rt_filedialog_was_completed(dialog) == 1);
+    void *paths = rt_filedialog_get_paths(dialog);
+    assert(paths);
+    assert(rt_seq_len(paths) == 1);
+    assert(strcmp(rt_string_cstr(rt_seq_get_str(paths, 0)), "/tmp/a;b.zia") == 0);
+    release_test_runtime_object(paths);
+
+    rt_filedialog_destroy(dialog);
+    cleanup_fake_app(&app);
+    printf("test_filedialog_complete_async_contract: PASSED\n");
 }
 
 static void test_menuitem_checkable_state_is_real_and_invalidates_context(void) {
@@ -2841,14 +4198,840 @@ static void test_codeeditor_runtime_read_only_blocks_insertions(void) {
     printf("test_codeeditor_runtime_read_only_blocks_insertions: PASSED\n");
 }
 
+/// @brief Verify the complete base-widget geometry, hierarchy, identity, and invalidation API.
+/// @details A synthetic app at 2x scale proves public layout setters multiply exactly once while
+///          legacy integer getters remain physical and new bounds getters divide exactly once.
+///          The test also exercises owned Option lookup results, copied UTF-8 names, embedded-NUL
+///          rejection, checked indices, direct-child detachment, non-destructive clear, clipping-
+///          aware hit testing, stable IDs, and explicit paint/layout invalidation propagation.
+static void test_widget_complete_logical_hierarchy_api(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.user_scale = 2.0f;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_widget_t *parent = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *metrics = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(parent && child && metrics);
+    rt_widget_add_child(app.root, parent);
+    rt_widget_add_child(parent, child);
+    rt_widget_add_child(parent, metrics);
+    assert(rt_widget_get_child_count(parent) == 2);
+
+    rt_widget_set_min_size(metrics, 10.0, 11.0);
+    rt_widget_set_preferred_size(metrics, 20.0, 21.0);
+    rt_widget_set_max_size(metrics, 30.0, 31.0);
+    assert(metrics->constraints.min_width == 20.0f);
+    assert(metrics->constraints.min_height == 22.0f);
+    assert(metrics->constraints.preferred_width == 40.0f);
+    assert(metrics->constraints.preferred_height == 42.0f);
+    assert(metrics->constraints.max_width == 60.0f);
+    assert(metrics->constraints.max_height == 62.0f);
+    assert(rt_widget_get_min_width(metrics) == 10.0);
+    assert(rt_widget_get_min_height(metrics) == 11.0);
+
+    rt_widget_set_padding(parent, 4.0);
+    assert(parent->layout.padding_left == 8.0f);
+    assert(parent->layout.padding_bottom == 8.0f);
+    rt_widget_set_padding_edges(parent, 1.0, 2.0, 3.0, 4.0);
+    assert(parent->layout.padding_left == 2.0f);
+    assert(parent->layout.padding_top == 4.0f);
+    assert(parent->layout.padding_right == 6.0f);
+    assert(parent->layout.padding_bottom == 8.0f);
+    rt_widget_set_margin(parent, 3);
+    assert(parent->layout.margin_left == 6.0f);
+    rt_widget_set_margin_edges(parent, 5.0, 6.0, 7.0, 8.0);
+    assert(parent->layout.margin_left == 10.0f);
+    assert(parent->layout.margin_top == 12.0f);
+    assert(parent->layout.margin_right == 14.0f);
+    assert(parent->layout.margin_bottom == 16.0f);
+
+    rt_widget_set_size(metrics, 40, 30);
+    assert(metrics->constraints.min_width == 80.0f);
+    assert(metrics->constraints.preferred_height == 60.0f);
+    rt_widget_set_position(child, 5, -6);
+    assert(child->x == 10.0f);
+    assert(child->y == -12.0f);
+    assert(child->manual_position);
+
+    vg_widget_arrange(app.root, 0.0f, 0.0f, 400.0f, 300.0f);
+    vg_widget_arrange(parent, 20.0f, 40.0f, 200.0f, 160.0f);
+    vg_widget_arrange(child, 10.0f, 12.0f, 50.0f, 30.0f);
+    assert(rt_widget_get_x(child) == 10);
+    assert(rt_widget_get_y(child) == 12);
+    assert(rt_widget_get_width(child) == 50);
+    assert(rt_widget_get_height(child) == 30);
+    assert(rt_widget_get_logical_x(child) == 5.0);
+    assert(rt_widget_get_logical_y(child) == 6.0);
+    assert(rt_widget_get_logical_width(child) == 25.0);
+    assert(rt_widget_get_logical_height(child) == 15.0);
+    assert(rt_widget_get_screen_x(child) == 15.0);
+    assert(rt_widget_get_screen_y(child) == 26.0);
+    assert(rt_widget_get_screen_width(child) == 25.0);
+    assert(rt_widget_get_screen_height(child) == 15.0);
+    assert(rt_widget_hit_test(child, 16.0, 27.0) == 1);
+    assert(rt_widget_hit_test(child, 40.0, 27.0) == 0);
+    rt_widget_set_enabled(child, 0);
+    assert(rt_widget_hit_test(child, 16.0, 27.0) == 0);
+    rt_widget_set_enabled(child, 1);
+
+    void *option = rt_widget_get_parent_option(child);
+    assert(option && rt_option_is_some(option) == 1);
+    assert(rt_option_unwrap(option) == parent);
+    release_test_runtime_object(option);
+    option = rt_widget_get_parent_option(app.root);
+    assert(option && rt_option_is_none(option) == 1);
+    release_test_runtime_object(option);
+
+    option = rt_widget_get_child_at_option(parent, 0);
+    assert(option && rt_option_is_some(option) == 1);
+    assert(rt_option_unwrap(option) == child);
+    release_test_runtime_object(option);
+    option = rt_widget_get_child_at_option(parent, -1);
+    assert(option && rt_option_is_none(option) == 1);
+    release_test_runtime_object(option);
+    option = rt_widget_get_child_at_option(parent, INT64_MAX);
+    assert(option && rt_option_is_none(option) == 1);
+    release_test_runtime_object(option);
+
+    rt_widget_set_name(child, rt_const_cstr("primaryChild"));
+    rt_string name = rt_widget_get_name(child);
+    assert(name && strcmp(rt_string_cstr(name), "primaryChild") == 0);
+    rt_str_release_maybe(name);
+    rt_string embedded_nul_name = rt_string_from_bytes("bad\0suffix", 10);
+    assert(embedded_nul_name);
+    rt_widget_set_name(child, embedded_nul_name);
+    rt_str_release_maybe(embedded_nul_name);
+    name = rt_widget_get_name(child);
+    assert(name && strcmp(rt_string_cstr(name), "primaryChild") == 0);
+    rt_str_release_maybe(name);
+
+    int64_t child_id = rt_widget_get_id(child);
+    assert(child_id > 0);
+    option = rt_widget_find_by_id_option(app.root, child_id);
+    assert(option && rt_option_is_some(option) == 1);
+    assert(rt_option_unwrap(option) == child);
+    release_test_runtime_object(option);
+    option = rt_widget_find_by_id_option(app.root, -1);
+    assert(option && rt_option_is_none(option) == 1);
+    release_test_runtime_object(option);
+    option = rt_widget_find_by_name_option(app.root, rt_const_cstr("primaryChild"));
+    assert(option && rt_option_is_some(option) == 1);
+    assert(rt_option_unwrap(option) == child);
+    release_test_runtime_object(option);
+    option = rt_widget_find_by_name_option(app.root, rt_const_cstr("missing"));
+    assert(option && rt_option_is_none(option) == 1);
+    release_test_runtime_object(option);
+
+    app.root->needs_paint = false;
+    parent->needs_paint = false;
+    child->needs_paint = false;
+    rt_widget_invalidate_paint(child);
+    assert(child->needs_paint && parent->needs_paint && app.root->needs_paint);
+    app.root->needs_layout = false;
+    parent->needs_layout = false;
+    child->needs_layout = false;
+    rt_widget_invalidate_layout(child);
+    assert(child->needs_layout && parent->needs_layout && app.root->needs_layout);
+
+    assert(rt_widget_remove_child(parent, child) == 1);
+    assert(rt_widget_remove_child(parent, child) == 0);
+    assert(vg_widget_is_live(child));
+    assert(child->parent == NULL);
+    assert(rt_widget_get_child_count(parent) == 1);
+    rt_widget_add_child(parent, child);
+    assert(child->parent == parent);
+    assert(rt_widget_get_child_count(parent) == 2);
+
+    rt_widget_clear_children(parent);
+    assert(rt_widget_get_child_count(parent) == 0);
+    assert(child->parent == NULL && metrics->parent == NULL);
+    assert(vg_widget_is_live(child) && vg_widget_is_live(metrics));
+    vg_widget_destroy(child);
+    vg_widget_destroy(metrics);
+
+    cleanup_fake_app(&app);
+    printf("test_widget_complete_logical_hierarchy_api: PASSED\n");
+}
+
+/// @brief Verify the uniform public event and revision contract across stateful controls.
+/// @details Programmatic state changes create one consumable change edge and advance a
+///          non-consuming revision. Legacy ListBox/TreeView selection edges remain independently
+///          consumable, explicit Enter activation is separate from selection, Spinner submission
+///          is separate from numeric change, no-op setters preserve revisions, and all type-
+///          specific accessors reject a foreign widget handle.
+static void test_uniform_control_events_and_revisions(void) {
+    vg_checkbox_t *checkbox = (vg_checkbox_t *)rt_checkbox_new(NULL, rt_const_cstr("Enabled"));
+    assert(checkbox);
+    int64_t revision = rt_checkbox_get_revision(checkbox);
+    assert(revision > 0 && rt_checkbox_was_changed(checkbox) == 0);
+    rt_checkbox_set_checked(checkbox, 1);
+    assert(rt_checkbox_get_revision(checkbox) > revision);
+    assert(rt_checkbox_was_changed(checkbox) == 1);
+    assert(rt_checkbox_was_changed(checkbox) == 0);
+    revision = rt_checkbox_get_revision(checkbox);
+    rt_checkbox_set_checked(checkbox, 1);
+    assert(rt_checkbox_get_revision(checkbox) == revision);
+
+    vg_dropdown_t *dropdown = (vg_dropdown_t *)rt_dropdown_new(NULL);
+    assert(dropdown);
+    assert(rt_dropdown_add_item(dropdown, rt_const_cstr("One")) == 0);
+    revision = rt_dropdown_get_revision(dropdown);
+    rt_dropdown_set_selected(dropdown, 0);
+    assert(rt_dropdown_get_revision(dropdown) > revision);
+    assert(rt_dropdown_was_changed(dropdown) == 1);
+    assert(rt_dropdown_was_changed(dropdown) == 0);
+
+    vg_slider_t *slider = (vg_slider_t *)rt_slider_new(NULL, 1);
+    assert(slider);
+    revision = rt_slider_get_revision(slider);
+    rt_slider_set_value(slider, 25.0);
+    assert(rt_slider_get_revision(slider) > revision);
+    assert(rt_slider_was_changed(slider) == 1);
+    assert(rt_slider_was_changed(slider) == 0);
+    revision = rt_slider_get_revision(slider);
+    rt_slider_set_value(slider, 25.0);
+    assert(rt_slider_get_revision(slider) == revision);
+
+    vg_spinner_t *spinner = (vg_spinner_t *)rt_spinner_new(NULL);
+    assert(spinner);
+    revision = rt_spinner_get_revision(spinner);
+    rt_spinner_set_value(spinner, 4.0);
+    assert(rt_spinner_get_revision(spinner) > revision);
+    assert(rt_spinner_was_changed(spinner) == 1);
+    assert(rt_spinner_was_changed(spinner) == 0);
+    vg_event_t digit = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, '4', VG_MOD_NONE);
+    vg_event_t enter = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, VG_MOD_NONE);
+    assert(vg_event_send(&spinner->base, &digit));
+    assert(vg_event_send(&spinner->base, &enter));
+    assert(rt_spinner_was_submitted(spinner) == 1);
+    assert(rt_spinner_was_submitted(spinner) == 0);
+    assert(rt_spinner_was_changed(spinner) == 0);
+
+    vg_radiobutton_t *radio =
+        (vg_radiobutton_t *)rt_radiobutton_new(NULL, rt_const_cstr("Choice"), NULL);
+    assert(radio);
+    revision = rt_radiobutton_get_revision(radio);
+    rt_radiobutton_set_selected(radio, 1);
+    assert(rt_radiobutton_get_revision(radio) > revision);
+    assert(rt_radiobutton_was_changed(radio) == 1);
+    assert(rt_radiobutton_was_changed(radio) == 0);
+
+    vg_listbox_t *listbox = (vg_listbox_t *)rt_listbox_new(NULL);
+    assert(listbox);
+    void *list_item = rt_listbox_add_item(listbox, rt_const_cstr("Row"));
+    assert(list_item);
+    revision = rt_listbox_get_revision(listbox);
+    rt_listbox_select(listbox, list_item);
+    assert(rt_listbox_get_revision(listbox) > revision);
+    assert(rt_listbox_was_changed(listbox) == 1);
+    assert(rt_listbox_was_selection_changed(listbox) == 1);
+    assert(rt_listbox_was_changed(listbox) == 0);
+    assert(rt_listbox_was_selection_changed(listbox) == 0);
+    enter = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, VG_MOD_NONE);
+    assert(vg_event_send(&listbox->base, &enter));
+    assert(rt_listbox_was_activated(listbox) == 1);
+    assert(rt_listbox_was_activated(listbox) == 0);
+    assert(rt_listbox_was_changed(listbox) == 0);
+
+    vg_treeview_t *tree = (vg_treeview_t *)rt_treeview_new(NULL);
+    assert(tree);
+    void *tree_node = rt_treeview_add_node(tree, NULL, rt_const_cstr("Node"));
+    assert(tree_node);
+    revision = rt_treeview_get_revision(tree);
+    rt_treeview_select(tree, tree_node);
+    assert(rt_treeview_get_revision(tree) > revision);
+    assert(rt_treeview_was_changed(tree) == 1);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    assert(rt_treeview_was_changed(tree) == 0);
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+    enter = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, VG_MOD_NONE);
+    assert(vg_event_send(&tree->base, &enter));
+    assert(rt_treeview_was_activated(tree) == 1);
+    assert(rt_treeview_was_activated(tree) == 0);
+
+    vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(NULL);
+    assert(tabbar);
+    void *first_tab = rt_tabbar_add_tab(tabbar, rt_const_cstr("First"), 1);
+    void *second_tab = rt_tabbar_add_tab(tabbar, rt_const_cstr("Second"), 1);
+    assert(first_tab && second_tab);
+    revision = rt_tabbar_get_revision(tabbar);
+    rt_tabbar_set_active(tabbar, second_tab);
+    assert(rt_tabbar_get_revision(tabbar) > revision);
+    assert(rt_tabbar_was_changed(tabbar) == 1);
+    assert(rt_tabbar_was_changed(tabbar) == 0);
+
+    vg_datagrid_t *grid = (vg_datagrid_t *)rt_datagrid_new(NULL);
+    assert(grid);
+    revision = rt_datagrid_get_revision(grid);
+    rt_datagrid_set_columns(grid, 2);
+    assert(rt_datagrid_get_revision(grid) > revision);
+    assert(rt_datagrid_was_changed(grid) == 1);
+    assert(rt_datagrid_was_changed(grid) == 0);
+    revision = rt_datagrid_get_revision(grid);
+    rt_datagrid_set_columns(grid, 2);
+    assert(rt_datagrid_get_revision(grid) == revision);
+    rt_datagrid_set_cell(grid, 0, 1, rt_const_cstr("value"));
+    assert(rt_datagrid_was_changed(grid) == 1);
+
+    assert(rt_checkbox_was_changed(slider) == 0);
+    assert(rt_checkbox_get_revision(slider) == 0);
+    assert(rt_dropdown_was_changed(checkbox) == 0);
+    assert(rt_slider_get_revision(dropdown) == 0);
+    assert(rt_spinner_was_submitted(tree) == 0);
+    assert(rt_listbox_was_activated(tabbar) == 0);
+    assert(rt_treeview_get_revision(grid) == 0);
+    assert(rt_tabbar_get_revision(radio) == 0);
+    assert(rt_datagrid_get_revision(spinner) == 0);
+
+    vg_widget_destroy(&grid->base);
+    vg_widget_destroy(&tabbar->base);
+    vg_widget_destroy(&tree->base);
+    vg_widget_destroy(&listbox->base);
+    vg_widget_destroy(&radio->base);
+    vg_widget_destroy(&spinner->base);
+    vg_widget_destroy(&slider->base);
+    vg_widget_destroy(&dropdown->base);
+    vg_widget_destroy(&checkbox->base);
+    printf("test_uniform_control_events_and_revisions: PASSED\n");
+}
+
+/// @brief Verify the complete interactive, sparse-virtualized Grid runtime contract.
+/// @details Uses a 10,000-by-20 logical table with only two materialized cells; proves exact row
+///          counts, atomic invalid/no-op behavior, embedded-NUL display conversion, independent
+///          selection/activation/sort/resize/edit edges, viewport scrolling, 2x logical width
+///          conversion, default-font inheritance, type checks, and stale-handle safety.
+static void test_interactive_virtual_grid_runtime(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.default_font = (vg_font_t *)0x1;
+    app.default_font_size = 15.0f;
+    app.user_scale = 2.0f;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_datagrid_t *grid = (vg_datagrid_t *)rt_datagrid_new(app.root);
+    assert(grid);
+    assert(grid->font == app.default_font);
+    assert(grid->font_size == 30.0f);
+    rt_datagrid_set_columns(grid, 20);
+    assert(rt_datagrid_get_column_count(grid) == 20);
+
+    rt_datagrid_set_column_width(grid, 0, 25.0);
+    assert(rt_datagrid_get_column_width(grid, 0) == 50);
+    assert(rt_datagrid_was_column_resized(grid) == 1);
+    assert(rt_datagrid_was_column_resized(grid) == 0);
+    assert(rt_datagrid_get_resized_column(grid) == 0);
+    int64_t revision = rt_datagrid_get_revision(grid);
+    rt_datagrid_set_column_width(grid, 0, NAN);
+    assert(rt_datagrid_get_revision(grid) == revision);
+
+    rt_datagrid_set_virtual_row_count(grid, 10000);
+    assert(rt_datagrid_get_row_count(grid) == 10000);
+    assert(grid->virtual_mode);
+    assert(grid->cells == NULL);
+    assert(grid->virtual_cell_count == 0u);
+    revision = rt_datagrid_get_revision(grid);
+    rt_datagrid_set_virtual_row_count(grid, -1);
+    assert(rt_datagrid_get_row_count(grid) == 10000);
+    assert(rt_datagrid_get_revision(grid) == revision);
+
+    static const char nul_text[] = {'a', '\0', 'b'};
+    rt_string embedded = rt_string_from_bytes(nul_text, 3);
+    assert(embedded);
+    rt_datagrid_set_virtual_cell(grid, 9999, 19, embedded);
+    rt_str_release_maybe(embedded);
+    rt_datagrid_set_virtual_cell(grid, 0, 0, rt_const_cstr("first"));
+    assert(grid->virtual_cell_count == 2u);
+    rt_string visible = rt_datagrid_get_cell(grid, 9999, 19);
+    static const char converted[] = {'a', (char)0xEF, (char)0xBF, (char)0xBD, 'b'};
+    assert(rt_str_len(visible) == 5);
+    assert(memcmp(rt_string_cstr(visible), converted, sizeof(converted)) == 0);
+    rt_str_release_maybe(visible);
+    revision = rt_datagrid_get_revision(grid);
+    rt_datagrid_set_virtual_cell(grid, -1, 0, rt_const_cstr("invalid"));
+    rt_datagrid_set_virtual_cell(grid, 0, -1, rt_const_cstr("invalid"));
+    rt_datagrid_set_cell(grid, INT32_MAX, 0, rt_const_cstr("dense overflow"));
+    assert(grid->virtual_cell_count == 2u);
+    assert(grid->virtual_mode);
+    assert(rt_datagrid_get_revision(grid) == revision);
+
+    rt_datagrid_set_viewport_rows(grid, 9980, 20);
+    assert(rt_datagrid_get_scroll_row(grid) == 9980);
+    revision = rt_datagrid_get_revision(grid);
+    rt_datagrid_set_viewport_rows(grid, -1, 20);
+    assert(rt_datagrid_get_scroll_row(grid) == 9980);
+    assert(rt_datagrid_get_revision(grid) == revision);
+
+    rt_datagrid_set_selectable(grid, 1);
+    assert(rt_datagrid_select_cell(grid, 9999, 19) == 1);
+    assert(rt_datagrid_get_selected_row(grid) == 9999);
+    assert(rt_datagrid_get_selected_column(grid) == 19);
+    assert(rt_datagrid_was_selection_changed(grid) == 1);
+    assert(rt_datagrid_was_selection_changed(grid) == 0);
+    assert(rt_datagrid_select_cell(grid, -1, 19) == 0);
+    assert(rt_datagrid_get_selected_row(grid) == 9999);
+    vg_event_t enter = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, VG_MOD_NONE);
+    assert(vg_event_send(&grid->base, &enter));
+    assert(rt_datagrid_was_activated(grid) == 1);
+    assert(rt_datagrid_was_activated(grid) == 0);
+
+    rt_datagrid_set_sortable(grid, 19, 1);
+    rt_datagrid_set_sort(grid, 19, -7);
+    assert(rt_datagrid_get_sort_column(grid) == 19);
+    assert(rt_datagrid_get_sort_direction(grid) == -1);
+    assert(rt_datagrid_was_sort_changed(grid) == 1);
+    assert(rt_datagrid_was_sort_changed(grid) == 0);
+    revision = rt_datagrid_get_revision(grid);
+    rt_datagrid_set_sort(grid, 19, -1);
+    assert(rt_datagrid_get_revision(grid) == revision);
+
+    rt_datagrid_set_editable(grid, 1);
+    assert(rt_datagrid_begin_edit(grid, 9999, 19) == 1);
+    assert(rt_datagrid_is_editing(grid) == 1);
+    assert(rt_datagrid_commit_edit(grid, rt_const_cstr("edited")) == 1);
+    assert(rt_datagrid_is_editing(grid) == 0);
+    assert(rt_datagrid_was_cell_edited(grid) == 1);
+    assert(rt_datagrid_was_cell_edited(grid) == 0);
+    visible = rt_datagrid_get_cell(grid, 9999, 19);
+    assert(rt_str_len(visible) == 6);
+    assert(memcmp(rt_string_cstr(visible), "edited", 6) == 0);
+    rt_str_release_maybe(visible);
+    assert(rt_datagrid_begin_edit(grid, 0, 0) == 1);
+    rt_datagrid_cancel_edit(grid);
+    assert(rt_datagrid_is_editing(grid) == 0);
+    assert(rt_datagrid_was_cell_edited(grid) == 0);
+
+    rt_datagrid_scroll_to_row(grid, 9999);
+    assert(rt_datagrid_get_scroll_row(grid) == 9999);
+    revision = rt_datagrid_get_revision(grid);
+    rt_datagrid_scroll_to_row(grid, -1);
+    assert(rt_datagrid_get_scroll_row(grid) == 9999);
+    assert(rt_datagrid_get_revision(grid) == revision);
+    rt_datagrid_clear_selection(grid);
+    assert(rt_datagrid_get_selected_row(grid) == -1);
+    assert(rt_datagrid_get_selected_column(grid) == -1);
+    assert(rt_datagrid_was_selection_changed(grid) == 1);
+
+    assert(rt_datagrid_get_selected_row(app.root) == -1);
+    assert(rt_datagrid_get_sort_column(app.root) == -1);
+    assert(rt_datagrid_begin_edit(app.root, 0, 0) == 0);
+    assert(rt_datagrid_was_activated(app.root) == 0);
+
+    void *stale_grid = grid;
+    cleanup_fake_app(&app);
+    assert(rt_datagrid_get_row_count(stale_grid) == 0);
+    assert(rt_datagrid_get_selected_row(stale_grid) == -1);
+    assert(rt_datagrid_is_editing(stale_grid) == 0);
+    assert(rt_datagrid_was_sort_changed(stale_grid) == 0);
+    printf("test_interactive_virtual_grid_runtime: PASSED\n");
+}
+
+/// @brief Verify complete box, Flex, LayoutGrid, and DockPanel runtime behavior.
+/// @details A synthetic 2x app proves logical distances are scaled exactly once while fractional
+///          tracks remain dimensionless. The test covers stable public enum mapping, wrap-reverse
+///          line order, fixed/auto/fractional grid tracks, checked direct-child placement,
+///          DockPanel ownership rejection, dock gaps, wrong-type safety, and revision-preserving
+///          no-op setters.
+static void test_complete_layout_container_runtime(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.user_scale = 2.0f;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_widget_t *vbox = (vg_widget_t *)rt_vbox_new();
+    vg_widget_t *hbox = (vg_widget_t *)rt_hbox_new();
+    assert(vbox && hbox);
+    rt_widget_add_child(app.root, vbox);
+    rt_widget_add_child(app.root, hbox);
+    rt_vbox_set_align(vbox, 1);
+    rt_vbox_set_justify(vbox, 5);
+    rt_hbox_set_align(hbox, 2);
+    rt_hbox_set_justify(hbox, 3);
+    assert(rt_vbox_get_align(vbox) == 1);
+    assert(rt_vbox_get_justify(vbox) == 5);
+    assert(rt_hbox_get_align(hbox) == 2);
+    assert(rt_hbox_get_justify(hbox) == 3);
+    uint64_t vbox_revision = vg_widget_get_revision(vbox);
+    rt_vbox_set_align(vbox, 1);
+    assert(vg_widget_get_revision(vbox) == vbox_revision);
+    rt_vbox_set_align(vbox, INT64_MAX);
+    assert(rt_vbox_get_align(vbox) == 0);
+    rt_container_set_spacing(vbox, 3.0);
+    rt_container_set_padding(vbox, 4.0);
+    vg_vbox_layout_t *vbox_layout = (vg_vbox_layout_t *)vbox->impl_data;
+    assert(vbox_layout->spacing == 6.0f);
+    assert(vbox->layout.padding_left == 8.0f);
+    assert(rt_vbox_get_align(hbox) == 0);
+    assert(rt_hbox_get_justify(vbox) == 0);
+
+    vg_widget_t *flex = (vg_widget_t *)rt_flex_new();
+    assert(flex);
+    rt_widget_add_child(app.root, flex);
+    rt_flex_set_direction(flex, 1);
+    vg_flex_layout_t *flex_layout = (vg_flex_layout_t *)flex->impl_data;
+    assert(flex_layout->direction == VG_DIRECTION_COLUMN);
+    rt_flex_set_direction(flex, 2);
+    assert(flex_layout->direction == VG_DIRECTION_ROW_REVERSE);
+    rt_flex_set_direction(flex, 0);
+    rt_flex_set_wrap(flex, 2);
+    rt_flex_set_align(flex, 0);
+    rt_flex_set_justify(flex, 0);
+    rt_flex_set_gap(flex, 1.0);
+    rt_flex_set_padding(flex, 0.0);
+    assert(flex_layout->wrap == VG_FLEX_WRAP_REVERSE);
+    assert(flex_layout->gap == 2.0f);
+
+    vg_widget_t *flex_a = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *flex_b = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *flex_c = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(flex_a && flex_b && flex_c);
+    vg_widget_set_fixed_size(flex_a, 30.0f, 10.0f);
+    vg_widget_set_fixed_size(flex_b, 30.0f, 10.0f);
+    vg_widget_set_fixed_size(flex_c, 30.0f, 10.0f);
+    rt_widget_add_child(flex, flex_a);
+    rt_widget_add_child(flex, flex_b);
+    rt_widget_add_child(flex, flex_c);
+    vg_widget_measure(flex, 70.0f, 50.0f);
+    vg_widget_arrange(flex, 0.0f, 0.0f, 70.0f, 50.0f);
+    assert(flex_a->y > flex_c->y);
+    assert(flex_a->y == flex_b->y);
+
+    vg_widget_t *layout_grid = (vg_widget_t *)rt_layoutgrid_new();
+    assert(layout_grid);
+    rt_widget_add_child(app.root, layout_grid);
+    rt_layoutgrid_set_rows(layout_grid, 2);
+    rt_layoutgrid_set_columns(layout_grid, 3);
+    rt_layoutgrid_set_row_size(layout_grid, 0, 10.0);
+    rt_layoutgrid_set_row_size(layout_grid, 1, -2.0);
+    rt_layoutgrid_set_column_size(layout_grid, 0, 0.0);
+    rt_layoutgrid_set_column_size(layout_grid, 1, 20.0);
+    rt_layoutgrid_set_column_size(layout_grid, 2, -1.0);
+    rt_layoutgrid_set_gap(layout_grid, 3.0, 4.0);
+    rt_layoutgrid_set_padding(layout_grid, 5.0);
+    vg_grid_layout_t *grid_layout = (vg_grid_layout_t *)layout_grid->impl_data;
+    assert(grid_layout->rows == 2 && grid_layout->columns == 3);
+    assert(grid_layout->row_heights[0] == 20.0f);
+    assert(grid_layout->row_heights[1] == -2.0f);
+    assert(grid_layout->column_widths[0] == 0.0f);
+    assert(grid_layout->column_widths[1] == 40.0f);
+    assert(grid_layout->column_widths[2] == -1.0f);
+    assert(grid_layout->column_gap == 6.0f && grid_layout->row_gap == 8.0f);
+    assert(layout_grid->layout.padding_left == 10.0f);
+
+    vg_widget_t *auto_child = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *fixed_child = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *fraction_child = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *detached = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(auto_child && fixed_child && fraction_child && detached);
+    vg_widget_set_preferred_size(auto_child, 24.0f, 12.0f);
+    vg_widget_set_preferred_size(fixed_child, 12.0f, 12.0f);
+    vg_widget_set_preferred_size(fraction_child, 12.0f, 12.0f);
+    rt_widget_add_child(layout_grid, auto_child);
+    rt_widget_add_child(layout_grid, fixed_child);
+    rt_widget_add_child(layout_grid, fraction_child);
+    assert(rt_layoutgrid_place(layout_grid, auto_child, 0, 0, 1, 1) == 1);
+    assert(rt_layoutgrid_place(layout_grid, fixed_child, 0, 1, 1, 1) == 1);
+    assert(rt_layoutgrid_place(layout_grid, fraction_child, 0, 2, 1, 1) == 1);
+    assert(rt_layoutgrid_place(layout_grid, detached, 0, 0, 1, 1) == 0);
+    assert(detached->parent == NULL);
+    assert(rt_layoutgrid_place(layout_grid, auto_child, -1, 0, 1, 1) == 0);
+    assert(rt_layoutgrid_place(layout_grid, auto_child, 0, 2, 1, 2) == 0);
+    vg_widget_measure(layout_grid, 300.0f, 120.0f);
+    vg_widget_arrange(layout_grid, 0.0f, 0.0f, 300.0f, 120.0f);
+    assert(auto_child->width == 24.0f);
+    assert(fixed_child->width == 40.0f);
+    assert(fraction_child->width > 190.0f);
+
+    vg_widget_t *dock = (vg_widget_t *)rt_dockpanel_new();
+    assert(dock);
+    rt_widget_add_child(app.root, dock);
+    rt_dockpanel_set_padding(dock, 2.0);
+    rt_dockpanel_set_gap(dock, 5.0);
+    assert(dock->layout.padding_left == 4.0f);
+    vg_widget_t *dock_left = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *dock_fill = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *foreign_parent = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *foreign_child = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(dock_left && dock_fill && foreign_parent && foreign_child);
+    vg_widget_set_fixed_size(dock_left, 20.0f, 10.0f);
+    assert(rt_dockpanel_dock_child(dock, dock_left, 0) == 1);
+    assert(rt_dockpanel_dock_child(dock, dock_fill, 4) == 1);
+    assert(dock_left->parent == dock && dock_fill->parent == dock);
+    rt_widget_add_child(foreign_parent, foreign_child);
+    assert(rt_dockpanel_dock_child(dock, foreign_child, 1) == 0);
+    assert(foreign_child->parent == foreign_parent);
+    assert(rt_dockpanel_dock_child(dock, detached, 99) == 0);
+    assert(detached->parent == NULL);
+    vg_widget_measure(dock, 200.0f, 100.0f);
+    vg_widget_arrange(dock, 0.0f, 0.0f, 200.0f, 100.0f);
+    assert(dock_left->x == 4.0f && dock_left->width == 20.0f);
+    assert(dock_fill->x == 34.0f);
+
+    vg_widget_destroy(foreign_parent);
+    vg_widget_destroy(detached);
+    cleanup_fake_app(&app);
+    printf("test_complete_layout_container_runtime: PASSED\n");
+}
+
+/// @brief Verify the runtime semantic API and deterministic recursive snapshot schema.
+/// @details The fixture uses a 2x app scale so the test proves bounds are converted to logical
+///          units exactly once. It also covers copied string overrides, inferred input values,
+///          label relationships, invisible-subtree omission, and live-region edge snapshots.
+static void test_accessibility_snapshot_and_widget_semantics(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.user_scale = 2.0f;
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+
+    vg_widget_set_accessible_role(app.root, VG_ACCESSIBLE_ROLE_APPLICATION);
+    vg_widget_set_accessible_name(app.root, "Snapshot App");
+    vg_label_t *label = vg_label_create(app.root, "User name");
+    vg_textinput_t *input = vg_textinput_create(app.root);
+    vg_label_t *hidden = vg_label_create(app.root, "Hidden decoration");
+    assert(label && input && hidden);
+    vg_textinput_set_text(input, "Ada");
+    vg_widget_set_visible(&hidden->base, false);
+    vg_widget_arrange(app.root, 0.0f, 0.0f, 400.0f, 200.0f);
+    vg_widget_arrange(&label->base, 20.0f, 30.0f, 100.0f, 24.0f);
+    vg_widget_arrange(&input->base, 140.0f, 30.0f, 200.0f, 32.0f);
+
+    rt_widget_set_accessible_description(&input->base, rt_const_cstr("Account display name"));
+    rt_widget_set_accessible_label_for(&label->base, &input->base);
+    rt_widget_set_live_region(&label->base, VG_LIVE_REGION_POLITE);
+    assert(rt_widget_get_accessible_role(&input->base) == VG_ACCESSIBLE_ROLE_TEXTBOX);
+    assert(rt_widget_get_live_region(&label->base) == VG_LIVE_REGION_POLITE);
+    assert(rt_widget_get_revision(&input->base) > 0);
+    rt_string description = rt_widget_get_accessible_description(&input->base);
+    assert(strcmp(rt_string_cstr(description), "Account display name") == 0);
+    rt_str_release_maybe(description);
+
+    void *snapshot = rt_accessibility_snapshot(app.root);
+    assert(snapshot);
+    assert(rt_map_get_int(snapshot, rt_const_cstr("schemaVersion")) == 1);
+    assert(rt_map_get_int(snapshot, rt_const_cstr("role")) == VG_ACCESSIBLE_ROLE_APPLICATION);
+    assert(strcmp(rt_string_cstr(rt_map_get_str(snapshot, rt_const_cstr("name"))),
+                  "Snapshot App") == 0);
+    assert(rt_map_get_float(snapshot, rt_const_cstr("logicalWidth")) == 200.0);
+    assert(rt_map_get_float(snapshot, rt_const_cstr("screenWidth")) == 400.0);
+    assert(rt_map_get_bool(snapshot, rt_const_cstr("truncated")) == 0);
+
+    void *children = rt_map_get(snapshot, rt_const_cstr("children"));
+    assert(children);
+    assert(rt_seq_len(children) == 2);
+    void *label_node = rt_seq_get(children, 0);
+    void *input_node = rt_seq_get(children, 1);
+    assert(label_node && input_node);
+    assert(strcmp(rt_string_cstr(rt_map_get_str(label_node, rt_const_cstr("name"))), "User name") ==
+           0);
+    assert(rt_map_get_int(label_node, rt_const_cstr("labelForId")) == (int64_t)input->base.id);
+    assert(strcmp(rt_string_cstr(rt_map_get_str(input_node, rt_const_cstr("value"))), "Ada") == 0);
+    assert(rt_map_get_float(input_node, rt_const_cstr("logicalX")) == 70.0);
+    assert(rt_map_get_float(input_node, rt_const_cstr("logicalWidth")) == 100.0);
+    release_test_runtime_object(snapshot);
+
+    rt_accessibility_announce(
+        &label->base, rt_const_cstr("Name field ready"), VG_LIVE_REGION_ASSERTIVE);
+    snapshot = rt_accessibility_snapshot(app.root);
+    children = rt_map_get(snapshot, rt_const_cstr("children"));
+    label_node = rt_seq_get(children, 0);
+    assert(rt_map_get_int(label_node, rt_const_cstr("announcementRevision")) == 1);
+    assert(rt_map_get_int(label_node, rt_const_cstr("announcementMode")) ==
+           VG_LIVE_REGION_ASSERTIVE);
+    assert(strcmp(rt_string_cstr(rt_map_get_str(label_node, rt_const_cstr("announcement"))),
+                  "Name field ready") == 0);
+    release_test_runtime_object(snapshot);
+
+    cleanup_fake_app(&app);
+    printf("test_accessibility_snapshot_and_widget_semantics: PASSED\n");
+}
+
+/// @brief Verify explicit high-contrast and reduced-motion preferences rebuild the app theme.
+/// @details High contrast uses deterministic accessible surface/text pairs. Reduced motion must
+///          disable animation scheduling without discarding the selected high-contrast palette;
+///          toggling either preference is immediately observable through the public getters.
+static void test_accessibility_preferences_rebuild_theme(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+    uint64_t initial_theme_revision = app.theme_revision;
+
+    rt_accessibility_set_high_contrast(1);
+    assert(rt_accessibility_is_high_contrast() == 1);
+    assert(app.theme_revision == initial_theme_revision + 1u);
+    assert(app.theme->colors.bg_primary == 0x000000u);
+    assert(app.theme->colors.fg_primary == 0xFFFFFFu);
+    assert(rt_accessibility_contrast_ratio(app.theme->colors.fg_primary,
+                                           app.theme->colors.bg_primary) >= 4.5);
+
+    rt_accessibility_set_reduced_motion(1);
+    assert(rt_accessibility_is_reduced_motion() == 1);
+    assert(app.theme->colors.bg_primary == 0x000000u);
+    assert(!app.theme->motion.enabled);
+    int64_t system_contrast = rt_accessibility_get_system_high_contrast();
+    int64_t system_motion = rt_accessibility_get_system_reduced_motion();
+    assert(system_contrast == 0 || system_contrast == 1);
+    assert(system_motion == 0 || system_motion == 1);
+
+    rt_accessibility_set_reduced_motion(0);
+    rt_accessibility_set_high_contrast(0);
+    assert(rt_accessibility_is_reduced_motion() == 0);
+    assert(rt_accessibility_is_high_contrast() == 0);
+    cleanup_fake_app(&app);
+    printf("test_accessibility_preferences_rebuild_theme: PASSED\n");
+}
+
+/// @brief Verify custom palettes, validation, cloning, mode selection, and theme revision edges.
+/// @details Exercises canonical and alias tokens, recognized-invalid versus unknown setters,
+///          WCAG validation, independent palette/app ownership, logical-to-physical scaling,
+///          high-contrast composition, System-mode selection, legacy forwarding, and ResetCustom.
+static void test_custom_system_theme_palette_contract(void) {
+    void *palette = rt_theme_palette_from_dark();
+    assert(palette);
+    assert(rt_theme_palette_get_color(palette, rt_const_cstr("bgPrimary")) == 0x131922);
+    assert(rt_theme_palette_get_metric(palette, rt_const_cstr("buttonHeight")) == 28.0);
+    assert(rt_theme_palette_set_color(palette, rt_const_cstr("notAColor"), 0x123456) == 0);
+    assert(rt_theme_palette_set_metric(palette, rt_const_cstr("notAMetric"), 1.0) == 0);
+    assert(rt_theme_palette_set_color(palette, rt_const_cstr("accentPrimary"), 0x3366CC) == 1);
+    assert(rt_theme_palette_set_metric(palette, rt_const_cstr("buttonHeight"), 31.5) == 1);
+    assert(rt_theme_palette_set_metric(palette, rt_const_cstr("radiusMedium"), 7.0) == 1);
+    assert(rt_theme_palette_get_metric(palette, rt_const_cstr("radiusMd")) == 7.0);
+    rt_theme_palette_set_motion_enabled(palette, 0);
+    assert(rt_theme_palette_get_metric(palette, rt_const_cstr("motionEnabled")) == 0.0);
+
+    // Recognized invalid writes preserve the old value and remain diagnosable until repaired.
+    assert(rt_theme_palette_set_color(palette, rt_const_cstr("accentWarning"), -1) == 1);
+    assert(rt_theme_palette_get_color(palette, rt_const_cstr("accentWarning")) == 0xE8B04C);
+    void *validation = rt_theme_palette_validate(palette);
+    assert(validation && rt_result_is_err(validation));
+    assert(strcmp(rt_string_cstr(rt_result_unwrap_err_str(validation)),
+                  "GUI theme token accentWarning has an invalid value") == 0);
+    release_test_runtime_object(validation);
+    assert(rt_theme_palette_set_color(palette, rt_const_cstr("accentWarning"), 0xFFCC44) == 1);
+
+    assert(rt_theme_palette_set_metric(palette, rt_const_cstr("focusGlowAlpha"), NAN) == 1);
+    validation = rt_theme_palette_validate(palette);
+    assert(validation && rt_result_is_err(validation));
+    assert(strcmp(rt_string_cstr(rt_result_unwrap_err_str(validation)),
+                  "GUI theme token focusGlowAlpha has an invalid value") == 0);
+    release_test_runtime_object(validation);
+    assert(rt_theme_palette_set_metric(palette, rt_const_cstr("focusGlowAlpha"), 144.0) == 1);
+
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+    app.theme_reported_revision = app.theme_revision;
+
+    // A wrong font handle marks validation state without partially changing any role.
+    rt_theme_palette_set_font_roles(palette, &app, NULL, NULL);
+    validation = rt_theme_palette_validate(palette);
+    assert(validation && rt_result_is_err(validation));
+    assert(strcmp(rt_string_cstr(rt_result_unwrap_err_str(validation)),
+                  "GUI theme token fontRegular has an invalid value") == 0);
+    release_test_runtime_object(validation);
+    rt_theme_palette_set_font_roles(palette, NULL, NULL, NULL);
+    validation = rt_theme_palette_validate(palette);
+    assert(validation && rt_result_is_ok(validation));
+    assert(rt_result_unwrap_i64(validation) == 1);
+    release_test_runtime_object(validation);
+
+    void *clone = rt_theme_palette_clone(palette);
+    assert(clone);
+    assert(rt_theme_palette_set_metric(clone, rt_const_cstr("buttonHeight"), 44.0) == 1);
+    assert(rt_theme_palette_get_metric(palette, rt_const_cstr("buttonHeight")) == 31.5);
+    assert(rt_theme_palette_get_metric(clone, rt_const_cstr("buttonHeight")) == 44.0);
+
+    uint64_t before_custom = app.theme_revision;
+    assert(rt_theme_set_palette(palette) == 1);
+    assert(rt_theme_get_mode() == RT_GUI_THEME_CUSTOM);
+    assert(app.theme_revision == before_custom + 1u);
+    assert(app.custom_theme_base);
+    assert(app.custom_theme_base->button.height == 31.5f);
+    assert(app.theme->button.height == 31.5f);
+    assert(app.theme->colors.accent_primary == 0x3366CC);
+    assert(!app.theme->motion.enabled);
+    assert(rt_theme_was_changed() == 1);
+    assert(rt_theme_was_changed() == 0);
+    assert(rt_theme_get_revision() == (int64_t)app.theme_revision);
+
+    void *snapshot = rt_theme_get_palette();
+    assert(snapshot);
+    assert(rt_theme_palette_get_metric(snapshot, rt_const_cstr("buttonHeight")) == 31.5);
+    assert(rt_theme_palette_set_metric(snapshot, rt_const_cstr("buttonHeight"), 52.0) == 1);
+    assert(app.custom_theme_base->button.height == 31.5f);
+    release_test_runtime_object(snapshot);
+
+    rt_app_set_ui_scale(&app, 2.0);
+    assert(app.custom_theme_base->button.height == 31.5f);
+    assert(app.theme->button.height == 63.0f);
+    assert(rt_theme_was_changed() == 1);
+    rt_accessibility_set_high_contrast(1);
+    assert(app.theme->colors.bg_primary == 0x000000);
+    assert(app.theme->colors.fg_primary == 0xFFFFFF);
+    assert(app.theme->button.height == 63.0f);
+    rt_accessibility_set_high_contrast(0);
+
+    rt_theme_set_mode(999);
+    assert(rt_theme_get_mode() == RT_GUI_THEME_CUSTOM);
+    rt_theme_follow_system();
+    assert(rt_theme_get_mode() == RT_GUI_THEME_SYSTEM);
+    assert(app.system_prefers_dark == 0 || app.system_prefers_dark == 1);
+    assert(rt_gui_app_theme_base(&app) ==
+           (app.system_prefers_dark ? vg_theme_dark() : vg_theme_light()));
+    rt_theme_set_light();
+    assert(rt_theme_get_mode() == RT_GUI_THEME_LIGHT);
+    rt_theme_set_dark();
+    assert(rt_theme_get_mode() == RT_GUI_THEME_DARK);
+
+    // Re-select custom, then ResetCustom must change mode before reclaiming the logical base.
+    assert(rt_theme_set_palette(palette) == 1);
+    assert(app.custom_theme_base);
+    rt_theme_reset_custom();
+    assert(rt_theme_get_mode() == RT_GUI_THEME_DARK);
+    assert(app.custom_theme_base == NULL);
+    assert(app.theme_base == vg_theme_dark());
+
+    release_test_runtime_object(clone);
+    release_test_runtime_object(palette);
+    cleanup_fake_app(&app);
+    printf("test_custom_system_theme_palette_contract: PASSED\n");
+}
+
 int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
+    test_gui_capability_and_try_new_success();
+    test_gui_typed_constant_ordinals();
+    test_app_bound_test_harness_uses_real_runtime_paths();
+    test_detached_tooltip_uses_retained_overlay_damage();
+    test_deterministic_scheduler_drives_notification_deadlines();
+    test_indexed_subhandles_reclaim_after_last_wrapper();
     test_shortcuts_are_app_scoped();
     test_file_drop_is_app_scoped();
     test_statusbar_click_is_edge_triggered();
     test_statusbar_runtime_button_wires_click_polling();
     test_default_font_is_applied_to_text_widgets();
+    test_textinput_runtime_exposes_complete_grapheme_editor();
+    test_ui_scale_invalidates_and_scales_complete_theme();
+    test_gui_scheduler_reports_nearest_widget_deadline();
     test_default_font_is_applied_to_complex_text_widgets();
     test_statusbar_runtime_applies_font_with_container_parent();
     test_codeeditor_pinned_font_survives_app_font_propagation();
@@ -2862,6 +5045,7 @@ int main(void) {
     test_platform_scroll_events_keep_screen_coordinates_separate();
     test_app_handles_resolve_to_root_widgets_for_overlays();
     test_codeeditor_runtime_supports_multicursor_editing();
+    test_codeeditor_consolidated_perf_stats_schema();
     test_codeeditor_set_text_round_trips_embedded_nuls();
     test_codeeditor_runtime_pixel_helpers_follow_scroll_and_wrap();
     test_codeeditor_runtime_scroll_top_line_round_trips();
@@ -2884,6 +5068,7 @@ int main(void) {
     test_widget_destroy_clears_nested_toolbar_statusbar_runtime_refs();
     test_widget_focus_null_is_noop();
     test_image_set_pixels_converts_viper_pixels_to_rgba();
+    test_image_atomic_runtime_mutation_contract();
     test_treeview_and_listbox_data_preserve_embedded_nuls();
     test_listbox_selection_changed_is_edge_triggered();
     test_runtime_listbox_select_index_rejects_out_of_range_indices();
@@ -2891,7 +5076,11 @@ int main(void) {
     test_runtime_listbox_item_text_color_override();
     test_treeview_selection_changed_reports_removal_and_clear();
     test_removed_listbox_and_treeview_handles_are_inert();
+    test_pruned_tree_and_tab_runtime_handles_are_inert();
     test_listbox_and_treeview_reject_foreign_child_handles();
+    test_treeview_complete_node_and_lazy_event_contract();
+    test_complete_tab_split_radio_label_contracts();
+    test_complete_public_color_control_contracts();
     test_contextmenu_separator_returns_item_handle();
     test_contextmenu_item_click_updates_menuitem_was_clicked();
     test_contextmenu_show_registers_and_clears_active_overlay();
@@ -2903,6 +5092,7 @@ int main(void) {
     test_commandpalette_rejects_embedded_nul_command_ids();
     test_numeric_setters_sanitize_invalid_values();
     test_font_destroy_defers_live_app_font();
+    test_managed_system_fonts_and_generation_retirement();
     test_detached_widgets_do_not_inherit_current_app_font();
     test_app_font_size_and_late_attach_reapply_default_font();
     test_messagebox_show_after_destroy_returns_minus_one();
@@ -2918,6 +5108,7 @@ int main(void) {
     test_floatingpanel_and_tabbar_reject_wrong_or_out_of_range_handles();
     test_breadcrumb_minimap_methods_after_destroy_are_inert();
     test_minimap_editor_destroy_unbinds_target();
+    test_minimap_revision_and_cache_runtime_contract();
     test_type_specific_widget_apis_reject_wrong_types();
     test_findbar_methods_after_destroy_are_inert();
     test_findbar_parent_destroy_disconnects_wrapper();
@@ -2928,6 +5119,8 @@ int main(void) {
     test_filedialog_destroy_removes_modal_stack_entry();
     test_app_destroy_invalidates_stateful_dialog_wrappers();
     test_messagebox_custom_button_ids_preserve_zero_and_i64();
+    test_messagebox_semantic_roles_and_async_state();
+    test_filedialog_complete_async_contract();
     test_menuitem_checkable_state_is_real_and_invalidates_context();
     test_contextmenu_submenu_ownership_detaches_safely();
     test_toolbar_remove_item_removes_runtime_null_id_items();
@@ -2936,6 +5129,13 @@ int main(void) {
     test_codeeditor_add_highlight_rejects_empty_and_inverted_spans();
     test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fresh();
     test_codeeditor_runtime_read_only_blocks_insertions();
+    test_widget_complete_logical_hierarchy_api();
+    test_uniform_control_events_and_revisions();
+    test_interactive_virtual_grid_runtime();
+    test_complete_layout_container_runtime();
+    test_accessibility_snapshot_and_widget_semantics();
+    test_accessibility_preferences_rebuild_theme();
+    test_custom_system_theme_palette_contract();
 
     printf("\nAll GUI runtime regression tests passed!\n");
     return 0;

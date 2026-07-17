@@ -25,8 +25,9 @@ cell is complete.
 - Software is correctness baseline; Metal/D3D11/OpenGL all close before release.
 - Demo migrations prove abstractions; they do not define runtime internals by
   special case.
-- Historical deleted plans in the 2026-07-15 worktree remain deleted unless
-  their owner explicitly restores them. This package does not resurrect them.
+- Historical plan directories deleted during the 2026-07 documentation
+  reorganization (now committed) remain deleted unless their owner explicitly
+  restores them. This package does not resurrect them.
 
 ## Milestone sequence
 
@@ -39,7 +40,7 @@ Deliverables:
 - fresh runtime API dump and test inventory;
 - all three demo baseline gate matrices;
 - backend/platform availability matrix;
-- dirty-worktree/overlap ownership record;
+- record of any unrelated uncommitted changes and file-overlap ownership;
 - assigned ADR and implementation owners;
 - risk register reviewed.
 
@@ -157,8 +158,10 @@ Exit gate: no pending required backend/platform cell and no silent waiver.
 ## ADR program
 
 Do not reserve ADR numbers in these plans. At implementation time use the next
-available number. Likely ADR topics may be combined only when they form one
-coherent contract:
+available number from `docs/adr/README.md` (the sequence stood at 0109 on
+2026-07-16, and two older records were renumbered to 0104/0105 in the
+2026-07 documentation reorganization). Likely ADR topics may be combined only
+when they form one coherent contract:
 
 | Topic | Plans | Minimum decision content |
 |---|---|---|

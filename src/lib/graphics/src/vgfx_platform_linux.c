@@ -176,6 +176,11 @@ typedef struct {
     XIM xim;                          ///< Input method for UTF-8 text input
     XIC xic;                          ///< Input context for UTF-8 text input
     int xi_opcode;                    ///< XInput extension opcode for this Display connection
+    uint32_t *ime_preedit;            ///< Owned Unicode-codepoint preedit buffer
+    size_t ime_preedit_count;         ///< Live codepoints in ime_preedit
+    size_t ime_preedit_capacity;      ///< Allocated codepoint slots
+    size_t ime_caret;                 ///< Current preedit caret in codepoint units
+    int ime_active;                   ///< 1 between XIM preedit start and terminal event
     int cursor_type;                  ///< Last requested cursor type
     int cursor_visible;               ///< 1 if cursor should be visible
     Cursor cursor_cache[6];           ///< Cached visible cursor handles by public cursor type
@@ -574,6 +579,371 @@ static void x11_enqueue_text_input_events(
     }
 }
 
+/// @brief Append one Unicode scalar to a caller-provided UTF-8 buffer.
+/// @details Invalid scalar/surrogate values are replaced with U+FFFD. The caller computes enough
+///          storage for the worst-case four-byte encoding before invoking this helper.
+/// @param codepoint Unicode scalar candidate.
+/// @param output Destination byte buffer.
+/// @return Number of bytes written in the inclusive range one through four.
+static size_t x11_utf8_encode_codepoint(uint32_t codepoint, char *output) {
+    if (!output)
+        return 0;
+    if (codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF))
+        codepoint = 0xFFFD;
+    if (codepoint < 0x80) {
+        output[0] = (char)codepoint;
+        return 1;
+    }
+    if (codepoint < 0x800) {
+        output[0] = (char)(0xC0 | (codepoint >> 6));
+        output[1] = (char)(0x80 | (codepoint & 0x3F));
+        return 2;
+    }
+    if (codepoint < 0x10000) {
+        output[0] = (char)(0xE0 | (codepoint >> 12));
+        output[1] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+        output[2] = (char)(0x80 | (codepoint & 0x3F));
+        return 3;
+    }
+    output[0] = (char)(0xF0 | (codepoint >> 18));
+    output[1] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
+    output[2] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
+    output[3] = (char)(0x80 | (codepoint & 0x3F));
+    return 4;
+}
+
+/// @brief Convert an XIM changed-text segment into owned Unicode codepoints.
+/// @details Wide-character XIM values are copied as scalars. Multibyte values from the UTF-8 input
+///          context are decoded with ViperGFX's bounded decoder; malformed bytes advance and map
+///          to U+FFFD so callback processing cannot stall. The caller frees the returned array.
+/// @param text Borrowed XIM text segment; may be NULL for deletion-only draws.
+/// @param out_count Receives the allocated codepoint count.
+/// @return Owned codepoint array, NULL for an empty segment or allocation failure.
+static uint32_t *x11_ime_segment_codepoints(const XIMText *text, size_t *out_count) {
+    if (out_count)
+        *out_count = 0;
+    if (!text || !out_count || text->length == 0)
+        return NULL;
+
+    if (text->encoding_is_wchar) {
+        if (!text->string.wide_char)
+            return NULL;
+        size_t count = (size_t)text->length;
+        if (count > SIZE_MAX / sizeof(uint32_t))
+            return NULL;
+        uint32_t *result = (uint32_t *)malloc(count * sizeof(uint32_t));
+        if (!result)
+            return NULL;
+        for (size_t index = 0; index < count; index++) {
+            uint32_t codepoint = (uint32_t)text->string.wide_char[index];
+            result[index] = codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF)
+                                ? 0xFFFD
+                                : codepoint;
+        }
+        *out_count = count;
+        return result;
+    }
+
+    if (!text->string.multi_byte)
+        return NULL;
+    size_t byte_count = strlen(text->string.multi_byte);
+    if (byte_count == 0 || byte_count > SIZE_MAX / sizeof(uint32_t))
+        return NULL;
+    uint32_t *result = (uint32_t *)malloc(byte_count * sizeof(uint32_t));
+    if (!result)
+        return NULL;
+    size_t offset = 0;
+    size_t count = 0;
+    while (offset < byte_count) {
+        uint32_t codepoint = 0;
+        int consumed = utf8_decode_codepoint(
+            text->string.multi_byte + offset, (int)(byte_count - offset), &codepoint);
+        if (consumed <= 0)
+            consumed = 1;
+        if (codepoint == 0)
+            codepoint = 0xFFFD;
+        result[count++] = codepoint;
+        offset += (size_t)consumed;
+    }
+    *out_count = count;
+    return result;
+}
+
+/// @brief Enqueue an XIM composition lifecycle boundary without text.
+/// @param x11 Platform state whose owner window receives the event.
+/// @param type COMPOSITION_START or COMPOSITION_CANCEL.
+static void x11_ime_emit_boundary(vgfx_x11_data *x11, vgfx_event_type_t type) {
+    if (!x11 || !x11->owner_window)
+        return;
+    vgfx_event_t event;
+    if (vgfx_internal_init_composition_event(
+            &event, type, vgfx_platform_now_ms(), "", 0, 0, 0, -1, -1, 0)) {
+        vgfx_internal_enqueue_event(x11->owner_window, &event);
+    }
+}
+
+/// @brief Encode and enqueue the complete current XIM preedit snapshot.
+/// @details XIM draw callbacks are deltas, but ViperGFX events intentionally carry full snapshots
+///          so coalescing remains safe. The temporary UTF-8 buffer is released immediately after
+///          the value event copies its bounded prefix.
+/// @param x11 Platform state containing the current codepoint buffer and caret.
+static void x11_ime_emit_update(vgfx_x11_data *x11) {
+    if (!x11 || !x11->owner_window)
+        return;
+    if (x11->ime_preedit_count > (SIZE_MAX - 1u) / 4u) {
+        vgfx_internal_note_event_overflow(x11->owner_window);
+        return;
+    }
+    size_t capacity = x11->ime_preedit_count * 4u + 1u;
+    char *utf8 = (char *)malloc(capacity);
+    if (!utf8) {
+        vgfx_internal_note_event_overflow(x11->owner_window);
+        return;
+    }
+    size_t length = 0;
+    for (size_t index = 0; index < x11->ime_preedit_count; index++)
+        length += x11_utf8_encode_codepoint(x11->ime_preedit[index], utf8 + length);
+    utf8[length] = '\0';
+    size_t caret =
+        x11->ime_caret < x11->ime_preedit_count ? x11->ime_caret : x11->ime_preedit_count;
+    if (caret > (size_t)INT32_MAX)
+        caret = (size_t)INT32_MAX;
+    vgfx_event_t event;
+    if (vgfx_internal_init_composition_event(&event,
+                                             VGFX_EVENT_COMPOSITION_UPDATE,
+                                             vgfx_platform_now_ms(),
+                                             utf8,
+                                             length,
+                                             (int32_t)caret,
+                                             0,
+                                             -1,
+                                             -1,
+                                             0)) {
+        vgfx_internal_enqueue_event(x11->owner_window, &event);
+    }
+    free(utf8);
+}
+
+/// @brief Emit committed XIM lookup text as one terminal composition event.
+/// @details If an input method returns committed UTF-8 without first invoking the start callback,
+///          an implicit start boundary is emitted so the GUI still creates one atomic history
+///          record. The callback-owned preedit buffer is cleared only after queueing the commit.
+/// @param x11 Platform input-method state.
+/// @param text Borrowed committed UTF-8 bytes.
+/// @param text_length Number of readable committed bytes.
+/// @param modifiers Active X11 modifier mask translated to ViperGFX flags.
+/// @param timestamp Monotonic event timestamp in milliseconds.
+static void x11_ime_emit_commit(
+    vgfx_x11_data *x11, const char *text, size_t text_length, int modifiers, int64_t timestamp) {
+    if (!x11 || !x11->owner_window || (!text && text_length != 0))
+        return;
+    if (!x11->ime_active) {
+        x11_ime_emit_boundary(x11, VGFX_EVENT_COMPOSITION_START);
+        x11->ime_active = 1;
+    }
+    vgfx_event_t event;
+    if (vgfx_internal_init_composition_event(&event,
+                                             VGFX_EVENT_COMPOSITION_COMMIT,
+                                             timestamp,
+                                             text ? text : "",
+                                             text_length,
+                                             0,
+                                             0,
+                                             -1,
+                                             -1,
+                                             modifiers)) {
+        vgfx_internal_enqueue_event(x11->owner_window, &event);
+    }
+    x11->ime_active = 0;
+    x11->ime_preedit_count = 0;
+    x11->ime_caret = 0;
+}
+
+/// @brief Begin one XIM preedit session and reset prior callback state.
+/// @details Xlib uses the integer return as the client preedit length limit; -1 requests no
+///          implementation-defined restriction while the ViperGFX event layer enforces its safe
+///          inline payload bound.
+/// @param input_context XIM input context invoking the callback.
+/// @param client_data Borrowed vgfx_x11_data pointer registered at XIC creation.
+/// @param call_data Unused XIM callback data.
+/// @return -1 to advertise no smaller native preedit limit.
+static int x11_ime_preedit_start(XIC input_context, XPointer client_data, XPointer call_data) {
+    (void)input_context;
+    (void)call_data;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)client_data;
+    if (!x11)
+        return -1;
+    if (x11->ime_active)
+        x11_ime_emit_boundary(x11, VGFX_EVENT_COMPOSITION_CANCEL);
+    x11->ime_preedit_count = 0;
+    x11->ime_caret = 0;
+    x11->ime_active = 1;
+    x11_ime_emit_boundary(x11, VGFX_EVENT_COMPOSITION_START);
+    return -1;
+}
+
+/// @brief Apply one XIM preedit delta and publish the resulting full snapshot.
+/// @details `chg_first`/`chg_length` are character indices, which correspond to the maintained
+///          codepoint array. Invalid ranges clamp safely; allocation failure preserves the prior
+///          preedit and records overflow rather than partially applying the delta.
+/// @param input_context XIM input context invoking the callback.
+/// @param client_data Borrowed vgfx_x11_data pointer.
+/// @param call_data Borrowed XIMPreeditDrawCallbackStruct pointer.
+static void x11_ime_preedit_draw(XIC input_context, XPointer client_data, XPointer call_data) {
+    (void)input_context;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)client_data;
+    XIMPreeditDrawCallbackStruct *draw = (XIMPreeditDrawCallbackStruct *)call_data;
+    if (!x11 || !draw)
+        return;
+    if (!x11->ime_active)
+        (void)x11_ime_preedit_start(input_context, client_data, NULL);
+
+    size_t changed_start = draw->chg_first > 0 ? (size_t)draw->chg_first : 0;
+    if (changed_start > x11->ime_preedit_count)
+        changed_start = x11->ime_preedit_count;
+    size_t changed_length = draw->chg_length > 0 ? (size_t)draw->chg_length : 0;
+    if (changed_length > x11->ime_preedit_count - changed_start)
+        changed_length = x11->ime_preedit_count - changed_start;
+
+    size_t segment_count = 0;
+    uint32_t *segment = x11_ime_segment_codepoints(draw->text, &segment_count);
+    if (draw->text && draw->text->length > 0 && !segment) {
+        if (x11->owner_window)
+            vgfx_internal_note_event_overflow(x11->owner_window);
+        return;
+    }
+    size_t retained = x11->ime_preedit_count - changed_length;
+    if (segment_count > SIZE_MAX - retained) {
+        free(segment);
+        return;
+    }
+    size_t new_count = retained + segment_count;
+    if (new_count > x11->ime_preedit_capacity) {
+        size_t new_capacity = x11->ime_preedit_capacity ? x11->ime_preedit_capacity : 16u;
+        while (new_capacity < new_count && new_capacity <= SIZE_MAX / 2u)
+            new_capacity *= 2u;
+        if (new_capacity < new_count || new_capacity > SIZE_MAX / sizeof(uint32_t)) {
+            free(segment);
+            return;
+        }
+        uint32_t *resized = (uint32_t *)realloc(x11->ime_preedit, new_capacity * sizeof(uint32_t));
+        if (!resized) {
+            free(segment);
+            if (x11->owner_window)
+                vgfx_internal_note_event_overflow(x11->owner_window);
+            return;
+        }
+        x11->ime_preedit = resized;
+        x11->ime_preedit_capacity = new_capacity;
+    }
+    size_t tail_start = changed_start + changed_length;
+    size_t tail_count = x11->ime_preedit_count - tail_start;
+    memmove(x11->ime_preedit + changed_start + segment_count,
+            x11->ime_preedit + tail_start,
+            tail_count * sizeof(uint32_t));
+    if (segment_count > 0)
+        memcpy(x11->ime_preedit + changed_start, segment, segment_count * sizeof(uint32_t));
+    free(segment);
+    x11->ime_preedit_count = new_count;
+    x11->ime_caret = draw->caret > 0 ? (size_t)draw->caret : 0;
+    x11_ime_emit_update(x11);
+}
+
+/// @brief Publish an XIM caret-only change as a full coalescible update.
+/// @param input_context XIM input context invoking the callback.
+/// @param client_data Borrowed vgfx_x11_data pointer.
+/// @param call_data Borrowed XIMPreeditCaretCallbackStruct pointer.
+static void x11_ime_preedit_caret(XIC input_context, XPointer client_data, XPointer call_data) {
+    (void)input_context;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)client_data;
+    XIMPreeditCaretCallbackStruct *caret = (XIMPreeditCaretCallbackStruct *)call_data;
+    if (!x11 || !caret || !x11->ime_active)
+        return;
+    x11->ime_caret = caret->position > 0 ? (size_t)caret->position : 0;
+    x11_ime_emit_update(x11);
+}
+
+/// @brief End an XIM preedit session that did not already emit committed lookup text.
+/// @param input_context XIM input context invoking the callback.
+/// @param client_data Borrowed vgfx_x11_data pointer.
+/// @param call_data Unused XIM callback data.
+static void x11_ime_preedit_done(XIC input_context, XPointer client_data, XPointer call_data) {
+    (void)input_context;
+    (void)call_data;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)client_data;
+    if (!x11 || !x11->ime_active)
+        return;
+    x11_ime_emit_boundary(x11, VGFX_EVENT_COMPOSITION_CANCEL);
+    x11->ime_active = 0;
+    x11->ime_preedit_count = 0;
+    x11->ime_caret = 0;
+}
+
+/// @brief Create the richest XIM input context supported by the current input method.
+/// @details Prefers callback preedit so ViperGUI can render marked text. If the input method does
+///          not advertise that style or creation fails, falls back to the existing preedit-nothing
+///          context, preserving committed UTF-8 input on minimal X servers.
+/// @param x11 Initialized X11 platform state with open display, window, and input method.
+/// @return Created XIC, or NULL when no input context is available.
+static XIC x11_create_input_context(vgfx_x11_data *x11) {
+    if (!x11 || !x11->xim)
+        return NULL;
+    bool supports_callbacks = false;
+    XIMStyles *styles = NULL;
+    if (XGetIMValues(x11->xim, XNQueryInputStyle, &styles, NULL) == NULL && styles) {
+        for (unsigned short index = 0; index < styles->count_styles; index++) {
+            XIMStyle style = styles->supported_styles[index];
+            if ((style & XIMPreeditCallbacks) != 0 && (style & XIMStatusNothing) != 0) {
+                supports_callbacks = true;
+                break;
+            }
+        }
+    }
+    if (styles)
+        XFree(styles);
+
+    if (supports_callbacks) {
+        XIMCallback start = {(XPointer)x11, (XIMProc)x11_ime_preedit_start};
+        XIMCallback done = {(XPointer)x11, (XIMProc)x11_ime_preedit_done};
+        XIMCallback draw = {(XPointer)x11, (XIMProc)x11_ime_preedit_draw};
+        XIMCallback caret = {(XPointer)x11, (XIMProc)x11_ime_preedit_caret};
+        XVaNestedList preedit = XVaCreateNestedList(0,
+                                                    XNPreeditStartCallback,
+                                                    &start,
+                                                    XNPreeditDoneCallback,
+                                                    &done,
+                                                    XNPreeditDrawCallback,
+                                                    &draw,
+                                                    XNPreeditCaretCallback,
+                                                    &caret,
+                                                    NULL);
+        if (preedit) {
+            XIC context = XCreateIC(x11->xim,
+                                    XNInputStyle,
+                                    XIMPreeditCallbacks | XIMStatusNothing,
+                                    XNClientWindow,
+                                    x11->window,
+                                    XNFocusWindow,
+                                    x11->window,
+                                    XNPreeditAttributes,
+                                    preedit,
+                                    NULL);
+            XFree(preedit);
+            if (context)
+                return context;
+        }
+    }
+
+    return XCreateIC(x11->xim,
+                     XNInputStyle,
+                     XIMPreeditNothing | XIMStatusNothing,
+                     XNClientWindow,
+                     x11->window,
+                     XNFocusWindow,
+                     x11->window,
+                     NULL);
+}
+
 static int32_t x11_logical_to_physical(const struct vgfx_window *win, int32_t logical) {
     float scale = win ? vgfx_internal_sanitize_scale(win->scale_factor) : 1.0f;
     return vgfx_internal_scale_up_i32(logical, scale);
@@ -864,6 +1234,10 @@ static void x11_cleanup_platform(struct vgfx_window *win) {
 
     free(x11->clipboard_text);
     x11->clipboard_text = NULL;
+    free(x11->ime_preedit);
+    x11->ime_preedit = NULL;
+    x11->ime_preedit_count = 0;
+    x11->ime_preedit_capacity = 0;
 
     if (x11->display) {
         if (x11->gc) {
@@ -1130,16 +1504,8 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     x11_set_window_title_utf8(x11->display, x11->window, params->title);
 
     x11->xim = XOpenIM(x11->display, NULL, NULL, NULL);
-    if (x11->xim) {
-        x11->xic = XCreateIC(x11->xim,
-                             XNInputStyle,
-                             XIMPreeditNothing | XIMStatusNothing,
-                             XNClientWindow,
-                             x11->window,
-                             XNFocusWindow,
-                             x11->window,
-                             NULL);
-    }
+    if (x11->xim)
+        x11->xic = x11_create_input_context(x11);
 
     /* Set window size hints (prevents resizing if not resizable) */
     XSizeHints *size_hints = XAllocSizeHints();
@@ -1600,6 +1966,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
         XEvent event;
         XNextEvent(x11->display, &event);
 
+        /* Give the active XIM first access so preedit callbacks can publish
+           lifecycle events and consume implementation-private messages. */
+        if (XFilterEvent(&event, x11->window))
+            continue;
+
         int64_t timestamp = vgfx_platform_now_ms();
 
         switch (event.type) {
@@ -1650,7 +2021,11 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
                         .data.key = {.key = key, .is_repeat = is_repeat, .modifiers = mods}};
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                 }
-                x11_enqueue_text_input_events(win, timestamp, mods, text_storage, text_len);
+                if (x11->ime_active && text_len > 0) {
+                    x11_ime_emit_commit(x11, text_storage, (size_t)text_len, mods, timestamp);
+                } else {
+                    x11_enqueue_text_input_events(win, timestamp, mods, text_storage, text_len);
+                }
                 if (text_storage != text_buf)
                     free(text_storage);
                 break;
@@ -1891,6 +2266,12 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             case FocusOut: {
                 if (x11->xic)
                     XUnsetICFocus(x11->xic);
+                if (x11->ime_active) {
+                    x11_ime_emit_boundary(x11, VGFX_EVENT_COMPOSITION_CANCEL);
+                    x11->ime_active = 0;
+                    x11->ime_preedit_count = 0;
+                    x11->ime_caret = 0;
+                }
                 vgfx_internal_set_focus_state(win, 0);
                 vgfx_internal_clear_input_state(win);
                 /* Release the pointer grab while unfocused (re-applied on

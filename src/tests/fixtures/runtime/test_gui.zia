@@ -1,15 +1,45 @@
 module TestGui;
 
 bind "./_support";
+bind Viper.GUI.Align as Align;
+bind Viper.GUI.Justify as Justify;
+bind Viper.GUI.FlexDirection as FlexDirection;
+bind Viper.GUI.FlexWrap as FlexWrap;
+bind Viper.GUI.Dock as Dock;
+bind Viper.GUI.ThemeMode as ThemeMode;
+bind Viper.GUI.AccessibleRole as AccessibleRole;
+bind Viper.GUI.LiveRegionMode as LiveRegionMode;
+bind Viper.GUI.DialogButtonRole as DialogButtonRole;
+bind Viper.GUI.DialogStatus as DialogStatus;
+bind Viper.GUI.ImageFilter as ImageFilter;
+bind Viper.GUI.SortDirection as SortDirection;
 
 // EXPECT_OUT: RESULT: ok
 // NOTE: GUI tests are limited since they require display/window system
 // These tests verify that non-windowed operations work correctly
 // Full GUI testing requires manual verification or headless testing
 
-// GUI tests are intentionally minimal since we can't create windows
-// in a headless test environment. This test file serves as documentation
-// of what should be tested manually.
+// Window-backed behavior is covered by the display-locked C runtime tests. This
+// fixture verifies GUI registry surfaces that are deliberately usable headlessly.
+
+func testGuiTypedConstants() {
+    setTest("GuiTypedConstants");
+
+    assertEqInt(Align.Start, 0, "Align.Start");
+    assertEqInt(Align.Stretch, 3, "Align.Stretch");
+    assertEqInt(Justify.SpaceEvenly, 5, "Justify.SpaceEvenly");
+    assertEqInt(FlexDirection.Column, 1, "FlexDirection.Column");
+    assertEqInt(FlexWrap.WrapReverse, 2, "FlexWrap.WrapReverse");
+    assertEqInt(Dock.Fill, 4, "Dock.Fill");
+    assertEqInt(ThemeMode.Custom, 3, "ThemeMode.Custom");
+    assertEqInt(AccessibleRole.Button, 5, "AccessibleRole.Button");
+    assertEqInt(AccessibleRole.Link, 30, "AccessibleRole.Link");
+    assertEqInt(LiveRegionMode.Assertive, 2, "LiveRegionMode.Assertive");
+    assertEqInt(DialogButtonRole.Help, 6, "DialogButtonRole.Help");
+    assertEqInt(DialogStatus.Failed, 4, "DialogStatus.Failed");
+    assertEqInt(ImageFilter.Bilinear, 1, "ImageFilter.Bilinear");
+    assertEqInt(SortDirection.Descending, -1, "SortDirection.Descending");
+}
 
 func testGuiStructures() {
     setTest("GuiStructures");
@@ -67,6 +97,7 @@ func start() {
     testGuiStructures();
     testGuiWidgetTypes();
     testGuiEvents();
+    testGuiTypedConstants();
 
     report();
 }

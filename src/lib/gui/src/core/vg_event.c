@@ -575,6 +575,34 @@ static uint32_t translate_vgfx_modifiers(int vgfx_modifiers) {
     return modifiers;
 }
 
+/// @brief Copy one bounded ViperGFX composition payload into a toolkit event.
+/// @details Both event layers use inline value storage. The defensive second clamp protects
+///          against malformed embedding callers even though platform adapters already enforce the
+///          ViperGFX capacity. Selection/replacement offsets remain in codepoint units until the
+///          focused text editor can convert them against its actual strings.
+/// @param event Destination toolkit event whose type has already been selected.
+/// @param platform_event Source ViperGFX event carrying composition data.
+static void translate_vgfx_composition(vg_event_t *event, const vgfx_event_t *platform_event) {
+    if (!event || !platform_event)
+        return;
+
+    size_t text_length = platform_event->data.composition.text_length;
+    if (text_length >= (size_t)VG_COMPOSITION_TEXT_CAPACITY) {
+        text_length = (size_t)VG_COMPOSITION_TEXT_CAPACITY - 1u;
+        event->composition.truncated = true;
+    }
+    memcpy(event->composition.text, platform_event->data.composition.text, text_length);
+    event->composition.text[text_length] = '\0';
+    event->composition.text_length = (uint32_t)text_length;
+    event->composition.selection_start = platform_event->data.composition.selection_start;
+    event->composition.selection_length = platform_event->data.composition.selection_length;
+    event->composition.replacement_start = platform_event->data.composition.replacement_start;
+    event->composition.replacement_length = platform_event->data.composition.replacement_length;
+    event->composition.truncated =
+        event->composition.truncated || platform_event->data.composition.truncated != 0;
+    event->modifiers = translate_vgfx_modifiers(platform_event->data.composition.modifiers);
+}
+
 /// @brief Converts a vgfx_event_t platform event to a vg_event_t, mapping keyboard, mouse, scroll,
 /// resize, and close events.
 vg_event_t vg_event_from_platform(void *platform_event) {
@@ -607,6 +635,26 @@ vg_event_t vg_event_from_platform(void *platform_event) {
             event.key.key = VG_KEY_UNKNOWN;
             event.key.codepoint = pe->data.text.codepoint;
             event.modifiers = translate_vgfx_modifiers(pe->data.text.modifiers);
+            break;
+
+        case VGFX_EVENT_COMPOSITION_START:
+            event.type = VG_EVENT_COMPOSITION_START;
+            translate_vgfx_composition(&event, pe);
+            break;
+
+        case VGFX_EVENT_COMPOSITION_UPDATE:
+            event.type = VG_EVENT_COMPOSITION_UPDATE;
+            translate_vgfx_composition(&event, pe);
+            break;
+
+        case VGFX_EVENT_COMPOSITION_COMMIT:
+            event.type = VG_EVENT_COMPOSITION_COMMIT;
+            translate_vgfx_composition(&event, pe);
+            break;
+
+        case VGFX_EVENT_COMPOSITION_CANCEL:
+            event.type = VG_EVENT_COMPOSITION_CANCEL;
+            translate_vgfx_composition(&event, pe);
             break;
 
         case VGFX_EVENT_MOUSE_MOVE:
@@ -718,8 +766,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
                 bool handled = vg_event_send(capture, event);
                 if (!vg_widget_is_live(capture))
                     return handled;
-                if ((capture->type == VG_WIDGET_DROPDOWN ||
-                     capture->type == VG_WIDGET_MENUBAR) &&
+                if ((capture->type == VG_WIDGET_DROPDOWN || capture->type == VG_WIDGET_MENUBAR) &&
                     vg_widget_get_input_capture() == capture &&
                     !vg_widget_contains_point(
                         capture, event_screen_x(event), event_screen_y(event))) {
@@ -777,7 +824,9 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
     // Keyboard events: route to captured widget first (for menu keyboard navigation),
     // then to focused widget, then to root.
     if (event->type == VG_EVENT_KEY_DOWN || event->type == VG_EVENT_KEY_UP ||
-        event->type == VG_EVENT_KEY_CHAR) {
+        event->type == VG_EVENT_KEY_CHAR || event->type == VG_EVENT_COMPOSITION_START ||
+        event->type == VG_EVENT_COMPOSITION_UPDATE || event->type == VG_EVENT_COMPOSITION_COMMIT ||
+        event->type == VG_EVENT_COMPOSITION_CANCEL) {
         vg_widget_t *capture = event_modal_safe_capture();
         if (capture) {
             event->target = capture;

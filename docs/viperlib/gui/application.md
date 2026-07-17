@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-17
 ---
 
 # Application Components
@@ -452,26 +452,33 @@ if bc.WasItemClicked() {
 
 ### Minimap
 
-Code minimap widget (pairs with CodeEditor).
+Code minimap widget (pairs with CodeEditor). The minimap observes editor text, layout, and viewport
+revisions during each app frame, so callers do not need to rebuild it after ordinary editor changes.
+Rendered line summaries use a bounded direct-mapped cache: scrolling preserves cached summaries,
+while text/layout changes and explicit line invalidation discard only the data that can be stale.
 
 Minimap wrappers install runtime finalizers and clamp width/scale changes through the live widget only; calls after `Destroy()` are ignored. If the bound `CodeEditor` is destroyed, the minimap unbinds itself before painting, scrolling, or handling input.
 
 **Constructor:** `NEW Viper.GUI.Minimap(parent)`
 
-| Method                         | Signature           | Description                              |
-|--------------------------------|---------------------|------------------------------------------|
-| `AddMarker(line, color, type)` | `Void(Int,Int,Int)` | Add line marker                          |
-| `BindEditor(editor)`           | `Void(Object)`      | Bind to a CodeEditor                     |
-| `ClearMarkers()`               | `Void()`            | Remove all markers                       |
-| `Destroy()`                    | `Void()`            | Destroy the minimap wrapper/widget       |
-| `GetWidth()`                   | `Integer()`         | Get minimap width                        |
-| `IsVisible()`                  | `Boolean()`         | Check if visible                         |
-| `RemoveMarkers(line)`          | `Void(Integer)`     | Remove all markers on a source line      |
-| `SetScale(scale)`              | `Void(Double)`      | Set scale, clamped to 0.05–0.5; non-finite values become 0.1 |
-| `SetShowSlider(show)`          | `Void(Boolean)`     | Show/hide scroll slider                  |
-| `SetVisible(visible)`          | `Void(Boolean)`     | Show/hide minimap                        |
-| `SetWidth(width)`              | `Void(Integer)`     | Set minimap width (minimum 64)           |
-| `UnbindEditor()`               | `Void()`            | Unbind from editor                       |
+| Method                                      | Signature           | Description |
+|---------------------------------------------|---------------------|-------------|
+| `AddMarker(line, color, type)`              | `Void(Int,Int,Int)` | Add line marker |
+| `BindEditor(editor)`                        | `Void(Object)`      | Bind to a CodeEditor |
+| `ClearMarkers()`                            | `Void()`            | Remove all markers |
+| `Destroy()`                                 | `Void()`            | Destroy the minimap wrapper/widget |
+| `GetCachedLineCount()`                      | `Integer()`         | Return the number of currently valid cached line summaries |
+| `GetSourceRevision()`                       | `Integer()`         | Return the non-consuming, saturating observed-source revision |
+| `GetWidth()`                                | `Integer()`         | Get minimap width |
+| `InvalidateLines(first, count)`             | `Void(Int,Int)`     | Invalidate summaries for a half-open source-line range |
+| `IsVisible()`                               | `Boolean()`         | Check if visible |
+| `RemoveMarkers(line)`                       | `Void(Integer)`     | Remove all markers on a source line |
+| `SetMaximumCachedLines(count)`              | `Void(Integer)`     | Set bounded cache capacity; zero disables caching, values above 1,000,000 clamp |
+| `SetScale(scale)`                           | `Void(Double)`      | Set scale, clamped to 0.05–0.5; non-finite values become 0.1 |
+| `SetShowSlider(show)`                       | `Void(Boolean)`     | Show/hide scroll slider |
+| `SetVisible(visible)`                       | `Void(Boolean)`     | Show/hide minimap |
+| `SetWidth(width)`                           | `Void(Integer)`     | Set minimap width (minimum 64) |
+| `UnbindEditor()`                            | `Void()`            | Unbind from editor |
 
 ### Example
 
@@ -482,7 +489,12 @@ minimap.BindEditor(editor);
 minimap.SetWidth(80);
 minimap.SetScale(0.5);
 minimap.SetShowSlider(true);
+minimap.SetMaximumCachedLines(4096);
 minimap.AddMarker(10, 0xFFFF0000, 1);  // Diagnostic marker
+
+var observed = minimap.GetSourceRevision();
+// A custom editor model can invalidate only the changed range.
+minimap.InvalidateLines(120, 3);
 ```
 
 ---
@@ -492,7 +504,10 @@ minimap.AddMarker(10, 0xFFFF0000, 1);  // Diagnostic marker
 In-app dialogs are maintained in an app-owned modal stack. The topmost visible dialog is the modal
 event root; when it closes or is destroyed, the previous live dialog becomes active again. Static
 message/file-dialog helpers and object `Show()` calls run their modal loop synchronously until the
-shown dialog closes.
+shown dialog closes. `ShowAsync()` is the non-reentrant form for event handlers: it returns after
+presentation and ordinary `App.Poll()` / `App.RunFrame()` calls advance the dialog. Completion is
+reported exactly once through `WasCompleted()` while `GetStatus()`, result, paths, and errors remain
+non-consuming. Starting the same object twice while it is open is rejected.
 
 Dialog hit-testing is local to the dialog surface, so button clicks, close clicks, drags, and centered placement continue to work after the dialog is moved or shown relative to nested widgets.
 
@@ -508,7 +523,11 @@ destroyed wrapper returns `-1` instead of trying to reuse the freed dialog.
 Object-style `Show()` also returns `-1` when the dialog closes without a button
 result, such as a window close or unavailable owner app.
 Custom button IDs preserve the exact `Integer` passed to `AddButton()`, including
-`0` and values outside the C dialog result enum range. `AddButton()` does not make button ID `0` the default implicitly; call `SetDefaultButton(id)` to choose the Enter-key button.
+`0` and values outside the C dialog result enum range. IDs must be unique. For localized user
+interfaces, `AddButtonWithRole()` separates the visible label from its semantic behavior: Default
+and Accept can bind Enter, Cancel and Reject can bind Escape, and a Destructive role is available
+without inspecting translated words. Explicit `SetDefaultButton()` and `SetCancelButton()` bindings
+take precedence. `DialogButtonRole` exposes the typed role constants.
 
 | Method                                       | Signature                 | Description                   |
 |----------------------------------------------|---------------------------|-------------------------------|
@@ -516,6 +535,7 @@ Custom button IDs preserve the exact `Integer` passed to `AddButton()`, includin
 | `Viper.GUI.MessageBox.Error(title, text)`    | `Integer(String, String)` | Show error dialog; returns 0  |
 | `Viper.GUI.MessageBox.Info(title, text)`     | `Integer(String, String)` | Show info dialog; returns 0   |
 | `Viper.GUI.MessageBox.Prompt(title, text)`   | `String(String, String)`  | Show a text prompt; entered nonempty text on OK, otherwise empty |
+| `Viper.GUI.MessageBox.PromptOption(title, text)` | `Option(String, String)` | `Some(text)` on accept, including `Some("")`; `None` on cancel |
 | `Viper.GUI.MessageBox.Question(title, text)` | `Integer(String, String)` | Show yes/no question; Yes=1, otherwise 0 |
 | `Viper.GUI.MessageBox.Warning(title, text)`  | `Integer(String, String)` | Show warning dialog; returns 0 |
 
@@ -529,7 +549,16 @@ Object-style dialogs:
 | `Viper.GUI.MessageBox.NewError(title, text)` | `Object(String,String)` | Create an error dialog object |
 | `Viper.GUI.MessageBox.NewQuestion(title, text)` | `Object(String,String)` | Create a question dialog object |
 | `box.AddButton(text, id)` | `Void(String,Integer)` | Add a custom button returning `id` |
-| `box.SetDefaultButton(id)` | `Void(Integer)` | Mark the matching custom button as default |
+| `box.AddButtonWithRole(text, id, role)` | `Void(String,Integer,Integer)` | Add a unique-ID button with localized-label-independent semantics |
+| `box.SetButtonRole(id, role)` | `Boolean(Integer,Integer)` | Update an existing semantic role |
+| `box.SetDefaultButton(id)` | `Boolean(Integer)` | Bind Enter to the matching custom button |
+| `box.SetCancelButton(id)` | `Boolean(Integer)` | Bind Escape to the matching custom button |
+| `box.ShowAsync()` | `Boolean()` | Present without nested polling |
+| `box.IsOpen()` | `Boolean()` | Report live presentation state |
+| `box.WasCompleted()` | `Boolean()` | Consume one accepted/cancelled/failed completion edge |
+| `box.GetStatus()` | `Integer()` | Return a `DialogStatus` value |
+| `box.GetResult()` | `Integer()` | Return the selected stable button ID |
+| `box.GetError()` | `String()` | Return the most recent presentation failure |
 | `box.Show()` | `Integer()` | Show the dialog and return the selected ID |
 | `box.Destroy()` | `Void()` | Destroy the dialog object |
 
@@ -543,6 +572,13 @@ MessageBox.Error("Error", "Failed to open file");
 
 var answer = MessageBox.Question("Confirm", "Delete this file?");
 if answer == 1 { /* user said yes */ }
+
+var box = MessageBox.NewQuestion("Delete", "This cannot be undone.");
+box.AddButtonWithRole("Keep", 0, DialogButtonRole.Cancel);
+box.AddButtonWithRole("Delete", 1, DialogButtonRole.Destructive);
+box.SetDefaultButton(0);
+box.SetCancelButton(0);
+box.ShowAsync();
 ```
 
 ---
@@ -552,25 +588,34 @@ if answer == 1 { /* user said yes */ }
 Native or in-app file dialog boxes (static methods).
 
 Save dialogs honor the default filename field, append the configured default extension when needed, and keep buttons/bookmarks/file-list hit-testing correct after the window is repositioned.
-Object-style dialogs snapshot their accepted path list after each `Show()`. Path accessors read that
-snapshot until the next `Show()` or until `Destroy()` releases the dialog.
+Object-style dialogs snapshot their accepted path list after each `Show()` or asynchronous
+completion. Path accessors and `GetPaths()` read that snapshot until the next presentation or until
+`Destroy()` releases the dialog.
 Destroying an object-style dialog removes it from the app's modal stack before freeing it, and destroyed handles are inert for setters, `Show()`, and path accessors.
 Object-style dialogs remember the app that created them, include the default bookmarks used by static dialogs, and do not switch owners just because another app becomes active before a failed `Show()`.
 `FileDialog.New(type)` uses `0` for open, `1` for save, and `2` for folder selection. It returns
 `NULL` for any other value instead of silently creating an open-file dialog.
 On macOS, one-shot static dialogs use native panels, including native multi-select for `OpenMultiple`. On other GUI builds, static and object-style dialogs use the same in-app modal dialog and therefore require an active `Viper.GUI.App` window; they return an empty string or `0` when no active GUI window is available. The lower-level C convenience API can install a modal runner so `Open`, `Save`, and `SelectFolder` wait for the in-app dialog instead of returning immediately.
 `OpenMultiple()` returns selected paths joined with semicolons. Literal semicolons and backslashes inside paths are escaped as `\;` and `\\`; use `PathListCount()` and `PathListGet()` to decode the list without truncating paths that contain those characters.
+`OpenOption()`, `SaveOption()`, and `SelectFolderOption()` replace sentinel strings with explicit
+optional results. `OpenMultipleSeq()` returns decoded paths directly. The reusable retained picker
+supports hidden-entry visibility, overwrite confirmation, default extensions, multiple filters,
+and custom bookmarks through the same lower implementation on macOS, Windows, and Linux.
 Dialog paths and filter patterns reject embedded NUL bytes instead of truncating the value passed to native or in-app dialog code. `SetFilter(NULL, pattern)` and `AddFilter(NULL, pattern)` use the label `Files`, while a missing or invalid pattern is ignored.
 The in-app dialog implementation now scrolls long file and bookmark lists, keeps the selected row visible during keyboard navigation, clips long path text, and supports caret-aware editing in the save-name field (`Left` / `Right`, `Home`, `End`, `Backspace`, `Delete`).
 
 | Method                                          | Signature                        | Description                              |
 |-------------------------------------------------|----------------------------------|------------------------------------------|
 | `Viper.GUI.FileDialog.Open(title, defaultPath, filter)` | `String(String,String,String)`  | Open file dialog; returns path           |
+| `Viper.GUI.FileDialog.OpenOption(title, defaultPath, filter)` | `Option(String,String,String)` | Selected path or `None` |
 | `Viper.GUI.FileDialog.OpenMultiple(title, defaultPath, filter)` | `String(String,String,String)` | Open multi-file dialog; returns escaped path list |
+| `Viper.GUI.FileDialog.OpenMultipleSeq(title, defaultPath, filter)` | `Seq(String,String,String)` | Open multi-file dialog; returns decoded paths |
 | `Viper.GUI.FileDialog.PathListCount(paths)` | `Integer(String)` | Count paths in an escaped `OpenMultiple` result |
 | `Viper.GUI.FileDialog.PathListGet(paths, index)` | `String(String,Integer)` | Decode one path from an escaped `OpenMultiple` result |
 | `Viper.GUI.FileDialog.Save(title, defaultPath, filter, defaultName)` | `String(Str,Str,Str,Str)` | Save file dialog; returns path     |
+| `Viper.GUI.FileDialog.SaveOption(title, defaultPath, filter, defaultName)` | `Option(Str,Str,Str,Str)` | Save path or `None` |
 | `Viper.GUI.FileDialog.SelectFolder(title, dir)` | `String(String, String)`       | Folder selection dialog                  |
+| `Viper.GUI.FileDialog.SelectFolderOption(title, dir)` | `Option(String, String)` | Folder path or `None` |
 
 Object-style dialogs are also available when an app needs multiple named
 filters, a default filename, or multiple selected paths:
@@ -587,6 +632,17 @@ filters, a default filename, or multiple selected paths:
 | `dialog.AddFilter(label, pattern)` | `Void(String,String)` | Add another named filter |
 | `dialog.SetDefaultName(name)` | `Void(String)` | Set default filename for save dialogs |
 | `dialog.SetMultiple(enabled)` | `Void(Boolean)` | Enable multiple selection for open dialogs |
+| `dialog.SetShowHidden(enabled)` | `Void(Boolean)` | Include or filter platform-hidden entries |
+| `dialog.SetConfirmOverwrite(enabled)` | `Void(Boolean)` | Require confirmation before save replacement |
+| `dialog.SetDefaultExtension(extension)` | `Void(String)` | Append an extension to extensionless save names |
+| `dialog.AddBookmark(path)` | `Void(String)` | Add a quick-access directory |
+| `dialog.ClearBookmarks()` | `Void()` | Remove default and custom bookmarks |
+| `dialog.ShowAsync()` | `Boolean()` | Present without a nested event loop |
+| `dialog.IsOpen()` | `Boolean()` | Report live presentation state |
+| `dialog.WasCompleted()` | `Boolean()` | Consume one completion edge |
+| `dialog.GetStatus()` | `Integer()` | Return a `DialogStatus` value |
+| `dialog.GetError()` | `String()` | Return the most recent failure diagnostic |
+| `dialog.GetPaths()` | `Seq()` | Return an owned snapshot of all accepted paths |
 | `dialog.Show()` | `Integer()` | Show the dialog; returns 1 on accept, 0 on cancel or unavailable GUI window |
 | `dialog.GetPath()` | `String()` | Return the first selected path |
 | `dialog.PathCount` | `Integer` | Number of selected paths |
@@ -610,11 +666,13 @@ var firstSelected = FileDialog.PathListGet(paths, 0);
 var dlg = FileDialog.NewSave();
 dlg.SetTitle("Export Image");
 dlg.SetDefaultName("painting.png");
+dlg.SetDefaultExtension(".png");
+dlg.SetConfirmOverwrite(true);
 dlg.AddFilter("PNG image", "*.png");
 dlg.AddFilter("BMP image", "*.bmp");
-if dlg.Show() == 1 {
-    var exportPath = dlg.GetPath();
-}
+dlg.ShowAsync();
+while dlg.IsOpen() { app.RunFrame(); }
+if dlg.GetStatus() == DialogStatus.Accepted { var exportPath = dlg.GetPath(); }
 dlg.Destroy();
 ```
 
@@ -842,6 +900,12 @@ Cursor.Reset();       // Default cursor
 
 `Viper.GUI.Theme` is a static class; call its methods directly or through a static bind, not through `NEW`.
 
+Theme supports deterministic dark/light palettes, a live system-following mode,
+and validated app-scoped custom palettes. Logical metrics are DPI-scaled once;
+high contrast and reduced motion are composed without changing the stored
+custom values. See the complete [Themes and Palettes guide](themes.md) for
+token names, validation rules, font roles, revisions, and lifecycle details.
+
 ### Setting Theme
 
 ```basic
@@ -858,6 +922,7 @@ bind Viper.GUI.Theme as Theme;
 
 Theme.SetDark();   // Dark theme (default)
 Theme.SetLight();  // Light theme
+Theme.FollowSystem();
 ```
 
 ---
@@ -866,6 +931,9 @@ Theme.SetLight();  // Light theme
 
 Embedded video player widget that renders decoded frames inside a GUI layout. Wraps `Viper.Graphics.VideoPlayer` with GUI lifecycle integration.
 Construction returns `NULL` when the video cannot be opened or reports non-positive dimensions.
+Widgets register with their owning app scheduler by default. Each `Render`/`RunFrame` advances the
+player once, converts into a reusable RGBA buffer, and atomically uploads through the Image
+widget's reusable storage. No background thread is created.
 
 **Type:** Instance (obj)
 **Constructor:** `VideoWidget.New(parent, path)`
@@ -889,6 +957,13 @@ Construction returns `NULL` when the video cannot be opened or reports non-posit
 | `Pause()` | `Void()` | Pause at the current frame |
 | `Stop()` | `Void()` | Stop and reset to the start |
 | `Update(deltaSeconds)` | `Void(Double)` | Process controls and refresh the frame; finite positive values also advance playback |
+| `SetAutoUpdate(enabled)` / `IsAutoUpdate()` | `Void(Boolean)` / `Boolean()` | Select/read app-frame scheduling (enabled by default) |
+| `WasLoaded()` / `WasFailed()` | `Boolean()` | Consume independent load or frame-failure edges |
+| `WasBufferingChanged()` / `WasEnded()` / `WasSeeked()` | `Boolean()` | Consume independent buffering, natural-end, and slider-seek edges |
+| `GetError()` | `String()` | Current frame diagnostic, cleared after recovery |
+| `GetRevision()` | `Integer()` | Read the non-consuming saturating state revision |
+| `SetControlsAutoHide(enabled)` | `Void(Boolean)` | Hide requested-visible controls after 2.5 seconds of playback |
+| `SetFullscreen(enabled)` / `IsFullscreen()` | `Void(Boolean)` / `Boolean()` | Change/read the owning app window's fullscreen state |
 | `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]`; non-finite values become `0.0` |
 | `SetFlex(flex)` / `SetMargin(margin)` | `Void(Double)` / `Void(Integer)` | Proxy layout configuration to the internal root widget |
 | `SetPosition(x, y)` | `Void(Integer, Integer)` | Manually position the internal root widget |
@@ -903,7 +978,6 @@ module VideoWidgetDemo;
 
 bind Viper.GUI.VideoWidget as VideoWidget;
 bind Viper.GUI.App as App;
-bind Viper.Time.Clock as Clock;
 
 func start() {
     var app = App.New("Video Player", 800, 600);
@@ -911,16 +985,11 @@ func start() {
     var vid = VideoWidget.New(root, "assets/intro.ogv");
     vid.set_ShowControls(true);
     vid.set_Loop(false);
+    vid.SetControlsAutoHide(true);
     vid.Play();
 
-    var lastMs = Clock.NowMs();
     while !app.get_ShouldClose() {
-        app.Poll();
-        var nowMs = Clock.NowMs();
-        var deltaSeconds = (nowMs - lastMs) / 1000.0;
-        lastMs = nowMs;
-        vid.Update(deltaSeconds);
-        app.Render();
+        app.RunFrame();
     }
 
     vid.Destroy();
@@ -934,26 +1003,31 @@ DIM root AS Object = app.Root
 DIM vid AS Viper.GUI.VideoWidget = NEW Viper.GUI.VideoWidget(root, "assets/intro.ogv")
 vid.ShowControls = TRUE
 vid.Loop = FALSE
+vid.SetControlsAutoHide(TRUE)
 vid.Play()
 
-DIM lastMs AS INTEGER = Viper.Time.Clock.NowMs()
-DIM nowMs AS INTEGER
-DIM deltaSeconds AS DOUBLE
 DO WHILE NOT app.ShouldClose
-    app.Poll()
-    nowMs = Viper.Time.Clock.NowMs()
-    deltaSeconds = (nowMs - lastMs) / 1000.0
-    lastMs = nowMs
-    vid.Update(deltaSeconds)
-    app.Render()
+    app.RunFrame()
 LOOP
 
 vid.Destroy()
 app.Destroy()
 ```
 
-`VideoWidget.Destroy` releases the decoder and its GUI subtree immediately. The runtime finalizer also destroys the subtree if the wrapper is collected while still attached, so controls are not left alive without their player. Call `Update` once per frame inside the application loop — do not drive it from a background thread.
-All `VideoWidget` layout, visibility, child, and playback methods are GUI main-thread operations. The widget accepts decoded frame-size changes from the underlying player and resizes the internal image surface safely when the frame dimensions change.
+`VideoWidget.Destroy` releases the decoder and its GUI subtree immediately. The runtime finalizer
+also destroys the subtree if the wrapper is collected while still attached, and app destruction
+invalidates remaining controllers before the retained tree is released.
+
+Call `SetAutoUpdate(false)` only when a compatibility loop needs explicit `Update(deltaSeconds)`.
+If manual and automatic updates are both requested in one app frame generation, the controller
+decodes and uploads once. All methods remain GUI main-thread operations. Frame-size changes resize
+the internal image safely; paused unchanged frames skip conversion, and steady playback reuses
+conversion, source-image, and scaled-image storage.
+
+`WasLoaded`, `WasFailed`, `WasBufferingChanged`, `WasEnded`, and `WasSeeked` are consumable and
+independent. Reading one does not erase another or alter `GetRevision`. Looping emits `WasEnded`
+before restarting. `GetError` describes the current frame-processing failure and becomes empty
+after a successful recovery.
 
 ---
 
@@ -963,21 +1037,41 @@ These helpers are runtime-side primitives for editor applications that need dete
 
 #### TestHarness
 
-`Viper.GUI.TestHarness.New()` creates a headless registry for named widget regions. It is not a replacement for a real `App`; it is a compact automation model for deterministic tests and Zia probes.
+`Viper.GUI.TestHarness.New()` supports two compatible modes. Its original synthetic mode remains a
+small headless registry for named rectangles. `BindApp(app)` enables real automation: the harness
+retains the app, queues authored events into the same synchronized ViperGFX queue as native input,
+and lets `App.Poll` perform normal modal routing, hit testing, focus, shortcuts, drag/drop, and
+control event updates. `UnbindApp()` releases the retained app without deleting the synthetic
+widget/event journal.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
+| `BindApp(app)` / `UnbindApp()` | `Boolean(App)` / `Void()` | Retain or release the real automation target |
+| `DispatchPending()` | `Integer()` | Queue each new harness record once, call the bound app's normal `Poll`, and return the number of complete actions accepted |
+| `RenderFrame(deltaMs)` | `Boolean(Double)` | Queue pending input, then poll/layout/animate/paint/present exactly once with deterministic elapsed time |
+| `CapturePixels(x, y, w, h)` | `Pixels(Integer...)` | Deep-copy physical framebuffer RGBA pixels; out-of-window samples are transparent |
+| `CaptureHash(x, y, w, h)` | `String(Integer...)` | Return a stable 16-character FNV-1a content hash over dimensions and canonical RGBA bytes |
+| `CompareRegion(expected, x, y, tolerance)` | `Map(Pixels, Integer...)` | Compare per channel and return versioned mismatch/error statistics |
+| `GetAccessibilitySnapshot()` | `Map()` | Return the bound app's real schema-versioned semantic tree |
 | `RegisterWidget(id, type, name, x, y, w, h)` | `Void(String, String, String, Integer...)` | Register a focusable test region |
 | `FindByIdOption(id)` / `FindByNameOption(name)` / `FindByTypeOption(type)` | `Option[Map](String)` | Return a structured lookup record, or `None` |
 | `FindById(id)` / `FindByName(name)` / `FindByType(type)` | `Map(String)` | Compatibility API: return a structured lookup record with `found` |
-| `SendKey(key, modifiers)` | `Void(String, Integer)` | Queue a key event and update focus traversal for `Tab` |
-| `SendMouse(eventType, x, y, button)` | `Void(String, Integer, Integer, Integer)` | Queue a mouse event and focus the hit widget on `down` |
+| `SendKey(key, modifiers)` | `Void(String, Integer)` | Journal a named or printable-ASCII key; bound dispatch emits down/text/up as appropriate |
+| `SendMouse(eventType, x, y, button)` | `Void(String, Integer, Integer, Integer)` | Journal `move`, `down`, `up`, or `click` at a physical coordinate |
 | `Tick(frames)` | `Integer(Integer)` | Advance the harness frame counter |
 | `GetFocus()` | `String()` | Return the focused widget id |
 | `FocusOrder()` | `Seq()` | Return registered widget ids in traversal order |
-| `CaptureRegion(x, y, w, h)` | `Map(Integer...)` | Return a deterministic pixel snapshot map |
+| `CaptureRegion(x, y, w, h)` | `Map(Integer...)` | Compatibility synthetic geometry snapshot |
 
-`Viper.GUI.TestHarness.AssertNonBlank(snapshot)` is a static helper that checks a captured snapshot map.
+Mouse buttons use the public ViperGFX ordinals: left `0`, right `1`, and middle `2`. Region
+coordinates are physical framebuffer pixels with a top-left origin. `CompareRegion` clamps its
+per-channel tolerance to `0..255`; its schema-version-1 result contains `matches`, `width`,
+`height`, `tolerance`, `comparedPixels`, `differentPixels`, `maxChannelDelta`, and
+`meanAbsoluteError`. Capture hashes are deterministic regression identifiers, not cryptographic
+digests. Invalid or explicitly destroyed bindings return safe empty/failure values.
+
+`Viper.GUI.TestHarness.AssertNonBlank(snapshot)` remains the static compatibility helper for a
+synthetic `CaptureRegion` map.
 
 #### VirtualList and VirtualTree
 

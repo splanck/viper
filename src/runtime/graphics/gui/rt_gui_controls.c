@@ -146,6 +146,26 @@ void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
     free(ctext);
 }
 
+/// @brief Consume the dropdown's independent selection-change edge.
+/// @details Programmatic and user-driven selection transitions share this
+///          edge; reading it does not consume the widget revision.
+/// @param dropdown Dropdown widget handle.
+/// @return 1 once after one or more unreported selection transitions, otherwise 0.
+int64_t rt_dropdown_was_changed(void *dropdown) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
+    return dd ? (vg_widget_was_changed(&dd->base) ? 1 : 0) : 0;
+}
+
+/// @brief Return the dropdown's non-consuming state revision.
+/// @param dropdown Dropdown widget handle.
+/// @return Monotonic signed revision, or zero when the handle is invalid.
+int64_t rt_dropdown_get_revision(void *dropdown) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_dropdown_t *dd = rt_dropdown_checked(dropdown);
+    return dd ? rt_widget_get_revision(&dd->base) : 0;
+}
+
 //=============================================================================
 // Slider Widget
 //=============================================================================
@@ -209,6 +229,26 @@ void rt_slider_set_step(void *slider, double step) {
     if (sl) {
         vg_slider_set_step(sl, rt_gui_sanitize_nonnegative_float(step, RT_GUI_MAX_LAYOUT_VALUE));
     }
+}
+
+/// @brief Consume the slider's independent numeric-value change edge.
+/// @details Range clamping, programmatic assignments, and user input all
+///          record the same edge when the effective value changes.
+/// @param slider Slider widget handle.
+/// @return 1 once after one or more unreported value transitions, otherwise 0.
+int64_t rt_slider_was_changed(void *slider) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_slider_t *sl = rt_slider_checked(slider);
+    return sl ? (vg_widget_was_changed(&sl->base) ? 1 : 0) : 0;
+}
+
+/// @brief Return the slider's non-consuming state revision.
+/// @param slider Slider widget handle.
+/// @return Monotonic signed revision, or zero when the handle is invalid.
+int64_t rt_slider_get_revision(void *slider) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_slider_t *sl = rt_slider_checked(slider);
+    return sl ? rt_widget_get_revision(&sl->base) : 0;
 }
 
 //=============================================================================
@@ -304,8 +344,10 @@ void rt_listbox_remove_item(void *listbox, void *item) {
     RT_ASSERT_MAIN_THREAD();
     vg_listbox_t *lb = rt_listbox_checked(listbox);
     vg_listbox_item_t *it = item ? rt_gui_listbox_item_from_handle(item) : NULL;
-    if (lb && it && vg_listbox_item_is_live(it) && it->owner == lb)
+    if (lb && it && vg_listbox_item_is_live(it) && it->owner == lb) {
         vg_listbox_remove_item(lb, it);
+        rt_gui_collect_retired_subhandles(&lb->base);
+    }
 }
 
 /// @brief Remove all entries from the listbox.
@@ -314,6 +356,7 @@ void rt_listbox_clear(void *listbox) {
     vg_listbox_t *lb = rt_listbox_checked(listbox);
     if (lb) {
         vg_listbox_clear(lb);
+        rt_gui_collect_retired_subhandles(&lb->base);
     }
 }
 
@@ -551,6 +594,37 @@ int64_t rt_listbox_was_selection_changed(void *listbox) {
     return 0;
 }
 
+/// @brief Consume the ListBox's common selection-change edge.
+/// @details This edge is independent from the compatibility
+///          rt_listbox_was_selection_changed edge and from activation events.
+/// @param listbox ListBox widget handle.
+/// @return 1 once after one or more unreported selection transitions, otherwise 0.
+int64_t rt_listbox_was_changed(void *listbox) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    return lb ? (vg_widget_was_changed(&lb->base) ? 1 : 0) : 0;
+}
+
+/// @brief Consume the ListBox's row-activation edge.
+/// @details Double-click and Enter activation are recorded separately from
+///          selection changes and optional callbacks.
+/// @param listbox ListBox widget handle.
+/// @return 1 once after one or more unreported activations, otherwise 0.
+int64_t rt_listbox_was_activated(void *listbox) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    return lb ? (vg_widget_was_activated(&lb->base) ? 1 : 0) : 0;
+}
+
+/// @brief Return the ListBox's non-consuming state revision.
+/// @param listbox ListBox widget handle.
+/// @return Monotonic signed revision, or zero when the handle is invalid.
+int64_t rt_listbox_get_revision(void *listbox) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    return lb ? rt_widget_get_revision(&lb->base) : 0;
+}
+
 /// @brief Get the display text of a listbox item.
 rt_string rt_listbox_item_get_text(void *item) {
     RT_ASSERT_MAIN_THREAD();
@@ -634,6 +708,7 @@ void rt_listbox_set_font(void *listbox, void *font, double size) {
         if (!checked_font)
             return;
         vg_listbox_set_font(lb, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+        lb->base.runtime_font_reference = checked_font;
     }
 }
 
@@ -689,6 +764,22 @@ void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
     (void)placeholder;
 }
 
+/// @brief Stub: no dropdown change edge exists when graphics is disabled.
+/// @param dropdown Ignored dropdown handle.
+/// @return Always zero.
+int64_t rt_dropdown_was_changed(void *dropdown) {
+    (void)dropdown;
+    return 0;
+}
+
+/// @brief Stub: no dropdown revision exists when graphics is disabled.
+/// @param dropdown Ignored dropdown handle.
+/// @return Always zero.
+int64_t rt_dropdown_get_revision(void *dropdown) {
+    (void)dropdown;
+    return 0;
+}
+
 /// @brief Stub: graphics disabled — returns NULL; no slider widget is created.
 void *rt_slider_new(void *parent, int64_t horizontal) {
     (void)parent;
@@ -719,6 +810,22 @@ void rt_slider_set_range(void *slider, double min_val, double max_val) {
 void rt_slider_set_step(void *slider, double step) {
     (void)slider;
     (void)step;
+}
+
+/// @brief Stub: no slider change edge exists when graphics is disabled.
+/// @param slider Ignored slider handle.
+/// @return Always zero.
+int64_t rt_slider_was_changed(void *slider) {
+    (void)slider;
+    return 0;
+}
+
+/// @brief Stub: no slider revision exists when graphics is disabled.
+/// @param slider Ignored slider handle.
+/// @return Always zero.
+int64_t rt_slider_get_revision(void *slider) {
+    (void)slider;
+    return 0;
 }
 
 /// @brief Stub: graphics disabled — returns NULL; no progress bar widget is created.
@@ -817,6 +924,30 @@ rt_string rt_listbox_get_selected_text(void *listbox) {
 
 /// @brief Check if the listbox selection changed since the last call (edge-triggered).
 int64_t rt_listbox_was_selection_changed(void *listbox) {
+    (void)listbox;
+    return 0;
+}
+
+/// @brief Stub: no ListBox change edge exists when graphics is disabled.
+/// @param listbox Ignored ListBox handle.
+/// @return Always zero.
+int64_t rt_listbox_was_changed(void *listbox) {
+    (void)listbox;
+    return 0;
+}
+
+/// @brief Stub: no ListBox activation edge exists when graphics is disabled.
+/// @param listbox Ignored ListBox handle.
+/// @return Always zero.
+int64_t rt_listbox_was_activated(void *listbox) {
+    (void)listbox;
+    return 0;
+}
+
+/// @brief Stub: no ListBox revision exists when graphics is disabled.
+/// @param listbox Ignored ListBox handle.
+/// @return Always zero.
+int64_t rt_listbox_get_revision(void *listbox) {
     (void)listbox;
     return 0;
 }

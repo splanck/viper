@@ -407,6 +407,47 @@ void test_empty_clip_rect_suppresses_drawing(void) {
     TEST_END();
 }
 
+/// @brief Verify that widget-style set/clear clip calls cannot escape a compositor limit.
+/// @details The test also checks non-nesting failure and exact restoration of the clip that was
+///          active before the limit scope began.
+void test_clip_limit_contains_nested_clips_and_restores_state(void) {
+    TEST_BEGIN("Retained compositor clip limit contains nested clips");
+
+    vgfx_window_params_t params = {
+        .width = 12, .height = 12, .title = "Test", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vgfx_set_clip(win, 1, 1, 10, 10);
+    ASSERT_EQ(vgfx_push_clip_limit(win, 3, 3, 4, 4), 1);
+    ASSERT_EQ(vgfx_push_clip_limit(win, 4, 4, 1, 1), 0);
+
+    vgfx_set_clip(win, 0, 0, 12, 12);
+    vgfx_fill_rect(win, 0, 0, 12, 12, 0xCC2200);
+    vgfx_clear_clip(win);
+    vgfx_fill_rect(win, 0, 0, 12, 12, 0x00AA44);
+
+    vgfx_color_t color = 0;
+    ASSERT_EQ(vgfx_point(win, 2, 2, &color), 1);
+    ASSERT_EQ(color, VGFX_BLACK);
+    ASSERT_EQ(vgfx_point(win, 3, 3, &color), 1);
+    ASSERT_EQ(color, 0x00AA44);
+    ASSERT_EQ(vgfx_point(win, 7, 7, &color), 1);
+    ASSERT_EQ(color, VGFX_BLACK);
+
+    vgfx_pop_clip_limit(win);
+    int32_t clip_x = 0, clip_y = 0, clip_w = 0, clip_h = 0;
+    ASSERT_EQ(vgfx_get_clip(win, &clip_x, &clip_y, &clip_w, &clip_h), 1);
+    ASSERT_EQ(clip_x, 1);
+    ASSERT_EQ(clip_y, 1);
+    ASSERT_EQ(clip_w, 10);
+    ASSERT_EQ(clip_h, 10);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 void test_extreme_circle_coordinates_do_not_overflow(void) {
     TEST_BEGIN("Audit: Extreme Circle Coordinates Do Not Overflow");
 
@@ -447,6 +488,7 @@ int main(void) {
     test_extreme_fill_rect_is_clipped();
     test_extreme_clip_rect_is_canonicalized();
     test_empty_clip_rect_suppresses_drawing();
+    test_clip_limit_contains_nested_clips_and_restores_state();
     test_extreme_circle_coordinates_do_not_overflow();
 
     TEST_SUMMARY();

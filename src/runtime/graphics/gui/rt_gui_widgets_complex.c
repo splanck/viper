@@ -10,7 +10,8 @@
 //   with optional close buttons), SplitPane (resizable two-panel divider),
 //   TreeView (hierarchical node list), ScrollView (scrollable container),
 //   FloatingPanel (overlay panel drawn above all content), and CodeEditor (full
-//   source-editor widget with syntax highlighting, gutters, and selection).
+//   source-editor widget with syntax highlighting, gutters, and selection),
+//   plus the viewport-aware interactive/sparse-virtualized data Grid.
 //   Each widget wraps the corresponding vg_* C widget with a Zia-callable API.
 //
 // Key invariants:
@@ -25,6 +26,8 @@
 //   - FloatingPanel children are reparented under the panel widget and rendered
 //     during the overlay pass so hit testing and destruction stay tree-based.
 //   - CodeEditor selection retrieval allocates a C string that the caller owns.
+//   - Grid indices are rejected rather than clamped onto a different cell;
+//     virtual row counts never allocate proportional row storage.
 //
 // Ownership/Lifetime:
 //   - All widget objects are vg_widget_t* (or subtype) owned by the vg widget
@@ -364,16 +367,23 @@ void rt_tabbar_remove_tab(void *tabbar, void *tab) {
     RT_ASSERT_MAIN_THREAD();
     vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
     vg_tab_t *t = tab ? rt_gui_tab_from_handle(tab) : NULL;
-    if (tb && t && t->owner == tb)
+    if (tb && t && t->owner == tb) {
         vg_tabbar_remove_tab(tb, t);
+        rt_gui_collect_retired_subhandles(&tb->base);
+    }
 }
 
-/// @brief Free retired tab tombstones once callers have discarded stale handles.
+/// @brief Reclaim retired tab tombstones after invalidating their managed wrappers.
+/// @details Existing `Viper.GUI.Tab` values remain valid managed objects, but their targets are
+///          cleared before the lower toolkit frees tombstone storage. Subsequent calls through a
+///          pruned tab are inert, while wrappers for tabs still present in the bar remain usable.
 void rt_tabbar_prune_retired_tabs(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
-    if (tb)
+    if (tb) {
+        rt_gui_invalidate_retired_tab_subhandles(tb);
         vg_tabbar_prune_retired_tabs(tb);
+    }
 }
 
 /// @brief Set the currently active (selected) tab in the tab bar.
@@ -394,6 +404,85 @@ void rt_tab_set_title(void *tab, rt_string title) {
     char *ctitle = rt_string_to_gui_cstr(title);
     vg_tab_set_title(t, ctitle);
     free(ctitle);
+}
+
+/// @brief Return a tab's current display title.
+/// @param tab Managed Tab subhandle.
+/// @return Fresh runtime string, or empty for an invalid/stale tab.
+rt_string rt_tab_get_title(void *tab) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    const char *title = t ? vg_tab_get_title(t) : NULL;
+    return title ? rt_string_from_bytes(title, strlen(title)) : rt_str_empty();
+}
+
+/// @brief Store byte-exact runtime string data on a tab.
+/// @details Allocation occurs before the previous owned payload is released, so failure preserves
+///          the old value. Embedded NUL bytes round-trip through @ref rt_tab_get_data.
+/// @param tab Managed Tab subhandle.
+/// @param data Runtime string to copy; NULL clears the payload.
+void rt_tab_set_data(void *tab, rt_string data) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    if (!t)
+        return;
+    rt_gui_string_data_t *copy = data ? rt_gui_string_data_new(data) : NULL;
+    if (data && !copy)
+        return;
+    if (t->owns_user_data)
+        rt_gui_string_data_free_if_owned(t->user_data);
+    t->user_data = copy;
+    t->owns_user_data = copy != NULL;
+    if (t->owner)
+        vg_widget_note_revision(&t->owner->base);
+}
+
+/// @brief Return byte-exact runtime string data stored on a tab.
+rt_string rt_tab_get_data(void *tab) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    return t && t->owns_user_data ? rt_gui_string_data_to_rt_string(vg_tab_get_data(t))
+                                  : rt_str_empty();
+}
+
+/// @brief Set whether a tab displays and accepts its close affordance.
+void rt_tab_set_closable(void *tab, int64_t closable) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    if (t)
+        vg_tab_set_closable(t, closable != 0);
+}
+
+/// @brief Return whether a tab is closable.
+int64_t rt_tab_is_closable(void *tab) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    return t && vg_tab_is_closable(t) ? 1 : 0;
+}
+
+/// @brief Set a tab's application-stable identifier after rejecting embedded NUL bytes.
+void rt_tab_set_stable_id(void *tab, rt_string stable_id) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    if (!t)
+        return;
+    if (!stable_id) {
+        (void)vg_tab_set_stable_id(t, "");
+        return;
+    }
+    char *cid = rt_string_to_cstr_no_nul(stable_id);
+    if (!cid)
+        return;
+    (void)vg_tab_set_stable_id(t, cid);
+    free(cid);
+}
+
+/// @brief Return a tab's copied stable identifier.
+rt_string rt_tab_get_stable_id(void *tab) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tab_t *t = rt_gui_tab_from_handle(tab);
+    const char *stable_id = t ? vg_tab_get_stable_id(t) : NULL;
+    return stable_id ? rt_string_from_bytes(stable_id, t->stable_id_len) : rt_str_empty();
 }
 
 /// @brief Update the tooltip text of a tab.
@@ -442,6 +531,60 @@ int64_t rt_tabbar_was_changed(void *tabbar) {
         return 1;
     }
     return 0;
+}
+
+/// @brief Return the TabBar's non-consuming state revision.
+/// @details Structural mutations and active-tab transitions advance the
+///          revision; consuming active or close edges never changes it.
+/// @param tabbar TabBar widget handle.
+/// @return Monotonic signed revision, or zero when the handle is invalid.
+int64_t rt_tabbar_get_revision(void *tabbar) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    return tb ? rt_widget_get_revision(&tb->base) : 0;
+}
+
+/// @brief Set the font and logical point size used for every tab title.
+void rt_tabbar_set_font(void *tabbar, void *font, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    vg_font_t *checked_font = rt_gui_font_handle_checked(font);
+    if (!tb || !checked_font)
+        return;
+    double logical_size = rt_gui_sanitize_font_size(size, 14.0);
+    float effective_size = rt_gui_logical_length_to_physical(&tb->base, logical_size);
+    vg_tabbar_set_font(tb, checked_font, effective_size);
+    tb->base.runtime_font_reference = checked_font;
+}
+
+/// @brief Consume the TabBar's independent successful-reorder edge.
+int64_t rt_tabbar_was_reordered(void *tabbar) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    return tb && vg_tabbar_was_reordered(tb) ? 1 : 0;
+}
+
+/// @brief Return the source index from the most recent successful reorder.
+int64_t rt_tabbar_get_reordered_from(void *tabbar) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    return tb ? (int64_t)vg_tabbar_get_reordered_from(tb) : -1;
+}
+
+/// @brief Return the destination index from the most recent successful reorder.
+int64_t rt_tabbar_get_reordered_to(void *tabbar) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    return tb ? (int64_t)vg_tabbar_get_reordered_to(tb) : -1;
+}
+
+/// @brief Move a tab between validated zero-based indices.
+int64_t rt_tabbar_move_tab(void *tabbar, int64_t from_index, int64_t to_index) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_tabbar_t *tb = rt_tabbar_checked(tabbar);
+    if (!tb || from_index < 0 || to_index < 0 || from_index > INT_MAX || to_index > INT_MAX)
+        return 0;
+    return vg_tabbar_move_tab(tb, (int)from_index, (int)to_index) ? 1 : 0;
 }
 
 /// @brief Get the number of tabs in the tab bar.
@@ -546,6 +689,97 @@ double rt_splitpane_get_position(void *split) {
     if (!sp)
         return 0.5;
     return (double)vg_splitpane_get_position(sp);
+}
+
+/// @brief Set the first pane's minimum size in logical UI units.
+/// @details The runtime scales the finite, non-negative input exactly once for the split pane's
+///          current application. Invalid handles are ignored and non-finite values become zero.
+/// @param split SplitPane widget handle.
+/// @param size Minimum logical width for a horizontal split or height for a vertical split.
+void rt_splitpane_set_min_first(void *split, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    if (!sp)
+        return;
+    double logical = rt_gui_double_is_finite(size) && size > 0.0 ? size : 0.0;
+    vg_splitpane_set_min_first(sp, rt_gui_logical_length_to_physical(&sp->base, logical));
+}
+
+/// @brief Set the second pane's minimum size in logical UI units.
+/// @details The runtime scales the finite, non-negative input exactly once for the split pane's
+///          current application. Invalid handles are ignored and non-finite values become zero.
+/// @param split SplitPane widget handle.
+/// @param size Minimum logical width for a horizontal split or height for a vertical split.
+void rt_splitpane_set_min_second(void *split, double size) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    if (!sp)
+        return;
+    double logical = rt_gui_double_is_finite(size) && size > 0.0 ? size : 0.0;
+    vg_splitpane_set_min_second(sp, rt_gui_logical_length_to_physical(&sp->base, logical));
+}
+
+/// @brief Return the first pane's configured minimum in logical UI units.
+/// @param split SplitPane widget handle.
+/// @return Non-negative logical minimum, or zero for an invalid handle.
+double rt_splitpane_get_min_first(void *split) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    return sp ? rt_gui_physical_to_logical(&sp->base, vg_splitpane_get_min_first(sp)) : 0.0;
+}
+
+/// @brief Return the second pane's configured minimum in logical UI units.
+/// @param split SplitPane widget handle.
+/// @return Non-negative logical minimum, or zero for an invalid handle.
+double rt_splitpane_get_min_second(void *split) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    return sp ? rt_gui_physical_to_logical(&sp->base, vg_splitpane_get_min_second(sp)) : 0.0;
+}
+
+/// @brief Return the split pane orientation.
+/// @param split SplitPane widget handle.
+/// @return Zero for horizontal (left/right), one for vertical (top/bottom), or -1 when invalid.
+int64_t rt_splitpane_get_orientation(void *split) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    return sp ? (int64_t)vg_splitpane_get_direction(sp) : -1;
+}
+
+/// @brief Collapse the first (left or top) pane while retaining the restore fraction.
+/// @param split SplitPane widget handle; invalid handles are ignored.
+void rt_splitpane_collapse_first(void *split) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    if (sp)
+        vg_splitpane_collapse_first(sp);
+}
+
+/// @brief Collapse the second (right or bottom) pane while retaining the restore fraction.
+/// @param split SplitPane widget handle; invalid handles are ignored.
+void rt_splitpane_collapse_second(void *split) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    if (sp)
+        vg_splitpane_collapse_second(sp);
+}
+
+/// @brief Restore both panes to the divider fraction retained before collapse.
+/// @param split SplitPane widget handle; invalid handles are ignored.
+void rt_splitpane_restore(void *split) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    if (sp)
+        vg_splitpane_restore(sp);
+}
+
+/// @brief Return the split pane's explicit collapsed-side state.
+/// @param split SplitPane widget handle.
+/// @return Zero for none, one for first, two for second, or -1 for an invalid handle.
+int64_t rt_splitpane_get_collapsed_side(void *split) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_splitpane_t *sp = rt_splitpane_checked(split);
+    return sp ? (int64_t)vg_splitpane_get_collapsed_side(sp) : -1;
 }
 
 /// @brief Return the first (left/top) panel container of a split pane.
@@ -712,6 +946,7 @@ void rt_codeeditor_set_font(void *editor, void *font, double size) {
         if (!checked_font)
             return;
         vg_codeeditor_set_font(ce, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+        ce->base.runtime_font_reference = checked_font;
         // Pin the editor's font so a later app-wide SetFont (which propagates the
         // proportional chrome font to the whole widget tree) cannot replace it and
         // desync char_width from the rendered glyph advances.
@@ -753,37 +988,32 @@ void rt_theme_apply_hidpi_scale(void) {
 
 /// @brief Switch the active theme to dark mode.
 void rt_theme_set_dark(void) {
-    RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = rt_gui_get_active_app();
-    if (!app) {
-        vg_theme_set_current(vg_theme_dark());
-        return;
-    }
-    rt_gui_set_theme_kind(app, RT_GUI_THEME_DARK);
+    rt_theme_set_mode(RT_GUI_THEME_DARK);
 }
 
 /// @brief Switch the active theme to light mode.
 void rt_theme_set_light(void) {
-    RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = rt_gui_get_active_app();
-    if (!app) {
-        vg_theme_set_current(vg_theme_light());
-        return;
-    }
-    rt_gui_set_theme_kind(app, RT_GUI_THEME_LIGHT);
+    rt_theme_set_mode(RT_GUI_THEME_LIGHT);
 }
 
-/// @brief Get the name of the theme.
+/// @brief Get the stable lowercase name of the selected theme mode.
 rt_string rt_theme_get_name(void) {
     RT_ASSERT_MAIN_THREAD();
-    rt_gui_app_t *app = rt_gui_get_active_app();
-    const char *name = "dark";
-    if (app) {
-        name = (app->theme_kind == RT_GUI_THEME_LIGHT) ? "light" : "dark";
-    } else {
-        vg_theme_t *current = vg_theme_get_current();
-        if (current && current->name && rt_gui_ascii_casecmp(current->name, "Light") == 0)
+    const char *name;
+    switch (rt_theme_get_mode()) {
+        case RT_GUI_THEME_LIGHT:
             name = "light";
+            break;
+        case RT_GUI_THEME_SYSTEM:
+            name = "system";
+            break;
+        case RT_GUI_THEME_CUSTOM:
+            name = "custom";
+            break;
+        case RT_GUI_THEME_DARK:
+        default:
+            name = "dark";
+            break;
     }
     return rt_string_from_bytes(name, strlen(name));
 }
@@ -810,8 +1040,7 @@ void rt_container_set_spacing(void *container, double spacing) {
     vg_widget_t *widget = rt_gui_widget_handle_checked(container);
     if (!widget)
         return;
-    vg_container_set_spacing(widget,
-                             rt_gui_sanitize_nonnegative_float(spacing, RT_GUI_MAX_LAYOUT_VALUE));
+    vg_container_set_spacing(widget, rt_gui_logical_length_to_physical(widget, spacing));
 }
 
 /// @brief Set the padding of the container.
@@ -819,8 +1048,7 @@ void rt_container_set_padding(void *container, double padding) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *widget = rt_gui_widget_handle_checked(container);
     if (widget) {
-        vg_widget_set_padding(widget,
-                              rt_gui_sanitize_nonnegative_float(padding, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_widget_set_padding(widget, rt_gui_logical_length_to_physical(widget, padding));
     }
 }
 
@@ -889,15 +1117,24 @@ int64_t rt_widget_was_clicked(void *widget) {
 /// @brief Set the position of the widget.
 /// @details Intended for widgets that are manually positioned outside managed
 ///          layout containers. Managed layouts may override x/y on the next
-///          layout pass.
+///          layout pass. Public coordinates are logical and are converted once
+///          using the owning app's effective scale; detached widgets use 1x.
+/// @param widget Widget to position; invalid handles are ignored.
+/// @param x Parent-relative logical X coordinate.
+/// @param y Parent-relative logical Y coordinate.
 void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
     if (w) {
-        w->x = rt_gui_sanitize_signed_float((double)x, RT_GUI_MAX_LAYOUT_VALUE);
-        w->y = rt_gui_sanitize_signed_float((double)y, RT_GUI_MAX_LAYOUT_VALUE);
+        float physical_x = rt_gui_logical_coordinate_to_physical(w, (double)x);
+        float physical_y = rt_gui_logical_coordinate_to_physical(w, (double)y);
+        if (w->x == physical_x && w->y == physical_y && w->manual_position)
+            return;
+        w->x = physical_x;
+        w->y = physical_y;
         w->manual_position = true;
         vg_widget_invalidate(w);
+        vg_widget_note_revision(w);
     }
 }
 
@@ -1036,6 +1273,7 @@ void rt_outputpane_set_font(void *pane, void *font, double size) {
     if (!checked_font)
         return;
     vg_outputpane_set_font(out, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    out->base.runtime_font_reference = checked_font;
 }
 
 /// @brief Pixel advance of one monospace character cell ("M") in the pane's font.
@@ -1135,6 +1373,61 @@ void rt_radiogroup_destroy(void *group) {
     rt_radiogroup_dispose((rt_radiogroup_data_t *)group);
 }
 
+/// @brief Return the selected member index of a live radio group.
+/// @param group RadioGroup handle.
+/// @return Zero-based selected index, -1 for no selection, or -1 for an invalid handle.
+int64_t rt_radiogroup_get_selected_index(void *group) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_radiogroup_data_t *data = rt_radiogroup_handle_checked(group);
+    return data ? (int64_t)vg_radiogroup_get_selected(data->group) : -1;
+}
+
+/// @brief Attempt to select a radio-group member by index.
+/// @details Index -1 clears selection. Values outside `[-1, GetCount())`, invalid handles, and
+///          values that cannot fit the toolkit index type are rejected without mutation.
+/// @param group RadioGroup handle.
+/// @param index Zero-based member index or -1.
+/// @return 1 when the request is valid, otherwise 0.
+int64_t rt_radiogroup_set_selected_index(void *group, int64_t index) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_radiogroup_data_t *data = rt_radiogroup_handle_checked(group);
+    if (!data || index < -1 || index > INT_MAX)
+        return 0;
+    return vg_radiogroup_try_set_selected(data->group, (int)index) ? 1 : 0;
+}
+
+/// @brief Return the number of live buttons registered with a radio group.
+/// @param group RadioGroup handle.
+/// @return Non-negative member count, or zero for an invalid handle.
+int64_t rt_radiogroup_get_count(void *group) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_radiogroup_data_t *data = rt_radiogroup_handle_checked(group);
+    return data ? (int64_t)vg_radiogroup_get_count(data->group) : 0;
+}
+
+/// @brief Consume the radio group's independent selected-index transition edge.
+/// @details Multiple unreported transitions coalesce; membership-only changes and this read do
+///          not alter the non-consuming general revision.
+/// @param group RadioGroup handle.
+/// @return 1 once after one or more unreported selection transitions, otherwise 0.
+int64_t rt_radiogroup_was_changed(void *group) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_radiogroup_data_t *data = rt_radiogroup_handle_checked(group);
+    return data && vg_radiogroup_was_changed(data->group) ? 1 : 0;
+}
+
+/// @brief Return the radio group's non-consuming state revision.
+/// @param group RadioGroup handle.
+/// @return Monotonic signed revision saturated at INT64_MAX, or zero when invalid.
+int64_t rt_radiogroup_get_revision(void *group) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_radiogroup_data_t *data = rt_radiogroup_handle_checked(group);
+    if (!data)
+        return 0;
+    uint64_t revision = vg_radiogroup_get_revision(data->group);
+    return revision > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)revision;
+}
+
 /// @brief Create a single radio button bound to a given group.
 /// Selecting one radio in the group automatically deselects the others.
 void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
@@ -1173,6 +1466,80 @@ void rt_radiobutton_set_selected(void *radio, int64_t selected) {
     if (rb) {
         vg_radiobutton_set_selected(rb, selected != 0);
     }
+}
+
+/// @brief Replace a radio button's visible text.
+/// @details Runtime strings are converted with the GUI UTF-8 boundary policy and copied
+///          atomically by the widget. Invalid handles are ignored.
+/// @param radio RadioButton widget handle.
+/// @param text New visible text.
+void rt_radiobutton_set_text(void *radio, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_radiobutton_t *rb = rt_radiobutton_checked(radio);
+    if (!rb)
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    if (text && !ctext)
+        return;
+    vg_radiobutton_set_text(rb, rt_gui_cstr_or_empty(ctext));
+    free(ctext);
+}
+
+/// @brief Return a radio button's visible text as a fresh runtime string.
+/// @param radio RadioButton widget handle.
+/// @return Current UTF-8 text, or an empty string for an invalid handle.
+rt_string rt_radiobutton_get_text(void *radio) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_radiobutton_t *rb = rt_radiobutton_checked(radio);
+    const char *text = rb ? vg_radiobutton_get_text(rb) : NULL;
+    return text ? rt_string_from_bytes(text, strlen(text)) : rt_str_empty();
+}
+
+/// @brief Store byte-exact runtime string data on a radio button.
+/// @details Allocation succeeds before the prior payload is released, so allocation failure
+///          preserves the old value. Embedded NUL bytes round-trip through GetData.
+/// @param radio RadioButton widget handle.
+/// @param data Runtime string to copy; NULL clears the payload.
+void rt_radiobutton_set_data(void *radio, rt_string data) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_radiobutton_t *rb = rt_radiobutton_checked(radio);
+    if (!rb)
+        return;
+    rt_gui_string_data_t *copy = data ? rt_gui_string_data_new(data) : NULL;
+    if (data && !copy)
+        return;
+    vg_radiobutton_set_data(rb, copy);
+    rb->owns_user_data = copy != NULL;
+}
+
+/// @brief Return byte-exact runtime string data stored on a radio button.
+/// @param radio RadioButton widget handle.
+/// @return Fresh runtime string, or empty when absent, borrowed-only, or invalid.
+rt_string rt_radiobutton_get_data(void *radio) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_radiobutton_t *rb = rt_radiobutton_checked(radio);
+    return rb && rb->owns_user_data ? rt_gui_string_data_to_rt_string(vg_radiobutton_get_data(rb))
+                                    : rt_str_empty();
+}
+
+/// @brief Consume the radio button's independent selected-state edge.
+/// @details Direct transitions and group-driven deselection both record the
+///          edge before any optional callback runs.
+/// @param radio RadioButton widget handle.
+/// @return 1 once after one or more unreported selection transitions, otherwise 0.
+int64_t rt_radiobutton_was_changed(void *radio) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_radiobutton_t *rb = rt_radiobutton_checked(radio);
+    return rb ? (vg_widget_was_changed(&rb->base) ? 1 : 0) : 0;
+}
+
+/// @brief Return the radio button's non-consuming state revision.
+/// @param radio RadioButton widget handle.
+/// @return Monotonic signed revision, or zero when the handle is invalid.
+int64_t rt_radiobutton_get_revision(void *radio) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_radiobutton_t *rb = rt_radiobutton_checked(radio);
+    return rb ? rt_widget_get_revision(&rb->base) : 0;
 }
 
 //=============================================================================
@@ -1249,6 +1616,37 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     }
 }
 
+/// @brief Consume the spinner's independent numeric-value change edge.
+/// @details User input, programmatic assignments, and range clamping record
+///          this edge only when the effective value changes.
+/// @param spinner Spinner widget handle.
+/// @return 1 once after one or more unreported value transitions, otherwise 0.
+int64_t rt_spinner_was_changed(void *spinner) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    return sp ? (vg_widget_was_changed(&sp->base) ? 1 : 0) : 0;
+}
+
+/// @brief Consume the spinner's independent valid-submission edge.
+/// @details Pressing Enter after valid numeric editing records submission even
+///          when the resulting value equals the previous value.
+/// @param spinner Spinner widget handle.
+/// @return 1 once after one or more unreported submissions, otherwise 0.
+int64_t rt_spinner_was_submitted(void *spinner) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    return sp ? (vg_widget_was_submitted(&sp->base) ? 1 : 0) : 0;
+}
+
+/// @brief Return the spinner's non-consuming state revision.
+/// @param spinner Spinner widget handle.
+/// @return Monotonic signed revision, or zero when the handle is invalid.
+int64_t rt_spinner_get_revision(void *spinner) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    return sp ? rt_widget_get_revision(&sp->base) : 0;
+}
+
 //=============================================================================
 // Grid (tabular data with auto-sized columns) — Viper.GUI.Grid
 //=============================================================================
@@ -1257,13 +1655,51 @@ static vg_datagrid_t *rt_datagrid_checked(void *handle) {
     return (vg_datagrid_t *)rt_gui_widget_handle_checked_type(handle, VG_WIDGET_DATAGRID);
 }
 
-/// @brief Create a tabular data grid attached to an optional parent.
+/// @brief Convert a non-negative runtime integer to a native row/count value.
+/// @details The conversion is explicit so 32-bit builds reject values that do not fit `size_t`
+///          instead of truncating or redirecting the operation to a different row.
+/// @param value Runtime integer to convert.
+/// @param out_value Receives the exact native value when successful.
+/// @return true when @p value is non-negative and representable by `size_t`.
+static bool rt_datagrid_i64_to_size(int64_t value, size_t *out_value) {
+    if (!out_value || value < 0 || (uint64_t)value > (uint64_t)SIZE_MAX)
+        return false;
+    *out_value = (size_t)value;
+    return true;
+}
+
+/// @brief Convert a non-negative runtime integer to a native column index.
+/// @param value Runtime integer to convert.
+/// @param out_value Receives the exact native `int` value when successful.
+/// @return true when @p value is in `[0, INT_MAX]`.
+static bool rt_datagrid_i64_to_column(int64_t value, int *out_value) {
+    if (!out_value || value < 0 || value > INT_MAX)
+        return false;
+    *out_value = (int)value;
+    return true;
+}
+
+/// @brief Convert a native row/count value to the signed runtime domain safely.
+/// @param value Native value to convert.
+/// @return Exact value when representable, otherwise `INT64_MAX`.
+static int64_t rt_datagrid_size_to_i64(size_t value) {
+    return (uint64_t)value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
+}
+
+/// @brief Create a viewport-aware tabular grid attached to an optional parent.
+/// @details The grid starts in display-only dense compatibility mode. Its runtime application's
+///          default font is applied immediately so automatic widths and initial paint are usable.
+/// @param parent Optional live parent widget handle.
+/// @return New Grid handle, or NULL when the parent is invalid/allocation fails.
 void *rt_datagrid_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *parent_widget = rt_widget_parent_or_null_if_invalid(parent);
     if (parent && !parent_widget)
         return NULL;
-    return vg_datagrid_create(parent_widget);
+    vg_datagrid_t *grid = vg_datagrid_create(parent_widget);
+    if (grid)
+        rt_gui_apply_default_font(&grid->base);
+    return grid;
 }
 
 /// @brief Set the grid's column count (clears existing headers and cells).
@@ -1278,10 +1714,13 @@ void rt_datagrid_set_columns(void *grid, int64_t count) {
 void rt_datagrid_set_header(void *grid, int64_t col, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     vg_datagrid_t *g = rt_datagrid_checked(grid);
-    if (!g)
+    int native_col = 0;
+    if (!g || !rt_datagrid_i64_to_column(col, &native_col))
         return;
     char *ctext = rt_string_to_gui_cstr(text);
-    vg_datagrid_set_header(g, rt_gui_clamp_i64_to_i32(col, 0, 4096), ctext);
+    if (!ctext)
+        return;
+    vg_datagrid_set_header(g, native_col, ctext);
     free(ctext);
 }
 
@@ -1289,13 +1728,15 @@ void rt_datagrid_set_header(void *grid, int64_t col, rt_string text) {
 void rt_datagrid_set_cell(void *grid, int64_t row, int64_t col, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     vg_datagrid_t *g = rt_datagrid_checked(grid);
-    if (!g)
+    int native_row = 0;
+    int native_col = 0;
+    if (!g || row < 0 || row >= INT_MAX || !rt_datagrid_i64_to_column(col, &native_col))
         return;
+    native_row = (int)row;
     char *ctext = rt_string_to_gui_cstr(text);
-    vg_datagrid_set_cell(g,
-                         rt_gui_clamp_i64_to_i32(row, 0, INT32_MAX),
-                         rt_gui_clamp_i64_to_i32(col, 0, 4096),
-                         ctext);
+    if (!ctext)
+        return;
+    vg_datagrid_set_cell(g, native_row, native_col, ctext);
     free(ctext);
 }
 
@@ -1303,10 +1744,12 @@ void rt_datagrid_set_cell(void *grid, int64_t row, int64_t col, rt_string text) 
 rt_string rt_datagrid_get_cell(void *grid, int64_t row, int64_t col) {
     RT_ASSERT_MAIN_THREAD();
     vg_datagrid_t *g = rt_datagrid_checked(grid);
-    if (!g)
+    size_t native_row = 0;
+    int native_col = 0;
+    if (!g || !rt_datagrid_i64_to_size(row, &native_row) ||
+        !rt_datagrid_i64_to_column(col, &native_col))
         return rt_str_empty();
-    const char *cell = vg_datagrid_get_cell(
-        g, rt_gui_clamp_i64_to_i32(row, 0, INT32_MAX), rt_gui_clamp_i64_to_i32(col, 0, 4096));
+    const char *cell = vg_datagrid_get_cell(g, native_row, native_col);
     return cell ? rt_string_from_bytes(cell, (int64_t)strlen(cell)) : rt_str_empty();
 }
 
@@ -1318,7 +1761,9 @@ void rt_datagrid_clear(void *grid) {
         vg_datagrid_clear(g);
 }
 
-/// @brief Set the grid's header/cell font.
+/// @brief Set the grid's header/cell font using a logical point size.
+/// @details The logical size is sanitized and converted through the owning app's effective scale
+///          exactly once before reaching the physical-pixel toolkit.
 void rt_datagrid_set_font(void *grid, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     vg_datagrid_t *g = rt_datagrid_checked(grid);
@@ -1327,7 +1772,10 @@ void rt_datagrid_set_font(void *grid, void *font, double size) {
     vg_font_t *checked_font = rt_gui_font_handle_checked(font);
     if (!checked_font)
         return;
-    vg_datagrid_set_font(g, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    double logical_size = rt_gui_sanitize_font_size(size, 14.0);
+    vg_datagrid_set_font(
+        g, checked_font, rt_gui_logical_length_to_physical(&g->base, logical_size));
+    g->base.runtime_font_reference = checked_font;
 }
 
 /// @brief Auto-sized pixel width of a column.
@@ -1337,11 +1785,11 @@ int64_t rt_datagrid_get_column_width(void *grid, int64_t col) {
     return g ? (int64_t)vg_datagrid_column_width(g, rt_gui_clamp_i64_to_i32(col, 0, 4096)) : 0;
 }
 
-/// @brief Number of populated rows.
+/// @brief Exact logical row count, saturated only at the runtime signed boundary.
 int64_t rt_datagrid_get_row_count(void *grid) {
     RT_ASSERT_MAIN_THREAD();
     vg_datagrid_t *g = rt_datagrid_checked(grid);
-    return g ? (int64_t)vg_datagrid_row_count(g) : 0;
+    return g ? rt_datagrid_size_to_i64(vg_datagrid_logical_row_count(g)) : 0;
 }
 
 /// @brief Number of columns.
@@ -1349,6 +1797,349 @@ int64_t rt_datagrid_get_column_count(void *grid) {
     RT_ASSERT_MAIN_THREAD();
     vg_datagrid_t *g = rt_datagrid_checked(grid);
     return g ? (int64_t)vg_datagrid_column_count(g) : 0;
+}
+
+/// @brief Set the first and maximum number of logical rows in the paint viewport.
+/// @details No row-proportional storage is created. A count of zero selects height-derived
+///          capacity. Negative or non-representable inputs preserve the previous viewport.
+/// @param grid Grid widget handle.
+/// @param first Zero-based first logical row.
+/// @param count Maximum visible rows, or zero for automatic capacity.
+void rt_datagrid_set_viewport_rows(void *grid, int64_t first, int64_t count) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    size_t native_first = 0;
+    size_t native_count = 0;
+    if (g && rt_datagrid_i64_to_size(first, &native_first) &&
+        rt_datagrid_i64_to_size(count, &native_count))
+        vg_datagrid_set_viewport_rows(g, native_first, native_count);
+}
+
+/// @brief Switch the Grid to sparse virtual mode with a logical row count.
+/// @details The operation clears dense rows only after input validation. It never allocates one
+///          object per logical row, so very large model sizes remain bounded by materialized cells.
+/// @param grid Grid widget handle.
+/// @param count Non-negative logical row count.
+void rt_datagrid_set_virtual_row_count(void *grid, int64_t count) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    size_t native_count = 0;
+    if (g && rt_datagrid_i64_to_size(count, &native_count))
+        vg_datagrid_set_virtual_row_count(g, native_count);
+}
+
+/// @brief Materialize, replace, or clear one copied sparse virtual-cell value.
+/// @details Embedded NUL bytes are converted to U+FFFD. Invalid indices and conversion/allocation
+///          failure preserve the previous sparse model atomically.
+/// @param grid Virtual Grid widget handle.
+/// @param row Zero-based logical row.
+/// @param col Zero-based column.
+/// @param text Visible UTF-8 text; empty text clears an existing materialization.
+void rt_datagrid_set_virtual_cell(void *grid, int64_t row, int64_t col, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    size_t native_row = 0;
+    int native_col = 0;
+    if (!g || !rt_datagrid_i64_to_size(row, &native_row) ||
+        !rt_datagrid_i64_to_column(col, &native_col))
+        return;
+    char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return;
+    (void)vg_datagrid_set_virtual_cell(g, native_row, native_col, ctext);
+    free(ctext);
+}
+
+/// @brief Enable or disable pointer and keyboard cell selection.
+/// @param grid Grid widget handle.
+/// @param enabled Non-zero to enable selection; zero to disable and clear it.
+void rt_datagrid_set_selectable(void *grid, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (g)
+        vg_datagrid_set_selectable(g, enabled != 0);
+}
+
+/// @brief Return the selected logical row.
+/// @param grid Grid widget handle.
+/// @return Zero-based row, or -1 when selection/handle is absent.
+int64_t rt_datagrid_get_selected_row(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (!g)
+        return -1;
+    size_t row = vg_datagrid_get_selected_row(g);
+    return row == SIZE_MAX ? -1 : rt_datagrid_size_to_i64(row);
+}
+
+/// @brief Return the selected column.
+/// @param grid Grid widget handle.
+/// @return Zero-based column, or -1 when selection/handle is absent.
+int64_t rt_datagrid_get_selected_column(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? (int64_t)vg_datagrid_get_selected_column(g) : -1;
+}
+
+/// @brief Select one valid logical cell.
+/// @param grid Selectable Grid widget handle.
+/// @param row Zero-based logical row.
+/// @param col Zero-based column.
+/// @return 1 when the cell is valid and selected/already selected, otherwise 0.
+int64_t rt_datagrid_select_cell(void *grid, int64_t row, int64_t col) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    size_t native_row = 0;
+    int native_col = 0;
+    if (!g || !rt_datagrid_i64_to_size(row, &native_row) ||
+        !rt_datagrid_i64_to_column(col, &native_col))
+        return 0;
+    return vg_datagrid_select_cell(g, native_row, native_col) ? 1 : 0;
+}
+
+/// @brief Clear any current Grid selection.
+/// @param grid Grid widget handle; invalid/already-clear handles are no-ops.
+void rt_datagrid_clear_selection(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (g)
+        vg_datagrid_clear_selection(g);
+}
+
+/// @brief Consume the independent Grid selection transition edge.
+/// @param grid Grid widget handle.
+/// @return 1 once after one or more unreported selection transitions, otherwise 0.
+int64_t rt_datagrid_was_selection_changed(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g && vg_datagrid_was_selection_changed(g) ? 1 : 0;
+}
+
+/// @brief Consume the independent Grid cell-activation edge.
+/// @details Double-click and keyboard Enter record activation without consuming selection/change
+///          edges or the non-consuming revision.
+/// @param grid Grid widget handle.
+/// @return 1 once after one or more unreported activations, otherwise 0.
+int64_t rt_datagrid_was_activated(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g && vg_widget_was_activated(&g->base) ? 1 : 0;
+}
+
+/// @brief Enable or disable sort requests for one column.
+/// @param grid Grid widget handle.
+/// @param col Zero-based column.
+/// @param enabled Non-zero to enable header/API sort requests.
+void rt_datagrid_set_sortable(void *grid, int64_t col, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    int native_col = 0;
+    if (g && rt_datagrid_i64_to_column(col, &native_col))
+        vg_datagrid_set_sortable(g, native_col, enabled != 0);
+}
+
+/// @brief Record a normalized sort request without reordering caller-owned data.
+/// @details Direction normalizes to -1, 0, or 1. Nonzero directions require an enabled sortable
+///          column; invalid requests preserve existing state.
+/// @param grid Grid widget handle.
+/// @param col Zero-based column for nonzero direction.
+/// @param direction Negative descending, zero unsorted, positive ascending.
+void rt_datagrid_set_sort(void *grid, int64_t col, int64_t direction) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (!g)
+        return;
+    int native_col = -1;
+    if (direction != 0 && !rt_datagrid_i64_to_column(col, &native_col))
+        return;
+    (void)vg_datagrid_set_sort(g, native_col, direction < 0 ? -1 : (direction > 0 ? 1 : 0));
+}
+
+/// @brief Return the active Grid sort column.
+/// @param grid Grid widget handle.
+/// @return Zero-based column, or -1 when unsorted/invalid.
+int64_t rt_datagrid_get_sort_column(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? (int64_t)vg_datagrid_get_sort_column(g) : -1;
+}
+
+/// @brief Return the active normalized Grid sort direction.
+/// @param grid Grid widget handle.
+/// @return -1 descending, 0 none/invalid, or 1 ascending.
+int64_t rt_datagrid_get_sort_direction(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? (int64_t)vg_datagrid_get_sort_direction(g) : 0;
+}
+
+/// @brief Consume the independent Grid sort transition edge.
+/// @param grid Grid widget handle.
+/// @return 1 once after one or more unreported sort changes, otherwise 0.
+int64_t rt_datagrid_was_sort_changed(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g && vg_datagrid_was_sort_changed(g) ? 1 : 0;
+}
+
+/// @brief Set one explicit logical column width or reset it to automatic sizing.
+/// @details Width zero selects automatic sizing. Finite non-negative values are converted through
+///          effective UI scale exactly once; invalid values preserve the previous width.
+/// @param grid Grid widget handle.
+/// @param col Zero-based column.
+/// @param width Public logical width, or zero for automatic.
+void rt_datagrid_set_column_width(void *grid, int64_t col, double width) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    int native_col = 0;
+    if (!g || !rt_datagrid_i64_to_column(col, &native_col) || !rt_gui_double_is_finite(width) ||
+        width < 0.0)
+        return;
+    (void)vg_datagrid_set_column_width(
+        g, native_col, rt_gui_logical_length_to_physical(&g->base, width));
+}
+
+/// @brief Enable or disable pointer resizing at one column boundary.
+/// @param grid Grid widget handle.
+/// @param col Zero-based column.
+/// @param enabled Non-zero to enable pointer resizing.
+void rt_datagrid_set_column_resizable(void *grid, int64_t col, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    int native_col = 0;
+    if (g && rt_datagrid_i64_to_column(col, &native_col))
+        vg_datagrid_set_column_resizable(g, native_col, enabled != 0);
+}
+
+/// @brief Consume the independent effective-column-resize edge.
+/// @param grid Grid widget handle.
+/// @return 1 once after one or more unreported width changes, otherwise 0.
+int64_t rt_datagrid_was_column_resized(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g && vg_datagrid_was_column_resized(g) ? 1 : 0;
+}
+
+/// @brief Return the most recently resized Grid column.
+/// @param grid Grid widget handle.
+/// @return Zero-based column, or -1 when no resize/invalid handle exists.
+int64_t rt_datagrid_get_resized_column(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? (int64_t)vg_datagrid_get_resized_column(g) : -1;
+}
+
+/// @brief Enable or disable externally-driven Grid cell editing.
+/// @details Disabling cancels an active edit without changing cell content.
+/// @param grid Grid widget handle.
+/// @param enabled Non-zero to enable BeginEdit/CommitEdit.
+void rt_datagrid_set_editable(void *grid, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (g)
+        vg_datagrid_set_editable(g, enabled != 0);
+}
+
+/// @brief Begin editing one valid dense or sparse Grid cell.
+/// @param grid Editable Grid widget handle.
+/// @param row Zero-based logical row.
+/// @param col Zero-based column.
+/// @return 1 when editing began/already targets the cell, otherwise 0.
+int64_t rt_datagrid_begin_edit(void *grid, int64_t row, int64_t col) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    size_t native_row = 0;
+    int native_col = 0;
+    if (!g || !rt_datagrid_i64_to_size(row, &native_row) ||
+        !rt_datagrid_i64_to_column(col, &native_col))
+        return 0;
+    return vg_datagrid_begin_edit(g, native_row, native_col) ? 1 : 0;
+}
+
+/// @brief Commit copied visible UTF-8 text to the active edit cell.
+/// @details Embedded NUL bytes become U+FFFD. Conversion/allocation failure leaves edit mode and
+///          content unchanged; effective text changes publish the independent edit edge.
+/// @param grid Grid widget handle with an active edit.
+/// @param text Replacement text; empty clears the cell.
+/// @return 1 when the active edit committed successfully, otherwise 0.
+int64_t rt_datagrid_commit_edit(void *grid, rt_string text) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (!g)
+        return 0;
+    char *ctext = rt_string_to_gui_cstr(text);
+    if (!ctext)
+        return 0;
+    int64_t committed = vg_datagrid_commit_edit(g, ctext) ? 1 : 0;
+    free(ctext);
+    return committed;
+}
+
+/// @brief Cancel active Grid edit mode without modifying cell content.
+/// @param grid Grid widget handle; invalid/already-idle handles are no-ops.
+void rt_datagrid_cancel_edit(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    if (g)
+        vg_datagrid_cancel_edit(g);
+}
+
+/// @brief Query whether one Grid edit controller is active.
+/// @param grid Grid widget handle.
+/// @return 1 while editing a valid cell, otherwise 0.
+int64_t rt_datagrid_is_editing(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g && vg_datagrid_is_editing(g) ? 1 : 0;
+}
+
+/// @brief Consume the independent committed-cell-edit edge.
+/// @param grid Grid widget handle.
+/// @return 1 once after one or more unreported effective edits, otherwise 0.
+int64_t rt_datagrid_was_cell_edited(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g && vg_datagrid_was_cell_edited(g) ? 1 : 0;
+}
+
+/// @brief Scroll so one logical Grid row becomes the first viewport row.
+/// @param grid Grid widget handle.
+/// @param row Requested non-negative row, clamped by the lower Grid to its last row.
+void rt_datagrid_scroll_to_row(void *grid, int64_t row) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    size_t native_row = 0;
+    if (g && rt_datagrid_i64_to_size(row, &native_row))
+        vg_datagrid_scroll_to_row(g, native_row);
+}
+
+/// @brief Return the first logical Grid viewport row.
+/// @param grid Grid widget handle.
+/// @return Zero-based row saturated at `INT64_MAX`, or zero when invalid.
+int64_t rt_datagrid_get_scroll_row(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? rt_datagrid_size_to_i64(vg_datagrid_get_scroll_row(g)) : 0;
+}
+
+/// @brief Consume the Grid's independent model-content change edge.
+/// @details Column, header, cell, and clear mutations share this edge; no-op
+///          assignments do not create a transition.
+/// @param grid Grid widget handle.
+/// @return 1 once after one or more unreported content transitions, otherwise 0.
+int64_t rt_datagrid_was_changed(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? (vg_widget_was_changed(&g->base) ? 1 : 0) : 0;
+}
+
+/// @brief Return the Grid's non-consuming state revision.
+/// @param grid Grid widget handle.
+/// @return Monotonic signed revision, or zero when the handle is invalid.
+int64_t rt_datagrid_get_revision(void *grid) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_datagrid_t *g = rt_datagrid_checked(grid);
+    return g ? rt_widget_get_revision(&g->base) : 0;
 }
 
 //=============================================================================
@@ -1476,8 +2267,8 @@ void rt_popuplist_set_width(void *list, double width) {
     RT_ASSERT_MAIN_THREAD();
     vg_popuplist_t *p = rt_popuplist_checked(list);
     if (p)
-        vg_popuplist_set_width(p,
-                               (float)rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE));
+        vg_popuplist_set_width(
+            p, (float)rt_gui_sanitize_nonnegative_float(width, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
 /// @brief Set the maximum number of visible rows.
@@ -1498,6 +2289,7 @@ void rt_popuplist_set_font(void *list, void *font, double size) {
     if (!checked_font)
         return;
     vg_popuplist_set_font(p, checked_font, (float)rt_gui_sanitize_font_size(size, 14.0));
+    p->base.runtime_font_reference = checked_font;
 }
 
 /// @brief Show or hide the popup.
@@ -1563,6 +2355,48 @@ void rt_tab_set_title(void *tab, rt_string title) {
     (void)title;
 }
 
+/// @brief Stub: return an empty tab title without graphics.
+rt_string rt_tab_get_title(void *tab) {
+    (void)tab;
+    return rt_str_empty();
+}
+
+/// @brief Stub: ignore tab data without graphics.
+void rt_tab_set_data(void *tab, rt_string data) {
+    (void)tab;
+    (void)data;
+}
+
+/// @brief Stub: return empty tab data without graphics.
+rt_string rt_tab_get_data(void *tab) {
+    (void)tab;
+    return rt_str_empty();
+}
+
+/// @brief Stub: ignore tab closability without graphics.
+void rt_tab_set_closable(void *tab, int64_t closable) {
+    (void)tab;
+    (void)closable;
+}
+
+/// @brief Stub: report a non-closable tab without graphics.
+int64_t rt_tab_is_closable(void *tab) {
+    (void)tab;
+    return 0;
+}
+
+/// @brief Stub: ignore stable tab identifiers without graphics.
+void rt_tab_set_stable_id(void *tab, rt_string stable_id) {
+    (void)tab;
+    (void)stable_id;
+}
+
+/// @brief Stub: return an empty stable tab identifier without graphics.
+rt_string rt_tab_get_stable_id(void *tab) {
+    (void)tab;
+    return rt_str_empty();
+}
+
 /// @brief Update the tooltip text of a tab.
 void rt_tab_set_tooltip(void *tab, rt_string tooltip) {
     (void)tab;
@@ -1590,6 +2424,47 @@ int64_t rt_tabbar_get_active_index(void *tabbar) {
 /// @brief Check if the active tab changed since the last call (edge-triggered).
 int64_t rt_tabbar_was_changed(void *tabbar) {
     (void)tabbar;
+    return 0;
+}
+
+/// @brief Stub: no TabBar revision exists when graphics is disabled.
+/// @param tabbar Ignored TabBar handle.
+/// @return Always zero.
+int64_t rt_tabbar_get_revision(void *tabbar) {
+    (void)tabbar;
+    return 0;
+}
+
+/// @brief Stub: ignore TabBar font changes without graphics.
+void rt_tabbar_set_font(void *tabbar, void *font, double size) {
+    (void)tabbar;
+    (void)font;
+    (void)size;
+}
+
+/// @brief Stub: report no TabBar reorder edge without graphics.
+int64_t rt_tabbar_was_reordered(void *tabbar) {
+    (void)tabbar;
+    return 0;
+}
+
+/// @brief Stub: return no TabBar reorder source without graphics.
+int64_t rt_tabbar_get_reordered_from(void *tabbar) {
+    (void)tabbar;
+    return -1;
+}
+
+/// @brief Stub: return no TabBar reorder destination without graphics.
+int64_t rt_tabbar_get_reordered_to(void *tabbar) {
+    (void)tabbar;
+    return -1;
+}
+
+/// @brief Stub: reject TabBar moves without graphics.
+int64_t rt_tabbar_move_tab(void *tabbar, int64_t from_index, int64_t to_index) {
+    (void)tabbar;
+    (void)from_index;
+    (void)to_index;
     return 0;
 }
 
@@ -1649,6 +2524,72 @@ void rt_splitpane_set_position(void *split, double position) {
 double rt_splitpane_get_position(void *split) {
     (void)split;
     return 0.5;
+}
+
+/// @brief Graphics-disabled first-pane minimum setter stub.
+/// @param split Ignored handle.
+/// @param size Ignored logical size.
+void rt_splitpane_set_min_first(void *split, double size) {
+    (void)split;
+    (void)size;
+}
+
+/// @brief Graphics-disabled second-pane minimum setter stub.
+/// @param split Ignored handle.
+/// @param size Ignored logical size.
+void rt_splitpane_set_min_second(void *split, double size) {
+    (void)split;
+    (void)size;
+}
+
+/// @brief Graphics-disabled first-pane minimum query stub.
+/// @param split Ignored handle.
+/// @return Always zero.
+double rt_splitpane_get_min_first(void *split) {
+    (void)split;
+    return 0.0;
+}
+
+/// @brief Graphics-disabled second-pane minimum query stub.
+/// @param split Ignored handle.
+/// @return Always zero.
+double rt_splitpane_get_min_second(void *split) {
+    (void)split;
+    return 0.0;
+}
+
+/// @brief Graphics-disabled orientation query stub.
+/// @param split Ignored handle.
+/// @return Always -1 because no split pane exists.
+int64_t rt_splitpane_get_orientation(void *split) {
+    (void)split;
+    return -1;
+}
+
+/// @brief Graphics-disabled first-pane collapse stub.
+/// @param split Ignored handle.
+void rt_splitpane_collapse_first(void *split) {
+    (void)split;
+}
+
+/// @brief Graphics-disabled second-pane collapse stub.
+/// @param split Ignored handle.
+void rt_splitpane_collapse_second(void *split) {
+    (void)split;
+}
+
+/// @brief Graphics-disabled split-pane restore stub.
+/// @param split Ignored handle.
+void rt_splitpane_restore(void *split) {
+    (void)split;
+}
+
+/// @brief Graphics-disabled collapsed-side query stub.
+/// @param split Ignored handle.
+/// @return Always -1 because no split pane exists.
+int64_t rt_splitpane_get_collapsed_side(void *split) {
+    (void)split;
+    return -1;
 }
 
 /// @brief Stub: graphics disabled — returns NULL; no first panel container exists.
@@ -1955,6 +2896,48 @@ void rt_radiogroup_destroy(void *group) {
     (void)group;
 }
 
+/// @brief Graphics-disabled selected-index query stub.
+/// @param group Ignored handle.
+/// @return Always -1.
+int64_t rt_radiogroup_get_selected_index(void *group) {
+    (void)group;
+    return -1;
+}
+
+/// @brief Graphics-disabled selected-index setter stub.
+/// @param group Ignored handle.
+/// @param index Ignored index.
+/// @return Always zero because no group exists.
+int64_t rt_radiogroup_set_selected_index(void *group, int64_t index) {
+    (void)group;
+    (void)index;
+    return 0;
+}
+
+/// @brief Graphics-disabled radio-group count query stub.
+/// @param group Ignored handle.
+/// @return Always zero.
+int64_t rt_radiogroup_get_count(void *group) {
+    (void)group;
+    return 0;
+}
+
+/// @brief Graphics-disabled radio-group change edge stub.
+/// @param group Ignored handle.
+/// @return Always zero.
+int64_t rt_radiogroup_was_changed(void *group) {
+    (void)group;
+    return 0;
+}
+
+/// @brief Graphics-disabled radio-group revision stub.
+/// @param group Ignored handle.
+/// @return Always zero.
+int64_t rt_radiogroup_get_revision(void *group) {
+    (void)group;
+    return 0;
+}
+
 /// @brief Stub: graphics disabled — returns NULL; no radio button widget is created.
 void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     (void)parent;
@@ -1973,6 +2956,54 @@ int64_t rt_radiobutton_is_selected(void *radio) {
 void rt_radiobutton_set_selected(void *radio, int64_t selected) {
     (void)radio;
     (void)selected;
+}
+
+/// @brief Graphics-disabled radio-button text setter stub.
+/// @param radio Ignored handle.
+/// @param text Ignored runtime string.
+void rt_radiobutton_set_text(void *radio, rt_string text) {
+    (void)radio;
+    (void)text;
+}
+
+/// @brief Graphics-disabled radio-button text query stub.
+/// @param radio Ignored handle.
+/// @return Empty runtime string.
+rt_string rt_radiobutton_get_text(void *radio) {
+    (void)radio;
+    return rt_str_empty();
+}
+
+/// @brief Graphics-disabled radio-button data setter stub.
+/// @param radio Ignored handle.
+/// @param data Ignored runtime string.
+void rt_radiobutton_set_data(void *radio, rt_string data) {
+    (void)radio;
+    (void)data;
+}
+
+/// @brief Graphics-disabled radio-button data query stub.
+/// @param radio Ignored handle.
+/// @return Empty runtime string.
+rt_string rt_radiobutton_get_data(void *radio) {
+    (void)radio;
+    return rt_str_empty();
+}
+
+/// @brief Stub: no RadioButton change edge exists when graphics is disabled.
+/// @param radio Ignored RadioButton handle.
+/// @return Always zero.
+int64_t rt_radiobutton_was_changed(void *radio) {
+    (void)radio;
+    return 0;
+}
+
+/// @brief Stub: no RadioButton revision exists when graphics is disabled.
+/// @param radio Ignored RadioButton handle.
+/// @return Always zero.
+int64_t rt_radiobutton_get_revision(void *radio) {
+    (void)radio;
+    return 0;
 }
 
 /// @brief Stub: graphics disabled — returns NULL; no spinner widget is created.
@@ -2012,48 +3043,335 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     (void)decimals;
 }
 
+/// @brief Stub: no spinner change edge exists when graphics is disabled.
+/// @param spinner Ignored spinner handle.
+/// @return Always zero.
+int64_t rt_spinner_was_changed(void *spinner) {
+    (void)spinner;
+    return 0;
+}
+
+/// @brief Stub: no spinner submission edge exists when graphics is disabled.
+/// @param spinner Ignored spinner handle.
+/// @return Always zero.
+int64_t rt_spinner_was_submitted(void *spinner) {
+    (void)spinner;
+    return 0;
+}
+
+/// @brief Stub: no spinner revision exists when graphics is disabled.
+/// @param spinner Ignored spinner handle.
+/// @return Always zero.
+int64_t rt_spinner_get_revision(void *spinner) {
+    (void)spinner;
+    return 0;
+}
+
 // --- Grid stubs: graphics disabled — no data grid exists. ---
 void *rt_datagrid_new(void *parent) {
     (void)parent;
     return NULL;
 }
+
 void rt_datagrid_set_columns(void *grid, int64_t count) {
     (void)grid;
     (void)count;
 }
+
 void rt_datagrid_set_header(void *grid, int64_t col, rt_string text) {
     (void)grid;
     (void)col;
     (void)text;
 }
+
 void rt_datagrid_set_cell(void *grid, int64_t row, int64_t col, rt_string text) {
     (void)grid;
     (void)row;
     (void)col;
     (void)text;
 }
+
 rt_string rt_datagrid_get_cell(void *grid, int64_t row, int64_t col) {
     (void)grid;
     (void)row;
     (void)col;
     return rt_str_empty();
 }
-void rt_datagrid_clear(void *grid) { (void)grid; }
+
+void rt_datagrid_clear(void *grid) {
+    (void)grid;
+}
+
 void rt_datagrid_set_font(void *grid, void *font, double size) {
     (void)grid;
     (void)font;
     (void)size;
 }
+
 int64_t rt_datagrid_get_column_width(void *grid, int64_t col) {
     (void)grid;
     (void)col;
     return 0;
 }
+
 int64_t rt_datagrid_get_row_count(void *grid) {
     (void)grid;
     return 0;
 }
+
 int64_t rt_datagrid_get_column_count(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: ignore Grid viewport changes when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param first Ignored first row.
+/// @param count Ignored visible-row count.
+void rt_datagrid_set_viewport_rows(void *grid, int64_t first, int64_t count) {
+    (void)grid;
+    (void)first;
+    (void)count;
+}
+
+/// @brief Stub: ignore sparse virtual row-count changes when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param count Ignored logical row count.
+void rt_datagrid_set_virtual_row_count(void *grid, int64_t count) {
+    (void)grid;
+    (void)count;
+}
+
+/// @brief Stub: ignore sparse virtual-cell changes when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param row Ignored logical row.
+/// @param col Ignored column.
+/// @param text Ignored runtime text.
+void rt_datagrid_set_virtual_cell(void *grid, int64_t row, int64_t col, rt_string text) {
+    (void)grid;
+    (void)row;
+    (void)col;
+    (void)text;
+}
+
+/// @brief Stub: ignore Grid selection enablement when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param enabled Ignored boolean.
+void rt_datagrid_set_selectable(void *grid, int64_t enabled) {
+    (void)grid;
+    (void)enabled;
+}
+
+/// @brief Stub: no selected Grid row exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always -1.
+int64_t rt_datagrid_get_selected_row(void *grid) {
+    (void)grid;
+    return -1;
+}
+
+/// @brief Stub: no selected Grid column exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always -1.
+int64_t rt_datagrid_get_selected_column(void *grid) {
+    (void)grid;
+    return -1;
+}
+
+/// @brief Stub: no Grid cell can be selected when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param row Ignored row.
+/// @param col Ignored column.
+/// @return Always zero.
+int64_t rt_datagrid_select_cell(void *grid, int64_t row, int64_t col) {
+    (void)grid;
+    (void)row;
+    (void)col;
+    return 0;
+}
+
+/// @brief Stub: ignore Grid selection clearing when graphics is disabled.
+/// @param grid Ignored Grid handle.
+void rt_datagrid_clear_selection(void *grid) {
+    (void)grid;
+}
+
+/// @brief Stub: no Grid selection edge exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_was_selection_changed(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: no Grid activation edge exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_was_activated(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: ignore sortable-column changes when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param col Ignored column.
+/// @param enabled Ignored boolean.
+void rt_datagrid_set_sortable(void *grid, int64_t col, int64_t enabled) {
+    (void)grid;
+    (void)col;
+    (void)enabled;
+}
+
+/// @brief Stub: ignore Grid sort requests when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param col Ignored column.
+/// @param direction Ignored direction.
+void rt_datagrid_set_sort(void *grid, int64_t col, int64_t direction) {
+    (void)grid;
+    (void)col;
+    (void)direction;
+}
+
+/// @brief Stub: no Grid sort column exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always -1.
+int64_t rt_datagrid_get_sort_column(void *grid) {
+    (void)grid;
+    return -1;
+}
+
+/// @brief Stub: no Grid sort direction exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_get_sort_direction(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: no Grid sort edge exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_was_sort_changed(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: ignore Grid column-width changes when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param col Ignored column.
+/// @param width Ignored logical width.
+void rt_datagrid_set_column_width(void *grid, int64_t col, double width) {
+    (void)grid;
+    (void)col;
+    (void)width;
+}
+
+/// @brief Stub: ignore resizable-column changes when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param col Ignored column.
+/// @param enabled Ignored boolean.
+void rt_datagrid_set_column_resizable(void *grid, int64_t col, int64_t enabled) {
+    (void)grid;
+    (void)col;
+    (void)enabled;
+}
+
+/// @brief Stub: no Grid column-resize edge exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_was_column_resized(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: no resized Grid column exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always -1.
+int64_t rt_datagrid_get_resized_column(void *grid) {
+    (void)grid;
+    return -1;
+}
+
+/// @brief Stub: ignore Grid edit enablement when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param enabled Ignored boolean.
+void rt_datagrid_set_editable(void *grid, int64_t enabled) {
+    (void)grid;
+    (void)enabled;
+}
+
+/// @brief Stub: no Grid cell edit can begin when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param row Ignored row.
+/// @param col Ignored column.
+/// @return Always zero.
+int64_t rt_datagrid_begin_edit(void *grid, int64_t row, int64_t col) {
+    (void)grid;
+    (void)row;
+    (void)col;
+    return 0;
+}
+
+/// @brief Stub: no Grid cell edit can commit when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param text Ignored replacement text.
+/// @return Always zero.
+int64_t rt_datagrid_commit_edit(void *grid, rt_string text) {
+    (void)grid;
+    (void)text;
+    return 0;
+}
+
+/// @brief Stub: ignore Grid edit cancellation when graphics is disabled.
+/// @param grid Ignored Grid handle.
+void rt_datagrid_cancel_edit(void *grid) {
+    (void)grid;
+}
+
+/// @brief Stub: no Grid edit is active when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_is_editing(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: no Grid cell-edit edge exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_was_cell_edited(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: ignore Grid scroll requests when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @param row Ignored logical row.
+void rt_datagrid_scroll_to_row(void *grid, int64_t row) {
+    (void)grid;
+    (void)row;
+}
+
+/// @brief Stub: no Grid scroll offset exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_get_scroll_row(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: no Grid change edge exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_was_changed(void *grid) {
+    (void)grid;
+    return 0;
+}
+
+/// @brief Stub: no Grid revision exists when graphics is disabled.
+/// @param grid Ignored Grid handle.
+/// @return Always zero.
+int64_t rt_datagrid_get_revision(void *grid) {
     (void)grid;
     return 0;
 }
@@ -2063,60 +3381,85 @@ void *rt_popuplist_new(void *parent) {
     (void)parent;
     return NULL;
 }
+
 void rt_popuplist_add_item(void *list, rt_string text) {
     (void)list;
     (void)text;
 }
-void rt_popuplist_clear(void *list) { (void)list; }
+
+void rt_popuplist_clear(void *list) {
+    (void)list;
+}
+
 void rt_popuplist_set_filter(void *list, rt_string filter) {
     (void)list;
     (void)filter;
 }
+
 int64_t rt_popuplist_visible_count(void *list) {
     (void)list;
     return 0;
 }
-void rt_popuplist_navigate_up(void *list) { (void)list; }
-void rt_popuplist_navigate_down(void *list) { (void)list; }
+
+void rt_popuplist_navigate_up(void *list) {
+    (void)list;
+}
+
+void rt_popuplist_navigate_down(void *list) {
+    (void)list;
+}
+
 void rt_popuplist_set_selected_index(void *list, int64_t index) {
     (void)list;
     (void)index;
 }
+
 int64_t rt_popuplist_get_selected_index(void *list) {
     (void)list;
     return -1;
 }
+
 rt_string rt_popuplist_get_selected(void *list) {
     (void)list;
     return rt_str_empty();
 }
-void rt_popuplist_accept_selected(void *list) { (void)list; }
+
+void rt_popuplist_accept_selected(void *list) {
+    (void)list;
+}
+
 int8_t rt_popuplist_was_accepted(void *list) {
     (void)list;
     return 0;
 }
+
 void rt_popuplist_anchor_at(void *list, double x, double y) {
     (void)list;
     (void)x;
     (void)y;
 }
+
 void rt_popuplist_set_width(void *list, double width) {
     (void)list;
     (void)width;
 }
+
 void rt_popuplist_set_max_rows(void *list, int64_t max_rows) {
     (void)list;
     (void)max_rows;
 }
+
 void rt_popuplist_set_font(void *list, void *font, double size) {
     (void)list;
     (void)font;
     (void)size;
 }
+
 void rt_popuplist_set_visible(void *list, int64_t visible) {
     (void)list;
     (void)visible;
 }
+
 int8_t rt_popuplist_is_visible(void *list) {
     (void)list;
     return 0;

@@ -44,6 +44,8 @@
 
 static vg_font_t *g_live_fonts = NULL;
 
+static bool vg_font_valid_size(float size);
+
 static void vg_font_register_live(vg_font_t *font) {
     if (!font)
         return;
@@ -76,6 +78,20 @@ bool vg_font_is_live(const vg_font_t *font) {
             return live->magic == VG_FONT_MAGIC;
     }
     return false;
+}
+
+/// @brief Store caller-facing logical-size metadata on a live font.
+void vg_font_set_logical_size(vg_font_t *font, float logical_size) {
+    if (!vg_font_is_live(font))
+        return;
+    font->logical_size = vg_font_valid_size(logical_size) ? logical_size : 0.0f;
+}
+
+/// @brief Read caller-facing logical-size metadata from a live font.
+float vg_font_get_logical_size(const vg_font_t *font) {
+    if (!vg_font_is_live(font))
+        return 0.0f;
+    return vg_font_valid_size(font->logical_size) ? font->logical_size : 0.0f;
 }
 
 //=============================================================================

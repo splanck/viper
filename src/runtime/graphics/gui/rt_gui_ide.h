@@ -3,9 +3,22 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/rt_gui_ide.h
+// File: src/runtime/graphics/gui/rt_gui_ide.h
 // Purpose: GUI automation, virtualization, and command/accessibility helpers
 //          for IDE-style applications.
+// Key invariants:
+//   - Virtual-model stable IDs are unique and non-empty.
+//   - Model/control bindings are non-owning and self-clear when either endpoint
+//     is destroyed.
+//   - New bound virtualization APIs are present in graphics-enabled and
+//     graphics-disabled runtime builds.
+// Ownership/Lifetime:
+//   - Constructors return managed runtime objects owned by the caller.
+//   - Returned strings, maps, sequences, and options are managed values.
+//   - Bind operations never transfer ownership of a model or GUI control.
+// Links: src/runtime/graphics/gui/rt_gui_ide.cpp,
+//        src/runtime/graphics/gui/rt_gui.h,
+//        src/il/runtime/defs/api/gui_layout.def
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,12 +39,94 @@ extern "C" {
 #define RT_GUI_COMMAND_CLASS_ID INT64_C(-0x475549434f4d4e44)          // tag "GUICOMND"
 #define RT_GUI_COMMAND_REGISTRY_CLASS_ID INT64_C(-0x475549434d445247) // tag "GUICMDRG"
 
-// --- Headless GUI test harness: register synthetic widgets, drive input, and
-//     assert on the result without a real window. ---
+// --- GUI test harness: retain the legacy synthetic model for headless unit tests,
+//     or bind a live App to drive its real input/render/accessibility paths. ---
 /// @brief Create a new headless GUI test harness object.
 void *rt_gui_test_harness_new(void);
 /// @brief Remove all registered widgets and reset harness state.
 void rt_gui_test_harness_clear(void *harness);
+/// @brief Bind a live GUI application for real input dispatch and framebuffer inspection.
+/// @details The harness retains @p app until UnbindApp, rebinding, or harness reclamation.
+///          Events already present in the legacy synthetic journal are marked dispatched so
+///          binding never replays historical input unexpectedly. Invalid or explicitly destroyed
+///          app handles are rejected without disturbing an existing live binding. Graphics-
+///          disabled runtimes return zero and keep the harness in synthetic mode.
+/// @param harness Managed TestHarness object; invalid handles trap.
+/// @param app Live managed Viper.GUI.App object to retain.
+/// @return 1 when the app is bound (including an already-current binding), otherwise 0.
+int8_t rt_gui_test_harness_bind_app(void *harness, void *app);
+/// @brief Release the application retained by a GUI test harness.
+/// @details Pending journal records remain inspectable but are marked dispatched, preventing
+///          their later replay if another app is bound. Synthetic widgets, focus, and frame count
+///          are preserved. Calling this on an already-unbound harness is harmless.
+/// @param harness Managed TestHarness object; invalid handles trap.
+void rt_gui_test_harness_unbind_app(void *harness);
+/// @brief Dispatch every pending harness input record through the bound App.Poll path.
+/// @details Key records expand to native key-down/key-up events and, for printable unmodified
+///          ASCII, a text-input event. Mouse `click` expands to down/up. Records are attempted
+///          exactly once and use physical framebuffer coordinates and ViperGFX button ordinals
+///          (left=0, right=1, middle=2). App.Poll is invoked once even when no records are pending,
+///          allowing queued native events to participate in the same frame.
+/// @param harness Managed TestHarness object; invalid handles trap.
+/// @return Number of journal records fully queued, or zero when no live app is bound.
+int64_t rt_gui_test_harness_dispatch_pending(void *harness);
+/// @brief Dispatch pending input and render one deterministic real GUI frame.
+/// @details Pending authored events are queued before App.RunFrameWithDelta, so the app polls once
+///          and then performs normal routing, layout, animation, damage, and presentation. Invalid,
+///          negative, or non-finite deltas are normalized by the App API. Synthetic mode and stale
+///          app bindings return zero without modifying the journal.
+/// @param harness Managed TestHarness object; invalid handles trap.
+/// @param delta_ms Deterministic scheduler time to advance in milliseconds.
+/// @return 1 while the bound app remains runnable after the frame, otherwise 0.
+int8_t rt_gui_test_harness_render_frame(void *harness, double delta_ms);
+/// @brief Copy a physical framebuffer region into a managed Pixels image.
+/// @details The returned image always has the requested positive dimensions. Samples outside the
+///          framebuffer are transparent black, enabling stable edge and overscan assertions.
+///          Coordinates and dimensions are physical pixels with a top-left origin. The capture is
+///          a deep copy and remains valid after later frames or framebuffer reallocations.
+/// @param harness Managed TestHarness object with a live bound app.
+/// @param x Physical X coordinate of the requested region.
+/// @param y Physical Y coordinate of the requested region.
+/// @param width Positive output width in pixels.
+/// @param height Positive output height in pixels.
+/// @return New managed Viper.Graphics.Pixels object, or NULL for invalid/unbound input or OOM.
+void *rt_gui_test_harness_capture_pixels(
+    void *harness, int64_t x, int64_t y, int64_t width, int64_t height);
+/// @brief Hash a physical framebuffer region into a stable lowercase hexadecimal digest.
+/// @details Uses FNV-1a 64 over the requested dimensions and canonical RGBA bytes. Out-of-bounds
+///          pixels hash as transparent black, and the explicit byte order makes results identical
+///          across host endianness. The hash is intended for deterministic regression comparisons,
+///          not cryptographic authentication.
+/// @param harness Managed TestHarness object with a live bound app.
+/// @param x Physical X coordinate of the requested region.
+/// @param y Physical Y coordinate of the requested region.
+/// @param width Positive region width.
+/// @param height Positive region height.
+/// @return Newly referenced 16-character hash, or an empty string when capture is unavailable.
+rt_string rt_gui_test_harness_capture_hash(
+    void *harness, int64_t x, int64_t y, int64_t width, int64_t height);
+/// @brief Compare a Pixels reference against the same-sized bound framebuffer region.
+/// @details Per-channel absolute differences at or below @p tolerance are accepted. The returned
+///          schema-versioned Map always includes `matches`, dimensions, clamped tolerance,
+///          `comparedPixels`, `differentPixels`, `maxChannelDelta`, and `meanAbsoluteError`.
+///          Framebuffer samples outside the window are transparent. Invalid expected images or
+///          missing bindings return a well-formed non-matching map with zero comparison counts.
+/// @param harness Managed TestHarness object; invalid handles trap.
+/// @param expected Managed Pixels reference image.
+/// @param x Physical framebuffer X coordinate aligned with expected pixel (0,0).
+/// @param y Physical framebuffer Y coordinate aligned with expected pixel (0,0).
+/// @param tolerance Per-channel tolerance, clamped to the inclusive range [0,255].
+/// @return New managed Viper.Collections.Map with schemaVersion=1 comparison statistics.
+void *rt_gui_test_harness_compare_region(
+    void *harness, void *expected, int64_t x, int64_t y, int64_t tolerance);
+/// @brief Snapshot the bound application's semantic accessibility tree.
+/// @details Delegates to the same iterative, schema-versioned accessibility snapshot used by the
+///          public runtime. Invisible descendants are omitted and allocation truncation is marked
+///          in the root. An unbound, destroyed, or graphics-disabled app returns an empty Map with
+///          schemaVersion=1 rather than NULL when allocation succeeds.
+/// @param harness Managed TestHarness object; invalid handles trap.
+/// @return New managed Viper.Collections.Map accessibility snapshot, or NULL on root OOM.
+void *rt_gui_test_harness_get_accessibility_snapshot(void *harness);
 /// @brief Advance the harness by @p frames simulated frames (clamped to ≥1).
 /// @return The harness's new accumulated frame counter.
 int64_t rt_gui_test_harness_tick(void *harness, int64_t frames);
@@ -90,6 +185,53 @@ void *rt_virtual_list_new(int64_t row_count, int64_t row_height, int64_t viewpor
 void rt_virtual_list_set_count(void *list, int64_t row_count);
 /// @brief Assign a stable id to the row at index @p row (ignored if out of range).
 void rt_virtual_list_set_row_id(void *list, int64_t row, rt_string id);
+/// @brief Set the UTF-8 display text supplied for one virtual row.
+/// @details Text is copied into sparse model storage. Embedded NUL bytes are rendered as visible
+///          replacement characters so the lower C provider never truncates subsequent text. An
+///          out-of-range row or allocation failure leaves the model unchanged.
+/// @param list Managed `Viper.GUI.VirtualList` object; invalid handles trap.
+/// @param row Zero-based logical row index.
+/// @param text Managed UTF-8 text to copy; NULL is treated as empty text.
+void rt_virtual_list_set_row_text(void *list, int64_t row, rt_string text);
+/// @brief Schedule repaint for one row whose application-owned backing data changed.
+/// @details This is an O(1) no-op when the model is unbound or @p row is outside the logical
+///          range. It does not change row identity, selection, or text stored by SetRowText.
+/// @param list Managed `Viper.GUI.VirtualList` object; invalid handles trap.
+/// @param row Zero-based logical row index to invalidate.
+void rt_virtual_list_invalidate_row(void *list, int64_t row);
+/// @brief Bind a VirtualList to a live ListBox using a non-owning, viewport-backed provider.
+/// @details Existing bindings on either endpoint are replaced only after the lower ListBox has
+///          allocated its new viewport cache. Destroying either endpoint clears the other raw
+///          pointer before reclamation. Graphics-disabled builds return zero.
+/// @param list Managed VirtualList object; invalid model handles trap.
+/// @param listbox Live `Viper.GUI.ListBox` handle.
+/// @return One on success, zero for an invalid/unavailable ListBox or allocation failure.
+int8_t rt_virtual_list_bind(void *list, void *listbox);
+/// @brief Detach a VirtualList from its current ListBox without destroying either endpoint.
+/// @param list Managed VirtualList object; invalid handles trap.
+void rt_virtual_list_unbind(void *list);
+/// @brief Bind a ListBox to a VirtualList; reverse-form convenience for VirtualList.Bind.
+/// @param listbox Live `Viper.GUI.ListBox` handle.
+/// @param model Managed `Viper.GUI.VirtualList` object.
+/// @return One on success, zero when graphics are unavailable or either endpoint is invalid.
+int8_t rt_listbox_set_virtual_model(void *listbox, void *model);
+/// @brief Remove an external model from a ListBox and restore ordinary retained-item mode.
+/// @details The model is notified before the lower binding storage is released. Invalid or
+///          graphics-disabled ListBox handles are harmless no-ops.
+/// @param listbox ListBox handle whose model binding should be cleared.
+void rt_listbox_clear_virtual_model(void *listbox);
+/// @brief Return the first model row intersecting a bound ListBox viewport.
+/// @details Computed in O(1) without invoking the model provider. The result is zero for an
+///          invalid, unbound, empty, or graphics-disabled ListBox.
+/// @param listbox ListBox handle to inspect.
+/// @return Non-negative row index, saturated at the runtime signed-integer boundary.
+int64_t rt_listbox_get_visible_first(void *listbox);
+/// @brief Return the bounded number of model rows materialized by a ListBox viewport.
+/// @details Includes the lower renderer's safety rows, does not invoke the provider, and returns
+///          zero for invalid, unbound, empty, or graphics-disabled controls.
+/// @param listbox ListBox handle to inspect.
+/// @return Non-negative viewport row count.
+int64_t rt_listbox_get_visible_count(void *listbox);
 /// @brief Compute the rows to realize at scroll offset @p scroll_y.
 /// @return A Map with `start`, `end` and `count` (overscan rows included).
 void *rt_virtual_list_visible_range(void *list, int64_t scroll_y);
@@ -105,6 +247,24 @@ int64_t rt_virtual_list_get_selected_index(void *list);
 void *rt_virtual_tree_new(void);
 /// @brief Add a node @p id labelled @p text under @p parent_id (empty parent = root).
 void rt_virtual_tree_add_node(void *tree, rt_string parent_id, rt_string id, rt_string text);
+/// @brief Move an existing virtual-tree node to a new parent while preserving its stable ID.
+/// @details This additive operation preserves the pre-unique-ID model's reparenting capability
+///          without overloading AddNode with duplicate-ID updates. Cycles, the hidden root,
+///          missing nodes, and allocation failure are rejected atomically.
+/// @param tree Managed VirtualTree object; invalid handles trap.
+/// @param id Stable ID of the declared node to move.
+/// @param parent_id Stable ID of the new parent, or empty string for the hidden root.
+/// @return One on success (including an unchanged parent), otherwise zero.
+int8_t rt_virtual_tree_move_node(void *tree, rt_string id, rt_string parent_id);
+/// @brief Replace a declared virtual-tree node's display text without changing identity.
+/// @details The UTF-8 value is copied before the old text is released; embedded NUL bytes become
+///          U+FFFD for lower C rendering. Missing/placeholder nodes and allocation failure leave
+///          the model unchanged.
+/// @param tree Managed VirtualTree object; invalid handles trap.
+/// @param id Stable ID of the declared node to update.
+/// @param text New managed UTF-8 label.
+/// @return One on success, including an unchanged label; otherwise zero.
+int8_t rt_virtual_tree_set_node_text(void *tree, rt_string id, rt_string text);
 /// @brief Mark a node expanded.
 /// @return A Map describing the result: `found`, `expanded` and `needsPopulate`
 ///         (set when the node has no loaded children yet).
@@ -117,8 +277,38 @@ void rt_virtual_tree_select_id(void *tree, rt_string id);
 rt_string rt_virtual_tree_get_selected_id(void *tree);
 /// @brief Return the currently visible (expanded) rows as a sequence.
 void *rt_virtual_tree_visible_rows(void *tree);
+/// @brief Return only a requested slice of the flattened visible-tree order.
+/// @details The model maintains a lazy stable-ID index. After structural warm-up this operation is
+///          O(count), allocates maps only for the requested slice, clamps negative arguments to
+///          zero, and never materializes omitted rows.
+/// @param tree Managed `Viper.GUI.VirtualTree` object; invalid handles trap.
+/// @param first Zero-based first visible row; negative values normalize to zero.
+/// @param count Maximum rows to return; negative values normalize to zero.
+/// @return Owned `Viper.Collections.Seq` of row maps, possibly empty.
+void *rt_virtual_tree_visible_rows_range(void *tree, int64_t first, int64_t count);
 /// @brief Rebuild the visible-row cache for a node's subtree after structural changes.
 void rt_virtual_tree_refresh_subtree(void *tree, rt_string id);
+/// @brief Bind a VirtualTree to a live TreeView through its viewport provider path.
+/// @details No retained TreeNode objects are created for model rows. Existing endpoint bindings
+///          are detached safely, and destroying either endpoint invalidates the other raw pointer.
+///          Graphics-disabled builds return zero while the headless model remains usable.
+/// @param tree Managed VirtualTree object; invalid handles trap.
+/// @param treeview Live `Viper.GUI.TreeView` handle.
+/// @return One on success, zero when unavailable or invalid.
+int8_t rt_virtual_tree_bind(void *tree, void *treeview);
+/// @brief Detach a VirtualTree from its bound TreeView without destroying either object.
+/// @param tree Managed VirtualTree object; invalid handles trap.
+void rt_virtual_tree_unbind(void *tree);
+/// @brief Bind a TreeView to a VirtualTree; reverse-form convenience for VirtualTree.Bind.
+/// @param treeview Live `Viper.GUI.TreeView` handle.
+/// @param model Managed `Viper.GUI.VirtualTree` object.
+/// @return One on success, zero for invalid endpoints or graphics-disabled builds.
+int8_t rt_treeview_set_virtual_model(void *treeview, void *model);
+/// @brief Remove an external model from a TreeView and restore retained-node rendering.
+/// @details The pre-existing retained node tree is preserved. Invalid and graphics-disabled
+///          handles are harmless no-ops.
+/// @param treeview TreeView handle whose external model should be cleared.
+void rt_treeview_clear_virtual_model(void *treeview);
 
 // --- Command state: the enabled/checked/accessibility state of a UI command,
 //     used to drive menu items, toolbar buttons and the command palette. ---

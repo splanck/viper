@@ -45,6 +45,7 @@ extern "C" {
 typedef struct vg_widget vg_widget_t;
 typedef struct vg_event vg_event_t;
 typedef struct vg_theme vg_theme_t;
+typedef struct vg_font vg_font_t;
 
 /// @brief Snapshot of toolkit-global widget runtime state.
 ///
@@ -139,6 +140,74 @@ typedef enum vg_widget_state {
     VG_STATE_SELECTED = 1 << 4, ///< Widget is in a selected state (e.g. list item).
     VG_STATE_CHECKED = 1 << 5,  ///< Widget is checked (checkbox, toggle).
 } vg_widget_state_t;
+
+//=============================================================================
+// Accessibility Semantics
+//=============================================================================
+
+/// @brief Cross-platform semantic role exposed by headless and native accessibility trees.
+/// @details Numeric values are stable because they are also surfaced through
+///          `Viper.GUI.AccessibleRole`. `VG_ACCESSIBLE_ROLE_NONE` marks a structural or decorative
+///          node whose children may still carry meaningful semantics.
+typedef enum vg_accessible_role {
+    VG_ACCESSIBLE_ROLE_NONE = 0,
+    VG_ACCESSIBLE_ROLE_APPLICATION,
+    VG_ACCESSIBLE_ROLE_WINDOW,
+    VG_ACCESSIBLE_ROLE_GROUP,
+    VG_ACCESSIBLE_ROLE_LABEL,
+    VG_ACCESSIBLE_ROLE_BUTTON,
+    VG_ACCESSIBLE_ROLE_CHECKBOX,
+    VG_ACCESSIBLE_ROLE_RADIOBUTTON,
+    VG_ACCESSIBLE_ROLE_TEXTBOX,
+    VG_ACCESSIBLE_ROLE_SEARCHBOX,
+    VG_ACCESSIBLE_ROLE_COMBOBOX,
+    VG_ACCESSIBLE_ROLE_LIST,
+    VG_ACCESSIBLE_ROLE_LISTITEM,
+    VG_ACCESSIBLE_ROLE_TREE,
+    VG_ACCESSIBLE_ROLE_TREEITEM,
+    VG_ACCESSIBLE_ROLE_TABLIST,
+    VG_ACCESSIBLE_ROLE_TAB,
+    VG_ACCESSIBLE_ROLE_TABLE,
+    VG_ACCESSIBLE_ROLE_ROW,
+    VG_ACCESSIBLE_ROLE_CELL,
+    VG_ACCESSIBLE_ROLE_SLIDER,
+    VG_ACCESSIBLE_ROLE_PROGRESSBAR,
+    VG_ACCESSIBLE_ROLE_DIALOG,
+    VG_ACCESSIBLE_ROLE_ALERT,
+    VG_ACCESSIBLE_ROLE_MENU,
+    VG_ACCESSIBLE_ROLE_MENUITEM,
+    VG_ACCESSIBLE_ROLE_TOOLBAR,
+    VG_ACCESSIBLE_ROLE_STATUSBAR,
+    VG_ACCESSIBLE_ROLE_IMAGE,
+    VG_ACCESSIBLE_ROLE_VIDEO,
+    VG_ACCESSIBLE_ROLE_LINK,
+    VG_ACCESSIBLE_ROLE_COUNT
+} vg_accessible_role_t;
+
+/// @brief Urgency applied to accessibility live-region announcements.
+typedef enum vg_live_region_mode {
+    VG_LIVE_REGION_OFF = 0,       ///< Do not announce changes automatically.
+    VG_LIVE_REGION_POLITE = 1,    ///< Announce after the current assistive utterance.
+    VG_LIVE_REGION_ASSERTIVE = 2, ///< Interrupt with the new announcement when supported.
+} vg_live_region_mode_t;
+
+/// @brief Toolkit-owned semantic record attached to every widget.
+/// @details Strings are UTF-8 and heap-owned by the widget. `label_for` is a non-owning pointer
+///          paired with the target's immutable widget ID, preventing allocator address reuse from
+///          turning a stale relationship into a relationship with a different widget.
+typedef struct vg_accessibility_info {
+    vg_accessible_role_t role;       ///< Effective semantic role.
+    char *name;                      ///< Explicit accessible name, or NULL for inferred naming.
+    char *description;               ///< Supplemental accessible description, or NULL.
+    char *value;                     ///< Explicit semantic value, or NULL for inferred value.
+    vg_widget_t *label_for;          ///< Non-owning labelled-control relationship target.
+    uint64_t label_for_id;           ///< ID captured with `label_for` for stale-pointer defense.
+    vg_live_region_mode_t live_mode; ///< Default live-region announcement urgency.
+    char *announcement;              ///< Most recent headless/native announcement text.
+    vg_live_region_mode_t announcement_mode; ///< Urgency of the most recent announcement.
+    uint64_t revision;                       ///< Monotonic semantic-record revision.
+    uint64_t announcement_revision;          ///< Monotonic announcement revision.
+} vg_accessibility_info_t;
 
 //=============================================================================
 // Size Constraints
@@ -258,6 +327,18 @@ typedef struct vg_widget_vtable {
     /// @param font Font handle to apply.
     /// @param size Font size in physical pixels.
     void (*set_font)(vg_widget_t *self, void *font, float size);
+
+    /// @brief Optional visual-bounds query for popups or other drawing outside arranged geometry.
+    /// @details Implementations return an absolute screen-space rectangle containing every pixel
+    ///          they may draw in their normal and overlay passes. The base widget bounds are
+    ///          automatically unioned by @ref vg_widget_get_visual_bounds, so callbacks may report
+    ///          only their extra popup/overlay extent. No allocation or mutation is permitted.
+    /// @param self Widget being queried.
+    /// @param x Receives screen-space X of the reported rectangle.
+    /// @param y Receives screen-space Y of the reported rectangle.
+    /// @param width Receives non-negative reported width.
+    /// @param height Receives non-negative reported height.
+    void (*get_visual_bounds)(vg_widget_t *self, float *x, float *y, float *width, float *height);
 } vg_widget_vtable_t;
 
 //=============================================================================
@@ -316,6 +397,23 @@ struct vg_widget {
     bool needs_paint;         ///< Dirty flag: widget must be repainted.
     bool manual_position;     ///< Runtime: parent layout should not overwrite x/y.
     bool _paint_screen_space; ///< Runtime: x/y are temporarily absolute during paint.
+    uint64_t revision;        ///< Monotonic public state revision; never consumed by observers.
+    uint64_t change_revision; ///< Independent semantic-value/change event counter.
+    uint64_t reported_change_revision; ///< Last change edge consumed by a compatibility observer.
+    uint64_t activation_revision;      ///< Independent activation event counter.
+    uint64_t
+        reported_activation_revision; ///< Last activation consumed by a compatibility observer.
+    uint64_t submission_revision;     ///< Independent text/numeric submission event counter.
+    uint64_t
+        reported_submission_revision; ///< Last submission consumed by a compatibility observer.
+
+    /// @brief Borrowed font last installed through runtime inheritance or an explicit runtime API.
+    /// @details The toolkit does not retain or destroy this pointer. The runtime uses it as an
+    ///          indexed render reference while retiring replaced fonts after a safe frame; it is
+    ///          cleared automatically with the zero-initialized widget storage on destruction.
+    vg_font_t *runtime_font_reference;
+
+    vg_accessibility_info_t accessibility; ///< Semantic record used by accessibility adapters.
 
     // Damage-region rendering (plan 07): absolute screen bounds recorded at this
     // widget's last paint. The renderer diffs them against the current bounds to
@@ -327,8 +425,16 @@ struct vg_widget {
     float last_paint_h;    ///< Height at last paint.
     bool last_paint_valid; ///< Whether last_paint_* hold a recorded paint.
 
-    // Animation: eased 0..1 state amounts, advanced each paint by
-    // vg_widget_anim_tick() and read by widget paint code for smooth
+    // Explicit visual overflow beyond arranged geometry. These logical drawing extents are
+    // combined with theme shadow/focus effects and optional vtable popup bounds by
+    // vg_widget_get_visual_bounds().
+    float visual_overflow_left;   ///< Extra pixels painted left of the arranged bounds.
+    float visual_overflow_top;    ///< Extra pixels painted above the arranged bounds.
+    float visual_overflow_right;  ///< Extra pixels painted right of the arranged bounds.
+    float visual_overflow_bottom; ///< Extra pixels painted below the arranged bounds.
+
+    // Animation: eased 0..1 state amounts, advanced by the application scheduler
+    // through vg_widget_anim_advance() and read by paint code for smooth
     // hover/press/focus transitions. Snap to target when motion is disabled.
     float anim_hover; ///< Eased hover amount (0 = idle, 1 = hovered).
     float anim_press; ///< Eased press amount.
@@ -745,12 +851,23 @@ void vg_widget_layout(vg_widget_t *root, float available_width, float available_
 /// @param canvas Opaque canvas handle (platform-specific renderer).
 void vg_widget_paint(vg_widget_t *root, void *canvas);
 
-/// @brief Advance a widget's eased animation amounts toward its current state.
-/// @details Called once per widget per frame by the paint pass. Uses the active
-///          theme's motion durations and the canvas frame time. When motion is
-///          disabled the amounts snap to their targets (no animation).
-/// @param widget The widget whose anim_hover/press/focus to advance.
-/// @param canvas Canvas handle, used to read the last frame duration.
+/// @brief Advance a widget's eased state animations by an explicit elapsed time.
+/// @details Moves hover, press, and focus amounts toward targets derived from the widget state.
+///          The delta is expressed in milliseconds, sanitized to zero when invalid/negative, and
+///          capped at 250 ms. Active motion invalidates paint so retained render loops continue
+///          scheduling frames until settled. Reduced/disabled motion snaps immediately.
+/// @param widget Widget whose animation state should advance; NULL is a no-op.
+/// @param delta_ms Elapsed real or deterministic time in milliseconds.
+/// @return True while at least one animation still needs a future tick; false when settled.
+bool vg_widget_anim_advance(vg_widget_t *widget, float delta_ms);
+
+/// @brief Compatibility wrapper that advances state animation by a nominal 60 Hz frame.
+/// @details The canvas parameter is retained for source and ABI compatibility but is not read.
+///          New application schedulers should call @ref vg_widget_anim_advance with their actual
+///          elapsed or deterministic delta. Animation advancement is never performed implicitly
+///          by the paint traversal.
+/// @param widget Widget whose animation state should advance; NULL is a no-op.
+/// @param canvas Ignored compatibility canvas handle; may be NULL.
 void vg_widget_anim_tick(vg_widget_t *widget, void *canvas);
 
 /// @brief Mark a widget as needing to be repainted.
@@ -768,6 +885,170 @@ void vg_widget_invalidate(vg_widget_t *widget);
 ///
 /// @param widget The widget whose layout is invalid.
 void vg_widget_invalidate_layout(vg_widget_t *widget);
+
+/// @brief Set explicit paint overflow beyond a widget's arranged rectangle.
+/// @details Values are framebuffer-pixel distances used by retained damage tracking. Negative,
+///          NaN, and infinite values become zero. A changed overflow invalidates paint so both the
+///          previous and new visual rectangles are repaired on the next frame. Theme shadow and
+///          focus overflow are added automatically and need not be supplied here.
+/// @param widget Widget to update; NULL is a no-op.
+/// @param left Extra painted distance on the left edge.
+/// @param top Extra painted distance on the top edge.
+/// @param right Extra painted distance on the right edge.
+/// @param bottom Extra painted distance on the bottom edge.
+void vg_widget_set_visual_overflow(
+    vg_widget_t *widget, float left, float top, float right, float bottom);
+
+/// @brief Return the complete screen-space rectangle a widget may paint.
+/// @details Unions arranged bounds, explicit overflow, conservative theme elevation/focus effects,
+///          and the optional vtable popup bounds. Output pointers may be NULL. Invalid widgets
+///          produce a zero rectangle. The query is side-effect free and allocation-free.
+/// @param widget Widget to query; may be NULL.
+/// @param x Optional destination for the screen-space left edge.
+/// @param y Optional destination for the screen-space top edge.
+/// @param width Optional destination for non-negative width.
+/// @param height Optional destination for non-negative height.
+void vg_widget_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height);
+
+//=============================================================================
+// Accessibility and Revision API
+//=============================================================================
+
+/// @brief Increment a widget's non-consuming public revision.
+/// @details Saturates at `UINT64_MAX` so wraparound can never make a newer state appear older.
+///          Control implementations call this after an observable state mutation. NULL and stale
+///          widgets are ignored.
+/// @param widget Widget whose revision should advance.
+void vg_widget_note_revision(vg_widget_t *widget);
+
+/// @brief Return a widget's current non-consuming revision.
+/// @param widget Widget to inspect; NULL and stale widgets return zero.
+/// @return Monotonic revision, initialized to one for a live widget.
+uint64_t vg_widget_get_revision(const vg_widget_t *widget);
+
+/// @brief Record one semantic control-value change.
+/// @details Advances both the independent change-edge counter and the widget's non-consuming
+///          general revision with saturation. Control implementations call this before optional
+///          user callbacks so polling and callback observers see the same committed state. NULL
+///          and stale widgets are ignored.
+/// @param widget Stateful control whose semantic value or selection changed.
+void vg_widget_note_change(vg_widget_t *widget);
+
+/// @brief Consume a widget's independent change edge.
+/// @details Returns true at most once per recorded change revision for this compatibility observer.
+///          It does not alter submission, activation, selection-specific, or general revisions.
+/// @param widget Widget whose change edge should be consumed; may be NULL or stale.
+/// @return true when at least one unreported change exists, otherwise false.
+bool vg_widget_was_changed(vg_widget_t *widget);
+
+/// @brief Record one user or automation activation event.
+/// @details Advances the independent activation counter and general widget revision before any
+///          optional control callback. Programmatic selection setters should use change events;
+///          activation is reserved for explicit invoke/double-click/Enter actions.
+/// @param widget Control that was activated; NULL and stale widgets are ignored.
+void vg_widget_note_activation(vg_widget_t *widget);
+
+/// @brief Consume a widget's independent activation edge.
+/// @details Does not consume change, submission, selection, or general revisions.
+/// @param widget Widget whose activation edge should be consumed; may be NULL or stale.
+/// @return true when an unreported activation exists, otherwise false.
+bool vg_widget_was_activated(vg_widget_t *widget);
+
+/// @brief Record one committed submission from a text-entry-style control.
+/// @details Advances the submission counter and general revision independently of whether the
+///          submitted value also changed. Controls may therefore expose both `WasChanged` and
+///          `WasSubmitted` for the same interaction without either observer clearing the other.
+/// @param widget Control whose current value was submitted; NULL and stale widgets are ignored.
+void vg_widget_note_submission(vg_widget_t *widget);
+
+/// @brief Consume a widget's independent submission edge.
+/// @details Does not consume change, activation, selection, or the non-consuming general revision.
+/// @param widget Widget whose submission edge should be consumed; may be NULL or stale.
+/// @return true when an unreported submission exists, otherwise false.
+bool vg_widget_was_submitted(vg_widget_t *widget);
+
+/// @brief Set the semantic accessibility role.
+/// @details Invalid integers become `VG_ACCESSIBLE_ROLE_NONE`. A changed role advances both the
+///          semantic and general widget revisions without affecting layout or ownership.
+/// @param widget Widget to modify; NULL and stale widgets are ignored.
+/// @param role Stable semantic role value.
+void vg_widget_set_accessible_role(vg_widget_t *widget, vg_accessible_role_t role);
+
+/// @brief Return the semantic accessibility role.
+/// @param widget Widget to inspect; NULL and stale widgets return `VG_ACCESSIBLE_ROLE_NONE`.
+/// @return Current effective role.
+vg_accessible_role_t vg_widget_get_accessible_role(const vg_widget_t *widget);
+
+/// @brief Set an explicit UTF-8 accessible name.
+/// @details The string is copied atomically. NULL or empty clears the override so runtime
+///          snapshots may infer a name from control text. Allocation failure preserves the old
+///          value and revisions.
+/// @param widget Widget to modify; NULL and stale widgets are ignored.
+/// @param name UTF-8 name to copy, or NULL to clear.
+void vg_widget_set_accessible_name(vg_widget_t *widget, const char *name);
+
+/// @brief Return the explicit accessible name override.
+/// @param widget Widget to inspect.
+/// @return Borrowed UTF-8 string, or the empty string when unset/invalid.
+const char *vg_widget_get_accessible_name(const vg_widget_t *widget);
+
+/// @brief Set an explicit UTF-8 accessible description.
+/// @details The value is copied atomically; NULL/empty clears it and OOM preserves prior state.
+/// @param widget Widget to modify; NULL and stale widgets are ignored.
+/// @param description UTF-8 description to copy, or NULL to clear.
+void vg_widget_set_accessible_description(vg_widget_t *widget, const char *description);
+
+/// @brief Return the explicit accessible description.
+/// @param widget Widget to inspect.
+/// @return Borrowed UTF-8 string, or the empty string when unset/invalid.
+const char *vg_widget_get_accessible_description(const vg_widget_t *widget);
+
+/// @brief Set an explicit UTF-8 accessible value.
+/// @details The value is copied atomically; NULL/empty restores control-derived value inference.
+/// @param widget Widget to modify; NULL and stale widgets are ignored.
+/// @param value UTF-8 semantic value to copy, or NULL to clear.
+void vg_widget_set_accessible_value(vg_widget_t *widget, const char *value);
+
+/// @brief Return the explicit accessible value.
+/// @param widget Widget to inspect.
+/// @return Borrowed UTF-8 string, or the empty string when unset/invalid.
+const char *vg_widget_get_accessible_value(const vg_widget_t *widget);
+
+/// @brief Relate a label widget to a control in the same widget tree.
+/// @details Both handles must be live, distinct, and share one root. The relationship is
+///          non-owning and automatically reads as absent if either ID/address pair becomes stale.
+/// @param widget Labelling widget whose relationship is updated.
+/// @param target Label target; NULL clears the relationship.
+/// @return True when cleared or installed; false for invalid/cross-tree relationships.
+bool vg_widget_set_accessible_label_for(vg_widget_t *widget, vg_widget_t *target);
+
+/// @brief Return a live accessibility label target.
+/// @param widget Labelling widget to inspect.
+/// @return Borrowed live target, or NULL when absent/stale.
+vg_widget_t *vg_widget_get_accessible_label_for(const vg_widget_t *widget);
+
+/// @brief Set the widget's default live-region mode.
+/// @details Invalid modes become `VG_LIVE_REGION_OFF` and changed values advance revisions.
+/// @param widget Widget to modify; NULL and stale widgets are ignored.
+/// @param mode Desired polite/assertive/off behavior.
+void vg_widget_set_live_region(vg_widget_t *widget, vg_live_region_mode_t mode);
+
+/// @brief Return the widget's live-region mode.
+/// @param widget Widget to inspect.
+/// @return Current mode, or `VG_LIVE_REGION_OFF` for invalid handles.
+vg_live_region_mode_t vg_widget_get_live_region(const vg_widget_t *widget);
+
+/// @brief Record a headless/native accessibility announcement on a widget.
+/// @details Copies UTF-8 text atomically and advances the independent announcement revision.
+///          Invalid mode uses the widget's configured live mode; if that is off, polite is used.
+///          Empty text clears the stored announcement but still represents a semantic update.
+/// @param widget Widget originating the announcement.
+/// @param text UTF-8 text to copy, or NULL to clear.
+/// @param mode Requested announcement urgency.
+void vg_widget_accessibility_announce(vg_widget_t *widget,
+                                      const char *text,
+                                      vg_live_region_mode_t mode);
 
 //=============================================================================
 // Hit Testing

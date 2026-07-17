@@ -219,10 +219,11 @@ typedef struct vg_codeeditor {
     uint32_t current_line_bg; ///< Current line highlight
 
     // Display options
-    bool show_indent_guides;      ///< Draw faint vertical guides at indent levels.
-    int render_whitespace_mode;   ///< Whitespace markers: 0=none, 1=boundary, 2=all (vg_whitespace_mode).
-    uint32_t whitespace_color;    ///< Whitespace marker color (0 = derive faint from text color).
-    uint32_t indent_guide_color;  ///< Indent-guide line color (0 = derive from gutter).
+    bool show_indent_guides;     ///< Draw faint vertical guides at indent levels.
+    int render_whitespace_mode;  ///< Whitespace markers: 0=none, 1=boundary, 2=all
+                                 ///< (vg_whitespace_mode).
+    uint32_t whitespace_color;   ///< Whitespace marker color (0 = derive faint from text color).
+    uint32_t indent_guide_color; ///< Indent-guide line color (0 = derive from gutter).
 
     // Syntax highlighting
     vg_syntax_callback_t syntax_highlighter;
@@ -258,10 +259,11 @@ typedef struct vg_codeeditor {
     // State
     bool cursor_visible;     ///< Cursor blink state
     float cursor_blink_time; ///< Cursor blink timer
-    uint64_t typing_clock_ms; ///< Monotonic ms clock advanced by vg_codeeditor_tick; drives
-                              ///< undo coalescing time windows deterministically (tests control dt).
-    bool modified;           ///< Document modified since last save
-    uint64_t revision;       ///< Monotonic content revision; cursor/scroll changes do not affect it
+    uint64_t
+        typing_clock_ms; ///< Monotonic ms clock advanced by vg_codeeditor_tick; drives
+                         ///< undo coalescing time windows deterministically (tests control dt).
+    bool modified;       ///< Document modified since last save
+    uint64_t revision;   ///< Monotonic content revision; cursor/scroll changes do not affect it
     uint64_t highlight_generation;         ///< Monotonic syntax-cache generation.
     vg_codeeditor_perf_stats_t perf_stats; ///< Low-level performance counters.
     uint64_t layout_generation;            ///< Monotonic visual-layout generation.
@@ -294,7 +296,7 @@ typedef struct vg_codeeditor {
     // mirror by delta instead of re-copying the whole buffer per keystroke. Cold
     // mutations (undo/redo, SetText) set journal_overflowed to force a full sync.
     vg_edit_delta_t journal[VG_EDIT_JOURNAL_CAP]; ///< Ring of retained deltas.
-    int journal_head;            ///< Ring index of the oldest retained delta.
+    int journal_head;                             ///< Ring index of the oldest retained delta.
     int journal_count;           ///< Deltas currently retained (<= VG_EDIT_JOURNAL_CAP).
     uint64_t journal_oldest_rev; ///< Revision of the oldest retained delta (0 = none).
     bool journal_overflowed;     ///< A cold mutation or ring wrap requires a full re-sync.
@@ -305,23 +307,25 @@ typedef struct vg_codeeditor {
     float scrollbar_drag_start_scroll; ///< scroll_y value at drag start
 
     // Horizontal scrollbar drag state + longest-line cache for the scroll range.
-    bool hscrollbar_dragging;           ///< True while dragging the horizontal thumb.
-    float hscrollbar_drag_offset;       ///< Mouse X at drag start (widget-relative).
-    float hscrollbar_drag_start_scroll; ///< scroll_x value at drag start.
-    int longest_line_cols_cache;        ///< Cached widest line in visual columns.
+    bool hscrollbar_dragging;              ///< True while dragging the horizontal thumb.
+    float hscrollbar_drag_offset;          ///< Mouse X at drag start (widget-relative).
+    float hscrollbar_drag_start_scroll;    ///< scroll_x value at drag start.
+    int longest_line_cols_cache;           ///< Cached widest line in visual columns.
     uint64_t longest_line_cols_generation; ///< layout_generation the cache was computed for.
 
     // Pointer selection drag state
-    bool selection_drag_pending; ///< True after mouse-down before movement crosses drag threshold.
-    bool selection_dragging;     ///< True while a content-area pointer drag is selecting text
+    bool selection_drag_pending;  ///< True after mouse-down before movement crosses drag threshold.
+    bool selection_dragging;      ///< True while a content-area pointer drag is selecting text
     float selection_drag_start_x; ///< Mouse-down X used to distinguish click from drag.
     float selection_drag_start_y; ///< Mouse-down Y used to distinguish click from drag.
     int selection_anchor_line;    ///< Selection anchor line for pointer drag
     int selection_anchor_col;     ///< Selection anchor column for pointer drag
     float selection_last_drag_x;  ///< Last pointer X seen during the active drag (widget-local).
     float selection_last_drag_y;  ///< Last pointer Y seen during the active drag (widget-local).
-    float selection_autoscroll_accum_y; ///< Fractional vertical autoscroll pixels pending this drag.
-    float selection_autoscroll_accum_x; ///< Fractional horizontal autoscroll pixels pending this drag.
+    float
+        selection_autoscroll_accum_y; ///< Fractional vertical autoscroll pixels pending this drag.
+    float selection_autoscroll_accum_x; ///< Fractional horizontal autoscroll pixels pending this
+                                        ///< drag.
 
     // Matching-pair highlight cache. Columns are byte offsets because the
     // native editor stores cursor positions as UTF-8 byte columns.
@@ -852,6 +856,18 @@ void vg_findreplacebar_set_font(vg_findreplacebar_t *bar, vg_font_t *font, float
 // Minimap Widget
 //=============================================================================
 
+/// @brief One direct-mapped cached line summary used by minimap rasterization.
+/// @details Entries cache the trimmed visible byte-column span for one source line and one scan
+///          width. A line-number modulo cache-capacity mapping provides allocation-free O(1)
+///          lookup and bounded memory regardless of document size.
+typedef struct vg_minimap_line_cache_entry {
+    int line;         ///< Source line represented by this slot.
+    int scan_columns; ///< Maximum byte columns represented by the summary.
+    int first_column; ///< First non-whitespace byte column, or -1 for blank.
+    int last_column;  ///< Last non-whitespace byte column, or -1 for blank.
+    bool valid;       ///< True when all fields describe current source content.
+} vg_minimap_line_cache_entry_t;
+
 /// @brief Minimap widget structure
 typedef struct vg_minimap {
     vg_widget_t base;
@@ -869,7 +885,19 @@ typedef struct vg_minimap {
     uint8_t *render_buffer; ///< RGBA pixels
     uint32_t buffer_width;
     uint32_t buffer_height;
-    bool buffer_dirty; ///< Needs re-render
+    bool buffer_dirty;                         ///< Needs re-render
+    vg_minimap_line_cache_entry_t *line_cache; ///< Owned direct-mapped line-summary cache.
+    uint32_t maximum_cached_lines;             ///< Allocated/cacheable slot count.
+    uint32_t cached_line_count;                ///< Number of currently valid slots.
+
+    uint64_t source_revision;          ///< Saturating combined observed-source revision.
+    uint64_t observed_text_revision;   ///< Last editor content revision observed by sync.
+    uint64_t observed_layout_revision; ///< Last editor layout generation observed by sync.
+    float observed_scroll_x;           ///< Last editor horizontal scroll position.
+    float observed_scroll_y;           ///< Last editor vertical scroll position.
+    int observed_visible_first_line;   ///< Last editor viewport start line.
+    int observed_visible_line_count;   ///< Last editor viewport line count.
+    int observed_line_count;           ///< Last editor document line count.
 
     // Viewport indicator
     uint32_t viewport_start_line;
@@ -928,6 +956,35 @@ void vg_minimap_invalidate(vg_minimap_t *minimap);
 /// @param start_line  First dirty source line (zero-based, inclusive).
 /// @param end_line    Last dirty source line (zero-based, inclusive).
 void vg_minimap_invalidate_lines(vg_minimap_t *minimap, uint32_t start_line, uint32_t end_line);
+
+/// @brief Synchronize cached text/layout/scroll observations from the bound editor.
+/// @details Content, layout, or line-count changes invalidate cached line summaries; scroll-only
+///          changes invalidate paint for the viewport overlay without discarding line summaries.
+///          Any observed transition advances the combined source revision exactly once.
+/// @param minimap Minimap widget to synchronize; NULL is ignored.
+/// @return true when source or viewport state changed, otherwise false.
+bool vg_minimap_sync_source(vg_minimap_t *minimap);
+
+/// @brief Return the combined observed editor source revision.
+/// @details The source is synchronized before reading. The revision covers content, layout,
+///          viewport, and binding transitions and saturates at UINT64_MAX.
+/// @param minimap Minimap widget to inspect.
+/// @return Non-consuming revision, or zero for NULL.
+uint64_t vg_minimap_get_source_revision(vg_minimap_t *minimap);
+
+/// @brief Atomically resize the bounded direct-mapped line-summary cache.
+/// @details Zero disables caching and releases existing storage. A failed non-zero allocation
+///          preserves the previous cache and limit. Resizing invalidates cached summaries but not
+///          source pixels or the observed-source revision.
+/// @param minimap Minimap widget to configure.
+/// @param maximum_lines Maximum cache slots; zero disables caching.
+/// @return true after the requested configuration is installed, otherwise false.
+bool vg_minimap_set_maximum_cached_lines(vg_minimap_t *minimap, uint32_t maximum_lines);
+
+/// @brief Return the number of valid cached line summaries.
+/// @param minimap Minimap widget to inspect.
+/// @return Valid entry count, always no greater than the configured maximum.
+uint32_t vg_minimap_get_cached_line_count(const vg_minimap_t *minimap);
 
 #ifdef __cplusplus
 }

@@ -28,6 +28,7 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,6 +67,11 @@ static void listbox_free_retired_items(vg_listbox_t *lb);
 static vg_listbox_item_t *listbox_first_selected_nonvirtual(vg_listbox_t *lb);
 static size_t listbox_first_selected_virtual(vg_listbox_t *lb);
 static void listbox_refresh_virtual_cache_entry(vg_listbox_t *lb, size_t cache_index);
+static void listbox_notify_virtual_unbound(vg_listbox_t *lb);
+static void listbox_compute_virtual_range(vg_listbox_t *lb,
+                                          float viewport_height,
+                                          size_t *out_start,
+                                          size_t *out_count);
 
 //=============================================================================
 // VTable
@@ -226,9 +232,44 @@ static void listbox_free_retired_items(vg_listbox_t *lb) {
     lb->retired_items = NULL;
 }
 
+/// @brief Unlink and free one exact retained ListBox item record.
+/// @details See the public header for managed-wrapper preconditions. Pointer-to-pointer traversal
+///          avoids dereferencing the caller-supplied address unless it is owned by the chain.
+bool vg_listbox_reclaim_retired_item(vg_listbox_t *listbox, vg_listbox_item_t *item) {
+    if (!listbox || !item)
+        return false;
+    vg_listbox_item_t **link = &listbox->retired_items;
+    while (*link) {
+        vg_listbox_item_t *candidate = *link;
+        if (candidate == item) {
+            *link = candidate->retired_next;
+            candidate->retired_next = NULL;
+            listbox_free_item(candidate);
+            return true;
+        }
+        link = &candidate->retired_next;
+    }
+    return false;
+}
+
 /// @brief Returns the total item count: total_item_count in virtual mode, item_count otherwise.
 static size_t listbox_virtual_item_count(const vg_listbox_t *lb) {
     return lb->virtual_mode ? lb->total_item_count : (size_t)lb->item_count;
+}
+
+/// @brief Clear and invoke the external-model lifetime callback exactly once.
+/// @details Callback fields are cleared before invocation so a callback that indirectly enters a
+///          legacy ListBox cleanup path cannot receive a duplicate notification.
+/// @param lb ListBox whose binding is being detached; NULL is ignored.
+static void listbox_notify_virtual_unbound(vg_listbox_t *lb) {
+    if (!lb)
+        return;
+    vg_listbox_virtual_unbind_callback_t callback = lb->virtual_unbind;
+    void *user_data = lb->virtual_unbind_user_data;
+    lb->virtual_unbind = NULL;
+    lb->virtual_unbind_user_data = NULL;
+    if (callback)
+        callback(&lb->base, user_data);
 }
 
 /// @brief Clamps lb->scroll_y to [0, max_scroll] based on total item count and viewport height.
@@ -244,6 +285,44 @@ static void listbox_clamp_scroll(vg_listbox_t *lb, float viewport_height) {
         max_scroll = 0.0f;
     if (lb->scroll_y > max_scroll)
         lb->scroll_y = max_scroll;
+}
+
+/// @brief Compute virtual viewport bounds without fetching or allocating row text.
+/// @details The same two trailing safety rows and 4096-row defensive cap used by painting are
+///          applied, keeping public visibility queries consistent with the cache.
+/// @param lb Virtual ListBox to inspect; NULL and non-virtual lists produce an empty range.
+/// @param viewport_height Current physical viewport height; negative/non-finite values normalize
+///                        to zero.
+/// @param out_start Receives the first materialized row when non-NULL.
+/// @param out_count Receives the number of materialized rows when non-NULL.
+static void listbox_compute_virtual_range(vg_listbox_t *lb,
+                                          float viewport_height,
+                                          size_t *out_start,
+                                          size_t *out_count) {
+    size_t start = 0;
+    size_t count = 0;
+    if (lb && lb->virtual_mode && lb->total_item_count > 0 && lb->item_height > 0.0f &&
+        isfinite(lb->item_height)) {
+        if (!isfinite(viewport_height) || viewport_height < 0.0f)
+            viewport_height = 0.0f;
+        listbox_clamp_scroll(lb, viewport_height);
+        start = (size_t)(lb->scroll_y / lb->item_height);
+        if (start >= lb->total_item_count)
+            start = lb->total_item_count - 1u;
+        double rows = (double)viewport_height / (double)lb->item_height;
+        if (rows > 4094.0)
+            count = 4096u;
+        else
+            count = (size_t)rows + 2u;
+        if (count > lb->total_item_count - start)
+            count = lb->total_item_count - start;
+        if (count > 4096u)
+            count = 4096u;
+    }
+    if (out_start)
+        *out_start = start;
+    if (out_count)
+        *out_count = count;
 }
 
 /// @brief Grows the visible-row cache array to at least @p needed entries, zeroing new slots.
@@ -291,22 +370,17 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) 
     if (!lb || !lb->virtual_mode)
         return;
 
-    listbox_clamp_scroll(lb, viewport_height);
-
     size_t total = lb->total_item_count;
-    if (total == 0 || lb->item_height <= 0.0f) {
+    if (total == 0 || lb->item_height <= 0.0f || !isfinite(lb->item_height)) {
         listbox_free_virtual_cache(lb);
         lb->visible_start = 0;
         lb->visible_count = 0;
         return;
     }
 
-    size_t start = (size_t)(lb->scroll_y / lb->item_height);
-    size_t visible = (size_t)(viewport_height / lb->item_height) + 2;
-    if (visible > total - start)
-        visible = total - start;
-    if (visible > 4096)
-        visible = 4096;
+    size_t start = 0;
+    size_t visible = 0;
+    listbox_compute_virtual_range(lb, viewport_height, &start, &visible);
 
     listbox_ensure_virtual_cache(lb, visible);
     if (!lb->visible_cache)
@@ -370,8 +444,11 @@ static bool listbox_clear_nonvirtual_selection(vg_listbox_t *lb) {
 }
 
 static void listbox_note_selection_changed(vg_listbox_t *lb) {
-    if (lb)
-        lb->selection_revision++;
+    if (lb) {
+        if (lb->selection_revision < UINT64_MAX)
+            lb->selection_revision++;
+        vg_widget_note_change(&lb->base);
+    }
 }
 
 static bool listbox_has_nonvirtual_selection(vg_listbox_t *lb) {
@@ -877,13 +954,17 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
         case VG_EVENT_DOUBLE_CLICK: {
             if (lb->virtual_mode) {
                 if (lb->selected_index != SIZE_MAX &&
-                    listbox_selection_get(lb, lb->selected_index) && lb->on_activate) {
-                    lb->on_activate(widget, NULL, lb->on_activate_data);
+                    listbox_selection_get(lb, lb->selected_index)) {
+                    vg_widget_note_activation(widget);
+                    if (lb->on_activate)
+                        lb->on_activate(widget, NULL, lb->on_activate_data);
                     event->handled = true;
                     return true;
                 }
-            } else if (lb->selected && lb->on_activate) {
-                lb->on_activate(widget, lb->selected, lb->on_activate_data);
+            } else if (lb->selected) {
+                vg_widget_note_activation(widget);
+                if (lb->on_activate)
+                    lb->on_activate(widget, lb->selected, lb->on_activate_data);
                 event->handled = true;
                 return true;
             }
@@ -937,10 +1018,15 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 case VG_KEY_ENTER:
                     if (lb->virtual_mode) {
                         if (lb->selected_index != SIZE_MAX &&
-                            listbox_selection_get(lb, lb->selected_index) && lb->on_activate)
-                            lb->on_activate(widget, NULL, lb->on_activate_data);
-                    } else if (lb->selected && lb->on_activate) {
-                        lb->on_activate(widget, lb->selected, lb->on_activate_data);
+                            listbox_selection_get(lb, lb->selected_index)) {
+                            vg_widget_note_activation(widget);
+                            if (lb->on_activate)
+                                lb->on_activate(widget, NULL, lb->on_activate_data);
+                        }
+                    } else if (lb->selected) {
+                        vg_widget_note_activation(widget);
+                        if (lb->on_activate)
+                            lb->on_activate(widget, lb->selected, lb->on_activate_data);
                     }
                     event->handled = true;
                     return true;
@@ -1102,6 +1188,8 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
     if (!listbox)
         return;
 
+    listbox_notify_virtual_unbound(listbox);
+
     bool had_selection = listbox_has_nonvirtual_selection(listbox);
     bool had_virtual_selection =
         listbox->virtual_mode && (listbox->selected_index != SIZE_MAX ||
@@ -1235,8 +1323,10 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
     if (!listbox)
         return;
 
-    if (enabled && total_count > SIZE_MAX - 7u)
+    if (enabled && (total_count > SIZE_MAX - 7u || (item_height > 0.0f && !isfinite(item_height))))
         return;
+
+    listbox_notify_virtual_unbound(listbox);
 
     size_t old_virtual_selected = listbox->selected_index;
     vg_listbox_item_t *old_selected = listbox->selected;
@@ -1312,8 +1402,106 @@ void vg_listbox_set_data_provider(vg_listbox_t *listbox,
     if (!listbox)
         return;
 
+    if (listbox->virtual_unbind &&
+        (listbox->data_provider != provider || listbox->data_provider_user_data != user_data))
+        listbox_notify_virtual_unbound(listbox);
+
     listbox->data_provider = provider;
     listbox->data_provider_user_data = user_data;
+}
+
+/// @brief Install a non-owning external model after allocating all replacement storage.
+bool vg_listbox_bind_virtual_model(vg_listbox_t *listbox,
+                                   size_t total_count,
+                                   float item_height,
+                                   vg_listbox_data_provider_t provider,
+                                   void *user_data,
+                                   vg_listbox_virtual_unbind_callback_t on_unbind) {
+    if (!listbox || !provider || total_count > SIZE_MAX - 7u || item_height <= 0.0f ||
+        !isfinite(item_height))
+        return false;
+
+    size_t selection_bytes = listbox_selection_bitmap_bytes(total_count);
+    uint8_t *new_selection = NULL;
+    if (selection_bytes > 0) {
+        new_selection = (uint8_t *)calloc(selection_bytes, 1);
+        if (!new_selection)
+            return false;
+    }
+
+    size_t cache_capacity = total_count < 64u ? total_count : 64u;
+    vg_listbox_cache_entry_t *new_cache = NULL;
+    if (cache_capacity > 0) {
+        new_cache =
+            (vg_listbox_cache_entry_t *)calloc(cache_capacity, sizeof(vg_listbox_cache_entry_t));
+        if (!new_cache) {
+            free(new_selection);
+            return false;
+        }
+    }
+
+    bool had_selection = listbox->virtual_mode && listbox->selected_index != SIZE_MAX;
+    listbox_notify_virtual_unbound(listbox);
+    listbox_free_virtual_cache(listbox);
+    free(listbox->visible_cache);
+    free(listbox->selection_bitmap);
+
+    listbox->virtual_mode = true;
+    listbox->total_item_count = total_count;
+    listbox->item_height = item_height;
+    listbox->data_provider = provider;
+    listbox->data_provider_user_data = user_data;
+    listbox->virtual_unbind = on_unbind;
+    listbox->virtual_unbind_user_data = user_data;
+    listbox->visible_cache = new_cache;
+    listbox->cache_capacity = cache_capacity;
+    listbox->selection_bitmap = new_selection;
+    listbox->selection_bitmap_size = total_count;
+    listbox->selection_bitmap_capacity = total_count;
+    listbox->selected_index = SIZE_MAX;
+    listbox->prev_selected_index = SIZE_MAX;
+    listbox->anchor_selected_index = SIZE_MAX;
+    listbox->hovered_index = SIZE_MAX;
+    listbox->visible_start = 0;
+    listbox->visible_count = 0;
+    listbox->scroll_y = 0.0f;
+    if (had_selection)
+        listbox_note_selection_changed(listbox);
+    listbox->base.needs_layout = true;
+    listbox->base.needs_paint = true;
+    return true;
+}
+
+/// @brief Detach an external ListBox model and release virtual-mode storage.
+void vg_listbox_clear_virtual_model(vg_listbox_t *listbox) {
+    if (!listbox)
+        return;
+
+    bool had_selection = listbox->virtual_mode && listbox->selected_index != SIZE_MAX;
+    listbox_notify_virtual_unbound(listbox);
+    listbox_free_virtual_cache(listbox);
+    free(listbox->visible_cache);
+    free(listbox->selection_bitmap);
+    listbox->visible_cache = NULL;
+    listbox->cache_capacity = 0;
+    listbox->selection_bitmap = NULL;
+    listbox->selection_bitmap_size = 0;
+    listbox->selection_bitmap_capacity = 0;
+    listbox->virtual_mode = false;
+    listbox->total_item_count = 0;
+    listbox->data_provider = NULL;
+    listbox->data_provider_user_data = NULL;
+    listbox->selected_index = SIZE_MAX;
+    listbox->prev_selected_index = SIZE_MAX;
+    listbox->anchor_selected_index = SIZE_MAX;
+    listbox->hovered_index = SIZE_MAX;
+    listbox->visible_start = 0;
+    listbox->visible_count = 0;
+    listbox->scroll_y = 0.0f;
+    if (had_selection)
+        listbox_note_selection_changed(listbox);
+    listbox->base.needs_layout = true;
+    listbox->base.needs_paint = true;
 }
 
 /// @brief Update the total item count in virtual-scroll mode.
@@ -1429,6 +1617,20 @@ void vg_listbox_invalidate_item(vg_listbox_t *listbox, size_t index) {
     listbox->base.needs_paint = true;
 }
 
+/// @brief Return the first row in the current virtual viewport without fetching model data.
+size_t vg_listbox_get_visible_first(vg_listbox_t *listbox) {
+    size_t first = 0;
+    listbox_compute_virtual_range(listbox, listbox ? listbox->base.height : 0.0f, &first, NULL);
+    return first;
+}
+
+/// @brief Return the viewport-sized virtual cache row count without fetching model data.
+size_t vg_listbox_get_visible_count(vg_listbox_t *listbox) {
+    size_t count = 0;
+    listbox_compute_virtual_range(listbox, listbox ? listbox->base.height : 0.0f, NULL, &count);
+    return count;
+}
+
 /// @brief Select the item at a zero-based index (works in both normal and virtual mode).
 ///
 /// @param listbox The list box to update.
@@ -1450,6 +1652,17 @@ void vg_listbox_select_index(vg_listbox_t *listbox, size_t index) {
     }
 
     // Virtual mode
+    if (index == SIZE_MAX) {
+        bool changed = listbox_clear_virtual_selection(listbox);
+        changed = changed || listbox->selected_index != SIZE_MAX;
+        listbox->selected_index = SIZE_MAX;
+        listbox->prev_selected_index = SIZE_MAX;
+        listbox->anchor_selected_index = SIZE_MAX;
+        if (changed)
+            listbox_note_selection_changed(listbox);
+        listbox->base.needs_paint = true;
+        return;
+    }
     if (index >= listbox->total_item_count)
         return;
 

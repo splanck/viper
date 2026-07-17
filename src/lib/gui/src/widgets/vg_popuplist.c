@@ -35,6 +35,8 @@
 static void popuplist_measure(vg_widget_t *widget, float avail_w, float avail_h);
 static void popuplist_arrange(vg_widget_t *widget, float x, float y, float w, float h);
 static void popuplist_paint_overlay(vg_widget_t *widget, void *canvas);
+static void popuplist_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height);
 static void popuplist_destroy(vg_widget_t *widget);
 
 static vg_widget_vtable_t g_popuplist_vtable = {
@@ -46,6 +48,7 @@ static vg_widget_vtable_t g_popuplist_vtable = {
     .handle_event = NULL,
     .can_focus = NULL,
     .on_focus = NULL,
+    .get_visual_bounds = popuplist_get_visual_bounds,
 };
 
 //=============================================================================
@@ -134,6 +137,42 @@ static void popuplist_arrange(vg_widget_t *widget, float x, float y, float w, fl
     widget->y = y;
     widget->width = w;
     widget->height = h;
+}
+
+/// @brief Report the absolute rectangle occupied by the visible suggestion list.
+/// @details Uses the same row limit and line-height fallback as overlay painting.
+///          The list deliberately has zero normal-flow size, so this callback is
+///          the authoritative retained-damage extent for its popup pixels.
+/// @param widget Popup-list widget being queried.
+/// @param x Receives popup anchor X, or zero when nothing can be painted.
+/// @param y Receives popup anchor Y, or zero when nothing can be painted.
+/// @param width Receives popup width, or zero when nothing can be painted.
+/// @param height Receives visible rows times line height, or zero when empty.
+static void popuplist_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height) {
+    if (x)
+        *x = 0.0f;
+    if (y)
+        *y = 0.0f;
+    if (width)
+        *width = 0.0f;
+    if (height)
+        *height = 0.0f;
+    vg_popuplist_t *list = (vg_popuplist_t *)widget;
+    if (!list || !widget->visible || list->filtered_count <= 0 || !list->font)
+        return;
+    int rows = list->filtered_count;
+    if (list->max_rows > 0 && rows > list->max_rows)
+        rows = list->max_rows;
+    float line_height = list->line_height > 0.0f ? list->line_height : 18.0f;
+    if (x)
+        *x = list->anchor_x;
+    if (y)
+        *y = list->anchor_y;
+    if (width)
+        *width = list->width;
+    if (height)
+        *height = (float)rows * line_height;
 }
 
 static void popuplist_paint_overlay(vg_widget_t *widget, void *canvas) {

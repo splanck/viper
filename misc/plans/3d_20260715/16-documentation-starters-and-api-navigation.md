@@ -56,8 +56,9 @@ Out of scope:
 - `docs/internals/graphics3d-architecture.md` for frame/ownership architecture;
 - `docs/viperlib/game/README.md`, UI/core/persistence pages;
 - `docs/viperlib/io/assets.md`;
-- `docs/internals/testing.md`, `docs/codemap*`, and generated runtime docs through their
-  supported generator;
+- `docs/internals/testing.md`, `docs/internals/codemap/`, and the generated
+  runtime docs under `docs/generated/runtime/` through their supported
+  generator (`./scripts/update_generated_docs.sh`);
 - `examples/3d/game3d_hello.zia`, `game3d_starter/`, `game3d_scenes/`, plus a
   custom-phases starter if needed;
 - docs snippet fixtures and package tests.
@@ -139,7 +140,11 @@ Do not turn one starter into a feature dump. Split modules and cross-link.
 
 ### Phase 0 — Documentation audit
 
-1. Inventory every Game3D/Graphics3D page and starter.
+1. Inventory every Game3D/Graphics3D page and starter. The documentation tree
+   was reorganized on 2026-07-16 (`docs/internals/`, `docs/generated/`,
+   `docs/adr/` restructure); the `docs/viperlib/` paths in this plan were
+   unaffected, but verify every cross-link against the new tree rather than
+   pre-reorganization memory.
 2. Compare public runtime dump to docs class/member coverage.
 3. Mark stale descriptions of current GameBase3D, frame order, environment,
    queries, persistence, and quality.
@@ -240,8 +245,9 @@ For every snippet:
 ## Validation
 
 Run docs snippet fixtures, `viper check` on all starters, Game3D/Graphics3D docs
-probes, package dry runs, link/path/freshness checks, runtime API surface audits,
-examples label/smoke, and full build scripts.
+probes, package dry runs, link/path/freshness checks
+(`./scripts/check_docs.sh`), runtime API surface audits, examples label/smoke,
+and full build scripts.
 
 ## Acceptance criteria
 

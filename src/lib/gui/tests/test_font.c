@@ -19,6 +19,7 @@
 //===----------------------------------------------------------------------===//
 #include "vg_font.h"
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -197,6 +198,11 @@ static void test_font_load_file(void) {
 
     vg_font_t *font = vg_font_load_file(TEST_FONT_PATH);
     ASSERT_NOT_NULL(font);
+    ASSERT_TRUE(vg_font_get_logical_size(font) == 0.0f);
+    vg_font_set_logical_size(font, 13.5f);
+    ASSERT_TRUE(vg_font_get_logical_size(font) == 13.5f);
+    vg_font_set_logical_size(font, NAN);
+    ASSERT_TRUE(vg_font_get_logical_size(font) == 0.0f);
 
     // Check family name
     const char *family = vg_font_get_family(font);

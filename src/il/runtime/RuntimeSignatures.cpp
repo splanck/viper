@@ -136,6 +136,7 @@
 #include "rt_graphics2d.h"
 #include "rt_grid2d.h"
 #include "rt_gui.h"
+#include "rt_gui_constants.h"
 #include "rt_gui_ide.h"
 #include "rt_guid.h"
 #include "rt_hash.h"

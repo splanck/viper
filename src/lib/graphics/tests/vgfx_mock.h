@@ -73,6 +73,39 @@ void vgfx_mock_inject_focus(vgfx_window_t window, int gained);
 /** Inject synthetic text input */
 void vgfx_mock_inject_text_input(vgfx_window_t window, uint32_t codepoint);
 
+/// @brief Inject the beginning of a deterministic native IME session.
+/// @details The replacement range uses Unicode-codepoint offsets in committed text. Pass -1 for
+///          both values to request replacement of the focused editor's current selection.
+/// @param window Mock window that will receive the pending event.
+/// @param replacement_start Committed-text codepoint boundary, or -1 for current selection.
+/// @param replacement_length Number of committed codepoints to replace, or -1 with the sentinel.
+void vgfx_mock_inject_composition_start(vgfx_window_t window,
+                                        int32_t replacement_start,
+                                        int32_t replacement_length);
+
+/// @brief Inject a native IME preedit text/selection update.
+/// @details The mock copies UTF-8 into the same bounded inline representation as real adapters.
+///          Selection values are Unicode-codepoint offsets within @p text.
+/// @param window Mock window that will receive the pending event.
+/// @param text Borrowed NUL-terminated UTF-8 preedit; NULL becomes empty.
+/// @param selection_start Preedit selection or caret start in Unicode codepoints.
+/// @param selection_length Selected preedit codepoint count.
+void vgfx_mock_inject_composition_update(vgfx_window_t window,
+                                         const char *text,
+                                         int32_t selection_start,
+                                         int32_t selection_length);
+
+/// @brief Inject one atomic native IME commit.
+/// @details UTF-8 is copied into the pending event. The focused GUI editor will commit it through
+///          one history record rather than receiving independent codepoint events.
+/// @param window Mock window that will receive the pending event.
+/// @param text Borrowed NUL-terminated UTF-8 commit string; NULL becomes empty.
+void vgfx_mock_inject_composition_commit(vgfx_window_t window, const char *text);
+
+/// @brief Inject cancellation of the active native IME session.
+/// @param window Mock window that will receive the pending event.
+void vgfx_mock_inject_composition_cancel(vgfx_window_t window);
+
 /** Inject synthetic scroll wheel/trackpad delta */
 void vgfx_mock_inject_scroll(vgfx_window_t window, float dx, float dy, int32_t x, int32_t y);
 

@@ -67,11 +67,14 @@ Out of scope:
 
 `WorldHit3D` is non-null for hit and miss. A hit exposes:
 
-- raw PhysicsHit3D data: point, normal, distance/fraction, body, penetrating;
+- raw PhysicsHit3D data: point, normal, distance/fraction, body, penetrating,
+  trigger flag;
 - optional `Entity3D` resolved through the world body index;
 - optional active hurt `Hitbox3D` and region tag when its geometry is hit;
 - stable entity ID/tag copied into the result for diagnostics;
-- surface/material tag where existing surface systems can resolve it.
+- the raw hit's existing `SurfaceType` value carried through unchanged
+  (`PhysicsHit3D` already exposes `SurfaceType`, `Collider`, and `IsTrigger`;
+  the wrapper must not invent a second surface-tag scheme).
 
 A raw body not attached to an Entity3D remains a valid hit with Entity null.
 This is important for bowling and low-level users. Query results must never
@@ -80,6 +83,13 @@ invent entities or hide raw bodies.
 All-hit ordering follows low-level distance/fraction order with deterministic
 tie breaking by body/entity stable ID, not pointer address. Overlap ordering is
 explicitly stable by entity/body ID.
+
+The low level already bounds multi-hit results through
+`PhysicsWorld3D.SetMaxQueryHits`; the world wrappers reuse that bounding policy
+and surface truncation rather than defining a second cap mechanism. The v1
+wrapper set covers ray, sphere sweep, and sphere overlap; `SweepCapsule` and
+`OverlapAABB` exist at the low level and can be wrapped later by the same
+pattern without new design work — do not expand v1 to them without a consumer.
 
 ## Event contract
 

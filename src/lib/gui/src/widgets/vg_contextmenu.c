@@ -1076,6 +1076,26 @@ void vg_contextmenu_clear(vg_contextmenu_t *menu) {
     menu->base.needs_paint = true;
 }
 
+/// @brief Unlink and free one exact retained context-menu item record.
+/// @details Address comparison is performed against the owner's valid chain before the candidate
+///          is dereferenced, so foreign pointers fail safely.
+bool vg_contextmenu_reclaim_retired_item(vg_contextmenu_t *menu, vg_menu_item_t *item) {
+    if (!menu || !item)
+        return false;
+    vg_menu_item_t **link = &menu->retired_items;
+    while (*link) {
+        vg_menu_item_t *candidate = *link;
+        if (candidate == item) {
+            *link = candidate->retired_next;
+            candidate->retired_next = NULL;
+            free_menu_item(candidate);
+            return true;
+        }
+        link = &candidate->retired_next;
+    }
+    return false;
+}
+
 /// @brief Enable or disable a menu item, triggering a repaint without layout changes.
 ///
 /// @param item    The item to modify; may be NULL.
@@ -1342,12 +1362,14 @@ bool vg_contextmenu_process_event(vg_widget_t *widget, vg_event_t *event) {
 void vg_contextmenu_set_font(vg_contextmenu_t *menu, vg_font_t *font, float size) {
     if (!menu)
         return;
-    if (font)
-        menu->font = font;
-    if (size > 0)
-        menu->font_size = size;
-    menu->base.needs_layout = true;
-    menu->base.needs_paint = true;
+    vg_font_t *new_font = font ? font : menu->font;
+    float new_size = size > 0.0f ? size : menu->font_size;
+    if (menu->font != new_font || menu->font_size != new_size) {
+        menu->font = new_font;
+        menu->font_size = new_size;
+        menu->base.needs_layout = true;
+        menu->base.needs_paint = true;
+    }
     for (size_t i = 0; i < menu->item_count; i++) {
         vg_menu_item_t *item = menu->items[i];
         if (item && item->submenu)
@@ -1370,15 +1392,22 @@ void vg_contextmenu_apply_theme(vg_contextmenu_t *menu, const vg_theme_t *theme)
     if (!theme)
         return;
 
+    float font_size = menu->font_size > 0.0f ? menu->font_size : theme->typography.size_normal;
+    bool changed =
+        menu->bg_color != theme->colors.bg_primary || menu->hover_color != theme->colors.bg_hover ||
+        menu->text_color != theme->colors.fg_primary ||
+        menu->disabled_color != theme->colors.fg_secondary ||
+        menu->border_color != theme->colors.border_primary ||
+        menu->separator_color != theme->colors.border_secondary || menu->font_size != font_size;
     menu->bg_color = theme->colors.bg_primary;
     menu->hover_color = theme->colors.bg_hover;
     menu->text_color = theme->colors.fg_primary;
     menu->disabled_color = theme->colors.fg_secondary;
     menu->border_color = theme->colors.border_primary;
     menu->separator_color = theme->colors.border_secondary;
-    if (menu->font_size <= 0.0f)
-        menu->font_size = theme->typography.size_normal;
-    menu->base.needs_paint = true;
+    menu->font_size = font_size;
+    if (changed)
+        menu->base.needs_paint = true;
 
     for (size_t i = 0; i < menu->item_count; i++) {
         vg_menu_item_t *item = menu->items[i];

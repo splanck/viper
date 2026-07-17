@@ -288,6 +288,7 @@ void rt_statusbar_remove_item(void *bar, void *item) {
     if (app && app->last_statusbar_clicked == sbi)
         app->last_statusbar_clicked = NULL;
     vg_statusbar_remove_item(sb, sbi);
+    rt_gui_collect_retired_subhandles(&sb->base);
 }
 
 /// @brief Remove all items from all status bar zones.
@@ -302,6 +303,7 @@ void rt_statusbar_clear(void *bar) {
     vg_statusbar_clear_zone(sb, VG_STATUSBAR_ZONE_LEFT);
     vg_statusbar_clear_zone(sb, VG_STATUSBAR_ZONE_CENTER);
     vg_statusbar_clear_zone(sb, VG_STATUSBAR_ZONE_RIGHT);
+    rt_gui_collect_retired_subhandles(&sb->base);
 }
 
 /// @brief Show or hide the status bar.
@@ -746,6 +748,7 @@ void rt_toolbar_remove_item(void *toolbar, void *item) {
     if (app && app->last_toolbar_clicked == ti)
         app->last_toolbar_clicked = NULL;
     vg_toolbar_remove_item_ptr(tb, ti);
+    rt_gui_collect_retired_subhandles(&tb->base);
 }
 
 /// @brief Get a size property of the toolbar (button width or height).

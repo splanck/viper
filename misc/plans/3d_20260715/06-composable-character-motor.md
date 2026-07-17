@@ -23,7 +23,11 @@ in, existing physics character/controller out.
 ## Dependencies
 
 - plan 03 fixed-step scheduling;
-- plan 10 entity-aware ground/query information;
+- plan 10 entity-aware ground/query information. Note that
+  `CharacterController3D.GroundEntity` already resolves the ground entity
+  today; the plan-10 dependency covers the broader query/event surfaces, not
+  basic ground identity, so motor extraction work may begin while plan 10 is
+  still landing;
 - current Character3D/CharacterController3D contracts and ADR 0105/0075/0076;
 - API register and risk R6.
 

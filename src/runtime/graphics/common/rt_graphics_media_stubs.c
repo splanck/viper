@@ -576,6 +576,96 @@ void rt_videowidget_update(void *v, double dt) {
     (void)dt;
 }
 
+/// @brief Stub: graphics disabled — automatic VideoWidget scheduling is unavailable.
+void rt_videowidget_set_auto_update(void *v, int64_t enabled) {
+    (void)v;
+    (void)enabled;
+}
+
+/// @brief Stub: graphics disabled — no VideoWidget can be auto-updated.
+int64_t rt_videowidget_is_auto_update(void *v) {
+    (void)v;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no successful-load edge exists.
+int64_t rt_videowidget_was_loaded(void *v) {
+    (void)v;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no live controller can emit a failure edge.
+int64_t rt_videowidget_was_failed(void *v) {
+    (void)v;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no buffering transition exists.
+int64_t rt_videowidget_was_buffering_changed(void *v) {
+    (void)v;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no playback can reach end of stream.
+int64_t rt_videowidget_was_ended(void *v) {
+    (void)v;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no timeline seek can occur.
+int64_t rt_videowidget_was_seeked(void *v) {
+    (void)v;
+    return 0;
+}
+
+/// @brief Stub: return the stable graphics-disabled VideoWidget diagnostic.
+rt_string rt_videowidget_get_error(void *v) {
+    (void)v;
+    return rt_const_cstr("GUI support is not available in this build");
+}
+
+/// @brief Stub: graphics disabled — no VideoWidget revision exists.
+int64_t rt_videowidget_get_revision(void *v) {
+    (void)v;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — transport controls cannot auto-hide.
+void rt_videowidget_set_controls_auto_hide(void *v, int64_t enabled) {
+    (void)v;
+    (void)enabled;
+}
+
+/// @brief Stub: graphics disabled — no owning window can enter fullscreen.
+void rt_videowidget_set_fullscreen(void *v, int64_t fullscreen) {
+    (void)v;
+    (void)fullscreen;
+}
+
+/// @brief Stub: graphics disabled — VideoWidget fullscreen is always false.
+int64_t rt_videowidget_is_fullscreen(void *v) {
+    (void)v;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no app-owned videos require scheduler work.
+void rt_videowidget_update_app(void *app, double dt, uint64_t frame_generation) {
+    (void)app;
+    (void)dt;
+    (void)frame_generation;
+}
+
+/// @brief Stub: graphics disabled — there is no VideoWidget scheduler deadline.
+int64_t rt_videowidget_next_deadline_ms(const void *app) {
+    (void)app;
+    return -1;
+}
+
+/// @brief Stub: graphics disabled — no VideoWidget controllers are app-owned.
+void rt_videowidget_forget_app(void *app) {
+    (void)app;
+}
+
 /// @brief Stub for `VideoWidget.SetShowControls` — toggle the overlay
 ///        playback controls (play/pause button, scrubber bar) inside
 ///        the widget bounds.

@@ -12,21 +12,31 @@ failure without changing the public AA-text API.
 `examples/games/3dbowling/known_viper_issues/overlay_aa_text_repro.zia`
 queues same-size AA text in different colors. Current software output is
 correct. Current Metal can show the later blue texture in the earlier green
-draw region. The symptom strongly suggests identity, upload, or command-lifetime
-aliasing, but the plan does not assume which layer is wrong.
+draw region (2026-07-16 rerun: software reports the expected green top region;
+Metal reports zero green pixels and blue content in the top region). The
+symptom strongly suggests identity, upload, or command-lifetime aliasing, but
+the plan does not assume which layer is wrong. The sibling
+`overlay_image_text_control.zia` in the same directory is an existing control
+case for the shared textured-overlay path.
 
-Relevant current mechanisms:
+Relevant current mechanisms (reconfirmed in source 2026-07-16):
 
 - `DrawText2DAA` creates a frame-bound temporary `Pixels` object and queues it
   through the screen-image path.
-- `Pixels` has a process-unique `cache_identity` and a mutation `generation`.
-- `vgfx3d_get_pixels_cache_key` combines stable identity/content metadata.
-- Metal's texture cache currently looks up `Pixels` entries through a pointer
-  key and compares stored generation/cache key.
+- `Pixels` has a process-unique `cache_identity` and a mutation `generation`
+  (`rt_pixels_internal.h`).
+- `vgfx3d_get_pixels_cache_key` (`vgfx3d_backend_utils.c`) combines stable
+  identity/content metadata.
+- Metal's texture cache currently keys its `textureCache` dictionary with
+  `[NSValue valueWithPointer:...]` on the `Pixels` object address (the `MTL-03`
+  lookup helper in `vgfx3d_backend_metal_texture.inc`) and validates the entry
+  by comparing its stored generation against the combined cache key.
 - The overlay queue retains temporary objects through final-overlay replay.
 
 The implementation must prove where these mechanisms fail to preserve the two
-commands' identities.
+commands' identities. The pointer-keyed dictionary is the leading suspect
+because a freed temporary's address can be reused by the next allocation, but
+the failure must be demonstrated, not assumed.
 
 ## Scope
 

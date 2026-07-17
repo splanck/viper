@@ -50,6 +50,12 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/common/rt_graphics_interna
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_codeeditor_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_app_internal.h")
+// Narrow GUI implementation bridges: platform accessibility projection,
+// TestHarness access to validated borrowed App state, and system-font lookup.
+// None is a frontend-visible Viper.GUI namespace.
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_accessibility_platform.h")
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_automation_bridge.h")
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_font_platform.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/2d/rt_action_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/2d/rt_physics2d_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/2d/rt_pixels_internal.h")
@@ -235,6 +241,12 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound3d_tracked_voice_capacity")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound3d_tracked_voice_count")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_world3d_test_set_broadphase_alloc_failure")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_try_retain_live")
+// GUI owner-binding and scheduler hooks are shared only between runtime
+// translation units; scripts reach them through Widget/App/VideoWidget methods.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gui_widget_checked_for_binding")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_videowidget_forget_app")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_videowidget_next_deadline_ms")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_videowidget_update_app")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gui_test_harness_clear_events")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gui_test_harness_event_at")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gui_test_harness_event_count")

@@ -88,7 +88,11 @@ weapon pointer or script callback.
 3. Resolve active hurt region; otherwise entity Health3D fallback.
 4. Apply team/channel/friendly-fire filter.
 5. Compute region multiplier and penetration cost using explicit surface/region
-   data; unknown material uses a conservative default.
+   data; unknown material uses a conservative default. The natural material
+   key is the `SurfaceType` already exposed by raw hits (carried through
+   WorldHit3D); note that `SurfaceTable3D` is currently a footstep/audio
+   mapping, so a penetration-cost table is new policy keyed by the same
+   surface IDs, not an overload of the audio table.
 6. Apply Health3D damage once per accepted impact, then impulse.
 7. Record impact result and existing hit/damage events.
 8. Continue only while penetration budget and max impacts permit.

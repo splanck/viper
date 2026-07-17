@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-17
 ---
 
 # Containers & Advanced
@@ -50,6 +50,13 @@ Two-pane split view with draggable divider.
 
 Once a divider drag starts, the split keeps tracking until mouse-up even if the pointer leaves the splitter strip. While focused, `Left` / `Right` or `Up` / `Down` nudge the divider, and `Home` / `End` jump the logical split position to the start or end.
 
+First/second minimums use logical UI units and are scaled exactly once for the owning app. An
+explicit collapse overrides the corresponding minimum so the pane can reach zero size; `Restore()`
+returns to the position captured before the current collapse sequence. Switching directly from one
+collapsed side to the other retains that original restore position. Orientation values are `0` for
+horizontal left/right and `1` for vertical top/bottom; collapsed-side values are `0` for neither,
+`1` for first, and `2` for second.
+
 **Constructor:** `NEW Viper.GUI.SplitPane(parent, horizontal)`
 
 | Property | Type   | Access | Description            |
@@ -60,7 +67,16 @@ Once a divider drag starts, the split keeps tracking until mouse-up even if the 
 | Method                     | Signature          | Description                              |
 |----------------------------|--------------------|------------------------------------------|
 | `GetPosition()`            | `Double()`         | Get current split position (0.0-1.0)     |
-| `SetPosition(pos)`         | `Void(Double)`     | Set split position (0.0-1.0)             |
+| `SetPosition(pos)`         | `Void(Double)`     | Set split position and leave collapsed state |
+| `SetMinFirst(size)`        | `Void(Double)`     | Set first-pane minimum in logical units  |
+| `SetMinSecond(size)`       | `Void(Double)`     | Set second-pane minimum in logical units |
+| `GetMinFirst()`            | `Double()`         | Get first-pane logical minimum           |
+| `GetMinSecond()`           | `Double()`         | Get second-pane logical minimum          |
+| `GetOrientation()`         | `Integer()`        | Get `0` horizontal or `1` vertical       |
+| `CollapseFirst()`          | `Void()`           | Collapse the left/top pane               |
+| `CollapseSecond()`         | `Void()`           | Collapse the right/bottom pane            |
+| `Restore()`                | `Void()`           | Restore the pre-collapse divider position |
+| `GetCollapsedSide()`       | `Integer()`        | Get none `0`, first `1`, or second `2`    |
 
 ```basic
 DIM split AS Viper.GUI.SplitPane
@@ -119,6 +135,14 @@ Tabs can be reordered by dragging, close-button hit testing stays confined to th
 Keyboard navigation is available while the tab bar is focused: `Left` / `Right` switch tabs, `Home` / `End` jump to the edges, `Ctrl+W` closes the active closable tab, and `Ctrl+Shift+Left` / `Ctrl+Shift+Right` reorder the active tab.
 Mouse activation and close actions now commit on mouse-up instead of mouse-down, which avoids accidental closes while starting a drag or sliding off a tab.
 
+Successful pointer, keyboard, and programmatic reorders share one event contract.
+`WasReordered()` is an independent consumable edge; `GetReorderedFrom()` and
+`GetReorderedTo()` retain the most recent payload and do not consume it. `GetRevision()` is
+non-consuming and advances for structural, active, reorder, and tab-metadata changes. Tab
+application data is byte-exact, while visible titles follow the GUI UTF-8 display policy. Stable IDs
+are copied, reject embedded NUL bytes atomically, and remain an application-level uniqueness
+responsibility.
+
 **Constructor:** `NEW Viper.GUI.TabBar(parent)`
 
 ### Properties
@@ -139,8 +163,14 @@ Mouse activation and close actions now commit on mouse-up instead of mouse-down,
 | `RemoveTab(tab)`         | `Void(Object)`            | Remove a tab                             |
 | `SetActive(tab)`         | `Void(Object)`            | Set active tab                           |
 | `SetAutoClose(enabled)`  | `Void(Boolean)`           | Enable/disable auto-close on close click |
+| `SetFont(font, size)`    | `Void(Font, Double)`      | Set the title font and logical size       |
+| `MoveTab(from, to)`      | `Boolean(Integer, Integer)` | Reorder two valid, different indices    |
 | `WasChanged()`           | `Boolean()`               | True if the active tab changed this frame |
 | `WasCloseClicked()`      | `Boolean()`               | True if a close button was clicked        |
+| `WasReordered()`         | `Boolean()`               | Consume the successful-reorder edge       |
+| `GetReorderedFrom()`     | `Integer()`               | Last successful source index, or `-1`     |
+| `GetReorderedTo()`       | `Integer()`               | Last successful destination index, or `-1` |
+| `GetRevision()`          | `Integer()`               | Read the non-consuming state revision     |
 
 ### Tab Methods
 
@@ -149,7 +179,14 @@ Tab handles are runtime-managed and become inert after `RemoveTab()`, `Clear()`,
 
 | Method                    | Signature          | Description                    |
 |---------------------------|--------------------|--------------------------------|
-| `tab.SetTitle(title)`     | `Void(String)`     | Set tab title; the default tooltip follows the title until explicitly overridden |
+| `tab.SetTitle(title)`     | `Void(String)`     | Set tab title; the default tooltip follows it until overridden |
+| `tab.GetTitle()`          | `String()`         | Copy the current visible title |
+| `tab.SetData(data)`       | `Void(String)`     | Store byte-exact application data |
+| `tab.GetData()`           | `String()`         | Copy byte-exact application data |
+| `tab.SetClosable(flag)`   | `Void(Boolean)`    | Show/enable the close affordance |
+| `tab.IsClosable()`        | `Boolean()`        | Test close state               |
+| `tab.SetStableId(id)`     | `Void(String)`     | Set a copied application-stable ID |
+| `tab.GetStableId()`       | `String()`         | Copy the stable ID             |
 | `tab.SetTooltip(text)`    | `Void(String)`     | Set hover tooltip text         |
 | `tab.SetModified(flag)`   | `Void(Boolean)`    | Set modified indicator (`" *"` participates in tab-width measurement) |
 
@@ -197,24 +234,40 @@ if tabs.WasCloseClicked() {
 Hierarchical tree view with expandable nodes.
 
 Mouse hit testing is widget-local, so nested trees continue to select the correct row after layout shifts. Removing a node also clears any selected or hovered state inside the removed subtree, and `WasSelectionChanged()` reports removals and `Clear()` calls that actually change the selection.
-Node glyph icons are rendered when present, and lazy/loading nodes now show an inline loading indicator instead of a blank row. Long labels are ellipsized instead of hard-clipping mid-string, and drag-and-drop callbacks now fire with validated `before` / `after` / `into` targets.
+Node icon text is rendered through the TreeView font, and lazy/loading nodes show an inline loading indicator instead of a blank row. Icon strings may contain a Unicode glyph or short text and round-trip exactly through `GetIcon()`. Long labels are ellipsized instead of hard-clipping mid-string, and drag-and-drop callbacks fire with validated `before` / `after` / `into` targets.
 `node.SetData()` stores runtime strings with their explicit length, so embedded NUL bytes round-trip through `node.GetData()`. Runtime-owned node data is freed when the node or tree is removed.
+
+Lazy children use a callback-free polling contract. Set `node.SetHasChildren(true)` before children
+exist, then expand or toggle the node. The tree marks it loading, records a monotonic revision, and
+raises `WasLoadChildrenRequested()`. `GetLoadRequestedNodeOption()` returns the requested live node;
+populate it with `AddNode()` and call `node.SetLoading(false)` when complete. Reading the Option does
+not consume the edge, and reading the edge does not clear the payload. Removing the node clears the
+payload safely. Activation follows the same split-observer rule through `WasActivated()` and
+`GetActivatedNodeOption()`.
 
 **Constructor:** `NEW Viper.GUI.TreeView(parent)`
 
 ### Methods
 
-| Method                  | Signature                | Description                       |
-|-------------------------|--------------------------|-----------------------------------|
-| `AddNode(parent, text)` | `Object(Object, String)` | Add node, returns handle          |
-| `Clear()`               | `Void()`                 | Remove all nodes                  |
-| `Collapse(node)`        | `Void(Object)`           | Collapse a node                   |
-| `Expand(node)`          | `Void(Object)`           | Expand a node                     |
-| `GetSelected()`         | `Object()`               | Get selected node handle          |
-| `RemoveNode(node)`      | `Void(Object)`           | Remove node and children          |
-| `Select(node)`          | `Void(Object)`           | Select a node                     |
-| `SetFont(font, size)`   | `Void(Font, Double)`     | Set font                          |
-| `WasSelectionChanged()` | `Boolean()`              | True if selection changed this frame |
+| Method                               | Signature                | Description                                      |
+|--------------------------------------|--------------------------|--------------------------------------------------|
+| `AddNode(parent, text)`              | `Object(Object, String)` | Add node, returns a tree-owned managed handle    |
+| `Clear()`                            | `Void()`                 | Remove all nodes                                 |
+| `Collapse(node)`                     | `Void(Object)`           | Collapse a node                                  |
+| `Expand(node)`                       | `Void(Object)`           | Expand a node and request lazy children as needed|
+| `Toggle(node)`                       | `Void(Object)`           | Toggle expanded state                            |
+| `ScrollTo(node)`                     | `Void(Object)`           | Bring a node into view with minimal scrolling    |
+| `GetSelected()`                      | `Object()`               | Get selected node handle                         |
+| `GetLoadRequestedNodeOption()`       | `Option()`               | Last live lazy-load request target               |
+| `GetActivatedNodeOption()`           | `Option()`               | Last live activated node                         |
+| `RemoveNode(node)`                   | `Void(Object)`           | Remove node and descendants                      |
+| `Select(node)`                       | `Void(Object)`           | Select a node                                    |
+| `SetFont(font, size)`                | `Void(Font, Double)`     | Set font                                         |
+| `WasSelectionChanged()`              | `Boolean()`              | Consume the legacy selection edge                |
+| `WasChanged()`                       | `Boolean()`              | Consume the independent common change edge       |
+| `WasActivated()`                     | `Boolean()`              | Consume the activation edge                      |
+| `WasLoadChildrenRequested()`         | `Boolean()`              | Consume the lazy-child-request edge              |
+| `GetRevision()`                      | `Integer()`              | Read non-consuming monotonic state revision      |
 
 ### Node Methods
 
@@ -224,12 +277,25 @@ Keyboard navigation keeps the selected node scrolled into view, matching mouse s
 explicit `Select(node)` behavior.
 Node handles are runtime-managed and become inert after `RemoveNode()`, `Clear()`, or tree destruction; later node method calls return empty/0 values or no-op safely.
 
-| Method                    | Signature          | Description                    |
-|---------------------------|--------------------|--------------------------------|
-| `node.GetText()`          | `String()`         | Get node display text          |
-| `node.SetData(data)`      | `Void(String)`     | Set node user data             |
-| `node.GetData()`          | `String()`         | Get node user data             |
-| `node.IsExpanded()`       | `Boolean()`        | True if node is expanded       |
+| Method                         | Signature          | Description                                      |
+|--------------------------------|--------------------|--------------------------------------------------|
+| `node.GetText()`               | `String()`         | Get node display text                            |
+| `node.SetText(text)`           | `Void(String)`     | Atomically replace display text                  |
+| `node.SetIcon(icon)`           | `Void(String)`     | Set UTF-8 glyph or short icon text               |
+| `node.GetIcon()`               | `String()`         | Get icon text                                    |
+| `node.SetHasChildren(value)`   | `Void(Boolean)`    | Advertise lazy or materialized children          |
+| `node.HasChildren()`           | `Boolean()`        | Test the child affordance                        |
+| `node.SetLoading(value)`       | `Void(Boolean)`    | Set the loading indicator                        |
+| `node.IsLoading()`             | `Boolean()`        | Test loading state                               |
+| `node.SetStableId(id)`         | `Void(String)`     | Set an application-stable ID                     |
+| `node.GetStableId()`           | `String()`         | Get the stable ID                                |
+| `node.SetData(data)`           | `Void(String)`     | Set byte-exact runtime string data               |
+| `node.GetData()`               | `String()`         | Get runtime string data                          |
+| `node.IsExpanded()`            | `Boolean()`        | True if node is expanded                         |
+
+Stable IDs are copied, may be empty, and reject embedded NUL bytes without changing the old value.
+The base TreeView does not require IDs to be unique; `VirtualTree` enforces uniqueness when a
+virtual model is bound.
 
 ```rust
 // Zia example
@@ -357,6 +423,29 @@ Mouse editing supports `Shift` + click to extend the primary selection and `Ctrl
 | `GetTabSize()`               | `Integer()`        | Get current tab width in spaces                  |
 | `SetWordWrap(enabled)`       | `Void(Boolean)`    | Enable or disable word wrapping                  |
 | `GetWordWrap()`              | `Integer()`        | Read word-wrap state (`1` enabled, `0` disabled) |
+
+#### Performance diagnostics
+
+`GetPerfStats()` is the preferred diagnostics API. It returns a consistent versioned snapshot
+instead of requiring monitoring code to call several counters independently. The Map always has
+`schemaVersion = 1` and these raw, monotonic, saturating integer keys:
+
+| Key | Meaning |
+|-----|---------|
+| `totalHeightLinearScans` | Source lines visited while accumulating total document height |
+| `totalVisualRowLinearScans` | Source lines visited while accumulating total wrapped rows |
+| `visualRowLinearScans` | Lines visited while mapping a source position to a visual row |
+| `locateVisualRowLinearScans` | Lines visited while locating a source line for a visual row |
+| `lineHighlightCalls` | Per-line syntax-highlighter invocations |
+| `syntaxStateLineScans` | Lines scanned while reconstructing cached lexical state |
+| `highlightSpanChecks` | Explicit highlight spans inspected during paint |
+| `fullTextCopies` | Full-document text materializations |
+| `fullTextCopyBytes` | Bytes copied by those materializations |
+
+Call `ResetPerfStats()` immediately before measuring a scenario. The existing individual getters
+remain callable for compatibility; `GetLayoutLinearScanCount()` is the saturating sum of the first
+four scan counters. Invalid editors and graphics-disabled runtimes return the complete schema with
+zero values, so portable diagnostics do not need a capability branch.
 
 ```basic
 DIM editor AS Viper.GUI.CodeEditor

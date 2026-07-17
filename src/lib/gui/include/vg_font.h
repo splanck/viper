@@ -122,6 +122,23 @@ void vg_font_destroy(vg_font_t *font);
 ///          them in widgets.
 bool vg_font_is_live(const vg_font_t *font);
 
+/// @brief Associate a logical-point size with a live font handle.
+/// @details The font rasterizer remains size-agnostic and accepts an effective pixel size on every
+///          draw call. This metadata preserves the unscaled size requested by higher-level GUI
+///          APIs so DPI changes can recompute effective pixels without compounding scale. Invalid,
+///          stale, non-finite, non-positive, or greater-than-one-million values clear the metadata
+///          to zero rather than affecting rasterization.
+/// @param font Live font handle whose metadata should change; NULL and stale handles are ignored.
+/// @param logical_size Size in logical points, or an invalid value to clear the metadata.
+void vg_font_set_logical_size(vg_font_t *font, float logical_size);
+
+/// @brief Return the logical-point size associated with a live font handle.
+/// @details File-loaded fonts have zero until explicitly annotated. The value is metadata only;
+///          callers still pass an effective pixel size to measurement and drawing operations.
+/// @param font Font to query; may be NULL, stale, or unrelated.
+/// @return Finite positive logical size, or zero when unset/invalid.
+float vg_font_get_logical_size(const vg_font_t *font);
+
 //=============================================================================
 // Font Information
 //=============================================================================

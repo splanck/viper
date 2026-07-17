@@ -100,20 +100,27 @@ typedef struct {
 typedef enum {
     RT_GUI_THEME_DARK = 0,
     RT_GUI_THEME_LIGHT = 1,
+    RT_GUI_THEME_SYSTEM = 2,
+    RT_GUI_THEME_CUSTOM = 3,
 } rt_gui_theme_kind_t;
 
 typedef struct {
     uint64_t magic;
-    vgfx_window_t window;    ///< Underlying graphics window handle.
-    vg_widget_t *root;       ///< Root widget container for the UI hierarchy.
-    vg_font_t *default_font; ///< Default font for widgets (lazily loaded).
-    float default_font_size; ///< Default font size in points.
-    int default_font_owned;  ///< Non-zero when default_font is owned by the app.
-    vg_font_t **retired_fonts;
-    int retired_font_count;
-    int retired_font_cap;
-    int64_t should_close;      ///< Non-zero when the application should exit.
-    int64_t close_requested;   ///< Non-zero when a close request arrived this frame.
+    vgfx_window_t window;      ///< Underlying graphics window handle.
+    vg_widget_t *root;         ///< Root widget container for the UI hierarchy.
+    vg_font_t *default_font;   ///< Regular proportional default font (lazily loaded).
+    float default_font_size;   ///< Default font size in logical points.
+    int default_font_owned;    ///< Non-zero when default_font is owned by the app.
+    vg_font_t *role_font_bold; ///< App-owned bold role fallback; may alias default_font.
+    vg_font_t *role_font_mono; ///< App-owned monospace role fallback; may alias default_font.
+    int role_font_bold_owned;  ///< Non-zero when role_font_bold has independent ownership.
+    int role_font_mono_owned;  ///< Non-zero when role_font_mono has independent ownership.
+    vg_font_t **retired_fonts; ///< Fonts awaiting an unused safe presentation generation.
+    uint64_t *retired_font_generations; ///< Generation at which each matching font was retired.
+    int retired_font_count;             ///< Number of valid parallel retirement entries.
+    int retired_font_cap;               ///< Allocated capacity of both retirement arrays.
+    int64_t should_close;               ///< Non-zero when the application should exit.
+    int64_t close_requested;            ///< Non-zero when a close request arrived this frame.
     int32_t prevent_close;     ///< Non-zero when close requests should not set should_close.
     vg_widget_t *last_clicked; ///< Widget clicked during the current frame.
     vg_statusbar_item_t *last_statusbar_clicked;
@@ -122,14 +129,27 @@ typedef struct {
     int32_t mouse_y; ///< Current mouse Y coordinate in window space.
     uint64_t last_event_time_ms;
     uint64_t last_render_time_ms;
+    int32_t animations_active; ///< Non-zero while the last scheduler pass found unsettled motion.
+    int32_t frame_delta_override_pending; ///< One-shot deterministic delta consumed by Render.
+    double frame_delta_override_ms;       ///< Pending deterministic frame delta in milliseconds.
+    double scheduler_elapsed_ms;          ///< Full caller-visible elapsed scheduler time.
+    double scheduler_clock_ms; ///< Timer clock advanced by real or deterministic frame deltas.
+    uint64_t frame_generation; ///< Non-zero generation advanced once per render scheduler pass.
     int32_t last_layout_width;
     int32_t last_layout_height;
     vg_theme_t *theme;
     const vg_theme_t *theme_base;
+    vg_theme_t *custom_theme_base; ///< Owned unscaled custom palette, or NULL when unset.
     float theme_scale;
+    uint64_t theme_revision; ///< Monotonic revision incremented after each installed theme copy.
+    uint64_t theme_reported_revision; ///< Revision consumed only by Theme.WasChanged.
     float user_scale; ///< User UI zoom multiplier applied atop the HiDPI scale (1.0 = default).
     rt_gui_theme_kind_t theme_kind;
-    char *title; ///< Window title (owned, heap-allocated).
+    int32_t system_prefers_dark; ///< Last normalized platform appearance used by System mode.
+    int32_t accessibility_high_contrast;  ///< Explicit per-app high-contrast preference.
+    int32_t accessibility_reduced_motion; ///< Explicit per-app reduced-motion preference.
+    uint64_t accessibility_revision;      ///< Monotonic preference/announcement revision.
+    char *title;                          ///< Window title (owned, heap-allocated).
     vg_dialog_t **dialog_stack;
     int dialog_count;
     int dialog_cap;
@@ -166,6 +186,11 @@ typedef struct {
     uint64_t frames_partial;       ///< Dirty frames that took the damage-region repaint path.
     float last_damage_w;           ///< Width of the last partial-paint damage rect (0 if full).
     float last_damage_h;           ///< Height of the last partial-paint damage rect (0 if full).
+    float overlay_last_x;          ///< Left edge of the last painted detached-overlay union.
+    float overlay_last_y;          ///< Top edge of the last painted detached-overlay union.
+    float overlay_last_w;          ///< Width of the last painted detached-overlay union.
+    float overlay_last_h;          ///< Height of the last painted detached-overlay union.
+    int32_t overlay_last_valid;    ///< Non-zero when the retained overlay union contains pixels.
 } rt_gui_app_t;
 
 #define RT_GUI_APP_MAGIC UINT64_C(0x5254475541505031)
@@ -179,11 +204,100 @@ rt_gui_app_t *rt_gui_get_active_app(void);
 void rt_gui_activate_app(rt_gui_app_t *app);
 /// @brief Resolve the owning GUI app for a widget (NULL if unparented).
 rt_gui_app_t *rt_gui_app_from_widget(vg_widget_t *widget);
+
+/// @brief Resolve a widget handle's owning app for isolated runtime modules.
+/// @details The opaque return avoids exposing private app layout to modules that intentionally
+///          include only the public GUI bridge. Invalid, destroyed, or unparented widgets return
+///          NULL. The pointer is borrowed and must never be retained past app destruction.
+/// @param handle Candidate live widget handle.
+/// @return Borrowed owning app pointer, or NULL.
+/// @internal
+void *rt_gui_widget_owner_app(void *handle);
+
+/// @brief Return one owning app's current scheduler frame generation.
+/// @details The function validates the opaque app handle and is side-effect free. Generation zero
+///          means the app has not rendered yet; overflow wraps directly to one so zero remains the
+///          permanent pre-render sentinel.
+/// @param app Candidate opaque app pointer.
+/// @return Current generation, or zero for an invalid app.
+/// @internal
+uint64_t rt_gui_app_frame_generation_for_owner(void *app);
 /// @brief Monotonic millisecond clock used for GUI timing/animation.
 uint64_t rt_gui_now_ms(void);
-/// @brief Re-apply the current theme to @p app's widget tree (after a change).
+/// @brief Return the app's effective logical-to-framebuffer scale.
+/// @details Multiplies the platform window scale by the app's user UI zoom. Invalid, zero, or
+///          non-finite factors are replaced by 1.0, and a non-finite product also falls back to
+///          1.0. The function does not mutate or activate the app.
+/// @param app App whose scale is requested; NULL represents the identity scale.
+/// @return Positive finite effective scale, with 1.0 as the invalid-app fallback.
+float rt_gui_app_effective_scale(const rt_gui_app_t *app);
+/// @brief Convert the app's logical default font size to effective framebuffer pixels.
+/// @details Uses @ref rt_gui_app_effective_scale exactly once. The stored font size remains in
+///          logical points so subsequent monitor-scale or user-zoom changes can be reapplied
+///          without cumulative rounding or multiplication.
+/// @param app App whose default font size is requested; NULL uses 14 logical points at 1x.
+/// @return Positive finite font size in framebuffer pixels.
+float rt_gui_app_effective_font_size(const rt_gui_app_t *app);
+
+/// @brief Atomically copy already-converted straight RGBA bytes into a GUI Image.
+/// @details This internal bridge lets streaming media reuse a conversion buffer and bypass the
+///          public Pixels-to-RGBA temporary allocation. The lower image owns its own reusable copy;
+///          caller storage remains borrowed for the duration of the call only.
+/// @param image Live GUI Image handle.
+/// @param rgba Borrowed width*height*4 interleaved RGBA bytes.
+/// @param width Positive pixel width fitting int32_t.
+/// @param height Positive pixel height fitting int32_t.
+/// @return 1 after a complete atomic upload, otherwise 0 with prior pixels preserved.
+/// @internal
+int rt_gui_image_try_set_rgba_bytes(void *image,
+                                    const uint8_t *rgba,
+                                    int64_t width,
+                                    int64_t height);
+
+/// @brief Synchronize every runtime Minimap owned by one GUI app.
+/// @details Called before retained dirty-state inspection so editor content/layout/viewport changes
+///          can invalidate the corresponding minimap in the same frame. Traversal is allocation-
+///          free and detached/destroyed wrappers are ignored.
+/// @param app Borrowed owning app pointer.
+/// @internal
+void rt_minimap_sync_app(void *app);
+/// @brief Re-apply the current theme to @p app's widget tree after a change.
+/// @details Rebuilds the per-app scaled theme only when its base theme or effective scale changed.
+///          A successful replacement invalidates every app-owned layout/paint surface, reapplies
+///          the logical default font at the new effective pixel size, and increments the app's
+///          theme revision. Allocation failure leaves the previous theme and revision unchanged.
+/// @param app App whose theme should be refreshed; NULL is a no-op.
 void rt_gui_refresh_theme(rt_gui_app_t *app);
-/// @brief Switch @p app's theme kind (e.g. light/dark) and refresh.
+/// @brief Resolve the logical, unscaled base palette currently selected by one app.
+/// @details Dark and light return immutable toolkit singletons. System resolves through the
+///          app's last synchronized platform appearance, while custom returns the app-owned
+///          palette when present and deterministically falls back to dark otherwise. The returned
+///          pointer is borrowed and remains valid only while the app and its selected palette live.
+/// @param app App whose logical palette is requested; NULL selects the built-in dark palette.
+/// @return Borrowed non-NULL unscaled theme suitable for cloning; never destroy the result.
+const vg_theme_t *rt_gui_app_theme_base(const rt_gui_app_t *app);
+/// @brief Atomically replace one app's logical custom palette and select Custom mode.
+/// @details Builds the DPI-scaled/accessibility-adjusted installed copy before publishing any
+///          state. On success the app takes ownership of @p candidate, destroys its prior custom
+///          base and installed copy, increments the theme revision, reapplies fonts, and
+///          invalidates theme dependents. On failure every app field remains unchanged and the
+///          caller retains ownership of @p candidate.
+/// @param app Target app; must be non-NULL.
+/// @param candidate Owned unscaled theme clone offered for transfer; must be non-NULL.
+/// @return One when ownership transferred and Custom mode was installed, otherwise zero.
+int rt_gui_install_custom_theme(rt_gui_app_t *app, vg_theme_t *candidate);
+/// @brief Synchronize a System-mode app with the host desktop appearance.
+/// @details Queries the platform adapter on demand. A changed light/dark preference rebuilds the
+///          per-app scaled theme, increments its theme revision, and invalidates theme-dependent
+///          surfaces. Non-System apps and NULL handles are unchanged.
+/// @param app App to synchronize; may be NULL.
+void rt_gui_sync_system_theme(rt_gui_app_t *app);
+/// @brief Switch @p app's theme mode and refresh its installed theme.
+/// @details Accepts dark, light, system, or custom. Custom is ignored until an app-owned custom
+///          palette has been installed. Re-selecting the effective current mode is allocation-free
+///          unless a scale or platform appearance changed.
+/// @param app Target app; NULL is a no-op.
+/// @param kind Requested validated theme mode.
 void rt_gui_set_theme_kind(rt_gui_app_t *app, rt_gui_theme_kind_t kind);
 /// @brief Resync the modal overlay root after modals open/close.
 void rt_gui_sync_modal_root(rt_gui_app_t *app);
@@ -205,6 +319,42 @@ void rt_messagebox_invalidate_dialog(vg_dialog_t *dialog);
 void rt_filedialog_invalidate_dialog(vg_dialog_t *dialog);
 /// @brief Invalidate Viper-facing subobject handles owned by @p subtree.
 void rt_gui_invalidate_widget_subhandles(vg_widget_t *subtree);
+/// @brief Reclaim retired subobject payloads with no remaining managed wrapper.
+/// @details Walks @p subtree's owner widgets and drains individual ListBox, TreeView, TabBar,
+///          MenuBar, ContextMenu, StatusBar, and Toolbar retirement records only when the indexed
+///          stable-wrapper registry proves the corresponding item or subtree group unreferenced.
+///          The traversal is allocation-free and leaves every still-referenced stale wrapper and
+///          its tombstone intact. Expected wrapper lookup is O(1); TreeView group checking is
+///          linear only in the retired subtree being considered.
+/// @param subtree Live widget subtree whose owners should be collected; NULL/retired roots are
+///                ignored.
+void rt_gui_collect_retired_subhandles(vg_widget_t *subtree);
+/// @brief Return the process-global number of allocated GUI subhandle wrappers.
+/// @details Intended for lifecycle regression tests and diagnostics; reading it has no side effects
+///          and does not retain wrappers.
+/// @return Number of wrappers not yet finalized.
+size_t rt_gui_subhandle_debug_live_count(void);
+/// @brief Return the allocated capacity of the expected-O(1) target index.
+/// @return Power-of-two slot count, or zero when the registry is empty.
+size_t rt_gui_subhandle_debug_index_capacity(void);
+/// @brief Return the largest bounded target-index probe count observed since reset.
+/// @return Maximum slots inspected by a target lookup; never exceeds current lookup capacity.
+size_t rt_gui_subhandle_debug_max_probes(void);
+/// @brief Reset subhandle target-index probe counters without altering registry state.
+void rt_gui_subhandle_debug_reset_probes(void);
+/// @brief Invalidate wrappers for retired nodes before @p tree reclaims their tombstones.
+/// @details The tree's retired list still owns valid tombstone storage when this function is
+///          called. It clears only wrappers whose node is already retired, preserving wrappers for
+///          live nodes in the same tree. After return, `vg_treeview_prune_retired_nodes` may free
+///          the retired storage without leaving a runtime wrapper that can dereference it.
+/// @param tree Tree whose retired node wrappers should be invalidated; NULL is a no-op.
+void rt_gui_invalidate_retired_tree_node_subhandles(vg_treeview_t *tree);
+/// @brief Invalidate wrappers for retired tabs before @p tabbar reclaims their tombstones.
+/// @details The tab bar's retired list still owns valid tombstone storage when this function is
+///          called. It clears only wrappers whose tab is already retired, preserving wrappers for
+///          live tabs. After return, `vg_tabbar_prune_retired_tabs` may safely free the tombstones.
+/// @param tabbar Tab bar whose retired tab wrappers should be invalidated; NULL is a no-op.
+void rt_gui_invalidate_retired_tab_subhandles(vg_tabbar_t *tabbar);
 /// @brief Invalidate Viper-facing handles for @p context menu and its descendants.
 void rt_gui_invalidate_contextmenu_tree(vg_contextmenu_t *menu);
 /// @brief Invalidate Viper-facing item/submenu handles contained by @p context menu.
@@ -251,11 +401,16 @@ void rt_gui_file_drop_add(rt_gui_app_t *app, const char *path);
 int rt_gui_is_app_handle_known(const void *handle);
 /// @brief Whether @p handle refers to a destroyed (stale) GUI app handle.
 int rt_gui_is_destroyed_app_handle(const void *handle);
-/// @brief Retire @p font from @p app (drop its reference once unused).
-/// @return non-zero if the font was retired.
+/// @brief Retire @p font from @p app at its current render generation.
+/// @details The app reclaims it only after a later safe boundary and after every app/widget/theme
+///          reference disappears. Queue growth failure leaves prior entries intact.
+/// @param app App that will schedule reclamation.
+/// @param font Font being replaced or explicitly destroyed.
+/// @return Non-zero if the font was queued/refreshed.
 int rt_gui_retire_font(rt_gui_app_t *app, vg_font_t *font);
-/// @brief Retire @p font globally only if no widget still uses it.
-/// @return non-zero if the font was retired.
+/// @brief Queue @p font in each app that still has a render or theme reference.
+/// @param font Font whose public owner is releasing it.
+/// @return Non-zero if at least one app queued the font; zero means immediate destruction is safe.
 int rt_gui_retire_font_if_in_use(vg_font_t *font);
 
 /// @brief True if @p handle is a known (live) GUI App handle.
@@ -283,14 +438,26 @@ static inline vg_widget_t *rt_gui_widget_handle_checked_type(void *handle, vg_wi
     return widget && widget->type == type ? widget : NULL;
 }
 
-/// @brief Safe-cast @p handle to a live GUI font handle.
-/// @return The font, or NULL if @p handle is NULL, stale, or not a font.
-static inline vg_font_t *rt_gui_font_handle_checked(void *handle) {
-    if (!handle)
-        return NULL;
-    vg_font_t *font = (vg_font_t *)handle;
-    return vg_font_is_live(font) ? font : NULL;
-}
+/// @brief Private runtime-object class tag used by managed Viper.GUI.Font wrappers.
+/// @details This negative internal identifier cannot collide with generated public class IDs and
+///          lets opaque-handle validation reject arbitrary heap objects before reading a wrapper.
+#define RT_GUI_FONT_HANDLE_CLASS_ID INT64_C(-0x47554601)
+
+/// @brief Resolve a public GUI font handle to its live lower-toolkit font.
+/// @details Accepts both modern managed Font wrappers and legacy raw vg_font_t pointers. Wrapper
+///          validation uses the runtime heap metadata before reading private fields; raw pointers
+///          are authenticated against the lower live-font registry without dereferencing unknown
+///          memory. Explicitly destroyed and stale handles return NULL.
+/// @param handle Managed Font wrapper, legacy raw font, or unrelated/null value.
+/// @return Borrowed live vg_font_t, or NULL when validation fails.
+vg_font_t *rt_gui_font_handle_checked(void *handle);
+
+/// @brief Determine whether a handle is a live managed Viper.GUI.Font wrapper.
+/// @details The underlying font may already have been explicitly destroyed; this operation checks
+///          wrapper identity/liveness only and is used to balance runtime retains in palettes.
+/// @param handle Candidate opaque runtime value.
+/// @return Non-zero for a live managed wrapper, otherwise zero.
+int rt_gui_font_handle_is_managed(void *handle);
 
 /// @brief Safe-cast @p handle to an App, or NULL if it is not an App handle.
 static inline rt_gui_app_t *rt_gui_app_handle_checked(void *handle) {
@@ -418,6 +585,51 @@ static inline float rt_gui_sanitize_signed_float(double value, double max_abs_va
     if (!rt_gui_double_is_finite(value))
         return 0.0f;
     return (float)rt_gui_clamp_f64(value, -max_abs_value, max_abs_value);
+}
+
+/// @brief Return the logical-to-framebuffer scale associated with a widget.
+/// @details Attached widgets inherit the effective scale of their owning app. Detached widgets
+///          deliberately use the identity scale so public geometry is deterministic before
+///          attachment. @ref rt_gui_app_effective_scale guarantees a positive finite result.
+/// @param widget Live widget whose coordinate boundary is being evaluated; may be NULL.
+/// @return Positive finite effective scale, or 1 for a detached/NULL widget.
+static inline float rt_gui_widget_effective_scale(vg_widget_t *widget) {
+    return rt_gui_app_effective_scale(rt_gui_app_from_widget(widget));
+}
+
+/// @brief Convert a public non-negative logical metric to toolkit framebuffer units.
+/// @details Invalid values become zero. Multiplication is performed in double precision and the
+///          final result is clamped to @ref RT_GUI_MAX_LAYOUT_VALUE, preventing a large logical
+///          value and scale from overflowing float storage.
+/// @param widget Widget supplying the effective app scale.
+/// @param value Public logical length.
+/// @return Sanitized non-negative framebuffer length.
+static inline float rt_gui_logical_length_to_physical(vg_widget_t *widget, double value) {
+    if (!rt_gui_double_is_finite(value))
+        return 0.0f;
+    double physical = value * (double)rt_gui_widget_effective_scale(widget);
+    return rt_gui_sanitize_nonnegative_float(physical, RT_GUI_MAX_LAYOUT_VALUE);
+}
+
+/// @brief Convert a signed public logical coordinate to toolkit framebuffer units.
+/// @details Invalid values become zero and the scaled result is clamped symmetrically to the
+///          supported layout range. Legitimate negative overlay positions remain negative.
+/// @param widget Widget supplying the effective app scale.
+/// @param value Public logical coordinate.
+/// @return Sanitized signed framebuffer coordinate.
+static inline float rt_gui_logical_coordinate_to_physical(vg_widget_t *widget, double value) {
+    if (!rt_gui_double_is_finite(value))
+        return 0.0f;
+    double physical = value * (double)rt_gui_widget_effective_scale(widget);
+    return rt_gui_sanitize_signed_float(physical, RT_GUI_MAX_LAYOUT_VALUE);
+}
+
+/// @brief Convert one toolkit framebuffer metric to a public logical value.
+/// @param widget Widget supplying the effective app scale.
+/// @param value Stored framebuffer coordinate or length.
+/// @return Logical value after exactly one division by the positive effective scale.
+static inline double rt_gui_physical_to_logical(vg_widget_t *widget, float value) {
+    return (double)value / (double)rt_gui_widget_effective_scale(widget);
 }
 
 /// @brief Clamp an int64 to the inclusive [min_value, max_value] int32 range.

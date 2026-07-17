@@ -114,7 +114,7 @@ Create an internal table for each supported type:
 |---|---|---|---|---|
 | Entity3D | World3D registry | Spawn/Despawn | current stale entity rules | no mutable double ownership |
 | SceneNode | SceneGraph | Add/Remove child/node API | inspect node graph membership | no |
-| PhysicsBody3D | PhysicsWorld3D | AddBody/RemoveBody | inspect body world field | no |
+| PhysicsBody3D | PhysicsWorld3D | `Add`/`TryAdd`/`Remove` | `ContainsBody`/body world field | no |
 | Light3D | Canvas/World slots | current light add/clear/remove behavior | inspect slot ownership | possibly shared asset, not shared registration |
 | Particles/Decal | EffectRegistry or manual | Add/Clear/expiry | inspect registry item | no registration duplication |
 | SoundSource3D | Sound3D/audio backend | Play/Stop | inspect source validity | no live voice duplication |
@@ -150,9 +150,9 @@ counts, and diagnostics. Requirements:
 
 1. Add `World3D.CreateScope(name)` convenience if approved.
 2. Register live scopes with the world for invalidation/destruction.
-3. Ensure manual `World3D.Despawn`, raw RemoveBody, or node removal updates or
-   safely coexists with the scope entry. Scope release should observe already
-   removed state and drop the reference.
+3. Ensure manual `World3D.Despawn`, raw `PhysicsWorld3D.Remove`, or node
+   removal updates or safely coexists with the scope entry. Scope release
+   should observe already removed state and drop the reference.
 4. Expose scope counts in diagnostics only if useful; avoid a global debug API
    for one test.
 5. Verify no reference cycle among world, scope, child scope, and entities.

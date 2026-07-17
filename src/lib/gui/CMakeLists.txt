@@ -17,6 +17,7 @@ set(VG_GUI_CORE_SOURCES
         src/core/vg_widget.c
         src/core/vg_layout.c
         src/core/vg_event.c
+        src/core/vg_grapheme.c
         src/core/vg_theme.c
         src/core/vg_draw.c
 )
@@ -190,6 +191,24 @@ if (VIPER_BUILD_TESTING)
             RUN_SERIAL TRUE
             ENVIRONMENT "VIPER_GUI_TEST_VERBOSE=1")
 
+    add_executable(test_vg_grapheme tests/test_vg_grapheme.c)
+    target_link_libraries(test_vg_grapheme vipergui)
+    target_include_directories(test_vg_grapheme PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_compile_definitions(test_vg_grapheme PRIVATE
+            VG_GRAPHEME_TEST_DATA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/data/GraphemeBreakTest-17.0.0.txt")
+    add_test(NAME test_vg_grapheme COMMAND test_vg_grapheme)
+    set_tests_properties(test_vg_grapheme PROPERTIES LABELS "gui;unicode" TIMEOUT 30)
+
+    add_executable(test_vg_textinput tests/test_vg_textinput.c)
+    target_link_libraries(test_vg_textinput vipergui)
+    target_include_directories(test_vg_textinput PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_textinput COMMAND test_vg_textinput)
+    set_tests_properties(test_vg_textinput PROPERTIES LABELS "gui;unicode" TIMEOUT 30)
+
     add_executable(test_vg_outputpane_metrics tests/test_vg_outputpane_metrics.c)
     target_link_libraries(test_vg_outputpane_metrics vipergui)
     target_include_directories(test_vg_outputpane_metrics PRIVATE
@@ -255,6 +274,14 @@ if (VIPER_BUILD_TESTING)
     add_test(NAME test_vg_treeview_dnd COMMAND test_vg_treeview_dnd)
     set_tests_properties(test_vg_treeview_dnd PROPERTIES LABELS "gui;viperide" TIMEOUT 15)
 
+    add_executable(test_vg_virtual_models tests/test_vg_virtual_models.c)
+    target_link_libraries(test_vg_virtual_models vipergui)
+    target_include_directories(test_vg_virtual_models PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_virtual_models COMMAND test_vg_virtual_models)
+    set_tests_properties(test_vg_virtual_models PROPERTIES LABELS "gui;viperide;perf" TIMEOUT 15)
+
     # Anti-aliased drawing core. Built self-contained against the mock backend so
     # the pixel-exact and determinism assertions run headless on every platform.
     add_executable(test_vg_draw
@@ -283,6 +310,8 @@ if (VIPER_BUILD_TESTING)
                 test_vg_tier2_fixes
                 test_vg_tier3_fixes
                 test_vg_audit_fixes
+                test_vg_grapheme
+                test_vg_textinput
                 test_vg_font_bounds
                 test_vg_codeeditor_perf)
             target_compile_definitions(${vg_gui_test_target} PRIVATE _GNU_SOURCE)

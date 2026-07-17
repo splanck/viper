@@ -37,6 +37,8 @@ static void dropdown_destroy(vg_widget_t *widget);
 static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h);
 static void dropdown_paint(vg_widget_t *widget, void *canvas);
 static void dropdown_paint_overlay(vg_widget_t *widget, void *canvas);
+static void dropdown_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height);
 static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool dropdown_can_focus(vg_widget_t *widget);
 
@@ -71,7 +73,8 @@ static vg_widget_vtable_t g_dropdown_vtable = {.destroy = dropdown_destroy,
                                                .paint_overlay = dropdown_paint_overlay,
                                                .handle_event = dropdown_handle_event,
                                                .can_focus = dropdown_can_focus,
-                                               .on_focus = NULL};
+                                               .on_focus = NULL,
+                                               .get_visual_bounds = dropdown_get_visual_bounds};
 
 /// @brief VTable destroy: releases input capture if held, frees all item strings, placeholder, and
 /// item array.
@@ -197,10 +200,12 @@ static int dropdown_find_typeahead_index(vg_dropdown_t *dd, uint32_t codepoint, 
 static void dropdown_emit_change(vg_dropdown_t *dd, int old_index) {
     if (!dd)
         return;
-    if (old_index != dd->selected_index && dd->on_change) {
+    if (old_index == dd->selected_index)
+        return;
+    vg_widget_note_change(&dd->base);
+    if (dd->on_change)
         dd->on_change(
             &dd->base, dd->selected_index, vg_dropdown_get_selected_text(dd), dd->on_change_data);
-    }
 }
 
 /// @brief Retrieves the screen bounds of the root ancestor widget, used as the usable viewport for
@@ -247,6 +252,45 @@ static void dropdown_resolve_panel_rect(vg_dropdown_t *dd,
         *out_panel_top = panel_top;
     if (out_panel_h)
         *out_panel_h = panel_h;
+}
+
+/// @brief Report the open dropdown panel's absolute rectangle for damage tracking.
+/// @details The trigger's arranged bounds are unioned by the widget core. This
+///          callback contributes only the floating panel, using the same placement,
+///          viewport-flip, width, and height calculations as paint and hit testing.
+/// @param widget Dropdown widget being queried.
+/// @param x Receives panel X, or zero when closed.
+/// @param y Receives panel Y, or zero when closed.
+/// @param width Receives panel width, or zero when closed.
+/// @param height Receives panel height, or zero when closed.
+static void dropdown_get_visual_bounds(
+    vg_widget_t *widget, float *x, float *y, float *width, float *height) {
+    if (x)
+        *x = 0.0f;
+    if (y)
+        *y = 0.0f;
+    if (width)
+        *width = 0.0f;
+    if (height)
+        *height = 0.0f;
+    vg_dropdown_t *dd = (vg_dropdown_t *)widget;
+    if (!dd || !dd->open || dd->item_count <= 0)
+        return;
+
+    float screen_x = 0.0f;
+    float screen_y = 0.0f;
+    vg_widget_get_screen_bounds(widget, &screen_x, &screen_y, NULL, NULL);
+    float panel_y = 0.0f;
+    float panel_h = 0.0f;
+    dropdown_resolve_panel_rect(dd, screen_x, screen_y, &panel_y, &panel_h);
+    if (x)
+        *x = screen_x;
+    if (y)
+        *y = panel_y;
+    if (width)
+        *width = dropdown_panel_width(dd, widget->width);
+    if (height)
+        *height = panel_h;
 }
 
 /// @brief Returns true if @p screen_x/screen_y falls within the open panel, writing the hit item
@@ -810,7 +854,9 @@ int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text) {
         return -1;
     dropdown->base.needs_layout = true;
     dropdown->base.needs_paint = true;
-    return dropdown->item_count++;
+    int index = dropdown->item_count++;
+    vg_widget_note_revision(&dropdown->base);
+    return index;
 }
 
 /// @brief Remove the item at the given index and adjust the selection.
@@ -847,6 +893,8 @@ void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index) {
         dropdown->hovered_index--;
     }
     dropdown_emit_change(dropdown, old_selected);
+    if (old_selected == dropdown->selected_index)
+        vg_widget_note_revision(&dropdown->base);
     dropdown->base.needs_layout = true;
     dropdown->base.needs_paint = true;
 }
@@ -859,6 +907,7 @@ void vg_dropdown_clear(vg_dropdown_t *dropdown) {
         return;
 
     int old_selected = dropdown->selected_index;
+    int old_count = dropdown->item_count;
 
     if (dropdown->open)
         dropdown_close(&dropdown->base, dropdown);
@@ -872,6 +921,8 @@ void vg_dropdown_clear(vg_dropdown_t *dropdown) {
     dropdown->hovered_index = -1;
     dropdown->scroll_y = 0.0f;
     dropdown_emit_change(dropdown, old_selected);
+    if (old_count > 0 && old_selected == dropdown->selected_index)
+        vg_widget_note_revision(&dropdown->base);
     dropdown->base.needs_layout = true;
     dropdown->base.needs_paint = true;
 }

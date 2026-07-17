@@ -279,6 +279,8 @@ the conceptual guide does not provide a class-specific section.
 | [`SplitPane`](../generated/runtime/gui.md#viper-gui-splitpane)            | Instance | Resizable split container                        |
 | [`TabBar`](../generated/runtime/gui.md#viper-gui-tabbar)                  | Instance | Tabbed container                                 |
 | [`TextInput`](../generated/runtime/gui.md#viper-gui-textinput)            | Instance | Single-line text entry                           |
+| [`Theme`](../generated/runtime/gui.md#viper-gui-theme)                    | Static   | Built-in, system-following, and custom themes    |
+| [`ThemePalette`](../generated/runtime/gui.md#viper-gui-themepalette)      | Instance | Validated logical theme token collection         |
 | [`Toast`](../generated/runtime/gui.md#viper-gui-toast)                             | Instance | Transient notification toasts                    |
 | [`Tooltip`](../generated/runtime/gui.md#viper-gui-tooltip)                         | Static   | Floating tooltip display                         |
 | [`TreeView`](../generated/runtime/gui.md#viper-gui-treeview)              | Instance | Hierarchical tree widget                         |

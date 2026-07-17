@@ -24,9 +24,12 @@
 //        lib/gui/include/vg_event.h
 //
 //===----------------------------------------------------------------------===//
+#include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -45,6 +48,7 @@ static void colorpicker_update_color_from_components(vg_colorpicker_t *picker);
 static void colorpicker_update_components_from_color(vg_colorpicker_t *picker);
 static void colorpicker_update_preview(vg_colorpicker_t *picker);
 static void colorpicker_emit_change(vg_colorpicker_t *picker, uint32_t old_color);
+static void colorpicker_update_accessible_value(vg_colorpicker_t *picker);
 
 //=============================================================================
 // ColorPicker VTable
@@ -69,14 +73,11 @@ static void on_slider_r_change(vg_widget_t *slider, float value, void *user_data
     if (!picker)
         return;
 
+    uint32_t old_color = picker->color;
     picker->r = (uint8_t)(value + 0.5f);
     colorpicker_update_color_from_components(picker);
-
-    colorpicker_update_preview(picker);
-
-    if (!picker->syncing_children && picker->on_change) {
-        picker->on_change(&picker->base, picker->color, picker->on_change_data);
-    }
+    if (!picker->syncing_children)
+        colorpicker_emit_change(picker, old_color);
 }
 
 /// @brief Internal G-slider callback — updates picker->g and fires on_change.
@@ -86,14 +87,11 @@ static void on_slider_g_change(vg_widget_t *slider, float value, void *user_data
     if (!picker)
         return;
 
+    uint32_t old_color = picker->color;
     picker->g = (uint8_t)(value + 0.5f);
     colorpicker_update_color_from_components(picker);
-
-    colorpicker_update_preview(picker);
-
-    if (!picker->syncing_children && picker->on_change) {
-        picker->on_change(&picker->base, picker->color, picker->on_change_data);
-    }
+    if (!picker->syncing_children)
+        colorpicker_emit_change(picker, old_color);
 }
 
 /// @brief Internal B-slider callback — updates picker->b and fires on_change.
@@ -103,14 +101,11 @@ static void on_slider_b_change(vg_widget_t *slider, float value, void *user_data
     if (!picker)
         return;
 
+    uint32_t old_color = picker->color;
     picker->b = (uint8_t)(value + 0.5f);
     colorpicker_update_color_from_components(picker);
-
-    colorpicker_update_preview(picker);
-
-    if (!picker->syncing_children && picker->on_change) {
-        picker->on_change(&picker->base, picker->color, picker->on_change_data);
-    }
+    if (!picker->syncing_children)
+        colorpicker_emit_change(picker, old_color);
 }
 
 /// @brief Internal A-slider callback — updates picker->a and fires on_change.
@@ -120,14 +115,11 @@ static void on_slider_a_change(vg_widget_t *slider, float value, void *user_data
     if (!picker)
         return;
 
+    uint32_t old_color = picker->color;
     picker->a = (uint8_t)(value + 0.5f);
     colorpicker_update_color_from_components(picker);
-
-    colorpicker_update_preview(picker);
-
-    if (!picker->syncing_children && picker->on_change) {
-        picker->on_change(&picker->base, picker->color, picker->on_change_data);
-    }
+    if (!picker->syncing_children)
+        colorpicker_emit_change(picker, old_color);
 }
 
 /// @brief Internal palette callback — forwards the selected colour to vg_colorpicker_set_color.
@@ -183,6 +175,7 @@ vg_colorpicker_t *vg_colorpicker_create(vg_widget_t *parent) {
     picker->on_change = NULL;
     picker->on_change_data = NULL;
     picker->syncing_children = false;
+    picker->active_channel = 0;
 
     // Create child widgets
 
@@ -238,6 +231,7 @@ vg_colorpicker_t *vg_colorpicker_create(vg_widget_t *parent) {
     // Set minimum size
     picker->base.constraints.min_width = 200.0f;
     picker->base.constraints.min_height = 150.0f;
+    colorpicker_update_accessible_value(picker);
 
     // Add to parent
     if (parent) {
@@ -380,38 +374,146 @@ static void colorpicker_arrange(vg_widget_t *widget, float x, float y, float wid
     }
 }
 
-/// @brief VTable paint: renders the HSV gradient square, hue strip, alpha strip, and preview
-/// swatches.
+/// @brief VTable paint: renders channel labels/value readouts and a high-contrast focus outline.
 static void colorpicker_paint(vg_widget_t *widget, void *canvas) {
     vg_colorpicker_t *picker = (vg_colorpicker_t *)widget;
-    (void)canvas;
-
-    // Draw labels if enabled
-    if (picker->show_labels && picker->font) {
-        float label_x = widget->x + 4.0f;
-        float label_y = widget->y + 4.0f + 16.0f; // Baseline
-
-        // Draw "R", "G", "B", "A" labels next to sliders
-        // In real implementation, use vg_font_draw_text
-        (void)label_x;
-        (void)label_y;
+    vg_theme_t *theme = vg_theme_get_current();
+    if (picker->font && (picker->show_labels || picker->show_values)) {
+        static const char *channel_names[] = {"R", "G", "B", "A"};
+        vg_slider_t *sliders[] = {
+            picker->slider_r, picker->slider_g, picker->slider_b, picker->slider_a};
+        unsigned values[] = {picker->r, picker->g, picker->b, picker->a};
+        int channel_count = picker->show_alpha ? 4 : 3;
+        vg_font_metrics_t metrics;
+        vg_font_get_metrics(picker->font, picker->font_size, &metrics);
+        for (int channel = 0; channel < channel_count; channel++) {
+            vg_slider_t *slider = sliders[channel];
+            if (!slider)
+                continue;
+            float baseline = slider->base.y +
+                             (slider->base.height - (float)metrics.line_height) * 0.5f +
+                             metrics.ascent;
+            uint32_t text_color = channel == picker->active_channel ? theme->colors.accent_primary
+                                                                    : theme->colors.fg_primary;
+            if (picker->show_labels) {
+                vg_font_draw_text(canvas,
+                                  picker->font,
+                                  picker->font_size,
+                                  widget->x + 4.0f,
+                                  baseline,
+                                  channel_names[channel],
+                                  text_color);
+            }
+            if (picker->show_values) {
+                char value[4];
+                (void)snprintf(value, sizeof(value), "%u", values[channel]);
+                vg_font_draw_text(canvas,
+                                  picker->font,
+                                  picker->font_size,
+                                  slider->base.x + slider->base.width + 6.0f,
+                                  baseline,
+                                  value,
+                                  text_color);
+            }
+        }
     }
-
-    // Draw numeric values if enabled
-    if (picker->show_values && picker->font) {
-        // Draw values after sliders
-        // In real implementation, use vg_font_draw_text
+    if ((widget->state & VG_STATE_FOCUSED) && widget->width > 0 && widget->height > 0) {
+        vgfx_rect((vgfx_window_t)canvas,
+                  (int32_t)widget->x,
+                  (int32_t)widget->y,
+                  (int32_t)widget->width,
+                  (int32_t)widget->height,
+                  theme->colors.border_focus);
     }
-
-    // Child widgets are painted automatically
 }
 
-/// @brief VTable handle_event: routes mouse drag on the gradient/hue/alpha areas to colour updates.
+/// @brief Return one channel component selected by keyboard navigation.
+/// @param picker Picker to inspect.
+/// @param channel Channel index from zero through three.
+/// @return Component value in [0,255], or zero for an invalid channel.
+static uint8_t colorpicker_channel_value(const vg_colorpicker_t *picker, int channel) {
+    if (!picker)
+        return 0;
+    switch (channel) {
+        case 0:
+            return picker->r;
+        case 1:
+            return picker->g;
+        case 2:
+            return picker->b;
+        case 3:
+            return picker->a;
+        default:
+            return 0;
+    }
+}
+
+/// @brief Set one keyboard-active channel through the normal synchronized APIs.
+/// @param picker Picker to update.
+/// @param channel Channel index from zero through three.
+/// @param value New component value in [0,255].
+static void colorpicker_set_channel_value(vg_colorpicker_t *picker, int channel, uint8_t value) {
+    if (!picker)
+        return;
+    if (channel == 3) {
+        vg_colorpicker_set_alpha(picker, value);
+        return;
+    }
+    uint8_t r = picker->r;
+    uint8_t g = picker->g;
+    uint8_t b = picker->b;
+    if (channel == 0)
+        r = value;
+    else if (channel == 1)
+        g = value;
+    else if (channel == 2)
+        b = value;
+    else
+        return;
+    vg_colorpicker_set_rgb(picker, r, g, b);
+}
+
+/// @brief VTable handle_event: navigate and edit RGB(A) channels from the keyboard.
 static bool colorpicker_handle_event(vg_widget_t *widget, vg_event_t *event) {
-    (void)widget;
-    (void)event;
-    // Events are handled by child widgets (sliders, palette)
-    return false;
+    vg_colorpicker_t *picker = (vg_colorpicker_t *)widget;
+    if (!widget->enabled || !event || event->type != VG_EVENT_KEY_DOWN)
+        return false;
+    int channel_count = picker->show_alpha ? 4 : 3;
+    if (event->key.key == VG_KEY_UP || event->key.key == VG_KEY_DOWN) {
+        int delta = event->key.key == VG_KEY_UP ? -1 : 1;
+        int next = picker->active_channel + delta;
+        if (next < 0)
+            next = channel_count - 1;
+        if (next >= channel_count)
+            next = 0;
+        if (next != picker->active_channel) {
+            picker->active_channel = next;
+            widget->needs_paint = true;
+            vg_widget_note_revision(widget);
+        }
+        event->handled = true;
+        return true;
+    }
+    uint8_t old_value = colorpicker_channel_value(picker, picker->active_channel);
+    int value = old_value;
+    int step = (event->modifiers & VG_MOD_SHIFT) != 0 ? 10 : 1;
+    if (event->key.key == VG_KEY_LEFT)
+        value -= step;
+    else if (event->key.key == VG_KEY_RIGHT)
+        value += step;
+    else if (event->key.key == VG_KEY_HOME)
+        value = 0;
+    else if (event->key.key == VG_KEY_END)
+        value = 255;
+    else
+        return false;
+    if (value < 0)
+        value = 0;
+    if (value > 255)
+        value = 255;
+    colorpicker_set_channel_value(picker, picker->active_channel, (uint8_t)value);
+    event->handled = true;
+    return true;
 }
 
 /// @brief VTable can_focus: returns true when the widget is both enabled and visible.
@@ -443,6 +545,17 @@ static void colorpicker_update_preview(vg_colorpicker_t *picker) {
         vg_colorswatch_set_color(picker->preview, picker->color);
 }
 
+/// @brief Refresh the picker's semantic color value for accessibility bridges.
+/// @param picker Picker whose RGB and alpha components should be described.
+static void colorpicker_update_accessible_value(vg_colorpicker_t *picker) {
+    if (!picker)
+        return;
+    char value[48];
+    (void)snprintf(
+        value, sizeof(value), "#%06X alpha %u", picker->color & 0x00FFFFFFu, (unsigned)picker->a);
+    vg_widget_set_accessible_value(&picker->base, value);
+}
+
 /// @brief Synchronise all slider positions to the current r/g/b/a component values.
 static void colorpicker_sync_sliders(vg_colorpicker_t *picker, bool sync_alpha) {
     if (!picker)
@@ -465,8 +578,12 @@ static void colorpicker_emit_change(vg_colorpicker_t *picker, uint32_t old_color
         return;
     colorpicker_update_preview(picker);
     picker->base.needs_paint = true;
-    if (old_color != picker->color && picker->on_change)
-        picker->on_change(&picker->base, picker->color, picker->on_change_data);
+    if (old_color != picker->color) {
+        colorpicker_update_accessible_value(picker);
+        vg_widget_note_change(&picker->base);
+        if (picker->on_change)
+            picker->on_change(&picker->base, picker->color, picker->on_change_data);
+    }
 }
 
 //=============================================================================
@@ -573,15 +690,25 @@ uint8_t vg_colorpicker_get_alpha(vg_colorpicker_t *picker) {
 /// @param picker The color picker to configure.
 /// @param show   true to display the alpha slider; false to hide it.
 void vg_colorpicker_show_alpha(vg_colorpicker_t *picker, bool show) {
-    if (!picker)
+    if (!picker || picker->show_alpha == show)
         return;
 
     picker->show_alpha = show;
     if (picker->slider_a) {
         vg_widget_set_visible(&picker->slider_a->base, show);
     }
+    if (!show && picker->active_channel == 3)
+        picker->active_channel = 0;
     picker->base.needs_layout = true;
     picker->base.needs_paint = true;
+    vg_widget_note_revision(&picker->base);
+}
+
+/// @brief Return whether alpha-channel editing is enabled.
+/// @param picker Picker to inspect.
+/// @return true when the alpha slider is enabled and visible.
+bool vg_colorpicker_is_alpha_enabled(const vg_colorpicker_t *picker) {
+    return picker ? picker->show_alpha : false;
 }
 
 /// @brief Show or hide the quick-access 16-colour palette row.
@@ -589,7 +716,7 @@ void vg_colorpicker_show_alpha(vg_colorpicker_t *picker, bool show) {
 /// @param picker The color picker to configure.
 /// @param show   true to display the palette; false to hide it.
 void vg_colorpicker_show_palette(vg_colorpicker_t *picker, bool show) {
-    if (!picker)
+    if (!picker || picker->show_palette == show)
         return;
 
     picker->show_palette = show;
@@ -598,6 +725,7 @@ void vg_colorpicker_show_palette(vg_colorpicker_t *picker, bool show) {
     }
     picker->base.needs_layout = true;
     picker->base.needs_paint = true;
+    vg_widget_note_revision(&picker->base);
 }
 
 /// @brief Register a callback invoked whenever the picker's colour changes.
@@ -625,7 +753,11 @@ void vg_colorpicker_set_font(vg_colorpicker_t *picker, vg_font_t *font, float si
     if (!picker)
         return;
 
+    float normalized = isfinite(size) && size > 0 ? size : 12.0f;
+    if (picker->font == font && picker->font_size == normalized)
+        return;
     picker->font = font;
-    picker->font_size = size > 0 ? size : 12.0f;
+    picker->font_size = normalized;
     picker->base.needs_paint = true;
+    vg_widget_note_revision(&picker->base);
 }

@@ -115,6 +115,9 @@ static constexpr const char *kMacLibSystemExact[] = {
     "cxa_finalize",
     "cxa_finalize_ranges",
     "cxa_thread_atexit",
+    "memset_pattern4",
+    "memset_pattern8",
+    "memset_pattern16",
     nullptr,
 };
 static constexpr const char *kMacCoreFoundationPrefixes[] = {"CF", "kCF", nullptr};
@@ -151,15 +154,15 @@ static constexpr const char *kMacFoundationPrefixes[] = {
 static constexpr const char *kMacFoundationExact[] = {
     "NSLog", "NSSearchPathForDirectoriesInDomains", nullptr};
 static constexpr const char *kMacAppKitPrefixes[] = {
-    "NSApp",        "NSApplication",  "NSWindow",      "NSView",
-    "NSColor",      "NSEvent",        "NSCursor",      "NSGraphicsContext",
-    "NSOpenGL",     "NSMenu",         "NSMenuItem",    "NSScreen",
-    "NSImage",      "NSFont",         "NSResponder",   "NSPanel",
-    "NSPasteboard", "NSText",         "NSControl",     "NSButton",
-    "NSScroll",     "NSTable",        "NSOutline",     "NSBezierPath",
-    "NSMake",       "NSRect",         "NSPoint",       "NSSize",
-    "NSDrag",       "NSBackingStore", "NSWindowStyle", "NSApplicationActivationPolicy",
-    nullptr,
+    "NSApp",           "NSApplication",  "NSWindow",      "NSView",
+    "NSColor",         "NSEvent",        "NSCursor",      "NSGraphicsContext",
+    "NSOpenGL",        "NSMenu",         "NSMenuItem",    "NSScreen",
+    "NSImage",         "NSFont",         "NSResponder",   "NSPanel",
+    "NSPasteboard",    "NSText",         "NSControl",     "NSButton",
+    "NSScroll",        "NSTable",        "NSOutline",     "NSBezierPath",
+    "NSMake",          "NSRect",         "NSPoint",       "NSSize",
+    "NSDrag",          "NSBackingStore", "NSWindowStyle", "NSApplicationActivationPolicy",
+    "NSAccessibility", nullptr,
 };
 static constexpr const char *kMacAppKitExact[] = {
     "NSEdgeInsetsZero", "NSZeroPoint", "NSZeroRect", "NSZeroSize", nullptr};

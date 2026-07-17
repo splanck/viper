@@ -26,6 +26,8 @@
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
+#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -38,6 +40,7 @@ static void colorswatch_measure(vg_widget_t *widget, float available_width, floa
 static void colorswatch_paint(vg_widget_t *widget, void *canvas);
 static bool colorswatch_handle_event(vg_widget_t *widget, vg_event_t *event);
 static bool colorswatch_can_focus(vg_widget_t *widget);
+static void colorswatch_update_accessible_value(vg_colorswatch_t *swatch);
 
 //=============================================================================
 // ColorSwatch VTable
@@ -55,16 +58,28 @@ static vg_widget_vtable_t g_colorswatch_vtable = {.destroy = colorswatch_destroy
 // Helper: Draw checkerboard pattern for transparency
 //=============================================================================
 
-/// @brief Paint an alternating grey checkerboard into a rectangular region to indicate
-/// transparency.
-static void draw_checkerboard(void *canvas, float x, float y, float w, float h, int check_size) {
+/// @brief Paint a color alpha-composited over an alternating checkerboard.
+/// @details Each checker cell is blended in software so translucent colors remain visually
+///          distinct even though the rectangle primitive itself is opaque.
+/// @param canvas Target canvas.
+/// @param x Left coordinate.
+/// @param y Top coordinate.
+/// @param w Width in pixels.
+/// @param h Height in pixels.
+/// @param check_size Checker cell size in pixels.
+/// @param rgb Foreground RGB color.
+/// @param alpha Foreground opacity in [0,255].
+static void draw_checkerboard(
+    void *canvas, float x, float y, float w, float h, int check_size, uint32_t rgb, uint8_t alpha) {
     vgfx_window_t win = (vgfx_window_t)canvas;
     if (check_size <= 0)
         check_size = 8;
 
     for (int cy = 0; cy * check_size < (int)h; cy++) {
         for (int cx = 0; cx * check_size < (int)w; cx++) {
-            uint32_t color = ((cx + cy) % 2 == 0) ? 0x00AAAAAA : 0x00888888;
+            uint32_t checker = ((cx + cy) % 2 == 0) ? 0xFFAAAAAA : 0xFF888888;
+            uint32_t color =
+                vg_color_blend(checker, 0xFF000000u | (rgb & 0x00FFFFFFu), (float)alpha / 255.0f);
             int rx = (int)x + cx * check_size;
             int ry = (int)y + cy * check_size;
             int rw = check_size;
@@ -123,6 +138,7 @@ vg_colorswatch_t *vg_colorswatch_create(vg_widget_t *parent, uint32_t color) {
     swatch->base.constraints.min_height = swatch->size;
     swatch->base.constraints.preferred_width = swatch->size;
     swatch->base.constraints.preferred_height = swatch->size;
+    colorswatch_update_accessible_value(swatch);
 
     // Add to parent
     if (parent) {
@@ -177,25 +193,46 @@ static void colorswatch_paint(vg_widget_t *widget, void *canvas) {
     int32_t y = (int32_t)widget->y;
     int32_t w = (int32_t)widget->width;
     int32_t h = (int32_t)widget->height;
+    if (w <= 0 || h <= 0)
+        return;
+    vg_theme_t *theme = vg_theme_get_current();
+    uint32_t border_color = theme ? theme->colors.border_primary : swatch->border_color;
+    uint32_t selected_border = theme ? theme->colors.border_focus : swatch->selected_border;
 
     // Get alpha component (color is stored as AARRGGBB)
     uint8_t alpha = (swatch->color >> 24) & 0xFF;
 
     // If color has transparency, draw checkerboard first
     if (alpha < 255) {
-        draw_checkerboard(canvas, widget->x, widget->y, widget->width, widget->height, 4);
+        draw_checkerboard(
+            canvas, widget->x, widget->y, widget->width, widget->height, 4, swatch->color, alpha);
+    } else {
+        vgfx_fill_rect(win, x, y, w, h, 0xFF000000u | (swatch->color & 0x00FFFFFFu));
     }
-
-    // Draw color fill — vgfx ignores top byte, so AARRGGBB works as-is
-    vgfx_fill_rect(win, x, y, w, h, swatch->color & 0x00FFFFFF);
 
     // Draw border
     if (swatch->show_border) {
-        uint32_t border = swatch->selected ? swatch->selected_border : swatch->border_color;
+        uint32_t border = swatch->selected ? selected_border : border_color;
         if (widget->state & VG_STATE_HOVERED)
-            border = swatch->selected_border;
+            border = selected_border;
         vgfx_rect(win, x, y, w, h, border);
     }
+    if (widget->state & VG_STATE_FOCUSED)
+        vgfx_rect(win, x - 2, y - 2, w + 4, h + 4, selected_border);
+}
+
+/// @brief Commit one swatch activation from pointer or keyboard input.
+/// @details Selection state is committed before callbacks so observers see the new state. Generic
+///          click polling remains independent through the widget event layer.
+/// @param swatch Swatch to activate.
+static void colorswatch_activate(vg_colorswatch_t *swatch) {
+    if (!swatch)
+        return;
+    vg_colorswatch_set_selected(swatch, true);
+    if (swatch->on_select)
+        swatch->on_select(&swatch->base, swatch->color, swatch->on_select_data);
+    if (swatch->base.on_click)
+        swatch->base.on_click(&swatch->base, swatch->base.callback_data);
 }
 
 /// @brief VTable handle_event: fires on_click callback on click and on Space/Enter key when
@@ -208,14 +245,14 @@ static bool colorswatch_handle_event(vg_widget_t *widget, vg_event_t *event) {
     }
 
     if (event->type == VG_EVENT_CLICK) {
-        // Call selection callback
-        if (swatch->on_select) {
-            swatch->on_select(widget, swatch->color, swatch->on_select_data);
-        }
-        // Also call widget's generic on_click if set
-        if (widget->on_click) {
-            widget->on_click(widget, widget->callback_data);
-        }
+        colorswatch_activate(swatch);
+        event->handled = true;
+        return true;
+    }
+    if (event->type == VG_EVENT_KEY_DOWN &&
+        (event->key.key == VG_KEY_SPACE || event->key.key == VG_KEY_ENTER)) {
+        colorswatch_activate(swatch);
+        event->handled = true;
         return true;
     }
 
@@ -225,6 +262,23 @@ static bool colorswatch_handle_event(vg_widget_t *widget, vg_event_t *event) {
 /// @brief VTable can_focus: returns true when the widget is both enabled and visible.
 static bool colorswatch_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
+}
+
+/// @brief Refresh the swatch's headless/native accessible value.
+/// @details Opaque colors use `#RRGGBB`; translucent colors append their numeric alpha channel.
+///          Allocation failure inside semantic storage leaves the prior value intact.
+/// @param swatch Swatch whose current color is described.
+static void colorswatch_update_accessible_value(vg_colorswatch_t *swatch) {
+    if (!swatch)
+        return;
+    char value[40];
+    uint8_t alpha = (uint8_t)(swatch->color >> 24);
+    if (alpha == 255)
+        (void)snprintf(value, sizeof(value), "#%06X", swatch->color & 0x00FFFFFFu);
+    else
+        (void)snprintf(
+            value, sizeof(value), "#%06X alpha %u", swatch->color & 0x00FFFFFFu, (unsigned)alpha);
+    vg_widget_set_accessible_value(&swatch->base, value);
 }
 
 //=============================================================================
@@ -238,9 +292,13 @@ static bool colorswatch_can_focus(vg_widget_t *widget) {
 void vg_colorswatch_set_color(vg_colorswatch_t *swatch, uint32_t color) {
     if (!swatch)
         return;
+    if (swatch->color == color)
+        return;
 
     swatch->color = color;
     swatch->base.needs_paint = true;
+    colorswatch_update_accessible_value(swatch);
+    vg_widget_note_change(&swatch->base);
 }
 
 /// @brief Return the AARRGGBB colour currently displayed by the swatch.
@@ -260,6 +318,8 @@ uint32_t vg_colorswatch_get_color(vg_colorswatch_t *swatch) {
 void vg_colorswatch_set_selected(vg_colorswatch_t *swatch, bool selected) {
     if (!swatch)
         return;
+    if (swatch->selected == selected)
+        return;
 
     swatch->selected = selected;
     if (selected) {
@@ -268,6 +328,7 @@ void vg_colorswatch_set_selected(vg_colorswatch_t *swatch, bool selected) {
         swatch->base.state &= ~VG_STATE_SELECTED;
     }
     swatch->base.needs_paint = true;
+    vg_widget_note_change(&swatch->base);
 }
 
 /// @brief Return true if the swatch is currently selected.
@@ -301,7 +362,7 @@ void vg_colorswatch_set_on_select(vg_colorswatch_t *swatch,
 /// @param swatch The color swatch to resize.
 /// @param size   Desired size in logical pixels; values ≤ 0 are ignored.
 void vg_colorswatch_set_size(vg_colorswatch_t *swatch, float size) {
-    if (!swatch || size <= 0)
+    if (!swatch || !isfinite(size) || size <= 0 || swatch->size == size)
         return;
 
     swatch->size = size;
@@ -311,4 +372,5 @@ void vg_colorswatch_set_size(vg_colorswatch_t *swatch, float size) {
     swatch->base.constraints.preferred_height = size;
     swatch->base.needs_layout = true;
     swatch->base.needs_paint = true;
+    vg_widget_note_revision(&swatch->base);
 }

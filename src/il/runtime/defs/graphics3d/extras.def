@@ -825,6 +825,18 @@ RT_FUNC(VideoWidgetPlay,      rt_videowidget_play,             "Viper.GUI.VideoW
 RT_FUNC(VideoWidgetPause,     rt_videowidget_pause,            "Viper.GUI.VideoWidget.Pause",          "void(obj)")
 RT_FUNC(VideoWidgetStop,      rt_videowidget_stop,             "Viper.GUI.VideoWidget.Stop",           "void(obj)")
 RT_FUNC(VideoWidgetUpdate,    rt_videowidget_update,           "Viper.GUI.VideoWidget.Update",         "void(obj,f64)")
+RT_FUNC(VideoWidgetSetAutoUpdate, rt_videowidget_set_auto_update, "Viper.GUI.VideoWidget.SetAutoUpdate", "void(obj,i1)")
+RT_FUNC(VideoWidgetIsAutoUpdate, rt_videowidget_is_auto_update, "Viper.GUI.VideoWidget.IsAutoUpdate",   "i1(obj)")
+RT_FUNC(VideoWidgetWasLoaded, rt_videowidget_was_loaded,       "Viper.GUI.VideoWidget.WasLoaded",      "i1(obj)")
+RT_FUNC(VideoWidgetWasFailed, rt_videowidget_was_failed,       "Viper.GUI.VideoWidget.WasFailed",      "i1(obj)")
+RT_FUNC(VideoWidgetWasBuffering, rt_videowidget_was_buffering_changed, "Viper.GUI.VideoWidget.WasBufferingChanged", "i1(obj)")
+RT_FUNC(VideoWidgetWasEnded,  rt_videowidget_was_ended,        "Viper.GUI.VideoWidget.WasEnded",       "i1(obj)")
+RT_FUNC(VideoWidgetWasSeeked, rt_videowidget_was_seeked,       "Viper.GUI.VideoWidget.WasSeeked",      "i1(obj)")
+RT_FUNC(VideoWidgetGetError,  rt_videowidget_get_error,        "Viper.GUI.VideoWidget.GetError",       "str(obj)")
+RT_FUNC(VideoWidgetGetRevision, rt_videowidget_get_revision,   "Viper.GUI.VideoWidget.GetRevision",    "i64(obj)")
+RT_FUNC(VideoWidgetSetAutoHide, rt_videowidget_set_controls_auto_hide, "Viper.GUI.VideoWidget.SetControlsAutoHide", "void(obj,i1)")
+RT_FUNC(VideoWidgetSetFullscreen, rt_videowidget_set_fullscreen, "Viper.GUI.VideoWidget.SetFullscreen", "void(obj,i1)")
+RT_FUNC(VideoWidgetIsFullscreen, rt_videowidget_is_fullscreen, "Viper.GUI.VideoWidget.IsFullscreen",   "i1(obj)")
 RT_FUNC(VideoWidgetSetCtrl,   rt_videowidget_set_show_controls,"Viper.GUI.VideoWidget.set_ShowControls","void(obj,i1)")
 RT_FUNC(VideoWidgetSetLoop,   rt_videowidget_set_loop,         "Viper.GUI.VideoWidget.set_Loop",       "void(obj,i1)")
 RT_FUNC(VideoWidgetGetCtrl,   rt_videowidget_get_show_controls,"Viper.GUI.VideoWidget.get_ShowControls","i1(obj)")
@@ -847,8 +859,9 @@ RT_FUNC(VideoWidgetAddChild,  rt_videowidget_add_child,        "Viper.GUI.VideoW
 /// @summary Provides Video Widget functionality for graphical user interfaces.
 /// @details
 /// Create `Viper.GUI.VideoWidget` values through its registered constructor and use the returned
-/// object with the instance members below. Its public surface exposes properties such as `Root`,
-/// `ShowControls`, `Loop` and operations including `Destroy`, `Play`, `Pause`, `Stop`.
+/// object with the instance members below. App scheduling is enabled by default, manual updates
+/// remain compatible, frame storage is reused, and independent load/failure/buffering/end/seek
+/// edges can be consumed without changing the non-consuming revision.
 RT_CLASS_BEGIN("Viper.GUI.VideoWidget", VideoWidget, "obj", VideoWidgetNew)
     RT_PROP("Root", "obj<Viper.GUI.Widget>", VideoWidgetGetRoot, none)
     RT_METHOD("Destroy", "void()", VideoWidgetDestroy)
@@ -856,6 +869,18 @@ RT_CLASS_BEGIN("Viper.GUI.VideoWidget", VideoWidget, "obj", VideoWidgetNew)
     RT_METHOD("Pause", "void()", VideoWidgetPause)
     RT_METHOD("Stop", "void()", VideoWidgetStop)
     RT_METHOD("Update", "void(f64)", VideoWidgetUpdate)
+    RT_METHOD("SetAutoUpdate", "void(i1)", VideoWidgetSetAutoUpdate)
+    RT_METHOD("IsAutoUpdate", "i1()", VideoWidgetIsAutoUpdate)
+    RT_METHOD("WasLoaded", "i1()", VideoWidgetWasLoaded)
+    RT_METHOD("WasFailed", "i1()", VideoWidgetWasFailed)
+    RT_METHOD("WasBufferingChanged", "i1()", VideoWidgetWasBuffering)
+    RT_METHOD("WasEnded", "i1()", VideoWidgetWasEnded)
+    RT_METHOD("WasSeeked", "i1()", VideoWidgetWasSeeked)
+    RT_METHOD("GetError", "str()", VideoWidgetGetError)
+    RT_METHOD("GetRevision", "i64()", VideoWidgetGetRevision)
+    RT_METHOD("SetControlsAutoHide", "void(i1)", VideoWidgetSetAutoHide)
+    RT_METHOD("SetFullscreen", "void(i1)", VideoWidgetSetFullscreen)
+    RT_METHOD("IsFullscreen", "i1()", VideoWidgetIsFullscreen)
     RT_METHOD("SetVolume", "void(f64)", VideoWidgetSetVol)
     RT_METHOD("SetVisible", "void(i1)", VideoWidgetSetVisible)
     RT_METHOD("SetEnabled", "void(i1)", VideoWidgetSetEnabled)

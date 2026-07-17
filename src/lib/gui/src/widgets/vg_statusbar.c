@@ -987,6 +987,26 @@ void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone) {
     sb->base.needs_paint = true;
 }
 
+/// @brief Unlink and free one exact retained StatusBar item record.
+/// @details The candidate is dereferenced only after an address match in the owner's retirement
+///          chain, making foreign and already reclaimed pointers harmless.
+bool vg_statusbar_reclaim_retired_item(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
+    if (!sb || !item)
+        return false;
+    vg_statusbar_item_t **link = &sb->retired_items;
+    while (*link) {
+        vg_statusbar_item_t *candidate = *link;
+        if (candidate == item) {
+            *link = candidate->retired_next;
+            candidate->retired_next = NULL;
+            free_item(candidate);
+            return true;
+        }
+        link = &candidate->retired_next;
+    }
+    return false;
+}
+
 /// @brief Replace the text of a status bar item, triggering a layout invalidation.
 ///
 /// @param item The item to update; may be NULL.

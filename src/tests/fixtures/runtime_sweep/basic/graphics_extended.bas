@@ -47,6 +47,34 @@
 ' COVER: Viper.Graphics.Camera.ToScreenY
 ' COVER: Viper.Graphics.Camera.ToWorldX
 ' COVER: Viper.Graphics.Camera.ToWorldY
+' COVER: Viper.GUI.Align.Start
+' COVER: Viper.GUI.Justify.SpaceEvenly
+' COVER: Viper.GUI.FlexDirection.Column
+' COVER: Viper.GUI.FlexWrap.WrapReverse
+' COVER: Viper.GUI.Dock.Fill
+' COVER: Viper.GUI.ThemeMode.Custom
+' COVER: Viper.GUI.AccessibleRole.Link
+' COVER: Viper.GUI.LiveRegionMode.Assertive
+' COVER: Viper.GUI.DialogButtonRole.Help
+' COVER: Viper.GUI.DialogStatus.Failed
+' COVER: Viper.GUI.ImageFilter.Bilinear
+' COVER: Viper.GUI.SortDirection.Descending
+
+'=============================================================================
+' Test typed GUI constant properties without constructing a GUI App
+'=============================================================================
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.Align.Start, 0, "GUI.Align.Start")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.Justify.SpaceEvenly, 5, "GUI.Justify.SpaceEvenly")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.FlexDirection.Column, 1, "GUI.FlexDirection.Column")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.FlexWrap.WrapReverse, 2, "GUI.FlexWrap.WrapReverse")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.Dock.Fill, 4, "GUI.Dock.Fill")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.ThemeMode.Custom, 3, "GUI.ThemeMode.Custom")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.AccessibleRole.Link, 30, "GUI.AccessibleRole.Link")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.LiveRegionMode.Assertive, 2, "GUI.LiveRegion.Assertive")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.DialogButtonRole.Help, 6, "GUI.DialogButtonRole.Help")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.DialogStatus.Failed, 4, "GUI.DialogStatus.Failed")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.ImageFilter.Bilinear, 1, "GUI.ImageFilter.Bilinear")
+Viper.Core.Diagnostics.AssertEq(Viper.GUI.SortDirection.Descending, -1, "GUI.Sort.Descending")
 
 '=============================================================================
 ' Test Color Extended Methods

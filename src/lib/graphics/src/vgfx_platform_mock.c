@@ -688,6 +688,82 @@ void vgfx_mock_inject_text_input(vgfx_window_t window, uint32_t codepoint) {
     mock_pending_enqueue(platform, &event);
 }
 
+/// @brief Build and enqueue one mock composition lifecycle event.
+/// @details This shared helper applies the production inline UTF-8 bound and metadata rules before
+///          placing the value in the deterministic pending queue.
+/// @param window Mock window receiving the event.
+/// @param type Composition lifecycle discriminator.
+/// @param text Borrowed NUL-terminated UTF-8 text; NULL becomes empty.
+/// @param selection_start Preedit selection start in codepoints.
+/// @param selection_length Preedit selected codepoint count.
+/// @param replacement_start Committed codepoint start, or -1 for current selection.
+/// @param replacement_length Committed codepoint count, or -1 with sentinel start.
+static void mock_inject_composition(vgfx_window_t window,
+                                    vgfx_event_type_t type,
+                                    const char *text,
+                                    int32_t selection_start,
+                                    int32_t selection_length,
+                                    int32_t replacement_start,
+                                    int32_t replacement_length) {
+    struct vgfx_window *win = (struct vgfx_window *)window;
+    if (!win)
+        return;
+    vgfx_mock_platform *platform = (vgfx_mock_platform *)win->platform_data;
+    if (!platform)
+        return;
+    const char *safe_text = text ? text : "";
+    vgfx_event_t event;
+    if (!vgfx_internal_init_composition_event(&event,
+                                              type,
+                                              g_mock_time_ms,
+                                              safe_text,
+                                              strlen(safe_text),
+                                              selection_start,
+                                              selection_length,
+                                              replacement_start,
+                                              replacement_length,
+                                              0))
+        return;
+    mock_pending_enqueue(platform, &event);
+}
+
+/// @brief Inject the beginning of a deterministic native IME session.
+/// @param window Mock window receiving the event.
+/// @param replacement_start Committed-text codepoint boundary, or -1 for current selection.
+/// @param replacement_length Committed-text codepoint count, or -1 with sentinel start.
+void vgfx_mock_inject_composition_start(vgfx_window_t window,
+                                        int32_t replacement_start,
+                                        int32_t replacement_length) {
+    mock_inject_composition(
+        window, VGFX_EVENT_COMPOSITION_START, "", 0, 0, replacement_start, replacement_length);
+}
+
+/// @brief Inject a native IME preedit text and internal selection update.
+/// @param window Mock window receiving the event.
+/// @param text Borrowed NUL-terminated UTF-8 preedit; NULL becomes empty.
+/// @param selection_start Preedit caret/selection start in Unicode codepoints.
+/// @param selection_length Selected preedit codepoint count.
+void vgfx_mock_inject_composition_update(vgfx_window_t window,
+                                         const char *text,
+                                         int32_t selection_start,
+                                         int32_t selection_length) {
+    mock_inject_composition(
+        window, VGFX_EVENT_COMPOSITION_UPDATE, text, selection_start, selection_length, -1, -1);
+}
+
+/// @brief Inject one atomic native IME commit value.
+/// @param window Mock window receiving the event.
+/// @param text Borrowed NUL-terminated UTF-8 commit; NULL becomes empty.
+void vgfx_mock_inject_composition_commit(vgfx_window_t window, const char *text) {
+    mock_inject_composition(window, VGFX_EVENT_COMPOSITION_COMMIT, text, 0, 0, -1, -1);
+}
+
+/// @brief Inject cancellation of the active native IME session.
+/// @param window Mock window receiving the event.
+void vgfx_mock_inject_composition_cancel(vgfx_window_t window) {
+    mock_inject_composition(window, VGFX_EVENT_COMPOSITION_CANCEL, "", 0, 0, -1, -1);
+}
+
 void vgfx_mock_inject_scroll(vgfx_window_t window, float dx, float dy, int32_t x, int32_t y) {
     struct vgfx_window *win = (struct vgfx_window *)window;
     if (!win)

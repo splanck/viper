@@ -119,6 +119,16 @@ vg_menu_item_t *vg_contextmenu_add_separator(vg_contextmenu_t *menu);
 /// @param menu Context menu.
 void vg_contextmenu_clear(vg_contextmenu_t *menu);
 
+/// @brief Reclaim one specific retired context-menu item tombstone.
+/// @details Unlinks and frees @p item only when it is present in the live menu's retired-item
+///          chain. Managed runtimes call this after the last wrapper disappears. Live items,
+///          foreign addresses, NULL inputs, and already reclaimed items return false without
+///          mutation. Any submenu owned by the item was already detached during retirement.
+/// @param menu Live context menu that owns the tombstone.
+/// @param item Candidate retired item record.
+/// @return true when the exact tombstone was reclaimed, otherwise false.
+bool vg_contextmenu_reclaim_retired_item(vg_contextmenu_t *menu, vg_menu_item_t *item);
+
 /// @brief Enable or disable a menu item (greyed out when disabled).
 /// @param item    Menu item.
 /// @param enabled true to make the item interactive.
@@ -211,6 +221,10 @@ typedef struct vg_tree_node {
     struct vg_treeview *owner;   ///< Owning tree while node is live
     char *text;                  ///< Node text (owned)
     size_t text_len;             ///< Node text length in bytes
+    char *icon_text;             ///< Optional UTF-8 icon text rendered before the label (owned)
+    size_t icon_text_len;        ///< Icon-text length in bytes
+    char *stable_id;             ///< Optional application-stable identifier (owned)
+    size_t stable_id_len;        ///< Stable-identifier length in bytes
     void *user_data;             ///< User data associated with node
     bool owns_user_data;         ///< True when user_data is owned and should be freed
     bool expanded;               ///< Is node expanded
@@ -264,6 +278,55 @@ typedef void (*vg_tree_load_children_callback_t)(struct vg_treeview *tree,
                                                  vg_tree_node_t *node,
                                                  void *user_data);
 
+/// @brief Borrowed display data for one row supplied by an external virtual-tree model.
+/// @details String storage remains owned by the provider and only needs to stay valid until the
+///          provider callback returns. Depth is expressed in logical tree levels, not pixels.
+typedef struct vg_treeview_virtual_row {
+    const char *text;  ///< Borrowed UTF-8 row label; NULL renders as an empty label.
+    size_t depth;      ///< Zero-based indentation level.
+    bool expanded;     ///< Whether descendants are currently visible.
+    bool has_children; ///< Whether the row offers an expand/collapse affordance.
+    bool loading;      ///< Whether lazy children are currently being populated.
+} vg_treeview_virtual_row_t;
+
+/// @brief Populate one viewport row from an external virtual-tree model.
+/// @details The callback is invoked only for rows intersecting the viewport plus at most two
+///          safety rows. It must not mutate or destroy the TreeView during the call.
+/// @param tree TreeView requesting data.
+/// @param index Zero-based index in the model's current flattened visible order.
+/// @param out_row Descriptor to initialize with borrowed row data.
+/// @param user_data Opaque model-owned pointer supplied when binding.
+/// @return true when @p out_row was populated; false renders an empty placeholder row.
+typedef bool (*vg_treeview_virtual_provider_t)(struct vg_treeview *tree,
+                                               size_t index,
+                                               vg_treeview_virtual_row_t *out_row,
+                                               void *user_data);
+
+/// @brief User action emitted by a virtual TreeView to its external model.
+typedef enum vg_treeview_virtual_action {
+    VG_TREEVIEW_VIRTUAL_SELECT,   ///< Make the indexed row the model selection.
+    VG_TREEVIEW_VIRTUAL_TOGGLE,   ///< Toggle the indexed row's expanded state.
+    VG_TREEVIEW_VIRTUAL_ACTIVATE, ///< Activate the indexed row.
+    VG_TREEVIEW_VIRTUAL_PARENT    ///< Select the indexed row's visible parent when available.
+} vg_treeview_virtual_action_t;
+
+/// @brief Deliver pointer or keyboard interaction from a virtual TreeView to its model.
+/// @param tree TreeView that received the interaction.
+/// @param index Current visible-row index targeted by the action.
+/// @param action Semantic action requested by the user.
+/// @param user_data Opaque model-owned pointer supplied when binding.
+typedef void (*vg_treeview_virtual_action_callback_t)(struct vg_treeview *tree,
+                                                      size_t index,
+                                                      vg_treeview_virtual_action_t action,
+                                                      void *user_data);
+
+/// @brief Notify an external model that its non-owning TreeView binding is being detached.
+/// @details Called at most once for each successful binding, before explicit clearing,
+///          replacement, legacy structural mutation, or TreeView destruction.
+/// @param tree TreeView being detached; valid only for the callback duration.
+/// @param user_data Opaque model-owned pointer supplied when binding.
+typedef void (*vg_treeview_virtual_unbind_callback_t)(struct vg_treeview *tree, void *user_data);
+
 /// @brief TreeView widget structure
 typedef struct vg_treeview {
     vg_widget_t base;
@@ -274,8 +337,12 @@ typedef struct vg_treeview {
     vg_tree_node_t *retired_nodes;        ///< Detached stale node subtrees freed on tree destroy
     uint64_t selection_revision;          ///< Incremented whenever logical selection changes
     uint64_t reported_selection_revision; ///< Last selection revision reported to runtime callers
-    vg_font_t *font;                      ///< Font for rendering
-    float font_size;                      ///< Font size
+    vg_tree_node_t *last_activated;       ///< Most recently activated live node, if any
+    vg_tree_node_t *last_load_requested;  ///< Most recent lazy-child request target, if any
+    uint64_t load_request_revision;       ///< Incremented for each lazy-child request
+    uint64_t reported_load_request_revision; ///< Last consumed lazy-child request revision
+    vg_font_t *font;                         ///< Font for rendering
+    float font_size;                         ///< Font size
 
     // Appearance
     float row_height;     ///< Height of each row
@@ -290,6 +357,16 @@ typedef struct vg_treeview {
     float scroll_y;    ///< Vertical scroll position
     int visible_start; ///< First visible row index
     int visible_count; ///< Number of visible rows
+
+    // External virtual model. The model and TreeView hold non-owning pointers to each other.
+    bool virtual_mode;        ///< Render flattened rows through the external provider when true.
+    size_t virtual_row_count; ///< Total currently visible rows in the external model.
+    size_t virtual_selected_index; ///< Selected virtual row, or SIZE_MAX when none.
+    size_t virtual_hovered_index;  ///< Hovered virtual row, or SIZE_MAX when none.
+    vg_treeview_virtual_provider_t virtual_provider;      ///< Viewport row provider.
+    vg_treeview_virtual_action_callback_t virtual_action; ///< Interaction callback.
+    vg_treeview_virtual_unbind_callback_t virtual_unbind; ///< Lifetime callback.
+    void *virtual_model_user_data; ///< Opaque pointer shared by virtual callbacks.
 
     // Callbacks
     vg_tree_select_callback_t on_select;
@@ -322,11 +399,11 @@ typedef struct vg_treeview {
     // When enabled, a completed drop is INTO-only, is latched for polling
     // instead of firing on_drop, and the tree does NOT reorder itself — the
     // application performs the move and refreshes the tree.
-    bool app_directed_dnd;                 ///< Latch drops instead of self-reordering.
-    bool drop_latched;                     ///< A completed drop is waiting to be consumed.
-    vg_tree_node_t *latched_src;           ///< Dragged node at the latched drop.
-    vg_tree_node_t *latched_tgt;           ///< Target node at the latched drop.
-    vg_tree_drop_position_t latched_pos;   ///< Drop position at the latched drop.
+    bool app_directed_dnd;               ///< Latch drops instead of self-reordering.
+    bool drop_latched;                   ///< A completed drop is waiting to be consumed.
+    vg_tree_node_t *latched_src;         ///< Dragged node at the latched drop.
+    vg_tree_node_t *latched_tgt;         ///< Target node at the latched drop.
+    vg_tree_drop_position_t latched_pos; ///< Drop position at the latched drop.
 
     // State
     vg_tree_node_t *hovered; ///< Currently hovered node
@@ -337,6 +414,68 @@ typedef struct vg_treeview {
 /// @param parent Parent widget (can be NULL).
 /// @return New tree view or NULL on failure.
 vg_treeview_t *vg_treeview_create(vg_widget_t *parent);
+
+/// @brief Atomically bind a flattened external model to a TreeView.
+/// @details The TreeView stores no per-row strings or nodes in virtual mode and invokes @p provider
+///          only for its viewport slice. A successful binding disables drag-and-drop of concrete
+///          node handles but preserves the ordinary node tree for use after unbinding. The model
+///          and control do not retain or own one another.
+/// @param tree TreeView to bind; NULL is rejected.
+/// @param row_count Number of rows in the model's current flattened visible order.
+/// @param provider Callback supplying borrowed viewport row descriptors; NULL is rejected.
+/// @param action Callback receiving semantic selection, toggle, parent, and activation actions;
+///               may be NULL for a read-only virtual view.
+/// @param user_data Opaque model-owned pointer passed to every callback.
+/// @param on_unbind Lifetime callback that clears the model's raw TreeView pointer; may be NULL.
+/// @return true when the binding was installed; false on invalid input, leaving any existing
+///         binding unchanged.
+bool vg_treeview_bind_virtual_model(vg_treeview_t *tree,
+                                    size_t row_count,
+                                    vg_treeview_virtual_provider_t provider,
+                                    vg_treeview_virtual_action_callback_t action,
+                                    void *user_data,
+                                    vg_treeview_virtual_unbind_callback_t on_unbind);
+
+/// @brief Detach an external model and resume rendering the ordinary retained node tree.
+/// @details Invokes the binding's unbind callback exactly once. The concrete nodes that existed
+///          before binding are preserved. NULL is ignored.
+/// @param tree TreeView whose virtual model should be detached.
+void vg_treeview_clear_virtual_model(vg_treeview_t *tree);
+
+/// @brief Update the external model's flattened visible-row count in O(1).
+/// @details Selection and scroll are clamped to the new range. This does not call the provider.
+/// @param tree Bound virtual TreeView; NULL or non-virtual controls are ignored.
+/// @param row_count New flattened visible-row count.
+void vg_treeview_set_virtual_row_count(vg_treeview_t *tree, size_t row_count);
+
+/// @brief Select a virtual row without sending an action back to the external model.
+/// @details Used by model-driven selection synchronization. Passing SIZE_MAX clears selection;
+///          other out-of-range indices are ignored.
+/// @param tree Bound virtual TreeView.
+/// @param index Row to select, or SIZE_MAX to clear.
+void vg_treeview_select_virtual_index(vg_treeview_t *tree, size_t index);
+
+/// @brief Return the selected virtual row index.
+/// @param tree TreeView to inspect.
+/// @return Selected index, or SIZE_MAX when unbound or unselected.
+size_t vg_treeview_get_virtual_selected_index(const vg_treeview_t *tree);
+
+/// @brief Return the first virtual row intersecting the current viewport in O(1).
+/// @param tree TreeView to inspect.
+/// @return Zero-based first visible row, or zero when unbound/empty.
+size_t vg_treeview_get_visible_first(vg_treeview_t *tree);
+
+/// @brief Return the number of virtual rows requested for the viewport in O(1).
+/// @details Includes at most two trailing safety rows and never exceeds the row count.
+/// @param tree TreeView to inspect.
+/// @return Viewport materialization count, or zero when unbound/empty.
+size_t vg_treeview_get_visible_count(vg_treeview_t *tree);
+
+/// @brief Invalidate virtual row appearance after a model mutation.
+/// @details No row storage is retained by the TreeView, so invalidation only schedules paint and
+///          advances the widget revision. NULL and non-virtual controls are ignored.
+/// @param tree Bound virtual TreeView.
+void vg_treeview_invalidate_virtual_rows(vg_treeview_t *tree);
 
 /// @brief Get the hidden root node (children of root are top-level items).
 /// @param tree Tree view widget.
@@ -367,6 +506,17 @@ void vg_treeview_clear(vg_treeview_t *tree);
 /// @brief Free retired node tombstones after all stale node handles are discarded.
 /// @param tree Tree view widget.
 void vg_treeview_prune_retired_nodes(vg_treeview_t *tree);
+
+/// @brief Reclaim one retired root subtree from a live TreeView.
+/// @details Removed TreeView subtrees are linked by their retired root while descendants remain
+///          connected beneath that root. This function unlinks and destroys the exact root only
+///          when it is present in `tree->retired_nodes`. The caller must prove that no managed
+///          wrapper references the root or any descendant. Live/foreign nodes, NULL inputs, and
+///          already reclaimed roots return false without side effects. No allocation is performed.
+/// @param tree Live TreeView that owns the retirement chain.
+/// @param retired_root Candidate root of one retained removed subtree.
+/// @return true when the subtree was unlinked and freed, otherwise false.
+bool vg_treeview_reclaim_retired_subtree(vg_treeview_t *tree, vg_tree_node_t *retired_root);
 
 /// @brief Expand a node, showing its children.
 /// @param tree Tree view widget.
@@ -399,6 +549,50 @@ vg_tree_node_t *vg_treeview_node_at(vg_treeview_t *tree, float x, float y);
 /// @param tree Tree view widget.
 /// @param node Node to scroll into view.
 void vg_treeview_scroll_to(vg_treeview_t *tree, vg_tree_node_t *node);
+
+/// @brief Replace a node's display text atomically.
+/// @details The UTF-8 text is copied before the previous value is released. Allocation failure
+///          therefore leaves the node unchanged. A successful change invalidates layout and paint
+///          and advances the owning tree's non-consuming revision.
+/// @param node Node to modify; stale or NULL nodes are ignored.
+/// @param text NUL-terminated UTF-8 text to copy; NULL is treated as an empty string.
+/// @return true when the requested value is installed or already present; false for an invalid
+///         node or allocation failure.
+bool vg_tree_node_set_text(vg_tree_node_t *node, const char *text);
+
+/// @brief Set arbitrary UTF-8 icon text rendered in the node's icon slot.
+/// @details Icon text is copied atomically and may contain one or more Unicode glyphs. Installing
+///          non-empty text clears any resource-backed @ref vg_icon_t previously assigned through
+///          @ref vg_tree_node_set_icon. Passing NULL or an empty string clears both forms. The
+///          owning tree is invalidated only when the visible value changes.
+/// @param node Node to modify; stale or NULL nodes are ignored.
+/// @param icon_text NUL-terminated UTF-8 icon text to copy, or NULL to clear.
+/// @return true on success, including an unchanged value; false for an invalid node or allocation
+///         failure.
+bool vg_tree_node_set_icon_text(vg_tree_node_t *node, const char *icon_text);
+
+/// @brief Return the node's borrowed UTF-8 icon text.
+/// @details The returned pointer remains owned by the node and is invalidated by the next icon
+///          mutation, node retirement, or tree destruction. Resource-backed icons do not have a
+///          text representation and return NULL.
+/// @param node Node to inspect.
+/// @return Borrowed icon text, or NULL when absent or the node is stale.
+const char *vg_tree_node_get_icon_text(const vg_tree_node_t *node);
+
+/// @brief Set an application-stable identifier on a tree node.
+/// @details The identifier is copied atomically. Empty identifiers are permitted and represent
+///          "not assigned" to callers that use an empty-string sentinel. The toolkit does not
+///          enforce uniqueness; virtualized model adapters enforce uniqueness at their boundary.
+/// @param node Node to modify; stale or NULL nodes are ignored.
+/// @param stable_id NUL-terminated identifier to copy; NULL is treated as empty.
+/// @return true on success, including an unchanged value; false for an invalid node or allocation
+///         failure.
+bool vg_tree_node_set_stable_id(vg_tree_node_t *node, const char *stable_id);
+
+/// @brief Return a node's borrowed stable identifier.
+/// @param node Node to inspect.
+/// @return Borrowed NUL-terminated identifier, or an empty string when absent or stale.
+const char *vg_tree_node_get_stable_id(const vg_tree_node_t *node);
 
 /// @brief Set arbitrary caller data on a node.
 /// @param node Node to modify.
@@ -507,6 +701,33 @@ void vg_tree_node_set_has_children(vg_tree_node_t *node, bool has_children);
 /// @param node    Node to modify.
 /// @param loading true to display a loading indicator.
 void vg_tree_node_set_loading(vg_tree_node_t *node, bool loading);
+
+/// @brief Return whether a live node advertises real or lazily supplied children.
+/// @param node Node to inspect.
+/// @return true when the node has children or a lazy-child placeholder; false for stale nodes.
+bool vg_tree_node_has_children(const vg_tree_node_t *node);
+
+/// @brief Return whether a live node is displaying its lazy-loading indicator.
+/// @param node Node to inspect.
+/// @return true while loading, otherwise false.
+bool vg_tree_node_is_loading(const vg_tree_node_t *node);
+
+/// @brief Consume the tree's independent lazy-child-request edge.
+/// @details This does not clear the last requested node, the selection edge, activation edge, or
+///          the tree's non-consuming revision. Multiple requests coalesce until observed.
+/// @param tree Tree view to inspect.
+/// @return true once after one or more unreported requests, otherwise false.
+bool vg_treeview_was_load_children_requested(vg_treeview_t *tree);
+
+/// @brief Return the most recently requested lazy-child node without consuming its edge.
+/// @param tree Tree view to inspect.
+/// @return Borrowed live node, or NULL if no request has occurred or the node was removed.
+vg_tree_node_t *vg_treeview_get_load_requested_node(vg_treeview_t *tree);
+
+/// @brief Return the most recently activated node without consuming the activation edge.
+/// @param tree Tree view to inspect.
+/// @return Borrowed live node, or NULL if no activation has occurred or the node was removed.
+vg_tree_node_t *vg_treeview_get_activated_node(vg_treeview_t *tree);
 
 //=============================================================================
 // MenuBar Widget
@@ -649,6 +870,25 @@ void vg_menu_clear(vg_menu_t *menu);
 /// @param menubar Menu bar widget.
 /// @param menu    Menu to remove.
 void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu);
+
+/// @brief Reclaim one retired item from a live or retired menubar menu record.
+/// @details Searches `menu->retired_items`, unlinks the exact tombstone, and frees it. The caller
+///          must ensure no wrapper references @p item. Foreign/live/already-freed items and NULL
+///          inputs return false without side effects. No allocation is performed.
+/// @param menu Menu record whose retired-item chain is searched.
+/// @param item Candidate retired item record.
+/// @return true when the item was found and reclaimed, otherwise false.
+bool vg_menu_reclaim_retired_item(vg_menu_t *menu, vg_menu_item_t *item);
+
+/// @brief Reclaim one specific retired menu record from a live MenuBar.
+/// @details Unlinks @p menu from `menubar->retired_menus` and frees the menu plus any remaining
+///          retired items. The caller must first establish that neither the menu nor any contained
+///          item has a managed wrapper. Live menus, foreign addresses, NULL inputs, and already
+///          reclaimed menus return false without side effects.
+/// @param menubar Live owner whose retired-menu chain is searched.
+/// @param menu Candidate retired menu record.
+/// @return true when the exact retired menu was reclaimed, otherwise false.
+bool vg_menubar_reclaim_retired_menu(vg_menubar_t *menubar, vg_menu_t *menu);
 
 /// @brief Set the font used to render menu bar and item labels.
 /// @param menubar Menu bar widget.

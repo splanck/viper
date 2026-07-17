@@ -5,28 +5,30 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_gui_messagebox.c
-// Purpose: MessageBox dialog runtime bindings for ViperGUI. Provides both
-//   simple convenience dialogs (info, warning, error, question, confirm,
-//   prompt) and an object-oriented builder API (new, add_button, show, destroy).
+// File: src/runtime/graphics/gui/rt_gui_messagebox.c
+// Purpose: Localizable message-box and prompt runtime bindings with compatibility helpers,
+//   semantic button roles, and reusable synchronous/asynchronous controllers.
 //
 // Key invariants:
-//   - Simple dialogs block until the user dismisses them and return the button ID.
-//   - The builder API uses rt_messagebox_data_t (GC-managed) to track custom
-//     buttons and the underlying vg_dialog_t pointer.
-//   - The vg_dialog_t must be destroyed before the wrapper is GC'd.
+//   - Compatibility helpers retain their blocking return contracts.
+//   - ShowAsync never polls recursively and records one completion edge per terminal outcome.
+//   - Stable button IDs are unique; Enter/Escape semantics derive from explicit roles, not labels.
+//   - Lower close callbacks never destroy their dialog while vg_dialog_close is on the stack.
 //
 // Ownership/Lifetime:
-//   - rt_messagebox_data_t is a GC heap object; the embedded vg_dialog_t is
-//     manually freed on rt_messagebox_destroy().
+//   - rt_messagebox_data_t is GC-managed and owns the lower dialog and copied button labels.
+//   - Prompt Option results retain their runtime string independently of temporary widgets.
 //
-// Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
-//        src/lib/gui/src/widgets/vg_dialog.c (underlying widget)
+// Links: src/runtime/graphics/gui/rt_gui.h,
+//        src/lib/gui/src/widgets/vg_dialog.c,
+//        docs/adr/0109-gui-dialog-media-scheduling-and-automation.md
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_internal.h"
+#include "rt_option.h"
 #include "rt_platform.h"
+#include "rt_trap.h"
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
@@ -82,7 +84,7 @@ static int rt_messagebox_prepare_modal(rt_gui_app_t *app, vg_dialog_t *dlg) {
     vg_dialog_set_modal(dlg, true, app->root);
     vg_dialog_show_centered(dlg, app->root);
     rt_gui_push_dialog(app, dlg);
-    return 1;
+    return rt_gui_top_dialog(app) == dlg;
 }
 
 /// @brief Run the event loop until the dialog closes or the app signals shutdown.
@@ -240,11 +242,18 @@ static void prompt_on_commit(vg_widget_t *w, const char *text, void *user_data) 
         vg_dialog_close(d->dialog, VG_DIALOG_RESULT_OK);
 }
 
-/// @brief Single-line text-input prompt: shows `message`, an editable text field, and OK/Cancel.
-/// Pressing Enter inside the input dismisses as OK. Returns the entered text on OK, or empty
-/// on Cancel/empty submission. The text input receives focus immediately for fast typing.
-rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
+/// @brief Execute the shared synchronous prompt and report acceptance separately from its text.
+/// @details The separate @p accepted result preserves an accepted empty string for the Option API,
+///          while the compatibility wrapper can continue returning an empty sentinel for both
+///          cancel and empty acceptance. The helper owns and destroys all temporary widgets.
+/// @param title Runtime dialog title borrowed for the call.
+/// @param message Runtime prompt label borrowed for the call.
+/// @param accepted Required output set to one only for an explicit OK/Enter result.
+/// @return Owned runtime string containing the accepted text, including the canonical empty string.
+static rt_string rt_messagebox_prompt_impl(rt_string title, rt_string message, int *accepted) {
     RT_ASSERT_MAIN_THREAD();
+    if (accepted)
+        *accepted = 0;
     rt_gui_app_t *app = rt_messagebox_app();
     if (!app)
         return rt_str_empty();
@@ -306,7 +315,9 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     rt_string result = rt_str_empty();
     if (result_code == VG_DIALOG_RESULT_OK) {
         const char *text = vg_textinput_get_text(input);
-        if (text && text[0])
+        if (accepted)
+            *accepted = 1;
+        if (text)
             result = rt_string_from_bytes(text, strlen(text));
     }
 
@@ -314,17 +325,53 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     return result;
 }
 
+/// @brief Show a single-line prompt using the legacy empty-string sentinel contract.
+/// @details Pressing Enter accepts. Cancellation and accepted empty input both return an empty
+///          string for compatibility; use @ref rt_messagebox_prompt_option to distinguish them.
+/// @param title Dialog title.
+/// @param message Prompt label shown above the input.
+/// @return Entered text, or an empty string for cancel/empty acceptance/failure.
+rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
+    int accepted = 0;
+    return rt_messagebox_prompt_impl(title, message, &accepted);
+}
+
+/// @brief Show a single-line prompt with an explicit optional result.
+/// @details `Some("")` represents accepted empty input and `None` represents cancellation or
+///          inability to present. The Option retains the text before the local reference is
+///          released.
+/// @param title Dialog title.
+/// @param message Prompt label shown above the input.
+/// @return Managed `Viper.Option[str]` preserving empty acceptance.
+void *rt_messagebox_prompt_option(rt_string title, rt_string message) {
+    int accepted = 0;
+    rt_string value = rt_messagebox_prompt_impl(title, message, &accepted);
+    if (!accepted) {
+        rt_string_unref(value);
+        return rt_option_none();
+    }
+    void *option = rt_option_some_str(value);
+    rt_string_unref(value);
+    return option;
+}
+
 // Custom MessageBox structure for tracking state
 typedef struct {
     uint64_t magic;
     vg_dialog_t *dialog;
     int64_t result;
+    int64_t status;
+    const char *error;
+    uint64_t completed_edges;
     int64_t default_button;
     int has_default_button;
+    int64_t cancel_button;
+    int has_cancel_button;
     rt_gui_app_t *owner_app;
     // Custom button tracking for rt_messagebox_add_button
     vg_dialog_button_def_t *custom_buttons;
     int64_t *custom_button_ids;
+    int64_t *custom_button_roles;
     size_t custom_button_count;
     size_t custom_button_cap;
 } rt_messagebox_data_t;
@@ -386,12 +433,114 @@ static int rt_messagebox_wrapper_is_registered(const rt_messagebox_data_t *data)
     return 0;
 }
 
+/// @brief Record one completed MessageBox operation without wrapping its unread-edge count.
+/// @param data Live registered wrapper whose terminal status/result are already populated.
+static void rt_messagebox_record_completion(rt_messagebox_data_t *data) {
+    if (data && data->completed_edges < UINT64_MAX)
+        data->completed_edges++;
+}
+
+/// @brief Return whether an integer is a supported semantic dialog-button role.
+/// @param role Candidate public role value.
+/// @return Non-zero for `RT_GUI_DIALOG_BUTTON_NORMAL` through `HELP`.
+static int rt_messagebox_role_is_valid(int64_t role) {
+    return role >= RT_GUI_DIALOG_BUTTON_NORMAL && role <= RT_GUI_DIALOG_BUTTON_HELP;
+}
+
+/// @brief Locate a custom button by its stable application ID.
+/// @param data Live MessageBox wrapper.
+/// @param id Stable ID to search for.
+/// @return Zero-based index, or `SIZE_MAX` when absent.
+static size_t rt_messagebox_find_button(const rt_messagebox_data_t *data, int64_t id) {
+    if (!data)
+        return SIZE_MAX;
+    for (size_t index = 0; index < data->custom_button_count; index++) {
+        if (data->custom_button_ids && data->custom_button_ids[index] == id)
+            return index;
+    }
+    return SIZE_MAX;
+}
+
+/// @brief Recompute lower Enter/Escape flags from semantic roles and explicit bindings.
+/// @details Explicit SetDefaultButton/SetCancelButton choices take precedence. Without an explicit
+///          choice, Default and Accept roles bind Enter, while Cancel and Reject roles bind Escape.
+///          At most one button receives each binding, selected in insertion order.
+/// @param data Live MessageBox wrapper with parallel button/id/role arrays.
+static void rt_messagebox_apply_button_bindings(rt_messagebox_data_t *data) {
+    if (!data)
+        return;
+    int assigned_default = 0;
+    int assigned_cancel = 0;
+    for (size_t index = 0; index < data->custom_button_count; index++) {
+        int64_t id = data->custom_button_ids[index];
+        int64_t role = data->custom_button_roles[index];
+        int default_candidate =
+            role == RT_GUI_DIALOG_BUTTON_DEFAULT || role == RT_GUI_DIALOG_BUTTON_ACCEPT;
+        int cancel_candidate =
+            role == RT_GUI_DIALOG_BUTTON_CANCEL || role == RT_GUI_DIALOG_BUTTON_REJECT;
+        data->custom_buttons[index].is_default = data->has_default_button
+                                                     ? id == data->default_button
+                                                     : (!assigned_default && default_candidate);
+        data->custom_buttons[index].is_cancel = data->has_cancel_button
+                                                    ? id == data->cancel_button
+                                                    : (!assigned_cancel && cancel_candidate);
+        assigned_default = assigned_default || data->custom_buttons[index].is_default;
+        assigned_cancel = assigned_cancel || data->custom_buttons[index].is_cancel;
+    }
+}
+
+/// @brief Capture one lower dialog result into the asynchronous MessageBox state machine.
+/// @details The callback runs inside `vg_dialog_close`, so it never destroys the lower object. A
+///          custom result maps through the stable ID/role arrays; Cancel/Reject roles classify the
+///          terminal state as Cancelled independent of translated labels.
+/// @param dialog Borrowed lower dialog that has just closed.
+/// @param result Lower result code assigned to the activated button or close action.
+/// @param user_data Borrowed registered @ref rt_messagebox_data_t wrapper.
+static void rt_messagebox_on_result(vg_dialog_t *dialog,
+                                    vg_dialog_result_t result,
+                                    void *user_data) {
+    rt_messagebox_data_t *data = (rt_messagebox_data_t *)user_data;
+    if (!rt_messagebox_wrapper_is_registered(data) || data->dialog != dialog ||
+        data->status != RT_GUI_DIALOG_STATUS_OPEN) {
+        return;
+    }
+
+    data->result = -1;
+    data->error = "";
+    int64_t index = (int64_t)result - (int64_t)VG_DIALOG_RESULT_CUSTOM_1;
+    if (index >= 0 && (size_t)index < data->custom_button_count) {
+        size_t selected = (size_t)index;
+        int64_t role = data->custom_button_roles[selected];
+        data->result = data->custom_button_ids[selected];
+        data->status = role == RT_GUI_DIALOG_BUTTON_CANCEL || role == RT_GUI_DIALOG_BUTTON_REJECT
+                           ? RT_GUI_DIALOG_STATUS_CANCELLED
+                           : RT_GUI_DIALOG_STATUS_ACCEPTED;
+    } else if (result == VG_DIALOG_RESULT_CANCEL || result == VG_DIALOG_RESULT_NONE) {
+        data->result = result == VG_DIALOG_RESULT_CANCEL ? 2 : -1;
+        data->status = RT_GUI_DIALOG_STATUS_CANCELLED;
+    } else {
+        if (result == VG_DIALOG_RESULT_OK || result == VG_DIALOG_RESULT_YES)
+            data->result = 0;
+        else if (result == VG_DIALOG_RESULT_NO)
+            data->result = 1;
+        data->status = RT_GUI_DIALOG_STATUS_ACCEPTED;
+    }
+    rt_messagebox_record_completion(data);
+    if (rt_gui_is_app_handle(data->owner_app))
+        rt_gui_remove_dialog(data->owner_app, dialog);
+}
+
 void rt_messagebox_invalidate_dialog(vg_dialog_t *dialog) {
     if (!dialog)
         return;
     for (size_t i = 0; i < s_messagebox_wrapper_count; i++) {
         rt_messagebox_data_t *data = s_messagebox_wrappers[i];
         if (data && data->dialog == dialog) {
+            if (data->status == RT_GUI_DIALOG_STATUS_OPEN) {
+                data->status = RT_GUI_DIALOG_STATUS_FAILED;
+                data->error = "No active GUI application is available";
+                rt_messagebox_record_completion(data);
+            }
             data->dialog = NULL;
             data->owner_app = NULL;
             data->result = -1;
@@ -418,8 +567,10 @@ static void rt_messagebox_dispose(rt_messagebox_data_t *data) {
         free(data->custom_buttons[i].label);
     free(data->custom_buttons);
     free(data->custom_button_ids);
+    free(data->custom_button_roles);
     data->custom_buttons = NULL;
     data->custom_button_ids = NULL;
+    data->custom_button_roles = NULL;
     data->custom_button_count = 0;
     data->custom_button_cap = 0;
     if (data->dialog) {
@@ -482,17 +633,24 @@ void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     data->dialog = dlg;
     data->magic = RT_MESSAGEBOX_DATA_MAGIC;
     data->result = -1;
+    data->status = RT_GUI_DIALOG_STATUS_IDLE;
+    data->error = "";
+    data->completed_edges = 0;
     data->default_button = 0;
     data->has_default_button = 0;
+    data->cancel_button = 0;
+    data->has_cancel_button = 0;
     data->owner_app = rt_messagebox_app();
     data->custom_buttons = NULL;
     data->custom_button_ids = NULL;
+    data->custom_button_roles = NULL;
     data->custom_button_count = 0;
     data->custom_button_cap = 0;
     if (!rt_messagebox_register_wrapper(data)) {
         rt_messagebox_dispose(data);
         return NULL;
     }
+    vg_dialog_set_on_result(dlg, rt_messagebox_on_result, data);
     rt_obj_set_finalizer(data, rt_messagebox_finalize);
 
     return data;
@@ -522,15 +680,29 @@ void *rt_messagebox_new_question(rt_string title, rt_string message) {
     return rt_messagebox_new(title, message, RT_MESSAGEBOX_QUESTION);
 }
 
-/// @brief Append a custom button (`text` label, `id` returned on click). Multiple calls extend
-/// the button row; auto-detects "Cancel"/"Close"/"No" labels for Esc-binding behavior.
-void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
+/// @brief Append one custom button using allocation-first parallel-array growth.
+/// @details Stable IDs are unique. Duplicate rejection occurs before allocation or mutation and
+///          traps with the public exact error. Compatibility callers may request label-based cancel
+///          inference; role-aware callers never depend on translated text.
+/// @param box Live MessageBox wrapper.
+/// @param text Runtime UTF-8 button label.
+/// @param id Stable application result ID.
+/// @param role Valid semantic role, or Normal when the caller requested compatibility inference.
+/// @param infer_cancel_from_label Non-zero only for legacy AddButton behavior.
+static void rt_messagebox_add_button_impl(
+    void *box, rt_string text, int64_t id, int64_t role, int infer_cancel_from_label) {
     RT_ASSERT_MAIN_THREAD();
     rt_messagebox_data_t *data = rt_messagebox_checked(box);
-    if (!data)
+    if (!data || !data->dialog)
         return;
-    if (!data->dialog)
+    if (rt_messagebox_find_button(data, id) != SIZE_MAX) {
+        char error[96];
+        snprintf(error, sizeof(error), "Message box button ID must be unique: %lld", (long long)id);
+        rt_trap(error);
         return;
+    }
+    if (!rt_messagebox_role_is_valid(role))
+        role = RT_GUI_DIALOG_BUTTON_NORMAL;
 
     // Grow the custom buttons array if needed
     if (data->custom_button_count >= data->custom_button_cap) {
@@ -545,9 +717,11 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
         vg_dialog_button_def_t *new_buttons =
             (vg_dialog_button_def_t *)calloc(new_cap, sizeof(vg_dialog_button_def_t));
         int64_t *new_ids = (int64_t *)calloc(new_cap, sizeof(int64_t));
-        if (!new_buttons || !new_ids) {
+        int64_t *new_roles = (int64_t *)calloc(new_cap, sizeof(int64_t));
+        if (!new_buttons || !new_ids || !new_roles) {
             free(new_buttons);
             free(new_ids);
+            free(new_roles);
             return;
         }
         if (data->custom_button_count > 0) {
@@ -555,11 +729,15 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
                    data->custom_buttons,
                    data->custom_button_count * sizeof(vg_dialog_button_def_t));
             memcpy(new_ids, data->custom_button_ids, data->custom_button_count * sizeof(int64_t));
+            memcpy(
+                new_roles, data->custom_button_roles, data->custom_button_count * sizeof(int64_t));
         }
         free(data->custom_buttons);
         free(data->custom_button_ids);
+        free(data->custom_button_roles);
         data->custom_buttons = new_buttons;
         data->custom_button_ids = new_ids;
+        data->custom_button_roles = new_roles;
         data->custom_button_cap = new_cap;
     }
 
@@ -571,75 +749,192 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
     size_t index = data->custom_button_count++;
     vg_dialog_button_def_t *btn = &data->custom_buttons[index];
     btn->label = clabel;
-    btn->result = (vg_dialog_result_t)(index + 1);
-    btn->is_default = data->has_default_button && id == data->default_button;
-    btn->is_cancel = rt_messagebox_label_is_cancel(btn->label);
+    btn->result = (vg_dialog_result_t)((int64_t)VG_DIALOG_RESULT_CUSTOM_1 + (int64_t)index);
     data->custom_button_ids[index] = id;
+    data->custom_button_roles[index] =
+        infer_cancel_from_label && rt_messagebox_label_is_cancel(btn->label)
+            ? RT_GUI_DIALOG_BUTTON_CANCEL
+            : role;
+    rt_messagebox_apply_button_bindings(data);
+}
+
+/// @brief Append a legacy custom button while retaining historical cancel-label inference.
+/// @param box Live MessageBox wrapper.
+/// @param text Visible button label.
+/// @param id Unique stable result ID.
+void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
+    rt_messagebox_add_button_impl(
+        box, text, id, RT_GUI_DIALOG_BUTTON_NORMAL, /*infer_cancel_from_label=*/1);
+}
+
+/// @brief Append a custom button whose behavior is independent of its localized label.
+/// @param box Live MessageBox wrapper.
+/// @param text Visible localized label.
+/// @param id Unique stable result ID.
+/// @param role Semantic button role controlling keyboard binding and completion classification.
+void rt_messagebox_add_button_with_role(void *box, rt_string text, int64_t id, int64_t role) {
+    rt_messagebox_add_button_impl(box, text, id, role, /*infer_cancel_from_label=*/0);
+}
+
+/// @brief Update one existing button's semantic role and recompute keyboard bindings.
+/// @param box Live MessageBox wrapper.
+/// @param id Stable ID of the button to update.
+/// @param role Supported semantic role.
+/// @return 1 when updated, otherwise 0 for invalid role/handle or missing ID.
+int64_t rt_messagebox_set_button_role(void *box, int64_t id, int64_t role) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    if (!data || !data->dialog || !rt_messagebox_role_is_valid(role))
+        return 0;
+    size_t index = rt_messagebox_find_button(data, id);
+    if (index == SIZE_MAX)
+        return 0;
+    data->custom_button_roles[index] = role;
+    rt_messagebox_apply_button_bindings(data);
+    return 1;
 }
 
 /// @brief Mark the button with `id` as the default (Enter-key activated). Updates any matching
 /// button in the buttons-list. Stored separately so it works even if added later.
-void rt_messagebox_set_default_button(void *box, int64_t id) {
+int64_t rt_messagebox_set_default_button(void *box, int64_t id) {
     RT_ASSERT_MAIN_THREAD();
     rt_messagebox_data_t *data = rt_messagebox_checked(box);
-    if (!data)
-        return;
-    if (!data->dialog)
-        return;
+    if (!data || !data->dialog || rt_messagebox_find_button(data, id) == SIZE_MAX)
+        return 0;
     data->default_button = id;
     data->has_default_button = 1;
-    for (size_t i = 0; i < data->custom_button_count; i++) {
-        data->custom_buttons[i].is_default = (data->custom_button_ids[i] == id);
-    }
+    rt_messagebox_apply_button_bindings(data);
+    return 1;
 }
 
-/// @brief Display the dialog modally and return the chosen button's id (or for preset
-/// OK/Yes/No/Cancel: 0/0/1/2 respectively). Returns -1 if no app context, the dialog wasn't
-/// constructed, or the user closed the window without picking. Custom buttons (added via
-/// `_add_button`) take precedence over preset mappings.
-int64_t rt_messagebox_show(void *box) {
+/// @brief Bind Escape to an existing custom button by stable ID.
+/// @param box Live MessageBox wrapper.
+/// @param id Existing unique button ID.
+/// @return 1 when bound, otherwise 0.
+int64_t rt_messagebox_set_cancel_button(void *box, int64_t id) {
     RT_ASSERT_MAIN_THREAD();
     rt_messagebox_data_t *data = rt_messagebox_checked(box);
-    if (!data)
-        return -1;
+    if (!data || !data->dialog || rt_messagebox_find_button(data, id) == SIZE_MAX)
+        return 0;
+    data->cancel_button = id;
+    data->has_cancel_button = 1;
+    rt_messagebox_apply_button_bindings(data);
+    return 1;
+}
+
+/// @brief Present a MessageBox without entering a nested poll/render loop.
+/// @details Custom button definitions are copied into the lower dialog immediately. Completion is
+///          driven by ordinary app frames and captured by @ref rt_messagebox_on_result. Reopening
+///          the same live object traps without changing its current operation.
+/// @param box Live stateful MessageBox wrapper.
+/// @return 1 when presentation started, otherwise 0.
+int64_t rt_messagebox_show_async(void *box) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    if (!data || !data->dialog)
+        return 0;
+    if (data->status == RT_GUI_DIALOG_STATUS_OPEN || vg_dialog_is_open(data->dialog)) {
+        rt_trap("GUI dialog is already open");
+        return 0;
+    }
     rt_gui_app_t *app =
         rt_gui_is_app_handle(data->owner_app) ? data->owner_app : rt_messagebox_app();
-    if (!app || !data->dialog)
-        return -1;
+    data->result = -1;
+    data->error = "";
+    if (!app || !app->window || !app->root) {
+        data->status = RT_GUI_DIALOG_STATUS_FAILED;
+        data->error = "No active GUI application is available";
+        rt_messagebox_record_completion(data);
+        return 0;
+    }
+    data->owner_app = app;
 
-    // Apply custom buttons if any were added via rt_messagebox_add_button
     if (data->custom_button_count > 0) {
+        rt_messagebox_apply_button_bindings(data);
         for (size_t i = 0; i < data->custom_button_count; i++) {
-            data->custom_buttons[i].result = (vg_dialog_result_t)(i + 1);
-            data->custom_buttons[i].is_default = data->has_default_button &&
-                                                 data->custom_button_ids &&
-                                                 data->custom_button_ids[i] == data->default_button;
+            data->custom_buttons[i].result =
+                (vg_dialog_result_t)((int64_t)VG_DIALOG_RESULT_CUSTOM_1 + (int64_t)i);
         }
         vg_dialog_set_custom_buttons(data->dialog, data->custom_buttons, data->custom_button_count);
     }
 
-    if (!rt_messagebox_prepare_modal(app, data->dialog))
-        return -1;
-    vg_dialog_result_t result = rt_messagebox_run_modal(app, data->dialog);
-
-    // For custom buttons, the result code maps directly to the id passed
-    // to rt_messagebox_add_button. For preset buttons, use standard mapping.
-    if (data->custom_button_count > 0) {
-        if (result == VG_DIALOG_RESULT_NONE)
-            return -1;
-        int64_t index = (int64_t)result - 1;
-        if (index < 0 || (size_t)index >= data->custom_button_count || !data->custom_button_ids)
-            return -1;
-        return data->custom_button_ids[index];
-    }
-
-    if (result == VG_DIALOG_RESULT_OK || result == VG_DIALOG_RESULT_YES)
+    data->status = RT_GUI_DIALOG_STATUS_OPEN;
+    if (!rt_messagebox_prepare_modal(app, data->dialog)) {
+        vg_dialog_hide(data->dialog);
+        data->status = RT_GUI_DIALOG_STATUS_FAILED;
+        data->error = "GUI dialog could not be presented";
+        rt_messagebox_record_completion(data);
         return 0;
-    if (result == VG_DIALOG_RESULT_NO)
-        return 1;
-    if (result == VG_DIALOG_RESULT_CANCEL)
-        return 2;
-    return -1;
+    }
+    return 1;
+}
+
+/// @brief Display the dialog with the legacy blocking convenience contract.
+/// @details Presentation is initialized through ShowAsync, then this compatibility wrapper alone
+///          drives the nested loop. New event handlers should call ShowAsync to avoid reentrancy.
+/// @param box Live MessageBox wrapper.
+/// @return Selected stable button ID, preset compatibility code, or -1 on cancel/failure.
+int64_t rt_messagebox_show(void *box) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    if (!data || !rt_messagebox_show_async(box))
+        return -1;
+    rt_messagebox_run_modal(data->owner_app, data->dialog);
+    if (data->status == RT_GUI_DIALOG_STATUS_OPEN)
+        vg_dialog_close(data->dialog, VG_DIALOG_RESULT_CANCEL);
+    return data->result;
+}
+
+/// @brief Query whether a stateful MessageBox is currently open.
+/// @param box MessageBox wrapper; invalid/destroyed handles are treated as closed.
+/// @return 1 only while both runtime status and lower visibility are Open.
+int64_t rt_messagebox_is_open(void *box) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    return data && data->dialog && data->status == RT_GUI_DIALOG_STATUS_OPEN &&
+                   vg_dialog_is_open(data->dialog)
+               ? 1
+               : 0;
+}
+
+/// @brief Consume one unread MessageBox completion edge.
+/// @param box Registered MessageBox wrapper.
+/// @return 1 for an unread accepted/cancelled/failed completion, otherwise 0.
+int64_t rt_messagebox_was_completed(void *box) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    if (!data || data->completed_edges == 0)
+        return 0;
+    data->completed_edges--;
+    return 1;
+}
+
+/// @brief Return the current MessageBox state-machine status without consuming it.
+/// @param box Registered MessageBox wrapper.
+/// @return One of `RT_GUI_DIALOG_STATUS_*`, or Failed for an invalid handle.
+int64_t rt_messagebox_get_status(void *box) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    return data ? data->status : RT_GUI_DIALOG_STATUS_FAILED;
+}
+
+/// @brief Return the stable result ID from the most recent completed MessageBox.
+/// @param box Registered MessageBox wrapper.
+/// @return Custom ID/preset compatibility code, or -1 when no action was selected.
+int64_t rt_messagebox_get_result(void *box) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    return data ? data->result : -1;
+}
+
+/// @brief Copy the most recent MessageBox failure diagnostic into a runtime string.
+/// @param box Registered MessageBox wrapper.
+/// @return Owned runtime string, empty when no error is recorded.
+rt_string rt_messagebox_get_error(void *box) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_messagebox_data_t *data = rt_messagebox_checked(box);
+    const char *error = data && data->error ? data->error : "";
+    return rt_string_from_bytes(error, strlen(error));
 }
 
 /// @brief Manually free dialog resources (custom buttons, backend handle). The GC finalizer
@@ -696,6 +991,13 @@ rt_string rt_messagebox_prompt(rt_string title, rt_string message) {
     return rt_str_empty();
 }
 
+/// @brief Stub: graphics-disabled prompts always return `None`.
+void *rt_messagebox_prompt_option(rt_string title, rt_string message) {
+    (void)title;
+    (void)message;
+    return rt_option_none();
+}
+
 /// @brief Stub: graphics disabled — returns NULL; no stateful dialog object is created.
 void *rt_messagebox_new(rt_string title, rt_string message, int64_t type) {
     (void)title;
@@ -739,16 +1041,76 @@ void rt_messagebox_add_button(void *box, rt_string text, int64_t id) {
     (void)id;
 }
 
-/// @brief Stub: graphics disabled — no-op; default button selection is silently ignored.
-void rt_messagebox_set_default_button(void *box, int64_t id) {
+/// @brief Stub: semantic button registration is ignored without graphics.
+void rt_messagebox_add_button_with_role(void *box, rt_string text, int64_t id, int64_t role) {
+    (void)box;
+    (void)text;
+    (void)id;
+    (void)role;
+}
+
+/// @brief Stub: no button role can be updated without a dialog object.
+int64_t rt_messagebox_set_button_role(void *box, int64_t id, int64_t role) {
     (void)box;
     (void)id;
+    (void)role;
+    return 0;
+}
+
+/// @brief Stub: no cancel binding exists without a dialog object.
+int64_t rt_messagebox_set_cancel_button(void *box, int64_t id) {
+    (void)box;
+    (void)id;
+    return 0;
+}
+
+/// @brief Stub: graphics disabled — no-op; default button selection is silently ignored.
+int64_t rt_messagebox_set_default_button(void *box, int64_t id) {
+    (void)box;
+    (void)id;
+    return 0;
+}
+
+/// @brief Stub: asynchronous presentation cannot start without graphics.
+int64_t rt_messagebox_show_async(void *box) {
+    (void)box;
+    return 0;
 }
 
 /// @brief Stub: graphics disabled — returns -1 (no dialog to show, no button chosen).
 int64_t rt_messagebox_show(void *box) {
     (void)box;
     return -1;
+}
+
+/// @brief Stub: no MessageBox is open without graphics.
+int64_t rt_messagebox_is_open(void *box) {
+    (void)box;
+    return 0;
+}
+
+/// @brief Stub: no stateful MessageBox completion exists without graphics.
+int64_t rt_messagebox_was_completed(void *box) {
+    (void)box;
+    return 0;
+}
+
+/// @brief Stub: absent MessageBox handles report Failed.
+int64_t rt_messagebox_get_status(void *box) {
+    (void)box;
+    return RT_GUI_DIALOG_STATUS_FAILED;
+}
+
+/// @brief Stub: no custom result is available without graphics.
+int64_t rt_messagebox_get_result(void *box) {
+    (void)box;
+    return -1;
+}
+
+/// @brief Stub: return the stable graphics-disabled capability diagnostic.
+rt_string rt_messagebox_get_error(void *box) {
+    (void)box;
+    return rt_const_cstr("GUI support is not available in this build");
 }
 
 /// @brief Stub: graphics disabled — no-op; nothing to destroy when graphics are absent.

@@ -163,6 +163,15 @@ void vg_statusbar_remove_item(vg_statusbar_t *sb, vg_statusbar_item_t *item);
 /// @param zone Zone to clear.
 void vg_statusbar_clear_zone(vg_statusbar_t *sb, vg_statusbar_zone_t zone);
 
+/// @brief Reclaim one specific retired status-bar item tombstone.
+/// @details Searches the owner's retired chain, unlinks the exact item, and frees its cleared
+///          record. The caller must invalidate or finalize every external wrapper first. Live,
+///          foreign, NULL, and already reclaimed items return false without side effects.
+/// @param sb Live StatusBar that owns the retirement chain.
+/// @param item Candidate retained item record.
+/// @return true when the tombstone was found and freed, otherwise false.
+bool vg_statusbar_reclaim_retired_item(vg_statusbar_t *sb, vg_statusbar_item_t *item);
+
 /// @brief Update the text of a text or button item.
 /// @param item Item to modify.
 /// @param text New text (copied internally).
@@ -367,6 +376,15 @@ void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id);
 /// @param item Item handle previously returned by a toolbar add function.
 void vg_toolbar_remove_item_ptr(vg_toolbar_t *tb, vg_toolbar_item_t *item);
 
+/// @brief Reclaim one specific retired toolbar item tombstone.
+/// @details Searches `tb->retired_items`, unlinks @p item, and releases its cleared record only
+///          after the embedding runtime has discarded all wrappers. Live, foreign, NULL, and
+///          already reclaimed items return false without mutation. No allocation is performed.
+/// @param tb Live Toolbar that owns the retirement chain.
+/// @param item Candidate retained item record.
+/// @return true when the exact tombstone was reclaimed, otherwise false.
+bool vg_toolbar_reclaim_retired_item(vg_toolbar_t *tb, vg_toolbar_item_t *item);
+
 /// @brief Look up a toolbar item by its unique ID.
 /// @param tb Toolbar widget.
 /// @param id Identifier to search for.
@@ -524,6 +542,17 @@ vg_tooltip_manager_t *vg_tooltip_manager_get(void);
 /// @param mgr    Tooltip manager.
 /// @param now_ms Current wall-clock time in milliseconds.
 void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms);
+
+/// @brief Return the nearest pending tooltip timer relative to @p now_ms.
+/// @details The query covers delayed show, delayed hide, and finite visible duration without
+///          mutating manager state. Expired work returns zero, an active future timer returns its
+///          integer delay, and a manager with no timer returns -1. The function performs no
+///          allocation and accepts NULL.
+/// @param mgr Tooltip manager to inspect; NULL has no deadline.
+/// @param now_ms Scheduler time in milliseconds using the same clock passed to
+///               @ref vg_tooltip_manager_update.
+/// @return Milliseconds until the next tooltip transition, zero when due, or -1 for none.
+int64_t vg_tooltip_manager_next_deadline_ms(const vg_tooltip_manager_t *mgr, uint64_t now_ms);
 
 /// @brief Notify the manager that the cursor entered a widget.
 /// @param mgr    Tooltip manager.
@@ -803,6 +832,17 @@ void vg_notification_manager_destroy(vg_notification_manager_t *mgr);
 /// @param now_ms Current wall-clock time in milliseconds.
 void vg_notification_manager_update(vg_notification_manager_t *mgr, uint64_t now_ms);
 
+/// @brief Return the nearest notification animation or expiry deadline.
+/// @details New, entering, and dismissing notifications request immediate or 16 ms animation
+///          ticks. Fully visible finite-duration notifications return their remaining lifetime;
+///          stable sticky notifications have no deadline. The query is read-only, allocation-free,
+///          and uses the same scheduler clock as @ref vg_notification_manager_update.
+/// @param mgr Notification manager to inspect; NULL has no deadline.
+/// @param now_ms Current scheduler time in milliseconds.
+/// @return Milliseconds until scheduled notification work, zero when due, or -1 for none.
+int64_t vg_notification_manager_next_deadline_ms(const vg_notification_manager_t *mgr,
+                                                 uint64_t now_ms);
+
 /// @brief Show a new notification toast.
 /// @param mgr         Notification manager.
 /// @param type        Notification severity (INFO, SUCCESS, WARNING, or ERROR).
@@ -855,6 +895,22 @@ void vg_notification_manager_set_position(vg_notification_manager_t *mgr,
 /// @param font Font handle.
 /// @param size Body font size in pixels (title is scaled up automatically).
 void vg_notification_manager_set_font(vg_notification_manager_t *mgr, vg_font_t *font, float size);
+
+/// @brief Return the screen-space union of notification pixels currently eligible to paint.
+/// @details Computes animated card geometry for at most `max_visible` notifications, excludes
+///          fully transparent cards, and expands the result for the active theme's level-2 shadow
+///          plus anti-aliasing slack. The manager's full-window arranged base is deliberately not
+///          included, because it is only a positioning surface and paints no background. This
+///          allocation-free query is intended for retained damage tracking and does not mutate
+///          notification animation state. Output coordinates are physical framebuffer pixels.
+/// @param mgr Notification manager to inspect; NULL produces zero outputs and returns false.
+/// @param x Optional destination for the union's screen-space left edge.
+/// @param y Optional destination for the union's screen-space top edge.
+/// @param width Optional destination for the non-negative union width.
+/// @param height Optional destination for the non-negative union height.
+/// @return true when at least one notification has visible pixels, otherwise false.
+bool vg_notification_manager_get_visual_bounds(
+    vg_notification_manager_t *mgr, float *x, float *y, float *width, float *height);
 
 //==========================================================================
 // Floating Panel — absolute-positioned overlay widget

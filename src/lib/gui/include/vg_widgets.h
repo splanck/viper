@@ -47,20 +47,32 @@ extern "C" {
 typedef struct vg_label {
     vg_widget_t base;
 
-    char *text;           ///< Text content (owned, null-terminated)
-    vg_font_t *font;      ///< Font for rendering
-    float font_size;      ///< Font size in pixels
-    uint32_t text_color;  ///< Text color (ARGB)
-    vg_h_align_t h_align; ///< Horizontal text alignment
-    vg_v_align_t v_align; ///< Vertical text alignment
-    bool word_wrap;       ///< Enable word wrapping
-    int max_lines;        ///< Maximum lines (0 = unlimited)
+    char *text;              ///< Text content (owned, null-terminated)
+    vg_font_t *font;         ///< Font for rendering
+    float font_size;         ///< Font size in pixels
+    uint32_t text_color;     ///< Text color (ARGB)
+    vg_h_align_t h_align;    ///< Horizontal text alignment
+    vg_v_align_t v_align;    ///< Vertical text alignment
+    bool word_wrap;          ///< Enable word wrapping
+    int max_lines;           ///< Maximum lines (0 = unlimited)
+    bool ellipsis;           ///< Show an ellipsis when visible text is truncated
+    bool selectable;         ///< Allow pointer/keyboard text selection
+    bool selection_dragging; ///< Pointer drag currently extends the selection
+    size_t selection_anchor; ///< Fixed byte endpoint for shift/drag selection
+    size_t selection_start;  ///< First selection endpoint as a UTF-8 byte offset
+    size_t selection_end;    ///< Second selection endpoint as a UTF-8 byte offset
 
     /* Word-wrap line cache — populated by measure, consumed by paint.
      * Private; do not access from outside vg_label.c. */
-    char **wrap_line_bufs; ///< malloc'd array of malloc'd line strings
-    int wrap_line_count;   ///< number of entries in wrap_line_bufs
-    float wrap_cached_w;   ///< wrap_width for which cache is valid (-1 = invalid)
+    char **wrap_line_bufs;        ///< malloc'd array of malloc'd line strings
+    size_t *wrap_source_starts;   ///< source byte offset corresponding to each cached line
+    size_t *wrap_source_ends;     ///< source byte end corresponding to each cached line
+    int wrap_line_count;          ///< number of entries in wrap_line_bufs
+    float wrap_cached_w;          ///< wrap_width for which cache is valid (-1 = invalid)
+    bool wrap_truncated;          ///< max_lines omitted source text from the cache
+    char *ellipsis_cache;         ///< cached single-line fitted display text
+    float ellipsis_cached_w;      ///< width for which ellipsis_cache was built
+    size_t ellipsis_source_bytes; ///< original source prefix represented by ellipsis_cache
 } vg_label_t;
 
 /// @brief Create a new label widget
@@ -100,6 +112,42 @@ void vg_label_set_color(vg_label_t *label, uint32_t color);
 /// @param h_align Horizontal alignment
 /// @param v_align Vertical alignment
 void vg_label_set_alignment(vg_label_t *label, vg_h_align_t h_align, vg_v_align_t v_align);
+
+/// @brief Return a label's horizontal alignment.
+/// @param label Label widget to inspect.
+/// @return Left, center, or right alignment; NULL defaults to left.
+vg_h_align_t vg_label_get_alignment(const vg_label_t *label);
+
+/// @brief Enable or disable ellipsis rendering for truncated label text.
+/// @details For a single-line label the text is fitted to the arranged width. For wrapped text,
+///          the final visible line receives an ellipsis only when max_lines omits source content.
+///          UTF-8 units are never split.
+/// @param label Label widget to update; NULL is ignored.
+/// @param enabled true to display an ellipsis when truncation occurs.
+void vg_label_set_ellipsis(vg_label_t *label, bool enabled);
+
+/// @brief Set the maximum number of wrapped lines rendered by a label.
+/// @details Zero means unlimited. Negative values normalize to zero. The limit is meaningful when
+///          word wrapping is enabled and participates in layout measurement.
+/// @param label Label widget to update; NULL is ignored.
+/// @param count Maximum visible line count, or zero for unlimited.
+void vg_label_set_max_lines(vg_label_t *label, int count);
+
+/// @brief Enable or disable read-only selection interaction on a label.
+/// @details Selectable labels accept pointer drag, Shift-click, Ctrl/Cmd+A, Ctrl/Cmd+C, and Escape.
+///          Disabling selection clears any active selection and releases input capture.
+/// @param label Label widget to update; NULL is ignored.
+/// @param enabled true to make displayed text focusable and selectable.
+void vg_label_set_selectable(vg_label_t *label, bool enabled);
+
+/// @brief Return the selected UTF-8 byte range without allocating.
+/// @details Endpoints are ordered and clamped to the current source text. The returned pointer is
+///          borrowed from the label and remains valid only until its text changes or it is
+///          destroyed.
+/// @param label Label widget to inspect.
+/// @param out_length Receives the selected byte count when non-NULL.
+/// @return Pointer to the first selected byte, or NULL when no selection exists.
+const char *vg_label_get_selected_text(const vg_label_t *label, size_t *out_length);
 
 //=============================================================================
 // Button Widget
@@ -208,11 +256,22 @@ typedef struct vg_textinput {
     size_t selection_start; ///< Selection start position (UTF-8 codepoint index)
     size_t selection_end;   ///< Selection end position (UTF-8 codepoint index)
 
+    char *composition_text;          ///< Owned UTF-8 IME preedit text, or NULL when inactive.
+    size_t composition_text_len;     ///< Preedit byte length, excluding the terminator.
+    size_t composition_start;        ///< Replacement start in committed-text codepoints.
+    size_t composition_end;          ///< Replacement end in committed-text codepoints.
+    size_t composition_sel_start;    ///< IME selection start in preedit grapheme units.
+    size_t composition_sel_length;   ///< IME selection length in preedit grapheme units.
+    size_t composition_saved_cursor; ///< Cursor restored when composition is cancelled.
+    size_t composition_saved_start;  ///< Selection anchor restored on cancellation.
+    size_t composition_saved_end;    ///< Selection end restored on cancellation.
+    bool composing;                  ///< true while an IME preedit session is active.
+
     char *placeholder; ///< Placeholder text (owned)
     vg_font_t *font;   ///< Font for rendering
     float font_size;   ///< Font size
 
-    int max_length;     ///< Maximum text length (0 = unlimited)
+    size_t max_length;  ///< Maximum grapheme length (0 = unlimited)
     bool password_mode; ///< Show dots instead of characters
     bool read_only;     ///< Prevent text modification
     bool multiline;     ///< Allow multiple lines
@@ -246,6 +305,11 @@ typedef struct vg_textinput {
     int undo_count;          ///< Total number of valid snapshots
     int undo_pos; ///< Current position in stack (for redo; equals undo_count after normal
                   ///< edits)
+
+    uint64_t change_revision;          ///< Independent text-change edge revision.
+    uint64_t reported_change_revision; ///< Last text-change revision consumed by WasChanged.
+    uint64_t submit_revision;          ///< Independent submission edge revision.
+    uint64_t reported_submit_revision; ///< Last submission revision consumed by WasSubmitted.
 } vg_textinput_t;
 
 /// @brief Create a new text input widget
@@ -268,6 +332,64 @@ const char *vg_textinput_get_text(vg_textinput_t *input);
 /// @param placeholder Placeholder text (copied internally)
 void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder);
 
+/// @brief Set the maximum committed text length in extended grapheme clusters.
+///
+/// @details Zero removes the limit. Lowering a nonzero limit truncates the
+///          current content at a Unicode grapheme boundary, records a change
+///          edge only when content was actually removed, and resets undo
+///          history to the resulting programmatic value.
+/// @param input Text input widget; NULL is ignored.
+/// @param max_length Maximum user-perceived characters, or zero for unlimited.
+void vg_textinput_set_max_length(vg_textinput_t *input, size_t max_length);
+
+/// @brief Return the configured extended-grapheme length limit.
+/// @param input Text input widget; may be NULL.
+/// @return Maximum grapheme count, or zero for unlimited/invalid input.
+size_t vg_textinput_get_max_length(const vg_textinput_t *input);
+
+/// @brief Enable or disable password masking without changing committed text.
+///
+/// @details Masking is a presentation property. Stored text, selection,
+///          clipboard policy, and undo history remain intact. One mask glyph
+///          is rendered per extended grapheme cluster.
+/// @param input Text input widget; NULL is ignored.
+/// @param password true to mask displayed text, false to display it normally.
+void vg_textinput_set_password(vg_textinput_t *input, bool password);
+
+/// @brief Return whether password masking is enabled.
+/// @param input Text input widget; may be NULL.
+/// @return true only for a valid input with password presentation enabled.
+bool vg_textinput_is_password(const vg_textinput_t *input);
+
+/// @brief Make committed text immutable or editable.
+///
+/// @details Read-only inputs retain keyboard selection/navigation and copying,
+///          while insert, delete, undo, redo, and IME commit operations reject
+///          mutation. Active composition is cancelled when read-only is enabled.
+/// @param input Text input widget; NULL is ignored.
+/// @param read_only true to reject edits, false to allow edits.
+void vg_textinput_set_read_only(vg_textinput_t *input, bool read_only);
+
+/// @brief Return whether text mutation is disabled.
+/// @param input Text input widget; may be NULL.
+/// @return true only for a valid read-only input.
+bool vg_textinput_is_read_only(const vg_textinput_t *input);
+
+/// @brief Select single-line submission or multiline editing behavior.
+///
+/// @details Enabling multiline permits newline insertion and requests layout;
+///          disabling it removes existing carriage returns/newlines
+///          deterministically, reports a text change if needed, and restores
+///          single-line Enter submission behavior.
+/// @param input Text input widget; NULL is ignored.
+/// @param multiline true for multiple logical lines, false for one line.
+void vg_textinput_set_multiline(vg_textinput_t *input, bool multiline);
+
+/// @brief Return whether newline editing and multiline layout are enabled.
+/// @param input Text input widget; may be NULL.
+/// @return true only for a valid multiline input.
+bool vg_textinput_is_multiline(const vg_textinput_t *input);
+
 /// @brief Set text change callback
 /// @param input Text input widget
 /// @param callback Change handler function
@@ -289,11 +411,49 @@ void vg_textinput_set_on_commit(vg_textinput_t *input,
 /// @param pos Cursor position (UTF-8 codepoint index)
 void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos);
 
+/// @brief Move the cursor using the public extended-grapheme index contract.
+///
+/// @details The requested index is clamped to the grapheme count and converted
+///          to the widget's legacy codepoint storage without splitting a
+///          combining, emoji, flag, Hangul, or Indic cluster.
+/// @param input Text input widget; NULL is ignored.
+/// @param grapheme_index Zero-based user-perceived-character boundary.
+void vg_textinput_set_cursor_grapheme(vg_textinput_t *input, size_t grapheme_index);
+
+/// @brief Return the cursor boundary in extended-grapheme units.
+/// @param input Text input widget; may be NULL.
+/// @return Clamped grapheme index, or zero for invalid input.
+size_t vg_textinput_get_cursor_grapheme(const vg_textinput_t *input);
+
 /// @brief Select text range
 /// @param input Text input widget
 /// @param start Selection start
 /// @param end Selection end
 void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end);
+
+/// @brief Select a half-open range using extended-grapheme indices.
+///
+/// @details Both endpoints are clamped independently. The stored anchor keeps
+///          the caller's direction and the cursor moves to @p end, while public
+///          selection getters return ordered minimum/maximum boundaries.
+/// @param input Text input widget; NULL is ignored.
+/// @param start Grapheme selection anchor.
+/// @param end Grapheme selection cursor/end.
+void vg_textinput_select_graphemes(vg_textinput_t *input, size_t start, size_t end);
+
+/// @brief Collapse the selection at the current cursor without changing text.
+/// @param input Text input widget; NULL is ignored.
+void vg_textinput_clear_selection(vg_textinput_t *input);
+
+/// @brief Return the ordered inclusive selection start in grapheme units.
+/// @param input Text input widget; may be NULL.
+/// @return Minimum selection endpoint, or zero for invalid input.
+size_t vg_textinput_get_selection_start_grapheme(const vg_textinput_t *input);
+
+/// @brief Return the ordered exclusive selection end in grapheme units.
+/// @param input Text input widget; may be NULL.
+/// @return Maximum selection endpoint, or zero for invalid input.
+size_t vg_textinput_get_selection_end_grapheme(const vg_textinput_t *input);
 
 /// @brief Select all text
 /// @param input Text input widget
@@ -304,9 +464,131 @@ void vg_textinput_select_all(vg_textinput_t *input);
 /// @param text Text to insert
 void vg_textinput_insert(vg_textinput_t *input, const char *text);
 
+/// @brief Insert committed UTF-8 text and record one undo snapshot.
+///
+/// @details Replaces the current selection, sanitizes malformed UTF-8, enforces
+///          the grapheme limit without splitting a cluster, emits one change
+///          edge, and creates exactly one undo step. Empty, read-only, or fully
+///          limit-clamped insertions return false without modifying history.
+/// @param input Text input widget; may be NULL.
+/// @param text Borrowed NUL-terminated UTF-8 text; may be NULL.
+/// @return true only when committed text changed.
+bool vg_textinput_insert_text(vg_textinput_t *input, const char *text);
+
 /// @brief Delete selected text
 /// @param input Text input widget
 void vg_textinput_delete_selection(vg_textinput_t *input);
+
+/// @brief Delete the selected grapheme-safe range and record one undo snapshot.
+/// @param input Text input widget; may be NULL.
+/// @return true only when a non-empty editable selection was removed.
+bool vg_textinput_delete_selection_checked(vg_textinput_t *input);
+
+/// @brief Restore the preceding committed-text snapshot.
+///
+/// @details Active composition is cancelled first. A successful restore emits
+///          one change edge but does not append another history entry.
+/// @param input Text input widget; may be NULL.
+/// @return true when an older snapshot was restored.
+bool vg_textinput_undo(vg_textinput_t *input);
+
+/// @brief Reapply the next committed-text snapshot.
+///
+/// @details Active composition is cancelled first. A successful restore emits
+///          one change edge but does not append another history entry.
+/// @param input Text input widget; may be NULL.
+/// @return true when a newer snapshot was restored.
+bool vg_textinput_redo(vg_textinput_t *input);
+
+/// @brief Return whether an older undo snapshot is available.
+/// @param input Text input widget; may be NULL.
+/// @return true when vg_textinput_undo() can change committed text.
+bool vg_textinput_can_undo(const vg_textinput_t *input);
+
+/// @brief Return whether a newer redo snapshot is available.
+/// @param input Text input widget; may be NULL.
+/// @return true when vg_textinput_redo() can change committed text.
+bool vg_textinput_can_redo(const vg_textinput_t *input);
+
+/// @brief Consume the text-changed edge independently of submission edges.
+/// @param input Text input widget; may be NULL.
+/// @return true once after one or more changes since the preceding call.
+bool vg_textinput_was_changed(vg_textinput_t *input);
+
+/// @brief Consume the single-line submission edge independently of text changes.
+/// @param input Text input widget; may be NULL.
+/// @return true once after one or more Enter submissions since the preceding call.
+bool vg_textinput_was_submitted(vg_textinput_t *input);
+
+/// @brief Return the non-consuming widget state revision.
+/// @param input Text input widget; may be NULL.
+/// @return Monotonic revision, or zero for invalid input.
+uint64_t vg_textinput_get_revision(const vg_textinput_t *input);
+
+/// @brief Begin an IME preedit session over a grapheme replacement range.
+///
+/// @details Existing composition is cancelled. The committed text and undo
+///          history remain unchanged; cursor/selection state is saved for
+///          cancellation. Read-only inputs reject the operation.
+/// @param input Text input widget; may be NULL.
+/// @param replacement_start Start boundary in committed-text graphemes.
+/// @param replacement_length Number of committed graphemes replaced on commit.
+/// @return true when composition state was initialized.
+bool vg_textinput_composition_start(vg_textinput_t *input,
+                                    size_t replacement_start,
+                                    size_t replacement_length);
+
+/// @brief Replace the visible IME preedit text and its internal selection.
+///
+/// @details The UTF-8 preedit is sanitized and owned by the widget. Selection
+///          indices use grapheme units and are clamped to the preedit count.
+///          This operation repaints but does not change committed text,
+///          revisions, change edges, or undo history.
+/// @param input Text input widget with an active composition.
+/// @param text Borrowed NUL-terminated UTF-8 preedit text; NULL becomes empty.
+/// @param selection_start Grapheme selection/caret start within preedit.
+/// @param selection_length Grapheme selection length within preedit.
+/// @return true when active composition state was updated.
+bool vg_textinput_composition_update(vg_textinput_t *input,
+                                     const char *text,
+                                     size_t selection_start,
+                                     size_t selection_length);
+
+/// @brief Commit an IME result as one atomic text edit and one undo record.
+///
+/// @details The saved replacement range is selected, @p text is inserted using
+///          normal sanitization/limit rules, and composition state is cleared.
+///          A rejected or empty commit still ends composition without changing
+///          committed text.
+/// @param input Text input widget with an active composition.
+/// @param text Borrowed NUL-terminated UTF-8 commit string; NULL becomes empty.
+/// @return true only when committed text changed.
+bool vg_textinput_composition_commit(vg_textinput_t *input, const char *text);
+
+/// @brief Cancel IME preedit and restore the saved cursor/selection state.
+/// @param input Text input widget; may be NULL or not composing.
+/// @return true when an active composition was cancelled.
+bool vg_textinput_composition_cancel(vg_textinput_t *input);
+
+/// @brief Return whether an IME preedit session is active.
+/// @param input Text input widget; may be NULL.
+/// @return true only while preedit state is active.
+bool vg_textinput_is_composing(const vg_textinput_t *input);
+
+/// @brief Return the owned current IME preedit text.
+/// @param input Text input widget; may be NULL.
+/// @return Borrowed NUL-terminated preedit text, or an empty static string.
+const char *vg_textinput_get_composition_text(const vg_textinput_t *input);
+
+/// @brief Return the committed-text insertion point for preedit in grapheme units.
+/// @param input Text input widget; may be NULL.
+/// @return Grapheme boundary at which composition will commit, or zero.
+size_t vg_textinput_get_composition_start(const vg_textinput_t *input);
+
+/// @brief Return the current preedit text length in grapheme units.
+/// @param input Text input widget; may be NULL.
+/// @return Number of user-perceived characters in preedit text.
+size_t vg_textinput_get_composition_length(const vg_textinput_t *input);
 
 /// @brief Copy the selected text into a newly allocated UTF-8 string.
 /// @param input Text input widget
@@ -517,6 +799,16 @@ struct vg_icon;
 typedef void (*vg_listbox_data_provider_t)(
     vg_widget_t *listbox, size_t index, const char **text, struct vg_icon *icon, void *user_data);
 
+/// @brief Notification fired immediately before a virtual model is detached from a ListBox.
+/// @details The callback is invoked at most once for each successful binding. It runs when the
+///          binding is explicitly cleared, replaced, disabled through the legacy virtual-mode
+///          API, or when the ListBox is destroyed. The callback must not destroy @p listbox and
+///          must not attempt to clear the same binding recursively.
+/// @param listbox ListBox whose binding is being detached; valid only for the duration of the
+///                callback.
+/// @param user_data Opaque model-owned pointer supplied to @ref vg_listbox_bind_virtual_model.
+typedef void (*vg_listbox_virtual_unbind_callback_t)(vg_widget_t *listbox, void *user_data);
+
 /// @brief Virtual item cache entry
 typedef struct vg_listbox_cache_entry {
     char *text;    ///< Cached text (owned)
@@ -546,10 +838,12 @@ typedef struct vg_listbox {
     bool multi_select; ///< Allow multiple selection
 
     // Virtual scrolling mode
-    bool virtual_mode;                        ///< Enable virtual scrolling
-    size_t total_item_count;                  ///< Total items (when virtual)
-    vg_listbox_data_provider_t data_provider; ///< Data provider callback
-    void *data_provider_user_data;            ///< Data provider user data
+    bool virtual_mode;                                   ///< Enable virtual scrolling
+    size_t total_item_count;                             ///< Total items (when virtual)
+    vg_listbox_data_provider_t data_provider;            ///< Data provider callback
+    void *data_provider_user_data;                       ///< Data provider user data
+    vg_listbox_virtual_unbind_callback_t virtual_unbind; ///< Binding-lifetime notification.
+    void *virtual_unbind_user_data; ///< Opaque pointer passed to @ref virtual_unbind.
 
     // Virtual mode visible range
     size_t visible_start; ///< First visible item index
@@ -603,6 +897,17 @@ void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item);
 /// @brief Remove all items and reset selection; virtual mode is disabled and cleared.
 /// @param listbox ListBox widget.
 void vg_listbox_clear(vg_listbox_t *listbox);
+
+/// @brief Reclaim one specific retired ListBox item tombstone.
+/// @details Searches only the owning ListBox's retirement chain, unlinks @p item when present, and
+///          releases its already-cleared payload record. The caller must ensure no external handle
+///          can subsequently inspect @p item. Live items, foreign pointers, NULL inputs, and items
+///          already reclaimed return false without side effects. This operation exists for managed
+///          runtimes that retain removed records until the last wrapper is finalized.
+/// @param listbox Live owner of the retired item.
+/// @param item Candidate tombstone address; ownership is not transferred unless found.
+/// @return true when the tombstone was found and freed, otherwise false.
+bool vg_listbox_reclaim_retired_item(vg_listbox_t *listbox, vg_listbox_item_t *item);
 
 /// @brief Select an item; passing NULL clears all non-virtual selection flags.
 /// @param listbox ListBox widget.
@@ -658,6 +963,34 @@ void vg_listbox_set_data_provider(vg_listbox_t *listbox,
                                   vg_listbox_data_provider_t provider,
                                   void *user_data);
 
+/// @brief Atomically attach an external viewport-backed model to a ListBox.
+/// @details On success the ListBox enters virtual mode, owns only a packed selection bitmap and a
+///          viewport-sized text cache, and calls @p provider only for rows in the painted
+///          viewport. An existing external binding is detached after all allocations for the new
+///          binding have succeeded. The model and ListBox do not retain or own each other.
+/// @param listbox ListBox to bind; NULL is rejected.
+/// @param total_count Logical number of model rows. Counts that overflow bitmap sizing are
+///                    rejected.
+/// @param item_height Positive finite physical row height used by the lower renderer.
+/// @param provider Callback that supplies borrowed row text; NULL is rejected.
+/// @param user_data Opaque model pointer passed to @p provider and @p on_unbind.
+/// @param on_unbind Callback used to invalidate the model's non-owning ListBox pointer. May be
+///                  NULL when no lifetime notification is required.
+/// @return true when the new binding is installed; false on invalid input or allocation failure,
+///         leaving an existing binding unchanged.
+bool vg_listbox_bind_virtual_model(vg_listbox_t *listbox,
+                                   size_t total_count,
+                                   float item_height,
+                                   vg_listbox_data_provider_t provider,
+                                   void *user_data,
+                                   vg_listbox_virtual_unbind_callback_t on_unbind);
+
+/// @brief Detach an external virtual model and return the ListBox to ordinary non-virtual mode.
+/// @details Invokes the registered unbind callback exactly once before releasing virtual cache and
+///          selection storage. Ordinary non-virtual items remain intact. NULL is ignored.
+/// @param listbox ListBox whose non-owning model binding should be cleared.
+void vg_listbox_clear_virtual_model(vg_listbox_t *listbox);
+
 /// @brief Update total count (e.g., after filtering) in virtual mode
 /// @param listbox ListBox widget
 /// @param count New total count
@@ -672,9 +1005,23 @@ void vg_listbox_invalidate_items(vg_listbox_t *listbox);
 /// @param index Item index to invalidate
 void vg_listbox_invalidate_item(vg_listbox_t *listbox, size_t index);
 
-/// @brief Select item by index (virtual mode)
+/// @brief Return the first virtual row intersecting the current viewport.
+/// @details The value is computed in O(1) from scroll offset and row height and does not invoke the
+///          data provider. For a non-virtual, empty, or NULL ListBox the result is zero.
+/// @param listbox ListBox to inspect.
+/// @return Zero-based first visible row index.
+size_t vg_listbox_get_visible_first(vg_listbox_t *listbox);
+
+/// @brief Return the number of virtual rows materialized for the current viewport.
+/// @details Includes the renderer's trailing safety rows and is capped at the logical item count.
+///          The value is computed without invoking the model data provider.
+/// @param listbox ListBox to inspect.
+/// @return Visible/cache row count, or zero for a non-virtual, empty, or NULL ListBox.
+size_t vg_listbox_get_visible_count(vg_listbox_t *listbox);
+
+/// @brief Select item by index (virtual mode).
 /// @param listbox ListBox widget
-/// @param index Item index
+/// @param index Item index, or SIZE_MAX to clear virtual selection.
 void vg_listbox_select_index(vg_listbox_t *listbox, size_t index);
 
 /// @brief Get selected index (virtual mode)
@@ -939,10 +1286,13 @@ void vg_progressbar_tick(vg_progressbar_t *progress, float dt);
 
 /// @brief RadioButton group - manages mutual exclusivity
 typedef struct vg_radiogroup {
-    struct vg_radiobutton **buttons; ///< Array of buttons in group
-    int button_count;                ///< Number of buttons
-    int button_capacity;             ///< Allocated capacity
-    int selected_index;              ///< Currently selected index
+    struct vg_radiobutton **buttons;      ///< Array of buttons in group
+    int button_count;                     ///< Number of buttons
+    int button_capacity;                  ///< Allocated capacity
+    int selected_index;                   ///< Currently selected index
+    uint64_t revision;                    ///< Monotonic membership/selection revision
+    uint64_t selection_revision;          ///< Monotonic selected-index transition revision
+    uint64_t reported_selection_revision; ///< Last selection revision consumed by WasChanged
 } vg_radiogroup_t;
 
 /// @brief RadioButton callback
@@ -957,6 +1307,8 @@ typedef struct vg_radiobutton {
     float font_size;        ///< Font size
     bool selected;          ///< Is this button selected
     vg_radiogroup_t *group; ///< Group this button belongs to
+    void *user_data;        ///< Opaque caller data
+    bool owns_user_data;    ///< Whether destruction must free user_data
 
     // Appearance
     float circle_size;     ///< Radio circle size
@@ -1007,6 +1359,57 @@ int vg_radiogroup_get_selected(vg_radiogroup_t *group);
 /// @param index Zero-based index of the button to select.
 void vg_radiogroup_set_selected(vg_radiogroup_t *group, int index);
 
+/// @brief Attempt to select a group member by index or clear the selection.
+/// @details An index of -1 clears the selection. Values below -1 or at/above the member count are
+///          rejected without changing state. Selecting the current index succeeds as a no-op.
+/// @param group Radio group to update.
+/// @param index Zero-based member index or -1 to select none.
+/// @return true when the request is valid, otherwise false.
+bool vg_radiogroup_try_set_selected(vg_radiogroup_t *group, int index);
+
+/// @brief Return the number of live buttons registered with a radio group.
+/// @param group Radio group to inspect.
+/// @return Non-negative member count, or zero when @p group is NULL.
+int vg_radiogroup_get_count(const vg_radiogroup_t *group);
+
+/// @brief Consume the radio group's independent selected-index change edge.
+/// @details Membership-only changes do not set this edge. Multiple unreported selection changes
+///          coalesce into one true result and do not consume the general revision.
+/// @param group Radio group to inspect.
+/// @return true once after one or more unreported selected-index transitions.
+bool vg_radiogroup_was_changed(vg_radiogroup_t *group);
+
+/// @brief Return the radio group's non-consuming state revision.
+/// @details The revision advances for membership and selected-index changes and saturates at
+///          UINT64_MAX.
+/// @param group Radio group to inspect.
+/// @return Monotonic revision, or zero when @p group is NULL.
+uint64_t vg_radiogroup_get_revision(const vg_radiogroup_t *group);
+
+/// @brief Replace a radio button's visible label text atomically.
+/// @details The text is copied before the previous value is released. NULL is treated as an empty
+///          string. Allocation failure preserves the previous text.
+/// @param radio Radio button widget to update; NULL is ignored.
+/// @param text UTF-8 label text to copy.
+void vg_radiobutton_set_text(vg_radiobutton_t *radio, const char *text);
+
+/// @brief Return a radio button's current label text.
+/// @param radio Radio button widget to inspect.
+/// @return Borrowed null-terminated text, or NULL when @p radio is NULL.
+const char *vg_radiobutton_get_text(const vg_radiobutton_t *radio);
+
+/// @brief Store borrowed opaque caller data on a radio button.
+/// @details Replacing an internally-owned prior payload releases it. The new pointer remains owned
+///          by the caller and is never dereferenced by the widget.
+/// @param radio Radio button widget to update; NULL is ignored.
+/// @param data Borrowed pointer, or NULL to clear it.
+void vg_radiobutton_set_data(vg_radiobutton_t *radio, void *data);
+
+/// @brief Return the opaque data pointer stored on a radio button.
+/// @param radio Radio button widget to inspect.
+/// @return Borrowed opaque pointer, or NULL when absent or @p radio is NULL.
+void *vg_radiobutton_get_data(const vg_radiobutton_t *radio);
+
 //=============================================================================
 // Image Widget
 //=============================================================================
@@ -1019,14 +1422,31 @@ typedef enum vg_image_scale {
     VG_IMAGE_SCALE_STRETCH ///< Stretch to fill (distorts)
 } vg_image_scale_t;
 
+/// @brief Image sampling filter used whenever source pixels are resized.
+typedef enum vg_image_filter {
+    VG_IMAGE_FILTER_NEAREST = 0, ///< Deterministic nearest-neighbour sampling.
+    VG_IMAGE_FILTER_BILINEAR = 1 ///< Four-sample bilinear interpolation.
+} vg_image_filter_t;
+
 /// @brief Image widget structure
 typedef struct vg_image {
     vg_widget_t base;
 
-    uint8_t *pixels;             ///< Pixel data (RGBA, owned)
-    int img_width;               ///< Original image width
-    int img_height;              ///< Original image height
-    vg_image_scale_t scale_mode; ///< Scaling mode
+    uint8_t *pixels;             ///< Pixel data (RGBA, owned).
+    size_t pixel_capacity;       ///< Allocated byte capacity of @ref pixels.
+    int img_width;               ///< Original image width.
+    int img_height;              ///< Original image height.
+    vg_image_scale_t scale_mode; ///< Scaling mode.
+    vg_image_filter_t filter;    ///< Sampling filter for resized output.
+    bool pixels_opaque;          ///< True when every source alpha byte is 255.
+
+    uint8_t *scaled_pixels;          ///< Reusable resized RGBA cache (owned).
+    size_t scaled_capacity;          ///< Allocated byte capacity of @ref scaled_pixels.
+    int scaled_width;                ///< Width represented by the resized cache.
+    int scaled_height;               ///< Height represented by the resized cache.
+    uint64_t content_revision;       ///< Saturating source-content revision.
+    uint64_t scaled_revision;        ///< Source revision represented by the cache.
+    vg_image_filter_t scaled_filter; ///< Filter represented by the cache.
 
     // Appearance
     uint32_t bg_color;   ///< Background color (shown if image doesn't fill)
@@ -1046,6 +1466,43 @@ vg_image_t *vg_image_create(vg_widget_t *parent);
 /// @param height Image height in pixels.
 void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, int height);
 
+/// @brief Atomically replace image pixels with a copied RGBA buffer.
+/// @details Validation and any required allocation complete before the old image state is
+///          replaced. Existing storage is reused when its capacity is sufficient. Unlike
+///          @ref vg_image_set_pixels, invalid input never clears the current image.
+/// @param image Image widget to update; NULL is rejected.
+/// @param pixels Source RGBA bytes in row-major order; NULL is rejected.
+/// @param width Positive source width in pixels.
+/// @param height Positive source height in pixels.
+/// @return true when all pixels were copied; false on invalid dimensions or allocation failure.
+bool vg_image_try_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, int height);
+
+/// @brief Atomically copy a rectangular RGBA source region into the current image.
+/// @details Both rectangles must fit completely in their respective buffers. Validation failure
+///          leaves every destination byte unchanged. Overlapping source and destination storage
+///          is supported; temporary storage is allocated before mutation when overlap requires it.
+/// @param image Image widget whose existing pixel buffer receives the update.
+/// @param pixels Source RGBA byte buffer.
+/// @param source_width Positive full width of @p pixels.
+/// @param source_height Positive full height of @p pixels.
+/// @param source_x Zero-based source-region left coordinate.
+/// @param source_y Zero-based source-region top coordinate.
+/// @param width Positive region width.
+/// @param height Positive region height.
+/// @param dest_x Zero-based destination-region left coordinate.
+/// @param dest_y Zero-based destination-region top coordinate.
+/// @return true on a complete copy; false on invalid input or temporary-allocation failure.
+bool vg_image_update_region(vg_image_t *image,
+                            const uint8_t *pixels,
+                            int source_width,
+                            int source_height,
+                            int source_x,
+                            int source_y,
+                            int width,
+                            int height,
+                            int dest_x,
+                            int dest_y);
+
 /// @brief Load image pixel data from a file (PNG, JPEG, or BMP).
 /// @param image Image widget.
 /// @param path  Filesystem path to the image file (UTF-8).
@@ -1060,6 +1517,19 @@ void vg_image_clear(vg_image_t *image);
 /// @param image Image widget.
 /// @param mode  One of VG_IMAGE_SCALE_NONE, FIT, FILL, or STRETCH.
 void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode);
+
+/// @brief Select the sampling filter used when the image is resized.
+/// @details Invalid enum values are normalized to @ref VG_IMAGE_FILTER_NEAREST. Changing the
+///          filter invalidates the reusable scaled cache and schedules repaint without changing
+///          the source pixels.
+/// @param image Image widget to configure; NULL is ignored.
+/// @param filter Requested nearest or bilinear filter.
+void vg_image_set_filter(vg_image_t *image, vg_image_filter_t filter);
+
+/// @brief Return the image sampling filter.
+/// @param image Image widget to inspect; may be NULL.
+/// @return Current filter, or @ref VG_IMAGE_FILTER_NEAREST for NULL.
+vg_image_filter_t vg_image_get_filter(const vg_image_t *image);
 
 /// @brief Set the rendering opacity.
 /// @param image   Image widget.
@@ -1265,9 +1735,30 @@ void vg_colorpalette_set_colors(vg_colorpalette_t *palette, const uint32_t *colo
 /// @param color Color to add (ARGB)
 void vg_colorpalette_add_color(vg_colorpalette_t *palette, uint32_t color);
 
+/// @brief Remove one color by zero-based index.
+/// @details Later colors shift left. The selected index follows the same logical color when a
+///          preceding entry is removed and clears when the selected entry is removed. Invalid
+///          indices leave the palette unchanged.
+/// @param palette Color palette widget to update.
+/// @param index Zero-based color index.
+/// @return true when an entry was removed, otherwise false.
+bool vg_colorpalette_remove_color(vg_colorpalette_t *palette, int index);
+
 /// @brief Clear all colors from palette
 /// @param palette ColorPalette widget
 void vg_colorpalette_clear(vg_colorpalette_t *palette);
+
+/// @brief Return the number of colors stored in a palette.
+/// @param palette Color palette widget to inspect.
+/// @return Non-negative color count, or zero when @p palette is NULL.
+int vg_colorpalette_get_color_count(const vg_colorpalette_t *palette);
+
+/// @brief Read one palette color by zero-based index.
+/// @param palette Color palette widget to inspect.
+/// @param index Zero-based color index.
+/// @param out_color Receives the stored AARRGGBB value on success.
+/// @return true when @p index exists and @p out_color is non-NULL.
+bool vg_colorpalette_get_color_at(const vg_colorpalette_t *palette, int index, uint32_t *out_color);
 
 /// @brief Set number of columns
 /// @param palette ColorPalette widget
@@ -1343,6 +1834,7 @@ typedef struct vg_colorpicker {
     void *on_change_data;
 
     bool syncing_children; ///< Internal: suppress child slider callbacks during programmatic sync
+    int active_channel;    ///< Keyboard-active channel: 0=red, 1=green, 2=blue, 3=alpha
 } vg_colorpicker_t;
 
 /// @brief Create a new color picker widget
@@ -1388,6 +1880,11 @@ uint8_t vg_colorpicker_get_alpha(vg_colorpicker_t *picker);
 /// @param picker ColorPicker widget
 /// @param show true to show alpha slider
 void vg_colorpicker_show_alpha(vg_colorpicker_t *picker, bool show);
+
+/// @brief Return whether the alpha channel slider is enabled and visible.
+/// @param picker Color picker widget to inspect.
+/// @return true when alpha editing is enabled, otherwise false.
+bool vg_colorpicker_is_alpha_enabled(const vg_colorpicker_t *picker);
 
 /// @brief Show/hide quick palette
 /// @param picker ColorPicker widget

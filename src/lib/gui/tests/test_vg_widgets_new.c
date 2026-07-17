@@ -3,19 +3,23 @@
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// Purpose: Tests for newly added GUI widgets — notification, breadcrumb, minimap, floating panel.
-//
-//===----------------------------------------------------------------------===//
-//
 // File: src/lib/gui/tests/test_vg_widgets_new.c
+// Purpose: Unit and software-framebuffer tests for newer GUI widget families.
+// Key invariants:
+//   - Tests use the public lower-toolkit APIs and retained widget vtables.
+//   - Framebuffer assertions exercise the deterministic ViperGFX software/mock
+//     semantic reference rather than platform-native drawing.
+// Ownership/Lifetime:
+//   - Every test destroys its widgets and any ViperGFX window it creates.
+// Links: src/lib/gui/include/vg_widgets.h,
+//        src/lib/gui/include/vg_theme.h,
+//        src/lib/graphics/include/vgfx.h
 //
 //===----------------------------------------------------------------------===//
-// test_vg_widgets_new.c — Unit tests for new widget features
-// Tests slider vtable, progressbar vtable, listbox vtable,
-// breadcrumb max_items, commandpalette clear, menu management,
-// and codeeditor data fields.
+
 #include "vg_event.h"
 #include "vg_ide_widgets.h"
+#include "vg_theme.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
 #include "vgfx.h"
@@ -344,6 +348,195 @@ TEST(image_opacity_and_stretch_affect_framebuffer) {
 
     vg_widget_destroy(&image->base);
     vgfx_destroy_window(win);
+}
+
+/// @brief Verify status uploads are atomic, reuse storage, and avoid revisions for byte-identical
+/// replacements.
+TEST(image_atomic_upload_and_region_update) {
+    vg_image_t *image = vg_image_create(NULL);
+    ASSERT_NOT_NULL(image);
+
+    const uint8_t original[16] = {1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255};
+    ASSERT(vg_image_try_set_pixels(image, original, 2, 2));
+    uint8_t *allocated = image->pixels;
+    const size_t capacity = image->pixel_capacity;
+    const uint64_t uploaded_revision = image->content_revision;
+    ASSERT(image->pixels_opaque);
+
+    ASSERT(!vg_image_try_set_pixels(image, original, -1, 2));
+    ASSERT(image->pixels == allocated);
+    ASSERT_EQ(memcmp(image->pixels, original, sizeof(original)), 0);
+    ASSERT_EQ(image->content_revision, uploaded_revision);
+
+    ASSERT(vg_image_try_set_pixels(image, original, 2, 2));
+    ASSERT(image->pixels == allocated);
+    ASSERT_EQ(image->pixel_capacity, capacity);
+    ASSERT_EQ(image->content_revision, uploaded_revision);
+
+    const uint8_t source[16] = {20, 21, 22, 255, 30, 31, 32, 128, 40, 41, 42, 255, 50, 51, 52, 255};
+    ASSERT(vg_image_update_region(image, source, 2, 2, 1, 0, 1, 1, 0, 1));
+    ASSERT_EQ(image->pixels[8], 30);
+    ASSERT_EQ(image->pixels[9], 31);
+    ASSERT_EQ(image->pixels[10], 32);
+    ASSERT_EQ(image->pixels[11], 128);
+    ASSERT(!image->pixels_opaque);
+    const uint64_t region_revision = image->content_revision;
+
+    uint8_t snapshot[16];
+    memcpy(snapshot, image->pixels, sizeof(snapshot));
+    ASSERT(!vg_image_update_region(image, source, 2, 2, 1, 1, 2, 1, 0, 0));
+    ASSERT_EQ(memcmp(image->pixels, snapshot, sizeof(snapshot)), 0);
+    ASSERT_EQ(image->content_revision, region_revision);
+
+    ASSERT(vg_image_update_region(image, image->pixels, 2, 2, 0, 0, 1, 1, 1, 1));
+    ASSERT_EQ(memcmp(image->pixels + 12, image->pixels, 4), 0);
+
+    vg_widget_destroy(&image->base);
+}
+
+/// @brief Verify explicit bilinear filtering produces a deterministic interpolated center pixel
+/// and that the resized cache is reused across paints.
+TEST(image_bilinear_filter_and_scaled_cache) {
+    vgfx_window_params_t params = {
+        .width = 4, .height = 2, .title = "image-filter", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    vg_image_t *image = vg_image_create(NULL);
+    ASSERT_NOT_NULL(image);
+
+    const uint8_t pixels[8] = {255, 0, 0, 255, 0, 0, 255, 255};
+    ASSERT(vg_image_try_set_pixels(image, pixels, 2, 1));
+    ASSERT_EQ(vg_image_get_filter(image), VG_IMAGE_FILTER_NEAREST);
+    vg_image_set_filter(image, VG_IMAGE_FILTER_BILINEAR);
+    ASSERT_EQ(vg_image_get_filter(image), VG_IMAGE_FILTER_BILINEAR);
+    ASSERT_EQ(vg_image_get_filter(NULL), VG_IMAGE_FILTER_NEAREST);
+    vg_image_set_scale_mode(image, VG_IMAGE_SCALE_STRETCH);
+    vg_widget_arrange(&image->base, 0.0f, 0.0f, 3.0f, 1.0f);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vg_widget_paint(&image->base, win);
+    vgfx_color_t color = 0;
+    ASSERT_EQ(vgfx_point(win, 0, 0, &color), 1);
+    ASSERT_EQ(color, 0xFF0000);
+    ASSERT_EQ(vgfx_point(win, 1, 0, &color), 1);
+    ASSERT_EQ(color, 0x800080);
+    ASSERT_EQ(vgfx_point(win, 2, 0, &color), 1);
+    ASSERT_EQ(color, 0x0000FF);
+    ASSERT_NOT_NULL(image->scaled_pixels);
+    uint8_t *cache = image->scaled_pixels;
+    const uint64_t cached_revision = image->scaled_revision;
+
+    vgfx_cls(win, VGFX_BLACK);
+    image->base.needs_paint = true;
+    vg_widget_paint(&image->base, win);
+    ASSERT(image->scaled_pixels == cache);
+    ASSERT_EQ(image->scaled_revision, cached_revision);
+
+    vg_widget_destroy(&image->base);
+    vgfx_destroy_window(win);
+}
+
+/// @brief Verify Minimap observes editor source/viewport revisions and retains a bounded O(1)
+/// direct-mapped line-summary cache across scroll-only transitions.
+TEST(minimap_revision_and_bounded_line_cache) {
+    vgfx_window_params_t params = {
+        .width = 128, .height = 100, .title = "minimap-cache", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
+    ASSERT_NOT_NULL(editor);
+    vg_codeeditor_set_text(editor, "alpha\n  beta\ngamma\n    delta");
+    vg_minimap_t *minimap = vg_minimap_create(editor);
+    ASSERT_NOT_NULL(minimap);
+    ASSERT(vg_minimap_set_maximum_cached_lines(minimap, 2));
+    vg_widget_arrange(&minimap->base, 0.0f, 0.0f, 120.0f, 100.0f);
+    vg_widget_paint(&minimap->base, win);
+    ASSERT_EQ(vg_minimap_get_cached_line_count(minimap), 2u);
+
+    vg_minimap_invalidate_lines(minimap, 2u, 2u);
+    ASSERT_EQ(vg_minimap_get_cached_line_count(minimap), 1u);
+    const uint64_t initial_revision = vg_minimap_get_source_revision(minimap);
+    vg_codeeditor_set_text(editor, "one\ntwo\nthree\nfour");
+    ASSERT(vg_minimap_sync_source(minimap));
+    ASSERT(vg_minimap_get_source_revision(minimap) > initial_revision);
+    ASSERT_EQ(vg_minimap_get_cached_line_count(minimap), 0u);
+
+    vg_widget_paint(&minimap->base, win);
+    const uint32_t cached_before_scroll = vg_minimap_get_cached_line_count(minimap);
+    const uint64_t content_revision = vg_minimap_get_source_revision(minimap);
+    editor->scroll_y += 12.0f;
+    ASSERT(vg_minimap_sync_source(minimap));
+    ASSERT(vg_minimap_get_source_revision(minimap) > content_revision);
+    ASSERT_EQ(vg_minimap_get_cached_line_count(minimap), cached_before_scroll);
+
+    ASSERT(vg_minimap_set_maximum_cached_lines(minimap, 0u));
+    ASSERT_EQ(vg_minimap_get_cached_line_count(minimap), 0u);
+    vg_minimap_destroy(minimap);
+    vg_widget_destroy(&editor->base);
+    vgfx_destroy_window(win);
+}
+
+//=============================================================================
+// Group E2d — Public color controls
+//=============================================================================
+
+/// @brief Verify translucent swatches preserve the checkerboard instead of erasing it with an
+/// opaque final fill.
+TEST(colorswatch_transparency_composites_over_checkerboard) {
+    vgfx_window_params_t params = {
+        .width = 16, .height = 8, .title = "color", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    vg_colorswatch_t *swatch = vg_colorswatch_create(NULL, 0x80FF0000u);
+    ASSERT_NOT_NULL(swatch);
+    vg_widget_arrange(&swatch->base, 0.0f, 0.0f, 12.0f, 8.0f);
+
+    vgfx_cls(win, VGFX_BLACK);
+    vg_widget_paint(&swatch->base, win);
+    vgfx_color_t first_checker = 0;
+    vgfx_color_t second_checker = 0;
+    const int first_ok = vgfx_point(win, 1, 1, &first_checker);
+    const int second_ok = vgfx_point(win, 5, 1, &second_checker);
+
+    vg_widget_destroy(&swatch->base);
+    vgfx_destroy_window(win);
+    ASSERT_EQ(first_ok, 1);
+    ASSERT_EQ(second_ok, 1);
+    ASSERT_NEQ(first_checker, second_checker);
+    ASSERT_NEQ(first_checker, 0xFF0000u);
+    ASSERT_NEQ(second_checker, 0xFF0000u);
+}
+
+/// @brief Verify opaque swatch fill and selection/focus borders use the live theme rather than a
+/// stale construction-time palette.
+TEST(colorswatch_paint_uses_opaque_rgb_and_live_focus_theme) {
+    vgfx_window_params_t params = {
+        .width = 12, .height = 12, .title = "color", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    vg_colorswatch_t *swatch = vg_colorswatch_create(NULL, 0xFF123456u);
+    ASSERT_NOT_NULL(swatch);
+    vg_colorswatch_set_selected(swatch, true);
+    vg_widget_arrange(&swatch->base, 2.0f, 2.0f, 8.0f, 8.0f);
+
+    vg_theme_t *old_theme = vg_theme_get_current();
+    vg_theme_t live_theme = *old_theme;
+    live_theme.colors.border_focus = 0xFF00FF00u;
+    vg_theme_set_current(&live_theme);
+    vgfx_cls(win, VGFX_BLACK);
+    vg_widget_paint(&swatch->base, win);
+    vgfx_color_t interior = 0;
+    vgfx_color_t border = 0;
+    const int interior_ok = vgfx_point(win, 5, 5, &interior);
+    const int border_ok = vgfx_point(win, 2, 2, &border);
+    vg_theme_set_current(old_theme);
+
+    vg_widget_destroy(&swatch->base);
+    vgfx_destroy_window(win);
+    ASSERT_EQ(interior_ok, 1);
+    ASSERT_EQ(border_ok, 1);
+    ASSERT_EQ(interior, 0x123456u);
+    ASSERT_EQ(border, 0x00FF00u);
 }
 
 //=============================================================================
@@ -750,6 +943,13 @@ int main(void) {
     printf("\nGroup E2c — Image:\n");
     RUN(image_scale_none_preserves_original_size);
     RUN(image_opacity_and_stretch_affect_framebuffer);
+    RUN(image_atomic_upload_and_region_update);
+    RUN(image_bilinear_filter_and_scaled_cache);
+    RUN(minimap_revision_and_bounded_line_cache);
+
+    printf("\nGroup E2d — Color controls:\n");
+    RUN(colorswatch_transparency_composites_over_checkerboard);
+    RUN(colorswatch_paint_uses_opaque_rgb_and_live_focus_theme);
 
     printf("\nGroup E3 — ListBox vtable:\n");
     RUN(listbox_create_vtable_set);
