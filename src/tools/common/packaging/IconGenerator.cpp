@@ -239,10 +239,11 @@ std::vector<uint8_t> generateIco(const PkgImage &srcImage) {
 }
 
 /// @brief Build the dependency-free fallback Zanna toolchain icon.
-/// @details Draws a high-contrast square icon with a light "V" mark, subtle
-///          diagonal accent, and transparent-free pixels so every platform can
-///          resize it predictably for setup programs, launchers, and file
-///          association metadata.
+/// @details Draws a high-contrast square icon with the italic Zanna "Z" mark —
+///          green top bar, steel diagonal, teal base bar — on a dark
+///          charcoal-green field with transparent-free pixels so every
+///          platform can resize it predictably for setup programs, launchers,
+///          and file association metadata.
 /// @return A 256x256 RGBA image.
 PkgImage defaultZannaToolchainIconImage() {
     constexpr uint32_t kSize = 256;
@@ -263,42 +264,53 @@ PkgImage defaultZannaToolchainIconImage() {
                  (dx + 104) * (dx + 104) + (dy - 104) * (dy - 104) > 24 * 24) ||
                 (x >= 232 && y >= 232 &&
                  (dx - 104) * (dx - 104) + (dy - 104) * (dy - 104) > 24 * 24);
-            const uint8_t shade = static_cast<uint8_t>(18 + (x * 42u + y * 26u) / (kSize * 2u));
-            px[0] = roundedCorner ? 0 : static_cast<uint8_t>(10 + shade / 4u);
-            px[1] = roundedCorner ? 0 : static_cast<uint8_t>(74 + shade / 2u);
-            px[2] = roundedCorner ? 0 : static_cast<uint8_t>(92 + shade);
+            const uint8_t shade = static_cast<uint8_t>((x * 34u + y * 22u) / (kSize * 2u));
+            px[0] = roundedCorner ? 0 : static_cast<uint8_t>(10 + shade / 3u);
+            px[1] = roundedCorner ? 0 : static_cast<uint8_t>(24 + shade / 2u);
+            px[2] = roundedCorner ? 0 : static_cast<uint8_t>(28 + shade / 2u);
             px[3] = roundedCorner ? 0 : 255;
         }
     }
 
-    for (uint32_t y = 48; y < 214; ++y) {
-        const int left = 55 + static_cast<int>((y - 48) * 45 / 166);
-        const int right = 201 - static_cast<int>((y - 48) * 45 / 166);
-        const int mid = 128;
-        for (uint32_t x = 34; x < 222; ++x) {
-            const bool onLeft = std::abs(static_cast<int>(x) - left) <= 13;
-            const bool onRight = std::abs(static_cast<int>(x) - right) <= 13;
-            const bool onPoint = y > 178 && std::abs(static_cast<int>(x) - mid) <=
-                                                static_cast<int>((214 - y) / 2 + 13);
-            if (!onLeft && !onRight && !onPoint)
+    // Italic lean shared by every stroke: rows near the top shift right.
+    const auto lean = [](uint32_t y) { return static_cast<int>((204u - y) / 8u); };
+
+    // Steel diagonal from the top bar's right end to the base bar's left end.
+    for (uint32_t y = 78; y < 178; ++y) {
+        const int cx = 180 - static_cast<int>((y - 78) * 104 / 100) + lean(y);
+        const uint8_t steel = static_cast<uint8_t>(208 - (y - 78));
+        for (int x = cx - 17; x <= cx + 17; ++x) {
+            if (x < 0 || x >= static_cast<int>(kSize))
                 continue;
-            uint8_t *px = img.at(x, y);
-            px[0] = 236;
-            px[1] = 252;
-            px[2] = 245;
+            uint8_t *px = img.at(static_cast<uint32_t>(x), y);
+            px[0] = steel;
+            px[1] = static_cast<uint8_t>(steel + 8);
+            px[2] = static_cast<uint8_t>(steel + 6);
             px[3] = 255;
         }
     }
 
-    for (uint32_t y = 36; y < 220; ++y) {
-        for (uint32_t x = 36; x < 220; ++x) {
-            const int diagonal = static_cast<int>(x) - static_cast<int>(y);
-            if (diagonal >= 46 && diagonal <= 56) {
-                uint8_t *px = img.at(x, y);
-                px[0] = static_cast<uint8_t>((static_cast<unsigned>(px[0]) * 3u + 44u) / 4u);
-                px[1] = static_cast<uint8_t>((static_cast<unsigned>(px[1]) * 3u + 176u) / 4u);
-                px[2] = static_cast<uint8_t>((static_cast<unsigned>(px[2]) * 3u + 152u) / 4u);
+    // Green top bar and teal base bar drawn over the diagonal's ends.
+    for (uint32_t y = 52; y < 204; ++y) {
+        const bool topBar = y < 88;
+        const bool baseBar = y >= 168;
+        if (!topBar && !baseBar)
+            continue;
+        for (int x = 58 + lean(y); x < 198 + lean(y); ++x) {
+            if (x < 0 || x >= static_cast<int>(kSize))
+                continue;
+            uint8_t *px = img.at(static_cast<uint32_t>(x), y);
+            const uint8_t fade = static_cast<uint8_t>((x - 58 - lean(y)) / 6);
+            if (topBar) {
+                px[0] = static_cast<uint8_t>(120 - fade);
+                px[1] = static_cast<uint8_t>(200 - fade);
+                px[2] = 64;
+            } else {
+                px[0] = 30;
+                px[1] = static_cast<uint8_t>(192 - fade);
+                px[2] = static_cast<uint8_t>(188 - fade / 2);
             }
+            px[3] = 255;
         }
     }
 
