@@ -15,6 +15,8 @@
 #include "rt_list.h"
 #include "rt_locale.h"
 #include "rt_locale_manager.h"
+#include "rt_locale_platform.h"
+#include "rt_locale_posix_tag.h"
 #include "rt_option.h"
 #include "rt_string.h"
 
@@ -69,6 +71,32 @@ static bool field_eq(rt_string s, const char *expected) {
     bool ok = cs && strcmp(cs, expected) == 0;
     rt_string_unref(s);
     return ok;
+}
+
+static void test_platform_tag_normalization() {
+    char tag[32];
+
+    assert(rt_locale_posix_value_is_invariant("C") == 1);
+    assert(rt_locale_posix_value_is_invariant("c.UTF-8") == 1);
+    assert(rt_locale_posix_value_is_invariant("PoSiX@legacy") == 1);
+    assert(rt_locale_posix_value_is_invariant("en_US.UTF-8") == 0);
+
+    assert(rt_locale_clean_posix_tag("fr_FR.UTF-8", tag, sizeof(tag)) == 0);
+    assert(strcmp(tag, "fr-FR") == 0);
+    assert(rt_locale_clean_posix_tag("zh_Hans_CN@pinyin", tag, sizeof(tag)) == 0);
+    assert(strcmp(tag, "zh-Hans-CN") == 0);
+
+    const char *invalid[] = {
+        "-en", "en-", "en__US", "en/US", "1n_US", "toolongtag_US", "\xc3\xa9_US", nullptr};
+    for (int i = 0; invalid[i]; i++) {
+        strcpy(tag, "stale");
+        assert(rt_locale_clean_posix_tag(invalid[i], tag, sizeof(tag)) == -1);
+        assert(tag[0] == '\0');
+    }
+
+    char tiny[1] = {'x'};
+    assert(rt_locale_platform_detect_system(tiny, sizeof(tiny)) == -1);
+    assert(tiny[0] == '\0');
 }
 
 //=============================================================================
@@ -433,8 +461,7 @@ static void test_bcp47_conformance() {
         rt_string in = S("zh-cmn-Hans-CN");
         void *loc = rt_locale_parse(in);
         rt_string_unref(in);
-        test_result("Parse(\"zh-cmn-Hans-CN\") extlang accepted",
-                    tag_eq(loc, "zh-cmn-Hans-CN"));
+        test_result("Parse(\"zh-cmn-Hans-CN\") extlang accepted", tag_eq(loc, "zh-cmn-Hans-CN"));
     }
     {
         // Tags longer than the old 39-byte canonical cap.
@@ -522,6 +549,7 @@ static void test_null_equals_invariant() {
 }
 
 int main() {
+    test_platform_tag_normalization();
     test_bcp47_conformance();
     test_from_parts_single_subtags();
     test_null_equals_invariant();

@@ -106,7 +106,7 @@ static void rand_secure_zero(void *ptr, size_t len) {
 /// @brief Fill a buffer with cryptographically secure random bytes.
 /// @details Uses the platform's preferred CSPRNG with documented fallbacks:
 ///          - **Windows**: `BCryptGenRandom` with `BCRYPT_USE_SYSTEM_PREFERRED_RNG`.
-///            One call, no fallback needed.
+///            Large requests are chunked to the API's 32-bit limit; no fallback.
 ///          - **macOS / *BSD**: `arc4random_buf` (ChaCha20-based, kernel-seeded,
 ///            never fails — no return value to check).
 ///          - **Linux**: `getrandom(2)` syscall first (preferred — never blocks
@@ -147,8 +147,10 @@ static int secure_random_fill(uint8_t *buf, size_t len) {
             chunk = ULONG_MAX;
         NTSTATUS status =
             BCryptGenRandom(NULL, buf + off, (ULONG)chunk, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-        if (!NT_SUCCESS(status))
+        if (!NT_SUCCESS(status)) {
+            rand_secure_zero(buf, len);
             return -1;
+        }
         off += chunk;
     }
     return 0;

@@ -79,6 +79,15 @@ endforeach ()
 
 find_package(Threads REQUIRED)
 find_program(VIPER_BASH_EXECUTABLE NAMES bash)
+set(VIPER_BASH_COMMAND)
+if (VIPER_BASH_EXECUTABLE)
+    set(VIPER_BASH_COMMAND "${VIPER_BASH_EXECUTABLE}")
+    if (WIN32)
+        # Git Bash must run as a login shell so /usr/bin tools and the inherited
+        # Windows toolchain PATH are initialized consistently for CTest.
+        list(APPEND VIPER_BASH_COMMAND "--login")
+    endif ()
+endif ()
 
 if (WIN32)
     add_test(NAME windows_installer_host_launch
@@ -100,7 +109,7 @@ if (VIPER_BASH_EXECUTABLE)
     endif ()
 
     add_test(NAME check_vm_semantics_duplication
-            COMMAND ${VIPER_BASH_EXECUTABLE}
+            COMMAND ${VIPER_BASH_COMMAND}
             scripts/check_vm_semantics_duplication.sh
             .)
     set_tests_properties(check_vm_semantics_duplication PROPERTIES
@@ -108,7 +117,7 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "conformance;vm;bytecode;requires_posix_shell")
 
     add_test(NAME zia_runtime_name_literal_lint
-            COMMAND ${VIPER_BASH_EXECUTABLE}
+            COMMAND ${VIPER_BASH_COMMAND}
             scripts/lint_zia_runtime_names.sh
             .)
     set_tests_properties(zia_runtime_name_literal_lint PROPERTIES
@@ -116,23 +125,29 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "tools;zia;requires_posix_shell")
 
     add_test(NAME benchmark_compare_self_test
-            COMMAND ${VIPER_BASH_EXECUTABLE}
+            COMMAND ${VIPER_BASH_COMMAND}
             scripts/benchmark_compare.sh
             --self-test)
     set_tests_properties(benchmark_compare_self_test PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "perf;tools;requires_posix_shell")
 
-    add_test(NAME sanitizer_script_self_test
-            COMMAND ${VIPER_BASH_EXECUTABLE}
-            scripts/ci_full_sanitizer.sh
-            --self-test)
-    set_tests_properties(sanitizer_script_self_test PROPERTIES
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            LABELS "tools;requires_posix_shell")
+    # The full sanitizer driver configures Clang's POSIX runtime lanes. A Git
+    # Bash executable is enough for the other shell checks on Windows, but it
+    # does not make the Windows compiler-rt toolchain compatible with this
+    # driver (notably the UBSan runtime/link model).
+    if (NOT WIN32)
+        add_test(NAME sanitizer_script_self_test
+                COMMAND ${VIPER_BASH_COMMAND}
+                scripts/ci_full_sanitizer.sh
+                --self-test)
+        set_tests_properties(sanitizer_script_self_test PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                LABELS "tools;requires_posix_shell")
+    endif ()
 
     add_test(NAME coverage_script_self_test
-            COMMAND ${VIPER_BASH_EXECUTABLE}
+            COMMAND ${VIPER_BASH_COMMAND}
             scripts/coverage.sh
             --self-test)
     set_tests_properties(coverage_script_self_test PROPERTIES
@@ -140,7 +155,7 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "tools;requires_posix_shell")
 
     add_test(NAME example_smoke_manifest_audit
-            COMMAND ${VIPER_BASH_EXECUTABLE}
+            COMMAND ${VIPER_BASH_COMMAND}
             scripts/example_smoke.sh
             --audit)
     set_tests_properties(example_smoke_manifest_audit PROPERTIES
@@ -148,14 +163,14 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "examples;requires_posix_shell")
 
     add_test(NAME demo_project_manifest_audit
-            COMMAND ${VIPER_BASH_EXECUTABLE}
+            COMMAND ${VIPER_BASH_COMMAND}
             scripts/check_demo_projects.sh)
     set_tests_properties(demo_project_manifest_audit PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             LABELS "build;examples;requires_posix_shell")
 
     add_test(NAME example_smoke_fast
-            COMMAND ${VIPER_BASH_EXECUTABLE}
+            COMMAND ${VIPER_BASH_COMMAND}
             scripts/example_smoke.sh
             --fast
             --viper $<TARGET_FILE:viper>)
@@ -165,7 +180,7 @@ if (VIPER_BASH_EXECUTABLE)
             TIMEOUT 120)
 
     add_test(NAME fuzz_smoke_self_test
-            COMMAND ${VIPER_BASH_EXECUTABLE}
+            COMMAND ${VIPER_BASH_COMMAND}
             scripts/fuzz_smoke.sh
             --self-test)
     set_tests_properties(fuzz_smoke_self_test PROPERTIES
@@ -173,7 +188,7 @@ if (VIPER_BASH_EXECUTABLE)
             LABELS "fuzz;tools;requires_posix_shell")
 
     add_test(NAME source_health_audit
-            COMMAND ${VIPER_BASH_EXECUTABLE}
+            COMMAND ${VIPER_BASH_COMMAND}
             scripts/source_health_audit.sh
             --check)
     set_tests_properties(source_health_audit PROPERTIES
@@ -1062,7 +1077,7 @@ endif ()
 
 if (VIPER_BASH_EXECUTABLE)
     add_test(NAME zia_lang_34_async_functions_repeat
-            COMMAND "${VIPER_BASH_EXECUTABLE}"
+            COMMAND ${VIPER_BASH_COMMAND}
             "src/tests/e2e/test_zia_async_functions_repeat.sh"
             $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}" 25)
     set_tests_properties(zia_lang_34_async_functions_repeat PROPERTIES
@@ -1504,14 +1519,16 @@ set_tests_properties(zia_smoke_ashfall_stress PROPERTIES
 # Software-rasterizer determinism gate for the backend-conformance harness:
 # renders the fixed conformance scene twice and requires byte-identical output.
 # GPU backends are compared by hand via scripts/run_backend_conformance.sh.
-add_test(NAME zia_graphics_conformance_sw_determinism
-        COMMAND bash "${CMAKE_SOURCE_DIR}/scripts/run_backend_conformance.sh"
-                --self-check --zia $<TARGET_FILE:zia>
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-set_tests_properties(zia_graphics_conformance_sw_determinism PROPERTIES
-        PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;smoke;graphics3d"
-        TIMEOUT 180)
+if (VIPER_BASH_EXECUTABLE)
+    add_test(NAME zia_graphics_conformance_sw_determinism
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/scripts/run_backend_conformance.sh"
+                    --self-check --zia $<TARGET_FILE:zia>
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(zia_graphics_conformance_sw_determinism PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "zia;smoke;graphics3d;requires_posix_shell"
+            TIMEOUT 180)
+endif ()
 
 add_test(NAME zia_smoke_ashfall_combat
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/combat_probe.zia"
@@ -2086,7 +2103,7 @@ set_tests_properties(${VIPER_BASEBALL_DATA_TESTS} PROPERTIES
 
 if (VIPER_BASH_EXECUTABLE)
     add_test(NAME platform_policy_lint_empty_candidates
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
             "${CMAKE_SOURCE_DIR}")
     set_tests_properties(platform_policy_lint_empty_candidates PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2113,7 +2130,7 @@ set_tests_properties(zia_smoke_physics3d_fixed_step PROPERTIES
 
 if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
     add_test(NAME native_smoke_vec3_mutators_arm64
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_vec3_mutators_native.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_vec3_mutators_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_vec3_mutators_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2121,7 +2138,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             TIMEOUT 60)
 
     add_test(NAME native_smoke_physics3d_fixed_step_arm64
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_physics3d_fixed_step_native.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_physics3d_fixed_step_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_physics3d_fixed_step_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2129,7 +2146,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             TIMEOUT 60)
 
     add_test(NAME native_smoke_3dbowling_build_arm64
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_3dbowling_native_build.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_3dbowling_native_build.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_3dbowling_build_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2137,7 +2154,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             TIMEOUT 120)
 
     add_test(NAME native_smoke_achievement_draw_arm64
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_achievement_draw_native.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_achievement_draw_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_achievement_draw_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2146,7 +2163,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             TIMEOUT 60)
 
     add_test(NAME native_smoke_xenoscape_start_arm64
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_start.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_start_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2155,7 +2172,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             TIMEOUT 60)
 
     add_test(NAME native_smoke_xenoscape_action_names_arm64
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_action_names.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_xenoscape_native_action_names.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_xenoscape_action_names_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2163,7 +2180,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             TIMEOUT 60)
 
     add_test(NAME native_smoke_chess_ai_arm64
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_chess_ai_native.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_chess_ai_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_chess_ai_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2171,7 +2188,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             TIMEOUT 120)
 
     add_test(NAME native_smoke_crackman_movement_arm64
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_crackman_movement_native.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_crackman_movement_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_crackman_movement_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2182,7 +2199,7 @@ if (APPLE AND VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
     # binary must force-load zia_editor_services so rt_zia_* resolve to the real engine
     # rather than the weak "unavailable" stubs. Fails before the fix.
     add_test(NAME native_smoke_viperide_completion_arm64
-            COMMAND "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_viperide_completion_native.sh"
+            COMMAND ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_viperide_completion_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_viperide_completion_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -2193,7 +2210,7 @@ endif ()
 if (VIPER_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
     add_test(NAME native_smoke_viperide_completion_x64
             COMMAND "${CMAKE_COMMAND}" -E env VIPER_NATIVE_TEST_ARCH=x64
-            "${VIPER_BASH_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_viperide_completion_native.sh"
+            ${VIPER_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_viperide_completion_native.sh"
             $<TARGET_FILE:viper> "${CMAKE_SOURCE_DIR}")
     set_tests_properties(native_smoke_viperide_completion_x64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
@@ -3041,6 +3058,13 @@ if (WIN32)
     _viper_set_windows_test_cost(zia_smoke_ashfall_perf 15)
     _viper_set_windows_test_cost(zia_smoke_ashfall_stress 25)
     _viper_set_windows_test_cost(zia_viperide_intellisense 15)
+
+    # The level probe completes in roughly 80-100 seconds by itself and in the
+    # representative eight-test contention group, but a clean MSVC Debug suite
+    # can keep the software renderer CPU-bound beyond its generic 180-second
+    # ceiling. Match the other large Windows render probes so sustained host
+    # load cannot turn a deterministic pass into a timeout.
+    set_property(TEST zia_smoke_ashfall_level PROPERTY TIMEOUT 300)
     _viper_set_windows_test_cost(zia_smoke_3dbaseball 10)
 
     # Every display-labelled test runs in its own process with window activation

@@ -640,7 +640,7 @@ typedef struct {
 
 static void d3d11_destroy_ctx(void *ctx_ptr);
 static void d3d11_log_hresult(const char *msg, HRESULT hr);
-static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob);
+static void d3d11_log_shader_diagnostics(const char *stage, ID3DBlob *diagnostics, int failed);
 static void d3d11_present_swapchain(d3d11_context_t *ctx);
 static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx);
 static void d3d11_bind_render_targets(d3d11_context_t *ctx);
@@ -790,25 +790,30 @@ static void d3d11_log_device_removed_reason(d3d11_context_t *ctx, const char *ms
     fputs(buffer, stderr);
 }
 
-/// @brief Print HLSL compiler diagnostics extracted from an `ID3DBlob`.
-///
-/// Called when `D3DCompile` returns failure; the err_blob carries the
-/// human-readable line-and-column message that's actually useful for
-/// debugging shader edits.
-static void d3d11_log_shader_error(const char *stage, ID3DBlob *err_blob) {
-    if (!err_blob)
+/// @brief Print bounded HLSL compiler diagnostics extracted from an `ID3DBlob`.
+static void d3d11_log_shader_diagnostics(const char *stage, ID3DBlob *diagnostics, int failed) {
+    const char *text;
+    SIZE_T text_len;
+    int print_len;
+    char buffer[1024];
+
+    if (!diagnostics)
         return;
-    {
-        const char *text = (const char *)ID3D10Blob_GetBufferPointer(err_blob);
-        char buffer[1024];
-        snprintf(buffer,
-                 sizeof(buffer),
-                 "[vgfx3d_d3d11] %s compile failed: %s\n",
-                 stage,
-                 text ? text : "(no compiler output)");
-        OutputDebugStringA(buffer);
-        fputs(buffer, stderr);
-    }
+    text = (const char *)ID3D10Blob_GetBufferPointer(diagnostics);
+    text_len = ID3D10Blob_GetBufferSize(diagnostics);
+    while (text && text_len > 0 && text[text_len - 1] == '\0')
+        text_len--;
+    print_len = text_len > 768 ? 768 : (int)text_len;
+    snprintf(buffer,
+             sizeof(buffer),
+             "[vgfx3d_d3d11] %s compile %s: %.*s%s\n",
+             stage ? stage : "shader",
+             failed ? "failed" : "diagnostics",
+             print_len,
+             text ? text : "",
+             text_len > (SIZE_T)print_len ? "..." : "");
+    OutputDebugStringA(buffer);
+    fputs(buffer, stderr);
 }
 
 /// @brief Best-effort D3D11 timestamp query creation for frame GPU-time telemetry.
@@ -818,23 +823,33 @@ static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
 
     if (!ctx || !ctx->device)
         return;
+    ctx->frame_time_active = 0;
+    ctx->frame_time_pending = 0;
+    ctx->frame_time_pending_polls = 0;
+    ctx->frame_gpu_time_us = 0;
+    SAFE_RELEASE(ctx->frame_time_end_query);
+    SAFE_RELEASE(ctx->frame_time_start_query);
+    SAFE_RELEASE(ctx->frame_time_disjoint_query);
     memset(&desc, 0, sizeof(desc));
     desc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
     hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_disjoint_query);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateQuery(frame timestamp disjoint)", hr);
+        SAFE_RELEASE(ctx->frame_time_disjoint_query);
         return;
     }
     desc.Query = D3D11_QUERY_TIMESTAMP;
     hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_start_query);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateQuery(frame timestamp start)", hr);
+        SAFE_RELEASE(ctx->frame_time_start_query);
         SAFE_RELEASE(ctx->frame_time_disjoint_query);
         return;
     }
     hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_end_query);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateQuery(frame timestamp end)", hr);
+        SAFE_RELEASE(ctx->frame_time_end_query);
         SAFE_RELEASE(ctx->frame_time_start_query);
         SAFE_RELEASE(ctx->frame_time_disjoint_query);
     }
@@ -1005,10 +1020,12 @@ static HRESULT d3d11_compile_shader(const char *source,
     ID3DBlob *err_blob = NULL;
     HRESULT hr;
 
-    if (!source || !entry || !target || !out_blob)
+    if (!out_blob)
+        return E_POINTER;
+    *out_blob = NULL;
+    if (!source || !source[0] || !entry || !entry[0] || !target || !target[0])
         return E_INVALIDARG;
 
-    *out_blob = NULL;
     hr = D3DCompile(source,
                     strlen(source),
                     "vgfx3d_d3d11",
@@ -1021,12 +1038,15 @@ static HRESULT d3d11_compile_shader(const char *source,
                     &blob,
                     &err_blob);
     if (FAILED(hr)) {
-        d3d11_log_shader_error(entry, err_blob);
+        d3d11_log_shader_diagnostics(entry, err_blob, 1);
         SAFE_RELEASE(err_blob);
         SAFE_RELEASE(blob);
         return hr;
     }
+    d3d11_log_shader_diagnostics(entry, err_blob, 0);
     SAFE_RELEASE(err_blob);
+    if (!blob)
+        return E_FAIL;
     *out_blob = blob;
     return S_OK;
 }

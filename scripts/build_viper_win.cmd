@@ -12,6 +12,7 @@ REM
 REM Key invariants:
 REM   - User-selected generators and compilers are forwarded without literal
 REM     shell-escaping characters.
+REM   - Only a validated POSIX shell is used by CTest and script-based checks.
 REM   - A failed validation stage causes the script to return a nonzero status.
 REM
 REM Ownership/Lifetime: Build outputs remain in VIPER_BUILD_DIR.
@@ -20,7 +21,19 @@ REM Links: AGENTS.md, docs/internals/testing.md
 REM
 REM ===----------------------------------------------------------------------===
 
-setlocal enabledelayedexpansion
+setlocal DisableDelayedExpansion
+
+REM Windows environment lookups are case-insensitive, but an inherited process
+REM block can still contain both Path and PATH. MSBuild's .NET ToolTask rejects
+REM that duplicate while launching CL.exe, so recreate the entry once using a
+REM canonical spelling before invoking any build tools.
+set "VIPER_NORMALIZED_PATH=%PATH%"
+set "Path="
+set "PATH="
+set "PATH=%VIPER_NORMALIZED_PATH%"
+set "VIPER_NORMALIZED_PATH="
+
+setlocal EnableDelayedExpansion
 set TESTS_FAILED=0
 
 REM build_viper.cmd - Windows Viper build + test + install script.
@@ -68,7 +81,28 @@ set "BASH_BUILD_DIR=%VIPER_BUILD_DIR:\=/%"
 echo Build type: %VIPER_BUILD_TYPE%
 echo Fast Debug: %VIPER_FAST_DEBUG%
 
+REM --- POSIX shell selection -------------------------------------------------
+REM Windows ships a bash.exe WSL launcher even when no WSL distribution exists.
+REM Prefer Git Bash, validate every candidate, and forward the exact executable
+REM to CMake so shell-backed CTests use the same working shell as later stages.
+set "BASH_EXE="
+call :find_usable_bash
+if defined BASH_EXE (
+    echo POSIX shell: %BASH_EXE%
+    REM The sanitizer and coverage self-tests require Clang. The official
+    REM Windows LLVM installer does not always add its default bin directory.
+    where clang >nul 2>&1
+    if errorlevel 1 if defined ProgramFiles if exist "%ProgramFiles%\LLVM\bin\clang.exe" (
+        set "PATH=%PATH%;%ProgramFiles%\LLVM\bin"
+    )
+) else (
+    echo POSIX shell: unavailable
+)
+
 set "CONFIG_ARGS=-DVIPER_FAST_DEBUG=%VIPER_FAST_DEBUG%"
+if defined BASH_EXE (
+    set "CONFIG_ARGS=%CONFIG_ARGS% -DVIPER_BASH_EXECUTABLE:FILEPATH="%BASH_EXE%""
+)
 if not "%VIPER_CMAKE_GENERATOR%"=="" (
     set "CONFIG_ARGS=%CONFIG_ARGS% -G "%VIPER_CMAKE_GENERATOR%""
 )
@@ -183,33 +217,36 @@ if errorlevel 1 (
 :after_tests
 
 if "%VIPER_SKIP_LINT%"=="0" (
-    where bash >nul 2>&1
-    if not errorlevel 1 (
+    if defined BASH_EXE (
         echo Running platform policy lint...
         if "%VIPER_LINT_CHANGED_ONLY%"=="1" (
-            bash scripts/lint_platform_policy.sh --changed-only
+            "%BASH_EXE%" --login scripts/lint_platform_policy.sh --changed-only
         ) else (
-            bash scripts/lint_platform_policy.sh
+            "%BASH_EXE%" --login scripts/lint_platform_policy.sh
         )
         if errorlevel 1 set TESTS_FAILED=1
+    ) else (
+        echo Skipping platform policy lint ^(no usable POSIX shell found^)
     )
 )
 
 if "%VIPER_SKIP_AUDIT%"=="0" (
-    where bash >nul 2>&1
-    if not errorlevel 1 (
+    if defined BASH_EXE (
         echo Running runtime surface audit...
-        bash scripts/audit_runtime_surface.sh --build-dir="%BASH_BUILD_DIR%" --config="%VIPER_BUILD_TYPE%"
+        "%BASH_EXE%" --login scripts/audit_runtime_surface.sh --build-dir="%BASH_BUILD_DIR%" --config="%VIPER_BUILD_TYPE%"
         if errorlevel 1 set TESTS_FAILED=1
+    ) else (
+        echo Skipping runtime surface audit ^(no usable POSIX shell found^)
     )
 )
 
 if "%VIPER_SKIP_SMOKE%"=="0" (
-    where bash >nul 2>&1
-    if not errorlevel 1 (
+    if defined BASH_EXE (
         echo Running cross-platform smoke tests...
-        bash scripts/run_cross_platform_smoke.sh --build-dir "%BASH_BUILD_DIR%" --config "%VIPER_BUILD_TYPE%"
+        "%BASH_EXE%" --login scripts/run_cross_platform_smoke.sh --build-dir "%BASH_BUILD_DIR%" --config "%VIPER_BUILD_TYPE%"
         if errorlevel 1 set TESTS_FAILED=1
+    ) else (
+        echo Skipping cross-platform smoke tests ^(no usable POSIX shell found^)
     )
 )
 
@@ -316,4 +353,33 @@ echo "%TOOL_VALUE%" | findstr /R "[\\/]" >nul 2>&1
 if not errorlevel 1 exit /b 1
 where "%TOOL_VALUE%" >nul 2>&1
 if errorlevel 1 exit /b 1
+exit /b 0
+
+:find_usable_bash
+set "BASH_EXE="
+if defined VIPER_BASH_EXECUTABLE (
+    call :try_bash "%VIPER_BASH_EXECUTABLE%"
+    if defined BASH_EXE exit /b 0
+    echo WARNING: VIPER_BASH_EXECUTABLE is not usable: %VIPER_BASH_EXECUTABLE%
+)
+if defined ProgramFiles (
+    call :try_bash "%ProgramFiles%\Git\bin\bash.exe"
+    if defined BASH_EXE exit /b 0
+    call :try_bash "%ProgramFiles%\Git\usr\bin\bash.exe"
+    if defined BASH_EXE exit /b 0
+)
+if defined LOCALAPPDATA (
+    call :try_bash "%LOCALAPPDATA%\Programs\Git\bin\bash.exe"
+    if defined BASH_EXE exit /b 0
+)
+for /f "delims=" %%B in ('where bash 2^>nul') do (
+    if not defined BASH_EXE call :try_bash "%%B"
+)
+exit /b 0
+
+:try_bash
+if not exist "%~1" exit /b 1
+"%~1" -lc "exit 0" >nul 2>&1
+if errorlevel 1 exit /b 1
+set "BASH_EXE=%~f1"
 exit /b 0

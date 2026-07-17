@@ -4,6 +4,17 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/unit/runtime_classes/TestMethodIndex.cpp
+// Purpose: Validate BASIC runtime class method lookup and signature metadata.
+// Key invariants:
+//   - Indexed targets and receiver flags match the live runtime registry.
+//   - Object results preserve their concrete runtime class names.
+// Ownership/Lifetime:
+//   - Tests borrow process-global registry entries for each assertion.
+// Links: src/frontends/basic/RuntimeMethodIndex.cpp, src/il/runtime/runtime.def
+//
+//===----------------------------------------------------------------------===//
 ///
 /// @file TestMethodIndex.cpp
 /// @brief Unit tests for RuntimeMethodIndex method lookup functionality.

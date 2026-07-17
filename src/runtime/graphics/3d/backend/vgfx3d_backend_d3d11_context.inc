@@ -650,7 +650,7 @@ static HRESULT d3d11_create_context_input_layouts(d3d11_context_t *ctx,
                                                     &ctx->input_layout_compact);
         if (FAILED(compact_hr)) {
             d3d11_log_hresult("CreateInputLayout(compact)", compact_hr);
-            ctx->input_layout_compact = NULL;
+            SAFE_RELEASE(ctx->input_layout_compact);
         }
         d3d11_fill_instanced_layout(compact_instanced_layout, compact_layout);
         compact_hr =
@@ -662,7 +662,7 @@ static HRESULT d3d11_create_context_input_layouts(d3d11_context_t *ctx,
                                            &ctx->input_layout_instanced_compact);
         if (FAILED(compact_hr)) {
             d3d11_log_hresult("CreateInputLayout(compact instanced)", compact_hr);
-            ctx->input_layout_instanced_compact = NULL;
+            SAFE_RELEASE(ctx->input_layout_instanced_compact);
         }
         if (!ctx->input_layout_compact || !ctx->input_layout_instanced_compact) {
             SAFE_RELEASE(ctx->input_layout_compact);
@@ -856,7 +856,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
                                        &ctx->ctx);
     if (FAILED(hr)) {
         d3d11_log_hresult("D3D11CreateDeviceAndSwapChain", hr);
-        free(ctx);
+        d3d11_destroy_ctx(ctx);
         return NULL;
     }
     d3d11_disable_implicit_fullscreen(ctx, hwnd);

@@ -36,6 +36,7 @@
 //===----------------------------------------------------------------------===//
 
 #define WIN32_LEAN_AND_MEAN
+#include "rt_win32_wait.h"
 #include <windows.h>
 
 /// @brief Internal representation of a Viper thread (Windows).
@@ -223,7 +224,12 @@ void rt_thread_join(void *thread) {
         return;
     }
     while (!t->finished) {
-        SleepConditionVariableCS(&t->cv, &t->cs, INFINITE);
+        if (!SleepConditionVariableCS(&t->cv, &t->cs, INFINITE)) {
+            LeaveCriticalSection(&t->cs);
+            thread_release_object(thread);
+            rt_trap("Thread.Join: condition wait failed");
+            return;
+        }
     }
     LeaveCriticalSection(&t->cs);
     thread_release_object(thread);
@@ -303,26 +309,27 @@ int8_t rt_thread_join_for(void *thread, int64_t ms) {
         return 1;
     }
 
-    // Wait against the full 64-bit deadline (VDOC-129): each condition wait
-    // is chunked to a DWORD, but the loop keeps waiting until the requested
-    // total elapses, matching the POSIX deadline semantics. A chunk that
-    // times out is only final when the whole budget is spent.
-    const ULONGLONG total_ms = (ULONGLONG)ms;
-    ULONGLONG start = GetTickCount64();
-    ULONGLONG elapsed = 0;
+    // Use an absolute deadline so spurious wakes and long finite waits retain
+    // the caller's requested duration without ever passing INFINITE (VDOC-129).
+    ULONGLONG deadline = rt_win32_deadline_from_now_ms(ms);
 
     while (!t->finished) {
-        if (elapsed >= total_ms) {
+        DWORD remaining = rt_win32_wait_slice_until(deadline);
+        if (remaining == 0) {
             LeaveCriticalSection(&t->cs);
             thread_release_object(thread);
             return 0;
         }
-        ULONGLONG remaining64 = total_ms - elapsed;
-        DWORD remaining = remaining64 > (ULONGLONG)(MAXDWORD - 1) ? (MAXDWORD - 1)
-                                                                  : (DWORD)remaining64;
-
-        (void)SleepConditionVariableCS(&t->cv, &t->cs, remaining);
-        elapsed = GetTickCount64() - start;
+        BOOL ok = SleepConditionVariableCS(&t->cv, &t->cs, remaining);
+        if (!ok && !t->finished) {
+            DWORD error = GetLastError();
+            if (error == ERROR_TIMEOUT)
+                continue;
+            LeaveCriticalSection(&t->cs);
+            thread_release_object(thread);
+            rt_trap("Thread.JoinFor: condition wait failed");
+            return 0;
+        }
     }
 
     LeaveCriticalSection(&t->cs);
@@ -371,6 +378,7 @@ void rt_thread_sleep(int64_t ms) {
 
 /// @brief Hint to the OS that we're willing to yield the CPU (Win32 `SwitchToThread`).
 void rt_thread_yield(void) {
-    SwitchToThread();
+    if (!SwitchToThread())
+        Sleep(0);
 }
 #endif // defined(_WIN32)

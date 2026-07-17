@@ -4994,9 +4994,9 @@ the checked-in generators, documentation audits, and already-existing binaries o
   import can't be reset from a test, so this exercises the atomic read/CAS path rather than
   reproducing the original race). **Resolved.**
 
-### VDOC-212 — Windows Process passes a UTF-16 environment block as ANSI
+### VDOC-212 — Windows Process passes a UTF-16 environment block as ANSI (resolved 2026-07-16)
 
-- **Classification:** confirmed Windows process-launch correctness bug
+- **Classification:** resolved Windows process-launch correctness bug
 - **Area:** `Viper.System.Process.StartWithEnv`
 - **Evidence:** `build_env_block_wide` creates a double-NUL-terminated `wchar_t` block, but the
   corresponding `CreateProcessW` flags are only `CREATE_NO_WINDOW |
@@ -5004,19 +5004,10 @@ the checked-in generators, documentation audits, and already-existing binaries o
   The PTY backend correctly supplies that flag, highlighting the divergence.
 - **Impact:** explicit environments can be truncated or parsed as alternating one-byte strings;
   non-ASCII values are unusable and even ASCII `KEY=value` entries are not reliably delivered.
-- **Likely repair point:** add `CREATE_UNICODE_ENVIRONMENT`, sort/validate the Windows block as
-  required, and add a Windows round-trip test containing multiple variables and non-ASCII text.
-- **Review (2026-07-16):** Confirmed and fixed. `rt_process_start_with_env`'s `CreateProcessW` call
-  now ORs `CREATE_UNICODE_ENVIRONMENT` into its creation flags whenever an explicit wide env block
-  is supplied (`build_env_block_wide` already produced a correct double-NUL-terminated UTF-16
-  block), so Windows no longer misinterprets it as ANSI and truncates/garbles the variables. This
-  matches the PTY backend, which already set the flag (the divergence the finding cited). A NULL
-  block still inherits the parent environment (flag omitted). The file-header note and system.md
-  were corrected. Windows-only branch (`#ifdef _WIN32`), so it does not compile on macOS; verified
-  by inspection against the MSDN requirement and the PTY precedent, and the POSIX env round-trip
-  (`test_process_cwd_and_env`) still passes. The Windows multi-variable / non-ASCII round-trip needs
-  a by-hand `build_viper_win.cmd` run to exercise the CreateProcessW path directly. **Resolved
-  (Windows behavior pending a by-hand Windows build).**
+- **Repair (2026-07-16):** `rt_process.c` now supplies `CREATE_UNICODE_ENVIRONMENT`, sorts the
+  UTF-16 block case-insensitively, and rejects duplicate variable names. `RTExecTests` relaunches
+  its own test executable on Windows to round-trip an unsorted environment containing non-ASCII
+  text. The full Windows build and CTest suite passed with this coverage. **Resolved.**
 
 ### VDOC-213 — Executable lookup changes across Process and PTY environment modes
 

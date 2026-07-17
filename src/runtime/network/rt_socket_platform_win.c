@@ -9,8 +9,8 @@
 // Purpose: WinSock adapter implementation for the runtime networking stack.
 //
 // Key invariants:
-//   - WSAStartup runs at most once and all concurrent callers observe the same
-//     completed initialization before socket work continues.
+//   - One caller performs each WSAStartup attempt; waiters retry if that attempt
+//     fails instead of spinning forever on an abandoned in-progress state.
 //   - Socket readiness waits use select(), matching existing Windows behavior.
 //
 // Ownership/Lifetime:
@@ -26,6 +26,7 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 
 static volatile LONG g_wsa_init_state = 0; // 0=uninit, 1=in-progress, 2=done
 
@@ -40,27 +41,40 @@ static void rt_net_cleanup_wsa(void) {
 ///          WSAStartup exactly once or wait until the winning caller finishes.
 ///          A successful startup registers rt_net_cleanup_wsa() for process exit.
 void rt_net_init_wsa(void) {
-    if (g_wsa_init_state == 2)
-        return;
-
-    LONG prev = InterlockedCompareExchange(&g_wsa_init_state, 1, 0);
-    if (prev == 2)
-        return;
-    if (prev == 1) {
-        while (g_wsa_init_state != 2)
+    for (;;) {
+        LONG state = InterlockedCompareExchange(&g_wsa_init_state, 0, 0);
+        if (state == 2)
+            return;
+        if (state == 1) {
             Sleep(0);
-        return;
-    }
+            continue;
+        }
+        if (InterlockedCompareExchange(&g_wsa_init_state, 1, 0) != 0)
+            continue;
 
-    WSADATA wsa_data;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
-    if (result != 0) {
-        InterlockedExchange(&g_wsa_init_state, 0);
-        rt_trap("Network: WSAStartup failed");
+        WSADATA wsa_data;
+        memset(&wsa_data, 0, sizeof(wsa_data));
+        int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
+        if (result != 0) {
+            InterlockedExchange(&g_wsa_init_state, 0);
+            rt_trap("Network: WSAStartup failed");
+            return;
+        }
+        if (wsa_data.wVersion != MAKEWORD(2, 2)) {
+            WSACleanup();
+            InterlockedExchange(&g_wsa_init_state, 0);
+            rt_trap("Network: WinSock 2.2 is unavailable");
+            return;
+        }
+        if (atexit(rt_net_cleanup_wsa) != 0) {
+            WSACleanup();
+            InterlockedExchange(&g_wsa_init_state, 0);
+            rt_trap("Network: failed to register WinSock cleanup");
+            return;
+        }
+        InterlockedExchange(&g_wsa_init_state, 2);
         return;
     }
-    atexit(rt_net_cleanup_wsa);
-    InterlockedExchange(&g_wsa_init_state, 2);
 }
 
 /// @brief Close a WinSock socket handle.
@@ -92,9 +106,9 @@ bool rt_socket_error_is_would_block(int err) {
 
 /// @brief Classify an in-progress non-blocking WinSock connect().
 /// @param err Native WinSock error code to test.
-/// @return true when @p err is WSAEWOULDBLOCK.
+/// @return true for WinSock's would-block/already/in-progress connect states.
 bool rt_socket_error_is_in_progress(int err) {
-    return err == WSAEWOULDBLOCK;
+    return err == WSAEWOULDBLOCK || err == WSAEINPROGRESS || err == WSAEALREADY;
 }
 
 /// @brief Classify a WinSock socket timeout error.
@@ -115,7 +129,8 @@ bool rt_socket_recv_timed_out(void) {
 /// @param err Native WinSock error code returned after accept() failed.
 /// @return true for expected close/interruption errors during shutdown.
 bool rt_socket_accept_interrupted_by_close(int err) {
-    return err == WSAENOTSOCK || err == WSAEINVAL || err == WSAEINTR || err == WSAECONNABORTED;
+    return err == WSAENOTSOCK || err == WSAEINVAL || err == WSAEINTR || err == WSAECONNABORTED ||
+           err == WSAESHUTDOWN;
 }
 
 /// @brief No-op SIGPIPE suppression on Windows.
@@ -156,8 +171,24 @@ bool set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
     if (timeout_ms < 0)
         timeout_ms = 0;
     DWORD tv = (DWORD)timeout_ms;
-    return setsockopt(
-               sock, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv)) == 0;
+    return setsockopt(sock,
+                      SOL_SOCKET,
+                      is_recv ? SO_RCVTIMEO : SO_SNDTIMEO,
+                      (const char *)&tv,
+                      sizeof(tv)) == 0;
+}
+
+typedef void(WSAAPI *rt_wsa_set_last_error_fn)(int);
+
+/// @brief Set WinSock's thread-local error without expanding native imports.
+static void rt_socket_set_last_error(int error) {
+    HMODULE winsock = GetModuleHandleW(L"ws2_32.dll");
+    rt_wsa_set_last_error_fn set_error =
+        winsock ? (rt_wsa_set_last_error_fn)GetProcAddress(winsock, "WSASetLastError") : NULL;
+    if (set_error)
+        set_error(error);
+    else
+        SetLastError((DWORD)error);
 }
 
 /// @brief Wait for a WinSock socket to become readable or writable.
@@ -166,8 +197,14 @@ bool set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
 /// @param for_write true waits for write readiness; false waits for read readiness.
 /// @return Positive when ready, zero on timeout, negative on error.
 int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
-    if (timeout_ms < 0 || sock == INVALID_SOCK)
+    if (timeout_ms < 0) {
+        rt_socket_set_last_error(WSAEINVAL);
         return -1;
+    }
+    if (sock == INVALID_SOCK) {
+        rt_socket_set_last_error(WSAENOTSOCK);
+        return -1;
+    }
 
     fd_set fds;
     FD_ZERO(&fds);
@@ -178,6 +215,6 @@ int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
     tv.tv_usec = (timeout_ms % 1000) * 1000;
 
     if (for_write)
-        return select((int)(sock + 1), NULL, &fds, NULL, &tv);
-    return select((int)(sock + 1), &fds, NULL, NULL, &tv);
+        return select(0, NULL, &fds, NULL, &tv);
+    return select(0, &fds, NULL, NULL, &tv);
 }

@@ -15,9 +15,8 @@
 //   - Poll/IsRunning reap the process once and preserve the exit code.
 //   - Destroy is idempotent and closes all OS handles.
 //   - A non-null environment sequence replaces the complete child environment.
-//   - The Windows explicit-environment path passes a UTF-16 block with
-//     CREATE_UNICODE_ENVIRONMENT so Unicode/non-ASCII values are delivered
-//     intact (VDOC-212).
+//   - Windows environment blocks are UTF-16, case-insensitively sorted, and
+//     passed with CREATE_UNICODE_ENVIRONMENT.
 //
 // Ownership/Lifetime:
 //   - Handles are rt_obj_new_i64-allocated and GC-managed.
@@ -58,8 +57,8 @@
 // primitives exist in the target runtime.
 #else
 #include <fcntl.h>
-#include <spawn.h>
 #include <signal.h>
+#include <spawn.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -574,6 +573,36 @@ static int env_item_view(rt_string item, const char **text_out, size_t *len_out)
     return 1;
 }
 
+/// @brief Compare UTF-16 environment entries for CreateProcessW ordering.
+/// @details Windows environment names are case-insensitive, so the complete
+///          NAME=VALUE strings are ordered with the native case-insensitive
+///          wide-string comparator. A binary comparison makes equivalent
+///          spellings deterministic.
+static int compare_env_entry_wide(const void *left, const void *right) {
+    const wchar_t *lhs = *(const wchar_t *const *)left;
+    const wchar_t *rhs = *(const wchar_t *const *)right;
+    size_t lhs_len = wcslen(lhs);
+    size_t rhs_len = wcslen(rhs);
+    size_t compare_len = lhs_len > rhs_len ? lhs_len : rhs_len;
+    int result = _wcsnicmp(lhs, rhs, compare_len);
+    if (result != 0)
+        return result;
+    return wcscmp(lhs, rhs);
+}
+
+/// @brief Test whether two UTF-16 environment entries name the same variable.
+static int env_entry_names_equal_wide(const wchar_t *lhs, const wchar_t *rhs) {
+    size_t lhs_len = 0;
+    size_t rhs_len = 0;
+    while (lhs[lhs_len] && lhs[lhs_len] != L'=')
+        lhs_len++;
+    while (rhs[rhs_len] && rhs[rhs_len] != L'=')
+        rhs_len++;
+    if (lhs_len != rhs_len || lhs_len == 0)
+        return 0;
+    return _wcsnicmp(lhs, rhs, lhs_len) == 0;
+}
+
 /// @brief Build a UTF-16 environment block for CreateProcessW.
 /// @details Converts each validated NAME=VALUE runtime string independently
 ///          and concatenates the resulting wide strings with single NUL
@@ -611,6 +640,14 @@ static wchar_t *build_env_block_wide(void *env) {
         if (wide_len > SIZE_MAX - total_wchars - 1)
             goto fail;
         total_wchars += wide_len + 1;
+    }
+
+    if (count > 1) {
+        qsort(entries, (size_t)count, sizeof(*entries), compare_env_entry_wide);
+        for (int64_t i = 1; i < count; i++) {
+            if (env_entry_names_equal_wide(entries[i - 1], entries[i]))
+                goto fail;
+        }
     }
 
     wchar_t *block = (wchar_t *)calloc(total_wchars + 1, sizeof(wchar_t));
@@ -842,24 +879,17 @@ static rt_process_impl *process_start_impl(rt_string program,
     si.startup.StartupInfo.hStdOutput = stdout_write;
     si.startup.StartupInfo.hStdError = stderr_write;
 
-    // `env_block` is a UTF-16 (wide) environment block, so CreateProcessW must be
-    // told with CREATE_UNICODE_ENVIRONMENT — otherwise Windows interprets it as
-    // an ANSI block and the variables are truncated / parsed as alternating
-    // one-byte strings (VDOC-212). Only set the flag when an explicit block is
-    // supplied; a NULL block inherits the parent environment.
-    DWORD creation_flags = CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT;
-    if (env_block)
-        creation_flags |= CREATE_UNICODE_ENVIRONMENT;
-    BOOL ok = CreateProcessW(wprogram,
-                             wcmdline,
-                             NULL,
-                             NULL,
-                             TRUE,
-                             creation_flags,
-                             env_block,
-                             wcwd,
-                             &si.startup.StartupInfo,
-                             &pi);
+    BOOL ok =
+        CreateProcessW(wprogram,
+                       wcmdline,
+                       NULL,
+                       NULL,
+                       TRUE,
+                       CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
+                       env_block,
+                       wcwd,
+                       &si.startup.StartupInfo,
+                       &pi);
 
     process_win_startup_destroy(&si);
     close_handle(&stdout_write);

@@ -582,16 +582,16 @@ static void test_case_conversion_more_than_128_words() {
 
 static void test_like_strict_utf8() {
     // Valid multi-byte sequences: one `_` consumes one code point.
-    const char two_byte[] = {(char)0xC3, (char)0xA9}; // U+00E9
+    const char two_byte[] = "\xC3\xA9"; // U+00E9
     assert(rt_str_like(rt_string_from_bytes(two_byte, 2), rt_const_cstr("_")) == 1);
 
     // VDOC-060: overlong encodings, surrogates, and out-of-range code points
     // trap instead of counting as a code point.
     const char cases[][4] = {
-        {(char)0xC0, (char)0x80, 0, 0},             // overlong NUL
-        {(char)0xE0, (char)0x80, (char)0xAF, 0},    // overlong 3-byte
-        {(char)0xED, (char)0xA0, (char)0x80, 0},    // UTF-16 surrogate D800
-        {(char)0xF5, (char)0x80, (char)0x80, 0},    // lead beyond U+10FFFF
+        "\xC0\x80",     // overlong NUL
+        "\xE0\x80\xAF", // overlong 3-byte
+        "\xED\xA0\x80", // UTF-16 surrogate D800
+        "\xF5\x80\x80", // lead beyond U+10FFFF
     };
     const size_t lens[] = {2, 3, 3, 3};
     for (int i = 0; i < 4; i++) {

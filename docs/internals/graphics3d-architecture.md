@@ -270,6 +270,10 @@ The D3D11 backend's focused boundary audit closed these 20 correctness and robus
 19. Reject unknown internal color-target formats instead of silently creating UNORM storage.
 20. Abandon a timestamp query after 120 non-blocking busy polls so one lost query cannot disable GPU telemetry permanently.
 
+The follow-up [Windows runtime reliability audit](../windows-runtime-reliability-audit.md) records
+the D3D11 shader/resource-lifetime repairs together with the socket, wait, watcher, TLS, process,
+entropy, and locale changes that share the Windows runtime boundary.
+
 This split keeps the no-postfx path cheap while preserving correct motion/depth history for SSAO, DOF, and motion blur when the GPU postfx path is active.
 
 ### OpenGL Window Presentation Model

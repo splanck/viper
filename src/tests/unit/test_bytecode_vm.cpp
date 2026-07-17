@@ -1,9 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
 // Part of the Viper project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// test_bytecode_vm.cpp - Tests for the bytecode VM
+//===----------------------------------------------------------------------===//
 //
-// Tests compilation and execution of IL programs using the bytecode VM.
+// File: src/tests/unit/test_bytecode_vm.cpp
+// Purpose: Validate bytecode compilation, execution, traps, and runtime bridges.
+// Key invariants:
+//   - Switch and threaded dispatch produce the same observable results.
+//   - Managed values survive asynchronous and native bridge ownership transfers.
+// Ownership/Lifetime:
+//   - Each test owns its bytecode module and releases runtime objects explicitly.
+// Links: src/bytecode/BytecodeVM.cpp, src/bytecode/BytecodeCompiler.cpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "bytecode/BytecodeCompiler.hpp"
 #include "bytecode/BytecodeModule.hpp"
@@ -2521,7 +2532,7 @@ static void test_thread_start_safe_reports_bytecode_trap() {
     std::cout << "PASSED\n";
 }
 
-/// Test that bytecode Async.Run retains its argument until the worker exits.
+/// Test that bytecode Async.RunOwned retains its argument until the worker exits.
 static void test_async_run_owned_retains_bytecode_argument() {
     // Async.Run borrows its argument (native parity, VDOC-127); the retain
     // contract this test verifies belongs to Async.RunOwned.

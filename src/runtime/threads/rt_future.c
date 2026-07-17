@@ -48,6 +48,7 @@
 #include <string.h>
 
 #if RT_PLATFORM_WINDOWS
+#include "rt_win32_wait.h"
 #include <windows.h>
 #else
 #include <pthread.h>
@@ -225,23 +226,7 @@ static void future_retain_cached_future_locked(promise_impl *p,
     rt_trap_clear_recovery();
 }
 
-#if RT_PLATFORM_WINDOWS
-/// @brief Win32: compute an absolute monotonic deadline in `GetTickCount64` units.
-/// @details Replaces the older relative `future_deadline_ms_from_now` (which clamped to a
-///          DWORD and forced re-computation each loop iteration). Computing the deadline
-///          once up front means `rt_future_get_for` / `wait_for` can check it on every wake
-///          without rounding drift.
-/// @param ms Caller-supplied timeout in milliseconds. Negative or zero values produce an
-///           "expired now" deadline (caller will short-circuit on the first check).
-/// @return Absolute tick count at which the wait should give up. Saturates at `ULLONG_MAX`
-///         when `now + ms` would overflow — practically that's "wait forever" since
-///         `GetTickCount64` will never reach the saturation value during this process.
-static ULONGLONG future_deadline_tick_from_now(int64_t ms) {
-    ULONGLONG now = GetTickCount64();
-    ULONGLONG add = ms > 0 ? (ULONGLONG)ms : 0;
-    return (ULLONG_MAX - now < add) ? ULLONG_MAX : now + add;
-}
-#else
+#if !RT_PLATFORM_WINDOWS
 typedef struct {
     struct timespec deadline;
 } future_deadline_t;
@@ -866,15 +851,15 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
 
 #if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
-    ULONGLONG deadline = future_deadline_tick_from_now(ms);
+    ULONGLONG deadline = rt_win32_deadline_from_now_ms(ms);
     while (!p->done) {
-        ULONGLONG now = GetTickCount64();
-        ULONGLONG delta = (deadline > now) ? (deadline - now) : 0;
-        DWORD remaining = delta > MAXDWORD ? MAXDWORD : (DWORD)delta;
+        DWORD remaining = rt_win32_wait_slice_until(deadline);
         if (remaining == 0)
             break;
         if (!SleepConditionVariableCS(&p->cond, &p->mutex, remaining) && !p->done) {
-            break;
+            DWORD error = GetLastError();
+            if (error != ERROR_TIMEOUT)
+                break;
         }
     }
     int8_t success = p->done && !p->is_error;
@@ -1135,15 +1120,15 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
 
 #if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
-    ULONGLONG deadline = future_deadline_tick_from_now(ms);
+    ULONGLONG deadline = rt_win32_deadline_from_now_ms(ms);
     while (!p->done) {
-        ULONGLONG now = GetTickCount64();
-        ULONGLONG delta = (deadline > now) ? (deadline - now) : 0;
-        DWORD remaining = delta > MAXDWORD ? MAXDWORD : (DWORD)delta;
+        DWORD remaining = rt_win32_wait_slice_until(deadline);
         if (remaining == 0)
             break;
         if (!SleepConditionVariableCS(&p->cond, &p->mutex, remaining) && !p->done) {
-            break;
+            DWORD error = GetLastError();
+            if (error != ERROR_TIMEOUT)
+                break;
         }
     }
     if (p->done && !p->is_error) {
@@ -1215,15 +1200,15 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
 
 #if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
-    ULONGLONG deadline = future_deadline_tick_from_now(ms);
+    ULONGLONG deadline = rt_win32_deadline_from_now_ms(ms);
     while (!p->done) {
-        ULONGLONG now = GetTickCount64();
-        ULONGLONG delta = (deadline > now) ? (deadline - now) : 0;
-        DWORD remaining = delta > MAXDWORD ? MAXDWORD : (DWORD)delta;
+        DWORD remaining = rt_win32_wait_slice_until(deadline);
         if (remaining == 0)
             break;
         if (!SleepConditionVariableCS(&p->cond, &p->mutex, remaining) && !p->done) {
-            break;
+            DWORD error = GetLastError();
+            if (error != ERROR_TIMEOUT)
+                break;
         }
     }
     int8_t result = p->done;

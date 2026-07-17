@@ -25,65 +25,25 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_locale_platform.h"
+#include "rt_locale_posix_tag.h"
 #include "rt_platform.h"
 
 #include <stddef.h>
 #include <stdlib.h>
-#include <string.h>
 
 #if RT_PLATFORM_MACOS
 
-/// @brief Return 1 if @p s is a C/POSIX no-locale sentinel value.
-/// @details "C", "c", "POSIX", and "posix" are treated as "no real locale" so
-///          the caller falls back to the invariant instead of trying to parse them.
-///          NULL and empty strings are also treated as no-locale.
-/// @param s Environment variable value to check; may be NULL.
-/// @return 1 if @p s is a no-locale sentinel; 0 otherwise.
-static int is_c_or_posix(const char *s) {
-    if (!s || !*s)
-        return 1;
-    return (strcmp(s, "C") == 0) || (strcmp(s, "POSIX") == 0) || (strcmp(s, "c") == 0) ||
-           (strcmp(s, "posix") == 0);
-}
-
-/// @brief Strip encoding suffixes and convert a POSIX locale string to a near-BCP-47 tag.
-/// @details Copies @p src into @p out until a `.` (encoding, e.g., `.UTF-8`) or `@`
-///          (modifier, e.g., `@latin`) is encountered. Underscores are converted to
-///          dashes so the result matches BCP-47 conventions (e.g., "en_US" → "en-US").
-/// @param src POSIX locale string (e.g., "en_US.UTF-8"); may be NULL (-1 returned).
-/// @param out Caller-provided output buffer for the cleaned tag.
-/// @param cap Capacity of @p out in bytes (must be ≥ 2).
-/// @return 0 on success; -1 if @p src/@p out is NULL, @p cap is too small, the result
-///         would overflow, or the cleaned result is empty.
-static int clean_posix_tag(const char *src, char *out, size_t cap) {
-    if (!src || !out || cap < 2)
-        return -1;
-    size_t i = 0;
-    for (const char *p = src; *p; ++p) {
-        char c = *p;
-        if (c == '.' || c == '@')
-            break;
-        if (c == '_')
-            c = '-';
-        if (i + 1 >= cap)
-            return -1;
-        out[i++] = c;
-    }
-    if (i == 0)
-        return -1;
-    out[i] = '\0';
-    return 0;
-}
-
 /// @brief Detect the macOS system locale via the POSIX environment variable cascade.
-/// @details Polls `LC_ALL`, then `LANG`, then `LC_MESSAGES` in that order of
+/// @details Polls `LC_ALL`, then `LC_MESSAGES`, then `LANG` in that order of
 ///          precedence. Skips values that are C/POSIX sentinels. Cleans each
-///          candidate with `clean_posix_tag` to produce a BCP-47-compatible tag.
+///          candidate with `rt_locale_clean_posix_tag` to produce a BCP-47-compatible tag.
 ///          Uses env vars rather than CoreFoundation to avoid a framework dependency.
 /// @param out  Caller-provided buffer to receive the BCP-47 tag.
 /// @param cap  Capacity of @p out in bytes (must be ≥ 2).
 /// @return 0 if a usable tag was written to @p out; -1 if detection failed.
 int rt_locale_platform_detect_system(char *out, size_t cap) {
+    if (out && cap > 0)
+        out[0] = '\0';
     if (!out || cap < 2)
         return -1;
 
@@ -92,12 +52,12 @@ int rt_locale_platform_detect_system(char *out, size_t cap) {
     // explicitly sets them; in that case we fall back to the invariant locale,
     // which is honest: we don't have Foundation available to ask for
     // preferredLanguages.
-    static const char *const kVars[] = {"LC_ALL", "LANG", "LC_MESSAGES", NULL};
+    static const char *const kVars[] = {"LC_ALL", "LC_MESSAGES", "LANG", NULL};
     for (size_t i = 0; kVars[i]; ++i) {
         const char *val = getenv(kVars[i]);
-        if (is_c_or_posix(val))
+        if (rt_locale_posix_value_is_invariant(val))
             continue;
-        if (clean_posix_tag(val, out, cap) == 0)
+        if (rt_locale_clean_posix_tag(val, out, cap) == 0)
             return 0;
     }
     return -1;

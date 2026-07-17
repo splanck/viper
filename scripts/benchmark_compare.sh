@@ -119,7 +119,19 @@ echo "$BASE_JSON" > "$TMPBASE"
 echo "$HEAD_JSON" > "$TMPHEAD"
 
 # --- Run comparison via python ---
-python3 - "$TMPBASE" "$TMPHEAD" << 'PYEOF'
+PYTHON_BIN="${PYTHON:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_BIN=python3
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON_BIN=python
+    else
+        echo "error: Python interpreter not found (tried python3 and python)" >&2
+        exit 1
+    fi
+fi
+
+"$PYTHON_BIN" - "$TMPBASE" "$TMPHEAD" << 'PYEOF'
 import json, sys
 
 RED = '\033[0;31m'

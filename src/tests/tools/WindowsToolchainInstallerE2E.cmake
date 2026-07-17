@@ -136,6 +136,39 @@ if (NOT _stage_rv EQUAL 0)
             "cmake --install failed while staging toolchain installer e2e payload\nstdout:\n${_stage_out}\nstderr:\n${_stage_err}")
 endif ()
 
+if (VIPER_CONFIG STREQUAL "Debug")
+    # InstallRequiredSystemLibraries deliberately excludes non-redistributable
+    # Debug CRT files. This opt-in lifecycle test packages only into its owned
+    # build-tree sandbox, so stage the matching Debug CRT closure explicitly.
+    if (NOT DEFINED VIPER_MSVC_REDIST_DIR OR
+        "${VIPER_MSVC_REDIST_DIR}" STREQUAL "" OR
+        NOT IS_DIRECTORY "${VIPER_MSVC_REDIST_DIR}")
+        message(FATAL_ERROR "MSVC redistributable directory is unavailable for Debug E2E staging")
+    endif ()
+    string(TOLOWER "${VIPER_SYSTEM_PROCESSOR}" _system_processor)
+    if (_system_processor MATCHES "^(arm64|aarch64)$")
+        set(_debug_crt_arch arm64)
+    elseif (_system_processor MATCHES "^(amd64|x86_64|x64)$")
+        set(_debug_crt_arch x64)
+    else ()
+        message(FATAL_ERROR
+                "unsupported Windows processor for Debug CRT staging: ${VIPER_SYSTEM_PROCESSOR}")
+    endif ()
+    file(GLOB _debug_crt_dirs LIST_DIRECTORIES TRUE
+            "${VIPER_MSVC_REDIST_DIR}/debug_nonredist/${_debug_crt_arch}/Microsoft.VC*.DebugCRT")
+    list(LENGTH _debug_crt_dirs _debug_crt_dir_count)
+    if (NOT _debug_crt_dir_count EQUAL 1)
+        message(FATAL_ERROR
+                "expected one ${_debug_crt_arch} Debug CRT directory under ${VIPER_MSVC_REDIST_DIR}; found ${_debug_crt_dir_count}")
+    endif ()
+    list(GET _debug_crt_dirs 0 _debug_crt_dir)
+    file(GLOB _debug_crt_files LIST_DIRECTORIES FALSE "${_debug_crt_dir}/*.dll")
+    if (NOT _debug_crt_files)
+        message(FATAL_ERROR "Debug CRT directory contains no DLLs: ${_debug_crt_dir}")
+    endif ()
+    file(COPY ${_debug_crt_files} DESTINATION "${_stage_dir}/bin")
+endif ()
+
 file(GLOB_RECURSE _staged_sample_files LIST_DIRECTORIES FALSE
         "${_stage_dir}/share/viper/samples/*")
 file(GLOB_RECURSE _staged_vscode_files LIST_DIRECTORIES FALSE
@@ -187,6 +220,14 @@ if (NOT _identity_preview_rv EQUAL 0 OR
             "local Windows package identity is not collision-safe\nstdout:\n${_identity_preview_out}\nstderr:\n${_identity_preview_err}")
 endif ()
 
+set(_debug_toolchain_args)
+if (VIPER_CONFIG STREQUAL "Debug")
+    # This lifecycle test intentionally packages the active local build. Debug
+    # CRT payloads are safe here because the installer never leaves the owned
+    # test directory and is not presented as a release artifact.
+    list(APPEND _debug_toolchain_args --allow-debug-toolchain)
+endif ()
+
 set(_package_cmd
         "${VIPER_BIN}" install-package
         --stage-dir "${_stage_dir}"
@@ -197,6 +238,7 @@ set(_package_cmd
         --windows-channel e2e
         --windows-file-associations on
         --windows-shortcuts on
+        ${_debug_toolchain_args}
         -o "${_installer}")
 
 execute_process(
@@ -298,12 +340,20 @@ endif ()
 
 set(_missing_output_parent "${_tmp_root}/missing-output-parent")
 file(REMOVE_RECURSE "${_missing_output_parent}")
+set(_missing_output_timeout 15)
+if (VIPER_CONFIG STREQUAL "Debug")
+    # A Debug toolchain embeds compiler debug information in its static
+    # libraries, so the self-extracting installer can be several hundred MiB.
+    # Allow the host to finish extracting before it reports the expected I/O
+    # failure; the release payload remains subject to the tighter deadline.
+    set(_missing_output_timeout 120)
+endif ()
 execute_process(
         COMMAND "${_installer}" /inspect /quiet /output "${_missing_output_parent}/inspect.json"
         RESULT_VARIABLE _missing_output_rv
         OUTPUT_VARIABLE _missing_output_out
         ERROR_VARIABLE _missing_output_err
-        TIMEOUT 15)
+        TIMEOUT ${_missing_output_timeout})
 if (NOT _missing_output_rv EQUAL 1603 OR EXISTS "${_missing_output_parent}")
     message(FATAL_ERROR
             "installer did not fail closed for an unwritable automation output\nexit: ${_missing_output_rv}\nstdout:\n${_missing_output_out}\nstderr:\n${_missing_output_err}")

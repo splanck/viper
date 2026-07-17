@@ -190,6 +190,7 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
     int32_t anisotropy;
     int32_t anisotropy_index;
     D3D11_SAMPLER_DESC desc;
+    ID3D11SamplerState *created_sampler = NULL;
     HRESULT hr;
     if (!ctx)
         return NULL;
@@ -221,11 +222,14 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
     desc.AddressU = d3d11_sampler_address_mode(wrap_s);
     desc.AddressV = d3d11_sampler_address_mode(wrap_t);
     desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
-    hr = ID3D11Device_CreateSamplerState(
-        ctx->device, &desc, &ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index]);
-    if (FAILED(hr))
+    hr = ID3D11Device_CreateSamplerState(ctx->device, &desc, &created_sampler);
+    if (FAILED(hr) || !created_sampler) {
+        d3d11_log_hresult("CreateSamplerState(material)", FAILED(hr) ? hr : E_FAIL);
+        SAFE_RELEASE(created_sampler);
         return ctx->linear_wrap_sampler;
-    return ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index];
+    }
+    ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index] = created_sampler;
+    return created_sampler;
 }
 
 /// @brief Bind all material sampler states for a draw command to the pixel shader slots.

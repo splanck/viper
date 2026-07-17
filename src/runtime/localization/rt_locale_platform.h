@@ -17,7 +17,8 @@
 //     (selected by the CMake conditional on WIN32/APPLE/UNIX).
 //   - The adapter never traps; detection failure is reported via return
 //     value so LocaleManager can fall back to the baked invariant locale.
-//   - Output buffer is NUL-terminated on success; untouched on failure.
+//   - Output buffer is NUL-terminated on success and cleared on failure when
+//     the caller supplies at least one byte of writable storage.
 //
 // Ownership/Lifetime:
 //   - Caller owns the output buffer; the adapter writes at most `cap - 1`
@@ -44,7 +45,7 @@ extern "C" {
 ///          be fully canonical — language case and region case may still need
 ///          normalization by the caller. The platform-specific fallback chain
 ///          is: Windows uses GetUserDefaultLocaleName; macOS and POSIX walk
-///          `$LC_ALL` -> `$LANG` -> `$LC_MESSAGES`.
+///          `$LC_ALL` -> `$LC_MESSAGES` -> `$LANG`.
 /// @param out Destination buffer. NUL-terminated on success.
 /// @param cap Total capacity of @p out in bytes, including space for the
 ///            terminator. Must be at least 16 for any useful result.

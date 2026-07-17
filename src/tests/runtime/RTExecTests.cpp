@@ -10,21 +10,27 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/PlatformCapabilities.hpp"
 #include "rt_box.h"
 #include "rt_exec.h"
 #include "rt_internal.h"
 #include "rt_process.h"
 #include "rt_seq.h"
 #include "rt_string.h"
-#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <string>
 #include <thread>
+
+#if VIPER_HOST_WINDOWS
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -473,11 +479,92 @@ static void test_process_write_stdin() {
     rt_process_destroy(handle);
 }
 
-int main() {
-#ifdef _WIN32
-    // Skip on Windows: test uses POSIX shell commands (true, false, /bin/echo)
-    // that don't exist on Windows
-    VIPER_PLATFORM_SKIP("POSIX shell commands not available on Windows");
+#if VIPER_HOST_WINDOWS
+static int verify_windows_unicode_environment_child() {
+    wchar_t value[64];
+    DWORD value_len =
+        GetEnvironmentVariableW(L"VIPER_PROCESS_TEST", value, (DWORD)std::size(value));
+    if (value_len == 0 || value_len >= std::size(value) ||
+        wcscmp(value, L"Gr\u00fc\u00dfe-\u6771\u4eac") != 0)
+        return 11;
+    if (GetEnvironmentVariableW(L"VIPER_A_FIRST", value, (DWORD)std::size(value)) == 0 ||
+        wcscmp(value, L"ok") != 0)
+        return 12;
+    if (GetEnvironmentVariableW(L"VIPER_Z_LAST", value, (DWORD)std::size(value)) == 0 ||
+        wcscmp(value, L"ok") != 0)
+        return 13;
+
+    LPWCH environment = GetEnvironmentStringsW();
+    if (!environment)
+        return 14;
+    const wchar_t *previous = nullptr;
+    for (const wchar_t *entry = environment; *entry; entry += wcslen(entry) + 1) {
+        if (*entry == L'=')
+            continue;
+        if (previous && CompareStringOrdinal(previous, -1, entry, -1, TRUE) == CSTR_GREATER_THAN) {
+            FreeEnvironmentStringsW(environment);
+            return 15;
+        }
+        previous = entry;
+    }
+    FreeEnvironmentStringsW(environment);
+    return 0;
+}
+
+static std::string windows_current_executable_utf8() {
+    wchar_t path[32768];
+    DWORD path_len = GetModuleFileNameW(nullptr, path, (DWORD)std::size(path));
+    if (path_len == 0 || path_len >= std::size(path))
+        return {};
+    int byte_len = WideCharToMultiByte(
+        CP_UTF8, WC_ERR_INVALID_CHARS, path, (int)path_len, nullptr, 0, nullptr, nullptr);
+    if (byte_len <= 0)
+        return {};
+    std::string result((size_t)byte_len, '\0');
+    if (WideCharToMultiByte(CP_UTF8,
+                            WC_ERR_INVALID_CHARS,
+                            path,
+                            (int)path_len,
+                            result.data(),
+                            byte_len,
+                            nullptr,
+                            nullptr) != byte_len)
+        return {};
+    return result;
+}
+
+static void test_windows_unicode_environment_round_trip() {
+    std::string executable = windows_current_executable_utf8();
+    assert(!executable.empty());
+
+    void *args = rt_seq_new();
+    rt_seq_push(args, make_string("--verify-unicode-environment"));
+
+    void *env = rt_seq_new();
+    rt_seq_push(env, make_string("VIPER_Z_LAST=ok"));
+    rt_seq_push(env,
+                make_string("VIPER_PROCESS_TEST=Gr\xc3\xbc\xc3\x9f"
+                            "e-\xe6\x9d\xb1\xe4\xba\xac"));
+    rt_seq_push(env, make_string("VIPER_A_FIRST=ok"));
+
+    void *handle =
+        rt_process_start_with_env(make_string(executable.c_str()), args, make_string(""), env);
+    assert(handle != nullptr);
+    assert(rt_process_wait(handle) == 0);
+    rt_process_destroy(handle);
+    printf("  PASS: test_windows_unicode_environment_round_trip\n");
+}
+#endif
+
+int main(int argc, char **argv) {
+#if VIPER_HOST_WINDOWS
+    if (argc == 2 && strcmp(argv[1], "--verify-unicode-environment") == 0)
+        return verify_windows_unicode_environment_child();
+    test_windows_unicode_environment_round_trip();
+    return 0;
+#else
+    (void)argc;
+    (void)argv;
 #endif
     test_shell_true();
     test_shell_false();

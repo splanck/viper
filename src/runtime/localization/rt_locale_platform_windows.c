@@ -29,55 +29,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_locale_platform.h"
+#include "rt_locale_posix_tag.h"
 #include "rt_platform.h"
 
 #include <stddef.h>
 #include <stdlib.h>
-#include <string.h>
 
 #if RT_PLATFORM_WINDOWS
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-
-/// @brief Return 1 if @p s is a C/POSIX no-locale sentinel value.
-/// @details Used in the MinGW/MSYS fallback path where POSIX env vars may be set.
-///          "C", "c", "POSIX", and "posix" map to no-locale. NULL and empty are also no-locale.
-/// @param s Environment variable value to check; may be NULL.
-/// @return 1 if @p s is a no-locale sentinel; 0 otherwise.
-static int is_c_or_posix(const char *s) {
-    if (!s || !*s)
-        return 1;
-    return (strcmp(s, "C") == 0) || (strcmp(s, "POSIX") == 0) || (strcmp(s, "c") == 0) ||
-           (strcmp(s, "posix") == 0);
-}
-
-/// @brief Strip encoding/modifier suffixes from a POSIX-style locale string and normalize.
-/// @details Used in the MinGW/MSYS fallback path. Strips `.encoding` and `@modifier`
-///          suffixes and converts underscores to dashes (e.g., "fr_FR.UTF-8" → "fr-FR").
-/// @param src POSIX locale string; may be NULL (-1 returned).
-/// @param out Caller-provided buffer for the cleaned BCP-47-compatible tag.
-/// @param cap Capacity of @p out in bytes (must be ≥ 2).
-/// @return 0 on success; -1 if input/output are NULL, @p cap is too small, or result overflows.
-static int clean_posix_tag(const char *src, char *out, size_t cap) {
-    if (!src || !out || cap < 2)
-        return -1;
-    size_t i = 0;
-    for (const char *p = src; *p; ++p) {
-        char c = *p;
-        if (c == '.' || c == '@')
-            break;
-        if (c == '_')
-            c = '-';
-        if (i + 1 >= cap)
-            return -1;
-        out[i++] = c;
-    }
-    if (i == 0)
-        return -1;
-    out[i] = '\0';
-    return 0;
-}
 
 /// @brief Detect the Windows system locale and write a BCP-47 tag to @p out.
 /// @details Primary path: calls `GetUserDefaultLocaleName` (Vista+) which returns a
@@ -85,12 +46,14 @@ static int clean_posix_tag(const char *src, char *out, size_t cap) {
 ///          UTF-16 → UTF-8 transcoding is a safe byte truncation. Rejects any
 ///          non-ASCII wide character as a corrupt locale indicator.
 ///          Fallback path: when the Win32 call returns empty (MSYS/MinGW environments),
-///          polls `LC_ALL`, `LANG`, and `LC_MESSAGES` env vars and applies the
+///          polls `LC_ALL`, `LC_MESSAGES`, and `LANG` env vars and applies the
 ///          POSIX cleanup path.
 /// @param out  Caller-provided buffer to receive the BCP-47 tag.
 /// @param cap  Capacity of @p out in bytes (must be ≥ 2).
 /// @return 0 if a usable tag was written to @p out; -1 if detection failed.
 int rt_locale_platform_detect_system(char *out, size_t cap) {
+    if (out && cap > 0)
+        out[0] = '\0';
     if (!out || cap < 2)
         return -1;
 
@@ -118,12 +81,12 @@ int rt_locale_platform_detect_system(char *out, size_t cap) {
 
     // Fallback: MSYS/MinGW environments commonly set LANG. Reuse the POSIX
     // cleanup path for that case.
-    static const char *const kVars[] = {"LC_ALL", "LANG", "LC_MESSAGES", NULL};
+    static const char *const kVars[] = {"LC_ALL", "LC_MESSAGES", "LANG", NULL};
     for (size_t i = 0; kVars[i]; ++i) {
         const char *val = getenv(kVars[i]);
-        if (is_c_or_posix(val))
+        if (rt_locale_posix_value_is_invariant(val))
             continue;
-        if (clean_posix_tag(val, out, cap) == 0)
+        if (rt_locale_clean_posix_tag(val, out, cap) == 0)
             return 0;
     }
     return -1;

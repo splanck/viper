@@ -22,6 +22,7 @@ file(MAKE_DIRECTORY "${_tmp_root}")
 # install tree three times.
 file(MAKE_DIRECTORY
         "${_stage}/bin"
+        "${_stage}/include/viper"
         "${_stage}/lib/cmake/Viper"
         "${_stage}/lib")
 
@@ -76,6 +77,10 @@ file(WRITE "${_stage}/lib/cmake/Viper/ViperConfig.cmake" "# tarball smoke fixtur
 file(WRITE "${_stage}/lib/cmake/Viper/ViperTargets.cmake" "# tarball smoke fixture\n")
 file(WRITE "${_stage}/lib/cmake/Viper/ViperConfigVersion.cmake"
         "set(PACKAGE_VERSION \"1.2.3\")\n")
+file(WRITE "${_stage}/include/viper/version.hpp"
+        "#define VIPER_SNAPSHOT_STR \"1.2.3-test\"\n"
+        "#define VIPER_SOURCE_COMMIT_STR \"0123456789abcdef0123456789abcdef01234567\"\n"
+        "#define VIPER_SOURCE_STATE_STR \"clean\"\n")
 
 set(_runtime_manifest
         "${VIPER_BUILD_DIR}/generated/viper/runtime/RuntimeComponentManifest.hpp")

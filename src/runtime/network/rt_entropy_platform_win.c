@@ -27,9 +27,10 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
-#include <bcrypt.h>
 #include <stdint.h>
+#include <windows.h>
+// BCrypt declarations depend on the base Win32 types above.
+#include <bcrypt.h>
 
 #pragma comment(lib, "bcrypt.lib")
 
@@ -39,8 +40,9 @@
 
 /// @brief Fill a buffer from the Windows system CSPRNG.
 /// @details Calls BCryptGenRandom() with BCRYPT_USE_SYSTEM_PREFERRED_RNG,
-///          chunking requests larger than ULONG_MAX. The function reports
-///          source failure instead of producing fallback bytes.
+///          chunking requests larger than ULONG_MAX. On source failure the
+///          complete destination is erased so callers cannot consume a mixed
+///          prefix of fresh entropy and stale trailing bytes.
 /// @param buf Destination buffer. May be NULL only for zero-length requests.
 /// @param len Number of bytes to produce.
 /// @return 0 on success, -1 on invalid arguments or BCrypt failure.
@@ -54,8 +56,10 @@ int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len) {
             chunk = UINT32_MAX;
         NTSTATUS status =
             BCryptGenRandom(NULL, buf + off, (ULONG)chunk, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-        if (!NT_SUCCESS(status))
+        if (!NT_SUCCESS(status)) {
+            SecureZeroMemory(buf, len);
             return -1;
+        }
         off += chunk;
     }
     return 0;
@@ -69,5 +73,6 @@ int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len) {
 int rt_entropy_platform_random_u64(uint64_t *out) {
     if (!out)
         return -1;
+    *out = 0;
     return rt_entropy_platform_random_bytes((uint8_t *)out, sizeof(*out));
 }

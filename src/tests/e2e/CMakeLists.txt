@@ -512,11 +512,13 @@ function(viper_add_e2e_codegen_tests)
     if (IL_ENABLE_X64_ASM_SYNTAX_CHECK AND CLANG_FOUND)
         viper_add_ctest(codegen_syntax_only
                 ${CMAKE_COMMAND}
+                "-DCLANG_BIN=${CLANG_EXECUTABLE}"
                 "-DASM_FLAGS=${IL_X64_ASM_FLAGS}"
                 "-DLD_FLAGS=${IL_X64_LD_FLAGS}"
                 -DMODE=syntax
                 -P ${CODEGEN_E2E})
         viper_set_test_labels(codegen_syntax_only codegen syntax_only)
+        set_tests_properties(codegen_syntax_only PROPERTIES RESOURCE_LOCK codegen_e2e_workdir)
     else ()
         message(STATUS "Skipping codegen_* tests (CLANG not found or flags OFF)")
     endif ()
@@ -524,11 +526,13 @@ function(viper_add_e2e_codegen_tests)
     if (IL_ENABLE_X64_ASM_ASSEMBLE_LINK AND CLANG_FOUND)
         viper_add_ctest(codegen_assemble_link
                 ${CMAKE_COMMAND}
+                "-DCLANG_BIN=${CLANG_EXECUTABLE}"
                 "-DASM_FLAGS=${IL_X64_ASM_FLAGS}"
                 "-DLD_FLAGS=${IL_X64_LD_FLAGS}"
                 -DMODE=assemble_link
                 -P ${CODEGEN_E2E})
         viper_set_test_labels(codegen_assemble_link codegen assemble_link)
+        set_tests_properties(codegen_assemble_link PROPERTIES RESOURCE_LOCK codegen_e2e_workdir)
     else ()
         message(STATUS "Skipping codegen_* tests (CLANG not found or flags OFF)")
     endif ()
@@ -536,11 +540,13 @@ function(viper_add_e2e_codegen_tests)
     if (IL_ENABLE_X64_NATIVE_RUN AND CLANG_FOUND)
         viper_add_ctest(codegen_native_run
                 ${CMAKE_COMMAND}
+                "-DCLANG_BIN=${CLANG_EXECUTABLE}"
                 "-DASM_FLAGS=${IL_X64_ASM_FLAGS}"
                 "-DLD_FLAGS=${IL_X64_LD_FLAGS}"
                 -DMODE=run
                 -P ${CODEGEN_E2E})
         viper_set_test_labels(codegen_native_run codegen native_run)
+        set_tests_properties(codegen_native_run PROPERTIES RESOURCE_LOCK codegen_e2e_workdir)
     else ()
         message(STATUS "Skipping codegen_* tests (CLANG not found or flags OFF)")
     endif ()

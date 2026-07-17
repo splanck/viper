@@ -415,9 +415,10 @@ present, else the inherited one), so a bare name resolves the same way with or w
 environment. Startup/OS failures return `NULL`;
 invalid empty/NUL-containing inputs and malformed environment entries trap.
 
-On Windows, `StartWithEnv` builds a UTF-16 environment block and passes `CREATE_UNICODE_ENVIRONMENT`
-to `CreateProcessW`, so explicit environments — including non-ASCII values — are delivered to the
-child intact (matching the PTY backend).
+On Windows, `StartWithEnv` converts entries to a sorted UTF-16 environment block and launches the
+child with `CREATE_UNICODE_ENVIRONMENT`, so non-ASCII values are delivered intact. Variable names
+are case-insensitive; duplicate names are rejected rather than allowing an ambiguous child
+environment.
 
 ### Viper.System.Process.ProcessHandle
 

@@ -19,26 +19,8 @@
 #if defined(_WIN32)
 
 #define WIN32_LEAN_AND_MEAN
+#include "rt_win32_wait.h"
 #include <windows.h>
-
-/// @brief Clamp an int64 millisecond timeout into the Win32 `DWORD` domain.
-/// @details Win32 wait APIs (`WaitForSingleObject`, `SleepConditionVariableCS`,
-///          etc.) take an unsigned 32-bit `DWORD` timeout with special values
-///          `0` (return immediately) and `INFINITE == MAXDWORD == 0xFFFFFFFF`.
-///          A naked `(DWORD)ms` cast on a negative int64 sign-extends into a
-///          huge unsigned and causes a ~49-day hang; a value greater than
-///          `MAXDWORD` truncates unpredictably. This helper maps:
-///            - `ms <= 0` → 0 (poll / return immediately)
-///            - `ms > MAXDWORD` → `MAXDWORD` (effectively infinite)
-///            - otherwise the direct cast.
-///          Called before every Win32 timed-wait entry.
-static DWORD monitor_clamp_timeout_ms(int64_t ms) {
-    if (ms <= 0)
-        return 0;
-    if (ms > (int64_t)MAXDWORD)
-        return MAXDWORD;
-    return (DWORD)ms;
-}
 
 /// @brief Waiter state enumeration for Windows.
 enum {
@@ -416,8 +398,14 @@ static int monitor_enter_blocking(RtMonitor *m, DWORD self, DWORD timeout_ms, in
         }
 
         BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
-        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state != RT_MON_WAITER_ACQUIRED) {
+        if (!ok && w.state != RT_MON_WAITER_ACQUIRED) {
+            DWORD error = GetLastError();
+            if (error == ERROR_TIMEOUT) {
+                monitor_remove_acq(m, &w);
+                return 0;
+            }
             monitor_remove_acq(m, &w);
+            rt_trap("Monitor.Enter: condition wait failed");
             return 0;
         }
         if (w.state == RT_MON_WAITER_CANCELLED) {
@@ -560,28 +548,27 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
     w.desired_recursion = 1;
     monitor_enqueue_acq(m, &w);
 
-    ULONGLONG start = GetTickCount64();
-    DWORD timeout_ms = monitor_clamp_timeout_ms(ms);
+    ULONGLONG deadline = rt_win32_deadline_from_now_ms(ms);
     while (w.state != RT_MON_WAITER_ACQUIRED) {
-        ULONGLONG elapsed = GetTickCount64() - start;
-        if (elapsed >= timeout_ms) {
-            if (w.state != RT_MON_WAITER_ACQUIRED) {
-                monitor_remove_acq(m, &w);
-                LeaveCriticalSection(&m->cs);
-                if (rt_obj_release_check0(obj))
-                    rt_obj_free(obj);
-                return 0;
-            }
-            break;
-        }
-        DWORD wait_time = (DWORD)(timeout_ms - elapsed);
-
-        BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
-        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state != RT_MON_WAITER_ACQUIRED) {
+        DWORD wait_time = rt_win32_wait_slice_until(deadline);
+        if (wait_time == 0) {
             monitor_remove_acq(m, &w);
             LeaveCriticalSection(&m->cs);
             if (rt_obj_release_check0(obj))
                 rt_obj_free(obj);
+            return 0;
+        }
+
+        BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
+        if (!ok && w.state != RT_MON_WAITER_ACQUIRED) {
+            DWORD error = GetLastError();
+            if (error == ERROR_TIMEOUT)
+                continue;
+            monitor_remove_acq(m, &w);
+            LeaveCriticalSection(&m->cs);
+            if (rt_obj_release_check0(obj))
+                rt_obj_free(obj);
+            rt_trap("Monitor.Enter: condition wait failed");
             return 0;
         }
         if (w.state == RT_MON_WAITER_CANCELLED) {
@@ -663,18 +650,40 @@ void rt_monitor_wait(void *obj) {
     m->recursion = 0;
     monitor_grant_next_waiter(m);
 
+    int wait_failed = 0;
     while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
-        SleepConditionVariableCS(&w.cv, &m->cs, INFINITE);
+        if (!SleepConditionVariableCS(&w.cv, &m->cs, INFINITE)) {
+            wait_failed = 1;
+            break;
+        }
+    }
+
+    if (wait_failed && w.state == RT_MON_WAITER_WAITING_PAUSE) {
+        monitor_remove_wait(m, &w);
+        w.state = RT_MON_WAITER_WAITING_LOCK;
+        monitor_enqueue_acq(m, &w);
+        if (!m->owner_valid && m->acq_head)
+            monitor_grant_next_waiter(m);
     }
 
     // Wait for re-acquisition.
     while (w.state != RT_MON_WAITER_ACQUIRED && w.state != RT_MON_WAITER_CANCELLED) {
-        SleepConditionVariableCS(&w.cv, &m->cs, INFINITE);
+        if (!SleepConditionVariableCS(&w.cv, &m->cs, INFINITE)) {
+            wait_failed = 1;
+            if (w.state == RT_MON_WAITER_WAITING_LOCK) {
+                monitor_remove_acq(m, &w);
+                if (!m->owner_valid && m->acq_head)
+                    monitor_grant_next_waiter(m);
+            }
+            break;
+        }
     }
 
     LeaveCriticalSection(&m->cs);
     if (w.state == RT_MON_WAITER_CANCELLED)
         rt_trap("Monitor.Wait: object finalized while waiting");
+    else if (wait_failed)
+        rt_trap("Monitor.Wait: condition wait failed");
 }
 
 /// @brief Wait with a timeout. Returns 1 if woken by Pause, 0 on timeout.
@@ -713,26 +722,25 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     monitor_grant_next_waiter(m);
 
     int timed_out = 0;
-    ULONGLONG start = GetTickCount64();
-    DWORD timeout_ms = monitor_clamp_timeout_ms(ms);
+    int wait_failed = 0;
+    ULONGLONG deadline = rt_win32_deadline_from_now_ms(ms);
     while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
-        ULONGLONG elapsed = GetTickCount64() - start;
-        if (elapsed >= timeout_ms) {
-            if (w.state == RT_MON_WAITER_WAITING_PAUSE) {
-                timed_out = 1;
-                break;
-            }
+        DWORD wait_time = rt_win32_wait_slice_until(deadline);
+        if (wait_time == 0) {
+            timed_out = 1;
             break;
         }
-        DWORD wait_time = (DWORD)(timeout_ms - elapsed);
         BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
-        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state == RT_MON_WAITER_WAITING_PAUSE) {
-            timed_out = 1;
+        if (!ok && w.state == RT_MON_WAITER_WAITING_PAUSE) {
+            DWORD error = GetLastError();
+            if (error == ERROR_TIMEOUT)
+                continue;
+            wait_failed = 1;
             break;
         }
     }
 
-    if (timed_out) {
+    if (timed_out || wait_failed) {
         // Timeout while still in the wait queue: remove and begin fair re-acquire.
         monitor_remove_wait(m, &w);
         w.state = RT_MON_WAITER_WAITING_LOCK;
@@ -742,13 +750,23 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     }
 
     while (w.state != RT_MON_WAITER_ACQUIRED && w.state != RT_MON_WAITER_CANCELLED) {
-        SleepConditionVariableCS(&w.cv, &m->cs, INFINITE);
+        if (!SleepConditionVariableCS(&w.cv, &m->cs, INFINITE)) {
+            wait_failed = 1;
+            if (w.state == RT_MON_WAITER_WAITING_LOCK) {
+                monitor_remove_acq(m, &w);
+                if (!m->owner_valid && m->acq_head)
+                    monitor_grant_next_waiter(m);
+            }
+            break;
+        }
     }
 
     LeaveCriticalSection(&m->cs);
     if (w.state == RT_MON_WAITER_CANCELLED)
         rt_trap("Monitor.Wait: object finalized while waiting");
-    return timed_out ? 0 : 1;
+    else if (wait_failed)
+        rt_trap("Monitor.Wait: condition wait failed");
+    return (timed_out || wait_failed) ? 0 : 1;
 }
 
 /// @brief Wake one thread waiting on this monitor (signal/notify pattern).

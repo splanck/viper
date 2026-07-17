@@ -35,6 +35,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+// BCrypt declarations depend on the base Win32 types above.
 #include <bcrypt.h>
 #pragma comment(lib, "bcrypt.lib")
 #ifndef NT_SUCCESS
@@ -54,7 +55,7 @@ int rt_siphash_seeded_ = 0;
 /// @brief Fill `buf` with `len` random bytes from the OS CSPRNG.
 /// @details Platform split:
 ///          - **Windows** → `BCryptGenRandom` with the system-preferred
-///            RNG; one call covers the whole buffer.
+///            RNG; requests are chunked to the API's 32-bit byte-count limit.
 ///          - **Unix** → loop on `read("/dev/urandom")` because short
 ///            reads are legal even from `/dev/urandom` (rare in
 ///            practice, but kernel guarantees only "at least one byte").
@@ -63,9 +64,23 @@ int rt_siphash_seeded_ = 0;
 static int hash_random_fill(uint8_t *buf, size_t len) {
     if (len == 0)
         return 0;
+    if (!buf)
+        return -1;
 #ifdef _WIN32
-    NTSTATUS status = BCryptGenRandom(NULL, buf, (ULONG)len, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
-    return NT_SUCCESS(status) ? 0 : -1;
+    size_t off = 0;
+    while (off < len) {
+        size_t chunk = len - off;
+        if (chunk > UINT32_MAX)
+            chunk = UINT32_MAX;
+        NTSTATUS status =
+            BCryptGenRandom(NULL, buf + off, (ULONG)chunk, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+        if (!NT_SUCCESS(status)) {
+            SecureZeroMemory(buf, len);
+            return -1;
+        }
+        off += chunk;
+    }
+    return 0;
 #else
 #ifdef O_CLOEXEC
     int fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);

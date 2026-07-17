@@ -15,6 +15,7 @@
 //   - tls_extract_cn:           CommonName extraction from Subject DER
 //   - tls_parse_certificate_msg: TLS Certificate message parsing
 //   - tls_verify_hostname:      End-to-end hostname verification via session
+//   - tls_verify_cert_verify:    Strict CertificateVerify message framing
 //
 // Test certs generated with:
 //   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
@@ -775,6 +776,26 @@ static void test_chain_verification_rejects_too_many_intermediates(void) {
     printf("  PASS: test_chain_verification_rejects_too_many_intermediates\n");
 }
 
+static void test_certificate_verify_requires_exact_signature_length(void) {
+    rt_tls_session_t session;
+    const uint8_t trailing_data[] = {0x04, 0x03, 0x00, 0x00, 0xaa};
+    const uint8_t truncated_signature[] = {0x04, 0x03, 0x00, 0x02, 0xaa};
+
+    memset(&session, 0, sizeof(session));
+    assert(tls_verify_cert_verify(&session, trailing_data, sizeof(trailing_data)) ==
+           RT_TLS_ERROR_HANDSHAKE);
+    assert(session.error && strstr(session.error, "length mismatch") != nullptr);
+
+    memset(&session, 0, sizeof(session));
+    assert(tls_verify_cert_verify(&session, truncated_signature, sizeof(truncated_signature)) ==
+           RT_TLS_ERROR_HANDSHAKE);
+    assert(session.error && strstr(session.error, "length overflows") != nullptr);
+
+    assert(tls_verify_cert_verify(nullptr, trailing_data, sizeof(trailing_data)) ==
+           RT_TLS_ERROR_HANDSHAKE);
+    printf("  PASS: test_certificate_verify_requires_exact_signature_length\n");
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -816,6 +837,9 @@ int main(void) {
     printf("-- Native RSA chain verification --\n");
     test_chain_verification_custom_bundle_rsa();
     test_chain_verification_rejects_too_many_intermediates();
+
+    printf("-- CertificateVerify message framing --\n");
+    test_certificate_verify_requires_exact_signature_length();
 
     printf("=== All RTTlsCertTests passed ===\n");
     return 0;

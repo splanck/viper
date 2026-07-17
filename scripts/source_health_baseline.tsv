@@ -3,7 +3,7 @@
 # Values are intentionally local guardrails, not GitHub CI policy. Metrics that
 # represent debt or complexity fail when they increase. Metrics that represent
 # coverage/scaffolding fail when they decrease.
-runtime_api_contract_files 840
+runtime_api_contract_files 842
 runtime_surface_policy_rules 823
 vm_bridge_duplicate_markers 1
 vm_callback_pointer_traps 11
@@ -37,4 +37,4 @@ debug_adapter_protocol_markers 97
 packaging_verifier_entrypoints 40
 packaging_negative_test_markers 18
 todo_fixme_markers 3
-raw_not_implemented_markers 539
+raw_not_implemented_markers 544

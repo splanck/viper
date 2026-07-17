@@ -39,13 +39,13 @@
 #include "rt_string_internal.h"
 
 #include "rt_box.h"
+#include "rt_format.h"
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_string_builder.h"
-#include "rt_format.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -719,8 +719,7 @@ void *rt_toml_parse(rt_string src) {
                     skip_line(&p);
                     continue;
                 }
-                target_section =
-                    ensure_table_path(current_section, kc, (size_t)(last_dot - kc));
+                target_section = ensure_table_path(current_section, kc, (size_t)(last_dot - kc));
                 if (!target_section || !is_map_obj(target_section)) {
                     g_toml_had_error = 1;
                     rt_string_unref(key);
@@ -933,7 +932,15 @@ static int append_toml_value(rt_string_builder *sb, void *val, int depth) {
             // doubles like 1.0 print as "1" via %g, which is an integer token.
             // Append ".0" so the value keeps its float type on reparse. Skip for
             // outputs already containing '.', an exponent, or inf/nan spellings.
-            if (!strpbrk(buf, ".eEni")) {
+            int has_float_marker = 0;
+            for (int i = 0; i < n; i++) {
+                if (buf[i] == '.' || buf[i] == 'e' || buf[i] == 'E' || buf[i] == 'n' ||
+                    buf[i] == 'i') {
+                    has_float_marker = 1;
+                    break;
+                }
+            }
+            if (!has_float_marker) {
                 buf[n++] = '.';
                 buf[n++] = '0';
                 buf[n] = '\0';
@@ -1004,10 +1011,7 @@ static int append_toml_value(rt_string_builder *sb, void *val, int depth) {
 /// @param depth Current nesting depth; bounded by TOML_MAX_DEPTH so deeply
 ///        nested or cyclic inputs fail the format instead of recursing forever.
 /// @return 1 on success, 0 on failure.
-static int toml_format_table(rt_string_builder *sb,
-                             void *map,
-                             rt_string_builder *path,
-                             int depth) {
+static int toml_format_table(rt_string_builder *sb, void *map, rt_string_builder *path, int depth) {
     if (depth > TOML_MAX_DEPTH)
         return 0;
 
@@ -1051,8 +1055,7 @@ static int toml_format_table(rt_string_builder *sb,
 
         if (!toml_format_append_cstr(sb, "[") ||
             !toml_format_append_bytes(sb, path->data, path->len) ||
-            !toml_format_append_cstr(sb, "]\n") ||
-            !toml_format_table(sb, val, path, depth + 1) ||
+            !toml_format_append_cstr(sb, "]\n") || !toml_format_table(sb, val, path, depth + 1) ||
             !toml_format_append_cstr(sb, "\n"))
             ok = 0;
 

@@ -11,6 +11,12 @@
 //   the TLS 1.3 CertificateVerify signature with BCrypt. Compiled only on
 //   _WIN32; the native path lives in rt_tls_verify_posix.c.
 //
+// Key invariants:
+//   - CertificateVerify hashes use the digest size selected by the TLS signature scheme.
+//   - Imported certificate and CNG key handles are released on every return path.
+// Ownership/Lifetime:
+//   - Certificate contexts and key handles are borrowed only within each verification call.
+//
 // Links: rt_tls_verify_internal.h (shared helpers), rt_tls_verify_posix.c, rt_tls_internal.h
 //
 //===----------------------------------------------------------------------===//
@@ -492,7 +498,7 @@ static int parse_ecdsa_sig_der(const uint8_t *sig,
     return 0;
 }
 
-/// @brief Build and hash the CertificateVerify content for Windows CryptoAPI verification.
+/// @brief Build and hash the CertificateVerify content for Windows CNG verification.
 ///        Constructs the 130-byte signed content, then hashes it with SHA-256/384/512 as
 ///        required by sig_scheme.
 /// @return 1 on success, 0 for unknown or unsupported sig_scheme.
@@ -503,9 +509,13 @@ static int build_cert_verify_hash_for_scheme_win(uint16_t sig_scheme,
     uint8_t content[130];
     size_t hash_len = sig_scheme_hash_len(sig_scheme);
     if (hash_len_out)
-        *hash_len_out = hash_len;
-    if (hash_len == 0)
+        *hash_len_out = 0;
+    if (out)
+        memset(out, 0, 64);
+    if (!transcript_hash || !out || hash_len == 0)
         return 0;
+    if (hash_len_out)
+        *hash_len_out = hash_len;
     build_cert_verify_message(transcript_hash, content);
     switch (hash_len) {
         case 32:
@@ -522,12 +532,14 @@ static int build_cert_verify_hash_for_scheme_win(uint16_t sig_scheme,
     }
 }
 
-/// @brief Windows path: verify CertificateVerify via Windows CNG / CryptoAPI.
+/// @brief Windows path: verify CertificateVerify via Windows CNG.
 ///
 /// Builds the message, hashes it locally, then verifies ECDSA and RSA-PSS with
-/// CNG. The older CryptoAPI fallback is kept for RSA-style public key imports.
+/// CNG using the public key imported from the peer certificate.
 int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_t len) {
-    if (len < 4) {
+    if (!session)
+        return RT_TLS_ERROR_HANDSHAKE;
+    if (!data || len < 4) {
         session->error = "TLS: CertificateVerify message too short";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -536,6 +548,10 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     uint16_t sig_len = ((uint16_t)data[2] << 8) | data[3];
     if ((size_t)sig_len > len - 4u) {
         session->error = "TLS: CertificateVerify signature length overflows";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
+    if ((size_t)sig_len != len - 4u) {
+        session->error = "TLS: CertificateVerify signature length mismatch";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
@@ -549,7 +565,6 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         session->error = "TLS: CertVerify: no certificate stored";
         return RT_TLS_ERROR_HANDSHAKE;
     }
-    memset(content_hash, 0, sizeof(content_hash));
     if (!build_cert_verify_hash_for_scheme_win(
             sig_scheme, session->cert_transcript_hash, content_hash, &hash_len)) {
         session->error = "TLS: CertificateVerify: unsupported scheme (Windows)";
@@ -635,105 +650,8 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         return RT_TLS_OK;
     }
 
-    // Determine hash algorithm OID from signature scheme
-    LPCSTR hash_oid;
-    switch (sig_scheme) {
-        case 0x0403:
-        case 0x0804:
-            hash_oid = szOID_NIST_sha256;
-            break;
-        case 0x0805:
-            hash_oid = szOID_NIST_sha384;
-            break;
-        case 0x0806:
-            hash_oid = szOID_NIST_sha512;
-            break;
-        default:
-            CertFreeCertificateContext(cert_ctx);
-            session->error = "TLS: CertificateVerify: unsupported scheme (Windows)";
-            return RT_TLS_ERROR_HANDSHAKE;
-    }
-
-    // Import public key
-    HCRYPTPROV_OR_NCRYPT_KEY_HANDLE key_handle = 0;
-    DWORD key_spec = 0;
-    BOOL must_free_key = FALSE;
-    if (!CryptAcquireCertificatePrivateKey(cert_ctx,
-                                           CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
-                                           NULL,
-                                           &key_handle,
-                                           &key_spec,
-                                           &must_free_key)) {
-        // Fall back to public key only via CERT_KEY_PROV_INFO
-        // Use CryptImportPublicKeyInfo for verification
-        HCRYPTPROV hprov = 0;
-        if (!CryptAcquireContextW(&hprov, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) {
-            CertFreeCertificateContext(cert_ctx);
-            session->error = "TLS: CertVerify: CryptAcquireContext failed";
-            return RT_TLS_ERROR_HANDSHAKE;
-        }
-
-        HCRYPTKEY hkey = 0;
-        if (!CryptImportPublicKeyInfo(
-                hprov, X509_ASN_ENCODING, &cert_ctx->pCertInfo->SubjectPublicKeyInfo, &hkey)) {
-            CryptReleaseContext(hprov, 0);
-            CertFreeCertificateContext(cert_ctx);
-            session->error = "TLS: CertVerify: CryptImportPublicKeyInfo failed";
-            return RT_TLS_ERROR_HANDSHAKE;
-        }
-
-        HCRYPTHASH hhash = 0;
-        ALG_ID alg_id = (sig_scheme == 0x0403 || sig_scheme == 0x0804) ? CALG_SHA_256
-                        : (sig_scheme == 0x0805)                       ? CALG_SHA_384
-                                                                       : CALG_SHA_512;
-
-        if (!CryptCreateHash(hprov, alg_id, 0, 0, &hhash)) {
-            CryptDestroyKey(hkey);
-            CryptReleaseContext(hprov, 0);
-            CertFreeCertificateContext(cert_ctx);
-            session->error = "TLS: CertVerify: CryptCreateHash failed";
-            return RT_TLS_ERROR_HANDSHAKE;
-        }
-
-        // Set the hash value directly (we already computed SHA-256 of the content)
-        if (!CryptSetHashParam(hhash, HP_HASHVAL, content_hash, 0)) {
-            CryptDestroyHash(hhash);
-            CryptDestroyKey(hkey);
-            CryptReleaseContext(hprov, 0);
-            CertFreeCertificateContext(cert_ctx);
-            session->error = "TLS: CertVerify: CryptSetHashParam failed";
-            return RT_TLS_ERROR_HANDSHAKE;
-        }
-
-        // Signature bytes may need byte-reversal for Windows RSA (big-endian vs little-endian)
-        uint8_t sig_copy[4096];
-        DWORD sig_copy_len = sig_len;
-        if (sig_len <= sizeof(sig_copy)) {
-            memcpy(sig_copy, sig_bytes, sig_len);
-            // Reverse for Windows CAPI RSA (Windows stores in little-endian)
-            for (DWORD i = 0; i < sig_copy_len / 2; i++) {
-                uint8_t tmp = sig_copy[i];
-                sig_copy[i] = sig_copy[sig_copy_len - 1 - i];
-                sig_copy[sig_copy_len - 1 - i] = tmp;
-            }
-        }
-
-        BOOL verified = CryptVerifySignature(hhash, sig_copy, sig_copy_len, hkey, NULL, 0);
-        CryptDestroyHash(hhash);
-        CryptDestroyKey(hkey);
-        CryptReleaseContext(hprov, 0);
-        CertFreeCertificateContext(cert_ctx);
-
-        if (!verified) {
-            session->error = "TLS: CertificateVerify signature failed (Windows)";
-            return RT_TLS_ERROR_HANDSHAKE;
-        }
-
-        return RT_TLS_OK;
-    }
-
     CertFreeCertificateContext(cert_ctx);
-    session->error = "TLS: CertVerify: unsupported key type on Windows";
+    session->error = "TLS: CertificateVerify: unsupported scheme (Windows)";
     return RT_TLS_ERROR_HANDSHAKE;
 }
 #endif // defined(_WIN32)

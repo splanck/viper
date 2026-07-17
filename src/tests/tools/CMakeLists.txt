@@ -414,6 +414,8 @@ function(viper_add_tools_tests)
                 -DVIPER_BIN=$<TARGET_FILE:viper>
                 -DVIPER_BUILD_DIR=${CMAKE_BINARY_DIR}
                 -DVIPER_CONFIG=$<CONFIG>
+                -DVIPER_MSVC_REDIST_DIR=${MSVC_REDIST_DIR}
+                -DVIPER_SYSTEM_PROCESSOR=${CMAKE_SYSTEM_PROCESSOR}
                 -DVIPER_INSTALLER_TEST_HOOKS=${VIPER_INSTALLER_ENABLE_TEST_HOOKS}
                 -P ${_VIPER_TOOLS_DIR}/WindowsToolchainInstallerE2E.cmake)
         set_tests_properties(installer_windows_toolchain_e2e PROPERTIES RUN_SERIAL TRUE TIMEOUT 1800)

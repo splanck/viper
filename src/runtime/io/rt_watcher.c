@@ -40,6 +40,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -63,7 +64,7 @@
 #define O_EVTONLY 0x8000
 #endif
 #elif RT_PLATFORM_WINDOWS
-#include <windows.h>
+#include "rt_win32_wait.h"
 #elif RT_PLATFORM_VIPERDOS
 // ViperDOS: file watching deferred until kernel inotify-like support exists.
 #else
@@ -133,6 +134,10 @@ typedef struct rt_watcher_impl {
 #endif
 } rt_watcher_impl;
 
+#if RT_PLATFORM_WINDOWS
+static void watcher_close_windows_handles(rt_watcher_impl *w);
+#endif
+
 static rt_watcher_impl *watcher_require(void *obj, const char *context) {
     if (!obj || rt_obj_class_id(obj) != RT_WATCHER_CLASS_ID) {
         rt_trap(context ? context : "Watcher: invalid watcher");
@@ -186,12 +191,7 @@ static void rt_watcher_finalize(void *obj) {
         if (w->kqueue_fd >= 0)
             close(w->kqueue_fd);
 #elif RT_PLATFORM_WINDOWS
-        if (w->dir_handle != INVALID_HANDLE_VALUE) {
-            CancelIo(w->dir_handle);
-            if (w->overlapped.hEvent)
-                CloseHandle(w->overlapped.hEvent);
-            CloseHandle(w->dir_handle);
-        }
+        watcher_close_windows_handles(w);
 #endif
     }
 
@@ -278,7 +278,7 @@ static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_strin
 
     w->events[w->event_tail].type = type;
     w->events[w->event_tail].path = path;
-    w->events[w->event_tail].dropped_count = 0;
+    w->events[w->event_tail].dropped_count = type == RT_WATCH_EVENT_OVERFLOW ? 1 : 0;
     w->event_tail = (w->event_tail + 1) % WATCHER_EVENT_QUEUE_SIZE;
     w->event_count++;
 }
@@ -469,11 +469,50 @@ static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
 #endif
 
 #if RT_PLATFORM_WINDOWS
+typedef BOOL(WINAPI *watcher_cancel_io_ex_fn)(HANDLE, LPOVERLAPPED);
+
+/// @brief Request cross-thread overlapped cancellation without a static import.
+/// @details CancelIoEx is present on every supported Windows release, but the
+///          native Viper linker intentionally keeps a fixed import surface.
+///          Resolve it from kernel32 and retain CancelIo as a legacy fallback.
+static int watcher_cancel_pending_windows_io(rt_watcher_impl *w) {
+    HMODULE kernel32;
+    watcher_cancel_io_ex_fn cancel_io_ex;
+    if (!w || w->dir_handle == INVALID_HANDLE_VALUE || !w->pending_read)
+        return 0;
+    kernel32 = GetModuleHandleW(L"kernel32.dll");
+    cancel_io_ex =
+        kernel32 ? (watcher_cancel_io_ex_fn)GetProcAddress(kernel32, "CancelIoEx") : NULL;
+    if (cancel_io_ex) {
+        (void)cancel_io_ex(w->dir_handle, &w->overlapped);
+        return 1;
+    }
+    return CancelIo(w->dir_handle) != FALSE;
+}
+
+/// @brief Cancel pending directory I/O and release all Win32 watcher handles.
+static void watcher_close_windows_handles(rt_watcher_impl *w) {
+    DWORD ignored = 0;
+    if (!w)
+        return;
+    if (w->dir_handle != INVALID_HANDLE_VALUE) {
+        if (watcher_cancel_pending_windows_io(w))
+            (void)GetOverlappedResult(w->dir_handle, &w->overlapped, &ignored, TRUE);
+        CloseHandle(w->dir_handle);
+        w->dir_handle = INVALID_HANDLE_VALUE;
+    }
+    if (w->overlapped.hEvent) {
+        CloseHandle(w->overlapped.hEvent);
+        w->overlapped.hEvent = NULL;
+    }
+    w->pending_read = FALSE;
+}
+
 static BOOL watcher_start_windows_read(rt_watcher_impl *w) {
     if (!w || w->dir_handle == INVALID_HANDLE_VALUE)
         return FALSE;
-    if (w->overlapped.hEvent)
-        ResetEvent(w->overlapped.hEvent);
+    if (!w->overlapped.hEvent || !ResetEvent(w->overlapped.hEvent))
+        return FALSE;
     memset(w->buffer, 0, sizeof(w->buffer));
     BOOL ok = ReadDirectoryChangesW(w->dir_handle,
                                     w->buffer,
@@ -487,6 +526,19 @@ static BOOL watcher_start_windows_read(rt_watcher_impl *w) {
                                     NULL);
     w->pending_read = ok ? TRUE : FALSE;
     return ok;
+}
+
+/// @brief Rearm overlapped monitoring or report and retire a broken watcher.
+static void watcher_rearm_windows_or_stop(rt_watcher_impl *w, int failure_already_reported) {
+    if (!w || !w->is_watching)
+        return;
+    if (watcher_start_windows_read(w))
+        return;
+    if (!failure_already_reported)
+        watcher_queue_event_owned(
+            w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
+    watcher_close_windows_handles(w);
+    w->is_watching = 0;
 }
 
 /// @brief Process a completed ReadDirectoryChangesW batch and rearm for the next.
@@ -512,8 +564,7 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
         // of change records — a native overflow, not a zero-loss marker
         // (VDOC-190).
         watcher_queue_native_overflow(w);
-        if (w->is_watching)
-            (void)watcher_start_windows_read(w);
+        watcher_rearm_windows_or_stop(w, 1);
         return;
     }
 
@@ -524,13 +575,28 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
         // and the kernel could not report which files changed (native overflow,
         // unknown loss count) (VDOC-190).
         watcher_queue_native_overflow(w);
-        if (w->is_watching)
-            (void)watcher_start_windows_read(w);
+        watcher_rearm_windows_or_stop(w, 1);
         return;
     }
 
-    FILE_NOTIFY_INFORMATION *info = (FILE_NOTIFY_INFORMATION *)w->buffer;
-    while (1) {
+    size_t offset = 0;
+    int malformed_batch = 0;
+    while (offset < (size_t)bytes_returned) {
+        const size_t header_bytes = offsetof(FILE_NOTIFY_INFORMATION, FileName);
+        const size_t remaining = (size_t)bytes_returned - offset;
+        size_t record_bytes;
+        FILE_NOTIFY_INFORMATION *info;
+        if (remaining < header_bytes) {
+            malformed_batch = 1;
+            break;
+        }
+        info = (FILE_NOTIFY_INFORMATION *)(w->buffer + offset);
+        if ((info->FileNameLength % sizeof(WCHAR)) != 0 ||
+            (size_t)info->FileNameLength > remaining - header_bytes) {
+            malformed_batch = 1;
+            break;
+        }
+        record_bytes = header_bytes + (size_t)info->FileNameLength;
         int64_t type = RT_WATCH_EVENT_NONE;
         switch (info->Action) {
             case FILE_ACTION_ADDED:
@@ -548,30 +614,45 @@ static void watcher_read_windows_events(rt_watcher_impl *w) {
                 break;
         }
 
-        if (type != RT_WATCH_EVENT_NONE) {
+        if (type != RT_WATCH_EVENT_NONE && info->FileNameLength != 0) {
             // Convert wide string to UTF-8
             int name_len = info->FileNameLength / sizeof(WCHAR);
-            int utf8_len =
-                WideCharToMultiByte(CP_UTF8, 0, info->FileName, name_len, NULL, 0, NULL, NULL);
-            char *name = malloc(utf8_len + 1);
-            if (name) {
-                WideCharToMultiByte(
-                    CP_UTF8, 0, info->FileName, name_len, name, utf8_len, NULL, NULL);
+            int utf8_len = WideCharToMultiByte(
+                CP_UTF8, WC_ERR_INVALID_CHARS, info->FileName, name_len, NULL, 0, NULL, NULL);
+            char *name = utf8_len > 0 ? (char *)malloc((size_t)utf8_len + 1u) : NULL;
+            if (name && WideCharToMultiByte(CP_UTF8,
+                                            WC_ERR_INVALID_CHARS,
+                                            info->FileName,
+                                            name_len,
+                                            name,
+                                            utf8_len,
+                                            NULL,
+                                            NULL) == utf8_len) {
                 name[utf8_len] = '\0';
                 rt_string path = watcher_event_path_from_relative(w, name);
                 if (path)
                     watcher_queue_event_owned(w, type, path);
-                free(name);
+            } else {
+                malformed_batch = 1;
             }
+            free(name);
         }
 
         if (info->NextEntryOffset == 0)
             break;
-        info = (FILE_NOTIFY_INFORMATION *)((char *)info + info->NextEntryOffset);
+        if ((size_t)info->NextEntryOffset < record_bytes ||
+            (size_t)info->NextEntryOffset >= remaining ||
+            (info->NextEntryOffset % sizeof(DWORD)) != 0) {
+            malformed_batch = 1;
+            break;
+        }
+        offset += info->NextEntryOffset;
     }
 
-    if (w->is_watching)
-        (void)watcher_start_windows_read(w);
+    if (malformed_batch)
+        watcher_queue_event_owned(
+            w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
+    watcher_rearm_windows_or_stop(w, malformed_batch);
 }
 #endif
 
@@ -800,9 +881,7 @@ void rt_watcher_start(void *obj) {
     }
 
     if (!watcher_start_windows_read(w)) {
-        CloseHandle(w->overlapped.hEvent);
-        CloseHandle(w->dir_handle);
-        w->dir_handle = INVALID_HANDLE_VALUE;
+        watcher_close_windows_handles(w);
         rt_trap("Watcher.Start: failed to start watching");
         return;
     }
@@ -844,16 +923,7 @@ void rt_watcher_stop(void *obj) {
         w->kqueue_fd = -1;
     }
 #elif RT_PLATFORM_WINDOWS
-    if (w->dir_handle != INVALID_HANDLE_VALUE) {
-        CancelIo(w->dir_handle);
-        if (w->overlapped.hEvent) {
-            CloseHandle(w->overlapped.hEvent);
-            w->overlapped.hEvent = NULL;
-        }
-        CloseHandle(w->dir_handle);
-        w->dir_handle = INVALID_HANDLE_VALUE;
-    }
-    w->pending_read = FALSE;
+    watcher_close_windows_handles(w);
 #endif
 
     watcher_clear_events(w);
@@ -928,10 +998,25 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     watcher_read_kqueue_events(w, watcher_timeout_to_int(ms));
 #elif RT_PLATFORM_WINDOWS
     if (w->pending_read) {
-        DWORD timeout = ms < 0 ? INFINITE : (ms > (int64_t)0xFFFFFFFEu ? 0xFFFFFFFEu : (DWORD)ms);
-        DWORD wait_result = WaitForSingleObject(w->overlapped.hEvent, timeout);
+        DWORD wait_result;
+        if (ms < 0) {
+            wait_result = WaitForSingleObject(w->overlapped.hEvent, INFINITE);
+        } else {
+            ULONGLONG deadline = rt_win32_deadline_from_now_ms(ms);
+            do {
+                DWORD timeout = rt_win32_wait_slice_until(deadline);
+                wait_result = WaitForSingleObject(w->overlapped.hEvent, timeout);
+                if (wait_result != WAIT_TIMEOUT || timeout == 0)
+                    break;
+            } while (rt_win32_wait_slice_until(deadline) != 0);
+        }
         if (wait_result == WAIT_OBJECT_0) {
             watcher_read_windows_events(w);
+        } else if (wait_result == WAIT_FAILED) {
+            watcher_queue_event_owned(
+                w, RT_WATCH_EVENT_OVERFLOW, rt_string_ref((rt_string)w->watch_path));
+            watcher_close_windows_handles(w);
+            w->is_watching = 0;
         }
     }
 #endif

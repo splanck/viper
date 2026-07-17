@@ -1252,6 +1252,14 @@ function(viper_add_runtime_tests)
     target_link_libraries(test_rt_locale PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_locale test_rt_locale)
 
+    if (WIN32)
+        viper_add_test(test_rt_windows_runtime
+                ${VIPER_TESTS_DIR}/runtime/RTWindowsRuntimeTests.cpp)
+        target_link_libraries(test_rt_windows_runtime PRIVATE
+                ${VIPER_RUNTIME_TEST_LIBS} Threads::Threads)
+        viper_add_ctest(test_rt_windows_runtime test_rt_windows_runtime)
+    endif ()
+
     viper_add_test(test_rt_locale_manager ${VIPER_TESTS_DIR}/runtime/RTLocaleManagerTests.cpp)
     target_link_libraries(test_rt_locale_manager PRIVATE ${VIPER_RUNTIME_TEST_LIBS})
     viper_add_ctest(test_rt_locale_manager test_rt_locale_manager)

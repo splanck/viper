@@ -145,7 +145,7 @@ func start() {
 write_probe(native_env_end_program
 "module NativeEnvEndProgram;
 func start() {
-    Viper.System.Environment.EndProgram(7);
+    Viper.System.Environment.Exit(7);
 }
 ")
 

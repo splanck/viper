@@ -18,7 +18,6 @@
 #include "rt.hpp"
 #include "rt_platform.h"
 #include "rt_watcher.h"
-#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
 #include <chrono>
@@ -462,10 +461,6 @@ static void test_attribute_change_is_modified() {
 #endif
 
 int main() {
-#if RT_PLATFORM_WINDOWS
-    // Skip on Windows: test uses /tmp paths not available on Windows
-    VIPER_PLATFORM_SKIP("POSIX temp paths not available on Windows");
-#endif
     printf("=== Watcher Runtime Tests ===\n");
 
     test_event_constants();

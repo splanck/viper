@@ -1459,24 +1459,30 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
     uint8_t cv_message[130];
     uint8_t content_hash[64];
     size_t hash_len = 0;
-    const uint8_t *server_cert_der = tls_session_server_cert_der(session);
+    const uint8_t *server_cert_der = NULL;
 
-    if (len < 4) {
+    if (!session)
+        return RT_TLS_ERROR_HANDSHAKE;
+    if (!data || len < 4) {
         session->error = "TLS: CertificateVerify message too short";
         return RT_TLS_ERROR_HANDSHAKE;
     }
-    if (!server_cert_der) {
-        session->error = "TLS: CertificateVerify: no certificate stored";
-        return RT_TLS_ERROR_HANDSHAKE;
-    }
-
     sig_scheme = ((uint16_t)data[0] << 8) | data[1];
     sig_len = ((uint16_t)data[2] << 8) | data[3];
     if ((size_t)sig_len > len - 4u) {
         session->error = "TLS: CertificateVerify signature length overflows";
         return RT_TLS_ERROR_HANDSHAKE;
     }
+    if ((size_t)sig_len != len - 4u) {
+        session->error = "TLS: CertificateVerify signature length mismatch";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
     sig_bytes = data + 4;
+    server_cert_der = tls_session_server_cert_der(session);
+    if (!server_cert_der) {
+        session->error = "TLS: CertificateVerify: no certificate stored";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
 
     build_cert_verify_message(session->cert_transcript_hash, cv_message);
     hash_len = sig_scheme_hash_len(sig_scheme);

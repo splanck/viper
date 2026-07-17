@@ -53,6 +53,7 @@ const char *rt_trap_get_error(void);
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#include "rt_win32_wait.h"
 #include <windows.h>
 #else
 #include <errno.h>
@@ -616,13 +617,9 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
 
 #if defined(_WIN32)
     CQ_LOCK(cq);
-    ULONGLONG now0 = GetTickCount64();
-    ULONGLONG add = (ULONGLONG)timeout_ms;
-    ULONGLONG deadline = (ULLONG_MAX - now0 < add) ? ULLONG_MAX : now0 + add;
+    ULONGLONG deadline = rt_win32_deadline_from_now_ms(timeout_ms);
     while (!cq->head && !cq->closed) {
-        ULONGLONG now = GetTickCount64();
-        ULONGLONG delta = deadline > now ? deadline - now : 0;
-        DWORD remaining = delta > (ULONGLONG)MAXDWORD ? MAXDWORD : (DWORD)delta;
+        DWORD remaining = rt_win32_wait_slice_until(deadline);
         if (remaining == 0) {
             CQ_UNLOCK(cq);
             concqueue_release_object(obj);
@@ -631,17 +628,11 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
         if (!SleepConditionVariableCS(&cq->cond, &cq->mutex, remaining)) {
             DWORD err = GetLastError();
             if (err == ERROR_TIMEOUT) {
-                if (!cq->head && !cq->closed) {
-                    CQ_UNLOCK(cq);
-                    concqueue_release_object(obj);
-                    return NULL;
-                }
                 continue;
             }
             CQ_UNLOCK(cq);
             concqueue_release_object(obj);
-            if (err)
-                rt_trap("ConcurrentQueue.DequeueTimeout: condition wait failed");
+            rt_trap("ConcurrentQueue.DequeueTimeout: condition wait failed");
             return NULL;
         }
     }
