@@ -141,7 +141,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 
 ## Release & Packaging
 
-- [ADR 0111](0111-windows-automation-powershell-entry-points.md) — Use PowerShell for Windows Automation Entry Points
+- [ADR 0113](0113-windows-automation-powershell-entry-points.md) — Use PowerShell for Windows Automation Entry Points
 - [ADR 0025](0025-windows-release-installer-workflow.md) — Windows Release Installer Workflow
 - [ADR 0073](0073-cross-platform-installer-release-pipeline.md) — Cross-Platform Installer Release Pipeline
 - [ADR 0103](0103-windows-developer-installer-v2.md) — Windows Developer Installer v2

@@ -4,7 +4,7 @@ audience: contributors
 last-verified: 2026-07-18
 ---
 
-# ADR 0111: Use PowerShell for Windows Automation Entry Points
+# ADR 0113: Use PowerShell for Windows Automation Entry Points
 
 ## Status
 
