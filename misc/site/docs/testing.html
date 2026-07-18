@@ -79,7 +79,7 @@ Fuzz Tests (src/tests/fuzz/)
 <pre><code data-lang="bash">
 # Build and run all tests
 ./scripts/build_zanna_unix.sh   # macOS &amp; Linux
-scripts\build_zanna.cmd         # Windows
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1 # Windows
 
 # Run all tests (after building)
 ctest --test-dir build

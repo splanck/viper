@@ -44,7 +44,7 @@ enum class RtComponent {
     Exec,         ///< Process execution (rt_exec_*, rt_process_*, rt_machine_*)
     Threads,      ///< Threading (rt_monitor_*, rt_thread_*, etc.)
     Graphics,     ///< Graphics (rt_canvas_*, rt_color_*, etc.)
-    Audio,        ///< Audio (rt_audio_*, rt_playlist_*)
+    Audio,        ///< Audio (rt_audio_*, rt_playlist_*, ogg_reader_*)
     Network,      ///< Network (rt_network_*, rt_restclient_*, etc.)
     Localization, ///< Localization (rt_locale_*, locale manager, LocaleInfo)
     Count,
@@ -171,7 +171,7 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
     if (starts("rt_audio_") || starts("rt_playlist_") || starts("rt_sound_") ||
         starts("rt_soundbank_") || starts("rt_synth_") || starts("rt_music_") ||
         starts("rt_voice_") || starts("rt_sound3d_") || starts("rt_soundlistener3d_") ||
-        starts("rt_soundsource3d_"))
+        starts("rt_soundsource3d_") || starts("ogg_reader_"))
         return RtComponent::Audio;
 
     // Network component

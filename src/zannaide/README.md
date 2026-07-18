@@ -110,7 +110,7 @@ Build the full repository first when runtime or compiler changes are involved:
 ```sh
 ./scripts/build_zanna_mac.sh
 ./scripts/build_zanna_linux.sh
-scripts\build_zanna_win.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 ```
 
 Build only the IDE native binary from the repository root:
@@ -121,12 +121,12 @@ Build only the IDE native binary from the repository root:
 
 On Windows:
 
-```bat
-scripts\build_ide_win.cmd
+```powershell
+.\scripts\build_ide_win.ps1
 ```
 
-The IDE build scripts write `zannaide/bin/zannaide` or
-`zannaide\bin\zannaide.exe` by default. They also write
+The IDE build scripts write `src/zannaide/bin/zannaide` or
+`src\zannaide\bin\zannaide.exe` by default. They also write
 `zannaide.buildinfo` beside the generated binary and refresh a compatibility
 copy under `build/zannaide/` unless `ZANNA_IDE_SKIP_COMPAT_COPY=1` is set.
 
@@ -150,10 +150,10 @@ Useful IDE build variables:
 Run the app through the repository toolchain:
 
 ```sh
-zanna run zannaide/
+zanna run src/zannaide/
 ```
 
-Or from inside `zannaide/`:
+Or from inside `src/zannaide/`:
 
 ```sh
 zanna run .
@@ -162,7 +162,7 @@ zanna run .
 After `./scripts/build_ide.sh`, run the native binary directly:
 
 ```sh
-./zannaide/bin/zannaide
+./src/zannaide/bin/zannaide
 ```
 
 For installer and automation smoke checks:

@@ -18,7 +18,7 @@ Use the platform build script for the full build. Do not invoke raw CMake as a
 replacement for the canonical build:
 
 ```text
-scripts\build_zanna_win.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 ./scripts/build_zanna_mac.sh
 ./scripts/build_zanna_linux.sh
 ```
@@ -27,7 +27,7 @@ The installer wrappers run the same build path and then call
 `zanna install-package`:
 
 ```text
-scripts\build_installer.cmd --target windows --output-dir artifacts
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 --target windows --output-dir artifacts
 ./scripts/build_installer.sh --target macos --macos-dmg --output-dir artifacts
 ./scripts/build_installer.sh --target all --output-dir artifacts
 ```
@@ -304,17 +304,17 @@ No workflow writes private keys into an artifact.
 
 ### Windows clean VM
 
-Build and package in a Developer Command Prompt:
+Build and package in a Developer PowerShell:
 
-```bat
-set ZANNA_BUILD_TYPE=Release
-set ZANNA_SKIP_INSTALL=1
-set ZANNA_EXTRA_CMAKE_ARGS=-DZANNA_INSTALL_ZANNAIDE=ON
-scripts\build_zanna_win.cmd
-cmake --install build --prefix "%CD%\build\release-stage" --config Release
-build\src\tools\zanna\Release\zanna.exe install-package --stage-dir build\release-stage --target windows --output-file build\zanna-toolchain.exe
-build\src\tools\zanna\Release\zanna.exe install-package --verify-only build\zanna-toolchain.exe --require-checksum
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\validate-windows-toolchain-installer.ps1 -Installer build\zanna-toolchain.exe
+```powershell
+$env:ZANNA_BUILD_TYPE = 'Release'
+$env:ZANNA_SKIP_INSTALL = '1'
+$env:ZANNA_EXTRA_CMAKE_ARGS = '-DZANNA_INSTALL_ZANNAIDE=ON'
+.\scripts\build_zanna_win.ps1
+cmake --install build --prefix "$PWD\build\release-stage" --config Release
+& .\build\src\tools\zanna\Release\zanna.exe install-package --stage-dir build\release-stage --target windows --output-file build\zanna-toolchain.exe
+& .\build\src\tools\zanna\Release\zanna.exe install-package --verify-only build\zanna-toolchain.exe --require-checksum
+.\scripts\validate-windows-toolchain-installer.ps1 -Installer build\zanna-toolchain.exe
 ```
 
 To exercise the upgrade path, package a baseline stage containing

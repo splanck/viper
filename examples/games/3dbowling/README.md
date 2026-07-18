@@ -91,7 +91,7 @@ without configuring Zanna or invoking CTest:
 ZANNA_BIN=/path/to/zanna examples/games/3dbowling/run_probes.sh
 ```
 
-On Windows, set `ZANNA_BIN` and run `examples\games\3dbowling\run_probes.cmd`.
+On Windows, set `ZANNA_BIN` and run `examples\games\3dbowling\run_probes.ps1`.
 The suite checks challenge calibration, identical launch/mask/score replay,
 collision-order independence, physical pinfall, oil wear, AI parity, pause and
 watchdog recovery, replay scenes, 50 world transitions, corrupt saves, assets,

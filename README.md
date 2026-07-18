@@ -46,7 +46,7 @@ Build, test, and install the toolchain with the platform scripts:
 ./scripts/build_zanna_linux.sh
 
 # Windows
-.\scripts\build_zanna_win.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 ```
 
 Verify the build:
@@ -289,7 +289,7 @@ See the [Tools Reference](docs/tools/cli.md), [Debugging Guide](docs/tools/debug
 ./scripts/build_zanna_linux.sh
 
 # Windows
-.\scripts\build_zanna_win.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 ```
 
 The scripts configure, build, test, and install Zanna. The Unix wrappers delegate to `scripts/build_zanna_unix.sh`.

@@ -16,10 +16,10 @@ name the implementation boundaries that matter when debugging a broken flow.
 From the repository root:
 
 ```sh
-zanna run zannaide/
+zanna run src/zannaide/
 ```
 
-From inside `zannaide/`:
+From inside `src/zannaide/`:
 
 ```sh
 zanna run .
@@ -29,14 +29,14 @@ After building the native IDE binary:
 
 ```sh
 ./scripts/build_ide.sh
-./zannaide/bin/zannaide
+./src/zannaide/bin/zannaide
 ```
 
 On Windows:
 
-```bat
-scripts\build_ide_win.cmd
-zannaide\bin\zannaide.exe
+```powershell
+.\scripts\build_ide_win.ps1
+src\zannaide\bin\zannaide.exe
 ```
 
 ## Opening Projects

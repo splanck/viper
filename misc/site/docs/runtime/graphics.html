@@ -110,7 +110,7 @@
 <p>ZannaGFX builds as part of the main Zanna build:</p>
 <pre><code data-lang="bash">
 ./scripts/build_zanna_unix.sh   # macOS &amp; Linux
-scripts\build_zanna.cmd         # Windows
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1 # Windows
 </code></pre>
 <p>Or build the graphics library standalone:</p>
 <pre><code data-lang="bash">

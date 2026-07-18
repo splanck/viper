@@ -1,5 +1,23 @@
 #!/usr/bin/env bash
-# build_installer.sh — thin wrapper around `zanna install-package`.
+#===----------------------------------------------------------------------===#
+#
+# Part of the Zanna project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: scripts/build_installer.sh
+# Purpose: Build and invoke the native Zanna installer packager on Unix hosts.
+# Key invariants:
+#   - Fresh packaging uses the canonical platform build script first.
+#   - Existing stage and verification inputs never trigger an unrelated build.
+# Ownership/Lifetime:
+#   - The selected build tree and caller-provided output paths remain caller-owned.
+# Cross-platform touchpoints:
+#   - Windows packaging is implemented by build_installer.ps1.
+# Links: build_installer.ps1, build_zanna_linux.sh, build_zanna_mac.sh
+#
+#===----------------------------------------------------------------------===#
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +33,7 @@ case "$(uname -s 2>/dev/null)" in
         BUILD_SCRIPT="$SCRIPT_DIR/build_zanna_linux.sh"
         ;;
     *)
-        echo "Error: use scripts/build_installer.cmd on Windows"
+        echo "Error: use scripts/build_installer.ps1 on Windows"
         exit 1
         ;;
 esac

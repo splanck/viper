@@ -410,6 +410,6 @@ Uses `rt_obj_new_i64()` for GC-managed allocation, matching the Unix implementat
 | BUG-014 | Bool prints as -1/0 in BASIC | Traditional BASIC behavior |
 
 ### Prior Verification
-- **1047/1047 ctests pass** (clean build via `scripts/build_zanna.cmd`)
+- **1047/1047 ctests pass** (clean build via `scripts/build_zanna_win.ps1`)
 - **20 regression ctests** added across BASIC and Zia frontends
 - **Zero regressions** introduced

@@ -76,7 +76,7 @@
 ./scripts/build_zanna_unix.sh
 
 # Windows
-scripts\build_zanna.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 </code></pre>
 <p>The <code>build_zanna_unix.sh</code> script auto-detects host OS via <code>uname -s</code> and selects the right toolchain. Older platform-specific scripts (<code>build_zanna_mac.sh</code>, <code>build_zanna_linux.sh</code>) are retained as thin wrappers.</p>
 <p>---</p>

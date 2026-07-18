@@ -459,7 +459,7 @@ cd zanna
 ./scripts/build_zanna_unix.sh
 
 # Windows
-scripts\build_zanna.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 </code></pre>
 <p><strong>What does this do?</strong></p>
 <p>The build script:</p>
@@ -593,7 +593,7 @@ Setup complete!
 <p><strong>What it means:</strong> Your computer doesn&#x27;t know where to find the Zanna program.</p>
 <p><strong>Solutions:</strong></p>
 <ol>
-<li>**Did you complete the build?** Make sure <code>./scripts/build_zanna_unix.sh</code> (macOS/Linux) or <code>scripts\build_zanna.cmd</code> (Windows) finished without errors.</li>
+<li>**Did you complete the build?** Make sure <code>./scripts/build_zanna_unix.sh</code> (macOS/Linux) or <code>.\scripts\build_zanna_win.ps1</code> (Windows) finished without errors.</li>
 </ul>
 <ol>
 <li>**Did you set up your PATH?** Run the export command again:</li>
@@ -673,7 +673,7 @@ Setup complete!
 <pre><code data-lang="bash">
    cd ~/dev/zanna
    rm -rf build
-   ./scripts/build_zanna_unix.sh   # or scripts\build_zanna.cmd on Windows
+   ./scripts/build_zanna_unix.sh   # or .\scripts\build_zanna_win.ps1 on Windows
 </code></pre>
 </ul>
 <ol>

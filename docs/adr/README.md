@@ -136,10 +136,11 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0100](0100-profiling-depth.md) — Profiling Depth — Per-Pass Draw Attribution + Hitch Tracer
 - [ADR 0102](0102-graphics3d-runtime-boundary-and-contract-manifest.md) — Graphics3D Runtime Boundary and Contract Manifest
 - [ADR 0105](0105-game3d-character-controller-gravity.md) — CharacterController3D Gravity Magnitude
-- [ADR 0106](0106-linux-graphics-backend-selection.md) — Linux Graphics Backend Selection
+- [ADR 0112](0112-linux-graphics-backend-selection.md) — Linux Graphics Backend Selection
 
 ## Release & Packaging
 
+- [ADR 0111](0111-windows-automation-powershell-entry-points.md) — Use PowerShell for Windows Automation Entry Points
 - [ADR 0025](0025-windows-release-installer-workflow.md) — Windows Release Installer Workflow
 - [ADR 0073](0073-cross-platform-installer-release-pipeline.md) — Cross-Platform Installer Release Pipeline
 - [ADR 0103](0103-windows-developer-installer-v2.md) — Windows Developer Installer v2

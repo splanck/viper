@@ -19,6 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/PlatformCapabilities.hpp"
 #include "rt.hpp"
 #include "rt_string.h"
 #include "runtime/audio/rt_audio.h"
@@ -320,7 +321,7 @@ static void test_graceful_shutdown_poll_api() {
     printf("OK\n");
 }
 
-#if !defined(_WIN32)
+#if !ZANNA_HOST_WINDOWS
 // VDOC-210: after rt_shutdown_install_signal_handlers, a real SIGINT/SIGTERM is
 // published through rt_shutdown_request so Poll observes it — the OS integration
 // that was previously VM-only is now available to native programs too.
@@ -353,7 +354,7 @@ int main() {
     test_legacy_context_shutdown();
     test_audio_shutdown_detaches_loaded_handles();
     test_graceful_shutdown_poll_api();
-#if !defined(_WIN32)
+#if !ZANNA_HOST_WINDOWS
     test_installed_signal_handlers_publish();
 #endif
 

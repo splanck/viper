@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: codegen/common/linker/DynamicSymbolPolicy.hpp
+// File: src/codegen/common/linker/DynamicSymbolPolicy.hpp
 // Purpose: Shared policy helpers for symbols that are allowed to resolve
 //          dynamically through system libraries or platform frameworks. The
 //          native linker uses these to decide whether an undefined symbol is a
@@ -18,8 +18,10 @@
 //     to handle the Mach-O "_main"/"main" convention transparently.
 // Ownership/Lifetime: Stateless inline helpers; no allocation beyond returned
 //                     strings.
-// Links: SymbolResolver.cpp, NativeLinker.cpp, MachOExeWriter.cpp,
-//        PeExeWriter.cpp
+// Links: src/codegen/common/linker/SymbolResolver.cpp,
+//        src/codegen/common/linker/NativeLinker.cpp,
+//        src/codegen/common/linker/MachOExeWriter.cpp,
+//        src/codegen/common/linker/PeExeWriter.cpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -67,9 +69,10 @@ inline bool dynamicSymbolHasPrefix(const std::string &name, const char *const *p
 
 /// @brief Test whether @p name (or its de-underscored form) exactly matches any
 ///        entry in @p arr (length @p count), mirroring the exact-list comparison.
-inline bool
-matchesExactName(const std::string &name, const std::string &stripped, const char *const *arr,
-                 size_t count) {
+inline bool matchesExactName(const std::string &name,
+                             const std::string &stripped,
+                             const char *const *arr,
+                             size_t count) {
     for (size_t i = 0; i < count; ++i)
         if (name == arr[i] || stripped == arr[i])
             return true;
@@ -89,39 +92,137 @@ matchesExactName(const std::string &name, const std::string &stripped, const cha
 ///          before); it can never wrongly reject a real cross-platform symbol.
 inline const std::vector<const char *> &windowsExclusiveDynamicSymbols() {
     static const std::vector<const char *> kSyms = {
-        "ExitProcess", "GetModuleHandleA", "GetProcAddress", "VirtualAlloc", "VirtualFree",
-        "GetLastError", "GetFullPathNameA", "GetComputerNameA", "GetComputerNameW", "GetUserNameA",
-        "GetUserNameW", "GetFileSizeEx", "GetClientRect", "GlobalMemoryStatusEx",
-        "GetAdaptersAddresses", "ResetEvent", "SetEvent", "D3D11CreateDevice",
-        "D3D11CreateDeviceAndSwapChain", "D3DCompile", "D3DCompile2", "D3DCompileFromFile",
-        "D3DReflect", "CertAddEncodedCertificateToStore", "CertCloseStore",
-        "CertCreateCertificateContext", "CertCreateCertificateChainEngine",
-        "CertFreeCertificateChain", "CertFreeCertificateChainEngine", "CertFreeCertificateContext",
-        "CertGetCertificateChain", "CertOpenStore", "CertVerifyCertificateChainPolicy",
-        "CryptAcquireCertificatePrivateKey", "CryptStringToBinaryA", "BCryptGenRandom",
-        "BCryptDestroyKey", "BCryptVerifySignature", "XInputGetState", "XInputSetState",
-        "WSAStartup", "WSACleanup", "WSAGetLastError", "closesocket", "ioctlsocket",
-        "__acrt_iob_func", "__local_stdio_printf_options", "__local_stdio_scanf_options",
-        "__stdio_common_vfprintf", "__stdio_common_vsprintf", "__stdio_common_vsprintf_s",
-        "_calloc_dbg", "_free_dbg", "_malloc_dbg", "_realloc_dbg", "_vfprintf_l", "_vsscanf_l",
-        "__C_specific_handler", "__C_specific_handler_noexcept", "__current_exception",
-        "__current_exception_context", "_CxxThrowException", "__CxxFrameHandler3",
-        "__CxxFrameHandler4", "__RTDynamicCast", "__intrinsic_setjmp", "__intrinsic_setjmpex",
-        "__std_exception_copy", "__std_exception_destroy", "__std_type_info_compare",
-        "__security_check_cookie", "__security_init_cookie", "__security_pop_cookie",
-        "__security_push_cookie", "__GSHandlerCheck", "__GSHandlerCheck_EH4", "__chkstk",
-        "_Avx2WmemEnabled", "_callnewh", "callnewh", "_purecall", "__RTC_memset", "_setjmpex",
-        "_byteswap_uint64", "_rotl", "_rotl64", "_rotr", "_rotr64", "_InterlockedCompareExchange",
-        "_InterlockedCompareExchange64", "_InterlockedCompareExchangePointer",
-        "_InterlockedDecrement", "_InterlockedExchange", "_InterlockedExchange64",
-        "_InterlockedExchange8", "_InterlockedExchangeAdd", "_InterlockedExchangeAdd64",
-        "_InterlockedIncrement64", "_InterlockedOr", "TryEnterCriticalSection",
-        "CommandLineToArgvW", "CoCreateInstance", "CoInitializeEx", "CoUninitialize",
-        "CoTaskMemFree", "DragQueryFileW", "_open_osfhandle", "_cexit",
-        "_configure_narrow_argv", "_crt_at_quick_exit", "_crt_atexit", "_execute_onexit_table",
-        "_initialize_narrow_environment", "_initialize_onexit_table", "_register_onexit_function",
-        "_seh_filter_dll", "_CrtDbgReport", "_CrtDbgReportW", "rand_s", "strcpy_s", "strcat_s",
-        "wcscpy_s", "_wcsnicmp", "_wchmod", "_wsplitpath_s", "_wmakepath_s",
+        "ExitProcess",
+        "GetModuleHandleA",
+        "GetProcAddress",
+        "VirtualAlloc",
+        "VirtualFree",
+        "GetLastError",
+        "GetFullPathNameA",
+        "GetComputerNameA",
+        "GetComputerNameW",
+        "GetUserNameA",
+        "GetUserNameW",
+        "GetFileSizeEx",
+        "GetClientRect",
+        "GlobalMemoryStatusEx",
+        "GetAdaptersAddresses",
+        "ResetEvent",
+        "SetEvent",
+        "D3D11CreateDevice",
+        "D3D11CreateDeviceAndSwapChain",
+        "D3DCompile",
+        "D3DCompile2",
+        "D3DCompileFromFile",
+        "D3DReflect",
+        "CertAddEncodedCertificateToStore",
+        "CertCloseStore",
+        "CertCreateCertificateContext",
+        "CertCreateCertificateChainEngine",
+        "CertFreeCertificateChain",
+        "CertFreeCertificateChainEngine",
+        "CertFreeCertificateContext",
+        "CertGetCertificateChain",
+        "CertOpenStore",
+        "CertVerifyCertificateChainPolicy",
+        "CryptAcquireCertificatePrivateKey",
+        "CryptStringToBinaryA",
+        "BCryptGenRandom",
+        "BCryptDestroyKey",
+        "BCryptVerifySignature",
+        "XInputGetState",
+        "XInputSetState",
+        "WSAStartup",
+        "WSACleanup",
+        "WSAGetLastError",
+        "closesocket",
+        "ioctlsocket",
+        "__acrt_iob_func",
+        "__local_stdio_printf_options",
+        "__local_stdio_scanf_options",
+        "__stdio_common_vfprintf",
+        "__stdio_common_vsprintf",
+        "__stdio_common_vsprintf_s",
+        "_calloc_dbg",
+        "_free_dbg",
+        "_malloc_dbg",
+        "_realloc_dbg",
+        "_vfprintf_l",
+        "_vsscanf_l",
+        "__C_specific_handler",
+        "__C_specific_handler_noexcept",
+        "__current_exception",
+        "__current_exception_context",
+        "_CxxThrowException",
+        "__CxxFrameHandler3",
+        "__CxxFrameHandler4",
+        "__RTDynamicCast",
+        "__intrinsic_setjmp",
+        "__intrinsic_setjmpex",
+        "__std_exception_copy",
+        "__std_exception_destroy",
+        "__std_type_info_compare",
+        "__security_check_cookie",
+        "__security_init_cookie",
+        "__security_pop_cookie",
+        "__security_push_cookie",
+        "__GSHandlerCheck",
+        "__GSHandlerCheck_EH4",
+        "__chkstk",
+        "_Avx2WmemEnabled",
+        "_callnewh",
+        "callnewh",
+        "_purecall",
+        "__RTC_memset",
+        "_setjmpex",
+        "_byteswap_uint64",
+        "_rotl",
+        "_rotl64",
+        "_rotr",
+        "_rotr64",
+        "_InterlockedCompareExchange",
+        "_InterlockedCompareExchange64",
+        "_InterlockedCompareExchangePointer",
+        "_InterlockedDecrement",
+        "_InterlockedExchange",
+        "_InterlockedExchange64",
+        "_InterlockedExchange8",
+        "_InterlockedExchangeAdd",
+        "_InterlockedExchangeAdd64",
+        "_InterlockedIncrement64",
+        "_InterlockedOr",
+        "TryEnterCriticalSection",
+        "CommandLineToArgvW",
+        "CoCreateInstance",
+        "CoInitializeEx",
+        "CoUninitialize",
+        "CoTaskMemFree",
+        "DragQueryFileW",
+        "ImmGetCompositionStringW",
+        "ImmGetContext",
+        "ImmReleaseContext",
+        "RegGetValueW",
+        "SystemParametersInfoW",
+        "_open_osfhandle",
+        "_cexit",
+        "_configure_narrow_argv",
+        "_crt_at_quick_exit",
+        "_crt_atexit",
+        "_execute_onexit_table",
+        "_initialize_narrow_environment",
+        "_initialize_onexit_table",
+        "_register_onexit_function",
+        "_seh_filter_dll",
+        "_CrtDbgReport",
+        "_CrtDbgReportW",
+        "rand_s",
+        "strcpy_s",
+        "strcat_s",
+        "wcscpy_s",
+        "_wcsnicmp",
+        "_wchmod",
+        "_wsplitpath_s",
+        "_wmakepath_s",
         "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
         "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9"};
     return kSyms;
@@ -171,10 +272,19 @@ inline const std::vector<const char *> &macExclusiveDynamicSymbols() {
 }
 
 inline const std::vector<const char *> &linuxExclusiveDynamicSymbols() {
-    static const std::vector<const char *> kSyms = {
-        "__errno_location", "__assert_fail", "__ctype_b_loc", "__ctype_tolower_loc", "bcmp",
-        "__isoc23_strtol", "__isoc23_strtoll", "__isoc99_sscanf", "fopen64", "fseeko64",
-        "ftello64", "getrandom", "sysinfo"};
+    static const std::vector<const char *> kSyms = {"__errno_location",
+                                                    "__assert_fail",
+                                                    "__ctype_b_loc",
+                                                    "__ctype_tolower_loc",
+                                                    "bcmp",
+                                                    "__isoc23_strtol",
+                                                    "__isoc23_strtoll",
+                                                    "__isoc99_sscanf",
+                                                    "fopen64",
+                                                    "fseeko64",
+                                                    "ftello64",
+                                                    "getrandom",
+                                                    "sysinfo"};
     return kSyms;
 }
 
@@ -903,6 +1013,11 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "CoUninitialize",
         "CoTaskMemFree",
         "DragQueryFileW",
+        "ImmGetCompositionStringW",
+        "ImmGetContext",
+        "ImmReleaseContext",
+        "RegGetValueW",
+        "SystemParametersInfoW",
         "_open_osfhandle",
         "_cexit",
         "_configure_narrow_argv",
@@ -1047,8 +1162,8 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
             stripped.rfind("Xutf8", 0) == 0 || stripped.rfind("Xkb", 0) == 0 ||
             stripped.rfind("Xrm", 0) == 0)
             return true;
-        if (stripped.size() > 2 && stripped[0] == 'g' && stripped[1] == 'l' &&
-            stripped[2] >= 'A' && stripped[2] <= 'Z')
+        if (stripped.size() > 2 && stripped[0] == 'g' && stripped[1] == 'l' && stripped[2] >= 'A' &&
+            stripped[2] <= 'Z')
             return true;
     }
 

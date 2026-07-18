@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: lib/gui/tests/test_vg_grapheme.c
+// File: src/lib/gui/tests/test_vg_grapheme.c
 // Purpose: Validate ZannaGUI extended grapheme segmentation against the pinned
 //          Unicode conformance corpus and public offset-conversion contracts.
 // Key invariants:
@@ -14,9 +14,9 @@
 // Ownership/Lifetime:
 //   - Test buffers and the conformance file are owned by main for the process.
 //   - The segmentation API borrows all input buffers and retains no pointers.
-// Links: lib/gui/include/vg_grapheme.h,
-//        lib/gui/src/core/vg_grapheme.c,
-//        lib/gui/tests/data/GraphemeBreakTest-17.0.0.txt
+// Links: src/lib/gui/include/vg_grapheme.h,
+//        src/lib/gui/src/core/vg_grapheme.c,
+//        src/lib/gui/tests/data/GraphemeBreakTest-17.0.0.txt
 //
 //===----------------------------------------------------------------------===//
 
@@ -230,11 +230,13 @@ static size_t run_unicode_conformance(void) {
 ///          scalar so callers can always make forward progress without reading
 ///          beyond the supplied byte length.
 static void test_invalid_utf8_and_clamping(void) {
-    const char malformed[] = {'A', (char)0xF0, (char)0x80, 'B'};
-    if (vg_grapheme_count(malformed, sizeof(malformed)) != 4 ||
-        vg_grapheme_byte_offset(malformed, sizeof(malformed), 99) != sizeof(malformed) ||
-        vg_grapheme_codepoint_offset(malformed, sizeof(malformed), 99) != 4 ||
-        vg_grapheme_index_from_codepoint(malformed, sizeof(malformed), 99) != 4) {
+    static const unsigned char malformed_bytes[] = {'A', 0xF0u, 0x80u, 'B'};
+    const char *malformed = (const char *)malformed_bytes;
+    if (vg_grapheme_count(malformed, sizeof(malformed_bytes)) != 4 ||
+        vg_grapheme_byte_offset(malformed, sizeof(malformed_bytes), 99) !=
+            sizeof(malformed_bytes) ||
+        vg_grapheme_codepoint_offset(malformed, sizeof(malformed_bytes), 99) != 4 ||
+        vg_grapheme_index_from_codepoint(malformed, sizeof(malformed_bytes), 99) != 4) {
         fprintf(stderr, "malformed UTF-8 or index clamping contract failed\n");
         g_failures++;
     }

@@ -5,11 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/RTDatetimeTests.cpp
+// File: src/tests/runtime/RTDatetimeTests.cpp
 // Purpose: Validate rt_datetime_* API (Zanna.Time.DateTime).
 // Key invariants: Year/month/day/hour/minute/second extraction from a known
 //                 Unix timestamp must be correct; ISO 8601 output is parseable.
 // Ownership/Lifetime: Returned rt_string values are released after each test.
+// Links: src/runtime/core/rt_datetime.c,
+//        src/runtime/localization/rt_timezone.c
 //
 // Reference timestamp: 2025-01-15 10:30:45 UTC = 1736937045
 //
@@ -17,6 +19,7 @@
 
 #include "zanna/runtime/rt.h"
 
+#include "common/PlatformCapabilities.hpp"
 #include "rt_datetime.h"
 #include "rt_option.h"
 #include "rt_string.h"
@@ -35,7 +38,7 @@
 // Portable "set TZ then reload the C library's zone state" used to make the
 // pre-epoch collision test deterministic on any host (VDOC-225).
 static void set_tz(const char *value) {
-#ifdef _WIN32
+#if ZANNA_HOST_WINDOWS
     _putenv_s("TZ", value ? value : "");
     _tzset();
 #else
@@ -342,8 +345,7 @@ static void test_timezones(void) {
     check("NY after spring-forward is DST", rt_tz_is_dst_at(ny, ny_after_spring) == 1);
     rt_string ny_before = rt_datetime_to_zone(ny_before_spring, ny);
     rt_string ny_after = rt_datetime_to_zone(ny_after_spring, ny);
-    check("NY skipped hour boundary before",
-          str_eq(ny_before, "2025-03-09T01:59:59-05:00"));
+    check("NY skipped hour boundary before", str_eq(ny_before, "2025-03-09T01:59:59-05:00"));
     check("NY skipped hour boundary after", str_eq(ny_after, "2025-03-09T03:00:00-04:00"));
     rt_string_unref(ny_before);
     rt_string_unref(ny_after);
@@ -357,17 +359,13 @@ static void test_timezones(void) {
     void *sydney = rt_tz_find(rt_const_cstr("Australia/Sydney"));
     const int64_t syd_before_spring = 1759593599LL; // 2025-10-04T15:59:59Z
     const int64_t syd_after_spring = 1759593600LL;  // 2025-10-04T16:00:00Z
-    check("Sydney before DST-start offset",
-          rt_tz_offset_at(sydney, syd_before_spring) == 36000);
-    check("Sydney after DST-start offset",
-          rt_tz_offset_at(sydney, syd_after_spring) == 39600);
+    check("Sydney before DST-start offset", rt_tz_offset_at(sydney, syd_before_spring) == 36000);
+    check("Sydney after DST-start offset", rt_tz_offset_at(sydney, syd_after_spring) == 39600);
     check("Sydney after DST-start is DST", rt_tz_is_dst_at(sydney, syd_after_spring) == 1);
     rt_string syd_before = rt_datetime_to_zone(syd_before_spring, sydney);
     rt_string syd_after = rt_datetime_to_zone(syd_after_spring, sydney);
-    check("Sydney skipped hour boundary before",
-          str_eq(syd_before, "2025-10-05T01:59:59+10:00"));
-    check("Sydney skipped hour boundary after",
-          str_eq(syd_after, "2025-10-05T03:00:00+11:00"));
+    check("Sydney skipped hour boundary before", str_eq(syd_before, "2025-10-05T01:59:59+10:00"));
+    check("Sydney skipped hour boundary after", str_eq(syd_after, "2025-10-05T03:00:00+11:00"));
     rt_string_unref(syd_before);
     rt_string_unref(syd_after);
 

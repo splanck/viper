@@ -159,11 +159,11 @@ When responding to a task:
 # Build all demos
 ./scripts/build_demos.sh
 
-# Build and test Zanna on Windows
-.\scripts\build_zanna_win.cmd
+# Build and test Zanna on Windows (PowerShell)
+.\scripts\build_zanna_win.ps1
 
-# Build all demos on Windows
-.\scripts\build_demos_win.cmd
+# Build all demos on Windows (PowerShell)
+.\scripts\build_demos_win.ps1
 
 # Format
 clang-format -i <files>

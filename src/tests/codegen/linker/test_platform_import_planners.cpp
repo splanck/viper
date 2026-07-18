@@ -7,6 +7,13 @@
 //
 // File: src/tests/codegen/linker/test_platform_import_planners.cpp
 // Purpose: Targeted unit coverage for per-platform native-link import planners.
+// Key invariants:
+//   - Every accepted platform import maps to the DLL/framework that exports it.
+//   - Platform-exclusive symbols are rejected for foreign targets.
+// Ownership/Lifetime:
+//   - Test-owned plans and object files live for one test case.
+// Links: src/codegen/common/linker/PlatformImportPlanner.hpp,
+//        src/codegen/common/linker/DynamicSymbolPolicy.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -479,6 +486,42 @@ TEST(PlatformImportPlanners, WindowsComAudioSymbolsResolveToOle32) {
     EXPECT_TRUE(importPlanHasDll(plan, "ole32.dll"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ole32.dll", "CoCreateInstance"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ole32.dll", "CoUninitialize"));
+}
+
+TEST(PlatformImportPlanners, WindowsImeSymbolsResolveToImm32) {
+    const std::unordered_set<std::string> syms = {
+        "ImmGetCompositionStringW", "ImmGetContext", "ImmReleaseContext"};
+
+    for (const auto &sym : syms) {
+        EXPECT_TRUE(isKnownDynamicSymbol(sym, LinkPlatform::Windows));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::Linux));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::macOS));
+    }
+
+    WindowsImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64, syms, false, plan, err));
+    EXPECT_TRUE(importPlanHasDll(plan, "imm32.dll"));
+    for (const auto &sym : syms)
+        EXPECT_TRUE(importPlanDllHasFunction(plan, "imm32.dll", sym));
+}
+
+TEST(PlatformImportPlanners, WindowsGuiRuntimeSymbolsResolveToSystemDlls) {
+    const std::unordered_set<std::string> syms = {
+        "SystemParametersInfoW", "RegGetValueW", "strpbrk", "lround"};
+
+    WindowsImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64, syms, false, plan, err));
+    for (const char *sym : {"SystemParametersInfoW", "RegGetValueW"}) {
+        EXPECT_TRUE(isKnownDynamicSymbol(sym, LinkPlatform::Windows));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::Linux));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::macOS));
+    }
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "SystemParametersInfoW"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "advapi32.dll", "RegGetValueW"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "strpbrk"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "lround"));
 }
 
 int main(int argc, char **argv) {

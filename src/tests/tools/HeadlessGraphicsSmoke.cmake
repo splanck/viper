@@ -12,7 +12,7 @@
 #
 # Ownership/Lifetime: CTest owns and replaces TEST_WORK_DIR.
 #
-# Links: docs/linux-platform.md, docs/adr/0106-linux-graphics-backend-selection.md
+# Links: docs/linux-platform.md, docs/adr/0112-linux-graphics-backend-selection.md
 #
 #===----------------------------------------------------------------------===#
 

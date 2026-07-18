@@ -27,7 +27,8 @@ and documents the agent-facing toolchain surface.
 Always use the build scripts, never raw cmake for full builds:
 
 ```sh
-./scripts/build_zanna_linux.sh     # or build_zanna_mac.sh / build_zanna_win.cmd
+./scripts/build_zanna_linux.sh     # or build_zanna_mac.sh
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 ```
 
 Fast iteration knobs (environment variables, all platforms):

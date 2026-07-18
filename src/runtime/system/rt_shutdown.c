@@ -17,12 +17,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_shutdown.h"
+#include "rt_platform.h"
 
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <string.h>
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -91,7 +92,7 @@ int8_t rt_shutdown_has_pending(void) {
     return atomic_load_explicit(&g_shutdown_pending, memory_order_acquire) != 0 ? 1 : 0;
 }
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 static BOOL WINAPI shutdown_win_ctrl_handler(DWORD ctrl_type) {
     int64_t reason = RT_SHUTDOWN_REASON_INTERRUPT;
     if (ctrl_type == CTRL_CLOSE_EVENT || ctrl_type == CTRL_LOGOFF_EVENT ||
@@ -108,6 +109,7 @@ static void shutdown_posix_sigint(int sig) {
     (void)sig;
     rt_shutdown_request(RT_SHUTDOWN_REASON_INTERRUPT);
 }
+
 static void shutdown_posix_sigterm(int sig) {
     (void)sig;
     rt_shutdown_request(RT_SHUTDOWN_REASON_TERMINATE);
@@ -121,7 +123,7 @@ void rt_shutdown_install_signal_handlers(void) {
             &installed, &expected, true, memory_order_acq_rel, memory_order_acquire)) {
         return; // already installed
     }
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     SetConsoleCtrlHandler(shutdown_win_ctrl_handler, TRUE);
 #else
     struct sigaction sa;

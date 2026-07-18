@@ -43,7 +43,7 @@ The platform build scripts configure, compile, test, and install Zanna in one st
 ./scripts/build_zanna_linux.sh
 
 # Windows
-scripts\build_zanna_win.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 ```
 The macOS and Linux scripts are thin wrappers over `./scripts/build_zanna_unix.sh`, which you can also run directly on any Unix system.
 
@@ -55,7 +55,7 @@ not get confused with the normal toolchain:
 
 | Directory | Produced by |
 |-----------|-------------|
-| `build/` | `build_zanna_mac.sh`, `build_zanna_linux.sh`, `build_zanna_win.cmd` |
+| `build/` | `build_zanna_mac.sh`, `build_zanna_linux.sh`, `build_zanna_win.ps1` |
 | `build-coverage/` | `scripts/coverage.sh` |
 | `build-fuzz/` | `scripts/fuzz_smoke.sh` |
 | `build_asan_full/`, `build_ubsan_full/`, `build_tsan_full/` | `scripts/ci_full_sanitizer.sh` |

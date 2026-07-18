@@ -66,6 +66,6 @@ dependency changed.
 - `test_vgfx3d_backend_d3d11_shared`, `zia_smoke_d3d11_rtt_readback`,
   `g3d_test_canvas3d_point_shadows_d3d11`, and the Ridgebound D3D11 smoke exercise the backend.
 
-The required end-to-end gates are `scripts/build_zanna_win.cmd` and
-`scripts/build_demos_win.cmd`; the platform-policy lint remains mandatory for future changes in
+The required end-to-end gates are `scripts/build_zanna_win.ps1` and
+`scripts/build_demos_win.ps1`; the platform-policy lint remains mandatory for future changes in
 these adapters.

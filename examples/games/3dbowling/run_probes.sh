@@ -13,7 +13,9 @@
 #   - A probe passes only when it exits cleanly and prints exactly RESULT: ok.
 # Ownership/Lifetime:
 #   - Temporary output is removed on normal exit and interruption.
-# Links: run_probes.cmd, LONG_TERM_IMPROVEMENT_SPEC.md
+# Cross-platform touchpoints:
+#   - run_probes.ps1 provides the equivalent native Windows entry point.
+# Links: run_probes.ps1, LONG_TERM_IMPROVEMENT_SPEC.md
 #
 #===----------------------------------------------------------------------===#
 

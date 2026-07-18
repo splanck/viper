@@ -70,7 +70,7 @@
 ./scripts/build_zanna_unix.sh
 
 # Windows
-scripts\build_zanna.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 </code></pre>
 <p>Requirements: CMake 3.20+, Clang or GCC with C++20 support (or MSVC on Windows). See the top-level README for platform-specific details.</p>
 <h3 id="5-how-do-i-run-a-program">5. How do I run a program?</h3>

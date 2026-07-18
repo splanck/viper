@@ -168,7 +168,7 @@ install the ARM64 C++ build tools and ARM64 MSVC libraries as well. Open a
 Developer PowerShell for Visual Studio in an existing Zanna source checkout:
 
 ```powershell
-.\scripts\build_zanna_win.cmd
+.\scripts\build_zanna_win.ps1
 ```
 
 The canonical script builds and tests Zanna with MSVC by default. Optional
@@ -178,13 +178,13 @@ fast-iteration settings include:
 $env:ZANNA_SKIP_CLEAN = '1'
 $env:ZANNA_CMAKE_GENERATOR = 'Ninja'
 $env:ZANNA_BUILD_TYPE = 'Release'
-.\scripts\build_zanna_win.cmd
+.\scripts\build_zanna_win.ps1
 ```
 
 Build a local developer installer with:
 
 ```powershell
-.\scripts\build_installer.cmd --target windows
+.\scripts\build_installer.ps1 --target windows
 ```
 
 Debug CRT payloads are rejected by default. Use Release or RelWithDebInfo for a

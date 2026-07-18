@@ -10,7 +10,7 @@ Showcase programs demonstrating the Zanna compiler toolchain, [runtime library](
 zanna run examples/games/chess/       # Run a project directory
 zanna build examples/apps/paint/ -o paint  # Compile to native binary
 ./scripts/build_demos.sh              # Build all demos (outputs to examples/bin/)
-scripts\build_demos_win.cmd           # Windows equivalent
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_demos_win.ps1 # Windows equivalent
 ```
 
 ---
@@ -173,8 +173,8 @@ zanna run examples/apps/paint/           # Zia app
 ./scripts/build_demos.sh --clean   # Clean rebuild
 
 # Windows
-scripts\build_demos_win.cmd
-scripts\build_demos_win.cmd --clean
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_demos_win.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_demos_win.ps1 --clean
 ```
 
 Native binaries are output to `examples/bin/`.

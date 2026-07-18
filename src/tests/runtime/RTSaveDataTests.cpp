@@ -20,6 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/PlatformCapabilities.hpp"
 #include "rt.hpp"
 #include "rt_savedata.h"
 
@@ -32,7 +33,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#ifdef _WIN32
+#if ZANNA_HOST_WINDOWS
 #include <direct.h>
 #include <process.h>
 #define GETPID _getpid
@@ -86,7 +87,7 @@ static void write_file_exact(const char *path, const char *bytes, size_t len) {
 
 static void configure_test_save_root() {
     char root[256];
-#ifdef _WIN32
+#if ZANNA_HOST_WINDOWS
     const char *tmp = getenv("TEMP");
     if (!tmp)
         tmp = "C:\\Temp";
@@ -318,7 +319,7 @@ static void test_path_contains_game_name() {
     assert(pcstr != nullptr);
     assert(strstr(pcstr, "mygame") != nullptr);
     assert(strstr(pcstr, "save.json") != nullptr);
-#ifdef _WIN32
+#if ZANNA_HOST_WINDOWS
     assert((pcstr[0] == '\\' && pcstr[1] == '\\') ||
            ((pcstr[0] >= 'A' && pcstr[0] <= 'Z') || (pcstr[0] >= 'a' && pcstr[0] <= 'z')) &&
                pcstr[1] == ':' && (pcstr[2] == '\\' || pcstr[2] == '/'));
@@ -644,7 +645,7 @@ static void test_save_soft_fails_when_parent_dir_uncreatable() {
     snprintf(fileRoot, sizeof(fileRoot), "/tmp/zanna_savedata_filehome_%d", (int)GETPID());
     std::remove(fileRoot);
     write_file_exact(fileRoot, "x", 1);
-#ifdef _WIN32
+#if ZANNA_HOST_WINDOWS
     // Skip on Windows: the APPDATA/USERPROFILE layering differs; the POSIX path
     // exercises the shared trap-to-Boolean recovery.
     std::remove(fileRoot);

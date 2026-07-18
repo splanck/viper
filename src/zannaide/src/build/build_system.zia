@@ -153,7 +153,7 @@ class BuildSystem {
             if IO.File.Exists(colocated) {
                 return colocated;
             }
-            // 3. Developer build tree (zannaide/bin -> build/src/tools/zanna).
+            // 3. Developer build tree (src/zannaide/bin -> build/src/tools/zanna).
             var devA = Path.Normalize(Path.Join(exeDir, Path.Join("../../build/src/tools/zanna", exe)));
             if IO.File.Exists(devA) {
                 return devA;

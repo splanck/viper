@@ -33,7 +33,7 @@ Build the Zanna toolchain from the repository root:
 ./scripts/build_zanna_linux.sh
 
 # Windows
-scripts\build_zanna.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 ```
 
 This builds the toolchain, runs all tests, and installs the `zanna` CLI to `/usr/local/bin`.

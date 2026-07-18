@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: codegen/common/linker/WindowsImportPlanner.cpp
+// File: src/codegen/common/linker/WindowsImportPlanner.cpp
 // Purpose: Windows DLL import planning and thunk generation for the native
 //          linker. Resolves each undefined dynamic symbol to a (DLL, function)
 //          pair, builds the .idata$* import-directory sections, and synthesises
@@ -293,6 +293,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "SetWindowTextW",
         "ShowCursor",
         "ShowWindow",
+        "SystemParametersInfoW",
         "TranslateMessage",
         "UpdateWindow",
     };
@@ -306,6 +307,8 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "SelectObject",
         "StretchBlt",
     };
+    static const std::unordered_set<std::string> imm32 = {
+        "ImmGetCompositionStringW", "ImmGetContext", "ImmReleaseContext"};
     static const std::unordered_set<std::string> shell32 = {
         "CommandLineToArgvW", "DragAcceptFiles", "DragFinish", "DragQueryFileA", "DragQueryFileW"};
     static const std::unordered_set<std::string> ole32 = {
@@ -325,6 +328,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "CryptVerifySignatureA",
         "GetUserNameA",
         "GetUserNameW",
+        "RegGetValueW",
     };
     static const std::unordered_set<std::string> bcrypt = {
         "BCryptDestroyKey",
@@ -488,6 +492,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "isxdigit",
         "isatty",
         "kbhit",
+        "lround",
         "llround",
         "localeconv",
         "lock_file",
@@ -558,6 +563,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "strnicmp",
         "strncmp",
         "strncpy",
+        "strpbrk",
         "strstr",
         "strtod",
         "strtod_l",
@@ -653,6 +659,10 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
     }
     if (gdi32.count(name) || gdi32.count(stripped)) {
         dllName = "gdi32.dll";
+        return true;
+    }
+    if (imm32.count(name) || imm32.count(stripped)) {
+        dllName = "imm32.dll";
         return true;
     }
     if (shell32.count(name) || shell32.count(stripped)) {

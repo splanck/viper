@@ -39,8 +39,8 @@ jobs:
           "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build and test with the canonical Windows script
-        shell: cmd
-        run: scripts\build_zanna_win.cmd
+        shell: pwsh
+        run: .\scripts\build_zanna_win.ps1
 
       - name: Stage the release payload
         shell: pwsh

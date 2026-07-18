@@ -157,7 +157,7 @@ ZANNA_SKIP_CLEAN=1 ./scripts/build_zanna_mac.sh
 ```
 
 Use the platform build script (`build_zanna_linux.sh`, `build_zanna_mac.sh`, or
-`build_zanna_win.cmd`). The build system automatically runs `rtgen` when
+`build_zanna_win.ps1`). The build system automatically runs `rtgen` when
 `runtime.def` changes.
 
 ### Step 4: Use in Zanna

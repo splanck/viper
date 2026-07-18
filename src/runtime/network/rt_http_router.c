@@ -23,6 +23,7 @@
 #include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 
 #include <stdbool.h>
@@ -30,7 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -99,7 +100,7 @@ static int router_string_has_embedded_nul(rt_string value) {
 
 /// @brief Allocate and initialize the router's reader-writer lock.
 static void router_lock_init(rt_http_router_impl *router) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     SRWLOCK *lock = (SRWLOCK *)malloc(sizeof(SRWLOCK));
     if (lock)
         InitializeSRWLock(lock);
@@ -116,7 +117,7 @@ static void router_lock_init(rt_http_router_impl *router) {
 static void router_lock_destroy(rt_http_router_impl *router) {
     if (!router->rw_lock)
         return;
-#if !defined(_WIN32)
+#if !RT_PLATFORM_WINDOWS
     pthread_rwlock_destroy((pthread_rwlock_t *)router->rw_lock);
 #endif
     free(router->rw_lock);
@@ -127,7 +128,7 @@ static void router_lock_destroy(rt_http_router_impl *router) {
 static void router_rdlock(rt_http_router_impl *router) {
     if (!router->rw_lock)
         return;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     AcquireSRWLockShared((SRWLOCK *)router->rw_lock);
 #else
     pthread_rwlock_rdlock((pthread_rwlock_t *)router->rw_lock);
@@ -138,7 +139,7 @@ static void router_rdlock(rt_http_router_impl *router) {
 static void router_rdunlock(rt_http_router_impl *router) {
     if (!router->rw_lock)
         return;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     ReleaseSRWLockShared((SRWLOCK *)router->rw_lock);
 #else
     pthread_rwlock_unlock((pthread_rwlock_t *)router->rw_lock);
@@ -149,7 +150,7 @@ static void router_rdunlock(rt_http_router_impl *router) {
 static void router_wrlock(rt_http_router_impl *router) {
     if (!router->rw_lock)
         return;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     AcquireSRWLockExclusive((SRWLOCK *)router->rw_lock);
 #else
     pthread_rwlock_wrlock((pthread_rwlock_t *)router->rw_lock);
@@ -160,7 +161,7 @@ static void router_wrlock(rt_http_router_impl *router) {
 static void router_wrunlock(rt_http_router_impl *router) {
     if (!router->rw_lock)
         return;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     ReleaseSRWLockExclusive((SRWLOCK *)router->rw_lock);
 #else
     pthread_rwlock_unlock((pthread_rwlock_t *)router->rw_lock);

@@ -2907,7 +2907,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   back to the deadline check, so the join only reports false once the entire requested
   duration has elapsed — matching the POSIX deadline semantics. The safe-thread path funnels
   into the same function. Windows-only code path: reviewed against the Future timed-wait
-  idiom and pending a by-hand `build_zanna_win.cmd` run on the next Windows session; the
+  idiom and pending a by-hand `build_zanna_win.ps1` run on the next Windows session; the
   macOS/Linux build is unaffected. **Resolved.**
 
 ### VDOC-130 — Scheduler generation `-1` is both valid data and the absence sentinel
@@ -4299,7 +4299,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   branch requires a Windows build to exercise the drive-relative behavior directly; the POSIX
   refactor is covered by a new `test_abs` in `RTPathTests.cpp` (relative→absolute+normalized,
   already-absolute normalizes in place). **Resolved (Windows behavior pending a by-hand
-  `build_zanna_win.cmd` run).**
+  `build_zanna_win.ps1` run).**
 
 ### VDOC-185 — `Path.ExeDir` has fixed-buffer encoding and truncation fallbacks
 
@@ -5104,7 +5104,7 @@ the checked-in generators, documentation audits, and already-existing binaries o
   `RtlGetVersion` is unavailable, and to `"unknown"` if both fail. The file-header note and
   system.md were corrected. Windows-only branch (`#ifdef _WIN32`), so it does not compile on macOS;
   verified by inspection against the documented `RtlGetVersion` behavior, and the macOS build is
-  unaffected. Exercising the manifest-independence needs a by-hand `build_zanna_win.cmd` run on
+  unaffected. Exercising the manifest-independence needs a by-hand `build_zanna_win.ps1` run on
   Windows 10/11. **Resolved (Windows behavior pending a by-hand Windows build).**
 
 ### VDOC-217 — Windows Machine text queries bypass Zanna's UTF-8 conversion path

@@ -105,5 +105,5 @@ Everything before Phase 5 is a working-tree change on top of `viper-final`: `git
 ## 5. Known risks
 - **Goldens churn**: any golden embedding class names, paths, or CLI strings shifts; `update_goldens.sh` handles it, and the E2E VM==native gate catches semantic drift.
 - **Path-pinning docs test** (gotcha from the docs overhaul): docs paths change again; the sweep renames both content and paths together, but rerun `check_docs.sh`.
-- **Windows validation**: run `.\scripts\build_zanna_win.cmd` on the Windows box after the Unix suite is green (installer smoke + registry keys changed).
+- **Windows validation**: run `.\scripts\build_zanna_win.ps1` on the Windows box after the Unix suite is green (installer smoke + registry keys changed).
 - **Case-insensitive filesystem** (macOS): `git mv viper zanna` differs enough to be safe; no same-name-different-case renames exist.

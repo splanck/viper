@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
-# Build ZannaIDE as a standalone native binary.
-# Usage: ./scripts/build_ide.sh [--clean] [--output PATH]
+#===----------------------------------------------------------------------===#
+#
+# Part of the Zanna project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: scripts/build_ide.sh
+# Purpose: Build ZannaIDE as a standalone native binary on Unix hosts.
+# Key invariants:
+#   - Uses an existing Zanna compiler from the configured build tree.
+#   - Writes build metadata beside both primary and compatibility outputs.
+# Ownership/Lifetime:
+#   - Temporary diagnostics are removed on exit; built outputs remain caller-owned.
+# Cross-platform touchpoints:
+#   - Handles Unix and Windows-form paths when an .exe compiler is selected.
+# Links: build_ide_win.ps1, src/zannaide/README.md
+#
+#===----------------------------------------------------------------------===#
 
 set -euo pipefail
 
@@ -104,7 +121,7 @@ path_for_zanna() {
 
 if ! resolve_zanna_tool; then
     echo -e "${RED}Error: zanna tool not found under $BUILD_DIR/src/tools/zanna${NC}"
-    echo "Run './scripts/build_zanna_mac.sh', './scripts/build_zanna_linux.sh', or './scripts/build_zanna_win.cmd' first"
+    echo "Run './scripts/build_zanna_mac.sh', './scripts/build_zanna_linux.sh', or 'scripts/build_zanna_win.ps1' first"
     exit 1
 fi
 

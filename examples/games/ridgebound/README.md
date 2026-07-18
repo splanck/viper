@@ -78,9 +78,9 @@ ZANNA_BIN=build/src/tools/zanna/zanna \
 
 On Windows:
 
-```bat
-set ZANNA_BIN=build\src\tools\zanna\zanna.exe
-examples\games\ridgebound\run_probes.cmd
+```powershell
+$env:ZANNA_BIN = 'build\src\tools\zanna\zanna.exe'
+.\examples\games\ridgebound\run_probes.ps1
 ```
 
 The runner first checks the whole project, then executes:

@@ -11,14 +11,14 @@ full-build commands:
 ```sh
 ./scripts/build_zanna_mac.sh
 ./scripts/build_zanna_linux.sh
-scripts\build_zanna_win.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_zanna_win.ps1
 ```
 
 For IDE-only native binary checks:
 
 ```sh
 ./scripts/build_ide.sh
-scripts\build_ide_win.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_ide_win.ps1
 ```
 
 Targeted `ctest` commands assume the `build/` tree exists.
@@ -138,7 +138,7 @@ Set `ZANNAIDE_PERF_LOG` before launching the IDE to write frame/controller and
 editor performance counters:
 
 ```sh
-ZANNAIDE_PERF_LOG=/tmp/zannaide-perf.log ./zannaide/bin/zannaide
+ZANNAIDE_PERF_LOG=/tmp/zannaide-perf.log ./src/zannaide/bin/zannaide
 ```
 
 Perf output is intended for dogfood sessions and hot-path regressions. It is

@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-18
+---
+
 # Linux Platform Implementation
 
 Zanna's Linux support is split across small native adapters rather than hidden behind a third-party
@@ -19,7 +25,7 @@ server connections are not required to assign the same opcode.
 `ZANNA_GRAPHICS_BACKEND=HEADLESS` selects the dependency-free in-memory framebuffer backend while
 keeping the public graphics surface enabled. `AUTO`, `NATIVE`, and `X11` currently select X11 on
 Linux; Wayland desktops are supported through XWayland when `DISPLAY` is available. See
-[ADR 0106](adr/0106-linux-graphics-backend-selection.md) for the native-Wayland boundary and why a
+[ADR 0112](adr/0112-linux-graphics-backend-selection.md) for the native-Wayland boundary and why a
 failed desktop display connection does not silently become an invisible headless application.
 
 The ALSA backend does not replace `snd_lib_error_set_handler`. That handler is process-global and

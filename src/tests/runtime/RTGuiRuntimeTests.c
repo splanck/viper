@@ -12,13 +12,21 @@
 //   - Public handles are type/liveness checked before every dereference.
 //   - Logical geometry crosses into the physical toolkit exactly once.
 //   - Consuming one event edge never consumes a distinct edge or revision.
+//   - Assertions stay enabled in every build configuration because test setup
+//     and validation intentionally share the assertion expressions.
 // Ownership/Lifetime:
 //   - Each test owns its fake app/widget tree and releases returned runtime
 //     strings/objects when the corresponding API transfers ownership.
 // Links: runtime/graphics/gui/rt_gui.h,
 //        runtime/graphics/gui/rt_gui_internal.h
+// Cross-platform touchpoints: Temporary-file cleanup uses the runtime platform
+//                             vocabulary to select the POSIX-only declaration.
 //
 //===----------------------------------------------------------------------===//
+
+#if defined(NDEBUG)
+#undef NDEBUG
+#endif
 
 #include "../../runtime/graphics/gui/rt_gui_app_internal.h"
 #include "../../runtime/graphics/gui/rt_gui_internal.h"
@@ -28,6 +36,7 @@
 #include "rt_map.h"
 #include "rt_option.h"
 #include "rt_pixels.h"
+#include "rt_platform.h"
 #include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -38,7 +47,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
+#if !RT_PLATFORM_WINDOWS
 #include <unistd.h>
 #endif
 
@@ -430,8 +439,9 @@ static void test_detached_tooltip_uses_retained_overlay_damage(void) {
     assert(state->frames_full == full_before);
     assert(state->frames_partial == partial_before + 1);
     assert(state->overlay_last_valid == 1);
-    assert(state->last_damage_w > 0.0f && state->last_damage_w < 320.0f);
-    assert(state->last_damage_h > 0.0f && state->last_damage_h < 180.0f);
+    assert(state->last_layout_width > 0 && state->last_layout_height > 0);
+    assert(state->last_damage_w > 0.0f && state->last_damage_w < (float)state->last_layout_width);
+    assert(state->last_damage_h > 0.0f && state->last_damage_h < (float)state->last_layout_height);
 
     rt_tooltip_hide();
     assert(rt_gui_app_run_frame_with_delta(app, 16.0) == 1);
@@ -2309,7 +2319,7 @@ static void test_treeview_complete_node_and_lazy_event_contract(void) {
     rt_treeview_node_set_text(node, visible_with_nul);
     rt_str_release_maybe(visible_with_nul);
     rt_string value = rt_treeview_node_get_text(node);
-    static const char expected_visible[] = {'A', (char)0xEF, (char)0xBF, (char)0xBD, 'B'};
+    static const unsigned char expected_visible[] = {'A', 0xEFu, 0xBFu, 0xBDu, 'B'};
     assert(value && rt_str_len(value) == (int64_t)sizeof(expected_visible));
     assert(memcmp(rt_string_cstr(value), expected_visible, sizeof(expected_visible)) == 0);
     rt_str_release_maybe(value);
@@ -2423,7 +2433,7 @@ static void test_complete_tab_split_radio_label_contracts(void) {
     rt_tab_set_title(first_tab, visible_with_nul);
     rt_str_release_maybe(visible_with_nul);
     rt_string value = rt_tab_get_title(first_tab);
-    static const char expected_visible[] = {'A', (char)0xEF, (char)0xBF, (char)0xBD, 'B'};
+    static const unsigned char expected_visible[] = {'A', 0xEFu, 0xBFu, 0xBDu, 'B'};
     assert(value && rt_str_len(value) == (int64_t)sizeof(expected_visible));
     assert(memcmp(rt_string_cstr(value), expected_visible, sizeof(expected_visible)) == 0);
     rt_str_release_maybe(value);
@@ -4550,7 +4560,7 @@ static void test_interactive_virtual_grid_runtime(void) {
     rt_datagrid_set_virtual_cell(grid, 0, 0, rt_const_cstr("first"));
     assert(grid->virtual_cell_count == 2u);
     rt_string visible = rt_datagrid_get_cell(grid, 9999, 19);
-    static const char converted[] = {'a', (char)0xEF, (char)0xBF, (char)0xBD, 'b'};
+    static const unsigned char converted[] = {'a', 0xEFu, 0xBFu, 0xBDu, 'b'};
     assert(rt_str_len(visible) == 5);
     assert(memcmp(rt_string_cstr(visible), converted, sizeof(converted)) == 0);
     rt_str_release_maybe(visible);

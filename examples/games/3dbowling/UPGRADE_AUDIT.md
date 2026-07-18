@@ -154,7 +154,7 @@ control case passes, and the intermittent material/overlay harness currently
 renders all four expected regions.
 
 The long-term challenge pass is validated separately through `run_probes.sh`
-or `run_probes.cmd`; both use an existing Zanna executable and cannot build
+or `run_probes.ps1`; both use an existing Zanna executable and cannot build
 Zanna or invoke CTest.
 
 ## Long-term pass verification

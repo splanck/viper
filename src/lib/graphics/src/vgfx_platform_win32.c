@@ -5,11 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// ZannaGFX Windows Win32 Backend
-//
-// Platform-specific implementation using Win32 GDI on Windows systems.
-// Provides window creation, event handling, framebuffer blitting via DIB
-// sections, and timing functions for Windows.
+// File: src/lib/graphics/src/vgfx_platform_win32.c
+// Purpose: Implement the native Win32 window, input, and framebuffer backend.
+// Key invariants:
+//   - Windows SDK base types are available before dependent subsystem headers.
+//   - Window and IME state is owned by the backend's vgfx_win32_data object.
+// Ownership/Lifetime:
+//   - Platform data lives from window creation through platform destruction.
+//   - Temporary UTF conversion buffers are released by their immediate caller.
+// Links: src/lib/graphics/src/vgfx_internal.h, src/lib/graphics/CMakeLists.txt
 //
 // Architecture:
 //   - HWND: Native Win32 window handle
@@ -38,13 +42,14 @@
 
 #ifdef _WIN32
 
+#include <windows.h>
+
 #include <imm.h>
 #include <limits.h>
 #include <malloc.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <windows.h>
 #include <windowsx.h>
 
 #ifndef WM_DPICHANGED

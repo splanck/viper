@@ -26,7 +26,9 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-#if defined(_WIN32)
+#include "rt_platform.h"
+
+#if RT_PLATFORM_WINDOWS
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -75,4 +77,4 @@ static inline DWORD rt_win32_wait_slice_until(ULONGLONG deadline) {
     return rt_win32_wait_slice_at(GetTickCount64(), deadline);
 }
 
-#endif // defined(_WIN32)
+#endif // RT_PLATFORM_WINDOWS

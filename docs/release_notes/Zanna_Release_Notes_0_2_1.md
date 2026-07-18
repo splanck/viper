@@ -374,7 +374,7 @@ Windows (x86-64) is now a fully supported build target for both MSVC and Clang-c
   - POSIX shims: `access`, `getcwd`, `mkdir`, `strcasecmp`, `lseek`, `strtok_r`, `localtime_r`
   - File-type macros: `S_ISREG`, `S_ISDIR`, `S_ISBLK`, `S_ISCHR`, `S_ISFIFO`
   - High-resolution timer via `FILETIME` (`rt_windows_time_ms`, `rt_windows_time_us`)
-- **Windows build script** (`scripts/build_zanna.cmd`)
+- **Windows build script** (`scripts/build_zanna_win.ps1`)
 - **x86-64 codegen fixes** — Correct Windows calling convention (RCX/RDX/R8/R9, shadow space)
 - **Test suite** — Golden files and exit-code handling updated for Windows differences
 

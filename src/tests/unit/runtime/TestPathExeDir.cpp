@@ -6,17 +6,25 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/unit/runtime/TestPathExeDir.cpp
-// Purpose: Unit tests for Path.ExeDir() — platform exe directory detection.
+// Purpose: Unit tests for platform-aware Path.ExeDir() detection.
+// Key invariants:
+//   - Returned paths identify an existing directory and are never null.
+//   - POSIX hosts return an absolute path rather than the legacy dot fallback.
+// Ownership/Lifetime:
+//   - C-string results are owned and released by each test.
+//   - Runtime strings retain and release their own storage.
+// Links: src/runtime/io/rt_path.c, src/common/PlatformCapabilities.hpp
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/PlatformCapabilities.hpp"
 #include "tests/TestHarness.hpp"
 
 #include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
 
-#ifdef _WIN32
+#if ZANNA_HOST_WINDOWS
 #ifndef S_ISDIR
 #define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
 #endif
@@ -53,7 +61,7 @@ TEST(PathExeDir, ReturnsAbsoluteNotDotFallback) {
     // A valid resolved exe directory is absolute and never the bare "." that
     // the old fixed-buffer path returned on long/non-ASCII paths.
     EXPECT_TRUE(strcmp(dir, ".") != 0);
-#ifndef _WIN32
+#if !ZANNA_HOST_WINDOWS
     EXPECT_EQ(dir[0], '/');
 #endif
     free(dir);

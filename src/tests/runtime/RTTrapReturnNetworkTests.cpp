@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/RTTrapReturnNetworkTests.cpp
+// File: src/tests/runtime/RTTrapReturnNetworkTests.cpp
 // Purpose: Verify network trap sites honor the returning-trap-hook contract:
 //   each failure raises exactly one categorized trap and stops local control
 //   flow even when the embedder's vm_trap hook returns (VDOC-141).
@@ -16,9 +16,12 @@
 // Ownership/Lifetime:
 //   - No runtime objects outlive main; sockets are owned by the runtime call.
 // Links: src/runtime/network/rt_network.c (rt_tcp_connect_for)
+// Cross-platform touchpoints: Windows initializes Winsock explicitly; other
+//                             platforms use the runtime's POSIX socket adapter.
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/PlatformCapabilities.hpp"
 #include "rt_connpool.h"
 #include "rt_error.h"
 #include "rt_https_server.h"
@@ -33,7 +36,7 @@ extern "C" int rt_trap_get_net_code(void);
 #include <cstdio>
 #include <cstring>
 
-#if defined(_WIN32)
+#if ZANNA_HOST_WINDOWS
 #include <winsock2.h>
 #pragma comment(lib, "ws2_32.lib")
 #endif
@@ -51,9 +54,13 @@ extern "C" void vm_trap(const char *msg) {
 }
 
 int main() {
-#if defined(_WIN32)
+#if ZANNA_HOST_WINDOWS
     WSADATA wsa;
-    assert(WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
+    const int startup_status = WSAStartup(MAKEWORD(2, 2), &wsa);
+    if (startup_status != 0) {
+        fprintf(stderr, "WSAStartup failed with status %d\n", startup_status);
+        return 1;
+    }
 #endif
     printf("=== Returning-trap-hook network tests ===\n");
 
@@ -67,10 +74,8 @@ int main() {
     void *conn = rt_tcp_connect_for(host, 81, 300);
 
     assert(conn == nullptr);
-    printf("  connect trap count: %d (code %d, \"%s\")\n",
-           g_trap_count,
-           g_last_net_code,
-           g_last_msg);
+    printf(
+        "  connect trap count: %d (code %d, \"%s\")\n", g_trap_count, g_last_net_code, g_last_msg);
     assert(g_trap_count == 1);
     if (strstr(g_last_msg, "timeout") != nullptr) {
         // The timeout branch must keep its categorized code instead of
@@ -118,7 +123,7 @@ int main() {
     }
     printf("  PASS: rejected inputs raise exactly one trap and stop\n");
 
-#if defined(_WIN32)
+#if ZANNA_HOST_WINDOWS
     WSACleanup();
 #endif
     printf("All returning-trap-hook network tests passed.\n");

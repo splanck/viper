@@ -615,7 +615,7 @@ Typical workflow:
 Developer wrappers:
 
 - `scripts/build_installer.sh`
-- `scripts/build_installer.cmd`
+- `scripts/build_installer.ps1`
 
 Installer builds enable `ZANNA_INSTALL_ZANNAIDE=ON`, which builds the native
 ZannaIDE binary through the freshly built `zanna` tool and stages

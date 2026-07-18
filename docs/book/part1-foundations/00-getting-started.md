@@ -358,7 +358,7 @@ Now run the build script for your platform:
 ./scripts/build_zanna_linux.sh
 ```
 
-On Windows, run `.\scripts\build_zanna_win.cmd` from a Developer Command Prompt
+On Windows, run `.\scripts\build_zanna_win.ps1` from a Developer PowerShell
 (see the [Windows setup guide](../../getting-started/windows.md)).
 
 **What does this do?**
