@@ -71,6 +71,18 @@ int main() {
     const unsigned allocaB = builder.reserveTempId();
     entry.instructions.push_back(makeAlloca(allocaB));
 
+    unsigned deepGep = allocaA;
+    for (unsigned depth = 0; depth < 12; ++depth) {
+        const unsigned next = builder.reserveTempId();
+        Instr gep;
+        gep.result = next;
+        gep.op = Opcode::GEP;
+        gep.type = Type(Type::Kind::Ptr);
+        gep.operands = {Value::temp(deepGep), Value::constInt(1)};
+        entry.instructions.push_back(std::move(gep));
+        deepGep = next;
+    }
+
     BasicAA aa(module, fn);
 
     const Value allocaValA = Value::temp(allocaA);
@@ -80,6 +92,7 @@ int main() {
 
     assert(aa.alias(allocaValA, allocaValA) == AliasResult::MustAlias);
     assert(aa.alias(allocaValA, allocaValB) == AliasResult::NoAlias);
+    assert(aa.alias(Value::temp(deepGep), allocaValB) == AliasResult::NoAlias);
     assert(aa.alias(firstParam, secondParam) == AliasResult::NoAlias);
     assert(aa.alias(allocaValA, Value::global("g")) == AliasResult::NoAlias);
 

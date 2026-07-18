@@ -29,20 +29,32 @@
 namespace il::core {
 namespace {
 
+bool symbolMatches(const Module &module,
+                   il::support::Symbol symbol,
+                   std::string_view text) {
+    return text.empty() ? !symbol : symbol && module.lookupIdentifier(symbol) == text;
+}
+
 /// @brief Intern every symbolic reference stored directly on an instruction.
 /// @param module Module whose interner owns the resulting symbols.
 /// @param instr Instruction to update in place.
 /// @post `instr.calleeSymbol` mirrors `instr.callee` when non-empty.
 /// @post `instr.labelSymbols` mirrors `instr.labels` in size and order.
 void internInstructionIdentifiers(Module &module, Instr &instr) {
-    instr.calleeSymbol = instr.callee.empty() ? il::support::Symbol{}
-                                             : module.internIdentifier(instr.callee);
+    if (!symbolMatches(module, instr.calleeSymbol, instr.callee))
+        instr.calleeSymbol = instr.callee.empty() ? il::support::Symbol{}
+                                                 : module.internIdentifier(instr.callee);
 
-    instr.labelSymbols.clear();
-    instr.labelSymbols.reserve(instr.labels.size());
-    for (const auto &label : instr.labels) {
-        instr.labelSymbols.push_back(label.empty() ? il::support::Symbol{}
-                                                   : module.internIdentifier(label));
+    bool labelsMatch = instr.labelSymbols.size() == instr.labels.size();
+    for (std::size_t index = 0; labelsMatch && index < instr.labels.size(); ++index)
+        labelsMatch = symbolMatches(module, instr.labelSymbols[index], instr.labels[index]);
+    if (!labelsMatch) {
+        instr.labelSymbols.clear();
+        instr.labelSymbols.reserve(instr.labels.size());
+        for (const auto &label : instr.labels) {
+            instr.labelSymbols.push_back(label.empty() ? il::support::Symbol{}
+                                                       : module.internIdentifier(label));
+        }
     }
 }
 
@@ -76,15 +88,19 @@ bool Module::containsIdentifier(il::support::Symbol symbol) const noexcept {
 ///       branch label symbols mirror the current strings in the module.
 void Module::internOwnedIdentifiers() {
     for (auto &ext : externs)
-        ext.nameSymbol = internIdentifier(ext.name);
+        if (!symbolMatches(*this, ext.nameSymbol, ext.name))
+            ext.nameSymbol = internIdentifier(ext.name);
 
     for (auto &global : globals)
-        global.nameSymbol = internIdentifier(global.name);
+        if (!symbolMatches(*this, global.nameSymbol, global.name))
+            global.nameSymbol = internIdentifier(global.name);
 
     for (auto &function : functions) {
-        function.nameSymbol = internIdentifier(function.name);
+        if (!symbolMatches(*this, function.nameSymbol, function.name))
+            function.nameSymbol = internIdentifier(function.name);
         for (auto &block : function.blocks) {
-            block.labelSymbol = internIdentifier(block.label);
+            if (!symbolMatches(*this, block.labelSymbol, block.label))
+                block.labelSymbol = internIdentifier(block.label);
             for (auto &instr : block.instructions)
                 internInstructionIdentifiers(*this, instr);
         }

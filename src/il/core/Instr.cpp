@@ -76,6 +76,12 @@ bool Instr::isCallLike() const noexcept {
     return op == Opcode::Call || op == Opcode::CallIndirect;
 }
 
+/// @brief Determine whether this instruction names a direct callee.
+/// @return True for well-formed direct calls; false for indirect or malformed calls.
+bool Instr::isDirectCall() const noexcept {
+    return op == Opcode::Call && !callee.empty();
+}
+
 /// @brief Determine whether the instruction carries branch target labels.
 /// @return True when at least one successor label is stored.
 bool Instr::hasBranchTargets() const noexcept {

@@ -444,6 +444,9 @@ bool fullyUnrollLoop(Function &function,
 
     if (loop.blockLabels.size() > 2)
         return false; // Only handle simple loops
+    if (loop.exits.empty() || header.instructions.empty() || latch.instructions.empty() ||
+        !preheader || preheader->instructions.empty())
+        return false;
 
     // Get the exit target and its arguments
     const std::string &exitLabel = loop.exits[0].to;
@@ -456,7 +459,13 @@ bool fullyUnrollLoop(Function &function,
         return false;
 
     // Find which branch index goes to exit
-    size_t exitBranchIdx = (headerTerm.labels[0] == exitLabel) ? 0 : 1;
+    size_t exitBranchIdx = 0;
+    if (headerTerm.labels[0] == exitLabel)
+        exitBranchIdx = 0;
+    else if (headerTerm.labels[1] == exitLabel)
+        exitBranchIdx = 1;
+    else
+        return false;
 
     // Get exit branch args (what values to pass when exiting)
     std::vector<Value> exitArgs;
@@ -493,6 +502,8 @@ bool fullyUnrollLoop(Function &function,
     // Collect cloned instructions and insert once before the preheader terminator.
     std::vector<Instr> clonedInstrs;
     clonedInstrs.reserve(bodyInstrs.size() * counted.tripCount);
+    std::vector<std::pair<unsigned, std::string>> clonedValueNames;
+    clonedValueNames.reserve(bodyInstrs.size() * counted.tripCount);
 
     unsigned nextId = zanna::il::nextTempId(function);
 
@@ -547,9 +558,7 @@ bool fullyUnrollLoop(Function &function,
                 std::string oldName;
                 if (oldId < function.valueNames.size())
                     oldName = function.valueNames[oldId];
-                if (function.valueNames.size() <= newId)
-                    function.valueNames.resize(newId + 1);
-                function.valueNames[newId] = std::move(oldName);
+                clonedValueNames.emplace_back(newId, std::move(oldName));
                 valueMap[oldId] = Value::temp(newId);
             }
 
@@ -560,24 +569,21 @@ bool fullyUnrollLoop(Function &function,
         // Get values that would be passed back to header
         const Instr &latchTerm = latch.instructions.back();
         auto toHeaderFromLatch = labelIndex(latchTerm, header.label);
-        if (toHeaderFromLatch && *toHeaderFromLatch < latchTerm.brArgs.size()) {
-            const auto &nextArgs = latchTerm.brArgs[*toHeaderFromLatch];
-            for (size_t i = 0; i < nextArgs.size() && i < currentValues.size(); ++i) {
-                Value nextVal = nextArgs[i];
-                if (nextVal.kind == Value::Kind::Temp) {
-                    auto it = valueMap.find(nextVal.id);
-                    if (it != valueMap.end())
-                        nextVal = it->second;
-                }
-                currentValues[i] = nextVal;
+        if (!toHeaderFromLatch || *toHeaderFromLatch >= latchTerm.brArgs.size())
+            return false;
+        const auto &nextArgs = latchTerm.brArgs[*toHeaderFromLatch];
+        if (nextArgs.size() != currentValues.size())
+            return false;
+        for (size_t i = 0; i < nextArgs.size(); ++i) {
+            Value nextVal = nextArgs[i];
+            if (nextVal.kind == Value::Kind::Temp) {
+                auto it = valueMap.find(nextVal.id);
+                if (it != valueMap.end())
+                    nextVal = it->second;
             }
+            currentValues[i] = nextVal;
         }
     }
-
-    const size_t insertIdx = preheader->instructions.size() - 1;
-    preheader->instructions.insert(preheader->instructions.begin() + static_cast<long>(insertIdx),
-                                   std::make_move_iterator(clonedInstrs.begin()),
-                                   std::make_move_iterator(clonedInstrs.end()));
 
     // Map final exit args from the post-unroll header parameter values.
     // The previous iteration-local map is stale after currentValues advances.
@@ -594,6 +600,19 @@ bool fullyUnrollLoop(Function &function,
                 return false;
         }
     }
+
+    if (!clonedValueNames.empty()) {
+        const unsigned lastId = clonedValueNames.back().first;
+        if (function.valueNames.size() <= lastId)
+            function.valueNames.resize(static_cast<std::size_t>(lastId) + 1);
+        for (auto &[id, name] : clonedValueNames)
+            function.valueNames[id] = std::move(name);
+    }
+
+    const size_t insertIdx = preheader->instructions.size() - 1;
+    preheader->instructions.insert(preheader->instructions.begin() + static_cast<long>(insertIdx),
+                                   std::make_move_iterator(clonedInstrs.begin()),
+                                   std::make_move_iterator(clonedInstrs.end()));
 
     // Update preheader terminator to branch to exit
     Instr &newTerm = preheader->instructions.back();

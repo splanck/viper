@@ -62,6 +62,17 @@ bool parseFailsWith(const char *text, const std::string &needle) {
     return parsed.error().message.find(needle) != std::string::npos;
 }
 
+bool parseFailsWithLimits(const char *text,
+                          const il::io::ParserLimits &limits,
+                          const std::string &needle) {
+    Module module;
+    std::istringstream input{text};
+    auto parsed = il::io::Parser::parse(input, module, limits);
+    if (parsed)
+        return false;
+    return parsed.error().message.find(needle) != std::string::npos;
+}
+
 bool verifyFailsWith(const Module &module, const std::string &needle) {
     auto result = il::verify::Verifier::verify(module);
     if (result)
@@ -106,6 +117,7 @@ entry:
   %v = load i64, %p
   ret %v # done
 }
+
 )");
 
     ASSERT_EQ(module.globals.size(), 2u);
@@ -119,6 +131,63 @@ entry:
 
     const std::string text = il::io::Serializer::toString(module);
     EXPECT_CONTAINS(text, "global const i64 @.answer = 42");
+}
+
+TEST(ILCorrectness, ParserEnforcesConfigurableResourceLimits) {
+    il::io::ParserLimits limits;
+    limits.maxLineBytes = 4;
+    EXPECT_TRUE(parseFailsWithLimits("il 0.3.0\n", limits, "resource limit exceeded: line bytes"));
+
+    limits = {};
+    limits.maxFunctions = 0;
+    EXPECT_TRUE(parseFailsWithLimits(R"(il 0.3.0
+func @main() -> i64 {
+entry:
+  ret 0
+}
+)", limits, "resource limit exceeded: functions"));
+
+    limits = {};
+    limits.maxBlocks = 0;
+    EXPECT_TRUE(parseFailsWithLimits(R"(il 0.3.0
+func @main() -> i64 {
+entry:
+  ret 0
+}
+)", limits, "resource limit exceeded: basic blocks"));
+
+    limits = {};
+    limits.maxInstructions = 0;
+    EXPECT_TRUE(parseFailsWithLimits(R"(il 0.3.0
+func @main() -> i64 {
+entry:
+  ret 0
+}
+)", limits, "resource limit exceeded: instructions"));
+
+    limits = {};
+    limits.maxValuesPerInstruction = 1;
+    EXPECT_TRUE(parseFailsWithLimits(R"(il 0.3.0
+func @main() -> i64 {
+entry:
+  %sum = add 1, 2
+  ret %sum
+}
+)", limits, "resource limit exceeded: instruction operands"));
+}
+
+TEST(ILCorrectness, ParserRejectsControlByteIdentifiersAndUnterminatedTokens) {
+    const std::string source =
+        std::string("il 0.3.0\nfunc @bad") + '\x01' + "name() -> i64 {\nentry:\nret 0\n}\n";
+    Module module;
+    std::istringstream input{source};
+    auto parsed = il::io::Parser::parse(input, module);
+    EXPECT_FALSE(parsed.hasValue());
+
+    std::istringstream tokenStream{"\"unterminated"};
+    const std::string token = il::io::readToken(tokenStream);
+    EXPECT_EQ(token, "\"unterminated");
+    EXPECT_TRUE(tokenStream.fail());
 }
 
 TEST(ILCorrectness, ParserAcceptsImportAndStringGlobalTrailingComments) {

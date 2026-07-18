@@ -162,7 +162,7 @@ void setBlockDepth(BlockDepthMap &depths,
 /// @param I Instruction to inspect.
 /// @return True when the opcode is Call and a callee name is present.
 bool isDirectCall(const Instr &I) {
-    return I.op == Opcode::Call && !I.callee.empty();
+    return I.isDirectCall();
 }
 
 /// @brief Test whether an instruction is part of the exception-handling framework.

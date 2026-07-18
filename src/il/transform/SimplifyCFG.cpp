@@ -34,8 +34,6 @@
 #include "il/core/Module.hpp"
 #include "il/verify/Verifier.hpp"
 
-#include <cassert>
-
 namespace {
 
 // Verification hooks are no-ops.  The PassManager's -verify-each flag provides
@@ -82,7 +80,7 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats) {
 
     bool changedAny = false;
 
-    for (int iter = 0; iter < 8; ++iter) {
+    while (true) {
         bool changed = false;
         if (aggressive)
             changed |= simplify_cfg::foldTrivialSwitches(ctx);

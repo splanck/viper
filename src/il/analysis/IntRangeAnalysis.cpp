@@ -548,17 +548,24 @@ bool mapsEqual(const RangeMap &lhs, const RangeMap &rhs) {
     return true;
 }
 
-/// @brief Pointwise union merge; keys absent on either side are dropped.
-RangeMap mergeMaps(const RangeMap &lhs, const RangeMap &rhs) {
-    RangeMap merged;
-    for (const auto &[id, range] : lhs) {
-        auto it = rhs.find(id);
-        if (it == rhs.end())
+/// @brief Merge @p incoming into an accumulated pointwise union in place.
+/// @details Keys absent from either side are unknown at the join and removed.
+///          Mutating the accumulator avoids allocating and copying a complete
+///          RangeMap for every predecessor beyond the first.
+void mergeMapInto(RangeMap &accumulator, const RangeMap &incoming) {
+    for (auto it = accumulator.begin(); it != accumulator.end();) {
+        auto incomingIt = incoming.find(it->first);
+        if (incomingIt == incoming.end()) {
+            it = accumulator.erase(it);
             continue;
-        if (auto combined = mergeIncomingRange(range, it->second))
-            merged[id] = *combined;
+        }
+        if (auto combined = mergeIncomingRange(it->second, incomingIt->second)) {
+            it->second = *combined;
+            ++it;
+        } else {
+            it = accumulator.erase(it);
+        }
     }
-    return merged;
 }
 
 } // namespace
@@ -630,12 +637,10 @@ IntRangeInfo computeIntRanges(const Function &fn) {
     reached[0] = 1;
 
     constexpr unsigned kWidenAfterUpdates = 3;
-    constexpr unsigned kMaxSweeps = 24;
-
     // Edge facts flowing into each block, rebuilt every sweep so entries are a
     // FRESH merge over the current in-edges. Merging into the previous entry
     // instead would union in stale history and erode branch refinements.
-    std::vector<std::vector<RangeMap>> incoming(blockCount);
+    std::vector<std::optional<RangeMap>> incoming(blockCount);
 
     // One dataflow sweep. In widening mode, oscillating bounds at loop headers
     // are stripped (sticky) so the ascent terminates. In narrowing mode the
@@ -645,8 +650,8 @@ IntRangeInfo computeIntRanges(const Function &fn) {
     auto runSweep = [&](bool widening) -> bool {
         bool changed = false;
 
-        for (auto &edges : incoming)
-            edges.clear();
+        for (auto &facts : incoming)
+            facts.reset();
 
         // Phase A: push every reached block's exit state along its out-edges.
         // Blocks first reached during this sweep must NOT propagate yet: their
@@ -678,8 +683,12 @@ IntRangeInfo computeIntRanges(const Function &fn) {
                 if (succIt == indexOf.end())
                     continue;
                 const size_t succIdx = succIt->second;
-                incoming[succIdx].push_back(
-                    edgeFacts(block, term, branchIndex, fn.blocks[succIdx], out));
+                RangeMap facts =
+                    edgeFacts(block, term, branchIndex, fn.blocks[succIdx], out);
+                if (incoming[succIdx])
+                    mergeMapInto(*incoming[succIdx], facts);
+                else
+                    incoming[succIdx] = std::move(facts);
                 if (!reached[succIdx]) {
                     reached[succIdx] = 1;
                     changed = true;
@@ -691,12 +700,10 @@ IntRangeInfo computeIntRanges(const Function &fn) {
         for (size_t blockIdx : rpo) {
             // The function entry has an implicit caller edge with no facts, so
             // its entry state is pinned empty regardless of back edges.
-            if (blockIdx == 0 || incoming[blockIdx].empty())
+            if (blockIdx == 0 || !incoming[blockIdx])
                 continue;
 
-            RangeMap fresh = incoming[blockIdx].front();
-            for (size_t i = 1; i < incoming[blockIdx].size(); ++i)
-                fresh = mergeMaps(fresh, incoming[blockIdx][i]);
+            RangeMap fresh = std::move(*incoming[blockIdx]);
 
             if (widening) {
                 // Strip bounds that were widened away in earlier sweeps.
@@ -759,13 +766,13 @@ IntRangeInfo computeIntRanges(const Function &fn) {
         return changed;
     };
 
-    bool converged = false;
-    for (unsigned sweep = 0; sweep < kMaxSweeps; ++sweep) {
-        if (!runSweep(/*widening=*/true)) {
-            converged = true;
-            break;
-        }
+    // Run to the widening fixed point. Reachability can advance only one edge
+    // per sweep, so a numeric cap makes otherwise ordinary deep CFGs lose all
+    // facts. Termination is instead guaranteed by the finite CFG/value set and
+    // sticky per-bound widening above.
+    while (runSweep(/*widening=*/true)) {
     }
+    const bool converged = true;
 
     // Narrowing: recover bounds that stabilized after being widened (e.g. a
     // rotated loop header whose latch compare caps the induction variable —
@@ -797,12 +804,6 @@ IntRangeInfo computeIntRanges(const Function &fn) {
             std::fprintf(stderr, "\n");
         }
     }
-
-    // A non-converged iterate UNDER-approximates the final union (bounds may
-    // still be growing), so consuming it could wrongly prove a check safe.
-    // Returning no facts is the only sound fallback.
-    if (!converged)
-        return info;
 
     for (size_t i = 0; i < blockCount; ++i) {
         if (reached[i])

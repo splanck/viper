@@ -504,6 +504,79 @@ void testCheckedArithmeticPreventsFullUnroll() {
     assert(verifyResult && "Module should remain valid after declined unroll");
 }
 
+void testDeclinedUnrollDoesNotMutateFunctionMetadata() {
+    Module module;
+    Function fn;
+    fn.name = "test_declined_unroll_is_atomic";
+    fn.retType = Type(Type::Kind::I1);
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr entryBr;
+    entryBr.op = Opcode::Br;
+    entryBr.type = Type(Type::Kind::Void);
+    entryBr.setBranchTargets({"loop"}, {{Value::constInt(0)}});
+    entry.instructions.push_back(std::move(entryBr));
+    entry.terminated = true;
+
+    BasicBlock loop;
+    loop.label = "loop";
+    loop.params.push_back(Param{"i", Type(Type::Kind::I64), 0});
+
+    Instr cmp;
+    cmp.result = 1;
+    cmp.op = Opcode::SCmpLT;
+    cmp.type = Type(Type::Kind::I1);
+    cmp.operands = {Value::temp(0), Value::constInt(3)};
+    loop.instructions.push_back(std::move(cmp));
+
+    Instr add;
+    add.result = 2;
+    add.op = Opcode::Add;
+    add.type = Type(Type::Kind::I64);
+    add.operands = {Value::temp(0), Value::constInt(1)};
+    loop.instructions.push_back(std::move(add));
+
+    Instr loopCbr;
+    loopCbr.op = Opcode::CBr;
+    loopCbr.type = Type(Type::Kind::Void);
+    loopCbr.operands = {Value::temp(1)};
+    loopCbr.setBranchTargets({"loop", "exit"}, {{Value::temp(2)}, {Value::temp(1)}});
+    loop.instructions.push_back(std::move(loopCbr));
+    loop.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    exit.params.push_back(Param{"result", Type(Type::Kind::I1), 3});
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.type = Type(Type::Kind::Void);
+    ret.operands = {Value::temp(3)};
+    exit.instructions.push_back(std::move(ret));
+    exit.terminated = true;
+
+    fn.blocks = {entry, loop, exit};
+    fn.valueNames = {"i", "cmp", "next", "result"};
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+
+    const std::vector<std::string> namesBefore = function.valueNames;
+    const std::size_t entryInstructionsBefore = function.blocks.front().instructions.size();
+
+    il::transform::AnalysisRegistry registry;
+    setupAnalysisRegistry(registry);
+    il::transform::AnalysisManager analysisManager(module, registry);
+    il::transform::LoopUnroll unroll;
+    auto preserved = unroll.run(function, analysisManager);
+    (void)preserved;
+
+    assert(function.valueNames == namesBefore &&
+           "declined unroll must not allocate result names");
+    assert(function.blocks.front().instructions.size() == entryInstructionsBefore &&
+           "declined unroll must not insert cloned instructions");
+    assert(findBlock(function, "loop") && "declined unroll must retain the original loop");
+}
+
 } // namespace
 
 int main() {
@@ -511,5 +584,6 @@ int main() {
     testTripCountThreshold();
     testFinalExitArgsRemainValidWhenUnrollDeclined();
     testCheckedArithmeticPreventsFullUnroll();
+    testDeclinedUnrollDoesNotMutateFunctionMetadata();
     return 0;
 }

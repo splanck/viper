@@ -146,17 +146,34 @@ std::vector<Block *> buildReversePostOrder(
     std::vector<Block *> rpo;
     std::unordered_set<Block *> visited;
     std::vector<Block *> postOrder;
-    std::function<void(Block *)> dfs = [&](Block *b) {
-        if (!visited.insert(b).second)
+    auto dfs = [&](Block *start) {
+        if (!visited.insert(start).second)
             return;
-        if (!b->instructions.empty()) {
-            for (const auto &label : b->instructions.back().labels) {
+        struct Frame {
+            Block *block;
+            std::size_t successorIndex;
+        };
+        std::vector<Frame> stack{{start, 0}};
+        while (!stack.empty()) {
+            Frame &frame = stack.back();
+            const auto *labels = frame.block->instructions.empty()
+                                     ? nullptr
+                                     : &frame.block->instructions.back().labels;
+            bool advanced = false;
+            while (labels && frame.successorIndex < labels->size()) {
+                const auto &label = (*labels)[frame.successorIndex++];
                 auto succIt = labelToBlock.find(label);
-                if (succIt != labelToBlock.end())
-                    dfs(succIt->second);
+                if (succIt != labelToBlock.end() && visited.insert(succIt->second).second) {
+                    stack.push_back({succIt->second, 0});
+                    advanced = true;
+                    break;
+                }
             }
+            if (advanced)
+                continue;
+            postOrder.push_back(frame.block);
+            stack.pop_back();
         }
-        postOrder.push_back(b);
     };
     dfs(&F.blocks.front());
     for (auto &block : F.blocks)
@@ -232,6 +249,13 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     // forward fixpoint propagation.
     std::unordered_map<Block *, std::vector<Block *>> preds;
     std::unordered_map<Block *, std::vector<Block *>> succs;
+    // Cross-block path results depend only on the queried pointer/width and
+    // successor block entry, not on the originating store. Reuse them for
+    // repeated stores to the same location instead of traversing the CFG once
+    // per store (a common quadratic case after frontend lowering).
+    using PathMemo = std::unordered_map<std::string, bool>;
+    std::unordered_map<std::uint64_t, PathMemo> pathMemoByLocation;
+
     for (auto &B : F.blocks) {
         if (!B.instructions.empty()) {
             for (const auto &label : B.instructions.back().labels) {
@@ -506,7 +530,10 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
                 continue;
             }
 
-            std::unordered_map<std::string, bool> livePathMemo;
+            const std::uint64_t locationKey =
+                (static_cast<std::uint64_t>(ptr.id) << 32U) |
+                (storeSize ? static_cast<std::uint64_t>(*storeSize) + 1U : 0U);
+            PathMemo &livePathMemo = pathMemoByLocation[locationKey];
             std::unordered_set<std::string> visiting;
             std::function<bool(const std::string &)> allLivePathsKillOrExit =
                 [&](const std::string &label) -> bool {

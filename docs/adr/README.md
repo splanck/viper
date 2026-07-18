@@ -24,6 +24,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0026](0026-range-analysis-demotion-proofs.md) — Whole-Function Range Analysis for Checked-Arithmetic Demotion Proofs
 - [ADR 0063](0063-il-select-and-if-conversion.md) — IL `select` Opcode and If-Conversion
 - [ADR 0064](0064-il-version-0-3-0.md) — IL Spec Version 0.2.0 → 0.3.0
+- [ADR 0111](0111-il-text-resource-limits.md) — Bound Textual IL Parsing Resources
 
 ## Concurrency & Threads
 

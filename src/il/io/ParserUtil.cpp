@@ -157,6 +157,7 @@ std::string readToken(std::istringstream &stream, TokenDelimiter *delimiter) {
         token.push_back(c);
 
         bool escape = false;
+        bool closed = false;
         while (stream.get(c)) {
             token.push_back(c);
             if (escape) {
@@ -167,8 +168,15 @@ std::string readToken(std::istringstream &stream, TokenDelimiter *delimiter) {
                 escape = true;
                 continue;
             }
-            if (c == '"')
+            if (c == '"') {
+                closed = true;
                 break;
+            }
+        }
+
+        if (!closed) {
+            stream.setstate(std::ios::failbit);
+            return token;
         }
 
         stream >> std::ws;
@@ -180,6 +188,8 @@ std::string readToken(std::istringstream &stream, TokenDelimiter *delimiter) {
             if (delimiter)
                 *delimiter = TokenDelimiter::Whitespace;
         }
+        if (stream.eof())
+            stream.clear(stream.rdstate() & ~std::ios::failbit);
         return token;
     }
 
@@ -234,6 +244,8 @@ bool isValidILIdentifier(std::string_view text) {
 
     for (size_t index = 0; index < text.size(); ++index) {
         unsigned char ch = static_cast<unsigned char>(text[index]);
+        if (ch < 0x20 || ch == 0x7f)
+            return false;
         if (std::isspace(ch))
             return false;
         switch (static_cast<char>(ch)) {

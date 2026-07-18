@@ -24,7 +24,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <functional>
 #include <limits>
 #include <optional>
 #include <unordered_set>
@@ -115,7 +114,8 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F) {
             // Intersect two dominance paths by advancing along the dominator
             // chain using block visit indexes until the nearest common
             // ancestor is located.
-            auto intersect = [&](il::core::Block *b1, il::core::Block *b2) {
+            auto intersect = [&](il::core::Block *b1,
+                                 il::core::Block *b2) -> il::core::Block * {
                 auto blockIndex = [&](il::core::Block *block) -> std::optional<std::size_t> {
                     auto it = index.find(block);
                     if (it == index.end())
@@ -126,34 +126,41 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F) {
                     auto b1Index = blockIndex(b1);
                     auto b2Index = blockIndex(b2);
                     if (!b1Index || !b2Index)
-                        return b2;
+                        return nullptr;
                     while (*b1Index > *b2Index) {
                         auto it = DT.idom.find(b1);
                         if (it == DT.idom.end() || !it->second)
-                            return b2; // Broken idom chain — bail to other branch
+                            return nullptr;
                         b1 = it->second;
                         b1Index = blockIndex(b1);
                         if (!b1Index)
-                            return b2;
+                            return nullptr;
                     }
                     while (*b2Index > *b1Index) {
                         auto it = DT.idom.find(b2);
                         if (it == DT.idom.end() || !it->second)
-                            return b1; // Broken idom chain — bail to other branch
+                            return nullptr;
                         b2 = it->second;
                         b2Index = blockIndex(b2);
                         if (!b2Index)
-                            return b1;
+                            return nullptr;
                     }
                 }
                 return b1;
             };
 
+            bool complete = true;
             for (auto *p : preds) {
                 if (p == newIdom || !DT.idom.contains(p))
                     continue;
                 newIdom = intersect(p, newIdom);
+                if (!newIdom) {
+                    complete = false;
+                    break;
+                }
             }
+            if (!complete)
+                continue;
 
             auto existingIt = DT.idom.find(b);
             if (existingIt == DT.idom.end()) {
@@ -225,13 +232,26 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     std::unordered_set<il::core::Block *> visited;
     visited.reserve(F.blocks.size());
 
-    std::function<void(il::core::Block *)> dfs = [&](il::core::Block *b) {
-        visited.insert(b);
-        for (auto *pred : predecessors(ctx, *b)) {
-            if (!visited.count(pred))
-                dfs(pred);
+    auto dfs = [&](il::core::Block *start) {
+        struct Frame {
+            il::core::Block *block;
+            std::size_t predecessorIndex;
+        };
+        std::vector<Frame> stack;
+        visited.insert(start);
+        stack.push_back({start, 0});
+        while (!stack.empty()) {
+            Frame &frame = stack.back();
+            const auto &preds = predecessors(ctx, *frame.block);
+            if (frame.predecessorIndex < preds.size()) {
+                il::core::Block *pred = preds[frame.predecessorIndex++];
+                if (visited.insert(pred).second)
+                    stack.push_back({pred, 0});
+                continue;
+            }
+            po_rev.push_back(frame.block);
+            stack.pop_back();
         }
-        po_rev.push_back(b);
     };
 
     // Start the DFS from all exit blocks (successors of the virtual exit).
@@ -286,22 +306,23 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     // its successors' immediate post-dominators (successors in the original CFG
     // = predecessors in the reversed CFG).
     // -------------------------------------------------------------------------
-    auto intersect = [&](il::core::Block *b1, il::core::Block *b2) -> il::core::Block * {
+    auto intersect = [&](il::core::Block *b1,
+                         il::core::Block *b2) -> std::optional<il::core::Block *> {
         while (b1 != b2) {
             while (getIdx(b1) > getIdx(b2)) {
                 auto it = PDT.ipostdom.find(b1);
                 if (it == PDT.ipostdom.end())
-                    break;
+                    return std::nullopt;
                 b1 = it->second;
             }
             while (getIdx(b2) > getIdx(b1)) {
                 auto it = PDT.ipostdom.find(b2);
                 if (it == PDT.ipostdom.end())
-                    break;
+                    return std::nullopt;
                 b2 = it->second;
             }
         }
-        return b1;
+        return std::optional<il::core::Block *>{b1};
     };
 
     bool changed = true;
@@ -326,11 +347,19 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
                 continue; // No processed successor yet; defer.
 
             // Intersect all processed successors.
+            bool complete = true;
             for (auto *s : succs) {
                 if (s == newIdom || !PDT.ipostdom.count(s))
                     continue;
-                newIdom = intersect(s, newIdom);
+                auto common = intersect(s, newIdom);
+                if (!common) {
+                    complete = false;
+                    break;
+                }
+                newIdom = *common;
             }
+            if (!complete)
+                continue;
 
             auto existingIt = PDT.ipostdom.find(b);
             if (existingIt == PDT.ipostdom.end()) {

@@ -26,6 +26,7 @@
 #include "il/io/StringEscape.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <iomanip>
@@ -212,19 +213,30 @@ bool valueEquals(const Value &a, const Value &b) noexcept {
 }
 
 size_t valueHash(const Value &v) noexcept {
+    const auto fold64 = [](std::uint64_t value) noexcept -> size_t {
+        value ^= value >> 33;
+        value *= UINT64_C(0xff51afd7ed558ccd);
+        value ^= value >> 33;
+        value *= UINT64_C(0xc4ceb9fe1a85ec53);
+        value ^= value >> 33;
+        if constexpr (sizeof(size_t) < sizeof(std::uint64_t))
+            return static_cast<size_t>(value ^ (value >> 32));
+        return static_cast<size_t>(value);
+    };
     size_t h = static_cast<size_t>(v.kind) * kHashKindMix;
     switch (v.kind) {
         case Value::Kind::Temp:
             h ^= static_cast<size_t>(v.id) + kHashPhiMix;
             break;
         case Value::Kind::ConstInt:
-            h ^= static_cast<size_t>(v.i64) ^ (v.isBool ? kHashBoolFlag : 0);
+            h ^= fold64(static_cast<std::uint64_t>(v.i64)) ^
+                 (v.isBool ? kHashBoolFlag : 0);
             break;
         case Value::Kind::ConstFloat: {
             static_assert(sizeof(double) == sizeof(unsigned long long));
             unsigned long long bits{};
             std::memcpy(&bits, &v.f64, sizeof(double));
-            h ^= static_cast<size_t>(bits);
+            h ^= fold64(bits);
             break;
         }
         case Value::Kind::ConstStr:

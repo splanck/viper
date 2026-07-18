@@ -371,6 +371,8 @@ void applyOwnershipEffects(RuntimeSignature &signature, std::string_view name) {
     signature.ownedOutArgMask |= ownership.ownedOutArgMask;
     signature.returnsOwned = signature.returnsOwned || ownership.returnsOwned;
     signature.mayAllocate = signature.mayAllocate || ownership.mayAllocate;
+    signature.returnsKnownObject =
+        signature.returnsKnownObject || ownership.returnsKnownObject;
 }
 
 /// @brief Retrieve the parsed runtime signature for a generated enumerator.
@@ -2609,6 +2611,24 @@ void validateRuntimeDescriptors(const std::vector<RuntimeDescriptor> &descriptor
                     break;
                 }
             }
+        }
+
+        const RuntimeSignature &actualSignature = descriptor.signature;
+        const bool metadataMatches =
+            actualSignature.nothrow == signature.nothrow &&
+            actualSignature.readonly == signature.readonly &&
+            actualSignature.pure == signature.pure &&
+            actualSignature.consumedArgMask == signature.consumedArgMask &&
+            actualSignature.retainedArgMask == signature.retainedArgMask &&
+            actualSignature.ownedOutArgMask == signature.ownedOutArgMask &&
+            actualSignature.returnsOwned == signature.returnsOwned &&
+            actualSignature.mayAllocate == signature.mayAllocate &&
+            actualSignature.returnsKnownObject == signature.returnsKnownObject;
+        if (!metadataMatches) {
+            std::fprintf(stderr,
+                         "Runtime signature '%s' effect/ownership metadata mismatch.\n",
+                         signature.name.c_str());
+            assert(false && "runtime signature metadata mismatch");
         }
     }
 }

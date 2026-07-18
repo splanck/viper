@@ -129,6 +129,15 @@ struct UseCounts {
     /// @param id Temp id observed as an operand or branch argument.
     void increment(unsigned id) {
         maxId = std::max(maxId, id);
+        if (!sparseMode && id > kMaxDenseUseVectorTempId) {
+            sparse.reserve(dense.size());
+            for (std::size_t denseId = 0; denseId < dense.size(); ++denseId)
+                if (dense[denseId] != 0)
+                    sparse.emplace(static_cast<unsigned>(denseId), dense[denseId]);
+            dense.clear();
+            dense.shrink_to_fit();
+            sparseMode = true;
+        }
         if (sparseMode) {
             ++sparse[id];
             return;

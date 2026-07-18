@@ -19,6 +19,9 @@
 ///          module version banner.
 
 #include "il/io/Parser.hpp"
+#include "il/core/BasicBlock.hpp"
+#include "il/core/Function.hpp"
+#include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 
 #include "il/internal/io/ModuleParser.hpp"
@@ -35,6 +38,36 @@ il::support::Expected<void> parseModuleHeader_E(std::istream &is,
 }
 
 namespace il::io {
+namespace {
+
+bool readBoundedLine(std::istream &is,
+                     std::string &line,
+                     std::size_t maxBytes,
+                     bool &tooLong) {
+    line.clear();
+    tooLong = false;
+    char ch = '\0';
+    while (is.get(ch)) {
+        if (ch == '\n')
+            return true;
+        if (line.size() >= maxBytes) {
+            tooLong = true;
+            while (is.get(ch) && ch != '\n') {
+            }
+            return true;
+        }
+        line.push_back(ch);
+    }
+    return !line.empty();
+}
+
+il::support::Expected<void> resourceLimitError(unsigned lineNo, std::string_view resource) {
+    return il::support::Expected<void>{
+        il::support::makeError({}, formatLineDiag(lineNo, std::string("resource limit exceeded: ") +
+                                                             std::string(resource)))};
+}
+
+} // namespace
 
 /// @brief Parse a textual IL module from a stream.
 /// @details Creates a @ref ParserState bound to the destination module, then
@@ -47,19 +80,39 @@ namespace il::io {
 /// @param m Module populated with parsed definitions.
 /// @return Empty Expected when parsing succeeds or the diagnostic describing the
 ///         first encountered error.
-il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m) {
-    detail::ParserState st{m};
+il::support::Expected<void> Parser::parse(std::istream &is,
+                                         il::core::Module &m,
+                                         const ParserLimits &limits) {
+    detail::ParserState st{m, limits};
     std::string line;
-    while (std::getline(is, line)) {
+    bool lineTooLong = false;
+    while (readBoundedLine(is, line, limits.maxLineBytes, lineTooLong)) {
+        if (static_cast<std::size_t>(st.lineNo) >= limits.maxLines)
+            return resourceLimitError(st.lineNo, "physical lines");
         ++st.lineNo;
+        if (lineTooLong)
+            return resourceLimitError(st.lineNo, "line bytes");
         if (st.lineNo == 1 && line.compare(0, 3, "\xEF\xBB\xBF") == 0) {
             line.erase(0, 3);
         }
         line = trim(stripInlineComment(line));
         if (line.empty())
             continue;
+
         if (auto result = detail::parseModuleHeader_E(is, line, st); !result)
             return result;
+
+        if (m.functions.size() > limits.maxFunctions)
+            return resourceLimitError(st.lineNo, "functions");
+        if (m.externs.size() > limits.maxExterns)
+            return resourceLimitError(st.lineNo, "extern declarations");
+        if (m.globals.size() > limits.maxGlobals)
+            return resourceLimitError(st.lineNo, "global declarations");
+
+        if (st.totalBlocks > limits.maxBlocks)
+            return resourceLimitError(st.lineNo, "basic blocks");
+        if (st.totalInstructions > limits.maxInstructions)
+            return resourceLimitError(st.lineNo, "instructions");
     }
     if (!st.sawVersion) {
         std::ostringstream oss;
