@@ -66,11 +66,9 @@ bool isIgnorableDirectiveTrailing(std::string_view text) {
 /// @param module Module currently being populated.
 /// @param name Symbol name without its leading sigil.
 /// @return True if @p name is already declared anywhere in @p module.
-bool moduleHasSymbol(const il::core::Module &module, std::string_view name) {
-    const auto matches = [&](const auto &decl) { return decl.name == name; };
-    return std::any_of(module.functions.begin(), module.functions.end(), matches) ||
-           std::any_of(module.externs.begin(), module.externs.end(), matches) ||
-           std::any_of(module.globals.begin(), module.globals.end(), matches);
+bool moduleHasSymbol(const ParserState &state, const std::string &name) {
+    return state.functionNames.contains(name) || state.externNames.contains(name) ||
+           state.globalNames.contains(name);
 }
 
 Expected<il::core::EffectAttrs> parseEffectAttrsSuffix(std::string_view text, unsigned lineNo) {
@@ -200,7 +198,7 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
         oss << "unknown type '" << retStr << "'";
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
     }
-    if (moduleHasSymbol(st.m, name)) {
+    if (moduleHasSymbol(st, name)) {
         std::ostringstream oss;
         oss << "duplicate module symbol '" << name << "'";
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
@@ -210,6 +208,7 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
     ext.attrs() = attrs;
     ext.nameSymbol = st.m.internIdentifier(name);
     st.m.externs.push_back(std::move(ext));
+    st.externNames.insert(name);
     return {};
 }
 
@@ -285,7 +284,7 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
     if (!isValidILIdentifier(name)) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "malformed global name")};
     }
-    if (moduleHasSymbol(st.m, name)) {
+    if (moduleHasSymbol(st, name)) {
         std::ostringstream oss;
         oss << "duplicate module symbol '" << name << "'";
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
@@ -330,6 +329,7 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
 
     st.m.globals.push_back({name, globalType, decoded, globalLinkage, isConst, hasInitializer});
     st.m.globals.back().nameSymbol = st.m.internIdentifier(name);
+    st.globalNames.insert(name);
     return {};
 }
 

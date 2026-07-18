@@ -55,7 +55,9 @@ A new `il::link` subsystem merges multiple IL modules into one:
   or a definition in the entry module
 - Internal functions from different modules get disambiguating prefixes
 - Externs are deduplicated; signature mismatches are link errors
-- Init functions from all modules are called before user entry code
+- Non-entry functions carrying the explicit `[module_init]` attribute are
+  called before user entry code. Names are never interpreted as initializer
+  metadata.
 - Boolean type mismatches (i1 vs i64) are bridged via auto-generated thunks
 
 The linker runs the same validation path for single-module and multi-module
@@ -65,6 +67,12 @@ only differences are supported boolean representation conversions. Rename maps
 are scoped to the module that owns the reference, so same-named internal helpers
 in different modules do not rewrite each other's calls. Global-name collisions
 are likewise rewritten inside the owning module before merge.
+
+Global imports follow the same resolution model: an import resolves to a
+matching exported global or a definition in the entry module, its primitive
+type and const qualification must match, and the declaration stub is omitted
+from the linked module. Unresolved or duplicate global exports are link errors.
+The final function/global/extern symbol namespace is checked for ambiguity.
 
 ### 4. Verifier changes
 
@@ -93,6 +101,8 @@ Verified on 2026-06-27:
   unresolved imports, prefixes internal collisions, deduplicates externs, rewrites
   function/global references, and injects non-entry module init calls.
 - `src/il/link/InteropThunks.cpp` generates `i1`/`i64` boolean conversion thunks.
+- `Function::moduleInitializer` round-trips as `[module_init]`; the linker uses
+  only that marker when injecting startup calls.
 - `src/tools/zanna/cmd_run.cpp` links entry and library project modules for mixed
   projects before running the optimizer/VM path.
 - Zia lowers `foreign` functions to `Import` and public/exposed functions to

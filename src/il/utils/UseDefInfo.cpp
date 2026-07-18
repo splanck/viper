@@ -32,6 +32,7 @@ UseDefInfo::UseDefInfo(::il::core::Function &F) {
 void UseDefInfo::build(::il::core::Function &F) {
     function_ = &F;
     useCounts_.clear();
+    useSites_.clear();
 
     for (auto &B : F.blocks) {
         for (auto &I : B.instructions) {
@@ -53,7 +54,28 @@ void UseDefInfo::build(::il::core::Function &F) {
 void UseDefInfo::recordUse(::il::core::Value &v) {
     if (v.kind == ::il::core::Value::Kind::Temp) {
         ++useCounts_[v.id];
+        useSites_[v.id].push_back(&v);
     }
+}
+
+std::size_t UseDefInfo::replaceAllUsesStableStorage(
+    unsigned tempId,
+    const ::il::core::Value &replacement) {
+    auto found = useSites_.find(tempId);
+    if (found == useSites_.end())
+        return 0;
+
+    std::vector<::il::core::Value *> sites = std::move(found->second);
+    useSites_.erase(found);
+    useCounts_.erase(tempId);
+    for (auto *site : sites) {
+        *site = replacement;
+        if (replacement.kind == ::il::core::Value::Kind::Temp) {
+            useSites_[replacement.id].push_back(site);
+            ++useCounts_[replacement.id];
+        }
+    }
+    return sites.size();
 }
 
 std::size_t UseDefInfo::replaceAllUses(unsigned tempId, const ::il::core::Value &replacement) {

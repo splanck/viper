@@ -442,9 +442,11 @@ entry:
 
 The parameter list may end with `...` to mark a C-style variadic function:
 
-Function definitions may carry `[nothrow]`, `[readonly]`, `[pure]`, or a comma-separated combination before the opening
-brace. The verifier checks the body against those promises, and direct call sites can only claim attributes that agree
-with runtime metadata or verified local function attributes.
+Function definitions may carry `[nothrow]`, `[readonly]`, `[pure]`,
+`[module_init]`, or a comma-separated combination before the opening brace.
+The verifier checks effect promises against the body. `[module_init]` explicitly
+marks a non-entry `() -> void` function for invocation by the module linker;
+function names have no initializer semantics.
 
 ```il
 func export @printfLike(str %fmt, ...) -> i64
@@ -1015,8 +1017,8 @@ blk_param   ::= TEMP ":" type               (* block params always use "%name: t
 instr       ::= (TEMP (":" type)? "=")? op   (* type annotation on result: %name:i32 = op *)
 term        ::= "ret" value? | "br" label_ref | "cbr" value "," label_ref "," label_ref | "trap" | "trap.from_err" type value | "switch.i32" value "," label_ref ("," INT "->" label_ref)* | "resume.same" value | "resume.next" value | "resume.label" value "," label_ref
 label_ref   ::= ("^")? LABEL ("(" value_list? ")")?   (* "^" caret is optional; args passed to block params *)
-func_attrs  ::= call_attrs
 call_attrs  ::= "[" ("nothrow" | "readonly" | "pure") ("," ("nothrow" | "readonly" | "pure"))* "]"
+func_attrs  ::= "[" ("nothrow" | "readonly" | "pure" | "module_init") ("," ("nothrow" | "readonly" | "pure" | "module_init"))* "]"
 ind_sig     ::= "[" type "(" (type ("," type)* ("," "...")? | "...")? ")" "]"
 op          ::= "add" value "," value | "and" value "," value | "ashr" value "," value |
                 "alloca" value | "addr_of" SYMBOL |
@@ -1391,9 +1393,14 @@ Folds literal computations at the IL level.
 | `isub.ovf`               | both `i64` literals, no overflow | `i64` difference   |
 | `sdiv.chk0`              | both `i64`, divisor ≠ 0          | `i64` quotient     |
 | `srem.chk0`              | both `i64`, divisor ≠ 0          | `i64` remainder    |
+| `fadd`, `fsub`, `fmul`   | both `f64` literals              | IEEE `f64` result  |
+| `fdiv`                   | both `f64` literals              | IEEE `f64` result  |
+| `fcmp_ord`, `fcmp_uno`   | both `f64` literals              | `i1` literal       |
 
-All floating-point folds use C math semantics (`std::floor`, `std::sqrt`, etc.) and emit
-exact `f64` literals in the optimized IL.
+Basic IEEE arithmetic folds preserve defined special results, including `NaN`,
+`Inf`, `-Inf`, and signed zero. Runtime math calls are folded only for
+host-independent exact cases or deterministic sequenced arithmetic; other
+libm results remain runtime calls, as specified by ADR 0114.
 
 #### Caveats
 

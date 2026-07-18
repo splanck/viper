@@ -208,6 +208,9 @@ Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state) {
                                "resource limit exceeded: " +
                                    std::string(stream.resourceLimit()));
 
+    if (stream.ioError())
+        return lineError<void>(state.lineNo(), "input stream read failure");
+
     if (state.fn) {
         state.fn = nullptr;
         state.cur = nullptr;
@@ -310,6 +313,9 @@ Expected<Param> parseBlockParam(const std::string &paramText,
         return param;
     }
 
+    if (static_cast<std::size_t>(st.nextTemp) >= st.limits.maxTempsPerFunction)
+        return lineError<Param>(st.lineNo,
+                                "resource limit exceeded: function temporaries");
     Param param{nm, ty, st.nextTemp};
     st.tempIds[nm] = st.nextTemp;
     if (st.curFn->valueNames.size() <= st.nextTemp)

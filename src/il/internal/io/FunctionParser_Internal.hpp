@@ -119,10 +119,15 @@ class TokenStream {
         return resourceLimit_;
     }
 
+    [[nodiscard]] bool ioError() const noexcept {
+        return ioError_;
+    }
+
   private:
     bool readLine() {
         line_.clear();
         resourceLimit_.clear();
+        ioError_ = false;
         if (static_cast<std::size_t>(legacy_->lineNo) >= legacy_->limits.maxLines) {
             resourceLimit_ = "physical lines";
             return false;
@@ -139,13 +144,17 @@ class TokenStream {
             }
             line_.push_back(ch);
         }
-        return !line_.empty();
+        if (!line_.empty())
+            return true;
+        ioError_ = stream_->bad() || (stream_->fail() && !stream_->eof());
+        return false;
     }
 
     std::istream *stream_ = nullptr;
     LegacyParserState *legacy_ = nullptr;
     std::string line_;
     std::string resourceLimit_;
+    bool ioError_{false};
     TokenKind token_ = TokenKind::Skip;
 };
 
@@ -213,6 +222,7 @@ struct Attrs {
     bool nothrow = false;
     bool readonly = false;
     bool pure = false;
+    bool moduleInitializer = false;
 };
 
 /// @brief Complete parsed function header including name, prototype, and metadata.
@@ -244,12 +254,14 @@ struct ParserSnapshot {
     unsigned nextTemp;                                       ///< Saved next temporary ID counter.
     std::unordered_map<std::string, size_t> blockParamCount; ///< Saved block parameter counts.
     std::vector<LegacyParserState::PendingBr> pendingBrs;    ///< Saved pending branch targets.
+    std::unordered_set<std::string> functionNames; ///< Saved module function-name index.
     size_t functionCount; ///< Number of functions at snapshot time.
     bool active = true;   ///< True if rollback should occur on destruction.
 
     explicit ParserSnapshot(LegacyParserState &st)
         : state(st), curFn(st.curFn), curBB(st.curBB), curLoc(st.curLoc), tempIds(st.tempIds),
           nextTemp(st.nextTemp), blockParamCount(st.blockParamCount), pendingBrs(st.pendingBrs),
+          functionNames(st.functionNames),
           functionCount(st.m.functions.size()) {}
 
     void restore() {
@@ -260,6 +272,7 @@ struct ParserSnapshot {
         state.nextTemp = nextTemp;
         state.blockParamCount = blockParamCount;
         state.pendingBrs = pendingBrs;
+        state.functionNames = functionNames;
         if (state.m.functions.size() > functionCount)
             state.m.functions.resize(functionCount);
     }

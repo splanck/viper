@@ -155,6 +155,19 @@ std::optional<std::string_view> StringInterner::lookupOptional(Symbol sym) const
     return std::string_view{storage_[sym.id - 1]};
 }
 
+size_t StringInterner::size() const {
+    std::lock_guard lock(mutex_);
+    return storage_.size();
+}
+
+void StringInterner::truncate(size_t symbolCount) {
+    std::lock_guard lock(mutex_);
+    while (storage_.size() > symbolCount) {
+        map_.erase(std::string_view{storage_.back()});
+        storage_.pop_back();
+    }
+}
+
 /// @brief Rebuild the string-to-symbol lookup table from owned storage.
 /// @details Clears the existing map, reserves enough buckets for the stored
 ///          strings, and re-inserts each value with a @ref Symbol whose id is the

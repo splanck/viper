@@ -21,6 +21,7 @@
 #include "il/runtime/signatures/Registry.hpp"
 #include "il/transform/ConstFold.hpp"
 #include "il/transform/DCE.hpp"
+#include "il/transform/LoadSafety.hpp"
 #include "il/transform/SimplifyCFG.hpp"
 #include "il/transform/SimplifyCFG/ParamCanonicalization.hpp"
 #include "il/transform/SimplifyCFG/ReachabilityCleanup.hpp"
@@ -34,6 +35,7 @@
 #include <cmath>
 #include <limits>
 #include <sstream>
+#include <streambuf>
 #include <stdexcept>
 #include <string>
 
@@ -174,6 +176,108 @@ entry:
   ret %sum
 }
 )", limits, "resource limit exceeded: instruction operands"));
+
+    limits = {};
+    limits.maxTempsPerFunction = 2;
+    EXPECT_TRUE(parseFailsWithLimits(R"(il 0.3.0
+func @main() -> i64 {
+entry:
+  %a = add 1, 2
+  %b = add %a, 3
+  %c = add %b, 4
+  ret %c
+}
+)", limits, "resource limit exceeded: function temporaries"));
+
+    limits = {};
+    limits.maxTempsPerFunction = 8;
+    EXPECT_TRUE(parseFailsWithLimits(R"(il 0.3.0
+func @main() -> i64 {
+entry:
+  ret %t4294967295
+}
+)", limits, "resource limit exceeded: function temporaries"));
+}
+
+TEST(ILCorrectness, ParserRollsBackModuleOnFailure) {
+    Module module;
+    Global existing;
+    existing.name = "existing";
+    existing.type = Type(Type::Kind::I64);
+    existing.init = "7";
+    existing.hasInitializer = true;
+    module.globals.push_back(existing);
+    module.internOwnedIdentifiers();
+    const size_t symbolsBefore = module.symbols.size();
+
+    std::istringstream input{R"(il 0.3.0
+global i64 @added = 9
+this is not valid IL
+)"};
+    auto parsed = il::io::Parser::parse(input, module);
+    EXPECT_FALSE(parsed.hasValue());
+    ASSERT_EQ(module.globals.size(), 1u);
+    EXPECT_EQ(module.globals.front().name, "existing");
+    EXPECT_EQ(module.globals.front().init, "7");
+    EXPECT_EQ(module.symbols.size(), symbolsBefore);
+}
+
+TEST(ILCorrectness, ParserReportsInputStreamFailures) {
+    class FailingBuffer final : public std::streambuf {
+      protected:
+        int_type underflow() override {
+            throw std::runtime_error("synthetic read failure");
+        }
+    } buffer;
+
+    std::istream input{&buffer};
+    Module module;
+    auto parsed = il::io::Parser::parse(input, module);
+    EXPECT_FALSE(parsed.hasValue());
+    EXPECT_CONTAINS(parsed.error().message, "input stream read failure");
+    EXPECT_TRUE(module.functions.empty());
+    EXPECT_TRUE(module.globals.empty());
+}
+
+TEST(ILCorrectness, LoadSafetyTracksSignedGepChainsWithoutWrapping) {
+    Function fn = makeMain();
+    BasicBlock &entry = fn.blocks.front();
+
+    Instr alloca;
+    alloca.op = Opcode::Alloca;
+    alloca.result = 0;
+    alloca.type = Type(Type::Kind::Ptr);
+    alloca.operands = {Value::constInt(16)};
+    entry.instructions.push_back(alloca);
+
+    Instr forward;
+    forward.op = Opcode::GEP;
+    forward.result = 1;
+    forward.type = Type(Type::Kind::Ptr);
+    forward.operands = {Value::temp(0), Value::constInt(8)};
+    entry.instructions.push_back(forward);
+
+    Instr backward;
+    backward.op = Opcode::GEP;
+    backward.result = 2;
+    backward.type = Type(Type::Kind::Ptr);
+    backward.operands = {Value::temp(1), Value::constInt(-4)};
+    entry.instructions.push_back(backward);
+
+    Instr load;
+    load.op = Opcode::Load;
+    load.result = 3;
+    load.type = Type(Type::Kind::I64);
+    load.operands = {Value::temp(2)};
+    entry.instructions.push_back(load);
+
+    il::transform::LoadSafetyContext safety(fn);
+    EXPECT_TRUE(il::transform::isLoadKnownNonTrapping(safety, entry.instructions.back()));
+
+    entry.instructions[2].operands[1] = Value::constInt(-12);
+    il::transform::LoadSafetyContext beforeAllocation(fn);
+    EXPECT_FALSE(
+        il::transform::isLoadKnownNonTrapping(beforeAllocation, entry.instructions.back()));
 }
 
 TEST(ILCorrectness, ParserRejectsControlByteIdentifiersAndUnterminatedTokens) {
@@ -203,6 +307,34 @@ global const str @semi = "world"; semicolon comment
     ASSERT_EQ(module.globals.size(), 2u);
     EXPECT_EQ(module.globals[0].init, "hello");
     EXPECT_EQ(module.globals[1].init, "world");
+}
+
+TEST(ILCorrectness, ModuleInitializerAttributeRoundTripsAndIsVerified) {
+    Module valid = parseModule(R"(il 0.3.0
+func @startup() -> void [module_init] {
+entry:
+  ret
+}
+func @main() -> i64 {
+entry:
+  ret 0
+}
+)");
+    ASSERT_TRUE(valid.functions.front().moduleInitializer);
+    EXPECT_TRUE(il::verify::Verifier::verify(valid).hasValue());
+    EXPECT_CONTAINS(il::io::Serializer::toString(valid), "[module_init]");
+
+    Module invalid = parseModule(R"(il 0.3.0
+func @startup(i64 %value) -> void [module_init] {
+entry:
+  ret
+}
+func @main() -> i64 {
+entry:
+  ret 0
+}
+)");
+    EXPECT_TRUE(verifyFailsWith(invalid, "module initializer must be"));
 }
 
 TEST(ILCorrectness, ParserRejectsJunkBeforeCallCallee) {
@@ -877,13 +1009,13 @@ entry:
     EXPECT_TRUE(std::isnan(ret.operands.front().f64));
 }
 
-TEST(ILCorrectness, CSEExcludesPlainSignedArithmetic) {
+TEST(ILCorrectness, CSEIncludesDeterministicPlainArithmetic) {
     Instr add;
     add.result = 0;
     add.op = Opcode::Add;
     add.type = Type(Type::Kind::I64);
     add.operands = {Value::temp(1), Value::temp(2)};
-    EXPECT_FALSE(il::transform::makeValueKey(add).has_value());
+    EXPECT_TRUE(il::transform::makeValueKey(add).has_value());
 
     Instr checked;
     checked.result = 3;
@@ -1269,6 +1401,50 @@ entry(%n:i64):
 )");
     il::transform::dce(module);
     EXPECT_EQ(countOpcode(module.functions.front(), Opcode::Alloca), 1u);
+}
+
+TEST(ILCorrectness, DceRemovesDeadPureArithmeticChains) {
+    Module module = parseModule(R"(il 0.3.0
+func @main(i64 %n) -> i64 {
+entry(%n:i64):
+  %a = add %n, 1
+  %b = mul %a, 2
+  %c = fdiv 1.0, 0.0
+  ret 0
+}
+)");
+    il::transform::dce(module);
+    EXPECT_EQ(countOpcode(module.functions.front(), Opcode::Add), 0u);
+    EXPECT_EQ(countOpcode(module.functions.front(), Opcode::Mul), 0u);
+    EXPECT_EQ(countOpcode(module.functions.front(), Opcode::FDiv), 0u);
+}
+
+TEST(ILCorrectness, DceCollapsesLongDeadChainWithWorklist) {
+    Module module;
+    Function fn = makeMain();
+    fn.params.push_back({"seed", Type(Type::Kind::I64), 0});
+    BasicBlock &entry = fn.blocks.front();
+    unsigned previous = 0;
+    constexpr unsigned kChainLength = 4096;
+    for (unsigned id = 1; id <= kChainLength; ++id) {
+        Instr add;
+        add.op = Opcode::Add;
+        add.result = id;
+        add.type = Type(Type::Kind::I64);
+        add.operands = {Value::temp(previous), Value::constInt(1)};
+        entry.instructions.push_back(std::move(add));
+        previous = id;
+    }
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.operands = {Value::constInt(0)};
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+    module.functions.push_back(std::move(fn));
+
+    il::transform::dce(module);
+    ASSERT_EQ(module.functions.front().blocks.front().instructions.size(), 1u);
+    EXPECT_EQ(module.functions.front().blocks.front().instructions.front().op, Opcode::Ret);
 }
 
 int main(int argc, char **argv) {

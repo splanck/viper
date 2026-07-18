@@ -176,6 +176,21 @@ TEST(InteropThunks, NoThunkWhenArityDiffers) {
     EXPECT_TRUE(thunks.empty());
 }
 
+TEST(InteropThunks, NoThunkForVariadicFunctions) {
+    Module exportMod;
+    Function exported = makeExportFunc("isReady", Type(Type::Kind::I1));
+    exported.isVarArg = true;
+    exportMod.functions.push_back(std::move(exported));
+
+    Module importMod;
+    Function imported = makeImportFunc("isReady", Type(Type::Kind::I64));
+    imported.isVarArg = true;
+    importMod.functions.push_back(std::move(imported));
+
+    auto thunks = il::link::generateBooleanThunks(importMod, exportMod);
+    EXPECT_TRUE(thunks.empty());
+}
+
 int main() {
     return zanna_test::run_all_tests();
 }

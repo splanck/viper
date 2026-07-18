@@ -130,6 +130,19 @@ TEST(IL, UtilsTests) {
     EXPECT_EQ(instructions[1].operands[0].id, 0u);
     ASSERT_EQ(instructions[3].operands[0].kind, il::core::Value::Kind::Temp);
     EXPECT_EQ(instructions[3].operands[0].id, 0u);
+
+    // A fresh analysis may use the cached-site path for multiple chained
+    // rewrites as long as no instruction vector is mutated between them.
+    zanna::il::UseDefInfo stableInfo(fn);
+    EXPECT_EQ(stableInfo.replaceAllUsesStableStorage(0, il::core::Value::temp(9)), 2u);
+    EXPECT_EQ(stableInfo.useCount(0), 0u);
+    EXPECT_EQ(stableInfo.useCount(9), 2u);
+    EXPECT_EQ(stableInfo.replaceAllUsesStableStorage(9, il::core::Value::constInt(17)), 2u);
+    EXPECT_EQ(stableInfo.useCount(9), 0u);
+    EXPECT_EQ(instructions[1].operands[0].kind, il::core::Value::Kind::ConstInt);
+    EXPECT_EQ(instructions[1].operands[0].i64, 17);
+    EXPECT_EQ(instructions[3].operands[0].kind, il::core::Value::Kind::ConstInt);
+    EXPECT_EQ(instructions[3].operands[0].i64, 17);
 }
 
 int main(int argc, char **argv) {

@@ -53,6 +53,11 @@ struct ParserState {
     std::size_t totalBlocks = 0;
     std::size_t totalInstructions = 0;
 
+    /// @brief Module declaration indexes used for constant-time collision checks.
+    std::unordered_set<std::string> functionNames;
+    std::unordered_set<std::string> externNames;
+    std::unordered_set<std::string> globalNames;
+
     /// @brief Source location tracked via `.loc` directives.
     il::support::SourceLoc curLoc{};
 

@@ -29,6 +29,7 @@ struct ParserLimits {
     std::size_t maxBlocks{1'000'000};
     std::size_t maxInstructions{10'000'000};
     std::size_t maxValuesPerInstruction{65'535};
+    std::size_t maxTempsPerFunction{10'000'000};
 };
 
 } // namespace il::io

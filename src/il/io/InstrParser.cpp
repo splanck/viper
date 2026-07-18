@@ -467,6 +467,10 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
             }
             in.result = it->second;
         } else {
+            if (static_cast<std::size_t>(st.nextTemp) >= st.limits.maxTempsPerFunction) {
+                return Expected<void>{il::io::makeLineErrorDiag(
+                    in.loc, st.lineNo, "resource limit exceeded: function temporaries")};
+            }
             auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
             if (!inserted) {
                 std::ostringstream oss;

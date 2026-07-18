@@ -38,6 +38,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <queue>
 #include <stdexcept>
 #include <string_view>
 #include <unordered_map>
@@ -76,6 +77,56 @@ static bool isDeadOverflowOp(const il::core::Instr &instr) {
             return !il::transform::detail::subOverflows(lhs, rhs, result);
         case Opcode::IMulOvf:
             return !il::transform::detail::mulOverflows(lhs, rhs, result);
+        default:
+            return false;
+    }
+}
+
+static bool isUnconditionallyRemovableValueOp(il::core::Opcode op) {
+    using il::core::Opcode;
+    switch (op) {
+        case Opcode::Add:
+        case Opcode::Sub:
+        case Opcode::Mul:
+        case Opcode::And:
+        case Opcode::Or:
+        case Opcode::Xor:
+        case Opcode::Shl:
+        case Opcode::LShr:
+        case Opcode::AShr:
+        case Opcode::FAdd:
+        case Opcode::FSub:
+        case Opcode::FMul:
+        case Opcode::FDiv:
+        case Opcode::ICmpEq:
+        case Opcode::ICmpNe:
+        case Opcode::SCmpLT:
+        case Opcode::SCmpLE:
+        case Opcode::SCmpGT:
+        case Opcode::SCmpGE:
+        case Opcode::UCmpLT:
+        case Opcode::UCmpLE:
+        case Opcode::UCmpGT:
+        case Opcode::UCmpGE:
+        case Opcode::FCmpEQ:
+        case Opcode::FCmpNE:
+        case Opcode::FCmpLT:
+        case Opcode::FCmpLE:
+        case Opcode::FCmpGT:
+        case Opcode::FCmpGE:
+        case Opcode::FCmpOrd:
+        case Opcode::FCmpUno:
+        case Opcode::Sitofp:
+        case Opcode::CastSiToFp:
+        case Opcode::CastUiToFp:
+        case Opcode::Zext1:
+        case Opcode::Trunc1:
+        case Opcode::Select:
+        case Opcode::GAddr:
+        case Opcode::AddrOf:
+        case Opcode::ConstF64:
+        case Opcode::ConstNull:
+            return true;
         default:
             return false;
     }
@@ -145,6 +196,24 @@ struct UseCounts {
         if (id >= dense.size())
             dense.resize(static_cast<size_t>(id) + 1, 0);
         ++dense[id];
+    }
+
+
+    /// @brief Remove one use and return the updated count.
+    size_t decrement(unsigned id) {
+        if (sparseMode) {
+            auto it = sparse.find(id);
+            if (it == sparse.end() || it->second == 0)
+                return 0;
+            if (--it->second == 0) {
+                sparse.erase(it);
+                return 0;
+            }
+            return it->second;
+        }
+        if (id >= dense.size() || dense[id] == 0)
+            return 0;
+        return --dense[id];
     }
 };
 } // namespace
@@ -339,28 +408,31 @@ void dce(Module &M) {
                     }
                 }
 
-            // Remove dead loads/stores/allocas. Repeat until no instruction deletion
-            // creates new dead producers.
+            // Prove removals against one stable function snapshot. Deferring
+            // erasure keeps the shared definition index valid and permits one
+            // linear compaction per block.
+            const LoadSafetyContext loadSafety(F);
+            std::unordered_map<BasicBlock *, std::vector<std::size_t>> eraseByBlock;
+            eraseByBlock.reserve(F.blocks.size());
             for (auto &B : F.blocks) {
-                for (std::size_t i = 0; i < B.instructions.size();) {
+                auto &toErase = eraseByBlock[&B];
+                for (std::size_t i = 0; i < B.instructions.size(); ++i) {
                     Instr &I = B.instructions[i];
                     if (I.op == Opcode::Load && I.result && uses[*I.result] == 0 &&
-                        isLoadKnownNonTrapping(F, I)) {
+                        isLoadKnownNonTrapping(loadSafety, I)) {
                         if (traceEnabled())
                             std::cerr << "[dce] removing dead load %" << *I.result << " in "
                                       << F.name << ":" << B.label << "\n";
-                        B.instructions.erase(B.instructions.begin() + i);
-                        removedInstruction = true;
+                        toErase.push_back(i);
                         continue;
                     }
                     if (I.op == Opcode::Store && !I.operands.empty() &&
                         targetsOnlyUnobservedAllocaRoots(I.operands[0]) &&
-                        isStoreKnownNonTrapping(F, I)) {
+                        isStoreKnownNonTrapping(loadSafety, I)) {
                         if (traceEnabled())
                             std::cerr << "[dce] removing dead store to %" << I.operands[0].id
                                       << " in " << F.name << ":" << B.label << "\n";
-                        B.instructions.erase(B.instructions.begin() + i);
-                        removedInstruction = true;
+                        toErase.push_back(i);
                         continue;
                     }
                     if (I.op == Opcode::Alloca && I.result &&
@@ -370,8 +442,7 @@ void dce(Module &M) {
                         if (traceEnabled())
                             std::cerr << "[dce] removing dead alloca %" << *I.result << " in "
                                       << F.name << ":" << B.label << "\n";
-                        B.instructions.erase(B.instructions.begin() + i);
-                        removedInstruction = true;
+                        toErase.push_back(i);
                         continue;
                     }
                     if (I.op == Opcode::Call && I.result && uses[*I.result] == 0) {
@@ -380,8 +451,7 @@ void dce(Module &M) {
                             if (traceEnabled())
                                 std::cerr << "[dce] removing pure call %" << *I.result << " = "
                                           << I.callee << " in " << F.name << ":" << B.label << "\n";
-                            B.instructions.erase(B.instructions.begin() + i);
-                            removedInstruction = true;
+                            toErase.push_back(i);
                             continue;
                         }
                     }
@@ -390,12 +460,93 @@ void dce(Module &M) {
                             std::cerr << "[dce] removing dead overflow op %" << *I.result << " = "
                                       << toString(I.op) << " in " << F.name << ":" << B.label
                                       << "\n";
-                        B.instructions.erase(B.instructions.begin() + i);
-                        removedInstruction = true;
+                        toErase.push_back(i);
                         continue;
                     }
-                    ++i;
+                    if (I.result && uses[*I.result] == 0 &&
+                        isUnconditionallyRemovableValueOp(I.op)) {
+                        toErase.push_back(i);
+                        continue;
+                    }
                 }
+            }
+
+            // Propagate deadness through producer chains without rescanning the
+            // whole function once per link. Memory-derived decisions remain in
+            // the outer fixed point because removing a load can change alloca
+            // observability, but ordinary SSA chains collapse in one worklist.
+            struct InstrLocation {
+                BasicBlock *block;
+                std::size_t index;
+                Instr *instr;
+            };
+            std::unordered_map<unsigned, InstrLocation> definitions;
+            for (auto &B : F.blocks) {
+                for (std::size_t i = 0; i < B.instructions.size(); ++i) {
+                    Instr &instr = B.instructions[i];
+                    if (instr.result)
+                        definitions.emplace(*instr.result, InstrLocation{&B, i, &instr});
+                }
+            }
+            auto newlyDead = [&](Instr &instr) {
+                if (!instr.result || uses[*instr.result] != 0)
+                    return false;
+                if (instr.op == Opcode::Load)
+                    return isLoadKnownNonTrapping(loadSafety, instr);
+                if (instr.op == Opcode::Alloca) {
+                    auto observed = allocaObserved.find(*instr.result);
+                    return observed != allocaObserved.end() && !observed->second &&
+                           isAllocaKnownNonTrapping(instr);
+                }
+                if (instr.op == Opcode::Call)
+                    return classifyCallEffects(instr, &M).canEliminateIfUnused();
+                return isDeadOverflowOp(instr) || isUnconditionallyRemovableValueOp(instr.op);
+            };
+
+            std::queue<Instr *> deadWorklist;
+            std::unordered_set<Instr *> marked;
+            for (auto &[block, indices] : eraseByBlock) {
+                for (std::size_t index : indices) {
+                    Instr *instr = &block->instructions[index];
+                    if (marked.insert(instr).second)
+                        deadWorklist.push(instr);
+                }
+            }
+            while (!deadWorklist.empty()) {
+                Instr *dead = deadWorklist.front();
+                deadWorklist.pop();
+                auto releaseOperand = [&](const Value &operand) {
+                    if (operand.kind != Value::Kind::Temp || uses.decrement(operand.id) != 0)
+                        return;
+                    auto def = definitions.find(operand.id);
+                    if (def == definitions.end() || marked.contains(def->second.instr) ||
+                        !newlyDead(*def->second.instr)) {
+                        return;
+                    }
+                    marked.insert(def->second.instr);
+                    eraseByBlock[def->second.block].push_back(def->second.index);
+                    deadWorklist.push(def->second.instr);
+                };
+                for (const auto &operand : dead->operands)
+                    releaseOperand(operand);
+                for (const auto &args : dead->brArgs)
+                    for (const auto &operand : args)
+                        releaseOperand(operand);
+            }
+            for (auto &[block, indices] : eraseByBlock) {
+                if (indices.empty())
+                    continue;
+                removedInstruction = true;
+                std::vector<bool> remove(block->instructions.size(), false);
+                for (std::size_t index : indices)
+                    remove[index] = true;
+                std::vector<Instr> compacted;
+                compacted.reserve(block->instructions.size() - indices.size());
+                for (std::size_t index = 0; index < block->instructions.size(); ++index) {
+                    if (!remove[index])
+                        compacted.push_back(std::move(block->instructions[index]));
+                }
+                block->instructions = std::move(compacted);
             }
         } while (removedInstruction);
         uses = countUses(F);

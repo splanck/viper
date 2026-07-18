@@ -69,6 +69,10 @@ struct Function {
     /// Calling convention used by calls to this function.
     CallingConv callingConv = CallingConv::Default;
 
+    /// True when the linker must invoke this function before the entry point.
+    /// Serialized as the `[module_init]` function attribute.
+    bool moduleInitializer = false;
+
     /// Basic blocks comprising the function body.
     /// @ownership Function owns all blocks; each block's parent is this function.
     /// @constraint Contains at least one block; labels unique within the function.

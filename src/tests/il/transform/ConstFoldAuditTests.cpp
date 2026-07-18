@@ -15,7 +15,7 @@
 // Key invariants:
 //   - Folding must never change observable behavior.
 //   - Overflow/trap-producing operations must NOT be folded.
-//   - Non-finite float results must NOT be folded.
+//   - Defined IEEE non-finite and signed-zero results are folded exactly.
 // Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
@@ -93,6 +93,10 @@ static std::string optimizeNoVerify(Module &module) {
     std::ostringstream ss;
     il::io::Serializer::write(module, ss);
     return ss.str();
+}
+
+static void constFoldOnly(Module &module) {
+    il::transform::constFold(module);
 }
 
 /// Check that the ret instruction's first operand is a constant integer.
@@ -225,6 +229,23 @@ TEST(ConstFoldAudit, SDivFolded) {
 
     optimizeNoVerify(module);
     EXPECT_TRUE(retIsConstInt(entry, 3));
+}
+
+TEST(ConstFoldAudit, StandaloneFolderCoversPlainIntegerArithmetic) {
+    Module module;
+    il::build::IRBuilder builder(module);
+    Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+    unsigned addId = builder.reserveTempId();
+    emitBinOp(entry, Opcode::Add, Value::constInt(6), Value::constInt(4), addId);
+    unsigned divId = builder.reserveTempId();
+    emitBinOp(entry, Opcode::SDiv, Value::temp(addId), Value::constInt(2), divId);
+    builder.emitRet(Value::temp(divId), {});
+
+    constFoldOnly(module);
+    EXPECT_TRUE(retIsConstInt(entry, 5));
 }
 
 TEST(ConstFoldAudit, UDivFolded) {
@@ -376,7 +397,7 @@ TEST(ConstFoldAudit, FloatMul) {
     EXPECT_TRUE(retIsConstFloat(entry, 6.0));
 }
 
-TEST(ConstFoldAudit, FloatDivByZeroNotFolded) {
+TEST(ConstFoldAudit, FloatDivByZeroFoldsToInfinity) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
@@ -394,8 +415,66 @@ TEST(ConstFoldAudit, FloatDivByZeroNotFolded) {
     builder.emitRet(Value::temp(id), {});
 
     optimizeAndSerialize(module);
-    // Div-by-zero producing inf: must NOT be folded (ISSUE-3 fix)
-    EXPECT_TRUE(hasInstr(entry, Opcode::FDiv));
+    const Instr &ret = entry.instructions.back();
+    ASSERT_EQ(ret.op, Opcode::Ret);
+    ASSERT_EQ(ret.operands.size(), 1u);
+    ASSERT_EQ(ret.operands.front().kind, Value::Kind::ConstFloat);
+    EXPECT_TRUE(std::isinf(ret.operands.front().f64));
+    EXPECT_FALSE(std::signbit(ret.operands.front().f64));
+}
+
+TEST(ConstFoldAudit, StandaloneFolderPreservesNaNAndSignedZero) {
+    Module module;
+    il::build::IRBuilder builder(module);
+    Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+
+    unsigned nanId = builder.reserveTempId();
+    emitBinOp(entry,
+              Opcode::FDiv,
+              Value::constFloat(0.0),
+              Value::constFloat(0.0),
+              nanId,
+              Type(Type::Kind::F64));
+    unsigned zeroId = builder.reserveTempId();
+    emitBinOp(entry,
+              Opcode::FMul,
+              Value::constFloat(-0.0),
+              Value::constFloat(2.0),
+              zeroId,
+              Type(Type::Kind::F64));
+    builder.emitRet(Value::temp(zeroId), {});
+
+    constFoldOnly(module);
+    const Instr &ret = entry.instructions.back();
+    ASSERT_EQ(ret.operands.size(), 1u);
+    ASSERT_EQ(ret.operands.front().kind, Value::Kind::ConstFloat);
+    EXPECT_EQ(ret.operands.front().f64, 0.0);
+    EXPECT_TRUE(std::signbit(ret.operands.front().f64));
+    EXPECT_FALSE(hasInstr(entry, Opcode::FDiv));
+    EXPECT_FALSE(hasInstr(entry, Opcode::FMul));
+}
+
+TEST(ConstFoldAudit, StandaloneFolderHandlesOrderedNaNComparison) {
+    Module module;
+    il::build::IRBuilder builder(module);
+    Function &fn = builder.startFunction("test", Type(Type::Kind::I1), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+    unsigned id = builder.reserveTempId();
+    emitBinOp(entry,
+              Opcode::FCmpOrd,
+              Value::constFloat(std::numeric_limits<double>::quiet_NaN()),
+              Value::constFloat(1.0),
+              id,
+              Type(Type::Kind::I1));
+    builder.emitRet(Value::temp(id), {});
+
+    constFoldOnly(module);
+    EXPECT_TRUE(retIsConstBool(entry, false));
 }
 
 // ---------------------------------------------------------------------------
@@ -828,6 +907,32 @@ TEST(ConstFoldAudit, RuntimeSqrtFolded) {
 
     optimizeAndSerialize(module);
     EXPECT_TRUE(retIsConstFloat(entry, 2.0));
+}
+
+TEST(ConstFoldAudit, RuntimeNonExactSqrtIsNotHostFolded) {
+    Module module;
+    il::build::IRBuilder builder(module);
+    Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
+    builder.createBlock(fn, "entry");
+    BasicBlock &entry = fn.blocks[0];
+    builder.setInsertPoint(entry);
+    unsigned id = builder.reserveTempId();
+    Instr instr;
+    instr.op = Opcode::Call;
+    instr.callee = "rt_sqrt";
+    instr.result = id;
+    instr.type = Type(Type::Kind::F64);
+    instr.operands = {Value::constFloat(2.0)};
+    entry.instructions.push_back(instr);
+    builder.emitRet(Value::temp(id), {});
+    Extern ext;
+    ext.name = "rt_sqrt";
+    ext.retType = Type(Type::Kind::F64);
+    ext.params = {Type(Type::Kind::F64)};
+    module.externs.push_back(ext);
+
+    il::transform::constFold(module);
+    EXPECT_EQ(entry.instructions.front().op, Opcode::Call);
 }
 
 TEST(ConstFoldAudit, RuntimeFloorFolded) {

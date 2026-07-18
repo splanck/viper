@@ -64,6 +64,15 @@ class UseDefInfo {
     /// @return Number of uses replaced.
     std::size_t replaceAllUses(unsigned tempId, const ::il::core::Value &replacement);
 
+    /// @brief Replace uses through cached operand pointers while instruction
+    ///        storage is guaranteed not to move.
+    /// @details This is the linear-time bulk-rewrite path for transforms that
+    ///          defer every instruction insertion and erasure until all value
+    ///          replacements are complete. Calling it after storage mutation is
+    ///          invalid; general mutable passes must use replaceAllUses().
+    std::size_t replaceAllUsesStableStorage(unsigned tempId,
+                                            const ::il::core::Value &replacement);
+
     /// @brief Check if a temporary has any uses.
     /// @param tempId Temporary identifier to check.
     /// @return True if the temporary has at least one use.
@@ -80,6 +89,9 @@ class UseDefInfo {
 
     /// @brief Map from temporary ID to observed use count.
     std::unordered_map<unsigned, std::size_t> useCounts_;
+
+    /// @brief Direct operand locations, valid until instruction storage moves.
+    std::unordered_map<unsigned, std::vector<::il::core::Value *>> useSites_;
 
     /// @brief Scan a function and populate the use-count map.
     void build(::il::core::Function &F);

@@ -279,7 +279,7 @@ Module buildTextuallyUnsafeCrossBlockCSE() {
     }
 
     // "late" dominates "update" in the CFG, but appears later textually.
-    // EarlyCSE must not rewrite update's add to use late's temp.
+    // Dominance, rather than module block order, makes its result available.
     F.blocks.push_back(std::move(entry));
     F.blocks.push_back(std::move(update));
     F.blocks.push_back(std::move(late));
@@ -401,7 +401,7 @@ TEST(EarlyCSEDomTree, SiblingBranchExpressionsAreNotEliminated) {
     EXPECT_EQ(addsAfter, 2u);
 }
 
-TEST(EarlyCSEDomTree, TextuallyLaterDominatorDoesNotCreateUseBeforeDef) {
+TEST(EarlyCSEDomTree, TextuallyLaterDominatorIsAvailable) {
     Module M = buildTextuallyUnsafeCrossBlockCSE();
     ASSERT_EQ(M.functions.size(), 1u);
     Function &fn = M.functions.front();
@@ -411,17 +411,18 @@ TEST(EarlyCSEDomTree, TextuallyLaterDominatorDoesNotCreateUseBeforeDef) {
 
     il::transform::runEarlyCSE(M, fn);
 
-    // The update block must keep its own add because reusing the later block's
-    // temp would violate textual def-before-use.
+    // SSA def-before-use across blocks is defined by dominance, not textual
+    // block order, so the dominated duplicate is eliminated.
     unsigned addsAfter = countOpcode(fn, Opcode::IAddOvf);
-    EXPECT_EQ(addsAfter, 2u);
+    EXPECT_EQ(addsAfter, 1u);
 
     const BasicBlock &updateBlock = fn.blocks[1];
-    ASSERT_EQ(updateBlock.instructions.size(), 2u);
-    ASSERT_TRUE(updateBlock.instructions[0].result.has_value());
-    EXPECT_EQ(updateBlock.instructions[0].op, Opcode::IAddOvf);
-    EXPECT_EQ(updateBlock.instructions[1].op, Opcode::Ret);
-    EXPECT_EQ(updateBlock.instructions[1].operands[0].id, *updateBlock.instructions[0].result);
+    ASSERT_EQ(updateBlock.instructions.size(), 1u);
+    EXPECT_EQ(updateBlock.instructions[0].op, Opcode::Ret);
+    const BasicBlock &lateBlock = fn.blocks[2];
+    ASSERT_TRUE(lateBlock.instructions[0].result.has_value());
+    EXPECT_EQ(updateBlock.instructions[0].operands[0].id,
+              *lateBlock.instructions[0].result);
 }
 
 TEST(EarlyCSEDomTree, RepeatedSameBlockEliminationKeepsLaterUsesCorrect) {

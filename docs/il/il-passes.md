@@ -264,7 +264,7 @@ Propagates constants through the IL using sparse conditional evaluation:
 
 - Identifies executable regions of the CFG and evaluates instructions whose operands become constant
 - Folds conditional branches with known conditions; rewrites block parameters (SSA phi nodes)
-- Float division by zero is not folded, keeping non-finite results out of propagated constants
+- Floating arithmetic propagates the IL's defined IEEE-754 infinities, NaNs, and signed zeros
 - Trapping operations (SDivChk0, UDivChk0) are never folded when the divisor is zero to preserve trap semantics
 
 ## DSE (Dead Store Elimination)

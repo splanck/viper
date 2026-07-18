@@ -82,6 +82,8 @@ size_t ValueKeyHash::operator()(const ValueKey &k) const noexcept {
 /// @return True if operand order does not affect the result; false otherwise.
 bool isCommutativeCSE(Opcode op) noexcept {
     switch (op) {
+        case Opcode::Add:
+        case Opcode::Mul:
         case Opcode::IAddOvf:
         case Opcode::IMulOvf:
         case Opcode::And:
@@ -98,15 +100,17 @@ bool isCommutativeCSE(Opcode op) noexcept {
 }
 
 /// @brief Determine whether an opcode is safe to use in expression CSE/GVN.
-/// @details The whitelist includes operations with no side effects beyond
-///          possible trapping. Plain signed Add/Sub/Mul are intentionally
-///          excluded because their overflow semantics are not represented in
-///          the value key; frontends should use checked or bitwise forms when
-///          they need optimisable wrap-independent arithmetic.
+/// @details The whitelist includes deterministic value operations with no side
+///          effects beyond possible trapping. Reusing an identical earlier
+///          operation is valid even for a trapping opcode: reaching the later
+///          operation proves the dominating instance completed successfully.
 /// @param op Opcode to test.
 /// @return True if the opcode is safe for value-based CSE; false otherwise.
 bool isSafeCSEOpcode(Opcode op) noexcept {
     switch (op) {
+        case Opcode::Add:
+        case Opcode::Sub:
+        case Opcode::Mul:
         case Opcode::IAddOvf:
         case Opcode::ISubOvf:
         case Opcode::IMulOvf:
@@ -157,25 +161,26 @@ static std::vector<Value> normaliseOperands(const Instr &instr) {
     if (!isCommutativeCSE(instr.op))
         return ops;
 
-    auto rank = [](const Value &v) -> std::tuple<int, unsigned long long, std::string> {
+    auto rank = [](const Value &v)
+        -> std::tuple<int, bool, unsigned long long, std::string> {
         switch (v.kind) {
             case Value::Kind::Temp:
-                return {3, v.id, {}};
+                return {3, false, v.id, {}};
             case Value::Kind::ConstInt:
-                return {2, static_cast<unsigned long long>(v.i64 ^ (v.isBool ? 1u : 0u)), {}};
+                return {2, v.isBool, static_cast<unsigned long long>(v.i64), {}};
             case Value::Kind::ConstFloat: {
                 unsigned long long bits = 0;
                 static_assert(sizeof(bits) == sizeof(v.f64));
                 std::memcpy(&bits, &v.f64, sizeof(bits));
-                return {1, bits, {}};
+                return {1, false, bits, {}};
             }
             case Value::Kind::ConstStr:
             case Value::Kind::GlobalAddr:
-                return {0, 0ULL, v.str};
+                return {0, false, 0ULL, v.str};
             case Value::Kind::NullPtr:
-                return {0, 0ULL, std::string("null")};
+                return {0, false, 0ULL, std::string("null")};
         }
-        return {0, 0ULL, std::string{}};
+        return {0, false, 0ULL, std::string{}};
     };
 
     auto r0 = rank(ops[0]);

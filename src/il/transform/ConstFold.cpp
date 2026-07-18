@@ -31,12 +31,14 @@
 #include "il/core/Value.hpp"
 #include "il/transform/OverflowArithmetic.hpp"
 #include "il/utils/UseDefInfo.hpp"
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 
 #include <limits>
 #include <optional>
+#include <unordered_map>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -168,6 +170,75 @@ static double roundHalfEven(double value) {
     return rounded;
 }
 
+/// @brief Evaluate a small integral power using only sequenced IEEE
+/// multiplications, avoiding host-libm variation in optimized IL.
+static bool deterministicIntegralPower(double base, long long exponent, double &out) {
+    if (exponent < -308 || exponent > 308)
+        return false;
+    const bool reciprocal = exponent < 0;
+    unsigned long long remaining = reciprocal
+                                       ? static_cast<unsigned long long>(-(exponent + 1)) + 1ULL
+                                       : static_cast<unsigned long long>(exponent);
+    double factor = base;
+    double result = 1.0;
+    while (remaining != 0) {
+        if ((remaining & 1ULL) != 0)
+            result *= factor;
+        remaining >>= 1ULL;
+        if (remaining != 0)
+            factor *= factor;
+    }
+    if (reciprocal)
+        result = 1.0 / result;
+    if (!std::isfinite(result))
+        return false;
+    out = result;
+    return true;
+}
+
+/// @brief Fold square roots only when integer arithmetic proves an exact root.
+static bool exactIntegerSquareRoot(double value, double &out) {
+    constexpr double kMaxExactInteger = 9007199254740992.0; // 2^53
+    if (!std::isfinite(value) || value < 0.0 || value > kMaxExactInteger ||
+        value != std::trunc(value)) {
+        return false;
+    }
+    const auto integer = static_cast<unsigned long long>(value);
+    unsigned long long lo = 0;
+    unsigned long long hi = std::min<unsigned long long>(integer, 94906266ULL) + 1ULL;
+    while (lo + 1 < hi) {
+        const unsigned long long mid = lo + (hi - lo) / 2;
+        if (mid != 0 && mid > integer / mid)
+            hi = mid;
+        else
+            lo = mid;
+    }
+    if (lo * lo != integer)
+        return false;
+    out = static_cast<double>(lo);
+    return true;
+}
+
+static double deterministicMin(double lhs, double rhs) {
+    if (std::isnan(lhs))
+        return rhs;
+    if (std::isnan(rhs))
+        return lhs;
+    if (lhs == rhs && lhs == 0.0)
+        return std::signbit(lhs) || std::signbit(rhs) ? -0.0 : 0.0;
+    return lhs < rhs ? lhs : rhs;
+}
+
+static double deterministicMax(double lhs, double rhs) {
+    if (std::isnan(lhs))
+        return rhs;
+    if (std::isnan(rhs))
+        return lhs;
+    if (lhs == rhs && lhs == 0.0)
+        return std::signbit(lhs) && std::signbit(rhs) ? -0.0 : 0.0;
+    return lhs > rhs ? lhs : rhs;
+}
+
 /// @brief Perform checked addition mirroring the `.ovf` opcode semantics.
 /// @details Uses compiler builtins to detect overflow; when detected the helper
 ///          returns @c std::nullopt so folding can be skipped and runtime traps
@@ -275,8 +346,9 @@ static bool foldCall(const Instr &in, Value &out) {
         return false;
     }
     if (c == "rt_sqrt" && in.operands.size() == 1) {
-        if (getConstFloat(in.operands[0], a) && a >= 0.0) {
-            out = Value::constFloat(std::sqrt(a));
+        double root = 0.0;
+        if (getConstFloat(in.operands[0], a) && exactIntegerSquareRoot(a, root)) {
+            out = Value::constFloat(root);
             return true;
         }
         return false;
@@ -291,8 +363,8 @@ static bool foldCall(const Instr &in, Value &out) {
                 const double truncated = std::trunc(expd);
                 if (std::fabs(truncated) <= 16.0) {
                     const long long exp = static_cast<long long>(truncated);
-                    const double value = std::pow(base, static_cast<double>(exp));
-                    if (std::isfinite(value)) {
+                    double value = 0.0;
+                    if (deterministicIntegralPower(base, exp, value)) {
                         out = Value::constFloat(value);
                         return true;
                     }
@@ -318,11 +390,9 @@ static bool foldCall(const Instr &in, Value &out) {
                 out = Value::constFloat(value);
                 return true;
             }
-            const double factor = std::pow(10.0, digitsAsDouble);
-            if (!std::isfinite(factor) || factor == 0.0) {
-                out = Value::constFloat(value);
-                return true;
-            }
+            double factor = 0.0;
+            if (!deterministicIntegralPower(10.0, digits, factor) || factor == 0.0)
+                return false;
             const double scaled = value * factor;
             if (!std::isfinite(scaled)) {
                 out = Value::constFloat(value);
@@ -396,14 +466,14 @@ static bool foldCall(const Instr &in, Value &out) {
     double b;
     if (c == "rt_min_f64" && in.operands.size() == 2) {
         if (getConstFloat(in.operands[0], a) && getConstFloat(in.operands[1], b)) {
-            out = Value::constFloat(std::fmin(a, b));
+            out = Value::constFloat(deterministicMin(a, b));
             return true;
         }
         return false;
     }
     if (c == "rt_max_f64" && in.operands.size() == 2) {
         if (getConstFloat(in.operands[0], a) && getConstFloat(in.operands[1], b)) {
-            out = Value::constFloat(std::fmax(a, b));
+            out = Value::constFloat(deterministicMax(a, b));
             return true;
         }
         return false;
@@ -495,9 +565,11 @@ void constFold(Module &m) {
         // Build initial use-count info once per function.
         zanna::il::UseDefInfo useInfo(f);
 
+        std::unordered_map<BasicBlock *, std::vector<size_t>> eraseByBlock;
+        eraseByBlock.reserve(f.blocks.size());
+
         for (auto &b : f.blocks) {
-            // Collect indices of instructions to erase (process in reverse later)
-            std::vector<size_t> toErase;
+            auto &toErase = eraseByBlock[&b];
 
             for (size_t i = 0; i < b.instructions.size(); ++i) {
                 Instr &in = b.instructions[i];
@@ -508,7 +580,44 @@ void constFold(Module &m) {
                 if (in.op == Opcode::Call) {
                     folded = foldCall(in, repl);
                 } else if (in.operands.size() == 1) {
-                    if (in.op == Opcode::CastFpToSiRteChk) {
+                    if (in.op == Opcode::CastSiToFp || in.op == Opcode::Sitofp) {
+                        long long operand;
+                        if (isConstInt(in.operands[0], operand)) {
+                            repl = Value::constFloat(static_cast<double>(operand));
+                            folded = true;
+                        }
+                    } else if (in.op == Opcode::CastUiToFp) {
+                        long long operand;
+                        if (isConstInt(in.operands[0], operand)) {
+                            repl = Value::constFloat(
+                                static_cast<double>(static_cast<unsigned long long>(operand)));
+                            folded = true;
+                        }
+                    } else if (in.op == Opcode::Fptosi) {
+                        double operand;
+                        if (getConstFloat(in.operands[0], operand) && std::isfinite(operand)) {
+                            const double truncated = std::trunc(operand);
+                            const double lower =
+                                static_cast<double>(std::numeric_limits<long long>::min());
+                            const double upperExclusive = 9223372036854775808.0;
+                            if (truncated >= lower && truncated < upperExclusive) {
+                                repl = Value::constInt(static_cast<long long>(truncated));
+                                folded = true;
+                            }
+                        }
+                    } else if (in.op == Opcode::Zext1) {
+                        long long operand;
+                        if (isConstInt(in.operands[0], operand)) {
+                            repl = Value::constInt((operand & 1) != 0 ? 1 : 0);
+                            folded = true;
+                        }
+                    } else if (in.op == Opcode::Trunc1) {
+                        long long operand;
+                        if (isConstInt(in.operands[0], operand)) {
+                            repl = Value::constBool((operand & 1) != 0);
+                            folded = true;
+                        }
+                    } else if (in.op == Opcode::CastFpToSiRteChk) {
                         double operand;
                         if (getConstFloat(in.operands[0], operand)) {
                             const auto result =
@@ -534,6 +643,7 @@ void constFold(Module &m) {
                     if (isConstInt(in.operands[0], lhs) && isConstInt(in.operands[1], rhs)) {
                         folded = true;
                         switch (in.op) {
+                            case Opcode::Add:
                             case Opcode::IAddOvf:
                                 if (const auto sum = checkedAdd(lhs, rhs)) {
                                     if (fitsSignedIntegerType(*sum, in.type.kind))
@@ -544,6 +654,7 @@ void constFold(Module &m) {
                                     folded = false;
                                 }
                                 break;
+                            case Opcode::SDiv:
                             case Opcode::SDivChk0:
                                 lhs = normalizeIntegerForType(lhs, in.type.kind);
                                 rhs = normalizeIntegerForType(rhs, in.type.kind);
@@ -554,6 +665,7 @@ void constFold(Module &m) {
                                     folded = false;
                                 }
                                 break;
+                            case Opcode::SRem:
                             case Opcode::SRemChk0:
                                 lhs = normalizeIntegerForType(lhs, in.type.kind);
                                 rhs = normalizeIntegerForType(rhs, in.type.kind);
@@ -564,6 +676,7 @@ void constFold(Module &m) {
                                     folded = false;
                                 }
                                 break;
+                            case Opcode::Sub:
                             case Opcode::ISubOvf:
                                 if (const auto diff = checkedSub(lhs, rhs)) {
                                     if (fitsSignedIntegerType(*diff, in.type.kind))
@@ -574,6 +687,7 @@ void constFold(Module &m) {
                                     folded = false;
                                 }
                                 break;
+                            case Opcode::Mul:
                             case Opcode::IMulOvf:
                                 if (const auto prod = checkedMul(lhs, rhs)) {
                                     if (fitsSignedIntegerType(*prod, in.type.kind))
@@ -660,6 +774,7 @@ void constFold(Module &m) {
                                                         static_cast<unsigned long long>(rhs));
                                 break;
                             // Unsigned division and remainder
+                            case Opcode::UDiv:
                             case Opcode::UDivChk0:
                                 if (normalizeUnsignedForType(static_cast<unsigned long long>(rhs),
                                                              in.type.kind) != 0) {
@@ -673,6 +788,7 @@ void constFold(Module &m) {
                                     folded = false;
                                 }
                                 break;
+                            case Opcode::URem:
                             case Opcode::URemChk0:
                                 if (normalizeUnsignedForType(static_cast<unsigned long long>(rhs),
                                                              in.type.kind) != 0) {
@@ -719,11 +835,7 @@ void constFold(Module &m) {
                                     fres = flhs * frhs;
                                     break;
                                 case Opcode::FDiv:
-                                    // Don't fold division by zero
-                                    if (frhs != 0.0)
-                                        fres = flhs / frhs;
-                                    else
-                                        folded = false;
+                                    fres = flhs / frhs;
                                     break;
                                 // Float comparisons produce boolean (int) results
                                 case Opcode::FCmpEQ:
@@ -744,6 +856,12 @@ void constFold(Module &m) {
                                 case Opcode::FCmpGE:
                                     repl = Value::constBool(flhs >= frhs);
                                     break;
+                                case Opcode::FCmpOrd:
+                                    repl = Value::constBool(!std::isnan(flhs) && !std::isnan(frhs));
+                                    break;
+                                case Opcode::FCmpUno:
+                                    repl = Value::constBool(std::isnan(flhs) || std::isnan(frhs));
+                                    break;
                                 default:
                                     folded = false;
                                     break;
@@ -751,25 +869,36 @@ void constFold(Module &m) {
                             // For arithmetic operations, produce float result
                             if (folded && in.op != Opcode::FCmpEQ && in.op != Opcode::FCmpNE &&
                                 in.op != Opcode::FCmpLT && in.op != Opcode::FCmpLE &&
-                                in.op != Opcode::FCmpGT && in.op != Opcode::FCmpGE) {
-                                if (std::isfinite(fres))
-                                    repl = Value::constFloat(fres);
-                                else
-                                    folded = false; // Don't fold to inf/nan
+                                in.op != Opcode::FCmpGT && in.op != Opcode::FCmpGE &&
+                                in.op != Opcode::FCmpOrd && in.op != Opcode::FCmpUno) {
+                                repl = Value::constFloat(fres);
                             }
                         }
                     }
                 }
                 if (folded) {
-                    useInfo.replaceAllUses(*in.result, repl);
+                    useInfo.replaceAllUsesStableStorage(*in.result, repl);
                     toErase.push_back(i);
                 }
             }
+        }
 
-            // Erase folded instructions in reverse order to preserve indices
-            for (auto it = toErase.rbegin(); it != toErase.rend(); ++it) {
-                b.instructions.erase(b.instructions.begin() + static_cast<long>(*it));
+        // Replacements above use cached operand locations, so instruction
+        // storage must remain fixed until every fold has been propagated.
+        // Compact each block once after that stable-storage phase.
+        for (auto &[block, indices] : eraseByBlock) {
+            if (indices.empty())
+                continue;
+            std::vector<bool> remove(block->instructions.size(), false);
+            for (size_t index : indices)
+                remove[index] = true;
+            std::vector<Instr> compacted;
+            compacted.reserve(block->instructions.size() - indices.size());
+            for (size_t index = 0; index < block->instructions.size(); ++index) {
+                if (!remove[index])
+                    compacted.push_back(std::move(block->instructions[index]));
             }
+            block->instructions = std::move(compacted);
         }
     }
     m.internOwnedIdentifiers();

@@ -590,6 +590,14 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     if (auto result = validateFunctionParams(fn); !result)
         return result;
 
+    if (fn.moduleInitializer &&
+        (fn.linkage == Linkage::Import || fn.isVarArg || !fn.params.empty() ||
+         fn.retType.kind != Type::Kind::Void)) {
+        return Expected<void>{makeError(
+            {}, formatFunctionDiag(fn,
+                                   "module initializer must be a non-import () -> void function"))};
+    }
+
     if (auto it = externs_.find(fn.name); it != externs_.end()) {
         const Extern *ext = it->second;
         if (!signaturesMatch(*ext, fn))

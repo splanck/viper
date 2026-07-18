@@ -69,6 +69,14 @@ class StringInterner {
     /// @return String view for a valid symbol, or std::nullopt for an invalid one.
     [[nodiscard]] std::optional<std::string_view> lookupOptional(Symbol sym) const;
 
+    /// @brief Return the number of currently interned symbols.
+    [[nodiscard]] size_t size() const;
+
+    /// @brief Remove symbols appended after a transaction checkpoint.
+    /// @details Existing symbol ids remain stable because only a storage suffix
+    /// is removed. Intended for parser rollback.
+    void truncate(size_t symbolCount);
+
     /// @brief Copy constructor.
     /// @details Deep-copies all interned strings and rebuilds the internal map
     ///          so that string_view keys point into the new storage.

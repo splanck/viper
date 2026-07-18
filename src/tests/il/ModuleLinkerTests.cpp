@@ -155,6 +155,7 @@ static const Function *findFunction(const Module &m, const std::string &name) {
 
 TEST(ModuleLinker, SingleModulePassthrough) {
     Module m;
+    m.target = "x86_64-unknown-linux-gnu";
     m.functions.push_back(makeI64Func("main", Linkage::Internal));
 
     std::vector<Module> modules;
@@ -163,6 +164,150 @@ TEST(ModuleLinker, SingleModulePassthrough) {
     auto result = il::link::linkModules(std::move(modules));
     ASSERT_TRUE(result.succeeded());
     EXPECT_TRUE(hasFunction(result.module, "main"));
+    ASSERT_TRUE(result.module.target.has_value());
+    EXPECT_EQ(*result.module.target, "x86_64-unknown-linux-gnu");
+}
+
+TEST(ModuleLinker, RejectsMixedVersionsAndTargets) {
+    Module entry;
+    entry.version = "0.3.0";
+    entry.target = "x86_64-unknown-linux-gnu";
+    entry.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+
+    Module other;
+    other.version = "0.2.0";
+    other.target = entry.target;
+    auto versionResult = il::link::linkModules({entry, other});
+    EXPECT_FALSE(versionResult.succeeded());
+    ASSERT_FALSE(versionResult.errors.empty());
+    EXPECT_CONTAINS(versionResult.errors.front(), "IL version mismatch");
+
+    other.version = entry.version;
+    other.target = "aarch64-apple-darwin";
+    auto targetResult = il::link::linkModules({entry, other});
+    EXPECT_FALSE(targetResult.succeeded());
+    ASSERT_FALSE(targetResult.errors.empty());
+    EXPECT_CONTAINS(targetResult.errors.front(), "target triple mismatch");
+}
+
+TEST(ModuleLinker, EntryGlobalWinsRegardlessOfInputOrder) {
+    Module library;
+    library.globals.push_back(Global{"state", Type(Type::Kind::I64), "1"});
+
+    Module entry;
+    entry.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    entry.globals.push_back(Global{"state", Type(Type::Kind::I64), "2"});
+
+    auto result = il::link::linkModules({library, entry});
+    ASSERT_TRUE(result.succeeded());
+    ASSERT_EQ(result.module.globals.size(), 2u);
+    EXPECT_TRUE(std::any_of(result.module.globals.begin(), result.module.globals.end(),
+                            [](const Global &g) { return g.name == "state" && g.init == "2"; }));
+    EXPECT_TRUE(std::any_of(result.module.globals.begin(), result.module.globals.end(),
+                            [](const Global &g) { return g.name != "state" && g.init == "1"; }));
+}
+
+TEST(ModuleLinker, RejectsInvalidInitializerSignature) {
+    Module entry;
+    entry.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    Module library;
+    library.functions.push_back(makeI64Func("library$init", Linkage::Internal, 1));
+    library.functions.back().moduleInitializer = true;
+
+    auto result = il::link::linkModules({entry, library});
+    EXPECT_FALSE(result.succeeded());
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_CONTAINS(result.errors.front(), "invalid module initializer signature");
+}
+
+TEST(ModuleLinker, DoesNotGuessInitializersFromFunctionNames) {
+    Module entry;
+    entry.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    Module library;
+    library.functions.push_back(makeVoidFunc("ordinary$init", Linkage::Internal));
+
+    auto result = il::link::linkModules({std::move(entry), std::move(library)});
+    ASSERT_TRUE(result.succeeded());
+    const Function *main = findFunction(result.module, "main");
+    ASSERT_NE(main, nullptr);
+    ASSERT_FALSE(main->blocks.empty());
+    EXPECT_EQ(main->blocks.front().instructions.front().op, Opcode::Ret);
+}
+
+TEST(ModuleLinker, ResolvesGlobalImportsAndDropsDeclarationStubs) {
+    Module entry;
+    entry.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    Global imported;
+    imported.name = "shared";
+    imported.type = Type(Type::Kind::I64);
+    imported.linkage = Linkage::Import;
+    entry.globals.push_back(imported);
+
+    Module library;
+    Global exported;
+    exported.name = "shared";
+    exported.type = Type(Type::Kind::I64);
+    exported.linkage = Linkage::Export;
+    exported.init = "42";
+    exported.hasInitializer = true;
+    library.globals.push_back(exported);
+
+    auto result = il::link::linkModules({std::move(entry), std::move(library)});
+    ASSERT_TRUE(result.succeeded());
+    ASSERT_EQ(result.module.globals.size(), 1u);
+    EXPECT_EQ(result.module.globals.front().name, "shared");
+    EXPECT_EQ(result.module.globals.front().init, "42");
+    EXPECT_EQ(result.module.globals.front().linkage, Linkage::Export);
+}
+
+TEST(ModuleLinker, RejectsUnresolvedAndMismatchedGlobalImports) {
+    Module unresolvedEntry;
+    unresolvedEntry.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    Global missing;
+    missing.name = "missing";
+    missing.type = Type(Type::Kind::I64);
+    missing.linkage = Linkage::Import;
+    unresolvedEntry.globals.push_back(missing);
+    auto unresolved = il::link::linkModules({std::move(unresolvedEntry)});
+    EXPECT_FALSE(unresolved.succeeded());
+    EXPECT_CONTAINS(unresolved.errors.front(), "unresolved global import");
+
+    Module entry;
+    entry.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    Global imported;
+    imported.name = "shared";
+    imported.type = Type(Type::Kind::I64);
+    imported.linkage = Linkage::Import;
+    entry.globals.push_back(imported);
+    Module library;
+    Global exported;
+    exported.name = "shared";
+    exported.type = Type(Type::Kind::F64);
+    exported.linkage = Linkage::Export;
+    exported.init = "1.0";
+    exported.hasInitializer = true;
+    library.globals.push_back(exported);
+    auto mismatch = il::link::linkModules({std::move(entry), std::move(library)});
+    EXPECT_FALSE(mismatch.succeeded());
+    EXPECT_CONTAINS(mismatch.errors.front(), "global signature mismatch");
+}
+
+TEST(ModuleLinker, RejectsVariadicBooleanThunk) {
+    Module entry;
+    entry.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+    Function imported = makeI64Func("isReady", Linkage::Import);
+    imported.isVarArg = true;
+    entry.functions.push_back(std::move(imported));
+
+    Module library;
+    Function exported = makeI1Func("isReady", Linkage::Export);
+    exported.isVarArg = true;
+    library.functions.push_back(std::move(exported));
+
+    auto result = il::link::linkModules({entry, library});
+    EXPECT_FALSE(result.succeeded());
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_CONTAINS(result.errors.front(), "signature mismatch");
 }
 
 TEST(ModuleLinker, TwoModulesExportImportResolved) {
@@ -528,6 +673,20 @@ TEST(ModuleLinker, InternalRenameIsModuleLocal) {
     ASSERT_FALSE(libIt->blocks.empty());
     ASSERT_FALSE(libIt->blocks.front().instructions.empty());
     EXPECT_EQ(libIt->blocks.front().instructions.front().callee, "m1$helper");
+}
+
+TEST(ModuleLinker, RejectsDuplicateFunctionsBeforeConstructingRenameMaps) {
+    Module entry;
+    entry.functions.push_back(makeVoidFunc("main", Linkage::Internal));
+
+    Module library;
+    library.functions.push_back(makeVoidFunc("helper", Linkage::Internal));
+    library.functions.push_back(makeVoidFunc("helper", Linkage::Internal));
+
+    auto result = il::link::linkModules({std::move(entry), std::move(library)});
+    EXPECT_FALSE(result.succeeded());
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_CONTAINS(result.errors.front(), "duplicate function in module 1: @helper");
 }
 
 TEST(ModuleLinker, InternalRenameUpdatesIndirectFunctionAddresses) {

@@ -309,8 +309,10 @@ void printCallOperands(const Instr &instr, std::ostream &os, const SerializeCont
 }
 
 /// @brief Emit a stable attribute list for function definitions.
-void printFunctionAttrs(const FunctionAttrs &attrs, std::ostream &os) {
-    const bool hasAttrs = attrs.nothrow || attrs.readonly || attrs.pure;
+void printFunctionAttrs(const FunctionAttrs &attrs,
+                        std::ostream &os,
+                        bool moduleInitializer = false) {
+    const bool hasAttrs = attrs.nothrow || attrs.readonly || attrs.pure || moduleInitializer;
     if (!hasAttrs)
         return;
     os << " [";
@@ -327,6 +329,8 @@ void printFunctionAttrs(const FunctionAttrs &attrs, std::ostream &os) {
         printAttr("readonly");
     if (attrs.pure)
         printAttr("pure");
+    if (moduleInitializer)
+        printAttr("module_init");
     os << ']';
 }
 
@@ -790,12 +794,12 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
 
         // Import-linkage functions have no body (declaration only)
         if (f.linkage == Linkage::Import) {
-            printFunctionAttrs(f.attrs(), os);
+            printFunctionAttrs(f.attrs(), os, f.moduleInitializer);
             os << "\n";
             continue;
         }
 
-        printFunctionAttrs(f.attrs(), os);
+        printFunctionAttrs(f.attrs(), os, f.moduleInitializer);
         os << " {\n";
         for (const auto &bb : f.blocks) {
             const bool handler = isHandlerBlock(bb);

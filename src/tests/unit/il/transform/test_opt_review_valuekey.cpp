@@ -109,8 +109,8 @@ TEST(ValueKey, FAddNotCommutedForCSE) {
 
 // Test isCommutativeCSE classifications
 TEST(ValueKey, CommutativeClassifications) {
-    EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::Add));
-    EXPECT_FALSE(il::transform::isCommutativeCSE(Opcode::Mul));
+    EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::Add));
+    EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::Mul));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::IAddOvf));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::IMulOvf));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::And));
@@ -132,9 +132,9 @@ TEST(ValueKey, CommutativeClassifications) {
 
 // Test isSafeCSEOpcode classifications
 TEST(ValueKey, SafeCSEClassifications) {
-    EXPECT_FALSE(il::transform::isSafeCSEOpcode(Opcode::Add));
-    EXPECT_FALSE(il::transform::isSafeCSEOpcode(Opcode::Sub));
-    EXPECT_FALSE(il::transform::isSafeCSEOpcode(Opcode::Mul));
+    EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Add));
+    EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Sub));
+    EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Mul));
     EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::IAddOvf));
     EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::ISubOvf));
     EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::IMulOvf));

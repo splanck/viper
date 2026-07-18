@@ -69,6 +69,11 @@ struct FunctionRef {
     size_t functionIndex = 0;
 };
 
+struct GlobalRef {
+    size_t moduleIndex = 0;
+    size_t globalIndex = 0;
+};
+
 /// @brief Build an index of all exported function names → function location.
 std::unordered_map<std::string, FunctionRef> buildExportIndex(const std::vector<Module> &modules,
                                                               std::vector<std::string> &errors) {
@@ -87,23 +92,25 @@ std::unordered_map<std::string, FunctionRef> buildExportIndex(const std::vector<
     return index;
 }
 
+std::unordered_map<std::string, GlobalRef>
+buildGlobalExportIndex(const std::vector<Module> &modules, std::vector<std::string> &errors) {
+    std::unordered_map<std::string, GlobalRef> index;
+    for (size_t i = 0; i < modules.size(); ++i) {
+        for (size_t g = 0; g < modules[i].globals.size(); ++g) {
+            const auto &global = modules[i].globals[g];
+            if (global.linkage != Linkage::Export)
+                continue;
+            if (!index.emplace(global.name, GlobalRef{i, g}).second)
+                errors.push_back("duplicate global export: @" + global.name);
+        }
+    }
+    return index;
+}
+
 /// @brief Generate a module prefix for disambiguating Internal functions.
 /// @details Uses "m<index>$" to prefix function names from non-entry modules.
 std::string modulePrefix(size_t moduleIndex) {
     return "m" + std::to_string(moduleIndex) + "$";
-}
-
-/// @brief Check if a function name looks like an init function that should be
-///        called from main.
-bool isInitFunction(const std::string &name) {
-    // Match patterns: __zia_iface_init, __mod_init$oop, *$init, etc.
-    if (name.find("__zia_iface_init") != std::string::npos)
-        return true;
-    if (name.find("__mod_init$oop") != std::string::npos)
-        return true;
-    if (name.size() > 5 && name.substr(name.size() - 5) == "$init")
-        return true;
-    return false;
 }
 
 /// @brief Test whether two function declarations share an identical IL signature.
@@ -112,7 +119,7 @@ bool isInitFunction(const std::string &name) {
 ///          whether a thunk is needed.
 bool sameSignature(const Function &a, const Function &b) {
     if (a.retType.kind != b.retType.kind || a.params.size() != b.params.size() ||
-        a.isVarArg != b.isVarArg)
+        a.isVarArg != b.isVarArg || a.callingConv != b.callingConv)
         return false;
     for (size_t i = 0; i < a.params.size(); ++i) {
         if (a.params[i].type.kind != b.params[i].type.kind)
@@ -133,7 +140,12 @@ bool isBooleanMismatch(Type::Kind a, Type::Kind b) {
 ///          thunk via il::link::generateBooleanThunks instead of erroring out.
 bool booleanInteropCompatible(const Function &importDecl, const Function &definition) {
     if (importDecl.params.size() != definition.params.size() ||
-        importDecl.isVarArg != definition.isVarArg)
+        importDecl.isVarArg != definition.isVarArg ||
+        importDecl.callingConv != definition.callingConv)
+        return false;
+    // A generated IL thunk can forward only its fixed operand list.  Treating a
+    // variadic pair as compatible would silently drop the variadic tail.
+    if (importDecl.isVarArg)
         return false;
     if (importDecl.retType.kind != definition.retType.kind &&
         !isBooleanMismatch(importDecl.retType.kind, definition.retType.kind))
@@ -215,6 +227,42 @@ LinkResult linkModules(std::vector<Module> modules) {
         return result;
     }
 
+    // Programmatically constructed modules may bypass parser uniqueness checks.
+    // Reject ambiguity before building per-module rename maps: a map keyed only
+    // by the old name cannot correctly represent two distinct definitions.
+    for (size_t i = 0; i < modules.size(); ++i) {
+        std::unordered_set<std::string> names;
+        for (const auto &fn : modules[i].functions) {
+            if (!names.insert(fn.name).second) {
+                result.errors.push_back("duplicate function in module " +
+                                        std::to_string(i) + ": @" + fn.name);
+            }
+        }
+    }
+    if (!result.errors.empty())
+        return result;
+
+    // A linked module has one textual IL version and at most one target triple.
+    // Never silently relabel mixed-version or mixed-target inputs with Module's
+    // defaults.
+    const std::string linkedVersion = modules.front().version;
+    std::optional<std::string> linkedTarget;
+    for (const auto &module : modules) {
+        if (module.version != linkedVersion) {
+            result.errors.push_back("IL version mismatch: '" + linkedVersion + "' vs '" +
+                                    module.version + "'");
+            return result;
+        }
+        if (!module.target)
+            continue;
+        if (linkedTarget && *linkedTarget != *module.target) {
+            result.errors.push_back("target triple mismatch: '" + *linkedTarget + "' vs '" +
+                                    *module.target + "'");
+            return result;
+        }
+        linkedTarget = module.target;
+    }
+
     // Step 1: Find the entry module.
     int entryIdx = findEntryModule(modules, result.errors);
     if (entryIdx < 0)
@@ -222,6 +270,45 @@ LinkResult linkModules(std::vector<Module> modules) {
 
     // Step 2: Build export index for import resolution.
     auto exportIndex = buildExportIndex(modules, result.errors);
+    auto globalExportIndex = buildGlobalExportIndex(modules, result.errors);
+    if (!result.errors.empty())
+        return result;
+    std::unordered_map<std::string, const Function *> entryDefinitions;
+    entryDefinitions.reserve(modules[static_cast<size_t>(entryIdx)].functions.size());
+    for (const auto &fn : modules[static_cast<size_t>(entryIdx)].functions) {
+        if (fn.linkage != Linkage::Import)
+            entryDefinitions.emplace(fn.name, &fn);
+    }
+    std::unordered_map<std::string, const Global *> entryGlobalDefinitions;
+    entryGlobalDefinitions.reserve(modules[static_cast<size_t>(entryIdx)].globals.size());
+    for (const auto &global : modules[static_cast<size_t>(entryIdx)].globals) {
+        if (global.linkage != Linkage::Import)
+            entryGlobalDefinitions.emplace(global.name, &global);
+    }
+
+    for (const auto &module : modules) {
+        for (const auto &global : module.globals) {
+            if (global.linkage != Linkage::Import)
+                continue;
+            const Global *definition = nullptr;
+            if (auto exported = globalExportIndex.find(global.name);
+                exported != globalExportIndex.end()) {
+                definition = &modules[exported->second.moduleIndex]
+                                  .globals[exported->second.globalIndex];
+            } else if (auto entry = entryGlobalDefinitions.find(global.name);
+                       entry != entryGlobalDefinitions.end()) {
+                definition = entry->second;
+            }
+            if (!definition) {
+                result.errors.push_back("unresolved global import: @" + global.name);
+                continue;
+            }
+            if (global.type.kind != definition->type.kind ||
+                global.isConst != definition->isConst) {
+                result.errors.push_back("global signature mismatch for @" + global.name);
+            }
+        }
+    }
     if (!result.errors.empty())
         return result;
 
@@ -251,11 +338,12 @@ LinkResult linkModules(std::vector<Module> modules) {
             if (fn.linkage == Linkage::Internal) {
                 if (usedNames.count(fn.name)) {
                     // Collision with an existing name — prefix it.
-                    std::string newName = prefix + fn.name;
+                    std::string newName = makeUniqueName(prefix + fn.name, usedNames);
                     functionRenameMaps[i][fn.name] = newName;
                     fn.name = newName;
+                } else {
+                    usedNames.insert(fn.name);
                 }
-                usedNames.insert(fn.name);
             }
         }
     }
@@ -272,13 +360,9 @@ LinkResult linkModules(std::vector<Module> modules) {
             if (expIt != exportIndex.end()) {
                 definition =
                     &modules[expIt->second.moduleIndex].functions[expIt->second.functionIndex];
-            } else {
-                for (const auto &entryFn : modules[static_cast<size_t>(entryIdx)].functions) {
-                    if (entryFn.name == fn.name && entryFn.linkage != Linkage::Import) {
-                        definition = &entryFn;
-                        break;
-                    }
-                }
+            } else if (auto entryIt = entryDefinitions.find(fn.name);
+                       entryIt != entryDefinitions.end()) {
+                definition = entryIt->second;
             }
 
             if (!definition) {
@@ -359,11 +443,24 @@ LinkResult linkModules(std::vector<Module> modules) {
     // Step 5: Merge globals.
     std::unordered_map<std::string, Global> mergedGlobals;
     std::vector<std::string> globalOrder;
+    std::unordered_set<std::string> entryGlobalNames;
+    for (const auto &g : modules[static_cast<size_t>(entryIdx)].globals) {
+        if (g.linkage == Linkage::Import)
+            continue;
+        if (!entryGlobalNames.insert(g.name).second) {
+            result.errors.push_back("duplicate global: @" + g.name);
+        }
+    }
+    if (!result.errors.empty())
+        return result;
     for (size_t i = 0; i < modules.size(); ++i) {
         std::string prefix = (static_cast<int>(i) == entryIdx) ? "" : modulePrefix(i);
         for (auto &g : modules[i].globals) {
+            if (g.linkage == Linkage::Import)
+                continue;
             std::string name = g.name;
-            if (mergedGlobals.count(name)) {
+            const bool conflictsWithEntry = !prefix.empty() && entryGlobalNames.count(name) != 0;
+            if (mergedGlobals.count(name) || conflictsWithEntry) {
                 if (prefix.empty()) {
                     result.errors.push_back("duplicate global: @" + name);
                     continue;
@@ -390,13 +487,15 @@ LinkResult linkModules(std::vector<Module> modules) {
         if (static_cast<int>(i) == entryIdx)
             continue;
         for (const auto &fn : modules[i].functions) {
-            if (fn.linkage != Linkage::Import && isInitFunction(fn.name))
+            if (fn.linkage != Linkage::Import && fn.moduleInitializer)
                 initFunctions.push_back(fn.name);
         }
     }
 
     // Step 7: Build the merged module.
     Module &merged = result.module;
+    merged.version = linkedVersion;
+    merged.target = linkedTarget;
 
     // Copy externs.
     for (const auto &name : externOrder)
@@ -434,9 +533,45 @@ LinkResult linkModules(std::vector<Module> modules) {
         }
     }
 
+    {
+        std::unordered_set<std::string> symbols;
+        for (const auto &external : merged.externs)
+            symbols.insert(external.name);
+        for (const auto &global : merged.globals) {
+            if (!symbols.insert(global.name).second)
+                result.errors.push_back("linked symbol namespace collision: @" + global.name);
+        }
+        for (const auto &fn : merged.functions) {
+            if (!symbols.insert(fn.name).second)
+                result.errors.push_back("linked symbol namespace collision: @" + fn.name);
+        }
+        if (!result.errors.empty()) {
+            result.module = Module{};
+            return result;
+        }
+    }
+
     // Step 8: Inject init calls into main.
     // Find main in the merged module and prepend calls to init functions.
     if (!initFunctions.empty()) {
+        for (const auto &initName : initFunctions) {
+            const Function *initializer = nullptr;
+            for (const auto &fn : merged.functions) {
+                if (fn.name == initName) {
+                    initializer = &fn;
+                    break;
+                }
+            }
+            if (!initializer || !initializer->params.empty() || initializer->isVarArg ||
+                initializer->retType.kind != Type::Kind::Void) {
+                result.errors.push_back("invalid module initializer signature: @" + initName +
+                                        " must be () -> void");
+            }
+        }
+        if (!result.errors.empty()) {
+            result.module = Module{};
+            return result;
+        }
         for (auto &fn : merged.functions) {
             if (fn.name == "main" && !fn.blocks.empty()) {
                 auto &entry = fn.blocks.front();

@@ -230,34 +230,39 @@ TEST(ConstFoldEdge, IAddOvf_NoOverflow) {
 // ---------------------------------------------------------------------------
 
 TEST(ConstFoldEdge, FDiv_ByZero) {
-    // 1.0 / 0.0 => inf — constfolder must NOT fold (guards against non-finite results)
+    // IEEE-754 defines 1.0 / 0.0 as positive infinity.
     auto module = buildConstFoldTest(
         Opcode::FDiv, Value::constFloat(1.0), Value::constFloat(0.0), Type(Type::Kind::F64));
     il::transform::constFold(module);
-    ASSERT_TRUE(retNotFolded(module));
+    const auto &value = module.functions[0].blocks[0].instructions.back().operands[0];
+    ASSERT_EQ(value.kind, Value::Kind::ConstFloat);
+    ASSERT_TRUE(std::isinf(value.f64));
+    ASSERT_FALSE(std::signbit(value.f64));
 }
 
 TEST(ConstFoldEdge, FMul_InfTimesZero) {
-    // INF * 0.0 => NaN — constfolder must NOT fold (non-finite result)
+    // IEEE-754 defines infinity multiplied by zero as NaN.
     auto module = buildConstFoldTest(Opcode::FMul,
                                      Value::constFloat(std::numeric_limits<double>::infinity()),
                                      Value::constFloat(0.0),
                                      Type(Type::Kind::F64));
     il::transform::constFold(module);
-    ASSERT_TRUE(retNotFolded(module));
+    const auto &value = module.functions[0].blocks[0].instructions.back().operands[0];
+    ASSERT_EQ(value.kind, Value::Kind::ConstFloat);
+    ASSERT_TRUE(std::isnan(value.f64));
 }
 
 TEST(ConstFoldEdge, FAdd_InfPlusInf) {
-    // INF + INF = INF, which is well-defined but non-finite.
-    // The constfolder skips non-finite results, so this should NOT fold.
-    // At minimum, verify the module is valid after the pass runs.
+    // Positive infinity plus positive infinity remains positive infinity.
     auto module = buildConstFoldTest(Opcode::FAdd,
                                      Value::constFloat(std::numeric_limits<double>::infinity()),
                                      Value::constFloat(std::numeric_limits<double>::infinity()),
                                      Type(Type::Kind::F64));
     il::transform::constFold(module);
-    // The constfolder refuses non-finite results, so the temp should remain.
-    ASSERT_TRUE(retNotFolded(module));
+    const auto &value = module.functions[0].blocks[0].instructions.back().operands[0];
+    ASSERT_EQ(value.kind, Value::Kind::ConstFloat);
+    ASSERT_TRUE(std::isinf(value.f64));
+    ASSERT_FALSE(std::signbit(value.f64));
 }
 
 // ---------------------------------------------------------------------------

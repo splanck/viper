@@ -474,6 +474,67 @@ void test_loop_invariant_not_hoisted_from_conditional_preheader() {
     assert(checkStillInLoop && "idx.chk should remain guarded by loop entry branch");
 }
 
+void test_loop_check_not_hoisted_ahead_of_effectful_prefix() {
+    Module module;
+    Function fn;
+    fn.name = "test_loop_effect_order";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params = {{"idx", Type(Type::Kind::I64), 0}, {"again", Type(Type::Kind::I1), 1}};
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr enter;
+    enter.op = Opcode::Br;
+    enter.labels = {"loop"};
+    enter.brArgs = {{}};
+    entry.instructions = {enter};
+    entry.terminated = true;
+
+    BasicBlock loop;
+    loop.label = "loop";
+    Instr call;
+    call.op = Opcode::Call;
+    call.type = Type(Type::Kind::Void);
+    call.setDirectCallee("observable");
+    Instr check;
+    check.result = 2;
+    check.op = Opcode::IdxChk;
+    check.type = Type(Type::Kind::I32);
+    check.operands = {Value::temp(0), Value::constInt(0), Value::constInt(100)};
+    Instr branch;
+    branch.op = Opcode::CBr;
+    branch.operands = {Value::temp(1)};
+    branch.labels = {"loop", "exit"};
+    branch.brArgs = {{}, {}};
+    loop.instructions = {call, check, branch};
+    loop.terminated = true;
+
+    BasicBlock exit;
+    exit.label = "exit";
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.operands = {Value::constInt(0)};
+    exit.instructions = {ret};
+    exit.terminated = true;
+
+    fn.blocks = {entry, loop, exit};
+    fn.valueNames.resize(3);
+    module.functions.push_back(std::move(fn));
+    Function &function = module.functions.back();
+    auto registry = createRegistry();
+    il::transform::AnalysisManager analysisManager(module, registry);
+    il::transform::CheckOpt checkOpt;
+    (void)checkOpt.run(function, analysisManager);
+
+    assert(countIdxChk(function) == 1);
+    BasicBlock *entryBlock = findBlock(function, "entry");
+    BasicBlock *loopBlock = findBlock(function, "loop");
+    assert(entryBlock && loopBlock);
+    for (const auto &instr : entryBlock->instructions)
+        assert(instr.op != Opcode::IdxChk && "check must not move ahead of observable call");
+    assert(loopBlock->instructions[1].op == Opcode::IdxChk);
+}
+
 void test_guard_demote_rejects_unproven_subtractions() {
     for (const auto [threshold, rhs] :
          {std::pair<long long, long long>{std::numeric_limits<long long>::max(), 1},
@@ -796,6 +857,7 @@ int main() {
     test_different_checks_not_eliminated();
     test_loop_invariant_hoisting();
     test_loop_invariant_not_hoisted_from_conditional_preheader();
+    test_loop_check_not_hoisted_ahead_of_effectful_prefix();
     test_guard_demote_rejects_unproven_subtractions();
     test_guard_demote_produces_verifiable_il();
     test_guard_demote_skips_multi_predecessor_target();

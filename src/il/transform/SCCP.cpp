@@ -628,16 +628,11 @@ static FoldResult foldFloatArithmetic(Opcode op, const FoldContext &ctx) {
             result = lhs * rhs;
             break;
         case Opcode::FDiv:
-            if (rhs == 0.0)
-                return FoldResult::unknown();
             result = lhs / rhs;
             break;
         default:
             return FoldResult::unknown();
     }
-    // Don't fold to inf/NaN — preserve runtime evaluation for non-finite results.
-    if (!std::isfinite(result))
-        return FoldResult::unknown();
     return FoldResult::constant(Value::constFloat(result));
 }
 

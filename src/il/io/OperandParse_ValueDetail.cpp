@@ -193,6 +193,9 @@ Expected<size_t> tryParseRegister(std::string_view text, Value &out, Context &ct
 
     unsigned reservedId = ctx.state.nextTemp;
     if (auto explicitId = ::il::io::parseExplicitTempName(name)) {
+        if (static_cast<std::size_t>(*explicitId) >= ctx.state.limits.maxTempsPerFunction)
+            return makeSyntaxError<size_t>(ctx.state,
+                                           "resource limit exceeded: function temporaries");
         if (ctx.state.curFn && (ctx.state.curFn->valueNames.size() <= *explicitId ||
                                 ctx.state.curFn->valueNames[*explicitId].empty())) {
             reservedId = *explicitId;

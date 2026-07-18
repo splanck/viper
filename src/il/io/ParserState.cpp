@@ -39,9 +39,14 @@ ParserState::ParserState(il::core::Module &mod, const il::io::ParserLimits &pars
     // callers before this parse operation. This prevents repeated append-style
     // parses from bypassing aggregate block and instruction budgets.
     for (const auto &function : mod.functions) {
+        functionNames.insert(function.name);
         totalBlocks += function.blocks.size();
         for (const auto &block : function.blocks)
             totalInstructions += block.instructions.size();
     }
+    for (const auto &external : mod.externs)
+        externNames.insert(external.name);
+    for (const auto &global : mod.globals)
+        globalNames.insert(global.name);
 }
 } // namespace il::io::detail

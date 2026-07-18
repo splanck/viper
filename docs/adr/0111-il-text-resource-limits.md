@@ -25,22 +25,27 @@ changes under `docs/il/il-guide.md#reference`, so they require an ADR.
 
 ## Decision
 
-1. `il::io::ParserLimits` defines configurable limits for textual parsing.
-   `Parser::parse` accepts a limits value while retaining source compatibility
-   through defaults.
-2. The default limits are deliberately generous for generated compiler output:
+1. `il::io::ParserLimits` defines configurable limits for textual parsing,
+   including a per-function SSA temporary limit. Explicit numeric temporary
+   names are checked before resizing the value-name table, preventing integer
+   wraparound and attacker-controlled oversized allocations. `Parser::parse`
+   accepts a limits value while retaining source compatibility through defaults.
+2. Parsing is append-transactional without copying the existing module. A
+   lightweight checkpoint restores declaration-vector sizes, module metadata,
+   and the string-interner suffix after any syntax, I/O, or resource failure.
+3. The default limits are deliberately generous for generated compiler output:
    1 MiB per physical line, 1,000,000 lines, 100,000 functions, 1,000,000
    blocks, 10,000,000 instructions, and 65,535 operands or branch arguments on
    one instruction.
-3. Crossing a limit is a normal compile error with a source line and a
+4. Crossing a limit is a normal compile error with a source line and a
    `resource limit exceeded` explanation. It is never an assertion or an
    allocation-driven process failure.
-4. IL identifier fragments reject ASCII control bytes (`0x00`–`0x1f` and
+5. IL identifier fragments reject ASCII control bytes (`0x00`–`0x1f` and
    `0x7f`) in addition to existing delimiter and whitespace exclusions.
-5. A quoted token must contain an unescaped closing quote. EOF before that quote
+6. A quoted token must contain an unescaped closing quote. EOF before that quote
    sets parser failure state and produces the existing malformed-string
    diagnostic path.
-6. Analyses and verifiers that traverse user-controlled CFGs use explicit
+7. Analyses and verifiers that traverse user-controlled CFGs use explicit
    worklists rather than native recursion.
 
 The limits constrain the textual transport, not the in-memory IL model. Trusted

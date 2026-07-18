@@ -23,6 +23,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
 #include "il/utils/CheckedIntRange.hpp"
 #include "il/utils/UseDefInfo.hpp"
@@ -436,6 +437,22 @@ bool isGuaranteedToExecute(const BasicBlock &block, const Loop &loop) {
     return block.label == loop.headerLabel;
 }
 
+/// @brief Return whether moving the instruction at @p index to the preheader
+/// preserves the ordering of observable effects and traps.
+/// @details Header execution alone is insufficient: a check after a call,
+/// memory operation, or earlier trapping instruction must not be moved ahead
+/// of it. Instructions already hoisted are absent from the prefix, which lets
+/// consecutive checks move while retaining their original order.
+bool hasSpeculatablePrefix(const BasicBlock &block, size_t index) {
+    for (size_t i = 0; i < index; ++i) {
+        const Instr &prefix = block.instructions[i];
+        const auto &info = getOpcodeInfo(prefix.op);
+        if (info.hasSideEffects || hasMemoryRead(prefix.op) || hasMemoryWrite(prefix.op))
+            return false;
+    }
+    return true;
+}
+
 /// @brief Check if a loop contains exception handling operations.
 /// @details Loops with EH-sensitive operations (exception handlers, resume
 ///          instructions, trap instructions) require special care when
@@ -778,7 +795,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
             for (size_t idx = 0; idx < block->instructions.size();) {
                 Instr &instr = block->instructions[idx];
 
-                if (!isCheckOpcode(instr.op) || !operandsInvariant(instr, invariants)) {
+                if (!isCheckOpcode(instr.op) || !operandsInvariant(instr, invariants) ||
+                    !hasSpeculatablePrefix(*block, idx)) {
                     ++idx;
                     continue;
                 }

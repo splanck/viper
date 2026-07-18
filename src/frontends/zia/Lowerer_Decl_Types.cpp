@@ -369,6 +369,7 @@ void Lowerer::emitItableInit() {
 
     // Create __zia_iface_init() function
     auto &fn = builder_->startFunction("__zia_iface_init", Type(Type::Kind::Void), {});
+    fn.moduleInitializer = true;
     currentFunc_ = &fn;
     definedFunctions_.insert("__zia_iface_init");
     blockMgr_.bind(builder_.get(), &fn);

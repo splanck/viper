@@ -37,7 +37,6 @@
 #include "il/core/Module.hpp"
 #include "il/utils/Utils.hpp"
 
-#include <cstddef>
 #include <unordered_map>
 #include <vector>
 
@@ -49,22 +48,9 @@ namespace {
 
 struct AvailableExpr {
     Value value;
-    BasicBlock *block{nullptr};
 };
 
 using CSETable = std::unordered_map<ValueKey, AvailableExpr, ValueKeyHash>;
-
-static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, std::size_t> &order,
-                                 const BasicBlock *defBlock,
-                                 const BasicBlock *useBlock) {
-    if (!defBlock || !useBlock)
-        return false;
-    auto defIt = order.find(defBlock);
-    auto useIt = order.find(useBlock);
-    if (defIt == order.end() || useIt == order.end())
-        return false;
-    return defIt->second <= useIt->second;
-}
 
 /// @brief Process one basic block during the dominator-tree CSE walk.
 /// @details For each pure instruction in @p B, looks up its expression key in
@@ -81,8 +67,7 @@ static bool isTextuallyAvailable(const std::unordered_map<const BasicBlock *, st
 bool processBlock(BasicBlock &B,
                   Function &F,
                   const zanna::analysis::DomTree &domTree,
-                  std::vector<CSETable> &scopes,
-                  const std::unordered_map<const BasicBlock *, std::size_t> &blockOrder) {
+                  std::vector<CSETable> &scopes) {
     bool changed = false;
     for (std::size_t idx = 0; idx < B.instructions.size();) {
         Instr &I = B.instructions[idx];
@@ -98,8 +83,6 @@ bool processBlock(BasicBlock &B,
             auto hit = it->find(*key);
             if (hit == it->end())
                 continue;
-            if (!isTextuallyAvailable(blockOrder, hit->second.block, &B))
-                continue;
             zanna::il::replaceUsesDominatedBy(F, *I.result, hit->second.value, B, idx, domTree);
             B.instructions.erase(B.instructions.begin() + static_cast<long>(idx));
             changed = true;
@@ -107,7 +90,7 @@ bool processBlock(BasicBlock &B,
             break;
         }
         if (!found) {
-            scopes.back().emplace(std::move(*key), AvailableExpr{Value::temp(*I.result), &B});
+            scopes.back().emplace(std::move(*key), AvailableExpr{Value::temp(*I.result)});
             ++idx;
         }
     }
@@ -117,13 +100,10 @@ bool processBlock(BasicBlock &B,
 } // namespace
 
 /// @brief Run dominator-tree-scoped CSE on a function.
-/// @details Iterates to a fixed point: each iteration rebuilds the dominator
-///          tree and walks it in pre-order using an explicit stack. Each
+/// @details Builds the dominator tree once and walks it in pre-order using an
+///          explicit stack. Each
 ///          domtree node pushes a new expression scope before processing its
 ///          basic block and pops it after processing all dominated children.
-///          Iteration stops when no more redundancies are found. Every changing
-///          iteration erases at least one instruction, so termination follows
-///          from the finite instruction count without an arbitrary pass cap.
 /// @param M Module containing \p F (needed to construct a CFGContext).
 /// @param F Function to optimize in place.
 /// @return True if any redundant instruction was removed; false otherwise.
@@ -131,14 +111,8 @@ bool runEarlyCSE(Module &M, Function &F) {
     if (F.blocks.empty())
         return false;
 
-    bool changedAny = false;
-
-    // Iterate to a true fixed point. A changing iteration only erases
-    // instructions, which is the natural progress measure for this pass.
-    while (true) {
-        zanna::analysis::CFGContext cfg =
-            zanna::analysis::CFGContext::forInternedFunction(M, F);
-        zanna::analysis::DomTree domTree = zanna::analysis::computeDominatorTree(cfg, F);
+    zanna::analysis::CFGContext cfg = zanna::analysis::CFGContext::forInternedFunction(M, F);
+    zanna::analysis::DomTree domTree = zanna::analysis::computeDominatorTree(cfg, F);
 
         // Iterative pre-order DFS over the dominator tree.
         // Each worklist entry is either "enter B" (push scope, process B, then
@@ -150,12 +124,7 @@ bool runEarlyCSE(Module &M, Function &F) {
 
         std::vector<CSETable> scopes;
         scopes.reserve(F.blocks.size());
-        std::unordered_map<const BasicBlock *, std::size_t> blockOrder;
-        blockOrder.reserve(F.blocks.size());
-        for (std::size_t i = 0; i < F.blocks.size(); ++i)
-            blockOrder.emplace(&F.blocks[i], i);
-
-        bool changed = false;
+    bool changed = false;
 
         std::vector<WorkItem> worklist;
         worklist.reserve(F.blocks.size() * 2);
@@ -176,7 +145,7 @@ bool runEarlyCSE(Module &M, Function &F) {
             // Schedule scope pop after all children are processed.
             worklist.push_back({nullptr});
 
-            changed |= processBlock(*item.block, F, domTree, scopes, blockOrder);
+            changed |= processBlock(*item.block, F, domTree, scopes);
 
             // Schedule dominated children (order doesn't matter for correctness).
             auto childIt = domTree.children.find(item.block);
@@ -186,12 +155,7 @@ bool runEarlyCSE(Module &M, Function &F) {
             }
         }
 
-        if (!changed)
-            break;
-        changedAny = true;
-    }
-
-    return changedAny;
+    return changed;
 }
 
 } // namespace il::transform

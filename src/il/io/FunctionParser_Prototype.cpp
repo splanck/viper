@@ -288,6 +288,8 @@ Expected<Attrs> parseAttributes(Cursor &cur, bool requireBrace) {
                 attrs.readonly = true;
             } else if (attr == "pure") {
                 attrs.pure = true;
+            } else if (attr == "module_init") {
+                attrs.moduleInitializer = true;
             } else {
                 std::ostringstream oss;
                 oss << "unknown function attribute '" << attr << "'";
@@ -384,26 +386,20 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
     if (!isIgnorableTrailing(cursor.remaining()))
         return lineError<void>(st.lineNo, "unexpected characters after function header");
 
-    for (const auto &fn : st.m.functions) {
-        if (fn.name == fh.name) {
-            std::ostringstream oss;
-            oss << "duplicate function '@" << fh.name << "'";
-            return lineError<void>(st.lineNo, oss.str());
-        }
+    if (st.functionNames.contains(fh.name)) {
+        std::ostringstream oss;
+        oss << "duplicate function '@" << fh.name << "'";
+        return lineError<void>(st.lineNo, oss.str());
     }
-    for (const auto &ext : st.m.externs) {
-        if (ext.name == fh.name) {
-            std::ostringstream oss;
-            oss << "function '@" << fh.name << "' collides with extern";
-            return lineError<void>(st.lineNo, oss.str());
-        }
+    if (st.externNames.contains(fh.name)) {
+        std::ostringstream oss;
+        oss << "function '@" << fh.name << "' collides with extern";
+        return lineError<void>(st.lineNo, oss.str());
     }
-    for (const auto &global : st.m.globals) {
-        if (global.name == fh.name) {
-            std::ostringstream oss;
-            oss << "function '@" << fh.name << "' collides with global";
-            return lineError<void>(st.lineNo, oss.str());
-        }
+    if (st.globalNames.contains(fh.name)) {
+        std::ostringstream oss;
+        oss << "function '@" << fh.name << "' collides with global";
+        return lineError<void>(st.lineNo, oss.str());
     }
 
     std::unordered_set<std::string> seenParams;
@@ -420,6 +416,9 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
     st.forwardTempNames.clear();
     unsigned nextId = 0;
     for (auto &param : fh.proto.params) {
+        if (static_cast<std::size_t>(nextId) >= st.limits.maxTempsPerFunction)
+            return lineError<void>(st.lineNo,
+                                   "resource limit exceeded: function temporaries");
         param.id = nextId;
         st.tempIds[param.name] = nextId;
         ++nextId;
@@ -434,10 +433,12 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
     fn.isVarArg = fh.proto.isVarArg;
     fn.callingConv = fh.cc;
     fn.linkage = linkage;
+    fn.moduleInitializer = fh.attrs.moduleInitializer;
     fn.attrs().nothrow = fh.attrs.nothrow;
     fn.attrs().readonly = fh.attrs.readonly;
     fn.attrs().pure = fh.attrs.pure;
     st.m.functions.push_back(std::move(fn));
+    st.functionNames.insert(fh.name);
     st.curFn = &st.m.functions.back();
     st.curBB = nullptr;
     st.curFn->valueNames.resize(st.nextTemp);

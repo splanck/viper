@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // Tests for SCCP float division handling:
-// - FDiv by zero is NOT folded (non-finite results are unsafe to propagate)
+// - FDiv propagates the IL's defined IEEE-754 infinity and NaN results
 // - FDiv normal case folds correctly
 // - FDiv 0.0/0.0 is NOT folded (NaN is non-finite)
 //
@@ -69,14 +69,6 @@ Module buildFDivModule(double lhs, double rhs) {
     return module;
 }
 
-// Helper: check whether the FDiv instruction is still present (not folded)
-bool hasFDivInstr(const BasicBlock &bb) {
-    for (const auto &instr : bb.instructions)
-        if (instr.op == Opcode::FDiv)
-            return true;
-    return false;
-}
-
 } // namespace
 
 TEST(SCCP, PlainIntegerAddWrapsWithoutSignedOverflowUB) {
@@ -114,27 +106,25 @@ TEST(SCCP, PlainIntegerAddWrapsWithoutSignedOverflowUB) {
     EXPECT_EQ(retVal.i64, (std::numeric_limits<long long>::min)());
 }
 
-// FDiv by zero must NOT be folded — non-finite results are unsafe to propagate
-TEST(SCCP, FDivByZeroNotFolded) {
+// FDiv by zero propagates the IL's defined IEEE-754 infinity.
+TEST(SCCP, FDivByZeroFoldsToPositiveInfinity) {
     Module module = buildFDivModule(1.0, 0.0);
     il::transform::sccp(module);
 
-    Function &fn = module.functions.front();
-    BasicBlock &entry = fn.blocks.front();
-
-    // FDiv instruction should remain — producing +inf is not safe to fold
-    EXPECT_TRUE(hasFDivInstr(entry));
+    const Value &value = module.functions.front().blocks.front().instructions.back().operands[0];
+    ASSERT_EQ(value.kind, Value::Kind::ConstFloat);
+    EXPECT_TRUE(std::isinf(value.f64));
+    EXPECT_FALSE(std::signbit(value.f64));
 }
 
-// FDiv -1.0/0.0 must NOT be folded — would produce -inf
-TEST(SCCP, FDivNegByZeroNotFolded) {
+TEST(SCCP, FDivNegByZeroFoldsToNegativeInfinity) {
     Module module = buildFDivModule(-1.0, 0.0);
     il::transform::sccp(module);
 
-    Function &fn = module.functions.front();
-    BasicBlock &entry = fn.blocks.front();
-
-    EXPECT_TRUE(hasFDivInstr(entry));
+    const Value &value = module.functions.front().blocks.front().instructions.back().operands[0];
+    ASSERT_EQ(value.kind, Value::Kind::ConstFloat);
+    EXPECT_TRUE(std::isinf(value.f64));
+    EXPECT_TRUE(std::signbit(value.f64));
 }
 
 // Normal FDiv folds correctly
@@ -154,15 +144,13 @@ TEST(SCCP, FDivNormalFoldsCorrectly) {
     EXPECT_EQ(retVal.f64, 5.0);
 }
 
-// FDiv 0.0/0.0 must NOT be folded — would produce NaN
-TEST(SCCP, FDivZeroByZeroNotFolded) {
+TEST(SCCP, FDivZeroByZeroFoldsToNaN) {
     Module module = buildFDivModule(0.0, 0.0);
     il::transform::sccp(module);
 
-    Function &fn = module.functions.front();
-    BasicBlock &entry = fn.blocks.front();
-
-    EXPECT_TRUE(hasFDivInstr(entry));
+    const Value &value = module.functions.front().blocks.front().instructions.back().operands[0];
+    ASSERT_EQ(value.kind, Value::Kind::ConstFloat);
+    EXPECT_TRUE(std::isnan(value.f64));
 }
 
 /// @brief Main.

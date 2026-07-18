@@ -40,6 +40,44 @@ il::support::Expected<void> parseModuleHeader_E(std::istream &is,
 namespace il::io {
 namespace {
 
+class ParseTransaction {
+  public:
+    explicit ParseTransaction(il::core::Module &module)
+        : module_(module), version_(module.version), target_(module.target),
+          externCount_(module.externs.size()), globalCount_(module.globals.size()),
+          functionCount_(module.functions.size()), symbolCount_(module.symbols.size()) {}
+
+    ~ParseTransaction() {
+        if (!committed_) {
+            module_.version = std::move(version_);
+            module_.target = std::move(target_);
+            module_.externs.resize(externCount_);
+            module_.globals.resize(globalCount_);
+            module_.functions.resize(functionCount_);
+            try {
+                module_.symbols.truncate(symbolCount_);
+            } catch (...) {
+                // Structural rollback is complete. A failed mutex operation may
+                // retain unreachable interned spellings but cannot expose IR.
+            }
+        }
+    }
+
+    void commit() noexcept {
+        committed_ = true;
+    }
+
+  private:
+    il::core::Module &module_;
+    std::string version_;
+    std::optional<std::string> target_;
+    std::size_t externCount_;
+    std::size_t globalCount_;
+    std::size_t functionCount_;
+    std::size_t symbolCount_;
+    bool committed_{false};
+};
+
 bool readBoundedLine(std::istream &is,
                      std::string &line,
                      std::size_t maxBytes,
@@ -83,6 +121,7 @@ il::support::Expected<void> resourceLimitError(unsigned lineNo, std::string_view
 il::support::Expected<void> Parser::parse(std::istream &is,
                                          il::core::Module &m,
                                          const ParserLimits &limits) {
+    ParseTransaction transaction{m};
     detail::ParserState st{m, limits};
     std::string line;
     bool lineTooLong = false;
@@ -114,11 +153,16 @@ il::support::Expected<void> Parser::parse(std::istream &is,
         if (st.totalInstructions > limits.maxInstructions)
             return resourceLimitError(st.lineNo, "instructions");
     }
+    if (is.bad() || (is.fail() && !is.eof())) {
+        return il::support::Expected<void>{
+            il::support::makeError({}, formatLineDiag(st.lineNo, "input stream read failure"))};
+    }
     if (!st.sawVersion) {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": missing 'il' version directive";
         return il::support::Expected<void>{il::support::makeError({}, oss.str())};
     }
+    transaction.commit();
     return {};
 }
 

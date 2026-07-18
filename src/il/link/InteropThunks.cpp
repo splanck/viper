@@ -72,6 +72,7 @@ Function generateThunk(const Function &importDecl,
     thunk.name = thunkName;
     thunk.retType = importDecl.retType; // Match what the caller expects.
     thunk.linkage = Linkage::Internal;
+    thunk.callingConv = importDecl.callingConv;
 
     // Build parameter list matching the import declaration.
     unsigned nextTemp = 0;
@@ -213,6 +214,12 @@ std::vector<ThunkInfo> generateBooleanThunks(const Module &importModule,
         if (!exportFn)
             continue;
         if (fn.params.size() != exportFn->params.size())
+            continue;
+        if (fn.callingConv != exportFn->callingConv)
+            continue;
+        // IL call operands do not provide a way for this synthesized wrapper to
+        // forward an arbitrary variadic tail.
+        if (fn.isVarArg || exportFn->isVarArg)
             continue;
 
         // Check for boolean mismatches in return type or parameters. Any

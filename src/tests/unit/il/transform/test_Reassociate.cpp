@@ -24,7 +24,10 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/transform/Reassociate.hpp"
+#include "il/transform/EarlyCSE.hpp"
 #include "tests/TestHarness.hpp"
+
+#include <limits>
 
 using namespace il::core;
 
@@ -181,6 +184,61 @@ TEST(Reassociate, CanonicalizesAllCommutativeOps) {
         EXPECT_EQ(instr.operands[0].kind, Value::Kind::Temp);
         EXPECT_EQ(instr.operands[1].kind, Value::Kind::ConstInt);
     }
+}
+
+TEST(Reassociate, LargeTempIdsRemainHigherRankedThanConstants) {
+    Module mod;
+    Function fn;
+    fn.name = "test";
+    fn.retType = Type(Type::Kind::I64);
+    BasicBlock entry;
+    entry.label = "entry";
+    const unsigned largeId = std::numeric_limits<unsigned>::max();
+    entry.instructions.push_back(
+        makeBinary(Opcode::Add, 0, Value::constInt(1), Value::temp(largeId)));
+    fn.blocks.push_back(std::move(entry));
+    mod.functions.push_back(std::move(fn));
+
+    il::transform::reassociate(mod);
+
+    const auto &add = mod.functions.front().blocks.front().instructions.front();
+    ASSERT_EQ(add.operands.front().kind, Value::Kind::Temp);
+    EXPECT_EQ(add.operands.front().id, largeId);
+}
+
+TEST(Reassociate, EquivalentTreesReceiveTheSameAssociation) {
+    Module mod;
+    Function fn;
+    fn.name = "test";
+    fn.retType = Type(Type::Kind::I64);
+    fn.params = {{"a", Type(Type::Kind::I64), 0},
+                 {"b", Type(Type::Kind::I64), 1},
+                 {"c", Type(Type::Kind::I64), 2}};
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.instructions.push_back(
+        makeBinary(Opcode::Add, 3, Value::temp(0), Value::temp(1)));
+    entry.instructions.push_back(
+        makeBinary(Opcode::Add, 4, Value::temp(3), Value::temp(2)));
+    entry.instructions.push_back(
+        makeBinary(Opcode::Add, 5, Value::temp(1), Value::temp(2)));
+    entry.instructions.push_back(
+        makeBinary(Opcode::Add, 6, Value::temp(0), Value::temp(5)));
+    Instr ret;
+    ret.op = Opcode::Ret;
+    ret.operands = {Value::temp(6)};
+    entry.instructions.push_back(std::move(ret));
+    entry.terminated = true;
+    fn.blocks.push_back(std::move(entry));
+    mod.functions.push_back(std::move(fn));
+
+    il::transform::reassociate(mod);
+    EXPECT_TRUE(il::transform::runEarlyCSE(mod, mod.functions.front()));
+
+    unsigned addCount = 0;
+    for (const auto &instr : mod.functions.front().blocks.front().instructions)
+        addCount += instr.op == Opcode::Add;
+    EXPECT_EQ(addCount, 2u);
 }
 
 int main(int argc, char **argv) {
