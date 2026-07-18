@@ -45,7 +45,7 @@ struct TarjanState {
 ///          Produces SCCs in reverse topological order (emitted when a root
 ///          is found: leaf SCCs first, callers last).
 /// @param start Name of the function to start DFS from.
-/// @param edges Caller-to-callee adjacency list (may contain duplicates).
+/// @param edges Caller-to-callee adjacency list with unique topology edges.
 /// @param allFunctions Set of all function names known to the module.
 /// @param state Shared Tarjan state across multiple DFS starts.
 /// @param sccs Output: SCCs appended in the order they are finalized.
@@ -168,13 +168,15 @@ CallGraph buildCallGraph(il::core::Module &module) {
     for (const auto &fn : module.functions)
         allFunctions.insert(fn.name);
 
-    // Build edge set and call counts.
+    // Build unique topology edges and independent call-site counts.
     for (auto &fn : module.functions) {
+        std::unordered_set<std::string> seenCallees;
         for (auto &B : fn.blocks) {
             for (auto &I : B.instructions) {
-                if (I.op == il::core::Opcode::Call && !I.callee.empty()) {
+                if (I.isDirectCall()) {
                     ++cg.callCounts[I.callee];
-                    cg.edges[fn.name].push_back(I.callee);
+                    if (seenCallees.insert(I.callee).second)
+                        cg.edges[fn.name].push_back(I.callee);
                 }
             }
         }

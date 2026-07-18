@@ -20,8 +20,10 @@
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "il/runtime/RuntimeOwnership.hpp"
+#include "il/transform/DCE.hpp"
 #include "il/transform/PassManager.hpp"
 
+#include <limits>
 #include <optional>
 #include <string>
 #include <vector>
@@ -78,6 +80,7 @@ TEST(RealWorldPerfPasses, RuntimeOwnershipClassifiesArrayAndObjectHelpers) {
     const auto objNew = il::runtime::classifyRuntimeOwnership("rt_obj_new_i64");
     EXPECT_TRUE(objNew.returnsOwned);
     EXPECT_TRUE(objNew.mayAllocate);
+    EXPECT_TRUE(objNew.returnsKnownObject);
 
     const auto arrRelease = il::runtime::classifyRuntimeOwnership("rt_arr_i64_release");
     EXPECT_TRUE(arrRelease.consumesArg(0));
@@ -94,6 +97,7 @@ TEST(RealWorldPerfPasses, RuntimeOwnershipClassifiesArrayAndObjectHelpers) {
     const auto boxStr = il::runtime::classifyRuntimeOwnership("Zanna.Core.Box.Str");
     EXPECT_TRUE(boxStr.retainsArg(0));
     EXPECT_TRUE(boxStr.returnsOwned);
+    EXPECT_TRUE(boxStr.returnsKnownObject);
 
     const auto msgSub = il::runtime::classifyRuntimeOwnership("Zanna.Core.MessageBus.Subscribe");
     EXPECT_TRUE(msgSub.retainsArg(1));
@@ -305,6 +309,126 @@ TEST(RealWorldPerfPasses, RuntimeFastPathRewritesKnownObjectReferenceCounting) {
     EXPECT_TRUE(hasCallNamed(module.functions.front(), "rt_obj_release_known_check0"));
     EXPECT_FALSE(hasCallNamed(module.functions.front(), "rt_obj_retain_maybe"));
     EXPECT_FALSE(hasCallNamed(module.functions.front(), "rt_obj_release_check0"));
+}
+
+TEST(RealWorldPerfPasses, RuntimeFastPathUsesDominanceNotBlockStorageOrder) {
+    Module module;
+    Function fn = makeFunction("known_object_dominates", Type(Type::Kind::I1));
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr toProducer;
+    toProducer.op = Opcode::Br;
+    toProducer.setBranchTargets({"producer"}, {{}});
+    entry.instructions.push_back(std::move(toProducer));
+    entry.terminated = true;
+
+    BasicBlock consumer;
+    consumer.label = "consumer";
+    consumer.instructions.push_back(
+        makeCall("rt_obj_release_check0", Type(Type::Kind::I1), {Value::temp(0)}, 1));
+    consumer.instructions.push_back(makeRet(Value::temp(1)));
+    consumer.terminated = true;
+
+    BasicBlock producer;
+    producer.label = "producer";
+    producer.instructions.push_back(makeCall(
+        "rt_obj_new_i64", Type(Type::Kind::Ptr), {Value::constInt(7), Value::constInt(16)}, 0));
+    Instr toConsumer;
+    toConsumer.op = Opcode::Br;
+    toConsumer.setBranchTargets({"consumer"}, {{}});
+    producer.instructions.push_back(std::move(toConsumer));
+    producer.terminated = true;
+
+    // Keep the dominated consumer before its producer in storage order. SSA
+    // availability follows the CFG, not the StableList order.
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(consumer));
+    fn.blocks.push_back(std::move(producer));
+    fn.valueNames.resize(2);
+    module.functions.push_back(std::move(fn));
+
+    runPass(module, "runtime-fastpath");
+
+    EXPECT_TRUE(hasCallNamed(module.functions.front(), "rt_obj_release_known_check0"));
+    EXPECT_FALSE(hasCallNamed(module.functions.front(), "rt_obj_release_check0"));
+}
+
+TEST(RealWorldPerfPasses, RuntimeFastPathRejectsNonDominatingFactory) {
+    Module module;
+    Function fn = makeFunction("known_object_nondominating", Type(Type::Kind::I1));
+
+    BasicBlock entry;
+    entry.label = "entry";
+    Instr choose;
+    choose.op = Opcode::CBr;
+    choose.operands = {Value::constBool(false)};
+    choose.setBranchTargets({"producer", "consumer"}, {{}, {}});
+    entry.instructions.push_back(std::move(choose));
+    entry.terminated = true;
+
+    BasicBlock producer;
+    producer.label = "producer";
+    producer.instructions.push_back(makeCall(
+        "rt_obj_new_i64", Type(Type::Kind::Ptr), {Value::constInt(7), Value::constInt(16)}, 0));
+    Instr toConsumer;
+    toConsumer.op = Opcode::Br;
+    toConsumer.setBranchTargets({"consumer"}, {{}});
+    producer.instructions.push_back(std::move(toConsumer));
+    producer.terminated = true;
+
+    BasicBlock consumer;
+    consumer.label = "consumer";
+    consumer.instructions.push_back(
+        makeCall("rt_obj_release_check0", Type(Type::Kind::I1), {Value::temp(0)}, 1));
+    consumer.instructions.push_back(makeRet(Value::temp(1)));
+    consumer.terminated = true;
+
+    fn.blocks.push_back(std::move(entry));
+    fn.blocks.push_back(std::move(producer));
+    fn.blocks.push_back(std::move(consumer));
+    fn.valueNames.resize(2);
+    module.functions.push_back(std::move(fn));
+
+    runPass(module, "runtime-fastpath");
+
+    EXPECT_TRUE(hasCallNamed(module.functions.front(), "rt_obj_release_check0"));
+    EXPECT_FALSE(hasCallNamed(module.functions.front(), "rt_obj_release_known_check0"));
+}
+
+TEST(RealWorldPerfPasses, RuntimeFastPathRejectsUnregisteredNewSuffix) {
+    Module module;
+    Function fn = makeFunction("unknown_new_suffix", Type(Type::Kind::I1));
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.instructions.push_back(
+        makeCall("rt_nonobject_handle_new", Type(Type::Kind::Ptr), {}, 0));
+    entry.instructions.push_back(
+        makeCall("rt_obj_release_check0", Type(Type::Kind::I1), {Value::temp(0)}, 1));
+    entry.instructions.push_back(makeRet(Value::temp(1)));
+    entry.terminated = true;
+    fn.blocks.push_back(std::move(entry));
+    fn.valueNames.resize(2);
+    module.functions.push_back(std::move(fn));
+
+    runPass(module, "runtime-fastpath");
+
+    EXPECT_TRUE(hasCallNamed(module.functions.front(), "rt_obj_release_check0"));
+    EXPECT_FALSE(hasCallNamed(module.functions.front(), "rt_obj_release_known_check0"));
+}
+
+TEST(RealWorldPerfPasses, DCEUsesSparseCountsForHugeReferencedTempIds) {
+    Module module;
+    Function fn = makeFunction("hostile_temp_id", Type(Type::Kind::I64));
+    BasicBlock entry;
+    entry.label = "entry";
+    entry.instructions.push_back(makeRet(Value::temp(std::numeric_limits<unsigned>::max())));
+    entry.terminated = true;
+    fn.blocks.push_back(std::move(entry));
+    module.functions.push_back(std::move(fn));
+
+    EXPECT_NO_THROW(il::transform::dce(module));
+    ASSERT_EQ(module.functions.front().blocks.front().instructions.size(), 1u);
 }
 
 TEST(RealWorldPerfPasses, DevirtualizeRewritesConstantFunctionPointerCall) {

@@ -68,16 +68,15 @@ std::string_view LateCleanup::id() const {
 
 /// @brief Execute the late cleanup pass on a module.
 /// @details Iteratively runs SimplifyCFG on each function and then DCE on the
-///          whole module until no size changes are observed or a small iteration
-///          budget is exhausted. Optional stats record instruction/block counts
+///          whole module until no size changes are observed. Both component
+///          passes are reducing transforms, so instruction/block counts provide
+///          a finite progress measure. Optional stats record instruction/block counts
 ///          before and after each iteration.
 /// @param module Module to optimize in place.
 /// @param analysis Analysis manager for CFG simplification requirements.
 /// @return Preserved analysis set; conservative invalidation on change.
 PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis) {
     bool changedAny = false;
-
-    constexpr unsigned kMaxIterations = 4;
 
     const std::size_t initialInstr = countInstructions(module);
     const std::size_t initialBlocks = countBlocks(module);
@@ -89,7 +88,7 @@ PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis) {
         stats_->blocksBefore = initialBlocks;
     }
 
-    for (unsigned iter = 0; iter < kMaxIterations; ++iter) {
+    while (true) {
         const std::size_t iterStartInstr = currentInstr;
         const std::size_t iterStartBlocks = currentBlocks;
         bool simplifyChanged = false;

@@ -54,6 +54,7 @@ struct Signature {
     std::uint64_t ownedOutArgMask = 0; ///< Pointer args that receive an owned reference.
     bool returnsOwned = false;         ///< Helper returns an owned reference/string handle.
     bool mayAllocate = false;          ///< Helper may allocate runtime-managed storage.
+    bool returnsKnownObject = false;   ///< Result supports object-specific RC helpers.
 };
 
 /// @brief Register an expected runtime signature in the debug registry.
@@ -63,6 +64,13 @@ void register_signature(const Signature &signature);
 /// @brief Access the registered runtime signature expectations.
 /// @return Reference to the stable list of registered signatures.
 const std::vector<Signature> &all_signatures();
+
+/// @brief Look up normalized memory-effect flags without allocating.
+/// @param name Runtime symbol name.
+/// @param pure Receives the registered pure flag on success.
+/// @param readonly Receives the registered readonly flag on success.
+/// @return True when a matching dynamic signature exists.
+bool find_signature_effects(std::string_view name, bool &pure, bool &readonly);
 
 /// @brief Return a monotonically increasing registry version.
 /// @details The version changes only when a new unique signature is appended.
@@ -83,7 +91,8 @@ inline Signature make_signature(std::string name,
                                 std::uint64_t retainedArgMask = 0,
                                 bool returnsOwned = false,
                                 bool mayAllocate = false,
-                                std::uint64_t ownedOutArgMask = 0) {
+                                std::uint64_t ownedOutArgMask = 0,
+                                bool returnsKnownObject = false) {
     Signature signature;
     signature.name = std::move(name);
     signature.params.reserve(params.size());
@@ -100,6 +109,7 @@ inline Signature make_signature(std::string name,
     signature.ownedOutArgMask = ownedOutArgMask;
     signature.returnsOwned = returnsOwned;
     signature.mayAllocate = mayAllocate;
+    signature.returnsKnownObject = returnsKnownObject;
     return signature;
 }
 

@@ -77,7 +77,8 @@ bool sameSignature(const Signature &lhs, const Signature &rhs) {
            lhs.consumedArgMask == rhs.consumedArgMask &&
            lhs.retainedArgMask == rhs.retainedArgMask &&
            lhs.ownedOutArgMask == rhs.ownedOutArgMask && lhs.returnsOwned == rhs.returnsOwned &&
-           lhs.mayAllocate == rhs.mayAllocate;
+           lhs.mayAllocate == rhs.mayAllocate &&
+           lhs.returnsKnownObject == rhs.returnsKnownObject;
 }
 } // namespace
 
@@ -98,6 +99,8 @@ Signature apply_effect_overrides(Signature signature) {
     signature.ownedOutArgMask |= ownership.ownedOutArgMask;
     signature.returnsOwned = signature.returnsOwned || ownership.returnsOwned;
     signature.mayAllocate = signature.mayAllocate || ownership.mayAllocate;
+    signature.returnsKnownObject =
+        signature.returnsKnownObject || ownership.returnsKnownObject;
     return signature;
 }
 
@@ -126,6 +129,18 @@ void register_signature(const Signature &signature) {
 /// @return Read-only view of the registered signatures in insertion order.
 const std::vector<Signature> &all_signatures() {
     return registry();
+}
+
+bool find_signature_effects(std::string_view name, bool &pure, bool &readonly) {
+    std::lock_guard<std::mutex> lock(registry_mutex());
+    for (const auto &signature : registry()) {
+        if (signature.name != name)
+            continue;
+        pure = signature.pure;
+        readonly = signature.readonly;
+        return true;
+    }
+    return false;
 }
 
 std::size_t registry_version() {

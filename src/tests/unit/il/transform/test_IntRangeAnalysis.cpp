@@ -185,6 +185,24 @@ TEST(IntRangeAnalysis, RotatedSelfLoopKeepsFullInductionBounds) {
     EXPECT_EQ(*it->second.upper, 999);
 }
 
+TEST(IntRangeAnalysis, ReachesBlocksBeyondLegacySweepLimit) {
+    std::ostringstream text;
+    text << "il 0.3.0\nfunc @main() -> i64 {\nentry:\n  br b0\n";
+    constexpr unsigned kChainLength = 32;
+    for (unsigned i = 0; i < kChainLength; ++i) {
+        text << "b" << i << ":\n";
+        if (i + 1 == kChainLength)
+            text << "  ret 0\n";
+        else
+            text << "  br b" << (i + 1) << "\n";
+    }
+    text << "}\n";
+
+    Module module = parseModule(text.str());
+    auto info = zanna::analysis::computeIntRanges(module.functions.front());
+    EXPECT_TRUE(info.entryFor("b31") != nullptr);
+}
+
 TEST(CheckOptRanges, DemotesGuardedLoopArithmetic) {
     Module module = parseModule(kCountedLoop);
     runCheckOpt(module);

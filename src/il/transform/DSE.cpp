@@ -29,7 +29,6 @@
 #include "il/transform/analysis/Liveness.hpp"
 
 #include <algorithm>
-#include <functional>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -217,31 +216,7 @@ bool runDSE(Function &F, AnalysisManager &AM) {
     return eraseInstructionSites(F, toRemove) != 0;
 }
 
-//===----------------------------------------------------------------------===//
-// Cross-Block DSE
-//===----------------------------------------------------------------------===//
-// This extension identifies stores that are provably dead because they are
-// overwritten on ALL paths before being read. It uses a forward dataflow
-// approach:
-// 1. For each store to alloca (non-escaping), track it as potentially dead
-// 2. Walk forward through successors
-// 3. Mark store as dead if all paths either:
-//    - Store to the same location again (killing the original)
-//    - Exit the function without reading the location
-//===----------------------------------------------------------------------===//
-
 namespace {
-
-/// @brief Describes a store proven removable by cross-block DSE.
-/// @details The block/index pair identifies the instruction to erase while the
-///          pointer and access size preserve the alias fact that justified
-///          staging the removal.
-struct PendingStore {
-    BasicBlock *block{nullptr};
-    size_t instrIdx{0};
-    Value ptr;
-    std::optional<unsigned> size;
-};
 
 bool hasExceptionHandling(const Function &F) {
     for (const auto &B : F.blocks) {
@@ -262,209 +237,39 @@ bool hasExceptionHandling(const Function &F) {
     return false;
 }
 
-/// Get successor block labels from a terminator instruction
-std::vector<std::string> getSuccessors(const BasicBlock &B) {
-    std::vector<std::string> succs;
-    if (B.instructions.empty())
-        return succs;
-    const auto &term = B.instructions.back();
-    for (const auto &label : term.labels) {
-        succs.push_back(label);
+bool eliminateMemorySSADeadStores(Function &function,
+                                  const zanna::analysis::MemorySSA &memorySSA) {
+    std::vector<InstructionSite> toRemove;
+    for (auto &block : function.blocks) {
+        for (std::size_t index = 0; index < block.instructions.size(); ++index) {
+            if (block.instructions[index].op == Opcode::Store &&
+                memorySSA.isDeadStore(&block, index) &&
+                isStoreKnownNonTrapping(function, block.instructions[index]))
+                toRemove.emplace_back(&block, index);
+        }
     }
-    return succs;
-}
-
-/// @brief Determine whether @p B ends with an explicit function exit.
-/// @details Cross-block DSE treats return and trap terminators as safe path
-///          endpoints because no later instruction can observe the stored value
-///          on that path.  Malformed blocks with no terminator or non-exiting
-///          terminators are rejected by returning false, which keeps the analysis
-///          conservative when the CFG is incomplete.
-/// @param B Basic block whose final instruction is inspected.
-/// @return True when @p B terminates with `ret`, `trap`, or `trap_from_err`.
-bool isFunctionExit(const BasicBlock &B) {
-    if (B.instructions.empty())
-        return false;
-    switch (B.instructions.back().op) {
-        case Opcode::Ret:
-        case Opcode::Trap:
-        case Opcode::TrapFromErr:
-            return true;
-        default:
-            return false;
-    }
+    return eraseInstructionSites(function, toRemove) != 0;
 }
 
 } // namespace
 
-/// Cross-block DSE: eliminate stores that are dead across block boundaries
+/// Cross-block DSE compatibility entry point.
+/// @details The MemorySSA implementation is the single authoritative
+///          cross-block path proof, avoiding divergent call/loop semantics.
 bool runCrossBlockDSE(Function &F, AnalysisManager &AM) {
-    if (F.blocks.empty())
-        return false;
     if (hasExceptionHandling(F))
         return false;
-
-    zanna::analysis::BasicAA &AA =
+    zanna::analysis::BasicAA &aliasAnalysis =
         AM.getFunctionResult<zanna::analysis::BasicAA>(kAnalysisBasicAA, F);
-
-    // Build a map from block label to block pointer for successor lookup
-    std::unordered_map<std::string, BasicBlock *> blockMap;
-    for (auto &B : F.blocks) {
-        blockMap[B.label] = &B;
-    }
-
-    bool changed = false;
-    std::vector<PendingStore> pendingStores;
-    const auto defs = zanna::analysis::collectAllocaRootDefs(F);
-    const auto roots = zanna::analysis::computeAllocaRoots(F, defs);
-
-    // For each block, look for stores to non-escaping allocas
-    for (auto &B : F.blocks) {
-        for (size_t i = 0; i < B.instructions.size(); ++i) {
-            const Instr &I = B.instructions[i];
-            if (I.op != Opcode::Store || I.operands.empty())
-                continue;
-
-            const Value &ptr = I.operands[0];
-            if (!isStoreKnownNonTrapping(F, I))
-                continue;
-
-            // Only consider stores to allocas (stack allocations)
-            auto allocaId = zanna::analysis::getAllocaId(ptr, defs);
-            if (!allocaId)
-                continue;
-
-            // Skip if the alloca escapes
-            if (zanna::analysis::allocaEscapes(F, *allocaId, roots))
-                continue;
-
-            auto storeSize = zanna::analysis::BasicAA::typeSizeBytes(I.type);
-
-            // Check if this store is read before being killed
-            // Walk forward from this point to see if store is dead
-            bool isDeadStore = true;
-            bool reachedRead = false;
-
-            // First check within same block after the store
-            for (size_t j = i + 1; j < B.instructions.size(); ++j) {
-                const Instr &next = B.instructions[j];
-                if (next.op == Opcode::Load && !next.operands.empty()) {
-                    auto loadSize = zanna::analysis::BasicAA::typeSizeBytes(next.type);
-                    if (AA.alias(next.operands[0], ptr, loadSize, storeSize) !=
-                        zanna::analysis::AliasResult::NoAlias) {
-                        reachedRead = true;
-                        isDeadStore = false;
-                        break;
-                    }
-                }
-                if (next.op == Opcode::Store && !next.operands.empty()) {
-                    auto nextSize = zanna::analysis::BasicAA::typeSizeBytes(next.type);
-                    if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA)) {
-                        // Killed by later store in same block - already handled
-                        // by intra-block DSE
-                        isDeadStore = false;
-                        break;
-                    }
-                }
-                // Conservative for calls
-                if (next.op == Opcode::Call || next.op == Opcode::CallIndirect) {
-                    auto mr = AA.modRef(next);
-                    if (mr != zanna::analysis::ModRefResult::NoModRef) {
-                        isDeadStore = false;
-                        break;
-                    }
-                }
-            }
-
-            if (reachedRead || !isDeadStore)
-                continue;
-
-            const auto successors = getSuccessors(B);
-            if (successors.empty())
-                continue;
-
-            std::unordered_map<std::string, bool> memo;
-            std::unordered_set<std::string> visiting;
-            std::function<bool(const std::string &)> allPathsKillOrExit =
-                [&](const std::string &label) -> bool {
-                if (auto memoIt = memo.find(label); memoIt != memo.end())
-                    return memoIt->second;
-
-                if (!visiting.insert(label).second)
-                    return false; // A cycle may preserve the original store into a later read.
-
-                auto finish = [&](bool value) {
-                    visiting.erase(label);
-                    memo[label] = value;
-                    return value;
-                };
-
-                auto it = blockMap.find(label);
-                if (it == blockMap.end())
-                    return finish(false);
-
-                BasicBlock *succ = it->second;
-                for (const auto &next : succ->instructions) {
-                    if (next.op == Opcode::Load && !next.operands.empty()) {
-                        auto loadSize = zanna::analysis::BasicAA::typeSizeBytes(next.type);
-                        if (AA.alias(next.operands[0], ptr, loadSize, storeSize) !=
-                            zanna::analysis::AliasResult::NoAlias)
-                            return finish(false);
-                    }
-                    if (next.op == Opcode::Store && !next.operands.empty()) {
-                        auto nextSize = zanna::analysis::BasicAA::typeSizeBytes(next.type);
-                        if (fullyOverwrites(next.operands[0], nextSize, ptr, storeSize, AA))
-                            return finish(true);
-                    }
-                    if (next.op == Opcode::Call || next.op == Opcode::CallIndirect) {
-                        auto mr = AA.modRef(next);
-                        if (mr != zanna::analysis::ModRefResult::NoModRef)
-                            return finish(false);
-                    }
-                }
-
-                if (isFunctionExit(*succ))
-                    return finish(true);
-
-                const auto nextSuccs = getSuccessors(*succ);
-                if (nextSuccs.empty())
-                    return finish(false);
-
-                for (const auto &succLabel : nextSuccs)
-                    if (!allPathsKillOrExit(succLabel))
-                        return finish(false);
-                return finish(true);
-            };
-
-            bool allPathsKill = true;
-            for (const auto &label : successors) {
-                if (!allPathsKillOrExit(label)) {
-                    allPathsKill = false;
-                    break;
-                }
-            }
-
-            if (allPathsKill) {
-                pendingStores.push_back(PendingStore{&B, i, ptr, storeSize});
-            }
-        }
-    }
-
-    std::vector<InstructionSite> toRemove;
-    toRemove.reserve(pendingStores.size());
-    for (const PendingStore &store : pendingStores)
-        toRemove.emplace_back(store.block, store.instrIdx);
-
-    changed = eraseInstructionSites(F, toRemove) != 0;
-
-    return changed;
+    const zanna::analysis::MemorySSA memorySSA =
+        zanna::analysis::computeMemorySSA(F, aliasAnalysis);
+    return eliminateMemorySSADeadStores(F, memorySSA);
 }
 
 /// MemorySSA-based dead store elimination.
 ///
-/// Uses the MemorySSA analysis to discover dead stores that runCrossBlockDSE
-/// misses because it conservatively treats calls as read barriers for all
-/// allocas.  Since MemorySSA's dead-store computation skips calls for
+/// Uses the MemorySSA analysis as the canonical cross-block proof. Since its
+/// dead-store computation skips calls for
 /// non-escaping allocas (they cannot access non-escaping stack memory), this
 /// pass eliminates stores in functions that contain runtime calls inside loops
 /// or conditional branches — the most common pattern in Zia-lowered code.
@@ -475,21 +280,7 @@ bool runMemorySSADSE(Function &F, AnalysisManager &AM) {
     zanna::analysis::MemorySSA &mssa =
         AM.getFunctionResult<zanna::analysis::MemorySSA>(kAnalysisMemorySSA, F);
 
-    std::vector<InstructionSite> toRemove;
-
-    for (auto &B : F.blocks) {
-        for (size_t i = 0; i < B.instructions.size(); ++i) {
-            if (B.instructions[i].op == Opcode::Store && mssa.isDeadStore(&B, i) &&
-                isStoreKnownNonTrapping(F, B.instructions[i])) {
-                toRemove.emplace_back(&B, i);
-            }
-        }
-    }
-
-    if (toRemove.empty())
-        return false;
-
-    return eraseInstructionSites(F, toRemove) != 0;
+    return eliminateMemorySSADeadStores(F, mssa);
 }
 
 } // namespace il::transform

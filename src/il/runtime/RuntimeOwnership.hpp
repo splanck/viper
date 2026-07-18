@@ -29,6 +29,8 @@ struct RuntimeOwnershipEffects {
     std::uint64_t ownedOutArgMask{0}; ///< Pointer args that receive an owned reference.
     bool returnsOwned{false};         ///< Result is an owned string/reference handle.
     bool mayAllocate{false};          ///< Helper may allocate runtime-managed storage.
+    bool returnsKnownObject{false};   ///< Result is a heap object compatible with
+                                      ///< object-specific retain/release helpers.
     bool knownNeutral{false};         ///< Helper borrows every argument, performs no
                                       ///< retain/release on any handle, and cannot
                                       ///< re-enter user code. Stronger than the mere
@@ -53,7 +55,7 @@ struct RuntimeOwnershipEffects {
     /// @brief True when any ownership fact is known.
     [[nodiscard]] constexpr bool hasAny() const noexcept {
         return consumedArgMask != 0 || retainedArgMask != 0 || ownedOutArgMask != 0 ||
-               returnsOwned || mayAllocate;
+               returnsOwned || mayAllocate || returnsKnownObject;
     }
 };
 
@@ -230,6 +232,7 @@ namespace detail {
         name == "Zanna.Core.Box.I1" || name == "Zanna.Core.Box.ValueType") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
+        effects.returnsKnownObject = true;
         return effects;
     }
 
@@ -237,6 +240,7 @@ namespace detail {
         effects.retainedArgMask = 0b1;
         effects.returnsOwned = true;
         effects.mayAllocate = true;
+        effects.returnsKnownObject = true;
         return effects;
     }
 

@@ -26,6 +26,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -94,6 +95,7 @@ class LoopInfo {
   private:
     friend LoopInfo computeLoopInfo(il::core::Module &module, il::core::Function &function);
     std::vector<Loop> loops_;
+    std::unordered_map<std::string, std::size_t, LoopStringHash, std::equal_to<>> headerIndex_;
 };
 
 /// \brief Compute loop information for @p function.

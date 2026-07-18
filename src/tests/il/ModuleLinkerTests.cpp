@@ -325,6 +325,55 @@ TEST(ModuleLinker, GlobalsMerged) {
     EXPECT_EQ(result.module.globals.size(), 2u);
 }
 
+TEST(ModuleLinker, PreservesFirstSeenExternAndGlobalOrder) {
+    Module entry;
+    entry.functions.push_back(makeI64Func("main", Linkage::Internal));
+    entry.externs.push_back({"Zanna.Zed", Type(Type::Kind::Void), {}});
+    entry.externs.push_back({"Zanna.Alpha", Type(Type::Kind::Void), {}});
+    entry.globals.push_back({"zed", Type(Type::Kind::I64), "1"});
+    entry.globals.push_back({"alpha", Type(Type::Kind::I64), "2"});
+
+    Module library;
+    library.functions.push_back(makeVoidFunc("lib", Linkage::Export));
+    library.externs.push_back({"Zanna.Middle", Type(Type::Kind::Void), {}});
+    library.globals.push_back({"middle", Type(Type::Kind::I64), "3"});
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(entry));
+    modules.push_back(std::move(library));
+
+    auto result = il::link::linkModules(std::move(modules));
+    ASSERT_TRUE(result.succeeded());
+    ASSERT_EQ(result.module.externs.size(), 3u);
+    EXPECT_EQ(result.module.externs[0].name, "Zanna.Zed");
+    EXPECT_EQ(result.module.externs[1].name, "Zanna.Alpha");
+    EXPECT_EQ(result.module.externs[2].name, "Zanna.Middle");
+    ASSERT_EQ(result.module.globals.size(), 3u);
+    EXPECT_EQ(result.module.globals[0].name, "zed");
+    EXPECT_EQ(result.module.globals[1].name, "alpha");
+    EXPECT_EQ(result.module.globals[2].name, "middle");
+}
+
+TEST(ModuleLinker, GlobalCollisionUsesStableNumericSuffix) {
+    Module entry;
+    entry.functions.push_back(makeI64Func("main", Linkage::Internal));
+    entry.globals.push_back({"value", Type(Type::Kind::I64), "1"});
+    entry.globals.push_back({"m1$value", Type(Type::Kind::I64), "2"});
+
+    Module library;
+    library.functions.push_back(makeVoidFunc("lib", Linkage::Export));
+    library.globals.push_back({"value", Type(Type::Kind::I64), "3"});
+
+    std::vector<Module> modules;
+    modules.push_back(std::move(entry));
+    modules.push_back(std::move(library));
+
+    auto result = il::link::linkModules(std::move(modules));
+    ASSERT_TRUE(result.succeeded());
+    ASSERT_EQ(result.module.globals.size(), 3u);
+    EXPECT_EQ(result.module.globals[2].name, "m1$value$1");
+}
+
 TEST(ModuleLinker, EmptyModuleListFails) {
     std::vector<Module> modules;
     auto result = il::link::linkModules(std::move(modules));

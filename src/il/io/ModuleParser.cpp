@@ -294,27 +294,25 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
     std::string decoded;
     bool hasInitializer = eq != std::string::npos;
     if (globalType.kind == Type::Kind::Str && hasInitializer) {
-        size_t q1 = line.find('"', eq);
-        if (q1 == std::string::npos) {
+        std::istringstream initializer(line.substr(eq + 1));
+        initializer >> std::ws;
+        if (initializer.peek() != '"') {
             return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing opening '\"'")};
         }
-        size_t q2 = line.rfind('"');
-        if (q2 == std::string::npos || q2 <= q1) {
+        const std::string quotedInitializer = readToken(initializer);
+        if (initializer.fail() || quotedInitializer.size() < 2 ||
+            quotedInitializer.back() != '"') {
             return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing closing '\"'")};
         }
-        std::string init = line.substr(q1 + 1, q2 - q1 - 1);
-        auto trailingBegin = line.begin() + static_cast<std::ptrdiff_t>(q2 + 1);
-        auto trailingEnd = line.end();
-        auto nonWs = std::find_if(
-            trailingBegin, trailingEnd, [](unsigned char ch) { return !std::isspace(ch); });
-        const bool trailingIsComment =
-            nonWs != trailingEnd &&
-            (*nonWs == ';' ||
-             (*nonWs == '/' && std::next(nonWs) != trailingEnd && *std::next(nonWs) == '/'));
-        if (nonWs != trailingEnd && !trailingIsComment) {
+        std::string trailing;
+        std::getline(initializer, trailing);
+        trailing = trim(trailing);
+        if (!trailing.empty() && trailing.rfind("//", 0) != 0 && trailing.front() != ';') {
             return Expected<void>{il::io::makeLineErrorDiag(
                 {}, st.lineNo, "unexpected characters after closing '\"'")};
         }
+        const std::string init =
+            quotedInitializer.substr(1, quotedInitializer.size() - 2);
         std::string errMsg;
         if (!il::io::decodeEscapedString(init, decoded, &errMsg)) {
             return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, errMsg)};
@@ -323,7 +321,7 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
     } else if (globalType.kind == Type::Kind::Str) {
         isConst = true;
     } else if (eq != std::string::npos) {
-        decoded = trim(line.substr(eq + 1));
+        decoded = stripDeclarationComment(line.substr(eq + 1));
         if (decoded.empty()) {
             return Expected<void>{
                 il::io::makeLineErrorDiag({}, st.lineNo, "missing global initializer")};

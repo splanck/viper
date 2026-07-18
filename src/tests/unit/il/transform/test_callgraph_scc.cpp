@@ -162,6 +162,21 @@ TEST(CallGraphSCC, NonRecursiveFunctionIsNotRecursive) {
     EXPECT_FALSE(cg.isRecursive("root"));
 }
 
+TEST(CallGraphSCC, DeduplicatesTopologyButRetainsCallSiteCounts) {
+    Module M;
+    M.functions.push_back(makeRetFn("caller"));
+    M.functions.push_back(makeRetFn("callee"));
+    addCall(M.functions[0], "callee");
+    addCall(M.functions[0], "callee");
+    addCall(M.functions[0], "callee");
+
+    zanna::analysis::CallGraph cg = zanna::analysis::buildCallGraph(M);
+
+    ASSERT_EQ(cg.edges.at("caller").size(), 1u);
+    EXPECT_EQ(cg.edges.at("caller").front(), "callee");
+    EXPECT_EQ(cg.callCounts.at("callee"), 3u);
+}
+
 /// @brief Main.
 int main(int argc, char **argv) {
     zanna_test::init(&argc, argv);

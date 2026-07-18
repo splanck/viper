@@ -121,8 +121,9 @@ bool processBlock(BasicBlock &B,
 ///          tree and walks it in pre-order using an explicit stack. Each
 ///          domtree node pushes a new expression scope before processing its
 ///          basic block and pops it after processing all dominated children.
-///          Iteration stops when no more redundancies are found or after a
-///          bounded number of passes.
+///          Iteration stops when no more redundancies are found. Every changing
+///          iteration erases at least one instruction, so termination follows
+///          from the finite instruction count without an arbitrary pass cap.
 /// @param M Module containing \p F (needed to construct a CFGContext).
 /// @param F Function to optimize in place.
 /// @return True if any redundant instruction was removed; false otherwise.
@@ -132,8 +133,9 @@ bool runEarlyCSE(Module &M, Function &F) {
 
     bool changedAny = false;
 
-    // Iterate to fixed point (bounded to avoid pathological cases).
-    for (int iter = 0; iter < 4; ++iter) {
+    // Iterate to a true fixed point. A changing iteration only erases
+    // instructions, which is the natural progress measure for this pass.
+    while (true) {
         zanna::analysis::CFGContext cfg =
             zanna::analysis::CFGContext::forInternedFunction(M, F);
         zanna::analysis::DomTree domTree = zanna::analysis::computeDominatorTree(cfg, F);

@@ -154,31 +154,31 @@ inline AllocaRootMap computeAllocaRoots(
 }
 
 /// @brief Resolve a pointer temporary to its unique root alloca id.
-/// @details Follows direct alloca definitions and GEP bases up to a small depth
-///          limit to avoid infinite recursion on malformed cyclic SSA graphs.
+/// @details Follows direct alloca definitions and GEP bases iteratively. A
+///          visited set rejects malformed cyclic SSA graphs without imposing an
+///          arbitrary limit on valid derived-pointer chains.
 /// @param ptr Pointer value to inspect.
 /// @param defs Definition summary from @ref collectAllocaRootDefs.
-/// @param depth Internal recursion depth; callers should omit this.
 /// @return Root alloca id, or nullopt if no unique alloca root is found.
 inline std::optional<unsigned> getAllocaId(
     const il::core::Value &ptr,
-    const std::unordered_map<unsigned, AllocaRootDefInfo> &defs,
-    unsigned depth = 0) {
+    const std::unordered_map<unsigned, AllocaRootDefInfo> &defs) {
     using namespace il::core;
 
-    if (ptr.kind != Value::Kind::Temp || depth > 8)
-        return std::nullopt;
-
-    auto it = defs.find(ptr.id);
-    if (it == defs.end())
-        return std::nullopt;
-
-    if (it->second.op == Opcode::Alloca)
-        return ptr.id;
-
-    if (it->second.op == Opcode::GEP && !it->second.operands.empty())
-        return getAllocaId(it->second.operands[0], defs, depth + 1);
-
+    const Value *current = &ptr;
+    std::unordered_set<unsigned> visited;
+    while (current->kind == Value::Kind::Temp) {
+        if (!visited.insert(current->id).second)
+            return std::nullopt;
+        auto it = defs.find(current->id);
+        if (it == defs.end())
+            return std::nullopt;
+        if (it->second.op == Opcode::Alloca)
+            return current->id;
+        if (it->second.op != Opcode::GEP || it->second.operands.empty())
+            return std::nullopt;
+        current = &it->second.operands[0];
+    }
     return std::nullopt;
 }
 

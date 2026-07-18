@@ -38,6 +38,7 @@
 #include "il/core/Module.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
+#include "il/analysis/AllocaRoots.hpp"
 #include "il/utils/Utils.hpp"
 #include "il/verify/VerifierTable.hpp"
 
@@ -64,12 +65,7 @@ struct StoreSite {
 ///          instruction pointers are unsafe for helper caches. This summary
 ///          copies only the opcode and operands needed by pointer-derivation
 ///          checks.
-struct DefSummary {
-    Opcode op{Opcode::Count};      ///< Defining opcode.
-    std::vector<Value> operands{}; ///< Operand payload copied from the definition.
-};
-
-using DefMap = std::unordered_map<unsigned, DefSummary>;
+using DefMap = std::unordered_map<unsigned, zanna::analysis::AllocaRootDefInfo>;
 
 /// @brief Classify how a call instruction interacts with memory for hoisting.
 /// @details Uses the shared call-effects classifier so runtime metadata and
@@ -106,39 +102,25 @@ DefMap buildDefMap(const Function &function) {
         for (const auto &instr : block.instructions) {
             if (!instr.result)
                 continue;
-            defs.emplace(*instr.result, DefSummary{instr.op, instr.operands});
+            defs.emplace(*instr.result,
+                         zanna::analysis::AllocaRootDefInfo{instr.op, instr.operands});
         }
     }
     return defs;
 }
 
 /// @brief Determine whether @p ptr is rooted at a non-escaping alloca.
-/// @details Follows copied GEP definitions through @p defs with a fixed depth
-///          limit so malformed cyclic IR cannot recurse indefinitely.
+/// @details Uses the shared iterative alloca-root resolver, which detects
+///          malformed cycles without truncating valid deep GEP chains.
 /// @param defs Temp definition summaries for the function.
 /// @param aa Alias analysis carrying non-escaping alloca facts.
 /// @param ptr Pointer value to inspect.
-/// @param depth Current recursion depth.
 /// @return True when @p ptr is an alloca or GEP chain rooted at a non-escaping alloca.
 bool isDerivedFromNonEscapingAlloca(const DefMap &defs,
                                     const zanna::analysis::BasicAA &aa,
-                                    const Value &ptr,
-                                    unsigned depth = 0) {
-    if (ptr.kind != Value::Kind::Temp || depth > 8)
-        return false;
-
-    auto defIt = defs.find(ptr.id);
-    if (defIt == defs.end())
-        return false;
-    const DefSummary &def = defIt->second;
-
-    if (def.op == Opcode::Alloca)
-        return aa.isNonEscapingAlloca(ptr.id);
-
-    if (def.op == Opcode::GEP && !def.operands.empty())
-        return isDerivedFromNonEscapingAlloca(defs, aa, def.operands[0], depth + 1);
-
-    return false;
+                                    const Value &ptr) {
+    const auto root = zanna::analysis::getAllocaId(ptr, defs);
+    return root && aa.isNonEscapingAlloca(*root);
 }
 
 /// @brief Determine whether an instruction can be hoisted out of the loop.

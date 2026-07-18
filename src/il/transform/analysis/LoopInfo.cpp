@@ -55,16 +55,12 @@ void Loop::finalize() {
 }
 
 /// @brief Find a loop by its header label.
-/// @details Performs a linear search over the recorded loops. Loop counts are
-///          typically small, so a vector scan keeps the implementation simple.
+/// @details Uses the header-to-index cache maintained by @ref addLoop.
 /// @param headerLabel Label of the loop header block.
 /// @return Pointer to the loop metadata, or nullptr if not found.
 const Loop *LoopInfo::findLoop(std::string_view headerLabel) const {
-    for (const auto &loop : loops_) {
-        if (loop.headerLabel == headerLabel)
-            return &loop;
-    }
-    return nullptr;
+    auto it = headerIndex_.find(headerLabel);
+    return it == headerIndex_.end() ? nullptr : &loops_[it->second];
 }
 
 /// @brief Add a loop to the analysis after preparing its membership cache.
@@ -73,6 +69,7 @@ const Loop *LoopInfo::findLoop(std::string_view headerLabel) const {
 /// @param loop Loop metadata to add; moved into internal storage.
 void LoopInfo::addLoop(Loop loop) {
     loop.finalize();
+    headerIndex_[loop.headerLabel] = loops_.size();
     loops_.push_back(std::move(loop));
 }
 
@@ -162,46 +159,35 @@ LoopInfo computeLoopInfo(Module &module, Function &function) {
         info.addLoop(std::move(loop));
     }
 
-    // Parent/child nesting (pick smallest containing loop as parent).
-    // Pre-cache loop sizes for O(1) lookup instead of O(n) findLoop() calls.
-    std::unordered_map<std::string, size_t> loopSizes;
-    loopSizes.reserve(info.loops_.size());
-    for (const auto &loop : info.loops_) {
-        loopSizes[loop.headerLabel] = loop.blockLabels.size();
-    }
-
-    auto contains = [](const Loop &loop, std::string_view label) { return loop.contains(label); };
-    for (auto &loop : info.loops_) {
-        std::optional<std::string> parent;
-        size_t parentSize = SIZE_MAX;
-        for (const auto &candidate : info.loops_) {
-            if (candidate.headerLabel == loop.headerLabel)
+    // Parent/child nesting (pick smallest containing loop as parent). Walk each
+    // candidate's members once and use the header index as an inverted lookup;
+    // this is O(total loop membership), not O(number of loops squared).
+    std::vector<std::optional<std::size_t>> parentIndex(info.loops_.size());
+    for (std::size_t candidateIndex = 0; candidateIndex < info.loops_.size();
+         ++candidateIndex) {
+        const Loop &candidate = info.loops_[candidateIndex];
+        for (const auto &member : candidate.blockLabels) {
+            auto childIt = info.headerIndex_.find(member);
+            if (childIt == info.headerIndex_.end() || childIt->second == candidateIndex)
                 continue;
-            if (!contains(candidate, loop.headerLabel))
-                continue;
-            // Use cached size lookup instead of findLoop()->blockLabels.size()
-            if (!parent || candidate.blockLabels.size() < parentSize) {
-                parent = candidate.headerLabel;
-                parentSize = candidate.blockLabels.size();
-            }
-        }
-        if (parent) {
-            loop.parentHeader = *parent;
+            const std::size_t childIndex = childIt->second;
+            const auto currentParent = parentIndex[childIndex];
+            if (!currentParent || candidate.blockLabels.size() <
+                                      info.loops_[*currentParent].blockLabels.size())
+                parentIndex[childIndex] = candidateIndex;
         }
     }
+    for (std::size_t loopIndex = 0; loopIndex < info.loops_.size(); ++loopIndex)
+        if (parentIndex[loopIndex])
+            info.loops_[loopIndex].parentHeader =
+                info.loops_[*parentIndex[loopIndex]].headerLabel;
     // Populate children lists
-    auto findMutableLoop = [&](std::string_view headerLabel) -> Loop * {
-        for (auto &candidate : info.loops_) {
-            if (candidate.headerLabel == headerLabel)
-                return &candidate;
-        }
-        return nullptr;
-    };
     for (auto &loop : info.loops_) {
         if (loop.parentHeader.empty())
             continue;
-        if (auto *parentLoop = findMutableLoop(loop.parentHeader))
-            parentLoop->childHeaders.push_back(loop.headerLabel);
+        auto parentIt = info.headerIndex_.find(loop.parentHeader);
+        if (parentIt != info.headerIndex_.end())
+            info.loops_[parentIt->second].childHeaders.push_back(loop.headerLabel);
     }
 
     // Exits: edges from loop body to outside.

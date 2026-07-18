@@ -88,7 +88,7 @@ class TokenStream {
     }
 
     bool advance() {
-        while (std::getline(*stream_, line_)) {
+        while (readLine()) {
             ++legacy_->lineNo;
             line_ = trim(stripInlineComment(line_));
             if (line_.empty() || line_.rfind("//", 0) == 0)
@@ -115,10 +115,37 @@ class TokenStream {
         return false;
     }
 
+    [[nodiscard]] std::string_view resourceLimit() const noexcept {
+        return resourceLimit_;
+    }
+
   private:
+    bool readLine() {
+        line_.clear();
+        resourceLimit_.clear();
+        if (static_cast<std::size_t>(legacy_->lineNo) >= legacy_->limits.maxLines) {
+            resourceLimit_ = "physical lines";
+            return false;
+        }
+        char ch = '\0';
+        while (stream_->get(ch)) {
+            if (ch == '\n')
+                return true;
+            if (line_.size() >= legacy_->limits.maxLineBytes) {
+                resourceLimit_ = "line bytes";
+                while (stream_->get(ch) && ch != '\n') {
+                }
+                return false;
+            }
+            line_.push_back(ch);
+        }
+        return !line_.empty();
+    }
+
     std::istream *stream_ = nullptr;
     LegacyParserState *legacy_ = nullptr;
     std::string line_;
+    std::string resourceLimit_;
     TokenKind token_ = TokenKind::Skip;
 };
 

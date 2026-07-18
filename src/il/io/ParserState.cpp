@@ -21,6 +21,7 @@
 ///          stored here remaining valid for the parser's lifetime.
 
 #include "il/internal/io/ParserState.hpp"
+#include "il/core/Module.hpp"
 
 namespace il::io::detail {
 /// @brief Bind the parser state to a concrete module instance.
@@ -32,5 +33,15 @@ namespace il::io::detail {
 ///
 /// @param mod Module that will receive all IR entities materialized by the
 ///             parser.
-ParserState::ParserState(il::core::Module &mod) : m(mod) {}
+ParserState::ParserState(il::core::Module &mod, const il::io::ParserLimits &parserLimits)
+    : m(mod), limits(parserLimits) {
+    // Limits apply to the resulting module, including declarations supplied by
+    // callers before this parse operation. This prevents repeated append-style
+    // parses from bypassing aggregate block and instruction budgets.
+    for (const auto &function : mod.functions) {
+        totalBlocks += function.blocks.size();
+        for (const auto &block : function.blocks)
+            totalInstructions += block.instructions.size();
+    }
+}
 } // namespace il::io::detail

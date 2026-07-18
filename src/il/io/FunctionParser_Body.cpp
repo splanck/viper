@@ -168,6 +168,9 @@ Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state) {
                 recoverTo(state, TokenKind::BlockLabel);
                 return blockResult;
             }
+            if (++state.legacy->totalBlocks > state.legacy->limits.maxBlocks)
+                return lineError<void>(state.lineNo(),
+                                       "resource limit exceeded: basic blocks");
             continue;
         }
 
@@ -188,8 +191,22 @@ Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state) {
             recoverTo(state, TokenKind::BlockLabel);
             return instrResult;
         }
+        if (++state.legacy->totalInstructions > state.legacy->limits.maxInstructions)
+            return lineError<void>(state.lineNo(), "resource limit exceeded: instructions");
+        const core::Instr &parsedInstruction = state.cur->instructions.back();
+        std::size_t valueCount = parsedInstruction.operands.size();
+        for (const auto &args : parsedInstruction.brArgs)
+            valueCount += args.size();
+        if (valueCount > state.legacy->limits.maxValuesPerInstruction)
+            return lineError<void>(state.lineNo(),
+                                   "resource limit exceeded: instruction operands");
         state.refresh();
     }
+
+    if (!stream.resourceLimit().empty())
+        return lineError<void>(state.lineNo() + 1,
+                               "resource limit exceeded: " +
+                                   std::string(stream.resourceLimit()));
 
     if (state.fn) {
         state.fn = nullptr;

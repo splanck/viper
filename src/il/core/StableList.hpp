@@ -9,7 +9,7 @@
 // Purpose: Declares a small random-access owning list whose element addresses
 //          survive container growth and unrelated insert/erase operations.
 // Key invariants:
-//   - Each live element is individually heap-owned and non-null.
+//   - Each live element occupies a non-null slot in stable pooled storage.
 //   - References and pointers to an element remain valid until that element is
 //     erased or the list is cleared/destroyed.
 //   - Iterator invalidation follows the backing vector of ownership slots, but
@@ -22,10 +22,12 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -33,8 +35,8 @@
 namespace il::core {
 
 /// @brief Owning random-access sequence with stable element addresses.
-/// @details `StableList` stores elements behind `std::unique_ptr` slots while
-///          exposing an interface intentionally close to the vector operations
+/// @details `StableList` stores elements in reusable fixed-address slots
+///          allocated in chunks while exposing an interface close to vector operations
 ///          used throughout the IL pipeline: indexing, range iteration,
 ///          insertion, erasure, assignment, and capacity reservation. The slot
 ///          vector may reallocate, so iterators have normal vector-like
@@ -42,7 +44,24 @@ namespace il::core {
 ///          not moved by unrelated container mutations.
 /// @tparam T Element type owned by the list.
 template <class T> class StableList {
-    using Storage = std::vector<std::unique_ptr<T>>;
+    struct Slot {
+        std::optional<T> value;
+        Slot *nextFree{nullptr};
+
+        T *get() noexcept {
+            return value ? &*value : nullptr;
+        }
+        const T *get() const noexcept {
+            return value ? &*value : nullptr;
+        }
+    };
+
+    struct Chunk {
+        std::unique_ptr<Slot[]> slots;
+        std::size_t size{0};
+    };
+
+    using Storage = std::vector<Slot *>;
 
     template <bool IsConst> class IteratorBase {
         using StorageIterator = std::conditional_t<IsConst,
@@ -67,13 +86,13 @@ template <class T> class StableList {
         /// @brief Dereference the iterator to the owned element.
         /// @return Reference to the element in the current slot.
         reference operator*() const {
-            return **it_;
+            return *(*it_)->get();
         }
 
         /// @brief Access the current element as a pointer.
         /// @return Pointer to the element in the current slot.
         pointer operator->() const {
-            return it_->get();
+            return (*it_)->get();
         }
 
         /// @brief Advance to the next slot.
@@ -218,7 +237,9 @@ template <class T> class StableList {
 
     /// @brief Move-construct a list, preserving owned element addresses.
     /// @param other Source list whose slots are transferred.
-    StableList(StableList &&other) noexcept = default;
+    StableList(StableList &&other) noexcept {
+        moveFrom(std::move(other));
+    }
 
     /// @brief Construct a list from an initializer list.
     /// @param values Values to copy into the list.
@@ -233,14 +254,28 @@ template <class T> class StableList {
         if (this == &other)
             return *this;
         StableList copy(other);
-        slots_.swap(copy.slots_);
+        swap(copy);
         return *this;
     }
 
     /// @brief Move-assign by transferring ownership slots.
     /// @param other Source list.
     /// @return Reference to this list.
-    StableList &operator=(StableList &&other) noexcept = default;
+    StableList &operator=(StableList &&other) noexcept {
+        if (this == &other)
+            return *this;
+        clear();
+        chunks_.clear();
+        free_ = nullptr;
+        freeCount_ = 0;
+        moveFrom(std::move(other));
+        return *this;
+    }
+
+    /// @brief Destroy all live elements and release pooled storage.
+    ~StableList() {
+        clear();
+    }
 
     /// @brief Replace contents with copies from an initializer list.
     /// @param values Values to copy.
@@ -357,20 +392,22 @@ template <class T> class StableList {
     /// @param count Requested capacity.
     void reserve(size_type count) {
         slots_.reserve(count);
+        if (count > slots_.size())
+            ensureFree(count - slots_.size());
     }
 
     /// @brief Access an element by index.
     /// @param index Zero-based index.
     /// @return Mutable reference to the element.
     reference operator[](size_type index) {
-        return *slots_[index];
+        return *slots_[index]->get();
     }
 
     /// @brief Access an element by index.
     /// @param index Zero-based index.
     /// @return Const reference to the element.
     const_reference operator[](size_type index) const {
-        return *slots_[index];
+        return *slots_[index]->get();
     }
 
     /// @brief Bounds-checked element access.
@@ -378,7 +415,7 @@ template <class T> class StableList {
     /// @return Mutable reference to the element.
     /// @throws std::out_of_range When @p index is not less than size().
     reference at(size_type index) {
-        return *slots_.at(index);
+        return *slots_.at(index)->get();
     }
 
     /// @brief Bounds-checked element access.
@@ -386,48 +423,50 @@ template <class T> class StableList {
     /// @return Const reference to the element.
     /// @throws std::out_of_range When @p index is not less than size().
     const_reference at(size_type index) const {
-        return *slots_.at(index);
+        return *slots_.at(index)->get();
     }
 
     /// @brief Access the first element.
     /// @return Mutable reference to the first element.
     reference front() {
-        return *slots_.front();
+        return *slots_.front()->get();
     }
 
     /// @brief Access the first element.
     /// @return Const reference to the first element.
     const_reference front() const {
-        return *slots_.front();
+        return *slots_.front()->get();
     }
 
     /// @brief Access the last element.
     /// @return Mutable reference to the last element.
     reference back() {
-        return *slots_.back();
+        return *slots_.back()->get();
     }
 
     /// @brief Access the last element.
     /// @return Const reference to the last element.
     const_reference back() const {
-        return *slots_.back();
+        return *slots_.back()->get();
     }
 
     /// @brief Remove all elements.
     void clear() noexcept {
+        for (Slot *slot : slots_)
+            release(slot);
         slots_.clear();
     }
 
     /// @brief Append a copied element.
     /// @param value Value to copy.
     void push_back(const T &value) {
-        slots_.push_back(std::make_unique<T>(value));
+        appendSlot(create(value));
     }
 
     /// @brief Append a moved element.
     /// @param value Value to move.
     void push_back(T &&value) {
-        slots_.push_back(std::make_unique<T>(std::move(value)));
+        appendSlot(create(std::move(value)));
     }
 
     /// @brief Construct an element at the end of the list.
@@ -435,12 +474,13 @@ template <class T> class StableList {
     /// @param args Constructor arguments forwarded to `T`.
     /// @return Reference to the newly constructed element.
     template <class... Args> reference emplace_back(Args &&...args) {
-        slots_.push_back(std::make_unique<T>(std::forward<Args>(args)...));
+        appendSlot(create(std::forward<Args>(args)...));
         return back();
     }
 
     /// @brief Remove the last element.
     void pop_back() {
+        release(slots_.back());
         slots_.pop_back();
     }
 
@@ -448,12 +488,13 @@ template <class T> class StableList {
     /// @param count New element count.
     void resize(size_type count) {
         if (count < slots_.size()) {
-            slots_.resize(count);
+            while (slots_.size() > count)
+                pop_back();
             return;
         }
         slots_.reserve(count);
         while (slots_.size() < count)
-            slots_.push_back(std::make_unique<T>());
+            emplace_back();
     }
 
     /// @brief Replace contents with copies from an iterator range.
@@ -464,7 +505,7 @@ template <class T> class StableList {
         StableList replacement;
         for (; first != last; ++first)
             replacement.pushForwarded(*first);
-        slots_.swap(replacement.slots_);
+        swap(replacement);
     }
 
     /// @brief Insert a copied element before @p pos.
@@ -472,7 +513,14 @@ template <class T> class StableList {
     /// @param value Value to copy.
     /// @return Iterator to the inserted element.
     iterator insert(const_iterator pos, const T &value) {
-        auto inserted = slots_.insert(pos.it_, std::make_unique<T>(value));
+        Slot *slot = create(value);
+        typename Storage::iterator inserted;
+        try {
+            inserted = slots_.insert(pos.it_, slot);
+        } catch (...) {
+            release(slot);
+            throw;
+        }
         return iterator(inserted);
     }
 
@@ -481,7 +529,14 @@ template <class T> class StableList {
     /// @param value Value to move.
     /// @return Iterator to the inserted element.
     iterator insert(const_iterator pos, T &&value) {
-        auto inserted = slots_.insert(pos.it_, std::make_unique<T>(std::move(value)));
+        Slot *slot = create(std::move(value));
+        typename Storage::iterator inserted;
+        try {
+            inserted = slots_.insert(pos.it_, slot);
+        } catch (...) {
+            release(slot);
+            throw;
+        }
         return iterator(inserted);
     }
 
@@ -493,15 +548,26 @@ template <class T> class StableList {
     /// @return Iterator to the first inserted element, or @p pos if the range is empty.
     template <class InputIt> iterator insert(const_iterator pos, InputIt first, InputIt last) {
         const difference_type offset = pos - cbegin();
-        std::vector<std::unique_ptr<T>> incoming;
-        for (; first != last; ++first)
-            incoming.push_back(makeForwarded(*first));
+        std::vector<Slot *> incoming;
+        try {
+            for (; first != last; ++first)
+                incoming.push_back(createForwarded(*first));
+        } catch (...) {
+            for (Slot *slot : incoming)
+                release(slot);
+            throw;
+        }
         if (incoming.empty())
             return begin() + offset;
 
         auto slotIt = slots_.begin() + offset;
-        slotIt = slots_.insert(
-            slotIt, std::make_move_iterator(incoming.begin()), std::make_move_iterator(incoming.end()));
+        try {
+            slotIt = slots_.insert(slotIt, incoming.begin(), incoming.end());
+        } catch (...) {
+            for (Slot *slot : incoming)
+                release(slot);
+            throw;
+        }
         return iterator(slotIt);
     }
 
@@ -509,6 +575,7 @@ template <class T> class StableList {
     /// @param pos Element position to erase.
     /// @return Iterator to the element following the erased one.
     iterator erase(const_iterator pos) {
+        release(*pos.it_);
         return iterator(slots_.erase(pos.it_));
     }
 
@@ -517,26 +584,93 @@ template <class T> class StableList {
     /// @param last One-past-last element to erase.
     /// @return Iterator to the element following the erased range.
     iterator erase(const_iterator first, const_iterator last) {
+        for (auto it = first.it_; it != last.it_; ++it)
+            release(*it);
         return iterator(slots_.erase(first.it_, last.it_));
     }
 
   private:
-    /// @brief Allocate a new owned element from a forwarded value.
-    /// @tparam U Value category and cv-qualified type accepted by `T`.
-    /// @param value Value used to construct the owned element.
-    /// @return Unique pointer owning the newly constructed element.
-    template <class U> static std::unique_ptr<T> makeForwarded(U &&value) {
-        return std::make_unique<T>(std::forward<U>(value));
+    static constexpr size_type kSlotsPerChunk = 64;
+
+    void ensureFree(size_type requested) {
+        while (freeCount_ < requested) {
+            const size_type chunkSize = std::max(kSlotsPerChunk, requested - freeCount_);
+            Chunk chunk{std::make_unique<Slot[]>(chunkSize), chunkSize};
+            chunks_.push_back(std::move(chunk));
+            Chunk &stored = chunks_.back();
+            for (size_type index = 0; index < chunkSize; ++index) {
+                stored.slots[index].nextFree = free_;
+                free_ = &stored.slots[index];
+            }
+            freeCount_ += chunkSize;
+        }
+    }
+
+    template <class... Args> Slot *create(Args &&...args) {
+        ensureFree(1);
+        Slot *slot = free_;
+        free_ = free_->nextFree;
+        --freeCount_;
+        slot->nextFree = nullptr;
+        try {
+            slot->value.emplace(std::forward<Args>(args)...);
+        } catch (...) {
+            slot->nextFree = free_;
+            free_ = slot;
+            ++freeCount_;
+            throw;
+        }
+        return slot;
+    }
+
+    void release(Slot *slot) noexcept {
+        slot->value.reset();
+        slot->nextFree = free_;
+        free_ = slot;
+        ++freeCount_;
+    }
+
+    void appendSlot(Slot *slot) {
+        try {
+            slots_.push_back(slot);
+        } catch (...) {
+            release(slot);
+            throw;
+        }
+    }
+
+    template <class U> Slot *createForwarded(U &&value) {
+        return create(std::forward<U>(value));
     }
 
     /// @brief Append a copied or moved element while preserving value category.
     /// @tparam U Value category and cv-qualified type accepted by `T`.
     /// @param value Value forwarded into a newly owned element.
     template <class U> void pushForwarded(U &&value) {
-        slots_.push_back(makeForwarded(std::forward<U>(value)));
+        appendSlot(createForwarded(std::forward<U>(value)));
+    }
+
+    void swap(StableList &other) noexcept {
+        slots_.swap(other.slots_);
+        chunks_.swap(other.chunks_);
+        std::swap(free_, other.free_);
+        std::swap(freeCount_, other.freeCount_);
+    }
+
+    void moveFrom(StableList &&other) noexcept {
+        slots_ = std::move(other.slots_);
+        chunks_ = std::move(other.chunks_);
+        free_ = other.free_;
+        freeCount_ = other.freeCount_;
+        other.slots_.clear();
+        other.free_ = nullptr;
+        other.freeCount_ = 0;
     }
 
     Storage slots_;
+    std::vector<Chunk> chunks_;
+    Slot *free_{nullptr};
+    size_type freeCount_{0};
 };
 
 /// @brief Return an iterator advanced by @p n from @p it.

@@ -28,6 +28,7 @@
 #include "il/internal/io/InstrParser.hpp"
 #include "il/internal/io/ModuleParser.hpp"
 #include "il/internal/io/ParserState.hpp"
+#include "il/io/ParserLimits.hpp"
 #include "support/diag_expected.hpp"
 
 #include <istream>
@@ -41,7 +42,10 @@ class Parser {
     /// @param is Input stream containing IL text.
     /// @param m Module to populate with parsed contents.
     /// @return Expected success or diagnostic on failure.
-    [[nodiscard]] static il::support::Expected<void> parse(std::istream &is, il::core::Module &m);
+    [[nodiscard]] static il::support::Expected<void> parse(
+        std::istream &is,
+        il::core::Module &m,
+        const ParserLimits &limits = ParserLimits{});
 };
 
 } // namespace il::io

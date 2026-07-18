@@ -13,40 +13,27 @@
 
 #include "il/transform/RuntimeFastPathOpt.hpp"
 
+#include "il/analysis/Dominators.hpp"
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
+#include "il/transform/AnalysisIDs.hpp"
+#include "il/transform/AnalysisManager.hpp"
 
 #include <memory>
+#include <unordered_map>
 #include <string_view>
-#include <unordered_set>
 
 using namespace il::core;
 
 namespace il::transform {
 namespace {
 
-[[nodiscard]] bool startsWith(std::string_view value, std::string_view prefix) {
-    return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
-}
-
-[[nodiscard]] bool endsWith(std::string_view value, std::string_view suffix) {
-    return value.size() >= suffix.size() &&
-           value.substr(value.size() - suffix.size(), suffix.size()) == suffix;
-}
-
 [[nodiscard]] bool isKnownObjectFactory(std::string_view callee) {
-    if (callee == "rt_obj_new_i64" || callee == "rt_box_i64" || callee == "rt_box_f64" ||
-        callee == "rt_box_i1" || callee == "rt_box_str" || callee == "rt_box_value_type") {
-        return true;
-    }
-
-    if (!startsWith(callee, "rt_") || !endsWith(callee, "_new"))
-        return false;
-    if (startsWith(callee, "rt_arr_") || startsWith(callee, "rt_str_"))
-        return false;
-    return true;
+    const auto *signature = il::runtime::findRuntimeSignature(callee);
+    return signature && signature->returnsKnownObject;
 }
 
 } // namespace
@@ -55,20 +42,43 @@ std::string_view RuntimeFastPathOpt::id() const {
     return "runtime-fastpath";
 }
 
-PreservedAnalyses RuntimeFastPathOpt::run(Function &function, AnalysisManager & /*analysis*/) {
-    std::unordered_set<unsigned> knownObjects;
+PreservedAnalyses RuntimeFastPathOpt::run(Function &function, AnalysisManager &analysis) {
+    struct ObjectDefinition {
+        BasicBlock *block{nullptr};
+        std::size_t instructionIndex{0};
+    };
+
+    const auto &dominators = analysis.getFunctionResult<zanna::analysis::DomTree>(
+        kAnalysisDominators, function);
+    std::unordered_map<unsigned, ObjectDefinition> knownObjects;
     bool changed = false;
 
     for (auto &block : function.blocks) {
-        for (auto &instr : block.instructions) {
+        for (std::size_t instructionIndex = 0; instructionIndex < block.instructions.size();
+             ++instructionIndex) {
+            const auto &instr = block.instructions[instructionIndex];
             if (instr.op == Opcode::Call && instr.result && isKnownObjectFactory(instr.callee))
-                knownObjects.insert(*instr.result);
+                knownObjects.emplace(
+                    *instr.result, ObjectDefinition{&block, instructionIndex});
+        }
+    }
 
+    for (auto &block : function.blocks) {
+        for (std::size_t instructionIndex = 0; instructionIndex < block.instructions.size();
+             ++instructionIndex) {
+            auto &instr = block.instructions[instructionIndex];
             if (instr.op != Opcode::Call || instr.operands.empty() ||
                 instr.operands.front().kind != Value::Kind::Temp) {
                 continue;
             }
-            if (!knownObjects.contains(instr.operands.front().id))
+            const auto definition = knownObjects.find(instr.operands.front().id);
+            if (definition == knownObjects.end())
+                continue;
+
+            const bool available = definition->second.block == &block
+                                       ? definition->second.instructionIndex < instructionIndex
+                                       : dominators.dominates(definition->second.block, &block);
+            if (!available)
                 continue;
 
             if (instr.callee == "rt_obj_retain_maybe") {
@@ -85,10 +95,10 @@ PreservedAnalyses RuntimeFastPathOpt::run(Function &function, AnalysisManager & 
         return PreservedAnalyses::all();
 
     PreservedAnalyses preserved;
-    preserved.preserveAllModules();
     preserved.preserveCFG();
     preserved.preserveDominators();
     preserved.preserveLoopInfo();
+    preserved.preserveLiveness();
     return preserved;
 }
 

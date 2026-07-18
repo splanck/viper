@@ -129,6 +129,10 @@ struct Instr {
     /// @return True for direct and indirect call opcodes.
     [[nodiscard]] bool isCallLike() const noexcept;
 
+    /// @brief Check whether this is a named direct-call instruction.
+    /// @return True only for Opcode::Call with a non-empty callee.
+    [[nodiscard]] bool isDirectCall() const noexcept;
+
     /// @brief Check whether the instruction has branch target metadata.
     /// @return True when at least one successor label is stored.
     [[nodiscard]] bool hasBranchTargets() const noexcept;

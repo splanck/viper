@@ -27,6 +27,7 @@
 #include "support/symbol.hpp"
 
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -38,6 +39,16 @@ using Block = BasicBlock;
 } // namespace il::core
 
 namespace zanna::analysis {
+
+/// @brief Structural problem encountered while indexing an unverified CFG.
+struct CFGIssue {
+    enum class Kind { DuplicateBlockLabel, UnknownTargetLabel };
+
+    Kind kind{Kind::UnknownTargetLabel};
+    std::string function;
+    std::string block;
+    std::string label;
+};
 
 /// @brief Lightweight context bundling module information for CFG queries.
 ///
@@ -53,10 +64,9 @@ struct CFGContext {
     CFGContext(il::core::Module &module, il::core::Function &function);
 
     /// @brief Build a CFG cache for one function whose identifier sidecars are current.
-    /// @details Unlike the two-argument constructor, this factory does not refresh
-    ///          identifier interning. It is intended for function-parallel optimizer
-    ///          passes after PipelineExecutor has synchronized the module once, avoiding
-    ///          both a whole-module scan and concurrent writes to the symbol table.
+    /// @details CFG construction is read-only. This named factory documents that
+    ///          callers expect symbol sidecars to be current while still retaining
+    ///          string lookup fallback for unsymbolized programmatic IR.
     /// @param module Module that owns @p function and its identifier storage.
     /// @param function Sole function to index into the returned CFG context.
     /// @return A function-scoped CFG context safe for read-only concurrent analysis.
@@ -83,15 +93,15 @@ struct CFGContext {
     /// @brief Cached predecessor edge sources derived from the successor cache.
     /// @details A predecessor appears once per incoming edge.
     std::unordered_map<const il::core::Block *, std::vector<il::core::Block *>> blockPredecessors;
+    /// @brief Problems found while indexing malformed or programmatically built IR.
+    /// @details Analyses ignore unresolved edges conservatively; verifier/tooling
+    ///          clients may inspect this list to produce structured diagnostics.
+    std::vector<CFGIssue> issues;
 
-  private:
-    /// @brief Construct a function-scoped context with optional identifier refresh.
-    /// @param module Module that owns the indexed function.
-    /// @param function Function whose blocks and edges are cached.
-    /// @param refreshIdentifiers True to rebuild identifier sidecars before indexing.
-    CFGContext(il::core::Module &module,
-               il::core::Function &function,
-               bool refreshIdentifiers);
+    /// @brief Check whether CFG indexing found a structural problem.
+    [[nodiscard]] bool valid() const noexcept {
+        return issues.empty();
+    }
 };
 
 /// @brief Return successors of block @p B by inspecting its terminator.

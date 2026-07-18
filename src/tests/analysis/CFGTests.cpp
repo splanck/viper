@@ -86,7 +86,29 @@ int main() {
     b.setInsertPoint(dupJoin);
     b.emitRet(std::nullopt, {});
 
+    Function malformed;
+    malformed.name = "malformed";
+    BasicBlock malformedEntry;
+    malformedEntry.label = "entry";
+    Instr missingBranch;
+    missingBranch.op = Opcode::Br;
+    missingBranch.labels = {"missing"};
+    missingBranch.brArgs = {{}};
+    malformedEntry.instructions.push_back(std::move(missingBranch));
+    malformedEntry.terminated = true;
+    BasicBlock duplicateEntry;
+    duplicateEntry.label = "entry";
+    malformed.blocks.push_back(std::move(malformedEntry));
+    malformed.blocks.push_back(std::move(duplicateEntry));
+    m.functions.push_back(std::move(malformed));
+
     zanna::analysis::CFGContext ctx(m);
+    assert(!ctx.valid());
+    assert(ctx.issues.size() == 2);
+    assert(ctx.issues[0].kind ==
+           zanna::analysis::CFGIssue::Kind::DuplicateBlockLabel);
+    assert(ctx.issues[1].kind == zanna::analysis::CFGIssue::Kind::UnknownTargetLabel);
+    assert(ctx.issues[1].label == "missing");
 
     auto sEntry = successors(ctx, entry);
     assert(sEntry.size() == 2);

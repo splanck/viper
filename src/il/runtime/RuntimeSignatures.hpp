@@ -186,6 +186,7 @@ struct RuntimeSignature {
     std::uint64_t ownedOutArgMask{0}; ///< Pointer args that receive an owned reference.
     bool returnsOwned{false};         ///< Helper returns an owned reference/string handle.
     bool mayAllocate{false};          ///< Helper may allocate runtime-managed storage.
+    bool returnsKnownObject{false};   ///< Result supports object-specific RC helpers.
     bool valid{true};                 ///< Parsed signature text was well-formed and supported.
 };
 

@@ -46,7 +46,7 @@ namespace zanna::analysis {
 struct CallGraph {
     /// @brief Total direct call sites per callee name.
     std::unordered_map<std::string, unsigned> callCounts;
-    /// @brief Caller-to-callee edges keyed by caller function name.
+    /// @brief Unique caller-to-callee topology edges keyed by caller function name.
     std::unordered_map<std::string, std::vector<std::string>> edges;
 
     /// @brief SCCs in reverse topological order (callees before callers).

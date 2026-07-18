@@ -16,6 +16,7 @@
 #pragma once
 
 #include "il/core/fwd.hpp"
+#include "il/io/ParserLimits.hpp"
 #include "support/source_location.hpp"
 
 #include <string>
@@ -29,6 +30,8 @@ namespace il::io::detail {
 struct ParserState {
     /// @brief Module being populated while parsing proceeds.
     il::core::Module &m;
+    /// @brief Resource budgets selected by the parser caller.
+    il::io::ParserLimits limits;
 
     /// @brief Function currently under construction or nullptr at module scope.
     il::core::Function *curFn = nullptr;
@@ -47,6 +50,8 @@ struct ParserState {
 
     /// @brief Line number of the input being processed.
     unsigned lineNo = 0;
+    std::size_t totalBlocks = 0;
+    std::size_t totalInstructions = 0;
 
     /// @brief Source location tracked via `.loc` directives.
     il::support::SourceLoc curLoc{};
@@ -71,7 +76,8 @@ struct ParserState {
     bool sawVersion = false;
 
     /// @brief Construct parser state for the provided module.
-    explicit ParserState(il::core::Module &mod);
+    ParserState(il::core::Module &mod,
+                const il::io::ParserLimits &parserLimits = il::io::ParserLimits{});
 };
 
 } // namespace il::io::detail

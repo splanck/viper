@@ -36,7 +36,6 @@
 
 #include <algorithm>
 #include <limits>
-#include <mutex>
 #include <optional>
 #include <queue>
 #include <string>
@@ -103,7 +102,7 @@ class BasicAA {
         /// @brief Identity of the base (alloca id, param id).
         unsigned id = 0;
         /// @brief Global symbol backing the location.
-        std::string global;
+        std::string_view global;
         /// @brief Byte offset from the base when known.
         long long offset = 0;
         bool hasOffset = true;
@@ -166,7 +165,7 @@ class BasicAA {
 
     [[nodiscard]] CallEffect computeCalleeEffect(std::string_view name) const;
 
-    [[nodiscard]] Location describe(const il::core::Value &value, unsigned depth = 0) const;
+    [[nodiscard]] Location describe(const il::core::Value &value) const;
 
     [[nodiscard]] static bool constOffset(const il::core::Value &v, long long &out);
 };
@@ -285,27 +284,11 @@ inline BasicAA::CallEffect BasicAA::queryRuntimeEffect(std::string_view name) co
 }
 
 inline BasicAA::CallEffect BasicAA::queryRegisteredSignatureEffect(std::string_view name) {
-    struct DynamicSignatureCache {
-        std::size_t version = static_cast<std::size_t>(-1);
-        std::unordered_map<std::string, CallEffect> effects;
-    };
-
-    static std::mutex mutex;
-    static DynamicSignatureCache cache;
-
-    std::lock_guard<std::mutex> lock(mutex);
-    const std::size_t version = il::runtime::signatures::registry_version();
-    if (cache.version != version) {
-        cache.effects.clear();
-        const auto &signatures = il::runtime::signatures::all_signatures();
-        cache.effects.reserve(signatures.size());
-        for (const auto &sig : signatures)
-            cache.effects.emplace(sig.name, CallEffect{sig.pure, sig.readonly, true});
-        cache.version = version;
-    }
-
-    auto it = cache.effects.find(std::string(name));
-    return it == cache.effects.end() ? CallEffect{} : it->second;
+    bool pure = false;
+    bool readonly = false;
+    if (il::runtime::signatures::find_signature_effects(name, pure, readonly))
+        return CallEffect{pure, readonly, true};
+    return {};
 }
 
 inline BasicAA::CallEffect BasicAA::queryExternEffect(std::string_view name) const {
@@ -341,58 +324,67 @@ inline bool BasicAA::constOffset(const il::core::Value &v, long long &out) {
     return false;
 }
 
-inline BasicAA::Location BasicAA::describe(const il::core::Value &value, unsigned depth) const {
-    if (depth > 8)
-        return {};
-
+inline BasicAA::Location BasicAA::describe(const il::core::Value &value) const {
     using Kind = il::core::Value::Kind;
     Location loc;
+    const il::core::Value *current = &value;
+    long long accumulatedOffset = 0;
+    bool hasOffset = true;
+    std::unordered_set<unsigned> visited;
 
-    switch (value.kind) {
+    while (true) {
+        switch (current->kind) {
         case Kind::Temp: {
-            if (isAlloca(value.id)) {
+            if (!visited.insert(current->id).second)
+                return {};
+            if (isAlloca(current->id)) {
                 loc.kind = BaseKind::Alloca;
-                loc.id = value.id;
+                loc.id = current->id;
+                loc.offset = accumulatedOffset;
+                loc.hasOffset = hasOffset;
                 return loc;
             }
-            if (isNoAliasParam(value.id)) {
+            if (isNoAliasParam(current->id)) {
                 loc.kind = BaseKind::NoAliasParam;
-                loc.id = value.id;
+                loc.id = current->id;
+                loc.offset = accumulatedOffset;
+                loc.hasOffset = hasOffset;
                 return loc;
             }
-            if (isParam(value.id)) {
+            if (isParam(current->id)) {
                 loc.kind = BaseKind::Param;
-                loc.id = value.id;
+                loc.id = current->id;
+                loc.offset = accumulatedOffset;
+                loc.hasOffset = hasOffset;
                 return loc;
             }
 
-            auto defIt = defs_.find(value.id);
+            auto defIt = defs_.find(current->id);
             if (defIt == defs_.end())
                 return loc;
             const DefInfo &def = defIt->second;
 
             if (def.op == il::core::Opcode::GEP && def.operands.size() >= 2) {
-                Location base = describe(def.operands[0], depth + 1);
-                if (base.kind == BaseKind::Unknown)
-                    return base;
-
                 long long off = 0;
-                if (constOffset(def.operands[1], off) && base.hasOffset) {
+                if (constOffset(def.operands[1], off) && hasOffset) {
                     long long adjusted = 0;
-                    if (detail::checkedAdd(base.offset, off, adjusted))
-                        base.offset = adjusted;
+                    if (detail::checkedAdd(accumulatedOffset, off, adjusted))
+                        accumulatedOffset = adjusted;
                     else
-                        base.hasOffset = false;
+                        hasOffset = false;
                 } else {
-                    base.hasOffset = false;
+                    hasOffset = false;
                 }
-                return base;
+                current = &def.operands[0];
+                continue;
             }
 
             if ((def.op == il::core::Opcode::AddrOf || def.op == il::core::Opcode::GAddr) &&
                 !def.operands.empty() && def.operands[0].kind == Kind::GlobalAddr) {
                 loc.kind = BaseKind::Global;
                 loc.global = def.operands[0].str;
+                loc.offset = accumulatedOffset;
+                loc.hasOffset = hasOffset;
                 return loc;
             }
 
@@ -400,11 +392,15 @@ inline BasicAA::Location BasicAA::describe(const il::core::Value &value, unsigne
         }
         case Kind::GlobalAddr:
             loc.kind = BaseKind::Global;
-            loc.global = value.str;
+            loc.global = current->str;
+            loc.offset = accumulatedOffset;
+            loc.hasOffset = hasOffset;
             return loc;
         case Kind::ConstStr:
             loc.kind = BaseKind::ConstStr;
-            loc.global = value.str;
+            loc.global = current->str;
+            loc.offset = accumulatedOffset;
+            loc.hasOffset = hasOffset;
             return loc;
         case Kind::NullPtr:
             loc.kind = BaseKind::Null;
@@ -412,8 +408,9 @@ inline BasicAA::Location BasicAA::describe(const il::core::Value &value, unsigne
         case Kind::ConstInt:
         case Kind::ConstFloat:
             return loc;
+        }
+        return loc;
     }
-    return loc;
 }
 
 inline std::optional<unsigned> BasicAA::typeSizeBytes(const il::core::Type &type) {

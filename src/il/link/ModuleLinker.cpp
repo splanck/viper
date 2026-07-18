@@ -318,6 +318,7 @@ LinkResult linkModules(std::vector<Module> modules) {
 
     // Step 4: Merge externs.
     std::unordered_map<std::string, Extern> mergedExterns;
+    std::vector<std::string> externOrder;
     for (auto &mod : modules) {
         for (auto &ext : mod.externs) {
             auto it = mergedExterns.find(ext.name);
@@ -346,6 +347,7 @@ LinkResult linkModules(std::vector<Module> modules) {
                 it->second.attrs().readonly = mergedReadonly;
                 it->second.attrs().pure = mergedPure;
             } else {
+                externOrder.push_back(ext.name);
                 mergedExterns.emplace(ext.name, std::move(ext));
             }
         }
@@ -356,6 +358,7 @@ LinkResult linkModules(std::vector<Module> modules) {
 
     // Step 5: Merge globals.
     std::unordered_map<std::string, Global> mergedGlobals;
+    std::vector<std::string> globalOrder;
     for (size_t i = 0; i < modules.size(); ++i) {
         std::string prefix = (static_cast<int>(i) == entryIdx) ? "" : modulePrefix(i);
         for (auto &g : modules[i].globals) {
@@ -366,12 +369,14 @@ LinkResult linkModules(std::vector<Module> modules) {
                     continue;
                 }
                 // Collision — prefix the non-entry module's global.
-                name = prefix + g.name;
-                while (mergedGlobals.count(name))
-                    name = prefix + name;
+                const std::string base = prefix + g.name;
+                name = base;
+                for (size_t suffix = 1; mergedGlobals.count(name); ++suffix)
+                    name = base + "$" + std::to_string(suffix);
                 globalRenameMaps[i][g.name] = name;
                 g.name = name;
             }
+            globalOrder.push_back(name);
             mergedGlobals.emplace(name, std::move(g));
         }
     }
@@ -394,12 +399,12 @@ LinkResult linkModules(std::vector<Module> modules) {
     Module &merged = result.module;
 
     // Copy externs.
-    for (auto &[name, ext] : mergedExterns)
-        merged.externs.push_back(std::move(ext));
+    for (const auto &name : externOrder)
+        merged.externs.push_back(std::move(mergedExterns.at(name)));
 
     // Copy globals.
-    for (auto &[name, g] : mergedGlobals)
-        merged.globals.push_back(std::move(g));
+    for (const auto &name : globalOrder)
+        merged.globals.push_back(std::move(mergedGlobals.at(name)));
 
     // Copy functions (skip Import stubs — they're resolved by the definitions).
     for (size_t i = 0; i < modules.size(); ++i) {

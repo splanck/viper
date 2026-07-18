@@ -402,6 +402,19 @@ patterns described in [BASIC lowering](#lowering).
 
 #### Module & Function Syntax
 
+##### Text parser resource limits
+
+The in-memory IL model has no specification-level size ceiling, but textual IL
+parsers must apply configurable resource budgets as defined by
+[ADR 0111](../adr/0111-il-text-resource-limits.md). The default parser accepts
+lines up to 1 MiB, up to 1,000,000 physical lines, 100,000 functions, 1,000,000
+blocks, 10,000,000 instructions, and 65,535 operands or branch arguments on one
+instruction. Exceeding a budget is a compile error, not a trap. Trusted tools
+may explicitly raise these budgets.
+
+Identifier fragments must not contain ASCII control bytes (`U+0000` through
+`U+001F`, or `U+007F`). Quoted tokens require an unescaped closing quote.
+
 An IL module is a set of declarations and function definitions. It starts with a version line:
 
 ```text

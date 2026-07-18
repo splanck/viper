@@ -25,6 +25,7 @@
 #include "il/core/Instr.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/Opcode.hpp"
+#include "il/core/StableList.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
 #include "tests/TestHarness.hpp"
@@ -43,10 +44,31 @@ using il::core::Global;
 using il::core::Instr;
 using il::core::Module;
 using il::core::Opcode;
+using il::core::StableList;
 using il::core::Type;
 using il::core::Value;
 
 namespace {
+
+struct PoolProbe {
+    static int live;
+    int value{0};
+
+    explicit PoolProbe(int input = 0) : value(input) {
+        ++live;
+    }
+    PoolProbe(const PoolProbe &other) : value(other.value) {
+        ++live;
+    }
+    PoolProbe(PoolProbe &&other) noexcept : value(other.value) {
+        ++live;
+    }
+    ~PoolProbe() {
+        --live;
+    }
+};
+
+int PoolProbe::live = 0;
 
 /// @brief Create a representative arithmetic instruction for storage tests.
 /// @param op Opcode to place in the instruction.
@@ -273,6 +295,53 @@ TEST(IRCoreStructures, CFGContextIndexesInternedBlockLabels) {
     const auto &succ = zanna::analysis::successors(cfg, entry);
     ASSERT_EQ(succ.size(), 1U);
     EXPECT_EQ(succ.front(), &exit);
+}
+
+TEST(IRCoreStructures, CFGContextDoesNotInternUnownedIdentifierSidecars) {
+    Module module = makeUninternedModule();
+    Function &fn = module.functions.front();
+    ASSERT_FALSE(fn.nameSymbol);
+    ASSERT_FALSE(fn.blocks.front().labelSymbol);
+    ASSERT_TRUE(fn.blocks.front().instructions.front().labelSymbols.empty());
+
+    zanna::analysis::CFGContext cfg(module);
+
+    EXPECT_TRUE(cfg.valid());
+    EXPECT_FALSE(fn.nameSymbol);
+    EXPECT_FALSE(fn.blocks.front().labelSymbol);
+    EXPECT_TRUE(fn.blocks.front().instructions.front().labelSymbols.empty());
+    const auto &succ = zanna::analysis::successors(cfg, fn.blocks.front());
+    ASSERT_EQ(succ.size(), 1U);
+    EXPECT_EQ(succ.front(), &fn.blocks[1]);
+}
+
+TEST(IRCoreStructures, StableListPoolPreservesAddressesAndReusesErasedSlots) {
+    ASSERT_EQ(PoolProbe::live, 0);
+    {
+        StableList<PoolProbe> values;
+        values.reserve(130);
+        for (int value = 0; value < 100; ++value)
+            values.emplace_back(value);
+
+        PoolProbe *first = &values.front();
+        PoolProbe *erased = &values[40];
+        values.erase(values.begin() + 40);
+        ASSERT_EQ(PoolProbe::live, 99);
+        values.emplace_back(999);
+        EXPECT_EQ(&values.back(), erased);
+        EXPECT_EQ(&values.front(), first);
+
+        StableList<PoolProbe> copy = values;
+        ASSERT_EQ(copy.size(), values.size());
+        EXPECT_NE(&copy.front(), &values.front());
+        EXPECT_EQ(copy.front().value, values.front().value);
+
+        PoolProbe *movedFirst = &copy.front();
+        StableList<PoolProbe> moved = std::move(copy);
+        EXPECT_EQ(&moved.front(), movedFirst);
+        EXPECT_TRUE(copy.empty());
+    }
+    EXPECT_EQ(PoolProbe::live, 0);
 }
 
 int main(int argc, char **argv) {

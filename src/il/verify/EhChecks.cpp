@@ -934,21 +934,38 @@ DomInfo computeDominators(const EhModel &model) {
         }
     }
 
-    // Build reverse-post-order by doing DFS
+    // Build reverse-post-order with an explicit DFS stack so generated IL cannot
+    // exhaust the native call stack.
     std::vector<const BasicBlock *> rpo;
     std::unordered_set<const BasicBlock *> visited;
-    std::function<void(const BasicBlock *)> dfs = [&](const BasicBlock *bb) {
-        if (!visited.insert(bb).second)
-            return;
-        if (const Instr *terminator = model.findTerminator(*bb)) {
-            for (const BasicBlock *succ : model.gatherSuccessors(*terminator)) {
-                if (reachable.count(succ))
-                    dfs(succ);
+    struct DFSFrame {
+        const BasicBlock *block;
+        std::vector<const BasicBlock *> successors;
+        std::size_t successorIndex{0};
+    };
+    auto successorsOf = [&](const BasicBlock &block) {
+        if (const Instr *terminator = model.findTerminator(block))
+            return model.gatherSuccessors(*terminator);
+        return std::vector<const BasicBlock *>{};
+    };
+    visited.insert(entry);
+    std::vector<DFSFrame> stack{{entry, successorsOf(*entry), 0}};
+    while (!stack.empty()) {
+        DFSFrame &frame = stack.back();
+        bool advanced = false;
+        while (frame.successorIndex < frame.successors.size()) {
+            const BasicBlock *succ = frame.successors[frame.successorIndex++];
+            if (reachable.count(succ) && visited.insert(succ).second) {
+                stack.push_back({succ, successorsOf(*succ), 0});
+                advanced = true;
+                break;
             }
         }
-        rpo.push_back(bb);
-    };
-    dfs(entry);
+        if (advanced)
+            continue;
+        rpo.push_back(frame.block);
+        stack.pop_back();
+    }
     std::reverse(rpo.begin(), rpo.end());
 
     // Assign indices

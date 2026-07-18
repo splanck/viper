@@ -38,24 +38,19 @@ namespace il::transform {
 bool runDSE(il::core::Function &F, AnalysisManager &AM);
 
 /// \brief Eliminate dead stores across basic block boundaries.
-/// \details Uses forward dataflow to identify stores to non-escaping allocas
-/// that are overwritten on all paths before being read. This extends intra-block
-/// DSE to handle cases like:
-/// - Stores followed by conditional branches where all paths overwrite
-/// - Stores to variables that are reassigned before function exit
+/// \details Compatibility entry point for the canonical MemorySSA-based
+/// cross-block proof. Kept for callers that used the former standalone pass.
 /// \param F Function to transform in place.
 /// \param AM Analysis manager for alias/modref queries.
 /// \return True when any store was removed.
 bool runCrossBlockDSE(il::core::Function &F, AnalysisManager &AM);
 
 /// \brief MemorySSA-based dead store elimination.
-/// \details Uses the MemorySSA analysis to find dead stores with greater
-/// precision than the conservative BFS in runCrossBlockDSE.  The key
-/// improvement is that calls are NOT treated as read barriers for non-escaping
+/// \details Uses the MemorySSA analysis to find dead stores. Calls are not
+/// treated as read barriers for non-escaping
 /// allocas (because calls cannot access stack memory that has not escaped).
 ///
-/// This pass should run after runDSE (intra-block) and is designed to catch
-/// the cases that runCrossBlockDSE misses due to conservative call modelling.
+/// This pass should run after runDSE (intra-block).
 ///
 /// \param F Function to transform in place.
 /// \param AM Analysis manager providing MemorySSA and BasicAA results.
