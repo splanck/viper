@@ -152,8 +152,8 @@ static void async_promise_set_callback_result(void *promise,
 /// Returns 0 on thread-creation failure (caller should resolve the promise as Err in that case).
 /// "Detached" means the runtime won't await the thread; cleanup happens via the worker's own
 /// finalize path on the context object.
-static int8_t async_start_detached(void *entry, void *arg) {
-    void *thread = rt_thread_start(entry, arg);
+static int8_t async_start_detached(rt_thread_entry_fn entry, void *arg) {
+    void *thread = rt_thread_start_fn(entry, arg);
     if (!thread)
         return 0;
     if (rt_obj_release_check0(thread))
@@ -322,7 +322,7 @@ static void *rt_async_run_impl(void *callback, void *arg, int8_t retain_arg) {
     rt_obj_set_finalizer(ctx, async_run_ctx_finalize);
 
     rt_obj_retain_maybe(ctx); // Worker self-reference.
-    if (!async_start_detached((void *)async_run_entry, ctx)) {
+    if (!async_start_detached(async_run_entry, ctx)) {
         async_promise_error_cstr(promise, "Async.Run: failed to start thread");
         if (rt_obj_release_check0(ctx))
             rt_obj_free(ctx);
@@ -367,7 +367,7 @@ void *rt_async_delay(int64_t ms) {
     rt_obj_set_finalizer(ctx, async_delay_ctx_finalize);
 
     rt_obj_retain_maybe(ctx); // Worker self-reference.
-    if (!async_start_detached((void *)async_delay_entry, ctx)) {
+    if (!async_start_detached(async_delay_entry, ctx)) {
         async_promise_error_cstr(promise, "Async.Delay: failed to start thread");
         if (rt_obj_release_check0(ctx))
             rt_obj_free(ctx);
@@ -414,7 +414,7 @@ static void *rt_async_run_cancellable_impl(void *callback,
     rt_obj_set_finalizer(ctx, async_cancel_ctx_finalize);
 
     rt_obj_retain_maybe(ctx); // Worker self-reference.
-    if (!async_start_detached((void *)async_cancel_entry, ctx)) {
+    if (!async_start_detached(async_cancel_entry, ctx)) {
         async_promise_error_cstr(promise, "Async.RunCancellable: failed to start thread");
         if (rt_obj_release_check0(ctx))
             rt_obj_free(ctx);

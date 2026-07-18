@@ -10,6 +10,15 @@
 //   trampoline, join/timed-join, id/alive queries, sleep/yield. Compiled only
 //   on _WIN32; POSIX uses rt_threads_posix.c. Shared model in rt_threads_internal.h.
 //
+// Key invariants:
+//   - `_beginthreadex` initializes CRT thread state and each returned HANDLE is
+//     closed exactly once after a successful join or detach claim.
+//   - A child adopts its reserved runtime-context binding before invoking the
+//     typed callback and unbinds it before publishing completion.
+// Ownership/Lifetime:
+//   - The thread inner object owns the HANDLE and retained construction state
+//     until terminal cleanup; the callback argument is borrowed.
+//
 // Links: rt_threads_internal.h, rt_threads_posix.c, rt_threads_common.c, rt_threads.h
 //
 //===----------------------------------------------------------------------===//
@@ -25,10 +34,10 @@
 // Uses Windows synchronization primitives:
 // - CRITICAL_SECTION for mutex (faster than SRWLOCK for this use case)
 // - CONDITION_VARIABLE for signaling between threads
-// - CreateThread/CloseHandle for thread management
+// - _beginthreadex/CloseHandle for CRT-compatible thread management
 //
 // Thread lifecycle on Windows:
-// 1. CreateThread spawns the OS thread
+// 1. _beginthreadex initializes CRT thread state and spawns the OS thread
 // 2. Thread runs entry function via trampoline
 // 3. On completion, signals waiters via CONDITION_VARIABLE
 // 4. CloseHandle is called when thread object is finalized
@@ -37,6 +46,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include "rt_win32_wait.h"
+#include <process.h>
 #include <windows.h>
 
 /// @brief Internal representation of a Zanna thread (Windows).
@@ -49,7 +59,7 @@ typedef struct RtThread {
     CRITICAL_SECTION cs;      ///< Critical section protecting state access.
     CONDITION_VARIABLE cv;    ///< Condition var for Join() signaling.
     HANDLE hThread;           ///< OS thread handle.
-    DWORD threadId;           ///< OS thread ID for self-join detection.
+    unsigned threadId;        ///< OS thread ID for self-join detection.
     int finished;             ///< 1 when thread has completed.
     int joined;               ///< Reserved for ABI/debug compatibility; joins are repeatable.
     int64_t id;               ///< Unique Zanna thread identifier.
@@ -100,15 +110,18 @@ static void rt_thread_finalize_win(void *obj) {
 }
 
 /// @brief Thread trampoline that sets up context and runs the entry function.
-static DWORD WINAPI rt_thread_trampoline_win(LPVOID p) {
+static unsigned __stdcall rt_thread_trampoline_win(void *p) {
     RtThread *t = (RtThread *)p;
-    if (t && t->inherited_ctx)
-        rt_set_current_context(t->inherited_ctx);
-    if (t && t->entry)
+    int context_adopted =
+        t && t->inherited_ctx && rt_context_adopt_reserved_thread_binding(t->inherited_ctx);
+    if (context_adopted && t->entry)
         t->entry(t->arg);
     if (t)
         rt_thread_release_owned_arg_win(t);
-    rt_set_current_context(NULL);
+    if (context_adopted)
+        rt_set_current_context(NULL);
+    else if (t && t->inherited_ctx)
+        (void)rt_context_cancel_reserved_thread_binding(t->inherited_ctx);
 
     if (t) {
         EnterCriticalSection(&t->cs);
@@ -139,11 +152,11 @@ static RtThread *require_thread_win(void *thread, const char *what) {
 ///
 /// Allocates an `RtThread` object, captures the active runtime
 /// context (so the new thread inherits it), starts the OS thread
-/// via `CreateThread`, and stows the handle for `join`. If
+/// via `_beginthreadex`, and stows the handle for `join`. If
 /// `retain_arg` is non-zero we GC-retain `arg` so the thread can
 /// access it past the caller's lifetime.
-/// Traps on null entry or `CreateThread` failure.
-static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg) {
+/// Traps on null entry or `_beginthreadex` failure.
+static void *rt_thread_start_impl_win(rt_thread_entry_fn entry, void *arg, int8_t retain_arg) {
     if (!entry)
         rt_trap("Thread.Start: null entry");
     if (!entry)
@@ -152,6 +165,8 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
         ctx = rt_legacy_context();
+    if (!ctx)
+        return NULL;
 
     RtThread *t = (RtThread *)rt_obj_new_i64(RT_THREAD_CLASS_ID, (int64_t)sizeof(RtThread));
     if (!t)
@@ -169,21 +184,41 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     t->magic = RT_THREAD_MAGIC;
     t->id = next_thread_id_win();
     t->inherited_ctx = ctx;
-    t->entry = (rt_thread_entry_fn)entry;
+    t->entry = entry;
     t->arg = arg;
     t->owns_arg = 0;
     rt_obj_set_finalizer(t, rt_thread_finalize_win);
     if (retain_arg && arg) {
-        thread_retain_owned_arg_or_release(arg, t, "Thread.StartOwned: arg retain failed");
+        if (!thread_try_retain_owned_value(arg, "Thread.StartOwned: arg retain failed")) {
+            thread_release_object(t);
+            return NULL;
+        }
         t->owns_arg = 1;
     }
 
     // Hold a self-reference until the thread exits.
-    thread_retain_self_or_release(t, "Thread.Start: self retain failed");
+    if (!thread_try_retain_self(t, "Thread.Start: self retain failed")) {
+        thread_release_object(t);
+        return NULL;
+    }
 
-    t->hThread = CreateThread(NULL, 0, rt_thread_trampoline_win, t, 0, &t->threadId);
+    /* Keep caller-owned context storage alive across the _beginthreadex-to-
+       trampoline gap. The child consumes this reservation without a second
+       binding-count increment. */
+    if (!rt_context_reserve_thread_binding(ctx)) {
+        thread_release_object(t);
+        thread_release_object(t);
+        return NULL;
+    }
+
+    {
+        const uintptr_t native_handle =
+            _beginthreadex(NULL, 0, rt_thread_trampoline_win, t, 0, &t->threadId);
+        t->hThread = native_handle == 0 ? NULL : (HANDLE)native_handle;
+    }
     if (!t->hThread) {
         // Drop thread self-reference and the caller-visible reference, then trap.
+        (void)rt_context_cancel_reserved_thread_binding(ctx);
         thread_release_object(t);
         thread_release_object(t);
         rt_trap("Thread.Start: failed to create thread");
@@ -193,16 +228,26 @@ static void *rt_thread_start_impl_win(void *entry, void *arg, int8_t retain_arg)
     return t;
 }
 
+/// @brief Windows typed `Thread.Start` implementation for native callers.
+void *rt_thread_start_fn(rt_thread_entry_fn entry, void *arg) {
+    return rt_thread_start_impl_win(entry, arg, 0);
+}
+
+/// @brief Windows typed `Thread.StartOwned` implementation for native callers.
+void *rt_thread_start_owned_fn(rt_thread_entry_fn entry, void *arg) {
+    return rt_thread_start_impl_win(entry, arg, 1);
+}
+
 /// @brief Public: `Thread.Start(entry, arg)` — start a thread without retaining `arg`.
 /// The caller is responsible for keeping `arg` alive until the thread reads it.
 void *rt_thread_start(void *entry, void *arg) {
-    return rt_thread_start_impl_win(entry, arg, 0);
+    return rt_thread_start_fn(thread_entry_from_opaque(entry), arg);
 }
 
 /// @brief Public: start a thread that owns its argument (GC-retains it for the thread's lifetime).
 /// Use this when the caller's reference to `arg` may go out of scope before the thread runs.
 void *rt_thread_start_owned(void *entry, void *arg) {
-    return rt_thread_start_impl_win(entry, arg, 1);
+    return rt_thread_start_owned_fn(thread_entry_from_opaque(entry), arg);
 }
 
 /// @brief Block until `thread` finishes executing. Traps if a thread tries to join itself.

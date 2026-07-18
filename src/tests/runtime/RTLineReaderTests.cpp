@@ -7,23 +7,114 @@
 //
 // File: src/tests/runtime/RTLineReaderTests.cpp
 // Purpose: Comprehensive tests for Zanna.IO.LineReader text file reading.
+// Key invariants: ReadAll begins at the logical cursor and consumes a staged
+//                 PeekChar byte exactly once without restarting the stream.
+// Ownership/Lifetime: Every test closes its reader and removes its temporary
+//                     file; returned managed strings are released by the case.
+// Links: src/runtime/io/rt_linereader.c, docs/zannalib/io/streams.md,
+//        docs/adr/0119-trap-safe-managed-io-ownership.md
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
 #include "rt_linereader.h"
+#include "rt_platform.h"
 #include "rt_string.h"
-#include "tests/common/PlatformSkip.h"
 
 #include <cassert>
+#include <cerrno>
+#include <csetjmp>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
+#if RT_PLATFORM_WINDOWS
+#include <process.h>
+#include <windows.h>
+#define GETPID _getpid
+#else
+#include <fcntl.h>
+#include <unistd.h>
+#define GETPID getpid
+#endif
+
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+static int g_alloc_countdown = 0;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
-static const char *test_file = "/tmp/zanna_linereader_test.txt";
+#define EXPECT_TRAP(expr)                                                                          \
+    do {                                                                                           \
+        g_trap_expected = true;                                                                    \
+        g_last_trap = nullptr;                                                                     \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
+            expr;                                                                                  \
+            assert(false && "Expected trap did not occur");                                        \
+        }                                                                                          \
+        g_trap_expected = false;                                                                   \
+        assert(g_last_trap != nullptr);                                                            \
+    } while (0)
+
+/// @brief Return a process-unique temporary path on every supported host.
+/// @return Stable path string valid for the duration of the test process.
+static const char *get_test_file() {
+    static char path[512];
+    static bool initialized = false;
+    if (!initialized) {
+#if RT_PLATFORM_WINDOWS
+        const char *tmp = getenv("TEMP");
+        if (!tmp)
+            tmp = getenv("TMP");
+        if (!tmp)
+            tmp = ".";
+        snprintf(path, sizeof(path), "%s\\zanna_linereader_test_%d.txt", tmp, (int)GETPID());
+#else
+        snprintf(path, sizeof(path), "/tmp/zanna_linereader_test_%d.txt", (int)GETPID());
+#endif
+        initialized = true;
+    }
+    return path;
+}
+
+static const char *test_file = get_test_file();
+
+/// @brief Fail one selected runtime allocation, delegating all other requests.
+/// @param bytes Requested byte count.
+/// @param next Default runtime allocator.
+/// @return NULL for the selected request, otherwise the default allocation.
+static void *fail_countdown_alloc(int64_t bytes, void *(*next)(int64_t)) {
+    if (g_alloc_countdown > 0 && --g_alloc_countdown == 0)
+        return nullptr;
+    return next ? next(bytes) : nullptr;
+}
+
+/// @brief Count native process resources without opening a descriptor itself.
+/// @return Current Windows handle count or occupied low POSIX descriptor count.
+static uint64_t process_open_resource_count() {
+#if RT_PLATFORM_WINDOWS
+    DWORD count = 0;
+    assert(GetProcessHandleCount(GetCurrentProcess(), &count) != 0);
+    return (uint64_t)count;
+#else
+    uint64_t count = 0;
+    for (int fd = 0; fd < 4096; ++fd) {
+        errno = 0;
+        if (fcntl(fd, F_GETFD) != -1 || errno != EBADF)
+            ++count;
+    }
+    return count;
+#endif
+}
 
 static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
@@ -403,11 +494,46 @@ static void test_null_handling() {
     rt_linereader_close(nullptr);
 }
 
+/// @brief Verify constructor and result-allocation traps clean owned resources.
+/// @details The path is constructed before fault injection so the first failed
+///          allocation is the managed reader payload after the native file has
+///          opened. Separate Read and ReadAll failures target runtime-string
+///          construction after their malloc-owned staging buffers exist; leak
+///          sanitizers therefore cover both cleanup boundaries deterministically.
+static void test_allocation_failure_cleanup() {
+    cleanup_test_file();
+    write_raw_file("alpha\nbeta", 10);
+    rt_string path = make_string(test_file);
+
+    uint64_t before = process_open_resource_count();
+    g_alloc_countdown = 1;
+    rt_set_alloc_hook(fail_countdown_alloc);
+    EXPECT_TRAP(rt_linereader_open(path));
+    rt_set_alloc_hook(nullptr);
+    assert(g_alloc_countdown == 0);
+    assert(process_open_resource_count() == before);
+
+    void *lr = rt_linereader_open(path);
+    g_alloc_countdown = 1;
+    rt_set_alloc_hook(fail_countdown_alloc);
+    EXPECT_TRAP(rt_linereader_read(lr));
+    rt_set_alloc_hook(nullptr);
+    assert(g_alloc_countdown == 0);
+    rt_linereader_close(lr);
+
+    lr = rt_linereader_open(path);
+    g_alloc_countdown = 1;
+    rt_set_alloc_hook(fail_countdown_alloc);
+    EXPECT_TRAP(rt_linereader_read_all(lr));
+    rt_set_alloc_hook(nullptr);
+    assert(g_alloc_countdown == 0);
+    rt_linereader_close(lr);
+
+    rt_string_unref(path);
+    cleanup_test_file();
+}
+
 int main() {
-#ifdef _WIN32
-    // Skip on Windows: test uses /tmp paths not available on Windows
-    ZANNA_PLATFORM_SKIP("POSIX temp paths not available on Windows");
-#endif
     test_open_close();
     test_read_lf_lines();
     test_read_crlf_lines();
@@ -423,6 +549,7 @@ int main() {
     test_empty_lines();
     test_long_line();
     test_null_handling();
+    test_allocation_failure_cleanup();
 
     cleanup_test_file();
     return 0;

@@ -38,6 +38,7 @@
 #include "rt_box.h"
 #include "rt_collection_ids.h"
 #include "rt_gc.h"
+#include "rt_hash_table_util.h"
 #include "rt_hash_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -49,13 +50,10 @@
 /// Initial number of buckets.
 #define MAP_INITIAL_CAPACITY 16
 
-/// Load factor threshold for resizing (0.75 = 75%).
-#define MAP_LOAD_FACTOR_NUM 3
-#define MAP_LOAD_FACTOR_DEN 4
-
 /// @brief Entry in the integer-keyed hash map (collision chain node).
 typedef struct rt_intmap_entry {
     int64_t key;                  ///< Integer key.
+    uint64_t hash;                ///< Cached mixed hash used by lookup and rehash.
     void *value;                  ///< Retained reference to the value object.
     struct rt_intmap_entry *next; ///< Next entry in collision chain (or NULL).
 } rt_intmap_entry;
@@ -80,11 +78,12 @@ static rt_intmap_impl *as_intmap(void *obj, const char *what) {
 
 /// @brief Find an entry matching the given key in a collision chain.
 /// @param head Head of the collision chain.
+/// @param hash Cached hash of @p key.
 /// @param key Integer key to search for.
 /// @return Matching entry or NULL.
-static rt_intmap_entry *find_entry(rt_intmap_entry *head, int64_t key) {
+static rt_intmap_entry *find_entry(rt_intmap_entry *head, uint64_t hash, int64_t key) {
     for (rt_intmap_entry *e = head; e; e = e->next) {
-        if (e->key == key)
+        if (e->hash == hash && e->key == key)
             return e;
     }
     return NULL;
@@ -96,7 +95,7 @@ static void free_entry(rt_intmap_entry *entry) {
     if (entry) {
         if (entry->value && rt_obj_release_check0(entry->value))
             rt_obj_free(entry->value);
-        free(entry);
+        rt_free(entry);
     }
 }
 
@@ -126,7 +125,7 @@ static void rt_intmap_finalize(void *obj) {
     if (!map->buckets || map->capacity == 0)
         return;
     rt_intmap_clear(map);
-    free(map->buckets);
+    rt_free(map->buckets);
     map->buckets = NULL;
     map->capacity = 0;
     map->count = 0;
@@ -135,16 +134,19 @@ static void rt_intmap_finalize(void *obj) {
 /// @brief Resize the hash table and rehash all entries.
 /// @param map IntMap to resize.
 /// @param new_capacity New number of buckets.
-static void map_resize(rt_intmap_impl *map, size_t new_capacity) {
-    if (new_capacity > SIZE_MAX / sizeof(rt_intmap_entry *)) {
+/// @return 1 when the replacement table was installed; 0 after trapping on
+///         allocation overflow or allocation failure.
+static int map_resize(rt_intmap_impl *map, size_t new_capacity) {
+    if (new_capacity == 0 || new_capacity > SIZE_MAX / sizeof(rt_intmap_entry *) ||
+        new_capacity * sizeof(rt_intmap_entry *) > (size_t)INT64_MAX) {
         rt_trap("IntMap: allocation size overflow");
-        return;
+        return 0;
     }
     rt_intmap_entry **new_buckets =
-        (rt_intmap_entry **)calloc(new_capacity, sizeof(rt_intmap_entry *));
+        (rt_intmap_entry **)rt_alloc((int64_t)(new_capacity * sizeof(rt_intmap_entry *)));
     if (!new_buckets) {
         rt_trap("IntMap: memory allocation failed");
-        return;
+        return 0;
     }
 
     // Rehash all entries
@@ -152,29 +154,33 @@ static void map_resize(rt_intmap_impl *map, size_t new_capacity) {
         rt_intmap_entry *entry = map->buckets[i];
         while (entry) {
             rt_intmap_entry *next = entry->next;
-            uint64_t hash = rt_fnv1a(&entry->key, sizeof(entry->key));
-            size_t idx = hash % new_capacity;
+            size_t idx = entry->hash % new_capacity;
             entry->next = new_buckets[idx];
             new_buckets[idx] = entry;
             entry = next;
         }
     }
 
-    free(map->buckets);
+    rt_free(map->buckets);
     map->buckets = new_buckets;
     map->capacity = new_capacity;
+    return 1;
 }
 
 /// @brief Check if resize is needed and perform it.
 /// @param map IntMap to potentially resize.
-static void maybe_resize_for_count(rt_intmap_impl *map, size_t next_count) {
-    // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if ((long double)next_count * (long double)MAP_LOAD_FACTOR_DEN >
-        (long double)map->capacity * (long double)MAP_LOAD_FACTOR_NUM) {
-        if (map->capacity > SIZE_MAX / 2)
-            return;
-        map_resize(map, map->capacity * 2);
+/// @param next_count Entry count after the pending insertion.
+/// @return 1 if no resize was needed or resizing succeeded; 0 if resizing trapped.
+static int maybe_resize_for_count(rt_intmap_impl *map, size_t next_count) {
+    if (rt_hash_table_exceeds_load(next_count, map->capacity)) {
+        size_t new_capacity = 0;
+        if (!rt_hash_table_double_capacity(map->capacity, &new_capacity)) {
+            rt_trap("IntMap: capacity overflow");
+            return 0;
+        }
+        return map_resize(map, new_capacity);
     }
+    return 1;
 }
 
 /// @brief Create a new empty IntMap.
@@ -188,7 +194,8 @@ void *rt_intmap_new(void) {
     }
 
     map->vptr = NULL;
-    map->buckets = (rt_intmap_entry **)calloc(MAP_INITIAL_CAPACITY, sizeof(rt_intmap_entry *));
+    map->buckets =
+        (rt_intmap_entry **)rt_alloc((int64_t)(MAP_INITIAL_CAPACITY * sizeof(rt_intmap_entry *)));
     if (!map->buckets) {
         if (rt_obj_release_check0(map))
             rt_obj_free(map);
@@ -226,17 +233,22 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_intmap_impl *map = as_intmap(obj, "IntMap.Set: invalid IntMap object");
-    if (!map)
+    if (!map) {
+        rt_gc_mutator_exit();
         return;
-    if (map->capacity == 0)
+    }
+    if (map->capacity == 0) {
+        rt_gc_mutator_exit();
         return; // Bucket allocation failed
+    }
 
     uint64_t hash = rt_fnv1a(&key, sizeof(key));
     size_t idx = hash % map->capacity;
 
     // Check if key already exists
-    rt_intmap_entry *existing = find_entry(map->buckets[idx], key);
+    rt_intmap_entry *existing = find_entry(map->buckets[idx], hash, key);
     if (existing) {
         // Update existing entry
         void *old_value = existing->value;
@@ -244,35 +256,43 @@ void rt_intmap_set(void *obj, int64_t key, void *value) {
         existing->value = value;
         if (old_value && rt_obj_release_check0(old_value))
             rt_obj_free(old_value);
+        rt_gc_mutator_exit();
         return;
     }
 
     if (map->count >= (size_t)INT64_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("IntMap.Set: maximum size reached");
         return;
     }
-    maybe_resize_for_count(map, map->count + 1);
+    if (!maybe_resize_for_count(map, map->count + 1)) {
+        rt_gc_mutator_exit();
+        return;
+    }
     idx = hash % map->capacity;
 
     if (value)
         rt_obj_retain_maybe(value);
 
     // Create new entry
-    rt_intmap_entry *entry = (rt_intmap_entry *)malloc(sizeof(rt_intmap_entry));
+    rt_intmap_entry *entry = (rt_intmap_entry *)rt_alloc((int64_t)sizeof(rt_intmap_entry));
     if (!entry) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
+        rt_gc_mutator_exit();
         rt_trap("IntMap: memory allocation failed");
         return;
     }
 
     entry->key = key;
+    entry->hash = hash;
     entry->value = value;
 
     // Insert at head of bucket chain
     entry->next = map->buckets[idx];
     map->buckets[idx] = entry;
     map->count++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Retrieve the value associated with a key.
@@ -290,7 +310,7 @@ void *rt_intmap_get(void *obj, int64_t key) {
     uint64_t hash = rt_fnv1a(&key, sizeof(key));
     size_t idx = hash % map->capacity;
 
-    rt_intmap_entry *entry = find_entry(map->buckets[idx], key);
+    rt_intmap_entry *entry = find_entry(map->buckets[idx], hash, key);
     return entry ? entry->value : NULL;
 }
 
@@ -310,7 +330,7 @@ void *rt_intmap_get_or(void *obj, int64_t key, void *default_value) {
     uint64_t hash = rt_fnv1a(&key, sizeof(key));
     size_t idx = hash % map->capacity;
 
-    rt_intmap_entry *entry = find_entry(map->buckets[idx], key);
+    rt_intmap_entry *entry = find_entry(map->buckets[idx], hash, key);
     return entry ? entry->value : default_value;
 }
 
@@ -329,7 +349,7 @@ int8_t rt_intmap_has(void *obj, int64_t key) {
     uint64_t hash = rt_fnv1a(&key, sizeof(key));
     size_t idx = hash % map->capacity;
 
-    return find_entry(map->buckets[idx], key) ? 1 : 0;
+    return find_entry(map->buckets[idx], hash, key) ? 1 : 0;
 }
 
 /// @brief Remove the entry with the specified key.
@@ -340,9 +360,12 @@ int8_t rt_intmap_remove(void *obj, int64_t key) {
     if (!obj)
         return 0;
 
+    rt_gc_mutator_enter();
     rt_intmap_impl *map = as_intmap(obj, "IntMap.Remove: invalid IntMap object");
-    if (map->capacity == 0)
+    if (!map || map->capacity == 0) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     uint64_t hash = rt_fnv1a(&key, sizeof(key));
     size_t idx = hash % map->capacity;
@@ -351,16 +374,18 @@ int8_t rt_intmap_remove(void *obj, int64_t key) {
     rt_intmap_entry *entry = map->buckets[idx];
 
     while (entry) {
-        if (entry->key == key) {
+        if (entry->hash == hash && entry->key == key) {
             *prev_ptr = entry->next;
             free_entry(entry);
             map->count--;
+            rt_gc_mutator_exit();
             return 1;
         }
         prev_ptr = &entry->next;
         entry = entry->next;
     }
 
+    rt_gc_mutator_exit();
     return 0;
 }
 
@@ -370,17 +395,61 @@ void rt_intmap_clear(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_intmap_impl *map = as_intmap(obj, "IntMap.Clear: invalid IntMap object");
+    if (!map) {
+        rt_gc_mutator_exit();
+        return;
+    }
     for (size_t i = 0; i < map->capacity; ++i) {
         rt_intmap_entry *entry = map->buckets[i];
+        map->buckets[i] = NULL;
         while (entry) {
             rt_intmap_entry *next = entry->next;
             free_entry(entry);
             entry = next;
         }
-        map->buckets[i] = NULL;
     }
     map->count = 0;
+    rt_gc_mutator_exit();
+}
+
+/// @brief Compact an IntMap's bucket table without changing its entries.
+/// @details Computes the smallest power-of-two table, no smaller than sixteen,
+///          whose normal 75-percent threshold holds the current entry count.
+///          The replacement array is allocated transactionally before any
+///          cached-hash chain is relinked. A failed allocation therefore keeps
+///          the original capacity and all key/value associations intact.
+/// @param obj IntMap object to compact.
+/// @return Non-zero when already minimal or successfully compacted; zero after
+///         an invalid-handle, overflow, or allocation trap.
+int8_t rt_intmap_trim(void *obj) {
+    if (!obj) {
+        rt_trap("IntMap.Trim: invalid IntMap object");
+        return 0;
+    }
+
+    rt_gc_mutator_enter();
+    rt_intmap_impl *map = as_intmap(obj, "IntMap.Trim: invalid IntMap object");
+    if (!map || !map->buckets || map->capacity == 0) {
+        rt_gc_mutator_exit();
+        return 0;
+    }
+
+    size_t target_capacity = 0;
+    if (!rt_hash_table_trim_capacity(map->count, MAP_INITIAL_CAPACITY, &target_capacity)) {
+        rt_gc_mutator_exit();
+        rt_trap("IntMap.Trim: capacity overflow");
+        return 0;
+    }
+    if (target_capacity >= map->capacity) {
+        rt_gc_mutator_exit();
+        return 1;
+    }
+
+    int resized = map_resize(map, target_capacity);
+    rt_gc_mutator_exit();
+    return resized ? 1 : 0;
 }
 
 /// @brief Return all keys as a Seq of boxed integers.

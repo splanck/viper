@@ -59,6 +59,7 @@
 #define PATH_SEP '\\'
 #else
 #include <fcntl.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #define PATH_SEP '/'
@@ -83,6 +84,96 @@ static inline int64_t bytes_len(void *obj) {
 //=============================================================================
 // Filesystem / atomic-write helpers
 //=============================================================================
+
+/// @brief Allocate and initialize a native archive reader-writer lock.
+/// @details The implementation stays in this approved platform-adapter unit:
+///          SRWLOCK on Windows and pthread_rwlock_t on POSIX. The native lock
+///          creates no managed object or GC edge.
+/// @return Opaque initialized lock, or NULL on allocation/initialization failure.
+void *archive_rwlock_create(void) {
+#ifdef _WIN32
+    SRWLOCK *lock = (SRWLOCK *)malloc(sizeof(*lock));
+    if (!lock)
+        return NULL;
+    InitializeSRWLock(lock);
+    return lock;
+#else
+    pthread_rwlock_t *lock = (pthread_rwlock_t *)malloc(sizeof(*lock));
+    if (!lock)
+        return NULL;
+    if (pthread_rwlock_init(lock, NULL) != 0) {
+        free(lock);
+        return NULL;
+    }
+    return lock;
+#endif
+}
+
+/// @brief Destroy and free an archive reader-writer lock after archive quiescence.
+/// @details Finalization follows the last archive release, so a busy lock is an
+///          invariant violation rather than a recoverable runtime condition.
+/// @param lock Opaque lock returned by @ref archive_rwlock_create; NULL is a no-op.
+void archive_rwlock_destroy(void *lock) {
+    if (!lock)
+        return;
+#ifndef _WIN32
+    if (pthread_rwlock_destroy((pthread_rwlock_t *)lock) != 0)
+        rt_abort("Archive: failed to destroy reader-writer lock");
+#endif
+    free(lock);
+}
+
+/// @brief Acquire shared access to immutable/read-only archive state.
+/// @param lock Opaque archive lock; NULL indicates runtime corruption.
+void archive_rwlock_read_enter(void *lock) {
+    if (!lock)
+        rt_abort("Archive: missing reader-writer lock");
+#ifdef _WIN32
+    AcquireSRWLockShared((SRWLOCK *)lock);
+#else
+    if (pthread_rwlock_rdlock((pthread_rwlock_t *)lock) != 0)
+        rt_abort("Archive: failed to acquire read lock");
+#endif
+}
+
+/// @brief Release shared archive access.
+/// @param lock Opaque archive lock currently held for reading.
+void archive_rwlock_read_exit(void *lock) {
+    if (!lock)
+        rt_abort("Archive: missing reader-writer lock");
+#ifdef _WIN32
+    ReleaseSRWLockShared((SRWLOCK *)lock);
+#else
+    if (pthread_rwlock_unlock((pthread_rwlock_t *)lock) != 0)
+        rt_abort("Archive: failed to release read lock");
+#endif
+}
+
+/// @brief Acquire exclusive access to mutable archive writer state.
+/// @param lock Opaque archive lock; NULL indicates runtime corruption.
+void archive_rwlock_write_enter(void *lock) {
+    if (!lock)
+        rt_abort("Archive: missing reader-writer lock");
+#ifdef _WIN32
+    AcquireSRWLockExclusive((SRWLOCK *)lock);
+#else
+    if (pthread_rwlock_wrlock((pthread_rwlock_t *)lock) != 0)
+        rt_abort("Archive: failed to acquire write lock");
+#endif
+}
+
+/// @brief Release exclusive archive writer access.
+/// @param lock Opaque archive lock currently held for writing.
+void archive_rwlock_write_exit(void *lock) {
+    if (!lock)
+        rt_abort("Archive: missing reader-writer lock");
+#ifdef _WIN32
+    ReleaseSRWLockExclusive((SRWLOCK *)lock);
+#else
+    if (pthread_rwlock_unlock((pthread_rwlock_t *)lock) != 0)
+        rt_abort("Archive: failed to release write lock");
+#endif
+}
 
 #ifdef _WIN32
 /// @brief Open a UTF-8 path on Windows via the wide-string CreateFileW API.
@@ -205,24 +296,24 @@ void *archive_bytes_new_win_or_close(HANDLE h, int64_t len, const char *fallback
     return data;
 }
 
-/// @brief Write exactly `total` bytes to a Windows handle or trap.
+/// @brief Attempt to write exactly `total` bytes to a Windows handle.
 ///
 /// Mirror of `archive_read_exact_win` for the write path. Loops over
 /// WriteFile, chunking by DWORD_MAX, and traps on any short write or
-/// failure so callers don't need to invent their own retry logic.
+/// failure. It deliberately does not trap while @p h is live: callers first
+/// close the handle and unlink the sidecar, then raise @p trap_msg.
 static int archive_write_exact_win(HANDLE h,
                                    const uint8_t *src,
                                    size_t total,
                                    const char *trap_msg) {
+    (void)trap_msg;
     size_t written_total = 0;
     while (written_total < total) {
         DWORD chunk = 0;
         size_t remaining = total - written_total;
         DWORD want = remaining > (size_t)UINT32_MAX ? (DWORD)UINT32_MAX : (DWORD)remaining;
-        if (!WriteFile(h, src + written_total, want, &chunk, NULL) || chunk == 0) {
-            rt_trap(trap_msg);
+        if (!WriteFile(h, src + written_total, want, &chunk, NULL) || chunk == 0)
             return 0;
-        }
         written_total += (size_t)chunk;
     }
     return 1;
@@ -340,28 +431,28 @@ void *archive_bytes_new_posix_or_close(int fd, int64_t len, const char *fallback
     return data;
 }
 
-/// @brief Write exactly `total` bytes to a POSIX fd or trap.
+/// @brief Attempt to write exactly `total` bytes to a POSIX fd.
 ///
 /// Mirror of `archive_read_exact_posix` for writes. Retries EINTR,
-/// traps on error or unexpected zero-byte writes (the kernel never
-/// returns zero on a regular file write unless the disk is full).
+/// reports error or unexpected zero-byte writes (the kernel never returns
+/// zero on a regular file write unless the disk is full). It deliberately
+/// does not trap while @p fd is live, allowing callers to close and unlink
+/// their sidecar before raising @p trap_msg.
 static int archive_write_exact_posix(int fd,
                                      const uint8_t *src,
                                      size_t total,
                                      const char *trap_msg) {
+    (void)trap_msg;
     size_t written_total = 0;
     while (written_total < total) {
         ssize_t n = write(fd, src + written_total, total - written_total);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
-            rt_trap(trap_msg);
             return 0;
         }
-        if (n == 0) {
-            rt_trap(trap_msg);
+        if (n == 0)
             return 0;
-        }
         written_total += (size_t)n;
     }
     return 1;
@@ -437,9 +528,11 @@ char *archive_make_temp_path(const char *path, unsigned attempt) {
 
 /// @brief Atomically rename `src` to `dst`, replacing any existing file.
 ///
-/// On Windows uses `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING |
-/// MOVEFILE_WRITE_THROUGH`; on POSIX uses `rename(2)`. Both are
-/// atomic on a single filesystem.
+/// On Windows, an existing regular destination is replaced with
+/// `ReplaceFileW`, preserving its identity metadata, ACLs, compression,
+/// encryption, and named streams; a new destination uses `MoveFileExW`.
+/// Directory and reparse-point destinations are rejected. POSIX uses
+/// `rename(2)`. Each operation stays on the sidecar's filesystem.
 ///
 /// @param src UTF-8 source path.
 /// @param dst UTF-8 destination path.
@@ -453,7 +546,17 @@ static int archive_replace_utf8(const char *src, const char *dst) {
         free(wdst);
         return 0;
     }
-    BOOL ok = MoveFileExW(wsrc, wdst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+    DWORD attributes = GetFileAttributesW(wdst);
+    BOOL ok = FALSE;
+    if (attributes != INVALID_FILE_ATTRIBUTES) {
+        if ((attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) == 0) {
+            ok = ReplaceFileW(wdst, wsrc, NULL, 0, NULL, NULL);
+        }
+    } else {
+        DWORD attr_error = GetLastError();
+        if (attr_error == ERROR_FILE_NOT_FOUND || attr_error == ERROR_PATH_NOT_FOUND)
+            ok = MoveFileExW(wsrc, wdst, MOVEFILE_WRITE_THROUGH);
+    }
     free(wsrc);
     free(wdst);
     return ok ? 1 : 0;
@@ -532,7 +635,9 @@ static int archive_sync_parent_dir(const char *path) {
 /// during `Finish` and to drop extracted entries onto disk during
 /// `Extract`/`ExtractAll`. Writes an exclusive temp sidecar first,
 /// flushes it, then replaces the destination so readers never observe
-/// a partially-written archive or extracted file.
+/// a partially-written archive or extracted file. POSIX replacements copy
+/// an existing regular destination's permission bits onto the sidecar before
+/// rename; newly created files retain the historical 0644-before-umask mode.
 ///
 /// @param cpath    UTF-8 destination file path.
 /// @param src      Source byte buffer.
@@ -569,6 +674,7 @@ int archive_write_file_all_utf8(const char *cpath,
         CloseHandle(h);
         archive_unlink_utf8(tmp);
         free(tmp);
+        rt_trap(trap_msg);
         return 0;
     }
     int ok = FlushFileBuffers(h) ? 1 : 0;
@@ -586,6 +692,10 @@ int archive_write_file_all_utf8(const char *cpath,
 #else
     char *tmp = NULL;
     int fd = -1;
+    mode_t target_mode = 0644;
+    struct stat existing;
+    if (lstat(cpath, &existing) == 0 && S_ISREG(existing.st_mode))
+        target_mode = existing.st_mode & 07777;
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
         tmp = archive_make_temp_path(cpath, attempt);
         if (!tmp) {
@@ -596,7 +706,7 @@ int archive_write_file_all_utf8(const char *cpath,
 #ifdef O_NOFOLLOW
         flags |= O_NOFOLLOW;
 #endif
-        fd = archive_open_posix(tmp, flags, 0644);
+        fd = archive_open_posix(tmp, flags, target_mode);
         if (fd >= 0)
             break;
         int err = errno;
@@ -610,10 +720,18 @@ int archive_write_file_all_utf8(const char *cpath,
         rt_trap(trap_msg);
         return 0;
     }
+    if (fchmod(fd, target_mode) != 0) {
+        close(fd);
+        archive_unlink_utf8(tmp);
+        free(tmp);
+        rt_trap(trap_msg);
+        return 0;
+    }
     if (!archive_write_exact_posix(fd, src, total, trap_msg)) {
         close(fd);
         archive_unlink_utf8(tmp);
         free(tmp);
+        rt_trap(trap_msg);
         return 0;
     }
     int ok = fsync(fd) == 0 ? 1 : 0;
@@ -822,6 +940,10 @@ void archive_write_bytes_to_dirfd_posix(int parent_fd, const char *leaf, void *d
     size_t total = (size_t)bytes_len(data);
     char tmp_name[128];
     int fd = -1;
+    mode_t target_mode = 0644;
+    struct stat existing;
+    if (fstatat(parent_fd, leaf, &existing, AT_SYMLINK_NOFOLLOW) == 0 && S_ISREG(existing.st_mode))
+        target_mode = existing.st_mode & 07777;
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
         uint64_t random_value = 0;
         if (!archive_random_u64(&random_value)) {
@@ -838,7 +960,7 @@ void archive_write_bytes_to_dirfd_posix(int parent_fd, const char *leaf, void *d
 #ifdef O_NOFOLLOW
         flags |= O_NOFOLLOW;
 #endif
-        fd = archive_openat_posix(parent_fd, tmp_name, flags, 0644);
+        fd = archive_openat_posix(parent_fd, tmp_name, flags, target_mode);
         if (fd >= 0)
             break;
         if (errno != EEXIST) {
@@ -851,9 +973,17 @@ void archive_write_bytes_to_dirfd_posix(int parent_fd, const char *leaf, void *d
         return;
     }
 
+    if (fchmod(fd, target_mode) != 0) {
+        close(fd);
+        (void)unlinkat(parent_fd, tmp_name, 0);
+        rt_trap("Archive: failed to write destination file");
+        return;
+    }
+
     if (!archive_write_exact_posix(fd, src, total, "Archive: failed to write destination file")) {
         close(fd);
         (void)unlinkat(parent_fd, tmp_name, 0);
+        rt_trap("Archive: failed to write destination file");
         return;
     }
     int ok = fsync(fd) == 0 ? 1 : 0;

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-16
+last-verified: 2026-07-17
 ---
 
 # Architecture Decision Records
@@ -16,6 +16,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 
 - [ADR 0006](0006-spec-currency-and-adr-triggers.md) — Spec Currency and ADR Triggers
 - [ADR 0110](0110-project-rename-viper-to-zanna.md) — Rename the Project from Viper to Zanna
+- [ADR 0118](0118-rename-zannaide-to-zanna-studio.md) — Rename ZannaIDE to Zanna Studio
 
 ## IL & Optimizer
 
@@ -39,6 +40,27 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0028](0028-terminal-option-result-input-apis.md) — Terminal Option and Result Input APIs
 - [ADR 0029](0029-diagnostics-current-trap-api.md) — Diagnostics Current Trap API
 - [ADR 0030](0030-runtime-memory-and-gc-namespaces.md) — Runtime Memory and GC Namespaces
+- [ADR 0115](0115-retained-runtime-resource-snapshots.md) — Retain Runtime Resources Across Unlocked Work
+- [ADR 0116](0116-gc-mutator-quiescence-and-array-cycles.md) — Coordinate Cycle Collection with Managed-Graph Mutators
+- [ADR 0117](0117-archive-validation-resource-and-concurrency-policy.md) — Validate Archive Structure and Bound Serialized Writer Transactions
+- [ADR 0119](0119-trap-safe-managed-io-ownership.md) — Make Managed I/O Construction and Result Ownership Trap-Safe
+- [ADR 0120](0120-http-router-stable-publication-and-trap-safe-matching.md) — Keep HTTP Router Publication Stable and Matching Trap-Safe
+- [ADR 0121](0121-network-policy-identity-and-atomic-retry-state.md) — Give Network Policies Stable Identity and Atomic Retry State
+- [ADR 0122](0122-network-transport-identity-and-exclusive-pool-leases.md) — Validate Network Transports and Lease Pooled TCP Handles Exclusively
+- [ADR 0123](0123-udp-managed-identity-and-datagram-integrity.md) — Preserve UDP Managed Identity and Atomic Datagram Integrity
+- [ADR 0124](0124-trap-safe-native-promise-completion-and-async-socket-initialization.md) — Make Native Promise Completion and AsyncSocket Initialization Trap-Safe
+- [ADR 0125](0125-multipart-stable-identity-and-atomic-native-staging.md) — Give Multipart Stable Identity and Atomic Native Staging
+- [ADR 0126](0126-http-client-stable-identity-and-transactional-ownership.md) — Make HTTP Client Identity and Ownership Transactional
+- [ADR 0127](0127-session-http-client-identity-and-synchronized-snapshots.md) — Give Session HTTP Clients Stable Identity and Synchronized Snapshots
+- [ADR 0128](0128-http-server-stable-identity-and-serialized-lifecycle.md) — Give HTTP Servers Stable Identity and Serialized Lifecycles
+- [ADR 0129](0129-tls-session-identity-and-native-socket-width.md) — Give TLS Sessions Stable Identity and Native-Width Socket Ownership
+- [ADR 0130](0130-websocket-client-identity-strict-framing-and-transactional-ownership.md) — Give WebSocket Clients Stable Identity and Strict Transactional Framing
+- [ADR 0131](0131-websocket-server-identity-strict-upgrades-and-generation-safe-lifecycle.md) — Give WebSocket Servers Stable Identity and Generation-Safe Lifecycles
+- [ADR 0132](0132-sse-smtp-identity-strict-framing-and-cancellation-safe-lifecycles.md) — Give SSE and SMTP Strict Framing and Cancellation-Safe Lifecycles
+- [ADR 0133](0133-runtime-concurrency-and-collection-hardening.md) — Make Runtime Concurrency Ownership Typed and Collection Capacity Explicit
+- [ADR 0134](0134-zpak-v2-validation-and-entry-checksums.md) — Validate ZPAK Metadata and Checksum Every Version 2 Entry
+- [ADR 0135](0135-runtime-cppcheck-build-and-ci-gate.md) — Gate Runtime Portability and Correctness Diagnostics with Cppcheck
+- [ADR 0136](0136-runtime-context-binding-lifecycle-and-state-locks.md) — Serialize Runtime Context State and Reserve Child Bindings Before Native Start
 - [ADR 0031](0031-core-parse-double-aliases.md) — Core Parse Double Aliases
 - [ADR 0032](0032-math-bits-full-name-aliases.md) — Math Bits Full-Name Aliases
 - [ADR 0033](0033-core-convert-string-aliases.md) — Core Convert String Aliases

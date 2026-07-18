@@ -9,10 +9,14 @@
 // Purpose: Validate FIFO-fair, re-entrant monitor semantics for Zanna.Threads.Monitor.
 // Key invariants: PauseAll wakes waiters FIFO; WaitFor timeouts re-acquire fairly.
 // Ownership/Lifetime: Uses runtime library and OS threads; skip on Windows.
+// Links: src/runtime/threads/rt_monitor_posix.c,
+//        src/runtime/threads/rt_monitor_win.c, docs/zannalib/threads.md
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_threads.h"
+
+#include "rt_object.h"
 
 #include "common/ProcessIsolation.hpp"
 #include <atomic>
@@ -86,6 +90,48 @@ static void test_wait_for_timeout() {
     rt_monitor_exit(obj);
 }
 
+/// @brief Exercise independent monitor buckets concurrently.
+/// @details Each thread repeatedly acquires a disjoint set of managed objects.
+///          Correctness requires exact per-object counts, while the workload
+///          ensures unrelated monitor lookups can proceed through different
+///          table-lock stripes without sharing ownership state.
+static void test_independent_monitor_table_concurrency() {
+    constexpr int kThreads = 8;
+    constexpr int kObjectsPerThread = 16;
+    constexpr int kIterations = 250;
+    constexpr int kObjectCount = kThreads * kObjectsPerThread;
+    std::vector<void *> objects(kObjectCount);
+    std::vector<int> counters(kObjectCount, 0);
+    for (void *&object : objects) {
+        object = rt_obj_new_i64(0, 1);
+        assert(object != nullptr);
+    }
+
+    std::vector<std::thread> workers;
+    workers.reserve(kThreads);
+    for (int thread_index = 0; thread_index < kThreads; ++thread_index) {
+        workers.emplace_back([&, thread_index]() {
+            const int first = thread_index * kObjectsPerThread;
+            for (int iteration = 0; iteration < kIterations; ++iteration) {
+                for (int offset = 0; offset < kObjectsPerThread; ++offset) {
+                    const int index = first + offset;
+                    rt_monitor_enter(objects[index]);
+                    ++counters[index];
+                    rt_monitor_exit(objects[index]);
+                }
+            }
+        });
+    }
+    for (auto &worker : workers)
+        worker.join();
+
+    for (int index = 0; index < kObjectCount; ++index) {
+        assert(counters[index] == kIterations);
+        if (rt_obj_release_check0(objects[index]))
+            rt_obj_free(objects[index]);
+    }
+}
+
 int main(int argc, char *argv[]) {
     zanna::tests::registerChildFunction(call_enter_null);
     if (zanna::tests::dispatchChild(argc, argv))
@@ -97,5 +143,6 @@ int main(int argc, char *argv[]) {
 
     test_wait_for_timeout();
     test_pause_all_fifo();
+    test_independent_monitor_table_concurrency();
     return 0;
 }

@@ -12,13 +12,16 @@
 // Key invariants:
 //   - Initialization is idempotent (safe to call multiple times).
 //   - Resolution order: embedded → mounted packs (LIFO) → filesystem.
+//   - Registry locking covers source selection only; I/O, decompression, and
+//     managed-object allocation run against retained snapshots outside it.
 //   - Pack auto-discovery scans exe directory for *.zpak files on init.
 //   - Type dispatch in Assets.Load() is based on file extension.
 //   - All returned objects are GC-managed.
 //
 // Ownership/Lifetime:
 //   - Embedded blob pointer is borrowed (lives in .rodata, never freed).
-//   - Mounted pack handles are owned and closed on unmount or process exit.
+//   - Mounted pack handles hold one registry reference until unmount.
+//   - Active loads retain their selected archive through read/decompression.
 //   - Data buffers from zpak_read_entry are freed after creating GC objects.
 //
 // Links: rt_zpak_reader.h, rt_path_exe.c, rt_compress.h
@@ -28,6 +31,7 @@
 #include "rt_asset.h"
 #include "rt_file_path.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_zpak_reader.h"
 
@@ -37,7 +41,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <wchar.h>
 #include <windows.h>
 
@@ -104,7 +108,7 @@ extern char *rt_path_exe_dir_cstr(void);
 static char *asset_canonical_path_dup(const char *path) {
     if (!path || !*path)
         return NULL;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     DWORD needed = GetFullPathNameA(path, 0, NULL, NULL);
     if (needed > 0) {
         char *full = (char *)malloc((size_t)needed);
@@ -128,7 +132,7 @@ static char *asset_canonical_path_dup(const char *path) {
 static int asset_path_equal(const char *a, const char *b) {
     if (!a || !b)
         return 0;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     return _stricmp(a, b) == 0;
 #else
     return strcmp(a, b) == 0;
@@ -140,7 +144,7 @@ static int asset_path_equal(const char *a, const char *b) {
 // file when assets are embedded via `embed` directives in zanna.project.
 // When no assets are embedded, these defaults ensure clean linking.
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 __declspec(selectany) const unsigned char zanna_asset_blob[1] = {0};
 __declspec(selectany) const unsigned long long zanna_asset_blob_size = 0;
 #else
@@ -152,20 +156,28 @@ __attribute__((weak)) const unsigned long long zanna_asset_blob_size = 0;
 
 #define RT_ASSET_MAX_PACKS 32
 
+/// @brief Asset-registry initialization states guarded by @ref g_asset_lock.
+typedef enum {
+    ASSET_INIT_UNINITIALIZED = 0, ///< No thread has claimed initialization.
+    ASSET_INIT_IN_PROGRESS = 1,   ///< One thread is building an unpublished staging registry.
+    ASSET_INIT_COMPLETE = 2,      ///< The complete registry was atomically published.
+} asset_init_state_t;
+
 // ─── Global state ───────────────────────────────────────────────────────────
 
 /// @brief Singleton asset manager state — all fields guarded by g_asset_lock.
 static struct {
     zpak_archive_t *embedded;                  ///< Embedded .rodata ZPAK blob, or NULL.
     zpak_archive_t *packs[RT_ASSET_MAX_PACKS]; ///< Mounted pack file archives (LIFO).
-    char *pack_paths[RT_ASSET_MAX_PACKS];     ///< Canonical paths for each mounted pack.
-    int pack_count;                           ///< Number of currently mounted packs.
-    int initialized;                          ///< Non-zero after the first call to rt_asset_init.
+    char *pack_paths[RT_ASSET_MAX_PACKS];      ///< Canonical paths for each mounted pack.
+    int pack_count;                            ///< Number of currently mounted packs.
+    asset_init_state_t init_state;             ///< Serialized initialization/publication state.
 } g_asset_mgr;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 static INIT_ONCE g_asset_lock_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_asset_lock;
+static CONDITION_VARIABLE g_asset_init_condition = CONDITION_VARIABLE_INIT;
 
 /// @brief `InitOnce` callback that initializes the asset manager critical section.
 static BOOL CALLBACK asset_init_lock(PINIT_ONCE once, PVOID parameter, PVOID *context) {
@@ -178,7 +190,8 @@ static BOOL CALLBACK asset_init_lock(PINIT_ONCE once, PVOID parameter, PVOID *co
 
 /// @brief Acquire the asset-manager lock (Windows CRITICAL_SECTION, lazy-initialized).
 static void asset_lock(void) {
-    InitOnceExecuteOnce(&g_asset_lock_once, asset_init_lock, NULL, NULL);
+    if (!InitOnceExecuteOnce(&g_asset_lock_once, asset_init_lock, NULL, NULL))
+        rt_abort("Assets: failed to initialize registry lock");
     EnterCriticalSection(&g_asset_lock);
 }
 
@@ -188,17 +201,49 @@ static void asset_unlock(void) {
 }
 #else
 static pthread_mutex_t g_asset_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_asset_init_condition = PTHREAD_COND_INITIALIZER;
 
 /// @brief Acquire the asset-manager lock (POSIX mutex).
 static void asset_lock(void) {
-    pthread_mutex_lock(&g_asset_lock);
+    if (pthread_mutex_lock(&g_asset_lock) != 0)
+        rt_abort("Assets: failed to acquire registry lock");
 }
 
 /// @brief Release the asset-manager lock.
 static void asset_unlock(void) {
-    pthread_mutex_unlock(&g_asset_lock);
+    if (pthread_mutex_unlock(&g_asset_lock) != 0)
+        rt_abort("Assets: failed to release registry lock");
 }
 #endif
+
+/// @brief Wait with the asset lock held until staging initialization finishes.
+/// @details The wait atomically releases and reacquires the registry lock. Any
+///          native condition-variable failure is treated as unrecoverable
+///          because returning would expose a registry whose publication state
+///          is unknown to the caller.
+static void asset_wait_for_initialization_locked(void) {
+    while (g_asset_mgr.init_state == ASSET_INIT_IN_PROGRESS) {
+#if RT_PLATFORM_WINDOWS
+        if (!SleepConditionVariableCS(&g_asset_init_condition, &g_asset_lock, INFINITE))
+            rt_abort("Assets: initialization wait failed");
+#else
+        if (pthread_cond_wait(&g_asset_init_condition, &g_asset_lock) != 0)
+            rt_abort("Assets: initialization wait failed");
+#endif
+    }
+}
+
+/// @brief Wake every thread waiting for a complete asset-registry publication.
+/// @details The caller holds the asset lock and has already stored the complete
+///          state, so awakened waiters observe all registry fields together.
+static void asset_notify_initialization_locked(void) {
+#if RT_PLATFORM_WINDOWS
+    WakeAllConditionVariable(&g_asset_init_condition);
+#else
+    if (pthread_cond_broadcast(&g_asset_init_condition) != 0)
+        rt_abort("Assets: initialization notification failed");
+#endif
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -279,7 +324,7 @@ static int asset_name_is_safe(const char *name) {
     return 1;
 }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 static uint8_t *asset_read_regular_file(const char *path, size_t *out_size) {
     if (out_size)
         *out_size = 0;
@@ -441,6 +486,78 @@ static int asset_regular_file_size(const char *path, uint64_t *out_size) {
 }
 #endif
 
+/// @brief Retained packed source selected from the asset registry.
+typedef struct {
+    zpak_archive_t *archive;   ///< Retained archive, released by the reader.
+    const zpak_entry_t *entry; ///< Entry owned by @ref archive.
+} asset_packed_source_t;
+
+/// @brief Select and retain the highest-priority packed source for an asset.
+/// @details The caller must hold the asset-manager lock. A successful result
+///          remains valid after unlocking because the archive reference owns
+///          both its table of contents and entry names.
+/// @param name Safe logical asset name.
+/// @param out_source Receives the retained archive and borrowed entry.
+/// @return Non-zero when a packed entry was found and retained.
+static int asset_find_packed_source_locked(const char *name, asset_packed_source_t *out_source) {
+    if (!name || !out_source)
+        return 0;
+    out_source->archive = NULL;
+    out_source->entry = NULL;
+
+    if (g_asset_mgr.embedded) {
+        const zpak_entry_t *entry = zpak_find(g_asset_mgr.embedded, name);
+        if (entry && zpak_retain(g_asset_mgr.embedded)) {
+            out_source->archive = g_asset_mgr.embedded;
+            out_source->entry = entry;
+            return 1;
+        }
+    }
+
+    for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
+        zpak_archive_t *archive = g_asset_mgr.packs[i];
+        if (!archive)
+            continue;
+        const zpak_entry_t *entry = zpak_find(archive, name);
+        if (entry && zpak_retain(archive)) {
+            out_source->archive = archive;
+            out_source->entry = entry;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/// @brief Read a retained packed source with trap-safe archive cleanup.
+/// @details Decompression may trap on corrupt input. The recovery boundary
+///          releases the archive snapshot before propagating the same message,
+///          preventing both a registry deadlock and a leaked archive reference.
+/// @param source Retained source returned by
+///        @ref asset_find_packed_source_locked.
+/// @param out_size Receives the uncompressed byte count on success.
+/// @return Caller-owned byte buffer, or NULL when reading fails.
+static uint8_t *asset_read_packed_source(asset_packed_source_t source, size_t *out_size) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "Assets.Load: packed asset read failed");
+        rt_trap_clear_recovery();
+        zpak_close(source.archive);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    uint8_t *data = zpak_read_entry(source.archive, source.entry, out_size);
+    rt_trap_clear_recovery();
+    zpak_close(source.archive);
+    return data;
+}
+
 /// @brief Resolve an asset name across the layered asset sources.
 ///
 /// Lookup order (first-hit wins):
@@ -455,21 +572,12 @@ static int asset_regular_file_size(const char *path, uint64_t *out_size) {
 /// Returns a heap-allocated buffer (caller frees) or NULL if not found
 /// or on any read error.
 static uint8_t *asset_find_data(const char *name, size_t *out_size) {
-    // 1. Embedded registry
-    if (g_asset_mgr.embedded) {
-        const zpak_entry_t *e = zpak_find(g_asset_mgr.embedded, name);
-        if (e)
-            return zpak_read_entry(g_asset_mgr.embedded, e, out_size);
-    }
-
-    // 2. Mounted packs (reverse order — last mounted wins)
-    for (int i = g_asset_mgr.pack_count - 1; i >= 0; --i) {
-        if (!g_asset_mgr.packs[i])
-            continue;
-        const zpak_entry_t *e = zpak_find(g_asset_mgr.packs[i], name);
-        if (e)
-            return zpak_read_entry(g_asset_mgr.packs[i], e, out_size);
-    }
+    asset_packed_source_t source;
+    asset_lock();
+    int found_packed = asset_find_packed_source_locked(name, &source);
+    asset_unlock();
+    if (found_packed)
+        return asset_read_packed_source(source, out_size);
 
     // 3. Filesystem fallback (CWD-relative)
     uint8_t *loose = asset_read_regular_file(name, out_size);
@@ -479,12 +587,64 @@ static uint8_t *asset_find_data(const char *name, size_t *out_size) {
     return NULL;
 }
 
-/// @brief Scan a directory for *.zpak files and auto-mount them.
-static void discover_packs(const char *dir) {
-    if (!dir)
+/// @brief Private, unpublished registry assembled during lazy initialization.
+/// @details Native I/O populates this structure without holding the live
+///          registry lock. Once complete, ownership of every field moves into
+///          @ref g_asset_mgr in one short locked publication.
+typedef struct {
+    zpak_archive_t *embedded;                  ///< Parsed embedded archive, or NULL.
+    zpak_archive_t *packs[RT_ASSET_MAX_PACKS]; ///< Owned discovered pack archives.
+    char *pack_paths[RT_ASSET_MAX_PACKS];      ///< Owned canonical paths for @ref packs.
+    int pack_count;                            ///< Number of initialized pack/path pairs.
+} asset_init_stage_t;
+
+/// @brief Add an opened pack to an initialization stage transactionally.
+/// @details Canonicalizes and copies @p path, rejects duplicates, and enforces
+///          the fixed pack ceiling. Ownership of @p archive always transfers:
+///          it is stored on success and closed on any rejection or allocation
+///          failure.
+/// @param stage Unpublished initialization registry being assembled.
+/// @param path Native UTF-8 path used to open @p archive.
+/// @param archive Owned open archive that this helper consumes.
+static void asset_stage_add_pack(asset_init_stage_t *stage,
+                                 const char *path,
+                                 zpak_archive_t *archive) {
+    if (!archive)
+        return;
+    if (!stage || !path || stage->pack_count >= RT_ASSET_MAX_PACKS) {
+        zpak_close(archive);
+        return;
+    }
+
+    char *canonical = asset_canonical_path_dup(path);
+    if (!canonical) {
+        zpak_close(archive);
+        return;
+    }
+    for (int i = 0; i < stage->pack_count; ++i) {
+        if (asset_path_equal(stage->pack_paths[i], canonical)) {
+            free(canonical);
+            zpak_close(archive);
+            return;
+        }
+    }
+
+    stage->packs[stage->pack_count] = archive;
+    stage->pack_paths[stage->pack_count] = canonical;
+    stage->pack_count++;
+}
+
+/// @brief Scan one directory for regular `*.zpak` files into a staging registry.
+/// @details Directory enumeration, canonicalization, file opening, and complete
+///          ZPAK validation all occur without the live asset-manager lock. Bad,
+///          symlinked/reparse, duplicate, and excess packs are skipped.
+/// @param dir Native UTF-8 directory path to enumerate; NULL is a no-op.
+/// @param stage Unpublished initialization registry that owns accepted packs.
+static void discover_packs(const char *dir, asset_init_stage_t *stage) {
+    if (!dir || !stage)
         return;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     wchar_t *wdir = rt_file_path_utf8_to_wide(dir);
     if (!wdir)
         return;
@@ -508,18 +668,9 @@ static void discover_packs(const char *dir) {
         free(wpath);
         if (!path)
             continue;
-        if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
+        if (stage->pack_count < RT_ASSET_MAX_PACKS) {
             zpak_archive_t *archive = zpak_open_file_no_follow(path);
-            if (archive) {
-                char *path_copy = strdup(path);
-                if (!path_copy) {
-                    zpak_close(archive);
-                    continue;
-                }
-                g_asset_mgr.packs[g_asset_mgr.pack_count] = archive;
-                g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = path_copy;
-                g_asset_mgr.pack_count++;
-            }
+            asset_stage_add_pack(stage, path, archive);
         }
         free(path);
     } while (FindNextFileW(hFind, &fd));
@@ -558,18 +709,9 @@ static void discover_packs(const char *dir) {
             continue;
         }
 
-        if (g_asset_mgr.pack_count < RT_ASSET_MAX_PACKS) {
+        if (stage->pack_count < RT_ASSET_MAX_PACKS) {
             zpak_archive_t *archive = zpak_open_file_no_follow(path);
-            if (archive) {
-                char *path_copy = strdup(path);
-                if (!path_copy) {
-                    zpak_close(archive);
-                    continue;
-                }
-                g_asset_mgr.packs[g_asset_mgr.pack_count] = archive;
-                g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = path_copy;
-                g_asset_mgr.pack_count++;
-            }
+            asset_stage_add_pack(stage, path, archive);
         }
         free(path);
     }
@@ -579,11 +721,7 @@ static void discover_packs(const char *dir) {
 
 /// @brief Ensure the asset manager is initialized (lazy init on first use).
 static void ensure_init(void) {
-    asset_lock();
-    int initialized = g_asset_mgr.initialized;
-    asset_unlock();
-    if (!initialized)
-        rt_asset_init(NULL, 0);
+    rt_asset_init(NULL, 0);
 }
 
 // ─── rt_asset_init ──────────────────────────────────────────────────────────
@@ -591,42 +729,72 @@ static void ensure_init(void) {
 /// @brief Initialize the asset manager with an optional embedded ZPAK blob.
 /// @details Parses the embedded blob (from linked .rodata or explicit argument),
 ///          then auto-discovers .zpak pack files next to the executable. On macOS,
-///          also scans the .app bundle's Resources directory. Idempotent — safe
-///          to call multiple times; only the first call has effect.
+///          also scans the .app bundle's Resources directory. One caller claims
+///          initialization; all parsing and filesystem I/O populate a private
+///          stage outside the registry lock. The complete stage is published
+///          atomically, and concurrent callers wait rather than observing a
+///          partial registry. Idempotent: only the first caller's blob is used.
 void rt_asset_init(const uint8_t *blob, uint64_t size) {
     asset_lock();
-    if (g_asset_mgr.initialized) {
+    if (g_asset_mgr.init_state == ASSET_INIT_COMPLETE) {
         asset_unlock();
         return;
     }
-    g_asset_mgr.initialized = 1;
+    if (g_asset_mgr.init_state == ASSET_INIT_IN_PROGRESS) {
+        asset_wait_for_initialization_locked();
+        asset_unlock();
+        return;
+    }
+    g_asset_mgr.init_state = ASSET_INIT_IN_PROGRESS;
+    asset_unlock();
+
+    asset_init_stage_t stage;
+    memset(&stage, 0, sizeof(stage));
 
     // Parse embedded blob (explicit argument)
-    if (blob && size >= 32) {
-        g_asset_mgr.embedded = zpak_open_memory(blob, (size_t)size);
-    }
+    if (blob && size >= RT_ZPAK_HEADER_SIZE && size <= (uint64_t)SIZE_MAX)
+        stage.embedded = zpak_open_memory(blob, (size_t)size);
 
     // Auto-discover embedded blob from linked asset .o file.
     // The AssetCompiler generates a C file with zanna_asset_blob[] and
     // zanna_asset_blob_size. When linked, these override the weak defaults below.
-    if (!g_asset_mgr.embedded) {
-        if (zanna_asset_blob_size >= 32)
-            g_asset_mgr.embedded = zpak_open_memory(zanna_asset_blob, (size_t)zanna_asset_blob_size);
+    if (!stage.embedded) {
+        if (zanna_asset_blob_size >= RT_ZPAK_HEADER_SIZE &&
+            zanna_asset_blob_size <= (unsigned long long)SIZE_MAX)
+            stage.embedded = zpak_open_memory(zanna_asset_blob, (size_t)zanna_asset_blob_size);
     }
 
     // Auto-discover .zpak packs next to executable
     char *exe_dir = rt_path_exe_dir_cstr();
     if (exe_dir) {
-        discover_packs(exe_dir);
+        discover_packs(exe_dir, &stage);
 
-#ifdef __APPLE__
+#if RT_PLATFORM_MACOS
         // Also check bundle Resources directory
-        char res_dir[4096];
-        snprintf(res_dir, sizeof(res_dir), "%s/../Resources", exe_dir);
-        discover_packs(res_dir);
+        static const char resource_suffix[] = "/../Resources";
+        size_t exe_len = strlen(exe_dir);
+        if (exe_len <= SIZE_MAX - sizeof(resource_suffix)) {
+            char *resource_dir = (char *)malloc(exe_len + sizeof(resource_suffix));
+            if (resource_dir) {
+                memcpy(resource_dir, exe_dir, exe_len);
+                memcpy(resource_dir + exe_len, resource_suffix, sizeof(resource_suffix));
+                discover_packs(resource_dir, &stage);
+                free(resource_dir);
+            }
+        }
 #endif
         free(exe_dir);
     }
+
+    asset_lock();
+    g_asset_mgr.embedded = stage.embedded;
+    for (int i = 0; i < stage.pack_count; ++i) {
+        g_asset_mgr.packs[i] = stage.packs[i];
+        g_asset_mgr.pack_paths[i] = stage.pack_paths[i];
+    }
+    g_asset_mgr.pack_count = stage.pack_count;
+    g_asset_mgr.init_state = ASSET_INIT_COMPLETE;
+    asset_notify_initialization_locked();
     asset_unlock();
 }
 
@@ -648,9 +816,7 @@ void *rt_asset_load(rt_string name) {
     if (!asset_name_is_safe(cname))
         return NULL;
     size_t data_size = 0;
-    asset_lock();
     uint8_t *data = asset_find_data(cname, &data_size);
-    asset_unlock();
     if (!data)
         return NULL;
 
@@ -687,9 +853,7 @@ void *rt_asset_load_bytes(rt_string name) {
     if (!asset_name_is_safe(cname))
         return NULL;
     size_t data_size = 0;
-    asset_lock();
     uint8_t *data = asset_find_data(cname, &data_size);
-    asset_unlock();
     if (!data)
         return NULL;
 
@@ -710,9 +874,7 @@ uint8_t *rt_asset_load_raw(rt_string name, size_t *out_size) {
     if (!asset_name_is_safe(cname))
         return NULL;
 
-    asset_lock();
     uint8_t *data = asset_find_data(cname, out_size);
-    asset_unlock();
     return data;
 }
 
@@ -743,14 +905,8 @@ int64_t rt_asset_exists(rt_string name) {
         }
     }
 
-    // Check filesystem
-    if (asset_regular_file_size(cname, NULL)) {
-        asset_unlock();
-        return 1;
-    }
-
     asset_unlock();
-    return 0;
+    return asset_regular_file_size(cname, NULL) ? 1 : 0;
 }
 
 // ─── rt_asset_size ──────────────────────────────────────────────────────────
@@ -786,50 +942,90 @@ int64_t rt_asset_size(rt_string name) {
         }
     }
 
-    // Check filesystem
-    uint64_t fs_size = 0;
-    if (asset_regular_file_size(cname, &fs_size) && fs_size <= INT64_MAX) {
-        asset_unlock();
-        return (int64_t)fs_size;
-    }
-
     asset_unlock();
+    uint64_t fs_size = 0;
+    if (asset_regular_file_size(cname, &fs_size) && fs_size <= INT64_MAX)
+        return (int64_t)fs_size;
     return -1;
 }
 
 // ─── rt_asset_list ──────────────────────────────────────────────────────────
 
+/// @brief Snapshot retained archive references in resolution-list order.
+/// @param archives Fixed-capacity output array.
+/// @param capacity Number of entries available in @p archives.
+/// @return Number of retained archives written to the output array.
+static size_t asset_snapshot_archives(zpak_archive_t **archives, size_t capacity) {
+    if (!archives || capacity == 0)
+        return 0;
+    size_t count = 0;
+    asset_lock();
+    if (g_asset_mgr.embedded && count < capacity && zpak_retain(g_asset_mgr.embedded))
+        archives[count++] = g_asset_mgr.embedded;
+    for (int i = 0; i < g_asset_mgr.pack_count && count < capacity; ++i) {
+        if (g_asset_mgr.packs[i] && zpak_retain(g_asset_mgr.packs[i]))
+            archives[count++] = g_asset_mgr.packs[i];
+    }
+    asset_unlock();
+    return count;
+}
+
+/// @brief Release all retained archive references in a fixed snapshot.
+/// @param archives Snapshot populated by @ref asset_snapshot_archives.
+/// @param count Number of initialized entries in @p archives.
+static void asset_release_archive_snapshot(zpak_archive_t **archives, size_t count) {
+    for (size_t i = 0; i < count; ++i)
+        zpak_close(archives[i]);
+}
+
 /// @brief List all available asset names from embedded and mounted sources as a sequence.
 void *rt_asset_list(void) {
     ensure_init();
 
-    void *seq = rt_seq_new();
+    zpak_archive_t *archives[RT_ASSET_MAX_PACKS + 1];
+    size_t archive_count =
+        asset_snapshot_archives(archives, sizeof(archives) / sizeof(archives[0]));
+    void *seq = NULL;
+    rt_string pending = NULL;
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "Assets.List: allocation failed");
+        rt_trap_clear_recovery();
+        rt_str_release_maybe(pending);
+        if (seq && rt_obj_release_check0(seq))
+            rt_obj_free(seq);
+        asset_release_archive_snapshot(archives, archive_count);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    seq = rt_seq_new();
+    if (!seq) {
+        rt_trap_clear_recovery();
+        asset_release_archive_snapshot(archives, archive_count);
+        return NULL;
+    }
     rt_seq_set_owns_elements(seq, 1);
-
-    asset_lock();
-    // Add embedded asset names
-    if (g_asset_mgr.embedded) {
-        for (uint32_t i = 0; i < g_asset_mgr.embedded->count; i++) {
-            const char *n = g_asset_mgr.embedded->entries[i].name;
-            rt_string s = rt_string_from_bytes(n, strlen(n));
-            rt_seq_push(seq, (void *)s);
-            rt_string_unref(s);
+    for (size_t archive_index = 0; archive_index < archive_count; ++archive_index) {
+        zpak_archive_t *archive = archives[archive_index];
+        for (uint32_t i = 0; i < archive->count; ++i) {
+            const char *name = archive->entries[i].name;
+            pending = rt_string_from_bytes(name, strlen(name));
+            rt_seq_push(seq, (void *)pending);
+            rt_string_unref(pending);
+            pending = NULL;
         }
     }
 
-    // Add mounted pack asset names
-    for (int p = 0; p < g_asset_mgr.pack_count; p++) {
-        if (!g_asset_mgr.packs[p])
-            continue;
-        for (uint32_t i = 0; i < g_asset_mgr.packs[p]->count; i++) {
-            const char *n = g_asset_mgr.packs[p]->entries[i].name;
-            rt_string s = rt_string_from_bytes(n, strlen(n));
-            rt_seq_push(seq, (void *)s);
-            rt_string_unref(s);
-        }
-    }
-
-    asset_unlock();
+    rt_trap_clear_recovery();
+    asset_release_archive_snapshot(archives, archive_count);
     return seq;
 }
 
@@ -912,8 +1108,8 @@ int64_t rt_asset_unmount(rt_string path) {
             match = -1;
     }
     if (match >= 0) {
-        zpak_close(g_asset_mgr.packs[match]);
-        free(g_asset_mgr.pack_paths[match]);
+        zpak_archive_t *archive = g_asset_mgr.packs[match];
+        char *mounted_path = g_asset_mgr.pack_paths[match];
 
         // Shift remaining packs down
         for (int j = match; j < g_asset_mgr.pack_count - 1; j++) {
@@ -924,6 +1120,8 @@ int64_t rt_asset_unmount(rt_string path) {
         g_asset_mgr.packs[g_asset_mgr.pack_count] = NULL;
         g_asset_mgr.pack_paths[g_asset_mgr.pack_count] = NULL;
         asset_unlock();
+        zpak_close(archive);
+        free(mounted_path);
         free(search_path);
         return 1;
     }

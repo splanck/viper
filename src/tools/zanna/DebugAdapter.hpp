@@ -7,7 +7,7 @@
 //
 // File: src/tools/zanna/DebugAdapter.hpp
 // Purpose: Run a program under the VM as an interactive source-level debug
-//          adapter for ZannaIDE.
+//          adapter for Zanna Studio.
 // Key invariants:
 //   - Control protocol is newline-delimited JSON on stderr, each line prefixed
 //     with the "@@VDBG@@ " sentinel; the debuggee's own stdout/stderr pass
@@ -17,7 +17,8 @@
 // Ownership/Lifetime:
 //   - Operates on a caller-owned module and source manager for one run.
 // Links: src/tools/zanna/cmd_run.cpp, src/vm/debug/VMDebug.cpp,
-//        misc/plans/zannaide/debugger-design.md
+//        docs/adr/0009-debug-evaluate-protocol.md,
+//        docs/adr/0012-debug-conditional-breakpoints-logpoints.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

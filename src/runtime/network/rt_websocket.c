@@ -7,12 +7,17 @@
 //
 // File: src/runtime/network/rt_websocket.c
 // Purpose: WebSocket client implementing RFC 6455.
-// Structure: [vptr | socket_fd | tls_session | url | is_open | close_code | ...]
-//
-// Protocol overview:
-// - Opening handshake: HTTP Upgrade request with Sec-WebSocket-Key
-// - Data transfer: Framed messages (text/binary) with masking
-// - Closing handshake: Close frame exchange
+// Key invariants:
+//   - Opening responses and frame encodings are validated strictly against RFC 6455.
+//   - Client frames are masked with fresh unpredictable keys; server frames are unmasked.
+//   - Native socket handles remain pointer-width and are owned by exactly one client/TLS session.
+// Ownership/Lifetime:
+//   - Managed WebSocket objects own URL/protocol/reason buffers and one TCP or TLS transport.
+//   - Public receivers are validated before native state is read; finalization is partial-safe.
+// Links: src/runtime/network/rt_websocket.h,
+//        src/runtime/network/rt_websocket_internal.h,
+//        src/runtime/network/rt_ws_crypto.c,
+//        src/runtime/network/rt_socket_platform.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,12 +25,16 @@
 
 #include "rt_bytes.h"
 #include "rt_crypto.h"
+#include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_random.h"
+#include "rt_socket_platform.h"
 #include "rt_string.h"
+#include "rt_time.h"
 #include "rt_tls.h"
 
 #include <limits.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,52 +43,13 @@
 // Forward declarations (defined in rt_io.c).
 #include "rt_trap.h"
 extern void rt_trap_net(const char *msg, int err_code);
+extern int rt_trap_get_net_code(void);
 
 #include "rt_error.h"
 
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib")
-#define close closesocket
-typedef int socklen_t;
-#else
-// Unix: use BSD socket APIs.
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <poll.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
-
 #include "rt_websocket_internal.h"
 
-// SIGPIPE suppression for platforms that expose per-send suppression.
-#ifdef MSG_NOSIGNAL
-#define SEND_FLAGS MSG_NOSIGNAL
-#else
-#define SEND_FLAGS 0
-#endif
-
-static int ws_wait_socket(int fd, int timeout_ms, int for_write);
-
-/// @brief Suppress SIGPIPE on writes to a closed peer.
-///
-/// macOS uses the per-socket `SO_NOSIGPIPE` option; Linux uses
-/// per-call `MSG_NOSIGNAL` (set via `SEND_FLAGS`); other platforms
-/// have nothing to do.
-static void suppress_sigpipe(int sock) {
-#if defined(__APPLE__) && defined(SO_NOSIGPIPE)
-    int val = 1;
-    setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val));
-#endif
-    (void)sock;
-}
+static int ws_wait_socket(socket_t fd, int timeout_ms, int for_write);
 
 // WebSocket opcodes
 #define WS_OP_CONTINUATION 0x00
@@ -102,6 +72,7 @@ static void suppress_sigpipe(int sock) {
 #define WS_CLOSE_ABNORMAL 1006
 #define WS_CLOSE_INVALID_DATA 1007
 #define WS_CLOSE_MESSAGE_TOO_BIG 1009
+#define WS_CLOSE_INTERNAL_ERROR 1011
 
 // Maximum total size for reassembled fragmented messages (64 MB)
 #define WS_MAX_REASSEMBLY_SIZE (64u * 1024u * 1024u)
@@ -110,7 +81,7 @@ static void suppress_sigpipe(int sock) {
 /// @brief WebSocket connection implementation.
 typedef struct rt_ws_impl {
     void **vptr;             ///< Vtable pointer placeholder.
-    int socket_fd;           ///< TCP socket file descriptor.
+    socket_t socket_fd;      ///< Pointer-width native TCP socket.
     rt_tls_session_t *tls;   ///< TLS session (NULL for ws://).
     char *url;               ///< Original connection URL.
     char *subprotocol;       ///< Negotiated Sec-WebSocket-Protocol, if any.
@@ -125,6 +96,24 @@ typedef struct rt_ws_impl {
     int timeout_ms;          ///< Configured socket/TLS timeout used for retries.
 } rt_ws_impl;
 
+/// @brief Validate and cast a public WebSocket receiver.
+/// @details Stable identity and complete payload size are checked before any
+///          descriptor or heap pointer is read. Invalid non-null receivers emit
+///          one trap and return NULL so a returning trap hook cannot permit
+///          unsafe continuation.
+/// @param obj Candidate managed WebSocket handle.
+/// @param operation Operation-specific diagnostic.
+/// @return Valid WebSocket payload, or NULL after trapping.
+static rt_ws_impl *ws_require(void *obj, const char *operation) {
+    if (!rt_obj_is_instance(obj, RT_WEBSOCKET_CLASS_ID, sizeof(rt_ws_impl))) {
+        rt_trap(operation ? operation : "WebSocket: invalid object");
+        return NULL;
+    }
+    return (rt_ws_impl *)obj;
+}
+
+static void ws_close_transport(rt_ws_impl *ws);
+
 /// @brief True if `host` is an IPv6 literal that must be wrapped in `[…]` for URL/Host.
 static int host_needs_brackets(const char *host) {
     return host && strchr(host, ':') != NULL && host[0] != '[';
@@ -135,6 +124,14 @@ static int ws_has_embedded_nul(const char *data, size_t len) {
 }
 
 static int ws_string_bytes(rt_string str, const char **out, size_t *len, const char *null_msg) {
+    if (!out || !len)
+        return 0;
+    *out = NULL;
+    *len = 0;
+    if (!str || !rt_string_is_handle(str)) {
+        rt_trap(null_msg);
+        return 0;
+    }
     const char *data = rt_string_cstr(str);
     int64_t n = rt_str_len(str);
     if (!data || n < 0) {
@@ -474,12 +471,9 @@ static long ws_send_partial(rt_ws_impl *ws, const void *data, size_t len) {
 ///          and retry instead of failing the whole WebSocket frame.
 /// @return Non-zero when retrying the send is appropriate.
 static int ws_send_should_retry(void) {
-#ifdef _WIN32
-    int err = WSAGetLastError();
-    return err == WSAEINTR || err == WSAEWOULDBLOCK || err == WSAEINPROGRESS;
-#else
-    return errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK;
-#endif
+    int error = rt_socket_last_error();
+    return rt_socket_error_is_interrupted(error) || rt_socket_error_is_would_block(error) ||
+           rt_socket_error_is_in_progress(error);
 }
 
 /// @brief Send `len` bytes, looping on partial sends until done or failed.
@@ -493,7 +487,7 @@ static int ws_send_all(rt_ws_impl *ws, const void *data, size_t len) {
     size_t total = 0;
     while (total < len) {
         long sent = ws_send_partial(ws, ptr + total, len - total);
-        if (sent < 0 && (ws->tls || ws_send_should_retry())) {
+        if (sent < 0 && !ws->tls && ws_send_should_retry()) {
             int timeout_ms = ws->timeout_ms > 0 ? ws->timeout_ms : 30000;
             if (ws_wait_socket(ws->socket_fd, timeout_ms, 1) > 0)
                 continue;
@@ -518,79 +512,24 @@ static long ws_recv(rt_ws_impl *ws, void *buffer, size_t len) {
 
 /// @brief Wait for socket to become readable or writable with timeout.
 /// @return 1 if ready, 0 if timeout, -1 on error.
-static int ws_wait_socket(int fd, int timeout_ms, int for_write) {
-    if (fd < 0 || timeout_ms < 0)
+static int ws_wait_socket(socket_t fd, int timeout_ms, int for_write) {
+    if (fd == INVALID_SOCK || timeout_ms < 0)
         return -1;
-#if !defined(_WIN32)
-    struct pollfd pfd;
-    int result;
-    pfd.fd = fd;
-    pfd.events = for_write ? POLLOUT : POLLIN;
-    pfd.revents = 0;
-    do {
-        result = poll(&pfd, 1, timeout_ms);
-    } while (result < 0 && errno == EINTR);
-    return result;
-#else
-    fd_set fds;
-#ifndef _WIN32
-    if (fd >= FD_SETSIZE)
-        return -1;
-#endif
-    FD_ZERO(&fds);
-    FD_SET(fd, &fds);
-
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-
-    int result;
-    if (for_write)
-        result = select(fd + 1, NULL, &fds, NULL, &tv);
-    else
-        result = select(fd + 1, &fds, NULL, NULL, &tv);
-
-    return result;
-#endif
+    return wait_socket(fd, timeout_ms, for_write != 0);
 }
 
-/// @brief Set socket to non-blocking mode.
-static void ws_set_nonblocking(int fd, int nonblocking) {
-#ifdef _WIN32
-    u_long mode = nonblocking ? 1 : 0;
-    ioctlsocket(fd, FIONBIO, &mode);
-#else
-    // Unix: use fcntl.
-    int flags = fcntl(fd, F_GETFL, 0);
-    if (flags < 0)
-        return;
-    if (nonblocking)
-        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-    else
-        fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
-#endif
-}
-
-/// @brief Set socket receive/send timeout.
-static void ws_set_socket_timeout(int fd, int timeout_ms, int is_recv) {
-    if (timeout_ms < 0)
-        timeout_ms = 0;
-#ifdef _WIN32
-    DWORD tv = (DWORD)timeout_ms;
-    setsockopt(fd, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, (const char *)&tv, sizeof(tv));
-#else
-    // Unix: use setsockopt with timeval.
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(fd, SOL_SOCKET, is_recv ? SO_RCVTIMEO : SO_SNDTIMEO, &tv, sizeof(tv));
-#endif
-}
-
-static void ws_set_recv_timeout(rt_ws_impl *ws, int timeout_ms) {
-    if (!ws || ws->socket_fd < 0)
-        return;
-    ws_set_socket_timeout(ws->socket_fd, timeout_ms, 1);
+/// @brief Apply a receive timeout to the current native transport socket.
+/// @param ws Valid WebSocket payload.
+/// @param timeout_ms Nonnegative timeout in milliseconds.
+/// @return 1 when the option was applied, otherwise 0.
+static int ws_set_recv_timeout(rt_ws_impl *ws, int timeout_ms) {
+    if (!ws || ws->socket_fd == INVALID_SOCK)
+        return 0;
+    if (ws->tls) {
+        int effective_timeout = timeout_ms > 0 ? timeout_ms : 30000;
+        return rt_tls_set_io_timeout(ws->tls, effective_timeout) == RT_TLS_OK ? 1 : 0;
+    }
+    return set_socket_timeout(ws->socket_fd, timeout_ms, true) ? 1 : 0;
 }
 
 /// @brief Case-insensitive ASCII compare of two `len`-byte regions.
@@ -669,6 +608,43 @@ static void ws_trim_header_value(const char **value_io, size_t *len_io) {
     *len_io = len;
 }
 
+/// @brief Validate one HTTP/1.1 field name as an ASCII token.
+/// @details WebSocket handshake fields use the RFC 9110 token grammar. Bytes
+///          outside visible ASCII and separator punctuation are rejected so a
+///          malformed or smuggled field cannot be interpreted inconsistently.
+/// @param name Non-owning field-name slice.
+/// @param len Slice length.
+/// @return 1 for a non-empty valid token, otherwise 0.
+static int ws_http_field_name_is_valid(const char *name, size_t len) {
+    static const char separators[] = "()<>@,;:\\\"/[]?={} \t";
+    if (!name || len == 0)
+        return 0;
+    for (size_t index = 0; index < len; index++) {
+        unsigned char value = (unsigned char)name[index];
+        if (value <= 0x20u || value >= 0x7fu || strchr(separators, (int)value))
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Validate a handshake field value before token-specific parsing.
+/// @details Horizontal tab is accepted as HTTP optional whitespace. Other C0
+///          controls, DEL, and non-ASCII bytes are rejected because every
+///          WebSocket upgrade field consumed here has an ASCII grammar.
+/// @param value Non-owning field-value slice.
+/// @param len Slice length.
+/// @return 1 when the slice is safe for strict handshake parsing.
+static int ws_http_field_value_is_valid(const char *value, size_t len) {
+    if (!value && len > 0)
+        return 0;
+    for (size_t index = 0; index < len; index++) {
+        unsigned char byte = (unsigned char)value[index];
+        if ((byte < 0x20u && byte != '\t') || byte >= 0x7fu)
+            return 0;
+    }
+    return 1;
+}
+
 /// @brief Validate the server's WebSocket upgrade response (test-visible).
 ///
 /// Per RFC 6455 §4.1 a successful handshake requires:
@@ -686,55 +662,75 @@ static int ws_validate_handshake_response(const char *response,
                                           char **selected_protocol_out) {
     if (!response || !key_copy)
         return 0;
+    if (selected_protocol_out)
+        *selected_protocol_out = NULL;
 
     const char *line_end = strstr(response, "\r\n");
     if (!line_end)
         return 0;
-    if ((size_t)(line_end - response) < strlen("HTTP/1.1 101") ||
-        strncmp(response, "HTTP/1.1 101", strlen("HTTP/1.1 101")) != 0)
+    const size_t status_len = (size_t)(line_end - response);
+    static const char switching_status[] = "HTTP/1.1 101";
+    if (status_len < sizeof(switching_status) - 1u ||
+        memcmp(response, switching_status, sizeof(switching_status) - 1u) != 0 ||
+        (status_len > sizeof(switching_status) - 1u &&
+         response[sizeof(switching_status) - 1u] != ' '))
         return 0;
 
     int upgrade_ok = 0;
     int connection_ok = 0;
     const char *accept_hdr = NULL;
+    size_t accept_len = 0;
     const char *protocol_hdr = NULL;
     size_t protocol_len = 0;
     char negotiated_protocol[256] = {0};
     const char *p = line_end + 2;
+    size_t header_count = 0;
+    int saw_end = 0;
     while (*p) {
         const char *next = strstr(p, "\r\n");
         if (!next)
             return 0;
-        if (next == p)
+        if (next == p) {
+            saw_end = 1;
             break;
+        }
+        if (++header_count > 100u || *p == ' ' || *p == '\t')
+            return 0;
 
-        const char *colon = strchr(p, ':');
-        if (colon && colon < next) {
-            const char *value = colon + 1;
-            while (value < next && (*value == ' ' || *value == '\t'))
-                value++;
-            size_t name_len = (size_t)(colon - p);
-            size_t value_len = (size_t)(next - value);
-            ws_trim_header_value(&value, &value_len);
-            if (name_len == strlen("Upgrade") && ws_ascii_ieq_n(p, "Upgrade", name_len))
-                upgrade_ok = (value_len == strlen("websocket") &&
-                              ws_ascii_ieq_n(value, "websocket", value_len));
-            else if (name_len == strlen("Connection") && ws_ascii_ieq_n(p, "Connection", name_len))
-                connection_ok = ws_header_has_token(value, value_len, "Upgrade", 0);
-            else if (name_len == strlen("Sec-WebSocket-Accept") &&
-                     ws_ascii_ieq_n(p, "Sec-WebSocket-Accept", name_len))
-                accept_hdr = value;
-            else if (name_len == strlen("Sec-WebSocket-Protocol") &&
-                     ws_ascii_ieq_n(p, "Sec-WebSocket-Protocol", name_len)) {
-                protocol_hdr = value;
-                protocol_len = value_len;
-            }
+        const char *colon = (const char *)memchr(p, ':', (size_t)(next - p));
+        if (!colon)
+            return 0;
+        size_t name_len = (size_t)(colon - p);
+        const char *value = colon + 1;
+        size_t value_len = (size_t)(next - value);
+        if (!ws_http_field_name_is_valid(p, name_len) ||
+            !ws_http_field_value_is_valid(value, value_len))
+            return 0;
+        ws_trim_header_value(&value, &value_len);
+
+        if (name_len == strlen("Upgrade") && ws_ascii_ieq_n(p, "Upgrade", name_len)) {
+            upgrade_ok = upgrade_ok || (value_len == strlen("websocket") &&
+                                        ws_ascii_ieq_n(value, "websocket", value_len));
+        } else if (name_len == strlen("Connection") && ws_ascii_ieq_n(p, "Connection", name_len)) {
+            connection_ok = connection_ok || ws_header_has_token(value, value_len, "Upgrade", 0);
+        } else if (name_len == strlen("Sec-WebSocket-Accept") &&
+                   ws_ascii_ieq_n(p, "Sec-WebSocket-Accept", name_len)) {
+            if (accept_hdr)
+                return 0;
+            accept_hdr = value;
+            accept_len = value_len;
+        } else if (name_len == strlen("Sec-WebSocket-Protocol") &&
+                   ws_ascii_ieq_n(p, "Sec-WebSocket-Protocol", name_len)) {
+            if (protocol_hdr)
+                return 0;
+            protocol_hdr = value;
+            protocol_len = value_len;
         }
 
         p = next + 2;
     }
 
-    if (!upgrade_ok || !connection_ok || !accept_hdr)
+    if (!saw_end || !upgrade_ok || !connection_ok || !accept_hdr)
         return 0;
 
     if (expected_protocol && *expected_protocol) {
@@ -754,43 +750,13 @@ static int ws_validate_handshake_response(const char *response,
         return 0;
     }
 
-    static const char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-    size_t key_len = strlen(key_copy);
-    size_t magic_len = sizeof(WS_MAGIC) - 1;
-    if (key_len > SIZE_MAX - magic_len - 1)
+    char *expected_accept = rt_ws_compute_accept_key(key_copy);
+    if (!expected_accept)
         return 0;
-    char *concat = (char *)malloc(key_len + magic_len + 1);
-    if (!concat)
-        return 0;
-    memcpy(concat, key_copy, key_len);
-    memcpy(concat + key_len, WS_MAGIC, magic_len);
-    concat[key_len + magic_len] = '\0';
-
-    uint8_t sha1_digest[20];
-    if (!ws_sha1((const uint8_t *)concat, key_len + magic_len, sha1_digest)) {
-        free(concat);
-        return 0;
-    }
-    free(concat);
-
-    void *digest_bytes = rt_bytes_new(20);
-    for (int i = 0; i < 20; i++)
-        rt_bytes_set(digest_bytes, i, sha1_digest[i]);
-    rt_string expected_str = rt_bytes_to_base64(digest_bytes);
-    if (rt_obj_release_check0(digest_bytes))
-        rt_obj_free(digest_bytes);
-    if (!expected_str)
-        return 0;
-
-    const char *expected_cstr = rt_string_cstr(expected_str);
-    size_t expected_len = expected_cstr ? strlen(expected_cstr) : 0;
-    int accept_ok = 0;
-    if (expected_cstr && strncmp(accept_hdr, expected_cstr, expected_len) == 0 &&
-        (accept_hdr[expected_len] == '\r' || accept_hdr[expected_len] == '\n' ||
-         accept_hdr[expected_len] == '\0'))
-        accept_ok = 1;
-
-    rt_string_unref(expected_str);
+    size_t expected_len = strlen(expected_accept);
+    int accept_ok =
+        accept_len == expected_len && memcmp(accept_hdr, expected_accept, expected_len) == 0;
+    free(expected_accept);
     if (accept_ok && selected_protocol_out && negotiated_protocol[0] != '\0') {
         *selected_protocol_out = strdup(negotiated_protocol);
         if (!*selected_protocol_out)
@@ -803,9 +769,35 @@ int rt_ws_validate_handshake_response_for_test(const char *response, const char 
     return ws_validate_handshake_response(response, key_copy, NULL, NULL);
 }
 
-/// @brief Create TCP connection to host:port with optional timeout.
-static int create_tcp_socket(const char *host, int port, int timeout_ms) {
+/// @brief Return the remaining part of one WebSocket connect deadline.
+/// @param started_ms Monotonic start timestamp, or zero if unavailable.
+/// @param timeout_ms Original positive timeout.
+/// @return Remaining milliseconds, zero after expiry, or the original timeout
+///         when the native monotonic clock is unavailable.
+static int ws_connect_remaining_ms(uint64_t started_ms, int timeout_ms) {
+    uint64_t now_ms = rt_socket_monotonic_ms();
+    if (started_ms == 0 || now_ms == 0)
+        return timeout_ms;
+    if (now_ms < started_ms)
+        return 0;
+    uint64_t elapsed_ms = now_ms - started_ms;
+    if (elapsed_ms >= (uint64_t)timeout_ms)
+        return 0;
+    return timeout_ms - (int)elapsed_ms;
+}
+
+/// @brief Create a pointer-width TCP socket under one address-attempt deadline.
+/// @details Every nonblocking-mode transition and pending-error query must
+///          succeed before a socket is published. All resolved addresses share
+///          the caller's remaining timeout instead of each receiving a fresh
+///          full wait.
+/// @param host Validated DNS name or IP literal.
+/// @param port TCP port in 1..65535.
+/// @param timeout_ms Positive overall address-attempt timeout, or zero for blocking connect.
+/// @return Connected native socket, or `INVALID_SOCK`.
+static socket_t create_tcp_socket(const char *host, int port, int timeout_ms) {
     struct addrinfo hints, *res, *p;
+    rt_net_init_wsa();
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
@@ -814,57 +806,51 @@ static int create_tcp_socket(const char *host, int port, int timeout_ms) {
     snprintf(port_str, sizeof(port_str), "%d", port);
 
     if (getaddrinfo(host, port_str, &hints, &res) != 0)
-        return -1;
+        return INVALID_SOCK;
 
-    int fd = -1;
+    uint64_t started_ms = timeout_ms > 0 ? rt_socket_monotonic_ms() : 0;
+    socket_t fd = INVALID_SOCK;
     for (p = res; p; p = p->ai_next) {
-        fd = (int)socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (fd < 0)
+        int remaining_ms = timeout_ms > 0 ? ws_connect_remaining_ms(started_ms, timeout_ms) : 0;
+        if (timeout_ms > 0 && remaining_ms <= 0)
+            break;
+
+        fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (fd == INVALID_SOCK)
             continue;
         suppress_sigpipe(fd);
 
         if (timeout_ms > 0) {
-            // Non-blocking connect with timeout
-            ws_set_nonblocking(fd, 1);
-
+            if (!rt_socket_set_nonblocking(fd, true)) {
+                CLOSE_SOCKET(fd);
+                fd = INVALID_SOCK;
+                continue;
+            }
+            int connected = 0;
             int rc = connect(fd, p->ai_addr, (int)p->ai_addrlen);
             if (rc == 0) {
-                // Connected immediately
-                ws_set_nonblocking(fd, 0);
-                break;
-            }
-
-#ifdef _WIN32
-            int err = WSAGetLastError();
-            if (err == WSAEWOULDBLOCK)
-#else
-            int err = errno;
-            if (err == EINPROGRESS)
-#endif
-            {
-                int ready = ws_wait_socket(fd, timeout_ms, 1);
+                connected = 1;
+            } else {
+                int error = rt_socket_last_error();
+                int ready = rt_socket_error_is_in_progress(error)
+                                ? ws_wait_socket(fd, remaining_ms, 1)
+                                : -1;
                 if (ready > 0) {
-                    // Check if connect succeeded
                     int so_error = 0;
-                    socklen_t len = sizeof(so_error);
-                    getsockopt(fd, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
-                    if (so_error == 0) {
-                        ws_set_nonblocking(fd, 0);
-                        break;
-                    }
+                    connected = rt_socket_pending_error(fd, &so_error) && so_error == 0;
                 }
             }
 
-            ws_set_nonblocking(fd, 0);
-            close(fd);
-            fd = -1;
+            if (connected && rt_socket_set_nonblocking(fd, false))
+                break;
+            CLOSE_SOCKET(fd);
+            fd = INVALID_SOCK;
         } else {
-            // Blocking connect (no timeout)
             if (connect(fd, p->ai_addr, (int)p->ai_addrlen) == 0)
                 break;
 
-            close(fd);
-            fd = -1;
+            CLOSE_SOCKET(fd);
+            fd = INVALID_SOCK;
         }
     }
 
@@ -899,7 +885,13 @@ static int ws_handshake(rt_ws_impl *ws,
                         const char *requested_subprotocol) {
     // Generate key and keep a copy for accept validation
     rt_string ws_key = generate_ws_key();
+    if (!ws_key || !rt_string_is_handle(ws_key))
+        return 0;
     const char *key_cstr = rt_string_cstr(ws_key);
+    if (!key_cstr || rt_str_len(ws_key) <= 0) {
+        rt_string_unref(ws_key);
+        return 0;
+    }
 
     char key_copy[64] = {0};
     if (key_cstr)
@@ -1046,6 +1038,50 @@ static int ws_send_frame(rt_ws_impl *ws, uint8_t opcode, const void *data, size_
     return 1;
 }
 
+/// @brief Send a close frame without allowing a trap to bypass transport cleanup.
+/// @details Mask generation can trap if the platform entropy source fails. Close
+///          and protocol-abort paths must still retire their uniquely owned
+///          transport, so this helper catches any send-side trap, removes its
+///          local recovery frame, and reports failure to the cleanup caller.
+///          Ordinary socket/TLS send errors are reported through the same zero
+///          result. The payload is not retained.
+/// @param ws Valid WebSocket payload that still owns a transport.
+/// @param payload Close-frame status/reason bytes, or NULL for an empty payload.
+/// @param payload_len Number of payload bytes; RFC 6455 limits this to 125.
+/// @return One when the complete masked frame was sent; zero on any failure.
+static int ws_send_close_best_effort(rt_ws_impl *ws, const void *payload, size_t payload_len) {
+    volatile int sent = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        sent = ws_send_frame(ws, WS_OP_CLOSE, payload, payload_len);
+        rt_trap_clear_recovery();
+    } else {
+        rt_trap_clear_recovery();
+    }
+    return (int)sent;
+}
+
+/// @brief Send a best-effort close status and retire a failed connection.
+/// @details Protocol and allocation failures cannot leave a half-parsed stream
+///          reusable. When the transport remains writable, a two-byte Close
+///          payload communicates the RFC 6455 status before deterministic
+///          teardown. The function always marks and closes locally.
+/// @param ws Valid WebSocket payload.
+/// @param close_code RFC 6455 close status such as 1002, 1007, 1009, or 1011.
+/// @return Always zero, allowing direct use from parser failure branches.
+static int ws_abort_connection(rt_ws_impl *ws, uint16_t close_code) {
+    if (!ws)
+        return 0;
+    uint8_t payload[2] = {(uint8_t)(close_code >> 8), (uint8_t)close_code};
+    if (ws->is_open && ws->socket_fd != INVALID_SOCK)
+        (void)ws_send_close_best_effort(ws, payload, sizeof(payload));
+    ws->close_code = close_code;
+    ws->is_open = 0;
+    ws_close_transport(ws);
+    return 0;
+}
+
 /// @brief Read exactly n bytes from connection.
 static int ws_recv_exact(rt_ws_impl *ws, void *buffer, size_t len) {
     size_t total = 0;
@@ -1084,8 +1120,7 @@ static int ws_recv_frame(
         return 0;
 
     if ((header[0] & 0x70) != 0) {
-        ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-        return 0;
+        return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
     }
 
     *fin_out = (header[0] & WS_FIN) ? 1 : 0; // H-11: expose FIN bit for reassembly
@@ -1094,15 +1129,12 @@ static int ws_recv_frame(
     size_t payload_len = header[1] & 0x7F;
 
     if (!ws_is_valid_opcode(*opcode_out)) {
-        ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-        return 0;
+        return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
     }
 
     // M-9: RFC 6455 §5.1 — client MUST close connection if server sends a masked frame.
     if (masked) {
-        ws->is_open = 0;
-        ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-        return 0;
+        return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
     }
 
     // Extended payload length
@@ -1111,37 +1143,26 @@ static int ws_recv_frame(
         if (!ws_recv_exact(ws, ext, 2))
             return 0;
         payload_len = ((size_t)ext[0] << 8) | ext[1];
-        if (payload_len < 126) {
-            ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-            return 0;
-        }
+        if (payload_len < 126)
+            return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
     } else if (payload_len == 127) {
         uint8_t ext[8];
         if (!ws_recv_exact(ws, ext, 8))
             return 0;
-        if (!ws_decode_u64_len(ext, &payload_len)) {
-            ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-            return 0;
-        }
-        if (payload_len < 65536) {
-            ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-            return 0;
-        }
+        if ((ext[0] & 0x80u) != 0 || !ws_decode_u64_len(ext, &payload_len))
+            return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
+        if (payload_len < 65536)
+            return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
     }
 
-    if (*opcode_out >= 0x08 && (!*fin_out || payload_len > 125)) {
-        ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-        return 0;
-    }
+    if (*opcode_out >= 0x08 && (!*fin_out || payload_len > 125))
+        return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
 
     /* Reject server-controlled allocation larger than 64 MB (S-10 fix).
        This prevents a malicious server from causing malloc(huge). */
 #define WS_MAX_PAYLOAD (64u * 1024u * 1024u)
     if (payload_len > WS_MAX_PAYLOAD) {
-        ws->close_code = WS_CLOSE_MESSAGE_TOO_BIG;
-        ws->is_open = 0;
-        (void)ws_send_frame(ws, WS_OP_CLOSE, "\x03\xF1", 2);
-        return 0;
+        return ws_abort_connection(ws, WS_CLOSE_MESSAGE_TOO_BIG);
     }
 #undef WS_MAX_PAYLOAD
 
@@ -1151,7 +1172,7 @@ static int ws_recv_frame(
     if (payload_len > 0) {
         *data_out = malloc(payload_len);
         if (!*data_out)
-            return 0;
+            return ws_abort_connection(ws, WS_CLOSE_INTERNAL_ERROR);
         if (!ws_recv_exact(ws, *data_out, payload_len)) {
             free(*data_out);
             *data_out = NULL;
@@ -1206,6 +1227,7 @@ static int ws_recv_message(rt_ws_impl *ws,
             if (ws->close_code == 0)
                 ws->close_code = WS_CLOSE_ABNORMAL;
             ws->is_open = 0;
+            ws_close_transport(ws);
             return 0;
         }
 
@@ -1219,17 +1241,13 @@ static int ws_recv_message(rt_ws_impl *ws,
             if (!frag_active) {
                 free(data);
                 free(frag_buf);
-                ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-                ws->is_open = 0;
-                return 0;
+                return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
             }
         } else if (opcode == WS_OP_TEXT || opcode == WS_OP_BINARY) {
             if (frag_active) {
                 free(data);
                 free(frag_buf);
-                ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-                ws->is_open = 0;
-                return 0;
+                return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
             }
 
             if (fin) {
@@ -1249,9 +1267,7 @@ static int ws_recv_message(rt_ws_impl *ws,
         } else {
             free(data);
             free(frag_buf);
-            ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-            ws->is_open = 0;
-            return 0;
+            return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
         }
 
         if (len > 0) {
@@ -1266,8 +1282,7 @@ static int ws_recv_message(rt_ws_impl *ws,
             if (!new_buf) {
                 free(data);
                 free(frag_buf);
-                ws->is_open = 0;
-                return 0;
+                return ws_abort_connection(ws, WS_CLOSE_INTERNAL_ERROR);
             }
             frag_buf = new_buf;
             memcpy(frag_buf + frag_len, data, len);
@@ -1312,17 +1327,25 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
             ws->is_open = 0;
             if (len == 1) {
                 ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-                if (!ws_send_frame(ws, WS_OP_CLOSE, "\x03\xEA", 2))
+                if (!ws_send_close_best_effort(ws, "\x03\xEA", 2))
                     ws->close_code = WS_CLOSE_ABNORMAL;
+                ws_close_transport(ws);
                 break;
             }
             if (len >= 2) {
                 uint16_t code = ((uint16_t)data[0] << 8) | data[1];
-                if (!ws_close_code_is_valid(code) ||
-                    (len > 2 && !ws_is_valid_utf8(data + 2, len - 2))) {
+                if (!ws_close_code_is_valid(code)) {
                     ws->close_code = WS_CLOSE_PROTOCOL_ERROR;
-                    if (!ws_send_frame(ws, WS_OP_CLOSE, "\x03\xEA", 2))
+                    if (!ws_send_close_best_effort(ws, "\x03\xEA", 2))
                         ws->close_code = WS_CLOSE_ABNORMAL;
+                    ws_close_transport(ws);
+                    break;
+                }
+                if (len > 2 && !ws_is_valid_utf8(data + 2, len - 2)) {
+                    ws->close_code = WS_CLOSE_INVALID_DATA;
+                    if (!ws_send_close_best_effort(ws, "\x03\xEF", 2))
+                        ws->close_code = WS_CLOSE_ABNORMAL;
+                    ws_close_transport(ws);
                     break;
                 }
                 ws->close_code = code;
@@ -1341,14 +1364,15 @@ static void ws_handle_control(rt_ws_impl *ws, uint8_t opcode, uint8_t *data, siz
                 ws->close_code = WS_CLOSE_NO_STATUS;
             }
             // Send close response
-            if (!ws_send_frame(ws, WS_OP_CLOSE, data, len))
+            if (!ws_send_close_best_effort(ws, data, len))
                 ws->close_code = WS_CLOSE_ABNORMAL;
+            ws_close_transport(ws);
             break;
     }
 }
 
 /// @brief Deterministically close the TCP/TLS transport. Idempotent: leaves
-///        `tls == NULL` and `socket_fd == -1` so later calls (including the
+///        `tls == NULL` and `socket_fd == INVALID_SOCK` so later calls (including the
 ///        GC finalizer) no-op.
 static void ws_close_transport(rt_ws_impl *ws) {
     if (!ws)
@@ -1356,10 +1380,10 @@ static void ws_close_transport(rt_ws_impl *ws) {
     if (ws->tls) {
         rt_tls_close(ws->tls);
         ws->tls = NULL;
-        ws->socket_fd = -1;
-    } else if (ws->socket_fd >= 0) {
-        close(ws->socket_fd);
-        ws->socket_fd = -1;
+        ws->socket_fd = INVALID_SOCK;
+    } else if (ws->socket_fd != INVALID_SOCK) {
+        CLOSE_SOCKET(ws->socket_fd);
+        ws->socket_fd = INVALID_SOCK;
     }
 }
 
@@ -1407,6 +1431,34 @@ void *rt_ws_connect_for(rt_string url, int64_t timeout_ms) {
     return rt_ws_connect_for_protocol(url, timeout_ms, NULL);
 }
 
+/// @brief Release one caller-owned managed WebSocket reference.
+/// @param object Managed object, or NULL.
+static void ws_release_managed(void *object) {
+    if (object && rt_obj_release_check0(object))
+        rt_obj_free(object);
+}
+
+/// @brief Copy the current trap diagnostic before connection cleanup.
+/// @param output Destination buffer.
+/// @param capacity Destination capacity including its terminator.
+/// @param fallback Message used when no active trap text exists.
+static void ws_save_trap(char *output, size_t capacity, const char *fallback) {
+    if (!output || capacity == 0)
+        return;
+    const char *error = rt_trap_get_error();
+    snprintf(output, capacity, "%s", error && error[0] ? error : fallback);
+}
+
+/// @brief Connect and publish one stable WebSocket object transactionally.
+/// @details URL parsing stages native host/path storage first. All subsequent
+///          managed allocation, socket, TLS, and HTTP-upgrade work executes
+///          under one recovery frame so a trap releases the partial object and
+///          its uniquely owned transport before preserving the original
+///          categorized diagnostic.
+/// @param url Valid managed `ws://` or `wss://` URL String.
+/// @param timeout_ms Overall resolved-address connect and per-I/O timeout.
+/// @param subprotocol Optional single managed protocol token.
+/// @return Caller-owned stable WebSocket handle, or NULL after a returning trap hook.
 void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string subprotocol) {
     const char *url_cstr = NULL;
     const char *protocol_cstr = NULL;
@@ -1445,117 +1497,111 @@ void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string su
         return NULL;
     }
 
-    // Create connection object
-    rt_ws_impl *ws = (rt_ws_impl *)rt_obj_new_i64(0, sizeof(rt_ws_impl));
+    char *volatile owned_host = host;
+    char *volatile owned_path = path;
+    rt_ws_impl *volatile ws = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        int saved_net_code = rt_trap_get_net_code();
+        ws_save_trap(saved_error, sizeof(saved_error), "WebSocket: connection failed");
+        rt_trap_clear_recovery();
+        free((void *)owned_path);
+        free((void *)owned_host);
+        ws_release_managed((void *)ws);
+        if (saved_net_code != 0)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+
+    ws = (rt_ws_impl *)rt_obj_new_i64(RT_WEBSOCKET_CLASS_ID, (int64_t)sizeof(rt_ws_impl));
     if (!ws) {
-        free(host);
-        free(path);
-        rt_trap("WebSocket: memory allocation failed");
+        rt_trap("WebSocket: object allocation failed");
+        rt_trap_clear_recovery();
+        free((void *)owned_path);
+        free((void *)owned_host);
         return NULL;
     }
-
-    ws->vptr = NULL;
-    ws->socket_fd = -1;
-    ws->tls = NULL;
-    ws->url = strdup(url_cstr);
-    if (!ws->url) {
-        free(host);
-        free(path);
-        rt_obj_free(ws);
-        return NULL;
-    }
-    ws->is_open = 0;
-    ws->subprotocol = NULL;
-    ws->close_code = 0;
-    ws->close_reason = NULL;
-    ws->close_reason_len = 0;
-    ws->recv_buffer = NULL;
-    ws->recv_buffer_size = 0;
-    ws->recv_buffer_len = 0;
-    ws->recv_buffer_pos = 0;
-    ws->timeout_ms = timeout_int;
-
-    rt_obj_set_finalizer(ws, rt_ws_finalize);
+    memset((void *)ws, 0, sizeof(rt_ws_impl));
+    ((rt_ws_impl *)ws)->socket_fd = INVALID_SOCK;
+    rt_obj_set_finalizer((void *)ws, rt_ws_finalize);
+    ((rt_ws_impl *)ws)->url = strdup(url_cstr);
+    if (!((rt_ws_impl *)ws)->url)
+        rt_trap("WebSocket: URL allocation failed");
+    ((rt_ws_impl *)ws)->timeout_ms = timeout_int;
 
     // Connect TCP (with timeout)
-    ws->socket_fd = create_tcp_socket(host, port, timeout_int);
-    if (ws->socket_fd < 0) {
-        free(host);
-        free(path);
-        if (rt_obj_release_check0(ws))
-            rt_obj_free(ws);
+    ((rt_ws_impl *)ws)->socket_fd = create_tcp_socket((const char *)owned_host, port, timeout_int);
+    if (((rt_ws_impl *)ws)->socket_fd == INVALID_SOCK)
         rt_trap_net("WebSocket: connection failed", Err_NetworkError);
-        return NULL;
-    }
 
     // Set socket-level recv/send timeout for handshake phase
     if (timeout_ms > 0) {
-        ws_set_socket_timeout(ws->socket_fd, timeout_int, 1);
-        ws_set_socket_timeout(ws->socket_fd, timeout_int, 0);
+        if (!set_socket_timeout(((rt_ws_impl *)ws)->socket_fd, timeout_int, true) ||
+            !set_socket_timeout(((rt_ws_impl *)ws)->socket_fd, timeout_int, false))
+            rt_trap_net("WebSocket: failed to configure socket timeout", Err_NetworkError);
     }
 
     // TLS handshake if secure
     if (is_secure) {
         rt_tls_config_t config;
         rt_tls_config_init(&config);
-        config.hostname = host;
+        config.hostname = (const char *)owned_host;
         config.alpn_protocol = "http/1.1";
         config.timeout_ms = timeout_int;
 
-        ws->tls = rt_tls_new(ws->socket_fd, &config);
-        if (!ws->tls) {
+        ((rt_ws_impl *)ws)->tls = rt_tls_new((intptr_t)((rt_ws_impl *)ws)->socket_fd, &config);
+        if (!((rt_ws_impl *)ws)->tls) {
             const char *detail = rt_tls_last_error();
-            free(host);
-            free(path);
-            if (rt_obj_release_check0(ws))
-                rt_obj_free(ws);
+            char message[512];
             if (detail && *detail) {
-                char msg[512];
-                snprintf(msg, sizeof(msg), "WebSocket: TLS setup failed: %s", detail);
-                rt_trap_net(msg, Err_TlsError);
+                snprintf(message, sizeof(message), "WebSocket: TLS setup failed: %s", detail);
+            } else {
+                snprintf(message, sizeof(message), "%s", "WebSocket: TLS setup failed");
             }
-            rt_trap_net("WebSocket: TLS setup failed", Err_TlsError);
-            return NULL;
+            rt_trap_net(message, Err_TlsError);
         }
 
-        if (rt_tls_handshake(ws->tls) != RT_TLS_OK) {
-            const char *detail = rt_tls_get_error(ws->tls);
-            free(host);
-            free(path);
-            if (rt_obj_release_check0(ws))
-                rt_obj_free(ws);
+        if (rt_tls_handshake(((rt_ws_impl *)ws)->tls) != RT_TLS_OK) {
+            const char *detail = rt_tls_get_error(((rt_ws_impl *)ws)->tls);
+            char message[512];
             if (detail && *detail) {
-                char msg[512];
-                snprintf(msg, sizeof(msg), "WebSocket: TLS handshake failed: %s", detail);
-                rt_trap_net(msg, Err_TlsError);
+                snprintf(message, sizeof(message), "WebSocket: TLS handshake failed: %s", detail);
+            } else {
+                snprintf(message, sizeof(message), "%s", "WebSocket: TLS handshake failed");
             }
-            rt_trap_net("WebSocket: TLS handshake failed", Err_TlsError);
-            return NULL;
+            rt_trap_net(message, Err_TlsError);
         }
     }
 
     // WebSocket handshake
-    if (!ws_handshake(ws, host, port, path, protocol_cstr)) {
-        free(host);
-        free(path);
-        if (rt_obj_release_check0(ws))
-            rt_obj_free(ws);
+    if (!ws_handshake((rt_ws_impl *)ws,
+                      (const char *)owned_host,
+                      port,
+                      (const char *)owned_path,
+                      protocol_cstr))
         rt_trap_net("WebSocket: handshake failed", Err_ProtocolError);
-        return NULL;
-    }
 
-    free(host);
-    free(path);
+    free((void *)owned_host);
+    free((void *)owned_path);
+    owned_host = NULL;
+    owned_path = NULL;
 
-    ws->is_open = 1;
-    return ws;
+    ((rt_ws_impl *)ws)->is_open = 1;
+    rt_trap_clear_recovery();
+    return (void *)ws;
 }
 
 /// @brief The URL the connection was opened with. Empty string for NULL/closed-with-no-url.
 rt_string rt_ws_url(void *obj) {
     if (!obj)
         return rt_str_empty();
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.Url: invalid object");
+    if (!ws)
+        return NULL;
     if (!ws->url)
         return rt_str_empty();
     return rt_string_from_bytes(ws->url, strlen(ws->url));
@@ -1565,7 +1611,9 @@ rt_string rt_ws_url(void *obj) {
 int8_t rt_ws_is_open(void *obj) {
     if (!obj)
         return 0;
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.IsOpen: invalid object");
+    if (!ws)
+        return 0;
     return ws->is_open;
 }
 
@@ -1573,7 +1621,9 @@ int8_t rt_ws_is_open(void *obj) {
 int64_t rt_ws_close_code(void *obj) {
     if (!obj)
         return 0;
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.CloseCode: invalid object");
+    if (!ws)
+        return 0;
     return ws->close_code;
 }
 
@@ -1581,7 +1631,9 @@ int64_t rt_ws_close_code(void *obj) {
 rt_string rt_ws_close_reason(void *obj) {
     if (!obj)
         return rt_str_empty();
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.CloseReason: invalid object");
+    if (!ws)
+        return NULL;
     if (!ws->close_reason)
         return rt_str_empty();
     return rt_string_from_bytes(ws->close_reason, ws->close_reason_len);
@@ -1590,7 +1642,9 @@ rt_string rt_ws_close_reason(void *obj) {
 rt_string rt_ws_subprotocol(void *obj) {
     if (!obj)
         return rt_str_empty();
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.Subprotocol: invalid object");
+    if (!ws)
+        return NULL;
     if (!ws->subprotocol)
         return rt_str_empty();
     return rt_string_from_bytes(ws->subprotocol, strlen(ws->subprotocol));
@@ -1602,12 +1656,18 @@ rt_string rt_ws_subprotocol(void *obj) {
 void rt_ws_send(void *obj, rt_string text) {
     if (!obj)
         return;
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.Send: invalid object");
+    if (!ws)
+        return;
     if (!ws->is_open) {
         rt_trap_net("WebSocket: connection is closed", Err_ConnectionClosed);
         return;
     }
 
+    if (text && !rt_string_is_handle(text)) {
+        rt_trap("WebSocket.Send: invalid String");
+        return;
+    }
     const char *cstr = text ? rt_string_cstr(text) : NULL;
     int64_t len64 = text ? rt_str_len(text) : 0;
     if (len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX) {
@@ -1627,6 +1687,7 @@ void rt_ws_send(void *obj, rt_string text) {
 
     if (!ws_send_frame(ws, WS_OP_TEXT, cstr, len)) {
         ws->is_open = 0;
+        ws_close_transport(ws);
         rt_trap_net("WebSocket: send failed", Err_NetworkError);
     }
 }
@@ -1636,12 +1697,14 @@ void rt_ws_send(void *obj, rt_string text) {
 void rt_ws_send_bytes(void *obj, void *data) {
     if (!obj)
         return;
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.SendBytes: invalid object");
+    if (!ws)
+        return;
     if (!ws->is_open) {
         rt_trap_net("WebSocket: connection is closed", Err_ConnectionClosed);
         return;
     }
-    if (!data) {
+    if (!data || !rt_bytes_is_bytes(data)) {
         rt_trap("WebSocket: NULL bytes");
         return;
     }
@@ -1651,23 +1714,17 @@ void rt_ws_send_bytes(void *obj, void *data) {
         rt_trap("WebSocket: invalid bytes length");
         return;
     }
-    uint8_t *buffer = malloc((size_t)(len > 0 ? len : 1));
-    if (!buffer && len > 0) {
-        rt_trap("WebSocket: memory allocation failed");
+    const uint8_t *buffer = len > 0 ? rt_bytes_data_const(data) : NULL;
+    if (len > 0 && !buffer) {
+        rt_trap("WebSocket: invalid Bytes storage");
         return;
     }
-
-    for (int64_t i = 0; i < len; i++)
-        buffer[i] = (uint8_t)rt_bytes_get(data, i);
-
     if (!ws_send_frame(ws, WS_OP_BINARY, buffer, (size_t)len)) {
-        free(buffer);
         ws->is_open = 0;
+        ws_close_transport(ws);
         rt_trap_net("WebSocket: send failed", Err_NetworkError);
         return;
     }
-
-    free(buffer);
 }
 
 /// @brief Send an empty PING control frame to keep the connection alive.
@@ -1677,11 +1734,68 @@ void rt_ws_send_bytes(void *obj, void *data) {
 void rt_ws_ping(void *obj) {
     if (!obj)
         return;
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.Ping: invalid object");
+    if (!ws)
+        return;
     if (!ws->is_open)
         return;
 
-    ws_send_frame(ws, WS_OP_PING, NULL, 0);
+    if (!ws_send_frame(ws, WS_OP_PING, NULL, 0)) {
+        ws->is_open = 0;
+        ws->close_code = WS_CLOSE_ABNORMAL;
+        ws_close_transport(ws);
+    }
+}
+
+/// @brief Publish an owned native message as one exact managed String.
+/// @details Managed allocation runs under a local recovery frame. The native
+///          frame/reassembly buffer is freed before any allocation trap is
+///          re-raised, so a completed receive cannot leak on OOM.
+/// @param message Native buffer owned by this helper; NULL is valid for zero length.
+/// @param message_len Exact byte count, including embedded NUL bytes.
+/// @return Caller-owned String, or NULL after a returning trap hook.
+static rt_string ws_string_from_owned_message(uint8_t *message, size_t message_len) {
+    rt_string volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        ws_save_trap(saved_error, sizeof(saved_error), "WebSocket: String allocation failed");
+        rt_trap_clear_recovery();
+        free(message);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_string_from_bytes((const char *)message, message_len);
+    rt_trap_clear_recovery();
+    free(message);
+    return (rt_string)result;
+}
+
+/// @brief Publish an owned native message as one exact managed Bytes object.
+/// @details The native frame/reassembly buffer is released on success, a
+///          returning allocation failure, and a non-local allocation trap.
+///          `rt_bytes_from_raw` performs one contiguous copy rather than
+///          per-element setters.
+/// @param message Native buffer owned by this helper; NULL is valid for zero length.
+/// @param message_len Exact byte count.
+/// @return Caller-owned Bytes, or NULL after a returning trap hook.
+static void *ws_bytes_from_owned_message(uint8_t *message, size_t message_len) {
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        ws_save_trap(saved_error, sizeof(saved_error), "WebSocket: Bytes allocation failed");
+        rt_trap_clear_recovery();
+        free(message);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_bytes_from_raw(message, message_len);
+    rt_trap_clear_recovery();
+    free(message);
+    return (void *)result;
 }
 
 /// @brief Block until a complete message arrives and return it as a string.
@@ -1690,16 +1804,16 @@ void rt_ws_ping(void *obj) {
 rt_string rt_ws_recv(void *obj) {
     if (!obj)
         return rt_str_empty();
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.Recv: invalid object");
+    if (!ws)
+        return NULL;
     uint8_t *message = NULL;
     size_t message_len = 0;
     uint8_t opcode = 0;
     if (!ws_recv_message(ws, &message, &message_len, &opcode))
         return rt_str_empty();
-    rt_string result = rt_string_from_bytes((const char *)message, message_len);
-    free(message);
     (void)opcode;
-    return result;
+    return ws_string_from_owned_message(message, message_len);
 }
 
 /// @brief Receive a message with an upper bound on wait time (returns NULL on timeout).
@@ -1712,7 +1826,9 @@ rt_string rt_ws_recv(void *obj) {
 rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return NULL;
-    rt_ws_impl *ws = (rt_ws_impl *)obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.RecvFor: invalid object");
+    if (!ws)
+        return NULL;
     int timeout_int = 0;
     if (!ws->is_open)
         return NULL;
@@ -1722,26 +1838,66 @@ rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms) {
     }
 
     // Wait for data to arrive with timeout.
-    // Check TLS buffer first — select() on the raw socket won't see data that
-    // has already been decrypted and buffered by the TLS layer.
+    // Check bytes retained after the HTTP upgrade and the TLS record buffer
+    // first: readiness on the raw socket cannot see either source.
     if (timeout_ms > 0) {
-        if (ws->tls && rt_tls_has_buffered_data(ws->tls)) {
-            // Data already available in TLS buffer — skip select()
+        if (ws->recv_buffer_len > ws->recv_buffer_pos) {
+            // Upgrade read already captured frame bytes — skip readiness wait.
+        } else if (ws->tls && rt_tls_has_buffered_data(ws->tls)) {
+            // Data already available in TLS buffer — skip readiness wait.
         } else {
             int ready = ws_wait_socket(ws->socket_fd, timeout_int, 0);
-            if (ready <= 0)
-                return NULL; // Timeout or error
+            if (ready == 0)
+                return NULL;
+            if (ready < 0) {
+                ws->is_open = 0;
+                ws->close_code = WS_CLOSE_ABNORMAL;
+                ws_close_transport(ws);
+                return NULL;
+            }
         }
     }
 
-    ws_set_recv_timeout(ws, timeout_int);
-    rt_string result = rt_ws_recv(obj);
-    ws_set_recv_timeout(ws, 0);
-    if (result && rt_str_len(result) == 0 && !ws->is_open) {
-        rt_string_unref(result);
+    if (timeout_ms > 0 && !ws_set_recv_timeout(ws, timeout_int)) {
+        rt_trap_net("WebSocket: failed to configure receive timeout", Err_NetworkError);
         return NULL;
     }
-    return result;
+    rt_string volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        int saved_net_code = rt_trap_get_net_code();
+        ws_save_trap(saved_error, sizeof(saved_error), "WebSocket: timed receive failed");
+        rt_trap_clear_recovery();
+        if (timeout_ms > 0 && ws->socket_fd != INVALID_SOCK &&
+            !ws_set_recv_timeout(ws, ws->timeout_ms)) {
+            ws->is_open = 0;
+            ws->close_code = WS_CLOSE_ABNORMAL;
+            ws_close_transport(ws);
+        }
+        if (saved_net_code != 0)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_ws_recv(obj);
+    rt_trap_clear_recovery();
+    if (timeout_ms > 0 && ws->socket_fd != INVALID_SOCK &&
+        !ws_set_recv_timeout(ws, ws->timeout_ms)) {
+        ws_release_managed((void *)result);
+        ws->is_open = 0;
+        ws->close_code = WS_CLOSE_ABNORMAL;
+        ws_close_transport(ws);
+        rt_trap_net("WebSocket: failed to restore receive timeout", Err_NetworkError);
+        return NULL;
+    }
+    if (result && rt_str_len(result) == 0 && !ws->is_open) {
+        rt_string_unref((rt_string)result);
+        return NULL;
+    }
+    return (rt_string)result;
 }
 
 /// @brief Block for a complete message and return its raw bytes.
@@ -1749,18 +1905,16 @@ rt_string rt_ws_recv_for(void *obj, int64_t timeout_ms) {
 void *rt_ws_recv_bytes(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
-    rt_ws_impl *ws = obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.RecvBytes: invalid object");
+    if (!ws)
+        return NULL;
     uint8_t *message = NULL;
     size_t message_len = 0;
     uint8_t opcode = 0;
     if (!ws_recv_message(ws, &message, &message_len, &opcode))
         return rt_bytes_new(0);
-    void *result = rt_bytes_new((int64_t)message_len);
-    for (size_t i = 0; i < message_len; i++)
-        rt_bytes_set(result, (int64_t)i, message[i]);
-    free(message);
     (void)opcode;
-    return result;
+    return ws_bytes_from_owned_message(message, message_len);
 }
 
 /// @brief Receive a binary message with a timeout (NULL on timeout).
@@ -1768,7 +1922,9 @@ void *rt_ws_recv_bytes(void *obj) {
 void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return NULL;
-    rt_ws_impl *ws = (rt_ws_impl *)obj;
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.RecvBytesFor: invalid object");
+    if (!ws)
+        return NULL;
     int timeout_int = 0;
     if (!ws->is_open)
         return NULL;
@@ -1778,27 +1934,66 @@ void *rt_ws_recv_bytes_for(void *obj, int64_t timeout_ms) {
     }
 
     // Wait for data to arrive with timeout.
-    // Check TLS buffer first — select() on the raw socket won't see data that
-    // has already been decrypted and buffered by the TLS layer.
+    // Check bytes retained after the HTTP upgrade and the TLS record buffer
+    // first: readiness on the raw socket cannot see either source.
     if (timeout_ms > 0) {
-        if (ws->tls && rt_tls_has_buffered_data(ws->tls)) {
-            // Data already available in TLS buffer — skip select()
+        if (ws->recv_buffer_len > ws->recv_buffer_pos) {
+            // Upgrade read already captured frame bytes — skip readiness wait.
+        } else if (ws->tls && rt_tls_has_buffered_data(ws->tls)) {
+            // Data already available in TLS buffer — skip readiness wait.
         } else {
             int ready = ws_wait_socket(ws->socket_fd, timeout_int, 0);
-            if (ready <= 0)
-                return NULL; // Timeout or error
+            if (ready == 0)
+                return NULL;
+            if (ready < 0) {
+                ws->is_open = 0;
+                ws->close_code = WS_CLOSE_ABNORMAL;
+                ws_close_transport(ws);
+                return NULL;
+            }
         }
     }
 
-    ws_set_recv_timeout(ws, timeout_int);
-    void *result = rt_ws_recv_bytes(obj);
-    ws_set_recv_timeout(ws, 0);
-    if (result && rt_bytes_len(result) == 0 && !ws->is_open) {
-        if (rt_obj_release_check0(result))
-            rt_obj_free(result);
+    if (timeout_ms > 0 && !ws_set_recv_timeout(ws, timeout_int)) {
+        rt_trap_net("WebSocket: failed to configure receive timeout", Err_NetworkError);
         return NULL;
     }
-    return result;
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        int saved_net_code = rt_trap_get_net_code();
+        ws_save_trap(saved_error, sizeof(saved_error), "WebSocket: timed Bytes receive failed");
+        rt_trap_clear_recovery();
+        if (timeout_ms > 0 && ws->socket_fd != INVALID_SOCK &&
+            !ws_set_recv_timeout(ws, ws->timeout_ms)) {
+            ws->is_open = 0;
+            ws->close_code = WS_CLOSE_ABNORMAL;
+            ws_close_transport(ws);
+        }
+        if (saved_net_code != 0)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_ws_recv_bytes(obj);
+    rt_trap_clear_recovery();
+    if (timeout_ms > 0 && ws->socket_fd != INVALID_SOCK &&
+        !ws_set_recv_timeout(ws, ws->timeout_ms)) {
+        ws_release_managed((void *)result);
+        ws->is_open = 0;
+        ws->close_code = WS_CLOSE_ABNORMAL;
+        ws_close_transport(ws);
+        rt_trap_net("WebSocket: failed to restore receive timeout", Err_NetworkError);
+        return NULL;
+    }
+    if (result && rt_bytes_len(result) == 0 && !ws->is_open) {
+        ws_release_managed((void *)result);
+        return NULL;
+    }
+    return (void *)result;
 }
 
 /// @brief Send a normal close (code 1000) and mark the connection closed.
@@ -1819,10 +2014,18 @@ void rt_ws_close(void *obj) {
 void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
     if (!obj)
         return;
-    rt_ws_impl *ws = obj;
-    if (!ws->is_open)
+    rt_ws_impl *ws = ws_require(obj, "WebSocket.Close: invalid object");
+    if (!ws)
         return;
+    if (!ws->is_open) {
+        ws_close_transport(ws);
+        return;
+    }
 
+    if (reason && !rt_string_is_handle(reason)) {
+        rt_trap("WebSocket.Close: invalid reason String");
+        return;
+    }
     const char *reason_cstr = reason ? rt_string_cstr(reason) : NULL;
     int64_t reason_len64 = reason ? rt_str_len(reason) : 0;
     if (reason_len64 < 0 || (uint64_t)reason_len64 > (uint64_t)SIZE_MAX) {
@@ -1844,41 +2047,39 @@ void rt_ws_close_with(void *obj, int64_t code, rt_string reason) {
         return;
     }
 
-    // Build close payload
     size_t payload_len = 2 + reason_len;
-    uint8_t *payload = malloc(payload_len);
-    if (!payload) {
-        rt_trap("WebSocket: memory allocation failed");
-        return;
-    }
+    uint8_t payload[125];
     payload[0] = (uint8_t)(code >> 8);
     payload[1] = (uint8_t)(code);
     if (reason_len > 0)
         memcpy(payload + 2, reason_cstr, reason_len);
 
-    ws_send_frame(ws, WS_OP_CLOSE, payload, payload_len);
-    free(payload);
+    if (!ws_send_close_best_effort(ws, payload, payload_len))
+        ws->close_code = WS_CLOSE_ABNORMAL;
 
     ws->is_open = 0;
-    ws->close_code = code;
+    if (ws->close_code != WS_CLOSE_ABNORMAL)
+        ws->close_code = code;
 
     // Complete the closing handshake: bounded wait for the peer's close
     // reply, discarding any in-flight data frames, then close the transport
     // instead of leaving the socket/TLS session to GC finalization. The
     // frame cap bounds total time when a server streams tiny frames.
     enum { WS_CLOSE_REPLY_TIMEOUT_MS = 1000, WS_CLOSE_DRAIN_MAX_FRAMES = 32 };
-    ws_set_recv_timeout(ws, WS_CLOSE_REPLY_TIMEOUT_MS);
-    for (int frames = 0; frames < WS_CLOSE_DRAIN_MAX_FRAMES; frames++) {
-        uint8_t fin = 0;
-        uint8_t opcode = 0;
-        uint8_t *data = NULL;
-        size_t data_len = 0;
-        if (!ws_recv_frame(ws, &fin, &opcode, &data, &data_len))
-            break; // timeout, EOF, or protocol error — stop waiting
-        int got_close = (opcode == WS_OP_CLOSE);
-        free(data);
-        if (got_close)
-            break;
+
+    if (ws->socket_fd != INVALID_SOCK && ws_set_recv_timeout(ws, WS_CLOSE_REPLY_TIMEOUT_MS)) {
+        for (int frames = 0; frames < WS_CLOSE_DRAIN_MAX_FRAMES; frames++) {
+            uint8_t fin = 0;
+            uint8_t opcode = 0;
+            uint8_t *data = NULL;
+            size_t data_len = 0;
+            if (!ws_recv_frame(ws, &fin, &opcode, &data, &data_len))
+                break; // timeout, EOF, or protocol error — stop waiting
+            int got_close = (opcode == WS_OP_CLOSE);
+            free(data);
+            if (got_close)
+                break;
+        }
     }
     ws_close_transport(ws);
 }

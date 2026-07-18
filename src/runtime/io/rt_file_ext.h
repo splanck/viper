@@ -12,7 +12,7 @@
 // Key invariants:
 //   - Operations are platform-independent and use UTF-8 for text encoding.
 //   - ReadAllLines returns a Seq of strings, one per line, stripping line terminators.
-//   - WriteAllText truncates any existing file content.
+//   - Whole-file writers atomically replace existing contents and preserve permission modes.
 //   - All returning-functions allocate new objects; caller must release them.
 //
 // Ownership/Lifetime:
@@ -43,7 +43,8 @@ int64_t rt_io_file_exists(rt_string path);
 /// @return File contents as string, or empty string on error.
 rt_string rt_io_file_read_all_text(rt_string path);
 
-/// @brief Write string contents to a file (truncates if exists).
+/// @brief Atomically replace a file with string contents.
+/// @details Preserves the permission mode when @p path already names a regular file.
 /// @param path File path to write.
 /// @param contents String contents to write.
 void rt_io_file_write_all_text(rt_string path, rt_string contents);
@@ -62,7 +63,8 @@ void rt_io_file_append_line(rt_string path, rt_string text);
 void *rt_io_file_read_all_bytes(rt_string path);
 
 /// @brief Write an entire Bytes object to a file.
-/// @details Overwrites any existing file contents. Traps on I/O failures.
+/// @details Atomically replaces existing contents, preserves the permission mode of an existing
+///          regular file, and traps on I/O failures.
 /// @param path File path to write.
 /// @param bytes Bytes object to write (must be non-null).
 void rt_io_file_write_all_bytes(rt_string path, void *bytes);
@@ -75,6 +77,8 @@ void rt_io_file_write_all_bytes(rt_string path, void *bytes);
 void *rt_io_file_read_all_lines(rt_string path);
 
 /// @brief Write a sequence of strings as lines to a file.
+/// @details Atomically replaces existing contents and preserves the permission mode when @p path
+///          already names a regular file.
 /// @param path File path to write.
 /// @param lines Seq of strings to write.
 void rt_io_file_write_all_lines(rt_string path, void *lines);
@@ -110,6 +114,8 @@ int64_t rt_file_size(rt_string path);
 void *rt_file_read_bytes(rt_string path);
 
 /// @brief Write binary data to a file.
+/// @details Atomically replaces existing contents and preserves the permission mode when @p path
+///          already names a regular file.
 /// @param path File path to write.
 /// @param bytes Bytes object to write.
 void rt_file_write_bytes(rt_string path, void *bytes);
@@ -120,6 +126,8 @@ void rt_file_write_bytes(rt_string path, void *bytes);
 void *rt_file_read_lines(rt_string path);
 
 /// @brief Write a sequence of strings as lines to a file.
+/// @details Atomically replaces existing contents and preserves the permission mode when @p path
+///          already names a regular file.
 /// @param path File path to write.
 /// @param lines Seq of strings to write.
 void rt_file_write_lines(rt_string path, void *lines);

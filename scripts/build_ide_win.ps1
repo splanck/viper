@@ -6,14 +6,14 @@
 #===----------------------------------------------------------------------===#
 #
 # File: scripts/build_ide_win.ps1
-# Purpose: Build ZannaIDE as a standalone native Windows binary.
+# Purpose: Build Zanna Studio as a standalone native Windows binary.
 # Key invariants:
 #   - Host and target Zanna trees remain distinct for cross-architecture builds.
 #   - Build metadata describes the exact output and source state.
 #   - The compatibility copy is skipped only when explicitly disabled.
 # Ownership/Lifetime: The requested binary, metadata, and compatibility copy
 #                     are owned by this invocation.
-# Links: src/zannaide/zanna.project, scripts/build_ide.sh
+# Links: src/zannastudio/zanna.project, scripts/build_ide.sh
 # Cross-platform touchpoints: Architecture aliases and metadata match the Unix
 #                             driver; Windows CMake generators select x64/ARM64.
 #
@@ -100,10 +100,10 @@ function Invoke-CheckedNative {
 
 function Show-Usage {
     Write-Host "Usage: build_ide_win.ps1 [--clean] [--arch arm64|x64] [--output PATH]"
-    Write-Host "  --clean        Remove the existing ZannaIDE binary before building"
+    Write-Host "  --clean        Remove the existing Zanna Studio binary before building"
     Write-Host "  --arch         Target architecture (default: host, or ZANNA_IDE_ARCH)"
-    Write-Host "  --output PATH  Write the binary to PATH (default: src\zannaide\bin\zannaide.exe)"
-    Write-Host "  Compatibility copy: build\zannaide\zannaide.exe unless ZANNA_IDE_SKIP_COMPAT_COPY=1"
+    Write-Host "  --output PATH  Write the binary to PATH (default: src\zannastudio\bin\zannastudio.exe)"
+    Write-Host "  Compatibility copy: build\zannastudio\zannastudio.exe unless ZANNA_IDE_SKIP_COMPAT_COPY=1"
 }
 
 $invocationRoot = (Get-Location).Path
@@ -151,7 +151,7 @@ while ($argumentIndex -lt $args.Count) {
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $scriptRoot ".."))
-$ideDir = Join-Path $repoRoot "src\zannaide"
+$ideDir = Join-Path $repoRoot "src\zannastudio"
 
 $buildDirSetting = [Environment]::GetEnvironmentVariable("ZANNA_IDE_BUILD_DIR", "Process")
 $buildDirExplicit = -not [string]::IsNullOrWhiteSpace($buildDirSetting)
@@ -211,14 +211,14 @@ $ideBinDirSetting = Get-EnvironmentValue -Name "ZANNA_IDE_OUT_DIR" `
     -Default (Join-Path $ideDir "bin")
 $ideBinDir = Get-FullPath -Path $ideBinDirSetting -Base $invocationRoot
 if ([string]::IsNullOrWhiteSpace($outputOverride)) {
-    $outputFile = Join-Path $ideBinDir "zannaide.exe"
+    $outputFile = Join-Path $ideBinDir "zannastudio.exe"
 } else {
     $outputFile = Get-FullPath -Path $outputOverride -Base $invocationRoot
 }
 
 $compatSetting = [Environment]::GetEnvironmentVariable("ZANNA_IDE_COMPAT_OUTPUT", "Process")
 if ([string]::IsNullOrWhiteSpace($compatSetting)) {
-    $compatOutput = Join-Path $buildDir "zannaide\zannaide.exe"
+    $compatOutput = Join-Path $buildDir "zannastudio\zannastudio.exe"
 } else {
     $compatOutput = Get-FullPath -Path $compatSetting -Base $invocationRoot
 }
@@ -261,7 +261,7 @@ function Ensure-ZannaBuild {
 function Write-BuildInfo {
     param([Parameter(Mandatory = $true)][string]$Binary)
 
-    $infoPath = Join-Path (Split-Path -Parent $Binary) "zannaide.buildinfo"
+    $infoPath = Join-Path (Split-Path -Parent $Binary) "zannastudio.buildinfo"
     $savedErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
@@ -289,7 +289,7 @@ $previousBuildDir = [Environment]::GetEnvironmentVariable("ZANNA_BUILD_DIR", "Pr
 $env:ZANNA_BUILD_DIR = $buildDir
 Push-Location $repoRoot
 try {
-    Write-Host "Building ZannaIDE as a native $ideArch binary"
+    Write-Host "Building Zanna Studio as a native $ideArch binary"
     Write-Host "=============================================="
     Write-Host ""
     Write-Host "Using Zanna tool: $toolBuildDir"
@@ -316,12 +316,12 @@ try {
     $outputDir = Split-Path -Parent $outputFile
     [void](New-Item -ItemType Directory -Path $outputDir -Force)
     if ($clean) {
-        Write-Host "Cleaning existing ZannaIDE binary..."
+        Write-Host "Cleaning existing Zanna Studio binary..."
         foreach ($path in @(
                 $outputFile,
-                (Join-Path $outputDir "zannaide.buildinfo"),
+                (Join-Path $outputDir "zannastudio.buildinfo"),
                 $compatOutput,
-                (Join-Path (Split-Path -Parent $compatOutput) "zannaide.buildinfo"))) {
+                (Join-Path (Split-Path -Parent $compatOutput) "zannastudio.buildinfo"))) {
             if (Test-Path -LiteralPath $path -PathType Leaf) {
                 Remove-Item -LiteralPath $path -Force
             }

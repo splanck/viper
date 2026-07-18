@@ -4790,7 +4790,7 @@ StubResult buildInstallerStub(const WindowsPackageLayout &layout, const std::str
     const std::string successMessage =
         "Installation complete. " + layout.displayName +
         " has been installed.\r\n\r\nOpen a new terminal to use PATH updates, or launch "
-        "ZannaIDE from the Start Menu if shortcuts were enabled.";
+        "Zanna Studio from the Start Menu if shortcuts were enabled.";
     const std::string errorTitle = "Setup Error";
     const std::string errorMessage =
         "Installation could not be completed. Any in-progress changes were rolled back.\r\n\r\n"

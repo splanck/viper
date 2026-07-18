@@ -21,11 +21,22 @@
 #include "rt_internal.h"
 #include "rt_pool.h"
 
+#include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <string>
+#include <thread>
+#include <vector>
+
+static bool g_return_pool_traps = false;
+static std::string g_pool_trap_message;
 
 extern "C" void vm_trap(const char *msg) {
+    if (g_return_pool_traps) {
+        g_pool_trap_message = msg ? msg : "";
+        return;
+    }
     fprintf(stderr, "TRAP: %s\n", msg);
     rt_abort(msg);
 }
@@ -165,6 +176,121 @@ static void test_stats(void) {
     printf("test_stats: PASSED\n");
 }
 
+/// @brief Verify shutdown defers slab reclamation while a block remains live.
+/// @details A shutdown request must not invalidate outstanding allocations or
+///          route their later release through system free. Once the last block
+///          is returned, a subsequent shutdown may reclaim and reset the class.
+static void test_shutdown_defers_live_slab(void) {
+    rt_pool_shutdown();
+
+    void *live = rt_pool_alloc(128);
+    assert(live != nullptr);
+    std::memset(live, 0x5A, 128);
+
+    rt_pool_shutdown();
+
+    const unsigned char *bytes = static_cast<const unsigned char *>(live);
+    for (size_t i = 0; i < 128; ++i)
+        assert(bytes[i] == 0x5A && "shutdown must preserve outstanding pool blocks");
+
+    size_t allocated = 0;
+    size_t free_count = 0;
+    rt_pool_stats(RT_POOL_128, &allocated, &free_count);
+    assert(allocated == 1);
+    assert(free_count == 63);
+
+    rt_pool_free(live, 128);
+    rt_pool_shutdown();
+    rt_pool_stats(RT_POOL_128, &allocated, &free_count);
+    assert(allocated == 0);
+    assert(free_count == 0);
+
+    printf("test_shutdown_defers_live_slab: PASSED\n");
+}
+
+/// @brief Verify a duplicate free cannot duplicate one freelist entry or underflow statistics.
+/// @details Uses the runtime's supported returning-trap contract so the second
+///          release completes locally. The original free must remain the only
+///          state transition, leaving exactly one free block and no allocated
+///          blocks in the size class.
+static void test_double_free_is_rejected(void) {
+    rt_pool_shutdown();
+
+    void *block = rt_pool_alloc(64);
+    assert(block != nullptr);
+    rt_pool_free(block, 64);
+
+    g_pool_trap_message.clear();
+    g_return_pool_traps = true;
+    rt_pool_free(block, 64);
+    g_return_pool_traps = false;
+
+    assert(g_pool_trap_message.find("double free") != std::string::npos);
+    size_t allocated = 0;
+    size_t free_count = 0;
+    rt_pool_stats(RT_POOL_64, &allocated, &free_count);
+    assert(allocated == 0);
+    assert(free_count == 64);
+
+    rt_pool_shutdown();
+    printf("test_double_free_is_rejected: PASSED\n");
+}
+
+/// @brief Stress the lock-free lifecycle epoch against allocation/free traffic.
+/// @details Worker threads repeatedly touch caller-visible payloads while a
+///          coordinator requests shutdown. A shutdown may reclaim only a
+///          quiescent class; it must never invalidate a live payload, lose a
+///          freelist node, or leave the lifecycle admission count stranded.
+static void test_concurrent_shutdown_epoch(void) {
+    rt_pool_shutdown();
+    std::atomic<bool> start{false};
+    std::atomic<int> failures{0};
+    std::vector<std::thread> workers;
+    for (int worker = 0; worker < 4; ++worker) {
+        workers.emplace_back([&, worker] {
+            while (!start.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            for (int iteration = 0; iteration < 4000; ++iteration) {
+                size_t request = static_cast<size_t>(32 + ((worker + iteration) & 3) * 96);
+                void *payload = rt_pool_alloc(request);
+                if (!payload) {
+                    failures.fetch_add(1, std::memory_order_relaxed);
+                    continue;
+                }
+                unsigned char pattern = static_cast<unsigned char>(worker + 1);
+                std::memset(payload, pattern, request);
+                const auto *bytes = static_cast<const unsigned char *>(payload);
+                if (bytes[0] != pattern || bytes[request - 1] != pattern)
+                    failures.fetch_add(1, std::memory_order_relaxed);
+                rt_pool_free(payload, request);
+            }
+        });
+    }
+
+    std::thread shutdown_thread([&] {
+        start.store(true, std::memory_order_release);
+        for (int iteration = 0; iteration < 128; ++iteration) {
+            rt_pool_shutdown();
+            std::this_thread::yield();
+        }
+    });
+
+    for (auto &worker : workers)
+        worker.join();
+    shutdown_thread.join();
+    assert(failures.load(std::memory_order_relaxed) == 0);
+
+    rt_pool_shutdown();
+    for (int class_index = 0; class_index < RT_POOL_COUNT; ++class_index) {
+        size_t allocated = 1;
+        size_t free_count = 1;
+        rt_pool_stats(static_cast<rt_pool_class_t>(class_index), &allocated, &free_count);
+        assert(allocated == 0);
+        assert(free_count == 0);
+    }
+    printf("test_concurrent_shutdown_epoch: PASSED\n");
+}
+
 // ============================================================================
 // test_many_allocs — Allocate 200+ small blocks, verify all non-NULL, free all
 // ============================================================================
@@ -283,6 +409,9 @@ int main(void) {
     test_zeroed();
     test_reuse();
     test_stats();
+    test_shutdown_defers_live_slab();
+    test_double_free_is_rejected();
+    test_concurrent_shutdown_epoch();
     test_many_allocs();
     test_null_free();
     test_mixed_sizes();

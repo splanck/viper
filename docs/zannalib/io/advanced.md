@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-15
+last-verified: 2026-07-17
 ---
 
 # Advanced IO
@@ -67,11 +67,42 @@ Directory entries can be queried and read with a trailing slash, returning an em
 ### Disk Write Semantics
 
 `Create(path)` checks that the destination can be written, but it does not truncate or replace an existing file until `Finish()`. `Finish()` and `Extract()` write through an exclusive temporary file in the destination directory and then atomically replace the final path. `ExtractAll()` applies that replacement separately to each regular file; it is not a transaction across the archive, so a later failure leaves directories and files extracted earlier in the call. Failed individual writes trap and remove their temporary file.
+Replacing an existing regular destination preserves POSIX permission bits. On Windows, replacement
+uses the native metadata-preserving file-replacement operation so the destination's identity
+metadata, ACLs, compression/encryption state, and existing named streams are retained. Windows
+directory and reparse-point leaf destinations are rejected.
 Archive path arguments reject embedded NUL bytes before calling platform file APIs.
 
 `Open()` reads the complete archive file into memory. `FromBytes()` makes its own complete copy,
 and a writer buffers the complete output until `Finish()`. Entry reads and extraction also
 materialize each selected entry before returning or writing it.
+
+### Resource Ceilings
+
+Archive construction samples three optional positive-decimal environment settings. Invalid or
+zero settings use the defaults; values above the audited hard ceiling are clamped. The sampled
+limits remain fixed for that Archive object and apply symmetrically to parsing and writing.
+
+| Setting | Default | Hard ceiling | Scope |
+|---------|---------|--------------|-------|
+| `ZANNA_ARCHIVE_MAX_FILE_BYTES` | 512 MiB | 2 GiB | Complete encoded ZIP image |
+| `ZANNA_ARCHIVE_MAX_ENTRY_BYTES` | 256 MiB | 1 GiB | One entry's declared/uncompressed bytes |
+| `ZANNA_ARCHIVE_MAX_TOTAL_ENTRY_BYTES` | 1 GiB | 4 GiB | Sum of all uncompressed entry sizes |
+
+`Open()` checks the encoded file size before allocating its complete buffer. `FromBytes()` checks
+before copying. The parser checks each entry and the running aggregate before copying entry names,
+and reads recheck the selected entry before allocation or inflation. Writers reject an oversized
+source before compression and bound every write-buffer growth, including the central directory.
+`AddFile()` checks the source file size before creating a Bytes copy.
+
+### Concurrency and Snapshots
+
+Read-mode archives are immutable after their validated parse. A write-mode Archive owns a native
+reader-writer lock: `Add`, `AddDir`, and `Finish` are exclusive transactions, while `Count` and
+`Names` take shared snapshots. Concurrent calls therefore never observe a partially appended entry
+or central directory. Each caller must still hold an owning reference to the Archive for the full
+call. `Names` copies every name into an independently owned runtime String, so the returned Seq
+remains valid after the Archive itself is released.
 
 ### Entry Name Rules
 
@@ -81,6 +112,9 @@ materialize each selected entry before returning or writing it.
 - Backslashes are normalized to `/`
 - Embedded NUL bytes in archive entry names are rejected. Malformed ZIP central directories with NUL-containing names also fail to open.
 - Duplicate entry names are rejected when writing, and malformed ZIP central directories with duplicate names fail to open.
+- Every central-directory entry must agree with its referenced local header on name, flags,
+  version, compression method, CRC, sizes, and supported extra fields. Local record ranges must be
+  disjoint and end before the central directory.
 
 Invalid names trap with `Archive: invalid entry name`.
 
@@ -238,6 +272,8 @@ Archive operations trap on errors:
 - `ExtractAll()` traps if an existing destination component under the extraction root is a symlink or reparse point
 - `Add()` traps on null data, invalid names, or duplicate names
 - `Finish()` must be called before a created archive is valid; until then an existing output path remains unchanged
+- A failed `Finish()` removes its temporary sidecar, restores the staged writer buffer, and may be
+  retried after the external filesystem problem is corrected
 - Invalid or corrupted entries may trap during reading
 
 ### ZIP Format Support
@@ -247,7 +283,9 @@ Archive operations trap on errors:
 - **Features:** Directory entries, file attributes, CRC32 validation
 - **Limitations:** ZIP64, encryption, strong encryption, and data-descriptor entries are not supported
 - Oversize entry counts or file sizes that require ZIP64 trap instead of producing a truncated archive
-- Corrupt central directories, unsupported feature flags, ZIP64 marker fields or extra records, local-header offsets, compressed data, CRC mismatches, size mismatches, and internal buffer overflows trap instead of returning partial data
+- Corrupt central directories, unsupported feature flags, ZIP64 marker fields or extra records,
+  mismatched/overlapping local records, compressed data, CRC mismatches, size mismatches, resource
+  ceiling violations, and internal buffer overflows trap instead of returning partial data
 
 ### Use Cases
 
@@ -467,6 +505,22 @@ Cross-platform file system watcher for monitoring files and directories for chan
 
 `Start()` traps as unsupported on stub platforms.
 
+Each successful `Start()` begins a fresh event epoch. It clears stale queued and last-event state from a previously retired backend. Transient native resource failures (descriptor/handle exhaustion, a vanished path, or watch-registration exhaustion) leave `IsWatching` false on every supported platform so callers can fall back to a full rescan. `Stop()` is idempotent and clears the event epoch even if deletion, rename, unmount, revocation, or a backend error already made the watcher inactive.
+
+The internal ring holds 64 events. If producers outrun polling, the newest slot becomes an overflow marker and `EventOverflowCount()` reports the exact coalesced loss, saturating at the signed 64-bit maximum. A kernel/backend overflow or malformed native batch reports `-1`, because no exact count exists. Treat every overflow as a request to rescan the watched scope.
+
+One Watcher instance has mutable native handles, a shared event queue, and one “last event” slot.
+It is bound to the thread that constructed it: every instance method and instance property traps
+when called from another thread. Keep `New`, `Start`, polling, event inspection, and `Stop` on one
+event-loop thread. In particular, cross-thread `Stop()` is not a cancellation mechanism for a
+blocking `PollFor(-1)`. Finalization may release an otherwise unreachable watcher on a collector
+thread because no public caller can still race that cleanup.
+
+A native read failure, malformed native event batch, revoked/unmounted watch, or kernel change-
+queue loss is surfaced as `EventOverflow` with an unknown loss count before the backend retires or
+rearms. Callers therefore receive the same conservative rescan signal for backend errors as for a
+kernel overflow instead of seeing only `EventNone`.
+
 ### Zia Example
 
 Watcher is available from Zia and BASIC through the same poll-based API.
@@ -539,7 +593,12 @@ watcher.Stop()
 ### Notes
 
 - Creating a watcher traps if the path does not exist
+- All instance operations and properties must run on the thread that called `New()`; cross-thread
+  access traps before reading or changing native handles or event state
 - The watcher must be started with `Start()` before events can be received
+- Construction retains the supplied immutable path and cleans partially derived file-watch paths if allocation traps
+- POSIX `PollFor(ms)` retries interrupted waits against one monotonic deadline; repeated signals do not restart the full timeout
+- On macOS, deletion, rename, revocation, or kqueue terminal failure retires the vnode watch; recreate and start a new Watcher after rescanning
 - `Poll()` returns immediately with `EventNone` if no event is pending
 - `PollFor(ms)` uses the specified milliseconds as its platform wait timeout; very large positive
   values are clamped to the largest supported wait value. A positive timeout is honored as a wall-

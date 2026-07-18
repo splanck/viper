@@ -12,6 +12,7 @@
 //   overwrite or teardown.
 //   - Indices are bounds-checked by callers before passing to array primitives.
 //   - Length is always tracked; the array owns references to all live elements.
+//   - Every object array participates in cycle collection and traverses all non-null slots.
 //
 // Ownership/Lifetime:
 //   - Heap-allocated; caller manages the container via retain/release or explicit free.
@@ -29,7 +30,8 @@ extern "C" {
 /// @brief Allocate a new object array with a given logical length.
 /// @details Backing storage for OOP fields and dynamic collections. Allocates
 ///          a header and payload, zeros the payload, and returns a pointer to
-///          slot 0 (the first element).
+///          slot 0 (the first element). The new array is registered for cycle
+///          collection before it is returned.
 /// @param len Initial logical length (number of slots).
 /// @return Pointer to the first element slot; NULL on allocation failure.
 void **rt_arr_obj_new(size_t len);
@@ -60,8 +62,10 @@ void rt_arr_obj_put(void **arr, size_t idx, void *obj);
 
 /// @brief Resize the array to a new logical length.
 /// @details Supports dynamic growth and shrink for collections and properties.
-///          Reallocates backing storage when needed and zero-initializes any
-///          new tail elements. Elements beyond the new length are released.
+///          Growth uses geometric capacity and reallocates only when the
+///          existing backing cannot hold the new logical length. New tail
+///          elements are zero-initialized. Shrink operations release elements
+///          beyond the new length while retaining capacity for efficient reuse.
 ///          Resizing an existing array to length 0 releases it and returns NULL.
 /// @param arr Pointer to the first element slot.
 /// @param len New logical length.

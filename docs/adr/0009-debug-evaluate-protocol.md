@@ -12,9 +12,9 @@ Status: Accepted; implemented and verified against source/tests on 2026-06-27
 
 ## Context
 
-ZannaIDE watch/evaluate uses the out-of-process VM debug adapter
+Zanna Studio watch/evaluate uses the out-of-process VM debug adapter
 (`zanna run --debug-adapter`) over a newline-JSON control protocol. The IDE
-client is `zannaide/src/build/debug_session.zia`; the adapter is
+client is `zannastudio/src/build/debug_session.zia`; the adapter is
 `src/tools/zanna/DebugAdapter.cpp`. Adding evaluate extends that control
 protocol, which is a cross-layer contract between the IDE and the VM adapter and
 is covered by ADR 0006.
@@ -51,11 +51,11 @@ Verified on 2026-06-27:
   handles `evaluate` while stopped without resuming the VM.
 - `src/tools/zanna/DebugExpr.hpp` implements the pure expression evaluator used
   by evaluate, conditional breakpoints, and logpoint interpolation.
-- `zannaide/src/probes/debug_probe.zia` checks `Evaluate("a")`,
+- `zannastudio/src/probes/debug_probe.zia` checks `Evaluate("a")`,
   `Evaluate("a + b")`, and an unknown local against the real out-of-process
   adapter.
 - Focused checks passed:
-  `ctest --test-dir build -R 'zia_zannaide_debug|test_vm_debug_src_breakpoint|test_vm_debug_watches|test_vm_debug_script' --output-on-failure`.
+  `ctest --test-dir build -R 'zia_zannastudio_debug|test_vm_debug_src_breakpoint|test_vm_debug_watches|test_vm_debug_script' --output-on-failure`.
 
 ## Consequences
 

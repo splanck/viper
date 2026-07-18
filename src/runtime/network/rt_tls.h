@@ -23,8 +23,10 @@
 //     internally by `Zanna.Network.HttpsServer` / `Zanna.Network.WssServer`.
 //
 // Ownership/Lifetime:
-//   - TLS connection objects are heap-allocated; caller must close and free.
-//   - Returned data buffers are newly allocated; caller must release.
+//   - Low-level sessions are managed objects. rt_tls_new transfers socket
+//     ownership only on success; rt_tls_close consumes one session reference.
+//   - The session finalizer closes and scrubs abandoned connections without
+//     network I/O. Callers provide send/receive buffers and retain ownership.
 //
 // Links: src/runtime/network/rt_tls.c (implementation), src/runtime/network/rt_crypto.h,
 // src/runtime/core/rt_string.h
@@ -40,7 +42,14 @@
 extern "C" {
 #endif
 
+/// @brief Stable class identity for language-visible `Zanna.Crypto.Tls` wrappers.
 #define RT_TLS_CLASS_ID INT64_C(-0x720101)
+
+/// @brief Stable class identity for low-level TLS protocol sessions.
+/// @details Low-level sessions are managed objects even though the C API uses
+///          an opaque typed pointer. Protocol entry points validate this ID and
+///          the complete session payload before accessing socket or key state.
+#define RT_TLS_SESSION_CLASS_ID INT64_C(-0x720213)
 
 /// @brief TLS status / error codes returned by low-level entry points.
 typedef enum {
@@ -69,50 +78,98 @@ typedef struct rt_tls_config {
 } rt_tls_config_t;
 
 /// @brief Initialize default TLS configuration.
+/// @details NULL is accepted as a no-op. Defaults enable certificate
+///          verification and use a 30-second per-operation timeout.
+/// @param config Configuration storage to initialize, or NULL.
 void rt_tls_config_init(rt_tls_config_t *config);
 
 /// @brief Create TLS session over existing socket.
-/// @param socket_fd Connected TCP socket.
+/// @details The pointer-width descriptor preserves Windows `SOCKET` values.
+///          On success the session owns the descriptor and consumes one
+///          producer reference when closed. On failure the caller still owns
+///          and must close the descriptor.
+/// @param socket_fd Connected native TCP socket represented without narrowing.
 /// @param config TLS configuration (NULL for defaults).
 /// @return TLS session or NULL on error.
-rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config);
+rt_tls_session_t *rt_tls_new(intptr_t socket_fd, const rt_tls_config_t *config);
 
-/// @brief Perform TLS 1.3 handshake.
-/// @return RT_TLS_OK on success, negative error code on failure.
+/// @brief Perform the client-side TLS 1.3 handshake.
+/// @details The candidate handle is validated before protocol state is read.
+///          Call this exactly once on a newly created client session; server
+///          sessions complete their handshake inside the internal accept API.
+/// @param session Stable low-level session returned by @ref rt_tls_new.
+/// @return `RT_TLS_OK` on success, `RT_TLS_ERROR_INVALID_ARG` for an invalid
+///         handle, or another negative status for protocol/transport failure.
 int rt_tls_handshake(rt_tls_session_t *session);
 
-/// @brief Send data over TLS connection.
-/// @return Bytes sent on success, negative error code on failure.
+/// @brief Send an exact byte span over a connected TLS session.
+/// @details A zero length is a state-independent no-op. Positive lengths
+///          require non-NULL data and are split into legal TLS record sizes.
+/// @param session Stable low-level TLS session.
+/// @param data Caller-owned bytes, or NULL only when @p len is zero.
+/// @param len Byte count to send.
+/// @return Bytes sent on success, or a negative @ref rt_tls_status_t value.
 long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len);
 
-/// @brief Receive data from TLS connection.
-/// @return Bytes received on success, 0 on EOF, negative on failure.
+/// @brief Receive decrypted application data into caller-owned storage.
+/// @details A zero length is a state-independent no-op. Buffered bytes from a
+///          prior record are consumed before the transport is read.
+/// @param session Stable low-level TLS session.
+/// @param buffer Writable destination, or NULL only when @p len is zero.
+/// @param len Maximum byte count to copy.
+/// @return Bytes received, zero on clean EOF/empty request, or a negative status.
 long rt_tls_recv(rt_tls_session_t *session, void *buffer, size_t len);
 
-/// @brief Close TLS session and free resources.
+/// @brief Replace the per-operation TLS socket/readiness timeout.
+/// @details Both native receive and send timeout options are updated before
+///          the session publishes the new value. If either adapter operation
+///          fails, the prior timeout is restored best-effort and the session
+///          retains its previous logical value. Sessions are not internally
+///          synchronized; callers must serialize this with send/receive.
+/// @param session Stable low-level TLS session.
+/// @param timeout_ms Positive timeout in milliseconds.
+/// @return `RT_TLS_OK`, `RT_TLS_ERROR_INVALID_ARG`, or `RT_TLS_ERROR_SOCKET`.
+int rt_tls_set_io_timeout(rt_tls_session_t *session, int timeout_ms);
+
+/// @brief Close a TLS session and consume the caller's session reference.
+/// @details Sends a bounded `close_notify` exchange when connected, securely
+///          wipes secrets, closes the native socket, and releases one managed
+///          reference. NULL and invalid/stale handles are safe no-ops.
 void rt_tls_close(rt_tls_session_t *session);
 
-/// @brief Get last error message.
+/// @brief Get the last diagnostic stored on a low-level session.
+/// @param session Candidate session handle.
+/// @return Stable native text, including explicit NULL/invalid-session diagnostics.
 const char *rt_tls_get_error(rt_tls_session_t *session);
 
-/// @brief Get the most recent connect/handshake error captured by `rt_tls_connect`.
+/// @brief Get the most recent connect/handshake diagnostic on this thread.
+/// @return Thread-local native text valid until the next connect/session setup operation.
 const char *rt_tls_last_error(void);
 
 /// @brief Convenience: connect, handshake, return session.
+/// @details Uses one monotonic deadline for name resolution, every address
+///          attempt, and the handshake. Socket mode/status/timeout adapter
+///          operations must all succeed before the session is published.
 /// @param host Hostname to connect to.
 /// @param port Port number.
 /// @param config TLS configuration (NULL for defaults).
 /// @return Connected TLS session or NULL on error.
 rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_config_t *config);
 
-/// @brief Get underlying socket file descriptor.
-int rt_tls_get_socket(rt_tls_session_t *session);
+/// @brief Get the underlying pointer-width native socket descriptor.
+/// @param session Valid low-level TLS session.
+/// @return Native descriptor, or -1 for NULL, invalid, or closed sessions.
+intptr_t rt_tls_get_socket(rt_tls_session_t *session);
 
-/// @brief Get the negotiated ALPN protocol, or an empty string when none was negotiated.
+/// @brief Get the negotiated ALPN protocol.
+/// @param session Candidate session handle.
+/// @return Session-owned NUL-terminated protocol, or an empty static string for
+///         no selection or an invalid handle.
 const char *rt_tls_get_negotiated_alpn(rt_tls_session_t *session);
 
 /// @brief Check if the TLS session has buffered application data available.
-/// @return 1 if buffered data exists, 0 otherwise.
+/// @param session Candidate session handle.
+/// @return 1 if buffered data exists, 0 for none or an invalid handle.
 int rt_tls_has_buffered_data(rt_tls_session_t *session);
 
 //=========================================================================

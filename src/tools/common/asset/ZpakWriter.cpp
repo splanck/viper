@@ -26,6 +26,8 @@
 #include "ZpakWriter.hpp"
 
 #include "PkgDeflate.hpp"
+#include "rt_crc32.h"
+#include "runtime/io/rt_zpak_format.h"
 #include "tools/common/packaging/PkgUtils.hpp"
 
 #include <algorithm>
@@ -64,8 +66,8 @@ bool hasUnsafePathSegment(std::string_view name) {
 // ─── ZPAK format constants ───────────────────────────────────────────────────
 
 static constexpr uint8_t kMagic[4] = {'Z', 'P', 'A', 'K'};
-static constexpr uint16_t kVersion = 1;
-static constexpr size_t kHeaderSize = 32;
+static constexpr uint16_t kVersion = RT_ZPAK_VERSION_CURRENT;
+static constexpr size_t kHeaderSize = RT_ZPAK_HEADER_SIZE;
 static constexpr size_t kAlignment = 8;
 
 // ─── Pre-compressed extension skip list ─────────────────────────────────────
@@ -117,8 +119,14 @@ bool ZpakWriter::isPreCompressed(const std::string &name) {
 ///          duplicate names. When @p compress is requested for a non-empty,
 ///          non-pre-compressed entry, the data is DEFLATE'd (level 6) and the
 ///          compressed form is kept only if it is actually smaller; otherwise the
-///          bytes are stored verbatim. See the header for the parameter contract.
-void ZpakWriter::addEntry(const std::string &name, const uint8_t *data, size_t size, bool compress) {
+///          bytes are stored verbatim. CRC-32 is always computed over the
+///          original bytes. A failed copy/compression removes the provisional
+///          name-index insertion so the writer remains retryable. See the
+///          header for the parameter contract.
+void ZpakWriter::addEntry(const std::string &name,
+                          const uint8_t *data,
+                          size_t size,
+                          bool compress) {
     if (name.empty())
         throw std::invalid_argument("ZPAK entry name must not be empty");
     if (name.size() > std::numeric_limits<uint16_t>::max())
@@ -133,20 +141,22 @@ void ZpakWriter::addEntry(const std::string &name, const uint8_t *data, size_t s
                                     name);
     }
     if (hasUnsafePathSegment(name))
-        throw std::invalid_argument("ZPAK entry name must not contain empty, '.' or '..' segments: " +
-                                    name);
-    if (!seenNames_.insert(name).second)
+        throw std::invalid_argument(
+            "ZPAK entry name must not contain empty, '.' or '..' segments: " + name);
+    auto insertion = seenNames_.insert(name);
+    if (!insertion.second)
         throw std::invalid_argument("duplicate ZPAK entry: " + name);
 
-    Entry entry;
-    entry.name = name;
-    entry.originalSize = size;
-    entry.compressed = false;
+    try {
+        Entry entry;
+        entry.name = name;
+        entry.originalSize = size;
+        entry.crc32 = rt_crc32_compute(data, size);
+        entry.compressed = false;
 
-    bool shouldCompress = compress && size > 0 && !isPreCompressed(name);
+        bool shouldCompress = compress && size > 0 && !isPreCompressed(name);
 
-    if (shouldCompress) {
-        try {
+        if (shouldCompress) {
             auto deflated = zanna::pkg::deflate(data, size, 6);
             // Only use compressed version if it's actually smaller.
             if (deflated.size() < size) {
@@ -156,15 +166,19 @@ void ZpakWriter::addEntry(const std::string &name, const uint8_t *data, size_t s
                 if (size > 0)
                     entry.storedData.assign(data, data + size);
             }
-        } catch (const zanna::pkg::DeflateError &ex) {
-            throw std::runtime_error("ZPAK compression failed for '" + name + "': " + ex.what());
+        } else {
+            if (size > 0)
+                entry.storedData.assign(data, data + size);
         }
-    } else {
-        if (size > 0)
-            entry.storedData.assign(data, data + size);
-    }
 
-    entries_.push_back(std::move(entry));
+        entries_.push_back(std::move(entry));
+    } catch (const zanna::pkg::DeflateError &ex) {
+        seenNames_.erase(insertion.first);
+        throw std::runtime_error("ZPAK compression failed for '" + name + "': " + ex.what());
+    } catch (...) {
+        seenNames_.erase(insertion.first);
+        throw;
+    }
 }
 
 // ─── Little-endian write helpers ────────────────────────────────────────────
@@ -201,13 +215,15 @@ static void alignTo(std::vector<uint8_t> &out, size_t alignment) {
 // ─── writeToMemory ──────────────────────────────────────────────────────────
 
 /// @brief Serialize all entries into an in-memory ZPAK archive.
-/// @details Lays out the archive as: a 32-byte header (magic "ZPAK1", version,
-///          flags with bit0 set when any entry is compressed, entry count, and
+/// @details Lays out the archive as: a 32-byte version 2 header (magic "ZPAK",
+///          flags with bit0 set when any entry is compressed and required bit1
+///          declaring entry checksums, entry count, and
 ///          placeholder TOC offset/size patched at the end), then each entry's
 ///          stored bytes 8-byte aligned, then the table of contents (per-entry
 ///          name length, name, data offset, original size, stored size, and
-///          flags). The TOC offset/size placeholders in the header are patched
-///          once the TOC is written. See the header for the return contract.
+///          flags, followed by CRC-32 of the original bytes). The TOC
+///          offset/size placeholders in the header are patched once the TOC is
+///          written. See the header for the return contract.
 std::vector<uint8_t> ZpakWriter::writeToMemory() const {
     std::vector<uint8_t> out;
     if (entries_.size() > std::numeric_limits<uint32_t>::max())
@@ -228,11 +244,11 @@ std::vector<uint8_t> ZpakWriter::writeToMemory() const {
     out.insert(out.end(), kMagic, kMagic + 4);
     // Version (2 bytes)
     write16LE(out, kVersion);
-    // Flags (2 bytes) — bit 0 = archive has any compressed entries
-    uint16_t flags = 0;
+    // Flags (2 bytes) — bit 0 = compressed entry; bit 1 = per-entry CRC-32
+    uint16_t flags = RT_ZPAK_HEADER_FLAG_ENTRY_CRC32;
     for (const auto &e : entries_) {
         if (e.compressed) {
-            flags |= 1;
+            flags |= RT_ZPAK_HEADER_FLAG_COMPRESSED;
             break;
         }
     }
@@ -284,10 +300,13 @@ std::vector<uint8_t> ZpakWriter::writeToMemory() const {
         write64LE(out, static_cast<uint64_t>(e.storedData.size()));
 
         // flags (2 bytes) — bit 0 = compressed
-        write16LE(out, e.compressed ? 1 : 0);
+        write16LE(out, e.compressed ? RT_ZPAK_ENTRY_FLAG_COMPRESSED : 0);
 
         // reserved (2 bytes)
         write16LE(out, 0);
+
+        // CRC-32 of the original uncompressed bytes (4 bytes, v2).
+        write32LE(out, e.crc32);
     }
 
     uint64_t tocSize = static_cast<uint64_t>(out.size() - tocStart);

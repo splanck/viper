@@ -1523,7 +1523,7 @@ std::vector<std::string> requiredPayloadPaths(
                     installPath.size() > 1 ? installPath.substr(1) : installPath,
                     "linux install path"));
             }
-            paths.push_back("usr/share/applications/zannaide.desktop");
+            paths.push_back("usr/share/applications/zannastudio.desktop");
             paths.push_back("usr/share/icons/hicolor/256x256/apps/zanna.png");
             appendLinuxAssociationMetadata("", false);
             break;
@@ -1536,7 +1536,7 @@ std::vector<std::string> requiredPayloadPaths(
             paths.push_back(".DirIcon");
             paths.push_back("zanna.desktop");
             paths.push_back("zanna.png");
-            paths.push_back("share/applications/zannaide.desktop");
+            paths.push_back("share/applications/zannastudio.desktop");
             paths.push_back("share/icons/hicolor/256x256/apps/zanna.png");
             appendLinuxAssociationMetadata("", true);
             break;
@@ -1554,7 +1554,7 @@ std::vector<std::string> requiredPayloadPaths(
             }
             if (manifest.platform == "linux") {
                 appendLinuxAssociationMetadata(topDir + "/", true);
-                paths.push_back(topDir + "/share/applications/zannaide.desktop");
+                paths.push_back(topDir + "/share/applications/zannastudio.desktop");
                 paths.push_back(topDir + "/share/icons/hicolor/256x256/apps/zanna.png");
                 paths.push_back(topDir + "/share/zanna/install_manifest.txt");
                 paths.push_back(topDir + "/install.sh");
@@ -2148,9 +2148,9 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
     AutoStageCleanup cleanup(stageDir, !args.keepStageDir);
 
     if (const auto installIDE =
-            readCMakeCacheBool(args.buildDir / "CMakeCache.txt", "ZANNA_INSTALL_ZANNAIDE");
+            readCMakeCacheBool(args.buildDir / "CMakeCache.txt", "ZANNA_INSTALL_ZANNASTUDIO");
         installIDE && !*installIDE) {
-        throw std::runtime_error("toolchain installers require ZANNA_INSTALL_ZANNAIDE=ON; "
+        throw std::runtime_error("toolchain installers require ZANNA_INSTALL_ZANNASTUDIO=ON; "
                                  "reconfigure the build tree before running install-package");
     }
 

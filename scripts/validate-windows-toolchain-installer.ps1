@@ -363,8 +363,8 @@ try {
         "zanna", "zia", "vbasic", "ilrun", "il-verify", "il-dis",
         "zia-server", "vbasic-server", "basic-ast-dump", "basic-lex-dump"
     )
-    if ($components -contains "zannaide") {
-        $requiredTools += "zannaide"
+    if ($components -contains "zannastudio") {
+        $requiredTools += "zannastudio"
     }
     foreach ($tool in $requiredTools) {
         $toolPath = Join-Path $InstallRoot "bin\$tool.exe"
@@ -380,9 +380,9 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $startMenu "Zanna Developer Prompt.lnk"))) {
         throw "Expected developer prompt Start Menu shortcut under $startMenu"
     }
-    if ($components -contains "zannaide" -and
-        -not (Test-Path -LiteralPath (Join-Path $startMenu "ZannaIDE.lnk"))) {
-        throw "Expected ZannaIDE Start Menu shortcut under $startMenu"
+    if ($components -contains "zannastudio" -and
+        -not (Test-Path -LiteralPath (Join-Path $startMenu "Zanna Studio.lnk"))) {
+        throw "Expected Zanna Studio Start Menu shortcut under $startMenu"
     }
 
     if (-not (Test-PathEntry `
@@ -396,9 +396,9 @@ try {
         Invoke-CheckedProcess -FilePath $maintenanceCache -Arguments @(
             "/modify", "/quiet", "/norestart", "/type", "minimal",
             "/noPath", "/noAssociations", "/noShortcuts") -SuccessCodes @(0, 3010) | Out-Null
-        if ($components -contains "zannaide" -and
-            (Test-Path -LiteralPath (Join-Path $InstallRoot "bin\zannaide.exe"))) {
-            throw "Minimal modify left the ZannaIDE component installed."
+        if ($components -contains "zannastudio" -and
+            (Test-Path -LiteralPath (Join-Path $InstallRoot "bin\zannastudio.exe"))) {
+            throw "Minimal modify left the Zanna Studio component installed."
         }
         if (Test-PathEntry `
                 -Value ([Environment]::GetEnvironmentVariable("Path", $pathScope)) `

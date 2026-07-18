@@ -356,6 +356,8 @@ static void rt_gui_subhandle_target_unlink(rt_gui_subhandle_t *handle) {
 static bool rt_gui_subhandle_owner_rehash(size_t capacity) {
     if (capacity < 32)
         capacity = 32;
+    // cppcheck-suppress divideSizeof
+    // The allocation is intentionally an array of wrapper pointers, not wrappers.
     if ((capacity & (capacity - 1)) != 0 || capacity > SIZE_MAX / sizeof(*s_owner_buckets))
         return false;
     rt_gui_subhandle_t **buckets = (rt_gui_subhandle_t **)calloc(capacity, sizeof(*buckets));

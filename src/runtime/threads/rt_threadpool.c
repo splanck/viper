@@ -28,8 +28,9 @@
 //   - All queue and state access is serialized through the monitor.
 //
 // Ownership/Lifetime:
-//   - Task arguments (void*) are passed through without retain/release; callers
-//     must ensure argument lifetimes exceed task execution.
+//   - Borrowed task arguments are not retained; callers must keep them alive
+//     through execution. SubmitOwned retains managed arguments until execution
+//     or discard, and queued owned arguments are exposed to cycle collection.
 //   - Worker thread handles are owned by the pool and joined on Shutdown.
 //   - The pool itself is heap-allocated and managed by the runtime GC.
 //
@@ -42,15 +43,19 @@
 #include "rt_threadpool.h"
 
 #include "rt_gc.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
+#include "rt_string.h"
 #include "rt_threads.h"
 
 #include <limits.h>
 #include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
@@ -65,10 +70,10 @@
 
 /// @brief Task entry in the queue.
 typedef struct pool_task {
-    void (*callback)(void *); ///< Task function pointer.
-    void *arg;                ///< Argument for the callback.
-    int8_t owns_arg;          ///< 1 when the pool retains/releases the arg (VDOC-128).
-    struct pool_task *next;   ///< Next task in queue.
+    rt_threadpool_task_fn callback; ///< Task function pointer.
+    void *arg;                      ///< Argument for the callback.
+    int8_t owns_arg;                ///< 1 when the pool retains/releases the arg (VDOC-128).
+    struct pool_task *next;         ///< Next task in queue.
 } pool_task;
 
 /// @brief Release a task's owned argument (no-op for borrowed args).
@@ -98,9 +103,11 @@ typedef struct pool_impl {
     int64_t active_count;     ///< Number of tasks running.
     int64_t error_count;      ///< Number of worker task traps not yet observed.
     char last_error[512];     ///< Last worker task trap message.
-    int8_t shutdown;          ///< Shutdown flag.
-    int8_t shutdown_now;      ///< Immediate shutdown flag.
-    int8_t cleanup_scheduled; ///< Deferred cleanup was scheduled from a worker finalizer.
+    int shutdown;             ///< Atomic shutdown flag.
+    int shutdown_now;         ///< Atomic immediate-shutdown flag.
+    int8_t shutdown_joining;  ///< One caller owns the worker-handle join phase.
+    int8_t shutdown_complete; ///< Every worker handle has finished and been released.
+    int cleanup_scheduled;    ///< Atomic deferred-cleanup state (0 none, 1 thread, 2 fallback).
     int64_t max_pending;      ///< Maximum queued tasks before Submit applies backpressure.
 } pool_impl;
 
@@ -118,11 +125,63 @@ void rt_trap_set_recovery(jmp_buf *buf);
 void rt_trap_clear_recovery(void);
 const char *rt_trap_get_error(void);
 
-#if defined(_MSC_VER)
-static __declspec(thread) pool_impl *g_current_worker_pool = NULL;
-#else
-static __thread pool_impl *g_current_worker_pool = NULL;
-#endif
+static RT_THREAD_LOCAL pool_impl *g_current_worker_pool = NULL;
+static RT_THREAD_LOCAL pool_worker *g_exiting_worker = NULL;
+
+/// @brief Read whether shutdown has been requested with acquire ordering.
+static int8_t pool_shutdown_requested(const pool_impl *pool) {
+    return pool && __atomic_load_n(&pool->shutdown, __ATOMIC_ACQUIRE) ? 1 : 0;
+}
+
+/// @brief Read whether immediate shutdown has been requested with acquire ordering.
+static int8_t pool_shutdown_now_requested(const pool_impl *pool) {
+    return pool && __atomic_load_n(&pool->shutdown_now, __ATOMIC_ACQUIRE) ? 1 : 0;
+}
+
+/// @brief Publish a shutdown request visible even when a collector prevents monitor acquisition.
+/// @details The ordinary lifecycle paths still take the pool monitor for queue
+///          state and wakeups. Atomic flags provide the resource-exhaustion
+///          fallback used by a finalizer that cannot create its cleanup thread.
+/// @param pool Pool whose workers should stop.
+/// @param immediate Non-zero to discard queued work rather than drain it.
+static void pool_request_shutdown_atomic(pool_impl *pool, int8_t immediate) {
+    if (!pool)
+        return;
+    if (immediate)
+        __atomic_store_n(&pool->shutdown_now, 1, __ATOMIC_RELEASE);
+    __atomic_store_n(&pool->shutdown, 1, __ATOMIC_RELEASE);
+}
+
+/// @brief Atomically transition the deferred-cleanup state.
+/// @param pool Pool whose cleanup ownership is being changed.
+/// @param expected Required current state.
+/// @param desired New state on success.
+/// @return Non-zero when the transition succeeded.
+static int8_t pool_cleanup_transition(pool_impl *pool, int expected, int desired) {
+    return pool && __atomic_compare_exchange_n(&pool->cleanup_scheduled,
+                                               &expected,
+                                               desired,
+                                               0,
+                                               __ATOMIC_ACQ_REL,
+                                               __ATOMIC_ACQUIRE)
+               ? 1
+               : 0;
+}
+
+/// @brief Decode the legacy object-pointer representation of a Pool callback.
+/// @details IL transports native callback addresses through its `obj` ABI.
+///          Native runtime callers use the typed API directly; this single
+///          compatibility boundary copies the representation after proving the
+///          platform gives data and function pointers equal ABI widths.
+/// @param opaque Opaque callback address supplied by generated code.
+/// @return Typed callback with the same representation, or NULL.
+static rt_threadpool_task_fn pool_task_from_opaque(void *opaque) {
+    _Static_assert(sizeof(rt_threadpool_task_fn) == sizeof(void *),
+                   "pool callback and object pointers must have equal ABI size");
+    rt_threadpool_task_fn callback = NULL;
+    memcpy(&callback, &opaque, sizeof(callback));
+    return callback;
+}
 
 /// @brief Compute the default pending-task limit for new thread pools.
 /// @details Uses ZANNA_THREADPOOL_MAX_PENDING when it contains a positive
@@ -228,20 +287,156 @@ static void pool_take_worker_handles_locked(pool_impl *pool, void **handles) {
     }
 }
 
+/// @brief Elect one shutdown caller to own worker joining.
+/// @details Must be called with the pool monitor held. The first caller before
+///          completion marks `shutdown_joining` and steals all worker handles;
+///          later callers leave handles untouched and wait for the owner to
+///          publish completion. This preserves idempotence without allowing a
+///          repeated Shutdown call to return while workers are still active.
+/// @param pool Pool whose monitor is currently owned by the caller.
+/// @param handles Zeroed worker-count array receiving handles for the elected owner.
+/// @return One when the caller owns joining; zero when it must wait or shutdown is complete.
+static int8_t pool_claim_shutdown_join_locked(pool_impl *pool, void **handles) {
+    if (!pool || pool->shutdown_complete || pool->shutdown_joining)
+        return 0;
+    pool->shutdown_joining = 1;
+    pool_take_worker_handles_locked(pool, handles);
+    return 1;
+}
+
+/// @brief Wait for shutdown completion or claim a join phase abandoned after a trap.
+/// @details Must be called with the pool monitor held. If another caller owns
+///          joining, the function waits until that caller either publishes
+///          completion or restores its unjoined handles after a recoverable
+///          trap. In the latter case this caller atomically becomes the next
+///          join owner. This prevents both premature Shutdown returns and a
+///          permanent waiter deadlock after an exceptional native wait.
+/// @param pool Pool whose shutdown has already been requested.
+/// @param handles Zeroed worker-count array receiving handles when ownership is claimed.
+/// @return One when the caller must join @p handles; zero when shutdown is complete.
+static int8_t pool_wait_or_claim_shutdown_locked(pool_impl *pool, void **handles) {
+    while (pool && !pool->shutdown_complete) {
+        if (!pool->shutdown_joining)
+            return pool_claim_shutdown_join_locked(pool, handles);
+        rt_monitor_wait(pool->monitor);
+    }
+    return 0;
+}
+
+/// @brief Restore handles that could not be joined and relinquish join ownership.
+/// @details Must be called with the pool monitor held. Each non-NULL entry is
+///          moved back to the corresponding worker slot, then the caller-owner
+///          flag is cleared and all waiters are awakened. Already joined and
+///          released entries are NULL and remain absent. Restoring ownership is
+///          essential because workers use a borrowed pool back-reference; the
+///          pool must not discard an unjoined handle and finalize underneath it.
+/// @param pool Pool whose join phase trapped before completion.
+/// @param handles Partially consumed worker-handle array to restore.
+/// @param count Number of entries in @p handles.
+static void pool_restore_worker_handles_locked(pool_impl *pool, void **handles, int64_t count) {
+    if (!pool)
+        return;
+    if (handles && pool->workers) {
+        for (int64_t i = 0; i < count; ++i) {
+            if (!handles[i])
+                continue;
+            if (!pool->workers[i].thread) {
+                pool->workers[i].thread = handles[i];
+                handles[i] = NULL;
+            }
+        }
+    }
+    pool->shutdown_joining = 0;
+    rt_monitor_pause_all(pool->monitor);
+}
+
+/// @brief Publish completion of the worker-join phase and wake shutdown waiters.
+/// @details Acquires the monitor, clears the single-owner flag, sets the stable
+///          completion flag with monitor synchronization, and broadcasts to
+///          every concurrent graceful or immediate shutdown caller.
+/// @param pool Pool whose stolen worker handles have all been joined and released.
+static void pool_publish_shutdown_complete(pool_impl *pool) {
+    if (!pool || !pool->monitor)
+        return;
+    rt_monitor_enter(pool->monitor);
+    pool->shutdown_joining = 0;
+    pool->shutdown_complete = 1;
+    rt_monitor_pause_all(pool->monitor);
+    rt_monitor_exit(pool->monitor);
+}
+
 /// @brief Join every non-NULL handle in @p handles and release each retained ref.
 /// @details Companion to pool_take_worker_handles_locked. Walks the handle
 ///          array, calls rt_thread_join on each, and releases the runtime
 ///          ref. NULL slots are skipped (the take helper may have left
 ///          some empty if the pool was constructed but never started).
-static void pool_join_worker_handles(void **handles, int64_t count) {
+static void pool_join_worker_handles(void **handles, int64_t count, int64_t skip_index) {
     if (!handles)
         return;
     for (int64_t i = 0; i < count; i++) {
         if (handles[i]) {
-            rt_thread_join(handles[i]);
+            if (i != skip_index)
+                rt_thread_join(handles[i]);
             pool_release_thread_handle(&handles[i]);
         }
     }
+}
+
+/// @brief Complete an elected shutdown join phase with recoverable-trap rollback.
+/// @details Joins and releases each stolen worker handle. A trap from a native
+///          thread wait is caught locally so every unconsumed handle, including
+///          the active one, can be restored to the pool before ownership is
+///          relinquished. Successful completion publishes the stable completion
+///          condition. On failure the original diagnostic is copied to @p error
+///          and the caller may re-raise it only after releasing temporary memory
+///          and its pool retain.
+/// @param pool Pool that elected the current caller as join owner.
+/// @param handles Stolen worker-handle array.
+/// @param count Number of entries in @p handles.
+/// @param error Destination for a bounded, NUL-terminated trap diagnostic.
+/// @param error_size Capacity of @p error in bytes.
+/// @return One after all handles are joined and completion is published; zero
+///         after a trap and restoration of every unjoined handle.
+static int8_t pool_finish_shutdown_join(
+    pool_impl *pool, void **handles, int64_t count, char *error, size_t error_size) {
+    volatile int64_t active_index = -1;
+    void *volatile active_handle = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        const char *message = rt_trap_get_error();
+        if (error && error_size > 0) {
+            snprintf(error,
+                     error_size,
+                     "%s",
+                     message && message[0] ? message : "Pool.Shutdown: worker join failed");
+        }
+        rt_trap_clear_recovery();
+
+        if (active_index >= 0 && active_index < count && active_handle && !handles[active_index]) {
+            handles[active_index] = (void *)active_handle;
+        }
+        rt_monitor_enter(pool->monitor);
+        pool_restore_worker_handles_locked(pool, handles, count);
+        rt_monitor_exit(pool->monitor);
+        return 0;
+    }
+
+    for (int64_t i = 0; i < count; ++i) {
+        if (!handles[i])
+            continue;
+        active_index = i;
+        active_handle = handles[i];
+        handles[i] = NULL;
+        rt_thread_join((void *)active_handle);
+        void *owned_handle = (void *)active_handle;
+        pool_release_thread_handle(&owned_handle);
+        active_handle = NULL;
+        active_index = -1;
+    }
+    rt_trap_clear_recovery();
+    pool_publish_shutdown_complete(pool);
+    return 1;
 }
 
 /// @brief Allocate a snapshot array of the pool's worker handles, taking ownership under the lock.
@@ -270,13 +465,45 @@ static void **pool_detach_worker_handles(pool_impl *pool) {
 //=============================================================================
 
 /// @brief GC traverse callback for thread pools.
-/// @details Pools hold no strong references that participate in reference
-///          cycles, but we register them for GC tracking so the shutdown
-///          finalizer sweep (rt_gc_run_all_finalizers) can reach them.
+/// @details Visits each queued argument retained by SubmitOwned. Queue-link mutation is
+///          protected by the managed-graph barrier, and traversal runs under its exclusive
+///          side, so the queue is stable without taking the pool monitor. Borrowed arguments,
+///          worker handles, and the native monitor are not strong managed-graph edges.
 static void pool_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
-    (void)obj;
-    (void)visitor;
-    (void)ctx;
+    pool_impl *pool = (pool_impl *)obj;
+    if (!pool || !visitor)
+        return;
+    for (pool_task *task = pool->queue_head; task; task = task->next)
+        if (task->owns_arg && task->arg)
+            visitor(task->arg, ctx);
+}
+
+/// @brief Detach every queued task while holding the pool monitor.
+/// @details Queue edge removal is enclosed in the managed-graph mutator scope;
+///          returned tasks must be released outside the monitor so owned-arg
+///          finalizers may safely call back into the pool.
+static pool_task *pool_detach_tasks_locked(pool_impl *pool) {
+    if (!pool)
+        return NULL;
+    rt_gc_mutator_enter();
+    pool_task *tasks = pool->queue_head;
+    pool->queue_head = NULL;
+    pool->queue_tail = NULL;
+    pool->pending_count = 0;
+    rt_gc_mutator_exit();
+    return tasks;
+}
+
+/// @brief Release a detached task list and every retained owned argument.
+/// @param tasks First detached task, or NULL.
+static void pool_release_task_list(pool_task *tasks) {
+    while (tasks) {
+        pool_task *next = tasks->next;
+        tasks->next = NULL;
+        pool_task_release_arg(tasks);
+        free(tasks);
+        tasks = next;
+    }
 }
 
 /// @brief GC finalizer for a `ThreadPool` — drain, join, and tear down.
@@ -291,7 +518,16 @@ static void pool_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
 ///            1. Resurrects the pool object so GC doesn't reclaim it.
 ///            2. Re-installs itself as the finalizer.
 ///            3. Signals shutdown so workers exit their loop.
-///          A later non-worker release will reclaim the pool safely.
+///          A later non-worker release will reclaim the pool safely. If native
+///          cleanup-thread creation fails, the first worker to exit detaches
+///          queued owned arguments and consumes the resurrection reference; its
+///          finalizer joins all other workers and deliberately skips self-join.
+///
+///          **Cycle-reclaim guard.** A pool retained only by one of its queued owned
+///          arguments cannot join workers while the collector holds exclusive graph
+///          access: a worker may need that same barrier to finish. The finalizer therefore
+///          resurrects the pool and schedules the same non-worker cleanup path, which runs
+///          after collection resumes mutators and detaches the cyclic queue edge safely.
 ///
 ///          **Normal path.** Untracks from GC, signals shutdown, joins every
 ///          worker, destroys the monitor, and frees the pool struct. Handles
@@ -302,7 +538,8 @@ static void pool_finalizer(void *obj) {
     if (!pool)
         return;
 
-    if (g_current_worker_pool == pool) {
+    int8_t cycle_reclaim = rt_gc_should_suppress_cycle_release(pool);
+    if (g_current_worker_pool == pool || cycle_reclaim) {
         /*
          * A worker may be the last owner of a pool through a user callback.
          * Joining/freeing the worker array and monitor from that same worker
@@ -313,19 +550,32 @@ static void pool_finalizer(void *obj) {
         int8_t start_cleanup = 0;
         rt_obj_resurrect(pool);
         rt_obj_set_finalizer(pool, pool_finalizer);
-        if (pool->monitor) {
+        if (cycle_reclaim) {
+            start_cleanup = pool_cleanup_transition(pool, 0, 1);
+        } else if (pool->monitor) {
             rt_monitor_enter(pool->monitor);
-            pool->shutdown = 1;
-            pool->shutdown_now = 1;
-            if (!pool->cleanup_scheduled) {
-                pool->cleanup_scheduled = 1;
-                start_cleanup = 1;
-            }
+            pool_request_shutdown_atomic(pool, 1);
+            start_cleanup = pool_cleanup_transition(pool, 0, 1);
             rt_monitor_pause_all(pool->monitor);
             rt_monitor_exit(pool->monitor);
         }
         if (start_cleanup) {
-            void *cleanup_thread = rt_thread_start_owned((void *)pool_deferred_cleanup_entry, pool);
+            void *cleanup_thread = NULL;
+            jmp_buf recovery;
+            rt_trap_set_recovery(&recovery);
+            if (setjmp(recovery) != 0) {
+                rt_trap_clear_recovery();
+                __atomic_store_n(&pool->cleanup_scheduled, 2, __ATOMIC_RELEASE);
+                pool_request_shutdown_atomic(pool, 1);
+                return;
+            }
+            cleanup_thread = rt_thread_start_owned_fn(pool_deferred_cleanup_entry, pool);
+            rt_trap_clear_recovery();
+            if (!cleanup_thread) {
+                __atomic_store_n(&pool->cleanup_scheduled, 2, __ATOMIC_RELEASE);
+                pool_request_shutdown_atomic(pool, 1);
+                return;
+            }
             pool_release_thread_handle(&cleanup_thread);
         }
         return;
@@ -339,17 +589,25 @@ static void pool_finalizer(void *obj) {
        this finalizer to prevent abandoned worker threads. */
     if (pool->monitor) {
         rt_monitor_enter(pool->monitor);
-        if (!pool->shutdown) {
-            pool->shutdown = 1;
-            pool->shutdown_now = 1;
-        }
+        if (!pool_shutdown_requested(pool))
+            pool_request_shutdown_atomic(pool, 1);
         rt_monitor_pause_all(pool->monitor);
         rt_monitor_exit(pool->monitor);
     }
 
+    int64_t exiting_index = -1;
+    if (g_exiting_worker && pool->workers) {
+        for (int64_t i = 0; i < pool->worker_count; ++i) {
+            if (&pool->workers[i] == g_exiting_worker) {
+                exiting_index = i;
+                break;
+            }
+        }
+    }
+
     void **handles = pool_detach_worker_handles(pool);
     if (handles) {
-        pool_join_worker_handles(handles, pool->worker_count);
+        pool_join_worker_handles(handles, pool->worker_count, exiting_index);
         free(handles);
     } else {
         for (int64_t i = 0; i < pool->worker_count; i++) {
@@ -363,29 +621,34 @@ static void pool_finalizer(void *obj) {
             if (pool->monitor)
                 rt_monitor_exit(pool->monitor);
             if (thread) {
-                rt_thread_join(thread);
+                if (i != exiting_index)
+                    rt_thread_join(thread);
                 pool_release_thread_handle(&thread);
             }
         }
     }
 
-    // Clean up any remaining queue (owned args are released, VDOC-128)
+    // Detach the remaining queue before releasing owned arguments. This keeps
+    // traversal from observing edges whose refcounts are already being dropped.
+    rt_gc_mutator_enter();
     pool_task *task = pool->queue_head;
-    while (task) {
-        pool_task *next = task->next;
-        pool_task_release_arg(task);
-        free(task);
-        task = next;
-    }
+    pool->queue_head = NULL;
+    pool->queue_tail = NULL;
+    pool->pending_count = 0;
+    pool_worker *workers = pool->workers;
+    pool->workers = NULL;
+    void *monitor = pool->monitor;
+    pool->monitor = NULL;
+    rt_gc_mutator_exit();
+    pool_release_task_list(task);
 
     // Free workers array
-    if (pool->workers)
-        free(pool->workers);
+    free(workers);
 
     // Release monitor
-    if (pool->monitor) {
-        if (rt_obj_release_check0(pool->monitor))
-            rt_obj_free(pool->monitor);
+    if (monitor) {
+        if (rt_obj_release_check0(monitor))
+            rt_obj_free(monitor);
     }
 }
 
@@ -404,12 +667,29 @@ void *rt_threadpool_new(int64_t size) {
     if (!pool)
         return NULL;
 
+    memset(pool, 0, sizeof(*pool));
     rt_obj_set_finalizer(pool, pool_finalizer);
-    rt_gc_track(pool, pool_traverse);
+
+    char constructor_error[512];
+    jmp_buf constructor_recovery;
+    rt_trap_set_recovery(&constructor_recovery);
+    if (setjmp(constructor_recovery) != 0) {
+        const char *error = rt_trap_get_error();
+        snprintf(constructor_error,
+                 sizeof(constructor_error),
+                 "%s",
+                 error && error[0] ? error : "Pool: construction failed");
+        rt_trap_clear_recovery();
+        pool_release_object(pool);
+        rt_trap(constructor_error);
+        return NULL;
+    }
 
     pool->monitor = rt_obj_new_i64(0, 1); // Create a monitor object
     if (!pool->monitor) {
+        rt_trap_clear_recovery();
         pool_release_object(pool);
+        rt_trap("Pool: monitor allocation failed");
         return NULL;
     }
 
@@ -420,40 +700,42 @@ void *rt_threadpool_new(int64_t size) {
     pool->max_pending = pool_default_max_pending();
     pool->error_count = 0;
     pool->last_error[0] = '\0';
-    pool->shutdown = 0;
-    pool->shutdown_now = 0;
-    pool->cleanup_scheduled = 0;
+    __atomic_store_n(&pool->shutdown, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&pool->shutdown_now, 0, __ATOMIC_RELAXED);
+    pool->shutdown_joining = 0;
+    pool->shutdown_complete = 0;
+    __atomic_store_n(&pool->cleanup_scheduled, 0, __ATOMIC_RELAXED);
     pool->worker_count = size;
 
     // Allocate workers array
     pool->workers = (pool_worker *)calloc((size_t)size, sizeof(pool_worker));
     if (!pool->workers) {
+        rt_trap_clear_recovery();
         pool_release_object(pool);
+        rt_trap("Pool: worker array allocation failed");
         return NULL;
     }
 
     // Start worker threads
     for (int64_t i = 0; i < size; i++) {
         pool->workers[i].pool = pool;
-        pool->workers[i].thread = rt_thread_start((void *)worker_entry, &pool->workers[i]);
+        pool->workers[i].thread = rt_thread_start_fn(worker_entry, &pool->workers[i]);
         if (!pool->workers[i].thread) {
-            // Shutdown already started workers
-            rt_monitor_enter(pool->monitor);
-            pool->shutdown = 1;
-            pool->shutdown_now = 1;
-            rt_monitor_pause_all(pool->monitor);
-            rt_monitor_exit(pool->monitor);
-
-            for (int64_t j = 0; j < i; j++) {
-                if (pool->workers[j].thread) {
-                    rt_thread_join(pool->workers[j].thread);
-                    pool_release_thread_handle(&pool->workers[j].thread);
-                }
-            }
+            rt_trap_clear_recovery();
             pool_release_object(pool);
+            rt_trap("Pool: worker thread creation failed");
             return NULL;
         }
     }
+
+    rt_gc_track(pool, pool_traverse);
+    if (!rt_gc_is_tracked(pool)) {
+        rt_trap("Pool: GC tracking failed");
+        rt_trap_clear_recovery();
+        pool_release_object(pool);
+        return NULL;
+    }
+    rt_trap_clear_recovery();
 
     return pool;
 }
@@ -497,25 +779,27 @@ static void worker_entry(void *arg) {
         rt_monitor_enter(pool->monitor);
 
         // Wait for a task or shutdown
-        while (pool->queue_head == NULL && !pool->shutdown) {
+        while (pool->queue_head == NULL && !pool_shutdown_requested(pool)) {
             rt_monitor_wait(pool->monitor);
         }
 
         // Check for immediate shutdown
-        if (pool->shutdown_now) {
+        if (pool_shutdown_now_requested(pool)) {
             rt_monitor_exit(pool->monitor);
             break;
         }
 
         // Check for graceful shutdown with empty queue
-        if (pool->shutdown && pool->queue_head == NULL) {
+        if (pool_shutdown_requested(pool) && pool->queue_head == NULL) {
             rt_monitor_exit(pool->monitor);
             break;
         }
 
-        // Dequeue a task
+        // Dequeue a task. The monitor serializes workers; the graph scope makes
+        // the strong owned-argument edge atomic with respect to GC traversal.
         pool_task *task = pool->queue_head;
         if (task) {
+            rt_gc_mutator_enter();
 #ifdef _MSC_VER
 #pragma warning(suppress : 6001)
 #endif
@@ -527,6 +811,8 @@ static void worker_entry(void *arg) {
         }
 
         rt_monitor_exit(pool->monitor);
+        if (task)
+            rt_gc_mutator_exit();
 
         // Execute the task
         int8_t trapped = 0;
@@ -568,17 +854,42 @@ static void worker_entry(void *arg) {
         rt_monitor_exit(pool->monitor);
     }
 
+    /* If native cleanup-thread creation failed, exactly one exiting worker
+       assumes ownership of the resurrection reference. It first removes every
+       queued owned edge, then releases the pool from a TLS-marked exit boundary
+       so finalization skips only this still-running worker's join. */
+    int8_t fallback_owner = pool_cleanup_transition(pool, 2, 3);
+    pool_task *fallback_tasks = NULL;
+    if (fallback_owner) {
+        rt_monitor_enter(pool->monitor);
+        pool_request_shutdown_atomic(pool, 1);
+        fallback_tasks = pool_detach_tasks_locked(pool);
+        rt_monitor_pause_all(pool->monitor);
+        rt_monitor_exit(pool->monitor);
+        pool_release_task_list(fallback_tasks);
+    }
+
     g_current_worker_pool = NULL;
+    if (fallback_owner) {
+        g_exiting_worker = worker;
+        pool_release_object(pool);
+        g_exiting_worker = NULL;
+    }
 }
 
-/// @brief Detached-thread entry that releases a pool from outside its own worker context.
-/// @details Used when a worker drops the last reference to the pool that owns it: rather than
-///          let the worker tear down the very pool it's running on (which would self-join and
-///          deadlock), the worker spins up a one-shot detached helper thread that runs this
-///          function. The helper is not a pool worker, so its `pool_release_object` call can
-///          safely join the original workers and free the pool struct.
+/// @brief Detached-thread entry that shuts down and releases a deferred pool.
+/// @details Used when a worker or cycle-collection finalizer cannot synchronously join the
+///          pool. The helper runs outside both contexts, requests immediate shutdown to detach
+///          queued owned arguments, absorbs any already-recorded task trap, and releases the
+///          resurrection reference. The thread trampoline drops its separate owned-argument
+///          retain after this function returns, allowing normal finalization at refcount zero.
 static void pool_deferred_cleanup_entry(void *arg) {
     pool_impl *pool = (pool_impl *)arg;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0)
+        rt_threadpool_shutdown_now(pool);
+    rt_trap_clear_recovery();
     pool_release_object(pool);
 }
 
@@ -597,8 +908,10 @@ static void pool_deferred_cleanup_entry(void *arg) {
 /// @param arg Opaque argument passed to @p callback.
 /// @return 1 when the task is queued, 0 when inputs are invalid, the pool is
 ///         shutting down, or allocation fails.
-static int8_t
-threadpool_submit_impl(void *pool_obj, void (*callback)(void *), void *arg, int8_t owns_arg) {
+static int8_t threadpool_submit_impl(void *pool_obj,
+                                     rt_threadpool_task_fn callback,
+                                     void *arg,
+                                     int8_t owns_arg) {
     if (!pool_obj || !callback)
         return 0;
 
@@ -607,42 +920,67 @@ threadpool_submit_impl(void *pool_obj, void (*callback)(void *), void *arg, int8
         return 0;
     rt_obj_retain_maybe(pool_obj);
 
-    rt_monitor_enter(pool->monitor);
+    /* Allocate and acquire argument ownership before the pool monitor. Heap
+       registry contention and user-configured trap dispatch must never extend
+       the queue's critical section or strand the monitor on a retain failure. */
+    pool_task *task = (pool_task *)calloc(1, sizeof(pool_task));
+    if (!task) {
+        pool_release_object(pool);
+        return 0;
+    }
+    task->callback = callback;
+    task->arg = arg;
+    task->owns_arg = 0;
+    task->next = NULL;
 
-    if (pool->shutdown) {
+    if (owns_arg && arg) {
+        char retain_error[256];
+        jmp_buf retain_recovery;
+        rt_trap_set_recovery(&retain_recovery);
+        if (setjmp(retain_recovery) != 0) {
+            const char *error = rt_trap_get_error();
+            snprintf(retain_error,
+                     sizeof(retain_error),
+                     "%s",
+                     error && error[0] ? error : "Pool.SubmitOwned: argument retain failed");
+            rt_trap_clear_recovery();
+            free(task);
+            pool_release_object(pool);
+            rt_trap(retain_error);
+            return 0;
+        }
+        rt_obj_retain_maybe(arg);
+        task->owns_arg = rt_string_is_handle(arg) || rt_heap_is_payload(arg);
+        rt_trap_clear_recovery();
+    }
+
+    rt_monitor_enter(pool->monitor);
+    if (pool_shutdown_requested(pool)) {
         rt_monitor_exit(pool->monitor);
+        pool_task_release_arg(task);
+        free(task);
         pool_release_object(pool);
         return 0;
     }
 
     if (pool->pending_count == INT64_MAX) {
         rt_monitor_exit(pool->monitor);
+        pool_task_release_arg(task);
+        free(task);
         pool_release_object(pool);
         rt_trap("Pool.Submit: pending task count overflow");
         return 0;
     }
     if (pool->pending_count >= pool->max_pending) {
         rt_monitor_exit(pool->monitor);
+        pool_task_release_arg(task);
+        free(task);
         pool_release_object(pool);
         return 0;
     }
-
-    // Allocate task
-    pool_task *task = (pool_task *)calloc(1, sizeof(pool_task));
-    if (!task) {
-        rt_monitor_exit(pool->monitor);
-        pool_release_object(pool);
-        return 0;
-    }
-
-    task->callback = callback;
-    task->arg = arg;
-    task->owns_arg = owns_arg;
-    if (owns_arg && arg)
-        rt_obj_retain_maybe(arg);
-    task->next = NULL;
 
     // Enqueue task
+    rt_gc_mutator_enter();
     if (pool->queue_tail) {
         pool->queue_tail->next = task;
         pool->queue_tail = task;
@@ -654,20 +992,22 @@ threadpool_submit_impl(void *pool_obj, void (*callback)(void *), void *arg, int8
 
     // Wake one worker
     rt_monitor_pause(pool->monitor);
+    rt_gc_mutator_exit();
     rt_monitor_exit(pool->monitor);
 
     pool_release_object(pool);
     return 1;
 }
 
-int8_t rt_threadpool_submit_fn(void *pool_obj, void (*callback)(void *), void *arg) {
+/// @copydoc rt_threadpool_submit_fn
+int8_t rt_threadpool_submit_fn(void *pool_obj, rt_threadpool_task_fn callback, void *arg) {
     return threadpool_submit_impl(pool_obj, callback, arg, 0);
 }
 
 /// @brief Submit a task whose runtime-managed argument the pool owns
 ///        (VDOC-128): retained on acceptance, released after the callback
 ///        runs OR when the task is discarded by ShutdownNow/finalization.
-int8_t rt_threadpool_submit_owned_fn(void *pool_obj, void (*callback)(void *), void *arg) {
+int8_t rt_threadpool_submit_owned_fn(void *pool_obj, rt_threadpool_task_fn callback, void *arg) {
     return threadpool_submit_impl(pool_obj, callback, arg, 1);
 }
 
@@ -677,12 +1017,12 @@ int8_t rt_threadpool_submit_owned_fn(void *pool_obj, void (*callback)(void *), v
 ///          `rt_threadpool_submit_fn` to avoid converting function pointers
 ///          through `void *`.
 int8_t rt_threadpool_submit(void *pool_obj, void *callback, void *arg) {
-    return rt_threadpool_submit_fn(pool_obj, (void (*)(void *))callback, arg);
+    return rt_threadpool_submit_fn(pool_obj, pool_task_from_opaque(callback), arg);
 }
 
 /// @brief Owned-argument variant of @ref rt_threadpool_submit (VDOC-128).
 int8_t rt_threadpool_submit_owned(void *pool_obj, void *callback, void *arg) {
-    return rt_threadpool_submit_owned_fn(pool_obj, (void (*)(void *))callback, arg);
+    return rt_threadpool_submit_owned_fn(pool_obj, pool_task_from_opaque(callback), arg);
 }
 
 //=============================================================================
@@ -750,7 +1090,7 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
 
     rt_monitor_enter(pool->monitor);
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     ULONGLONG now0 = GetTickCount64();
     ULONGLONG add = (ULONGLONG)ms;
     ULONGLONG deadline = (ULLONG_MAX - now0 < add) ? ULLONG_MAX : now0 + add;
@@ -760,7 +1100,7 @@ int8_t rt_threadpool_wait_for(void *pool_obj, int64_t ms) {
 #endif
 
     while (pool->pending_count > 0 || pool->active_count > 0) {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         ULONGLONG now = GetTickCount64();
         ULONGLONG delta = now >= deadline ? 0 : deadline - now;
         int64_t remaining = delta > (ULONGLONG)INT64_MAX ? INT64_MAX : (int64_t)delta;
@@ -831,16 +1171,24 @@ void rt_threadpool_shutdown(void *pool_obj) {
     }
 
     rt_monitor_enter(pool->monitor);
-    pool->shutdown = 1;
-    pool_take_worker_handles_locked(pool, handles);
+    pool_request_shutdown_atomic(pool, 0);
     rt_monitor_pause_all(pool->monitor);
+    int8_t join_owner = pool_wait_or_claim_shutdown_locked(pool, handles);
     rt_monitor_exit(pool->monitor);
 
-    pool_join_worker_handles(handles, worker_count);
+    char join_error[512];
+    join_error[0] = '\0';
+    int8_t join_ok =
+        !join_owner ||
+        pool_finish_shutdown_join(pool, handles, worker_count, join_error, sizeof(join_error));
     free(handles);
     char error[512];
     int8_t has_error = pool_take_error(pool, error, sizeof(error));
     pool_release_object(pool);
+    if (!join_ok) {
+        rt_trap(join_error[0] ? join_error : "Pool.Shutdown: worker join failed");
+        return;
+    }
     if (has_error)
         rt_trap(error[0] ? error : "Pool.Wait: task trapped");
 }
@@ -869,30 +1217,34 @@ void rt_threadpool_shutdown_now(void *pool_obj) {
     }
 
     rt_monitor_enter(pool->monitor);
-    pool->shutdown = 1;
-    pool->shutdown_now = 1;
-    pool_take_worker_handles_locked(pool, handles);
-
-    // Clear the queue; discarded owned args are released (VDOC-128)
-    pool_task *task = pool->queue_head;
-    while (task) {
-        pool_task *next = task->next;
-        pool_task_release_arg(task);
-        free(task);
-        task = next;
-    }
-    pool->queue_head = NULL;
-    pool->queue_tail = NULL;
-    pool->pending_count = 0;
+    pool_request_shutdown_atomic(pool, 1);
+    // Detach the queue under the graph barrier, then release discarded
+    // arguments outside the monitor so user finalizers cannot deadlock it.
+    pool_task *task = pool_detach_tasks_locked(pool);
 
     rt_monitor_pause_all(pool->monitor);
     rt_monitor_exit(pool->monitor);
+    pool_release_task_list(task);
 
-    pool_join_worker_handles(handles, worker_count);
+    /* Wait only after leaving the shared graph scope. A concurrent collector
+       must not be excluded for the potentially unbounded worker-join phase. */
+    rt_monitor_enter(pool->monitor);
+    int8_t join_owner = pool_wait_or_claim_shutdown_locked(pool, handles);
+    rt_monitor_exit(pool->monitor);
+
+    char join_error[512];
+    join_error[0] = '\0';
+    int8_t join_ok =
+        !join_owner ||
+        pool_finish_shutdown_join(pool, handles, worker_count, join_error, sizeof(join_error));
     free(handles);
     char error[512];
     int8_t has_error = pool_take_error(pool, error, sizeof(error));
     pool_release_object(pool);
+    if (!join_ok) {
+        rt_trap(join_error[0] ? join_error : "Pool.ShutdownNow: worker join failed");
+        return;
+    }
     if (has_error)
         rt_trap(error[0] ? error : "Pool.Wait: task trapped");
 }
@@ -961,7 +1313,7 @@ int8_t rt_threadpool_get_is_shutdown(void *pool_obj) {
         return 1;
     rt_obj_retain_maybe(pool_obj);
     rt_monitor_enter(pool->monitor);
-    int8_t shutdown = pool->shutdown;
+    int8_t shutdown = pool_shutdown_requested(pool);
     rt_monitor_exit(pool->monitor);
     pool_release_object(pool);
     return shutdown;

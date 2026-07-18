@@ -8,8 +8,14 @@
 // File: tests/runtime/RTSeqBoxTests.cpp
 // Purpose: Validate Seq.Find/Has content-aware equality for boxed values.
 // Key invariants: Boxed values are compared by content, not pointer identity.
+// Ownership/Lifetime: Each sequence owns its retained boxed values until the
+//                     test releases the sequence and any independent aliases.
+// Links: src/runtime/collections/rt_seq.c, src/runtime/oop/rt_box.c
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_box.h"
+#include "rt_gc.h"
 #include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -396,6 +402,28 @@ static void test_value_type_zero_size_and_duplicate_fields() {
     printf("\n");
 }
 
+/// @brief Verify registered object fields make boxed value types cycle-collectable.
+/// @details The value type retains itself through its first object slot. Once the caller drops
+///          the construction reference, the registered traversal edge is the only remaining
+///          reference and the collector must reclaim the payload without a finalizer underflow.
+static void test_value_type_self_cycle_is_collected() {
+    printf("Testing Box.ValueType cycle traversal:\n");
+
+    managed_value_payload *boxed =
+        (managed_value_payload *)rt_box_value_type((int64_t)sizeof(managed_value_payload));
+    test_result("Self-cycle ValueType allocated", boxed != nullptr);
+    rt_weakref *weak = rt_weakref_new(boxed);
+    boxed->obj = boxed;
+    rt_box_value_type_add_field(
+        boxed, (int64_t)offsetof(managed_value_payload, obj), RT_VALUE_FIELD_OBJ, 1);
+
+    release_object(boxed);
+    test_result("Self-cycle ValueType reclaimed", rt_gc_collect() == 1);
+    test_result("Self-cycle ValueType weakref cleared", rt_weakref_alive(weak) == 0);
+    rt_weakref_free(weak);
+    printf("\n");
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -415,6 +443,7 @@ int main() {
     test_value_type_managed_fields();
     test_value_type_chains_existing_finalizer();
     test_value_type_zero_size_and_duplicate_fields();
+    test_value_type_self_cycle_is_collected();
 
     printf("All Seq box equality tests passed!\n");
     return 0;

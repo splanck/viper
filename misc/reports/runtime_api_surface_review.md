@@ -121,7 +121,7 @@ Scope: frontend-visible `Zanna.*` runtime API as reported by
 >   strict `rtgen` audit with header sync and unclassified-symbol checks.
 > - Final demo/IDE verification requested for this cleanup passes:
 >   `./scripts/build_demos_mac.sh` reports 17 passed / 0 failed, and
->   `./scripts/build_ide.sh` builds `src/zannaide/bin/zannaide`.
+>   `./scripts/build_ide.sh` builds `src/zannastudio/bin/zannastudio`.
 
 ## Executive Summary
 

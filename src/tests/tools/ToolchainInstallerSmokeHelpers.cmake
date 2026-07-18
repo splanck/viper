@@ -36,7 +36,7 @@ function(zanna_installer_smoke_required_tool_names out_var)
             vbasic-server
             basic-ast-dump
             basic-lex-dump
-            zannaide
+            zannastudio
             PARENT_SCOPE)
 endfunction()
 
@@ -69,13 +69,13 @@ function(zanna_installer_smoke_verify_installed_tools bin_dir exe_suffix label)
     endif ()
 
     execute_process(
-            COMMAND "${bin_dir}/zannaide${exe_suffix}" --version
-            RESULT_VARIABLE _zannaide_version_rv
-            OUTPUT_VARIABLE _zannaide_version_out
-            ERROR_VARIABLE _zannaide_version_err)
-    if (NOT _zannaide_version_rv EQUAL 0)
+            COMMAND "${bin_dir}/zannastudio${exe_suffix}" --version
+            RESULT_VARIABLE _zannastudio_version_rv
+            OUTPUT_VARIABLE _zannastudio_version_out
+            ERROR_VARIABLE _zannastudio_version_err)
+    if (NOT _zannastudio_version_rv EQUAL 0)
         message(FATAL_ERROR
-                "${label}: installed zannaide --version failed\nstdout:\n${_zannaide_version_out}\nstderr:\n${_zannaide_version_err}")
+                "${label}: installed zannastudio --version failed\nstdout:\n${_zannastudio_version_out}\nstderr:\n${_zannastudio_version_err}")
     endif ()
 endfunction()
 

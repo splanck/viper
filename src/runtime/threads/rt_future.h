@@ -12,6 +12,8 @@
 //   - Each Promise has exactly one associated Future.
 //   - Future.get blocks until the Promise is resolved.
 //   - Future.get traps if the Promise was completed with an error.
+//   - Internal no-throw rejection still publishes an error state if diagnostic
+//     string allocation fails, so worker Futures never remain pending on OOM.
 //
 // Ownership/Lifetime:
 //   - Opaque Promise and Future objects are managed by the runtime object system.
@@ -69,12 +71,41 @@ void rt_promise_set_owned(void *promise, void *value);
 /// @param value Runtime-managed result object or raw pointer.
 void rt_promise_set_transferred(void *promise, void *value);
 
+/// @brief Try to complete a producer-owned Promise by transferring one value reference.
+/// @details This internal worker primitive never traps for duplicate completion:
+///          when another producer has already settled the Promise, it releases
+///          the transferred @p value and returns zero. On success the Promise
+///          owns that reference until Future retrieval/finalization. The caller
+///          must own a live Promise reference throughout the call; this function
+///          does not consume it. Invalid handles are rejected without trapping.
+/// @param promise Producer-owned Promise object pointer.
+/// @param value Runtime-managed result reference being transferred, or NULL.
+/// @return One when this call completed the Promise, otherwise zero; @p value is
+///         consumed in either case and no invalid/duplicate-completion trap is
+///         propagated.
+int8_t rt_promise_try_set_transferred(void *promise, void *value);
+
 /// @brief Complete the Promise with an error.
 /// @details The associated Future is resolved with an error state.
 ///          Can only be called once; subsequent calls trap.
 /// @param promise Promise object pointer.
 /// @param error Error message string.
 void rt_promise_set_error(void *promise, rt_string error);
+
+/// @brief Try to reject a producer-owned Promise from a native C string without propagating OOM.
+/// @details This internal worker primitive copies @p error when allocation is
+///          available. If the copy traps or returns NULL, it still atomically
+///          completes the Promise as an error with no stored message; Future.Get
+///          then uses its generic error diagnostic and Future.IsError remains
+///          true. Unlike @ref rt_promise_set_error, an already-completed Promise
+///          returns zero instead of trapping. The caller must own a live Promise
+///          reference for the entire call, and the function does not consume it.
+/// @param promise Producer-owned Promise object pointer.
+/// @param error NUL-terminated diagnostic text, or NULL for a message-less error.
+/// @return One when this call completed the Promise, zero when the handle was
+///         invalid or another producer had already completed it; neither case
+///         invokes the trap dispatcher.
+int8_t rt_promise_try_set_error_cstr(void *promise, const char *error);
 
 /// @brief Check if the Promise is already completed.
 /// @param promise Promise object pointer.

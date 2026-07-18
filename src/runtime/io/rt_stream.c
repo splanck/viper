@@ -65,7 +65,7 @@ typedef struct {
 } stream_impl;
 
 static int stream_is_handle(void *obj) {
-    return obj && rt_obj_class_id(obj) == RT_STREAM_CLASS_ID;
+    return rt_obj_is_instance(obj, RT_STREAM_CLASS_ID, sizeof(stream_impl)) ? 1 : 0;
 }
 
 /// @brief Decrement the refcount on a GC object and free it when it reaches zero.
@@ -101,13 +101,16 @@ static int stream_retain_wrapped_or_cleanup(stream_impl *s, void *wrapped, const
 
 /// @brief Tear down the stream's reference to its underlying BinFile/MemStream.
 ///
-/// Clears `wrapped` and marks the stream closed *before* releasing,
-/// so a finalizer running in parallel with an explicit `Close` call
-/// can't double-release. Only drops the reference when the stream
-/// owns the wrapped reference. Externally wrapped streams (see
-/// `_from_binfile` / `_from_memstream`) release their retained reference but
-/// leave explicit resource closure to the original owner.
-static void stream_release_wrapped(stream_impl *s) {
+/// @details Clears `wrapped` and marks the stream closed before invoking a
+///          backing close or managed release, so re-entrant cleanup cannot
+///          observe a still-attached resource. Fresh OpenFile wrappers close
+///          their BinFile; From* wrappers release only their retained reference.
+///          Explicit Close propagates a delayed flush/close trap, whereas GC
+///          finalization suppresses that error after ensuring the handle and
+///          managed reference are released.
+/// @param s Stream implementation to detach; NULL is a no-op.
+/// @param report_close_error Non-zero for explicit Close, zero for finalization.
+static void stream_release_wrapped(stream_impl *s, int report_close_error) {
     if (!s)
         return;
 
@@ -132,7 +135,7 @@ static void stream_release_wrapped(stream_impl *s) {
         rt_trap_clear_recovery();
         if (s->owns)
             stream_release_object(wrapped);
-        if (close_trapped)
+        if (close_trapped && report_close_error)
             rt_trap(saved_error);
         return;
     }
@@ -149,12 +152,14 @@ static void stream_dispose_bytes(void *bytes) {
 
 /// @brief Right-size a read buffer after a possibly-short read.
 ///
-/// BinFile reads allocate a buffer sized to the requested count, but
-/// may actually return fewer bytes if EOF is hit mid-call. Rather
-/// than returning a buffer with trailing garbage, this helper slices
-/// the first `len` bytes into a fresh Bytes object and drops the
-/// oversized original. Fast-paths the equal-length case so full
-/// reads don't pay an allocation penalty.
+/// @details BinFile reads allocate a buffer sized to the requested count but
+///          may return fewer bytes at EOF. This helper slices the valid prefix
+///          and eagerly releases the oversized buffer. A local trap boundary
+///          guarantees that a failed slice allocation also releases the
+///          original before the error propagates. Full reads avoid the copy.
+/// @param bytes Owned oversized Bytes object.
+/// @param len Number of valid prefix bytes.
+/// @return Owned right-sized Bytes, or NULL after cleanup/trap.
 static void *stream_shrink_bytes(void *bytes, int64_t len) {
     if (!bytes)
         return rt_bytes_new(0);
@@ -165,9 +170,66 @@ static void *stream_shrink_bytes(void *bytes, int64_t len) {
     if (rt_bytes_len(bytes) == len)
         return bytes;
 
+    void *volatile owned_bytes = bytes;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        stream_save_trap_error(saved_error, sizeof(saved_error), "Stream.Read: resize failed");
+        rt_trap_clear_recovery();
+        stream_dispose_bytes((void *)owned_bytes);
+        rt_trap(saved_error);
+        return NULL;
+    }
     void *slice = rt_bytes_slice(bytes, 0, len);
-    stream_dispose_bytes(bytes);
+    rt_trap_clear_recovery();
+    stream_dispose_bytes((void *)owned_bytes);
     return slice;
+}
+
+/// @brief Allocate a BinFile read buffer and keep it owned across all trapping operations.
+/// @details Both the backing read and short-read slicing may trap. The active
+///          buffer is recorded in a volatile owner slot until ownership moves
+///          into @ref stream_shrink_bytes, ensuring every non-local exit frees
+///          exactly one allocation. The BinFile cursor retains ordinary fread
+///          semantics: it advances by the number of bytes the host read before
+///          any reported error.
+/// @param binfile Open BinFile backing object.
+/// @param count Maximum byte count to read; must be positive.
+/// @param fallback Caller-specific diagnostic for allocation/read failure.
+/// @return Owned Bytes sized to the actual read, or NULL after cleanup/trap.
+static void *stream_read_binfile_bytes(void *binfile, int64_t count, const char *fallback) {
+    void *volatile active_bytes = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        stream_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        stream_dispose_bytes((void *)active_bytes);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    active_bytes = rt_bytes_new(count);
+    if (!active_bytes) {
+        rt_trap(fallback);
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    int64_t read = rt_binfile_read(binfile, (void *)active_bytes, 0, count);
+    if (read < 0) {
+        rt_trap(fallback);
+        rt_trap_clear_recovery();
+        stream_dispose_bytes((void *)active_bytes);
+        return NULL;
+    }
+
+    void *oversized = (void *)active_bytes;
+    active_bytes = NULL;
+    void *result = stream_shrink_bytes(oversized, read);
+    rt_trap_clear_recovery();
+    return result;
 }
 
 /// @brief Allocate and zero-initialize a new stream_impl GC object; traps on OOM.
@@ -178,6 +240,37 @@ static stream_impl *stream_alloc(void) {
         return NULL;
     }
     memset(s, 0, sizeof(*s));
+    return s;
+}
+
+/// @brief Allocate a Stream wrapper while retaining cleanup ownership of a fresh backing object.
+/// @details OpenFile/OpenMemory/OpenBytes create the backing object first. If
+///          allocation of the wrapper performs a recoverable longjmp, this
+///          helper releases that backing object before propagating the trap;
+///          its finalizer closes any native file handle. On success ownership
+///          remains with the caller, which installs it into the wrapper.
+/// @param wrapped Fresh backing object owned by the calling constructor.
+/// @param fallback Diagnostic used when no specific recovered error is available.
+/// @return Fresh zeroed Stream payload, or NULL after releasing @p wrapped.
+static stream_impl *stream_alloc_or_release_owned(void *wrapped, const char *fallback) {
+    void *volatile owned_wrapped = wrapped;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        stream_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        stream_release_object((void *)owned_wrapped);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    stream_impl *s = stream_alloc();
+    rt_trap_clear_recovery();
+    if (!s) {
+        stream_release_object(wrapped);
+        return NULL;
+    }
     return s;
 }
 
@@ -207,7 +300,7 @@ static stream_impl *stream_require_open(void *stream, const char *context) {
 /// @brief GC finalizer: releases the wrapped BinFile/MemStream when the stream object is collected.
 static void stream_finalizer(void *obj) {
     stream_impl *s = (stream_impl *)obj;
-    stream_release_wrapped(s);
+    stream_release_wrapped(s, 0);
 }
 
 //=============================================================================
@@ -221,11 +314,10 @@ void *rt_stream_open_file(rt_string path, rt_string mode) {
     if (!binfile)
         return NULL;
 
-    stream_impl *s = stream_alloc();
-    if (!s) {
-        stream_release_object(binfile);
+    stream_impl *s =
+        stream_alloc_or_release_owned(binfile, "Stream.OpenFile: wrapper allocation failed");
+    if (!s)
         return NULL;
-    }
     s->type = RT_STREAM_TYPE_BINFILE;
     s->wrapped = binfile;
     s->owns = 1;
@@ -242,11 +334,10 @@ void *rt_stream_open_memory(void) {
     if (!memstream)
         return NULL;
 
-    stream_impl *s = stream_alloc();
-    if (!s) {
-        stream_release_object(memstream);
+    stream_impl *s =
+        stream_alloc_or_release_owned(memstream, "Stream.OpenMemory: wrapper allocation failed");
+    if (!s)
         return NULL;
-    }
     s->type = RT_STREAM_TYPE_MEMSTREAM;
     s->wrapped = memstream;
     s->owns = 1;
@@ -264,11 +355,10 @@ void *rt_stream_open_bytes(void *bytes) {
     if (!memstream)
         return NULL;
 
-    stream_impl *s = stream_alloc();
-    if (!s) {
-        stream_release_object(memstream);
+    stream_impl *s =
+        stream_alloc_or_release_owned(memstream, "Stream.OpenBytes: wrapper allocation failed");
+    if (!s)
         return NULL;
-    }
     s->type = RT_STREAM_TYPE_MEMSTREAM;
     s->wrapped = memstream;
     s->owns = 1;
@@ -405,8 +495,13 @@ int8_t rt_stream_is_eof(void *stream) {
 // Stream Operations
 //=============================================================================
 
-/// @brief Read up to `count` bytes from the current position. Returns a Bytes object sized to
-/// the actual count read (which may be smaller than `count` if EOF is hit).
+/// @brief Read up to `count` bytes from the current position.
+/// @details For both file and memory backings, the allocation request is first
+///          clamped to the measured bytes remaining. A caller asking for an
+///          arbitrarily large count near EOF therefore cannot force an equally
+///          large speculative allocation. The returned Bytes object is sized
+///          to the actual read, which may still be shorter if a file changes
+///          between the size snapshot and the host read.
 void *rt_stream_read(void *stream, int64_t count) {
     stream_impl *s = stream_require_open(stream, "Stream.Read: null stream");
     if (!s)
@@ -419,18 +514,18 @@ void *rt_stream_read(void *stream, int64_t count) {
         return rt_bytes_new(0);
 
     if (s->type == RT_STREAM_TYPE_BINFILE) {
-        void *bytes = rt_bytes_new(count);
-        if (!bytes) {
-            rt_trap("Stream.Read: memory allocation failed");
+        int64_t pos = rt_binfile_pos(s->wrapped);
+        int64_t size = rt_binfile_size(s->wrapped);
+        if (pos < 0 || size < 0 || size < pos) {
+            rt_trap("Stream.Read: invalid file position or size");
             return rt_bytes_new(0);
         }
-        int64_t read = rt_binfile_read(s->wrapped, bytes, 0, count);
-        if (read < 0) {
-            stream_dispose_bytes(bytes);
-            rt_trap("Stream.Read: read failed");
+        int64_t remaining = size - pos;
+        if (remaining <= 0)
             return rt_bytes_new(0);
-        }
-        return stream_shrink_bytes(bytes, read);
+        if (count > remaining)
+            count = remaining;
+        return stream_read_binfile_bytes(s->wrapped, count, "Stream.Read: read failed");
     } else {
         int64_t pos = rt_memstream_get_pos(s->wrapped);
         int64_t len = rt_memstream_get_len(s->wrapped);
@@ -463,18 +558,7 @@ void *rt_stream_read_all(void *stream) {
         if (remaining <= 0)
             return rt_bytes_new(0);
 
-        void *bytes = rt_bytes_new(remaining);
-        if (!bytes) {
-            rt_trap("Stream.ReadAll: memory allocation failed");
-            return rt_bytes_new(0);
-        }
-        int64_t read = rt_binfile_read(s->wrapped, bytes, 0, remaining);
-        if (read < 0) {
-            stream_dispose_bytes(bytes);
-            rt_trap("Stream.ReadAll: read failed");
-            return rt_bytes_new(0);
-        }
-        return stream_shrink_bytes(bytes, read);
+        return stream_read_binfile_bytes(s->wrapped, remaining, "Stream.ReadAll: read failed");
     } else {
         // Read remaining bytes from MemStream
         int64_t pos = rt_memstream_get_pos(s->wrapped);
@@ -563,7 +647,7 @@ void rt_stream_close(void *stream) {
         return;
     }
     stream_impl *s = (stream_impl *)stream;
-    stream_release_wrapped(s);
+    stream_release_wrapped(s, 1);
 }
 
 //=============================================================================

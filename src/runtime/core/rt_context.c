@@ -20,13 +20,14 @@
 //     decremented on unbind. When it reaches 0, the context's open files and
 //     registered types are migrated to the legacy context so native post-VM
 //     code continues to work correctly.
-//   - A process-wide legacy context is lazily initialized exactly once (atomic
-//     compare-exchange) and used as a fallback when g_rt_context is NULL. It
-//     is never explicitly destroyed.
-//   - rt_context_init() zero-initializes all subsystems. Callers must call
-//     rt_context_cleanup() to free heap resources when done.
-//   - Contexts must not be shared across threads without external
-//     synchronization; the thread-local binding pattern is the intended idiom.
+//   - A process-wide legacy context is initialized through an atomic state
+//     machine and used as a fallback when g_rt_context is NULL. Shutdown may
+//     clean it and publish an uninitialized state for safe later reuse.
+//   - rt_context_init() transactionally constructs subsystem locks and empty
+//     state. Cleanup claims the lifecycle before releasing that storage, so a
+//     concurrent bind either owns a counted reservation or is rejected.
+//   - RNG, module variables, files, arguments, and type metadata are serialized
+//     independently when one context is inherited by multiple runtime threads.
 //
 // Ownership/Lifetime:
 //   - The embedding application (VM or host) owns the RtContext struct storage.
@@ -43,11 +44,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_context.h"
+#include "rt_context_internal.h"
 #include "rt_internal.h"
 #include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_trap.h"
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,19 +64,54 @@
    don't use file I/O or OOP don't need to link zanna_rt_io_fs / zanna_rt_oop.
    When those components ARE linked, their strong definitions override these. */
 #if defined(_MSC_VER)
+/// @brief Release optional file-subsystem state owned by a context.
+/// @param ctx Context whose file state is being destroyed.
 void rt_file_state_cleanup(RtContext *ctx);
+/// @brief Release optional OOP type-registry state owned by a context.
+/// @param ctx Context whose type registry is being destroyed.
 void rt_type_registry_cleanup(RtContext *ctx);
-void rt_type_registry_init(RtContext *ctx);
+/// @brief Transactionally initialize the optional OOP type registry.
+/// @param ctx Context receiving the registry synchronization state.
+/// @return Non-zero on success; zero after a recoverable native init failure.
+int rt_type_registry_init(RtContext *ctx);
+/// @brief Acquire exclusive access to optional type-registry state.
+/// @param ctx Initialized context whose registry is being migrated.
+void rt_type_registry_state_write_lock(RtContext *ctx);
+/// @brief Release exclusive access to optional type-registry state.
+/// @param ctx Context passed to the matching write-lock operation.
+void rt_type_registry_state_write_unlock(RtContext *ctx);
 #else
+/// @brief Weak no-op file-state cleanup used when the I/O component is absent.
+/// @param ctx Context being cleaned; ignored by this fallback.
 __attribute__((weak)) void rt_file_state_cleanup(RtContext *ctx) {
     (void)ctx;
 }
 
+/// @brief Weak no-op type-registry cleanup used when the OOP component is absent.
+/// @param ctx Context being cleaned; ignored by this fallback.
 __attribute__((weak)) void rt_type_registry_cleanup(RtContext *ctx) {
     (void)ctx;
 }
 
-__attribute__((weak)) void rt_type_registry_init(RtContext *ctx) {
+/// @brief Weak successful type-registry initializer for base-only runtimes.
+/// @details The strong OOP implementation replaces this definition and creates
+///          its native synchronization state transactionally.
+/// @param ctx Context being initialized; ignored by this fallback.
+/// @return Always one because no optional state exists.
+__attribute__((weak)) int rt_type_registry_init(RtContext *ctx) {
+    (void)ctx;
+    return 1;
+}
+
+/// @brief Weak no-op registry write lock used when the OOP component is absent.
+/// @param ctx Context being migrated; ignored by this fallback.
+__attribute__((weak)) void rt_type_registry_state_write_lock(RtContext *ctx) {
+    (void)ctx;
+}
+
+/// @brief Weak no-op registry write unlock used when the OOP component is absent.
+/// @param ctx Context being migrated; ignored by this fallback.
+__attribute__((weak)) void rt_type_registry_state_write_unlock(RtContext *ctx) {
     (void)ctx;
 }
 #endif
@@ -146,6 +182,146 @@ static void rt_spin_unlock(int *lock) {
 }
 
 //===----------------------------------------------------------------------===//
+// Per-Context Mutable-State Locks
+//===----------------------------------------------------------------------===//
+
+/// @brief Platform-private recursive mutex stored through `RtContext::state_locks`.
+typedef struct rt_context_mutex {
+#if RT_PLATFORM_WINDOWS
+    CRITICAL_SECTION native;
+#else
+    pthread_mutex_t native;
+#endif
+} rt_context_mutex_t;
+
+/// @brief One lock acquisition recorded for trap-safe lexical unwinding.
+typedef struct rt_context_lock_frame {
+    RtContext *ctx;
+    rt_context_state_kind_t kind;
+} rt_context_lock_frame_t;
+
+/// Maximum nested context locks on one runtime thread.
+#define RT_CONTEXT_LOCK_STACK_CAPACITY 32u
+
+/// Thread-local acquisition stack released in reverse order before `longjmp`.
+static RT_THREAD_LOCAL rt_context_lock_frame_t g_context_lock_stack[RT_CONTEXT_LOCK_STACK_CAPACITY];
+static RT_THREAD_LOCAL uint32_t g_context_lock_depth = 0;
+
+/// @brief Validate and return a context's platform mutex for @p kind.
+/// @param ctx Initialized runtime context.
+/// @param kind Subsystem lock selector.
+/// @return Concrete mutex pointer, or NULL for invalid/uninitialized input.
+static rt_context_mutex_t *rt_context_mutex_for_(RtContext *ctx, rt_context_state_kind_t kind) {
+    if (!ctx || kind < RT_CONTEXT_STATE_RNG || kind > RT_CONTEXT_STATE_LIFECYCLE)
+        return NULL;
+    return (rt_context_mutex_t *)ctx->state_locks[(size_t)kind];
+}
+
+/// @brief Allocate and initialize one recursive platform mutex.
+/// @details Recursive behavior permits layered helpers in the same subsystem
+///          to share the context lock without self-deadlock. The function is
+///          non-trapping so context initialization can unwind earlier slots
+///          transactionally before reporting failure.
+/// @return Owned mutex storage, or NULL on allocation/initialization failure.
+static rt_context_mutex_t *rt_context_mutex_create_(void) {
+    rt_context_mutex_t *mutex = (rt_context_mutex_t *)calloc(1, sizeof(*mutex));
+    if (!mutex)
+        return NULL;
+#if RT_PLATFORM_WINDOWS
+    if (!InitializeCriticalSectionAndSpinCount(&mutex->native, 64)) {
+        free(mutex);
+        return NULL;
+    }
+#else
+    pthread_mutexattr_t attr;
+    if (pthread_mutexattr_init(&attr) != 0) {
+        free(mutex);
+        return NULL;
+    }
+    int status = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    if (status == 0)
+        status = pthread_mutex_init(&mutex->native, &attr);
+    (void)pthread_mutexattr_destroy(&attr);
+    if (status != 0) {
+        free(mutex);
+        return NULL;
+    }
+#endif
+    return mutex;
+}
+
+/// @brief Destroy one context mutex and release its owned storage.
+/// @param mutex Mutex returned by @ref rt_context_mutex_create_, or NULL.
+static void rt_context_mutex_destroy_(rt_context_mutex_t *mutex) {
+    if (!mutex)
+        return;
+#if RT_PLATFORM_WINDOWS
+    DeleteCriticalSection(&mutex->native);
+#else
+    (void)pthread_mutex_destroy(&mutex->native);
+#endif
+    free(mutex);
+}
+
+/// @brief Acquire a concrete context mutex without touching the trap stack.
+/// @param mutex Initialized mutex; NULL is an internal fatal error.
+static void rt_context_mutex_lock_raw_(rt_context_mutex_t *mutex) {
+    if (!mutex)
+        rt_abort("Runtime context state lock is not initialized");
+#if RT_PLATFORM_WINDOWS
+    EnterCriticalSection(&mutex->native);
+#else
+    if (pthread_mutex_lock(&mutex->native) != 0)
+        rt_abort("Failed to acquire runtime context state lock");
+#endif
+}
+
+/// @brief Release a concrete context mutex without touching the trap stack.
+/// @param mutex Initialized mutex; NULL is an internal fatal error.
+static void rt_context_mutex_unlock_raw_(rt_context_mutex_t *mutex) {
+    if (!mutex)
+        rt_abort("Runtime context state lock is not initialized");
+#if RT_PLATFORM_WINDOWS
+    LeaveCriticalSection(&mutex->native);
+#else
+    if (pthread_mutex_unlock(&mutex->native) != 0)
+        rt_abort("Failed to release runtime context state lock");
+#endif
+}
+
+/// @copydoc rt_context_state_lock
+void rt_context_state_lock(RtContext *ctx, rt_context_state_kind_t kind) {
+    if (g_context_lock_depth >= RT_CONTEXT_LOCK_STACK_CAPACITY)
+        rt_abort("Runtime context state lock nesting overflow");
+    rt_context_mutex_t *mutex = rt_context_mutex_for_(ctx, kind);
+    rt_context_mutex_lock_raw_(mutex);
+    g_context_lock_stack[g_context_lock_depth].ctx = ctx;
+    g_context_lock_stack[g_context_lock_depth].kind = kind;
+    g_context_lock_depth++;
+}
+
+/// @copydoc rt_context_release_state
+void rt_context_release_state(RtContext *ctx, rt_context_state_kind_t kind) {
+    if (g_context_lock_depth == 0)
+        return;
+    rt_context_lock_frame_t *frame = &g_context_lock_stack[g_context_lock_depth - 1];
+    if (frame->ctx != ctx || frame->kind != kind)
+        rt_abort("Runtime context state locks released out of order");
+    g_context_lock_depth--;
+    frame->ctx = NULL;
+    rt_context_mutex_unlock_raw_(rt_context_mutex_for_(ctx, kind));
+}
+
+/// @copydoc rt_context_state_abort_for_trap
+void rt_context_state_abort_for_trap(void) {
+    while (g_context_lock_depth > 0) {
+        rt_context_lock_frame_t frame = g_context_lock_stack[--g_context_lock_depth];
+        g_context_lock_stack[g_context_lock_depth].ctx = NULL;
+        rt_context_mutex_unlock_raw_(rt_context_mutex_for_(frame.ctx, frame.kind));
+    }
+}
+
+//===----------------------------------------------------------------------===//
 // Main-Thread Tracking
 //===----------------------------------------------------------------------===//
 
@@ -154,32 +330,30 @@ static DWORD g_main_thread_id_;
 #else
 static pthread_t g_main_thread_;
 #endif
-enum { RT_MAIN_THREAD_UNSET = 0, RT_MAIN_THREAD_INITIALIZING = 1, RT_MAIN_THREAD_READY = 2 };
+enum { RT_MAIN_THREAD_UNSET = 0, RT_MAIN_THREAD_READY = 1 };
 
 static int g_main_thread_set_ = RT_MAIN_THREAD_UNSET;
 
-/// @brief Atomically install the calling thread as the main thread (idempotent).
-/// @details Wins an initializing CAS on the first call only — subsequent
-///          invocations wait until the first thread publishes READY. The
-///          platform-native thread handle (`GetCurrentThreadId` on Windows,
-///          `pthread_self` elsewhere) is stored before the READY state is
-///          released so readers never compare against uninitialized storage.
+/// @brief Spinlock protecting the platform-native main-thread identifier.
+/// @details The identifier itself is not an atomic C type (`pthread_t` is
+///          opaque on POSIX), so both readers and explicit overrides must
+///          hold this lock. The accompanying atomic ready flag only controls
+///          lazy capture; it does not by itself make identifier access safe.
+static int g_main_thread_lock_ = 0;
+
+/// @brief Install the calling thread as the main thread when none is recorded.
+/// @details Serializes access to the platform-native identifier because
+///          `pthread_t` is not guaranteed to support lock-free atomic access.
+///          Explicit calls to @ref rt_set_main_thread may later override the
+///          captured value under the same lock without racing concurrent
+///          calls to @ref rt_is_main_thread.
 static void rt_capture_process_main_thread_(void) {
-    int expected = RT_MAIN_THREAD_UNSET;
-    if (!__atomic_compare_exchange_n(&g_main_thread_set_,
-                                     &expected,
-                                     RT_MAIN_THREAD_INITIALIZING,
-                                     /*weak=*/0,
-                                     __ATOMIC_ACQ_REL,
-                                     __ATOMIC_ACQUIRE)) {
-        while (__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE) ==
-               RT_MAIN_THREAD_INITIALIZING) {
-#if RT_PLATFORM_WINDOWS
-            Sleep(0);
-#else
-            sched_yield();
-#endif
-        }
+    if (__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE) == RT_MAIN_THREAD_READY)
+        return;
+
+    rt_spin_lock(&g_main_thread_lock_);
+    if (__atomic_load_n(&g_main_thread_set_, __ATOMIC_RELAXED) == RT_MAIN_THREAD_READY) {
+        rt_spin_unlock(&g_main_thread_lock_);
         return;
     }
 #if RT_PLATFORM_WINDOWS
@@ -188,6 +362,7 @@ static void rt_capture_process_main_thread_(void) {
     g_main_thread_ = pthread_self();
 #endif
     __atomic_store_n(&g_main_thread_set_, RT_MAIN_THREAD_READY, __ATOMIC_RELEASE);
+    rt_spin_unlock(&g_main_thread_lock_);
 }
 
 #if RT_PLATFORM_WINDOWS
@@ -209,15 +384,17 @@ __attribute__((constructor)) static void rt_capture_process_main_thread_ctor(voi
 /// @brief Manually re-install the calling thread as the main thread (overrides ctor capture).
 /// @details Useful when the runtime is loaded as a shared library and
 ///          the constructor fired on the loader's thread rather than
-///          the actual UI thread. Atomically updates the stored thread
-///          handle and the "set" flag.
+///          the actual UI thread. Updates the native identifier while holding
+///          the same lock used by readers, then publishes the ready flag.
 void rt_set_main_thread(void) {
+    rt_spin_lock(&g_main_thread_lock_);
 #if RT_PLATFORM_WINDOWS
     g_main_thread_id_ = GetCurrentThreadId();
 #else
     g_main_thread_ = pthread_self();
 #endif
     __atomic_store_n(&g_main_thread_set_, RT_MAIN_THREAD_READY, __ATOMIC_RELEASE);
+    rt_spin_unlock(&g_main_thread_lock_);
 }
 
 /// @brief Return non-zero when the calling thread is the runtime's designated main thread.
@@ -229,11 +406,15 @@ void rt_set_main_thread(void) {
 int8_t rt_is_main_thread(void) {
     if (__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE) != RT_MAIN_THREAD_READY)
         rt_capture_process_main_thread_();
+
+    rt_spin_lock(&g_main_thread_lock_);
 #if RT_PLATFORM_WINDOWS
-    return GetCurrentThreadId() == g_main_thread_id_;
+    int8_t result = GetCurrentThreadId() == g_main_thread_id_;
 #else
-    return pthread_equal(pthread_self(), g_main_thread_);
+    int8_t result = (int8_t)pthread_equal(pthread_self(), g_main_thread_);
 #endif
+    rt_spin_unlock(&g_main_thread_lock_);
+    return result;
 }
 
 /// @brief Trap with a thread-violation diagnostic if the caller isn't on the main thread.
@@ -276,43 +457,78 @@ void rt_assert_main_thread_(const char *file, int line) {
 ///     return                  return
 /// ```
 ///
+/// @return Non-zero when the context is ready; zero if initialization trapped
+///         and the active trap hook returned control to this function.
+///
 /// @note Called automatically by rt_legacy_context() and rt_set_current_context().
-static void rt_legacy_ensure_init(void) {
-    int state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE);
-    if (state == 2)
-        return;
-    if (state == -1) {
-        rt_trap("Runtime context initialization failed");
-        return;
-    }
-
-    int expected = 0;
-    if (__atomic_compare_exchange_n(
-            &g_legacy_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
-        jmp_buf recovery;
-        rt_trap_set_recovery(&recovery);
-        if (setjmp(recovery) != 0) {
-            rt_trap_clear_recovery();
-            __atomic_store_n(&g_legacy_state, -1, __ATOMIC_RELEASE);
+static int rt_legacy_ensure_init(void) {
+    for (;;) {
+        int state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE);
+        if (state == 2)
+            return 1;
+        if (state == -1) {
             rt_trap("Runtime context initialization failed");
-            return;
+            return 0;
         }
-        rt_context_init(&g_legacy_ctx);
-        rt_trap_clear_recovery();
-        __atomic_store_n(&g_legacy_state, 2, __ATOMIC_RELEASE);
-        return;
-    }
 
-    // Another thread is initializing; yield while waiting.
-    while ((state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE)) == 1) {
+        int expected = 0;
+        if (__atomic_compare_exchange_n(
+                &g_legacy_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+            jmp_buf recovery;
+            rt_trap_set_recovery(&recovery);
+            if (setjmp(recovery) != 0) {
+                rt_trap_clear_recovery();
+                __atomic_store_n(&g_legacy_state, -1, __ATOMIC_RELEASE);
+                rt_trap("Runtime context initialization failed");
+                return 0;
+            }
+            rt_context_init(&g_legacy_ctx);
+            rt_trap_clear_recovery();
+            __atomic_store_n(&g_legacy_state, 2, __ATOMIC_RELEASE);
+            return 1;
+        }
+
+        // Another thread is initializing or resetting; yield, then retry the
+        // complete state machine because shutdown may publish state 0.
 #if RT_PLATFORM_WINDOWS
         SwitchToThread();
 #else
         sched_yield();
 #endif
     }
-    if (state == -1)
-        rt_trap("Runtime context initialization failed");
+}
+
+/// @copydoc rt_context_acquire_state
+RtContext *rt_context_acquire_state(rt_context_state_kind_t kind, int *is_legacy) {
+    if (is_legacy)
+        *is_legacy = 0;
+    if (kind < RT_CONTEXT_STATE_RNG || kind > RT_CONTEXT_STATE_LIFECYCLE) {
+        rt_trap("Runtime context state kind is invalid");
+        return NULL;
+    }
+
+    RtContext *bound = g_rt_context;
+    if (bound) {
+        rt_context_state_lock(bound, kind);
+        if (is_legacy)
+            *is_legacy = bound == &g_legacy_ctx;
+        return bound;
+    }
+
+    for (;;) {
+        if (!rt_legacy_ensure_init())
+            return NULL;
+        rt_spin_lock(&g_legacy_handoff_lock);
+        if (__atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE) != 2) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            continue;
+        }
+        rt_context_state_lock(&g_legacy_ctx, kind);
+        rt_spin_unlock(&g_legacy_handoff_lock);
+        if (is_legacy)
+            *is_legacy = 1;
+        return &g_legacy_ctx;
+    }
 }
 
 /// @brief Initialize a runtime context with default values.
@@ -341,13 +557,20 @@ static void rt_legacy_ensure_init(void) {
 ///
 /// @param ctx Pointer to the context to initialize. Must not be NULL.
 ///
-/// @note Does not allocate memory; sets up empty arrays with zero capacity.
+/// @note Allocates platform-private subsystem locks. Initialization is
+///       transactional: failure releases every lock constructed so far and
+///       leaves the lifecycle uninitialized.
 /// @note The deterministic seed ensures tests produce repeatable results.
 ///
 /// @see rt_context_cleanup For releasing resources when done
 void rt_context_init(RtContext *ctx) {
     if (!ctx)
         return;
+
+    __atomic_store_n(&ctx->lifecycle_state, RT_CONTEXT_LIFECYCLE_UNINITIALIZED, __ATOMIC_RELAXED);
+    __atomic_store_n(&ctx->bind_count, 0, __ATOMIC_RELAXED);
+    for (size_t i = 0; i < RT_CONTEXT_STATE_LOCK_COUNT; ++i)
+        ctx->state_locks[i] = NULL;
 
     // Initialize RNG with deterministic seed (same as old global default)
     ctx->rng_state = 0xDEADBEEFCAFEBABEULL;
@@ -381,9 +604,29 @@ void rt_context_init(RtContext *ctx) {
     ctx->type_registry.bindings_cap = 0;
     ctx->type_registry.rw_lock = NULL;
     ctx->type_registry.sealed = 0;
-    rt_type_registry_init(ctx);
 
-    ctx->bind_count = 0;
+    for (size_t i = 0; i < RT_CONTEXT_STATE_LOCK_COUNT; ++i) {
+        ctx->state_locks[i] = rt_context_mutex_create_();
+        if (!ctx->state_locks[i]) {
+            for (size_t j = 0; j < i; ++j) {
+                rt_context_mutex_destroy_((rt_context_mutex_t *)ctx->state_locks[j]);
+                ctx->state_locks[j] = NULL;
+            }
+            rt_trap("Runtime context state-lock initialization failed");
+            return;
+        }
+    }
+
+    if (!rt_type_registry_init(ctx)) {
+        for (size_t i = 0; i < RT_CONTEXT_STATE_LOCK_COUNT; ++i) {
+            rt_context_mutex_destroy_((rt_context_mutex_t *)ctx->state_locks[i]);
+            ctx->state_locks[i] = NULL;
+        }
+        rt_trap("Runtime context type-registry lock initialization failed");
+        return;
+    }
+
+    __atomic_store_n(&ctx->lifecycle_state, RT_CONTEXT_LIFECYCLE_READY, __ATOMIC_RELEASE);
 }
 
 /// @brief Cleanup a runtime context and free owned resources.
@@ -404,13 +647,44 @@ void rt_context_init(RtContext *ctx) {
 ///
 /// @param ctx Pointer to the context to clean up. Ignored if NULL.
 ///
-/// @note Safe to call on an already-cleaned or uninitialized context.
-/// @note Should only be called when no threads are using the context.
+/// @note Safe to call on a context that was initialized and already cleaned.
+///       Arbitrary uninitialized storage is not a valid context.
+/// @note If the current thread is the context's sole binding, cleanup first
+///       unbinds it. A context bound by any other thread is rejected.
+/// @note Cleanup claims `CLEANING` while binding publication is excluded. A
+///       concurrent bind therefore either increments the count first (causing
+///       cleanup to return a trap) or observes a non-ready context and traps.
 ///
 /// @see rt_context_init For initializing a context
 void rt_context_cleanup(RtContext *ctx) {
     if (!ctx)
         return;
+
+    size_t bindings = __atomic_load_n(&ctx->bind_count, __ATOMIC_ACQUIRE);
+    if (bindings == 1 && g_rt_context == ctx) {
+        rt_set_current_context(NULL);
+        bindings = __atomic_load_n(&ctx->bind_count, __ATOMIC_ACQUIRE);
+    }
+    rt_spin_lock(&g_legacy_handoff_lock);
+    const int lifecycle = __atomic_load_n(&ctx->lifecycle_state, __ATOMIC_ACQUIRE);
+    if (lifecycle == RT_CONTEXT_LIFECYCLE_UNINITIALIZED) {
+        rt_spin_unlock(&g_legacy_handoff_lock);
+        return;
+    }
+    if (lifecycle != RT_CONTEXT_LIFECYCLE_READY) {
+        rt_spin_unlock(&g_legacy_handoff_lock);
+        rt_trap("Runtime context cleanup is already in progress");
+        return;
+    }
+
+    bindings = __atomic_load_n(&ctx->bind_count, __ATOMIC_ACQUIRE);
+    if (bindings != 0) {
+        rt_spin_unlock(&g_legacy_handoff_lock);
+        rt_trap("Cannot clean up a runtime context while it is bound");
+        return;
+    }
+    __atomic_store_n(&ctx->lifecycle_state, RT_CONTEXT_LIFECYCLE_CLEANING, __ATOMIC_RELEASE);
+    rt_spin_unlock(&g_legacy_handoff_lock);
 
     rt_file_state_cleanup(ctx);
     rt_args_state_cleanup(ctx);
@@ -440,6 +714,275 @@ void rt_context_cleanup(RtContext *ctx) {
     ctx->modvar_index_capacity = 0;
 
     rt_type_registry_cleanup(ctx);
+
+    for (size_t i = 0; i < RT_CONTEXT_STATE_LOCK_COUNT; ++i) {
+        rt_context_mutex_destroy_((rt_context_mutex_t *)ctx->state_locks[i]);
+        ctx->state_locks[i] = NULL;
+    }
+    __atomic_store_n(&ctx->lifecycle_state, RT_CONTEXT_LIFECYCLE_UNINITIALIZED, __ATOMIC_RELEASE);
+}
+
+/// @brief Test whether a context may publish or consume a binding.
+/// @details Lifecycle state uses atomic publication because initialization and
+///          cleanup occur outside the caller's TLS. Binding callers perform
+///          this test while holding `g_legacy_handoff_lock`, which makes the
+///          ready check and bind-count transition one cleanup-excluding action.
+/// @param ctx Candidate caller-owned context.
+/// @return Non-zero only while @p ctx is initialized and ready.
+static int rt_context_is_ready_(const RtContext *ctx) {
+    return ctx &&
+           __atomic_load_n(&ctx->lifecycle_state, __ATOMIC_ACQUIRE) == RT_CONTEXT_LIFECYCLE_READY;
+}
+
+/// @brief Try to reserve one thread binding on a runtime context.
+/// @details Uses a compare-exchange loop instead of fetch-add so `SIZE_MAX`
+///          cannot wrap to zero. The caller decides how to report failure and
+///          can therefore release any lifecycle lock before invoking a trap
+///          hook that may return or perform a non-local jump.
+/// @param ctx Initialized context whose binding count is incremented.
+/// @param previous Receives the count observed immediately before increment.
+/// @return Non-zero on success; zero when the counter is already `SIZE_MAX`.
+static int rt_context_try_add_binding(RtContext *ctx, size_t *previous) {
+    size_t observed = __atomic_load_n(&ctx->bind_count, __ATOMIC_ACQUIRE);
+    for (;;) {
+        if (observed == SIZE_MAX)
+            return 0;
+        size_t desired = observed + 1;
+        if (__atomic_compare_exchange_n(&ctx->bind_count,
+                                        &observed,
+                                        desired,
+                                        /*weak=*/1,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_ACQUIRE)) {
+            if (previous)
+                *previous = observed;
+            return 1;
+        }
+    }
+}
+
+/// @brief Try to release one thread binding from a runtime context.
+/// @details Uses a compare-exchange loop so a corrupted zero count cannot
+///          underflow to `SIZE_MAX`. As with @ref rt_context_try_add_binding,
+///          failure is reported to the caller before any trap is dispatched.
+/// @param ctx Initialized context whose binding count is decremented.
+/// @param previous Receives the count observed immediately before decrement.
+/// @return Non-zero on success; zero when the counter is already zero.
+static int rt_context_try_remove_binding(RtContext *ctx, size_t *previous) {
+    size_t observed = __atomic_load_n(&ctx->bind_count, __ATOMIC_ACQUIRE);
+    for (;;) {
+        if (observed == 0)
+            return 0;
+        size_t desired = observed - 1;
+        if (__atomic_compare_exchange_n(&ctx->bind_count,
+                                        &observed,
+                                        desired,
+                                        /*weak=*/1,
+                                        __ATOMIC_ACQ_REL,
+                                        __ATOMIC_ACQUIRE)) {
+            if (previous)
+                *previous = observed;
+            return 1;
+        }
+    }
+}
+
+/// @brief Acquire one subsystem lock on two contexts in address order.
+/// @details Migration already holds the process handoff lock, but stable address
+///          ordering also makes this helper safe against future two-context
+///          operations. Raw acquisition intentionally avoids the trap-unwind
+///          stack because the migration section performs no trapping work.
+/// @param a First context.
+/// @param b Second distinct context.
+/// @param kind Subsystem lock to acquire on both.
+static void rt_context_lock_pair_raw_(RtContext *a, RtContext *b, rt_context_state_kind_t kind) {
+    int a_first = (uintptr_t)(void *)a < (uintptr_t)(void *)b;
+    RtContext *first = a_first ? a : b;
+    RtContext *second = a_first ? b : a;
+    rt_context_mutex_lock_raw_(rt_context_mutex_for_(first, kind));
+    rt_context_mutex_lock_raw_(rt_context_mutex_for_(second, kind));
+}
+
+/// @brief Release a pair acquired by @ref rt_context_lock_pair_raw_.
+/// @param a First context originally supplied.
+/// @param b Second distinct context originally supplied.
+/// @param kind Subsystem lock held on both.
+static void rt_context_unlock_pair_raw_(RtContext *a, RtContext *b, rt_context_state_kind_t kind) {
+    int a_first = (uintptr_t)(void *)a < (uintptr_t)(void *)b;
+    RtContext *first = a_first ? a : b;
+    RtContext *second = a_first ? b : a;
+    rt_context_mutex_unlock_raw_(rt_context_mutex_for_(second, kind));
+    rt_context_mutex_unlock_raw_(rt_context_mutex_for_(first, kind));
+}
+
+/// @brief Move legacy-compatible subsystem state when the destination is empty.
+/// @details Transfers file channels, command-line arguments, and the complete
+///          type registry independently. Each transfer clears the source so
+///          ownership remains unique. Callers must hold
+///          `g_legacy_handoff_lock`, and one argument must be the static legacy
+///          context; passing the same context for both sides is a safe no-op.
+/// @param destination Context receiving any subsystem whose primary storage is empty.
+/// @param source Context relinquishing the transferred subsystem state.
+static void rt_context_move_legacy_state(RtContext *destination, RtContext *source) {
+    if (!destination || !source || destination == source)
+        return;
+
+    rt_context_lock_pair_raw_(destination, source, RT_CONTEXT_STATE_FILE);
+    rt_context_lock_pair_raw_(destination, source, RT_CONTEXT_STATE_ARGS);
+    rt_type_registry_state_write_lock(destination);
+    rt_type_registry_state_write_lock(source);
+
+    if (destination->file_state.entries == NULL && source->file_state.entries != NULL) {
+        destination->file_state = source->file_state;
+        source->file_state.entries = NULL;
+        source->file_state.count = 0;
+        source->file_state.capacity = 0;
+    }
+
+    if (destination->args_state.items == NULL && source->args_state.items != NULL) {
+        destination->args_state = source->args_state;
+        source->args_state.items = NULL;
+        source->args_state.size = 0;
+        source->args_state.cap = 0;
+    }
+
+    int destination_registry_empty = destination->type_registry.classes == NULL &&
+                                     destination->type_registry.ifaces == NULL &&
+                                     destination->type_registry.bindings == NULL;
+    int source_registry_nonempty = source->type_registry.classes != NULL ||
+                                   source->type_registry.ifaces != NULL ||
+                                   source->type_registry.bindings != NULL;
+    if (destination_registry_empty && source_registry_nonempty) {
+        destination->type_registry.classes = source->type_registry.classes;
+        destination->type_registry.classes_len = source->type_registry.classes_len;
+        destination->type_registry.classes_cap = source->type_registry.classes_cap;
+        destination->type_registry.ifaces = source->type_registry.ifaces;
+        destination->type_registry.ifaces_len = source->type_registry.ifaces_len;
+        destination->type_registry.ifaces_cap = source->type_registry.ifaces_cap;
+        destination->type_registry.bindings = source->type_registry.bindings;
+        destination->type_registry.bindings_len = source->type_registry.bindings_len;
+        destination->type_registry.bindings_cap = source->type_registry.bindings_cap;
+        destination->type_registry.sealed = source->type_registry.sealed;
+        source->type_registry.classes = NULL;
+        source->type_registry.classes_len = 0;
+        source->type_registry.classes_cap = 0;
+        source->type_registry.ifaces = NULL;
+        source->type_registry.ifaces_len = 0;
+        source->type_registry.ifaces_cap = 0;
+        source->type_registry.bindings = NULL;
+        source->type_registry.bindings_len = 0;
+        source->type_registry.bindings_cap = 0;
+        source->type_registry.sealed = 0;
+    }
+
+    rt_type_registry_state_write_unlock(source);
+    rt_type_registry_state_write_unlock(destination);
+    rt_context_unlock_pair_raw_(destination, source, RT_CONTEXT_STATE_ARGS);
+    rt_context_unlock_pair_raw_(destination, source, RT_CONTEXT_STATE_FILE);
+}
+
+/// @copydoc rt_context_reserve_thread_binding
+int rt_context_reserve_thread_binding(RtContext *ctx) {
+    if (!ctx) {
+        rt_trap("Thread context reservation requires a context");
+        return 0;
+    }
+
+    for (;;) {
+        if (!rt_legacy_ensure_init())
+            return 0;
+        rt_spin_lock(&g_legacy_handoff_lock);
+        if (__atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE) != 2) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            continue;
+        }
+        if (!rt_context_is_ready_(ctx)) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_trap("Cannot reserve an uninitialized runtime context");
+            return 0;
+        }
+
+        size_t previous = 0;
+        if (!rt_context_try_add_binding(ctx, &previous)) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_trap("Runtime context binding count overflow");
+            return 0;
+        }
+        if (previous == 0)
+            rt_context_move_legacy_state(ctx, &g_legacy_ctx);
+        rt_spin_unlock(&g_legacy_handoff_lock);
+        return 1;
+    }
+}
+
+/// @copydoc rt_context_adopt_reserved_thread_binding
+int rt_context_adopt_reserved_thread_binding(RtContext *ctx) {
+    if (!ctx) {
+        rt_trap("Thread context adoption requires a context");
+        return 0;
+    }
+    if (g_rt_context != NULL) {
+        rt_trap("Thread context adoption requires an unbound thread");
+        return 0;
+    }
+
+    for (;;) {
+        if (!rt_legacy_ensure_init())
+            return 0;
+        rt_spin_lock(&g_legacy_handoff_lock);
+        if (__atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE) != 2) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            continue;
+        }
+        if (!rt_context_is_ready_(ctx)) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_trap("Cannot adopt an uninitialized runtime context");
+            return 0;
+        }
+        if (__atomic_load_n(&ctx->bind_count, __ATOMIC_ACQUIRE) == 0) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_trap("Thread context reservation is no longer live");
+            return 0;
+        }
+
+        g_rt_context = ctx;
+        rt_spin_unlock(&g_legacy_handoff_lock);
+        return 1;
+    }
+}
+
+/// @copydoc rt_context_cancel_reserved_thread_binding
+int rt_context_cancel_reserved_thread_binding(RtContext *ctx) {
+    if (!ctx) {
+        rt_trap("Thread context cancellation requires a context");
+        return 0;
+    }
+
+    for (;;) {
+        if (!rt_legacy_ensure_init())
+            return 0;
+        rt_spin_lock(&g_legacy_handoff_lock);
+        if (__atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE) != 2) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            continue;
+        }
+        if (!rt_context_is_ready_(ctx)) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_trap("Cannot cancel a binding on an uninitialized runtime context");
+            return 0;
+        }
+
+        size_t previous = 0;
+        if (!rt_context_try_remove_binding(ctx, &previous)) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_trap("Runtime context binding count underflow");
+            return 0;
+        }
+        if (previous == 1)
+            rt_context_move_legacy_state(&g_legacy_ctx, ctx);
+        rt_spin_unlock(&g_legacy_handoff_lock);
+        return 1;
+    }
 }
 
 /// @brief Bind a runtime context to the current thread.
@@ -484,91 +1027,57 @@ void rt_set_current_context(RtContext *ctx) {
     RtContext *old = g_rt_context;
     if (old == ctx)
         return;
-    g_rt_context = ctx;
 
-    if (old) {
-        size_t prev = __atomic_fetch_sub(&old->bind_count, 1, __ATOMIC_ACQ_REL);
-        assert(prev > 0);
-        if (prev == 1 && ctx == NULL) {
+    for (;;) {
+        if (!rt_legacy_ensure_init())
+            return;
+
+        /* Shutdown changes READY to INITIALIZING before taking this lock.
+           Rechecking under the lock closes the window between lazy-init and
+           the binding transaction without ever waiting while holding it. */
+        rt_spin_lock(&g_legacy_handoff_lock);
+        if (__atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE) != 2) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            continue;
+        }
+
+        size_t old_previous = 0;
+        size_t new_previous = 0;
+        if (ctx && !rt_context_is_ready_(ctx)) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_trap("Cannot bind an uninitialized runtime context");
+            return;
+        }
+        if (ctx && !rt_context_try_add_binding(ctx, &new_previous)) {
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_trap("Runtime context binding count overflow");
+            return;
+        }
+
+        if (old && !rt_context_try_remove_binding(old, &old_previous)) {
+            if (ctx && !rt_context_try_remove_binding(ctx, NULL))
+                rt_abort("Runtime context binding rollback failed");
+            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_trap("Runtime context binding count underflow");
+            return;
+        }
+
+        if (old && old_previous == 1 && ctx == NULL) {
             // Last thread unbound: move state back to legacy so calls after VM exit keep working.
-            rt_legacy_ensure_init();
-            rt_spin_lock(&g_legacy_handoff_lock);
-
-            if (g_legacy_ctx.file_state.entries == NULL && old->file_state.entries != NULL) {
-                g_legacy_ctx.file_state = old->file_state;
-                old->file_state.entries = NULL;
-                old->file_state.count = 0;
-                old->file_state.capacity = 0;
-            }
-
-            if (g_legacy_ctx.args_state.items == NULL && old->args_state.items != NULL) {
-                g_legacy_ctx.args_state = old->args_state;
-                old->args_state.items = NULL;
-                old->args_state.size = 0;
-                old->args_state.cap = 0;
-            }
-
-            if (g_legacy_ctx.type_registry.classes == NULL && old->type_registry.classes != NULL) {
-                g_legacy_ctx.type_registry = old->type_registry;
-                old->type_registry.classes = NULL;
-                old->type_registry.classes_len = 0;
-                old->type_registry.classes_cap = 0;
-                old->type_registry.ifaces = NULL;
-                old->type_registry.ifaces_len = 0;
-                old->type_registry.ifaces_cap = 0;
-                old->type_registry.bindings = NULL;
-                old->type_registry.bindings_len = 0;
-                old->type_registry.bindings_cap = 0;
-                old->type_registry.rw_lock = NULL;
-                old->type_registry.sealed = 0;
-            }
-
-            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_context_move_legacy_state(&g_legacy_ctx, old);
         }
-    }
 
-    if (ctx) {
-        rt_legacy_ensure_init();
-
-        size_t prev = __atomic_fetch_add(&ctx->bind_count, 1, __ATOMIC_ACQ_REL);
-        if (prev == 0) {
+        if (ctx && new_previous == 0) {
             // First bind: adopt legacy state to preserve pre-context behaviour.
-            rt_spin_lock(&g_legacy_handoff_lock);
-
-            // Move file_state if destination is empty and legacy has entries.
-            if (ctx->file_state.entries == NULL && g_legacy_ctx.file_state.entries != NULL) {
-                ctx->file_state = g_legacy_ctx.file_state;
-                g_legacy_ctx.file_state.entries = NULL;
-                g_legacy_ctx.file_state.count = 0;
-                g_legacy_ctx.file_state.capacity = 0;
-            }
-
-            // Move args_state if destination is empty and legacy has entries.
-            if (ctx->args_state.items == NULL && g_legacy_ctx.args_state.items != NULL) {
-                ctx->args_state = g_legacy_ctx.args_state;
-                g_legacy_ctx.args_state.items = NULL;
-                g_legacy_ctx.args_state.size = 0;
-                g_legacy_ctx.args_state.cap = 0;
-            }
-
-            // Move type registry if destination is empty and legacy has data.
-            if (ctx->type_registry.classes == NULL && g_legacy_ctx.type_registry.classes != NULL) {
-                ctx->type_registry = g_legacy_ctx.type_registry;
-                g_legacy_ctx.type_registry.classes = NULL;
-                g_legacy_ctx.type_registry.classes_len = 0;
-                g_legacy_ctx.type_registry.classes_cap = 0;
-                g_legacy_ctx.type_registry.ifaces = NULL;
-                g_legacy_ctx.type_registry.ifaces_len = 0;
-                g_legacy_ctx.type_registry.ifaces_cap = 0;
-                g_legacy_ctx.type_registry.bindings = NULL;
-                g_legacy_ctx.type_registry.bindings_len = 0;
-                g_legacy_ctx.type_registry.bindings_cap = 0;
-                g_legacy_ctx.type_registry.rw_lock = NULL;
-                g_legacy_ctx.type_registry.sealed = 0;
-            }
-
-            rt_spin_unlock(&g_legacy_handoff_lock);
+            rt_context_move_legacy_state(ctx, &g_legacy_ctx);
         }
+
+        /* Publish TLS only after counter updates and any first-bind state
+           migration are complete. Runtime calls on this thread cannot observe
+           a partially adopted context. */
+        g_rt_context = ctx;
+        rt_spin_unlock(&g_legacy_handoff_lock);
+        return;
     }
 }
 
@@ -626,7 +1135,8 @@ RtContext *rt_get_current_context(void) {
 ///
 /// @see rt_get_current_context For getting the thread's bound context
 RtContext *rt_legacy_context(void) {
-    rt_legacy_ensure_init();
+    if (!rt_legacy_ensure_init())
+        return NULL;
     return &g_legacy_ctx;
 }
 
@@ -639,9 +1149,32 @@ RtContext *rt_legacy_context(void) {
 ///          Called from the rt_global_shutdown atexit handler in rt_heap.c,
 ///          AFTER GC finalizers have run and BEFORE string intern teardown.
 void rt_legacy_context_shutdown(void) {
-    int state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE);
-    if (state != 2)
-        return; /* never initialized — nothing to clean up */
+    /* A test or embedder may explicitly bind the legacy context. Release the
+       calling thread's sole binding before claiming the reset state so the
+       ordinary unbind path never waits for a shutdown owned by itself. */
+    if (g_rt_context == &g_legacy_ctx &&
+        __atomic_load_n(&g_legacy_ctx.bind_count, __ATOMIC_ACQUIRE) == 1)
+        rt_set_current_context(NULL);
 
+    int expected = 2;
+    if (!__atomic_compare_exchange_n(&g_legacy_state,
+                                     &expected,
+                                     1,
+                                     /*weak=*/0,
+                                     __ATOMIC_ACQ_REL,
+                                     __ATOMIC_ACQUIRE))
+        return;
+
+    rt_spin_lock(&g_legacy_handoff_lock);
+    if (__atomic_load_n(&g_legacy_ctx.bind_count, __ATOMIC_ACQUIRE) != 0) {
+        __atomic_store_n(&g_legacy_state, 2, __ATOMIC_RELEASE);
+        rt_spin_unlock(&g_legacy_handoff_lock);
+        return;
+    }
+    rt_spin_unlock(&g_legacy_handoff_lock);
+
+    /* State 1 prevents new binding transactions while cleanup owns the static
+       storage. Publishing 0 makes subsequent access perform a fresh init. */
     rt_context_cleanup(&g_legacy_ctx);
+    __atomic_store_n(&g_legacy_state, 0, __ATOMIC_RELEASE);
 }

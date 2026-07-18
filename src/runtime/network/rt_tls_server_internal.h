@@ -8,6 +8,17 @@
 // File: src/runtime/network/rt_tls_server_internal.h
 // Purpose: Internal TLS 1.3 server context + accept helpers used by
 //          HttpsServer and WssServer.
+// Key invariants:
+//   - Parsed credentials and ALPN policy are immutable after context creation.
+//   - Native descriptors remain pointer-width across the server handshake.
+//   - A valid accept call consumes its socket on success and handshake failure.
+// Ownership/Lifetime:
+//   - Callers free contexts with rt_tls_server_ctx_free after all handshakes end.
+//   - Successful accepts return one managed session reference consumed by
+//     rt_tls_close; invalid arguments do not transfer descriptor ownership.
+// Links: src/runtime/network/rt_tls.c, src/runtime/network/rt_tls.h,
+//        src/runtime/network/rt_https_server.c,
+//        src/runtime/network/rt_wss_server.c
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -47,8 +58,16 @@ void rt_tls_server_ctx_free(rt_tls_server_ctx_t *ctx);
 ///          handshake to completion using the cert/key + ALPN policy
 ///          in @p ctx, and returns the live session on success. Returns
 ///          NULL on any handshake failure with the cause captured via
-///          @ref rt_tls_server_last_error.
-rt_tls_session_t *rt_tls_server_accept_socket(int socket_fd, const rt_tls_server_ctx_t *ctx);
+///          @ref rt_tls_server_last_error. The pointer-width descriptor avoids
+///          narrowing WinSock `SOCKET` handles. When both arguments are valid,
+///          this function consumes and closes @p socket_fd on failure; on
+///          success the returned session owns it. An invalid context or socket
+///          returns before ownership transfer.
+/// @param socket_fd Connected native socket represented without narrowing.
+/// @param ctx Immutable parsed credential/ALPN context that outlives the session.
+/// @return Caller-owned connected session, or NULL after consuming the socket
+///         for a setup/handshake failure.
+rt_tls_session_t *rt_tls_server_accept_socket(intptr_t socket_fd, const rt_tls_server_ctx_t *ctx);
 
 /// @brief Return the most recent server-side TLS error string for diagnostics.
 const char *rt_tls_server_last_error(void);

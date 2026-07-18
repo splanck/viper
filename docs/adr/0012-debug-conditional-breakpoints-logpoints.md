@@ -12,11 +12,11 @@ Status: Accepted
 
 ## Context
 
-The ZannaIDE overhaul (plan `~/.claude/plans/zannaide-needs-to-be-golden-blum.md`,
+The Zanna Studio overhaul (plan `~/.claude/plans/zannastudio-needs-to-be-golden-blum.md`,
 Phase 3C) adds conditional breakpoints and logpoints to the debugger. The IDE
 drives an out-of-process VM debug adapter (`zanna run --debug-adapter`) over a
 newline-JSON control protocol; the IDE client is
-`zannaide/src/build/debug_session.zia`, the adapter is
+`zannastudio/src/build/debug_session.zia`, the adapter is
 `src/tools/zanna/DebugAdapter.cpp`. Plain source-line breakpoints (ADR-era Phase
 3/4) and a name-only `evaluate` query (ADR 0009) already exist.
 
@@ -67,9 +67,9 @@ the stop only when true, else returns `Continue`.
 ## Consequences
 
 The IDE persists `condition`/`logMessage` per breakpoint
-(`zannaide/src/build/breakpoints.zia`) and sends them via `setBreakpoints`. Users
+(`zannastudio/src/build/breakpoints.zia`) and sends them via `setBreakpoints`. Users
 set them through "Conditional Breakpoint…" / "Add Logpoint…" commands. The
-debugger probe (`zannaide/src/probes/debug_probe.zia`) gains conditional-stop and
+debugger probe (`zannastudio/src/probes/debug_probe.zia`) gains conditional-stop and
 logpoint cases. Because the evaluator runs on the locals snapshot, conditions can
 reference only in-scope source locals (the same surface as `evaluate`); dotted
 field access and calls remain out of scope. A future VM-side evaluator could

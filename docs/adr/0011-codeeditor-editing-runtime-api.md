@@ -12,7 +12,7 @@ Status: Accepted
 
 ## Context
 
-ZannaIDE now relies on `Zanna.GUI.CodeEditor` for editor behaviors that were
+Zanna Studio now relies on `Zanna.GUI.CodeEditor` for editor behaviors that were
 previously either unavailable or split across multiple non-atomic calls:
 
 - Read-only preview documents need to be enforced by the native editor widget so
@@ -48,13 +48,13 @@ coherent snapshot and prevents repeated handling of the same native click.
 
 ## Consequences
 
-Read-only preview enforcement moves below ZannaIDE command code into the shared
+Read-only preview enforcement moves below Zanna Studio command code into the shared
 CodeEditor widget, so interpreted and native execution paths share the same edit
 guard. Gutter click consumers can process breakpoint/debug markers with one
 runtime call and no stale state window.
 
 The API additions are covered by runtime surface audit checks, focused GUI
-runtime tests, and ZannaIDE smoke/probe tests. Future changes that reinterpret
+runtime tests, and Zanna Studio smoke/probe tests. Future changes that reinterpret
 the map shape or remove the compatibility getters require a separate ADR or a
 documented migration plan.
 

@@ -312,7 +312,7 @@ inline constexpr const char *kFutureGet = kThreadsFutureGet;
 inline constexpr size_t kMaxImportDepth = 50;
 
 /// @brief Maximum number of imported files to prevent runaway compilation.
-/// @details Raised to 256 to accommodate large dogfood projects (ZannaIDE).
+/// @details Raised to 256 to accommodate large dogfood projects (Zanna Studio).
 inline constexpr size_t kMaxImportedFiles = 256;
 
 /// @brief Native machine word size used by Zia IL pointer/i64 stack slots.

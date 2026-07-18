@@ -75,11 +75,6 @@ typedef struct value_type_field {
     struct value_type_field *next;
 } value_type_field;
 
-typedef struct value_type_field_desc {
-    size_t offset;
-    int64_t kind;
-} value_type_field_desc;
-
 typedef struct value_type_layout {
     void *obj;
     value_type_field *fields;
@@ -200,6 +195,7 @@ static int value_type_release_layout_slots(void *obj,
     if (!obj || !layout)
         return 0;
 
+    rt_gc_mutator_enter();
     int trapped = 0;
     value_type_field *volatile cursor = layout->fields;
     jmp_buf recovery;
@@ -207,6 +203,7 @@ static int value_type_release_layout_slots(void *obj,
 
     for (;;) {
         if (setjmp(recovery) != 0) {
+            rt_gc_mutator_enter();
             if (!trapped && error && error_size > 0) {
                 const char *err = rt_trap_get_error();
                 snprintf(error,
@@ -225,6 +222,7 @@ static int value_type_release_layout_slots(void *obj,
     }
 
     rt_trap_clear_recovery();
+    rt_gc_mutator_exit();
     return trapped;
 }
 
@@ -233,20 +231,24 @@ static int box_tag_is_valid(int64_t tag) {
 }
 
 static void value_type_finalizer(void *obj) {
+    rt_gc_mutator_enter();
     rt_heap_finalizer_t previous = NULL;
     value_type_lock();
     value_type_layout *layout = value_type_find_locked(obj);
     previous = layout ? layout->previous_finalizer : NULL;
     value_type_unlock();
 
-    if (!layout)
+    if (!layout) {
+        rt_gc_mutator_exit();
         return;
+    }
     int previous_trapped = 0;
     char previous_error[512] = {0};
     if (previous && previous != value_type_finalizer) {
         jmp_buf previous_recovery;
         rt_trap_set_recovery(&previous_recovery);
         if (setjmp(previous_recovery) != 0) {
+            rt_gc_mutator_enter();
             const char *err = rt_trap_get_error();
             snprintf(previous_error,
                      sizeof(previous_error),
@@ -269,6 +271,7 @@ static void value_type_finalizer(void *obj) {
             live_layout->previous_finalizer = reinstalled;
         value_type_unlock();
         rt_obj_set_finalizer(obj, value_type_finalizer);
+        rt_gc_mutator_exit();
         if (previous_trapped)
             rt_trap(previous_error);
         return;
@@ -277,12 +280,15 @@ static void value_type_finalizer(void *obj) {
     value_type_lock();
     layout = value_type_detach_locked(obj);
     value_type_unlock();
-    if (!layout)
+    if (!layout) {
+        rt_gc_mutator_exit();
         return;
+    }
     char field_error[512] = {0};
     int field_trapped =
         value_type_release_layout_slots(obj, layout, field_error, sizeof(field_error));
     value_type_free_layout(layout);
+    rt_gc_mutator_exit();
     if (previous_trapped)
         rt_trap(previous_error);
     if (field_trapped)
@@ -293,91 +299,17 @@ static void value_type_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
 
-    int64_t count = 0;
-    value_type_lock();
+    /* Layout installation and field cleanup are managed-graph mutations. The
+       collector's exclusive barrier therefore makes both the metadata list and
+       registered slots immutable for this allocation-free walk. */
     value_type_layout *layout = value_type_find_locked(obj);
     for (value_type_field *field = layout ? layout->fields : NULL; field; field = field->next) {
-        if (field->kind == RT_VALUE_FIELD_OBJ)
-            count++;
-    }
-    if (count <= 0) {
-        value_type_unlock();
-        return;
-    }
-
-    if ((uint64_t)count > (uint64_t)SIZE_MAX / sizeof(value_type_field_desc)) {
-        value_type_unlock();
-        rt_trap("rt_box_value_type: traversal allocation too large");
-        return;
-    }
-    value_type_field_desc *volatile fields =
-        (value_type_field_desc *)calloc((size_t)count, sizeof(value_type_field_desc));
-    if (!fields) {
-        value_type_unlock();
-        rt_trap("rt_box_value_type: traversal allocation failed");
-        return;
-    }
-
-    int64_t copied = 0;
-    for (value_type_field *field = layout ? layout->fields : NULL; field; field = field->next) {
         if (field->kind == RT_VALUE_FIELD_OBJ) {
-            ((value_type_field_desc *)fields)[copied].offset = field->offset;
-            ((value_type_field_desc *)fields)[copied].kind = field->kind;
-            copied++;
+            void *child = *(void **)((unsigned char *)obj + field->offset);
+            if (child)
+                visitor(child, ctx);
         }
     }
-    value_type_unlock();
-
-    void **volatile children = (void **)calloc((size_t)copied, sizeof(void *));
-    if (!children) {
-        free((void *)fields);
-        rt_trap("rt_box_value_type: traversal allocation failed");
-        return;
-    }
-
-    int64_t volatile retained_count = 0;
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        char saved_error[256];
-        const char *err = rt_trap_get_error();
-        snprintf(saved_error,
-                 sizeof(saved_error),
-                 "%s",
-                 err && err[0] ? err : "rt_box_value_type: traversal trap");
-        rt_trap_clear_recovery();
-        for (int64_t i = 0; i < retained_count; ++i) {
-            void *child = ((void **)children)[i];
-            ((void **)children)[i] = NULL;
-            if (rt_obj_release_check0(child))
-                rt_obj_free(child);
-        }
-        free((void *)fields);
-        free((void *)children);
-        rt_trap(saved_error);
-        return;
-    }
-
-    for (int64_t i = 0; i < copied; ++i) {
-        void *child =
-            *(void **)((unsigned char *)obj + ((value_type_field_desc *)fields)[i].offset);
-        if (child)
-            rt_obj_retain_maybe(child);
-        ((void **)children)[retained_count++] = child;
-    }
-    free((void *)fields);
-    fields = NULL;
-
-    for (int64_t i = 0; i < copied; ++i) {
-        void *child = ((void **)children)[i];
-        if (child)
-            visitor(child, ctx);
-        ((void **)children)[i] = NULL;
-        if (rt_obj_release_check0(child))
-            rt_obj_free(child);
-    }
-    rt_trap_clear_recovery();
-    free((void *)children);
 }
 
 /// @brief Allocate a fresh boxed-value object via the heap (refcount=1, tagged RT_ELEM_BOX so
@@ -395,11 +327,11 @@ static void *alloc_box(void) {
 /// of a different kind. Used to make `rt_box_eq_*`, `rt_box_hash`, and `rt_box_equal` safe when
 /// passed arbitrary collection elements.
 static rt_box_t *box_maybe(void *box) {
-    rt_heap_hdr_t *hdr = NULL;
-    if (!box || !rt_heap_try_get_header(box, &hdr))
+    rt_heap_info_t info;
+    if (!box || !rt_heap_get_info(box, &info))
         return NULL;
-    if (!hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT || hdr->class_id != RT_BOX_CLASS_ID ||
-        hdr->elem_kind != RT_ELEM_BOX || hdr->cap < sizeof(rt_box_t))
+    if ((rt_heap_kind_t)info.kind != RT_HEAP_OBJECT || info.class_id != RT_BOX_CLASS_ID ||
+        info.elem_kind != RT_ELEM_BOX || info.cap < sizeof(rt_box_t))
         return NULL;
     rt_box_t *b = (rt_box_t *)box;
     return box_tag_is_valid(b->tag) ? b : NULL;
@@ -757,14 +689,14 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
         rt_trap("rt_box_value_type_add_field: null value type");
         return;
     }
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(obj, &hdr) || !hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT ||
-        hdr->class_id != RT_VALUE_TYPE_CLASS_ID) {
+    rt_heap_info_t info;
+    if (!rt_heap_get_info(obj, &info) || (rt_heap_kind_t)info.kind != RT_HEAP_OBJECT ||
+        info.class_id != RT_VALUE_TYPE_CLASS_ID) {
         rt_trap("rt_box_value_type_add_field: invalid value type object");
         return;
     }
-    if (offset < 0 || (uint64_t)offset > (uint64_t)SIZE_MAX || (size_t)offset > hdr->cap ||
-        hdr->cap - (size_t)offset < sizeof(void *)) {
+    if (offset < 0 || (uint64_t)offset > (uint64_t)SIZE_MAX || (size_t)offset > info.cap ||
+        info.cap - (size_t)offset < sizeof(void *)) {
         rt_trap("rt_box_value_type_add_field: field offset out of range");
         return;
     }
@@ -836,6 +768,17 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
 
     int installed_layout = 0;
     int inserted_field = 0;
+    rt_gc_mutator_enter();
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr) {
+        rt_gc_mutator_exit();
+        free(field);
+        free(new_layout);
+        if (retained_slot)
+            value_type_release_retained_slot(obj, &retain_field);
+        rt_trap("rt_box_value_type_add_field: value type released during registration");
+        return;
+    }
     value_type_lock();
     value_type_layout *layout = value_type_find_locked(obj);
     if (!layout) {
@@ -865,6 +808,7 @@ void rt_box_value_type_add_field(void *obj, int64_t offset, int64_t kind, int8_t
         inserted_field = 1;
     }
     value_type_unlock();
+    rt_gc_mutator_exit();
 
     free(field);
     free(new_layout);

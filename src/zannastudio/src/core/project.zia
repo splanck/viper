@@ -1,0 +1,260 @@
+module project;
+
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+bind IO = Zanna.IO;
+bind Seq = Zanna.Collections.Seq;
+bind Map = Zanna.Collections.Map;
+bind Obj = Zanna.Core.Object;
+bind Manifest = Zanna.Project.Manifest;
+
+// ============================================================================
+// MODULE: project
+// PURPOSE: Models an open workspace folder. Holds the root path, derived
+//          display name, and (optionally) metadata parsed from a
+//          `zanna.project` file at the root.
+//
+// WHERE-THIS-FITS: Owned by `project_manager.ProjectManager`, which
+//          handles file-tree population and selection. The project type
+//          itself just holds metadata and the open/close lifecycle.
+//
+// KEY-DESIGN-CHOICES:
+//   * SINGLE-PROJECT MODEL. The IDE has at most one open project at a
+//     time. Multi-project workspaces are deferred — most Zia projects
+//     are small enough that a single root suffices.
+//   * ZANNA.PROJECT IS OPTIONAL. If the file is absent the project is
+//     still "open" with the folder name as its display name and
+//     defaults for entryFile/lang/version. `hasProjectFile` is the
+//     canonical flag for "did we find one"; the rest of the fields
+//     just reflect the parsed contents (or defaults).
+//   * RUNTIME MANIFEST PARSER FIRST. `parseProjectFile` delegates to
+//     `Zanna.Project.Manifest.ParseFile` so the IDE consumes the same
+//     manifest contract as the runtime/compiler tools. A legacy
+//     key-value parser remains as fallback for older Zanna Studio-only
+//     project files that used build-program/run-args/package-name keys.
+//   * package-name OVERRIDES name. If `package-name` is set in
+//     zanna.project, it's used as the display name in preference to
+//     the folder name. This is the "I want my project shown as
+//     'Crackman' but it lives in a folder called 'pacman'" affordance.
+//
+// HOW-TO-READ: init (defaults) -> Open (from a folder, parses
+//   metadata) -> Close (resets to defaults) -> parseProjectFile
+//   (the key-value parser).
+// ============================================================================
+
+/// @brief An open workspace/folder with optional zanna.project metadata.
+class Project {
+    /// Absolute path to the project root directory.
+    expose String rootPath;
+    /// Display name (folder name, or package-name from zanna.project).
+    expose String name;
+    /// Whether a project is currently open.
+    expose Boolean isOpen;
+
+    /// Entry-point file name (defaults to "main.zia").
+    expose String  entryFile;
+    /// Project language ("zia" or "basic").
+    expose String  lang;
+    /// Project version string.
+    expose String  version;
+    /// Optional build/run overrides read from zanna.project.
+    expose String  buildProgram;
+    expose String  buildArgs;
+    expose String  runProgram;
+    expose String  runArgs;
+    expose String  workingDirectory;
+    expose String  problemMatcher;
+    /// Optional comma-separated ignore/exclude patterns for tree/search indexing.
+    expose String  ignorePatterns;
+    /// Display name from package-name (takes precedence over folder name).
+    expose String  packageName;
+    /// True if a zanna.project file was found and parsed.
+    expose Boolean hasProjectFile;
+
+    /// @brief Initialize as a closed project with sensible defaults.
+    expose func init() {
+        rootPath = "";
+        name = "";
+        isOpen = false;
+        entryFile = "main.zia";
+        lang = "zia";
+        version = "";
+        buildProgram = "";
+        buildArgs = "";
+        runProgram = "";
+        runArgs = "";
+        workingDirectory = "";
+        problemMatcher = "";
+        ignorePatterns = "";
+        packageName = "";
+        hasProjectFile = false;
+    }
+
+    /// @brief Open a project from a folder path.
+    /// @param path Absolute path to the workspace root.
+    /// @note Derives the display name from the folder name; if there's
+    ///       a zanna.project file at the root, parses it and lets
+    ///       `package-name` override the display name.
+    expose func Open(path: String) {
+        rootPath = path;
+        // Folder name from path; handle trailing-slash by trimming first.
+        name = Path.Name(path);
+        if name == "" {
+            var trimmed = Str.Left(path, Str.get_Length(path) - 1);
+            name = Path.Name(trimmed);
+        }
+        isOpen = true;
+
+        // zanna.project is optional. If present, parse and override.
+        var projFile = Path.Join(path, "zanna.project");
+        if IO.File.Exists(projFile) {
+            parseProjectFile(projFile);
+        }
+    }
+
+    /// @brief Close the project; reset every field to its default.
+    expose func Close() {
+        rootPath = "";
+        name = "";
+        isOpen = false;
+        entryFile = "main.zia";
+        lang = "zia";
+        version = "";
+        buildProgram = "";
+        buildArgs = "";
+        runProgram = "";
+        runArgs = "";
+        workingDirectory = "";
+        problemMatcher = "";
+        ignorePatterns = "";
+        packageName = "";
+        hasProjectFile = false;
+    }
+
+    /// @brief Parse a zanna.project file through the runtime manifest parser.
+    /// @details The runtime parser owns the canonical manifest shape, including
+    ///          entry, language, source/exclude globs, and named build/run
+    ///          configs. If it rejects an older Zanna Studio-only manifest, this
+    ///          method falls back to the historical line-oriented parser so
+    ///          existing projects continue to open with their custom commands.
+    hide func parseProjectFile(path: String) {
+        var manifest = Manifest.ParseFile(path);
+        if Map.GetBool(manifest, "valid") {
+            ApplyManifest(manifest);
+            hasProjectFile = true;
+            return;
+        }
+        parseLegacyProjectFile(path);
+    }
+
+    /// @brief Apply canonical runtime manifest fields to the IDE project model.
+    /// @param manifest Map returned by `Zanna.Project.Manifest.ParseFile`.
+    hide func ApplyManifest(manifest: Any) {
+        var manifestName = Map.GetStr(manifest, "name");
+        if manifestName != "" { name = manifestName; }
+
+        var manifestVersion = Map.GetStr(manifest, "version");
+        if manifestVersion != "" { version = manifestVersion; }
+
+        var manifestLanguage = Map.GetStr(manifest, "language");
+        if manifestLanguage != "" { lang = manifestLanguage; }
+
+        var manifestEntry = Map.GetStr(manifest, "entry");
+        if manifestEntry != "" { entryFile = manifestEntry; }
+
+        ignorePatterns = JoinStringSeq(Map.Get(manifest, "excludes"), ",");
+        var runConfigs = Map.Get(manifest, "runConfigs");
+        if runConfigs != null and Seq.get_Count(runConfigs) > 0 {
+            var run = Seq.Get(runConfigs, 0);
+            runProgram = Map.GetStr(run, "program");
+            runArgs = JoinStringSeq(Map.Get(run, "args"), " ");
+            workingDirectory = Map.GetStr(run, "cwd");
+        }
+
+        var buildConfigs = Map.Get(manifest, "buildConfigs");
+        if buildConfigs != null and Seq.get_Count(buildConfigs) > 0 {
+            var build = Seq.Get(buildConfigs, 0);
+            buildProgram = Map.GetStr(build, "program");
+            buildArgs = JoinStringSeq(Map.Get(build, "args"), " ");
+            if workingDirectory == "" {
+                workingDirectory = Map.GetStr(build, "cwd");
+            }
+            var matcher = Map.GetStr(build, "problemMatcher");
+            if matcher != "" { problemMatcher = matcher; }
+        }
+    }
+
+    /// @brief Join a runtime string sequence into a single setting string.
+    /// @param items Runtime sequence of strings, or null.
+    /// @param separator Separator inserted between entries.
+    /// @return Concatenated string, or "" for a null/empty sequence.
+    hide func JoinStringSeq(items: Any,
+                            separator: String) -> String {
+        if items == null { return ""; }
+        var out = "";
+        var i = 0;
+        while i < Seq.get_Count(items) {
+            var item = Obj.ToString(Seq.Get(items, i));
+            if item != "" {
+                if out != "" { out = out + separator; }
+                out = out + item;
+            }
+            i = i + 1;
+        }
+        return out;
+    }
+
+    /// @brief Parse legacy line-oriented Zanna Studio project files.
+    /// @details First whitespace separates key from value, values may be
+    ///          double-quoted, and unrecognized keys are ignored. This is kept
+    ///          only for compatibility with pre-manifest-parser projects.
+    hide func parseLegacyProjectFile(path: String) {
+        var content = IO.File.ReadAllText(path);
+        var lines = Str.Split(content, "\n");
+        var i = 0;
+        while i < Seq.get_Count(lines) {
+            var line = Str.Trim(Obj.ToString(Seq.Get(lines, i)));
+            i = i + 1;
+
+            // Blank lines and # comments are skipped.
+            if Str.get_Length(line) == 0 { continue; }
+            if Str.Left(line, 1) == "#" { continue; }
+
+            // Split on first space: key | value.
+            var spaceIdx = Str.IndexOf(line, " ");
+            if spaceIdx == 0 { continue; }
+
+            var key = Str.Left(line, spaceIdx - 1);
+            var value = Str.Trim(Str.Mid(line, spaceIdx + 1));
+
+            // Unquote double-quoted values.
+            if Str.Left(value, 1) == "\"" and Str.Right(value, 1) == "\"" {
+                value = Str.MidLen(value, 2, Str.get_Length(value) - 2);
+            }
+
+            if key == "project"       { name = value; }
+            if key == "entry"         { entryFile = value; }
+            if key == "lang"          { lang = value; }
+            if key == "version"       { version = value; }
+            if key == "build-program" { buildProgram = value; }
+            if key == "build-args"    { buildArgs = value; }
+            if key == "run-program"   { runProgram = value; }
+            if key == "run-args"      { runArgs = value; }
+            if key == "working-directory" { workingDirectory = value; }
+            if key == "problem-matcher" { problemMatcher = value; }
+            if key == "ignore" or key == "ignore-patterns" or key == "exclude" {
+                if ignorePatterns == "" {
+                    ignorePatterns = value;
+                } else {
+                    ignorePatterns = ignorePatterns + "," + value;
+                }
+            }
+            if key == "package-name"  { packageName = value; }
+        }
+        hasProjectFile = true;
+        // package-name takes precedence over the folder-derived name.
+        if packageName != "" {
+            name = packageName;
+        }
+    }
+}

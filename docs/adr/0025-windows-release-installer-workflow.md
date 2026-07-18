@@ -21,7 +21,7 @@ built, signed, and validated.
 
 Add `.github/workflows/windows-release-installer.yml` as a manual
 `workflow_dispatch` release workflow. It builds with the canonical Windows build
-script, enables ZannaIDE packaging, creates a Windows toolchain installer with
+script, enables Zanna Studio packaging, creates a Windows toolchain installer with
 `zanna install-package`, optionally signs from repository secrets, verifies the
 artifact structurally, and uploads the installer artifact.
 

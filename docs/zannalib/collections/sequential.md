@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-17
 ---
 
 # Sequential Collections
@@ -58,6 +58,10 @@ Dynamic array that grows automatically. Stores object references.
 ### Notes
 
 - List retains stored objects and releases them when removed, overwritten, cleared, or finalized.
+- Backing storage grows geometrically (minimum 16 slots, then doubling), so
+  repeated append is amortized O(1). `RemoveAt`, `Remove`, and `Pop` release the
+  removed reference and shift logical elements without reallocating on every
+  shrink. Removing the final element releases the now-empty backing allocation.
 - `Get()`, `First()`, `Last()`, and `Pop()` return owned object references, so callers can keep the result after the list changes or is released.
 - `Slice()` and `Clone()` return independent lists that retain their elements without leaking temporary `Get()` references.
 - `Has()`, `Find()`, and `Remove()` compare boxed integers, booleans, floats, and strings by value

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-07-16
+last-verified: 2026-07-17
 ---
 
 # Testing Guide
@@ -53,6 +53,7 @@ platforms (ccache is auto-detected; disable with `ZANNA_NO_CCACHE=1`):
 | `ZANNA_SKIP_TESTS=1` | Build without running ctest |
 | `ZANNA_TEST_LABEL=<label>` | Run only tests with the given ctest label |
 | `ZANNA_RUN_SLOW_TESTS=1` | Include tests labeled `slow` |
+| `ZANNA_SKIP_CPPCHECK=1` | Skip the gating runtime cppcheck stage when the tool and compilation database are available |
 | `ZANNA_SKIP_LINT=1`, `ZANNA_SKIP_AUDIT=1`, `ZANNA_SKIP_SMOKE=1`, `ZANNA_SKIP_INSTALL=1` | Skip the corresponding post-build stages |
 | `ZANNA_EXTRA_CMAKE_ARGS="-DZANNA_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON"` | Register legacy per-case BASIC-to-IL golden tests alongside the default batch shards |
 | `ZANNA_GFX_NO_ACTIVATE=1` | On macOS and Linux, show new ZannaGFX windows without making them the active app/window; CTest applies this automatically to `requires_display` and `graphics3d` tests |
@@ -99,7 +100,20 @@ ctest --test-dir build --print-labels
 
 # Run with sanitizers
 ./scripts/ci_full_sanitizer.sh
+
+# Run only the configured runtime correctness/performance/portability gate
+cmake --build build --target cppcheck-runtime -j 1
 ```
+
+Canonical build scripts run `cppcheck-runtime` after compilation when
+`cppcheck` is installed and the selected generator emitted
+`compile_commands.json`; otherwise they report an explicit skip. The target
+analyzes `src/runtime` with the configured platform definitions and fails for
+every unsuppressed warning, performance, or portability diagnostic. The
+dedicated `runtime-static-analysis.yml` workflow runs the same target on Ubuntu
+for pull requests and primary-branch pushes. Suppressions belong in
+`cppcheck-runtime.supp` and should name a checker or exact intentional site,
+not hide a runtime directory.
 
 ### Measuring demo build performance
 
@@ -529,6 +543,21 @@ runtime, or graphics concurrency changes.
 ./scripts/ci_full_sanitizer.sh --self-test
 ```
 
+Sanitizer builds default to four compiler and test workers because instrumented
+debug translation units consume substantially more memory than ordinary builds.
+Set `ZANNA_JOBS` and `ZANNA_CTEST_JOBS` to positive integers to tune build and
+test parallelism respectively. `ZANNA_SANITIZER_TIMEOUT` controls the per-test
+instrumented budget and defaults to 600 seconds. The driver passes the same
+value into CMake as the minimum for tests with explicit `TIMEOUT` properties,
+so those properties cannot silently override the sanitizer budget. The driver
+rejects invalid or unbounded values.
+
+The broad lanes exclude slow/performance-labelled and explicit scalability
+tests, native output smokes and runtime-import archive parsing (their purpose is
+inspecting unsanitized output artifacts), and installer smokes that require the
+Studio payload disabled in sanitizer configurations. Their ordinary and slow
+CTest lanes remain mandatory and are run separately.
+
 #### Interpreting TSan Output
 
 TSan reports data races with stack traces. Example:
@@ -685,7 +714,7 @@ high-ownership subsystems. It tracks 35 source-backed risk and coverage counters
 across runtime surface policy, VM duplication and callback gaps, backend
 unsupported paths, graphics-disabled stubs, fuzz corpus coverage, platform
 policy debt, large files, manual allocation hotspots, machine-readable tooling,
-MCP/LSP server coverage, ZannaIDE capability gates, debugger protocol coverage,
+MCP/LSP server coverage, Zanna Studio capability gates, debugger protocol coverage,
 and packaging verification.
 
 ```bash

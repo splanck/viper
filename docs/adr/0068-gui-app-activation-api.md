@@ -15,11 +15,11 @@ Accepted
 Zanna GUI apps already exposed `App.Focus`, but focus was too weak for macOS
 apps launched as bare executables from a terminal. A window could be visible and
 frontmost while Terminal remained the active application, leaving Terminal's
-native menu bar in place and preventing ZannaIDE's pull-down menus from being
+native menu bar in place and preventing Zanna Studio's pull-down menus from being
 usable.
 
 macOS separates window key/main state from application activation and menu-bar
-ownership. ZannaIDE needs an explicit foreground-activation request after its
+ownership. Zanna Studio needs an explicit foreground-activation request after its
 main menu has been installed and after the first frame is visible.
 
 ## Decision
@@ -37,7 +37,7 @@ the window focused for deterministic tests.
 
 ## Consequences
 
-ZannaIDE can request OS-level app/menu ownership independently from widget
+Zanna Studio can request OS-level app/menu ownership independently from widget
 focus. Existing `App.Focus` behavior remains source-compatible, while
 `App.Activate` documents the stronger intent at call sites that need app-level
 foreground activation.

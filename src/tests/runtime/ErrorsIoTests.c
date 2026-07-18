@@ -5,11 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/ErrorsIoTests.c
+// File: src/tests/runtime/ErrorsIoTests.c
 // Purpose: Validate runtime file helpers return structured errors on failure paths.
-// Key invariants: Missing files map to Err_FileNotFound, EOF detection yields Err_EOF, and OS
-// failures surface Err_IOError. Ownership: Exercises the C runtime API directly without
-// higher-level wrappers. Links: docs/specs/errors.md
+//
+// Key invariants:
+//   - Missing files map to Err_FileNotFound and end-of-file maps to Err_EOF.
+//   - Operating-system failures surface structured runtime errors rather than raw errno values.
+//   - A close attempt consumes the descriptor even when the host close operation reports failure.
+//
+// Ownership/Lifetime:
+//   - Tests exercise stack-owned RtFile values and close every successfully opened descriptor.
+//   - Runtime strings returned by line reads are explicitly released by the test.
+//
+// Links: src/runtime/io/rt_file_io.c, src/runtime/io/rt_file.h, docs/specs/errors.md
+//
+//===----------------------------------------------------------------------===//
 
 #define _XOPEN_SOURCE 700
 
@@ -171,6 +181,40 @@ static void ensure_seek_out_of_range_reports_invalid_operation(void) {
 #endif
 }
 
+/// @brief Verify a failed host close cannot leave an RtFile alias to a reusable descriptor.
+/// @details The test closes the descriptor externally to force `rt_file_close` through its EBADF
+///          path, then opens a second descriptor that reuses the same integer. A correct close
+///          implementation invalidates the RtFile before calling the host, so a subsequent
+///          idempotent close cannot accidentally close the unrelated replacement descriptor.
+static void ensure_close_failure_consumes_descriptor(void) {
+    char path[] = "/tmp/zanna_io_close_failureXXXXXX";
+    int seed_fd = mkstemp(path);
+    assert(seed_fd >= 0);
+    assert(close(seed_fd) == 0);
+
+    RtFile file;
+    rt_file_init(&file);
+    RtError err = RT_ERROR_NONE;
+    int8_t ok = rt_file_open(&file, path, "r", RT_F_UNSPECIFIED, &err);
+    assert(ok);
+
+    int stale_fd = file.fd;
+    assert(close(stale_fd) == 0);
+    ok = rt_file_close(&file, &err);
+    assert(!ok);
+    assert(err.kind == Err_IOError);
+    assert(file.fd == -1);
+
+    int replacement_fd = open(path, O_RDONLY);
+    assert(replacement_fd >= 0);
+    ok = rt_file_close(&file, &err);
+    assert(ok);
+    assert(fcntl(replacement_fd, F_GETFD) != -1);
+
+    assert(close(replacement_fd) == 0);
+    assert(unlink(path) == 0);
+}
+
 /// @brief Execute all IO error-path unit checks.
 int main(void) {
 #ifdef _WIN32
@@ -184,5 +228,6 @@ int main(void) {
     ensure_read_line_trims_crlf();
     ensure_invalid_handle_surfaces_ioerror();
     ensure_seek_out_of_range_reports_invalid_operation();
+    ensure_close_failure_consumes_descriptor();
     return 0;
 }

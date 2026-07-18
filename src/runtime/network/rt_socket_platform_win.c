@@ -11,7 +11,8 @@
 // Key invariants:
 //   - One caller performs each WSAStartup attempt; waiters retry if that attempt
 //     fails instead of spinning forever on an abandoned in-progress state.
-//   - Socket readiness waits use select(), matching existing Windows behavior.
+//   - Socket readiness waits preserve one GetTickCount64 deadline across
+//     WSAEINTR and rebuild select()'s mutable fd/timeval inputs on every retry.
 //
 // Ownership/Lifetime:
 //   - The adapter does not own sockets except during rt_socket_close().
@@ -84,6 +85,15 @@ int rt_socket_close(socket_t sock) {
     return closesocket(sock);
 }
 
+/// @brief Interrupt reads and writes while leaving WinSock handle ownership intact.
+/// @param sock Connected WinSock socket handle.
+/// @return Result from `shutdown(SD_BOTH)`, or `SOCKET_ERROR` for an invalid handle.
+int rt_socket_shutdown_both(socket_t sock) {
+    if (sock == INVALID_SOCK)
+        return SOCKET_ERROR;
+    return shutdown(sock, SD_BOTH);
+}
+
 /// @brief Return the calling thread's last WinSock error.
 /// @return WSAGetLastError() value.
 int rt_socket_last_error(void) {
@@ -118,11 +128,27 @@ bool rt_socket_error_is_timeout(int err) {
     return err == WSAETIMEDOUT || err == ETIMEDOUT;
 }
 
+/// @brief Classify a WinSock oversized datagram/message error.
+/// @param err Native WinSock error code to test.
+/// @return true when @p err is WSAEMSGSIZE.
+bool rt_socket_error_is_message_too_large(int err) {
+    return err == WSAEMSGSIZE;
+}
+
 /// @brief Classify the last WinSock receive error as timeout or would-block.
 /// @return true when the last WinSock error is WSAETIMEDOUT or WSAEWOULDBLOCK.
 bool rt_socket_recv_timed_out(void) {
     int err = WSAGetLastError();
     return err == WSAETIMEDOUT || err == WSAEWOULDBLOCK;
+}
+
+/// @brief Read the native Windows monotonic tick counter without trapping.
+/// @details GetTickCount64 is process-independent, wrap-safe for practical
+///          runtime lifetimes, allocation-free, and unaffected by wall-clock
+///          adjustment, making it suitable for socket operation deadlines.
+/// @return Milliseconds elapsed since system startup.
+uint64_t rt_socket_monotonic_ms(void) {
+    return (uint64_t)GetTickCount64();
 }
 
 /// @brief Detect accept() failures caused by listener shutdown races.
@@ -163,6 +189,19 @@ bool rt_socket_available_bytes(socket_t sock, int64_t *bytes_out) {
     return true;
 }
 
+/// @brief Query `SO_ERROR` using WinSock's integer option-length ABI.
+/// @param sock Socket handle to inspect.
+/// @param error_out Receives zero or the pending WinSock error.
+/// @return true when getsockopt succeeds, false otherwise.
+bool rt_socket_pending_error(socket_t sock, int *error_out) {
+    if (!error_out)
+        return false;
+    *error_out = 0;
+    int error_len = (int)sizeof(*error_out);
+    return getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)error_out, &error_len) == 0 &&
+           error_len == (int)sizeof(*error_out);
+}
+
 /// @brief Apply SO_RCVTIMEO or SO_SNDTIMEO to a WinSock socket.
 /// @param sock Socket handle to configure.
 /// @param timeout_ms Timeout in milliseconds; negative values are treated as zero.
@@ -192,6 +231,10 @@ static void rt_socket_set_last_error(int error) {
 }
 
 /// @brief Wait for a WinSock socket to become readable or writable.
+/// @details Rebuilds fd_set and timeval for every select() attempt because
+///          WinSock may modify both inputs. WSAEINTR is retried against one
+///          GetTickCount64 deadline rather than receiving a fresh timeout, so
+///          repeated interruption cannot make a finite wait unbounded.
 /// @param sock Socket handle to wait on.
 /// @param timeout_ms Timeout in milliseconds.
 /// @param for_write true waits for write readiness; false waits for read readiness.
@@ -206,15 +249,31 @@ int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
         return -1;
     }
 
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(sock, &fds);
+    const uint64_t start_ms = rt_socket_monotonic_ms();
+    int remaining_ms = timeout_ms;
+    for (;;) {
+        fd_set fds;
+        FD_ZERO(&fds);
+        FD_SET(sock, &fds);
 
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
+        struct timeval tv;
+        tv.tv_sec = remaining_ms / 1000;
+        tv.tv_usec = (remaining_ms % 1000) * 1000;
 
-    if (for_write)
-        return select(0, NULL, &fds, NULL, &tv);
-    return select(0, &fds, NULL, NULL, &tv);
+        int result =
+            for_write ? select(0, NULL, &fds, NULL, &tv) : select(0, &fds, NULL, NULL, &tv);
+        if (result >= 0)
+            return result;
+
+        int select_error = rt_socket_last_error();
+        if (!rt_socket_error_is_interrupted(select_error))
+            return -1;
+        if (timeout_ms == 0)
+            return 0;
+
+        uint64_t elapsed_ms = rt_socket_monotonic_ms() - start_ms;
+        if (elapsed_ms >= (uint64_t)timeout_ms)
+            return 0;
+        remaining_ms = timeout_ms - (int)elapsed_ms;
+    }
 }

@@ -8,9 +8,9 @@ last-verified: 2026-06-29
 
 ## Status
 
-Accepted (runtime implemented; ZannaIDE is the intended first consumer). Driven
+Accepted (runtime implemented; Zanna Studio is the intended first consumer). Driven
 by the GUI runtime-additions review, recommendation **R1**
-(`misc/plans/zannaide/gui-runtime-additions.md`).
+(`misc/plans/zannastudio/gui-runtime-additions.md`).
 
 ## Context
 
@@ -27,7 +27,7 @@ click callback (the toolkit is polled). As a result an application must:
   frame and OR the results together, and
 - push enabled/checked state to each bound widget by hand.
 
-In ZannaIDE this glue is `commands/command_registry.zia` (336 LOC) +
+In Zanna Studio this glue is `commands/command_registry.zia` (336 LOC) +
 `commands/main_command_dispatcher.zia` (486 LOC) + `app/dispatch_helpers.zia`
 (`Triggered`), and there are **65 `WasClicked()` poll sites**. Any Zanna GUI app
 with menus + toolbars + shortcuts re-derives the same dispatcher. This is missing
@@ -108,7 +108,7 @@ so no `source_health` surface change. Two new class-id tags are added
 
 - **Adoption:** a command is declared once and bound to its widgets; one
   `registry.Poll()` replaces the per-widget `WasClicked()` polling and the
-  three-registry sync. ZannaIDE can collapse much of `command_registry.zia` /
+  three-registry sync. Zanna Studio can collapse much of `command_registry.zia` /
   `main_command_dispatcher.zia`; other GUI apps get a dispatcher for free.
 - **Determinism / cross-platform:** pure bookkeeping over existing platform
   widgets; no new OS surface, no platform `#ifdef`. The disabled-graphics build
@@ -127,7 +127,7 @@ so no `source_health` surface change. Two new class-id tags are added
 - **Extend `CommandState` in place.** Rejected: `CommandState` is a pure state
   snapshot with no widget knowledge; overloading it with binding + polling would
   change its meaning and its existing surface. A new class keeps both focused.
-- **A Zia-only library in ZannaIDE.** Rejected: that is exactly the status quo
+- **A Zia-only library in Zanna Studio.** Rejected: that is exactly the status quo
   (`command_registry.zia` + `main_command_dispatcher.zia`); every Zanna GUI app
   re-derives it, and a Zia layer still cannot read widget clicks without the
   per-widget polling this ADR removes.

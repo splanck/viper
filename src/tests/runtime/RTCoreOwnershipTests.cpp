@@ -8,6 +8,11 @@
 // File: src/tests/runtime/RTCoreOwnershipTests.cpp
 // Purpose: Validate core runtime ownership rules for copied C strings,
 //          borrowed native pointers, and Option/Result retention.
+// Key invariants: Heap metadata queries return stable snapshots and reallocating
+//                 shared allocations is rejected without changing ownership.
+// Ownership/Lifetime: Test-created managed values and heap blocks are released
+//                     by the creating case after every assertion.
+// Links: src/runtime/core/rt_heap.c, src/il/runtime/RuntimeOwnership.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -109,7 +114,8 @@ static void test_result_retains_runtime_objects(void) {
 static void test_runtime_metadata_matches_core_contracts(void) {
     const auto retain = il::runtime::classifyRuntimeOwnership("Zanna.Runtime.Unsafe.Retain");
     assert(retain.retainsArg(0));
-    const auto releaseStr = il::runtime::classifyRuntimeOwnership("Zanna.Runtime.Unsafe.ReleaseStr");
+    const auto releaseStr =
+        il::runtime::classifyRuntimeOwnership("Zanna.Runtime.Unsafe.ReleaseStr");
     assert(releaseStr.consumesArg(0));
     const auto releaseStrSym = il::runtime::classifyRuntimeOwnership("rt_memory_release_str");
     assert(releaseStrSym.consumesArg(0));
@@ -223,6 +229,19 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     const auto heapToSeq = il::runtime::classifyRuntimeOwnership("rt_pqueue_to_seq");
     assert(heapToSeq.returnsOwned);
     assert(heapToSeq.mayAllocate);
+    const auto stringArrayPut = il::runtime::classifyRuntimeOwnership("rt_arr_str_put");
+    const auto objectArrayPut = il::runtime::classifyRuntimeOwnership("rt_arr_obj_put");
+    assert(stringArrayPut.retainsArg(2));
+    assert(objectArrayPut.retainsArg(2));
+    assert(!stringArrayPut.consumesArg(2));
+    assert(!objectArrayPut.consumesArg(2));
+
+    const auto *stringArrayPutSignature = il::runtime::findRuntimeSignature("rt_arr_str_put");
+    const auto *objectArrayPutSignature = il::runtime::findRuntimeSignature("rt_arr_obj_put");
+    assert(stringArrayPutSignature != nullptr);
+    assert(objectArrayPutSignature != nullptr);
+    assert((stringArrayPutSignature->retainedArgMask & 0b100u) != 0);
+    assert((objectArrayPutSignature->retainedArgMask & 0b100u) != 0);
 
     const auto absI64 = il::runtime::classifyHelperEffects("rt_abs_i64");
     assert(absI64.known);

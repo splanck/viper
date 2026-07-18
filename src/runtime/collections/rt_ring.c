@@ -104,10 +104,13 @@ static void rt_ring_finalize(void *obj) {
     if (!ring)
         return;
     if (ring->owns_elements && ring->items) {
-        for (size_t i = 0; i < ring->count; i++) {
+        size_t count = ring->count;
+        ring->count = 0;
+        for (size_t i = 0; i < count; i++) {
             size_t idx = (ring->head + i) % ring->capacity;
-            ring_release_value(ring->items[idx]);
+            void *value = ring->items[idx];
             ring->items[idx] = NULL;
+            ring_release_value(value);
         }
     }
     free(ring->items);
@@ -294,15 +297,20 @@ int8_t rt_ring_is_full(void *obj) {
 }
 
 void rt_ring_set_owns_elements(void *obj, int8_t owns) {
+    rt_gc_mutator_enter();
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
-    if (!ring)
+    if (!ring) {
+        rt_gc_mutator_exit();
         return;
+    }
     owns = owns ? 1 : 0;
     if (ring->count != 0 && ring->owns_elements != owns) {
+        rt_gc_mutator_exit();
         rt_trap("Ring: cannot change ownership mode while non-empty");
         return;
     }
     ring->owns_elements = owns;
+    rt_gc_mutator_exit();
 }
 
 int8_t rt_ring_owns_elements(void *obj) {
@@ -355,11 +363,16 @@ void rt_ring_push(void *obj, void *elem) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
-    if (!ring)
+    if (!ring) {
+        rt_gc_mutator_exit();
         return;
-    if (ring->capacity == 0 || !ring->items)
+    }
+    if (ring->capacity == 0 || !ring->items) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (ring->owns_elements)
         rt_obj_retain_maybe(elem);
@@ -381,6 +394,7 @@ void rt_ring_push(void *obj, void *elem) {
         ring->items[tail] = elem;
         ring->count++;
     }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Removes and returns the oldest element from the Ring.
@@ -422,11 +436,16 @@ void *rt_ring_pop(void *obj) {
     if (!obj)
         return NULL;
 
+    rt_gc_mutator_enter();
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
-    if (!ring)
+    if (!ring) {
+        rt_gc_mutator_exit();
         return NULL;
-    if (ring->count == 0 || !ring->items)
+    }
+    if (ring->count == 0 || !ring->items) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     // Get oldest element (at head)
     void *item = ring->items[ring->head];
@@ -440,6 +459,7 @@ void *rt_ring_pop(void *obj) {
 
     if (ring->owns_elements)
         ring_release_value(item);
+    rt_gc_mutator_exit();
     return item;
 }
 
@@ -574,21 +594,29 @@ void rt_ring_clear(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
-    if (!ring)
+    if (!ring) {
+        rt_gc_mutator_exit();
         return;
-    if (!ring->items)
+    }
+    if (!ring->items) {
+        rt_gc_mutator_exit();
         return;
-
-    for (size_t i = 0; i < ring->count; i++) {
-        size_t idx = (ring->head + i) % ring->capacity;
-        if (ring->owns_elements)
-            ring_release_value(ring->items[idx]);
-        ring->items[idx] = NULL;
     }
 
+    size_t count = ring->count;
+    size_t head = ring->head;
     ring->head = 0;
     ring->count = 0;
+    for (size_t i = 0; i < count; i++) {
+        size_t idx = (head + i) % ring->capacity;
+        void *value = ring->items[idx];
+        ring->items[idx] = NULL;
+        if (ring->owns_elements)
+            ring_release_value(value);
+    }
+    rt_gc_mutator_exit();
 }
 
 int8_t rt_ring_has(void *obj, void *elem) {
@@ -631,11 +659,16 @@ void rt_ring_reverse(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_ring_impl *ring = as_ring(obj, "Ring: invalid Ring object");
-    if (!ring)
+    if (!ring) {
+        rt_gc_mutator_exit();
         return;
-    if (ring->count < 2 || !ring->items)
+    }
+    if (ring->count < 2 || !ring->items) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     for (size_t i = 0; i < ring->count / 2; i++) {
         size_t front_idx = (ring->head + i) % ring->capacity;
@@ -645,6 +678,7 @@ void rt_ring_reverse(void *obj) {
         ring->items[front_idx] = ring->items[back_idx];
         ring->items[back_idx] = tmp;
     }
+    rt_gc_mutator_exit();
 }
 
 void *rt_ring_clone(void *obj) {

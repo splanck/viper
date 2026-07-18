@@ -44,7 +44,7 @@ usable by its existing X-macro consumer.
   `RT_CLASS_BEGIN` as authored registry data. Summaries are one-line plain
   text; details are Markdown and may span paragraphs.
 - Carry class documentation through the generated runtime class catalog and
-  expose it to frontends, language services, ZannaIDE, and
+  expose it to frontends, language services, Zanna Studio, and
   `zanna --dump-runtime-api`.
 - Add a schema-versioned `documentation` object to each class in the public API
   dump. It contains `summary`, `details`, and `format: "markdown"`.
@@ -88,7 +88,7 @@ object layouts visible to runtime programs.
 ## Consequences
 
 - Runtime API changes and their canonical documentation are reviewed together.
-- Zia, BASIC, ZannaIDE, generated reference docs, and API tooling consume the
+- Zia, BASIC, Zanna Studio, generated reference docs, and API tooling consume the
   same descriptions.
 - Adding a fragment requires no external package or preprocessing tool.
 - `rtgen`, CMake dependency tracking, tests, and source-health tooling must all

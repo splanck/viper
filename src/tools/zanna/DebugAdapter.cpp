@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tools/zanna/DebugAdapter.cpp
-// Purpose: Interactive VM-backed debug adapter for ZannaIDE — breakpoints, stop,
+// Purpose: Interactive VM-backed debug adapter for Zanna Studio — breakpoints, stop,
 //          and step control over a newline-JSON protocol.
 // Key invariants:
 //   - Events are emitted as "@@VDBG@@ <compact-json>\n" on stderr; the debuggee's

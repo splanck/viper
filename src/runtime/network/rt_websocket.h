@@ -11,11 +11,14 @@
 //   - Implements the RFC 6455 WebSocket protocol including framing and masking.
 //   - Supports both text and binary message types.
 //   - Ping/pong keepalive is handled transparently.
-//   - Connection objects are GC-managed; send/receive are blocking.
+//   - Opening responses and frames are parsed strictly and with bounded sizes.
+//   - Native descriptors remain pointer-width across TCP and TLS ownership.
+//   - Connection objects have stable identity; send/receive are serialized and blocking.
 //
 // Ownership/Lifetime:
-//   - Connection objects are GC-managed opaque pointers.
-//   - Callers should not free connection objects directly.
+//   - Constructors return one caller-owned managed opaque reference.
+//   - Explicit Close retires the transport; finalization is partial-safe and idempotent.
+//   - Returned String and Bytes values are caller-owned managed references.
 //
 // Links: src/runtime/network/rt_websocket.c (implementation), src/runtime/core/rt_string.h
 //
@@ -29,27 +32,33 @@
 extern "C" {
 #endif
 
+/// @brief Stable managed identity for `Zanna.Network.WebSocket` connections.
+/// @details Every non-null public receiver validates this identifier and the
+///          complete private payload before reading socket, TLS, URL, or frame
+///          state. It is part of the native runtime ABI.
+#define RT_WEBSOCKET_CLASS_ID INT64_C(-0x720214)
+
 //=========================================================================
 // WebSocket - Creation
 //=========================================================================
 
 /// @brief Connect to a WebSocket server.
 /// @param url WebSocket URL (ws:// or wss://).
-/// @return WebSocket connection object.
+/// @return Caller-owned WebSocket connection object.
 /// @note Traps on connection error, invalid URL, or handshake failure.
 void *rt_ws_connect(rt_string url);
 
 /// @brief Connect to a WebSocket server with timeout.
 /// @param url WebSocket URL (ws:// or wss://).
 /// @param timeout_ms Connection timeout in milliseconds.
-/// @return WebSocket connection object.
+/// @return Caller-owned WebSocket connection object.
 /// @note Traps on connection error, timeout, or handshake failure.
 void *rt_ws_connect_for(rt_string url, int64_t timeout_ms);
 
 /// @brief Connect to a WebSocket server and request a specific subprotocol.
 /// @param url WebSocket URL (ws:// or wss://).
 /// @param subprotocol Requested `Sec-WebSocket-Protocol` token.
-/// @return WebSocket connection object.
+/// @return Caller-owned WebSocket connection object.
 /// @note Traps on invalid subprotocol, connection error, or handshake mismatch.
 void *rt_ws_connect_protocol(rt_string url, rt_string subprotocol);
 
@@ -57,7 +66,7 @@ void *rt_ws_connect_protocol(rt_string url, rt_string subprotocol);
 /// @param url WebSocket URL (ws:// or wss://).
 /// @param timeout_ms Connection timeout in milliseconds.
 /// @param subprotocol Requested `Sec-WebSocket-Protocol` token.
-/// @return WebSocket connection object.
+/// @return Caller-owned WebSocket connection object.
 /// @note Traps on invalid subprotocol, timeout, or handshake mismatch.
 void *rt_ws_connect_for_protocol(rt_string url, int64_t timeout_ms, rt_string subprotocol);
 

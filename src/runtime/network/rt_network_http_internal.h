@@ -8,6 +8,15 @@
 // File: src/runtime/network/rt_network_http_internal.h
 // Purpose: Internal helpers shared between the HTTP transport and higher-level
 //          HTTP client wrappers.
+// Key invariants:
+//   - Private class identifiers and payload layouts are stable across every
+//     HTTP wrapper that consumes the corresponding managed object.
+//   - Helper APIs preserve the public transport's trap-safe ownership contract.
+// Ownership/Lifetime:
+//   - Declarations own no storage. Parameters are borrowed unless an individual
+//     function's Doxygen contract explicitly transfers ownership.
+// Links: rt_network_http.c, rt_http_client.c, rt_restclient.c,
+//        docs/adr/0126-http-client-stable-identity-and-transactional-ownership.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -21,6 +30,21 @@
 // Default per-request redirect cap / timeout (shared by client + wrappers).
 #define HTTP_MAX_REDIRECTS 5
 #define HTTP_DEFAULT_TIMEOUT_MS 30000
+
+/// @brief Stable private class identity for public HttpReq objects.
+/// @details Request methods validate this tag and the complete payload size
+///          before accessing native URL/header/body ownership fields.
+#define RT_HTTP_REQ_CLASS_ID INT64_C(-0x72020A)
+
+/// @brief Stable private class identity for public HttpRes objects.
+/// @details Response accessors use this identity to reject unrelated managed
+///          values before copying status, header Map, or native body storage.
+#define RT_HTTP_RES_CLASS_ID INT64_C(-0x72020B)
+
+/// @brief Stable private class identity for internal HTTP connection pools.
+/// @details HttpClient, RestClient, and standalone HttpReq keep-alive paths may
+///          share this mutex-bearing payload across module boundaries.
+#define RT_HTTP_CONN_POOL_CLASS_ID INT64_C(-0x72020C)
 
 /// @brief Parsed URL structure.
 typedef struct parsed_url {
@@ -74,23 +98,64 @@ int http_rt_string_has_embedded_nul(rt_string text);
 void free_parsed_url(parsed_url_t *url);
 int parse_url(const char *url_str, parsed_url_t *result);
 void free_headers(http_header_t *headers);
-void add_header(rt_http_req_t *req, const char *name, const char *value);
+
+/// @brief Append one validated native request header.
+/// @details The request is unchanged when validation or any allocation fails.
+///          This helper reports allocation failure through its return value so
+///          public callers can raise exactly one trap after preserving state.
+/// @param req Request that will own the copied header node.
+/// @param name Non-empty HTTP field-name token.
+/// @param value Field value without CR or LF bytes.
+/// @return One when appended; zero for invalid input or allocation failure.
+int add_header(rt_http_req_t *req, const char *name, const char *value);
+
+/// @brief Atomically replace every case-insensitive request header match.
+/// @details A complete replacement node is allocated before existing entries
+///          are removed, so OOM leaves the prior request headers untouched.
+/// @param req Request whose header list will be updated.
+/// @param name Non-empty HTTP field-name token.
+/// @param value Field value without CR or LF bytes.
+/// @return One when replaced; zero for invalid input or allocation failure.
+int set_header(rt_http_req_t *req, const char *name, const char *value);
+
 bool has_header(rt_http_req_t *req, const char *name);
 void remove_header(rt_http_req_t *req, const char *name);
 
-/// @brief Case-insensitively remove all entries named @p name from a
-///        header-name-keyed Map (HTTP field names are case-insensitive).
-void rt_http_header_map_remove_ci(void *map, const char *name);
+/// @brief Case-insensitively remove all entries named @p name from a Map.
+/// @details The key snapshot is built before mutation. Managed allocation traps
+///          are contained, the partial snapshot is released, and the Map is
+///          left unchanged when the snapshot cannot be constructed.
+/// @param map Header-name-keyed managed Map.
+/// @param name Non-empty NUL-terminated HTTP field name.
+/// @return One after removal (including a miss); zero on invalid input or
+///         snapshot allocation failure.
+int rt_http_header_map_remove_ci(void *map, const char *name);
 
-/// @brief Case-insensitive replace into a header-name-keyed Map (removes any
-///        differently cased spelling before storing @p name → @p value).
-void rt_http_header_map_set_ci(void *map, rt_string name, void *value);
+/// @brief Transactionally replace a case-insensitive header-map entry.
+/// @details Existing spellings are snapshotted first. The new exact key/value
+///          is inserted before differently cased aliases are removed, so a
+///          managed allocation trap leaves every prior entry intact. Traps are
+///          contained and reported through the return value so callers can
+///          unlock mutable owners before raising a public diagnostic.
+/// @param map Header-name-keyed managed Map.
+/// @param name Valid managed HTTP field-name String.
+/// @param value Managed value retained by the Map on success.
+/// @return One after atomic replacement; zero on invalid input or allocation
+///         failure.
+int rt_http_header_map_set_ci(void *map, rt_string name, void *value);
 void set_request_body_from_string(rt_http_req_t *req, rt_string body);
 rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remaining);
 int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *out);
 
 /// @brief Create an internal HTTP connection pool for keep-alive reuse.
 void *rt_http_conn_pool_new(int64_t max_size);
+
+/// @brief Test stable identity and initialized native state of an HTTP pool.
+/// @details This predicate does not retain @p pool. Public ownership-transfer
+///          boundaries must retain and then repeat this check before storing it.
+/// @param pool Candidate managed object.
+/// @return Nonzero only for a fully sized, mutex-initialized HTTP pool.
+int rt_http_conn_pool_is_handle(void *pool);
 
 /// @brief Drop every idle connection from an internal HTTP connection pool.
 void rt_http_conn_pool_clear(void *pool);

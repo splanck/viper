@@ -39,6 +39,8 @@
 #include "rt_string.h"
 
 #include <errno.h>
+#include <setjmp.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,8 +59,12 @@ typedef struct rt_linewriter_impl {
     rt_string newline; ///< Newline string.
 } rt_linewriter_impl;
 
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
+
 static rt_linewriter_impl *linewriter_require(void *obj, const char *context) {
-    if (!obj || rt_obj_class_id(obj) != RT_LINEWRITER_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_LINEWRITER_CLASS_ID, sizeof(rt_linewriter_impl))) {
         rt_trap(context ? context : "LineWriter: invalid writer");
         return NULL;
     }
@@ -70,6 +76,58 @@ static int linewriter_require_string(rt_string text, const char *context) {
         return 1;
     rt_trap(context);
     return 0;
+}
+
+/// @brief Allocate a LineWriter while retaining all constructor resources.
+/// @details The native file and default newline exist before the managed
+///          wrapper can be allocated. A local trap boundary owns both until
+///          object allocation succeeds, closing the file and releasing the
+///          string before rethrowing any allocation trap. This makes Open and
+///          Append leak-free for both aborting and returning trap hooks.
+/// @param fp Open native output stream whose ownership transfers on success.
+/// @param newline Owned default newline reference installed into the result.
+/// @return Fresh LineWriter payload, or NULL after cleanup and trap propagation.
+static rt_linewriter_impl *linewriter_alloc_or_cleanup(FILE *fp, rt_string newline) {
+    FILE *volatile owned_fp = fp;
+    rt_string volatile owned_newline = newline;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "LineWriter: memory allocation failed");
+        rt_trap_clear_recovery();
+        fclose((FILE *)owned_fp);
+        rt_string_unref((rt_string)owned_newline);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    rt_linewriter_impl *lw = (rt_linewriter_impl *)rt_obj_new_i64(
+        RT_LINEWRITER_CLASS_ID, (int64_t)sizeof(rt_linewriter_impl));
+    rt_trap_clear_recovery();
+    if (!lw) {
+        fclose(fp);
+        rt_string_unref(newline);
+        rt_trap("LineWriter: memory allocation failed");
+        return NULL;
+    }
+    return lw;
+}
+
+/// @brief Validate that a runtime string length can be passed to stdio.
+/// @param len Signed runtime byte length.
+/// @param context Diagnostic emitted for negative or host-size overflow.
+/// @return Non-zero when @p len is representable as `size_t`.
+static int linewriter_length_fits_host(int64_t len, const char *context) {
+    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX) {
+        rt_trap(context);
+        return 0;
+    }
+    return 1;
 }
 
 /// @brief Finalizer callback invoked when a LineWriter is garbage collected.
@@ -96,9 +154,7 @@ static int linewriter_require_string(rt_string text, const char *context) {
 static void rt_linewriter_finalize(void *obj) {
     if (!obj)
         return;
-    rt_linewriter_impl *lw = linewriter_require(obj, "LineWriter: invalid writer");
-    if (!lw)
-        return;
+    rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
     if (lw->fp && !lw->closed) {
         fclose(lw->fp);
         lw->fp = NULL;
@@ -155,14 +211,9 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
         return NULL;
     }
 
-    rt_linewriter_impl *lw = (rt_linewriter_impl *)rt_obj_new_i64(
-        RT_LINEWRITER_CLASS_ID, (int64_t)sizeof(rt_linewriter_impl));
-    if (!lw) {
-        fclose(fp);
-        rt_string_unref(newline);
-        rt_trap("LineWriter: memory allocation failed");
+    rt_linewriter_impl *lw = linewriter_alloc_or_cleanup(fp, newline);
+    if (!lw)
         return NULL;
-    }
 
     lw->fp = fp;
     lw->closed = 0;
@@ -337,10 +388,12 @@ void rt_linewriter_write(void *obj, rt_string text) {
 
     const char *data = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
-    if (!data || len < 0) {
+    if (!data) {
         rt_trap("LineWriter.Write: invalid string");
         return;
     }
+    if (!linewriter_length_fits_host(len, "LineWriter.Write: invalid string length"))
+        return;
     if (len > 0) {
         // IO-C-4: check fwrite return to detect disk-full / I/O errors
         size_t written = fwrite(data, 1, (size_t)len, lw->fp);
@@ -406,10 +459,12 @@ void rt_linewriter_write_ln(void *obj, rt_string text) {
 
     const char *data = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
-    if (!data || len < 0) {
+    if (!data) {
         rt_trap("LineWriter.WriteLn: invalid string");
         return;
     }
+    if (!linewriter_length_fits_host(len, "LineWriter.WriteLn: invalid string length"))
+        return;
     if (len > 0) {
         // IO-C-4: check fwrite return to detect disk-full / I/O errors
         size_t written = fwrite(data, 1, (size_t)len, lw->fp);
@@ -421,10 +476,12 @@ void rt_linewriter_write_ln(void *obj, rt_string text) {
     if (lw->newline) {
         const char *nl = rt_string_cstr(lw->newline);
         int64_t nl_len = rt_str_len(lw->newline);
-        if (!nl || nl_len < 0) {
+        if (!nl) {
             rt_trap("LineWriter.WriteLn: invalid newline");
             return;
         }
+        if (!linewriter_length_fits_host(nl_len, "LineWriter.WriteLn: invalid newline length"))
+            return;
         if (nl_len > 0) {
             // IO-C-4: check fwrite return for newline write too
             size_t written = fwrite(nl, 1, (size_t)nl_len, lw->fp);

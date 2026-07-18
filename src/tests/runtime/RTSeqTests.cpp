@@ -7,6 +7,11 @@
 //
 // File: src/tests/runtime/RTSeqTests.cpp
 // Purpose: Comprehensive tests for Zanna.Collections.Seq dynamic sequence.
+// Key invariants: Sequence growth and mutation preserve ordering, bounds, and
+//                 exactly-one retain/release ownership for managed elements.
+// Ownership/Lifetime: Tests release every sequence and any separately owned
+//                     managed value after trap recovery is cleared.
+// Links: src/runtime/collections/rt_seq.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -212,6 +217,31 @@ static void test_set() {
     assert(rt_seq_get(seq, 0) == &a);
     rt_seq_set(seq, 0, &c);
     assert(rt_seq_get(seq, 0) == &c);
+}
+
+/// @brief Verify raw self-replacement consumes the transferred reference.
+/// @details An owning sequence and the caller each hold a reference to the
+///          identical object before `SetRaw`. The operation must release the
+///          old slot ownership even though pointer identity is unchanged,
+///          leaving exactly the transferred reference in the slot.
+static void test_owned_set_raw_same_pointer_consumes_transfer() {
+    void *seq = rt_seq_new_owned();
+    void *value = new_obj();
+    g_finalizer_calls = 0;
+    rt_obj_set_finalizer(value, count_finalizer);
+
+    rt_seq_push(seq, value);
+    release_obj(value);
+    assert(rt_heap_hdr(value)->refcnt == 1);
+
+    rt_obj_retain_maybe(value);
+    assert(rt_heap_hdr(value)->refcnt == 2);
+    rt_seq_set_raw(seq, 0, value);
+    assert(rt_heap_hdr(value)->refcnt == 1);
+
+    rt_seq_clear(seq);
+    assert(g_finalizer_calls == 1);
+    release_obj(seq);
 }
 
 static void test_pop() {
@@ -1091,6 +1121,7 @@ int main() {
     test_owns_elements_mode();
     test_owned_seq_slices_and_filters_retain_elements();
     test_set();
+    test_owned_set_raw_same_pointer_consumes_transfer();
     test_pop();
     test_owned_pop_retain_overflow_keeps_sequence_unchanged();
     test_owned_push_retain_overflow_keeps_capacity_and_length();

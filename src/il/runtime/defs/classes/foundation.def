@@ -500,11 +500,14 @@ RT_CLASS_END()
 /// @details
 /// Create `Zanna.Collections.Map` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
-/// `IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Get`, `GetOr`.
+/// `IsEmpty`, `Count` and operations including `Clear`, `Trim`, `Clone`, `Get`, `GetOr`.
+/// `Clear` retains bucket capacity for reuse; `Trim` explicitly returns excess
+/// capacity and reports whether compaction succeeded.
 RT_CLASS_BEGIN("Zanna.Collections.Map", Map, "obj", MapNew)
     RT_PROP("IsEmpty", "i1", MapIsEmpty, none)
     RT_PROP("Count", "i64", MapLen, none)
     RT_METHOD("Clear", "void()", MapClear)
+    RT_METHOD("Trim", "i1()", MapTrim)
     RT_METHOD("Clone", "obj<Zanna.Collections.Map>()", MapClone)
     RT_METHOD("Get", "obj(str)", MapGet)
     RT_METHOD("GetOr", "obj(str,obj)", MapGetOr)
@@ -532,7 +535,8 @@ RT_CLASS_END()
 /// @details
 /// Create `Zanna.Collections.IntMap` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Count`,
-/// `IsEmpty` and operations including `Set`, `Get`, `GetOr`, `Has`.
+/// `IsEmpty` and operations including `Set`, `Get`, `GetOr`, `Has`, `Trim`. `Trim`
+/// compacts excess bucket capacity without changing any key/value association.
 RT_CLASS_BEGIN("Zanna.Collections.IntMap", IntMap, "obj", IntMapNew)
     RT_PROP("Count", "i64", IntMapLen, none)
     RT_PROP("IsEmpty", "i1", IntMapIsEmpty, none)
@@ -542,6 +546,7 @@ RT_CLASS_BEGIN("Zanna.Collections.IntMap", IntMap, "obj", IntMapNew)
     RT_METHOD("Has", "i1(i64)", IntMapHas)
     RT_METHOD("Remove", "i1(i64)", IntMapRemove)
     RT_METHOD("Clear", "void()", IntMapClear)
+    RT_METHOD("Trim", "i1()", IntMapTrim)
     RT_METHOD("Keys", "seq<obj>()", IntMapKeys)
     RT_METHOD("Values", "seq<obj>()", IntMapValues)
 RT_CLASS_END()

@@ -82,6 +82,18 @@ static int tls_select_alpn_from_wire_list(const char *preferred_list,
                                           const uint8_t *wire_list,
                                           size_t wire_list_len,
                                           char selected_out[64]);
+static void tls_session_finalize(void *obj);
+
+/// @brief Validate a low-level TLS session without dereferencing forged memory.
+/// @details Low-level C entry points return their documented invalid-session
+///          sentinel rather than trapping. This helper therefore performs only
+///          stable managed identity and complete-payload validation.
+/// @param session Candidate opaque session handle.
+/// @return Valid session payload, or NULL for NULL, stale, or unrelated input.
+static rt_tls_session_t *tls_session_checked(rt_tls_session_t *session) {
+    return rt_obj_is_instance(session, RT_TLS_SESSION_CLASS_ID, sizeof(rt_tls_session_t)) ? session
+                                                                                          : NULL;
+}
 
 /// @brief Zero and free a heap buffer that may contain TLS secrets.
 /// @details This helper pairs secure wiping with ownership release for dynamic
@@ -2057,8 +2069,6 @@ static int tls_alpn_list_contains(const char *list, const uint8_t *wanted, size_
 ///        Returns 1 on success; 0 if any token is empty, >255 bytes, or causes overflow.
 static int tls_alpn_list_wire_len(const char *list, size_t *wire_len_out) {
     size_t offset = 0;
-    const char *token = NULL;
-    size_t token_len = 0;
     size_t wire_len = 0;
 
     if (wire_len_out)
@@ -2066,12 +2076,31 @@ static int tls_alpn_list_wire_len(const char *list, size_t *wire_len_out) {
     if (!list || !*list)
         return 1;
 
-    while (tls_alpn_list_next_token(list, &offset, &token, &token_len)) {
+    while (list[offset] != '\0') {
+        while (list[offset] == ' ' || list[offset] == '\t')
+            offset++;
+        if (list[offset] == '\0' || list[offset] == ',')
+            return 0;
+
+        size_t token_start = offset;
+        while (list[offset] != '\0' && list[offset] != ',')
+            offset++;
+        size_t token_end = offset;
+        while (token_end > token_start &&
+               (list[token_end - 1] == ' ' || list[token_end - 1] == '\t'))
+            token_end--;
+        size_t token_len = token_end - token_start;
         if (token_len == 0 || token_len > 255)
             return 0;
         if (wire_len > SIZE_MAX - token_len - 1)
             return 0;
         wire_len += token_len + 1;
+
+        if (list[offset] == ',') {
+            offset++;
+            if (list[offset] == '\0')
+                return 0;
+        }
     }
 
     if (wire_len_out)
@@ -2663,7 +2692,7 @@ static int send_certificate_verify_server(rt_tls_session_t *session) {
 ///        ChangeCipherSpec + EncryptedExtensions + Certificate + CertificateVerify + Finished,
 ///        receive and verify client Finished.
 /// @return Newly allocated session in TLS_STATE_CONNECTED, or NULL with server last-error set.
-rt_tls_session_t *rt_tls_server_accept_socket(int socket_fd, const rt_tls_server_ctx_t *ctx) {
+rt_tls_session_t *rt_tls_server_accept_socket(intptr_t socket_fd, const rt_tls_server_ctx_t *ctx) {
     rt_tls_session_t *session = NULL;
     uint8_t content_type = 0;
     uint8_t data[TLS_MAX_RECORD_SIZE];
@@ -2671,7 +2700,7 @@ rt_tls_session_t *rt_tls_server_accept_socket(int socket_fd, const rt_tls_server
 
     tls_set_server_last_error_msg(NULL);
 
-    if (socket_fd < 0 || !ctx) {
+    if ((socket_t)socket_fd == INVALID_SOCK || !ctx) {
         tls_set_server_last_error_msg("TLS server: invalid socket or context");
         return NULL;
     }
@@ -2688,8 +2717,11 @@ rt_tls_session_t *rt_tls_server_accept_socket(int socket_fd, const rt_tls_server
     session->timeout_ms = ctx->timeout_ms > 0 ? ctx->timeout_ms : 30000;
     if (ctx->alpn_protocols[0] != '\0')
         strncpy(session->alpn_protocols, ctx->alpn_protocols, sizeof(session->alpn_protocols) - 1);
-    set_socket_timeout(session->socket_fd, session->timeout_ms, true);
-    set_socket_timeout(session->socket_fd, session->timeout_ms, false);
+    if (!set_socket_timeout(session->socket_fd, session->timeout_ms, true) ||
+        !set_socket_timeout(session->socket_fd, session->timeout_ms, false)) {
+        session->error = "TLS server: failed to configure handshake timeout";
+        goto fail;
+    }
 
     while (1) {
         size_t pos = 0;
@@ -2782,6 +2814,8 @@ fail:
 /// timeout. Callers may then override fields like `hostname` or
 /// `verify_cert` before passing the config to `rt_tls_new`.
 void rt_tls_config_init(rt_tls_config_t *config) {
+    if (!config)
+        return;
     memset(config, 0, sizeof(*config));
     // CS-6 resolved: certificate validation now implemented (CS-1/CS-2/CS-3).
     // verify_cert=1 enables full chain validation + hostname verification + CertVerify.
@@ -2798,59 +2832,85 @@ void rt_tls_config_init(rt_tls_config_t *config) {
 /// fixed-size buffer for SNI / hostname verification.
 /// @param socket_fd  Underlying TCP socket file descriptor.
 /// @param config     Optional config; if NULL, defaults match `rt_tls_config_init`.
-/// @return Pointer to the new session (never NULL — GC alloc cannot fail-soft).
-rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
-    rt_tls_session_t *session =
-        (rt_tls_session_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tls_session_t));
-    if (!session)
-        return NULL;
-    memset(session, 0, sizeof(rt_tls_session_t));
+/// @return Pointer to the new session, or NULL for an invalid native socket or
+///         after a returning allocation trap hook.
+rt_tls_session_t *rt_tls_new(intptr_t socket_fd, const rt_tls_config_t *config) {
+    socket_t native_socket = (socket_t)socket_fd;
+    size_t hostname_len = 0;
+    size_t alpn_len = 0;
+    size_t ca_file_len = 0;
+    size_t alpn_wire_len = 0;
 
-    session->socket_fd = socket_fd;
+    if (native_socket == INVALID_SOCK) {
+        tls_set_last_error_msg("TLS: invalid native socket");
+        return NULL;
+    }
+    if (config && config->hostname) {
+        hostname_len = strlen(config->hostname);
+        if (hostname_len == 0 || hostname_len >= sizeof(((rt_tls_session_t *)0)->hostname)) {
+            tls_set_last_error_msg("TLS: invalid hostname");
+            return NULL;
+        }
+        for (size_t i = 0; i < hostname_len; i++) {
+            unsigned char ch = (unsigned char)config->hostname[i];
+            if (ch <= 0x20u || ch >= 0x7fu) {
+                tls_set_last_error_msg("TLS: invalid hostname");
+                return NULL;
+            }
+        }
+        if (!tls_hostname_is_ip_literal(config->hostname) &&
+            !tls_dns_hostname_is_valid(config->hostname)) {
+            tls_set_last_error_msg("TLS: invalid hostname");
+            return NULL;
+        }
+    }
+    if (config && config->alpn_protocol) {
+        alpn_len = strlen(config->alpn_protocol);
+        if (alpn_len >= sizeof(((rt_tls_session_t *)0)->alpn_protocols) ||
+            !tls_alpn_list_wire_len(config->alpn_protocol, &alpn_wire_len)) {
+            tls_set_last_error_msg("TLS: invalid ALPN protocol list");
+            return NULL;
+        }
+    }
+    if (config && config->ca_file) {
+        ca_file_len = strlen(config->ca_file);
+        if (ca_file_len >= sizeof(((rt_tls_session_t *)0)->ca_file)) {
+            tls_set_last_error_msg("TLS: invalid CA file path");
+            return NULL;
+        }
+    }
+
+    rt_tls_session_t *session = (rt_tls_session_t *)rt_obj_new_i64(
+        RT_TLS_SESSION_CLASS_ID, (int64_t)sizeof(rt_tls_session_t));
+    if (!session) {
+        tls_set_last_error_msg("TLS: session allocation failed");
+        return NULL;
+    }
+    memset(session, 0, sizeof(rt_tls_session_t));
+    session->socket_fd = INVALID_SOCK;
+    rt_obj_set_finalizer(session, tls_session_finalize);
+
+    session->socket_fd = native_socket;
     session->state = TLS_STATE_INITIAL;
     session->verify_cert = config ? config->verify_cert : 1;
     session->timeout_ms = (config && config->timeout_ms > 0) ? config->timeout_ms : 30000;
     transcript_init(session);
 
     if (config && config->hostname) {
-        size_t hostname_len = strlen(config->hostname);
-        if (hostname_len >= sizeof(session->hostname)) {
-            session->error = "invalid TLS hostname";
-            session->state = TLS_STATE_ERROR;
-            return session;
-        }
         for (size_t i = 0; i < hostname_len; i++) {
             unsigned char ch = (unsigned char)config->hostname[i];
-            if (ch <= 0x20u || ch >= 0x7fu) {
-                session->error = "invalid TLS hostname";
-                session->state = TLS_STATE_ERROR;
-                return session;
-            }
             session->hostname[i] = (char)((ch >= 'A' && ch <= 'Z') ? (ch + ('a' - 'A')) : ch);
         }
         session->hostname[hostname_len] = '\0';
-        if (!tls_hostname_is_ip_literal(session->hostname) &&
-            !tls_dns_hostname_is_valid(session->hostname)) {
-            session->error = "invalid TLS hostname";
-            session->state = TLS_STATE_ERROR;
-            return session;
-        }
     }
     if (config && config->alpn_protocol) {
-        size_t wire_len = 0;
-        if (!tls_alpn_list_wire_len(config->alpn_protocol, &wire_len) ||
-            strlen(config->alpn_protocol) >= sizeof(session->alpn_protocols)) {
-            session->error = "invalid ALPN protocol list";
-            session->state = TLS_STATE_ERROR;
-            return session;
-        }
-        strncpy(
-            session->alpn_protocols, config->alpn_protocol, sizeof(session->alpn_protocols) - 1);
+        memcpy(session->alpn_protocols, config->alpn_protocol, alpn_len + 1);
     }
     if (config && config->ca_file) {
-        strncpy(session->ca_file, config->ca_file, sizeof(session->ca_file) - 1);
+        memcpy(session->ca_file, config->ca_file, ca_file_len + 1);
     }
 
+    tls_set_last_error_msg(NULL);
     return session;
 }
 
@@ -2869,6 +2929,7 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
 /// @return RT_TLS_OK on completed handshake, an `RT_TLS_ERROR_*`
 ///         code otherwise; `session->error` carries a human message.
 int rt_tls_handshake(rt_tls_session_t *session) {
+    session = tls_session_checked(session);
     if (!session)
         return RT_TLS_ERROR_INVALID_ARG;
 
@@ -3053,12 +3114,16 @@ int rt_tls_handshake(rt_tls_session_t *session) {
 /// @return Number of bytes accepted (always equals `len` on success)
 ///         or a negative `RT_TLS_ERROR_*` code on failure.
 long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len) {
-    if (!session || session->state != TLS_STATE_CONNECTED)
-        return RT_TLS_ERROR;
-
+    session = tls_session_checked(session);
+    if (!session)
+        return RT_TLS_ERROR_INVALID_ARG;
     if (len == 0)
         return 0;
+    if (!data)
+        return RT_TLS_ERROR_INVALID_ARG;
     if (len > (size_t)LONG_MAX)
+        return RT_TLS_ERROR;
+    if (session->state != TLS_STATE_CONNECTED)
         return RT_TLS_ERROR;
 
     // Send in chunks
@@ -3088,7 +3153,14 @@ long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len) {
 /// @return Bytes copied into `buffer` (>0), 0 on clean close,
 ///         or a negative `RT_TLS_ERROR_*` code on failure.
 long rt_tls_recv(rt_tls_session_t *session, void *buffer, size_t len) {
-    if (!session || session->state != TLS_STATE_CONNECTED)
+    session = tls_session_checked(session);
+    if (!session)
+        return RT_TLS_ERROR_INVALID_ARG;
+    if (len == 0)
+        return 0;
+    if (!buffer)
+        return RT_TLS_ERROR_INVALID_ARG;
+    if (session->state != TLS_STATE_CONNECTED)
         return RT_TLS_ERROR;
 
     // Return buffered data first
@@ -3157,22 +3229,46 @@ retry_recv:;
     return (long)copy;
 }
 
-/// @brief Politely shut down a TLS session and release its resources.
-///
-/// If still connected, sends a `close_notify` warning alert and
-/// opportunistically drains a few records until the peer's matching
-/// alert arrives. Shutdown uses a short bounded timeout rather than
-/// the normal handshake/read timeout so a peer that drops the socket
-/// or does not respond cannot stall local server teardown for tens of
-/// seconds. Then frees per-session scratch state, closes the underlying
-/// socket, marks the session `CLOSED`, and decrements its GC refcount;
-/// if the count hits zero, the session memory is freed via `rt_obj_free`.
-/// Safe to call on NULL or an already closed session.
-void rt_tls_close(rt_tls_session_t *session) {
+/// @brief Transactionally replace a low-level session's I/O timeout.
+/// @details The socket adapter is updated before the logical timeout is
+///          published. A send-option failure rolls the receive option back to
+///          the prior value so subsequent calls do not observe a deliberately
+///          mixed timeout policy.
+/// @param session Candidate stable TLS session.
+/// @param timeout_ms Positive timeout in milliseconds.
+/// @return `RT_TLS_OK` on success or a typed invalid/socket status.
+int rt_tls_set_io_timeout(rt_tls_session_t *session, int timeout_ms) {
+    session = tls_session_checked(session);
+    if (!session || timeout_ms <= 0)
+        return RT_TLS_ERROR_INVALID_ARG;
+    if (session->socket_fd == INVALID_SOCK)
+        return RT_TLS_ERROR_CLOSED;
+
+    int previous = session->timeout_ms > 0 ? session->timeout_ms : 30000;
+    if (!set_socket_timeout(session->socket_fd, timeout_ms, true)) {
+        session->error = "TLS: failed to configure receive timeout";
+        return RT_TLS_ERROR_SOCKET;
+    }
+    if (!set_socket_timeout(session->socket_fd, timeout_ms, false)) {
+        (void)set_socket_timeout(session->socket_fd, previous, true);
+        session->error = "TLS: failed to configure send timeout";
+        return RT_TLS_ERROR_SOCKET;
+    }
+    session->timeout_ms = timeout_ms;
+    return RT_TLS_OK;
+}
+
+/// @brief Dispose protocol/socket state without changing managed refcounts.
+/// @details An explicit close performs a bounded close-notify exchange. A
+///          finalizer skips network I/O but still wipes every dynamic secret,
+///          closes the descriptor, and leaves an idempotent closed payload.
+/// @param session Valid session payload owned by the caller/finalizer.
+/// @param graceful Nonzero to attempt the bounded TLS close handshake.
+static void tls_session_dispose(rt_tls_session_t *session, int graceful) {
     if (!session)
         return;
 
-    if (session->state == TLS_STATE_CONNECTED) {
+    if (graceful && session->state == TLS_STATE_CONNECTED) {
         const int close_timeout_ms =
             (session->timeout_ms > 0 && session->timeout_ms < 100) ? session->timeout_ms : 100;
         session->timeout_ms = close_timeout_ms;
@@ -3208,7 +3304,36 @@ void rt_tls_close(rt_tls_session_t *session) {
         CLOSE_SOCKET(session->socket_fd);
         session->socket_fd = INVALID_SOCK;
     }
+    rt_secure_zero(session->hostname, sizeof(session->hostname));
+    rt_secure_zero(session->alpn_protocols, sizeof(session->alpn_protocols));
+    rt_secure_zero(session->negotiated_alpn, sizeof(session->negotiated_alpn));
+    rt_secure_zero(session->ca_file, sizeof(session->ca_file));
+    session->server_ctx = NULL;
     session->state = TLS_STATE_CLOSED;
+}
+
+/// @brief Finalize an abandoned low-level TLS session without blocking.
+/// @param obj Managed `rt_tls_session_t` payload.
+static void tls_session_finalize(void *obj) {
+    tls_session_dispose((rt_tls_session_t *)obj, 0);
+}
+
+/// @brief Politely shut down a TLS session and release its producer reference.
+///
+/// If still connected, sends a `close_notify` warning alert and
+/// opportunistically drains a few records until the peer's matching
+/// alert arrives. Shutdown uses a short bounded timeout rather than
+/// the normal handshake/read timeout so a peer that drops the socket
+/// or does not respond cannot stall local server teardown for tens of
+/// seconds. Dynamic scratch state and secrets are wiped before the
+/// pointer-width native socket is closed. NULL, forged, and stale handles are
+/// safe no-ops.
+void rt_tls_close(rt_tls_session_t *session) {
+    session = tls_session_checked(session);
+    if (!session)
+        return;
+
+    tls_session_dispose(session, 1);
 
     if (rt_obj_release_check0(session))
         rt_obj_free(session);
@@ -3220,12 +3345,16 @@ void rt_tls_close(rt_tls_session_t *session) {
 const char *rt_tls_get_error(rt_tls_session_t *session) {
     if (!session)
         return "null session";
+    session = tls_session_checked(session);
+    if (!session)
+        return "invalid session";
     return session->error ? session->error : "no error";
 }
 
 /// @brief Test whether `rt_tls_recv` can satisfy a read without going to the wire.
 /// @return 1 if the per-session app buffer holds undelivered bytes, 0 otherwise.
 int rt_tls_has_buffered_data(rt_tls_session_t *session) {
+    session = tls_session_checked(session);
     if (!session)
         return 0;
     return session->app_buffer_pos < session->app_buffer_len ? 1 : 0;
@@ -3233,17 +3362,19 @@ int rt_tls_has_buffered_data(rt_tls_session_t *session) {
 
 /// @brief Return the ALPN protocol negotiated during the handshake, or "" if none was negotiated.
 const char *rt_tls_get_negotiated_alpn(rt_tls_session_t *session) {
+    session = tls_session_checked(session);
     if (!session)
         return "";
     return session->negotiated_alpn;
 }
 
-/// @brief Expose the underlying socket descriptor (for select/poll integration).
-/// @return The socket FD, or -1 if `session` is NULL.
-int rt_tls_get_socket(rt_tls_session_t *session) {
-    if (!session)
+/// @brief Expose the pointer-width native socket descriptor.
+/// @return The socket handle, or -1 if `session` is NULL, invalid, or closed.
+intptr_t rt_tls_get_socket(rt_tls_session_t *session) {
+    session = tls_session_checked(session);
+    if (!session || session->socket_fd == INVALID_SOCK)
         return -1;
-    return (int)session->socket_fd;
+    return (intptr_t)session->socket_fd;
 }
 
 /// @brief One-shot TCP connect + TLS handshake to `host:port`.
@@ -3261,6 +3392,11 @@ int rt_tls_get_socket(rt_tls_session_t *session) {
 ///         resolution / connect / handshake failure.
 rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_config_t *config) {
     rt_net_init_wsa();
+
+    if (!host || !host[0] || port == 0) {
+        tls_set_last_error_msg("TLS: invalid connect target");
+        return NULL;
+    }
 
     rt_tls_config_t cfg;
     if (config) {
@@ -3308,7 +3444,11 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
         suppress_sigpipe(sock);
 
         int connected = 0;
-        rt_socket_set_nonblocking(sock, true);
+        if (!rt_socket_set_nonblocking(sock, true)) {
+            CLOSE_SOCKET(sock);
+            sock = INVALID_SOCK;
+            continue;
+        }
         if (connect(sock, p->ai_addr, (int)p->ai_addrlen) == 0) {
             connected = 1;
         } else {
@@ -3317,13 +3457,13 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
                 int ready = wait_socket(sock, (int)remaining_ms, true);
                 if (ready > 0) {
                     int so_error = 0;
-                    socklen_t so_error_len = sizeof(so_error);
-                    getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &so_error_len);
-                    connected = (so_error == 0);
+                    connected = rt_socket_pending_error(sock, &so_error) && so_error == 0;
                 }
             }
         }
-        rt_socket_set_nonblocking(sock, false);
+
+        if (connected && !rt_socket_set_nonblocking(sock, false))
+            connected = 0;
 
         if (connected)
             break;
@@ -3345,10 +3485,14 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
         handshake_ms = 1;
     if (handshake_ms > INT_MAX)
         handshake_ms = INT_MAX;
-    set_socket_timeout(sock, (int)handshake_ms, true);
-    set_socket_timeout(sock, (int)handshake_ms, false);
+    if (!set_socket_timeout(sock, (int)handshake_ms, true) ||
+        !set_socket_timeout(sock, (int)handshake_ms, false)) {
+        CLOSE_SOCKET(sock);
+        tls_set_last_error_msg("TLS: failed to configure handshake timeout");
+        return NULL;
+    }
 
-    rt_tls_session_t *session = rt_tls_new((int)sock, &cfg);
+    rt_tls_session_t *session = rt_tls_new((intptr_t)sock, &cfg);
     if (!session) {
         CLOSE_SOCKET(sock);
         tls_set_last_error_msg("TLS: failed to allocate session");
@@ -3366,8 +3510,12 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
     // Post-connect I/O uses the configured timeout as a per-operation budget,
     // independent of the (now-consumed) connection deadline.
     session->timeout_ms = cfg.timeout_ms;
-    set_socket_timeout(sock, cfg.timeout_ms, true);
-    set_socket_timeout(sock, cfg.timeout_ms, false);
+    if (!set_socket_timeout(sock, cfg.timeout_ms, true) ||
+        !set_socket_timeout(sock, cfg.timeout_ms, false)) {
+        tls_set_last_error_msg("TLS: failed to configure I/O timeout");
+        rt_tls_close(session);
+        return NULL;
+    }
 
     tls_set_last_error_msg(NULL);
     return session;

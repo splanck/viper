@@ -10,6 +10,7 @@
 // Key invariants:
 //   - Returned paths identify an existing directory and are never null.
 //   - POSIX hosts return an absolute path rather than the legacy dot fallback.
+//   - Platform-specific probing is selected through shared capability macros.
 // Ownership/Lifetime:
 //   - C-string results are owned and released by each test.
 //   - Runtime strings retain and release their own storage.

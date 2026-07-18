@@ -25,10 +25,10 @@
 #include "rt_box.h"
 #include "rt_bytes.h"
 #include "rt_error.h"
-#include "rt_list.h"
-#include "rt_map.h"
 #include "rt_future.h"
 #include "rt_internal.h"
+#include "rt_list.h"
+#include "rt_map.h"
 #include "rt_network.h"
 #include "rt_string.h"
 
@@ -557,10 +557,30 @@ static void test_udp_oversized_datagram_traps() {
 
     printf("  PASS: UdpOversizedDatagram → Err_ProtocolError (%d)\n", code);
 
+    // The rejected datagram must be consumed. Leaving it queued would make
+    // every later bounded receive trap on the same packet and permanently
+    // wedge an otherwise healthy socket.
+    void *followup = rt_bytes_new(1);
+    rt_bytes_set(followup, 0, 0x5A);
+    assert(rt_udp_send_to(sender, rt_const_cstr("127.0.0.1"), recv_port, followup) == 1);
+    void *received = rt_udp_recv_for(receiver, 4, 1000);
+    assert(received != nullptr);
+    assert(rt_bytes_len(received) == 1);
+    assert(rt_bytes_get(received, 0) == 0x5A);
+    printf("  PASS: UdpOversizedDatagram → rejected packet consumed, socket progressed\n");
+
+    if (rt_obj_release_check0(received))
+        rt_obj_free(received);
+    if (rt_obj_release_check0(followup))
+        rt_obj_free(followup);
     if (rt_obj_release_check0(payload))
         rt_obj_free(payload);
     rt_udp_close(sender);
     rt_udp_close(receiver);
+    if (rt_obj_release_check0(sender))
+        rt_obj_free(sender);
+    if (rt_obj_release_check0(receiver))
+        rt_obj_free(receiver);
 }
 
 // ── Scenario 15: Async connect failure resolves as Future error ───────────
@@ -576,6 +596,9 @@ static void test_async_connect_failure_surfaces_as_future_error() {
     assert(msg != nullptr && *msg != '\0');
 
     printf("  PASS: AsyncConnectFailure → Future error [%s]\n", msg);
+    rt_string_unref(error);
+    if (rt_obj_release_check0(future))
+        rt_obj_free(future);
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────

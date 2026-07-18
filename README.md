@@ -244,7 +244,7 @@ zanna --dump-opcodes
 | `zanna repl [zia & basic]`             | Interactive REPL |
 | `zanna -run <file.il>`                 | Execute an IL module directly, with optional tracing and step limits |
 | `zanna package <dir>`                  | Package an application for macOS, Linux, Windows, or tarball output |
-| `zanna install-package`                | Package the Zanna binary tools and ZannaIDE into a platform installer |
+| `zanna install-package`                | Package the Zanna binary tools and Zanna Studio into a platform installer |
 | `zia` / `vbasic`                       | Standalone source compiler entry points |
 | `zia-server` / `vbasic-server`         | Language servers with LSP and MCP modes |
 | `ilrun`, `il-verify`, `il-dis`         | Direct IL execution, verification, and disassembly |

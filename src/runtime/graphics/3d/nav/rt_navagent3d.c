@@ -653,6 +653,8 @@ static int navagent_ensure_neighbor_capacity(rt_navagent3d *agent, int32_t neede
             return 0;
         new_capacity = next;
     }
+    // cppcheck-suppress divideSizeof
+    // avoidance_neighbors is intentionally a reusable array of agent pointers.
     if ((size_t)new_capacity > SIZE_MAX / sizeof(*grown))
         return 0;
     grown = (rt_navagent3d **)realloc(agent->avoidance_neighbors,

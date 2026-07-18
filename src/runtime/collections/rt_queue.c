@@ -121,8 +121,14 @@ static void rt_queue_finalize(void *obj) {
         return;
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
     if (q->owns_elements && q->items && q->cap > 0) {
-        for (int64_t i = 0; i < q->len; i++)
-            queue_release_value(q->items[(q->head + i) % q->cap]);
+        int64_t len = q->len;
+        q->len = 0;
+        for (int64_t i = 0; i < len; i++) {
+            int64_t idx = (q->head + i) % q->cap;
+            void *value = q->items[idx];
+            q->items[idx] = NULL;
+            queue_release_value(value);
+        }
     }
     free(q->items);
     q->items = NULL;
@@ -262,15 +268,20 @@ void *rt_queue_new(void) {
 void rt_queue_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
-    if (!q)
+    if (!q) {
+        rt_gc_mutator_exit();
         return;
+    }
     owns = owns ? 1 : 0;
     if (q->len != 0 && q->owns_elements != owns) {
+        rt_gc_mutator_exit();
         rt_trap("Queue.SetOwnsElements: cannot change ownership mode on non-empty queue");
         return;
     }
     q->owns_elements = owns;
+    rt_gc_mutator_exit();
 }
 
 int8_t rt_queue_owns_elements(void *obj) {
@@ -354,17 +365,23 @@ void rt_queue_push(void *obj, void *elem) {
         return;
     }
 
+    rt_gc_mutator_enter();
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
-    if (!q)
+    if (!q) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (q->len >= INT64_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Queue: maximum length reached");
         return;
     }
     if (q->len >= q->cap) {
-        if (!queue_grow(q))
+        if (!queue_grow(q)) {
+            rt_gc_mutator_exit();
             return;
+        }
     }
 
     if (q->owns_elements)
@@ -372,6 +389,7 @@ void rt_queue_push(void *obj, void *elem) {
     q->items[q->tail] = elem;
     q->tail = (q->tail + 1) % q->cap;
     q->len++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Removes and returns the front element from the Queue.
@@ -409,11 +427,15 @@ void *rt_queue_pop(void *obj) {
         return NULL;
     }
 
+    rt_gc_mutator_enter();
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
-    if (!q)
+    if (!q) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     if (q->len == 0) {
+        rt_gc_mutator_exit();
         rt_trap("Queue.Take: queue is empty");
         return NULL;
     }
@@ -428,6 +450,7 @@ void *rt_queue_pop(void *obj) {
         queue_release_value(val);
     }
 
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -504,17 +527,26 @@ void rt_queue_clear(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
+    if (!q) {
+        rt_gc_mutator_exit();
+        return;
+    }
     if (q->owns_elements && q->items && q->cap > 0) {
-        for (int64_t i = 0; i < q->len; i++) {
+        int64_t len = q->len;
+        q->len = 0;
+        for (int64_t i = 0; i < len; i++) {
             int64_t idx = (q->head + i) % q->cap;
-            queue_release_value(q->items[idx]);
+            void *value = q->items[idx];
             q->items[idx] = NULL;
+            queue_release_value(value);
         }
     }
     q->len = 0;
     q->head = 0;
     q->tail = 0;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Check if the queue contains a given element (pointer equality).
@@ -540,9 +572,12 @@ void *rt_queue_try_pop(void *obj) {
     if (!obj)
         return NULL;
 
+    rt_gc_mutator_enter();
     rt_queue_impl *q = as_queue(obj, "Queue: invalid Queue object");
-    if (q->len == 0)
+    if (!q || q->len == 0) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     void *val = q->items[q->head];
     if (q->owns_elements)
@@ -553,6 +588,7 @@ void *rt_queue_try_pop(void *obj) {
     if (q->owns_elements) {
         queue_release_value(val);
     }
+    rt_gc_mutator_exit();
     return val;
 }
 

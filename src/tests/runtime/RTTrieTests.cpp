@@ -7,15 +7,20 @@
 //
 // File: src/tests/runtime/RTTrieTests.cpp
 // Purpose: Tests for Zanna.Collections.Trie runtime helpers.
+// Key invariants: Prefix mutation preserves exact key/value membership and
+//                 allocation failure never publishes a partial path.
+// Ownership/Lifetime: Tests release every Trie and managed value after clearing
+//                     trap-recovery state.
+// Links: src/runtime/collections/rt_trie.c
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_box.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_option.h"
 #include "rt_seq.h"
 #include "rt_string.h"
-#include "rt_box.h"
-#include "rt_option.h"
 #include "rt_trie.h"
 
 #include <cassert>
@@ -258,6 +263,43 @@ static void test_remove() {
     rt_release_obj(t);
 }
 
+/// @brief Verify removal pruning preserves terminal ancestors and shared paths.
+/// @details Removes keys from longest to shortest along one branch, checks a
+///          sibling branch throughout, then reinserts the fully pruned path to
+///          prove structural reclamation leaves the trie reusable.
+static void test_remove_prunes_only_unshared_suffix() {
+    void *trie = rt_trie_new();
+    void *value = new_obj();
+    rt_string a = make_key("a");
+    rt_string ab = make_key("ab");
+    rt_string abc = make_key("abc");
+    rt_string ax = make_key("ax");
+
+    rt_trie_set(trie, a, value);
+    rt_trie_set(trie, ab, value);
+    rt_trie_set(trie, abc, value);
+    rt_trie_set(trie, ax, value);
+
+    assert(rt_trie_remove(trie, abc) == 1);
+    assert(rt_trie_has(trie, ab) == 1);
+    assert(rt_trie_has(trie, ax) == 1);
+    assert(rt_trie_remove(trie, ab) == 1);
+    assert(rt_trie_has(trie, a) == 1);
+    assert(rt_trie_has(trie, ax) == 1);
+    assert(rt_trie_remove(trie, a) == 1);
+    assert(rt_trie_has(trie, ax) == 1);
+
+    rt_trie_set(trie, abc, value);
+    assert(rt_trie_has(trie, abc) == 1);
+
+    rt_string_unref(a);
+    rt_string_unref(ab);
+    rt_string_unref(abc);
+    rt_string_unref(ax);
+    rt_release_obj(value);
+    rt_release_obj(trie);
+}
+
 static void test_clear() {
     void *t = rt_trie_new();
     rt_string k = make_key("test");
@@ -432,6 +474,7 @@ int main() {
     test_with_prefix();
     test_longest_prefix();
     test_remove();
+    test_remove_prunes_only_unshared_suffix();
     test_clear();
     test_keys();
     test_empty_key();

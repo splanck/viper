@@ -170,12 +170,12 @@ supports the full table above. `vbasic-server` currently advertises diagnostics,
 completion, hover, and document symbols only; BASIC semantic navigation is tracked
 separately from the Zia LSP parity work.
 
-ZannaIDE mirrors that split with separate server-capability and wired-command
+Zanna Studio mirrors that split with separate server-capability and wired-command
 flags: BASIC disabled-command messages can name `vbasic-server` support without
 enabling a UI command before the IDE has a non-blocking BASIC adapter.
 
 Definition, references, and rename use the same native `Zanna.Zia.ProjectIndex`
-implementation as ZannaIDE. The LSP handler keeps open documents indexed on
+implementation as Zanna Studio. The LSP handler keeps open documents indexed on
 `didOpen`/`didChange` and removes them on `didClose`.
 
 Semantic tokens are returned from `textDocument/semanticTokens/full` with this legend:

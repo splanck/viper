@@ -49,7 +49,7 @@ foreach (_tool IN ITEMS
         vbasic-server
         basic-ast-dump
         basic-lex-dump
-        zannaide)
+        zannastudio)
     file(WRITE "${_stage}/bin/${_tool}${_tool_suffix}" "fixture\n")
 endforeach ()
 if (NOT WIN32)
@@ -66,7 +66,7 @@ if (NOT WIN32)
             vbasic-server
             basic-ast-dump
             basic-lex-dump
-            zannaide)
+            zannastudio)
         file(CHMOD "${_stage}/bin/${_tool}${_tool_suffix}"
                 PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
                             WORLD_READ WORLD_EXECUTE)

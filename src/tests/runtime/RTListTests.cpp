@@ -7,6 +7,11 @@
 //
 // File: src/tests/runtime/RTListTests.cpp
 // Purpose: Tests for Zanna.Collections.List runtime helpers.
+// Key invariants: Append grows geometrically and removal preserves non-empty
+//                 capacity without changing managed element ownership.
+// Ownership/Lifetime: Lists own retained elements until removal/finalization;
+//                     tests release each list and any separately owned value.
+// Links: src/runtime/collections/rt_list.c, docs/zannalib/collections/sequential.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -69,6 +74,44 @@ static void assert_item(void *list, int64_t index, void *expected) {
     void *got = rt_list_get(list, index);
     assert(got == expected);
     rt_release_obj(got);
+}
+
+/// @brief White-box view of the stable two-pointer List payload used to inspect
+///        backing-array capacity without adding a language-visible API solely
+///        for performance regression tests.
+struct ListLayout {
+    void **vptr;
+    void **arr;
+};
+
+static void test_geometric_growth_and_nonshrinking_removal() {
+    void *list = rt_list_new();
+    assert(list != nullptr);
+    void *value = new_obj();
+
+    rt_list_push(list, value);
+    auto *layout = static_cast<ListLayout *>(list);
+    void **first_storage = layout->arr;
+    assert(first_storage != nullptr);
+    assert(rt_heap_cap(first_storage) == 16);
+
+    for (int i = 1; i < 16; ++i)
+        rt_list_push(list, value);
+    assert(layout->arr == first_storage);
+    assert(rt_heap_cap(layout->arr) == 16);
+
+    rt_list_push(list, value);
+    void **grown_storage = layout->arr;
+    assert(rt_heap_cap(grown_storage) == 32);
+    assert(rt_list_len(list) == 17);
+
+    while (rt_list_len(list) > 1)
+        rt_list_remove_at(list, rt_list_len(list) - 1);
+    assert(layout->arr == grown_storage);
+    assert(rt_heap_cap(layout->arr) == 32);
+
+    cleanup_list(list);
+    rt_release_obj(value);
 }
 
 static void test_has_empty_and_nonempty() {
@@ -345,6 +388,7 @@ static void test_pop() {
 }
 
 int main() {
+    test_geometric_growth_and_nonshrinking_removal();
     test_has_empty_and_nonempty();
     test_find_returns_index_or_minus1();
     test_insert_begin_middle_end();

@@ -13,10 +13,13 @@
 //
 // Key invariants:
 //   - A Promise can be resolved (value) or rejected (error string) exactly once.
-//   - Resolving or rejecting twice traps immediately.
+//   - Public duplicate completion traps immediately; internal worker try-set
+//     completion reports false and preserves the first result.
 //   - Future.Await blocks until the promise is resolved or rejected.
 //   - Future.TryGet returns immediately: the value if done, NULL if pending.
 //   - The done flag is sticky; once set it is never cleared.
+//   - Native C-string rejection still publishes an error state when allocating
+//     the optional diagnostic String fails.
 //   - Win32 uses CRITICAL_SECTION + CONDITION_VARIABLE; POSIX uses pthreads.
 //
 // Ownership/Lifetime:
@@ -33,6 +36,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_future.h"
+#include "rt_gc.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_option.h"
@@ -82,8 +87,10 @@ typedef struct {
     int8_t is_error;
     int8_t owns_value;
     int8_t cond_uses_monotonic;
+    int8_t sync_alive;
     void *future; // Cached future object
     struct future_listener *listeners;
+    struct future_listener *listeners_tail;
 } promise_impl;
 
 typedef struct {
@@ -131,6 +138,22 @@ static promise_impl *promise_require(void *obj, int8_t trap_on_null) {
     return (promise_impl *)obj;
 }
 
+/// @brief Validate a Promise handle without invoking the trap dispatcher.
+/// @details Internal producer-completion paths use this predicate after they
+///          have already left an operation recovery frame. Treating NULL,
+///          forged, freed, or wrong-class pointers as an ordinary miss keeps
+///          their best-effort settlement contract genuinely non-throwing.
+///          Callers must still own a live reference when they expect success;
+///          the registry-backed instance check makes stale pointers safe to
+///          reject without dereferencing them.
+/// @param obj Candidate Promise object pointer.
+/// @return Valid Promise payload, or NULL when @p obj is not a live Promise.
+static promise_impl *promise_try(void *obj) {
+    if (!obj || !rt_obj_is_instance(obj, RT_PROMISE_CLASS_ID, sizeof(promise_impl)))
+        return NULL;
+    return (promise_impl *)obj;
+}
+
 /// @brief Validate-and-cast a handle to future_impl (mirror of
 ///        promise_require). NULL traps only when @p trap_on_null is set.
 /// @return The future, or NULL.
@@ -159,6 +182,26 @@ static void future_release_object(void *obj) {
 static void future_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
     const char *err = rt_trap_get_error();
     snprintf(buffer, buffer_size, "%s", err && err[0] ? err : fallback);
+}
+
+/// @brief Release a waiter's temporary Future reference and report a native wait failure.
+/// @details Condition-variable failures are not timeouts and must not be
+///          silently retried: retrying a permanent `EINVAL`/`EPERM` error can
+///          spin forever. The helper runs only after any held Promise mutex has
+///          been released. Returning embedder trap hooks receive control back
+///          with the waiter's ownership already balanced.
+/// @param obj Retained Future object held for the wait operation.
+/// @param operation Stable API name included in the diagnostic.
+/// @param native_error POSIX errno-style result or Win32 error code.
+static void future_report_wait_error(void *obj, const char *operation, unsigned long native_error) {
+    char message[160];
+    snprintf(message,
+             sizeof(message),
+             "%s: native condition wait failed (%lu)",
+             operation ? operation : "Future.Wait",
+             native_error);
+    future_release_object(obj);
+    rt_trap(message);
 }
 
 static void future_retain_object_or_cleanup(void *value, void *cleanup_obj, const char *fallback) {
@@ -203,27 +246,17 @@ static rt_string future_ref_string_or_cleanup(rt_string value,
     return retained;
 }
 
-static void future_retain_cached_future_locked(promise_impl *p,
-                                               void *future_obj,
-                                               void *cleanup_obj) {
-    if (!future_obj)
-        return;
-
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        char saved_error[256];
-        future_save_trap_error(
-            saved_error, sizeof(saved_error), "Future: cached future retain failed");
-        rt_trap_clear_recovery();
-        promise_unlock(p);
-        future_release_object(cleanup_obj);
-        rt_trap(saved_error);
-        return;
-    }
-
-    rt_obj_retain_maybe(future_obj);
-    rt_trap_clear_recovery();
+/// @brief Promote the Promise's weak cached-Future pointer while holding its mutex.
+/// @details The cached pointer does not own the Future. A last release can set
+///          the Future's count to zero before its finalizer acquires the Promise
+///          mutex to clear the cache. The heap's atomic live-retain operation
+///          distinguishes that state from a promotable object without trapping
+///          or reviving a zero-reference payload.
+/// @param future_obj Cached Future payload to promote.
+/// @return 1 for a retained mortal Future, 2 for an immortal payload, 0 for a
+///         dead/stale payload, or -1 when the live refcount cannot be increased.
+static int32_t future_promote_cached_locked(void *future_obj) {
+    return future_obj ? rt_heap_try_retain_live(future_obj) : 0;
 }
 
 #if !RT_PLATFORM_WINDOWS
@@ -386,11 +419,77 @@ static void future_notify_listeners(future_listener *listeners) {
     }
 }
 
+/// @brief Cancel and release listeners from an abandoned Promise.
+/// @details Abandonment is not successful completion, so callbacks are not
+///          invoked. Optional cancellation hooks run behind independent trap
+///          boundaries, then each listener's strong Future reference is
+///          released. This also makes pending continuation cycles collectible.
+/// @param listeners Detached listener chain, or NULL.
+static void future_cancel_listeners(future_listener *listeners) {
+    while (listeners) {
+        future_listener *next = listeners->next;
+        if (listeners->cancel) {
+            jmp_buf recovery;
+            rt_trap_set_recovery(&recovery);
+            if (setjmp(recovery) == 0)
+                listeners->cancel(listeners->ctx);
+            rt_trap_clear_recovery();
+        }
+        future_release_object(listeners->future_obj);
+        free(listeners);
+        listeners = next;
+    }
+}
+
+/// @brief Detach the FIFO listener chain from a locked Promise in O(1).
+/// @details Clearing both endpoints preserves the empty-list invariant and
+///          allows subsequent completion code to invoke callbacks after the
+///          Promise mutex is released.
+/// @param p Locked Promise implementation.
+/// @return Previous listener head, or NULL when no listener was registered.
+static future_listener *promise_detach_listeners_locked(promise_impl *p) {
+    future_listener *listeners = p ? p->listeners : NULL;
+    if (p) {
+        p->listeners = NULL;
+        p->listeners_tail = NULL;
+    }
+    return listeners;
+}
+
 //=============================================================================
 // Promise Implementation
 //=============================================================================
 
 static void future_finalizer(void *obj);
+
+/// @brief Enumerate strong managed edges owned by a Promise.
+/// @details The Promise mutex serializes traversal with value settlement and
+///          listener mutation. The callback visits the owned result and every
+///          listener-retained Future; the cached Future pointer is deliberately
+///          weak and is not visited. A finalized Promise has destroyed its
+///          native synchronization state and therefore reports no edges.
+static void promise_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    promise_impl *p = (promise_impl *)obj;
+    if (!p || !visitor || !__atomic_load_n(&p->sync_alive, __ATOMIC_ACQUIRE))
+        return;
+    promise_lock(p);
+    if (p->owns_value && p->value)
+        visitor(p->value, ctx);
+    for (future_listener *listener = p->listeners; listener; listener = listener->next)
+        if (listener->future_obj)
+            visitor(listener->future_obj, ctx);
+    promise_unlock(p);
+}
+
+/// @brief Enumerate the Promise strongly owned by a Future wrapper.
+/// @details The edge is immutable until finalization. It is cleared before the
+///          Future drops its Promise reference, so post-finalizer reclaim
+///          traversal observes no outgoing edge.
+static void future_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    future_impl *f = (future_impl *)obj;
+    if (f && visitor && f->promise)
+        visitor(f->promise, ctx);
+}
 
 /// @brief GC finalizer: release the resolved value (if owned), error string (if any), notify any
 /// remaining listeners (so callers waiting on `_on_complete` get a "promise abandoned" callback),
@@ -414,13 +513,14 @@ static void promise_finalizer(void *obj) {
     value = p->value;
     error = p->error;
     owns_value = p->owns_value;
-    listeners = p->listeners;
+    listeners = promise_detach_listeners_locked(p);
     p->value = NULL;
     p->error = NULL;
     p->owns_value = 0;
-    p->listeners = NULL;
+    p->future = NULL;
     p->done = 1;
     p->is_error = 1;
+    __atomic_store_n(&p->sync_alive, 0, __ATOMIC_RELEASE);
 #if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
     LeaveCriticalSection(&p->mutex);
@@ -433,7 +533,7 @@ static void promise_finalizer(void *obj) {
         rt_obj_free(value);
     if (error)
         rt_str_release_maybe(error);
-    future_notify_listeners(listeners);
+    future_cancel_listeners(listeners);
 #if RT_PLATFORM_WINDOWS
     DeleteCriticalSection(&p->mutex);
 #else
@@ -475,9 +575,29 @@ void *rt_promise_new(void) {
     p->done = 0;
     p->is_error = 0;
     p->owns_value = 0;
+    p->cond_uses_monotonic = 0;
+    p->sync_alive = 1;
     p->future = NULL;
+    p->listeners = NULL;
+    p->listeners_tail = NULL;
 
     rt_obj_set_finalizer(p, promise_finalizer);
+    {
+        char saved_error[256];
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            future_save_trap_error(saved_error, sizeof(saved_error), "Promise: GC tracking failed");
+            rt_trap_clear_recovery();
+            future_release_object(p);
+            rt_trap(saved_error);
+            return NULL;
+        }
+        rt_gc_track(p, promise_traverse);
+        if (!rt_gc_is_tracked(p))
+            rt_trap("Promise: GC tracking failed");
+        rt_trap_clear_recovery();
+    }
     return p;
 }
 
@@ -492,8 +612,17 @@ void *rt_promise_get_future(void *obj) {
         promise_lock(p);
         void *cached = p->future;
         if (cached) {
-            future_retain_cached_future_locked(p, cached, obj);
+            const int32_t promoted = future_promote_cached_locked(cached);
+            if (promoted == 0 && p->future == cached)
+                p->future = NULL;
             promise_unlock(p);
+            if (promoted < 0) {
+                future_release_object(obj);
+                rt_trap("refcount overflow");
+                return NULL;
+            }
+            if (promoted == 0)
+                continue;
             future_release_object(obj);
             return cached;
         }
@@ -523,6 +652,9 @@ void *rt_promise_get_future(void *obj) {
         candidate->promise = p;
         rt_obj_retain_maybe(p); // Future holds a reference to prevent premature GC of promise
         rt_obj_set_finalizer(candidate, future_finalizer);
+        rt_gc_track(candidate, future_traverse);
+        if (!rt_gc_is_tracked(candidate))
+            rt_trap("Future: GC tracking failed");
         rt_trap_clear_recovery();
 
         promise_lock(p);
@@ -548,21 +680,15 @@ static void future_finalizer(void *obj) {
         return;
 
     promise_impl *p = f->promise;
-#if RT_PLATFORM_WINDOWS
-    EnterCriticalSection(&p->mutex);
-#else
-    pthread_mutex_lock(&p->mutex);
-#endif
-    if (p->future == obj)
-        p->future = NULL;
-#if RT_PLATFORM_WINDOWS
-    LeaveCriticalSection(&p->mutex);
-#else
-    pthread_mutex_unlock(&p->mutex);
-#endif
+    f->promise = NULL;
+    if (__atomic_load_n(&p->sync_alive, __ATOMIC_ACQUIRE)) {
+        promise_lock(p);
+        if (p->future == obj)
+            p->future = NULL;
+        promise_unlock(p);
+    }
 
-    if (rt_obj_release_check0(p))
-        rt_obj_free(p);
+    future_release_object(p);
 }
 
 /// @brief Set a value in the promise, retaining runtime-managed values until consumed/finalized.
@@ -582,14 +708,14 @@ void rt_promise_set(void *obj, void *value) {
             rt_obj_free(value);
         future_release_object(obj);
         rt_trap("Promise: already completed");
+        return;
     }
 
     p->value = value;
     p->done = 1;
     p->is_error = 0;
     p->owns_value = value ? 1 : 0;
-    future_listener *listeners = p->listeners;
-    p->listeners = NULL;
+    future_listener *listeners = promise_detach_listeners_locked(p);
 
 #if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
@@ -620,14 +746,14 @@ void rt_promise_set_owned(void *obj, void *value) {
             rt_obj_free(value);
         future_release_object(obj);
         rt_trap("Promise: already completed");
+        return;
     }
 
     p->value = value;
     p->done = 1;
     p->is_error = 0;
     p->owns_value = value ? 1 : 0;
-    future_listener *listeners = p->listeners;
-    p->listeners = NULL;
+    future_listener *listeners = promise_detach_listeners_locked(p);
 
 #if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
@@ -657,14 +783,14 @@ void rt_promise_set_transferred(void *obj, void *value) {
         future_release_object(value);
         future_release_object(obj);
         rt_trap("Promise: already completed");
+        return;
     }
 
     p->value = value;
     p->done = 1;
     p->is_error = 0;
     p->owns_value = value ? 1 : 0;
-    future_listener *listeners = p->listeners;
-    p->listeners = NULL;
+    future_listener *listeners = promise_detach_listeners_locked(p);
 
 #if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
@@ -675,6 +801,48 @@ void rt_promise_set_transferred(void *obj, void *value) {
 
     future_notify_listeners(listeners);
     future_release_object(obj);
+}
+
+/// @brief Transfer a worker-produced value without propagating duplicate completion.
+/// @details Native worker adapters can race cancellation/combinator settlement and
+///          must not turn an already-settled result into a second trap from inside
+///          their recovery handler. This variant consumes the producer's value
+///          reference in both outcomes, publishes successful completion under the
+///          Promise mutex, and invokes detached listeners after unlocking.
+/// @param obj Producer-owned Promise kept alive by the caller.
+/// @param value Runtime-managed reference being handed off, or NULL.
+/// @return One when published; zero when invalid or already completed. The
+///         supplied value reference is consumed in every outcome.
+int8_t rt_promise_try_set_transferred(void *obj, void *value) {
+    promise_impl *p = promise_try(obj);
+    if (!p) {
+        future_release_object(value);
+        return 0;
+    }
+
+    promise_lock(p);
+    if (p->done) {
+        promise_unlock(p);
+        future_release_object(value);
+        return 0;
+    }
+
+    p->value = value;
+    p->error = NULL;
+    p->done = 1;
+    p->is_error = 0;
+    p->owns_value = value ? 1 : 0;
+    future_listener *listeners = promise_detach_listeners_locked(p);
+
+#if RT_PLATFORM_WINDOWS
+    WakeAllConditionVariable(&p->cond);
+#else
+    pthread_cond_broadcast(&p->cond);
+#endif
+    promise_unlock(p);
+
+    future_notify_listeners(listeners);
+    return 1;
 }
 
 /// @brief Complete the promise with an error; wakes all waiting futures.
@@ -715,14 +883,14 @@ void rt_promise_set_error(void *obj, rt_string error) {
             rt_str_release_maybe(stored_error);
         future_release_object(obj);
         rt_trap("Promise: already completed");
+        return;
     }
 
     p->error = stored_error;
     p->done = 1;
     p->is_error = 1;
     p->owns_value = 0;
-    future_listener *listeners = p->listeners;
-    p->listeners = NULL;
+    future_listener *listeners = promise_detach_listeners_locked(p);
 
 #if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&p->cond);
@@ -733,6 +901,70 @@ void rt_promise_set_error(void *obj, rt_string error) {
 
     future_notify_listeners(listeners);
     future_release_object(obj);
+}
+
+/// @brief Reject a producer-owned Promise without letting diagnostic allocation escape.
+/// @details The ordinary public SetError contract copies a managed String and
+///          traps on duplicate completion. Native worker boundaries need a
+///          stronger progress guarantee: after catching the worker's original
+///          trap, a second OOM while copying that diagnostic must not recurse
+///          through the same recovery frame or leave waiters pending forever.
+///          This function therefore catches only the optional String-copy trap,
+///          publishes a message-less error as its allocation-free fallback,
+///          and reports duplicate completion with a zero result.
+/// @param obj Producer-owned Promise object pointer kept live by the caller.
+/// @param error NUL-terminated diagnostic, or NULL for the generic fallback.
+/// @return One when the Promise transitioned to error, otherwise zero. Promise
+///         validation and duplicate completion do not raise a trap.
+int8_t rt_promise_try_set_error_cstr(void *obj, const char *error) {
+    promise_impl *p = promise_try(obj);
+    if (!p)
+        return 0;
+
+    promise_lock(p);
+    if (p->done) {
+        promise_unlock(p);
+        return 0;
+    }
+    promise_unlock(p);
+
+    rt_string stored_error = NULL;
+    if (error && error[0]) {
+        jmp_buf copy_recovery;
+        rt_trap_set_recovery(&copy_recovery);
+        if (setjmp(copy_recovery) == 0) {
+            stored_error = rt_string_from_bytes(error, strlen(error));
+            rt_trap_clear_recovery();
+        } else {
+            rt_trap_clear_recovery();
+            stored_error = NULL;
+        }
+    }
+
+    promise_lock(p);
+    if (p->done) {
+        promise_unlock(p);
+        if (stored_error)
+            rt_str_release_maybe(stored_error);
+        return 0;
+    }
+
+    p->error = stored_error;
+    p->value = NULL;
+    p->done = 1;
+    p->is_error = 1;
+    p->owns_value = 0;
+    future_listener *listeners = promise_detach_listeners_locked(p);
+
+#if RT_PLATFORM_WINDOWS
+    WakeAllConditionVariable(&p->cond);
+#else
+    pthread_cond_broadcast(&p->cond);
+#endif
+    promise_unlock(p);
+
+    future_notify_listeners(listeners);
+    return 1;
 }
 
 /// @brief Check whether the promise has been completed (either Ok or Error).
@@ -772,34 +1004,51 @@ void *rt_future_get(void *obj) {
     rt_string error = NULL;
     int8_t is_error = 0;
     int8_t owns_value = 0;
+    unsigned long wait_error = 0;
 
 #if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     while (!p->done) {
-        SleepConditionVariableCS(&p->cond, &p->mutex, INFINITE);
+        if (!SleepConditionVariableCS(&p->cond, &p->mutex, INFINITE)) {
+            wait_error = (unsigned long)GetLastError();
+            break;
+        }
     }
-    if (p->is_error) {
+    if (!wait_error && p->is_error) {
         is_error = 1;
         error = p->error;
-    } else {
+    } else if (!wait_error) {
         result = p->value;
         owns_value = p->owns_value;
     }
     LeaveCriticalSection(&p->mutex);
 #else
-    pthread_mutex_lock(&p->mutex);
-    while (!p->done) {
-        pthread_cond_wait(&p->cond, &p->mutex);
+    int lock_rc = pthread_mutex_lock(&p->mutex);
+    if (lock_rc != 0) {
+        future_report_wait_error(obj, "Future.Get", (unsigned long)lock_rc);
+        return NULL;
     }
-    if (p->is_error) {
+    while (!p->done) {
+        int rc = pthread_cond_wait(&p->cond, &p->mutex);
+        if (rc != 0) {
+            wait_error = (unsigned long)rc;
+            break;
+        }
+    }
+    if (!wait_error && p->is_error) {
         is_error = 1;
         error = p->error;
-    } else {
+    } else if (!wait_error) {
         result = p->value;
         owns_value = p->owns_value;
     }
     pthread_mutex_unlock(&p->mutex);
 #endif
+
+    if (wait_error) {
+        future_report_wait_error(obj, "Future.Get", wait_error);
+        return NULL;
+    }
 
     if (is_error && error)
         error = future_ref_string_or_cleanup(error, obj, "Future.Get: error retain failed");
@@ -848,6 +1097,8 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     promise_impl *p = f->promise;
     void *result = NULL;
     int8_t owns_value = 0;
+    int8_t success = 0;
+    unsigned long wait_error = 0;
 
 #if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
@@ -858,32 +1109,47 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
             break;
         if (!SleepConditionVariableCS(&p->cond, &p->mutex, remaining) && !p->done) {
             DWORD error = GetLastError();
-            if (error != ERROR_TIMEOUT)
+            if (error != ERROR_TIMEOUT) {
+                wait_error = (unsigned long)error;
                 break;
+            }
         }
     }
-    int8_t success = p->done && !p->is_error;
+    success = p->done && !p->is_error;
     if (success && out) {
         result = p->value;
         owns_value = p->owns_value;
     }
     LeaveCriticalSection(&p->mutex);
 #else
-    pthread_mutex_lock(&p->mutex);
+    int lock_rc = pthread_mutex_lock(&p->mutex);
+    if (lock_rc != 0) {
+        future_report_wait_error(obj, "Future.GetFor", (unsigned long)lock_rc);
+        return 0;
+    }
     future_deadline_t deadline = future_deadline_abs_from_now(ms, p->cond_uses_monotonic);
     while (!p->done) {
         int rc =
             future_cond_timedwait_deadline(&p->cond, &p->mutex, deadline, p->cond_uses_monotonic);
         if (rc == ETIMEDOUT && !p->done)
             break;
+        if (rc != 0) {
+            wait_error = (unsigned long)rc;
+            break;
+        }
     }
-    int8_t success = p->done && !p->is_error;
+    success = p->done && !p->is_error;
     if (success && out) {
         result = p->value;
         owns_value = p->owns_value;
     }
     pthread_mutex_unlock(&p->mutex);
 #endif
+
+    if (wait_error) {
+        future_report_wait_error(obj, "Future.GetFor", wait_error);
+        return 0;
+    }
 
     if (success && out) {
         if (result && owns_value)
@@ -1117,6 +1383,7 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
     promise_impl *p = f->promise;
     void *result = NULL;
     int8_t owns_value = 0;
+    unsigned long wait_error = 0;
 
 #if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
@@ -1127,8 +1394,10 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
             break;
         if (!SleepConditionVariableCS(&p->cond, &p->mutex, remaining) && !p->done) {
             DWORD error = GetLastError();
-            if (error != ERROR_TIMEOUT)
+            if (error != ERROR_TIMEOUT) {
+                wait_error = (unsigned long)error;
                 break;
+            }
         }
     }
     if (p->done && !p->is_error) {
@@ -1137,13 +1406,21 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
     }
     LeaveCriticalSection(&p->mutex);
 #else
-    pthread_mutex_lock(&p->mutex);
+    int lock_rc = pthread_mutex_lock(&p->mutex);
+    if (lock_rc != 0) {
+        future_report_wait_error(obj, "Future.GetForVal", (unsigned long)lock_rc);
+        return NULL;
+    }
     future_deadline_t deadline = future_deadline_abs_from_now(ms, p->cond_uses_monotonic);
     while (!p->done) {
         int rc =
             future_cond_timedwait_deadline(&p->cond, &p->mutex, deadline, p->cond_uses_monotonic);
         if (rc == ETIMEDOUT && !p->done)
             break;
+        if (rc != 0) {
+            wait_error = (unsigned long)rc;
+            break;
+        }
     }
     if (p->done && !p->is_error) {
         result = p->value;
@@ -1151,6 +1428,11 @@ void *rt_future_get_for_val(void *obj, int64_t ms) {
     }
     pthread_mutex_unlock(&p->mutex);
 #endif
+
+    if (wait_error) {
+        future_report_wait_error(obj, "Future.GetForVal", wait_error);
+        return NULL;
+    }
 
     if (result && owns_value)
         future_retain_object_or_cleanup(result, obj, "Future.GetForVal: value retain failed");
@@ -1166,20 +1448,37 @@ void rt_future_wait(void *obj) {
     rt_obj_retain_maybe(obj);
 
     promise_impl *p = f->promise;
+    unsigned long wait_error = 0;
 
 #if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
     while (!p->done) {
-        SleepConditionVariableCS(&p->cond, &p->mutex, INFINITE);
+        if (!SleepConditionVariableCS(&p->cond, &p->mutex, INFINITE)) {
+            wait_error = (unsigned long)GetLastError();
+            break;
+        }
     }
     LeaveCriticalSection(&p->mutex);
 #else
-    pthread_mutex_lock(&p->mutex);
+    int lock_rc = pthread_mutex_lock(&p->mutex);
+    if (lock_rc != 0) {
+        future_report_wait_error(obj, "Future.Wait", (unsigned long)lock_rc);
+        return;
+    }
     while (!p->done) {
-        pthread_cond_wait(&p->cond, &p->mutex);
+        int rc = pthread_cond_wait(&p->cond, &p->mutex);
+        if (rc != 0) {
+            wait_error = (unsigned long)rc;
+            break;
+        }
     }
     pthread_mutex_unlock(&p->mutex);
 #endif
+
+    if (wait_error) {
+        future_report_wait_error(obj, "Future.Wait", wait_error);
+        return;
+    }
 
     future_release_object(obj);
 }
@@ -1197,6 +1496,8 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
     rt_obj_retain_maybe(obj);
 
     promise_impl *p = f->promise;
+    int8_t result = 0;
+    unsigned long wait_error = 0;
 
 #if RT_PLATFORM_WINDOWS
     EnterCriticalSection(&p->mutex);
@@ -1207,24 +1508,39 @@ int8_t rt_future_wait_for(void *obj, int64_t ms) {
             break;
         if (!SleepConditionVariableCS(&p->cond, &p->mutex, remaining) && !p->done) {
             DWORD error = GetLastError();
-            if (error != ERROR_TIMEOUT)
+            if (error != ERROR_TIMEOUT) {
+                wait_error = (unsigned long)error;
                 break;
+            }
         }
     }
-    int8_t result = p->done;
+    result = p->done;
     LeaveCriticalSection(&p->mutex);
 #else
-    pthread_mutex_lock(&p->mutex);
+    int lock_rc = pthread_mutex_lock(&p->mutex);
+    if (lock_rc != 0) {
+        future_report_wait_error(obj, "Future.WaitFor", (unsigned long)lock_rc);
+        return 0;
+    }
     future_deadline_t deadline = future_deadline_abs_from_now(ms, p->cond_uses_monotonic);
     while (!p->done) {
         int rc =
             future_cond_timedwait_deadline(&p->cond, &p->mutex, deadline, p->cond_uses_monotonic);
         if (rc == ETIMEDOUT && !p->done)
             break;
+        if (rc != 0) {
+            wait_error = (unsigned long)rc;
+            break;
+        }
     }
-    int8_t result = p->done;
+    result = p->done;
     pthread_mutex_unlock(&p->mutex);
 #endif
+
+    if (wait_error) {
+        future_report_wait_error(obj, "Future.WaitFor", wait_error);
+        return 0;
+    }
 
     future_release_object(obj);
     return result;
@@ -1279,10 +1595,11 @@ int8_t rt_future_on_complete_ex(void *obj,
         return 1;
     }
 
-    future_listener **tail = &p->listeners;
-    while (*tail)
-        tail = &(*tail)->next;
-    *tail = listener;
+    if (p->listeners_tail)
+        p->listeners_tail->next = listener;
+    else
+        p->listeners = listener;
+    p->listeners_tail = listener;
 
 #if RT_PLATFORM_WINDOWS
     LeaveCriticalSection(&p->mutex);
@@ -1319,14 +1636,18 @@ int8_t rt_future_cancel_listener(void *obj, void (*callback)(void *future, void 
     pthread_mutex_lock(&p->mutex);
 #endif
 
+    future_listener *previous = NULL;
     future_listener **link = &p->listeners;
     while (*link) {
         future_listener *cur = *link;
         if (cur->callback == callback && cur->ctx == ctx) {
             *link = cur->next;
+            if (p->listeners_tail == cur)
+                p->listeners_tail = previous;
             removed = cur;
             break;
         }
+        previous = cur;
         link = &cur->next;
     }
 

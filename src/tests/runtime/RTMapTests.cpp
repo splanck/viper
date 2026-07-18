@@ -7,6 +7,12 @@
 //
 // File: src/tests/runtime/RTMapTests.cpp
 // Purpose: Tests for Zanna.Collections.Map runtime helpers.
+// Key invariants: Resize/Trim publication is transactional and cached hashes do
+//                 not change key equality or insertion-order behavior.
+// Ownership/Lifetime: Tests release every map/key/value; injected OOM recovery
+//                     preserves ownership of the original usable table.
+// Links: src/runtime/collections/rt_map.c,
+//        docs/adr/0133-runtime-concurrency-and-collection-hardening.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,6 +23,7 @@
 
 #include <cassert>
 #include <csetjmp>
+#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -55,6 +62,97 @@ static rt_string make_key(const char *text) {
 
 static rt_string make_key_bytes(const char *text, size_t len) {
     return rt_string_from_bytes(text, len);
+}
+
+/// @brief White-box Map payload view used only to assert capacity policy.
+struct MapLayout {
+    void **vptr;
+    void *buckets;
+    size_t capacity;
+    size_t count;
+};
+
+static void *reject_runtime_allocation(int64_t, void *(*)(int64_t)) {
+    return nullptr;
+}
+
+static void set_numbered_key(void *map, int index, void *value) {
+    char text[32];
+    int written = snprintf(text, sizeof(text), "key-%d", index);
+    assert(written > 0 && static_cast<size_t>(written) < sizeof(text));
+    rt_string key = make_key(text);
+    rt_map_set(map, key, value);
+    rt_string_unref(key);
+}
+
+static rt_string numbered_key(int index) {
+    char text[32];
+    int written = snprintf(text, sizeof(text), "key-%d", index);
+    assert(written > 0 && static_cast<size_t>(written) < sizeof(text));
+    return make_key(text);
+}
+
+static void test_failed_growth_and_trim_preserve_map() {
+    void *map = rt_map_new();
+    void *value = new_obj();
+    assert(map != nullptr && value != nullptr);
+
+    for (int i = 0; i < 12; ++i)
+        set_numbered_key(map, i, value);
+    auto *layout = static_cast<MapLayout *>(map);
+    assert(layout->capacity == 16);
+    assert(layout->count == 12);
+
+    rt_string thirteenth = numbered_key(12);
+    g_trap_expected = true;
+    g_last_trap = nullptr;
+    rt_set_alloc_hook(reject_runtime_allocation);
+    if (setjmp(g_trap_jmp) == 0) {
+        rt_map_set(map, thirteenth, value);
+        assert(false && "expected Map growth allocation trap");
+    }
+    rt_set_alloc_hook(nullptr);
+    g_trap_expected = false;
+    assert(g_last_trap && strstr(g_last_trap, "Map") != nullptr);
+    assert(layout->capacity == 16);
+    assert(layout->count == 12);
+    assert(rt_map_has(map, thirteenth) == 0);
+    rt_string_unref(thirteenth);
+
+    for (int i = 12; i < 100; ++i)
+        set_numbered_key(map, i, value);
+    assert(layout->capacity == 256);
+
+    for (int i = 1; i < 100; ++i) {
+        rt_string key = numbered_key(i);
+        assert(rt_map_remove(map, key) == 1);
+        rt_string_unref(key);
+    }
+    rt_string first = numbered_key(0);
+    assert(layout->count == 1);
+    assert(rt_map_get(map, first) == value);
+
+    g_trap_expected = true;
+    g_last_trap = nullptr;
+    rt_set_alloc_hook(reject_runtime_allocation);
+    if (setjmp(g_trap_jmp) == 0) {
+        (void)rt_map_trim(map);
+        assert(false && "expected Map trim allocation trap");
+    }
+    rt_set_alloc_hook(nullptr);
+    g_trap_expected = false;
+    assert(layout->capacity == 256);
+    assert(layout->count == 1);
+    assert(rt_map_get(map, first) == value);
+
+    assert(rt_map_trim(map) == 1);
+    assert(layout->capacity == 16);
+    assert(layout->count == 1);
+    assert(rt_map_get(map, first) == value);
+
+    rt_string_unref(first);
+    rt_release_obj(map);
+    rt_release_obj(value);
 }
 
 static void test_remove_frees_last_reference_without_invalid_free() {
@@ -143,6 +241,7 @@ static void test_embedded_nul_keys_are_distinct() {
 }
 
 int main() {
+    test_failed_growth_and_trim_preserve_map();
     test_remove_frees_last_reference_without_invalid_free();
     test_overwrite_frees_old_last_reference_without_invalid_free();
     test_free_runs_map_finalizer_and_releases_values();

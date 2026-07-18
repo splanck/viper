@@ -1,0 +1,61 @@
+module terminal_open_probe;
+
+// ============================================================================
+// MODULE: terminal_open_probe
+// PURPOSE: Display-backed probe for opening the integrated terminal panel.
+//
+// WHERE-THIS-FITS: AppShell owns the Terminal tab and panel widgets; the terminal
+//          controller owns PTY lifecycle. This probe validates the shell surface
+//          exists and can become visible.
+//
+// TEACHING-NOTE: UI availability probes should check handles, initial hidden
+//          state, and the visible transition separately.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../terminal/terminal_controller";
+
+bind Zanna.GUI as GUI;
+bind Terminal = Zanna.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Terminal Open Probe", 1000, 700);
+
+    if shell.menuChrome.miTerminal == null { fail(shell, "View > Terminal menu item missing"); return; }
+    if shell.toolPanels.terminalPanel == null { fail(shell, "terminal panel missing"); return; }
+    if shell.toolPanels.terminalPane == null { fail(shell, "terminal output pane missing"); return; }
+    if shell.toolPanels.terminalRestart == null { fail(shell, "terminal restart button missing"); return; }
+
+    // Hidden until opened.
+    if shell.toolPanels.terminalPanel.IsVisible() { fail(shell, "terminal visible before open"); return; }
+
+    var ctrl = new terminal_controller.TerminalController();
+    ctrl.Setup(shell.toolPanels.terminalPanel, shell.toolPanels.terminalPane,
+               shell.toolPanels.terminalKill, shell.toolPanels.terminalRestart);
+    ctrl.Pump();
+    if ctrl.HasAttemptedStart() {
+        fail(shell, "terminal session attempted to start while panel hidden");
+        return;
+    }
+
+    // Opening it (what View > Terminal / the palette command both do) reveals it.
+    shell.toolPanels.ShowTerminalPanel();
+    if !shell.toolPanels.terminalPanel.IsVisible() { fail(shell, "terminal not visible after ShowTerminalPanel"); return; }
+    if !shell.toolPanels.terminalPane.IsVisible() { fail(shell, "terminal pane own visibility disabled"); return; }
+
+    shell.Poll();
+    shell.Render();
+    if shell.toolPanels.terminalPanel.GetWidth() <= 0 { fail(shell, "terminal panel has zero width"); return; }
+    if shell.toolPanels.terminalPanel.GetHeight() <= 0 { fail(shell, "terminal panel has zero height"); return; }
+    if shell.toolPanels.terminalPane.GetWidth() <= 0 { fail(shell, "terminal pane has zero width"); return; }
+    if shell.toolPanels.terminalPane.GetHeight() <= 0 { fail(shell, "terminal pane has zero height"); return; }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

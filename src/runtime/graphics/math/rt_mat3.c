@@ -81,14 +81,15 @@ typedef struct mat3_impl {
 static int mat3_is_compatible_object(void *m) {
     if (!m)
         return 0;
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(m, &hdr) || !hdr)
+    rt_heap_info_t heap_info;
+    if (!rt_heap_get_info(m, &heap_info))
         return 0;
-    if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
+    if (heap_info.kind != RT_HEAP_OBJECT || heap_info.elem_kind != RT_ELEM_NONE)
         return 0;
-    if (hdr->class_id == RT_MAT3_CLASS_ID)
-        return hdr->cap >= sizeof(mat3_impl);
-    return hdr->class_id == 0 && hdr->len == sizeof(mat3_impl) && hdr->cap == sizeof(mat3_impl);
+    if (heap_info.class_id == RT_MAT3_CLASS_ID)
+        return heap_info.cap >= sizeof(mat3_impl);
+    return heap_info.class_id == 0 && heap_info.len == sizeof(mat3_impl) &&
+           heap_info.cap == sizeof(mat3_impl);
 }
 
 /// @brief Validate and cast an opaque handle to a Mat3 payload.

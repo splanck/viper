@@ -1,0 +1,99 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/scm/scm_diff.zia
+// Purpose: Parse `git diff --unified=0` hunk headers into per-line change
+//          ranges (added / modified / deleted) for editor gutter markers.
+// Key invariants:
+//   - Only "@@ -a,b +c,d @@" headers are read; content lines are ignored.
+//   - Line numbers are 1-based in the new (working-tree) file.
+// Links: zannastudio/src/scm/scm_gutter_controller.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scm_diff;
+
+bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
+bind Parse = Zanna.Core.Parse;
+
+final KIND_ADDED = 0;
+final KIND_MODIFIED = 1;
+final KIND_DELETED = 2;
+
+/// @brief One contiguous change range in the working-tree file.
+class DiffHunk {
+    expose Integer startLine; // 1-based first changed line.
+    expose Integer endLine;   // 1-based last changed line (inclusive).
+    expose Integer kind;      // KIND_ADDED / KIND_MODIFIED / KIND_DELETED.
+    expose func init() {
+        startLine = 0;
+        endLine = 0;
+        kind = 0;
+    }
+}
+
+/// @brief Start line of a "start[,count]" hunk range.
+func rangeStart(r: String) -> Integer {
+    var parts = Str.Split(r, ",");
+    if Seq.get_Count(parts) == 0 { return 0; }
+    return Parse.IntOr(Seq.GetStr(parts, 0), 0);
+}
+
+/// @brief Line count of a "start[,count]" hunk range (defaults to 1).
+func rangeCount(r: String) -> Integer {
+    var parts = Str.Split(r, ",");
+    if Seq.get_Count(parts) >= 2 {
+        return Parse.IntOr(Seq.GetStr(parts, 1), 1);
+    }
+    return 1;
+}
+
+/// @brief Parse unified=0 diff text into a list of DiffHunk change ranges.
+/// @param diffText Output of `git diff --unified=0 -- <path>`.
+/// @return List of DiffHunk (empty when there are no changes).
+func ParseHunks(diffText: String) -> List {
+    var out = new List();
+    if diffText == "" { return out; }
+    var lines = Str.Split(diffText, "\n");
+    var n = Seq.get_Count(lines);
+    var i = 0;
+    while i < n {
+        var line = Seq.GetStr(lines, i);
+        if Str.StartsWith(line, "@@ ") {
+            var parts = Str.Split(line, " ");
+            if Seq.get_Count(parts) >= 3 {
+                var oldRange = Str.Mid(Seq.GetStr(parts, 1), 2); // drop leading '-'
+                var newRange = Str.Mid(Seq.GetStr(parts, 2), 2); // drop leading '+'
+                var oldCount = rangeCount(oldRange);
+                var newStart = rangeStart(newRange);
+                var newCount = rangeCount(newRange);
+
+                var h = new DiffHunk();
+                if newCount > 0 {
+                    h.startLine = newStart;
+                    h.endLine = newStart + newCount - 1;
+                    if oldCount == 0 {
+                        h.kind = KIND_ADDED;
+                    } else {
+                        h.kind = KIND_MODIFIED;
+                    }
+                    out.add(h);
+                } else {
+                    // Pure deletion: mark the boundary line in the new file.
+                    h.startLine = newStart;
+                    if h.startLine < 1 { h.startLine = 1; }
+                    h.endLine = h.startLine;
+                    h.kind = KIND_DELETED;
+                    out.add(h);
+                }
+            }
+        }
+        i = i + 1;
+    }
+    return out;
+}

@@ -4175,7 +4175,7 @@ static void test_codeeditor_gutter_slots_are_validated_and_click_coords_are_fres
 }
 
 /// @brief Verify the runtime read-only flag blocks text mutation APIs.
-/// @details ZannaIDE uses read-only CodeEditor instances for unsupported binary
+/// @details Zanna Studio uses read-only CodeEditor instances for unsupported binary
 ///          or preview documents. This test ensures the public runtime flag
 ///          round-trips and `InsertAtCursor` respects it.
 static void test_codeeditor_runtime_read_only_blocks_insertions(void) {

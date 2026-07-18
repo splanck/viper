@@ -109,14 +109,15 @@ typedef struct {
 static int vec2_is_compatible_object(void *v) {
     if (!v)
         return 0;
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(v, &hdr) || !hdr)
+    rt_heap_info_t heap_info;
+    if (!rt_heap_get_info(v, &heap_info))
         return 0;
-    if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
+    if (heap_info.kind != RT_HEAP_OBJECT || heap_info.elem_kind != RT_ELEM_NONE)
         return 0;
-    if (hdr->class_id == RT_VEC2_CLASS_ID)
-        return hdr->cap >= sizeof(ZannaVec2);
-    return hdr->class_id == 0 && hdr->len == sizeof(ZannaVec2) && hdr->cap == sizeof(ZannaVec2);
+    if (heap_info.class_id == RT_VEC2_CLASS_ID)
+        return heap_info.cap >= sizeof(ZannaVec2);
+    return heap_info.class_id == 0 && heap_info.len == sizeof(ZannaVec2) &&
+           heap_info.cap == sizeof(ZannaVec2);
 }
 
 /// @brief Validate and cast an opaque handle to a Vec2 payload.

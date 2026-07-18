@@ -91,9 +91,11 @@ The `Zanna.IO.Watcher` class uses three completely separate backends, but presen
 | Backend | `ReadDirectoryChangesW` + overlapped I/O | `kqueue` + `kevent` with `EVFILT_VNODE` | `inotify` + `poll()` |
 | Event granularity | Per-file notifications via `FILE_NOTIFY_INFORMATION` | Per-directory `NOTE_WRITE` / `NOTE_DELETE` / `NOTE_RENAME` | Per-file `IN_CREATE` / `IN_DELETE` / `IN_MODIFY` / `IN_MOVED_*` |
 | Filename in events | UTF-16 → UTF-8 conversion from `FILE_NOTIFY_INFORMATION.FileName` | Not provided by kqueue (directory-level only) | Provided in `inotify_event.name` |
-| Cleanup | `CancelIo()` + `CloseHandle()` | `close(kqueue_fd)` + `close(watched_fd)` | `inotify_rm_watch()` + `close()` |
+| Cleanup | `CancelIoEx()` + `CloseHandle()` (`CancelIo` compatibility fallback) | `close(kqueue_fd)` + `close(watched_fd)` | `inotify_rm_watch()` + `close()` |
 
 **User-visible difference:** On macOS, kqueue reports directory-level changes without identifying the specific file. The runtime works around this where possible, but some event details may be less granular than on Windows or Linux.
+
+All backends expose the same 64-event bounded queue and overflow contract. Native/backend event loss is reported with an unknown count (`-1`); only overflow of Zanna's own ring has an exact positive count. A terminal macOS vnode event retires the watch because kqueue follows the inode rather than a recreated pathname. Calls on one Watcher instance require external serialization on every platform.
 
 ### 1.4 Temporary Files and Entropy
 

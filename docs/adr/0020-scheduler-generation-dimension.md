@@ -8,9 +8,9 @@ last-verified: 2026-07-01
 
 ## Status
 
-Accepted (runtime implemented; ZannaIDE's editor scheduler is the intended first
+Accepted (runtime implemented; Zanna Studio's editor scheduler is the intended first
 consumer). Driven by the GUI runtime-additions review, recommendation **R3**
-(`misc/plans/zannaide/gui-runtime-additions.md`).
+(`misc/plans/zannastudio/gui-runtime-additions.md`).
 
 ## Context
 
@@ -24,14 +24,14 @@ The runtime already ships the timing primitives this needs under `Zanna.Threads.
 `Scheduler` (`Schedule(key, delayMs)` / `Cancel` / `IsDue` / `Poll` / `Pending` /
 `Clear`), `Debouncer`, and `Throttler`. The `Scheduler` is poll-based, uses the
 monotonic clock, and **already debounces** — re-scheduling the same key replaces
-its due time. ZannaIDE *uses* these for simple cases (`semantic_tokens.zia`,
+its due time. Zanna Studio *uses* these for simple cases (`semantic_tokens.zia`,
 `inlay_hints.zia`, autosave, `workspace_watcher.zia`).
 
 But its core `editor/scheduler.zia` (435 LOC) can't be built on `Scheduler`,
 because the one thing it needs the API can't express: a key's due entry carries no
 **identity over time**. `IsDue("diag:foo")` tells you the timer elapsed, not
 *which* revision's work elapsed — so it can't tell a current result from a
-superseded one. ZannaIDE therefore hand-rolls timing on raw `Zanna.Time.Clock.Ticks()`,
+superseded one. Zanna Studio therefore hand-rolls timing on raw `Zanna.Time.Clock.Ticks()`,
 a pattern that recurs in `editor/hover.zia`, `editor/diagnostics.zia`,
 `editor/completion.zia` (15+ sites).
 
@@ -40,7 +40,7 @@ Adding runtime methods is a runtime C-ABI surface change, which requires an ADR.
 
 ## Decision
 
-Add a per-entry **generation** (an `int64_t` the caller supplies — ZannaIDE passes
+Add a per-entry **generation** (an `int64_t` the caller supplies — Zanna Studio passes
 the document revision) to `Zanna.Threads.Scheduler`, with three new methods:
 
 - `ScheduleGen(key: str, delayMs: i64, generation: i64)` — schedule/reschedule
@@ -52,7 +52,7 @@ the document revision) to `Zanna.Threads.Scheduler`, with three new methods:
   so a query for the old generation returns `0` (superseded).
 - `GenerationOf(key: str) -> i64` — the generation currently scheduled for `key`,
   or `-1` if `key` isn't scheduled. Lets a caller ask "is my revision still the
-  one queued?" (the `IsQueued` predicate ZannaIDE needs).
+  one queued?" (the `IsQueued` predicate Zanna Studio needs).
 
 The existing `Schedule(key, delayMs)` is unchanged and tags entries with
 generation `0`; `IsDue`, `Poll`, `Cancel`, `Pending`, and `Clear` are unchanged
@@ -75,7 +75,7 @@ makes the new methods thread-safe like the rest.
 
 ## Consequences
 
-- **Adoption:** ZannaIDE's revision-keyed job logic (`Queue` / `IsQueued` / `IsDue`
+- **Adoption:** Zanna Studio's revision-keyed job logic (`Queue` / `IsQueued` / `IsDue`
   with a `generation` token) maps directly onto `ScheduleGen` / `GenerationOf` /
   `IsDueGen`, letting `editor/scheduler.zia` and the 15+ raw-`GetTickCount` sites
   collapse onto the runtime primitive. Any responsive app (search-as-you-type,

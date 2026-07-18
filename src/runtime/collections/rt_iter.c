@@ -89,9 +89,10 @@ static void release_temp_obj(void *obj) {
 static void iter_finalizer(void *obj) {
     rt_iter_impl *it = obj ? as_iter(obj, "Iterator: invalid Iterator object") : NULL;
     if (it && it->source) {
-        if (rt_obj_release_check0(it->source))
-            rt_obj_free(it->source);
+        void *source = it->source;
         it->source = NULL;
+        if (rt_obj_release_check0(source))
+            rt_obj_free(source);
     }
 }
 

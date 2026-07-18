@@ -5,8 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-/// @file rt_network_http.c
-/// @brief HTTP/URL helpers for Zanna.Network HTTP APIs.
+// File: src/runtime/network/rt_network_http.c
+// Purpose: Implements HTTP request/response transport, URL parsing, redirects,
+//          response framing, and managed publication for Zanna.Network.
+// Key invariants:
+//   - Request and response handles are validated against stable private class
+//     identities before native fields are accessed.
+//   - Response bodies and headers are staged transactionally and are published
+//     only after the complete HTTP exchange succeeds.
+// Ownership/Lifetime:
+//   - Native request/response buffers are owned by their managed wrapper until
+//     finalization; socket and TLS resources are released on every exit path.
+//   - Returned managed strings, maps, and byte arrays follow the runtime
+//     registry's owning-return convention.
+// Links: rt_network_http_internal.h, rt_network_internal.h, rt_http_client.c,
+//        docs/adr/0126-http-client-stable-identity-and-transactional-ownership.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,11 +38,14 @@
 #include "rt_box.h"
 #include "rt_compress.h"
 #include "rt_error.h"
+#include "rt_heap.h"
 #include "rt_map.h"
+#include "rt_threads.h"
 #include "rt_time.h"
 
 #include <ctype.h>
 #include <errno.h>
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -55,6 +71,25 @@ typedef pthread_mutex_t http_pool_mutex_t;
 #endif
 
 #include "rt_trap.h"
+
+/// @brief Initialize one HTTP pool mutex through the active platform adapter.
+/// @details POSIX mutex initialization can report resource exhaustion and is
+///          checked explicitly. Win32 critical-section initialization has no
+///          status result on supported targets, so successful return means the
+///          mutex is ready. The caller publishes `lock_initialized` only after
+///          this helper succeeds.
+/// @param mutex Uninitialized native mutex storage.
+/// @return One when initialized; zero on a reported platform failure.
+static int http_pool_mutex_init(http_pool_mutex_t *mutex) {
+    if (!mutex)
+        return 0;
+#if RT_PLATFORM_WINDOWS
+    InitializeCriticalSection(mutex);
+    return 1;
+#else
+    return pthread_mutex_init(mutex, NULL) == 0 ? 1 : 0;
+#endif
+}
 
 /// @brief Internal response-map separator for repeated Set-Cookie headers.
 /// @details The public response header map stores string values, but Set-Cookie cannot be safely
@@ -370,6 +405,25 @@ typedef struct http_conn_pool {
     int lock_initialized;
 } http_conn_pool_t;
 
+/// @brief Test the stable managed identity and initialized payload of a pool.
+/// @details Payload-size validation precedes the native-state read, preventing
+///          unrelated or undersized objects from being reinterpreted as a
+///          mutex-bearing HTTP pool. The caller must separately own or retain
+///          the object for the duration of any subsequent operation.
+/// @param obj Candidate managed object.
+/// @return Nonzero only for a fully initialized HTTP connection pool.
+int rt_http_conn_pool_is_handle(void *obj) {
+    return rt_obj_is_instance(obj, RT_HTTP_CONN_POOL_CLASS_ID, sizeof(http_conn_pool_t)) &&
+           ((http_conn_pool_t *)obj)->lock_initialized;
+}
+
+/// @brief Drop one temporary managed pool reference.
+/// @param obj Owned mortal reference, or NULL.
+static void http_conn_pool_release_ref(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
 /// @brief Read the monotonic millisecond clock used by HTTP connection pools.
 /// @details Keep-alive idle eviction is based on elapsed time, not civil time,
 ///          so clock corrections cannot prematurely evict or indefinitely retain
@@ -467,13 +521,12 @@ static void http_conn_pool_finalize(void *obj) {
 }
 
 void *rt_http_conn_pool_new(int64_t max_size) {
-    http_conn_pool_t *pool =
-        (http_conn_pool_t *)rt_obj_new_i64(0, (int64_t)sizeof(http_conn_pool_t));
-    if (!pool) {
-        rt_trap("HTTP: connection pool allocation failed");
+    http_conn_pool_t *pool = (http_conn_pool_t *)rt_obj_new_i64(RT_HTTP_CONN_POOL_CLASS_ID,
+                                                                (int64_t)sizeof(http_conn_pool_t));
+    if (!pool)
         return NULL;
-    }
     memset(pool, 0, sizeof(*pool));
+    rt_obj_set_finalizer(pool, http_conn_pool_finalize);
     pool->max_size =
         (int)(max_size > 0 && max_size < HTTP_CONN_POOL_MAX_ENTRIES ? max_size
                                                                     : HTTP_CONN_POOL_MAX_ENTRIES);
@@ -481,21 +534,38 @@ void *rt_http_conn_pool_new(int64_t max_size) {
         pool->entries[i].conn.socket_fd = INVALID_SOCK;
         pool->entries[i].conn.pool_slot = -1;
     }
-    HTTP_POOL_MUTEX_INIT(&pool->lock);
+    if (!http_pool_mutex_init(&pool->lock)) {
+        http_conn_pool_release_ref(pool);
+        rt_trap("HTTP: connection pool mutex initialization failed");
+        return NULL;
+    }
     pool->lock_initialized = 1;
-    rt_obj_set_finalizer(pool, http_conn_pool_finalize);
     return pool;
 }
 
 void rt_http_conn_pool_clear(void *obj) {
     if (!obj)
         return;
+    int retained = rt_heap_try_retain_live(obj);
+    if (retained != 1 && retained != 2) {
+        rt_trap(retained < 0 ? "HTTP: connection pool reference count overflow"
+                             : "HTTP: invalid connection pool");
+        return;
+    }
+    if (!rt_http_conn_pool_is_handle(obj)) {
+        if (retained == 1)
+            http_conn_pool_release_ref(obj);
+        rt_trap("HTTP: invalid connection pool");
+        return;
+    }
     http_conn_pool_t *pool = (http_conn_pool_t *)obj;
     HTTP_POOL_MUTEX_LOCK(&pool->lock);
     for (int i = 0; i < pool->count; i++)
         http_conn_pool_entry_reset(&pool->entries[i]);
     pool->count = 0;
     HTTP_POOL_MUTEX_UNLOCK(&pool->lock);
+    if (retained == 1)
+        http_conn_pool_release_ref(obj);
 }
 
 /// Process-wide connection pool backing standalone `HttpReq.SetKeepAlive(true)`
@@ -505,30 +575,67 @@ void rt_http_conn_pool_clear(void *obj) {
 /// permanent reference (process-lifetime singleton; the pool itself is
 /// mutex-guarded and safe to share across threads).
 static void *g_http_default_conn_pool = NULL;
+static volatile int g_http_default_pool_state = 0;
 
-#if RT_PLATFORM_WINDOWS
-static INIT_ONCE g_http_default_pool_once = INIT_ONCE_STATIC_INIT;
-static BOOL CALLBACK http_default_pool_once_cb(PINIT_ONCE once, PVOID param, PVOID *ctx) {
-    (void)once;
-    (void)param;
-    (void)ctx;
-    g_http_default_conn_pool = rt_http_conn_pool_new(0);
-    return TRUE;
-}
-#else
-static pthread_once_t g_http_default_pool_once = PTHREAD_ONCE_INIT;
-static void http_default_pool_once_cb(void) {
-    g_http_default_conn_pool = rt_http_conn_pool_new(0);
-}
-#endif
+enum {
+    HTTP_DEFAULT_POOL_UNINITIALIZED = 0,
+    HTTP_DEFAULT_POOL_INITIALIZING = 1,
+    HTTP_DEFAULT_POOL_READY = 2,
+};
 
+/// @brief Return the retryable process-wide standalone-request pool.
+/// @details A portable atomic state gate permits exactly one initializer while
+///          contenders yield. Construction traps reset the gate before being
+///          re-raised, so transient OOM never permanently publishes NULL as a
+///          successful once-only result. Release/acquire publication makes the
+///          initialized managed object visible without a data race.
+/// @return Process-lifetime pool, or NULL after a returning trap hook.
 void *rt_http_default_connection_pool(void) {
-#if RT_PLATFORM_WINDOWS
-    InitOnceExecuteOnce(&g_http_default_pool_once, http_default_pool_once_cb, NULL, NULL);
-#else
-    pthread_once(&g_http_default_pool_once, http_default_pool_once_cb);
-#endif
-    return g_http_default_conn_pool;
+    for (;;) {
+        int state = rt_atomic_load_i32(&g_http_default_pool_state, __ATOMIC_ACQUIRE);
+        if (state == HTTP_DEFAULT_POOL_READY)
+            return g_http_default_conn_pool;
+        if (state == HTTP_DEFAULT_POOL_INITIALIZING) {
+            rt_thread_yield();
+            continue;
+        }
+
+        int expected = HTTP_DEFAULT_POOL_UNINITIALIZED;
+        if (!rt_atomic_compare_exchange_i32(&g_http_default_pool_state,
+                                            &expected,
+                                            HTTP_DEFAULT_POOL_INITIALIZING,
+                                            __ATOMIC_ACQ_REL,
+                                            __ATOMIC_ACQUIRE)) {
+            continue;
+        }
+
+        void *volatile candidate = NULL;
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            char saved_error[256];
+            const char *error = rt_trap_get_error();
+            snprintf(saved_error,
+                     sizeof(saved_error),
+                     "%s",
+                     error && error[0] ? error : "HTTP: default connection pool failed");
+            rt_trap_clear_recovery();
+            rt_atomic_store_i32(
+                &g_http_default_pool_state, HTTP_DEFAULT_POOL_UNINITIALIZED, __ATOMIC_RELEASE);
+            rt_trap(saved_error);
+            return NULL;
+        }
+        candidate = rt_http_conn_pool_new(0);
+        rt_trap_clear_recovery();
+        if (!candidate) {
+            rt_atomic_store_i32(
+                &g_http_default_pool_state, HTTP_DEFAULT_POOL_UNINITIALIZED, __ATOMIC_RELEASE);
+            return NULL;
+        }
+        g_http_default_conn_pool = (void *)candidate;
+        rt_atomic_store_i32(&g_http_default_pool_state, HTTP_DEFAULT_POOL_READY, __ATOMIC_RELEASE);
+        return (void *)candidate;
+    }
 }
 
 /// @brief Evict idle HTTP keep-alive entries whose elapsed monotonic age exceeds the limit.
@@ -549,7 +656,7 @@ static void http_conn_pool_evict_idle_locked(http_conn_pool_t *pool, int64_t now
 
 static int http_conn_pool_acquire(
     void *obj, const char *host, int port, int use_tls, int tls_verify, http_conn_t *out_conn) {
-    if (!obj || !host || !out_conn)
+    if (!host || !out_conn || !rt_http_conn_pool_is_handle(obj))
         return 0;
 
     http_conn_pool_t *pool = (http_conn_pool_t *)obj;
@@ -593,8 +700,11 @@ static void http_conn_pool_release(http_conn_t *conn, int reusable) {
         return;
 
     http_conn_pool_t *pool = (http_conn_pool_t *)conn->pool;
-    if (!pool) {
+    if (!rt_http_conn_pool_is_handle(pool)) {
         http_conn_close(conn);
+        memset(conn, 0, sizeof(*conn));
+        conn->socket_fd = INVALID_SOCK;
+        conn->pool_slot = -1;
         return;
     }
     if (conn->pool_key[0] == '\0') {
@@ -705,7 +815,7 @@ static void rt_http_res_finalize(void *obj);
 rt_http_res_t *do_http_request(rt_http_req_t *req, int redirects_remaining);
 
 static int http_request_wants_pool(const rt_http_req_t *req) {
-    return req && req->keep_alive && req->connection_pool;
+    return req && req->keep_alive && rt_http_conn_pool_is_handle(req->connection_pool);
 }
 
 static int http_method_retryable_on_stale_reuse(const char *method) {
@@ -772,7 +882,7 @@ static int http_open_connection(rt_http_req_t *req, http_conn_t *conn, int *err_
         if (req->timeout_ms > 0)
             tls_config.timeout_ms = req->timeout_ms;
 
-        rt_tls_session_t *tls = rt_tls_new((int)sock, &tls_config);
+        rt_tls_session_t *tls = rt_tls_new((intptr_t)sock, &tls_config);
         if (!tls) {
             http_set_tls_open_error(rt_tls_last_error());
             CLOSE_SOCKET(sock);
@@ -1446,32 +1556,63 @@ static bool has_crlf(const char *s) {
     return false;
 }
 
-/// @brief Add header to request.
-void add_header(rt_http_req_t *req, const char *name, const char *value) {
-    /* Reject headers that contain CR or LF — they would split the HTTP stream (S-08 fix) */
+/// @brief Allocate a complete detached request-header node.
+/// @details Validation occurs before allocation. The node is not linked until
+///          both native string copies exist, making it suitable for atomic
+///          append and replacement operations.
+/// @param name HTTP field-name token.
+/// @param value Field value without CR or LF bytes.
+/// @return Detached owned node, or NULL on invalid input/OOM.
+static http_header_t *http_header_new(const char *name, const char *value) {
     if (!name || !value || !http_header_field_name_is_token(name) || has_crlf(value))
-        return;
-
+        return NULL;
     http_header_t *h = (http_header_t *)malloc(sizeof(http_header_t));
     if (!h)
-        return;
+        return NULL;
     h->name = strdup(name);
     if (!h->name) {
         free(h);
-        return;
+        return NULL;
     }
     h->value = strdup(value);
     if (!h->value) {
         free(h->name);
         free(h);
-        return;
+        return NULL;
     }
+    h->next = NULL;
+    return h;
+}
+
+/// @brief Append a validated header while preserving request state on failure.
+int add_header(rt_http_req_t *req, const char *name, const char *value) {
+    if (!req)
+        return 0;
+    http_header_t *h = http_header_new(name, value);
+    if (!h)
+        return 0;
     h->next = req->headers;
     req->headers = h;
+    return 1;
+}
+
+/// @brief Atomically replace all case-insensitive matches for one header name.
+int set_header(rt_http_req_t *req, const char *name, const char *value) {
+    if (!req)
+        return 0;
+    http_header_t *replacement = http_header_new(name, value);
+    if (!replacement)
+        return 0;
+    remove_header(req, name);
+    replacement->next = req->headers;
+    req->headers = replacement;
+    return 1;
 }
 
 /// @brief Check if header exists (case-insensitive).
 bool has_header(rt_http_req_t *req, const char *name) {
+    if (!req || !name)
+        return false;
     for (http_header_t *h = req->headers; h; h = h->next) {
         if (strcasecmp(h->name, name) == 0)
             return true;
@@ -1497,14 +1638,35 @@ void remove_header(rt_http_req_t *req, const char *name) {
     }
 }
 
-/// @brief Remove every entry of a header-name-keyed Map whose key
-///        case-insensitively equals @p name. HTTP field names are
-///        case-insensitive, so `Authorization` and `authorization` must be
-///        treated as the same configuration slot.
-void rt_http_header_map_remove_ci(void *map, const char *name) {
+/// @brief Release one managed key snapshot used by header-map transactions.
+/// @param keys Caller-owned Seq returned by `rt_map_keys`, or NULL.
+static void http_header_map_release_keys(void *keys) {
+    if (keys && rt_obj_release_check0(keys))
+        rt_obj_free(keys);
+}
+
+/// @brief Remove every case-insensitive header-map match transactionally.
+/// @details A complete key snapshot is required before the first mutation.
+///          Allocation traps are contained and the snapshot is always released.
+/// @param map Header-name-keyed managed Map.
+/// @param name NUL-terminated HTTP field name.
+/// @return One on success (including a miss); zero without mutation on failure.
+int rt_http_header_map_remove_ci(void *map, const char *name) {
     if (!map || !name)
-        return;
-    void *keys = rt_map_keys(map);
+        return 0;
+    void *volatile keys = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        http_header_map_release_keys((void *)keys);
+        return 0;
+    }
+    keys = rt_map_keys(map);
+    if (!keys) {
+        rt_trap_clear_recovery();
+        return 0;
+    }
     int64_t len = rt_seq_len(keys);
     for (int64_t i = 0; i < len; i++) {
         rt_string key = (rt_string)rt_seq_get(keys, i); // borrowed
@@ -1512,18 +1674,58 @@ void rt_http_header_map_remove_ci(void *map, const char *name) {
         if (key_cstr && strcasecmp(key_cstr, name) == 0)
             rt_map_remove(map, key);
     }
-    if (keys && rt_obj_release_check0(keys))
-        rt_obj_free(keys);
+    rt_trap_clear_recovery();
+    http_header_map_release_keys((void *)keys);
+    return 1;
 }
 
-/// @brief Case-insensitive replace into a header-name-keyed Map: any existing
-///        key with a different spelling is removed before the new entry is
-///        stored, so the last caller's casing and value win.
-void rt_http_header_map_set_ci(void *map, rt_string name, void *value) {
+/// @brief Insert a replacement before removing differently cased aliases.
+/// @details The pre-mutation key snapshot ensures snapshot OOM changes nothing.
+///          `rt_map_set` either publishes the new exact spelling or traps before
+///          aliases are removed. A recovery frame converts all managed failures
+///          to a zero return so a lock-owning caller can unlock safely.
+/// @param map Header-name-keyed managed Map.
+/// @param name Exact spelling to publish.
+/// @param value Managed value retained by the Map.
+/// @return One on complete replacement; zero with prior aliases preserved.
+int rt_http_header_map_set_ci(void *map, rt_string name, void *value) {
     if (!map || !name)
-        return;
-    rt_http_header_map_remove_ci(map, rt_string_cstr(name));
+        return 0;
+    const char *name_cstr = rt_string_cstr(name);
+    if (!name_cstr)
+        return 0;
+
+    void *volatile keys = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        http_header_map_release_keys((void *)keys);
+        return 0;
+    }
+    keys = rt_map_keys(map);
+    if (!keys) {
+        rt_trap_clear_recovery();
+        return 0;
+    }
     rt_map_set(map, name, value);
+    if (!rt_map_has(map, name)) {
+        rt_trap_clear_recovery();
+        http_header_map_release_keys((void *)keys);
+        return 0;
+    }
+
+    int64_t len = rt_seq_len((void *)keys);
+    for (int64_t i = 0; i < len; i++) {
+        rt_string key = (rt_string)rt_seq_get((void *)keys, i);
+        const char *key_cstr = key ? rt_string_cstr(key) : NULL;
+        if (key_cstr && strcmp(key_cstr, name_cstr) != 0 && strcasecmp(key_cstr, name_cstr) == 0) {
+            rt_map_remove(map, key);
+        }
+    }
+    rt_trap_clear_recovery();
+    http_header_map_release_keys((void *)keys);
+    return 1;
 }
 
 /// @brief Return true when a comma-separated HTTP header value contains @p token.
@@ -1821,36 +2023,190 @@ static int http_prepare_redirect_request(rt_http_req_t *dst,
     return 1;
 }
 
-/// @brief Fetch a boxed string header value from the lowercase response header map.
-static rt_string get_header_value(void *headers_map, const char *name) {
-    rt_string key = rt_const_cstr(name);
-    void *boxed = rt_map_get(headers_map, key);
-    if (!boxed || rt_box_type(boxed) != RT_BOX_STR)
+/// @brief Prepare and execute one redirect while consuming its Location copy.
+/// @details The cloned request lives in native heap storage so its fields remain
+///          well-defined after `longjmp`. One recovery frame owns both the
+///          Location buffer and every cloned request allocation across the
+///          recursive request. The original trap category and network code are
+///          re-raised only after cleanup.
+/// @param source Request that received the redirect.
+/// @param status Redirect status code controlling method rewrite semantics.
+/// @param cross_origin Nonzero when sensitive headers must be stripped.
+/// @param location_owned Owned native Location string; always consumed.
+/// @param redirects_remaining Remaining redirect count for the recursive call.
+/// @return Caller-owned final response, or NULL after a returning trap hook.
+static rt_http_res_t *http_follow_redirect(rt_http_req_t *source,
+                                           int status,
+                                           int cross_origin,
+                                           char *location_owned,
+                                           int redirects_remaining) {
+    rt_http_req_t *const next_request = (rt_http_req_t *)calloc(1, sizeof(*next_request));
+    if (!next_request) {
+        free(location_owned);
+        rt_trap("HTTP: redirect request allocation failed");
         return NULL;
-    return rt_unbox_str(boxed);
-}
-
-/// @brief Replace or remove a lowercase string header entry on the response header map.
-static void set_header_value(void *headers_map, const char *name, const char *value) {
-    rt_string key = rt_const_cstr(name);
-    if (!value) {
-        rt_map_remove(headers_map, key);
-        return;
     }
 
-    rt_string value_str = rt_string_from_bytes(value, strlen(value));
-    void *boxed = rt_box_str(value_str);
-    rt_map_set(headers_map, key, boxed);
-    if (boxed && rt_obj_release_check0(boxed))
-        rt_obj_free(boxed);
-    rt_string_unref(value_str);
+    char *volatile location = location_owned;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        int saved_net_code = rt_trap_get_net_code();
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP: redirect failed");
+        rt_trap_clear_recovery();
+        http_request_clone_cleanup(next_request);
+        free((void *)location);
+        free(next_request);
+        if (saved_net_code)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+
+    if (!http_prepare_redirect_request(
+            next_request, source, status, cross_origin, (const char *)location)) {
+        rt_trap_clear_recovery();
+        http_request_clone_cleanup(next_request);
+        free((void *)location);
+        free(next_request);
+        return NULL;
+    }
+    free((void *)location);
+    location = NULL;
+    rt_http_res_t *response = do_http_request(next_request, redirects_remaining);
+    rt_trap_clear_recovery();
+    http_request_clone_cleanup(next_request);
+    free(next_request);
+    return response;
+}
+
+/// @brief Fetch and retain a boxed String from the response-header map.
+/// @details The temporary lookup key is released on success, miss, and trap.
+///          The returned String owns a fresh reference supplied by
+///          `rt_unbox_str`; callers must release it.
+/// @param headers_map Stable response Map.
+/// @param name NUL-terminated lowercase field name.
+/// @return Retained header value, or NULL when absent.
+static rt_string get_header_value(void *headers_map, const char *name) {
+    rt_string volatile key = NULL;
+    rt_string volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP: header lookup failed");
+        rt_trap_clear_recovery();
+        if (result)
+            rt_string_unref((rt_string)result);
+        if (key)
+            rt_string_unref((rt_string)key);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    key = rt_const_cstr(name);
+    if (!key) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    void *boxed = rt_map_get(headers_map, (rt_string)key);
+    if (boxed && rt_box_type(boxed) == RT_BOX_STR)
+        result = rt_unbox_str(boxed);
+    rt_trap_clear_recovery();
+    rt_string_unref((rt_string)key);
+    return (rt_string)result;
+}
+
+/// @brief Replace or remove one lowercase response-header entry trap-safely.
+/// @details Temporary key/value Strings and the box are released on every
+///          path. Map insertion retains the box before local ownership is
+///          dropped. A returning trap hook is converted to a zero result
+///          without attempting a second diagnostic.
+/// @param headers_map Stable response Map.
+/// @param name NUL-terminated lowercase field name.
+/// @param value Replacement C string, or NULL to remove the field.
+/// @return One when the requested mutation completed; zero after a returning trap.
+static int set_header_value(void *headers_map, const char *name, const char *value) {
+    rt_string volatile key = NULL;
+    rt_string volatile value_string = NULL;
+    void *volatile boxed = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP: header update failed");
+        rt_trap_clear_recovery();
+        if (boxed && rt_obj_release_check0((void *)boxed))
+            rt_obj_free((void *)boxed);
+        if (value_string)
+            rt_string_unref((rt_string)value_string);
+        if (key)
+            rt_string_unref((rt_string)key);
+        rt_trap(saved_error);
+        return 0;
+    }
+
+    key = rt_const_cstr(name);
+    if (!key) {
+        rt_trap_clear_recovery();
+        return 0;
+    }
+    if (!value) {
+        rt_map_remove(headers_map, (rt_string)key);
+        rt_trap_clear_recovery();
+        rt_string_unref((rt_string)key);
+        return 1;
+    }
+
+    value_string = rt_string_from_bytes(value, strlen(value));
+    if (!value_string) {
+        rt_trap_clear_recovery();
+        rt_string_unref((rt_string)key);
+        return 0;
+    }
+    boxed = rt_box_str((rt_string)value_string);
+    if (!boxed) {
+        rt_trap_clear_recovery();
+        rt_string_unref((rt_string)value_string);
+        rt_string_unref((rt_string)key);
+        return 0;
+    }
+    rt_map_set(headers_map, (rt_string)key, (void *)boxed);
+    if (!rt_map_has(headers_map, (rt_string)key)) {
+        rt_trap_clear_recovery();
+        if (rt_obj_release_check0((void *)boxed))
+            rt_obj_free((void *)boxed);
+        rt_string_unref((rt_string)value_string);
+        rt_string_unref((rt_string)key);
+        return 0;
+    }
+    rt_trap_clear_recovery();
+    if (rt_obj_release_check0((void *)boxed))
+        rt_obj_free((void *)boxed);
+    rt_string_unref((rt_string)value_string);
+    rt_string_unref((rt_string)key);
+    return 1;
 }
 
 /// @brief Update the response Content-Length to the decoded body size.
-static void set_content_length_header(void *headers_map, size_t body_len) {
+static int set_content_length_header(void *headers_map, size_t body_len) {
     char len_buf[32];
     snprintf(len_buf, sizeof(len_buf), "%zu", body_len);
-    set_header_value(headers_map, "content-length", len_buf);
+    return set_header_value(headers_map, "content-length", len_buf);
 }
 
 /// @brief Decode a gzip response body in-place when the response advertises Content-Encoding:gzip.
@@ -1860,57 +2216,99 @@ static int maybe_decode_gzip_body(const rt_http_req_t *req,
                                   size_t *body_len_io) {
     uint8_t *body = body_io ? *body_io : NULL;
     size_t body_len = body_len_io ? *body_len_io : 0;
-    rt_string content_encoding;
-    void *encoded = NULL;
-    void *decoded = NULL;
-    uint8_t *decoded_body = NULL;
-    size_t decoded_len;
+    rt_string volatile content_encoding = NULL;
+    void *volatile encoded = NULL;
+    void *volatile decoded = NULL;
+    uint8_t *volatile decoded_body = NULL;
+    volatile int body_transferred = 0;
 
     if (!req || !req->decode_gzip || !headers_map || !body || body_len == 0)
         return 1;
 
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP: gzip decode allocation failed");
+        rt_trap_clear_recovery();
+        if (content_encoding)
+            rt_string_unref((rt_string)content_encoding);
+        if (encoded && rt_obj_release_check0((void *)encoded))
+            rt_obj_free((void *)encoded);
+        if (decoded && rt_obj_release_check0((void *)decoded))
+            rt_obj_free((void *)decoded);
+        if (!body_transferred)
+            free((void *)decoded_body);
+        rt_trap(saved_error);
+        return 0;
+    }
+
     content_encoding = get_header_value(headers_map, "content-encoding");
     if (!content_encoding ||
-        !rt_http_header_value_has_token(rt_string_cstr(content_encoding), "gzip")) {
+        !rt_http_header_value_has_token(rt_string_cstr((rt_string)content_encoding), "gzip")) {
         if (content_encoding)
-            rt_string_unref(content_encoding);
+            rt_string_unref((rt_string)content_encoding);
+        rt_trap_clear_recovery();
         return 1;
     }
-    rt_string_unref(content_encoding);
+    rt_string_unref((rt_string)content_encoding);
+    content_encoding = NULL;
 
     encoded = rt_bytes_new((int64_t)body_len);
-    if (!encoded)
-        return 0;
-    memcpy(bytes_data(encoded), body, body_len);
-
-    decoded = rt_compress_gunzip(encoded);
-    if (encoded && rt_obj_release_check0(encoded))
-        rt_obj_free(encoded);
-    if (!decoded)
-        return 0;
-
-    decoded_len = (size_t)bytes_len(decoded);
-    if (decoded_len > HTTP_MAX_BODY_SIZE) {
-        if (decoded && rt_obj_release_check0(decoded))
-            rt_obj_free(decoded);
+    if (!encoded) {
+        rt_trap_clear_recovery();
         return 0;
     }
+    memcpy(bytes_data((void *)encoded), body, body_len);
+
+    decoded = rt_compress_gunzip((void *)encoded);
+    if (rt_obj_release_check0((void *)encoded))
+        rt_obj_free((void *)encoded);
+    encoded = NULL;
+    if (!decoded) {
+        rt_trap_clear_recovery();
+        return 0;
+    }
+
+    int64_t decoded_len64 = bytes_len((void *)decoded);
+    if (decoded_len64 < 0 || (uint64_t)decoded_len64 > HTTP_MAX_BODY_SIZE) {
+        if (rt_obj_release_check0((void *)decoded))
+            rt_obj_free((void *)decoded);
+        decoded = NULL;
+        rt_trap_clear_recovery();
+        return 0;
+    }
+    size_t decoded_len = (size_t)decoded_len64;
     decoded_body = (uint8_t *)malloc(decoded_len > 0 ? decoded_len : 1);
     if (!decoded_body) {
-        if (decoded && rt_obj_release_check0(decoded))
-            rt_obj_free(decoded);
+        if (rt_obj_release_check0((void *)decoded))
+            rt_obj_free((void *)decoded);
+        decoded = NULL;
+        rt_trap_clear_recovery();
         return 0;
     }
     if (decoded_len > 0)
-        memcpy(decoded_body, bytes_data(decoded), decoded_len);
-    if (decoded && rt_obj_release_check0(decoded))
-        rt_obj_free(decoded);
+        memcpy((void *)decoded_body, bytes_data((void *)decoded), decoded_len);
+    if (rt_obj_release_check0((void *)decoded))
+        rt_obj_free((void *)decoded);
+    decoded = NULL;
 
+    if (!set_header_value(headers_map, "content-encoding", NULL) ||
+        !set_content_length_header(headers_map, decoded_len)) {
+        rt_trap_clear_recovery();
+        free((void *)decoded_body);
+        return 0;
+    }
     free(body);
-    *body_io = decoded_body;
+    *body_io = (uint8_t *)decoded_body;
     *body_len_io = decoded_len;
-    set_header_value(headers_map, "content-encoding", NULL);
-    set_content_length_header(headers_map, decoded_len);
+    body_transferred = 1;
+    decoded_body = NULL;
+    rt_trap_clear_recovery();
     return 1;
 }
 
@@ -2082,558 +2480,7 @@ int rt_http_parse_url_for_test(
     return 1;
 }
 
-/// @brief Read a line from connection (up to CRLF).
-/// @return Allocated line without CRLF, or NULL on error.
-static char *read_line_conn(http_conn_t *conn) {
-    char *line = NULL;
-    size_t len = 0;
-    size_t cap = 256;
-    line = (char *)malloc(cap);
-    if (!line)
-        return NULL;
-
-    while (1) {
-        uint8_t byte;
-        if (http_conn_recv_byte(conn, &byte) == 0) {
-            // Connection closed
-            if (len == 0) {
-                free(line);
-                return NULL;
-            }
-            break;
-        }
-
-        char c = (char)byte;
-
-        if (c == '\n') {
-            // Remove trailing CR if present
-            if (len > 0 && line[len - 1] == '\r')
-                len--;
-            break;
-        }
-
-        if (len + 1 >= cap) {
-            // Cap at 64 KB to prevent unbounded realloc from malicious servers
-            if (cap >= 65536) {
-                free(line);
-                return NULL;
-            }
-            cap *= 2;
-            if (cap > 65536)
-                cap = 65536;
-            char *new_line = (char *)realloc(line, cap);
-            if (!new_line) {
-                free(line);
-                return NULL;
-            }
-            line = new_line;
-        }
-        line[len++] = c;
-    }
-
-    line[len] = '\0';
-    return line;
-}
-
-/// @brief Parse HTTP response status line.
-/// @return Status code, or -1 on error.
-static int parse_status_line(const char *line, int *http_minor_out, char **status_text_out) {
-    // Format: HTTP/1.x STATUS_CODE STATUS_TEXT
-    if (strncmp(line, "HTTP/1.", 7) != 0)
-        return -1;
-
-    const char *p = line + 7;
-    // Skip version digit
-    if (*p != '0' && *p != '1')
-        return -1;
-    if (http_minor_out)
-        *http_minor_out = *p - '0';
-    p++;
-
-    // Skip space
-    if (*p != ' ')
-        return -1;
-    p++;
-
-    // Parse exactly three status-code digits followed by SP or end-of-line.
-    if (!(p[0] >= '0' && p[0] <= '9') || !(p[1] >= '0' && p[1] <= '9') ||
-        !(p[2] >= '0' && p[2] <= '9'))
-        return -1;
-    int status = (p[0] - '0') * 100 + (p[1] - '0') * 10 + (p[2] - '0');
-    p += 3;
-    if (*p != '\0' && *p != ' ')
-        return -1;
-
-    if (status < 100 || status > 599)
-        return -1;
-
-    // Skip space and get status text
-    if (*p == ' ')
-        p++;
-
-    if (status_text_out) {
-        *status_text_out = strdup(p);
-        if (!*status_text_out)
-            return -1;
-    }
-
-    return status;
-}
-
-/// @brief Return whether an HTTP response header must not be combined or duplicated.
-/// @details These fields influence framing, redirects, or content interpretation. Rejecting
-///          duplicate instances avoids ambiguous response handling and request-smuggling style
-///          inconsistencies between parsers.
-/// @param lower_name Lowercase response header field name.
-/// @return 1 if duplicates should fail the response parse; otherwise 0.
-static int http_response_header_is_singleton(const char *lower_name) {
-    return lower_name &&
-           (strcmp(lower_name, "content-length") == 0 ||
-            strcmp(lower_name, "transfer-encoding") == 0 || strcmp(lower_name, "location") == 0 ||
-            strcmp(lower_name, "connection") == 0 || strcmp(lower_name, "content-encoding") == 0);
-}
-
-static int append_response_header_value(void *headers_map, const char *name, const char *value) {
-    char *lower_name = NULL;
-    rt_string name_str = NULL;
-    rt_string value_str = NULL;
-    void *boxed = NULL;
-
-    if (!headers_map || !name || !value)
-        return 0;
-
-    lower_name = strdup(name);
-    if (!lower_name)
-        return 0;
-    for (char *p = lower_name; *p; p++) {
-        if (*p >= 'A' && *p <= 'Z')
-            *p = (char)(*p + ('a' - 'A'));
-    }
-
-    name_str = rt_string_from_bytes(lower_name, strlen(lower_name));
-    value_str = rt_string_from_bytes(value, strlen(value));
-    if (!name_str || !value_str) {
-        free(lower_name);
-        if (name_str)
-            rt_string_unref(name_str);
-        if (value_str)
-            rt_string_unref(value_str);
-        return 0;
-    }
-
-    {
-        void *existing = rt_map_get(headers_map, name_str);
-        if (existing && http_response_header_is_singleton(lower_name)) {
-            free(lower_name);
-            rt_string_unref(name_str);
-            rt_string_unref(value_str);
-            return 0;
-        }
-        if (existing && rt_box_type(existing) == RT_BOX_STR) {
-            rt_string existing_str = rt_unbox_str(existing);
-            const char *existing_cstr = rt_string_cstr(existing_str);
-            const char *value_cstr = rt_string_cstr(value_str);
-            const char *sep =
-                strcmp(lower_name, "set-cookie") == 0 ? HTTP_SET_COOKIE_JOIN_SEPARATOR : ", ";
-            size_t existing_len = existing_cstr ? strlen(existing_cstr) : 0;
-            size_t value_len = value_cstr ? strlen(value_cstr) : 0;
-            size_t sep_len = strlen(sep);
-            if (existing_len > SIZE_MAX - sep_len ||
-                existing_len + sep_len > SIZE_MAX - value_len ||
-                existing_len + sep_len + value_len == SIZE_MAX) {
-                rt_string_unref(existing_str);
-                free(lower_name);
-                rt_string_unref(name_str);
-                rt_string_unref(value_str);
-                return 0;
-            }
-            size_t joined_len = existing_len + sep_len + value_len;
-            char *joined = (char *)malloc(joined_len + 1);
-            if (!joined) {
-                rt_string_unref(existing_str);
-                free(lower_name);
-                rt_string_unref(name_str);
-                rt_string_unref(value_str);
-                return 0;
-            }
-            memcpy(joined, existing_cstr ? existing_cstr : "", existing_len);
-            memcpy(joined + existing_len, sep, sep_len);
-            memcpy(joined + existing_len + sep_len, value_cstr ? value_cstr : "", value_len);
-            joined[joined_len] = '\0';
-            rt_string merged = rt_string_from_bytes(joined, joined_len);
-            free(joined);
-            if (!merged) {
-                rt_string_unref(existing_str);
-                free(lower_name);
-                rt_string_unref(name_str);
-                rt_string_unref(value_str);
-                return 0;
-            }
-            rt_string_unref(value_str);
-            value_str = merged;
-            rt_string_unref(existing_str);
-        }
-    }
-
-    boxed = rt_box_str(value_str);
-    rt_map_set(headers_map, name_str, boxed);
-    if (boxed && rt_obj_release_check0(boxed))
-        rt_obj_free(boxed);
-    rt_string_unref(value_str);
-    rt_string_unref(name_str);
-    free(lower_name);
-    return 1;
-}
-
-/// @brief Parse a response header line into the header map.
-/// @details Splits on the first colon, validates the field name as an HTTP token, trims leading
-///          optional whitespace from the value, and delegates duplicate/combine rules to
-///          append_response_header_value.
-/// @param line NUL-terminated header line without the trailing CRLF.
-/// @param headers_map Runtime map receiving lowercase header names and boxed string values.
-/// @return 1 if the header was accepted; 0 if malformed or allocation failed.
-static int parse_header_line(const char *line, void *headers_map) {
-    const char *colon = strchr(line, ':');
-    char *name = NULL;
-    if (!colon)
-        return 0;
-
-    name = (char *)malloc((size_t)(colon - line) + 1);
-    if (!name)
-        return 0;
-    memcpy(name, line, (size_t)(colon - line));
-    name[colon - line] = '\0';
-    if (!http_header_field_name_is_token(name)) {
-        free(name);
-        return 0;
-    }
-
-    const char *value = colon + 1;
-    while (*value == ' ' || *value == '\t')
-        value++;
-
-    int ok = append_response_header_value(headers_map, name, value);
-    free(name);
-    return ok;
-}
-
-/// @brief Read the status line and headers from an HTTP response.
-/// @return 1 on success, 0 on malformed/short response or allocation failure.
-static int read_response_head(http_conn_t *conn,
-                              int *status_out,
-                              int *http_minor_out,
-                              char **status_text_out,
-                              void **headers_map_out,
-                              char **redirect_location_out) {
-    if (status_out)
-        *status_out = -1;
-    if (http_minor_out)
-        *http_minor_out = 1;
-    if (status_text_out)
-        *status_text_out = NULL;
-    if (headers_map_out)
-        *headers_map_out = NULL;
-    if (redirect_location_out)
-        *redirect_location_out = NULL;
-
-    for (int informational_count = 0; informational_count < 8; informational_count++) {
-        char *status_line = read_line_conn(conn);
-        char *status_text = NULL;
-        void *headers_map = NULL;
-        char *redirect_location = NULL;
-        int status = -1;
-        int header_count = 0;
-        size_t header_bytes = 0;
-
-        if (!status_line)
-            return 0;
-        if (strlen(status_line) + 2u > HTTP_MAX_HEADER_BYTES) {
-            free(status_line);
-            goto fail;
-        }
-        header_bytes = strlen(status_line) + 2u;
-
-        status = parse_status_line(status_line, http_minor_out, &status_text);
-        free(status_line);
-        if (status < 0)
-            goto fail;
-
-        headers_map = rt_map_new();
-        if (!headers_map)
-            goto fail;
-
-        while (1) {
-            char *line = read_line_conn(conn);
-            if (!line)
-                goto fail;
-            if (line[0] == '\0') {
-                free(line);
-                break;
-            }
-
-            size_t line_len = strlen(line);
-            if (line_len + 2u > HTTP_MAX_HEADER_BYTES - header_bytes) {
-                free(line);
-                goto fail;
-            }
-            header_bytes += line_len + 2u;
-
-            header_count++;
-            if (header_count > 256) {
-                free(line);
-                goto fail;
-            }
-
-            if (strncasecmp(line, "location:", 9) == 0 && !redirect_location) {
-                const char *loc = line + 9;
-                while (*loc == ' ' || *loc == '\t')
-                    loc++;
-                redirect_location = strdup(loc);
-                if (!redirect_location) {
-                    free(line);
-                    goto fail;
-                }
-            }
-
-            if (!parse_header_line(line, headers_map)) {
-                free(line);
-                goto fail;
-            }
-            free(line);
-        }
-
-        if (status >= 100 && status < 200 && status != 101) {
-            free(status_text);
-            free(redirect_location);
-            if (headers_map && rt_obj_release_check0(headers_map))
-                rt_obj_free(headers_map);
-            continue;
-        }
-
-        if (status_out)
-            *status_out = status;
-        if (status_text_out)
-            *status_text_out = status_text;
-        if (headers_map_out)
-            *headers_map_out = headers_map;
-        if (redirect_location_out)
-            *redirect_location_out = redirect_location;
-        return 1;
-
-    fail:
-        free(status_text);
-        free(redirect_location);
-        if (headers_map && rt_obj_release_check0(headers_map))
-            rt_obj_free(headers_map);
-        return 0;
-    }
-
-    return 0;
-}
-
-/// @brief Read response body with Content-Length.
-static uint8_t *read_body_content_length_conn(http_conn_t *conn,
-                                              size_t content_length,
-                                              size_t *out_len) {
-    /* Cap to protect against server-controlled malloc(HUGE) (S-09 fix) */
-    if (content_length > HTTP_MAX_BODY_SIZE) {
-        *out_len = 0;
-        return NULL;
-    }
-    if (content_length == 0) {
-        *out_len = 0;
-        return NULL;
-    }
-
-    uint8_t *body = (uint8_t *)malloc(content_length);
-    if (!body)
-        return NULL;
-
-    size_t total_read = 0;
-    while (total_read < content_length) {
-        size_t remaining = content_length - total_read;
-        size_t chunk_size = remaining < HTTP_BUFFER_SIZE ? remaining : HTTP_BUFFER_SIZE;
-
-        long len = http_conn_recv(conn, body + total_read, chunk_size);
-        if (len <= 0) {
-            free(body);
-            *out_len = 0;
-            return NULL;
-        }
-
-        total_read += len;
-    }
-
-    *out_len = total_read;
-    return body;
-}
-
-static int parse_http_chunk_size_line(const char *size_line, size_t *chunk_size_out) {
-    size_t chunk_size = 0;
-    int saw_digit = 0;
-    const char *p = size_line;
-    if (!size_line || !chunk_size_out)
-        return 0;
-    while (*p) {
-        char c = *p;
-        unsigned digit = 0;
-        if (c >= '0' && c <= '9')
-            digit = (unsigned)(c - '0');
-        else if (c >= 'a' && c <= 'f')
-            digit = (unsigned)(c - 'a' + 10);
-        else if (c >= 'A' && c <= 'F')
-            digit = (unsigned)(c - 'A' + 10);
-        else
-            break;
-        saw_digit = 1;
-        if (chunk_size > (SIZE_MAX - digit) / 16)
-            return 0;
-        chunk_size = chunk_size * 16 + digit;
-        p++;
-    }
-    if (!saw_digit)
-        return 0;
-    while (*p == ' ' || *p == '\t')
-        p++;
-    if (*p != '\0' && *p != ';')
-        return 0;
-    *chunk_size_out = chunk_size;
-    return 1;
-}
-
-/// @brief Drain chunked-transfer trailer fields after the terminating zero-size chunk.
-/// @details Reads trailer lines until the empty line while enforcing aggregate byte and field
-///          count limits. Trailer contents are not exposed to callers, so malformed or oversized
-///          trailers fail the body read.
-/// @param conn Active HTTP connection to read from.
-/// @return 1 when the trailer block is well-formed and fully drained; otherwise 0.
-static int drain_chunk_trailers_conn(http_conn_t *conn) {
-    size_t trailer_bytes = 0;
-    unsigned trailer_count = 0;
-    while (1) {
-        char *trailer = read_line_conn(conn);
-        if (!trailer)
-            return 0;
-        if (trailer[0] == '\0') {
-            free(trailer);
-            return 1;
-        }
-        size_t trailer_len = strlen(trailer);
-        trailer_count++;
-        if (trailer_count > HTTP_MAX_TRAILER_LINES ||
-            trailer_len + 2u > HTTP_MAX_TRAILER_BYTES - trailer_bytes) {
-            free(trailer);
-            return 0;
-        }
-        trailer_bytes += trailer_len + 2u;
-        free(trailer);
-    }
-}
-
-/// @brief Read chunked transfer encoding body.
-static uint8_t *read_body_chunked_conn(http_conn_t *conn, size_t *out_len) {
-    size_t body_cap = HTTP_BUFFER_SIZE;
-    size_t body_len = 0;
-    uint8_t *body = (uint8_t *)malloc(body_cap);
-    if (!body)
-        return NULL;
-
-    while (1) {
-        // Read chunk size line
-        char *size_line = read_line_conn(conn);
-        if (!size_line) {
-            free(body);
-            *out_len = 0;
-            return NULL;
-        }
-
-        // Parse hex chunk size — guard against overflow before each multiply (M-6)
-        size_t chunk_size = 0;
-        int parsed = parse_http_chunk_size_line(size_line, &chunk_size);
-        free(size_line);
-
-        if (!parsed) {
-            free(body);
-            *out_len = 0;
-            return NULL;
-        }
-
-        if (chunk_size == 0) {
-            // Last chunk — drain all trailer headers until empty line (RC-13 / RFC 7230 §4.1.2)
-            if (!drain_chunk_trailers_conn(conn)) {
-                free(body);
-                *out_len = 0;
-                return NULL;
-            }
-            break;
-        }
-
-        /* Reject chunks that would push the total body past the limit (S-09 fix) */
-        if (body_len > HTTP_MAX_BODY_SIZE || chunk_size > HTTP_MAX_BODY_SIZE - body_len) {
-            free(body);
-            *out_len = 0;
-            return NULL;
-        }
-
-        // Expand body buffer if needed
-        while (body_len + chunk_size > body_cap) {
-            if (body_cap > HTTP_MAX_BODY_SIZE / 2)
-                body_cap = HTTP_MAX_BODY_SIZE;
-            else
-                body_cap *= 2;
-            if (body_cap < body_len + chunk_size) {
-                free(body);
-                *out_len = 0;
-                return NULL;
-            }
-            uint8_t *new_body = (uint8_t *)realloc(body, body_cap);
-            if (!new_body) {
-                free(body);
-                return NULL;
-            }
-            body = new_body;
-        }
-
-        // Read chunk data
-        size_t bytes_read = 0;
-        while (bytes_read < chunk_size) {
-            size_t remaining = chunk_size - bytes_read;
-            size_t to_read = remaining < HTTP_BUFFER_SIZE ? remaining : HTTP_BUFFER_SIZE;
-
-            long len = http_conn_recv(conn, body + body_len, to_read);
-            if (len <= 0) {
-                free(body);
-                *out_len = 0;
-                return NULL;
-            }
-
-            body_len += len;
-            bytes_read += len;
-        }
-
-        // Read trailing CRLF after chunk
-        char *chunk_end = read_line_conn(conn);
-        if (!chunk_end || chunk_end[0] != '\0') {
-            free(chunk_end);
-            free(body);
-            *out_len = 0;
-            return NULL;
-        }
-        free(chunk_end);
-    }
-
-    if (body_len == 0) {
-        free(body);
-        *out_len = 0;
-        body = (uint8_t *)malloc(1);
-        if (body)
-            body[0] = 0;
-        return body;
-    }
-
-    *out_len = body_len;
-    return body;
-}
+#include "rt_network_http_response.inc"
 
 typedef enum http_body_read_status {
     HTTP_BODY_READ_OK = 0,
@@ -2990,62 +2837,136 @@ static int http2_build_request_headers(rt_http_req_t *req, rt_http2_header_t **h
     return 1;
 }
 
+/// @brief Convert one native HTTP/2 header list into the managed response map.
+/// @details Pseudo-headers are omitted, duplicate field values are joined by
+///          the shared response-header helper, and the first Location value is
+///          copied for redirect handling. A local recovery frame releases the
+///          partial Map and native Location copy before propagating any managed
+///          allocation trap.
+/// @param headers Borrowed HTTP/2 response-header list.
+/// @param headers_map_out Receives a caller-owned managed Map on success.
+/// @param redirect_location_out Receives an optional caller-owned native copy
+///        of the first Location value.
+/// @return One after publishing all outputs; zero after a returning trap hook
+///         or native allocation failure. Outputs are NULL on failure.
 static int http2_headers_to_map(const rt_http2_header_t *headers,
                                 void **headers_map_out,
                                 char **redirect_location_out) {
-    void *headers_map = NULL;
-    char *redirect_location = NULL;
+    void *volatile headers_map = NULL;
+    char *volatile redirect_location = NULL;
     if (headers_map_out)
         *headers_map_out = NULL;
     if (redirect_location_out)
         *redirect_location_out = NULL;
 
-    headers_map = rt_map_new();
-    if (!headers_map)
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP/2: response header allocation failed");
+        rt_trap_clear_recovery();
+        if (headers_map && rt_obj_release_check0((void *)headers_map))
+            rt_obj_free((void *)headers_map);
+        free((void *)redirect_location);
+        rt_trap(saved_error);
         return 0;
+    }
+
+    headers_map = rt_map_new();
+    if (!headers_map) {
+        rt_trap_clear_recovery();
+        return 0;
+    }
     for (const rt_http2_header_t *it = headers; it; it = it->next) {
         if (!it->name || !it->value || it->name[0] == ':')
             continue;
-        if (!append_response_header_value(headers_map, it->name, it->value)) {
-            if (headers_map && rt_obj_release_check0(headers_map))
-                rt_obj_free(headers_map);
-            free(redirect_location);
+        if (!append_response_header_value((void *)headers_map, it->name, it->value)) {
+            rt_trap_clear_recovery();
+            if (rt_obj_release_check0((void *)headers_map))
+                rt_obj_free((void *)headers_map);
+            free((void *)redirect_location);
             return 0;
         }
         if (!redirect_location && strcasecmp(it->name, "location") == 0) {
             redirect_location = strdup(it->value);
             if (!redirect_location) {
-                if (headers_map && rt_obj_release_check0(headers_map))
-                    rt_obj_free(headers_map);
+                rt_trap_clear_recovery();
+                if (rt_obj_release_check0((void *)headers_map))
+                    rt_obj_free((void *)headers_map);
                 return 0;
             }
         }
     }
-    if (headers_map_out)
-        *headers_map_out = headers_map;
-    if (redirect_location_out)
-        *redirect_location_out = redirect_location;
+    if (headers_map_out) {
+        *headers_map_out = (void *)headers_map;
+        headers_map = NULL;
+    }
+    if (redirect_location_out) {
+        *redirect_location_out = (char *)redirect_location;
+        redirect_location = NULL;
+    }
+    rt_trap_clear_recovery();
+    if (headers_map && rt_obj_release_check0((void *)headers_map))
+        rt_obj_free((void *)headers_map);
+    free((void *)redirect_location);
     return 1;
 }
 
+/// @brief Publish fully owned response components as a managed HttpRes.
+/// @details This function consumes @p status_text, @p headers_map, and @p body
+///          on every path. The finalizer is installed before ownership is
+///          transferred into the object, and a recovery frame destroys a
+///          partial object or the individual components after allocation traps.
+/// @param status Numeric HTTP status code.
+/// @param status_text Owned native reason phrase, or NULL.
+/// @param headers_map Owned managed response-header Map, or NULL.
+/// @param body Owned native response body, or NULL when @p body_len is zero.
+/// @param body_len Number of bytes owned by @p body.
+/// @return Caller-owned HttpRes, or NULL after cleanup if a trap hook returns.
 static rt_http_res_t *http_make_response_obj(
     int status, char *status_text, void *headers_map, uint8_t *body, size_t body_len) {
-    rt_http_res_t *res = (rt_http_res_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_res_t));
-    if (!res) {
+    rt_http_res_t *volatile res = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP: response allocation failed");
+        rt_trap_clear_recovery();
+        if (res && rt_obj_release_check0((void *)res))
+            rt_obj_free((void *)res);
         free(body);
         free(status_text);
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
-        rt_trap("HTTP: memory allocation failed");
+        rt_trap(saved_error);
         return NULL;
     }
+    res = (rt_http_res_t *)rt_obj_new_i64(RT_HTTP_RES_CLASS_ID, (int64_t)sizeof(rt_http_res_t));
+    if (!res) {
+        rt_trap_clear_recovery();
+        free(body);
+        free(status_text);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        return NULL;
+    }
+    memset((void *)res, 0, sizeof(*res));
     rt_obj_set_finalizer(res, rt_http_res_finalize);
     res->status = status;
     res->status_text = status_text;
     res->headers = headers_map;
     res->body = body;
     res->body_len = body_len;
-    return res;
+    rt_trap_clear_recovery();
+    return (rt_http_res_t *)res;
 }
 
 static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
@@ -3089,7 +3010,34 @@ static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
 
     status = h2res.status;
     status_text = http_status_text_dup(status);
-    if (!status_text || !http2_headers_to_map(h2res.headers, &headers_map, &redirect_location)) {
+    int headers_ok = 0;
+    jmp_buf header_recovery;
+    rt_trap_set_recovery(&header_recovery);
+    if (setjmp(header_recovery) != 0) {
+        char saved_error[256];
+        int saved_net_code = rt_trap_get_net_code();
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP/2: response header allocation failed");
+        rt_trap_clear_recovery();
+        free(status_text);
+        rt_http2_response_free(&h2res);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        free(redirect_location);
+        http_conn_pool_release(conn, 0);
+        if (saved_net_code)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+    if (status_text)
+        headers_ok = http2_headers_to_map(h2res.headers, &headers_map, &redirect_location);
+    rt_trap_clear_recovery();
+    if (!status_text || !headers_ok) {
         free(status_text);
         rt_http2_response_free(&h2res);
         if (headers_map && rt_obj_release_check0(headers_map))
@@ -3108,6 +3056,7 @@ static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
         redirect_location) {
         int cross_origin = 0;
         if (redirects_remaining <= 0) {
+            http_conn_pool_release(conn, 0);
             free(body);
             free(status_text);
             free(redirect_location);
@@ -3124,15 +3073,8 @@ static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
         free(status_text);
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
-        rt_http_req_t next_req;
-        if (!http_prepare_redirect_request(&next_req, req, status, cross_origin, redirect_location)) {
-            free(redirect_location);
-            return NULL;
-        }
-        free(redirect_location);
-        rt_http_res_t *redirected = do_http_request(&next_req, redirects_remaining - 1);
-        http_request_clone_cleanup(&next_req);
-        return redirected;
+        return http_follow_redirect(
+            req, status, cross_origin, redirect_location, redirects_remaining - 1);
     }
     free(redirect_location);
 
@@ -3140,7 +3082,35 @@ static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
         free(body);
         body = NULL;
         body_len = 0;
-    } else if (body && !maybe_decode_gzip_body(req, headers_map, &body, &body_len)) {
+    }
+
+    int transform_ok = 0;
+    jmp_buf transform_recovery;
+    rt_trap_set_recovery(&transform_recovery);
+    if (setjmp(transform_recovery) != 0) {
+        char saved_error[256];
+        int saved_net_code = rt_trap_get_net_code();
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP/2: response transformation failed");
+        rt_trap_clear_recovery();
+        free(body);
+        free(status_text);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        http_conn_pool_release(conn, 0);
+        if (saved_net_code)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+    transform_ok = set_content_length_header(headers_map, body_len) &&
+                   (!body || maybe_decode_gzip_body(req, headers_map, &body, &body_len));
+    rt_trap_clear_recovery();
+    if (!transform_ok) {
         free(body);
         free(status_text);
         if (headers_map && rt_obj_release_check0(headers_map))
@@ -3150,7 +3120,6 @@ static rt_http_res_t *do_http2_request_opened(rt_http_req_t *req,
         return NULL;
     }
 
-    set_content_length_header(headers_map, body_len);
     reusable = http_request_wants_pool(req) && rt_http2_conn_is_usable(conn->http2);
     http_conn_pool_release(conn, reusable);
     return http_make_response_obj(status, status_text, headers_map, body, body_len);
@@ -3236,8 +3205,30 @@ open_connection:
     char *status_text = NULL;
     void *headers_map = NULL;
     char *redirect_location = NULL;
-    if (!read_response_head(
-            &conn, &status, &http_minor, &status_text, &headers_map, &redirect_location)) {
+    int response_head_ok = 0;
+    http_conn_t response_head_cleanup_conn = conn;
+    jmp_buf response_head_recovery;
+    rt_trap_set_recovery(&response_head_recovery);
+    if (setjmp(response_head_recovery) != 0) {
+        char saved_error[256];
+        int saved_net_code = rt_trap_get_net_code();
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP: response-head allocation failed");
+        rt_trap_clear_recovery();
+        http_conn_pool_release(&response_head_cleanup_conn, 0);
+        if (saved_net_code)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+    response_head_ok = read_response_head(
+        &conn, &status, &http_minor, &status_text, &headers_map, &redirect_location);
+    rt_trap_clear_recovery();
+    if (!response_head_ok) {
         if (!request_retry_attempted && conn.reused_from_pool && !conn.http2 &&
             http_method_retryable_on_stale_reuse(req->method)) {
             http_conn_pool_release(&conn, 0);
@@ -3269,17 +3260,8 @@ open_connection:
         free(status_text);
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
-        rt_http_req_t next_req;
-        if (!http_prepare_redirect_request(&next_req, req, status, cross_origin, redirect_location)) {
-            free(redirect_location);
-            return NULL;
-        }
-        free(redirect_location);
-
-        // Follow redirect
-        rt_http_res_t *redirected = do_http_request(&next_req, redirects_remaining - 1);
-        http_request_clone_cleanup(&next_req);
-        return redirected;
+        return http_follow_redirect(
+            req, status, cross_origin, redirect_location, redirects_remaining - 1);
     }
     free(redirect_location);
 
@@ -3289,21 +3271,45 @@ open_connection:
     int body_read_failed = 0;
     const char *body_error_msg = "HTTP: incomplete response body";
 
-    // Check for Content-Length
-    rt_string content_length_key = rt_const_cstr("content-length");
-    void *content_length_box = rt_map_get(headers_map, content_length_key);
-    rt_string content_length_val = NULL;
-    if (content_length_box && rt_box_type(content_length_box) == RT_BOX_STR)
-        content_length_val = rt_unbox_str(content_length_box);
+    rt_string volatile content_length_owned = NULL;
+    rt_string volatile transfer_encoding_owned = NULL;
+    rt_string volatile connection_owned = NULL;
+    http_conn_t header_lookup_cleanup_conn = conn;
+    jmp_buf header_lookup_recovery;
+    rt_trap_set_recovery(&header_lookup_recovery);
+    if (setjmp(header_lookup_recovery) != 0) {
+        char saved_error[256];
+        int saved_net_code = rt_trap_get_net_code();
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HTTP: response header lookup failed");
+        rt_trap_clear_recovery();
+        if (connection_owned)
+            rt_string_unref((rt_string)connection_owned);
+        if (transfer_encoding_owned)
+            rt_string_unref((rt_string)transfer_encoding_owned);
+        if (content_length_owned)
+            rt_string_unref((rt_string)content_length_owned);
+        if (headers_map && rt_obj_release_check0(headers_map))
+            rt_obj_free(headers_map);
+        free(status_text);
+        http_conn_pool_release(&header_lookup_cleanup_conn, 0);
+        if (saved_net_code)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+    content_length_owned = get_header_value(headers_map, "content-length");
+    transfer_encoding_owned = get_header_value(headers_map, "transfer-encoding");
+    connection_owned = get_header_value(headers_map, "connection");
+    rt_trap_clear_recovery();
 
-    // Check for Transfer-Encoding: chunked
-    rt_string transfer_encoding_key = rt_const_cstr("transfer-encoding");
-    void *transfer_encoding_box = rt_map_get(headers_map, transfer_encoding_key);
-    rt_string transfer_encoding_val = NULL;
-    if (transfer_encoding_box && rt_box_type(transfer_encoding_box) == RT_BOX_STR)
-        transfer_encoding_val = rt_unbox_str(transfer_encoding_box);
-
-    rt_string connection_val = get_header_value(headers_map, "connection");
+    rt_string content_length_val = (rt_string)content_length_owned;
+    rt_string transfer_encoding_val = (rt_string)transfer_encoding_owned;
+    rt_string connection_val = (rt_string)connection_owned;
     int response_closes =
         connection_val && rt_http_header_value_has_token(rt_string_cstr(connection_val), "close");
     int response_keepalive = connection_val && rt_http_header_value_has_token(
@@ -3405,9 +3411,42 @@ open_connection:
     }
 
     if (!no_body && body) {
-        if (chunked_transfer)
-            set_header_value(headers_map, "transfer-encoding", NULL);
-        if (!maybe_decode_gzip_body(req, headers_map, &body, &body_len)) {
+        int transform_ok = 0;
+        http_conn_t transform_cleanup_conn = conn;
+        jmp_buf transform_recovery;
+        rt_trap_set_recovery(&transform_recovery);
+        if (setjmp(transform_recovery) != 0) {
+            char saved_error[256];
+            int saved_net_code = rt_trap_get_net_code();
+            const char *error = rt_trap_get_error();
+            snprintf(saved_error,
+                     sizeof(saved_error),
+                     "%s",
+                     error && error[0] ? error : "HTTP: response transformation failed");
+            rt_trap_clear_recovery();
+            if (connection_val)
+                rt_string_unref(connection_val);
+            if (transfer_encoding_val)
+                rt_string_unref(transfer_encoding_val);
+            if (content_length_val)
+                rt_string_unref(content_length_val);
+            free(body);
+            if (headers_map && rt_obj_release_check0(headers_map))
+                rt_obj_free(headers_map);
+            free(status_text);
+            http_conn_pool_release(&transform_cleanup_conn, 0);
+            if (saved_net_code)
+                rt_trap_net(saved_error, saved_net_code);
+            else
+                rt_trap(saved_error);
+            return NULL;
+        }
+        transform_ok =
+            (!chunked_transfer || set_header_value(headers_map, "transfer-encoding", NULL)) &&
+            set_content_length_header(headers_map, body_len) &&
+            maybe_decode_gzip_body(req, headers_map, &body, &body_len);
+        rt_trap_clear_recovery();
+        if (!transform_ok) {
             http_conn_pool_release(&conn, 0);
             if (connection_val)
                 rt_string_unref(connection_val);
@@ -3422,7 +3461,6 @@ open_connection:
             rt_trap_net("HTTP: invalid gzip response body", Err_ProtocolError);
             return NULL;
         }
-        set_content_length_header(headers_map, body_len);
     }
 
     {
@@ -3439,6 +3477,57 @@ open_connection:
         rt_string_unref(content_length_val);
 
     return http_make_response_obj(status, status_text, headers_map, body, body_len);
+}
+
+/// @brief Follow one streaming-download redirect and consume its Location copy.
+/// @details A heap request record remains valid across recovery. Preparation
+///          and recursive streaming are caught locally so the Boolean download
+///          contract never leaks a managed trap, while all clone allocations
+///          and the owned Location buffer are released exactly once.
+/// @param source Request that received the redirect.
+/// @param status Redirect status code.
+/// @param cross_origin Nonzero when sensitive headers must be stripped.
+/// @param location_owned Owned native Location string; always consumed.
+/// @param redirects_remaining Remaining recursion budget.
+/// @param out Open destination stream receiving the eventual response body.
+/// @return One on complete success; zero on preparation, transport, or trap failure.
+static int http_follow_download_redirect(rt_http_req_t *source,
+                                         int status,
+                                         int cross_origin,
+                                         char *location_owned,
+                                         int redirects_remaining,
+                                         FILE *out) {
+    rt_http_req_t *const next_request = (rt_http_req_t *)calloc(1, sizeof(*next_request));
+    if (!next_request) {
+        free(location_owned);
+        return 0;
+    }
+
+    char *volatile location = location_owned;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        http_request_clone_cleanup(next_request);
+        free((void *)location);
+        free(next_request);
+        return 0;
+    }
+    if (!http_prepare_redirect_request(
+            next_request, source, status, cross_origin, (const char *)location)) {
+        rt_trap_clear_recovery();
+        http_request_clone_cleanup(next_request);
+        free((void *)location);
+        free(next_request);
+        return 0;
+    }
+    free((void *)location);
+    location = NULL;
+    int ok = do_http_download_request(next_request, redirects_remaining, out);
+    rt_trap_clear_recovery();
+    http_request_clone_cleanup(next_request);
+    free(next_request);
+    return ok;
 }
 
 /// @brief Execute an HTTP GET/download and stream the response body into an open file.
@@ -3465,7 +3554,15 @@ int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *
         return 0;
 
     if (conn.http2) {
-        rt_http_res_t *res = do_http2_request_opened(req, &conn, redirects_remaining);
+        rt_http_res_t *res = NULL;
+        jmp_buf h2_recovery;
+        rt_trap_set_recovery(&h2_recovery);
+        if (setjmp(h2_recovery) != 0) {
+            rt_trap_clear_recovery();
+            return 0;
+        }
+        res = do_http2_request_opened(req, &conn, redirects_remaining);
+        rt_trap_clear_recovery();
         if (!res)
             goto cleanup;
         if (res->status < 200 || res->status >= 300) {
@@ -3504,8 +3601,21 @@ int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *
     if (http_conn_send(&conn, request_buf, header_len + req->body_len) < 0)
         goto cleanup;
 
-    if (!read_response_head(
-            &conn, &status, &http_minor, &status_text, &headers_map, &redirect_location))
+    int response_head_ok = 0;
+    http_conn_t response_head_cleanup_conn = conn;
+    jmp_buf response_head_recovery;
+    rt_trap_set_recovery(&response_head_recovery);
+    if (setjmp(response_head_recovery) != 0) {
+        rt_trap_clear_recovery();
+        free(request_buf);
+        free(request_str);
+        http_conn_close(&response_head_cleanup_conn);
+        return 0;
+    }
+    response_head_ok = read_response_head(
+        &conn, &status, &http_minor, &status_text, &headers_map, &redirect_location);
+    rt_trap_clear_recovery();
+    if (!response_head_ok)
         goto cleanup;
     (void)http_minor;
 
@@ -3518,41 +3628,42 @@ int do_http_download_request(rt_http_req_t *req, int redirects_remaining, FILE *
 
         cross_origin = redirect_cross_origin_or_unknown(&req->url, redirect_location);
         http_conn_close(&conn);
-        rt_http_req_t next_req;
-        if (!http_prepare_redirect_request(&next_req, req, status, cross_origin, redirect_location))
-            goto cleanup;
-
         if (headers_map && rt_obj_release_check0(headers_map))
             rt_obj_free(headers_map);
         headers_map = NULL;
         free(status_text);
         status_text = NULL;
-        free(redirect_location);
+        char *redirect_owned = redirect_location;
         redirect_location = NULL;
         free(request_buf);
         request_buf = NULL;
         free(request_str);
         request_str = NULL;
-        int redirected_ok = do_http_download_request(&next_req, redirects_remaining - 1, out);
-        http_request_clone_cleanup(&next_req);
-        return redirected_ok;
+        return http_follow_download_redirect(
+            req, status, cross_origin, redirect_owned, redirects_remaining - 1, out);
     }
 
     if (status < 200 || status >= 300)
         goto cleanup;
 
     {
-        rt_string content_length_key = rt_const_cstr("content-length");
-        void *content_length_box = rt_map_get(headers_map, content_length_key);
-        if (content_length_box && rt_box_type(content_length_box) == RT_BOX_STR)
-            content_length_val = rt_unbox_str(content_length_box);
-    }
-
-    {
-        rt_string transfer_encoding_key = rt_const_cstr("transfer-encoding");
-        void *transfer_encoding_box = rt_map_get(headers_map, transfer_encoding_key);
-        if (transfer_encoding_box && rt_box_type(transfer_encoding_box) == RT_BOX_STR)
-            transfer_encoding_val = rt_unbox_str(transfer_encoding_box);
+        rt_string volatile content_length_owned = NULL;
+        rt_string volatile transfer_encoding_owned = NULL;
+        jmp_buf header_recovery;
+        rt_trap_set_recovery(&header_recovery);
+        if (setjmp(header_recovery) != 0) {
+            rt_trap_clear_recovery();
+            if (transfer_encoding_owned)
+                rt_string_unref((rt_string)transfer_encoding_owned);
+            if (content_length_owned)
+                rt_string_unref((rt_string)content_length_owned);
+            goto cleanup;
+        }
+        content_length_owned = get_header_value(headers_map, "content-length");
+        transfer_encoding_owned = get_header_value(headers_map, "transfer-encoding");
+        rt_trap_clear_recovery();
+        content_length_val = (rt_string)content_length_owned;
+        transfer_encoding_val = (rt_string)transfer_encoding_owned;
     }
 
     if (response_has_no_body(req, status)) {

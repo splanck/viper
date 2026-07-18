@@ -171,11 +171,12 @@ static inline void *rt_g3d_checked_or_null(void *obj, int64_t class_id) {
 static inline int32_t rt_g3d_is_plain_value_object(void *obj, size_t payload_bytes) {
     if (!obj)
         return 0;
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+    rt_heap_info_t heap_info;
+    if (!rt_heap_get_info(obj, &heap_info))
         return 0;
-    return hdr->kind == RT_HEAP_OBJECT && hdr->elem_kind == RT_ELEM_NONE && hdr->class_id == 0 &&
-           hdr->len == payload_bytes && hdr->cap == payload_bytes;
+    return heap_info.kind == RT_HEAP_OBJECT && heap_info.elem_kind == RT_ELEM_NONE &&
+           heap_info.class_id == 0 && heap_info.len == payload_bytes &&
+           heap_info.cap == payload_bytes;
 }
 
 /// @brief True if @p obj is a tagged heap value with at least @p payload_bytes bytes.
@@ -189,11 +190,11 @@ static inline int32_t rt_g3d_is_tagged_value_object(void *obj,
                                                     size_t payload_bytes) {
     if (!obj)
         return 0;
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+    rt_heap_info_t heap_info;
+    if (!rt_heap_get_info(obj, &heap_info))
         return 0;
-    return hdr->kind == RT_HEAP_OBJECT && hdr->elem_kind == RT_ELEM_NONE &&
-           hdr->class_id == class_id && hdr->cap >= payload_bytes;
+    return heap_info.kind == RT_HEAP_OBJECT && heap_info.elem_kind == RT_ELEM_NONE &&
+           heap_info.class_id == class_id && heap_info.cap >= payload_bytes;
 }
 
 /// @brief True if @p obj is a Vec3, accepting both tagged and legacy class-less payloads.

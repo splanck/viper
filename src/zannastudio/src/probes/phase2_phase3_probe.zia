@@ -1,0 +1,330 @@
+module phase2_phase3_probe;
+
+// ============================================================================
+// MODULE: phase2_phase3_probe
+// PURPOSE: Headless regression coverage for build/run/debug boundary helpers.
+//
+// WHERE-THIS-FITS: This probe checks RunConfig, BuildSystem parsing/timing,
+//          breakpoint stores, project manifest behavior, and scene data contracts
+//          without launching the whole IDE shell.
+//
+// TEACHING-NOTE: Boundary probes should preserve public compatibility wrappers.
+//          If production code moves to a leaf helper, keep this probe on the
+//          caller-facing API unless the caller contract intentionally changes.
+// ============================================================================
+
+bind "../build/build_system";
+bind "../build/breakpoints";
+bind "../build/debug_session";
+bind "../build/run_config";
+bind "../core/document";
+bind "../core/project";
+bind "../core/project_manager";
+bind "../services/file_utils";
+
+bind Terminal = Zanna.Terminal;
+bind File = Zanna.IO.File;
+bind Dir = Zanna.IO.Dir;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Env = Zanna.System.Environment;
+bind Clock = Zanna.Time.Clock;
+bind SceneDocument = Zanna.Game2D.SceneDocument;
+bind Seq = Zanna.Collections.Seq;
+bind Map = Zanna.Collections.Map;
+bind Obj = Zanna.Core.Object;
+bind Str = Zanna.String;
+
+func fail(msg: String) {
+    Terminal.Say("RESULT: fail " + msg);
+}
+
+func assertTrue(cond: Boolean, msg: String) -> Boolean {
+    if cond == false {
+        fail(msg);
+        return false;
+    }
+    return true;
+}
+
+func ArgValue(name: String) -> String {
+    var i = 0;
+    while i < Env.GetArgumentCount() - 1 {
+        if Env.GetArgument(i) == name {
+            return Env.GetArgument(i + 1);
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_phase23_probe_");
+    var spacedDir = Path.Join(root, "dir with spaces");
+    Dir.MakeAll(spacedDir);
+    var sourcePath = Path.Join(spacedDir, "main file.zia");
+    File.WriteAllText(sourcePath,
+        "module Child;\n"
+        + "bind Zanna.Terminal as Terminal;\n"
+        + "func main() { Terminal.Say(\"PHASE2-RUN\"); }\n");
+
+    var doc = new document.Document();
+    doc.filePath = sourcePath;
+    doc.fileName = "main file.zia";
+    doc.language = "zia";
+    doc.kind = file_utils.DOC_KIND_CODE;
+    doc.isNew = false;
+
+    var cfg = run_config.ForDocument(run_config.ACTION_RUN, doc, null);
+    if assertTrue(cfg.program == "zanna"
+                  and Seq.get_Count(cfg.args) == 3
+                  and Obj.ToString(Seq.Get(cfg.args, 1)) == "--diagnostic-format=json",
+                  "default run config uses argument vector") == false { return; }
+    if assertTrue(Obj.ToString(Seq.Get(cfg.args, 2)) == sourcePath,
+                  "run config preserves path with spaces as one arg") == false { return; }
+
+    var split = run_config.SplitArgs("run \"path with spaces\" {target}");
+    if assertTrue(Seq.get_Count(split) == 3
+                  and Obj.ToString(Seq.Get(split, 1)) == "path with spaces",
+                  "split args preserves quoted token") == false { return; }
+    var splitEscaped = run_config.SplitArgs("run 'single quoted' escaped\\ token");
+    if assertTrue(Seq.get_Count(splitEscaped) == 3
+                  and Obj.ToString(Seq.Get(splitEscaped, 1)) == "single quoted"
+                  and Obj.ToString(Seq.Get(splitEscaped, 2)) == "escaped token",
+                  "split args preserves single quotes and escapes") == false { return; }
+
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.project = new project.Project();
+    projMgr.project.Open(root);
+    projMgr.project.runProgram = "custom-runner";
+    projMgr.project.runArgs = "run \"{target}\" --flag";
+    var custom = run_config.ForDocument(run_config.ACTION_RUN, doc, projMgr);
+    if assertTrue(custom.program == "custom-runner"
+                  and custom.kind == run_config.KIND_CUSTOM
+                  and Obj.ToString(Seq.Get(custom.args, 1)) == root,
+                  "project run config override") == false { return; }
+
+    var buildSys = new build_system.BuildSystem();
+    var diag = buildSys.ParseDiagnosticLine("C:\\tmp\\a file.zia:12:3: warning[W123]: careful");
+    if assertTrue(diag != null
+                  and diag!.filePath == "C:\\tmp\\a file.zia"
+                  and diag!.line == 12
+                  and diag!.column == 3
+                  and diag!.severity == 1
+                  and diag!.code == "W123",
+                  "problem matcher preserves colon and space path") == false { return; }
+
+    if assertTrue(buildSys.FormatDuration(850) == "850ms"
+                  and buildSys.FormatDuration(0) == "0ms"
+                  and buildSys.FormatDuration(1000) == "1.0s"
+                  and buildSys.FormatDuration(1234) == "1.2s"
+                  and buildSys.FormatDuration(12340) == "12.3s",
+                  "build duration formats sub-second as ms and longer as seconds") == false { return; }
+
+    var ziaBin = ArgValue("--zia-bin");
+    if assertTrue(ziaBin != "", "zia binary argument provided") == false { return; }
+    var zannaBin = ArgValue("--zanna-bin");
+    if assertTrue(zannaBin != "", "zanna binary argument provided") == false { return; }
+
+    // Compiler resolution: the IDE spawns through Process/execve(), which neither
+    // searches PATH nor resolves a bare name, so a bare "zanna" never starts a
+    // build. ResolveCompiler must turn the default into an existing absolute path,
+    // and report "" for a program that is nowhere to be found.
+    var expectedZanna = Path.Absolute(zannaBin);
+    Env.SetVariable("ZANNA_BINARY", zannaBin);
+    var resolvedZanna = buildSys.ResolveCompiler("zanna");
+    if assertTrue(resolvedZanna == expectedZanna
+                  and Path.IsAbsolute(resolvedZanna)
+                  and File.Exists(resolvedZanna),
+                  "default zanna resolves to an existing absolute path") == false { return; }
+    if assertTrue(buildSys.ResolveCompiler("zanna_missing_binary_zzz_404") == "",
+                  "an unfindable program resolves to empty") == false { return; }
+
+    var procCfg = new run_config.RunConfig();
+    procCfg.name = "Probe Run";
+    procCfg.action = run_config.ACTION_RUN;
+    procCfg.program = ziaBin;
+    procCfg.workingDirectory = spacedDir;
+    Seq.Push(procCfg.args, sourcePath);
+    if assertTrue(buildSys.StartConfig(procCfg), "process job starts") == false { return; }
+    var spins = 0;
+    while buildSys.IsActive() and spins < 3000 {
+        buildSys.Update();
+        Clock.Sleep(1);
+        spins = spins + 1;
+    }
+    if buildSys.IsActive() {
+        buildSys.Stop();
+        fail("process job timed out");
+        return;
+    }
+    if assertTrue(buildSys.lastBuildSuccess and Str.IndexOf(buildSys.GetOutput(), "PHASE2-RUN") != 0,
+                  "process job streams child output") == false { return; }
+
+    var projectRoot = Path.Join(root, "project with spaces");
+    var projectSrc = Path.Join(projectRoot, "src");
+    Dir.MakeAll(projectSrc);
+    var entryPath = Path.Join(projectSrc, "main.zia");
+    File.WriteAllText(Path.Join(projectRoot, "zanna.project"),
+        "project ProbeProject\n"
+        + "entry src/main.zia\n"
+        + "lang zia\n");
+    File.WriteAllText(entryPath,
+        "module ProjectEntry;\n"
+        + "bind Zanna.Terminal as Terminal;\n"
+        + "func main() { Terminal.Say(\"DIR-RUN-OK\"); }\n");
+    var entryDoc = new document.Document();
+    entryDoc.filePath = entryPath;
+    entryDoc.fileName = "main.zia";
+    entryDoc.language = "zia";
+    entryDoc.kind = file_utils.DOC_KIND_CODE;
+    entryDoc.isNew = false;
+    var entryProj = new project_manager.ProjectManager();
+    entryProj.project = new project.Project();
+    entryProj.project.Open(projectRoot);
+    var entryCfg = run_config.ForDocument(run_config.ACTION_RUN, entryDoc, entryProj);
+    entryCfg.program = zannaBin;
+    if assertTrue(entryCfg.kind == run_config.KIND_PROJECT_ENTRY
+                  and entryCfg.targetPath == projectRoot
+                  and entryProj.project.entryFile == "src/main.zia",
+                  "project entry run config targets manifest root") == false { return; }
+    if assertTrue(buildSys.StartConfig(entryCfg), "project entry process starts") == false { return; }
+    spins = 0;
+    while buildSys.IsActive() and spins < 3000 {
+        buildSys.Update();
+        Clock.Sleep(1);
+        spins = spins + 1;
+    }
+    if buildSys.IsActive() {
+        buildSys.Stop();
+        fail("project entry run timed out");
+        return;
+    }
+    if assertTrue(buildSys.lastBuildSuccess and Str.IndexOf(buildSys.GetOutput(), "DIR-RUN-OK") != 0,
+                  "project entry run executes manifest entry") == false { return; }
+
+    var longPath = Path.Join(spacedDir, "long_running.zia");
+    File.WriteAllText(longPath,
+        "module LongRunning;\n"
+        + "func main() {\n"
+        + "    while true {\n"
+        + "        Zanna.Time.Clock.Sleep(10);\n"
+        + "    }\n"
+        + "}\n");
+    var stopCfg = new run_config.RunConfig();
+    stopCfg.name = "Long Run";
+    stopCfg.action = run_config.ACTION_RUN;
+    stopCfg.program = ziaBin;
+    stopCfg.workingDirectory = spacedDir;
+    Seq.Push(stopCfg.args, longPath);
+    if assertTrue(buildSys.StartConfig(stopCfg), "long-running process starts") == false { return; }
+    Clock.Sleep(50);
+    buildSys.Update();
+    if buildSys.IsActive() == false {
+        fail("long-running process exited early: " + buildSys.GetOutput());
+        return;
+    }
+    var killed = buildSys.Stop();
+    if assertTrue(killed
+                  and buildSys.IsActive() == false
+                  and buildSys.exitCode == -1
+                  and Str.IndexOf(buildSys.GetOutput(), "[stopped]") != 0,
+                  "stop kills long-running process") == false { return; }
+
+    var bpPath = Path.Join(root, "settings.ini");
+    var bpStore = new breakpoints.BreakpointStore();
+    bpStore.Setup(bpPath);
+    bpStore.Toggle(sourcePath, 2);
+    bpStore.Toggle(sourcePath, 3);
+    bpStore.Save();
+    bpStore.Toggle(sourcePath, 3);
+    bpStore.Save();
+    var bpText = File.ReadAllText(bpPath);
+    if assertTrue(Str.IndexOf(bpText, "[breakpoint.1]") == 0,
+                  "breakpoint save removes stale higher-numbered sections") == false { return; }
+    var loadedBps = new breakpoints.BreakpointStore();
+    loadedBps.Setup(bpPath);
+    loadedBps.Load();
+    if assertTrue(loadedBps.Count() == 1
+                  and loadedBps.GetPath(0) == sourcePath
+                  and loadedBps.GetLine(0) == 2,
+                  "breakpoints persist by structured path and line") == false { return; }
+
+    var settingsOnlyPath = Path.Join(root, "settings-only.ini");
+    File.WriteAllText(settingsOnlyPath, "[settings]\ntheme=dark\nfontSize=15\n");
+    var emptyBps = new breakpoints.BreakpointStore();
+    emptyBps.Setup(settingsOnlyPath);
+    emptyBps.Load();
+    if assertTrue(emptyBps.Count() == 0,
+                  "breakpoint load tolerates settings file without breakpoint section") == false { return; }
+
+    // Real VM debug adapter: launch a program, stop at a breakpoint with a call
+    // stack and locals, then continue to exit. Drives the same DebugSession the IDE
+    // uses, so the out-of-process protocol is exercised end-to-end without a GUI.
+    var dbgFile = Path.Join(spacedDir, "debuggee.zia");
+    File.WriteAllText(dbgFile,
+        "module Debuggee;\n"
+        + "bind Zanna.Terminal as Terminal;\n"
+        + "func main() {\n"
+        + "    var total = 7;\n"
+        + "    Terminal.Say(\"before-bp\");\n"
+        + "    Terminal.Say(\"after-bp=\" + total);\n"
+        + "}\n");
+    var dbgStore = new breakpoints.BreakpointStore();
+    dbgStore.Setup(Path.Join(root, "debuggee-bp.ini"));
+    dbgStore.Toggle(dbgFile, 5);
+
+    var dbg = new debug_session.DebugSession();
+    if assertTrue(dbg.Launch(zannaBin, dbgFile, dbgStore),
+                  "debug adapter launches") == false { return; }
+    var dspins = 0;
+    while dbg.IsActive() and dbg.stopped == false and dspins < 6000 {
+        dbg.Poll();
+        Clock.Sleep(1);
+        dspins = dspins + 1;
+    }
+    if assertTrue(dbg.stopped and dbg.lastLine == 5 and dbg.lastReason == "breakpoint",
+                  "debug adapter stops at the breakpoint line") == false { return; }
+    if assertTrue(Str.IndexOf(dbg.FormatConsole(), "Call stack") != 0
+                  and Str.IndexOf(dbg.FormatConsole(), "total = 7") != 0,
+                  "debug stop reports a call stack and locals") == false { return; }
+
+    dbg.Continue();
+    dspins = 0;
+    while dbg.IsActive() and dspins < 6000 {
+        dbg.Poll();
+        Clock.Sleep(1);
+        dspins = dspins + 1;
+    }
+    if assertTrue(dbg.terminated
+                  and Str.IndexOf(dbg.programOutput, "before-bp") != 0
+                  and Str.IndexOf(dbg.programOutput, "after-bp") != 0,
+                  "debug adapter runs the program and terminates after continue") == false { return; }
+
+    var scene = SceneDocument.New(3, 2, 16, 16);
+    scene.SetStr("theme", "cavern");
+    scene.SetInt("spawnX", 32);
+    var layer = scene.AddLayer("fg");
+    scene.SetLayerAsset(layer, "tiles/fg.png");
+    scene.SetTile(layer, 1, 1, 7);
+    var obj = scene.AddObject("enemy", "slime-1", 64, 48);
+    scene.ObjectSetInt(obj, "hp", 3);
+    scene.ObjectSetBool(obj, "awake", true);
+    var scenePath = Path.Join(root, "level.scene");
+    if assertTrue(scene.Save(scenePath), "scene save file") == false { return; }
+    var loaded = SceneDocument.Load(scenePath);
+    if assertTrue(loaded.HasErrors() == false
+                  and loaded.GetTile(1, 1, 1) == 7
+                  and loaded.ObjectGetInt(0, "hp", -1) == 3
+                  and loaded.ObjectGetBool(0, "awake", false),
+                  "scene load/save preserves owned edits") == false { return; }
+    if assertTrue(loaded.BuildTilemap() != null,
+                  "scene builds render tilemap copy") == false { return; }
+    var bad = SceneDocument.LoadJson("{\"version\":1,");
+    if assertTrue(bad.HasErrors()
+                  and Seq.get_Count(bad.DiagnosticRecords()) > 0,
+                  "scene malformed json reports diagnostics") == false { return; }
+
+    Dir.RemoveAll(root);
+    Terminal.Say("RESULT: ok");
+}

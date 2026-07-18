@@ -405,13 +405,12 @@ static int canvas3d_queue_clipped_round_rect_geometry(rt_canvas3d *c,
     uint32_t out_indices[RR_CLIP_MAX_INDICES];
     int32_t out_vertex_count = 0;
     int32_t out_index_count = 0;
+    if (!c || !vertices || !indices || index_count <= 0)
+        return 0;
     const float edge_value[4] = {c->overlay_clip_x,
                                  c->overlay_clip_x + c->overlay_clip_w,
                                  c->overlay_clip_y,
                                  c->overlay_clip_y + c->overlay_clip_h};
-
-    if (!c || !vertices || !indices || index_count <= 0)
-        return 0;
     for (int32_t tri = 0; tri + 2 < index_count; tri += 3) {
         vgfx3d_vertex_t poly_a[RR_CLIP_POLY_CAP];
         vgfx3d_vertex_t poly_b[RR_CLIP_POLY_CAP];

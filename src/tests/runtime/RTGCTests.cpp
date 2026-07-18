@@ -1,22 +1,45 @@
 //===----------------------------------------------------------------------===//
+//
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// RTGCTests.cpp - Tests for rt_gc (cycle-detecting GC + zeroing weak refs)
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTGCTests.cpp
+// Purpose: Validate trial-deletion cycle collection, zeroing weak references,
+//          finalizer recovery, statistics, and concurrent mutator quiescence.
+//
+// Key invariants:
+//   - Externally reachable objects survive while unreachable cycles are reclaimed.
+//   - Weak observers clear on every final-release path and survive resurrection.
+//   - Traversal callbacks may query GC state without deadlocking.
+//   - Managed-graph mutations cannot overlap a collection traversal.
+//
+// Ownership/Lifetime:
+//   - Test helpers explicitly balance every external object and string reference.
+//   - Cycle tests intentionally transfer their last references to the collector.
+//
+// Links: src/runtime/core/rt_gc.c, src/runtime/core/rt_heap.c,
+//        docs/adr/0116-gc-mutator-quiescence-and-array-cycles.md
+//
 //===----------------------------------------------------------------------===//
 
+#include <atomic>
 #include <cassert>
 #include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <thread>
 
 extern "C" {
+#include "rt_array.h"
 #include "rt_array_obj.h"
 #include "rt_gc.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
+#include "rt_list.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -63,6 +86,22 @@ struct test_pair_node {
 static int g_cycle_finalizer_count = 0;
 static int g_external_finalizer_count = 0;
 static void *g_resurrected_object = NULL;
+static std::atomic<int> g_gate_entered{0};
+static std::atomic<int> g_gate_mutation_attempted{0};
+static std::atomic<int> g_gate_mutation_completed{0};
+static std::atomic<int> g_gate_sampled{0};
+static std::atomic<int> g_gate_observed_completion{0};
+
+/// @brief Reject every runtime-shim allocation while preserving the hook ABI.
+/// @details The shutdown-finalizer sweep must not call this hook because its
+///          epoch walk is allocation-free. The @p bytes and @p next parameters
+///          are intentionally unused: returning NULL models complete allocator
+///          exhaustion without invoking the default implementation.
+static void *reject_all_runtime_allocations(int64_t bytes, void *(*next)(int64_t)) {
+    (void)bytes;
+    (void)next;
+    return nullptr;
+}
 
 /// Traverse function for test_node: visits the child pointer.
 extern "C" {
@@ -83,6 +122,24 @@ static void test_pair_node_traverse(void *obj, rt_gc_visitor_t visitor, void *ct
 static void gc_touching_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     ASSERT(rt_gc_is_tracked(obj) == 1, "traverse can query GC tracking");
     test_node_traverse(obj, visitor, ctx);
+}
+
+/// @brief Hold the first traversal until a worker has attempted a graph mutation.
+/// @details The callback samples whether `Seq.Push` completed while traversal was active. Under
+///          the GC quiescence contract the worker may announce its attempt, but completion must
+///          remain blocked until the collector releases its exclusive graph scope.
+static void mutator_gate_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    (void)obj;
+    (void)visitor;
+    (void)ctx;
+    int expected = 0;
+    if (!g_gate_sampled.compare_exchange_strong(expected, 1, std::memory_order_acq_rel))
+        return;
+    g_gate_entered.store(1, std::memory_order_release);
+    while (!g_gate_mutation_attempted.load(std::memory_order_acquire))
+        std::this_thread::yield();
+    g_gate_observed_completion.store(g_gate_mutation_completed.load(std::memory_order_acquire),
+                                     std::memory_order_release);
 }
 }
 
@@ -164,15 +221,17 @@ static void test_track_untrack() {
 }
 
 static void test_track_null_safety() {
+    void *obj = make_node();
     rt_gc_track(NULL, test_node_traverse);
-    rt_gc_track(make_node(), NULL);
+    rt_gc_track(obj, NULL);
     rt_gc_untrack(NULL);
     ASSERT(rt_gc_is_tracked(NULL) == 0, "null is not tracked");
+    release_obj(obj);
 }
 
 static void test_track_rejects_non_object_payload() {
-    void **arr = rt_arr_obj_new(0);
-    ASSERT(arr != NULL, "object array allocated");
+    int32_t *arr = rt_arr_i32_new(0);
+    ASSERT(arr != NULL, "numeric array allocated");
 
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
@@ -187,7 +246,7 @@ static void test_track_rejects_non_object_payload() {
                "non-object GC track trap mentions heap object");
     }
 
-    rt_arr_obj_release(arr);
+    rt_arr_i32_release(arr);
 }
 
 static void test_tracked_count() {
@@ -217,7 +276,6 @@ static void test_double_track() {
     int64_t base = rt_gc_tracked_count();
 
     rt_gc_track(obj, test_node_traverse);
-    /// @brief Rt_gc_track.
     rt_gc_track(obj, test_node_traverse); // should not duplicate
 
     ASSERT(rt_gc_tracked_count() == base + 1, "double track doesn't duplicate");
@@ -339,6 +397,64 @@ static void test_weakref_string_target_cleared_on_release() {
     ASSERT(rt_weakref_alive(ref) == 0, "weakref string target dead after final release");
     assert_weakref_get(ref, NULL, "weakref string target cleared after final release");
     rt_weakref_free(ref);
+}
+
+/// @brief Verify direct specialized-array release clears every weak observer.
+/// @details The replacement allocation intentionally uses the same shape so the
+///          pool normally reuses the released address. A stale weak target would
+///          then promote the replacement object, exposing an allocator ABA bug.
+static void test_weakref_array_target_cleared_on_release() {
+    int32_t *target = rt_arr_i32_new(4);
+    ASSERT(target != NULL, "weakref array target allocated");
+    rt_weakref *ref = rt_weakref_new(target);
+    ASSERT(ref != NULL, "weakref accepts runtime array target");
+
+    void *promoted = rt_weakref_get(ref);
+    ASSERT(promoted == target, "weakref promotes live array target");
+    rt_arr_i32_release((int32_t *)promoted);
+
+    void *released_address = target;
+    rt_arr_i32_release(target);
+    ASSERT(rt_weakref_alive(ref) == 0, "weakref array target dead after final release");
+    assert_weakref_get(ref, NULL, "weakref array target cleared after final release");
+
+    int32_t *replacement = rt_arr_i32_new(4);
+    ASSERT(replacement != NULL, "replacement array allocated");
+    if ((void *)replacement == released_address) {
+        ASSERT(rt_weakref_alive(ref) == 0,
+               "weakref does not promote replacement at recycled address");
+        assert_weakref_get(ref, NULL, "weakref remains clear after address reuse");
+    }
+
+    rt_arr_i32_release(replacement);
+    rt_weakref_free(ref);
+}
+
+/// @brief Verify an object-array relocation preserves GC and weak-reference identity.
+/// @details A large resize is likely to move the backing heap allocation. Whether or not the
+///          allocator can grow it in place, the resulting payload must remain tracked, every
+///          weak observer must promote the replacement address, and final release must zero the
+///          observer exactly once.
+static void test_object_array_resize_relocates_gc_bookkeeping() {
+    void **array = rt_arr_obj_new(1);
+    ASSERT(array != nullptr, "relocating object array allocated");
+    rt_weakref *weak = rt_weakref_new(array);
+    ASSERT(weak != nullptr, "relocating object array weakref allocated");
+    void *old_address = array;
+
+    array = rt_arr_obj_resize(array, 4096);
+    ASSERT(array != nullptr, "object array resize succeeds");
+    ASSERT(rt_gc_is_tracked(array) == 1, "resized object array remains tracked");
+    void *promoted = rt_weakref_get(weak);
+    ASSERT(promoted == array, "weakref follows resized object array address");
+    if (promoted)
+        rt_arr_obj_release((void **)promoted);
+    if (array != old_address)
+        ASSERT(rt_heap_is_payload(old_address) == 0, "retired object array address is invalid");
+
+    rt_arr_obj_release(array);
+    ASSERT(rt_weakref_alive(weak) == 0, "resized object array weakref clears on release");
+    rt_weakref_free(weak);
 }
 
 static void test_weak_store_string_target_zeroes() {
@@ -520,6 +636,99 @@ static void test_collect_self_cycle() {
     // trial_rc starts at 1, a->a decrements to 0 -> freed
     int64_t freed = rt_gc_collect();
     ASSERT(freed == 1, "self-cycle freed");
+}
+
+/// @brief Verify an object-reference array can collect a self-cycle.
+/// @details Storing the array in its own slot leaves one internal reference after the caller
+///          releases its handle. Automatic array traversal must identify that sole edge and
+///          clear weak observers when reclaiming the payload.
+static void test_collect_object_array_self_cycle() {
+    void **arr = rt_arr_obj_new(1);
+    ASSERT(arr != nullptr, "self-cyclic object array allocated");
+    ASSERT(rt_gc_is_tracked(arr) == 1, "object array is automatically GC-tracked");
+    rt_weakref *weak = rt_weakref_new(arr);
+    rt_arr_obj_put(arr, 0, arr);
+
+    rt_arr_obj_release(arr);
+    ASSERT(rt_gc_collect() == 1, "object-array self-cycle reclaimed");
+    ASSERT(rt_heap_is_payload(arr) == 0, "self-cyclic object-array storage freed");
+    ASSERT(rt_weakref_alive(weak) == 0, "object-array weak observer cleared");
+    rt_weakref_free(weak);
+}
+
+/// @brief Verify boxed-reference arrays are tracked automatically and can collect a self-cycle.
+/// @details `RT_ELEM_BOX` arrays own managed pointer slots just like object arrays. The heap must
+///          register the array before publication; otherwise the retained self-edge would leak
+///          forever after the external reference is dropped.
+static void test_collect_box_reference_array_self_cycle() {
+    auto **array =
+        static_cast<void **>(rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_BOX, sizeof(void *), 1, 1));
+    ASSERT(array != nullptr, "box-reference array allocated");
+    if (!array)
+        return;
+    ASSERT(rt_gc_is_tracked(array) == 1, "box-reference array is automatically GC tracked");
+
+    rt_gc_mutator_enter();
+    rt_heap_retain(array);
+    array[0] = array;
+    rt_gc_mutator_exit();
+    ASSERT(rt_heap_release(array) == 1, "external box-array owner dropped, leaving self edge");
+
+    ASSERT(rt_gc_collect() == 1, "box-reference array self-cycle collected");
+    ASSERT(rt_heap_is_payload(array) == 0, "collected box-reference array storage reclaimed");
+}
+
+/// @brief Verify cycle traversal crosses between a Seq and an object array.
+/// @details Each container owns the other after external references are dropped. The collector
+///          must treat the RT_HEAP_OBJECT and RT_ELEM_OBJ array as one unreachable component.
+static void test_collect_mixed_seq_object_array_cycle() {
+    void *seq = rt_seq_new_owned();
+    void **arr = rt_arr_obj_new(1);
+    ASSERT(seq != nullptr && arr != nullptr, "mixed-cycle containers allocated");
+    rt_arr_obj_put(arr, 0, seq);
+    rt_seq_push(seq, arr);
+
+    release_obj(seq);
+    rt_arr_obj_release(arr);
+    ASSERT(rt_gc_collect() == 2, "mixed Seq/object-array cycle reclaimed");
+    ASSERT(rt_heap_is_payload(seq) == 0, "mixed-cycle Seq storage freed");
+    ASSERT(rt_heap_is_payload(arr) == 0, "mixed-cycle object-array storage freed");
+}
+
+/// @brief Verify the collector follows a List's backing-array edge exactly once.
+/// @details The list owns its separately tracked object array, and the array owns an element
+///          pointing back to the list. Dropping the caller's reference leaves a two-payload
+///          cycle that must be reclaimed without double-decrementing the list element.
+static void test_collect_list_backing_array_cycle() {
+    void *list = rt_list_new();
+    ASSERT(list != nullptr, "self-cyclic list allocated");
+    rt_weakref *weak = rt_weakref_new(list);
+    ASSERT(weak != nullptr, "self-cyclic list weakref allocated");
+    rt_list_push(list, list);
+
+    release_obj(list);
+    ASSERT(rt_gc_collect() == 2, "List/backing-array cycle reclaimed");
+    ASSERT(rt_heap_is_payload(list) == 0, "self-cyclic List storage freed");
+    ASSERT(rt_weakref_alive(weak) == 0, "self-cyclic List weakref cleared");
+    rt_weakref_free(weak);
+}
+
+/// @brief Verify two tracked container finalizers do not double-release their cycle edges.
+/// @details Seq finalizers normally release every owned element. During cycle reclaim those
+///          intra-component decrements are owned by the collector, while each finalizer must
+///          still clear its allocation. This regression catches the former zero-ref underflow.
+static void test_collect_container_finalizers_suppress_internal_releases() {
+    void *left = rt_seq_new_owned();
+    void *right = rt_seq_new_owned();
+    ASSERT(left != nullptr && right != nullptr, "container-cycle sequences allocated");
+    rt_seq_push(left, right);
+    rt_seq_push(right, left);
+
+    release_obj(left);
+    release_obj(right);
+    ASSERT(rt_gc_collect() == 2, "two-container cycle reclaimed without double release");
+    ASSERT(rt_heap_is_payload(left) == 0, "left container storage freed");
+    ASSERT(rt_heap_is_payload(right) == 0, "right container storage freed");
 }
 
 static void test_collect_preserves_reachable() {
@@ -716,6 +925,74 @@ static void test_heap_registry_tombstone_is_not_a_payload() {
     ASSERT(header == nullptr, "failed tombstone lookup clears the header output");
 }
 
+/// @brief Verify borrowed metadata inspection returns an independent scalar snapshot.
+/// @details The test mutates the destination before each rejected lookup to prove that failure
+///          clears every field rather than leaving stale metadata from a previously valid handle.
+///          It also validates the exact logical and allocation properties copied for a live array.
+static void test_heap_info_snapshot_and_failure_clearing() {
+    auto *payload =
+        static_cast<int64_t *>(rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_I64, sizeof(int64_t), 2, 4));
+    ASSERT(payload != nullptr, "heap metadata test array allocated");
+    if (!payload)
+        return;
+
+    rt_heap_info_t info{};
+    ASSERT(rt_heap_get_info(payload, &info) == 1, "live payload yields metadata snapshot");
+    ASSERT(info.kind == RT_HEAP_ARRAY, "snapshot preserves heap kind");
+    ASSERT(info.elem_kind == RT_ELEM_I64, "snapshot preserves element kind");
+    ASSERT(info.refcnt == 1, "snapshot samples live reference count");
+    ASSERT(info.len == 2 && info.cap == 4, "snapshot preserves logical array bounds");
+    ASSERT(info.alloc_size >= sizeof(rt_heap_hdr_t) + 4 * sizeof(int64_t),
+           "snapshot preserves total allocation size");
+
+    std::memset(&info, 0xA5, sizeof(info));
+    void *sentinel = reinterpret_cast<void *>(static_cast<uintptr_t>(1));
+    ASSERT(rt_heap_get_info(sentinel, &info) == 0, "tombstone has no metadata snapshot");
+    rt_heap_info_t cleared{};
+    ASSERT(std::memcmp(&info, &cleared, sizeof(info)) == 0,
+           "failed metadata lookup clears destination");
+    ASSERT(rt_heap_get_info(payload, nullptr) == 0, "null metadata destination is rejected");
+
+    rt_heap_release(payload);
+}
+
+/// @brief Verify in-place ownership transfer is rejected for aliased heap payloads.
+/// @details `rt_heap_realloc` invalidates its input address on success, so permitting a shared
+///          allocation would strand every other owner. The recovered trap must leave the original
+///          registry entry, metadata, contents, and both reference-counted aliases intact.
+static void test_heap_realloc_requires_unique_owner() {
+    auto *payload =
+        static_cast<int64_t *>(rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_I64, sizeof(int64_t), 2, 2));
+    ASSERT(payload != nullptr, "shared realloc test array allocated");
+    if (!payload)
+        return;
+    payload[0] = 17;
+    payload[1] = 29;
+    rt_heap_retain(payload);
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_heap_realloc(payload, sizeof(int64_t), 3, 4);
+        rt_trap_clear_recovery();
+        ASSERT(0, "shared heap realloc should trap");
+    } else {
+        std::string message = rt_trap_get_error();
+        rt_trap_clear_recovery();
+        ASSERT(message.find("exactly one owner") != std::string::npos,
+               "shared realloc reports unique-ownership requirement");
+    }
+
+    rt_heap_info_t info{};
+    ASSERT(rt_heap_get_info(payload, &info) == 1, "failed shared realloc preserves registry entry");
+    ASSERT(info.refcnt == 2 && info.len == 2 && info.cap == 2,
+           "failed shared realloc preserves original metadata");
+    ASSERT(payload[0] == 17 && payload[1] == 29,
+           "failed shared realloc preserves original contents");
+    ASSERT(rt_heap_release(payload) == 1, "first alias remains releasable after failed realloc");
+    ASSERT(rt_heap_release(payload) == 0, "second alias reclaims original allocation");
+}
+
 static void test_collect_restores_cycle_after_finalizer_resurrection() {
     g_resurrected_object = NULL;
     g_cycle_finalizer_count = 0;
@@ -803,6 +1080,45 @@ static void test_traverse_can_touch_gc_without_deadlock() {
     release_obj(a);
 }
 
+/// @brief Verify collection traversal excludes concurrent managed-graph mutation.
+/// @details A custom tracked object pauses its first traversal until a worker has entered
+///          `rt_seq_push`. The worker must remain inside the barrier acquisition until the
+///          synchronous collection finishes, then complete normally once mutators resume.
+static void test_collect_quiesces_concurrent_mutator() {
+    g_gate_entered.store(0, std::memory_order_relaxed);
+    g_gate_mutation_attempted.store(0, std::memory_order_relaxed);
+    g_gate_mutation_completed.store(0, std::memory_order_relaxed);
+    g_gate_sampled.store(0, std::memory_order_relaxed);
+    g_gate_observed_completion.store(0, std::memory_order_relaxed);
+
+    void *gate = make_node();
+    void *seq = rt_seq_new();
+    ASSERT(gate != nullptr, "mutator gate allocated");
+    ASSERT(seq != nullptr, "mutated sequence allocated");
+    rt_gc_track(gate, mutator_gate_traverse);
+
+    std::thread worker([seq]() {
+        while (!g_gate_entered.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        g_gate_mutation_attempted.store(1, std::memory_order_release);
+        rt_seq_push(seq, nullptr);
+        g_gate_mutation_completed.store(1, std::memory_order_release);
+    });
+
+    ASSERT(rt_gc_collect() == 0, "live gate and sequence survive coordinated collection");
+    worker.join();
+
+    ASSERT(g_gate_observed_completion.load(std::memory_order_acquire) == 0,
+           "graph mutation remains blocked during traversal");
+    ASSERT(g_gate_mutation_completed.load(std::memory_order_acquire) == 1,
+           "graph mutation resumes after collection");
+    ASSERT(rt_seq_len(seq) == 1, "resumed sequence mutation is committed");
+
+    rt_gc_untrack(gate);
+    release_obj(gate);
+    release_obj(seq);
+}
+
 static void test_collecting_flag_cleared_after_finalizer_trap() {
     void *a = make_node();
     rt_obj_set_finalizer(a, trapping_finalizer);
@@ -866,6 +1182,32 @@ static void test_run_all_finalizers_releases_snapshot_after_trap() {
     ASSERT(rt_heap_is_payload(a) == 0, "snapshot retain released after finalizer trap");
 }
 
+/// @brief Verify shutdown finalizers run even when the managed allocator is exhausted.
+/// @details Two tracked objects are finalized while every `rt_alloc` request is rejected. The
+///          sweep must use its in-table epoch marks and temporary retains only; it may neither
+///          allocate a snapshot nor skip callbacks. Final references remain caller-owned and are
+///          released after restoring the allocator hook.
+static void test_run_all_finalizers_is_allocation_free() {
+    g_cycle_finalizer_count = 0;
+    void *a = make_node();
+    void *b = make_node();
+    rt_obj_set_finalizer(a, count_cycle_finalizer);
+    rt_obj_set_finalizer(b, count_cycle_finalizer);
+    rt_gc_track(a, test_node_traverse);
+    rt_gc_track(b, test_node_traverse);
+
+    rt_set_alloc_hook(reject_all_runtime_allocations);
+    rt_gc_run_all_finalizers();
+    rt_set_alloc_hook(nullptr);
+
+    ASSERT(g_cycle_finalizer_count == 2,
+           "allocation-free shutdown sweep runs every tracked finalizer");
+    rt_gc_untrack(a);
+    rt_gc_untrack(b);
+    release_obj(a);
+    release_obj(b);
+}
+
 //=============================================================================
 // Statistics Tests
 //=============================================================================
@@ -899,6 +1241,31 @@ static void test_shutdown_resets_statistics() {
     ASSERT(rt_gc_total_collected() == 0, "total collected reset by shutdown");
 }
 
+/// @brief Verify shutdown zeroes detached weak handles and permits later GC reuse.
+/// @details A live target may outlast a process-level GC registry reset. Its observer must not
+///          retain a dangling unregistered address, and lazy initialization after shutdown must
+///          accept new tracking operations without inheriting stale counters or buckets.
+static void test_shutdown_zeroes_weakrefs_and_allows_reuse() {
+    void *target = make_node();
+    rt_weakref *weak = rt_weakref_new(target);
+    rt_gc_track(target, test_node_traverse);
+    ASSERT(rt_weakref_alive(weak) == 1, "shutdown weakref starts alive");
+
+    rt_gc_shutdown();
+    ASSERT(rt_weakref_alive(weak) == 0, "shutdown zeroes registered weakref target");
+    assert_weakref_get(weak, nullptr, "shutdown weakref promotes null");
+    ASSERT(rt_gc_is_tracked(target) == 0, "shutdown detaches live tracked target");
+    rt_weakref_free(weak);
+    release_obj(target);
+
+    void *replacement = make_node();
+    rt_gc_track(replacement, test_node_traverse);
+    ASSERT(rt_gc_tracked_count() == 1, "GC registry lazily reinitializes after shutdown");
+    rt_gc_untrack(replacement);
+    release_obj(replacement);
+    ASSERT(rt_gc_collect() == 0, "collector runs after registry reinitialization");
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -920,6 +1287,8 @@ int main() {
     test_weakref_generic_release_unregisters();
     test_weakref_double_free_traps();
     test_weakref_string_target_cleared_on_release();
+    test_weakref_array_target_cleared_on_release();
+    test_object_array_resize_relocates_gc_bookkeeping();
     test_weak_store_string_target_zeroes();
     test_weakref_reset_after_clear();
     test_weakref_survives_finalizer_resurrection();
@@ -931,6 +1300,11 @@ int main() {
     test_collect_no_cycle();
     test_collect_simple_cycle();
     test_collect_self_cycle();
+    test_collect_object_array_self_cycle();
+    test_collect_box_reference_array_self_cycle();
+    test_collect_mixed_seq_object_array_cycle();
+    test_collect_list_backing_array_cycle();
+    test_collect_container_finalizers_suppress_internal_releases();
     test_collect_preserves_reachable();
     test_collect_preserves_cycle_with_extra_external_ref();
     test_promoted_root_restores_young_child();
@@ -938,16 +1312,21 @@ int main() {
     test_weak_field_zeroed_by_collect();
     test_collect_reclaims_cycle_storage_and_finalizers();
     test_heap_registry_tombstone_is_not_a_payload();
+    test_heap_info_snapshot_and_failure_clearing();
+    test_heap_realloc_requires_unique_owner();
     test_collect_restores_cycle_after_finalizer_resurrection();
     test_collect_releases_untracked_external_children();
     test_traverse_can_touch_gc_without_deadlock();
+    test_collect_quiesces_concurrent_mutator();
     test_collecting_flag_cleared_after_finalizer_trap();
     test_run_all_finalizers_releases_snapshot_after_trap();
+    test_run_all_finalizers_is_allocation_free();
 
     // Statistics
     test_statistics();
     test_threshold_get_set_contract();
     test_shutdown_resets_statistics();
+    test_shutdown_zeroes_weakrefs_and_allows_reuse();
 
     printf("GC tests: %d/%d passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;

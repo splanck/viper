@@ -12,9 +12,11 @@
 //   - Base URL and request path are joined by slash normalization, not RFC reference resolution.
 //   - JSON helper methods append Content-Type/Accept application/json fields.
 //   - Timeout is reused for connection attempts and socket-I/O phases.
+//   - Mutable defaults, pool configuration, and last-response state are mutex protected.
 //
 // Ownership/Lifetime:
 //   - RestClient objects and returned response/string handles are runtime managed.
+//   - BaseUrl and LastResponse return independent caller-owned references.
 //
 // Links: src/runtime/network/rt_restclient.c (implementation), src/runtime/core/rt_string.h
 //
@@ -28,37 +30,56 @@
 extern "C" {
 #endif
 
+/// @brief Stable managed-object class identity for RestClient handles.
+/// @details Every non-null public receiver is checked against this tag and the
+///          complete private payload size before mutable headers, cached
+///          responses, connection pools, or native synchronization state are
+///          accessed.
+#define RT_RESTCLIENT_CLASS_ID INT64_C(-0x72020E)
+
 //=============================================================================
 // RestClient Creation and Configuration
 //=============================================================================
 
-/// @brief Create a new REST client with base URL.
+/// @brief Create a synchronized REST client with a copied base URL.
+/// @details Construction publishes the object only after its mutex, default
+///          header Map, and private keep-alive pool are initialized. NULL keeps
+///          the historical empty-base behavior; invalid or embedded-NUL String
+///          handles trap. Partial construction is released on every failure.
 /// @param base_url Base URL for all requests (e.g., "https://api.example.com").
-/// @return RestClient object.
+/// @return Caller-owned RestClient object, or NULL after a returning trap hook.
 void *rt_restclient_new(rt_string base_url);
 
-/// @brief Get the base URL.
+/// @brief Get an independent copy of the configured base URL.
 /// @param obj RestClient object.
-/// @return Base URL string.
+/// @return Caller-owned base URL String; NULL receivers return empty String.
+/// @note A non-NULL wrong-class receiver traps before payload access.
 rt_string rt_restclient_base_url(void *obj);
 
-/// @brief Set a default header for all requests.
+/// @brief Transactionally set a default header for all later requests.
+/// @details Replacement is case-insensitive. The complete key snapshot and new
+///          Map entry are allocated before differently cased aliases are
+///          removed, so a caught allocation trap preserves the prior value.
 /// @param obj RestClient object.
 /// @param name Header name.
 /// @param value Header value.
 void rt_restclient_set_header(void *obj, rt_string name, rt_string value);
 
-/// @brief Remove a default header.
+/// @brief Remove every case-insensitive spelling of a default header.
 /// @param obj RestClient object.
 /// @param name Header name.
 void rt_restclient_del_header(void *obj, rt_string name);
 
-/// @brief Set authorization token (Bearer).
+/// @brief Transactionally set `Authorization: Bearer <token>`.
+/// @details Native and managed staging is released on validation, allocation,
+///          or Map-update failure; the previous Authorization value is retained.
 /// @param obj RestClient object.
 /// @param token Bearer token.
 void rt_restclient_set_auth_bearer(void *obj, rt_string token);
 
-/// @brief Set basic authentication.
+/// @brief Transactionally set base64-encoded Basic authentication.
+/// @details Username/password are copied as `user:password`, encoded, prefixed,
+///          and published only after every intermediate allocation succeeds.
 /// @param obj RestClient object.
 /// @param username Username.
 /// @param password Password.
@@ -68,18 +89,32 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
 /// @param obj RestClient object.
 void rt_restclient_clear_auth(void *obj);
 
-/// @brief Set default timeout for requests.
+/// @brief Set the synchronized default timeout for subsequent requests.
 /// @param obj RestClient object.
-/// @param timeout_ms Timeout in milliseconds.
+/// @param timeout_ms Milliseconds in the inclusive range 0..INT_MAX; zero
+///        disables address/socket operation deadlines.
 void rt_restclient_set_timeout(void *obj, int64_t timeout_ms);
 
-/// @brief True if the client reuses keep-alive connections.
+/// @brief Read whether the client reuses keep-alive connections.
+/// @param obj RestClient receiver; NULL returns zero.
+/// @return One when enabled, otherwise zero.
 int8_t rt_restclient_get_keep_alive(void *obj);
 
-/// @brief Enable or disable keep-alive connection reuse.
+/// @brief Enable or disable keep-alive connection reuse transactionally.
+/// @details Enabling allocates a replacement pool before changing state and
+///          rechecks the configured size before publication; disabling
+///          atomically detaches and then clears the old pool.
+/// @param obj RestClient receiver; NULL is a no-op.
+/// @param keep_alive Nonzero to enable reuse.
 void rt_restclient_set_keep_alive(void *obj, int8_t keep_alive);
 
-/// @brief Resize the internal keep-alive connection pool.
+/// @brief Replace the internal keep-alive pool with the requested capacity.
+/// @details Allocation completes before the synchronized exchange, so failure
+///          preserves both the previous pool and configured size. When reuse
+///          is disabled only the future size changes and no idle pool remains.
+/// @param obj RestClient receiver; NULL is a no-op.
+/// @param max_size Requested capacity; non-positive values clamp to one and the
+///        native HTTP pool applies its documented upper bound.
 void rt_restclient_set_pool_size(void *obj, int64_t max_size);
 
 //=============================================================================
@@ -98,6 +133,8 @@ void *rt_restclient_get(void *obj, rt_string path);
 /// @param obj RestClient object.
 /// @param path Path relative to base URL.
 /// @return Opaque `Zanna.Result` containing `Ok(HttpRes)` or `Err(String)`.
+/// @note NULL and wrong-class receivers produce `Err(String)` without native
+///       payload access. Result-construction OOM releases all partial values.
 void *rt_restclient_get_result(void *obj, rt_string path);
 
 /// @brief Perform POST request with body.
@@ -216,9 +253,9 @@ void *rt_restclient_delete_json(void *obj, rt_string path);
 /// @return Last HTTP status code, or 0 if no request made.
 int64_t rt_restclient_last_status(void *obj);
 
-/// @brief Get last response object.
+/// @brief Get a retained snapshot of the last response object.
 /// @param obj RestClient object.
-/// @return Last HttpRes object, or NULL if no request made.
+/// @return Caller-owned HttpRes reference, or NULL if no response was received.
 void *rt_restclient_last_response(void *obj);
 
 /// @brief Check if last request was successful (2xx status).

@@ -33,8 +33,10 @@
 #include "rt_internal.h"
 #include "rt_object.h"
 
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -51,6 +53,169 @@ static inline uint32_t read_u32(const uint8_t *p) {
 /// @brief Direct pointer to a Bytes GC object's buffer (file-local copy).
 static inline uint8_t *bytes_data(void *obj) {
     return rt_bytes_data(obj);
+}
+
+/// @brief Compute a stable FNV-1a hash for a normalized archive entry name.
+/// @details The parser and lookup path use the same byte-wise hash. Hash
+///          collisions remain harmless because probes compare full names.
+/// @param name NUL-terminated entry name validated by the central parser.
+/// @return 64-bit FNV-1a hash value.
+static uint64_t archive_name_hash(const char *name) {
+    uint64_t hash = UINT64_C(14695981039346656037);
+    const unsigned char *cursor = (const unsigned char *)name;
+    while (cursor && *cursor) {
+        hash ^= (uint64_t)*cursor++;
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+/// @brief Choose a power-of-two slot count for an archive name index.
+/// @details Keeps load at or below 0.5 so successful and unsuccessful probes
+///          remain short even for archives near the ZIP32 entry-count limit.
+/// @param entry_count Number of names that will be inserted.
+/// @return Power-of-two slot count, or zero when @p entry_count is zero or
+///         capacity arithmetic would overflow.
+static size_t archive_name_index_capacity(size_t entry_count) {
+    if (entry_count == 0)
+        return 0;
+    if (entry_count > SIZE_MAX / 2)
+        return 0;
+    size_t needed = entry_count * 2;
+    size_t capacity = 16;
+    while (capacity < needed) {
+        if (capacity > SIZE_MAX / 2)
+            return 0;
+        capacity *= 2;
+    }
+    return capacity;
+}
+
+/// @brief Insert one parsed entry into an open-addressed name index.
+/// @details Empty slots contain zero and occupied slots contain `index + 1`.
+///          Linear probing is bounded by @p slot_count. Encountering an equal
+///          full name reports a duplicate rather than inserting it.
+/// @param entries Parsed entry array containing @p entry_index.
+/// @param slots Zero-initialized slot array.
+/// @param slot_count Power-of-two slot count.
+/// @param entry_index Index of the newly parsed entry.
+/// @return One on insertion, zero for a duplicate or malformed/full index.
+static int archive_name_index_insert(zip_entry_t *entries,
+                                     int32_t *slots,
+                                     size_t slot_count,
+                                     int entry_index) {
+    if (!entries || !slots || slot_count == 0 || (slot_count & (slot_count - 1)) != 0 ||
+        entry_index < 0 || !entries[entry_index].name)
+        return 0;
+    size_t slot = (size_t)archive_name_hash(entries[entry_index].name) & (slot_count - 1);
+    for (size_t probe = 0; probe < slot_count; ++probe) {
+        int32_t encoded = slots[slot];
+        if (encoded == 0) {
+            slots[slot] = (int32_t)entry_index + 1;
+            return 1;
+        }
+        int existing_index = encoded - 1;
+        if (existing_index >= 0 && entries[existing_index].name &&
+            strcmp(entries[existing_index].name, entries[entry_index].name) == 0)
+            return 0;
+        slot = (slot + 1) & (slot_count - 1);
+    }
+    return 0;
+}
+
+/// @brief Byte interval occupied by one local header, name, extra field, and payload.
+typedef struct archive_local_range {
+    size_t begin; ///< Inclusive local-header offset.
+    size_t end;   ///< Exclusive end of compressed payload.
+} archive_local_range_t;
+
+/// @brief Compare two local-entry ranges by start offset for `qsort`.
+/// @param lhs Pointer to the first @ref archive_local_range_t.
+/// @param rhs Pointer to the second @ref archive_local_range_t.
+/// @return Negative, zero, or positive according to ascending begin offset.
+static int archive_compare_local_ranges(const void *lhs, const void *rhs) {
+    const archive_local_range_t *a = (const archive_local_range_t *)lhs;
+    const archive_local_range_t *b = (const archive_local_range_t *)rhs;
+    return (a->begin > b->begin) - (a->begin < b->begin);
+}
+
+/// @brief Validate every central entry against its referenced local header.
+/// @details Requires matching names, flags, methods, CRCs, sizes, and supported
+///          extra fields. The complete local record must end before the central
+///          directory. Sorted byte intervals additionally reject aliases and
+///          crafted local records embedded inside another entry's payload.
+/// @param ar Archive containing the full immutable ZIP buffer.
+/// @param entries Parsed central-directory entries.
+/// @param entry_count Number of entries to validate.
+/// @param central_offset First byte of the central directory.
+/// @return True only when all local records are structurally consistent and disjoint.
+static bool archive_validate_local_entries(rt_archive_t *ar,
+                                           zip_entry_t *entries,
+                                           int entry_count,
+                                           size_t central_offset) {
+    if (!ar || entry_count < 0 || central_offset > ar->data_len)
+        return false;
+    if (entry_count == 0)
+        return true;
+    if (!entries || (size_t)entry_count > SIZE_MAX / sizeof(archive_local_range_t))
+        return false;
+
+    archive_local_range_t *ranges =
+        (archive_local_range_t *)calloc((size_t)entry_count, sizeof(*ranges));
+    if (!ranges) {
+        ar->parse_error = ARCHIVE_PARSE_ERROR_OOM;
+        return false;
+    }
+
+    bool valid = true;
+    for (int index = 0; index < entry_count; ++index) {
+        zip_entry_t *entry = &entries[index];
+        size_t local_offset = (size_t)entry->local_offset;
+        if (!entry->name || local_offset > central_offset ||
+            central_offset - local_offset < ZIP_LOCAL_HEADER_SIZE) {
+            valid = false;
+            break;
+        }
+
+        const uint8_t *local = ar->data + local_offset;
+        if (read_u32(local) != ZIP_LOCAL_HEADER_SIG) {
+            valid = false;
+            break;
+        }
+        uint16_t local_name_len = read_u16(local + 26);
+        uint16_t local_extra_len = read_u16(local + 28);
+        size_t header_total =
+            ZIP_LOCAL_HEADER_SIZE + (size_t)local_name_len + (size_t)local_extra_len;
+        size_t expected_name_len = strlen(entry->name);
+        if (header_total > central_offset - local_offset ||
+            (size_t)entry->compressed_size > central_offset - local_offset - header_total ||
+            expected_name_len != (size_t)local_name_len ||
+            memcmp(local + ZIP_LOCAL_HEADER_SIZE, entry->name, expected_name_len) != 0 ||
+            read_u16(local + 4) != entry->version_needed || read_u16(local + 6) != entry->flags ||
+            read_u16(local + 8) != entry->method || read_u32(local + 14) != entry->crc32 ||
+            read_u32(local + 18) != entry->compressed_size ||
+            read_u32(local + 22) != entry->uncompressed_size ||
+            archive_extra_is_malformed_or_zip64(local + ZIP_LOCAL_HEADER_SIZE + local_name_len,
+                                                local_extra_len)) {
+            valid = false;
+            break;
+        }
+
+        ranges[index].begin = local_offset;
+        ranges[index].end = local_offset + header_total + (size_t)entry->compressed_size;
+    }
+
+    if (valid) {
+        qsort(ranges, (size_t)entry_count, sizeof(*ranges), archive_compare_local_ranges);
+        for (int index = 1; index < entry_count; ++index) {
+            if (ranges[index].begin < ranges[index - 1].end) {
+                valid = false;
+                break;
+            }
+        }
+    }
+    free(ranges);
+    return valid;
 }
 
 // ZIP Parsing (for reading)
@@ -102,6 +267,9 @@ static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset) {
 /// @param ar Archive whose `data`/`data_len` is already populated.
 /// @return True on successful parse, false on any structural problem.
 bool parse_central_directory(rt_archive_t *ar) {
+    if (!ar)
+        return false;
+    ar->parse_error = ARCHIVE_PARSE_ERROR_INVALID;
     size_t eocd_offset;
     if (!find_eocd(ar->data, ar->data_len, &eocd_offset))
         return false;
@@ -128,24 +296,39 @@ bool parse_central_directory(rt_archive_t *ar) {
         return false;
 
     zip_entry_t *entries = NULL;
+    int32_t *name_slots = NULL;
+    size_t name_slot_count = archive_name_index_capacity((size_t)total_entries);
+    if (total_entries > 0 && name_slot_count == 0)
+        return false;
     if (total_entries > 0) {
         entries = (zip_entry_t *)calloc(total_entries, sizeof(zip_entry_t));
-        if (!entries)
+        if (!entries) {
+            ar->parse_error = ARCHIVE_PARSE_ERROR_OOM;
             return false;
+        }
+        name_slots = (int32_t *)calloc(name_slot_count, sizeof(*name_slots));
+        if (!name_slots) {
+            ar->parse_error = ARCHIVE_PARSE_ERROR_OOM;
+            free(entries);
+            return false;
+        }
     }
 
     // Parse each central directory entry
     const uint8_t *p = ar->data + cd_offset;
     const uint8_t *cd_end = p + cd_size;
 
+    uint64_t total_uncompressed = 0;
     int parsed = 0;
     for (; parsed < total_entries; parsed++) {
         if ((size_t)(cd_end - p) < ZIP_CENTRAL_HEADER_SIZE) {
             archive_free_entry_array(entries, parsed);
+            free(name_slots);
             return false;
         }
         if (read_u32(p) != ZIP_CENTRAL_HEADER_SIG) {
             archive_free_entry_array(entries, parsed);
+            free(name_slots);
             return false;
         }
 
@@ -157,10 +340,12 @@ bool parse_central_directory(rt_archive_t *ar) {
 
         if ((size_t)(cd_end - p) < record_len) {
             archive_free_entry_array(entries, parsed);
+            free(name_slots);
             return false;
         }
         if (name_len == 0 || memchr(p + ZIP_CENTRAL_HEADER_SIZE, '\0', name_len) != NULL) {
             archive_free_entry_array(entries, parsed);
+            free(name_slots);
             return false;
         }
 
@@ -181,22 +366,39 @@ bool parse_central_directory(rt_archive_t *ar) {
             archive_extra_is_malformed_or_zip64(p + ZIP_CENTRAL_HEADER_SIZE + name_len,
                                                 extra_len)) {
             archive_free_entry_array(entries, parsed);
+            free(name_slots);
             return false;
         }
+        if ((uint64_t)e->uncompressed_size > ar->max_entry_bytes) {
+            ar->parse_error = ARCHIVE_PARSE_ERROR_LIMIT;
+            archive_free_entry_array(entries, parsed);
+            free(name_slots);
+            return false;
+        }
+        uint64_t entry_size = (uint64_t)e->uncompressed_size;
+        if (entry_size > ar->max_total_entry_bytes ||
+            total_uncompressed > ar->max_total_entry_bytes - entry_size) {
+            ar->parse_error = ARCHIVE_PARSE_ERROR_LIMIT;
+            archive_free_entry_array(entries, parsed);
+            free(name_slots);
+            return false;
+        }
+        total_uncompressed += entry_size;
 
         // Copy name
         e->name = (char *)malloc(name_len + 1);
         if (!e->name) {
+            ar->parse_error = ARCHIVE_PARSE_ERROR_OOM;
             archive_free_entry_array(entries, parsed);
+            free(name_slots);
             return false;
         }
         memcpy(e->name, p + ZIP_CENTRAL_HEADER_SIZE, name_len);
         e->name[name_len] = '\0';
-        for (int prior = 0; prior < parsed; ++prior) {
-            if (entries[prior].name && strcmp(entries[prior].name, e->name) == 0) {
-                archive_free_entry_array(entries, parsed + 1);
-                return false;
-            }
+        if (!archive_name_index_insert(entries, name_slots, name_slot_count, parsed)) {
+            archive_free_entry_array(entries, parsed + 1);
+            free(name_slots);
+            return false;
         }
 
         // Check if directory
@@ -207,20 +409,30 @@ bool parse_central_directory(rt_archive_t *ar) {
 
     if (parsed != total_entries || p != cd_end) {
         archive_free_entry_array(entries, parsed);
+        free(name_slots);
+        return false;
+    }
+    if (!archive_validate_local_entries(ar, entries, parsed, (size_t)cd_offset)) {
+        archive_free_entry_array(entries, parsed);
+        free(name_slots);
         return false;
     }
 
     ar->entries = entries;
     ar->entry_count = parsed;
+    ar->central_offset = (size_t)cd_offset;
+    ar->entry_name_slots = name_slots;
+    ar->entry_name_slot_count = name_slot_count;
     return true;
 }
 
-/// @brief Linear-scan lookup of a central-directory entry by exact name.
+/// @brief Hash-indexed lookup of a central-directory entry by exact name.
 ///
 /// Names are compared via `strcmp` — the caller must normalize ahead
 /// of time (path separators, leading `./`, etc.). Returns NULL when no
-/// matching entry exists. O(n); acceptable for typical ZIPs where n is
-/// small. If we ever need fast lookup we'd add a hash side-table here.
+/// matching entry exists. The open-addressed side table is built during parse,
+/// making expected lookup O(1); a defensive linear fallback handles archives
+/// constructed by older internal paths without an index.
 ///
 /// @param ar   Read-mode archive with parsed `entries`.
 /// @param name Normalized entry name.
@@ -228,6 +440,21 @@ bool parse_central_directory(rt_archive_t *ar) {
 zip_entry_t *find_entry(rt_archive_t *ar, const char *name) {
     if (!ar || !name)
         return NULL;
+    if (ar->entry_name_slots && ar->entry_name_slot_count > 0 &&
+        (ar->entry_name_slot_count & (ar->entry_name_slot_count - 1)) == 0) {
+        size_t slot = (size_t)archive_name_hash(name) & (ar->entry_name_slot_count - 1);
+        for (size_t probe = 0; probe < ar->entry_name_slot_count; ++probe) {
+            int32_t encoded = ar->entry_name_slots[slot];
+            if (encoded == 0)
+                return NULL;
+            int index = encoded - 1;
+            if (index >= 0 && index < ar->entry_count && ar->entries[index].name &&
+                strcmp(ar->entries[index].name, name) == 0)
+                return &ar->entries[index];
+            slot = (slot + 1) & (ar->entry_name_slot_count - 1);
+        }
+        return NULL;
+    }
     for (int i = 0; i < ar->entry_count; i++) {
         if (ar->entries[i].name && strcmp(ar->entries[i].name, name) == 0)
             return &ar->entries[i];
@@ -251,9 +478,18 @@ zip_entry_t *find_entry(rt_archive_t *ar, const char *name) {
 /// @param e  Entry from `ar->entries`.
 /// @return Owned `rt_bytes` containing the uncompressed payload.
 void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
+    if (!ar || !e) {
+        rt_trap("Archive: invalid entry");
+        return NULL;
+    }
+    if ((uint64_t)e->uncompressed_size > ar->max_entry_bytes) {
+        rt_trap("Archive: configured entry resource limit exceeded");
+        return NULL;
+    }
     // Find local header
     size_t local_offset = (size_t)e->local_offset;
-    if (local_offset > ar->data_len || ar->data_len - local_offset < ZIP_LOCAL_HEADER_SIZE) {
+    if (local_offset > ar->central_offset ||
+        ar->central_offset - local_offset < ZIP_LOCAL_HEADER_SIZE) {
         rt_trap("Archive: corrupt local header offset");
         return NULL;
     }
@@ -272,7 +508,7 @@ void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
     uint16_t name_len = read_u16(local + 26);
     uint16_t extra_len = read_u16(local + 28);
     size_t header_total = ZIP_LOCAL_HEADER_SIZE + (size_t)name_len + (size_t)extra_len;
-    if (local_offset > ar->data_len || ar->data_len - local_offset < header_total) {
+    if (header_total > ar->central_offset - local_offset) {
         rt_trap("Archive: corrupt entry data");
         return NULL;
     }
@@ -282,13 +518,19 @@ void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
         rt_trap("Archive: unsupported local header");
         return NULL;
     }
+    size_t expected_name_len = strlen(e->name);
+    if (expected_name_len != (size_t)name_len ||
+        memcmp(local + ZIP_LOCAL_HEADER_SIZE, e->name, expected_name_len) != 0) {
+        rt_trap("Archive: local header name mismatch");
+        return NULL;
+    }
     if (local_crc != e->crc32 || local_compressed_size != e->compressed_size ||
         local_uncompressed_size != e->uncompressed_size) {
         rt_trap("Archive: local header metadata mismatch");
         return NULL;
     }
     size_t data_offset = local_offset + header_total;
-    if ((size_t)e->compressed_size > ar->data_len - data_offset) {
+    if ((size_t)e->compressed_size > ar->central_offset - data_offset) {
         rt_trap("Archive: corrupt entry data");
         return NULL;
     }
@@ -311,7 +553,8 @@ void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
         void *result = rt_bytes_new(e->uncompressed_size);
         if (!result)
             return NULL;
-        memcpy(bytes_data(result), compressed, e->uncompressed_size);
+        if (e->uncompressed_size > 0)
+            memcpy(bytes_data(result), compressed, e->uncompressed_size);
         return result;
     }
 
@@ -340,12 +583,27 @@ void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
             return NULL;
         }
 
-        void *result = rt_bytes_new(e->uncompressed_size);
+        void *result = NULL;
+        uint8_t *volatile inflated_owner = inflated;
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            char saved_error[256];
+            archive_save_trap_error(
+                saved_error, sizeof(saved_error), "Archive: memory allocation failed");
+            rt_trap_clear_recovery();
+            free((void *)inflated_owner);
+            rt_trap(saved_error);
+            return NULL;
+        }
+        result = rt_bytes_new(e->uncompressed_size);
+        rt_trap_clear_recovery();
         if (!result) {
             free(inflated);
             return NULL;
         }
-        memcpy(bytes_data(result), inflated, e->uncompressed_size);
+        if (e->uncompressed_size > 0)
+            memcpy(bytes_data(result), inflated, e->uncompressed_size);
         free(inflated);
         return result;
     }

@@ -10,6 +10,14 @@
 //   SRWLOCK + CONDITION_VARIABLE. Compiled only on _WIN32; the POSIX build
 //   uses rt_monitor_posix.c. Shared helpers live in rt_monitor_internal.h.
 //
+// Key invariants:
+//   - Windows wait results distinguish timeout from native failure and preserve
+//     re-entrant ownership depth across pause/resume operations.
+//   - Waiter publication and removal occur while the monitor entry is locked.
+// Ownership/Lifetime:
+//   - A monitor entry owns its waiter nodes and synchronization primitives until
+//     removal by the shared striped monitor table.
+//
 // Links: rt_monitor_internal.h (shared), rt_monitor_posix.c (POSIX impl), rt_threads.h
 //
 //===----------------------------------------------------------------------===//
@@ -63,28 +71,17 @@ typedef struct RtMonitorEntry {
 static void monitor_cancel_queue(RtMonitorWaiter *w);
 
 #define RT_MONITOR_BUCKETS 4096u
+#define RT_MONITOR_LOCK_STRIPES 64u
 
-static CRITICAL_SECTION g_monitor_table_cs;
-static INIT_ONCE g_monitor_table_cs_once = INIT_ONCE_STATIC_INIT;
+static SRWLOCK g_monitor_table_locks[RT_MONITOR_LOCK_STRIPES] = {SRWLOCK_INIT};
 static RtMonitorEntry *g_monitor_table[RT_MONITOR_BUCKETS];
 
-/// @brief One-shot initialiser for the global monitor-table critical section.
-///
-/// Win32 lacks a static `CRITICAL_SECTION` initialiser, so we
-/// route through `InitOnceExecuteOnce` for thread-safe lazy init.
-static BOOL WINAPI init_table_cs_once(PINIT_ONCE once, PVOID param, PVOID *ctx) {
-    (void)once;
-    (void)param;
-    (void)ctx;
-    InitializeCriticalSection(&g_monitor_table_cs);
-    return TRUE;
-}
-
-/// @brief Lazy guard around `init_table_cs_once`; cheap on subsequent calls.
-static void ensure_table_cs_init(void) {
-    /* InitOnceExecuteOnce is thread-safe: exactly one thread runs the
-       callback and all concurrent callers block until it completes. */
-    InitOnceExecuteOnce(&g_monitor_table_cs_once, init_table_cs_once, NULL, NULL);
+/// @brief Return the statically initialized SRW stripe for one hash bucket.
+/// @details SRW locks require no fallible lazy initialization and independent
+///          buckets usually map to different stripes, avoiding the former
+///          process-wide monitor-table critical section.
+static SRWLOCK *monitor_table_lock_for(size_t bucket) {
+    return &g_monitor_table_locks[bucket & (RT_MONITOR_LOCK_STRIPES - 1u)];
 }
 
 /// @brief Hash a pointer to a monitor-table bucket index.
@@ -109,14 +106,14 @@ static size_t hash_ptr(void *p) {
 /// callers see at most one node per object.
 /// @return Pointer to the monitor (never NULL — traps on alloc failure).
 static RtMonitor *get_monitor_for(void *obj) {
-    ensure_table_cs_init();
     size_t idx = hash_ptr(obj);
+    SRWLOCK *table_lock = monitor_table_lock_for(idx);
 
-    EnterCriticalSection(&g_monitor_table_cs);
+    AcquireSRWLockExclusive(table_lock);
     RtMonitorEntry *it = g_monitor_table[idx];
     while (it) {
         if (it->key == obj && !it->retired) {
-            LeaveCriticalSection(&g_monitor_table_cs);
+            ReleaseSRWLockExclusive(table_lock);
             return &it->monitor;
         }
         it = it->next;
@@ -124,17 +121,21 @@ static RtMonitor *get_monitor_for(void *obj) {
 
     RtMonitorEntry *node = (RtMonitorEntry *)calloc(1, sizeof(*node));
     if (!node) {
-        LeaveCriticalSection(&g_monitor_table_cs);
+        ReleaseSRWLockExclusive(table_lock);
         rt_trap("rt_monitor: alloc failed");
+        return NULL;
+    }
+    if (!InitializeCriticalSectionEx(&node->monitor.cs, 0, 0)) {
+        free(node);
+        ReleaseSRWLockExclusive(table_lock);
+        rt_trap("rt_monitor: monitor critical-section initialization failed");
         return NULL;
     }
     node->key = obj;
     node->next = g_monitor_table[idx];
     g_monitor_table[idx] = node;
 
-    InitializeCriticalSection(&node->monitor.cs);
-
-    LeaveCriticalSection(&g_monitor_table_cs);
+    ReleaseSRWLockExclusive(table_lock);
     return &node->monitor;
 }
 
@@ -142,10 +143,10 @@ static RtMonitor *get_monitor_for(void *obj) {
 void rt_monitor_forget(void *obj) {
     if (!obj)
         return;
-    ensure_table_cs_init();
     size_t idx = hash_ptr(obj);
+    SRWLOCK *table_lock = monitor_table_lock_for(idx);
 
-    EnterCriticalSection(&g_monitor_table_cs);
+    AcquireSRWLockExclusive(table_lock);
     RtMonitorEntry **link = &g_monitor_table[idx];
     RtMonitorEntry *node = *link;
     while (node && (node->key != obj || node->retired)) {
@@ -153,7 +154,7 @@ void rt_monitor_forget(void *obj) {
         node = node->next;
     }
     if (!node) {
-        LeaveCriticalSection(&g_monitor_table_cs);
+        ReleaseSRWLockExclusive(table_lock);
         return;
     }
     EnterCriticalSection(&node->monitor.cs);
@@ -169,13 +170,13 @@ void rt_monitor_forget(void *obj) {
         monitor_cancel_queue(acq);
         monitor_cancel_queue(wait);
         LeaveCriticalSection(&node->monitor.cs);
-        LeaveCriticalSection(&g_monitor_table_cs);
+        ReleaseSRWLockExclusive(table_lock);
         return;
     }
 
     *link = node->next;
     LeaveCriticalSection(&node->monitor.cs);
-    LeaveCriticalSection(&g_monitor_table_cs);
+    ReleaseSRWLockExclusive(table_lock);
 
     DeleteCriticalSection(&node->monitor.cs);
     free(node);
@@ -194,10 +195,10 @@ void rt_monitor_forget(void *obj) {
 static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
     if (!obj || !monitor)
         return;
-    ensure_table_cs_init();
     size_t idx = hash_ptr(obj);
+    SRWLOCK *table_lock = monitor_table_lock_for(idx);
 
-    EnterCriticalSection(&g_monitor_table_cs);
+    AcquireSRWLockExclusive(table_lock);
     RtMonitorEntry **link = &g_monitor_table[idx];
     RtMonitorEntry *node = *link;
     while (node && (node->key != obj || &node->monitor != monitor)) {
@@ -205,7 +206,7 @@ static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
         node = node->next;
     }
     if (!node) {
-        LeaveCriticalSection(&g_monitor_table_cs);
+        ReleaseSRWLockExclusive(table_lock);
         return;
     }
 
@@ -213,13 +214,13 @@ static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
     if (!node->retired || node->monitor.owner_valid || node->monitor.acq_head ||
         node->monitor.wait_head) {
         LeaveCriticalSection(&node->monitor.cs);
-        LeaveCriticalSection(&g_monitor_table_cs);
+        ReleaseSRWLockExclusive(table_lock);
         return;
     }
 
     *link = node->next;
     LeaveCriticalSection(&node->monitor.cs);
-    LeaveCriticalSection(&g_monitor_table_cs);
+    ReleaseSRWLockExclusive(table_lock);
 
     DeleteCriticalSection(&node->monitor.cs);
     free(node);

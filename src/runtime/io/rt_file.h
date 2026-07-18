@@ -14,6 +14,7 @@
 //   - Channel numbers map to at most one open file at a time.
 //   - All operations report errors via RtError out-parameters.
 //   - Files are NOT automatically closed; callers must call rt_file_close.
+//   - A close attempt always consumes the descriptor, including host-close failures.
 //
 // Ownership/Lifetime:
 //   - RtFile handles are stack-allocated by callers and initialized via rt_file_init.
@@ -57,9 +58,12 @@ int8_t rt_file_open(
     RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err);
 
 /// @brief Close @p file when open.
-/// @param file Handle to close; remains valid for reuse after success.
+/// @details Invalidates the descriptor before invoking the host close operation, so @p file is
+///          reusable even when the host reports a close error. Callers must never retry a failed
+///          close using a saved raw descriptor number because that number may have been reused.
+/// @param file Handle to close; remains valid for reuse after every close attempt.
 /// @param out_err Optional error record receiving failure details.
-/// @return 1 on success; 0 when closing fails.
+/// @return 1 on success or when already closed; 0 when the host close operation fails.
 int8_t rt_file_close(RtFile *file, RtError *out_err);
 
 /// @brief Read a single byte from @p file.

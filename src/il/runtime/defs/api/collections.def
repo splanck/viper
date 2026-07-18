@@ -451,6 +451,7 @@ RT_FUNC(LruCacheValues,       rt_lrucache_values,         "Zanna.Collections.Lru
 //=============================================================================
 
 RT_FUNC(MapClear,   rt_map_clear,    "Zanna.Collections.Map.Clear",       "void(obj)")
+RT_FUNC(MapTrim,    rt_map_trim,     "Zanna.Collections.Map.Trim",        "i1(obj)")
 
 //=============================================================================
 // COLLECTIONS - BIMAP
@@ -543,6 +544,7 @@ RT_FUNC(IntMapGetOr,   rt_intmap_get_or,   "Zanna.Collections.IntMap.GetOr",    
 RT_FUNC(IntMapHas,     rt_intmap_has,      "Zanna.Collections.IntMap.Has",         "i1(obj,i64)")
 RT_FUNC(IntMapRemove,  rt_intmap_remove,   "Zanna.Collections.IntMap.Remove",      "i1(obj,i64)")
 RT_FUNC(IntMapClear,   rt_intmap_clear,    "Zanna.Collections.IntMap.Clear",       "void(obj)")
+RT_FUNC(IntMapTrim,    rt_intmap_trim,     "Zanna.Collections.IntMap.Trim",        "i1(obj)")
 RT_FUNC(IntMapKeys,    rt_intmap_keys,     "Zanna.Collections.IntMap.Keys",        "seq<obj>(obj)")
 RT_FUNC(IntMapValues,  rt_intmap_values,   "Zanna.Collections.IntMap.Values",      "seq<obj>(obj)")
 

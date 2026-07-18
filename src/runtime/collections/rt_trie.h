@@ -88,6 +88,8 @@ rt_string rt_trie_longest_prefix(void *obj, rt_string str);
 void *rt_trie_longest_prefix_option(void *obj, rt_string str);
 
 /// @brief Remove a key.
+/// @details Releases the stored value and reclaims the key's now-empty node
+///          suffix without disturbing terminal ancestors or shared prefixes.
 /// @param obj Trie pointer.
 /// @param key String key.
 /// @return 1 if removed, 0 if not found.

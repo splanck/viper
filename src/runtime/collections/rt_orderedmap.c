@@ -185,6 +185,10 @@ static void orderedmap_finalizer(void *obj) {
     if (!m)
         return;
     rt_om_entry *e = m->head;
+    m->head = m->tail = NULL;
+    m->count = 0;
+    if (m->buckets)
+        memset(m->buckets, 0, (size_t)m->capacity * sizeof(rt_om_entry *));
     while (e) {
         rt_om_entry *next = e->next;
         free(e->key);
@@ -194,9 +198,7 @@ static void orderedmap_finalizer(void *obj) {
     }
     free(m->buckets);
     m->buckets = NULL;
-    m->head = m->tail = NULL;
     m->capacity = 0;
-    m->count = 0;
 }
 
 /// @brief GC traversal: visit every stored value in insertion order.
@@ -270,9 +272,12 @@ int8_t rt_orderedmap_is_empty(void *map) {
 void rt_orderedmap_set(void *map, rt_string key, void *value) {
     if (!map)
         return;
+    rt_gc_mutator_enter();
     rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Set: invalid OrderedMap object");
-    if (!m)
+    if (!m) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     size_t klen;
     const char *kstr = om_key_data(key, &klen);
@@ -283,14 +288,18 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
         // Update value in-place (preserves order)
         if (value)
             rt_obj_retain_maybe(value);
-        om_release_value(existing->value);
+        void *old_value = existing->value;
         existing->value = value;
+        om_release_value(old_value);
+        rt_gc_mutator_exit();
         return;
     }
 
     // Resize if needed
-    if ((long double)m->count * 4.0L >= (long double)m->capacity * 3.0L && !om_resize(m))
+    if ((long double)m->count * 4.0L >= (long double)m->capacity * 3.0L && !om_resize(m)) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (value)
         rt_obj_retain_maybe(value);
@@ -299,6 +308,7 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
     rt_om_entry *e = (rt_om_entry *)calloc(1, sizeof(rt_om_entry));
     if (!e) {
         om_release_value(value);
+        rt_gc_mutator_exit();
         rt_trap_raise_kind(RT_TRAP_KIND_RUNTIME_ERROR,
                            Err_RuntimeError,
                            -1,
@@ -308,6 +318,7 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
     if (klen == SIZE_MAX) {
         om_release_value(value);
         free(e);
+        rt_gc_mutator_exit();
         rt_trap_raise_kind(
             RT_TRAP_KIND_OVERFLOW, Err_Overflow, -1, "OrderedMap: key allocation overflow");
         return;
@@ -316,6 +327,7 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
     if (!e->key) {
         om_release_value(value);
         free(e);
+        rt_gc_mutator_exit();
         rt_trap_raise_kind(
             RT_TRAP_KIND_RUNTIME_ERROR, Err_RuntimeError, -1, "OrderedMap: key allocation failed");
         return;
@@ -340,6 +352,7 @@ void rt_orderedmap_set(void *map, rt_string key, void *value) {
     m->tail = e;
 
     m->count++;
+    rt_gc_mutator_exit();
 }
 
 // ---------------------------------------------------------------------------
@@ -380,7 +393,12 @@ int8_t rt_orderedmap_has(void *map, rt_string key) {
 int8_t rt_orderedmap_remove(void *map, rt_string key) {
     if (!map)
         return 0;
+    rt_gc_mutator_enter();
     rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Remove: invalid OrderedMap object");
+    if (!m || m->capacity <= 0) {
+        rt_gc_mutator_exit();
+        return 0;
+    }
 
     size_t klen;
     const char *kstr = om_key_data(key, &klen);
@@ -408,10 +426,12 @@ int8_t rt_orderedmap_remove(void *map, rt_string key) {
             om_release_value(e->value);
             free(e);
             m->count--;
+            rt_gc_mutator_exit();
             return 1;
         }
         pp = &e->hash_next;
     }
+    rt_gc_mutator_exit();
     return 0;
 }
 
@@ -484,9 +504,18 @@ rt_string rt_orderedmap_key_at(void *map, int64_t index) {
 void rt_orderedmap_clear(void *map) {
     if (!map)
         return;
+    rt_gc_mutator_enter();
     rt_orderedmap_impl *m = as_orderedmap(map, "OrderedMap.Clear: invalid OrderedMap object");
+    if (!m) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     rt_om_entry *e = m->head;
+    m->head = m->tail = NULL;
+    m->count = 0;
+    if (m->buckets)
+        memset(m->buckets, 0, (size_t)m->capacity * sizeof(rt_om_entry *));
     while (e) {
         rt_om_entry *next = e->next;
         free(e->key);
@@ -494,8 +523,5 @@ void rt_orderedmap_clear(void *map) {
         free(e);
         e = next;
     }
-
-    memset(m->buckets, 0, (size_t)m->capacity * sizeof(rt_om_entry *));
-    m->head = m->tail = NULL;
-    m->count = 0;
+    rt_gc_mutator_exit();
 }

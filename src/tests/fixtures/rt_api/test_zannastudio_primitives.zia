@@ -1,0 +1,38 @@
+module TestZannaStudioPrimitives;
+
+bind Zanna.Terminal;
+bind Zanna.Game2D.SceneDocument as SceneDocument;
+
+func start() {
+    SayBool(Zanna.Workspace.FileIndex.ShouldIgnore(".", "build/generated.zia", "build/"));
+
+    var manifest = Zanna.Project.Manifest.ParseText(
+        "project Demo\nlang zia\nentry src/main.zia\nasset-root assets\ndefault-scene scenes/level.json\n");
+    SayBool(manifest.GetBool("valid"));
+    Say(manifest.GetStr("defaultScene"));
+
+    var scene = SceneDocument.New(2, 2, 16, 16);
+    var layer = scene.AddLayer("fg");
+    scene.SetTile(layer, 1, 1, 7);
+    scene.SetLayerAsset(layer, "tiles.png");
+    SayInt(scene.GetTile(layer, 1, 1));
+    SayInt(scene.AssetPaths().Count);
+
+    var fuzzy = Zanna.Text.FuzzyMatch.Match("VS", "ZannaScene.zia");
+    SayBool(fuzzy.GetBool("matched"));
+    SayInt(fuzzy.GetInt("score"));
+
+    var harness = Zanna.GUI.TestHarness.New();
+    harness.RegisterWidget("editor", "CodeEditor", "Editor", 0, 0, 320, 200);
+    harness.SendMouse("down", 10, 10, 1);
+    Say(harness.GetFocus());
+    var snapshot = harness.CaptureRegion(0, 0, 32, 32);
+    SayBool(Zanna.GUI.TestHarness.AssertNonBlank(snapshot));
+
+    var list = Zanna.GUI.VirtualList.New(1000, 20, 100);
+    list.SetRowId(42, "target");
+    list.SelectId("target");
+    SayInt(list.GetSelectedIndex());
+
+    Say("done");
+}

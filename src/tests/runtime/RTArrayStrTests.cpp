@@ -94,6 +94,26 @@ int main() {
     // Test 7: Release array (should release all remaining strings)
     rt_arr_str_release(arr, 3);
 
+    // Test 8: Releasing one shared array reference must not tear down elements
+    // still owned by the surviving alias.
+    arr = rt_arr_str_alloc(1);
+    assert(arr != nullptr);
+    rt_string shared_value = rt_string_from_bytes("Shared", 6);
+    rt_arr_str_put(arr, 0, shared_value);
+    rt_str_release_maybe(shared_value);
+
+    rt_heap_retain(arr);
+    rt_string *alias = arr;
+    rt_arr_str_release(arr, 1);
+
+    assert(rt_arr_str_len(alias) == 1);
+    rt_string shared_check = rt_arr_str_get(alias, 0);
+    assert(shared_check != nullptr);
+    assert(rt_str_len(shared_check) == 6);
+    assert(std::memcmp(rt_string_cstr(shared_check), "Shared", 6) == 0);
+    rt_str_release_maybe(shared_check);
+    rt_arr_str_release(alias, 1);
+
     std::fprintf(stderr, "All string array tests passed!\n");
     return 0;
 }

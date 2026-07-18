@@ -8,8 +8,10 @@
 // File: src/runtime/network/rt_connpool.c
 // Purpose: Thread-safe TCP connection pooling for HTTP keep-alive.
 // Key invariants:
-//   - Connections keyed by "host:port" string.
+//   - Connections are keyed by an allocation-free hash plus exact comparison
+//     of the immutable endpoint stored by each TCP handle.
 //   - Internal mutex protects all pool operations.
+//   - A TCP lease token prevents the same socket from being tracked by two pools.
 //   - Idle connections closed after 60 seconds.
 // Ownership/Lifetime:
 //   - Pool objects are GC-managed. Tracked entries hold their own retained
@@ -22,47 +24,24 @@
 
 #include "rt_connpool.h"
 
-#include "rt_internal.h"
-#include "rt_network.h"
+#include "rt_heap.h"
+#include "rt_network_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
 #include "rt_time.h"
+#include "rt_trap.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-typedef SOCKET conn_socket_t;
-#define INVALID_CONN_SOCK INVALID_SOCKET
+#if RT_PLATFORM_WINDOWS
 typedef CRITICAL_SECTION pool_mutex_t;
-#define POOL_MUTEX_INIT(m) InitializeCriticalSection(m)
-#define POOL_MUTEX_LOCK(m) EnterCriticalSection(m)
-#define POOL_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
-#define POOL_MUTEX_DESTROY(m) DeleteCriticalSection(m)
 #else
-#include <arpa/inet.h>
-#include <errno.h>
 #include <pthread.h>
-#include <sys/socket.h>
-typedef int conn_socket_t;
-#define INVALID_CONN_SOCK (-1)
 typedef pthread_mutex_t pool_mutex_t;
-#define POOL_MUTEX_INIT(m) pthread_mutex_init(m, NULL)
-#define POOL_MUTEX_LOCK(m) pthread_mutex_lock(m)
-#define POOL_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
-#define POOL_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
 #endif
-
-#include "rt_trap.h"
-extern conn_socket_t rt_tcp_socket_fd(void *obj);
-extern int wait_socket(conn_socket_t sock, int timeout_ms, bool for_write);
 
 //=============================================================================
 // Internal Structures
@@ -70,15 +49,18 @@ extern int wait_socket(conn_socket_t sock, int timeout_ms, bool for_write);
 
 #define POOL_MAX_ENTRIES 128
 #define POOL_IDLE_TIMEOUT_MS (60LL * 1000LL)
+#define RT_CONNPOOL_MAGIC UINT64_C(0x5A434F4E4E504F4C)
 
 typedef struct {
-    void *tcp;            // TCP connection object
-    char *key;            // "host:port" key
-    int64_t last_used_ms; // Monotonic ms tick when connection was returned
-    bool in_use;          // Currently checked out
+    void *tcp;              // Pool-retained TCP connection object
+    uint64_t endpoint_hash; // Hash of exact host bytes plus remote port
+    int64_t last_used_ms;   // Monotonic ms tick when connection was returned
+    bool in_use;            // Currently checked out
 } pooled_entry_t;
 
 typedef struct {
+    uint64_t magic;
+    uint64_t owner_token;
     pooled_entry_t entries[POOL_MAX_ENTRIES];
     int count;
     int max_size;
@@ -90,15 +72,164 @@ typedef struct {
 // Helpers
 //=============================================================================
 
-static int connpool_has_embedded_nul(const char *data, size_t len) {
-    return data && memchr(data, '\0', len) != NULL;
+static volatile uint64_t g_connpool_owner_sequence = 1;
+
+/// @brief Initialize one platform mutex for a ConnectionPool.
+/// @details Windows uses a modest spin count before kernel waiting; POSIX uses
+///          the default non-recursive mutex attributes. Unlike the former
+///          macro, this helper reports initialization failure to the
+///          constructor instead of publishing an unusable pool.
+/// @param mutex Native mutex storage to initialize.
+/// @return True on success, false otherwise.
+static bool connpool_mutex_init(pool_mutex_t *mutex) {
+    if (!mutex)
+        return false;
+#if RT_PLATFORM_WINDOWS
+    return InitializeCriticalSectionAndSpinCount(mutex, 4000) != 0;
+#else
+    return pthread_mutex_init(mutex, NULL) == 0;
+#endif
 }
 
-static size_t connpool_host_len_or_zero(rt_string host) {
-    int64_t len = host ? rt_str_len(host) : -1;
-    if (len <= 0 || (uint64_t)len > (uint64_t)SIZE_MAX)
-        return 0;
-    return (size_t)len;
+/// @brief Acquire a ConnectionPool mutex.
+/// @param mutex Initialized native mutex.
+/// @return True when the caller owns the mutex, false on a native error.
+static bool connpool_mutex_lock(pool_mutex_t *mutex) {
+    if (!mutex)
+        return false;
+#if RT_PLATFORM_WINDOWS
+    EnterCriticalSection(mutex);
+    return true;
+#else
+    return pthread_mutex_lock(mutex) == 0;
+#endif
+}
+
+/// @brief Release a ConnectionPool mutex or terminate on invariant failure.
+/// @details An unlock failure means ownership bookkeeping is already corrupt,
+///          so continuing under a returning trap hook would permit concurrent
+///          unsynchronized mutation. Such an internal failure is therefore
+///          non-recoverable.
+/// @param mutex Locked native mutex owned by the current thread.
+static void connpool_mutex_unlock(pool_mutex_t *mutex) {
+#if RT_PLATFORM_WINDOWS
+    LeaveCriticalSection(mutex);
+#else
+    if (!mutex || pthread_mutex_unlock(mutex) != 0)
+        rt_abort("ConnectionPool: mutex unlock failed");
+#endif
+}
+
+/// @brief Destroy a successfully initialized ConnectionPool mutex.
+/// @param mutex Initialized, unlocked native mutex.
+static void connpool_mutex_destroy(pool_mutex_t *mutex) {
+    if (!mutex)
+        return;
+#if RT_PLATFORM_WINDOWS
+    DeleteCriticalSection(mutex);
+#else
+    if (pthread_mutex_destroy(mutex) != 0)
+        rt_abort("ConnectionPool: mutex destroy failed");
+#endif
+}
+
+/// @brief Allocate a nonzero process-local identity for a new pool.
+/// @details The unsigned counter deliberately wraps. Zero is reserved for an
+///          unleased TCP and is skipped; exhausting the remaining 2^64-1
+///          identities within one process lifetime is not operationally
+///          reachable.
+/// @return Nonzero token used for atomic TCP lease ownership.
+static uint64_t connpool_next_owner_token(void) {
+    uint64_t token;
+    do {
+        token = rt_atomic_fetch_add_u64(&g_connpool_owner_sequence, 1, __ATOMIC_RELAXED);
+    } while (token == 0);
+    return token;
+}
+
+/// @brief Release one owned managed object reference.
+/// @param obj Owned object reference; NULL is a no-op.
+static void connpool_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Validate and retain a non-null ConnectionPool for one public call.
+/// @details Class id, payload size, initialization magic, and lock state are
+///          checked before the native mutex is touched. A non-trapping live
+///          retain prevents finalization from destroying the mutex while the
+///          call is active. Callers preserve their historical NULL semantics
+///          before invoking this helper.
+/// @param obj Caller-supplied pool handle.
+/// @param function_name API name included in invalid-handle diagnostics.
+/// @return Retained pool implementation, or NULL after one trap.
+static rt_connpool_impl *connpool_require_retained(void *obj, const char *function_name) {
+    if (!obj)
+        return NULL;
+    int32_t retained = rt_heap_try_retain_live(obj);
+    if (retained != 1) {
+        rt_trap(retained < 0 ? "ConnectionPool: reference count overflow"
+                             : "ConnectionPool: stale object");
+        return NULL;
+    }
+    if (!rt_obj_is_instance(obj, RT_CONNPOOL_CLASS_ID, sizeof(rt_connpool_impl)) ||
+        ((rt_connpool_impl *)obj)->magic != RT_CONNPOOL_MAGIC ||
+        !((rt_connpool_impl *)obj)->lock_initialized) {
+        char error[160];
+        snprintf(error,
+                 sizeof(error),
+                 "%s: invalid ConnectionPool object",
+                 function_name ? function_name : "ConnectionPool");
+        connpool_release_object(obj);
+        rt_trap(error);
+        return NULL;
+    }
+    return (rt_connpool_impl *)obj;
+}
+
+/// @brief Hash exact endpoint bytes and port for a fast pool prefilter.
+/// @details FNV-1a is sufficient because equality is always confirmed against
+///          the immutable TCP endpoint; collisions affect only comparison cost.
+/// @param host Exact host bytes.
+/// @param host_len Number of host bytes.
+/// @param port Remote port in [1, 65535].
+/// @return Deterministic 64-bit endpoint hash.
+static uint64_t connpool_endpoint_hash(const char *host, size_t host_len, int port) {
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (size_t i = 0; i < host_len; i++) {
+        hash ^= (uint8_t)host[i];
+        hash *= UINT64_C(1099511628211);
+    }
+    hash ^= (uint8_t)(port >> 8);
+    hash *= UINT64_C(1099511628211);
+    hash ^= (uint8_t)port;
+    hash *= UINT64_C(1099511628211);
+    return hash;
+}
+
+/// @brief Compare one pooled TCP against an exact requested endpoint.
+/// @details The cached hash rejects most mismatches before borrowing the TCP's
+///          immutable host view. Final equality remains byte-exact and
+///          case-sensitive, preserving the existing pool-key contract.
+/// @param entry Candidate pooled entry.
+/// @param endpoint_hash Precomputed request endpoint hash.
+/// @param host Exact request host bytes.
+/// @param host_len Number of request host bytes.
+/// @param port Requested remote port.
+/// @return True only for an exact endpoint match.
+static bool connpool_entry_matches(const pooled_entry_t *entry,
+                                   uint64_t endpoint_hash,
+                                   const char *host,
+                                   size_t host_len,
+                                   int port) {
+    if (!entry || !entry->tcp || entry->endpoint_hash != endpoint_hash)
+        return false;
+    const char *entry_host = NULL;
+    size_t entry_host_len = 0;
+    int entry_port = 0;
+    return rt_tcp_endpoint_view(entry->tcp, &entry_host, &entry_host_len, &entry_port) &&
+           entry_port == port && entry_host_len == host_len &&
+           memcmp(entry_host, host, host_len) == 0;
 }
 
 /// @brief Read the monotonic millisecond clock used for idle-age bookkeeping.
@@ -120,88 +251,72 @@ static bool connpool_entry_is_idle_expired(const pooled_entry_t *entry, int64_t 
     if (!entry || entry->in_use)
         return false;
     int64_t age_ms = now_ms >= entry->last_used_ms ? now_ms - entry->last_used_ms : 0;
-    return age_ms > POOL_IDLE_TIMEOUT_MS;
+    return age_ms >= POOL_IDLE_TIMEOUT_MS;
 }
 
-/// @brief Format a "host:port" cache key, bracketing bare IPv6 literals.
-/// @details An unbracketed colon in @p host indicates an IPv6 address that
-///          would otherwise collide with the port colon, so we wrap it as
-///          @c [::1]:443. Already-bracketed hosts and plain hostnames flow
-///          through unchanged.
-static bool make_key(const char *host, int port, char *buf, size_t buf_len) {
-    int written;
-    if (!host || port < 1 || port > 65535 || !buf || buf_len == 0)
-        return false;
-    if (strchr(host, ':') != NULL && host[0] != '[')
-        written = snprintf(buf, buf_len, "[%s]:%d", host, port);
-    else
-        written = snprintf(buf, buf_len, "%s:%d", host, port);
-    return written >= 0 && (size_t)written < buf_len;
-}
-
-/// @brief Close a TCP handle and drop the pool's reference.
-/// @details Used in every code path where the pool is shedding a connection
-///          (eviction, health-drop, capacity overflow). The @c rt_tcp_close
-///          call is idempotent so an already-closed handle is fine.
-static void close_tcp_connection(void *tcp) {
-    if (!tcp)
+/// @brief Drop a pool entry's lease and managed reference.
+/// @details The transport is closed only when the lease is still owned by this
+///          pool (or already unleased). A foreign token indicates internal
+///          inconsistency; detaching without close avoids invalidating another
+///          pool's borrower. The entry is zeroed for safe slot reuse.
+/// @param pool Pool that owns @p entry.
+/// @param entry Entry to discard.
+/// @param close_transport Whether an exclusively owned transport should close.
+static void discard_entry(rt_connpool_impl *pool, pooled_entry_t *entry, bool close_transport) {
+    if (!pool || !entry)
         return;
-    rt_tcp_close(tcp);
-    if (rt_obj_release_check0(tcp))
-        rt_obj_free(tcp);
-}
-
-/// @brief Tear down a pooled entry's TCP handle and free its key.
-/// @details Leaves the entry struct itself zeroed so the slot can be
-///          repurposed by the next `track_connection` call or the
-///          subsequent compaction in @ref remove_entry_at.
-static void close_entry(pooled_entry_t *entry) {
-    if (entry->tcp) {
-        close_tcp_connection(entry->tcp);
-        entry->tcp = NULL;
+    void *tcp = entry->tcp;
+    if (tcp) {
+        uint64_t owner = rt_tcp_pool_owner(tcp);
+        if (owner == pool->owner_token) {
+            if (close_transport)
+                rt_tcp_close(tcp);
+            (void)rt_tcp_pool_release_claim(tcp, pool->owner_token);
+        }
+        connpool_release_object(tcp);
     }
-    free(entry->key);
-    entry->key = NULL;
-    entry->in_use = false;
+    memset(entry, 0, sizeof(*entry));
 }
 
 /// @brief Remove the entry at @p index using swap-with-last for O(1) deletion.
 /// @details Order within the @c entries array is not meaningful — slots are
 ///          looked up linearly by `(key, in_use)` — so the cheap swap is
 ///          preferred over a memmove. The vacated tail slot is zeroed.
-static void remove_entry_at(rt_connpool_impl *pool, int index) {
+static void remove_entry_at(rt_connpool_impl *pool, int index, bool close_transport) {
     if (!pool || index < 0 || index >= pool->count)
         return;
-    close_entry(&pool->entries[index]);
+    discard_entry(pool, &pool->entries[index], close_transport);
     pool->entries[index] = pool->entries[pool->count - 1];
     memset(&pool->entries[pool->count - 1], 0, sizeof(pooled_entry_t));
     pool->count--;
 }
 
-/// @brief Insert a new entry recording @p tcp under @p key.
+/// @brief Insert a pre-retained TCP reference as a new tracked entry.
 /// @details Used by both `acquire` (when opening a fresh connection that
 ///          should immediately appear as checked-out) and `release` (when
 ///          a caller returns an unknown connection that the pool may
-///          want to keep). The pool RETAINS its own reference on success,
-///          so a tracked entry stays valid even after every caller drops
-///          theirs. Refuses to grow past @c max_size and copies @p key
-///          into heap storage so the caller's buffer can be
-///          stack-allocated.
-/// @return True when the entry was appended; false on capacity or OOM.
-static bool track_connection(
-    rt_connpool_impl *pool, void *tcp, const char *key, bool in_use, int64_t last_used_ms) {
-    if (!pool || !tcp || !key || pool->count >= pool->max_size)
-        return false;
-
-    char *key_copy = strdup(key);
-    if (!key_copy)
+///          want to keep). @p tcp_ref is already an owned reference and is
+///          consumed only on success. Claiming the TCP lease is atomic, so a
+///          connection owned by another pool is rejected without mutation.
+/// @param pool Destination pool, locked by the caller.
+/// @param tcp_ref Pre-retained TCP reference to consume on success.
+/// @param endpoint_hash Exact endpoint hash cached in the new entry.
+/// @param in_use Whether the connection is immediately checked out.
+/// @param last_used_ms Idle timestamp; ignored while @p in_use is true.
+/// @return True when the reference was consumed and entry appended.
+static bool track_connection(rt_connpool_impl *pool,
+                             void *tcp_ref,
+                             uint64_t endpoint_hash,
+                             bool in_use,
+                             int64_t last_used_ms) {
+    if (!pool || !tcp_ref || pool->count >= pool->max_size ||
+        !rt_tcp_pool_try_claim(tcp_ref, pool->owner_token))
         return false;
 
     pooled_entry_t *entry = &pool->entries[pool->count++];
     memset(entry, 0, sizeof(*entry));
-    rt_obj_retain_maybe(tcp); // pool's own reference, dropped when untracked
-    entry->tcp = tcp;
-    entry->key = key_copy;
+    entry->tcp = tcp_ref;
+    entry->endpoint_hash = endpoint_hash;
     entry->last_used_ms = last_used_ms;
     entry->in_use = in_use;
     return true;
@@ -233,142 +348,212 @@ static bool track_connection(
 /// @return 1 if the connection is healthy and reusable, 0 if it should be
 ///         closed and removed from the pool.
 static int tcp_connection_healthy(void *tcp) {
-    if (!tcp || !rt_tcp_is_open(tcp))
+    if (!rt_tcp_is_handle(tcp) || !rt_tcp_is_open(tcp))
         return 0;
 
-    conn_socket_t sock = rt_tcp_socket_fd(tcp);
-    if (sock == INVALID_CONN_SOCK)
+    socket_t sock = rt_tcp_socket_fd(tcp);
+    if (sock == INVALID_SOCK)
         return 0;
 
     int ready = wait_socket(sock, 0, false);
-    if (ready <= 0)
+    if (ready < 0)
+        return 0;
+    if (ready == 0)
         return 1;
 
     uint8_t byte = 0;
-    int peeked = recv(sock, (char *)&byte, 1, MSG_PEEK);
+    int peeked;
+    do {
+        peeked = recv(sock, (char *)&byte, 1, MSG_PEEK);
+    } while (peeked < 0 && rt_socket_error_is_interrupted(GET_LAST_ERROR()));
     if (peeked > 0)
         return 0; // pending unread bytes: stale protocol data, do not reuse
     if (peeked == 0)
         return 0;
-#ifdef _WIN32
-    return WSAGetLastError() == WSAEWOULDBLOCK ? 1 : 0;
-#else
-    return errno == EAGAIN || errno == EWOULDBLOCK ? 1 : 0;
-#endif
+    return rt_socket_error_is_would_block(GET_LAST_ERROR()) ? 1 : 0;
+}
+
+/// @brief Close an untracked TCP while holding an exclusive temporary lease.
+/// @details A zero owner is first claimed for this pool, preventing another
+///          pool from adopting the connection between the ownership check and
+///          `close`. An existing same-pool token is accepted. A foreign token
+///          is never overwritten and leaves the transport untouched.
+/// @param pool Pool attempting to close the untracked handle.
+/// @param tcp Valid, retained TCP handle.
+/// @return True when this pool closed the transport; false for a foreign race.
+static bool connpool_close_untracked(rt_connpool_impl *pool, void *tcp) {
+    if (!pool || !tcp || !rt_tcp_pool_try_claim(tcp, pool->owner_token))
+        return false;
+    rt_tcp_close(tcp);
+    (void)rt_tcp_pool_release_claim(tcp, pool->owner_token);
+    return true;
 }
 
 //=============================================================================
 // Finalizer
 //=============================================================================
 
-static void detach_entry(pooled_entry_t *entry);
-
 /// @brief GC finalizer: close idle pooled connections, detach checked-out
 /// ones (their holders keep working handles), and destroy the pool's mutex.
+/// @details Every public call retains the pool through its final unlock, so a
+///          finalizer cannot overlap live mutex users. The sweep therefore
+///          needs no lock and may safely destroy it afterward.
+/// @param obj Fully initialized ConnectionPool payload at zero references.
 static void rt_connpool_finalize(void *obj) {
     if (!obj)
         return;
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
-    for (int i = 0; i < pool->count; i++) {
-        if (pool->entries[i].in_use)
-            detach_entry(&pool->entries[i]);
-        else
-            close_entry(&pool->entries[i]);
+    if (pool->magic != RT_CONNPOOL_MAGIC)
+        return;
+    for (int i = 0; i < pool->count; i++)
+        discard_entry(pool, &pool->entries[i], !pool->entries[i].in_use);
+    pool->count = 0;
+    if (pool->lock_initialized) {
+        connpool_mutex_destroy(&pool->lock);
+        pool->lock_initialized = false;
     }
-    if (pool->lock_initialized)
-        POOL_MUTEX_DESTROY(&pool->lock);
+    pool->magic = 0;
 }
 
 //=============================================================================
 // Public API
 //=============================================================================
 
-/// @brief Construct a TCP connection pool. `max_size` is clamped to `[1, POOL_MAX_ENTRIES]`.
-/// Pooled connections are keyed by `host:port`. Returns a GC-managed handle.
+/// @brief Construct a TCP connection pool with a bounded tracked capacity.
+/// @details `max_size` is clamped to `[1, POOL_MAX_ENTRIES]`. Mutex
+///          initialization must succeed before class magic/finalizer
+///          publication, so no caller can observe a partially synchronized
+///          instance.
+/// @param max_size Requested number of tracked idle plus checked-out entries.
+/// @return New GC-managed pool, or NULL after one allocation/init trap.
 void *rt_connpool_new(int64_t max_size) {
     rt_connpool_impl *pool =
-        (rt_connpool_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_connpool_impl));
-    if (!pool) {
-        rt_trap("ConnectionPool: memory allocation failed");
+        (rt_connpool_impl *)rt_obj_new_i64(RT_CONNPOOL_CLASS_ID, (int64_t)sizeof(rt_connpool_impl));
+    if (!pool)
         return NULL;
-    }
-    memset(pool, 0, sizeof(*pool));
     if (max_size < 1)
         max_size = 1;
     if (max_size > POOL_MAX_ENTRIES)
         max_size = POOL_MAX_ENTRIES;
     pool->max_size = (int)max_size;
-    POOL_MUTEX_INIT(&pool->lock);
+    if (!connpool_mutex_init(&pool->lock)) {
+        connpool_release_object(pool);
+        rt_trap("ConnectionPool: mutex initialization failed");
+        return NULL;
+    }
     pool->lock_initialized = true;
+    pool->owner_token = connpool_next_owner_token();
+    pool->magic = RT_CONNPOOL_MAGIC;
     rt_obj_set_finalizer(pool, rt_connpool_finalize);
     return pool;
 }
 
 /// @brief Acquire a TCP connection to `(host, port)`. Walk-the-pool flow:
 ///   1. Evict expired idle entries (`POOL_IDLE_TIMEOUT_MS` since last_used_ms).
-///   2. Find an idle entry whose key matches; if its TCP is still healthy, reuse it.
+///   2. Find an idle exact endpoint match; if its TCP is healthy, reuse it.
 ///   3. If unhealthy, close + remove and keep searching.
 ///   4. If nothing matches, open a fresh TCP connection and immediately track
 ///      it as checked out when pool capacity allows.
-/// All steps run under the pool mutex except the actual `rt_tcp_connect` (which can block).
+/// @details Pool bookkeeping is locked, while the potentially blocking connect
+///          runs unlocked. Reuse takes a non-trapping live retain before
+///          publication, preventing a refcount trap from stranding `in_use`.
+/// @param obj Required ConnectionPool receiver.
+/// @param host Non-empty complete runtime string without embedded NUL bytes.
+/// @param port Remote port in [1, 65535].
+/// @return Caller-owned TCP handle, or NULL after one trap.
 void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
     if (!obj) {
         rt_trap("ConnectionPool: NULL pool");
         return NULL;
     }
 
-    rt_connpool_impl *pool = (rt_connpool_impl *)obj;
-    const char *host_str = rt_string_cstr(host);
-    size_t host_len = connpool_host_len_or_zero(host);
-    if (!host_str || host_len == 0 || connpool_has_embedded_nul(host_str, host_len) || port < 1 ||
+    rt_connpool_impl *pool = connpool_require_retained(obj, "ConnectionPool.Acquire");
+    if (!pool)
+        return NULL;
+
+    const char *host_str = NULL;
+    size_t host_len = 0;
+    if (!host || !rt_string_is_handle((const void *)host) ||
+        !rt_net_cstr_no_embedded_nul(host, &host_str, &host_len) || host_len == 0 || port < 1 ||
         port > 65535) {
+        connpool_release_object(pool);
         rt_trap("ConnectionPool: invalid host or port");
         return NULL;
     }
+    uint64_t endpoint_hash = connpool_endpoint_hash(host_str, host_len, (int)port);
 
-    char key[300];
-    if (!make_key(host_str, (int)port, key, sizeof(key))) {
-        rt_trap("ConnectionPool: host is too long");
+    if (!connpool_mutex_lock(&pool->lock)) {
+        connpool_release_object(pool);
+        rt_trap("ConnectionPool: mutex lock failed");
         return NULL;
     }
-
-    POOL_MUTEX_LOCK(&pool->lock);
 
     // Evict expired idle connections
     int64_t now_ms = connpool_now_ms();
     for (int i = 0; i < pool->count; i++) {
         if (connpool_entry_is_idle_expired(&pool->entries[i], now_ms)) {
-            remove_entry_at(pool, i);
+            remove_entry_at(pool, i, true);
             i--;
         }
     }
 
-    // Look for an idle connection with matching key
+    // Look for an idle connection with matching endpoint.
     for (int i = 0; i < pool->count; i++) {
-        if (!pool->entries[i].in_use && pool->entries[i].key &&
-            strcmp(pool->entries[i].key, key) == 0) {
-            // Check if still open
+        if (!pool->entries[i].in_use &&
+            connpool_entry_matches(
+                &pool->entries[i], endpoint_hash, host_str, host_len, (int)port)) {
             if (tcp_connection_healthy(pool->entries[i].tcp)) {
-                pool->entries[i].in_use = true;
                 void *tcp = pool->entries[i].tcp;
-                rt_obj_retain_maybe(tcp); // caller's owned reference
-                POOL_MUTEX_UNLOCK(&pool->lock);
-                return tcp;
-            } else {
-                // Connection died; remove it
-                remove_entry_at(pool, i);
-                i--;
+                int32_t retained = rt_heap_try_retain_live(tcp);
+                if (retained > 0) {
+                    pool->entries[i].in_use = true;
+                    connpool_mutex_unlock(&pool->lock);
+                    connpool_release_object(pool);
+                    return tcp;
+                }
+                if (retained < 0) {
+                    connpool_mutex_unlock(&pool->lock);
+                    connpool_release_object(pool);
+                    rt_trap("ConnectionPool.Acquire: TCP reference count overflow");
+                    return NULL;
+                }
             }
+            remove_entry_at(pool, i, true);
+            i--;
         }
     }
 
-    POOL_MUTEX_UNLOCK(&pool->lock);
+    connpool_mutex_unlock(&pool->lock);
+    connpool_release_object(pool);
 
     // No pooled connection available; create new one
     void *tcp = rt_tcp_connect(host, port);
-    POOL_MUTEX_LOCK(&pool->lock);
-    (void)track_connection(pool, tcp, key, true, 0);
-    POOL_MUTEX_UNLOCK(&pool->lock);
+    if (!tcp)
+        return NULL;
+
+    pool = connpool_require_retained(obj, "ConnectionPool.Acquire");
+    if (!pool) {
+        rt_tcp_close(tcp);
+        connpool_release_object(tcp);
+        return NULL;
+    }
+
+    int32_t pool_tcp_ref = rt_heap_try_retain_live(tcp);
+    if (pool_tcp_ref == 1) {
+        if (!connpool_mutex_lock(&pool->lock)) {
+            connpool_release_object(tcp); // candidate pool reference
+            connpool_release_object(pool);
+            rt_tcp_close(tcp);
+            connpool_release_object(tcp); // original result reference
+            rt_trap("ConnectionPool: mutex lock failed");
+            return NULL;
+        }
+        bool tracked = track_connection(pool, tcp, endpoint_hash, true, 0);
+        connpool_mutex_unlock(&pool->lock);
+        if (!tracked)
+            connpool_release_object(tcp); // unused candidate pool reference
+    }
+    connpool_release_object(pool);
     return tcp;
 }
 
@@ -378,77 +563,101 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
 ///            monotonic clock so the idle-timeout sweep can later reclaim it.
 ///          - Tracked + unhealthy: removed via @ref remove_entry_at so
 ///            the slot doesn't keep a dead fd around.
-///          - Untracked + healthy: adopted into a free slot if any.
-///          - Untracked + unhealthy or pool full: closed and dropped.
+///          - Untracked + healthy: exclusively adopted into a free slot.
+///          - Foreign-pool lease: rejected without closing the transport.
+///          - Untracked + unhealthy or pool full: closed, caller ref retained.
+/// @param obj Destination ConnectionPool; NULL is a no-op.
+/// @param conn TCP handle to release; NULL is a no-op.
 void rt_connpool_release(void *obj, void *conn) {
     if (!obj || !conn)
         return;
 
-    rt_connpool_impl *pool = (rt_connpool_impl *)obj;
+    rt_connpool_impl *pool = connpool_require_retained(obj, "ConnectionPool.Release");
+    if (!pool)
+        return;
+    if (!rt_tcp_is_handle(conn)) {
+        connpool_release_object(pool);
+        rt_trap("ConnectionPool.Release: invalid TCP connection");
+        return;
+    }
+    int32_t retained = rt_heap_try_retain_live(conn);
+    if (retained != 1) {
+        connpool_release_object(pool);
+        rt_trap(retained < 0 ? "ConnectionPool.Release: TCP reference count overflow"
+                             : "ConnectionPool.Release: stale TCP connection");
+        return;
+    }
 
-    POOL_MUTEX_LOCK(&pool->lock);
+    if (!connpool_mutex_lock(&pool->lock)) {
+        connpool_release_object(conn);
+        connpool_release_object(pool);
+        rt_trap("ConnectionPool: mutex lock failed");
+        return;
+    }
 
     // Find the entry for this connection (if it was tracked)
     for (int i = 0; i < pool->count; i++) {
         if (pool->entries[i].tcp == conn) {
             if (!tcp_connection_healthy(conn)) {
-                remove_entry_at(pool, i);
-                POOL_MUTEX_UNLOCK(&pool->lock);
+                remove_entry_at(pool, i, true);
+                connpool_mutex_unlock(&pool->lock);
+                connpool_release_object(conn);
+                connpool_release_object(pool);
                 return;
             }
             pool->entries[i].in_use = false;
             pool->entries[i].last_used_ms = connpool_now_ms();
-            POOL_MUTEX_UNLOCK(&pool->lock);
+            connpool_mutex_unlock(&pool->lock);
+            connpool_release_object(conn);
+            connpool_release_object(pool);
             return;
         }
     }
 
-    if (!tcp_connection_healthy(conn)) {
-        POOL_MUTEX_UNLOCK(&pool->lock);
-        // Untracked handle: the pool holds no reference of its own, so only
-        // close the transport — the caller's (borrowed) reference stays theirs.
-        rt_tcp_close(conn);
+    uint64_t owner = rt_tcp_pool_owner(conn);
+    if (owner != 0 && owner != pool->owner_token) {
+        connpool_mutex_unlock(&pool->lock);
+        connpool_release_object(conn);
+        connpool_release_object(pool);
+        rt_trap("ConnectionPool.Release: TCP belongs to another pool");
         return;
     }
 
-    // Not tracked — add it if there's space
+    if (!tcp_connection_healthy(conn)) {
+        bool closed = connpool_close_untracked(pool, conn);
+        connpool_mutex_unlock(&pool->lock);
+        connpool_release_object(conn);
+        connpool_release_object(pool);
+        if (!closed)
+            rt_trap("ConnectionPool.Release: TCP belongs to another pool");
+        return;
+    }
+
+    bool tracked = false;
     if (pool->count < pool->max_size) {
-        // Build key from connection properties
-        rt_string h = rt_tcp_host(conn);
-        int64_t p = rt_tcp_port(conn);
-        char key[300];
-        const char *host_str = rt_string_cstr(h);
-        size_t host_len = connpool_host_len_or_zero(h);
-        bool valid_key = host_str && host_len > 0 &&
-                         !connpool_has_embedded_nul(host_str, host_len) && p >= 1 && p <= 65535 &&
-                         make_key(host_str, (int)p, key, sizeof(key));
-        if (valid_key && track_connection(pool, conn, key, false, connpool_now_ms())) {
-            rt_string_unref(h);
-            POOL_MUTEX_UNLOCK(&pool->lock);
-            return;
+        const char *host_str = NULL;
+        size_t host_len = 0;
+        int port = 0;
+        if (rt_tcp_endpoint_view(conn, &host_str, &host_len, &port) && host_len > 0 && port >= 1 &&
+            port <= 65535) {
+            uint64_t endpoint_hash = connpool_endpoint_hash(host_str, host_len, port);
+            tracked = track_connection(pool, conn, endpoint_hash, false, connpool_now_ms());
         }
-        rt_string_unref(h);
     }
 
-    POOL_MUTEX_UNLOCK(&pool->lock);
-
-    // Pool full or bookkeeping allocation failed — close the transport but
-    // leave the caller's borrowed reference untouched.
-    rt_tcp_close(conn);
-}
-
-/// @brief Detach an entry without closing its transport: free the key and
-///        drop the pool's reference, leaving the connection usable by
-///        whoever checked it out.
-static void detach_entry(pooled_entry_t *entry) {
-    if (entry->tcp) {
-        if (rt_obj_release_check0(entry->tcp))
-            rt_obj_free(entry->tcp);
-        entry->tcp = NULL;
+    if (tracked) {
+        connpool_mutex_unlock(&pool->lock);
+        // The temporary retained reference became the pool's entry reference.
+        connpool_release_object(pool);
+        return;
     }
-    free(entry->key);
-    entry->key = NULL;
-    entry->in_use = false;
+
+    bool closed = connpool_close_untracked(pool, conn);
+    connpool_mutex_unlock(&pool->lock);
+    connpool_release_object(conn);
+    connpool_release_object(pool);
+    if (!closed)
+        rt_trap("ConnectionPool.Release: TCP belongs to another pool");
 }
 
 /// @brief Drop every pooled entry and reset the entry count to zero.
@@ -461,28 +670,40 @@ static void detach_entry(pooled_entry_t *entry) {
 void rt_connpool_clear(void *obj) {
     if (!obj)
         return;
-    rt_connpool_impl *pool = (rt_connpool_impl *)obj;
+    rt_connpool_impl *pool = connpool_require_retained(obj, "ConnectionPool.Clear");
+    if (!pool)
+        return;
 
-    POOL_MUTEX_LOCK(&pool->lock);
-    for (int i = 0; i < pool->count; i++) {
-        if (pool->entries[i].in_use)
-            detach_entry(&pool->entries[i]);
-        else
-            close_entry(&pool->entries[i]);
+    if (!connpool_mutex_lock(&pool->lock)) {
+        connpool_release_object(pool);
+        rt_trap("ConnectionPool: mutex lock failed");
+        return;
     }
+    for (int i = 0; i < pool->count; i++)
+        discard_entry(pool, &pool->entries[i], !pool->entries[i].in_use);
     pool->count = 0;
-    POOL_MUTEX_UNLOCK(&pool->lock);
+    connpool_mutex_unlock(&pool->lock);
+    connpool_release_object(pool);
 }
 
-/// @brief Return the size of the connpool.
+/// @brief Return a synchronized snapshot of the tracked entry count.
+/// @param obj ConnectionPool to inspect; NULL returns zero.
+/// @return Idle plus checked-out tracked entries.
 int64_t rt_connpool_size(void *obj) {
     if (!obj)
         return 0;
-    rt_connpool_impl *pool = (rt_connpool_impl *)obj;
+    rt_connpool_impl *pool = connpool_require_retained(obj, "ConnectionPool.Size");
+    if (!pool)
+        return 0;
 
-    POOL_MUTEX_LOCK(&pool->lock);
+    if (!connpool_mutex_lock(&pool->lock)) {
+        connpool_release_object(pool);
+        rt_trap("ConnectionPool: mutex lock failed");
+        return 0;
+    }
     int64_t n = pool->count;
-    POOL_MUTEX_UNLOCK(&pool->lock);
+    connpool_mutex_unlock(&pool->lock);
+    connpool_release_object(pool);
     return n;
 }
 
@@ -493,14 +714,21 @@ int64_t rt_connpool_size(void *obj) {
 int64_t rt_connpool_available(void *obj) {
     if (!obj)
         return 0;
-    rt_connpool_impl *pool = (rt_connpool_impl *)obj;
+    rt_connpool_impl *pool = connpool_require_retained(obj, "ConnectionPool.Available");
+    if (!pool)
+        return 0;
 
-    POOL_MUTEX_LOCK(&pool->lock);
+    if (!connpool_mutex_lock(&pool->lock)) {
+        connpool_release_object(pool);
+        rt_trap("ConnectionPool: mutex lock failed");
+        return 0;
+    }
     int64_t n = 0;
     for (int i = 0; i < pool->count; i++) {
         if (!pool->entries[i].in_use)
             n++;
     }
-    POOL_MUTEX_UNLOCK(&pool->lock);
+    connpool_mutex_unlock(&pool->lock);
+    connpool_release_object(pool);
     return n;
 }

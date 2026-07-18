@@ -72,8 +72,8 @@ set(_install_dir_name "ZannaInstallerE2E")
 set(_package_identifier "org.zanna.toolchain.e2e")
 set(_install_root "${_tmp_root}/install-Δ Space")
 set(_installed_zanna "${_install_root}/bin/zanna.exe")
-set(_installed_zannaide "${_install_root}/bin/zannaide.exe")
-set(_installed_zannaide_icon "${_install_root}/bin/zannaide.ico")
+set(_installed_zannastudio "${_install_root}/bin/zannastudio.exe")
+set(_installed_zannastudio_icon "${_install_root}/bin/zannastudio.ico")
 set(_installed_samples "${_install_root}/share/zanna/samples")
 set(_installed_vscode "${_install_root}/share/zanna/vscode")
 set(_installed_vscode_helper "${_install_root}/bin/zanna-install-vscode-extension.cmd")
@@ -82,7 +82,7 @@ set(_uninstaller "${_install_root}/uninstall.exe")
 set(_installed_manifest "${_install_root}/.zanna-install-manifest.txt")
 set(_start_menu "$ENV{APPDATA}/Microsoft/Windows/Start Menu/Programs/${_install_dir_name}")
 set(_developer_prompt_shortcut "${_start_menu}/Zanna Developer Prompt.lnk")
-set(_zannaide_shortcut "${_start_menu}/ZannaIDE.lnk")
+set(_zannastudio_shortcut "${_start_menu}/Zanna Studio.lnk")
 set(_vscode_shortcut "${_start_menu}/Install VS Code Extension.lnk")
 set(_setup_log "${_tmp_root}/installer-session.log")
 set(_src_dir "${_tmp_root}/consumer-src")
@@ -179,8 +179,8 @@ file(GLOB _staged_runtime_files LIST_DIRECTORIES FALSE
         "${_stage_dir}/bin/msvcp*.dll"
         "${_stage_dir}/bin/vcruntime*.dll"
         "${_stage_dir}/bin/concrt*.dll")
-if (NOT EXISTS "${_stage_dir}/bin/zannaide.exe")
-    message(FATAL_ERROR "staged Windows toolchain omitted the ZannaIDE component")
+if (NOT EXISTS "${_stage_dir}/bin/zannastudio.exe")
+    message(FATAL_ERROR "staged Windows toolchain omitted the Zanna Studio component")
 endif ()
 if (NOT _staged_sample_files)
     message(FATAL_ERROR "staged Windows toolchain omitted the samples component")
@@ -408,22 +408,22 @@ if (NOT _install_rv EQUAL 0)
             "per-user Zanna installer failed\nstdout:\n${_install_out}\nstderr:\n${_install_err}")
 endif ()
 
-_zanna_installer_assert_exists("${_installed_zannaide}" "default ZannaIDE component")
-_zanna_installer_assert_exists("${_installed_zannaide_icon}" "default ZannaIDE icon")
+_zanna_installer_assert_exists("${_installed_zannastudio}" "default Zanna Studio component")
+_zanna_installer_assert_exists("${_installed_zannastudio_icon}" "default Zanna Studio icon")
 _zanna_installer_assert_exists("${_installed_sample_probe}" "default samples component")
 _zanna_installer_assert_exists("${_installed_vscode_probe}" "default VS Code component")
 if (_staged_vsix_files)
     _zanna_installer_assert_exists("${_installed_vscode_helper}" "default VS Code helper")
 endif ()
 _zanna_installer_assert_exists("${_developer_prompt_shortcut}" "developer prompt shortcut")
-_zanna_installer_assert_exists("${_zannaide_shortcut}" "default ZannaIDE shortcut")
+_zanna_installer_assert_exists("${_zannastudio_shortcut}" "default Zanna Studio shortcut")
 if (_staged_vsix_files)
     _zanna_installer_assert_exists("${_vscode_shortcut}" "default VS Code shortcut")
 endif ()
 file(READ "${_installed_manifest}" _default_component_manifest)
 string(REPLACE "\\" "/" _default_component_manifest "${_default_component_manifest}")
 _zanna_installer_assert_manifest_contains(
-        "${_default_component_manifest}" "bin/zannaide.exe" "default component manifest")
+        "${_default_component_manifest}" "bin/zannastudio.exe" "default component manifest")
 _zanna_installer_assert_manifest_contains(
         "${_default_component_manifest}" "share/zanna/samples/" "default component manifest")
 _zanna_installer_assert_manifest_contains(
@@ -481,12 +481,12 @@ endif ()
 _zanna_installer_assert_exists("${_installed_zanna}" "core tool after component opt-out")
 _zanna_installer_assert_exists("${_developer_prompt}" "developer prompt after component opt-out")
 _zanna_installer_assert_exists("${_unowned_sentinel}" "unowned developer file")
-_zanna_installer_assert_absent("${_installed_zannaide}" "opted-out ZannaIDE executable")
-_zanna_installer_assert_absent("${_installed_zannaide_icon}" "opted-out ZannaIDE icon")
+_zanna_installer_assert_absent("${_installed_zannastudio}" "opted-out Zanna Studio executable")
+_zanna_installer_assert_absent("${_installed_zannastudio_icon}" "opted-out Zanna Studio icon")
 _zanna_installer_assert_absent("${_installed_sample_probe}" "opted-out sample")
 _zanna_installer_assert_absent("${_installed_vscode_probe}" "opted-out VS Code payload")
 _zanna_installer_assert_absent("${_installed_vscode_helper}" "opted-out VS Code helper")
-_zanna_installer_assert_absent("${_zannaide_shortcut}" "opted-out ZannaIDE shortcut")
+_zanna_installer_assert_absent("${_zannastudio_shortcut}" "opted-out Zanna Studio shortcut")
 _zanna_installer_assert_absent(
         "${_developer_prompt_shortcut}" "disabled developer prompt shortcut")
 _zanna_installer_assert_absent("${_start_menu}" "disabled Start Menu folder")
@@ -496,7 +496,7 @@ endif ()
 file(READ "${_installed_manifest}" _minimal_component_manifest)
 string(REPLACE "\\" "/" _minimal_component_manifest "${_minimal_component_manifest}")
 _zanna_installer_assert_manifest_excludes(
-        "${_minimal_component_manifest}" "bin/zannaide.exe" "minimal component manifest")
+        "${_minimal_component_manifest}" "bin/zannastudio.exe" "minimal component manifest")
 _zanna_installer_assert_manifest_excludes(
         "${_minimal_component_manifest}" "share/zanna/samples/" "minimal component manifest")
 _zanna_installer_assert_manifest_excludes(
@@ -516,11 +516,11 @@ if (NOT _restore_upgrade_rv EQUAL 0)
     message(FATAL_ERROR
             "default component restore failed\nstdout:\n${_restore_upgrade_out}\nstderr:\n${_restore_upgrade_err}")
 endif ()
-_zanna_installer_assert_exists("${_installed_zannaide}" "restored ZannaIDE component")
-_zanna_installer_assert_exists("${_installed_zannaide_icon}" "restored ZannaIDE icon")
+_zanna_installer_assert_exists("${_installed_zannastudio}" "restored Zanna Studio component")
+_zanna_installer_assert_exists("${_installed_zannastudio_icon}" "restored Zanna Studio icon")
 _zanna_installer_assert_exists("${_installed_sample_probe}" "restored samples component")
 _zanna_installer_assert_exists("${_installed_vscode_probe}" "restored VS Code component")
-_zanna_installer_assert_exists("${_zannaide_shortcut}" "restored ZannaIDE shortcut")
+_zanna_installer_assert_exists("${_zannastudio_shortcut}" "restored Zanna Studio shortcut")
 if (_staged_vsix_files)
     _zanna_installer_assert_exists("${_installed_vscode_helper}" "restored VS Code helper")
     _zanna_installer_assert_exists("${_vscode_shortcut}" "restored VS Code shortcut")
@@ -537,14 +537,14 @@ _zanna_installer_assert_absent(
 file(READ "${_installed_manifest}" _restored_component_manifest)
 string(REPLACE "\\" "/" _restored_component_manifest "${_restored_component_manifest}")
 _zanna_installer_assert_manifest_contains(
-        "${_restored_component_manifest}" "bin/zannaide.exe" "restored component manifest")
+        "${_restored_component_manifest}" "bin/zannastudio.exe" "restored component manifest")
 _zanna_installer_assert_manifest_contains(
         "${_restored_component_manifest}" "share/zanna/samples/" "restored component manifest")
 _zanna_installer_assert_manifest_contains(
         "${_restored_component_manifest}" "share/zanna/vscode/" "restored component manifest")
 
 file(TO_NATIVE_PATH "${_install_root}" _install_root_native)
-file(TO_NATIVE_PATH "${_zannaide_shortcut}" _zannaide_shortcut_native)
+file(TO_NATIVE_PATH "${_zannastudio_shortcut}" _zannastudio_shortcut_native)
 file(TO_NATIVE_PATH "${_developer_prompt_shortcut}" _developer_prompt_shortcut_native)
 set(_integration_probe "${_tmp_root}/probe-integrations.ps1")
 file(WRITE "${_integration_probe}"
@@ -556,7 +556,7 @@ file(WRITE "${_integration_probe}"
         "$entries = @([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ })\n"
         "$owned = @($entries | Where-Object { [string]::Equals($_.TrimEnd('\\'), $bin.TrimEnd('\\'), [StringComparison]::OrdinalIgnoreCase) })\n"
         "if ($owned.Count -ne 1) { throw \"Expected exactly one owned PATH entry; found $($owned.Count)\" }\n"
-        "$expectedCommand = '\"' + [IO.Path]::Combine($root, 'bin\\zannaide.exe') + '\" \"%1\"'\n"
+        "$expectedCommand = '\"' + [IO.Path]::Combine($root, 'bin\\zannastudio.exe') + '\" \"%1\"'\n"
         "foreach ($extension in @('zia', 'bas', 'il')) {\n"
         "  $progId = \"$identifier.$extension\"\n"
         "  $commandKey = \"Registry::HKEY_CURRENT_USER\\Software\\Classes\\$progId\\shell\\open\\command\"\n"
@@ -574,8 +574,8 @@ file(WRITE "${_integration_probe}"
         "if (-not (Test-Path -LiteralPath $arp.ZannaMaintenanceCache -PathType Leaf)) { throw \"Maintenance cache is missing\" }\n"
         "$shell = New-Object -ComObject Shell.Application\n"
         "function Get-ShellLink([string]$path) { $folder = $shell.Namespace((Split-Path -Parent $path)); $item = $folder.ParseName((Split-Path -Leaf $path)); if (-not $item) { throw \"Cannot inspect shortcut $path\" }; return $item.GetLink }\n"
-        "$ide = Get-ShellLink '${_zannaide_shortcut_native}'\n"
-        "if (-not [string]::Equals($ide.Path, [IO.Path]::Combine($root, 'bin\\zannaide.exe'), [StringComparison]::OrdinalIgnoreCase)) { throw \"ZannaIDE shortcut target is not destination-aware: $($ide.Path)\" }\n"
+        "$ide = Get-ShellLink '${_zannastudio_shortcut_native}'\n"
+        "if (-not [string]::Equals($ide.Path, [IO.Path]::Combine($root, 'bin\\zannastudio.exe'), [StringComparison]::OrdinalIgnoreCase)) { throw \"Zanna Studio shortcut target is not destination-aware: $($ide.Path)\" }\n"
         "$prompt = Get-ShellLink '${_developer_prompt_shortcut_native}'\n"
         "$expectedPromptArguments = '/k \"' + [IO.Path]::Combine($root, 'bin\\zanna-dev.cmd') + '\"'\n"
         "if ($prompt.Arguments -cne $expectedPromptArguments) { throw \"Developer shortcut arguments are not destination-aware: $($prompt.Arguments)\" }\n"
@@ -633,23 +633,23 @@ if (NOT _concurrency_rv EQUAL 0)
 endif ()
 
 # Restart Manager must refuse a silent destructive update, then close an eligible
-# ZannaIDE process only when the caller explicitly authorizes it.
-file(TO_NATIVE_PATH "${_installed_zannaide}" _installed_zannaide_native)
+# Zanna Studio process only when the caller explicitly authorizes it.
+file(TO_NATIVE_PATH "${_installed_zannastudio}" _installed_zannastudio_native)
 set(_restart_manager_probe "${_tmp_root}/probe-restart-manager.ps1")
 file(WRITE "${_restart_manager_probe}"
         "${_utf8_bom}"
         "$ErrorActionPreference = 'Stop'\n"
-        "$ide = Start-Process -FilePath '${_installed_zannaide_native}' -PassThru\n"
+        "$ide = Start-Process -FilePath '${_installed_zannastudio_native}' -PassThru\n"
         "try {\n"
         "  Start-Sleep -Seconds 2\n"
-        "  if ($ide.HasExited) { throw \"ZannaIDE exited before the files-in-use probe\" }\n"
+        "  if ($ide.HasExited) { throw \"Zanna Studio exited before the files-in-use probe\" }\n"
         "  $blocked = Start-Process -FilePath '${_installer_native}' -ArgumentList @('/repair','/quiet','/norestart','/log','${_tmp_root}\\files-in-use-blocked.log') -PassThru -Wait\n"
         "  if ($blocked.ExitCode -ne 1603) { throw \"Repair without /closeApplications returned $($blocked.ExitCode), expected 1603\" }\n"
-        "  if ($ide.HasExited) { throw \"Installer closed ZannaIDE without authorization\" }\n"
+        "  if ($ide.HasExited) { throw \"Installer closed Zanna Studio without authorization\" }\n"
         "  $closed = Start-Process -FilePath '${_installer_native}' -ArgumentList @('/repair','/quiet','/norestart','/closeApplications','/log','${_tmp_root}\\files-in-use-closed.log') -PassThru -Wait\n"
         "  if ($closed.ExitCode -ne 0) { throw \"Authorized files-in-use repair returned $($closed.ExitCode)\" }\n"
         "  $ide.WaitForExit(10000) | Out-Null\n"
-        "  if (-not $ide.HasExited) { throw \"Restart Manager did not close ZannaIDE\" }\n"
+        "  if (-not $ide.HasExited) { throw \"Restart Manager did not close Zanna Studio\" }\n"
         "} finally { if (-not $ide.HasExited) { Stop-Process -Id $ide.Id -Force -ErrorAction SilentlyContinue } }\n")
 execute_process(
         COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
@@ -835,7 +835,7 @@ execute_process(
 if (NOT _uninstall_probe_rv EQUAL 0)
     message(FATAL_ERROR "residue-free uninstall probe failed\n${_uninstall_probe_err}")
 endif ()
-_zanna_installer_assert_absent("${_zannaide_shortcut}" "uninstalled ZannaIDE shortcut")
+_zanna_installer_assert_absent("${_zannastudio_shortcut}" "uninstalled Zanna Studio shortcut")
 _zanna_installer_assert_absent(
         "${_developer_prompt_shortcut}" "uninstalled developer prompt shortcut")
 if (_staged_vsix_files)

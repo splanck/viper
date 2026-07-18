@@ -112,6 +112,8 @@ typedef struct rt_heap_hdr {
 | `rt_heap_release(payload)` | CAS-based atomic decrement. Frees (pool or system) when count reaches zero; double release and attempts to release immortal payloads trap without underflow. |
 | `rt_heap_release_deferred(payload)` | Decrement without freeing at zero. Caller must later call `rt_heap_free_zero_ref`. |
 | `rt_heap_free_zero_ref(payload)` | Free only if refcount is already zero. No-op otherwise. |
+| `rt_heap_get_info(payload, out)` | Copies scalar metadata while the live-allocation registry is locked. Use this for borrowed or untrusted handle validation; the result does not expose an internal header address. |
+| `rt_heap_realloc(payload, ...)` | Moves and invalidates the original allocation only when its exact refcount is one. Shared or immortal payloads trap and remain unchanged. |
 | `rt_memory_retain(payload)` | Public `Zanna.Runtime.Unsafe.Retain` wrapper; validates live object, array, or string handles before retaining and traps on raw string payloads or unsupported heap kinds. Compatibility name: `Zanna.Memory.Retain`. |
 | `rt_memory_release(payload)` | Public `Zanna.Runtime.Unsafe.Release` wrapper; releases through managed object/string/array paths and runs finalizers or element cleanup at zero. |
 | `rt_memory_retain_str(str)` | Public `Zanna.Runtime.Unsafe.RetainStr` wrapper; validates and retains a runtime string. Compatibility name: `Zanna.Memory.RetainStr`. |
@@ -119,7 +121,11 @@ typedef struct rt_heap_hdr {
 
 Public heap helpers reject non-runtime and already-freed payloads before header
 access. That keeps stale pointers on the trap path instead of relying on
-debug-only assertions or undefined behaviour.
+debug-only assertions or undefined behaviour. Code that merely inspects a
+borrowed handle must use `rt_heap_get_info()` rather than retaining the raw
+header returned by `rt_heap_try_get_header()`; the latter is reserved for a
+caller that already owns a strong reference or the collector's exclusive graph
+scope.
 
 ### Memory Ordering
 
@@ -199,21 +205,24 @@ Allocations larger than 512 bytes fall through to `malloc`/`free`.
 
 ### Design
 
-- **Lock-free freelists** using tagged pointers: 48-bit address + 16-bit version
-  counter for ABA prevention via CAS.
+- **Spinlock-protected freelists** keep intrusive links private until a block is
+  removed. This avoids reading a candidate block after another thread has
+  returned it to caller-owned memory.
 - **Slab allocation**: when a freelist is empty, a new slab of 64 blocks is
   allocated from the system, all blocks are pushed onto the freelist, and one is
   returned.
-- **Freed blocks are zeroed** (`memset(0)`) before returning to the freelist.
-- **Only strings use the pool**: arrays and objects may need `realloc()`, which
-  is incompatible with pool-allocated memory.
+- **Blocks are zeroed before allocation** so recycled caller data is never
+  exposed without also clearing the same block redundantly on free.
+- Heap strings, arrays, and objects whose complete allocation fits a size class
+  may use the pool. Reallocation moves pooled allocations when necessary.
 
 ### Lifetime
 
-- Pool memory is **never returned to the OS**. Freed blocks stay on the freelist
-  for reuse.
-- `rt_pool_shutdown()` exists to release all slabs but is **never called** in the
-  current codebase.
+- Freed blocks stay on the freelist for reuse during normal execution.
+- `rt_pool_shutdown()` is used by runtime teardown and may also be called
+  explicitly. It reclaims only size classes with no outstanding allocations;
+  live classes remain valid until their last block is released and a later
+  shutdown retries reclamation.
 - `rt_pool_stats(class_idx, &allocated, &free)` provides per-class diagnostics.
 
 ---
@@ -259,7 +268,9 @@ external references — but it is always safe.
 
 ### Registration
 
-Objects must be **explicitly registered** for cycle collection:
+Objects must be **explicitly registered** for cycle collection. Reference-bearing
+heap arrays (`RT_ELEM_OBJ` and `RT_ELEM_BOX`) are registered transactionally by
+`rt_heap_alloc()` before their payload is returned:
 
 ```c
 rt_gc_track(obj, traverse_fn);   // Register as potentially cyclic
@@ -267,7 +278,8 @@ rt_gc_untrack(obj);              // Remove before manual free
 rt_gc_is_tracked(obj);           // Query tracking status
 ```
 
-`rt_gc_track` accepts heap objects only. Passing a string, array, stale pointer,
+`rt_gc_track` accepts heap objects and reference-bearing arrays. Passing a string,
+primitive array, stale pointer,
 or non-runtime payload traps instead of registering a value the collector cannot
 traverse or reclaim safely.
 
@@ -276,11 +288,12 @@ object by calling `visitor(child, ctx)` for each one.
 
 ### Triggering
 
-By default the collector does not run automatically. It can be triggered explicitly, or by setting an allocation threshold via `rt_gc_set_threshold(n)` (default 0 = disabled; negative values are clamped to 0). At program shutdown, `rt_gc_run_all_finalizers()` runs the finalizers for currently tracked objects without performing a cycle-collection pass.
+By default the collector does not run automatically. It can be triggered explicitly, or by setting an allocation threshold via `rt_gc_set_threshold(n)` (default 0 = disabled; negative values are clamped to 0). Crossing the threshold records coalescing allocation debt; it does not collect from inside `rt_heap_alloc()`. The VM services that debt after a native runtime call has completed, and native integrations can call `rt_gc_safepoint()` at an equivalent fully initialized boundary. At program shutdown, `rt_gc_run_all_finalizers()` uses an allocation-free epoch walk to run finalizers for currently tracked objects without performing a cycle-collection pass.
 
 ```c
 int64_t freed = rt_gc_collect();  // Run one collection pass
-rt_gc_set_threshold(1000);        // Auto-collect every 1000 allocations
+rt_gc_set_threshold(1000);        // Request collection after 1000 allocations
+rt_gc_safepoint();                // Service coalesced debt at a safe boundary
 ```
 
 Exposed to Zanna programs as `Zanna.Runtime.GC.Collect()`,
@@ -289,11 +302,22 @@ remains available for source and IL compatibility.
 
 ### Thread Safety
 
-The GC state (tracked-object table, weak reference registry) is protected by a
-global mutex (`pthread_mutex_t` on Unix, `CRITICAL_SECTION` on Windows).
-Finalizers and traversal callbacks run outside the lock to avoid deadlocks, and
-an active collection flag makes reentrant `rt_gc_collect()` calls return 0 while
-a pass is still reclaiming objects.
+The tracked-object table and weak-reference registry are protected by a global
+mutex (`pthread_mutex_t` on Unix, `CRITICAL_SECTION` on Windows). A separate
+managed-graph reader/writer barrier coordinates those tables with object
+reference counts and container slots. Retain/release and structural mutators
+enter a shared scope; a collection holds the exclusive scope while it snapshots,
+traverses, and performs trial deletion. Other runtime threads can mutate the
+graph concurrently with one another, but pause at this barrier during a
+synchronous pass.
+
+Finalizers and traversal callbacks run without the bookkeeping mutex to avoid
+callback deadlocks. Collection traversal still owns the exclusive graph scope,
+so a callback never enumerates storage that another mutator is resizing or
+freeing. Shared scopes nest per thread, and collection requested from inside a
+mutator is deferred to the next safe boundary instead of attempting an unsafe
+lock upgrade. An active collection flag makes reentrant `rt_gc_collect()` calls
+return 0 while a pass is still reclaiming objects.
 If a trap occurs during collection after the active flag is set, temporary
 collector state is released, retained snapshot entries are balanced, and the
 active-collection flag is cleared before the trap is re-raised so later
@@ -645,7 +669,8 @@ degrade with thousands of tracked objects.
 | Create weak ref | `rt_weakref_new(target)` | Does NOT retain target |
 | Read weak ref | `rt_weakref_get(ref)` | Returns NULL if target freed |
 | Track for GC | `rt_gc_track(obj, traverse_fn)` | Required for cycle detection |
-| Collect cycles | `rt_gc_collect()` | Synchronous; returns count freed |
+| Collect cycles | `rt_gc_collect()` | Explicit and synchronous; returns count freed |
+| Service allocation debt | `rt_gc_safepoint()` | Runs at most one coalesced automatic pass outside allocator construction |
 | Intern string | `rt_string_intern(s)` | Returns canonical pointer |
 | Mark disposed | `rt_heap_mark_disposed(p)` | Debug aid; atomic flag |
 | Pool stats | `rt_pool_stats(class, &alloc, &free)` | Per-class diagnostics |

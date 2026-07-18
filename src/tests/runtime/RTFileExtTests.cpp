@@ -9,10 +9,13 @@
 // Purpose: Validate runtime file operations in rt_file_ext.c.
 // Key invariants: File operations work correctly across platforms,
 //                 ReadBytes/WriteBytes handle binary data correctly,
-//                 ReadLines/WriteLines preserve line structure.
+//                 ReadLines/WriteLines preserve line structure, and atomic
+//                 overwrites preserve existing file permissions.
 // Ownership/Lifetime: Uses runtime library; tests return newly allocated
 //                     strings and objects that must be released.
-// Links: docs/zannalib.md
+// Links: src/runtime/io/rt_file_ext.c, docs/zannalib/io/files.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
 #include "rt_bytes.h"
@@ -26,9 +29,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <thread>
 #include <vector>
-#include <ctime>
 
 #include "tests/common/PosixCompat.h"
 #ifdef _WIN32
@@ -673,8 +676,7 @@ static void test_write_all_bytes_invalid_data_traps() {
     rt_string path = rt_const_cstr(file_path);
     remove_file(file_path);
 
-    FakeBytes *bad =
-        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    FakeBytes *bad = static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
     bad->len = 1;
     bad->data = nullptr;
 
@@ -931,6 +933,38 @@ static void test_copy_preserves_posix_metadata() {
     remove_file(dst_path);
     printf("\n");
 }
+
+/// @brief Verify atomic text and line replacement preserves POSIX mode bits.
+/// @details Both the buffered atomic helper and the streaming WriteLines path
+///          replace the destination inode, so each must explicitly copy the
+///          existing permission mode to its staged sidecar before rename.
+static void test_atomic_overwrite_preserves_posix_mode() {
+    printf("Testing atomic overwrite mode preservation:\n");
+
+    const char *base = get_test_base();
+    char path[512];
+    snprintf(path, sizeof(path), "%s_atomic_mode.txt", base);
+    remove_file(path);
+    create_test_file(path, "old contents");
+    assert(chmod(path, 0600) == 0);
+
+    rt_io_file_write_all_text(rt_const_cstr(path), rt_const_cstr("new contents"));
+    struct stat st;
+    assert(stat(path, &st) == 0);
+    test_result("WriteAllText preserves 0600", (st.st_mode & 0777) == 0600);
+
+    assert(chmod(path, 0640) == 0);
+    void *lines = rt_seq_new();
+    rt_seq_push(lines, rt_const_cstr("one line"));
+    rt_file_write_lines(rt_const_cstr(path), lines);
+    assert(stat(path, &st) == 0);
+    test_result("WriteLines preserves 0640", (st.st_mode & 0777) == 0640);
+    if (rt_obj_release_check0(lines))
+        rt_obj_free(lines);
+
+    remove_file(path);
+    printf("\n");
+}
 #endif
 
 /// @brief Entry point for file extension tests.
@@ -964,6 +998,7 @@ int main() {
     test_nonexistent();
 #ifndef _WIN32
     test_copy_preserves_posix_metadata();
+    test_atomic_overwrite_preserves_posix_mode();
 #endif
 
     printf("All file extension tests passed!\n");

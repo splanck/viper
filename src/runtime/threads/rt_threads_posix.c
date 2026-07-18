@@ -11,6 +11,14 @@
 //   Compiled on non-_WIN32; Windows uses rt_threads_win.c. Shared model in
 //   rt_threads_internal.h.
 //
+// Key invariants:
+//   - Exactly one successful join or detach operation claims each pthread.
+//   - A child adopts its reserved runtime-context binding before invoking the
+//     callback and unbinds it before publishing completion.
+// Ownership/Lifetime:
+//   - The thread inner object owns pthread state and retained construction data
+//     until join/detach cleanup; the callback argument itself is borrowed.
+//
 // Links: rt_threads_internal.h, rt_threads_win.c, rt_threads_common.c, rt_threads.h
 //
 //===----------------------------------------------------------------------===//
@@ -70,7 +78,7 @@ typedef struct RtThread {
     pthread_t pthread;          ///< OS thread handle.
     int finished;               ///< 1 when thread has completed.
     int joined;                 ///< Reserved for ABI/debug compatibility; joins are repeatable.
-    int detached;               ///< 1 once pthread_detach has succeeded for the native handle.
+    int detached_state;         ///< Atomic 0=unclaimed, 1=detach in progress, 2=detached.
     int64_t id;                 ///< Unique thread identifier.
     RtContext *inherited_ctx;   ///< Parent's runtime context.
     rt_thread_entry_fn entry;   ///< User's entry function.
@@ -111,6 +119,42 @@ static void rt_thread_release_owned_arg(RtThread *t) {
         rt_obj_free(t->arg);
     t->arg = NULL;
     t->owns_arg = 0;
+}
+
+/// @brief Claim and perform the one allowed native detach operation.
+/// @details A compare-and-swap publishes ownership before `pthread_detach` is
+///          called, closing the race where both the creator and a fast worker
+///          detached the same pthread. A worker may wait for the creator's
+///          in-flight attempt; if that attempt fails and restores the
+///          unclaimed state, the worker retries with its own handle.
+/// @param t Runtime thread record whose detach state is updated atomically.
+/// @param native_thread Native pthread handle to detach.
+/// @param wait_for_owner Non-zero when an in-flight owner must be allowed to
+///        finish; zero for a non-blocking creator/finalizer attempt.
+/// @return Non-zero if the handle is detached, otherwise zero.
+static int rt_thread_ensure_detached(RtThread *t, pthread_t native_thread, int wait_for_owner) {
+    if (!t)
+        return 0;
+    for (;;) {
+        int state = __atomic_load_n(&t->detached_state, __ATOMIC_ACQUIRE);
+        if (state == 2)
+            return 1;
+        if (state == 1) {
+            if (!wait_for_owner)
+                return 0;
+            sched_yield();
+            continue;
+        }
+
+        int expected = 0;
+        if (!__atomic_compare_exchange_n(
+                &t->detached_state, &expected, 1, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+            continue;
+
+        const int rc = pthread_detach(native_thread);
+        __atomic_store_n(&t->detached_state, rc == 0 ? 2 : 0, __ATOMIC_RELEASE);
+        return rc == 0;
+    }
 }
 
 /// @brief Initialise a pthread condvar, preferring `CLOCK_MONOTONIC` if available.
@@ -245,6 +289,7 @@ static void rt_thread_finalize(void *obj) {
     RtThread *t = (RtThread *)obj;
     t->magic = 0;
     rt_thread_release_owned_arg(t);
+    (void)rt_thread_ensure_detached(t, t->pthread, 0);
     (void)pthread_mutex_destroy(&t->mu);
     (void)pthread_cond_destroy(&t->cv);
 }
@@ -262,23 +307,23 @@ static void rt_thread_finalize(void *obj) {
 /// Safe threads install trap recovery in `safe_thread_entry`.
 static void *rt_thread_trampoline(void *p) {
     RtThread *t = (RtThread *)p;
-    if (t && t->inherited_ctx)
-        rt_set_current_context(t->inherited_ctx);
-    if (t && t->entry)
+    int context_adopted =
+        t && t->inherited_ctx && rt_context_adopt_reserved_thread_binding(t->inherited_ctx);
+    if (context_adopted && t->entry)
         t->entry(t->arg);
     if (t)
         rt_thread_release_owned_arg(t);
-    rt_set_current_context(NULL);
+    if (context_adopted)
+        rt_set_current_context(NULL);
+    else if (t && t->inherited_ctx)
+        (void)rt_context_cancel_reserved_thread_binding(t->inherited_ctx);
 
     if (t) {
         pthread_mutex_lock(&t->mu);
         t->finished = 1;
         pthread_cond_broadcast(&t->cv);
-        if (!t->detached) {
-            (void)pthread_detach(pthread_self());
-            t->detached = 1;
-        }
         pthread_mutex_unlock(&t->mu);
+        (void)rt_thread_ensure_detached(t, pthread_self(), 1);
         if (rt_obj_release_check0(t))
             rt_obj_free(t);
     }
@@ -343,7 +388,7 @@ static RtThread *require_thread(void *thread, const char *what) {
 ///
 /// @see rt_thread_join For waiting for thread completion
 /// @see rt_thread_get_id For getting the thread's unique ID
-static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
+static void *rt_thread_start_impl(rt_thread_entry_fn entry, void *arg, int8_t retain_arg) {
     if (!entry)
         rt_trap("Thread.Start: null entry");
     if (!entry)
@@ -352,6 +397,8 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
         ctx = rt_legacy_context();
+    if (!ctx)
+        return NULL;
 
     RtThread *t = (RtThread *)rt_obj_new_i64(RT_THREAD_CLASS_ID, (int64_t)sizeof(RtThread));
     if (!t)
@@ -375,50 +422,70 @@ static void *rt_thread_start_impl(void *entry, void *arg, int8_t retain_arg) {
 
     t->finished = 0;
     t->joined = 0;
-    t->detached = 0;
+    t->detached_state = 0;
     t->magic = RT_THREAD_MAGIC;
     t->id = next_thread_id();
     t->inherited_ctx = ctx;
-    t->entry = (rt_thread_entry_fn)entry;
+    t->entry = entry;
     t->arg = arg;
     t->owns_arg = 0;
     rt_obj_set_finalizer(t, rt_thread_finalize);
     if (retain_arg && arg) {
-        thread_retain_owned_arg_or_release(arg, t, "Thread.StartOwned: arg retain failed");
+        if (!thread_try_retain_owned_value(arg, "Thread.StartOwned: arg retain failed")) {
+            thread_release_object(t);
+            return NULL;
+        }
         t->owns_arg = 1;
     }
 
     // Hold a self-reference until the thread exits.
-    thread_retain_self_or_release(t, "Thread.Start: self retain failed");
+    if (!thread_try_retain_self(t, "Thread.Start: self retain failed")) {
+        thread_release_object(t);
+        return NULL;
+    }
+
+    /* Reserve the inherited context before pthread_create can publish a
+       runnable child. The child consumes this exact count in its trampoline;
+       native creation failure cancels it below. */
+    if (!rt_context_reserve_thread_binding(ctx)) {
+        thread_release_object(t);
+        thread_release_object(t);
+        return NULL;
+    }
 
     if (pthread_create(&t->pthread, NULL, rt_thread_trampoline, t) != 0) {
         // Drop thread self-reference and the caller-visible reference, then trap.
+        (void)rt_context_cancel_reserved_thread_binding(ctx);
         thread_release_object(t);
         thread_release_object(t);
         rt_trap("Thread.Start: failed to create thread");
         return NULL;
     }
 
-    // Detach so OS resources are reclaimed even if the thread is never joined. If the initial
-    // detach fails, the worker retries by detaching itself immediately before it exits.
-    {
-        const int detach_rc = pthread_detach(t->pthread);
-        pthread_mutex_lock(&t->mu);
-        if (detach_rc == 0)
-            t->detached = 1;
-        pthread_mutex_unlock(&t->mu);
-    }
+    // The worker waits for this detach claim if it exits concurrently and
+    // retries itself when the native call fails.
+    (void)rt_thread_ensure_detached(t, t->pthread, 0);
     return t;
+}
+
+/// @brief POSIX typed `Thread.Start` implementation for native callers.
+void *rt_thread_start_fn(rt_thread_entry_fn entry, void *arg) {
+    return rt_thread_start_impl(entry, arg, 0);
+}
+
+/// @brief POSIX typed `Thread.StartOwned` implementation for native callers.
+void *rt_thread_start_owned_fn(rt_thread_entry_fn entry, void *arg) {
+    return rt_thread_start_impl(entry, arg, 1);
 }
 
 /// @brief POSIX `Thread.Start` — see Win32 version above for semantics.
 void *rt_thread_start(void *entry, void *arg) {
-    return rt_thread_start_impl(entry, arg, 0);
+    return rt_thread_start_fn(thread_entry_from_opaque(entry), arg);
 }
 
 /// @brief POSIX `Thread.StartOwned` — see Win32 version above.
 void *rt_thread_start_owned(void *entry, void *arg) {
-    return rt_thread_start_impl(entry, arg, 1);
+    return rt_thread_start_owned_fn(thread_entry_from_opaque(entry), arg);
 }
 
 /// @brief Waits indefinitely for a thread to complete.

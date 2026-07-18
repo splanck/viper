@@ -306,9 +306,12 @@ void *rt_defaultmap_get(void *map, rt_string key) {
 void rt_defaultmap_set(void *map, rt_string key, void *value) {
     if (!map)
         return;
+    rt_gc_mutator_enter();
     rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Set: invalid DefaultMap object");
-    if (!m)
+    if (!m) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     size_t klen;
     const char *kstr = dm_key_data(key, &klen);
@@ -319,8 +322,10 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
         if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0) {
             if (value)
                 rt_obj_retain_maybe(value);
-            dm_release_value(e->value);
+            void *old_value = e->value;
             e->value = value;
+            dm_release_value(old_value);
+            rt_gc_mutator_exit();
             return;
         }
         e = e->next;
@@ -328,8 +333,10 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
 
     // Resize check
     if (dm_should_resize(m)) {
-        if (!dm_resize(m))
+        if (!dm_resize(m)) {
+            rt_gc_mutator_exit();
             return;
+        }
         idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     }
 
@@ -340,12 +347,14 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
     rt_dm_entry *ne = (rt_dm_entry *)calloc(1, sizeof(rt_dm_entry));
     if (!ne) {
         dm_release_value(value);
+        rt_gc_mutator_exit();
         rt_trap("rt_defaultmap: memory allocation failed");
         return;
     }
     if (klen == SIZE_MAX) {
         dm_release_value(value);
         free(ne);
+        rt_gc_mutator_exit();
         rt_trap("rt_defaultmap: key allocation overflow");
         return;
     }
@@ -353,6 +362,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
     if (!ne->key) {
         dm_release_value(value);
         free(ne);
+        rt_gc_mutator_exit();
         rt_trap("rt_defaultmap: memory allocation failed");
         return;
     }
@@ -363,6 +373,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value) {
     ne->next = m->buckets[idx];
     m->buckets[idx] = ne;
     m->count++;
+    rt_gc_mutator_exit();
 }
 
 // ---------------------------------------------------------------------------
@@ -398,7 +409,12 @@ int8_t rt_defaultmap_has(void *map, rt_string key) {
 int8_t rt_defaultmap_remove(void *map, rt_string key) {
     if (!map)
         return 0;
+    rt_gc_mutator_enter();
     rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Remove: invalid DefaultMap object");
+    if (!m) {
+        rt_gc_mutator_exit();
+        return 0;
+    }
 
     size_t klen;
     const char *kstr = dm_key_data(key, &klen);
@@ -413,10 +429,12 @@ int8_t rt_defaultmap_remove(void *map, rt_string key) {
             dm_release_value(e->value);
             free(e);
             m->count--;
+            rt_gc_mutator_exit();
             return 1;
         }
         pp = &e->next;
     }
+    rt_gc_mutator_exit();
     return 0;
 }
 
@@ -460,10 +478,16 @@ void *rt_defaultmap_get_default(void *map) {
 void rt_defaultmap_clear(void *map) {
     if (!map)
         return;
+    rt_gc_mutator_enter();
     rt_defaultmap_impl *m = as_defaultmap(map, "DefaultMap.Clear: invalid DefaultMap object");
+    if (!m) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     for (int64_t i = 0; i < m->capacity; i++) {
         rt_dm_entry *e = m->buckets[i];
+        m->buckets[i] = NULL;
         while (e) {
             rt_dm_entry *next = e->next;
             free(e->key);
@@ -471,9 +495,9 @@ void rt_defaultmap_clear(void *map) {
             free(e);
             e = next;
         }
-        m->buckets[i] = NULL;
     }
     m->count = 0;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Check whether the default map contains no entries.

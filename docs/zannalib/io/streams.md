@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-15
+last-verified: 2026-07-17
 ---
 
 # Streams & Buffers
@@ -69,7 +69,14 @@ Unified stream abstraction providing a common interface over file and memory str
 
 All operations except `Close()` trap on a null or already-closed stream. `FromBinFile` and `FromMemStream` require an object of the matching runtime class. `Write(bytes)` traps when `bytes` is null, `WriteByte(value)` traps outside `0..255`, and `Read(count)` traps when `count` is negative. Setting `Pos` traps if the underlying file seek fails. This avoids silent reads from or writes to invalid backing objects.
 
-`Read(count)` is a short-read API for both file-backed and memory-backed streams: if fewer than `count` bytes remain, it returns a `Bytes` object containing only the available bytes instead of trapping.
+`Read(count)` is a short-read API for both file-backed and memory-backed streams: if fewer than
+`count` bytes remain, it returns a `Bytes` object containing only the available bytes instead of
+trapping. The runtime measures the current position and length first and clamps the allocation to
+that remainder. An arbitrarily large requested count near EOF therefore cannot force an equally
+large speculative allocation. A file can still change after the size snapshot, so the returned
+object is right-sized again to the host read's actual byte count.
+
+All Stream, BinFile, and MemStream receivers are validated as complete managed objects before their private fields are accessed. Constructor ownership is transactional: if allocation fails after a native file or backing object has been created, that resource is closed or released before the trap propagates. File short reads also keep the temporary `Bytes` buffer owned across backing-read and right-sizing allocations. As with ordinary buffered I/O, a file cursor can already have advanced if a later result-allocation step fails.
 
 `AsBinFile()` is valid only on file-backed streams. `AsMemStream()` and `ToBytes()` are valid only on memory-backed streams. Calling one of these conversion methods on the wrong backing type traps instead of returning null.
 
@@ -245,7 +252,7 @@ In-memory binary stream for reading and writing raw bytes with auto-expanding bu
 | `ReadStr(n)`      | String  | Read exactly n raw bytes into a String (no prefix) |
 | `WriteStr(s)`     | void    | Write the String's raw bytes (no prefix or terminator) |
 | `ToBytes()`       | Bytes   | Copy all data to a new Bytes object              |
-| `Clear()`         | void    | Reset stream to empty state (Pos=0, Len=0)       |
+| `Clear()`         | void    | Reset Pos and Length to zero while retaining capacity for reuse |
 | `Seek(pos)`       | void    | Set position absolutely                          |
 | `Skip(n)`         | void    | Move position by n bytes; negative values move backward |
 
@@ -257,12 +264,23 @@ All multi-byte integers and floats use **little-endian** byte order, independent
 
 - **Auto-expansion:** Writing beyond current capacity automatically grows the buffer
 - **Lazy default allocation:** `New()` reports `Capacity = 0`; its first non-empty write allocates
-  at least 64 bytes. `NewCapacity(n)` preallocates exactly `n` bytes for positive `n`.
+  at least 64 bytes. `NewCapacity(n)` preallocates at least `n` bytes and rounds positive requests
+  below 64 up to the 64-byte minimum growth quantum.
+- **Efficient reserve:** Capacity growth does not initialize bytes that remain outside `Length`;
+  only a gap made observable by a sparse write is zero-filled.
+- **Efficient clear:** `Clear()` retains the existing buffer and does not wipe bytes outside the
+  new zero length. Those bytes are unobservable; a later sparse write zero-fills the newly exposed
+  gap before it becomes part of `Length`.
 - **Gap filling:** Writing past the current length fills the gap with zeros
 - **Sparse cursor:** `Pos`, `Seek`, and positive `Skip` may move beyond `Length`; the next write zero-fills the gap. Reads there trap.
 - **Read traps:** Reading past the end of data traps with an error
 - **Overflow traps:** `Seek`, `Skip`, and writes that would overflow the signed 64-bit position or addressable capacity trap instead of wrapping.
 - **Input validation:** `NewCapacity()` traps on negative capacities, `FromBytes()` and `WriteBytes()` require a `Bytes` object, fixed-width integer writes trap outside their representable range, and `WriteStr()` requires a valid runtime string. Use an empty string to encode zero bytes.
+- **Portable signed encoding:** Signed reads reconstruct two's-complement values mathematically,
+  and signed writes shift unsigned bit patterns. Results do not depend on host signed-shift or
+  unsigned-to-signed conversion behavior.
+- **Concurrency:** A MemStream has one mutable cursor and is not internally synchronized. Do not
+  read, write, seek, or close the same instance concurrently without external serialization.
 
 ### Zia Example
 
@@ -453,7 +471,9 @@ LineReader automatically handles all common line ending formats:
 | `PeekChar()` | Integer | View next character without consuming (0-255 or -1)          |
 | `ReadAll()`  | String  | Read all remaining content as a string                       |
 
-`Read()` marks `Eof` immediately after returning the final line when the file ends with a line terminator, so loops do not need one extra read to discover EOF. Because an empty line and EOF both produce `""`, use `PeekChar() >= 0` when that distinction matters. A single line is capped at 256 MiB. `ReadAll()` traps if the remaining byte count cannot be represented by the host allocation size.
+`Read()` marks `Eof` immediately after returning the final line when the file ends with a line terminator, so loops do not need one extra read to discover EOF. Because an empty line and EOF both produce `""`, use `PeekChar() >= 0` when that distinction matters. A single line is capped at 256 MiB. `ReadAll()` begins at the logical current cursor, includes a byte previously cached by `PeekChar()`, and advances to EOF; it never rewinds and rereads content already consumed. It traps if the remaining byte count cannot be represented by the host allocation size.
+
+Open keeps cleanup ownership of the native file until the managed LineReader is published. `Read()` and `ReadAll()` likewise own their temporary byte buffers across runtime-string construction, so a recoverable allocation trap cannot leak either resource. A LineReader has one shared cursor/peek state and must be externally serialized if referenced from multiple threads.
 
 ### Zia Example
 
@@ -574,6 +594,8 @@ Buffered text file writer with configurable line endings.
 | Unix/Linux/macOS | `\n` (LF)       |
 
 `LineWriter` writes the `NewLine` bytes exactly as configured. On Windows it opens files in binary mode, so `\r\n` is written once and custom newline strings are not altered by CRT text translation.
+
+Open and Append close the native file and release the default newline if managed wrapper allocation fails. Assigning `NewLine` is transactional: the replacement is retained or allocated before the previous value is released, so an allocation trap preserves the old separator. String byte lengths are checked for host `size_t` representability before stdio calls, including 32-bit hosts. A LineWriter is not internally synchronized; concurrent writes, newline changes, flushes, and close require external serialization.
 
 ### Zia Example
 

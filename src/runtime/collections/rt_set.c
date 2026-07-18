@@ -194,15 +194,21 @@ int8_t rt_set_is_empty(void *obj) {
 int8_t rt_set_add(void *obj, void *elem) {
     if (!obj)
         return 0;
+    rt_gc_mutator_enter();
     rt_set_impl *set = as_set(obj, "Set.Add: invalid Set object");
-    if (!set || !set->buckets || set->capacity == 0)
+    if (!set || !set->buckets || set->capacity == 0) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     size_t idx = rt_box_hash(elem) % set->capacity;
-    if (find_entry(set->buckets[idx], elem))
+    if (find_entry(set->buckets[idx], elem)) {
+        rt_gc_mutator_exit();
         return 0; // Already exists
+    }
 
     if (set->count == SIZE_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Set.Add: maximum size reached");
         return 0;
     }
@@ -210,8 +216,10 @@ int8_t rt_set_add(void *obj, void *elem) {
     // Check load factor and resize if needed
     if ((long double)set->count * (long double)SET_LOAD_FACTOR_DEN >=
         (long double)set->capacity * (long double)SET_LOAD_FACTOR_NUM) {
-        if (!resize_set(set))
+        if (!resize_set(set)) {
+            rt_gc_mutator_exit();
             return 0;
+        }
     }
 
     idx = rt_box_hash(elem) % set->capacity;
@@ -223,6 +231,7 @@ int8_t rt_set_add(void *obj, void *elem) {
     if (!entry) {
         if (elem && rt_obj_release_check0(elem))
             rt_obj_free(elem);
+        rt_gc_mutator_exit();
         rt_trap("Set.Add: memory allocation failed");
         return 0;
     }
@@ -232,6 +241,7 @@ int8_t rt_set_add(void *obj, void *elem) {
     set->buckets[idx] = entry;
     set->count++;
 
+    rt_gc_mutator_exit();
     return 1;
 }
 
@@ -239,9 +249,12 @@ int8_t rt_set_add(void *obj, void *elem) {
 int8_t rt_set_remove(void *obj, void *elem) {
     if (!obj)
         return 0;
+    rt_gc_mutator_enter();
     rt_set_impl *set = as_set(obj, "Set.Remove: invalid Set object");
-    if (!set || !set->buckets || set->capacity == 0)
+    if (!set || !set->buckets || set->capacity == 0) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     size_t idx = rt_box_hash(elem) % set->capacity;
 
@@ -259,10 +272,12 @@ int8_t rt_set_remove(void *obj, void *elem) {
                 rt_obj_free(e->elem);
             free(e);
             set->count--;
+            rt_gc_mutator_exit();
             return 1;
         }
     }
 
+    rt_gc_mutator_exit();
     return 0;
 }
 
@@ -282,10 +297,16 @@ int8_t rt_set_has(void *obj, void *elem) {
 void rt_set_clear(void *obj) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_set_impl *set = as_set(obj, "Set.Clear: invalid Set object");
+    if (!set) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     for (size_t i = 0; i < set->capacity; ++i) {
         rt_set_entry *e = set->buckets[i];
+        set->buckets[i] = NULL;
         while (e) {
             rt_set_entry *next = e->next;
             if (e->elem && rt_obj_release_check0(e->elem))
@@ -293,9 +314,9 @@ void rt_set_clear(void *obj) {
             free(e);
             e = next;
         }
-        set->buckets[i] = NULL;
     }
     set->count = 0;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Return a Seq containing all elements in bucket-iteration order (not insertion order).

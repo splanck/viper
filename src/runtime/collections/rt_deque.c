@@ -248,23 +248,30 @@ int8_t rt_deque_is_empty(void *obj) {
 void rt_deque_push_front(void *obj, void *elem) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
 
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (d->len >= INT64_MAX) {
+        rt_gc_mutator_exit();
         trap_with_message("Deque: maximum capacity reached");
         return;
     }
-    if (!ensure_capacity(d, d->len + 1))
+    if (!ensure_capacity(d, d->len + 1)) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     rt_obj_retain_maybe(elem);
     // Move front pointer backward (with wrap-around)
     d->front = (d->front - 1 + d->cap) % d->cap;
     d->data[d->front] = elem;
     d->len++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Removes and returns the front element.
@@ -276,20 +283,25 @@ void *rt_deque_pop_front(void *obj) {
         trap_with_message("PopFront called on NULL deque");
         return NULL;
     }
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
     if (d->len == 0) {
+        rt_gc_mutator_exit();
         trap_with_message("PopFront called on empty deque");
         return NULL;
     }
 
     void *val = d->data[d->front];
     rt_obj_retain_maybe(val);
-    deque_release_value(d->data[d->front]);
     d->data[d->front] = NULL;
     d->front = (d->front + 1) % d->cap;
     d->len--;
+    deque_release_value(val);
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -302,16 +314,21 @@ void *rt_deque_peek_front(void *obj) {
         trap_with_message("PeekFront called on NULL deque");
         return NULL;
     }
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
     if (d->len == 0) {
+        rt_gc_mutator_exit();
         trap_with_message("PeekFront called on empty deque");
         return NULL;
     }
 
     void *val = d->data[d->front];
     rt_obj_retain_maybe(val);
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -326,22 +343,29 @@ void *rt_deque_peek_front(void *obj) {
 void rt_deque_push_back(void *obj, void *elem) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
 
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (d->len >= INT64_MAX) {
+        rt_gc_mutator_exit();
         trap_with_message("Deque: maximum capacity reached");
         return;
     }
-    if (!ensure_capacity(d, d->len + 1))
+    if (!ensure_capacity(d, d->len + 1)) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     int64_t back = (d->front + d->len) % d->cap;
     rt_obj_retain_maybe(elem);
     d->data[back] = elem;
     d->len++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Removes and returns the back element.
@@ -353,10 +377,14 @@ void *rt_deque_pop_back(void *obj) {
         trap_with_message("PopBack called on NULL deque");
         return NULL;
     }
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
     if (d->len == 0) {
+        rt_gc_mutator_exit();
         trap_with_message("PopBack called on empty deque");
         return NULL;
     }
@@ -364,9 +392,10 @@ void *rt_deque_pop_back(void *obj) {
     int64_t back = (d->front + d->len - 1) % d->cap;
     void *val = d->data[back];
     rt_obj_retain_maybe(val);
-    deque_release_value(d->data[back]);
     d->data[back] = NULL;
     d->len--;
+    deque_release_value(val);
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -379,10 +408,14 @@ void *rt_deque_peek_back(void *obj) {
         trap_with_message("PeekBack called on NULL deque");
         return NULL;
     }
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
     if (d->len == 0) {
+        rt_gc_mutator_exit();
         trap_with_message("PeekBack called on empty deque");
         return NULL;
     }
@@ -390,6 +423,7 @@ void *rt_deque_peek_back(void *obj) {
     int64_t back = (d->front + d->len - 1) % d->cap;
     void *val = d->data[back];
     rt_obj_retain_maybe(val);
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -407,10 +441,14 @@ void *rt_deque_get(void *obj, int64_t idx) {
         trap_with_message("Get called on NULL deque");
         return NULL;
     }
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
     if (idx < 0 || idx >= d->len) {
+        rt_gc_mutator_exit();
         trap_with_message("Index out of bounds");
         return NULL;
     }
@@ -418,6 +456,7 @@ void *rt_deque_get(void *obj, int64_t idx) {
     int64_t actual = (d->front + idx) % d->cap;
     void *val = d->data[actual];
     rt_obj_retain_maybe(val);
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -431,18 +470,24 @@ void rt_deque_set(void *obj, int64_t idx, void *elem) {
         trap_with_message("Set called on NULL deque");
         return;
     }
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return;
+    }
     if (idx < 0 || idx >= d->len) {
+        rt_gc_mutator_exit();
         trap_with_message("Index out of bounds");
         return;
     }
 
     int64_t actual = (d->front + idx) % d->cap;
     rt_obj_retain_maybe(elem);
-    deque_release_value(d->data[actual]);
+    void *old_elem = d->data[actual];
     d->data[actual] = elem;
+    deque_release_value(old_elem);
+    rt_gc_mutator_exit();
 }
 
 //=============================================================================
@@ -455,16 +500,21 @@ void rt_deque_set(void *obj, int64_t idx, void *elem) {
 void rt_deque_clear(void *obj) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return;
+    }
     for (int64_t i = 0; i < d->len; i++) {
         int64_t idx = (d->front + i) % d->cap;
-        deque_release_value(d->data[idx]);
+        void *old_elem = d->data[idx];
         d->data[idx] = NULL;
+        deque_release_value(old_elem);
     }
     d->len = 0;
     d->front = 0;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Checks whether the deque contains a given pointer value.
@@ -493,11 +543,16 @@ int8_t rt_deque_has(void *obj, void *elem) {
 void rt_deque_reverse(void *obj) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     Deque *d = as_deque(obj, "Deque: invalid Deque object");
-    if (!d)
+    if (!d) {
+        rt_gc_mutator_exit();
         return;
-    if (d->len < 2)
+    }
+    if (d->len < 2) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     for (int64_t i = 0; i < d->len / 2; i++) {
         int64_t front_idx = (d->front + i) % d->cap;
@@ -507,6 +562,7 @@ void rt_deque_reverse(void *obj) {
         d->data[front_idx] = d->data[back_idx];
         d->data[back_idx] = tmp;
     }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Creates a shallow copy of the deque.

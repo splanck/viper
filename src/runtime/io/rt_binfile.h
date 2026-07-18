@@ -38,12 +38,20 @@ typedef enum {
 } rt_seek_origin_t;
 
 /// @brief Open a binary file for streaming I/O.
+/// @details The path and mode must be valid runtime strings. Supported modes
+///          include `r`/`rb`, `w`/`wb`, `rw`/`r+`/`rb+`/`r+b`, and `a`/`ab`.
+///          If managed-object allocation fails after the native file opens,
+///          the native stream is closed before the allocation trap propagates.
 /// @param path File path as runtime string.
-/// @param mode Mode string: "r", "w", "rw", or "a".
-/// @return BinFile object or NULL on failure.
+/// @param mode Runtime string containing a supported mode.
+/// @return Owned BinFile object; traps and returns NULL on failure.
 void *rt_binfile_open(void *path, void *mode);
 
-/// @brief Return 1 if obj is a BinFile runtime handle.
+/// @brief Determine whether an opaque pointer is a complete BinFile handle.
+/// @details Validation checks heap registration, object kind, class id, and
+///          minimum implementation payload size before any field is accessed.
+/// @param obj Candidate runtime pointer; may be NULL or unrelated.
+/// @return One for a valid BinFile handle, otherwise zero.
 int8_t rt_binfile_is_handle(void *obj);
 
 /// @brief Close the binary file and release resources.

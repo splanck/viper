@@ -47,7 +47,7 @@
 #include "rt_seq.h"
 #include "rt_string.h"
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #ifndef _CRT_RAND_S
 #define _CRT_RAND_S
 #endif
@@ -63,7 +63,7 @@
 #include <string.h>
 #include <time.h>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <io.h>
 #include <windows.h>
 #define PATH_SEP '\\'
@@ -73,6 +73,13 @@
 #include <unistd.h>
 #define PATH_SEP '/'
 #endif
+
+#define RT_ARCHIVE_DEFAULT_MAX_FILE_BYTES (UINT64_C(512) * 1024u * 1024u)
+#define RT_ARCHIVE_HARD_MAX_FILE_BYTES (UINT64_C(2) * 1024u * 1024u * 1024u)
+#define RT_ARCHIVE_DEFAULT_MAX_ENTRY_BYTES (UINT64_C(256) * 1024u * 1024u)
+#define RT_ARCHIVE_HARD_MAX_ENTRY_BYTES (UINT64_C(1) * 1024u * 1024u * 1024u)
+#define RT_ARCHIVE_DEFAULT_MAX_TOTAL_ENTRY_BYTES (UINT64_C(1) * 1024u * 1024u * 1024u)
+#define RT_ARCHIVE_HARD_MAX_TOTAL_ENTRY_BYTES (UINT64_C(4) * 1024u * 1024u * 1024u)
 
 void rt_trap_set_recovery(jmp_buf *buf);
 void rt_trap_clear_recovery(void);
@@ -186,7 +193,7 @@ static const char *archive_entry_name_cstr(rt_string name) {
 /// @brief Internal state for an open ZIP archive (read or write mode).
 
 static rt_archive_t *archive_require(void *obj, const char *context) {
-    if (!obj || rt_obj_class_id(obj) != RT_ARCHIVE_CLASS_ID) {
+    if (!obj || !rt_obj_is_instance(obj, RT_ARCHIVE_CLASS_ID, sizeof(rt_archive_t))) {
         rt_trap(context ? context : "Archive: invalid archive");
         return NULL;
     }
@@ -249,6 +256,80 @@ static void archive_free_entries(rt_archive_t *ar);
 static int archive_require_zip32_size(size_t size, const char *context);
 static int archive_require_zip16_count(int count, const char *context);
 
+/// @brief Parse a positive decimal resource limit and clamp it to an audited hard ceiling.
+/// @details Accepts ASCII digits only and rejects empty/zero values. Arithmetic
+///          saturates at @p hard_limit, so hostile or accidentally enormous
+///          environment strings cannot overflow. No allocation is performed.
+/// @param text Environment variable value to parse.
+/// @param hard_limit Maximum value the parser may return.
+/// @param out Receives the parsed and clamped value on success.
+/// @return One for valid positive decimal input; zero otherwise.
+static int archive_parse_byte_limit(const char *text, uint64_t hard_limit, uint64_t *out) {
+    if (!text || !*text || !out || hard_limit == 0)
+        return 0;
+    uint64_t value = 0;
+    int clamped = 0;
+    for (const char *cursor = text; *cursor; ++cursor) {
+        if (*cursor < '0' || *cursor > '9')
+            return 0;
+        uint64_t digit = (uint64_t)(*cursor - '0');
+        if (!clamped) {
+            if (digit > hard_limit || value > (hard_limit - digit) / 10u) {
+                value = hard_limit;
+                clamped = 1;
+            } else {
+                value = value * 10u + digit;
+            }
+        }
+    }
+    if (value == 0)
+        return 0;
+    *out = value > hard_limit ? hard_limit : value;
+    return 1;
+}
+
+/// @brief Resolve one archive byte ceiling from process configuration.
+/// @details Malformed or absent values use @p default_limit. Valid values may
+///          tune the limit up to @p hard_limit but can never exceed the audited
+///          allocation ceiling. Environment configuration is sampled when an
+///          archive is constructed and then remains stable for that instance.
+/// @param name Environment variable name.
+/// @param default_limit Default ceiling in bytes.
+/// @param hard_limit Absolute upper ceiling in bytes.
+/// @return Effective byte limit.
+static uint64_t archive_configured_byte_limit(const char *name,
+                                              uint64_t default_limit,
+                                              uint64_t hard_limit) {
+    uint64_t parsed = 0;
+    const char *value = name ? getenv(name) : NULL;
+    if (!archive_parse_byte_limit(value, hard_limit, &parsed))
+        return default_limit;
+    return parsed;
+}
+
+/// @brief Return the configured maximum encoded archive file/buffer size.
+/// @details Reads `ZANNA_ARCHIVE_MAX_FILE_BYTES`, falling back to 512 MiB and
+///          clamping all configured values to the 2 GiB audited hard ceiling.
+/// @return Maximum number of encoded bytes accepted by Open or FromBytes.
+static uint64_t archive_max_file_bytes(void) {
+    return archive_configured_byte_limit("ZANNA_ARCHIVE_MAX_FILE_BYTES",
+                                         RT_ARCHIVE_DEFAULT_MAX_FILE_BYTES,
+                                         RT_ARCHIVE_HARD_MAX_FILE_BYTES);
+}
+
+/// @brief Select a user-facing diagnostic for the parser's structured failure reason.
+/// @param ar Archive whose @c parse_error field was set by the parser.
+/// @param invalid_fallback Caller-specific malformed-ZIP diagnostic.
+/// @return Static diagnostic string suitable for @ref rt_trap.
+static const char *archive_parse_failure_message(const rt_archive_t *ar,
+                                                 const char *invalid_fallback) {
+    if (ar && ar->parse_error == ARCHIVE_PARSE_ERROR_OOM)
+        return "Archive: memory allocation failed";
+    if (ar && ar->parse_error == ARCHIVE_PARSE_ERROR_LIMIT)
+        return "Archive: configured resource limit exceeded";
+    return invalid_fallback;
+}
+
 /// @brief Allocate a zero-initialized archive object via the GC heap.
 ///
 /// Hooks `archive_finalize` so that file paths, copied data, and entry
@@ -265,6 +346,21 @@ static rt_archive_t *archive_alloc(void) {
     }
     memset(ar, 0, total);
     ar->fd = -1;
+    ar->rw_lock = archive_rwlock_create();
+    if (!ar->rw_lock) {
+        archive_release_temp_object(ar);
+        rt_trap("Archive: failed to initialize reader-writer lock");
+        return NULL;
+    }
+    ar->max_file_bytes = archive_max_file_bytes();
+    ar->max_entry_bytes = archive_configured_byte_limit("ZANNA_ARCHIVE_MAX_ENTRY_BYTES",
+                                                        RT_ARCHIVE_DEFAULT_MAX_ENTRY_BYTES,
+                                                        RT_ARCHIVE_HARD_MAX_ENTRY_BYTES);
+    ar->max_total_entry_bytes =
+        archive_configured_byte_limit("ZANNA_ARCHIVE_MAX_TOTAL_ENTRY_BYTES",
+                                      RT_ARCHIVE_DEFAULT_MAX_TOTAL_ENTRY_BYTES,
+                                      RT_ARCHIVE_HARD_MAX_TOTAL_ENTRY_BYTES);
+    ar->parse_error = ARCHIVE_PARSE_ERROR_INVALID;
     rt_obj_set_finalizer(ar, archive_finalize);
     return ar;
 }
@@ -321,7 +417,7 @@ static void archive_free_entries(rt_archive_t *ar) {
         return;
     if (ar->entries && ar->entry_count > 0) {
         for (int i = 0; i < ar->entry_count; i++) {
-#ifdef _MSC_VER
+#if RT_COMPILER_MSVC
 #pragma warning(suppress : 6001)
 #endif
             if (ar->entries[i].name)
@@ -331,11 +427,15 @@ static void archive_free_entries(rt_archive_t *ar) {
     if (ar->entries) {
         free(ar->entries);
         ar->entries = NULL;
-        ar->entry_count = 0;
     }
+    ar->entry_count = 0;
+    free(ar->entry_name_slots);
+    ar->entry_name_slots = NULL;
+    ar->entry_name_slot_count = 0;
+    ar->central_offset = 0;
     if (ar->write_entries && ar->write_entry_count > 0) {
         for (int i = 0; i < ar->write_entry_count; i++) {
-#ifdef _MSC_VER
+#if RT_COMPILER_MSVC
 #pragma warning(suppress : 6001)
 #endif
             if (ar->write_entries[i].name)
@@ -345,9 +445,13 @@ static void archive_free_entries(rt_archive_t *ar) {
     if (ar->write_entries) {
         free(ar->write_entries);
         ar->write_entries = NULL;
-        ar->write_entry_count = 0;
-        ar->write_entry_cap = 0;
     }
+    ar->write_entry_count = 0;
+    ar->write_entry_cap = 0;
+    ar->write_total_entry_bytes = 0;
+    free(ar->write_name_slots);
+    ar->write_name_slots = NULL;
+    ar->write_name_slot_count = 0;
 }
 
 /// @brief Free a partially-constructed entry array on parse failure.
@@ -362,7 +466,7 @@ void archive_free_entry_array(zip_entry_t *entries, int count) {
     if (!entries)
         return;
     for (int i = 0; i < count; ++i)
-#ifdef _MSC_VER
+#if RT_COMPILER_MSVC
 #pragma warning(suppress : 6001)
 #endif
         if (entries[i].name)
@@ -395,6 +499,9 @@ static void archive_finalize(void *obj) {
     ar->write_buf = NULL;
     ar->write_len = 0;
     ar->write_cap = 0;
+    void *lock = ar->rw_lock;
+    ar->rw_lock = NULL;
+    archive_rwlock_destroy(lock);
 }
 
 /// @brief Trap if `size` would overflow the 32-bit ZIP size fields.
@@ -442,6 +549,10 @@ static int write_ensure(rt_archive_t *ar, size_t need) {
         return 0;
     }
     size_t required = ar->write_len + need;
+    if ((uint64_t)required > ar->max_file_bytes) {
+        rt_trap("Archive: encoded output exceeds configured resource limit");
+        return 0;
+    }
     if (required <= ar->write_cap)
         return 1;
 
@@ -453,6 +564,8 @@ static int write_ensure(rt_archive_t *ar, size_t need) {
         }
         new_cap *= 2;
     }
+    if ((uint64_t)new_cap > ar->max_file_bytes)
+        new_cap = required;
     uint8_t *new_buf = (uint8_t *)realloc(ar->write_buf, new_cap);
     if (!new_buf) {
         rt_trap("Archive: memory allocation failed");
@@ -469,10 +582,104 @@ static int write_ensure(rt_archive_t *ar, size_t need) {
 /// only path for appending bytes during archive construction so the
 /// growth policy is centralized.
 static int write_bytes(rt_archive_t *ar, const uint8_t *data, size_t len) {
+    if (len > 0 && !data) {
+        rt_trap("Archive: invalid write source");
+        return 0;
+    }
     if (!write_ensure(ar, len))
         return 0;
-    memcpy(ar->write_buf + ar->write_len, data, len);
+    if (len > 0)
+        memcpy(ar->write_buf + ar->write_len, data, len);
     ar->write_len += len;
+    return 1;
+}
+
+/// @brief Compute the FNV-1a hash used by the write-side archive name index.
+/// @param name Normalized, NUL-terminated entry name.
+/// @return Stable 64-bit hash value.
+static uint64_t archive_write_name_hash(const char *name) {
+    uint64_t hash = UINT64_C(14695981039346656037);
+    const unsigned char *cursor = (const unsigned char *)name;
+    while (cursor && *cursor) {
+        hash ^= (uint64_t)*cursor++;
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+/// @brief Insert an existing write entry into a supplied open-addressed index.
+/// @details Slots encode `entry_index + 1`, leaving zero as the empty marker.
+///          Linear probing compares full names to preserve correctness under
+///          hash collisions and reports duplicates without modifying an
+///          occupied slot.
+/// @param entries Write-entry table containing @p entry_index.
+/// @param slots Zero-initialized slot table.
+/// @param slot_count Power-of-two slot-table capacity.
+/// @param entry_index Entry index to insert.
+/// @return One on insertion; zero for duplicate or malformed/full input.
+static int archive_write_index_insert(zip_entry_t *entries,
+                                      int32_t *slots,
+                                      size_t slot_count,
+                                      int entry_index) {
+    if (!entries || !slots || slot_count == 0 || (slot_count & (slot_count - 1)) != 0 ||
+        entry_index < 0 || !entries[entry_index].name)
+        return 0;
+    size_t slot = (size_t)archive_write_name_hash(entries[entry_index].name) & (slot_count - 1);
+    for (size_t probe = 0; probe < slot_count; ++probe) {
+        int32_t encoded = slots[slot];
+        if (encoded == 0) {
+            slots[slot] = (int32_t)entry_index + 1;
+            return 1;
+        }
+        int existing = encoded - 1;
+        if (existing >= 0 && entries[existing].name &&
+            strcmp(entries[existing].name, entries[entry_index].name) == 0)
+            return 0;
+        slot = (slot + 1) & (slot_count - 1);
+    }
+    return 0;
+}
+
+/// @brief Ensure the writer's name index can hold @p needed_entries at 0.5 load.
+/// @details Rebuilds into a geometrically larger power-of-two table before the
+///          entry array is mutated. Allocation failure leaves the old index
+///          untouched, allowing callers to roll back an Add transaction cleanly.
+/// @param ar Write-mode archive.
+/// @param needed_entries Entry count required after the pending insertion.
+/// @return One when sufficient indexed capacity exists; zero on overflow or OOM.
+static int archive_write_index_ensure(rt_archive_t *ar, int needed_entries) {
+    if (!ar || needed_entries < 0)
+        return 0;
+    if (needed_entries == 0)
+        return 1;
+    if (ar->write_name_slots && ar->write_name_slot_count > 0 &&
+        (size_t)needed_entries <= ar->write_name_slot_count / 2)
+        return 1;
+
+    size_t needed = (size_t)needed_entries;
+    if (needed > SIZE_MAX / 2)
+        return 0;
+    needed *= 2;
+    size_t new_count = 16;
+    while (new_count < needed) {
+        if (new_count > SIZE_MAX / 2)
+            return 0;
+        new_count *= 2;
+    }
+    if (new_count > SIZE_MAX / sizeof(int32_t))
+        return 0;
+    int32_t *new_slots = (int32_t *)calloc(new_count, sizeof(*new_slots));
+    if (!new_slots)
+        return 0;
+    for (int index = 0; index < ar->write_entry_count; ++index) {
+        if (!archive_write_index_insert(ar->write_entries, new_slots, new_count, index)) {
+            free(new_slots);
+            return 0;
+        }
+    }
+    free(ar->write_name_slots);
+    ar->write_name_slots = new_slots;
+    ar->write_name_slot_count = new_count;
     return 1;
 }
 
@@ -490,6 +697,16 @@ static int add_write_entry(rt_archive_t *ar, zip_entry_t *e) {
     if (!archive_require_zip16_count(ar->write_entry_count + 1,
                                      "Archive: ZIP64 archives are not supported"))
         return 0;
+    uint64_t entry_size = (uint64_t)e->uncompressed_size;
+    if (entry_size > ar->max_entry_bytes || entry_size > ar->max_total_entry_bytes ||
+        ar->write_total_entry_bytes > ar->max_total_entry_bytes - entry_size) {
+        rt_trap("Archive: entry data exceeds configured resource limit");
+        return 0;
+    }
+    if (!archive_write_index_ensure(ar, ar->write_entry_count + 1)) {
+        rt_trap("Archive: entry index allocation failed");
+        return 0;
+    }
     if (ar->write_entry_count >= ar->write_entry_cap) {
         if (ar->write_entry_cap > INT_MAX / 2) {
             rt_trap("Archive: entry capacity overflow");
@@ -514,7 +731,16 @@ static int add_write_entry(rt_archive_t *ar, zip_entry_t *e) {
         ar->write_entries = new_entries;
         ar->write_entry_cap = new_cap;
     }
-    ar->write_entries[ar->write_entry_count++] = *e;
+    int new_index = ar->write_entry_count;
+    ar->write_entries[new_index] = *e;
+    if (!archive_write_index_insert(
+            ar->write_entries, ar->write_name_slots, ar->write_name_slot_count, new_index)) {
+        memset(&ar->write_entries[new_index], 0, sizeof(ar->write_entries[new_index]));
+        rt_trap("Archive: duplicate or invalid entry name");
+        return 0;
+    }
+    ar->write_entry_count++;
+    ar->write_total_entry_bytes += entry_size;
     return 1;
 }
 
@@ -522,6 +748,21 @@ static int add_write_entry(rt_archive_t *ar, zip_entry_t *e) {
 static int archive_write_has_entry(rt_archive_t *ar, const char *name) {
     if (!ar || !name)
         return 0;
+    if (ar->write_name_slots && ar->write_name_slot_count > 0 &&
+        (ar->write_name_slot_count & (ar->write_name_slot_count - 1)) == 0) {
+        size_t slot = (size_t)archive_write_name_hash(name) & (ar->write_name_slot_count - 1);
+        for (size_t probe = 0; probe < ar->write_name_slot_count; ++probe) {
+            int32_t encoded = ar->write_name_slots[slot];
+            if (encoded == 0)
+                return 0;
+            int index = encoded - 1;
+            if (index >= 0 && index < ar->write_entry_count && ar->write_entries[index].name &&
+                strcmp(ar->write_entries[index].name, name) == 0)
+                return 1;
+            slot = (slot + 1) & (ar->write_name_slot_count - 1);
+        }
+        return 0;
+    }
     for (int i = 0; i < ar->write_entry_count; ++i) {
         if (ar->write_entries[i].name && strcmp(ar->write_entries[i].name, name) == 0)
             return 1;
@@ -644,11 +885,12 @@ static char *ensure_trailing_slash(char *name) {
 }
 
 /// @brief Insert a pre-boxed value into a map under a C-string key.
-///
-/// Wraps the C string in a const `rt_string` (no allocation), calls
-/// `rt_map_set`, then releases the temporary key string. Convenience
-/// for the `Info` implementation which builds a flat map of boxed
-/// primitives.
+/// @details Wraps the borrowed C string in an immortal runtime-string view and
+///          delegates to @ref rt_map_set, which retains @p boxed on success.
+///          The caller continues to own its original boxed reference. The key
+///          view needs no recovery cleanup because @ref rt_const_cstr returns
+///          an immortal value; this property lets the enclosing Info
+///          transaction reclaim only its map and active box after a trap.
 ///
 /// @param map      Target `rt_map` object.
 /// @param key_cstr Null-terminated key string (borrowed for the call).
@@ -834,7 +1076,7 @@ void *rt_archive_open(rt_string path) {
         return NULL;
 
     // Open and read file
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     HANDLE h = archive_open_win_path(cpath, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
     if (h == INVALID_HANDLE_VALUE) {
         rt_trap("Archive: file not found");
@@ -855,9 +1097,10 @@ void *rt_archive_open(rt_string path) {
         return NULL;
     }
 
-    if (size.QuadPart < 0 || (uint64_t)size.QuadPart > SIZE_MAX) {
+    if (size.QuadPart < 0 || (uint64_t)size.QuadPart > SIZE_MAX ||
+        (uint64_t)size.QuadPart > archive_max_file_bytes()) {
         CloseHandle(h);
-        rt_trap("Archive: file too large");
+        rt_trap("Archive: file exceeds configured resource limit");
         return NULL;
     }
 
@@ -889,9 +1132,10 @@ void *rt_archive_open(rt_string path) {
         return NULL;
     }
 
-    if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX) {
+    if (st.st_size < 0 || (uint64_t)st.st_size > (uint64_t)SIZE_MAX ||
+        (uint64_t)st.st_size > archive_max_file_bytes()) {
         close(fd);
-        rt_trap("Archive: file too large");
+        rt_trap("Archive: file exceeds configured resource limit");
         return NULL;
     }
 
@@ -917,8 +1161,11 @@ void *rt_archive_open(rt_string path) {
         return NULL;
 
     if (!parse_central_directory(ar)) {
+        const char *message = archive_parse_failure_message(ar, "Archive: not a valid ZIP file");
+        char saved_error[128];
+        snprintf(saved_error, sizeof(saved_error), "%s", message);
         archive_release_temp_object(ar);
-        rt_trap("Archive: not a valid ZIP file");
+        rt_trap(saved_error);
         return NULL;
     }
 
@@ -939,7 +1186,7 @@ void *rt_archive_create(rt_string path) {
     if (!cpath || *cpath == '\0')
         return NULL;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     char *probe_tmp = NULL;
     HANDLE h = INVALID_HANDLE_VALUE;
     for (unsigned attempt = 0; attempt < 128; ++attempt) {
@@ -999,7 +1246,7 @@ void *rt_archive_create(rt_string path) {
     if (!archive_retain_path_or_release(ar, path, "Archive: path retain failed"))
         return NULL;
     ar->is_writing = true;
-    ar->write_cap = 4096;
+    ar->write_cap = ar->max_file_bytes < 4096u ? (size_t)ar->max_file_bytes : 4096u;
     ar->write_buf = (uint8_t *)malloc(ar->write_cap);
     if (!ar->write_buf) {
         archive_release_temp_object(ar);
@@ -1036,6 +1283,10 @@ void *rt_archive_from_bytes(void *data) {
         rt_trap("Archive: invalid data");
         return NULL;
     }
+    if ((uint64_t)len > archive_max_file_bytes()) {
+        rt_trap("Archive: data exceeds configured resource limit");
+        return NULL;
+    }
 
     // Copy the data
     uint8_t *copy = NULL;
@@ -1059,8 +1310,11 @@ void *rt_archive_from_bytes(void *data) {
     ar->is_writing = false;
 
     if (!parse_central_directory(ar)) {
+        const char *message = archive_parse_failure_message(ar, "Archive: not a valid ZIP archive");
+        char saved_error[128];
+        snprintf(saved_error, sizeof(saved_error), "%s", message);
         archive_release_temp_object(ar);
-        rt_trap("Archive: not a valid ZIP archive");
+        rt_trap(saved_error);
         return NULL;
     }
 
@@ -1097,45 +1351,67 @@ int64_t rt_archive_count(void *obj) {
     rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar)
         return 0;
-    if (ar->is_writing)
-        return ar->write_entry_count;
-    return ar->entry_count;
+    archive_rwlock_read_enter(ar->rw_lock);
+    int64_t count = ar->is_writing ? ar->write_entry_count : ar->entry_count;
+    archive_rwlock_read_exit(ar->rw_lock);
+    return count;
 }
 
 /// @brief `Archive.Names` — return all entry names as a `seq<str>`.
 ///
-/// Walks the appropriate entry table (read- or write-mode) and pushes
-/// each name as a `const_cstr`-flagged string (cheap, doesn't copy).
-/// Always returns a fresh seq, even for NULL or empty archives, so the
-/// caller can safely iterate.
+/// Snapshots the appropriate entry table (read- or write-mode) under the
+/// archive read lock and copies every name into an independently owned runtime
+/// string. The result therefore remains valid after the Archive is released.
+/// Always returns a fresh seq, even for NULL or empty archives.
 ///
 /// @param obj Archive handle (may be NULL).
 /// @return Owned seq of entry names in archive order.
 void *rt_archive_names(void *obj) {
     rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
-    void *seq = rt_seq_new();
-    if (!seq)
+    void *volatile seq = NULL;
+    volatile rt_string active_name = NULL;
+    volatile int lock_held = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), "Archive: failed to list names");
+        rt_trap_clear_recovery();
+        if (lock_held)
+            archive_rwlock_read_exit(ar->rw_lock);
+        rt_str_release_maybe((rt_string)active_name);
+        archive_release_temp_object((void *)seq);
+        rt_trap(saved_error);
         return NULL;
-    rt_seq_set_owns_elements(seq, 1);
-
-    if (!ar)
-        return seq;
-
-    if (ar->is_writing) {
-        for (int i = 0; i < ar->write_entry_count; i++) {
-            rt_string name = rt_const_cstr(ar->write_entries[i].name);
-            rt_seq_push(seq, name);
-            rt_string_unref(name);
-        }
-    } else {
-        for (int i = 0; i < ar->entry_count; i++) {
-            rt_string name = rt_const_cstr(ar->entries[i].name);
-            rt_seq_push(seq, name);
-            rt_string_unref(name);
-        }
     }
 
-    return seq;
+    seq = rt_seq_new();
+    if (!seq) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    rt_seq_set_owns_elements((void *)seq, 1);
+    if (!ar) {
+        rt_trap_clear_recovery();
+        return (void *)seq;
+    }
+
+    archive_rwlock_read_enter(ar->rw_lock);
+    lock_held = 1;
+    zip_entry_t *entries = ar->is_writing ? ar->write_entries : ar->entries;
+    int count = ar->is_writing ? ar->write_entry_count : ar->entry_count;
+    for (int i = 0; i < count; i++) {
+        const char *entry_name = entries[i].name ? entries[i].name : "";
+        rt_string name = rt_string_from_bytes(entry_name, strlen(entry_name));
+        active_name = name;
+        rt_seq_push((void *)seq, name);
+        rt_string_unref(name);
+        active_name = NULL;
+    }
+    lock_held = 0;
+    archive_rwlock_read_exit(ar->rw_lock);
+    rt_trap_clear_recovery();
+    return (void *)seq;
 }
 
 //=============================================================================
@@ -1245,11 +1521,23 @@ void *rt_archive_read(void *obj, rt_string name) {
 /// @param name Entry name.
 /// @return Owned `rt_string` containing the entry text.
 rt_string rt_archive_read_str(void *obj, rt_string name) {
-    void *data = rt_archive_read(obj, name);
+    void *volatile data = rt_archive_read(obj, name);
     if (!data)
         return rt_str_empty();
-    rt_string result = rt_bytes_to_str(data);
-    archive_release_temp_object(data);
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(
+            saved_error, sizeof(saved_error), "Archive: failed to convert entry to string");
+        rt_trap_clear_recovery();
+        archive_release_temp_object((void *)data);
+        rt_trap(saved_error);
+        return rt_str_empty();
+    }
+    rt_string result = rt_bytes_to_str((void *)data);
+    rt_trap_clear_recovery();
+    archive_release_temp_object((void *)data);
     return result;
 }
 
@@ -1269,11 +1557,23 @@ void rt_archive_extract(void *obj, rt_string name, rt_string dest_path) {
     if (!cpath || *cpath == '\0')
         return;
 
-    void *data = rt_archive_read(obj, name);
+    void *volatile data = rt_archive_read(obj, name);
     if (!data)
         return;
-    archive_write_bytes_to_path(cpath, data);
-    archive_release_temp_object(data);
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(
+            saved_error, sizeof(saved_error), "Archive: failed to extract entry");
+        rt_trap_clear_recovery();
+        archive_release_temp_object((void *)data);
+        rt_trap(saved_error);
+        return;
+    }
+    archive_write_bytes_to_path(cpath, (void *)data);
+    rt_trap_clear_recovery();
+    archive_release_temp_object((void *)data);
 }
 
 /// @brief `Archive.ExtractAll(destDir)` — explode the archive onto disk.
@@ -1309,78 +1609,134 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
     rt_dir_make_all(dest_dir);
     archive_reject_symlink_components(cdir, root_len, 1);
 
-#if !defined(_WIN32)
-    int root_fd = archive_open_root_dir_posix(cdir);
-    if (root_fd < 0)
+    char *volatile active_norm_name = NULL;
+    char *volatile active_full_path = NULL;
+    char *volatile active_leaf = NULL;
+    void *volatile active_data = NULL;
+    volatile rt_string active_runtime_path = NULL;
+#if !RT_PLATFORM_WINDOWS
+    volatile int root_fd = -1;
+    volatile int parent_fd = -1;
+#endif
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(
+            saved_error, sizeof(saved_error), "Archive: failed to extract archive");
+        rt_trap_clear_recovery();
+#if !RT_PLATFORM_WINDOWS
+        if (parent_fd >= 0)
+            close((int)parent_fd);
+        if (root_fd >= 0)
+            close((int)root_fd);
+#endif
+        free((char *)active_leaf);
+        free((char *)active_full_path);
+        free((char *)active_norm_name);
+        rt_str_release_maybe((rt_string)active_runtime_path);
+        archive_release_temp_object((void *)active_data);
+        rt_trap(saved_error);
         return;
+    }
+
+#if !RT_PLATFORM_WINDOWS
+    root_fd = archive_open_root_dir_posix(cdir);
+    if (root_fd < 0) {
+        rt_trap_clear_recovery();
+        return;
+    }
     archive_reject_symlink_components(cdir, root_len, 1);
 
     for (int i = 0; i < ar->entry_count; i++) {
         zip_entry_t *e = &ar->entries[i];
         char *norm_name = NULL;
         name_result_t norm_res = normalize_name(e->name, &norm_name);
+        active_norm_name = norm_name;
         if (norm_res == NAME_INVALID) {
             rt_trap("Archive: invalid entry name");
-            close(root_fd);
+            rt_trap_clear_recovery();
+            close((int)root_fd);
+            free(norm_name);
             return;
         }
         if (norm_res == NAME_OOM) {
             rt_trap("Archive: memory allocation failed");
-            close(root_fd);
+            rt_trap_clear_recovery();
+            close((int)root_fd);
             return;
         }
 
         if (e->is_directory) {
-            archive_make_dirs_posix_at(root_fd, norm_name);
+            archive_make_dirs_posix_at((int)root_fd, norm_name);
         } else {
             char *leaf = NULL;
-            int parent_fd = archive_open_parent_for_file_posix(root_fd, norm_name, &leaf);
-            void *data = read_entry_data(ar, e);
-            if (!data) {
-                if (parent_fd >= 0)
-                    close(parent_fd);
+            parent_fd = archive_open_parent_for_file_posix((int)root_fd, norm_name, &leaf);
+            active_leaf = leaf;
+            if (parent_fd < 0) {
+                rt_trap_clear_recovery();
+                close((int)root_fd);
                 free(leaf);
                 free(norm_name);
-                close(root_fd);
                 return;
             }
-            archive_write_bytes_to_dirfd_posix(parent_fd, leaf, data);
-            archive_release_temp_object(data);
-            close(parent_fd);
+            active_data = read_entry_data(ar, e);
+            if (!active_data) {
+                rt_trap_clear_recovery();
+                close((int)parent_fd);
+                close((int)root_fd);
+                free(leaf);
+                free(norm_name);
+                return;
+            }
+            archive_write_bytes_to_dirfd_posix((int)parent_fd, leaf, (void *)active_data);
+            archive_release_temp_object((void *)active_data);
+            active_data = NULL;
+            close((int)parent_fd);
+            parent_fd = -1;
             free(leaf);
+            active_leaf = NULL;
         }
         free(norm_name);
+        active_norm_name = NULL;
     }
 
-    close(root_fd);
+    close((int)root_fd);
+    root_fd = -1;
+    rt_trap_clear_recovery();
     return;
 #else
     for (int i = 0; i < ar->entry_count; i++) {
         zip_entry_t *e = &ar->entries[i];
-
         char *norm_name = NULL;
         name_result_t norm_res = normalize_name(e->name, &norm_name);
+        active_norm_name = norm_name;
         if (norm_res == NAME_INVALID) {
             rt_trap("Archive: invalid entry name");
+            rt_trap_clear_recovery();
+            free(norm_name);
             return;
         }
         if (norm_res == NAME_OOM) {
             rt_trap("Archive: memory allocation failed");
+            rt_trap_clear_recovery();
             return;
         }
 
-        // Build full path
         size_t name_len = strlen(norm_name);
         if (dir_len > SIZE_MAX - 1 - name_len) {
-            free(norm_name);
             rt_trap("Archive: destination path too long");
+            rt_trap_clear_recovery();
+            free(norm_name);
             return;
         }
         size_t path_len = dir_len + 1 + name_len;
         char *full_path = (char *)malloc(path_len + 1);
+        active_full_path = full_path;
         if (!full_path) {
-            free(norm_name);
             rt_trap("Archive: memory allocation failed");
+            rt_trap_clear_recovery();
+            free(norm_name);
             return;
         }
 
@@ -1388,47 +1744,50 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir) {
         full_path[dir_len] = PATH_SEP;
         memcpy(full_path + dir_len + 1, norm_name, name_len);
         full_path[path_len] = '\0';
-
-        // Convert forward slashes to platform separator
         for (size_t j = dir_len + 1; j < path_len; j++) {
             if (full_path[j] == '/')
                 full_path[j] = PATH_SEP;
         }
 
         if (e->is_directory) {
-            // Create directory
             archive_reject_symlink_components(full_path, root_len, 1);
-            rt_string dir_path = rt_const_cstr(full_path);
-            rt_dir_make_all(dir_path);
-            rt_string_unref(dir_path);
+            active_runtime_path = rt_string_from_bytes(full_path, strlen(full_path));
+            rt_dir_make_all((rt_string)active_runtime_path);
+            rt_string_unref((rt_string)active_runtime_path);
+            active_runtime_path = NULL;
             archive_reject_symlink_components(full_path, root_len, 1);
         } else {
-            // Create parent directory
             char *last_sep = strrchr(full_path, PATH_SEP);
             if (last_sep && last_sep > full_path + dir_len) {
                 *last_sep = '\0';
                 archive_reject_symlink_components(full_path, root_len, 1);
-                rt_string parent = rt_const_cstr(full_path);
-                rt_dir_make_all(parent);
-                rt_string_unref(parent);
+                active_runtime_path = rt_string_from_bytes(full_path, strlen(full_path));
+                rt_dir_make_all((rt_string)active_runtime_path);
+                rt_string_unref((rt_string)active_runtime_path);
+                active_runtime_path = NULL;
                 archive_reject_symlink_components(full_path, root_len, 1);
                 *last_sep = PATH_SEP;
             }
 
             archive_reject_symlink_components(full_path, root_len, 0);
-            void *data = read_entry_data(ar, e);
-            if (!data) {
+            active_data = read_entry_data(ar, e);
+            if (!active_data) {
+                rt_trap_clear_recovery();
                 free(full_path);
                 free(norm_name);
                 return;
             }
-            archive_write_bytes_to_path(full_path, data);
-            archive_release_temp_object(data);
+            archive_write_bytes_to_path(full_path, (void *)active_data);
+            archive_release_temp_object((void *)active_data);
+            active_data = NULL;
         }
 
         free(full_path);
+        active_full_path = NULL;
         free(norm_name);
+        active_norm_name = NULL;
     }
+    rt_trap_clear_recovery();
 #endif
 }
 
@@ -1485,68 +1844,75 @@ void *rt_archive_info(void *obj, rt_string name) {
         return NULL;
     }
 
-    void *map = rt_map_new();
-    if (!map)
+    void *volatile map = NULL;
+    void *volatile boxed = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(
+            saved_error, sizeof(saved_error), "Archive: failed to build entry info");
+        rt_trap_clear_recovery();
+        archive_release_temp_object((void *)boxed);
+        archive_release_temp_object((void *)map);
+        rt_trap(saved_error);
         return NULL;
-    void *boxed;
+    }
 
-    // Add size
+    map = rt_map_new();
+    if (!map) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+
     boxed = rt_box_i64(e->uncompressed_size);
-    archive_map_set_boxed(map, "size", boxed);
-    if (boxed && rt_obj_release_check0(boxed))
-        rt_obj_free(boxed);
+    archive_map_set_boxed((void *)map, "size", (void *)boxed);
+    archive_release_temp_object((void *)boxed);
+    boxed = NULL;
 
-    // Add compressed size
     boxed = rt_box_i64(e->compressed_size);
-    archive_map_set_boxed(map, "compressedSize", boxed);
-    if (boxed && rt_obj_release_check0(boxed))
-        rt_obj_free(boxed);
+    archive_map_set_boxed((void *)map, "compressedSize", (void *)boxed);
+    archive_release_temp_object((void *)boxed);
+    boxed = NULL;
 
     boxed = rt_box_i64((int64_t)e->crc32);
-    archive_map_set_boxed(map, "crc", boxed);
-    if (boxed && rt_obj_release_check0(boxed))
-        rt_obj_free(boxed);
+    archive_map_set_boxed((void *)map, "crc", (void *)boxed);
+    archive_release_temp_object((void *)boxed);
+    boxed = NULL;
 
     boxed = rt_box_i64((int64_t)e->method);
-    archive_map_set_boxed(map, "method", boxed);
-    if (boxed && rt_obj_release_check0(boxed))
-        rt_obj_free(boxed);
+    archive_map_set_boxed((void *)map, "method", (void *)boxed);
+    archive_release_temp_object((void *)boxed);
+    boxed = NULL;
 
     int64_t timestamp = archive_dos_datetime_to_unix(e->mod_time, e->mod_date);
     boxed = rt_box_i64(timestamp);
-    archive_map_set_boxed(map, "modifiedTime", boxed);
-    if (boxed && rt_obj_release_check0(boxed))
-        rt_obj_free(boxed);
+    archive_map_set_boxed((void *)map, "modifiedTime", (void *)boxed);
+    archive_release_temp_object((void *)boxed);
+    boxed = NULL;
 
-    // Add isDirectory
     boxed = rt_box_i1(e->is_directory ? 1 : 0);
-    archive_map_set_boxed(map, "isDirectory", boxed);
-    archive_map_set_boxed(map, "isDir", boxed);
-    if (boxed && rt_obj_release_check0(boxed))
-        rt_obj_free(boxed);
+    archive_map_set_boxed((void *)map, "isDirectory", (void *)boxed);
+    archive_map_set_boxed((void *)map, "isDir", (void *)boxed);
+    archive_release_temp_object((void *)boxed);
+    boxed = NULL;
 
-    return map;
+    rt_trap_clear_recovery();
+    return (void *)map;
 }
 
 //=============================================================================
 // Writing Methods
 //=============================================================================
 
-/// @brief `Archive.Add(name, data)` — append a file entry from a Bytes buffer.
-///
-/// CRC32 is computed over the raw payload. For payloads >64 bytes we
-/// trial-deflate via `rt_compress_deflate` and pick whichever is
-/// smaller (stored vs deflate) — small inputs are always stored to
-/// avoid pathological cases where DEFLATE adds overhead. Local file
-/// header + name + payload are appended to `write_buf`; a matching
-/// `zip_entry_t` is recorded so `Finish` can emit the central directory.
-/// Traps if the archive is read-only, already finished, or the name
-/// is invalid.
-///
-/// @param obj  Archive handle (write mode).
-/// @param name Entry name (will be normalized).
-/// @param data Source `rt_bytes`.
-void rt_archive_add(void *obj, rt_string name, void *data) {
+/// @brief Execute `Archive.Add` while the caller owns the archive write lock.
+/// @details Contains the normalization/compression/transaction logic. Keeping
+///          this separate lets the public wrapper guarantee lock release when
+///          any nested runtime helper performs a recoverable longjmp.
+/// @param obj Valid archive handle already locked exclusively by the caller.
+/// @param name Entry name to normalize and add.
+/// @param data Source Bytes handle.
+static void archive_add_locked(void *obj, rt_string name, void *data) {
     rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar) {
         rt_trap("Archive: NULL archive");
@@ -1603,6 +1969,12 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
     if (raw_len > UINT32_MAX) {
         free(norm_name);
         rt_trap("Archive: ZIP64 entries are not supported");
+        return;
+    }
+    if ((uint64_t)raw_len > ar->max_entry_bytes || (uint64_t)raw_len > ar->max_total_entry_bytes ||
+        ar->write_total_entry_bytes > ar->max_total_entry_bytes - (uint64_t)raw_len) {
+        free(norm_name);
+        rt_trap("Archive: entry data exceeds configured resource limit");
         return;
     }
 
@@ -1709,9 +2081,24 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
     write_u16(local_header + 28, 0); // Extra field length
 
     size_t write_start = ar->write_len;
+    char *volatile norm_name_owner = norm_name;
+    void *volatile compressed_owner = compressed;
+    jmp_buf append_recovery;
+    rt_trap_set_recovery(&append_recovery);
+    if (setjmp(append_recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), "Archive: failed to add entry");
+        rt_trap_clear_recovery();
+        ar->write_len = write_start;
+        free((char *)norm_name_owner);
+        archive_release_temp_object((void *)compressed_owner);
+        rt_trap(saved_error);
+        return;
+    }
     if (!write_bytes(ar, local_header, ZIP_LOCAL_HEADER_SIZE) ||
         !write_bytes(ar, (const uint8_t *)norm_name, name_len) ||
         !write_bytes(ar, write_data, write_len)) {
+        rt_trap_clear_recovery();
         ar->write_len = write_start;
         free(norm_name);
         archive_release_temp_object(compressed);
@@ -1719,12 +2106,45 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
     }
 
     if (!add_write_entry(ar, &e)) {
+        rt_trap_clear_recovery();
         ar->write_len = write_start;
         free(norm_name);
         archive_release_temp_object(compressed);
         return;
     }
+    norm_name_owner = NULL;
+    rt_trap_clear_recovery();
     archive_release_temp_object(compressed);
+}
+
+/// @brief `Archive.Add(name, data)` — append a file entry from a Bytes buffer.
+/// @details CRC32 is computed over the raw payload. Payloads larger than 64
+///          bytes are trial-compressed and use DEFLATE only when it produces a
+///          smaller representation. The exclusive archive lock serializes the
+///          local-header append, metadata/index update, and rollback boundary,
+///          so concurrent callers either add one complete entry or leave no
+///          trace. Any recovered trap is rethrown after releasing the lock.
+/// @param obj Archive handle opened in write mode.
+/// @param name Relative entry name; separators are normalized.
+/// @param data Borrowed Bytes payload retained only for the duration of the call.
+void rt_archive_add(void *obj, rt_string name, void *data) {
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
+    if (!ar)
+        return;
+    archive_rwlock_write_enter(ar->rw_lock);
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(saved_error, sizeof(saved_error), "Archive: failed to add entry");
+        rt_trap_clear_recovery();
+        archive_rwlock_write_exit(ar->rw_lock);
+        rt_trap(saved_error);
+        return;
+    }
+    archive_add_locked(obj, name, data);
+    rt_trap_clear_recovery();
+    archive_rwlock_write_exit(ar->rw_lock);
 }
 
 /// @brief `Archive.AddStr(name, text)` — convenience: store a string entry.
@@ -1736,6 +2156,14 @@ void rt_archive_add(void *obj, rt_string name, void *data) {
 /// @param name Entry name.
 /// @param text String contents.
 void rt_archive_add_str(void *obj, rt_string name, rt_string text) {
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
+    if (!ar)
+        return;
+    int64_t text_len = rt_str_len(text);
+    if (text_len < 0 || (uint64_t)text_len > ar->max_entry_bytes) {
+        rt_trap("Archive: entry data exceeds configured resource limit");
+        return;
+    }
     void *data = rt_bytes_from_str(text);
     archive_add_with_temp_data(obj, name, data, "Archive: failed to add string entry");
 }
@@ -1751,12 +2179,15 @@ void rt_archive_add_str(void *obj, rt_string name, rt_string text) {
 /// @param name     Name to use inside the archive.
 /// @param src_path UTF-8 source file path on disk.
 void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
+    if (!ar)
+        return;
     const char *cpath = archive_require_path(src_path, "Archive: invalid source path");
     if (!cpath || *cpath == '\0')
         return;
 
     // Read file contents
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     HANDLE h = archive_open_win_path(cpath, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
     if (h == INVALID_HANDLE_VALUE) {
         rt_trap("Archive: source file not found");
@@ -1780,6 +2211,11 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
     if (size.QuadPart < 0 || (uint64_t)size.QuadPart > INT64_MAX) {
         CloseHandle(h);
         rt_trap("Archive: source file too large");
+        return;
+    }
+    if ((uint64_t)size.QuadPart > ar->max_entry_bytes) {
+        CloseHandle(h);
+        rt_trap("Archive: entry data exceeds configured resource limit");
         return;
     }
 
@@ -1815,6 +2251,11 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
         rt_trap("Archive: source file too large");
         return;
     }
+    if ((uint64_t)st.st_size > ar->max_entry_bytes) {
+        close(fd);
+        rt_trap("Archive: entry data exceeds configured resource limit");
+        return;
+    }
 
     void *data = archive_bytes_new_posix_or_close(
         fd, (int64_t)st.st_size, "Archive: memory allocation failed");
@@ -1828,17 +2269,13 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
     archive_add_with_temp_data(obj, name, data, "Archive: failed to add file entry");
 }
 
-/// @brief `Archive.AddDir(name)` — record an explicit directory entry.
-///
-/// Most ZIP tools infer directories from file paths, but explicit
-/// directory entries (zero-length, name ending in `/`) are useful for
-/// preserving empty directories. This function appends a stored-method
-/// entry with no payload and a trailing-slash name. Traps if the
-/// archive is read-only or finished.
-///
-/// @param obj  Archive handle.
-/// @param name Directory name (trailing slash added if absent).
-void rt_archive_add_dir(void *obj, rt_string name) {
+/// @brief Execute `Archive.AddDir` while the caller owns the archive write lock.
+/// @details Performs name normalization and a transactional local-record/index
+///          append. The public wrapper provides exclusive synchronization and
+///          releases the native lock before propagating any trap.
+/// @param obj Valid archive handle already locked exclusively by the caller.
+/// @param name Directory name to normalize and append.
+static void archive_add_dir_locked(void *obj, rt_string name) {
     rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar) {
         rt_trap("Archive: NULL archive");
@@ -1930,32 +2367,140 @@ void rt_archive_add_dir(void *obj, rt_string name) {
     write_u16(local_header + 28, 0);
 
     size_t write_start = ar->write_len;
+    char *volatile norm_name_owner = norm_name;
+    jmp_buf append_recovery;
+    rt_trap_set_recovery(&append_recovery);
+    if (setjmp(append_recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(
+            saved_error, sizeof(saved_error), "Archive: failed to add directory entry");
+        rt_trap_clear_recovery();
+        ar->write_len = write_start;
+        free((char *)norm_name_owner);
+        rt_trap(saved_error);
+        return;
+    }
     if (!write_bytes(ar, local_header, ZIP_LOCAL_HEADER_SIZE) ||
         !write_bytes(ar, (const uint8_t *)norm_name, len)) {
+        rt_trap_clear_recovery();
         ar->write_len = write_start;
         free(norm_name);
         return;
     }
 
     if (!add_write_entry(ar, &e)) {
+        rt_trap_clear_recovery();
         ar->write_len = write_start;
         free(norm_name);
         return;
     }
+    norm_name_owner = NULL;
+    rt_trap_clear_recovery();
 }
 
-/// @brief `Archive.Finish()` — emit the central directory and flush to disk.
-///
-/// Builds each central-directory header from the recorded entries
-/// (including the back-pointer to the local header offset captured at
-/// `Add` time), then writes the End of Central Directory record. Once
-/// the in-memory layout is complete, the entire write buffer is
-/// written to the destination path in a single shot. Sets `is_finished`
-/// so subsequent `Add`/`Finish` calls trap. The write buffer is
-/// released to free the memory immediately.
-///
-/// @param obj Archive handle (write mode).
-void rt_archive_finish(void *obj) {
+/// @brief `Archive.AddDir(name)` — record an explicit directory entry.
+/// @details Appends a stored, zero-length entry whose normalized name ends in
+///          `/`, preserving empty directories for ZIP consumers. The operation
+///          is serialized with every other writer mutation and rolls back both
+///          bytes and metadata if an allocation or validation step traps.
+/// @param obj Archive handle opened in write mode.
+/// @param name Relative directory name; a trailing slash is added when absent.
+void rt_archive_add_dir(void *obj, rt_string name) {
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
+    if (!ar)
+        return;
+    archive_rwlock_write_enter(ar->rw_lock);
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(
+            saved_error, sizeof(saved_error), "Archive: failed to add directory entry");
+        rt_trap_clear_recovery();
+        archive_rwlock_write_exit(ar->rw_lock);
+        rt_trap(saved_error);
+        return;
+    }
+    archive_add_dir_locked(obj, name);
+    rt_trap_clear_recovery();
+    archive_rwlock_write_exit(ar->rw_lock);
+}
+
+/// @brief Append a writer's central directory/EOCD and atomically persist the image.
+/// @details This transaction body assumes mode/state/count validation already
+///          succeeded. It mutates only `write_buf`/`write_len`; the caller owns
+///          rollback to @p finish_start on any false return or recovered trap.
+///          The filesystem adapter cleans descriptors and sidecars before it
+///          reports failure, so no live OS resource crosses this boundary.
+/// @param ar Valid write-mode archive.
+/// @param finish_start Original end of local records and central-directory offset.
+/// @return One after the complete image is durably replaced, zero on a
+///         returning-hook failure path.
+static int archive_finish_write_image(rt_archive_t *ar, size_t finish_start) {
+    uint32_t cd_offset = (uint32_t)finish_start;
+
+    for (int i = 0; i < ar->write_entry_count; i++) {
+        zip_entry_t *e = &ar->write_entries[i];
+        size_t name_len = strlen(e->name);
+
+        uint8_t central_header[ZIP_CENTRAL_HEADER_SIZE];
+        write_u32(central_header, ZIP_CENTRAL_HEADER_SIG);
+        write_u16(central_header + 4, ZIP_VERSION_MADE);
+        write_u16(central_header + 6, ZIP_VERSION_NEEDED);
+        write_u16(central_header + 8, 0);
+        write_u16(central_header + 10, e->method);
+        write_u16(central_header + 12, e->mod_time);
+        write_u16(central_header + 14, e->mod_date);
+        write_u32(central_header + 16, e->crc32);
+        write_u32(central_header + 20, e->compressed_size);
+        write_u32(central_header + 24, e->uncompressed_size);
+        write_u16(central_header + 28, (uint16_t)name_len);
+        write_u16(central_header + 30, 0);
+        write_u16(central_header + 32, 0);
+        write_u16(central_header + 34, 0);
+        write_u16(central_header + 36, 0);
+        write_u32(central_header + 38, e->is_directory ? 0x10 : 0);
+        write_u32(central_header + 42, e->local_offset);
+
+        if (!write_bytes(ar, central_header, ZIP_CENTRAL_HEADER_SIZE) ||
+            !write_bytes(ar, (const uint8_t *)e->name, name_len))
+            return 0;
+    }
+
+    if (ar->write_len < finish_start || ar->write_len - finish_start > UINT32_MAX) {
+        rt_trap("Archive: ZIP64 archives are not supported");
+        return 0;
+    }
+    uint32_t cd_size = (uint32_t)(ar->write_len - finish_start);
+
+    uint8_t eocd[ZIP_END_RECORD_SIZE];
+    write_u32(eocd, ZIP_END_RECORD_SIG);
+    write_u16(eocd + 4, 0);
+    write_u16(eocd + 6, 0);
+    write_u16(eocd + 8, (uint16_t)ar->write_entry_count);
+    write_u16(eocd + 10, (uint16_t)ar->write_entry_count);
+    write_u32(eocd + 12, cd_size);
+    write_u32(eocd + 16, cd_offset);
+    write_u16(eocd + 20, 0);
+
+    if (!write_bytes(ar, eocd, ZIP_END_RECORD_SIZE) ||
+        !archive_require_zip32_size(ar->write_len, "Archive: ZIP64 archives are not supported"))
+        return 0;
+
+    const char *cpath = archive_require_path(ar->path, "Archive: invalid path");
+    if (!cpath || *cpath == '\0')
+        return 0;
+    return archive_write_file_all_utf8(
+        cpath, ar->write_buf, ar->write_len, "Archive: failed to write archive file");
+}
+
+/// @brief Execute `Archive.Finish` while the caller owns the archive write lock.
+/// @details Validates ZIP32 ceilings, appends the central directory and EOCD,
+///          and atomically persists the resulting image. The pre-finish buffer
+///          length is restored after every failure so callers may correct an
+///          external filesystem condition and retry the same writer.
+/// @param obj Valid archive handle already locked exclusively by the caller.
+static void archive_finish_locked(void *obj) {
     rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
     if (!ar) {
         rt_trap("Archive: NULL archive");
@@ -1974,71 +2519,21 @@ void rt_archive_finish(void *obj) {
         !archive_require_zip32_size(ar->write_len, "Archive: ZIP64 archives are not supported"))
         return;
 
-    // Record central directory offset
-    uint32_t cd_offset = (uint32_t)ar->write_len;
     size_t finish_start = ar->write_len;
-
-    // Write central directory
-    for (int i = 0; i < ar->write_entry_count; i++) {
-        zip_entry_t *e = &ar->write_entries[i];
-        size_t name_len = strlen(e->name);
-
-        uint8_t central_header[ZIP_CENTRAL_HEADER_SIZE];
-        write_u32(central_header, ZIP_CENTRAL_HEADER_SIG);
-        write_u16(central_header + 4, ZIP_VERSION_MADE);
-        write_u16(central_header + 6, ZIP_VERSION_NEEDED);
-        write_u16(central_header + 8, 0); // Flags
-        write_u16(central_header + 10, e->method);
-        write_u16(central_header + 12, e->mod_time);
-        write_u16(central_header + 14, e->mod_date);
-        write_u32(central_header + 16, e->crc32);
-        write_u32(central_header + 20, e->compressed_size);
-        write_u32(central_header + 24, e->uncompressed_size);
-        write_u16(central_header + 28, (uint16_t)name_len);
-        write_u16(central_header + 30, 0);                          // Extra field length
-        write_u16(central_header + 32, 0);                          // Comment length
-        write_u16(central_header + 34, 0);                          // Disk number start
-        write_u16(central_header + 36, 0);                          // Internal file attributes
-        write_u32(central_header + 38, e->is_directory ? 0x10 : 0); // External attributes
-        write_u32(central_header + 42, e->local_offset);
-
-        if (!write_bytes(ar, central_header, ZIP_CENTRAL_HEADER_SIZE) ||
-            !write_bytes(ar, (const uint8_t *)e->name, name_len)) {
-            ar->write_len = finish_start;
-            return;
-        }
-    }
-
-    if (ar->write_len < (size_t)cd_offset || ar->write_len - (size_t)cd_offset > UINT32_MAX) {
+    jmp_buf finish_recovery;
+    rt_trap_set_recovery(&finish_recovery);
+    if (setjmp(finish_recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(
+            saved_error, sizeof(saved_error), "Archive: failed to finish archive");
+        rt_trap_clear_recovery();
         ar->write_len = finish_start;
-        rt_trap("Archive: ZIP64 archives are not supported");
+        rt_trap(saved_error);
         return;
     }
-    uint32_t cd_size = (uint32_t)(ar->write_len - (size_t)cd_offset);
-
-    // Write end of central directory
-    uint8_t eocd[ZIP_END_RECORD_SIZE];
-    write_u32(eocd, ZIP_END_RECORD_SIG);
-    write_u16(eocd + 4, 0); // Disk number
-    write_u16(eocd + 6, 0); // Disk with central directory
-    write_u16(eocd + 8, (uint16_t)ar->write_entry_count);
-    write_u16(eocd + 10, (uint16_t)ar->write_entry_count);
-    write_u32(eocd + 12, cd_size);
-    write_u32(eocd + 16, cd_offset);
-    write_u16(eocd + 20, 0); // Comment length
-
-    if (!write_bytes(ar, eocd, ZIP_END_RECORD_SIZE) ||
-        !archive_require_zip32_size(ar->write_len, "Archive: ZIP64 archives are not supported")) {
-        ar->write_len = finish_start;
-        return;
-    }
-
-    // Write to file
-    const char *cpath = archive_require_path(ar->path, "Archive: invalid path");
-    if (!cpath || *cpath == '\0')
-        return;
-    if (!archive_write_file_all_utf8(
-            cpath, ar->write_buf, ar->write_len, "Archive: failed to write archive file")) {
+    int completed = archive_finish_write_image(ar, finish_start);
+    rt_trap_clear_recovery();
+    if (!completed) {
         ar->write_len = finish_start;
         return;
     }
@@ -2050,6 +2545,34 @@ void rt_archive_finish(void *obj) {
     ar->write_buf = NULL;
     ar->write_len = 0;
     ar->write_cap = 0;
+}
+
+/// @brief `Archive.Finish()` — atomically publish a complete ZIP archive.
+/// @details Serializes against every Add/AddDir call, delegates to the
+///          retryable finish transaction, and releases the exclusive lock
+///          before rethrowing any recovered trap. A successful call marks the
+///          writer finished and releases its assembled byte buffer; Count and
+///          Names remain queryable, while later writer mutations trap.
+/// @param obj Archive handle opened in write mode.
+void rt_archive_finish(void *obj) {
+    rt_archive_t *ar = archive_require(obj, "Archive: invalid archive");
+    if (!ar)
+        return;
+    archive_rwlock_write_enter(ar->rw_lock);
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        archive_save_trap_error(
+            saved_error, sizeof(saved_error), "Archive: failed to finish archive");
+        rt_trap_clear_recovery();
+        archive_rwlock_write_exit(ar->rw_lock);
+        rt_trap(saved_error);
+        return;
+    }
+    archive_finish_locked(obj);
+    rt_trap_clear_recovery();
+    archive_rwlock_write_exit(ar->rw_lock);
 }
 
 //=============================================================================
@@ -2072,7 +2595,7 @@ int8_t rt_archive_is_zip(rt_string path) {
     if (!rt_file_path_from_vstr((const ZannaString *)path, &cpath) || !cpath || *cpath == '\0')
         return 0;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     HANDLE h = archive_open_win_path(cpath, GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING);
     if (h == INVALID_HANDLE_VALUE)
         return 0;

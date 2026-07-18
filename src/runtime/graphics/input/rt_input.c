@@ -424,7 +424,9 @@ void rt_keyboard_init(void) {
 void rt_keyboard_begin_frame(void) {
     RT_ASSERT_MAIN_THREAD();
     // Clear per-frame event lists (and the O(1) edge bitsets that mirror them)
+    // cppcheck-suppress incompleteArrayFill -- sizeof names the complete fixed-size array.
     memset(g_pressed_this_frame, 0, sizeof(g_pressed_this_frame));
+    // cppcheck-suppress incompleteArrayFill -- sizeof names the complete fixed-size array.
     memset(g_released_this_frame, 0, sizeof(g_released_this_frame));
     g_pressed_count = 0;
     g_released_count = 0;

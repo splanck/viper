@@ -35,6 +35,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #ifdef ZANNA_ENABLE_GRAPHICS
 
@@ -482,14 +483,26 @@ static double rt_gui_theme_metric_read(const vg_theme_t *theme,
         return 0.0;
     const unsigned char *field = (const unsigned char *)theme + token->offset;
     switch (token->storage) {
-        case RT_GUI_METRIC_FLOAT:
-            return (double)*(const float *)field;
-        case RT_GUI_METRIC_INT:
-            return (double)*(const int *)field;
-        case RT_GUI_METRIC_U8:
-            return (double)*(const uint8_t *)field;
-        case RT_GUI_METRIC_BOOL:
-            return *(const bool *)field ? 1.0 : 0.0;
+        case RT_GUI_METRIC_FLOAT: {
+            float stored = 0.0f;
+            memcpy(&stored, field, sizeof(stored));
+            return (double)stored;
+        }
+        case RT_GUI_METRIC_INT: {
+            int stored = 0;
+            memcpy(&stored, field, sizeof(stored));
+            return (double)stored;
+        }
+        case RT_GUI_METRIC_U8: {
+            uint8_t stored = 0;
+            memcpy(&stored, field, sizeof(stored));
+            return (double)stored;
+        }
+        case RT_GUI_METRIC_BOOL: {
+            bool stored = false;
+            memcpy(&stored, field, sizeof(stored));
+            return stored ? 1.0 : 0.0;
+        }
         default:
             return 0.0;
     }
@@ -522,18 +535,26 @@ static void rt_gui_theme_metric_write(vg_theme_t *theme,
                                       double value) {
     unsigned char *field = (unsigned char *)theme + token->offset;
     switch (token->storage) {
-        case RT_GUI_METRIC_FLOAT:
-            *(float *)field = (float)value;
+        case RT_GUI_METRIC_FLOAT: {
+            float stored = (float)value;
+            memcpy(field, &stored, sizeof(stored));
             break;
-        case RT_GUI_METRIC_INT:
-            *(int *)field = (int)value;
+        }
+        case RT_GUI_METRIC_INT: {
+            int stored = (int)value;
+            memcpy(field, &stored, sizeof(stored));
             break;
-        case RT_GUI_METRIC_U8:
-            *(uint8_t *)field = (uint8_t)value;
+        }
+        case RT_GUI_METRIC_U8: {
+            uint8_t stored = (uint8_t)value;
+            memcpy(field, &stored, sizeof(stored));
             break;
-        case RT_GUI_METRIC_BOOL:
-            *(bool *)field = value != 0.0;
+        }
+        case RT_GUI_METRIC_BOOL: {
+            bool stored = value != 0.0;
+            memcpy(field, &stored, sizeof(stored));
             break;
+        }
     }
 }
 

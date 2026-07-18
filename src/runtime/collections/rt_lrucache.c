@@ -187,19 +187,21 @@ static void bucket_insert(rt_lrucache_impl *cache, rt_lru_node *node) {
     cache->buckets[idx] = node;
 }
 
-/// Resize the hash table when load factor is too high.
-static void resize_buckets(rt_lrucache_impl *cache) {
+/// @brief Resize the hash table when load factor is too high.
+/// @return 1 if the table grew or cannot grow further; 0 after trapping on an
+///         allocation-size error or allocation failure.
+static int resize_buckets(rt_lrucache_impl *cache) {
     if (cache->bucket_count > SIZE_MAX / 2)
-        return; // Can't grow further
+        return 1; // Can't grow further; collision chaining remains valid.
     size_t new_bucket_count = cache->bucket_count * 2;
     if (new_bucket_count > SIZE_MAX / sizeof(rt_lru_node *)) {
         rt_trap("LRUCache: allocation size overflow");
-        return;
+        return 0;
     }
     rt_lru_node **new_buckets = (rt_lru_node **)calloc(new_bucket_count, sizeof(rt_lru_node *));
     if (!new_buckets) {
         rt_trap("LRUCache: memory allocation failed");
-        return;
+        return 0;
     }
 
     // Rehash all nodes
@@ -218,13 +220,16 @@ static void resize_buckets(rt_lrucache_impl *cache) {
     free(cache->buckets);
     cache->buckets = new_buckets;
     cache->bucket_count = new_bucket_count;
+    return 1;
 }
 
-static void maybe_resize_for_count(rt_lrucache_impl *cache, size_t next_count) {
+/// @brief Grow the bucket table if @p next_count would exceed the load limit.
+/// @return 1 when insertion may proceed; 0 when growth trapped.
+static int maybe_resize_for_count(rt_lrucache_impl *cache, size_t next_count) {
     if ((long double)next_count * (long double)LRU_LOAD_FACTOR_DEN <=
         (long double)cache->bucket_count * (long double)LRU_LOAD_FACTOR_NUM)
-        return;
-    resize_buckets(cache);
+        return 1;
+    return resize_buckets(cache);
 }
 
 // ---------------------------------------------------------------------------
@@ -266,15 +271,16 @@ static void rt_lrucache_finalize(void *obj) {
 
     // Free all nodes via the linked list (faster than iterating buckets)
     rt_lru_node *node = cache->head;
+    cache->head = NULL;
+    cache->tail = NULL;
+    cache->count = 0;
+    if (cache->buckets)
+        memset(cache->buckets, 0, cache->bucket_count * sizeof(rt_lru_node *));
     while (node) {
         rt_lru_node *next = node->next;
         free_node(node);
         node = next;
     }
-    cache->head = NULL;
-    cache->tail = NULL;
-    cache->count = 0;
-
     free(cache->buckets);
     cache->buckets = NULL;
     cache->bucket_count = 0;
@@ -367,11 +373,16 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Put: invalid LRUCache object");
-    if (!cache)
+    if (!cache) {
+        rt_gc_mutator_exit();
         return;
-    if (cache->bucket_count == 0)
+    }
+    if (cache->bucket_count == 0) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -388,12 +399,16 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
         if (old_value && rt_obj_release_check0(old_value))
             rt_obj_free(old_value);
         list_move_to_front(cache, existing);
+        rt_gc_mutator_exit();
         return;
     }
 
     size_t projected_count =
         (cache->max_cap != 0 && cache->count >= cache->max_cap) ? cache->count : cache->count + 1;
-    maybe_resize_for_count(cache, projected_count);
+    if (!maybe_resize_for_count(cache, projected_count)) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     if (value)
         rt_obj_retain_maybe(value);
@@ -403,6 +418,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
     if (!node) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
+        rt_gc_mutator_exit();
         rt_trap("LRUCache: memory allocation failed");
         return;
     }
@@ -411,6 +427,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
         free(node);
+        rt_gc_mutator_exit();
         rt_trap("LRUCache: key allocation overflow");
         return;
     }
@@ -419,6 +436,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
         free(node);
+        rt_gc_mutator_exit();
         rt_trap("LRUCache: key allocation failed");
         return;
     }
@@ -441,12 +459,14 @@ void rt_lrucache_put(void *obj, rt_string key, void *value) {
             rt_obj_free(node->value);
         free(node->key);
         free(node);
+        rt_gc_mutator_exit();
         rt_trap("LRUCache.Put: maximum size reached");
         return;
     }
     bucket_insert(cache, node);
     list_push_front(cache, node);
     cache->count++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Look up `key` and promote it to MRU. Returns the borrowed value pointer or NULL if
@@ -455,9 +475,12 @@ void *rt_lrucache_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
 
+    rt_gc_mutator_enter();
     rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Get: invalid LRUCache object");
-    if (cache->bucket_count == 0)
+    if (!cache || cache->bucket_count == 0) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -465,13 +488,17 @@ void *rt_lrucache_get(void *obj, rt_string key) {
     size_t idx = hash % cache->bucket_count;
 
     rt_lru_node *node = bucket_find(cache->buckets[idx], key_data, key_len);
-    if (!node)
+    if (!node) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     // Promote to MRU
     list_move_to_front(cache, node);
     // Returns borrowed reference — caller must not store past next cache mutation
-    return node->value;
+    void *value = node->value;
+    rt_gc_mutator_exit();
+    return value;
 }
 
 /// @brief Look up `key` *without* changing LRU order. Use for "is this cached?" probes that
@@ -516,9 +543,12 @@ int8_t rt_lrucache_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
+    rt_gc_mutator_enter();
     rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Remove: invalid LRUCache object");
-    if (cache->bucket_count == 0)
+    if (!cache || cache->bucket_count == 0) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -526,13 +556,16 @@ int8_t rt_lrucache_remove(void *obj, rt_string key) {
     size_t idx = hash % cache->bucket_count;
 
     rt_lru_node *node = bucket_find(cache->buckets[idx], key_data, key_len);
-    if (!node)
+    if (!node) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     list_remove(cache, node);
     bucket_remove(cache, node);
     cache->count--;
     free_node(node);
+    rt_gc_mutator_exit();
     return 1;
 }
 
@@ -542,11 +575,15 @@ int8_t rt_lrucache_remove_oldest(void *obj) {
     if (!obj)
         return 0;
 
+    rt_gc_mutator_enter();
     rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.RemoveOldest: invalid LRUCache object");
-    if (!cache->tail)
+    if (!cache || !cache->tail) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     evict_lru(cache);
+    rt_gc_mutator_exit();
     return 1;
 }
 
@@ -556,22 +593,26 @@ void rt_lrucache_clear(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_lrucache_impl *cache = as_lrucache(obj, "LRUCache.Clear: invalid LRUCache object");
+    if (!cache) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     // Free all nodes via the linked list
     rt_lru_node *node = cache->head;
+    cache->head = NULL;
+    cache->tail = NULL;
+    cache->count = 0;
+    if (cache->buckets)
+        memset(cache->buckets, 0, cache->bucket_count * sizeof(rt_lru_node *));
     while (node) {
         rt_lru_node *next = node->next;
         free_node(node);
         node = next;
     }
-    cache->head = NULL;
-    cache->tail = NULL;
-    cache->count = 0;
-
-    // Clear bucket pointers
-    if (cache->buckets)
-        memset(cache->buckets, 0, cache->bucket_count * sizeof(rt_lru_node *));
+    rt_gc_mutator_exit();
 }
 
 /// @brief Return a Seq of all keys in MRU→LRU order. Owned-elements Seq (will release strings

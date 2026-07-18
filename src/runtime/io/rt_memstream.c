@@ -12,7 +12,7 @@
 //          and floats in IEEE 754 format.
 //
 // Key invariants:
-//   - The buffer doubles in capacity when a write would exceed current capacity.
+//   - The buffer grows geometrically without touching bytes beyond logical length.
 //   - Writing at a position beyond the current length zero-fills the gap.
 //   - Position can be set to any non-negative value including beyond length.
 //   - Little-endian byte order is used for all multi-byte integer writes/reads.
@@ -60,7 +60,7 @@ typedef struct rt_memstream_impl {
 } rt_memstream_impl;
 
 int8_t rt_memstream_is_handle(void *obj) {
-    return obj && rt_obj_class_id(obj) == RT_MEMSTREAM_CLASS_ID ? 1 : 0;
+    return rt_obj_is_instance(obj, RT_MEMSTREAM_CLASS_ID, sizeof(rt_memstream_impl)) ? 1 : 0;
 }
 
 static rt_memstream_impl *memstream_require(void *obj, const char *context) {
@@ -84,7 +84,17 @@ static void rt_memstream_finalize(void *obj) {
     }
 }
 
-/// @brief Ensure buffer has at least required capacity.
+/// @brief Ensure the backing allocation can address @p required bytes.
+/// @details Grows geometrically while doubling is representable; once the
+///          capacity is above half of INT64_MAX it grows only to the requested
+///          size instead of attempting an enormous saturating allocation.
+///          Newly reserved bytes are intentionally left untouched because they
+///          are outside logical `len`. @ref prepare_write zeroes exactly the gap
+///          that becomes observable, avoiding needless page faults and memory
+///          bandwidth during ordinary sequential growth.
+/// @param ms Valid MemStream implementation.
+/// @param required Required addressable byte count.
+/// @return One on success, zero after trapping on overflow or allocation failure.
 static int ensure_capacity(rt_memstream_impl *ms, int64_t required) {
     if (required < 0) {
         rt_trap("MemStream: capacity overflow");
@@ -93,9 +103,9 @@ static int ensure_capacity(rt_memstream_impl *ms, int64_t required) {
     if (required <= ms->capacity)
         return 1;
 
-    int64_t new_cap = (ms->capacity <= INT64_MAX / 2) ? ms->capacity * 2 : INT64_MAX;
-    if (new_cap < required)
-        new_cap = required;
+    int64_t new_cap = required;
+    if (ms->capacity <= INT64_MAX / 2 && ms->capacity * 2 > new_cap)
+        new_cap = ms->capacity * 2;
     if (new_cap < MEMSTREAM_INITIAL_CAPACITY)
         new_cap = MEMSTREAM_INITIAL_CAPACITY;
     if ((uint64_t)new_cap > (uint64_t)SIZE_MAX) {
@@ -108,10 +118,6 @@ static int ensure_capacity(rt_memstream_impl *ms, int64_t required) {
         rt_trap("MemStream: memory allocation failed");
         return 0;
     }
-
-    // Zero new portion
-    if (new_cap > ms->capacity)
-        memset(new_data + ms->capacity, 0, (size_t)(new_cap - ms->capacity));
 
     ms->data = new_data;
     ms->capacity = new_cap;
@@ -243,7 +249,7 @@ void *rt_memstream_from_bytes(void *bytes) {
 
     int64_t bytes_len = rt_bytes_len(bytes);
     const uint8_t *bytes_data = rt_bytes_data_const(bytes);
-    if (bytes_len > 0 && !bytes_data) {
+    if (bytes_len < 0 || (bytes_len > 0 && !bytes_data)) {
         rt_trap("MemStream.FromBytes: invalid bytes");
         return NULL;
     }
@@ -339,9 +345,9 @@ int64_t rt_memstream_read_i8(void *obj) {
         return 0;
     if (!check_read(ms, 1, "MemStream.ReadI8: insufficient bytes"))
         return 0;
-    int8_t val = (int8_t)ms->data[ms->pos];
+    uint8_t bits = ms->data[ms->pos];
     ms->pos++;
-    return (int64_t)val;
+    return bits <= INT8_MAX ? (int64_t)bits : (int64_t)bits - INT64_C(256);
 }
 
 /// @brief Write one signed byte. Advances pos by 1.
@@ -410,9 +416,9 @@ int64_t rt_memstream_read_i16(void *obj) {
     if (!check_read(ms, 2, "MemStream.ReadI16: insufficient bytes"))
         return 0;
     uint8_t *p = ms->data + ms->pos;
-    int16_t val = (int16_t)(p[0] | ((uint16_t)p[1] << 8));
+    uint16_t bits = (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
     ms->pos += 2;
-    return (int64_t)val;
+    return bits <= INT16_MAX ? (int64_t)bits : (int64_t)bits - INT64_C(65536);
 }
 
 /// @brief Write a signed 16-bit value in little-endian order. Advances pos by 2.
@@ -430,9 +436,10 @@ void rt_memstream_write_i16(void *obj, int64_t value) {
     }
     if (!prepare_write(ms, 2))
         return;
+    uint16_t bits = (uint16_t)(int16_t)value;
     uint8_t *p = ms->data + ms->pos;
-    p[0] = (uint8_t)(value & 0xFF);
-    p[1] = (uint8_t)((value >> 8) & 0xFF);
+    p[0] = (uint8_t)(bits & 0xFFu);
+    p[1] = (uint8_t)((bits >> 8) & 0xFFu);
     ms->pos += 2;
 }
 
@@ -487,10 +494,10 @@ int64_t rt_memstream_read_i32(void *obj) {
     if (!check_read(ms, 4, "MemStream.ReadI32: insufficient bytes"))
         return 0;
     uint8_t *p = ms->data + ms->pos;
-    int32_t val =
-        (int32_t)(p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
+    uint32_t bits =
+        (uint32_t)(p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24));
     ms->pos += 4;
-    return (int64_t)val;
+    return bits <= INT32_MAX ? (int64_t)bits : (int64_t)bits - INT64_C(4294967296);
 }
 
 /// @brief Write a signed 32-bit value in little-endian order. Advances pos by 4.
@@ -508,11 +515,12 @@ void rt_memstream_write_i32(void *obj, int64_t value) {
     }
     if (!prepare_write(ms, 4))
         return;
+    uint32_t bits = (uint32_t)(int32_t)value;
     uint8_t *p = ms->data + ms->pos;
-    p[0] = (uint8_t)(value & 0xFF);
-    p[1] = (uint8_t)((value >> 8) & 0xFF);
-    p[2] = (uint8_t)((value >> 16) & 0xFF);
-    p[3] = (uint8_t)((value >> 24) & 0xFF);
+    p[0] = (uint8_t)(bits & 0xFFu);
+    p[1] = (uint8_t)((bits >> 8) & 0xFFu);
+    p[2] = (uint8_t)((bits >> 16) & 0xFFu);
+    p[3] = (uint8_t)((bits >> 24) & 0xFFu);
     ms->pos += 4;
 }
 
@@ -574,7 +582,12 @@ int64_t rt_memstream_read_i64(void *obj) {
                    ((uint64_t)p[3] << 24) | ((uint64_t)p[4] << 32) | ((uint64_t)p[5] << 40) |
                    ((uint64_t)p[6] << 48) | ((uint64_t)p[7] << 56);
     ms->pos += 8;
-    return (int64_t)val;
+    if (val <= (uint64_t)INT64_MAX)
+        return (int64_t)val;
+    uint64_t magnitude = (~val) + UINT64_C(1);
+    if (magnitude == (UINT64_C(1) << 63))
+        return INT64_MIN;
+    return -(int64_t)magnitude;
 }
 
 /// @brief Write 8 bytes (`value`, little-endian). Advances pos by 8.
@@ -740,7 +753,7 @@ void rt_memstream_write_bytes(void *obj, void *bytes) {
         return;
     int64_t bytes_len = rt_bytes_len(bytes);
     const uint8_t *bytes_data = rt_bytes_data_const(bytes);
-    if (bytes_len > 0 && !bytes_data) {
+    if (bytes_len < 0 || (bytes_len > 0 && !bytes_data)) {
         rt_trap("MemStream.WriteBytes: invalid bytes");
         return;
     }
@@ -770,7 +783,8 @@ rt_string rt_memstream_read_str(void *obj, int64_t count) {
     if (!check_read(ms, count, "MemStream.ReadStr: insufficient bytes"))
         return NULL;
 
-    rt_string str = rt_string_from_bytes((const char *)(ms->data + ms->pos), (size_t)count);
+    const char *source = count > 0 ? (const char *)(ms->data + ms->pos) : "";
+    rt_string str = rt_string_from_bytes(source, (size_t)count);
     if (!str) {
         rt_trap("MemStream.ReadStr: memory allocation failed");
         return NULL;

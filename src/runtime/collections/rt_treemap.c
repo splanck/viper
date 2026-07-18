@@ -422,7 +422,12 @@ int8_t rt_treemap_is_empty(void *obj) {
 void rt_treemap_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
+    if (!tm) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     size_t keylen;
     const char *keydata = get_key_data(key, &keylen);
@@ -436,13 +441,16 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
         // Retain new value
         rt_obj_retain_maybe(value);
         // Release old value after retaining in case the pointer is unchanged.
-        if (e->value && rt_obj_release_check0(e->value))
-            rt_obj_free(e->value);
+        void *old_value = e->value;
         e->value = value;
+        if (old_value && rt_obj_release_check0(old_value))
+            rt_obj_free(old_value);
     } else {
         // Insert new entry
-        if (!ensure_capacity(tm))
+        if (!ensure_capacity(tm)) {
+            rt_gc_mutator_exit();
             return;
+        }
 
         if (value)
             rt_obj_retain_maybe(value);
@@ -450,6 +458,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
         if (keylen == SIZE_MAX) {
             if (value && rt_obj_release_check0(value))
                 rt_obj_free(value);
+            rt_gc_mutator_exit();
             rt_trap("TreeMap: key allocation overflow");
             return;
         }
@@ -457,6 +466,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
         if (!key_copy) {
             if (value && rt_obj_release_check0(value))
                 rt_obj_free(value);
+            rt_gc_mutator_exit();
             rt_trap("TreeMap: memory allocation failed");
             return;
         }
@@ -478,6 +488,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value) {
 
         tm->count++;
     }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Retrieves the value associated with a key.
@@ -549,9 +560,12 @@ int8_t rt_treemap_has(void *obj, rt_string key) {
 int8_t rt_treemap_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
+    rt_gc_mutator_enter();
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
-    if (!tm)
+    if (!tm) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     size_t keylen;
     const char *keydata = get_key_data(key, &keylen);
@@ -559,11 +573,12 @@ int8_t rt_treemap_remove(void *obj, rt_string key) {
     bool found;
     size_t idx = binary_search(tm, keydata, keylen, &found);
 
-    if (!found)
+    if (!found) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
-    // Free the entry
-    free_entry_contents(&tm->entries[idx]);
+    treemap_entry removed = tm->entries[idx];
 
     // Shift remaining entries
     if (idx < tm->count - 1) {
@@ -573,6 +588,9 @@ int8_t rt_treemap_remove(void *obj, rt_string key) {
     }
 
     tm->count--;
+    memset(&tm->entries[tm->count], 0, sizeof(treemap_entry));
+    free_entry_contents(&removed);
+    rt_gc_mutator_exit();
     return 1;
 }
 
@@ -587,15 +605,20 @@ int8_t rt_treemap_remove(void *obj, rt_string key) {
 void rt_treemap_clear(void *obj) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     treemap_impl *tm = as_treemap(obj, "TreeMap: invalid TreeMap object");
-    if (!tm)
+    if (!tm) {
+        rt_gc_mutator_exit();
         return;
-
-    for (size_t i = 0; i < tm->count; i++) {
-        free_entry_contents(&tm->entries[i]);
     }
 
+    size_t count = tm->count;
     tm->count = 0;
+    for (size_t i = 0; i < count; i++) {
+        free_entry_contents(&tm->entries[i]);
+        memset(&tm->entries[i], 0, sizeof(treemap_entry));
+    }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Returns all keys in the TreeMap as a Seq, in sorted order.

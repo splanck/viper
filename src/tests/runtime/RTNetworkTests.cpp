@@ -22,28 +22,36 @@
 #include "rt_async_socket.h"
 #include "rt_box.h"
 #include "rt_bytes.h"
-#include "rt_future.h"
-#include "rt_heap.h"
 #include "rt_compress.h"
 #include "rt_connpool.h"
+#include "rt_future.h"
+#include "rt_gc.h"
+#include "rt_heap.h"
+#include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_netutils.h"
-#include "rt_object.h"
 #include "rt_network.h"
+#include "rt_network_http_internal.h"
+#include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <thread>
+#include <vector>
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
@@ -51,15 +59,16 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
-#if defined(__linux__) || defined(_WIN32)
+#if RT_PLATFORM_LINUX || RT_PLATFORM_WINDOWS
 static constexpr int64_t kNetworkTimeoutUpperBoundMs = 5000;
 #else
 static constexpr int64_t kNetworkTimeoutUpperBoundMs = 500;
 #endif
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 static constexpr int64_t kNetworkTimeoutLowerBoundMs = 50;
 #else
 static constexpr int64_t kNetworkTimeoutLowerBoundMs = 90;
@@ -89,10 +98,178 @@ static void *make_bytes_str(const char *str) {
     return bytes;
 }
 
+/// @brief Release one test-owned managed object and run its finalizer at zero.
+/// @details Test helpers use explicit ownership rather than relying on process
+///          teardown so socket and Bytes regressions are visible to leak and
+///          sanitizer runs.
+/// @param obj Owned runtime object reference; NULL is a no-op.
+static void release_test_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Wait for an asynchronously released object reference to reach an expected count.
+/// @details Promise completion wakes Future waiters before the producing worker
+///          has necessarily executed its final cleanup instruction. Reading the
+///          count immediately after dropping the Future therefore races that
+///          legitimate cleanup and made the ownership regression intermittent.
+///          This helper performs acquire loads through the runtime's portable
+///          atomic adapter and yields for at most two seconds. A leaked producer
+///          reference remains observable as a timeout, while normal scheduling
+///          latency cannot make the test fail spuriously.
+/// @param obj Live managed object whose caller-owned reference keeps it valid.
+/// @param expected Reference count required by the ownership contract.
+/// @return True when @p expected was observed before the bounded deadline.
+static bool wait_for_refcount(void *obj, size_t expected) {
+    if (!obj)
+        return false;
+    rt_heap_hdr_t *header = rt_heap_hdr(obj);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    do {
+        if (rt_atomic_load_size(&header->refcnt, __ATOMIC_ACQUIRE) == expected)
+            return true;
+        std::this_thread::yield();
+    } while (std::chrono::steady_clock::now() < deadline);
+    return rt_atomic_load_size(&header->refcnt, __ATOMIC_ACQUIRE) == expected;
+}
+
 /// @brief Atomic flag for server shutdown
 static std::atomic<bool> server_ready{false};
 static std::atomic<bool> server_done{false};
 static std::string http_accept_encoding_header;
+static int tcp_alloc_fail_countdown = 0;
+static int http_alloc_fail_countdown = 0;
+static int http_alloc_observed = 0;
+
+/// @brief Fail one selected runtime allocation during TCP ownership tests.
+/// @details Decrements @ref tcp_alloc_fail_countdown for each allocation routed
+///          through @ref rt_alloc. The call that reaches zero returns NULL;
+///          every other call delegates to the runtime's default allocator.
+///          Tests install this hook only while the peer thread performs raw
+///          socket writes and therefore makes no managed allocations.
+/// @param bytes Requested allocation size in bytes.
+/// @param next Runtime default allocator to invoke when this call should pass.
+/// @return Allocated storage, or NULL for the selected injected failure.
+static void *tcp_fail_countdown_alloc(int64_t bytes, void *(*next)(int64_t)) {
+    if (tcp_alloc_fail_countdown > 0 && --tcp_alloc_fail_countdown == 0)
+        return nullptr;
+    return next(bytes);
+}
+
+/// @brief Count managed allocations and optionally fail one selected HTTP allocation.
+/// @details The native loopback server used by HTTP fault tests performs no
+///          runtime allocations, so every observed call belongs to the client
+///          path under test. A zero countdown means count-only mode.
+/// @param bytes Requested managed allocation size.
+/// @param next Runtime default allocator.
+/// @return Allocated storage, or NULL at the selected countdown.
+static void *http_countdown_alloc(int64_t bytes, void *(*next)(int64_t)) {
+    http_alloc_observed++;
+    if (http_alloc_fail_countdown > 0 && --http_alloc_fail_countdown == 0)
+        return nullptr;
+    return next(bytes);
+}
+
+#if RT_PLATFORM_WINDOWS
+using http_test_socket_t = SOCKET;
+static constexpr http_test_socket_t kInvalidHttpTestSocket = INVALID_SOCKET;
+#else
+using http_test_socket_t = int;
+static constexpr http_test_socket_t kInvalidHttpTestSocket = -1;
+#endif
+
+/// @brief Close one native socket owned by an HTTP fault-injection server.
+/// @param socket Native socket descriptor; invalid values are ignored.
+static void close_http_test_socket(http_test_socket_t socket) {
+    if (socket == kInvalidHttpTestSocket)
+        return;
+#if RT_PLATFORM_WINDOWS
+    closesocket(socket);
+#else
+    close(socket);
+#endif
+}
+
+/// @brief Serve one deterministic HTTP/1.1 response without runtime allocation.
+/// @details Raw OS sockets isolate the process-wide managed allocation hook to
+///          the client. The server binds loopback, drains one complete request
+///          head into a fixed stack buffer, sends a fixed-length response, and
+///          closes both descriptors on every normal path.
+/// @param port Preselected loopback TCP port.
+/// @param response_body NUL-terminated ASCII body that fits the fixed response buffer.
+static void native_http_fault_server(int port, const char *response_body) {
+#if RT_PLATFORM_WINDOWS
+    WSADATA wsa;
+    assert(WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
+#endif
+    http_test_socket_t listener = socket(AF_INET, SOCK_STREAM, 0);
+    assert(listener != kInvalidHttpTestSocket);
+
+    int reuse = 1;
+#if RT_PLATFORM_WINDOWS
+    (void)setsockopt(
+        listener, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&reuse), sizeof(reuse));
+#else
+    (void)setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#endif
+    sockaddr_in address = {};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(zanna::tests::kIpv4LoopbackHostOrder);
+    address.sin_port = htons(static_cast<uint16_t>(port));
+    assert(bind(listener, reinterpret_cast<sockaddr *>(&address), sizeof(address)) == 0);
+    assert(listen(listener, 1) == 0);
+    server_ready.store(true, std::memory_order_release);
+
+    http_test_socket_t client = accept(listener, nullptr, nullptr);
+    assert(client != kInvalidHttpTestSocket);
+    char request[4096];
+    size_t request_len = 0;
+    while (request_len < sizeof(request)) {
+#if RT_PLATFORM_WINDOWS
+        int received = recv(client, request + request_len, 1, 0);
+#else
+        ssize_t received = recv(client, request + request_len, 1, 0);
+#endif
+        if (received <= 0)
+            break;
+        request_len += static_cast<size_t>(received);
+        if (request_len >= 4 && request[request_len - 4] == '\r' &&
+            request[request_len - 3] == '\n' && request[request_len - 2] == '\r' &&
+            request[request_len - 1] == '\n') {
+            break;
+        }
+    }
+
+    char response[2048];
+    const int response_len = snprintf(response,
+                                      sizeof(response),
+                                      "HTTP/1.1 200 OK\r\n"
+                                      "Content-Type: text/plain\r\n"
+                                      "X-Fault-Test: stable\r\n"
+                                      "Content-Length: %zu\r\n"
+                                      "Connection: close\r\n"
+                                      "\r\n%s",
+                                      strlen(response_body),
+                                      response_body);
+    assert(response_len > 0 && static_cast<size_t>(response_len) < sizeof(response));
+    size_t sent = 0;
+    while (sent < static_cast<size_t>(response_len)) {
+        const size_t remaining = static_cast<size_t>(response_len) - sent;
+        const int chunk =
+            remaining > static_cast<size_t>(INT_MAX) ? INT_MAX : static_cast<int>(remaining);
+        const int written = send(client, response + sent, chunk, 0);
+        if (written <= 0)
+            break;
+        sent += static_cast<size_t>(written);
+    }
+
+    close_http_test_socket(client);
+    close_http_test_socket(listener);
+    server_done.store(true, std::memory_order_release);
+#if RT_PLATFORM_WINDOWS
+    WSACleanup();
+#endif
+}
 
 static bool ascii_header_name_equals(const char *line, const char *name, size_t name_len) {
     if (!line || !name)
@@ -112,7 +289,7 @@ static bool ascii_header_name_equals(const char *line, const char *name, size_t 
 
 static bool localhost_bind_available() {
     static const bool available = []() {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         WSADATA wsa;
         if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
             return false;
@@ -133,7 +310,7 @@ static bool localhost_bind_available() {
         addr.sin_port = 0;
 
         const int rc = bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         closesocket(fd);
         WSACleanup();
 #else
@@ -147,7 +324,7 @@ static bool localhost_bind_available() {
 
 static bool localhost_bind_available_ipv6() {
     static const bool available = []() {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         WSADATA wsa;
         if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
             return false;
@@ -168,7 +345,7 @@ static bool localhost_bind_available_ipv6() {
         addr.sin6_port = 0;
 
         const int rc = bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         closesocket(fd);
         WSACleanup();
 #else
@@ -181,7 +358,7 @@ static bool localhost_bind_available_ipv6() {
 }
 
 static int get_free_port_ipv4(int socktype) {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
         return 0;
@@ -202,7 +379,7 @@ static int get_free_port_ipv4(int socktype) {
     addr.sin_port = 0;
 
     if (bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         closesocket(fd);
         WSACleanup();
 #else
@@ -215,7 +392,7 @@ static int get_free_port_ipv4(int socktype) {
     const int ok = getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len) == 0;
     const int port = ok ? ntohs(addr.sin_port) : 0;
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     closesocket(fd);
     WSACleanup();
 #else
@@ -242,7 +419,7 @@ static int get_distinct_free_udp_port_ipv4(int avoid_port) {
 }
 
 static int get_free_port_ipv6(int socktype) {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
         return 0;
@@ -262,7 +439,7 @@ static int get_free_port_ipv6(int socktype) {
     addr.sin6_addr = in6addr_loopback;
     addr.sin6_port = 0;
     if (bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         closesocket(fd);
         WSACleanup();
 #else
@@ -274,7 +451,7 @@ static int get_free_port_ipv6(int socktype) {
     socklen_t len = sizeof(addr);
     const int ok = getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len) == 0;
     int port = ok ? ntohs(addr.sin6_port) : 0;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     closesocket(fd);
     WSACleanup();
 #else
@@ -319,17 +496,21 @@ static void echo_server_thread(int port, int num_clients) {
             int64_t len = get_bytes_len(data);
             if (len == 0) {
                 // Connection closed
+                release_test_object(data);
                 break;
             }
 
             // Send back what we received
             rt_tcp_send_all(client, data);
+            release_test_object(data);
         }
 
         rt_tcp_close(client);
+        release_test_object(client);
     }
 
     rt_tcp_server_close(server);
+    release_test_object(server);
     server_done = true;
 }
 
@@ -347,15 +528,20 @@ static void echo_server_thread_at(const char *address, int port, int num_clients
         while (rt_tcp_is_open(client)) {
             void *data = rt_tcp_recv(client, 1024);
             int64_t len = get_bytes_len(data);
-            if (len == 0)
+            if (len == 0) {
+                release_test_object(data);
                 break;
+            }
             rt_tcp_send_all(client, data);
+            release_test_object(data);
         }
 
         rt_tcp_close(client);
+        release_test_object(client);
     }
 
     rt_tcp_server_close(server);
+    release_test_object(server);
     server_done = true;
 }
 
@@ -395,13 +581,13 @@ static void test_server_client_connect_ipv6() {
     printf("\nTesting Server/Client Connect over IPv6:\n");
 
     if (!localhost_bind_available_ipv6()) {
-        printf("  SKIP: IPv6 loopback unavailable in this environment\n");
+        printf("  SKIPPED: IPv6 loopback unavailable in this environment\n");
         return;
     }
 
     const int port = get_free_tcp_port_ipv6();
     if (port <= 0) {
-        printf("  SKIP: could not allocate IPv6 loopback port\n");
+        printf("  SKIPPED: could not allocate IPv6 loopback port\n");
         return;
     }
 
@@ -483,6 +669,139 @@ static void test_send_recv() {
     server_thread.join();
 }
 
+/// @brief Feed deterministic receive payloads without allocating during fault injection.
+/// @details The server accepts one client, then waits for four caller-published
+///          phases. Each phase writes a fixed raw payload and publishes its
+///          completion before waiting again. This keeps the process-global
+///          allocation hook isolated to the client under test.
+/// @param port Loopback TCP port selected by the test.
+/// @param requested Highest send phase requested by the client.
+/// @param published Highest payload phase placed in the socket send buffer.
+static void tcp_trap_cleanup_server(int port,
+                                    std::atomic<int> &requested,
+                                    std::atomic<int> &published) {
+    void *server = rt_tcp_server_listen(port);
+    assert(server != nullptr);
+    server_ready = true;
+
+    void *client = rt_tcp_server_accept(server);
+    assert(client != nullptr);
+    static const char *const payloads[] = {"a", "b", "c\n", "d"};
+    static const int64_t lengths[] = {1, 1, 2, 1};
+    for (int phase = 1; phase <= 4; ++phase) {
+        while (requested.load(std::memory_order_acquire) < phase)
+            std::this_thread::yield();
+        rt_tcp_send_all_raw(client, payloads[phase - 1], lengths[phase - 1]);
+        published.store(phase, std::memory_order_release);
+    }
+
+    rt_tcp_close(client);
+    release_test_object(client);
+    rt_tcp_server_close(server);
+    release_test_object(server);
+    server_done = true;
+}
+
+/// @brief Verify receive helpers release intermediate storage when result allocation traps.
+/// @details Injects failures into (1) the right-sizing allocation after a short
+///          `Recv`, (2) string construction after `RecvStr` has allocated its
+///          temporary Bytes object, and (3) string construction after
+///          `RecvLine` has accumulated a native buffer. A final exact receive
+///          proves each recovered trap leaves the transport usable. Leak and
+///          sanitizer runs additionally verify that no hidden temporary remains.
+static void test_tcp_receive_trap_cleanup() {
+    printf("\nTesting TCP receive allocation-trap cleanup:\n");
+
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
+    server_ready = false;
+    server_done = false;
+    std::atomic<int> requested{0};
+    std::atomic<int> published{0};
+    std::thread server_thread(
+        tcp_trap_cleanup_server, port, std::ref(requested), std::ref(published));
+    while (!server_ready.load(std::memory_order_acquire))
+        std::this_thread::yield();
+
+    void *client = rt_tcp_connect(rt_const_cstr("127.0.0.1"), port);
+    assert(client != nullptr);
+    jmp_buf recovery;
+
+    requested.store(1, std::memory_order_release);
+    while (published.load(std::memory_order_acquire) < 1)
+        std::this_thread::yield();
+    bool short_recv_trapped = false;
+    tcp_alloc_fail_countdown = 2;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(tcp_fail_countdown_alloc);
+        (void)rt_tcp_recv(client, 32);
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        const char *error = rt_trap_get_error();
+        short_recv_trapped = error && strstr(error, "allocation failed") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    test_result("Short Recv cleans its oversized Bytes after allocation trap",
+                short_recv_trapped && tcp_alloc_fail_countdown == 0);
+
+    requested.store(2, std::memory_order_release);
+    while (published.load(std::memory_order_acquire) < 2)
+        std::this_thread::yield();
+    bool recv_str_trapped = false;
+    tcp_alloc_fail_countdown = 2;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(tcp_fail_countdown_alloc);
+        (void)rt_tcp_recv_str(client, 1);
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        const char *error = rt_trap_get_error();
+        recv_str_trapped = error && strstr(error, "alloc") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    test_result("RecvStr cleans its Bytes after string allocation trap",
+                recv_str_trapped && tcp_alloc_fail_countdown == 0);
+
+    requested.store(3, std::memory_order_release);
+    while (published.load(std::memory_order_acquire) < 3)
+        std::this_thread::yield();
+    bool recv_line_trapped = false;
+    tcp_alloc_fail_countdown = 1;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(tcp_fail_countdown_alloc);
+        (void)rt_tcp_recv_line(client);
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        const char *error = rt_trap_get_error();
+        recv_line_trapped = error && strstr(error, "alloc") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    test_result("RecvLine cleans its native buffer after string allocation trap",
+                recv_line_trapped && tcp_alloc_fail_countdown == 0);
+
+    requested.store(4, std::memory_order_release);
+    while (published.load(std::memory_order_acquire) < 4)
+        std::this_thread::yield();
+    void *final_byte = rt_tcp_recv_exact(client, 1);
+    test_result("TCP remains usable after recovered receive allocation traps",
+                final_byte && get_bytes_len(final_byte) == 1 &&
+                    get_bytes_data(final_byte)[0] == (uint8_t)'d');
+    release_test_object(final_byte);
+
+    rt_tcp_close(client);
+    release_test_object(client);
+    server_thread.join();
+    test_result("Trap-cleanup server released its transport resources", server_done.load());
+}
+
 /// @brief Test SendAll and RecvExact
 static void test_send_all_recv_exact() {
     printf("\nTesting SendAll/RecvExact:\n");
@@ -527,7 +846,7 @@ static void test_connection_pool_reuses_live_connection() {
 
     const int port = (int)rt_netutils_get_free_port();
     if (port <= 0) {
-        printf("  SKIP: could not allocate local port\n");
+        printf("  SKIPPED: could not allocate local port\n");
         return;
     }
 
@@ -539,8 +858,12 @@ static void test_connection_pool_reuses_live_connection() {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     void *pool = rt_connpool_new(4);
+    test_result("ConnectionPool has its stable managed class identity",
+                rt_obj_class_id(pool) == RT_CONNPOOL_CLASS_ID);
     void *conn1 = rt_connpool_acquire(pool, rt_const_cstr("127.0.0.1"), port);
     test_result("Pool acquire returns connection", conn1 != nullptr);
+    test_result("Pooled TCP has its stable managed class identity",
+                rt_obj_class_id(conn1) == RT_TCP_CLASS_ID);
 
     void *msg1 = make_bytes_str("one");
     rt_tcp_send_all(conn1, msg1);
@@ -570,7 +893,7 @@ static void test_connection_pool_tracks_fresh_acquire() {
 
     const int port = (int)rt_netutils_get_free_port();
     if (port <= 0) {
-        printf("  SKIP: could not allocate local port\n");
+        printf("  SKIPPED: could not allocate local port\n");
         return;
     }
 
@@ -604,7 +927,7 @@ static void test_connection_pool_clamps_max_size_and_closes_overflow() {
 
     const int port = (int)rt_netutils_get_free_port();
     if (port <= 0) {
-        printf("  SKIP: could not allocate local port\n");
+        printf("  SKIPPED: could not allocate local port\n");
         return;
     }
 
@@ -666,7 +989,7 @@ static void test_connection_pool_ownership_and_hygiene() {
 
     const int port = (int)rt_netutils_get_free_port();
     if (port <= 0) {
-        printf("  SKIP: could not allocate local port\n");
+        printf("  SKIPPED: could not allocate local port\n");
         return;
     }
 
@@ -695,7 +1018,7 @@ static void test_connection_pool_ownership_and_hygiene() {
     // Parts 2/3 use a fresh echo server on a fresh port.
     const int port2 = (int)rt_netutils_get_free_port();
     if (port2 <= 0) {
-        printf("  SKIP: could not allocate second local port\n");
+        printf("  SKIPPED: could not allocate second local port\n");
         return;
     }
     server_ready = false;
@@ -709,8 +1032,7 @@ static void test_connection_pool_ownership_and_hygiene() {
     void *msg2 = make_bytes_str("abc");
     rt_tcp_send_all(conn2, msg2);
     void *echo2 = rt_tcp_recv_exact(conn2, 3);
-    test_result("Round-trip before pooling succeeds",
-                memcmp(get_bytes_data(echo2), "abc", 3) == 0);
+    test_result("Round-trip before pooling succeeds", memcmp(get_bytes_data(echo2), "abc", 3) == 0);
     rt_connpool_release(pool, conn2);
     if (rt_obj_release_check0(conn2)) // caller drops its reference (simulated GC)
         rt_obj_free(conn2);
@@ -739,6 +1061,266 @@ static void test_connection_pool_ownership_and_hygiene() {
     test_result("Server finished after hygiene checks", server_done.load());
 }
 
+/// @brief Verify exclusive TCP leasing prevents one socket from entering two pools.
+/// @details A connection checked out from pool A is intentionally released to
+///          pool B. The second pool must trap without closing, adopting, or
+///          mutating the connection. A live echo round-trip then proves pool
+///          A's borrower remains usable before it is returned normally.
+static void test_connection_pool_rejects_cross_pool_aliasing() {
+    printf("\nTesting ConnectionPool exclusive cross-pool leasing:\n");
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIPPED: could not allocate local port\n");
+        return;
+    }
+
+    server_ready = false;
+    server_done = false;
+    std::thread server_thread(echo_server_thread, port, 1);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    rt_string host = rt_const_cstr("127.0.0.1");
+    void *pool_a = rt_connpool_new(2);
+    void *pool_b = rt_connpool_new(2);
+    void *conn = rt_connpool_acquire(pool_a, host, port);
+    test_result("Pool A acquired a live connection", conn != nullptr);
+
+    bool saw_foreign_pool_trap = false;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_connpool_release(pool_b, conn);
+        rt_trap_clear_recovery();
+    } else {
+        const char *error = rt_trap_get_error();
+        saw_foreign_pool_trap = error && strstr(error, "TCP belongs to another pool") != nullptr;
+        rt_trap_clear_recovery();
+    }
+
+    test_result("Foreign-pool release traps deterministically", saw_foreign_pool_trap);
+    test_result("Foreign pool did not adopt the connection", rt_connpool_size(pool_b) == 0);
+    test_result("Original pool still tracks the checked-out connection",
+                rt_connpool_size(pool_a) == 1 && rt_connpool_available(pool_a) == 0);
+    test_result("Rejected foreign release did not close the transport", rt_tcp_is_open(conn) == 1);
+
+    void *not_bytes = rt_seq_new();
+    bool saw_invalid_bytes_trap = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_tcp_send(conn, not_bytes);
+        rt_trap_clear_recovery();
+    } else {
+        const char *error = rt_trap_get_error();
+        saw_invalid_bytes_trap = error && strstr(error, "invalid Bytes data") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    release_test_object(not_bytes);
+    test_result("TCP send rejects a non-Bytes managed payload", saw_invalid_bytes_trap);
+
+    bool saw_negative_length_trap = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_tcp_send_all_raw(conn, nullptr, -1);
+        rt_trap_clear_recovery();
+    } else {
+        const char *error = rt_trap_get_error();
+        saw_negative_length_trap = error && strstr(error, "invalid data length") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    test_result("TCP raw send rejects a negative length", saw_negative_length_trap);
+
+    bool saw_negative_receive_trap = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_tcp_recv(conn, -1);
+        rt_trap_clear_recovery();
+    } else {
+        const char *error = rt_trap_get_error();
+        saw_negative_receive_trap = error && strstr(error, "invalid receive size") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    test_result("TCP receive rejects a negative length", saw_negative_receive_trap);
+
+    void *payload = make_bytes_str("lease");
+    rt_tcp_send_all(conn, payload);
+    void *echo = rt_tcp_recv_exact(conn, 5);
+    test_result("Connection remains usable after rejected alias",
+                echo && memcmp(get_bytes_data(echo), "lease", 5) == 0);
+    release_test_object(echo);
+    release_test_object(payload);
+
+    rt_connpool_release(pool_a, conn);
+    test_result("Owner pool accepts the normal release", rt_connpool_available(pool_a) == 1);
+    release_test_object(conn); // caller reference; pool A retains the idle entry
+    rt_connpool_clear(pool_a);
+    release_test_object(pool_a);
+    release_test_object(pool_b);
+    rt_string_unref(host);
+
+    server_thread.join();
+    test_result("Server finished after exclusive-lease cleanup", server_done.load());
+}
+
+/// @brief Echo bytes on one accepted connection until the pool closes it.
+/// @details The helper owns the accepted TCP reference and every received Bytes
+///          value. It is intentionally independent per client so the pool
+///          stress test can exercise simultaneous sockets without server-side
+///          head-of-line blocking.
+/// @param client Owned accepted TCP handle.
+static void concurrent_pool_echo_client(void *client) {
+    assert(client != nullptr);
+    while (rt_tcp_is_open(client)) {
+        void *data = rt_tcp_recv(client, 1024);
+        if (!data)
+            break;
+        int64_t len = get_bytes_len(data);
+        if (len == 0) {
+            release_test_object(data);
+            break;
+        }
+        rt_tcp_send_all(client, data);
+        release_test_object(data);
+    }
+    rt_tcp_close(client);
+    release_test_object(client);
+}
+
+/// @brief Accept and service a fixed number of concurrent pool connections.
+/// @details Each accepted handle is transferred to its own worker thread. The
+///          listener remains owned by this function and is finalized only after
+///          every client observes the pool's deterministic Clear/close.
+/// @param port Loopback port chosen by the test.
+/// @param client_count Exact number of simultaneous clients to accept.
+static void concurrent_pool_echo_server(int port, int client_count) {
+    void *server = rt_tcp_server_listen(port);
+    assert(server != nullptr);
+    server_ready = true;
+
+    std::vector<std::thread> clients;
+    clients.reserve((size_t)client_count);
+    for (int i = 0; i < client_count; i++) {
+        void *client = rt_tcp_server_accept(server);
+        assert(client != nullptr);
+        clients.emplace_back(concurrent_pool_echo_client, client);
+    }
+    for (std::thread &client : clients)
+        client.join();
+
+    rt_tcp_server_close(server);
+    release_test_object(server);
+    server_done = true;
+}
+
+/// @brief Run one simultaneous ConnectionPool borrower through repeated I/O.
+/// @details All borrowers hold their first acquisition until every peer has
+///          acquired, guaranteeing the pool tracks the configured number of
+///          distinct in-use sockets. Each iteration validates an exact echoed
+///          byte, then the connection is released and its caller reference is
+///          dropped while the pool keeps the idle reference.
+/// @param pool Shared ConnectionPool handle retained by the test.
+/// @param host Shared immutable loopback runtime string.
+/// @param port Echo-server port.
+/// @param worker_index Unique byte source for this worker.
+/// @param worker_count Number of simultaneous borrowers.
+/// @param rounds Number of echo round-trips to perform.
+/// @param start Barrier flag published by the parent.
+/// @param acquired Shared count of completed initial acquisitions.
+/// @param failed Shared failure flag that releases barrier waits on error.
+static void concurrent_pool_worker(void *pool,
+                                   rt_string host,
+                                   int port,
+                                   int worker_index,
+                                   int worker_count,
+                                   int rounds,
+                                   std::atomic<bool> &start,
+                                   std::atomic<int> &acquired,
+                                   std::atomic<bool> &failed) {
+    while (!start.load(std::memory_order_acquire))
+        std::this_thread::yield();
+
+    void *conn = rt_connpool_acquire(pool, host, port);
+    if (!conn) {
+        failed.store(true, std::memory_order_release);
+        return;
+    }
+    acquired.fetch_add(1, std::memory_order_acq_rel);
+    while (acquired.load(std::memory_order_acquire) < worker_count &&
+           !failed.load(std::memory_order_acquire))
+        std::this_thread::yield();
+
+    const uint8_t payload = (uint8_t)(worker_index + 1);
+    for (int round = 0; round < rounds && !failed.load(std::memory_order_acquire); round++) {
+        rt_tcp_send_all_raw(conn, &payload, 1);
+        void *echo = rt_tcp_recv_exact(conn, 1);
+        if (!echo || get_bytes_len(echo) != 1 || get_bytes_data(echo)[0] != payload)
+            failed.store(true, std::memory_order_release);
+        release_test_object(echo);
+    }
+
+    rt_connpool_release(pool, conn);
+    release_test_object(conn);
+}
+
+/// @brief Stress ConnectionPool bookkeeping with simultaneous acquisition and release.
+/// @details Eight borrowers force eight distinct tracked connections, perform
+///          repeated I/O in parallel, and return them concurrently. The final
+///          size/availability snapshot verifies no lost entry, duplicate slot,
+///          or capacity overrun occurred before Clear closes every idle socket.
+static void test_connection_pool_concurrent_bookkeeping() {
+    printf("\nTesting ConnectionPool concurrent bookkeeping and I/O:\n");
+    constexpr int kWorkers = 8;
+    constexpr int kRounds = 25;
+
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIPPED: could not allocate local port\n");
+        return;
+    }
+
+    server_ready = false;
+    server_done = false;
+    std::thread server_thread(concurrent_pool_echo_server, port, kWorkers);
+    while (!server_ready)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    rt_string host = rt_const_cstr("127.0.0.1");
+    void *pool = rt_connpool_new(kWorkers);
+    std::atomic<bool> start{false};
+    std::atomic<int> acquired{0};
+    std::atomic<bool> failed{false};
+    std::vector<std::thread> workers;
+    workers.reserve(kWorkers);
+    for (int i = 0; i < kWorkers; i++) {
+        workers.emplace_back(concurrent_pool_worker,
+                             pool,
+                             host,
+                             port,
+                             i,
+                             kWorkers,
+                             kRounds,
+                             std::ref(start),
+                             std::ref(acquired),
+                             std::ref(failed));
+    }
+    start.store(true, std::memory_order_release);
+    for (std::thread &worker : workers)
+        worker.join();
+
+    test_result("All concurrent borrowers completed exact echo I/O", !failed.load());
+    test_result("Concurrent acquires respected tracked capacity",
+                rt_connpool_size(pool) == kWorkers);
+    test_result("Concurrent releases published every entry as idle",
+                rt_connpool_available(pool) == kWorkers);
+
+    rt_connpool_clear(pool);
+    server_thread.join();
+    test_result("Clear closed all concurrently returned sockets", server_done.load());
+    release_test_object(pool);
+    rt_string_unref(host);
+}
+
 /// @brief IsPortOpen probe contract (VDOC-147): validated host bytes, honest
 ///        SO_ERROR handling, and one overall deadline across candidates.
 static void test_netutils_is_port_open_contract() {
@@ -746,7 +1328,7 @@ static void test_netutils_is_port_open_contract() {
 
     const int port = (int)rt_netutils_get_free_port();
     if (port <= 0) {
-        printf("  SKIP: could not allocate local port\n");
+        printf("  SKIPPED: could not allocate local port\n");
         return;
     }
 
@@ -787,7 +1369,7 @@ static void test_async_socket_reference_transfer_and_boxed_send() {
 
     const int port = (int)rt_netutils_get_free_port();
     if (port <= 0) {
-        printf("  SKIP: could not allocate local port\n");
+        printf("  SKIPPED: could not allocate local port\n");
         return;
     }
 
@@ -806,8 +1388,8 @@ static void test_async_socket_reference_transfer_and_boxed_send() {
     test_result("ConnectAsync resolves to a connection", tcp != nullptr);
     if (rt_obj_release_check0(cf))
         rt_obj_free(cf);
-    test_result("Connect result has exactly one owner after consumption",
-                rt_heap_hdr(tcp)->refcnt == 1);
+    test_result("Connect result has exactly one owner after producer cleanup",
+                wait_for_refcount(tcp, 1));
 
     // SendAsync resolves to a boxed Integer with the byte count.
     void *payload = make_bytes_str("ping");
@@ -828,8 +1410,8 @@ static void test_async_socket_reference_transfer_and_boxed_send() {
                 echoed != nullptr && get_bytes_len(echoed) == 4);
     if (rt_obj_release_check0(rf))
         rt_obj_free(rf);
-    test_result("Recv result has exactly one owner after consumption",
-                rt_heap_hdr(echoed)->refcnt == 1);
+    test_result("Recv result has exactly one owner after producer cleanup",
+                wait_for_refcount(echoed, 1));
 
     rt_tcp_close(tcp);
     if (rt_obj_release_check0(tcp))
@@ -906,6 +1488,8 @@ static void test_server_properties() {
     void *server = rt_tcp_server_listen(port);
     assert(server != nullptr);
 
+    test_result("TcpServer has its stable managed class identity",
+                rt_obj_class_id(server) == RT_TCP_SERVER_CLASS_ID);
     test_result("Server port is correct", rt_tcp_server_port(server) == port);
     test_result("Server is listening", rt_tcp_server_is_listening(server) == 1);
 
@@ -992,6 +1576,192 @@ static void test_accept_timeout() {
     rt_tcp_server_close(server);
 }
 
+/// @brief Run one blocking accept under a thread-local recovery boundary.
+/// @details Workers start together and remain blocked until the parent closes
+///          the listener. Expected close races return NULL without trapping;
+///          any unexpected accepted transport is closed and released so the
+///          test cannot leak it.
+/// @param server Shared TcpServer kept alive by the parent test reference.
+/// @param go Start barrier released after every worker exists.
+/// @param ready Count of workers waiting at the start barrier.
+/// @param completed Count of accept calls that returned or trapped.
+/// @param trapped Count of unexpected accept traps.
+/// @param accepted Count of unexpected accepted client transports.
+static void tcp_blocked_accept_worker(void *server,
+                                      std::atomic<bool> &go,
+                                      std::atomic<int> &ready,
+                                      std::atomic<int> &completed,
+                                      std::atomic<int> &trapped,
+                                      std::atomic<int> &accepted) {
+    ready.fetch_add(1, std::memory_order_acq_rel);
+    while (!go.load(std::memory_order_acquire))
+        std::this_thread::yield();
+
+    void *client = nullptr;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        client = rt_tcp_server_accept(server);
+        rt_trap_clear_recovery();
+    } else {
+        trapped.fetch_add(1, std::memory_order_acq_rel);
+        rt_trap_clear_recovery();
+    }
+    if (client) {
+        accepted.fetch_add(1, std::memory_order_acq_rel);
+        rt_tcp_close(client);
+        release_test_object(client);
+    }
+    completed.fetch_add(1, std::memory_order_acq_rel);
+}
+
+/// @brief Verify concurrent Close drains blocked accepts before descriptor close.
+/// @details Eight indefinite accepts enter the listener concurrently. Close
+///          clears publication, waits for each bounded non-blocking accept loop,
+///          and then closes the descriptor. Every worker must return NULL
+///          without a trap, and Close must complete within a generous bound.
+static void test_tcp_server_concurrent_close_accept() {
+    printf("\nTesting TcpServer concurrent Close/Accept:\n");
+    constexpr int kAcceptors = 8;
+
+    void *server = rt_tcp_server_listen(0);
+    assert(server != nullptr);
+    std::atomic<bool> go{false};
+    std::atomic<int> ready{0};
+    std::atomic<int> completed{0};
+    std::atomic<int> trapped{0};
+    std::atomic<int> accepted{0};
+    std::vector<std::thread> workers;
+    workers.reserve(kAcceptors);
+    for (int i = 0; i < kAcceptors; ++i) {
+        workers.emplace_back(tcp_blocked_accept_worker,
+                             server,
+                             std::ref(go),
+                             std::ref(ready),
+                             std::ref(completed),
+                             std::ref(trapped),
+                             std::ref(accepted));
+    }
+    while (ready.load(std::memory_order_acquire) != kAcceptors)
+        std::this_thread::yield();
+    go.store(true, std::memory_order_release);
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    auto close_start = std::chrono::steady_clock::now();
+    rt_tcp_server_close(server);
+    auto close_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - close_start)
+                             .count();
+    for (std::thread &worker : workers)
+        worker.join();
+
+    test_result("Close drains every blocked accept", completed.load() == kAcceptors);
+    test_result("Concurrent listener close produces no accept trap", trapped.load() == 0);
+    test_result("Closed listener accepts no unintended transport", accepted.load() == 0);
+    test_result("Close waits without hanging", close_elapsed < 3000);
+    test_result("Closed listener publishes a stable stopped state",
+                rt_tcp_server_is_listening(server) == 0);
+    release_test_object(server);
+}
+
+/// @brief Verify native sockets are reclaimed when managed transport allocation traps.
+/// @details Exercises three ownership-transfer points: listener publication,
+///          outbound Tcp publication after connect, and inbound Tcp publication
+///          after accept. Rebinding proves failed listener cleanup; peer EOF
+///          proves both failed connection publications closed their established
+///          native sockets. The listener remains reusable after failed accept.
+static void test_tcp_transport_constructor_trap_cleanup() {
+    printf("\nTesting TCP transport constructor allocation-trap cleanup:\n");
+    jmp_buf recovery;
+
+    const int rebind_port = get_free_tcp_port_ipv4();
+    assert(rebind_port > 0);
+    bool listener_alloc_trapped = false;
+    tcp_alloc_fail_countdown = 1;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(tcp_fail_countdown_alloc);
+        (void)rt_tcp_server_listen(rebind_port);
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        const char *error = rt_trap_get_error();
+        listener_alloc_trapped = error && strstr(error, "allocation failed") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    void *rebound = rt_tcp_server_listen(rebind_port);
+    test_result("Failed TcpServer publication closes its listener",
+                listener_alloc_trapped && tcp_alloc_fail_countdown == 0 && rebound != nullptr);
+    rt_tcp_server_close(rebound);
+    release_test_object(rebound);
+
+    void *server = rt_tcp_server_listen(0);
+    assert(server != nullptr);
+    int64_t port = rt_tcp_server_port(server);
+    rt_string host = rt_const_cstr("127.0.0.1");
+
+    bool connect_alloc_trapped = false;
+    tcp_alloc_fail_countdown = 1;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(tcp_fail_countdown_alloc);
+        (void)rt_tcp_connect(host, port);
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        const char *error = rt_trap_get_error();
+        connect_alloc_trapped = error && strstr(error, "allocation failed") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    void *failed_connect_peer = rt_tcp_server_accept_for(server, 2000);
+    assert(failed_connect_peer != nullptr);
+    rt_tcp_set_recv_timeout(failed_connect_peer, 1000);
+    void *connect_eof = rt_tcp_recv(failed_connect_peer, 1);
+    test_result("Failed outbound Tcp publication closes the connected socket",
+                connect_alloc_trapped && tcp_alloc_fail_countdown == 0 && connect_eof &&
+                    get_bytes_len(connect_eof) == 0 && rt_tcp_is_open(failed_connect_peer) == 0);
+    release_test_object(connect_eof);
+    release_test_object(failed_connect_peer);
+
+    void *accept_client = rt_tcp_connect(host, port);
+    assert(accept_client != nullptr);
+    bool accept_alloc_trapped = false;
+    tcp_alloc_fail_countdown = 1;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(tcp_fail_countdown_alloc);
+        (void)rt_tcp_server_accept_for(server, 2000);
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        const char *error = rt_trap_get_error();
+        accept_alloc_trapped = error && strstr(error, "allocation failed") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    rt_tcp_set_recv_timeout(accept_client, 1000);
+    void *accept_eof = rt_tcp_recv(accept_client, 1);
+    test_result("Failed inbound Tcp publication closes the accepted socket",
+                accept_alloc_trapped && tcp_alloc_fail_countdown == 0 && accept_eof &&
+                    get_bytes_len(accept_eof) == 0 && rt_tcp_is_open(accept_client) == 0);
+    release_test_object(accept_eof);
+    release_test_object(accept_client);
+
+    void *reuse_client = rt_tcp_connect(host, port);
+    void *reuse_peer = rt_tcp_server_accept_for(server, 2000);
+    test_result("Listener remains reusable after failed accepted-Tcp publication",
+                reuse_client != nullptr && reuse_peer != nullptr);
+    rt_tcp_close(reuse_client);
+    rt_tcp_close(reuse_peer);
+    release_test_object(reuse_client);
+    release_test_object(reuse_peer);
+    rt_tcp_server_close(server);
+    release_test_object(server);
+    rt_string_unref(host);
+}
+
 /// @brief Test connect with timeout - just test that ConnectFor compiles and works
 /// Note: Testing actual timeout with non-routable addresses would trap and terminate
 static void test_connect_with_timeout() {
@@ -1047,10 +1817,128 @@ static void test_udp_new() {
 
     void *sock = rt_udp_new();
     test_result("UDP New returns socket", sock != nullptr);
+    test_result("UDP has its stable managed class identity",
+                rt_obj_class_id(sock) == RT_UDP_CLASS_ID);
     test_result("UDP port is 0 (unbound)", rt_udp_port(sock) == 0);
     test_result("UDP is not bound", rt_udp_is_bound(sock) == 0);
 
     rt_udp_close(sock);
+}
+
+/// @brief Verify UDP atomic-message, validation, and allocation ownership contracts.
+/// @details Covers real zero-length datagram transmission, negative-size and
+///          non-Bytes rejection, short-result allocation failure after a
+///          datagram has been consumed, continued socket usability, and native
+///          listener cleanup when bound-UDP managed publication traps.
+static void test_udp_datagram_integrity_and_trap_cleanup() {
+    printf("\nTesting UDP datagram integrity and trap cleanup:\n");
+    const int receiver_port = get_free_udp_port_ipv4();
+    const int sender_port = get_distinct_free_udp_port_ipv4(receiver_port);
+    assert(receiver_port > 0 && sender_port > 0);
+
+    rt_string host = rt_const_cstr("127.0.0.1");
+    void *receiver = rt_udp_bind_at(host, receiver_port);
+    void *sender = rt_udp_bind_at(host, sender_port);
+    assert(receiver != nullptr && sender != nullptr);
+    test_result("Bound UDP handles publish the stable class identity",
+                rt_obj_class_id(receiver) == RT_UDP_CLASS_ID &&
+                    rt_obj_class_id(sender) == RT_UDP_CLASS_ID);
+
+    void *empty = rt_bytes_new(0);
+    test_result("SendTo transmits an atomic zero-length datagram",
+                rt_udp_send_to(sender, host, receiver_port, empty) == 0);
+    void *empty_received = rt_udp_recv_for(receiver, 1, 1000);
+    test_result("Zero-length datagram is distinguishable from RecvFor timeout",
+                empty_received != nullptr && get_bytes_len(empty_received) == 0 &&
+                    rt_udp_sender_port(receiver) == sender_port);
+    release_test_object(empty_received);
+    release_test_object(empty);
+
+    jmp_buf recovery;
+    bool negative_size_trapped = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_udp_recv(receiver, -1);
+        rt_trap_clear_recovery();
+    } else {
+        const char *error = rt_trap_get_error();
+        negative_size_trapped = error && strstr(error, "invalid receive size") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    test_result("UDP receive rejects a negative size", negative_size_trapped);
+
+    void *not_bytes = rt_seq_new();
+    bool invalid_payload_trapped = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_udp_send_to(sender, host, receiver_port, not_bytes);
+        rt_trap_clear_recovery();
+    } else {
+        const char *error = rt_trap_get_error();
+        invalid_payload_trapped = error && strstr(error, "invalid Bytes data") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    release_test_object(not_bytes);
+    test_result("UDP SendTo rejects a non-Bytes managed payload", invalid_payload_trapped);
+
+    void *first = make_bytes_str("a");
+    assert(rt_udp_send_to(sender, host, receiver_port, first) == 1);
+    release_test_object(first);
+    bool right_size_trapped = false;
+    tcp_alloc_fail_countdown = 2;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(tcp_fail_countdown_alloc);
+        (void)rt_udp_recv(receiver, 32);
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        const char *error = rt_trap_get_error();
+        right_size_trapped = error && strstr(error, "allocation failed") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    test_result("UDP short receive releases its oversized Bytes after allocation trap",
+                right_size_trapped && tcp_alloc_fail_countdown == 0);
+
+    void *second = make_bytes_str("z");
+    assert(rt_udp_send_to(sender, host, receiver_port, second) == 1);
+    release_test_object(second);
+    void *continued = rt_udp_recv_for(receiver, 4, 1000);
+    test_result("UDP remains usable after recovered result allocation trap",
+                continued && get_bytes_len(continued) == 1 &&
+                    get_bytes_data(continued)[0] == (uint8_t)'z');
+    release_test_object(continued);
+
+    rt_udp_close(sender);
+    rt_udp_close(receiver);
+    test_result("UDP Close clears bound state and port",
+                rt_udp_is_bound(receiver) == 0 && rt_udp_port(receiver) == 0);
+    release_test_object(sender);
+    release_test_object(receiver);
+
+    const int rebind_port = get_free_udp_port_ipv4();
+    assert(rebind_port > 0);
+    bool bind_alloc_trapped = false;
+    tcp_alloc_fail_countdown = 1;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(tcp_fail_countdown_alloc);
+        (void)rt_udp_bind_at(host, rebind_port);
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        const char *error = rt_trap_get_error();
+        bind_alloc_trapped = error && strstr(error, "allocation failed") != nullptr;
+        rt_trap_clear_recovery();
+    }
+    void *rebound = rt_udp_bind_at(host, rebind_port);
+    test_result("Failed bound-UDP publication closes its native socket",
+                bind_alloc_trapped && tcp_alloc_fail_countdown == 0 && rebound != nullptr);
+    rt_udp_close(rebound);
+    release_test_object(rebound);
+    rt_string_unref(host);
 }
 
 /// @brief Test UDP bind
@@ -1198,14 +2086,14 @@ static void test_udp_send_recv_ipv6() {
     printf("\nTesting UDP IPv6 Send/Recv:\n");
 
     if (!localhost_bind_available_ipv6()) {
-        printf("  SKIP: IPv6 loopback unavailable in this environment\n");
+        printf("  SKIPPED: IPv6 loopback unavailable in this environment\n");
         return;
     }
 
     const int recv_port = get_free_udp_port_ipv6();
     const int send_port = get_distinct_free_udp_port_ipv6(recv_port);
     if (recv_port <= 0 || send_port <= 0 || recv_port == send_port) {
-        printf("  SKIP: could not allocate IPv6 loopback UDP ports\n");
+        printf("  SKIPPED: could not allocate IPv6 loopback UDP ports\n");
         return;
     }
 
@@ -1306,6 +2194,46 @@ static void test_udp_set_recv_timeout() {
 // DNS Tests
 //=============================================================================
 
+/// @brief Evaluate one DNS text predicate without leaking its managed input.
+/// @details Runtime test literals are ordinary caller-owned Strings. This
+///          helper gives parser tables concise syntax while ensuring each
+///          temporary is released immediately after the allocation-free
+///          predicate returns.
+/// @param predicate DNS predicate under test.
+/// @param text NUL-terminated candidate address.
+/// @return Predicate result.
+static int8_t run_dns_predicate(int8_t (*predicate)(rt_string), const char *text) {
+    rt_string value = rt_const_cstr(text);
+    int8_t result = predicate(value);
+    rt_string_unref(value);
+    return result;
+}
+
+/// @brief Validate that a DNS result sequence contains unique IP Strings.
+/// @details Checks the managed type, public IP predicate, and pairwise byte
+///          equality. Resolver and interface lists are intentionally small, so
+///          the quadratic comparison keeps the test independent of Map/Set
+///          behavior that is audited separately.
+/// @param addresses Element-owning DNS Seq.
+/// @return True when every entry is a valid IP and no two entries are equal.
+static bool dns_addresses_are_unique_and_valid(void *addresses) {
+    if (!addresses)
+        return false;
+    int64_t count = rt_seq_len(addresses);
+    for (int64_t i = 0; i < count; ++i) {
+        rt_string current = (rt_string)rt_seq_get(addresses, i);
+        if (!current || !rt_string_is_handle(current) || rt_dns_is_ip(current) != 1)
+            return false;
+        const char *current_bytes = rt_string_cstr(current);
+        for (int64_t j = 0; j < i; ++j) {
+            rt_string earlier = (rt_string)rt_seq_get(addresses, j);
+            if (strcmp(current_bytes, rt_string_cstr(earlier)) == 0)
+                return false;
+        }
+    }
+    return true;
+}
+
 /// @brief Test DNS resolve localhost
 static void test_dns_resolve_localhost() {
     printf("\nTesting DNS Resolve localhost:\n");
@@ -1317,6 +2245,8 @@ static void test_dns_resolve_localhost() {
     test_result("DNS Resolve localhost returns IP", ip != nullptr);
     test_result("DNS Resolve localhost is loopback",
                 strcmp(ip, "127.0.0.1") == 0 || strcmp(ip, "::1") == 0);
+    rt_string_unref(result);
+    rt_string_unref(hostname);
 }
 
 /// @brief Test DNS resolve4 localhost
@@ -1329,45 +2259,63 @@ static void test_dns_resolve4_localhost() {
     const char *ip = rt_string_cstr(result);
     test_result("DNS Resolve4 localhost returns IP", ip != nullptr);
     test_result("DNS Resolve4 localhost is 127.0.0.1", strcmp(ip, "127.0.0.1") == 0);
+    rt_string_unref(result);
+    rt_string_unref(hostname);
 }
 
 /// @brief Test DNS IsIPv4
 static void test_dns_is_ipv4() {
     printf("\nTesting DNS IsIPv4:\n");
 
-    test_result("IsIPv4('127.0.0.1') = true", rt_dns_is_ipv4(rt_const_cstr("127.0.0.1")) == 1);
-    test_result("IsIPv4('192.168.1.1') = true", rt_dns_is_ipv4(rt_const_cstr("192.168.1.1")) == 1);
-    test_result("IsIPv4('0.0.0.0') = true", rt_dns_is_ipv4(rt_const_cstr("0.0.0.0")) == 1);
+    test_result("IsIPv4('127.0.0.1') = true", run_dns_predicate(rt_dns_is_ipv4, "127.0.0.1") == 1);
+    test_result("IsIPv4('192.168.1.1') = true",
+                run_dns_predicate(rt_dns_is_ipv4, "192.168.1.1") == 1);
+    test_result("IsIPv4('0.0.0.0') = true", run_dns_predicate(rt_dns_is_ipv4, "0.0.0.0") == 1);
     test_result("IsIPv4('255.255.255.255') = true",
-                rt_dns_is_ipv4(rt_const_cstr("255.255.255.255")) == 1);
-    test_result("IsIPv4('256.0.0.1') = false", rt_dns_is_ipv4(rt_const_cstr("256.0.0.1")) == 0);
-    test_result("IsIPv4('1.2.3') = false", rt_dns_is_ipv4(rt_const_cstr("1.2.3")) == 0);
-    test_result("IsIPv4('hello') = false", rt_dns_is_ipv4(rt_const_cstr("hello")) == 0);
-    test_result("IsIPv4('') = false", rt_dns_is_ipv4(rt_const_cstr("")) == 0);
-    test_result("IsIPv4('::1') = false", rt_dns_is_ipv4(rt_const_cstr("::1")) == 0);
+                run_dns_predicate(rt_dns_is_ipv4, "255.255.255.255") == 1);
+    test_result("IsIPv4('256.0.0.1') = false", run_dns_predicate(rt_dns_is_ipv4, "256.0.0.1") == 0);
+    test_result("IsIPv4('1.2.3') = false", run_dns_predicate(rt_dns_is_ipv4, "1.2.3") == 0);
+    test_result("IsIPv4('01.2.3.4') = false", run_dns_predicate(rt_dns_is_ipv4, "01.2.3.4") == 0);
+    test_result("IsIPv4 oversized octet text = false",
+                run_dns_predicate(rt_dns_is_ipv4, "0000000000000000001.2.3.4") == 0);
+    test_result("IsIPv4 trailing dot = false", run_dns_predicate(rt_dns_is_ipv4, "1.2.3.4.") == 0);
+    test_result("IsIPv4('hello') = false", run_dns_predicate(rt_dns_is_ipv4, "hello") == 0);
+    test_result("IsIPv4('') = false", run_dns_predicate(rt_dns_is_ipv4, "") == 0);
+    test_result("IsIPv4('::1') = false", run_dns_predicate(rt_dns_is_ipv4, "::1") == 0);
 }
 
 /// @brief Test DNS IsIPv6
 static void test_dns_is_ipv6() {
     printf("\nTesting DNS IsIPv6:\n");
 
-    test_result("IsIPv6('::1') = true", rt_dns_is_ipv6(rt_const_cstr("::1")) == 1);
-    test_result("IsIPv6('::') = true", rt_dns_is_ipv6(rt_const_cstr("::")) == 1);
-    test_result("IsIPv6('2001:db8::1') = true", rt_dns_is_ipv6(rt_const_cstr("2001:db8::1")) == 1);
-    test_result("IsIPv6('fe80::1') = true", rt_dns_is_ipv6(rt_const_cstr("fe80::1")) == 1);
-    test_result("IsIPv6('127.0.0.1') = false", rt_dns_is_ipv6(rt_const_cstr("127.0.0.1")) == 0);
-    test_result("IsIPv6('hello') = false", rt_dns_is_ipv6(rt_const_cstr("hello")) == 0);
-    test_result("IsIPv6('') = false", rt_dns_is_ipv6(rt_const_cstr("")) == 0);
+    test_result("IsIPv6('::1') = true", run_dns_predicate(rt_dns_is_ipv6, "::1") == 1);
+    test_result("IsIPv6('::') = true", run_dns_predicate(rt_dns_is_ipv6, "::") == 1);
+    test_result("IsIPv6('2001:db8::1') = true",
+                run_dns_predicate(rt_dns_is_ipv6, "2001:db8::1") == 1);
+    test_result("IsIPv6('fe80::1') = true", run_dns_predicate(rt_dns_is_ipv6, "fe80::1") == 1);
+    test_result("IsIPv6 scoped numeric zone = true",
+                run_dns_predicate(rt_dns_is_ipv6, "fe80::1%1") == 1);
+    test_result("IsIPv6 scoped named zone = true",
+                run_dns_predicate(rt_dns_is_ipv6, "fe80::1%en0") == 1);
+    test_result("IsIPv6 empty zone = false", run_dns_predicate(rt_dns_is_ipv6, "fe80::1%") == 0);
+    test_result("IsIPv6 invalid zone = false",
+                run_dns_predicate(rt_dns_is_ipv6, "fe80::1%bad/zone") == 0);
+    test_result("IsIPv6 duplicate zone separator = false",
+                run_dns_predicate(rt_dns_is_ipv6, "fe80::1%1%2") == 0);
+    test_result("IsIPv6('127.0.0.1') = false", run_dns_predicate(rt_dns_is_ipv6, "127.0.0.1") == 0);
+    test_result("IsIPv6('hello') = false", run_dns_predicate(rt_dns_is_ipv6, "hello") == 0);
+    test_result("IsIPv6('') = false", run_dns_predicate(rt_dns_is_ipv6, "") == 0);
 }
 
 /// @brief Test DNS IsIP
 static void test_dns_is_ip() {
     printf("\nTesting DNS IsIP:\n");
 
-    test_result("IsIP('127.0.0.1') = true", rt_dns_is_ip(rt_const_cstr("127.0.0.1")) == 1);
-    test_result("IsIP('::1') = true", rt_dns_is_ip(rt_const_cstr("::1")) == 1);
-    test_result("IsIP('hello') = false", rt_dns_is_ip(rt_const_cstr("hello")) == 0);
-    test_result("IsIP('') = false", rt_dns_is_ip(rt_const_cstr("")) == 0);
+    test_result("IsIP('127.0.0.1') = true", run_dns_predicate(rt_dns_is_ip, "127.0.0.1") == 1);
+    test_result("IsIP('::1') = true", run_dns_predicate(rt_dns_is_ip, "::1") == 1);
+    test_result("IsIP scoped IPv6 = true", run_dns_predicate(rt_dns_is_ip, "fe80::1%1") == 1);
+    test_result("IsIP('hello') = false", run_dns_predicate(rt_dns_is_ip, "hello") == 0);
+    test_result("IsIP('') = false", run_dns_predicate(rt_dns_is_ip, "") == 0);
 }
 
 /// @brief Test DNS LocalHost
@@ -1379,6 +2327,7 @@ static void test_dns_local_host() {
 
     test_result("DNS LocalHost returns non-empty", name != nullptr && strlen(name) > 0);
     printf("  Local hostname: %s\n", name);
+    rt_string_unref(hostname);
 }
 
 /// @brief Test DNS LocalAddrs
@@ -1390,6 +2339,8 @@ static void test_dns_local_addrs() {
 
     test_result("DNS LocalAddrs returns Seq", addrs != nullptr);
     test_result("DNS LocalAddrs has entries", count > 0);
+    test_result("DNS LocalAddrs entries are unique valid IPs",
+                dns_addresses_are_unique_and_valid(addrs));
 
     printf("  Found %lld local addresses:\n", (long long)count);
     for (int64_t i = 0; i < count && i < 5; i++) // Limit output
@@ -1399,6 +2350,7 @@ static void test_dns_local_addrs() {
     }
     if (count > 5)
         printf("    ... and %lld more\n", (long long)(count - 5));
+    release_test_object(addrs);
 }
 
 /// @brief Test DNS ResolveAll localhost
@@ -1411,6 +2363,8 @@ static void test_dns_resolve_all() {
 
     test_result("DNS ResolveAll returns Seq", addrs != nullptr);
     test_result("DNS ResolveAll has entries", count > 0);
+    test_result("DNS ResolveAll entries are unique valid IPs",
+                dns_addresses_are_unique_and_valid(addrs));
 
     // Check first entry is localhost IP
     if (count > 0) {
@@ -1421,6 +2375,72 @@ static void test_dns_resolve_all() {
         bool valid = (strcmp(ip, "127.0.0.1") == 0 || strcmp(ip, "::1") == 0);
         test_result("DNS ResolveAll first is valid localhost", valid);
     }
+    release_test_object(addrs);
+    rt_string_unref(hostname);
+}
+
+/// @brief Verify DNS snapshot cleanup across injected managed allocation traps.
+/// @details Fails the owning Seq allocation and the first result-String
+///          allocation for `ResolveAll`, then fails the first local-address
+///          String allocation. Each nested DNS recovery frame must release its
+///          native snapshot and partial managed graph before rethrowing. The GC
+///          tracked count verifies that no partial Seq remains; successful
+///          retries prove the allocator hook and DNS paths remain reusable.
+static void test_dns_allocation_trap_cleanup() {
+    printf("\nTesting DNS managed-allocation trap cleanup:\n");
+
+    rt_string hostname = rt_const_cstr("localhost");
+    const int64_t tracked_baseline = rt_gc_tracked_count();
+    for (int fail_at = 1; fail_at <= 2; ++fail_at) {
+        bool trapped = false;
+        void *result = nullptr;
+        jmp_buf recovery;
+        tcp_alloc_fail_countdown = fail_at;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            rt_set_alloc_hook(tcp_fail_countdown_alloc);
+            result = rt_dns_resolve_all(hostname);
+            rt_set_alloc_hook(nullptr);
+            rt_trap_clear_recovery();
+        } else {
+            rt_set_alloc_hook(nullptr);
+            trapped = true;
+            rt_trap_clear_recovery();
+        }
+        release_test_object(result);
+        test_result(fail_at == 1 ? "ResolveAll cleans failed Seq allocation"
+                                 : "ResolveAll cleans failed address allocation",
+                    trapped && tcp_alloc_fail_countdown == 0 &&
+                        rt_gc_tracked_count() == tracked_baseline);
+    }
+
+    bool local_trapped = false;
+    void *local_result = nullptr;
+    jmp_buf recovery;
+    tcp_alloc_fail_countdown = 2;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(tcp_fail_countdown_alloc);
+        local_result = rt_dns_local_addrs();
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        local_trapped = true;
+        rt_trap_clear_recovery();
+    }
+    release_test_object(local_result);
+    test_result("LocalAddrs cleans native snapshot and partial Seq on allocation trap",
+                local_trapped && tcp_alloc_fail_countdown == 0 &&
+                    rt_gc_tracked_count() == tracked_baseline);
+
+    void *retry = rt_dns_resolve_all(hostname);
+    test_result("ResolveAll succeeds after recovered allocation traps",
+                retry && rt_seq_len(retry) > 0 && dns_addresses_are_unique_and_valid(retry));
+    release_test_object(retry);
+    test_result("Successful DNS retry releases back to tracked baseline",
+                rt_gc_tracked_count() == tracked_baseline);
+    rt_string_unref(hostname);
 }
 
 //=============================================================================
@@ -1829,6 +2849,7 @@ static void test_http_req_builder() {
 
     void *null_result = rt_http_req_send_result(NULL);
     test_result("HttpReq.SendResult(NULL) returns Result.Err", rt_result_is_err(null_result) == 1);
+    release_test_object(null_result);
 
     const int port = get_free_tcp_port_ipv4();
     assert(port > 0);
@@ -1895,6 +2916,324 @@ static void test_http_req_builder() {
     test_result("HttpRes.Header(NULL) returns empty", rt_str_len(missing_header) == 0);
 
     server_thread.join();
+}
+
+/// @brief Fail every managed allocation used to construct an HTTP error Result.
+/// @details A count-only pass records the deterministic `SendResult(NULL)`
+///          allocation count. Each boundary is then failed beneath an outer
+///          recovery frame. The helper must propagate exactly one allocation
+///          trap, return no partial Result, and restore the exact managed-object
+///          baseline instead of recursively retrying Result construction.
+static void test_http_send_result_allocation_cleanup() {
+    printf("\nTesting HttpReq.SendResult allocation cleanup:\n");
+
+    const int64_t baseline = rt_gc_tracked_count();
+    http_alloc_fail_countdown = 0;
+    http_alloc_observed = 0;
+    rt_set_alloc_hook(http_countdown_alloc);
+    void *count_result = rt_http_req_send_result(NULL);
+    rt_set_alloc_hook(nullptr);
+    const int allocation_count = http_alloc_observed;
+    test_result("Count-only SendResult returns Result.Err",
+                count_result && rt_result_is_err(count_result) == 1);
+    release_test_object(count_result);
+    test_result("Count-only SendResult releases its complete Result graph",
+                rt_gc_tracked_count() == baseline);
+
+    int trap_count = 0;
+    bool all_failures_clean = allocation_count > 0;
+    for (int fail_at = 1; fail_at <= allocation_count; ++fail_at) {
+        void *result = nullptr;
+        bool trapped = false;
+        jmp_buf recovery;
+        http_alloc_fail_countdown = fail_at;
+        http_alloc_observed = 0;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            rt_set_alloc_hook(http_countdown_alloc);
+            result = rt_http_req_send_result(NULL);
+            rt_set_alloc_hook(nullptr);
+            rt_trap_clear_recovery();
+        } else {
+            rt_set_alloc_hook(nullptr);
+            trapped = true;
+            rt_trap_clear_recovery();
+        }
+        trap_count += trapped ? 1 : 0;
+        all_failures_clean = all_failures_clean && trapped && result == nullptr;
+        release_test_object(result);
+        all_failures_clean = all_failures_clean && rt_gc_tracked_count() == baseline;
+    }
+    http_alloc_fail_countdown = 0;
+    test_result("Every SendResult construction allocation failure propagates once",
+                all_failures_clean && trap_count == allocation_count);
+    test_result("Every SendResult construction failure releases partial values",
+                rt_gc_tracked_count() == baseline);
+}
+
+/// @brief Verify stable HTTP identities, forged-handle rejection, and accessor cleanup.
+/// @details Uses a raw server so the tracked-count baseline contains only
+///          client-owned objects. Invalid body/pool updates must preserve the
+///          previous request state. Header-copy and single-header accessors are
+///          then failed at each managed allocation boundary and must return to
+///          the exact baseline after recovery.
+static void test_http_identity_and_accessor_trap_cleanup() {
+    printf("\nTesting HTTP stable identity and accessor trap cleanup:\n");
+
+    const int64_t initial_tracked = rt_gc_tracked_count();
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
+    server_ready = false;
+    server_done = false;
+    std::thread server(native_http_fault_server, port, "identity-body");
+    while (!server_ready.load(std::memory_order_acquire))
+        std::this_thread::yield();
+
+    char url_buffer[96];
+    snprintf(url_buffer, sizeof(url_buffer), "http://127.0.0.1:%d/identity", port);
+    rt_string method = rt_const_cstr("GET");
+    rt_string url = rt_const_cstr(url_buffer);
+    rt_string body_string = rt_const_cstr("preserved-body");
+    rt_string header_name = rt_const_cstr("X-Fault-Test");
+    void *request = rt_http_req_new(method, url);
+    void *response = rt_http_req_send(request);
+    server.join();
+
+    test_result("HttpReq publishes its stable class identity",
+                rt_obj_is_instance(request, RT_HTTP_REQ_CLASS_ID, sizeof(rt_http_req_t)) == 1);
+    test_result("HttpRes publishes its stable class identity",
+                rt_obj_is_instance(response, RT_HTTP_RES_CLASS_ID, sizeof(rt_http_res_t)) == 1);
+
+    void *pool = rt_http_conn_pool_new(4);
+    test_result("HTTP connection pool publishes stable initialized identity",
+                rt_http_conn_pool_is_handle(pool) == 1);
+    test_result("HttpReq accepts a validated retained pool",
+                rt_http_req_set_connection_pool(request, pool) == request &&
+                    static_cast<rt_http_req_t *>(request)->connection_pool == pool);
+    test_result("HttpReq stores a copied baseline body",
+                rt_http_req_set_body_str(request, body_string) == request &&
+                    static_cast<rt_http_req_t *>(request)->body_len == strlen("preserved-body") &&
+                    memcmp(static_cast<rt_http_req_t *>(request)->body,
+                           "preserved-body",
+                           strlen("preserved-body")) == 0);
+
+    void *wrong = rt_seq_new();
+    jmp_buf recovery;
+    bool body_trapped = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_http_req_set_body(request, wrong);
+        rt_trap_clear_recovery();
+    } else {
+        body_trapped = true;
+        rt_trap_clear_recovery();
+    }
+    test_result("Rejected Bytes body preserves prior request body",
+                body_trapped &&
+                    static_cast<rt_http_req_t *>(request)->body_len == strlen("preserved-body") &&
+                    memcmp(static_cast<rt_http_req_t *>(request)->body,
+                           "preserved-body",
+                           strlen("preserved-body")) == 0);
+
+    bool pool_trapped = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_http_req_set_connection_pool(request, wrong);
+        rt_trap_clear_recovery();
+    } else {
+        pool_trapped = true;
+        rt_trap_clear_recovery();
+    }
+    test_result("Rejected pool preserves prior retained pool",
+                pool_trapped && static_cast<rt_http_req_t *>(request)->connection_pool == pool);
+
+    bool request_receiver_trapped = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_http_req_set_timeout(wrong, 1);
+        rt_trap_clear_recovery();
+    } else {
+        request_receiver_trapped = true;
+        rt_trap_clear_recovery();
+    }
+    bool response_receiver_trapped = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_http_res_headers(wrong);
+        rt_trap_clear_recovery();
+    } else {
+        response_receiver_trapped = true;
+        rt_trap_clear_recovery();
+    }
+    bool response_predicate_trapped = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_http_res_is_ok(wrong);
+        rt_trap_clear_recovery();
+    } else {
+        response_predicate_trapped = true;
+        rt_trap_clear_recovery();
+    }
+    bool pool_receiver_trapped = false;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_http_conn_pool_clear(wrong);
+        rt_trap_clear_recovery();
+    } else {
+        pool_receiver_trapped = true;
+        rt_trap_clear_recovery();
+    }
+    test_result("Forged HTTP receivers trap before native payload access",
+                request_receiver_trapped && response_receiver_trapped &&
+                    response_predicate_trapped && pool_receiver_trapped && rt_seq_len(wrong) == 0);
+
+    const int64_t accessor_baseline = rt_gc_tracked_count();
+    bool all_header_copy_failures_clean = true;
+    int header_copy_traps = 0;
+    for (int fail_at = 1; fail_at <= 8; ++fail_at) {
+        void *copy = nullptr;
+        bool trapped = false;
+        http_alloc_fail_countdown = fail_at;
+        http_alloc_observed = 0;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            rt_set_alloc_hook(http_countdown_alloc);
+            copy = rt_http_res_headers(response);
+            rt_set_alloc_hook(nullptr);
+            rt_trap_clear_recovery();
+        } else {
+            rt_set_alloc_hook(nullptr);
+            trapped = true;
+            rt_trap_clear_recovery();
+        }
+        if (trapped)
+            header_copy_traps++;
+        release_test_object(copy);
+        all_header_copy_failures_clean =
+            all_header_copy_failures_clean && rt_gc_tracked_count() == accessor_baseline;
+    }
+    test_result("HttpRes.Headers releases every partial Map/Seq/String snapshot",
+                all_header_copy_failures_clean && header_copy_traps >= 4);
+
+    bool all_header_lookup_failures_clean = true;
+    int header_lookup_traps = 0;
+    for (int fail_at = 1; fail_at <= 2; ++fail_at) {
+        rt_string value = nullptr;
+        bool trapped = false;
+        http_alloc_fail_countdown = fail_at;
+        http_alloc_observed = 0;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            rt_set_alloc_hook(http_countdown_alloc);
+            value = rt_http_res_header(response, header_name);
+            rt_set_alloc_hook(nullptr);
+            rt_trap_clear_recovery();
+        } else {
+            rt_set_alloc_hook(nullptr);
+            trapped = true;
+            rt_trap_clear_recovery();
+        }
+        if (trapped)
+            header_lookup_traps++;
+        if (value)
+            rt_string_unref(value);
+        all_header_lookup_failures_clean =
+            all_header_lookup_failures_clean && rt_gc_tracked_count() == accessor_baseline;
+    }
+    test_result("HttpRes.Header releases lookup key/value/result on allocation traps",
+                all_header_lookup_failures_clean && header_lookup_traps == 2);
+
+    release_test_object(wrong);
+    release_test_object(response);
+    release_test_object(request);
+    release_test_object(pool);
+    rt_string_unref(header_name);
+    rt_string_unref(body_string);
+    rt_string_unref(url);
+    rt_string_unref(method);
+    test_result("HTTP identity test returns to its managed-object baseline",
+                rt_gc_tracked_count() == initial_tracked);
+}
+
+/// @brief Fail every managed allocation in one complete `Http.Get` transaction.
+/// @details A successful count-only pass establishes the exact allocation count
+///          for the warmed deterministic path. Each subsequent pass fails one
+///          position, catches the propagated trap, joins the allocation-free
+///          native server, and verifies that parsing/publication/conversion left
+///          no tracked object behind.
+static void test_http_one_shot_allocation_sweep() {
+    printf("\nTesting Http.Get allocation-by-allocation cleanup:\n");
+
+    auto run_server = [](int port) {
+        server_ready = false;
+        server_done = false;
+        return std::thread(native_http_fault_server, port, "fault-body");
+    };
+
+    int count_port = get_free_tcp_port_ipv4();
+    assert(count_port > 0);
+    std::thread count_server = run_server(count_port);
+    while (!server_ready.load(std::memory_order_acquire))
+        std::this_thread::yield();
+    char count_url_buffer[96];
+    snprintf(
+        count_url_buffer, sizeof(count_url_buffer), "http://127.0.0.1:%d/fault-count", count_port);
+    rt_string count_url = rt_const_cstr(count_url_buffer);
+    const int64_t baseline = rt_gc_tracked_count();
+    http_alloc_fail_countdown = 0;
+    http_alloc_observed = 0;
+    rt_set_alloc_hook(http_countdown_alloc);
+    rt_string counted_result = rt_http_get(count_url);
+    rt_set_alloc_hook(nullptr);
+    count_server.join();
+    const int allocation_count = http_alloc_observed;
+    test_result("Count-only Http.Get completes through the native server",
+                counted_result && strcmp(rt_string_cstr(counted_result), "fault-body") == 0 &&
+                    allocation_count > 0);
+    rt_string_unref(counted_result);
+    test_result("Count-only Http.Get leaves no temporary managed objects",
+                rt_gc_tracked_count() == baseline);
+
+    bool all_failures_trapped = true;
+    bool all_failures_clean = true;
+    for (int fail_at = 1; fail_at <= allocation_count; ++fail_at) {
+        const int port = get_free_tcp_port_ipv4();
+        assert(port > 0);
+        std::thread server = run_server(port);
+        while (!server_ready.load(std::memory_order_acquire))
+            std::this_thread::yield();
+        char url_buffer[96];
+        snprintf(url_buffer, sizeof(url_buffer), "http://127.0.0.1:%d/fault", port);
+        rt_string url = rt_const_cstr(url_buffer);
+        const int64_t iteration_baseline = rt_gc_tracked_count();
+        rt_string result = nullptr;
+        bool trapped = false;
+        jmp_buf recovery;
+        http_alloc_fail_countdown = fail_at;
+        http_alloc_observed = 0;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            rt_set_alloc_hook(http_countdown_alloc);
+            result = rt_http_get(url);
+            rt_set_alloc_hook(nullptr);
+            rt_trap_clear_recovery();
+        } else {
+            rt_set_alloc_hook(nullptr);
+            trapped = true;
+            rt_trap_clear_recovery();
+        }
+        server.join();
+        if (result)
+            rt_string_unref(result);
+        all_failures_trapped = all_failures_trapped && trapped && http_alloc_fail_countdown == 0;
+        all_failures_clean = all_failures_clean && rt_gc_tracked_count() == iteration_baseline;
+        rt_string_unref(url);
+    }
+    test_result("Every managed Http.Get allocation failure propagates exactly once",
+                all_failures_trapped);
+    test_result("Every Http.Get allocation failure releases the full transaction",
+                all_failures_clean && rt_gc_tracked_count() == baseline);
+    rt_string_unref(count_url);
 }
 
 /// @brief Test HTTP redirects
@@ -2049,6 +3388,13 @@ static void test_http_download() {
     char path[128];
     snprintf(path, sizeof(path), "/tmp/zanna_http_download_%d.txt", port);
     remove(path);
+    FILE *existing = fopen(path, "wb");
+    assert(existing != nullptr);
+    assert(fwrite("stale", 1, 5, existing) == 5);
+    assert(fclose(existing) == 0);
+#if !RT_PLATFORM_WINDOWS
+    assert(chmod(path, 0640) == 0);
+#endif
 
     int8_t ok = rt_http_download(rt_const_cstr(url), rt_const_cstr(path));
     test_result("Http.Download succeeds", ok == 1);
@@ -2059,10 +3405,18 @@ static void test_http_download() {
     size_t read_len = f ? fread(buffer, 1, sizeof(buffer) - 1, f) : 0;
     if (f)
         fclose(f);
+#if !RT_PLATFORM_WINDOWS
+    struct stat downloaded_stat = {};
+    const bool mode_preserved =
+        stat(path, &downloaded_stat) == 0 && (downloaded_stat.st_mode & 0777) == 0640;
+#else
+    const bool mode_preserved = true;
+#endif
     remove(path);
 
     test_result("Http.Download writes expected bytes", read_len == strlen(body));
     test_result("Http.Download file contents match", strcmp(buffer, body) == 0);
+    test_result("Http.Download preserves existing ordinary file permissions", mode_preserved);
 
     server_thread.join();
 }
@@ -2104,6 +3458,62 @@ static void test_http_download_identity_encoding() {
                 http_accept_encoding_header.find("gzip") == std::string::npos);
     test_result("Http.Download identity body length matches", read_len == strlen(body));
     test_result("Http.Download identity body matches", strcmp(buffer, body) == 0);
+}
+
+/// @brief Verify streaming download contains managed parser traps and removes staging files.
+/// @details The first response-head managed allocation is failed while a raw
+///          server performs no runtime allocation. The public Boolean API must
+///          return false without propagating, leave the destination absent, and
+///          restore the tracked-object baseline. Embedded-NUL URL/path inputs
+///          are also rejected before any filesystem or transport side effect.
+static void test_http_download_trap_and_input_cleanup() {
+    printf("\nTesting Http.Download trap containment and input validation:\n");
+
+    const int port = get_free_tcp_port_ipv4();
+    assert(port > 0);
+    server_ready = false;
+    server_done = false;
+    std::thread server(native_http_fault_server, port, "download-fault");
+    while (!server_ready.load(std::memory_order_acquire))
+        std::this_thread::yield();
+
+    char url_buffer[96];
+    char path_buffer[160];
+    snprintf(url_buffer, sizeof(url_buffer), "http://127.0.0.1:%d/download-fault", port);
+    snprintf(path_buffer, sizeof(path_buffer), "/tmp/zanna_http_download_fault_%d.txt", port);
+    remove(path_buffer);
+    rt_string url = rt_const_cstr(url_buffer);
+    rt_string path = rt_const_cstr(path_buffer);
+    const int64_t baseline = rt_gc_tracked_count();
+
+    http_alloc_fail_countdown = 1;
+    http_alloc_observed = 0;
+    rt_set_alloc_hook(http_countdown_alloc);
+    int8_t ok = rt_http_download(url, path);
+    rt_set_alloc_hook(nullptr);
+    server.join();
+    FILE *unexpected = fopen(path_buffer, "rb");
+    if (unexpected)
+        fclose(unexpected);
+    test_result("Http.Download converts response allocation trap to false",
+                ok == 0 && http_alloc_fail_countdown == 0);
+    test_result("Failed Http.Download removes staged and destination content",
+                unexpected == nullptr && rt_gc_tracked_count() == baseline);
+    remove(path_buffer);
+
+    const char hidden_url_bytes[] = {'h', 't', 't', 'p', ':', '/', '/', 'x', '\0', 'y'};
+    const char hidden_path_bytes[] = {'/', 't', 'm', 'p', '/', 'x', '\0', 'y'};
+    rt_string hidden_url = rt_string_from_bytes(hidden_url_bytes, sizeof(hidden_url_bytes));
+    rt_string hidden_path = rt_string_from_bytes(hidden_path_bytes, sizeof(hidden_path_bytes));
+    test_result("Http.Download rejects embedded-NUL URL before transport",
+                rt_http_download(hidden_url, path) == 0);
+    test_result("Http.Download rejects embedded-NUL destination before filesystem access",
+                rt_http_download(url, hidden_path) == 0);
+
+    rt_string_unref(hidden_path);
+    rt_string_unref(hidden_url);
+    rt_string_unref(path);
+    rt_string_unref(url);
 }
 
 //=============================================================================
@@ -2412,15 +3822,20 @@ int main() {
         test_server_ephemeral_port();
         test_listen_at();
         test_accept_timeout();
+        test_tcp_server_concurrent_close_accept();
+        test_tcp_transport_constructor_trap_cleanup();
         test_server_client_connect();
         test_server_client_connect_ipv6();
         test_client_properties();
         test_send_recv();
+        test_tcp_receive_trap_cleanup();
         test_send_all_recv_exact();
         test_connection_pool_reuses_live_connection();
         test_connection_pool_tracks_fresh_acquire();
         test_connection_pool_clamps_max_size_and_closes_overflow();
         test_connection_pool_ownership_and_hygiene();
+        test_connection_pool_rejects_cross_pool_aliasing();
+        test_connection_pool_concurrent_bookkeeping();
         test_netutils_is_port_open_contract();
         test_async_socket_reference_transfer_and_boxed_send();
         test_recv_line();
@@ -2429,6 +3844,7 @@ int main() {
         printf("\n=== Zanna.Network.Udp Tests ===\n");
 
         test_udp_new();
+        test_udp_datagram_integrity_and_trap_cleanup();
         test_udp_bind();
         test_udp_bind_at();
         test_udp_send_recv();
@@ -2440,7 +3856,7 @@ int main() {
         test_udp_set_recv_timeout();
     } else {
         printf("=== Zanna.Network Tcp/Udp Tests ===\n");
-        printf("  SKIP: local bind unavailable in this environment\n");
+        printf("  SKIPPED: local bind unavailable in this environment\n");
     }
 
     printf("\n=== Zanna.Network.Dns Tests ===\n");
@@ -2453,6 +3869,7 @@ int main() {
     test_dns_local_host();
     test_dns_local_addrs();
     test_dns_resolve_all();
+    test_dns_allocation_trap_cleanup();
 
     printf("\n=== Zanna.Network.Http Tests ===\n");
     if (canBindLocal) {
@@ -2461,13 +3878,17 @@ int main() {
         test_http_head();
         test_http_chunked();
         test_http_req_builder();
+        test_http_send_result_allocation_cleanup();
+        test_http_identity_and_accessor_trap_cleanup();
+        test_http_one_shot_allocation_sweep();
         test_http_redirect();
         test_http_relative_redirect();
         test_http_gzip_response();
         test_http_download();
         test_http_download_identity_encoding();
+        test_http_download_trap_and_input_cleanup();
     } else {
-        printf("  SKIP: local bind unavailable in this environment\n");
+        printf("  SKIPPED: local bind unavailable in this environment\n");
     }
 
     printf("\n=== Zanna.Network.Url Tests ===\n");

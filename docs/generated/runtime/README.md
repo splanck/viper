@@ -9,7 +9,7 @@ This exhaustive reference is generated from the modular runtime definition regis
 | [Assets](assets.md) | 1 | 1 |
 | [Audio](audio.md) | 9 | 132 |
 | [Basic](basic.md) | 1 | 4 |
-| [Collections](collections.md) | 31 | 485 |
+| [Collections](collections.md) | 31 | 487 |
 | [Core](core.md) | 6 | 60 |
 | [Crypto](crypto.md) | 10 | 81 |
 | [Data](data.md) | 9 | 97 |

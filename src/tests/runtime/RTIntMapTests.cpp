@@ -7,6 +7,12 @@
 //
 // File: src/tests/runtime/RTIntMapTests.cpp
 // Purpose: Tests for Zanna.Collections.IntMap runtime helpers.
+// Key invariants: Resizing is transactional, cached hashes remain stable, and
+//                 Trim selects the smallest legal geometric capacity.
+// Ownership/Lifetime: Tests release every map and managed value; injected OOM
+//                     recovery leaves the original map owned and usable.
+// Links: src/runtime/collections/rt_intmap.c,
+//        docs/adr/0133-runtime-concurrency-and-collection-hardening.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,10 +24,20 @@
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdint>
 #include <cstring>
 
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
 extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
@@ -32,6 +48,73 @@ static void release_obj(void *p) {
 
 static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
+}
+
+/// @brief White-box IntMap payload view used to verify capacity invariants.
+struct IntMapLayout {
+    void **vptr;
+    void *buckets;
+    size_t capacity;
+    size_t count;
+};
+
+static void *reject_runtime_allocation(int64_t, void *(*)(int64_t)) {
+    return nullptr;
+}
+
+static void test_failed_growth_and_trim_preserve_intmap() {
+    void *map = rt_intmap_new();
+    rt_string value = make_str("value");
+    assert(map != nullptr && value != nullptr);
+
+    for (int64_t i = 0; i < 12; ++i)
+        rt_intmap_set(map, i, value);
+    auto *layout = static_cast<IntMapLayout *>(map);
+    assert(layout->capacity == 16);
+    assert(layout->count == 12);
+
+    g_trap_expected = true;
+    g_last_trap = nullptr;
+    rt_set_alloc_hook(reject_runtime_allocation);
+    if (setjmp(g_trap_jmp) == 0) {
+        rt_intmap_set(map, 12, value);
+        assert(false && "expected IntMap growth allocation trap");
+    }
+    rt_set_alloc_hook(nullptr);
+    g_trap_expected = false;
+    assert(g_last_trap && strstr(g_last_trap, "IntMap") != nullptr);
+    assert(layout->capacity == 16);
+    assert(layout->count == 12);
+    assert(rt_intmap_has(map, 12) == 0);
+
+    for (int64_t i = 12; i < 100; ++i)
+        rt_intmap_set(map, i, value);
+    assert(layout->capacity == 256);
+    for (int64_t i = 1; i < 100; ++i)
+        assert(rt_intmap_remove(map, i) == 1);
+    assert(layout->count == 1);
+    assert(rt_intmap_get(map, 0) == value);
+
+    g_trap_expected = true;
+    g_last_trap = nullptr;
+    rt_set_alloc_hook(reject_runtime_allocation);
+    if (setjmp(g_trap_jmp) == 0) {
+        (void)rt_intmap_trim(map);
+        assert(false && "expected IntMap trim allocation trap");
+    }
+    rt_set_alloc_hook(nullptr);
+    g_trap_expected = false;
+    assert(layout->capacity == 256);
+    assert(layout->count == 1);
+    assert(rt_intmap_get(map, 0) == value);
+
+    assert(rt_intmap_trim(map) == 1);
+    assert(layout->capacity == 16);
+    assert(layout->count == 1);
+    assert(rt_intmap_get(map, 0) == value);
+
+    rt_string_unref(value);
+    release_obj(map);
 }
 
 static void test_set_get_remove() {
@@ -90,6 +173,7 @@ static void test_keys_are_boxed_i64_values() {
 }
 
 int main() {
+    test_failed_growth_and_trim_preserve_intmap();
     test_set_get_remove();
     test_keys_are_boxed_i64_values();
     return 0;

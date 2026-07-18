@@ -59,7 +59,7 @@ third-party runtime is introduced.
 
 ### Runtime self-containment
 
-The installed command-line tools, language servers, ZannaIDE, and exported SDK
+The installed command-line tools, language servers, Zanna Studio, and exported SDK
 libraries retain one consistent MSVC runtime model. Release staging installs
 the architecture-matched redistributable runtime files permitted by the active
 Microsoft toolchain beside the executables. The package build fails when a PE
@@ -131,10 +131,10 @@ high-contrast mode, supports keyboard navigation and UI Automation, scales from
 100 through 300 percent DPI, and remains usable at a 1366 by 768 display work
 area.
 
-The finish page offers ZannaIDE, a Zanna Developer Prompt, the quickstart,
+The finish page offers Zanna Studio, a Zanna Developer Prompt, the quickstart,
 samples, and a copyable verification command after a successful self-check.
 
-File associations open files in ZannaIDE and are installed only when ZannaIDE
+File associations open files in Zanna Studio and are installed only when Zanna Studio
 is selected. Explicit `Run with Zanna` and `Check with Zanna` verbs may be
 offered, but source execution is never the default action.
 
@@ -186,7 +186,7 @@ residue-free uninstall.
 UI validation covers keyboard-only navigation, UI Automation names, Narrator,
 high contrast, system light and dark colors, 100 through 300 percent DPI, and
 the minimum supported work area. Release acceptance also verifies every nested
-signature and performs a first-run compiler, VM, native-code, ZannaIDE, language
+signature and performs a first-run compiler, VM, native-code, Zanna Studio, language
 server, and installed CMake-package smoke.
 
 ## Compatibility and Rollout

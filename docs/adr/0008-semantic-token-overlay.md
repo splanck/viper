@@ -13,7 +13,7 @@ focused tests on 2026-06-27
 
 ## Context
 
-The ZannaIDE semantic-token overlay adds compiler-classified ("semantic")
+The Zanna Studio semantic-token overlay adds compiler-classified ("semantic")
 highlighting on top of the lexical highlighter introduced in ADR 0007. The
 lexical tokenizers cannot tell a parameter from a local, a field from a free
 identifier, or a lowercase type alias from a value; the Zia `Sema` pass can. Two
@@ -65,7 +65,7 @@ These additions:
   the compiler, and the lib layer (`vg_codeeditor`) only stores/applies resolved
   colors;
 - are covered by runtime completeness, ABI/surface, and a focused IDE probe
-  (`zannaide/src/probes/semantic_tokens_probe.zia`).
+  (`zannastudio/src/probes/semantic_tokens_probe.zia`).
 
 The overlay is advisory: unresolved identifiers are omitted so the lexical color
 stands, and the editor remains fully functional with no semantic tokens (offline
@@ -93,7 +93,7 @@ Verified on 2026-06-27:
 - The current built CLI (`build/src/tools/zanna/zanna --dump-runtime-api`)
   exposes those four methods.
 - Focused checks pass: `test_rt_gui_runtime`, `test_rt_gui_ide`,
-  `zia_rt_api_test_zannaide_primitives`, and `zia_zannaide_semantic_tokens`.
+  `zia_rt_api_test_zannastudio_primitives`, and `zia_zannastudio_semantic_tokens`.
 
 ## Consequences
 

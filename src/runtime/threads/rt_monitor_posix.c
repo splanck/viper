@@ -11,6 +11,14 @@
 //   on non-_WIN32 platforms; Windows uses rt_monitor_win.c. Shared helpers live
 //   in rt_monitor_internal.h.
 //
+// Key invariants:
+//   - Every pthread initialization and wait result is checked; timeout is kept
+//     distinct from an unexpected native synchronization failure.
+//   - Timed waits use a single monotonic or platform-relative clock domain.
+// Ownership/Lifetime:
+//   - A monitor entry owns its mutex, condition variables, and waiter nodes
+//     until the shared monitor table removes and destroys the entry.
+//
 // Links: rt_monitor_internal.h (shared), rt_monitor_win.c (Windows impl), rt_threads.h
 //
 //===----------------------------------------------------------------------===//
@@ -104,9 +112,52 @@ typedef struct RtMonitorEntry {
 static void monitor_cancel_queue(RtMonitorWaiter *w);
 
 #define RT_MONITOR_BUCKETS 4096u
+#define RT_MONITOR_LOCK_STRIPES 64u
 
-static pthread_mutex_t g_monitor_table_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_monitor_table_locks[RT_MONITOR_LOCK_STRIPES];
+static pthread_once_t g_monitor_table_locks_once = PTHREAD_ONCE_INIT;
+static int g_monitor_table_locks_status;
 static RtMonitorEntry *g_monitor_table[RT_MONITOR_BUCKETS];
+
+/// @brief Initialize the striped monitor-table locks exactly once.
+/// @details POSIX has no portable repeated static initializer for an array of
+///          mutexes. The once callback initializes every stripe and rolls back
+///          already-created mutexes if a later initialization fails. The
+///          stored errno-style status lets all callers fail deterministically
+///          instead of using a partially initialized lock table.
+static void monitor_table_locks_init_once(void) {
+    for (size_t i = 0; i < RT_MONITOR_LOCK_STRIPES; ++i) {
+        const int rc = pthread_mutex_init(&g_monitor_table_locks[i], NULL);
+        if (rc == 0)
+            continue;
+        for (size_t initialized = 0; initialized < i; ++initialized)
+            (void)pthread_mutex_destroy(&g_monitor_table_locks[initialized]);
+        g_monitor_table_locks_status = rc;
+        return;
+    }
+    g_monitor_table_locks_status = 0;
+}
+
+/// @brief Return the lock stripe protecting one monitor-table bucket.
+/// @details Initialization and lock failures are reported through the runtime
+///          trap dispatcher. A returning trap hook receives NULL, allowing the
+///          caller to stop before touching shared table state.
+/// @param bucket Monitor hash bucket index.
+/// @return Locked stripe mutex, or NULL after a reported failure.
+static pthread_mutex_t *monitor_table_lock_bucket(size_t bucket) {
+    const int once_rc = pthread_once(&g_monitor_table_locks_once, monitor_table_locks_init_once);
+    const int init_rc = __atomic_load_n(&g_monitor_table_locks_status, __ATOMIC_ACQUIRE);
+    if (once_rc != 0 || init_rc != 0) {
+        rt_trap("rt_monitor: table lock initialization failed");
+        return NULL;
+    }
+    pthread_mutex_t *lock = &g_monitor_table_locks[bucket & (RT_MONITOR_LOCK_STRIPES - 1u)];
+    if (pthread_mutex_lock(lock) != 0) {
+        rt_trap("rt_monitor: table lock failed");
+        return NULL;
+    }
+    return lock;
+}
 
 // ---------------------------------------------------------------------------
 // POSIX backend — pthread_mutex_t + pthread_cond_t. Mirrors the
@@ -127,11 +178,13 @@ static size_t hash_ptr(void *p) {
 static RtMonitor *get_monitor_for(void *obj) {
     size_t idx = hash_ptr(obj);
 
-    pthread_mutex_lock(&g_monitor_table_mu);
+    pthread_mutex_t *table_lock = monitor_table_lock_bucket(idx);
+    if (!table_lock)
+        return NULL;
     RtMonitorEntry *it = g_monitor_table[idx];
     while (it) {
         if (it->key == obj && !it->retired) {
-            pthread_mutex_unlock(&g_monitor_table_mu);
+            (void)pthread_mutex_unlock(table_lock);
             return &it->monitor;
         }
         it = it->next;
@@ -139,17 +192,22 @@ static RtMonitor *get_monitor_for(void *obj) {
 
     RtMonitorEntry *node = (RtMonitorEntry *)calloc(1, sizeof(*node));
     if (!node) {
-        pthread_mutex_unlock(&g_monitor_table_mu);
+        (void)pthread_mutex_unlock(table_lock);
         rt_trap("rt_monitor: alloc failed");
+        return NULL;
+    }
+    const int init_rc = pthread_mutex_init(&node->monitor.mu, NULL);
+    if (init_rc != 0) {
+        free(node);
+        (void)pthread_mutex_unlock(table_lock);
+        rt_trap("rt_monitor: monitor mutex initialization failed");
         return NULL;
     }
     node->key = obj;
     node->next = g_monitor_table[idx];
     g_monitor_table[idx] = node;
 
-    (void)pthread_mutex_init(&node->monitor.mu, NULL);
-
-    pthread_mutex_unlock(&g_monitor_table_mu);
+    (void)pthread_mutex_unlock(table_lock);
     return &node->monitor;
 }
 
@@ -162,7 +220,9 @@ void rt_monitor_forget(void *obj) {
         return;
     size_t idx = hash_ptr(obj);
 
-    pthread_mutex_lock(&g_monitor_table_mu);
+    pthread_mutex_t *table_lock = monitor_table_lock_bucket(idx);
+    if (!table_lock)
+        return;
     RtMonitorEntry **link = &g_monitor_table[idx];
     RtMonitorEntry *node = *link;
     while (node && (node->key != obj || node->retired)) {
@@ -170,7 +230,7 @@ void rt_monitor_forget(void *obj) {
         node = node->next;
     }
     if (!node) {
-        pthread_mutex_unlock(&g_monitor_table_mu);
+        (void)pthread_mutex_unlock(table_lock);
         return;
     }
     pthread_mutex_lock(&node->monitor.mu);
@@ -186,13 +246,13 @@ void rt_monitor_forget(void *obj) {
         monitor_cancel_queue(acq);
         monitor_cancel_queue(wait);
         pthread_mutex_unlock(&node->monitor.mu);
-        pthread_mutex_unlock(&g_monitor_table_mu);
+        (void)pthread_mutex_unlock(table_lock);
         return;
     }
 
     *link = node->next;
     pthread_mutex_unlock(&node->monitor.mu);
-    pthread_mutex_unlock(&g_monitor_table_mu);
+    (void)pthread_mutex_unlock(table_lock);
 
     (void)pthread_mutex_destroy(&node->monitor.mu);
     free(node);
@@ -213,7 +273,9 @@ static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
         return;
     size_t idx = hash_ptr(obj);
 
-    pthread_mutex_lock(&g_monitor_table_mu);
+    pthread_mutex_t *table_lock = monitor_table_lock_bucket(idx);
+    if (!table_lock)
+        return;
     RtMonitorEntry **link = &g_monitor_table[idx];
     RtMonitorEntry *node = *link;
     while (node && (node->key != obj || &node->monitor != monitor)) {
@@ -221,7 +283,7 @@ static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
         node = node->next;
     }
     if (!node) {
-        pthread_mutex_unlock(&g_monitor_table_mu);
+        (void)pthread_mutex_unlock(table_lock);
         return;
     }
 
@@ -229,13 +291,13 @@ static void monitor_cleanup_retired_if_idle(void *obj, RtMonitor *monitor) {
     if (!node->retired || node->monitor.owner_valid || node->monitor.acq_head ||
         node->monitor.wait_head) {
         pthread_mutex_unlock(&node->monitor.mu);
-        pthread_mutex_unlock(&g_monitor_table_mu);
+        (void)pthread_mutex_unlock(table_lock);
         return;
     }
 
     *link = node->next;
     pthread_mutex_unlock(&node->monitor.mu);
-    pthread_mutex_unlock(&g_monitor_table_mu);
+    (void)pthread_mutex_unlock(table_lock);
 
     (void)pthread_mutex_destroy(&node->monitor.mu);
     free(node);
@@ -925,19 +987,45 @@ void rt_monitor_wait(void *obj) {
     m->recursion = 0;
     monitor_grant_next_waiter(m);
 
+    int wait_failed = 0;
     while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
-        (void)pthread_cond_wait(&w.cv, &m->mu);
+        const int rc = pthread_cond_wait(&w.cv, &m->mu);
+        if (rc != 0) {
+            wait_failed = 1;
+            break;
+        }
+    }
+
+    if (wait_failed && w.state == RT_MON_WAITER_WAITING_PAUSE) {
+        monitor_remove_wait(m, &w);
+        w.state = RT_MON_WAITER_WAITING_LOCK;
+        monitor_enqueue_acq(m, &w);
+        if (!m->owner_valid && m->acq_head)
+            monitor_grant_next_waiter(m);
     }
 
     // Wait for re-acquisition.
     while (w.state != RT_MON_WAITER_ACQUIRED && w.state != RT_MON_WAITER_CANCELLED) {
-        (void)pthread_cond_wait(&w.cv, &m->mu);
+        const int rc = pthread_cond_wait(&w.cv, &m->mu);
+        if (rc != 0) {
+            wait_failed = 1;
+            if (w.state == RT_MON_WAITER_WAITING_LOCK) {
+                monitor_remove_acq(m, &w);
+                if (!m->owner_valid && m->acq_head)
+                    monitor_grant_next_waiter(m);
+            }
+            break;
+        }
     }
 
-    pthread_cond_destroy(&w.cv);
+    const int destroy_rc = pthread_cond_destroy(&w.cv);
     pthread_mutex_unlock(&m->mu);
     if (w.state == RT_MON_WAITER_CANCELLED)
         rt_trap("Monitor.Wait: object finalized while waiting");
+    else if (wait_failed)
+        rt_trap("Monitor.Wait: condition wait failed");
+    else if (destroy_rc != 0)
+        rt_trap("Monitor.Wait: condition destroy failed");
 }
 
 /// @brief Wait with a timeout. Returns 1 if woken by Pause, 0 on timeout.
@@ -980,6 +1068,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     monitor_grant_next_waiter(m);
 
     int timed_out = 0;
+    int wait_failed = 0;
     const monitor_deadline_t deadline = monitor_deadline_ms_from_now(ms, w.cond_uses_monotonic);
     while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
         const int rc =
@@ -988,9 +1077,13 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
             timed_out = 1;
             break;
         }
+        if (rc != 0 && rc != ETIMEDOUT) {
+            wait_failed = 1;
+            break;
+        }
     }
 
-    if (timed_out) {
+    if (timed_out || wait_failed) {
         // Timeout while still in the wait queue: remove and begin fair re-acquire.
         monitor_remove_wait(m, &w);
         w.state = RT_MON_WAITER_WAITING_LOCK;
@@ -1000,14 +1093,27 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     }
 
     while (w.state != RT_MON_WAITER_ACQUIRED && w.state != RT_MON_WAITER_CANCELLED) {
-        (void)pthread_cond_wait(&w.cv, &m->mu);
+        const int rc = pthread_cond_wait(&w.cv, &m->mu);
+        if (rc != 0) {
+            wait_failed = 1;
+            if (w.state == RT_MON_WAITER_WAITING_LOCK) {
+                monitor_remove_acq(m, &w);
+                if (!m->owner_valid && m->acq_head)
+                    monitor_grant_next_waiter(m);
+            }
+            break;
+        }
     }
 
-    pthread_cond_destroy(&w.cv);
+    const int destroy_rc = pthread_cond_destroy(&w.cv);
     pthread_mutex_unlock(&m->mu);
     if (w.state == RT_MON_WAITER_CANCELLED)
         rt_trap("Monitor.Wait: object finalized while waiting");
-    return timed_out ? 0 : 1;
+    else if (wait_failed)
+        rt_trap("Monitor.Wait: condition wait failed");
+    else if (destroy_rc != 0)
+        rt_trap("Monitor.Wait: condition destroy failed");
+    return (timed_out || wait_failed || destroy_rc != 0) ? 0 : 1;
 }
 
 /// @brief Wakes one thread waiting on the monitor.

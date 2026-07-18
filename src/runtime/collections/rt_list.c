@@ -12,8 +12,8 @@
 //   for frequent mutation with stable GC-managed element references.
 //
 // Key invariants:
-//   - The List header contains only a vptr and an rt_arr_obj pointer; all
-//     element storage is delegated to rt_arr_obj which handles capacity growth.
+//   - The List header contains only a vptr and a strong rt_arr_obj edge; all
+//     element storage is delegated to that separately tracked object array.
 //   - rt_arr_obj growth strategy: doubles capacity when full, starting from 16.
 //   - Elements are retained on insertion (rt_obj_retain_maybe) and released
 //     on removal/clear/finalize; Get returns a retained reference the caller
@@ -46,8 +46,10 @@
 #include "rt_option.h"
 #include "rt_random.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <assert.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -103,21 +105,21 @@ static void rt_list_finalize(void *obj) {
         return;
     rt_list_impl *L = (rt_list_impl *)obj;
     if (L->arr) {
-        rt_arr_obj_release(L->arr);
+        void **arr = L->arr;
         L->arr = NULL;
+        rt_arr_obj_release(arr);
     }
 }
 
-/// @brief GC traversal: visit every live element in the backing array.
+/// @brief GC traversal: visit the managed backing-array edge.
+/// @details The object array is independently tracked and visits its own live
+///          elements. Reporting the array here models the actual two-hop
+///          ownership graph and avoids trial-decrementing each element twice.
 static void rt_list_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     if (!obj || !visitor)
         return;
     rt_list_impl *L = (rt_list_impl *)obj;
-    if (!L->arr)
-        return;
-    size_t len = rt_arr_obj_len(L->arr);
-    for (size_t i = 0; i < len; ++i)
-        visitor(L->arr[i], ctx);
+    visitor(L->arr, ctx);
 }
 
 /// @brief Creates a new empty List.
@@ -229,11 +231,18 @@ int64_t rt_list_len(void *list) {
 void rt_list_clear(void *list) {
     if (!list)
         return;
+    rt_gc_mutator_enter();
     rt_list_impl *L = as_list(list);
-    if (L->arr) {
-        rt_arr_obj_release(L->arr);
-        L->arr = NULL;
+    if (!L) {
+        rt_gc_mutator_exit();
+        return;
     }
+    if (L->arr) {
+        void **arr = L->arr;
+        L->arr = NULL;
+        rt_arr_obj_release(arr);
+    }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Adds an element to the end of the List.
@@ -268,20 +277,25 @@ void rt_list_clear(void *list) {
 void rt_list_push(void *list, void *elem) {
     if (!list)
         return;
+    rt_gc_mutator_enter();
     rt_list_impl *L = as_list(list);
-    if (!L)
+    if (!L) {
+        rt_gc_mutator_exit();
         return;
+    }
     size_t len = rt_arr_obj_len(L->arr);
 
     rt_obj_retain_maybe(elem);
     void **arr2 = rt_arr_obj_resize(L->arr, len + 1);
     if (!arr2) {
         release_temp_obj(elem);
+        rt_gc_mutator_exit();
         rt_trap("List.Push: memory allocation failed");
         return;
     }
     L->arr = arr2;
     L->arr[len] = elem;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Returns the element at the specified index.
@@ -432,16 +446,22 @@ void rt_list_remove_at(void *list, int64_t index) {
         rt_trap("rt_list_remove_at: negative index");
         return;
     }
+    rt_gc_mutator_enter();
     rt_list_impl *L = as_list(list);
-    if (!L)
+    if (!L) {
+        rt_gc_mutator_exit();
         return;
+    }
     size_t len = rt_arr_obj_len(L->arr);
     if ((uint64_t)index >= (uint64_t)len) {
+        rt_gc_mutator_exit();
         rt_trap("rt_list_remove_at: index out of bounds");
         return;
     }
-    if (len == 0)
+    if (len == 0) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     void *removed = L->arr[index];
     if ((size_t)index + 1 < len) {
@@ -460,11 +480,13 @@ void rt_list_remove_at(void *list, int64_t index) {
                     (len - (size_t)index - 1) * sizeof(void *));
         }
         L->arr[index] = removed;
+        rt_gc_mutator_exit();
         rt_trap("List.RemoveAt: memory allocation failed");
         return;
     }
     L->arr = shrunk;
     release_temp_obj(removed);
+    rt_gc_mutator_exit();
 }
 
 /// @brief Finds the first occurrence of an element in the List.
@@ -602,11 +624,15 @@ void rt_list_insert(void *list, int64_t index, void *elem) {
         return;
     }
 
+    rt_gc_mutator_enter();
     rt_list_impl *L = as_list(list);
-    if (!L)
+    if (!L) {
+        rt_gc_mutator_exit();
         return;
+    }
     size_t len = rt_arr_obj_len(L->arr);
     if ((uint64_t)index > (uint64_t)len) {
+        rt_gc_mutator_exit();
         rt_trap("List.Insert: index out of bounds");
         return;
     }
@@ -615,6 +641,7 @@ void rt_list_insert(void *list, int64_t index, void *elem) {
     void **arr2 = rt_arr_obj_resize(L->arr, len + 1);
     if (!arr2) {
         release_temp_obj(elem);
+        rt_gc_mutator_exit();
         rt_trap("List.Insert: memory allocation failed");
         return;
     }
@@ -626,6 +653,7 @@ void rt_list_insert(void *list, int64_t index, void *elem) {
                 (len - (size_t)index) * sizeof(void *));
     }
     L->arr[(size_t)index] = elem;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Removes the first occurrence of an element from the List.
@@ -743,10 +771,17 @@ void rt_list_reverse(void *list) {
     if (!list)
         return;
 
+    rt_gc_mutator_enter();
     rt_list_impl *L = as_list(list);
-    size_t len = rt_arr_obj_len(L->arr);
-    if (len < 2)
+    if (!L) {
+        rt_gc_mutator_exit();
         return;
+    }
+    size_t len = rt_arr_obj_len(L->arr);
+    if (len < 2) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     // Swap elements from both ends toward center
     for (size_t i = 0; i < len / 2; i++) {
@@ -757,6 +792,7 @@ void rt_list_reverse(void *list) {
         L->arr[i] = b;
         L->arr[j] = a;
     }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Returns the first element in the List.
@@ -827,11 +863,15 @@ void *rt_list_pop(void *list) {
         return NULL;
     }
 
+    rt_gc_mutator_enter();
     rt_list_impl *L = as_list(list);
-    if (!L)
+    if (!L) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
     size_t len = rt_arr_obj_len(L->arr);
     if (len == 0) {
+        rt_gc_mutator_exit();
         rt_trap("List.Pop: list is empty");
         return NULL;
     }
@@ -842,10 +882,12 @@ void *rt_list_pop(void *list) {
     if (len - 1 > 0 && !shrunk) {
         rt_arr_obj_put(L->arr, len - 1, elem);
         release_temp_obj(elem);
+        rt_gc_mutator_exit();
         rt_trap("List.Pop: memory allocation failed");
         return NULL;
     }
     L->arr = shrunk;
+    rt_gc_mutator_exit();
     return elem;
 }
 
@@ -903,24 +945,51 @@ static void list_sort_impl(void *list, int64_t (*cmp)(void *, void *)) {
     if (!list)
         return;
 
+    rt_gc_mutator_enter();
     rt_list_impl *L = as_list(list);
-    size_t len = L->arr ? rt_arr_obj_len(L->arr) : 0;
-    if (len <= 1)
+    if (!L) {
+        rt_gc_mutator_exit();
         return;
+    }
+    size_t len = L->arr ? rt_arr_obj_len(L->arr) : 0;
+    if (len <= 1) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     // Allocate temporary buffer for merge sort
-    if (len > SIZE_MAX / sizeof(void *))
+    if (len > SIZE_MAX / sizeof(void *)) {
+        rt_gc_mutator_exit();
         return; // Overflow — cannot allocate
+    }
     void **temp = (void **)malloc(len * sizeof(void *));
     if (!temp) {
+        rt_gc_mutator_exit();
         rt_trap("List.Sort: memory allocation failed");
+        return;
+    }
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "List.Sort: comparator trapped");
+        rt_trap_clear_recovery();
+        free(temp);
+        rt_trap(saved_error);
         return;
     }
 
     // Sort the backing array in-place (same approach as Seq.Sort)
     list_merge_sort(L->arr, temp, 0, len - 1, cmp);
 
+    rt_trap_clear_recovery();
     free(temp);
+    rt_gc_mutator_exit();
 }
 
 void rt_list_sort(void *list) {
@@ -940,10 +1009,17 @@ void rt_list_shuffle(void *list) {
     if (!list)
         return;
 
+    rt_gc_mutator_enter();
     rt_list_impl *L = as_list(list);
-    size_t len = L->arr ? rt_arr_obj_len(L->arr) : 0;
-    if (len < 2)
+    if (!L) {
+        rt_gc_mutator_exit();
         return;
+    }
+    size_t len = L->arr ? rt_arr_obj_len(L->arr) : 0;
+    if (len < 2) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     // Fisher-Yates shuffle using the active runtime RNG.
     for (size_t i = len - 1; i > 0; --i) {
@@ -953,6 +1029,7 @@ void rt_list_shuffle(void *list) {
         L->arr[i] = b;
         L->arr[j] = a;
     }
+    rt_gc_mutator_exit();
 }
 
 void *rt_list_clone(void *list) {

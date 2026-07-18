@@ -7,6 +7,14 @@
 //
 // File: src/runtime/network/rt_wss_server.h
 // Purpose: TLS-backed WebSocket server using the in-tree TLS 1.3 runtime.
+// Key invariants:
+//   - Every public receiver validates stable managed identity before payload access.
+//   - TLS credentials are parsed once and remain immutable across Start/Stop cycles.
+//   - Client frame writes are serialized per connection and server frames are unmasked.
+// Ownership/Lifetime:
+//   - Constructors return one caller-owned managed server reference.
+//   - Stop/finalization retire the listener, handshakes, TLS sessions, and workers.
+// Links: rt_wss_server.c, rt_tls_server_internal.h, rt_websocket.h
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -18,15 +26,51 @@
 extern "C" {
 #endif
 
+/// @brief Stable managed identity for `Zanna.Network.WssServer` objects.
+/// @details The identifier and complete private payload are validated before
+///          lifecycle, TLS-context, credential, or client-table state is read.
+///          It is part of the native runtime ABI.
+#define RT_WSS_SERVER_CLASS_ID INT64_C(-0x720216)
+
+/// @brief Create a TLS-backed WebSocket server without starting its listener.
+/// @param port Port in 0..65535; zero requests an ephemeral port at Start.
+/// @param cert_file Non-empty managed path to a PEM certificate chain.
+/// @param key_file Non-empty managed path to the matching PEM private key.
+/// @return Caller-owned managed server object, or NULL after a returning trap.
 void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file);
+/// @brief Start accepting secure WebSocket connections; idempotent while running.
+/// @details Lazily creates a bounded pool and transactionally restores stopped
+///          state after bind, pool, or accept-thread failure.
+/// @param server Managed WssServer receiver; NULL is a no-op.
 void rt_wss_server_start(void *server);
+/// @brief Stop acceptance and synchronously retire pending and active connections.
+/// @details Interrupts raw, detached-handshake, and TLS descriptors, joins all
+///          tasks, and releases the worker pool before returning.
+/// @param server Managed WssServer receiver; NULL is a no-op.
 void rt_wss_server_stop(void *server);
+/// @brief Require one subprotocol token for future upgrades while stopped.
+/// @param server Managed WssServer receiver.
+/// @param subprotocol Managed HTTP token, or NULL/empty to clear the policy.
 void rt_wss_server_set_subprotocol(void *server, rt_string subprotocol);
+/// @brief Broadcast one exact managed String payload as an unmasked text frame.
+/// @param server Managed WssServer receiver.
+/// @param message Managed String; embedded NUL bytes remain payload data.
 void rt_wss_server_broadcast(void *server, rt_string message);
+/// @brief Broadcast one exact managed Bytes payload as an unmasked binary frame.
+/// @param server Managed WssServer receiver.
+/// @param data Managed Bytes payload.
 void rt_wss_server_broadcast_bytes(void *server, void *data);
+/// @brief Return a synchronized count of upgraded active clients.
+/// @param server Managed WssServer receiver.
 int64_t rt_wss_server_client_count(void *server);
+/// @brief Return a caller-owned copy of the required subprotocol, or empty String.
+/// @param server Managed WssServer receiver.
 rt_string rt_wss_server_subprotocol(void *server);
+/// @brief Return the configured or currently bound port.
+/// @param server Managed WssServer receiver.
 int64_t rt_wss_server_port(void *server);
+/// @brief Return one while the background accept lifecycle is running.
+/// @param server Managed WssServer receiver.
 int8_t rt_wss_server_is_running(void *server);
 
 #ifdef __cplusplus

@@ -223,8 +223,10 @@ static int maybe_resize_for_insert(rt_multimap_impl *mm) {
     size_t next_count = mm->key_count + 1;
     if ((long double)next_count * (long double)MM_LOAD_FACTOR_DEN >
         (long double)mm->capacity * (long double)MM_LOAD_FACTOR_NUM) {
-        if (mm->capacity > SIZE_MAX / 2)
+        if (mm->capacity > SIZE_MAX / 2) {
+            rt_trap("MultiMap: capacity overflow");
             return 0;
+        }
         return mm_resize(mm, mm->capacity * 2);
     }
     return 1;
@@ -314,10 +316,14 @@ int8_t rt_multimap_is_empty(void *obj) {
 void rt_multimap_put(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_multimap_impl *mm = as_multimap(obj, "MultiMap.Put: invalid MultiMap object");
-    if (!mm)
+    if (!mm) {
+        rt_gc_mutator_exit();
         return;
+    }
     if (mm->capacity == 0) {
+        rt_gc_mutator_exit();
         rt_trap("MultiMap: finalized MultiMap object");
         return;
     }
@@ -330,33 +336,40 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
     rt_mm_entry *existing = find_entry(mm->buckets[idx], key_data, key_len);
     if (existing) {
         if (mm->total_count >= (size_t)INT64_MAX) {
+            rt_gc_mutator_exit();
             rt_trap("MultiMap: length overflow");
             return;
         }
         rt_seq_push(existing->values, value);
         mm->total_count++;
+        rt_gc_mutator_exit();
         return;
     }
 
     // New key
     if (mm->key_count >= (size_t)INT64_MAX || mm->total_count >= (size_t)INT64_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("MultiMap: length overflow");
         return;
     }
-    if (!maybe_resize_for_insert(mm))
+    if (!maybe_resize_for_insert(mm)) {
+        rt_gc_mutator_exit();
         return;
+    }
     idx = hash % mm->capacity;
 
     void *values = rt_seq_new_owned();
     rt_mm_entry *entry = (rt_mm_entry *)malloc(sizeof(rt_mm_entry));
     if (!entry) {
         mm_release_object(values);
+        rt_gc_mutator_exit();
         rt_trap("MultiMap: memory allocation failed");
         return;
     }
     if (key_len == SIZE_MAX) {
         mm_release_object(values);
         free(entry);
+        rt_gc_mutator_exit();
         rt_trap("MultiMap: key allocation overflow");
         return;
     }
@@ -364,6 +377,7 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
     if (!entry->key) {
         mm_release_object(values);
         free(entry);
+        rt_gc_mutator_exit();
         rt_trap("MultiMap: key allocation failed");
         return;
     }
@@ -374,13 +388,16 @@ void rt_multimap_put(void *obj, rt_string key, void *value) {
     entry->values = values;
     entry->next = NULL;
     // The Seq object itself starts with refcount=1; do not retain it again.
-    if (!mm_push_value_or_release_entry(entry, value))
+    if (!mm_push_value_or_release_entry(entry, value)) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     entry->next = mm->buckets[idx];
     mm->buckets[idx] = entry;
     mm->key_count++;
     mm->total_count++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Return all values stored under `key` as a fresh Seq (not a borrowed view). Empty
@@ -416,9 +433,12 @@ void *rt_multimap_get(void *obj, rt_string key) {
 void *rt_multimap_get_first(void *obj, rt_string key) {
     if (!obj)
         return NULL;
+    rt_gc_mutator_enter();
     rt_multimap_impl *mm = as_multimap(obj, "MultiMap.GetFirst: invalid MultiMap object");
-    if (mm->capacity == 0)
+    if (!mm || mm->capacity == 0) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -426,10 +446,13 @@ void *rt_multimap_get_first(void *obj, rt_string key) {
     size_t idx = hash % mm->capacity;
 
     rt_mm_entry *entry = find_entry(mm->buckets[idx], key_data, key_len);
-    if (!entry || rt_seq_len(entry->values) == 0)
+    if (!entry || rt_seq_len(entry->values) == 0) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
     void *value = rt_seq_get(entry->values, 0);
     rt_obj_retain_maybe(value);
+    rt_gc_mutator_exit();
     return value;
 }
 
@@ -476,9 +499,12 @@ int64_t rt_multimap_count_for(void *obj, rt_string key) {
 int8_t rt_multimap_remove_all(void *obj, rt_string key) {
     if (!obj)
         return 0;
+    rt_gc_mutator_enter();
     rt_multimap_impl *mm = as_multimap(obj, "MultiMap.RemoveAll: invalid MultiMap object");
-    if (mm->capacity == 0)
+    if (!mm || mm->capacity == 0) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -493,11 +519,13 @@ int8_t rt_multimap_remove_all(void *obj, rt_string key) {
             mm->total_count -= (size_t)rt_seq_len(entry->values);
             mm->key_count--;
             free_entry(entry);
+            rt_gc_mutator_exit();
             return 1;
         }
         prev_ptr = &entry->next;
         entry = entry->next;
     }
+    rt_gc_mutator_exit();
     return 0;
 }
 
@@ -505,18 +533,24 @@ int8_t rt_multimap_remove_all(void *obj, rt_string key) {
 void rt_multimap_clear(void *obj) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_multimap_impl *mm = as_multimap(obj, "MultiMap.Clear: invalid MultiMap object");
+    if (!mm) {
+        rt_gc_mutator_exit();
+        return;
+    }
     for (size_t i = 0; i < mm->capacity; ++i) {
         rt_mm_entry *entry = mm->buckets[i];
+        mm->buckets[i] = NULL;
         while (entry) {
             rt_mm_entry *next = entry->next;
             free_entry(entry);
             entry = next;
         }
-        mm->buckets[i] = NULL;
     }
     mm->key_count = 0;
     mm->total_count = 0;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Return a Seq of every distinct key in the multimap (bucket-iteration order).

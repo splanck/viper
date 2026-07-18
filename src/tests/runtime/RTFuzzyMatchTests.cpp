@@ -5,6 +5,10 @@
 //
 // File: src/tests/runtime/RTFuzzyMatchTests.cpp
 // Purpose: Tests for reusable fuzzy match helpers.
+// Key invariants: A miss is always -1 and every successful score is non-negative.
+// Ownership/Lifetime: Inputs are borrowed constant strings and no test-owned
+//                     managed allocation escapes the process-local test.
+// Links: src/runtime/text/rt_fuzzy_match.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -23,8 +27,8 @@ extern "C" void vm_trap(const char *msg) {
 }
 
 int main() {
-    assert(rt_fuzzy_match_score(rt_const_cstr("zf"), rt_const_cstr("zannaide_file.zia")) > 0);
-    assert(rt_fuzzy_match_score(rt_const_cstr("vv"), rt_const_cstr("zannaide_file.zia")) == -1);
+    assert(rt_fuzzy_match_score(rt_const_cstr("zf"), rt_const_cstr("zannastudio_file.zia")) > 0);
+    assert(rt_fuzzy_match_score(rt_const_cstr("vv"), rt_const_cstr("zannastudio_file.zia")) == -1);
 
     // VDOC-059: a successful match never scores below 0, so -1 reliably
     // signals a miss even for heavily penalized matches.
@@ -33,7 +37,8 @@ int main() {
         memset(noisy, 'a', 100);
         noisy[100] = 'z';
         noisy[101] = '\0';
-        int64_t clamped = rt_fuzzy_match_score(rt_const_cstr("z"), rt_string_from_bytes(noisy, 101));
+        int64_t clamped =
+            rt_fuzzy_match_score(rt_const_cstr("z"), rt_string_from_bytes(noisy, 101));
         assert(clamped >= 0);
     }
     assert(rt_fuzzy_match_score(rt_const_cstr("ZS"), rt_const_cstr("ZannaSceneEditor.zia")) >

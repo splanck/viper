@@ -29,6 +29,24 @@
 extern "C" {
 #endif
 
+/// @brief Stable runtime class identifier for managed `Zanna.Network.Tcp` handles.
+/// @details Native entry points use this tag together with the minimum payload
+///          size to reject forged, wrong-class, and undersized objects before
+///          interpreting their storage as a TCP connection.
+#define RT_TCP_CLASS_ID INT64_C(-0x720206)
+
+/// @brief Stable runtime class identifier for managed `Zanna.Network.TcpServer` handles.
+/// @details The listener API validates this tag at every non-null receiver
+///          boundary so unrelated managed values cannot be treated as native
+///          socket state.
+#define RT_TCP_SERVER_CLASS_ID INT64_C(-0x720207)
+
+/// @brief Stable runtime class identifier for managed `Zanna.Network.Udp` handles.
+/// @details UDP entry points validate this tag, complete private payload size,
+///          and an initialization marker before interpreting any native socket
+///          state supplied through an opaque receiver.
+#define RT_UDP_CLASS_ID INT64_C(-0x720208)
+
 //=========================================================================
 // Tcp Client - Connection Creation
 //=========================================================================
@@ -349,57 +367,74 @@ void rt_udp_close(void *obj);
 // Dns - Static Utility Class
 //=========================================================================
 
-/// @brief Resolve hostname to first IPv4 address.
-/// @param hostname Hostname to resolve.
-/// @return IPv4 address as string (dotted decimal).
-/// @note Traps if hostname not found.
+/// @brief Resolve a hostname to the first usable IPv4 or IPv6 address.
+/// @details Preserves operating-system resolver order and skips malformed or
+///          unsupported native records. The returned String is caller-owned.
+/// @param hostname Non-empty hostname without embedded NUL bytes.
+/// @return Numeric address String, including an IPv6 scope zone when supplied
+///         by the resolver.
+/// @note Traps with `Err_DnsError` when no usable address is available.
 rt_string rt_dns_resolve(rt_string hostname);
 
-/// @brief Resolve hostname to all addresses (IPv4 and IPv6).
-/// @param hostname Hostname to resolve.
-/// @return Seq of address strings.
-/// @note Traps if hostname not found.
+/// @brief Resolve a hostname to every unique IPv4 and IPv6 address.
+/// @details Preserves resolver order, removes exact duplicates, and returns an
+///          element-owning Seq whose Strings are released with the sequence.
+/// @param hostname Non-empty hostname without embedded NUL bytes.
+/// @return Caller-owned Seq of numeric address Strings.
+/// @note Traps with `Err_DnsError` when no usable address is available and
+///       cleans native resolver state if managed allocation fails.
 void *rt_dns_resolve_all(rt_string hostname);
 
-/// @brief Resolve hostname to first IPv4 address only.
-/// @param hostname Hostname to resolve.
-/// @return IPv4 address as string.
-/// @note Traps if hostname not found or no IPv4 address.
+/// @brief Resolve a hostname to its first usable IPv4 address.
+/// @param hostname Non-empty hostname without embedded NUL bytes.
+/// @return Caller-owned canonical dotted-decimal IPv4 String.
+/// @note Traps with `Err_DnsError` when no IPv4 address is available.
 rt_string rt_dns_resolve4(rt_string hostname);
 
-/// @brief Resolve hostname to first IPv6 address only.
-/// @param hostname Hostname to resolve.
-/// @return IPv6 address as string (colon hex).
-/// @note Traps if hostname not found or no IPv6 address.
+/// @brief Resolve a hostname to its first usable IPv6 address.
+/// @param hostname Non-empty hostname without embedded NUL bytes.
+/// @return Caller-owned numeric IPv6 String, preserving any scope zone.
+/// @note Traps with `Err_DnsError` when no IPv6 address is available.
 rt_string rt_dns_resolve6(rt_string hostname);
 
-/// @brief Reverse DNS lookup - get hostname from IP address.
-/// @param ip_address IPv4 or IPv6 address string.
-/// @return Hostname.
-/// @note Traps if address not found.
+/// @brief Reverse-resolve a numeric IPv4 or IPv6 address to a hostname.
+/// @param ip_address Canonical IPv4 or valid IPv6 address String; IPv6 may
+///        include a `%zone` suffix.
+/// @return Caller-owned hostname String.
+/// @note Traps with `Err_InvalidUrl` for invalid syntax and `Err_DnsError` when
+///       no required PTR name is available.
 rt_string rt_dns_reverse(rt_string ip_address);
 
-/// @brief Check if string is a valid IPv4 address.
-/// @param address Address string to check.
-/// @return 1 if valid IPv4, 0 otherwise.
+/// @brief Check for canonical dotted-decimal IPv4 syntax.
+/// @details This allocation-free parser rejects multi-digit leading zeroes,
+///          out-of-range octets, embedded NULs, and trailing bytes.
+/// @param address Address String to check.
+/// @return One for valid IPv4 text, otherwise zero.
 int8_t rt_dns_is_ipv4(rt_string address);
 
-/// @brief Check if string is a valid IPv6 address.
-/// @param address Address string to check.
-/// @return 1 if valid IPv6, 0 otherwise.
+/// @brief Check IPv6 syntax with an optional non-empty scope zone.
+/// @details The allocation-free parser accepts portable `%zone` identifiers
+///          without resolving them against the current interface table.
+/// @param address Address String to check.
+/// @return One for valid IPv6 text, otherwise zero.
 int8_t rt_dns_is_ipv6(rt_string address);
 
-/// @brief Check if string is a valid IP address (IPv4 or IPv6).
-/// @param address Address string to check.
-/// @return 1 if valid IP, 0 otherwise.
+/// @brief Check whether a String is canonical IPv4 or valid IPv6 text.
+/// @param address Address String to check.
+/// @return One for either supported family, otherwise zero.
 int8_t rt_dns_is_ip(rt_string address);
 
 /// @brief Get local machine hostname.
-/// @return Local hostname.
+/// @return Caller-owned local hostname String.
+/// @note Traps with `Err_DnsError` if native host-name discovery fails.
 rt_string rt_dns_local_host(void);
 
-/// @brief Get all local IP addresses.
-/// @return Seq of address strings.
+/// @brief Enumerate unique numeric addresses on active local interfaces.
+/// @details Includes loopback when exposed by the platform and preserves IPv6
+///          scope zones. The returned Seq owns its String elements.
+/// @return Caller-owned Seq; native enumeration failure yields an empty Seq.
+/// @note Managed allocation failure releases the native interface snapshot
+///       before propagating its trap.
 void *rt_dns_local_addrs(void);
 
 //=========================================================================
@@ -435,10 +470,18 @@ rt_string rt_http_post(rt_string url, rt_string body);
 /// @note Traps on connection error, invalid URL, or HTTP error.
 void *rt_http_post_bytes(rt_string url, void *body);
 
-/// @brief Download URL to file.
-/// @param url Full URL (http://host/path).
-/// @param dest_path Destination file path.
-/// @return 1 on success, 0 on failure.
+/// @brief Download a URL transactionally to a local file.
+/// @details The response is streamed to an exclusively created sibling temp
+///          file, flushed and synchronized, then atomically installed at the
+///          destination. Replacing an existing file preserves its ordinary
+///          read/write/execute permission bits but never copies special mode
+///          bits. Invalid handles, embedded NULs, transport failures, managed
+///          allocation traps, and filesystem failures are contained by this
+///          Boolean API; staged content is removed and an existing destination
+///          is left intact whenever publication does not complete.
+/// @param url Full HTTP or HTTPS URL without embedded NUL bytes.
+/// @param dest_path Destination path without embedded NUL bytes.
+/// @return One only after atomic publication; zero on any failure.
 int8_t rt_http_download(rt_string url, rt_string dest_path);
 
 /// @brief HTTP HEAD request, return headers.
@@ -589,37 +632,47 @@ void *rt_http_req_send_result(void *obj);
 /// @brief Get response status code.
 /// @param obj HttpRes object.
 /// @return HTTP status code (e.g., 200, 404).
+/// @note NULL returns zero; any other invalid managed handle traps.
 int64_t rt_http_res_status(void *obj);
 
 /// @brief Get response status text.
 /// @param obj HttpRes object.
 /// @return Status text (e.g., "OK", "Not Found").
+/// @note NULL returns an empty String; any other invalid managed handle traps.
 rt_string rt_http_res_status_text(void *obj);
 
 /// @brief Get all response headers.
 /// @param obj HttpRes object.
 /// @return Map of header name -> value.
+/// @note The returned Map is an independent snapshot. NULL returns an empty
+///       Map; any other invalid managed handle traps.
 void *rt_http_res_headers(void *obj);
 
 /// @brief Get response body as bytes.
 /// @param obj HttpRes object.
 /// @return Response body as Bytes.
+/// @note The returned Bytes owns a copy. NULL returns empty Bytes; any other
+///       invalid managed handle traps.
 void *rt_http_res_body(void *obj);
 
 /// @brief Get response body as string.
 /// @param obj HttpRes object.
 /// @return Response body as string.
+/// @note NULL returns an empty String; any other invalid managed handle traps.
 rt_string rt_http_res_body_str(void *obj);
 
 /// @brief Get specific response header.
 /// @param obj HttpRes object.
 /// @param name Header name (case-insensitive).
 /// @return Header value, or empty string if not found.
+/// @note The returned String is an independent copy. A non-NULL invalid
+///       receiver or header-name handle traps before native payload access.
 rt_string rt_http_res_header(void *obj, rt_string name);
 
 /// @brief Check if response is success (2xx status).
 /// @param obj HttpRes object.
 /// @return 1 if status 200-299, 0 otherwise.
+/// @note NULL returns zero; any other invalid managed handle traps.
 int8_t rt_http_res_is_ok(void *obj);
 
 //=========================================================================

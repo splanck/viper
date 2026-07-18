@@ -28,6 +28,10 @@
 extern "C" {
 #endif
 
+/// @brief Type-safe native callback accepted by ThreadPool submission APIs.
+/// @param arg Caller-provided task argument.
+typedef void (*rt_threadpool_task_fn)(void *arg);
+
 //=========================================================================
 // Zanna.Threads.Pool
 //=========================================================================
@@ -50,10 +54,36 @@ void *rt_threadpool_new(int64_t size);
 ///         backpressure, or task-node allocation failure.
 int8_t rt_threadpool_submit(void *pool, void *callback, void *arg);
 
+/// @brief Submit a native task while preserving its C function-pointer type.
+/// @details This internal runtime entry point has the same queueing and borrowed-
+///          argument contract as @ref rt_threadpool_submit, but avoids converting
+///          a function pointer through @c void*. Portable C adapters should use
+///          this form; the legacy object-pointer ABI remains available to IL and
+///          generated-code callers.
+/// @param pool Live managed Pool object.
+/// @param callback Native worker callback invoked once with @p arg.
+/// @param arg Borrowed callback context that must remain live until execution.
+/// @return One when accepted; zero for invalid input, shutdown, backpressure,
+///         or task-node allocation failure.
+int8_t rt_threadpool_submit_fn(void *pool, rt_threadpool_task_fn callback, void *arg);
+
 /// @brief Owned-argument submit: the pool retains @p arg on acceptance and
 ///        releases it after the callback runs or when the task is discarded
 ///        by ShutdownNow/finalization (VDOC-128).
 int8_t rt_threadpool_submit_owned(void *pool, void *callback, void *arg);
+
+/// @brief Submit a typed native task whose managed argument is Pool-owned.
+/// @details On acceptance the Pool acquires one managed reference to @p arg and
+///          releases it after callback execution or queued-task cancellation.
+///          Rejection leaves ownership unchanged. This typed companion avoids
+///          the non-portable function-pointer conversion required by the legacy
+///          @ref rt_threadpool_submit_owned ABI.
+/// @param pool Live managed Pool object.
+/// @param callback Native worker callback invoked once with @p arg.
+/// @param arg Runtime-managed callback context, or NULL.
+/// @return One when accepted; zero for invalid input, shutdown, backpressure,
+///         argument-retain failure, or task-node allocation failure.
+int8_t rt_threadpool_submit_owned_fn(void *pool, rt_threadpool_task_fn callback, void *arg);
 
 /// @brief Wait for all pending tasks to complete.
 /// @details Blocks until the task queue is empty and all workers are idle.

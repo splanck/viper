@@ -537,7 +537,7 @@ installer stage must include every installed binary tool:
 
 ```text
 zanna, zia, vbasic, ilrun, il-verify, il-dis, zia-server,
-vbasic-server, basic-ast-dump, basic-lex-dump, zannaide
+vbasic-server, basic-ast-dump, basic-lex-dump, zannastudio
 ```
 
 ```bash
@@ -617,11 +617,11 @@ Developer wrappers:
 - `scripts/build_installer.sh`
 - `scripts/build_installer.ps1`
 
-Installer builds enable `ZANNA_INSTALL_ZANNAIDE=ON`, which builds the native
-ZannaIDE binary through the freshly built `zanna` tool and stages
-`bin/zannaide` or `bin/zannaide.exe` plus `bin/zannaide.buildinfo`.
+Installer builds enable `ZANNA_INSTALL_ZANNASTUDIO=ON`, which builds the native
+Zanna Studio binary through the freshly built `zanna` tool and stages
+`bin/zannastudio` or `bin/zannastudio.exe` plus `bin/zannastudio.buildinfo`.
 `ZANNA_IDE_ARCH=x64|arm64` overrides the IDE native target architecture; when
-unset, CMake selects the host architecture. `ZANNA_INSTALL_ZANNAIDE` defaults
+unset, CMake selects the host architecture. `ZANNA_INSTALL_ZANNASTUDIO` defaults
 to `ON` so `cmake --install` and `zanna install-package --build-dir` produce a
 complete installer payload by default.
 
@@ -629,15 +629,15 @@ Staged toolchain packaging accepts `x64` and `arm64` architecture names, and als
 
 Linux-platform tarballs include `install.sh`, `uninstall.sh`, `README.install`, hicolor app icons, and `share/zanna/install_manifest.txt`. Their scripts honor `PREFIX` and `DESTDIR`, as well as `--dry-run`, `--force`, and `--quiet`; preflight unowned conflicts; stage and journal replacements on the destination filesystem; roll back a failed install or uninstall; remove stale owned files on upgrade; record the actual prefix; refresh caches only for a direct host install; and preserve unrelated content.
 
-Staged toolchain packaging rejects symlinks whose resolved targets leave the staged prefix, including when `--stage-dir` itself is a symlink and CMake's install manifest records paths through that alias. Relative internal symlink targets are preserved as written in tar-based artifacts and in macOS package roots; absolute internal symlinks are converted to archive-relative targets. Linux `.deb`, `.rpm`, `.run`, and Linux-platform tarball outputs preserve staged Unix permission bits, map root-level documentation to `/usr/share/doc/zanna/`, include license/copyright/README metadata, a visible `zannaide.desktop` launcher, hicolor icons, and hidden desktop/MIME handlers. Runtime libraries are hard package dependencies; CMake, make, a C++ compiler, and desktop/MIME/man cache utilities are recommendations. Optional X11/ALSA dependencies are derived from the staged support libraries. RPM `%install` copies the complete staged tree, including dotfiles, and `%files` entries safely quote special paths.
+Staged toolchain packaging rejects symlinks whose resolved targets leave the staged prefix, including when `--stage-dir` itself is a symlink and CMake's install manifest records paths through that alias. Relative internal symlink targets are preserved as written in tar-based artifacts and in macOS package roots; absolute internal symlinks are converted to archive-relative targets. Linux `.deb`, `.rpm`, `.run`, and Linux-platform tarball outputs preserve staged Unix permission bits, map root-level documentation to `/usr/share/doc/zanna/`, include license/copyright/README metadata, a visible `zannastudio.desktop` launcher, hicolor icons, and hidden desktop/MIME handlers. Runtime libraries are hard package dependencies; CMake, make, a C++ compiler, and desktop/MIME/man cache utilities are recommendations. Optional X11/ALSA dependencies are derived from the staged support libraries. RPM `%install` copies the complete staged tree, including dotfiles, and `%files` entries safely quote special paths.
 
-The `.run` bundle launches `zannaide` with no arguments and dispatches arguments to the CLI. Its full-payload SHA-256 selects a private XDG cache directory. It verifies owner and permissions, rejects symlink components, serializes concurrent first launches with a stale-lock recovery path, extracts through an atomic temporary root, and validates the hash stamp before reuse. `ZANNA_BUNDLE_QUIET=1` suppresses status text and `ZANNA_BUNDLE_REFRESH=1` forces refresh.
+The `.run` bundle launches `zannastudio` with no arguments and dispatches arguments to the CLI. Its full-payload SHA-256 selects a private XDG cache directory. It verifies owner and permissions, rejects symlink components, serializes concurrent first launches with a stale-lock recovery path, extracts through an atomic temporary root, and validates the hash stamp before reuse. `ZANNA_BUNDLE_QUIET=1` suppresses status text and `ZANNA_BUNDLE_REFRESH=1` forces refresh.
 
 Windows toolchain installers dereference only symlinks to regular files and reject directory symlinks because the Windows payload does not carry POSIX symlink metadata. x64 and ARM64 use the same statically linked native host and detached cleanup helper; the canonical path never invokes PowerShell. The schema-3 overlay inventories and hashes the maintenance host, cleanup helper, compressed inner payload, every selected file, component, integration, architecture, channel, version, and build identity. Recursive verification rejects extra, missing, mismatched, or wrong-architecture content before setup mutates the machine.
 
 The native lifecycle engine preflights the supported Windows floor, canonical Unicode destination, disk requirements, semantic-version policy, unowned conflicts, reparse traversal, concurrent setup, and files in use. Install, upgrade, reinstall, modify, repair, explicit downgrade, and uninstall use recoverable journals and directory swaps. Repair restores exact owned hashes; uninstall delegates to the verified maintenance cache and then removes that cache and the empty install root with the detached helper. Arbitrary unowned developer files and sibling release channels survive.
 
-The installer adds `bin` to the selected user or machine `Path` only when absent, records only the exact entry it owns, removes only that token during uninstall, and preserves unrelated edits. It broadcasts environment changes, creates Start Menu shortcuts for the developer prompt and ZannaIDE (plus the VS Code extension installer only when a validated `.vsix` is staged), and adds safe Open With ProgIDs for `.zia`, `.bas`, and `.il` without taking over their default handler. The developer prompt sets `ZANNA_HOME`, `Zanna_DIR`, and `CMAKE_PREFIX_PATH`, so external CMake projects can use `find_package(Zanna CONFIG REQUIRED)` without an additional prefix argument.
+The installer adds `bin` to the selected user or machine `Path` only when absent, records only the exact entry it owns, removes only that token during uninstall, and preserves unrelated edits. It broadcasts environment changes, creates Start Menu shortcuts for the developer prompt and Zanna Studio (plus the VS Code extension installer only when a validated `.vsix` is staged), and adds safe Open With ProgIDs for `.zia`, `.bas`, and `.il` without taking over their default handler. The developer prompt sets `ZANNA_HOME`, `Zanna_DIR`, and `CMAKE_PREFIX_PATH`, so external CMake projects can use `find_package(Zanna CONFIG REQUIRED)` without an additional prefix argument.
 
 The high-DPI native wizard offers one-click Typical, SDK, and Complete paths plus a scrollable custom surface for runtime scope, destination, components, and integrations. It uses system colors, keyboard navigation, accessible names, explicit license acceptance, Restart Manager, cooperative cancellation, redacted unique logs, and truthful self-checked finish actions. Silent setup supports `/quiet`, `/passive`, `/scope`, `/installDir`, `/type`, `/components`, integration switches, `/closeApplications`, `/allowDowngrade`, `/log`, and `/norestart`; `/?` prints the exact contract and exit codes. `/inspect` prints verified package JSON without mutation, and `/checkForUpdates` verifies a pinned signed same-origin manifest and downloaded SHA-256 when configured. Both accept `/output <path>` to publish complete UTF-8 JSON atomically when a GUI process has no reliable inherited standard-output stream.
 

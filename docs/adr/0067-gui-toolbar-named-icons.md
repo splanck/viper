@@ -12,7 +12,7 @@ Accepted
 
 ## Context
 
-ZannaIDE toolbar buttons were using single-character labels as implicit icons.
+Zanna Studio toolbar buttons were using single-character labels as implicit icons.
 The low-level GUI toolbar already renders known glyph codepoints as vector icons,
 but the public runtime API only accepted image paths or pixel objects. That made
 IDE code depend on ambiguous glyph literals and prevented other Zanna programs
@@ -35,6 +35,6 @@ name drift.
 
 ## Consequences
 
-ZannaIDE can migrate away from toolbar text glyphs without adding external image
+Zanna Studio can migrate away from toolbar text glyphs without adding external image
 assets. The ABI remains additive. Future icons should extend the name-to-glyph
 mapping and the GUI vector renderer together, with tests for each public name.

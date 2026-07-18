@@ -1,0 +1,26 @@
+# Zanna Studio — the Zanna platform IDE
+project zannastudio
+version 0.1.0
+lang zia
+entry src/main.zia
+
+# === Package Metadata ===
+package-name "Zanna Studio"
+package-author "Stephen Planck"
+package-description "Zanna Studio, the Zanna platform IDE"
+package-homepage https://zannagames.com
+package-license GPL-3.0
+package-identifier org.zanna-lang.zannastudio
+# package-icon assets/icon-512.png
+
+# === File Associations ===
+file-assoc .zia "Zia Source File" text/x-zia
+file-assoc .bas "BASIC Source File" text/x-basic
+file-assoc .il "Zanna IL File" text/x-zanna-il
+
+# === Shortcuts ===
+shortcut-desktop on
+shortcut-menu on
+
+# === Platform Requirements ===
+min-os-macos 11.0

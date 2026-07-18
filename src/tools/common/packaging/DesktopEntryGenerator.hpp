@@ -29,11 +29,11 @@ namespace zanna::pkg {
 
 /// @brief Parameters for .desktop file generation.
 struct DesktopEntryParams {
-    std::string name;           ///< Display name (e.g. "ZannaIDE")
+    std::string name;           ///< Display name (e.g. "Zanna Studio")
     std::string comment;        ///< Short description
-    std::string execPath;       ///< Path to executable (e.g. "/usr/bin/zannaide")
+    std::string execPath;       ///< Path to executable (e.g. "/usr/bin/zannastudio")
     std::string execArguments;  ///< Additional literal Exec= arguments after the executable token.
-    std::string iconName;       ///< Icon name (e.g. "zannaide")
+    std::string iconName;       ///< Icon name (e.g. "zannastudio")
     std::string categories;     ///< freedesktop.org categories (e.g. "Development;TextEditor;")
     std::string startupWmClass; ///< Optional StartupWMClass for desktop/window matching.
     std::string keywords;       ///< Optional semicolon-separated Keywords= metadata.

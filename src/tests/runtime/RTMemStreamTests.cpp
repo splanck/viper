@@ -9,6 +9,8 @@
 // Purpose: Validate in-memory binary stream operations in rt_memstream.c.
 // Key invariants: MemStream provides correct little-endian encoding,
 //                 automatic growth, and proper position tracking.
+// Ownership/Lifetime: Tests release each managed stream and returned value;
+//                     retained capacity belongs to the stream until finalization.
 // Links: docs/zannalib/io.md
 //
 //===----------------------------------------------------------------------===//
@@ -294,6 +296,23 @@ static void test_strings() {
     test_result("ReadStr/WriteStr", true);
 }
 
+/// @brief Verify an exact zero-byte string read is valid on an unallocated stream.
+/// @details A fresh MemStream has a NULL backing pointer. The zero-length path
+///          must pass a stable empty source to the string constructor instead
+///          of performing undefined pointer arithmetic on that NULL buffer.
+static void test_empty_string_read() {
+    printf("Testing empty ReadStr...\n");
+
+    void *ms = rt_memstream_new();
+    rt_string empty = rt_memstream_read_str(ms, 0);
+    assert(empty != nullptr);
+    assert(rt_str_len(empty) == 0);
+    assert(rt_memstream_get_pos(ms) == 0);
+    rt_string_unref(empty);
+
+    test_result("Empty ReadStr", true);
+}
+
 static void test_invalid_payloads_trap() {
     printf("Testing invalid MemStream payloads...\n");
 
@@ -317,8 +336,7 @@ static void test_write_bytes_invalid_data_preserves_stream() {
     rt_memstream_write_u8(ms, 0x7A);
     rt_memstream_set_pos(ms, 1);
 
-    FakeBytes *bad =
-        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    FakeBytes *bad = static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
     bad->len = 1;
     bad->data = nullptr;
 
@@ -333,6 +351,34 @@ static void test_write_bytes_invalid_data_preserves_stream() {
         rt_obj_free(bad);
 
     test_result("Invalid WriteBytes data preserves stream", true);
+}
+
+/// @brief Reject forged Bytes objects whose internal length violates the Bytes invariant.
+/// @details A class-id match alone does not make a hand-built payload valid.
+///          FromBytes and WriteBytes must reject negative lengths without
+///          changing an existing stream or interpreting them as empty input.
+static void test_negative_forged_bytes_trap() {
+    printf("Testing negative forged Bytes validation...\n");
+
+    struct FakeBytes {
+        int64_t len;
+        uint8_t *data;
+    };
+
+    FakeBytes *bad = static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    bad->len = -1;
+    bad->data = nullptr;
+
+    EXPECT_TRAP(rt_memstream_from_bytes(bad));
+    void *ms = rt_memstream_new();
+    rt_memstream_write_u8(ms, 0x4d);
+    EXPECT_TRAP(rt_memstream_write_bytes(ms, bad));
+    assert(rt_memstream_get_len(ms) == 1);
+    assert(rt_memstream_get_pos(ms) == 1);
+
+    if (rt_obj_release_check0(bad))
+        rt_obj_free(bad);
+    test_result("Negative forged Bytes trap", true);
 }
 
 /// @brief Test ToBytes.
@@ -363,10 +409,24 @@ static void test_clear() {
     rt_memstream_write_i64(ms, 12345);
     assert(rt_memstream_get_len(ms) == 8);
     assert(rt_memstream_get_pos(ms) == 8);
+    int64_t capacity = rt_memstream_get_capacity(ms);
 
     rt_memstream_clear(ms);
     assert(rt_memstream_get_len(ms) == 0);
     assert(rt_memstream_get_pos(ms) == 0);
+    assert(rt_memstream_get_capacity(ms) == capacity);
+
+    // Clear keeps allocation capacity without exposing old contents. A sparse
+    // write must zero only the newly observable gap before publishing it.
+    rt_memstream_set_pos(ms, 4);
+    rt_memstream_write_u8(ms, 0xAA);
+    rt_memstream_set_pos(ms, 0);
+    void *bytes = rt_memstream_read_bytes(ms, 5);
+    for (int64_t i = 0; i < 4; ++i)
+        assert(rt_bytes_get(bytes, i) == 0);
+    assert(rt_bytes_get(bytes, 4) == 0xAA);
+    if (rt_obj_release_check0(bytes))
+        rt_obj_free(bytes);
 
     test_result("Clear", true);
 }
@@ -536,8 +596,10 @@ int main() {
     test_floats();
     test_bytes();
     test_strings();
+    test_empty_string_read();
     test_invalid_payloads_trap();
     test_write_bytes_invalid_data_preserves_stream();
+    test_negative_forged_bytes_trap();
     test_to_bytes();
     test_clear();
     test_seek_skip();

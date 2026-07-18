@@ -12,18 +12,19 @@
 //          or teardown.
 //
 // Key invariants:
-//   - The array retains a reference to each stored object; callers must not
-//     release objects after handing them to the array.
-//   - Overwriting an element releases the old object before storing the new one.
+//   - The array retains a reference to each stored object; callers keep ownership
+//     of, and remain responsible for, their original reference.
+//   - Overwriting publishes the retained new object before releasing the old one.
 //   - Array teardown releases all held object references exactly once.
 //   - The array itself is reference-counted through the heap allocator.
+//   - Object arrays are GC-tracked and enumerate every live slot as a strong edge.
 //   - Out-of-bounds accesses trigger rt_arr_oob_panic and abort.
 //
 // Ownership/Lifetime:
 //   - The array holds strong references to all stored objects.
 //   - The array itself is heap-allocated and reference-counted.
-//   - On GC finalization, all element references are released and the heap
-//     allocation is freed.
+//   - Normal final release drops every element; cycle collection releases only
+//     outgoing references that leave the reclaimed cycle.
 //
 // Links: src/runtime/arrays/rt_array_obj.h (public API),
 //        src/runtime/arrays/rt_array.h (int32 base module, oob_panic),
@@ -34,6 +35,7 @@
 #include "rt_array_obj.h"
 
 #include "rt_array.h" // for rt_arr_oob_panic
+#include "rt_gc.h"
 #include "rt_heap.h"
 #include "rt_object.h"
 #include "rt_platform.h"
@@ -121,16 +123,68 @@ static void rt_arr_obj_copy_retained(void **dst, void **src, size_t count) {
     }
 }
 
+/// @brief Compute an amortized-growth capacity for a resizable object array.
+/// @details Capacities start at sixteen slots and double until @p required_len
+///          fits. If doubling would overflow `size_t`, the exact required
+///          length is used after validating that its byte representation fits
+///          in a heap allocation. This keeps repeated List append operations
+///          amortized O(1) without weakening the heap allocator's overflow
+///          guarantees.
+/// @param current_cap Existing backing capacity, or zero for a new array.
+/// @param required_len Minimum logical length the result must hold.
+/// @param out_cap Receives the validated capacity on success.
+/// @return Non-zero on success; zero when the requested capacity cannot be
+///         represented safely.
+static int rt_arr_obj_growth_capacity(size_t current_cap, size_t required_len, size_t *out_cap) {
+    const size_t min_capacity = 16;
+    size_t cap = current_cap;
+
+    if (!out_cap)
+        return 0;
+    if (required_len == 0) {
+        *out_cap = 0;
+        return 1;
+    }
+    if (cap < min_capacity)
+        cap = min_capacity;
+    while (cap < required_len) {
+        if (cap > SIZE_MAX / 2) {
+            cap = required_len;
+            break;
+        }
+        cap *= 2;
+    }
+    if (cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / sizeof(void *))
+        return 0;
+    *out_cap = cap;
+    return 1;
+}
+
+/// @brief Allocate a zero-filled object array with independent length and capacity.
+/// @details This internal constructor is used by the resizable collection path,
+///          while @ref rt_arr_obj_new preserves its exact-capacity constructor
+///          contract. The allocation is registered as an object-reference array
+///          by the heap and GC layers.
+/// @param len Initial logical length.
+/// @param cap Backing capacity, which must be at least @p len.
+/// @return Array payload on success, or NULL after an invalid size or allocation
+///         failure.
+static void **rt_arr_obj_alloc_with_capacity(size_t len, size_t cap) {
+    if (cap < len || cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / sizeof(void *))
+        return NULL;
+    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_OBJ, sizeof(void *), len, cap);
+    if (arr && cap)
+        memset(arr, 0, cap * sizeof(void *));
+    return arr;
+}
+
 /// @brief Allocate a new object array with logical length @p len.
 /// @details The payload is zero-initialized so all elements start as NULL.
 ///          The returned pointer is the payload (element 0), not the header.
 /// @param len Number of elements to allocate.
 /// @return Payload pointer for the new array, or NULL on allocation failure.
 void **rt_arr_obj_new(size_t len) {
-    void **arr = (void **)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_OBJ, sizeof(void *), len, len);
-    if (arr && len)
-        memset(arr, 0, len * sizeof(void *));
-    return arr;
+    return rt_arr_obj_alloc_with_capacity(len, len);
 }
 
 /// @brief Return the logical length of the object array.
@@ -185,18 +239,24 @@ void rt_arr_obj_put(void **arr, size_t idx, void *obj) {
         rt_trap("rt_arr_obj_put: null array");
         return;
     }
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
-    if (!rt_arr_obj_header_valid(hdr))
+    if (!rt_arr_obj_header_valid(hdr)) {
+        rt_gc_mutator_exit();
         return;
+    }
     rt_arr_obj_assert_header(hdr);
     if (rt_arr_obj_is_shared(hdr)) {
+        rt_gc_mutator_exit();
         rt_trap("rt_arr_obj_put: cannot mutate shared array");
         return;
     }
     if (idx >= hdr->len)
         rt_arr_oob_panic(idx, hdr->len);
-    if (idx >= hdr->len)
+    if (idx >= hdr->len) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     // Retain new first to handle self-assignment safely
     rt_obj_retain_maybe(obj);
@@ -207,80 +267,94 @@ void rt_arr_obj_put(void **arr, size_t idx, void *obj) {
         if (rt_obj_release_check0(old))
             rt_obj_free(old);
     }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Resize an object array to the requested length.
-/// @details When growing, new elements are zero-initialized. When shrinking,
-///          truncated elements are released before the buffer is reallocated.
-///          Resizing to zero releases the array and returns NULL.
-///          The array may move in memory due to reallocation.
+/// @details Growth uses a minimum sixteen-slot, doubling capacity policy so
+///          repeated appends are amortized O(1); new logical slots are always
+///          zero-initialized. Shrinking clears and releases truncated elements
+///          but retains the backing capacity, avoiding an allocation on every
+///          List removal. Resizing to zero preserves the historical contract of
+///          releasing the array and returning NULL. A shared backing allocation
+///          is copied before mutation so aliases retain their original contents.
 /// @param arr Existing array payload pointer (may be NULL).
 /// @param len New logical length.
 /// @return Payload pointer for the resized array, or NULL on failure.
 void **rt_arr_obj_resize(void **arr, size_t len) {
-    if (!arr)
-        return rt_arr_obj_new(len);
+    if (!arr) {
+        size_t cap = 0;
+        if (!rt_arr_obj_growth_capacity(0, len, &cap))
+            return NULL;
+        return rt_arr_obj_alloc_with_capacity(len, cap);
+    }
 
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
-    if (!rt_arr_obj_header_valid(hdr))
+    if (!rt_arr_obj_header_valid(hdr)) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
     rt_arr_obj_assert_header(hdr);
 
     size_t old_len = hdr->len;
     if (len == 0) {
         rt_arr_obj_release(arr);
+        rt_gc_mutator_exit();
         return NULL;
     }
 
     if (rt_arr_obj_is_shared(hdr)) {
-        void **fresh = rt_arr_obj_new(len);
-        if (!fresh)
+        size_t fresh_cap = hdr->cap;
+        if (fresh_cap < len && !rt_arr_obj_growth_capacity(fresh_cap, len, &fresh_cap)) {
+            rt_gc_mutator_exit();
             return NULL;
+        }
+        if (fresh_cap < len)
+            fresh_cap = len;
+        void **fresh = rt_arr_obj_alloc_with_capacity(len, fresh_cap);
+        if (!fresh) {
+            rt_gc_mutator_exit();
+            return NULL;
+        }
         size_t copy_len = old_len < len ? old_len : len;
         rt_arr_obj_copy_retained(fresh, arr, copy_len);
         rt_arr_obj_release(arr);
+        rt_gc_mutator_exit();
         return fresh;
     }
 
-    void **truncated = NULL;
-    size_t truncated_count = 0;
     if (len < old_len) {
-        for (size_t i = len; i < old_len; i++) {
-            if (arr[i])
-                truncated_count++;
+        for (size_t i = len; i < old_len; ++i) {
+            void *truncated = arr[i];
+            arr[i] = NULL;
+            rt_arr_obj_release_element(truncated);
         }
-        if (truncated_count > 0) {
-            truncated = (void **)malloc(truncated_count * sizeof(void *));
-            if (!truncated)
-                return NULL;
-            size_t at = 0;
-            for (size_t i = len; i < old_len; i++) {
-                if (arr[i])
-                    truncated[at++] = arr[i];
-            }
-        }
+        rt_heap_set_len(arr, len);
+        rt_gc_mutator_exit();
+        return arr;
     }
 
-    size_t new_cap = len;
-    // compute total bytes with overflow checks similar to rt_arr_i32
-    if (new_cap > 0 && new_cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / sizeof(void *)) {
-        free(truncated);
+    if (len == old_len) {
+        rt_gc_mutator_exit();
+        return arr;
+    }
+
+    if (len <= hdr->cap) {
+        memset(arr + old_len, 0, (len - old_len) * sizeof(void *));
+        rt_heap_set_len(arr, len);
+        rt_gc_mutator_exit();
+        return arr;
+    }
+
+    size_t new_cap = 0;
+    if (!rt_arr_obj_growth_capacity(hdr->cap, len, &new_cap)) {
+        rt_gc_mutator_exit();
         return NULL;
     }
 
     void **payload = (void **)rt_heap_realloc(arr, sizeof(void *), len, new_cap);
-    if (!payload) {
-        free(truncated);
-        return NULL;
-    }
-
-    if (truncated) {
-        for (size_t i = 0; i < truncated_count; i++) {
-            rt_arr_obj_release_element(truncated[i]);
-        }
-        free(truncated);
-    }
-
+    rt_gc_mutator_exit();
     return payload;
 }
 
@@ -291,15 +365,20 @@ void **rt_arr_obj_resize(void **arr, size_t len) {
 void rt_arr_obj_release(void **arr) {
     if (!arr)
         return;
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = rt_arr_obj_hdr(arr);
-    if (!rt_arr_obj_header_valid(hdr))
+    if (!rt_arr_obj_header_valid(hdr)) {
+        rt_gc_mutator_exit();
         return;
+    }
     rt_arr_obj_assert_header(hdr);
 
     size_t n = hdr->len;
     size_t refs = rt_heap_release_deferred(arr);
-    if (refs != 0)
+    if (refs != 0) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     for (size_t i = 0; i < n; ++i) {
         void *p = arr[i];
@@ -309,4 +388,5 @@ void rt_arr_obj_release(void **arr) {
         }
     }
     rt_heap_free_zero_ref(arr);
+    rt_gc_mutator_exit();
 }

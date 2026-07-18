@@ -21,12 +21,12 @@ func start() {
 
     Say("test2: Thread.StartSafe with OK worker");
     var t1 = Zanna.Threads.Thread.StartSafe(&worker_ok, 0);
-    Zanna.Threads.Thread.Sleep(500);
+    t1.SafeJoin();
     Say("test2 done");
 
     Say("test3: Thread.StartSafe with trapping worker");
     var t2 = Zanna.Threads.Thread.StartSafe(&worker_trap, 0);
-    Zanna.Threads.Thread.Sleep(500);
+    t2.SafeJoin();
     Say("test3: checking error...");
     if (t2.HasError) {
         Say("test3: caught error: " + t2.Error);

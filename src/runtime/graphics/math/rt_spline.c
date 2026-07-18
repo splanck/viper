@@ -77,12 +77,13 @@ static void spline_finalizer(void *payload) {
 static int spline_is_compatible_object(void *spline) {
     if (!spline)
         return 0;
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(spline, &hdr) || !hdr)
+    rt_heap_info_t heap_info;
+    if (!rt_heap_get_info(spline, &heap_info))
         return 0;
-    if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
+    if (heap_info.kind != RT_HEAP_OBJECT || heap_info.elem_kind != RT_ELEM_NONE)
         return 0;
-    return hdr->class_id == RT_SPLINE_CLASS_ID && hdr->cap >= (uint64_t)sizeof(ZannaSpline);
+    return heap_info.class_id == RT_SPLINE_CLASS_ID &&
+           heap_info.cap >= (uint64_t)sizeof(ZannaSpline);
 }
 
 /// @brief Validate and cast an opaque handle to a spline payload.

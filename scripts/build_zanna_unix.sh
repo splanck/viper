@@ -59,6 +59,7 @@ SKIP_LINT="${ZANNA_SKIP_LINT:-0}"
 LINT_CHANGED_ONLY="${ZANNA_LINT_CHANGED_ONLY:-1}"
 SKIP_SMOKE="${ZANNA_SKIP_SMOKE:-0}"
 SKIP_TESTS="${ZANNA_SKIP_TESTS:-0}"
+SKIP_CPPCHECK="${ZANNA_SKIP_CPPCHECK:-0}"
 SKIP_CLEAN="${ZANNA_SKIP_CLEAN:-0}"
 TEST_LABEL="${ZANNA_TEST_LABEL:-}"
 NO_CCACHE="${ZANNA_NO_CCACHE:-0}"
@@ -175,6 +176,15 @@ echo "[build_zanna] Build type: $BUILD_TYPE"
 echo "[build_zanna] Fast Debug: $FAST_DEBUG"
 echo "[build_zanna] Build jobs: $JOBS"
 cmake --build "$BUILD_DIR" -j"$JOBS"
+
+if [[ "$SKIP_CPPCHECK" == "1" ]]; then
+    echo "[build_zanna] Skipping runtime cppcheck (ZANNA_SKIP_CPPCHECK=1)"
+elif command -v cppcheck >/dev/null 2>&1; then
+    echo "[build_zanna] Running gating runtime cppcheck..."
+    cmake --build "$BUILD_DIR" --target cppcheck-runtime -j1
+else
+    echo "[build_zanna] Skipping runtime cppcheck (cppcheck not installed)"
+fi
 
 if command -v sync >/dev/null 2>&1; then
     sync

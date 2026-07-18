@@ -19,7 +19,7 @@ invalid signature warning.
 
 The first page offers four clear paths:
 
-- **Install recommended** installs the compiler tools, ZannaIDE, SDK files, and
+- **Install recommended** installs the compiler tools, Zanna Studio, SDK files, and
   available integrations.
 - **Install SDK tools** installs the command-line tools and native development
   files without the IDE-focused extras.
@@ -79,7 +79,7 @@ The expected output is `Hello, World!`.
 ## Installed Developer Features
 
 The recommended setup includes the Zanna command-line tools, language servers,
-ZannaIDE, headers, static libraries, CMake package files, documentation, and
+Zanna Studio, headers, static libraries, CMake package files, documentation, and
 available editor integration. An external CMake project can use the installed
 SDK from the Zanna Developer Prompt:
 
@@ -90,7 +90,7 @@ target_link_libraries(my_program PRIVATE zanna::il_core zanna::il_io)
 
 Git, CMake, Ninja, Visual Studio C++, the Windows SDK, VS Code, and Windows
 Terminal are optional companion tools; setup detects but never downloads or
-changes them. Running Zia, BASIC, IL, ZannaIDE, and the VM needs none of those
+changes them. Running Zia, BASIC, IL, Zanna Studio, and the VM needs none of those
 tools. Native code generation and compiling an external C++ consumer require
 an architecture-matched compiler, linker, and Windows SDK.
 

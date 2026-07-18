@@ -16,12 +16,17 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
+#include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_platform.h"
 #include "rt_watcher.h"
 
+#include <atomic>
 #include <cassert>
+#include <cerrno>
 #include <chrono>
 #include <csetjmp>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -31,6 +36,7 @@ namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
+static int g_alloc_countdown = 0;
 } // namespace
 
 extern "C" void vm_trap(const char *msg) {
@@ -54,15 +60,52 @@ extern "C" void vm_trap(const char *msg) {
 #if RT_PLATFORM_WINDOWS
 #include <direct.h>
 #include <process.h>
+#include <windows.h>
 #define mkdir_p(path) _mkdir(path)
 #define rmdir_p(path) _rmdir(path)
 #define getpid _getpid
 #else
 #include "tests/common/PosixCompat.h"
+#include <fcntl.h>
 #include <sys/stat.h>
 #define mkdir_p(path) mkdir(path, 0755)
 #define rmdir_p(path) rmdir(path)
 #endif
+
+/// @brief Fail one selected runtime allocation and delegate all others.
+/// @param bytes Requested runtime byte count.
+/// @param next Default allocator supplied by the runtime.
+/// @return NULL for the selected request, otherwise the default result.
+static void *fail_countdown_alloc(int64_t bytes, void *(*next)(int64_t)) {
+    if (g_alloc_countdown > 0 && --g_alloc_countdown == 0)
+        return nullptr;
+    return next ? next(bytes) : nullptr;
+}
+
+/// @brief Count native process resources without opening a descriptor itself.
+/// @return Current Windows handle count or occupied low POSIX descriptor count.
+static uint64_t process_open_resource_count() {
+#if RT_PLATFORM_WINDOWS
+    DWORD count = 0;
+    assert(GetProcessHandleCount(GetCurrentProcess(), &count) != 0);
+    return (uint64_t)count;
+#else
+    uint64_t count = 0;
+    for (int fd = 0; fd < 4096; ++fd) {
+        errno = 0;
+        if (fcntl(fd, F_GETFD) != -1 || errno != EBADF)
+            ++count;
+    }
+    return count;
+#endif
+}
+
+/// @brief Release an owned watcher object after native resources are stopped.
+/// @param watcher Owned managed object; NULL is a no-op.
+static void release_watcher(void *watcher) {
+    if (watcher && rt_obj_release_check0(watcher))
+        rt_obj_free(watcher);
+}
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -172,6 +215,104 @@ static void test_watcher_start_stop() {
 
     // Cleanup
     rmdir_p(base);
+}
+
+/// @brief Verify repeated Start/Stop cycles restore the native resource baseline.
+static void test_start_stop_resource_balance() {
+    printf("Testing Start/Stop resource balance...\n");
+    const char *base = get_test_base();
+    mkdir_p(base);
+    rt_string path = rt_string_from_bytes(base, strlen(base));
+    void *w = rt_watcher_new(path);
+    uint64_t before = process_open_resource_count();
+
+    for (int i = 0; i < 32; ++i) {
+        rt_watcher_start(w);
+        assert(rt_watcher_get_is_watching(w) == 1);
+        rt_watcher_stop(w);
+        assert(rt_watcher_get_is_watching(w) == 0);
+        assert(process_open_resource_count() == before);
+    }
+
+    release_watcher(w);
+    rt_string_unref(path);
+    rmdir_p(base);
+    test_result("Start/Stop resource balance", true);
+}
+
+#if RT_PLATFORM_WINDOWS || RT_PLATFORM_LINUX || RT_PLATFORM_MACOS
+/// @brief Verify that a Watcher cannot be polled from a non-owning thread.
+/// @details The worker installs its own runtime recovery frame so the expected
+///          affinity trap is contained on that thread. The construction thread
+///          then starts and stops the same object, proving that the rejected
+///          call did not alter native state or poison the instance.
+static void test_construction_thread_affinity() {
+    printf("Testing construction-thread affinity...\n");
+    const char *base = get_test_base();
+    mkdir_p(base);
+    rt_string path = rt_string_from_bytes(base, strlen(base));
+    void *w = rt_watcher_new(path);
+    assert(w != nullptr);
+
+    std::atomic<bool> saw_affinity_trap{false};
+    std::thread foreign_thread([&]() {
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            (void)rt_watcher_poll(w);
+            rt_trap_clear_recovery();
+            return;
+        }
+        const char *error = rt_trap_get_error();
+        saw_affinity_trap.store(error && strstr(error, "another thread") != nullptr,
+                                std::memory_order_release);
+        rt_trap_clear_recovery();
+    });
+    foreign_thread.join();
+
+    assert(saw_affinity_trap.load(std::memory_order_acquire));
+    rt_watcher_start(w);
+    assert(rt_watcher_get_is_watching(w) == 1);
+    rt_watcher_stop(w);
+    release_watcher(w);
+    rt_string_unref(path);
+    rmdir_p(base);
+    test_result("construction-thread affinity", true);
+}
+#endif
+
+/// @brief Verify partial file-watch construction is reclaimed after allocation trap.
+/// @details The second runtime allocation fails while deriving the parent path,
+///          after the managed Watcher exists and has retained the caller path.
+///          The installed finalizer must release that partial state. The caller
+///          path remains valid and can immediately construct a replacement.
+static void test_constructor_oom_cleanup() {
+    printf("Testing Watcher.New allocation cleanup...\n");
+    const char *base = get_test_base();
+    mkdir_p(base);
+    char file_path[512];
+#if RT_PLATFORM_WINDOWS
+    snprintf(file_path, sizeof(file_path), "%s\\oom.txt", base);
+#else
+    snprintf(file_path, sizeof(file_path), "%s/oom.txt", base);
+#endif
+    create_file(file_path);
+    rt_string path = rt_string_from_bytes(file_path, strlen(file_path));
+
+    g_alloc_countdown = 2;
+    rt_set_alloc_hook(fail_countdown_alloc);
+    EXPECT_TRAP(rt_watcher_new(path));
+    rt_set_alloc_hook(nullptr);
+    assert(g_alloc_countdown == 0);
+    assert(strcmp(rt_string_cstr(path), file_path) == 0);
+
+    void *w = rt_watcher_new(path);
+    assert(w != nullptr);
+    release_watcher(w);
+    rt_string_unref(path);
+    remove_file(file_path);
+    rmdir_p(base);
+    test_result("Watcher.New allocation cleanup", true);
 }
 
 /// @brief Test event type constants.
@@ -432,6 +573,8 @@ static void test_deleted_watch_becomes_inactive() {
     test_result("deleted watch requests rescan", saw_rescan != 0);
     test_result("deleted watch becomes inactive", rt_watcher_get_is_watching(w) == 0);
     rt_watcher_stop(w);
+    test_result("Stop clears terminal event type", rt_watcher_event_type(w) == RT_WATCH_EVENT_NONE);
+    EXPECT_TRAP(rt_watcher_event_path(w));
 }
 
 static void test_attribute_change_is_modified() {
@@ -460,12 +603,41 @@ static void test_attribute_change_is_modified() {
 }
 #endif
 
+#if RT_PLATFORM_MACOS
+/// @brief Verify a deleted kqueue vnode becomes inactive and Stop clears its event epoch.
+static void test_deleted_watch_becomes_inactive() {
+    printf("Testing deleted watch terminal state...\n");
+    const char *base = get_test_base();
+    mkdir_p(base);
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s/terminal.txt", base);
+    create_file(file_path);
+
+    void *w = rt_watcher_new(rt_string_from_bytes(file_path, strlen(file_path)));
+    rt_watcher_start(w);
+    remove_file(file_path);
+    int64_t event = poll_until_event(w);
+    test_result("deleted vnode reports an event", event != RT_WATCH_EVENT_NONE);
+    test_result("deleted vnode becomes inactive", rt_watcher_get_is_watching(w) == 0);
+    rt_watcher_stop(w);
+    test_result("Stop clears inactive terminal event",
+                rt_watcher_event_type(w) == RT_WATCH_EVENT_NONE);
+    EXPECT_TRAP(rt_watcher_event_path(w));
+    rmdir_p(base);
+}
+#endif
+
 int main() {
     printf("=== Watcher Runtime Tests ===\n");
 
     test_event_constants();
     test_watcher_new();
     test_watcher_start_stop();
+    test_start_stop_resource_balance();
+#if RT_PLATFORM_WINDOWS || RT_PLATFORM_LINUX || RT_PLATFORM_MACOS
+    test_construction_thread_affinity();
+#endif
+    test_constructor_oom_cleanup();
     test_poll_no_events();
     test_directory_event_path();
     test_file_event_path();
@@ -473,8 +645,10 @@ int main() {
 #if RT_PLATFORM_LINUX
     test_file_recreate_is_detected();
     test_internal_overflow_reports_positive_count();
-    test_deleted_watch_becomes_inactive();
     test_attribute_change_is_modified();
+#endif
+#if RT_PLATFORM_LINUX || RT_PLATFORM_MACOS
+    test_deleted_watch_becomes_inactive();
 #endif
     test_null_path_trap();
     test_nonexistent_path_trap();

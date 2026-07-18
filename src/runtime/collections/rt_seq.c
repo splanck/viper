@@ -177,8 +177,13 @@ static int seq_ensure_capacity_or_release(
         char saved_error[256];
         seq_save_trap_error(saved_error, sizeof(saved_error), fallback);
         rt_trap_clear_recovery();
+        /* The trap dispatcher unwinds any active mutator scope before
+         * transferring control here.  Re-enter while balancing the retained
+         * value so collection cannot race the recovery cleanup. */
+        rt_gc_mutator_enter();
         if (retained)
             seq_release_element(retained_value);
+        rt_gc_mutator_exit();
         rt_trap(saved_error);
         return 0;
     }
@@ -366,15 +371,20 @@ void *rt_seq_with_capacity_owned(int64_t cap) {
 void rt_seq_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
-    if (!seq)
+    if (!seq) {
+        rt_gc_mutator_exit();
         return;
+    }
     owns = owns ? 1 : 0;
     if (seq->len != 0 && seq->owns_elements != owns) {
+        rt_gc_mutator_exit();
         rt_trap("Seq.SetOwnsElements: cannot change ownership mode on non-empty sequence");
         return;
     }
     seq->owns_elements = owns;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Returns the number of elements currently in the Seq.
@@ -542,41 +552,64 @@ void rt_seq_set(void *obj, int64_t idx, void *val) {
         return;
     }
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
-    if (!seq)
+    if (!seq) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (idx < 0 || idx >= seq->len) {
+        rt_gc_mutator_exit();
         rt_trap("Seq.Set: index out of bounds");
         return;
     }
 
+    void *old = seq->items[idx];
     if (seq->owns_elements) {
         if (val)
             rt_obj_retain_maybe(val);
-        seq_release_element(seq->items[idx]);
     }
     seq->items[idx] = val;
+    if (seq->owns_elements)
+        seq_release_element(old);
+    rt_gc_mutator_exit();
 }
 
+/// @brief Replace an element by transferring the caller's reference.
+/// @details Stores @p val without retaining it. For an owning sequence, the
+///          previous slot reference is released after the store. This release
+///          also occurs when old and new pointers are identical: in that case
+///          the caller's transferred reference replaces the sequence's prior
+///          reference, so one of the two indistinguishable retains must still
+///          be consumed to keep the net count unchanged.
+/// @param obj Owning or borrowing Seq object; must not be NULL.
+/// @param idx Existing zero-based slot index.
+/// @param val Value whose existing reference is transferred into the slot.
 void rt_seq_set_raw(void *obj, int64_t idx, void *val) {
     if (!obj) {
         rt_trap("Seq.Set: null sequence");
         return;
     }
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
-    if (!seq)
+    if (!seq) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (idx < 0 || idx >= seq->len) {
+        rt_gc_mutator_exit();
         rt_trap("Seq.Set: index out of bounds");
         return;
     }
 
-    if (seq->owns_elements)
-        seq_release_element(seq->items[idx]);
+    void *old = seq->items[idx];
     seq->items[idx] = val;
+    if (seq->owns_elements)
+        seq_release_element(old);
+    rt_gc_mutator_exit();
 }
 
 /// @brief Adds an element to the end of the Seq.
@@ -617,11 +650,15 @@ void rt_seq_push(void *obj, void *val) {
         return;
     }
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
-    if (!seq)
+    if (!seq) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (seq->len >= INT64_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Seq: maximum length reached");
         return;
     }
@@ -631,10 +668,13 @@ void rt_seq_push(void *obj, void *val) {
         retained = 1;
     }
     if (!seq_ensure_capacity_or_release(
-            seq, seq->len + 1, val, retained, "Seq.Push: capacity failed"))
+            seq, seq->len + 1, val, retained, "Seq.Push: capacity failed")) {
+        rt_gc_mutator_exit();
         return;
+    }
     seq->items[seq->len] = val;
     seq->len++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Push without retaining the element — for sequences that don't own their values.
@@ -648,18 +688,25 @@ void rt_seq_push_raw(void *obj, void *val) {
         return;
     }
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
-    if (!seq)
+    if (!seq) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (seq->len >= INT64_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Seq: maximum length reached");
         return;
     }
-    if (!seq_ensure_capacity(seq, seq->len + 1))
+    if (!seq_ensure_capacity(seq, seq->len + 1)) {
+        rt_gc_mutator_exit();
         return;
+    }
     seq->items[seq->len] = val;
     seq->len++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Appends all elements from another Seq to the end of this Seq.
@@ -710,23 +757,31 @@ void rt_seq_push_all(void *obj, void *other) {
     if (!other)
         return;
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
     rt_seq_impl *src = as_seq(other, "Seq: invalid Seq object");
-    if (!seq || !src)
+    if (!seq || !src) {
+        rt_gc_mutator_exit();
         return;
+    }
 
-    if (src->len <= 0)
+    if (src->len <= 0) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (seq == src) {
         int64_t original_len = seq->len;
         if (original_len > INT64_MAX - original_len) {
+            rt_gc_mutator_exit();
             rt_trap("Seq.PushAll: length overflow");
             return;
         }
         if (seq->owns_elements) {
-            if (!seq_ensure_capacity(seq, original_len + original_len))
+            if (!seq_ensure_capacity(seq, original_len + original_len)) {
+                rt_gc_mutator_exit();
                 return;
+            }
             for (int64_t i = 0; i < original_len; i++) {
                 void *item = seq->items[i];
                 if (item)
@@ -734,22 +789,29 @@ void rt_seq_push_all(void *obj, void *other) {
                 seq->items[seq->len] = item;
                 seq->len++;
             }
+            rt_gc_mutator_exit();
             return;
         }
-        if (!seq_ensure_capacity(seq, original_len + original_len))
+        if (!seq_ensure_capacity(seq, original_len + original_len)) {
+            rt_gc_mutator_exit();
             return;
+        }
         memcpy(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
         seq->len = original_len + original_len;
+        rt_gc_mutator_exit();
         return;
     }
 
     if (src->len > INT64_MAX - seq->len) {
+        rt_gc_mutator_exit();
         rt_trap("Seq.PushAll: length overflow");
         return;
     }
     if (seq->owns_elements) {
-        if (!seq_ensure_capacity(seq, seq->len + src->len))
+        if (!seq_ensure_capacity(seq, seq->len + src->len)) {
+            rt_gc_mutator_exit();
             return;
+        }
         for (int64_t i = 0; i < src->len; i++) {
             void *item = src->items[i];
             if (item)
@@ -757,12 +819,16 @@ void rt_seq_push_all(void *obj, void *other) {
             seq->items[seq->len] = item;
             seq->len++;
         }
+        rt_gc_mutator_exit();
         return;
     }
-    if (!seq_ensure_capacity(seq, seq->len + src->len))
+    if (!seq_ensure_capacity(seq, seq->len + src->len)) {
+        rt_gc_mutator_exit();
         return;
+    }
     memcpy(&seq->items[seq->len], src->items, (size_t)src->len * sizeof(void *));
     seq->len += src->len;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Removes and returns the last element from the Seq.
@@ -807,11 +873,15 @@ void *rt_seq_pop(void *obj) {
         return NULL;
     }
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
-    if (!seq)
+    if (!seq) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     if (seq->len == 0) {
+        rt_gc_mutator_exit();
         rt_trap("Seq.Pop: sequence is empty");
         return NULL;
     }
@@ -823,6 +893,7 @@ void *rt_seq_pop(void *obj) {
     seq->items[seq->len] = NULL; // Clear slot to prevent stale pointer access
     if (seq->owns_elements)
         seq_release_element(val);
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -1012,15 +1083,20 @@ void rt_seq_insert(void *obj, int64_t idx, void *val) {
         return;
     }
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
-    if (!seq)
+    if (!seq) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (idx < 0 || idx > seq->len) {
+        rt_gc_mutator_exit();
         rt_trap("Seq.Insert: index out of bounds");
         return;
     }
     if (seq->len >= INT64_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Seq: maximum length reached");
         return;
     }
@@ -1031,8 +1107,10 @@ void rt_seq_insert(void *obj, int64_t idx, void *val) {
         retained = 1;
     }
     if (!seq_ensure_capacity_or_release(
-            seq, seq->len + 1, val, retained, "Seq.Insert: capacity failed"))
+            seq, seq->len + 1, val, retained, "Seq.Insert: capacity failed")) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     // Shift elements to the right
     if (idx < seq->len) {
@@ -1041,6 +1119,7 @@ void rt_seq_insert(void *obj, int64_t idx, void *val) {
 
     seq->items[idx] = val;
     seq->len++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Removes and returns the element at the specified position.
@@ -1086,20 +1165,22 @@ void *rt_seq_remove(void *obj, int64_t idx) {
         return NULL;
     }
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
-    if (!seq)
+    if (!seq) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     if (idx < 0 || idx >= seq->len) {
+        rt_gc_mutator_exit();
         rt_trap("Seq.Remove: index out of bounds");
         return NULL;
     }
 
     void *val = seq->items[idx];
-    if (seq->owns_elements) {
+    if (seq->owns_elements)
         rt_obj_retain_maybe(val);
-        seq_release_element(val);
-    }
 
     // Shift elements to the left
     if (idx < seq->len - 1) {
@@ -1109,6 +1190,9 @@ void *rt_seq_remove(void *obj, int64_t idx) {
 
     seq->items[seq->len - 1] = NULL;
     seq->len--;
+    if (seq->owns_elements)
+        seq_release_element(val);
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -1151,7 +1235,12 @@ void *rt_seq_remove(void *obj, int64_t idx) {
 void rt_seq_clear(void *obj) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq) {
+        rt_gc_mutator_exit();
+        return;
+    }
     if (seq->owns_elements && seq->items) {
         for (int64_t i = 0; i < seq->len; i++) {
             seq_release_element(seq->items[i]);
@@ -1162,6 +1251,7 @@ void rt_seq_clear(void *obj) {
             seq->items[i] = NULL;
     }
     seq->len = 0;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Finds the first occurrence of an element in the Seq.
@@ -1284,7 +1374,12 @@ void rt_seq_reverse(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
+    if (!seq) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     for (int64_t i = 0; i < seq->len / 2; i++) {
         int64_t j = seq->len - 1 - i;
@@ -1292,6 +1387,7 @@ void rt_seq_reverse(void *obj) {
         seq->items[i] = seq->items[j];
         seq->items[j] = tmp;
     }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Randomly shuffles the elements in the Seq in place.
@@ -1337,9 +1433,16 @@ void rt_seq_shuffle(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq: invalid Seq object");
-    if (seq->len <= 1)
+    if (!seq) {
+        rt_gc_mutator_exit();
         return;
+    }
+    if (seq->len <= 1) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     for (int64_t i = seq->len - 1; i > 0; --i) {
         int64_t j = (int64_t)rt_rand_int((long long)(i + 1));
@@ -1347,6 +1450,7 @@ void rt_seq_shuffle(void *obj) {
         seq->items[i] = seq->items[j];
         seq->items[j] = tmp;
     }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Creates a new Seq containing a subset of elements from [start, end).

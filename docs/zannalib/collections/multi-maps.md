@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-17
 ---
 
 # Specialized Maps
@@ -438,6 +438,7 @@ An integer-keyed dictionary for efficient mapping of integer keys to object valu
 | `Has(key)`                    | `Boolean(Integer)`         | Check if key exists                                                      |
 | `Remove(key)`                 | `Boolean(Integer)`         | Remove key-value pair; returns true if found                             |
 | `Clear()`                     | `Void()`                   | Remove all entries                                                       |
+| `Trim()`                      | `Boolean()`                | Return excess bucket capacity; true if already minimal or trim succeeds |
 | `Keys()`                      | `Seq()`                    | Get sequence of all keys as boxed i64 values                             |
 | `Values()`                    | `Seq()`                    | Get sequence of all values                                               |
 
@@ -449,6 +450,12 @@ An integer-keyed dictionary for efficient mapping of integer keys to object valu
 - `Keys()` and `Values()` return retained snapshots in matching, unspecified hash-table order.
   Key elements are boxed `i64` values; corresponding indices identify the same entry.
 - Values are retained while stored and released on overwrite, removal, clear, or finalization.
+- Hashes are cached in entries, and growth is transactional: a replacement
+  bucket table is allocated completely before any entry is relinked. Allocation
+  failure leaves all keys, values, count, and capacity unchanged.
+- `Clear()` retains buckets. `Trim()` explicitly returns excess bucket storage
+  while preserving enough capacity for the current count below the 75-percent
+  growth threshold. Failed trim traps and leaves the prior table intact.
 - The map is not thread-safe; synchronize externally around concurrent access.
 
 ### Zia Example

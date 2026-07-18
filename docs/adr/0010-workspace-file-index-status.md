@@ -12,7 +12,7 @@ Status: Accepted
 
 ## Context
 
-ZannaIDE uses `Zanna.Workspace.FileIndex.Enumerate` to populate project files and
+Zanna Studio uses `Zanna.Workspace.FileIndex.Enumerate` to populate project files and
 semantic workspace indexes. `Enumerate` returns one map per matching entry and
 silently caps output at the runtime's file-index limit. That is fine for normal
 project traversal, but editor tooling also needs a cheap way to explain large or

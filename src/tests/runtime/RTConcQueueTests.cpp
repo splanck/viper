@@ -4,8 +4,21 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTConcQueueTests.cpp
+// Purpose: Validate concurrent-queue transfer, capacity, trap, and GC behavior.
+// Key invariants: Failed enqueue/dequeue paths preserve ownership and queued
+//                 values remain visible to cycle collection.
+// Ownership/Lifetime: Tests join every worker before releasing the queue and
+//                     explicitly clean values retained across trap recovery.
+// Links: src/runtime/threads/rt_concqueue.c,
+//        docs/adr/0133-runtime-concurrency-and-collection-hardening.md
+//
+//===----------------------------------------------------------------------===//
 
+#include "rt_array_obj.h"
 #include "rt_concqueue.h"
+#include "rt_gc.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -14,12 +27,32 @@
 #include "rt_threads.h"
 #include "rt_trap.h"
 
+#include <atomic>
 #include <cassert>
 #include <csetjmp>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <thread>
+
+static std::atomic<int> g_queue_value_finalized{0};
+static int g_queue_alloc_fail_countdown = 0;
+
+/// @brief Count finalization of a transferred queue value in failure tests.
+static void queue_value_finalizer(void *obj) {
+    (void)obj;
+    g_queue_value_finalized.fetch_add(1, std::memory_order_acq_rel);
+}
+
+/// @brief Fail one selected managed allocation after a successful dequeue.
+/// @param bytes Requested managed allocation size.
+/// @param next Default runtime allocator.
+/// @return Allocated storage, or NULL for the selected request.
+static void *queue_fail_countdown_alloc(int64_t bytes, void *(*next)(int64_t)) {
+    if (g_queue_alloc_fail_countdown > 0 && --g_queue_alloc_fail_countdown == 0)
+        return nullptr;
+    return next(bytes);
+}
 
 extern "C" void rt_trap_set_recovery(jmp_buf *buf);
 extern "C" void rt_trap_clear_recovery(void);
@@ -81,6 +114,46 @@ static void test_try_dequeue_empty() {
     void *null_value = rt_concqueue_try_dequeue_option(q);
     assert(rt_option_is_some(null_value) == 1);
     assert(rt_option_unwrap(null_value) == NULL);
+}
+
+static void test_try_dequeue_option_oom_releases_transfer() {
+    void *q = rt_concqueue_new();
+    void *value = make_obj();
+    rt_obj_set_finalizer(value, queue_value_finalizer);
+    g_queue_value_finalized.store(0, std::memory_order_release);
+
+    rt_concqueue_enqueue(q, value);
+    if (rt_obj_release_check0(value))
+        rt_obj_free(value);
+
+    g_queue_alloc_fail_countdown = 1;
+    rt_set_alloc_hook(queue_fail_countdown_alloc);
+    bool trapped = expect_trap([&]() { (void)rt_concqueue_try_dequeue_option(q); });
+    rt_set_alloc_hook(nullptr);
+    g_queue_alloc_fail_countdown = 0;
+
+    assert(trapped);
+    assert(g_queue_value_finalized.load(std::memory_order_acquire) == 1);
+    assert(rt_concqueue_len(q) == 0);
+}
+
+static void test_queue_cycle_is_collected() {
+    void *q = rt_concqueue_new();
+    void **array = rt_arr_obj_new(1);
+    assert(q != nullptr);
+    assert(array != nullptr);
+    assert(rt_gc_is_tracked(q) == 1);
+
+    rt_arr_obj_put(array, 0, q);
+    rt_concqueue_enqueue(q, array);
+    if (rt_obj_release_check0(array))
+        rt_obj_free(array);
+    if (rt_obj_release_check0(q))
+        rt_obj_free(q);
+
+    assert(rt_gc_collect() >= 2);
+    assert(rt_gc_is_tracked(q) == 0);
+    assert(rt_gc_is_tracked(array) == 0);
 }
 
 static void test_peek() {
@@ -201,6 +274,8 @@ int main() {
     test_new();
     test_enqueue_dequeue();
     test_try_dequeue_empty();
+    test_try_dequeue_option_oom_releases_transfer();
+    test_queue_cycle_is_collected();
     test_peek();
     test_enqueue_retain_overflow_cleans_up();
     test_peek_retain_overflow_unlocks_queue();

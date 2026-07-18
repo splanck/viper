@@ -12,14 +12,16 @@
 // Key invariants:
 //   - Stream type is one of STREAM_TYPE_BINFILE (0) or STREAM_TYPE_MEMSTREAM (1).
 //   - The stream wraps its underlying object and forwards all calls transparently.
-//   - Open* streams own their wrapped object; From* streams borrow it.
+//   - Open* streams own their wrapped object; From* streams retain a reference
+//     without assuming responsibility for explicitly closing an existing file.
 //   - Operations on null or closed streams trap, except Close(NULL) is a no-op.
 //   - All primitive read/write operations use little-endian byte order.
 //
 // Ownership/Lifetime:
 //   - Stream objects are heap-allocated; caller is responsible for lifetime management.
 //   - Destroying or closing an owning stream releases the wrapped backing object.
-//   - Destroying or closing a From* wrapper does not close/free the original object.
+//   - Destroying or closing a From* wrapper releases its retained reference but
+//     does not explicitly close the original object.
 //
 // Links: src/runtime/io/rt_stream.c (implementation), src/runtime/io/rt_binfile.h,
 // src/runtime/io/rt_memstream.h
@@ -49,13 +51,17 @@ typedef enum {
 // Stream Creation
 //=========================================================================
 
-/// @brief Create a stream wrapping a file.
+/// @brief Create an owning stream wrapping a newly opened file.
+/// @details Constructor allocation is transactional: if wrapper allocation
+///          traps, the newly opened BinFile and native handle are released.
 /// @param path File path.
 /// @param mode Open mode ("r", "w", "rw", "a").
 /// @return Stream object or NULL on failure.
 void *rt_stream_open_file(rt_string path, rt_string mode);
 
-/// @brief Create a stream wrapping a new in-memory buffer.
+/// @brief Create an owning stream wrapping a new in-memory buffer.
+/// @details A wrapper-allocation trap releases the fresh MemStream before it
+///          propagates, so no partially constructed backing object escapes.
 /// @return Stream object with empty buffer.
 void *rt_stream_open_memory(void);
 
@@ -64,14 +70,15 @@ void *rt_stream_open_memory(void);
 /// @return Stream object initialized with bytes.
 void *rt_stream_open_bytes(void *bytes);
 
-/// @brief Wrap an existing BinFile in a Stream.
-/// @param binfile BinFile object to wrap.
-/// @return Stream object.
+/// @brief Wrap and retain an existing BinFile in a Stream.
+/// @param binfile Valid open or closed BinFile object to retain.
+/// @return Owned Stream wrapper; Close releases its reference but does not
+///         explicitly close the caller's existing BinFile.
 void *rt_stream_from_binfile(void *binfile);
 
-/// @brief Wrap an existing MemStream in a Stream.
-/// @param memstream MemStream object to wrap.
-/// @return Stream object.
+/// @brief Wrap and retain an existing MemStream in a Stream.
+/// @param memstream Valid MemStream object to retain.
+/// @return Owned Stream wrapper whose Close releases the retained reference.
 void *rt_stream_from_memstream(void *memstream);
 
 //=========================================================================
@@ -108,6 +115,9 @@ int8_t rt_stream_is_eof(void *stream);
 //=========================================================================
 
 /// @brief Read bytes from stream.
+/// @details Allocates no more than the bytes measured from the current position
+///          to EOF, even when @p count is much larger. A concurrently changing
+///          file may still produce a shorter result.
 /// @param stream Stream object.
 /// @param count Number of bytes to read.
 /// @return Bytes object with data read (may be shorter if EOF).
@@ -145,19 +155,19 @@ void rt_stream_close(void *stream);
 // Conversion
 //=========================================================================
 
-/// @brief Get underlying BinFile (if stream wraps one).
+/// @brief Get a retained reference to the underlying BinFile.
 /// @param stream Stream object.
-/// @return BinFile or NULL if not a file stream.
+/// @return Owned BinFile reference; traps if this is not a file stream.
 void *rt_stream_as_binfile(void *stream);
 
-/// @brief Get underlying MemStream (if stream wraps one).
+/// @brief Get a retained reference to the underlying MemStream.
 /// @param stream Stream object.
-/// @return MemStream or NULL if not a memory stream.
+/// @return Owned MemStream reference; traps if this is not a memory stream.
 void *rt_stream_as_memstream(void *stream);
 
 /// @brief Convert memory stream contents to Bytes.
 /// @param stream Stream object.
-/// @return Bytes object (only for memory streams, NULL otherwise).
+/// @return Fresh Bytes copy; traps if this is not a memory stream.
 void *rt_stream_to_bytes(void *stream);
 
 #ifdef __cplusplus

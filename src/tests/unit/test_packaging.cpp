@@ -108,7 +108,7 @@ static WindowsInstallerMetadata sampleWindowsInstallerMetadata() {
     metadata.defaultScope = "user";
     metadata.defaultInstallDir = "Zanna";
     metadata.executableName = "bin/zanna.exe";
-    metadata.associationExecutable = "bin/zannaide.exe";
+    metadata.associationExecutable = "bin/zannastudio.exe";
     metadata.pathRelativePath = "bin";
     metadata.displayIconRelativePath = "share/zanna/zanna.ico";
     metadata.cleanupSha256 = std::string(64, 'c');
@@ -118,22 +118,22 @@ static WindowsInstallerMetadata sampleWindowsInstallerMetadata() {
     metadata.components.push_back(
         {"core", "Core developer tools", "Required compiler and runtime", true, true, 70});
     metadata.components.push_back(
-        {"ide", "ZannaIDE", "Editor, debugger, and language services", false, true, 70});
+        {"ide", "Zanna Studio", "Editor, debugger, and language services", false, true, 70});
     metadata.payloadFiles.push_back({"bin/zanna.exe", std::string(64, 'a'), 30, std::string{}});
-    metadata.payloadFiles.push_back({"bin/zannaide.exe", std::string(64, 'b'), 70, "ide"});
+    metadata.payloadFiles.push_back({"bin/zannastudio.exe", std::string(64, 'b'), 70, "ide"});
     metadata.outerFiles.push_back(
         {"meta/uninstall.exe", "uninstall.exe", std::string(64, 'e'), 40, std::string{}});
     metadata.shortcuts.push_back({"start-menu",
-                                  "ZannaIDE.lnk",
+                                  "Zanna Studio.lnk",
                                   "install",
-                                  "bin/zannaide.exe",
+                                  "bin/zannastudio.exe",
                                   "profile",
                                   {},
                                   {},
                                   {},
-                                  "ZannaIDE",
+                                  "Zanna Studio",
                                   "install",
-                                  "bin/zannaide.ico",
+                                  "bin/zannastudio.ico",
                                   0,
                                   "ide"});
     metadata.associations.push_back(
@@ -751,7 +751,7 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
                              "vbasic-server",
                              "basic-ast-dump",
                              "basic-lex-dump",
-                             "zannaide"}) {
+                             "zannastudio"}) {
         const fs::path toolPath = stage / "bin" / binaryName(tool);
         std::ofstream out(toolPath, std::ios::binary);
         out << "stub";
@@ -1012,6 +1012,8 @@ TEST(WindowsInstallerMetadata, RequiresCompletePinnedUpdateIdentity) {
     metadata.updateManifestUrl = "https://updates.example.test/zanna.txt";
     metadata.updateRsaModulus = "a1" + std::string(510, '0');
     metadata.updateRsaExponent = "010000";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata.updateRsaExponent = "0003";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
     metadata.updateManifestUrl = "http://updates.example.test/zanna.txt";
@@ -3296,10 +3298,11 @@ TEST(InstallerStub, EmbedsBrandedComponentWizardAndResponsiveProgress) {
     layout.wizardImageWidth = 2;
     layout.wizardImageHeight = 1;
     layout.wizardImageRgba = {10, 20, 30, 255, 40, 50, 60, 255};
-    layout.optionalComponents = {{"zannaide", "ZannaIDE", "Integrated developer environment", true},
-                                 {"samples", "Samples", "Example projects", true}};
+    layout.optionalComponents = {
+        {"zannastudio", "Zanna Studio", "Integrated developer environment", true},
+        {"samples", "Samples", "Example projects", true}};
     layout.installFiles.push_back(
-        {WindowsInstallRoot::InstallDir, "bin/zannaide.exe", 0, 4, 0, "", "zannaide"});
+        {WindowsInstallRoot::InstallDir, "bin/zannastudio.exe", 0, 4, 0, "", "zannastudio"});
     layout.installFiles.push_back(
         {WindowsInstallRoot::InstallDir, "share/zanna/samples/main.zia", 4, 4, 0, "", "samples"});
 
@@ -3307,11 +3310,11 @@ TEST(InstallerStub, EmbedsBrandedComponentWizardAndResponsiveProgress) {
     EXPECT_TRUE(stubHasImport(installer, "gdi32.dll", "StretchDIBits"));
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "SetWindowLongPtrW"));
     EXPECT_TRUE(stubHasImport(installer, "user32.dll", "DispatchMessageW"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "ZannaIDE"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "Zanna Studio"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "Samples"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "/no-zannaide"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "/no-zannastudio"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "/no-samples"));
-    EXPECT_TRUE(containsUtf16LE(installer.stubData, "ZANNA_INSTALLER_COMPONENT_ZANNAIDE"));
+    EXPECT_TRUE(containsUtf16LE(installer.stubData, "ZANNA_INSTALLER_COMPONENT_ZANNASTUDIO"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData, "ZANNA_INSTALLER_PROGRESS"));
     EXPECT_TRUE(containsUtf16LE(installer.stubData,
                                 "Setup stays visible while files are verified and installed. "
@@ -5312,7 +5315,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
     std::vector<std::string> requiredDebPayload;
     for (const std::string &binary : requiredToolchainBinaryNames())
         requiredDebPayload.push_back("usr/bin/" + binary);
-    requiredDebPayload.push_back("usr/share/applications/zannaide.desktop");
+    requiredDebPayload.push_back("usr/share/applications/zannastudio.desktop");
     requiredDebPayload.push_back("usr/share/applications/zanna-source.desktop");
     requiredDebPayload.push_back("usr/share/applications/zanna-il.desktop");
     requiredDebPayload.push_back("usr/share/icons/hicolor/256x256/apps/zanna.png");
@@ -5506,7 +5509,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
     std::vector<std::string> requiredTarballPayload;
     for (const std::string &binary : requiredToolchainBinaryNames())
         requiredTarballPayload.push_back(topDir + "bin/" + binary);
-    requiredTarballPayload.push_back(topDir + "share/applications/zannaide.desktop");
+    requiredTarballPayload.push_back(topDir + "share/applications/zannastudio.desktop");
     requiredTarballPayload.push_back(topDir + "share/applications/zanna-source.desktop");
     requiredTarballPayload.push_back(topDir + "share/applications/zanna-il.desktop");
     requiredTarballPayload.push_back(topDir + "share/icons/hicolor/256x256/apps/zanna.png");
@@ -5793,7 +5796,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsSelfExtractingBundleFromManifest) {
     requiredBundlePayload.push_back("AppRun");
     for (const std::string &binary : requiredToolchainBinaryNames())
         requiredBundlePayload.push_back("bin/" + binary);
-    requiredBundlePayload.push_back("share/applications/zannaide.desktop");
+    requiredBundlePayload.push_back("share/applications/zannastudio.desktop");
     requiredBundlePayload.push_back("share/applications/zanna-source.desktop");
     requiredBundlePayload.push_back("share/applications/zanna-il.desktop");
     requiredBundlePayload.push_back("share/icons/hicolor/256x256/apps/zanna.png");
@@ -5805,7 +5808,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsSelfExtractingBundleFromManifest) {
     std::vector<uint8_t> appRun;
     ASSERT_TRUE(tarEntryData(payloadTar, "AppRun", appRun));
     const std::string appRunText(appRun.begin(), appRun.end());
-    EXPECT_CONTAINS(appRunText, "bin/zannaide");
+    EXPECT_CONTAINS(appRunText, "bin/zannastudio");
     EXPECT_CONTAINS(appRunText, "bin/zanna");
     std::vector<uint8_t> desktop;
     ASSERT_TRUE(tarEntryData(payloadTar, "zanna.desktop", desktop));
@@ -5897,7 +5900,7 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
                                           {"meta/payload.zip",
                                            "meta/install_manifest.next",
                                            "meta/zanna_developer_prompt.lnk",
-                                           "meta/zannaide.lnk",
+                                           "meta/zannastudio.lnk",
                                            "meta/manifest.sha256"},
                                           payloadErr));
     const auto outerZip = extractFirstZipOverlay(pe);
@@ -5917,15 +5920,15 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     EXPECT_TRUE(containsAscii(pe, "asInvoker"));
     EXPECT_TRUE(containsUtf16LE(pe, "ZAPSOriginalPath"));
     EXPECT_TRUE(containsUtf16LE(pe, "ZAPSPathEntry"));
-    EXPECT_TRUE(containsUtf16LE(pe, "bin\\zannaide.exe"));
+    EXPECT_TRUE(containsUtf16LE(pe, "bin\\zannastudio.exe"));
     EXPECT_TRUE(containsUtf16LE(pe, "share\\zanna\\zanna.ico"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_SELF"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_MODE"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_LOG"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_PROGRESS"));
-    EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_COMPONENT_ZANNAIDE"));
+    EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_COMPONENT_ZANNASTUDIO"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_COMPONENT_SAMPLES"));
-    EXPECT_TRUE(containsUtf16LE(pe, "/no-zannaide"));
+    EXPECT_TRUE(containsUtf16LE(pe, "/no-zannastudio"));
     EXPECT_TRUE(containsUtf16LE(pe, "/no-samples"));
     EXPECT_TRUE(containsUtf16LE(pe, "msctls_progress32"));
     EXPECT_TRUE(containsUtf16LEStringData(pe, "ZANNA_INSTALLER_NATIVE_STAGE"));
@@ -5977,15 +5980,15 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     requiredWindowsPayload.push_back("bin/zanna-dev.cmd");
     requiredWindowsPayload.push_back("share/zanna/README.windows-prerequisites.txt");
     requiredWindowsPayload.push_back("share/zanna/zanna.ico");
-    requiredWindowsPayload.push_back("bin/zannaide.ico");
+    requiredWindowsPayload.push_back("bin/zannastudio.ico");
     requiredWindowsPayload.push_back("uninstall.exe");
     requiredWindowsPayload.push_back(".zanna-install-manifest.txt");
     EXPECT_TRUE(zipContainsEntries(payloadZip, requiredWindowsPayload));
-    const auto zannaIdeIcon = extractZipEntry(payloadZip, "bin/zannaide.ico");
-    ASSERT_GE(zannaIdeIcon.size(), static_cast<size_t>(6));
-    EXPECT_EQ(readLE16(zannaIdeIcon.data()), static_cast<uint16_t>(0));
-    EXPECT_EQ(readLE16(zannaIdeIcon.data() + 2), static_cast<uint16_t>(1));
-    EXPECT_GE(readLE16(zannaIdeIcon.data() + 4), static_cast<uint16_t>(4));
+    const auto zannaStudioIcon = extractZipEntry(payloadZip, "bin/zannastudio.ico");
+    ASSERT_GE(zannaStudioIcon.size(), static_cast<size_t>(6));
+    EXPECT_EQ(readLE16(zannaStudioIcon.data()), static_cast<uint16_t>(0));
+    EXPECT_EQ(readLE16(zannaStudioIcon.data() + 2), static_cast<uint16_t>(1));
+    EXPECT_GE(readLE16(zannaStudioIcon.data() + 4), static_cast<uint16_t>(4));
     const auto uninstaller = extractZipEntry(payloadZip, "uninstall.exe");
     ASSERT_FALSE(uninstaller.empty());
     std::ostringstream uninstallerErr;
@@ -6089,7 +6092,7 @@ TEST(ToolchainWindowsPackageBuilder, SignsAllOwnedPesAndPreservesMicrosoftRuntim
     normalizeMockStageForWindowsToolchain(stage);
     writeTestWindowsPe(
         stage / "bin" / "zanna.exe", "x64", {{"vcruntime140.dll", {"runtime_entry"}}});
-    writeTestWindowsPe(stage / "bin" / "zannaide.exe");
+    writeTestWindowsPe(stage / "bin" / "zannastudio.exe");
     writeTestWindowsPe(stage / "bin" / "vcruntime140.dll");
 
     auto manifest = gatherToolchainInstallManifest(stage);
@@ -6116,14 +6119,14 @@ TEST(ToolchainWindowsPackageBuilder, SignsAllOwnedPesAndPreservesMicrosoftRuntim
     EXPECT_TRUE(
         containsAscii(extractZipEntry(payloadZip, "bin/zanna.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
     EXPECT_TRUE(
-        containsAscii(extractZipEntry(payloadZip, "bin/zannaide.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
+        containsAscii(extractZipEntry(payloadZip, "bin/zannastudio.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
     EXPECT_TRUE(
         containsAscii(extractZipEntry(payloadZip, "uninstall.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
     EXPECT_FALSE(containsAscii(extractZipEntry(payloadZip, "bin/vcruntime140.dll"),
                                "ZAPS-TOOLCHAIN-SIGNED"));
     EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/zanna.exe") !=
                 signedNames.end());
-    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/zannaide.exe") !=
+    EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "bin/zannastudio.exe") !=
                 signedNames.end());
     EXPECT_TRUE(std::find(signedNames.begin(), signedNames.end(), "uninstall.exe") !=
                 signedNames.end());
@@ -6261,7 +6264,7 @@ TEST(ToolchainWindowsPackageBuilder, HonorsMachineScopeAndFileAssociations) {
     EXPECT_TRUE(containsUtf16LE(pe, "org.zanna.toolchain.zia"));
     EXPECT_FALSE(containsUtf16LE(pe, " run"));
     EXPECT_FALSE(containsUtf16LE(pe, " -run"));
-    EXPECT_TRUE(containsUtf16LE(pe, "bin\\zannaide.exe"));
+    EXPECT_TRUE(containsUtf16LE(pe, "bin\\zannastudio.exe"));
     EXPECT_FALSE(containsUtf16LE(pe, "Zanna Developer Prompt"));
     fs::remove_all(tmpRoot);
 }

@@ -103,7 +103,7 @@ class ImportResolver {
     /// @details Prevents runaway compilation from pathologically large import
     ///          graphs. Once this limit is reached, further imports are rejected.
     ///          Raised to 256 to accommodate large dogfood projects such as
-    ///          ZannaIDE, which legitimately span well over 100 modules.
+    ///          Zanna Studio, which legitimately span well over 100 modules.
     static constexpr size_t kMaxImportedFiles = 256;
 
     /// @brief Convert a relative or symbolic import path to an absolute filesystem path.

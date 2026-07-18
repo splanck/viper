@@ -109,7 +109,11 @@ void rt_seq_set(void *obj, int64_t idx, void *val);
 /// @brief Set an element without retaining the new value.
 /// @details If the sequence owns elements, the previous element is still
 ///          released. This is for runtime code that already owns a reference
-///          and wants to transfer it into the sequence.
+///          and wants to transfer it into the sequence. Replacing a slot with
+///          the identical pointer still consumes the transferred reference.
+/// @param obj Opaque Seq object pointer.
+/// @param idx Existing zero-based slot index.
+/// @param val Value whose current reference is transferred to the sequence.
 void rt_seq_set_raw(void *obj, int64_t idx, void *val);
 
 /// @brief Add an element to the end of the sequence.

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-17
 ---
 
 # Maps & Sets
@@ -36,6 +36,7 @@ A key-value dictionary with string keys. Provides O(1) average-case lookup, inse
 | `SetIfMissing(key, value)` | `Boolean(String, Object)` | Insert key-value pair only when missing; returns true if inserted        |
 | `Remove(key)`              | `Boolean(String)`         | Remove key-value pair; returns true if found                             |
 | `Clear()`                  | `Void()`                  | Remove all entries                                                       |
+| `Trim()`                   | `Boolean()`               | Return excess bucket capacity; true if already minimal or trim succeeds |
 | `Keys()`                   | `Seq()`                   | Get sequence of all keys                                                 |
 | `Values()`                 | `Seq()`                   | Get sequence of all values                                               |
 | `Clone()`                  | `Map()`                   | Create a shallow copy of the map                                         |
@@ -70,6 +71,14 @@ Convenience methods for storing and retrieving typed values without manual boxin
 - Integer, float, and boolean getters coerce among boxed integers, floats, and booleans. The plain
   getters trap on another stored type; their `Or` variants return the supplied default instead.
 - Map growth and key-copy allocation paths trap on overflow instead of wrapping.
+- Entries cache their hash and store node metadata with the copied key in one
+  allocation. Growth allocates the complete replacement bucket array before
+  relinking entries, so allocation failure preserves the old capacity, keys,
+  values, and count.
+- `Clear()` retains bucket capacity for fast reuse. `Trim()` explicitly reduces
+  capacity to the smallest supported power-of-two table that keeps the current
+  count below the normal 75-percent growth threshold. A failed trim traps,
+  returns false to a returning trap hook, and leaves the map unchanged.
 
 ### Zia Example
 

@@ -1,8 +1,19 @@
 //===----------------------------------------------------------------------===//
+//
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// RTGCHashTableTests.cpp - Tests for GC hash table and auto-trigger
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTGCHashTableTests.cpp
+// Purpose: Validate the GC tracked-object hash table and deferred auto-trigger.
+// Key invariants: Tracking/removal remain correct across resize/tombstones and
+//                 allocator activity requests collection only at a safe point.
+// Ownership/Lifetime: Each case releases or explicitly collects all tracked
+//                     objects before resetting process-global GC test state.
+// Links: src/runtime/core/rt_gc.c,
+//        docs/adr/0116-gc-mutator-quiescence-and-array-cycles.md
+//
 //===----------------------------------------------------------------------===//
 
 #include <cassert>
@@ -250,7 +261,13 @@ static void test_auto_trigger_collects_cycles() {
         temps[i] = make_node();
     }
 
-    // The auto-trigger should have run at least once
+    // Allocation only records debt. The explicit safe boundary services one
+    // coalesced request after all newly returned objects are initialized.
+    ASSERT(rt_gc_pass_count() == initial_passes,
+           "allocation threshold does not collect recursively inside allocator");
+    rt_gc_safepoint();
+
+    // The safepoint should have run at least one pass.
     int64_t passes_after = rt_gc_pass_count();
     ASSERT(passes_after > initial_passes, "auto-trigger fired at least once");
 

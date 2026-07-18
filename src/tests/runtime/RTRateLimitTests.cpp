@@ -4,12 +4,26 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTRateLimitTests.cpp
+// Purpose: Regression tests for RateLimiter capacity precision, refill input
+//          normalization, managed identity, and token-consumption semantics.
+// Key invariants:
+//   - Large signed capacities round-trip without floating-point truncation.
+//   - Invalid refill rates normalize without creating non-finite bucket state.
+// Ownership/Lifetime:
+//   - Test limiters are process-local managed objects reclaimed at test exit.
+// Links: src/runtime/network/rt_ratelimit.c, src/runtime/network/rt_ratelimit.h
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_ratelimit.h"
 
 #include <cassert>
 #include <cstdint>
+#include <limits>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -18,6 +32,7 @@ extern "C" void vm_trap(const char *msg) {
 static void test_new_limiter() {
     void *rl = rt_ratelimit_new(10, 5.0);
     assert(rl != NULL);
+    assert(rt_obj_class_id(rl) == RT_RATELIMIT_CLASS_ID);
     assert(rt_ratelimit_get_max(rl) == 10);
     assert(rt_ratelimit_get_rate(rl) == 5.0);
     assert(rt_ratelimit_available(rl) == 10);
@@ -71,6 +86,11 @@ static void test_defaults_for_invalid_params() {
     void *rl = rt_ratelimit_new(0, 0.0);
     assert(rt_ratelimit_get_max(rl) == 1);
     assert(rt_ratelimit_get_rate(rl) == 1.0);
+
+    void *infinite = rt_ratelimit_new(10, std::numeric_limits<double>::infinity());
+    void *nan = rt_ratelimit_new(10, std::numeric_limits<double>::quiet_NaN());
+    assert(rt_ratelimit_get_rate(infinite) == 1.0);
+    assert(rt_ratelimit_get_rate(nan) == 1.0);
 }
 
 static void test_acquire_n_invalid() {

@@ -38,6 +38,7 @@
 #include "rt_object.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,12 +63,92 @@ typedef struct rt_linereader_impl {
     int has_peeked; ///< Whether we have a peeked character.
 } rt_linereader_impl;
 
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
+
 static rt_linereader_impl *linereader_require(void *obj, const char *context) {
-    if (!obj || rt_obj_class_id(obj) != RT_LINEREADER_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_LINEREADER_CLASS_ID, sizeof(rt_linereader_impl))) {
         rt_trap(context ? context : "LineReader: invalid reader");
         return NULL;
     }
     return (rt_linereader_impl *)obj;
+}
+
+/// @brief Preserve a recovered trap message in caller-owned storage.
+/// @param buffer Destination buffer that remains valid after recovery is cleared.
+/// @param buffer_size Capacity of @p buffer including its terminator.
+/// @param fallback Message used when the trap subsystem has no current text.
+static void linereader_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
+    const char *error = rt_trap_get_error();
+    snprintf(buffer, buffer_size, "%s", error && error[0] ? error : fallback);
+}
+
+/// @brief Allocate a LineReader object while retaining ownership of an open file.
+/// @details Managed object allocation reports OOM through the runtime trap
+///          recovery mechanism. This helper keeps the native `FILE *` in a
+///          volatile owner slot so every non-local exit closes it before the
+///          original diagnostic is propagated. A returning trap hook and a
+///          direct NULL allocation receive the same cleanup treatment.
+/// @param fp Open native stream whose ownership transfers on success.
+/// @return Fresh LineReader payload, or NULL after closing @p fp and trapping.
+static rt_linereader_impl *linereader_alloc_or_close(FILE *fp) {
+    FILE *volatile owned_fp = fp;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        linereader_save_trap_error(
+            saved_error, sizeof(saved_error), "LineReader.Open: memory allocation failed");
+        rt_trap_clear_recovery();
+        fclose((FILE *)owned_fp);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    rt_linereader_impl *lr = (rt_linereader_impl *)rt_obj_new_i64(
+        RT_LINEREADER_CLASS_ID, (int64_t)sizeof(rt_linereader_impl));
+    rt_trap_clear_recovery();
+    if (!lr) {
+        fclose(fp);
+        rt_trap("LineReader.Open: memory allocation failed");
+        return NULL;
+    }
+    return lr;
+}
+
+/// @brief Convert an owned temporary byte buffer to a managed runtime string.
+/// @details String construction may trap while allocating either its wrapper
+///          or backing payload. The recovery boundary frees @p buffer on every
+///          exit, including non-local OOM propagation, so successful reads do
+///          not leak their staging allocation when result construction fails.
+/// @param buffer Malloc-owned bytes to copy; ownership always transfers here.
+/// @param len Number of valid bytes in @p buffer.
+/// @param fallback Diagnostic used if no recovered trap message is available.
+/// @return Fresh runtime string, or NULL after cleanup and trap propagation.
+static rt_string linereader_string_from_owned_buffer(char *buffer,
+                                                     size_t len,
+                                                     const char *fallback) {
+    char *volatile owned_buffer = buffer;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        linereader_save_trap_error(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        free((void *)owned_buffer);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    rt_string result = rt_string_from_bytes(buffer, len);
+    rt_trap_clear_recovery();
+    free((void *)owned_buffer);
+    if (!result) {
+        rt_trap(fallback);
+        return NULL;
+    }
+    return result;
 }
 
 /// @brief Finalizer callback invoked when a LineReader is garbage collected.
@@ -91,9 +172,7 @@ static rt_linereader_impl *linereader_require(void *obj, const char *context) {
 static void rt_linereader_finalize(void *obj) {
     if (!obj)
         return;
-    rt_linereader_impl *lr = linereader_require(obj, "LineReader: invalid reader");
-    if (!lr)
-        return;
+    rt_linereader_impl *lr = (rt_linereader_impl *)obj;
     if (lr->fp && !lr->closed) {
         fclose(lr->fp);
         lr->fp = NULL;
@@ -164,13 +243,9 @@ void *rt_linereader_open(rt_string path) {
         return NULL;
     }
 
-    rt_linereader_impl *lr = (rt_linereader_impl *)rt_obj_new_i64(
-        RT_LINEREADER_CLASS_ID, (int64_t)sizeof(rt_linereader_impl));
-    if (!lr) {
-        fclose(fp);
-        rt_trap("LineReader.Open: memory allocation failed");
+    rt_linereader_impl *lr = linereader_alloc_or_close(fp);
+    if (!lr)
         return NULL;
-    }
 
     lr->fp = fp;
     lr->eof = 0;
@@ -384,9 +459,8 @@ rt_string rt_linereader_read(void *obj) {
         }
     }
 
-    rt_string result = rt_string_from_bytes(buf, len);
-    free(buf);
-    return result;
+    return linereader_string_from_owned_buffer(
+        buf, len, "LineReader.Read: string allocation failed");
 }
 
 /// @brief Reads a single character from the file.
@@ -628,9 +702,8 @@ rt_string rt_linereader_read_all(void *obj) {
 
     lr->eof = 1;
 
-    rt_string result = rt_string_from_bytes(buf, total);
-    free(buf);
-    return result;
+    return linereader_string_from_owned_buffer(
+        buf, total, "LineReader.ReadAll: string allocation failed");
 }
 
 /// @brief Checks whether the end of file has been reached.

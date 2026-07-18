@@ -13,13 +13,15 @@
 //   - Size classes cover 1-64, 65-128, 129-256, and 257-512 byte allocations.
 //   - Allocations larger than 512 bytes fall back to malloc/free.
 //   - Freelist management is synchronized; multiple threads may allocate concurrently.
-//   - Freed blocks normally stay in the freelist until rt_pool_shutdown releases
-//     all slabs during runtime teardown.
+//   - Private per-block metadata routes frees in O(1) and detects duplicate release.
+//   - Freed blocks stay in the freelist until shutdown reclaims a quiescent class.
+//   - Shutdown never reclaims a class with outstanding caller-owned blocks.
+//   - Ordinary operations use an atomic lifecycle epoch rather than one global hot-path lock.
 //
 // Ownership/Lifetime:
 //   - Callers receive a pointer to the allocated block; no header is exposed.
-//   - rt_pool_free accepts the original requested size. The implementation
-//     validates the owning slab before returning a block to a size-class freelist.
+//   - rt_pool_free accepts the original requested size. Small blocks carry a
+//     private aligned header that validates and identifies their owning slab.
 //   - The pool is process-global and supports an explicit shutdown path.
 //
 // Links: src/runtime/core/rt_pool.c (implementation)
@@ -54,10 +56,10 @@ typedef enum {
 void *rt_pool_alloc(size_t size);
 
 /// @brief Free memory back to the pool.
-/// @details Returns the block to its owning size-class freelist. The size is
-///          used as a fast path, but the implementation validates the actual
-///          slab owner before linking the block. For large allocations
-///          (> RT_POOL_MAX_SIZE), delegates to free().
+/// @details Waits for concurrent shutdown coordination, then returns the block
+///          to its owning size-class freelist in O(1) through private metadata.
+///          A duplicate small-block release traps without modifying the
+///          freelist or statistics. For large allocations, delegates to free().
 /// @param ptr Pointer to memory previously allocated by rt_pool_alloc.
 /// @param size Original allocation size, used to select the expected fast path.
 void rt_pool_free(void *ptr, size_t size);
@@ -71,10 +73,10 @@ void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out
 
 /// @brief Release all pool memory back to the system.
 /// @details Stops new slab-backed operations, waits for in-flight pool operations
-///          to leave their critical sections, and frees all slabs in all size
-///          classes. A later allocation can rebuild fresh slabs.
-/// @warning Should only be called during runtime teardown. Existing pointers from
-///          freed slabs must not be used after shutdown.
+///          to leave their critical sections, and frees slabs only for classes
+///          with no outstanding blocks. Live classes remain valid and are
+///          reclaimed by a later shutdown after their final release. A later
+///          allocation can rebuild classes that were reclaimed.
 void rt_pool_shutdown(void);
 
 #ifdef __cplusplus

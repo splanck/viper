@@ -7,12 +7,24 @@
 //
 // File: tests/runtime/RTMultipartTests.cpp
 // Purpose: Validate multipart form-data builder/parser hardening.
+// Key invariants:
+//   - Strict parsing never publishes or retains a partial Multipart object.
+//   - Serialization cleans native staging before managed allocation traps escape.
+//   - Result wrappers consume the parser's initial payload reference.
+// Ownership/Lifetime:
+//   - New lifecycle probes release every managed value they create and compare
+//     the GC tracked count before and after failure/success paths.
+// Links: src/runtime/network/rt_multipart.c, docs/zannalib/network.md
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_gc.h"
+#include "rt_internal.h"
 #include "rt_multipart.h"
+#include "rt_object.h"
 #include "rt_result.h"
+#include "rt_seq.h"
 #include "rt_string.h"
 
 #include <cassert>
@@ -30,6 +42,7 @@ static void test_result(const char *name, bool passed) {
 static jmp_buf g_trap_jmp;
 static bool g_trap_expected = false;
 static const char *g_last_trap = nullptr;
+static int g_alloc_fail_countdown = 0;
 
 extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
@@ -50,6 +63,109 @@ extern "C" void vm_trap(const char *msg) {
         }                                                                                          \
         g_trap_expected = false;                                                                   \
     } while (0)
+
+/// @brief Release one caller-owned managed test value.
+/// @details Handles Strings and heap objects through the shared dynamic
+///          release protocol; heap objects run their finalizer at zero.
+/// @param value Managed reference, or NULL.
+static void release_managed(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
+
+/// @brief Fail one selected managed runtime allocation.
+/// @details Native multipart staging continues to use `malloc`; routing only
+///          `rt_alloc` through this hook deterministically targets the final
+///          Bytes/Multipart/Result allocation without perturbing parser input.
+/// @param bytes Requested allocation size.
+/// @param next Default runtime allocator.
+/// @return NULL at the selected countdown, otherwise @p next's result.
+static void *fail_selected_allocation(int64_t bytes, void *(*next)(int64_t)) {
+    if (g_alloc_fail_countdown > 0 && --g_alloc_fail_countdown == 0)
+        return nullptr;
+    return next(bytes);
+}
+
+/// @brief Exercise stable identity and atomic cleanup contracts before legacy probes leak literals.
+/// @details Warms boundary generation, verifies wrong-class receivers cannot be
+///          reinterpreted, injects a final Bytes allocation failure after Build
+///          has populated native staging, checks malformed parsing releases its
+///          allocated Multipart, and proves both ParseResult variants return to
+///          the original tracked-object count after release.
+static void test_identity_and_trap_safe_lifecycle() {
+    printf("Testing Multipart identity and trap-safe lifecycle:\n");
+
+    void *warmup = rt_multipart_new();
+    release_managed(warmup);
+
+    void *wrong = rt_seq_new();
+    EXPECT_TRAP(rt_multipart_build(wrong));
+    test_result("Build rejects a wrong-class managed receiver",
+                g_last_trap && strstr(g_last_trap, "invalid receiver") != nullptr);
+    rt_string wrong_name = rt_const_cstr("x");
+    test_result("Predicates safely reject a wrong-class receiver",
+                rt_multipart_has_field(wrong, wrong_name) == 0);
+    rt_string_unref(wrong_name);
+    release_managed(wrong);
+
+    void *builder = rt_multipart_new();
+    rt_string field_name = rt_const_cstr("field");
+    rt_string field_value = rt_const_cstr("value");
+    rt_multipart_add_field(builder, field_name, field_value);
+    const int64_t build_baseline = rt_gc_tracked_count();
+    bool build_trapped = false;
+    g_trap_expected = true;
+    g_alloc_fail_countdown = 1;
+    if (setjmp(g_trap_jmp) == 0) {
+        rt_set_alloc_hook(fail_selected_allocation);
+        (void)rt_multipart_build(builder);
+        rt_set_alloc_hook(nullptr);
+    } else {
+        rt_set_alloc_hook(nullptr);
+        build_trapped = true;
+    }
+    g_trap_expected = false;
+    test_result("Build releases native staging after Bytes allocation trap",
+                build_trapped && g_alloc_fail_countdown == 0 &&
+                    rt_gc_tracked_count() == build_baseline);
+
+    rt_string content_type = rt_const_cstr("multipart/form-data; boundary=abc");
+    rt_string malformed_text =
+        rt_const_cstr("--abc\r\nContent-Disposition: form-data; name=\"x\"\r\n\r\ndata");
+    void *malformed_body = rt_bytes_from_str(malformed_text);
+    const int64_t parse_baseline = rt_gc_tracked_count();
+    EXPECT_TRAP(rt_multipart_parse(content_type, malformed_body));
+    test_result("Malformed parse releases its partial Multipart",
+                rt_gc_tracked_count() == parse_baseline);
+
+    rt_string valid_text = rt_const_cstr(
+        "--abc\r\nContent-Disposition: form-data; name=\"x\"\r\n\r\nok\r\n--abc--\r\n");
+    void *valid_body = rt_bytes_from_str(valid_text);
+    const int64_t result_baseline = rt_gc_tracked_count();
+    void *ok_result = rt_multipart_parse_result(content_type, valid_body);
+    test_result("ParseResult success owns a complete Multipart",
+                ok_result && rt_result_is_ok(ok_result) == 1 &&
+                    rt_multipart_count(rt_result_unwrap(ok_result)) == 1);
+    release_managed(ok_result);
+    test_result("Releasing ParseResult drops its retained Multipart",
+                rt_gc_tracked_count() == result_baseline);
+
+    void *error_result = rt_multipart_parse_result(content_type, malformed_body);
+    test_result("ParseResult converts malformed input to Err",
+                error_result && rt_result_is_err(error_result) == 1);
+    release_managed(error_result);
+    test_result("Releasing error ParseResult restores tracked baseline",
+                rt_gc_tracked_count() == result_baseline);
+
+    release_managed(valid_body);
+    release_managed(malformed_body);
+    rt_string_unref(valid_text);
+    rt_string_unref(malformed_text);
+    rt_string_unref(content_type);
+    rt_string_unref(field_value);
+    rt_string_unref(field_name);
+    release_managed(builder);
+}
 
 static void test_builder_escapes_header_params() {
     printf("Testing Multipart builder header escaping:\n");
@@ -167,8 +283,7 @@ static void test_parser_strict_and_distinguishable() {
                                  "prefix-data-without-terminator";
     body = rt_bytes_from_str(rt_const_cstr(truncated_body));
     EXPECT_TRAP(rt_multipart_parse(rt_const_cstr("multipart/form-data; boundary=abc"), body));
-    test_result("Truncated body traps",
-                g_last_trap && strstr(g_last_trap, "truncated") != nullptr);
+    test_result("Truncated body traps", g_last_trap && strstr(g_last_trap, "truncated") != nullptr);
 
     // Content-Type without a boundary parameter is rejected.
     body = rt_bytes_from_str(rt_const_cstr("--abc--\r\n"));
@@ -178,8 +293,7 @@ static void test_parser_strict_and_distinguishable() {
 
     // ParseResult converts the trap into Result.ErrStr...
     body = rt_bytes_from_str(rt_const_cstr("no delimiters here"));
-    void *res = rt_multipart_parse_result(
-        rt_const_cstr("multipart/form-data; boundary=abc"), body);
+    void *res = rt_multipart_parse_result(rt_const_cstr("multipart/form-data; boundary=abc"), body);
     test_result("ParseResult reports rejected input as Err", rt_result_is_err(res) == 1);
 
     // ...and wraps a valid parse in Result.Ok.
@@ -269,6 +383,7 @@ static void test_field_value_preserves_embedded_nul() {
 int main() {
     printf("=== RT Multipart Tests ===\n\n");
 
+    test_identity_and_trap_safe_lifecycle();
     test_builder_escapes_header_params();
     test_parser_handles_quoted_and_escaped_params();
     test_parser_handles_bare_token_params();

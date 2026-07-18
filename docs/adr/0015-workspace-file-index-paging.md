@@ -12,7 +12,7 @@ Status: Accepted
 
 ## Context
 
-ZannaIDE uses `Zanna.Workspace.FileIndex.Enumerate` for project trees, Quick
+Zanna Studio uses `Zanna.Workspace.FileIndex.Enumerate` for project trees, Quick
 Open, search discovery, and semantic workspace indexing. `Enumerate` returns a
 complete sequence of entry maps. That is convenient for small projects but forces
 IDE callers to allocate the full result before they can start processing it.
@@ -56,7 +56,7 @@ The returned map contains:
 
 ## Consequences
 
-ZannaIDE can page workspace indexing and other discovery jobs without allocating
+Zanna Studio can page workspace indexing and other discovery jobs without allocating
 the whole workspace result up front. Because the API is stateless from the
 caller side, callers do not need to manage native handles or lifetime, and no new
 close/destroy protocol is introduced. The private cursor optimizes the common

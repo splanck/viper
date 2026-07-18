@@ -4,16 +4,36 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTAssetTests.cpp
+// Purpose: Verify asset lookup, packed-data failure handling, type dispatch,
+//          filesystem safety, and zero-byte asset behavior.
+// Key invariants:
+//   - Trap-capable packed reads never leave the asset manager locked.
+//   - Unsafe or non-regular filesystem paths are never exposed as assets.
+// Ownership/Lifetime:
+//   - Temporary files are removed by the test that creates them.
+//   - The embedded ZPAK vector remains alive for the process lifetime.
+// Links: src/runtime/io/rt_asset.c, src/runtime/io/rt_zpak_reader.c
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
 #include "rt_asset.h"
 #include "rt_bytes.h"
 #include "rt_string.h"
+#include "rt_trap.h"
+#include "rt_zpak_format.h"
 
+#include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <setjmp.h>
+#include <string>
+#include <thread>
+#include <vector>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -34,6 +54,141 @@
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
+}
+
+/// @brief Store a little-endian 16-bit integer in a mutable byte vector.
+/// @param blob Destination byte vector.
+/// @param offset Starting byte offset, which must have two available bytes.
+/// @param value Value to encode.
+static void put_u16(std::vector<uint8_t> &blob, size_t offset, uint16_t value) {
+    blob[offset] = static_cast<uint8_t>(value & 0xFFu);
+    blob[offset + 1] = static_cast<uint8_t>((value >> 8) & 0xFFu);
+}
+
+/// @brief Store a little-endian 32-bit integer in a mutable byte vector.
+/// @param blob Destination byte vector.
+/// @param offset Starting byte offset, which must have four available bytes.
+/// @param value Value to encode.
+static void put_u32(std::vector<uint8_t> &blob, size_t offset, uint32_t value) {
+    for (size_t i = 0; i < 4; ++i)
+        blob[offset + i] = static_cast<uint8_t>((value >> (i * 8)) & 0xFFu);
+}
+
+/// @brief Store a little-endian 64-bit integer in a mutable byte vector.
+/// @param blob Destination byte vector.
+/// @param offset Starting byte offset, which must have eight available bytes.
+/// @param value Value to encode.
+static void put_u64(std::vector<uint8_t> &blob, size_t offset, uint64_t value) {
+    for (size_t i = 0; i < 8; ++i)
+        blob[offset + i] = static_cast<uint8_t>((value >> (i * 8)) & 0xFFu);
+}
+
+/// @brief Append a little-endian 16-bit integer to a byte vector.
+/// @param blob Destination byte vector.
+/// @param value Value to append.
+static void append_u16(std::vector<uint8_t> &blob, uint16_t value) {
+    size_t offset = blob.size();
+    blob.resize(offset + 2);
+    put_u16(blob, offset, value);
+}
+
+/// @brief Append a little-endian 64-bit integer to a byte vector.
+/// @param blob Destination byte vector.
+/// @param value Value to append.
+static void append_u64(std::vector<uint8_t> &blob, uint64_t value) {
+    size_t offset = blob.size();
+    blob.resize(offset + 8);
+    put_u64(blob, offset, value);
+}
+
+/// @brief Build a valid one-entry ZPAK whose compressed payload is malformed.
+/// @details The archive and TOC are structurally valid, ensuring the failure
+///          occurs inside trap-capable DEFLATE decoding rather than parsing.
+/// @return Byte vector containing the complete borrowed embedded archive.
+static std::vector<uint8_t> make_corrupt_compressed_zpak() {
+    static const char kName[] = "corrupt-packed.bin";
+    std::vector<uint8_t> blob(32, 0);
+    blob[0] = 'Z';
+    blob[1] = 'P';
+    blob[2] = 'A';
+    blob[3] = 'K';
+    put_u16(blob, 4, RT_ZPAK_VERSION_1);
+    put_u16(blob, 6, RT_ZPAK_HEADER_FLAG_COMPRESSED);
+    put_u32(blob, 8, 1);
+
+    const uint64_t data_offset = blob.size();
+    blob.push_back(0xFF);
+    blob.push_back(0x00);
+
+    const uint64_t toc_offset = blob.size();
+    append_u16(blob, static_cast<uint16_t>(sizeof(kName) - 1));
+    blob.insert(blob.end(), kName, kName + sizeof(kName) - 1);
+    append_u64(blob, data_offset);
+    append_u64(blob, 32);
+    append_u64(blob, 2);
+    append_u16(blob, 1);
+    append_u16(blob, 0);
+
+    put_u64(blob, 12, toc_offset);
+    put_u64(blob, 20, static_cast<uint64_t>(blob.size()) - toc_offset);
+    return blob;
+}
+
+/// @brief Race lazy initialization and verify every caller sees one full registry.
+/// @details Threads begin together, call the idempotent initializer with the
+///          same process-lifetime blob, and immediately query its sole entry.
+///          A caller that returned while another thread was still parsing or
+///          discovering packs would observe a false miss and fail the test.
+/// @param blob Structurally valid embedded ZPAK retained for process lifetime.
+static void initialize_asset_manager_concurrently(const std::vector<uint8_t> &blob) {
+    constexpr int kThreadCount = 24;
+    std::atomic<int> ready{0};
+    std::atomic<bool> start{false};
+    std::atomic<bool> all_observed{true};
+    rt_string packed_name = rt_const_cstr("corrupt-packed.bin");
+    std::vector<std::thread> threads;
+    threads.reserve(kThreadCount);
+
+    for (int i = 0; i < kThreadCount; ++i) {
+        threads.emplace_back([&]() {
+            ready.fetch_add(1, std::memory_order_acq_rel);
+            while (!start.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            rt_asset_init(blob.data(), static_cast<uint64_t>(blob.size()));
+            if (rt_asset_exists(packed_name) != 1)
+                all_observed.store(false, std::memory_order_release);
+        });
+    }
+    while (ready.load(std::memory_order_acquire) != kThreadCount)
+        std::this_thread::yield();
+    start.store(true, std::memory_order_release);
+    for (std::thread &thread : threads)
+        thread.join();
+    assert(all_observed.load(std::memory_order_acquire));
+}
+
+/// @brief Verify corrupt packed data cannot leave the global asset lock held.
+/// @details Catches the expected decompression trap and immediately performs a
+///          second manager operation. The second operation would deadlock if
+///          trap unwinding skipped an asset-lock release.
+static void test_corrupt_pack_trap_does_not_poison_asset_manager() {
+    static const std::vector<uint8_t> blob = make_corrupt_compressed_zpak();
+    initialize_asset_manager_concurrently(blob);
+
+    bool trapped = false;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        (void)rt_asset_load_bytes(rt_const_cstr("corrupt-packed.bin"));
+    } else {
+        trapped = true;
+    }
+    const std::string message = rt_trap_get_error();
+    rt_trap_clear_recovery();
+
+    assert(trapped);
+    assert(!message.empty());
+    assert(rt_asset_exists(rt_const_cstr("missing-after-corrupt-pack.bin")) == 0);
 }
 
 static void write_file(const char *path, const char *data) {
@@ -172,6 +327,7 @@ static void test_recognized_decode_failure_returns_null() {
 }
 
 int main() {
+    test_corrupt_pack_trap_does_not_poison_asset_manager();
     test_recognized_decode_failure_returns_null();
     test_filesystem_zero_byte_asset();
     test_filesystem_directories_are_not_assets();

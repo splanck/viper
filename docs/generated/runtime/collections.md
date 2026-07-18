@@ -679,7 +679,9 @@ Provides key-value dictionary (string keys).
 
 Create `Zanna.Collections.Map` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as
-`IsEmpty`, `Count` and operations including `Clear`, `Clone`, `Get`, `GetOr`.
+`IsEmpty`, `Count` and operations including `Clear`, `Trim`, `Clone`, `Get`, `GetOr`.
+`Clear` retains bucket capacity for reuse; `Trim` explicitly returns excess
+capacity and reports whether compaction succeeded.
 
 Constructor: `Zanna.Collections.Map.New`
 
@@ -695,6 +697,7 @@ Constructor: `Zanna.Collections.Map.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="zanna-collections-map-clear"></a>`Clear` | `void()` | `Zanna.Collections.Map.Clear` |
+| <a id="zanna-collections-map-trim"></a>`Trim` | `i1()` | `Zanna.Collections.Map.Trim` |
 | <a id="zanna-collections-map-clone"></a>`Clone` | `obj<Zanna.Collections.Map>()` | `Zanna.Collections.Map.Clone` |
 | <a id="zanna-collections-map-get"></a>`Get` | `obj(str)` | `Zanna.Collections.Map.Get` |
 | <a id="zanna-collections-map-getor"></a>`GetOr` | `obj(str,obj)` | `Zanna.Collections.Map.GetOr` |
@@ -725,7 +728,8 @@ Provides integer-keyed dictionary.
 
 Create `Zanna.Collections.IntMap` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes properties such as `Count`,
-`IsEmpty` and operations including `Set`, `Get`, `GetOr`, `Has`.
+`IsEmpty` and operations including `Set`, `Get`, `GetOr`, `Has`, `Trim`. `Trim`
+compacts excess bucket capacity without changing any key/value association.
 
 Constructor: `Zanna.Collections.IntMap.New`
 
@@ -746,6 +750,7 @@ Constructor: `Zanna.Collections.IntMap.New`
 | <a id="zanna-collections-intmap-has"></a>`Has` | `i1(i64)` | `Zanna.Collections.IntMap.Has` |
 | <a id="zanna-collections-intmap-remove"></a>`Remove` | `i1(i64)` | `Zanna.Collections.IntMap.Remove` |
 | <a id="zanna-collections-intmap-clear"></a>`Clear` | `void()` | `Zanna.Collections.IntMap.Clear` |
+| <a id="zanna-collections-intmap-trim"></a>`Trim` | `i1()` | `Zanna.Collections.IntMap.Trim` |
 | <a id="zanna-collections-intmap-keys"></a>`Keys` | `seq<obj>()` | `Zanna.Collections.IntMap.Keys` |
 | <a id="zanna-collections-intmap-values"></a>`Values` | `seq<obj>()` | `Zanna.Collections.IntMap.Values` |
 | <a id="zanna-collections-intmap-new"></a>`New` | `obj()` | `Zanna.Collections.IntMap.New` |
@@ -1355,6 +1360,7 @@ Constructor: `Zanna.Collections.Deque.New`
 | `Zanna.Collections.LruCache.RemoveOldest` | `i1(obj)` | `rt_lrucache_remove_oldest` |
 | `Zanna.Collections.LruCache.Values` | `seq<obj>(obj)` | `rt_lrucache_values` |
 | `Zanna.Collections.Map.Clear` | `void(obj)` | `rt_map_clear` |
+| `Zanna.Collections.Map.Trim` | `i1(obj)` | `rt_map_trim` |
 | `Zanna.Collections.BiMap.New` | `obj()` | `rt_bimap_new` |
 | <a id="zanna-collections-bimap-get-count"></a>`Zanna.Collections.BiMap.get_Count` | `i64(obj)` | `rt_bimap_len` |
 | <a id="zanna-collections-bimap-get-isempty"></a>`Zanna.Collections.BiMap.get_IsEmpty` | `i1(obj)` | `rt_bimap_is_empty` |
@@ -1427,6 +1433,7 @@ Constructor: `Zanna.Collections.Deque.New`
 | `Zanna.Collections.IntMap.Has` | `i1(obj,i64)` | `rt_intmap_has` |
 | `Zanna.Collections.IntMap.Remove` | `i1(obj,i64)` | `rt_intmap_remove` |
 | `Zanna.Collections.IntMap.Clear` | `void(obj)` | `rt_intmap_clear` |
+| `Zanna.Collections.IntMap.Trim` | `i1(obj)` | `rt_intmap_trim` |
 | `Zanna.Collections.IntMap.Keys` | `seq<obj>(obj)` | `rt_intmap_keys` |
 | `Zanna.Collections.IntMap.Values` | `seq<obj>(obj)` | `rt_intmap_values` |
 | `Zanna.Collections.Queue.Push` | `void(obj,obj)` | `rt_queue_push` |

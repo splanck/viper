@@ -14,6 +14,9 @@
 //   - ReadChar returns the raw character as i64, or -1 at EOF.
 //   - PeekChar views the next character without advancing the position.
 //   - The reader buffers input internally for efficiency.
+//   - Opaque receivers are validated for class and complete payload size.
+//   - Native files and temporary read buffers remain cleanup-owned across
+//     recoverable allocation traps.
 //
 // Ownership/Lifetime:
 //   - LineReader objects are heap-allocated; caller must close and free when done.
@@ -33,8 +36,11 @@ extern "C" {
 #endif
 
 /// @brief Open a text file for line-by-line reading.
+/// @details Opens in binary mode so LF, CR, and CRLF are recognized uniformly.
+///          If managed wrapper allocation traps after the native file opens,
+///          the native stream is closed before the diagnostic propagates.
 /// @param path File path as runtime string.
-/// @return LineReader object or traps on failure.
+/// @return Owned LineReader object; traps and returns NULL on failure.
 void *rt_linereader_open(rt_string path);
 
 /// @brief Close the line reader and release resources.
@@ -42,6 +48,8 @@ void *rt_linereader_open(rt_string path);
 void rt_linereader_close(void *obj);
 
 /// @brief Read one line from the file.
+/// @details Strips one LF, CR, or CRLF terminator. Temporary staging storage is
+///          released even if construction of the returned runtime string traps.
 /// @param obj LineReader object.
 /// @return Line as string (without newline), or empty string at EOF.
 rt_string rt_linereader_read(void *obj);
@@ -57,6 +65,8 @@ int64_t rt_linereader_read_char(void *obj);
 int64_t rt_linereader_peek_char(void *obj);
 
 /// @brief Read all remaining content from the file.
+/// @details Preserves raw line-ending bytes and includes a pending peeked byte.
+///          Temporary storage is released on I/O and result-allocation traps.
 /// @param obj LineReader object.
 /// @return Remaining content as string.
 rt_string rt_linereader_read_all(void *obj);

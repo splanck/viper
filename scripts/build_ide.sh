@@ -7,7 +7,7 @@
 #===----------------------------------------------------------------------===#
 #
 # File: scripts/build_ide.sh
-# Purpose: Build ZannaIDE as a standalone native binary on Unix hosts.
+# Purpose: Build Zanna Studio as a standalone native binary on Unix hosts.
 # Key invariants:
 #   - Uses an existing Zanna compiler from the configured build tree.
 #   - Writes build metadata beside both primary and compatibility outputs.
@@ -15,7 +15,7 @@
 #   - Temporary diagnostics are removed on exit; built outputs remain caller-owned.
 # Cross-platform touchpoints:
 #   - Handles Unix and Windows-form paths when an .exe compiler is selected.
-# Links: build_ide_win.ps1, src/zannaide/README.md
+# Links: build_ide_win.ps1, src/zannastudio/README.md
 #
 #===----------------------------------------------------------------------===#
 
@@ -24,10 +24,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${ZANNA_BUILD_DIR:-$ROOT_DIR/build}"
-IDE_DIR="$ROOT_DIR/src/zannaide"
+IDE_DIR="$ROOT_DIR/src/zannastudio"
 OUT_DIR="${ZANNA_IDE_OUT_DIR:-$IDE_DIR/bin}"
-OUTPUT_FILE="${ZANNA_IDE_OUTPUT:-$OUT_DIR/zannaide}"
-COMPAT_OUTPUT_FILE="${ZANNA_IDE_COMPAT_OUTPUT:-$BUILD_DIR/zannaide/zannaide}"
+OUTPUT_FILE="${ZANNA_IDE_OUTPUT:-$OUT_DIR/zannastudio}"
+COMPAT_OUTPUT_FILE="${ZANNA_IDE_COMPAT_OUTPUT:-$BUILD_DIR/zannastudio/zannastudio}"
 SKIP_COMPAT_COPY="${ZANNA_IDE_SKIP_COMPAT_COPY:-0}"
 ZANNA_BUILD_TYPE="${ZANNA_BUILD_TYPE:-Debug}"
 ZANNA=""
@@ -40,9 +40,9 @@ NC='\033[0m'
 
 usage() {
     echo "Usage: $0 [--clean] [--output PATH]"
-    echo "  --clean        Remove the existing ZannaIDE binary before building"
-    echo "  --output PATH  Write the binary to PATH (default: src/zannaide/bin/zannaide)"
-    echo "  Compatibility copy: build/zannaide/zannaide unless ZANNA_IDE_SKIP_COMPAT_COPY=1"
+    echo "  --clean        Remove the existing Zanna Studio binary before building"
+    echo "  --output PATH  Write the binary to PATH (default: src/zannastudio/bin/zannastudio)"
+    echo "  Compatibility copy: build/zannastudio/zannastudio unless ZANNA_IDE_SKIP_COMPAT_COPY=1"
     exit 1
 }
 
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! -d "$IDE_DIR" ]]; then
-    echo -e "${RED}Error: ZannaIDE source not found at $IDE_DIR${NC}"
+    echo -e "${RED}Error: Zanna Studio source not found at $IDE_DIR${NC}"
     exit 1
 fi
 
@@ -126,11 +126,11 @@ if ! resolve_zanna_tool; then
 fi
 
 if [[ $ZANNA_IS_WINDOWS -eq 1 ]]; then
-    if [[ -z "${ZANNA_IDE_OUTPUT:-}" && "$OUTPUT_FILE" == "$OUT_DIR/zannaide" ]]; then
-        OUTPUT_FILE="$OUT_DIR/zannaide.exe"
+    if [[ -z "${ZANNA_IDE_OUTPUT:-}" && "$OUTPUT_FILE" == "$OUT_DIR/zannastudio" ]]; then
+        OUTPUT_FILE="$OUT_DIR/zannastudio.exe"
     fi
-    if [[ -z "${ZANNA_IDE_COMPAT_OUTPUT:-}" && "$COMPAT_OUTPUT_FILE" == "$BUILD_DIR/zannaide/zannaide" ]]; then
-        COMPAT_OUTPUT_FILE="$BUILD_DIR/zannaide/zannaide.exe"
+    if [[ -z "${ZANNA_IDE_COMPAT_OUTPUT:-}" && "$COMPAT_OUTPUT_FILE" == "$BUILD_DIR/zannastudio/zannastudio" ]]; then
+        COMPAT_OUTPUT_FILE="$BUILD_DIR/zannastudio/zannastudio.exe"
     fi
 fi
 
@@ -144,14 +144,14 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 if [[ $CLEAN -eq 1 ]]; then
     rm -f "$OUTPUT_FILE"
-    rm -f "$(dirname "$OUTPUT_FILE")/zannaide.buildinfo"
+    rm -f "$(dirname "$OUTPUT_FILE")/zannastudio.buildinfo"
     if [[ "$OUTPUT_FILE" != "$COMPAT_OUTPUT_FILE" ]]; then
         rm -f "$COMPAT_OUTPUT_FILE"
-        rm -f "$(dirname "$COMPAT_OUTPUT_FILE")/zannaide.buildinfo"
+        rm -f "$(dirname "$COMPAT_OUTPUT_FILE")/zannastudio.buildinfo"
     fi
 fi
 
-TMP_BASE="/tmp/zannaide_build_$$"
+TMP_BASE="/tmp/zannastudio_build_$$"
 FRONTEND_ERR="${TMP_BASE}.front.err"
 
 cleanup() {
@@ -231,7 +231,7 @@ build_info_text() {
 write_build_info() {
     local binary_path="$1"
     local info_path
-    info_path="$(dirname "$binary_path")/zannaide.buildinfo"
+    info_path="$(dirname "$binary_path")/zannastudio.buildinfo"
     mkdir -p "$(dirname "$info_path")"
     build_info_text "$binary_path" >"$info_path"
 }
@@ -251,7 +251,7 @@ mirror_compat_output() {
     echo -e "${GREEN}Compatibility copy: $COMPAT_OUTPUT_FILE ($compat_size)${NC}"
 }
 
-echo -e "${CYAN}Building ZannaIDE${NC}"
+echo -e "${CYAN}Building Zanna Studio${NC}"
 echo "Source: $IDE_DIR"
 echo "Output: $OUTPUT_FILE"
 echo "=============================================="
@@ -273,4 +273,4 @@ size=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')
 write_build_info "$OUTPUT_FILE"
 mirror_compat_output
 echo -e "${GREEN}Built: $OUTPUT_FILE ($size)${NC}"
-echo "Build info: $(dirname "$OUTPUT_FILE")/zannaide.buildinfo"
+echo "Build info: $(dirname "$OUTPUT_FILE")/zannastudio.buildinfo"

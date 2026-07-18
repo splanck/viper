@@ -116,11 +116,15 @@ static void rt_pqueue_finalize(void *obj) {
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
     if (!h)
         return;
-    for (int64_t i = 0; i < h->len; i++)
-        heap_release_value(h->items[i].value);
+    int64_t len = h->len;
+    h->len = 0;
+    for (int64_t i = 0; i < len; i++) {
+        void *value = h->items[i].value;
+        h->items[i].value = NULL;
+        heap_release_value(value);
+    }
     free(h->items);
     h->items = NULL;
-    h->len = 0;
     h->cap = 0;
 }
 
@@ -266,17 +270,23 @@ void rt_pqueue_push(void *obj, int64_t priority, void *val) {
         return;
     }
 
+    rt_gc_mutator_enter();
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
-    if (!h)
+    if (!h) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (h->len >= INT64_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Heap: maximum length reached");
         return;
     }
     if (h->len >= h->cap) {
-        if (!heap_grow(h))
+        if (!heap_grow(h)) {
+            rt_gc_mutator_exit();
             return;
+        }
     }
 
     rt_obj_retain_maybe(val);
@@ -287,6 +297,7 @@ void rt_pqueue_push(void *obj, int64_t priority, void *val) {
 
     // Restore heap property
     heap_swim(h, h->len - 1);
+    rt_gc_mutator_exit();
 }
 
 /// @brief Remove and return the highest-priority item. O(log n) — replace root with last
@@ -297,11 +308,15 @@ void *rt_pqueue_pop(void *obj) {
         return NULL;
     }
 
+    rt_gc_mutator_enter();
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
-    if (!h)
+    if (!h) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     if (h->len == 0) {
+        rt_gc_mutator_exit();
         rt_trap("Heap.Pop: heap is empty");
         return NULL;
     }
@@ -316,6 +331,7 @@ void *rt_pqueue_pop(void *obj) {
     }
     h->items[h->len].value = NULL;
 
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -326,17 +342,22 @@ void *rt_pqueue_peek(void *obj) {
         return NULL;
     }
 
+    rt_gc_mutator_enter();
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
-    if (!h)
+    if (!h) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     if (h->len == 0) {
+        rt_gc_mutator_exit();
         rt_trap("Heap.Peek: heap is empty");
         return NULL;
     }
 
     void *val = h->items[0].value;
     rt_obj_retain_maybe(val);
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -345,12 +366,17 @@ void *rt_pqueue_try_pop(void *obj) {
     if (!obj)
         return NULL;
 
+    rt_gc_mutator_enter();
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
-    if (!h)
+    if (!h) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
-    if (h->len == 0)
+    if (h->len == 0) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     void *val = h->items[0].value;
 
@@ -361,6 +387,7 @@ void *rt_pqueue_try_pop(void *obj) {
     }
     h->items[h->len].value = NULL;
 
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -391,15 +418,21 @@ void *rt_pqueue_try_peek(void *obj) {
     if (!obj)
         return NULL;
 
+    rt_gc_mutator_enter();
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
-    if (!h)
+    if (!h) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
-    if (h->len == 0)
+    if (h->len == 0) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     void *val = h->items[0].value;
     rt_obj_retain_maybe(val);
+    rt_gc_mutator_exit();
     return val;
 }
 
@@ -430,15 +463,21 @@ void rt_pqueue_clear(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_pqueue_impl *h = as_pqueue(obj, "Heap: invalid Heap object");
-    if (!h)
+    if (!h) {
+        rt_gc_mutator_exit();
         return;
-    for (int64_t i = 0; i < h->len; i++) {
-        heap_release_value(h->items[i].value);
+    }
+    int64_t len = h->len;
+    h->len = 0;
+    for (int64_t i = 0; i < len; i++) {
+        void *value = h->items[i].value;
         h->items[i].value = NULL;
         h->items[i].priority = 0;
+        heap_release_value(value);
     }
-    h->len = 0;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Drain a copy of the queue into a Seq, ordered by priority. The original queue is

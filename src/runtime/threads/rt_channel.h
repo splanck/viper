@@ -90,12 +90,28 @@ void *rt_channel_try_recv_val(void *channel);
 void *rt_channel_try_recv_option(void *channel);
 
 /// @brief Receive with a timeout.
-/// @details Blocks up to @p ms milliseconds for an item.
+/// @details Blocks up to @p ms milliseconds for an item. The timeout covers
+///          both monitor acquisition and condition waiting. Passing NULL for
+///          @p out is a non-consuming availability probe, matching
+///          @ref rt_channel_try_recv.
 /// @param channel Channel object pointer.
-/// @param out Pointer to store the received item.
+/// @param out Pointer to store the received item, or NULL to probe without
+///            consuming it.
 /// @param ms Timeout in milliseconds.
 /// @return 1 if received, 0 if timed out or closed.
 int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms);
+
+/// @brief Receive and discard one item with a timeout.
+/// @details Preserves the explicit destructive operation formerly obtained by
+///          passing a NULL output pointer to @ref rt_channel_recv_for. The
+///          received ownership transfer is released only after the Channel
+///          monitor has been exited, so an item finalizer may safely call back
+///          into the same Channel. The timeout covers monitor acquisition and
+///          condition waiting.
+/// @param channel Channel object pointer.
+/// @param ms Timeout in milliseconds.
+/// @return 1 if an item was received and released, or 0 on timeout/close.
+int8_t rt_channel_recv_for_discard(void *channel, int64_t ms);
 
 /// @brief Managed ABI wrapper for RecvFor.
 /// @details Returns the received item directly, or NULL on timeout/closed.

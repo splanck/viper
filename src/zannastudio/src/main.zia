@@ -1,0 +1,915 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/main.zia
+// Purpose: Zanna Studio entry point, component construction, command routing, and
+//          frame-loop orchestration.
+// Key invariants:
+//   - Input/render/process streams stay foreground responsive.
+//   - Non-essential background work is throttled while the window is unfocused.
+//   - App-level activation is requested after startup paints so native menu
+//     ownership is available on macOS.
+//
+//===----------------------------------------------------------------------===//
+
+module zannastudio;
+
+bind "ui/app_shell";
+bind "ui/welcome_view";
+bind "ui/ide_overlays";
+bind "ui/explorer_actions";
+bind "ui/debug_breakpoint_overlay";
+bind "ui/command_input";
+bind "ui/activity_bar";
+bind "app/build_info";
+bind "app/command_palette_controller";
+bind "app/context_menus";
+bind "app/context_menu_dispatcher";
+bind "app/workspace_watcher";
+bind "app/file_watch_controller";
+bind "app/focus_throttle";
+bind "app/explorer_action_runner";
+bind "app/lifecycle_controller";
+bind "app/language_tool_frame";
+bind "app/settings_applier";
+bind "scm/scm_view";
+bind "scm/scm_gutter_controller";
+bind "terminal/terminal_controller";
+bind "core/document";
+bind "core/document_manager";
+bind "core/project";
+bind "core/project_manager";
+bind "core/settings";
+bind "core/session";
+bind "core/recovery_store";
+bind "editor/editor_engine";
+bind "editor/editor_tabs";
+bind "editor/zia_query";
+bind "editor/language_service";
+bind "editor/workbench_state";
+bind "editor/perf_monitor";
+bind "editor/project_index";
+bind "editor/scheduler";
+bind "editor/signature";
+bind "editor/completion";
+bind "editor/diagnostics";
+bind "editor/hover";
+bind "editor/symbols";
+bind "editor/semantic_tokens";
+bind "editor/inlay_hints";
+bind "services/file_utils";
+bind "services/locations";
+bind "build/build_system";
+bind "build/breakpoints";
+bind "build/debug_session";
+bind "build/diagnostic";
+bind "commands/command_registry";
+bind "commands/command_context";
+bind "commands/main_command_dispatcher";
+bind "commands/file_commands";
+bind "commands/edit_commands";
+bind "commands/view_commands";
+bind "app/dispatch_helpers";
+bind "commands/debug_commands";
+bind "commands/search_commands";
+
+bind Zanna.GUI;
+bind Env = Zanna.System.Environment;
+bind IO = Zanna.IO;
+bind Machine = Zanna.System.Machine;
+bind Terminal = Zanna.Terminal;
+bind Str = Zanna.String;
+bind Threads = Zanna.Threads;
+
+final MOUSE_BUTTON_RIGHT = 1;
+
+// ============================================================================
+// MODULE: zannastudio (main entry point)
+// PURPOSE: Bootstraps every subsystem and runs the per-frame event loop.
+//          The loop polls input, dispatches commands via menu items +
+//          shortcuts + command palette, ticks completion / diagnostics /
+//          hover / symbols, syncs document <-> tab state, and renders.
+//
+// WHERE-THIS-FITS: Top of the dependency tree. Owns the lifecycle of
+//          every controller; everyone else is constructed here.
+//
+// KEY-DESIGN-CHOICES:
+//   * SINGLE FRAME LOOP, MANY POLLS. Rather than callbacks, the IDE
+//     uses a frame-driven design: each frame, every controller is
+//     polled. Commands are dispatched by checking which menu item /
+//     toolbar item / shortcut / palette command was hit this frame.
+//   * COMMAND DISPATCH PATTERN. The `dispatch_helpers.Triggered(name, menuItem,
+//     toolbarItem, paletteSelection)` helper checks all three input
+//     sources for a single command name and returns true if any of
+//     them fired. This unifies "user clicked menu" / "user clicked
+//     toolbar" / "user pressed shortcut" / "user picked from
+//     palette" without duplicating handler dispatch.
+//   * PER-DOCUMENT INTELLISENSE. Every controller (completion /
+//     diagnostics / hover / symbols) has its source path set to the
+//     active document's path each frame. This is what enables the
+//     path-aware `*ForFile` completion APIs to resolve relative bind
+//     paths against the right directory.
+//   * STARTUP ORDER MATTERS. Shell construction first (so widgets
+//     exist), then engine setup (which adds the editor widget into
+//     the shell), then minimap binding, then settings load and
+//     theme apply. Mixing this ordering generally explodes because
+//     widget parents must exist before children.
+//
+// HOW-TO-READ: Constants -> main() top-of-function (component
+//   construction) -> shortcut registration -> command palette
+//   population -> welcome doc / settings load -> the giant while
+//   loop with per-frame work.
+// ============================================================================
+
+final WIN_WIDTH = 1280;
+final WIN_HEIGHT = 800;
+final WINDOW_SIZE_PERCENT = 72;  // % of monitor size on first launch.
+final AUTO_SAVE_IDLE_MS = 1500;
+final OPEN_DOC_EXTERNAL_POLL_MS = 1000;
+final ZANNASTUDIO_VERSION = "0.1.0";
+final POLL_WAIT_BACKGROUND_MS = 8;
+final POLL_WAIT_IDLE_FOCUSED_MS = 50;
+final POLL_WAIT_IDLE_UNFOCUSED_MS = 150;
+
+/// @brief Re-point the focused-pane controllers at engine.editor after a split
+///        or focus change. Minimap and find bar bind the widget directly; the
+///        completion controller re-syncs via SetEngine. Hover and signature read
+///        engine.editor fresh each frame, so they need no explicit re-bind.
+func RebindFocusedPane(shell: app_shell.AppShell,
+                       engine: editor_engine.EditorEngine,
+                       completer: completion.CompletionController) {
+    if shell == null or engine == null { return; }
+    if shell.workbench.minimap != null { shell.workbench.minimap.BindEditor(engine.editor); }
+    if shell.workbench.findBar != null { shell.workbench.findBar.BindEditor(engine.editor); }
+    if completer != null { completer.SetEngine(engine); }
+}
+
+func hasArg(name: String) -> Boolean {
+    var i = 0;
+    while i < Env.GetArgumentCount() {
+        if Env.GetArgument(i) == name { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Return the first existing file passed as a positional command-line argument.
+/// @details Windows Open With registrations pass a quoted source path directly to Zanna Studio.
+func commandLineFile() -> String {
+    var i = 0;
+    while i < Env.GetArgumentCount() {
+        var arg = Env.GetArgument(i);
+        if Str.StartsWith(arg, "-") == false and IO.File.Exists(arg) { return arg; }
+        i = i + 1;
+    }
+    return "";
+}
+
+func handleCommandLine() -> Boolean {
+    if hasArg("--version") {
+        Terminal.Say("Zanna Studio " + ZANNASTUDIO_VERSION);
+        Terminal.Say(build_info.BuildSummary());
+        return true;
+    }
+    if hasArg("--help") or hasArg("-h") {
+        Terminal.Say("Usage: zannastudio [--version] [--help] [file]");
+        return true;
+    }
+    return false;
+}
+
+func envFlagEnabled(name: String) -> Boolean {
+    if Env.HasVariable(name) == false { return false; }
+    var v = Str.ToLower(Env.GetVariable(name));
+    return v == "1" or v == "true" or v == "yes" or v == "on";
+}
+
+/// @brief Compute how long the next PollWait may sleep without delaying live work.
+func computePollWaitMs(shell: app_shell.AppShell,
+                       focusThrottle: focus_throttle.FocusThrottle,
+                       buildSys: build_system.BuildSystem,
+                       dbgSession: debug_session.DebugSession,
+                       terminalCtrl: terminal_controller.TerminalController,
+                       editorScheduler: scheduler.EditorScheduler,
+                       indexer: project_index.ProjectIndexer,
+                       projMgr: project_manager.ProjectManager,
+                       overlays: ide_overlays.IdeOverlays) -> Integer {
+    if shell == null { return 0; }
+    if buildSys != null and buildSys.IsActive() { return 0; }
+    if dbgSession != null and dbgSession.IsActive() { return 0; }
+    if terminalCtrl != null and terminalCtrl.HasActiveSession() { return 0; }
+    if shell.commandPalette != null and shell.commandPalette.IsVisible() { return 0; }
+    if overlays != null and (overlays.settingsVisible or overlays.aboutVisible) { return 0; }
+
+    if editorScheduler != null and editorScheduler.QueuedCount() > 0 {
+        return POLL_WAIT_BACKGROUND_MS;
+    }
+    if indexer != null and indexer.indexing {
+        return POLL_WAIT_BACKGROUND_MS;
+    }
+    if projMgr != null and projMgr.fileCacheRefreshing {
+        return POLL_WAIT_BACKGROUND_MS;
+    }
+
+    if focusThrottle != null and focusThrottle.focused == false {
+        return POLL_WAIT_IDLE_UNFOCUSED_MS;
+    }
+    return POLL_WAIT_IDLE_FOCUSED_MS;
+}
+
+/// @brief Program entry point. Constructs the IDE and runs the main loop.
+func main() {
+    if handleCommandLine() { return; }
+
+    // ========================================================================
+    // Initialize components
+    // ========================================================================
+    var shell = new app_shell.AppShell();
+    var docMgr = new document_manager.DocumentManager();
+    var engine = new editor_engine.EditorEngine();
+    var tabs = new editor_tabs.EditorTabs();
+    var projMgr = new project_manager.ProjectManager();
+    var activityBarCtrl = new activity_bar.ActivityBar();
+    var scmView = new scm_view.ScmView();
+    var terminalCtrl = new terminal_controller.TerminalController();
+    var buildSys = new build_system.BuildSystem();
+    var breakpointStore = new breakpoints.BreakpointStore();
+    var dbgSession = new debug_session.DebugSession();
+    var locStore = new locations.LocationStore();
+    var commandRegistry = new command_registry.CommandRegistry();
+    var languageServices = new language_service.LanguageServiceManager();
+    var activeWorkbench = new workbench_state.ActiveWorkbenchState();
+    var perfMon = new perf_monitor.PerfMonitor();
+    var indexer = new project_index.ProjectIndexer();
+    var editorScheduler = new scheduler.EditorScheduler();
+    var searcher = new search_commands.SearchController();
+    var paletteCtrl = new command_palette_controller.CommandPaletteController();
+    var fileWatchCtrl = new file_watch_controller.FileWatchController();
+    var focusThrottle = new focus_throttle.FocusThrottle();
+    indexer.SetScheduler(editorScheduler);
+
+    shell.Build("Zanna Studio", WIN_WIDTH, WIN_HEIGHT);
+    view_commands.applyShellFont(shell);
+    shell.CenterAndSize(WINDOW_SIZE_PERCENT);
+    shell.SetStatusLeft("Starting...");
+    shell.SetStatusCenter("");
+    shell.SetStatusRight("");
+    shell.Activate();
+    shell.Render();
+    shell.Activate();
+
+    var overlays = new ide_overlays.IdeOverlays();
+    overlays.Setup(shell);
+    var explorerOverlay = new explorer_actions.ExplorerActionOverlay();
+    explorerOverlay.Setup(shell);
+    var debugOverlay = new debug_breakpoint_overlay.DebugBreakpointOverlay();
+    debugOverlay.Setup(shell);
+    var commandInputOverlay = new command_input.CommandInputOverlay();
+    commandInputOverlay.Setup(shell);
+
+    var welcomeView = new welcome_view.WelcomeView();
+    welcomeView.Setup(shell.workbench.welcomeHost, shell.workbench.editorRow);
+
+    engine.Setup(shell.workbench.editorRow);
+    engine.editor.Focus();
+
+    var completer = new completion.CompletionController();
+    completer.Setup(engine.editor, shell.app);
+    completer.SetEngine(engine);
+    completer.SetScheduler(editorScheduler);
+    completer.SetWorkspaceContext(projMgr, docMgr);
+
+    // Real-time diagnostics (errors-as-you-type)
+    var liveDiag = new diagnostics.LiveDiagnostics();
+    liveDiag.SetScheduler(editorScheduler);
+    var semHighlighter = new semantic_tokens.SemanticHighlighter();
+
+    // Hover tooltips (type info on mouse dwell)
+    var hoverCtrl = new hover.HoverController();
+    hoverCtrl.setup(shell.app);
+    hoverCtrl.SetScheduler(editorScheduler);
+
+    var sigCtrl = new signature.SignatureController();
+    sigCtrl.setup(shell.app);
+    sigCtrl.SetScheduler(editorScheduler);
+
+    var inlayCtrl = new inlay_hints.InlayHintController();
+
+    // Symbol outline panel (below diagnostics, toggled via View menu)
+    var symbolOutline = new symbols.SymbolOutline();
+    symbolOutline.setup(shell.workbench.editorArea);
+    symbolOutline.SetScheduler(editorScheduler);
+
+    var languageFrame = new language_tool_frame.LanguageToolFrameController();
+    languageFrame.Setup(completer, liveDiag, semHighlighter, hoverCtrl,
+                        sigCtrl, inlayCtrl, symbolOutline, indexer,
+                        editorScheduler, perfMon);
+
+    shell.workbench.minimap = GUI.Minimap.New(shell.workbench.editorRow);
+    shell.workbench.minimap.SetWidth(100);
+    shell.workbench.minimap.BindEditor(engine.editor);
+
+    tabs.Setup(shell.workbench.tabBar);
+    projMgr.Setup(shell.workbench.sidebarTree);
+    activityBarCtrl.Setup(shell.workbench.explorerView, shell.workbench.scmViewHost, shell.workbench.abExplorer, shell.workbench.abSourceControl);
+    scmView.Setup(shell.workbench.scmViewHost);
+    if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
+    terminalCtrl.Setup(shell.toolPanels.terminalPanel, shell.toolPanels.terminalPane,
+                       shell.toolPanels.terminalKill, shell.toolPanels.terminalRestart);
+    terminalCtrl.SetupButtons(shell.toolPanels.terminalNew, shell.toolPanels.terminalNext);
+    if projMgr.IsOpen() { terminalCtrl.SetCwd(projMgr.RootPath()); }
+
+    shell.ApplyCommandShortcuts(commandRegistry);
+    commandRegistry.InstallShortcuts();
+    paletteCtrl.ResetToCommands(shell, commandRegistry, languageServices.ziaService);
+
+    // ========================================================================
+    // Load persistent settings and restore session
+    // ========================================================================
+    var appSettings = new settings.SettingsManager();
+    appSettings.Load();
+    breakpointStore.Setup(appSettings.settingsPath);
+    breakpointStore.Load();
+    editorScheduler.Configure(appSettings.diagnosticsDelayMs, appSettings.completionDelayMs);
+    view_commands.applyPersistentSettings(shell, engine, liveDiag, appSettings);
+    file_commands.SetConfirmDirtyClose(appSettings.confirmOnExitWithUnsavedChanges);
+    file_commands.SetSaveFormatOptions(appSettings.trimTrailingWhitespace,
+                                       appSettings.ensureFinalNewline);
+
+    var sessionMgr = new session.SessionManager();
+    sessionMgr.Setup(appSettings.settingsPath);
+    var recoveryStore = new recovery_store.RecoveryStore();
+    recoveryStore.Setup(appSettings.settingsDir);
+    var restoredCount = 0;
+    if appSettings.restoreSession {
+        restoredCount = sessionMgr.Restore(docMgr, projMgr, tabs);
+    }
+
+    // After an unclean exit, re-open documents captured in swap files with their
+    // recovered (unsaved) content, marked modified so the user can save or
+    // discard. Then clear the swaps.
+    if recoveryStore.uncleanExit {
+        var recovered = recoveryStore.CollectRecovered();
+        var rc = recovered.count();
+        var ri = 0;
+        var recoveredOpened = 0;
+        while ri < rc {
+            var rec = recovered.get(ri) as recovery_store.RecoveryRecord;
+            var rdoc = docMgr.NewDocument();
+            rdoc.content = rec.content;
+            rdoc.isModified = true;
+            if rec.path != "" {
+                rdoc.filePath = rec.path;
+                rdoc.fileName = IO.Path.Name(rec.path);
+                rdoc.isNew = false;
+            }
+            tabs.AddTab(rdoc.fileName, 1);
+            recoveredOpened = recoveredOpened + 1;
+            ri = ri + 1;
+        }
+        recoveryStore.ClearAll();
+        if recoveredOpened > 0 {
+            docMgr.SetActive(docMgr.GetCount() - 1);
+            tabs.SetActive(docMgr.GetCount() - 1);
+            restoredCount = restoredCount + recoveredOpened;
+            GUI.Toast.Info("Recovered " + recoveredOpened + " unsaved file(s) from a previous session");
+        }
+    }
+
+    // Shell/Open With launches provide one positional source path. Open it
+    // after session recovery so the explicitly requested document wins focus.
+    var startupFile = commandLineFile();
+    if startupFile != "" {
+        explorer_action_runner.OpenFileAndRecord(
+            shell, docMgr, engine, tabs, sessionMgr, startupFile);
+        restoredCount = restoredCount + 1;
+    }
+
+    // ========================================================================
+    // Show the welcome surface if no session was restored, otherwise load the
+    // restored active document. No fake editable "welcome document" is created.
+    // ========================================================================
+    if restoredCount == 0 {
+        welcomeView.Refresh(sessionMgr);
+        welcomeView.SetShown(true);
+        shell.SetStatusRight("");
+    } else {
+        welcomeView.SetShown(false);
+        var restoredDoc = docMgr.GetActive();
+        if restoredDoc != null {
+            engine.LoadDocument(restoredDoc);
+            shell.SelectSurface(restoredDoc.kind);
+            shell.SetStatusRight(file_commands.DocStatusLabel(restoredDoc));
+            if restoredDoc.isNew {
+                shell.SetBreadcrumbPath("");
+            } else {
+                shell.SetBreadcrumbPath(restoredDoc.filePath);
+            }
+        }
+    }
+
+    shell.SetStatusLeft("Ready");
+    shell.SetStatusCenter("Ln 1, Col 1  |  Lines: " + engine.GetLineCount());
+
+    shell.workbench.findBar.BindEditor(engine.editor);
+
+    // File watcher state lives in FileWatchController so the frame loop only
+    // resets/bumps it when commands resolve external-change notifications.
+    var workspaceWatcherState = new workspace_watcher.WorkspaceWatcherState();
+
+    // Command routing dependencies are stable after startup.
+    var commandContext = new command_context.CommandContext();
+    commandContext.shell = shell;
+    commandContext.docMgr = docMgr;
+    commandContext.projMgr = projMgr;
+    commandContext.engine = engine;
+    commandContext.tabs = tabs;
+    commandContext.buildSys = buildSys;
+    commandContext.dbgSession = dbgSession;
+    commandContext.terminalCtrl = terminalCtrl;
+    commandContext.fileWatchCtrl = fileWatchCtrl;
+    commandContext.workspaceWatcherState = workspaceWatcherState;
+    commandContext.indexer = indexer;
+    commandContext.breakpointStore = breakpointStore;
+    commandContext.sessionMgr = sessionMgr;
+    commandContext.locStore = locStore;
+    commandContext.commandRegistry = commandRegistry;
+    commandContext.paletteCtrl = paletteCtrl;
+    commandContext.explorerOverlay = explorerOverlay;
+    commandContext.debugOverlay = debugOverlay;
+    commandContext.commandInputOverlay = commandInputOverlay;
+    commandContext.overlays = overlays;
+    commandContext.liveDiag = liveDiag;
+    commandContext.symbolOutline = symbolOutline;
+    commandContext.sigCtrl = sigCtrl;
+    commandContext.searcher = searcher;
+    commandContext.appSettings = appSettings;
+
+    // Welcome-surface visibility tracking (refresh recents on transition to shown).
+    var prevDocCount = -1;
+
+    // Cursor tracking for dot-trigger and status bar caching
+    var prevCursorLine = 1;
+    var prevCursorCol  = 1;
+    var prevStatusRevision = engine.GetRevision();
+    var prevStatusLineCount = engine.GetLineCount();
+    var prevStatusCursorCount = engine.editor.GetCursorCount();
+    var didPostFirstFrameActivate = false;
+    var autoSaveRevision = engine.GetRevision();
+    var autoSaveDebounce = Threads.Debouncer.New(AUTO_SAVE_IDLE_MS);
+    var recoveryRevision = engine.GetRevision();
+    var recoveryDebounce = Threads.Debouncer.New(2000);
+    var scmGutter = new scm_gutter_controller.ScmGutterController();
+    var scmGutterRevision = engine.GetRevision();
+    var scmGutterDebounce = Threads.Debouncer.New(700);
+    var scmGutterActiveIndex = -1;
+
+    // ========================================================================
+    // Main event loop
+    // ========================================================================
+    while shell != null and shell.ShouldClose() == false {
+        perfMon.BeginFrame();
+        shell.PollWait(computePollWaitMs(shell, focusThrottle, buildSys,
+                                         dbgSession, terminalCtrl, editorScheduler,
+                                         indexer, projMgr, overlays));
+
+        // Ration background work (indexing, budgeted tools, workspace watching)
+        // when the window is unfocused. Input, rendering, process streams
+        // (build/debug/terminal), and auto-save are never gated.
+        focusThrottle.Update(shell.app);
+        var allowBackground = focusThrottle.AllowBackgroundWork();
+
+        // Activity bar — switch the left view (Explorer / Source Control).
+        if shell.workbench.abExplorer.WasClicked() { activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER); }
+        if shell.workbench.abSourceControl.WasClicked() {
+            activityBarCtrl.ShowView(activity_bar.VIEW_SCM);
+            if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
+        }
+        scmView.HandleEvents();
+        terminalCtrl.Pump();
+
+        // Welcome / start surface: shown only when no documents are open.
+        var curDocCount = docMgr.GetCount();
+        if curDocCount == 0 {
+            if prevDocCount != 0 { welcomeView.Refresh(sessionMgr); }
+            welcomeView.SetShown(true);
+            if welcomeView.newFileButton.WasClicked() {
+                file_commands.handleNew(shell, docMgr, engine, tabs);
+            }
+            if welcomeView.openFolderButton.WasClicked() {
+                file_commands.handleOpenFolder(shell, projMgr);
+            }
+            var recentSel = welcomeView.TakeRecentSelection();
+            if Str.StartsWith(recentSel, "file:") {
+                var recentPath = Str.Mid(recentSel, 6);
+                if IO.File.Exists(recentPath) != false {
+                    explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, recentPath);
+                    fileWatchCtrl.ResetPendingReload();
+                }
+            }
+        } else {
+            welcomeView.SetShown(false);
+        }
+        prevDocCount = curDocCount;
+        if shell.WasCloseRequested() {
+            file_commands.SaveEditorState(docMgr, engine);
+            breakpointStore.Save();
+            sessionMgr.Save(docMgr, projMgr);
+            if file_commands.handleExit(shell, docMgr, engine) {
+                recoveryStore.MarkCleanExit();
+                lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession,
+                                                terminalCtrl, fileWatchCtrl, workspaceWatcherState,
+                                                indexer, breakpointStore, sessionMgr);
+                return;
+            }
+        }
+
+        // ====================================================================
+        // Code Completion + IDE Intelligence
+        // ====================================================================
+        languageFrame.BeginFrame(shell, docMgr, projMgr, languageServices,
+                                 activeWorkbench, paletteCtrl, commandRegistry,
+                                 appSettings, engine);
+        var activeService = languageFrame.activeService;
+        if allowBackground {
+            languageFrame.PumpWorkspace(shell, projMgr, docMgr, engine);
+        }
+        languageFrame.SyncBreakpoints(engine, breakpointStore);
+        debug_commands.PumpGutter(shell, docMgr, engine, breakpointStore);
+
+        languageFrame.RouteCompletionKeys();
+        languageFrame.PumpForegroundTools(shell, docMgr, engine, tabs, locStore,
+                                          buildSys, dbgSession, breakpointStore);
+        if allowBackground {
+            languageFrame.PumpBudgetedTools(shell, docMgr, engine, locStore,
+                                            searcher, projMgr);
+        }
+        languageFrame.HandleManualIntelligenceTriggers(engine);
+        languageFrame.HandleTypedLanguageTriggers(engine);
+        var curCursorLine = languageFrame.curCursorLine;
+        var curCursorCol = languageFrame.curCursorCol;
+
+        // ====================================================================
+        // Command Palette + trigger source detection
+        // ====================================================================
+        // Live palette prefix modes (":" go to line) update rows per keystroke.
+        paletteCtrl.PumpLiveQuery(shell, commandRegistry, activeService);
+
+        var cpSelected = "";
+        if shell.commandPalette.WasSelected() {
+            var rawPaletteSelection = shell.commandPalette.GetSelected();
+            if paletteCtrl.IsGoto() {
+                edit_commands.handleGoToLineText(shell, engine,
+                                                 paletteCtrl.GotoArgFromId(rawPaletteSelection));
+                paletteCtrl.ResetToCommands(shell, commandRegistry, activeService);
+            } else if paletteCtrl.IsQuickOpen() {
+                search_commands.HandleQuickOpenPaletteSelection(shell, projMgr, docMgr, engine, tabs,
+                                                                rawPaletteSelection);
+                paletteCtrl.ResetToCommands(shell, commandRegistry, activeService);
+            } else {
+                cpSelected = commandRegistry.NormalizeId(rawPaletteSelection);
+                if cpSelected != "" and commandRegistry.IsExecutable(cpSelected, activeService) == false {
+                    var disabledReason = commandRegistry.DisabledReason(cpSelected, activeService);
+                    shell.SetStatusLeft(disabledReason);
+                    GUI.Toast.Info(disabledReason);
+                    cpSelected = "";
+                }
+            }
+        }
+        paletteCtrl.RestoreCommandsWhenClosed(shell, commandRegistry, activeService);
+        if Shortcuts.WasTriggered("palette") {
+            paletteCtrl.OpenCommands(shell, commandRegistry, activeService);
+        }
+
+        var suppressTreeOpen = context_menu_dispatcher.PumpContextMenus(
+            shell, engine, projMgr, docMgr, tabs, sessionMgr, fileWatchCtrl,
+            buildSys, locStore, searcher, explorerOverlay, paletteCtrl,
+            commandRegistry, indexer, activeService, dbgSession, breakpointStore,
+            commandInputOverlay, appSettings);
+
+        // Apply any completed file-tree drag-and-drop as a file move.
+        explorer_action_runner.PumpTreeDrops(shell, projMgr, docMgr, engine, indexer);
+
+        // ====================================================================
+        // Dispatch commands via trigger helper
+        // ====================================================================
+
+        if main_command_dispatcher.DispatchCommandContext(commandContext,
+                                                          cpSelected,
+                                                          suppressTreeOpen) {
+            return;
+        }
+
+        // Split-editor commands. Handled here (not the dispatcher) so the
+        // focused-pane controllers can be re-bound with `completer` in scope.
+        if dispatch_helpers.TriggeredNoMenu("spliteditorright", cpSelected) {
+            if engine.PaneCount() < 2 {
+                engine.SplitRight(shell.workbench.editorRow);
+                RebindFocusedPane(shell, engine, completer);
+            }
+        }
+        if dispatch_helpers.TriggeredNoMenu("focusotherpane", cpSelected) {
+            engine.FocusOtherPane();
+            RebindFocusedPane(shell, engine, completer);
+        }
+        if dispatch_helpers.TriggeredNoMenu("closesplit", cpSelected) {
+            engine.CloseSplit();
+            RebindFocusedPane(shell, engine, completer);
+        }
+        // Click-to-focus: when the other pane gains keyboard focus, retarget the
+        // focused-pane controllers to it.
+        if engine.SyncFocusFromWidgets() {
+            RebindFocusedPane(shell, engine, completer);
+        }
+
+        // FindBar per-frame updates
+        if shell.workbench.findBar.IsVisible() {
+            shell.workbench.findBar.FindNext();
+            shell.workbench.findBar.FindPrevious();
+            shell.workbench.findBar.Replace();
+            shell.workbench.findBar.ReplaceAll();
+            var matchCount = shell.workbench.findBar.GetMatchCount();
+            if matchCount > 0 {
+                var currMatch = shell.workbench.findBar.GetCurrentMatch();
+                shell.SetStatusLeft("" + currMatch + " of " + matchCount + " matches");
+            }
+        }
+
+        // Diagnostics panel: click to navigate to error line
+        if shell.toolPanels.diagListBox.WasSelectionChanged() {
+            var selItem = shell.toolPanels.diagListBox.Selected;
+            if selItem != null {
+                locStore.OpenLocation(shell, docMgr, engine, tabs, GUI.ListBox.ItemGetData(selItem));
+            }
+        }
+
+        if shell.toolPanels.outputListBox.WasSelectionChanged() {
+            var outItem = shell.toolPanels.outputListBox.Selected;
+            if outItem != null {
+                var data = GUI.ListBox.ItemGetData(outItem);
+                if locations.IsLocationData(data) {
+                    locStore.OpenLocation(shell, docMgr, engine, tabs, data);
+                } else if Str.StartsWith(data, "file:") {
+                    var recentPath = Str.Mid(data, 6);
+                    if IO.File.Exists(recentPath) != false {
+                        explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, recentPath);
+                        fileWatchCtrl.ResetPendingReload();
+                    }
+                }
+            }
+        }
+        if shell.toolPanels.searchListBox.WasSelectionChanged() {
+            var searchItem = shell.toolPanels.searchListBox.Selected;
+            if searchItem != null {
+                var searchData = GUI.ListBox.ItemGetData(searchItem);
+                if locations.IsLocationData(searchData) {
+                    locStore.OpenLocation(shell, docMgr, engine, tabs, searchData);
+                }
+            }
+        }
+        if shell.toolPanels.referencesListBox.WasSelectionChanged() {
+            var refItem = shell.toolPanels.referencesListBox.Selected;
+            if refItem != null {
+                var refData = GUI.ListBox.ItemGetData(refItem);
+                if locations.IsLocationData(refData) {
+                    locStore.OpenLocation(shell, docMgr, engine, tabs, refData);
+                }
+            }
+        }
+        if shell.toolPanels.callStackListBox.WasSelectionChanged() {
+            debug_commands.handleCallStackSelect(shell, docMgr, engine, tabs, dbgSession);
+        }
+        if shell.toolPanels.variablesListBox.WasSelectionChanged() {
+            debug_commands.HandleVariableActivate(shell, dbgSession);
+        }
+        shell.toolPanels.PumpToolTabs();
+
+        // Inline overlay actions
+        var overlayAction = overlays.Pump(shell);
+        if overlayAction == ide_overlays.ACTION_BROWSE_FONT {
+            var fontPath = GUI.FileDialog.Open("Choose Editor Font", "", "*.ttf;*.otf;*.ttc");
+            if fontPath != "" {
+                overlays.SetFontPath(fontPath);
+            }
+        }
+        if overlayAction == ide_overlays.ACTION_USE_SYSTEM_FONT {
+            overlays.UseSystemFont();
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_FONT_SIZE {
+            overlays.ResetFontSize();
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_APPEARANCE {
+            shell.SetStatusLeft("Appearance defaults restored");
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_EDITING {
+            shell.SetStatusLeft("Editing defaults restored");
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_INTELLISENSE {
+            shell.SetStatusLeft("IntelliSense defaults restored");
+        }
+        if overlayAction == ide_overlays.ACTION_RESET_STARTUP {
+            shell.SetStatusLeft("Startup defaults restored");
+        }
+        if overlayAction == ide_overlays.ACTION_APPLY_SETTINGS {
+            settings_applier.ApplySettingsFromOverlay(shell, overlays, appSettings,
+                                                      engine, liveDiag, editorScheduler);
+        }
+        if overlayAction == ide_overlays.ACTION_CLOSE_SETTINGS {
+            overlays.CloseSettings();
+            shell.SetStatusLeft("Ready");
+        }
+        if overlayAction == ide_overlays.ACTION_CLOSE_ABOUT {
+            overlays.CloseAbout();
+            shell.SetStatusLeft("Ready");
+        }
+
+        var commandInputAction = commandInputOverlay.Pump(shell);
+        if commandInputAction == command_input.COMMAND_INPUT_GOTO_LINE {
+            edit_commands.handleGoToLineText(shell, engine, commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_ADD_WATCH {
+            debug_commands.handleAddWatchExpression(shell, dbgSession, commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_FILTER_OUTPUT {
+            shell.toolPanels.SetOutputFilter(commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_WORKSPACE_SYMBOLS {
+            search_commands.handleWorkspaceSymbolsText(shell, projMgr, docMgr,
+                                                       engine, locStore,
+                                                       commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_RENAME_SYMBOL {
+            edit_commands.handleRenameSymbolText(shell, docMgr, engine, tabs,
+                                                 indexer,
+                                                 commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_EXTRACT_LOCAL {
+            edit_commands.handleExtractLocalVariableText(shell, docMgr, engine,
+                                                         commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_EXTRACT_FUNCTION {
+            edit_commands.handleExtractFunctionText(shell, docMgr, engine,
+                                                    commandInputOverlay.ReadValue());
+            commandInputOverlay.Finish();
+        }
+        if commandInputAction == command_input.COMMAND_INPUT_CANCEL {
+            commandInputOverlay.Finish();
+            shell.SetStatusLeft("Command canceled");
+        }
+
+        // ====================================================================
+        // Tab switching
+        // ====================================================================
+        if shell.workbench.tabBar.WasChanged() {
+            var newIdx = shell.workbench.tabBar.GetActiveIndex();
+            if newIdx >= 0 and newIdx < docMgr.GetCount() and newIdx != docMgr.activeIndex {
+                file_commands.SaveEditorState(docMgr, engine);
+                docMgr.SetActive(newIdx);
+                var switchDoc = docMgr.GetActive();
+                if switchDoc != null {
+                    engine.LoadDocument(switchDoc);
+                    shell.SelectSurface(switchDoc.kind);
+                    if switchDoc.isNew {
+                        shell.SetBreadcrumbPath("");
+                    } else {
+                        shell.SetBreadcrumbPath(switchDoc.filePath);
+                    }
+                    shell.SetStatusRight(file_commands.DocStatusLabel(switchDoc));
+                    shell.SetStatusLeft("Switched to: " + switchDoc.fileName);
+                    fileWatchCtrl.ResetPendingReload();
+                }
+            }
+        }
+
+        // ====================================================================
+        // Track modified state
+        // ====================================================================
+        if engine != null and docMgr != null and docMgr.GetCount() > 0 {
+            if engine.IsModified() {
+                var curDoc = docMgr.GetActive();
+                if curDoc != null {
+                    var doc = curDoc!;
+                    if doc.isReadOnlyPreview {
+                        engine.ClearModified();
+                        tabs.SetModified(docMgr.activeIndex, false);
+                    } else if doc.isModified == false {
+                        doc.isModified = true;
+                        tabs.SetModified(docMgr.activeIndex, true);
+                    }
+                }
+            }
+        }
+
+        var autoDoc = docMgr.GetActive();
+        var currentRevisionForSave = engine.GetRevision();
+        if appSettings.autoSave and autoDoc != null and autoDoc!.isNew == false {
+            if currentRevisionForSave != autoSaveRevision {
+                autoSaveRevision = currentRevisionForSave;
+                autoSaveDebounce.Signal();
+            } else if autoSaveDebounce.get_IsReady() and autoDoc!.isModified {
+                if file_commands.AutoSaveActive(shell, docMgr, engine, tabs) {
+                    autoSaveRevision = engine.GetRevision();
+                    autoSaveDebounce.Reset();
+                    fileWatchCtrl.ResetPendingReload();
+                }
+            }
+        } else {
+            autoSaveRevision = currentRevisionForSave;
+            autoSaveDebounce.Reset();
+        }
+
+        // Crash-recovery swaps: write modified documents to swap files a short
+        // time after edits settle, independent of the autosave setting, so a
+        // crash never loses more than the last ~2s of unsaved work.
+        if currentRevisionForSave != recoveryRevision {
+            recoveryRevision = currentRevisionForSave;
+            recoveryDebounce.Signal();
+        } else if recoveryDebounce.get_IsReady() {
+            recoveryStore.WriteSwaps(docMgr, engine);
+            recoveryDebounce.Reset();
+        }
+
+        // SCM gutter change bars: refresh immediately on a tab switch and a
+        // short time after edits settle. Gated to the unfocused throttle so it
+        // never runs git while the window is in the background.
+        if allowBackground {
+            if docMgr.activeIndex != scmGutterActiveIndex {
+                scmGutterActiveIndex = docMgr.activeIndex;
+                scmGutter.RefreshActive(engine, docMgr, projMgr);
+            } else if currentRevisionForSave != scmGutterRevision {
+                scmGutterRevision = currentRevisionForSave;
+                scmGutterDebounce.Signal();
+            } else if scmGutterDebounce.get_IsReady() {
+                scmGutter.RefreshActive(engine, docMgr, projMgr);
+                scmGutterDebounce.Reset();
+            }
+        }
+
+        // ====================================================================
+        // File change detection
+        // ====================================================================
+        if allowBackground {
+            fileWatchCtrl.Pump(shell, docMgr, OPEN_DOC_EXTERNAL_POLL_MS);
+        }
+
+        if allowBackground {
+            workspace_watcher.PumpWorkspaceWatcher(shell, projMgr, docMgr, indexer, locStore, engine,
+                                 workspaceWatcherState);
+        }
+
+        // ====================================================================
+        // Update status bar (only when cursor moves)
+        // ====================================================================
+        var statusRevision = engine.GetRevision();
+        var statusLineCount = engine.GetLineCount();
+        var statusCursorCount = engine.editor.GetCursorCount();
+        if curCursorLine != prevCursorLine or curCursorCol != prevCursorCol
+           or statusRevision != prevStatusRevision
+           or statusLineCount != prevStatusLineCount
+           or statusCursorCount != prevStatusCursorCount {
+            var cursorText = "Ln " + curCursorLine + ", Col " + curCursorCol + "  |  Lines: " + statusLineCount;
+            if statusCursorCount > 1 {
+                cursorText = cursorText + "  |  Cursors: " + statusCursorCount;
+            }
+            shell.SetStatusCenter(cursorText);
+        }
+        prevCursorLine = curCursorLine;
+        prevCursorCol  = curCursorCol;
+        prevStatusRevision = statusRevision;
+        prevStatusLineCount = statusLineCount;
+        prevStatusCursorCount = statusCursorCount;
+
+        var perfSpan = perfMon.StartSpan();
+        shell.Render();
+        if didPostFirstFrameActivate == false {
+            shell.Activate();
+            if Machine.Os == "macos" and shell.app.IsFocused() == false
+               and envFlagEnabled("ZANNA_GFX_NO_ACTIVATE") == false
+               and envFlagEnabled("ZANNA_GFX_HIDE_WINDOWS") == false {
+                shell.SetStatusLeft("Window activation is blocked by macOS");
+                GUI.Toast.Info("Zanna Studio is visible but macOS did not make it active");
+            }
+            didPostFirstFrameActivate = true;
+        }
+        perfMon.AddRender(perfSpan);
+        perfMon.EndFrame(engine.editor, indexer);
+    }
+
+    // ========================================================================
+    // Cleanup
+    // ========================================================================
+    recoveryStore.MarkCleanExit();
+    lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession,
+                                    terminalCtrl, fileWatchCtrl, workspaceWatcherState,
+                                    indexer, breakpointStore, sessionMgr);
+}

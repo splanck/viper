@@ -13,7 +13,7 @@ focused tests on 2026-06-27
 
 ## Context
 
-The ZannaIDE syntax-rendering work makes code rendering richer for all three
+The Zanna Studio syntax-rendering work makes code rendering richer for all three
 languages. That work touches the GUI runtime C surface:
 
 - The CodeEditor syntax highlighter exposed only six overridable token types
@@ -63,7 +63,7 @@ These additions:
   rules, VM call/heap/exception behavior, numeric semantics, or native codegen
   lowering;
 - are covered by runtime completeness, ABI/surface, and focused IDE probe tests
-  (`zannaide/src/probes/syntax_render_probe.zia`).
+  (`zannastudio/src/probes/syntax_render_probe.zia`).
 
 Compiler intelligence still reaches the runtime only through the existing
 strong/weak `rt_zia_*` bridge — the GUI runtime never links the compiler.
@@ -87,7 +87,7 @@ Verified on 2026-06-27:
 - The current built CLI (`build/src/tools/zanna/zanna --dump-runtime-api`)
   exposes those three methods and does not expose `SetRenderWhitespace`.
 - Focused checks pass: `test_rt_gui_runtime`, `test_rt_gui_ide`,
-  `zia_rt_api_test_zannaide_primitives`, and `zia_zannaide_syntax_render`.
+  `zia_rt_api_test_zannastudio_primitives`, and `zia_zannastudio_syntax_render`.
 
 ## Consequences
 

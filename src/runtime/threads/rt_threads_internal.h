@@ -31,6 +31,7 @@
 #include "rt_threads.h"
 
 #include "rt_context.h"
+#include "rt_context_internal.h"
 #include "rt_internal.h"
 #include "zanna/runtime/rt.h"
 
@@ -48,8 +49,6 @@ void rt_trap_set_recovery(jmp_buf *buf);
 void rt_trap_clear_recovery(void);
 const char *rt_trap_get_error(void);
 
-typedef void (*rt_thread_entry_fn)(void *);
-
 #define RT_THREAD_MAGIC 0x56545244u      /* "VTRD" */
 #define RT_SAFE_THREAD_MAGIC 0x56545346u /* "VTSF" */
 
@@ -63,6 +62,27 @@ typedef struct SafeThreadCtx {
     int8_t trapped;
     char error[512];
 } SafeThreadCtx;
+
+/// @brief Decode the legacy IL `obj` representation of a native callback.
+/// @details The public IL ABI historically transports callback addresses in a
+///          `void *`. ISO C does not define a cast from an object pointer to a
+///          function pointer, so the compatibility boundary copies the object
+///          representation after proving both pointer kinds have equal size.
+///          All native runtime callers use the typed APIs and bypass this shim.
+/// @param opaque Opaque callback representation supplied by the IL ABI.
+/// @return Typed callback with the same representation, or NULL for NULL.
+static inline rt_thread_entry_fn thread_entry_from_opaque(void *opaque) {
+#if defined(__cplusplus)
+    static_assert(sizeof(rt_thread_entry_fn) == sizeof(void *),
+                  "thread callback and object pointers must have equal ABI size");
+#else
+    _Static_assert(sizeof(rt_thread_entry_fn) == sizeof(void *),
+                   "thread callback and object pointers must have equal ABI size");
+#endif
+    rt_thread_entry_fn entry = NULL;
+    memcpy(&entry, &opaque, sizeof(entry));
+    return entry;
+}
 
 // Cross-TU bridges. is_regular_thread_handle is implemented per-platform; the
 // remaining functions live in rt_threads_common.c (they wrap the public Thread
@@ -109,9 +129,19 @@ static inline void thread_save_trap_error(char *buffer, size_t buffer_size, cons
     snprintf(buffer, buffer_size, "%s", err);
 }
 
-static inline void thread_retain_owned_arg_or_release(void *arg, void *cleanup_obj, const char *fallback) {
+/// @brief Try to retain a runtime-managed value for a spawned thread.
+/// @details Installs a local recovery frame so retain overflow and stale-handle
+///          traps cannot skip constructor rollback. On failure the diagnostic
+///          is re-raised after clearing recovery, and a returning trap hook
+///          receives a zero result so the caller can release initialized state.
+///          Unmanaged non-null pointers retain the historical borrowed-argument
+///          behavior because @ref rt_obj_retain_maybe ignores them.
+/// @param arg Object, string, borrowed native pointer, or NULL.
+/// @param fallback Diagnostic used when the recovered trap has no message.
+/// @return Non-zero when construction may continue; zero after a trapped retain.
+static inline int thread_try_retain_owned_value(void *arg, const char *fallback) {
     if (!arg)
-        return;
+        return 1;
 
     char saved_error[256];
     jmp_buf recovery;
@@ -119,15 +149,22 @@ static inline void thread_retain_owned_arg_or_release(void *arg, void *cleanup_o
     if (setjmp(recovery) != 0) {
         thread_save_trap_error(saved_error, sizeof(saved_error), fallback);
         rt_trap_clear_recovery();
-        thread_release_object(cleanup_obj);
         rt_trap(saved_error);
-        return;
+        return 0;
     }
 
     rt_obj_retain_maybe(arg);
     rt_trap_clear_recovery();
+    return 1;
 }
 
-static inline void thread_retain_self_or_release(void *obj, const char *fallback) {
-    thread_retain_owned_arg_or_release(obj, obj, fallback);
+/// @brief Try to acquire the self-reference held until a thread exits.
+/// @details Delegates to @ref thread_try_retain_owned_value and returns an
+///          explicit status so platform constructors never continue with an
+///          object that a returning trap path already released.
+/// @param obj Newly initialized Thread or SafeThread object.
+/// @param fallback Diagnostic used when the recovered trap has no message.
+/// @return Non-zero when the self-reference was acquired; zero on failure.
+static inline int thread_try_retain_self(void *obj, const char *fallback) {
+    return thread_try_retain_owned_value(obj, fallback);
 }

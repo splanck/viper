@@ -61,14 +61,15 @@ typedef struct {
 static int quat_is_compatible_object(void *q) {
     if (!q)
         return 0;
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(q, &hdr) || !hdr)
+    rt_heap_info_t heap_info;
+    if (!rt_heap_get_info(q, &heap_info))
         return 0;
-    if (hdr->kind != RT_HEAP_OBJECT || hdr->elem_kind != RT_ELEM_NONE)
+    if (heap_info.kind != RT_HEAP_OBJECT || heap_info.elem_kind != RT_ELEM_NONE)
         return 0;
-    if (hdr->class_id == RT_QUAT_CLASS_ID)
-        return hdr->cap >= sizeof(ZannaQuat);
-    return hdr->class_id == 0 && hdr->len == sizeof(ZannaQuat) && hdr->cap == sizeof(ZannaQuat);
+    if (heap_info.class_id == RT_QUAT_CLASS_ID)
+        return heap_info.cap >= sizeof(ZannaQuat);
+    return heap_info.class_id == 0 && heap_info.len == sizeof(ZannaQuat) &&
+           heap_info.cap == sizeof(ZannaQuat);
 }
 
 /// @brief Validate and cast an opaque handle to a quaternion payload.

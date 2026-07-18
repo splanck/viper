@@ -4,11 +4,28 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTRetryTests.cpp
+// Purpose: Regression tests for RetryPolicy bounds, reset behavior, object
+//          identity, and concurrent attempt reservation.
+// Key invariants:
+//   - Near-limit jitter never overflows a signed delay.
+//   - Concurrent consumers reserve exactly the configured attempt count.
+// Ownership/Lifetime:
+//   - Test policies are process-local managed objects reclaimed at test exit.
+// Links: src/runtime/network/rt_retry.c, src/runtime/network/rt_retry.h
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_retry.h"
 
+#include <atomic>
 #include <cassert>
+#include <cstdint>
+#include <thread>
+#include <vector>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -16,6 +33,7 @@ extern "C" void vm_trap(const char *msg) {
 
 static void test_fixed_retry() {
     void *p = rt_retry_new(3, 100);
+    assert(rt_obj_class_id(p) == RT_RETRY_CLASS_ID);
     assert(rt_retry_can_retry(p) == 1);
     assert(rt_retry_get_max_retries(p) == 3);
     assert(rt_retry_get_attempt(p) == 0);
@@ -130,6 +148,48 @@ static void test_exponential_delays_always_bounded() {
     // bounded case above exercises RC-6 (early-exit cap) through regular doubling.
 }
 
+/// @brief Jitter near the signed limit must clamp to available headroom before addition.
+/// @details The former `delay += jitter; if (delay > max)` sequence overflowed
+///          before it could clamp. Values within four milliseconds of
+///          INT64_MAX exercise the same path without relying on timing.
+static void test_jitter_near_int64_max_does_not_overflow() {
+    const int64_t base = INT64_MAX - 4;
+    void *p = rt_retry_exponential(2, base, INT64_MAX);
+    int64_t first = rt_retry_next_delay(p);
+    int64_t second = rt_retry_next_delay(p);
+    assert(first >= base && first <= INT64_MAX);
+    assert(second == INT64_MAX);
+}
+
+/// @brief Concurrent callers must reserve every attempt exactly once.
+/// @details Atomic reservation prevents lost increments, duplicate attempt
+///          numbers, and counters beyond the configured maximum when workers
+///          share a policy during one transient outage.
+static void test_concurrent_attempt_reservation() {
+    constexpr int64_t kAttempts = 4000;
+    void *p = rt_retry_exponential(kAttempts, 1, 1000);
+    std::atomic<int64_t> successful{0};
+    std::vector<std::thread> workers;
+    for (int i = 0; i < 8; i++) {
+        workers.emplace_back([&]() {
+            for (;;) {
+                int64_t delay = rt_retry_next_delay(p);
+                if (delay < 0)
+                    break;
+                assert(delay >= 1 && delay <= 1000);
+                successful.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+    }
+    for (auto &worker : workers)
+        worker.join();
+
+    assert(successful.load(std::memory_order_relaxed) == kAttempts);
+    assert(rt_retry_get_attempt(p) == kAttempts);
+    assert(rt_retry_is_exhausted(p) == 1);
+    assert(rt_retry_next_delay(p) == -1);
+}
+
 int main() {
     test_fixed_retry();
     test_exponential_retry();
@@ -139,5 +199,7 @@ int main() {
     test_total_attempts();
     test_null_safety();
     test_exponential_delays_always_bounded();
+    test_jitter_near_int64_max_does_not_overflow();
+    test_concurrent_attempt_reservation();
     return 0;
 }

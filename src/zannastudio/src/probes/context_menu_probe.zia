@@ -1,0 +1,149 @@
+module context_menu_probe;
+
+// ============================================================================
+// MODULE: context_menu_probe
+// PURPOSE: Regression probe for editor/tree/tab context-menu construction.
+//
+// WHERE-THIS-FITS: Context menus are UI surfaces, while command handlers own the
+//          actual behavior. This probe checks construction and deterministic
+//          document-manager side effects without depending on pointer input.
+//
+// TEACHING-NOTE: Context-menu tests should separate menu availability from
+//          command behavior so routing regressions are easy to locate.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../commands/file_commands";
+
+bind Zanna.GUI as GUI;
+bind Terminal = Zanna.Terminal;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Write and open `count` fresh temp files into `docMgr`, adding a tab
+///        for each so the tab strip stays in sync (RefreshFromDocuments trims
+///        any surplus tabs left over from a previous sub-test).
+func openDocs(docMgr: document_manager.DocumentManager,
+              tabs: editor_tabs.EditorTabs,
+              root: String,
+              count: Integer) {
+    var i = 0;
+    while i < count {
+        var p = Path.Join(root, "doc" + i + ".zia");
+        File.WriteAllText(p, "module Doc" + i + ";\n");
+        docMgr.OpenFile(p);
+        tabs.AddTab(Path.Name(p), 1);
+        i = i + 1;
+    }
+    tabs.RefreshFromDocuments(docMgr);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Context Menu Probe", 960, 640);
+    shell.Poll();
+    shell.Render();
+
+    // Tab-close tests must never block on an "unsaved changes" confirmation.
+    file_commands.SetConfirmDirtyClose(false);
+
+    var engine = new editor_engine.EditorEngine();
+    engine.Setup(shell.workbench.editorRow);
+    var tabs = new editor_tabs.EditorTabs();
+    tabs.Setup(shell.workbench.tabBar);
+
+    // --- Test A: the new context menus exist and are idle at rest ----------
+    if shell.menuChrome.editorContextMenu == null {
+        fail(shell, "editor context menu missing");
+        return;
+    }
+    if shell.menuChrome.tabContextMenu == null {
+        fail(shell, "tab context menu missing");
+        return;
+    }
+    if shell.menuChrome.editorContextMenu.IsVisible() or shell.menuChrome.tabContextMenu.IsVisible() {
+        fail(shell, "context menu visible at rest");
+        return;
+    }
+    // GetClickedItem is edge-triggered: with no click it must report nothing.
+    if shell.menuChrome.editorContextMenu.GetClickedItem() != null {
+        fail(shell, "editor menu reports a stale click");
+        return;
+    }
+
+    var root = TempFile.CreateDirWithPrefix("zannastudio_ctxmenu_");
+
+    // --- Test B: GetDocument bounds ----------------------------------------
+    var dmB = new document_manager.DocumentManager();
+    openDocs(dmB, tabs, root, 3);
+    if dmB.GetCount() != 3 {
+        fail(shell, "open three docs");
+        return;
+    }
+    if dmB.GetDocument(-1) != null or dmB.GetDocument(3) != null {
+        fail(shell, "GetDocument out-of-range not null");
+        return;
+    }
+    var d0 = dmB.GetDocument(0);
+    if d0 == null or d0!.filePath != Path.Join(root, "doc0.zia") {
+        fail(shell, "GetDocument(0) wrong doc");
+        return;
+    }
+
+    // --- Test C: Close Others keeps exactly the kept tab -------------------
+    var dmC = new document_manager.DocumentManager();
+    openDocs(dmC, tabs, root, 3);
+    var keptPath = Path.Join(root, "doc1.zia");
+    file_commands.handleCloseOthers(shell, dmC, engine, tabs, 1);
+    if dmC.GetCount() != 1 {
+        fail(shell, "close others count");
+        return;
+    }
+    var keptDoc = dmC.GetDocument(0);
+    if keptDoc == null or keptDoc!.filePath != keptPath {
+        fail(shell, "close others kept wrong doc");
+        return;
+    }
+
+    // --- Test D: Close Saved leaves only the modified tab ------------------
+    var dmD = new document_manager.DocumentManager();
+    openDocs(dmD, tabs, root, 3);
+    var dirtyDoc = dmD.GetDocument(1);
+    if dirtyDoc == null {
+        fail(shell, "close saved setup");
+        return;
+    }
+    dirtyDoc!.isModified = true;
+    var dirtyPath = dirtyDoc!.filePath;
+    file_commands.handleCloseSaved(shell, dmD, engine, tabs);
+    if dmD.GetCount() != 1 {
+        fail(shell, "close saved count");
+        return;
+    }
+    var survivor = dmD.GetDocument(0);
+    if survivor == null or survivor!.filePath != dirtyPath {
+        fail(shell, "close saved kept wrong doc");
+        return;
+    }
+
+    // --- Test E: Close All empties the manager -----------------------------
+    var dmE = new document_manager.DocumentManager();
+    openDocs(dmE, tabs, root, 2);
+    file_commands.handleCloseAll(shell, dmE, engine, tabs);
+    if dmE.GetCount() != 0 {
+        fail(shell, "close all count");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

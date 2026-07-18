@@ -19,7 +19,9 @@
 //     registry before touching the header.
 //   - refcnt==0 is the freed state; refcnt>=RT_HEAP_IMMORTAL_REFCNT is immortal/static
 //     sentinel (never freed). All atomic inc/dec use __ATOMIC_RELAXED.
-//   - rt_heap_release() calls free() only when refcnt drops to 0.
+//   - Final reclamation zeroes weak observers before unregistering the payload.
+//   - rt_heap_release() returns non-pooled blocks through rt_free only when
+//     refcnt drops to 0; pooled string blocks return to their owning slab.
 //   - The kind field (RT_HEAP_KIND_*) disambiguates string vs array vs raw.
 //   - len/cap are logical element counts for string/array payloads; raw
 //     (opaque) payloads leave len=0, cap=byte size.
@@ -58,6 +60,22 @@
 #else
 #define RT_HEAP_UNUSED_PRIVATE
 #endif
+
+/// @brief Allocate zero-initialized storage for a managed heap block.
+/// @details Routes payload-block allocation through the runtime allocation
+///          shim so embedders and deterministic OOM tests observe the same
+///          allocation path as other runtime subsystems. The shim accepts an
+///          signed byte count, so requests outside its representable range are
+///          rejected before conversion. Storage returned here must be released
+///          with @ref rt_free.
+/// @param bytes Total header-plus-payload byte count.
+/// @return Zero-initialized storage, or NULL when the size or allocation is
+///         rejected by the configured allocator.
+static void *rt_heap_alloc_zeroed_(size_t bytes) {
+    if (bytes > (size_t)INT64_MAX)
+        return NULL;
+    return rt_alloc((int64_t)bytes);
+}
 
 //=============================================================================
 // Global shutdown handler
@@ -491,6 +509,31 @@ int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr) {
     return 1;
 }
 
+/// @copydoc rt_heap_get_info
+int8_t rt_heap_get_info(const void *payload, rt_heap_info_t *out_info) {
+    if (!out_info)
+        return 0;
+    memset(out_info, 0, sizeof(*out_info));
+    if (!payload || payload == RT_HEAP_REG_TOMBSTONE)
+        return 0;
+
+    rt_heap_registry_lock_();
+    rt_heap_hdr_t *hdr = NULL;
+    int found = rt_heap_try_get_header_locked_((void *)(uintptr_t)payload, &hdr);
+    if (found && hdr) {
+        out_info->kind = hdr->kind;
+        out_info->elem_kind = hdr->elem_kind;
+        out_info->flags = hdr->flags;
+        out_info->refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+        out_info->len = hdr->len;
+        out_info->cap = hdr->cap;
+        out_info->alloc_size = hdr->alloc_size;
+        out_info->class_id = hdr->class_id;
+    }
+    rt_heap_registry_unlock_();
+    return found && hdr ? 1 : 0;
+}
+
 /// @brief Check whether @p ptr and @p bytes are wholly inside one tracked heap payload.
 /// @details VM memory instructions commonly dereference object fields, array
 ///          elements, and string payload bytes through interior pointers derived
@@ -509,12 +552,6 @@ int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr) {
 int8_t rt_heap_contains_range(const void *ptr, size_t bytes) {
     if (!ptr)
         return 0;
-
-    rt_heap_hdr_t *exact_hdr = NULL;
-    if (rt_heap_try_get_header((void *)(uintptr_t)ptr, &exact_hdr) && exact_hdr) {
-        size_t payload_bytes = exact_hdr->alloc_size - sizeof(rt_heap_hdr_t);
-        return bytes <= payload_bytes ? 1 : 0;
-    }
 
     const uintptr_t address = (uintptr_t)ptr;
     int found = 0;
@@ -613,9 +650,7 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
     if (from_pool) {
         hdr = (rt_heap_hdr_t *)rt_pool_alloc(total_bytes);
     } else {
-        hdr = (rt_heap_hdr_t *)malloc(total_bytes);
-        if (hdr)
-            memset(hdr, 0, total_bytes);
+        hdr = (rt_heap_hdr_t *)rt_heap_alloc_zeroed_(total_bytes);
     }
 
     if (!hdr)
@@ -648,7 +683,7 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
                 if (from_pool)
                     rt_pool_free(hdr, total_bytes);
                 else
-                    free(hdr);
+                    rt_free(hdr);
                 return NULL;
             }
         }
@@ -662,7 +697,23 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
         if (from_pool)
             rt_pool_free(hdr, total_bytes);
         else
-            free(hdr);
+            rt_free(hdr);
+        return NULL;
+    }
+
+    /* Reference-bearing arrays participate in cycle collection from the
+       instant they become live. Registration is non-trapping so a tracking-
+       table allocation failure can roll the heap allocation back before the
+       payload escapes or owns any non-null element. */
+    if (kind == RT_HEAP_ARRAY && (elem_kind == RT_ELEM_OBJ || elem_kind == RT_ELEM_BOX) &&
+        !rt_gc_track_reference_array(payload)) {
+        rt_heap_registry_lock_();
+        rt_heap_registry_remove_locked_(payload);
+        rt_heap_registry_unlock_();
+        if (from_pool)
+            rt_pool_free(hdr, total_bytes);
+        else
+            rt_free(hdr);
         return NULL;
     }
 
@@ -681,10 +732,12 @@ void rt_heap_retain(void *payload) {
     if (!payload)
         return;
 
+    rt_gc_mutator_enter();
     rt_heap_registry_lock_();
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header_locked_(payload, &hdr) || !hdr) {
         rt_heap_registry_unlock_();
+        rt_gc_mutator_exit();
         rt_trap("rt_heap_retain: invalid or freed heap payload");
         return;
     }
@@ -694,15 +747,18 @@ void rt_heap_retain(void *payload) {
     for (;;) {
         if (old == 0) {
             rt_heap_registry_unlock_();
+            rt_gc_mutator_exit();
             rt_trap("rt_heap: retain after release");
             return;
         }
         if (old >= RT_HEAP_IMMORTAL_REFCNT) {
             rt_heap_registry_unlock_();
+            rt_gc_mutator_exit();
             return;
         }
         if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
             rt_heap_registry_unlock_();
+            rt_gc_mutator_exit();
             rt_trap("refcount overflow");
             return;
         }
@@ -717,6 +773,7 @@ void rt_heap_retain(void *payload) {
         }
     }
     rt_heap_registry_unlock_();
+    rt_gc_mutator_exit();
     (void)next;
 #ifdef ZANNA_RC_DEBUG
     fprintf(stderr, "rt_heap_retain(%p) => %zu\n", payload, next);
@@ -729,10 +786,12 @@ void rt_heap_retain(void *payload) {
 int32_t rt_heap_try_retain_live(void *payload) {
     if (!payload)
         return 0;
+    rt_gc_mutator_enter();
     rt_heap_registry_lock_();
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header_locked_(payload, &hdr) || !hdr) {
         rt_heap_registry_unlock_();
+        rt_gc_mutator_exit();
         return 0;
     }
 
@@ -740,14 +799,17 @@ int32_t rt_heap_try_retain_live(void *payload) {
     for (;;) {
         if (old == 0) {
             rt_heap_registry_unlock_();
+            rt_gc_mutator_exit();
             return 0;
         }
         if (old >= RT_HEAP_IMMORTAL_REFCNT) {
             rt_heap_registry_unlock_();
+            rt_gc_mutator_exit();
             return 2;
         }
         if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
             rt_heap_registry_unlock_();
+            rt_gc_mutator_exit();
             return -1;
         }
         size_t next = old + 1;
@@ -758,6 +820,7 @@ int32_t rt_heap_try_retain_live(void *payload) {
                                         __ATOMIC_RELAXED,
                                         __ATOMIC_RELAXED)) {
             rt_heap_registry_unlock_();
+            rt_gc_mutator_exit();
             return 1;
         }
     }
@@ -779,6 +842,17 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
     if (!hdr)
         return 0;
     RT_HEAP_VALIDATE(hdr);
+
+    // A tracked container finalizer still clears its slots/native buffer during
+    // cycle reclaim, but the collector owns refcount normalization for edges
+    // whose targets are in the same garbage set.
+    if (rt_gc_should_suppress_cycle_release(payload)) {
+        size_t refs = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+        // A zero count is collector-owned in this phase. Return a non-zero
+        // sentinel so release-and-free callers do not reclaim the member early.
+        return refs == 0 ? 1 : refs;
+    }
+
     size_t old = __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED);
     size_t next = 0;
     for (;;) {
@@ -808,6 +882,12 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
         // Acquire fence pairs with releasing decrements from other threads.
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
 
+        // Clear weak observers while the payload is still registered. This is
+        // the common final-release path for specialized arrays and strings,
+        // whose release helpers do not pass through the object finalizer path.
+        rt_gc_untrack(payload);
+        rt_gc_clear_weak_refs(payload);
+
         // Check if this was a pool allocation
         int from_pool = (hdr->flags & RT_HEAP_FLAG_POOLED) != 0;
         size_t alloc_size = hdr->alloc_size;
@@ -821,7 +901,7 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
         if (from_pool) {
             rt_pool_free(hdr, alloc_size);
         } else {
-            free(hdr);
+            rt_free(hdr);
         }
         return 0;
     }
@@ -837,8 +917,11 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
 /// @return Reference count after the decrement, or zero when the block was
 ///         deallocated.
 size_t rt_heap_release(void *payload) {
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_release");
-    return rt_heap_release_impl(hdr, payload, /*free_when_zero=*/1);
+    size_t refs = rt_heap_release_impl(hdr, payload, /*free_when_zero=*/1);
+    rt_gc_mutator_exit();
+    return refs;
 }
 
 /// @brief Decrement the reference count without freeing the payload.
@@ -850,8 +933,11 @@ size_t rt_heap_release(void *payload) {
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 /// @return Reference count after the decrement.
 size_t rt_heap_release_deferred(void *payload) {
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_release_deferred");
-    return rt_heap_release_impl(hdr, payload, /*free_when_zero=*/0);
+    size_t refs = rt_heap_release_impl(hdr, payload, /*free_when_zero=*/0);
+    rt_gc_mutator_exit();
+    return refs;
 }
 
 /// @brief Free a heap allocation whose reference count already reached zero.
@@ -862,12 +948,23 @@ size_t rt_heap_release_deferred(void *payload) {
 ///          originally allocated from the pool.
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 void rt_heap_free_zero_ref(void *payload) {
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_free_zero_ref");
-    if (!hdr)
+    if (!hdr) {
+        rt_gc_mutator_exit();
         return;
+    }
     RT_HEAP_VALIDATE(hdr);
-    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) != 0)
+    if (__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) != 0) {
+        rt_gc_mutator_exit();
         return;
+    }
+
+    // Deferred-release users run custom element/finalizer cleanup before this
+    // point. Central weak clearing prevents specialized payload kinds from
+    // leaving stale target addresses in the zeroing-weak-reference registry.
+    rt_gc_untrack(payload);
+    rt_gc_clear_weak_refs(payload);
 
     // Check if this was a pool allocation
     int from_pool = (hdr->flags & RT_HEAP_FLAG_POOLED) != 0;
@@ -882,8 +979,9 @@ void rt_heap_free_zero_ref(void *payload) {
     if (from_pool) {
         rt_pool_free(hdr, alloc_size);
     } else {
-        free(hdr);
+        rt_free(hdr);
     }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Obtain a mutable header pointer for a payload.
@@ -911,8 +1009,11 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     if (!payload)
         return NULL;
 
-    if (elem_size == 0 && new_cap > 0)
+    rt_gc_mutator_enter();
+    if (elem_size == 0 && new_cap > 0) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     size_t cap = new_cap;
     if (cap < new_len)
@@ -920,24 +1021,38 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
 
     size_t payload_bytes = 0;
     if (cap > 0) {
-        if (cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / elem_size)
+        if (cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / elem_size) {
+            rt_gc_mutator_exit();
             return NULL;
+        }
         payload_bytes = cap * elem_size;
     }
     size_t total_bytes = sizeof(rt_heap_hdr_t) + payload_bytes;
-    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)malloc(total_bytes);
-    if (!resized)
+    rt_heap_hdr_t *resized = (rt_heap_hdr_t *)rt_heap_alloc_zeroed_(total_bytes);
+    if (!resized) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     rt_heap_registry_lock_();
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header_locked_(payload, &hdr) || !hdr) {
         rt_heap_registry_unlock_();
-        free(resized);
+        rt_free(resized);
+        rt_gc_mutator_exit();
         rt_trap("rt_heap_realloc: invalid or freed heap payload");
         return NULL;
     }
     RT_HEAP_VALIDATE(hdr);
+
+    size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+    if (refcnt != 1) {
+        rt_heap_registry_unlock_();
+        rt_free(resized);
+        rt_gc_mutator_exit();
+        rt_trap("rt_heap_realloc: payload must have exactly one owner");
+        return NULL;
+    }
 
     size_t old_len = hdr->len;
     size_t old_alloc_size = hdr->alloc_size;
@@ -956,7 +1071,7 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
 
     if (!rt_heap_registry_move_locked_(payload, new_payload)) {
         rt_heap_registry_unlock_();
-        free(resized);
+        rt_free(resized);
         rt_abort("rt_heap_realloc: registry update failed");
         return NULL;
     }
@@ -966,8 +1081,10 @@ void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t ne
     if (from_pool)
         rt_pool_free(hdr, old_alloc_size);
     else
-        free(hdr);
+        rt_free(hdr);
 
+    rt_gc_relocate_payload(payload, new_payload);
+    rt_gc_mutator_exit();
     return new_payload;
 }
 
@@ -1017,14 +1134,19 @@ size_t rt_heap_cap(void *payload) {
 /// @param payload Payload pointer whose header should be updated.
 /// @param new_len New logical length to store.
 void rt_heap_set_len(void *payload, size_t new_len) {
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = rt_heap_checked_header_(payload, "rt_heap_set_len");
-    if (!hdr)
+    if (!hdr) {
+        rt_gc_mutator_exit();
         return;
+    }
     if (new_len > hdr->cap) {
+        rt_gc_mutator_exit();
         rt_trap("rt_heap_set_len: length exceeds capacity");
         return;
     }
     hdr->len = new_len;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Atomically OR a value into a 32-bit field and return the previous value.

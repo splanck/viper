@@ -111,8 +111,13 @@ static void rt_stack_finalize(void *obj) {
         return;
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
     if (stack->owns_elements && stack->items) {
-        for (int64_t i = 0; i < stack->len; i++)
-            stack_release_value(stack->items[i]);
+        int64_t len = stack->len;
+        stack->len = 0;
+        for (int64_t i = 0; i < len; i++) {
+            void *value = stack->items[i];
+            stack->items[i] = NULL;
+            stack_release_value(value);
+        }
     }
     free(stack->items);
     stack->items = NULL;
@@ -239,15 +244,20 @@ void *rt_stack_new(void) {
 void rt_stack_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
-    if (!stack)
+    if (!stack) {
+        rt_gc_mutator_exit();
         return;
+    }
     owns = owns ? 1 : 0;
     if (stack->len != 0 && stack->owns_elements != owns) {
+        rt_gc_mutator_exit();
         rt_trap("Stack.SetOwnsElements: cannot change ownership mode on non-empty stack");
         return;
     }
     stack->owns_elements = owns;
+    rt_gc_mutator_exit();
 }
 
 int8_t rt_stack_owns_elements(void *obj) {
@@ -331,20 +341,27 @@ void rt_stack_push(void *obj, void *elem) {
         return;
     }
 
+    rt_gc_mutator_enter();
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
-    if (!stack)
+    if (!stack) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (stack->len >= INT64_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Stack: maximum length reached");
         return;
     }
-    if (!stack_ensure_capacity(stack, stack->len + 1))
+    if (!stack_ensure_capacity(stack, stack->len + 1)) {
+        rt_gc_mutator_exit();
         return;
+    }
     if (stack->owns_elements)
         rt_obj_retain_maybe(elem);
     stack->items[stack->len] = elem;
     stack->len++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Removes and returns the top element from the Stack.
@@ -383,11 +400,15 @@ void *rt_stack_pop(void *obj) {
         return NULL;
     }
 
+    rt_gc_mutator_enter();
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
-    if (!stack)
+    if (!stack) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     if (stack->len == 0) {
+        rt_gc_mutator_exit();
         rt_trap("Stack.Pop: stack is empty");
         return NULL;
     }
@@ -400,6 +421,7 @@ void *rt_stack_pop(void *obj) {
     if (stack->owns_elements) {
         stack_release_value(value);
     }
+    rt_gc_mutator_exit();
     return value;
 }
 
@@ -477,17 +499,25 @@ void *rt_stack_peek(void *obj) {
 void rt_stack_clear(void *obj) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
+    if (!stack) {
+        rt_gc_mutator_exit();
+        return;
+    }
+    int64_t len = stack->len;
+    stack->len = 0;
     if (stack->owns_elements) {
-        for (int64_t i = 0; i < stack->len; i++) {
-            stack_release_value(stack->items[i]);
+        for (int64_t i = 0; i < len; i++) {
+            void *value = stack->items[i];
             stack->items[i] = NULL;
+            stack_release_value(value);
         }
     } else {
-        for (int64_t i = 0; i < stack->len; i++)
+        for (int64_t i = 0; i < len; i++)
             stack->items[i] = NULL;
     }
-    stack->len = 0;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Check if the stack contains a given element (pointer equality).
@@ -513,9 +543,12 @@ void *rt_stack_try_pop(void *obj) {
     if (!obj)
         return NULL;
 
+    rt_gc_mutator_enter();
     rt_stack_impl *stack = as_stack(obj, "Stack: invalid Stack object");
-    if (stack->len == 0)
+    if (!stack || stack->len == 0) {
+        rt_gc_mutator_exit();
         return NULL;
+    }
 
     void *value = stack->items[stack->len - 1];
     if (stack->owns_elements)
@@ -525,6 +558,7 @@ void *rt_stack_try_pop(void *obj) {
     if (stack->owns_elements) {
         stack_release_value(value);
     }
+    rt_gc_mutator_exit();
     return value;
 }
 

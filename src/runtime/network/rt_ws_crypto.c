@@ -7,9 +7,17 @@
 //
 // File: src/runtime/network/rt_ws_crypto.c
 // Purpose: WebSocket handshake crypto/encoding: UTF-8 validation, SHA-1, the
-//   client nonce generator, and the Sec-WebSocket-Accept key computation.
-//
-// Links: rt_websocket.h, rt_websocket_internal.h, rt_websocket.c
+//          client nonce generator, and the Sec-WebSocket-Accept key computation.
+// Key invariants:
+//   - UTF-8 validation rejects overlong, surrogate, truncated, and out-of-range forms.
+//   - SHA-1 is used only for the RFC 6455 handshake transform, never as a security hash.
+//   - Fixed handshake Base64 conversion uses native bounded buffers and no managed staging.
+// Ownership/Lifetime:
+//   - Generated runtime Strings are caller-owned.
+//   - rt_ws_compute_accept_key returns native heap storage released with free().
+// Links: src/runtime/network/rt_websocket.h,
+//        src/runtime/network/rt_websocket_internal.h,
+//        src/runtime/network/rt_websocket.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,12 +25,8 @@
 
 #include "rt_websocket.h"
 
-#include "rt_bytes.h"
 #include "rt_crypto.h"
-#include "rt_object.h"
-#include "rt_random.h"
 #include "rt_string.h"
-#include "rt_tls.h"
 
 #include <limits.h>
 #include <stdint.h>
@@ -113,6 +117,8 @@ int ws_is_valid_utf8(const uint8_t *data, size_t len) {
 /// SHA-1 is acceptable here: it is used as a protocol-mandated HMAC-like check,
 /// not for general cryptographic security.
 int ws_sha1(const uint8_t *data, size_t len, uint8_t digest[20]) {
+    if (!digest || (len > 0 && !data) || len > SIZE_MAX - 72u || len > UINT64_MAX / 8u)
+        return 0;
     uint32_t h0 = 0x67452301u, h1 = 0xEFCDAB89u, h2 = 0x98BADCFEu;
     uint32_t h3 = 0x10325476u, h4 = 0xC3D2E1F0u;
 
@@ -179,21 +185,75 @@ int ws_sha1(const uint8_t *data, size_t len, uint8_t digest[20]) {
     return 1;
 }
 
-/// @brief Generate a random WebSocket key (16 random bytes, base64 encoded).
+/// @brief Encode one bounded native byte span with the RFC 4648 Base64 alphabet.
+/// @details This helper is used only for 16-byte client nonces and 20-byte
+///          SHA-1 handshake digests. It nevertheless checks the general output
+///          size formula, preserves padding, and never writes a partial result.
+/// @param input Source bytes; NULL is accepted only for an empty input.
+/// @param input_len Source byte count.
+/// @param output Destination buffer.
+/// @param output_capacity Destination capacity including the NUL terminator.
+/// @param output_len Receives the encoded byte count, excluding the terminator.
+/// @return 1 on success, otherwise 0 without publishing an output string.
+static int ws_base64_encode_native(const uint8_t *input,
+                                   size_t input_len,
+                                   char *output,
+                                   size_t output_capacity,
+                                   size_t *output_len) {
+    static const char alphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    if (output_len)
+        *output_len = 0;
+    if (!output || (input_len > 0 && !input) || input_len > (SIZE_MAX - 2u) / 3u)
+        return 0;
+    size_t encoded_len = ((input_len + 2u) / 3u) * 4u;
+    if (encoded_len >= output_capacity)
+        return 0;
+
+    size_t source = 0;
+    size_t destination = 0;
+    while (source + 3u <= input_len) {
+        uint32_t value = ((uint32_t)input[source] << 16) | ((uint32_t)input[source + 1u] << 8) |
+                         input[source + 2u];
+        output[destination++] = alphabet[(value >> 18) & 0x3fu];
+        output[destination++] = alphabet[(value >> 12) & 0x3fu];
+        output[destination++] = alphabet[(value >> 6) & 0x3fu];
+        output[destination++] = alphabet[value & 0x3fu];
+        source += 3u;
+    }
+    size_t remaining = input_len - source;
+    if (remaining == 1u) {
+        uint32_t value = (uint32_t)input[source] << 16;
+        output[destination++] = alphabet[(value >> 18) & 0x3fu];
+        output[destination++] = alphabet[(value >> 12) & 0x3fu];
+        output[destination++] = '=';
+        output[destination++] = '=';
+    } else if (remaining == 2u) {
+        uint32_t value = ((uint32_t)input[source] << 16) | ((uint32_t)input[source + 1u] << 8);
+        output[destination++] = alphabet[(value >> 18) & 0x3fu];
+        output[destination++] = alphabet[(value >> 12) & 0x3fu];
+        output[destination++] = alphabet[(value >> 6) & 0x3fu];
+        output[destination++] = '=';
+    }
+    output[destination] = '\0';
+    if (output_len)
+        *output_len = destination;
+    return destination == encoded_len ? 1 : 0;
+}
+
+/// @brief Generate a random WebSocket key without an intermediate Bytes object.
+/// @details RFC 6455 requires a fresh unpredictable 16-byte nonce. It is
+///          encoded into a fixed 24-byte Base64 representation and copied once
+///          into the returned managed String.
+/// @return Caller-owned managed key String, or NULL after a returning allocation trap.
 rt_string generate_ws_key(void) {
-    // Generate 16 cryptographically-random bytes (RFC 6455 §4.1 requires unpredictability)
     uint8_t raw[16];
+    char encoded[25];
+    size_t encoded_len = 0;
     rt_crypto_random_bytes(raw, sizeof(raw));
-
-    void *bytes = rt_bytes_new(16);
-    for (int i = 0; i < 16; i++)
-        rt_bytes_set(bytes, i, raw[i]);
-
-    // Encode to base64
-    rt_string result = rt_bytes_to_base64(bytes);
-    if (rt_obj_release_check0(bytes))
-        rt_obj_free(bytes);
-    return result;
+    if (!ws_base64_encode_native(raw, sizeof(raw), encoded, sizeof(encoded), &encoded_len))
+        return NULL;
+    return rt_string_from_bytes(encoded, encoded_len);
 }
 
 /// @brief Compute the Sec-WebSocket-Accept header value for a given key.
@@ -226,23 +286,14 @@ char *rt_ws_compute_accept_key(const char *key_cstr) {
     }
     free(concat);
 
-    // Base64-encode using rt_bytes_to_base64
-    void *digest_bytes = rt_bytes_new(20);
-    if (!digest_bytes)
+    char encoded[29];
+    size_t encoded_len = 0;
+    if (!ws_base64_encode_native(
+            sha1_digest, sizeof(sha1_digest), encoded, sizeof(encoded), &encoded_len))
         return NULL;
-
-    for (int i = 0; i < 20; i++)
-        rt_bytes_set(digest_bytes, i, sha1_digest[i]);
-
-    rt_string accept_str = rt_bytes_to_base64(digest_bytes);
-    if (rt_obj_release_check0(digest_bytes))
-        rt_obj_free(digest_bytes);
-
-    if (!accept_str)
+    char *result = (char *)malloc(encoded_len + 1u);
+    if (!result)
         return NULL;
-
-    const char *accept_cstr = rt_string_cstr(accept_str);
-    char *result = accept_cstr ? strdup(accept_cstr) : NULL;
-    rt_string_unref(accept_str);
+    memcpy(result, encoded, encoded_len + 1u);
     return result;
 }

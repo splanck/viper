@@ -33,6 +33,7 @@
 #include "rt_internal.h"
 
 #include "rt_box.h"
+#include "rt_gc.h"
 #include "rt_object.h"
 #include "rt_option.h"
 #include "rt_seq.h"
@@ -40,6 +41,8 @@
 #include "rt_string.h"
 #include "rt_trap.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -213,11 +216,18 @@ void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *)) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_seq_impl *seq = as_seq(obj, "Seq.Sort: invalid Seq object");
+    if (!seq) {
+        rt_gc_mutator_exit();
+        return;
+    }
 
     // Nothing to sort
-    if (seq->len <= 1)
+    if (seq->len <= 1) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     // Use default comparison if none provided
     if (!cmp)
@@ -226,14 +236,32 @@ void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *)) {
     // Allocate temporary buffer for merge sort
     void **temp = (void **)malloc((size_t)seq->len * sizeof(void *));
     if (!temp) {
+        rt_gc_mutator_exit();
         rt_trap("Seq.Sort: memory allocation failed");
+        return;
+    }
+
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "Seq.Sort: comparator trapped");
+        rt_trap_clear_recovery();
+        free(temp);
+        rt_trap(saved_error);
         return;
     }
 
     // Perform stable merge sort
     seq_merge_sort(seq->items, temp, 0, seq->len - 1, cmp);
 
+    rt_trap_clear_recovery();
     free(temp);
+    rt_gc_mutator_exit();
 }
 
 /// @brief Comparison function for descending sort.

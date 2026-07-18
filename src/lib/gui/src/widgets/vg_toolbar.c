@@ -1360,7 +1360,7 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
 //=============================================================================
 // Vector toolbar icons
 //
-// ZannaIDE passes Unicode glyphs as button "icons" (e.g. U+25B6 for Run), which
+// Zanna Studio passes Unicode glyphs as button "icons" (e.g. U+25B6 for Run), which
 // render as inconsistent, mismatched font symbols. We map the known codepoints
 // to crisp, uniform vector icons drawn through the shared anti-aliased core.
 //=============================================================================
@@ -1551,7 +1551,7 @@ static bool toolbar_draw_vector_icon(
 }
 
 /// @brief If @p s is exactly one UTF-8 codepoint, return it; otherwise return 0.
-/// @details ZannaIDE passes single Unicode glyphs (e.g. "▶") in a button's text
+/// @details Zanna Studio passes single Unicode glyphs (e.g. "▶") in a button's text
 ///          slot; we use this to detect them and substitute a vector icon. Real
 ///          multi-character labels return 0 and render as text.
 static uint32_t toolbar_label_single_codepoint(const char *s) {
@@ -1739,7 +1739,7 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                 }
 
                 // Draw label if shown. A single-glyph "label" with no real icon
-                // (how ZannaIDE supplies toolbar icons) is rendered as a crisp
+                // (how Zanna Studio supplies toolbar icons) is rendered as a crisp
                 // centred vector icon; everything else draws as text.
                 if (item->show_label && item->label && tb->font) {
                     uint32_t label_cp = (item->icon.type == VG_ICON_NONE)

@@ -31,6 +31,7 @@
 
 #include "rt_concmap.h"
 
+#include "rt_gc.h"
 #include "rt_hash_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -70,6 +71,7 @@ const char *rt_trap_get_error(void);
 typedef struct cm_entry {
     char *key;
     size_t key_len;
+    uint64_t hash;
     void *value;
     struct cm_entry *next;
 } cm_entry;
@@ -127,10 +129,10 @@ static const char *get_key_data(rt_string key, size_t *out_len) {
 ///          memcmp on the full byte length means embedded NULs don't
 ///          collapse keys together.
 /// @return Pointer to the matching entry, or NULL if not found.
-static cm_entry *find_entry(cm_entry *head, const char *key, size_t key_len) {
+static cm_entry *find_entry(cm_entry *head, const char *key, size_t key_len, uint64_t hash) {
     cm_entry *e = head;
     while (e) {
-        if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
+        if (e->hash == hash && e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
         e = e->next;
     }
@@ -243,8 +245,7 @@ static void cm_resize(rt_concmap_impl *cm) {
         cm_entry *e = cm->buckets[i];
         while (e) {
             cm_entry *next = e->next;
-            uint64_t h = rt_fnv1a(e->key, e->key_len);
-            size_t idx = (size_t)(h % new_cap);
+            size_t idx = (size_t)(e->hash % new_cap);
             e->next = new_buckets[idx];
             new_buckets[idx] = e;
             e = next;
@@ -269,6 +270,51 @@ static void maybe_resize(rt_concmap_impl *cm) {
     }
 }
 
+/// @brief Enumerate every strong managed value owned by a ConcurrentMap.
+/// @details All bucket/link/value publications use the collector mutator
+///          barrier. Exclusive collection can therefore traverse the raw
+///          bucket chains without taking the map mutex, avoiding lock inversion
+///          with a writer paused at the graph barrier.
+/// @param obj ConcurrentMap payload being traversed.
+/// @param visitor Collector visitor invoked for each non-null stored value.
+/// @param ctx Opaque collector context forwarded to @p visitor.
+static void cm_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    rt_concmap_impl *cm = (rt_concmap_impl *)obj;
+    if (!cm || !visitor || !cm->buckets)
+        return;
+    for (size_t i = 0; i < cm->capacity; ++i) {
+        for (cm_entry *entry = cm->buckets[i]; entry; entry = entry->next) {
+            if (entry->value)
+                visitor(entry->value, ctx);
+        }
+    }
+}
+
+/// @brief Publish a prepared entry while holding the ConcurrentMap mutex.
+/// @details The caller has retained the value and verified that the key is
+///          absent. Insertion and any resulting rehash occur within one graph
+///          mutation so collector traversal sees a complete old or new table.
+static void cm_publish_entry_locked(rt_concmap_impl *cm, cm_entry *entry) {
+    rt_gc_mutator_enter();
+    size_t idx = (size_t)(entry->hash % cm->capacity);
+    entry->next = cm->buckets[idx];
+    cm->buckets[idx] = entry;
+    cm->count++;
+    maybe_resize(cm);
+    rt_gc_mutator_exit();
+}
+
+/// @brief Replace an entry value while holding the ConcurrentMap mutex.
+/// @details No reference count is changed here: the caller has retained the
+///          new value and releases the returned old ownership after unlocking.
+static void *cm_replace_value_locked(cm_entry *entry, void *value) {
+    rt_gc_mutator_enter();
+    void *old_value = entry->value;
+    entry->value = value;
+    rt_gc_mutator_exit();
+    return old_value;
+}
+
 /// @brief Free a detached list of entries after it is no longer map-reachable.
 static void free_entry_list(cm_entry *entries) {
     while (entries) {
@@ -282,6 +328,7 @@ static void free_entry_list(cm_entry *entries) {
 /// @details Caller must hold the map mutex. The returned list is no longer
 ///          reachable from the map and may be freed after unlocking.
 static cm_entry *cm_detach_entries_unlocked(rt_concmap_impl *cm) {
+    rt_gc_mutator_enter();
     cm_entry *entries = NULL;
     for (size_t i = 0; i < cm->capacity; i++) {
         cm_entry *e = cm->buckets[i];
@@ -295,6 +342,7 @@ static cm_entry *cm_detach_entries_unlocked(rt_concmap_impl *cm) {
         cm->buckets[i] = NULL;
     }
     cm->count = 0;
+    rt_gc_mutator_exit();
     return entries;
 }
 
@@ -343,7 +391,13 @@ void *rt_concmap_new(void) {
     }
 
 #if defined(_WIN32)
-    InitializeCriticalSection(&cm->mutex);
+    if (!InitializeCriticalSectionEx(&cm->mutex, 0, 0)) {
+        free(cm->buckets);
+        cm->buckets = NULL;
+        concmap_release_object(cm);
+        rt_trap("ConcurrentMap: mutex initialization failed");
+        return NULL;
+    }
 #else
     if (pthread_mutex_init(&cm->mutex, NULL) != 0) {
         free(cm->buckets);
@@ -356,6 +410,25 @@ void *rt_concmap_new(void) {
 #endif
 
     rt_obj_set_finalizer(cm, cm_finalizer);
+
+    jmp_buf recovery;
+    rt_concmap_impl *volatile cm_for_cleanup = cm;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        concmap_save_trap_error(
+            saved_error, sizeof(saved_error), "ConcurrentMap: GC tracking failed");
+        rt_trap_clear_recovery();
+        concmap_release_object((void *)cm_for_cleanup);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    rt_gc_track(cm, cm_traverse);
+    if (!rt_gc_is_tracked(cm)) {
+        rt_trap("ConcurrentMap: GC tracking failed");
+        return NULL;
+    }
+    rt_trap_clear_recovery();
     return cm;
 }
 
@@ -413,6 +486,7 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
     memcpy(new_entry->key, key_data, key_len);
     new_entry->key[key_len] = '\0';
     new_entry->key_len = key_len;
+    new_entry->hash = h;
     new_entry->value = value;
     new_entry->next = NULL;
     if (!retain_value_or_free_entry(
@@ -423,12 +497,11 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
     CM_LOCK(cm);
 
     size_t idx = (size_t)(h % cm->capacity);
-    cm_entry *existing = find_entry(cm->buckets[idx], key_data, key_len);
+    cm_entry *existing = find_entry(cm->buckets[idx], key_data, key_len, h);
 
     if (existing) {
         /* Update existing entry. */
-        old_value = existing->value;
-        existing->value = value;
+        old_value = cm_replace_value_locked(existing, value);
         CM_UNLOCK(cm);
         free(new_entry->key);
         free(new_entry);
@@ -438,11 +511,14 @@ void rt_concmap_set(void *obj, rt_string key, void *value) {
     }
 
     /* Insert new entry. */
-    new_entry->next = cm->buckets[idx];
-    cm->buckets[idx] = new_entry;
-    cm->count++;
-
-    maybe_resize(cm);
+    if (cm->count == SIZE_MAX) {
+        CM_UNLOCK(cm);
+        free_entry(new_entry);
+        concmap_release_object(obj);
+        rt_trap("ConcurrentMap.Set: count overflow");
+        return;
+    }
+    cm_publish_entry_locked(cm, new_entry);
     CM_UNLOCK(cm);
     concmap_release_object(obj);
 }
@@ -463,7 +539,7 @@ void *rt_concmap_get(void *obj, rt_string key) {
 
     CM_LOCK(cm);
     size_t idx = (size_t)(h % cm->capacity);
-    cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len);
+    cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len, h);
     void *result = e ? e->value : NULL;
     if (result) {
         rt_concmap_impl *volatile locked_cm = cm;
@@ -503,7 +579,7 @@ void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
 
     CM_LOCK(cm);
     size_t idx = (size_t)(h % cm->capacity);
-    cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len);
+    cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len, h);
     void *result = e ? e->value : default_value;
     if (e && result) {
         rt_concmap_impl *volatile locked_cm = cm;
@@ -542,7 +618,7 @@ int8_t rt_concmap_has(void *obj, rt_string key) {
 
     CM_LOCK(cm);
     size_t idx = (size_t)(h % cm->capacity);
-    cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len);
+    cm_entry *e = find_entry(cm->buckets[idx], key_data, key_len, h);
     int8_t found = e ? 1 : 0;
     CM_UNLOCK(cm);
     concmap_release_object(obj);
@@ -583,6 +659,7 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     memcpy(e->key, key_data, key_len);
     e->key[key_len] = '\0';
     e->key_len = key_len;
+    e->hash = h;
     e->value = value;
     e->next = NULL;
     if (!retain_value_or_free_entry(
@@ -592,7 +669,7 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     CM_LOCK(cm);
 
     size_t idx = (size_t)(h % cm->capacity);
-    cm_entry *existing = find_entry(cm->buckets[idx], key_data, key_len);
+    cm_entry *existing = find_entry(cm->buckets[idx], key_data, key_len, h);
     if (existing) {
         CM_UNLOCK(cm);
         free(e->key);
@@ -602,11 +679,14 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
         return 0;
     }
 
-    e->next = cm->buckets[idx];
-    cm->buckets[idx] = e;
-    cm->count++;
-
-    maybe_resize(cm);
+    if (cm->count == SIZE_MAX) {
+        CM_UNLOCK(cm);
+        free_entry(e);
+        concmap_release_object(obj);
+        rt_trap("ConcurrentMap.SetIfMissing: count overflow");
+        return 0;
+    }
+    cm_publish_entry_locked(cm, e);
     CM_UNLOCK(cm);
     concmap_release_object(obj);
     return 1;
@@ -630,10 +710,12 @@ int8_t rt_concmap_remove(void *obj, rt_string key) {
     cm_entry *e = cm->buckets[idx];
 
     while (e) {
-        if (e->key_len == key_len && memcmp(e->key, key_data, key_len) == 0) {
+        if (e->hash == h && e->key_len == key_len && memcmp(e->key, key_data, key_len) == 0) {
+            rt_gc_mutator_enter();
             *prev = e->next;
             cm->count--;
             e->next = NULL;
+            rt_gc_mutator_exit();
             CM_UNLOCK(cm);
             free_entry(e);
             concmap_release_object(obj);

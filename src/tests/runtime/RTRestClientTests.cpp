@@ -20,21 +20,28 @@
 
 #include "tests/common/NetworkTestCompat.hpp"
 
+#include "rt_gc.h"
 #include "rt_http_server.h"
+#include "rt_internal.h"
 #include "rt_netutils.h"
 #include "rt_network.h"
 #include "rt_object.h"
 #include "rt_restclient.h"
 #include "rt_result.h"
+#include "rt_seq.h"
 #include "rt_string.h"
+#include "rt_trap.h"
 
 #include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
+#include <setjmp.h>
 #include <string>
 #include <thread>
+#include <vector>
 
 #if defined(_WIN32)
 #include <winsock2.h>
@@ -60,6 +67,30 @@ static void test_result(bool cond, const char *name) {
     }
 }
 
+static int rest_alloc_fail_countdown = 0;
+static int rest_alloc_observed = 0;
+
+/// @brief Count runtime-managed allocations and fail one selected boundary.
+/// @details Native loopback fixtures are not active while this hook is
+///          installed, so every observed allocation belongs to the RestClient
+///          constructor, header transaction, or Result path under test.
+/// @param bytes Requested allocation size.
+/// @param next Runtime's default allocator.
+/// @return Allocated storage, or NULL at the selected countdown.
+static void *rest_countdown_alloc(int64_t bytes, void *(*next)(int64_t)) {
+    rest_alloc_observed++;
+    if (rest_alloc_fail_countdown > 0 && --rest_alloc_fail_countdown == 0)
+        return nullptr;
+    return next(bytes);
+}
+
+/// @brief Release one test-owned managed reference immediately at zero.
+/// @param object Runtime object or String; NULL is a no-op.
+static void release_test_object(void *object) {
+    if (object && rt_obj_release_check0(object))
+        rt_obj_free(object);
+}
+
 static std::atomic<bool> rest_server_ready{false};
 static std::atomic<bool> rest_server_failed{false};
 static std::atomic<int> rest_keepalive_accept_count{0};
@@ -68,6 +99,8 @@ static std::string rest_keepalive_connection_headers[2];
 static std::string rest_redirect_target_authorization_header;
 static std::string rest_redirect_target_api_key_header;
 static std::string rest_redirect_location;
+static std::string rest_atomic_header_value;
+static std::mutex rest_atomic_header_lock;
 
 static bool ascii_header_name_equals(const char *line, const char *name, size_t name_len) {
     if (!line || !name)
@@ -125,6 +158,21 @@ static void rest_redirect_target_handler(void *req_obj, void *res_obj) {
     rt_string_unref(authorization);
     rt_string_unref(api_key);
     rt_server_res_send(res_obj, rt_const_cstr("final"));
+}
+
+/// @brief Capture the transactional-header test value and return an empty 200.
+/// @param req_obj ServerReq managed receiver.
+/// @param res_obj ServerRes managed receiver.
+static void rest_atomic_header_handler(void *req_obj, void *res_obj) {
+    rt_string name = rt_const_cstr("X-Atomic");
+    rt_string value = rt_server_req_header(req_obj, name);
+    {
+        std::lock_guard<std::mutex> guard(rest_atomic_header_lock);
+        rest_atomic_header_value = rt_string_cstr(value);
+    }
+    rt_string_unref(value);
+    rt_string_unref(name);
+    rt_server_res_send(res_obj, rt_const_cstr(""));
 }
 
 static void wait_for_server() {
@@ -262,6 +310,131 @@ static void test_new_client_null() {
     test_result(strlen(rt_string_cstr(base)) == 0, "null_client: should return empty string");
 }
 
+/// @brief Verify stable identity, copied BaseUrl ownership, and constructor cleanup.
+/// @details A count-only construction records every managed allocation after a
+///          caller-owned base String is established. Each boundary is then
+///          failed beneath an outer recovery frame and must restore the exact
+///          tracked-object baseline. A forged Seq receiver must trap without
+///          changing the Seq payload.
+static void test_restclient_identity_and_constructor_allocation_cleanup() {
+    rt_string base = rt_const_cstr("https://identity.example");
+    const int64_t baseline = rt_gc_tracked_count();
+
+    rest_alloc_fail_countdown = 0;
+    rest_alloc_observed = 0;
+    rt_set_alloc_hook(rest_countdown_alloc);
+    void *client = rt_restclient_new(base);
+    rt_set_alloc_hook(nullptr);
+    const int allocation_count = rest_alloc_observed;
+    test_result(client && rt_obj_class_id(client) == RT_RESTCLIENT_CLASS_ID,
+                "identity: RestClient publishes its stable class ID");
+
+    rt_string first_base = rt_restclient_base_url(client);
+    release_test_object(first_base);
+    rt_string second_base = rt_restclient_base_url(client);
+    test_result(strcmp(rt_string_cstr(second_base), "https://identity.example") == 0,
+                "identity: BaseUrl returns an independent caller-owned copy");
+    release_test_object(second_base);
+    release_test_object(client);
+    test_result(rt_gc_tracked_count() == baseline,
+                "constructor: count-only client releases to baseline");
+
+    int trapped_count = 0;
+    bool all_failures_clean = allocation_count > 0;
+    for (int fail_at = 1; fail_at <= allocation_count; ++fail_at) {
+        void *volatile failed_client = nullptr;
+        volatile bool trapped = false;
+        jmp_buf recovery;
+        rest_alloc_fail_countdown = fail_at;
+        rest_alloc_observed = 0;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            rt_set_alloc_hook(rest_countdown_alloc);
+            failed_client = rt_restclient_new(base);
+            rt_set_alloc_hook(nullptr);
+            rt_trap_clear_recovery();
+        } else {
+            rt_set_alloc_hook(nullptr);
+            trapped = true;
+            rt_trap_clear_recovery();
+        }
+        trapped_count += trapped ? 1 : 0;
+        all_failures_clean = all_failures_clean && trapped && failed_client == nullptr;
+        release_test_object((void *)failed_client);
+        all_failures_clean = all_failures_clean && rt_gc_tracked_count() == baseline;
+    }
+    rest_alloc_fail_countdown = 0;
+    test_result(all_failures_clean && trapped_count == allocation_count,
+                "constructor: every managed allocation failure cleans partial state");
+
+    void *wrong = rt_seq_new();
+    bool wrong_receiver_trapped = false;
+    jmp_buf receiver_recovery;
+    rt_trap_set_recovery(&receiver_recovery);
+    if (setjmp(receiver_recovery) == 0) {
+        (void)rt_restclient_get_keep_alive(wrong);
+        rt_trap_clear_recovery();
+    } else {
+        wrong_receiver_trapped = true;
+        rt_trap_clear_recovery();
+    }
+    test_result(wrong_receiver_trapped && rt_seq_len(wrong) == 0,
+                "identity: forged receiver traps before RestClient payload access");
+    release_test_object(wrong);
+    release_test_object(base);
+}
+
+/// @brief Sweep Result.Err construction for an invalid RestClient receiver.
+/// @details The stable-identity error path performs no network work, making its
+///          managed allocation sequence deterministic. Every failed String or
+///          Result allocation must propagate once and leave no partial graph.
+static void test_restclient_result_allocation_cleanup() {
+    void *wrong = rt_seq_new();
+    rt_string path = rt_const_cstr("items");
+    const int64_t baseline = rt_gc_tracked_count();
+
+    rest_alloc_fail_countdown = 0;
+    rest_alloc_observed = 0;
+    rt_set_alloc_hook(rest_countdown_alloc);
+    void *result = rt_restclient_get_result(wrong, path);
+    rt_set_alloc_hook(nullptr);
+    const int allocation_count = rest_alloc_observed;
+    test_result(result && rt_result_is_err(result) == 1,
+                "result: invalid receiver returns Result.Err");
+    release_test_object(result);
+    test_result(rt_gc_tracked_count() == baseline,
+                "result: count-only error Result releases to baseline");
+
+    bool all_failures_clean = allocation_count > 0;
+    int trap_count = 0;
+    for (int fail_at = 1; fail_at <= allocation_count; ++fail_at) {
+        void *volatile failed_result = nullptr;
+        volatile bool trapped = false;
+        jmp_buf recovery;
+        rest_alloc_fail_countdown = fail_at;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) == 0) {
+            rt_set_alloc_hook(rest_countdown_alloc);
+            failed_result = rt_restclient_get_result(wrong, path);
+            rt_set_alloc_hook(nullptr);
+            rt_trap_clear_recovery();
+        } else {
+            rt_set_alloc_hook(nullptr);
+            trapped = true;
+            rt_trap_clear_recovery();
+        }
+        trap_count += trapped ? 1 : 0;
+        all_failures_clean = all_failures_clean && trapped && failed_result == nullptr;
+        release_test_object((void *)failed_result);
+        all_failures_clean = all_failures_clean && rt_gc_tracked_count() == baseline;
+    }
+    rest_alloc_fail_countdown = 0;
+    test_result(all_failures_clean && trap_count == allocation_count,
+                "result: every construction allocation failure releases partial values");
+    release_test_object(path);
+    release_test_object(wrong);
+}
+
 //=============================================================================
 // Header Configuration Tests
 //=============================================================================
@@ -304,6 +477,119 @@ static void test_null_client_headers() {
     rt_restclient_del_header(NULL, rt_const_cstr("Header"));
 
     test_result(true, "null_client_headers: should handle NULL safely");
+}
+
+/// @brief Verify transactional replacement and synchronized concurrent headers.
+/// @details The first managed allocation in a case-insensitive replacement is
+///          failed after an old value exists; a loopback request must still
+///          observe that old value. Multiple threads then replace the same
+///          header repeatedly, and the next request must observe one complete
+///          published value rather than a missing, torn, or duplicate entry.
+static void test_restclient_transactional_and_concurrent_headers() {
+    const int port = get_bindable_local_port();
+    if (port <= 0) {
+        printf("SKIPPED: restclient_transactional_headers (local bind unavailable)\n");
+        return;
+    }
+
+    void *server = rt_http_server_new(port);
+    rt_string handler_name = rt_const_cstr("atomic-header");
+    rt_string route = rt_const_cstr("/value");
+    rt_http_server_bind_handler(server, handler_name, (void *)&rest_atomic_header_handler);
+    rt_http_server_get(server, route, handler_name);
+    rt_http_server_start(server);
+    if (rt_http_server_is_running(server) != 1) {
+        release_test_object(route);
+        release_test_object(handler_name);
+        release_test_object(server);
+        printf("SKIPPED: restclient_transactional_headers (server start failed)\n");
+        return;
+    }
+
+    char base_buffer[128];
+    snprintf(base_buffer,
+             sizeof(base_buffer),
+             "http://127.0.0.1:%lld",
+             (long long)rt_http_server_port(server));
+    rt_string base = rt_const_cstr(base_buffer);
+    rt_string name = rt_const_cstr("X-Atomic");
+    rt_string request_path = rt_const_cstr("value");
+    rt_string old_value = rt_const_cstr("preserved-old");
+    rt_string new_value = rt_const_cstr("rejected-new");
+    void *client = rt_restclient_new(base);
+    rt_restclient_set_header(client, name, old_value);
+
+    bool replacement_trapped = false;
+    jmp_buf recovery;
+    rest_alloc_fail_countdown = 1;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        rt_set_alloc_hook(rest_countdown_alloc);
+        rt_restclient_set_header(client, name, new_value);
+        rt_set_alloc_hook(nullptr);
+        rt_trap_clear_recovery();
+    } else {
+        rt_set_alloc_hook(nullptr);
+        replacement_trapped = true;
+        rt_trap_clear_recovery();
+    }
+    rest_alloc_fail_countdown = 0;
+
+    void *first_response = rt_restclient_get(client, request_path);
+    std::string first_value;
+    {
+        std::lock_guard<std::mutex> guard(rest_atomic_header_lock);
+        first_value = rest_atomic_header_value;
+    }
+    test_result(replacement_trapped && first_value == "preserved-old",
+                "headers: failed replacement preserves the previous complete value");
+    release_test_object(first_response);
+
+    constexpr int kThreadCount = 6;
+    constexpr int kIterations = 40;
+    std::vector<rt_string> values;
+    std::vector<std::thread> workers;
+    for (int i = 0; i < kThreadCount; i++) {
+        char value_buffer[32];
+        snprintf(value_buffer, sizeof(value_buffer), "thread-%d", i);
+        values.push_back(rt_const_cstr(value_buffer));
+    }
+    for (int i = 0; i < kThreadCount; i++) {
+        workers.emplace_back([client, name, value = values[(size_t)i]]() {
+            for (int iteration = 0; iteration < kIterations; iteration++)
+                rt_restclient_set_header(client, name, value);
+        });
+    }
+    for (std::thread &worker : workers)
+        worker.join();
+
+    void *second_response = rt_restclient_get(client, request_path);
+    std::string concurrent_value;
+    {
+        std::lock_guard<std::mutex> guard(rest_atomic_header_lock);
+        concurrent_value = rest_atomic_header_value;
+    }
+    bool complete_value = false;
+    for (rt_string value : values) {
+        if (concurrent_value == rt_string_cstr(value))
+            complete_value = true;
+    }
+    test_result(rt_http_res_status(second_response) == 200 && complete_value,
+                "headers: concurrent replacements publish one complete value");
+
+    rt_http_server_stop(server);
+    release_test_object(second_response);
+    for (rt_string value : values)
+        release_test_object((void *)value);
+    release_test_object(client);
+    release_test_object(new_value);
+    release_test_object(old_value);
+    release_test_object(request_path);
+    release_test_object(name);
+    release_test_object(base);
+    release_test_object(route);
+    release_test_object(handler_name);
+    release_test_object(server);
 }
 
 //=============================================================================
@@ -469,7 +755,7 @@ static void test_restclient_many_instances() {
 static void test_restclient_keepalive_reuse() {
     const int port = (int)rt_netutils_get_free_port();
     if (port <= 0) {
-        printf("SKIP: restclient_keepalive_reuse (local bind unavailable)\n");
+        printf("SKIPPED: restclient_keepalive_reuse (local bind unavailable)\n");
         return;
     }
 
@@ -479,7 +765,7 @@ static void test_restclient_keepalive_reuse() {
     wait_for_server();
     if (rest_server_failed) {
         server.join();
-        printf("SKIP: restclient_keepalive_reuse (local bind unavailable)\n");
+        printf("SKIPPED: restclient_keepalive_reuse (local bind unavailable)\n");
         return;
     }
 
@@ -513,7 +799,7 @@ static void test_restclient_cross_origin_redirect_strips_sensitive_headers() {
     const int target_port = get_bindable_local_port();
     const int redirect_port = get_bindable_local_port();
     if (target_port <= 0 || redirect_port <= 0) {
-        printf("SKIP: restclient_cross_origin_redirect (local bind unavailable)\n");
+        printf("SKIPPED: restclient_cross_origin_redirect (local bind unavailable)\n");
         return;
     }
 
@@ -534,7 +820,7 @@ static void test_restclient_cross_origin_redirect_strips_sensitive_headers() {
           rt_http_server_port(target_server) > 0 && rt_http_server_port(redirect_server) > 0)) {
         rt_http_server_stop(redirect_server);
         rt_http_server_stop(target_server);
-        printf("SKIP: restclient_cross_origin_redirect (local bind unavailable)\n");
+        printf("SKIPPED: restclient_cross_origin_redirect (local bind unavailable)\n");
         return;
     }
 
@@ -581,11 +867,14 @@ int main() {
     test_new_client_empty_url();
     test_new_client_null_url();
     test_new_client_null();
+    test_restclient_identity_and_constructor_allocation_cleanup();
+    test_restclient_result_allocation_cleanup();
 
     // Header tests
     test_set_header();
     test_del_header();
     test_null_client_headers();
+    test_restclient_transactional_and_concurrent_headers();
 
     // Auth tests
     test_set_auth_bearer();

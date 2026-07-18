@@ -14,6 +14,7 @@
 // Key invariants:
 //   - socket_t is the only native socket handle type used by network modules.
 //   - rt_net_init_wsa() is idempotent and a no-op outside Windows.
+//   - Finite readiness waits use one monotonic deadline across interruption.
 //   - POSIX send calls use SEND_FLAGS when MSG_NOSIGNAL is exposed; macOS also
 //     uses suppress_sigpipe() at socket creation for older SDK/socket paths.
 //
@@ -56,6 +57,7 @@ typedef SOCKET socket_t;
 #include <errno.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
+#include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -101,6 +103,16 @@ void rt_net_init_wsa(void);
 /// @return Native close result.
 int rt_socket_close(socket_t sock);
 
+/// @brief Disable both directions of an established socket without releasing its descriptor.
+/// @details Wraps `shutdown(..., SHUT_RDWR)` on POSIX-style platforms and
+///          `shutdown(..., SD_BOTH)` on Windows. This is used to interrupt a
+///          worker blocked in transport I/O while preserving descriptor
+///          ownership for the worker's eventual close path. Calling it with
+///          @ref INVALID_SOCK fails without invoking a native syscall.
+/// @param sock Connected socket whose reads and writes should be interrupted.
+/// @return Native shutdown result: zero on success, negative/socket-error on failure.
+int rt_socket_shutdown_both(socket_t sock);
+
 /// @brief Return the last native socket error for the calling thread.
 /// @details Wraps WSAGetLastError() on Windows and errno elsewhere.
 /// @return Native socket error code.
@@ -126,11 +138,25 @@ bool rt_socket_error_is_in_progress(int err);
 /// @return Non-zero if the operation failed because its timeout expired.
 bool rt_socket_error_is_timeout(int err);
 
+/// @brief Test whether @p err reports an oversized atomic datagram/message.
+/// @param err Native socket error code to classify.
+/// @return Non-zero for EMSGSIZE/WSAEMSGSIZE, otherwise zero.
+bool rt_socket_error_is_message_too_large(int err);
+
 /// @brief Test whether the last receive operation timed out or would block.
 /// @details Used by public receive helpers that map socket timeouts to a
 ///          zero-byte result instead of a typed trap.
 /// @return Non-zero when the last socket error was timeout/would-block.
 bool rt_socket_recv_timed_out(void);
+
+/// @brief Read a non-decreasing native elapsed-time clock in milliseconds.
+/// @details This adapter never allocates or raises a runtime trap. It is used
+///          by socket loops that must maintain cleanup invariants while
+///          calculating an overall deadline. A zero result means the native
+///          monotonic clock was unavailable; callers must retain a bounded
+///          fallback policy rather than treating zero as an elapsed deadline.
+/// @return Native monotonic milliseconds, or zero when unavailable.
+uint64_t rt_socket_monotonic_ms(void);
 
 /// @brief Test whether accept failed because another thread closed the listener.
 /// @details Server shutdown paths close listening sockets from another thread;
@@ -161,6 +187,17 @@ bool rt_socket_set_nonblocking(socket_t sock, bool nonblocking);
 /// @return true on success, false when the platform cannot answer or the call fails.
 bool rt_socket_available_bytes(socket_t sock, int64_t *bytes_out);
 
+/// @brief Query the pending asynchronous error for a socket.
+/// @details Wraps `getsockopt(SOL_SOCKET, SO_ERROR)` with the platform's native
+///          option-length type. A successful query can report zero (no pending
+///          error) or a native error code; query failure is distinguished by
+///          the Boolean return value.
+/// @param sock Socket handle to inspect.
+/// @param error_out Receives the pending native error code on success.
+/// @return true when the socket option was read, false for invalid arguments or
+///         a native query failure.
+bool rt_socket_pending_error(socket_t sock, int *error_out);
+
 /// @brief Set socket timeout for send or receive operations.
 /// @details Negative timeout values are normalized to zero. Windows expects a
 ///          millisecond DWORD; POSIX-style platforms receive struct timeval.
@@ -172,7 +209,11 @@ bool set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv);
 
 /// @brief Wait for socket readability or writability.
 /// @details Uses poll() on POSIX platforms where available and select()
-///          otherwise. Returns immediately for timeout_ms == 0.
+///          otherwise. Returns immediately for timeout_ms == 0. Interrupted
+///          waits preserve one monotonic overall deadline; they never restart
+///          the full duration. POSIX error-only readiness initializes errno
+///          from SO_ERROR, while read-side hangup is reported as readiness so
+///          the caller can observe orderly EOF with recv().
 /// @param sock Socket handle to wait on.
 /// @param timeout_ms Timeout in milliseconds.
 /// @param for_write True waits for write readiness, false for read readiness.

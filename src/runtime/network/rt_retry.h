@@ -12,6 +12,7 @@
 //   - Strategies: fixed (constant delay) and exponential (delay * 2^attempt, capped).
 //   - Maximum attempt count caps retries; rt_retry_can_retry reports whether another remains.
 //   - Exponential delays include 0-25% additive jitter.
+//   - Attempt reservation is atomic, so concurrent callers consume distinct attempts.
 //
 // Ownership/Lifetime:
 //   - Retry policy objects are runtime-managed heap objects.
@@ -27,17 +28,22 @@
 extern "C" {
 #endif
 
+/// @brief Stable managed-object class tag for RetryPolicy handles.
+/// @details Public entry points validate this class and their minimum private
+///          payload size before reading mutable retry state.
+#define RT_RETRY_CLASS_ID INT64_C(-0x720203)
+
 /// @brief Create a retry policy with max retries and base delay.
 /// @param max_retries Maximum number of retries (0 = no retries).
 /// @param base_delay_ms Base delay in milliseconds.
-/// @return New retry policy object.
+/// @return Owned retry policy object, or NULL after an allocation trap.
 void *rt_retry_new(int64_t max_retries, int64_t base_delay_ms);
 
 /// @brief Create with exponential backoff.
 /// @param max_retries Maximum retries.
 /// @param base_delay_ms Base delay (doubles each attempt).
 /// @param max_delay_ms Maximum delay cap.
-/// @return New retry policy object.
+/// @return Owned retry policy object, or NULL after an allocation trap.
 void *rt_retry_exponential(int64_t max_retries, int64_t base_delay_ms, int64_t max_delay_ms);
 
 /// @brief Check if another retry is allowed.

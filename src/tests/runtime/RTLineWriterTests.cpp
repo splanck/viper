@@ -7,24 +7,34 @@
 //
 // File: src/tests/runtime/RTLineWriterTests.cpp
 // Purpose: Comprehensive tests for Zanna.IO.LineWriter text file writing.
+// Key invariants: Buffered writes preserve ordering and all close/error paths
+//                 leave the native descriptor in a terminal state.
+// Ownership/Lifetime: Every case closes its writer and removes its temporary
+//                     file before returning.
+// Links: src/runtime/io/rt_linewriter.c, docs/zannalib/io/streams.md
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_internal.h"
 #include "rt_linewriter.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 #include "tests/common/PlatformSkip.h"
 
 #include <cassert>
+#include <cerrno>
 #include <csetjmp>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <process.h>
+#include <windows.h>
 #define GETPID _getpid
 #else
+#include <fcntl.h>
 #include <unistd.h>
 #define GETPID getpid
 #endif
@@ -33,6 +43,7 @@ namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
+static int g_alloc_countdown = 0;
 } // namespace
 
 extern "C" void vm_trap(const char *msg) {
@@ -58,7 +69,7 @@ static const char *get_test_file() {
     static char path[512];
     static bool initialized = false;
     if (!initialized) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         const char *tmp = getenv("TEMP");
         if (!tmp)
             tmp = getenv("TMP");
@@ -75,6 +86,34 @@ static const char *get_test_file() {
 
 static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
+}
+
+/// @brief Fail one selected runtime allocation and delegate all others.
+/// @param bytes Requested byte count.
+/// @param next Default allocator supplied by the runtime.
+/// @return NULL for the selected allocation, otherwise the default result.
+static void *fail_countdown_alloc(int64_t bytes, void *(*next)(int64_t)) {
+    if (g_alloc_countdown > 0 && --g_alloc_countdown == 0)
+        return nullptr;
+    return next ? next(bytes) : nullptr;
+}
+
+/// @brief Count native process resources without perturbing the descriptor table.
+/// @return Current Windows handle count or occupied low POSIX descriptor count.
+static uint64_t process_open_resource_count() {
+#if RT_PLATFORM_WINDOWS
+    DWORD count = 0;
+    assert(GetProcessHandleCount(GetCurrentProcess(), &count) != 0);
+    return (uint64_t)count;
+#else
+    uint64_t count = 0;
+    for (int fd = 0; fd < 4096; ++fd) {
+        errno = 0;
+        if (fcntl(fd, F_GETFD) != -1 || errno != EBADF)
+            ++count;
+    }
+    return count;
+#endif
 }
 
 static void cleanup_test_file() {
@@ -162,7 +201,7 @@ static void test_write_ln() {
     assert(contents != nullptr);
 
     // Platform-specific newline
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     assert(strncmp(contents, "Line 1\r\nLine 2\r\n", len) == 0);
 #else
     assert(strncmp(contents, "Line 1\nLine 2\n", len) == 0);
@@ -464,6 +503,43 @@ static void test_null_handling() {
     assert(rt_str_len(nl) > 0);
 }
 
+/// @brief Verify constructor OOM and newline replacement are transactional.
+/// @details The second runtime allocation in Open is the managed writer
+///          payload: the default newline is created first, then the native file
+///          opens. Failing that payload must restore the exact descriptor
+///          baseline. A separate failure while resetting NewLine must preserve
+///          the previously retained separator.
+static void test_allocation_failure_cleanup() {
+    cleanup_test_file();
+    rt_string path = make_string(get_test_file());
+
+    uint64_t before = process_open_resource_count();
+    g_alloc_countdown = 2;
+    rt_set_alloc_hook(fail_countdown_alloc);
+    EXPECT_TRAP(rt_linewriter_open(path));
+    rt_set_alloc_hook(nullptr);
+    assert(g_alloc_countdown == 0);
+    assert(process_open_resource_count() == before);
+
+    void *lw = rt_linewriter_open(path);
+    rt_string keep = make_string("KEEP");
+    rt_linewriter_set_newline(lw, keep);
+    g_alloc_countdown = 1;
+    rt_set_alloc_hook(fail_countdown_alloc);
+    EXPECT_TRAP(rt_linewriter_set_newline(lw, nullptr));
+    rt_set_alloc_hook(nullptr);
+    assert(g_alloc_countdown == 0);
+
+    rt_string after = rt_linewriter_newline(lw);
+    assert(rt_str_len(after) == 4);
+    assert(memcmp(rt_string_cstr(after), "KEEP", 4) == 0);
+    rt_string_unref(after);
+    rt_string_unref(keep);
+    rt_linewriter_close(lw);
+    rt_string_unref(path);
+    cleanup_test_file();
+}
+
 int main() {
     test_open_close();
     test_write_string();
@@ -479,6 +555,7 @@ int main() {
     test_write_char_out_of_range_traps();
     test_invalid_string_inputs_trap();
     test_null_handling();
+    test_allocation_failure_cleanup();
 
     cleanup_test_file();
     return 0;

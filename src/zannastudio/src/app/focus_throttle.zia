@@ -1,0 +1,85 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/app/focus_throttle.zia
+// Purpose: Gate non-essential per-frame background work (workspace indexing,
+//          budgeted editor tools, workspace watching) to a slow cadence while
+//          the IDE window is unfocused, restoring full cadence the moment it
+//          regains focus. Process streams (build/debug/terminal) and input are
+//          never gated — those callers do not consult this class.
+// Key invariants:
+//   - Hidden/no-activate probes run background work at full cadence even though
+//     no native window focus is expected.
+//   - AllowBackgroundWork() is true every frame while focused, and ~10Hz while
+//     unfocused.
+// Links: zannastudio/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
+module focus_throttle;
+
+bind Zanna.GUI as GUI;
+bind Env = Zanna.System.Environment;
+bind Str = Zanna.String;
+bind Time = Zanna.Time;
+
+// Minimum spacing (ms) between background passes while the window is unfocused.
+final UNFOCUSED_INTERVAL_MS = 100;
+
+/// @brief Tracks window focus and rations background work while unfocused.
+class FocusThrottle {
+    expose Boolean focused;      // Current focus state.
+    expose Boolean everFocused;  // True once the window has been focused at least once.
+    hide Integer lastAllowTick;  // Tick of the last allowed background pass while unfocused.
+    hide Boolean headlessMode;   // True when probes intentionally suppress activation.
+
+    expose func init() {
+        focused = true;
+        everFocused = false;
+        lastAllowTick = 0;
+        headlessMode = false;
+    }
+
+    /// @brief Sample the window focus state for this frame.
+    /// @param app Owning GUI application.
+    expose func Update(app: GUI.App) {
+        if app == null { return; }
+        var f = app.IsFocused();
+        if f { everFocused = true; }
+        headlessMode = HeadlessGraphics();
+        if f == false and everFocused == false and headlessMode {
+            focused = true;
+            return;
+        }
+        focused = f;
+    }
+
+    /// @brief Whether non-essential background work should run this frame.
+    /// @return True every frame while focused; ~10Hz while unfocused; always
+    ///         true for hidden/no-activate probes.
+    expose func AllowBackgroundWork() -> Boolean {
+        if focused { return true; }
+        if headlessMode { return true; }
+        var now = Time.Clock.NowMs();
+        if now - lastAllowTick >= UNFOCUSED_INTERVAL_MS {
+            lastAllowTick = now;
+            return true;
+        }
+        return false;
+    }
+
+    /// @brief True when probes intentionally run without a real foreground window.
+    hide func HeadlessGraphics() -> Boolean {
+        return EnvFlag("ZANNA_GFX_HIDE_WINDOWS") or EnvFlag("ZANNA_GFX_NO_ACTIVATE");
+    }
+
+    hide func EnvFlag(name: String) -> Boolean {
+        if Env.HasVariable(name) == false { return false; }
+        var v = Str.ToLower(Env.GetVariable(name));
+        return v == "1" or v == "true" or v == "yes" or v == "on";
+    }
+}

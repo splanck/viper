@@ -99,8 +99,12 @@ static void sa_finalizer(void *obj) {
     rt_sparse_impl *sa = as_sparse(obj, "SparseArray: invalid SparseArray object");
     if (sa->slots) {
         for (int64_t i = 0; i < sa->capacity; i++) {
-            if (sa->slots[i].occupied)
-                sa_release_value(sa->slots[i].value);
+            if (sa->slots[i].occupied) {
+                void *value = sa->slots[i].value;
+                sa->slots[i].occupied = 0;
+                sa->slots[i].value = NULL;
+                sa_release_value(value);
+            }
         }
         free(sa->slots);
         sa->slots = NULL;
@@ -144,8 +148,9 @@ static void sa_insert_internal(rt_sparse_impl *sa, int64_t key, void *value) {
         if (sa->slots[slot].key == key) {
             // Update value
             rt_obj_retain_maybe(value);
-            sa_release_value(sa->slots[slot].value);
+            void *old_value = sa->slots[slot].value;
             sa->slots[slot].value = value;
+            sa_release_value(old_value);
             return;
         }
     }
@@ -268,20 +273,27 @@ void *rt_sparse_get(void *obj, int64_t index) {
 void rt_sparse_set(void *obj, int64_t index, void *value) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_sparse_impl *sa = as_sparse(obj, "SparseArray.Set: invalid SparseArray object");
-    if (!sa)
+    if (!sa) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     if (!value) {
         rt_sparse_remove(obj, index);
+        rt_gc_mutator_exit();
         return;
     }
 
     // Check load factor (> 70%)
-    if ((long double)sa->count * 10.0L >= (long double)sa->capacity * 7.0L && !sa_grow(sa))
+    if ((long double)sa->count * 10.0L >= (long double)sa->capacity * 7.0L && !sa_grow(sa)) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     sa_insert_internal(sa, index, value);
+    rt_gc_mutator_exit();
 }
 
 /// @brief Check whether a value exists at the given sparse index.
@@ -306,12 +318,15 @@ int8_t rt_sparse_has(void *obj, int64_t index) {
 int8_t rt_sparse_remove(void *obj, int64_t index) {
     if (!obj)
         return 0;
+    rt_gc_mutator_enter();
     rt_sparse_impl *sa = as_sparse(obj, "SparseArray.Remove: invalid SparseArray object");
     sa_slot *s = sa_find(sa, index);
-    if (!s)
+    if (!s) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
-    sa_release_value(s->value);
+    void *removed_value = s->value;
     s->value = NULL;
     s->occupied = 0;
     sa->count--;
@@ -339,6 +354,8 @@ int8_t rt_sparse_remove(void *obj, int64_t index) {
         next = (next + 1) & mask;
     }
 
+    sa_release_value(removed_value);
+    rt_gc_mutator_exit();
     return 1;
 }
 
@@ -380,13 +397,20 @@ void *rt_sparse_values(void *obj) {
 void rt_sparse_clear(void *obj) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_sparse_impl *sa = as_sparse(obj, "SparseArray.Clear: invalid SparseArray object");
+    if (!sa) {
+        rt_gc_mutator_exit();
+        return;
+    }
     for (int64_t i = 0; i < sa->capacity; i++) {
         if (sa->slots[i].occupied) {
-            sa_release_value(sa->slots[i].value);
+            void *value = sa->slots[i].value;
             sa->slots[i].occupied = 0;
             sa->slots[i].value = NULL;
+            sa_release_value(value);
         }
     }
     sa->count = 0;
+    rt_gc_mutator_exit();
 }

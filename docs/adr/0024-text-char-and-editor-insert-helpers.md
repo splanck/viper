@@ -8,9 +8,9 @@ last-verified: 2026-06-30
 
 ## Status
 
-Accepted (runtime implemented; ZannaIDE is the intended first consumer). Driven by
+Accepted (runtime implemented; Zanna Studio is the intended first consumer). Driven by
 the GUI runtime-additions review, recommendation **R7**
-(`misc/plans/zannaide/gui-runtime-additions.md`).
+(`misc/plans/zannastudio/gui-runtime-additions.md`).
 
 ## Context
 
@@ -19,7 +19,7 @@ them:
 
 1. **Identifier character classification.** Deciding whether a character can start
    or continue an identifier is needed for completion triggers, word selection, and
-   ctrl-arrow navigation. ZannaIDE hand-classifies it inline —
+   ctrl-arrow navigation. Zanna Studio hand-classifies it inline —
    `app/dispatch_helpers.zia:64-80` (`HasIdentifierInput`) loops a string checking
    `ch >= "a" and ch <= "z"`, the digit range, and `"_"`.
 2. **Place the caret inside an insertion.** After inserting a multi-line snippet, the
@@ -75,7 +75,7 @@ own; the full method is added to the existing `CodeEditor` class (no new class).
   string argument drops in without a separate codepoint conversion. (Identifier rules
   are ASCII, so the first byte is the codepoint for the cases that matter, and a
   multibyte leading byte correctly classifies as a non-identifier character.)
-- **Unicode identifier rules (XID_Start/XID_Continue).** Rejected for now: ZannaIDE
+- **Unicode identifier rules (XID_Start/XID_Continue).** Rejected for now: Zanna Studio
   and the Zanna/Zia/BASIC languages use ASCII identifiers; full Unicode tables are a
   large addition with no current consumer. ASCII matches the hand-rolled code being
   replaced.

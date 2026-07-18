@@ -10,8 +10,11 @@
 // Key invariants:
 //   - Generates random boundaries and conventional CRLF multipart formatting.
 //   - Builder is append-only; parts are concatenated on Build().
+//   - Every receiver is validated by stable class identity before payload access.
+//   - Parsing is bounded, strict, atomic, and releases partial state on traps.
 // Ownership/Lifetime:
-//   - Multipart objects are GC-managed.
+//   - Multipart objects are GC-managed and own native copies of every part.
+//   - Returned Bytes, Strings, Multipart values, and Results are caller-owned.
 // Links: rt_multipart.h (API)
 //
 //===----------------------------------------------------------------------===//
@@ -26,15 +29,13 @@
 #include "rt_string.h"
 #include "rt_trap.h"
 
+#include <limits.h>
 #include <setjmp.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "rt_trap.h"
-
-#include <stdarg.h>
 
 //=============================================================================
 // Internal Structures
@@ -42,6 +43,7 @@
 
 #define MULTIPART_INITIAL_PART_CAPACITY 16
 #define MULTIPART_MAX_PARSED_BODY_BYTES (64u * 1024u * 1024u)
+#define MULTIPART_MAX_HEADER_BYTES (64u * 1024u)
 
 typedef struct {
     char *name;
@@ -94,6 +96,52 @@ static inline uint8_t *bytes_data(void *obj) {
 
 static inline int64_t bytes_len_impl(void *obj) {
     return rt_bytes_len(obj);
+}
+
+/// @brief Release one caller-owned managed multipart staging reference.
+/// @details Strings are released by the common dynamic release helper; heap
+///          objects additionally run their finalizer/free path at zero. NULL is
+///          accepted so recovery cleanup can remain unconditional.
+/// @param value Managed reference, or NULL.
+static void multipart_release_owned(void *value) {
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
+}
+
+/// @brief Snapshot the active trap diagnostic before clearing a recovery frame.
+/// @details Trap diagnostics use thread-local storage that cleanup may replace.
+///          Copying into caller stack storage preserves the original failure
+///          when it is re-raised after native and managed resources are freed.
+/// @param output Destination buffer.
+/// @param capacity Destination capacity in bytes.
+/// @param fallback Message used when the active diagnostic is empty.
+static void multipart_save_trap(char *output, size_t capacity, const char *fallback) {
+    if (!output || capacity == 0)
+        return;
+    const char *error = rt_trap_get_error();
+    snprintf(output, capacity, "%s", error && error[0] ? error : fallback);
+}
+
+/// @brief Validate and cast a managed Multipart receiver.
+/// @details Stable class identity and the complete payload size are checked
+///          before any field is read, preventing arbitrary managed objects from
+///          being reinterpreted as native pointer/count storage.
+/// @param obj Candidate receiver.
+/// @param context Diagnostic emitted for an invalid receiver.
+/// @return Multipart payload, or NULL after trapping.
+static rt_multipart_impl *multipart_require(void *obj, const char *context) {
+    if (!rt_obj_is_instance(obj, RT_MULTIPART_CLASS_ID, sizeof(rt_multipart_impl))) {
+        rt_trap(context);
+        return NULL;
+    }
+    return (rt_multipart_impl *)obj;
+}
+
+/// @brief Test Multipart identity without raising a trap.
+/// @param obj Candidate managed object.
+/// @return Nonzero only for a live, fully sized Multipart payload.
+static int multipart_is_handle(void *obj) {
+    return rt_obj_is_instance(obj, RT_MULTIPART_CLASS_ID, sizeof(rt_multipart_impl));
 }
 
 static int multipart_size_add(size_t *total, size_t value) {
@@ -184,41 +232,72 @@ static int multipart_boundary_is_valid(const char *boundary) {
     return 1;
 }
 
-static const char *multipart_header_param_cstr(rt_string value,
-                                               const char *fallback,
-                                               const char *context,
-                                               int allow_null) {
-    if (!value) {
-        if (allow_null)
-            return fallback;
+/// @brief Validate a managed header parameter and borrow its C-string bytes.
+/// @details Rejects invalid handles and embedded NUL bytes before native
+///          serialization. NULL may map to a fixed fallback for optional
+///          filename values. Required names can additionally reject emptiness,
+///          ensuring builder output is accepted by the strict parser.
+/// @param value Candidate managed String.
+/// @param fallback Borrowed fallback used only when NULL is allowed.
+/// @param context Diagnostic emitted for invalid input.
+/// @param allow_null Nonzero to accept NULL as @p fallback.
+/// @param require_nonempty Nonzero to reject an empty non-NULL String.
+/// @param output Receives borrowed NUL-terminated bytes.
+/// @return One on success; zero after trapping.
+static int multipart_header_param_view(rt_string value,
+                                       const char *fallback,
+                                       const char *context,
+                                       int allow_null,
+                                       int require_nonempty,
+                                       const char **output) {
+    if (output)
+        *output = NULL;
+    if (!output) {
         rt_trap(context);
-        return fallback; // returning trap hooks must not continue into a deref
+        return 0;
+    }
+    if (!value) {
+        if (allow_null) {
+            *output = fallback;
+            return 1;
+        }
+        rt_trap(context);
+        return 0;
+    }
+    if (!rt_string_is_handle(value)) {
+        rt_trap(context);
+        return 0;
     }
     const char *cstr = rt_string_cstr(value);
-    if (!cstr || multipart_string_has_embedded_nul(value)) {
+    int64_t len = rt_str_len(value);
+    if (!cstr || len < 0 || (require_nonempty && len == 0) ||
+        multipart_string_has_embedded_nul(value)) {
         rt_trap(context);
-        return fallback;
+        return 0;
     }
-    return cstr;
+    *output = cstr;
+    return 1;
 }
 
-static int multipart_appendf(uint8_t *buf, size_t total, size_t *pos, const char *fmt, ...) {
-    if (!buf || !pos || *pos > total)
+/// @brief Append an exact byte span to a pre-sized serialization buffer.
+/// @details Performs subtraction-based bounds checks before `memcpy`, avoiding
+///          pointer or size overflow even when a corrupted internal size reaches
+///          the serializer. A zero-length append succeeds with a NULL source.
+/// @param buffer Destination buffer.
+/// @param capacity Exact writable capacity.
+/// @param position In/out write offset.
+/// @param bytes Source bytes.
+/// @param length Number of bytes to append.
+/// @return One on success, otherwise zero without modifying @p position.
+static int multipart_append_bytes(
+    uint8_t *buffer, size_t capacity, size_t *position, const void *bytes, size_t length) {
+    if (!buffer || !position || *position > capacity || length > capacity - *position ||
+        (length > 0 && !bytes)) {
         return 0;
-    va_list args;
-    va_start(args, fmt);
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wformat-nonliteral"
-#endif
-    int written = vsnprintf((char *)buf + *pos, total + 1 - *pos, fmt, args);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-    va_end(args);
-    if (written < 0 || (size_t)written >= total + 1 - *pos)
-        return 0;
-    *pos += (size_t)written;
+    }
+    if (length > 0)
+        memcpy(buffer + *position, bytes, length);
+    *position += length;
     return 1;
 }
 
@@ -233,6 +312,42 @@ static const uint8_t *find_bytes(const uint8_t *haystack,
     for (size_t i = 0; i <= limit; i++) {
         if (haystack[i] == needle[0] && memcmp(haystack + i, needle, needle_len) == 0)
             return haystack + i;
+    }
+    return NULL;
+}
+
+/// @brief Find a syntactically complete multipart boundary delimiter line.
+/// @details A candidate must begin at the body start or immediately after CRLF,
+///          and the boundary token must be followed by CRLF (ordinary part) or
+///          `--` (closing delimiter). Prefix matches such as `--boundaryExtra`
+///          are skipped so body data cannot be truncated by a shorter token.
+/// @param haystack Remaining body bytes.
+/// @param haystack_len Number of available bytes.
+/// @param token Boundary token including its leading `--`.
+/// @param token_len Exact token length.
+/// @return Pointer to the token start, or NULL.
+static const uint8_t *multipart_find_boundary_line(const uint8_t *haystack,
+                                                   size_t haystack_len,
+                                                   const uint8_t *token,
+                                                   size_t token_len) {
+    if (!haystack || !token || token_len == 0)
+        return NULL;
+    size_t offset = 0;
+    while (offset <= haystack_len) {
+        const uint8_t *candidate =
+            find_bytes(haystack + offset, haystack_len - offset, token, token_len);
+        if (!candidate)
+            return NULL;
+        size_t index = (size_t)(candidate - haystack);
+        size_t remaining = haystack_len - index;
+        bool line_start =
+            index == 0 || (index >= 2 && candidate[-2] == '\r' && candidate[-1] == '\n');
+        bool valid_suffix = remaining >= token_len + 2 &&
+                            ((candidate[token_len] == '\r' && candidate[token_len + 1] == '\n') ||
+                             (candidate[token_len] == '-' && candidate[token_len + 1] == '-'));
+        if (line_start && valid_suffix)
+            return candidate;
+        offset = index + 1;
     }
     return NULL;
 }
@@ -272,28 +387,35 @@ static int multipart_escaped_quoted_length(const char *value, size_t *len_out) {
     return 1;
 }
 
-static char *multipart_escape_quoted_value(const char *value) {
-    size_t len = 0;
-    if (!multipart_escaped_quoted_length(value, &len) || len == SIZE_MAX)
-        return NULL;
-    char *escaped = (char *)malloc(len + 1);
-    char *out = escaped;
-    if (!escaped)
-        return NULL;
-    if (!value) {
-        escaped[0] = '\0';
-        return escaped;
-    }
+/// @brief Append a safely escaped quoted header parameter without allocation.
+/// @details Quotes and backslashes receive a backslash prefix; control bytes
+///          and DEL become spaces, preserving the builder's injection-safe
+///          historical behavior. The caller's sizing pass must have included
+///          @ref multipart_escaped_quoted_length for the same value.
+/// @param buffer Destination serialization buffer.
+/// @param capacity Exact writable capacity.
+/// @param position In/out write offset.
+/// @param value NUL-terminated parameter value.
+/// @return One on success, otherwise zero.
+static int multipart_append_escaped_quoted(uint8_t *buffer,
+                                           size_t capacity,
+                                           size_t *position,
+                                           const char *value) {
+    if (!value)
+        return 1;
     while (*value) {
         char ch = *value++;
         if ((unsigned char)ch < 0x20u || (unsigned char)ch == 0x7fu)
             ch = ' ';
-        if (ch == '"' || ch == '\\')
-            *out++ = '\\';
-        *out++ = ch;
+        if (ch == '"' || ch == '\\') {
+            const char slash = '\\';
+            if (!multipart_append_bytes(buffer, capacity, position, &slash, 1))
+                return 0;
+        }
+        if (!multipart_append_bytes(buffer, capacity, position, &ch, 1))
+            return 0;
     }
-    *out = '\0';
-    return escaped;
+    return 1;
 }
 
 static void multipart_skip_ows(const char **cursor) {
@@ -301,9 +423,14 @@ static void multipart_skip_ows(const char **cursor) {
         (*cursor)++;
 }
 
-static size_t multipart_copy_unescaped_quoted(const char **cursor, char *out, size_t out_cap) {
+static size_t multipart_copy_unescaped_quoted(const char **cursor,
+                                              char *out,
+                                              size_t out_cap,
+                                              int *closed_out) {
     size_t len = 0;
     const char *p = cursor ? *cursor : NULL;
+    if (closed_out)
+        *closed_out = 0;
     if (!p || *p != '"')
         return 0;
     p++;
@@ -315,8 +442,11 @@ static size_t multipart_copy_unescaped_quoted(const char **cursor, char *out, si
             out[len] = ch;
         len++;
     }
-    if (*p == '"')
+    if (*p == '"') {
         p++;
+        if (closed_out)
+            *closed_out = 1;
+    }
     if (out && out_cap > 0) {
         size_t write_len = len < out_cap - 1 ? len : out_cap - 1;
         out[write_len] = '\0';
@@ -385,15 +515,16 @@ static int multipart_extract_param_value(const char *text,
         if ((size_t)(name_end - name_start) == target_len &&
             multipart_ascii_ieq_n(name_start, target_name, target_len)) {
             size_t value_len = 0;
+            int closed = 1;
             if (*p == '"')
-                value_len = multipart_copy_unescaped_quoted(&p, out, out_cap);
+                value_len = multipart_copy_unescaped_quoted(&p, out, out_cap, &closed);
             else
                 value_len = multipart_copy_token_value(&p, out, out_cap);
-            return out_cap == 0 || value_len < out_cap;
+            return closed && (out_cap == 0 || value_len < out_cap);
         }
 
         if (*p == '"')
-            multipart_copy_unescaped_quoted(&p, NULL, 0);
+            multipart_copy_unescaped_quoted(&p, NULL, 0, NULL);
         else
             multipart_copy_token_value(&p, NULL, 0);
 
@@ -464,40 +595,54 @@ static void rt_multipart_finalize(void *obj) {
 // Public API — Builder
 //=============================================================================
 
-/// @brief Construct a multipart form-data builder. Generates a 40-character random boundary at
-/// construction (RFC 2046 §5.1.1: must not collide with body content; 40 random alphanumerics
-/// gives ~2^238 entropy, far exceeding the standard's recommendation). Caller adds parts via
-/// `_add_field` / `_add_file`, then serializes with `_build`.
+/// @brief Construct a multipart/form-data builder with a random boundary.
+/// @details A 40-character unbiased alphanumeric boundary provides roughly 238
+///          bits of entropy. A recovery frame covers both managed allocation
+///          and entropy generation so a failed constructor cannot leave a
+///          partially initialized object registered with the heap.
+/// @return Caller-owned Multipart object, or NULL after a returning trap hook.
 void *rt_multipart_new(void) {
-    rt_multipart_impl *mp =
-        (rt_multipart_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multipart_impl));
-    if (!mp) {
-        rt_trap("Multipart: memory allocation failed");
+    rt_multipart_impl *volatile mp = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        multipart_save_trap(
+            saved_error, sizeof(saved_error), "Multipart: constructor initialization failed");
+        rt_trap_clear_recovery();
+        multipart_release_owned((void *)mp);
+        rt_trap(saved_error);
         return NULL;
     }
-    memset(mp, 0, sizeof(*mp));
-    generate_boundary(mp->boundary, sizeof(mp->boundary));
-    rt_obj_set_finalizer(mp, rt_multipart_finalize);
-    return mp;
+
+    mp = (rt_multipart_impl *)rt_obj_new_i64(RT_MULTIPART_CLASS_ID,
+                                             (int64_t)sizeof(rt_multipart_impl));
+    if (!mp) {
+        rt_trap("Multipart: memory allocation failed");
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    memset((void *)mp, 0, sizeof(*mp));
+    rt_obj_set_finalizer((void *)mp, rt_multipart_finalize);
+    generate_boundary((char *)mp->boundary, sizeof(mp->boundary));
+    rt_trap_clear_recovery();
+    return (void *)mp;
 }
 
 /// @brief Append a text field (`Content-Disposition: form-data; name="..."`).
 /// @details Returns the builder for fluent chaining. Part storage grows on demand and traps on
 ///          null input, invalid names, integer overflow, or allocation failure.
 void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
-    if (!obj) {
-        rt_trap("Multipart: NULL object");
+    rt_multipart_impl *mp = multipart_require(obj, "Multipart.AddField: invalid receiver");
+    if (!mp)
         return NULL;
-    }
-    rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    if (!multipart_reserve_parts(mp, mp->part_count + 1)) {
-        rt_trap("Multipart: part storage allocation failed");
+
+    const char *n = NULL;
+    if (!multipart_header_param_view(name, NULL, "Multipart: invalid field name", 0, 1, &n)) {
         return obj;
     }
-
-    const char *n = multipart_header_param_cstr(name, "", "Multipart: invalid field name", 0);
-    if (!value) {
-        rt_trap("Multipart: NULL field value");
+    if (!value || !rt_string_is_handle(value)) {
+        rt_trap("Multipart: invalid field value");
         return obj;
     }
     const char *v = rt_string_cstr(value);
@@ -507,8 +652,12 @@ void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
         return obj;
     }
     size_t v_len = (size_t)v_len64;
+    if (mp->part_count == INT_MAX || !multipart_reserve_parts(mp, mp->part_count + 1)) {
+        rt_trap("Multipart: part storage allocation failed");
+        return obj;
+    }
 
-    char *name_copy = n ? strdup(n) : strdup("");
+    char *name_copy = strdup(n);
     uint8_t *data_copy = (uint8_t *)malloc(v_len > 0 ? v_len : 1);
     if (!name_copy || !data_copy) {
         free(name_copy);
@@ -533,28 +682,33 @@ void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
 /// `Content-Type: application/octet-stream`). `data` is a Bytes object (the raw file contents).
 /// Returns the builder for chaining. NULL filename defaults to "file".
 void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void *data) {
-    if (!obj) {
-        rt_trap("Multipart: NULL object");
+    rt_multipart_impl *mp = multipart_require(obj, "Multipart.AddFile: invalid receiver");
+    if (!mp)
         return NULL;
-    }
-    rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    if (!multipart_reserve_parts(mp, mp->part_count + 1)) {
-        rt_trap("Multipart: part storage allocation failed");
+
+    const char *n = NULL;
+    const char *fn = NULL;
+    if (!multipart_header_param_view(name, NULL, "Multipart: invalid file field name", 0, 1, &n) ||
+        !multipart_header_param_view(filename, "file", "Multipart: invalid filename", 1, 0, &fn)) {
         return obj;
     }
-
-    const char *n = multipart_header_param_cstr(name, "", "Multipart: invalid file field name", 0);
-    const char *fn =
-        multipart_header_param_cstr(filename, "file", "Multipart: invalid filename", 1);
+    if (data && !rt_bytes_is_bytes(data)) {
+        rt_trap("Multipart: invalid file data");
+        return obj;
+    }
     int64_t len = data ? bytes_len_impl(data) : 0;
     uint8_t *ptr = data ? bytes_data(data) : NULL;
-    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX) {
+    if (len < 0 || (uint64_t)len > (uint64_t)SIZE_MAX || (len > 0 && !ptr)) {
         rt_trap("Multipart: invalid file data length");
         return obj;
     }
     size_t data_len = (size_t)len;
-    char *name_copy = n ? strdup(n) : strdup("");
-    char *filename_copy = fn ? strdup(fn) : strdup("file");
+    if (mp->part_count == INT_MAX || !multipart_reserve_parts(mp, mp->part_count + 1)) {
+        rt_trap("Multipart: part storage allocation failed");
+        return obj;
+    }
+    char *name_copy = strdup(n);
+    char *filename_copy = strdup(fn);
     uint8_t *data_copy = (uint8_t *)malloc(data_len > 0 ? data_len : 1);
     if (!name_copy || !filename_copy || !data_copy) {
         free(name_copy);
@@ -576,30 +730,35 @@ void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void 
     return obj;
 }
 
-/// @brief Return the full Content-Type header value including the boundary parameter.
+/// @brief Return the full Content-Type value including the random boundary.
+/// @param obj Multipart receiver; NULL preserves the historical empty result.
+/// @return Caller-owned header String.
 rt_string rt_multipart_content_type(void *obj) {
     if (!obj)
-        return rt_string_from_bytes("", 0);
-    rt_multipart_impl *mp = (rt_multipart_impl *)obj;
+        return rt_str_empty();
+    rt_multipart_impl *mp = multipart_require(obj, "Multipart.ContentType: invalid receiver");
+    if (!mp)
+        return rt_str_empty();
 
     char buf[128];
     snprintf(buf, sizeof(buf), "multipart/form-data; boundary=%s", mp->boundary);
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
-/// @brief Serialize all parts to a single Bytes object suitable as an HTTP body. Layout per RFC
-/// 2046:
-/// `--boundary\r\n` headers `\r\n\r\n` body `\r\n` ... `--boundary--\r\n` (terminator). Total size
-/// is calculated up-front and a single buffer is allocated; no incremental growth. Caller pairs
-/// the result with `_content_type` for the matching Content-Type header.
+/// @brief Serialize all parts to a single Bytes object suitable as an HTTP body.
+/// @details Computes the exact size with overflow checks, allocates one native
+///          staging buffer, and writes escaped parameters directly without a
+///          per-part temporary allocation. A recovery frame around the final
+///          managed Bytes construction releases native staging before any trap
+///          propagates. Layout follows RFC 2046 CRLF framing and always includes
+///          the closing `--boundary--` delimiter.
+/// @param obj Valid Multipart receiver.
+/// @return Caller-owned Bytes, or NULL after a returning trap hook.
 void *rt_multipart_build(void *obj) {
-    if (!obj) {
-        rt_trap("Multipart: NULL multipart");
-        return rt_bytes_new(0);
-    }
-    rt_multipart_impl *mp = (rt_multipart_impl *)obj;
+    rt_multipart_impl *mp = multipart_require(obj, "Multipart.Build: invalid receiver");
+    if (!mp)
+        return NULL;
 
-    // Calculate total size
     size_t total = 0;
     size_t blen = strlen(mp->boundary);
     for (int i = 0; i < mp->part_count; i++) {
@@ -609,11 +768,11 @@ void *rt_multipart_build(void *obj) {
         if (!multipart_escaped_quoted_length(part->name, &escaped_name_len) ||
             !multipart_escaped_quoted_length(part->filename, &escaped_filename_len)) {
             rt_trap("Multipart: message too large");
-            return rt_bytes_new(0);
+            return NULL;
         }
         if (!multipart_size_add(&total, 2 + blen + 2)) {
             rt_trap("Multipart: message too large");
-            return rt_bytes_new(0); // --boundary\r\n
+            return NULL;
         }
         if (part->is_file) {
             if (!multipart_size_add(
@@ -623,128 +782,115 @@ void *rt_multipart_build(void *obj) {
                 !multipart_size_add(&total, escaped_name_len) ||
                 !multipart_size_add(&total, escaped_filename_len)) {
                 rt_trap("Multipart: message too large");
-                return rt_bytes_new(0);
+                return NULL;
             }
         } else {
             if (!multipart_size_add(&total,
                                     strlen("Content-Disposition: form-data; name=\"\"\r\n\r\n")) ||
                 !multipart_size_add(&total, escaped_name_len)) {
                 rt_trap("Multipart: message too large");
-                return rt_bytes_new(0);
+                return NULL;
             }
         }
         if (!multipart_size_add(&total, part->data_len) || !multipart_size_add(&total, 2)) {
             rt_trap("Multipart: message too large");
-            return rt_bytes_new(0); // \r\n
+            return NULL;
         }
     }
-    if (!multipart_size_add(&total, 2 + blen + 4) || total > (size_t)INT64_MAX ||
-        total == SIZE_MAX) {
+    if (!multipart_size_add(&total, 2 + blen + 4) || total > (size_t)INT64_MAX) {
         rt_trap("Multipart: message too large");
-        return rt_bytes_new(0); // --boundary--\r\n
+        return NULL;
     }
 
-    uint8_t *buf = (uint8_t *)malloc(total + 1);
+    uint8_t *buf = (uint8_t *)malloc(total);
     if (!buf) {
         rt_trap("Multipart: memory allocation failed");
-        return rt_bytes_new(0);
+        return NULL;
     }
 
     size_t pos = 0;
     for (int i = 0; i < mp->part_count; i++) {
         multipart_part_t *part = &mp->parts[i];
-        char *escaped_name = multipart_escape_quoted_value(part->name);
-        char *escaped_filename =
-            part->is_file ? multipart_escape_quoted_value(part->filename) : NULL;
-        if (!escaped_name || (part->is_file && !escaped_filename)) {
-            free(escaped_filename);
-            free(escaped_name);
-            free(buf);
-            rt_trap("Multipart: memory allocation failed");
-            return rt_bytes_new(0);
-        }
-
-        // Boundary
-        if (!multipart_appendf(buf, total, &pos, "--%s\r\n", mp->boundary)) {
-            free(escaped_filename);
-            free(escaped_name);
+        const char boundary_prefix[] = "--";
+        const char disposition_prefix[] = "Content-Disposition: form-data; name=\"";
+        const char file_name_prefix[] = "\"; filename=\"";
+        const char file_suffix[] = "\"\r\nContent-Type: application/octet-stream\r\n\r\n";
+        const char field_suffix[] = "\"\r\n\r\n";
+        if (!multipart_append_bytes(
+                buf, total, &pos, boundary_prefix, sizeof(boundary_prefix) - 1) ||
+            !multipart_append_bytes(buf, total, &pos, mp->boundary, blen) ||
+            !multipart_append_bytes(buf, total, &pos, "\r\n", 2) ||
+            !multipart_append_bytes(
+                buf, total, &pos, disposition_prefix, sizeof(disposition_prefix) - 1) ||
+            !multipart_append_escaped_quoted(buf, total, &pos, part->name)) {
             free(buf);
             rt_trap("Multipart: serialization failed");
-            return rt_bytes_new(0);
+            return NULL;
         }
-
-        // Headers
         if (part->is_file) {
-            if (!multipart_appendf(buf,
-                                   total,
-                                   &pos,
-                                   "Content-Disposition: form-data; name=\"%s\"; "
-                                   "filename=\"%s\"\r\n"
-                                   "Content-Type: application/octet-stream\r\n\r\n",
-                                   escaped_name,
-                                   escaped_filename)) {
-                free(escaped_filename);
-                free(escaped_name);
+            if (!multipart_append_bytes(
+                    buf, total, &pos, file_name_prefix, sizeof(file_name_prefix) - 1) ||
+                !multipart_append_escaped_quoted(buf, total, &pos, part->filename) ||
+                !multipart_append_bytes(buf, total, &pos, file_suffix, sizeof(file_suffix) - 1)) {
                 free(buf);
                 rt_trap("Multipart: serialization failed");
-                return rt_bytes_new(0);
+                return NULL;
             }
         } else {
-            if (!multipart_appendf(buf,
-                                   total,
-                                   &pos,
-                                   "Content-Disposition: form-data; name=\"%s\"\r\n\r\n",
-                                   escaped_name)) {
-                free(escaped_filename);
-                free(escaped_name);
+            if (!multipart_append_bytes(buf, total, &pos, field_suffix, sizeof(field_suffix) - 1)) {
                 free(buf);
                 rt_trap("Multipart: serialization failed");
-                return rt_bytes_new(0);
+                return NULL;
             }
         }
-        free(escaped_filename);
-        free(escaped_name);
-
-        // Data
-        if (part->data_len > 0 && pos <= total && part->data_len <= total - pos) {
-            memcpy(buf + pos, part->data, part->data_len);
-            pos += part->data_len;
-        } else if (part->data_len > 0) {
+        if (!multipart_append_bytes(buf, total, &pos, part->data, part->data_len) ||
+            !multipart_append_bytes(buf, total, &pos, "\r\n", 2)) {
             free(buf);
             rt_trap("Multipart: serialization failed");
-            return rt_bytes_new(0);
-        }
-        if (!multipart_appendf(buf, total, &pos, "\r\n")) {
-            free(buf);
-            rt_trap("Multipart: serialization failed");
-            return rt_bytes_new(0);
+            return NULL;
         }
     }
 
-    // Final boundary
-    if (!multipart_appendf(buf, total, &pos, "--%s--\r\n", mp->boundary)) {
+    if (!multipart_append_bytes(buf, total, &pos, "--", 2) ||
+        !multipart_append_bytes(buf, total, &pos, mp->boundary, blen) ||
+        !multipart_append_bytes(buf, total, &pos, "--\r\n", 4) || pos != total) {
         free(buf);
         rt_trap("Multipart: serialization failed");
-        return rt_bytes_new(0);
-    }
-    if (pos > total) {
-        free(buf);
-        rt_trap("Multipart: serialization failed");
-        return rt_bytes_new(0);
+        return NULL;
     }
 
-    void *result = rt_bytes_new((int64_t)pos);
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        multipart_save_trap(
+            saved_error, sizeof(saved_error), "Multipart: result allocation failed");
+        rt_trap_clear_recovery();
+        free(buf);
+        multipart_release_owned((void *)result);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_bytes_new((int64_t)pos);
+    if (!result)
+        rt_trap("Multipart: result allocation failed");
+    uint8_t *result_data = bytes_data((void *)result);
+    if (pos > 0 && !result_data)
+        rt_trap("Multipart: result storage unavailable");
     if (pos > 0)
-        memcpy(bytes_data(result), buf, pos);
+        memcpy(result_data, buf, pos);
+    rt_trap_clear_recovery();
     free(buf);
-    return result;
+    return (void *)result;
 }
 
-/// @brief Return the count of elements in the multipart.
+/// @brief Return the count of elements in a validated Multipart.
 int64_t rt_multipart_count(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_multipart_impl *)obj)->part_count;
+    rt_multipart_impl *mp = multipart_require(obj, "Multipart.Count: invalid receiver");
+    return mp ? mp->part_count : 0;
 }
 
 //=============================================================================
@@ -765,12 +911,13 @@ int64_t rt_multipart_count(void *obj) {
 ///          so a returned Multipart always represents the complete input. Use
 ///          `ParseResult` for a non-trapping `Result`-returning variant.
 void *rt_multipart_parse(rt_string content_type, void *body) {
-    if (!body) {
-        rt_trap("Multipart: NULL body");
+    if (!body || !rt_bytes_is_bytes(body)) {
+        rt_trap("Multipart: invalid body");
         return NULL;
     }
 
-    const char *ct = content_type ? rt_string_cstr(content_type) : NULL;
+    const char *ct =
+        content_type && rt_string_is_handle(content_type) ? rt_string_cstr(content_type) : NULL;
     if (!ct || multipart_string_has_embedded_nul(content_type)) {
         rt_trap("Multipart: invalid content type");
         return NULL;
@@ -784,17 +931,6 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         return NULL;
     }
 
-    rt_multipart_impl *mp =
-        (rt_multipart_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multipart_impl));
-    if (!mp) {
-        rt_trap("Multipart: memory allocation failed");
-        return NULL;
-    }
-    memset(mp, 0, sizeof(*mp));
-    memcpy(mp->boundary, boundary, sizeof(mp->boundary) - 1);
-    rt_obj_set_finalizer(mp, rt_multipart_finalize);
-
-    // Parse body
     int64_t body_len = bytes_len_impl(body);
     const uint8_t *data = bytes_data(body);
     if (!data || body_len <= 0) {
@@ -809,68 +945,94 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
 
     char delim[140];
     int dlen = snprintf(delim, sizeof(delim), "--%s", boundary);
-    char next_delim[144];
-    int next_dlen = snprintf(next_delim, sizeof(next_delim), "\r\n--%s", boundary);
-    if (dlen <= 0 || next_dlen <= 0 || (size_t)dlen >= sizeof(delim) ||
-        (size_t)next_dlen >= sizeof(next_delim)) {
+    if (dlen <= 0 || (size_t)dlen >= sizeof(delim)) {
         rt_trap("Multipart: invalid or missing boundary");
         return NULL;
     }
 
-    // Find each part between boundaries
     const uint8_t *s = data;
     const uint8_t *s_end = s + (size_t)body_len;
-
-    // Skip to first boundary
-    const uint8_t *p = find_bytes(s, (size_t)body_len, (const uint8_t *)delim, (size_t)dlen);
+    const uint8_t *p =
+        multipart_find_boundary_line(s, (size_t)body_len, (const uint8_t *)delim, (size_t)dlen);
     if (!p) {
         rt_trap("Multipart: missing boundary delimiter");
         return NULL;
     }
 
+    rt_multipart_impl *volatile mp = NULL;
+    char *volatile header_text = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        multipart_save_trap(saved_error, sizeof(saved_error), "Multipart: parse failed");
+        rt_trap_clear_recovery();
+        free((void *)header_text);
+        multipart_release_owned((void *)mp);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    mp = (rt_multipart_impl *)rt_obj_new_i64(RT_MULTIPART_CLASS_ID,
+                                             (int64_t)sizeof(rt_multipart_impl));
+    if (!mp)
+        rt_trap("Multipart: memory allocation failed");
+    memset((void *)mp, 0, sizeof(*mp));
+    memcpy((char *)mp->boundary, boundary, sizeof(mp->boundary) - 1);
+    rt_obj_set_finalizer((void *)mp, rt_multipart_finalize);
+
     int saw_closing_boundary = 0;
     while (p && p < s_end) {
         p += dlen;
         if (p + 1 < s_end && p[0] == '-' && p[1] == '-') {
+            p += 2;
+            if (p != s_end && (p + 1 >= s_end || p[0] != '\r' || p[1] != '\n')) {
+                rt_trap("Multipart: malformed closing boundary");
+                goto returned_trap;
+            }
             saw_closing_boundary = 1;
-            break; // End boundary
+            break;
         }
-        if (p < s_end && *p == '\r')
-            p++;
-        if (p < s_end && *p == '\n')
-            p++;
+        if (p + 1 >= s_end || p[0] != '\r' || p[1] != '\n') {
+            rt_trap("Multipart: malformed boundary delimiter");
+            goto returned_trap;
+        }
+        p += 2;
 
-        // Find end of headers (double CRLF)
         const uint8_t header_sep[] = {'\r', '\n', '\r', '\n'};
         const uint8_t *headers_end =
             find_bytes(p, (size_t)(s_end - p), header_sep, sizeof(header_sep));
         if (!headers_end) {
             rt_trap("Multipart: truncated body (incomplete part headers)");
-            return NULL;
+            goto returned_trap;
         }
 
-        // Parse name from Content-Disposition
         char part_name[256] = {0};
         char part_filename[256] = {0};
         int has_name = 0;
         int is_file = 0;
         size_t header_len = (size_t)(headers_end - p);
-        char *header_text = (char *)malloc(header_len + 1);
+        if (header_len > MULTIPART_MAX_HEADER_BYTES) {
+            rt_trap("Multipart: part headers too large");
+            goto returned_trap;
+        }
+        header_text = (char *)malloc(header_len + 1);
         if (!header_text) {
             rt_trap("Multipart: memory allocation failed");
-            return NULL;
+            goto returned_trap;
         }
         if (memchr(p, '\0', header_len)) {
-            free(header_text);
             rt_trap("Multipart: invalid part headers");
-            return NULL;
+            goto returned_trap;
         }
-        memcpy(header_text, p, header_len);
+        memcpy((void *)header_text, p, header_len);
         header_text[header_len] = '\0';
 
         char disposition[512] = {0};
-        if (multipart_extract_header_value(
-                header_text, "Content-Disposition", disposition, sizeof(disposition))) {
+        if (multipart_extract_header_value((const char *)header_text,
+                                           "Content-Disposition",
+                                           disposition,
+                                           sizeof(disposition))) {
             has_name =
                 multipart_extract_param_value(disposition, "name", part_name, sizeof(part_name));
             if (multipart_extract_param_value(
@@ -878,32 +1040,31 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
                 is_file = 1;
             }
         }
-        free(header_text);
+        free((void *)header_text);
+        header_text = NULL;
 
-        // Data starts after headers
         const uint8_t *data_start = headers_end + 4;
-
-        // Find next boundary. A part running to EOF without a boundary means
-        // the input was truncated — reject the whole parse instead of
-        // silently accepting a prefix.
-        const uint8_t *next = find_bytes(data_start,
-                                         (size_t)(s_end - data_start),
-                                         (const uint8_t *)next_delim,
-                                         (size_t)next_dlen);
+        const uint8_t *next = multipart_find_boundary_line(
+            data_start, (size_t)(s_end - data_start), (const uint8_t *)delim, (size_t)dlen);
         if (!next) {
             rt_trap("Multipart: truncated body (missing closing boundary)");
-            return NULL;
+            goto returned_trap;
+        }
+        if (next < data_start + 2 || next[-2] != '\r' || next[-1] != '\n') {
+            rt_trap("Multipart: malformed part framing");
+            goto returned_trap;
         }
 
-        size_t data_size = (size_t)(next - data_start);
+        size_t data_size = (size_t)((next - 2) - data_start);
         if (!has_name || !part_name[0] || !multipart_header_param_is_valid(part_name) ||
             (is_file && !multipart_header_param_is_valid(part_filename))) {
             rt_trap("Multipart: malformed part header");
-            return NULL;
+            goto returned_trap;
         }
-        if (!multipart_reserve_parts(mp, mp->part_count + 1)) {
+        if (mp->part_count == INT_MAX ||
+            !multipart_reserve_parts((rt_multipart_impl *)mp, mp->part_count + 1)) {
             rt_trap("Multipart: memory allocation failed");
-            return NULL;
+            goto returned_trap;
         }
 
         char *name_copy = strdup(part_name);
@@ -914,7 +1075,7 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
             free(filename_copy);
             free(data_copy);
             rt_trap("Multipart: memory allocation failed");
-            return NULL;
+            goto returned_trap;
         }
         if (data_size > 0)
             memcpy(data_copy, data_start, data_size);
@@ -926,44 +1087,117 @@ void *rt_multipart_parse(rt_string content_type, void *body) {
         part->data_len = data_size;
         part->is_file = is_file;
 
-        // Re-enter just past the CRLF so the loop's `p += dlen` lands exactly
-        // after the boundary text and the closing `--` check can fire.
-        p = next + 2;
+        p = next;
     }
 
     if (!saw_closing_boundary) {
         rt_trap("Multipart: truncated body (missing closing boundary)");
-        return NULL;
+        goto returned_trap;
     }
 
-    return mp;
+    rt_trap_clear_recovery();
+    return (void *)mp;
+
+returned_trap:
+    rt_trap_clear_recovery();
+    free((void *)header_text);
+    multipart_release_owned((void *)mp);
+    return NULL;
 }
 
-/// @brief Non-trapping companion to `rt_multipart_parse`: converts parse traps
-///        into `Result.ErrStr` and wraps a successful parse in `Result.Ok`.
+/// @brief Build `Result.ErrStr` from stable native diagnostic bytes.
+/// @details A recovery frame covers both the diagnostic String and Result
+///          allocations. It releases either partial value before propagating
+///          allocation failure, and drops the String's initial reference after
+///          the Result has retained it.
+/// @param message NUL-terminated diagnostic bytes.
+/// @return Caller-owned error Result.
+static void *multipart_error_result(const char *message) {
+    rt_string volatile error_string = NULL;
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        multipart_save_trap(
+            saved_error, sizeof(saved_error), "Multipart: error Result allocation failed");
+        rt_trap_clear_recovery();
+        multipart_release_owned((void *)result);
+        multipart_release_owned((void *)error_string);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    const char *stable = message && message[0] ? message : "Multipart: parse failed";
+    error_string = rt_string_from_bytes(stable, strlen(stable));
+    if (!error_string)
+        rt_trap("Multipart: error message allocation failed");
+    result = rt_result_err_str((rt_string)error_string);
+    if (!result)
+        rt_trap("Multipart: error Result allocation failed");
+    rt_trap_clear_recovery();
+    multipart_release_owned((void *)error_string);
+    return (void *)result;
+}
+
+/// @brief Wrap and consume one caller-owned Multipart in `Result.Ok`.
+/// @details `rt_result_ok` retains the payload. This helper drops the initial
+///          parse reference after success and also releases it if Result
+///          allocation or retain validation traps.
+/// @param multipart Owned Multipart reference to consume.
+/// @return Caller-owned success Result.
+static void *multipart_success_result_owned(void *multipart) {
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        multipart_save_trap(
+            saved_error, sizeof(saved_error), "Multipart: success Result allocation failed");
+        rt_trap_clear_recovery();
+        multipart_release_owned((void *)result);
+        multipart_release_owned(multipart);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_result_ok(multipart);
+    if (!result)
+        rt_trap("Multipart: success Result allocation failed");
+    rt_trap_clear_recovery();
+    multipart_release_owned(multipart);
+    return (void *)result;
+}
+
+/// @brief Non-trapping companion to @ref rt_multipart_parse.
+/// @details Converts parser traps into `Result.ErrStr`, copying the diagnostic
+///          before clearing recovery. Result construction occurs under a fresh
+///          recovery frame, avoiding the historical loop that retried a failed
+///          diagnostic allocation against the same `setjmp` target.
+/// @param content_type Candidate Content-Type String.
+/// @param body Candidate Bytes body.
+/// @return Caller-owned success or error Result.
 void *rt_multipart_parse_result(rt_string content_type, void *body) {
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
-        const char *msg = rt_trap_get_error();
-        if (!msg || !*msg)
-            msg = "Multipart: parse failed";
-        rt_string message = rt_string_from_bytes(msg, strlen(msg));
+        char saved_error[512];
+        multipart_save_trap(saved_error, sizeof(saved_error), "Multipart: parse failed");
         rt_trap_clear_recovery();
-        return rt_result_err_str(message);
+        return multipart_error_result(saved_error);
     }
     void *mp = rt_multipart_parse(content_type, body);
     rt_trap_clear_recovery();
-    return rt_result_ok(mp);
+    if (!mp)
+        return multipart_error_result("Multipart: parse returned no value");
+    return multipart_success_result_owned(mp);
 }
 
 /// @brief True when a non-file field with @p name exists (distinguishes a
 ///        present-but-empty field from a missing one, VDOC-146).
 int8_t rt_multipart_has_field(void *obj, rt_string name) {
-    if (!obj)
+    if (!multipart_is_handle(obj) || !name || !rt_string_is_handle(name))
         return 0;
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    const char *n = name ? rt_string_cstr(name) : NULL;
+    const char *n = rt_string_cstr(name);
     if (!n || multipart_string_has_embedded_nul(name))
         return 0;
     for (int i = 0; i < mp->part_count; i++) {
@@ -976,10 +1210,10 @@ int8_t rt_multipart_has_field(void *obj, rt_string name) {
 /// @brief True when a file part with @p name exists (distinguishes a present
 ///        zero-byte file from a missing one, VDOC-146).
 int8_t rt_multipart_has_file(void *obj, rt_string name) {
-    if (!obj)
+    if (!multipart_is_handle(obj) || !name || !rt_string_is_handle(name))
         return 0;
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    const char *n = name ? rt_string_cstr(name) : NULL;
+    const char *n = rt_string_cstr(name);
     if (!n || multipart_string_has_embedded_nul(name))
         return 0;
     for (int i = 0; i < mp->part_count; i++) {
@@ -992,28 +1226,28 @@ int8_t rt_multipart_has_file(void *obj, rt_string name) {
 /// @brief Look up a non-file field by name and return its value, or empty if not found.
 /// Use `HasField` to distinguish a missing field from a present empty one.
 rt_string rt_multipart_get_field(void *obj, rt_string name) {
-    if (!obj)
-        return rt_string_from_bytes("", 0);
+    if (!multipart_is_handle(obj) || !name || !rt_string_is_handle(name))
+        return rt_str_empty();
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    const char *n = name ? rt_string_cstr(name) : NULL;
+    const char *n = rt_string_cstr(name);
     if (!n || multipart_string_has_embedded_nul(name))
-        return rt_string_from_bytes("", 0);
+        return rt_str_empty();
 
     for (int i = 0; i < mp->part_count; i++) {
         if (!mp->parts[i].is_file && mp->parts[i].name && strcmp(mp->parts[i].name, n) == 0) {
             return rt_string_from_bytes((const char *)mp->parts[i].data, mp->parts[i].data_len);
         }
     }
-    return rt_string_from_bytes("", 0);
+    return rt_str_empty();
 }
 
 /// @brief Look up a file part by name and return its raw contents as Bytes. Returns empty Bytes
 /// if the name doesn't match any file part (use `_get_field` for non-file parts).
 void *rt_multipart_get_file(void *obj, rt_string name) {
-    if (!obj)
+    if (!multipart_is_handle(obj) || !name || !rt_string_is_handle(name))
         return rt_bytes_new(0);
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    const char *n = name ? rt_string_cstr(name) : NULL;
+    const char *n = rt_string_cstr(name);
     if (!n || multipart_string_has_embedded_nul(name))
         return rt_bytes_new(0);
 

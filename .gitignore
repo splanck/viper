@@ -109,7 +109,7 @@ lcov.info
 **/tests/**/output/
 **/tests/**/out/
 **/build/test-out/
-/src/zannaide/bin/
+/src/zannastudio/bin/
 *.s
 # Baseball franchise shell save root (created on first interactive run).
 baseball_saves/

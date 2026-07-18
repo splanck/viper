@@ -305,7 +305,7 @@ rt_string rt_datetime_format_in_zone(int64_t timestamp, void *timezone_obj, rt_s
     if (!tz_wall_tm(zone, timestamp, &tm_buf, &rule))
         return rt_string_from_bytes("", 0);
 
-    char buffer[512];
+    char buffer[512] = {0};
     size_t pos = 0;
     for (size_t i = 0; i < fmt_len; ++i) {
         if (fmt[i] != '%') {

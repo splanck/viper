@@ -49,6 +49,14 @@
 extern "C" {
 #endif
 
+/// @brief Native callback signature accepted by the typed thread-start APIs.
+/// @details The callback runs exactly once on the newly created native thread.
+///          The argument is borrowed unless the corresponding `Owned` start
+///          variant is used. Native runtime code should prefer this type-safe
+///          surface over the opaque IL compatibility entry points below.
+/// @param arg Caller-supplied callback argument, which may be NULL.
+typedef void (*rt_thread_entry_fn)(void *arg);
+
 // =========================================================================
 // Zanna.Threads.Monitor
 // =========================================================================
@@ -120,11 +128,32 @@ void rt_monitor_forget(void *obj);
 // Zanna.Threads.Thread
 // =========================================================================
 
+/// @brief Start a native thread through the type-safe callback surface.
+/// @details This is the preferred C/C++ API for runtime and embedding code. It
+///          avoids converting a data pointer into a function pointer. The new
+///          thread inherits the caller's runtime context, and the returned
+///          runtime-managed handle supports the regular join/query functions.
+/// @param entry Typed native callback. Must not be NULL.
+/// @param arg Borrowed argument passed to @p entry; may be NULL.
+/// @return Runtime-managed thread handle, or NULL after a reported failure.
+void *rt_thread_start_fn(rt_thread_entry_fn entry, void *arg);
+
+/// @brief Start a native thread and retain its managed callback argument.
+/// @details Equivalent to @ref rt_thread_start_fn except that a managed object
+///          or string passed as @p arg is retained until the callback returns.
+///          Unmanaged native pointers preserve borrowed-pointer behavior.
+/// @param entry Typed native callback. Must not be NULL.
+/// @param arg Managed value to retain, unmanaged borrowed pointer, or NULL.
+/// @return Runtime-managed thread handle, or NULL after a reported failure.
+void *rt_thread_start_owned_fn(rt_thread_entry_fn entry, void *arg);
+
 /// @brief Start a new thread executing the given entry function.
-/// @details The entry point is invoked with @p arg and the new thread
-///          inherits the current runtime context. Returns a runtime-managed
-///          thread handle used for join operations.
-/// @param entry Function pointer representing the thread entry.
+/// @details This opaque form is retained for the IL runtime ABI, whose `obj`
+///          calling convention transports native entry addresses as object
+///          values. Native C/C++ callers should use @ref rt_thread_start_fn.
+///          The entry point is invoked with @p arg and inherits the caller's
+///          runtime context.
+/// @param entry Opaque ABI representation of a native thread callback.
 /// @param arg Argument passed to the entry function.
 /// @return Thread object handle, or NULL on allocation failure.
 void *rt_thread_start(void *entry, void *arg);
@@ -136,6 +165,11 @@ void *rt_thread_start_owned(void *entry, void *arg);
 
 /// @brief Join a thread, blocking until it finishes.
 /// @details Traps if called on NULL or if a thread attempts to join itself.
+///          Completion means the entry callback and inherited-context cleanup
+///          have finished. A detached worker may drop its internal lifecycle
+///          reference immediately after waking joiners, so native callers must
+///          not interpret the return value of a subsequent memory release as a
+///          synchronous native-thread reclamation guarantee.
 /// @param thread Thread handle returned by rt_thread_start.
 void rt_thread_join(void *thread);
 
@@ -181,8 +215,25 @@ void rt_thread_yield(void);
 // Zanna.Threads.Thread (safe start with error boundaries)
 // =========================================================================
 
+/// @brief Start a typed native callback inside a thread-local trap boundary.
+/// @details Uncaught runtime traps are captured in the returned SafeThread
+///          rather than aborting the process. The argument is borrowed.
+/// @param entry Typed native callback. Must not be NULL.
+/// @param arg Borrowed callback argument; may be NULL.
+/// @return Runtime-managed SafeThread handle, or NULL after a reported failure.
+void *rt_thread_start_safe_fn(rt_thread_entry_fn entry, void *arg);
+
+/// @brief Start a trap-safe typed callback while retaining its managed argument.
+/// @details Combines @ref rt_thread_start_safe_fn with the argument ownership
+///          rules of @ref rt_thread_start_owned_fn.
+/// @param entry Typed native callback. Must not be NULL.
+/// @param arg Managed value to retain, unmanaged borrowed pointer, or NULL.
+/// @return Runtime-managed SafeThread handle, or NULL after a reported failure.
+void *rt_thread_start_safe_owned_fn(rt_thread_entry_fn entry, void *arg);
+
 /// @brief Start a new thread with trap recovery (error boundary).
-/// @details Like rt_thread_start but wraps the entry function in a
+/// @details Opaque IL ABI adapter for @ref rt_thread_start_safe_fn. Like
+///          rt_thread_start, it wraps the entry function in a
 ///          setjmp/longjmp recovery point. If the thread's code calls
 ///          rt_trap(), instead of terminating the process the error is
 ///          captured and the thread exits cleanly.

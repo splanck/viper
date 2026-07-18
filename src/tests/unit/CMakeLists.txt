@@ -1264,6 +1264,13 @@ function(zanna_add_runtime_tests)
         target_link_libraries(test_rt_windows_runtime PRIVATE
                 ${ZANNA_RUNTIME_TEST_LIBS} Threads::Threads)
         zanna_add_ctest(test_rt_windows_runtime test_rt_windows_runtime)
+    elseif (UNIX)
+        zanna_add_test(test_rt_posix_socket_platform
+                ${ZANNA_TESTS_DIR}/runtime/RTPosixSocketPlatformTests.cpp)
+        target_link_libraries(test_rt_posix_socket_platform PRIVATE
+                ${ZANNA_RUNTIME_TEST_LIBS} Threads::Threads)
+        zanna_add_ctest(test_rt_posix_socket_platform test_rt_posix_socket_platform)
+        zanna_add_test_labels(test_rt_posix_socket_platform runtime unit)
     endif ()
 
     zanna_add_test(test_rt_locale_manager ${ZANNA_TESTS_DIR}/runtime/RTLocaleManagerTests.cpp)
@@ -1426,6 +1433,10 @@ function(zanna_add_runtime_tests)
     target_link_libraries(test_rt_trap_return_network PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
     zanna_add_ctest(test_rt_trap_return_network test_rt_trap_return_network)
 
+    zanna_add_test(test_rt_async_socket_init ${ZANNA_TESTS_DIR}/runtime/RTAsyncSocketInitTests.cpp)
+    target_link_libraries(test_rt_async_socket_init PRIVATE ${ZANNA_RUNTIME_TEST_LIBS} Threads::Threads)
+    zanna_add_ctest(test_rt_async_socket_init test_rt_async_socket_init)
+
     zanna_add_test(test_rt_multipart ${ZANNA_TESTS_DIR}/runtime/RTMultipartTests.cpp)
     target_link_libraries(test_rt_multipart PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
     zanna_add_ctest(test_rt_multipart test_rt_multipart)
@@ -1453,6 +1464,24 @@ function(zanna_add_runtime_tests)
     zanna_add_test_labels(test_rt_restclient requires_local_bind)
     set_tests_properties(test_rt_restclient PROPERTIES RUN_SERIAL TRUE TIMEOUT 90)
 
+    zanna_add_test(test_rt_http_client ${ZANNA_TESTS_DIR}/runtime/RTHttpClientTests.cpp)
+    target_link_libraries(test_rt_http_client PRIVATE ${ZANNA_RUNTIME_TEST_LIBS} Threads::Threads)
+    zanna_add_ctest(test_rt_http_client test_rt_http_client)
+    zanna_add_test_labels(test_rt_http_client requires_local_bind)
+    set_tests_properties(test_rt_http_client PROPERTIES RUN_SERIAL TRUE TIMEOUT 90)
+
+    zanna_add_test(test_rt_http_server ${ZANNA_TESTS_DIR}/runtime/RTHttpServerTests.cpp)
+    target_link_libraries(test_rt_http_server PRIVATE ${ZANNA_RUNTIME_TEST_LIBS} Threads::Threads)
+    zanna_add_ctest(test_rt_http_server test_rt_http_server)
+    zanna_add_test_labels(test_rt_http_server requires_local_bind)
+    set_tests_properties(test_rt_http_server PROPERTIES RUN_SERIAL TRUE TIMEOUT 90)
+
+    zanna_add_test(test_rt_https_server ${ZANNA_TESTS_DIR}/runtime/RTHttpsServerTests.cpp)
+    target_link_libraries(test_rt_https_server PRIVATE ${ZANNA_RUNTIME_TEST_LIBS} Threads::Threads)
+    zanna_add_ctest(test_rt_https_server test_rt_https_server)
+    zanna_add_test_labels(test_rt_https_server requires_local_bind)
+    set_tests_properties(test_rt_https_server PROPERTIES RUN_SERIAL TRUE TIMEOUT 90)
+
     zanna_add_test(test_rt_network_highlevel ${ZANNA_TESTS_DIR}/runtime/RTHighLevelNetworkTests.cpp)
     target_link_libraries(test_rt_network_highlevel PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
     zanna_add_ctest(test_rt_network_highlevel test_rt_network_highlevel)
@@ -1464,6 +1493,9 @@ function(zanna_add_runtime_tests)
             test_rt_network_harden
             test_rt_websocket
             test_rt_restclient
+            test_rt_http_client
+            test_rt_http_server
+            test_rt_https_server
             test_rt_network_highlevel)
         set_tests_properties(${_local_bind_test} PROPERTIES RESOURCE_LOCK local_bind)
     endforeach ()

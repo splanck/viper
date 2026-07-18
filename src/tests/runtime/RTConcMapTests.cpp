@@ -7,10 +7,18 @@
 //
 // File: src/tests/runtime/RTConcMapTests.cpp
 // Purpose: Tests for Zanna.Threads.ConcurrentMap thread-safe hash map.
+// Key invariants: Concurrent mutation preserves map contents, cached hashes,
+//                 ownership balance, and GC-visible managed edges.
+// Ownership/Lifetime: Each test owns its map and inserted managed values and
+//                     joins all worker threads before releasing shared state.
+// Links: src/runtime/threads/rt_concmap.c,
+//        docs/adr/0133-runtime-concurrency-and-collection-hardening.md
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_array_obj.h"
 #include "rt_concmap.h"
+#include "rt_gc.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -76,6 +84,26 @@ static void test_new() {
     assert(rt_concmap_len(m) == 0);
     assert(rt_concmap_is_empty(m) == 1);
     printf("test_new: PASSED\n");
+}
+
+static void test_map_cycle_is_collected() {
+    void *m = rt_concmap_new();
+    void **array = rt_arr_obj_new(1);
+    assert(m != nullptr);
+    assert(array != nullptr);
+    assert(rt_gc_is_tracked(m) == 1);
+
+    rt_arr_obj_put(array, 0, m);
+    rt_concmap_set(m, make_str("cycle"), array);
+    if (rt_obj_release_check0(array))
+        rt_obj_free(array);
+    if (rt_obj_release_check0(m))
+        rt_obj_free(m);
+
+    assert(rt_gc_collect() >= 2);
+    assert(rt_gc_is_tracked(m) == 0);
+    assert(rt_gc_is_tracked(array) == 0);
+    printf("test_map_cycle_is_collected: PASSED\n");
 }
 
 static void test_set_get() {
@@ -489,6 +517,7 @@ int main() {
 
     /* Basic operations */
     test_new();
+    test_map_cycle_is_collected();
     test_set_get();
     test_set_retain_overflow_cleans_up();
     test_get_missing();

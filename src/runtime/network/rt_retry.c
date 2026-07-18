@@ -4,11 +4,26 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/network/rt_retry.c
+// Purpose: Implements fixed and exponential RetryPolicy state, bounded jitter,
+//          and atomic attempt reservation for transient-operation retries.
+// Key invariants:
+//   - Successful NextDelay calls reserve distinct attempts up to max_retries.
+//   - Every returned delay is non-negative and no greater than max_delay_ms.
+// Ownership/Lifetime:
+//   - RetryPolicy payloads are managed objects owned by their callers.
+//   - Policy configuration and jitter seeds are immutable after construction.
+// Links: src/runtime/network/rt_retry.h, src/runtime/core/rt_time.h
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_retry.h"
 
-#include "rt_crypto.h"
 #include "rt_internal.h"
+#include "rt_object.h"
+#include "rt_platform.h"
+#include "rt_time.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -20,31 +35,77 @@ typedef struct {
     int64_t max_retries;
     int64_t base_delay_ms;
     int64_t max_delay_ms;
-    int64_t current_attempt;
-    uint64_t jitter_rng;
+    volatile int64_t current_attempt;
+    uint64_t jitter_seed;
     int8_t exponential;
 } rt_retry_data;
+
+static volatile uint64_t g_retry_seed_sequence = UINT64_C(0x6A09E667F3BCC909);
 
 static void retry_finalizer(void *obj) {
     (void)obj;
 }
 
-/// @brief Build a non-zero per-thread seed for retry jitter.
+/// @brief Mix a 64-bit value into a high-quality non-cryptographic bit pattern.
+/// @details This is the SplitMix64 finalizer. Retry jitter needs independent,
+///          well-distributed values, not cryptographic unpredictability.
+/// @param value Input bits to avalanche.
+/// @return Deterministically mixed 64-bit value.
+static uint64_t retry_mix64(uint64_t value) {
+    value ^= value >> 30;
+    value *= UINT64_C(0xBF58476D1CE4E5B9);
+    value ^= value >> 27;
+    value *= UINT64_C(0x94D049BB133111EB);
+    value ^= value >> 31;
+    return value;
+}
+
+/// @brief Build a non-zero process-unique seed for retry jitter.
 ///
-/// Retry jitter is not cryptographic, but it should avoid identical sequences
-/// across threads and processes that construct retry policies at the same time.
-/// The seed is sourced from the OS CSPRNG via the runtime crypto helper, then
-/// mixed with caller-provided state so distinct policy settings diverge.
+/// @details Combines a wrapping atomic construction sequence, the runtime's
+///          monotonic clock, and caller configuration. This avoids a blocking
+///          OS entropy request for non-security jitter while still ensuring
+///          policies constructed in the same tick use different sequences.
 ///
 /// @param salt Additional caller state, usually delay/attempt data.
-/// @return Non-zero xorshift-compatible seed.
+/// @return Non-zero immutable policy seed.
 static uint64_t retry_jitter_seed(uint64_t salt) {
-    uint64_t seed = 0;
-    rt_crypto_random_bytes((uint8_t *)&seed, sizeof(seed));
-    seed ^= salt + UINT64_C(0xD1B54A32D192ED03);
+    uint64_t sequence = rt_atomic_fetch_add_u64(
+        &g_retry_seed_sequence, UINT64_C(0x9E3779B97F4A7C15), __ATOMIC_RELAXED);
+    uint64_t ticks = (uint64_t)rt_clock_ticks_us();
+    uint64_t seed = retry_mix64(sequence ^ ticks ^ salt ^ UINT64_C(0xD1B54A32D192ED03));
     if (seed == 0)
         seed = UINT64_C(0xA0761D6478BD642F);
     return seed;
+}
+
+/// @brief Validate and cast one non-null RetryPolicy handle.
+/// @param policy Candidate opaque managed object.
+/// @param context Diagnostic raised for wrong-class or undersized handles.
+/// @return Retry payload, or NULL after trapping.
+static rt_retry_data *retry_require(void *policy, const char *context) {
+    if (!rt_obj_is_instance(policy, RT_RETRY_CLASS_ID, sizeof(rt_retry_data))) {
+        rt_trap(context ? context : "RetryPolicy: invalid policy");
+        return NULL;
+    }
+    return (rt_retry_data *)policy;
+}
+
+/// @brief Atomically reserve the next retry attempt number.
+/// @details Concurrent calls use compare-and-swap so every successful caller
+///          receives a distinct zero-based attempt and the count never exceeds
+///          @c max_retries. The returned attempt drives deterministic jitter.
+/// @param data Valid retry policy state.
+/// @return Reserved attempt, or -1 when the policy is exhausted.
+static int64_t retry_take_attempt(rt_retry_data *data) {
+    int64_t attempt = rt_atomic_load_i64(&data->current_attempt, __ATOMIC_ACQUIRE);
+    while (attempt < data->max_retries) {
+        int64_t desired = attempt + 1;
+        if (__atomic_compare_exchange_n(
+                &data->current_attempt, &attempt, desired, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
+            return desired - 1;
+    }
+    return -1;
 }
 
 // --- Public API ---
@@ -53,14 +114,16 @@ static uint64_t retry_jitter_seed(uint64_t salt) {
 /// `max_retries` clamped to >= 0. Returned policy is GC-managed; consume via `_can_retry` /
 /// `_next_delay` in a loop.
 void *rt_retry_new(int64_t max_retries, int64_t base_delay_ms) {
-    void *obj = rt_obj_new_i64(0, sizeof(rt_retry_data));
+    void *obj = rt_obj_new_i64(RT_RETRY_CLASS_ID, sizeof(rt_retry_data));
+    if (!obj)
+        return NULL;
     rt_retry_data *data = (rt_retry_data *)obj;
     int64_t base = base_delay_ms >= 0 ? base_delay_ms : 0;
     data->max_retries = max_retries >= 0 ? max_retries : 0;
     data->base_delay_ms = base;
     data->max_delay_ms = base; // Fixed delay
     data->current_attempt = 0;
-    data->jitter_rng = 0;
+    data->jitter_seed = 0;
     data->exponential = 0;
     rt_obj_set_finalizer(obj, retry_finalizer);
     return obj;
@@ -71,15 +134,18 @@ void *rt_retry_new(int64_t max_retries, int64_t base_delay_ms) {
 /// thundering-herd retries from coordinated clients. Uses per-policy xorshift PRNG state so
 /// independent policies do not share global `rand()` state.
 void *rt_retry_exponential(int64_t max_retries, int64_t base_delay_ms, int64_t max_delay_ms) {
-    void *obj = rt_obj_new_i64(0, sizeof(rt_retry_data));
-    rt_retry_data *data = (rt_retry_data *)obj;
     int64_t base = base_delay_ms >= 0 ? base_delay_ms : 0;
     int64_t max_delay = max_delay_ms >= base ? max_delay_ms : base;
+    uint64_t jitter_seed = retry_jitter_seed((uint64_t)base ^ ((uint64_t)max_delay << 1));
+    void *obj = rt_obj_new_i64(RT_RETRY_CLASS_ID, sizeof(rt_retry_data));
+    if (!obj)
+        return NULL;
+    rt_retry_data *data = (rt_retry_data *)obj;
     data->max_retries = max_retries >= 0 ? max_retries : 0;
     data->base_delay_ms = base;
     data->max_delay_ms = max_delay;
     data->current_attempt = 0;
-    data->jitter_rng = retry_jitter_seed((uint64_t)base ^ ((uint64_t)max_delay << 1));
+    data->jitter_seed = jitter_seed;
     data->exponential = 1;
     rt_obj_set_finalizer(obj, retry_finalizer);
     return obj;
@@ -89,8 +155,10 @@ void *rt_retry_exponential(int64_t max_retries, int64_t base_delay_ms, int64_t m
 int8_t rt_retry_can_retry(void *policy) {
     if (!policy)
         return 0;
-    rt_retry_data *data = (rt_retry_data *)policy;
-    return data->current_attempt < data->max_retries ? 1 : 0;
+    rt_retry_data *data = retry_require(policy, "RetryPolicy.CanRetry: invalid policy");
+    if (!data)
+        return 0;
+    return rt_atomic_load_i64(&data->current_attempt, __ATOMIC_ACQUIRE) < data->max_retries ? 1 : 0;
 }
 
 /// @brief Compute the delay (ms) before the next retry attempt and advance the counter.
@@ -118,8 +186,11 @@ int8_t rt_retry_can_retry(void *policy) {
 int64_t rt_retry_next_delay(void *policy) {
     if (!policy)
         return -1;
-    rt_retry_data *data = (rt_retry_data *)policy;
-    if (data->current_attempt >= data->max_retries)
+    rt_retry_data *data = retry_require(policy, "RetryPolicy.NextDelay: invalid policy");
+    if (!data)
+        return -1;
+    int64_t attempt = retry_take_attempt(data);
+    if (attempt < 0)
         return -1;
 
     int64_t delay;
@@ -127,7 +198,7 @@ int64_t rt_retry_next_delay(void *policy) {
         // Exponential backoff: base * 2^attempt, capped at max_delay_ms.
         // Overflow guard: check before multiplying to avoid wrapping past INT64_MAX.
         delay = data->base_delay_ms;
-        for (int64_t i = 0; i < data->current_attempt; i++) {
+        for (int64_t i = 0; i < attempt; i++) {
             if (delay >= data->max_delay_ms) {
                 delay = data->max_delay_ms;
                 break;
@@ -142,25 +213,24 @@ int64_t rt_retry_next_delay(void *policy) {
                 delay = data->max_delay_ms;
         }
 
-        // Add 0-25% additive jitter to prevent thundering-herd on coordinated retries.
-        // Uses per-policy xorshift PRNG state instead of global rand().
+        // Add 0-25% additive jitter without ever overflowing the signed
+        // delay. Each attempt derives its own value from immutable policy
+        // state, so concurrent callers do not race on PRNG state.
         if (delay > 0) {
-            data->jitter_rng ^= data->jitter_rng >> 12;
-            data->jitter_rng ^= data->jitter_rng << 25;
-            data->jitter_rng ^= data->jitter_rng >> 27;
-            uint64_t r = data->jitter_rng * 0x2545F4914F6CDD1DULL;
-            int64_t jitter_range = delay / 4 + 1;
-            delay += (int64_t)(r % (uint64_t)jitter_range);
-            // Keep within max_delay_ms (jitter may push slightly over)
-            if (delay > data->max_delay_ms)
-                delay = data->max_delay_ms;
+            int64_t jitter_max = delay / 4;
+            int64_t headroom = data->max_delay_ms - delay;
+            if (jitter_max > headroom)
+                jitter_max = headroom;
+            uint64_t random_bits = retry_mix64(
+                data->jitter_seed + (uint64_t)(attempt + 1) * UINT64_C(0x9E3779B97F4A7C15));
+            uint64_t jitter_range = (uint64_t)jitter_max + 1;
+            delay += (int64_t)(random_bits % jitter_range);
         }
     } else {
         // Fixed delay
         delay = data->base_delay_ms;
     }
 
-    data->current_attempt++;
     return delay;
 }
 
@@ -168,34 +238,43 @@ int64_t rt_retry_next_delay(void *policy) {
 int64_t rt_retry_get_attempt(void *policy) {
     if (!policy)
         return 0;
-    return ((rt_retry_data *)policy)->current_attempt;
+    rt_retry_data *data = retry_require(policy, "RetryPolicy.Attempt: invalid policy");
+    return data ? rt_atomic_load_i64(&data->current_attempt, __ATOMIC_ACQUIRE) : 0;
 }
 
 /// @brief Return the maximum number of retries configured for this policy.
 int64_t rt_retry_get_max_retries(void *policy) {
     if (!policy)
         return 0;
-    return ((rt_retry_data *)policy)->max_retries;
+    rt_retry_data *data = retry_require(policy, "RetryPolicy.MaxRetries: invalid policy");
+    return data ? data->max_retries : 0;
 }
 
 /// @brief Reset the attempt counter to zero so the policy can be reused.
 void rt_retry_reset(void *policy) {
     if (!policy)
         return;
-    ((rt_retry_data *)policy)->current_attempt = 0;
+    rt_retry_data *data = retry_require(policy, "RetryPolicy.Reset: invalid policy");
+    if (!data)
+        return;
+    __atomic_store_n(&data->current_attempt, 0, __ATOMIC_RELEASE);
 }
 
 /// @brief Return the total number of attempts made (same as get_attempt).
 int64_t rt_retry_get_total_attempts(void *policy) {
     if (!policy)
         return 0;
-    return ((rt_retry_data *)policy)->current_attempt;
+    rt_retry_data *data = retry_require(policy, "RetryPolicy.TotalAttempts: invalid policy");
+    return data ? rt_atomic_load_i64(&data->current_attempt, __ATOMIC_ACQUIRE) : 0;
 }
 
 /// @brief Check whether all retry attempts have been used up.
 int8_t rt_retry_is_exhausted(void *policy) {
     if (!policy)
         return 1;
-    rt_retry_data *data = (rt_retry_data *)policy;
-    return data->current_attempt >= data->max_retries ? 1 : 0;
+    rt_retry_data *data = retry_require(policy, "RetryPolicy.IsExhausted: invalid policy");
+    if (!data)
+        return 1;
+    return rt_atomic_load_i64(&data->current_attempt, __ATOMIC_ACQUIRE) >= data->max_retries ? 1
+                                                                                             : 0;
 }

@@ -15,7 +15,7 @@
 //   - All RtFile handles are fully initialised before being returned to callers.
 //   - errno is always translated into an Err_* enumerator; raw errno never escapes.
 //   - Line reads handle CR, LF, and CRLF endings consistently across platforms.
-//   - File descriptors are closed exactly once; double-close is guarded by a flag.
+//   - Close consumes the descriptor before calling the host, preventing stale-descriptor reuse.
 //   - POSIX APIs are used on Unix/macOS; MSVC CRT equivalents on Windows.
 //
 // Ownership/Lifetime:
@@ -399,10 +399,15 @@ int8_t rt_file_open(
 
 /// @brief Close an open runtime file handle.
 /// @details Treats already-closed handles as success, otherwise closes the
-///          descriptor and reports any system errors through @p out_err.
+///          descriptor and reports any system errors through @p out_err. The
+///          descriptor is invalidated before the host close call because a close
+///          failure does not safely grant the caller continued ownership: the
+///          numeric descriptor may already be eligible for reuse by another open.
 /// @param file Handle to close.
 /// @param out_err Optional error destination.
-/// @return `true` when the handle is closed or already closed; otherwise `false`.
+/// @return `true` when the host close succeeds or the handle was already closed;
+///         `false` when the host reports an error. In every case @p file is closed
+///         from the runtime's perspective when this function returns.
 int8_t rt_file_close(RtFile *file, RtError *out_err) {
     if (!file) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
@@ -414,6 +419,7 @@ int8_t rt_file_close(RtFile *file, RtError *out_err) {
     }
 
     int fd = file->fd;
+    file->fd = -1;
     errno = 0;
     int rc = close(fd);
     if (rc < 0) {
@@ -422,7 +428,6 @@ int8_t rt_file_close(RtFile *file, RtError *out_err) {
         return 0;
     }
 
-    file->fd = -1;
     rt_file_set_ok(out_err);
     return 1;
 }

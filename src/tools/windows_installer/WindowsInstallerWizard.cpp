@@ -1432,7 +1432,7 @@ void showInstallerFinish(HINSTANCE instance,
     const fs::path primary = installRoot / utf8ToWide(launchRelative);
     if (fs::is_regular_file(primary)) {
         actionLabels.push_back(package.metadata.productKind == "toolchain"
-                                   ? L"Launch ZannaIDE"
+                                   ? L"Launch Zanna Studio"
                                    : L"Launch " + utf8ToWide(package.metadata.displayName));
         actions.push_back({kFinishLaunch, actionLabels.back().c_str()});
     }

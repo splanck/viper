@@ -8,6 +8,16 @@
 // File: src/tests/runtime/RTHandleValidationTests.cpp
 // Purpose: Verify opaque runtime handles reject forged, too-small objects before
 //          implementation-specific payload casts.
+// Key invariants:
+//   - Every tested receiver traps before reading a wrong-class, undersized, or
+//     uninitialized native payload.
+//   - Returning trap hooks receive safe sentinel results without fallthrough.
+// Ownership/Lifetime:
+//   - Forged managed objects are released after each probe; real resources are
+//     explicitly finalized before process exit.
+// Links: src/runtime/oop/rt_object.c, src/runtime/network/rt_network.c,
+//        src/runtime/network/rt_network_udp.c,
+//        src/runtime/network/rt_connpool.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -21,6 +31,7 @@ extern "C" {
 #include "rt_bag.h"
 #include "rt_bimap.h"
 #include "rt_binbuf.h"
+#include "rt_binfile.h"
 #include "rt_bitset.h"
 #include "rt_bloomfilter.h"
 #include "rt_bytes.h"
@@ -29,6 +40,7 @@ extern "C" {
 #include "rt_collection_ids.h"
 #include "rt_concmap.h"
 #include "rt_concqueue.h"
+#include "rt_connpool.h"
 #include "rt_countmap.h"
 #include "rt_debounce.h"
 #include "rt_defaultmap.h"
@@ -37,23 +49,30 @@ extern "C" {
 #include "rt_frozenset.h"
 #include "rt_future.h"
 #include "rt_gc.h"
+#include "rt_http_router.h"
 #include "rt_internal.h"
 #include "rt_intmap.h"
 #include "rt_io_class_ids.h"
 #include "rt_iter.h"
 #include "rt_json.h"
+#include "rt_linereader.h"
+#include "rt_linewriter.h"
 #include "rt_list.h"
 #include "rt_lrucache.h"
 #include "rt_map.h"
+#include "rt_memstream.h"
 #include "rt_msgbus.h"
 #include "rt_multimap.h"
 #include "rt_musicgen.h"
+#include "rt_network.h"
 #include "rt_object.h"
 #include "rt_orderedmap.h"
 #include "rt_playlist.h"
 #include "rt_pqueue.h"
 #include "rt_queue.h"
 #include "rt_random.h"
+#include "rt_ratelimit.h"
+#include "rt_retry.h"
 #include "rt_ring.h"
 #include "rt_scheduler.h"
 #include "rt_seq.h"
@@ -62,12 +81,14 @@ extern "C" {
 #include "rt_soundbank.h"
 #include "rt_sparsearray.h"
 #include "rt_stack.h"
+#include "rt_stream.h"
 #include "rt_string.h"
 #include "rt_threadpool.h"
 #include "rt_threads.h"
 #include "rt_treemap.h"
 #include "rt_trie.h"
 #include "rt_unionfind.h"
+#include "rt_watcher.h"
 #include "rt_weakmap.h"
 #include "rt_xml.h"
 #include "rt_yaml.h"
@@ -356,6 +377,70 @@ static void call_bytes_len(void *obj) {
     (void)rt_bytes_len(obj);
 }
 
+static void call_binfile_pos(void *obj) {
+    (void)rt_binfile_pos(obj);
+}
+
+static void call_memstream_len(void *obj) {
+    (void)rt_memstream_get_len(obj);
+}
+
+static void call_stream_type(void *obj) {
+    (void)rt_stream_get_type(obj);
+}
+
+static void call_linereader_read_char(void *obj) {
+    (void)rt_linereader_read_char(obj);
+}
+
+static void call_linewriter_flush(void *obj) {
+    rt_linewriter_flush(obj);
+}
+
+static void call_watcher_is_watching(void *obj) {
+    (void)rt_watcher_get_is_watching(obj);
+}
+
+static void call_http_router_count(void *obj) {
+    (void)rt_http_router_count(obj);
+}
+
+static void call_route_match_index(void *obj) {
+    (void)rt_route_match_index(obj);
+}
+
+static void call_retry_can_retry(void *obj) {
+    (void)rt_retry_can_retry(obj);
+}
+
+static void call_ratelimit_available(void *obj) {
+    (void)rt_ratelimit_available(obj);
+}
+
+/// @brief Invoke the ConnectionPool size getter through the generic handle-test signature.
+/// @param obj Candidate ConnectionPool handle supplied by the test harness.
+static void call_connpool_size(void *obj) {
+    (void)rt_connpool_size(obj);
+}
+
+/// @brief Invoke the TCP remote-port getter through the generic handle-test signature.
+/// @param obj Candidate TCP handle supplied by the test harness.
+static void call_tcp_port(void *obj) {
+    (void)rt_tcp_port(obj);
+}
+
+/// @brief Invoke the TcpServer port getter through the generic handle-test signature.
+/// @param obj Candidate TcpServer handle supplied by the test harness.
+static void call_tcp_server_port(void *obj) {
+    (void)rt_tcp_server_port(obj);
+}
+
+/// @brief Invoke the UDP bound-port getter through the generic handle-test signature.
+/// @param obj Candidate UDP handle supplied by the test harness.
+static void call_udp_port(void *obj) {
+    (void)rt_udp_port(obj);
+}
+
 static int8_t call_bytes_is_bytes(void *obj) {
     return rt_bytes_is_bytes(obj);
 }
@@ -477,6 +562,44 @@ int main() {
     expect_invalid_handle(call_binbuf_len, RT_BINBUF_CLASS_ID, 1, "BinaryBuffer: invalid buffer");
     expect_invalid_handle(call_bytes_len, RT_BYTES_CLASS_ID, 1, "Bytes: invalid Bytes object");
     expect_i8_handle_result(call_bytes_is_bytes, RT_BYTES_CLASS_ID, 1, 0);
+    expect_invalid_handle(call_binfile_pos, RT_BINFILE_CLASS_ID, 1, "BinFile.Pos: invalid file");
+    expect_invalid_handle(
+        call_memstream_len, RT_MEMSTREAM_CLASS_ID, 1, "MemStream.Len: invalid stream");
+    expect_invalid_handle(call_stream_type, RT_STREAM_CLASS_ID, 1, "Stream.Type: null stream");
+    expect_invalid_handle(
+        call_linereader_read_char, RT_LINEREADER_CLASS_ID, 1, "LineReader: invalid reader");
+    expect_invalid_handle(
+        call_linewriter_flush, RT_LINEWRITER_CLASS_ID, 1, "LineWriter: invalid writer");
+    expect_invalid_handle(
+        call_watcher_is_watching, RT_WATCHER_CLASS_ID, 1, "Watcher: invalid watcher");
+    expect_invalid_handle(
+        call_http_router_count, RT_HTTP_ROUTER_CLASS_ID, 1, "HttpRouter.Count: invalid router");
+    expect_invalid_handle(
+        call_route_match_index, RT_ROUTE_MATCH_CLASS_ID, 1, "RouteMatch.Index: invalid match");
+    expect_invalid_handle(
+        call_retry_can_retry, RT_RETRY_CLASS_ID, 1, "RetryPolicy.CanRetry: invalid policy");
+    expect_invalid_handle(call_ratelimit_available,
+                          RT_RATELIMIT_CLASS_ID,
+                          1,
+                          "RateLimiter.Available: invalid limiter");
+    expect_invalid_handle(
+        call_connpool_size, RT_CONNPOOL_CLASS_ID, 1, "invalid ConnectionPool object");
+    expect_invalid_handle(call_tcp_port, RT_TCP_CLASS_ID, 1, "invalid TCP connection");
+    expect_invalid_handle(call_tcp_server_port, RT_TCP_SERVER_CLASS_ID, 1, "invalid TCP server");
+    expect_invalid_handle(call_udp_port, RT_UDP_CLASS_ID, 1, "invalid UDP socket");
+
+    // A class tag plus generous storage is still not a constructed native
+    // object. Initialization magic must reject these same-class forgeries.
+    expect_invalid_handle(
+        call_connpool_size, RT_CONNPOOL_CLASS_ID, 8192, "invalid ConnectionPool object");
+    expect_invalid_handle(call_tcp_port, RT_TCP_CLASS_ID, 256, "invalid TCP connection");
+    expect_invalid_handle(call_tcp_server_port, RT_TCP_SERVER_CLASS_ID, 256, "invalid TCP server");
+    expect_invalid_handle(call_udp_port, RT_UDP_CLASS_ID, 256, "invalid UDP socket");
+
+    void *real_pool = rt_connpool_new(2);
+    assert(real_pool != nullptr);
+    assert(rt_obj_class_id(real_pool) == RT_CONNPOOL_CLASS_ID);
+    release_fake(real_pool);
 
     expect_i8_handle_result(call_xml_is_node, RT_XML_NODE_CLASS_ID, 1, 0);
     expect_type_unknown(rt_json_type_of, RT_SEQ_CLASS_ID, 1);
@@ -507,6 +630,49 @@ int main() {
         rt_randomize_i64_method(nullptr, 42);
         release_fake(fake);
         g_trap_returns = false;
+    }
+
+    // Network opaque handles obey the same returning-hook boundary: no
+    // private payload read occurs after validation reports the trap.
+    {
+        void *fake_pool = make_fake(RT_CONNPOOL_CLASS_ID, 1);
+        void *fake_tcp = make_fake(RT_TCP_CLASS_ID, 1);
+        void *fake_server = make_fake(RT_TCP_SERVER_CLASS_ID, 1);
+        void *fake_udp = make_fake(RT_UDP_CLASS_ID, 1);
+        g_trap_returns = true;
+        g_last_returning_trap = nullptr;
+        assert(rt_connpool_size(fake_pool) == 0);
+        assert(g_last_returning_trap != nullptr);
+        g_last_returning_trap = nullptr;
+        assert(rt_tcp_port(fake_tcp) == 0);
+        assert(g_last_returning_trap != nullptr);
+        g_last_returning_trap = nullptr;
+        assert(rt_tcp_server_port(fake_server) == 0);
+        assert(g_last_returning_trap != nullptr);
+        g_last_returning_trap = nullptr;
+        assert(rt_udp_port(fake_udp) == 0);
+        assert(g_last_returning_trap != nullptr);
+        g_trap_returns = false;
+        release_fake(fake_pool);
+        release_fake(fake_tcp);
+        release_fake(fake_server);
+        release_fake(fake_udp);
+    }
+
+    // A returning trap from inside a GC mutator scope must unwind lexically.
+    // If rt_trap cleared the scope prematurely or Seq.Push failed to exit it,
+    // the synchronous collection below would be deferred on this same thread.
+    {
+        void *fake = make_fake(RT_LIST_CLASS_ID, 1); // wrong class for Seq
+        int64_t passes = rt_gc_pass_count();
+        g_trap_returns = true;
+        g_last_returning_trap = nullptr;
+        rt_seq_push(fake, nullptr);
+        g_trap_returns = false;
+        assert(g_last_returning_trap != nullptr);
+        assert(rt_gc_collect() == 0);
+        assert(rt_gc_pass_count() > passes);
+        release_fake(fake);
     }
 
     std::printf("Handle validation tests: all passed\n");

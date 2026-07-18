@@ -21,8 +21,8 @@
 //     terminal (a key ends here) and internal (a longer key passes through).
 //   - Values are retained (rt_obj_retain) on insert and released (rt_obj_free)
 //     on overwrite or node deletion in the iterative free_node function.
-//   - Deletion clears terminal nodes without pruning; clear/finalize free the
-//     whole node tree iteratively.
+//   - Deletion prunes the now-empty suffix while preserving terminal ancestors
+//     and shared branches; clear/finalize free the whole node tree iteratively.
 //   - KeysWithPrefix returns a Seq of all matching key strings (GC-managed).
 //   - Not thread-safe; external synchronization required.
 //
@@ -47,8 +47,8 @@
 #include "rt_string.h"
 
 #include <setjmp.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -89,6 +89,11 @@ typedef struct {
     rt_trie_node *src;
     rt_trie_node *dst;
 } trie_clone_pair;
+
+typedef struct {
+    rt_trie_node *parent;
+    unsigned char edge;
+} trie_remove_path_entry;
 
 /// @brief Checked cast of an opaque handle to the Trie implementation;
 ///        traps with @p what if @p obj is NULL or not a Trie.
@@ -390,6 +395,22 @@ static int has_any_key(rt_trie_node *node) {
     return 0;
 }
 
+/// @brief Return non-zero when a trie node has at least one child edge.
+/// @details Scans the fixed byte alphabet and exits on the first live child.
+///          Removal uses this after clearing a terminal marker to decide how
+///          much of the key's now-unreachable suffix can be reclaimed.
+/// @param node Node to inspect, or NULL.
+/// @return One when a child exists; zero for NULL or a leaf node.
+static int trie_node_has_children(const rt_trie_node *node) {
+    if (!node)
+        return 0;
+    for (size_t index = 0; index < TRIE_ALPHABET_SIZE; ++index) {
+        if (node->children[index])
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief GC finalizer: free the entire node tree and reset the trie.
 static void rt_trie_finalize(void *obj) {
     if (!obj)
@@ -443,11 +464,16 @@ int8_t rt_trie_is_empty(void *obj) {
 void rt_trie_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_trie_impl *trie = as_trie(obj, "Trie.Set: invalid Trie object");
-    if (!trie)
+    if (!trie) {
+        rt_gc_mutator_exit();
         return;
-    if (!trie->root)
+    }
+    if (!trie->root) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     size_t len = 0;
     const char *cstr = trie_string_data(key, &len);
@@ -457,13 +483,16 @@ void rt_trie_set(void *obj, rt_string key, void *value) {
         unsigned char c = (unsigned char)cstr[i];
         if (!node->children[c]) {
             node->children[c] = new_node();
-            if (!node->children[c])
+            if (!node->children[c]) {
+                rt_gc_mutator_exit();
                 return;
+            }
         }
         node = node->children[c];
     }
 
     if (!node->is_terminal && trie->count >= (size_t)INT64_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Trie.Set: maximum size reached");
         return;
     }
@@ -475,6 +504,7 @@ void rt_trie_set(void *obj, rt_string key, void *value) {
     node->is_terminal = 1;
     if (old && rt_obj_release_check0(old))
         rt_obj_free(old);
+    rt_gc_mutator_exit();
 }
 
 /// @brief Look up `key`. Returns the borrowed value or NULL if not present. O(|key|).
@@ -656,41 +686,80 @@ void *rt_trie_longest_prefix_option(void *obj, rt_string str) {
     return opt;
 }
 
-/// @brief Remove `key` from the trie (releases its value). Returns 1 if removed, 0 if absent.
-/// Empty branches are NOT pruned for simplicity — the trie keeps its structural memory.
+/// @brief Remove `key`, release its value, and prune its empty structural suffix.
+/// @details Records each parent edge while navigating. After clearing the
+///          terminal node, walks that path backward and frees leaf nodes until
+///          reaching either a terminal ancestor or a node shared by another
+///          key. The root node is permanent, including for the empty key.
+/// @param obj Trie object, or NULL for an absent result.
+/// @param key Exact byte-string key to remove.
+/// @return One if a terminal key was removed; zero when absent.
 int8_t rt_trie_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
+    rt_gc_mutator_enter();
     rt_trie_impl *trie = as_trie(obj, "Trie.Remove: invalid Trie object");
-    if (!trie->root)
+    if (!trie || !trie->root) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     size_t len = 0;
     const char *cstr = trie_string_data(key, &len);
+
+    if (len > SIZE_MAX / sizeof(trie_remove_path_entry)) {
+        rt_gc_mutator_exit();
+        rt_trap("Trie.Remove: key path size overflow");
+        return 0;
+    }
+    trie_remove_path_entry *path = NULL;
+    if (len > 0) {
+        path = (trie_remove_path_entry *)malloc(len * sizeof(*path));
+        if (!path) {
+            rt_gc_mutator_exit();
+            rt_trap("Trie.Remove: memory allocation failed");
+            return 0;
+        }
+    }
 
     // Navigate to the node
     rt_trie_node *node = trie->root;
     for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)cstr[i];
-        if (!node->children[c])
+        if (!node->children[c]) {
+            free(path);
+            rt_gc_mutator_exit();
             return 0;
+        }
+        path[i] = (trie_remove_path_entry){node, c};
         node = node->children[c];
     }
 
-    if (!node->is_terminal)
+    if (!node->is_terminal) {
+        free(path);
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     // Remove terminal mark and release value
     node->is_terminal = 0;
-    if (node->value) {
-        if (rt_obj_release_check0(node->value))
-            rt_obj_free(node->value);
-        node->value = NULL;
-    }
+    void *value = node->value;
+    node->value = NULL;
     trie->count--;
 
-    // Note: We don't prune empty branches for simplicity.
-    // The trie will still work correctly, just uses a bit more memory.
+    for (size_t depth = len; depth > 0; --depth) {
+        trie_remove_path_entry entry = path[depth - 1];
+        rt_trie_node *child = entry.parent->children[entry.edge];
+        if (!child || child->is_terminal || trie_node_has_children(child))
+            break;
+        entry.parent->children[entry.edge] = NULL;
+        free(child);
+    }
+    free(path);
+    rt_gc_mutator_exit();
+
+    if (value && rt_obj_release_check0(value))
+        rt_obj_free(value);
     return 1;
 }
 
@@ -698,15 +767,22 @@ int8_t rt_trie_remove(void *obj, rt_string key) {
 void rt_trie_clear(void *obj) {
     if (!obj)
         return;
+    rt_gc_mutator_enter();
     rt_trie_impl *trie = as_trie(obj, "Trie.Clear: invalid Trie object");
-    if (!trie)
+    if (!trie) {
+        rt_gc_mutator_exit();
         return;
+    }
     rt_trie_node *replacement = new_node();
-    if (!replacement)
+    if (!replacement) {
+        rt_gc_mutator_exit();
         return;
-    free_node(trie->root);
+    }
+    rt_trie_node *old_root = trie->root;
     trie->root = replacement;
     trie->count = 0;
+    free_node(old_root);
+    rt_gc_mutator_exit();
 }
 
 /// @brief Return a Seq of every stored key in lexicographic order. Owned-element Seq (releases

@@ -29,7 +29,7 @@ Source layout for the Zanna compiler toolchain (current tree, kept in sync).
 | `src/tests/`           | Unit, golden, e2e, and perf tests by area                                |
 | `src/tools/`           | CLI tools (`zanna`, `vbasic`, `zia`, `zia-server`, `ilrun`, `il-verify`, `il-dis`, etc.) |
 | `src/tui/`             | Terminal UI library + demo app (`src/tui/apps/tui_demo.cpp`)             |
-| `src/zannaide/`        | ZannaIDE application (written in Zia) — editor, language services, build/debug workbench |
+| `src/zannastudio/`        | Zanna Studio application (written in Zia) — editor, language services, build/debug workbench |
 | `src/vm/`              | Virtual Machine interpreter, opcode handlers, debug, runtime bridge      |
 | `include/`             | Public headers (`zanna/il`, `zanna/vm`, `zanna/runtime`, `zanna/...`)    |
 

@@ -10,10 +10,8 @@
 // Key invariants: Year/month/day/hour/minute/second extraction from a known
 //                 Unix timestamp must be correct; ISO 8601 output is parseable.
 // Ownership/Lifetime: Returned rt_string values are released after each test.
-// Links: src/runtime/core/rt_datetime.c,
-//        src/runtime/localization/rt_timezone.c
-//
 // Reference timestamp: 2025-01-15 10:30:45 UTC = 1736937045
+// Links: src/runtime/time/rt_datetime.c, src/runtime/localization/rt_timezone.c
 //
 //===----------------------------------------------------------------------===//
 

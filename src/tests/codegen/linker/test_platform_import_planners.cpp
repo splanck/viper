@@ -10,6 +10,7 @@
 // Key invariants:
 //   - Every accepted platform import maps to the DLL/framework that exports it.
 //   - Platform-exclusive symbols are rejected for foreign targets.
+//   - Planner failure never leaves a partial import plan.
 // Ownership/Lifetime:
 //   - Test-owned plans and object files live for one test case.
 // Links: src/codegen/common/linker/PlatformImportPlanner.hpp,
@@ -126,7 +127,7 @@ TEST(PlatformImportPlanners, MacPlannerMapsFrameworkAndFlatLookupSymbols) {
 /// @brief Verify AppKit accessibility constants and posting functions resolve to AppKit.
 /// @details The GUI semantic bridge references exported NSAccessibility string constants in
 ///          addition to the posting functions. The native linker must assign all of them the
-///          AppKit dylib ordinal instead of rejecting the final ZannaIDE link as unmapped.
+///          AppKit dylib ordinal instead of rejecting the final Zanna Studio link as unmapped.
 TEST(PlatformImportPlanners, MacPlannerMapsAccessibilitySymbolsToAppKit) {
     MacImportPlan plan;
     std::ostringstream err;
@@ -452,6 +453,21 @@ TEST(DynamicSymbolPolicy, ForeignPlatformSymbolsRejectedNativeAccepted) {
     EXPECT_TRUE(isKnownDynamicSymbol("bcmp", LinkPlatform::Linux));
     EXPECT_FALSE(isKnownDynamicSymbol("bcmp", LinkPlatform::macOS));
     EXPECT_FALSE(isKnownDynamicSymbol("bcmp", LinkPlatform::Windows));
+}
+
+// Context state uses a recursive POSIX mutex. Native applications link the
+// runtime archive directly, so the in-tree linker must permit the complete
+// mutex-attribute setup sequence instead of failing late at symbol resolution.
+TEST(DynamicSymbolPolicy, PosixRecursiveMutexAttributeSymbolsAccepted) {
+    static constexpr const char *kSymbols[] = {
+        "pthread_mutexattr_init",
+        "pthread_mutexattr_settype",
+        "pthread_mutexattr_destroy",
+    };
+    for (const char *symbol : kSymbols) {
+        EXPECT_TRUE(isKnownDynamicSymbol(symbol, LinkPlatform::Linux));
+        EXPECT_TRUE(isKnownDynamicSymbol(symbol, LinkPlatform::macOS));
+    }
 }
 
 // F24/F25: OpenGL (gl + CamelCase, incl. glX) resolves to libGL and X11 (X +

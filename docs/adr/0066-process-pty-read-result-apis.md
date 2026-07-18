@@ -17,7 +17,7 @@ directly. The runtime stream buffers are finite, so these legacy methods trap
 when unread child output was truncated before the caller drained it.
 
 That behavior is acceptable for small scripts because it makes data loss loud,
-but it is too severe for IDE frame loops. ZannaIDE build, debug, terminal, and
+but it is too severe for IDE frame loops. Zanna Studio build, debug, terminal, and
 Git jobs must keep the UI alive, retain bounded output, and show the user that
 some stream data was dropped.
 

@@ -13,11 +13,16 @@
 //   - Archives opened for reading are read-only; no modification is possible.
 //   - Write archives require rt_archive_finish before the output file is valid.
 //   - Entry names use forward-slash separators on all platforms.
-//   - rt_archive_open returns NULL if the file is not a valid ZIP archive.
+//   - Open validates central and local records before exposing any entry.
+//   - Configured encoded, per-entry, and aggregate byte ceilings are sampled
+//     per Archive object and apply to both readers and writers.
+//   - Writer mutation and Count/Names snapshots are serialized per archive.
 //
 // Ownership/Lifetime:
 //   - Archive objects are GC-managed opaque pointers.
 //   - Callers should not free archive objects directly.
+//   - Each concurrent caller must hold an owning runtime reference for the
+//     complete duration of its call.
 //
 // Links: src/runtime/io/rt_archive.c (implementation), src/runtime/core/rt_string.h
 //
@@ -38,19 +43,22 @@ extern "C" {
 /// @brief Open an existing ZIP archive for reading.
 /// @param path File path as runtime string.
 /// @return Archive object for reading.
-/// @note Traps if file not found or not a valid ZIP file.
+/// @note Traps if the file is absent, malformed, unsupported, or exceeds a
+///       configured resource ceiling.
 void *rt_archive_open(rt_string path);
 
 /// @brief Create a new ZIP archive for writing.
 /// @param path File path as runtime string.
 /// @return Archive object for writing.
-/// @note Traps if file cannot be created.
+/// @note Probes destination writability without replacing an existing file;
+///       the atomic replacement occurs only after a successful Finish.
 void *rt_archive_create(rt_string path);
 
 /// @brief Open a ZIP archive from Bytes in memory.
 /// @param data Bytes object containing ZIP data.
 /// @return Archive object for reading.
-/// @note Traps if data is not a valid ZIP archive.
+/// @note Copies the encoded bytes and traps for malformed/unsupported data or
+///       a configured resource-ceiling violation.
 void *rt_archive_from_bytes(void *data);
 
 //=========================================================================
@@ -69,7 +77,8 @@ int64_t rt_archive_count(void *obj);
 
 /// @brief Get all entry names as a Seq.
 /// @param obj Archive object.
-/// @return Seq of entry names as strings.
+/// @return Fresh Seq of independently owned entry-name strings. The result
+///         remains valid after the archive is released.
 void *rt_archive_names(void *obj);
 
 //=========================================================================
@@ -151,7 +160,9 @@ void rt_archive_add_dir(void *obj, rt_string name);
 /// @brief Finish writing and close the archive.
 /// @param obj Archive object (must be opened for writing).
 /// @note Writes the central directory and end record.
-///       Archive is no longer usable after this call.
+///       Further writer mutations trap; Count and Names remain queryable.
+///       A failed filesystem replacement rolls back the staged central
+///       directory, allowing the same writer to retry Finish.
 /// @note Traps if archive is read-only or already finished.
 void rt_archive_finish(void *obj);
 

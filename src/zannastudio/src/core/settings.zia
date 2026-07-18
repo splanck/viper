@@ -1,0 +1,522 @@
+module settings;
+
+bind Zanna.Data.Ini as Ini;
+bind Zanna.IO as IO;
+bind Zanna.IO.Dir as Dir;
+bind Zanna.IO.Path as Path;
+bind Zanna.System.Environment as Env;
+bind Machine = Zanna.System.Machine;
+bind Parse = Zanna.Core.Parse;
+bind Zanna.GUI as GUI;
+
+// ============================================================================
+// MODULE: settings
+// PURPOSE: Persistent IDE settings stored in the platform ZannaStudio
+//          config directory's `settings.ini`.
+//          Wraps `Zanna.Data.Ini` for key-value persistence and
+//          `Zanna.GUI.Theme` for theme application.
+//
+// WHERE-THIS-FITS: Loaded once by main.zia after the AppShell exists, so
+//          values like font size and theme can be applied to the editor
+//          before the first frame. Saved on demand from the
+//          view_commands settings prompt.
+//
+// KEY-DESIGN-CHOICES:
+//   * INI FORMAT. INI is human-editable, diff-friendly, and the
+//     `Zanna.Data.Ini` wrapper handles parsing edge cases. JSON would
+//     also work but adds whitespace noise for a flat key-value file.
+//   * SECTION = "settings". A single section keeps the file tidy. New
+//     subsystems can add their own sections later (e.g., "[session]",
+//     "[recent]", "[colors]") without colliding.
+//   * MISSING KEY -> KEEP DEFAULT. `Load` only overwrites a field if the
+//     key is present and parseable. So adding a new settings field
+//     doesn't break existing settings files — older files just use the
+//     coded default.
+//   * VALIDATION ON LOAD. Numeric ranges (comfortable font sizes, tabWidth in
+//     2..8) are enforced when parsing. Tiny legacy font sizes migrate upward
+//     rather than producing an unreadable editor.
+//   * SetupPath() RESOLVES HOME LATE. Path computation happens lazily on
+//     first Load/Save rather than at construction so the manager can be
+//     instantiated before the runtime environment is available.
+//   * Save() WRITES THE SETTINGS SECTION. Session and recent-project
+//     sections share the same INI file, so Save read-modify-writes the
+//     file and only updates keys owned by SettingsManager.
+//
+// HOW-TO-READ: init (defaults) -> SetupPath (~/.zannastudio/settings.ini) ->
+//   Load (parse + validate) -> Save (serialise + persist) -> ApplyTheme
+//   (route to GUI.Theme).
+// ============================================================================
+
+/// @brief Default editor font size (in points). Used both at construction and as
+///        the reset target for the "Reset font size" command.
+final DEFAULT_FONT_SIZE = 15;
+
+/// @brief Old Zanna Studio builds persisted small sizes; migrate them upward.
+final MIN_COMFORTABLE_FONT_SIZE = 12;
+
+/// @brief Settings store with INI-backed persistence.
+class SettingsManager {
+    expose Integer fontSize;       // Editor font size in points.
+    expose String  fontPath;       // Optional custom .ttf/.ttc path; "" = default fallback chain.
+    expose String  theme;          // "dark" or "light".
+    expose Boolean minimapVisible; // Whether the minimap panel is shown.
+    expose Boolean autoCheckOnSave;// Legacy key: whether live diagnostics run on edit.
+    expose Boolean codeFolding;    // Whether the editor offers code-folding regions.
+    expose Boolean statusBarVisible; // Whether the status bar is shown.
+    expose Boolean fullscreen;     // Whether the main app starts fullscreen.
+    expose Boolean wordWrap;       // Whether editor lines wrap within the viewport.
+    expose Integer renderWhitespaceMode; // Whitespace markers: 0=none, 1=boundary, 2=all.
+    expose Integer wheelSpeedPct;  // Mouse-wheel scroll sensitivity, percent (100 = 1.0x).
+    expose Integer bottomPanelSplitPct; // Editor's share of the editor/panel split, percent (default 70).
+    expose Boolean lineNumbers;    // Whether the editor gutter shows line numbers.
+    expose Boolean insertSpaces;   // Whether Tab inserts spaces instead of a hard tab.
+    expose Boolean trimTrailingWhitespace; // Trim trailing spaces/tabs when saving.
+    expose Boolean ensureFinalNewline; // Ensure saved text ends with a newline.
+    expose Boolean autoSave;      // Save modified named files after editor idle.
+    expose Boolean saveAllBeforeBuild; // Save all modified files before build/debug.
+    expose Boolean restoreSession; // Restore open tabs and cursor state on startup.
+    expose Boolean restoreLastProject; // Restore last project tree on startup.
+    expose Boolean confirmOnExitWithUnsavedChanges; // Guard destructive close paths.
+    expose Integer diagnosticsDelayMs; // Live diagnostics idle delay.
+    expose Integer completionDelayMs;  // Completion debounce delay.
+    expose Integer tabWidth;       // Tab width in spaces (2..8).
+    expose Integer uiZoomPercent;  // Whole-UI zoom percentage (50..300; 100 = default).
+    expose String  settingsDir;    // Platform ZannaStudio config dir (resolved at SetupPath).
+    expose String  settingsPath;   // settingsDir/settings.ini.
+
+    /// @brief Initialize with defaults. Call SetupPath then Load to
+    ///        populate from disk.
+    expose func init() {
+        fontSize       = DEFAULT_FONT_SIZE;
+        fontPath       = "";
+        theme          = "dark";
+        // The minimap is useful on small files, but it is still a measurable
+        // paint-path cost on large buffers. Keep it opt-in until the minimap
+        // has a full incremental renderer.
+        minimapVisible = false;
+        autoCheckOnSave = true;
+        codeFolding    = true;
+        statusBarVisible = true;
+        fullscreen = false;
+        wordWrap       = false;
+        renderWhitespaceMode = 0;
+        wheelSpeedPct  = 100;
+        bottomPanelSplitPct = 70;
+        lineNumbers    = true;
+        insertSpaces   = true;
+        trimTrailingWhitespace = false;
+        ensureFinalNewline = true;
+        autoSave = false;
+        saveAllBeforeBuild = true;
+        restoreSession = true;
+        restoreLastProject = true;
+        confirmOnExitWithUnsavedChanges = true;
+        diagnosticsDelayMs = 500;
+        completionDelayMs = 180;
+        tabWidth       = 4;
+        uiZoomPercent  = 100;
+        settingsDir    = "";
+        settingsPath   = "";
+    }
+
+    /// @brief Resolve `settingsDir` and `settingsPath` from platform config roots.
+    /// @details New installs use `%APPDATA%\ZannaStudio` on Windows,
+    ///          `~/Library/Application Support/ZannaStudio` on macOS, and
+    ///          `$XDG_CONFIG_HOME/zannastudio` or `~/.config/zannastudio` on Linux.
+    ///          The first launch after the Zanna Studio rename copies state
+    ///          from the legacy ZannaIDE directories (platform dir, then the
+    ///          oldest `~/.zannaide` layout); the legacy directory is left
+    ///          intact so an older build can still find it. When the copy
+    ///          cannot produce a usable settings file, the legacy directory is
+    ///          adopted in place, matching the pre-rename fallback behaviour.
+    /// @note Falls back to "." if HOME is unset (rare; happens in some
+    ///       containerised environments). Idempotent.
+    expose func SetupPath() {
+        var home = Env.GetVariable("HOME");
+        if home == "" {
+            home = ".";
+        }
+        settingsDir = PreferredSettingsDir(home);
+        settingsPath = Path.Join(settingsDir, "settings.ini");
+        if IO.File.Exists(settingsPath) {
+            return;
+        }
+
+        var legacyDir = LegacySettingsDir(home);
+        if legacyDir == "" {
+            return;
+        }
+        MigrateLegacyState(legacyDir, settingsDir);
+        if IO.File.Exists(settingsPath) == false {
+            settingsDir = legacyDir;
+            settingsPath = Path.Join(legacyDir, "settings.ini");
+        }
+    }
+
+    /// @brief Load settings from disk. Missing or invalid values keep
+    ///        their current (default) values.
+    /// @note Idempotent — calling Load twice without changes leaves
+    ///       state unchanged.
+    expose func Load() {
+        if settingsPath == "" {
+            SetupPath();
+        }
+        if IO.File.Exists(settingsPath) == false {
+            return;
+        }
+        var content = IO.File.ReadAllText(settingsPath);
+        var ini = Ini.Parse(content);
+
+        // fontSize: migrate old tiny values to the current comfortable default.
+        var sizeStr = Ini.Get(ini, "settings", "fontSize");
+        if sizeStr != "" {
+            var sz = Parse.IntOr(sizeStr, fontSize);
+            if sz >= MIN_COMFORTABLE_FONT_SIZE {
+                fontSize = sz;
+            } else if sz >= 6 {
+                fontSize = DEFAULT_FONT_SIZE;
+            }
+        }
+
+        // theme: only "light" and "dark" are valid; anything else keeps the default.
+        var themeStr = Ini.Get(ini, "settings", "theme");
+        if themeStr == "light" {
+            theme = "light";
+        } else if themeStr == "dark" {
+            theme = "dark";
+        }
+
+        fontPath = Ini.Get(ini, "settings", "fontPath");
+
+        // Booleans are persisted as "1" / "0".
+        var mmStr = Ini.Get(ini, "settings", "minimap");
+        if mmStr != "" {
+            minimapVisible = mmStr == "1";
+        }
+
+        var acStr = Ini.Get(ini, "settings", "autoCheck");
+        if acStr != "" {
+            autoCheckOnSave = acStr == "1";
+        }
+
+        var cfStr = Ini.Get(ini, "settings", "codeFolding");
+        if cfStr != "" {
+            codeFolding = cfStr == "1";
+        }
+
+        var sbStr = Ini.Get(ini, "settings", "statusBarVisible");
+        if sbStr != "" {
+            statusBarVisible = sbStr == "1";
+        }
+
+        var fullStr = Ini.Get(ini, "settings", "fullscreen");
+        if fullStr != "" {
+            fullscreen = fullStr == "1";
+        }
+
+        var wwStr = Ini.Get(ini, "settings", "wordWrap");
+        if wwStr != "" {
+            wordWrap = wwStr == "1";
+        }
+
+        var rwStr = Ini.Get(ini, "settings", "renderWhitespace");
+        if rwStr != "" {
+            var rw = Parse.IntOr(rwStr, renderWhitespaceMode);
+            if rw >= 0 and rw <= 2 { renderWhitespaceMode = rw; }
+        }
+
+        var wsStr = Ini.Get(ini, "settings", "wheelSpeed");
+        if wsStr != "" {
+            var ws = Parse.IntOr(wsStr, wheelSpeedPct);
+            if ws >= 25 and ws <= 400 { wheelSpeedPct = ws; }
+        }
+
+        var bpStr = Ini.Get(ini, "settings", "bottomPanelSplit");
+        if bpStr != "" {
+            var bp = Parse.IntOr(bpStr, bottomPanelSplitPct);
+            if bp >= 30 and bp <= 95 { bottomPanelSplitPct = bp; }
+        }
+
+        var lnStr = Ini.Get(ini, "settings", "lineNumbers");
+        if lnStr != "" {
+            lineNumbers = lnStr == "1";
+        }
+
+        var isStr = Ini.Get(ini, "settings", "insertSpaces");
+        if isStr != "" {
+            insertSpaces = isStr == "1";
+        }
+
+        var trimStr = Ini.Get(ini, "settings", "trimTrailingWhitespace");
+        if trimStr != "" {
+            trimTrailingWhitespace = trimStr == "1";
+        }
+
+        var finalNewlineStr = Ini.Get(ini, "settings", "ensureFinalNewline");
+        if finalNewlineStr != "" {
+            ensureFinalNewline = finalNewlineStr == "1";
+        }
+
+        var autoSaveStr = Ini.Get(ini, "settings", "autoSave");
+        if autoSaveStr != "" {
+            autoSave = autoSaveStr == "1";
+        }
+
+        var saveAllBuildStr = Ini.Get(ini, "settings", "saveAllBeforeBuild");
+        if saveAllBuildStr != "" {
+            saveAllBeforeBuild = saveAllBuildStr == "1";
+        }
+
+        var rsStr = Ini.Get(ini, "settings", "restoreSession");
+        if rsStr != "" {
+            restoreSession = rsStr == "1";
+        }
+
+        var rpStr = Ini.Get(ini, "settings", "restoreLastProject");
+        if rpStr != "" {
+            restoreLastProject = rpStr == "1";
+        }
+
+        var ceStr = Ini.Get(ini, "settings", "confirmOnExitWithUnsavedChanges");
+        if ceStr != "" {
+            confirmOnExitWithUnsavedChanges = ceStr == "1";
+        }
+
+        var twStr = Ini.Get(ini, "settings", "tabWidth");
+        if twStr != "" {
+            var tw = Parse.IntOr(twStr, tabWidth);
+            if tw >= 2 and tw <= 8 { tabWidth = tw; }
+        }
+
+        var diagDelayStr = Ini.Get(ini, "settings", "diagnosticsDelayMs");
+        if diagDelayStr != "" {
+            var diagDelay = Parse.IntOr(diagDelayStr, diagnosticsDelayMs);
+            if diagDelay >= 100 and diagDelay <= 5000 { diagnosticsDelayMs = diagDelay; }
+        }
+
+        var completionDelayStr = Ini.Get(ini, "settings", "completionDelayMs");
+        if completionDelayStr != "" {
+            var completionDelay = Parse.IntOr(completionDelayStr, completionDelayMs);
+            if completionDelay >= 0 and completionDelay <= 2000 { completionDelayMs = completionDelay; }
+        }
+
+        var uiZoomStr = Ini.Get(ini, "settings", "uiZoomPercent");
+        if uiZoomStr != "" {
+            var uiZoom = Parse.IntOr(uiZoomStr, uiZoomPercent);
+            if uiZoom >= 50 and uiZoom <= 300 { uiZoomPercent = uiZoom; }
+        }
+    }
+
+    /// @brief Persist settings to disk. Creates `~/.zannastudio/` if needed.
+    /// @note Updates the settings section while preserving session and
+    ///       recent-project sections owned by SessionManager.
+    expose func Save() {
+        if settingsPath == "" {
+            SetupPath();
+        }
+        Dir.MakeAll(settingsDir);
+
+        var content = "";
+        if IO.File.Exists(settingsPath) {
+            content = IO.File.ReadAllText(settingsPath);
+        }
+        var ini = Ini.Parse(content);
+        Ini.Set(ini, "settings", "fontSize", "" + fontSize);
+        Ini.Set(ini, "settings", "fontPath", fontPath);
+        Ini.Set(ini, "settings", "theme", theme);
+        if minimapVisible {
+            Ini.Set(ini, "settings", "minimap", "1");
+        } else {
+            Ini.Set(ini, "settings", "minimap", "0");
+        }
+        if autoCheckOnSave {
+            Ini.Set(ini, "settings", "autoCheck", "1");
+        } else {
+            Ini.Set(ini, "settings", "autoCheck", "0");
+        }
+        if codeFolding {
+            Ini.Set(ini, "settings", "codeFolding", "1");
+        } else {
+            Ini.Set(ini, "settings", "codeFolding", "0");
+        }
+        if statusBarVisible {
+            Ini.Set(ini, "settings", "statusBarVisible", "1");
+        } else {
+            Ini.Set(ini, "settings", "statusBarVisible", "0");
+        }
+        if fullscreen {
+            Ini.Set(ini, "settings", "fullscreen", "1");
+        } else {
+            Ini.Set(ini, "settings", "fullscreen", "0");
+        }
+        if wordWrap {
+            Ini.Set(ini, "settings", "wordWrap", "1");
+        } else {
+            Ini.Set(ini, "settings", "wordWrap", "0");
+        }
+        Ini.Set(ini, "settings", "renderWhitespace", "" + renderWhitespaceMode);
+        Ini.Set(ini, "settings", "wheelSpeed", "" + wheelSpeedPct);
+        Ini.Set(ini, "settings", "bottomPanelSplit", "" + bottomPanelSplitPct);
+        if lineNumbers {
+            Ini.Set(ini, "settings", "lineNumbers", "1");
+        } else {
+            Ini.Set(ini, "settings", "lineNumbers", "0");
+        }
+        if insertSpaces {
+            Ini.Set(ini, "settings", "insertSpaces", "1");
+        } else {
+            Ini.Set(ini, "settings", "insertSpaces", "0");
+        }
+        if trimTrailingWhitespace {
+            Ini.Set(ini, "settings", "trimTrailingWhitespace", "1");
+        } else {
+            Ini.Set(ini, "settings", "trimTrailingWhitespace", "0");
+        }
+        if ensureFinalNewline {
+            Ini.Set(ini, "settings", "ensureFinalNewline", "1");
+        } else {
+            Ini.Set(ini, "settings", "ensureFinalNewline", "0");
+        }
+        if autoSave {
+            Ini.Set(ini, "settings", "autoSave", "1");
+        } else {
+            Ini.Set(ini, "settings", "autoSave", "0");
+        }
+        if saveAllBeforeBuild {
+            Ini.Set(ini, "settings", "saveAllBeforeBuild", "1");
+        } else {
+            Ini.Set(ini, "settings", "saveAllBeforeBuild", "0");
+        }
+        if restoreSession {
+            Ini.Set(ini, "settings", "restoreSession", "1");
+        } else {
+            Ini.Set(ini, "settings", "restoreSession", "0");
+        }
+        if restoreLastProject {
+            Ini.Set(ini, "settings", "restoreLastProject", "1");
+        } else {
+            Ini.Set(ini, "settings", "restoreLastProject", "0");
+        }
+        if confirmOnExitWithUnsavedChanges {
+            Ini.Set(ini, "settings", "confirmOnExitWithUnsavedChanges", "1");
+        } else {
+            Ini.Set(ini, "settings", "confirmOnExitWithUnsavedChanges", "0");
+        }
+        Ini.Set(ini, "settings", "tabWidth", "" + tabWidth);
+        Ini.Set(ini, "settings", "diagnosticsDelayMs", "" + diagnosticsDelayMs);
+        Ini.Set(ini, "settings", "completionDelayMs", "" + completionDelayMs);
+        Ini.Set(ini, "settings", "uiZoomPercent", "" + uiZoomPercent);
+        var formattedContent = Ini.Format(ini);
+        IO.File.WriteAllText(settingsPath, formattedContent);
+    }
+
+    /// @brief Apply the loaded theme via Zanna.GUI.Theme.SetDark/SetLight.
+    expose func ApplyTheme() {
+        if theme == "light" {
+            GUI.Theme.SetLight();
+        } else {
+            GUI.Theme.SetDark();
+        }
+    }
+}
+
+/// @brief Return the native per-user configuration directory for Zanna Studio.
+/// @details Uses only `Machine.Os` for platform selection so OS-specific policy
+///          stays in an approved adapter-facing layer. The returned directory may
+///          not exist yet; callers create it before saving.
+/// @param home The user home directory, already defaulted by the caller.
+/// @return Directory that should contain `settings.ini` for new installations.
+func PreferredSettingsDir(home: String) -> String {
+    var os = Machine.Os;
+    if os == "windows" {
+        var appData = Env.GetVariable("APPDATA");
+        if appData != "" {
+            return Path.Join(appData, "ZannaStudio");
+        }
+        return Path.Join(Path.Join(home, "AppData"), Path.Join("Roaming", "ZannaStudio"));
+    }
+    if os == "macos" {
+        return Path.Join(Path.Join(home, "Library"), Path.Join("Application Support", "ZannaStudio"));
+    }
+    var xdgConfig = Env.GetVariable("XDG_CONFIG_HOME");
+    if xdgConfig != "" {
+        return Path.Join(xdgConfig, "zannastudio");
+    }
+    return Path.Join(Path.Join(home, ".config"), "zannastudio");
+}
+
+/// @brief Return the legacy ZannaIDE configuration directory holding settings.
+/// @details Probes the pre-rename platform directory first and then the oldest
+///          `~/.zannaide` layout. Intentionally references the old product
+///          name: this is one-time migration support for the ZannaIDE →
+///          Zanna Studio rename.
+/// @param home The user home directory, already defaulted by the caller.
+/// @return The first legacy directory containing `settings.ini`, or "".
+func LegacySettingsDir(home: String) -> String {
+    var os = Machine.Os;
+    var platformDir = "";
+    if os == "windows" {
+        var appData = Env.GetVariable("APPDATA");
+        if appData != "" {
+            platformDir = Path.Join(appData, "ZannaIDE");
+        }
+        if platformDir == "" {
+            platformDir = Path.Join(Path.Join(home, "AppData"), Path.Join("Roaming", "ZannaIDE"));
+        }
+    }
+    if os == "macos" {
+        platformDir = Path.Join(Path.Join(home, "Library"), Path.Join("Application Support", "ZannaIDE"));
+    }
+    if os != "windows" and os != "macos" {
+        var xdgConfig = Env.GetVariable("XDG_CONFIG_HOME");
+        if xdgConfig != "" {
+            platformDir = Path.Join(xdgConfig, "zannaide");
+        }
+        if platformDir == "" {
+            platformDir = Path.Join(Path.Join(home, ".config"), "zannaide");
+        }
+    }
+    if platformDir != "" and IO.File.Exists(Path.Join(platformDir, "settings.ini")) {
+        return platformDir;
+    }
+    var dotDir = Path.Join(home, ".zannaide");
+    if IO.File.Exists(Path.Join(dotDir, "settings.ini")) {
+        return dotDir;
+    }
+    return "";
+}
+
+/// @brief Copy legacy state files into the new configuration directory.
+/// @details Copies every top-level file (settings, session, breakpoints) plus
+///          the `recovery/` subdirectory. Copy — never move — so the legacy
+///          install keeps working if the user rolls back. Files that already
+///          exist in the destination are left untouched.
+/// @param fromDir Legacy configuration directory (must exist).
+/// @param toDir New configuration directory (created if needed).
+func MigrateLegacyState(fromDir: String, toDir: String) {
+    Dir.MakeAll(toDir);
+    if Dir.Exists(toDir) == false {
+        return;
+    }
+    for name in Dir.Files(fromDir) {
+        var src = Path.Join(fromDir, name);
+        var dst = Path.Join(toDir, name);
+        if IO.File.Exists(src) and IO.File.Exists(dst) == false {
+            IO.File.Copy(src, dst);
+        }
+    }
+    var fromRecovery = Path.Join(fromDir, "recovery");
+    if Dir.Exists(fromRecovery) {
+        var toRecovery = Path.Join(toDir, "recovery");
+        Dir.MakeAll(toRecovery);
+        if Dir.Exists(toRecovery) {
+            for name in Dir.Files(fromRecovery) {
+                var src = Path.Join(fromRecovery, name);
+                var dst = Path.Join(toRecovery, name);
+                if IO.File.Exists(src) and IO.File.Exists(dst) == false {
+                    IO.File.Copy(src, dst);
+                }
+            }
+        }
+    }
+}

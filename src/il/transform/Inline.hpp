@@ -34,7 +34,7 @@ struct InlineCostConfig {
 
     /// Maximum number of blocks in callee.
     /// Limited to single-block callees until multi-block inlining value-flow
-    /// issues are resolved (zannaide, chess-zia crash at O1 with blockBudget>1).
+    /// issues are resolved (zannastudio, chess-zia crash at O1 with blockBudget>1).
     unsigned blockBudget = 1;
 
     /// Maximum inline depth for nested inlining.

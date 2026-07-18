@@ -672,6 +672,15 @@ static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order) 
     __atomic_store_n(ptr, value, order);
 }
 
+/// @brief Atomically exchange a 32-bit signed integer on GCC/Clang platforms.
+/// @param ptr Storage to update.
+/// @param value Replacement value.
+/// @param order GCC-style memory-order constant.
+/// @return The previous value stored in @p ptr.
+static inline int rt_atomic_exchange_i32(volatile int *ptr, int value, int order) {
+    return __atomic_exchange_n(ptr, value, order);
+}
+
 /// @brief Atomically compare-and-swap a 32-bit signed integer on GCC/Clang platforms.
 /// @param ptr Storage to update when it equals @p expected.
 /// @param expected In/out expected value; receives the observed value on failure.
@@ -691,6 +700,15 @@ static inline int rt_atomic_compare_exchange_i32(
 /// @return The value stored in @p ptr before the addition.
 static inline int rt_atomic_fetch_add_i32(volatile int *ptr, int value, int order) {
     return __atomic_fetch_add(ptr, value, order);
+}
+
+/// @brief Atomically subtract from a 32-bit signed integer on GCC/Clang platforms.
+/// @param ptr Storage to update.
+/// @param value Decrement to apply.
+/// @param order GCC-style memory-order constant.
+/// @return The value stored in @p ptr before the subtraction.
+static inline int rt_atomic_fetch_sub_i32(volatile int *ptr, int value, int order) {
+    return __atomic_fetch_sub(ptr, value, order);
 }
 
 /// @brief Atomically load a 64-bit signed integer on GCC/Clang platforms.
@@ -736,6 +754,24 @@ static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int 
 static inline int rt_atomic_compare_exchange_size(
     volatile size_t *ptr, size_t *expected, size_t desired, int success_order, int fail_order) {
     return __atomic_compare_exchange_n(ptr, expected, desired, 0, success_order, fail_order);
+}
+
+/// @brief Atomically add to a size_t counter on GCC/Clang platforms.
+/// @param ptr Naturally aligned storage to update.
+/// @param value Increment to apply with modulo-size_t arithmetic.
+/// @param order GCC-style memory-order constant.
+/// @return The value stored in @p ptr before the addition.
+static inline size_t rt_atomic_fetch_add_size(volatile size_t *ptr, size_t value, int order) {
+    return __atomic_fetch_add(ptr, value, order);
+}
+
+/// @brief Atomically subtract from a size_t counter on GCC/Clang platforms.
+/// @param ptr Naturally aligned storage to update.
+/// @param value Decrement to apply with modulo-size_t arithmetic.
+/// @param order GCC-style memory-order constant.
+/// @return The value stored in @p ptr before the subtraction.
+static inline size_t rt_atomic_fetch_sub_size(volatile size_t *ptr, size_t value, int order) {
+    return __atomic_fetch_sub(ptr, value, order);
 }
 
 /// @brief Atomically load a pointer on GCC/Clang platforms.
@@ -823,6 +859,39 @@ static inline void rt_atomic_store_u64(volatile uint64_t *ptr, uint64_t value, i
     _InterlockedExchange64((volatile long long *)ptr, (long long)value);
 #else
     __atomic_store_n(ptr, value, order);
+#endif
+}
+
+/// @brief Atomically compare and exchange an unsigned 64-bit value.
+/// @details The caller supplies the expected value by address. On success,
+///          @p desired replaces it and the function returns nonzero. On
+///          failure, @p expected receives the value that was actually
+///          observed. This explicit unsigned helper avoids the duplicate
+///          `_Generic` associations that `uint64_t` and `size_t` can create on
+///          LLP64 Windows targets.
+/// @param ptr Naturally aligned unsigned 64-bit storage to update.
+/// @param expected In/out expected value; updated with the observed value on
+///        failure.
+/// @param desired Replacement value written when the comparison succeeds.
+/// @param success_order GCC-style memory order for a successful exchange.
+/// @param fail_order GCC-style memory order for a failed comparison.
+/// @return Nonzero when @p desired was stored; zero otherwise.
+static inline int rt_atomic_compare_exchange_u64(volatile uint64_t *ptr,
+                                                 uint64_t *expected,
+                                                 uint64_t desired,
+                                                 int success_order,
+                                                 int fail_order) {
+    (void)success_order;
+    (void)fail_order;
+#if RT_COMPILER_MSVC
+    uint64_t old = (uint64_t)_InterlockedCompareExchange64(
+        (volatile long long *)ptr, (long long)desired, (long long)*expected);
+    if (old == *expected)
+        return 1;
+    *expected = old;
+    return 0;
+#else
+    return __atomic_compare_exchange_n(ptr, expected, desired, 0, success_order, fail_order);
 #endif
 }
 
@@ -1036,8 +1105,10 @@ extern "C" {
 
 /// @brief Record the current thread as the "main" thread.
 ///
-/// Must be called once during runtime initialization, before any worker threads
-/// are spawned. GUI and input globals are only safe to access from this thread.
+/// May be called during runtime initialization or by an embedder that must
+/// override constructor-time capture. Concurrent probes are serialized with
+/// the override, although callers must still coordinate changes with any
+/// thread-affine GUI or input subsystem.
 void rt_set_main_thread(void);
 
 /// @brief Check whether the calling thread is the main thread.

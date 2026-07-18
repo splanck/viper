@@ -1,0 +1,309 @@
+module session;
+
+bind "document_manager";
+bind "project_manager";
+bind "document";
+bind "../editor/editor_tabs";
+bind "../services/file_utils";
+
+bind Ini = Zanna.Data.Ini;
+bind Codec = Zanna.Text.Codec;
+bind IO = Zanna.IO;
+bind Dir = Zanna.IO.Dir;
+bind Path = Zanna.IO.Path;
+bind Parse = Zanna.Core.Parse;
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: session
+// PURPOSE: Persist and restore Zanna Studio workspace session state.
+//
+// WHERE-THIS-FITS: Settings chooses the INI path; DocumentManager, ProjectManager,
+//          and EditorTabs own live state. SessionManager translates between those
+//          models and durable `[session]`, `[recent]`, and recovery sections.
+//
+// TEACHING-NOTE: Session restore must be conservative because it runs at startup
+//          and protects user work. Keep recovery text bounded, keep unknown INI
+//          keys intact, and prefer explicit per-document fields over display text.
+// ============================================================================
+
+final MAX_RECENT_PROJECTS = 10;
+final MAX_RECENT_FILES = 20;
+final MAX_SESSION_RECOVERY_CHARS = 200000;
+
+class SessionManager {
+    expose String settingsPath;
+
+    expose func init() {
+        settingsPath = "";
+    }
+
+    expose func Setup(path: String) {
+        settingsPath = path;
+    }
+
+    expose func Save(docMgr: document_manager.DocumentManager,
+                     projMgr: project_manager.ProjectManager) {
+        if settingsPath == "" { return; }
+        Dir.MakeAll(Path.Directory(settingsPath));
+
+        var content = "";
+        if IO.File.Exists(settingsPath) {
+            content = IO.File.ReadAllText(settingsPath);
+        }
+        var ini = Ini.Parse(content);
+
+        var projectRoot = "";
+        if projMgr != null and projMgr.project != null and projMgr.project.isOpen {
+            projectRoot = projMgr.project.rootPath;
+        }
+        Ini.Set(ini, "session", "projectRoot", projectRoot);
+        Ini.Set(ini, "session", "count", "" + docMgr.GetCount());
+
+        var activePath = "";
+        var active = docMgr.GetActive();
+        if active != null {
+            activePath = active.filePath;
+        }
+        Ini.Set(ini, "session", "activePath", activePath);
+        Ini.Set(ini, "session", "activeIndex", "" + docMgr.activeIndex);
+
+        var i = 0;
+        while i < docMgr.GetCount() {
+            var doc = docMgr.documents.get(i);
+            var section = "session.file." + i;
+            Ini.Set(ini, section, "path", doc.filePath);
+            Ini.Set(ini, section, "name", doc.fileName);
+            Ini.Set(ini, section, "kind", file_utils.KindName(doc.kind));
+            Ini.Set(ini, section, "cursorLine", "" + doc.cursorLine);
+            Ini.Set(ini, section, "cursorCol", "" + doc.cursorCol);
+            Ini.Set(ini, section, "scrollLine", "" + doc.scrollLine);
+            if ShouldPersistRecovery(doc) {
+                Ini.Set(ini, section, "recovery", EncodeRecoveryText(doc.content));
+                Ini.Set(ini, section, "recoveryEncoding", "base64");
+                Ini.Set(ini, section, "recoveryModified", "1");
+            } else {
+                Ini.Set(ini, section, "recovery", "");
+                Ini.Set(ini, section, "recoveryEncoding", "");
+                Ini.Set(ini, section, "recoveryModified", "0");
+            }
+            i = i + 1;
+        }
+
+        SaveRecentProjects(ini, projectRoot);
+        SaveRecentFiles(ini, docMgr);
+
+        IO.File.WriteAllText(settingsPath, Ini.Format(ini));
+    }
+
+    expose func RecordRecentFile(path: String) {
+        if settingsPath == "" or path == "" or IO.File.Exists(path) == false { return; }
+        Dir.MakeAll(Path.Directory(settingsPath));
+
+        var content = "";
+        if IO.File.Exists(settingsPath) {
+            content = IO.File.ReadAllText(settingsPath);
+        }
+        var ini = Ini.Parse(content);
+        PrependRecentFile(ini, path);
+        IO.File.WriteAllText(settingsPath, Ini.Format(ini));
+    }
+
+    expose func RecentFileCount() -> Integer {
+        if settingsPath == "" or IO.File.Exists(settingsPath) == false { return 0; }
+        var ini = Ini.Parse(IO.File.ReadAllText(settingsPath));
+        return Parse.IntOr(Ini.Get(ini, "recentFiles", "count"), 0);
+    }
+
+    expose func RecentFileAt(index: Integer) -> String {
+        if index < 0 { return ""; }
+        if settingsPath == "" or IO.File.Exists(settingsPath) == false { return ""; }
+        var ini = Ini.Parse(IO.File.ReadAllText(settingsPath));
+        return Ini.Get(ini, "recentFiles", "path." + index);
+    }
+
+    expose func Restore(docMgr: document_manager.DocumentManager,
+                        projMgr: project_manager.ProjectManager,
+                        tabs: editor_tabs.EditorTabs) -> Integer {
+        if settingsPath == "" { return 0; }
+        if IO.File.Exists(settingsPath) == false { return 0; }
+
+        var ini = Ini.Parse(IO.File.ReadAllText(settingsPath));
+        var restoreSession = Ini.Get(ini, "settings", "restoreSession");
+        if restoreSession == "0" { return 0; }
+
+        var restoreProject = Ini.Get(ini, "settings", "restoreLastProject");
+        var projectRoot = Ini.Get(ini, "session", "projectRoot");
+        if restoreProject != "0" and projectRoot != "" and Dir.Exists(projectRoot) {
+            projMgr.OpenFolder(projectRoot);
+        }
+
+        var count = Parse.IntOr(Ini.Get(ini, "session", "count"), 0);
+        var restored = 0;
+        var i = 0;
+        while i < count {
+            var section = "session.file." + i;
+            var path = Ini.Get(ini, section, "path");
+            var recovery = DecodeRecoveryText(Ini.Get(ini, section, "recovery"),
+                                              Ini.Get(ini, section, "recoveryEncoding"));
+            var recoveryModified = Ini.Get(ini, section, "recoveryModified") == "1";
+            if path != "" and IO.File.Exists(path) {
+                var doc = docMgr.OpenFile(path);
+                doc.kind = file_utils.DetectKind(path);
+                if recoveryModified and recovery != "" {
+                    doc.content = recovery;
+                    doc.isModified = true;
+                }
+                doc.cursorLine = Parse.IntOr(Ini.Get(ini, section, "cursorLine"), 1);
+                doc.cursorCol = Parse.IntOr(Ini.Get(ini, section, "cursorCol"), 1);
+                doc.scrollLine = Parse.IntOr(Ini.Get(ini, section, "scrollLine"), 1);
+                if doc.cursorLine <= 0 { doc.cursorLine = 1; }
+                if doc.cursorCol <= 0 { doc.cursorCol = 1; }
+                if doc.scrollLine <= 0 { doc.scrollLine = 1; }
+                tabs.AddTab(doc.fileName, 1);
+                tabs.SetTooltip(docMgr.activeIndex, doc.filePath);
+                if doc.isModified {
+                    tabs.SetModified(docMgr.activeIndex, true);
+                }
+                restored = restored + 1;
+            } else if path == "" {
+                if recovery != "" {
+                    var draft = docMgr.NewDocument();
+                    var savedName = Ini.Get(ini, section, "name");
+                    if savedName != "" { draft.fileName = savedName; }
+                    draft.content = recovery;
+                    draft.kind = file_utils.DOC_KIND_CODE;
+                    draft.language = "zia";
+                    draft.isNew = true;
+                    draft.isModified = true;
+                    draft.cursorLine = Parse.IntOr(Ini.Get(ini, section, "cursorLine"), 1);
+                    draft.cursorCol = Parse.IntOr(Ini.Get(ini, section, "cursorCol"), 1);
+                    draft.scrollLine = Parse.IntOr(Ini.Get(ini, section, "scrollLine"), 1);
+                    tabs.AddTab(draft.fileName, 1);
+                    tabs.SetModified(docMgr.activeIndex, true);
+                    restored = restored + 1;
+                }
+            }
+            i = i + 1;
+        }
+
+        if restored > 0 {
+            var activePath = Ini.Get(ini, "session", "activePath");
+            var activeIdx = -1;
+            if activePath != "" {
+                activeIdx = docMgr.FindByPath(activePath);
+            }
+            if activeIdx < 0 {
+                activeIdx = Parse.IntOr(Ini.Get(ini, "session", "activeIndex"), 0);
+            }
+            if activeIdx < 0 or activeIdx >= docMgr.GetCount() {
+                activeIdx = 0;
+            }
+            docMgr.SetActive(activeIdx);
+            tabs.SetActive(activeIdx);
+        }
+        return restored;
+    }
+
+    /// @brief Decide whether a document should carry a crash-recovery snapshot.
+    /// @details Recovery is deliberately limited to modified, editable text buffers
+    ///          under a bounded size cap. Existing files are included as well as
+    ///          untitled drafts so a crash after editing a saved file restores the
+    ///          unsaved buffer instead of silently reopening the older disk version.
+    /// @param doc Open document being written into session state.
+    /// @return True when the complete buffer should be persisted in settings.
+    hide func ShouldPersistRecovery(doc: document.Document) -> Boolean {
+        if doc == null { return false; }
+        if doc.isModified == false { return false; }
+        if doc.isReadOnlyPreview { return false; }
+        return Str.get_Length(doc.content) <= MAX_SESSION_RECOVERY_CHARS;
+    }
+
+    /// @brief Encode crash-recovery text into an INI-safe scalar value.
+    /// @details The project INI helper writes values verbatim and parses one
+    ///          physical line at a time, so raw document buffers containing
+    ///          newlines cannot be stored directly. Base64 keeps the complete
+    ///          text reversible while staying within the existing runtime API.
+    /// @param text Document buffer to persist.
+    /// @return Base64-encoded representation suitable for `Ini.Set`.
+    hide func EncodeRecoveryText(text: String) -> String {
+        return Codec.Base64Encode(text);
+    }
+
+    /// @brief Decode session recovery text from current or legacy settings.
+    /// @details New entries set `recoveryEncoding=base64`. Older Zanna Studio
+    ///          sessions stored raw text under `recovery`; those values are
+    ///          returned unchanged so restore keeps backward compatibility.
+    /// @param encoded Value read from `session.file.N.recovery`.
+    /// @param encoding Encoding marker read from `session.file.N.recoveryEncoding`.
+    /// @return Decoded document buffer, or the raw value for legacy entries.
+    hide func DecodeRecoveryText(encoded: String, encoding: String) -> String {
+        if encoded == "" { return ""; }
+        if encoding == "base64" {
+            return Codec.Base64Decode(encoded);
+        }
+        return encoded;
+    }
+
+    hide func SaveRecentProjects(ini: Any, projectRoot: String) {
+        if projectRoot == "" { return; }
+
+        var oldCount = Parse.IntOr(Ini.Get(ini, "recent", "count"), 0);
+        var oldPaths = Seq.New();
+        var i = 0;
+        while i < oldCount {
+            var oldPath = Ini.Get(ini, "recent", "path." + i);
+            if oldPath != "" and oldPath != projectRoot {
+                Seq.Push(oldPaths, oldPath);
+            }
+            i = i + 1;
+        }
+
+        Ini.Set(ini, "recent", "path.0", projectRoot);
+        var written = 1;
+        i = 0;
+        while i < Seq.get_Count(oldPaths) and written < MAX_RECENT_PROJECTS {
+            Ini.Set(ini, "recent", "path." + written, Obj.ToString(Seq.Get(oldPaths, i)));
+            written = written + 1;
+            i = i + 1;
+        }
+        Ini.Set(ini, "recent", "count", "" + written);
+    }
+
+    hide func SaveRecentFiles(ini: Any, docMgr: document_manager.DocumentManager) {
+        if docMgr == null { return; }
+        var i = docMgr.GetCount() - 1;
+        while i >= 0 {
+            var doc = docMgr.documents.get(i);
+            if doc.filePath != "" and doc.isNew == false and IO.File.Exists(doc.filePath) {
+                PrependRecentFile(ini, doc.filePath);
+            }
+            i = i - 1;
+        }
+    }
+
+    hide func PrependRecentFile(ini: Any, path: String) {
+        var oldCount = Parse.IntOr(Ini.Get(ini, "recentFiles", "count"), 0);
+        var oldPaths = Seq.New();
+        var i = 0;
+        while i < oldCount {
+            var oldPath = Ini.Get(ini, "recentFiles", "path." + i);
+            if oldPath != "" and oldPath != path and IO.File.Exists(oldPath) {
+                Seq.Push(oldPaths, oldPath);
+            }
+            i = i + 1;
+        }
+
+        Ini.Set(ini, "recentFiles", "path.0", path);
+        var written = 1;
+        i = 0;
+        while i < Seq.get_Count(oldPaths) and written < MAX_RECENT_FILES {
+            Ini.Set(ini, "recentFiles", "path." + written, Obj.ToString(Seq.Get(oldPaths, i)));
+            written = written + 1;
+            i = i + 1;
+        }
+        Ini.Set(ini, "recentFiles", "count", "" + written);
+    }
+}

@@ -1,0 +1,199 @@
+module language_service_sync_probe;
+
+// ============================================================================
+// MODULE: language_service_sync_probe
+// PURPOSE: Regression probe for incremental language-service sync (plan 08).
+//          Exercises the document-mirror runtime end to end: full sync, delta
+//          replay (byte-exact), fallbacks, mirror-sourced diagnostics (sync and
+//          async), and the EditorEngine.SyncActiveDocument driver — including
+//          the proof that a typing burst does NOT re-materialize the buffer.
+//
+// WHERE-THIS-FITS: The IDE keeps `Zanna.Zia.Document`'s per-path text mirror
+//          current by pushing `CodeEditor.TakeDeltas` edit deltas instead of the
+//          whole buffer on every revision. Semantic requests (diagnostics today,
+//          more later) then read the mirror. This probe validates the mechanism
+//          through the same public surfaces the app uses.
+//
+// TEACHING-NOTE: The full-text-copy counter is the real acceptance oracle. The C
+//          widget bumps `full_text_copies` on every full materialization; if the
+//          delta path works, that counter stays flat across a burst of edits.
+//          Note the "warm-up" edit before measuring: the first sync after a cold
+//          mutation (SetText) must drain the journal `overflow` and is expected
+//          to full-sync; only the steady-state delta phase is asserted flat.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../editor/editor_engine";
+
+bind Doc = Zanna.Zia.Document;
+bind SemanticJob = Zanna.Zia.SemanticJob;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind Obj = Zanna.Core.Object;
+bind Time = Zanna.Time;
+bind Terminal = Zanna.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    // ----- Part A: direct mirror replay (pure runtime, no editor) -----------
+    var path = "probe_doc.zia";
+    Doc.SyncFull(path, "line0\nline1\nline2", 1);
+    if Doc.Text(path) != "line0\nline1\nline2" {
+        fail(null, "A1 full-sync text mismatch");
+        return;
+    }
+
+    // Replace "line1" (line 1, cols 0..5) with "LINE1!".
+    var d1 = "[{\"r\":2,\"sl\":1,\"sc\":0,\"el\":1,\"ec\":5,\"t\":\"LINE1!\"}]";
+    if Doc.SyncDelta(path, d1, 2) == false {
+        fail(null, "A2 delta apply returned false");
+        return;
+    }
+    if Doc.Text(path) != "line0\nLINE1!\nline2" {
+        fail(null, "A2 delta text mismatch: " + Doc.Text(path));
+        return;
+    }
+
+    // Insert "X" at the very start (an empty range at 0,0).
+    var d2 = "[{\"r\":3,\"sl\":0,\"sc\":0,\"el\":0,\"ec\":0,\"t\":\"X\"}]";
+    if Doc.SyncDelta(path, d2, 3) == false {
+        fail(null, "A3 insert delta returned false");
+        return;
+    }
+    if Doc.Text(path) != "Xline0\nLINE1!\nline2" {
+        fail(null, "A3 insert text mismatch: " + Doc.Text(path));
+        return;
+    }
+
+    // Two deltas in one batch, applied in sequence: delete the leading "X",
+    // then insert "Z" at the start. Proves sequential replay within a batch.
+    var batch = "[{\"r\":4,\"sl\":0,\"sc\":0,\"el\":0,\"ec\":1,\"t\":\"\"},"
+              + "{\"r\":5,\"sl\":0,\"sc\":0,\"el\":0,\"ec\":0,\"t\":\"Z\"}]";
+    if Doc.SyncDelta(path, batch, 5) == false {
+        fail(null, "A4 batch delta returned false");
+        return;
+    }
+    if Doc.Text(path) != "Zline0\nLINE1!\nline2" {
+        fail(null, "A4 batch text mismatch: " + Doc.Text(path));
+        return;
+    }
+
+    // Fallback: a delta against a path with no baseline mirror must report
+    // failure (so the caller full-syncs) and must not create a mirror.
+    if Doc.SyncDelta("no_such_mirror.zia", d1, 9) {
+        fail(null, "A5 delta on absent mirror should be false");
+        return;
+    }
+    // Fallback: malformed JSON must report failure and leave the mirror intact.
+    if Doc.SyncDelta(path, "not json at all", 9) {
+        fail(null, "A6 malformed delta should be false");
+        return;
+    }
+    if Doc.Text(path) != "Zline0\nLINE1!\nline2" {
+        fail(null, "A6 malformed delta corrupted the mirror");
+        return;
+    }
+
+    // Close drops the mirror.
+    Doc.Close(path);
+    if Doc.Text(path) != "" {
+        fail(null, "A7 closed mirror should be empty");
+        return;
+    }
+
+    // ----- Part B: mirror-sourced diagnostics (synchronous) -----------------
+    Doc.SyncFull("probe_err.zia", "module m;\nfunc f() { var x = ; }\n", 1);
+    var diags = Doc.CheckForFile("probe_err.zia");
+    if Str.get_Length(diags) == 0 {
+        fail(null, "B1 expected diagnostics from mirror check");
+        return;
+    }
+
+    Doc.SyncFull("probe_ok.zia", "module m;\nfunc f() -> Integer { return 1; }\n", 1);
+    var clean = Doc.CheckForFile("probe_ok.zia");
+    if Str.get_Length(clean) != 0 {
+        fail(null, "B2 clean source produced diagnostics: " + clean);
+        return;
+    }
+
+    // A mirror-sourced check for an unknown path returns "" (caller full-syncs).
+    if Str.get_Length(Doc.CheckForFile("never_synced.zia")) != 0 {
+        fail(null, "B3 unknown path should yield no diagnostics");
+        return;
+    }
+
+    // ----- Part C: SyncActiveDocument driver + full-text-copy oracle --------
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Language Sync Probe", 900, 600);
+    shell.Poll();
+    shell.Render();
+
+    var engine = new editor_engine.EditorEngine();
+    engine.Setup(shell.workbench.editorRow);
+
+    var warmPath = "probe_sync.zia";
+    engine.SetText("module m;\nfunc f() {\n}\n");   // cold path: marks journal overflow
+    engine.SyncActiveDocument(warmPath);            // initial full sync
+    engine.editor.InsertAtCursor("y");              // one hot edit
+    engine.SyncActiveDocument(warmPath);            // drains SetText's overflow (full-sync)
+
+    // Steady state: from here every sync must be delta-only (no materialization).
+    engine.editor.ResetPerfStats();
+    var before = engine.editor.GetFullTextCopyCount();
+
+    var k = 0;
+    while k < 8 {
+        engine.editor.InsertAtCursor("x");
+        engine.SyncActiveDocument(warmPath);
+        k = k + 1;
+    }
+    shell.Poll();
+    shell.Render();
+
+    var after = engine.editor.GetFullTextCopyCount();
+    if after != before {
+        fail(shell, "C1 delta sync materialized the full buffer");
+        return;
+    }
+
+    // The mirror must byte-match the editor buffer after the delta syncs.
+    if Doc.Text(warmPath) != engine.GetText() {
+        fail(shell, "C2 mirror diverged from the editor buffer");
+        return;
+    }
+
+    // ----- Part D: async mirror-sourced diagnostics (the IDE's path) --------
+    Doc.SyncFull("probe_async.zia", "module m;\nfunc f() { var y = ; }\n", 1);
+    var ajob = Doc.BeginCheckForFile("probe_async.zia");
+    if ajob == null {
+        fail(shell, "D1 async mirror check returned a null job");
+        return;
+    }
+    var waited = 0;
+    while SemanticJob.IsDone(ajob) == false and waited < 8000 {
+        Time.Clock.Sleep(5);
+        waited = waited + 5;
+    }
+    if SemanticJob.IsError(ajob) {
+        fail(shell, "D2 async mirror check errored");
+        return;
+    }
+    var arecords = SemanticJob.Diagnostics(ajob);
+    if arecords == null or Seq.get_Count(arecords) == 0 {
+        fail(shell, "D3 async mirror check produced no diagnostics");
+        return;
+    }
+
+    // A begin against an unknown path returns null so the caller full-syncs.
+    if Doc.BeginCheckForFile("never_synced_async.zia") != null {
+        fail(shell, "D4 async check on unknown path should be null");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

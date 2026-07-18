@@ -51,6 +51,9 @@ int64_t rt_bag_len(void *obj);
 int8_t rt_bag_is_empty(void *obj);
 
 /// @brief Add a string to the bag.
+/// @details Duplicate insertion is the only ordinary false result. Invalid
+///          handles, capacity overflow, and allocation failure raise a runtime
+///          trap and leave the bag unchanged.
 /// @param obj Bag pointer.
 /// @param str String to add (will be copied).
 /// @return 1 if string was new (added), 0 if already present.

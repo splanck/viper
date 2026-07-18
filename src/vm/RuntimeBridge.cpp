@@ -25,6 +25,7 @@
 #include "il/core/Opcode.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "rt_error.h"
+#include "rt_gc.h"
 #include "vm/DiagFormat.hpp"
 #include "vm/Marshal.hpp"
 #include "vm/OpcodeHandlerHelpers.hpp"
@@ -528,6 +529,7 @@ Slot RuntimeBridge::callMutable(RuntimeCallContext &ctx,
 
     VM *activeVm = VM::activeInstance();
     result = dispatchRuntimeCall(ctx, name, *desc, activeVm);
+    rt_gc_safepoint();
 
     return result;
 }
@@ -574,6 +576,7 @@ Slot RuntimeBridge::callMutable(RuntimeCallContext &ctx,
 
     VM *activeVm = VM::activeInstance();
     result = dispatchRuntimeCall(ctx, effectiveDesc->name, *effectiveDesc, activeVm);
+    rt_gc_safepoint();
 
     return result;
 }

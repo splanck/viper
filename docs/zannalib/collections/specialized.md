@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-17
 ---
 
 # Specialized Structures
@@ -107,6 +107,10 @@ intersection, difference), and enumeration.
 - The implementation uses FNV-1a hashing and separate chaining for average
   O(1) membership, insertion, and removal. It grows after the next insertion
   would exceed a 75% load factor.
+- Each node caches its hash and stores the copied key inline. A duplicate `Add`
+  returns false without allocation; an allocation or growth failure traps and
+  never masquerades as a duplicate result. Failed growth leaves the existing
+  set unchanged.
 - `ToSet()` boxes each string on conversion, so the resulting `Set` uses normal boxed-string
   value equality: `bag.ToSet().Has(Box.Str("apple"))` is true whenever the bag contains
   `"apple"`.

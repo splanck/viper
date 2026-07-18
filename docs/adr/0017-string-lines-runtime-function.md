@@ -8,7 +8,7 @@ last-verified: 2026-06-27
 
 ## Status
 
-Accepted (runtime implemented; ZannaIDE source-analysis modules adopt it as the
+Accepted (runtime implemented; Zanna Studio source-analysis modules adopt it as the
 first consumer).
 
 ## Context
@@ -19,7 +19,7 @@ editor, formatter, or text tool. The runtime already provides
 carriage return on every line of CRLF-terminated input. As a result, callers
 must pair every split with a per-line carriage-return strip.
 
-In ZannaIDE alone this `Split("\n")` + strip-`\r` idiom appears in 30+ places
+In Zanna Studio alone this `Split("\n")` + strip-`\r` idiom appears in 30+ places
 across the formatter, refactors, bind utilities, and source-analysis modules,
 each re-implementing the same two-step dance (and a hand-rolled `StripTrailingCr`
 helper backed it). Any Zanna program that processes multi-line text — log
@@ -59,7 +59,7 @@ segment. No new runtime class, no new ID, no new `.c`/`.h` file (so no
 ## Consequences
 
 - **Adoption:** the `Split("\n")` + `StripTrailingCr` pairs collapse to a single
-  `Str.Lines(source)` call. ZannaIDE adopts it as the first consumer; the
+  `Str.Lines(source)` call. Zanna Studio adopts it as the first consumer; the
   hand-rolled `StripTrailingCr` helper is retained only for the few non-split
   callers.
 - **Determinism / cross-platform:** the function is pure and platform-independent

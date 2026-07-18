@@ -33,6 +33,11 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/arrays/rt_array_obj.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/arrays/rt_array_str.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/arrays/rt_list_i64.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/core/rt_context.h")
+// Transactional thread-binding reservation/adoption is shared only by the
+// runtime's platform thread adapters.  Keeping it in a separate internal
+// header prevents the public context surface from exposing half-initialized
+// binding state to generated programs.
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/core/rt_context_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/core/rt_crc32.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/core/rt_debug.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/core/rt_format.h")
@@ -241,6 +246,15 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound3d_tracked_voice_capacity")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sound3d_tracked_voice_count")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_world3d_test_set_broadphase_alloc_failure")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_try_retain_live")
+// Type-safe native callback entry points and explicit destructive Channel
+// receive are C-runtime helpers. Generated programs retain the opaque callback
+// ABI and ordinary language callers discard received values through expression
+// semantics, as specified by ADR 0133.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_thread_start_fn")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_thread_start_owned_fn")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_thread_start_safe_fn")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_thread_start_safe_owned_fn")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_channel_recv_for_discard")
 // GUI owner-binding and scheduler hooks are shared only between runtime
 // translation units; scripts reach them through Widget/App/VideoWidget methods.
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gui_widget_checked_for_binding")
@@ -697,6 +711,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_server_bind_handler_dispatch")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_https_server_bind_handler_dispatch")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_server_process_request")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_conn_pool_clear")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_conn_pool_is_handle")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_conn_pool_new")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_default_connection_pool")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_http_header_is_sensitive_for_cross_origin_redirect")
@@ -730,6 +745,10 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_channel_recv_for")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_channel_try_recv")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_monitor_forget")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_threadpool_current_worker_pool")
+// Native callback submission variants carry C function/data/destructor
+// pointers and therefore must never be projected into a frontend signature.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_threadpool_submit_fn")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_threadpool_submit_owned_fn")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_parallel_shutdown_default_pool")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_seq_all")
@@ -756,6 +775,10 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_future_peek_value")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_future_try_get")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_future_value_is_owned")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_promise_set_transferred")
+// Trap-free producer completion primitives are used by native async adapters.
+// Frontend code observes their state through Promise/Future methods instead.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_promise_try_set_error_cstr")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_promise_try_set_transferred")
 // Status-returning queue insertion is an implementation primitive used by the
 // Graphics3D commit queue to preserve ownership on allocation failure.
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_concqueue_try_enqueue")
@@ -772,6 +795,9 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tls_has_buffered_data")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tls_new")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tls_recv")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tls_send")
+// The timeout setter synchronizes native socket/TLS adapters and intentionally
+// remains below the managed TLS class boundary.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tls_set_io_timeout")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_collider3d_compute_world_aabb_raw")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_collider3d_get_box_half_extents_raw")
@@ -826,6 +852,15 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_obj_set_finalizer")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_weak_load")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_weak_store")
 
+// Context-state serialization and type-registry migration hooks coordinate
+// native runtime components; they are not callable language APIs.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_context_acquire_state")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_context_release_state")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_context_state_abort_for_trap")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_context_state_lock")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_type_registry_state_write_lock")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_type_registry_state_write_unlock")
+
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sb_append_bytes")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sb_append_cstr")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sb_append_double")
@@ -837,9 +872,18 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sb_reserve")
 
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_clear_weak_refs")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_is_tracked")
+// Mutator-quiescence and relocation hooks form the collector's native
+// coordination protocol.  They are not callable language runtime functions.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_mutator_abort_for_trap")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_mutator_enter")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_mutator_exit")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_notify_alloc")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_safepoint")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_track_reference_array")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_relocate_payload")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_run_all_finalizers")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_shutdown")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_should_suppress_cycle_release")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_track")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_gc_untrack")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_weakref_alive")
@@ -852,6 +896,7 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_alloc")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_cap")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_data")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_free_zero_ref")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_get_info")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_hdr")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_is_payload")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_heap_len")
@@ -1008,38 +1053,28 @@ RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Game.Physics2D.Body", "PrevX", "f64")
 RUNTIME_SURFACE_EXPECT_PROPERTY("Zanna.Game.Physics2D.Body", "PrevY", "f64")
 
 RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List", "New", "obj()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.StringSet", "ToSeq", "obj<Zanna.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.StringSet", "ToSet", "obj<Zanna.Collections.Set>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.StringSet",
+                              "ToSeq",
+                              "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.StringSet",
+                              "ToSet",
+                              "obj<Zanna.Collections.Set>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Map", "New", "obj()")
 RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Set", "New", "obj()")
 RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Set", "ToSeq", "obj<Zanna.Collections.Seq>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Set", "ToList", "obj<Zanna.Collections.List>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List",
-                              "ToSeq",
-                              "obj<Zanna.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List",
-                              "ToSet",
-                              "obj<Zanna.Collections.Set>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List",
-                              "ToStack",
-                              "obj<Zanna.Collections.Stack>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Queue",
-                              "ToSeq",
-                              "obj<Zanna.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq",
-                              "ToList",
-                              "obj<Zanna.Collections.List>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List", "ToSeq", "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List", "ToSet", "obj<Zanna.Collections.Set>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.List", "ToStack", "obj<Zanna.Collections.Stack>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Queue", "ToSeq", "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq", "ToList", "obj<Zanna.Collections.List>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq", "ToSet", "obj<Zanna.Collections.Set>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq", "ToDeque", "obj<Zanna.Collections.Deque>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq",
-                              "ToDeque",
-                              "obj<Zanna.Collections.Deque>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Seq", "ToStringSet", "obj<Zanna.Collections.StringSet>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Stack",
-                              "ToSeq",
-                              "obj<Zanna.Collections.Seq>()")
-RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Deque",
-                              "ToSeq",
-                              "obj<Zanna.Collections.Seq>()")
+                              "ToStringSet",
+                              "obj<Zanna.Collections.StringSet>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Stack", "ToSeq", "obj<Zanna.Collections.Seq>()")
+RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Collections.Deque", "ToSeq", "obj<Zanna.Collections.Seq>()")
 RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Time.Stopwatch", "New", "obj()")
 RUNTIME_SURFACE_EXPECT_METHOD("Zanna.Time.Stopwatch", "StartNew", "obj()")
 

@@ -56,8 +56,8 @@ for ((i = 0; i < ${#FORWARD_ARGS[@]}; ++i)); do
 done
 
 if [[ "$USES_EXISTING_INPUT" -eq 0 ]]; then
-    if [[ "${ZANNA_EXTRA_CMAKE_ARGS:-}" != *"-DZANNA_INSTALL_ZANNAIDE="* ]]; then
-        export ZANNA_EXTRA_CMAKE_ARGS="${ZANNA_EXTRA_CMAKE_ARGS:-} -DZANNA_INSTALL_ZANNAIDE=ON"
+    if [[ "${ZANNA_EXTRA_CMAKE_ARGS:-}" != *"-DZANNA_INSTALL_ZANNASTUDIO="* ]]; then
+        export ZANNA_EXTRA_CMAKE_ARGS="${ZANNA_EXTRA_CMAKE_ARGS:-} -DZANNA_INSTALL_ZANNASTUDIO=ON"
     fi
     "$BUILD_SCRIPT"
 fi

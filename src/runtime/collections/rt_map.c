@@ -37,11 +37,14 @@
 #include "rt_numeric.h"
 
 #include "rt_gc.h"
+#include "rt_hash_table_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -49,10 +52,6 @@
 
 /// Initial number of buckets.
 #define MAP_INITIAL_CAPACITY 16
-
-/// Load factor threshold for resizing (0.75 = 75%).
-#define MAP_LOAD_FACTOR_NUM 3
-#define MAP_LOAD_FACTOR_DEN 4
 
 #include "rt_hash_util.h"
 
@@ -62,10 +61,11 @@
 /// collision chains (linked lists) within each bucket. The Map owns a copy
 /// of each string key and retains a reference to each value.
 typedef struct rt_map_entry {
-    char *key;                 ///< Owned copy of key string (null-terminated).
     size_t key_len;            ///< Length of key string (excluding null terminator).
+    uint64_t hash;             ///< Cached keyed hash used by lookup and rehash.
     void *value;               ///< Retained reference to the value object.
     struct rt_map_entry *next; ///< Next entry in collision chain (or NULL).
+    char key[];                ///< Inline owned key bytes followed by one NUL byte.
 } rt_map_entry;
 
 /// @brief Map (string-to-object dictionary) implementation structure.
@@ -111,6 +111,24 @@ static rt_map_impl *as_map(void *obj, const char *what) {
     return (rt_map_impl *)obj;
 }
 
+/// @brief Release one managed object owned by a temporary Map operation.
+/// @param obj Owned object reference, or NULL.
+static void map_release_owned(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+/// @brief Copy the active trap diagnostic before removing a recovery frame.
+/// @param output Destination buffer.
+/// @param capacity Destination capacity in bytes.
+/// @param fallback Text used when the active diagnostic is empty.
+static void map_save_trap(char *output, size_t capacity, const char *fallback) {
+    if (!output || capacity == 0)
+        return;
+    const char *error = rt_trap_get_error();
+    snprintf(output, capacity, "%s", error && error[0] ? error : fallback);
+}
+
 /// @brief Extracts C string data and length from a Zanna string.
 ///
 /// Helper function to safely get the underlying character data from a
@@ -146,18 +164,55 @@ static const char *get_key_data(rt_string key, size_t *out_len) {
 /// to find one matching the given key.
 ///
 /// @param head The head of the collision chain to search.
+/// @param hash Cached hash of the key being searched for.
 /// @param key The key string to search for.
 /// @param key_len Length of the key string.
 ///
 /// @return Pointer to the matching entry, or NULL if not found.
 ///
 /// @note O(k) time where k is the chain length.
-static rt_map_entry *find_entry(rt_map_entry *head, const char *key, size_t key_len) {
+static rt_map_entry *find_entry(rt_map_entry *head,
+                                uint64_t hash,
+                                const char *key,
+                                size_t key_len) {
     for (rt_map_entry *e = head; e; e = e->next) {
-        if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
+        if (e->hash == hash && e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
     }
     return NULL;
+}
+
+/// @brief Allocate one map entry with its copied key stored inline.
+/// @details A single zeroed runtime allocation holds both the collision node
+///          and the key bytes, reducing allocator traffic and fragmentation.
+///          The value is recorded but not retained; callers retain before this
+///          helper and release that retain if allocation fails.
+/// @param key Key bytes to copy.
+/// @param key_len Number of key bytes, excluding the appended NUL terminator.
+/// @param hash Precomputed keyed hash for the entry.
+/// @param value Managed value pointer to record.
+/// @param trap_message Diagnostic to report if allocation fails.
+/// @return Newly allocated entry, or NULL after reporting overflow/allocation
+///         failure.
+static rt_map_entry *map_entry_new(
+    const char *key, size_t key_len, uint64_t hash, void *value, const char *trap_message) {
+    if (key_len > SIZE_MAX - sizeof(rt_map_entry) - 1 ||
+        sizeof(rt_map_entry) + key_len + 1 > (size_t)INT64_MAX) {
+        rt_trap("Map: key allocation overflow");
+        return NULL;
+    }
+    size_t allocation_size = sizeof(rt_map_entry) + key_len + 1;
+    rt_map_entry *entry = (rt_map_entry *)rt_alloc((int64_t)allocation_size);
+    if (!entry) {
+        rt_trap(trap_message);
+        return NULL;
+    }
+    entry->key_len = key_len;
+    entry->hash = hash;
+    entry->value = value;
+    memcpy(entry->key, key, key_len);
+    entry->key[key_len] = '\0';
+    return entry;
 }
 
 /// @brief Frees an entry, its owned key, and releases its value reference.
@@ -170,10 +225,9 @@ static rt_map_entry *find_entry(rt_map_entry *head, const char *key, size_t key_
 /// @param entry The entry to free. If NULL, this is a no-op.
 static void free_entry(rt_map_entry *entry) {
     if (entry) {
-        free(entry->key);
         if (entry->value && rt_obj_release_check0(entry->value))
             rt_obj_free(entry->value);
-        free(entry);
+        rt_free(entry);
     }
 }
 
@@ -210,7 +264,7 @@ static void rt_map_finalize(void *obj) {
     if (!map->buckets || map->capacity == 0)
         return;
     rt_map_clear(map);
-    free(map->buckets);
+    rt_free(map->buckets);
     map->buckets = NULL;
     map->capacity = 0;
     map->count = 0;
@@ -228,11 +282,13 @@ static void rt_map_finalize(void *obj) {
 ///         after a recoverable trap or allocation failure.
 /// @note O(n) time complexity where n is the number of entries.
 static int map_resize(rt_map_impl *map, size_t new_capacity) {
-    if (new_capacity > SIZE_MAX / sizeof(rt_map_entry *)) {
+    if (new_capacity == 0 || new_capacity > SIZE_MAX / sizeof(rt_map_entry *) ||
+        new_capacity * sizeof(rt_map_entry *) > (size_t)INT64_MAX) {
         rt_trap("Map: allocation size overflow");
         return 0;
     }
-    rt_map_entry **new_buckets = (rt_map_entry **)calloc(new_capacity, sizeof(rt_map_entry *));
+    rt_map_entry **new_buckets =
+        (rt_map_entry **)rt_alloc((int64_t)(new_capacity * sizeof(rt_map_entry *)));
     if (!new_buckets) {
         rt_trap("Map: memory allocation failed");
         return 0;
@@ -243,15 +299,14 @@ static int map_resize(rt_map_impl *map, size_t new_capacity) {
         rt_map_entry *entry = map->buckets[i];
         while (entry) {
             rt_map_entry *next = entry->next;
-            uint64_t hash = rt_fnv1a(entry->key, entry->key_len);
-            size_t idx = hash % new_capacity;
+            size_t idx = entry->hash % new_capacity;
             entry->next = new_buckets[idx];
             new_buckets[idx] = entry;
             entry = next;
         }
     }
 
-    free(map->buckets);
+    rt_free(map->buckets);
     map->buckets = new_buckets;
     map->capacity = new_capacity;
     return 1;
@@ -265,14 +320,13 @@ static int map_resize(rt_map_impl *map, size_t new_capacity) {
 ///
 /// @note The capacity doubles on each resize.
 static int maybe_resize_for_count(rt_map_impl *map, size_t next_count) {
-    // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if ((long double)next_count * (long double)MAP_LOAD_FACTOR_DEN >
-        (long double)map->capacity * (long double)MAP_LOAD_FACTOR_NUM) {
-        if (map->capacity > SIZE_MAX / 2) {
+    if (rt_hash_table_exceeds_load(next_count, map->capacity)) {
+        size_t new_capacity = 0;
+        if (!rt_hash_table_double_capacity(map->capacity, &new_capacity)) {
             rt_trap("Map: capacity overflow");
             return 0;
         }
-        return map_resize(map, map->capacity * 2);
+        return map_resize(map, new_capacity);
     }
     return 1;
 }
@@ -313,7 +367,8 @@ void *rt_map_new(void) {
         return NULL;
 
     map->vptr = NULL;
-    map->buckets = (rt_map_entry **)calloc(MAP_INITIAL_CAPACITY, sizeof(rt_map_entry *));
+    map->buckets =
+        (rt_map_entry **)rt_alloc((int64_t)(MAP_INITIAL_CAPACITY * sizeof(rt_map_entry *)));
     if (!map->buckets) {
         if (rt_obj_release_check0(map))
             rt_obj_free(map);
@@ -403,9 +458,12 @@ void rt_map_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_map_impl *map = as_map(obj, "Map: invalid Map object");
-    if (!map)
+    if (!map) {
+        rt_gc_mutator_exit();
         return;
+    }
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -413,7 +471,7 @@ void rt_map_set(void *obj, rt_string key, void *value) {
     size_t idx = hash % map->capacity;
 
     // Check if key already exists
-    rt_map_entry *existing = find_entry(map->buckets[idx], key_data, key_len);
+    rt_map_entry *existing = find_entry(map->buckets[idx], hash, key_data, key_len);
     if (existing) {
         // Update existing entry
         void *old_value = existing->value;
@@ -421,54 +479,38 @@ void rt_map_set(void *obj, rt_string key, void *value) {
         existing->value = value;
         if (old_value && rt_obj_release_check0(old_value))
             rt_obj_free(old_value);
+        rt_gc_mutator_exit();
         return;
     }
 
     if (map->count == SIZE_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Map.Set: maximum size reached");
         return;
     }
-    if (!maybe_resize_for_count(map, map->count + 1))
+    if (!maybe_resize_for_count(map, map->count + 1)) {
+        rt_gc_mutator_exit();
         return;
+    }
     idx = hash % map->capacity;
 
     if (value)
         rt_obj_retain_maybe(value);
 
-    // Create new entry
-    rt_map_entry *entry = (rt_map_entry *)malloc(sizeof(rt_map_entry));
+    rt_map_entry *entry =
+        map_entry_new(key_data, key_len, hash, value, "Map.Set: memory allocation failed");
     if (!entry) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
-        rt_trap("Map.Set: memory allocation failed");
+        rt_gc_mutator_exit();
         return;
     }
-
-    if (key_len == SIZE_MAX) {
-        if (value && rt_obj_release_check0(value))
-            rt_obj_free(value);
-        free(entry);
-        rt_trap("Map.Set: key allocation overflow");
-        return;
-    }
-    entry->key = (char *)malloc(key_len + 1);
-    if (!entry->key) {
-        if (value && rt_obj_release_check0(value))
-            rt_obj_free(value);
-        free(entry);
-        rt_trap("Map.Set: key allocation failed");
-        return;
-    }
-    memcpy(entry->key, key_data, key_len);
-    entry->key[key_len] = '\0';
-    entry->key_len = key_len;
-
-    entry->value = value;
 
     // Insert at head of bucket chain
     entry->next = map->buckets[idx];
     map->buckets[idx] = entry;
     map->count++;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Retrieves the value associated with a key.
@@ -509,7 +551,7 @@ void *rt_map_get(void *obj, rt_string key) {
     uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % map->capacity;
 
-    rt_map_entry *entry = find_entry(map->buckets[idx], key_data, key_len);
+    rt_map_entry *entry = find_entry(map->buckets[idx], hash, key_data, key_len);
     return entry ? entry->value : NULL;
 }
 
@@ -555,7 +597,7 @@ void *rt_map_get_or(void *obj, rt_string key, void *default_value) {
     uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % map->capacity;
 
-    rt_map_entry *entry = find_entry(map->buckets[idx], key_data, key_len);
+    rt_map_entry *entry = find_entry(map->buckets[idx], hash, key_data, key_len);
     return entry ? entry->value : default_value;
 }
 
@@ -598,7 +640,7 @@ int8_t rt_map_has(void *obj, rt_string key) {
     uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % map->capacity;
 
-    return find_entry(map->buckets[idx], key_data, key_len) ? 1 : 0;
+    return find_entry(map->buckets[idx], hash, key_data, key_len) ? 1 : 0;
 }
 
 /// @brief Sets a value for a key only if the key doesn't already exist.
@@ -636,61 +678,50 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
     if (!obj)
         return 0;
 
+    rt_gc_mutator_enter();
     rt_map_impl *map = as_map(obj, "Map: invalid Map object");
-    if (map->capacity == 0)
+    if (!map || map->capacity == 0) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
     uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % map->capacity;
 
-    if (find_entry(map->buckets[idx], key_data, key_len))
+    if (find_entry(map->buckets[idx], hash, key_data, key_len)) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     if (map->count == SIZE_MAX) {
+        rt_gc_mutator_exit();
         rt_trap("Map.SetIfMissing: maximum size reached");
         return 0;
     }
-    maybe_resize_for_count(map, map->count + 1);
+    if (!maybe_resize_for_count(map, map->count + 1)) {
+        rt_gc_mutator_exit();
+        return 0;
+    }
     idx = hash % map->capacity;
 
     if (value)
         rt_obj_retain_maybe(value);
 
-    rt_map_entry *entry = (rt_map_entry *)malloc(sizeof(rt_map_entry));
+    rt_map_entry *entry =
+        map_entry_new(key_data, key_len, hash, value, "Map.SetIfMissing: memory allocation failed");
     if (!entry) {
         if (value && rt_obj_release_check0(value))
             rt_obj_free(value);
-        rt_trap("Map.SetIfMissing: memory allocation failed");
+        rt_gc_mutator_exit();
         return 0;
     }
-
-    if (key_len == SIZE_MAX) {
-        if (value && rt_obj_release_check0(value))
-            rt_obj_free(value);
-        free(entry);
-        rt_trap("Map.SetIfMissing: key allocation overflow");
-        return 0;
-    }
-    entry->key = (char *)malloc(key_len + 1);
-    if (!entry->key) {
-        if (value && rt_obj_release_check0(value))
-            rt_obj_free(value);
-        free(entry);
-        rt_trap("Map.SetIfMissing: key allocation failed");
-        return 0;
-    }
-
-    memcpy(entry->key, key_data, key_len);
-    entry->key[key_len] = '\0';
-    entry->key_len = key_len;
-
-    entry->value = value;
 
     entry->next = map->buckets[idx];
     map->buckets[idx] = entry;
     map->count++;
+    rt_gc_mutator_exit();
     return 1;
 }
 
@@ -724,9 +755,12 @@ int8_t rt_map_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
+    rt_gc_mutator_enter();
     rt_map_impl *map = as_map(obj, "Map: invalid Map object");
-    if (map->capacity == 0)
+    if (!map || map->capacity == 0) {
+        rt_gc_mutator_exit();
         return 0;
+    }
 
     size_t key_len;
     const char *key_data = get_key_data(key, &key_len);
@@ -737,16 +771,19 @@ int8_t rt_map_remove(void *obj, rt_string key) {
     rt_map_entry *entry = map->buckets[idx];
 
     while (entry) {
-        if (entry->key_len == key_len && memcmp(entry->key, key_data, key_len) == 0) {
+        if (entry->hash == hash && entry->key_len == key_len &&
+            memcmp(entry->key, key_data, key_len) == 0) {
             *prev_ptr = entry->next;
             free_entry(entry);
             map->count--;
+            rt_gc_mutator_exit();
             return 1;
         }
         prev_ptr = &entry->next;
         entry = entry->next;
     }
 
+    rt_gc_mutator_exit();
     return 0;
 }
 
@@ -785,17 +822,62 @@ void rt_map_clear(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     rt_map_impl *map = as_map(obj, "Map: invalid Map object");
+    if (!map) {
+        rt_gc_mutator_exit();
+        return;
+    }
     for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
+        map->buckets[i] = NULL;
         while (entry) {
             rt_map_entry *next = entry->next;
             free_entry(entry);
             entry = next;
         }
-        map->buckets[i] = NULL;
     }
     map->count = 0;
+    rt_gc_mutator_exit();
+}
+
+/// @brief Release excess bucket capacity while preserving every Map entry.
+/// @details Selects the smallest power-of-two capacity, no smaller than the
+///          initial sixteen buckets, whose 75-percent threshold can hold the
+///          current count. The replacement bucket array is allocated before
+///          any collision link is changed, so allocation failure leaves keys,
+///          values, count, capacity, and iteration state unchanged. Calling
+///          Trim on an already minimal Map performs no allocation.
+/// @param obj Map object whose bucket storage should be compacted.
+/// @return Non-zero when the Map was already minimal or compaction succeeded;
+///         zero after an invalid-handle, overflow, or allocation trap.
+int8_t rt_map_trim(void *obj) {
+    if (!obj) {
+        rt_trap("Map.Trim: invalid Map object");
+        return 0;
+    }
+
+    rt_gc_mutator_enter();
+    rt_map_impl *map = as_map(obj, "Map.Trim: invalid Map object");
+    if (!map || !map->buckets || map->capacity == 0) {
+        rt_gc_mutator_exit();
+        return 0;
+    }
+
+    size_t target_capacity = 0;
+    if (!rt_hash_table_trim_capacity(map->count, MAP_INITIAL_CAPACITY, &target_capacity)) {
+        rt_gc_mutator_exit();
+        rt_trap("Map.Trim: capacity overflow");
+        return 0;
+    }
+    if (target_capacity >= map->capacity) {
+        rt_gc_mutator_exit();
+        return 1;
+    }
+
+    int resized = map_resize(map, target_capacity);
+    rt_gc_mutator_exit();
+    return resized ? 1 : 0;
 }
 
 /// @brief Returns all keys in the Map as a Seq.
@@ -829,26 +911,57 @@ void rt_map_clear(void *obj) {
 ///
 /// @see rt_map_values For getting all values
 void *rt_map_keys(void *obj) {
-    void *result = rt_seq_new();
-    rt_seq_set_owns_elements(result, 1);
-    if (!obj)
-        return result;
+    void *volatile result = NULL;
+    rt_string volatile key_string = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        map_save_trap(saved_error, sizeof(saved_error), "Map.Keys: snapshot allocation failed");
+        rt_trap_clear_recovery();
+        map_release_owned((void *)key_string);
+        map_release_owned((void *)result);
+        rt_trap(saved_error);
+        return NULL;
+    }
 
-    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
+    rt_map_impl *map = obj ? as_map(obj, "Map: invalid Map object") : NULL;
+    if (obj && !map) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    if (map && map->count > (size_t)INT64_MAX)
+        rt_trap("Map.Keys: snapshot is too large");
+    result = rt_seq_with_capacity_owned(map ? (int64_t)map->count : 1);
+    if (!result) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    if (!map) {
+        rt_trap_clear_recovery();
+        return (void *)result;
+    }
 
     // Iterate through all buckets and entries
     for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
         while (entry) {
             // Create a copy of the key as rt_string and push to seq
-            rt_string key_str = rt_string_from_bytes(entry->key, entry->key_len);
-            rt_seq_push(result, (void *)key_str);
-            rt_str_release_maybe(key_str);
+            key_string = rt_string_from_bytes(entry->key, entry->key_len);
+            if (!key_string) {
+                rt_trap_clear_recovery();
+                map_release_owned((void *)result);
+                return NULL;
+            }
+            rt_seq_push((void *)result, (void *)key_string);
+            map_release_owned((void *)key_string);
+            key_string = NULL;
             entry = entry->next;
         }
     }
 
-    return result;
+    rt_trap_clear_recovery();
+    return (void *)result;
 }
 
 /// @brief Returns all values in the Map as a Seq.
@@ -881,23 +994,46 @@ void *rt_map_keys(void *obj) {
 ///
 /// @see rt_map_keys For getting all keys
 void *rt_map_values(void *obj) {
-    void *result = rt_seq_new();
-    rt_seq_set_owns_elements(result, 1);
-    if (!obj)
-        return result;
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        map_save_trap(saved_error, sizeof(saved_error), "Map.Values: snapshot allocation failed");
+        rt_trap_clear_recovery();
+        map_release_owned((void *)result);
+        rt_trap(saved_error);
+        return NULL;
+    }
 
-    rt_map_impl *map = as_map(obj, "Map: invalid Map object");
+    rt_map_impl *map = obj ? as_map(obj, "Map: invalid Map object") : NULL;
+    if (obj && !map) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    if (map && map->count > (size_t)INT64_MAX)
+        rt_trap("Map.Values: snapshot is too large");
+    result = rt_seq_with_capacity_owned(map ? (int64_t)map->count : 1);
+    if (!result) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    if (!map) {
+        rt_trap_clear_recovery();
+        return (void *)result;
+    }
 
     // Iterate through all buckets and entries
     for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
         while (entry) {
-            rt_seq_push(result, entry->value);
+            rt_seq_push((void *)result, entry->value);
             entry = entry->next;
         }
     }
 
-    return result;
+    rt_trap_clear_recovery();
+    return (void *)result;
 }
 
 //=============================================================================

@@ -4,88 +4,30 @@
 // See LICENSE in the project root for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file rt_ratelimit.c
-/// @brief Token bucket rate limiter for network/API operations.
-///
-/// This file implements a token bucket algorithm for rate limiting. Tokens
-/// are consumed when operations are attempted and refill continuously over
-/// time at a configured rate.
-///
-/// **Token Bucket Algorithm:**
-/// ```
-///   Capacity: 10 tokens
-///   Refill rate: 2 tokens/sec
-///
-///   Time 0s:  [##########] 10/10  -> acquire() succeeds, now 9/10
-///   Time 0s:  [######### ] 9/10   -> acquire() succeeds, now 8/10
-///   ...
-///   Time 0s:  [          ] 0/10   -> acquire() fails
-///   Time 1s:  [##        ] 2/10   -> 2 tokens refilled
-///   Time 5s:  [##########] 10/10  -> capped at max
-/// ```
-///
-/// **Usage Pattern:**
-/// ```
-/// Dim limiter = RateLimiter.New(100, 10.0)  ' 100 tokens, 10/sec refill
-///
-/// If limiter.TryAcquire() Then
-///     SendApiRequest()
-/// Else
-///     Print "Rate limited, try later"
-/// End If
-/// ```
-///
-/// **Thread Safety:** Not thread-safe. External synchronization required.
-///
+//
+// File: src/runtime/network/rt_ratelimit.c
+// Purpose: Implements a continuously refilled token bucket for network and API
+//          operation rate limiting.
+// Key invariants:
+//   - Whole-token capacity and balance remain exact signed 64-bit integers.
+//   - Refill uses the shared monotonic runtime clock and saturates at capacity.
+// Ownership/Lifetime:
+//   - RateLimiter payloads are managed objects owned by their callers.
+//   - Individual limiter mutation requires external synchronization.
+// Links: src/runtime/network/rt_ratelimit.h, src/runtime/core/rt_time.h
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_ratelimit.h"
 
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_time.h"
 
+#include <math.h>
 #include <stdlib.h>
 
-#if defined(_WIN32)
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#else
-#include <time.h>
-#endif
-
 #include "rt_trap.h"
-
-//=============================================================================
-// Time Helper
-//=============================================================================
-
-/// @brief Get current time in seconds from a monotonic clock (as double).
-static double current_time_sec(void) {
-#if defined(_WIN32)
-    // Benign race: QPC frequency is constant; duplicate init is harmless.
-    static LARGE_INTEGER freq = {0};
-    LARGE_INTEGER counter;
-    if (freq.QuadPart == 0) {
-        // RC-10: check return value — fall back to GetTickCount64 if QPC is unavailable
-        if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0)
-            return (double)GetTickCount64() / 1000.0;
-    }
-    QueryPerformanceCounter(&counter);
-    return (double)counter.QuadPart / (double)freq.QuadPart;
-#else
-    struct timespec ts;
-#ifdef CLOCK_MONOTONIC
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
-        return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-#endif
-    if (clock_gettime(CLOCK_REALTIME, &ts) == 0)
-        return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-    return 0.0;
-#endif
-}
 
 //=============================================================================
 // Internal Structures
@@ -97,28 +39,52 @@ static double current_time_sec(void) {
 ///          Integer range (doubles lose integer precision above 2^53). Only
 ///          the sub-token refill remainder is fractional.
 typedef struct {
-    int64_t tokens_whole;    ///< Current available whole tokens (exact).
-    int64_t max_tokens;      ///< Maximum token capacity (exact).
-    double tokens_frac;      ///< Fractional refill carry in [0, 1).
-    double refill_per_sec;   ///< Tokens refilled per second.
-    double last_refill_time; ///< Last time tokens were refilled.
+    int64_t tokens_whole;   ///< Current available whole tokens (exact).
+    int64_t max_tokens;     ///< Maximum token capacity (exact).
+    double tokens_frac;     ///< Fractional refill carry in [0, 1).
+    double refill_per_sec;  ///< Tokens refilled per second.
+    int64_t last_refill_us; ///< Last monotonic refill timestamp in microseconds.
 } rt_ratelimit_data;
 
-/// @brief Refill tokens based on elapsed time since last refill.
-static void refill_tokens(rt_ratelimit_data *data) {
-    double now = current_time_sec();
-    double elapsed = now - data->last_refill_time;
-    if (elapsed <= 0.0)
-        return;
-    data->last_refill_time = now;
+/// @brief Validate and cast one non-null RateLimiter handle.
+/// @param limiter Candidate opaque managed object.
+/// @param context Diagnostic raised for wrong-class or undersized handles.
+/// @return Rate-limiter payload, or NULL after trapping.
+static rt_ratelimit_data *ratelimit_require(void *limiter, const char *context) {
+    if (!rt_obj_is_instance(limiter, RT_RATELIMIT_CLASS_ID, sizeof(rt_ratelimit_data))) {
+        rt_trap(context ? context : "RateLimiter: invalid limiter");
+        return NULL;
+    }
+    return (rt_ratelimit_data *)limiter;
+}
 
-    double credit = elapsed * data->refill_per_sec + data->tokens_frac;
+/// @brief Refill tokens based on elapsed time since last refill.
+/// @details Uses the runtime's cross-platform microsecond clock rather than a
+///          private platform clock cache. A zero/failed or non-advancing sample
+///          leaves state unchanged. Credits too large for signed conversion
+///          saturate the bucket before any cast.
+/// @param data Valid externally serialized limiter state.
+static void refill_tokens(rt_ratelimit_data *data) {
+    int64_t now_us = rt_clock_ticks_us();
+    if (now_us <= 0)
+        return;
+    if (data->last_refill_us <= 0) {
+        data->last_refill_us = now_us;
+        return;
+    }
+    int64_t elapsed_us = now_us - data->last_refill_us;
+    if (elapsed_us <= 0)
+        return;
+    data->last_refill_us = now_us;
+
+    double elapsed_sec = (double)elapsed_us / 1000000.0;
+    double credit = elapsed_sec * data->refill_per_sec + data->tokens_frac;
     if (!(credit > 0.0)) // also rejects NaN
         return;
 
-    // A credit this large cannot be cast to int64_t; the bucket is full
-    // regardless of the exact capacity.
-    if (credit >= 9.2e18) {
+    // A non-finite credit or one at/above 2^63 cannot be cast to int64_t.
+    // In either case it is sufficient to fill every valid bucket.
+    if (!isfinite(credit) || credit >= (double)INT64_MAX) {
         data->tokens_whole = data->max_tokens;
         data->tokens_frac = 0.0;
         return;
@@ -148,17 +114,16 @@ static void refill_tokens(rt_ratelimit_data *data) {
 /// @param refill_per_sec Tokens refilled per second. Values <= 0 default to 1.0.
 /// @return A new rate limiter object. Traps on allocation failure.
 void *rt_ratelimit_new(int64_t max_tokens, double refill_per_sec) {
-    rt_ratelimit_data *data =
-        (rt_ratelimit_data *)rt_obj_new_i64(0, (int64_t)sizeof(rt_ratelimit_data));
-    if (!data) {
-        rt_trap("RateLimiter: memory allocation failed");
+    int64_t now_us = rt_clock_ticks_us();
+    rt_ratelimit_data *data = (rt_ratelimit_data *)rt_obj_new_i64(
+        RT_RATELIMIT_CLASS_ID, (int64_t)sizeof(rt_ratelimit_data));
+    if (!data)
         return NULL;
-    }
     data->max_tokens = max_tokens > 0 ? max_tokens : 1;
     data->tokens_whole = data->max_tokens;
     data->tokens_frac = 0.0;
-    data->refill_per_sec = refill_per_sec > 0.0 ? refill_per_sec : 1.0;
-    data->last_refill_time = current_time_sec();
+    data->refill_per_sec = isfinite(refill_per_sec) && refill_per_sec > 0.0 ? refill_per_sec : 1.0;
+    data->last_refill_us = now_us;
     return data;
 }
 
@@ -183,7 +148,9 @@ int8_t rt_ratelimit_try_acquire(void *limiter) {
 int8_t rt_ratelimit_try_acquire_n(void *limiter, int64_t n) {
     if (!limiter || n <= 0)
         return 0;
-    rt_ratelimit_data *data = (rt_ratelimit_data *)limiter;
+    rt_ratelimit_data *data = ratelimit_require(limiter, "RateLimiter.TryAcquire: invalid limiter");
+    if (!data)
+        return 0;
     refill_tokens(data);
     if (data->tokens_whole >= n) {
         data->tokens_whole -= n;
@@ -201,7 +168,9 @@ int8_t rt_ratelimit_try_acquire_n(void *limiter, int64_t n) {
 int64_t rt_ratelimit_available(void *limiter) {
     if (!limiter)
         return 0;
-    rt_ratelimit_data *data = (rt_ratelimit_data *)limiter;
+    rt_ratelimit_data *data = ratelimit_require(limiter, "RateLimiter.Available: invalid limiter");
+    if (!data)
+        return 0;
     refill_tokens(data);
     return data->tokens_whole;
 }
@@ -214,10 +183,13 @@ int64_t rt_ratelimit_available(void *limiter) {
 void rt_ratelimit_reset(void *limiter) {
     if (!limiter)
         return;
-    rt_ratelimit_data *data = (rt_ratelimit_data *)limiter;
+    rt_ratelimit_data *data = ratelimit_require(limiter, "RateLimiter.Reset: invalid limiter");
+    if (!data)
+        return;
+    int64_t now_us = rt_clock_ticks_us();
     data->tokens_whole = data->max_tokens;
     data->tokens_frac = 0.0;
-    data->last_refill_time = current_time_sec();
+    data->last_refill_us = now_us;
 }
 
 /// @brief Gets the maximum token capacity.
@@ -227,7 +199,8 @@ void rt_ratelimit_reset(void *limiter) {
 int64_t rt_ratelimit_get_max(void *limiter) {
     if (!limiter)
         return 0;
-    return ((rt_ratelimit_data *)limiter)->max_tokens;
+    rt_ratelimit_data *data = ratelimit_require(limiter, "RateLimiter.Max: invalid limiter");
+    return data ? data->max_tokens : 0;
 }
 
 /// @brief Gets the refill rate in tokens per second.
@@ -237,5 +210,6 @@ int64_t rt_ratelimit_get_max(void *limiter) {
 double rt_ratelimit_get_rate(void *limiter) {
     if (!limiter)
         return 0.0;
-    return ((rt_ratelimit_data *)limiter)->refill_per_sec;
+    rt_ratelimit_data *data = ratelimit_require(limiter, "RateLimiter.Rate: invalid limiter");
+    return data ? data->refill_per_sec : 0.0;
 }

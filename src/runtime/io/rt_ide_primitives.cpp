@@ -5,7 +5,7 @@
 //
 // File: src/runtime/io/rt_ide_primitives.cpp
 // Purpose: Workspace, asset, manifest, and transactional edit helpers used by
-//          ZannaIDE and editor-style tooling.
+//          Zanna Studio and editor-style tooling.
 // Key invariants:
 //   - Workspace edit targets are validated before any disk mutation is attempted.
 //   - Workspace/file-index helpers never depend on compiler-layer services.

@@ -7,24 +7,38 @@
 //
 // File: src/tests/runtime/RTNetworkRuntimeTests.c
 // Purpose: Regression tests for networking runtime hardening fixes.
+// Key invariants:
+//   - Parser probes use deterministic native byte fixtures without external services.
+//   - Allocation injection restores hooks and exact managed-object baselines.
+//   - Forged handles trap before private payload or native lock access.
+// Ownership/Lifetime:
+//   - Every test releases caller-owned runtime objects after its assertions.
+// Links: src/runtime/network/, src/runtime/core/rt_gc.c,
+//        docs/zannalib/network.md
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_gc.h"
 #include "rt_http_router.h"
 #include "rt_http_server.h"
+#include "rt_internal.h"
 #include "rt_map.h"
 #include "rt_network.h"
 #include "rt_object.h"
 #include "rt_retry.h"
+#include "rt_smtp.h"
+#include "rt_sse.h"
 #include "rt_string.h"
 #include "rt_tls.h"
+#include "rt_ws_server.h"
+#include "rt_wss_server.h"
 
 #include <assert.h>
+#include <setjmp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <setjmp.h>
 
 // -- Trap interception (VDOC-142 registration-validation tests) -------------
 static jmp_buf g_trap_jmp;
@@ -53,6 +67,26 @@ void vm_trap(const char *msg) {
 
 static int tests_run = 0;
 static int tests_failed = 0;
+
+static int g_router_alloc_calls = 0;
+static int g_router_alloc_fail_countdown = 0;
+
+/// @brief Count router managed allocations and optionally fail one exact call.
+/// @details The runtime allocation hook observes every allocation routed through
+///          rt_alloc, including managed object payloads and a Map's bucket and
+///          entry storage. Native route metadata deliberately remains outside
+///          this hook, allowing the tests to prove an unmatched route scan
+///          performs zero runtime allocations and to inject a failure at every
+///          result-construction allocation.
+/// @param bytes Requested managed allocation size.
+/// @param next Default runtime allocator used when this call is not failed.
+/// @return Delegated allocation, or NULL on the armed countdown call.
+static void *router_probe_alloc(int64_t bytes, void *(*next)(int64_t bytes)) {
+    g_router_alloc_calls++;
+    if (g_router_alloc_fail_countdown > 0 && --g_router_alloc_fail_countdown == 0)
+        return NULL;
+    return next(bytes);
+}
 
 #define ASSERT(cond)                                                                               \
     do {                                                                                           \
@@ -159,11 +193,13 @@ static void native_http_handler(void *req_obj, void *res_obj) {
 
 static void test_http_router_returns_owned_params_and_trims_wildcards(void) {
     void *router = rt_http_router_new();
+    ASSERT(rt_obj_class_id(router) == RT_HTTP_ROUTER_CLASS_ID);
     rt_http_router_get(router, rt_const_cstr("/users/:id"));
     rt_http_router_get(router, rt_const_cstr("/static/*path"));
 
     void *match = rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/users/42"));
     ASSERT(match != NULL);
+    ASSERT(rt_obj_class_id(match) == RT_ROUTE_MATCH_CLASS_ID);
     rt_string id = rt_route_match_param(match, rt_const_cstr("id"));
     if (rt_obj_release_check0(match))
         rt_obj_free(match);
@@ -194,6 +230,10 @@ static void test_http_router_grammar_validation(void) {
     ASSERT(g_last_trap && strstr(g_last_trap, "wildcard") != NULL);
     EXPECT_TRAP(rt_http_router_get(router, rt_const_cstr("/a/:id/b/:id")));
     ASSERT(g_last_trap && strstr(g_last_trap, "duplicate") != NULL);
+    EXPECT_TRAP(rt_http_router_get(router, rt_const_cstr("/a/:")));
+    ASSERT(g_last_trap && strstr(g_last_trap, "requires a name") != NULL);
+    EXPECT_TRAP(rt_http_router_get(router, rt_const_cstr("/a/*")));
+    ASSERT(g_last_trap && strstr(g_last_trap, "requires a name") != NULL);
     ASSERT(rt_http_router_count(router) == 0);
 
     // Embedded NUL in a pattern must reject the whole registration rather
@@ -203,6 +243,24 @@ static void test_http_router_grammar_validation(void) {
     rt_string_unref(nul_pattern);
     ASSERT(rt_http_router_count(router) == 0);
 
+    // Empty, whitespace-bearing, and control-bearing methods are not valid
+    // HTTP tokens. Extension punctuation from the token alphabet remains
+    // available for custom methods.
+    EXPECT_TRAP(rt_http_router_add(router, rt_const_cstr(""), rt_const_cstr("/empty")));
+    ASSERT(g_last_trap && strstr(g_last_trap, "method token") != NULL);
+    EXPECT_TRAP(rt_http_router_add(router, rt_const_cstr("BAD METHOD"), rt_const_cstr("/bad")));
+    ASSERT(g_last_trap && strstr(g_last_trap, "method token") != NULL);
+    EXPECT_TRAP(rt_http_router_add(router, rt_const_cstr("BAD\tMETHOD"), rt_const_cstr("/bad")));
+    ASSERT(g_last_trap && strstr(g_last_trap, "method token") != NULL);
+    ASSERT(rt_http_router_count(router) == 0);
+
+    rt_http_router_add(router, rt_const_cstr("M-SEARCH"), rt_const_cstr("/discover"));
+    void *extension_match =
+        rt_http_router_match(router, rt_const_cstr("M-SEARCH"), rt_const_cstr("/discover"));
+    ASSERT(extension_match != NULL);
+    if (extension_match && rt_obj_release_check0(extension_match))
+        rt_obj_free(extension_match);
+
     // Method tokens are case-sensitive per HTTP semantics.
     rt_http_router_add(router, rt_const_cstr("get"), rt_const_cstr("/lower"));
     void *match = rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/lower"));
@@ -210,6 +268,117 @@ static void test_http_router_grammar_validation(void) {
     match = rt_http_router_match(router, rt_const_cstr("get"), rt_const_cstr("/lower"));
     ASSERT(match != NULL);
     if (rt_obj_release_check0(match))
+        rt_obj_free(match);
+
+    if (rt_obj_release_check0(router))
+        rt_obj_free(router);
+}
+
+/// @brief Router lookup must not allocate for routes that fail to match.
+/// @details A large same-method table previously allocated and destroyed one
+///          Map per candidate. The probe asserts a complete miss allocates
+///          nothing, while successful literal and capture matches allocate
+///          only their result state after the selected route is known. A
+///          one-capture match performs six runtime allocations: Map payload,
+///          Map buckets, name string, value string, inline-key Map entry, and
+///          RouteMatch payload.
+static void test_http_router_match_allocation_profile(void) {
+    void *router = rt_http_router_new();
+    for (int i = 0; i < 256; i++) {
+        char pattern_bytes[48];
+        int written = snprintf(pattern_bytes, sizeof(pattern_bytes), "/literal/%d", i);
+        ASSERT(written > 0 && (size_t)written < sizeof(pattern_bytes));
+        rt_string pattern = rt_string_from_bytes(pattern_bytes, (size_t)written);
+        rt_http_router_get(router, pattern);
+        rt_string_unref(pattern);
+    }
+
+    rt_string get = rt_const_cstr("GET");
+    rt_string missing = rt_const_cstr("/literal/missing");
+    rt_string literal = rt_const_cstr("/literal/255");
+    g_router_alloc_calls = 0;
+    g_router_alloc_fail_countdown = 0;
+    rt_set_alloc_hook(router_probe_alloc);
+    void *match = rt_http_router_match(router, get, missing);
+    rt_set_alloc_hook(NULL);
+    ASSERT(match == NULL);
+    ASSERT(g_router_alloc_calls == 0);
+
+    g_router_alloc_calls = 0;
+    rt_set_alloc_hook(router_probe_alloc);
+    match = rt_http_router_match(router, get, literal);
+    rt_set_alloc_hook(NULL);
+    ASSERT(match != NULL);
+    ASSERT(g_router_alloc_calls == 1);
+    if (match && rt_obj_release_check0(match))
+        rt_obj_free(match);
+
+    rt_http_router_get(router, rt_const_cstr("/captured/:id"));
+    rt_string captured = rt_const_cstr("/captured/42");
+    g_router_alloc_calls = 0;
+    rt_set_alloc_hook(router_probe_alloc);
+    match = rt_http_router_match(router, get, captured);
+    rt_set_alloc_hook(NULL);
+    ASSERT(match != NULL);
+    ASSERT(g_router_alloc_calls == 6);
+    if (match && rt_obj_release_check0(match))
+        rt_obj_free(match);
+
+    if (rt_obj_release_check0(router))
+        rt_obj_free(router);
+}
+
+/// @brief Allocation traps during parameter/result construction must clean up
+///        fully and leave the router lock usable.
+/// @details Failure positions cover the parameter Map payload and buckets,
+///          capture-name string, capture-value string, inline-key Map entry,
+///          and RouteMatch payload. Every trap is raised after the read lock has
+///          been released; subsequent Count, Add, and Match calls prove no lock
+///          was stranded. The GC tracking count verifies the partially built
+///          Map is not leaked.
+static void test_http_router_match_oom_is_transactional(void) {
+    void *router = rt_http_router_new();
+    rt_http_router_get(router, rt_const_cstr("/oom/:id"));
+    rt_string method = rt_const_cstr("GET");
+    rt_string path = rt_const_cstr("/oom/7");
+    int64_t tracked_baseline = rt_gc_tracked_count();
+
+    for (int failure_position = 1; failure_position <= 6; failure_position++) {
+        g_router_alloc_calls = 0;
+        g_router_alloc_fail_countdown = failure_position;
+        rt_set_alloc_hook(router_probe_alloc);
+        EXPECT_TRAP(rt_http_router_match(router, method, path));
+        rt_set_alloc_hook(NULL);
+        ASSERT(g_router_alloc_fail_countdown == 0);
+        ASSERT(g_last_trap && strstr(g_last_trap, "alloc") != NULL);
+        ASSERT(rt_gc_tracked_count() == tracked_baseline);
+        ASSERT(rt_http_router_count(router) == 1);
+    }
+
+    rt_http_router_get(router, rt_const_cstr("/still-usable"));
+    ASSERT(rt_http_router_count(router) == 2);
+    void *match = rt_http_router_match(router, method, path);
+    ASSERT(match != NULL);
+    if (match && rt_obj_release_check0(match))
+        rt_obj_free(match);
+
+    if (rt_obj_release_check0(router))
+        rt_obj_free(router);
+}
+
+/// @brief Parameter captures require one path segment while pattern-side
+///        repeated-slash normalization remains deliberate and stable.
+static void test_http_router_empty_segment_semantics(void) {
+    void *router = rt_http_router_new();
+    rt_http_router_get(router, rt_const_cstr("/required/:id"));
+    rt_http_router_get(router, rt_const_cstr("/normalized//path/"));
+
+    void *match = rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/required//"));
+    ASSERT(match == NULL);
+    match = rt_http_router_match(router, rt_const_cstr("GET"), rt_const_cstr("/normalized/path/"));
+    ASSERT(match != NULL);
+    ASSERT(match && rt_route_match_index(match) == 1);
+    if (match && rt_obj_release_check0(match))
         rt_obj_free(match);
 
     if (rt_obj_release_check0(router))
@@ -869,6 +1038,62 @@ static void test_ws_handshake_validation_rejects_unsolicited_subprotocol(void) {
     free(accept);
 }
 
+/// @brief Verify strict status, singleton-field, and header-grammar handling.
+/// @details The valid case includes trailing optional whitespace around the
+///          accept value. Invalid cases exercise a prefix-confusable status,
+///          duplicate singleton accept fields, and obsolete folded input.
+static void test_ws_handshake_validation_rejects_ambiguous_responses(void) {
+    static const char key[] = "dGhlIHNhbXBsZSBub25jZQ==";
+    char *accept = rt_ws_compute_accept_key(key);
+    ASSERT(accept != NULL);
+    if (!accept)
+        return;
+
+    char response[1024];
+    snprintf(response,
+             sizeof(response),
+             "HTTP/1.1 101 Switching Protocols\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Accept: %s \t\r\n"
+             "\r\n",
+             accept);
+    ASSERT(rt_ws_validate_handshake_response_for_test(response, key) == 1);
+
+    snprintf(response,
+             sizeof(response),
+             "HTTP/1.1 1010 Confusable\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Accept: %s\r\n"
+             "\r\n",
+             accept);
+    ASSERT(rt_ws_validate_handshake_response_for_test(response, key) == 0);
+
+    snprintf(response,
+             sizeof(response),
+             "HTTP/1.1 101 Switching Protocols\r\n"
+             "Upgrade: websocket\r\n"
+             "Connection: Upgrade\r\n"
+             "Sec-WebSocket-Accept: %s\r\n"
+             "Sec-WebSocket-Accept: %s\r\n"
+             "\r\n",
+             accept,
+             accept);
+    ASSERT(rt_ws_validate_handshake_response_for_test(response, key) == 0);
+
+    snprintf(response,
+             sizeof(response),
+             "HTTP/1.1 101 Switching Protocols\r\n"
+             "Upgrade: websocket\r\n"
+             " Connection: Upgrade\r\n"
+             "Sec-WebSocket-Accept: %s\r\n"
+             "\r\n",
+             accept);
+    ASSERT(rt_ws_validate_handshake_response_for_test(response, key) == 0);
+    free(accept);
+}
+
 static void test_ws_host_header_formatting(void) {
     char *header = rt_ws_format_host_header_for_test("example.com", 80, 0);
     ASSERT(header != NULL);
@@ -902,6 +1127,123 @@ static void test_ws_close_code_validation(void) {
     ASSERT(rt_ws_close_code_valid_for_test(1006) == 0);
     ASSERT(rt_ws_close_code_valid_for_test(1015) == 0);
     ASSERT(rt_ws_close_code_valid_for_test(5000) == 0);
+}
+
+/// @brief Verify WsServer objects have stable identity and reject forged receivers.
+/// @details Construction does not start network resources, so this probe is
+///          deterministic in restricted test environments. Each forged call
+///          must trap before reading the undersized payload or a mutex field.
+static void test_ws_server_stable_identity(void) {
+    void *server = rt_ws_server_new(0);
+    ASSERT(server != NULL);
+    ASSERT(server && rt_obj_class_id(server) == RT_WS_SERVER_CLASS_ID);
+    ASSERT(server && rt_ws_server_port(server) == 0);
+
+    void *forged = rt_obj_new_i64(INT64_C(0x123456), 1);
+    ASSERT(forged != NULL);
+    EXPECT_TRAP((void)rt_ws_server_port(forged));
+    EXPECT_TRAP((void)rt_ws_server_client_count(forged));
+    EXPECT_TRAP(rt_ws_server_broadcast(forged, NULL));
+
+    if (forged && rt_obj_release_check0(forged))
+        rt_obj_free(forged);
+    if (server && rt_obj_release_check0(server))
+        rt_obj_free(server);
+}
+
+/// @brief Fail the first managed allocation of both WebSocket server constructors.
+/// @details The plain constructor must not publish a partial mutex-bearing
+///          object. WSS validates borrowed credential Strings first, then must
+///          likewise leave the exact tracked-object baseline when its server
+///          payload allocation fails; no credential file is opened at this boundary.
+static void test_websocket_server_constructor_allocation_transactions(void) {
+    const int64_t baseline = rt_gc_tracked_count();
+    void *volatile result = NULL;
+
+    g_router_alloc_fail_countdown = 1;
+    rt_set_alloc_hook(router_probe_alloc);
+    EXPECT_TRAP(result = rt_ws_server_new(0));
+    rt_set_alloc_hook(NULL);
+    ASSERT(result == NULL);
+    ASSERT(g_router_alloc_fail_countdown == 0);
+    ASSERT(rt_gc_tracked_count() == baseline);
+
+    rt_string certificate = rt_const_cstr("missing-cert.pem");
+    rt_string private_key = rt_const_cstr("missing-key.pem");
+    const int64_t credential_baseline = rt_gc_tracked_count();
+    result = NULL;
+    g_router_alloc_fail_countdown = 1;
+    rt_set_alloc_hook(router_probe_alloc);
+    EXPECT_TRAP(result = rt_wss_server_new(0, certificate, private_key));
+    rt_set_alloc_hook(NULL);
+    ASSERT(result == NULL);
+    ASSERT(g_router_alloc_fail_countdown == 0);
+    ASSERT(rt_gc_tracked_count() == credential_baseline);
+    rt_string_unref(certificate);
+    rt_string_unref(private_key);
+    ASSERT(rt_gc_tracked_count() == baseline);
+}
+
+/// @brief Verify SSE receiver identity and first-allocation constructor rollback.
+/// @details Forged managed objects must trap before native lock or socket state
+///          is interpreted. Failing the constructor's client payload allocation
+///          must leave the exact GC tracking baseline without attempting DNS or
+///          transport setup.
+static void test_sse_identity_and_constructor_transaction(void) {
+    void *forged = rt_obj_new_i64(INT64_C(0x123456), 1);
+    ASSERT(forged != NULL);
+    EXPECT_TRAP((void)rt_sse_is_open(forged));
+    EXPECT_TRAP(rt_sse_close(forged));
+    EXPECT_TRAP((void)rt_sse_last_event_id(forged));
+    if (forged && rt_obj_release_check0(forged))
+        rt_obj_free(forged);
+
+    rt_string url = rt_const_cstr("http://127.0.0.1:1/events");
+    const int64_t baseline = rt_gc_tracked_count();
+    void *volatile result = NULL;
+    g_router_alloc_fail_countdown = 1;
+    rt_set_alloc_hook(router_probe_alloc);
+    EXPECT_TRAP(result = rt_sse_connect(url));
+    rt_set_alloc_hook(NULL);
+    ASSERT(result == NULL);
+    ASSERT(g_router_alloc_fail_countdown == 0);
+    ASSERT(rt_gc_tracked_count() == baseline);
+    rt_string_unref(url);
+}
+
+/// @brief Verify SMTP stable identity, forged-receiver rejection, and constructor rollback.
+/// @details Construction allocates native locks and a host copy after the
+///          managed payload. A forced failure of that first managed allocation
+///          must leave the exact GC baseline. Forged objects must trap before
+///          any native mutex, credential, diagnostic, or transport field is read.
+static void test_smtp_identity_and_constructor_transaction(void) {
+    rt_string host = rt_const_cstr("127.0.0.1");
+    void *client = rt_smtp_new(host, 25);
+    ASSERT(client != NULL);
+    ASSERT(client && rt_obj_class_id(client) == RT_SMTP_CLASS_ID);
+    if (client && rt_obj_release_check0(client))
+        rt_obj_free(client);
+
+    void *forged = rt_obj_new_i64(INT64_C(0x123456), 1);
+    ASSERT(forged != NULL);
+    EXPECT_TRAP((void)rt_smtp_last_error(forged));
+    EXPECT_TRAP(rt_smtp_set_tls(forged, 1));
+    EXPECT_TRAP(rt_smtp_set_auth(forged, NULL, NULL));
+    EXPECT_TRAP((void)rt_smtp_send(forged, NULL, NULL, NULL, NULL));
+    EXPECT_TRAP(rt_smtp_close(forged));
+    if (forged && rt_obj_release_check0(forged))
+        rt_obj_free(forged);
+
+    const int64_t baseline = rt_gc_tracked_count();
+    void *volatile result = NULL;
+    g_router_alloc_fail_countdown = 1;
+    rt_set_alloc_hook(router_probe_alloc);
+    EXPECT_TRAP(result = rt_smtp_new(host, 25));
+    rt_set_alloc_hook(NULL);
+    ASSERT(result == NULL);
+    ASSERT(g_router_alloc_fail_countdown == 0);
+    ASSERT(rt_gc_tracked_count() == baseline);
+    rt_string_unref(host);
 }
 
 static void test_url_decode_plus_semantics(void) {
@@ -964,6 +1306,9 @@ static void test_tls_extract_cn_uses_subject_not_issuer(void) {
 int main(void) {
     test_http_router_returns_owned_params_and_trims_wildcards();
     test_http_router_grammar_validation();
+    test_http_router_match_allocation_profile();
+    test_http_router_match_oom_is_transactional();
+    test_http_router_empty_segment_semantics();
     test_http_server_route_registration_atomic();
     test_http_server_parses_exact_body();
     test_http_server_rejects_invalid_http_version();
@@ -999,8 +1344,13 @@ int main(void) {
     test_ws_handshake_validation_accepts_valid_response();
     test_ws_handshake_validation_rejects_spurious_101();
     test_ws_handshake_validation_rejects_unsolicited_subprotocol();
+    test_ws_handshake_validation_rejects_ambiguous_responses();
     test_ws_host_header_formatting();
     test_ws_close_code_validation();
+    test_ws_server_stable_identity();
+    test_websocket_server_constructor_allocation_transactions();
+    test_sse_identity_and_constructor_transaction();
+    test_smtp_identity_and_constructor_transaction();
     test_url_decode_plus_semantics();
     test_url_ipv6_building_and_authority_validation();
     test_retry_negative_delays_normalize_to_zero();

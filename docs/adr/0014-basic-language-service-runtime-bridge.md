@@ -12,17 +12,17 @@ Status: Accepted
 
 ## Context
 
-ZannaIDE gives Zia files completion, diagnostics, hover, and document symbols via an
+Zanna Studio gives Zia files completion, diagnostics, hover, and document symbols via an
 in-process runtime bridge: the Zia frontend's IDE engines are exposed as runtime functions
 (`Zanna.Zia.Completion.*`, `Zanna.Zia.Toolchain.*`) registered in `src/il/runtime/runtime.def`,
 implemented in `src/frontends/zia/rt_zia_completion.cpp` (linked via `fe_zia`/editor services),
 with weak stubs in `zanna_runtime` so the runtime library never depends on a frontend. The IDE
-(Zia code) consumes them in `zannaide/src/editor/{completion,diagnostics,hover,symbols}.zia`.
+(Zia code) consumes them in `zannastudio/src/editor/{completion,diagnostics,hover,symbols}.zia`.
 
 Zanna BASIC has the same intelligence available — `parseAndAnalyzeBasic()` (parse + sema, no
 lowering) and `BasicCompletionEngine::complete()` in `src/frontends/basic/` — but no runtime
 bridge, so BASIC files are edit/build/run only in the IDE. Phase 4 of the overhaul (plan
-`~/.claude/plans/zannaide-needs-to-be-golden-blum.md`) adds completion, diagnostics, hover, and
+`~/.claude/plans/zannastudio-needs-to-be-golden-blum.md`) adds completion, diagnostics, hover, and
 symbols for BASIC. Exposing a new `Zanna.Basic.*` runtime surface is a cross-layer contract
 (IDE ↔ runtime), covered by the spec-currency gate (ADR 0006).
 

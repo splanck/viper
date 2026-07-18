@@ -1,0 +1,381 @@
+# Zanna Studio Current Status
+
+Last reviewed against source: 2026-07-04.
+
+This file is the current-state reference for Zanna Studio. It intentionally avoids
+future-phase language and records limitations in the same place as shipped
+behavior.
+
+## Summary
+
+Zanna Studio is usable as a code editor and project workbench for Zia projects, with
+partial BASIC support, build/run integration, a VM-backed debugger path, an
+integrated terminal, and lightweight Git operations.
+
+It is not yet a polished product-complete IDE. The largest current gaps are:
+
+- Scene documents are recognized but do not have a visual scene editor.
+- Bottom tool surfaces now share bounded stable-row models, but they are still
+  listbox/output-pane based rather than fully virtualized, dockable workbench
+  views.
+- Source Control is async and useful for common local Git actions, but still not
+  a full Git client.
+- BASIC semantic navigation and rename are implemented by the IDE-side scanner,
+  not by the Zia project index or external BASIC server.
+- Debugging has persistent watch expressions, basic watch-management commands,
+  and grouped watch/local rendering, but still lacks rich object expansion.
+- Some workflow prompts and overlays are still modal or command-palette based,
+  although project search now uses a docked non-modal panel.
+- The application source still has several oversized coordinator modules.
+
+## Current Product Narrative
+
+The most accurate way to describe Zanna Studio today is "a functional Zanna
+workbench whose strongest path is Zia code editing." The editor can open real
+projects, keep multiple files alive across sessions, run semantic services, and
+drive the compiler/debugger toolchain. A Zia developer can use it for daily
+editing in a small or medium project, especially when the workflow is edit,
+search, build, run, diagnose, and debug one active program.
+
+The roughness shows up when the workflow starts to look like a mature IDE. Some
+panels are still row dumps instead of rich work surfaces. Common short inputs
+use integrated overlays, but some operations still rely on prompt-style input.
+The debug substrate is real and includes persistent watches, but variable
+inspection is still shallow. BASIC support is intentionally honest but
+incomplete. Source Control is useful for common Git actions and runs operations
+through async processes, but it does not have the workflow depth, progress UI,
+complete conflict recovery, or authentication
+surface of a full client. Scene support exists in the runtime, and the IDE
+recognizes scene file extensions, but no visual editor is mounted.
+
+This distinction matters for documentation and release notes. Zanna Studio should
+not be described as a complete scene editor, full terminal emulator, full SCM
+client, or full multi-language IDE. It should be described as a growing IDE with
+clear working slices and clearly documented gaps.
+
+## What "Implemented" Means Here
+
+In this document, "implemented" means that the feature has a user-visible path,
+source ownership, and at least some regression coverage. It does not always mean
+the feature is polished or complete by mature IDE standards.
+
+"Partial" means that the feature has working pieces but should not be marketed
+as complete. Partial features need explicit limitations in docs and UI.
+
+"Not present" means that users may see related groundwork in code or runtime
+APIs, but Zanna Studio does not provide the user-facing workflow yet.
+
+## User Impact Summary
+
+For Zia and BASIC developers, the biggest strengths are:
+
+- The editor understands source well enough for completion, diagnostics, hover,
+  signature help, symbols, semantic navigation, references, and rename.
+- Project search, Quick Open, workspace symbols, and recent files make normal
+  navigation practical.
+- Build/run/debug are wired to the Zanna toolchain without leaving the IDE.
+- Session restore and recovery reduce the risk of losing active work.
+
+For a game developer expecting scene tooling, the runtime data foundation exists
+below the IDE, but the IDE user experience is not there yet.
+
+For a user expecting a polished workbench, the rough areas are mostly around
+panel density, icons, prompt flows, terminal fidelity, Source Control depth, and
+debug inspection.
+
+## Feature Matrix
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Text editing | Implemented | Multi-tab CodeEditor, undo/redo, selections, comments, formatting, folding, minimap option. |
+| Split editor | Implemented (v1) | Two side-by-side panes ("Split Editor Right", "Focus Other Editor Pane", "Close Editor Split", click-to-focus). The focused pane drives typing, IntelliSense, find, minimap, and status. Two different files are fully independent. v1 limits: exactly two panes; the same document opened in both panes uses independent buffers (edits do not live-sync — shared multi-view needs runtime support); the split is not yet restored across sessions. |
+| Zia IntelliSense | Implemented with limits | Completion, diagnostics, hover, signature help, symbols, definition, references, rename, workspace symbols. |
+| BASIC IntelliSense | Implemented with limits | Completion, diagnostics, hover, document symbols, scanner-backed definition, references, rename, workspace symbols, call hierarchy, and signature help. |
+| Plain text | Implemented | Opens unknown/text-like files as text without semantic features. |
+| Scene files | Partial | `.scene` and `.level` are detected, saved, restored, and filtered, but display as text. |
+| Project explorer | Implemented with limits | Demand-loaded tree, multi-root support, Quick Open cache, file actions, ignores. |
+| Search | Implemented | Docked project/folder search panel, runtime-paged file discovery, literal/regex, case/word filters, include/exclude filters, grouped results. |
+| Build/run | Implemented | Argument-vector jobs, project manifest overrides, streamed bounded output, JSON diagnostics. |
+| Debugging | Implemented with UX gaps | External VM debug adapter, breakpoints, stepping, pause, async restart, run to cursor, locals, call stack, evaluate, watches, conditions, logpoints. |
+| Terminal | Partial | PTY-backed shell in OutputPane terminal mode. Uses OutputPane cell metrics for resize and drains already-running hidden sessions into a bounded replay buffer, but is not a full terminal emulator. |
+| Source Control | Partial | Async Git status, stage/unstage, commit, diff, branch basics, push/pull. Porcelain v2 status with spaces, renames, and basic unmerged conflict markers covered. |
+| Settings | Implemented | Platform config path, theme, editor behavior, auto-save, save-before-build, session options. |
+| Session restore | Implemented | Project, tabs, cursor/scroll, recent files/projects, bounded recovery text. |
+| File watching | Implemented with limits | Active file watcher, inactive document polling, missing/deleted/moved-file conflict state, and capped recursive workspace watcher set with fallback scans. |
+| Visual polish | Partial | Functional shell, activity bar, status, panels; still reads as utilitarian/prototype in places. |
+| Cross-platform | Intended | Runtime adapters exist for process, PTY, GUI; display/runtime behavior still needs regular platform smoke. |
+
+## Language Support
+
+### Zia
+
+Zia is the primary supported language. Current Zia features include:
+
+- Syntax highlighting and semantic tokens.
+- Completion with popup filtering, commit behavior, snippets, docs, runtime
+  metadata, workspace-symbol completions, and stale-result rejection.
+- Hover, signature help, and overload navigation.
+- Live diagnostics and explicit "Run Check Now".
+- Problems panel integration with diagnostic navigation.
+- Fix-it application for supported structured diagnostics.
+- Create Missing Bind for known runtime aliases and unambiguous project-file
+  binds.
+- Suppress Warning insertion for supported warnings.
+- Definition, references, incoming calls, outgoing calls, and rename through
+  `Zanna.Zia.ProjectIndex`.
+- Organize Binds.
+- Extract Local Variable, Extract Function, and Inline Local Variable for
+  deliberately conservative cases.
+- Document formatting and selection formatting.
+
+Known Zia limits:
+
+- Workspace indexing is lazy and bounded by file size and per-frame budgets.
+- Some project-wide semantic results can be incomplete while indexing is still
+  warming up.
+- Refactors are intentionally conservative and reject many legal programs.
+- Some UI panels use string display rows even when the underlying location data
+  is structured.
+
+### BASIC
+
+BASIC support is implemented through a mixed runtime/IDE path:
+
+- Completion.
+- Diagnostics.
+- Hover.
+- Document symbols.
+- Scanner-backed Go to Definition.
+- Scanner-backed Find References.
+- Scanner-backed Rename Symbol.
+- Scanner-backed Workspace Symbols.
+- Scanner-backed Signature Help.
+- Scanner-backed incoming/outgoing call hierarchy.
+- Formatting for supported line forms.
+- Build/run through the same `zanna` toolchain path.
+
+BASIC still has important limits:
+
+- Semantic results come from `src/basic/semantic_scan.zia`, a lightweight
+  scanner, rather than the compiler's full semantic model.
+- Workspace scans are cooperative in the IDE but not backed by the Zia project
+  index data structure.
+- Ambiguous BASIC syntax and dynamic dispatch can still produce conservative or
+  incomplete navigation results.
+
+The command registry marks unavailable commands with language-specific reasons.
+
+### Text And IL
+
+Plain text, Markdown, JSON, and IL open as text buffers. The IDE provides core
+editing, search, save, session, and file-watcher behavior, but no semantic
+language service for these file kinds.
+
+### Scene Files
+
+`.scene` and `.level` files are recognized as scene documents. They participate
+in open/save/session/file-filter flows, but there is no visual scene document
+surface. Today they open as text.
+
+Runtime scene support exists in `Zanna.Game2D.SceneDocument` and is covered by probes, but
+Zanna Studio does not yet keep a scene handle per open document, does not have
+scene-specific dirty/save/reload logic, and does not provide tile/object tools.
+
+## Workbench Status
+
+### Explorer
+
+The explorer supports:
+
+- Open folder.
+- Add folder to workspace.
+- Demand-loaded folder expansion.
+- Open selected files.
+- Create file/folder.
+- Rename.
+- Delete/move-to-trash flow.
+- Duplicate.
+- Copy path and relative path.
+- Search in folder.
+- Run file.
+- Set project entry.
+- Refresh.
+- Project-specific and runtime workspace ignore rules.
+
+Known limits:
+
+- Tree operations use integrated overlays for create/rename/delete/duplicate;
+  confirmation-heavy workflows still use dialogs.
+- Ignore behavior is whatever `Zanna.Workspace.FileIndex` supports; do not
+  assume full Git ignore semantics beyond what the runtime implements.
+- Very large workspaces depend on cooperative cache/index pumping.
+- Quick Open and completion file discovery use runtime `FileIndex.Page` instead
+  of treating the visible tree as a complete workspace snapshot.
+
+### Bottom Panels
+
+Current bottom panel tabs:
+
+- Problems.
+- Output.
+- Search.
+- References.
+- Debug Console.
+- Variables.
+- Call Stack.
+- Debug.
+- Terminal.
+
+Output rows are bounded by an OutputPane ring buffer plus a bounded row model.
+Problems, Search, References, Debug Console, Variables, and Call Stack share a
+bounded stable-row model. This prevents runaway UI memory in normal cases and
+gives panel rows stable identities, but it is not the same as a fully
+virtualized dockable workbench surface for very large logs/search results.
+
+### Debugger
+
+The debugger uses the external VM debug adapter:
+
+```text
+zanna run --debug-adapter <file>
+```
+
+Supported behavior:
+
+- Launch active file.
+- Set and persist breakpoints.
+- Conditional breakpoints and logpoints.
+- Continue, pause, step over, step in, step out.
+- Run to cursor.
+- Stop and restart.
+- Restart waits for the previous adapter process to terminate before launching
+  a replacement.
+- Current-line gutter marker.
+- Locals and call stack at stop points.
+- Expression evaluation while stopped.
+- Persistent watch expressions, shown in the Variables panel above locals.
+- Command-palette watch management for add, remove selected, refresh, and clear.
+- Variables panel rows are grouped through a `VirtualTree` model for Watches and
+  Locals before being rendered into the current ListBox UI.
+- Composite locals (lists, seqs, maps) are expandable: clicking a `▸` row loads
+  its children lazily through the adapter's `variables` request and shows them
+  indented; nested containers expand one level at a time. Expansion state is kept
+  by variable name-path, so stepping re-opens the same nodes automatically.
+- Debug console output.
+
+Known debugger UX gaps:
+
+- Class instances are shown as `<TypeName>` leaves; per-field expansion needs a
+  runtime reflection ABI and is not yet available.
+- Watch management is command-palette based; a dedicated in-panel watch toolbar
+  is planned alongside the bottom-panel layout work.
+- Breakpoint metadata editing exists, but the UX is still lightweight.
+- Session state could still be clearer while a long graceful stop/restart is
+  waiting for process exit.
+
+### Terminal
+
+The integrated terminal starts a platform shell in a PTY when the Terminal panel
+is shown. It supports prompt output, raw typed input, line editing delegated to
+the shell, resize, Stop, Restart, and workspace-root working directory selection
+for new sessions.
+
+Current limitations:
+
+- The OutputPane terminal mode is not a full terminal emulator.
+- Common cursor row/column addressing, cursor save/restore, line erase, and
+  display erase sequences are handled for shell redraws.
+- Full-screen TUI programs that require complete alternate-screen and terminal
+  mode semantics are still out of scope.
+- Terminal dimensions come from OutputPane cell metrics via `ColumnsForWidth()`
+  and `RowsForHeight()`.
+- Hidden panels do not auto-start shells, but already-running sessions are pumped
+  into a bounded replay buffer so PTY output does not back up while another panel
+  is selected.
+
+### Source Control
+
+The Source Control view is a Git integration, not a general SCM abstraction.
+It supports:
+
+- Detecting whether the project root is a Git repository.
+- Current branch display.
+- Status entries.
+- Stage one file.
+- Unstage one file.
+- Stage all.
+- Commit staged changes with a message.
+- Diff selected path.
+- Push and pull.
+- Switch branch basics.
+
+Known limits:
+
+- Git operations run through `Zanna.System.Process`, use non-trapping
+  stdout/stderr result reads, and do not block the frame loop, but the UI still
+  shows only one active Source Control job at a time.
+- Active Source Control jobs can be canceled from the view.
+- Push and pull can be long-running and have no rich progress or credential UI.
+- Status parsing uses porcelain v2 and handles common spaces, renames, and basic
+  unmerged conflict rows, but exotic path bytes and complex conflict recovery
+  still need more coverage.
+- Error feedback is captured from stderr and surfaced in the view, but recovery
+  workflows are still basic.
+
+## Data Safety
+
+Implemented protections:
+
+- Modified tabs get close prompts through the document close flow.
+- Save All skips untitled and read-only preview buffers.
+- Existing-file saves use `Zanna.Workspace.Edit.ApplyInRoot`.
+- Save As uses same-directory temporary writes for new files.
+- File watchers detect external changes, deletions, and missing/moved files;
+  saves after a missing-file conflict require confirmation before recreating the
+  original path.
+- Session restore persists unsaved small text buffers as bounded base64 recovery
+  data.
+- Build/debug preflight can save all modified files before launching.
+
+Known data-safety gaps:
+
+- Scene files do not have a scene-specific document model yet.
+- Recovery is intentionally capped and only applies to editable text buffers.
+- Source Control write operations depend on Git command success and basic
+  stderr reporting.
+
+## Product Polish Gaps
+
+These gaps are current documentation, not a plan commitment:
+
+- Extend named toolbar icons when new workbench actions are added.
+- Move remaining prompt-style workflows into non-modal workbench overlays.
+- The editor and bottom tool panels share one vertical splitter: every panel tab
+  has the same height (no editor jump on switch), the boundary is drag-resizable
+  with a persisted default height, and the bottom area collapses when no panel is
+  open. Remaining: fully virtualize panel content beyond the bounded stable-row
+  model, and persist the exact dragged height (a configured percentage is stored
+  today; live drags persist within the session).
+- Add richer debugger object expansion and a dedicated watch-management panel.
+- Harden Source Control progress, conflict, credential, and recovery workflows.
+- Add real scene editing before advertising scene editor functionality.
+- Split oversized coordinator modules.
+- Expand platform and display test coverage.
+
+## Documentation Honesty Rules
+
+Use these phrasing rules when updating user-facing docs:
+
+- Say "Zia and BASIC semantic navigation" only for definition, references,
+  rename, call hierarchy, workspace symbols, and signature help.
+- Say "BASIC compiler-backed completion, diagnostics, hover, and symbols" when
+  discussing the `Zanna.Basic.LanguageService` runtime bridge specifically.
+- Say "integrated PTY shell" instead of "full terminal".
+- Say "Git Source Control view" instead of "SCM platform".
+- Say "scene files are recognized and open as text" instead of "scene editor".
+- Say "debug adapter supports stepping, breakpoints, locals, call stack,
+  evaluate, watches, watch commands, and grouped watch/local rows" while still
+  mentioning missing object expansion and dedicated watch panel UX.
+
+The goal is to make the app feel more trustworthy by making the docs less
+optimistic than the code.

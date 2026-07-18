@@ -37,6 +37,7 @@
 #include "rt_file_path.h"
 
 #include "rt_context.h"
+#include "rt_context_internal.h"
 #include "rt_internal.h"
 #include <stdbool.h>
 #include <stdlib.h>
@@ -75,35 +76,28 @@ void rt_file_state_cleanup(RtContext *ctx) {
     ctx->file_state.capacity = 0;
 }
 
-/// @brief Return the active context, falling back to the legacy context when none is set.
-static inline RtContext *rt_get_or_legacy(void) {
-    RtContext *ctx = rt_get_current_context();
-    if (!ctx)
-        return rt_legacy_context();
-    return ctx;
-}
-
-/// @brief Return a typed pointer to the current context's channel entry array.
-static inline RtFileChannelEntry *rtf_entries(void) {
-    RtContext *ctx = rt_get_or_legacy();
+/// @brief Return a typed pointer to one locked context's channel entry array.
+/// @param ctx Context whose `RT_CONTEXT_STATE_FILE` mutex is held.
+static inline RtFileChannelEntry *rtf_entries(RtContext *ctx) {
     return (RtFileChannelEntry *)ctx->file_state.entries;
 }
 
-/// @brief Return a pointer to the current context's channel count field.
-static inline size_t *rtf_count(void) {
-    RtContext *ctx = rt_get_or_legacy();
+/// @brief Return a pointer to one locked context's channel count field.
+/// @param ctx Context whose file-state mutex is held.
+static inline size_t *rtf_count(RtContext *ctx) {
     return &ctx->file_state.count;
 }
 
-/// @brief Return a pointer to the current context's channel table capacity field.
-static inline size_t *rtf_capacity(void) {
-    RtContext *ctx = rt_get_or_legacy();
+/// @brief Return a pointer to one locked context's channel-table capacity.
+/// @param ctx Context whose file-state mutex is held.
+static inline size_t *rtf_capacity(RtContext *ctx) {
     return &ctx->file_state.capacity;
 }
 
-/// @brief Write `ptr` into the current context's channel entry array pointer.
-static inline void rtf_set_entries(RtFileChannelEntry *ptr) {
-    RtContext *ctx = rt_get_or_legacy();
+/// @brief Replace one locked context's channel entry array pointer.
+/// @param ctx Context whose file-state mutex is held.
+/// @param ptr Newly allocated table pointer.
+static inline void rtf_set_entries(RtContext *ctx, RtFileChannelEntry *ptr) {
     ctx->file_state.entries = ptr;
 }
 
@@ -113,11 +107,11 @@ static inline void rtf_set_entries(RtFileChannelEntry *ptr) {
 ///          identifiers are rejected immediately.  Callers can reuse the result
 ///          to inspect channel state or decide whether a new slot must be
 ///          materialised.
-static RtFileChannelEntry *rt_file_find_channel(int32_t channel) {
+static RtFileChannelEntry *rt_file_find_channel(RtContext *ctx, int32_t channel) {
     if (channel <= 0)
         return NULL;
-    RtFileChannelEntry *entries = rtf_entries();
-    size_t count = entries ? *rtf_count() : 0;
+    RtFileChannelEntry *entries = rtf_entries(ctx);
+    size_t count = entries ? *rtf_count(ctx) : 0;
     for (size_t i = 0; i < count; ++i) {
         if (entries[i].channel == channel)
             return &entries[i];
@@ -135,16 +129,16 @@ static const size_t kMaxOpenChannels = 1024;
 ///          via @ref rt_file_init, and the freshly provisioned entry is returned
 ///          to the caller.  Allocation failures bubble up as @c NULL so callers
 ///          can surface @ref Err_RuntimeError.
-static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel) {
+static RtFileChannelEntry *rt_file_prepare_channel(RtContext *ctx, int32_t channel) {
     if (channel <= 0)
         return NULL;
-    RtFileChannelEntry *entry = rt_file_find_channel(channel);
+    RtFileChannelEntry *entry = rt_file_find_channel(ctx, channel);
     if (entry)
         return entry;
 
-    RtFileChannelEntry *entries = rtf_entries();
-    size_t *pcount = rtf_count();
-    size_t *pcap = rtf_capacity();
+    RtFileChannelEntry *entries = rtf_entries(ctx);
+    size_t *pcount = rtf_count(ctx);
+    size_t *pcap = rtf_capacity(ctx);
     if (!pcount || !pcap)
         return NULL;
     if (*pcount >= kMaxOpenChannels)
@@ -161,10 +155,10 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel) {
             new_entries[i].at_eof = false;
             rt_file_init(&new_entries[i].file);
         }
-        rtf_set_entries(new_entries);
+        rtf_set_entries(ctx, new_entries);
         *pcap = new_capacity;
     }
-    entries = rtf_entries();
+    entries = rtf_entries(ctx);
     entry = &entries[(*pcount)++];
     entry->channel = channel;
     entry->in_use = false;
@@ -179,12 +173,14 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel) {
 ///          descriptor.  When successful the resolved entry is stored in
 ///          @p out_entry so callers can perform further operations without a
 ///          second lookup.
-static int32_t rt_file_resolve_channel(int32_t channel, RtFileChannelEntry **out_entry) {
+static int32_t rt_file_resolve_channel(RtContext *ctx,
+                                       int32_t channel,
+                                       RtFileChannelEntry **out_entry) {
     if (out_entry)
         *out_entry = NULL;
     if (channel <= 0)
         return (int32_t)Err_InvalidOperation;
-    RtFileChannelEntry *entry = rt_file_find_channel(channel);
+    RtFileChannelEntry *entry = rt_file_find_channel(ctx, channel);
     if (!entry || !entry->in_use)
         return (int32_t)Err_InvalidOperation;
     if (entry->file.fd < 0)
@@ -222,21 +218,30 @@ int32_t rt_open_err_vstr(ZannaString *path, int32_t mode, int32_t channel) {
     if (!mode_str || !rt_file_path_from_vstr(path, &path_str) || channel <= 0)
         return (int32_t)Err_InvalidOperation;
 
-    RtFileChannelEntry *entry = rt_file_prepare_channel(channel);
-    if (!entry)
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_FILE, NULL);
+    if (!ctx)
         return (int32_t)Err_RuntimeError;
-    if (entry->in_use)
+    RtFileChannelEntry *entry = rt_file_prepare_channel(ctx, channel);
+    if (!entry) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
+        return (int32_t)Err_RuntimeError;
+    }
+    if (entry->in_use) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return (int32_t)Err_InvalidOperation;
+    }
 
     rt_file_init(&entry->file);
     RtError err = RT_ERROR_NONE;
     if (!rt_file_open(&entry->file, path_str, mode_str, mode, &err)) {
         entry->in_use = false;
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return (int32_t)err.kind;
     }
 
     entry->in_use = true;
     entry->at_eof = false;
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
     return 0;
 }
 
@@ -247,21 +252,28 @@ int32_t rt_open_err_vstr(ZannaString *path, int32_t mode, int32_t channel) {
 int32_t rt_close_err(int32_t channel) {
     if (channel <= 0)
         return (int32_t)Err_InvalidOperation;
-    RtFileChannelEntry *entry = rt_file_find_channel(channel);
-    if (!entry || !entry->in_use)
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_FILE, NULL);
+    if (!ctx)
+        return (int32_t)Err_RuntimeError;
+    RtFileChannelEntry *entry = rt_file_find_channel(ctx, channel);
+    if (!entry || !entry->in_use) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return (int32_t)Err_InvalidOperation;
+    }
 
     RtError err = RT_ERROR_NONE;
     if (!rt_file_close(&entry->file, &err)) {
         entry->in_use = false;
         entry->at_eof = false;
         rt_file_init(&entry->file);
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return (int32_t)err.kind;
     }
 
     entry->in_use = false;
     entry->at_eof = false;
     rt_file_init(&entry->file);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
     return 0;
 }
 
@@ -271,16 +283,25 @@ int32_t rt_close_err(int32_t channel) {
 ///          @ref rt_file_write_entry so EOF caching and error translation remain
 ///          centralised in one helper.
 int32_t rt_write_ch_err(int32_t channel, ZannaString *s) {
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_FILE, NULL);
+    if (!ctx)
+        return (int32_t)Err_RuntimeError;
     RtFileChannelEntry *entry = NULL;
-    int32_t status = rt_file_resolve_channel(channel, &entry);
-    if (status != 0)
+    int32_t status = rt_file_resolve_channel(ctx, channel, &entry);
+    if (status != 0) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return status;
+    }
 
     const uint8_t *data = NULL;
     size_t len = rt_file_string_view(s, &data);
-    if (!data && len == 0)
+    if (!data && len == 0) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return (int32_t)Err_InvalidOperation;
-    return rt_file_write_entry(entry, data, len);
+    }
+    status = rt_file_write_entry(entry, data, len);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
+    return status;
 }
 
 /// @brief Write @p s followed by a newline to the specified channel.
@@ -288,21 +309,32 @@ int32_t rt_write_ch_err(int32_t channel, ZannaString *s) {
 ///          single newline so the behaviour matches PRINT without a trailing
 ///          semicolon in traditional BASIC.
 int32_t rt_println_ch_err(int32_t channel, ZannaString *s) {
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_FILE, NULL);
+    if (!ctx)
+        return (int32_t)Err_RuntimeError;
     RtFileChannelEntry *entry = NULL;
-    int32_t status = rt_file_resolve_channel(channel, &entry);
-    if (status != 0)
+    int32_t status = rt_file_resolve_channel(ctx, channel, &entry);
+    if (status != 0) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return status;
+    }
 
     const uint8_t *data = NULL;
     size_t len = rt_file_string_view(s, &data);
-    if (!data && len == 0)
+    if (!data && len == 0) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return (int32_t)Err_InvalidOperation;
+    }
     status = rt_file_write_entry(entry, data, len);
-    if (status != 0)
+    if (status != 0) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return status;
+    }
 
     const uint8_t newline = (uint8_t)'\n';
-    return rt_file_write_entry(entry, &newline, 1);
+    status = rt_file_write_entry(entry, &newline, 1);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
+    return status;
 }
 
 /// @brief Read a line of text from @p channel, allocating a runtime string.
@@ -315,22 +347,29 @@ int32_t rt_line_input_ch_err(int32_t channel, ZannaString **out) {
         return (int32_t)Err_InvalidOperation;
     *out = NULL;
 
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_FILE, NULL);
+    if (!ctx)
+        return (int32_t)Err_RuntimeError;
     RtFileChannelEntry *entry = NULL;
-    int32_t status = rt_file_resolve_channel(channel, &entry);
-    if (status != 0)
+    int32_t status = rt_file_resolve_channel(ctx, channel, &entry);
+    if (status != 0) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return status;
+    }
 
     rt_string line = NULL;
     RtError err = RT_ERROR_NONE;
     if (!rt_file_read_line(&entry->file, &line, &err)) {
         if (err.kind == Err_EOF)
             entry->at_eof = true;
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return (int32_t)err.kind;
     }
 
     entry->at_eof = false;
 
     *out = line;
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
     return 0;
 }
 
@@ -339,12 +378,18 @@ int32_t rt_line_input_ch_err(int32_t channel, ZannaString **out) {
 ///          provided, so embedders can integrate with poll/select loops using the
 ///          underlying OS handle.
 int32_t rt_file_channel_fd(int32_t channel, int *out_fd) {
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_FILE, NULL);
+    if (!ctx)
+        return (int32_t)Err_RuntimeError;
     RtFileChannelEntry *entry = NULL;
-    int32_t status = rt_file_resolve_channel(channel, &entry);
-    if (status != 0)
+    int32_t status = rt_file_resolve_channel(ctx, channel, &entry);
+    if (status != 0) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return status;
+    }
     if (out_fd)
         *out_fd = entry->file.fd;
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
     return 0;
 }
 
@@ -352,12 +397,18 @@ int32_t rt_file_channel_fd(int32_t channel, int *out_fd) {
 /// @details Resolves the channel and exposes the cached EOF flag maintained by
 ///          read helpers, mirroring the VM's "sticky" EOF semantics.
 int32_t rt_file_channel_get_eof(int32_t channel, int8_t *out_at_eof) {
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_FILE, NULL);
+    if (!ctx)
+        return (int32_t)Err_RuntimeError;
     RtFileChannelEntry *entry = NULL;
-    int32_t status = rt_file_resolve_channel(channel, &entry);
-    if (status != 0)
+    int32_t status = rt_file_resolve_channel(ctx, channel, &entry);
+    if (status != 0) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return status;
+    }
     if (out_at_eof)
         *out_at_eof = entry->at_eof;
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
     return 0;
 }
 
@@ -365,10 +416,16 @@ int32_t rt_file_channel_get_eof(int32_t channel, int8_t *out_at_eof) {
 /// @details Resolves the channel and updates the cached flag, enabling seek
 ///          helpers to force EOF on or off without performing another read.
 int32_t rt_file_channel_set_eof(int32_t channel, int8_t at_eof) {
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_FILE, NULL);
+    if (!ctx)
+        return (int32_t)Err_RuntimeError;
     RtFileChannelEntry *entry = NULL;
-    int32_t status = rt_file_resolve_channel(channel, &entry);
-    if (status != 0)
+    int32_t status = rt_file_resolve_channel(ctx, channel, &entry);
+    if (status != 0) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
         return status;
+    }
     entry->at_eof = at_eof;
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_FILE);
     return 0;
 }

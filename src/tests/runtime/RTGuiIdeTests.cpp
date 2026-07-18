@@ -253,7 +253,7 @@ int main() {
            0xffffff);
 
     // --- Zanna.GUI.Command: logical state, snapshot, and the disabled-never-invoked rule.
-    //     (The widget-driven half needs a live windowed app and is covered by ZannaIDE probes.)
+    //     (The widget-driven half needs a live windowed app and is covered by Zanna Studio probes.)
     void *build = rt_command_new(rt_const_cstr("build"), rt_const_cstr("Build"));
     assert(take(rt_command_get_id(build)) == "build");
     assert(take(rt_command_get_title(build)) == "Build");

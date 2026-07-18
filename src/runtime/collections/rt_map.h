@@ -97,6 +97,14 @@ int8_t rt_map_remove(void *obj, rt_string key);
 /// @param obj Map pointer.
 void rt_map_clear(void *obj);
 
+/// @brief Compact the bucket table to the minimum capacity for current entries.
+/// @details Unlike @ref rt_map_clear and @ref rt_map_remove, this operation may
+///          allocate. It preserves every key/value pair and leaves the old
+///          table unchanged if replacement allocation fails.
+/// @param obj Map pointer.
+/// @return 1 when already compact or successfully trimmed; 0 after a trap.
+int8_t rt_map_trim(void *obj);
+
 /// @brief Get all keys as a Seq.
 /// @param obj Map pointer.
 /// @return New Seq containing all keys as strings.

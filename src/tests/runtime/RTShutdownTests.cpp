@@ -26,21 +26,25 @@
 #include "runtime/core/rt_context.h"
 #include "runtime/core/rt_gc.h"
 #include "runtime/core/rt_heap.h"
+#include "runtime/core/rt_random.h"
 #include "runtime/oop/rt_object.h"
 #include "runtime/system/rt_shutdown.h"
 
+#include <atomic>
 #include <cassert>
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <thread>
 
 // ── vm_trap override ────────────────────────────────────────────────────────
 // Prevent process exit on trap during tests.
-static int g_trap_count = 0;
+static std::atomic<int> g_trap_count{0};
 
 extern "C" void vm_trap(const char *msg) {
     (void)msg;
-    g_trap_count++;
+    g_trap_count.fetch_add(1, std::memory_order_relaxed);
 }
 
 // ── Finalizer tracking ──────────────────────────────────────────────────────
@@ -228,17 +232,180 @@ static void test_gc_sweep_no_finalizer() {
     rt_heap_release(obj_b);
 }
 
+/// @brief Verify shutdown sweeping does not steal a zero-ref deferred payload.
+/// @details `rt_obj_release_check0` transfers destruction responsibility to
+///          its caller while leaving the allocation registered until
+///          `rt_obj_free`. A concurrent shutdown snapshot must skip that
+///          payload so only the final-release owner invokes its finalizer and
+///          reclaims its memory.
+static void test_gc_sweep_skips_deferred_zero_ref() {
+    printf("  test_gc_sweep_skips_deferred_zero_ref ... ");
+
+    g_fin_a_count = 0;
+    void *obj = rt_obj_new_i64(0, 64);
+    rt_obj_set_finalizer(obj, finalizer_a);
+    rt_gc_track(obj, noop_traverse);
+
+    assert(rt_obj_release_check0(obj) == 1);
+    assert(rt_heap_is_payload(obj));
+    rt_gc_run_all_finalizers();
+    assert(g_fin_a_count == 0);
+    assert(rt_heap_is_payload(obj));
+
+    rt_obj_free(obj);
+    assert(g_fin_a_count == 1);
+    assert(!rt_heap_is_payload(obj));
+
+    printf("OK\n");
+}
+
+// ── Test: context binding guards ────────────────────────────────────────────
+
+/// @brief Verify cleanup unbinds a sole owner but rejects a shared context.
+/// @details The first half exercises the convenience path used by embedders
+///          that clean up their currently bound context. The second simulates
+///          another live binding and verifies a returning trap hook cannot let
+///          cleanup destroy state that the binding still references.
+static void test_context_cleanup_binding_guards() {
+    printf("  test_context_cleanup_binding_guards ... ");
+
+    RtContext sole{};
+    rt_context_init(&sole);
+    rt_set_current_context(&sole);
+    int traps_before = g_trap_count.load(std::memory_order_relaxed);
+    rt_context_cleanup(&sole);
+    assert(rt_get_current_context() == nullptr);
+    assert(sole.bind_count == 0);
+    assert(g_trap_count.load(std::memory_order_relaxed) == traps_before);
+
+    RtContext shared{};
+    rt_context_init(&shared);
+    rt_set_current_context(&shared);
+    shared.bind_count = 2;
+    rt_context_cleanup(&shared);
+    assert(g_trap_count.load(std::memory_order_relaxed) == traps_before + 1);
+    assert(rt_get_current_context() == &shared);
+    assert(shared.bind_count == 2);
+
+    shared.bind_count = 1;
+    rt_set_current_context(nullptr);
+    rt_context_cleanup(&shared);
+
+    printf("OK\n");
+}
+
+/// @brief Verify failed binding counter transitions preserve the prior TLS state.
+/// @details Exercises both overflow on the destination and underflow on the
+///          source with a trap hook that returns. In each case the destination
+///          reservation is absent or rolled back and callers continue using
+///          the original context rather than a partially published binding.
+static void test_context_binding_counter_guards() {
+    printf("  test_context_binding_counter_guards ... ");
+
+    RtContext original{};
+    RtContext destination{};
+    rt_context_init(&original);
+    rt_context_init(&destination);
+    rt_set_current_context(&original);
+
+    int traps_before = g_trap_count.load(std::memory_order_relaxed);
+    destination.bind_count = SIZE_MAX;
+    rt_set_current_context(&destination);
+    assert(g_trap_count.load(std::memory_order_relaxed) == traps_before + 1);
+    assert(rt_get_current_context() == &original);
+    assert(original.bind_count == 1);
+    assert(destination.bind_count == SIZE_MAX);
+
+    destination.bind_count = 0;
+    original.bind_count = 0;
+    rt_set_current_context(&destination);
+    assert(g_trap_count.load(std::memory_order_relaxed) == traps_before + 2);
+    assert(rt_get_current_context() == &original);
+    assert(original.bind_count == 0);
+    assert(destination.bind_count == 0);
+
+    original.bind_count = 1;
+    rt_set_current_context(nullptr);
+    rt_context_cleanup(&original);
+    rt_context_cleanup(&destination);
+
+    printf("OK\n");
+}
+
+/// @brief Race context cleanup against a first binding without destroying live locks.
+/// @details Each iteration permits either transaction to win. If binding wins,
+///          cleanup traps while the worker safely uses and unbinds the context;
+///          if cleanup wins, binding traps before publishing TLS. The surviving
+///          ready state is cleaned by the parent, and a final post-cleanup bind
+///          proves uninitialized storage is rejected rather than resurrected.
+static void test_context_cleanup_binding_race() {
+    printf("  test_context_cleanup_binding_race ... ");
+
+    constexpr int kIterations = 500;
+    for (int iteration = 0; iteration < kIterations; ++iteration) {
+        RtContext context{};
+        rt_context_init(&context);
+        assert(context.lifecycle_state == RT_CONTEXT_LIFECYCLE_READY);
+
+        std::atomic<bool> go{false};
+        std::thread binder([&]() {
+            while (!go.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            rt_set_current_context(&context);
+            if (rt_get_current_context() == &context) {
+                for (int step = 0; step < 8; ++step)
+                    (void)rt_rnd();
+                rt_set_current_context(nullptr);
+            }
+        });
+        std::thread cleaner([&]() {
+            while (!go.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            rt_context_cleanup(&context);
+        });
+
+        go.store(true, std::memory_order_release);
+        binder.join();
+        cleaner.join();
+
+        assert(context.bind_count == 0);
+        if (context.lifecycle_state == RT_CONTEXT_LIFECYCLE_READY)
+            rt_context_cleanup(&context);
+        assert(context.lifecycle_state == RT_CONTEXT_LIFECYCLE_UNINITIALIZED);
+    }
+
+    RtContext cleaned{};
+    rt_context_init(&cleaned);
+    rt_context_cleanup(&cleaned);
+    const int traps_before = g_trap_count.load(std::memory_order_relaxed);
+    rt_set_current_context(&cleaned);
+    assert(rt_get_current_context() == nullptr);
+    assert(g_trap_count.load(std::memory_order_relaxed) == traps_before + 1);
+
+    printf("OK\n");
+}
+
 // ── Test: legacy context shutdown ───────────────────────────────────────────
 
+/// @brief Verify legacy shutdown resets the lazy context for later reuse.
+/// @details A shutdown must release owned subsystem state and publish the
+///          uninitialized state rather than leaving a destroyed registry
+///          behind a permanent READY flag. The next accessor must therefore
+///          see deterministic freshly initialized values.
 static void test_legacy_context_shutdown() {
     printf("  test_legacy_context_shutdown ... ");
 
     // Force legacy context initialization
     RtContext *legacy = rt_legacy_context();
     assert(legacy != nullptr);
+    legacy->rng_state = 7;
 
-    // Call shutdown — should not crash
+    // Shutdown and immediately reuse the fallback context.
     rt_legacy_context_shutdown();
+    RtContext *fresh = rt_legacy_context();
+    assert(fresh == legacy);
+    assert(fresh->rng_state == 0xDEADBEEFCAFEBABEULL);
+    assert(fresh->bind_count == 0);
 
     printf("OK\n");
 }
@@ -351,6 +518,10 @@ int main() {
     test_gc_no_double_finalize();
     test_gc_sweep_empty();
     test_gc_sweep_no_finalizer();
+    test_gc_sweep_skips_deferred_zero_ref();
+    test_context_cleanup_binding_guards();
+    test_context_binding_counter_guards();
+    test_context_cleanup_binding_race();
     test_legacy_context_shutdown();
     test_audio_shutdown_detaches_loaded_handles();
     test_graceful_shutdown_poll_api();

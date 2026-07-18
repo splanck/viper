@@ -77,9 +77,10 @@ rt_string *rt_arr_str_alloc(size_t len) {
     return arr;
 }
 
-/// @brief Release each non-null string element and free the array.
-/// @details Iterates through all elements, releasing each non-null string,
-///          then releases the array allocation itself.
+/// @brief Release one array reference and finalize elements on the last release.
+/// @details Decrements the container reference count without immediately freeing
+///          its storage. Shared aliases leave every slot untouched. Only the
+///          final owner releases the stored strings and reclaims the container.
 /// @param arr Array payload pointer (may be NULL).
 /// @param size Historical caller-supplied element count; ignored because the
 ///             heap header owns the authoritative length.
@@ -94,14 +95,17 @@ void rt_arr_str_release(rt_string *arr, size_t size) {
 
     (void)size;
 
+    size_t refs = rt_heap_release_deferred(arr);
+    if (refs != 0)
+        return;
+
     // Release each string element using the heap header's authoritative length.
     for (size_t i = 0; i < hdr->len; ++i) {
         rt_str_release_maybe(arr[i]);
         arr[i] = NULL; // Clear slot after release
     }
 
-    // Release the array itself
-    rt_heap_release(arr);
+    rt_heap_free_zero_ref(arr);
 }
 
 /// @brief Read string element at index @p idx and return a retained handle.

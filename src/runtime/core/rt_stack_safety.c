@@ -12,23 +12,26 @@
 //          registers a Vectored Exception Handler for EXCEPTION_STACK_OVERFLOW.
 //
 // Key invariants:
-//   - Initialization is idempotent; repeated calls to rt_init_stack_safety are
-//     safe and guarded by a volatile flag.
+//   - Process-wide signal/exception handlers are installed transactionally at
+//     most once, while concurrent callers wait for publication.
+//   - POSIX alternate signal stacks are per-thread. Every caller preserves an
+//     already-enabled stack (including sanitizer-owned stacks) or installs a
+//     distinct thread-local buffer before returning.
 //   - Signal/exception handlers write diagnostic messages using async-signal-
 //     safe methods (write/WriteFile) rather than fprintf, which is unsafe in
 //     low-stack conditions.
 //   - After detecting a stack overflow the process is terminated immediately
 //     via ExitProcess/exit(1); recovery is not attempted.
-//   - The alternate stack (POSIX) is a static char array of size SIGSTKSZ;
-//     no heap allocation is used for signal handling infrastructure.
+//   - The fallback alternate stack (POSIX) is a thread-local buffer of size
+//     SIGSTKSZ; no heap allocation is used for signal infrastructure.
 //   - On platforms without signal support (e.g., bare-metal) the functions
 //     are compiled as no-ops.
 //
 // Ownership/Lifetime:
-//   - All signal-handling state is in process-global static variables; no
-//     heap allocation is performed by this module.
-//   - The alternate signal stack buffer is statically allocated and valid for
-//     the entire process lifetime once rt_init_stack_safety is called.
+//   - Handler state is process-global; POSIX alternate-stack storage belongs to
+//     each calling thread and remains valid for that thread's lifetime.
+//   - Existing alternate stacks and existing non-default fatal-signal handlers
+//     remain owned by the component that installed them.
 //
 // Links: src/runtime/core/rt_stack_safety.h (public API),
 //        src/runtime/core/rt_trap.c (general runtime trap/abort mechanism)
@@ -47,8 +50,17 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-/// @brief Initialization flag (CONC-007 fix: uses atomics for correctness).
-static int g_stack_safety_initialized = 0;
+enum {
+    RT_STACK_SAFETY_UNINITIALIZED = 0,
+    RT_STACK_SAFETY_INITIALIZING = 1,
+    RT_STACK_SAFETY_READY = 2,
+};
+
+/// @brief Atomic publication state for the process-wide exception handler.
+static int g_stack_safety_state = RT_STACK_SAFETY_UNINITIALIZED;
+
+/// @brief Registration token retained for the lifetime of the process.
+static PVOID g_stack_safety_handler = NULL;
 
 /// @brief Vectored exception handler for stack overflow detection.
 static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep) {
@@ -68,19 +80,42 @@ static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-void rt_init_stack_safety(void) {
-    if (__atomic_load_n(&g_stack_safety_initialized, __ATOMIC_ACQUIRE))
-        return;
+/// @brief Install the Windows exception handler after winning initialization.
+/// @details Registration occurs before global error-mode changes so a failed
+///          `AddVectoredExceptionHandler` attempt leaves those modes untouched.
+/// @return Non-zero when the handler was registered and can be published.
+static int install_stack_safety_handler(void) {
+    PVOID handler = AddVectoredExceptionHandler(1, stack_overflow_handler);
+    if (!handler)
+        return 0;
 
-    // Suppress Windows crash/assert dialog boxes so programs fail silently
-    // to stderr instead of blocking on a modal dialog.
+    g_stack_safety_handler = handler;
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+    return 1;
+}
 
-    // Add vectored exception handler (called before structured handlers)
-    // Use 1 to make it first in the handler chain
-    AddVectoredExceptionHandler(1, stack_overflow_handler);
-    __atomic_store_n(&g_stack_safety_initialized, 1, __ATOMIC_RELEASE);
+void rt_init_stack_safety(void) {
+    for (;;) {
+        int state = __atomic_load_n(&g_stack_safety_state, __ATOMIC_ACQUIRE);
+        if (state == RT_STACK_SAFETY_READY)
+            return;
+        if (state == RT_STACK_SAFETY_UNINITIALIZED) {
+            int expected = RT_STACK_SAFETY_UNINITIALIZED;
+            if (__atomic_compare_exchange_n(&g_stack_safety_state,
+                                            &expected,
+                                            RT_STACK_SAFETY_INITIALIZING,
+                                            0,
+                                            __ATOMIC_ACQ_REL,
+                                            __ATOMIC_ACQUIRE)) {
+                int ready = install_stack_safety_handler();
+                __atomic_store_n(&g_stack_safety_state,
+                                 ready ? RT_STACK_SAFETY_READY : RT_STACK_SAFETY_UNINITIALIZED,
+                                 __ATOMIC_RELEASE);
+                return;
+            }
+        }
+    }
 }
 
 void rt_trap_stack_overflow(void) {
@@ -97,9 +132,20 @@ void rt_trap_stack_overflow(void) {
 #include <string.h>
 #include <unistd.h>
 
-/// @brief Alternate signal stack for handling SIGSEGV.
-static char g_alt_stack[SIGSTKSZ];
-static int g_stack_safety_initialized = 0;
+enum {
+    RT_STACK_SAFETY_UNINITIALIZED = 0,
+    RT_STACK_SAFETY_INITIALIZING = 1,
+    RT_STACK_SAFETY_READY = 2,
+};
+
+/// @brief Naturally aligned per-thread storage used only when no stack exists.
+static RT_THREAD_LOCAL union {
+    max_align_t alignment;
+    unsigned char bytes[SIGSTKSZ];
+} g_alt_stack;
+
+/// @brief Atomic publication state for the process-wide signal handlers.
+static int g_stack_safety_state = RT_STACK_SAFETY_UNINITIALIZED;
 
 /// @brief Signal handler for SIGSEGV (stack overflow detection).
 static void sigsegv_handler(int sig, siginfo_t *info, void *context) {
@@ -107,47 +153,102 @@ static void sigsegv_handler(int sig, siginfo_t *info, void *context) {
     (void)context;
 
     if (sig == SIGSEGV || sig == SIGBUS) {
-        // Write directly to stderr using write() syscall
-        // (safe to use in signal handlers)
-        const char *msg = "Zanna runtime error: stack overflow (or segmentation fault)\n"
-                          "Hint: Reduce recursion depth or use iterative algorithms.\n"
-                          "      Consider increasing stack limit with ulimit -s.\n";
-        write(STDERR_FILENO, msg, strlen(msg));
+        static const char msg[] = "Zanna runtime error: stack overflow (or segmentation fault)\n"
+                                  "Hint: Reduce recursion depth or use iterative algorithms.\n"
+                                  "      Consider increasing stack limit with ulimit -s.\n";
+        (void)write(STDERR_FILENO, msg, sizeof(msg) - 1U);
         _exit(1);
     }
 }
 
-void rt_init_stack_safety(void) {
-    if (__atomic_load_n(&g_stack_safety_initialized, __ATOMIC_ACQUIRE))
-        return;
+/// @brief Ensure the calling POSIX thread has an alternate signal stack.
+/// @details `sigaltstack` state is thread-specific. An existing enabled stack
+///          is deliberately preserved because runtimes such as ASan own and
+///          unmap the stack they install during thread teardown. When disabled,
+///          this function installs the caller's distinct thread-local buffer.
+/// @return Non-zero when an alternate stack was already present or installed.
+static int ensure_thread_alt_stack(void) {
+    stack_t current;
+    if (sigaltstack(NULL, &current) != 0)
+        return 0;
+    if ((current.ss_flags & SS_DISABLE) == 0)
+        return 1;
 
-    // Set up alternate signal stack
-    stack_t ss;
-    ss.ss_sp = g_alt_stack;
-    ss.ss_size = SIGSTKSZ;
-    ss.ss_flags = 0;
-    if (sigaltstack(&ss, NULL) == -1) {
-        // Failed to set up alternate stack - continue without it
-        return;
+    stack_t replacement;
+    memset(&replacement, 0, sizeof(replacement));
+    replacement.ss_sp = g_alt_stack.bytes;
+    replacement.ss_size = sizeof(g_alt_stack.bytes);
+    return sigaltstack(&replacement, NULL) == 0;
+}
+
+/// @brief Test whether a fatal-signal disposition belongs to another runtime.
+/// @details Zanna does not replace non-default handlers (including ignored
+///          dispositions), preserving sanitizer, debugger, embedding-host, and
+///          crash-reporter ownership.
+/// @param action Signal disposition returned by a query-only `sigaction` call.
+/// @return Non-zero when the disposition is not the platform default.
+static int has_external_signal_handler(const struct sigaction *action) {
+    return action->sa_handler != SIG_DFL;
+}
+
+/// @brief Install both process-wide POSIX fatal-signal handlers transactionally.
+/// @details Existing non-default ownership causes a successful no-op. If the
+///          SIGBUS installation fails after SIGSEGV succeeds, the previous
+///          SIGSEGV disposition is restored before reporting failure.
+/// @return Non-zero when the desired state is safe to publish as ready.
+static int install_stack_safety_handlers(void) {
+    struct sigaction previous_segv;
+    struct sigaction previous_bus;
+    if (sigaction(SIGSEGV, NULL, &previous_segv) != 0 ||
+        sigaction(SIGBUS, NULL, &previous_bus) != 0) {
+        return 0;
+    }
+    if (has_external_signal_handler(&previous_segv) || has_external_signal_handler(&previous_bus)) {
+        return 1;
     }
 
-    // Set up signal handler with SA_ONSTACK to use alternate stack
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = sigsegv_handler;
     sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
     sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGSEGV, &sa, NULL) != 0)
+        return 0;
+    if (sigaction(SIGBUS, &sa, NULL) != 0) {
+        (void)sigaction(SIGSEGV, &previous_segv, NULL);
+        return 0;
+    }
+    return 1;
+}
 
-    // Handle both SIGSEGV and SIGBUS (macOS uses SIGBUS for some stack faults)
-    sigaction(SIGSEGV, &sa, NULL);
-    sigaction(SIGBUS, &sa, NULL);
+void rt_init_stack_safety(void) {
+    (void)ensure_thread_alt_stack();
 
-    __atomic_store_n(&g_stack_safety_initialized, 1, __ATOMIC_RELEASE);
+    for (;;) {
+        int state = __atomic_load_n(&g_stack_safety_state, __ATOMIC_ACQUIRE);
+        if (state == RT_STACK_SAFETY_READY)
+            return;
+        if (state == RT_STACK_SAFETY_UNINITIALIZED) {
+            int expected = RT_STACK_SAFETY_UNINITIALIZED;
+            if (__atomic_compare_exchange_n(&g_stack_safety_state,
+                                            &expected,
+                                            RT_STACK_SAFETY_INITIALIZING,
+                                            0,
+                                            __ATOMIC_ACQ_REL,
+                                            __ATOMIC_ACQUIRE)) {
+                int ready = install_stack_safety_handlers();
+                __atomic_store_n(&g_stack_safety_state,
+                                 ready ? RT_STACK_SAFETY_READY : RT_STACK_SAFETY_UNINITIALIZED,
+                                 __ATOMIC_RELEASE);
+                return;
+            }
+        }
+    }
 }
 
 void rt_trap_stack_overflow(void) {
-    const char *msg = "Zanna runtime trap: stack overflow\n";
-    write(STDERR_FILENO, msg, strlen(msg));
+    static const char msg[] = "Zanna runtime trap: stack overflow\n";
+    (void)write(STDERR_FILENO, msg, sizeof(msg) - 1U);
     _exit(1);
 }
 

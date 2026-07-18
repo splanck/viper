@@ -8,34 +8,42 @@
 // File: tests/runtime/RTStreamTests.cpp
 // Purpose: Validate unified Stream interface.
 // Key invariants: Stream wraps BinFile/MemStream transparently.
+// Ownership/Lifetime: Each test closes/releases its stream and removes any
+//                     temporary backing file; returned buffers are released.
 // Links: docs/zannalib/io.md
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_binfile.h"
-#include "rt_memstream.h"
 #include "rt_bytes.h"
 #include "rt_internal.h"
+#include "rt_memstream.h"
+#include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_stream.h"
 #include "rt_string.h"
 
 #include <cassert>
+#include <cerrno>
 #include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <process.h>
+#include <windows.h>
 #define getpid _getpid
 #else
 #include "tests/common/PosixCompat.h"
+#include <fcntl.h>
 #endif
 
 namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
+static int g_alloc_countdown = 0;
 } // namespace
 
 extern "C" void vm_trap(const char *msg) {
@@ -56,6 +64,34 @@ extern "C" void vm_trap(const char *msg) {
         g_trap_expected = false;                                                                   \
         assert(g_last_trap != nullptr);                                                            \
     } while (0)
+
+/// @brief Fail one selected runtime heap allocation, then delegate normally.
+/// @param bytes Requested runtime payload size.
+/// @param next Default allocator to call after the countdown reaches zero.
+/// @return NULL for the selected allocation, otherwise the default result.
+static void *fail_countdown_alloc(int64_t bytes, void *(*next)(int64_t)) {
+    if (g_alloc_countdown > 0 && --g_alloc_countdown == 0)
+        return nullptr;
+    return next ? next(bytes) : nullptr;
+}
+
+/// @brief Count native process resources without opening another descriptor.
+/// @return Current Windows handle count or number of occupied low POSIX fds.
+static uint64_t process_open_resource_count() {
+#if RT_PLATFORM_WINDOWS
+    DWORD count = 0;
+    assert(GetProcessHandleCount(GetCurrentProcess(), &count) != 0);
+    return (uint64_t)count;
+#else
+    uint64_t count = 0;
+    for (int fd = 0; fd < 4096; ++fd) {
+        errno = 0;
+        if (fcntl(fd, F_GETFD) != -1 || errno != EBADF)
+            ++count;
+    }
+    return count;
+#endif
+}
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -93,7 +129,7 @@ static bool bytes_equal(void *a, void *b) {
 
 static const char *stream_test_file() {
     static char path[512];
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     const char *tmp = getenv("TEMP");
     if (!tmp)
         tmp = ".";
@@ -315,6 +351,90 @@ static void test_open_file_close_closes_binfile() {
     printf("\n");
 }
 
+/// @brief Verify OOM after a native file open cannot leak the FILE/OS handle.
+/// @details The first injected failure targets BinFile payload allocation. The
+///          second run fails Stream wrapper allocation after BinFile succeeds.
+///          Both constructor recovery paths must restore the exact native
+///          resource baseline before propagating their trap.
+static void test_file_constructor_oom_closes_native_resource() {
+    printf("Testing file constructor OOM cleanup:\n");
+
+    const char *path_cstr = stream_test_file();
+    remove(path_cstr);
+    FILE *seed = fopen(path_cstr, "wb");
+    assert(seed != nullptr);
+    fputs("seed", seed);
+    assert(fclose(seed) == 0);
+
+    rt_string path = rt_const_cstr(path_cstr);
+    rt_string read_mode = rt_const_cstr("r");
+
+    uint64_t before = process_open_resource_count();
+    g_alloc_countdown = 1;
+    rt_set_alloc_hook(fail_countdown_alloc);
+    EXPECT_TRAP(rt_binfile_open(path, read_mode));
+    rt_set_alloc_hook(nullptr);
+    assert(g_alloc_countdown == 0);
+    test_result("BinFile allocation trap closes native file",
+                process_open_resource_count() == before);
+
+    g_alloc_countdown = 2;
+    rt_set_alloc_hook(fail_countdown_alloc);
+    EXPECT_TRAP(rt_stream_open_file(path, read_mode));
+    rt_set_alloc_hook(nullptr);
+    assert(g_alloc_countdown == 0);
+    test_result("Stream wrapper allocation trap closes backing file",
+                process_open_resource_count() == before);
+
+    rt_string_unref(path);
+    rt_string_unref(read_mode);
+
+    remove(path_cstr);
+    printf("\n");
+}
+
+/// @brief Exercise both short-read resize OOM and backing-read trap cleanup.
+/// @details A three-byte file read with a ten-byte request reaches the
+///          right-sizing allocation; failing that second allocation must trap
+///          after advancing the cursor but without corrupting the Stream. A
+///          separately wrapped, explicitly closed BinFile exercises the active
+///          read-buffer cleanup when the backing operation itself traps.
+static void test_read_failure_cleanup_paths() {
+    printf("Testing Stream read failure cleanup:\n");
+
+    const char *path_cstr = stream_test_file();
+    remove(path_cstr);
+    FILE *seed = fopen(path_cstr, "wb");
+    assert(seed != nullptr);
+    assert(fwrite("abc", 1, 3, seed) == 3);
+    assert(fclose(seed) == 0);
+
+    void *reader = rt_stream_open_file(rt_const_cstr(path_cstr), rt_const_cstr("r"));
+    g_alloc_countdown = 1;
+    rt_set_alloc_hook(fail_countdown_alloc);
+    EXPECT_TRAP(rt_stream_read(reader, 10));
+    rt_set_alloc_hook(nullptr);
+    assert(g_alloc_countdown == 0);
+    test_result("read allocation OOM leaves coherent cursor", rt_stream_get_pos(reader) == 0);
+
+    void *clamped = rt_stream_read(reader, INT64_MAX);
+    test_result("oversized request allocates only remaining bytes", rt_bytes_len(clamped) == 3);
+    test_result("oversized request advances by actual bytes", rt_stream_get_pos(reader) == 3);
+    rt_stream_close(reader);
+
+    void *binfile = rt_binfile_open(rt_const_cstr(path_cstr), rt_const_cstr("r"));
+    void *wrapped = rt_stream_from_binfile(binfile);
+    rt_binfile_close(binfile);
+    EXPECT_TRAP(rt_stream_read(wrapped, 1));
+    rt_stream_close(wrapped);
+    if (rt_obj_release_check0(binfile))
+        rt_obj_free(binfile);
+    test_result("backing read trap releases temporary buffer", true);
+
+    remove(path_cstr);
+    printf("\n");
+}
+
 //=============================================================================
 // Edge Cases
 //=============================================================================
@@ -393,6 +513,8 @@ int main() {
     test_stream_conversion();
     test_file_stream_modes();
     test_open_file_close_closes_binfile();
+    test_file_constructor_oom_closes_native_resource();
+    test_read_failure_cleanup_paths();
     test_edge_cases();
     test_closed_and_null_streams_trap();
 

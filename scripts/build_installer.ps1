@@ -9,7 +9,7 @@
 # Purpose: Build or reuse a staged Zanna tree and invoke install-package.
 # Key invariants:
 #   - Fresh package builds use the canonical Windows build script.
-#   - Installer stages include ZannaIDE unless the caller chose explicitly.
+#   - Installer stages include Zanna Studio unless the caller chose explicitly.
 #   - All install-package arguments are forwarded as discrete native arguments.
 # Ownership/Lifetime: Build and package outputs are owned by their caller-selected paths.
 # Links: scripts/build_zanna_win.ps1, docs/installer-release.md
@@ -56,11 +56,11 @@ foreach ($argument in $forwardArguments) {
 
 if (-not $usesExistingInput) {
     $extraArguments = [Environment]::GetEnvironmentVariable("ZANNA_EXTRA_CMAKE_ARGS", "Process")
-    if ($extraArguments -notmatch '(?i)(?:^|\s)-DZANNA_INSTALL_ZANNAIDE=') {
+    if ($extraArguments -notmatch '(?i)(?:^|\s)-DZANNA_INSTALL_ZANNASTUDIO=') {
         if ([string]::IsNullOrWhiteSpace($extraArguments)) {
-            $env:ZANNA_EXTRA_CMAKE_ARGS = "-DZANNA_INSTALL_ZANNAIDE=ON"
+            $env:ZANNA_EXTRA_CMAKE_ARGS = "-DZANNA_INSTALL_ZANNASTUDIO=ON"
         } else {
-            $env:ZANNA_EXTRA_CMAKE_ARGS = "$extraArguments -DZANNA_INSTALL_ZANNAIDE=ON"
+            $env:ZANNA_EXTRA_CMAKE_ARGS = "$extraArguments -DZANNA_INSTALL_ZANNASTUDIO=ON"
         }
     }
 

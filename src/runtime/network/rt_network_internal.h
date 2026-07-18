@@ -52,9 +52,13 @@
 
 extern void rt_trap_net(const char *msg, int err_code);
 
-/// @brief Map platform errno / WSAGetLastError() to an Err_* network code.
-static inline int net_classify_errno(void) {
-    int e = GET_LAST_ERROR();
+/// @brief Map a captured native socket error to an `Err_*` network code.
+/// @details Callers that must release managed buffers before trapping capture
+///          the native error first, because allocator/registry cleanup may
+///          overwrite `errno` or WinSock's thread-local last-error state.
+/// @param e Native errno/WSA error captured immediately after socket failure.
+/// @return Closest public network error category.
+static inline int net_classify_error(int e) {
 #if RT_PLATFORM_WINDOWS
     switch (e) {
         case WSAECONNREFUSED:
@@ -91,6 +95,14 @@ static inline int net_classify_errno(void) {
             return Err_NetworkError;
     }
 #endif
+}
+
+/// @brief Classify the calling thread's current native socket error.
+/// @details Convenience wrapper for paths that perform no intervening host or
+///          managed cleanup after the failed socket operation.
+/// @return Closest public network error category.
+static inline int net_classify_errno(void) {
+    return net_classify_error(GET_LAST_ERROR());
 }
 
 //=============================================================================
@@ -132,13 +144,61 @@ int rt_net_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms);
 /// @return 1 on success, 0 if the count is larger than INT_MAX.
 int rt_net_i64_len_to_int(int64_t byte_count, int *out_len);
 
-/// @brief Wait for socket to become readable/writable with timeout.
-/// @return 1 if ready, 0 if timeout, -1 on error.
+/// @brief Wait for socket readiness against one interruption-safe deadline.
+/// @details Delegates to the platform adapter; read-side orderly closure is
+///          considered readable so the next recv can return EOF.
+/// @param sock Native socket descriptor or handle.
+/// @param timeout_ms Non-negative overall timeout in milliseconds.
+/// @param for_write True for write readiness, false for read readiness.
+/// @return 1 if ready, 0 if timeout, -1 with a native error on failure.
 int wait_socket(socket_t sock, int timeout_ms, bool for_write);
 
 /// @brief Access the raw socket owned by a Tcp object.
 /// @return Socket descriptor, or INVALID_SOCK for NULL/invalid objects.
 socket_t rt_tcp_socket_fd(void *obj);
+
+/// @brief Validate a managed TCP handle without raising a trap.
+/// @details Checks heap kind, stable class identity, and the complete private
+///          payload size. Internal containers use this predicate before
+///          retaining or storing opaque handles supplied through public APIs.
+/// @param obj Candidate managed object.
+/// @return Nonzero only for a live, fully sized TCP connection object.
+int rt_tcp_is_handle(void *obj);
+
+/// @brief Borrow the immutable endpoint stored in a TCP handle.
+/// @details This helper is allocation-free and never traps. The host view
+///          remains owned by @p obj and is valid only while the caller retains
+///          that object. It is intended for connection-pool key comparison.
+/// @param obj Candidate TCP handle.
+/// @param host_out Receives the borrowed NUL-terminated host bytes.
+/// @param host_len_out Receives the exact host byte length.
+/// @param port_out Receives the remote port.
+/// @return Nonzero on success; zero for invalid handles or incomplete output
+///         pointers.
+int rt_tcp_endpoint_view(void *obj, const char **host_out, size_t *host_len_out, int *port_out);
+
+/// @brief Claim a TCP connection for one connection-pool identity.
+/// @details Atomically changes an unleased token from zero to @p owner_token.
+///          Repeating the operation with the same token is idempotent; a
+///          different nonzero owner is never overwritten.
+/// @param obj Valid TCP handle.
+/// @param owner_token Nonzero process-local pool identity.
+/// @return Nonzero when the caller owns (or already owned) the lease.
+int rt_tcp_pool_try_claim(void *obj, uint64_t owner_token);
+
+/// @brief Release a TCP connection-pool lease owned by @p owner_token.
+/// @details Uses compare-and-exchange so a stale pool cannot clear a newer
+///          owner's lease. Invalid handles, zero tokens, and owner mismatches
+///          are harmless failures.
+/// @param obj Candidate TCP handle.
+/// @param owner_token Expected current pool identity.
+/// @return Nonzero when the token was cleared; zero otherwise.
+int rt_tcp_pool_release_claim(void *obj, uint64_t owner_token);
+
+/// @brief Snapshot the current connection-pool lease token.
+/// @param obj Candidate TCP handle.
+/// @return Zero for an unleased/invalid TCP; otherwise its owning pool token.
+uint64_t rt_tcp_pool_owner(void *obj);
 
 /// @brief Detach the raw socket from a Tcp object without closing it.
 /// @details Marks the Tcp object closed and returns ownership of the socket to the caller.

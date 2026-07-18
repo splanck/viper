@@ -23,6 +23,8 @@
 //     modify the actual reference counts stored in heap headers.
 //   - Weak references to collected objects are zeroed after finalizers decline
 //     resurrection, preserving weak handles when a finalizer keeps the target alive.
+//   - Collection holds the exclusive managed-graph barrier while traversal runs;
+//     refcount and container graph mutations hold a nestable shared scope.
 //   - The GC table lock (pthread_mutex / CRITICAL_SECTION) protects the tracked-
 //     object table and weak reference registry; finalizers run outside the lock.
 //   - Pass statistics (total_collected, pass_count) are updated atomically.
@@ -45,6 +47,7 @@
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_threads.h"
 
@@ -53,7 +56,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #else
@@ -87,9 +90,10 @@ const char *rt_trap_get_error(void);
 typedef struct gc_entry {
     void *obj; ///< Object pointer (NULL=empty, 1=tombstone, else live).
     rt_gc_traverse_fn traverse;
-    int64_t trial_rc;  ///< Temporary refcount for cycle detection.
-    int8_t color;      ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
-    uint16_t survived; ///< Number of collection passes this object has survived.
+    int64_t trial_rc;         ///< Temporary refcount for cycle detection.
+    int8_t color;             ///< 0=white(unchecked), 1=gray(candidate), 2=black(reachable)
+    uint16_t survived;        ///< Number of collection passes this object has survived.
+    uint64_t finalizer_epoch; ///< Last shutdown-finalizer sweep that visited this entry.
 } gc_entry;
 
 /// Weak reference record.
@@ -117,25 +121,60 @@ static struct {
     int64_t total_collected;
     int64_t pass_count;
     int collecting;
+    uint64_t finalizer_epoch;
 } g_gc;
 
 /// GC lock — initialized once and kept alive for the process lifetime.
 /// `rt_gc_shutdown()` releases GC-owned tables but intentionally does not
 /// destroy this primitive, so embedders and tests can shut down and reuse the
 /// GC without racing a late lock user.
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 static INIT_ONCE g_gc_lock_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_gc_lock_cs;
 #else
 static pthread_mutex_t g_gc_lock_mtx = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
-/// Auto-trigger: allocation counter and threshold.
-/// When g_gc_threshold > 0, every rt_gc_notify_alloc() call increments
-/// g_gc_alloc_counter; when the counter reaches the threshold, a collection
-/// pass is triggered automatically.
+/// Managed-graph quiescence barrier.
+///
+/// Ordinary refcount and container graph changes take the shared side. The
+/// cycle collector takes the exclusive side before reading reference counts or
+/// invoking traversal callbacks. Separate storage from `g_gc_lock_*` is
+/// essential: traversal callbacks are allowed to query the GC tracking table.
+#if RT_PLATFORM_WINDOWS
+static SRWLOCK g_gc_world_lock = SRWLOCK_INIT;
+#else
+static pthread_rwlock_t g_gc_world_lock = PTHREAD_RWLOCK_INITIALIZER;
+#endif
+
+/// Nesting state for the calling thread's shared mutator scope.
+static RT_THREAD_LOCAL uint32_t g_gc_mutator_depth = 0;
+
+/// Non-zero while the calling thread owns the exclusive graph barrier.
+static RT_THREAD_LOCAL int g_gc_world_exclusive = 0;
+
+/// Set when explicit collection is requested from inside a shared mutator scope.
+static RT_THREAD_LOCAL int g_gc_collection_pending = 0;
+
+/// Open-addressed pointer set used while reclaiming one confirmed garbage component.
+typedef struct gc_pointer_set {
+    void **slots;    ///< NULL-empty table storing managed payload addresses.
+    size_t capacity; ///< Power-of-two slot count, or zero when uninitialized.
+} gc_pointer_set;
+
+/// Reclaim set visible to nested container finalizers on the collector thread.
+static RT_THREAD_LOCAL const gc_pointer_set *g_gc_active_reclaim_set = NULL;
+
+/// Nesting depth while a garbage member's finalizer is releasing owned edges.
+static RT_THREAD_LOCAL uint32_t g_gc_suppress_member_release_depth = 0;
+
+/// Auto-trigger allocation debt and threshold.
+/// When the threshold is crossed, allocation only publishes a request. A
+/// mutator boundary or explicit @ref rt_gc_safepoint claims that request and
+/// performs collection outside the allocator call stack.
 static int64_t g_gc_threshold = 0;
 static int64_t g_gc_alloc_counter = 0;
+static int64_t g_gc_collection_requested = 0;
 
 /// @brief Atomic CAS for int64_t (portable across GCC/Clang and MSVC).
 static int gc_atomic_cas_i64(int64_t *ptr, int64_t *expected, int64_t desired) {
@@ -189,6 +228,130 @@ static void gc_unlock(void) {
 #endif
 
 //=============================================================================
+// Managed-Graph Quiescence Barrier
+//=============================================================================
+
+/// @brief Enter a nestable shared managed-graph mutator scope.
+/// @details The outermost scope takes the shared side of the process-wide graph
+///          barrier. Nested retain/release operations only adjust thread-local
+///          depth, and collector-owned callbacks bypass the native lock because
+///          the same thread already owns its exclusive side.
+void rt_gc_mutator_enter(void) {
+    if (g_gc_mutator_depth == UINT32_MAX)
+        rt_abort("gc: mutator scope nesting overflow");
+
+    if (g_gc_mutator_depth++ != 0 || g_gc_world_exclusive)
+        return;
+
+#if RT_PLATFORM_WINDOWS
+    AcquireSRWLockShared(&g_gc_world_lock);
+#else
+    if (pthread_rwlock_rdlock(&g_gc_world_lock) != 0) {
+        g_gc_mutator_depth = 0;
+        rt_abort("gc: failed to enter mutator scope");
+    }
+#endif
+}
+
+/// @brief Leave one shared managed-graph mutator scope.
+/// @details Releases the native shared lock when the outermost scope ends. If
+///          automatic or explicit collection was requested while an update was
+///          in progress, the deferred pass starts only after releasing the
+///          shared lock so no unsupported lock upgrade is attempted.
+void rt_gc_mutator_exit(void) {
+    if (g_gc_mutator_depth == 0)
+        return;
+    if (--g_gc_mutator_depth != 0 || g_gc_world_exclusive)
+        return;
+
+#if RT_PLATFORM_WINDOWS
+    ReleaseSRWLockShared(&g_gc_world_lock);
+#else
+    if (pthread_rwlock_unlock(&g_gc_world_lock) != 0)
+        rt_abort("gc: failed to leave mutator scope");
+#endif
+
+    if (g_gc_collection_pending) {
+        g_gc_collection_pending = 0;
+        (void)rt_gc_collect();
+    }
+}
+
+/// @brief Abandon the calling thread's shared mutator scope before trap transfer.
+/// @details Recoverable traps use `longjmp` and therefore skip normal lexical
+///          cleanup. The trap dispatcher calls this hook before transferring
+///          control. Collector-owned nested scopes are cleared without dropping
+///          the exclusive barrier; the collector recovery path owns that lock.
+void rt_gc_mutator_abort_for_trap(void) {
+    if (g_gc_mutator_depth == 0) {
+        g_gc_collection_pending = 0;
+        return;
+    }
+
+    g_gc_mutator_depth = 0;
+    g_gc_collection_pending = 0;
+    if (g_gc_world_exclusive)
+        return;
+
+#if RT_PLATFORM_WINDOWS
+    ReleaseSRWLockShared(&g_gc_world_lock);
+#else
+    if (pthread_rwlock_unlock(&g_gc_world_lock) != 0)
+        rt_abort("gc: failed to abandon mutator scope");
+#endif
+}
+
+/// @brief Acquire exclusive access to the managed object graph.
+/// @details The caller must not already own the exclusive side. When
+///          @p defer_collection is non-zero, a request made inside a mutator
+///          scope records a pending collection; maintenance operations instead
+///          fail without scheduling unrelated work.
+/// @param defer_collection Whether a shared-scope collision should request a
+///        collection after the outermost mutator exits.
+/// @return 1 when the exclusive barrier was acquired; otherwise 0.
+static int gc_world_begin_exclusive(int defer_collection) {
+    if (g_gc_world_exclusive)
+        return 0;
+    if (g_gc_mutator_depth != 0) {
+        if (defer_collection)
+            g_gc_collection_pending = 1;
+        return 0;
+    }
+
+#if RT_PLATFORM_WINDOWS
+    AcquireSRWLockExclusive(&g_gc_world_lock);
+#else
+    if (pthread_rwlock_wrlock(&g_gc_world_lock) != 0)
+        rt_abort("gc: failed to stop managed-graph mutators");
+#endif
+    g_gc_world_exclusive = 1;
+    return 1;
+}
+
+/// @brief Acquire exclusive graph access for a cycle-collection pass.
+/// @details A request made inside a mutator scope is deferred until the
+///          outermost scope exits, avoiding an unsupported read-to-write lock
+///          upgrade. Reentrant collector-thread requests are ignored.
+/// @return 1 when the exclusive barrier was acquired; otherwise 0.
+static int gc_world_begin_collection(void) {
+    return gc_world_begin_exclusive(1);
+}
+
+/// @brief Release exclusive managed-graph access after collection or recovery.
+static void gc_world_end_collection(void) {
+    if (!g_gc_world_exclusive)
+        return;
+    g_gc_mutator_depth = 0;
+    g_gc_world_exclusive = 0;
+#if RT_PLATFORM_WINDOWS
+    ReleaseSRWLockExclusive(&g_gc_world_lock);
+#else
+    if (pthread_rwlock_unlock(&g_gc_world_lock) != 0)
+        rt_abort("gc: failed to resume managed-graph mutators");
+#endif
+}
+
+//=============================================================================
 // Hash Utility
 //=============================================================================
 
@@ -198,6 +361,95 @@ static uint64_t ptr_hash(void *p) {
     v = (v ^ (v >> 30)) * 0xbf58476d1ce4e5b9ULL;
     v = (v ^ (v >> 27)) * 0x94d049bb133111ebULL;
     return v ^ (v >> 31);
+}
+
+/// @brief Allocate an empty pointer set sized for @p item_count live entries.
+/// @details Uses at most a 1/2 load factor so linear probes remain short during
+///          cycle teardown. Capacity is rounded to a power of two and checked
+///          against `SIZE_MAX` before allocation.
+/// @param set Destination set, which must not currently own storage.
+/// @param item_count Number of distinct non-null pointers that will be inserted.
+/// @return 1 on success; 0 on overflow or allocation failure.
+static int gc_pointer_set_init(gc_pointer_set *set, int64_t item_count) {
+    if (!set || item_count < 0)
+        return 0;
+    set->slots = NULL;
+    set->capacity = 0;
+    if (item_count == 0)
+        return 1;
+
+    if ((uint64_t)item_count > (uint64_t)SIZE_MAX / 2)
+        return 0;
+    size_t needed = (size_t)item_count * 2;
+    size_t capacity = 16;
+    while (capacity < needed) {
+        if (capacity > SIZE_MAX / 2)
+            return 0;
+        capacity *= 2;
+    }
+    if (capacity > SIZE_MAX / sizeof(void *))
+        return 0;
+    set->slots = (void **)calloc(capacity, sizeof(void *));
+    if (!set->slots)
+        return 0;
+    set->capacity = capacity;
+    return 1;
+}
+
+/// @brief Insert one non-null payload address into a pre-sized pointer set.
+/// @param set Initialized destination set.
+/// @param payload Managed payload address to insert.
+static void gc_pointer_set_insert(gc_pointer_set *set, void *payload) {
+    if (!set || !set->slots || set->capacity == 0 || !payload)
+        return;
+    size_t mask = set->capacity - 1;
+    size_t slot = (size_t)ptr_hash(payload) & mask;
+    while (set->slots[slot] && set->slots[slot] != payload)
+        slot = (slot + 1) & mask;
+    set->slots[slot] = payload;
+}
+
+/// @brief Test whether @p payload belongs to a pointer set.
+/// @param set Initialized set, or NULL/empty for an always-false lookup.
+/// @param payload Candidate managed payload address.
+/// @return 1 when present; otherwise 0.
+static int gc_pointer_set_contains(const gc_pointer_set *set, void *payload) {
+    if (!set || !set->slots || set->capacity == 0 || !payload)
+        return 0;
+    size_t mask = set->capacity - 1;
+    size_t slot = (size_t)ptr_hash(payload) & mask;
+    for (size_t probe = 0; probe < set->capacity; ++probe) {
+        void *candidate = set->slots[slot];
+        if (!candidate)
+            return 0;
+        if (candidate == payload)
+            return 1;
+        slot = (slot + 1) & mask;
+    }
+    return 0;
+}
+
+/// @brief Release storage owned by a temporary pointer set.
+/// @param set Set to clear; NULL is a no-op.
+static void gc_pointer_set_destroy(gc_pointer_set *set) {
+    if (!set)
+        return;
+    free(set->slots);
+    set->slots = NULL;
+    set->capacity = 0;
+}
+
+/// @brief Tell the heap whether a finalizer release targets another member of the active cycle.
+/// @details During cycle teardown, container finalizers must clear their native buffers but must
+///          not decrement a member whose reference count is being normalized by the collector.
+///          Releases to objects outside the reclaim set remain ordinary ownership operations.
+/// @param payload Candidate release target.
+/// @return 1 only on the collector thread, inside a member finalizer, for an active garbage member.
+int8_t rt_gc_should_suppress_cycle_release(void *payload) {
+    return g_gc_suppress_member_release_depth > 0 &&
+                   gc_pointer_set_contains(g_gc_active_reclaim_set, payload)
+               ? 1
+               : 0;
 }
 
 /// @brief Check if a hash table slot contains a live (tracked) entry.
@@ -276,20 +528,40 @@ static int gc_rehash(int64_t new_cap) {
     return 1;
 }
 
-/// @brief Register an object for cycle detection.
-/// @details Inserts @p obj into the GC hash table. If already tracked, updates
-///          the traverse function. The table grows when load exceeds 5/8.
-void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
+/// @brief Internal outcomes from one tracking-table insertion attempt.
+typedef enum gc_track_result {
+    GC_TRACK_OK = 1,
+    GC_TRACK_INVALID_PAYLOAD = -1,
+    GC_TRACK_UNSUPPORTED_KIND = -2,
+    GC_TRACK_CAPACITY_OVERFLOW = -3,
+    GC_TRACK_OUT_OF_MEMORY = -4
+} gc_track_result;
+
+/// @brief Insert or update one cycle-collector entry without dispatching traps.
+/// @details Performs live-header validation and all lock/barrier balancing, then
+///          returns a precise status to its caller. Keeping this core non-trapping
+///          lets `rt_heap_alloc` make automatic reference-array registration
+///          transactional: a failed table growth can unregister and free the new
+///          payload before returning NULL. The public @ref rt_gc_track wrapper
+///          translates failures into the established diagnostics.
+/// @param obj Candidate managed object or reference-bearing array.
+/// @param traverse Non-null strong-edge enumeration callback.
+/// @return A @ref gc_track_result value.
+static gc_track_result gc_track_impl(void *obj, rt_gc_traverse_fn traverse) {
     if (!obj || !traverse)
-        return;
+        return GC_TRACK_OK;
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = NULL;
     if (!rt_heap_try_get_header(obj, &hdr) || !hdr) {
-        rt_trap("rt_gc_track: object is not a live heap payload");
-        return;
+        rt_gc_mutator_exit();
+        return GC_TRACK_INVALID_PAYLOAD;
     }
-    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT) {
-        rt_trap("rt_gc_track: payload is not a heap object");
-        return;
+    rt_heap_kind_t kind = (rt_heap_kind_t)hdr->kind;
+    rt_elem_kind_t elem_kind = (rt_elem_kind_t)hdr->elem_kind;
+    if (kind != RT_HEAP_OBJECT &&
+        (kind != RT_HEAP_ARRAY || (elem_kind != RT_ELEM_OBJ && elem_kind != RT_ELEM_BOX))) {
+        rt_gc_mutator_exit();
+        return GC_TRACK_UNSUPPORTED_KIND;
     }
 
     gc_lock();
@@ -299,21 +571,22 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
     if (idx >= 0) {
         g_gc.entries[idx].traverse = traverse;
         gc_unlock();
-        return;
+        rt_gc_mutator_exit();
+        return GC_TRACK_OK;
     }
 
     /* Grow if needed: maintain < 5/8 load factor. */
     if (g_gc.capacity == 0 || g_gc.count >= (g_gc.capacity / 8) * 5) {
         if (g_gc.capacity > 0 && g_gc.capacity > INT64_MAX / 2) {
             gc_unlock();
-            rt_trap("rt_gc: hash table capacity overflow");
-            return;
+            rt_gc_mutator_exit();
+            return GC_TRACK_CAPACITY_OVERFLOW;
         }
         int64_t new_cap = g_gc.capacity == 0 ? 64 : g_gc.capacity * 2;
         if (!gc_rehash(new_cap)) {
             gc_unlock();
-            rt_trap("rt_gc: failed to grow hash table (out of memory)");
-            return;
+            rt_gc_mutator_exit();
+            return GC_TRACK_OUT_OF_MEMORY;
         }
     }
 
@@ -329,9 +602,70 @@ void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
     e->trial_rc = 0;
     e->color = 0;
     e->survived = 0;
+    e->finalizer_epoch = 0;
     g_gc.count++;
 
     gc_unlock();
+    rt_gc_mutator_exit();
+    return GC_TRACK_OK;
+}
+
+/// @brief Enumerate pointer slots owned by an object- or box-reference array.
+/// @details Automatically registered arrays are zero-initialized before they
+///          enter the tracking table. During collection the exclusive graph
+///          barrier prevents resize or slot mutation, so the header length and
+///          payload address remain stable for the complete traversal.
+/// @param obj Exact managed array payload.
+/// @param visitor Collector visitor invoked for each non-null strong slot.
+/// @param ctx Opaque visitor context.
+static void gc_reference_array_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    if (!obj || !visitor)
+        return;
+    rt_heap_hdr_t *hdr = NULL;
+    if (!rt_heap_try_get_header(obj, &hdr) || !hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_ARRAY)
+        return;
+    rt_elem_kind_t elem_kind = (rt_elem_kind_t)hdr->elem_kind;
+    if (elem_kind != RT_ELEM_OBJ && elem_kind != RT_ELEM_BOX)
+        return;
+    void **items = (void **)obj;
+    for (size_t i = 0; i < hdr->len; ++i) {
+        if (items[i])
+            visitor(items[i], ctx);
+    }
+}
+
+/// @brief Register an object for cycle detection.
+/// @details Inserts @p obj into the GC hash table. If already tracked, updates
+///          the traverse function. The table grows when load exceeds 5/8.
+void rt_gc_track(void *obj, rt_gc_traverse_fn traverse) {
+    gc_track_result result = gc_track_impl(obj, traverse);
+    switch (result) {
+        case GC_TRACK_OK:
+            return;
+        case GC_TRACK_INVALID_PAYLOAD:
+            rt_trap("rt_gc_track: object is not a live heap payload");
+            return;
+        case GC_TRACK_UNSUPPORTED_KIND:
+            rt_trap("rt_gc_track: payload is not a heap object or reference array");
+            return;
+        case GC_TRACK_CAPACITY_OVERFLOW:
+            rt_trap("rt_gc: hash table capacity overflow");
+            return;
+        case GC_TRACK_OUT_OF_MEMORY:
+            rt_trap("rt_gc: failed to grow hash table (out of memory)");
+            return;
+    }
+}
+
+/// @brief Transactionally register a newly allocated reference-bearing array.
+/// @details This non-trapping heap/collector handshake uses the collector's
+///          generic pointer-slot traversal for `RT_ELEM_OBJ` and `RT_ELEM_BOX`
+///          arrays. It is called before the new payload escapes to user code, so
+///          a zero result allows the heap to roll back allocation completely.
+/// @param array Exact live array payload with a supported reference element kind.
+/// @return 1 when tracked, otherwise 0.
+int8_t rt_gc_track_reference_array(void *array) {
+    return gc_track_impl(array, gc_reference_array_traverse) == GC_TRACK_OK ? 1 : 0;
 }
 
 /// @brief Remove an object from cycle tracking.
@@ -340,6 +674,7 @@ void rt_gc_untrack(void *obj) {
     if (!obj)
         return;
 
+    rt_gc_mutator_enter();
     gc_lock();
 
     int64_t idx = find_entry(obj);
@@ -351,6 +686,58 @@ void rt_gc_untrack(void *obj) {
     }
 
     gc_unlock();
+    rt_gc_mutator_exit();
+}
+
+/// @brief Move GC and weak-reference bookkeeping after a managed payload changes address.
+/// @details Heap resize allocates a replacement block and retires the old address. While the
+///          caller holds a mutator scope, this helper rehashes any tracked-object entry and
+///          moves the old target's weak-reference chain to the new bucket. Weak handles are
+///          rewritten to the replacement address before mutators can observe the resize.
+/// @param old_payload Previous payload address, which may already be absent from the heap registry.
+/// @param new_payload Replacement live payload address.
+void rt_gc_relocate_payload(void *old_payload, void *new_payload) {
+    if (!old_payload || !new_payload || old_payload == new_payload)
+        return;
+
+    rt_gc_mutator_enter();
+    gc_lock();
+
+    int64_t tracked_idx = find_entry(old_payload);
+    if (tracked_idx >= 0) {
+        gc_entry moved = g_gc.entries[tracked_idx];
+        g_gc.entries[tracked_idx].obj = GC_TOMBSTONE;
+        g_gc.entries[tracked_idx].traverse = NULL;
+        moved.obj = new_payload;
+
+        uint64_t mask = (uint64_t)(g_gc.capacity - 1);
+        uint64_t slot = ptr_hash(new_payload) & mask;
+        while (gc_slot_is_live(&g_gc.entries[slot]))
+            slot = (slot + 1) & mask;
+        g_gc.entries[slot] = moved;
+    }
+
+    if (g_gc.weak_buckets && g_gc.weak_bucket_count > 0) {
+        uint64_t old_bucket = ptr_hash(old_payload) % (uint64_t)g_gc.weak_bucket_count;
+        weak_chain **link = &g_gc.weak_buckets[old_bucket].next;
+        while (*link) {
+            weak_chain *chain = *link;
+            if (chain->target == old_payload) {
+                *link = chain->next;
+                chain->target = new_payload;
+                for (rt_weakref *ref = chain->head; ref; ref = ref->next_for_target)
+                    ref->target = new_payload;
+                uint64_t new_bucket = ptr_hash(new_payload) % (uint64_t)g_gc.weak_bucket_count;
+                chain->next = g_gc.weak_buckets[new_bucket].next;
+                g_gc.weak_buckets[new_bucket].next = chain;
+                break;
+            }
+            link = &chain->next;
+        }
+    }
+
+    gc_unlock();
+    rt_gc_mutator_exit();
 }
 
 /// @brief Check if an object is in the tracking table.
@@ -495,13 +882,16 @@ static void weakref_finalizer(void *obj) {
 /// @brief Create a zeroing weak reference. The target's refcount is NOT bumped.
 /// @details When the target is freed, the reference automatically becomes NULL.
 rt_weakref *rt_weakref_new(void *target) {
+    rt_gc_mutator_enter();
     if (!gc_weak_target_is_valid(target)) {
+        rt_gc_mutator_exit();
         rt_trap("gc: weak reference target is not a live runtime handle");
         return NULL;
     }
     rt_weakref *ref =
         (rt_weakref *)rt_obj_new_i64(RT_WEAKREF_CLASS_ID, (int64_t)sizeof(rt_weakref));
     if (!ref) {
+        rt_gc_mutator_exit();
         rt_trap("gc: weak reference allocation failed");
         return NULL;
     }
@@ -516,11 +906,13 @@ rt_weakref *rt_weakref_new(void *target) {
         gc_unlock();
         if (rt_obj_release_check0(ref))
             rt_obj_free(ref);
+        rt_gc_mutator_exit();
         rt_trap("gc: weak reference allocation failed");
         return NULL;
     }
     gc_unlock();
 
+    rt_gc_mutator_exit();
     return ref;
 }
 
@@ -529,9 +921,11 @@ void *rt_weakref_get(rt_weakref *ref) {
     if (!ref)
         return NULL;
 
+    rt_gc_mutator_enter();
     gc_lock();
     if (!gc_is_weakref_handle_unlocked(ref)) {
         gc_unlock();
+        rt_gc_mutator_exit();
         rt_trap("gc: invalid or freed weak reference");
         return NULL;
     }
@@ -551,6 +945,7 @@ void *rt_weakref_get(rt_weakref *ref) {
                     break;
                 if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
                     gc_unlock();
+                    rt_gc_mutator_exit();
                     rt_trap("gc: weak reference promotion refcount overflow");
                     return NULL;
                 }
@@ -579,6 +974,7 @@ void *rt_weakref_get(rt_weakref *ref) {
                         break;
                     if (old >= RT_HEAP_MAX_MORTAL_REFCNT) {
                         gc_unlock();
+                        rt_gc_mutator_exit();
                         rt_trap("gc: weak reference promotion refcount overflow");
                         return NULL;
                     }
@@ -596,6 +992,7 @@ void *rt_weakref_get(rt_weakref *ref) {
         }
     }
     gc_unlock();
+    rt_gc_mutator_exit();
     return t;
 }
 
@@ -604,9 +1001,11 @@ int8_t rt_weakref_alive(rt_weakref *ref) {
     if (!ref)
         return 0;
 
+    rt_gc_mutator_enter();
     gc_lock();
     if (!gc_is_weakref_handle_unlocked(ref)) {
         gc_unlock();
+        rt_gc_mutator_exit();
         rt_trap("gc: invalid or freed weak reference");
         return 0;
     }
@@ -627,6 +1026,7 @@ int8_t rt_weakref_alive(rt_weakref *ref) {
         }
     }
     gc_unlock();
+    rt_gc_mutator_exit();
     return alive;
 }
 
@@ -635,9 +1035,11 @@ void rt_weakref_free(rt_weakref *ref) {
     if (!ref)
         return;
 
+    rt_gc_mutator_enter();
     gc_lock();
     if (!gc_is_weakref_handle_unlocked(ref)) {
         gc_unlock();
+        rt_gc_mutator_exit();
         rt_trap("gc: invalid or freed weak reference");
         return;
     }
@@ -649,6 +1051,7 @@ void rt_weakref_free(rt_weakref *ref) {
 
     if (rt_obj_release_check0(ref))
         rt_obj_free(ref);
+    rt_gc_mutator_exit();
 }
 
 /// @brief Returns 1 if `candidate` is a registered weak-reference handle. Used by polymorphic
@@ -666,7 +1069,9 @@ int8_t rt_weakref_is_handle(void *candidate) {
 void rt_weakref_reset(rt_weakref *ref, void *target) {
     if (!ref)
         return;
+    rt_gc_mutator_enter();
     if (!gc_weak_target_is_valid(target)) {
+        rt_gc_mutator_exit();
         rt_trap("gc: weak reference target is not a live runtime handle");
         return;
     }
@@ -674,11 +1079,13 @@ void rt_weakref_reset(rt_weakref *ref, void *target) {
     gc_lock();
     if (!gc_is_weakref_handle_unlocked(ref)) {
         gc_unlock();
+        rt_gc_mutator_exit();
         rt_trap("gc: invalid or freed weak reference");
         return;
     }
     if (ref->target == target) {
         gc_unlock();
+        rt_gc_mutator_exit();
         return;
     }
     weak_chain *new_chain = NULL;
@@ -686,6 +1093,7 @@ void rt_weakref_reset(rt_weakref *ref, void *target) {
         new_chain = ensure_weak_chain(target);
         if (!new_chain) {
             gc_unlock();
+            rt_gc_mutator_exit();
             rt_trap("gc: weak reference allocation failed");
             return;
         }
@@ -699,6 +1107,7 @@ void rt_weakref_reset(rt_weakref *ref, void *target) {
         new_chain->head = ref;
     }
     gc_unlock();
+    rt_gc_mutator_exit();
 }
 
 /// @brief Zero all weak references pointing to a target being freed.
@@ -708,9 +1117,11 @@ void rt_gc_clear_weak_refs(void *target) {
     if (!target)
         return;
 
+    rt_gc_mutator_enter();
     gc_lock();
     if (!g_gc.weak_buckets || g_gc.weak_bucket_count <= 0) {
         gc_unlock();
+        rt_gc_mutator_exit();
         return;
     }
     uint64_t bucket = ptr_hash(target) % (uint64_t)g_gc.weak_bucket_count;
@@ -732,12 +1143,14 @@ void rt_gc_clear_weak_refs(void *target) {
             *wc_pp = wc->next;
             free(wc);
             gc_unlock();
+            rt_gc_mutator_exit();
             return;
         }
         wc_pp = &(*wc_pp)->next;
     }
 
     gc_unlock();
+    rt_gc_mutator_exit();
 }
 
 //=============================================================================
@@ -764,6 +1177,7 @@ typedef struct {
 
 typedef struct {
     gc_snap_entry entry;
+    gc_snap_entry *snapshot_entry;
     size_t saved_refs;
     rt_heap_finalizer_t saved_finalizer;
     int snapshot_released;
@@ -859,23 +1273,6 @@ static int gc_worklist_push(gc_worklist *work, void *obj, rt_gc_traverse_fn trav
     return 1;
 }
 
-/// @brief Linear search for @p obj in a garbage-state array.
-/// @details Used by the reclaim phase to test whether an outgoing edge points
-///          to another object that's also in the garbage set — those edges are
-///          skipped during ref-release because both endpoints are about to be
-///          freed together.
-/// @param items Garbage-state array (snapshot of objects being reclaimed).
-/// @param count Number of entries in @p items.
-/// @param obj   Object pointer to search for.
-/// @return 1 if @p obj appears in @p items, 0 otherwise.
-static int gc_garbage_contains(const gc_garbage_state *items, int64_t count, void *obj) {
-    for (int64_t i = 0; i < count; ++i) {
-        if (items[i].entry.obj == obj)
-            return 1;
-    }
-    return 0;
-}
-
 /// @brief Release one snapshot entry's retained reference, if any.
 /// @details Called from both the success and trap-recovery paths to unwind a
 ///          retain acquired by the snapshot construction step. Skips entries
@@ -893,8 +1290,7 @@ static void gc_release_snapshot_entry(gc_snap_entry *entry) {
 }
 
 typedef struct {
-    const gc_garbage_state *garbage;
-    int64_t garbage_count;
+    const gc_pointer_set *garbage_members;
 } gc_release_edges_ctx;
 
 /// @brief Reclaim-phase visitor: drop one outgoing reference from a garbage object.
@@ -906,7 +1302,7 @@ static void gc_release_outgoing_ref(void *child, void *ctx) {
     if (!child)
         return;
     gc_release_edges_ctx *release_ctx = (gc_release_edges_ctx *)ctx;
-    if (release_ctx && gc_garbage_contains(release_ctx->garbage, release_ctx->garbage_count, child))
+    if (release_ctx && gc_pointer_set_contains(release_ctx->garbage_members, child))
         return;
     if (rt_obj_release_check0(child))
         rt_obj_free(child);
@@ -927,6 +1323,8 @@ static void gc_finalize_unreachable(gc_garbage_state *state) {
 
     size_t current_refs = rt_heap_release_deferred(obj);
     state->snapshot_released = 1;
+    if (state->snapshot_entry)
+        state->snapshot_entry->retained = 0;
     state->saved_refs = current_refs;
     if (current_refs >= RT_HEAP_IMMORTAL_REFCNT) {
         rt_trap("gc: cannot collect immortal heap object");
@@ -942,7 +1340,11 @@ static void gc_finalize_unreachable(gc_garbage_state *state) {
             state->saved_finalizer = fin;
             state->finalizer_cleared = 1;
             hdr->finalizer = NULL;
+            if (g_gc_suppress_member_release_depth == UINT32_MAX)
+                rt_abort("gc: finalizer release suppression overflow");
+            g_gc_suppress_member_release_depth++;
             fin(obj);
+            g_gc_suppress_member_release_depth--;
         }
         if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0) {
             state->resurrected = 1;
@@ -993,12 +1395,11 @@ static int gc_free_finalized_unreachable(gc_garbage_state *state, void *release_
     if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
         return 0;
 
-    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT) {
-        if (state->entry.traverse)
-            state->entry.traverse(obj, gc_release_outgoing_ref, release_ctx);
-        rt_gc_clear_weak_refs(obj);
+    if (state->entry.traverse)
+        state->entry.traverse(obj, gc_release_outgoing_ref, release_ctx);
+    rt_gc_clear_weak_refs(obj);
+    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT)
         rt_monitor_forget(obj);
-    }
 
     rt_heap_free_zero_ref(obj);
     state->reclaimed = 1;
@@ -1014,6 +1415,8 @@ static int gc_free_finalized_unreachable(gc_garbage_state *state, void *release_
 ///            recursively marking all their children.
 ///   Phase 4: Collect white objects (unreachable cycle members). Invoke finalizers
 ///            outside the lock and clear weak refs only for objects not resurrected.
+/// The exclusive managed-graph barrier spans all four phases, making traversal
+/// observe a stable set of strong edges and matching reference counts.
 /// @return Number of objects freed.
 int64_t rt_gc_collect(void) {
     int64_t freed = 0;
@@ -1023,18 +1426,28 @@ int64_t rt_gc_collect(void) {
     gc_worklist work = {0};
     int64_t garbage_count = 0;
     gc_garbage_state *garbage = NULL;
+    gc_pointer_set garbage_members = {0};
     jmp_buf collection_recovery;
+
+    if (!gc_world_begin_collection())
+        return 0;
+
+    /* Consume debt that existed before this pass. Allocations occurring after
+       this exchange publish a fresh request for the next safe boundary. */
+    __atomic_store_n(&g_gc_collection_requested, 0, __ATOMIC_RELEASE);
 
     gc_lock();
 
     if (g_gc.collecting) {
         gc_unlock();
+        gc_world_end_collection();
         return 0;
     }
 
     if (g_gc.count == 0) {
         g_gc.pass_count++;
         gc_unlock();
+        gc_world_end_collection();
         return 0;
     }
 
@@ -1052,6 +1465,7 @@ int64_t rt_gc_collect(void) {
     if (g_gc.count < 0 || (uint64_t)g_gc.count > (uint64_t)SIZE_MAX / sizeof(gc_snap_entry)) {
         g_gc.collecting = 0;
         gc_unlock();
+        gc_world_end_collection();
         rt_trap("gc: snapshot size overflow");
         return 0;
     }
@@ -1060,6 +1474,7 @@ int64_t rt_gc_collect(void) {
     if (!snapshot) {
         g_gc.collecting = 0;
         gc_unlock();
+        gc_world_end_collection();
         rt_trap("gc: memory allocation failed");
         return 0;
     }
@@ -1075,11 +1490,21 @@ int64_t rt_gc_collect(void) {
             for (int64_t j = 0; j < snap_count; j++)
                 gc_release_snapshot_entry(&snapshot[j]);
             free(snapshot);
+            gc_world_end_collection();
             rt_trap("gc: tracked object is not a live heap payload");
             return 0;
         }
         size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
         g_gc.entries[i].trial_rc = refcnt > (size_t)INT64_MAX ? INT64_MAX : (int64_t)refcnt;
+
+        // A normal release may have reached zero immediately before its
+        // destructor enters the mutator barrier. The payload is stable while
+        // this exclusive pass runs, but it is already owned by that pending
+        // destruction path and must not be retained or cycle-collected here.
+        if (refcnt == 0) {
+            g_gc.entries[i].color = 2;
+            continue;
+        }
 
         /* Skip promoted objects in non-full-scan passes: mark them black
            so they are treated as reachable without trial-deletion. */
@@ -1098,6 +1523,7 @@ int64_t rt_gc_collect(void) {
             for (int64_t j = 0; j < snap_count; j++)
                 gc_release_snapshot_entry(&snapshot[j]);
             free(snapshot);
+            gc_world_end_collection();
             rt_trap(retained < 0 ? "gc: snapshot retain refcount overflow"
                                  : "gc: tracked object is not live");
             return 0;
@@ -1120,31 +1546,18 @@ int64_t rt_gc_collect(void) {
                  "%s",
                  err && err[0] ? err : "gc: trap during collection");
         rt_trap_clear_recovery();
+        g_gc_active_reclaim_set = NULL;
+        g_gc_suppress_member_release_depth = 0;
         free(trial_edges.items);
         free(work.items);
         gc_restore_garbage_state(garbage, garbage_count, 1);
-        for (int64_t i = 0; i < snap_count; i++) {
-            if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj)) {
-                int snapshot_released = 0;
-                for (int64_t gi = 0; gi < garbage_count; ++gi) {
-                    if (garbage[gi].entry.obj == snapshot[i].obj) {
-                        snapshot_released = garbage[gi].snapshot_released;
-                        break;
-                    }
-                }
-                if (snapshot_released)
-                    continue;
-            }
-            if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj) &&
-                rt_heap_is_payload(snapshot[i].obj)) {
-                gc_release_snapshot_entry(&snapshot[i]);
-                continue;
-            }
+        for (int64_t i = 0; i < snap_count; i++)
             gc_release_snapshot_entry(&snapshot[i]);
-        }
+        gc_pointer_set_destroy(&garbage_members);
         free(garbage);
         free(snapshot);
         gc_clear_collecting_flag();
+        gc_world_end_collection();
         rt_trap(saved_error);
         return 0;
     }
@@ -1234,8 +1647,9 @@ int64_t rt_gc_collect(void) {
 
     /* Phase 4: Collect — white objects are unreachable cycle members.
        Gather them, remove from the hash table, then finalize and free. */
-    for (int64_t i = 0; i < g_gc.capacity; i++) {
-        if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 0)
+    for (int64_t i = 0; i < snap_count; i++) {
+        int64_t idx = find_entry(snapshot[i].obj);
+        if (idx >= 0 && g_gc.entries[idx].color == 0)
             garbage_count++;
     }
 
@@ -1247,11 +1661,11 @@ int64_t rt_gc_collect(void) {
             return 0;
         }
         int64_t gi = 0;
-
-        for (int64_t i = 0; i < g_gc.capacity && gi < garbage_count; i++) {
-            if (gc_slot_is_live(&g_gc.entries[i]) && g_gc.entries[i].color == 0) {
-                garbage[gi].entry.obj = g_gc.entries[i].obj;
-                garbage[gi].entry.traverse = g_gc.entries[i].traverse;
+        for (int64_t i = 0; i < snap_count && gi < garbage_count; i++) {
+            int64_t idx = find_entry(snapshot[i].obj);
+            if (idx >= 0 && g_gc.entries[idx].color == 0) {
+                garbage[gi].entry = snapshot[i];
+                garbage[gi].snapshot_entry = &snapshot[i];
                 gi++;
             }
         }
@@ -1263,7 +1677,15 @@ int64_t rt_gc_collect(void) {
 
     /* Free garbage objects (outside the lock). */
     if (garbage) {
-        gc_release_edges_ctx release_ctx = {garbage, garbage_count};
+        if (!gc_pointer_set_init(&garbage_members, garbage_count)) {
+            rt_trap("gc: memory allocation failed");
+            return 0;
+        }
+        for (int64_t i = 0; i < garbage_count; ++i)
+            gc_pointer_set_insert(&garbage_members, garbage[i].entry.obj);
+        g_gc_active_reclaim_set = &garbage_members;
+
+        gc_release_edges_ctx release_ctx = {&garbage_members};
         int resurrected = 0;
         for (int64_t i = 0; i < garbage_count; i++) {
             rt_gc_untrack(garbage[i].entry.obj);
@@ -1280,14 +1702,17 @@ int64_t rt_gc_collect(void) {
                     freed++;
             }
         }
+        g_gc_active_reclaim_set = NULL;
+        g_gc_suppress_member_release_depth = 0;
     }
 
     for (int64_t i = 0; i < snap_count; i++) {
-        if (garbage && gc_garbage_contains(garbage, garbage_count, snapshot[i].obj))
+        if (gc_pointer_set_contains(&garbage_members, snapshot[i].obj))
             continue;
         gc_release_snapshot_entry(&snapshot[i]);
     }
 
+    gc_pointer_set_destroy(&garbage_members);
     free(garbage);
     free(snapshot);
 
@@ -1303,6 +1728,7 @@ int64_t rt_gc_collect(void) {
     g_gc.collecting = 0;
     gc_unlock();
 
+    gc_world_end_collection();
     return freed;
 }
 
@@ -1310,12 +1736,15 @@ int64_t rt_gc_collect(void) {
 // Auto-Trigger
 //=============================================================================
 
-/// @brief Configure the auto-collection allocation threshold.
-/// @details When n > 0, every n-th heap allocation triggers rt_gc_collect().
+/// @brief Configure the automatic-collection allocation-debt threshold.
+/// @details When n > 0, every n-th heap allocation publishes a collection
+///          request. The request is serviced at a mutator boundary or explicit
+///          @ref rt_gc_safepoint, never recursively inside the allocator.
 ///          Set to 0 (default) to disable automatic collection.
 void rt_gc_set_threshold(int64_t n) {
     __atomic_store_n(&g_gc_threshold, n > 0 ? n : 0, __ATOMIC_RELAXED);
     __atomic_store_n(&g_gc_alloc_counter, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_gc_collection_requested, 0, __ATOMIC_RELEASE);
 }
 
 /// @brief Read the current auto-collection threshold (0 = disabled).
@@ -1323,27 +1752,50 @@ int64_t rt_gc_get_threshold(void) {
     return __atomic_load_n(&g_gc_threshold, __ATOMIC_RELAXED);
 }
 
-/// @brief Called by rt_heap_alloc on every allocation.
-/// @details Increments an internal counter and triggers collection when the
-///          counter reaches the configured threshold. Uses CAS to ensure exactly
-///          one thread claims the reset (CONC-003 fix — prevents double-collect).
+/// @brief Record one heap allocation as automatic-collection debt.
+/// @details Advances a saturating CAS-managed counter. The thread that crosses
+///          the configured threshold resets the counter and publishes one
+///          coalescing collection request. This routine performs no collection,
+///          finalization, or user callback and is therefore safe in a partially
+///          initialized allocator call stack.
 void rt_gc_notify_alloc(void) {
     int64_t threshold = __atomic_load_n(&g_gc_threshold, __ATOMIC_RELAXED);
     if (threshold <= 0)
         return;
-    int64_t count = __atomic_fetch_add(&g_gc_alloc_counter, 1, __ATOMIC_RELAXED) + 1;
-    if (count >= threshold) {
-        int64_t observed = count;
-        while (observed >= threshold) {
-            if (gc_atomic_cas_i64(&g_gc_alloc_counter, &observed, 0)) {
-                rt_gc_collect();
-                return;
-            }
-        }
-        if (observed < 0 && gc_atomic_cas_i64(&g_gc_alloc_counter, &observed, 0)) {
-            rt_gc_collect();
+
+    int64_t observed = __atomic_load_n(&g_gc_alloc_counter, __ATOMIC_RELAXED);
+    for (;;) {
+        int threshold_crossed = observed >= threshold - 1 || observed < 0;
+        int64_t desired = threshold_crossed ? 0 : observed + 1;
+        if (gc_atomic_cas_i64(&g_gc_alloc_counter, &observed, desired)) {
+            if (threshold_crossed)
+                __atomic_store_n(&g_gc_collection_requested, 1, __ATOMIC_RELEASE);
+            return;
         }
     }
+}
+
+/// @brief Service coalesced automatic-collection debt at a safe boundary.
+/// @details A thread outside a managed-graph mutator or collector scope claims
+///          the global request with an atomic exchange and runs one synchronous
+///          pass. Calls made inside a mutator defer the request to the outermost
+///          exit. Calls from collector callbacks leave the request pending for a
+///          later ordinary thread. Multiple threshold crossings before a safe
+///          boundary intentionally coalesce into one pass.
+void rt_gc_safepoint(void) {
+    if (!__atomic_load_n(&g_gc_collection_requested, __ATOMIC_ACQUIRE))
+        return;
+    if (g_gc_world_exclusive)
+        return;
+    if (g_gc_mutator_depth != 0) {
+        g_gc_collection_pending = 1;
+        return;
+    }
+
+    int64_t expected = 1;
+    if (!gc_atomic_cas_i64(&g_gc_collection_requested, &expected, 0))
+        return;
+    (void)rt_gc_collect();
 }
 
 //=============================================================================
@@ -1370,60 +1822,18 @@ int64_t rt_gc_pass_count(void) {
 // Shutdown
 //=============================================================================
 
-/// @brief Iterate every tracked object, invoking its finalizer (if any) and freeing it.
-/// Called at process shutdown to clean up resources that depend on side-effects (file handles,
-/// network sockets) before the heap arena is released.
-void rt_gc_run_all_finalizers(void) {
-    typedef struct gc_shutdown_snapshot_entry {
-        void *obj;
-        int8_t retained;
-    } gc_shutdown_snapshot_entry;
-
-    gc_lock();
-
-    if (g_gc.count == 0) {
-        gc_unlock();
-        return;
-    }
-
-    /* Snapshot all live entries so we can release the lock before running
-       finalizers (same pattern as rt_gc_collect phase 4). */
-    int64_t snap_count = 0;
-    gc_shutdown_snapshot_entry *snapshot =
-        (gc_shutdown_snapshot_entry *)malloc((size_t)g_gc.count * sizeof(*snapshot));
-    if (!snapshot) {
-        /* Best-effort: if malloc fails during shutdown, skip finalizer sweep.
-           The OS will reclaim file descriptors and sockets on process exit. */
-        gc_unlock();
-        return;
-    }
-
-    for (int64_t i = 0; i < g_gc.capacity; i++) {
-        if (gc_slot_is_live(&g_gc.entries[i])) {
-            void *obj = g_gc.entries[i].obj;
-            rt_heap_hdr_t *hdr = NULL;
-            if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
-                continue;
-
-            snapshot[snap_count].obj = obj;
-            snapshot[snap_count].retained = 0;
-
-            size_t refcnt = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
-            if (refcnt > 0 && refcnt < RT_HEAP_IMMORTAL_REFCNT) {
-                int retained = rt_heap_try_retain_live(obj);
-                snapshot[snap_count].retained = retained == 1 ? 1 : 0;
-            }
-            snap_count++;
-        }
-    }
-
-    gc_unlock();
-
-    /* Run finalizers outside the lock.  We skip the refcount check that
-       rt_obj_free performs because at shutdown ALL tracked objects must
-       release external resources regardless of outstanding references
-       (cycle members typically have refcnt > 0). */
-    volatile int64_t cleanup_from = 0;
+/// @brief Run one detached shutdown finalizer and release its temporary pin.
+/// @details Installs a local recovery point because finalizers and the last
+///          release of their temporary retain may trap. Recovery releases the
+///          pin when it is still owned, clears the process-wide collection
+///          sentinel, and rethrows the original diagnostic. The finalizer has
+///          already been removed from its heap header, matching normal
+///          at-most-once finalization semantics even when it traps.
+/// @param obj Live tracked object selected under the exclusive graph barrier.
+/// @param finalizer Detached non-null finalizer callback.
+/// @param retained Non-zero when the sweep owns one temporary mortal reference.
+static void gc_run_shutdown_finalizer(void *obj, rt_heap_finalizer_t finalizer, int retained) {
+    volatile int owns_retain = retained ? 1 : 0;
     jmp_buf finalizer_recovery;
     rt_trap_set_recovery(&finalizer_recovery);
     if (setjmp(finalizer_recovery) != 0) {
@@ -1434,51 +1844,154 @@ void rt_gc_run_all_finalizers(void) {
                  "%s",
                  err && err[0] ? err : "gc: trap during finalizer sweep");
         rt_trap_clear_recovery();
-        for (int64_t i = (int64_t)cleanup_from; i < snap_count; ++i) {
-            void *obj = snapshot[i].obj;
-            if (snapshot[i].retained && obj && rt_heap_is_payload(obj)) {
-                if (rt_obj_release_check0(obj))
-                    rt_obj_free(obj);
-            }
+        gc_clear_collecting_flag();
+        if (owns_retain && obj && rt_heap_is_payload(obj)) {
+            owns_retain = 0;
+            if (rt_obj_release_check0(obj))
+                rt_obj_free(obj);
         }
-        free(snapshot);
         rt_trap(saved_error);
         return;
     }
 
-    for (int64_t i = 0; i < snap_count; i++) {
-        cleanup_from = i;
-        void *obj = snapshot[i].obj;
-        rt_heap_hdr_t *hdr = NULL;
-        if (!rt_heap_try_get_header(obj, &hdr) || !hdr) {
-            cleanup_from = i + 1;
-            continue;
-        }
-
-        if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) == 0) {
+    finalizer(obj);
+    if (owns_retain && obj && rt_heap_is_payload(obj)) {
+        owns_retain = 0;
+        if (rt_obj_release_check0(obj))
             rt_obj_free(obj);
-            cleanup_from = i + 1;
-            continue;
-        }
-
-        if ((rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT && hdr->finalizer) {
-            rt_heap_finalizer_t fin = hdr->finalizer;
-            hdr->finalizer = NULL; /* prevent double-finalization */
-            fin(obj);
-        }
-        if (snapshot[i].retained && obj && rt_heap_is_payload(obj)) {
-            if (rt_obj_release_check0(obj))
-                rt_obj_free(obj);
-            snapshot[i].retained = 0;
-        }
-        cleanup_from = i + 1;
     }
-
     rt_trap_clear_recovery();
-    free(snapshot);
 }
 
-/// @brief Free all weak_chain nodes in the bucket array and the array itself.
+/// @brief Run every currently tracked object finalizer without snapshot allocation.
+/// @details Uses a monotonically increasing epoch stored in each tracking-table
+///          entry. Entries are marked while both the GC lock and exclusive graph
+///          barrier are held; each selected mortal object is temporarily retained
+///          and its finalizer is detached before both locks are released. The
+///          callback then runs without runtime-global locks, after which the sweep
+///          reacquires them and resumes. If a callback causes table rehashing the
+///          cursor restarts, while epoch marks prevent duplicate work.
+///
+///          The walk allocates no snapshot or worklist, so allocator exhaustion
+///          cannot skip cleanup of files, sockets, or other native resources.
+///          Zero-ref payloads remain owned by their ordinary deferred-destruction
+///          path and are deliberately skipped to prevent double finalization.
+void rt_gc_run_all_finalizers(void) {
+    if (!gc_world_begin_exclusive(0))
+        return;
+
+    gc_lock();
+    if (g_gc.collecting) {
+        gc_unlock();
+        gc_world_end_collection();
+        return;
+    }
+    if (g_gc.count == 0) {
+        gc_unlock();
+        gc_world_end_collection();
+        return;
+    }
+
+    g_gc.collecting = 1;
+    uint64_t sweep_epoch = g_gc.finalizer_epoch + 1;
+    if (sweep_epoch == 0) {
+        for (int64_t i = 0; i < g_gc.capacity; ++i)
+            g_gc.entries[i].finalizer_epoch = 0;
+        sweep_epoch = 1;
+    }
+    g_gc.finalizer_epoch = sweep_epoch;
+
+    int64_t cursor = 0;
+    gc_entry *observed_entries = g_gc.entries;
+    int64_t observed_capacity = g_gc.capacity;
+    for (;;) {
+        void *obj = NULL;
+        rt_heap_finalizer_t finalizer = NULL;
+        int retained = 0;
+        int retain_overflow = 0;
+
+        while (cursor < g_gc.capacity) {
+            gc_entry *entry = &g_gc.entries[cursor++];
+            if (!gc_slot_is_live(entry) || entry->finalizer_epoch == sweep_epoch)
+                continue;
+            entry->finalizer_epoch = sweep_epoch;
+
+            rt_heap_hdr_t *hdr = NULL;
+            if (!rt_heap_try_get_header(entry->obj, &hdr) || !hdr)
+                continue;
+            size_t refs = __atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE);
+            if (refs == 0 || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT || !hdr->finalizer)
+                continue;
+
+            int pin_result = rt_heap_try_retain_live(entry->obj);
+            if (pin_result < 0) {
+                retain_overflow = 1;
+                break;
+            }
+            if (pin_result == 0)
+                continue;
+
+            obj = entry->obj;
+            retained = pin_result == 1;
+            finalizer = hdr->finalizer;
+            hdr->finalizer = NULL;
+            break;
+        }
+
+        if (retain_overflow) {
+            g_gc.collecting = 0;
+            gc_unlock();
+            gc_world_end_collection();
+            rt_trap("gc: shutdown finalizer retain refcount overflow");
+            return;
+        }
+
+        if (!finalizer) {
+            int has_unvisited = 0;
+            for (int64_t i = 0; i < g_gc.capacity; ++i) {
+                if (gc_slot_is_live(&g_gc.entries[i]) &&
+                    g_gc.entries[i].finalizer_epoch != sweep_epoch) {
+                    has_unvisited = 1;
+                    break;
+                }
+            }
+            if (has_unvisited) {
+                cursor = 0;
+                observed_entries = g_gc.entries;
+                observed_capacity = g_gc.capacity;
+                continue;
+            }
+
+            g_gc.collecting = 0;
+            gc_unlock();
+            gc_world_end_collection();
+            return;
+        }
+
+        gc_unlock();
+        gc_world_end_collection();
+        gc_run_shutdown_finalizer(obj, finalizer, retained);
+
+        if (!gc_world_begin_exclusive(0)) {
+            gc_clear_collecting_flag();
+            return;
+        }
+        gc_lock();
+        if (g_gc.entries != observed_entries || g_gc.capacity != observed_capacity) {
+            cursor = 0;
+            observed_entries = g_gc.entries;
+            observed_capacity = g_gc.capacity;
+        }
+    }
+}
+
+/// @brief Zero registered weak handles, then free every detached weak-chain node and bucket.
+/// @details Shutdown detaches the registry while targets and weak handles may
+///          still be alive in an embedder. Clearing each handle prevents a
+///          later target free from leaving an unregistered dangling weak
+///          pointer after the bucket table itself has gone away.
+/// @param weak_buckets Detached bucket array, or NULL.
+/// @param weak_bucket_count Number of initialized buckets in @p weak_buckets.
 static void free_weak_buckets(weak_chain *weak_buckets, int64_t weak_bucket_count) {
     if (!weak_buckets)
         return;
@@ -1486,6 +1999,13 @@ static void free_weak_buckets(weak_chain *weak_buckets, int64_t weak_bucket_coun
         weak_chain *wc = weak_buckets[i].next;
         while (wc) {
             weak_chain *next = wc->next;
+            rt_weakref *ref = wc->head;
+            while (ref) {
+                rt_weakref *next_ref = ref->next_for_target;
+                ref->target = NULL;
+                ref->next_for_target = NULL;
+                ref = next_ref;
+            }
             free(wc);
             wc = next;
         }
@@ -1499,7 +2019,16 @@ static void free_weak_buckets(weak_chain *weak_buckets, int64_t weak_bucket_coun
 /// idempotent and allows a later allocation/GC pass to lazily recreate the
 /// tables without touching a destroyed mutex.
 void rt_gc_shutdown(void) {
+    if (!gc_world_begin_exclusive(0))
+        return;
+
     gc_lock();
+
+    if (g_gc.collecting) {
+        gc_unlock();
+        gc_world_end_collection();
+        return;
+    }
 
     gc_entry *entries = g_gc.entries;
     weak_chain *weak_buckets = g_gc.weak_buckets;
@@ -1513,13 +2042,16 @@ void rt_gc_shutdown(void) {
     g_gc.total_collected = 0;
     g_gc.pass_count = 0;
     g_gc.collecting = 0;
+    g_gc.finalizer_epoch = 0;
 
     /* Reset auto-trigger state. */
     __atomic_store_n(&g_gc_threshold, 0, __ATOMIC_RELAXED);
     __atomic_store_n(&g_gc_alloc_counter, 0, __ATOMIC_RELAXED);
+    __atomic_store_n(&g_gc_collection_requested, 0, __ATOMIC_RELEASE);
 
     gc_unlock();
 
     free(entries);
     free_weak_buckets(weak_buckets, weak_bucket_count);
+    gc_world_end_collection();
 }

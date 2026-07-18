@@ -271,10 +271,10 @@ metric_value() {
             rg_count '^[^#[:space:]]' scripts/platform_policy_allowlist.txt
             ;;
         raw_platform_macro_occurrences)
-            rg_count '(_WIN32|__APPLE__|__linux__)' src include zannaide tests
+            rg_count '(_WIN32|__APPLE__|__linux__)' src include zannastudio tests
             ;;
         mega_files_over_4000_lines)
-            file_line_count_over 4000 src include examples scripts cmake zannaide tests
+            file_line_count_over 4000 src include examples scripts cmake zannastudio tests
             ;;
         manual_alloc_hotspots_over_70)
             manual_alloc_hotspot_count 70
@@ -311,15 +311,15 @@ metric_value() {
             ;;
         ide_basic_capability_gates)
             rg_count 'basicService\.name|basic semantic commands disabled|format unsupported basic' \
-                src/zannaide/src
+                src/zannastudio/src
             ;;
         ide_scheduler_capability_jobs)
             rg_count 'JOB_(DIAGNOSTIC|COMPLETION|HOVER|SIGNATURE)' \
-                src/zannaide/src/editor
+                src/zannastudio/src/editor
             ;;
         debug_adapter_protocol_markers)
             rg_count '@@VDBG@@|setBreakpoints|callStack|locals|continue|stepOver' \
-                src/tools/zanna src/zannaide/src/build
+                src/tools/zanna src/zannastudio/src/build
             ;;
         packaging_verifier_entrypoints)
             rg_count 'verify.*Payload|verifyPEZipOverlayNestedPayload|PkgVerify' \
@@ -330,11 +330,11 @@ metric_value() {
                 src/tests/tools/PackageCliTests.cmake
             ;;
         todo_fixme_markers)
-            rg_count 'TODO|FIXME|HACK' src include zannaide tests examples scripts
+            rg_count 'TODO|FIXME|HACK' src include zannastudio tests examples scripts
             ;;
         raw_not_implemented_markers)
             rg_count 'not implemented|unimplemented|placeholder' \
-                src include zannaide tests examples
+                src include zannastudio tests examples
             ;;
         *)
             echo "error: unknown metric: $name" >&2
@@ -448,7 +448,7 @@ need_file src/codegen/x86_64/LowerILToMIR.hpp
 need_file src/tests/fuzz/CMakeLists.txt
 need_file src/tests/fuzz/corpus
 need_file src/tools/common/packaging/PkgVerify.cpp
-need_file src/zannaide/src/editor/language_service.zia
+need_file src/zannastudio/src/editor/language_service.zia
 
 if [[ "$MODE" == "self-test" ]]; then
     print_metrics >/dev/null

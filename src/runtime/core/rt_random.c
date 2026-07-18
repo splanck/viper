@@ -33,6 +33,7 @@
 
 #include "rt_random.h"
 #include "rt_context.h"
+#include "rt_context_internal.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include <assert.h>
@@ -50,17 +51,6 @@ typedef struct rt_random_impl {
 } rt_random_impl;
 
 static uint64_t rt_random_bounded_u64_from_state(uint64_t *state, uint64_t bound);
-
-/// @brief Resolve the runtime context whose RNG state we read/write.
-/// @details Prefers the per-thread `rt_get_current_context()` for proper isolation when
-///          multiple VMs are active; falls back to the legacy global context for native
-///          callers that haven't pushed a context yet.
-static RtContext *rt_random_context(void) {
-    RtContext *ctx = rt_get_current_context();
-    if (!ctx)
-        ctx = rt_legacy_context();
-    return ctx;
-}
 
 /// @brief Validate a `void *` handle as a `Random` instance.
 /// @details Checks the class ID and traps on mismatch so a wrong-type handle
@@ -97,7 +87,12 @@ static uint64_t rt_random_step_u64(uint64_t *state) {
 ///          RNG state, so independent contexts/threads see independent sequences.
 /// @return Raw 64-bit LCG output (no bound applied).
 static uint64_t rt_random_next_u64(void) {
-    return rt_random_step_u64(&rt_random_context()->rng_state);
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_RNG, NULL);
+    if (!ctx)
+        return 0;
+    uint64_t value = rt_random_step_u64(&ctx->rng_state);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_RNG);
+    return value;
 }
 
 /// @brief Sample a uniform random integer in `[0, bound)` with rejection sampling.
@@ -107,7 +102,12 @@ static uint64_t rt_random_next_u64(void) {
 ///          tiny for any realistic `bound`. A `bound` of 0 is treated as "no upper
 ///          bound" and returns the raw next-state.
 static uint64_t rt_random_bounded_u64(uint64_t bound) {
-    return rt_random_bounded_u64_from_state(&rt_random_context()->rng_state, bound);
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_RNG, NULL);
+    if (!ctx)
+        return 0;
+    uint64_t value = rt_random_bounded_u64_from_state(&ctx->rng_state, bound);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_RNG);
+    return value;
 }
 
 /// @brief Sample `[0, bound)` from an explicit RNG state with rejection sampling.
@@ -149,7 +149,11 @@ static double rt_random_unit_from_state(uint64_t *state) {
 ///          VM's context with the provided seed so that future calls to
 ///          @ref rt_rnd produce the same deterministic sequence.
 void rt_randomize_u64(uint64_t seed) {
-    rt_random_context()->rng_state = seed;
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_RNG, NULL);
+    if (!ctx)
+        return;
+    ctx->rng_state = seed;
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_RNG);
 }
 
 /// @brief Seed the random generator with a signed 64-bit value.
@@ -157,7 +161,7 @@ void rt_randomize_u64(uint64_t seed) {
 ///          the current VM's RNG state so that negative seeds map to the
 ///          expected bit patterns produced by the BASIC runtime.
 void rt_randomize_i64(long long seed) {
-    rt_random_context()->rng_state = (uint64_t)seed;
+    rt_randomize_u64((uint64_t)seed);
 }
 
 /// @brief Produce a pseudo-random double in the half-open interval [0, 1).
@@ -167,7 +171,12 @@ void rt_randomize_i64(long long seed) {
 ///          range.  The algorithm mirrors the VM implementation so identical
 ///          seeds yield identical sequences across VM instances.
 double rt_rnd(void) {
-    return rt_random_unit_from_state(&rt_random_context()->rng_state);
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_RNG, NULL);
+    if (!ctx)
+        return 0.0;
+    double value = rt_random_unit_from_state(&ctx->rng_state);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_RNG);
+    return value;
 }
 
 /// @brief Generate a random integer in the half-open interval [0, max).

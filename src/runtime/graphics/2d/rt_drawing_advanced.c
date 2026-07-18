@@ -10,6 +10,15 @@
 //   ellipses, arcs, beziers, polylines/polygons (incl. Path2D), and linear
 //   gradients. Color math lives in rt_color.c.
 //
+// Key invariants:
+//   - Every raster operation validates its canvas and computes bounded pixel
+//     coordinates before accessing the backing buffer.
+//   - Temporary path and flood-fill storage is released on every success,
+//     failure, and returning-trap path.
+// Ownership/Lifetime:
+//   - Canvas storage is borrowed for the duration of each call. Temporary
+//     native buffers are owned locally and never escape the drawing helper.
+//
 // Links: rt_graphics2d.h, rt_graphics_internal.h (canvas API),
 //        rt_color.c (color utilities used by gradients)
 //
@@ -50,14 +59,15 @@ static int8_t rt_canvas_points_checked(void *points_ptr,
     if (!points_ptr || count <= 0 || count > INT64_MAX / 2)
         return 0;
 
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(points_ptr, &hdr) || !hdr)
+    rt_heap_info_t heap_info;
+    if (!rt_heap_get_info(points_ptr, &heap_info))
         return 0;
-    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_ARRAY || (rt_elem_kind_t)hdr->elem_kind != RT_ELEM_I64)
+    if ((rt_heap_kind_t)heap_info.kind != RT_HEAP_ARRAY ||
+        (rt_elem_kind_t)heap_info.elem_kind != RT_ELEM_I64)
         return 0;
 
     uint64_t required = (uint64_t)count * 2u;
-    if (required > hdr->len)
+    if (required > heap_info.len)
         return 0;
     if (points_out)
         *points_out = (const int64_t *)points_ptr;

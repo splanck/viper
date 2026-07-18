@@ -74,7 +74,7 @@ ilrun program.il
 - `/examples/games/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
 - `/examples/games/frogger-basic/`, `/examples/games/centipede-basic/`, `/examples/games/pacman-basic/` - BASIC ports of the same games
 - `/examples/apps/` - Zia application examples such as `zannasql/` and `paint/`
-- `/zannaide/` - ZannaIDE source, built separately from the examples
+- `/zannastudio/` - Zanna Studio source, built separately from the examples
 - `/examples/apiaudit/` - Focused runtime API examples in both Zia and BASIC
 - `/src/tests/zia/` - Frontend tests covering specific Zia language features
 - `/src/tests/basic/` - Frontend tests covering specific BASIC language features

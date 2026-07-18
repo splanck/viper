@@ -14,7 +14,8 @@
 //   - Routes matched via embedded HttpRouter.
 // Ownership/Lifetime:
 //   - Server object GC-managed. Stop() or finalizer stops accept loop.
-//   - Per-request ServerReq/ServerRes are stack-allocated (not GC).
+//   - Handler-visible ServerReq/ServerRes snapshots are managed objects whose
+//     producer references are released after dispatch; handlers may retain them.
 // Links: rt_http_server.h (API), rt_http_router.h (routing)
 //
 //===----------------------------------------------------------------------===//
@@ -39,6 +40,7 @@
 #include "system/rt_machine.h"
 
 #include <ctype.h>
+#include <setjmp.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -52,7 +54,7 @@
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
 typedef CRITICAL_SECTION http_server_mutex_t;
-#define HTTP_SERVER_MUTEX_INIT(m) InitializeCriticalSection(m)
+#define HTTP_SERVER_MUTEX_INIT(m) (InitializeCriticalSection(m), 1)
 #define HTTP_SERVER_MUTEX_LOCK(m) EnterCriticalSection(m)
 #define HTTP_SERVER_MUTEX_UNLOCK(m) LeaveCriticalSection(m)
 #define HTTP_SERVER_MUTEX_DESTROY(m) DeleteCriticalSection(m)
@@ -61,7 +63,7 @@ typedef CRITICAL_SECTION http_server_mutex_t;
 #include <strings.h>
 #include <unistd.h>
 typedef pthread_mutex_t http_server_mutex_t;
-#define HTTP_SERVER_MUTEX_INIT(m) pthread_mutex_init(m, NULL)
+#define HTTP_SERVER_MUTEX_INIT(m) (pthread_mutex_init(m, NULL) == 0)
 #define HTTP_SERVER_MUTEX_LOCK(m) pthread_mutex_lock(m)
 #define HTTP_SERVER_MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
 #define HTTP_SERVER_MUTEX_DESTROY(m) pthread_mutex_destroy(m)
@@ -69,8 +71,15 @@ typedef pthread_mutex_t http_server_mutex_t;
 
 #include "rt_trap.h"
 extern void rt_trap_net(const char *msg, int err_code);
+extern int rt_trap_get_net_code(void);
 
 static int server_string_has_embedded_nul(rt_string s, const char **data_out, size_t *len_out) {
+    if (data_out)
+        *data_out = NULL;
+    if (len_out)
+        *len_out = 0;
+    if (!s || !rt_string_is_handle(s))
+        return 1;
     const char *data = rt_string_cstr(s);
     int64_t len = rt_str_len(s);
     if (!data || len < 0)
@@ -147,6 +156,9 @@ typedef struct {
     void *worker_pool;
     int64_t port;
     bool running;
+    bool stopping;
+    bool finalizing;
+    size_t active_sync_requests;
     route_entry_t *routes;
     int route_count;
     int route_cap;
@@ -164,9 +176,12 @@ typedef struct {
     int active_conn_cap;
     http_server_mutex_t state_lock;
     bool state_lock_initialized;
+    http_server_mutex_t lifecycle_lock;
+    bool lifecycle_lock_initialized;
 } rt_http_server_impl;
 
 static void free_server_req(server_req_t *req);
+static void free_server_res(server_res_t *res);
 static void build_route_response(rt_http_server_impl *server, server_req_t *req, server_res_t *res);
 static void free_route_entries(rt_http_server_impl *server);
 static void free_handler_bindings(rt_http_server_impl *server);
@@ -181,6 +196,66 @@ static void server_state_unlock(rt_http_server_impl *server) {
         HTTP_SERVER_MUTEX_UNLOCK(&server->state_lock);
 }
 
+/// @brief Acquire the mutex that serializes configuration and lifecycle changes.
+/// @details The lifecycle mutex is always acquired before the state mutex when
+///          both are needed. Accept and worker paths use only the state mutex,
+///          preventing an inversion with Start, Stop, and registration calls.
+/// @param server Fully initialized HttpServer payload.
+static void server_lifecycle_lock(rt_http_server_impl *server) {
+    if (server && server->lifecycle_lock_initialized)
+        HTTP_SERVER_MUTEX_LOCK(&server->lifecycle_lock);
+}
+
+/// @brief Release the HttpServer lifecycle/configuration mutex.
+/// @param server Fully initialized HttpServer payload.
+static void server_lifecycle_unlock(rt_http_server_impl *server) {
+    if (server && server->lifecycle_lock_initialized)
+        HTTP_SERVER_MUTEX_UNLOCK(&server->lifecycle_lock);
+}
+
+/// @brief Validate and cast a public HttpServer receiver.
+/// @details Stable class identity, complete payload size, and both initialized
+///          mutexes are required before any public method accesses native state.
+///          This rejects forged, stale, unrelated, and partially initialized
+///          handles without dereferencing their payload as a server.
+/// @param obj Candidate managed receiver.
+/// @param message Diagnostic raised when validation fails.
+/// @return Valid server payload, or NULL after trapping.
+static rt_http_server_impl *http_server_checked(void *obj, const char *message) {
+    if (!rt_obj_is_instance(obj, RT_HTTP_SERVER_CLASS_ID, sizeof(rt_http_server_impl))) {
+        rt_trap(message);
+        return NULL;
+    }
+    rt_http_server_impl *server = (rt_http_server_impl *)obj;
+    if (!server->state_lock_initialized || !server->lifecycle_lock_initialized) {
+        rt_trap(message);
+        return NULL;
+    }
+    return server;
+}
+
+/// @brief Validate and cast a managed ServerReq receiver.
+/// @param obj Candidate request handle.
+/// @return Valid request payload, or NULL after trapping.
+static server_req_t *server_req_checked(void *obj) {
+    if (!rt_obj_is_instance(obj, RT_SERVER_REQ_CLASS_ID, sizeof(server_req_t))) {
+        rt_trap("HttpServer: invalid ServerReq handle");
+        return NULL;
+    }
+    return (server_req_t *)obj;
+}
+
+/// @brief Validate and cast a managed ServerRes receiver.
+/// @param obj Candidate response handle.
+/// @return Valid response payload, or NULL after trapping.
+static server_res_t *server_res_checked(void *obj) {
+    if (!rt_obj_is_instance(obj, RT_SERVER_RES_CLASS_ID, sizeof(server_res_t))) {
+        rt_trap("HttpServer: invalid ServerRes handle");
+        return NULL;
+    }
+    return (server_res_t *)obj;
+}
+
 static int server_is_running(rt_http_server_impl *server) {
     int running = 0;
     if (!server)
@@ -189,6 +264,24 @@ static int server_is_running(rt_http_server_impl *server) {
     running = server->running ? 1 : 0;
     server_state_unlock(server);
     return running;
+}
+
+/// @brief Test whether route or binding mutation is currently forbidden.
+/// @details The state snapshot is taken without the lifecycle mutex so a
+///          handler attempting configuration during Stop can reject promptly
+///          instead of blocking behind Stop while Stop drains that handler.
+///          Callers must repeat the check after acquiring the lifecycle mutex.
+/// @param server Valid HttpServer payload.
+/// @return One while running or stopping; zero while configuration is allowed.
+static int server_configuration_blocked(rt_http_server_impl *server) {
+    int blocked = 1;
+    if (!server)
+        return 1;
+    server_state_lock(server);
+    blocked = server->running || server->stopping || server->finalizing ||
+              server->active_sync_requests > 0;
+    server_state_unlock(server);
+    return blocked;
 }
 
 static int server_register_active_conn(rt_http_server_impl *server, void *conn) {
@@ -404,12 +497,12 @@ static void release_handler_binding(handler_binding_t *binding) {
 
 /// @brief Install or replace the handler binding for `tag`.
 ///
-/// If a binding already exists with `tag`, its cleanup is invoked
-/// (only when the new context is a different pointer — re-binding the
-/// same context shouldn't double-free) and the dispatch/ctx/cleanup are
-/// overwritten in place. Otherwise a new binding is appended after
-/// growing capacity. Tag is duplicated into the binding so callers can
-/// reuse their tag buffer afterwards.
+/// If a binding already exists with `tag`, its prior cleanup/context pair is
+/// detached through the output parameters when the context changes, and the
+/// dispatch/ctx/cleanup tuple is overwritten in place. The caller invokes the
+/// detached cleanup only after releasing lifecycle locks. Otherwise a new
+/// binding is appended after growing capacity. Tag is duplicated so callers
+/// can reuse their tag buffer afterwards.
 ///
 /// @param server   Server impl.
 /// @param tag      Identifier for the binding (matched by `strcmp`).
@@ -418,19 +511,31 @@ static void release_handler_binding(handler_binding_t *binding) {
 /// @param cleanup  Optional callback invoked with `ctx` when the binding
 ///                 is released or replaced. NULL when `ctx` doesn't
 ///                 require cleanup.
+/// @param old_cleanup_out Receives the detached prior cleanup callback.
+/// @param old_ctx_out Receives the detached prior callback context.
 /// @return `1` on success, `0` on allocation failure or NULL inputs.
 static int set_handler_binding(rt_http_server_impl *server,
                                const char *tag,
                                rt_http_server_handler_dispatch_fn dispatch,
                                void *ctx,
-                               rt_http_server_handler_cleanup_fn cleanup) {
+                               rt_http_server_handler_cleanup_fn cleanup,
+                               rt_http_server_handler_cleanup_fn *old_cleanup_out,
+                               void **old_ctx_out) {
     if (!server || !tag || !dispatch)
         return 0;
+    if (old_cleanup_out)
+        *old_cleanup_out = NULL;
+    if (old_ctx_out)
+        *old_ctx_out = NULL;
 
     handler_binding_t *binding = find_handler_binding(server, tag);
     if (binding) {
-        if (binding->cleanup && binding->ctx != ctx)
-            binding->cleanup(binding->ctx);
+        if (binding->cleanup && binding->ctx != ctx) {
+            if (old_cleanup_out)
+                *old_cleanup_out = binding->cleanup;
+            if (old_ctx_out)
+                *old_ctx_out = binding->ctx;
+        }
         binding->dispatch = dispatch;
         binding->ctx = ctx;
         binding->cleanup = cleanup;
@@ -529,7 +634,12 @@ static void native_handler_dispatch(void *ctx, void *req, void *res) {
 static void rt_http_server_finalize(void *obj) {
     if (!obj)
         return;
-    rt_http_server_impl *server = (rt_http_server_impl *)obj;
+    rt_http_server_impl *server = http_server_checked(obj, "HttpServer: invalid server handle");
+    if (!server)
+        return;
+    server_state_lock(server);
+    server->finalizing = true;
+    server_state_unlock(server);
     rt_http_server_stop(server);
     free_route_entries(server);
     free_handler_bindings(server);
@@ -543,6 +653,10 @@ static void rt_http_server_finalize(void *obj) {
     server->active_conns = NULL;
     server->active_conn_count = 0;
     server->active_conn_cap = 0;
+    if (server->lifecycle_lock_initialized) {
+        HTTP_SERVER_MUTEX_DESTROY(&server->lifecycle_lock);
+        server->lifecycle_lock_initialized = false;
+    }
     if (server->state_lock_initialized) {
         HTTP_SERVER_MUTEX_DESTROY(&server->state_lock);
         server->state_lock_initialized = false;
@@ -565,6 +679,8 @@ static void rt_http_server_finalize(void *obj) {
 ///
 /// @param req Request struct to release. Members may be NULL (skipped).
 static void free_server_req(server_req_t *req) {
+    if (!req)
+        return;
     free(req->method);
     free(req->path);
     free(req->query);
@@ -573,6 +689,69 @@ static void free_server_req(server_req_t *req) {
         rt_obj_free(req->headers);
     if (req->params && rt_obj_release_check0(req->params))
         rt_obj_free(req->params);
+    memset(req, 0, sizeof(*req));
+}
+
+/// @brief Release every owned field of a ServerRes payload.
+/// @details The helper is shared by managed finalization and stack-based parser
+///          test adapters. It is idempotent because the payload is zeroed after
+///          releasing the native body and managed header Map.
+/// @param res Response payload whose fields are consumed.
+static void free_server_res(server_res_t *res) {
+    if (!res)
+        return;
+    free(res->body);
+    if (res->headers && rt_obj_release_check0(res->headers))
+        rt_obj_free(res->headers);
+    memset(res, 0, sizeof(*res));
+}
+
+/// @brief Finalize one managed ServerReq payload.
+/// @param obj Valid ServerReq payload supplied by the object runtime.
+static void server_req_finalize(void *obj) {
+    free_server_req((server_req_t *)obj);
+}
+
+/// @brief Finalize one managed ServerRes payload.
+/// @param obj Valid ServerRes payload supplied by the object runtime.
+static void server_res_finalize(void *obj) {
+    free_server_res((server_res_t *)obj);
+}
+
+/// @brief Allocate an empty managed ServerReq with stable runtime identity.
+/// @details The finalizer is installed before returning so any later parser or
+///          route-dispatch failure can release the producer reference without
+///          special-casing partially populated fields.
+/// @return Caller-owned ServerReq handle, or NULL on allocation failure.
+static server_req_t *server_req_new(void) {
+    server_req_t *req =
+        (server_req_t *)rt_obj_new_i64(RT_SERVER_REQ_CLASS_ID, (int64_t)sizeof(server_req_t));
+    if (!req)
+        return NULL;
+    memset(req, 0, sizeof(*req));
+    rt_obj_set_finalizer(req, server_req_finalize);
+    return req;
+}
+
+/// @brief Allocate an empty managed ServerRes with stable runtime identity.
+/// @details Body and header ownership begins empty and is released by the
+///          installed finalizer after the server drops its producer reference.
+/// @return Caller-owned ServerRes handle, or NULL on allocation failure.
+static server_res_t *server_res_new(void) {
+    server_res_t *res =
+        (server_res_t *)rt_obj_new_i64(RT_SERVER_RES_CLASS_ID, (int64_t)sizeof(server_res_t));
+    if (!res)
+        return NULL;
+    memset(res, 0, sizeof(*res));
+    rt_obj_set_finalizer(res, server_res_finalize);
+    return res;
+}
+
+/// @brief Drop one caller-owned managed object reference.
+/// @param obj Managed object, or NULL.
+static void server_release_object(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
 }
 
 /// @brief Test-only entry point for the HTTP request parser.
@@ -701,6 +880,50 @@ char *rt_http_server_test_build_response(int status_code,
 // Request Handler
 //=============================================================================
 
+typedef struct {
+    char *buffer;
+    void *received_bytes;
+    server_req_t *request;
+    server_res_t *response;
+    char *wire_response;
+    bool registered;
+} http_connection_state_t;
+
+/// @brief Release every resource owned by one HTTP connection transaction.
+/// @details Worker-local trap recovery calls this helper after any managed
+///          allocation, parser, router, handler, serializer, or socket trap.
+///          Each field is detached before release and the active-connection
+///          registration is cleared exactly once, making repeated cleanup safe.
+/// @param server Server that owns the active-connection registry.
+/// @param tcp Accepted Tcp handle; the caller retains and releases the object.
+/// @param state Heap-resident transaction state.
+static void http_connection_state_cleanup(rt_http_server_impl *server,
+                                          void *tcp,
+                                          http_connection_state_t *state) {
+    if (!state)
+        return;
+    void *received_bytes = state->received_bytes;
+    state->received_bytes = NULL;
+    server_release_object(received_bytes);
+    char *wire_response = state->wire_response;
+    state->wire_response = NULL;
+    free(wire_response);
+    server_res_t *response = state->response;
+    state->response = NULL;
+    server_release_object(response);
+    server_req_t *request = state->request;
+    state->request = NULL;
+    server_release_object(request);
+    char *buffer = state->buffer;
+    state->buffer = NULL;
+    free(buffer);
+    if (state->registered) {
+        state->registered = false;
+        server_unregister_active_conn(server, tcp);
+    }
+    rt_tcp_close(tcp);
+}
+
 /// @brief Handle a single accepted client connection end-to-end.
 ///
 /// Reads the request (with a 30-second receive timeout to bound idle
@@ -718,17 +941,20 @@ char *rt_http_server_test_build_response(int status_code,
 ///
 /// @param server Server impl owning the route table and bindings.
 /// @param tcp    Accepted TCP connection handle (we close it).
-static void handle_connection(rt_http_server_impl *server, void *tcp) {
+static void handle_connection(rt_http_server_impl *server,
+                              void *tcp,
+                              http_connection_state_t *state) {
     if (!server_register_active_conn(server, tcp)) {
         rt_tcp_close(tcp);
         return;
     }
+    state->registered = true;
     rt_tcp_set_recv_timeout(tcp, 30000);
     rt_tcp_set_send_timeout(tcp, 30000);
     size_t buf_cap = 4096;
     size_t buf_len = 0;
-    char *buf = (char *)malloc(buf_cap);
-    if (!buf)
+    state->buffer = (char *)malloc(buf_cap);
+    if (!state->buffer)
         goto done;
 
     while (rt_tcp_is_open(tcp) && server_is_running(server)) {
@@ -738,8 +964,8 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
 
         while (rt_tcp_is_open(tcp)) {
             size_t desired_cap = 0;
-            http_request_frame_status_t frame_status =
-                find_complete_http_request_frame(buf, buf_len, &request_len, &desired_cap);
+            http_request_frame_status_t frame_status = find_complete_http_request_frame(
+                state->buffer, buf_len, &request_len, &desired_cap);
             if (frame_status == HTTP_REQUEST_FRAME_COMPLETE)
                 break;
             if (frame_status == HTTP_REQUEST_FRAME_INVALID) {
@@ -747,12 +973,12 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
                 break;
             }
             if (desired_cap > buf_cap) {
-                char *new_buf = (char *)realloc(buf, desired_cap);
+                char *new_buf = (char *)realloc(state->buffer, desired_cap);
                 if (!new_buf) {
                     bad_request = true;
                     break;
                 }
-                buf = new_buf;
+                state->buffer = new_buf;
                 buf_cap = desired_cap;
             }
             if (buf_len == buf_cap) {
@@ -760,26 +986,26 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
                 break;
             }
 
-            void *data = rt_tcp_recv(tcp, (int64_t)(buf_cap - buf_len));
-            int64_t data_len = rt_bytes_len(data);
+            state->received_bytes = rt_tcp_recv(tcp, (int64_t)(buf_cap - buf_len));
+            int64_t data_len = rt_bytes_len(state->received_bytes);
             if (data_len <= 0) {
-                if (data && rt_obj_release_check0(data))
-                    rt_obj_free(data);
+                server_release_object(state->received_bytes);
+                state->received_bytes = NULL;
                 peer_closed = true;
                 break;
             }
 
-            uint8_t *ptr = rt_bytes_data(data);
+            uint8_t *ptr = rt_bytes_data(state->received_bytes);
             if (!ptr) {
-                if (data && rt_obj_release_check0(data))
-                    rt_obj_free(data);
+                server_release_object(state->received_bytes);
+                state->received_bytes = NULL;
                 peer_closed = true;
                 break;
             }
-            memcpy(buf + buf_len, ptr, (size_t)data_len);
+            memcpy(state->buffer + buf_len, ptr, (size_t)data_len);
             buf_len += (size_t)data_len;
-            if (data && rt_obj_release_check0(data))
-                rt_obj_free(data);
+            server_release_object(state->received_bytes);
+            state->received_bytes = NULL;
         }
 
         if (peer_closed && buf_len == 0)
@@ -788,53 +1014,63 @@ static void handle_connection(rt_http_server_impl *server, void *tcp) {
             break;
 
         if (buf_len < buf_cap)
-            buf[buf_len] = '\0';
+            state->buffer[buf_len] = '\0';
         else
-            buf[buf_cap - 1] = '\0';
+            state->buffer[buf_cap - 1] = '\0';
 
-        server_req_t req;
-        if (bad_request || !parse_http_request(buf, request_len, &req)) {
+        state->request = server_req_new();
+        if (!state->request || bad_request ||
+            !parse_http_request(state->buffer, request_len, state->request)) {
+            server_release_object(state->request);
+            state->request = NULL;
             const char *bad =
                 "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
-            rt_string bad_str = rt_const_cstr(bad);
-            rt_tcp_send_str(tcp, bad_str);
+            rt_tcp_send_all_raw(tcp, bad, (int64_t)strlen(bad));
             break;
         }
 
-        server_res_t res;
-        memset(&res, 0, sizeof(res));
-        build_route_response(server, &req, &res);
+        state->response = server_res_new();
+        if (!state->response) {
+            server_release_object(state->request);
+            state->request = NULL;
+            const char *failure =
+                "HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\nContent-Length: "
+                "0\r\n\r\n";
+            rt_tcp_send_all_raw(tcp, failure, (int64_t)strlen(failure));
+            break;
+        }
+        build_route_response(server, state->request, state->response);
 
-        int keep_alive = request_allows_keep_alive(&req) && !response_forces_close(&res);
+        int keep_alive =
+            request_allows_keep_alive(state->request) && !response_forces_close(state->response);
         size_t resp_len = 0;
-        char *resp = build_response(&res, keep_alive, &resp_len);
-        if (resp) {
-            rt_tcp_send_all_raw(tcp, resp, (int64_t)resp_len);
+        state->wire_response = build_response(state->response, keep_alive, &resp_len);
+        if (state->wire_response) {
+            rt_tcp_send_all_raw(tcp, state->wire_response, (int64_t)resp_len);
             if (!rt_tcp_is_open(tcp))
                 keep_alive = 0;
-            free(resp);
+            free(state->wire_response);
+            state->wire_response = NULL;
         } else {
             keep_alive = 0;
         }
 
-        free(res.body);
-        if (res.headers && rt_obj_release_check0(res.headers))
-            rt_obj_free(res.headers);
-        free_server_req(&req);
+        server_release_object(state->response);
+        state->response = NULL;
+        server_release_object(state->request);
+        state->request = NULL;
 
         if (!keep_alive)
             break;
         if (request_len < buf_len) {
-            memmove(buf, buf + request_len, buf_len - request_len);
+            memmove(state->buffer, state->buffer + request_len, buf_len - request_len);
             buf_len -= request_len;
         } else {
             buf_len = 0;
         }
     }
-    free(buf);
 done:
-    server_unregister_active_conn(server, tcp);
-    rt_tcp_close(tcp);
+    http_connection_state_cleanup(server, tcp, state);
 }
 
 typedef struct {
@@ -853,7 +1089,41 @@ typedef struct {
 /// @param arg `http_conn_task_t *` cast to `void *`.
 static void handle_connection_task(void *arg) {
     http_conn_task_t *task = (http_conn_task_t *)arg;
-    handle_connection(task->server, task->tcp);
+    if (!task)
+        return;
+    http_connection_state_t *state =
+        (http_connection_state_t *)calloc(1, sizeof(http_connection_state_t));
+    if (!state) {
+        rt_tcp_close(task->tcp);
+        server_release_object(task->tcp);
+        server_release_object(task->server);
+        free(task);
+        rt_trap("HttpServer: connection state allocation failed");
+        return;
+    }
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HttpServer: connection handler failed");
+        rt_trap_clear_recovery();
+        http_connection_state_cleanup(task->server, task->tcp, state);
+        free(state);
+        server_release_object(task->tcp);
+        server_release_object(task->server);
+        free(task);
+        rt_trap(saved_error);
+        return;
+    }
+    handle_connection(task->server, task->tcp, state);
+    rt_trap_clear_recovery();
+    free(state);
+    server_release_object(task->tcp);
+    server_release_object(task->server);
     free(task);
 }
 
@@ -891,22 +1161,27 @@ static void *accept_loop(void *arg)
 
         if (!server_is_running(server)) {
             rt_tcp_close(tcp);
+            server_release_object(tcp);
             break;
         }
 
         http_conn_task_t *task = (http_conn_task_t *)malloc(sizeof(http_conn_task_t));
         if (!task) {
             rt_tcp_close(tcp);
+            server_release_object(tcp);
             continue;
         }
 
         task->server = server;
         task->tcp = tcp;
+        rt_obj_retain_maybe(server);
 
         if (!server->worker_pool ||
             !rt_threadpool_submit(server->worker_pool, (void *)handle_connection_task, task)) {
+            server_release_object(server);
             free(task);
             rt_tcp_close(tcp);
+            server_release_object(tcp);
         }
     }
 
@@ -926,10 +1201,9 @@ static void *accept_loop(void *arg)
 ///
 /// Allocates a GC-managed server impl, attaches the finalizer (which
 /// will tear down routes / worker pool / accept loop on collection),
-/// constructs the route trie and a CPU-sized worker pool, and stores
-/// the requested port for later use by `Start`. The TCP listener is
-/// not actually opened until `Start`; this constructor only validates
-/// inputs and reserves resources.
+/// constructs the route trie, and stores the requested port for later use by
+/// `Start`. The TCP listener and CPU-sized worker pool are created lazily by
+/// `Start`, so stopped instances do not reserve threads or sockets.
 ///
 /// Traps on invalid port (`<0` or `>65535`) or allocation failure.
 ///
@@ -941,35 +1215,58 @@ void *rt_http_server_new(int64_t port) {
         return NULL;
     }
 
-    rt_http_server_impl *server =
-        (rt_http_server_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_server_impl));
-    if (!server) {
+    rt_http_server_impl *volatile server = NULL;
+    volatile int finalizer_installed = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HttpServer: construction failed");
+        rt_trap_clear_recovery();
+        if (server) {
+            rt_http_server_impl *partial = (rt_http_server_impl *)server;
+            if (finalizer_installed) {
+                server_release_object(partial);
+            } else {
+                if (partial->lifecycle_lock_initialized) {
+                    HTTP_SERVER_MUTEX_DESTROY(&partial->lifecycle_lock);
+                    partial->lifecycle_lock_initialized = false;
+                }
+                if (partial->state_lock_initialized) {
+                    HTTP_SERVER_MUTEX_DESTROY(&partial->state_lock);
+                    partial->state_lock_initialized = false;
+                }
+                server_release_object(partial);
+            }
+        }
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    server = (rt_http_server_impl *)rt_obj_new_i64(RT_HTTP_SERVER_CLASS_ID,
+                                                   (int64_t)sizeof(rt_http_server_impl));
+    if (!server)
         rt_trap("HttpServer: memory allocation failed");
-        return NULL;
-    }
-    memset(server, 0, sizeof(*server));
-    rt_obj_set_finalizer(server, rt_http_server_finalize);
+    memset((void *)server, 0, sizeof(rt_http_server_impl));
+    if (!HTTP_SERVER_MUTEX_INIT(&((rt_http_server_impl *)server)->state_lock))
+        rt_trap("HttpServer: state mutex initialization failed");
+    ((rt_http_server_impl *)server)->state_lock_initialized = true;
+    if (!HTTP_SERVER_MUTEX_INIT(&((rt_http_server_impl *)server)->lifecycle_lock))
+        rt_trap("HttpServer: lifecycle mutex initialization failed");
+    ((rt_http_server_impl *)server)->lifecycle_lock_initialized = true;
+    rt_obj_set_finalizer((void *)server, rt_http_server_finalize);
+    finalizer_installed = 1;
 
-    server->port = port;
-    server->router = rt_http_router_new();
-    if (!server->router) {
+    ((rt_http_server_impl *)server)->port = port;
+    ((rt_http_server_impl *)server)->router = rt_http_router_new();
+    if (!((rt_http_server_impl *)server)->router)
         rt_trap("HttpServer: router allocation failed");
-        if (rt_obj_release_check0(server))
-            rt_obj_free(server);
-        return NULL;
-    }
-    server->worker_pool = rt_threadpool_new(http_server_default_worker_count());
-    if (!server->worker_pool) {
-        rt_trap("HttpServer: worker pool allocation failed");
-        if (rt_obj_release_check0(server))
-            rt_obj_free(server);
-        return NULL;
-    }
-    server->running = false;
-    HTTP_SERVER_MUTEX_INIT(&server->state_lock);
-    server->state_lock_initialized = true;
-
-    return server;
+    rt_trap_clear_recovery();
+    return (void *)server;
 }
 
 /// @brief Helper used by every `Get`/`Post`/`Put`/`Delete` registrar.
@@ -993,8 +1290,10 @@ static void add_route_binding(void *obj,
     if (!obj || !adder)
         return;
 
-    rt_http_server_impl *server = (rt_http_server_impl *)obj;
-    if (server_is_running(server)) {
+    rt_http_server_impl *server = http_server_checked(obj, "HttpServer: invalid server handle");
+    if (!server)
+        return;
+    if (server_configuration_blocked(server)) {
         rt_trap("HttpServer: cannot add routes while running");
         return;
     }
@@ -1009,12 +1308,45 @@ static void add_route_binding(void *obj,
         rt_trap("HttpServer: invalid route handler tag");
         return;
     }
-    if (!ensure_route_capacity(server, server->route_count + 1)) {
+    char *volatile tag_copy = dup_cstr(tag);
+    if (!tag_copy) {
         rt_trap("HttpServer: failed to register route");
         return;
     }
-    char *tag_copy = dup_cstr(tag);
-    if (!tag_copy) {
+
+    volatile int lifecycle_locked = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HttpServer: failed to register route");
+        rt_trap_clear_recovery();
+        if (lifecycle_locked)
+            server_lifecycle_unlock(server);
+        free((void *)tag_copy);
+        rt_trap(saved_error);
+        return;
+    }
+
+    server_lifecycle_lock(server);
+    lifecycle_locked = 1;
+    if (server_configuration_blocked(server)) {
+        server_lifecycle_unlock(server);
+        lifecycle_locked = 0;
+        rt_trap_clear_recovery();
+        free((void *)tag_copy);
+        rt_trap("HttpServer: cannot add routes while running");
+        return;
+    }
+    if (!ensure_route_capacity(server, server->route_count + 1)) {
+        server_lifecycle_unlock(server);
+        lifecycle_locked = 0;
+        rt_trap_clear_recovery();
+        free((void *)tag_copy);
         rt_trap("HttpServer: failed to register route");
         return;
     }
@@ -1022,15 +1354,22 @@ static void add_route_binding(void *obj,
     // Last fallible step: the router add commits atomically inside the
     // router (and traps on an invalid pattern before committing anything).
     if (!adder(server->router, pattern)) {
-        free(tag_copy);
+        server_lifecycle_unlock(server);
+        lifecycle_locked = 0;
+        rt_trap_clear_recovery();
+        free((void *)tag_copy);
         rt_trap("HttpServer: failed to register route");
         return;
     }
 
     route_entry_t *entry = &server->routes[server->route_count];
     memset(entry, 0, sizeof(*entry));
-    entry->tag = tag_copy;
+    entry->tag = (char *)tag_copy;
     server->route_count++;
+    tag_copy = NULL;
+    server_lifecycle_unlock(server);
+    lifecycle_locked = 0;
+    rt_trap_clear_recovery();
 }
 
 /// @brief `HttpServer.Get(pattern, handler_tag)` — register a GET route.
@@ -1073,7 +1412,11 @@ void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) 
     if (!obj || !entry)
         return;
 
-    if (server_is_running((rt_http_server_impl *)obj)) {
+    rt_http_server_impl *server = http_server_checked(obj, "HttpServer: invalid server handle");
+    if (!server)
+        return;
+
+    if (server_configuration_blocked(server)) {
         rt_trap("HttpServer: cannot bind handlers while running");
         return;
     }
@@ -1083,11 +1426,23 @@ void rt_http_server_bind_handler(void *obj, rt_string handler_tag, void *entry) 
     if (server_string_has_embedded_nul(handler_tag, &tag, &tag_len) || !tag || tag_len == 0)
         return;
 
-    if (!set_handler_binding(
-            (rt_http_server_impl *)obj, tag, native_handler_dispatch, entry, NULL)) {
+    rt_http_server_handler_cleanup_fn old_cleanup = NULL;
+    void *old_ctx = NULL;
+    server_lifecycle_lock(server);
+    if (server_configuration_blocked(server)) {
+        server_lifecycle_unlock(server);
+        rt_trap("HttpServer: cannot bind handlers while running");
+        return;
+    }
+    int bound = set_handler_binding(
+        server, tag, native_handler_dispatch, entry, NULL, &old_cleanup, &old_ctx);
+    server_lifecycle_unlock(server);
+    if (!bound) {
         rt_trap("HttpServer: failed to bind handler");
         return;
     }
+    if (old_cleanup)
+        old_cleanup(old_ctx);
 }
 
 /// @brief Script-bridge variant of `BindHandler` that takes an explicit
@@ -1109,7 +1464,11 @@ void rt_http_server_bind_handler_dispatch(
     if (!obj || !dispatch)
         return;
 
-    if (server_is_running((rt_http_server_impl *)obj)) {
+    rt_http_server_impl *server = http_server_checked(obj, "HttpServer: invalid server handle");
+    if (!server)
+        return;
+
+    if (server_configuration_blocked(server)) {
         rt_trap("HttpServer: cannot bind handlers while running");
         return;
     }
@@ -1119,23 +1478,36 @@ void rt_http_server_bind_handler_dispatch(
     if (server_string_has_embedded_nul(handler_tag, &tag, &tag_len) || !tag || tag_len == 0)
         return;
 
-    if (!set_handler_binding((rt_http_server_impl *)obj,
-                             tag,
-                             (rt_http_server_handler_dispatch_fn)dispatch,
-                             ctx,
-                             (rt_http_server_handler_cleanup_fn)cleanup)) {
+    rt_http_server_handler_cleanup_fn old_cleanup = NULL;
+    void *old_ctx = NULL;
+    server_lifecycle_lock(server);
+    if (server_configuration_blocked(server)) {
+        server_lifecycle_unlock(server);
+        rt_trap("HttpServer: cannot bind handlers while running");
+        return;
+    }
+    int bound = set_handler_binding(server,
+                                    tag,
+                                    (rt_http_server_handler_dispatch_fn)dispatch,
+                                    ctx,
+                                    (rt_http_server_handler_cleanup_fn)cleanup,
+                                    &old_cleanup,
+                                    &old_ctx);
+    server_lifecycle_unlock(server);
+    if (!bound) {
         rt_trap("HttpServer: failed to bind handler");
         return;
     }
+    if (old_cleanup)
+        old_cleanup(old_ctx);
 }
 
 /// @brief `HttpServer.Start()` — open the listening socket and spin up
 ///        the accept loop on a background thread.
 ///
-/// Idempotent: re-running on a server that's already running is a
-/// silent no-op. Re-creates the worker pool if it was previously torn
-/// down (e.g. by `Stop`). Traps on NULL receiver. The accept thread
-/// terminates when `running` is cleared by `Stop`.
+/// Idempotent: re-running on a server that's already running is a silent no-op.
+/// Lazily creates the reusable worker pool on first start. Traps on NULL
+/// receiver. The accept thread terminates when `running` is cleared by `Stop`.
 ///
 /// @param obj HttpServer handle.
 void rt_http_server_start(void *obj) {
@@ -1144,54 +1516,105 @@ void rt_http_server_start(void *obj) {
         return;
     }
 
-    rt_http_server_impl *server = (rt_http_server_impl *)obj;
-    if (server_is_running(server))
+    rt_http_server_impl *server = http_server_checked(obj, "HttpServer: invalid server handle");
+    if (!server)
         return;
-
-    // Create TCP server
-    server->tcp_server = rt_tcp_server_listen(server->port);
-    if (!server->tcp_server) {
-        rt_trap("HttpServer: failed to bind listener");
-        return;
-    }
-    server->port = rt_tcp_server_port(server->tcp_server);
-    if (!server->worker_pool) {
-        server->worker_pool = rt_threadpool_new(http_server_default_worker_count());
-        if (!server->worker_pool) {
-            if (server->tcp_server) {
-                rt_tcp_server_close(server->tcp_server);
-                if (rt_obj_release_check0(server->tcp_server))
-                    rt_obj_free(server->tcp_server);
-                server->tcp_server = NULL;
-            }
-            rt_trap("HttpServer: worker pool allocation failed");
+    if (server_configuration_blocked(server)) {
+        if (server_is_running(server))
             return;
-        }
+        rt_trap("HttpServer: stop is in progress");
+        return;
     }
-    server_state_lock(server);
-    server->running = true;
-    server_state_unlock(server);
 
-    // Start accept loop in background thread
+    void *volatile listener = NULL;
+    void *volatile new_pool = NULL;
+    volatile int lifecycle_locked = 0;
+    volatile int published = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        int saved_net_code = rt_trap_get_net_code();
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HttpServer: start failed");
+        rt_trap_clear_recovery();
+        if (published) {
+            server_state_lock(server);
+            server->running = false;
+            if (server->tcp_server == listener)
+                server->tcp_server = NULL;
+            if (new_pool && server->worker_pool == new_pool)
+                server->worker_pool = NULL;
+            server_state_unlock(server);
+        }
+        if (listener)
+            rt_tcp_server_close((void *)listener);
+        server_release_object((void *)listener);
+        server_release_object((void *)new_pool);
+        if (lifecycle_locked)
+            server_lifecycle_unlock(server);
+        if (saved_net_code)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return;
+    }
+
+    server_lifecycle_lock(server);
+    lifecycle_locked = 1;
+    server_state_lock(server);
+    int already_running = server->running ? 1 : 0;
+    int stopping = server->stopping ? 1 : 0;
+    int64_t requested_port = server->port;
+    server_state_unlock(server);
+    if (already_running) {
+        rt_trap_clear_recovery();
+        server_lifecycle_unlock(server);
+        return;
+    }
+    if (stopping)
+        rt_trap("HttpServer: stop is in progress");
+
+    listener = rt_tcp_server_listen(requested_port);
+    if (!listener)
+        rt_trap("HttpServer: failed to bind listener");
+    int64_t bound_port = rt_tcp_server_port((void *)listener);
+    if (!server->worker_pool) {
+        new_pool = rt_threadpool_new(http_server_default_worker_count());
+        if (!new_pool)
+            rt_trap("HttpServer: worker pool allocation failed");
+    }
+
+    server_state_lock(server);
+    server->tcp_server = (void *)listener;
+    if (new_pool)
+        server->worker_pool = (void *)new_pool;
+    server->port = bound_port;
+    server->running = true;
+    server->thread_started = false;
+    server_state_unlock(server);
+    published = 1;
+
 #ifdef _WIN32
     server->accept_thread = CreateThread(NULL, 0, accept_loop, server, 0, NULL);
-    server->thread_started = server->accept_thread != NULL;
+    int thread_started = server->accept_thread != NULL;
 #else
-    server->thread_started = pthread_create(&server->accept_thread, NULL, accept_loop, server) == 0;
+    int thread_started = pthread_create(&server->accept_thread, NULL, accept_loop, server) == 0;
 #endif
-    if (!server->thread_started) {
-        server_state_lock(server);
-        server->running = false;
-        server_state_unlock(server);
-        if (server->tcp_server) {
-            rt_tcp_server_close(server->tcp_server);
-            if (rt_obj_release_check0(server->tcp_server))
-                rt_obj_free(server->tcp_server);
-            server->tcp_server = NULL;
-        }
+    if (!thread_started)
         rt_trap("HttpServer: failed to start accept thread");
-        return;
-    }
+
+    server_state_lock(server);
+    server->thread_started = true;
+    server_state_unlock(server);
+    listener = NULL;
+    new_pool = NULL;
+    published = 0;
+    rt_trap_clear_recovery();
+    server_lifecycle_unlock(server);
 }
 
 /// @brief `HttpServer.Stop()` — tear down the listener and join the
@@ -1207,7 +1630,9 @@ void rt_http_server_start(void *obj) {
 void rt_http_server_stop(void *obj) {
     if (!obj)
         return;
-    rt_http_server_impl *server = (rt_http_server_impl *)obj;
+    rt_http_server_impl *server = http_server_checked(obj, "HttpServer: invalid server handle");
+    if (!server)
+        return;
     void *listener = NULL;
     int had_thread = 0;
 #ifdef _WIN32
@@ -1216,7 +1641,14 @@ void rt_http_server_stop(void *obj) {
     pthread_t accept_thread;
 #endif
 
+    server_lifecycle_lock(server);
     server_state_lock(server);
+    if (!server->running && !server->thread_started && !server->tcp_server) {
+        server_state_unlock(server);
+        server_lifecycle_unlock(server);
+        return;
+    }
+    server->stopping = true;
     server->running = false;
     listener = server->tcp_server;
     had_thread = server->thread_started ? 1 : 0;
@@ -1263,8 +1695,33 @@ void rt_http_server_stop(void *obj) {
     if (listener && rt_obj_release_check0(listener))
         rt_obj_free(listener);
 
-    if (server->worker_pool && rt_threadpool_current_worker_pool() != server->worker_pool)
-        rt_threadpool_wait(server->worker_pool);
+    void *worker_pool = server->worker_pool;
+    if (worker_pool && rt_threadpool_current_worker_pool() != worker_pool) {
+        jmp_buf recovery;
+        rt_trap_set_recovery(&recovery);
+        if (setjmp(recovery) != 0) {
+            char saved_error[256];
+            const char *error = rt_trap_get_error();
+            snprintf(saved_error,
+                     sizeof(saved_error),
+                     "%s",
+                     error && error[0] ? error : "HttpServer: worker drain failed");
+            rt_trap_clear_recovery();
+            server_state_lock(server);
+            server->stopping = false;
+            server_state_unlock(server);
+            server_lifecycle_unlock(server);
+            rt_trap(saved_error);
+            return;
+        }
+        rt_threadpool_wait(worker_pool);
+        rt_trap_clear_recovery();
+    }
+
+    server_state_lock(server);
+    server->stopping = false;
+    server_state_unlock(server);
+    server_lifecycle_unlock(server);
 }
 
 /// @brief `HttpServer.Port` — return the TCP port the server is bound to.
@@ -1279,7 +1736,13 @@ void rt_http_server_stop(void *obj) {
 int64_t rt_http_server_port(void *obj) {
     if (!obj)
         return 0;
-    return ((rt_http_server_impl *)obj)->port;
+    rt_http_server_impl *server = http_server_checked(obj, "HttpServer: invalid server handle");
+    if (!server)
+        return 0;
+    server_state_lock(server);
+    int64_t port = server->port;
+    server_state_unlock(server);
+    return port;
 }
 
 /// @brief `HttpServer.IsRunning` — whether the accept loop is active.
@@ -1293,7 +1756,8 @@ int64_t rt_http_server_port(void *obj) {
 int8_t rt_http_server_is_running(void *obj) {
     if (!obj)
         return 0;
-    return server_is_running((rt_http_server_impl *)obj) ? 1 : 0;
+    rt_http_server_impl *server = http_server_checked(obj, "HttpServer: invalid server handle");
+    return server && server_is_running(server) ? 1 : 0;
 }
 
 //=============================================================================
@@ -1311,7 +1775,9 @@ int8_t rt_http_server_is_running(void *obj) {
 rt_string rt_server_req_method(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    server_req_t *req = (server_req_t *)obj;
+    server_req_t *req = server_req_checked(obj);
+    if (!req)
+        return NULL;
     return req->method ? rt_string_from_bytes(req->method, strlen(req->method))
                        : rt_string_from_bytes("", 0);
 }
@@ -1328,7 +1794,9 @@ rt_string rt_server_req_method(void *obj) {
 rt_string rt_server_req_path(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    server_req_t *req = (server_req_t *)obj;
+    server_req_t *req = server_req_checked(obj);
+    if (!req)
+        return NULL;
     return req->path ? rt_string_from_bytes(req->path, strlen(req->path))
                      : rt_string_from_bytes("", 0);
 }
@@ -1345,7 +1813,9 @@ rt_string rt_server_req_path(void *obj) {
 rt_string rt_server_req_body(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    server_req_t *req = (server_req_t *)obj;
+    server_req_t *req = server_req_checked(obj);
+    if (!req)
+        return NULL;
     return req->body ? rt_string_from_bytes(req->body, req->body_len) : rt_string_from_bytes("", 0);
 }
 
@@ -1364,7 +1834,9 @@ rt_string rt_server_req_body(void *obj) {
 rt_string rt_server_req_header(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    server_req_t *req = (server_req_t *)obj;
+    server_req_t *req = server_req_checked(obj);
+    if (!req)
+        return NULL;
     if (!req->headers)
         return rt_string_from_bytes("", 0);
 
@@ -1405,7 +1877,9 @@ rt_string rt_server_req_header(void *obj, rt_string name) {
 rt_string rt_server_req_param(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    server_req_t *req = (server_req_t *)obj;
+    server_req_t *req = server_req_checked(obj);
+    if (!req)
+        return NULL;
     if (!req->params)
         return rt_string_from_bytes("", 0);
     rt_string value = rt_route_match_param(req->params, name);
@@ -1432,7 +1906,9 @@ rt_string rt_server_req_param(void *obj, rt_string name) {
 rt_string rt_server_req_query(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    server_req_t *req = (server_req_t *)obj;
+    server_req_t *req = server_req_checked(obj);
+    if (!req)
+        return NULL;
     if (!req->query)
         return rt_string_from_bytes("", 0);
 
@@ -1492,7 +1968,9 @@ void *rt_server_res_status(void *obj, int64_t code) {
         rt_trap("HttpServer: invalid status");
         return obj;
     }
-    server_res_t *res = (server_res_t *)obj;
+    server_res_t *res = server_res_checked(obj);
+    if (!res)
+        return NULL;
     res->status_code = (int)code;
     return obj;
 }
@@ -1514,9 +1992,11 @@ void *rt_server_res_status(void *obj, int64_t code) {
 void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return obj;
-    server_res_t *res = (server_res_t *)obj;
-    const char *name_cstr = rt_string_cstr(name);
-    const char *value_cstr = rt_string_cstr(value);
+    server_res_t *res = server_res_checked(obj);
+    if (!res)
+        return NULL;
+    const char *name_cstr = NULL;
+    const char *value_cstr = NULL;
     size_t name_len = 0;
     size_t value_len = 0;
     if (server_string_has_embedded_nul(name, &name_cstr, &name_len) ||
@@ -1531,7 +2011,10 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
             return obj;
         }
     }
-    rt_http_header_map_set_ci(res->headers, name, (void *)value);
+    if (!rt_http_header_map_set_ci(res->headers, name, (void *)value)) {
+        rt_trap("HttpServer: response header allocation failed");
+        return obj;
+    }
     return obj;
 }
 
@@ -1548,48 +2031,137 @@ void *rt_server_res_header(void *obj, rt_string name, rt_string value) {
 void rt_server_res_send(void *obj, rt_string body) {
     if (!obj)
         return;
-    server_res_t *res = (server_res_t *)obj;
-    const char *b = rt_string_cstr(body);
-    int64_t body_len = body ? rt_str_len(body) : 0;
-    if (body_len < 0)
-        body_len = 0;
-    free(res->body);
-    res->body = (b && body_len > 0) ? (char *)malloc((size_t)body_len) : NULL;
-    if (b && body_len > 0 && !res->body) {
-        rt_trap("HttpServer: response body allocation failed");
-        res->body_len = 0;
+    server_res_t *res = server_res_checked(obj);
+    if (!res)
+        return;
+    if (body && !rt_string_is_handle(body)) {
+        rt_trap("HttpServer: invalid response body");
         return;
     }
-    if (res->body)
-        memcpy(res->body, b, (size_t)body_len);
-    res->body_len = res->body ? (size_t)body_len : 0;
+    const char *b = body ? rt_string_cstr(body) : NULL;
+    int64_t body_len64 = body ? rt_str_len(body) : 0;
+    if ((body && !b) || body_len64 < 0 || (uint64_t)body_len64 > (uint64_t)SIZE_MAX) {
+        rt_trap("HttpServer: invalid response body");
+        return;
+    }
+    size_t body_len = (size_t)body_len64;
+    char *replacement = (b && body_len > 0) ? (char *)malloc(body_len) : NULL;
+    if (b && body_len > 0 && !replacement) {
+        rt_trap("HttpServer: response body allocation failed");
+        return;
+    }
+    if (replacement)
+        memcpy(replacement, b, body_len);
+    char *old_body = res->body;
+    res->body = replacement;
+    res->body_len = replacement ? body_len : 0;
     res->sent = true;
+    free(old_body);
 }
 
 /// @brief `ServerRes.Json(jsonStr)` — finalize as a JSON response.
 ///
-/// Convenience wrapper that sets `Content-Type: application/json`
-/// and delegates the body capture to `rt_server_res_send`. Does *not*
-/// validate that `json_str` is well-formed JSON — that's the caller's
-/// responsibility. NULL receiver is a no-op.
+/// Stages an exact body copy and a cloned header map containing one
+/// case-insensitive `Content-Type: application/json` entry. Both replacements
+/// publish together only after every allocation succeeds; a recovered trap
+/// therefore observes the complete prior response rather than a mixed old-body
+/// or new-header state. This function does *not* validate JSON syntax. NULL
+/// receiver is a no-op.
 ///
 /// @param obj      ServerRes handle.
 /// @param json_str Pre-serialized JSON body.
 void rt_server_res_json(void *obj, rt_string json_str) {
     if (!obj)
         return;
-    server_res_t *res = (server_res_t *)obj;
-    if (!res->headers) {
-        res->headers = rt_map_new();
-        if (!res->headers) {
-            rt_trap("HttpServer: response header allocation failed");
-            return;
-        }
+    server_res_t *res = server_res_checked(obj);
+    if (!res)
+        return;
+    if (json_str && !rt_string_is_handle(json_str)) {
+        rt_trap("HttpServer: invalid JSON response body");
+        return;
     }
-    rt_string ct_key = rt_const_cstr("Content-Type");
-    rt_string ct_val = rt_const_cstr("application/json");
-    rt_http_header_map_set_ci(res->headers, ct_key, (void *)ct_val);
-    rt_server_res_send(obj, json_str);
+
+    const char *json_bytes = json_str ? rt_string_cstr(json_str) : NULL;
+    int64_t json_len64 = json_str ? rt_str_len(json_str) : 0;
+    if ((json_str && !json_bytes) || json_len64 < 0 || (uint64_t)json_len64 > (uint64_t)SIZE_MAX) {
+        rt_trap("HttpServer: invalid JSON response body");
+        return;
+    }
+
+    char *volatile replacement_body = NULL;
+    void *volatile replacement_headers = NULL;
+    void *volatile keys = NULL;
+    rt_string volatile ct_key = NULL;
+    rt_string volatile ct_val = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HttpServer: JSON response allocation failed");
+        rt_trap_clear_recovery();
+        rt_string_unref((rt_string)ct_val);
+        rt_string_unref((rt_string)ct_key);
+        server_release_object((void *)keys);
+        server_release_object((void *)replacement_headers);
+        free((void *)replacement_body);
+        rt_trap(saved_error);
+        return;
+    }
+
+    size_t json_len = (size_t)json_len64;
+    if (json_len > 0) {
+        replacement_body = (char *)malloc(json_len);
+        if (!replacement_body)
+            rt_trap("HttpServer: JSON response body allocation failed");
+        memcpy((void *)replacement_body, json_bytes, json_len);
+    }
+
+    replacement_headers = rt_map_new();
+    if (!replacement_headers)
+        rt_trap("HttpServer: response header allocation failed");
+    if (res->headers) {
+        keys = rt_map_keys(res->headers);
+        if (!keys)
+            rt_trap("HttpServer: response header snapshot failed");
+        int64_t count = rt_seq_len((void *)keys);
+        if (count < 0)
+            rt_trap("HttpServer: invalid response header snapshot");
+        for (int64_t i = 0; i < count; i++) {
+            rt_string key = (rt_string)rt_seq_get((void *)keys, i);
+            void *value = rt_map_get(res->headers, key);
+            rt_map_set((void *)replacement_headers, key, value);
+        }
+        server_release_object((void *)keys);
+        keys = NULL;
+    }
+
+    ct_key = rt_const_cstr("Content-Type");
+    ct_val = rt_const_cstr("application/json");
+    if (!ct_key || !ct_val ||
+        !rt_http_header_map_set_ci(
+            (void *)replacement_headers, (rt_string)ct_key, (void *)ct_val)) {
+        rt_trap("HttpServer: response header allocation failed");
+    }
+    rt_string_unref((rt_string)ct_val);
+    rt_string_unref((rt_string)ct_key);
+    ct_val = NULL;
+    ct_key = NULL;
+
+    void *old_headers = res->headers;
+    char *old_body = res->body;
+    res->headers = (void *)replacement_headers;
+    res->body = (char *)replacement_body;
+    res->body_len = json_len;
+    res->sent = true;
+    replacement_headers = NULL;
+    replacement_body = NULL;
+    rt_trap_clear_recovery();
+    server_release_object(old_headers);
+    free(old_body);
 }
 
 /// @brief Synchronous router entry-point — parse a raw request string
@@ -1604,37 +2176,144 @@ void rt_server_res_json(void *obj, rt_string json_str) {
 /// @param obj         HttpServer handle.
 /// @param raw_request Raw HTTP request (request line + headers + body).
 /// @return Owned `rt_string` containing the full HTTP/1.1 response.
+typedef struct {
+    server_req_t *request;
+    server_res_t *response;
+    char *wire_response;
+    bool registered;
+} http_sync_request_state_t;
+
+/// @brief Detach managed request state and release its activity reservation.
+/// @details Fields are nulled before their release operations so an unusual
+///          finalizer trap can re-enter full transaction cleanup safely.
+/// @param server Valid HttpServer payload.
+/// @param state Heap-resident synchronous transaction state.
+static void http_sync_request_release_managed(rt_http_server_impl *server,
+                                              http_sync_request_state_t *state) {
+    if (!state)
+        return;
+    server_res_t *response = state->response;
+    state->response = NULL;
+    server_release_object(response);
+    server_req_t *request = state->request;
+    state->request = NULL;
+    server_release_object(request);
+    if (state->registered) {
+        state->registered = false;
+        server_lifecycle_lock(server);
+        server_state_lock(server);
+        if (server->active_sync_requests > 0)
+            server->active_sync_requests--;
+        server_state_unlock(server);
+        server_lifecycle_unlock(server);
+    }
+}
+
+/// @brief Release one synchronous request transaction and its activity slot.
+/// @details Request/response handles and the native wire buffer are detached
+///          first. The activity counter is then decremented under lifecycle ->
+///          state lock order so route/binding mutation cannot overlap a handler.
+/// @param server Valid HttpServer payload.
+/// @param state Heap-resident synchronous transaction state.
+static void http_sync_request_cleanup(rt_http_server_impl *server,
+                                      http_sync_request_state_t *state) {
+    if (!state)
+        return;
+    free(state->wire_response);
+    state->wire_response = NULL;
+    http_sync_request_release_managed(server, state);
+}
+
 void *rt_http_server_process_request(void *obj, rt_string raw_request) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
-    const char *raw = rt_string_cstr(raw_request);
-    if (!raw)
-        return rt_string_from_bytes("", 0);
+    rt_http_server_impl *server = http_server_checked(obj, "HttpServer: invalid server handle");
+    if (!server)
+        return NULL;
+    if (raw_request && !rt_string_is_handle(raw_request)) {
+        rt_trap("HttpServer: invalid request String");
+        return NULL;
+    }
 
-    server_req_t req;
-    server_res_t res;
-    memset(&res, 0, sizeof(res));
+    http_sync_request_state_t *state =
+        (http_sync_request_state_t *)calloc(1, sizeof(http_sync_request_state_t));
+    if (!state) {
+        rt_trap("HttpServer: synchronous request state allocation failed");
+        return NULL;
+    }
 
-    int64_t raw_len = rt_str_len(raw_request);
-    if (raw_len < 0 || !parse_http_request(raw, (size_t)raw_len, &req)) {
-        return rt_string_from_bytes(
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HttpServer: synchronous request failed");
+        rt_trap_clear_recovery();
+        http_sync_request_cleanup(server, state);
+        free(state);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    server_lifecycle_lock(server);
+    server_state_lock(server);
+    if (server->finalizing) {
+        server_state_unlock(server);
+        server_lifecycle_unlock(server);
+        free(state);
+        rt_trap_clear_recovery();
+        rt_trap("HttpServer: server is finalizing");
+        return NULL;
+    }
+    if (server->active_sync_requests == SIZE_MAX) {
+        server_state_unlock(server);
+        server_lifecycle_unlock(server);
+        free(state);
+        rt_trap_clear_recovery();
+        rt_trap("HttpServer: too many synchronous requests");
+        return NULL;
+    }
+    server->active_sync_requests++;
+    state->registered = true;
+    server_state_unlock(server);
+    server_lifecycle_unlock(server);
+
+    const char *raw = raw_request ? rt_string_cstr(raw_request) : NULL;
+    int64_t raw_len = raw_request ? rt_str_len(raw_request) : 0;
+    state->request = server_req_new();
+    if (!state->request)
+        rt_trap("HttpServer: request allocation failed");
+    if (!raw || raw_len < 0 || (uint64_t)raw_len > (uint64_t)SIZE_MAX ||
+        !parse_http_request(raw, (size_t)raw_len, state->request)) {
+        http_sync_request_release_managed(server, state);
+        rt_string result = rt_string_from_bytes(
             "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
             sizeof("HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n") -
                 1);
+        free(state);
+        rt_trap_clear_recovery();
+        return result;
     }
 
-    build_route_response((rt_http_server_impl *)obj, &req, &res);
+    state->response = server_res_new();
+    if (!state->response)
+        rt_trap("HttpServer: response allocation failed");
+    build_route_response(server, state->request, state->response);
 
-    int keep_alive = request_allows_keep_alive(&req) && !response_forces_close(&res);
+    int keep_alive =
+        request_allows_keep_alive(state->request) && !response_forces_close(state->response);
     size_t resp_len = 0;
-    char *resp = build_response(&res, keep_alive, &resp_len);
-    rt_string result = resp ? rt_string_from_bytes(resp, resp_len) : rt_string_from_bytes("", 0);
-
-    free(resp);
-    free(res.body);
-    if (res.headers && rt_obj_release_check0(res.headers))
-        rt_obj_free(res.headers);
-    free_server_req(&req);
+    state->wire_response = build_response(state->response, keep_alive, &resp_len);
+    http_sync_request_release_managed(server, state);
+    rt_string result = state->wire_response ? rt_string_from_bytes(state->wire_response, resp_len)
+                                            : rt_string_from_bytes("", 0);
+    free(state->wire_response);
+    state->wire_response = NULL;
+    free(state);
+    rt_trap_clear_recovery();
     return result;
 }

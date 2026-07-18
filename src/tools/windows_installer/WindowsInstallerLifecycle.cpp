@@ -2116,7 +2116,7 @@ void registerAssociations(const HostPackage &package,
         return;
     const fs::path executable = safeJoin(plan.installRoot, package.metadata.associationExecutable);
     if (!fs::is_regular_file(executable)) {
-        logger.warning(L"File associations were skipped because ZannaIDE is not selected");
+        logger.warning(L"File associations were skipped because Zanna Studio is not selected");
         return;
     }
     for (const auto &association : package.metadata.associations) {

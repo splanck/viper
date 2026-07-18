@@ -6,45 +6,110 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_smtp.c
-// Purpose: Simple SMTP client for sending emails.
+// Purpose: Strict, cancellation-safe SMTP client with optional TLS and AUTH LOGIN.
 // Key invariants:
 //   - EHLO → optional STARTTLS → optional AUTH LOGIN → MAIL FROM → RCPT TO → DATA.
-//   - Base64 encoding for AUTH LOGIN credentials.
+//   - Replies require bounded CRLF framing and consistent multiline status codes.
+//   - One operation owns published transport state; Close only cancels active I/O.
+//   - MIME bodies stream with bounded memory, normalized newlines, and dot transparency.
+//   - AUTH LOGIN credentials and encoded copies are wiped before native release.
 // Ownership/Lifetime:
-//   - Client objects are GC-managed.
-// Links: rt_smtp.h (API), rt_network.h (TCP)
+//   - Client objects are GC-managed; copied host/error/credential bytes are finalized.
+// Links: rt_smtp.h (C ABI), rt_network.h (TCP), rt_tls.h (TLS),
+//        docs/zannalib/network.md (runtime contract)
 //
 //===----------------------------------------------------------------------===//
 
-// Platform feature macros must appear before ANY includes
-#if !defined(_WIN32)
+// Feature-test macros must appear before every system header. They are benign
+// on non-POSIX toolchains and avoid raw OS-condition checks in this module.
+#ifndef _DARWIN_C_SOURCE
 #define _DARWIN_C_SOURCE 1
+#endif
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
 #endif
 
 #include "rt_smtp.h"
 
-#include "rt_codec.h"
+#include "rt_ascii.h"
 #include "rt_internal.h"
 #include "rt_network_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_result.h"
 #include "rt_string.h"
 #include "rt_tls.h"
+#include "rt_trap.h"
 
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#define strcasecmp _stricmp
-#define strncasecmp _strnicmp
+#if RT_PLATFORM_WINDOWS
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+typedef CRITICAL_SECTION smtp_mutex_t;
+#else
+#include <pthread.h>
+typedef pthread_mutex_t smtp_mutex_t;
 #endif
 
-#include "rt_trap.h"
+/// @brief RFC 5321 maximum reply-line bytes excluding CRLF.
+#define SMTP_MAX_LINE_LEN 510u
 
-#define SMTP_MAX_LINE_LEN (64u * 1024u)
+/// @brief Maximum lines accepted in one multiline SMTP reply.
+#define SMTP_MAX_REPLY_LINES 100u
+
+/// @brief Maximum authentication credential bytes retained per field.
+#define SMTP_MAX_CREDENTIAL_BYTES (16u * 1024u)
+
+/// @brief Fixed native staging capacity used while streaming SMTP DATA.
+#define SMTP_OUTPUT_BUFFER_SIZE 4096u
+
+/// @brief Initialize one native SMTP mutex.
+/// @param mutex Zeroed storage owned by a partial client.
+/// @return Nonzero on success; zero when POSIX initialization fails.
+static int smtp_mutex_init(smtp_mutex_t *mutex) {
+#if RT_PLATFORM_WINDOWS
+    InitializeCriticalSection(mutex);
+    return 1;
+#else
+    return pthread_mutex_init(mutex, NULL) == 0 ? 1 : 0;
+#endif
+}
+
+/// @brief Acquire one initialized native SMTP mutex.
+/// @param mutex Mutex owned by a live SMTP client.
+static void smtp_mutex_lock(smtp_mutex_t *mutex) {
+#if RT_PLATFORM_WINDOWS
+    EnterCriticalSection(mutex);
+#else
+    (void)pthread_mutex_lock(mutex);
+#endif
+}
+
+/// @brief Release one SMTP mutex held by the current thread.
+/// @param mutex Locked mutex owned by a live SMTP client.
+static void smtp_mutex_unlock(smtp_mutex_t *mutex) {
+#if RT_PLATFORM_WINDOWS
+    LeaveCriticalSection(mutex);
+#else
+    (void)pthread_mutex_unlock(mutex);
+#endif
+}
+
+/// @brief Destroy one quiescent SMTP mutex during finalization.
+/// @param mutex Initialized mutex that has no active users.
+static void smtp_mutex_destroy(smtp_mutex_t *mutex) {
+#if RT_PLATFORM_WINDOWS
+    DeleteCriticalSection(mutex);
+#else
+    (void)pthread_mutex_destroy(mutex);
+#endif
+}
 
 //=============================================================================
 // Internal Structure
@@ -59,12 +124,84 @@ typedef struct {
     char *password;
     char *last_error;
     int8_t use_tls;
+    uint8_t read_buf[4096];
+    size_t read_buf_len;
+    size_t read_buf_pos;
+    smtp_mutex_t state_lock;     ///< Protects transport publication, cancellation, and errors.
+    smtp_mutex_t operation_lock; ///< Serializes sends and mutable configuration.
+    int state_lock_initialized;
+    int operation_lock_initialized;
+    int operation_active;
+    int cancel_requested;
 } rt_smtp_impl;
 
 typedef struct {
     int8_t supports_starttls;
     int8_t supports_auth_login;
 } smtp_caps_t;
+
+/// @brief Compare fixed byte ranges with locale-independent ASCII case folding.
+/// @param lhs First byte range.
+/// @param rhs Second byte range.
+/// @param count Number of bytes to compare.
+/// @return Zero for an ASCII-case-insensitive match.
+static int smtp_ascii_ncasecmp(const char *lhs, const char *rhs, size_t count) {
+    for (size_t index = 0; index < count; index++) {
+        int left = rt_ascii_tolower((unsigned char)lhs[index]);
+        int right = rt_ascii_tolower((unsigned char)rhs[index]);
+        if (left != right)
+            return left - right;
+    }
+    return 0;
+}
+
+/// @brief Validate and cast an opaque SMTP receiver before native state access.
+/// @details Stable identity, full payload size, and both lock initialization
+///          markers are required. Returning trap hooks therefore cannot fall
+///          through into forged mutex, credential, or transport storage.
+/// @param object Candidate managed receiver.
+/// @param operation Operation-specific diagnostic.
+/// @return Initialized SMTP payload, or NULL after one trap.
+static rt_smtp_impl *smtp_require(void *object, const char *operation) {
+    if (!rt_obj_is_instance(object, RT_SMTP_CLASS_ID, sizeof(rt_smtp_impl)) ||
+        !((rt_smtp_impl *)object)->state_lock_initialized ||
+        !((rt_smtp_impl *)object)->operation_lock_initialized) {
+        rt_trap(operation ? operation : "SmtpClient: invalid client");
+        return NULL;
+    }
+    return (rt_smtp_impl *)object;
+}
+
+/// @brief Validate a runtime String and expose its complete C-string view.
+/// @param value Candidate String; NULL is accepted only when @p allow_null is nonzero.
+/// @param allow_null Whether NULL represents an omitted optional field.
+/// @param bytes_out Optional C-string output.
+/// @param length_out Optional exact byte-length output.
+/// @return Nonzero for a valid handle without embedded NUL bytes.
+static int smtp_string_view(rt_string value,
+                            int allow_null,
+                            const char **bytes_out,
+                            size_t *length_out) {
+    if (bytes_out)
+        *bytes_out = NULL;
+    if (length_out)
+        *length_out = 0;
+    if (!value)
+        return allow_null ? 1 : 0;
+    if (!rt_string_is_handle(value))
+        return 0;
+    int64_t length = rt_str_len(value);
+    const char *bytes = rt_string_cstr(value);
+    if (!bytes || length < 0 || (uint64_t)length > (uint64_t)SIZE_MAX ||
+        (length > 0 && memchr(bytes, '\0', (size_t)length))) {
+        return 0;
+    }
+    if (bytes_out)
+        *bytes_out = bytes;
+    if (length_out)
+        *length_out = (size_t)length;
+    return 1;
+}
 
 /// @brief Overwrite a memory range containing SMTP credentials or authentication material.
 /// @details Uses a volatile byte pointer so the compiler cannot elide the wipe as an unused
@@ -88,46 +225,39 @@ static void smtp_free_secret(char *secret) {
     free(secret);
 }
 
+static void smtp_close_transport(rt_smtp_impl *s);
+static void smtp_release_managed(void *object);
+
 /// @brief GC finalizer: tear down TLS session (if any), close + release the TCP socket, and free
 /// all heap-owned strings (host, credentials, last error).
 static void rt_smtp_finalize(void *obj) {
     if (!obj)
         return;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
-    if (s->tls) {
-        rt_tls_close(s->tls);
-        s->tls = NULL;
-    }
-    if (s->tcp) {
-        rt_tcp_close(s->tcp);
-        if (rt_obj_release_check0(s->tcp))
-            rt_obj_free(s->tcp);
-        s->tcp = NULL;
-    }
+    smtp_close_transport(s);
     free(s->host);
-    free(s->username);
+    smtp_free_secret(s->username);
     smtp_free_secret(s->password);
     free(s->last_error);
+    if (s->operation_lock_initialized) {
+        smtp_mutex_destroy(&s->operation_lock);
+        s->operation_lock_initialized = 0;
+    }
+    if (s->state_lock_initialized) {
+        smtp_mutex_destroy(&s->state_lock);
+        s->state_lock_initialized = 0;
+    }
 }
 
 //=============================================================================
 // SMTP Helpers
 //=============================================================================
 
-/// @brief Replace the cached last-error message with an owned copy.
-/// @details Leaves the prior error intact if allocation fails and a custom trap handler returns.
-/// @brief True when @p value has bytes beyond its first NUL (C-string view
-///        would silently truncate the runtime string).
-static int smtp_string_has_embedded_nul(rt_string value) {
-    if (!value)
-        return 0;
-    const char *cstr = rt_string_cstr(value);
-    int64_t len = rt_str_len(value);
-    if (!cstr || len <= 0)
-        return 0;
-    return memchr(cstr, '\0', (size_t)len) != NULL;
-}
-
+/// @brief Replace the synchronized last-error message with an owned copy.
+/// @details Allocation completes before the state lock is acquired, leaving the
+///          prior diagnostic intact if a returning trap hook resumes execution.
+/// @param s Initialized SMTP client.
+/// @param msg New diagnostic, or NULL to clear it.
 static void set_error(rt_smtp_impl *s, const char *msg) {
     if (!s)
         return;
@@ -136,39 +266,24 @@ static void set_error(rt_smtp_impl *s, const char *msg) {
         rt_trap("SmtpClient: error allocation failed");
         return;
     }
-    free(s->last_error);
+    char *old_error = NULL;
+    smtp_mutex_lock(&s->state_lock);
+    old_error = s->last_error;
     s->last_error = copy;
+    smtp_mutex_unlock(&s->state_lock);
+    free(old_error);
 }
 
 /// @brief Drop the cached last-error so a successful call doesn't leak a stale prior failure.
 static void clear_error(rt_smtp_impl *s) {
     if (!s)
         return;
-    free(s->last_error);
+    char *old_error = NULL;
+    smtp_mutex_lock(&s->state_lock);
+    old_error = s->last_error;
     s->last_error = NULL;
-}
-
-/// @brief Convert the legacy Boolean send outcome plus cached error into Result.
-/// @details Successful sends return OkI64(1). Failed sends copy the receiver's
-///          last error into ErrStr; when the legacy path produced no diagnostic
-///          (for example a NULL receiver), @p fallback supplies a stable message.
-/// @param ok Legacy Boolean outcome from rt_smtp_send() or rt_smtp_send_html().
-/// @param obj SmtpClient receiver used to read LastError.
-/// @param fallback Message used when LastError is empty.
-/// @return Opaque Zanna.Result containing OkI64(1) or ErrStr(message).
-static void *smtp_send_result_from_bool(int8_t ok, void *obj, const char *fallback) {
-    if (ok)
-        return rt_result_ok_i64(1);
-    rt_string error = rt_smtp_last_error(obj);
-    rt_string message = error;
-    const char *message_text = rt_string_cstr(message);
-    if (!message_text || message_text[0] == '\0') {
-        rt_str_release_maybe(error);
-        message = rt_const_cstr(fallback && fallback[0] ? fallback : "SmtpClient send failed");
-    }
-    void *result = rt_result_err_str(message);
-    rt_str_release_maybe(message);
-    return result;
+    smtp_mutex_unlock(&s->state_lock);
+    free(old_error);
 }
 
 /// @brief Tear down whichever transport is active (TLS or plain TCP). Idempotent and ordering-safe:
@@ -176,16 +291,109 @@ static void *smtp_send_result_from_bool(int8_t ok, void *obj, const char *fallba
 static void smtp_close_transport(rt_smtp_impl *s) {
     if (!s)
         return;
-    if (s->tls) {
-        rt_tls_close(s->tls);
-        s->tls = NULL;
+    rt_tls_session_t *tls = NULL;
+    void *tcp = NULL;
+    if (s->state_lock_initialized)
+        smtp_mutex_lock(&s->state_lock);
+    tls = s->tls;
+    tcp = s->tcp;
+    s->tls = NULL;
+    s->tcp = NULL;
+    s->read_buf_len = 0;
+    s->read_buf_pos = 0;
+    if (s->state_lock_initialized)
+        smtp_mutex_unlock(&s->state_lock);
+
+    if (tls)
+        rt_tls_close(tls);
+    if (tcp) {
+        rt_tcp_close(tcp);
+        if (rt_obj_release_check0(tcp))
+            rt_obj_free(tcp);
     }
-    if (s->tcp) {
-        rt_tcp_close(s->tcp);
-        if (rt_obj_release_check0(s->tcp))
-            rt_obj_free(s->tcp);
-        s->tcp = NULL;
+}
+
+/// @brief Test whether concurrent Close cancelled the active SMTP operation.
+/// @param s Initialized client.
+/// @return Nonzero after cancellation was requested.
+static int smtp_operation_cancelled(rt_smtp_impl *s) {
+    int cancelled = 0;
+    smtp_mutex_lock(&s->state_lock);
+    cancelled = s->cancel_requested ? 1 : 0;
+    smtp_mutex_unlock(&s->state_lock);
+    return cancelled;
+}
+
+/// @brief Publish a newly connected plain TCP wrapper to the active operation.
+/// @details The caller retains ownership on cancellation or an unexpected
+///          occupied slot. Publication and Close's shutdown snapshot are
+///          serialized by the state mutex.
+/// @param s Active SMTP client.
+/// @param tcp Caller-owned connected TCP object.
+/// @return Nonzero when ownership transferred to @p s.
+static int smtp_publish_tcp(rt_smtp_impl *s, void *tcp) {
+    int published = 0;
+    smtp_mutex_lock(&s->state_lock);
+    if (!s->cancel_requested && !s->tcp && !s->tls) {
+        s->tcp = tcp;
+        s->read_buf_len = 0;
+        s->read_buf_pos = 0;
+        published = 1;
     }
+    smtp_mutex_unlock(&s->state_lock);
+    return published;
+}
+
+/// @brief Transfer an existing TCP descriptor into a STARTTLS session exactly once.
+/// @details The TCP wrapper is detached while the state mutex excludes Close's
+///          snapshot, then released outside the lock. TLS remains published
+///          even if cancellation won so the operation owner can close the
+///          descriptor through the correct protocol owner.
+/// @param s Active client with a published TCP wrapper.
+/// @param tls Newly allocated TLS session that owns the TCP descriptor.
+/// @return Nonzero when the transition completed without prior cancellation.
+static int smtp_publish_starttls(rt_smtp_impl *s, rt_tls_session_t *tls) {
+    void *tcp = NULL;
+    int cancelled = 0;
+    smtp_mutex_lock(&s->state_lock);
+    tcp = s->tcp;
+    if (tcp)
+        rt_tcp_detach_socket(tcp);
+    s->tcp = NULL;
+    s->tls = tls;
+    s->read_buf_len = 0;
+    s->read_buf_pos = 0;
+    cancelled = s->cancel_requested ? 1 : 0;
+    smtp_mutex_unlock(&s->state_lock);
+    if (tcp && rt_obj_release_check0(tcp))
+        rt_obj_free(tcp);
+    if (cancelled) {
+        socket_t socket_fd = (socket_t)rt_tls_get_socket(tls);
+        if (socket_fd != INVALID_SOCK)
+            (void)rt_socket_shutdown_both(socket_fd);
+    }
+    return cancelled ? 0 : 1;
+}
+
+/// @brief Mark the beginning of a serialized SMTP operation.
+/// @details The caller already holds `operation_lock`; stale cancellation is
+///          cleared only after every prior transport has been detached.
+/// @param s Serialized client.
+static void smtp_begin_operation(rt_smtp_impl *s) {
+    smtp_close_transport(s);
+    smtp_mutex_lock(&s->state_lock);
+    s->cancel_requested = 0;
+    s->operation_active = 1;
+    smtp_mutex_unlock(&s->state_lock);
+}
+
+/// @brief End a serialized SMTP operation and release transport ownership.
+/// @param s Client whose operation mutex remains held by the caller.
+static void smtp_finish_operation(rt_smtp_impl *s) {
+    smtp_close_transport(s);
+    smtp_mutex_lock(&s->state_lock);
+    s->operation_active = 0;
+    smtp_mutex_unlock(&s->state_lock);
 }
 
 /// @brief Apply the same send + recv timeout to whichever transport is active. For TLS, reach
@@ -194,10 +402,10 @@ static void smtp_set_transport_timeouts(rt_smtp_impl *s, int timeout_ms) {
     if (!s)
         return;
     if (s->tls) {
-        int fd = rt_tls_get_socket(s->tls);
+        socket_t fd = (socket_t)rt_tls_get_socket(s->tls);
         if (fd != INVALID_SOCK) {
-            set_socket_timeout((socket_t)fd, timeout_ms, true);
-            set_socket_timeout((socket_t)fd, timeout_ms, false);
+            set_socket_timeout(fd, timeout_ms, true);
+            set_socket_timeout(fd, timeout_ms, false);
         }
     } else if (s->tcp) {
         rt_tcp_set_recv_timeout(s->tcp, timeout_ms);
@@ -209,6 +417,8 @@ static void smtp_set_transport_timeouts(rt_smtp_impl *s, int timeout_ms) {
 /// the byte count is fully drained; for plain TCP, delegates to the rt_tcp send-all helper.
 /// Returns 0 on partial write/error, 1 on success.
 static int smtp_transport_send_all(rt_smtp_impl *s, const void *data, size_t len) {
+    if (smtp_operation_cancelled(s))
+        return 0;
     if (s->tls) {
         size_t total = 0;
         while (total < len) {
@@ -224,28 +434,51 @@ static int smtp_transport_send_all(rt_smtp_impl *s, const void *data, size_t len
     return 1;
 }
 
-/// @brief Read up to `len` bytes from the active transport. For plain TCP this allocates a
-/// `Bytes` chunk via rt_tcp_recv, copies into the caller's buffer, then releases the chunk —
-/// a small extra copy in exchange for letting `smtp_recv_line` work uniformly across transports.
+/// @brief Read native bytes directly from the active TLS or TCP transport.
+/// @details The plain path bypasses managed Bytes allocation and retries only
+///          interrupted native receives. The active-operation contract keeps
+///          transport storage alive while concurrent Close performs shutdown.
 static long smtp_transport_read(rt_smtp_impl *s, void *buffer, size_t len) {
     if (s->tls)
         return rt_tls_recv(s->tls, buffer, len);
-
-    void *chunk = rt_tcp_recv(s->tcp, (int64_t)len);
-    int64_t chunk_len = rt_bytes_len(chunk);
-    if (chunk_len > 0)
-        memcpy(buffer, bytes_data(chunk), (size_t)chunk_len);
-    if (chunk && rt_obj_release_check0(chunk))
-        rt_obj_free(chunk);
-    return (long)chunk_len;
+    socket_t socket_fd = s->tcp ? rt_tcp_socket_fd(s->tcp) : INVALID_SOCK;
+    if (socket_fd == INVALID_SOCK)
+        return 0;
+    for (;;) {
+        long received = recv(socket_fd, (char *)buffer, (int)(len > INT_MAX ? INT_MAX : len), 0);
+        if (received < 0 && rt_socket_error_is_interrupted(GET_LAST_ERROR()))
+            continue;
+        return received;
+    }
 }
 
-/// @brief Read a single CRLF-terminated SMTP response line into a freshly-allocated rt_string.
-/// Performs byte-at-a-time `transport_read` (chatty but simpler than buffering across calls),
-/// strips the trailing CR, and grows the line buffer geometrically (×2) if it overflows 256 chars.
-/// Returns NULL on transport error or OOM (with `last_error` populated).
-static rt_string smtp_recv_line(rt_smtp_impl *s) {
-    size_t cap = 256;
+/// @brief Return one byte from the SMTP client's native read-ahead buffer.
+/// @details Refill reads up to 4 KiB, amortizing TLS record processing and
+///          native receive syscalls across reply lines without consuming bytes
+///          belonging to a later SMTP command.
+/// @param s Live active-operation client.
+/// @param byte_out Receives one byte.
+/// @return Nonzero on success, zero on EOF or transport failure.
+static int smtp_transport_read_byte(rt_smtp_impl *s, uint8_t *byte_out) {
+    if (s->read_buf_pos >= s->read_buf_len) {
+        long received = smtp_transport_read(s, s->read_buf, sizeof(s->read_buf));
+        if (received <= 0)
+            return 0;
+        s->read_buf_len = (size_t)received;
+        s->read_buf_pos = 0;
+    }
+    *byte_out = s->read_buf[s->read_buf_pos++];
+    return 1;
+}
+
+/// @brief Read one strict CRLF-terminated SMTP reply line into native memory.
+/// @details Bare LF, embedded CR, NUL, C0 controls other than HTAB, DEL, and
+///          lines beyond RFC 5321's 510-byte content limit are rejected. No
+///          managed object is allocated by the reply parser.
+/// @param s Live active-operation client.
+/// @return Heap-owned NUL-terminated line, or NULL with LastError populated.
+static char *smtp_recv_line(rt_smtp_impl *s) {
+    size_t cap = SMTP_MAX_LINE_LEN + 1u;
     size_t len = 0;
     char *line = (char *)malloc(cap);
     if (!line) {
@@ -255,17 +488,25 @@ static rt_string smtp_recv_line(rt_smtp_impl *s) {
 
     while (1) {
         uint8_t c = 0;
-        long received = smtp_transport_read(s, &c, 1);
-        if (received <= 0) {
+        if (!smtp_transport_read_byte(s, &c)) {
             free(line);
             set_error(s, "SMTP: no response");
             return NULL;
         }
 
-        if (c == '\n') {
-            if (len > 0 && line[len - 1] == '\r')
-                len--;
+        if (c == '\r') {
+            uint8_t lf = 0;
+            if (!smtp_transport_read_byte(s, &lf) || lf != '\n') {
+                free(line);
+                set_error(s, "SMTP: reply did not end with CRLF");
+                return NULL;
+            }
             break;
+        }
+        if (c == '\n') {
+            free(line);
+            set_error(s, "SMTP: reply used bare LF");
+            return NULL;
         }
 
         if (len >= SMTP_MAX_LINE_LEN) {
@@ -273,55 +514,26 @@ static rt_string smtp_recv_line(rt_smtp_impl *s) {
             set_error(s, "SMTP: response line too long");
             return NULL;
         }
-
-        if (len >= cap) {
-            size_t new_cap = cap * 2;
-            if (new_cap < cap || new_cap > SMTP_MAX_LINE_LEN)
-                new_cap = SMTP_MAX_LINE_LEN;
-            if (new_cap <= cap) {
-                free(line);
-                set_error(s, "SMTP: response line too long");
-                return NULL;
-            }
-            char *grown = (char *)realloc(line, new_cap);
-            if (!grown) {
-                free(line);
-                set_error(s, "SMTP: OOM");
-                return NULL;
-            }
-            line = grown;
-            cap = new_cap;
+        if ((c < 0x20u && c != '\t') || c == 0x7Fu) {
+            free(line);
+            set_error(s, "SMTP: invalid reply byte");
+            return NULL;
         }
         line[len++] = (char)c;
     }
 
-    rt_string result = rt_string_from_bytes(line, len);
-    free(line);
-    return result;
+    line[len] = '\0';
+    return line;
 }
 
-/// @brief **Header-injection guard:** replace any CR/LF in a header value with a space, so a
-/// hostile `Subject:` cannot smuggle additional headers (e.g. `Bcc:`, content-type override) into
-/// the outgoing message. Caller must `free()` the returned copy. NULL input → "" (still strdup'd).
-static char *smtp_sanitize_header_value(const char *value) {
-    if (!value)
-        return strdup("");
-
-    size_t len = strlen(value);
-    char *copy = (char *)malloc(len + 1);
-    if (!copy)
-        return NULL;
-
-    for (size_t i = 0; i < len; i++) {
-        char c = value[i];
-        copy[i] = (c == '\r' || c == '\n') ? ' ' : c;
-    }
-    copy[len] = '\0';
-    return copy;
-}
-
-static int smtp_validate_mailbox_path(const char *value) {
-    size_t len = value ? strlen(value) : 0;
+/// @brief Validate one SMTP mailbox path used in an envelope command.
+/// @details The runtime currently accepts one unquoted mailbox without surrounding
+///          angle brackets. Whitespace, controls, DEL, and angle brackets are
+///          rejected so the value cannot terminate or extend `MAIL FROM`/`RCPT TO`.
+/// @param value Exact NUL-free mailbox bytes.
+/// @param len Exact byte length.
+/// @return Nonzero when the mailbox can be embedded in one bounded SMTP command.
+static int smtp_validate_mailbox_path(const char *value, size_t len) {
     if (len == 0 || len > 512)
         return 0;
     for (size_t i = 0; i < len; i++) {
@@ -342,99 +554,126 @@ static int smtp_header_value_is_command_safe(const char *value) {
     return 1;
 }
 
-/// @brief **RFC 5321 §4.5.2 dot-stuffing:** double any leading `.` on a line so the SMTP DATA
-/// terminator (a lone `.` line) cannot be triggered by user content. Also normalizes line
-/// endings to CRLF and ensures the message ends with CRLF (required before the `.` terminator).
-/// Returned buffer is heap-owned; caller must `free()`.
-static char *smtp_dot_stuff_body(const char *body) {
-    const char *src = body ? body : "";
-    size_t src_len = strlen(src);
-    size_t cap = src_len * 2 + 8;
-    char *out = (char *)malloc(cap);
-    if (!out)
-        return NULL;
+/// @brief Fixed-memory output staging state for one SMTP DATA transfer.
+typedef struct {
+    uint8_t bytes[SMTP_OUTPUT_BUFFER_SIZE]; ///< Unsent bytes staged for transport.
+    size_t len;                             ///< Number of valid staged bytes.
+} smtp_output_buffer_t;
 
-    size_t pos = 0;
+/// @brief Flush all staged DATA bytes to the active SMTP transport.
+/// @param s Live active-operation client.
+/// @param output Caller-owned staging buffer.
+/// @return Nonzero on success; zero with LastError populated on failure.
+static int smtp_output_flush(rt_smtp_impl *s, smtp_output_buffer_t *output) {
+    if (!output || output->len == 0)
+        return 1;
+    if (!smtp_transport_send_all(s, output->bytes, output->len)) {
+        set_error(s, "SMTP: DATA send failed");
+        return 0;
+    }
+    output->len = 0;
+    return 1;
+}
+
+/// @brief Append an exact byte range to bounded SMTP DATA staging.
+/// @details Full buffers are flushed incrementally, so memory use remains
+///          constant regardless of subject or body size.
+/// @param s Live active-operation client.
+/// @param output Caller-owned staging buffer.
+/// @param bytes Source bytes; may be NULL only when @p len is zero.
+/// @param len Exact number of bytes to append.
+/// @return Nonzero on success; zero with LastError populated on failure.
+static int smtp_output_append(rt_smtp_impl *s,
+                              smtp_output_buffer_t *output,
+                              const void *bytes,
+                              size_t len) {
+    if (!output || (!bytes && len != 0)) {
+        set_error(s, "SMTP: invalid DATA byte range");
+        return 0;
+    }
+    const uint8_t *source = (const uint8_t *)bytes;
+    while (len > 0) {
+        if (output->len == sizeof(output->bytes) && !smtp_output_flush(s, output))
+            return 0;
+        size_t available = sizeof(output->bytes) - output->len;
+        size_t count = len < available ? len : available;
+        memcpy(output->bytes + output->len, source, count);
+        output->len += count;
+        source += count;
+        len -= count;
+    }
+    return 1;
+}
+
+/// @brief Stream one untrusted MIME header value with injection bytes neutralized.
+/// @details Every C0 control and DEL byte becomes one space. UTF-8 bytes are
+///          preserved verbatim, and no message-sized temporary allocation is made.
+/// @param s Live active-operation client.
+/// @param output Caller-owned staging buffer.
+/// @param value Exact NUL-free header bytes; may be NULL when @p len is zero.
+/// @param len Exact header byte length.
+/// @return Nonzero on success; zero with LastError populated on failure.
+static int smtp_output_append_header_value(rt_smtp_impl *s,
+                                           smtp_output_buffer_t *output,
+                                           const char *value,
+                                           size_t len) {
+    if (!value && len != 0) {
+        set_error(s, "SMTP: invalid header byte range");
+        return 0;
+    }
+    size_t run_start = 0;
+    for (size_t index = 0; index < len; index++) {
+        unsigned char byte = (unsigned char)value[index];
+        if (byte >= 0x20u && byte != 0x7Fu)
+            continue;
+        if (index > run_start &&
+            !smtp_output_append(s, output, value + run_start, index - run_start)) {
+            return 0;
+        }
+        if (!smtp_output_append(s, output, " ", 1u))
+            return 0;
+        run_start = index + 1u;
+    }
+    return run_start < len ? smtp_output_append(s, output, value + run_start, len - run_start) : 1;
+}
+
+/// @brief Stream a body using RFC 5321 newline normalization and dot transparency.
+/// @details CR, LF, and CRLF inputs become CRLF. A dot at the beginning of any
+///          normalized line is doubled, the content is guaranteed to end in
+///          CRLF, and the final SMTP `.<CRLF>` terminator is appended. Processing
+///          uses only @ref smtp_output_buffer_t regardless of body size.
+/// @param s Live active-operation client.
+/// @param output Caller-owned staging buffer.
+/// @param body Exact NUL-free body bytes; may be NULL when @p body_len is zero.
+/// @param body_len Exact body byte length.
+/// @return Nonzero on success; zero with LastError populated on failure.
+static int smtp_output_append_body(rt_smtp_impl *s,
+                                   smtp_output_buffer_t *output,
+                                   const char *body,
+                                   size_t body_len) {
     int at_line_start = 1;
-    for (size_t i = 0; i < src_len; i++) {
-        char c = src[i];
-
-        if (at_line_start && c == '.') {
-            if (pos + 1 >= cap) {
-                cap *= 2;
-                char *grown = (char *)realloc(out, cap);
-                if (!grown) {
-                    free(out);
-                    return NULL;
-                }
-                out = grown;
-            }
-            out[pos++] = '.';
-        }
-
-        if (c == '\r') {
-            if (i + 1 < src_len && src[i + 1] == '\n')
-                i++;
-            if (pos + 2 >= cap) {
-                cap *= 2;
-                char *grown = (char *)realloc(out, cap);
-                if (!grown) {
-                    free(out);
-                    return NULL;
-                }
-                out = grown;
-            }
-            out[pos++] = '\r';
-            out[pos++] = '\n';
+    int ended_with_newline = 0;
+    for (size_t index = 0; index < body_len; index++) {
+        unsigned char byte = (unsigned char)body[index];
+        if (at_line_start && byte == '.' && !smtp_output_append(s, output, ".", 1u))
+            return 0;
+        if (byte == '\r' || byte == '\n') {
+            if (byte == '\r' && index + 1u < body_len && body[index + 1u] == '\n')
+                index++;
+            if (!smtp_output_append(s, output, "\r\n", 2u))
+                return 0;
             at_line_start = 1;
+            ended_with_newline = 1;
             continue;
         }
-
-        if (c == '\n') {
-            if (pos + 2 >= cap) {
-                cap *= 2;
-                char *grown = (char *)realloc(out, cap);
-                if (!grown) {
-                    free(out);
-                    return NULL;
-                }
-                out = grown;
-            }
-            out[pos++] = '\r';
-            out[pos++] = '\n';
-            at_line_start = 1;
-            continue;
-        }
-
-        if (pos + 1 >= cap) {
-            cap *= 2;
-            char *grown = (char *)realloc(out, cap);
-            if (!grown) {
-                free(out);
-                return NULL;
-            }
-            out = grown;
-        }
-        out[pos++] = c;
+        if (!smtp_output_append(s, output, &body[index], 1u))
+            return 0;
         at_line_start = 0;
+        ended_with_newline = 0;
     }
-
-    if (pos < 2 || out[pos - 2] != '\r' || out[pos - 1] != '\n') {
-        if (pos + 2 >= cap) {
-            cap += 4;
-            char *grown = (char *)realloc(out, cap);
-            if (!grown) {
-                free(out);
-                return NULL;
-            }
-            out = grown;
-        }
-        out[pos++] = '\r';
-        out[pos++] = '\n';
-    }
-
-    out[pos] = '\0';
-    return out;
+    if (!ended_with_newline && !smtp_output_append(s, output, "\r\n", 2u))
+        return 0;
+    return smtp_output_append(s, output, ".\r\n", 3u) && smtp_output_flush(s, output);
 }
 
 /// @brief Send an SMTP command (or just read, if `cmd == NULL`) and return the response code.
@@ -444,14 +683,28 @@ static char *smtp_dot_stuff_body(const char *body) {
 typedef void (*smtp_line_callback_t)(const char *line, void *ctx);
 
 static int smtp_parse_response_code(const char *line) {
-    if (!line || strlen(line) < 3)
+    if (!line || strlen(line) < 4)
         return -1;
     if (line[0] < '0' || line[0] > '9' || line[1] < '0' || line[1] > '9' || line[2] < '0' ||
         line[2] > '9')
         return -1;
-    return (line[0] - '0') * 100 + (line[1] - '0') * 10 + (line[2] - '0');
+    int code = (line[0] - '0') * 100 + (line[1] - '0') * 10 + (line[2] - '0');
+    if (code < 100 || code > 599 || (line[3] != ' ' && line[3] != '-'))
+        return -1;
+    return code;
 }
 
+/// @brief Send one SMTP command and consume its complete strict reply.
+/// @details Multiline replies are bounded, require the same three-digit code on
+///          every line, and terminate only with `code SP`. Mismatched codes,
+///          malformed separators, or incomplete replies close off protocol
+///          desynchronization before a later command is sent.
+/// @param s Live active-operation client.
+/// @param cmd Command bytes including CRLF, or NULL to read a pending reply.
+/// @param expected_code Required exact code, or zero to return any valid code.
+/// @param line_cb Optional callback for each validated reply line.
+/// @param line_ctx Callback context.
+/// @return Reply code, or -1 with LastError populated.
 static int smtp_command_ex(rt_smtp_impl *s,
                            const char *cmd,
                            int expected_code,
@@ -464,32 +717,43 @@ static int smtp_command_ex(rt_smtp_impl *s,
         }
     }
 
-    // Read response line(s)
-    rt_string line = smtp_recv_line(s);
+    char *line = smtp_recv_line(s);
     if (!line) {
         return -1;
     }
-    const char *l = rt_string_cstr(line);
-    int code = smtp_parse_response_code(l);
-    if (l && line_cb)
-        line_cb(l, line_ctx);
+    int code = smtp_parse_response_code(line);
+    if (code < 0) {
+        free(line);
+        set_error(s, "SMTP: malformed response line");
+        return -1;
+    }
+    int multiline = line[3] == '-';
+    if (line_cb)
+        line_cb(line, line_ctx);
+    free(line);
 
-    // Drain multi-line responses (line[3] == '-')
-    while (l && strlen(l) > 3 && l[3] == '-') {
-        rt_string_unref(line);
+    size_t line_count = 1;
+    while (multiline) {
+        if (line_count++ >= SMTP_MAX_REPLY_LINES) {
+            set_error(s, "SMTP: multiline response exceeds limit");
+            return -1;
+        }
         line = smtp_recv_line(s);
         if (!line) {
             set_error(s, "SMTP: incomplete multi-line response");
-            break;
+            return -1;
         }
-        l = rt_string_cstr(line);
-        if (l)
-            code = smtp_parse_response_code(l);
-        if (l && line_cb)
-            line_cb(l, line_ctx);
+        int next_code = smtp_parse_response_code(line);
+        if (next_code != code) {
+            free(line);
+            set_error(s, "SMTP: multiline response code changed");
+            return -1;
+        }
+        multiline = line[3] == '-';
+        if (line_cb)
+            line_cb(line, line_ctx);
+        free(line);
     }
-    if (line)
-        rt_string_unref(line);
 
     if (expected_code > 0 && code != expected_code) {
         char err[128];
@@ -505,54 +769,56 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
     return smtp_command_ex(s, cmd, expected_code, NULL, NULL);
 }
 
+/// @brief Encode and send one AUTH LOGIN credential without managed secret copies.
+/// @details A bounded native base64 buffer is wiped before release on every
+///          reply outcome. This removes temporary managed Strings from the
+///          authentication path and keeps credentials out of GC storage.
+/// @param s Live active-operation client.
+/// @param plain NUL-terminated credential bytes.
+/// @param expected_code Required server reply code.
+/// @return Reply code, or -1 with LastError populated.
 static int smtp_send_base64_line(rt_smtp_impl *s, const char *plain, int expected_code) {
-    rt_string plain_str = NULL;
-    rt_string encoded = NULL;
-    const char *encoded_cstr = NULL;
-    int64_t encoded_len64 = 0;
-    size_t encoded_len = 0;
-    char *cmd = NULL;
-    int rc = -1;
+    static const char alphabet[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const unsigned char *input = (const unsigned char *)(plain ? plain : "");
+    size_t input_len = strlen((const char *)input);
+    if (input_len > SMTP_MAX_CREDENTIAL_BYTES || input_len > (SIZE_MAX - 2u) / 3u) {
+        set_error(s, "SMTP: credential exceeds limit");
+        return -1;
+    }
+    size_t encoded_len = ((input_len + 2u) / 3u) * 4u;
+    if (encoded_len > SIZE_MAX - 3u) {
+        set_error(s, "SMTP: credential encoding overflow");
+        return -1;
+    }
+    char *command = (char *)malloc(encoded_len + 3u);
+    if (!command) {
+        set_error(s, "SMTP: OOM");
+        return -1;
+    }
 
-    plain_str = rt_string_from_bytes(plain ? plain : "", strlen(plain ? plain : ""));
-    if (!plain_str) {
-        set_error(s, "SMTP: OOM");
-        return -1;
+    size_t input_pos = 0;
+    size_t output_pos = 0;
+    while (input_pos < input_len) {
+        size_t remaining = input_len - input_pos;
+        uint32_t triple = (uint32_t)input[input_pos] << 16;
+        if (remaining > 1u)
+            triple |= (uint32_t)input[input_pos + 1u] << 8;
+        if (remaining > 2u)
+            triple |= (uint32_t)input[input_pos + 2u];
+        command[output_pos++] = alphabet[(triple >> 18) & 0x3Fu];
+        command[output_pos++] = alphabet[(triple >> 12) & 0x3Fu];
+        command[output_pos++] = remaining > 1u ? alphabet[(triple >> 6) & 0x3Fu] : '=';
+        command[output_pos++] = remaining > 2u ? alphabet[triple & 0x3Fu] : '=';
+        input_pos += remaining > 3u ? 3u : remaining;
     }
-    encoded = rt_codec_base64_enc(plain_str);
-    rt_string_unref(plain_str);
-    if (!encoded) {
-        set_error(s, "SMTP: base64 encoding failed");
-        return -1;
-    }
-    encoded_cstr = rt_string_cstr(encoded);
-    encoded_len64 = rt_str_len(encoded);
-    if (!encoded_cstr || encoded_len64 < 0 || (uint64_t)encoded_len64 > (uint64_t)SIZE_MAX) {
-        rt_string_unref(encoded);
-        set_error(s, "SMTP: invalid base64 credential");
-        return -1;
-    }
-    encoded_len = (size_t)encoded_len64;
-    if (strlen(encoded_cstr) != encoded_len || encoded_len > SIZE_MAX - 3) {
-        rt_string_unref(encoded);
-        set_error(s, "SMTP: invalid base64 credential");
-        return -1;
-    }
-    cmd = (char *)malloc(encoded_len + 3);
-    if (!cmd) {
-        rt_string_unref(encoded);
-        set_error(s, "SMTP: OOM");
-        return -1;
-    }
-    memcpy(cmd, encoded_cstr, encoded_len);
-    cmd[encoded_len] = '\r';
-    cmd[encoded_len + 1] = '\n';
-    cmd[encoded_len + 2] = '\0';
-    rt_string_unref(encoded);
-    rc = smtp_command(s, cmd, expected_code);
-    smtp_secure_zero(cmd, encoded_len + 2);
-    free(cmd);
-    return rc;
+    command[encoded_len] = '\r';
+    command[encoded_len + 1u] = '\n';
+    command[encoded_len + 2u] = '\0';
+    int response = smtp_command(s, command, expected_code);
+    smtp_secure_zero(command, encoded_len + 3u);
+    free(command);
+    return response;
 }
 
 static void smtp_parse_ehlo_caps_line(const char *line, void *ctx) {
@@ -568,13 +834,14 @@ static void smtp_parse_ehlo_caps_line(const char *line, void *ctx) {
     while (*value == ' ' || *value == '\t')
         value++;
 
-    if (strncasecmp(value, "STARTTLS", 8) == 0 &&
+    size_t value_len = strlen(value);
+    if (value_len >= 8u && smtp_ascii_ncasecmp(value, "STARTTLS", 8) == 0 &&
         (value[8] == '\0' || value[8] == ' ' || value[8] == '\t')) {
         caps->supports_starttls = 1;
         return;
     }
 
-    if (strncasecmp(value, "AUTH", 4) == 0 &&
+    if (value_len >= 4u && smtp_ascii_ncasecmp(value, "AUTH", 4) == 0 &&
         (value[4] == '\0' || value[4] == ' ' || value[4] == '\t')) {
         const char *token = value + 4;
         while (*token) {
@@ -589,7 +856,7 @@ static void smtp_parse_ehlo_caps_line(const char *line, void *ctx) {
                 token++;
             end = token;
             if ((size_t)(end - start) == strlen("LOGIN") &&
-                strncasecmp(start, "LOGIN", strlen("LOGIN")) == 0) {
+                smtp_ascii_ncasecmp(start, "LOGIN", strlen("LOGIN")) == 0) {
                 caps->supports_auth_login = 1;
                 break;
             }
@@ -601,35 +868,210 @@ static void smtp_parse_ehlo_caps_line(const char *line, void *ctx) {
 // Public API
 //=============================================================================
 
+/// @brief Copy the active trap diagnostic before clearing its recovery frame.
+/// @param output Destination buffer.
+/// @param capacity Destination capacity including the terminator.
+/// @param fallback Message used when no trap diagnostic is active.
+static void smtp_save_trap(char *output, size_t capacity, const char *fallback) {
+    if (!output || capacity == 0)
+        return;
+    const char *message = rt_trap_get_error();
+    snprintf(output,
+             capacity,
+             "%s",
+             message && message[0]
+                 ? message
+                 : (fallback && fallback[0] ? fallback : "SmtpClient operation failed"));
+}
+
+/// @brief Copy LastError into independent native storage under the state mutex.
+/// @details The returned bytes remain valid after another thread starts a send
+///          or clears the diagnostic. Managed allocation is deliberately left
+///          to the caller so no runtime trap can strand the mutex.
+/// @param s Initialized SMTP client.
+/// @param fallback Text copied when LastError is empty; NULL selects an empty string.
+/// @return Heap-owned NUL-terminated snapshot, or NULL after one allocation trap.
+static char *smtp_error_snapshot(rt_smtp_impl *s, const char *fallback) {
+    if (!s) {
+        rt_trap("SmtpClient: invalid error snapshot receiver");
+        return NULL;
+    }
+    char *snapshot = NULL;
+    smtp_mutex_lock(&s->state_lock);
+    const char *source = s->last_error && s->last_error[0] ? s->last_error : fallback;
+    if (!source)
+        source = "";
+    size_t length = strlen(source);
+    snapshot = (char *)malloc(length + 1u);
+    if (snapshot)
+        memcpy(snapshot, source, length + 1u);
+    smtp_mutex_unlock(&s->state_lock);
+    if (!snapshot) {
+        rt_trap("SmtpClient: error snapshot allocation failed");
+        return NULL;
+    }
+    return snapshot;
+}
+
+/// @brief Build a caller-owned `Result.ErrStr` from stable native text.
+/// @details String and Result creation use a fresh recovery frame. Any partial
+///          managed values are released before an allocation failure is
+///          re-raised, and the temporary String producer reference is consumed
+///          after Result retains it.
+/// @param message Stable diagnostic bytes; NULL or empty selects a fixed fallback.
+/// @return Caller-owned error Result, or NULL after a returning trap hook.
+static void *smtp_error_result(const char *message) {
+    rt_string volatile error_string = NULL;
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        smtp_save_trap(
+            saved_error, sizeof(saved_error), "SmtpClient: error Result allocation failed");
+        rt_trap_clear_recovery();
+        smtp_release_managed((void *)result);
+        rt_str_release_maybe((rt_string)error_string);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    const char *stable = message && message[0] ? message : "SmtpClient send failed";
+    error_string = rt_string_from_bytes(stable, strlen(stable));
+    result = rt_result_err_str((rt_string)error_string);
+    rt_trap_clear_recovery();
+    rt_str_release_maybe((rt_string)error_string);
+    return (void *)result;
+}
+
+/// @brief Build the SMTP success Result under a cleanup recovery frame.
+/// @details A partial Result is released if allocation traps. The payload is
+///          the legacy success sentinel `I64(1)`.
+/// @return Caller-owned `Result.OkI64(1)`, or NULL after a returning trap hook.
+static void *smtp_success_result(void) {
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        smtp_save_trap(
+            saved_error, sizeof(saved_error), "SmtpClient: success Result allocation failed");
+        rt_trap_clear_recovery();
+        smtp_release_managed((void *)result);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_result_ok_i64(1);
+    rt_trap_clear_recovery();
+    return (void *)result;
+}
+
+/// @brief Release one caller-owned managed reference.
+/// @param object Runtime object or String, or NULL.
+static void smtp_release_managed(void *object) {
+    if (object && rt_obj_release_check0(object))
+        rt_obj_free(object);
+}
+
+/// @brief Validate an SMTP DNS/numeric host byte range.
+/// @details Empty, oversized, whitespace/control-bearing, URL-delimiter, and
+///          unmatched bracket forms are rejected before DNS or TLS receives
+///          the string. Bracketed IPv6 is accepted and normalized by New.
+/// @param host Exact host bytes.
+/// @param length Exact byte length.
+/// @param content_start Receives the first stored byte after optional `[`.
+/// @param content_len Receives the stored length before optional `]`.
+/// @return Nonzero for a safe host representation.
+static int smtp_host_is_valid(const char *host,
+                              size_t length,
+                              const char **content_start,
+                              size_t *content_len) {
+    if (!host || length == 0 || length > 1024u)
+        return 0;
+    size_t start = 0;
+    size_t end = length;
+    if (host[0] == '[') {
+        if (length < 3u || host[length - 1u] != ']')
+            return 0;
+        start = 1;
+        end--;
+    } else if (host[length - 1u] == ']') {
+        return 0;
+    }
+    for (size_t index = start; index < end; index++) {
+        unsigned char byte = (unsigned char)host[index];
+        if (byte <= 0x20u || byte == 0x7Fu || byte == '/' || byte == '\\' || byte == '?' ||
+            byte == '#' || byte == '@' || byte == '[' || byte == ']') {
+            return 0;
+        }
+    }
+    if (end == start)
+        return 0;
+    if (start == 1u) {
+        char numeric_host[1025];
+        size_t numeric_len = end - start;
+        memcpy(numeric_host, host + start, numeric_len);
+        numeric_host[numeric_len] = '\0';
+        struct in6_addr address;
+        if (inet_pton(AF_INET6, numeric_host, &address) != 1)
+            return 0;
+    }
+    if (content_start)
+        *content_start = host + start;
+    if (content_len)
+        *content_len = end - start;
+    return 1;
+}
+
 /// @brief Construct an SMTP client targeting `(host, port)`. Port 465 implicitly enables TLS;
 /// other ports default to plain TCP (call `rt_smtp_set_tls(true)` to upgrade via STARTTLS).
 /// Validates host and port (1–65535) up front and traps via `rt_trap` on bad inputs / OOM.
 /// Returns a GC-managed handle wired to `rt_smtp_finalize`.
 void *rt_smtp_new(rt_string host, int64_t port) {
-    const char *h = host ? rt_string_cstr(host) : NULL;
-    int64_t host_len = host ? rt_str_len(host) : -1;
-    if (!h || host_len <= 0 || smtp_string_has_embedded_nul(host) || port < 1 || port > 65535) {
+    const char *host_bytes = NULL;
+    size_t host_len = 0;
+    const char *stored_host = NULL;
+    size_t stored_host_len = 0;
+    if (!smtp_string_view(host, 0, &host_bytes, &host_len) ||
+        !smtp_host_is_valid(host_bytes, host_len, &stored_host, &stored_host_len) || port < 1 ||
+        port > 65535) {
         rt_trap("SmtpClient: invalid host or port");
         return NULL;
     }
 
-    rt_smtp_impl *s = (rt_smtp_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_smtp_impl));
+    rt_smtp_impl *volatile s = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        smtp_save_trap(saved_error, sizeof(saved_error), "SmtpClient: construction failed");
+        rt_trap_clear_recovery();
+        smtp_release_managed((void *)s);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    s = (rt_smtp_impl *)rt_obj_new_i64(RT_SMTP_CLASS_ID, (int64_t)sizeof(rt_smtp_impl));
     if (!s) {
-        rt_trap("SmtpClient: OOM");
+        rt_trap_clear_recovery();
         return NULL;
     }
-    memset(s, 0, sizeof(*s));
-    s->host = strdup(h);
-    if (!s->host) {
-        if (rt_obj_release_check0(s))
-            rt_obj_free(s);
+    memset((void *)s, 0, sizeof(*s));
+    rt_obj_set_finalizer((void *)s, rt_smtp_finalize);
+    if (!smtp_mutex_init(&((rt_smtp_impl *)s)->state_lock))
+        rt_trap("SmtpClient: state mutex initialization failed");
+    ((rt_smtp_impl *)s)->state_lock_initialized = 1;
+    if (!smtp_mutex_init(&((rt_smtp_impl *)s)->operation_lock))
+        rt_trap("SmtpClient: operation mutex initialization failed");
+    ((rt_smtp_impl *)s)->operation_lock_initialized = 1;
+    ((rt_smtp_impl *)s)->host = (char *)malloc(stored_host_len + 1u);
+    if (!((rt_smtp_impl *)s)->host)
         rt_trap("SmtpClient: host allocation failed");
-        return NULL;
-    }
-    s->port = (int)port;
-    s->use_tls = (port == 465) ? 1 : 0; // Port 465 = implicit TLS
-    rt_obj_set_finalizer(s, rt_smtp_finalize);
-    return s;
+    memcpy(((rt_smtp_impl *)s)->host, stored_host, stored_host_len);
+    ((rt_smtp_impl *)s)->host[stored_host_len] = '\0';
+    ((rt_smtp_impl *)s)->port = (int)port;
+    ((rt_smtp_impl *)s)->use_tls = (port == 465) ? 1 : 0;
+    rt_trap_clear_recovery();
+    return (void *)s;
 }
 
 /// @brief Cache username + password for AUTH LOGIN. Strings are duplicated so the caller can
@@ -637,25 +1079,45 @@ void *rt_smtp_new(rt_string host, int64_t port) {
 void rt_smtp_set_auth(void *obj, rt_string username, rt_string password) {
     if (!obj)
         return;
-    rt_smtp_impl *s = (rt_smtp_impl *)obj;
-    if (smtp_string_has_embedded_nul(username) || smtp_string_has_embedded_nul(password)) {
-        rt_trap("SmtpClient: auth credentials must not contain NUL bytes");
+    rt_smtp_impl *s = smtp_require(obj, "SmtpClient.SetAuth: invalid client");
+    if (!s)
+        return;
+    const char *username_bytes = NULL;
+    const char *password_bytes = NULL;
+    size_t username_len = 0;
+    size_t password_len = 0;
+    if ((username == NULL) != (password == NULL) ||
+        !smtp_string_view(username, 1, &username_bytes, &username_len) ||
+        !smtp_string_view(password, 1, &password_bytes, &password_len) ||
+        username_len > SMTP_MAX_CREDENTIAL_BYTES || password_len > SMTP_MAX_CREDENTIAL_BYTES) {
+        rt_trap("SmtpClient: invalid auth credentials");
         return;
     }
-    const char *u = username ? rt_string_cstr(username) : NULL;
-    const char *p = password ? rt_string_cstr(password) : NULL;
-    char *new_username = u ? strdup(u) : NULL;
-    char *new_password = p ? strdup(p) : NULL;
-    if ((u && !new_username) || (p && !new_password)) {
-        free(new_username);
+    char *new_username = username ? (char *)malloc(username_len + 1u) : NULL;
+    if (new_username) {
+        memcpy(new_username, username_bytes, username_len);
+        new_username[username_len] = '\0';
+    }
+    char *new_password = password ? (char *)malloc(password_len + 1u) : NULL;
+    if (new_password) {
+        memcpy(new_password, password_bytes, password_len);
+        new_password[password_len] = '\0';
+    }
+    if ((username && !new_username) || (password && !new_password)) {
+        smtp_free_secret(new_username);
         smtp_free_secret(new_password);
         rt_trap("SmtpClient: auth allocation failed");
         return;
     }
-    free(s->username);
-    smtp_free_secret(s->password);
+
+    smtp_mutex_lock(&s->operation_lock);
+    char *old_username = s->username;
+    char *old_password = s->password;
     s->username = new_username;
     s->password = new_password;
+    smtp_mutex_unlock(&s->operation_lock);
+    smtp_free_secret(old_username);
+    smtp_free_secret(old_password);
 }
 
 /// @brief Toggle TLS opportunistically. With `enable=1` and a non-465 port, the next send will
@@ -663,52 +1125,120 @@ void rt_smtp_set_auth(void *obj, rt_string username, rt_string password) {
 void rt_smtp_set_tls(void *obj, int8_t enable) {
     if (!obj)
         return;
-    ((rt_smtp_impl *)obj)->use_tls = enable;
+    rt_smtp_impl *s = smtp_require(obj, "SmtpClient.SetTls: invalid client");
+    if (!s)
+        return;
+    smtp_mutex_lock(&s->operation_lock);
+    s->use_tls = enable ? 1 : 0;
+    smtp_mutex_unlock(&s->operation_lock);
+}
+
+/// @brief Connect a plain runtime TCP wrapper without leaking its temporary host String.
+/// @details Nested transport traps are re-raised only after the host String and
+///          any partially returned TCP object are released. The caller owns the
+///          returned TCP reference.
+/// @param host NUL-terminated validated host.
+/// @param port TCP port.
+/// @return Caller-owned connected TCP wrapper, or NULL after a trap.
+static void *smtp_connect_plain_transaction(const char *host, int port) {
+    rt_string volatile host_string = NULL;
+    void *volatile tcp = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        smtp_save_trap(saved_error, sizeof(saved_error), "SMTP: TCP connection failed");
+        rt_trap_clear_recovery();
+        smtp_release_managed((void *)tcp);
+        rt_str_release_maybe((rt_string)host_string);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    host_string = rt_string_from_bytes(host, strlen(host));
+    tcp = rt_tcp_connect_for((rt_string)host_string, port, 30000);
+    rt_trap_clear_recovery();
+    rt_str_release_maybe((rt_string)host_string);
+    return (void *)tcp;
+}
+
+/// @brief Upgrade a published TCP wrapper into a cancellation-visible TLS session.
+/// @details The TLS owner is published before the blocking handshake begins,
+///          allowing concurrent Close to snapshot and shut down its descriptor.
+///          The old TCP wrapper is detached and released exactly once when TLS
+///          assumes descriptor ownership. This helper is shared by implicit
+///          TLS on port 465 and explicit STARTTLS after the 220 response.
+/// @param s Active serialized client with one published plain TCP wrapper.
+/// @return Zero after a successful handshake; -1 with LastError populated otherwise.
+static int smtp_upgrade_published_tcp_to_tls(rt_smtp_impl *s) {
+    rt_tls_config_t cfg;
+    rt_tls_config_init(&cfg);
+    cfg.hostname = s->host;
+    cfg.timeout_ms = 30000;
+    socket_t socket_fd = s->tcp ? rt_tcp_socket_fd(s->tcp) : INVALID_SOCK;
+    rt_tls_session_t *tls =
+        socket_fd != INVALID_SOCK ? rt_tls_new((intptr_t)socket_fd, &cfg) : NULL;
+    if (!tls) {
+        const char *detail = rt_tls_last_error();
+        char message[512];
+        if (detail && detail[0])
+            snprintf(message, sizeof(message), "SMTP: TLS setup failed: %s", detail);
+        else
+            snprintf(message, sizeof(message), "SMTP: TLS setup failed");
+        set_error(s, message);
+        return -1;
+    }
+    if (!smtp_publish_starttls(s, tls)) {
+        set_error(s, "SMTP: operation cancelled during TLS setup");
+        return -1;
+    }
+    if (rt_tls_handshake(s->tls) != RT_TLS_OK) {
+        const char *detail = rt_tls_get_error(s->tls);
+        char message[512];
+        if (detail && detail[0])
+            snprintf(message, sizeof(message), "SMTP: TLS handshake failed: %s", detail);
+        else
+            snprintf(message, sizeof(message), "SMTP: TLS handshake failed");
+        set_error(s, message);
+        smtp_close_transport(s);
+        return -1;
+    }
+    smtp_set_transport_timeouts(s, 30000);
+    return 0;
 }
 
 /// @brief Open the transport and walk the SMTP greeting + (optional) STARTTLS + (optional)
 /// AUTH LOGIN sequence. Sequence:
-///   1. Connect: implicit TLS via `rt_tls_connect` (port 465) or plain `rt_tcp_connect_for`.
+///   1. Connect through a published TCP wrapper. Port 465 upgrades and publishes
+///      a TLS owner before its handshake so Close can interrupt blocked TLS I/O.
 ///   2. Read 220 greeting; send `EHLO localhost`, expect 250.
 ///   3. If `use_tls && port != 465`: send STARTTLS (220), wrap the existing socket in a TLS
 ///      session, detach the TCP wrapper as soon as the session owns the descriptor, then run
 ///      the handshake — so a handshake failure closes the descriptor exactly once (via TLS).
 ///   4. If credentials are set: send AUTH LOGIN (334) → base64(username) (334) → base64(password)
-///      (235). Each base64 step uses `rt_codec_base64_enc`, then `rt_string_unref`s the encoder
-///      output to keep peak memory low.
+///      (235). Each credential is encoded in bounded native storage that is
+///      securely wiped before release.
 /// All steps populate `last_error` on failure and return -1; success returns 0.
 static int smtp_connect_and_handshake(rt_smtp_impl *s) {
     smtp_caps_t caps = {0, 0};
     smtp_close_transport(s);
     clear_error(s);
 
+    void *tcp = smtp_connect_plain_transaction(s->host, s->port);
+    if (!tcp || !rt_tcp_is_open(tcp)) {
+        smtp_release_managed(tcp);
+        set_error(s, "SMTP: connection failed");
+        return -1;
+    }
+    if (!smtp_publish_tcp(s, tcp)) {
+        rt_tcp_close(tcp);
+        smtp_release_managed(tcp);
+        set_error(s, "SMTP: operation cancelled");
+        return -1;
+    }
     if (s->use_tls && s->port == 465) {
-        rt_tls_config_t cfg;
-        rt_tls_config_init(&cfg);
-        cfg.hostname = s->host;
-        cfg.timeout_ms = 30000;
-        s->tls = rt_tls_connect(s->host, (uint16_t)s->port, &cfg);
-        if (!s->tls) {
-            const char *detail = rt_tls_last_error();
-            char msg[512];
-            if (detail && *detail) {
-                snprintf(msg, sizeof(msg), "SMTP: TLS connection failed: %s", detail);
-                set_error(s, msg);
-            } else {
-                set_error(s, "SMTP: TLS connection failed");
-            }
+        if (smtp_upgrade_published_tcp_to_tls(s) < 0)
             return -1;
-        }
-        smtp_set_transport_timeouts(s, 30000);
     } else {
-        rt_string host_str = rt_string_from_bytes(s->host, strlen(s->host));
-        s->tcp = rt_tcp_connect_for(host_str, s->port, 30000);
-        rt_string_unref(host_str);
-
-        if (!s->tcp || !rt_tcp_is_open(s->tcp)) {
-            set_error(s, "SMTP: connection failed");
-            return -1;
-        }
         smtp_set_transport_timeouts(s, 30000);
     }
 
@@ -717,8 +1247,18 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
 
     char ehlo[300];
     snprintf(ehlo, sizeof(ehlo), "EHLO localhost\r\n");
-    if (smtp_command_ex(s, ehlo, 250, smtp_parse_ehlo_caps_line, &caps) < 0)
-        return -1;
+    int ehlo_code = smtp_command_ex(s, ehlo, 0, smtp_parse_ehlo_caps_line, &caps);
+    if (ehlo_code != 250) {
+        if (ehlo_code < 0)
+            return -1;
+        int can_fallback = ehlo_code == 500 || ehlo_code == 502 || ehlo_code == 504;
+        if (!can_fallback || s->use_tls || s->username || s->password) {
+            set_error(s, "SMTP: EHLO required for requested session features");
+            return -1;
+        }
+        if (smtp_command(s, "HELO localhost\r\n", 250) < 0)
+            return -1;
+    }
 
     if (s->use_tls && s->port != 465) {
         if (!caps.supports_starttls) {
@@ -728,46 +1268,8 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
         if (smtp_command(s, "STARTTLS\r\n", 220) < 0)
             return -1;
 
-        rt_tls_config_t cfg;
-        rt_tls_config_init(&cfg);
-        cfg.hostname = s->host;
-        cfg.timeout_ms = 30000;
-        s->tls = rt_tls_new((int)rt_tcp_socket_fd(s->tcp), &cfg);
-        if (!s->tls) {
-            const char *detail = rt_tls_last_error();
-            char msg[512];
-            if (detail && *detail) {
-                snprintf(msg, sizeof(msg), "SMTP: TLS setup failed: %s", detail);
-                set_error(s, msg);
-            } else {
-                set_error(s, "SMTP: TLS setup failed");
-            }
+        if (smtp_upgrade_published_tcp_to_tls(s) < 0)
             return -1;
-        }
-        // The TLS session owns the descriptor from here on: detach the TCP
-        // wrapper BEFORE the handshake so a handshake-failure `rt_tls_close`
-        // (which closes the fd) cannot be followed by a second close of the
-        // same numeric descriptor via the still-open wrapper (VDOC-156).
-        rt_tcp_detach_socket(s->tcp);
-        if (rt_obj_release_check0(s->tcp))
-            rt_obj_free(s->tcp);
-        s->tcp = NULL;
-
-        if (rt_tls_handshake(s->tls) != RT_TLS_OK) {
-            const char *detail = rt_tls_get_error(s->tls);
-            char msg[512];
-            if (detail && *detail) {
-                snprintf(msg, sizeof(msg), "SMTP: TLS handshake failed: %s", detail);
-                set_error(s, msg);
-            } else {
-                set_error(s, "SMTP: TLS handshake failed");
-            }
-            rt_tls_close(s->tls);
-            s->tls = NULL;
-            return -1;
-        }
-
-        smtp_set_transport_timeouts(s, 30000);
 
         caps.supports_starttls = 0;
         caps.supports_auth_login = 0;
@@ -798,19 +1300,35 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
     return 0;
 }
 
-/// @brief Walk the MAIL FROM (250) → RCPT TO (250) → DATA (354) → message body (250) sequence.
-/// Header values are run through `smtp_sanitize_header_value` (CR/LF stripping) before being
-/// formatted into the MIME wrapper; the body is dot-stuffed and a trailing `.\r\n` terminator is
-/// appended in the same `snprintf`. Single-recipient only — multi-recipient support would
-/// require iterating RCPT TO. Returns 0 on success, -1 on any failure (last_error populated).
+/// @brief Walk MAIL FROM → RCPT TO → DATA and stream one MIME message.
+/// @details Envelope commands remain bounded. Header controls are neutralized,
+///          body newlines are normalized, and RFC 5321 dot transparency is
+///          applied incrementally through a fixed 4 KiB native buffer. No
+///          allocation grows with subject or body size. The client currently
+///          supports one recipient and issues one RCPT TO command.
+/// @param s Live active-operation client after a successful handshake.
+/// @param from Exact validated sender bytes.
+/// @param from_len Sender byte length.
+/// @param to Exact validated recipient bytes.
+/// @param to_len Recipient byte length.
+/// @param subject Exact NUL-free subject bytes.
+/// @param subject_len Subject byte length.
+/// @param body Exact NUL-free body bytes.
+/// @param body_len Body byte length.
+/// @param content_type Fixed safe MIME media type.
+/// @return Zero on success; -1 with LastError populated on failure.
 static int smtp_send_message(rt_smtp_impl *s,
                              const char *from,
+                             size_t from_len,
                              const char *to,
+                             size_t to_len,
                              const char *subject,
+                             size_t subject_len,
                              const char *body,
+                             size_t body_len,
                              const char *content_type) {
     char cmd[1024];
-    if (!smtp_validate_mailbox_path(from) || !smtp_validate_mailbox_path(to)) {
+    if (!smtp_validate_mailbox_path(from, from_len) || !smtp_validate_mailbox_path(to, to_len)) {
         set_error(s, "SMTP: invalid envelope address");
         return -1;
     }
@@ -848,126 +1366,185 @@ static int smtp_send_message(rt_smtp_impl *s,
     if (smtp_command(s, "DATA\r\n", 354) < 0)
         return -1;
 
-    // Build MIME message
-    char *safe_from = smtp_sanitize_header_value(from);
-    char *safe_to = smtp_sanitize_header_value(to);
-    char *safe_subject = smtp_sanitize_header_value(subject);
-    char *stuffed_body = smtp_dot_stuff_body(body);
-    if (!safe_from || !safe_to || !safe_subject || !stuffed_body) {
-        free(safe_from);
-        free(safe_to);
-        free(safe_subject);
-        free(stuffed_body);
-        set_error(s, "SMTP: OOM");
+    smtp_output_buffer_t output = {{0}, 0};
+    if (!smtp_output_append(s, &output, "From: ", sizeof("From: ") - 1u) ||
+        !smtp_output_append_header_value(s, &output, from, from_len) ||
+        !smtp_output_append(s, &output, "\r\nTo: ", sizeof("\r\nTo: ") - 1u) ||
+        !smtp_output_append_header_value(s, &output, to, to_len) ||
+        !smtp_output_append(s, &output, "\r\nSubject: ", sizeof("\r\nSubject: ") - 1u) ||
+        !smtp_output_append_header_value(s, &output, subject, subject_len) ||
+        !smtp_output_append(s,
+                            &output,
+                            "\r\nMIME-Version: 1.0\r\nContent-Type: ",
+                            sizeof("\r\nMIME-Version: 1.0\r\nContent-Type: ") - 1u) ||
+        !smtp_output_append(s, &output, content_type, strlen(content_type)) ||
+        !smtp_output_append(
+            s, &output, "; charset=utf-8\r\n\r\n", sizeof("; charset=utf-8\r\n\r\n") - 1u) ||
+        !smtp_output_append_body(s, &output, body, body_len)) {
         return -1;
     }
-
-    int needed = snprintf(NULL,
-                          0,
-                          "From: %s\r\n"
-                          "To: %s\r\n"
-                          "Subject: %s\r\n"
-                          "MIME-Version: 1.0\r\n"
-                          "Content-Type: %s; charset=utf-8\r\n"
-                          "\r\n"
-                          "%s"
-                          ".\r\n",
-                          safe_from,
-                          safe_to,
-                          safe_subject,
-                          content_type,
-                          stuffed_body);
-    if (needed < 0) {
-        free(safe_from);
-        free(safe_to);
-        free(safe_subject);
-        free(stuffed_body);
-        set_error(s, "SMTP: message format failed");
-        return -1;
-    }
-    size_t msg_cap = (size_t)needed + 1;
-    char *msg = (char *)malloc(msg_cap);
-    if (!msg) {
-        free(safe_from);
-        free(safe_to);
-        free(safe_subject);
-        free(stuffed_body);
-        set_error(s, "SMTP: OOM");
-        return -1;
-    }
-
-    int mlen = snprintf(msg,
-                        msg_cap,
-                        "From: %s\r\n"
-                        "To: %s\r\n"
-                        "Subject: %s\r\n"
-                        "MIME-Version: 1.0\r\n"
-                        "Content-Type: %s; charset=utf-8\r\n"
-                        "\r\n"
-                        "%s"
-                        ".\r\n",
-                        safe_from,
-                        safe_to,
-                        safe_subject,
-                        content_type,
-                        stuffed_body);
-    free(safe_from);
-    free(safe_to);
-    free(safe_subject);
-    free(stuffed_body);
-
-    if (mlen < 0 || (size_t)mlen >= msg_cap) {
-        free(msg);
-        set_error(s, "SMTP: message too large");
-        return -1;
-    }
-
-    if (!smtp_transport_send_all(s, msg, (size_t)mlen)) {
-        free(msg);
-        set_error(s, "SMTP: send failed");
-        return -1;
-    }
-    free(msg);
 
     if (smtp_command(s, NULL, 250) < 0)
         return -1;
     return 0;
 }
 
-/// @brief One-shot send of a `text/plain` UTF-8 email. Connects, handshakes, sends, QUITs (221),
-/// and closes the transport — every call is a fresh SMTP session so there's no state to manage
-/// between sends. Returns 1 on success, 0 on failure (call `rt_smtp_last_error` for details).
-int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, rt_string body) {
+/// @brief Attempt a graceful SMTP QUIT without changing a completed DATA outcome.
+/// @details QUIT is advisory after the server has accepted the message. A
+///          transport trap or non-221 reply is consumed under a nested recovery
+///          frame; the operation owner subsequently closes the transport and
+///          clears any QUIT-only LastError on successful delivery.
+/// @param s Live active-operation client after an accepted DATA transaction.
+static void smtp_quit_best_effort(rt_smtp_impl *s) {
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        rt_trap_clear_recovery();
+        return;
+    }
+    (void)smtp_command(s, "QUIT\r\n", 221);
+    rt_trap_clear_recovery();
+}
+
+/// @brief Execute one serialized fresh-connection SMTP send.
+/// @details Runtime String identity and embedded NULs are validated before any
+///          native access. `operation_lock` serializes configuration and sends;
+///          a recovery boundary always detaches transport state and releases
+///          the lock before re-raising lower-level traps. Concurrent Close only
+///          marks cancellation and shuts down the descriptor, leaving final
+///          ownership to this operation.
+/// @param obj Candidate SMTP receiver; NULL preserves the legacy false result.
+/// @param from Sender mailbox String; NULL is rejected as an envelope error.
+/// @param to Recipient mailbox String; NULL is rejected as an envelope error.
+/// @param subject Optional subject String; NULL means empty.
+/// @param body Optional plain or HTML body String; NULL means empty.
+/// @param content_type Fixed safe MIME media type.
+/// @param operation Diagnostic used for forged String handles.
+/// @return One after server acceptance, otherwise zero; lower traps are re-raised after cleanup.
+static int8_t smtp_send_common(void *obj,
+                               rt_string from,
+                               rt_string to,
+                               rt_string subject,
+                               rt_string body,
+                               const char *content_type,
+                               const char *operation) {
     if (!obj)
         return 0;
-    rt_smtp_impl *s = (rt_smtp_impl *)obj;
+    rt_smtp_impl *s = smtp_require(obj, operation);
+    if (!s)
+        return 0;
 
-    if (smtp_string_has_embedded_nul(from) || smtp_string_has_embedded_nul(to) ||
-        smtp_string_has_embedded_nul(subject) || smtp_string_has_embedded_nul(body)) {
-        set_error(s, "SmtpClient: message fields must not contain NUL bytes");
+    const char *from_bytes = NULL;
+    const char *to_bytes = NULL;
+    const char *subject_bytes = NULL;
+    const char *body_bytes = NULL;
+    size_t from_len = 0;
+    size_t to_len = 0;
+    size_t subject_len = 0;
+    size_t body_len = 0;
+    if (!smtp_string_view(from, 1, &from_bytes, &from_len) ||
+        !smtp_string_view(to, 1, &to_bytes, &to_len) ||
+        !smtp_string_view(subject, 1, &subject_bytes, &subject_len) ||
+        !smtp_string_view(body, 1, &body_bytes, &body_len)) {
+        rt_trap("SmtpClient.Send: invalid String or embedded NUL");
+        return 0;
+    }
+    if (!from_bytes)
+        from_bytes = "";
+    if (!to_bytes)
+        to_bytes = "";
+    if (!subject_bytes)
+        subject_bytes = "";
+    if (!body_bytes)
+        body_bytes = "";
+
+    smtp_mutex_lock(&s->operation_lock);
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        smtp_save_trap(saved_error, sizeof(saved_error), "SmtpClient.Send: transport failure");
+        rt_trap_clear_recovery();
+        smtp_finish_operation(s);
+        smtp_mutex_unlock(&s->operation_lock);
+        rt_trap(saved_error);
         return 0;
     }
 
-    if (smtp_connect_and_handshake(s) < 0) {
-        smtp_close_transport(s);
-        return 0;
+    smtp_begin_operation(s);
+    int result = smtp_connect_and_handshake(s);
+    if (result == 0) {
+        result = smtp_send_message(s,
+                                   from_bytes,
+                                   from_len,
+                                   to_bytes,
+                                   to_len,
+                                   subject_bytes,
+                                   subject_len,
+                                   body_bytes,
+                                   body_len,
+                                   content_type);
     }
-
-    const char *f = rt_string_cstr(from);
-    const char *t = rt_string_cstr(to);
-    const char *sub = rt_string_cstr(subject);
-    const char *b = rt_string_cstr(body);
-
-    int result =
-        smtp_send_message(s, f ? f : "", t ? t : "", sub ? sub : "", b ? b : "", "text/plain");
-
-    // QUIT
-    smtp_command(s, "QUIT\r\n", 221);
-    smtp_close_transport(s);
-
+    if (result == 0)
+        smtp_quit_best_effort(s);
+    smtp_finish_operation(s);
     if (result == 0)
         clear_error(s);
+    rt_trap_clear_recovery();
+    smtp_mutex_unlock(&s->operation_lock);
     return result == 0 ? 1 : 0;
+}
+
+/// @brief Convert one Boolean SMTP send into an allocation-safe Result.
+/// @details An outer recovery frame catches receiver, String, transport, TLS,
+///          and cleanup traps only after the send operation has released its
+///          mutex and transport. Protocol failures snapshot LastError in native
+///          memory before Result construction begins.
+/// @param obj Candidate SMTP receiver.
+/// @param from Sender mailbox String.
+/// @param to Recipient mailbox String.
+/// @param subject Optional subject String.
+/// @param body Optional message body String.
+/// @param content_type Fixed safe MIME media type.
+/// @param fallback Stable error text when no detailed diagnostic exists.
+/// @return Caller-owned `OkI64(1)` or `ErrStr` Result.
+static void *smtp_send_result_common(void *obj,
+                                     rt_string from,
+                                     rt_string to,
+                                     rt_string subject,
+                                     rt_string body,
+                                     const char *content_type,
+                                     const char *fallback) {
+    char *volatile snapshot = NULL;
+    int8_t volatile ok = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        smtp_save_trap(saved_error, sizeof(saved_error), fallback);
+        rt_trap_clear_recovery();
+        free((void *)snapshot);
+        return smtp_error_result(saved_error);
+    }
+
+    ok = smtp_send_common(obj, from, to, subject, body, content_type, fallback);
+    if (!ok && obj)
+        snapshot = smtp_error_snapshot((rt_smtp_impl *)obj, fallback);
+    rt_trap_clear_recovery();
+    if (ok)
+        return smtp_success_result();
+    void *result = smtp_error_result((const char *)snapshot ? (const char *)snapshot : fallback);
+    free((void *)snapshot);
+    return result;
+}
+
+/// @brief Send one plain UTF-8 message on a fresh serialized SMTP session.
+/// @details The transport is always closed after the attempt. Concurrent sends
+///          wait in call order, and a concurrent Close interrupts active I/O.
+/// @return One after the server accepts DATA; zero for protocol/network failure.
+int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, rt_string body) {
+    return smtp_send_common(
+        obj, from, to, subject, body, "text/plain", "SmtpClient.Send: invalid client");
 }
 
 /// @brief Send a plain-text SMTP message and return Result instead of LastError state.
@@ -979,57 +1556,18 @@ int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, 
 /// @return Zanna.Result.OkI64(1) on success or Zanna.Result.ErrStr(message) on failure.
 void *rt_smtp_send_result(
     void *obj, rt_string from, rt_string to, rt_string subject, rt_string body) {
-    // Transport setup (connect/TLS) can trap before the Boolean path returns;
-    // a Result-producing operation must convert those traps into ErrStr.
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        const char *msg = rt_trap_get_error();
-        if (!msg || !*msg)
-            msg = "SmtpClient.SendResult: send failed";
-        rt_string message = rt_string_from_bytes(msg, strlen(msg));
-        rt_trap_clear_recovery();
-        return rt_result_err_str(message);
-    }
-    int8_t ok = rt_smtp_send(obj, from, to, subject, body);
-    rt_trap_clear_recovery();
-    return smtp_send_result_from_bool(ok, obj, "SmtpClient.SendResult: send failed");
+    return smtp_send_result_common(
+        obj, from, to, subject, body, "text/plain", "SmtpClient.SendResult: send failed");
 }
 
-/// @brief Identical to `rt_smtp_send` but the body is sent with `Content-Type: text/html`. Caller
-/// is responsible for any HTML escaping; the runtime only sanitizes header values, not body
-/// content.
+/// @brief Send one HTML UTF-8 message on a fresh serialized SMTP session.
+/// @details Header injection and body framing receive the same treatment as
+///          plain text. HTML escaping remains the caller's responsibility.
+/// @return One after the server accepts DATA; zero for protocol/network failure.
 int8_t rt_smtp_send_html(
     void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body) {
-    if (!obj)
-        return 0;
-    rt_smtp_impl *s = (rt_smtp_impl *)obj;
-
-    if (smtp_string_has_embedded_nul(from) || smtp_string_has_embedded_nul(to) ||
-        smtp_string_has_embedded_nul(subject) || smtp_string_has_embedded_nul(html_body)) {
-        set_error(s, "SmtpClient: message fields must not contain NUL bytes");
-        return 0;
-    }
-
-    if (smtp_connect_and_handshake(s) < 0) {
-        smtp_close_transport(s);
-        return 0;
-    }
-
-    const char *f = rt_string_cstr(from);
-    const char *t = rt_string_cstr(to);
-    const char *sub = rt_string_cstr(subject);
-    const char *b = rt_string_cstr(html_body);
-
-    int result =
-        smtp_send_message(s, f ? f : "", t ? t : "", sub ? sub : "", b ? b : "", "text/html");
-
-    smtp_command(s, "QUIT\r\n", 221);
-    smtp_close_transport(s);
-
-    if (result == 0)
-        clear_error(s);
-    return result == 0 ? 1 : 0;
+    return smtp_send_common(
+        obj, from, to, subject, html_body, "text/html", "SmtpClient.SendHtml: invalid client");
 }
 
 /// @brief Send an HTML SMTP message and return Result instead of LastError state.
@@ -1041,35 +1579,71 @@ int8_t rt_smtp_send_html(
 /// @return Zanna.Result.OkI64(1) on success or Zanna.Result.ErrStr(message) on failure.
 void *rt_smtp_send_html_result(
     void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body) {
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        const char *msg = rt_trap_get_error();
-        if (!msg || !*msg)
-            msg = "SmtpClient.SendHtmlResult: send failed";
-        rt_string message = rt_string_from_bytes(msg, strlen(msg));
-        rt_trap_clear_recovery();
-        return rt_result_err_str(message);
-    }
-    int8_t ok = rt_smtp_send_html(obj, from, to, subject, html_body);
-    rt_trap_clear_recovery();
-    return smtp_send_result_from_bool(ok, obj, "SmtpClient.SendHtmlResult: send failed");
+    return smtp_send_result_common(
+        obj, from, to, subject, html_body, "text/html", "SmtpClient.SendHtmlResult: send failed");
 }
 
-/// @brief Return the last failure message (cleared on the next successful send). Empty rt_string
-/// when no error has been recorded.
+/// @brief Return a synchronized snapshot of the most recent SMTP failure.
+/// @details Native bytes are copied while holding the state mutex; managed
+///          String allocation happens afterward under a cleanup recovery frame.
+///          A successful send clears the diagnostic. NULL preserves the legacy
+///          empty-string sentinel, while forged receivers trap safely.
+/// @param obj Candidate SMTP receiver.
+/// @return Caller-owned runtime String snapshot, possibly empty.
 rt_string rt_smtp_last_error(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
-    rt_smtp_impl *s = (rt_smtp_impl *)obj;
-    const char *e = s->last_error ? s->last_error : "";
-    return rt_string_from_bytes(e, strlen(e));
+    rt_smtp_impl *s = smtp_require(obj, "SmtpClient.LastError: invalid client");
+    if (!s)
+        return NULL;
+    char *snapshot = smtp_error_snapshot(s, NULL);
+    if (!snapshot)
+        return NULL;
+
+    rt_string volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        smtp_save_trap(saved_error, sizeof(saved_error), "SmtpClient.LastError: allocation failed");
+        rt_trap_clear_recovery();
+        free(snapshot);
+        rt_str_release_maybe((rt_string)result);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_string_from_bytes(snapshot, strlen(snapshot));
+    rt_trap_clear_recovery();
+    free(snapshot);
+    return (rt_string)result;
 }
 
-/// @brief Force-close the active transport (TLS + TCP) without sending QUIT. Useful for cancelling
-/// a stuck send. Subsequent `rt_smtp_send` calls will reconnect transparently.
+/// @brief Cancel active SMTP I/O or close an idle transport immediately.
+/// @details Close marks cancellation while holding the state mutex and invokes
+///          native shutdown to wake blocking send/receive calls. It never frees
+///          TLS or TCP state owned by an active operation; that owner detaches
+///          and releases the transport before unlocking. The next serialized
+///          send clears cancellation and reconnects from scratch.
+/// @param obj Candidate SMTP receiver; NULL is an idempotent no-op.
 void rt_smtp_close(void *obj) {
     if (!obj)
         return;
-    smtp_close_transport((rt_smtp_impl *)obj);
+    rt_smtp_impl *s = smtp_require(obj, "SmtpClient.Close: invalid client");
+    if (!s)
+        return;
+
+    int operation_active = 0;
+    socket_t socket_fd = INVALID_SOCK;
+    smtp_mutex_lock(&s->state_lock);
+    s->cancel_requested = 1;
+    operation_active = s->operation_active ? 1 : 0;
+    if (s->tls)
+        socket_fd = (socket_t)rt_tls_get_socket(s->tls);
+    else if (s->tcp)
+        socket_fd = rt_tcp_socket_fd(s->tcp);
+    if (operation_active && socket_fd != INVALID_SOCK)
+        (void)rt_socket_shutdown_both(socket_fd);
+    smtp_mutex_unlock(&s->state_lock);
+    if (!operation_active)
+        smtp_close_transport(s);
 }

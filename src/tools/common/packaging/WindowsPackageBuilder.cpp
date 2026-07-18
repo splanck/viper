@@ -54,7 +54,7 @@ namespace {
 constexpr size_t kInstallerStubPathCharLimit = 32768;
 constexpr uint64_t kInstallerStackReserve = 0x200000;
 constexpr uint64_t kInstallerStackCommit = 0x100000;
-constexpr std::string_view kComponentZannaIDE = "zannaide";
+constexpr std::string_view kComponentZannaStudio = "zannastudio";
 constexpr std::string_view kComponentSDK = "sdk";
 constexpr std::string_view kComponentSamples = "samples";
 constexpr std::string_view kComponentVSCode = "vscode";
@@ -73,9 +73,9 @@ bool isToolchainInstallerBootstrapPath(std::string_view relativePath) {
 /// @brief Return the optional Windows toolchain component owning an install path.
 std::string toolchainComponentForPath(const std::string &relativePath, bool packagedVSIX) {
     const std::string lower = lowerAscii(relativePath);
-    if (lower.rfind("bin/zannaide", 0) == 0 || lower.rfind("share/zanna/zannaide/", 0) == 0 ||
+    if (lower.rfind("bin/zannastudio", 0) == 0 || lower.rfind("share/zanna/zannastudio/", 0) == 0 ||
         lower.rfind("share/zanna/ide/", 0) == 0) {
-        return std::string(kComponentZannaIDE);
+        return std::string(kComponentZannaStudio);
     }
     if (lower.rfind("share/zanna/samples/", 0) == 0 || lower.rfind("share/zanna/examples/", 0) == 0)
         return std::string(kComponentSamples);
@@ -1020,7 +1020,7 @@ std::string toolchainWindowsPrerequisitesReadme(std::string_view installDirName)
               "The Zanna Developer Prompt configures ZANNA_HOME, PATH, Zanna_DIR, and "
               "CMAKE_PREFIX_PATH so CMake projects can use find_package(Zanna CONFIG REQUIRED).\r\n"
               "\r\n"
-              "Start Menu shortcuts include a Zanna developer prompt, ZannaIDE, and the VS Code "
+              "Start Menu shortcuts include a Zanna developer prompt, Zanna Studio, and the VS Code "
               "extension installer when a verified .vsix was packaged. Settings > Apps supports "
               "Modify, Repair, and Uninstall. Direct uninstall.exe removal safely hands off to the "
               "verified maintenance cache before deleting the install directory.\r\n";
@@ -1203,7 +1203,7 @@ std::string toolchainProgIdFor(const std::string &identifier, const FileAssoc &a
     return progId;
 }
 
-/// @brief Return ZannaIDE arguments used before the quoted source path.
+/// @brief Return Zanna Studio arguments used before the quoted source path.
 /// @details Opening a source association must never execute the file implicitly.
 std::string toolchainOpenCommandArgsFor(const FileAssoc &assoc) {
     (void)assoc;
@@ -2125,7 +2125,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     layout.addToPath = params.addToPath;
     layout.cleanInstallRootBeforeInstall = false;
     layout.pathRelativePath = "bin";
-    layout.fileAssociationExecutableRelativePath = "bin\\zannaide.exe";
+    layout.fileAssociationExecutableRelativePath = "bin\\zannastudio.exe";
     layout.perUserInstall = params.installScope == "user";
     if (params.registerFileAssociations) {
         if (params.identifier.empty())
@@ -2196,7 +2196,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         hasPackagedVSIX = true;
     }
 
-    bool hasZannaIDEComponent = false;
+    bool hasZannaStudioComponent = false;
     bool hasSDKComponent = false;
     bool hasSamplesComponent = false;
     bool hasVSCodeComponent = false;
@@ -2205,17 +2205,17 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             continue;
         const std::string component =
             toolchainComponentForPath(file.stagedRelativePath, hasPackagedVSIX);
-        hasZannaIDEComponent = hasZannaIDEComponent || component == kComponentZannaIDE;
+        hasZannaStudioComponent = hasZannaStudioComponent || component == kComponentZannaStudio;
         hasSDKComponent = hasSDKComponent || component == kComponentSDK;
         hasSamplesComponent = hasSamplesComponent || component == kComponentSamples;
         hasVSCodeComponent = hasVSCodeComponent || component == kComponentVSCode;
     }
-    if (!hasZannaIDEComponent)
+    if (!hasZannaStudioComponent)
         layout.fileAssociations.clear();
-    if (hasZannaIDEComponent) {
+    if (hasZannaStudioComponent) {
         layout.optionalComponents.push_back(
-            {std::string(kComponentZannaIDE),
-             "ZannaIDE",
+            {std::string(kComponentZannaStudio),
+             "Zanna Studio",
              "Native editor, project workflow, debugger, and language services",
              true});
     }
@@ -2341,18 +2341,18 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  "share/zanna/zanna.ico",
                                  true,
                                  &installedManifestPaths);
-        if (hasZannaIDEComponent) {
+        if (hasZannaStudioComponent) {
             addCompressedPayloadFile(payloadZip,
-                                     "bin/zannaide.ico",
+                                     "bin/zannastudio.ico",
                                      toolchainIcon.data(),
                                      toolchainIcon.size(),
                                      0100644,
                                      layout,
                                      WindowsInstallRoot::InstallDir,
-                                     "bin/zannaide.ico",
+                                     "bin/zannastudio.ico",
                                      true,
                                      &installedManifestPaths,
-                                     std::string(kComponentZannaIDE));
+                                     std::string(kComponentZannaStudio));
         }
         const std::string readme = toolchainWindowsPrerequisitesReadme(params.installDirName);
         windowsReadmeText = readme;
@@ -2447,40 +2447,40 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             }
         }
 
-        if (hasZannaIDEComponent) {
+        if (hasZannaStudioComponent) {
             layout.nativeShortcuts.push_back({WindowsInstallRoot::StartMenuDir,
-                                              "ZannaIDE.lnk",
+                                              "Zanna Studio.lnk",
                                               "install",
-                                              "bin/zannaide.exe",
+                                              "bin/zannastudio.exe",
                                               "profile",
                                               {},
                                               {},
                                               {},
-                                              "ZannaIDE",
+                                              "Zanna Studio",
                                               "install",
-                                              "bin/zannaide.ico",
+                                              "bin/zannastudio.ico",
                                               0,
-                                              std::string(kComponentZannaIDE)});
+                                              std::string(kComponentZannaStudio)});
             LnkParams ideLnk;
             ideLnk.targetPath = windowsInstallEnvPath(
-                params.installDirName, layout.perUserInstall, "bin\\zannaide.exe");
+                params.installDirName, layout.perUserInstall, "bin\\zannastudio.exe");
             ideLnk.workingDir = "%USERPROFILE%";
-            ideLnk.description = "ZannaIDE";
+            ideLnk.description = "Zanna Studio";
             ideLnk.iconPath = windowsInstallEnvPath(
-                params.installDirName, layout.perUserInstall, "bin\\zannaide.ico");
+                params.installDirName, layout.perUserInstall, "bin\\zannastudio.ico");
             const auto ideData = generateLnk(ideLnk);
             if (!useNativeHost) {
                 addStoredOverlayFile(zip,
-                                     "meta/zannaide.lnk",
+                                     "meta/zannastudio.lnk",
                                      ideData.data(),
                                      ideData.size(),
                                      0100644,
                                      layout,
                                      WindowsInstallRoot::StartMenuDir,
-                                     "ZannaIDE.lnk",
+                                     "Zanna Studio.lnk",
                                      true,
                                      &payloadManifest,
-                                     std::string(kComponentZannaIDE));
+                                     std::string(kComponentZannaStudio));
             }
         }
     }

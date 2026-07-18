@@ -195,26 +195,26 @@ void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
 int64_t rt_obj_class_id(void *p) {
     if (!p)
         return 0;
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(p, &hdr))
+    rt_heap_info_t info;
+    if (!rt_heap_get_info(p, &info))
         return 0;
-    if (!hdr || (rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
+    if ((rt_heap_kind_t)info.kind != RT_HEAP_OBJECT)
         return 0;
-    return hdr->class_id;
+    return info.class_id;
 }
 
 /// @brief Validate a runtime-managed object handle before implementation-specific casts.
 int8_t rt_obj_is_instance(void *p, int64_t class_id, size_t min_payload_bytes) {
     if (!p)
         return 0;
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(p, &hdr) || !hdr)
+    rt_heap_info_t info;
+    if (!rt_heap_get_info(p, &info))
         return 0;
-    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
+    if ((rt_heap_kind_t)info.kind != RT_HEAP_OBJECT)
         return 0;
-    if (hdr->class_id != class_id)
+    if (info.class_id != class_id)
         return 0;
-    if (hdr->cap < min_payload_bytes)
+    if (info.cap < min_payload_bytes)
         return 0;
     return 1;
 }
@@ -230,11 +230,16 @@ int8_t rt_obj_is_instance(void *p, int64_t class_id, size_t min_payload_bytes) {
 void rt_obj_resurrect(void *p) {
     if (!p)
         return;
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(p, &hdr))
+    if (!rt_heap_try_get_header(p, &hdr)) {
+        rt_gc_mutator_exit();
         return;
-    if (!hdr)
+    }
+    if (!hdr) {
+        rt_gc_mutator_exit();
         return;
+    }
     size_t expected = 0;
     if (!__atomic_compare_exchange_n(&hdr->refcnt,
                                      &expected,
@@ -242,8 +247,11 @@ void rt_obj_resurrect(void *p) {
                                      /*weak=*/0,
                                      __ATOMIC_RELEASE,
                                      __ATOMIC_RELAXED)) {
+        rt_gc_mutator_exit();
         rt_trap("rt_obj_resurrect: object refcount is not zero");
+        return;
     }
+    rt_gc_mutator_exit();
 }
 
 /// @brief Set a custom finalizer for an object.
@@ -273,14 +281,22 @@ void rt_obj_resurrect(void *p) {
 void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn) {
     if (!p)
         return;
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(p, &hdr))
+    if (!rt_heap_try_get_header(p, &hdr)) {
+        rt_gc_mutator_exit();
         return;
-    if (!hdr)
+    }
+    if (!hdr) {
+        rt_gc_mutator_exit();
         return;
-    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
+    }
+    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT) {
+        rt_gc_mutator_exit();
         return;
+    }
     hdr->finalizer = (rt_heap_finalizer_t)fn;
+    rt_gc_mutator_exit();
 }
 
 /// @brief Increment the reference count for a runtime-managed object.
@@ -321,16 +337,16 @@ void rt_memory_retain(void *p) {
         rt_str_retain_maybe((rt_string)p);
         return;
     }
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(p, &hdr) || !hdr) {
+    rt_heap_info_t info;
+    if (!rt_heap_get_info(p, &info)) {
         rt_trap("Zanna.Memory.Retain: invalid or freed heap object");
         return;
     }
-    if ((rt_heap_kind_t)hdr->kind == RT_HEAP_STRING) {
+    if ((rt_heap_kind_t)info.kind == RT_HEAP_STRING) {
         rt_trap("Zanna.Memory.Retain: invalid string payload; pass the string handle");
         return;
     }
-    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT && (rt_heap_kind_t)hdr->kind != RT_HEAP_ARRAY) {
+    if ((rt_heap_kind_t)info.kind != RT_HEAP_OBJECT && (rt_heap_kind_t)info.kind != RT_HEAP_ARRAY) {
         rt_trap("Zanna.Memory.Retain: unsupported heap payload kind");
         return;
     }
@@ -457,7 +473,9 @@ static int rt_memory_array_payload_is_releasable(rt_heap_hdr_t *hdr) {
 static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
     if (!p || !hdr)
         return;
+    rt_gc_mutator_enter();
     if (hdr->len > hdr->cap) {
+        rt_gc_mutator_exit();
         rt_trap("Zanna.Memory.Release: array length exceeds capacity");
         return;
     }
@@ -470,6 +488,7 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
 
     for (;;) {
         if (setjmp(recovery) != 0) {
+            rt_gc_mutator_enter();
             if (!trapped) {
                 const char *err = rt_trap_get_error();
                 snprintf(saved_error,
@@ -523,14 +542,17 @@ static void rt_memory_release_array_payload(void *p, rt_heap_hdr_t *hdr) {
     }
 
     rt_trap_clear_recovery();
+    rt_gc_mutator_exit();
     if (trapped)
         rt_trap(saved_error);
 }
 
 static void rt_memory_free_zero_ref_array(void *p, rt_heap_hdr_t *hdr) {
+    rt_gc_mutator_enter();
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
+        rt_gc_mutator_enter();
         char saved_error[512];
         const char *err = rt_trap_get_error();
         snprintf(saved_error,
@@ -540,6 +562,7 @@ static void rt_memory_free_zero_ref_array(void *p, rt_heap_hdr_t *hdr) {
         rt_trap_clear_recovery();
         rt_gc_clear_weak_refs(p);
         rt_heap_free_zero_ref(p);
+        rt_gc_mutator_exit();
         rt_trap(saved_error);
         return;
     }
@@ -548,6 +571,7 @@ static void rt_memory_free_zero_ref_array(void *p, rt_heap_hdr_t *hdr) {
     rt_trap_clear_recovery();
     rt_gc_clear_weak_refs(p);
     rt_heap_free_zero_ref(p);
+    rt_gc_mutator_exit();
 }
 
 /// @brief Common finalize-and-free helper for managed object payloads at refcount zero.
@@ -562,14 +586,19 @@ static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
     if (!p)
         return 0;
 
+    rt_gc_mutator_enter();
     rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(p, &hdr) || !hdr)
+    if (!rt_heap_try_get_header(p, &hdr) || !hdr) {
+        rt_gc_mutator_exit();
         return 0;
+    }
     if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT) {
+        rt_gc_mutator_exit();
         rt_trap("rt_obj_free: expected object payload");
         return 0;
     }
     if (__atomic_load_n(&hdr->refcnt, __ATOMIC_ACQUIRE) != 0) {
+        rt_gc_mutator_exit();
         rt_trap("rt_obj_free: object refcount is not zero");
         return 0;
     }
@@ -580,6 +609,9 @@ static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
         jmp_buf recovery;
         rt_trap_set_recovery(&recovery);
         if (setjmp(recovery) != 0) {
+            // Trap dispatch unwinds shared GC scopes before longjmp. Re-enter
+            // before inspecting or reclaiming the still-live payload.
+            rt_gc_mutator_enter();
             char saved_error[512];
             const char *err = rt_trap_get_error();
             snprintf(saved_error,
@@ -592,6 +624,7 @@ static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
             if (after_trap != 0) {
                 if (post_refcount)
                     *post_refcount = rt_memory_refcount_to_i64(after_trap);
+                rt_gc_mutator_exit();
                 rt_trap(saved_error);
                 return 0;
             }
@@ -600,6 +633,7 @@ static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
             rt_gc_untrack(p);
             rt_monitor_forget(p);
             rt_heap_free_zero_ref(p);
+            rt_gc_mutator_exit();
             rt_trap(saved_error);
             return 1;
         }
@@ -611,6 +645,7 @@ static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
     if (after_finalizer != 0) {
         if (post_refcount)
             *post_refcount = rt_memory_refcount_to_i64(after_finalizer);
+        rt_gc_mutator_exit();
         return 0;
     }
 
@@ -618,6 +653,7 @@ static int32_t rt_obj_free_zero_ref_object(void *p, int64_t *post_refcount) {
     rt_gc_untrack(p);
     rt_monitor_forget(p);
     rt_heap_free_zero_ref(p);
+    rt_gc_mutator_exit();
     return 1;
 }
 
@@ -821,11 +857,11 @@ rt_string rt_obj_to_string(void *self) {
     if (rt_string_is_handle(self))
         return rt_string_ref((rt_string)self);
 
-    rt_heap_hdr_t *validated = NULL;
-    int has_header = rt_heap_try_get_header(self, &validated);
+    rt_heap_info_t validated;
+    int has_header = rt_heap_get_info(self, &validated);
 
     // Check if the object is a boxed value and auto-unbox for display.
-    if (has_header && validated && validated->elem_kind == RT_ELEM_BOX) {
+    if (has_header && validated.elem_kind == RT_ELEM_BOX) {
         int64_t tag = rt_box_type(self);
         if (tag == RT_BOX_STR) {
             return rt_unbox_str(self);
@@ -849,16 +885,16 @@ rt_string rt_obj_to_string(void *self) {
         }
     }
 
-    if (!has_header || !validated)
+    if (!has_header)
         return rt_obj_make_cstr("Object");
-    if ((rt_heap_kind_t)validated->kind != RT_HEAP_OBJECT)
+    if ((rt_heap_kind_t)validated.kind != RT_HEAP_OBJECT)
         return rt_obj_make_cstr("Object");
-    const char *builtin_name = rt_obj_builtin_class_name(validated->class_id);
-    if (validated->elem_kind == RT_ELEM_BOX && !builtin_name)
+    const char *builtin_name = rt_obj_builtin_class_name(validated.class_id);
+    if (validated.elem_kind == RT_ELEM_BOX && !builtin_name)
         builtin_name = "Zanna.Core.Box";
     if (builtin_name)
         return rt_obj_make_cstr(builtin_name);
-    if (validated->cap < sizeof(rt_object))
+    if (validated.cap < sizeof(rt_object))
         return rt_obj_make_cstr("Object");
 
     rt_object *obj = (rt_object *)self;
@@ -878,17 +914,17 @@ rt_string rt_obj_type_name(void *self) {
     if (rt_string_is_handle(self))
         return rt_obj_make_cstr("Zanna.String");
 
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(self, &hdr) || !hdr)
+    rt_heap_info_t heap_info;
+    if (!rt_heap_get_info(self, &heap_info))
         return rt_obj_make_cstr("Object");
-    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT)
+    if ((rt_heap_kind_t)heap_info.kind != RT_HEAP_OBJECT)
         return rt_obj_make_cstr("Object");
-    const char *builtin_name = rt_obj_builtin_class_name(hdr->class_id);
-    if (hdr->elem_kind == RT_ELEM_BOX && !builtin_name)
+    const char *builtin_name = rt_obj_builtin_class_name(heap_info.class_id);
+    if (heap_info.elem_kind == RT_ELEM_BOX && !builtin_name)
         builtin_name = "Zanna.Core.Box";
     if (builtin_name)
         return rt_obj_make_cstr(builtin_name);
-    if (hdr->cap < sizeof(rt_object))
+    if (heap_info.cap < sizeof(rt_object))
         return rt_obj_make_cstr("Object");
 
     rt_object *obj = (rt_object *)self;

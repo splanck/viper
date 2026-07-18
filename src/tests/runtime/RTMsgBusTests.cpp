@@ -4,6 +4,16 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTMsgBusTests.cpp
+// Purpose: Validate message-bus subscription, publication, ownership, and GC behavior.
+// Key invariants: Subscribers observe insertion order and published managed
+//                 payloads remain alive for the complete callback snapshot.
+// Ownership/Lifetime: Each case releases its bus, topics, callbacks, and
+//                     payloads after all callback activity has completed.
+// Links: src/runtime/core/rt_msgbus.c
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt_gc.h"
 #include "rt_heap.h"
@@ -154,6 +164,7 @@ struct MsgBusTopicMirror {
     size_t key_len;
     uint64_t key_hash;
     MsgBusSubMirror *subs;
+    MsgBusSubMirror *tail;
     int64_t count;
     MsgBusTopicMirror *next;
 };
@@ -162,6 +173,7 @@ struct MsgBusMirror {
     void *vptr;
     MsgBusTopicMirror **buckets;
     int64_t bucket_count;
+    int64_t topic_count;
     int64_t next_id;
     int64_t total_subs;
     int lock;
@@ -342,6 +354,65 @@ static void test_publish_invokes_callbacks_in_order() {
 
     rt_string_unref(topic);
     rt_string_unref(missing);
+    destroy_obj(bus);
+}
+
+/// @brief Verify tail removal followed by append preserves subscription order.
+/// @details Removes the current tail from a three-subscriber topic, appends a
+///          replacement, and publishes. This exercises the O(1) tail cache's
+///          unlink maintenance rather than merely its fast append path.
+static void test_unsubscribe_tail_then_append_preserves_order() {
+    void *bus = rt_msgbus_new();
+    rt_string topic = make_str("tail_append");
+    int64_t first = subscribe_native(bus, topic, cb_first);
+    int64_t second = subscribe_native(bus, topic, cb_second);
+    int64_t tail = subscribe_native(bus, topic, cb_third);
+    assert(first > 0 && second > first && tail > second);
+    assert(rt_msgbus_unsubscribe(bus, tail) == 1);
+    assert(subscribe_native(bus, topic, cb_third) > tail);
+
+    reset_trace();
+    int payload = 17;
+    assert(rt_msgbus_publish(bus, topic, &payload) == 3);
+    assert(g_trace_len == 3);
+    assert(g_trace[0] == 1 && g_trace[1] == 2 && g_trace[2] == 3);
+
+    rt_string_unref(topic);
+    destroy_obj(bus);
+}
+
+/// @brief Verify the topic table grows while retaining every subscription.
+/// @details Registers enough distinct topics to cross several 0.75 load
+///          thresholds, confirms the internal bucket table expanded, then
+///          publishes through every rehashed key to validate chain relinking.
+static void test_topic_table_rehashes_under_load() {
+    void *bus = rt_msgbus_new();
+    constexpr int kTopics = 128;
+
+    for (int index = 0; index < kTopics; ++index) {
+        std::string name = "rehash_topic_" + std::to_string(index);
+        rt_string topic = make_str(name.c_str());
+        assert(subscribe_native(bus, topic, cb_first) > 0);
+        rt_string_unref(topic);
+    }
+
+    MsgBusMirror *state = (MsgBusMirror *)bus;
+    assert(state->topic_count == kTopics);
+    assert(state->bucket_count > 32);
+    assert(rt_msgbus_total_subscriptions(bus) == kTopics);
+
+    for (int index = 0; index < kTopics; ++index) {
+        std::string name = "rehash_topic_" + std::to_string(index);
+        rt_string topic = make_str(name.c_str());
+        int payload = index;
+        reset_trace();
+        assert(rt_msgbus_publish(bus, topic, &payload) == 1);
+        assert(g_trace_len == 1 && g_last_payload == index);
+        rt_string_unref(topic);
+    }
+
+    rt_msgbus_clear(bus);
+    assert(state->topic_count == 0);
     destroy_obj(bus);
 }
 
@@ -600,6 +671,7 @@ static void test_subscribe_topic_count_overflow_traps() {
     MsgBusTopicMirror *topic_state = find_topic(bus, topic);
     assert(topic_state != nullptr);
     topic_state->count = INT64_MAX;
+    int64_t next_id_before = ((MsgBusMirror *)bus)->next_id;
 
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
@@ -614,6 +686,7 @@ static void test_subscribe_topic_count_overflow_traps() {
     }
 
     topic_state->count = 1;
+    assert(((MsgBusMirror *)bus)->next_id == next_id_before);
     assert(rt_msgbus_total_subscriptions(bus) == 1);
     rt_string_unref(topic);
     destroy_obj(callback);
@@ -762,6 +835,8 @@ int main() {
     test_embedded_nul_topics_are_distinct();
     test_unsubscribe();
     test_publish_invokes_callbacks_in_order();
+    test_unsubscribe_tail_then_append_preserves_order();
+    test_topic_table_rehashes_under_load();
     test_publish_retains_managed_payload_for_dispatch();
     test_publish_borrows_raw_string_payload();
     test_publish_retains_bus_during_callback_release();

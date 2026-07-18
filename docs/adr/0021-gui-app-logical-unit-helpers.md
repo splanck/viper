@@ -8,9 +8,9 @@ last-verified: 2026-06-30
 
 ## Status
 
-Accepted (runtime implemented; ZannaIDE's overlays are the intended first
+Accepted (runtime implemented; Zanna Studio's overlays are the intended first
 consumer). Driven by the GUI runtime-additions review, recommendation **R4**
-(`misc/plans/zannaide/gui-runtime-additions.md`).
+(`misc/plans/zannastudio/gui-runtime-additions.md`).
 
 ## Context
 
@@ -19,7 +19,7 @@ pixels (e.g. 2560 on a 1280-point 2× window), but floating panels and overlays 
 positioned and sized in **logical** (point) units. The runtime exposes the scale
 factor (`GetScale()`) but no conversion, so every consumer divides by hand.
 
-In ZannaIDE this `physicalToLogical` helper is **duplicated across three files** —
+In Zanna Studio this `physicalToLogical` helper is **duplicated across three files** —
 `ui/ide_overlays.zia:717-728`, `ui/debug_breakpoint_overlay.zia:223-224`,
 `ui/explorer_actions.zia:346-347` — each re-deriving the same `value <= 0 ? value :
 scale <= 1.0 ? value : round(value / scale)` logic. Any Zanna GUI app that places a

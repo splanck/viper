@@ -78,7 +78,13 @@ static const char *find_char_bounded(const char *buf, size_t len, char needle) {
  * @param text NUL-terminated text to validate.
  * @return Nonzero when @p text contains `\r` or `\n`; zero otherwise.
  */
-static int contains_crlf(const char *text) {
+#if defined(__GNUC__) || defined(__clang__)
+#define HTTP_SERVER_SHARED_MAYBE_UNUSED __attribute__((unused))
+#else
+#define HTTP_SERVER_SHARED_MAYBE_UNUSED
+#endif
+
+static int HTTP_SERVER_SHARED_MAYBE_UNUSED contains_crlf(const char *text) {
     if (!text)
         return 0;
     for (; *text; text++) {
@@ -99,7 +105,7 @@ static int contains_crlf(const char *text) {
  * @return Nonzero when @p c is accepted as an HTTP token character.
  */
 static int http_token_char(unsigned char c) {
-    if (c <= 0x20 || c == 0x7f)
+    if (c <= 0x20 || c >= 0x7f)
         return 0;
     switch (c) {
         case '(':
@@ -124,12 +130,6 @@ static int http_token_char(unsigned char c) {
             return 1;
     }
 }
-
-#if defined(__GNUC__) || defined(__clang__)
-#define HTTP_SERVER_SHARED_MAYBE_UNUSED __attribute__((unused))
-#else
-#define HTTP_SERVER_SHARED_MAYBE_UNUSED
-#endif
 
 /**
  * @brief Validate a length-bounded HTTP method token.
@@ -400,7 +400,9 @@ static void json_escape_into(char *out, const char *s) {
 /// `application/json`, creating the response header map if needed.
 ///
 /// Idempotent: clears any pre-existing response body before writing the new
-/// body. Allocation failures leave a status-code-only response.
+/// body. The status and `sent` marker are published first, so a caller that
+/// recovers an allocation trap can still serialize a valid status-only
+/// response rather than accidentally returning the previous success payload.
 ///
 /// @param res         Response struct to overwrite.
 /// @param status_code HTTP status code to set.
@@ -409,34 +411,84 @@ static void set_json_error_response(server_res_t *res, int status_code, const ch
     if (!res)
         return;
 
+    char *old_body = res->body;
     res->status_code = status_code;
-    free(res->body);
     res->body = NULL;
     res->body_len = 0;
+    res->sent = true;
+    free(old_body);
 
+    size_t escaped_len = message ? json_escaped_len(message) : 0;
+    if (escaped_len == SIZE_MAX || escaped_len > SIZE_MAX - 13)
+        return;
+
+    char *volatile replacement = NULL;
+    void *volatile headers = res->headers;
+    rt_string volatile ct_key = NULL;
+    rt_string volatile ct_val = NULL;
+    volatile int created_headers = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HttpServer: JSON error allocation failed");
+        rt_trap_clear_recovery();
+        rt_string_unref((rt_string)ct_val);
+        rt_string_unref((rt_string)ct_key);
+        if (created_headers && headers && rt_obj_release_check0((void *)headers))
+            rt_obj_free((void *)headers);
+        free((void *)replacement);
+        rt_trap(saved_error);
+        return;
+    }
+
+    size_t replacement_len = 0;
     if (message) {
-        size_t escaped_len = json_escaped_len(message);
-        if (escaped_len == SIZE_MAX || escaped_len > SIZE_MAX - 13)
+        replacement = (char *)malloc(escaped_len + 13);
+        if (!replacement) {
+            rt_trap_clear_recovery();
             return;
-        size_t cap = escaped_len + 13;
-        char *json = (char *)malloc(cap);
-        if (json) {
-            memcpy(json, "{\"error\":\"", 10);
-            json_escape_into(json + 10, message);
-            memcpy(json + 10 + escaped_len, "\"}", 3);
-            res->body = json;
-            res->body_len = 12 + escaped_len;
-            res->sent = true;
         }
+        memcpy((void *)replacement, "{\"error\":\"", 10);
+        json_escape_into((char *)replacement + 10, message);
+        memcpy((char *)replacement + 10 + escaped_len, "\"}", 3);
+        replacement_len = 12 + escaped_len;
     }
 
-    if (!res->headers)
-        res->headers = rt_map_new();
-    if (res->headers) {
-        rt_string ct_key = rt_const_cstr("Content-Type");
-        rt_string ct_val = rt_const_cstr("application/json");
-        rt_map_set(res->headers, ct_key, (void *)ct_val);
+    if (!headers) {
+        headers = rt_map_new();
+        if (!headers) {
+            rt_trap_clear_recovery();
+            free((void *)replacement);
+            return;
+        }
+        created_headers = 1;
     }
+
+    ct_key = rt_const_cstr("Content-Type");
+    ct_val = rt_const_cstr("application/json");
+    int header_set = ct_key && ct_val &&
+                     rt_http_header_map_set_ci((void *)headers, (rt_string)ct_key, (void *)ct_val);
+    rt_string_unref((rt_string)ct_val);
+    rt_string_unref((rt_string)ct_key);
+    ct_val = NULL;
+    ct_key = NULL;
+    if (!header_set) {
+        rt_trap_clear_recovery();
+        if (created_headers && rt_obj_release_check0((void *)headers))
+            rt_obj_free((void *)headers);
+        free((void *)replacement);
+        return;
+    }
+
+    res->headers = (void *)headers;
+    res->body = (char *)replacement;
+    res->body_len = replacement_len;
+    rt_trap_clear_recovery();
 }
 
 /// @brief Dispatch a parsed request to its registered handler and populate the response.
@@ -1077,6 +1129,7 @@ static rt_string map_get_lower_header_string(void *headers, const char *lower_na
         return NULL;
     rt_string key = rt_const_cstr(lower_name);
     void *val = rt_map_get(headers, key);
+    rt_string_unref(key);
     if (!val || !rt_string_is_handle(val))
         return NULL;
     return (rt_string)val;
@@ -1146,6 +1199,46 @@ static size_t response_wire_body_len(const server_res_t *res) {
     return 0;
 }
 
+/// @brief Add one byte count to an accumulated response size safely.
+/// @param total In/out accumulated size.
+/// @param amount Number of bytes to add.
+/// @return One on success; zero when the addition would overflow `size_t`.
+static int response_size_add(size_t *total, size_t amount) {
+    if (!total || *total > SIZE_MAX - amount)
+        return 0;
+    *total += amount;
+    return 1;
+}
+
+/// @brief Validate a managed response-header String as length-bounded wire text.
+/// @details The runtime identity and length are checked before payload access.
+///          Embedded NUL, CR, and LF bytes are rejected so native handlers
+///          cannot smuggle truncated or injected header lines into formatting.
+/// @param text Candidate managed String.
+/// @param bytes_out Receives borrowed payload bytes on success.
+/// @param len_out Receives the exact byte length on success.
+/// @return One for valid wire text; zero otherwise.
+static int response_header_string_bytes(rt_string text, const char **bytes_out, size_t *len_out) {
+    if (bytes_out)
+        *bytes_out = NULL;
+    if (len_out)
+        *len_out = 0;
+    if (!text || !rt_string_is_handle(text))
+        return 0;
+    const char *bytes = rt_string_cstr(text);
+    int64_t len64 = rt_str_len(text);
+    if (!bytes || len64 < 0 || (uint64_t)len64 > (uint64_t)SIZE_MAX)
+        return 0;
+    size_t len = (size_t)len64;
+    if (memchr(bytes, '\0', len) || memchr(bytes, '\r', len) || memchr(bytes, '\n', len))
+        return 0;
+    if (bytes_out)
+        *bytes_out = bytes;
+    if (len_out)
+        *len_out = len;
+    return 1;
+}
+
 /// @brief Map an HTTP status code to its canonical reason-phrase.
 static const char *status_text_for_code(int code) {
     switch (code) {
@@ -1178,54 +1271,88 @@ static const char *status_text_for_code(int code) {
 
 /// @brief Build an HTTP response string.
 static char *build_response(server_res_t *res, int keep_alive, size_t *out_len) {
-    size_t body_len = response_wire_body_len(res);
-    size_t cap = (size_t)snprintf(
-        NULL, 0, "HTTP/1.1 %d %s\r\n", res->status_code, status_text_for_code(res->status_code));
-    cap += (size_t)snprintf(NULL, 0, "Content-Length: %zu\r\n", body_len);
-    cap += strlen(keep_alive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
+    void *volatile keys = NULL;
+    char *volatile buffer = NULL;
+    if (out_len)
+        *out_len = 0;
+    if (!res)
+        return NULL;
 
-    if (res->headers) {
-        void *keys = rt_map_keys(res->headers);
-        int64_t count = rt_seq_len(keys);
-        for (int64_t i = 0; i < count; i++) {
-            rt_string key = (rt_string)rt_seq_get(keys, i);
-            void *val = rt_map_get(res->headers, key);
-            if (val) {
-                const char *k = rt_string_cstr(key);
-                const char *v = rt_string_cstr((rt_string)val);
-                if (k && v && !contains_crlf(k) && !contains_crlf(v) &&
-                    !is_server_managed_header_name(k)) {
-                    size_t k_len = strlen(k);
-                    size_t v_len = strlen(v);
-                    if (cap > SIZE_MAX - (k_len + v_len + 4)) {
-                        if (rt_obj_release_check0(keys))
-                            rt_obj_free(keys);
-                        return NULL;
-                    }
-                    cap += k_len + v_len + 4;
-                }
-            }
-        }
-        if (rt_obj_release_check0(keys))
-            rt_obj_free(keys);
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error,
+                 sizeof(saved_error),
+                 "%s",
+                 error && error[0] ? error : "HttpServer: response serialization failed");
+        rt_trap_clear_recovery();
+        if (keys && rt_obj_release_check0((void *)keys))
+            rt_obj_free((void *)keys);
+        free((void *)buffer);
+        rt_trap(saved_error);
+        return NULL;
     }
-    if (cap > SIZE_MAX - (body_len + 3))
-        return NULL;
-    cap += body_len + 2 + 1;
 
-    char *buf = (char *)malloc(cap);
-    if (!buf)
-        return NULL;
+    size_t body_len = response_wire_body_len(res);
+    if (body_len > 0 && !res->body)
+        goto fail;
+    int status_len = snprintf(
+        NULL, 0, "HTTP/1.1 %d %s\r\n", res->status_code, status_text_for_code(res->status_code));
+    int length_len = snprintf(NULL, 0, "Content-Length: %zu\r\n", body_len);
+    if (status_len < 0 || length_len < 0)
+        goto fail;
+    size_t cap = 0;
+    if (!response_size_add(&cap, (size_t)status_len) ||
+        !response_size_add(&cap, (size_t)length_len) ||
+        !response_size_add(
+            &cap, strlen(keep_alive ? "Connection: keep-alive\r\n" : "Connection: close\r\n"))) {
+        goto fail;
+    }
 
-    char *cursor = buf;
+    int64_t header_count = 0;
+    if (res->headers) {
+        keys = rt_map_keys(res->headers);
+        if (!keys)
+            goto fail;
+        header_count = rt_seq_len((void *)keys);
+        if (header_count < 0)
+            goto fail;
+    }
+    for (int64_t i = 0; i < header_count; i++) {
+        rt_string key = (rt_string)rt_seq_get((void *)keys, i);
+        rt_string value = (rt_string)rt_map_get(res->headers, key);
+        const char *key_bytes = NULL;
+        const char *value_bytes = NULL;
+        size_t key_len = 0;
+        size_t value_len = 0;
+        if (!response_header_string_bytes(key, &key_bytes, &key_len) ||
+            !response_header_string_bytes(value, &value_bytes, &value_len) ||
+            !server_header_name_valid(key_bytes, key_len) ||
+            is_server_managed_header_name(key_bytes)) {
+            continue;
+        }
+        if (!response_size_add(&cap, key_len) || !response_size_add(&cap, value_len) ||
+            !response_size_add(&cap, 4)) {
+            goto fail;
+        }
+    }
+    if (!response_size_add(&cap, 2) || !response_size_add(&cap, body_len) ||
+        !response_size_add(&cap, 1)) {
+        goto fail;
+    }
+
+    buffer = (char *)malloc(cap);
+    if (!buffer)
+        goto fail;
+    char *cursor = (char *)buffer;
     size_t remaining = cap;
 #define APPEND_FORMAT(...)                                                                         \
     do {                                                                                           \
         int written = snprintf(cursor, remaining, __VA_ARGS__);                                    \
-        if (written < 0 || (size_t)written >= remaining) {                                         \
-            free(buf);                                                                             \
-            return NULL;                                                                           \
-        }                                                                                          \
+        if (written < 0 || (size_t)written >= remaining)                                           \
+            goto fail;                                                                             \
         cursor += written;                                                                         \
         remaining -= (size_t)written;                                                              \
     } while (0)
@@ -1234,45 +1361,60 @@ static char *build_response(server_res_t *res, int keep_alive, size_t *out_len) 
     APPEND_FORMAT("Content-Length: %zu\r\n", body_len);
     APPEND_FORMAT("%s", keep_alive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
 
-    if (res->headers) {
-        void *keys = rt_map_keys(res->headers);
-        int64_t count = rt_seq_len(keys);
-        for (int64_t i = 0; i < count; i++) {
-            rt_string key = (rt_string)rt_seq_get(keys, i);
-            void *val = rt_map_get(res->headers, key);
-            if (val) {
-                const char *k = rt_string_cstr(key);
-                const char *v = rt_string_cstr((rt_string)val);
-                if (k && v && !contains_crlf(k) && !contains_crlf(v) &&
-                    !is_server_managed_header_name(k)) {
-                    int written = snprintf(cursor, remaining, "%s: %s\r\n", k, v);
-                    if (written < 0 || (size_t)written >= remaining) {
-                        if (rt_obj_release_check0(keys))
-                            rt_obj_free(keys);
-                        free(buf);
-                        return NULL;
-                    }
-                    cursor += written;
-                    remaining -= (size_t)written;
-                }
-            }
+    for (int64_t i = 0; i < header_count; i++) {
+        rt_string key = (rt_string)rt_seq_get((void *)keys, i);
+        rt_string value = (rt_string)rt_map_get(res->headers, key);
+        const char *key_bytes = NULL;
+        const char *value_bytes = NULL;
+        size_t key_len = 0;
+        size_t value_len = 0;
+        if (!response_header_string_bytes(key, &key_bytes, &key_len) ||
+            !response_header_string_bytes(value, &value_bytes, &value_len) ||
+            !server_header_name_valid(key_bytes, key_len) ||
+            is_server_managed_header_name(key_bytes)) {
+            continue;
         }
-        if (rt_obj_release_check0(keys))
-            rt_obj_free(keys);
+        if (key_len > remaining || value_len > remaining - key_len ||
+            4 > remaining - key_len - value_len) {
+            goto fail;
+        }
+        memcpy(cursor, key_bytes, key_len);
+        cursor += key_len;
+        memcpy(cursor, ": ", 2);
+        cursor += 2;
+        memcpy(cursor, value_bytes, value_len);
+        cursor += value_len;
+        memcpy(cursor, "\r\n", 2);
+        cursor += 2;
+        remaining -= key_len + value_len + 4;
     }
 
     APPEND_FORMAT("%s", "\r\n");
-
-    if (res->body && body_len > 0) {
-        if (body_len > remaining) {
-            free(buf);
-            return NULL;
-        }
+    if (body_len > 0) {
+        if (body_len >= remaining)
+            goto fail;
         memcpy(cursor, res->body, body_len);
         cursor += body_len;
+        remaining -= body_len;
     }
+    *cursor = '\0';
+    if (out_len)
+        *out_len = (size_t)(cursor - (char *)buffer);
 
-    *out_len = (size_t)(cursor - buf);
+    if (keys && rt_obj_release_check0((void *)keys))
+        rt_obj_free((void *)keys);
+    keys = NULL;
+    rt_trap_clear_recovery();
+    char *result = (char *)buffer;
+    buffer = NULL;
 #undef APPEND_FORMAT
-    return buf;
+    return result;
+
+fail:
+    rt_trap_clear_recovery();
+    if (keys && rt_obj_release_check0((void *)keys))
+        rt_obj_free((void *)keys);
+    free((void *)buffer);
+#undef APPEND_FORMAT
+    return NULL;
 }

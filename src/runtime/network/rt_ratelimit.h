@@ -26,10 +26,15 @@
 extern "C" {
 #endif
 
+/// @brief Stable managed-object class tag for RateLimiter handles.
+/// @details Public entry points validate this class and their minimum private
+///          payload size before interpreting an opaque object as bucket state.
+#define RT_RATELIMIT_CLASS_ID INT64_C(-0x720204)
+
 /// @brief Create a token bucket rate limiter.
 /// @param max_tokens Maximum token capacity.
 /// @param refill_per_sec Tokens refilled per second.
-/// @return New rate limiter object.
+/// @return Owned rate limiter object, or NULL after an allocation trap.
 void *rt_ratelimit_new(int64_t max_tokens, double refill_per_sec);
 
 /// @brief Try to consume 1 token.

@@ -56,14 +56,20 @@ void archive_save_trap_error(char *buffer, size_t buffer_size, const char *fallb
 
 HANDLE archive_open_win_path(const char *cpath, DWORD access, DWORD share, DWORD create_disp);
 int archive_read_exact_win_or_free(HANDLE h, uint8_t *dst, size_t total, const char *trap_msg);
-int archive_read_exact_win_or_release_object(HANDLE h, void *bytes, size_t total, const char *trap_msg);
+int archive_read_exact_win_or_release_object(HANDLE h,
+                                             void *bytes,
+                                             size_t total,
+                                             const char *trap_msg);
 void *archive_bytes_new_win_or_close(HANDLE h, int64_t len, const char *fallback);
 #else
 #include <sys/types.h>
 
 int archive_open_posix(const char *path, int flags, mode_t mode);
 int archive_read_exact_posix_or_free(int fd, uint8_t *dst, size_t total, const char *trap_msg);
-int archive_read_exact_posix_or_release_object(int fd, void *bytes, size_t total, const char *trap_msg);
+int archive_read_exact_posix_or_release_object(int fd,
+                                               void *bytes,
+                                               size_t total,
+                                               const char *trap_msg);
 void *archive_bytes_new_posix_or_close(int fd, int64_t len, const char *fallback);
 void archive_make_dirs_posix_at(int root_fd, const char *path);
 int archive_open_parent_for_file_posix(int root_fd, const char *name, char **out_leaf);
@@ -72,9 +78,45 @@ int archive_open_root_dir_posix(const char *cdir);
 #endif
 
 // Cross-platform atomic-write / path helpers.
+/// @brief Allocate and initialize the native per-archive reader-writer lock.
+/// @details The platform adapter uses an SRW lock on Windows and a POSIX
+///          pthread reader-writer lock elsewhere. The returned allocation has
+///          no managed references and must be destroyed after archive
+///          quiescence with @ref archive_rwlock_destroy.
+/// @return Opaque initialized lock, or NULL when allocation/initialization fails.
+void *archive_rwlock_create(void);
+
+/// @brief Destroy a native archive lock after the final archive reference is gone.
+/// @param lock Opaque lock from @ref archive_rwlock_create; NULL is a no-op.
+/// @pre No thread may hold or be waiting for @p lock.
+void archive_rwlock_destroy(void *lock);
+
+/// @brief Enter shared access to an archive's stable read/property state.
+/// @param lock Valid opaque archive lock.
+/// @post The caller owns one shared lock acquisition until
+///       @ref archive_rwlock_read_exit.
+void archive_rwlock_read_enter(void *lock);
+
+/// @brief Leave a shared archive lock acquisition.
+/// @param lock Valid lock currently held once for reading by this thread.
+void archive_rwlock_read_exit(void *lock);
+
+/// @brief Enter exclusive access to archive writer buffers, indexes, and state.
+/// @details Writer APIs hold this lock across their transactional mutation so
+///          concurrent Add, AddDir, Finish, Count, and Names calls observe only
+///          complete entry-table states.
+/// @param lock Valid opaque archive lock.
+void archive_rwlock_write_enter(void *lock);
+
+/// @brief Leave an exclusive archive lock acquisition.
+/// @param lock Valid lock currently held once for writing by this thread.
+void archive_rwlock_write_exit(void *lock);
 char *archive_make_temp_path(const char *path, unsigned attempt);
 void archive_unlink_utf8(const char *path);
-int archive_write_file_all_utf8(const char *cpath, const uint8_t *src, size_t total, const char *trap_msg);
+int archive_write_file_all_utf8(const char *cpath,
+                                const uint8_t *src,
+                                size_t total,
+                                const char *trap_msg);
 void archive_write_bytes_to_path(const char *cpath, void *data);
 size_t archive_trim_trailing_seps(const char *path, size_t len);
 void archive_reject_symlink_components(const char *path, size_t root_len, int include_leaf);
@@ -123,22 +165,41 @@ typedef struct rt_archive {
     bool owns_data;   ///< True when this object allocated `data` and must free it.
     bool is_writing;  ///< True when opened via `Archive.Create` (write mode).
     bool is_finished; ///< True after `Archive.Finish` has been called.
+    void *rw_lock;    ///< Native reader-writer lock owned by this archive.
+
+    uint64_t max_file_bytes;        ///< Maximum encoded archive image accepted/produced.
+    uint64_t max_entry_bytes;       ///< Per-entry uncompressed allocation ceiling.
+    uint64_t max_total_entry_bytes; ///< Sum of declared uncompressed entry sizes allowed.
+    int parse_error;                ///< `archive_parse_error_t` from the most recent parse.
 
     // Read-side fields
-    zip_entry_t *entries; ///< Array of parsed central-directory entries.
-    int entry_count;      ///< Number of entries in `entries`.
+    zip_entry_t *entries;         ///< Array of parsed central-directory entries.
+    int entry_count;              ///< Number of entries in `entries`.
+    size_t central_offset;        ///< First byte of the validated central directory.
+    int32_t *entry_name_slots;    ///< Open-addressed name index (`entry index + 1`).
+    size_t entry_name_slot_count; ///< Power-of-two capacity of `entry_name_slots`.
 
     // Write-side fields
-    int fd;                     ///< POSIX fd used for streaming writes (-1 if unused).
-    uint8_t *write_buf;         ///< In-memory write accumulation buffer.
-    size_t write_len;           ///< Current number of valid bytes in `write_buf`.
-    size_t write_cap;           ///< Allocated capacity of `write_buf`.
-    zip_entry_t *write_entries; ///< Metadata for each entry added so far.
-    int write_entry_count;      ///< Number of entries in `write_entries`.
-    int write_entry_cap;        ///< Allocated capacity of `write_entries`.
+    int fd;                           ///< POSIX fd used for streaming writes (-1 if unused).
+    uint8_t *write_buf;               ///< In-memory write accumulation buffer.
+    size_t write_len;                 ///< Current number of valid bytes in `write_buf`.
+    size_t write_cap;                 ///< Allocated capacity of `write_buf`.
+    zip_entry_t *write_entries;       ///< Metadata for each entry added so far.
+    int write_entry_count;            ///< Number of entries in `write_entries`.
+    int write_entry_cap;              ///< Allocated capacity of `write_entries`.
+    uint64_t write_total_entry_bytes; ///< Sum of uncompressed sizes committed by Add.
+    int32_t *write_name_slots;        ///< Open-addressed write-name index (`entry index + 1`).
+    size_t write_name_slot_count;     ///< Power-of-two capacity of `write_name_slots`.
 } rt_archive_t;
 
 typedef enum { NAME_OK = 0, NAME_INVALID, NAME_OOM } name_result_t;
+
+/// @brief Structured reason returned by the non-trapping ZIP parser.
+typedef enum archive_parse_error {
+    ARCHIVE_PARSE_ERROR_INVALID = 0, ///< Malformed or unsupported ZIP structure.
+    ARCHIVE_PARSE_ERROR_OOM = 1,     ///< Parser-side allocation failed.
+    ARCHIVE_PARSE_ERROR_LIMIT = 2,   ///< Configured resource ceiling was exceeded.
+} archive_parse_error_t;
 
 // Read-parser entry points (defined in rt_archive_read.c).
 bool parse_central_directory(rt_archive_t *ar);

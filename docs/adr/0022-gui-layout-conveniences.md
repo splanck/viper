@@ -8,16 +8,16 @@ last-verified: 2026-06-30
 
 ## Status
 
-Accepted (runtime implemented; ZannaIDE's modal overlays and tool/data panels are
+Accepted (runtime implemented; Zanna Studio's modal overlays and tool/data panels are
 the intended first consumers). Driven by the GUI runtime-additions review,
-recommendation **R5** (`misc/plans/zannaide/gui-runtime-additions.md`).
+recommendation **R5** (`misc/plans/zannastudio/gui-runtime-additions.md`).
 
 ## Context
 
 Two common layout tasks have no runtime support, so apps hand-roll them:
 
 1. **Centering a floating panel/modal.** `Zanna.GUI.FloatingPanel` exposes
-   `SetPosition`/`SetSize` but no "center me in the window". ZannaIDE's
+   `SetPosition`/`SetSize` but no "center me in the window". Zanna Studio's
    `ui/ide_overlays.zia:690-715` (`layoutAboutPanel`) re-derives the window size,
    computes `(rootW - panelW)/2`, and clamps to the screen by hand.
 2. **Tabular data with aligned columns.** There is no grid/table widget, so the

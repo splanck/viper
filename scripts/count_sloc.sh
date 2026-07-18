@@ -17,8 +17,8 @@
 #                Block comments (/* ... */) are NOT filtered (complex to parse
 #                without a real lexer; treating them as code is the conservative
 #                choice and matches cloc/sloccount behavior for mixed lines).
-#   Zia:         same as C/C++ (// comments). The ZannaIDE application is
-#                counted separately from src/zannaide/src/ (not lumped with demos).
+#   Zia:         same as C/C++ (// comments). The Zanna Studio application is
+#                counted separately from src/zannastudio/src/ (not lumped with demos).
 #   BASIC:       blank lines, or lines starting with REM or '
 #   Shell:       blank lines, or lines starting with #
 #   CMake:       blank lines, or lines starting with #
@@ -99,8 +99,8 @@ SUB_LIB=$(find_c_files src/lib | sloc_c)
 SUB_TOOLS=$(find_c_files src/tools | sloc_c)
 SUB_TESTS=$(find_c_files src/tests | sloc_c)
 
-# ZannaIDE — the IDE application, written in Zia (src/zannaide/src/*.zia)
-SLOC_ZANNAIDE=$(find src/zannaide/src -name '*.zia' 2>/dev/null | sloc_c)
+# Zanna Studio — the IDE application, written in Zia (src/zannastudio/src/*.zia)
+SLOC_ZANNASTUDIO=$(find src/zannastudio/src -name '*.zia' 2>/dev/null | sloc_c)
 
 # Non-production
 SLOC_ZIA=$(find examples src/tests/fixtures -name '*.zia' 2>/dev/null | sloc_c)
@@ -115,12 +115,12 @@ SLOC_IL=$(find src/tests/fixtures examples -name '*.il' 2>/dev/null | sloc_c)
 # File counts
 FILES_SRC=$(count_files src)
 FILES_ZIA=$(find . -name '*.zia' | grep -v build | wc -l | tr -d ' ')
-FILES_ZANNAIDE=$(find src/zannaide/src -name '*.zia' 2>/dev/null | wc -l | tr -d ' ')
+FILES_ZANNASTUDIO=$(find src/zannastudio/src -name '*.zia' 2>/dev/null | wc -l | tr -d ' ')
 FILES_IL=$(find . -name '*.il' | grep -v build | wc -l | tr -d ' ')
 FILES_TOTAL=$(find src examples scripts docs -type f 2>/dev/null | grep -v build | wc -l | tr -d ' ')
 
 # Overall SLOC
-SLOC_ALL=$((SLOC_SRC + SLOC_ZANNAIDE + SLOC_ZIA + SLOC_BASIC + SLOC_IL + SLOC_SCRIPTS))
+SLOC_ALL=$((SLOC_SRC + SLOC_ZANNASTUDIO + SLOC_ZIA + SLOC_BASIC + SLOC_IL + SLOC_SCRIPTS))
 
 # ─── Output modes ────────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ print_summary() {
     printf "  Production SLOC:    %'10d  (src/ minus tests)\n" "$SLOC_PROD"
     printf "  Test SLOC:          %'10d  (src/tests/)\n" "$SLOC_TESTS"
     printf "  All src/ SLOC:      %'10d\n" "$SLOC_SRC"
-    printf "  ZannaIDE SLOC:      %'10d  (src/zannaide/src, Zia)\n" "$SLOC_ZANNAIDE"
+    printf "  Zanna Studio SLOC:  %'10d  (src/zannastudio/src, Zia)\n" "$SLOC_ZANNASTUDIO"
     printf "  Demo code SLOC:     %'10d  (Zia + BASIC + IL)\n" "$((SLOC_ZIA + SLOC_BASIC + SLOC_IL))"
     printf "  Overall SLOC:       %'10d  (all code)\n" "$SLOC_ALL"
     echo ""
@@ -188,8 +188,8 @@ print_all() {
 
     echo -e "${GREEN}Applications (Zia)${NC}"
     echo "─────────────────────────────────────────"
-    printf "  %-24s %'10d SLOC\n"  "ZannaIDE (src/zannaide/src)" "$SLOC_ZANNAIDE"
-    printf "  %-24s %'10d files\n" "  source files"          "$FILES_ZANNAIDE"
+    printf "  %-24s %'10d SLOC\n"  "Zanna Studio (src/zannastudio/src)" "$SLOC_ZANNASTUDIO"
+    printf "  %-24s %'10d files\n" "  source files"          "$FILES_ZANNASTUDIO"
     echo ""
 
     echo -e "${YELLOW}Non-Production${NC}"
@@ -206,7 +206,7 @@ print_all() {
     echo "─────────────────────────────────────────"
     printf "  %-24s %'10d\n" "Production SLOC"     "$SLOC_PROD"
     printf "  %-24s %'10d\n" "Test SLOC"           "$SLOC_TESTS"
-    printf "  %-24s %'10d\n" "ZannaIDE SLOC"       "$SLOC_ZANNAIDE"
+    printf "  %-24s %'10d\n" "Zanna Studio SLOC"       "$SLOC_ZANNASTUDIO"
     printf "  %-24s %'10d\n" "Demo SLOC"           "$((SLOC_ZIA + SLOC_BASIC + SLOC_IL))"
     printf "  %-24s %'10d\n" "Overall SLOC"        "$SLOC_ALL"
     echo ""
@@ -249,9 +249,9 @@ print_json() {
     "sloc": $SLOC_SRC,
     "loc": $LOC_SRC
   },
-  "zannaide": {
-    "sloc": $SLOC_ZANNAIDE,
-    "files": $FILES_ZANNAIDE
+  "zannastudio": {
+    "sloc": $SLOC_ZANNASTUDIO,
+    "files": $FILES_ZANNASTUDIO
   },
   "demos": {
     "zia_sloc": $SLOC_ZIA,
@@ -262,7 +262,7 @@ print_json() {
   "files": {
     "src": $FILES_SRC,
     "zia": $FILES_ZIA,
-    "zannaide": $FILES_ZANNAIDE,
+    "zannastudio": $FILES_ZANNASTUDIO,
     "il": $FILES_IL,
     "total": $FILES_TOTAL
   }

@@ -8,9 +8,9 @@ last-verified: 2026-06-30
 
 ## Status
 
-Accepted (runtime implemented; ZannaIDE's completion popup is the intended first
+Accepted (runtime implemented; Zanna Studio's completion popup is the intended first
 consumer). Driven by the GUI runtime-additions review, recommendation **R6**
-(`misc/plans/zannaide/gui-runtime-additions.md`).
+(`misc/plans/zannastudio/gui-runtime-additions.md`).
 
 ## Context
 
@@ -21,7 +21,7 @@ on edit/escape. The runtime has `Dropdown`, `ContextMenu`, `CommandPalette`, and
 `Tooltip`, but none is a *caret-anchored, filterable, keyboard-navigable list a host
 can drive*.
 
-So ZannaIDE hand-rolls it: `editor/completion.zia` (1,288 LOC) builds a
+So Zanna Studio hand-rolls it: `editor/completion.zia` (1,288 LOC) builds a
 `FloatingPanel` + an embedded `ListBox`, then manages a state machine on top —
 `isVisible`, `selectedIndex`, `lastLine`/`lastCol`, anchor-at-caret, filtering,
 dismiss-on-edit, accept. The *positioning* is already supported (the caret-pixel
@@ -71,7 +71,7 @@ framework support; it draws its own items (no child widgets), so it is simpler t
 
 ## Consequences
 
-- **Adoption:** ZannaIDE's completion popup collapses from "FloatingPanel + ListBox +
+- **Adoption:** Zanna Studio's completion popup collapses from "FloatingPanel + ListBox +
   hand-rolled state machine" to a single `PopupList` it populates, filters, and
   reads `WasAccepted` from. Any app gets autocomplete UI for free (search boxes,
   command inputs).

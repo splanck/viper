@@ -9,7 +9,7 @@ last-verified: 2026-06-20
 Portable C runtime library (`src/runtime/`) providing core types, collections, I/O, text, math,
 graphics, audio, input, networking, system, diagnostics, crypto, time, and threading support.
 
-Last updated: 2026-06-20
+Last updated: 2026-07-17
 
 ## Overview
 
@@ -469,10 +469,18 @@ Last updated: 2026-06-20
 | `rt_network_http.c`| HTTP client implementation |
 | `rt_restclient.c`  | REST client implementation |
 | `rt_restclient.h`  | REST client declarations   |
+| `rt_sse.c` / `rt_sse.h` | Strict HTTP(S) EventSource client, lossless deadlines, reconnect, and serialized cancellation |
+| `rt_smtp.c` / `rt_smtp.h` | Strict SMTP/STARTTLS/AUTH client with streamed DATA and serialized cancellation |
 | `rt_tls.c`         | TLS/SSL support            |
 | `rt_tls.h`         | TLS declarations           |
 | `rt_websocket.c`   | WebSocket client           |
 | `rt_websocket.h`   | WebSocket declarations     |
+| `rt_ws_server.c`   | Plain WebSocket server lifecycle and frames |
+| `rt_ws_server.h`   | Plain WebSocket server ABI |
+| `rt_wss_server.c`  | TLS WebSocket server lifecycle and frames |
+| `rt_wss_server.h`  | TLS WebSocket server ABI   |
+| `rt_ws_shared.inc` | Shared strict upgrade, authority, UTF-8, and frame helpers |
+| `rt_socket_platform*.c` | POSIX/WinSock socket policy adapters |
 
 ## Cryptography
 
@@ -509,8 +517,9 @@ Last updated: 2026-06-20
 |-----------------|------------------------------------------|
 | `rt_args.c`     | Command-line argument handling           |
 | `rt_args.h`     | Argument handling declarations           |
-| `rt_context.c`  | Per-VM execution context and state       |
-| `rt_context.h`  | Context declarations                     |
+| `rt_context.c`  | Per-VM execution context, lifecycle publication, legacy handoff, and serialized subsystem state |
+| `rt_context.h`  | Public caller-allocated context layout and binding lifecycle declarations |
+| `rt_context_internal.h` | Trap-safe subsystem locks and native child binding reservation/adoption hooks |
 | `rt_modvar.c`   | Module-level variable storage            |
 | `rt_modvar.h`   | Module variable declarations             |
 | `rt_sb_bridge.c`| StringBuilder bridge for `Zanna.Text.StringBuilder` |

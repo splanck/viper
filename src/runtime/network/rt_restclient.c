@@ -5,19 +5,32 @@
 //
 //===----------------------------------------------------------------------===//
 ///
-/// @file rt_restclient.c
-/// @brief REST API client implementation.
-///
+// File: src/runtime/network/rt_restclient.c
+// Purpose: Implements the managed REST client facade over the HTTP transport,
+//          including JSON request bodies and Result-based response handling.
+// Key invariants:
+//   - Native staging objects are not published until their complete managed
+//     representation has been created successfully.
+//   - A returning trap releases every retained request, response, and JSON
+//     intermediate before propagating the original error.
+// Ownership/Lifetime:
+//   - Client configuration and response state live in managed objects; local
+//     native buffers and retained values are released on every exit path.
+// Links: rt_restclient.h, rt_network_http_internal.h, rt_http_client.c,
+//        docs/adr/0127-session-http-client-identity-and-synchronized-snapshots.md
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_restclient.h"
 #include "rt_codec.h"
+#include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_json.h"
 #include "rt_map.h"
 #include "rt_network.h"
 #include "rt_network_http_internal.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_result.h"
 #include "rt_seq.h"
 #include "rt_string.h"
@@ -26,8 +39,70 @@
 
 #include <limits.h>
 #include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if RT_PLATFORM_WINDOWS
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+typedef CRITICAL_SECTION rest_client_mutex_t;
+
+/// @brief Initialize the native RestClient mutex on Windows.
+/// @param mutex Zeroed mutex storage owned by a partially built client.
+/// @return One after initialization. Windows reports rare initialization
+///         failure through its structured-exception mechanism.
+static int rest_client_mutex_init(rest_client_mutex_t *mutex) {
+    InitializeCriticalSection(mutex);
+    return 1;
+}
+
+/// @brief Acquire an initialized Windows RestClient mutex.
+/// @param mutex Mutex owned by a live RestClient.
+static void rest_client_mutex_lock(rest_client_mutex_t *mutex) {
+    EnterCriticalSection(mutex);
+}
+
+/// @brief Release a Windows RestClient mutex held by the current thread.
+/// @param mutex Locked mutex owned by a live RestClient.
+static void rest_client_mutex_unlock(rest_client_mutex_t *mutex) {
+    LeaveCriticalSection(mutex);
+}
+
+/// @brief Destroy an initialized Windows RestClient mutex during finalization.
+/// @param mutex Quiescent mutex owned by the object being finalized.
+static void rest_client_mutex_destroy(rest_client_mutex_t *mutex) {
+    DeleteCriticalSection(mutex);
+}
+#else
+#include <pthread.h>
+typedef pthread_mutex_t rest_client_mutex_t;
+
+/// @brief Initialize the native RestClient mutex on POSIX platforms.
+/// @param mutex Zeroed mutex storage owned by a partially built client.
+/// @return One on success; zero when pthread mutex initialization fails.
+static int rest_client_mutex_init(rest_client_mutex_t *mutex) {
+    return pthread_mutex_init(mutex, NULL) == 0 ? 1 : 0;
+}
+
+/// @brief Acquire an initialized POSIX RestClient mutex.
+/// @param mutex Mutex owned by a live RestClient.
+static void rest_client_mutex_lock(rest_client_mutex_t *mutex) {
+    (void)pthread_mutex_lock(mutex);
+}
+
+/// @brief Release a POSIX RestClient mutex held by the current thread.
+/// @param mutex Locked mutex owned by a live RestClient.
+static void rest_client_mutex_unlock(rest_client_mutex_t *mutex) {
+    (void)pthread_mutex_unlock(mutex);
+}
+
+/// @brief Destroy an initialized POSIX RestClient mutex during finalization.
+/// @param mutex Quiescent mutex owned by the object being finalized.
+static void rest_client_mutex_destroy(rest_client_mutex_t *mutex) {
+    (void)pthread_mutex_destroy(mutex);
+}
+#endif
 
 //=============================================================================
 // Internal Structure
@@ -42,7 +117,27 @@ typedef struct {
     void *connection_pool;
     int64_t pool_size;
     int8_t keep_alive;
+    rest_client_mutex_t lock;
+    int8_t lock_initialized;
 } rest_client;
+
+/// @brief One retained default-header entry captured for request construction.
+typedef struct {
+    rt_string key;
+    rt_string value;
+} rest_header_snapshot;
+
+/// @brief Immutable request defaults copied while the RestClient mutex is held.
+/// @details Every managed field owns a temporary reference. Native header
+///          storage owns exactly @ref header_count initialized entries.
+typedef struct {
+    rt_string base_url;
+    rest_header_snapshot *headers;
+    int64_t header_count;
+    int64_t timeout_ms;
+    void *connection_pool;
+    int8_t keep_alive;
+} rest_request_snapshot;
 
 /// @brief Release a temporary runtime object after another owner has retained it.
 /// @details Result wrappers retain the response payload; this helper drops the
@@ -53,42 +148,93 @@ static void rest_release_temp_object(void *obj) {
         rt_obj_free(obj);
 }
 
-/// @brief Return the current trap message as a Result-compatible string.
-/// @details The returned string is a runtime constant and does not transfer
-///          ownership to the caller.
+/// @brief Copy the active trap diagnostic into stable native storage.
+/// @details Recovery cleanup clears the current frame before Result creation or
+///          rethrow. Copying first prevents the thread-local diagnostic pointer
+///          from being invalidated or overwritten during that cleanup.
+/// @param output Destination byte buffer.
+/// @param capacity Destination capacity including its terminator.
 /// @param fallback Message used when no trap text is active.
-/// @return Runtime string for `rt_result_err_str`.
-static rt_string rest_current_error_message(const char *fallback) {
-    const char *err = rt_trap_get_error();
-    if (!err || !err[0])
-        err = fallback && fallback[0] ? fallback : "RestClient request failed";
-    return rt_const_cstr(err);
-}
-
-/// @brief Clear receiver-scoped compatibility state after a failed request.
-/// @param client RestClient receiver, or NULL.
-static void rest_client_clear_last_response(rest_client *client) {
-    if (!client)
+static void rest_save_trap(char *output, size_t capacity, const char *fallback) {
+    if (!output || capacity == 0)
         return;
-    if (client->last_response && rt_obj_release_check0(client->last_response))
-        rt_obj_free(client->last_response);
-    client->last_response = NULL;
-    client->last_status = 0;
+    const char *error = rt_trap_get_error();
+    snprintf(output,
+             capacity,
+             "%s",
+             error && error[0]
+                 ? error
+                 : (fallback && fallback[0] ? fallback : "RestClient request failed"));
 }
 
-/// @brief Wrap a RestClient response in `Result.Ok` or create `Result.ErrStr`.
-/// @details HTTP status codes remain data on the response object. Only missing
-///          transport responses become Err values.
-/// @param response HttpRes object returned by the request path.
-/// @param null_message Error text when @p response is NULL.
-/// @return Opaque `Zanna.Result`.
-static void *rest_response_result(void *response, const char *null_message) {
-    if (!response)
-        return rt_result_err_str(
-            rt_const_cstr(null_message ? null_message : "RestClient request failed"));
-    void *result = rt_result_ok(response);
+/// @brief Build a caller-owned `Result.ErrStr` from stable native bytes.
+/// @details Result construction uses a fresh recovery frame, balances the
+///          diagnostic String's producer reference after Result retains it,
+///          and releases every partial value before propagating allocation
+///          failure. This prevents recursive jumps into the request handler.
+/// @param message NUL-terminated diagnostic, with a fixed fallback for NULL.
+/// @return Caller-owned error Result, or NULL after a returning trap hook.
+static void *rest_error_result(const char *message) {
+    rt_string volatile error_string = NULL;
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rest_save_trap(
+            saved_error, sizeof(saved_error), "RestClient: error Result allocation failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object((void *)result);
+        rest_release_temp_object((void *)error_string);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    const char *stable = message && message[0] ? message : "RestClient request failed";
+    error_string = rt_string_from_bytes(stable, strlen(stable));
+    if (!error_string) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    result = rt_result_err_str((rt_string)error_string);
+    if (!result) {
+        rt_trap_clear_recovery();
+        rest_release_temp_object((void *)error_string);
+        return NULL;
+    }
+    rt_trap_clear_recovery();
+    rest_release_temp_object((void *)error_string);
+    return (void *)result;
+}
+
+/// @brief Wrap and consume one caller-owned HttpRes in `Result.Ok`.
+/// @details `rt_result_ok` retains its payload. The transport's initial
+///          response reference is consumed on success and on every allocation
+///          failure, while any partial Result is also released.
+/// @param response Caller-owned stable HttpRes reference.
+/// @return Caller-owned success Result, or NULL after a returning trap hook.
+static void *rest_success_result_owned(void *response) {
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rest_save_trap(
+            saved_error, sizeof(saved_error), "RestClient: success Result allocation failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object((void *)result);
+        rest_release_temp_object(response);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_result_ok(response);
+    if (!result) {
+        rt_trap_clear_recovery();
+        rest_release_temp_object(response);
+        return NULL;
+    }
+    rt_trap_clear_recovery();
     rest_release_temp_object(response);
-    return result;
+    return (void *)result;
 }
 
 /// @brief Validate and cast an opaque RestClient handle.
@@ -100,11 +246,47 @@ static void *rest_response_result(void *response, const char *null_message) {
 /// @param message Diagnostic used for the trap when @p obj is NULL.
 /// @return Cast RestClient pointer, or NULL after trapping.
 static rest_client *rest_client_checked(void *obj, const char *message) {
-    if (!obj) {
+    if (!rt_obj_is_instance(obj, RT_RESTCLIENT_CLASS_ID, sizeof(rest_client))) {
         rt_trap(message);
         return NULL;
     }
     return (rest_client *)obj;
+}
+
+/// @brief Clear receiver-scoped last-response state under its mutex.
+/// @details The previous cached response is detached while locked and released
+///          after unlocking so its finalizer cannot run inside the critical
+///          section.
+/// @param client Valid RestClient receiver.
+static void rest_client_clear_last_response(rest_client *client) {
+    if (!client)
+        return;
+    void *old_response = NULL;
+    rest_client_mutex_lock(&client->lock);
+    old_response = client->last_response;
+    client->last_response = NULL;
+    client->last_status = 0;
+    rest_client_mutex_unlock(&client->lock);
+    rest_release_temp_object(old_response);
+}
+
+/// @brief Publish a response into thread-safe compatibility state.
+/// @details The client retains an independent response reference before the
+///          locked exchange. The detached old response is released after the
+///          mutex is unlocked. The caller keeps its original response ownership.
+/// @param client Valid RestClient receiver.
+/// @param response Caller-owned HttpRes returned by the transport.
+static void rest_client_publish_last_response(rest_client *client, void *response) {
+    if (!client || !response)
+        return;
+    int64_t status = rt_http_res_status(response);
+    rt_obj_retain_maybe(response);
+    rest_client_mutex_lock(&client->lock);
+    void *old_response = client->last_response;
+    client->last_response = response;
+    client->last_status = status;
+    rest_client_mutex_unlock(&client->lock);
+    rest_release_temp_object(old_response);
 }
 
 static int rest_timeout_ms_to_int(int64_t timeout_ms, int *out_timeout_ms) {
@@ -201,11 +383,110 @@ static void rest_client_finalize(void *obj) {
         rt_obj_free(client->last_response);
     if (client->connection_pool && rt_obj_release_check0(client->connection_pool))
         rt_obj_free(client->connection_pool);
+    if (client->lock_initialized) {
+        rest_client_mutex_destroy(&client->lock);
+        client->lock_initialized = 0;
+    }
 }
 
 //=============================================================================
 // Helper Functions
 //=============================================================================
+
+/// @brief Release every retained field in a request-default snapshot.
+/// @details This helper accepts partially populated snapshots produced by a
+///          trap-recovery path. Header entries, the native entry array, base
+///          URL, and connection pool are each released exactly once and the
+///          structure is reset for defensive reuse.
+/// @param snapshot Snapshot to consume; NULL is a no-op.
+static void rest_request_snapshot_release(rest_request_snapshot *snapshot) {
+    if (!snapshot)
+        return;
+    for (int64_t i = 0; i < snapshot->header_count; i++) {
+        if (snapshot->headers[i].value)
+            rt_string_unref(snapshot->headers[i].value);
+        if (snapshot->headers[i].key)
+            rt_string_unref(snapshot->headers[i].key);
+    }
+    free(snapshot->headers);
+    if (snapshot->base_url)
+        rt_string_unref(snapshot->base_url);
+    rest_release_temp_object(snapshot->connection_pool);
+    memset(snapshot, 0, sizeof(*snapshot));
+}
+
+/// @brief Capture immutable RestClient request defaults under the client mutex.
+/// @details The complete header key snapshot is obtained while mutations are
+///          excluded, then each key/value, the base URL, and active pool receive
+///          independent references. Managed traps unlock the mutex, release the
+///          partial key Seq and snapshot, and propagate a stable diagnostic.
+///          Native allocation failure follows the same cleanup path.
+/// @param client Valid, initialized RestClient receiver.
+/// @param snapshot Zeroed destination receiving owned references.
+/// @return One on success; zero only after a returning trap hook.
+static int rest_request_snapshot_capture(rest_client *client, rest_request_snapshot *snapshot) {
+    void *volatile keys = NULL;
+    volatile int mutex_locked = 0;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rest_save_trap(
+            saved_error, sizeof(saved_error), "RestClient: default snapshot allocation failed");
+        rt_trap_clear_recovery();
+        if (mutex_locked)
+            rest_client_mutex_unlock(&client->lock);
+        rest_release_temp_object((void *)keys);
+        rest_request_snapshot_release(snapshot);
+        rt_trap(saved_error);
+        return 0;
+    }
+
+    rest_client_mutex_lock(&client->lock);
+    mutex_locked = 1;
+    snapshot->base_url = client->base_url;
+    if (snapshot->base_url)
+        rt_string_ref(snapshot->base_url);
+
+    keys = rt_map_keys(client->headers);
+    if (!keys)
+        rt_trap("RestClient: default header snapshot allocation failed");
+    int64_t count = rt_seq_len((void *)keys);
+    if (count < 0 || (uint64_t)count > (uint64_t)SIZE_MAX / sizeof(*snapshot->headers))
+        rt_trap("RestClient: default header snapshot is too large");
+    if (count > 0) {
+        snapshot->headers =
+            (rest_header_snapshot *)calloc((size_t)count, sizeof(*snapshot->headers));
+        if (!snapshot->headers)
+            rt_trap("RestClient: default header snapshot allocation failed");
+    }
+    for (int64_t i = 0; i < count; i++) {
+        rt_string key = (rt_string)rt_seq_get((void *)keys, i);
+        rt_string value = (rt_string)rt_map_get(client->headers, key);
+        if (!rt_string_is_handle(key) || !rt_string_is_handle(value))
+            rt_trap("RestClient: corrupt default header storage");
+        rt_string_ref(key);
+        rt_string_ref(value);
+        snapshot->headers[snapshot->header_count].key = key;
+        snapshot->headers[snapshot->header_count].value = value;
+        snapshot->header_count++;
+    }
+
+    snapshot->timeout_ms = client->timeout_ms;
+    snapshot->keep_alive = client->keep_alive ? 1 : 0;
+    snapshot->connection_pool = snapshot->keep_alive ? client->connection_pool : NULL;
+    if (snapshot->connection_pool) {
+        if (!rt_http_conn_pool_is_handle(snapshot->connection_pool))
+            rt_trap("RestClient: corrupt connection pool storage");
+        rt_obj_retain_maybe(snapshot->connection_pool);
+    }
+
+    rest_client_mutex_unlock(&client->lock);
+    mutex_locked = 0;
+    rt_trap_clear_recovery();
+    rest_release_temp_object((void *)keys);
+    return 1;
+}
 
 /// @brief Concatenate a base URL and a path with a single `/` separator. Strips trailing slashes
 /// from `base` and leading slashes from `path` so callers can mix-and-match conventions without
@@ -256,46 +537,106 @@ static rt_string join_url(rt_string base, rt_string path) {
     return out;
 }
 
-/// @brief Build an HttpReq pre-populated with the client's defaults: full URL = `base+path`,
-/// every default header copied in, and the configured timeout applied. Returned req is owned by
-/// the caller (will be released by `execute_request`).
-static void *create_request(rest_client *client, rt_string method, rt_string path) {
+/// @brief Build one HttpReq from a synchronized snapshot of client defaults.
+/// @details URL joining, request publication, default-header copies, timeout,
+///          keep-alive pool attachment, and an optional copied body form one
+///          recovery transaction. The request and every snapshot reference are
+///          released before a setup trap is re-raised, so callers never inherit
+///          a partially configured builder.
+/// @param client Valid RestClient receiver.
+/// @param method NUL-terminated HTTP method token copied for construction.
+/// @param path Relative path joined to the snapshotted base URL.
+/// @param body Optional request body String.
+/// @param set_body Nonzero to configure @p body, including NULL as empty.
+/// @return Caller-owned HttpReq, or NULL after a returning trap hook.
+static void *create_request(
+    rest_client *client, const char *method, rt_string path, rt_string body, int set_body) {
     if (!client) {
         rt_trap("RestClient: NULL client");
         return NULL;
     }
-    rt_string url = join_url(client->base_url, path);
-    if (!url)
+    rest_request_snapshot *const snapshot = (rest_request_snapshot *)calloc(1, sizeof(*snapshot));
+    if (!snapshot) {
+        rt_trap("RestClient: request snapshot allocation failed");
         return NULL;
-    void *req = rt_http_req_new(method, url);
-    rt_string_unref(url); // Release after use — req copies the C string
+    }
+
+    rt_string volatile method_string = NULL;
+    rt_string volatile url = NULL;
+    void *volatile req = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rest_save_trap(saved_error, sizeof(saved_error), "RestClient: request setup failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object((void *)req);
+        rest_release_temp_object((void *)url);
+        rest_release_temp_object((void *)method_string);
+        rest_request_snapshot_release(snapshot);
+        free(snapshot);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    if (!rest_request_snapshot_capture(client, snapshot)) {
+        rt_trap("RestClient: request snapshot failed");
+        goto returned_trap;
+    }
+    url = join_url(snapshot->base_url, path);
+    if (!url) {
+        rt_trap("RestClient: URL construction failed");
+        goto returned_trap;
+    }
+    if (!method || !method[0]) {
+        rt_trap("RestClient: invalid HTTP method");
+        goto returned_trap;
+    }
+    method_string = rt_string_from_bytes(method, strlen(method));
+    if (!method_string) {
+        rt_trap("RestClient: method allocation failed");
+        goto returned_trap;
+    }
+    req = rt_http_req_new((rt_string)method_string, (rt_string)url);
+    rest_release_temp_object((void *)method_string);
+    method_string = NULL;
+    rest_release_temp_object((void *)url);
+    url = NULL;
     if (!req) {
         rt_trap("RestClient: request allocation failed");
-        return NULL;
+        goto returned_trap;
     }
 
-    // Apply default headers
-    void *keys = rt_map_keys(client->headers);
-    int64_t count = rt_seq_len(keys);
-    for (int64_t i = 0; i < count; i++) {
-        rt_string key = (rt_string)rt_seq_get(keys, i);
-        void *val = rt_map_get(client->headers, key);
-        if (val) {
-            rt_http_req_set_header(req, key, (rt_string)val);
+    for (int64_t i = 0; i < snapshot->header_count; i++) {
+        if (!rt_http_req_set_header(
+                (void *)req, snapshot->headers[i].key, snapshot->headers[i].value)) {
+            rt_trap("RestClient: default header application failed");
+            goto returned_trap;
         }
     }
-    // Release the keys Seq (its owns_elements finalizer releases the strings)
-    if (rt_obj_release_check0(keys))
-        rt_obj_free(keys);
-
-    // Apply timeout
-    if (client->timeout_ms > 0) {
-        rt_http_req_set_timeout(req, client->timeout_ms);
+    if (!rt_http_req_set_timeout((void *)req, snapshot->timeout_ms)) {
+        rt_trap("RestClient: timeout application failed");
+        goto returned_trap;
     }
-    rt_http_req_set_keep_alive(req, client->keep_alive);
-    rt_http_req_set_connection_pool(req, client->keep_alive ? client->connection_pool : NULL);
+    rt_http_req_set_keep_alive((void *)req, snapshot->keep_alive);
+    rt_http_req_set_connection_pool((void *)req,
+                                    snapshot->keep_alive ? snapshot->connection_pool : NULL);
+    if (set_body)
+        rt_http_req_set_body_str((void *)req, body);
 
-    return req;
+    rt_trap_clear_recovery();
+    rest_request_snapshot_release(snapshot);
+    free(snapshot);
+    return (void *)req;
+
+returned_trap:
+    rt_trap_clear_recovery();
+    rest_release_temp_object((void *)req);
+    rest_release_temp_object((void *)url);
+    rest_release_temp_object((void *)method_string);
+    rest_request_snapshot_release(snapshot);
+    free(snapshot);
+    return NULL;
 }
 
 /// @brief Send the HttpReq, cache the resulting HttpRes on the client (releasing any prior cache),
@@ -312,18 +653,30 @@ static void *execute_request(rest_client *client, void *req) {
         rt_trap("RestClient: request allocation failed");
         return NULL;
     }
-    void *res = rt_http_req_send(req);
-    if (req && rt_obj_release_check0(req))
-        rt_obj_free(req);
-
-    // Release the previous response before taking ownership of the new one (RC-2 fix)
-    if (client->last_response && rt_obj_release_check0(client->last_response))
-        rt_obj_free(client->last_response);
-
-    rt_obj_retain_maybe(res);
-    client->last_response = res;
-    client->last_status = rt_http_res_status(res);
-    return res;
+    void *volatile res = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        int saved_net_code = rt_trap_get_net_code();
+        rest_save_trap(saved_error, sizeof(saved_error), "RestClient request failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object((void *)res);
+        rest_release_temp_object(req);
+        rest_client_clear_last_response(client);
+        if (saved_net_code)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+    res = rt_http_req_send(req);
+    if (!res)
+        rt_trap("RestClient request failed");
+    rest_client_publish_last_response(client, (void *)res);
+    rt_trap_clear_recovery();
+    rest_release_temp_object(req);
+    return (void *)res;
 }
 
 /// @brief Send an HttpReq and return `Result<HttpRes>`.
@@ -337,38 +690,32 @@ static void *execute_request(rest_client *client, void *req) {
 static void *execute_request_result(rest_client *client, void *req) {
     if (!client) {
         rest_release_temp_object(req);
-        return rt_result_err_str(rt_const_cstr("RestClient: NULL client"));
+        return rest_error_result("RestClient: NULL client");
     }
     if (!req) {
         rest_client_clear_last_response(client);
-        return rt_result_err_str(rt_const_cstr("RestClient: request allocation failed"));
+        return rest_error_result("RestClient: request allocation failed");
     }
 
+    void *volatile res = NULL;
     jmp_buf recovery;
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
-        rt_string message = rest_current_error_message("RestClient request failed");
+        char saved_error[512];
+        rest_save_trap(saved_error, sizeof(saved_error), "RestClient request failed");
         rt_trap_clear_recovery();
+        rest_release_temp_object((void *)res);
         rest_release_temp_object(req);
         rest_client_clear_last_response(client);
-        return rt_result_err_str(message);
+        return rest_error_result(saved_error);
     }
-    void *res = rt_http_req_send(req);
+    res = rt_http_req_send(req);
+    if (!res)
+        rt_trap("RestClient request failed");
+    rest_client_publish_last_response(client, (void *)res);
     rt_trap_clear_recovery();
     rest_release_temp_object(req);
-
-    if (!res) {
-        rest_client_clear_last_response(client);
-        return rt_result_err_str(rt_const_cstr("RestClient request failed"));
-    }
-
-    if (client->last_response && rt_obj_release_check0(client->last_response))
-        rt_obj_free(client->last_response);
-
-    rt_obj_retain_maybe(res);
-    client->last_response = res;
-    client->last_status = rt_http_res_status(res);
-    return rest_response_result(res, "RestClient request failed");
+    return rest_success_result_owned((void *)res);
 }
 
 //=============================================================================
@@ -379,52 +726,63 @@ static void *execute_request_result(rest_client *client, void *req) {
 /// timeout, no auth. The base URL is duplicated so the caller can release the original. Returns
 /// a GC-managed handle wired to `rest_client_finalize`.
 void *rt_restclient_new(rt_string base_url) {
-    rest_client *client = (rest_client *)rt_obj_new_i64(0, (int64_t)sizeof(rest_client));
-    if (!client) {
-        rt_trap("RestClient: memory allocation failed");
+    rest_client *volatile client = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rest_save_trap(saved_error, sizeof(saved_error), "RestClient: construction failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object((void *)client);
+        rt_trap(saved_error);
         return NULL;
     }
-    memset(client, 0, sizeof(rest_client));
-    rt_obj_set_finalizer(client, rest_client_finalize);
+
+    client = (rest_client *)rt_obj_new_i64(RT_RESTCLIENT_CLASS_ID, (int64_t)sizeof(rest_client));
+    if (!client) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    memset((void *)client, 0, sizeof(rest_client));
+    rt_obj_set_finalizer((void *)client, rest_client_finalize);
+    if (!rest_client_mutex_init(&((rest_client *)client)->lock))
+        rt_trap("RestClient: mutex initialization failed");
+    ((rest_client *)client)->lock_initialized = 1;
 
     size_t url_len = 0;
     const char *url_str = rest_string_bytes(base_url, &url_len, "RestClient: invalid base URL", 1);
-    client->base_url = rt_string_from_bytes(url_str, url_len);
-    if (!client->base_url) {
-        rt_trap("RestClient: memory allocation failed");
-        if (rt_obj_release_check0(client))
-            rt_obj_free(client);
-        return NULL;
-    }
-    client->headers = rt_map_new();
-    if (!client->headers) {
-        rt_trap("RestClient: memory allocation failed");
-        if (rt_obj_release_check0(client))
-            rt_obj_free(client);
-        return NULL;
-    }
-    client->timeout_ms = 30000; // 30 second default
-    client->last_response = NULL;
-    client->last_status = 0;
-    client->pool_size = 8;
-    client->keep_alive = 1;
-    client->connection_pool = rt_http_conn_pool_new(client->pool_size);
-    if (!client->connection_pool) {
-        rt_trap("RestClient: memory allocation failed");
-        if (rt_obj_release_check0(client))
-            rt_obj_free(client);
-        return NULL;
-    }
+    ((rest_client *)client)->base_url = rt_string_from_bytes(url_str, url_len);
+    if (!((rest_client *)client)->base_url)
+        rt_trap("RestClient: base URL allocation failed");
+    ((rest_client *)client)->headers = rt_map_new();
+    if (!((rest_client *)client)->headers)
+        rt_trap("RestClient: header Map allocation failed");
+    ((rest_client *)client)->timeout_ms = 30000;
+    ((rest_client *)client)->pool_size = 8;
+    ((rest_client *)client)->keep_alive = 1;
+    ((rest_client *)client)->connection_pool =
+        rt_http_conn_pool_new(((rest_client *)client)->pool_size);
+    if (!((rest_client *)client)->connection_pool)
+        rt_trap("RestClient: connection pool allocation failed");
 
-    return client;
+    rt_trap_clear_recovery();
+    return (void *)client;
 }
 
 /// @brief Read the base URL the client is targeting (the same string passed to `_new`).
 rt_string rt_restclient_base_url(void *obj) {
     if (!obj)
-        return rt_const_cstr("");
-    rest_client *client = (rest_client *)obj;
-    return client->base_url;
+        return rt_str_empty();
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client || !client->base_url)
+        return rt_str_empty();
+    const char *bytes = rt_string_cstr(client->base_url);
+    int64_t length = rt_str_len(client->base_url);
+    if (!bytes || length < 0 || (uint64_t)length > (uint64_t)SIZE_MAX) {
+        rt_trap("RestClient: corrupt base URL storage");
+        return NULL;
+    }
+    return rt_string_from_bytes(bytes, (size_t)length);
 }
 
 /// @brief Set a default header sent on every subsequent request. Repeated calls overwrite,
@@ -434,10 +792,16 @@ rt_string rt_restclient_base_url(void *obj) {
 void rt_restclient_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client)
+        return;
     if (!rest_header_name_is_token(name) || !rest_header_value_is_safe(value))
         return;
-    rest_client *client = (rest_client *)obj;
-    rt_http_header_map_set_ci(client->headers, name, (void *)value);
+    rest_client_mutex_lock(&client->lock);
+    int updated = rt_http_header_map_set_ci(client->headers, name, (void *)value);
+    rest_client_mutex_unlock(&client->lock);
+    if (!updated)
+        rt_trap("RestClient: default header allocation failed");
 }
 
 /// @brief Remove a default header (any case-insensitive spelling) so subsequent requests
@@ -445,41 +809,102 @@ void rt_restclient_set_header(void *obj, rt_string name, rt_string value) {
 void rt_restclient_del_header(void *obj, rt_string name) {
     if (!obj)
         return;
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client)
+        return;
     if (!rest_header_name_is_token(name))
         return;
-    rest_client *client = (rest_client *)obj;
-    rt_http_header_map_remove_ci(client->headers, rt_string_cstr(name));
+    rest_client_mutex_lock(&client->lock);
+    int removed = rt_http_header_map_remove_ci(client->headers, rt_string_cstr(name));
+    rest_client_mutex_unlock(&client->lock);
+    if (!removed)
+        rt_trap("RestClient: default header snapshot allocation failed");
 }
 
-/// @brief Convenience: set the `Authorization: Bearer <token>` header. The token is appended
-/// directly with no encoding (caller responsible for opaque-bearer-token formatting).
+/// @brief Owned staging shared by Bearer and Basic authentication updates.
+/// @details Native construction uses one reusable buffer; managed credential,
+///          encoding, final Authorization, and header-name Strings remain
+///          individually owned until the header Map has retained its copy.
+typedef struct {
+    char *native_buffer;
+    rt_string credential;
+    rt_string encoded;
+    rt_string authorization;
+    rt_string header_name;
+} rest_auth_transaction;
+
+/// @brief Release all native and managed authentication-construction staging.
+/// @details The helper accepts partial Bearer and Basic transactions, allowing
+///          their recovery handlers to preserve the prior Authorization header
+///          after validation, codec, String, or Map allocation failure.
+/// @param transaction Transaction to consume; NULL is a no-op.
+static void rest_auth_transaction_release(rest_auth_transaction *transaction) {
+    if (!transaction)
+        return;
+    free(transaction->native_buffer);
+    rest_release_temp_object((void *)transaction->credential);
+    rest_release_temp_object((void *)transaction->encoded);
+    rest_release_temp_object((void *)transaction->authorization);
+    rest_release_temp_object((void *)transaction->header_name);
+    memset(transaction, 0, sizeof(*transaction));
+}
+
+/// @brief Build and transactionally publish a Bearer Authorization value.
+/// @details The full token byte span is validated against embedded NUL/CR/LF,
+///          copied behind the `Bearer ` prefix, and converted to managed storage
+///          before the synchronized header-map replacement. Recovery consumes
+///          every staging allocation and re-raises one stable diagnostic.
+/// @param obj RestClient receiver; NULL preserves the historical no-op.
+/// @param token Bearer token, with NULL treated as an empty token.
 void rt_restclient_set_auth_bearer(void *obj, rt_string token) {
     if (!obj)
         return;
+    if (!rest_client_checked(obj, "RestClient: invalid client"))
+        return;
 
-    size_t tok_len = 0;
-    const char *tok_str =
-        rest_header_value_bytes(token, &tok_len, "RestClient: invalid bearer token");
-    rt_string_builder sb;
-    rt_sb_init(&sb);
-
-    rt_sb_status_t status = rt_sb_append_cstr(&sb, "Bearer ");
-    if (status == RT_SB_OK)
-        status = rt_sb_append_bytes(&sb, tok_str, tok_len);
-    if (status != RT_SB_OK) {
-        rt_sb_free(&sb);
-        rt_trap("RestClient: memory allocation failed");
+    rest_auth_transaction *const transaction =
+        (rest_auth_transaction *)calloc(1, sizeof(*transaction));
+    if (!transaction) {
+        rt_trap("RestClient: authentication allocation failed");
+        return;
+    }
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rest_save_trap(
+            saved_error, sizeof(saved_error), "RestClient: Bearer authentication failed");
+        rt_trap_clear_recovery();
+        rest_auth_transaction_release(transaction);
+        free(transaction);
+        rt_trap(saved_error);
         return;
     }
 
-    rt_string auth_str = rt_string_from_bytes(sb.data, sb.len);
-    rt_sb_free(&sb);
-    if (!auth_str) {
-        rt_trap("RestClient: memory allocation failed");
-        return;
-    }
-    rt_restclient_set_header(obj, rt_const_cstr("Authorization"), auth_str);
-    rt_string_unref(auth_str);
+    size_t token_len = 0;
+    const char *token_bytes =
+        rest_header_value_bytes(token, &token_len, "RestClient: invalid bearer token");
+    const size_t prefix_len = sizeof("Bearer ") - 1u;
+    if (token_len > SIZE_MAX - prefix_len - 1u)
+        rt_trap("RestClient: Bearer token is too large");
+    transaction->native_buffer = (char *)malloc(prefix_len + token_len + 1u);
+    if (!transaction->native_buffer)
+        rt_trap("RestClient: Bearer authentication allocation failed");
+    memcpy(transaction->native_buffer, "Bearer ", prefix_len);
+    memcpy(transaction->native_buffer + prefix_len, token_bytes, token_len);
+    transaction->native_buffer[prefix_len + token_len] = '\0';
+    transaction->authorization =
+        rt_string_from_bytes(transaction->native_buffer, prefix_len + token_len);
+    if (!transaction->authorization)
+        rt_trap("RestClient: Bearer authentication String allocation failed");
+    transaction->header_name = rt_const_cstr("Authorization");
+    if (!transaction->header_name)
+        rt_trap("RestClient: Authorization header allocation failed");
+    rt_restclient_set_header(obj, transaction->header_name, transaction->authorization);
+
+    rt_trap_clear_recovery();
+    rest_auth_transaction_release(transaction);
+    free(transaction);
 }
 
 /// @brief Convenience: set `Authorization: Basic <base64(user:pass)>`. Builds the credential
@@ -488,130 +913,242 @@ void rt_restclient_set_auth_bearer(void *obj, rt_string token) {
 void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string password) {
     if (!obj)
         return;
+    if (!rest_client_checked(obj, "RestClient: invalid client"))
+        return;
+
+    rest_auth_transaction *const transaction =
+        (rest_auth_transaction *)calloc(1, sizeof(*transaction));
+    if (!transaction) {
+        rt_trap("RestClient: authentication allocation failed");
+        return;
+    }
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rest_save_trap(saved_error, sizeof(saved_error), "RestClient: Basic authentication failed");
+        rt_trap_clear_recovery();
+        rest_auth_transaction_release(transaction);
+        free(transaction);
+        rt_trap(saved_error);
+        return;
+    }
 
     size_t user_len = 0;
-    size_t pass_len = 0;
-    const char *user_str =
+    size_t password_len = 0;
+    const char *user_bytes =
         rest_header_value_bytes(username, &user_len, "RestClient: invalid username");
-    const char *pass_str =
-        rest_header_value_bytes(password, &pass_len, "RestClient: invalid password");
-    rt_string_builder cred_sb;
-    rt_sb_init(&cred_sb);
+    const char *password_bytes =
+        rest_header_value_bytes(password, &password_len, "RestClient: invalid password");
+    if (user_len > SIZE_MAX - password_len - 2u)
+        rt_trap("RestClient: Basic credentials are too large");
+    size_t credential_len = user_len + 1u + password_len;
+    transaction->native_buffer = (char *)malloc(credential_len + 1u);
+    if (!transaction->native_buffer)
+        rt_trap("RestClient: Basic credential allocation failed");
+    memcpy(transaction->native_buffer, user_bytes, user_len);
+    transaction->native_buffer[user_len] = ':';
+    memcpy(transaction->native_buffer + user_len + 1u, password_bytes, password_len);
+    transaction->native_buffer[credential_len] = '\0';
+    transaction->credential = rt_string_from_bytes(transaction->native_buffer, credential_len);
+    if (!transaction->credential)
+        rt_trap("RestClient: Basic credential String allocation failed");
+    free(transaction->native_buffer);
+    transaction->native_buffer = NULL;
 
-    rt_sb_status_t status = rt_sb_append_bytes(&cred_sb, user_str, user_len);
-    if (status == RT_SB_OK)
-        status = rt_sb_append_bytes(&cred_sb, ":", 1);
-    if (status == RT_SB_OK)
-        status = rt_sb_append_bytes(&cred_sb, pass_str, pass_len);
-    if (status != RT_SB_OK) {
-        rt_sb_free(&cred_sb);
-        rt_trap("RestClient: memory allocation failed");
-        return;
-    }
+    transaction->encoded = rt_codec_base64_enc(transaction->credential);
+    if (!transaction->encoded)
+        rt_trap("RestClient: Basic credential encoding failed");
+    const char *encoded_bytes = rt_string_cstr(transaction->encoded);
+    int64_t encoded_len64 = rt_str_len(transaction->encoded);
+    if (!encoded_bytes || encoded_len64 < 0 || (uint64_t)encoded_len64 > (uint64_t)SIZE_MAX)
+        rt_trap("RestClient: invalid Basic credential encoding");
+    size_t encoded_len = (size_t)encoded_len64;
+    const size_t prefix_len = sizeof("Basic ") - 1u;
+    if (encoded_len > SIZE_MAX - prefix_len - 1u)
+        rt_trap("RestClient: Basic authorization is too large");
+    transaction->native_buffer = (char *)malloc(prefix_len + encoded_len + 1u);
+    if (!transaction->native_buffer)
+        rt_trap("RestClient: Basic authorization allocation failed");
+    memcpy(transaction->native_buffer, "Basic ", prefix_len);
+    memcpy(transaction->native_buffer + prefix_len, encoded_bytes, encoded_len);
+    transaction->native_buffer[prefix_len + encoded_len] = '\0';
+    transaction->authorization =
+        rt_string_from_bytes(transaction->native_buffer, prefix_len + encoded_len);
+    if (!transaction->authorization)
+        rt_trap("RestClient: Basic authorization String allocation failed");
+    transaction->header_name = rt_const_cstr("Authorization");
+    if (!transaction->header_name)
+        rt_trap("RestClient: Authorization header allocation failed");
+    rt_restclient_set_header(obj, transaction->header_name, transaction->authorization);
 
-    rt_string cred_str = rt_string_from_bytes(cred_sb.data, cred_sb.len);
-    rt_sb_free(&cred_sb);
-    if (!cred_str) {
-        rt_trap("RestClient: memory allocation failed");
-        return;
-    }
-    rt_string encoded = rt_codec_base64_enc(cred_str);
-    rt_string_unref(cred_str);
-    if (!encoded) {
-        rt_trap("RestClient: memory allocation failed");
-        return;
-    }
-
-    const char *enc_str = rt_string_cstr(encoded);
-    if (!enc_str) {
-        rt_string_unref(encoded);
-        rt_trap("RestClient: memory allocation failed");
-        return;
-    }
-    size_t enc_len = strlen(enc_str);
-    rt_string_builder auth_sb;
-    rt_sb_init(&auth_sb);
-
-    status = rt_sb_append_cstr(&auth_sb, "Basic ");
-    if (status == RT_SB_OK)
-        status = rt_sb_append_bytes(&auth_sb, enc_str, enc_len);
-    if (status != RT_SB_OK) {
-        rt_sb_free(&auth_sb);
-        rt_string_unref(encoded);
-        rt_trap("RestClient: memory allocation failed");
-        return;
-    }
-
-    rt_string auth_str = rt_string_from_bytes(auth_sb.data, auth_sb.len);
-    rt_sb_free(&auth_sb);
-    rt_string_unref(encoded);
-    if (!auth_str) {
-        rt_trap("RestClient: memory allocation failed");
-        return;
-    }
-    rt_restclient_set_header(obj, rt_const_cstr("Authorization"), auth_str);
-    rt_string_unref(auth_str);
+    rt_trap_clear_recovery();
+    rest_auth_transaction_release(transaction);
+    free(transaction);
 }
 
 /// @brief Remove the `Authorization` header (whether Bearer or Basic was set).
 void rt_restclient_clear_auth(void *obj) {
     if (!obj)
         return;
-    rt_restclient_del_header(obj, rt_const_cstr("Authorization"));
+    if (!rest_client_checked(obj, "RestClient: invalid client"))
+        return;
+    rt_string name = rt_const_cstr("Authorization");
+    if (!name)
+        return;
+    rt_restclient_del_header(obj, name);
+    rt_string_unref(name);
 }
 
 /// @brief Configure per-request timeout in milliseconds (default 30000). 0 disables the timeout.
 void rt_restclient_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return;
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client)
+        return;
     int timeout_int = 0;
     if (!rest_timeout_ms_to_int(timeout_ms, &timeout_int)) {
         rt_trap("RestClient: invalid timeout");
         return;
     }
-    rest_client *client = (rest_client *)obj;
+    rest_client_mutex_lock(&client->lock);
     client->timeout_ms = timeout_int;
+    rest_client_mutex_unlock(&client->lock);
 }
 
 /// @brief Check whether this RestClient reuses keep-alive connections.
 int8_t rt_restclient_get_keep_alive(void *obj) {
     if (!obj)
         return 0;
-    return ((rest_client *)obj)->keep_alive;
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client)
+        return 0;
+    rest_client_mutex_lock(&client->lock);
+    int8_t keep_alive = client->keep_alive;
+    rest_client_mutex_unlock(&client->lock);
+    return keep_alive;
 }
 
 /// @brief Enable or disable keep-alive connection reuse.
 void rt_restclient_set_keep_alive(void *obj, int8_t keep_alive) {
     if (!obj)
         return;
-    rest_client *client = (rest_client *)obj;
-    client->keep_alive = keep_alive ? 1 : 0;
-    if (!client->keep_alive && client->connection_pool)
-        rt_http_conn_pool_clear(client->connection_pool);
-    if (client->keep_alive && !client->connection_pool)
-        client->connection_pool =
-            rt_http_conn_pool_new(client->pool_size > 0 ? client->pool_size : 8);
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client)
+        return;
+
+    int8_t enable = keep_alive ? 1 : 0;
+    if (!enable) {
+        rest_client_mutex_lock(&client->lock);
+        void *old_pool = client->connection_pool;
+        client->connection_pool = NULL;
+        client->keep_alive = 0;
+        rest_client_mutex_unlock(&client->lock);
+        if (old_pool)
+            rt_http_conn_pool_clear(old_pool);
+        rest_release_temp_object(old_pool);
+        return;
+    }
+
+    for (;;) {
+        rest_client_mutex_lock(&client->lock);
+        if (client->keep_alive && client->connection_pool) {
+            rest_client_mutex_unlock(&client->lock);
+            return;
+        }
+        int64_t pool_size = client->pool_size > 0 ? client->pool_size : 8;
+        rest_client_mutex_unlock(&client->lock);
+
+        void *new_pool = rt_http_conn_pool_new(pool_size);
+        if (!new_pool)
+            return;
+
+        rest_client_mutex_lock(&client->lock);
+        if (client->pool_size != pool_size) {
+            rest_client_mutex_unlock(&client->lock);
+            rest_release_temp_object(new_pool);
+            continue;
+        }
+        if (client->keep_alive && client->connection_pool) {
+            rest_client_mutex_unlock(&client->lock);
+            rest_release_temp_object(new_pool);
+            return;
+        }
+        void *old_pool = client->connection_pool;
+        client->connection_pool = new_pool;
+        client->keep_alive = 1;
+        rest_client_mutex_unlock(&client->lock);
+        rest_release_temp_object(old_pool);
+        return;
+    }
 }
 
 /// @brief Resize the keep-alive pool. Existing idle connections are dropped.
 void rt_restclient_set_pool_size(void *obj, int64_t max_size) {
     if (!obj)
         return;
-    rest_client *client = (rest_client *)obj;
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client)
+        return;
     if (max_size <= 0)
         max_size = 1;
-    client->pool_size = max_size;
 
     void *new_pool = rt_http_conn_pool_new(max_size);
+    if (!new_pool)
+        return;
+    rest_client_mutex_lock(&client->lock);
+    client->pool_size = max_size;
     void *old_pool = client->connection_pool;
-    client->connection_pool = new_pool;
-    if (old_pool && rt_obj_release_check0(old_pool))
-        rt_obj_free(old_pool);
+    if (client->keep_alive) {
+        client->connection_pool = new_pool;
+        new_pool = NULL;
+    } else {
+        client->connection_pool = NULL;
+    }
+    rest_client_mutex_unlock(&client->lock);
+    rest_release_temp_object(old_pool);
+    rest_release_temp_object(new_pool);
 }
 
 //=============================================================================
 // HTTP Methods - Raw
 //=============================================================================
+
+/// @brief Build and execute one Result-returning RestClient method.
+/// @details Receiver identity, request snapshot/setup, and optional body copy
+///          share one implementation for every verb. Setup traps are converted
+///          only after the recovery frame has been cleared and the partial
+///          request released; transport/response ownership is then delegated to
+///          @ref execute_request_result. HTTP status remains response data.
+/// @param obj Candidate RestClient receiver.
+/// @param method NUL-terminated HTTP method token.
+/// @param path Relative request path.
+/// @param body Optional String body.
+/// @param set_body Nonzero to copy @p body into the request.
+/// @return Caller-owned `Result<HttpRes>` or NULL if Result allocation traps.
+static void *rest_execute_method_result(
+    void *obj, const char *method, rt_string path, rt_string body, int set_body) {
+    if (!rt_obj_is_instance(obj, RT_RESTCLIENT_CLASS_ID, sizeof(rest_client)))
+        return rest_error_result("RestClient: invalid client");
+    rest_client *client = (rest_client *)obj;
+    void *volatile req = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rest_save_trap(saved_error, sizeof(saved_error), "RestClient request setup failed");
+        rt_trap_clear_recovery();
+        rest_release_temp_object((void *)req);
+        rest_client_clear_last_response(client);
+        return rest_error_result(saved_error);
+    }
+    req = create_request(client, method, path, body, set_body);
+    if (!req)
+        rt_trap("RestClient request setup failed");
+    rt_trap_clear_recovery();
+    return execute_request_result(client, (void *)req);
+}
 
 /// @brief Send a `GET` to `base_url + path`. Returns the raw HttpRes for caller inspection.
 void *rt_restclient_get(void *obj, rt_string path) {
@@ -619,29 +1156,15 @@ void *rt_restclient_get(void *obj, rt_string path) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("GET"), path);
+    void *req = create_request(client, "GET", path, NULL, 0);
+    if (!req)
+        return NULL;
     return execute_request(client, req);
 }
 
 /// @brief Send a `GET` to `base_url + path` and return `Result<HttpRes>`.
 void *rt_restclient_get_result(void *obj, rt_string path) {
-    if (!obj)
-        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
-    rest_client *client = (rest_client *)obj;
-
-    void *req = NULL;
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        rt_string message = rest_current_error_message("RestClient request setup failed");
-        rt_trap_clear_recovery();
-        rest_release_temp_object(req);
-        rest_client_clear_last_response(client);
-        return rt_result_err_str(message);
-    }
-    req = create_request(client, rt_const_cstr("GET"), path);
-    rt_trap_clear_recovery();
-    return execute_request_result(client, req);
+    return rest_execute_method_result(obj, "GET", path, NULL, 0);
 }
 
 /// @brief Send a `POST` with a string body. Caller sets Content-Type via `_set_header` if needed.
@@ -650,33 +1173,15 @@ void *rt_restclient_post(void *obj, rt_string path, rt_string body) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("POST"), path);
+    void *req = create_request(client, "POST", path, body, 1);
     if (!req)
         return NULL;
-    rt_http_req_set_body_str(req, body);
     return execute_request(client, req);
 }
 
 /// @brief Send a `POST` with a string body and return `Result<HttpRes>`.
 void *rt_restclient_post_result(void *obj, rt_string path, rt_string body) {
-    if (!obj)
-        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
-    rest_client *client = (rest_client *)obj;
-
-    void *req = NULL;
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        rt_string message = rest_current_error_message("RestClient request setup failed");
-        rt_trap_clear_recovery();
-        rest_release_temp_object(req);
-        rest_client_clear_last_response(client);
-        return rt_result_err_str(message);
-    }
-    req = create_request(client, rt_const_cstr("POST"), path);
-    rt_http_req_set_body_str(req, body);
-    rt_trap_clear_recovery();
-    return execute_request_result(client, req);
+    return rest_execute_method_result(obj, "POST", path, body, 1);
 }
 
 /// @brief Send a `PUT` with a string body.
@@ -685,33 +1190,15 @@ void *rt_restclient_put(void *obj, rt_string path, rt_string body) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("PUT"), path);
+    void *req = create_request(client, "PUT", path, body, 1);
     if (!req)
         return NULL;
-    rt_http_req_set_body_str(req, body);
     return execute_request(client, req);
 }
 
 /// @brief Send a `PUT` with a string body and return `Result<HttpRes>`.
 void *rt_restclient_put_result(void *obj, rt_string path, rt_string body) {
-    if (!obj)
-        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
-    rest_client *client = (rest_client *)obj;
-
-    void *req = NULL;
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        rt_string message = rest_current_error_message("RestClient request setup failed");
-        rt_trap_clear_recovery();
-        rest_release_temp_object(req);
-        rest_client_clear_last_response(client);
-        return rt_result_err_str(message);
-    }
-    req = create_request(client, rt_const_cstr("PUT"), path);
-    rt_http_req_set_body_str(req, body);
-    rt_trap_clear_recovery();
-    return execute_request_result(client, req);
+    return rest_execute_method_result(obj, "PUT", path, body, 1);
 }
 
 /// @brief Send a `PATCH` with a string body.
@@ -720,33 +1207,15 @@ void *rt_restclient_patch(void *obj, rt_string path, rt_string body) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("PATCH"), path);
+    void *req = create_request(client, "PATCH", path, body, 1);
     if (!req)
         return NULL;
-    rt_http_req_set_body_str(req, body);
     return execute_request(client, req);
 }
 
 /// @brief Send a `PATCH` with a string body and return `Result<HttpRes>`.
 void *rt_restclient_patch_result(void *obj, rt_string path, rt_string body) {
-    if (!obj)
-        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
-    rest_client *client = (rest_client *)obj;
-
-    void *req = NULL;
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        rt_string message = rest_current_error_message("RestClient request setup failed");
-        rt_trap_clear_recovery();
-        rest_release_temp_object(req);
-        rest_client_clear_last_response(client);
-        return rt_result_err_str(message);
-    }
-    req = create_request(client, rt_const_cstr("PATCH"), path);
-    rt_http_req_set_body_str(req, body);
-    rt_trap_clear_recovery();
-    return execute_request_result(client, req);
+    return rest_execute_method_result(obj, "PATCH", path, body, 1);
 }
 
 /// @brief Send a `DELETE` to `base_url + path` (no body).
@@ -755,29 +1224,15 @@ void *rt_restclient_delete(void *obj, rt_string path) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("DELETE"), path);
+    void *req = create_request(client, "DELETE", path, NULL, 0);
+    if (!req)
+        return NULL;
     return execute_request(client, req);
 }
 
 /// @brief Send a `DELETE` to `base_url + path` and return `Result<HttpRes>`.
 void *rt_restclient_delete_result(void *obj, rt_string path) {
-    if (!obj)
-        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
-    rest_client *client = (rest_client *)obj;
-
-    void *req = NULL;
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        rt_string message = rest_current_error_message("RestClient request setup failed");
-        rt_trap_clear_recovery();
-        rest_release_temp_object(req);
-        rest_client_clear_last_response(client);
-        return rt_result_err_str(message);
-    }
-    req = create_request(client, rt_const_cstr("DELETE"), path);
-    rt_trap_clear_recovery();
-    return execute_request_result(client, req);
+    return rest_execute_method_result(obj, "DELETE", path, NULL, 0);
 }
 
 /// @brief Send a `HEAD` request — useful for checking resource existence/headers without body.
@@ -786,34 +1241,148 @@ void *rt_restclient_head(void *obj, rt_string path) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("HEAD"), path);
+    void *req = create_request(client, "HEAD", path, NULL, 0);
+    if (!req)
+        return NULL;
     return execute_request(client, req);
 }
 
 /// @brief Send a `HEAD` request and return `Result<HttpRes>`.
 void *rt_restclient_head_result(void *obj, rt_string path) {
-    if (!obj)
-        return rt_result_err_str(rt_const_cstr("RestClient: null client"));
-    rest_client *client = (rest_client *)obj;
-
-    void *req = NULL;
-    jmp_buf recovery;
-    rt_trap_set_recovery(&recovery);
-    if (setjmp(recovery) != 0) {
-        rt_string message = rest_current_error_message("RestClient request setup failed");
-        rt_trap_clear_recovery();
-        rest_release_temp_object(req);
-        rest_client_clear_last_response(client);
-        return rt_result_err_str(message);
-    }
-    req = create_request(client, rt_const_cstr("HEAD"), path);
-    rt_trap_clear_recovery();
-    return execute_request_result(client, req);
+    return rest_execute_method_result(obj, "HEAD", path, NULL, 0);
 }
 
 //=============================================================================
 // HTTP Methods - JSON Convenience
 //=============================================================================
+
+/// @brief Managed values owned during one RestClient JSON transaction.
+typedef struct {
+    void *request;
+    void *response;
+    rt_string request_body;
+    rt_string response_body;
+    rt_string accept_name;
+    rt_string accept_value;
+    rt_string content_type_name;
+    rt_string content_type_value;
+} rest_json_transaction;
+
+/// @brief Release every temporary owned by a JSON convenience request.
+/// @details The response reference released here is the transport's caller
+///          reference; RestClient's synchronized last-response cache retains a
+///          separate reference. The helper accepts any partially initialized
+///          transaction created before a managed trap.
+/// @param transaction Transaction to consume; NULL is a no-op.
+static void rest_json_transaction_release(rest_json_transaction *transaction) {
+    if (!transaction)
+        return;
+    rest_release_temp_object(transaction->request);
+    rest_release_temp_object(transaction->response);
+    rest_release_temp_object((void *)transaction->request_body);
+    rest_release_temp_object((void *)transaction->response_body);
+    rest_release_temp_object((void *)transaction->accept_name);
+    rest_release_temp_object((void *)transaction->accept_value);
+    rest_release_temp_object((void *)transaction->content_type_name);
+    rest_release_temp_object((void *)transaction->content_type_value);
+    memset(transaction, 0, sizeof(*transaction));
+}
+
+/// @brief Execute one JSON convenience verb as a single cleanup transaction.
+/// @details All verbs apply `Accept: application/json`; body-bearing verbs also
+///          serialize @p json_body and apply `Content-Type: application/json`.
+///          Request setup, send, body snapshot, and JSON parse are protected by
+///          one outer recovery frame. The consumed HttpReq and raw HttpRes
+///          caller reference are released on success, non-2xx/empty responses,
+///          and every nested trap while the client's cached response remains
+///          available for diagnostics after a completed exchange.
+/// @param client Valid RestClient receiver.
+/// @param method NUL-terminated HTTP method.
+/// @param path Relative request path.
+/// @param json_body Managed JSON value serialized for body-bearing methods.
+/// @param send_json_body Nonzero to serialize and attach @p json_body.
+/// @return Caller-owned parsed JSON value; NULL for non-2xx or empty response,
+///         or after a returning trap hook.
+static void *rest_execute_json(
+    rest_client *client, const char *method, rt_string path, void *json_body, int send_json_body) {
+    rest_json_transaction *const transaction =
+        (rest_json_transaction *)calloc(1, sizeof(*transaction));
+    if (!transaction) {
+        rt_trap("RestClient: JSON transaction allocation failed");
+        return NULL;
+    }
+
+    void *parsed = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        int saved_net_code = rt_trap_get_net_code();
+        rest_save_trap(saved_error, sizeof(saved_error), "RestClient: JSON request failed");
+        rt_trap_clear_recovery();
+        rest_json_transaction_release(transaction);
+        free(transaction);
+        if (saved_net_code)
+            rt_trap_net(saved_error, saved_net_code);
+        else
+            rt_trap(saved_error);
+        return NULL;
+    }
+
+    transaction->request = create_request(client, method, path, NULL, 0);
+    if (!transaction->request)
+        rt_trap("RestClient: JSON request setup failed");
+    transaction->accept_name = rt_const_cstr("Accept");
+    transaction->accept_value = rt_const_cstr("application/json");
+    if (!transaction->accept_name || !transaction->accept_value ||
+        !rt_http_req_set_header(
+            transaction->request, transaction->accept_name, transaction->accept_value)) {
+        rt_trap("RestClient: JSON Accept header allocation failed");
+    }
+
+    if (send_json_body) {
+        transaction->content_type_name = rt_const_cstr("Content-Type");
+        transaction->content_type_value = rt_const_cstr("application/json");
+        if (!transaction->content_type_name || !transaction->content_type_value ||
+            !rt_http_req_set_header(transaction->request,
+                                    transaction->content_type_name,
+                                    transaction->content_type_value)) {
+            rt_trap("RestClient: JSON Content-Type header allocation failed");
+        }
+        transaction->request_body = rt_json_format(json_body);
+        if (!transaction->request_body)
+            rt_trap("RestClient: JSON serialization failed");
+        if (!rt_http_req_set_body_str(transaction->request, transaction->request_body))
+            rt_trap("RestClient: JSON body allocation failed");
+    }
+
+    void *request = transaction->request;
+    transaction->request = NULL;
+    transaction->response = execute_request(client, request);
+    if (!transaction->response)
+        rt_trap("RestClient: JSON request failed");
+    if (!rt_http_res_is_ok(transaction->response)) {
+        rt_trap_clear_recovery();
+        rest_json_transaction_release(transaction);
+        free(transaction);
+        return NULL;
+    }
+
+    transaction->response_body = rt_http_res_body_str(transaction->response);
+    if (!transaction->response_body)
+        rt_trap("RestClient: JSON response body allocation failed");
+    if (rt_str_len(transaction->response_body) == 0) {
+        rt_trap_clear_recovery();
+        rest_json_transaction_release(transaction);
+        free(transaction);
+        return NULL;
+    }
+    parsed = rt_json_parse(transaction->response_body);
+    rt_trap_clear_recovery();
+    rest_json_transaction_release(transaction);
+    free(transaction);
+    return parsed;
+}
 
 /// @brief Send a `GET` with `Accept: application/json` and parse the response body as JSON.
 /// Returns the parsed JSON value, or NULL if the response is non-2xx (caller can re-inspect via
@@ -822,20 +1391,7 @@ void *rt_restclient_get_json(void *obj, rt_string path) {
     rest_client *client = rest_client_checked(obj, "RestClient: null client");
     if (!client)
         return NULL;
-
-    void *req = create_request(client, rt_const_cstr("GET"), path);
-    if (!req)
-        return NULL;
-    rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
-
-    void *res = execute_request(client, req);
-    if (!rt_http_res_is_ok(res))
-        return NULL;
-
-    rt_string body = rt_http_res_body_str(res);
-    void *parsed = rt_json_parse(body);
-    rt_string_unref(body);
-    return parsed;
+    return rest_execute_json(client, "GET", path, NULL, 0);
 }
 
 /// @brief Send a `POST` with `Content-Type: application/json` carrying `rt_json_format(json_body)`.
@@ -846,29 +1402,7 @@ void *rt_restclient_post_json(void *obj, rt_string path, void *json_body) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("POST"), path);
-    if (!req)
-        return NULL;
-    rt_http_req_set_header(req, rt_const_cstr("Content-Type"), rt_const_cstr("application/json"));
-    rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
-
-    rt_string body = rt_json_format(json_body);
-    rt_http_req_set_body_str(req, body);
-    rt_string_unref(body);
-
-    void *res = execute_request(client, req);
-    if (!rt_http_res_is_ok(res))
-        return NULL;
-
-    rt_string res_body = rt_http_res_body_str(res);
-    if (rt_str_len(res_body) == 0) {
-        rt_string_unref(res_body);
-        return NULL;
-    }
-
-    void *parsed = rt_json_parse(res_body);
-    rt_string_unref(res_body);
-    return parsed;
+    return rest_execute_json(client, "POST", path, json_body, 1);
 }
 
 /// @brief `PUT` JSON body and parse response. Same Accept/Content-Type handling as `_post_json`.
@@ -877,29 +1411,7 @@ void *rt_restclient_put_json(void *obj, rt_string path, void *json_body) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("PUT"), path);
-    if (!req)
-        return NULL;
-    rt_http_req_set_header(req, rt_const_cstr("Content-Type"), rt_const_cstr("application/json"));
-    rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
-
-    rt_string body = rt_json_format(json_body);
-    rt_http_req_set_body_str(req, body);
-    rt_string_unref(body);
-
-    void *res = execute_request(client, req);
-    if (!rt_http_res_is_ok(res))
-        return NULL;
-
-    rt_string res_body = rt_http_res_body_str(res);
-    if (rt_str_len(res_body) == 0) {
-        rt_string_unref(res_body);
-        return NULL;
-    }
-
-    void *parsed = rt_json_parse(res_body);
-    rt_string_unref(res_body);
-    return parsed;
+    return rest_execute_json(client, "PUT", path, json_body, 1);
 }
 
 /// @brief `PATCH` JSON body and parse response. Used for partial-update REST endpoints.
@@ -908,29 +1420,7 @@ void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("PATCH"), path);
-    if (!req)
-        return NULL;
-    rt_http_req_set_header(req, rt_const_cstr("Content-Type"), rt_const_cstr("application/json"));
-    rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
-
-    rt_string body = rt_json_format(json_body);
-    rt_http_req_set_body_str(req, body);
-    rt_string_unref(body);
-
-    void *res = execute_request(client, req);
-    if (!rt_http_res_is_ok(res))
-        return NULL;
-
-    rt_string res_body = rt_http_res_body_str(res);
-    if (rt_str_len(res_body) == 0) {
-        rt_string_unref(res_body);
-        return NULL;
-    }
-
-    void *parsed = rt_json_parse(res_body);
-    rt_string_unref(res_body);
-    return parsed;
+    return rest_execute_json(client, "PATCH", path, json_body, 1);
 }
 
 /// @brief `DELETE` (no body) and parse the response as JSON. Useful when the API returns a
@@ -940,24 +1430,7 @@ void *rt_restclient_delete_json(void *obj, rt_string path) {
     if (!client)
         return NULL;
 
-    void *req = create_request(client, rt_const_cstr("DELETE"), path);
-    if (!req)
-        return NULL;
-    rt_http_req_set_header(req, rt_const_cstr("Accept"), rt_const_cstr("application/json"));
-
-    void *res = execute_request(client, req);
-    if (!rt_http_res_is_ok(res))
-        return NULL;
-
-    rt_string res_body = rt_http_res_body_str(res);
-    if (rt_str_len(res_body) == 0) {
-        rt_string_unref(res_body);
-        return NULL;
-    }
-
-    void *parsed = rt_json_parse(res_body);
-    rt_string_unref(res_body);
-    return parsed;
+    return rest_execute_json(client, "DELETE", path, NULL, 0);
 }
 
 //=============================================================================
@@ -968,8 +1441,13 @@ void *rt_restclient_delete_json(void *obj, rt_string path) {
 int64_t rt_restclient_last_status(void *obj) {
     if (!obj)
         return 0;
-    rest_client *client = (rest_client *)obj;
-    return client->last_status;
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client)
+        return 0;
+    rest_client_mutex_lock(&client->lock);
+    int64_t status = client->last_status;
+    rest_client_mutex_unlock(&client->lock);
+    return status;
 }
 
 /// @brief Return a retained reference to the last HttpRes (NULL if none yet). Caller must
@@ -977,9 +1455,19 @@ int64_t rt_restclient_last_status(void *obj) {
 void *rt_restclient_last_response(void *obj) {
     if (!obj)
         return NULL;
-    rest_client *client = (rest_client *)obj;
-    rt_obj_retain_maybe(client->last_response);
-    return client->last_response;
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client)
+        return NULL;
+    rest_client_mutex_lock(&client->lock);
+    void *response = client->last_response;
+    int32_t retained = response ? rt_heap_try_retain_live(response) : 0;
+    rest_client_mutex_unlock(&client->lock);
+    if (response && retained != 1 && retained != 2) {
+        rt_trap(retained < 0 ? "RestClient: last response reference count overflow"
+                             : "RestClient: corrupt last response storage");
+        return NULL;
+    }
+    return response;
 }
 
 /// @brief Returns 1 if the last status was 2xx (success). Convenience for the common
@@ -987,6 +1475,11 @@ void *rt_restclient_last_response(void *obj) {
 int8_t rt_restclient_last_ok(void *obj) {
     if (!obj)
         return 0;
-    rest_client *client = (rest_client *)obj;
-    return (client->last_status >= 200 && client->last_status < 300) ? 1 : 0;
+    rest_client *client = rest_client_checked(obj, "RestClient: invalid client");
+    if (!client)
+        return 0;
+    rest_client_mutex_lock(&client->lock);
+    int64_t status = client->last_status;
+    rest_client_mutex_unlock(&client->lock);
+    return (status >= 200 && status < 300) ? 1 : 0;
 }

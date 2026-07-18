@@ -19,6 +19,7 @@
 // Ownership/Lifetime:
 //   - Heap objects are reference-counted; the last rt_heap_release call frees the memory.
 //   - rt_heap_retain increments the refcount; rt_heap_release decrements and frees at zero.
+//   - Final heap reclamation clears registered weak observers for every payload kind.
 //   - rt_heap_release_deferred decrements without immediate free for batch cleanup.
 //
 // Links: src/runtime/core/rt_heap.c (implementation), src/runtime/core/rt_string.h,
@@ -75,6 +76,24 @@ typedef struct rt_heap_hdr {
     rt_heap_finalizer_t finalizer; ///< Optional finalizer callback (objects only).
 } rt_heap_hdr_t;
 
+/// @brief Lock-bounded copy of heap metadata for borrowed-pointer inspection.
+/// @details Unlike @ref rt_heap_hdr_t this structure never aliases live heap
+///          storage. @ref rt_heap_get_info fills it while holding the allocation
+///          registry lock, so callers may inspect an untrusted or merely
+///          borrowed pointer without retaining an unpinned header address.
+///          The reference count is an observation only and must not be used as
+///          a substitute for @ref rt_heap_try_retain_live.
+typedef struct rt_heap_info {
+    uint16_t kind;      ///< Heap object kind copied from the live header.
+    uint16_t elem_kind; ///< Element kind copied from the live header.
+    uint32_t flags;     ///< Allocation/status flags at snapshot time.
+    size_t refcnt;      ///< Atomically sampled reference count.
+    size_t len;         ///< Logical length at snapshot time.
+    size_t cap;         ///< Payload capacity at snapshot time.
+    size_t alloc_size;  ///< Header-plus-payload allocation size.
+    int64_t class_id;   ///< Runtime class identifier for object payloads.
+} rt_heap_info_t;
+
 /// @brief Flag indicating the allocation came from the pool allocator.
 #define RT_HEAP_FLAG_POOLED 0x2u
 
@@ -128,7 +147,8 @@ int32_t rt_heap_try_retain_live(void *payload);
 
 /// @brief Decrement the reference count, freeing the object when it reaches zero.
 /// @details Releases ownership of a heap object. When the reference count drops
-///          to zero, the header and payload memory are freed.
+///          to zero, registered weak observers are cleared before the header and
+///          payload memory are freed.
 /// @param payload Payload pointer or NULL (NULL is ignored).
 /// @return New reference count after decrement (0 when freed).
 size_t rt_heap_release(void *payload);
@@ -144,7 +164,8 @@ size_t rt_heap_release_deferred(void *payload);
 
 /// @brief Free a payload whose reference count is already zero.
 /// @details Provides an explicit free entry point after deferred release or
-///          external handoff. Validates zero refcnt in debug builds.
+///          external handoff. Clears registered weak observers before reclaiming
+///          storage and validates zero refcnt in debug builds.
 /// @param payload Payload pointer with refcnt == 0; NULL is ignored.
 /// @pre refcnt == 0 (prior rt_heap_release_deferred or external setting).
 void rt_heap_free_zero_ref(void *payload);
@@ -156,11 +177,26 @@ int8_t rt_heap_is_payload(void *payload);
 
 /// @brief Safely recover a heap header from a candidate payload pointer.
 /// @details Unlike @ref rt_heap_hdr, this helper validates that @p payload is a
-///          live runtime allocation before exposing the header pointer.
+///          live runtime allocation before exposing the header pointer. The
+///          caller must already own a strong reference or the collector's
+///          exclusive graph scope and must not retain the pointer beyond that
+///          ownership interval. Borrowed/untrusted readers should use
+///          @ref rt_heap_get_info instead.
 /// @param payload Candidate payload pointer.
 /// @param out_hdr Receives the header on success; set to NULL on failure.
 /// @return 1 when @p payload is valid, 0 otherwise.
 int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr);
+
+/// @brief Copy metadata for a live heap payload without exposing its header address.
+/// @details Looks up @p payload and copies all public scalar metadata while the
+///          allocation registry lock prevents concurrent removal or relocation.
+///          Failure clears @p out_info. This is the preferred validation API
+///          for borrowed handles because the returned data remains ordinary
+///          caller-owned storage after the lock is released.
+/// @param payload Candidate exact payload pointer.
+/// @param out_info Destination metadata snapshot; required.
+/// @return 1 when @p payload names a registered allocation, otherwise 0.
+int8_t rt_heap_get_info(const void *payload, rt_heap_info_t *out_info);
 
 /// @brief Safely test whether a byte range lies inside a registered runtime heap payload.
 /// @details This helper accepts interior pointers, unlike @ref rt_heap_is_payload
@@ -188,12 +224,16 @@ rt_heap_hdr_t *rt_heap_hdr(void *payload);
 /// @brief Resize a heap payload while preserving runtime metadata.
 /// @details Reallocates the underlying block, zero-fills any newly exposed
 ///          elements, updates len/cap/alloc_size, and keeps the runtime's
-///          allocation registry in sync when the payload moves.
+///          allocation registry in sync when the payload moves. The primitive
+///          validates that the payload has exactly one live owner; shared or
+///          immortal allocations trap and remain unchanged so a missed
+///          copy-on-write check cannot invalidate aliases.
 /// @param payload Existing heap payload pointer.
 /// @param elem_size Element size in bytes for the payload.
 /// @param new_len New logical length.
 /// @param new_cap New capacity in elements.
 /// @return Resized payload pointer, or NULL on allocation failure / invalid input.
+/// @pre @p payload has a mortal reference count of exactly one.
 void *rt_heap_realloc(void *payload, size_t elem_size, size_t new_len, size_t new_cap);
 
 /// @brief Retrieve the payload address from a header pointer.

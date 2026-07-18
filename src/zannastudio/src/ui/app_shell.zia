@@ -1,0 +1,259 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/app_shell.zia
+// Purpose: Top-level Zanna Studio window lifecycle and UI-band coordination.
+// Key invariants:
+//   - AppShell owns the application window and persistent UI controllers.
+//   - Construction details live in focused shell modules, not in this facade.
+// Ownership/Lifetime:
+//   - Constructed once by main.zia and destroyed during IDE shutdown.
+//   - MenuChrome, WorkbenchShell, ToolPanelShell, and StatusShell live for the
+//     same duration as the GUI.App window.
+// Links: zannastudio/src/main.zia, zannastudio/src/ui/menu_chrome.zia
+//
+//===----------------------------------------------------------------------===//
+
+module app_shell;
+
+bind "../commands/command_registry";
+bind "../editor/language_service";
+bind "../ui/menu_chrome";
+bind "../ui/status_shell";
+bind "../ui/tool_panel_shell";
+bind "../ui/workbench_shell";
+
+bind Zanna.GUI as GUI;
+
+/// @brief Coordinates the IDE window and focused persistent UI shell modules.
+class AppShell {
+    expose GUI.App app;
+    expose GUI.VBox mainVBox;
+    expose menu_chrome.MenuChrome menuChrome;
+    expose workbench_shell.WorkbenchShell workbench;
+    expose tool_panel_shell.ToolPanelShell toolPanels;
+    expose status_shell.StatusShell statusShell;
+    expose GUI.CommandPalette commandPalette;
+    expose String contextPath;
+    expose String contextDir;
+    expose Integer tabContextIndex;
+
+    /// @brief Initialize detached UI controllers.
+    expose func init() {
+        menuChrome = new menu_chrome.MenuChrome();
+        workbench = new workbench_shell.WorkbenchShell();
+        toolPanels = new tool_panel_shell.ToolPanelShell();
+        statusShell = new status_shell.StatusShell();
+        contextPath = "";
+        contextDir = "";
+        tabContextIndex = -1;
+    }
+
+    /// @brief Construct the IDE window and persistent UI bands.
+    /// @param title Window title.
+    /// @param width Initial window width in logical pixels.
+    /// @param height Initial window height in logical pixels.
+    expose func Build(title: String, width: Integer, height: Integer) {
+        app = GUI.App.New(title, width, height);
+        app.SetPreventClose(true);
+        GUI.Theme.SetDark();
+
+        mainVBox = GUI.VBox.New();
+        mainVBox.SetSpacing(0.0);
+        mainVBox.SetPadding(0.0);
+        mainVBox.SetFlex(1.0);
+        var root: GUI.Widget = app.Root;
+        root.AddChild(mainVBox);
+
+        menuChrome.BuildMainMenus(mainVBox);
+        menuChrome.BuildToolbar(mainVBox);
+        workbench.Build(mainVBox, toolPanels, app);
+        menuChrome.BuildContextMenus();
+        statusShell.Build(mainVBox);
+
+        commandPalette = GUI.CommandPalette.New(app);
+        commandPalette.SetPlaceholder("Type a command...");
+
+        SetBuildJobActive(false, "");
+        SetDebugSessionState(false, false, false);
+    }
+
+    /// @brief Apply command-catalog shortcuts to visible menu/context items.
+    /// @param registry Runtime command registry populated from command_catalog.
+    expose func ApplyCommandShortcuts(registry: command_registry.CommandRegistry) {
+        menuChrome.ApplyCommandShortcuts(registry);
+    }
+
+    /// @brief True if the user requested window close.
+    expose func ShouldClose() -> Boolean {
+        return app.ShouldClose;
+    }
+
+    /// @brief Return true once for a prevented close request.
+    expose func WasCloseRequested() -> Boolean {
+        return app.WasCloseRequested();
+    }
+
+    /// @brief Pump the event queue.
+    expose func Poll() {
+        app.Poll();
+    }
+
+    /// @brief Block up to timeoutMs for OS events, then pump — a drop-in for
+    ///        Poll() that lets an idle IDE sleep instead of busy-looping.
+    /// @param timeoutMs Maximum idle wait in ms (clamped to [0,1000] in runtime).
+    /// @return True if input woke the wait, false on timeout.
+    expose func PollWait(timeoutMs: Integer) -> Boolean {
+        return app.PollWait(timeoutMs);
+    }
+
+    /// @brief Ask the OS to make this app/window foreground-active.
+    expose func Activate() {
+        app.Activate();
+    }
+
+    /// @brief Paint the current frame.
+    expose func Render() {
+        app.Render();
+    }
+
+    /// @brief Destroy the GUI application window.
+    expose func Destroy() {
+        app.Destroy();
+    }
+
+    /// @brief Set the left status message text.
+    /// @param text Message to show.
+    expose func SetStatusLeft(text: String) {
+        statusShell.SetStatusLeft(text);
+    }
+
+    /// @brief Set the cursor-position status text.
+    /// @param text Cursor display text.
+    expose func SetStatusCenter(text: String) {
+        statusShell.SetStatusCenter(text);
+    }
+
+    /// @brief Set the right status text.
+    /// @param text Right status display text.
+    expose func SetStatusRight(text: String) {
+        statusShell.SetStatusRight(text);
+    }
+
+    /// @brief Update active project and language status items.
+    /// @param projectName Project name, or empty when no project is open.
+    /// @param languageName Active language display name.
+    expose func SetWorkspaceStatus(projectName: String,
+                                   languageName: String) {
+        statusShell.SetWorkspaceStatus(projectName, languageName);
+    }
+
+    /// @brief Update the workspace-index status item.
+    /// @param status Short index status text.
+    expose func SetIndexStatus(status: String) {
+        statusShell.SetIndexStatus(status);
+    }
+
+    /// @brief Update diagnostics summary status.
+    /// @param errors Current error count.
+    /// @param warnings Current warning count.
+    /// @param notes Current note count.
+    expose func SetDiagnosticsSummary(errors: Integer,
+                                      warnings: Integer,
+                                      notes: Integer) {
+        statusShell.SetDiagnosticsSummary(errors, warnings, notes);
+    }
+
+    /// @brief Apply build/run job state to menu, toolbar, and status controls.
+    /// @param active True while a build/run job is active.
+    /// @param name Human-readable job name.
+    expose func SetBuildJobActive(active: Boolean, name: String) {
+        menuChrome.SetBuildJobActive(active, name);
+        statusShell.SetBuildJobActive(active, name);
+    }
+
+    /// @brief Update the background editor-task status item.
+    /// @param status Short scheduler status text.
+    expose func SetSchedulerStatus(status: String) {
+        statusShell.SetSchedulerStatus(status);
+    }
+
+    /// @brief Apply running/paused debug-session state to command chrome.
+    /// @param active True while a debug adapter session exists.
+    /// @param stopped True while the debuggee is paused at a stop location.
+    /// @param buildJobActive True while the build/run controller is busy.
+    expose func SetDebugSessionState(active: Boolean,
+                                     stopped: Boolean,
+                                     buildJobActive: Boolean) {
+        menuChrome.SetDebugSessionState(active, stopped, buildJobActive);
+    }
+
+    /// @brief Apply active-language capability state to semantic commands.
+    /// @param service Capability record selected for the active document.
+    expose func ApplyLanguageCommandState(service: language_service.LanguageService) {
+        menuChrome.ApplyLanguageCommandState(service);
+    }
+
+    /// @brief Set the breadcrumb path; auto-hides when path is empty.
+    /// @param path File path to display.
+    expose func SetBreadcrumbPath(path: String) {
+        workbench.SetBreadcrumbPath(path);
+    }
+
+    /// @brief Format diagnostics summary text.
+    /// @return Short diagnostics summary.
+    expose func FormatDiagnosticsSummary(errors: Integer,
+                                         warnings: Integer,
+                                         notes: Integer) -> String {
+        return statusShell.FormatDiagnosticsSummary(errors, warnings, notes);
+    }
+
+    /// @brief Pick diagnostics status color.
+    /// @return RGB color integer.
+    expose func DiagnosticsSummaryColor(errors: Integer,
+                                        warnings: Integer,
+                                        notes: Integer) -> Integer {
+        return statusShell.DiagnosticsSummaryColor(errors, warnings, notes);
+    }
+
+    /// @brief Toggle sidebar visibility.
+    expose func ToggleSidebar() {
+        workbench.ToggleSidebar();
+    }
+
+    /// @brief Select the active document surface.
+    /// @param kind Surface kind selected by the caller.
+    expose func SelectSurface(kind: Integer) {
+        workbench.SelectSurface(kind);
+    }
+
+    /// @brief Resize to scalePct percent of the monitor and center on screen.
+    /// @param scalePct Desired monitor percentage for initial window size.
+    expose func CenterAndSize(scalePct: Integer) {
+        var mw = app.GetMonitorWidth();
+        var mh = app.GetMonitorHeight();
+        if mw <= 0 { mw = 1440; }
+        if mh <= 0 { mh = 900; }
+        var w = (mw * scalePct) / 100;
+        var h = (mh * scalePct) / 100;
+        var edgeGap = 96;
+        var maxW = 1540;
+        var maxH = 980;
+        if maxW > mw - edgeGap { maxW = mw - edgeGap; }
+        if maxH > mh - edgeGap { maxH = mh - edgeGap; }
+        if maxW > 0 and w > maxW { w = maxW; }
+        if maxH > 0 and h > maxH { h = maxH; }
+        if w > mw - 32 { w = mw - 32; }
+        if h > mh - 32 { h = mh - 32; }
+        if mw > 760 and w < 720 { w = 720; }
+        if mh > 560 and h < 520 { h = 520; }
+        if w < 1 { w = 1; }
+        if h < 1 { h = 1; }
+        app.SetWindowSize(w, h);
+        app.SetPosition((mw - w) / 2, (mh - h) / 2);
+    }
+}

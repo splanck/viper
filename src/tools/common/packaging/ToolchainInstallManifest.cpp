@@ -892,7 +892,7 @@ std::vector<std::string> requiredToolchainBinaryNames() {
             "vbasic-server",
             "basic-ast-dump",
             "basic-lex-dump",
-            "zannaide"};
+            "zannastudio"};
 }
 
 /// @brief Validate that the manifest contains a complete, shippable toolchain.
@@ -940,10 +940,10 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
 
     for (const std::string &binary : requiredToolchainBinaryNames()) {
         if (!hasBinary(binary.c_str())) {
-            if (binary == "zannaide") {
-                throw std::runtime_error("staged toolchain is missing required binary zannaide "
+            if (binary == "zannastudio") {
+                throw std::runtime_error("staged toolchain is missing required binary zannastudio "
                                          "(configure installer build trees with "
-                                         "ZANNA_INSTALL_ZANNAIDE=ON)");
+                                         "ZANNA_INSTALL_ZANNASTUDIO=ON)");
             }
             throw std::runtime_error("staged toolchain is missing required binary " + binary);
         }

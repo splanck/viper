@@ -29,7 +29,7 @@ User-facing documentation lives in the **[main documentation index](../README.md
 
 **Frontends** — [Zia](codemap/front-end-zia.md) · [BASIC](codemap/front-end-basic.md) · [Common](codemap/front-end-common.md)
 
-**Other** — [Bytecode VM](codemap/bytecode-vm.md) · [Codegen](codemap/codegen.md) · [Graphics](codemap/graphics.md) · [Graphics Stubs](codemap/runtime-graphics-stubs.md) · [VM/Runtime](codemap/vm-runtime.md) · [Runtime C Library](codemap/runtime-library-c.md) · [Support](codemap/support.md) · [Tools](codemap/tools.md) · [TUI](codemap/tui.md) · [ZannaIDE](codemap/zannaide.md) · [Zia Server](codemap/zia-server.md) · [Docs](codemap/docs.md)
+**Other** — [Bytecode VM](codemap/bytecode-vm.md) · [Codegen](codemap/codegen.md) · [Graphics](codemap/graphics.md) · [Graphics Stubs](codemap/runtime-graphics-stubs.md) · [VM/Runtime](codemap/vm-runtime.md) · [Runtime C Library](codemap/runtime-library-c.md) · [Support](codemap/support.md) · [Tools](codemap/tools.md) · [TUI](codemap/tui.md) · [Zanna Studio](codemap/zannastudio.md) · [Zia Server](codemap/zia-server.md) · [Docs](codemap/docs.md)
 
 ## Specifications
 
@@ -60,5 +60,6 @@ User-facing documentation lives in the **[main documentation index](../README.md
 - [Documentation Style Guide](doc-style.md) — Layout, naming, and formatting rules for `docs/`
 - [Testing Guide](testing.md) — Unit, golden, e2e, and performance tests
 - [Source Health Guardrails](source-health.md) — Local audit baselines for high-ownership subsystems
+- [Runtime Hardening Audit (July 2026)](runtime-hardening-audit-2026-07.md) — Resolution ledger for 64 runtime findings
 - [Cross-Platform Differences](../cross-platform/platform-differences.md) — macOS vs Linux vs Windows behavior
 - [Cross-Platform Checklist](../cross-platform/platform-checklist.md) — Compliance tracking

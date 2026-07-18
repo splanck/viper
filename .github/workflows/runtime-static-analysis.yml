@@ -1,0 +1,41 @@
+name: Runtime Static Analysis
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-static-analysis-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cppcheck-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install cppcheck and Ninja
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends cppcheck ninja-build
+
+      - name: Configure compilation database
+        shell: bash
+        run: >-
+          cmake -S . -B build-cppcheck -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DZANNA_FAST_DEBUG=1
+
+      - name: Run gating runtime analysis
+        shell: bash
+        run: cmake --build build-cppcheck --target cppcheck-runtime -j 1

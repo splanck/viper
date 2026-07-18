@@ -1154,303 +1154,311 @@ set_tests_properties(zia_smoke_paint_canvas_capture PROPERTIES
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_smoke_zannaide
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/smoke_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_smoke_zannaide PROPERTIES
+add_test(NAME zia_smoke_zannastudio
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/smoke_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_smoke_zannastudio PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         FAIL_REGULAR_EXPRESSION "Framebuffer resize dimensions exceed maximum"
         LABELS "zia;smoke;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_smoke_zannaide_project_compile
-        COMMAND $<TARGET_FILE:zanna> build "${CMAKE_SOURCE_DIR}/src/zannaide" -o "${CMAKE_BINARY_DIR}/zannaide_smoke.il")
-set_tests_properties(zia_smoke_zannaide_project_compile PROPERTIES
+add_test(NAME zia_smoke_zannastudio_project_compile
+        COMMAND $<TARGET_FILE:zanna> build "${CMAKE_SOURCE_DIR}/src/zannastudio" -o "${CMAKE_BINARY_DIR}/zannastudio_smoke.il")
+set_tests_properties(zia_smoke_zannastudio_project_compile PROPERTIES
         LABELS "zia;smoke"
         TIMEOUT 180)
 
-add_test(NAME zia_zannaide_phase0_phase1
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/phase0_phase1_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_phase0_phase1 PROPERTIES
+add_test(NAME zia_zannastudio_phase0_phase1
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/phase0_phase1_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_phase0_phase1 PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;phase0;phase1"
+        LABELS "zia;zannastudio;phase0;phase1"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_phase2_phase3
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/phase2_phase3_probe.zia" -- --zia-bin $<TARGET_FILE:zia> --zanna-bin $<TARGET_FILE:zanna>
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_phase2_phase3 PROPERTIES
+add_test(NAME zia_zannastudio_phase2_phase3
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/phase2_phase3_probe.zia" -- --zia-bin $<TARGET_FILE:zia> --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_phase2_phase3 PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;phase2;phase3"
+        LABELS "zia;zannastudio;phase2;phase3"
         RUN_SERIAL TRUE
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_editor_hot_path
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/editor_hot_path_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_editor_hot_path PROPERTIES
+add_test(NAME zia_zannastudio_editor_hot_path
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/editor_hot_path_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_editor_hot_path PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;editor;requires_display;perf"
+        LABELS "zia;zannastudio;editor;requires_display;perf"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_palette_query
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/palette_query_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_palette_query PROPERTIES
+add_test(NAME zia_zannastudio_palette_query
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/palette_query_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_palette_query PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;palette;requires_display"
+        LABELS "zia;zannastudio;palette;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_welcome
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/welcome_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_welcome PROPERTIES
+add_test(NAME zia_zannastudio_welcome
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/welcome_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_welcome PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;shell;requires_display"
+        LABELS "zia;zannastudio;shell;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_editor_buffer
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/editor_buffer_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_editor_buffer PROPERTIES
+add_test(NAME zia_zannastudio_editor_buffer
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/editor_buffer_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_editor_buffer PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;editor;requires_display"
+        LABELS "zia;zannastudio;editor;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_undo_across_tabs
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/undo_across_tabs_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_undo_across_tabs PROPERTIES
+add_test(NAME zia_zannastudio_undo_across_tabs
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/undo_across_tabs_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_undo_across_tabs PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;editor;requires_display"
+        LABELS "zia;zannastudio;editor;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_tab_switch
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/tab_switch_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_tab_switch PROPERTIES
+add_test(NAME zia_zannastudio_tab_switch
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/tab_switch_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_tab_switch PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;editor;perf;requires_display"
+        LABELS "zia;zannastudio;editor;perf;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_split_editor
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/split_editor_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_split_editor PROPERTIES
+add_test(NAME zia_zannastudio_split_editor
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/split_editor_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_split_editor PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;editor;shell;requires_display"
+        LABELS "zia;zannastudio;editor;shell;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_bottom_panel
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/bottom_panel_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_bottom_panel PROPERTIES
+add_test(NAME zia_zannastudio_bottom_panel
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/bottom_panel_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_bottom_panel PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;shell;requires_display"
+        LABELS "zia;zannastudio;shell;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_tree_move
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/tree_move_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_tree_move PROPERTIES
+add_test(NAME zia_zannastudio_tree_move
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/tree_move_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_tree_move PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;explorer"
+        LABELS "zia;zannastudio;explorer"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_recovery
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/recovery_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_recovery PROPERTIES
+add_test(NAME zia_zannastudio_recovery
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/recovery_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_recovery PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;session"
+        LABELS "zia;zannastudio;session"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_palette_modes
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/palette_modes_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_palette_modes PROPERTIES
+add_test(NAME zia_zannastudio_settings_migration
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/settings_migration_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_settings_migration PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;palette;requires_display"
+        LABELS "zia;zannastudio;session"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_scm_diff
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/scm_diff_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_scm_diff PROPERTIES
+add_test(NAME zia_zannastudio_palette_modes
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/palette_modes_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_palette_modes PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;scm"
+        LABELS "zia;zannastudio;palette;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_scm_gutter
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/scm_gutter_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_scm_gutter PROPERTIES
+add_test(NAME zia_zannastudio_scm_diff
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scm_diff_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scm_diff PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;scm;requires_display"
+        LABELS "zia;zannastudio;scm"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_intellisense
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/intellisense_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_intellisense PROPERTIES
+add_test(NAME zia_zannastudio_scm_gutter
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scm_gutter_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scm_gutter PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;intellisense;requires_display"
+        LABELS "zia;zannastudio;scm;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_intellisense
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/intellisense_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_intellisense PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;intellisense;requires_display"
         TIMEOUT 180)
 
-add_test(NAME zia_zannaide_file_tree
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/file_tree_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_file_tree PROPERTIES
+add_test(NAME zia_zannastudio_file_tree
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/file_tree_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_file_tree PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;file-tree;requires_display"
+        LABELS "zia;zannastudio;file-tree;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_activity_bar
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/activity_bar_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_activity_bar PROPERTIES
+add_test(NAME zia_zannastudio_activity_bar
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/activity_bar_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_activity_bar PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;activity-bar;requires_display"
+        LABELS "zia;zannastudio;activity-bar;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_multi_root
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/multi_root_file_tree_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_multi_root PROPERTIES
+add_test(NAME zia_zannastudio_multi_root
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/multi_root_file_tree_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_multi_root PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;multi-root;requires_display"
+        LABELS "zia;zannastudio;multi-root;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_scm
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/scm_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_scm PROPERTIES
+add_test(NAME zia_zannastudio_scm
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scm_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scm PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;scm"
+        LABELS "zia;zannastudio;scm"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_terminal
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_terminal PROPERTIES
+add_test(NAME zia_zannastudio_terminal
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_terminal PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;terminal"
+        LABELS "zia;zannastudio;terminal"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_terminal_open
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_open_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_terminal_open PROPERTIES
+add_test(NAME zia_zannastudio_terminal_open
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_open_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_terminal_open PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;terminal;requires_display"
+        LABELS "zia;zannastudio;terminal;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_terminal_hidden_start
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_hidden_start_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_terminal_hidden_start PROPERTIES
+add_test(NAME zia_zannastudio_terminal_hidden_start
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_hidden_start_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_terminal_hidden_start PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;terminal;requires_display"
+        LABELS "zia;zannastudio;terminal;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_terminal_render
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_render_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_terminal_render PROPERTIES
+add_test(NAME zia_zannastudio_terminal_render
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_render_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_terminal_render PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;terminal;requires_display"
+        LABELS "zia;zannastudio;terminal;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_terminal_multi
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/terminal_multi_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_terminal_multi PROPERTIES
+add_test(NAME zia_zannastudio_terminal_multi
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_multi_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_terminal_multi PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;terminal;requires_display"
+        LABELS "zia;zannastudio;terminal;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_context_menu
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/context_menu_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_context_menu PROPERTIES
+add_test(NAME zia_zannastudio_context_menu
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/context_menu_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_context_menu PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;context-menu;requires_display"
+        LABELS "zia;zannastudio;context-menu;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_syntax_render
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/syntax_render_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_syntax_render PROPERTIES
+add_test(NAME zia_zannastudio_syntax_render
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/syntax_render_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_syntax_render PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;syntax;requires_display"
+        LABELS "zia;zannastudio;syntax;requires_display"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_formatting
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/formatting_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_formatting PROPERTIES
+add_test(NAME zia_zannastudio_formatting
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/formatting_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_formatting PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;format"
+        LABELS "zia;zannastudio;format"
         TIMEOUT 30)
 
-add_test(NAME zia_zannaide_debug
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/debug_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_debug PROPERTIES
+add_test(NAME zia_zannastudio_debug
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/debug_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_debug PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;debug"
+        LABELS "zia;zannastudio;debug"
         RUN_SERIAL TRUE
         TIMEOUT 240)
 
-add_test(NAME zia_zannaide_debug_vars
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/debug_vars_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_debug_vars PROPERTIES
+add_test(NAME zia_zannastudio_debug_vars
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/debug_vars_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_debug_vars PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;debug"
+        LABELS "zia;zannastudio;debug"
         RUN_SERIAL TRUE
         TIMEOUT 120)
 
-add_test(NAME zia_zannaide_debug_tree
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/debug_tree_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_debug_tree PROPERTIES
+add_test(NAME zia_zannastudio_debug_tree
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/debug_tree_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_debug_tree PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;debug"
+        LABELS "zia;zannastudio;debug"
         RUN_SERIAL TRUE
         TIMEOUT 120)
 
-add_test(NAME zia_zannaide_semantic_tokens
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/semantic_tokens_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_semantic_tokens PROPERTIES
+add_test(NAME zia_zannastudio_semantic_tokens
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/semantic_tokens_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_semantic_tokens PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;semantic;requires_display"
+        LABELS "zia;zannastudio;semantic;requires_display"
         TIMEOUT 60)
 
-add_test(NAME zia_zannaide_language_service_sync
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/language_service_sync_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_language_service_sync PROPERTIES
+add_test(NAME zia_zannastudio_language_service_sync
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/language_service_sync_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_language_service_sync PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;semantic;requires_display"
+        LABELS "zia;zannastudio;semantic;requires_display"
         TIMEOUT 90)
 
-add_test(NAME zia_zannaide_paint_damage
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/paint_damage_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_paint_damage PROPERTIES
+add_test(NAME zia_zannastudio_paint_damage
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/paint_damage_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_paint_damage PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;perf;requires_display"
+        LABELS "zia;zannastudio;perf;requires_display"
         TIMEOUT 90)
 
-add_test(NAME zia_zannaide_console_search
-        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes/console_search_probe.zia"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannaide/src/probes")
-set_tests_properties(zia_zannaide_console_search PROPERTIES
+add_test(NAME zia_zannastudio_console_search
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/console_search_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_console_search PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannaide;console;search;requires_display"
+        LABELS "zia;zannastudio;console;search;requires_display"
         TIMEOUT 420)
 
 add_test(NAME zia_smoke_zannasql
@@ -2011,18 +2019,18 @@ endif ()
 
 set(ZANNA_DISPLAY_TESTS
         zia_smoke_paint_canvas_capture
-        zia_smoke_zannaide
-        zia_zannaide_editor_hot_path
-        zia_zannaide_intellisense
-        zia_zannaide_file_tree
-        zia_zannaide_activity_bar
-        zia_zannaide_multi_root
-        zia_zannaide_terminal_open
-        zia_zannaide_terminal_hidden_start
-        zia_zannaide_terminal_multi
-        zia_zannaide_bottom_panel
-        zia_zannaide_split_editor
-        zia_zannaide_console_search
+        zia_smoke_zannastudio
+        zia_zannastudio_editor_hot_path
+        zia_zannastudio_intellisense
+        zia_zannastudio_file_tree
+        zia_zannastudio_activity_bar
+        zia_zannastudio_multi_root
+        zia_zannastudio_terminal_open
+        zia_zannastudio_terminal_hidden_start
+        zia_zannastudio_terminal_multi
+        zia_zannastudio_bottom_panel
+        zia_zannastudio_split_editor
+        zia_zannastudio_console_search
         zia_smoke_3dbowling
         zia_smoke_3dbowling_aim
         zia_smoke_3dscene
@@ -2208,24 +2216,24 @@ if (APPLE AND ZANNA_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 120)
 
-    # Regression gate for the ZannaIDE IntelliSense fix: a codegen'd native
+    # Regression gate for the Zanna Studio IntelliSense fix: a codegen'd native
     # binary must force-load zia_editor_services so rt_zia_* resolve to the real engine
     # rather than the weak "unavailable" stubs. Fails before the fix.
-    add_test(NAME native_smoke_zannaide_completion_arm64
-            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannaide_completion_native.sh"
+    add_test(NAME native_smoke_zannastudio_completion_arm64
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannastudio_completion_native.sh"
             $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
-    set_tests_properties(native_smoke_zannaide_completion_arm64 PROPERTIES
+    set_tests_properties(native_smoke_zannastudio_completion_arm64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 180)
 endif ()
 
 if (ZANNA_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
-    add_test(NAME native_smoke_zannaide_completion_x64
+    add_test(NAME native_smoke_zannastudio_completion_x64
             COMMAND "${CMAKE_COMMAND}" -E env ZANNA_NATIVE_TEST_ARCH=x64
-            ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannaide_completion_native.sh"
+            ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannastudio_completion_native.sh"
             $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}")
-    set_tests_properties(native_smoke_zannaide_completion_x64 PROPERTIES
+    set_tests_properties(native_smoke_zannastudio_completion_x64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 180)
@@ -3025,7 +3033,7 @@ if (WIN32)
             test_rt_game3d_cinematics
             test_rt_game3d_hlod
             test_rt_restclient
-            zia_zannaide_console_search
+            zia_zannastudio_console_search
             zia_season_baseball
             zia_smoke_ridgebound_d3d11
             zia_smoke_3dbowling_title_postfx
@@ -3054,7 +3062,7 @@ if (WIN32)
     _zanna_set_windows_test_cost(zia_smoke_ashfall_render 75)
     _zanna_set_windows_test_cost(test_zia_server_lsp 70)
     _zanna_set_windows_test_cost(zia_smoke_ridgebound_d3d11 65)
-    _zanna_set_windows_test_cost(zia_zannaide_console_search 60)
+    _zanna_set_windows_test_cost(zia_zannastudio_console_search 60)
     _zanna_set_windows_test_cost(zia_season_baseball 50)
     _zanna_set_windows_test_cost(zia_smoke_ashfall_enemy 45)
     _zanna_set_windows_test_cost(zia_xenoscape_performance 200)
@@ -3070,7 +3078,7 @@ if (WIN32)
     _zanna_set_windows_test_cost(zia_smoke_ashfall_movement 15)
     _zanna_set_windows_test_cost(zia_smoke_ashfall_perf 15)
     _zanna_set_windows_test_cost(zia_smoke_ashfall_stress 25)
-    _zanna_set_windows_test_cost(zia_zannaide_intellisense 15)
+    _zanna_set_windows_test_cost(zia_zannastudio_intellisense 15)
 
     # The level probe completes in roughly 80-100 seconds by itself and in the
     # representative eight-test contention group, but a clean MSVC Debug suite
@@ -3100,6 +3108,24 @@ if (WIN32)
         endif ()
     endforeach ()
     unset(_zanna_windows_tests)
+endif ()
+
+# Instrumentation can make otherwise short integration probes several times
+# slower. Preserve the deliberately tight ordinary-build limits, but prevent an
+# explicit per-test TIMEOUT from defeating the sanitizer driver's bounded
+# timeout. Tests without an explicit limit continue to use ctest --timeout.
+if (IL_SANITIZE_ADDRESS OR IL_SANITIZE_UNDEFINED OR IL_SANITIZE_THREAD)
+    get_property(_zanna_instrumented_tests DIRECTORY PROPERTY TESTS)
+    foreach (_test IN LISTS _zanna_instrumented_tests)
+        get_property(_configured_timeout TEST ${_test} PROPERTY TIMEOUT)
+        if ("${_configured_timeout}" MATCHES "^[1-9][0-9]*$")
+            if (_configured_timeout LESS ZANNA_SANITIZER_TEST_TIMEOUT)
+                set_property(TEST ${_test} PROPERTY TIMEOUT
+                        ${ZANNA_SANITIZER_TEST_TIMEOUT})
+            endif ()
+        endif ()
+    endforeach ()
+    unset(_zanna_instrumented_tests)
 endif ()
 
 zanna_apply_display_test_environment()

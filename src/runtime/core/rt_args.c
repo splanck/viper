@@ -39,6 +39,7 @@
 
 #include "rt_args.h"
 #include "rt_context.h"
+#include "rt_context_internal.h"
 #include "rt_internal.h"
 #include "rt_string_builder.h"
 
@@ -79,6 +80,7 @@ static void rt_args_spin_yield(void) {
     sched_yield();
 #endif
 }
+
 static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size);
 
 #ifdef _WIN32
@@ -90,19 +92,14 @@ static wchar_t *rt_env_utf8_span_to_wide_or_trap(const char *utf8,
                                                  const char *context);
 #endif
 
-/// @brief Get the argument store from the active context (or legacy fallback).
-static RtArgsState *rt_args_state_with_kind(int *is_legacy) {
-    RtContext *ctx = rt_get_current_context();
-    RtContext *legacy = rt_legacy_context();
-    if (ctx) {
-        if (is_legacy)
-            *is_legacy = (ctx == legacy);
-        return &ctx->args_state;
-    }
-
-    if (is_legacy)
-        *is_legacy = 1;
-    return legacy ? &legacy->args_state : NULL;
+/// @brief Lock and return the effective context containing the argument store.
+/// @details Uses the context handoff-aware acquisition API, so unbound native
+///          threads cannot race first/last-binding migration of the legacy
+///          argument buffer. The caller must release `RT_CONTEXT_STATE_ARGS`.
+/// @param is_legacy Optional output identifying the process fallback context.
+/// @return Locked effective context, or NULL after initialization failure.
+static RtContext *rt_args_context_with_kind(int *is_legacy) {
+    return rt_context_acquire_state(RT_CONTEXT_STATE_ARGS, is_legacy);
 }
 
 /// @brief Mark the legacy-context host-init state as complete.
@@ -116,8 +113,8 @@ static void rt_args_mark_legacy_host_initialized(void) {
     // already 1 (another thread mid-import) or 2 (done), leave it: the CAS fails
     // and we do not clobber the in-progress or completed state.
     int expected = 0;
-    atomic_compare_exchange_strong_explicit(&g_legacy_args_host_init_state, &expected, 2,
-                                            memory_order_acq_rel, memory_order_acquire);
+    atomic_compare_exchange_strong_explicit(
+        &g_legacy_args_host_init_state, &expected, 2, memory_order_acq_rel, memory_order_acquire);
 }
 
 /// @brief Record that the user code has manually pushed/cleared arguments.
@@ -284,8 +281,11 @@ static void rt_args_ensure_legacy_host_initialized(RtArgsState *state) {
     // it populates the args and publishes state 2 with release ordering so the
     // populated arguments are visible to any thread that later acquire-loads 2.
     int expected = 0;
-    if (atomic_compare_exchange_strong_explicit(&g_legacy_args_host_init_state, &expected, 1,
-                                                memory_order_acq_rel, memory_order_acquire)) {
+    if (atomic_compare_exchange_strong_explicit(&g_legacy_args_host_init_state,
+                                                &expected,
+                                                1,
+                                                memory_order_acq_rel,
+                                                memory_order_acquire)) {
         if (state->size == 0)
             rt_args_populate_host(state);
         atomic_store_explicit(&g_legacy_args_host_init_state, 2, memory_order_release);
@@ -299,17 +299,23 @@ static void rt_args_ensure_legacy_host_initialized(RtArgsState *state) {
 }
 
 /// @brief Resolve the active args state for a read, triggering lazy host-import.
-/// @details Combines `rt_args_state_with_kind` with
+/// @details Combines `rt_args_context_with_kind` with
 ///          `rt_args_ensure_legacy_host_initialized` so a fresh process that
 ///          hasn't pushed any args yet still observes the host argv on first
 ///          read. Active (non-legacy) contexts skip the lazy import — those
 ///          contexts are owned by an explicit caller (tool runner, REPL).
+/// @param out_ctx Receives the locked owning context for later release.
 /// @return The args state to read from; `NULL` if no context is active.
-static RtArgsState *rt_args_query_state(void) {
+static RtArgsState *rt_args_query_state(RtContext **out_ctx) {
+    if (out_ctx)
+        *out_ctx = NULL;
     int is_legacy = 0;
-    RtArgsState *state = rt_args_state_with_kind(&is_legacy);
+    RtContext *ctx = rt_args_context_with_kind(&is_legacy);
+    RtArgsState *state = ctx ? &ctx->args_state : NULL;
     if (is_legacy)
         rt_args_ensure_legacy_host_initialized(state);
+    if (out_ctx)
+        *out_ctx = ctx;
     return state;
 }
 
@@ -493,7 +499,8 @@ static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
 /// @note Releases references to all stored strings.
 void rt_args_clear(void) {
     int is_legacy = 0;
-    RtArgsState *state = rt_args_state_with_kind(&is_legacy);
+    RtContext *ctx = rt_args_context_with_kind(&is_legacy);
+    RtArgsState *state = ctx ? &ctx->args_state : NULL;
     if (!state)
         return;
     for (size_t i = 0; i < state->size; ++i) {
@@ -503,6 +510,7 @@ void rt_args_clear(void) {
     }
     state->size = 0;
     rt_args_note_manual_mutation(is_legacy);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_ARGS);
 }
 
 /// @brief Add a command-line argument to the argument store.
@@ -517,11 +525,13 @@ void rt_args_clear(void) {
 /// @note Traps on allocation failure.
 void rt_args_push(rt_string s) {
     int is_legacy = 0;
-    RtArgsState *state = rt_args_state_with_kind(&is_legacy);
+    RtContext *ctx = rt_args_context_with_kind(&is_legacy);
+    RtArgsState *state = ctx ? &ctx->args_state : NULL;
     if (!state)
         return;
     rt_args_append(state, s);
     rt_args_note_manual_mutation(is_legacy);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_ARGS);
 }
 
 /// @brief Get the number of command-line arguments.
@@ -546,8 +556,12 @@ void rt_args_push(rt_string s) {
 ///
 /// @see rt_args_get For retrieving individual arguments
 int64_t rt_args_count(void) {
-    RtArgsState *state = rt_args_query_state();
-    return state ? (int64_t)state->size : 0;
+    RtContext *ctx = NULL;
+    RtArgsState *state = rt_args_query_state(&ctx);
+    int64_t count = state ? (int64_t)state->size : 0;
+    if (ctx)
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_ARGS);
+    return count;
 }
 
 /// @brief Get a command-line argument by index.
@@ -572,16 +586,20 @@ int64_t rt_args_count(void) {
 ///
 /// @see rt_args_count For getting the argument count
 rt_string rt_args_get(int64_t index) {
-    RtArgsState *state = rt_args_query_state();
+    RtContext *ctx = NULL;
+    RtArgsState *state = rt_args_query_state(&ctx);
     if (!state)
         return NULL;
     if (index < 0 || (size_t)index >= state->size) {
+        rt_context_release_state(ctx, RT_CONTEXT_STATE_ARGS);
         rt_trap("rt_args_get: index out of range");
         return NULL;
     }
     rt_string s = state->items[index];
     // Return retained reference to match common getter semantics
-    return rt_string_ref(s);
+    rt_string result = rt_string_ref(s);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_ARGS);
+    return result;
 }
 
 /// @brief Get the full command line as a single string.
@@ -604,9 +622,13 @@ rt_string rt_args_get(int64_t index) {
 /// @see rt_args_get For individual argument access
 /// @see rt_args_count For argument count
 rt_string rt_cmdline(void) {
-    RtArgsState *state = rt_args_query_state();
-    if (!state || state->size == 0)
+    RtContext *ctx = NULL;
+    RtArgsState *state = rt_args_query_state(&ctx);
+    if (!state || state->size == 0) {
+        if (ctx)
+            rt_context_release_state(ctx, RT_CONTEXT_STATE_ARGS);
         return rt_str_empty();
+    }
     rt_string_builder sb;
     rt_sb_init(&sb);
     for (size_t i = 0; i < state->size; ++i) {
@@ -618,10 +640,12 @@ rt_string rt_cmdline(void) {
     }
     rt_string out = rt_string_from_bytes(sb.data, sb.len);
     rt_sb_free(&sb);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_ARGS);
     return out;
 
 cmdline_error:
     rt_sb_free(&sb);
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_ARGS);
     return rt_str_empty();
 }
 

@@ -116,10 +116,71 @@ Loose filesystem fallback is constrained to relative, CWD-based asset names. Abs
 Mount paths containing embedded NUL bytes are rejected.
 Asset lookup, mounting, unmounting, listing, and lazy initialization are synchronized internally so concurrent readers cannot race with pack mount changes.
 
+Lazy first use has three states: uninitialized, staging, and published. Exactly one caller parses
+the optional embedded blob and discovers adjacent packs into a private staging registry; filesystem
+enumeration and complete pack validation happen without holding the live registry mutex. Concurrent
+first-use callers wait for one atomic publication and never observe a partially discovered pack
+set. A corrupt discovered or embedded pack is skipped, and does not leave initialization locked or
+prevent later asset calls.
+
+For a packed lookup, the manager resolves the entry and retains its archive while holding the
+registry mutex, then releases the mutex before file reads, DEFLATE work, checksum validation, or a
+typed decoder runs. Mount and unmount calls therefore serialize registry publication but are not
+blocked for the duration of unrelated asset I/O. An in-flight reader keeps its selected pack alive
+even if another thread unmounts that path.
+
 ## ZPAK Format
 
-ZPAK (Zanna Pack Archive) is a simple binary container: 32-byte header + data blob + table of contents. The same format is used for both embedded blobs and standalone `.zpak` files.
-The runtime validates TOC bounds, complete TOC parsing, duplicate names, entry data ranges, and compressed/uncompressed size agreement before returning asset bytes.
+ZPAK (Zanna Pack Archive) is a little-endian binary container: a fixed 32-byte header, stored entry
+payloads, then a variable table of contents (TOC). The same bytes are used for embedded read-only
+blobs and standalone `.zpak` files. Current writers emit version 2; the runtime continues to read
+version 1 packs.
+
+### Header (versions 1 and 2)
+
+| Offset | Size | Field | Rule |
+|--------|------|-------|------|
+| 0 | 4 | Magic | ASCII `ZPAK` |
+| 4 | 2 | Version | `1` or `2` |
+| 6 | 2 | Header flags | Bit 0: at least one compressed entry; bit 1: per-entry CRC-32 (required in v2, invalid in v1) |
+| 8 | 4 | Entry count | Unsigned 32-bit record count |
+| 12 | 8 | TOC offset | Absolute byte offset from the start of the archive |
+| 20 | 8 | TOC size | Encoded TOC length, at most 64 MiB |
+| 28 | 4 | Reserved | Must be zero |
+
+The TOC must occupy the exact archive tail. An empty archive has both count and TOC size zero and
+cannot set the compressed flag. Before allocating an entry array, the reader proves that the
+declared count fits the TOC's minimum encoded record size.
+
+### TOC Entry
+
+Each entry is encoded consecutively with no terminator or inter-record padding:
+
+| Size | Field | Rule |
+|------|-------|------|
+| 2 | Name length | Nonzero unsigned byte length |
+| variable | Name | Relative forward-slash asset path; no NUL, backslash, colon, empty component, `.` component, or `..` component |
+| 8 | Data offset | Absolute stored-payload offset |
+| 8 | Original size | Uncompressed byte count |
+| 8 | Stored size | Bytes present in the payload region |
+| 2 | Entry flags | Bit 0 means raw DEFLATE; all other bits are invalid |
+| 2 | Reserved | Must be zero |
+| 4 (v2 only) | CRC-32 | IEEE CRC-32 of the original uncompressed bytes |
+
+Version 1 has 28 fixed bytes after the name and no checksum. Version 2 has 32 fixed bytes and
+requires the header checksum flag. Current writers align payload starts and the TOC to eight bytes;
+alignment is a writer property, while readers rely on explicit offsets.
+
+Open/mount validation rejects unsupported versions or flags, trailing TOC bytes, duplicate names,
+inconsistent aggregate compression flags, payloads outside the data region, overlapping non-empty
+stored ranges, and an uncompressed entry whose stored and original sizes differ. Entries are sorted
+by offset for overlap validation and then by name for adjacent duplicate detection and binary
+lookup, so opening a large valid pack is not quadratic in its entry count.
+
+Version 2 reads verify the CRC after copying an uncompressed payload or after successful DEFLATE
+inflation. Version 1 remains compatible but has no end-to-end payload checksum. A checksum,
+inflation, or on-demand file read failure returns no asset bytes.
+
 Typed asset decoders that need a file path spill bytes through an exclusive private temporary file or directory and clean it up after decoding; temporary handles are non-inheritable/close-on-exec where supported.
 
 ## Example

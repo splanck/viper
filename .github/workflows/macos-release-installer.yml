@@ -27,7 +27,7 @@ jobs:
       ZANNA_BUILD_DIR: build
       ZANNA_BUILD_TYPE: Release
       ZANNA_SKIP_INSTALL: "1"
-      ZANNA_EXTRA_CMAKE_ARGS: -DZANNA_INSTALL_ZANNAIDE=ON
+      ZANNA_EXTRA_CMAKE_ARGS: -DZANNA_INSTALL_ZANNASTUDIO=ON
 
     steps:
       - name: Check out source

@@ -77,6 +77,13 @@ int8_t rt_intmap_remove(void *obj, int64_t key);
 /// @param obj IntMap pointer.
 void rt_intmap_clear(void *obj);
 
+/// @brief Compact the bucket table to the minimum capacity for current entries.
+/// @details Allocates and installs a smaller table transactionally. Existing
+///          keys and retained values remain unchanged if allocation fails.
+/// @param obj IntMap pointer.
+/// @return 1 when already compact or successfully trimmed; 0 after a trap.
+int8_t rt_intmap_trim(void *obj);
+
 /// @brief Get all keys as a Seq of boxed integers.
 /// @param obj IntMap pointer.
 /// @return New owning Seq containing all keys as boxed i64 values.

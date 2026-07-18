@@ -33,6 +33,8 @@
 #include "rt_internal.h"
 
 #include <limits.h>
+#include <setjmp.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -78,38 +80,139 @@ static void rt_zanna_tls_release_temp_object(void *obj) {
         rt_obj_free(obj);
 }
 
-/// @brief Return the best current TLS connection error as a Result-compatible string.
+/// @brief Return the best current TLS connection diagnostic as stable native text.
+/// @details The TLS layer stores its last connection error in thread-local
+///          native storage, so the returned pointer is valid until the next
+///          low-level TLS operation on this thread. The Result helper copies
+///          it into a managed String before exposing it to Zanna code.
 /// @param fallback Fallback message when the TLS layer has no captured text.
-/// @return Runtime string handle suitable for rt_result_err_str().
-static rt_string rt_zanna_tls_connect_error_message(const char *fallback) {
+/// @return NUL-terminated diagnostic owned by the TLS layer or caller.
+static const char *rt_zanna_tls_connect_error_message(const char *fallback) {
     const char *err = rt_tls_last_error();
     if (!err || !err[0])
         err = fallback && fallback[0] ? fallback : "Tls.Connect failed";
-    return rt_const_cstr(err);
+    return err;
+}
+
+/// @brief Copy the active trap diagnostic before clearing its recovery frame.
+/// @param output Destination buffer.
+/// @param capacity Destination capacity including the terminator.
+/// @param fallback Diagnostic used when the active text is empty.
+static void rt_zanna_tls_save_trap(char *output, size_t capacity, const char *fallback) {
+    if (!output || capacity == 0)
+        return;
+    const char *error = rt_trap_get_error();
+    snprintf(output, capacity, "%s", error && error[0] ? error : fallback);
+}
+
+/// @brief Build a caller-owned `Result.ErrStr` from native diagnostic bytes.
+/// @details String and Result construction run under a fresh recovery frame.
+///          The temporary String reference is released after Result retains it,
+///          and every partial value is released before an allocation trap is
+///          re-raised. This prevents connect failures from leaking their error
+///          strings or recursively jumping into an older recovery frame.
+/// @param message NUL-terminated diagnostic, with a fixed fallback for NULL.
+/// @return Caller-owned error Result, or NULL after a returning trap hook.
+static void *rt_zanna_tls_error_result(const char *message) {
+    rt_string volatile error_string = NULL;
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rt_zanna_tls_save_trap(
+            saved_error, sizeof(saved_error), "Tls: error Result allocation failed");
+        rt_trap_clear_recovery();
+        rt_zanna_tls_release_temp_object((void *)result);
+        rt_zanna_tls_release_temp_object((void *)error_string);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    const char *stable = message && message[0] ? message : "Tls.Connect failed";
+    error_string = rt_string_from_bytes(stable, strlen(stable));
+    if (!error_string) {
+        rt_trap_clear_recovery();
+        return NULL;
+    }
+    result = rt_result_err_str((rt_string)error_string);
+    if (!result) {
+        rt_trap_clear_recovery();
+        rt_zanna_tls_release_temp_object((void *)error_string);
+        return NULL;
+    }
+    rt_trap_clear_recovery();
+    rt_zanna_tls_release_temp_object((void *)error_string);
+    return (void *)result;
+}
+
+/// @brief Wrap and consume one caller-owned TLS wrapper in `Result.Ok`.
+/// @details Result retains the wrapper payload. The connection's producer
+///          reference is consumed after success and on every allocation-failure
+///          path, which also closes its low-level TLS session through the
+///          wrapper finalizer.
+/// @param conn Caller-owned stable TLS wrapper.
+/// @return Caller-owned success Result, or NULL after a returning trap hook.
+static void *rt_zanna_tls_success_result_owned(void *conn) {
+    void *volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rt_zanna_tls_save_trap(
+            saved_error, sizeof(saved_error), "Tls: success Result allocation failed");
+        rt_trap_clear_recovery();
+        rt_zanna_tls_release_temp_object((void *)result);
+        rt_zanna_tls_release_temp_object(conn);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_result_ok(conn);
+    if (!result) {
+        rt_trap_clear_recovery();
+        rt_zanna_tls_release_temp_object(conn);
+        return NULL;
+    }
+    rt_trap_clear_recovery();
+    rt_zanna_tls_release_temp_object(conn);
+    return (void *)result;
 }
 
 /// @brief Convert a TLS connection handle into Result.Ok or Result.ErrStr.
 /// @param conn Newly-created TLS object, or NULL on connection failure.
 /// @param fallback Error text used when the TLS layer has no detailed message.
-/// @return Opaque Zanna.Result object.
+/// @return Caller-owned Zanna.Result object.
 static void *rt_zanna_tls_connect_to_result(void *conn, const char *fallback) {
     if (!conn)
-        return rt_result_err_str(rt_zanna_tls_connect_error_message(fallback));
-    void *result = rt_result_ok(conn);
-    rt_zanna_tls_release_temp_object(conn);
-    return result;
+        return rt_zanna_tls_error_result(rt_zanna_tls_connect_error_message(fallback));
+    return rt_zanna_tls_success_result_owned(conn);
 }
 
+/// @brief Validate and cast an opaque Zanna TLS receiver.
+/// @details Stable class identity and minimum payload size are checked before
+///          any native pointer field is read. Invalid, stale, and forged
+///          receivers emit one trap and return NULL so returning trap hooks
+///          cannot permit unsafe continuation.
+/// @param obj Candidate managed TLS wrapper.
+/// @return Valid wrapper payload, or NULL after trapping.
 static rt_zanna_tls_t *rt_zanna_tls_require(void *obj) {
-    if (!obj)
-        return NULL;
-    if (rt_obj_class_id(obj) != RT_TLS_CLASS_ID) {
+    if (!rt_obj_is_instance(obj, RT_TLS_CLASS_ID, sizeof(rt_zanna_tls_t))) {
         rt_trap("Tls: invalid object");
         return NULL;
     }
     return (rt_zanna_tls_t *)obj;
 }
 
+/// @brief Validate a public runtime String argument and expose exact bytes.
+/// @details The stable String registry is queried before length or data fields
+///          are read. Embedded NUL is rejected because the low-level TLS and OS
+///          path/hostname interfaces consume C strings.
+/// @param value Candidate String handle; NULL is treated as empty only when allowed.
+/// @param out Receives the NUL-terminated byte pointer on success.
+/// @param out_len Receives the exact stored byte count on success.
+/// @param allow_empty Nonzero when NULL and empty Strings are valid.
+/// @param max_len Exclusive maximum including room for a destination terminator.
+/// @return 1 for a valid argument, otherwise 0.
 static int rt_zanna_tls_string_arg(
     rt_string value, const char **out, size_t *out_len, int allow_empty, size_t max_len) {
     if (!out || !out_len)
@@ -118,6 +221,8 @@ static int rt_zanna_tls_string_arg(
     *out_len = 0;
     if (!value)
         return allow_empty;
+    if (!rt_string_is_handle(value))
+        return 0;
     int64_t len64 = rt_str_len(value);
     if (len64 < 0 || (!allow_empty && len64 == 0) || (size_t)len64 >= max_len)
         return 0;
@@ -188,29 +293,52 @@ static int rt_zanna_tls_validate_connect_args(rt_string host,
     return 1;
 }
 
+/// @brief Box one owned low-level session in a managed Zanna TLS wrapper.
+/// @details The host copy is staged before managed allocation. A local recovery
+///          frame closes the owned session and frees the copy if object
+///          allocation traps, so callers never retain an unobservable socket.
+/// @param session Caller-owned low-level session, consumed on every path.
+/// @param host_cstr Validated host text copied into the wrapper.
+/// @param port Connected TCP port.
+/// @return Caller-owned wrapper, or NULL after cleanup on failure.
 static void *rt_zanna_tls_object_from_session(rt_tls_session_t *session,
                                               const char *host_cstr,
                                               int64_t port) {
-    rt_zanna_tls_t *tls =
-        (rt_zanna_tls_t *)rt_obj_new_i64(RT_TLS_CLASS_ID, (int64_t)sizeof(rt_zanna_tls_t));
-    if (!tls) {
+    if (!session)
+        return NULL;
+    char *host_copy = strdup(host_cstr ? host_cstr : "");
+    if (!host_copy) {
         rt_tls_close(session);
         return NULL;
     }
 
-    tls->session = session;
-    tls->host = NULL;
-    tls->port = port;
-    rt_obj_set_finalizer(tls, rt_zanna_tls_finalize);
-
-    tls->host = strdup(host_cstr ? host_cstr : "");
-    if (!tls->host) {
-        if (rt_obj_release_check0(tls))
-            rt_obj_free(tls);
+    rt_zanna_tls_t *volatile tls = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rt_zanna_tls_save_trap(saved_error, sizeof(saved_error), "Tls: wrapper allocation failed");
+        rt_trap_clear_recovery();
+        free(host_copy);
+        rt_tls_close(session);
+        rt_trap(saved_error);
         return NULL;
     }
+    tls = (rt_zanna_tls_t *)rt_obj_new_i64(RT_TLS_CLASS_ID, (int64_t)sizeof(rt_zanna_tls_t));
+    if (!tls) {
+        rt_trap_clear_recovery();
+        free(host_copy);
+        rt_tls_close(session);
+        return NULL;
+    }
+    rt_trap_clear_recovery();
 
-    return tls;
+    ((rt_zanna_tls_t *)tls)->session = session;
+    ((rt_zanna_tls_t *)tls)->host = host_copy;
+    ((rt_zanna_tls_t *)tls)->port = port;
+    rt_obj_set_finalizer((void *)tls, rt_zanna_tls_finalize);
+
+    return (void *)tls;
 }
 
 static void *rt_zanna_tls_connect_impl(rt_string host,
@@ -273,7 +401,7 @@ void *rt_zanna_tls_connect(rt_string host, int64_t port) {
 void *rt_zanna_tls_connect_result(rt_string host, int64_t port) {
     const char *arg_error = NULL;
     if (!rt_zanna_tls_validate_connect_args(host, port, 30000, NULL, NULL, &arg_error))
-        return rt_result_err_str(rt_const_cstr(arg_error));
+        return rt_zanna_tls_error_result(arg_error);
     void *conn = rt_zanna_tls_connect_impl(host, port, 30000, NULL, NULL, 1);
     return rt_zanna_tls_connect_to_result(conn, "Tls.Connect failed");
 }
@@ -295,7 +423,7 @@ void *rt_zanna_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 void *rt_zanna_tls_connect_for_result(rt_string host, int64_t port, int64_t timeout_ms) {
     const char *arg_error = NULL;
     if (!rt_zanna_tls_validate_connect_args(host, port, timeout_ms, NULL, NULL, &arg_error))
-        return rt_result_err_str(rt_const_cstr(arg_error));
+        return rt_zanna_tls_error_result(arg_error);
     void *conn = rt_zanna_tls_connect_impl(host, port, timeout_ms, NULL, NULL, 1);
     return rt_zanna_tls_connect_to_result(conn, "Tls.ConnectFor failed");
 }
@@ -338,7 +466,7 @@ void *rt_zanna_tls_connect_options_result(rt_string host,
                                           int64_t timeout_ms) {
     const char *arg_error = NULL;
     if (!rt_zanna_tls_validate_connect_args(host, port, timeout_ms, ca_file, alpn, &arg_error))
-        return rt_result_err_str(rt_const_cstr(arg_error));
+        return rt_zanna_tls_error_result(arg_error);
     void *conn =
         rt_zanna_tls_connect_impl(host, port, timeout_ms, ca_file, alpn, verify_cert ? 1 : 0);
     return rt_zanna_tls_connect_to_result(conn, "Tls.ConnectOptions failed");
@@ -350,7 +478,7 @@ rt_string rt_zanna_tls_host(void *obj) {
         return rt_string_from_bytes("", 0);
     rt_zanna_tls_t *tls = rt_zanna_tls_require(obj);
     if (!tls)
-        return rt_string_from_bytes("", 0);
+        return NULL;
     const char *h = tls->host ? tls->host : "";
     return rt_string_from_bytes(h, strlen(h));
 }
@@ -374,7 +502,9 @@ rt_string rt_zanna_tls_negotiated_alpn(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_zanna_tls_t *tls = rt_zanna_tls_require(obj);
-    if (!tls || !tls->session)
+    if (!tls)
+        return NULL;
+    if (!tls->session)
         return rt_string_from_bytes("", 0);
     const char *alpn = rt_tls_get_negotiated_alpn(tls->session);
     return rt_string_from_bytes(alpn ? alpn : "", alpn ? strlen(alpn) : 0);
@@ -404,21 +534,18 @@ int64_t rt_zanna_tls_send(void *obj, void *data) {
     if (!tls->session)
         return -1;
 
+    if (!rt_bytes_is_bytes(data))
+        return -1;
     int64_t len = rt_bytes_len(data);
     if (len < 0)
         return -1;
     if (len == 0)
         return 0;
 
-    // Copy bytes to temporary buffer
-    uint8_t *buffer = (uint8_t *)malloc((size_t)len);
+    const uint8_t *buffer = rt_bytes_data_const(data);
     if (!buffer)
         return -1;
-    for (int64_t i = 0; i < len; i++)
-        buffer[i] = (uint8_t)rt_bytes_get(data, i);
-
     long result = rt_tls_send(tls->session, buffer, (size_t)len);
-    free(buffer);
     return (int64_t)result;
 }
 
@@ -428,6 +555,8 @@ int64_t rt_zanna_tls_send(void *obj, void *data) {
 /// @return Number of bytes sent, or -1 on error.
 int64_t rt_zanna_tls_send_str(void *obj, rt_string text) {
     if (!obj || !text)
+        return -1;
+    if (!rt_string_is_handle(text))
         return -1;
 
     rt_zanna_tls_t *tls = rt_zanna_tls_require(obj);
@@ -464,25 +593,14 @@ void *rt_zanna_tls_recv(void *obj, int64_t max_bytes) {
     if (!tls->session)
         return NULL;
 
-    // Allocate temporary buffer
     size_t buf_size = (size_t)max_bytes;
-    uint8_t *buffer = (uint8_t *)malloc(buf_size);
-    if (!buffer)
-        return NULL;
+    uint8_t buffer[TLS_MAX_RECORD_SIZE];
 
     long received = rt_tls_recv(tls->session, buffer, buf_size);
-    if (received <= 0) {
-        free(buffer);
+    if (received <= 0)
         return received == 0 ? rt_bytes_new(0) : NULL;
-    }
 
-    // Create Bytes object and copy data
-    void *result = rt_bytes_new((int64_t)received);
-    for (long i = 0; i < received; i++)
-        rt_bytes_set(result, i, buffer[i]);
-
-    free(buffer);
-    return result;
+    return rt_bytes_from_raw(buffer, (size_t)received);
 }
 
 /// @brief Receive bytes into a length-aware string without UTF-8 validation.
@@ -497,26 +615,44 @@ rt_string rt_zanna_tls_recv_str(void *obj, int64_t max_bytes) {
 
     rt_zanna_tls_t *tls = rt_zanna_tls_require(obj);
     if (!tls)
-        return rt_string_from_bytes("", 0);
+        return NULL;
     if (!tls->session)
         return rt_string_from_bytes("", 0);
 
-    // Allocate temporary buffer
     size_t buf_size = (size_t)max_bytes;
-    char *buffer = (char *)malloc(buf_size + 1);
-    if (!buffer)
-        return rt_string_from_bytes("", 0);
+    char buffer[TLS_MAX_RECORD_SIZE];
 
     long received = rt_tls_recv(tls->session, buffer, buf_size);
-    if (received <= 0) {
-        free(buffer);
+    if (received <= 0)
         return rt_string_from_bytes("", 0);
-    }
 
-    buffer[received] = '\0';
-    rt_string result = rt_string_from_bytes(buffer, (size_t)received);
-    free(buffer);
-    return result;
+    return rt_string_from_bytes(buffer, (size_t)received);
+}
+
+/// @brief Convert an owned native line buffer to a managed String and free it.
+/// @details A local recovery frame ensures the native allocation is freed if
+///          managed String construction traps. The saved diagnostic is
+///          re-raised only after the frame has been removed, preventing a jump
+///          back into this cleanup scope.
+/// @param line Heap buffer owned by this helper.
+/// @param len Exact byte count to preserve, including any embedded NUL bytes.
+/// @return Caller-owned String, or NULL after a returning trap hook.
+static rt_string rt_zanna_tls_string_from_owned_line(char *line, size_t len) {
+    rt_string volatile result = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[512];
+        rt_zanna_tls_save_trap(saved_error, sizeof(saved_error), "Tls.RecvLine allocation failed");
+        rt_trap_clear_recovery();
+        free(line);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    result = rt_string_from_bytes(line, len);
+    rt_trap_clear_recovery();
+    free(line);
+    return (rt_string)result;
 }
 
 /// @brief Read through LF, strip a preceding CR, and return the completed line.
@@ -528,7 +664,7 @@ rt_string rt_zanna_tls_recv_line(void *obj) {
 
     rt_zanna_tls_t *tls = rt_zanna_tls_require(obj);
     if (!tls)
-        return rt_string_from_bytes("", 0);
+        return NULL;
     if (!tls->session)
         return rt_string_from_bytes("", 0);
 
@@ -580,9 +716,7 @@ rt_string rt_zanna_tls_recv_line(void *obj) {
         return rt_string_from_bytes("", 0);
     }
 
-    rt_string result = rt_string_from_bytes(line, len);
-    free(line);
-    return result;
+    return rt_zanna_tls_string_from_owned_line(line, len);
 }
 
 /// @brief Send close_notify, perform the bounded peer-alert drain, and close.
@@ -609,8 +743,7 @@ rt_string rt_zanna_tls_error(void *obj) {
 
     rt_zanna_tls_t *tls = rt_zanna_tls_require(obj);
     if (!tls) {
-        msg = "invalid object";
-        return rt_string_from_bytes(msg, strlen(msg));
+        return NULL;
     }
     if (!tls->session) {
         msg = "connection closed";

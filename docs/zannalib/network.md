@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-17
 ---
 
 # Network
@@ -73,7 +73,12 @@ a descriptive error message and clean exit.
 | HTTP socket operation/phase  | 30 sec  |
 | WS socket operation/phase    | 30 sec  |
 
-Timeout values must fit the runtime socket timeout range: `0` disables an explicit timeout and positive values must be no larger than `2147483647` milliseconds. Negative or overflowing timeout arguments are treated as programming errors by the typed networking APIs. HTTP and WebSocket timeouts are reused for individual address attempts and socket-I/O or handshake phases; they are not one wall-clock deadline for an entire request, redirect chain, or connection setup.
+Timeout values must fit the runtime socket timeout range: `0` disables an explicit timeout and positive values must be no larger than `2147483647` milliseconds. Negative or overflowing timeout arguments are treated as programming errors by the typed networking APIs. HTTP timeouts are reused for individual address attempts and socket-I/O or handshake phases; they are not one wall-clock deadline for an entire request or redirect chain. WebSocket connection attempts use one monotonic deadline across DNS resolution and every resolved address, then retain the configured timeout for the opening handshake and subsequent I/O phases.
+
+Each individual native readiness wait does preserve one monotonic deadline across interrupted
+system calls. Repeated POSIX signals or WinSock interruptions cannot restart that wait's full
+duration. An orderly peer shutdown is surfaced as readable EOF, while error-only readiness uses
+the socket's current native error rather than a stale `errno`/WinSock value.
 
 ### Programming Errors
 
@@ -126,6 +131,12 @@ TCP client connection for sending and receiving data over a network.
 
 `SendStr` uses the runtime string byte length, so embedded NUL bytes are sent instead of truncating the payload at the first NUL.
 
+Tcp handles carry a stable managed class identity plus an initialization marker. Every native Tcp
+method validates both the class and the complete private payload before reading socket state, so a
+wrong-class, undersized, or uninitialized opaque value traps instead of being treated as a file
+descriptor. `Send` and `SendAll` likewise require an actual `Bytes` value. Raw send lengths and
+receive sizes must be non-negative; zero remains a successful empty operation.
+
 ### Receive Methods
 
 | Method             | Returns | Description                                          |
@@ -142,6 +153,14 @@ also sets `IsOpen` to false. `RecvExact` and `RecvLine` instead trap if a timeou
 them from completing; `RecvLine` has a 64 KiB limit and removes a trailing `CR` only when followed
 by `LF`.
 
+Receive-result ownership is trap-safe. If `Recv` consumes a short read and its exact-size Bytes
+allocation fails, the original oversized Bytes is released before the allocation trap propagates.
+Likewise, `RecvStr` releases its temporary Bytes and `RecvLine` releases its native line buffer if
+managed String construction traps. The socket remains open after these result-allocation failures;
+already received bytes stay consumed, matching ordinary socket side-effect semantics.
+Receive failures snapshot the native socket error before releasing staging buffers, so cleanup
+cannot accidentally turn a timeout into another error category (or vice versa).
+
 ### Timeout and Close Methods
 
 | Method                  | Returns | Description                               |
@@ -149,6 +168,10 @@ by `LF`.
 | `Close()`               | void    | Close the connection                      |
 | `SetRecvTimeout(ms)`    | void    | Set receive timeout (0 = no timeout)      |
 | `SetSendTimeout(ms)`    | void    | Set send timeout (0 = no timeout)         |
+
+Timeout updates are transactional: the stored timeout changes only after the operating system
+accepts the socket option. Applying a timeout to a closed connection, or an OS option failure,
+traps instead of reporting a value that was never installed.
 
 ### Connection Options
 
@@ -308,6 +331,23 @@ TCP server for accepting incoming client connections.
 
 `Listen(0)` is supported and asks the OS to assign an ephemeral port. Read the actual port back from `server.Port` after the listener is created.
 
+TcpServer handles have their own stable managed class identity and initialization marker. Listener
+properties, `Accept`/`AcceptFor`, and non-null `Close` calls validate the complete native payload
+before reading it; forged or wrong-class handles trap instead of being interpreted as listener
+state. `Close(NOTHING)` remains an intentional no-op.
+
+`TcpServer` supports concurrent accept waiters and a concurrent `Close`. Internally, the listener
+is non-blocking and each accept registers an in-flight descriptor lease. `Close` first publishes
+the stopped state, waits for registered accept loops to leave, and only then closes the native
+descriptor; this prevents a descriptor-number reuse race between readiness and `accept`. An
+`Accept`/`AcceptFor` already waiting when `Close` wins returns `NOTHING` without trapping. A new
+accept call made after the stopped state is visible still traps with `Err_ConnectionClosed`.
+Accepted `Tcp` sockets are restored to blocking mode before publication.
+
+Listener, outbound-connection, and accepted-connection construction are transactional. If managed
+object allocation traps after a socket has been bound or connected, the native socket and any host
+or address staging buffer are released before the allocation diagnostic propagates.
+
 ### Zia Example
 
 > TcpServer is accessible via `bind Zanna.Network.TcpServer as TcpServer;`. Call `TcpServer.Listen(port)` or `TcpServer.ListenAt(addr, port)`. Properties use get_ pattern.
@@ -455,6 +495,10 @@ UDP datagram socket for connectionless communication.
 | `SendToStr(host, port, text)`| Integer | Send string as UTF-8, return bytes sent  |
 
 `SendToStr` uses the runtime string byte length, so embedded NUL bytes are included in the datagram.
+Both send methods validate the complete UDP receiver and require the documented managed payload
+type (`Bytes` or String) before resolving the destination. An empty payload sends a real
+zero-length UDP datagram; a return value of zero therefore means a datagram was transmitted, not
+that the operation was skipped. UDP sends are atomic: an unexpected partial native send traps.
 
 ### Receive Methods
 
@@ -465,6 +509,18 @@ UDP datagram socket for connectionless communication.
 | `RecvFrom(maxBytes)`       | Bytes   | Alias of `Recv`; receive and store sender info  |
 | `SenderHost()`             | String  | Host of the last packet received by either receive method |
 | `SenderPort()`             | Integer | Port of the last packet received by either receive method |
+
+Receive sizes must be non-negative. A zero maximum is an immediate empty operation that consumes
+no packet. If a datagram exceeds a positive receive maximum, the entire offending datagram is
+consumed and a protocol trap is raised; it is never returned as a truncated prefix and cannot
+remain queued to wedge later receives. Sender metadata changes only after a complete result has
+been constructed successfully.
+
+Short receives allocate an exact-size `Bytes` result. If that second allocation traps, the
+oversized staging `Bytes` is released before the diagnostic propagates. The datagram remains
+consumed, and the socket can receive the next datagram normally.
+Native receive errors are captured before that cleanup so the reported timeout/network category
+cannot be changed by allocator or registry calls.
 
 ### Options and Close
 
@@ -479,6 +535,13 @@ UDP datagram socket for connectionless communication.
 `Close()` is idempotent. After close, `IsBound` is false and `Port` is zero, while `Address`
 retains the address used for the last bind. `LeaveGroup` is best-effort: it silently does nothing
 for a closed socket or invalid group string, and it does not report an OS leave failure.
+
+UDP handles carry a stable managed class identity plus an initialization marker. Every receiver
+boundary validates both before reading socket state, so wrong-class, undersized, and uninitialized
+opaque values trap safely even when an embedder's trap hook returns. `New`, `Bind`, and `BindAt`
+publish transactionally: a managed allocation trap after native socket creation/bind closes that
+socket and frees the staged address. `SetRecvTimeout` changes stored state only after the operating
+system accepts the socket option and traps when called on a closed handle.
 
 ### Zia Example
 
@@ -580,7 +643,8 @@ UDP operations trap on errors:
 - `SendTo()` traps on host not found
 - `SendTo()` traps if message is too large (>65507 bytes)
 - `Recv()` traps if socket is closed
-- `Recv()` traps with a protocol error if the next datagram is larger than the requested receive buffer
+- `Recv()` rejects negative sizes; zero is an immediate empty operation
+- `Recv()` consumes and traps with a protocol error if the next datagram is larger than the requested receive buffer
 - `JoinGroup()` traps on invalid multicast address
 - `Bind()` traps if port is in use or permission denied
 
@@ -644,7 +708,7 @@ Static utility class for DNS resolution and IP address validation.
 | `Resolve(hostname)`     | String  | Resolve to the first address returned by the OS resolver |
 | `ResolveIpv4(hostname)`    | String  | Resolve to first IPv4 address only           |
 | `ResolveIpv6(hostname)`    | String  | Resolve to first IPv6 address only           |
-| `ResolveAll(hostname)`  | Seq     | Resolve to all addresses (IPv4 and IPv6)     |
+| `ResolveAll(hostname)`  | Seq     | Resolve to unique IPv4/IPv6 addresses in OS order |
 | `Reverse(ipAddress)`    | String  | Reverse DNS lookup, return hostname          |
 
 ### Validation Methods
@@ -652,15 +716,15 @@ Static utility class for DNS resolution and IP address validation.
 | Method              | Returns | Description                                  |
 |---------------------|---------|----------------------------------------------|
 | `IsIP(address)`     | Boolean | Check if valid IPv4 or IPv6 address          |
-| `IsIpv4(address)`   | Boolean | Check if string is valid IPv4 address        |
-| `IsIpv6(address)`   | Boolean | Check if string is valid IPv6 address        |
+| `IsIpv4(address)`   | Boolean | Check canonical dotted-decimal IPv4 syntax   |
+| `IsIpv6(address)`   | Boolean | Check IPv6 syntax, including optional `%zone` |
 
 ### Local Info Methods
 
 | Method         | Returns | Description                                  |
 |----------------|---------|----------------------------------------------|
 | `LocalHost()`  | String  | Get local machine hostname                   |
-| `LocalAddrs()` | Seq     | Get local IPv4/IPv6 addresses, including loopback |
+| `LocalAddrs()` | Seq     | Get unique active-interface addresses, including loopback |
 
 ### Zia Example
 
@@ -761,15 +825,28 @@ There is no way to distinguish between a non-existent domain (NXDOMAIN), a DNS s
 
 Validation methods (`IsIpv4`, `IsIpv6`, `IsIP`) never trap and return `False` for invalid input.
 
-`LocalAddrs()` uses platform interface enumeration and can include addresses from interfaces that
-are not currently up. Address order is platform dependent.
+`IsIpv4()` accepts canonical dotted decimal only. Each octet must be `0` through `255`, and a
+multi-digit octet cannot start with zero (`01.2.3.4` is rejected). `IsIpv6()` accepts an optional
+non-empty scope identifier such as `fe80::1%en0` or `fe80::1%4`. Scope identifiers are checked
+syntactically by validation; methods that use the address ask the operating system to resolve the
+zone against the current interface table.
+
+`ResolveAll()` removes exact duplicate numeric records while preserving operating-system resolver
+order. `LocalAddrs()` likewise removes duplicates, enumerates only operational adapters on Windows,
+and returns the POSIX interface snapshot on Unix-like systems. Numeric IPv6 results preserve their
+`%zone` suffix when the platform supplies one. Local address order remains platform dependent.
+
+The returned `ResolveAll()` and `LocalAddrs()` sequences own their String elements. Runtime native
+resolver/interface snapshots are released before a managed allocation trap propagates, including
+when only a partial sequence has been constructed. Native local-interface enumeration failure is
+reported as an empty sequence; managed allocation failure still traps.
 
 ### Address Formats
 
 | Type | Format | Examples |
 |------|--------|----------|
-| IPv4 | Dotted decimal | `192.168.1.1`, `10.0.0.1`, `127.0.0.1` |
-| IPv6 | Colon hex | `::1`, `2001:db8::1`, `fe80::1` |
+| IPv4 | Canonical dotted decimal | `192.168.1.1`, `10.0.0.1`, `127.0.0.1` |
+| IPv6 | Colon hex, optional scope zone | `::1`, `2001:db8::1`, `fe80::1%en0` |
 
 ### Use Cases
 
@@ -845,13 +922,22 @@ PRINT "Content-Length: "; headers.GetStr("content-length")
 - **Content-Length** - Handles Content-Length bodies
 - **Chunked encoding** - Handles a single `Transfer-Encoding: chunked` response coding and rejects unsupported transfer codings
 - **Gzip decoding** - `Http`, `HttpReq`, and `HttpClient` automatically advertise `Accept-Encoding: gzip` and transparently decode `Content-Encoding: gzip` responses
-- **Streaming download** - `Http.Download()` writes response bytes directly to disk instead of buffering the entire body in memory
+- **Transactional streaming download** - `Http.Download()` writes response bytes to an exclusively
+  created sibling file, synchronizes it, and atomically publishes it instead of buffering the
+  entire body in memory or exposing partial destination content
 - **Timeout** - Default 30 second timeout for each address attempt and socket-I/O phase; it is not
   an overall redirect-chain deadline
 - **Input limits** - Buffered bodies are capped at 256 MiB. Response headers are capped at 256 KiB;
   chunked trailers are capped at 64 KiB and 64 lines.
 
-> **Download note:** `Http.Download()` intentionally keeps `Accept-Encoding` at identity and stays on the HTTP/1.1 path over HTTPS so the response can remain fully streamed to disk without buffering and decompressing the file in memory first.
+> **Download note:** `Http.Download()` intentionally keeps `Accept-Encoding` at identity and stays
+> on the HTTP/1.1 path over HTTPS so the response can remain fully streamed to disk without
+> buffering and decompressing the file in memory first. It validates both String handles and
+> rejects embedded NUL bytes before filesystem or network work. The completed sibling temp file is
+> flushed, synchronized, and atomically installed. Replacing an existing regular file preserves
+> its ordinary permission bits; special set-user, set-group, and sticky bits are never copied. A
+> failure removes staged content and leaves an existing destination unchanged whenever publication
+> has not completed.
 
 ### HTTPS/TLS Support
 
@@ -874,6 +960,12 @@ The HTTP client transparently supports HTTPS URLs using TLS 1.3:
   `ZANNA_TLS_REQUIRE_REVOCATION` to a nonzero value makes verification fail closed rather than
   silently proceeding without revocation data.
 - **SNI behavior** - DNS hostnames are sent in the TLS SNI extension. IP literals are still verified against certificate IP SANs, but they are not sent in SNI.
+- **Stable session ownership** - The in-tree TLS session has a distinct managed identity and a
+  nonblocking finalizer that wipes secrets and closes abandoned sockets. Native descriptors remain
+  pointer-width across HTTPS, SMTP, SSE, WebSocket, and WSS handoffs, including Windows `SOCKET`.
+- **Checked connection publication** - Invalid hostname, CA-path, and ALPN configuration is rejected
+  before the TLS session takes socket ownership. Nonblocking mode changes and `SO_ERROR` queries must
+  succeed before a connected socket is published; malformed ALPN lists with empty elements fail.
 - **To disable verification for a local test only:** Use `HttpReq.AllowInsecureCertificatesForTesting()` and keep that code out of production.
 - **For custom TLS:** Use `Zanna.Crypto.Tls` directly when you need lower-level TLS control, or use `HttpReq` with `SetTimeout()` for request-level timeout control.
 
@@ -898,7 +990,8 @@ Except for `Download`, HTTP helpers trap on transport and protocol errors:
 
 Receiving a non-2xx HTTP status is not a transport error: body-returning helpers still return the
 response body. `Http.Download()` is deliberately non-trapping and returns `False` for an invalid
-URL, transport/protocol failure, non-2xx status, or destination-file failure.
+URL or managed handle, embedded NUL byte, allocation trap, transport/protocol failure, non-2xx
+status, or destination-file failure.
 
 ### Limitations
 
@@ -947,6 +1040,24 @@ HTTP request builder for advanced requests with custom headers and options.
 > at send time the request attaches a process-wide default connection pool, so consecutive
 > keep-alive requests to the same host and port reuse the same socket. Requests issued through
 > `RestClient` or `HttpClient` use that client's own pool instead.
+
+`HttpReq` has a stable managed class identity. Every instance method validates a non-null receiver
+before reading its native request payload. Body, header, and connection-pool setters are
+transactional: validation and replacement allocation complete before the previous value is
+changed, so a caught trap leaves the request reusable with its old configuration. A String body is
+copied into request-owned storage; a Bytes body is validated and copied rather than retained as a
+mutable alias.
+
+The process-wide keep-alive pool used by standalone requests is initialized with a retryable,
+thread-safe state machine. Concurrent first requests share one published pool, while a transient
+initialization failure resets the state so a later request can retry instead of permanently
+disabling connection reuse.
+
+`SendResult()` clears the request trap frame before constructing either result variant. A received
+response—including a 4xx or 5xx response—is `Result.Ok(HttpRes)`; setup, transport, timeout,
+protocol, and allocation failures become `Result.Err(String)` when the diagnostic Result can be
+allocated. If Result construction itself fails, the allocation trap propagates after every partial
+String, Result, and response reference has been released.
 
 ### Zia Example
 
@@ -1028,6 +1139,13 @@ HTTP response object returned by `HttpReq.Send()` or by unwrapping
 `Headers` returns a fresh Map copy with lowercase keys. `Header(name)` performs a
 case-insensitive lookup. `Body()` likewise returns a fresh Bytes copy; `BodyStr()` treats the body
 bytes as UTF-8 and does not inspect a response charset.
+
+`HttpRes` has a stable managed class identity. Every non-null receiver is validated before native
+status, header, or body storage is accessed; a forged managed handle traps instead of being cast to
+a response. The historical null-receiver defaults remain: zero status/`IsOk`, empty Strings or
+Bytes, and an empty header Map. Header and body snapshots are independent caller-owned values, and
+an allocation trap while constructing a snapshot releases every partial Map, Seq, boxed String,
+lookup key, or Bytes object before it propagates.
 
 ### Zia Example
 
@@ -1404,6 +1522,10 @@ can contain arbitrary non-text bytes. An empty String/Bytes can be a valid empty
 close/protocol-error indication; inspect `IsOpen` and `CloseCode`. A timed receive with `ms = 0`
 waits indefinitely rather than polling.
 
+A timed receive consumes any frame bytes already captured with the HTTP upgrade response, and any
+already-decrypted TLS bytes, before waiting on native socket readiness. This prevents a coalesced
+first frame from being hidden until unrelated later network traffic arrives.
+
 ### Close Methods
 
 | Method               | Returns | Description                                          |
@@ -1506,21 +1628,28 @@ WebSocket setup and send operations trap on errors:
 - Operations on `wss://` URLs trap on TLS errors
 
 Receive-side protocol, framing, UTF-8, and size failures normally record a close code, mark the
-object closed, and return an empty value rather than propagating a trap. Timed receives return null
-for timeout, close, or receive failure. `Ping()` is a no-op when already closed and does not expose
-a frame-send failure.
+object closed, send the applicable best-effort close status, and release the TCP/TLS transport
+before returning an empty value rather than propagating a trap. Timed receives return null for
+timeout, close, or receive failure, and restore the connection's configured native/TLS timeout
+before returning. `Ping()` is a no-op when already closed and does not expose a frame-send failure;
+a failed ping still retires the unusable transport.
 
 ### Protocol Notes
 
 - **Frame masking:** Client frames are automatically masked per RFC 6455
-- **Frame validation:** Non-minimal payload-length encodings, invalid close-frame lengths, reserved close codes, and non-UTF-8 close reasons are rejected as protocol errors
+- **Stable identity and native handles:** Every non-null client receiver validates the stable runtime class and complete payload. Native sockets remain pointer-width through TCP, TLS, and close ownership transfers, including Windows `SOCKET`.
+- **Frame validation:** Reserved bits and opcodes, masked server frames, fragmented control frames, non-minimal or high-bit payload-length encodings, invalid continuation order, invalid close-frame lengths, reserved close codes, and non-UTF-8 text/close reasons are rejected with deterministic teardown. Frames and reassembled messages are capped at 64 MiB.
 - **Handshake formatting:** Client `Host` headers use canonical authority formatting, omitting default ports while still bracketing IPv6 literals
+- **Client handshake validation:** The response must have an exact 101 status, bounded valid HTTP field syntax, no obsolete folding, exactly one accept value, and no duplicate selected subprotocol. Repeated `Upgrade` and `Connection` fields use combined token semantics; the accept value is compared exactly after optional-whitespace trimming. Headers are capped at 16 KiB and 100 fields.
 - **Handshake validation:** `WsServer` / `WssServer` reject malformed `Sec-WebSocket-Key` values and invalid `Host` headers before switching protocols
 - **Subprotocol negotiation:** `ConnectProtocol` / `ConnectForProtocol` require the server to echo the requested `Sec-WebSocket-Protocol` token or the handshake fails
 - **Runtime string lengths:** `Send(text)` and close reasons use runtime string byte lengths, so embedded NUL bytes are not truncated. Connection URLs and subprotocol tokens reject embedded NUL bytes because they are serialized into NUL-terminated handshake fields.
 - **Ping/pong:** Pong frames are handled automatically; use `Ping()` to test connectivity
 - **Message fragmentation:** Outbound messages are sent as one complete frame. Incoming
   fragmented messages are reassembled, with a 64 MiB total-message limit.
+- **Exact buffer ownership:** Binary sends use the validated contiguous Bytes span directly.
+  Completed receives are published with one exact managed copy, and allocation failure frees the
+  consumed native frame before propagating the trap.
 - **UTF-8 validation:** Text messages are validated for proper UTF-8 encoding
 - **Subprotocols:** Single-token negotiation is supported; multi-option client preference lists are not exposed yet
 - **Resource/threading model:** WebSocket objects are not safe for concurrent calls without
@@ -1802,23 +1931,30 @@ DIM legacy AS OBJECT = legacyApi.GetJson("/api/v1/data")
 
 ### Features
 
-- **Base URL:** The constructor stores the string without validating it. Request paths are joined
-  by removing trailing slashes from the base and leading slashes from the path, then inserting one
-  slash; this is concatenation, not RFC URL-reference resolution.
-- **Persistent headers:** Headers set with `SetHeader` are sent with every request until removed
-  with an exact-case `RemoveHeader`; `ClearAuth` removes only the exact `Authorization` key.
+- **Base URL:** The constructor validates the String handle and embedded-NUL boundary, then stores
+  an independent copy. It intentionally defers URL-syntax validation until a request. Request
+  paths are joined by removing trailing slashes from the base and leading slashes from the path,
+  then inserting one slash; this is concatenation, not RFC URL-reference resolution.
+- **Persistent headers:** Headers set with `SetHeader` are sent with every request until removed.
+  Replacement/removal is case-insensitive, and `ClearAuth` removes every `Authorization` spelling.
+  Updates allocate and validate before publication, so a caught allocation failure preserves the
+  previous complete value.
 - **Authentication:** Built-in support for Bearer tokens and HTTP Basic auth
-- **Timeout:** Configurable per-address/socket-operation timeout (default 30 seconds)
+- **Timeout:** Configurable per-address/socket-operation timeout (default 30 seconds); zero is
+  applied to the request and disables its deadlines.
 - **JSON helpers:** Automatic serialization/deserialization for JSON APIs
 - **Result-returning requests:** `GetResult`, `PostResult`, `PutResult`, `PatchResult`, `DeleteResult`, and `HeadResult` return `Result<HttpRes>` so transport failures and HTTP status handling stay explicit.
 - **Last request tracking:** `LastResponse()` returns the most recent response object; it is replaced on every new request. `LastStatus()` returns the HTTP status code; `LastOk()` returns true for 2xx responses. These are compatibility diagnostics; prefer storing the response from `*Result`.
-- **Threading:** A RestClient's mutable default headers and last-response diagnostics are not safe
-  for concurrent use, even though its connection pool has internal locking.
+- **Threading:** Base URL/default headers, timeout/pool configuration, and last-response diagnostics
+  are synchronized. Each request retains a complete immutable snapshot before unlocking, so one
+  `RestClient` may be shared across concurrent callers. As expected, the final `LastResponse`
+  reflects whichever request publishes its response last.
 
 > **Lifecycle note:** The RestClient owns its headers map and its reference to the last response.
-> `LastResponse()` returns a retained response handle, so a response saved by the caller remains
-> valid after a later request replaces the client's last-response slot. Runtime-managed resources
-> are released when their owning handles are reclaimed.
+> `BaseUrl()` returns an independent String copy and `LastResponse()` returns a retained response
+> handle, so either value remains valid after later client mutation. JSON convenience methods
+> consume their temporary raw response reference after copying/parsing the body. Runtime-managed
+> resources are released when their owning handles are reclaimed.
 
 ### RestClient vs HttpReq
 
@@ -1869,11 +2005,21 @@ Configurable retry policy with backoff strategies for handling transient failure
 
 Negative retry counts and base delays are normalized to `0`. For exponential policies,
 `maxDelayMs` values below the normalized base delay are raised to that base delay.
+Additive jitter is derived from a per-policy non-cryptographic seed and the reserved attempt
+number; policy construction does not request operating-system entropy. Jitter is limited by the
+remaining cap headroom before it is added, so even delays near the largest `Integer` cannot
+overflow.
 
 > **Attempt count semantics:** `RetryPolicy.New(n, baseDelayMs)` allows up to `n` successful
 > calls to `NextDelay()`. `Attempt` and `TotalAttempts` start at 0 and increase to 1 after the
 > first call. After `n` calls the policy is exhausted; later `NextDelay()` calls return -1 without
 > incrementing either property.
+
+`RetryPolicy` is internally safe for concurrent workers. Successful concurrent `NextDelay()`
+calls reserve distinct attempts atomically and collectively stop at `MaxRetries`; properties are
+atomic snapshots. `Reset()` publishes attempt zero atomically and restarts that policy's
+attempt-indexed jitter sequence. As with any reset, callers that need a strict phase boundary
+should coordinate it with in-flight retry work.
 
 ### Zia Example
 
@@ -1956,8 +2102,9 @@ Token bucket rate limiter for controlling the rate of operations. Tokens refill 
 
 > **Token precision:** Capacity and the whole-token balance are stored as exact 64-bit integers; only the sub-token refill remainder is fractional. `Available` returns the exact whole-token count, and `TryAcquire`/`TryAcquire(n)` consume whole tokens only. Not thread-safe — external synchronization required for concurrent use.
 
-`maxTokens <= 0` is normalized to 1, `refillPerSec <= 0` is normalized to 1.0, and
-`TryAcquire(n)` returns false when `n <= 0`. Any positive `Integer` capacity — including values
+`maxTokens <= 0` is normalized to 1. A non-finite, zero, or negative `refillPerSec` is normalized
+to 1.0, and `TryAcquire(n)` returns false when `n <= 0`. Refill timing uses the runtime's shared
+cross-platform monotonic microsecond clock. Any positive `Integer` capacity — including values
 above 2^53 and near the 64-bit maximum — round-trips exactly through `Max`, and large
 acquisitions compare exactly against the balance.
 
@@ -2054,21 +2201,28 @@ URL pattern matching with parameter extraction for HTTP routing.
 
 Routes are tested in registration order and the first match wins. Method comparison is
 case-sensitive, matching HTTP method-token semantics — the convenience helpers register the
-canonical uppercase forms, and `Add` preserves whatever casing you supply. Leading, trailing,
-and repeated `/` characters are deliberately normalized while parsing *patterns*, so `/a//b/`
-and `/a/b` describe the same segments; request paths are matched segment-exactly aside from
-leading/trailing slashes. Captures are raw path bytes; they are not URL decoded.
+canonical uppercase forms, and `Add` preserves whatever casing you supply. `Add` accepts custom
+methods, but the method must be a non-empty HTTP token: ASCII letters, digits, or
+``!#$%&'*+-.^_`|~``; whitespace and control bytes trap without registering a route. Leading,
+trailing, and repeated `/` characters are deliberately normalized while parsing *patterns*, so
+`/a//b/` and `/a/b` describe the same segments; request paths are matched segment-exactly aside
+from leading/trailing slashes. A `:name` capture consumes exactly one non-empty request segment,
+so `/users/:id` does not match `/users//`. Captures are raw path bytes; they are not URL decoded.
 
 Registration validates the grammar: a wildcard must be the final segment
 (`/a/*rest/c` traps with `HttpRouter: wildcard segment must be terminal`), and duplicate
-capture names trap with `HttpRouter: duplicate capture name in pattern`. A wildcard capture
-has trailing slashes removed from the stored remainder.
+capture names trap with `HttpRouter: duplicate capture name in pattern`. The markers `:` and `*`
+must have a name; a lone marker traps instead of being treated as a literal. A wildcard capture
+may be empty and has trailing slashes removed from the stored remainder.
 
 `HttpRouter` is internally synchronized: `Add` (and the method helpers) take a write lock while
 `Match` and `Count` take a shared read lock, so registering and matching routes concurrently is
-safe, and concurrent matches run in parallel. Methods and patterns containing embedded NUL
-bytes are rejected at registration (trap), and `Match` treats NUL-bearing inputs as no match —
-a route can never be registered or matched as a truncated prefix.
+safe, and concurrent matches run in parallel. The shared-lock search performs no managed
+allocations; parameter extraction and result construction happen after unlock, so an allocation
+trap cannot strand the router lock. Literal-only matches do not create an empty parameter Map.
+Methods and patterns containing embedded NUL bytes are rejected at registration (trap), and
+`Match` treats NUL-bearing inputs as no match — a route can never be registered or matched as a
+truncated prefix.
 
 > **Typing note:** The registry declares fluent router results and `Match` as unqualified `obj`.
 > Direct chains can therefore infer `HttpRouter` or `Any` instead of the concrete runtime result.
@@ -2078,7 +2232,8 @@ a route can never be registered or matched as a truncated prefix.
 ## Zanna.Network.RouteMatch
 
 The result of a successful `HttpRouter.Match` call. A route match is produced by the router and
-is not constructed directly.
+is not constructed directly. The match is an owned managed reference. `Param` and `Pattern`
+return owned strings; callers using the C ABI must release them.
 
 **Type:** Value object
 
@@ -2118,7 +2273,7 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 | `Port` | Integer | Listening port number |
 | `IsRunning` | Boolean | True if server is accepting connections |
 
-> **Runtime note:** Route handlers registered through the language frontends are wired through the runtime for both `HttpServer` and `HttpsServer`. Routes and bindings may be changed while stopped, including after `Stop()`, but not while running.
+> **Runtime note:** Route handlers registered through the language frontends are wired through the runtime for both `HttpServer` and `HttpsServer`. Routes and bindings may be changed while stopped, including after `Stop()`, but not while running, stopping, finalizing, or executing a synchronous native dispatch. Start, Stop, route registration, and handler replacement are serialized, so concurrent lifecycle calls never publish two listeners or join one accept thread twice.
 
 ### Request Body Support
 
@@ -2129,17 +2284,22 @@ Threaded HTTP/1.1 server with routing and handler-tag lookup.
 - Request methods must be valid HTTP tokens. Request targets must be origin-form (`/path?...`), absolute-form (`http://host/path?...` or `https://host/path?...`), or `*`; absolute-form targets are normalized to the routed path.
 - Query lookups URL-decode parameter names before matching, so `%71=search` is visible as `Query("q")`.
 - Query-name matching is byte-length aware after URL decoding; `q%00x` does not match `Query("q")`. Header values and request bodies preserve embedded NUL bytes when read by handlers.
-- Response header names and values reject embedded NUL bytes as well as CR/LF bytes before serialization.
+- Response header names must be non-empty ASCII HTTP tokens. Names and values reject embedded NUL bytes as well as CR/LF bytes before serialization.
 - `HttpServer` honors protocol-correct keep-alive semantics: HTTP/1.1 defaults to keep-alive unless `Connection: close` is present, while HTTP/1.0 requires explicit `Connection: keep-alive`. Pipelined HTTP/1.1 requests on the same socket are preserved and processed in order.
 - Send and receive timeouts of 30 seconds are installed on live client sockets. They bound each
   blocking socket operation, not the total lifetime of a slowly progressing request.
 - At most 4,096 connections are tracked as active. The worker pool uses the detected logical CPU
-  count, clamped to 1–64 workers.
+  count, clamped to 1–64 workers. It is created lazily by the first successful `Start()`, not by
+  the constructor, and is reused by later stop/start cycles.
 - Passing port `0` asks the operating system for an ephemeral port. Read the actual value from
   `Port` after `Start()`.
-- `Start()` and `Stop()` are idempotent. `Stop()` closes the listener, interrupts every tracked
+- `Start()` and `Stop()` are idempotent and safe to call concurrently. Startup failure rolls back
+  a partial listener/thread transaction. `Stop()` closes the listener, interrupts every tracked
   active socket, and then waits for the accept thread and worker tasks; it does not let active
-  requests finish gracefully.
+  requests finish gracefully. A handler calling `Stop()` does not wait for its own worker.
+- Replacing a native handler binding publishes the new callback/context tuple while locked, then
+  invokes the detached old cleanup callback after unlocking. Cleanup may therefore call back into
+  server APIs without deadlocking.
 
 > **Route registration is transactional:** the handler tag is validated (empty and embedded-NUL
 > tags trap with `invalid route handler tag`) and every allocation is reserved before the route
@@ -2192,35 +2352,43 @@ Threaded TLS-backed HTTP/1.1 + HTTP/2 server built on the in-tree TLS 1.3 runtim
 ### Runtime Notes
 
 - `HttpsServer.New(0, certFile, keyFile)` is supported. Read the actual bound port back from `server.Port` after `Start()`.
+- Both credential paths are copied by exact managed-string length. Empty paths, forged String
+  handles, and embedded NUL bytes trap before native file-system access.
 - Credential files are loaded when the server is constructed, are capped at 4 MiB each, and are
   not reloaded by a later stop/start cycle.
 - The request/response handler model mirrors `HttpServer`.
 - Sequential and pipelined HTTPS keep-alive requests on the same TLS connection are supported when response framing is safe.
 - When ALPN selects `h2`, the same route table serves HTTP/2 streams through the existing `ServerReq` / `ServerRes` handler model.
+- Handler-supplied HTTP/2 response field names are validated and normalized to lowercase. The
+  server computes body eligibility identically for HTTP/1.1 and HTTP/2, so statuses such as 204
+  suppress an attempted body and advertise the resulting exact `content-length: 0`.
 - HTTP/2 request trailers are merged into the request header map and are visible through
   `req.Header(name)`; response trailers are preserved in the client-visible header list. Unknown
   HTTP/2 extension frames are ignored, informational `1xx` responses are skipped until the final
   response, and inbound frames are capped at the local advertised maximum frame size.
 - If a peer opens another request stream before the active one finishes, `HttpsServer` refuses that extra stream with `RST_STREAM` and keeps the TLS connection alive for later requests.
 - The built-in TLS server stack performs the full TLS 1.3 handshake in-tree, including `ClientHello`/`ServerHello`, ALPN negotiation, certificate chain delivery, `CertificateVerify`, and bidirectional `Finished` processing.
-- `Start()` fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
+- `Start()` fails cleanly on listener-bind, worker-pool, or accept-thread startup errors instead of leaving the server in a partial running state. The pool is created lazily on first start and reused across later restarts.
 - Route tables and handler bindings are immutable only while the server is running; they can be
   changed again after `Stop()`.
 - The active-connection ceiling and HTTP/1.1 request limits match `HttpServer`. The HTTPS worker
   count is the detected logical CPU count clamped to 1–1,024. `Stop()` interrupts active TLS
   connections rather than gracefully draining requests.
 
-The route-registration defect described for `HttpServer` also affects `HttpsServer`; its secure
-registrar additionally does not check the router-adder result and performs weaker tag validation.
+HTTPS route registration uses the same transactional tag validation and router-publication rules
+as `HttpServer`. A rejected pattern or allocation failure leaves both the router and route metadata
+unchanged.
 
 ---
 
 ## Zanna.Network.ServerReq
 
-Request view passed to an `HttpServer` or `HttpsServer` route handler. The server constructs this
-object for each request.
+Managed request snapshot passed to an `HttpServer` or `HttpsServer` route handler. The server
+constructs one complete object for each request and releases its producer reference after response
+serialization. A native or managed handler that stores the object must retain it independently;
+the retained snapshot remains valid after the callback returns.
 
-**Type:** Instance view
+**Type:** Managed instance snapshot
 
 ### Properties
 
@@ -2245,9 +2413,11 @@ embedded NUL bytes.
 
 ## Zanna.Network.ServerRes
 
-Response builder passed alongside `ServerReq` to a route handler.
+Managed response builder passed alongside `ServerReq` to a route handler. It follows the same
+producer-reference rule: a handler may retain it beyond dispatch, and its owned header Map/body
+remain valid until the final retained reference is released.
 
-**Type:** Instance view
+**Type:** Managed instance builder
 
 ### Methods
 
@@ -2263,7 +2433,14 @@ names, CR/LF or embedded-NUL values, and server-managed fields such as `Content-
 `Transfer-Encoding`, and `Connection`. Custom headers replace case-insensitively — setting
 `content-type` and then `Content-Type` yields a single wire field with the last value — and
 `Json` replaces any existing content-type spelling with `Content-Type: application/json`.
-`Json` does not validate that its body is well-formed JSON.
+`Send` allocates a complete replacement body before changing the response. `Json` goes further:
+it stages an exact body copy and a cloned header Map, then publishes both together. If a recovered
+allocation trap interrupts either operation, the complete prior response remains visible. `Json`
+does not validate that its body is well-formed JSON.
+
+At the native C boundary, `HttpServer`, `HttpsServer`, `ServerReq`, and `ServerRes` carry distinct
+stable class identities. Public entry points reject forged, stale, unrelated, undersized, or
+partially initialized handles before accessing listener, mutex, request, or response payloads.
 
 ### Handler Example
 
@@ -2308,12 +2485,13 @@ Thread-safe plain-TCP connection pooling for reuse across HTTP requests.
 
 ### Runtime Notes
 
-- `ConnectionPool` pools raw TCP sockets keyed by `host:port`.
-- Pool hosts must be non-empty, free of embedded NUL bytes, and short enough to format into the internal `host:port` key. Oversized or malformed keys are rejected instead of being silently truncated.
+- `ConnectionPool` pools raw TCP sockets by exact host bytes and remote port. It caches an endpoint
+  hash for fast rejection, then confirms equality byte-for-byte and case-sensitively against the
+  immutable endpoint already owned by the Tcp object. No per-entry key string is allocated.
+- Pool hosts must be non-empty and free of embedded NUL bytes. There is no separate formatted-key
+  length limit; the runtime string and operating-system resolver limits apply.
 - New outbound connections are registered as in-use immediately when pool capacity allows, so `Size` and `Available` reflect checked-out state instead of only idle state.
 - `maxSize` is clamped to `[1, 128]`. Acquires beyond tracked capacity still succeed, but those overflow sockets are closed on `Release()` instead of being retained.
-- Keys compare the host spelling exactly and case-sensitively. Bare IPv6 hosts are formatted with
-  brackets in the internal key.
 - Idle entries expire after a fixed 60 seconds, but expiry is swept only by `Acquire`. `Size` and
   `Available` can therefore count expired sockets until the next acquire.
 - Ownership is explicit: `Acquire` returns a handle the caller owns (the pool retains its own
@@ -2322,17 +2500,25 @@ Thread-safe plain-TCP connection pooling for reuse across HTTP requests.
   the caller's reference remains valid to hold or drop, but the caller must not perform further
   I/O on a released handle. An otherwise healthy untracked TCP handle may be adopted; if the
   pool is full its transport is closed instead (the caller's reference is untouched).
+- Adoption is exclusive across pools. Each Tcp carries an atomic pool lease token. Releasing a Tcp
+  that is still tracked by a different pool traps without adopting or closing it, so two pools can
+  never publish the same transport to different borrowers. The lease is held through close to
+  prevent an ownership-check/close race.
 - `Clear()` closes idle entries only. Checked-out entries are detached from the pool without
   being closed, so a handle currently held by an `Acquire` caller keeps working; a later
   `Release` of a detached handle re-adopts or closes it. The same protection applies when the
   pool itself is garbage-collected.
 - The reuse health probe rejects sockets with pending unread bytes: a connection released with
   an unread response is closed rather than re-pooled, so stale protocol data is never handed to
-  the next caller.
+  the next caller. Native readiness-probe errors are also treated as unhealthy rather than as an
+  idle reusable connection.
+- Every pool operation validates and temporarily retains the pool before locking it. A GC
+  finalizer therefore cannot destroy the mutex while an operation is active; mutex
+  initialization failure prevents construction instead of publishing an unsynchronized pool.
 - It does not track TLS hostname verification, ALPN, or certificate policy; use `HttpClient` for HTTPS-aware pooling.
 
-> **Typing note:** `Acquire` is registered as unqualified `obj`, not `obj<Zanna.Network.Tcp>`.
-> Assign its result to an explicitly typed `Tcp` local before using TCP members.
+> **Typing note:** `Acquire` is registered as `obj<Zanna.Network.Tcp>`, so both language frontends
+> preserve the returned transport type.
 
 ---
 
@@ -2374,20 +2560,29 @@ Multipart form-data builder and parser for HTTP file uploads.
 - Parser accepts quoted or bare-token multipart parameters, including quoted `boundary=` values and escaped quotes inside `Content-Disposition`.
 - Builder boundaries contain 40 random alphanumeric characters. The parser accepts only a limited
   MIME boundary character set and at most 63 bytes; parsed names and filenames must fit in a
-  255-byte buffer. The parsed body is capped at 64 MiB.
+  255-byte buffer. Each part-header block is capped at 64 KiB and the parsed body is capped at
+  64 MiB.
 - Empty fields, zero-byte file parts, and embedded NUL bytes in field values are preserved. Part
   names, filenames, and Content-Type boundary text reject embedded NUL bytes because they are
   serialized into MIME headers.
 - Parsing requires CRLF between part headers and content and accepts a preamble. Parsing is
   strict and atomic: invalid content types or boundaries, oversized bodies, missing delimiters,
-  malformed part headers (including unnamed parts), truncated bodies without a closing
-  boundary, and allocation failures all trap instead of returning an empty or partial object.
+  delimiter-prefix false matches, unterminated quoted parameters, malformed part headers
+  (including unnamed parts), truncated bodies without a closing boundary, and allocation
+  failures all trap instead of returning an empty or partial object.
   A returned `Multipart` therefore always represents the complete input. Use `ParseResult` when
   you want a `Result` instead of a trap.
 - Duplicate names are returned in first-part order. Use `HasField`/`HasFile` to distinguish a
   missing name from a present empty field or zero-byte file — `GetField`/`GetFile` still return
   empty values for missing names. `Build()` traps on size overflow or allocation failure rather
   than returning empty Bytes; a valid builder with no parts produces the terminal boundary.
+- Multipart receivers carry a stable runtime class identity. Passing another managed object to a
+  mutating, serialization, or property API traps before private payload access; predicates and
+  missing-value getters reject invalid receivers safely.
+- `Build()` performs checked sizing and writes directly into one exact-size native staging buffer,
+  without allocating escaped copies per part. Native staging and partial managed results are
+  released before an allocation trap propagates. Parsing uses the same atomic cleanup rule for
+  partial parts, and `ParseResult` owns exactly one retained Multipart or error String reference.
 
 `Build`, `Parse`, and `GetFile` are registered as unqualified object results. Use explicit
 `Bytes`/`Multipart` locals or concrete receiver calls instead of relying on chained inference.
@@ -2457,23 +2652,24 @@ WebSocket server that accepts upgrade requests and manages connected clients.
 | `Port` | Integer | Listening port number |
 | `IsRunning` | Boolean | True if server is accepting connections |
 
-`WsServer` accepts ports 0–65535 (0 requests an OS-assigned ephemeral port; `Port` reports the bound value after `Start()`) and tracks at most 128 clients. Upgrade requests
-require the RFC 6455 version/key/upgrade headers; a configured subprotocol must be offered, and a
-present browser `Origin` must match the request scheme, host, and effective port.
+`WsServer` accepts ports 0–65535 (0 requests an OS-assigned ephemeral port; `Port` reports the bound value after `Start()`) and keeps up to 128 accepted connections visible to lifecycle management. Upgrade requests use strict CRLF-terminated HTTP/1.1 syntax, at most 100 headers and 16 KiB total request bytes. They require one canonical RFC 6455 key, Host and version; duplicate security singletons, folded or bare-LF fields, transfer coding, nonzero request bodies, malformed authorities and ports, and non-canonical keys are rejected. A configured subprotocol must be offered, and a present browser `Origin` must match the request scheme, host, and effective port.
 
 After a plain WebSocket upgrade, each client is serviced by a worker-pool frame loop with the
 same protocol behavior as `WssServer`: PING is answered with PONG, a client CLOSE is echoed and
-the slot released (so `ClientCount` reflects live peers), framing violations and invalid UTF-8
-text close the connection with the appropriate status code, and data frames are drained.
-Broadcast writes and client-worker writes are serialized on a shared I/O lock so frames never
-interleave on one socket.
+the slot released (so `ClientCount` reflects upgraded live peers), framing violations and invalid
+UTF-8 text close the connection with the appropriate status code, and data frames are drained.
+Text validation is incremental across fragments, including code points split between frames, and
+both individual frames and aggregate messages are capped at 64 MiB. Broadcast writes and worker
+control writes use a per-client I/O lock so frames never interleave on one socket.
 
-Post-upgrade client sockets carry a 30-second send timeout and per-client write locks, so a
-non-reading peer only stalls (and eventually fails) its own sends without blocking other
-clients, `Broadcast`, or `Stop()`. The worker pool is sized to twice the logical CPU count
-(minimum 8, capped at 1,024); each serviced client occupies one worker. Handshake lines are
-capped by `Tcp.RecvLine` at 64 KiB and the request at 100 header lines. Text broadcasts carry
-the full runtime byte length, so embedded NUL bytes are sent as payload data.
+Post-upgrade client sockets carry a two-second send bound and per-client write locks. The worker
+pool is created by `Start()`, sized from logical CPU count (minimum 4, maximum 32), and shut down,
+joined, and released by `Stop()`; restarting creates a fresh pool. Each serviced client occupies
+one worker, while additional accepted sockets remain generation-tagged and visible to Stop until
+a worker is available. `Stop()` actively closes queued/plain handshakes, joins all tasks, and does
+not leave idle worker threads behind. Text broadcasts carry the full runtime byte length, so
+embedded NUL bytes are sent as payload data. Every public server handle has stable managed
+identity; forged receivers and forged String/Bytes arguments trap before private state is read.
 
 ---
 
@@ -2514,23 +2710,30 @@ TLS-backed WebSocket server built on the in-tree TLS 1.3 runtime with zero exter
 ### Runtime Notes
 
 - `WssServer` accepts ports 0–65535 (0 requests an OS-assigned ephemeral port; `Port` reports the bound value after `Start()`) and tracks at most 128 upgraded clients.
-- `WssServer` automatically completes the RFC 6455 HTTP upgrade after the TLS handshake succeeds.
+- `WssServer` automatically completes the same strict, CRLF-only, 16-KiB RFC 6455 HTTP upgrade after the TLS handshake succeeds. Duplicate singleton fields, obsolete folding, bare LF, request bodies, malformed authorities, and non-canonical keys are rejected.
 - `SetSubprotocol(protocol)` makes the server require that token in the client's `Sec-WebSocket-Protocol` list and echoes it in the upgrade response.
 - Browser-facing upgrades require a `Host` header, and when an `Origin` header is present it must match the request scheme, host, and effective port.
 - Control frames are handled automatically: server-side pong replies are sent for client pings, and close frames are echoed so the WebSocket close handshake completes cleanly.
-- Client text/binary frames are drained and validated so broadcasts continue to work on long-lived secure connections even when clients send their own traffic.
+- Client text/binary frames are drained and validated so broadcasts continue to work on long-lived secure connections even when clients send their own traffic. Fragmented text keeps incremental UTF-8 state across frames, and frames/messages are capped at 64 MiB.
 - `Start()` fails cleanly on listener-bind or accept-thread startup errors instead of leaving the server in a partial running state.
-- TLS/client work runs in a worker pool sized to twice the logical CPU count (minimum 8, capped
-  at 1,024). Each connected client occupies a worker in a blocking receive loop, so the number of
+- TLS/client work runs in a lazily created worker pool sized from logical CPU count (minimum 4,
+  capped at 32). Each connected client occupies a worker in a blocking receive loop, so the number of
   simultaneously *serviced* clients is bounded by the pool size; additional accepted sockets
-  queue until a worker frees and are not included in `ClientCount`.
+  queue until a worker frees and are not included in `ClientCount`. Queued sockets and detached
+  TLS-handshake descriptors remain generation-tagged and visible to `Stop()`.
 - Sends are serialized per client, not globally: each client slot has its own write lock, and
-  post-upgrade sockets carry a 30-second send timeout, so a slow or non-reading peer only delays
-  its own frames and cannot block other clients' broadcasts or `Stop()` indefinitely. Text
+  post-upgrade sockets carry a two-second send bound, so a slow or non-reading peer has bounded
+  impact. TLS receive remains blocking for quiet clients and is interrupted explicitly by Stop.
+  Text
   broadcasts carry the full runtime byte length (embedded NUL bytes are payload data).
-- The secure upgrade reader bounds each header line at 64 KiB and the request at 100 header
-  lines; oversized handshakes are rejected. Certificate/key paths are validated: NULL
+- `Stop()` bidirectionally shuts down pending and active native sockets, drains and joins all
+  accepted work, and releases its worker pool. A later `Start()` creates a new pool; stopped
+  WSS instances do not accumulate idle threads.
+- The secure upgrade reader bounds the whole request to 16 KiB and 100 header lines. Certificate/key paths are validated: NULL
   handles and paths containing embedded NUL bytes trap at construction.
+- Every WSS receiver has stable managed identity. Credential, subprotocol, String, and Bytes
+  handles are validated before their storage is inspected, and constructor allocation failures
+  leave the exact managed-object baseline.
 
 ---
 
@@ -2562,39 +2765,56 @@ Server-Sent Events (SSE) client for receiving event streams over HTTP.
 
 ### Stream Behavior
 
-- Supports connection-delimited and HTTP chunked `text/event-stream` responses. The client does
-  not parse or enforce `Content-Length`.
-- URLs without an explicit port use `80` for `http://` and `443` for `https://`.
-- Follows at most five ordinary HTTP redirects before the event stream is established. Connection,
-  TLS, and individual socket reads use 30-second phase timeouts.
-- When the server drops the stream after delivering an event, the client reconnects automatically.
-- Reconnection sleeps for the most recent `retry:` delay (3,000ms by default), then resends the
-  request. A stream line is capped at 64 KiB and accumulated event data at 4 MiB.
-- When a valid `id:` field has been seen, reconnect requests include `Last-Event-ID` so the server can resume from the last delivered event. IDs containing header-breaking control characters are ignored.
-- Unsupported `Content-Encoding` values are rejected instead of being misparsed as SSE frames.
+- Supports HTTP and HTTPS with connection-delimited, exact `Content-Length`, or exact
+  `Transfer-Encoding: chunked` bodies. A response cannot combine transfer coding and content
+  length, and a content-length body must end at precisely the declared byte count.
+- The response head requires CRLF, strict status syntax, token-valid field names and valid field
+  bytes. It is bounded to 16 KiB and 100 fields. Obsolete folding, bare LF, and duplicate
+  `Content-Type`, `Content-Length`, `Transfer-Encoding`, `Content-Encoding`, or `Location` fields
+  are rejected. Up to eight informational responses are consumed before the final response;
+  protocol switching (101) is never accepted.
+- The final response must be HTTP 200 with exactly the `text/event-stream` media type (ASCII
+  case-insensitive; semicolon-separated parameters are allowed). Only identity content encoding
+  and the single `chunked` transfer coding are supported. Unsupported or additional codings are
+  rejected before event parsing.
+- Chunk sizes and extensions are parsed strictly. Individual chunks are capped at 16 MiB;
+  trailers share the bounded header grammar and cannot introduce framing fields. An event-stream
+  line is capped at 64 KiB and accumulated event data at 4 MiB.
+- URLs without an explicit port use 80 for `http://` and 443 for `https://`. Connect follows at
+  most five redirects. A 301 or 308 permanently replaces the URL used by later reconnects;
+  302/303/307 affect only the current connection attempt.
+- When a stream ends, the client waits for the most recent valid `retry:` value (3,000 ms by
+  default) and reconnects. A safe, nonempty event ID is sent as `Last-Event-ID`; IDs containing
+  NUL are ignored, and control-bearing IDs are never emitted as HTTP headers.
 
-`Recv` and `RecvFor` both return an empty string for timeout, close, transport/reconnect/allocation
-failure, and a valid event whose data is empty. `RecvFor(0)` blocks indefinitely (like `Recv`).
-For a positive value, the timeout is a single monotonic whole-event deadline carried through
-every socket read, so a trickling peer cannot keep the call alive past its budget.
+The EventSource field algorithm is byte-exact. The parser removes one optional UTF-8 BOM at the
+start of the stream, accepts CRLF, lone CR, and lone LF payload delimiters, supports fields with
+or without a colon, and removes at most one leading space from a field value. Every `data` field,
+including an empty one, participates in LF joining. A blank line dispatches only after at least
+one data field. `LastEventType` describes the most recently dispatched event; an event without an
+`event` field resets it to the default empty type rather than exposing an earlier event's type.
 
-Timeouts are lossless: a partially received line and any partially accumulated event are
-preserved on the connection when a timed receive expires, and the next receive resumes exactly
-where the stream stopped — a fragment is never delivered as a complete line. A timeout also
-does not close or reconnect the stream (`IsOpen` stays true). On end-of-stream, an unterminated
-final fragment is discarded per the EventSource incomplete-line rule.
+`Recv` and `RecvFor` serialize on each client. `RecvFor(0)` blocks like `Recv`; a positive timeout
+is one monotonic whole-event deadline covering every read, partial line, chunk delimiter,
+reconnect attempt, and retry delay. A trickling peer therefore cannot renew the budget. Timeout
+is lossless: partial HTTP body framing, line bytes, and accumulated event data remain in parser
+state, and the next receive resumes exactly where it stopped. Timeout does not close or reconnect
+the stream. An incomplete final line at actual end-of-stream is discarded as required by the
+EventSource algorithm.
 
-`IsOpen` reports only the client's local transport/session state; it does not probe remote
-liveness. Content-Type validation requires exactly the `text/event-stream` media type
-(parameters allowed; `text/event-streaming` is rejected), and only the exact `chunked`
-Transfer-Encoding is accepted — any other or additional coding rejects the stream.
-`LastEventType` reflects the type declared by the most recently *dispatched* event: an event
-that omits `event:` reports the default (empty) type instead of leaking the previous event's
-type. Stored event IDs reject all C0 control bytes and DEL, and an empty ID is not sent as a
-`Last-Event-ID` reconnect header. Use `RecvForResult(timeoutMs)` when you need to distinguish
-a delivered event (including one whose data is empty) from a timeout (`SSE: timeout`) or the
-end of the stream (`SSE: stream closed`). `Connect` rejects URLs containing embedded NUL
-bytes; wire-parsed event-type and event-ID fields are protocol text handled as C strings.
+The legacy String methods return an empty String for timeout or terminal close, which is
+ambiguous with a valid empty-data event. Protocol/limit/allocation failures trap after the receive
+owner restores its socket policy and releases its mutex. Use `RecvForResult(timeoutMs)` to receive
+`OkStr(data)` for every delivered event, including empty data, and `ErrStr` for timeout
+(`SSE: timeout`), close (`SSE: stream closed`), or a caught receive trap.
+
+`Close` is safe concurrently with receive. It marks the stream closed and performs native socket
+shutdown to wake active I/O, but the receive owner retains and finally releases TCP/TLS storage.
+Multiple receive callers wait and consume complete events one at a time. `IsOpen`,
+`LastEventType`, and `LastEventId` take synchronized native snapshots; returned Strings are
+independent caller-owned values. `IsOpen` is a local-state query, not a remote liveness probe.
+Every client has stable managed identity, and `Connect` rejects forged or embedded-NUL URL
+Strings before network access.
 
 ---
 
@@ -2642,6 +2862,9 @@ Session-based HTTP client with cookie jar, auto-redirect, and persistent headers
 - `Domain` attributes are normalized before storage. Syntactically invalid `Max-Age` values are
   ignored; a valid value that would overflow its absolute expiry saturates to `INT64_MAX`.
 - Expired cookies are purged automatically before requests and lookups.
+- All response-cookie fields are parsed and allocated into detached native staging before the jar
+  lock is acquired. The completed set is then published in one allocation-free critical section;
+  native allocation failure leaves the pre-response jar unchanged instead of accepting a prefix.
 
 `SetCookie` applies the same validation as response cookies — token-valid names, cookie-octet
 values (no `;`, quotes, or controls), and syntactically valid domains — and traps on invalid
@@ -2659,13 +2882,32 @@ and `sid` coexist and replace independently.
 - Plain `http://` requests reuse HTTP/1.1 keep-alive sockets when the response framing is safe.
 - `https://` requests negotiate `h2` first; an HTTP/2 connection is reused across sequential requests as new streams when the peer selects `h2`, otherwise the client falls back to pooled HTTP/1.1 keep-alive reuse.
 - Sensitive default headers such as `Authorization`, `Cookie`, and common API-key headers are stripped automatically when a redirect crosses origin boundaries.
-- Default-header and cookie-jar mutations are synchronized internally, so one `HttpClient` instance can be shared across concurrent request paths.
+- Default-header, cookie-jar, redirect-policy, timeout, and pool mutations are synchronized
+  internally. Each request retains a complete defaults/pool snapshot, so one `HttpClient` instance
+  can be shared across concurrent request paths without holding the session lock during transport.
 - Set `KeepAlive = false` to force the previous close-after-each-request behavior.
+- Resizing while keep-alive is disabled records only the future capacity and retains no idle pool.
+  Concurrent enable/resize operations recheck the configured size before publishing a new pool.
 - Default headers replace case-insensitively (HTTP field names are case-insensitive), so the
   last `SetHeader` call for a name wins regardless of spelling and no duplicates reach the wire.
+- Header names must be HTTP tokens; embedded NUL and CR/LF injection are rejected. Replacement is
+  transactional, so allocation failure cannot remove the previous casing/value.
 - The default timeout is 30 seconds per address/socket-operation phase. `SetTimeout(0)` disables
   the timeout entirely — the value is applied to every request, so a zero-timeout client issues
   genuinely unbounded requests. Use with care for long-lived streams.
+
+Each verb copies its URL and optional String body by exact runtime length, then owns request setup,
+transport, response-cookie capture, and every redirect hop in one recoverable transaction. A trap
+releases the current request, intermediate response, and redirect temporaries before preserving the
+original network error category. POST changes to GET for 301/302 and every 303; 307/308 preserve the
+method and body. Cross-origin hops stop forwarding sensitive default headers. Embedded NUL bytes are
+valid in POST/PUT bodies but never in URLs.
+
+`GetCookies(domain)` returns an independent caller-owned `Map<String,String>`. Native cookie bytes
+are copied while locked, but all managed Map/String construction happens after unlocking; partial
+snapshots are released if any allocation traps. Every non-null public receiver is also checked
+against the stable HttpClient object identity before private synchronization or cookie state is
+accessed.
 
 `Get`, `Post`, `Put`, `Delete`, and `GetCookies` are registered as unqualified object results.
 Assign them to explicit `HttpRes`/`Map` locals or call concrete receiver functions rather than
@@ -2700,33 +2942,50 @@ Simple SMTP client for sending emails with optional AUTH LOGIN and negotiated ST
 |----------|------|-------------|
 | `LastError` | String | Compatibility diagnostic for the most recent failed Boolean send |
 
-Prefer `SendResult(...)` and `SendHtmlResult(...)` in new code. They keep a converted
-SMTP-layer error message attached to the send operation and avoid depending on mutable
-`LastError` state. Low-level TCP/TLS traps raised during connection/setup are recovered inside
-both Result operations and returned as `ErrStr(message)`, so a Result send never traps for
-transport failures.
+Prefer `SendResult(...)` and `SendHtmlResult(...)` in new code. They attach a stable snapshot of
+the SMTP failure to the operation rather than requiring a later read of mutable `LastError`.
+Receiver, String, TCP, and TLS traps are caught only after the operation has closed its transport
+and released its mutex, then returned as `ErrStr(message)`. Result allocation itself can still
+trap if the runtime cannot allocate the error String or Result object; partial values are released
+first. Boolean sends preserve the compatibility contract and clear `LastError` after success.
 
 ### Runtime Notes
 
-- Port 465 uses implicit TLS by default. On other ports, `SetTls(true)` negotiates `STARTTLS` only
-  after the server advertises it in the `EHLO` response; a missing advertisement fails the send.
-- Every send opens a fresh SMTP session, uses fixed 30-second transport-operation timeouts, sends
-  one recipient, issues `EHLO localhost`, and closes after `QUIT`. `Close()` is only a force-close
-  for an in-progress transport and does not itself send `QUIT`.
-- `AUTH LOGIN` is only attempted when the server advertises it and the connection is encrypted.
-- SMTP response lines are capped to prevent unbounded memory growth, and AUTH LOGIN credential commands are sized from the base64 output instead of a fixed buffer.
-- Recipient replies `250`, `251`, and `252` are accepted so forwarded/local-alias deliveries interoperate with real SMTP servers.
-- Envelope paths reject controls, spaces, and angle brackets; subjects have CR/LF replaced, and
-  bodies are newline-normalized and dot-stuffed. Hosts and credentials containing embedded NUL
-  bytes are rejected (trap), and message fields containing embedded NUL bytes fail the send
-  with a diagnostic instead of transmitting a truncated prefix.
-- The client is not safe for concurrent use. Construction validates the host: empty hosts and
-  hosts with embedded NUL bytes trap immediately instead of deferring the failure to the first
-  send.
+- Every send opens a fresh connection, applies 30-second transport-operation timeouts, sends one
+  recipient, and closes afterward. It begins with `EHLO localhost`. Plaintext sessions without
+  TLS or AUTH requirements may fall back to HELO only for replies 500, 502, or 504; malformed
+  replies and every other code remain failures.
+- Port 465 enables implicit TLS by default. On other ports, `SetTls(true)` requires an advertised
+  STARTTLS capability and a successful upgrade before any AUTH command. Both implicit TLS and
+  STARTTLS publish the TLS owner before the blocking handshake, allowing concurrent Close to
+  interrupt it without freeing live TLS buffers.
+- `AUTH LOGIN` is attempted only when both credentials are configured, the server advertises
+  LOGIN, and the transport is encrypted. Username and password must be supplied together, are
+  capped at 16 KiB each, and replace the previous pair transactionally. Stored and base64-encoded
+  secret bytes are wiped before native release. `SetAuth(NULL, NULL)` disables authentication.
+- SMTP replies require CRLF. Each content line is capped at 510 bytes; C0 controls other than HTAB
+  and DEL are rejected. A multiline reply may contain at most 100 lines, must repeat one status
+  code, and terminates only with `code SP`. The parser reads through a 4 KiB native buffer rather
+  than allocating one managed Bytes object per byte.
+- Recipient replies 250, 251, and 252 are accepted so forwarding and local-alias deliveries
+  interoperate. MAIL FROM and RCPT TO paths remain single-recipient and reject empty, oversized,
+  whitespace/control-bearing, or angle-bracket-bearing values.
+- MIME headers and the body stream directly through one fixed 4 KiB native staging buffer,
+  independent of message size. Every C0 or DEL byte in an untrusted header value becomes a space.
+  Body CR, LF, and CRLF delimiters normalize to CRLF, a dot at the start of every normalized line
+  is doubled, and the runtime guarantees CRLF before the final dot terminator. HTML bodies are
+  framed identically but are not escaped.
+- Host, credential, and message Strings have stable managed identity and are checked for embedded
+  NUL before C-string use. Construction rejects empty or URL-like hosts, invalid ports, and
+  malformed bracketed IPv6 literals. A bracketed IPv6 host is normalized before DNS/TLS use.
 
-STARTTLS descriptor ownership is single-owner: the TCP wrapper is detached as soon as the TLS
-session adopts the socket, so a failed TLS handshake closes the descriptor exactly once and the
-client object remains reusable for a later send.
+Sends, `SetAuth`, and `SetTls` serialize per client. Two concurrent send callers complete separate
+fresh SMTP sessions without sharing a transport or response buffer. `LastError` is synchronized
+and returns an independent caller-owned String snapshot. `Close` may run concurrently: it marks
+cancellation and shuts down the descriptor to wake blocked I/O, while the active send remains the
+only owner allowed to detach and free TCP/TLS state. A later send clears cancellation and
+reconnects. Successful DATA acceptance remains success even if the advisory QUIT exchange fails;
+the transport is still closed deterministically.
 
 ---
 
@@ -2748,10 +3007,9 @@ Future-based wrappers around blocking socket operations.
 | `HttpGetAsync(url)` | Future | Async HTTP GET → resolves to String |
 | `HttpPostAsync(url, body)` | Future | Async HTTP POST → resolves to String |
 
-All methods return a runtime `Future`, but their registry signatures are unqualified `obj`.
-Assign the result to an explicitly typed `Zanna.Threads.Future` local or use explicit Future
-receivers; a direct chain such as `AsyncSocket.ConnectAsync(...).IsDone` can be inferred as
-`AsyncSocket`/`Any` and fail semantic analysis.
+All methods return a runtime `Zanna.Threads.Future`; the registry signatures use the qualified
+`obj<Zanna.Threads.Future>` type. The payload type varies by operation as listed above, so inspect
+the Future error state before retrieving and casting/unboxing its value.
 
 ### Failure Behavior
 
@@ -2759,24 +3017,34 @@ receivers; a direct chain such as `AsyncSocket.ConnectAsync(...).IsDone` can be 
 - Argument-validation failures trap synchronously before submission and stop immediately —
   with a returning trap hook installed, each rejected input raises exactly one trap and the
   call returns a failed Future (or NULL) instead of continuing.
+- Connect ports must be 1–65,535. Explicit connect timeouts and receive limits must be
+  0–`INT_MAX` milliseconds/bytes. `SendAsync` requires live managed Tcp and Bytes handles; both
+  are retained and revalidated before crossing the worker boundary.
 - Async connect and HTTP GET/POST reject host or URL strings with embedded NUL bytes. `HttpPostAsync` preserves the runtime byte length of its body, including embedded NUL bytes.
 - Inspect the `Threads.Future.IsError` and `Threads.Future.Error` properties before calling
   `Get()` on a failed future.
+- Worker rejection remains terminal even if copying its diagnostic runs out of memory. In that
+  fallback case `IsError` is true, `Error` is empty, and `Get()` traps with the generic Future
+  error diagnostic rather than leaving the operation pending.
 - **Executor model:** one lazily created shared worker pool runs the ordinary blocking TCP/HTTP
   functions. It defaults to twice the logical CPU count (minimum 8, capped at 1,024) and can be
   configured with `SetPoolSize(n)` before the first async operation (resizing after the pool
   exists traps). Each in-flight operation occupies one worker for its duration, so the pool size
-  bounds concurrent operations; excess submissions queue.
+  bounds concurrent operations; excess submissions queue. Configuration and first use are
+  atomically serialized. If Pool construction fails, that operation receives an error Future and
+  a later call may configure or retry initialization; failure is not cached permanently.
 - **Cancellation model:** cancelling a returned Future changes only Future state — it does not
   interrupt the worker or its blocking socket operation, which runs to completion (its result or
   side effects are then discarded). Close the underlying `Tcp` to force a blocked operation to
   fail promptly.
 
-Result ownership is transfer-based: workers hand their freshly produced Tcp/Bytes/String
-directly to the Future, so consuming the Future yields the only reference and normal release
-frees the object — nothing leaks per operation. `SendAsync` resolves to a **boxed Integer**
-(the same convention as `Async.Run` results): read it with `Zanna.Core.Box` accessors such as
-`ToI64`.
+Result publication is transfer-based: workers hand their freshly produced Tcp/Bytes/String/Box
+reference directly to the Promise/Future pair and then release their producer Promise reference.
+Future getters do **not** consume or clear that stored result; every successful getter returns a
+separately retained caller reference that must be released at the C ABI layer. Finalizing the
+Future releases the stored reference after worker cleanup. `SendAsync` resolves to a **boxed
+Integer** (the same convention as `Async.Run` results): read it with `Zanna.Core.Box` accessors
+such as `ToI64`.
 
 ---
 
@@ -2797,8 +3065,13 @@ frees the object — nothing leaks per operation. `SendAsync` resolves to a **bo
 Raw `Tcp`, `Udp`, and `WebSocket` handles do not serialize concurrent reads or writes; use them
 from one thread at a time or provide external coordination. Higher-level types such as
 `ConnectionPool` and `HttpClient` document their own synchronization guarantees. `HttpRouter`,
-`Multipart`, `SseClient`, `SmtpClient`, and `RateLimiter` are not safe for concurrent mutation/use.
-The server types protect selected bookkeeping, but the WebSocket-server caveats above still apply.
+`Multipart`, and `RateLimiter` document narrower mutation rules. `SseClient` serializes receive
+callers and permits Close/metadata snapshots concurrently. `SmtpClient` serializes sends and
+configuration changes, permits synchronized LastError snapshots, and allows Close to cancel the
+active operation without racing transport destruction.
+`TcpServer` supports concurrent accept waiters and concurrent close with the lifecycle guarantee
+documented above. Other server types protect selected bookkeeping, but the WebSocket-server
+caveats above still apply.
 
 ### Connection Limits
 

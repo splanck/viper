@@ -354,10 +354,10 @@ void addToolchainFileAssociationMetadata(std::vector<DataFile> &dataFiles,
                            0644);
 }
 
-/// @brief Append the visible ZannaIDE desktop launcher for Linux package menus.
-void addZannaIDEDesktopMetadata(std::vector<DataFile> &dataFiles, const std::string &execPath) {
+/// @brief Append the visible Zanna Studio desktop launcher for Linux package menus.
+void addZannaStudioDesktopMetadata(std::vector<DataFile> &dataFiles, const std::string &execPath) {
     DesktopEntryParams desktop;
-    desktop.name = "ZannaIDE";
+    desktop.name = "Zanna Studio";
     desktop.comment = "Edit, build, and debug Zanna projects";
     desktop.execPath = execPath;
     desktop.iconName = "zanna";
@@ -365,7 +365,7 @@ void addZannaIDEDesktopMetadata(std::vector<DataFile> &dataFiles, const std::str
     desktop.terminal = false;
 
     const std::string desktopText = generateDesktopEntry(desktop);
-    dataFiles.emplace_back("usr/share/applications/zannaide.desktop",
+    dataFiles.emplace_back("usr/share/applications/zannastudio.desktop",
                            std::vector<uint8_t>(desktopText.begin(), desktopText.end()),
                            0644);
 }
@@ -403,7 +403,7 @@ std::vector<DataFile> collectToolchainLinuxFiles(const ToolchainInstallManifest 
                 relInstall, readFile(file.stagedAbsolutePath.string()), permissionBitsFor(file));
     }
     addToolchainFileAssociationMetadata(dataFiles, manifest, packageName, "/usr/bin/zanna");
-    addZannaIDEDesktopMetadata(dataFiles, "/usr/bin/zannaide");
+    addZannaStudioDesktopMetadata(dataFiles, "/usr/bin/zannastudio");
     addZannaToolchainHicolorIcons(dataFiles, "zanna");
     return dataFiles;
 }
@@ -1208,7 +1208,7 @@ Install under a custom prefix:
 
 Use without installing:
   ./bin/zanna --version
-  ./bin/zannaide --version
+  ./bin/zannastudio --version
 
 If you install to a custom non-system prefix, add that prefix's bin directory to
 your shell PATH. For example:
@@ -1219,7 +1219,7 @@ Stage into a package root without refreshing system caches:
 
 Verify after install:
   zanna --version
-  zannaide --version
+  zannastudio --version
 
 Uninstall:
   sudo /usr/local/share/zanna/uninstall.sh
@@ -1611,7 +1611,7 @@ void addToolchainBundleMetadata(TarWriter &tar, const std::string &packageName) 
 
 /// @brief Return the self-extracting bundle AppRun launcher script for the Zanna toolchain.
 /// @details When launched from a desktop shell with no arguments it starts
-///          ZannaIDE. When invoked from a terminal or file association with
+///          Zanna Studio. When invoked from a terminal or file association with
 ///          arguments, it preserves CLI behavior by delegating to `bin/zanna`.
 /// @return POSIX shell script text installed as executable `AppRun`.
 std::string toolchainAppRunScript() {
@@ -1621,8 +1621,8 @@ std::string toolchainAppRunScript() {
            "case \"$self\" in /*) appdir=$(dirname -- \"$self\") ;;\n"
            "  *) appdir=$(CDPATH= cd -- \"$(dirname -- \"$self\")\" && pwd) ;;\n"
            "esac\n"
-           "if [ \"$#\" -eq 0 ] && [ -x \"$appdir/bin/zannaide\" ]; then\n"
-           "  exec \"$appdir/bin/zannaide\"\n"
+           "if [ \"$#\" -eq 0 ] && [ -x \"$appdir/bin/zannastudio\" ]; then\n"
+           "  exec \"$appdir/bin/zannastudio\"\n"
            "fi\n"
            "exec \"$appdir/bin/zanna\" \"$@\"\n";
 }
@@ -2618,7 +2618,7 @@ void buildToolchainTarball(const LinuxToolchainBuildParams &params) {
         std::vector<DataFile> generated;
         if (!manifest.fileAssociations.empty())
             addToolchainFileAssociationMetadata(generated, manifest, packageName, "zanna");
-        addZannaIDEDesktopMetadata(generated, "zannaide");
+        addZannaStudioDesktopMetadata(generated, "zannastudio");
         addZannaToolchainHicolorIcons(generated, "zanna");
         for (const auto &df : generated) {
             const std::string portablePath = sanitizePackageRelativePath(
@@ -2690,7 +2690,7 @@ void buildToolchainBundle(const LinuxToolchainBuildParams &params) {
         std::vector<DataFile> generated;
         if (!manifest.fileAssociations.empty())
             addToolchainFileAssociationMetadata(generated, manifest, packageName, "zanna");
-        addZannaIDEDesktopMetadata(generated, "zannaide");
+        addZannaStudioDesktopMetadata(generated, "zannastudio");
         addZannaToolchainHicolorIcons(generated, "zanna");
         for (const auto &df : generated) {
             const std::string portablePath = sanitizePackageRelativePath(

@@ -11,7 +11,7 @@
 //   - Slots are initialized to NULL on allocation.
 //   - rt_arr_str_put retains the new value and releases the old slot.
 //   - rt_arr_str_get returns a retained reference; caller must release it.
-//   - rt_arr_str_release frees all non-null elements before freeing the container.
+//   - rt_arr_str_release tears down elements only after the final container release.
 //
 // Ownership/Lifetime:
 //   - Array container is refcounted via the heap header.
@@ -40,9 +40,10 @@ extern "C" {
 /// @return Array payload pointer or NULL on allocation failure.
 rt_string *rt_arr_str_alloc(size_t len);
 
-/// @brief Release each non-null string element and free the array.
-/// @details Iterates through the heap header's authoritative element count, calling
-///          rt_str_release_maybe on each, then releases the array itself via the heap allocator.
+/// @brief Release one string-array ownership reference.
+/// @details Shared arrays keep their elements intact. The final release iterates
+///          through the authoritative element count, releases each string, and
+///          then reclaims the array allocation.
 /// @param arr Array payload pointer (may be NULL).
 /// @param size Historical caller-supplied element count; ignored.
 void rt_arr_str_release(rt_string *arr, size_t size);

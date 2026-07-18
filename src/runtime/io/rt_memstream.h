@@ -12,8 +12,10 @@
 // Key invariants:
 //   - Primitive types use little-endian encoding for cross-platform compatibility.
 //   - Writing past the current end automatically grows the buffer.
-//   - Seek is supported with SEEK_SET, SEEK_CUR, and SEEK_END origins.
-//   - Reading past end returns 0 bytes and sets the EOF flag.
+//   - Absolute seek and relative skip may place the cursor beyond logical end;
+//     reads past end trap and a later write zero-fills the observable gap.
+//   - Signed integer encodings use mathematical two's-complement conversion,
+//     independent of implementation-defined signed shifts or casts.
 //
 // Ownership/Lifetime:
 //   - MemStream objects are heap-allocated; caller is responsible for lifetime management.
@@ -40,12 +42,20 @@ extern "C" {
 /// @return MemStream object.
 void *rt_memstream_new(void);
 
-/// @brief Return 1 if obj is a MemStream runtime handle.
+/// @brief Determine whether an opaque pointer is a complete MemStream handle.
+/// @details Checks managed-heap registration, object kind, class id, and the
+///          minimum payload size before implementation fields are accessed.
+/// @param obj Candidate runtime pointer; may be NULL or unrelated.
+/// @return One for a valid MemStream handle, otherwise zero.
 int8_t rt_memstream_is_handle(void *obj);
 
 /// @brief Create a new memory stream with initial capacity hint.
-/// @param capacity Initial buffer capacity (may be 0).
-/// @return MemStream object.
+/// @details Zero creates a lazy stream. A positive request reserves at least
+///          that many bytes and may round up to the 64-byte minimum growth
+///          quantum. Reserved bytes remain outside logical Length until a
+///          write; gaps made observable by a sparse write are zero-filled.
+/// @param capacity Minimum initial buffer capacity; must be non-negative.
+/// @return Owned MemStream object, or NULL after an allocation trap.
 void *rt_memstream_new_capacity(int64_t capacity);
 
 /// @brief Create a memory stream from an existing Bytes object.
@@ -88,7 +98,7 @@ int64_t rt_memstream_read_i8(void *obj);
 
 /// @brief Write a signed 8-bit integer.
 /// @param obj MemStream object.
-/// @param value Value to write (truncated to 8 bits).
+/// @param value Value to write; traps outside -128 through 127.
 void rt_memstream_write_i8(void *obj, int64_t value);
 
 /// @brief Read an unsigned 8-bit integer.
@@ -98,7 +108,7 @@ int64_t rt_memstream_read_u8(void *obj);
 
 /// @brief Write an unsigned 8-bit integer.
 /// @param obj MemStream object.
-/// @param value Value to write (truncated to 8 bits).
+/// @param value Value to write; traps outside 0 through 255.
 void rt_memstream_write_u8(void *obj, int64_t value);
 
 /// @brief Read a signed 16-bit integer (little-endian).
@@ -108,7 +118,7 @@ int64_t rt_memstream_read_i16(void *obj);
 
 /// @brief Write a signed 16-bit integer (little-endian).
 /// @param obj MemStream object.
-/// @param value Value to write (truncated to 16 bits).
+/// @param value Value to write; traps outside the signed 16-bit range.
 void rt_memstream_write_i16(void *obj, int64_t value);
 
 /// @brief Read an unsigned 16-bit integer (little-endian).
@@ -118,7 +128,7 @@ int64_t rt_memstream_read_u16(void *obj);
 
 /// @brief Write an unsigned 16-bit integer (little-endian).
 /// @param obj MemStream object.
-/// @param value Value to write (truncated to 16 bits).
+/// @param value Value to write; traps outside the unsigned 16-bit range.
 void rt_memstream_write_u16(void *obj, int64_t value);
 
 /// @brief Read a signed 32-bit integer (little-endian).
@@ -128,7 +138,7 @@ int64_t rt_memstream_read_i32(void *obj);
 
 /// @brief Write a signed 32-bit integer (little-endian).
 /// @param obj MemStream object.
-/// @param value Value to write (truncated to 32 bits).
+/// @param value Value to write; traps outside the signed 32-bit range.
 void rt_memstream_write_i32(void *obj, int64_t value);
 
 /// @brief Read an unsigned 32-bit integer (little-endian).
@@ -138,7 +148,7 @@ int64_t rt_memstream_read_u32(void *obj);
 
 /// @brief Write an unsigned 32-bit integer (little-endian).
 /// @param obj MemStream object.
-/// @param value Value to write (truncated to 32 bits).
+/// @param value Value to write; traps outside the unsigned 32-bit range.
 void rt_memstream_write_u32(void *obj, int64_t value);
 
 /// @brief Read a signed 64-bit integer (little-endian).

@@ -233,7 +233,7 @@ tools and setup never downloads a redistributable. PATH, associations,
 shortcuts, and Add/Remove Programs values carry ownership markers; uninstall
 removes only exact owned values. File associations add Open With entries and do
 not replace an existing default handler or execute source on open. The finish
-page offers ZannaIDE, the Developer Prompt, quickstart, samples, and a copyable
+page offers Zanna Studio, the Developer Prompt, quickstart, samples, and a copyable
 verification command after post-install self-checks.
 
 `/inspect` emits verified package identity as JSON without mutation.
@@ -309,7 +309,7 @@ Build and package in a Developer PowerShell:
 ```powershell
 $env:ZANNA_BUILD_TYPE = 'Release'
 $env:ZANNA_SKIP_INSTALL = '1'
-$env:ZANNA_EXTRA_CMAKE_ARGS = '-DZANNA_INSTALL_ZANNAIDE=ON'
+$env:ZANNA_EXTRA_CMAKE_ARGS = '-DZANNA_INSTALL_ZANNASTUDIO=ON'
 .\scripts\build_zanna_win.ps1
 cmake --install build --prefix "$PWD\build\release-stage" --config Release
 & .\build\src\tools\zanna\Release\zanna.exe install-package --stage-dir build\release-stage --target windows --output-file build\zanna-toolchain.exe
@@ -350,7 +350,7 @@ the minimum Windows 10 floor plus current Windows 11 before publication.
 
 ```bash
 export ZANNA_BUILD_TYPE=Release ZANNA_SKIP_INSTALL=1
-export ZANNA_EXTRA_CMAKE_ARGS=-DZANNA_INSTALL_ZANNAIDE=ON
+export ZANNA_EXTRA_CMAKE_ARGS=-DZANNA_INSTALL_ZANNASTUDIO=ON
 ./scripts/build_zanna_linux.sh
 cmake --install build --prefix "$PWD/build/release-stage"
 build/src/tools/zanna/zanna install-package --stage-dir build/release-stage \

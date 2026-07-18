@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: include/zanna/vm/debug/DebugFrontend.hpp
-// Purpose: Interface a host (e.g. the ZannaIDE debug adapter) implements to drive
+// Purpose: Interface a host (e.g. the Zanna Studio debug adapter) implements to drive
 //          interactive debugging, plus the plain-data stop descriptor the VM hands
 //          it at each pause.
 // Key invariants:

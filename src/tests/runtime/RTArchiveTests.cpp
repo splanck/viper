@@ -8,6 +8,8 @@
 // File: tests/runtime/RTArchiveTests.cpp
 // Purpose: Validate Zanna.IO.Archive ZIP archive support.
 // Key invariants: Round-trip create/read preserves data, ZIP format compatibility.
+// Ownership/Lifetime: Each test owns and removes its temporary archive/output
+//                     paths and releases all returned managed values.
 // Links: docs/zannalib/io.md
 //
 //===----------------------------------------------------------------------===//
@@ -19,25 +21,31 @@
 #include "rt_dir.h"
 #include "rt_map.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "tests/common/PlatformSkip.h"
 
+#include <atomic>
 #include <cassert>
 #include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 #include <vector>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <direct.h>
 #include <io.h>
+#include <windows.h>
 #define mkdir_p(path) _mkdir(path)
 #define rmdir _rmdir
 #define unlink _unlink
 #else
 #include "tests/common/PosixCompat.h"
+#include <cerrno>
+#include <fcntl.h>
 #include <sys/stat.h>
 #define mkdir_p(path) mkdir(path, 0755)
 #endif
@@ -87,14 +95,49 @@ static void release_obj(void *obj) {
         rt_obj_free(obj);
 }
 
+/// @brief Set or clear one process environment variable portably for resource-limit tests.
+/// @details Windows uses `_putenv_s`, where an empty value removes the logical
+///          setting for this test. POSIX uses `setenv`/`unsetenv`. The helper
+///          asserts success because a failed mutation would make the limit test
+///          nondeterministic.
+/// @param name Environment variable name.
+/// @param value New value, or NULL to clear the variable.
+static void set_test_environment(const char *name, const char *value) {
+#if RT_PLATFORM_WINDOWS
+    assert(_putenv_s(name, value ? value : "") == 0);
+#else
+    int rc = value ? setenv(name, value, 1) : unsetenv(name);
+    assert(rc == 0);
+#endif
+}
+
+/// @brief Restore an environment variable from a caller-owned optional snapshot.
+/// @param name Environment variable name.
+/// @param saved NULL when the variable was originally absent, otherwise its copied value.
+static void restore_test_environment(const char *name, const char *saved) {
+    set_test_environment(name, saved);
+}
+
+/// @brief Duplicate an optional C string with portable `malloc` semantics.
+/// @param value Source string, or NULL.
+/// @return Owned copy, or NULL when @p value is NULL or allocation fails.
+static char *copy_optional_cstr(const char *value) {
+    if (!value)
+        return nullptr;
+    size_t length = strlen(value);
+    char *copy = static_cast<char *>(malloc(length + 1));
+    assert(copy != nullptr);
+    memcpy(copy, value, length + 1);
+    return copy;
+}
+
 static void *make_invalid_bytes_object(int64_t len) {
     struct FakeBytes {
         int64_t len;
         uint8_t *data;
     };
 
-    FakeBytes *bad =
-        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    FakeBytes *bad = static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
     bad->len = len;
     bad->data = nullptr;
     return bad;
@@ -124,7 +167,7 @@ static const char *get_temp_path(const char *name) {
     static int idx = 0;
     char *path = paths[idx];
     idx = (idx + 1) % 4;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     const char *tmp = getenv("TEMP");
     if (!tmp)
         tmp = ".";
@@ -138,6 +181,29 @@ static const char *get_temp_path(const char *name) {
 /// @brief Delete a file if it exists
 static void delete_file(const char *path) {
     unlink(path);
+}
+
+/// @brief Count process file/handle resources without retaining a new one.
+/// @details Windows exposes the process handle count directly. POSIX probes a
+///          bounded descriptor range with `fcntl(F_GETFD)` and treats any error
+///          other than EBADF as an occupied slot. The archive tests allocate
+///          descriptors from the low range, so 4096 slots detect leaked roots,
+///          parents, sources, and temporary output files deterministically.
+/// @return Number of live handles/descriptors visible to the test process.
+static uint64_t process_open_resource_count() {
+#if RT_PLATFORM_WINDOWS
+    DWORD count = 0;
+    assert(GetProcessHandleCount(GetCurrentProcess(), &count) != 0);
+    return (uint64_t)count;
+#else
+    uint64_t count = 0;
+    for (int fd = 0; fd < 4096; ++fd) {
+        errno = 0;
+        if (fcntl(fd, F_GETFD) != -1 || errno != EBADF)
+            ++count;
+    }
+    return count;
+#endif
 }
 
 static bool file_equals_text(const char *path, const char *expected) {
@@ -374,13 +440,13 @@ static void test_extract_operations() {
     rt_archive_extract_all(reader, rt_const_cstr(extract_dir));
 
     char nested_path[512];
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     snprintf(nested_path, sizeof(nested_path), "%s\\nested\\world.txt", extract_dir);
 #else
     snprintf(nested_path, sizeof(nested_path), "%s/nested/world.txt", extract_dir);
 #endif
     char hello_path[512];
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     snprintf(hello_path, sizeof(hello_path), "%s\\hello.txt", extract_dir);
 #else
     snprintf(hello_path, sizeof(hello_path), "%s/hello.txt", extract_dir);
@@ -529,6 +595,7 @@ static void test_properties() {
     // Test Path property
     rt_string ar_path = rt_archive_path(ar2);
     test_result("Path not empty", strlen(rt_string_cstr(ar_path)) > 0);
+    rt_string_unref(ar_path);
 
     // Test Count property
     test_result("Count is 3", rt_archive_count(ar2) == 3);
@@ -536,6 +603,13 @@ static void test_properties() {
     // Test Names property
     void *names = rt_archive_names(ar2);
     test_result("Names has 3 entries", rt_seq_len(names) == 3);
+    release_obj(ar2);
+    ar2 = nullptr;
+    rt_string first_name = static_cast<rt_string>(rt_seq_get(names, 0));
+    test_result("Names survive archive release",
+                first_name && rt_str_eq(first_name, rt_const_cstr("a.txt")));
+    release_obj(names);
+    release_obj(ar);
 
     delete_file(path);
 }
@@ -577,6 +651,12 @@ static void test_create_does_not_truncate_until_finish() {
     assert(fp != NULL);
     fputs("old payload", fp);
     fclose(fp);
+#if RT_PLATFORM_WINDOWS
+    WIN32_FILE_ATTRIBUTE_DATA original_attributes{};
+    assert(GetFileAttributesExA(path, GetFileExInfoStandard, &original_attributes) != 0);
+#else
+    assert(chmod(path, 0600) == 0);
+#endif
 
     void *ar = rt_archive_create(rt_const_cstr(path));
     test_result("existing file unchanged after Create", file_equals_text(path, "old payload"));
@@ -584,8 +664,53 @@ static void test_create_does_not_truncate_until_finish() {
     rt_archive_add_str(ar, rt_const_cstr("entry.txt"), rt_const_cstr("new payload"));
     rt_archive_finish(ar);
     test_result("Finish writes valid zip", rt_archive_is_zip(rt_const_cstr(path)) == 1);
+#if RT_PLATFORM_WINDOWS
+    WIN32_FILE_ATTRIBUTE_DATA replaced_attributes{};
+    assert(GetFileAttributesExA(path, GetFileExInfoStandard, &replaced_attributes) != 0);
+    test_result("Finish preserves existing file creation time",
+                CompareFileTime(&original_attributes.ftCreationTime,
+                                &replaced_attributes.ftCreationTime) == 0);
+#else
+    struct stat replaced;
+    assert(stat(path, &replaced) == 0);
+    test_result("Finish preserves existing file mode", (replaced.st_mode & 0777) == 0600);
+#endif
 
     delete_file(path);
+}
+
+/// @brief Verify a failed atomic Finish rolls back and removes its temporary sidecar.
+/// @details Uses an existing directory as the destination so atomic replacement
+///          fails after the sidecar has been fully written. Removing that
+///          directory and retrying the same Archive must succeed, proving the
+///          central-directory append was rolled back. The isolated parent must
+///          contain only the final archive, proving failed sidecar cleanup.
+static void test_finish_failure_is_retryable_and_cleans_sidecar() {
+    printf("Testing Finish Failure Rollback and Cleanup:\n");
+
+    char parent[256];
+    snprintf(parent, sizeof(parent), "%s", get_temp_path("test_archive_finish_retry"));
+    char destination[320];
+#if RT_PLATFORM_WINDOWS
+    snprintf(destination, sizeof(destination), "%s\\result.zip", parent);
+#else
+    snprintf(destination, sizeof(destination), "%s/result.zip", parent);
+#endif
+    rt_dir_remove_all(rt_const_cstr(parent));
+    rt_dir_make_all(rt_const_cstr(parent));
+    rt_dir_make(rt_const_cstr(destination));
+
+    void *writer = rt_archive_create(rt_const_cstr(destination));
+    rt_archive_add_str(writer, rt_const_cstr("entry.txt"), rt_const_cstr("retry payload"));
+    EXPECT_TRAP(rt_archive_finish(writer));
+
+    rt_dir_remove(rt_const_cstr(destination));
+    rt_archive_finish(writer);
+    assert(rt_archive_is_zip(rt_const_cstr(destination)) == 1);
+    void *entries = rt_dir_list(rt_const_cstr(parent));
+    test_result("failed Finish is retryable", rt_seq_len(entries) == 1);
+    release_obj(entries);
+    rt_dir_remove_all(rt_const_cstr(parent));
 }
 
 static void test_entry_info() {
@@ -702,9 +827,8 @@ static void test_stored_size_mismatch_traps() {
     void *zip_bytes = rt_bytes_new((int64_t)bytes.size());
     memcpy(get_bytes_data(zip_bytes), bytes.data(), bytes.size());
 
-    void *bad_archive = rt_archive_from_bytes(zip_bytes);
-    EXPECT_TRAP(rt_archive_read(bad_archive, rt_const_cstr("bad.txt")));
-    test_result("stored size mismatch traps", true);
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    test_result("stored size mismatch traps during parse", true);
 
     delete_file(path);
 }
@@ -802,7 +926,7 @@ static void test_central_directory_duplicate_name_traps() {
     delete_file(path);
 }
 
-static void test_corrupt_local_header_offset_traps_on_read() {
+static void test_corrupt_local_header_offset_traps_on_open() {
     printf("Testing Local Header Offset Validation:\n");
 
     const char *path = get_temp_path("test_local_offset.zip");
@@ -825,10 +949,232 @@ static void test_corrupt_local_header_offset_traps_on_read() {
     assert(patched);
 
     void *zip_bytes = bytes_from_vector(bytes);
-    void *bad_archive = rt_archive_from_bytes(zip_bytes);
-    EXPECT_TRAP(rt_archive_read(bad_archive, rt_const_cstr("offset.txt")));
-    test_result("corrupt local header offset traps", true);
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    test_result("corrupt local header offset traps during parse", true);
 
+    delete_file(path);
+}
+
+/// @brief Verify a central entry cannot redirect extraction through a differently named local file.
+/// @details Mutates only the local-header filename while leaving the central
+///          directory intact. Opening the byte-backed archive must reject the
+///          disagreement before any lookup or extraction is attempted.
+static void test_local_and_central_names_must_match() {
+    printf("Testing Local/Central Name Agreement:\n");
+
+    const char *path = get_temp_path("test_local_name_mismatch.zip");
+    delete_file(path);
+    void *writer = rt_archive_create(rt_const_cstr(path));
+    rt_archive_add_str(writer, rt_const_cstr("name.txt"), rt_const_cstr("payload"));
+    rt_archive_finish(writer);
+
+    std::vector<uint8_t> bytes = read_file_bytes(path);
+    size_t local = find_zip_signature(bytes, 0x04034b50U);
+    assert(local + 30 + strlen("name.txt") <= bytes.size());
+    bytes[local + 30] = (uint8_t)'x';
+
+    void *zip_bytes = bytes_from_vector(bytes);
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    test_result("local/central name mismatch traps during parse", true);
+    delete_file(path);
+}
+
+/// @brief Verify a local payload range cannot consume bytes from the central directory.
+/// @details Patches both local and central size metadata to agree on a stored
+///          payload whose exclusive end is one byte beyond the central-directory
+///          offset. Open-time range validation must reject the overlap even
+///          though the two headers are otherwise mutually consistent.
+static void test_local_payload_cannot_overlap_central_directory() {
+    printf("Testing Local Payload/Central Directory Separation:\n");
+
+    const char *path = get_temp_path("test_local_overlaps_central.zip");
+    delete_file(path);
+    void *writer = rt_archive_create(rt_const_cstr(path));
+    rt_archive_add_str(writer, rt_const_cstr("range.txt"), rt_const_cstr("abc"));
+    rt_archive_finish(writer);
+
+    std::vector<uint8_t> bytes = read_file_bytes(path);
+    size_t local = find_zip_signature(bytes, 0x04034b50U);
+    size_t central = find_zip_signature(bytes, 0x02014b50U);
+    assert(local + 30 <= central && central + 46 <= bytes.size());
+    uint16_t name_len = (uint16_t)(bytes[local + 26] | ((uint16_t)bytes[local + 27] << 8));
+    uint16_t extra_len = (uint16_t)(bytes[local + 28] | ((uint16_t)bytes[local + 29] << 8));
+    size_t data_offset = local + 30 + (size_t)name_len + (size_t)extra_len;
+    assert(data_offset <= central && central - data_offset < UINT32_MAX);
+    uint32_t overlapping_size = (uint32_t)(central - data_offset + 1);
+    write_u32_le(bytes, local + 18, overlapping_size);
+    write_u32_le(bytes, local + 22, overlapping_size);
+    write_u32_le(bytes, central + 20, overlapping_size);
+    write_u32_le(bytes, central + 24, overlapping_size);
+
+    void *zip_bytes = bytes_from_vector(bytes);
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    test_result("local payload overlap traps during parse", true);
+    delete_file(path);
+}
+
+/// @brief Verify encoded, per-entry, and aggregate archive resource ceilings are enforced.
+/// @details Builds a valid two-entry archive, then samples each documented
+///          environment override in a fresh `FromBytes` construction. Every
+///          deliberately undersized ceiling must trap before decompression or
+///          a large allocation, and the caller's original environment is
+///          restored afterward.
+static void test_configured_archive_resource_limits() {
+    printf("Testing Configured Archive Resource Limits:\n");
+
+    const char *path = get_temp_path("test_archive_limits.zip");
+    delete_file(path);
+    void *writer = rt_archive_create(rt_const_cstr(path));
+    rt_archive_add_str(writer, rt_const_cstr("first.txt"), rt_const_cstr("0123456789abcdef"));
+    rt_archive_add_str(writer, rt_const_cstr("second.txt"), rt_const_cstr("fedcba9876543210"));
+    rt_archive_finish(writer);
+    std::vector<uint8_t> encoded = read_file_bytes(path);
+    void *zip_bytes = bytes_from_vector(encoded);
+
+    const char *old_file_raw = getenv("ZANNA_ARCHIVE_MAX_FILE_BYTES");
+    const char *old_entry_raw = getenv("ZANNA_ARCHIVE_MAX_ENTRY_BYTES");
+    const char *old_total_raw = getenv("ZANNA_ARCHIVE_MAX_TOTAL_ENTRY_BYTES");
+    char *old_file = copy_optional_cstr(old_file_raw);
+    char *old_entry = copy_optional_cstr(old_entry_raw);
+    char *old_total = copy_optional_cstr(old_total_raw);
+
+    set_test_environment("ZANNA_ARCHIVE_MAX_FILE_BYTES", "16");
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    restore_test_environment("ZANNA_ARCHIVE_MAX_FILE_BYTES", old_file);
+
+    set_test_environment("ZANNA_ARCHIVE_MAX_ENTRY_BYTES", "8");
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    restore_test_environment("ZANNA_ARCHIVE_MAX_ENTRY_BYTES", old_entry);
+
+    set_test_environment("ZANNA_ARCHIVE_MAX_TOTAL_ENTRY_BYTES", "24");
+    EXPECT_TRAP(rt_archive_from_bytes(zip_bytes));
+    restore_test_environment("ZANNA_ARCHIVE_MAX_TOTAL_ENTRY_BYTES", old_total);
+
+    const char *entry_path = get_temp_path("test_archive_writer_entry_limit.zip");
+    delete_file(entry_path);
+    set_test_environment("ZANNA_ARCHIVE_MAX_ENTRY_BYTES", "8");
+    void *entry_writer = rt_archive_create(rt_const_cstr(entry_path));
+    EXPECT_TRAP(rt_archive_add_str(
+        entry_writer, rt_const_cstr("too-large.txt"), rt_const_cstr("0123456789abcdef")));
+    assert(rt_archive_count(entry_writer) == 0);
+    release_obj(entry_writer);
+    restore_test_environment("ZANNA_ARCHIVE_MAX_ENTRY_BYTES", old_entry);
+
+    const char *total_path = get_temp_path("test_archive_writer_total_limit.zip");
+    delete_file(total_path);
+    set_test_environment("ZANNA_ARCHIVE_MAX_TOTAL_ENTRY_BYTES", "24");
+    void *total_writer = rt_archive_create(rt_const_cstr(total_path));
+    rt_archive_add_str(total_writer, rt_const_cstr("first.txt"), rt_const_cstr("0123456789abcdef"));
+    EXPECT_TRAP(rt_archive_add_str(
+        total_writer, rt_const_cstr("second.txt"), rt_const_cstr("fedcba9876543210")));
+    assert(rt_archive_count(total_writer) == 1);
+    release_obj(total_writer);
+    restore_test_environment("ZANNA_ARCHIVE_MAX_TOTAL_ENTRY_BYTES", old_total);
+
+    const char *encoded_path = get_temp_path("test_archive_writer_encoded_limit.zip");
+    delete_file(encoded_path);
+    set_test_environment("ZANNA_ARCHIVE_MAX_FILE_BYTES", "64");
+    void *encoded_writer = rt_archive_create(rt_const_cstr(encoded_path));
+    rt_archive_add_str(encoded_writer, rt_const_cstr("a"), rt_const_cstr("x"));
+    EXPECT_TRAP(rt_archive_finish(encoded_writer));
+    assert(rt_archive_count(encoded_writer) == 1);
+    assert(rt_archive_is_zip(rt_const_cstr(encoded_path)) == 0);
+    release_obj(encoded_writer);
+    restore_test_environment("ZANNA_ARCHIVE_MAX_FILE_BYTES", old_file);
+
+    free(old_file);
+    free(old_entry);
+    free(old_total);
+    test_result("configured archive resource ceilings trap", true);
+    delete_file(entry_path);
+    delete_file(total_path);
+    delete_file(encoded_path);
+    delete_file(path);
+}
+
+/// @brief Exercise indexed duplicate checks and lookups with hundreds of entry names.
+/// @details Adds 512 distinct stored entries, probes a duplicate near the end,
+///          finishes and reopens the archive, then verifies every name through
+///          the read-side hash index. This guards both index growth/rebuild and
+///          collision probing without relying on internal structure mirrors.
+static void test_large_entry_name_indexes() {
+    printf("Testing Large Entry Name Indexes:\n");
+
+    const char *path = get_temp_path("test_archive_name_index.zip");
+    delete_file(path);
+    void *writer = rt_archive_create(rt_const_cstr(path));
+    for (int index = 0; index < 512; ++index) {
+        char name[64];
+        char value[32];
+        snprintf(name, sizeof(name), "indexed/entry-%04d.txt", index);
+        snprintf(value, sizeof(value), "value-%04d", index);
+        rt_archive_add_str(writer, rt_const_cstr(name), rt_const_cstr(value));
+    }
+    EXPECT_TRAP(rt_archive_add_str(
+        writer, rt_const_cstr("indexed/entry-0511.txt"), rt_const_cstr("duplicate")));
+    rt_archive_finish(writer);
+
+    void *reader = rt_archive_open(rt_const_cstr(path));
+    assert(rt_archive_count(reader) == 512);
+    for (int index = 0; index < 512; ++index) {
+        char name[64];
+        snprintf(name, sizeof(name), "indexed/entry-%04d.txt", index);
+        assert(rt_archive_has(reader, rt_const_cstr(name)) == 1);
+    }
+    test_result("write/read archive name indexes retain all entries", true);
+    delete_file(path);
+}
+
+/// @brief Verify concurrent writers and read-only property snapshots are serialized safely.
+/// @details Four native threads add disjoint entry-name ranges while an observer
+///          repeatedly calls Count and Names. After all joins, Finish and reopen
+///          must expose the exact union. This stresses writer exclusion, shared
+///          snapshots, index growth, and independent name ownership together.
+static void test_concurrent_archive_writer_serialization() {
+    printf("Testing Concurrent Archive Writer Serialization:\n");
+
+    const char *path = get_temp_path("test_archive_concurrent_writer.zip");
+    delete_file(path);
+    void *writer = rt_archive_create(rt_const_cstr(path));
+    constexpr int kThreads = 4;
+    constexpr int kEntriesPerThread = 64;
+    std::atomic<int> completed{0};
+
+    std::thread observer([&]() {
+        while (completed.load(std::memory_order_acquire) < kThreads) {
+            int64_t count = rt_archive_count(writer);
+            assert(count >= 0 && count <= kThreads * kEntriesPerThread);
+            void *names = rt_archive_names(writer);
+            int64_t name_count = rt_seq_len(names);
+            assert(name_count >= 0 && name_count <= kThreads * kEntriesPerThread);
+            release_obj(names);
+            std::this_thread::yield();
+        }
+    });
+
+    std::vector<std::thread> workers;
+    for (int thread_index = 0; thread_index < kThreads; ++thread_index) {
+        workers.emplace_back([&, thread_index]() {
+            for (int item = 0; item < kEntriesPerThread; ++item) {
+                char name[80];
+                char value[40];
+                snprintf(
+                    name, sizeof(name), "concurrent/thread-%d-entry-%03d.txt", thread_index, item);
+                snprintf(value, sizeof(value), "thread-%d-value-%03d", thread_index, item);
+                rt_archive_add_str(writer, rt_const_cstr(name), rt_const_cstr(value));
+            }
+            completed.fetch_add(1, std::memory_order_release);
+        });
+    }
+    for (std::thread &worker : workers)
+        worker.join();
+    observer.join();
+
+    assert(rt_archive_count(writer) == kThreads * kEntriesPerThread);
+    rt_archive_finish(writer);
+    void *reader = rt_archive_open(rt_const_cstr(path));
+    test_result("concurrent writer retains exact entry union",
+                rt_archive_count(reader) == kThreads * kEntriesPerThread);
     delete_file(path);
 }
 
@@ -862,7 +1208,7 @@ static void test_unsupported_zip_features_trap_on_open() {
     delete_file(path);
 }
 
-#ifndef _WIN32
+#if !RT_PLATFORM_WINDOWS
 static void test_extract_all_rejects_symlink_parent() {
     printf("Testing ExtractAll symlink parent rejection:\n");
 
@@ -896,6 +1242,53 @@ static void test_extract_all_rejects_symlink_parent() {
     delete_file(zip_path);
 }
 #endif
+
+/// @brief Verify a recovered entry-data trap closes every ExtractAll OS resource.
+/// @details Corrupts a stored payload without changing its matching local and
+///          central metadata, so open succeeds and CRC validation traps only
+///          after ExtractAll owns its root and nested-parent descriptors. The
+///          process resource count must return exactly to its baseline.
+static void test_extract_all_trap_closes_resources() {
+    printf("Testing ExtractAll Trap Resource Cleanup:\n");
+
+    const char *archive_path = get_temp_path("test_archive_extract_cleanup.zip");
+    const char *destination = get_temp_path("test_archive_extract_cleanup_dir");
+    delete_file(archive_path);
+    rt_dir_remove_all(rt_const_cstr(destination));
+
+    void *writer = rt_archive_create(rt_const_cstr(archive_path));
+    rt_archive_add_str(writer, rt_const_cstr("nested/file.txt"), rt_const_cstr("payload"));
+    rt_archive_finish(writer);
+    release_obj(writer);
+
+    std::vector<uint8_t> encoded = read_file_bytes(archive_path);
+    size_t local = find_zip_signature(encoded, 0x04034b50U);
+    assert(local + 30 <= encoded.size());
+    uint16_t name_len = (uint16_t)(encoded[local + 26] | ((uint16_t)encoded[local + 27] << 8));
+    uint16_t extra_len = (uint16_t)(encoded[local + 28] | ((uint16_t)encoded[local + 29] << 8));
+    size_t payload_offset = local + 30 + (size_t)name_len + (size_t)extra_len;
+    assert(payload_offset < encoded.size());
+    encoded[payload_offset] ^= 0x5aU;
+
+    void *zip_bytes = bytes_from_vector(encoded);
+    void *reader = rt_archive_from_bytes(zip_bytes);
+    uint64_t before = process_open_resource_count();
+    EXPECT_TRAP(rt_archive_extract_all(reader, rt_const_cstr(destination)));
+    uint64_t after = process_open_resource_count();
+    test_result("failed ExtractAll closes native resources", after == before);
+
+    release_obj(reader);
+    release_obj(zip_bytes);
+    char nested_path[512];
+#if RT_PLATFORM_WINDOWS
+    snprintf(nested_path, sizeof(nested_path), "%s\\nested", destination);
+#else
+    snprintf(nested_path, sizeof(nested_path), "%s/nested", destination);
+#endif
+    (void)rmdir(nested_path);
+    (void)rmdir(destination);
+    delete_file(archive_path);
+}
 
 //=============================================================================
 // Static Methods Tests
@@ -1067,6 +1460,8 @@ int main() {
     printf("\n");
     test_create_does_not_truncate_until_finish();
     printf("\n");
+    test_finish_failure_is_retryable_and_cleans_sidecar();
+    printf("\n");
     test_entry_info();
     printf("\n");
 
@@ -1081,14 +1476,26 @@ int main() {
     printf("\n");
     test_central_directory_duplicate_name_traps();
     printf("\n");
-    test_corrupt_local_header_offset_traps_on_read();
+    test_corrupt_local_header_offset_traps_on_open();
+    printf("\n");
+    test_local_and_central_names_must_match();
+    printf("\n");
+    test_local_payload_cannot_overlap_central_directory();
+    printf("\n");
+    test_configured_archive_resource_limits();
+    printf("\n");
+    test_large_entry_name_indexes();
+    printf("\n");
+    test_concurrent_archive_writer_serialization();
     printf("\n");
     test_unsupported_zip_features_trap_on_open();
     printf("\n");
-#ifndef _WIN32
+#if !RT_PLATFORM_WINDOWS
     test_extract_all_rejects_symlink_parent();
     printf("\n");
 #endif
+    test_extract_all_trap_closes_resources();
+    printf("\n");
 
     // Static method tests
     test_is_zip();

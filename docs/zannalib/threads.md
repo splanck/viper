@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-15
+last-verified: 2026-07-18
 ---
 
 # Threads
@@ -92,6 +92,35 @@ entry:
 - **VM / BytecodeVM:** `entry` is a managed function reference and is invoked by a per-thread VM runner.
 - `Start` and `StartSafe` do not retain `arg`; use `StartOwned` / `StartSafeOwned` when `arg` is a runtime-managed object or string handle that should stay alive until the callback returns.
 
+### Native Stack-Overflow Protection
+
+Native runtime threads initialize stack-safety support before executing user
+work. On POSIX systems, alternate signal stacks are thread-specific: each
+thread without one receives distinct thread-local storage, while a stack
+already installed by a sanitizer, embedding host, debugger, or crash reporter
+is preserved. Process-wide fatal-signal handlers are installed transactionally
+at most once and do not replace an existing non-default handler. This prevents
+one thread from unregistering or unmapping another thread's signal stack during
+teardown.
+
+Windows uses one process-wide vectored exception handler and CRT-initialized
+threads. Handler initialization is safe under concurrent first use on every
+supported platform. Low-stack diagnostics use platform primitives that do not
+allocate or depend on formatted I/O; stack overflow remains terminal rather
+than attempting unsafe recovery.
+
+### Runtime Context Inheritance
+
+A native runtime thread inherits the caller's active VM context, or the shared legacy context when
+the caller is unbound. The runtime reserves that context before the OS thread is created, so the
+parent may unbind after `Start` returns without opening a gap in which context cleanup can race the
+child trampoline. Native-create failure cancels the reservation; normal child exit releases it.
+
+Inherited threads share the context's RNG, module variables, argument store, BASIC file channels,
+and type registry. Those mutable state families are synchronized independently. Cleanup is rejected
+while any parent, child, or pre-start reservation remains bound. A caller-owned `RtContext` that has
+been cleaned cannot be rebound until it is initialized again.
+
 In safe Zia, use a function reference and a typed callback parameter:
 
 ```rust
@@ -162,6 +191,12 @@ created, so their native resources are reclaimed when they exit whether or not
 runtime Thread wrapper is finalized. Query-only properties such as `Id`,
 `IsAlive`, `HasError`, and `Error` remain usable after a successful join.
 
+At the native C ABI layer, a successful join publishes entry-callback and
+inherited-context completion. A detached worker may still be dropping its one
+internal lifecycle reference immediately after waking joiners. Releasing the
+caller's Thread reference remains safe in that interval; reclamation completes
+when the worker drops the transient reference.
+
 On Windows only, a positive `JoinFor` timeout is currently capped to one Win32
 wait interval (`4294967295` ms, about 49.7 days). A larger request can therefore
 return false before the full requested duration; POSIX uses the full 64-bit
@@ -230,6 +265,13 @@ FIFO-fair, re-entrant monitor for explicit object locking.
 - **Ownership required:** `Exit`, `Wait`, `WaitFor`, `Pause`, and `PauseAll` trap if the calling thread is not the owner.
 - **Timeout units:** milliseconds. `TryEnterFor`/`WaitFor` treat negative values as `0` (immediate).
 - **WaitFor always re-acquires:** even on timeout, `WaitFor` re-acquires the monitor before returning.
+- **Independent lookup stripes:** lazily attached object monitors are indexed
+  behind 64 table-lock stripes, so first use or finalization of unrelated
+  objects no longer contends on one process-wide monitor-table mutex.
+- **Native failures are explicit:** table, monitor, waiter, mutex, and condition
+  initialization failures trap before partial state is published. Unexpected
+  wait or wake failures also trap; they are not treated as a timeout or a
+  successful notification.
 
 ### Errors (Traps)
 
@@ -652,6 +694,11 @@ Thread pool for submitting tasks to a fixed set of worker threads.
 - `ShutdownNow` discards queued tasks but cannot interrupt callbacks that have
   already started; it joins the workers after those callbacks return. `Shutdown`
   drains both queued and active work.
+- Pool construction is transactional: if a monitor or worker cannot be created,
+  already-started workers are stopped and joined and the partial Pool does not
+  escape. Concurrent shutdown callers elect one native join/cleanup owner;
+  other callers wait for or observe the same completed shutdown instead of
+  returning while workers are still live.
 - Calling `Wait`, `WaitFor`, `Shutdown`, or `ShutdownNow` from a worker in the same pool traps to prevent self-deadlock.
 - Traps raised by a task do not leave the pool stuck in an active state. Once the pool drains, the next `Wait()`, successful `WaitFor(ms)`, `Shutdown()`, or `ShutdownNow()` rethrows the last task trap and clears it; later calls report the current pool state normally unless another task traps.
 - `WaitFor(ms <= 0)` is an immediate drain-state check.
@@ -661,10 +708,19 @@ Thread pool for submitting tasks to a fixed set of worker threads.
   runs — or when the task is discarded by `ShutdownNow`/finalization — so
   owned arguments cannot leak through discarded tasks.
 - Pool handles own their worker thread handles and release them after joins. Releasing a pool from one of its own workers requests shutdown and defers reclamation rather than freeing state out from under the running worker.
+- Accepted `SubmitOwned` arguments and queued task records are exposed to the
+  managed cycle collector. A final reference released by one of the pool's own
+  workers transfers cleanup responsibility to a surviving worker, including
+  the allocation-failure fallback path, so self-join is avoided without leaking
+  the pool or its queued owned arguments.
 - `Pool.Submit(pool, callback, arg)` accepts a managed Zia function reference such as `&worker`.
   The runtime owns the native callback adaptation internally. The current BASIC frontend supports
   `ADDRESSOF` with direct callback parameters such as `Thread.Start` and `Parallel.For`, but does
   not yet lower the callback parameter of `Pool.Submit`; submit pool work from Zia or the IL/C ABI.
+- Native runtime adapters should call the typed C entry points
+  `rt_threadpool_submit_fn`/`rt_threadpool_submit_owned_fn`. They preserve the real
+  `void (*)(void *)` callback type; the legacy `void *` callback entry points remain for generated
+  code and compatibility.
 
 **VM behavior:** the standard VM and BytecodeVM do not enqueue `Pool.Submit`
 work. They invoke the callback synchronously on the submitting thread and report
@@ -758,9 +814,19 @@ not call more than one completion method on the same Promise.
   retained handle; getters do not consume or clear the stored result.
 - `SetOwned(value)` is kept for call sites that want to document ownership explicitly; it has the same retain semantics as `Set`.
 - A Promise can only be completed once (either `Set`, `SetOwned`, or `SetError`).
+- A duplicate completion traps and returns without replacing the first result,
+  publishing another state, or falling through into listener delivery.
 - `SetError(null)` stores `"Unknown error"`; a non-null message is copied.
 - `GetFuture()` returns the cached Future while that wrapper is alive. If it has
   been finalized, a later call creates a new wrapper over the same Promise state.
+  The cache is weak and is promoted while completion state is synchronized, so
+  it neither creates a permanent Promise/Future cycle nor returns a wrapper that
+  is concurrently being finalized.
+- Native worker adapters that must settle after catching a trap use the internal C-only
+  `rt_promise_try_set_transferred` and `rt_promise_try_set_error_cstr` functions. They are not
+  registered Promise methods: the caller must own a Promise reference, transferred values are
+  consumed on success or duplicate/invalid completion, and diagnostic OOM still publishes a
+  message-less error state.
 
 ### Errors (Traps)
 
@@ -915,6 +981,11 @@ END IF
   runtime value receives a fresh retain and must be balanced at the C ABI layer.
 - Completion listeners run outside the Promise lock. Listener traps are isolated after cleanup so remaining listeners still run and promise completion is not converted into a listener trap.
 - Cancelling a pending completion listener runs its cleanup hook after removing it. Cleanup-hook traps are isolated after the listener and retained Future reference are released.
+- Listener registration maintains a tail pointer, so appending a continuation
+  is constant-time even when a Promise already has many pending listeners.
+- Promise state, cached Future wrappers, stored results, and continuation-owned
+  managed references participate in GC traversal; unreachable continuation or
+  Promise/Future cycles can be collected.
 
 ---
 
@@ -1720,8 +1791,7 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 | `TrySend(item)`         | `Boolean(Object)`            | Try to send without blocking; returns false if full or closed|
 | `SendFor(item, ms)`     | `Boolean(Object, Integer)`   | Send with timeout; returns false if timed out or closed      |
 | `Recv()`                | `Object()`                   | Receive item, blocking if empty; returns NULL if closed and empty |
-| `TryRecv()`             | `Object()`                   | Try to receive without blocking; returns NULL if empty       |
-| `TryRecvOption()`       | `Option[Object]()`           | Try to receive without blocking; returns `None` if empty     |
+| `TryRecv()`             | `Option[Object]()`           | Try to receive without blocking; returns `None` if empty     |
 | `RecvFor(ms)`           | `Object(Integer)`            | Receive with timeout; returns NULL if timed out or closed    |
 | `Close()`               | `Void()`                     | Close the channel; wakes all blocked senders/receivers       |
 
@@ -1743,13 +1813,21 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 - A synchronous channel (capacity 0) blocks the sender until a receiver is ready.
 - On a synchronous channel, `TrySend()` succeeds only when a receiver is already waiting, publishes one retained handoff value, and returns without waiting for the receiver to acknowledge consumption.
 - On a synchronous channel, `TryRecv()` is strictly non-blocking. It only consumes an already-published handoff value; it does not wait to rendezvous with a merely waiting sender. Use `Recv()` or `RecvFor()` for rendezvous receives.
-- Prefer `TryRecvOption()` for new code. It distinguishes no available item from a transmitted null object.
-- Null items are valid. `Recv`, `TryRecv`, and `RecvFor` cannot distinguish a
-  transmitted null from closed-and-drained, unavailable, or timeout
-  respectively; `TryRecvOption` is the only Option-returning receive.
-- At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks only an already-queued value without consuming or releasing it; it does not advertise a merely waiting synchronous sender as available.
+- Null items are valid. Raw-object `Recv` and `RecvFor` cannot distinguish a
+  transmitted null from closed-and-drained or timeout. The language-level
+  `TryRecv()` returns `Some(null)` for a
+  transmitted null and `None` when no item is immediately available.
+- At the C ABI layer, `rt_channel_try_recv(channel, NULL)` and
+  `rt_channel_recv_for(channel, NULL, ms)` are non-consuming availability probes.
+  They never release a queued reference, and the immediate probe does not
+  advertise a merely waiting synchronous sender as available. Native callers
+  that intentionally consume and release an item use the explicit
+  `rt_channel_recv_for_discard` helper.
 - `IsFull` means a send would block. For synchronous channels it is false when a receiver is already waiting and no handoff value is queued.
-- `SendFor` includes both the wait for a receiver/space and the synchronous handoff acknowledgement in its timeout budget.
+- `SendFor` and `RecvFor` use one monotonic deadline that starts before monitor
+  acquisition. The budget therefore includes lock contention, condition waits,
+  and (for a synchronous send) handoff acknowledgement; repeated wakeups do not
+  restart the requested interval.
 - `SendFor(item, ms <= 0)` is `TrySend(item)` and `RecvFor(ms <= 0)` is a
   non-blocking receive.
 - `Send` traps if the channel is closed.
@@ -1759,6 +1837,9 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
   to the caller. Sending does not consume the caller's existing reference.
 - On a synchronous channel, `Count` can transiently be 1 while a published
   handoff awaits consumption even though `Capacity` is 0.
+- Channel, Promise/Future, ConcurrentMap, and ConcurrentQueue strong references
+  participate in managed graph traversal, so cycles through their stored values
+  can be reclaimed by the runtime cycle collector.
 
 ### Zia Example
 

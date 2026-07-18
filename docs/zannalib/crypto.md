@@ -862,6 +862,9 @@ The TLS implementation uses:
 - **Hash:** SHA-256
 - **Certificate Verification:** Enabled by default against the runtime trust source. Windows uses CryptoAPI; macOS and Linux use the built-in PEM-bundle verifier with standard system trust bundles.
 - **Trust and ALPN controls:** `ConnectOptions` can pin validation to a PEM bundle, advertise comma-separated ALPN preferences such as `"h2,http/1.1"`, and read the negotiated protocol from `NegotiatedAlpn`.
+- **Configuration transaction:** Host, CA-path, and ALPN Strings are validated before native
+  connection state is published. ALPN lists reject leading, repeated, or trailing separators and
+  empty protocol elements rather than silently skipping them.
 - **Certificate Signature Support:** In-tree verification of ECDSA P-256, RSA PKCS#1 v1.5, and RSA-PSS certificate signatures. The TLS client advertises only signature algorithms it can verify; ECDSA P-384 is not advertised until P-384 CertificateVerify support is implemented.
 - **Leaf-certificate policy:** Built-in verification enforces TLS server-auth EKU and requires the `digitalSignature` KeyUsage bit when KeyUsage is present on the server certificate
 - **DER strictness:** Certificate signature algorithms, ECDSA signatures, RSA public keys, and PSS parameters are parsed as strict DER with exact length consumption and canonical INTEGERs
@@ -872,7 +875,16 @@ The TLS implementation uses:
 - **Handshake strictness:** Unexpected handshake messages and trailing certificate-message bytes fail the handshake instead of being skipped.
 - **Key-share validation:** X25519 all-zero shared secrets are rejected during the handshake
 - **String handling:** `SendStr` sends the full stored string byte length, including embedded `NUL` bytes
+- **Exact binary handling:** `Send` validates one real `Bytes` handle and passes its contiguous span
+  directly to the record layer. `Recv` and `RecvStr` use a bounded TLS-record buffer and publish one
+  exact managed value; they do not allocate a second native staging buffer or copy one byte at a time.
 - **Connection state:** `IsOpen` is true only while the TLS session is in the connected state
+- **Identity and lifetime:** Language wrappers and low-level protocol sessions carry distinct stable
+  managed identities. Forged, stale, wrong-class, and undersized handles are rejected before native
+  fields are read. Explicit `Close()` performs a bounded `close_notify`; finalization skips network
+  I/O but still wipes protocol secrets and closes an abandoned socket.
+- **Native socket width:** The C boundary preserves pointer-width Windows `SOCKET` values and POSIX
+  descriptors without narrowing during HTTP, HTTPS, SMTP, SSE, WebSocket, or WSS ownership transfer.
 - **Verification switch:** `verifyCert=false` skips trust-chain and hostname policy for local
   testing, but the TLS 1.3 CertificateVerify proof of private-key possession is still checked
 - **Timeout scope:** the configured value is one overall connection deadline covering DNS
@@ -972,7 +984,11 @@ TLS wrapper methods use return values for routine failures:
   connection deadline (resolution + all address attempts + handshake); after connecting it is the
   per-operation read/write timeout.
 - Host strings containing embedded `NUL` bytes are rejected instead of being truncated
-- `Send()` / `SendStr()` return a negative value if the connection is closed or invalid
+- Host, CA-path, and ALPN arguments must be valid managed Strings. `Send()` requires a real managed
+  `Bytes` value and `SendStr()` requires a real managed String; forged values are rejected before
+  length or payload access.
+- `Send()` / `SendStr()` return a negative value if the connection is closed or invalid. A zero-byte
+  low-level send or receive is a nonblocking no-op; a positive length requires a non-null buffer.
 - `Recv()` returns an empty `Bytes` on clean EOF and `NULL` on receive errors. `RecvStr()` returns an
   empty string for EOF, errors, and a valid empty request, so those cases are not distinguishable by
   the returned text alone.
@@ -980,6 +996,11 @@ TLS wrapper methods use return values for routine failures:
 
 Use a `Connect*Result` error for setup failures. After a handle exists, `Error()` exposes the
 session's current diagnostic; after `Close()` it returns `"connection closed"`.
+
+Result publication is ownership-transactional. The temporary diagnostic String is released after
+an error Result retains it, and a newly connected wrapper's producer reference is consumed after a
+success Result retains it. If managed allocation traps at either boundary, every partial Result,
+String, wrapper, session, and socket is released before the diagnostic propagates.
 
 ### Security Notes
 

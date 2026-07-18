@@ -8,18 +8,45 @@
 // File: tests/runtime/RTBagTests.cpp
 // Purpose: Validate Zanna.Collections.StringSet runtime functions for string sets.
 // Key invariants: Bags store unique strings; set operations work correctly.
+// Ownership/Lifetime: Tests own each managed Bag and release injected values;
+//                     trap-recovery state is reset after every OOM case.
 // Links: docs/zannalib.md
 
 #include "rt_bag.h"
 #include "rt_box.h"
 #include "rt_convert_coll.h"
+#include "rt_internal.h"
+#include "rt_object.h"
 #include "rt_seq.h"
 #include "rt_set.h"
 #include "rt_string.h"
 
 #include <cassert>
+#include <csetjmp>
 #include <cstdio>
 #include <cstring>
+
+namespace {
+static jmp_buf g_trap_jmp;
+static const char *g_last_trap = nullptr;
+static bool g_trap_expected = false;
+} // namespace
+
+extern "C" void vm_trap(const char *msg) {
+    g_last_trap = msg;
+    if (g_trap_expected)
+        longjmp(g_trap_jmp, 1);
+    rt_abort(msg);
+}
+
+static void release_obj(void *obj) {
+    if (obj && rt_obj_release_check0(obj))
+        rt_obj_free(obj);
+}
+
+static void *reject_runtime_allocation(int64_t, void *(*)(int64_t)) {
+    return nullptr;
+}
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -304,6 +331,43 @@ static void test_bag_resize() {
     printf("\n");
 }
 
+static void test_bag_allocation_failure_is_not_a_duplicate() {
+    printf("Testing Bag allocation-failure contract:\n");
+
+    void *bag = rt_bag_new();
+    assert(bag != nullptr);
+    char text[32];
+    for (int i = 0; i < 12; ++i) {
+        int written = snprintf(text, sizeof(text), "failure-key-%d", i);
+        assert(written > 0 && static_cast<size_t>(written) < sizeof(text));
+        assert(rt_bag_add(bag, rt_const_cstr(text)) == 1);
+    }
+    assert(rt_bag_len(bag) == 12);
+
+    rt_string failing_key = rt_string_from_bytes("failure-key-12", 14);
+    assert(failing_key != nullptr);
+    g_trap_expected = true;
+    g_last_trap = nullptr;
+    rt_set_alloc_hook(reject_runtime_allocation);
+    if (setjmp(g_trap_jmp) == 0) {
+        (void)rt_bag_add(bag, failing_key);
+        assert(false && "expected Bag growth allocation trap");
+    }
+    rt_set_alloc_hook(nullptr);
+    g_trap_expected = false;
+
+    assert(g_last_trap && strstr(g_last_trap, "Bag") != nullptr);
+    assert(rt_bag_len(bag) == 12);
+    assert(rt_bag_has(bag, failing_key) == 0);
+    assert(rt_bag_add(bag, failing_key) == 1);
+    assert(rt_bag_add(bag, failing_key) == 0);
+    assert(rt_bag_len(bag) == 13);
+
+    rt_string_unref(failing_key);
+    release_obj(bag);
+    printf("\n");
+}
+
 //=============================================================================
 // Entry Point
 //=============================================================================
@@ -343,6 +407,7 @@ int main() {
     test_bag_diff();
     test_bag_empty_operations();
     test_bag_resize();
+    test_bag_allocation_failure_is_not_a_duplicate();
 
     printf("All Bag tests passed!\n");
     return 0;

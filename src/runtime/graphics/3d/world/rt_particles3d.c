@@ -1192,8 +1192,8 @@ void rt_particles3d_update(void *o, double delta_time) {
                  * steady across frames instead of resetting each burst. */
                 if (ps->trail_len[slot] != 0 && spacing > 0.0f) {
                     float remainder = ps->trail_age[slot] - (float)emit * spacing;
-                    ps->trail_age[slot] = (isfinite(remainder) && remainder > 0.0f) ? remainder
-                                                                                    : 0.0f;
+                    ps->trail_age[slot] =
+                        (isfinite(remainder) && remainder > 0.0f) ? remainder : 0.0f;
                 } else {
                     ps->trail_age[slot] = 0.0f;
                 }
@@ -2018,7 +2018,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
                 free(verts);
             if (!indices_tracked)
                 free(indices);
-            if (mat && rt_obj_release_check0(mat))
+            if (rt_obj_release_check0(mat))
                 rt_obj_free(mat);
             return;
         }
@@ -2031,7 +2031,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     ((rt_material3d *)mat)->additive_blend = ps->additive_blend ? 1 : 0;
     ((rt_material3d *)mat)->soft_fade = ps->softness;
     rt_canvas3d_draw_mesh_matrix(canvas3d, &tmp_mesh, model, mat);
-    if (canvas_owned_storage && mat && rt_obj_release_check0(mat))
+    if (canvas_owned_storage && rt_obj_release_check0(mat))
         rt_obj_free(mat);
 }
 

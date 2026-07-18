@@ -15,6 +15,7 @@
 // Key invariants:
 //   - ReadAllText/ReadAllBytes read the entire file into memory in one call.
 //   - WriteAllText/WriteAllBytes/WriteLines replace files atomically.
+//   - Replacing an existing regular file preserves its permission mode.
 //   - Exists returns false for directories; use Dir.Exists for those.
 //   - Copy does not overwrite the destination unless explicitly requested.
 //   - All functions handle both POSIX and Windows file APIs transparently.
@@ -605,13 +606,36 @@ static int rt_fileext_is_regular_mode(int mode) {
 #endif
 }
 
+/// @brief Snapshot the permission metadata of an existing regular file.
+/// @details Atomic writers create a fresh sidecar file before renaming it over the destination.
+///          Without this snapshot, that replacement would silently exchange the destination's
+///          permission mode for the process-default mode selected by `open`. A missing path or a
+///          path that is not a regular file is deliberately treated as having no metadata to
+///          preserve; the later open/replace operation remains responsible for reporting any
+///          actual I/O error.
+/// @param path UTF-8 destination path to inspect.
+/// @param[out] out_st Receives the destination's stat record when this function returns 1.
+/// @return 1 when @p path names an existing regular file and @p out_st was populated; otherwise
+///         0.
+static int rt_fileext_snapshot_replaced_file(const char *path, rt_fileext_stat_t *out_st) {
+    if (!path || !out_st)
+        return 0;
+    if (rt_fileext_stat_path(path, out_st) != 0)
+        return 0;
+    return rt_fileext_is_regular_mode(out_st->st_mode);
+}
+
 /// @brief **Atomic-write to disk:** write to an exclusive temp sidecar, fsync (POSIX) or
 /// _commit (Win32), close, atomically rename over the destination, and fsync the parent
-/// directory on POSIX so the name replacement is crash-durable.
+/// directory on POSIX so the name replacement is crash-durable. When the destination is an
+/// existing regular file, its permission mode is copied to the sidecar before replacement.
 static int rt_fileext_write_atomic_utf8(const char *path,
                                         const uint8_t *data,
                                         size_t len,
                                         int binary) {
+    rt_fileext_stat_t replaced_st;
+    int preserve_mode = rt_fileext_snapshot_replaced_file(path, &replaced_st);
+
     char *tmp = NULL;
     int fd = rt_fileext_open_temp_utf8(path, binary, &tmp);
     if (fd < 0)
@@ -622,11 +646,17 @@ static int rt_fileext_write_atomic_utf8(const char *path,
     if (ok && _commit(fd) != 0)
         ok = 0;
 #else
+    if (ok && preserve_mode && !rt_fileext_apply_mode_to_open_file(fd, &replaced_st))
+        ok = 0;
     if (ok && fsync(fd) != 0)
         ok = 0;
 #endif
     if (close(fd) != 0)
         ok = 0;
+#if RT_PLATFORM_WINDOWS
+    if (ok && preserve_mode && !rt_fileext_apply_mode_to_path(tmp, &replaced_st))
+        ok = 0;
+#endif
     if (ok)
         ok = rt_fileext_replace_utf8(tmp, path);
     if (ok)
@@ -1373,6 +1403,9 @@ void rt_file_write_lines(rt_string path, void *lines) {
     const char *cpath =
         rt_io_file_require_path(path, "Zanna.IO.File.WriteLines: invalid file path");
 
+    rt_fileext_stat_t replaced_st;
+    int preserve_mode = rt_fileext_snapshot_replaced_file(cpath, &replaced_st);
+
     if (!lines) {
         rt_trap("Zanna.IO.File.WriteLines: null lines");
         return;
@@ -1414,11 +1447,17 @@ void rt_file_write_lines(rt_string path, void *lines) {
     if (ok && _commit(fd) != 0)
         ok = 0;
 #else
+    if (ok && preserve_mode && !rt_fileext_apply_mode_to_open_file(fd, &replaced_st))
+        ok = 0;
     if (ok && fsync(fd) != 0)
         ok = 0;
 #endif
     if (close(fd) != 0)
         ok = 0;
+#if RT_PLATFORM_WINDOWS
+    if (ok && preserve_mode && !rt_fileext_apply_mode_to_path(tmp_path, &replaced_st))
+        ok = 0;
+#endif
     if (ok)
         ok = rt_fileext_replace_utf8(tmp_path, cpath);
     if (ok)

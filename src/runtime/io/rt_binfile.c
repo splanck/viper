@@ -42,6 +42,7 @@
 #include "rt_string.h"
 
 #include <errno.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,8 +64,12 @@ typedef struct rt_binfile_impl {
     int8_t last_op; ///< Last stdio direction used on update streams.
 } rt_binfile_impl;
 
+void rt_trap_set_recovery(jmp_buf *buf);
+void rt_trap_clear_recovery(void);
+const char *rt_trap_get_error(void);
+
 int8_t rt_binfile_is_handle(void *obj) {
-    return obj && rt_obj_class_id(obj) == RT_BINFILE_CLASS_ID ? 1 : 0;
+    return rt_obj_is_instance(obj, RT_BINFILE_CLASS_ID, sizeof(rt_binfile_impl)) ? 1 : 0;
 }
 
 static rt_binfile_impl *binfile_require(void *obj, const char *context) {
@@ -73,6 +78,40 @@ static rt_binfile_impl *binfile_require(void *obj, const char *context) {
         return NULL;
     }
     return (rt_binfile_impl *)obj;
+}
+
+/// @brief Allocate a BinFile payload while retaining cleanup ownership of an open `FILE *`.
+/// @details Runtime object allocation traps through longjmp on OOM. Installing
+///          a local recovery boundary ensures the already-open native stream is
+///          closed before that trap is propagated. A trap hook that returns is
+///          also handled: a NULL allocation closes @p fp and reports the
+///          caller-facing fallback without publishing a half-constructed file.
+/// @param fp Open native stream whose ownership transfers on success.
+/// @param fallback Diagnostic used when no more specific recovered message exists.
+/// @return Fresh uninitialized BinFile payload, or NULL after cleanup/trap.
+static rt_binfile_impl *binfile_alloc_or_close(FILE *fp, const char *fallback) {
+    FILE *volatile owned_fp = fp;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        const char *error = rt_trap_get_error();
+        snprintf(saved_error, sizeof(saved_error), "%s", error && error[0] ? error : fallback);
+        rt_trap_clear_recovery();
+        fclose((FILE *)owned_fp);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    rt_binfile_impl *bf =
+        (rt_binfile_impl *)rt_obj_new_i64(RT_BINFILE_CLASS_ID, (int64_t)sizeof(rt_binfile_impl));
+    rt_trap_clear_recovery();
+    if (!bf) {
+        fclose(fp);
+        rt_trap(fallback);
+        return NULL;
+    }
+    return bf;
 }
 
 #define BINFILE_OP_NONE 0
@@ -259,13 +298,9 @@ void *rt_binfile_open(void *path, void *mode) {
         return NULL;
     }
 
-    rt_binfile_impl *bf =
-        (rt_binfile_impl *)rt_obj_new_i64(RT_BINFILE_CLASS_ID, (int64_t)sizeof(rt_binfile_impl));
-    if (!bf) {
-        fclose(fp);
-        rt_trap("BinFile.Open: memory allocation failed");
+    rt_binfile_impl *bf = binfile_alloc_or_close(fp, "BinFile.Open: memory allocation failed");
+    if (!bf)
         return NULL;
-    }
 
     bf->fp = fp;
     bf->eof = 0;
@@ -372,6 +407,10 @@ int64_t rt_binfile_read(void *obj, void *bytes, int64_t offset, int64_t count) {
 
     int64_t bytes_len = rt_bytes_len(bytes);
     uint8_t *bytes_data = rt_bytes_data(bytes);
+    if (bytes_len < 0) {
+        rt_trap("BinFile.Read: invalid bytes");
+        return 0;
+    }
     if (offset < 0)
         offset = 0;
     if (count <= 0)
@@ -464,7 +503,7 @@ void rt_binfile_write(void *obj, void *bytes, int64_t offset, int64_t count) {
 
     int64_t bytes_len = rt_bytes_len(bytes);
     const uint8_t *bytes_data = rt_bytes_data_const(bytes);
-    if (bytes_len > 0 && !bytes_data) {
+    if (bytes_len < 0 || (bytes_len > 0 && !bytes_data)) {
         rt_trap("BinFile.Write: invalid bytes");
         return;
     }

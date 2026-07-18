@@ -33,9 +33,11 @@
 
 #include "rt_concqueue.h"
 
+#include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_option.h"
+#include "rt_platform.h"
 #include "rt_threads.h"
 #include "rt_trap.h"
 
@@ -49,7 +51,7 @@ void rt_trap_set_recovery(jmp_buf *buf);
 void rt_trap_clear_recovery(void);
 const char *rt_trap_get_error(void);
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -59,7 +61,7 @@ const char *rt_trap_get_error(void);
 #include <errno.h>
 #include <pthread.h>
 #include <time.h>
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
 extern int pthread_cond_timedwait_relative_np(pthread_cond_t *cond,
                                               pthread_mutex_t *mutex,
                                               const struct timespec *rel_time);
@@ -79,7 +81,7 @@ typedef struct {
     cq_node *tail;
     int64_t count;
     int8_t closed;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     CRITICAL_SECTION mutex;
     CONDITION_VARIABLE cond;
 #else
@@ -91,7 +93,7 @@ typedef struct {
 
 // --- Platform abstraction macros ---
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #define CQ_LOCK(cq) EnterCriticalSection(&(cq)->mutex)
 #define CQ_UNLOCK(cq) LeaveCriticalSection(&(cq)->mutex)
 #define CQ_SIGNAL(cq) WakeConditionVariable(&(cq)->cond)
@@ -103,7 +105,7 @@ typedef struct {
 #define CQ_WAIT(cq) pthread_cond_wait(&(cq)->cond, &(cq)->mutex)
 #endif
 
-#if !defined(_WIN32)
+#if !RT_PLATFORM_WINDOWS
 // ----- Timed-wait scaffolding (POSIX) ---------------------------------------
 // Mirror of `rt_future.c`'s deadline helpers — same `CLOCK_MONOTONIC` preference
 // (so deadlines aren't disturbed by NTP/DST), same macOS fallback to the
@@ -128,7 +130,7 @@ typedef struct {
 static int cq_cond_init(pthread_cond_t *cond, int8_t *uses_monotonic) {
     if (uses_monotonic)
         *uses_monotonic = 0;
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     if (uses_monotonic)
         *uses_monotonic = 1;
     return pthread_cond_init(cond, NULL);
@@ -200,7 +202,7 @@ static cq_deadline_t cq_deadline_ms_from_now(int64_t timeout_ms, int8_t use_mono
     return d;
 }
 
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
 /// @brief Return milliseconds remaining until @p deadline (macOS only — uses relative wait).
 /// @details macOS lacks pthread_condattr_setclock, so we manage timeouts as
 ///          deltas computed against the monotonic clock and pass them to
@@ -232,7 +234,7 @@ static int cq_cond_timedwait_deadline(pthread_cond_t *cond,
                                       pthread_mutex_t *mutex,
                                       cq_deadline_t deadline,
                                       int8_t use_monotonic) {
-#if defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     int64_t remaining = cq_remaining_ms(deadline, use_monotonic);
     if (remaining <= 0)
         return ETIMEDOUT;
@@ -295,6 +297,72 @@ static void cq_release_nodes(cq_node *n) {
     }
 }
 
+/// @brief Enumerate every managed value currently owned by a ConcurrentQueue.
+/// @details Queue-link publication and removal occur inside the GC mutator
+///          barrier, so collector-exclusive traversal can walk the raw node
+///          chain without acquiring the queue mutex. Avoiding that mutex is
+///          essential: a producer may own it while waiting for an active
+///          collection to finish.
+/// @param obj ConcurrentQueue payload being traversed.
+/// @param visitor Collector visitor invoked for each non-null queued value.
+/// @param ctx Opaque collector context forwarded to @p visitor.
+static void cq_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
+    if (!cq || !visitor)
+        return;
+    for (cq_node *node = cq->head; node; node = node->next) {
+        if (node->value)
+            visitor(node->value, ctx);
+    }
+}
+
+/// @brief Publish a prepared node at the queue tail while holding its mutex.
+/// @details The graph-mutator scope makes the link and logical count one
+///          atomic publication from the cycle collector's perspective. The
+///          caller has already retained @p node's value.
+static void cq_publish_locked(rt_concqueue_impl *cq, cq_node *node) {
+    rt_gc_mutator_enter();
+    if (cq->tail)
+        cq->tail->next = node;
+    else
+        cq->head = node;
+    cq->tail = node;
+    cq->count++;
+    rt_gc_mutator_exit();
+}
+
+/// @brief Detach and return the queue head while holding its mutex.
+/// @details No value reference is released: the queue's retained ownership is
+///          transferred to the caller. Structural removal is protected from
+///          concurrent collector traversal by the graph-mutator barrier.
+static cq_node *cq_take_locked(rt_concqueue_impl *cq) {
+    rt_gc_mutator_enter();
+    cq_node *node = cq->head;
+    if (node) {
+        cq->head = node->next;
+        if (!cq->head)
+            cq->tail = NULL;
+        node->next = NULL;
+        cq->count--;
+    }
+    rt_gc_mutator_exit();
+    return node;
+}
+
+/// @brief Detach the entire node chain while holding the queue mutex.
+/// @details The returned nodes are no longer collector-visible and may be
+///          released after the mutex is dropped, allowing value finalizers to
+///          re-enter the queue safely.
+static cq_node *cq_detach_all_locked(rt_concqueue_impl *cq) {
+    rt_gc_mutator_enter();
+    cq_node *nodes = cq->head;
+    cq->head = NULL;
+    cq->tail = NULL;
+    cq->count = 0;
+    rt_gc_mutator_exit();
+    return nodes;
+}
+
 /// @brief GC finalizer: drain the queue (releasing each retained value), then destroy the
 /// platform mutex + condvar. Holds the lock during drain to interlock with any in-flight
 /// enqueue (which would otherwise see freed memory).
@@ -305,25 +373,22 @@ static void cq_finalizer(void *obj) {
 
     CQ_LOCK(cq);
     cq->closed = 1;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&cq->cond);
 #else
     pthread_cond_broadcast(&cq->cond);
 #endif
-    cq_node *n = cq->head;
-    cq->head = NULL;
-    cq->tail = NULL;
-    cq->count = 0;
+    cq_node *n = cq_detach_all_locked(cq);
     CQ_UNLOCK(cq);
 
     cq_release_nodes(n);
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     DeleteCriticalSection(&cq->mutex);
     // CONDITION_VARIABLE does not need explicit destruction on Windows
 #else
-    pthread_mutex_destroy(&cq->mutex);
     pthread_cond_destroy(&cq->cond);
+    pthread_mutex_destroy(&cq->mutex);
 #endif
 }
 
@@ -341,8 +406,12 @@ void *rt_concqueue_new(void) {
     cq->tail = NULL;
     cq->count = 0;
     cq->closed = 0;
-#if defined(_WIN32)
-    InitializeCriticalSection(&cq->mutex);
+#if RT_PLATFORM_WINDOWS
+    if (!InitializeCriticalSectionEx(&cq->mutex, 0, 0)) {
+        concqueue_release_object(cq);
+        rt_trap("ConcurrentQueue: mutex initialization failed");
+        return NULL;
+    }
     InitializeConditionVariable(&cq->cond);
 #else
     if (pthread_mutex_init(&cq->mutex, NULL) != 0) {
@@ -360,6 +429,25 @@ void *rt_concqueue_new(void) {
     }
 #endif
     rt_obj_set_finalizer(cq, cq_finalizer);
+
+    jmp_buf recovery;
+    rt_concqueue_impl *volatile cq_for_cleanup = cq;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        concqueue_save_trap_error(
+            saved_error, sizeof(saved_error), "ConcurrentQueue: GC tracking failed");
+        rt_trap_clear_recovery();
+        concqueue_release_object((void *)cq_for_cleanup);
+        rt_trap(saved_error);
+        return NULL;
+    }
+    rt_gc_track(cq, cq_traverse);
+    if (!rt_gc_is_tracked(cq)) {
+        rt_trap("ConcurrentQueue: GC tracking failed");
+        return NULL;
+    }
+    rt_trap_clear_recovery();
     return (void *)cq;
 }
 
@@ -443,12 +531,16 @@ void rt_concqueue_enqueue(void *obj, void *item) {
         rt_trap("ConcurrentQueue.Enqueue: queue is closed");
         return;
     }
-    if (cq->tail)
-        cq->tail->next = node;
-    else
-        cq->head = node;
-    cq->tail = node;
-    cq->count++;
+    if (cq->count == INT64_MAX) {
+        CQ_UNLOCK(cq);
+        if (item && rt_obj_release_check0(item))
+            rt_obj_free(item);
+        free(node);
+        concqueue_release_object(obj);
+        rt_trap("ConcurrentQueue.Enqueue: count overflow");
+        return;
+    }
+    cq_publish_locked(cq, node);
     CQ_SIGNAL(cq);
     CQ_UNLOCK(cq);
     concqueue_release_object(obj);
@@ -475,10 +567,25 @@ int8_t rt_concqueue_try_enqueue(void *obj, void *item) {
     }
     node->value = item;
     node->next = NULL;
+    cq_node *volatile node_for_cleanup = node;
+    void *volatile obj_for_cleanup = obj;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        concqueue_save_trap_error(
+            saved_error, sizeof(saved_error), "ConcurrentQueue.TryEnqueue: item retain failed");
+        rt_trap_clear_recovery();
+        free((void *)node_for_cleanup);
+        concqueue_release_object((void *)obj_for_cleanup);
+        rt_trap(saved_error);
+        return 0;
+    }
     rt_obj_retain_maybe(item);
+    rt_trap_clear_recovery();
 
     CQ_LOCK(cq);
-    if (cq->closed) {
+    if (cq->closed || cq->count == INT64_MAX) {
         CQ_UNLOCK(cq);
         if (rt_obj_release_check0(item))
             rt_obj_free(item);
@@ -486,12 +593,7 @@ int8_t rt_concqueue_try_enqueue(void *obj, void *item) {
         concqueue_release_object(obj);
         return 0;
     }
-    if (cq->tail)
-        cq->tail->next = node;
-    else
-        cq->head = node;
-    cq->tail = node;
-    cq->count++;
+    cq_publish_locked(cq, node);
     CQ_SIGNAL(cq);
     CQ_UNLOCK(cq);
     concqueue_release_object(obj);
@@ -516,11 +618,7 @@ void *rt_concqueue_try_dequeue(void *obj) {
         return NULL;
     }
 
-    cq_node *node = cq->head;
-    cq->head = node->next;
-    if (!cq->head)
-        cq->tail = NULL;
-    cq->count--;
+    cq_node *node = cq_take_locked(cq);
     CQ_UNLOCK(cq);
 
     void *value = node->value;
@@ -551,20 +649,29 @@ void *rt_concqueue_try_dequeue_option(void *obj) {
         return rt_option_none();
     }
 
-    cq_node *node = cq->head;
-    cq->head = node->next;
-    if (!cq->head)
-        cq->tail = NULL;
-    cq->count--;
+    cq_node *node = cq_take_locked(cq);
     CQ_UNLOCK(cq);
 
     void *value = node->value;
     free(node);
     concqueue_release_object(obj);
 
+    jmp_buf recovery;
+    void *volatile value_for_cleanup = value;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        concqueue_save_trap_error(saved_error,
+                                  sizeof(saved_error),
+                                  "ConcurrentQueue.TryDequeueOption: allocation failed");
+        rt_trap_clear_recovery();
+        concqueue_release_object((void *)value_for_cleanup);
+        rt_trap(saved_error);
+        return NULL;
+    }
     void *option = rt_option_some(value);
-    if (value && rt_obj_release_check0(value))
-        rt_obj_free(value);
+    rt_trap_clear_recovery();
+    concqueue_release_object(value);
     return option;
 }
 
@@ -580,19 +687,30 @@ void *rt_concqueue_dequeue(void *obj) {
     rt_obj_retain_maybe(obj);
 
     CQ_LOCK(cq);
-    while (!cq->head && !cq->closed)
-        CQ_WAIT(cq);
+    while (!cq->head && !cq->closed) {
+#if RT_PLATFORM_WINDOWS
+        if (!CQ_WAIT(cq)) {
+            CQ_UNLOCK(cq);
+            concqueue_release_object(obj);
+            rt_trap("ConcurrentQueue.Dequeue: condition wait failed");
+            return NULL;
+        }
+#else
+        if (CQ_WAIT(cq) != 0) {
+            CQ_UNLOCK(cq);
+            concqueue_release_object(obj);
+            rt_trap("ConcurrentQueue.Dequeue: condition wait failed");
+            return NULL;
+        }
+#endif
+    }
     if (!cq->head) {
         CQ_UNLOCK(cq);
         concqueue_release_object(obj);
         return NULL;
     }
 
-    cq_node *node = cq->head;
-    cq->head = node->next;
-    if (!cq->head)
-        cq->tail = NULL;
-    cq->count--;
+    cq_node *node = cq_take_locked(cq);
     CQ_UNLOCK(cq);
 
     void *value = node->value;
@@ -615,7 +733,7 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
         return rt_concqueue_try_dequeue(obj);
     rt_obj_retain_maybe(obj);
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     CQ_LOCK(cq);
     ULONGLONG deadline = rt_win32_deadline_from_now_ms(timeout_ms);
     while (!cq->head && !cq->closed) {
@@ -665,11 +783,7 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
         return NULL;
     }
 
-    cq_node *node = cq->head;
-    cq->head = node->next;
-    if (!cq->head)
-        cq->tail = NULL;
-    cq->count--;
+    cq_node *node = cq_take_locked(cq);
     CQ_UNLOCK(cq);
 
     void *value = node->value;
@@ -724,10 +838,7 @@ void rt_concqueue_clear(void *obj) {
     rt_obj_retain_maybe(obj);
 
     CQ_LOCK(cq);
-    cq_node *n = cq->head;
-    cq->head = NULL;
-    cq->tail = NULL;
-    cq->count = 0;
+    cq_node *n = cq_detach_all_locked(cq);
     CQ_UNLOCK(cq);
     cq_release_nodes(n);
     concqueue_release_object(obj);
@@ -750,7 +861,7 @@ void rt_concqueue_close(void *obj) {
         return;
     }
     cq->closed = 1;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WakeAllConditionVariable(&cq->cond);
 #else
     pthread_cond_broadcast(&cq->cond);

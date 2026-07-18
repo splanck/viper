@@ -8,12 +8,12 @@ last-verified: 2026-07-04
 
 ## Status
 
-Accepted (runtime implemented; the ZannaIDE terminal UI that consumes it follows
+Accepted (runtime implemented; the Zanna Studio terminal UI that consumes it follows
 in the same Phase 5D work).
 
 ## Context
 
-ZannaIDE needs an integrated terminal. The existing `Zanna.System.Process` is a
+Zanna Studio needs an integrated terminal. The existing `Zanna.System.Process` is a
 pipe-based, dual-stream (`ReadStdout`/`ReadStderr`) child-process API with no
 controlling terminal and no window-size concept — so programs run under it see a
 non-TTY, disable interactive behavior, and cannot be resized. Exposing a real

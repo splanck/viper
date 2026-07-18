@@ -8,9 +8,9 @@ last-verified: 2026-06-30
 
 ## Status
 
-Accepted (runtime implemented; ZannaIDE's terminal and tool panels are the
+Accepted (runtime implemented; Zanna Studio's terminal and tool panels are the
 intended first consumers). Driven by the GUI runtime-additions review,
-recommendation **R2** (`misc/plans/zannaide/gui-runtime-additions.md`).
+recommendation **R2** (`misc/plans/zannastudio/gui-runtime-additions.md`).
 
 ## Context
 
@@ -22,10 +22,10 @@ geometry (`GetCursorPixelX/Y`, `GetLineAtPixel`, `GetColAtPixel`) and
 `OutputPane` (which also backs the integrated terminal) and the tool panels —
 expose nothing. So applications guess a fixed monospace cell:
 
-- `zannaide/src/terminal/terminal_controller.zia:127` — `var cols = width / 8;`
-- `zannaide/src/terminal/terminal_controller.zia:143` — `var rows = height / 18;`
-- `zannaide/src/ui/app_shell.zia:1602` — `col = app.GetWidth() / 8;` (output wrap)
-- `zannaide/src/ui/tool_panel_text.zia:41-59` — hardcoded column widths.
+- `zannastudio/src/terminal/terminal_controller.zia:127` — `var cols = width / 8;`
+- `zannastudio/src/terminal/terminal_controller.zia:143` — `var rows = height / 18;`
+- `zannastudio/src/ui/app_shell.zia:1602` — `col = app.GetWidth() / 8;` (output wrap)
+- `zannastudio/src/ui/tool_panel_text.zia:41-59` — hardcoded column widths.
 
 These `/ 8` and `/ 18` constants are wrong for any non-default font size or DPI
 scale, and they duplicate a measurement the renderer already performs internally

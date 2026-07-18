@@ -1,0 +1,118 @@
+module settings_migration_probe;
+
+// ============================================================================
+// MODULE: settings_migration_probe
+// PURPOSE: Verify the one-time ZannaIDE → Zanna Studio configuration
+//          migration — a legacy config dir is copied (never moved) into the
+//          new platform ZannaStudio directory, sibling state files and the
+//          recovery/ subdirectory come along, and a second SetupPath is
+//          idempotent. Runs headless against a sandboxed HOME.
+// ============================================================================
+
+bind "../core/settings";
+
+bind Dir = Zanna.IO.Dir;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Env = Zanna.System.Environment;
+bind Machine = Zanna.System.Machine;
+bind Terminal = Zanna.Terminal;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Return the legacy ZannaIDE dir for the sandboxed root on this OS.
+func legacyDirFor(root: String) -> String {
+    var os = Machine.Os;
+    if os == "windows" {
+        return Path.Join(Path.Join(Path.Join(root, "AppData"), "Roaming"), "ZannaIDE");
+    }
+    if os == "macos" {
+        return Path.Join(Path.Join(root, "Library"), Path.Join("Application Support", "ZannaIDE"));
+    }
+    return Path.Join(Path.Join(root, ".config"), "zannaide");
+}
+
+/// @brief Return the new ZannaStudio dir for the sandboxed root on this OS.
+func newDirFor(root: String) -> String {
+    var os = Machine.Os;
+    if os == "windows" {
+        return Path.Join(Path.Join(Path.Join(root, "AppData"), "Roaming"), "ZannaStudio");
+    }
+    if os == "macos" {
+        return Path.Join(Path.Join(root, "Library"), Path.Join("Application Support", "ZannaStudio"));
+    }
+    return Path.Join(Path.Join(root, ".config"), "zannastudio");
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_migration_");
+
+    // Sandbox every environment root SetupPath and LegacySettingsDir consult.
+    Env.SetVariable("HOME", root);
+    Env.SetVariable("APPDATA", Path.Join(Path.Join(root, "AppData"), "Roaming"));
+    Env.SetVariable("XDG_CONFIG_HOME", Path.Join(root, ".config"));
+
+    // Seed a legacy ZannaIDE configuration: settings, a sibling state file,
+    // and a recovery/ subdirectory with one swap file.
+    var legacyDir = legacyDirFor(root);
+    Dir.MakeAll(legacyDir);
+    var legacySettings = Path.Join(legacyDir, "settings.ini");
+    File.WriteAllText(legacySettings, "[settings]\nfontSize = 23\n");
+    File.WriteAllText(Path.Join(legacyDir, "breakpoints.ini"), "src/main.zia:12\n");
+    var legacyRecovery = Path.Join(legacyDir, "recovery");
+    Dir.MakeAll(legacyRecovery);
+    File.WriteAllText(Path.Join(legacyRecovery, "swap-1"), "unsaved buffer text");
+
+    // First launch after the rename migrates by copy.
+    var mgr = new settings.SettingsManager();
+    mgr.SetupPath();
+
+    var newDir = newDirFor(root);
+    var newSettings = Path.Join(newDir, "settings.ini");
+    if mgr.settingsPath != newSettings {
+        fail("settingsPath should be the new dir, got " + mgr.settingsPath);
+        return;
+    }
+    if File.Exists(newSettings) == false {
+        fail("settings.ini not copied into the new dir");
+        return;
+    }
+    if File.Exists(Path.Join(newDir, "breakpoints.ini")) == false {
+        fail("sibling state file not copied");
+        return;
+    }
+    if File.Exists(Path.Join(Path.Join(newDir, "recovery"), "swap-1")) == false {
+        fail("recovery swap not copied");
+        return;
+    }
+
+    // Copy, never move: the legacy install stays intact.
+    if File.Exists(legacySettings) == false {
+        fail("legacy settings.ini was removed by migration");
+        return;
+    }
+    if File.Exists(Path.Join(legacyRecovery, "swap-1")) == false {
+        fail("legacy recovery swap was removed by migration");
+        return;
+    }
+
+    // Migrated content is what Load reads.
+    mgr.Load();
+    if mgr.fontSize != 23 {
+        fail("migrated settings not loaded, fontSize " + mgr.fontSize);
+        return;
+    }
+
+    // Second resolution finds the new file directly and stays put.
+    var mgr2 = new settings.SettingsManager();
+    mgr2.SetupPath();
+    if mgr2.settingsPath != newSettings {
+        fail("second SetupPath should resolve the new dir");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

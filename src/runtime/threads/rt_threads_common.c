@@ -12,6 +12,15 @@
 //   on all platforms; the platform thread impls live in rt_threads_win.c /
 //   rt_threads_posix.c.
 //
+// Key invariants:
+//   - Public callback entry points use typed function pointers; compatibility
+//     adapters never call through an object-pointer cast.
+//   - SafeThread captures one worker trap and reports it deterministically to
+//     the joining caller while still releasing the native thread handle.
+// Ownership/Lifetime:
+//   - Thread objects own their native inner handle until join, detach, or
+//     finalization transfers/releases it. Callback arguments are borrowed.
+//
 // Links: rt_threads_internal.h, rt_threads_win.c, rt_threads_posix.c, rt_threads.h
 //
 //===----------------------------------------------------------------------===//
@@ -122,7 +131,6 @@ static int8_t thread_is_alive_inner_or_release(void *inner) {
     return alive;
 }
 
-
 //===----------------------------------------------------------------------===//
 // Safe Thread Implementation (platform-independent)
 //===----------------------------------------------------------------------===//
@@ -223,7 +231,7 @@ done:
 }
 
 /// @brief Start a thread with automatic trap/error capture (errors don't crash, they're stored).
-static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg) {
+static void *rt_thread_start_safe_impl(rt_thread_entry_fn entry, void *arg, int8_t retain_arg) {
     if (!entry)
         rt_trap("Thread.StartSafe: null entry");
     if (!entry)
@@ -239,7 +247,7 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
     memset(ctx, 0, sizeof(*ctx));
     rt_obj_set_finalizer(ctx, safe_thread_finalize);
     ctx->magic = RT_SAFE_THREAD_MAGIC;
-    ctx->entry = (rt_thread_entry_fn)entry;
+    ctx->entry = entry;
     ctx->arg = arg;
     ctx->owns_arg = 0;
     ctx->thread = NULL;
@@ -253,11 +261,17 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
     ctx->trapped = 0;
     ctx->error[0] = '\0';
     if (retain_arg && arg) {
-        thread_retain_owned_arg_or_release(arg, ctx, "Thread.StartSafeOwned: arg retain failed");
+        if (!thread_try_retain_owned_value(arg, "Thread.StartSafeOwned: arg retain failed")) {
+            thread_release_object(ctx);
+            return NULL;
+        }
         ctx->owns_arg = 1;
     }
 
-    thread_retain_self_or_release(ctx, "Thread.StartSafe: self retain failed");
+    if (!thread_try_retain_self(ctx, "Thread.StartSafe: self retain failed")) {
+        thread_release_object(ctx);
+        return NULL;
+    }
 
     char saved_error[256];
     jmp_buf start_recovery;
@@ -273,7 +287,7 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
         rt_trap(saved_error);
         return NULL;
     }
-    ctx->thread = rt_thread_start((void *)safe_thread_entry, ctx);
+    ctx->thread = rt_thread_start_fn(safe_thread_entry, ctx);
     rt_trap_clear_recovery();
     if (!ctx->thread) {
         if (rt_obj_release_check0(ctx))
@@ -285,6 +299,16 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
     return ctx;
 }
 
+/// @brief Start a typed native callback with trap capture.
+void *rt_thread_start_safe_fn(rt_thread_entry_fn entry, void *arg) {
+    return rt_thread_start_safe_impl(entry, arg, 0);
+}
+
+/// @brief Start a typed native callback with trap capture and managed-argument ownership.
+void *rt_thread_start_safe_owned_fn(rt_thread_entry_fn entry, void *arg) {
+    return rt_thread_start_safe_impl(entry, arg, 1);
+}
+
 /// @brief Spawn a "safe" thread — same as `rt_thread_start` but with stronger trap recovery.
 ///
 /// Safe threads route uncaught traps through a per-thread recovery
@@ -292,12 +316,12 @@ static void *rt_thread_start_safe_impl(void *entry, void *arg, int8_t retain_arg
 /// killing the process. Used by parallel-foreach and friends to
 /// keep one bad worker from taking down the whole pool.
 void *rt_thread_start_safe(void *entry, void *arg) {
-    return rt_thread_start_safe_impl(entry, arg, 0);
+    return rt_thread_start_safe_fn(thread_entry_from_opaque(entry), arg);
 }
 
 /// @brief Safe-thread variant that GC-retains `arg` (see `rt_thread_start_owned`).
 void *rt_thread_start_safe_owned(void *entry, void *arg) {
-    return rt_thread_start_safe_impl(entry, arg, 1);
+    return rt_thread_start_safe_owned_fn(thread_entry_from_opaque(entry), arg);
 }
 
 /// @brief Check whether a safe thread trapped with an error.

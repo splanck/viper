@@ -36,6 +36,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_context.h"
+#include "rt_context_internal.h"
 #include "rt_heap.h"
 #include "rt_internal.h"
 #include "rt_oop.h"
@@ -59,20 +60,30 @@
 // Reader-Writer Lock Helpers
 // ============================================================================
 
-/// @brief Initialize the per-registry reader-writer lock.
-static void tr_rwlock_init(RtTypeRegistryState *st) {
+/// @brief Initialize the per-registry reader-writer lock transactionally.
+/// @param st Empty type-registry state owned by an initializing context.
+/// @return Non-zero when the lock is ready; zero when native allocation or
+///         initialization fails. Failure leaves `rw_lock` null.
+static int tr_rwlock_init(RtTypeRegistryState *st) {
     st->sealed = 0;
+    st->rw_lock = NULL;
 #ifdef _WIN32
     SRWLOCK *lock = (SRWLOCK *)malloc(sizeof(SRWLOCK));
-    if (lock)
-        InitializeSRWLock(lock);
+    if (!lock)
+        return 0;
+    InitializeSRWLock(lock);
     st->rw_lock = lock;
 #else
     pthread_rwlock_t *lock = (pthread_rwlock_t *)malloc(sizeof(pthread_rwlock_t));
-    if (lock)
-        pthread_rwlock_init(lock, NULL);
+    if (!lock)
+        return 0;
+    if (pthread_rwlock_init(lock, NULL) != 0) {
+        free(lock);
+        return 0;
+    }
     st->rw_lock = lock;
 #endif
+    return 1;
 }
 
 /// @brief Destroy and free the per-registry reader-writer lock.
@@ -88,8 +99,6 @@ static void tr_rwlock_destroy(RtTypeRegistryState *st) {
 
 /// @brief Acquire shared (read) lock. Returns non-zero only when a lock was acquired.
 static int tr_rdlock(RtTypeRegistryState *st) {
-    if (__atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
-        return 0;
     if (!st->rw_lock)
         return 0;
 #ifdef _WIN32
@@ -133,6 +142,18 @@ static void tr_wrunlock(RtTypeRegistryState *st) {
 #else
     pthread_rwlock_unlock((pthread_rwlock_t *)st->rw_lock);
 #endif
+}
+
+/// @copydoc rt_type_registry_state_write_lock
+void rt_type_registry_state_write_lock(RtContext *ctx) {
+    if (ctx)
+        tr_wrlock(&ctx->type_registry);
+}
+
+/// @copydoc rt_type_registry_state_write_unlock
+void rt_type_registry_state_write_unlock(RtContext *ctx) {
+    if (ctx)
+        tr_wrunlock(&ctx->type_registry);
 }
 
 /// @brief Check whether the registry is sealed and unlock + trap if so (called under write lock).
@@ -364,10 +385,10 @@ static int tr_cstr_eq(const char *a, const char *b) {
 static void **tr_object_vptr_or_null(void *obj) {
     if (!obj)
         return NULL;
-    rt_heap_hdr_t *hdr = NULL;
-    if (!rt_heap_try_get_header(obj, &hdr) || !hdr)
+    rt_heap_info_t info;
+    if (!rt_heap_get_info(obj, &info))
         return NULL;
-    if ((rt_heap_kind_t)hdr->kind != RT_HEAP_OBJECT || hdr->cap < sizeof(rt_object))
+    if ((rt_heap_kind_t)info.kind != RT_HEAP_OBJECT || info.cap < sizeof(rt_object))
         return NULL;
     rt_object *o = (rt_object *)obj;
     return o->vptr;
@@ -1028,10 +1049,12 @@ void **rt_get_interface_impl(int64_t type_id, int64_t iface_id) {
 /// registration or lookup operations.
 ///
 /// @param ctx Context whose type registry should be initialized.
-void rt_type_registry_init(RtContext *ctx) {
+/// @return Non-zero when the lock is ready. NULL input and native
+///         allocation/initialization failure return zero without trapping.
+int rt_type_registry_init(RtContext *ctx) {
     if (!ctx)
-        return;
-    tr_rwlock_init(&ctx->type_registry);
+        return 0;
+    return tr_rwlock_init(&ctx->type_registry);
 }
 
 /// @brief Seal the type registry, enabling lock-free reads.

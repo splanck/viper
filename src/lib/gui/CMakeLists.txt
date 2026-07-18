@@ -248,7 +248,7 @@ if (ZANNA_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_codeeditor_perf COMMAND test_vg_codeeditor_perf)
-    set_tests_properties(test_vg_codeeditor_perf PROPERTIES LABELS "gui;zannaide;perf" TIMEOUT 15)
+    set_tests_properties(test_vg_codeeditor_perf PROPERTIES LABELS "gui;zannastudio;perf" TIMEOUT 15)
 
     add_executable(test_vg_codeeditor_behavior tests/test_vg_codeeditor_behavior.c)
     target_link_libraries(test_vg_codeeditor_behavior zannagui)
@@ -256,7 +256,7 @@ if (ZANNA_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_codeeditor_behavior COMMAND test_vg_codeeditor_behavior)
-    set_tests_properties(test_vg_codeeditor_behavior PROPERTIES LABELS "gui;zannaide" TIMEOUT 15)
+    set_tests_properties(test_vg_codeeditor_behavior PROPERTIES LABELS "gui;zannastudio" TIMEOUT 15)
 
     add_executable(test_vg_codeeditor_journal tests/test_vg_codeeditor_journal.c)
     target_link_libraries(test_vg_codeeditor_journal zannagui)
@@ -264,7 +264,7 @@ if (ZANNA_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_codeeditor_journal COMMAND test_vg_codeeditor_journal)
-    set_tests_properties(test_vg_codeeditor_journal PROPERTIES LABELS "gui;zannaide" TIMEOUT 15)
+    set_tests_properties(test_vg_codeeditor_journal PROPERTIES LABELS "gui;zannastudio" TIMEOUT 15)
 
     add_executable(test_vg_treeview_dnd tests/test_vg_treeview_dnd.c)
     target_link_libraries(test_vg_treeview_dnd zannagui)
@@ -272,7 +272,7 @@ if (ZANNA_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_treeview_dnd COMMAND test_vg_treeview_dnd)
-    set_tests_properties(test_vg_treeview_dnd PROPERTIES LABELS "gui;zannaide" TIMEOUT 15)
+    set_tests_properties(test_vg_treeview_dnd PROPERTIES LABELS "gui;zannastudio" TIMEOUT 15)
 
     add_executable(test_vg_virtual_models tests/test_vg_virtual_models.c)
     target_link_libraries(test_vg_virtual_models zannagui)
@@ -280,7 +280,7 @@ if (ZANNA_BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     add_test(NAME test_vg_virtual_models COMMAND test_vg_virtual_models)
-    set_tests_properties(test_vg_virtual_models PROPERTIES LABELS "gui;zannaide;perf" TIMEOUT 15)
+    set_tests_properties(test_vg_virtual_models PROPERTIES LABELS "gui;zannastudio;perf" TIMEOUT 15)
 
     # Anti-aliased drawing core. Built self-contained against the mock backend so
     # the pixel-exact and determinism assertions run headless on every platform.
@@ -341,10 +341,10 @@ target_include_directories(color_widgets_demo PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
 )
 
-# ZannaIDE Runtime Test (Phase 1 & 2 features)
-add_executable(zannaide_menu_test ../../zannaide/src/tests/menu_test.c)
-target_link_libraries(zannaide_menu_test PRIVATE zanna_runtime zannagui zannagfx)
-target_include_directories(zannaide_menu_test PRIVATE
+# Zanna Studio Runtime Test (Phase 1 & 2 features)
+add_executable(zannastudio_menu_test ../../zannastudio/src/tests/menu_test.c)
+target_link_libraries(zannastudio_menu_test PRIVATE zanna_runtime zannagui zannagfx)
+target_include_directories(zannastudio_menu_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
         ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime

@@ -4,6 +4,20 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTCanvasContractTests.cpp
+// Purpose: Validate isolated 2D canvas drawing and handle/array contracts with
+//          deterministic fake graphics and heap adapters.
+// Key invariants:
+//   - Fake heap metadata follows the production exact-payload snapshot contract.
+//   - Drawing operations never access pixels outside the active clip rectangle.
+// Ownership/Lifetime:
+//   - The test owns every fake window, canvas, pixel buffer, and heap allocation
+//     and releases process-local fixtures before exit.
+// Links: src/runtime/graphics/2d/rt_drawing_advanced.c,
+//        src/runtime/core/rt_heap.h
+//
+//===----------------------------------------------------------------------===//
 
 extern "C" {
 #include "rt_graphics_internal.h"
@@ -456,6 +470,37 @@ extern "C" int8_t rt_heap_try_get_header(void *payload, rt_heap_hdr_t **out_hdr)
                 return 0;
             if (out_hdr)
                 *out_hdr = hdr;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/// @brief Return a value snapshot for one live fake-heap payload.
+/// @details Mirrors the production `rt_heap_get_info` exact-payload contract so
+///          the isolated drawing target exercises array kind, element kind,
+///          and logical-length validation without linking the process-global
+///          heap registry. Failure clears the caller's output structure.
+/// @param payload Candidate exact payload previously returned by the fake allocator.
+/// @param out_info Required destination for copied scalar metadata.
+/// @return One for a live registered payload; otherwise zero.
+extern "C" int8_t rt_heap_get_info(const void *payload, rt_heap_info_t *out_info) {
+    if (!out_info)
+        return 0;
+    std::memset(out_info, 0, sizeof(*out_info));
+    for (size_t i = 0; i < g_heap_count; i++) {
+        if (g_heap_payloads[i] == payload) {
+            const rt_heap_hdr_t *hdr = g_heap_headers[i];
+            if (hdr->magic != RT_MAGIC || hdr->refcnt == 0)
+                return 0;
+            out_info->kind = hdr->kind;
+            out_info->elem_kind = hdr->elem_kind;
+            out_info->flags = hdr->flags;
+            out_info->refcnt = hdr->refcnt;
+            out_info->len = hdr->len;
+            out_info->cap = hdr->cap;
+            out_info->alloc_size = hdr->alloc_size;
+            out_info->class_id = hdr->class_id;
             return 1;
         }
     }

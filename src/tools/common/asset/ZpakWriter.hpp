@@ -16,6 +16,7 @@
 //   - Each entry's data is 8-byte aligned in the output.
 //   - TOC is written at the end; header toc_offset is patched after TOC.
 //   - Pre-compressed formats (.png, .jpg, .ogg, etc.) skip compression.
+//   - Current output is ZPAK v2 and checksums every original entry payload.
 //
 // Ownership/Lifetime:
 //   - Value type. Entries are copied into internal storage on addEntry().
@@ -59,6 +60,9 @@ class ZpakWriter {
     void addEntry(const std::string &name, const uint8_t *data, size_t size, bool compress);
 
     /// @brief Write the complete ZPAK archive to a memory buffer.
+    /// @details Emits format version 2 with one CRC-32 of the original
+    ///          uncompressed bytes on every TOC entry. Data and TOC offsets are
+    ///          checked while the vector grows; the writer remains unchanged.
     /// @return ZPAK-format byte vector (header + data + TOC).
     std::vector<uint8_t> writeToMemory() const;
 
@@ -86,6 +90,7 @@ class ZpakWriter {
         std::string name;                ///< Relative entry name (forward slashes).
         std::vector<uint8_t> storedData; ///< Possibly compressed.
         uint64_t originalSize{0};        ///< Uncompressed size.
+        uint32_t crc32{0};               ///< CRC-32 of the original uncompressed bytes.
         bool compressed{false};          ///< True if storedData is DEFLATE'd.
     };
 

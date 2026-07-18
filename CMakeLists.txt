@@ -154,9 +154,9 @@ endfunction()
 # No external scripting dependencies required (Python removed).
 
 option(ZANNA_INSTALL_TUI "Install TUI apps/libraries" OFF)
-option(ZANNA_INSTALL_ZANNAIDE "Build and install ZannaIDE with toolchain installers" ON)
+option(ZANNA_INSTALL_ZANNASTUDIO "Build and install Zanna Studio with toolchain installers" ON)
 set(ZANNA_IDE_ARCH "" CACHE STRING
-    "ZannaIDE native target architecture: x64 or arm64 (empty selects host architecture)")
+    "Zanna Studio native target architecture: x64 or arm64 (empty selects host architecture)")
 set_property(CACHE ZANNA_IDE_ARCH PROPERTY STRINGS "" x64 arm64)
 option(ZANNA_BUILD_TESTING "Enable CTest-based tests" ON)
 option(ZANNA_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS
@@ -230,10 +230,18 @@ option(IL_USE_LIBCXX "Use libc++ on Clang (Linux)" OFF)
 option(IL_SANITIZE_ADDRESS "Enable address sanitizer" OFF)
 option(IL_SANITIZE_UNDEFINED "Enable undefined behavior sanitizer" OFF)
 option(IL_SANITIZE_THREAD "Enable thread sanitizer (mutually exclusive with ASAN)" OFF)
+set(ZANNA_SANITIZER_TEST_TIMEOUT "600" CACHE STRING
+    "Minimum CTest timeout in seconds for explicitly timed sanitizer tests")
 option(ZANNA_ENABLE_COVERAGE "Enable Clang source-based coverage instrumentation" OFF)
 option(ZANNA_FAST_DEBUG
        "Use light optimization and reduced STL checking for Debug builds of Zanna targets"
        OFF)
+
+if((IL_SANITIZE_ADDRESS OR IL_SANITIZE_UNDEFINED OR IL_SANITIZE_THREAD) AND
+   NOT ZANNA_SANITIZER_TEST_TIMEOUT MATCHES "^[1-9][0-9]*$")
+  message(FATAL_ERROR
+          "ZANNA_SANITIZER_TEST_TIMEOUT must be a positive integer")
+endif()
 
 if(ZANNA_ENABLE_COVERAGE AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   message(FATAL_ERROR "ZANNA_ENABLE_COVERAGE requires Clang or AppleClang")
@@ -537,15 +545,18 @@ if(CPPCHECK_EXECUTABLE)
     COMMAND ${CPPCHECK_EXECUTABLE}
             --project=${CMAKE_BINARY_DIR}/compile_commands.json
             "--file-filter=src/runtime/*"
-            --enable=all
+            --enable=warning,performance,portability
             --inconclusive
             --inline-suppr
             "--suppressions-list=${CMAKE_SOURCE_DIR}/cppcheck-runtime.supp"
             --suppress=missingIncludeSystem
             --suppress=unmatchedSuppression
+            --error-exitcode=2
+            --quiet
+            "--relative-paths=${CMAKE_SOURCE_DIR}"
             "--template=gcc"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Run cppcheck over src/runtime")
+    COMMENT "Run gating cppcheck diagnostics over src/runtime")
 endif()
 
 # Convenience cleanup: clean build tree and remove source-generated artifacts.
@@ -803,7 +814,7 @@ message(STATUS "")
 add_subdirectory(src)
 zanna_assert_no_directory_link_libraries("src" "src")
 
-if(ZANNA_INSTALL_ZANNAIDE)
+if(ZANNA_INSTALL_ZANNASTUDIO)
   set(_ZANNA_IDE_ARCH "${ZANNA_IDE_ARCH}")
   if(_ZANNA_IDE_ARCH STREQUAL "")
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64|ARM64|AARCH64)$")
@@ -812,7 +823,7 @@ if(ZANNA_INSTALL_ZANNAIDE)
       set(_ZANNA_IDE_ARCH x64)
     else()
       message(FATAL_ERROR
-        "ZANNA_INSTALL_ZANNAIDE requires ZANNA_IDE_ARCH=x64 or arm64 for "
+        "ZANNA_INSTALL_ZANNASTUDIO requires ZANNA_IDE_ARCH=x64 or arm64 for "
         "host processor '${CMAKE_SYSTEM_PROCESSOR}'")
     endif()
   endif()
@@ -820,30 +831,30 @@ if(ZANNA_INSTALL_ZANNAIDE)
     message(FATAL_ERROR "ZANNA_IDE_ARCH must be x64 or arm64, got '${_ZANNA_IDE_ARCH}'")
   endif()
 
-  set(_ZANNAIDE_OUTPUT_DIR "${CMAKE_BINARY_DIR}/zannaide")
-  set(_ZANNAIDE_BINARY "${_ZANNAIDE_OUTPUT_DIR}/zannaide${CMAKE_EXECUTABLE_SUFFIX}")
-  set(_ZANNAIDE_BUILDINFO "${_ZANNAIDE_OUTPUT_DIR}/zannaide.buildinfo")
-  file(GLOB_RECURSE _ZANNAIDE_SOURCE_FILES CONFIGURE_DEPENDS
-       "${CMAKE_SOURCE_DIR}/src/zannaide/src/*.zia"
-       "${CMAKE_SOURCE_DIR}/src/zannaide/zanna.project")
+  set(_ZANNASTUDIO_OUTPUT_DIR "${CMAKE_BINARY_DIR}/zannastudio")
+  set(_ZANNASTUDIO_BINARY "${_ZANNASTUDIO_OUTPUT_DIR}/zannastudio${CMAKE_EXECUTABLE_SUFFIX}")
+  set(_ZANNASTUDIO_BUILDINFO "${_ZANNASTUDIO_OUTPUT_DIR}/zannastudio.buildinfo")
+  file(GLOB_RECURSE _ZANNASTUDIO_SOURCE_FILES CONFIGURE_DEPENDS
+       "${CMAKE_SOURCE_DIR}/src/zannastudio/src/*.zia"
+       "${CMAKE_SOURCE_DIR}/src/zannastudio/zanna.project")
   add_custom_command(
-    OUTPUT "${_ZANNAIDE_BINARY}" "${_ZANNAIDE_BUILDINFO}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${_ZANNAIDE_OUTPUT_DIR}"
+    OUTPUT "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_BUILDINFO}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_ZANNASTUDIO_OUTPUT_DIR}"
     COMMAND ${CMAKE_COMMAND} -E env "ZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}"
-            "$<TARGET_FILE:zanna>" build "${CMAKE_SOURCE_DIR}/src/zannaide"
-            --arch "${_ZANNA_IDE_ARCH}" -o "${_ZANNAIDE_BINARY}"
+            "$<TARGET_FILE:zanna>" build "${CMAKE_SOURCE_DIR}/src/zannastudio"
+            --arch "${_ZANNA_IDE_ARCH}" -o "${_ZANNASTUDIO_BINARY}"
     COMMAND ${CMAKE_COMMAND}
-            "-DOUTPUT_FILE=${_ZANNAIDE_BINARY}"
+            "-DOUTPUT_FILE=${_ZANNASTUDIO_BINARY}"
             "-DZANNA_PATH=$<TARGET_FILE:zanna>"
             "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
-            -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaIDEBuildInfo.cmake"
-    DEPENDS zanna ${_ZANNAIDE_SOURCE_FILES}
+            -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
+    DEPENDS zanna ${_ZANNASTUDIO_SOURCE_FILES}
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    COMMENT "Building ZannaIDE native binary"
+    COMMENT "Building Zanna Studio native binary"
     VERBATIM)
-  add_custom_target(zannaide_native ALL DEPENDS "${_ZANNAIDE_BINARY}" "${_ZANNAIDE_BUILDINFO}")
-  install(PROGRAMS "${_ZANNAIDE_BINARY}" DESTINATION ${CMAKE_INSTALL_BINDIR})
-  install(FILES "${_ZANNAIDE_BUILDINFO}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+  add_custom_target(zannastudio_native ALL DEPENDS "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_BUILDINFO}")
+  install(PROGRAMS "${_ZANNASTUDIO_BINARY}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES "${_ZANNASTUDIO_BUILDINFO}" DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 # ---- ZannaTUI subproject ----

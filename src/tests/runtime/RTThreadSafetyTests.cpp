@@ -12,6 +12,13 @@
 //   - String interning is thread-safe under concurrent access
 //   - Atomic violation mode is visible cross-thread
 //
+// Key invariants: Per-thread state does not alias accidentally, while explicitly
+//                 inherited runtime context state is serialized consistently.
+// Ownership/Lifetime: Every test joins its native workers before cleaning the
+//                     shared context and releasing managed values.
+// Links: src/runtime/core/rt_context.c,
+//        docs/adr/0136-runtime-context-binding-lifecycle-and-state-locks.md
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_context.h"
@@ -25,6 +32,7 @@
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
+#include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -39,17 +47,20 @@ extern "C" void vm_trap(const char *msg) {
 // Test 1: TLS parser errors are independent across threads
 // ============================================================================
 
+/// @brief Verify parser diagnostics remain isolated in thread-local storage.
+/// @details Two workers begin from an atomic release/acquire gate, then parse
+///          valid and invalid XML concurrently. Joining both workers publishes
+///          their independent result flags before the harness inspects them.
 static void test_tls_parser_errors_independent(void) {
     // Thread 1 parses valid XML (clears error), thread 2 parses empty XML (sets error).
     // After both finish, thread 2's error must not leak into thread 1's view (TLS).
     bool thread1_no_error = false;
     bool thread2_has_error = false;
 
-    // Use a barrier-like flag to make both threads parse concurrently.
-    volatile int go = 0;
+    std::atomic<bool> go{false};
 
     std::thread t1([&]() {
-        while (!go) {
+        while (!go.load(std::memory_order_acquire)) {
         } // wait for go signal
         // Parse valid XML — should succeed with no error
         const char *xml = "<root><child/></root>";
@@ -67,7 +78,7 @@ static void test_tls_parser_errors_independent(void) {
     });
 
     std::thread t2([&]() {
-        while (!go) {
+        while (!go.load(std::memory_order_acquire)) {
         } // wait for go signal
         // Parse empty XML — should fail and set error
         rt_string s = rt_string_from_bytes("", 0);
@@ -80,7 +91,7 @@ static void test_tls_parser_errors_independent(void) {
         rt_string_unref(s);
     });
 
-    go = 1; // release both threads
+    go.store(true, std::memory_order_release);
     t1.join();
     t2.join();
 
@@ -109,6 +120,37 @@ static void test_main_thread_detection(void) {
     assert(!worker_is_main && "worker thread must not be main");
 
     printf("test_main_thread_detection: PASSED\n");
+}
+
+/// @brief Stress concurrent main-thread overrides and identity probes.
+/// @details The designated thread is intentionally allowed to change during
+///          the stress phase, so individual probe results are not asserted.
+///          The test targets race-free access to opaque native thread IDs and
+///          then restores the harness thread as the deterministic owner.
+static void test_main_thread_override_probe_race(void) {
+    constexpr int kThreads = 8;
+    constexpr int kIterations = 2000;
+    std::atomic<bool> go{false};
+    std::vector<std::thread> workers;
+
+    for (int index = 0; index < kThreads; ++index) {
+        workers.emplace_back([&go]() {
+            while (!go.load(std::memory_order_acquire)) {
+            }
+            for (int iteration = 0; iteration < kIterations; ++iteration) {
+                rt_set_main_thread();
+                (void)rt_is_main_thread();
+            }
+        });
+    }
+
+    go.store(true, std::memory_order_release);
+    for (auto &worker : workers)
+        worker.join();
+
+    rt_set_main_thread();
+    assert(rt_is_main_thread());
+    printf("test_main_thread_override_probe_race: PASSED\n");
 }
 
 static void test_legacy_init_preserves_startup_main_thread(void) {
@@ -209,6 +251,7 @@ int main() {
     test_tls_parser_errors_independent();
     test_legacy_init_preserves_startup_main_thread();
     test_main_thread_detection();
+    test_main_thread_override_probe_race();
     test_string_intern_concurrent();
     test_atomic_violation_mode();
 

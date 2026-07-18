@@ -15,6 +15,7 @@
 // Key invariants:
 //   - All traps route through rt_trap or vm_trap; callers can install a
 //     jmp_buf recovery point via rt_trap_set_recovery for recoverable errors.
+//   - Trap dispatch unwinds shared GC mutator scopes before non-local transfer.
 //   - Newline handling follows historical BASIC: CRLF is accepted on input,
 //     LF is emitted on output; raw binary reads are unmodified.
 //   - File channel EOF flags are preserved across seeks; explicit reset is
@@ -37,12 +38,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_ascii.h"
+#include "rt_context_internal.h"
 #include "rt_error.h"
 #include "rt_file.h"
 #include "rt_format.h"
+#include "rt_gc.h"
 #include "rt_int_format.h"
 #include "rt_internal.h"
-#include "rt_ascii.h"
 #include "rt_option.h"
 #include "rt_output.h"
 #include "rt_result.h"
@@ -227,8 +230,10 @@ static uintptr_t rt_capture_return_address(void) {
 ///             the TLS error buffer and `longjmp` — the kind of jump
 ///             depends on whether the recovery is a legacy `jmp_buf`
 ///             or a native EH frame.
-///          5. Otherwise, the trap is unrecoverable: hand off to the
-///             user-replaceable `vm_trap` (which by default aborts).
+///          5. Otherwise, hand off to the user-replaceable `vm_trap` (which
+///             aborts by default). A hook that returns leaves lexical mutator
+///             scopes intact so the calling function can execute its normal
+///             cleanup and return path.
 static void rt_trap_dispatch(
     const char *msg, int32_t kind, int32_t code, int32_t line, uintptr_t return_address) {
     const char *stable_msg = msg;
@@ -249,6 +254,11 @@ static void rt_trap_dispatch(
         rt_trap_error_[0] = '\0';
     }
     if (rt_trap_recovery_top_) {
+        /* A non-local transfer skips every lexical mutator-scope exit between
+         * this dispatcher and the recovery frame, so unwind the shared graph
+         * barrier and context-state mutexes immediately before longjmp. */
+        rt_gc_mutator_abort_for_trap();
+        rt_context_state_abort_for_trap();
         if (rt_trap_recovery_top_->kind == RT_TRAP_RECOVERY_NATIVE) {
             rt_native_eh_frame_t *frame =
                 (rt_native_eh_frame_t *)((char *)rt_trap_recovery_top_ -
@@ -700,6 +710,7 @@ void *rt_str_split_fields_result(rt_string line) {
     }
 
     enum { FIELD_START, UNQUOTED, QUOTED, QUOTED_END } state = FIELD_START;
+
     const char *err = NULL;
     for (size_t i = 0; i < len && !err; ++i) {
         char ch = data[i];

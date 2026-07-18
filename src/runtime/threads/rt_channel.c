@@ -32,6 +32,7 @@
 
 #include "rt_channel.h"
 
+#include "rt_gc.h"
 #include "rt_object.h"
 #include "rt_option.h"
 #include "rt_threads.h"
@@ -114,6 +115,7 @@ static int64_t channel_remaining_ms(channel_deadline d) {
 #else
 typedef struct {
     struct timespec deadline;
+    clockid_t clock_id;
 } channel_deadline;
 
 /// @brief Compute an absolute monotonic deadline @p ms in the future.
@@ -125,8 +127,11 @@ typedef struct {
 static channel_deadline channel_deadline_from_now(int64_t ms) {
     channel_deadline d;
     memset(&d, 0, sizeof(d));
-    if (clock_gettime(CLOCK_MONOTONIC, &d.deadline) != 0)
+    d.clock_id = CLOCK_MONOTONIC;
+    if (clock_gettime(d.clock_id, &d.deadline) != 0) {
+        d.clock_id = CLOCK_REALTIME;
         (void)clock_gettime(CLOCK_REALTIME, &d.deadline);
+    }
     if (ms > 0) {
         int64_t add_sec = ms / 1000;
         long add_nsec = (long)((ms % 1000) * 1000000L);
@@ -156,8 +161,8 @@ static channel_deadline channel_deadline_from_now(int64_t ms) {
 static int64_t channel_remaining_ms(channel_deadline d) {
     struct timespec now;
     memset(&now, 0, sizeof(now));
-    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
-        (void)clock_gettime(CLOCK_REALTIME, &now);
+    if (clock_gettime(d.clock_id, &now) != 0)
+        return 0;
     int64_t sec = (int64_t)d.deadline.tv_sec - (int64_t)now.tv_sec;
     int64_t ns = (int64_t)d.deadline.tv_nsec - (int64_t)now.tv_nsec;
     if (ns < 0) {
@@ -195,27 +200,58 @@ static void channel_finalizer(void *obj) {
         rt_monitor_exit(ch->monitor);
     }
 
-    // Release all items in the buffer
-    if (ch->buffer) {
-        int64_t slots = (ch->capacity == 0) ? 1 : ch->capacity;
-        for (int64_t i = 0; i < ch->count; i++) {
-            int64_t idx = (ch->head + i) % slots;
-            void *item = ch->buffer[idx];
+    /* Detach the complete edge-bearing ring before releasing any member. The
+       collector's graph barrier prevents traversal from observing refcounts
+       after their corresponding slots have disappeared. */
+    rt_gc_mutator_enter();
+    void **buffer = ch->buffer;
+    int64_t count = ch->count;
+    int64_t head = ch->head;
+    int64_t slots = (ch->capacity == 0) ? 1 : ch->capacity;
+    ch->buffer = NULL;
+    ch->count = 0;
+    ch->head = 0;
+    ch->tail = 0;
+    rt_gc_mutator_exit();
+
+    // Release all items in the detached buffer.
+    if (buffer) {
+        for (int64_t i = 0; i < count; i++) {
+            int64_t idx = (head + i) % slots;
+            void *item = buffer[idx];
             if (item) {
                 if (rt_obj_release_check0(item))
                     rt_obj_free(item);
             }
         }
-        free(ch->buffer);
-        ch->buffer = NULL;
+        free(buffer);
     }
-    ch->count = 0;
 
     // Release monitor
     if (ch->monitor) {
         if (rt_obj_release_check0(ch->monitor))
             rt_obj_free(ch->monitor);
         ch->monitor = NULL;
+    }
+}
+
+/// @brief Enumerate every strong managed item currently buffered by a Channel.
+/// @details Ring publication/removal is protected by the collector's mutator
+///          barrier, so exclusive traversal can inspect the compact logical
+///          range without acquiring the blocking Channel monitor. This avoids
+///          lock inversion between a collector and a sender waiting to publish.
+/// @param obj Channel payload being traversed.
+/// @param visitor Collector visitor invoked once per non-null buffered item.
+/// @param ctx Opaque collector context forwarded to @p visitor.
+static void channel_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    channel_impl *ch = (channel_impl *)obj;
+    if (!ch || !visitor || !ch->buffer || ch->count <= 0)
+        return;
+    const int64_t slots = ch->capacity == 0 ? 1 : ch->capacity;
+    for (int64_t i = 0; i < ch->count; ++i) {
+        void *item = ch->buffer[(ch->head + i) % slots];
+        if (item)
+            visitor(item, ctx);
     }
 }
 
@@ -235,6 +271,54 @@ static void channel_release_item(void *item) {
         rt_obj_free(item);
 }
 
+/// @brief Publish one retained item into an empty synchronous handoff slot.
+/// @details The caller owns the Channel monitor and has already retained the
+///          item. The short graph-mutator scope makes the pointer and logical
+///          count visible atomically to cycle-collector traversal.
+static void channel_publish_sync_locked(channel_impl *ch, void *item) {
+    rt_gc_mutator_enter();
+    ch->buffer[0] = item;
+    ch->count = 1;
+    rt_gc_mutator_exit();
+}
+
+/// @brief Publish one retained item at the buffered Channel's FIFO tail.
+/// @details Pointer, tail, and count updates share one collector barrier so a
+///          traversal observes either the old ring or the complete new edge.
+static void channel_publish_buffered_locked(channel_impl *ch, void *item) {
+    rt_gc_mutator_enter();
+    ch->buffer[ch->tail] = item;
+    ch->tail = (ch->tail + 1) % ch->capacity;
+    ch->count++;
+    rt_gc_mutator_exit();
+}
+
+/// @brief Remove and transfer the synchronous handoff item.
+/// @details No refcount is changed: the Channel's owned reference becomes the
+///          receiver's reference. The graph barrier protects slot removal from
+///          concurrent cycle traversal.
+static void *channel_take_sync_locked(channel_impl *ch) {
+    rt_gc_mutator_enter();
+    void *item = ch->buffer[0];
+    ch->buffer[0] = NULL;
+    ch->count = 0;
+    rt_gc_mutator_exit();
+    return item;
+}
+
+/// @brief Remove and transfer the oldest buffered Channel item.
+/// @details Advances the FIFO head and removes the corresponding strong graph
+///          edge in one short collector-mutator scope.
+static void *channel_take_buffered_locked(channel_impl *ch) {
+    rt_gc_mutator_enter();
+    void *item = ch->buffer[ch->head];
+    ch->buffer[ch->head] = NULL;
+    ch->head = (ch->head + 1) % ch->capacity;
+    ch->count--;
+    rt_gc_mutator_exit();
+    return item;
+}
+
 /// @brief Snapshot the current trap error message into @p buffer (or
 ///        @p fallback if none) so it survives lock cleanup before re-raise.
 static void channel_save_trap_error(char *buffer, size_t buffer_size, const char *fallback) {
@@ -245,8 +329,10 @@ static void channel_save_trap_error(char *buffer, size_t buffer_size, const char
 /// @brief Increment a waiter counter while holding the channel monitor.
 /// @details Waiter counters drive close/wakeup decisions. Letting them wrap would
 ///          make a live waiter invisible and can deadlock a matching operation.
-static int8_t channel_increment_waiter_locked(
-    channel_impl *ch, void *channel, int64_t *counter, const char *message) {
+static int8_t channel_increment_waiter_locked(channel_impl *ch,
+                                              void *channel,
+                                              int64_t *counter,
+                                              const char *message) {
     if (*counter == INT64_MAX) {
         rt_monitor_exit(ch->monitor);
         channel_release_object(channel);
@@ -261,8 +347,10 @@ static int8_t channel_increment_waiter_locked(
 /// @details The epoch is compared by senders and receivers to acknowledge an
 ///          unbuffered handoff. Wrapping it can make a fresh send look already
 ///          acknowledged, so overflow is a hard runtime error.
-static int8_t channel_next_sync_epoch_locked(
-    channel_impl *ch, void *channel, int64_t *out, const char *message) {
+static int8_t channel_next_sync_epoch_locked(channel_impl *ch,
+                                             void *channel,
+                                             int64_t *out,
+                                             const char *message) {
     if (ch->sync_epoch == INT64_MAX) {
         rt_monitor_exit(ch->monitor);
         channel_release_object(channel);
@@ -333,35 +421,58 @@ void *rt_channel_new(int64_t capacity) {
     // For synchronous channels, use capacity of 1 internally
     int64_t buffer_size = (capacity == 0) ? 1 : capacity;
 
-    channel_impl *ch = (channel_impl *)rt_obj_new_i64(RT_CHANNEL_CLASS_ID, sizeof(channel_impl));
+    channel_impl *volatile ch = NULL;
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        channel_save_trap_error(saved_error, sizeof(saved_error), "Channel: construction failed");
+        rt_trap_clear_recovery();
+        channel_release_object((void *)ch);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
+    ch = (channel_impl *)rt_obj_new_i64(RT_CHANNEL_CLASS_ID, sizeof(channel_impl));
+    if (!ch)
+        rt_trap_clear_recovery();
     if (!ch)
         return NULL;
 
-    rt_obj_set_finalizer(ch, channel_finalizer);
+    rt_obj_set_finalizer((void *)ch, channel_finalizer);
 
-    ch->monitor = rt_obj_new_i64(0, 1); // Create a monitor object
-    if (!ch->monitor) {
-        channel_release_object(ch);
+    ((channel_impl *)ch)->monitor = rt_obj_new_i64(0, 1); // Create a monitor object
+    if (!((channel_impl *)ch)->monitor) {
+        rt_trap_clear_recovery();
+        channel_release_object((void *)ch);
         return NULL;
     }
 
-    ch->buffer = (void **)calloc((size_t)buffer_size, sizeof(void *));
-    if (!ch->buffer) {
-        channel_release_object(ch);
+    ((channel_impl *)ch)->buffer = (void **)calloc((size_t)buffer_size, sizeof(void *));
+    if (!((channel_impl *)ch)->buffer) {
+        rt_trap_clear_recovery();
+        channel_release_object((void *)ch);
         return NULL;
     }
 
-    ch->capacity = capacity;
-    ch->count = 0;
-    ch->head = 0;
-    ch->tail = 0;
-    ch->waiting_senders = 0;
-    ch->waiting_receivers = 0;
-    ch->sync_epoch = 0;
-    ch->sync_acked_epoch = 0;
-    ch->closed = 0;
+    ((channel_impl *)ch)->capacity = capacity;
+    ((channel_impl *)ch)->count = 0;
+    ((channel_impl *)ch)->head = 0;
+    ((channel_impl *)ch)->tail = 0;
+    ((channel_impl *)ch)->waiting_senders = 0;
+    ((channel_impl *)ch)->waiting_receivers = 0;
+    ((channel_impl *)ch)->sync_epoch = 0;
+    ((channel_impl *)ch)->sync_acked_epoch = 0;
+    ((channel_impl *)ch)->closed = 0;
 
-    return ch;
+    rt_gc_track((void *)ch, channel_traverse);
+    if (!rt_gc_is_tracked((void *)ch)) {
+        rt_trap("Channel: GC tracking failed");
+        return NULL;
+    }
+
+    rt_trap_clear_recovery();
+    return (void *)ch;
 }
 
 //=============================================================================
@@ -410,8 +521,7 @@ void rt_channel_send(void *channel, void *item) {
         if (!channel_retain_item_locked(
                 ch, channel, item, &ch->waiting_senders, "Channel.Send: item retain failed"))
             return;
-        ch->buffer[0] = item;
-        ch->count = 1;
+        channel_publish_sync_locked(ch, item);
 
         rt_monitor_pause_all(ch->monitor);
 
@@ -423,9 +533,7 @@ void rt_channel_send(void *channel, void *item) {
         if (ch->sync_acked_epoch < my_epoch) {
             void *discard_item = NULL;
             if (ch->sync_epoch == my_epoch && ch->count != 0) {
-                discard_item = ch->buffer[0];
-                ch->buffer[0] = NULL;
-                ch->count = 0;
+                discard_item = channel_take_sync_locked(ch);
                 rt_monitor_pause_all(ch->monitor);
             }
             ch->waiting_senders--;
@@ -461,9 +569,7 @@ void rt_channel_send(void *channel, void *item) {
     if (!channel_retain_item_locked(
             ch, channel, item, &ch->waiting_senders, "Channel.Send: item retain failed"))
         return;
-    ch->buffer[ch->tail] = item;
-    ch->tail = (ch->tail + 1) % ch->capacity;
-    ch->count++;
+    channel_publish_buffered_locked(ch, item);
 
     // Signal waiting receivers
     if (ch->waiting_receivers > 0) {
@@ -515,24 +621,18 @@ int8_t rt_channel_try_send(void *channel, void *item) {
     if (ch->capacity == 0) {
         int64_t ignored_epoch = 0;
         if (!channel_next_sync_epoch_locked(
-                ch,
-                channel,
-                &ignored_epoch,
-                "Channel.TrySend: synchronous handoff epoch overflow"))
+                ch, channel, &ignored_epoch, "Channel.TrySend: synchronous handoff epoch overflow"))
             return 0;
         if (!channel_retain_item_locked(
                 ch, channel, item, NULL, "Channel.TrySend: item retain failed"))
             return 0;
-        ch->buffer[0] = item;
-        ch->count = 1;
+        channel_publish_sync_locked(ch, item);
         rt_monitor_pause_all(ch->monitor);
     } else {
         if (!channel_retain_item_locked(
                 ch, channel, item, NULL, "Channel.TrySend: item retain failed"))
             return 0;
-        ch->buffer[ch->tail] = item;
-        ch->tail = (ch->tail + 1) % ch->capacity;
-        ch->count++;
+        channel_publish_buffered_locked(ch, item);
         if (ch->waiting_receivers > 0)
             rt_monitor_pause(ch->monitor);
     }
@@ -550,9 +650,14 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
 
     if (ms <= 0)
         return rt_channel_try_send(channel, item);
+    channel_deadline deadline = channel_deadline_from_now(ms);
     rt_obj_retain_maybe(channel);
 
-    rt_monitor_enter(ch->monitor);
+    int64_t monitor_budget = channel_remaining_ms(deadline);
+    if (monitor_budget <= 0 || !rt_monitor_try_enter_for(ch->monitor, monitor_budget)) {
+        channel_release_object(channel);
+        return 0;
+    }
 
     if (ch->closed) {
         rt_monitor_exit(ch->monitor);
@@ -560,14 +665,10 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
         return 0;
     }
 
-    channel_deadline deadline = channel_deadline_from_now(ms);
-
     // Handle synchronous channel
     if (ch->capacity == 0) {
-        if (!channel_increment_waiter_locked(ch,
-                                             channel,
-                                             &ch->waiting_senders,
-                                             "Channel.SendFor: sender wait count overflow"))
+        if (!channel_increment_waiter_locked(
+                ch, channel, &ch->waiting_senders, "Channel.SendFor: sender wait count overflow"))
             return 0;
         while ((ch->count != 0 || ch->waiting_receivers == 0) && !ch->closed) {
             int64_t remaining = channel_remaining_ms(deadline);
@@ -601,8 +702,7 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
         if (!channel_retain_item_locked(
                 ch, channel, item, &ch->waiting_senders, "Channel.SendFor: item retain failed"))
             return 0;
-        ch->buffer[0] = item;
-        ch->count = 1;
+        channel_publish_sync_locked(ch, item);
         rt_monitor_pause_all(ch->monitor);
 
         while (ch->sync_acked_epoch < my_epoch && !ch->closed) {
@@ -612,9 +712,7 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
                     break;
                 void *discard_item = NULL;
                 if (ch->sync_epoch == my_epoch && ch->count != 0) {
-                    discard_item = ch->buffer[0];
-                    ch->buffer[0] = NULL;
-                    ch->count = 0;
+                    discard_item = channel_take_sync_locked(ch);
                     rt_monitor_pause_all(ch->monitor);
                 }
                 ch->waiting_senders--;
@@ -627,9 +725,7 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
         if (ch->sync_acked_epoch < my_epoch) {
             void *discard_item = NULL;
             if (ch->sync_epoch == my_epoch && ch->count != 0) {
-                discard_item = ch->buffer[0];
-                ch->buffer[0] = NULL;
-                ch->count = 0;
+                discard_item = channel_take_sync_locked(ch);
                 rt_monitor_pause_all(ch->monitor);
             }
             ch->waiting_senders--;
@@ -645,10 +741,8 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
     }
 
     // Buffered channel
-    if (!channel_increment_waiter_locked(ch,
-                                         channel,
-                                         &ch->waiting_senders,
-                                         "Channel.SendFor: sender wait count overflow"))
+    if (!channel_increment_waiter_locked(
+            ch, channel, &ch->waiting_senders, "Channel.SendFor: sender wait count overflow"))
         return 0;
     while (ch->count >= ch->capacity && !ch->closed) {
         int64_t remaining = channel_remaining_ms(deadline);
@@ -671,9 +765,7 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
     if (!channel_retain_item_locked(
             ch, channel, item, &ch->waiting_senders, "Channel.SendFor: item retain failed"))
         return 0;
-    ch->buffer[ch->tail] = item;
-    ch->tail = (ch->tail + 1) % ch->capacity;
-    ch->count++;
+    channel_publish_buffered_locked(ch, item);
     if (ch->waiting_receivers > 0)
         rt_monitor_pause(ch->monitor);
 
@@ -698,10 +790,8 @@ void *rt_channel_recv(void *channel) {
 
     // Handle synchronous channel
     if (ch->capacity == 0) {
-        if (!channel_increment_waiter_locked(ch,
-                                             channel,
-                                             &ch->waiting_receivers,
-                                             "Channel.Recv: receiver wait count overflow"))
+        if (!channel_increment_waiter_locked(
+                ch, channel, &ch->waiting_receivers, "Channel.Recv: receiver wait count overflow"))
             return NULL;
 
         // Signal any waiting senders
@@ -721,9 +811,7 @@ void *rt_channel_recv(void *channel) {
             return NULL;
         }
 
-        void *item = ch->buffer[0];
-        ch->buffer[0] = NULL;
-        ch->count = 0;
+        void *item = channel_take_sync_locked(ch);
         ch->sync_acked_epoch = ch->sync_epoch;
 
         // Signal any waiting senders
@@ -753,10 +841,7 @@ void *rt_channel_recv(void *channel) {
     }
 
     // Dequeue item
-    void *item = ch->buffer[ch->head];
-    ch->buffer[ch->head] = NULL;
-    ch->head = (ch->head + 1) % ch->capacity;
-    ch->count--;
+    void *item = channel_take_buffered_locked(ch);
 
     // Signal waiting senders
     if (ch->waiting_senders > 0) {
@@ -796,9 +881,7 @@ int8_t rt_channel_try_recv(void *channel, void **out) {
             return 0;
         }
 
-        void *item = ch->buffer[0];
-        ch->buffer[0] = NULL;
-        ch->count = 0;
+        void *item = channel_take_sync_locked(ch);
         ch->sync_acked_epoch = ch->sync_epoch;
         if (ch->waiting_senders > 0)
             rt_monitor_pause_all(ch->monitor);
@@ -816,10 +899,7 @@ int8_t rt_channel_try_recv(void *channel, void **out) {
         return 0;
     }
 
-    void *item = ch->buffer[ch->head];
-    ch->buffer[ch->head] = NULL;
-    ch->head = (ch->head + 1) % ch->capacity;
-    ch->count--;
+    void *item = channel_take_buffered_locked(ch);
     if (ch->waiting_senders > 0)
         rt_monitor_pause(ch->monitor);
 
@@ -850,9 +930,21 @@ void *rt_channel_try_recv_option(void *channel) {
     if (!rt_channel_try_recv(channel, &out))
         return rt_option_none();
 
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) != 0) {
+        char saved_error[256];
+        channel_save_trap_error(
+            saved_error, sizeof(saved_error), "Channel.TryRecvOption: allocation failed");
+        rt_trap_clear_recovery();
+        channel_release_item(out);
+        rt_trap(saved_error);
+        return NULL;
+    }
+
     void *option = rt_option_some(out);
-    if (out && rt_obj_release_check0(out))
-        rt_obj_free(out);
+    rt_trap_clear_recovery();
+    channel_release_item(out);
     return option;
 }
 
@@ -866,10 +958,45 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
 
     if (ms <= 0)
         return rt_channel_try_recv(channel, out);
+    channel_deadline deadline = channel_deadline_from_now(ms);
     rt_obj_retain_maybe(channel);
 
-    rt_monitor_enter(ch->monitor);
-    channel_deadline deadline = channel_deadline_from_now(ms);
+    int64_t monitor_budget = channel_remaining_ms(deadline);
+    if (monitor_budget <= 0 || !rt_monitor_try_enter_for(ch->monitor, monitor_budget)) {
+        channel_release_object(channel);
+        return 0;
+    }
+
+    /* A NULL output is uniformly a non-consuming availability probe. Buffered
+       probes participate in receiver wakeups, but synchronous probes must not
+       advertise themselves as rendezvous receivers: doing so would publish an
+       item and strand its sender waiting for an acknowledgement that a probe
+       deliberately does not provide. */
+    if (!out) {
+        int8_t counted_waiter = 0;
+        if (ch->capacity > 0 && ch->count == 0 && !ch->closed) {
+            if (!channel_increment_waiter_locked(ch,
+                                                 channel,
+                                                 &ch->waiting_receivers,
+                                                 "Channel.RecvFor: receiver wait count overflow"))
+                return 0;
+            counted_waiter = 1;
+        }
+
+        while (ch->count == 0 && !ch->closed) {
+            int64_t remaining = channel_remaining_ms(deadline);
+            int8_t signaled = remaining > 0 ? rt_monitor_wait_for(ch->monitor, remaining) : 0;
+            if (!signaled && ch->count == 0 && !ch->closed)
+                break;
+        }
+
+        if (counted_waiter)
+            ch->waiting_receivers--;
+        int8_t available = ch->count > 0 ? 1 : 0;
+        rt_monitor_exit(ch->monitor);
+        channel_release_object(channel);
+        return available;
+    }
 
     // Handle synchronous channel
     if (ch->capacity == 0) {
@@ -899,31 +1026,22 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
             return 0;
         }
 
-        void *item = ch->buffer[0];
-        ch->buffer[0] = NULL;
-        ch->count = 0;
+        void *item = channel_take_sync_locked(ch);
         ch->sync_acked_epoch = ch->sync_epoch;
         if (ch->waiting_senders > 0)
             rt_monitor_pause_all(ch->monitor);
 
-        void *discard_item = NULL;
-        if (out)
-            *out = item;
-        else
-            discard_item = item;
+        *out = item;
 
         ch->waiting_receivers--;
         rt_monitor_exit(ch->monitor);
         channel_release_object(channel);
-        channel_release_item(discard_item);
         return 1;
     }
 
     // Buffered channel
-    if (!channel_increment_waiter_locked(ch,
-                                         channel,
-                                         &ch->waiting_receivers,
-                                         "Channel.RecvFor: receiver wait count overflow"))
+    if (!channel_increment_waiter_locked(
+            ch, channel, &ch->waiting_receivers, "Channel.RecvFor: receiver wait count overflow"))
         return 0;
     while (ch->count == 0 && !ch->closed) {
         int64_t remaining = channel_remaining_ms(deadline);
@@ -943,23 +1061,31 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
         return 0;
     }
 
-    void *item = ch->buffer[ch->head];
-    ch->buffer[ch->head] = NULL;
-    ch->head = (ch->head + 1) % ch->capacity;
-    ch->count--;
+    void *item = channel_take_buffered_locked(ch);
     if (ch->waiting_senders > 0)
         rt_monitor_pause(ch->monitor);
 
-    void *discard_item = NULL;
-    if (out)
-        *out = item;
-    else
-        discard_item = item;
+    *out = item;
 
     ch->waiting_receivers--;
     rt_monitor_exit(ch->monitor);
     channel_release_object(channel);
-    channel_release_item(discard_item);
+    return 1;
+}
+
+/// @brief Receive and release one item after leaving the Channel monitor.
+/// @details This explicit destructive API keeps availability probes
+///          non-consuming while preserving callers that intentionally want to
+///          drain an item without observing its value. Ownership returned by
+///          @ref rt_channel_recv_for is released outside every Channel lock.
+/// @param channel Channel object pointer.
+/// @param ms Total timeout budget in milliseconds.
+/// @return 1 when an item was drained, otherwise 0.
+int8_t rt_channel_recv_for_discard(void *channel, int64_t ms) {
+    void *item = NULL;
+    if (!rt_channel_recv_for(channel, &item, ms))
+        return 0;
+    channel_release_item(item);
     return 1;
 }
 

@@ -272,7 +272,7 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
         }
         if (m.updateRsaExponent.size() < 2U || m.updateRsaExponent.size() > 8U ||
             m.updateRsaExponent.size() % 2U != 0U || !isLowerHex(m.updateRsaExponent) ||
-            m.updateRsaExponent.front() == '0') {
+            m.updateRsaExponent.rfind("00", 0) == 0) {
             throw std::runtime_error(
                 "Windows installer update RSA exponent must be lowercase big-endian hex");
         }

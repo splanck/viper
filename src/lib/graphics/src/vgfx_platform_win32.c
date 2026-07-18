@@ -311,8 +311,8 @@ static BOOL CALLBACK win32_set_dpi_awareness_once(PINIT_ONCE init_once,
 
 /// @brief Load an application icon placed beside the running executable.
 /// @details The convention `<executable-basename>.ico` lets packaged Zanna applications carry
-///          their own identity without adding icon concerns to the runtime C ABI.  ZannaIDE is
-///          installed as `zannaide.exe` plus `zannaide.ico`; other applications fall back to the
+///          their own identity without adding icon concerns to the runtime C ABI.  Zanna Studio is
+///          installed as `zannastudio.exe` plus `zannastudio.ico`; other applications fall back to the
 ///          standard Windows application icon when no adjacent icon is present.
 static HICON win32_load_adjacent_application_icon(int width, int height) {
     WCHAR path[32768];

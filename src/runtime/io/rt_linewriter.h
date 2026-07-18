@@ -13,7 +13,9 @@
 //   - Open mode 'append' preserves existing content; default mode truncates.
 //   - WriteLn appends the configured line ending (defaults to platform native).
 //   - The writer buffers output internally; Flush sends buffered data to disk.
-//   - WriteChar accepts a single-character string; only the first byte is used.
+//   - WriteChar accepts one integer byte value in the inclusive range 0..255.
+//   - Opaque receivers are validated for class and complete payload size.
+//   - Constructor and newline replacement allocations are transactional.
 //
 // Ownership/Lifetime:
 //   - LineWriter objects are heap-allocated; caller must close and free when done.
@@ -33,8 +35,11 @@ extern "C" {
 #endif
 
 /// @brief Open a text file for writing (creates or truncates).
+/// @details The native file and default newline remain cleanup-owned until the
+///          managed writer is fully allocated. An allocation trap closes and
+///          releases both before it propagates.
 /// @param path File path as runtime string.
-/// @return LineWriter object or traps on failure.
+/// @return Owned LineWriter object; traps and returns NULL on failure.
 void *rt_linewriter_open(rt_string path);
 
 /// @brief Open a text file for appending (creates if needed).
@@ -70,7 +75,9 @@ void rt_linewriter_flush(void *obj);
 /// @return Current newline string.
 rt_string rt_linewriter_newline(void *obj);
 
-/// @brief Set the newline string.
+/// @brief Set the newline string transactionally.
+/// @details Retains or creates the replacement before releasing the current
+///          value. If allocation traps, the existing newline remains installed.
 /// @param obj LineWriter object.
 /// @param nl New newline string.
 void rt_linewriter_set_newline(void *obj, rt_string nl);

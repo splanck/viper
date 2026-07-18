@@ -97,7 +97,7 @@ endif ()
 zanna_installer_smoke_required_tool_names(_required_tools)
 set(_required_listing_paths
         "./usr/lib/cmake/Zanna/ZannaConfig.cmake"
-        "./usr/share/applications/zannaide.desktop"
+        "./usr/share/applications/zannastudio.desktop"
         "./usr/share/man/man1/zanna.1")
 foreach (_tool IN LISTS _required_tools)
     list(APPEND _required_listing_paths "./usr/bin/${_tool}")

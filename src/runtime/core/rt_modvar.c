@@ -36,6 +36,7 @@
 
 #include "rt_modvar.h"
 #include "rt_context.h"
+#include "rt_context_internal.h"
 #include "rt_internal.h"
 #include "rt_string.h"
 
@@ -272,10 +273,6 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
 /// @param size Size of the storage to allocate for new entries.
 /// @return Stable pointer to the variable’s storage.
 static void *mv_addr(rt_string name, mv_kind_t kind, size_t size) {
-    RtContext *ctx = rt_get_current_context();
-    if (!ctx)
-        ctx = rt_legacy_context();
-
     if (!name) {
         rt_trap("rt_modvar: null name");
         return NULL;
@@ -294,10 +291,14 @@ static void *mv_addr(rt_string name, mv_kind_t kind, size_t size) {
         rt_trap("rt_modvar: zero-sized storage");
         return NULL;
     }
-    RtModvarEntry *e = mv_find_or_create(ctx, c, kind, size);
-    if (!e)
+
+    RtContext *ctx = rt_context_acquire_state(RT_CONTEXT_STATE_MODVAR, NULL);
+    if (!ctx)
         return NULL;
-    return e->addr;
+    RtModvarEntry *e = mv_find_or_create(ctx, c, kind, size);
+    void *address = e ? e->addr : NULL;
+    rt_context_release_state(ctx, RT_CONTEXT_STATE_MODVAR);
+    return address;
 }
 
 /// @brief Address of a 64-bit integer module variable.

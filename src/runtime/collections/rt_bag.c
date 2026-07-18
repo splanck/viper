@@ -33,6 +33,7 @@
 #include "rt_bag.h"
 
 #include "rt_collection_ids.h"
+#include "rt_hash_table_util.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
@@ -45,10 +46,6 @@
 /// Initial number of buckets.
 #define BAG_INITIAL_CAPACITY 16
 
-/// Load factor threshold for resizing (0.75 = 75%).
-#define BAG_LOAD_FACTOR_NUM 3
-#define BAG_LOAD_FACTOR_DEN 4
-
 #include "rt_hash_util.h"
 
 /// @brief Entry in the hash set (collision chain node).
@@ -57,9 +54,10 @@
 /// collision chains (linked lists) within each bucket. The Bag owns
 /// a copy of each string key, not a reference to the original.
 typedef struct rt_bag_entry {
-    char *key;                 ///< Owned copy of string (null-terminated).
     size_t key_len;            ///< Length of string (excluding null terminator).
+    uint64_t hash;             ///< Cached keyed hash used by lookup and rehash.
     struct rt_bag_entry *next; ///< Next entry in collision chain (or NULL).
+    char key[];                ///< Inline owned bytes followed by one NUL byte.
 } rt_bag_entry;
 
 /// @brief Bag (string set) implementation structure.
@@ -134,18 +132,50 @@ static const char *get_key_data(rt_string key, size_t *out_len) {
 /// memcmp for exact matching.
 ///
 /// @param head The head of the collision chain to search.
+/// @param hash Cached hash of the key being searched for.
 /// @param key The key string to search for.
 /// @param key_len Length of the key string.
 ///
 /// @return Pointer to the matching entry, or NULL if not found.
 ///
 /// @note O(k) time where k is the chain length (ideally small with good hash).
-static rt_bag_entry *find_entry(rt_bag_entry *head, const char *key, size_t key_len) {
+static rt_bag_entry *find_entry(rt_bag_entry *head,
+                                uint64_t hash,
+                                const char *key,
+                                size_t key_len) {
     for (rt_bag_entry *e = head; e; e = e->next) {
-        if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
+        if (e->hash == hash && e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
     }
     return NULL;
+}
+
+/// @brief Allocate one StringSet entry with its key stored inline.
+/// @details Combining the collision node and copied bytes into one runtime
+///          allocation halves per-entry allocator traffic and makes every
+///          allocation failure observable through the runtime trap contract.
+/// @param key Key bytes to copy.
+/// @param key_len Number of key bytes, excluding the appended NUL terminator.
+/// @param hash Precomputed keyed hash.
+/// @return Newly allocated entry, or NULL after reporting an overflow or
+///         allocation trap.
+static rt_bag_entry *bag_entry_new(const char *key, size_t key_len, uint64_t hash) {
+    if (key_len > SIZE_MAX - sizeof(rt_bag_entry) - 1 ||
+        sizeof(rt_bag_entry) + key_len + 1 > (size_t)INT64_MAX) {
+        rt_trap("Bag.Add: key allocation overflow");
+        return NULL;
+    }
+    size_t allocation_size = sizeof(rt_bag_entry) + key_len + 1;
+    rt_bag_entry *entry = (rt_bag_entry *)rt_alloc((int64_t)allocation_size);
+    if (!entry) {
+        rt_trap("Bag.Add: memory allocation failed");
+        return NULL;
+    }
+    entry->key_len = key_len;
+    entry->hash = hash;
+    memcpy(entry->key, key, key_len);
+    entry->key[key_len] = '\0';
+    return entry;
 }
 
 /// @brief Frees an entry and its owned key string.
@@ -155,10 +185,7 @@ static rt_bag_entry *find_entry(rt_bag_entry *head, const char *key, size_t key_
 ///
 /// @param entry The entry to free. If NULL, this is a no-op.
 static void free_entry(rt_bag_entry *entry) {
-    if (entry) {
-        free(entry->key);
-        free(entry);
-    }
+    rt_free(entry);
 }
 
 /// @brief Finalizer callback invoked when a Bag is garbage collected.
@@ -178,7 +205,7 @@ static void rt_bag_finalize(void *obj) {
     if (!bag->buckets || bag->capacity == 0)
         return;
     rt_bag_clear(bag);
-    free(bag->buckets);
+    rt_free(bag->buckets);
     bag->buckets = NULL;
     bag->capacity = 0;
     bag->count = 0;
@@ -199,33 +226,38 @@ static void rt_bag_finalize(void *obj) {
 /// @param bag The Bag to resize.
 /// @param new_capacity The new number of buckets (should be power of 2 for efficiency).
 ///
-/// @note On allocation failure, the old buckets are kept (silent failure).
+/// @return Non-zero after installing the replacement table; zero after a trap,
+///         with the old table preserved exactly.
 /// @note O(n) time complexity where n is the number of entries.
-static void bag_resize(rt_bag_impl *bag, size_t new_capacity) {
-    if (new_capacity > SIZE_MAX / sizeof(rt_bag_entry *)) {
+static int bag_resize(rt_bag_impl *bag, size_t new_capacity) {
+    if (new_capacity == 0 || new_capacity > SIZE_MAX / sizeof(rt_bag_entry *) ||
+        new_capacity * sizeof(rt_bag_entry *) > (size_t)INT64_MAX) {
         rt_trap("Bag: allocation size overflow");
-        return;
+        return 0;
     }
-    rt_bag_entry **new_buckets = (rt_bag_entry **)calloc(new_capacity, sizeof(rt_bag_entry *));
-    if (!new_buckets)
-        return; // Keep old buckets on allocation failure
+    rt_bag_entry **new_buckets =
+        (rt_bag_entry **)rt_alloc((int64_t)(new_capacity * sizeof(rt_bag_entry *)));
+    if (!new_buckets) {
+        rt_trap("Bag: memory allocation failed");
+        return 0;
+    }
 
     // Rehash all entries
     for (size_t i = 0; i < bag->capacity; ++i) {
         rt_bag_entry *entry = bag->buckets[i];
         while (entry) {
             rt_bag_entry *next = entry->next;
-            uint64_t hash = rt_fnv1a(entry->key, entry->key_len);
-            size_t idx = hash % new_capacity;
+            size_t idx = entry->hash % new_capacity;
             entry->next = new_buckets[idx];
             new_buckets[idx] = entry;
             entry = next;
         }
     }
 
-    free(bag->buckets);
+    rt_free(bag->buckets);
     bag->buckets = new_buckets;
     bag->capacity = new_capacity;
+    return 1;
 }
 
 /// @brief Checks if resize is needed and performs it.
@@ -237,14 +269,16 @@ static void bag_resize(rt_bag_impl *bag, size_t new_capacity) {
 /// @param bag The Bag to potentially resize.
 ///
 /// @note The capacity doubles on each resize.
-static void maybe_resize_for_count(rt_bag_impl *bag, size_t next_count) {
-    // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if ((long double)next_count * (long double)BAG_LOAD_FACTOR_DEN >
-        (long double)bag->capacity * (long double)BAG_LOAD_FACTOR_NUM) {
-        if (bag->capacity > SIZE_MAX / 2)
-            return;
-        bag_resize(bag, bag->capacity * 2);
+static int maybe_resize_for_count(rt_bag_impl *bag, size_t next_count) {
+    if (rt_hash_table_exceeds_load(next_count, bag->capacity)) {
+        size_t new_capacity = 0;
+        if (!rt_hash_table_double_capacity(bag->capacity, &new_capacity)) {
+            rt_trap("Bag: capacity overflow");
+            return 0;
+        }
+        return bag_resize(bag, new_capacity);
     }
+    return 1;
 }
 
 /// @brief Creates a new empty Bag (string set) with default capacity.
@@ -288,7 +322,8 @@ void *rt_bag_new(void) {
     }
 
     bag->vptr = NULL;
-    bag->buckets = (rt_bag_entry **)calloc(BAG_INITIAL_CAPACITY, sizeof(rt_bag_entry *));
+    bag->buckets =
+        (rt_bag_entry **)rt_alloc((int64_t)(BAG_INITIAL_CAPACITY * sizeof(rt_bag_entry *)));
     if (!bag->buckets) {
         if (rt_obj_release_check0(bag))
             rt_obj_free(bag);
@@ -368,8 +403,9 @@ int8_t rt_bag_is_empty(void *obj) {
 /// @param obj Pointer to a Bag object. Must not be NULL.
 /// @param str The string to add. A copy is made - the original is not retained.
 ///
-/// @return 1 if the string was added (was not present), 0 if it was already
-///         present or if an error occurred (NULL bag, allocation failure).
+/// @return 1 if the string was added, or 0 only when it was already present.
+///         Invalid handles, capacity overflow, and allocation failure trap;
+///         a returning trap hook observes 0 with the Bag unchanged.
 ///
 /// @note O(1) average-case time complexity. O(n) worst-case if all strings
 ///       hash to the same bucket.
@@ -380,12 +416,16 @@ int8_t rt_bag_is_empty(void *obj) {
 /// @see rt_bag_has For checking membership without modifying
 /// @see rt_bag_remove For removing strings
 int8_t rt_bag_add(void *obj, rt_string str) {
-    if (!obj)
+    if (!obj) {
+        rt_trap("Bag.Add: invalid Bag object");
         return 0;
+    }
 
     rt_bag_impl *bag = as_bag(obj, "Bag.Add: invalid Bag object");
-    if (bag->capacity == 0)
-        return 0; // Bucket allocation failed
+    if (!bag || bag->capacity == 0) {
+        rt_trap("Bag.Add: unavailable bucket table");
+        return 0;
+    }
 
     size_t key_len;
     const char *key_data = get_key_data(str, &key_len);
@@ -393,40 +433,23 @@ int8_t rt_bag_add(void *obj, rt_string str) {
     size_t idx = hash % bag->capacity;
 
     // Check if string already exists
-    if (find_entry(bag->buckets[idx], key_data, key_len)) {
+    if (find_entry(bag->buckets[idx], hash, key_data, key_len)) {
         return 0; // Already present
     }
 
-    if (bag->count < SIZE_MAX)
-        maybe_resize_for_count(bag, bag->count + 1);
-    idx = hash % bag->capacity;
-
-    // Create new entry
-    rt_bag_entry *entry = (rt_bag_entry *)malloc(sizeof(rt_bag_entry));
-    if (!entry)
-        return 0;
-
-    if (key_len == SIZE_MAX) {
-        free(entry);
-        rt_trap("Bag.Add: key allocation overflow");
-        return 0;
-    }
-    entry->key = (char *)malloc(key_len + 1);
-    if (!entry->key) {
-        free(entry);
-        return 0;
-    }
-    memcpy(entry->key, key_data, key_len);
-    entry->key[key_len] = '\0';
-    entry->key_len = key_len;
-
-    // Insert at head of bucket chain
     if (bag->count >= (size_t)INT64_MAX) {
-        free(entry->key);
-        free(entry);
         rt_trap("StringSet.Add: maximum size reached");
         return 0;
     }
+    if (!maybe_resize_for_count(bag, bag->count + 1))
+        return 0;
+    idx = hash % bag->capacity;
+
+    rt_bag_entry *entry = bag_entry_new(key_data, key_len, hash);
+    if (!entry)
+        return 0;
+
+    // Insert at head of bucket chain
     entry->next = bag->buckets[idx];
     bag->buckets[idx] = entry;
     bag->count++;
@@ -485,7 +508,8 @@ int8_t rt_bag_remove(void *obj, rt_string str) {
     rt_bag_entry *entry = bag->buckets[idx];
 
     while (entry) {
-        if (entry->key_len == key_len && memcmp(entry->key, key_data, key_len) == 0) {
+        if (entry->hash == hash && entry->key_len == key_len &&
+            memcmp(entry->key, key_data, key_len) == 0) {
             *prev_ptr = entry->next;
             free_entry(entry);
             bag->count--;
@@ -544,7 +568,7 @@ int8_t rt_bag_has(void *obj, rt_string str) {
     uint64_t hash = rt_fnv1a(key_data, key_len);
     size_t idx = hash % bag->capacity;
 
-    return find_entry(bag->buckets[idx], key_data, key_len) ? 1 : 0;
+    return find_entry(bag->buckets[idx], hash, key_data, key_len) ? 1 : 0;
 }
 
 /// @brief Removes all strings from the Bag.
