@@ -1,11 +1,27 @@
 //===----------------------------------------------------------------------===//
+//
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// RTAsyncTests.cpp - Tests for rt_async (async task combinators)
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/runtime/RTAsyncTests.cpp
+// Purpose: Validate async task combinators, cancellation, traps, ownership,
+//          and concurrent execution.
+// Key invariants:
+//   - Future aggregation preserves result order and propagates errors.
+//   - Owned arguments and mapped values have balanced lifetimes.
+//   - Concurrent tasks start independently and cancellation remains bounded.
+// Ownership/Lifetime:
+//   - Every managed future, sequence, and test value is released by its test.
+// Links: src/runtime/threads/rt_async.c, src/runtime/threads/rt_future.c
+//
 //===----------------------------------------------------------------------===//
 
 #include <atomic>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <chrono>
 #include <cstdint>

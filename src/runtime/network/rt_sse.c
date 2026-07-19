@@ -9,7 +9,8 @@
 // Purpose: Strict, reconnecting HTTP(S) EventSource client with lossless deadlines.
 // Key invariants:
 //   - Response heads, chunk framing, lines, and accumulated events are bounded.
-//   - One receive owner retains parser/transport state while Close performs shutdown.
+//   - One receive owner retains parser/transport state while Close requests shutdown.
+//   - Untimed receives poll cancellation without surfacing synthetic timeouts.
 //   - A monotonic whole-event timeout never discards partial framing or field bytes.
 //   - Public receivers and managed Strings are validated before payload access.
 // Ownership/Lifetime:
@@ -86,6 +87,13 @@ static inline void sse_native_discard(void *allocation) {
 
 /// @brief Maximum native bytes in one HTTP or event-stream line.
 #define SSE_MAX_LINE_BYTES (64u * 1024u)
+
+/// @brief Maximum delay before an untimed receive observes concurrent Close.
+/// @details Some WinSock providers do not cancel an already-blocked synchronous
+///          `recv` when another thread calls `shutdown`. A bounded socket timeout
+///          lets the receive owner poll cancellation without closing its handle
+///          concurrently or changing the public blocking-receive contract.
+#define SSE_CLOSE_POLL_TIMEOUT_MS 100
 
 /// @brief Internal reason the current parser read could not produce a byte or line.
 typedef enum {
@@ -2230,6 +2238,8 @@ static sse_receive_outcome_t sse_receive_core(rt_sse_impl *sse) {
             if (failure == SSE_READ_TIMEOUT) {
                 sse->read_timed_out = 0;
                 sse->read_failure = SSE_READ_NONE;
+                if (sse->read_deadline_us == 0)
+                    continue;
                 return SSE_RECEIVE_TIMEOUT;
             }
             if (failure == SSE_READ_OOM) {
@@ -2335,7 +2345,7 @@ static rt_string sse_receive_operation(rt_sse_impl *sse,
         sse->read_deadline_us = now_us + budget_us;
     } else {
         sse->read_deadline_us = 0;
-        if (!sse_set_recv_timeout(sse, 0))
+        if (!sse_set_recv_timeout(sse, SSE_CLOSE_POLL_TIMEOUT_MS))
             rt_trap("SSE: receive timeout setup failed");
     }
 

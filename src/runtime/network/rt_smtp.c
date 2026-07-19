@@ -10,12 +10,13 @@
 // Key invariants:
 //   - EHLO → optional STARTTLS → optional AUTH LOGIN → MAIL FROM → RCPT TO → DATA.
 //   - Replies require bounded CRLF framing and consistent multiline status codes.
-//   - One operation owns published transport state; Close only cancels active I/O.
+//   - One operation owns published transport state; Close cancels bounded-poll I/O.
 //   - MIME bodies stream with bounded memory, normalized newlines, and dot transparency.
 //   - AUTH LOGIN credentials and encoded copies are wiped before native release.
 // Ownership/Lifetime:
 //   - Client objects are GC-managed; copied host/error/credential bytes are finalized.
 // Links: rt_smtp.h (C ABI), rt_network.h (TCP), rt_tls.h (TLS),
+//        rt_tls_internal.h (cancellation-aware TLS session state),
 //        docs/zannalib/network.md (runtime contract)
 //
 //===----------------------------------------------------------------------===//
@@ -38,7 +39,9 @@
 #include "rt_platform.h"
 #include "rt_result.h"
 #include "rt_string.h"
+#include "rt_time.h"
 #include "rt_tls.h"
+#include "rt_tls_internal.h"
 #include "rt_trap.h"
 
 #include <setjmp.h>
@@ -68,6 +71,12 @@ typedef pthread_mutex_t smtp_mutex_t;
 
 /// @brief Fixed native staging capacity used while streaming SMTP DATA.
 #define SMTP_OUTPUT_BUFFER_SIZE 4096u
+
+/// @brief Existing logical timeout for one SMTP transport operation.
+#define SMTP_IO_TIMEOUT_MS 30000
+
+/// @brief Native I/O slice used to observe concurrent cancellation promptly.
+#define SMTP_CANCEL_POLL_TIMEOUT_MS 100
 
 /// @brief Initialize one native SMTP mutex.
 /// @param mutex Zeroed storage owned by a partial client.
@@ -304,8 +313,12 @@ static void smtp_close_transport(rt_smtp_impl *s) {
     if (s->state_lock_initialized)
         smtp_mutex_unlock(&s->state_lock);
 
-    if (tls)
+    if (tls) {
+        tls->io_cancel_requested = NULL;
+        tls->io_cancel_context = NULL;
+        tls->io_deadline_us = 0;
         rt_tls_close(tls);
+    }
     if (tcp) {
         rt_tcp_close(tcp);
         if (rt_obj_release_check0(tcp))
@@ -322,6 +335,27 @@ static int smtp_operation_cancelled(rt_smtp_impl *s) {
     cancelled = s->cancel_requested ? 1 : 0;
     smtp_mutex_unlock(&s->state_lock);
     return cancelled;
+}
+
+/// @brief Adapt SMTP's synchronized cancellation state to the TLS owner probe.
+/// @param context Active SMTP client owning the TLS session.
+/// @return Nonzero after concurrent Close requested cancellation.
+static int smtp_tls_cancel_requested(void *context) {
+    return context ? smtp_operation_cancelled((rt_smtp_impl *)context) : 1;
+}
+
+/// @brief Create one monotonic deadline for a logical SMTP transport operation.
+/// @return Absolute runtime-clock deadline in microseconds.
+static int64_t smtp_io_deadline_us(void) {
+    return rt_clock_ticks_us() + (int64_t)SMTP_IO_TIMEOUT_MS * 1000;
+}
+
+/// @brief Test cancellation and the logical operation deadline between native polls.
+/// @param s Active SMTP client.
+/// @param deadline_us Absolute monotonic deadline.
+/// @return Nonzero when the transport operation must stop.
+static int smtp_io_should_stop(rt_smtp_impl *s, int64_t deadline_us) {
+    return smtp_operation_cancelled(s) || rt_clock_ticks_us() >= deadline_us;
 }
 
 /// @brief Publish a newly connected plain TCP wrapper to the active operation.
@@ -396,58 +430,101 @@ static void smtp_finish_operation(rt_smtp_impl *s) {
     smtp_mutex_unlock(&s->state_lock);
 }
 
-/// @brief Apply the same send + recv timeout to whichever transport is active. For TLS, reach
-/// through to the underlying socket fd; for plain TCP, use the rt_tcp_set_*_timeout helpers.
-static void smtp_set_transport_timeouts(rt_smtp_impl *s, int timeout_ms) {
+/// @brief Configure logical timeouts with bounded native cancellation polling.
+/// @details SMTP retains its 30-second operation timeout while the socket wakes
+///          every short slice so Close is observed consistently on every OS.
+/// @param s Active client with a published transport.
+/// @param timeout_ms Positive logical operation timeout.
+/// @return Nonzero when both native socket options were applied.
+static int smtp_set_transport_timeouts(rt_smtp_impl *s, int timeout_ms) {
     if (!s)
-        return;
-    if (s->tls) {
-        socket_t fd = (socket_t)rt_tls_get_socket(s->tls);
-        if (fd != INVALID_SOCK) {
-            set_socket_timeout(fd, timeout_ms, true);
-            set_socket_timeout(fd, timeout_ms, false);
-        }
-    } else if (s->tcp) {
-        rt_tcp_set_recv_timeout(s->tcp, timeout_ms);
-        rt_tcp_set_send_timeout(s->tcp, timeout_ms);
-    }
+        return 0;
+    socket_t fd = s->tls ? (socket_t)rt_tls_get_socket(s->tls)
+                         : (s->tcp ? rt_tcp_socket_fd(s->tcp) : INVALID_SOCK);
+    if (fd == INVALID_SOCK || timeout_ms <= 0)
+        return 0;
+    if (s->tls)
+        s->tls->timeout_ms = timeout_ms;
+    int native_timeout_ms =
+        timeout_ms > SMTP_CANCEL_POLL_TIMEOUT_MS ? SMTP_CANCEL_POLL_TIMEOUT_MS : timeout_ms;
+    return set_socket_timeout(fd, native_timeout_ms, true) &&
+           set_socket_timeout(fd, native_timeout_ms, false);
 }
 
-/// @brief Loop-write `len` bytes through whichever transport is active. For TLS, retries until
-/// the byte count is fully drained; for plain TCP, delegates to the rt_tcp send-all helper.
-/// Returns 0 on partial write/error, 1 on success.
+/// @brief Loop-write bytes through TLS or the published plain socket.
+/// @details Short native timeouts are retried within one logical deadline and
+///          cancellation is checked between every slice.
+/// @return Zero on cancellation, timeout, partial write, or error; one on success.
 static int smtp_transport_send_all(rt_smtp_impl *s, const void *data, size_t len) {
     if (smtp_operation_cancelled(s))
         return 0;
+    int64_t deadline_us = smtp_io_deadline_us();
     if (s->tls) {
         size_t total = 0;
         while (total < len) {
+            s->tls->io_deadline_us = deadline_us;
             long sent = rt_tls_send(s->tls, (const uint8_t *)data + total, len - total);
-            if (sent <= 0)
+            s->tls->io_deadline_us = 0;
+            if (sent <= 0 || smtp_io_should_stop(s, deadline_us))
                 return 0;
             total += (size_t)sent;
         }
         return 1;
     }
 
-    rt_tcp_send_all_raw(s->tcp, data, (int64_t)len);
+    socket_t socket_fd = s->tcp ? rt_tcp_socket_fd(s->tcp) : INVALID_SOCK;
+    if (socket_fd == INVALID_SOCK)
+        return 0;
+    size_t total = 0;
+    while (total < len) {
+        if (smtp_io_should_stop(s, deadline_us))
+            return 0;
+        size_t remaining = len - total;
+        int chunk = (int)(remaining > INT_MAX ? INT_MAX : remaining);
+        int sent = send(socket_fd, (const char *)data + total, chunk, SEND_FLAGS);
+        if (sent > 0) {
+            total += (size_t)sent;
+            continue;
+        }
+        if (sent == 0)
+            return 0;
+        int error = GET_LAST_ERROR();
+        if (rt_socket_error_is_interrupted(error) || rt_socket_error_is_would_block(error) ||
+            rt_socket_error_is_timeout(error)) {
+            continue;
+        }
+        return 0;
+    }
     return 1;
 }
 
 /// @brief Read native bytes directly from the active TLS or TCP transport.
-/// @details The plain path bypasses managed Bytes allocation and retries only
-///          interrupted native receives. The active-operation contract keeps
-///          transport storage alive while concurrent Close performs shutdown.
+/// @details The plain path bypasses managed Bytes allocation. Both paths retry
+///          short native timeout slices within the logical operation deadline.
 static long smtp_transport_read(rt_smtp_impl *s, void *buffer, size_t len) {
-    if (s->tls)
-        return rt_tls_recv(s->tls, buffer, len);
+    int64_t deadline_us = smtp_io_deadline_us();
+    if (smtp_io_should_stop(s, deadline_us))
+        return -1;
+    if (s->tls) {
+        s->tls->io_deadline_us = deadline_us;
+        long received = rt_tls_recv(s->tls, buffer, len);
+        s->tls->io_deadline_us = 0;
+        return received;
+    }
     socket_t socket_fd = s->tcp ? rt_tcp_socket_fd(s->tcp) : INVALID_SOCK;
     if (socket_fd == INVALID_SOCK)
         return 0;
     for (;;) {
+        if (smtp_io_should_stop(s, deadline_us))
+            return -1;
         long received = recv(socket_fd, (char *)buffer, (int)(len > INT_MAX ? INT_MAX : len), 0);
-        if (received < 0 && rt_socket_error_is_interrupted(GET_LAST_ERROR()))
-            continue;
+        if (received < 0) {
+            int error = GET_LAST_ERROR();
+            if (rt_socket_error_is_interrupted(error) || rt_socket_error_is_would_block(error) ||
+                rt_socket_error_is_timeout(error)) {
+                continue;
+            }
+        }
         return received;
     }
 }
@@ -1155,7 +1232,7 @@ static void *smtp_connect_plain_transaction(const char *host, int port) {
         return NULL;
     }
     host_string = rt_string_from_bytes(host, strlen(host));
-    tcp = rt_tcp_connect_for((rt_string)host_string, port, 30000);
+    tcp = rt_tcp_connect_for((rt_string)host_string, port, SMTP_IO_TIMEOUT_MS);
     rt_trap_clear_recovery();
     rt_str_release_maybe((rt_string)host_string);
     return (void *)tcp;
@@ -1173,7 +1250,7 @@ static int smtp_upgrade_published_tcp_to_tls(rt_smtp_impl *s) {
     rt_tls_config_t cfg;
     rt_tls_config_init(&cfg);
     cfg.hostname = s->host;
-    cfg.timeout_ms = 30000;
+    cfg.timeout_ms = SMTP_IO_TIMEOUT_MS;
     socket_t socket_fd = s->tcp ? rt_tcp_socket_fd(s->tcp) : INVALID_SOCK;
     rt_tls_session_t *tls =
         socket_fd != INVALID_SOCK ? rt_tls_new((intptr_t)socket_fd, &cfg) : NULL;
@@ -1191,6 +1268,14 @@ static int smtp_upgrade_published_tcp_to_tls(rt_smtp_impl *s) {
         set_error(s, "SMTP: operation cancelled during TLS setup");
         return -1;
     }
+    s->tls->io_cancel_requested = smtp_tls_cancel_requested;
+    s->tls->io_cancel_context = s;
+    s->tls->io_deadline_us = smtp_io_deadline_us();
+    if (!smtp_set_transport_timeouts(s, SMTP_IO_TIMEOUT_MS)) {
+        set_error(s, "SMTP: failed to configure TLS I/O timeout");
+        smtp_close_transport(s);
+        return -1;
+    }
     if (rt_tls_handshake(s->tls) != RT_TLS_OK) {
         const char *detail = rt_tls_get_error(s->tls);
         char message[512];
@@ -1202,7 +1287,7 @@ static int smtp_upgrade_published_tcp_to_tls(rt_smtp_impl *s) {
         smtp_close_transport(s);
         return -1;
     }
-    smtp_set_transport_timeouts(s, 30000);
+    s->tls->io_deadline_us = 0;
     return 0;
 }
 
@@ -1239,7 +1324,10 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s) {
         if (smtp_upgrade_published_tcp_to_tls(s) < 0)
             return -1;
     } else {
-        smtp_set_transport_timeouts(s, 30000);
+        if (!smtp_set_transport_timeouts(s, SMTP_IO_TIMEOUT_MS)) {
+            set_error(s, "SMTP: failed to configure transport I/O timeout");
+            return -1;
+        }
     }
 
     if (smtp_command(s, NULL, 220) < 0)
@@ -1620,10 +1708,10 @@ rt_string rt_smtp_last_error(void *obj) {
 
 /// @brief Cancel active SMTP I/O or close an idle transport immediately.
 /// @details Close marks cancellation while holding the state mutex and invokes
-///          native shutdown to wake blocking send/receive calls. It never frees
-///          TLS or TCP state owned by an active operation; that owner detaches
-///          and releases the transport before unlocking. The next serialized
-///          send clears cancellation and reconnects from scratch.
+///          native shutdown in addition to the transport's bounded cancellation
+///          polling. It never frees TLS or TCP state owned by an active operation;
+///          that owner detaches and releases the transport before unlocking. The
+///          next serialized send clears cancellation and reconnects from scratch.
 /// @param obj Candidate SMTP receiver; NULL is an idempotent no-op.
 void rt_smtp_close(void *obj) {
     if (!obj)

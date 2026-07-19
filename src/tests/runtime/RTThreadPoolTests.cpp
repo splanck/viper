@@ -21,6 +21,9 @@
 #include "rt_heap.h"
 
 #include <atomic>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <chrono>
 #include <cstdint>

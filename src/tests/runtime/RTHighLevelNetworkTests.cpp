@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/RTHighLevelNetworkTests.cpp
+// File: src/tests/runtime/RTHighLevelNetworkTests.cpp
 // Purpose: Integration-style coverage for higher-level network APIs.
 // Key invariants:
 //   - Local network fixtures bind only to loopback addresses.
@@ -43,6 +43,9 @@
 #include "rt_wss_server.h"
 
 #include <atomic>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <cctype>
 #include <chrono>
@@ -110,6 +113,7 @@ static std::atomic<bool> api_server_failed{false};
 static std::atomic<int> http_keepalive_accept_count{0};
 static std::atomic<bool> http_keepalive_reused{false};
 static std::atomic<bool> smtp_fixture_client_accepted{false};
+static std::atomic<bool> smtp_fixture_tls_client_hello{false};
 static std::string smtp_captured_message;
 static std::string http_cookie_headers[3];
 static std::string http_keepalive_connection_headers[2];
@@ -1139,6 +1143,46 @@ static void smtp_cancel_reconnect_server_thread(int port) {
     rt_tcp_server_close(server);
 }
 
+/// @brief Reach STARTTLS, consume the first ClientHello byte, then stall.
+/// @details Consuming one TLS byte proves the SMTP client entered its TLS-owned
+///          receive path before the test requests cancellation. The incomplete
+///          record remains open long enough to distinguish bounded polling from
+///          waiting for the fixture's eventual close.
+/// @param port Reserved loopback port.
+static void smtp_stalled_starttls_server_thread(int port) {
+    void *server = rt_tcp_server_listen(port);
+    if (!server) {
+        api_server_failed = true;
+        api_server_ready = true;
+        return;
+    }
+    api_server_failed = false;
+    api_server_ready = true;
+    void *client = rt_tcp_server_accept_for(server, 5000);
+    if (client) {
+        send_text(client, "220 localhost ESMTP ready\r\n");
+        rt_string line = rt_tcp_recv_line(client);
+        const char *text = rt_string_cstr(line);
+        assert(text && strncmp(text, "EHLO ", 5) == 0);
+        rt_string_unref(line);
+        send_text(client, "250-localhost\r\n250 STARTTLS\r\n");
+        line = rt_tcp_recv_line(client);
+        text = rt_string_cstr(line);
+        assert(text && strcmp(text, "STARTTLS") == 0);
+        rt_string_unref(line);
+        send_text(client, "220 Ready to start TLS\r\n");
+
+        rt_tcp_set_recv_timeout(client, 5000);
+        void *hello_byte = rt_tcp_recv(client, 1);
+        smtp_fixture_tls_client_hello = hello_byte && rt_bytes_len(hello_byte) == 1;
+        if (hello_byte && rt_obj_release_check0(hello_byte))
+            rt_obj_free(hello_byte);
+        std::this_thread::sleep_for(std::chrono::milliseconds(750));
+        rt_tcp_close(client);
+    }
+    rt_tcp_server_close(server);
+}
+
 /// @brief Service two complete SMTP connections sequentially on one listener.
 /// @details Two caller threads target the same client object. A correct
 ///          operation mutex allows each fresh connection to complete without
@@ -1603,8 +1647,14 @@ static void test_sse_close_and_receive_serialization() {
     snprintf(url, sizeof(url), "http://127.0.0.1:%d/idle", port);
     void *sse = rt_sse_connect(rt_const_cstr(url));
     rt_string blocked_result = nullptr;
-    std::thread receiver([&]() { blocked_result = rt_sse_recv(sse); });
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::atomic<bool> receive_returned{false};
+    std::thread receiver([&]() {
+        blocked_result = rt_sse_recv(sse);
+        receive_returned.store(true, std::memory_order_release);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    test_result("Blocking receive does not expose cancellation polls",
+                !receive_returned.load(std::memory_order_acquire));
     auto close_started = std::chrono::steady_clock::now();
     rt_sse_close(sse);
     receiver.join();
@@ -2065,6 +2115,57 @@ static void test_smtp_close_interrupts_and_reconnects() {
         rt_obj_free(first_result);
     if (second_result && rt_obj_release_check0(second_result))
         rt_obj_free(second_result);
+    if (client && rt_obj_release_check0(client))
+        rt_obj_free(client);
+}
+
+/// @brief Verify Close also interrupts a stalled STARTTLS handshake promptly.
+/// @details The fixture consumes one ClientHello byte and withholds the rest of
+///          the TLS record. This exercises cancellation-aware TLS record polling,
+///          not merely the plaintext SMTP greeting path.
+static void test_smtp_close_interrupts_starttls_handshake() {
+    printf("\nTesting SmtpClient STARTTLS cancellation:\n");
+    const int port = (int)rt_netutils_get_free_port();
+    if (port <= 0) {
+        printf("  SKIPPED: local bind unavailable in this environment\n");
+        return;
+    }
+    api_server_ready = false;
+    api_server_failed = false;
+    smtp_fixture_tls_client_hello = false;
+    std::thread server(smtp_stalled_starttls_server_thread, port);
+    wait_for_server();
+    if (api_server_failed) {
+        server.join();
+        printf("  SKIPPED: local bind unavailable in this environment\n");
+        return;
+    }
+
+    void *client = rt_smtp_new(rt_const_cstr("127.0.0.1"), port);
+    rt_smtp_set_tls(client, 1);
+    void *send_result = nullptr;
+    std::thread sender([&]() {
+        send_result = rt_smtp_send_result(client,
+                                          rt_const_cstr("sender@example.com"),
+                                          rt_const_cstr("dest@example.com"),
+                                          rt_const_cstr("cancel TLS"),
+                                          rt_const_cstr("stalled handshake"));
+    });
+    test_result("SMTP client enters the STARTTLS handshake",
+                wait_for_condition([]() { return smtp_fixture_tls_client_hello.load(); }, 2000));
+    const auto cancel_start = std::chrono::steady_clock::now();
+    rt_smtp_close(client);
+    sender.join();
+    const auto cancel_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::steady_clock::now() - cancel_start)
+                               .count();
+    test_result("Close interrupts the stalled STARTTLS handshake promptly", cancel_ms < 600);
+    test_result("Cancelled STARTTLS SendResult returns Err",
+                send_result && rt_result_is_err(send_result) == 1);
+    server.join();
+
+    if (send_result && rt_obj_release_check0(send_result))
+        rt_obj_free(send_result);
     if (client && rt_obj_release_check0(client))
         rt_obj_free(client);
 }
@@ -3934,6 +4035,7 @@ int main() {
     test_smtp_starttls_handshake_failure_is_clean();
     test_smtp_plain_send_sanitizes_and_dot_stuffs();
     test_smtp_close_interrupts_and_reconnects();
+    test_smtp_close_interrupts_starttls_handshake();
     test_smtp_concurrent_sends_serialize();
     test_smtp_requires_starttls_capability();
     test_smtp_accepts_forwarding_recipient_codes();

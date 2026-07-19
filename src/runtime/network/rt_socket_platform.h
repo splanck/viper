@@ -105,9 +105,11 @@ int rt_socket_close(socket_t sock);
 
 /// @brief Disable both directions of an established socket without releasing its descriptor.
 /// @details Wraps `shutdown(..., SHUT_RDWR)` on POSIX-style platforms and
-///          `shutdown(..., SD_BOTH)` on Windows. This is used to interrupt a
-///          worker blocked in transport I/O while preserving descriptor
-///          ownership for the worker's eventual close path. Calling it with
+///          `shutdown(..., SD_BOTH)` on Windows. This requests interruption of
+///          transport I/O while preserving descriptor ownership for the
+///          worker's eventual close path. Callers that require bounded
+///          cancellation also use finite receive waits because a provider need
+///          not cancel an already-blocked synchronous call. Calling it with
 ///          @ref INVALID_SOCK fails without invoking a native syscall.
 /// @param sock Connected socket whose reads and writes should be interrupted.
 /// @return Native shutdown result: zero on success, negative/socket-error on failure.

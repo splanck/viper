@@ -197,6 +197,17 @@ static int ws_server_is_running_locked(rt_ws_server_impl *s) {
     return running;
 }
 
+/// @brief Cooperatively cancel a TLS accept after the WSS lifecycle stops.
+/// @details The TLS layer invokes this probe between bounded socket waits. It
+///          avoids relying on a cross-thread shutdown to cancel a synchronous
+///          WinSock receive, which is not guaranteed by the provider.
+/// @param context Owning @ref rt_ws_server_impl.
+/// @return Non-zero once new client handshakes must stop.
+static int ws_tls_accept_cancel_requested(void *context) {
+    rt_ws_server_impl *s = (rt_ws_server_impl *)context;
+    return !s || !ws_server_is_running_locked(s);
+}
+
 static int ws_tls_is_open(void *tcp) {
     return tcp && (socket_t)rt_tls_get_socket((rt_tls_session_t *)tcp) != INVALID_SOCK;
 }
@@ -799,9 +810,9 @@ done:
 /// @brief Upgrade one pre-registered raw TCP task to TLS and WebSocket.
 /// @details The raw slot remains visible to Stop while queued. During TLS
 ///          handoff the raw descriptor is detached exactly once and the slot
-///          stays occupied; the server context's bounded timeout limits the
-///          brief pointer-free handshake window. A successful TLS session is
-///          retained into the same generation before the HTTP upgrade, making
+///          stays occupied; bounded TLS polling observes lifecycle cancellation
+///          during the brief pointer-free handshake window. A successful TLS
+///          session is retained into the same generation before the HTTP upgrade, making
 ///          that second handshake interruptible by Stop.
 /// @param arg Heap-owned @ref ws_accept_task_t; consumed unconditionally.
 static void ws_accept_task_run(void *arg) {
@@ -1065,6 +1076,8 @@ void *rt_wss_server_new(int64_t port, rt_string cert_file, rt_string key_file) {
         tls_cfg.key_file = s->key_file;
         tls_cfg.alpn_protocol = "http/1.1";
         tls_cfg.timeout_ms = 10000;
+        tls_cfg.cancel_requested = ws_tls_accept_cancel_requested;
+        tls_cfg.cancel_context = s;
         s->tls_ctx = rt_tls_server_ctx_new(&tls_cfg);
         if (!s->tls_ctx) {
             char error[512];
@@ -1516,7 +1529,7 @@ int8_t rt_wss_server_is_running(void *obj) {
     if (!obj)
         return 0;
     rt_ws_server_impl *s = ws_server_require(obj, "WssServer.IsRunning: invalid object");
-    return s ? ws_server_is_running_locked(s) : 0;
+    return s && ws_server_is_running_locked(s) ? 1 : 0;
 }
 
 /// @brief Synchronously accept, TLS-upgrade, and WebSocket-upgrade one connection.

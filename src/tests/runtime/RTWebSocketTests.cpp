@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/RTWebSocketTests.cpp
+// File: src/tests/runtime/RTWebSocketTests.cpp
 // Purpose: Validate WebSocket identity, protocol strictness, timeout, ownership,
 //          allocation-failure, and deterministic transport lifecycle behavior.
 // Key invariants:
@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_bytes.h"
+#include "rt_error.h"
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_netutils.h"
@@ -31,6 +32,9 @@
 #include "rt_websocket.h"
 
 #include <atomic>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <chrono>
 #include <csetjmp>
@@ -38,6 +42,8 @@
 #include <cstring>
 #include <string>
 #include <thread>
+
+extern "C" int rt_trap_get_net_code(void);
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -171,7 +177,7 @@ static std::atomic<bool> ws_server_failed{false};
 static std::atomic<bool> ws_allocation_frame_sent{false};
 static std::atomic<bool> ws_allocation_server_release{false};
 static std::atomic<bool> ws_protocol_server_saw_close{false};
-static std::atomic<bool> ws_protocol_server_saw_eof{false};
+static std::atomic<bool> ws_protocol_server_saw_transport_close{false};
 static std::string ws_last_host_header;
 static std::string ws_last_subprotocol_header;
 
@@ -527,6 +533,9 @@ static void ws_invalid_utf8_server_thread(int port) {
 /// @details RFC 6455 forbids masking from server to client. The hardened client
 ///          must answer with a masked close carrying code 1002 and then close
 ///          TCP promptly, rather than leaving the partially parsed stream open.
+///          Sending only the header exposes the illegal mask bit without
+///          leaving a masking key unread, which could make Winsock discard the
+///          queued close frame while resetting the connection.
 /// @param port Loopback port reserved by the caller.
 static void ws_protocol_error_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
@@ -561,8 +570,8 @@ static void ws_protocol_error_server_thread(int port) {
     headers[total] = '\0';
     ws_send_handshake(client, headers);
 
-    const uint8_t invalid_masked_frame[6] = {0x81, 0x80, 0, 0, 0, 0};
-    rt_tcp_send_all_raw(client, invalid_masked_frame, sizeof(invalid_masked_frame));
+    const uint8_t invalid_masked_header[2] = {0x81, 0x80};
+    rt_tcp_send_all_raw(client, invalid_masked_header, sizeof(invalid_masked_header));
     rt_tcp_set_recv_timeout(client, 5000);
 
     void *close_frame = rt_tcp_recv_exact(client, 8);
@@ -577,10 +586,20 @@ static void ws_protocol_error_server_thread(int port) {
     }
     release_managed(close_frame);
 
-    void *tail = rt_tcp_recv(client, 1);
-    if (tail && rt_bytes_len(tail) == 0)
-        ws_protocol_server_saw_eof = true;
-    release_managed(tail);
+    jmp_buf recovery;
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        void *tail = rt_tcp_recv(client, 1);
+        rt_trap_clear_recovery();
+        if (tail && rt_bytes_len(tail) == 0)
+            ws_protocol_server_saw_transport_close = true;
+        release_managed(tail);
+    } else {
+        const int net_code = rt_trap_get_net_code();
+        rt_trap_clear_recovery();
+        if (net_code == Err_ConnectionReset || net_code == Err_ConnectionClosed)
+            ws_protocol_server_saw_transport_close = true;
+    }
     rt_tcp_close(client);
     rt_tcp_server_close(server);
 }
@@ -1105,7 +1124,7 @@ static void test_ws_protocol_error_retires_transport() {
     ws_server_ready = false;
     ws_server_failed = false;
     ws_protocol_server_saw_close = false;
-    ws_protocol_server_saw_eof = false;
+    ws_protocol_server_saw_transport_close = false;
     std::thread server(ws_protocol_error_server_thread, port);
     while (!ws_server_ready)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -1129,7 +1148,8 @@ static void test_ws_protocol_error_retires_transport() {
 
     server.join();
     test_result("Protocol-error peer observed client close 1002", ws_protocol_server_saw_close);
-    test_result("Protocol-error peer observed prompt EOF", ws_protocol_server_saw_eof);
+    test_result("Protocol-error peer observed prompt transport close",
+                ws_protocol_server_saw_transport_close);
     release_managed(message);
     release_managed(ws);
     release_managed(url);

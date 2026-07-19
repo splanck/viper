@@ -1323,7 +1323,7 @@ int8_t rt_ws_server_is_running(void *obj) {
     if (!obj)
         return 0;
     rt_ws_server_impl *s = ws_server_require(obj, "WsServer.IsRunning: invalid object");
-    return s ? ws_server_is_running_locked(s) : 0;
+    return s && ws_server_is_running_locked(s) ? 1 : 0;
 }
 
 /// @brief **Synchronous** accept (alternative to the background `_start` thread). Blocks until

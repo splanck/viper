@@ -25,7 +25,11 @@
 
 #include "zanna/runtime/rt.h"
 
+#include "rt_platform.h"
 #include "tests/common/PosixCompat.h"
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -209,7 +213,11 @@ static void ensure_close_failure_consumes_descriptor(void) {
     assert(replacement_fd >= 0);
     ok = rt_file_close(&file, &err);
     assert(ok);
+#if RT_PLATFORM_WINDOWS
+    assert(_get_osfhandle(replacement_fd) != -1);
+#else
     assert(fcntl(replacement_fd, F_GETFD) != -1);
+#endif
 
     assert(close(replacement_fd) == 0);
     assert(unlink(path) == 0);
@@ -217,7 +225,7 @@ static void ensure_close_failure_consumes_descriptor(void) {
 
 /// @brief Execute all IO error-path unit checks.
 int main(void) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");
     return 0;

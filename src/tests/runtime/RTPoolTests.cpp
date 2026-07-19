@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/RTPoolTests.cpp
+// File: src/tests/runtime/RTPoolTests.cpp
 // Purpose: Unit tests for rt_pool slab allocator.
 // Key invariants:
 //   - Pool allocates from size classes 64, 128, 256, 512
@@ -22,7 +22,12 @@
 #include "rt_pool.h"
 
 #include <atomic>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -318,6 +323,19 @@ static void test_many_allocs(void) {
     printf("test_many_allocs: PASSED\n");
 }
 
+/// @brief Verify every pooled class preserves fundamental maximum alignment.
+static void test_max_alignment(void) {
+    constexpr size_t kRequests[] = {1, 64, 65, 128, 129, 256, 257, 512};
+    for (size_t request : kRequests) {
+        void *payload = rt_pool_alloc(request);
+        assert(payload != nullptr);
+        assert(reinterpret_cast<uintptr_t>(payload) % alignof(std::max_align_t) == 0);
+        rt_pool_free(payload, request);
+    }
+
+    printf("test_max_alignment: PASSED\n");
+}
+
 // ============================================================================
 // test_null_free — rt_pool_free(NULL, size) must not crash
 // ============================================================================
@@ -413,6 +431,7 @@ int main(void) {
     test_double_free_is_rejected();
     test_concurrent_shutdown_epoch();
     test_many_allocs();
+    test_max_alignment();
     test_null_free();
     test_mixed_sizes();
 

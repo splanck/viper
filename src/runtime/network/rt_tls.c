@@ -61,7 +61,11 @@ struct rt_tls_server_ctx {
     rt_rsa_key_t rsa_key;
     char alpn_protocols[128];
     int timeout_ms;
+    rt_tls_server_cancel_fn cancel_requested;
+    void *cancel_context;
 };
+
+#define TLS_SERVER_CANCEL_POLL_MS 100
 
 static void tls_set_server_last_error_msg(const char *msg);
 static int tls_hostname_is_ip_literal(const char *hostname);
@@ -271,6 +275,8 @@ rt_tls_server_ctx_t *rt_tls_server_ctx_new(const rt_tls_server_config_t *config)
     }
 
     ctx->timeout_ms = config->timeout_ms > 0 ? config->timeout_ms : 30000;
+    ctx->cancel_requested = config->cancel_requested;
+    ctx->cancel_context = config->cancel_context;
     if (config->alpn_protocol) {
         size_t wire_len = 0;
         if (!tls_alpn_list_wire_len(config->alpn_protocol, &wire_len) ||
@@ -1035,6 +1041,26 @@ static void update_write_application_keys(rt_tls_session_t *session) {
     }
 }
 
+/// @brief Check the optional owner cancellation probe and overall I/O deadline.
+/// @details Owners with a cancellation probe use bounded native socket timeouts.
+///          This check turns each elapsed slice into either a retry or a terminal
+///          cancellation/deadline result without exposing polling to callers.
+/// @param session TLS session currently driving cancellation-aware I/O.
+/// @return Non-zero when the current TLS operation must stop.
+static int tls_io_should_stop(rt_tls_session_t *session) {
+    if (!session || !session->io_cancel_requested)
+        return 0;
+    if (session->io_cancel_requested(session->io_cancel_context)) {
+        session->error = "TLS: I/O cancelled";
+        return 1;
+    }
+    if (session->io_deadline_us > 0 && rt_clock_ticks_us() >= session->io_deadline_us) {
+        session->error = "TLS: I/O timeout";
+        return 1;
+    }
+    return 0;
+}
+
 /// Forward declaration — definition below (send_key_update_record calls send_record).
 static int send_record(rt_tls_session_t *session,
                        uint8_t content_type,
@@ -1177,6 +1203,10 @@ static int send_record(rt_tls_session_t *session,
 
     size_t sent = 0;
     while (sent < record_len) {
+        if (tls_io_should_stop(session)) {
+            rc = RT_TLS_ERROR_SOCKET;
+            goto done;
+        }
         int n = send(session->socket_fd,
                      (const char *)(record + sent),
                      (int)(record_len - sent),
@@ -1185,6 +1215,14 @@ static int send_record(rt_tls_session_t *session,
             int err = GET_LAST_ERROR();
             if (rt_socket_error_is_interrupted(err))
                 continue;
+            if (session->io_cancel_requested &&
+                (rt_socket_error_is_would_block(err) || rt_socket_error_is_timeout(err))) {
+                if (tls_io_should_stop(session)) {
+                    rc = RT_TLS_ERROR_SOCKET;
+                    goto done;
+                }
+                continue;
+            }
             if (rt_socket_error_is_would_block(err)) {
                 int ready = wait_socket(session->socket_fd, session->timeout_ms, true);
                 if (ready > 0)
@@ -1261,11 +1299,19 @@ static int recv_record(rt_tls_session_t *session,
     uint8_t *payload = NULL;
     int rc = RT_TLS_OK;
     while (pos < 5) {
+        if (tls_io_should_stop(session))
+            return RT_TLS_ERROR_SOCKET;
         int n = recv(session->socket_fd, (char *)(header + pos), (int)(5 - pos), 0);
         if (n < 0) {
             int err = GET_LAST_ERROR();
             if (rt_socket_error_is_interrupted(err))
                 continue;
+            if (session->io_cancel_requested &&
+                (rt_socket_error_is_would_block(err) || rt_socket_error_is_timeout(err))) {
+                if (tls_io_should_stop(session))
+                    return RT_TLS_ERROR_SOCKET;
+                continue;
+            }
             if (rt_socket_error_is_would_block(err)) {
                 int ready = wait_socket(session->socket_fd, session->timeout_ms, false);
                 if (ready > 0)
@@ -1297,11 +1343,23 @@ static int recv_record(rt_tls_session_t *session,
         return RT_TLS_ERROR;
     pos = 0;
     while (pos < length) {
+        if (tls_io_should_stop(session)) {
+            rc = RT_TLS_ERROR_SOCKET;
+            goto done;
+        }
         int n = recv(session->socket_fd, (char *)(payload + pos), (int)(length - pos), 0);
         if (n < 0) {
             int err = GET_LAST_ERROR();
             if (rt_socket_error_is_interrupted(err))
                 continue;
+            if (session->io_cancel_requested &&
+                (rt_socket_error_is_would_block(err) || rt_socket_error_is_timeout(err))) {
+                if (tls_io_should_stop(session)) {
+                    rc = RT_TLS_ERROR_SOCKET;
+                    goto done;
+                }
+                continue;
+            }
             if (rt_socket_error_is_would_block(err)) {
                 int ready = wait_socket(session->socket_fd, session->timeout_ms, false);
                 if (ready > 0)
@@ -2715,10 +2773,19 @@ rt_tls_session_t *rt_tls_server_accept_socket(intptr_t socket_fd, const rt_tls_s
     session->server_ctx = ctx;
     session->verify_cert = 0;
     session->timeout_ms = ctx->timeout_ms > 0 ? ctx->timeout_ms : 30000;
+    session->io_cancel_requested = ctx->cancel_requested;
+    session->io_cancel_context = ctx->cancel_context;
+    if (session->io_cancel_requested) {
+        session->io_deadline_us = rt_clock_ticks_us() + (int64_t)session->timeout_ms * 1000;
+    }
     if (ctx->alpn_protocols[0] != '\0')
         strncpy(session->alpn_protocols, ctx->alpn_protocols, sizeof(session->alpn_protocols) - 1);
-    if (!set_socket_timeout(session->socket_fd, session->timeout_ms, true) ||
-        !set_socket_timeout(session->socket_fd, session->timeout_ms, false)) {
+    int native_timeout_ms =
+        session->io_cancel_requested && session->timeout_ms > TLS_SERVER_CANCEL_POLL_MS
+            ? TLS_SERVER_CANCEL_POLL_MS
+            : session->timeout_ms;
+    if (!set_socket_timeout(session->socket_fd, native_timeout_ms, true) ||
+        !set_socket_timeout(session->socket_fd, native_timeout_ms, false)) {
         session->error = "TLS server: failed to configure handshake timeout";
         goto fail;
     }
@@ -2788,6 +2855,14 @@ rt_tls_session_t *rt_tls_server_accept_socket(intptr_t socket_fd, const rt_tls_s
                     goto fail;
                 install_server_application_read_keys(session);
                 session->state = TLS_STATE_CONNECTED;
+                if (session->io_cancel_requested &&
+                    rt_tls_set_io_timeout(session, session->timeout_ms) != RT_TLS_OK) {
+                    session->error = "TLS server: failed to restore session I/O timeout";
+                    goto fail;
+                }
+                session->io_cancel_requested = NULL;
+                session->io_cancel_context = NULL;
+                session->io_deadline_us = 0;
                 tls_set_server_last_error_msg(NULL);
                 return session;
             }

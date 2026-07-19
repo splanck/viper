@@ -289,6 +289,7 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                        {"ExitProcess",
                                         "GetModuleFileNameW",
                                         "InitializeCriticalSectionAndSpinCount",
+                                        "InitializeCriticalSectionEx",
                                         "BringWindowToTop",
                                         "CreateWindowExW",
                                         "LoadIconW",
@@ -313,6 +314,7 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "SetFileTime",
                                         "CreateFile2",
                                         "GetFileInformationByHandleEx",
+                                        "ReplaceFileW",
                                         "CreateSymbolicLinkW",
                                         "SetConsoleCtrlHandler",
                                         "LockFileEx",
@@ -349,6 +351,7 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "__stdio_common_vsprintf_s",
                                         "__stdio_common_vswprintf",
                                         "_get_osfhandle",
+                                        "_chmod",
                                         "_wgetenv",
                                         "_rotl",
                                         "_beginthreadex",
@@ -376,12 +379,15 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "LoadIconW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "LoadImageW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "GetModuleFileNameW"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "InitializeCriticalSectionEx"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "LockFileEx"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "ReplaceFileW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "SetConsoleCtrlHandler"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "UnlockFileEx"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "log2f"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "__stdio_common_vswprintf"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_get_osfhandle"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_chmod"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_wgetenv"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "terminate"));
     EXPECT_FALSE(importPlanDllHasFunction(plan, "VCRUNTIME140.dll", "terminate"));
@@ -430,6 +436,12 @@ TEST(DynamicSymbolPolicy, ForeignPlatformSymbolsRejectedNativeAccepted) {
     EXPECT_TRUE(isKnownDynamicSymbol("GetProcAddress", LinkPlatform::Windows));
     EXPECT_FALSE(isKnownDynamicSymbol("GetProcAddress", LinkPlatform::Linux));
     EXPECT_FALSE(isKnownDynamicSymbol("GetProcAddress", LinkPlatform::macOS));
+    EXPECT_TRUE(isKnownDynamicSymbol("InitializeCriticalSectionEx", LinkPlatform::Windows));
+    EXPECT_FALSE(isKnownDynamicSymbol("InitializeCriticalSectionEx", LinkPlatform::Linux));
+    EXPECT_TRUE(isKnownDynamicSymbol("ReplaceFileW", LinkPlatform::Windows));
+    EXPECT_FALSE(isKnownDynamicSymbol("ReplaceFileW", LinkPlatform::macOS));
+    EXPECT_TRUE(isKnownDynamicSymbol("_chmod", LinkPlatform::Windows));
+    EXPECT_FALSE(isKnownDynamicSymbol("_chmod", LinkPlatform::Linux));
 
     // Darwin/Mach: accepted on macOS, rejected on Linux/Windows.
     EXPECT_TRUE(isKnownDynamicSymbol("mach_absolute_time", LinkPlatform::macOS));

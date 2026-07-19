@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "source_date_epoch": null,
+  "artifacts": [
+    {"file": "zanna-toolchain-windows-x64.exe", "format": "windows-exe", "platform": "windows", "arch": "x64", "version": "0.2.99", "size": 270159340, "sha256": "c24edf1833f932bd44c10e4a0911f3a0bde8a6b42fba10b495a8f45654002516", "verified": true, "trust": "unsigned"}
+  ]
+}

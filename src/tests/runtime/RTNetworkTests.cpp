@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/RTNetworkTests.cpp
+// File: src/tests/runtime/RTNetworkTests.cpp
 // Purpose: Validate Zanna.Network.Tcp and TcpServer support.
 // Key invariants:
 //   - Client/server communication and timeout handling remain deterministic.
@@ -40,6 +40,9 @@
 #include "rt_trap.h"
 
 #include <atomic>
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 #include <cassert>
 #include <chrono>
 #include <climits>
@@ -190,6 +193,16 @@ static void close_http_test_socket(http_test_socket_t socket) {
 #endif
 }
 
+/// @brief Terminate the test process when its native HTTP fixture cannot start.
+/// @details Fixture setup must remain active in Release builds, where `assert`
+///          expressions are compiled out. Aborting makes infrastructure
+///          failures visible to CTest instead of leaving a client hung.
+/// @param operation Native socket operation that failed.
+[[noreturn]] static void fail_native_http_fault_server(const char *operation) {
+    fprintf(stderr, "native_http_fault_server: %s failed\n", operation);
+    std::abort();
+}
+
 /// @brief Serve one deterministic HTTP/1.1 response without runtime allocation.
 /// @details Raw OS sockets isolate the process-wide managed allocation hook to
 ///          the client. The server binds loopback, drains one complete request
@@ -200,10 +213,12 @@ static void close_http_test_socket(http_test_socket_t socket) {
 static void native_http_fault_server(int port, const char *response_body) {
 #if RT_PLATFORM_WINDOWS
     WSADATA wsa;
-    assert(WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
+    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
+        fail_native_http_fault_server("WSAStartup");
 #endif
     http_test_socket_t listener = socket(AF_INET, SOCK_STREAM, 0);
-    assert(listener != kInvalidHttpTestSocket);
+    if (listener == kInvalidHttpTestSocket)
+        fail_native_http_fault_server("socket");
 
     int reuse = 1;
 #if RT_PLATFORM_WINDOWS
@@ -216,12 +231,15 @@ static void native_http_fault_server(int port, const char *response_body) {
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(zanna::tests::kIpv4LoopbackHostOrder);
     address.sin_port = htons(static_cast<uint16_t>(port));
-    assert(bind(listener, reinterpret_cast<sockaddr *>(&address), sizeof(address)) == 0);
-    assert(listen(listener, 1) == 0);
+    if (bind(listener, reinterpret_cast<sockaddr *>(&address), sizeof(address)) != 0)
+        fail_native_http_fault_server("bind");
+    if (listen(listener, 1) != 0)
+        fail_native_http_fault_server("listen");
     server_ready.store(true, std::memory_order_release);
 
     http_test_socket_t client = accept(listener, nullptr, nullptr);
-    assert(client != kInvalidHttpTestSocket);
+    if (client == kInvalidHttpTestSocket)
+        fail_native_http_fault_server("accept");
     char request[4096];
     size_t request_len = 0;
     while (request_len < sizeof(request)) {
@@ -251,7 +269,8 @@ static void native_http_fault_server(int port, const char *response_body) {
                                       "\r\n%s",
                                       strlen(response_body),
                                       response_body);
-    assert(response_len > 0 && static_cast<size_t>(response_len) < sizeof(response));
+    if (response_len <= 0 || static_cast<size_t>(response_len) >= sizeof(response))
+        fail_native_http_fault_server("response formatting");
     size_t sent = 0;
     while (sent < static_cast<size_t>(response_len)) {
         const size_t remaining = static_cast<size_t>(response_len) - sent;

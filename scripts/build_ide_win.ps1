@@ -9,6 +9,7 @@
 # Purpose: Build Zanna Studio as a standalone native Windows binary.
 # Key invariants:
 #   - Host and target Zanna trees remain distinct for cross-architecture builds.
+#   - Existing CMake trees are built without mutating their generator platform.
 #   - Build metadata describes the exact output and source state.
 #   - The compatibility copy is skipped only when explicitly disabled.
 # Ownership/Lifetime: The requested binary, metadata, and compatibility copy
@@ -236,20 +237,26 @@ function Ensure-ZannaBuild {
     )
 
     Write-Host "$Description not found at $ExpectedExecutable"
-    Write-Host "Configuring/building $Description..."
-    $configureArguments = @("-S", $repoRoot, "-B", $Tree)
-    $generator = [Environment]::GetEnvironmentVariable("ZANNA_CMAKE_GENERATOR", "Process")
-    if (-not [string]::IsNullOrWhiteSpace($generator)) {
-        $configureArguments += @("-G", $generator)
-    } elseif (-not $TreeIsExplicit) {
-        $cmakeArch = if ($Architecture -eq "arm64") { "ARM64" } else { "x64" }
-        $configureArguments += @("-A", $cmakeArch)
+    $cache = Join-Path $Tree "CMakeCache.txt"
+    if (Test-Path -LiteralPath $cache -PathType Leaf) {
+        Write-Host "Reusing the existing CMake configuration for $Description."
+    } else {
+        Write-Host "Configuring $Description..."
+        $configureArguments = @("-S", $repoRoot, "-B", $Tree)
+        $generator = [Environment]::GetEnvironmentVariable("ZANNA_CMAKE_GENERATOR", "Process")
+        if (-not [string]::IsNullOrWhiteSpace($generator)) {
+            $configureArguments += @("-G", $generator)
+        } elseif (-not $TreeIsExplicit) {
+            $cmakeArch = if ($Architecture -eq "arm64") { "ARM64" } else { "x64" }
+            $configureArguments += @("-A", $cmakeArch)
+        }
+        $configureArguments += "-DCMAKE_BUILD_TYPE=$buildType"
+        $configureArguments += @(ConvertFrom-NativeArgumentString -Value `
+            ([Environment]::GetEnvironmentVariable("ZANNA_EXTRA_CMAKE_ARGS", "Process")))
+        Invoke-CheckedNative -FilePath "cmake" -Arguments $configureArguments `
+            -FailureMessage "CMake configuration failed for $Description"
     }
-    $configureArguments += "-DCMAKE_BUILD_TYPE=$buildType"
-    $configureArguments += @(ConvertFrom-NativeArgumentString -Value `
-        ([Environment]::GetEnvironmentVariable("ZANNA_EXTRA_CMAKE_ARGS", "Process")))
-    Invoke-CheckedNative -FilePath "cmake" -Arguments $configureArguments `
-        -FailureMessage "CMake configuration failed for $Description"
+    Write-Host "Building $Description..."
     Invoke-CheckedNative -FilePath "cmake" `
         -Arguments @("--build", $Tree, "--config", $buildType, "--target", "zanna", "-j", [string]$jobs) `
         -FailureMessage "$Description build failed"

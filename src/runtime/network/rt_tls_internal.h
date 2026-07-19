@@ -6,14 +6,16 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/network/rt_tls_internal.h
-// Purpose: Internal shared definitions between rt_tls.c and rt_tls_verify.c.
-//          Exposes the TLS session struct and certificate verification functions.
+// Purpose: Internal shared TLS definitions for the network module. Exposes the
+//          TLS session struct and certificate verification functions.
 // Key invariants:
 //   - This header is internal to the network module; not part of the public API.
 //   - The rt_tls_session struct layout must match across both translation units.
+//   - Optional owner cancellation probes are observed only by bounded socket I/O.
 // Ownership/Lifetime:
 //   - Session objects are owned by callers of the public API (rt_tls.h).
-// Links: rt_tls.c (core TLS), rt_tls_verify.c (certificate validation)
+// Links: rt_tls.c (core TLS), rt_tls_verify.c (certificate validation),
+//        rt_smtp.c (cancellation-aware TLS owner)
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -81,6 +83,9 @@ struct rt_tls_session {
     uint8_t legacy_session_id[32];
     size_t legacy_session_id_len;
     const struct rt_tls_server_ctx *server_ctx;
+    int (*io_cancel_requested)(void *context);
+    void *io_cancel_context;
+    int64_t io_deadline_us;
 
     // Handshake state
     uint8_t client_private_key[32];

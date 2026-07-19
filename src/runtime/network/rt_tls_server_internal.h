@@ -32,15 +32,22 @@ extern "C" {
 /// @brief Opaque server-side TLS context (cert, key, ALPN policy).
 typedef struct rt_tls_server_ctx rt_tls_server_ctx_t;
 
+/// @brief Optional cooperative-cancellation probe for server handshakes.
+/// @param context Opaque owner state supplied in @ref rt_tls_server_config_t.
+/// @return Non-zero when the in-progress handshake should stop.
+typedef int (*rt_tls_server_cancel_fn)(void *context);
+
 /// @brief Server-side TLS configuration consumed by @ref rt_tls_server_ctx_new.
 /// @details Paths are read once at context creation; the parsed cert chain
 ///          and private key are held inside the context for every
 ///          subsequent @ref rt_tls_server_accept_socket call.
 typedef struct rt_tls_server_config {
-    const char *cert_file;     ///< PEM-encoded server cert chain (leaf first).
-    const char *key_file;      ///< PEM-encoded private key matching the leaf.
-    const char *alpn_protocol; ///< Optional comma-separated ALPN advertise list.
-    int timeout_ms;            ///< Per-handshake timeout; 0 = default 30 s.
+    const char *cert_file;                    ///< PEM-encoded server cert chain (leaf first).
+    const char *key_file;                     ///< PEM-encoded private key matching the leaf.
+    const char *alpn_protocol;                ///< Optional comma-separated ALPN advertise list.
+    int timeout_ms;                           ///< Per-handshake timeout; 0 = default 30 s.
+    rt_tls_server_cancel_fn cancel_requested; ///< Optional bounded-wait cancellation probe.
+    void *cancel_context;                     ///< Opaque argument for @ref cancel_requested.
 } rt_tls_server_config_t;
 
 /// @brief Initialise @p config with default field values.
@@ -61,7 +68,9 @@ void rt_tls_server_ctx_free(rt_tls_server_ctx_t *ctx);
 ///          @ref rt_tls_server_last_error. The pointer-width descriptor avoids
 ///          narrowing WinSock `SOCKET` handles. When both arguments are valid,
 ///          this function consumes and closes @p socket_fd on failure; on
-///          success the returned session owns it. An invalid context or socket
+///          success the returned session owns it. When the context supplies a
+///          cancellation probe, socket I/O is polled in bounded slices so a
+///          synchronous receive can stop portably. An invalid context or socket
 ///          returns before ownership transfer.
 /// @param socket_fd Connected native socket represented without narrowing.
 /// @param ctx Immutable parsed credential/ALPN context that outlives the session.

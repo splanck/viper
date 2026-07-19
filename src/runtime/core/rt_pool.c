@@ -62,8 +62,23 @@ static const size_t kClassSizes[RT_POOL_COUNT] = {64, 128, 256, 512};
 
 struct rt_pool_slab;
 
+#if RT_COMPILER_MSVC
+/// @brief MSVC C fallback for the fundamental alignment represented by `max_align_t`.
+/// @details The MSVC C headers do not define C11 `max_align_t`. Its fundamental
+///          scalar types have no stricter alignment than `long double`, a
+///          pointer, or `long long`, so this union supplies the equivalent
+///          alignment without relying on a nonstandard CRT typedef.
+typedef union rt_pool_max_align {
+    long double floating;
+    void *pointer;
+    long long integer;
+} rt_pool_max_align_t;
+#else
+typedef max_align_t rt_pool_max_align_t;
+#endif
+
 /// @brief Private, maximally aligned metadata stored immediately before a pool payload.
-/// @details The union's `max_align_t` member gives every returned payload the
+/// @details The union's maximum-alignment member gives every returned payload the
 ///          alignment promised by `malloc`. Metadata remains outside caller-
 ///          writable bytes, so a freelist pop can inspect `next` without racing
 ///          ordinary writes to an allocated payload. `state` is changed only
@@ -76,7 +91,7 @@ typedef union rt_pool_block {
         size_t state;              ///< Atomic 0=free, 1=allocated state.
     } meta;
 
-    max_align_t alignment; ///< Forces header size/alignment to `max_align_t`.
+    rt_pool_max_align_t alignment; ///< Forces fundamental maximum alignment.
 } rt_pool_block_t;
 
 /// @brief Validation word embedded in every live private block header.
@@ -381,7 +396,11 @@ static rt_pool_slab_t *allocate_slab(rt_pool_class_t class_idx) {
     if (block_stride > SIZE_MAX / BLOCKS_PER_SLAB)
         return NULL;
     size_t data_size = block_stride * BLOCKS_PER_SLAB;
-    const size_t block_alignment = _Alignof(max_align_t);
+#if RT_COMPILER_MSVC
+    const size_t block_alignment = __alignof(rt_pool_block_t);
+#else
+    const size_t block_alignment = _Alignof(rt_pool_block_t);
+#endif
     if (block_alignment == 0 || (block_alignment & (block_alignment - 1)) != 0 ||
         sizeof(rt_pool_slab_t) > SIZE_MAX - (block_alignment - 1))
         return NULL;
