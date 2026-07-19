@@ -1661,7 +1661,7 @@ static void test_menu_and_toolbar_pixel_icons_become_image_icons(void) {
     printf("test_menu_and_toolbar_pixel_icons_become_image_icons: PASSED\n");
 }
 
-static void test_toolbar_named_icons_become_glyph_icons(void) {
+static void test_toolbar_named_icons_prefer_vector_icons(void) {
     vg_toolbar_t *toolbar = vg_toolbar_create(NULL, VG_TOOLBAR_HORIZONTAL);
     assert(toolbar);
 
@@ -1669,8 +1669,9 @@ static void test_toolbar_named_icons_become_glyph_icons(void) {
         rt_toolbar_add_named_button(toolbar, rt_const_cstr("run"), rt_const_cstr("Run"));
     vg_toolbar_item_t *run_item = rt_gui_toolbar_item_from_handle(run_handle);
     assert(run_item);
-    assert(run_item->icon.type == VG_ICON_GLYPH);
-    assert(run_item->icon.data.glyph == 0x25B6u);
+    assert(run_item->icon.type == VG_ICON_VECTOR);
+    assert(run_item->icon.data.vector_id >= 0);
+    int32_t run_vector_id = run_item->icon.data.vector_id;
 
     void *label_handle = rt_toolbar_add_named_button_with_text(toolbar,
                                                                rt_const_cstr("source-control"),
@@ -1678,26 +1679,34 @@ static void test_toolbar_named_icons_become_glyph_icons(void) {
                                                                rt_const_cstr("Source Control"));
     vg_toolbar_item_t *label_item = rt_gui_toolbar_item_from_handle(label_handle);
     assert(label_item);
-    assert(label_item->icon.type == VG_ICON_GLYPH);
-    assert(label_item->icon.data.glyph == 0x2387u);
+    assert(label_item->icon.type == VG_ICON_VECTOR);
+    assert(label_item->icon.data.vector_id >= 0);
+    assert(label_item->icon.data.vector_id != run_vector_id);
     assert(label_item->show_label);
 
     void *toggle_handle =
         rt_toolbar_add_named_toggle(toolbar, rt_const_cstr("explorer"), rt_const_cstr("Explorer"));
     vg_toolbar_item_t *toggle_item = rt_gui_toolbar_item_from_handle(toggle_handle);
     assert(toggle_item);
-    assert(toggle_item->icon.type == VG_ICON_GLYPH);
-    assert(toggle_item->icon.data.glyph == 0x25A6u);
+    assert(toggle_item->icon.type == VG_ICON_VECTOR);
+    assert(toggle_item->icon.data.vector_id >= 0);
 
     rt_toolbaritem_set_named_icon(run_handle, rt_const_cstr("save-all"));
+    assert(run_item->icon.type == VG_ICON_VECTOR);
+    assert(run_item->icon.data.vector_id >= 0);
+    assert(run_item->icon.data.vector_id != run_vector_id);
+
+    // Alias names absent from the vector registry keep the builtin glyph
+    // fallback (ADR 0137).
+    rt_toolbaritem_set_named_icon(run_handle, rt_const_cstr("play"));
     assert(run_item->icon.type == VG_ICON_GLYPH);
-    assert(run_item->icon.data.glyph == 0x21D3u);
+    assert(run_item->icon.data.glyph == 0x25B6u);
 
     rt_toolbaritem_set_named_icon(run_handle, rt_const_cstr("does-not-exist"));
     assert(run_item->icon.type == VG_ICON_NONE);
 
     vg_widget_destroy(&toolbar->base);
-    printf("test_toolbar_named_icons_become_glyph_icons: PASSED\n");
+    printf("test_toolbar_named_icons_prefer_vector_icons: PASSED\n");
 }
 
 static void test_splitpane_runtime_boolean_matches_horizontal_semantics(void) {
@@ -4913,7 +4922,7 @@ static void test_accessibility_preferences_rebuild_theme(void) {
 static void test_custom_system_theme_palette_contract(void) {
     void *palette = rt_theme_palette_from_dark();
     assert(palette);
-    assert(rt_theme_palette_get_color(palette, rt_const_cstr("bgPrimary")) == 0x131922);
+    assert(rt_theme_palette_get_color(palette, rt_const_cstr("bgPrimary")) == 0x0D1A1C);
     assert(rt_theme_palette_get_metric(palette, rt_const_cstr("buttonHeight")) == 28.0);
     assert(rt_theme_palette_set_color(palette, rt_const_cstr("notAColor"), 0x123456) == 0);
     assert(rt_theme_palette_set_metric(palette, rt_const_cstr("notAMetric"), 1.0) == 0);
@@ -5070,7 +5079,7 @@ int main(void) {
     test_tabbar_close_click_index_survives_auto_close();
     test_findbar_runtime_reads_live_text_and_reports_noop_replace();
     test_menu_and_toolbar_pixel_icons_become_image_icons();
-    test_toolbar_named_icons_become_glyph_icons();
+    test_toolbar_named_icons_prefer_vector_icons();
     test_widget_destroy_refuses_app_root_and_app_handle();
     test_widget_set_size_refuses_app_root();
     test_widget_base_apis_reject_app_handles_and_invalid_children();

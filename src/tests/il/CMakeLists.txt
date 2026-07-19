@@ -614,7 +614,8 @@ function(zanna_add_il_utils_test)
             test_il_indvars_basic
             ${ZANNA_TESTS_DIR}/unit/il/transform/test_IndVarSimplify.cpp)
     target_link_libraries(
-            test_il_indvars_basic PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+            test_il_indvars_basic PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform
+                                          il_analysis)
     zanna_add_ctest(test_il_indvars_basic test_il_indvars_basic)
 
     # GVN + Redundant Load Elimination tests
@@ -656,7 +657,8 @@ function(zanna_add_il_utils_test)
     zanna_add_test(
             test_il_indvars_strength ${ZANNA_TESTS_DIR}/unit/il/transform/indvars_basic.cpp)
     target_link_libraries(
-            test_il_indvars_strength PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform)
+            test_il_indvars_strength PRIVATE ${ZANNA_IL_CORE_IO_LIBS} il_build il_transform
+                                             il_analysis)
     zanna_add_ctest(test_il_indvars_strength test_il_indvars_strength)
 
     zanna_add_test(

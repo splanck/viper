@@ -5,10 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Unit test for IndVarSimplify: constructs a minimal counted loop with an
-// address expression base + i*stride inside the loop header, and verifies that
-// the pass introduces a loop-carried parameter for the address and replaces the
-// recomputation with an incremental update in the latch.
+// Unit test for IndVarSimplify: exercises the strength-reduction preconditions
+// and rewrite. A symbolic base must be skipped (its overflow behaviour cannot
+// be proven), a loop-local base must be skipped, and a provably bounded loop
+// whose latch has two predecessors must have the carried address argument
+// appended on every edge into the latch while staying verifier-clean.
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,6 +29,8 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+
+#include "il/verify/Verifier.hpp"
 
 #include <cassert>
 
@@ -171,22 +174,15 @@ int main() {
     auto preserved = pass.run(Fn, AM);
     (void)preserved;
 
-    // After transform, loop header should have new param (addr), and the add in header removed
+    // The base B is a raw function parameter with no provable bound, so the
+    // rewrite cannot show its address values stay overflow-free; the loop
+    // must be left untouched.
     BasicBlock *H = nullptr;
     for (auto &B : Fn.blocks)
         if (B.label == "loop")
             H = &B;
     assert(H);
-    // Header should have two params now: i and addr
-    assert(H->params.size() == 2);
-    unsigned addrParamId = H->params[1].id;
-    // The add instruction should be gone; terminator remains
-    for (const Instr &I : H->instructions) {
-        if (I.result) {
-            // No instruction produces the old add result
-            assert(*I.result != (addrParamId - 2)); // heuristically old add id
-        }
-    }
+    assert(H->params.size() == 1 && "symbolic base must not be strength-reduced");
 
     Module M2;
     Function F2;
@@ -294,6 +290,190 @@ int main() {
             H2 = &B;
     assert(H2);
     assert(H2->params.size() == 1 && "loop-local bases must not leave partial params behind");
+
+    // Regression: a rotated loop whose latch has two predecessors — the
+    // header's conditional edge and a body join (a wrap adjustment). The
+    // rewrite must append the carried address argument on BOTH edges into the
+    // latch and the result must satisfy the strict verifier.
+    Module M3;
+    Function F3;
+    F3.name = "indvars_two_pred_latch";
+    F3.retType = Type(Type::Kind::I64);
+    id = 0;
+
+    BasicBlock entry3;
+    entry3.label = "entry";
+    {
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back("loop.preheader");
+        br.brArgs.emplace_back(std::vector<Value>{});
+        entry3.instructions.push_back(std::move(br));
+        entry3.terminated = true;
+    }
+
+    BasicBlock preheader3;
+    preheader3.label = "loop.preheader";
+    {
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back("loop");
+        br.brArgs.emplace_back(std::vector<Value>{Value::constInt(0)});
+        preheader3.instructions.push_back(std::move(br));
+        preheader3.terminated = true;
+    }
+
+    // loop(i): addr = 83 + i*251; wrap when addr < 200, then rejoin the latch.
+    BasicBlock loop3;
+    loop3.label = "loop";
+    Param i3{"i", Type(Type::Kind::I64), id++};
+    loop3.params.push_back(i3);
+
+    Instr mul3;
+    mul3.result = id++;
+    mul3.op = Opcode::Mul;
+    mul3.type = Type(Type::Kind::I64);
+    mul3.operands = {Value::temp(i3.id), Value::constInt(251)};
+    const unsigned mul3Id = *mul3.result;
+
+    Instr addr3;
+    addr3.result = id++;
+    addr3.op = Opcode::Add;
+    addr3.type = Type(Type::Kind::I64);
+    addr3.operands = {Value::constInt(83), Value::temp(mul3Id)};
+    const unsigned addr3Id = *addr3.result;
+
+    Instr wrapCmp;
+    wrapCmp.result = id++;
+    wrapCmp.op = Opcode::SCmpLT;
+    wrapCmp.type = Type(Type::Kind::I1);
+    wrapCmp.operands = {Value::temp(addr3Id), Value::constInt(200)};
+
+    Instr headerCbr;
+    headerCbr.op = Opcode::CBr;
+    headerCbr.type = Type(Type::Kind::Void);
+    headerCbr.operands.push_back(Value::temp(*wrapCmp.result));
+    headerCbr.labels = {"wrap", "latch"};
+    headerCbr.brArgs = {{}, {Value::temp(i3.id)}};
+
+    loop3.instructions.push_back(std::move(mul3));
+    loop3.instructions.push_back(std::move(addr3));
+    loop3.instructions.push_back(std::move(wrapCmp));
+    loop3.instructions.push_back(std::move(headerCbr));
+    loop3.terminated = true;
+
+    BasicBlock wrap3;
+    wrap3.label = "wrap";
+    {
+        Instr br;
+        br.op = Opcode::Br;
+        br.type = Type(Type::Kind::Void);
+        br.labels.push_back("latch");
+        br.brArgs.emplace_back(std::vector<Value>{Value::temp(i3.id)});
+        wrap3.instructions.push_back(std::move(br));
+        wrap3.terminated = true;
+    }
+
+    BasicBlock latch3;
+    latch3.label = "latch";
+    Param il3{"i.l", Type(Type::Kind::I64), id++};
+    latch3.params.push_back(il3);
+
+    Instr inc3;
+    inc3.result = id++;
+    inc3.op = Opcode::Add;
+    inc3.type = Type(Type::Kind::I64);
+    inc3.operands = {Value::temp(il3.id), Value::constInt(1)};
+    const unsigned inc3Id = *inc3.result;
+
+    // Trip count 3: small enough for the range fixpoint to converge before
+    // widening even through the two-edge join, so the counter is provably
+    // bounded and the gate lets the rewrite fire (mirrors the xenoscape
+    // near-cloud loop this regression was reduced from).
+    Instr guard3;
+    guard3.result = id++;
+    guard3.op = Opcode::SCmpLT;
+    guard3.type = Type(Type::Kind::I1);
+    guard3.operands = {Value::temp(inc3Id), Value::constInt(3)};
+
+    Instr latchCbr;
+    latchCbr.op = Opcode::CBr;
+    latchCbr.type = Type(Type::Kind::Void);
+    latchCbr.operands.push_back(Value::temp(*guard3.result));
+    latchCbr.labels = {"loop", "exit"};
+    latchCbr.brArgs = {{Value::temp(inc3Id)}, {}};
+
+    latch3.instructions.push_back(std::move(inc3));
+    latch3.instructions.push_back(std::move(guard3));
+    latch3.instructions.push_back(std::move(latchCbr));
+    latch3.terminated = true;
+
+    BasicBlock exit3;
+    exit3.label = "exit";
+    {
+        Instr ret3;
+        ret3.op = Opcode::Ret;
+        ret3.type = Type(Type::Kind::Void);
+        ret3.operands.push_back(Value::constInt(0));
+        exit3.instructions.push_back(std::move(ret3));
+        exit3.terminated = true;
+    }
+
+    F3.blocks.push_back(std::move(entry3));
+    F3.blocks.push_back(std::move(preheader3));
+    F3.blocks.push_back(std::move(loop3));
+    F3.blocks.push_back(std::move(wrap3));
+    F3.blocks.push_back(std::move(latch3));
+    F3.blocks.push_back(std::move(exit3));
+    F3.valueNames.resize(id);
+    M3.functions.push_back(std::move(F3));
+
+    Function &Fn3 = M3.functions.back();
+    il::transform::AnalysisRegistry registry3 = makeRegistry();
+    il::transform::AnalysisManager AM3(M3, registry3);
+    (void)AM3.getFunctionResult<il::transform::LoopInfo>("loop-info", Fn3);
+    auto preserved3 = pass.run(Fn3, AM3);
+    (void)preserved3;
+
+    BasicBlock *H3 = nullptr;
+    BasicBlock *L3 = nullptr;
+    BasicBlock *W3 = nullptr;
+    for (auto &B : Fn3.blocks) {
+        if (B.label == "loop")
+            H3 = &B;
+        else if (B.label == "latch")
+            L3 = &B;
+        else if (B.label == "wrap")
+            W3 = &B;
+    }
+    assert(H3 && L3 && W3);
+    assert(H3->params.size() == 2 && "bounded const-base loop must strength-reduce");
+    assert(L3->params.size() == 2 && "latch must carry the address");
+
+    // Every edge into the latch supplies the appended address argument.
+    const Instr &headerTerm = H3->instructions.back();
+    for (size_t t = 0; t < headerTerm.labels.size(); ++t)
+        if (headerTerm.labels[t] == "latch")
+            assert(headerTerm.brArgs[t].size() == L3->params.size());
+    const Instr &wrapTerm = W3->instructions.back();
+    assert(wrapTerm.labels.size() == 1 && wrapTerm.labels[0] == "latch");
+    assert(wrapTerm.brArgs[0].size() == L3->params.size() &&
+           "body-join edge into the latch must carry the address argument");
+
+    // The carried increment is checked arithmetic and the header mul is gone.
+    bool sawCheckedInc = false;
+    for (const Instr &I : L3->instructions)
+        if (I.op == Opcode::IAddOvf)
+            sawCheckedInc = true;
+    assert(sawCheckedInc && "address increment must be emitted as iadd.ovf");
+    for (const Instr &I : H3->instructions)
+        assert(I.op != Opcode::Mul && "header address mul must be strength-reduced away");
+
+    // The rewritten module must satisfy the strict verifier.
+    auto verified3 = il::verify::Verifier::verify(M3);
+    assert(static_cast<bool>(verified3) && "transformed module must verify");
 
     return 0;
 }

@@ -8,7 +8,13 @@ last-verified: 2026-07-17
 
 ## Status
 
-Accepted
+Accepted; amended 2026-07-18. Gating an ordinary build on an external tool
+conflicts with the zero-dependency build policy and added significant wall
+time, so the canonical Unix and Windows build scripts no longer invoke
+`cppcheck-runtime` and the `ZANNA_SKIP_CPPCHECK` opt-out is removed. The
+target and its reviewed `cppcheck-runtime.supp` remain available as a manual,
+optional check. The Decision bullets below describing build-script invocation
+are retained as the historical record of the original gate.
 
 ## Context
 

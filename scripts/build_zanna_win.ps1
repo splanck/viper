@@ -297,7 +297,6 @@ $buildDir = Set-EnvironmentDefault -Name "ZANNA_BUILD_DIR" -Default "build"
 $buildType = Set-EnvironmentDefault -Name "ZANNA_BUILD_TYPE" -Default "Debug"
 $skipInstall = Set-EnvironmentDefault -Name "ZANNA_SKIP_INSTALL" -Default "0"
 $skipTests = Set-EnvironmentDefault -Name "ZANNA_SKIP_TESTS" -Default "0"
-$skipCppcheck = Set-EnvironmentDefault -Name "ZANNA_SKIP_CPPCHECK" -Default "0"
 $skipLint = Set-EnvironmentDefault -Name "ZANNA_SKIP_LINT" -Default "0"
 $skipAudit = Set-EnvironmentDefault -Name "ZANNA_SKIP_AUDIT" -Default "0"
 $lintChangedOnly = Set-EnvironmentDefault -Name "ZANNA_LINT_CHANGED_ONLY" -Default "1"
@@ -392,22 +391,6 @@ try {
     Invoke-CheckedNative -FilePath "cmake" `
         -Arguments @("--build", $buildDir, "--config", $buildType, "-j", [string]$jobs) `
         -FailureMessage "Build failed"
-    Write-Host ""
-
-    if ($skipCppcheck -eq "1") {
-        Write-Host "Skipping runtime cppcheck (ZANNA_SKIP_CPPCHECK=1)"
-    } elseif ($null -eq (Get-Command cppcheck -ErrorAction SilentlyContinue)) {
-        Write-Host "Skipping runtime cppcheck (cppcheck not installed)"
-    } elseif (-not (Test-Path -LiteralPath (Join-Path $buildRoot "compile_commands.json") `
-                             -PathType Leaf)) {
-        Write-Host "Skipping runtime cppcheck (generator did not emit compile_commands.json)"
-    } else {
-        Write-Host "Running gating runtime cppcheck..."
-        Invoke-CheckedNative -FilePath "cmake" `
-            -Arguments @("--build", $buildDir, "--target", "cppcheck-runtime", "--config", `
-                         $buildType, "-j", "1") `
-            -FailureMessage "Runtime cppcheck failed"
-    }
     Write-Host ""
 
     Start-Sleep -Seconds 1

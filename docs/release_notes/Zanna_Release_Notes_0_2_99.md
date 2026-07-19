@@ -16,7 +16,7 @@ last-verified: 2026-07-18
 
 The platform has a new name: **Zanna** (formerly Viper). The CLI is `zanna`, programs bind `Zanna.*`, project files use `.zap`, asset archives use `.zpak`, and the project lives at github.com/zannagames/zanna (ADR 0110). The IDE is renamed too — ZannaIDE is now **Zanna Studio**, with the `zannastudio` binary and a one-time automatic migration of your existing settings (ADR 0118).
 
-Beyond the rename, this release is about making the platform easier to build on. The runtime's public API settles on one predictable naming and error-handling scheme, so you spend less time guessing what a method is called or what it does on failure. The 3D stack grows from a renderer into a real-time game engine, with first-person and third-person game runtimes you can build a character-action game on. Zanna Studio and the GUI toolkit take major modernization passes, packaging gains real installers on every platform, and a series of deep correctness audits — runtime, IL, Windows, and Linux — make the whole stack more predictable under bad input, heavy load, and concurrency.
+Beyond the rename, this release is about making the platform easier to build on. The runtime's public API settles on one predictable naming and error-handling scheme, so you spend less time guessing what a method is called or what it does on failure. The 3D stack grows from a renderer into a real-time game engine, with first-person and third-person game runtimes you can build a character-action game on. Zanna Studio and the GUI toolkit take major modernization passes — from theming, typography, and iconography through debugging and the terminal — packaging gains real installers on every platform, and a series of deep correctness audits — runtime, IL, Windows, and Linux — make the whole stack more predictable under bad input, heavy load, and concurrency.
 
 ### Highlights
 
@@ -31,6 +31,9 @@ Beyond the rename, this release is about making the platform easier to build on.
 - **A ChaCha20-Poly1305 interop fix.** The AEAD path previously produced non-interoperable tags for some keys; encrypted data now round-trips correctly with other RFC 8439 implementations.
 - **283 documentation-review findings resolved.** Every logged mismatch between the docs and the implementation was fixed on whichever side was wrong — so what the docs promise is what the runtime does.
 - **Zanna Studio becomes a multi-root workbench.** Split panes, crash recovery, a full VT terminal, async git integration, a grouped-Variables debugger, and an in-editor command overlay (ADRs 0066–0068).
+- **Zanna Studio takes a depth pass end to end.** Contrast-checked dark and light brand themes, scalable vector icons, ligature-capable text rendering, project-wide replace with side-by-side diffs, a new-project wizard, rebindable keyboard shortcuts, and Windows screen-reader support (ADR 0137).
+- **The debugger opens up your objects.** Class instances in the Variables view now expand into named fields with nested previews — inspection no longer stops at an opaque object handle (ADR 0138).
+- **Terminal and git go deeper.** The integrated terminal adds the control sequences full-screen console programs depend on, and source control gains commit-history browsing with per-commit diffs plus push/pull with masked credential prompts.
 - **The GUI toolkit modernizes end to end.** Scalable themes, Unicode grapheme editing with IME support on all three platforms, native accessibility adapters, virtual list/tree models for large data, and a deterministic test harness (ADRs 0106–0109).
 - **Zia gains list combinators.** `map`, `filter`, `reduce`, `firstWhere`, `any`, `all`, and `sum` infer their lambda types from the element type and compile to inline loops — no closures, no overhead.
 - **Real installers on every platform.** The Windows toolchain gets a native, transactional installer with rollback and repair; standalone apps package as AppImage, RPM, DMG, and Windows installers; every artifact is verified, checksummed, and manifested before it ships (ADRs 0025, 0073, 0103).
@@ -43,14 +46,14 @@ Beyond the rename, this release is about making the platform easier to build on.
 
 | Metric | v0.2.7 | v0.2.99 | Delta |
 |---|---|---|---|
-| Commits | — | 126 | +126 |
-| Source files | 3,402 | 3,569 | +167 |
-| Production SLOC | 762K | 892K | +130K |
+| Commits | — | 127 | +127 |
+| Source files | 3,402 | 3,577 | +175 |
+| Production SLOC | 762K | 895K | +133K |
 | Test SLOC | 304K | 343K | +39K |
-| Zanna Studio SLOC | 28K | 37K | +9K |
+| Zanna Studio SLOC | 28K | 40K | +12K |
 | Demo SLOC | 197K | 239K | +42K |
 
-Counts via `scripts/count_sloc.sh` (production 891,670 / test 342,724 / demo 238,941 / zannastudio 37,197 / source files 3,569); commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which the SLOC figures exclude.
+Counts via `scripts/count_sloc.sh` (production 894,609 / test 342,731 / demo 238,941 / zannastudio 39,733 / source files 3,577); commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which the SLOC figures exclude.
 
 ---
 
@@ -100,7 +103,7 @@ Counts via `scripts/count_sloc.sh` (production 891,670 / test 342,724 / demo 238
 - Networking objects — HTTP clients and servers, TLS, WebSocket, SSE, SMTP — gain stable identity and transactional lifecycles, with strict protocol framing and deterministic cancellation, close, redirect, and keep-alive behavior.
 - ZIP handling bounds metadata, expansion ratios, and extraction resources, so a hostile archive can't exhaust memory or disk; failed writes clean up their staged output.
 - ZPAK v2 (ADR 0134) adds per-entry CRC-32 checksums and compatibility flags to `.zpak` archives: corruption is detected at load, and v1 archives still read.
-- A cppcheck static-analysis pass now gates the build with reviewed suppressions, keeping these classes of bugs from returning (ADR 0135).
+- A cppcheck static-analysis pass with reviewed suppressions cleaned the runtime during the audit and remains available as an optional manual target (ADR 0135).
 
 ### Codegen, IL, and the native linker
 
@@ -119,6 +122,13 @@ Counts via `scripts/count_sloc.sh` (production 891,670 / test 342,724 / demo 238
 - The debugger adds watch management from the command palette and a grouped Variables view that expands List, Seq, and Map values in place.
 - An in-editor command overlay (ADR 0067) replaces external prompts for Go To Line, Add Watch, Rename Symbol, Extract Local/Function, and workspace-symbol lookup; BASIC editing gains go-to-definition, references, rename, and call hierarchy.
 - Startup brings the window to the native foreground (ADR 0068), and an adaptive poll cadence keeps the UI live while builds, debugging, or indexing run — without burning CPU when idle.
+- The workbench wears the Zanna brand: rebuilt dark and light palettes around a charcoal-green field and green accent, with every text/background pairing contrast-checked so the UI stays readable in both themes.
+- Editing deepens: project-wide replace with per-match preview, a side-by-side diff view for working-tree changes, drag-to-reorder tabs, breadcrumb symbol navigation, and split layouts that restore with your session.
+- The shell becomes yours to configure: keyboard shortcuts rebind per user, a new-project wizard scaffolds a runnable project from templates, and settings are searchable.
+- The debugger's Variables view expands class instances into named fields with nested previews (ADR 0138), alongside the existing List/Seq/Map expansion — inspect live object state while stopped instead of adding print statements.
+- The terminal fills in the control sequences full-screen console programs rely on — scroll regions, line and character editing, tab stops, cursor visibility, and bracketed paste with platform-native paste chords — and your scrollback is intact when they exit.
+- Source control adds a History mode — browse commits, open a commit's files, and view each change side by side — and push/pull run through a real terminal session that detects credential prompts and masks what you type.
+- On Windows, a native UI Automation provider exposes the workbench to assistive technology, file dialogs move to the modern native pickers, and the pointer shows a full context-appropriate cursor set.
 
 ### GUI toolkit
 
@@ -128,6 +138,9 @@ Counts via `scripts/count_sloc.sh` (production 891,670 / test 342,724 / demo 238
 - A shared semantic tree projects through native accessibility adapters on each platform, so screen readers see real widget semantics.
 - Virtual list/tree models render only what's visible, keeping large data sets responsive; interactive data grids and complete flex/grid/dock layout round out the widget set.
 - A deterministic TestHarness drives real input and captures framebuffers and accessibility snapshots, so GUI behavior is testable in CI-free local runs.
+- Text rendering steps up: gamma-correct glyph blending, OpenType ligatures, a per-glyph font-fallback chain, and TrueType-collection (`.ttc`) loading — coding fonts and mixed-script text render cleanly at any size.
+- A built-in scalable vector icon library (ADR 0137) lets toolbars, trees, tabs, and status bars request icons by name and get crisp strokes at any scale — no bitmap assets to ship.
+- Scrolling animates smoothly, with frame presentation paced against the platform compositor so motion doesn't tear or stutter.
 
 ### Languages
 
@@ -151,7 +164,7 @@ Counts via `scripts/count_sloc.sh` (production 891,670 / test 342,724 / demo 238
 
 ### Tests
 
-Test code grows by ~39K SLOC. The third-person suite's twenty-seven subsystems each ship a VM-versus-native probe; the codegen round adds jump-table, narrow-arithmetic, and range-demotion coverage; the runtime API and registry work are locked by contract-fingerprint and name-uniqueness guards; and the reliability audits land regression and stress coverage across GC, collections, archives, networking, IL parsing, and optimizer scalability.
+Test code grows by ~39K SLOC. The third-person suite's twenty-seven subsystems each ship a VM-versus-native probe; the codegen round adds jump-table, narrow-arithmetic, and range-demotion coverage; the runtime API and registry work are locked by contract-fingerprint and name-uniqueness guards; the reliability audits land regression and stress coverage across GC, collections, archives, networking, IL parsing, and optimizer scalability; and the Studio depth pass adds terminal-semantics, theme-contrast, vector-icon, font-shaping, and Windows-accessibility coverage plus per-feature workbench probes.
 
 ---
 

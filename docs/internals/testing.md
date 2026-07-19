@@ -53,7 +53,6 @@ platforms (ccache is auto-detected; disable with `ZANNA_NO_CCACHE=1`):
 | `ZANNA_SKIP_TESTS=1` | Build without running ctest |
 | `ZANNA_TEST_LABEL=<label>` | Run only tests with the given ctest label |
 | `ZANNA_RUN_SLOW_TESTS=1` | Include tests labeled `slow` |
-| `ZANNA_SKIP_CPPCHECK=1` | Skip the gating runtime cppcheck stage when the tool and compilation database are available |
 | `ZANNA_SKIP_LINT=1`, `ZANNA_SKIP_AUDIT=1`, `ZANNA_SKIP_SMOKE=1`, `ZANNA_SKIP_INSTALL=1` | Skip the corresponding post-build stages |
 | `ZANNA_EXTRA_CMAKE_ARGS="-DZANNA_ENABLE_INDIVIDUAL_BASIC_TO_IL_GOLDEN_TESTS=ON"` | Register legacy per-case BASIC-to-IL golden tests alongside the default batch shards |
 | `ZANNA_GFX_NO_ACTIVATE=1` | On macOS and Linux, show new ZannaGFX windows without making them the active app/window; CTest applies this automatically to `requires_display` and `graphics3d` tests |
@@ -101,19 +100,17 @@ ctest --test-dir build --print-labels
 # Run with sanitizers
 ./scripts/ci_full_sanitizer.sh
 
-# Run only the configured runtime correctness/performance/portability gate
+# Optional: run runtime correctness/performance/portability diagnostics
 cmake --build build --target cppcheck-runtime -j 1
 ```
 
-Canonical build scripts run `cppcheck-runtime` after compilation when
-`cppcheck` is installed and the selected generator emitted
-`compile_commands.json`; otherwise they report an explicit skip. The target
-analyzes `src/runtime` with the configured platform definitions and fails for
-every unsuppressed warning, performance, or portability diagnostic. The
-dedicated `runtime-static-analysis.yml` workflow runs the same target on Ubuntu
-for pull requests and primary-branch pushes. Suppressions belong in
-`cppcheck-runtime.supp` and should name a checker or exact intentional site,
-not hide a runtime directory.
+The `cppcheck-runtime` target is a manual, optional check; the canonical build
+scripts never invoke it, so builds do not depend on cppcheck being installed.
+When run by hand it analyzes `src/runtime` through the configured
+`compile_commands.json` with the platform definitions applied and fails for
+every unsuppressed warning, performance, or portability diagnostic.
+Suppressions belong in `cppcheck-runtime.supp` and should name a checker or
+exact intentional site, not hide a runtime directory.
 
 ### Measuring demo build performance
 

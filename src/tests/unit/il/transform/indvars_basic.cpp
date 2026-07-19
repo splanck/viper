@@ -96,13 +96,20 @@ TEST(IndVarSimplify, StrengthReductionApplies) {
     inc.op = Opcode::Add;
     inc.type = Type(Type::Kind::I64);
     inc.operands = {Value::temp(li.id), Value::constInt(1)};
+    // Guard the backedge so the shared range prover can bound the counter;
+    // the pass only strength-reduces provably overflow-free addresses.
+    Instr guard;
+    guard.result = 5;
+    guard.op = Opcode::SCmpLT;
+    guard.type = Type(Type::Kind::I1);
+    guard.operands = {Value::temp(*inc.result), Value::constInt(4)};
     Instr back;
     back.op = Opcode::CBr;
     back.type = Type(Type::Kind::Void);
-    back.operands.push_back(Value::constBool(false));
+    back.operands.push_back(Value::temp(*guard.result));
     back.labels = {"header", "exit"};
     back.brArgs = {{Value::temp(*inc.result)}, {}};
-    latch.instructions = {std::move(inc), std::move(back)};
+    latch.instructions = {std::move(inc), std::move(guard), std::move(back)};
     latch.terminated = true;
 
     BasicBlock exit;
@@ -114,7 +121,7 @@ TEST(IndVarSimplify, StrengthReductionApplies) {
     exit.terminated = true;
 
     F.blocks = {std::move(pre), std::move(header), std::move(latch), std::move(exit)};
-    F.valueNames.resize(5);
+    F.valueNames.resize(6);
     M.functions.push_back(std::move(F));
     auto &Fn = M.functions.front();
 
@@ -136,6 +143,18 @@ TEST(IndVarSimplify, StrengthReductionApplies) {
         if (I.op == Opcode::Add && I.result && *I.result == 2)
             hasAddrAdd = true;
     EXPECT_FALSE(hasAddrAdd);
+    // The loop-carried increment is emitted in checked form: the strict
+    // verifier cannot bound an incremental address, and the pass's overflow
+    // proof guarantees the check never fires.
+    bool hasCheckedInc = false;
+    for (auto &B : Fn.blocks) {
+        if (B.label != "latch")
+            continue;
+        for (auto &I : B.instructions)
+            if (I.op == Opcode::IAddOvf)
+                hasCheckedInc = true;
+    }
+    EXPECT_TRUE(hasCheckedInc);
 }
 
 TEST(IndVarSimplify, SkipsNonCanonicalLoop) {

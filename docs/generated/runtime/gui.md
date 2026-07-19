@@ -867,6 +867,8 @@ Constructor: `Zanna.GUI.App.New`
 | <a id="zanna-gui-app-tological"></a>`ToLogical` | `i64(i64)` | `Zanna.GUI.App.ToLogical` |
 | <a id="zanna-gui-app-tophysical"></a>`ToPhysical` | `i64(i64)` | `Zanna.GUI.App.ToPhysical` |
 | <a id="zanna-gui-app-setuiscale"></a>`SetUiScale` | `void(f64)` | `Zanna.GUI.App.SetUiScale` |
+| <a id="zanna-gui-app-setsmoothscroll"></a>`SetSmoothScroll` | `void(i1)` | `Zanna.GUI.App.SetSmoothScroll` |
+| <a id="zanna-gui-app-getsmoothscroll"></a>`GetSmoothScroll` | `i1()` | `Zanna.GUI.App.GetSmoothScroll` |
 | <a id="zanna-gui-app-getuiscale"></a>`GetUiScale` | `f64()` | `Zanna.GUI.App.GetUiScale` |
 | <a id="zanna-gui-app-geteffectivescale"></a>`GetEffectiveScale` | `f64()` | `Zanna.GUI.App.GetEffectiveScale` |
 | <a id="zanna-gui-app-setwheelspeed"></a>`SetWheelSpeed` | `void(f64)` | `Zanna.GUI.App.SetWheelSpeed` |
@@ -1037,6 +1039,7 @@ Constructor: `Zanna.GUI.Label.New`
 | <a id="zanna-gui-label-setfont"></a>`SetFont` | `void(obj,f64)` | `Zanna.GUI.Label.SetFont` |
 | <a id="zanna-gui-label-setcolor"></a>`SetColor` | `void(i64)` | `Zanna.GUI.Label.SetColor` |
 | <a id="zanna-gui-label-setwordwrap"></a>`SetWordWrap` | `void(i1)` | `Zanna.GUI.Label.SetWordWrap` |
+| <a id="zanna-gui-label-seticonname"></a>`SetIconName` | `void(str)` | `Zanna.GUI.Label.SetIconName` |
 | <a id="zanna-gui-label-setalignment"></a>`SetAlignment` | `void(i64)` | `Zanna.GUI.Label.SetAlignment` |
 | <a id="zanna-gui-label-getalignment"></a>`GetAlignment` | `i64()` | `Zanna.GUI.Label.GetAlignment` |
 | <a id="zanna-gui-label-setellipsis"></a>`SetEllipsis` | `void(i1)` | `Zanna.GUI.Label.SetEllipsis` |
@@ -1065,6 +1068,7 @@ Constructor: `Zanna.GUI.Button.New`
 | <a id="zanna-gui-button-setstyle"></a>`SetStyle` | `void(i64)` | `Zanna.GUI.Button.SetStyle` |
 | <a id="zanna-gui-button-seticon"></a>`SetIcon` | `void(str)` | `Zanna.GUI.Button.SetIcon` |
 | <a id="zanna-gui-button-seticonposition"></a>`SetIconPosition` | `void(i64)` | `Zanna.GUI.Button.SetIconPosition` |
+| <a id="zanna-gui-button-seticonname"></a>`SetIconName` | `void(str)` | `Zanna.GUI.Button.SetIconName` |
 | <a id="zanna-gui-button-new"></a>`New` | `obj(obj,str)` | `Zanna.GUI.Button.New` |
 
 <a id="zanna-gui-textinput"></a>
@@ -1466,6 +1470,8 @@ Constructor: `Zanna.GUI.CodeEditor.New`
 | <a id="zanna-gui-codeeditor-setinsertspaces"></a>`SetInsertSpaces` | `void(i1)` | `Zanna.GUI.CodeEditor.SetInsertSpaces` |
 | <a id="zanna-gui-codeeditor-getinsertspaces"></a>`GetInsertSpaces` | `i64()` | `Zanna.GUI.CodeEditor.GetInsertSpaces` |
 | <a id="zanna-gui-codeeditor-setwordwrap"></a>`SetWordWrap` | `void(i1)` | `Zanna.GUI.CodeEditor.SetWordWrap` |
+| <a id="zanna-gui-codeeditor-setligaturesenabled"></a>`SetLigaturesEnabled` | `void(i1)` | `Zanna.GUI.CodeEditor.SetLigaturesEnabled` |
+| <a id="zanna-gui-codeeditor-getligaturesenabled"></a>`GetLigaturesEnabled` | `i1()` | `Zanna.GUI.CodeEditor.GetLigaturesEnabled` |
 | <a id="zanna-gui-codeeditor-getwordwrap"></a>`GetWordWrap` | `i64()` | `Zanna.GUI.CodeEditor.GetWordWrap` |
 | <a id="zanna-gui-codeeditor-setwhitespacemode"></a>`SetWhitespaceMode` | `void(i64)` | `Zanna.GUI.CodeEditor.SetWhitespaceMode` |
 | <a id="zanna-gui-codeeditor-getwhitespacemode"></a>`GetWhitespaceMode` | `i64()` | `Zanna.GUI.CodeEditor.GetWhitespaceMode` |
@@ -2236,6 +2242,7 @@ construct the class directly. Its public surface exposes operations including `S
 | <a id="zanna-gui-statusbaritem-settext"></a>`SetText` | `void(str)` | `Zanna.GUI.StatusBarItem.SetText` |
 | <a id="zanna-gui-statusbaritem-gettext"></a>`GetText` | `str()` | `Zanna.GUI.StatusBarItem.GetText` |
 | <a id="zanna-gui-statusbaritem-settextcolor"></a>`SetTextColor` | `void(i64)` | `Zanna.GUI.StatusBarItem.SetTextColor` |
+| <a id="zanna-gui-statusbaritem-seticonname"></a>`SetIconName` | `void(str)` | `Zanna.GUI.StatusBarItem.SetIconName` |
 | <a id="zanna-gui-statusbaritem-settooltip"></a>`SetTooltip` | `void(str)` | `Zanna.GUI.StatusBarItem.SetTooltip` |
 | <a id="zanna-gui-statusbaritem-setvisible"></a>`SetVisible` | `void(i1)` | `Zanna.GUI.StatusBarItem.SetVisible` |
 | <a id="zanna-gui-statusbaritem-setprogress"></a>`SetProgress` | `void(f64)` | `Zanna.GUI.StatusBarItem.SetProgress` |
@@ -2436,6 +2443,8 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.App.ToLogical` | `i64(obj,i64)` | `rt_app_to_logical` |
 | `Zanna.GUI.App.ToPhysical` | `i64(obj,i64)` | `rt_app_to_physical` |
 | `Zanna.GUI.App.SetUiScale` | `void(obj,f64)` | `rt_app_set_ui_scale` |
+| `Zanna.GUI.App.SetSmoothScroll` | `void(obj,i1)` | `rt_app_set_smooth_scroll` |
+| `Zanna.GUI.App.GetSmoothScroll` | `i1(obj)` | `rt_app_get_smooth_scroll` |
 | `Zanna.GUI.App.GetUiScale` | `f64(obj)` | `rt_app_get_ui_scale` |
 | `Zanna.GUI.App.GetEffectiveScale` | `f64(obj)` | `rt_app_get_effective_scale` |
 | `Zanna.GUI.App.SetWheelSpeed` | `void(obj,f64)` | `rt_app_set_wheel_speed` |
@@ -2542,6 +2551,7 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.Label.SetFont` | `void(obj,obj,f64)` | `rt_label_set_font` |
 | `Zanna.GUI.Label.SetColor` | `void(obj,i64)` | `rt_label_set_color` |
 | `Zanna.GUI.Label.SetWordWrap` | `void(obj,i1)` | `rt_label_set_word_wrap` |
+| `Zanna.GUI.Label.SetIconName` | `void(obj,str)` | `rt_label_set_icon_name` |
 | `Zanna.GUI.Label.SetAlignment` | `void(obj,i64)` | `rt_label_set_alignment` |
 | `Zanna.GUI.Label.GetAlignment` | `i64(obj)` | `rt_label_get_alignment` |
 | `Zanna.GUI.Label.SetEllipsis` | `void(obj,i1)` | `rt_label_set_ellipsis` |
@@ -2554,6 +2564,7 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.Button.SetStyle` | `void(obj,i64)` | `rt_button_set_style` |
 | `Zanna.GUI.Button.SetIcon` | `void(obj,str)` | `rt_button_set_icon` |
 | `Zanna.GUI.Button.SetIconPosition` | `void(obj,i64)` | `rt_button_set_icon_pos` |
+| `Zanna.GUI.Button.SetIconName` | `void(obj,str)` | `rt_button_set_icon_name` |
 | `Zanna.GUI.TextInput.New` | `obj(obj)` | `rt_textinput_new` |
 | `Zanna.GUI.TextInput.SetText` | `void(obj,str)` | `rt_textinput_set_text` |
 | <a id="zanna-gui-textinput-get-text"></a>`Zanna.GUI.TextInput.get_Text` | `str(obj)` | `rt_textinput_get_text` |
@@ -3096,6 +3107,7 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.StatusBarItem.SetText` | `void(obj,str)` | `rt_statusbaritem_set_text` |
 | `Zanna.GUI.StatusBarItem.GetText` | `str(obj)` | `rt_statusbaritem_get_text` |
 | `Zanna.GUI.StatusBarItem.SetTextColor` | `void(obj,i64)` | `rt_statusbaritem_set_text_color` |
+| `Zanna.GUI.StatusBarItem.SetIconName` | `void(obj,str)` | `rt_statusbaritem_set_icon_name` |
 | `Zanna.GUI.StatusBarItem.SetTooltip` | `void(obj,str)` | `rt_statusbaritem_set_tooltip` |
 | `Zanna.GUI.StatusBarItem.SetVisible` | `void(obj,i1)` | `rt_statusbaritem_set_visible` |
 | `Zanna.GUI.StatusBarItem.WasClicked` | `i1(obj)` | `rt_statusbaritem_was_clicked` |
@@ -3173,6 +3185,8 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.CodeEditor.SetInsertSpaces` | `void(obj,i1)` | `rt_codeeditor_set_insert_spaces` |
 | `Zanna.GUI.CodeEditor.GetInsertSpaces` | `i64(obj)` | `rt_codeeditor_get_insert_spaces` |
 | `Zanna.GUI.CodeEditor.SetWordWrap` | `void(obj,i1)` | `rt_codeeditor_set_word_wrap` |
+| `Zanna.GUI.CodeEditor.SetLigaturesEnabled` | `void(obj,i1)` | `rt_codeeditor_set_ligatures_enabled` |
+| `Zanna.GUI.CodeEditor.GetLigaturesEnabled` | `i1(obj)` | `rt_codeeditor_get_ligatures_enabled` |
 | `Zanna.GUI.CodeEditor.GetWordWrap` | `i64(obj)` | `rt_codeeditor_get_word_wrap` |
 | `Zanna.GUI.CodeEditor.SetWhitespaceMode` | `void(obj,i64)` | `rt_codeeditor_set_whitespace_mode` |
 | `Zanna.GUI.CodeEditor.GetWhitespaceMode` | `i64(obj)` | `rt_codeeditor_get_whitespace_mode` |

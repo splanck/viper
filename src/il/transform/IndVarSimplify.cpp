@@ -32,6 +32,9 @@
 
 #include "il/analysis/CFG.hpp"
 #include "il/analysis/Dominators.hpp"
+#include "il/analysis/IntRangeAnalysis.hpp"
+
+#include "il/utils/CheckedIntRange.hpp"
 
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Function.hpp"
@@ -49,6 +52,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 using namespace il::core;
@@ -152,6 +156,22 @@ std::optional<size_t> labelIndex(const Instr &term, const std::string &target) {
         if (term.labels[i] == target)
             return i;
     return std::nullopt;
+}
+
+// Count how many successor slots of a terminator name a target label.
+/// @brief Count occurrences of a label in a terminator's successor list.
+/// @details The rewrite extends one branch-argument list per edge it knows
+///          about; a terminator that names the same target on several edges
+///          would leave the remaining edges short, so callers skip those.
+/// @param term Terminator instruction to inspect.
+/// @param target Label to count in @p term.labels.
+/// @return Number of successor slots equal to @p target.
+size_t labelOccurrences(const Instr &term, const std::string &target) {
+    size_t count = 0;
+    for (const auto &label : term.labels)
+        if (label == target)
+            ++count;
+    return count;
 }
 
 /// @brief Description of a simple loop induction variable.
@@ -442,11 +462,16 @@ std::string_view IndVarSimplify::id() const {
 ///          3) Adds a loop-carried address parameter and computes its initial
 ///             value in the preheader.
 ///          4) Increments the address in the latch and threads it through the
-///             backedge arguments.
+///             backedge arguments and every other edge into the latch.
 ///          5) Replaces uses of the original address computation and removes
 ///             the now-dead add/mul instructions.
 ///          The transformation is conservative and skips loops that do not meet
-///          structural requirements or single-use guarantees.
+///          structural requirements or single-use guarantees. It requires a
+///          constant base and initial counter, a counter the shared range
+///          prover can bound at the latch, and overflow-freedom of every
+///          address value the rewrite computes; the new arithmetic is emitted
+///          in checked form so the strict verifier accepts it while the
+///          overflow proof guarantees the checks never fire.
 /// @param function Function to optimize in place.
 /// @param analysis Analysis manager supplying loop and dominance info.
 /// @return Preserved analysis set; conservative invalidation on change.
@@ -471,6 +496,10 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
             continue;
         BasicBlock *latch = findBlock(function, loop.latchLabels.front());
         if (!latch)
+            continue;
+        // The rewrite threads distinct header and latch parameters; a block
+        // that is its own latch cannot host both roles.
+        if (latch == header)
             continue;
 
         // Find an induction variable on backedge L->H
@@ -499,6 +528,10 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         auto toH = labelIndex(PHTerm, header->label);
         if (!toH || *toH >= PHTerm.brArgs.size())
             continue;
+        // Only the located edge is extended below, so a degenerate terminator
+        // that reaches the header on several edges must be skipped.
+        if (labelOccurrences(PHTerm, header->label) != 1)
+            continue;
         auto &phArgs = PHTerm.brArgs[*toH];
         if (phArgs.size() != header->params.size())
             continue;
@@ -524,9 +557,112 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
             continue;
         if (LTerm.brArgs[*li].size() != header->params.size())
             continue;
+        if (labelOccurrences(LTerm, header->label) != 1)
+            continue;
 
         auto inc = checkedMul(addrExpr->stride, iv->step);
         if (!inc)
+            continue;
+
+        // The latch gains a parameter below, so every predecessor edge into it
+        // must supply the new address argument — not just the header's edge: a
+        // conditional in the rotated body (e.g. a wrap adjustment) rejoins the
+        // latch with branch arguments of its own. Collect the edges before any
+        // mutation. A predecessor outside the loop could not reference the
+        // header-defined address at all, so such shapes are skipped entirely.
+        std::vector<std::pair<Instr *, size_t>> latchPredEdges;
+        bool latchPredEdgesUsable = true;
+        for (auto &block : function.blocks) {
+            if (!hasTerminator(block))
+                continue;
+            Instr &predTerm = block.instructions.back();
+            for (size_t target = 0; target < predTerm.labels.size(); ++target) {
+                if (predTerm.labels[target] != latch->label)
+                    continue;
+                if (!loop.contains(block.label) || target >= predTerm.brArgs.size() ||
+                    predTerm.brArgs[target].size() != latch->params.size()) {
+                    latchPredEdgesUsable = false;
+                    break;
+                }
+                latchPredEdges.emplace_back(&predTerm, target);
+            }
+            if (!latchPredEdgesUsable)
+                break;
+        }
+        if (!latchPredEdgesUsable || latchPredEdges.empty())
+            continue;
+
+        // The strength-reduced address stays synchronized with the counter
+        // only if every path into the latch carries the unmodified header
+        // induction value at the counter's position; a body that re-enters the
+        // latch with an adjusted counter would silently desynchronize them.
+        size_t ivLatchParamIndex = latch->params.size();
+        for (size_t k = 0; k < latch->params.size(); ++k) {
+            if (latch->params[k].id == iv->latchParamId) {
+                ivLatchParamIndex = k;
+                break;
+            }
+        }
+        if (ivLatchParamIndex == latch->params.size())
+            continue;
+        const unsigned headerIvId = header->params[iv->headerParamIndex].id;
+        bool ivConsistentOnAllEdges = true;
+        for (const auto &edge : latchPredEdges) {
+            const Value &carried = edge.first->brArgs[edge.second][ivLatchParamIndex];
+            if (carried.kind != Value::Kind::Temp || carried.id != headerIvId) {
+                ivConsistentOnAllEdges = false;
+                break;
+            }
+        }
+        if (!ivConsistentOnAllEdges)
+            continue;
+
+        // The verifier accepts plain signed arithmetic only where its shared
+        // range prover can re-establish a bound, and an incremental
+        // loop-carried address is exactly the shape an interval fixpoint
+        // cannot bound (the exit guard tests the counter, not the address).
+        // The rewrite therefore emits checked (.ovf) arithmetic — always
+        // verifier-legal — and fires only when every value it will compute,
+        // including the one-past-exit increment the original never formed, is
+        // provably free of i64 overflow, so the checked ops can never
+        // introduce a trap the source program lacked.
+        if (addrExpr->base.kind != Value::Kind::ConstInt)
+            continue;
+        const Value &initValue = phArgs[iv->headerParamIndex];
+        if (initValue.kind != Value::Kind::ConstInt)
+            continue;
+        const zanna::analysis::IntRangeInfo ivRanges = zanna::analysis::computeIntRanges(function);
+        const zanna::analysis::RangeMap *latchEntry = ivRanges.entryFor(latch->label);
+        if (!latchEntry)
+            continue;
+        const auto ivRangeIt = latchEntry->find(iv->latchParamId);
+        if (ivRangeIt == latchEntry->end() || !ivRangeIt->second.lower || !ivRangeIt->second.upper)
+            continue;
+        const int64_t base = addrExpr->base.i64;
+        bool addrProvablySafe = true;
+        const int64_t ivEndpoints[] = {
+            *ivRangeIt->second.lower, *ivRangeIt->second.upper, initValue.i64};
+        const int64_t ivOffsets[] = {0, static_cast<int64_t>(iv->step)};
+        for (int64_t endpoint : ivEndpoints) {
+            for (int64_t offset : ivOffsets) {
+                if (il::utils::addOverflows(endpoint, offset)) {
+                    addrProvablySafe = false;
+                    break;
+                }
+                const int64_t stepped = endpoint + offset;
+                if (il::utils::mulOverflows(stepped, addrExpr->stride)) {
+                    addrProvablySafe = false;
+                    break;
+                }
+                if (il::utils::addOverflows(base, stepped * addrExpr->stride)) {
+                    addrProvablySafe = false;
+                    break;
+                }
+            }
+            if (!addrProvablySafe)
+                break;
+        }
+        if (!addrProvablySafe)
             continue;
 
         unsigned nextId = zanna::il::nextTempId(function);
@@ -536,11 +672,12 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
 
         // init_i
         Value initI = phArgs[iv->headerParamIndex];
-        // Insert mul + add before terminator
+        // Insert mul + add before terminator. Checked forms keep the emission
+        // verifier-legal; the provability gate above guarantees they never trap.
         // mul
         Instr mul0;
         mul0.result = nextId++;
-        mul0.op = Opcode::Mul;
+        mul0.op = Opcode::IMulOvf;
         mul0.type = mulInstr->type; // integer type
         mul0.operands.push_back(initI);
         mul0.operands.push_back(Value::constInt(addrExpr->stride));
@@ -548,7 +685,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         // add
         Instr add0;
         add0.result = nextId++;
-        add0.op = Opcode::Add;
+        add0.op = Opcode::IAddOvf;
         add0.type = addrInstr->type;
         add0.operands.push_back(*preheaderBase);
         add0.operands.push_back(Value::temp(*mul0.result));
@@ -575,14 +712,19 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         setValueName(function, latchAddr.id, latchAddr.name);
         latch->params.push_back(latchAddr);
 
-        // Update header -> latch branch args: append current addr param
-        HTerm.brArgs[*toL].push_back(Value::temp(addrParamId));
+        // Append the current address on every predecessor edge into the latch —
+        // the header's edge plus any body join that re-enters the latch. The
+        // header parameter dominates the whole natural-loop body, so it is in
+        // scope at each of these branches, and its value is the same along
+        // every in-iteration path (only the latch advances it).
+        for (auto &edge : latchPredEdges)
+            edge.first->brArgs[edge.second].push_back(Value::temp(addrParamId));
 
         // In latch, compute addr_next = latchAddr + (stride * step)
         Instr addInc;
         addInc.result = nextId++;
         const unsigned addIncId = *addInc.result;
-        addInc.op = Opcode::Add;
+        addInc.op = Opcode::IAddOvf;
         addInc.type = header->params.back().type;
         addInc.operands.push_back(Value::temp(latchAddr.id));
         addInc.operands.push_back(Value::constInt(*inc));
