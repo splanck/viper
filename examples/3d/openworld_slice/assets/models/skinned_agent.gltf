@@ -1,7 +1,7 @@
 {
   "asset": {
     "version": "2.0",
-    "generator": "Viper openworld_slice synthetic skinned fixture"
+    "generator": "Zanna openworld_slice synthetic skinned fixture"
   },
   "buffers": [
     {

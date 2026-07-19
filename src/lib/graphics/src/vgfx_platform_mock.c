@@ -414,6 +414,18 @@ void *vgfx_get_native_view(vgfx_window_t window) {
     return NULL; /* Mock backend has no native view */
 }
 
+int vgfx_get_native_handles(vgfx_window_t window, vgfx_native_handles_t *out_handles) {
+    if (!window || !out_handles)
+        return 0;
+    *out_handles = (vgfx_native_handles_t){.backend = VGFX_NATIVE_BACKEND_NONE};
+    return 1;
+}
+
+vgfx_window_capabilities_t vgfx_get_window_capabilities(vgfx_window_t window) {
+    (void)window;
+    return 0;
+}
+
 void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {
     (void)win;
     (void)x;
@@ -441,6 +453,16 @@ int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
     (void)win;
     (void)enabled;
     return 1;
+}
+
+int vgfx_platform_set_text_input_enabled(struct vgfx_window *win, int32_t enabled) {
+    (void)enabled;
+    return win != NULL;
+}
+
+int vgfx_platform_set_text_input_state(struct vgfx_window *win,
+                                       const vgfx_text_input_state_t *state) {
+    return win && state;
 }
 
 /// @brief Inject a synthetic relative mouse motion delta (test hook).

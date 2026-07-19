@@ -735,7 +735,7 @@ static int gl_continue_texture_upload(gl_context_t *ctx,
     if (rows <= 0)
         return 0;
     if (vgfx3d_unpack_pixels_rgba_rows(
-            pixels_ptr, entry->upload_next_row, rows, 1, &slice_w, &slice_rows, &rgba) != 0 ||
+            pixels_ptr, entry->upload_next_row, rows, 0, &slice_w, &slice_rows, &rgba) != 0 ||
         !rgba || slice_w != entry->width || slice_rows <= 0) {
         free(rgba);
         return 0;

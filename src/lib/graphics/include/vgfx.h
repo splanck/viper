@@ -77,6 +77,45 @@ const char *vgfx_version_string(void);
 ///          vgfx_destroy_window().
 typedef struct vgfx_window *vgfx_window_t;
 
+/// @brief Native window-system backend associated with a window handle.
+/// @details Callers must inspect this discriminator before interpreting any
+///          value returned in vgfx_native_handles_t.
+typedef enum {
+    VGFX_NATIVE_BACKEND_NONE = 0,
+    VGFX_NATIVE_BACKEND_COCOA = 1,
+    VGFX_NATIVE_BACKEND_WIN32 = 2,
+    VGFX_NATIVE_BACKEND_X11 = 3,
+    VGFX_NATIVE_BACKEND_WAYLAND = 4,
+} vgfx_native_backend_t;
+
+/// @brief Typed platform-native handles for graphics interoperability.
+/// @details Handles are borrowed from the window and remain valid only until
+///          vgfx_destroy_window(). A field is NULL when the selected backend
+///          has no corresponding concept.
+typedef struct {
+    vgfx_native_backend_t backend; ///< Backend defining the remaining fields.
+    void *display;                 ///< X11 Display* or Wayland wl_display*.
+    void *surface;                 ///< Cocoa NSView*, Win32 HWND, or Wayland wl_surface*.
+    uintptr_t window;              ///< Integer X11 Window; zero for pointer-handle backends.
+} vgfx_native_handles_t;
+
+/// @brief Backend features available for one live window.
+/// @details Capability bits describe native behavior, not portable emulation. They may differ
+///          between Wayland compositors because optional protocols are advertised at runtime.
+typedef uint64_t vgfx_window_capabilities_t;
+enum {
+    VGFX_CAP_WINDOW_POSITION = UINT64_C(1) << 0,
+    VGFX_CAP_FOCUS_REQUEST = UINT64_C(1) << 1,
+    VGFX_CAP_CURSOR_WARP = UINT64_C(1) << 2,
+    VGFX_CAP_RELATIVE_MOUSE = UINT64_C(1) << 3,
+    VGFX_CAP_TEXT_COMPOSITION = UINT64_C(1) << 4,
+    VGFX_CAP_FRACTIONAL_SCALE = UINT64_C(1) << 5,
+    VGFX_CAP_SERVER_DECORATIONS = UINT64_C(1) << 6,
+    VGFX_CAP_ACTIVATION = UINT64_C(1) << 7,
+    VGFX_CAP_CLIPBOARD_TEXT = UINT64_C(1) << 8,
+    VGFX_CAP_FILE_DROP = UINT64_C(1) << 9,
+};
+
 /// @brief 24-bit RGB color encoded in a 32-bit integer: 0x00RRGGBB.
 /// @details The high byte is ignored.  Colors are internally converted to
 ///          32-bit RGBA with alpha = 0xFF (fully opaque) when written to the
@@ -151,7 +190,11 @@ typedef enum {
     VGFX_EVENT_FOCUS_GAINED,       ///< Window gained keyboard focus
     VGFX_EVENT_FOCUS_LOST,         ///< Window lost keyboard focus
     VGFX_EVENT_SCROLL,             ///< Scroll wheel or trackpad scroll
-    VGFX_EVENT_FILE_DROP           ///< File dropped onto window (one event per file)
+    VGFX_EVENT_FILE_DROP,          ///< File dropped onto window (one event per file)
+    VGFX_EVENT_TOUCH_DOWN,         ///< Touch contact began
+    VGFX_EVENT_TOUCH_MOVE,         ///< Touch contact moved
+    VGFX_EVENT_TOUCH_UP,           ///< Touch contact ended
+    VGFX_EVENT_TOUCH_CANCEL        ///< Compositor cancelled the active touch sequence
 } vgfx_event_type_t;
 
 /// @brief Keyboard key codes.
@@ -233,6 +276,31 @@ typedef enum {
     VGFX_MOUSE_RIGHT = 1, ///< Right mouse button (secondary)
     VGFX_MOUSE_MIDDLE = 2 ///< Middle mouse button (tertiary)
 } vgfx_mouse_button_t;
+
+/// @brief Semantic purpose of an editable text field for native input methods.
+typedef enum {
+    VGFX_TEXT_INPUT_NORMAL = 0,
+    VGFX_TEXT_INPUT_PASSWORD,
+    VGFX_TEXT_INPUT_EMAIL,
+    VGFX_TEXT_INPUT_NUMBER,
+    VGFX_TEXT_INPUT_PHONE,
+    VGFX_TEXT_INPUT_URL
+} vgfx_text_input_purpose_t;
+
+/// @brief Current editable-text context published to a native input method.
+/// @details All pointers are borrowed for the duration of the call. Cursor and anchor are UTF-8
+///          byte offsets into surrounding_text. The cursor rectangle is in physical window
+///          coordinates and should cover the visible caret; zero width/height are accepted.
+typedef struct {
+    const char *surrounding_text; ///< NUL-terminated committed UTF-8, or NULL for unavailable
+    int32_t cursor_byte;          ///< Active selection endpoint byte offset
+    int32_t anchor_byte;          ///< Fixed selection endpoint byte offset
+    int32_t cursor_x;             ///< Caret rectangle X
+    int32_t cursor_y;             ///< Caret rectangle Y
+    int32_t cursor_width;         ///< Caret rectangle width
+    int32_t cursor_height;        ///< Caret rectangle height
+    vgfx_text_input_purpose_t purpose; ///< Native keyboard/input specialization
+} vgfx_text_input_state_t;
 
 /// @brief Inline UTF-8 capacity of a native composition event, including its terminator.
 /// @details IME preedit is deliberately stored in the value-type event so queue copies never
@@ -331,6 +399,19 @@ typedef struct {
         struct {
             char path[260]; ///< File path (NUL-terminated, max 259 chars)
         } file_drop;
+
+        /// @brief Touch contact data (TOUCH_DOWN, TOUCH_MOVE, TOUCH_UP).
+        /// @details Contact IDs are stable only for the duration of one touch sequence. Shape and
+        ///          orientation are supplied when the compositor supports wl_touch version 6;
+        ///          otherwise major/minor are zero and orientation is unspecified as zero.
+        struct {
+            int32_t id;          ///< Compositor-assigned contact identifier
+            int32_t x;           ///< Contact X in physical framebuffer pixels
+            int32_t y;           ///< Contact Y in physical framebuffer pixels
+            float major;         ///< Major-axis diameter in surface coordinates, or zero
+            float minor;         ///< Minor-axis diameter in surface coordinates, or zero
+            float orientation;   ///< Ellipse orientation in degrees, or zero
+        } touch;
     } data;
 } vgfx_event_t;
 
@@ -430,6 +511,17 @@ int vgfx_pump_events(vgfx_window_t window);
 /// @param timeout_ms Maximum wait in milliseconds (0 returns immediately).
 /// @return 1 if events are (probably) available, 0 on timeout.
 int vgfx_wait_events(vgfx_window_t window, int32_t timeout_ms);
+
+/// @brief Enable or disable native text input for the focused editor in a window.
+/// @details Disabling cancels any active native preedit. This does not affect raw key events.
+/// @return 1 when accepted; zero for an invalid window or invalid enabled value.
+int vgfx_set_text_input_enabled(vgfx_window_t window, int32_t enabled);
+
+/// @brief Publish surrounding text, selection, content purpose, and caret geometry to the IME.
+/// @details Backends without an explicit surrounding-text protocol safely ignore this state while
+///          retaining their existing native text behavior.
+/// @return 1 when the state is valid and accepted, otherwise zero.
+int vgfx_set_text_input_state(vgfx_window_t window, const vgfx_text_input_state_t *state);
 
 /// @brief Get the current window dimensions.
 /// @details Retrieves the current drawable size. When coord scaling is
@@ -655,9 +747,9 @@ int vgfx_get_framebuffer(vgfx_window_t window, vgfx_framebuffer_t *out_fb);
 
 /// @brief Get the platform-specific native view handle.
 /// @details On macOS, returns the NSView* (as void*). On Linux, returns
-///          the X11 Window (as void*, cast from unsigned long). On Windows,
-///          returns the HWND (as void*). Used by GPU backends (Metal,
-///          D3D11, OpenGL) to attach rendering surfaces.
+///          an X11 Window (as void*, cast from unsigned long) or a Wayland
+///          wl_surface*. On Windows, returns the HWND (as void*). New code
+///          should prefer vgfx_get_native_handles() and inspect its discriminator.
 /// @param window Window handle
 /// @return Native view handle, or NULL if unavailable
 void *vgfx_get_native_view(vgfx_window_t window);
@@ -668,9 +760,9 @@ void *vgfx_get_native_view(vgfx_window_t window);
 void vgfx_set_gpu_present(vgfx_window_t window, int32_t enabled);
 
 /// @brief Get the platform-specific native display/connection handle.
-/// @details On Linux, returns the X11 Display* (as void*). Returns NULL
-///          on macOS, Windows, and mock backends. Used by the OpenGL backend
-///          to share the X11 connection with ZannaGFX.
+/// @details On Linux, returns the active X11 Display* or Wayland wl_display*.
+///          Returns NULL on macOS, Windows, and mock backends. New code should
+///          prefer vgfx_get_native_handles() before interpreting this pointer.
 /// @param window Window handle
 /// @return Native display handle, or NULL if unavailable
 void *vgfx_get_native_display(vgfx_window_t window);
@@ -707,6 +799,17 @@ typedef void (*vgfx_native_msg_hook_t)(void *user,
 /// @param hook Hook function, or NULL to remove the current hook.
 /// @param user Opaque pointer passed back to the hook.
 void vgfx_set_native_msg_hook(vgfx_window_t window, vgfx_native_msg_hook_t hook, void *user);
+
+/// @brief Query typed native handles without assuming that Linux uses X11.
+/// @param window Window whose borrowed native handles are requested.
+/// @param out_handles Receives a fully initialized native-handle descriptor.
+/// @return 1 when window and out_handles are valid, otherwise 0. A valid
+///         headless window returns 1 with backend VGFX_NATIVE_BACKEND_NONE.
+int vgfx_get_native_handles(vgfx_window_t window, vgfx_native_handles_t *out_handles);
+
+/// @brief Query native capabilities for one live window.
+/// @return A bitwise OR of `VGFX_CAP_*`, or zero for an invalid/headless window.
+vgfx_window_capabilities_t vgfx_get_window_capabilities(vgfx_window_t window);
 
 //===----------------------------------------------------------------------===//
 // Clipping

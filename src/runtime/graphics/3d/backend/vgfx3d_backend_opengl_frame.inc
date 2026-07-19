@@ -78,7 +78,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     };
     if (!ctx || !cam)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current(ctx))
         return;
 
     ctx->frame_serial++;
@@ -307,6 +307,9 @@ static void gl_submit_draw(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    GLint saved_uniform_locations[GL_MAIN_UNIFORM_SNAPSHOT_CAPACITY];
+    GLuint saved_program = 0;
+    int specialized_program;
     int mesh_compact = 0;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
@@ -334,6 +337,8 @@ static void gl_submit_draw(void *ctx_ptr,
     gl_configure_draw_output(ctx, cmd);
     gl_apply_depth_bias(cmd, 1);
 
+    specialized_program =
+        gl_begin_material_program(ctx, cmd, saved_uniform_locations, &saved_program);
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
     bind_material_textures(ctx, cmd);
@@ -385,6 +390,8 @@ static void gl_submit_draw(void *ctx_ptr,
                 (int)cmd->disable_depth_test);
     }
     gl.DrawElements(GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL);
+    gl_end_material_program(
+        ctx, specialized_program, saved_uniform_locations, saved_program);
     ctx->stats.draw_calls++;
     if (gl_debug_enabled()) {
         GLenum err = gl.GetError();
@@ -461,14 +468,17 @@ static void gl_end_frame(void *ctx_ptr) {
     }
 }
 
-/// @brief Backend hook: toggle GLX swap-interval vsync (no-op without EXT_swap_control).
+/// @brief Backend hook: toggle native GLX/EGL swap-interval vsync.
 static void gl_set_vsync(void *ctx_ptr, int8_t enabled) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    if (!ctx || !glx.SwapIntervalEXT)
+    if (!ctx)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current(ctx))
         return;
-    glx.SwapIntervalEXT(ctx->display, ctx->window, enabled ? 1 : 0);
+    if (ctx->egl_binding)
+        (void)vgfx3d_egl_wayland_set_swap_interval(ctx->egl_binding, enabled ? 1 : 0);
+    else if (glx.SwapIntervalEXT)
+        glx.SwapIntervalEXT(ctx->display, ctx->window, enabled ? 1 : 0);
 }
 
 /// @brief Backend hook: register one NDC scene-depth probe for this frame.
@@ -511,7 +521,9 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
     ctx->width = w;
     ctx->height = h;
     ctx->scene_composited_to_backbuffer = 0;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (ctx->egl_binding)
+        vgfx3d_egl_wayland_resize(ctx->egl_binding, w, h);
+    if (!gl_make_current(ctx))
         return;
     if (!ctx->rtt_active) {
         destroy_scene_targets(ctx);
@@ -571,7 +583,7 @@ static int gl_readback_rgba(
     if (!ctx || !dst_rgba || !vgfx3d_opengl_validate_rgba8_destination(w, h, stride, &dst_bytes))
         return 0;
 
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current(ctx))
         return 0;
     use_postfx_readback =
         ctx->default_framebuffer_writable && !ctx->scene_composited_to_backbuffer &&
@@ -637,7 +649,6 @@ static int gl_readback_rgba(
         memcpy(dst_rgba + (size_t)y * (size_t)stride,
                tmp + (size_t)y * (size_t)copy_w * 4u,
                (size_t)copy_w * 4u);
-
     gl_restore_framebuffer_state(&saved_state);
     gl_restore_main_draw_state(ctx);
     return 1;
@@ -717,7 +728,7 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
 
     if (!ctx || ctx->rtt_active)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current(ctx))
         return;
     use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 &&
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
@@ -751,7 +762,7 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
         ctx->scene_composited_to_backbuffer = 0;
         return;
     }
-    glx.SwapBuffers(ctx->display, ctx->window);
+    gl_swap_native_buffers(ctx);
     ctx->stats.direct_presents++;
     ctx->stats.present_path = 1;
     ctx->scene_postfx_pending = 0;
@@ -782,7 +793,7 @@ static void gl_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) 
     int use_postfx;
     if (!ctx || ctx->rtt_active)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current(ctx))
         return;
     use_postfx = (postfx && postfx->enabled && postfx->effect_count > 0 &&
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
@@ -856,7 +867,7 @@ static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
         return;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current(ctx))
         return;
     ctx->scene_postfx_pending = 0;
     ctx->scene_composited_to_backbuffer = 0;
@@ -1115,6 +1126,9 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     GLuint mesh_vbo, mesh_ibo;
+    GLint saved_uniform_locations[GL_MAIN_UNIFORM_SNAPSHOT_CAPACITY];
+    GLuint saved_program = 0;
+    int specialized_program;
     int mesh_compact = 0;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
@@ -1142,6 +1156,8 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     gl_configure_draw_output(ctx, cmd);
     gl_apply_depth_bias(cmd, 1);
 
+    specialized_program =
+        gl_begin_material_program(ctx, cmd, saved_uniform_locations, &saved_program);
     gl.UseProgram(ctx->program);
     upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);
     bind_material_textures(ctx, cmd);
@@ -1153,10 +1169,14 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
                                        instance_count)) {
         set_identity_instance_constants();
         ctx->stats.dropped_draws++;
+        gl_end_material_program(
+            ctx, specialized_program, saved_uniform_locations, saved_program);
         return;
     }
     gl.DrawElementsInstanced(
         GL_TRIANGLES, (GLsizei)index_count, GL_UNSIGNED_INT, NULL, (GLsizei)instance_count);
+    gl_end_material_program(
+        ctx, specialized_program, saved_uniform_locations, saved_program);
     ctx->stats.draw_calls++;
     set_identity_instance_constants();
 }

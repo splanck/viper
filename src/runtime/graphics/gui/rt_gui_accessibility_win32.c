@@ -1362,6 +1362,11 @@ void rt_gui_accessibility_platform_notify(vgfx_window_t window, vg_widget_t *wid
     rt_uia_provider_release(provider);
 }
 
+void rt_gui_accessibility_platform_sync(vgfx_window_t window, vg_widget_t *root) {
+    (void)window;
+    (void)root;
+}
+
 /// @brief Project one live-region announcement through UIA notification events.
 /// @param window Borrowed owning ZannaGFX window; may be NULL.
 /// @param widget Borrowed announcement source widget; may be NULL or stale.

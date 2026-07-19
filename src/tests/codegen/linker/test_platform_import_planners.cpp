@@ -74,6 +74,7 @@ TEST(PlatformImportPlanners, LinuxPlannerClassifiesNeededLibraries) {
                                   "cos",
                                   "dlopen",
                                   "exp10",
+                                  "ftruncate",
                                   "getpwuid_r",
                                   "pipe2",
                                   "pthread_create",

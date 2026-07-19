@@ -2193,6 +2193,26 @@ void *vgfx_get_native_view(vgfx_window_t window) {
     return (void *)w32->hwnd;
 }
 
+int vgfx_get_native_handles(vgfx_window_t window, vgfx_native_handles_t *out_handles) {
+    if (!window || !window->platform_data || !out_handles)
+        return 0;
+    vgfx_win32_data *w32 = (vgfx_win32_data *)window->platform_data;
+    *out_handles = (vgfx_native_handles_t){.backend = VGFX_NATIVE_BACKEND_WIN32,
+                                           .display = NULL,
+                                           .surface = (void *)w32->hwnd,
+                                           .window = 0};
+    return 1;
+}
+
+vgfx_window_capabilities_t vgfx_get_window_capabilities(vgfx_window_t window) {
+    if (!window || !window->platform_data)
+        return 0;
+    return VGFX_CAP_WINDOW_POSITION | VGFX_CAP_FOCUS_REQUEST | VGFX_CAP_CURSOR_WARP |
+           VGFX_CAP_RELATIVE_MOUSE | VGFX_CAP_TEXT_COMPOSITION |
+           VGFX_CAP_SERVER_DECORATIONS | VGFX_CAP_ACTIVATION | VGFX_CAP_CLIPBOARD_TEXT |
+           VGFX_CAP_FILE_DROP;
+}
+
 void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
     if (!window || !window->platform_data)
         return;
@@ -2256,6 +2276,16 @@ int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
     }
     win32_apply_cursor_clip(win, enabled);
     return 1;
+}
+
+int vgfx_platform_set_text_input_enabled(struct vgfx_window *win, int32_t enabled) {
+    (void)enabled;
+    return win != NULL;
+}
+
+int vgfx_platform_set_text_input_state(struct vgfx_window *win,
+                                       const vgfx_text_input_state_t *state) {
+    return win && state;
 }
 
 void vgfx_platform_hide_cursor(void) {

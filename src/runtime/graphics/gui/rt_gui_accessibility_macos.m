@@ -470,6 +470,11 @@ void rt_gui_accessibility_platform_notify(vgfx_window_t window, vg_widget_t *wid
     }
 }
 
+void rt_gui_accessibility_platform_sync(vgfx_window_t window, vg_widget_t *root) {
+    (void)window;
+    (void)root;
+}
+
 /// @brief Post a VoiceOver announcement while retaining the headless record as source of truth.
 /// @param window Borrowed owning ZannaGFX window.
 /// @param widget Borrowed live announcement source.

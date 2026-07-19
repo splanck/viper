@@ -21,6 +21,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_accessibility_platform.h"
+#include "rt_gui_atspi_linux.h"
+#include "rt_gui_linux_portal.h"
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -162,7 +164,10 @@ static rt_gui_xsetting_value_t rt_gui_xsettings_parse(const unsigned char *bytes
 /// @return Decoded setting record with `found=0` when XSettings is unavailable.
 static rt_gui_xsetting_value_t rt_gui_xsettings_query(vgfx_window_t window, const char *name) {
     rt_gui_xsetting_value_t result = {0};
-    Display *display = (Display *)vgfx_get_native_display(window);
+    vgfx_native_handles_t handles = {0};
+    if (!vgfx_get_native_handles(window, &handles) || handles.backend != VGFX_NATIVE_BACKEND_X11)
+        return result;
+    Display *display = (Display *)handles.display;
     if (!display || !name)
         return result;
 
@@ -258,6 +263,9 @@ int32_t rt_gui_accessibility_platform_high_contrast(vgfx_window_t window) {
         rt_gui_theme_requests_high_contrast(qt_theme)) {
         return 1;
     }
+    int32_t contrast = 0;
+    if (rt_gui_linux_portal_read("org.freedesktop.appearance", "contrast", &contrast))
+        return contrast == 1 ? 1 : 0;
     rt_gui_xsetting_value_t theme = rt_gui_xsettings_query(window, "Net/ThemeName");
     return theme.found && rt_gui_theme_requests_high_contrast(theme.string) ? 1 : 0;
 }
@@ -272,6 +280,10 @@ int32_t rt_gui_accessibility_platform_reduced_motion(vgfx_window_t window) {
          strcmp(gtk_animations, "FALSE") == 0)) {
         return 1;
     }
+    int32_t portal_animations = 1;
+    if (rt_gui_linux_portal_read(
+            "org.freedesktop.desktop.interface", "enable-animations", &portal_animations))
+        return portal_animations == 0 ? 1 : 0;
     rt_gui_xsetting_value_t animations = rt_gui_xsettings_query(window, "Gtk/EnableAnimations");
     if (!animations.found)
         animations = rt_gui_xsettings_query(window, "Net/EnableAnimations");
@@ -289,6 +301,11 @@ int32_t rt_gui_accessibility_platform_prefers_dark(vgfx_window_t window) {
     const char *qt_theme = getenv("QT_STYLE_OVERRIDE");
     if (rt_gui_theme_requests_dark(gtk_theme) || rt_gui_theme_requests_dark(qt_theme))
         return 1;
+
+    int32_t color_scheme = 0;
+    if (rt_gui_linux_portal_read(
+            "org.freedesktop.appearance", "color-scheme", &color_scheme))
+        return color_scheme == 1 ? 1 : 0;
 
     rt_gui_xsetting_value_t theme = rt_gui_xsettings_query(window, "Net/ThemeName");
     if (theme.found)
@@ -310,22 +327,24 @@ int32_t rt_gui_accessibility_platform_prefers_dark(vgfx_window_t window) {
 /// @param window Borrowed X11 window; currently unused.
 /// @param root Borrowed semantic root; currently unused.
 void rt_gui_accessibility_platform_attach(vgfx_window_t window, vg_widget_t *root) {
-    (void)window;
-    (void)root;
+    rt_gui_atspi_linux_attach(window, root);
 }
 
 /// @brief Detach the optional Linux native accessibility projection.
 /// @param window Borrowed X11 window; currently unused.
 void rt_gui_accessibility_platform_detach(vgfx_window_t window) {
-    (void)window;
+    rt_gui_atspi_linux_detach(window);
 }
 
 /// @brief Notify the optional Linux native accessibility projection of a changed node.
 /// @param window Borrowed X11 window; currently unused.
 /// @param widget Borrowed changed widget; currently unused.
 void rt_gui_accessibility_platform_notify(vgfx_window_t window, vg_widget_t *widget) {
-    (void)window;
-    (void)widget;
+    rt_gui_atspi_linux_notify(window, widget);
+}
+
+void rt_gui_accessibility_platform_sync(vgfx_window_t window, vg_widget_t *root) {
+    rt_gui_atspi_linux_sync(window, root);
 }
 
 /// @brief Project a live-region announcement when a Linux native bridge is installed.
@@ -337,8 +356,5 @@ void rt_gui_accessibility_platform_announce(vgfx_window_t window,
                                             vg_widget_t *widget,
                                             const char *text,
                                             vg_live_region_mode_t mode) {
-    (void)window;
-    (void)widget;
-    (void)text;
-    (void)mode;
+    rt_gui_atspi_linux_announce(window, widget, text, mode);
 }

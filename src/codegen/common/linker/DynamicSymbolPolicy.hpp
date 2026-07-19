@@ -571,6 +571,7 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "read",
         "write",
         "lseek",
+        "ftruncate",
         "stat",
         "fstat",
         "fstatat",

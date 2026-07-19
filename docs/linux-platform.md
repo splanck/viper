@@ -1,13 +1,13 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-18
+last-verified: 2026-07-19
 ---
 
 # Linux Platform Implementation
 
 Zanna's Linux support is split across small native adapters rather than hidden behind a third-party
-portability library. The principal adapters are X11/GLX graphics, ALSA audio, inotify file
+portability library. The principal adapters are native Wayland and X11/GLX graphics, ALSA audio, inotify file
 watching, Linux/POSIX pseudo-terminals, Linux machine-information probes, and ELF native linking.
 
 ## Process-global library state
@@ -23,10 +23,72 @@ callbacks into it is unsafe. XInput extension opcodes remain display-local becau
 server connections are not required to assign the same opcode.
 
 `ZANNA_GRAPHICS_BACKEND=HEADLESS` selects the dependency-free in-memory framebuffer backend while
-keeping the public graphics surface enabled. `AUTO`, `NATIVE`, and `X11` currently select X11 on
-Linux; Wayland desktops are supported through XWayland when `DISPLAY` is available. See
-[ADR 0112](adr/0112-linux-graphics-backend-selection.md) for the native-Wayland boundary and why a
-failed desktop display connection does not silently become an invisible headless application.
+keeping the public graphics surface enabled. `WAYLAND` and Linux `NATIVE` select native Wayland;
+`X11` selects Xlib. `AUTO` namespaces both adapters into one archive, prefers a usable compositor
+when `WAYLAND_DISPLAY` is set, and falls back to X11 when `DISPLAY` is usable. The first successful
+window fixes the adapter for the process. If X11 development files are absent, `AUTO` remains a
+valid Wayland-only build. A failed desktop connection never silently becomes an invisible headless
+application. See [ADR 0139](adr/0139-native-wayland-backend-and-linux-runtime-selection.md).
+
+## Native Wayland capability status
+
+The Wayland adapter has no build-time Wayland or xkbcommon dependency. It resolves the stable
+client ABI, xkbcommon, and cursor-theme ABI dynamically and carries the protocol metadata it uses
+in the repository. Its required compositor globals are `wl_compositor`, `wl_shm`, `wl_seat`, and
+stable `xdg_wm_base`.
+
+The currently implemented path includes xdg-toplevel creation and state, release-tracked
+double-buffered SHM presentation paced by compositor frame callbacks, pointer/keyboard/touch seat
+input, layout-aware keyboard text and repeat, clipboard text, URI-list drag and drop, text-input-v3
+composition, themed cursors, output hotplug and integer scaling, viewporter/fractional scaling,
+server-side decoration negotiation, a built-in subsurface client-decoration fallback, and native
+relative mouse through relative-pointer-v1 plus pointer-constraints-v1. The fallback keeps the
+application surface and framebuffer content-only while supplying move, edge/corner resize,
+minimize, maximize/restore, and close controls. Each extension is optional: missing extensions
+reduce only the associated capability, while missing required globals fail window creation with a
+stable Wayland diagnostic. A compositor requesting client decorations must advertise the core
+`wl_subcompositor` global so Zanna can provide the fallback frame.
+
+Wayland intentionally does not implement global window positioning, focus stealing, or cursor
+warping. Position reads return the documented unavailable result, and raw relative mode reports
+unsupported unless both relative-pointer and pointer-constraints are present. User-authorized
+foreground requests use `xdg_activation_v1` and a recent seat serial.
+
+Canvas3D uses dynamically loaded EGL and `libwayland-egl` for native OpenGL presentation. The
+renderer shares its shader/resource implementation with GLX while context creation, make-current,
+swap, resize, and teardown are binding-neutral. Wayland EGL swaps use interval zero because Zanna
+owns dispatch on the shared `wl_display`; the compositor still schedules scanout, while explicit
+tearing control would require a separate optional protocol. If EGL, OpenGL 3.3, or required driver
+limits are unavailable, Canvas3D falls back to its software renderer. Runtime `AUTO` selection is
+covered by live Wayland-preference and failed-Wayland-to-X11 tests.
+
+The OpenGL material pipeline supports the GL 3.3 minimum of 16 fragment texture units. Common
+unlit draws use a specialized program containing texture transforms, terrain splats, emissive and
+alpha/soft-particle inputs, fog, skinning/morph inputs, and motion output without activating the
+larger PBR sampler set. Streamed `Pixels` textures preserve Zanna's top-left row and UV convention;
+the OpenGL upload does not apply a second vertical inversion. The live EGL test plus the
+`graphics3d` label exercise context creation, textured pixel output, view-model depth isolation,
+terrain, render targets, post-processing, and the broader renderer contracts.
+
+`vgfx_get_window_capabilities()` reports native behavior per live window. Wayland does not claim
+global position or cursor-warp support; composition, fractional scaling, server-side decorations,
+relative input, and activation reflect the compositor globals actually bound by the window.
+
+Desktop appearance and accessibility preferences use the Settings portal when GIO is available,
+with a 250 ms bounded call and conventional GTK/Qt environment overrides. Native Wayland never
+opens X11 for these queries. The adapter recognizes the portal color-scheme and contrast settings,
+plus the desktop-interface animation preference used for reduced motion. Linux AT-SPI projection
+now establishes a dynamically loaded GIO connection to the dedicated accessibility bus, exports
+the required Application/Accessible root interfaces, and completes the registry `Socket.Embed`
+handshake on a private main context. Visible semantic widgets are exported under stable object
+paths with parent/child traversal, role and state mapping, Component bounds/hit testing, readable
+Action metadata, Unicode Text content/selections and boundary/granularity queries, and Value ranges.
+The `/org/a11y/atspi/cache` object supports bulk tree discovery. Action, caret, and Value mutations
+cross a bounded request queue and execute on the GUI thread. Widget notifications emit native
+visible-data events, and explicit live-region announcements emit AT-SPI `Announcement` events.
+Tree mutations are coalesced until layout/render synchronization so setup code does not reconnect
+once per widget. Text glyph extents are currently estimated from widget geometry because the
+software text renderer does not retain a shaped glyph-to-character map.
 
 The ALSA backend does not replace `snd_lib_error_set_handler`. That handler is process-global and
 ALSA provides no operation for retrieving and restoring an embedding application's previous
@@ -70,6 +132,9 @@ Run targeted Linux platform tests after an incremental build:
 ctest --test-dir build -R 'test_rt_(watcher|machine|open_load_result_apis)' --output-on-failure
 ctest --test-dir build -R 'test_vaud_(audit_fixes|core_fixes)' --output-on-failure
 ctest --test-dir build -R 'test_(window|pixels|input)' --output-on-failure
+ctest --test-dir build -R 'test_(wayland_loader|linux_auto_)' --output-on-failure
+ctest --test-dir build-wayland -R 'test_wayland_(backend|egl)' --output-on-failure
+ctest --test-dir build -L graphics3d --output-on-failure
 ctest --test-dir build -R linux_headless_graphics_smoke --output-on-failure
 ./scripts/lint_platform_policy.sh
 ```

@@ -920,6 +920,9 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
 static void textinput_destroy(vg_widget_t *widget) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
+    if (input->platform_window)
+        (void)vgfx_set_text_input_enabled((vgfx_window_t)input->platform_window, 0);
+
     if (input->text) {
         free(input->text);
         input->text = NULL;
@@ -1100,6 +1103,49 @@ static void textinput_paint(vg_widget_t *widget, void *canvas) {
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(input->font, input->font_size, &font_metrics);
     text_y += (widget->height + (float)font_metrics.ascent + (float)font_metrics.descent) / 2.0f;
+
+    input->platform_window = win;
+    if (ti_focused && !ti_disabled && !input->read_only) {
+        size_t cursor_byte = textinput_byte_offset(input, input->cursor_pos);
+        size_t anchor_char = input->cursor_pos == input->selection_start
+                                 ? input->selection_end
+                                 : input->selection_start;
+        size_t anchor_byte = textinput_byte_offset(input, anchor_char);
+        float caret_x = text_x +
+                        vg_font_get_cursor_x(
+                            input->font, input->font_size, input->text, (int)input->cursor_pos);
+        float caret_y = widget->y + 2.0f;
+        float caret_height = widget->height - 4.0f;
+        if (input->multiline) {
+            size_t line = 0, line_start_byte = 0, line_end_byte = 0, line_start_char = 0;
+            textinput_get_line_for_char_pos(input,
+                                            input->cursor_pos,
+                                            &line,
+                                            &line_start_byte,
+                                            &line_end_byte,
+                                            &line_start_char);
+            (void)line_end_byte;
+            const char *line_text = input->text + line_start_byte;
+            size_t column = input->cursor_pos - line_start_char;
+            caret_x = widget->x + theme->input.padding_h - input->scroll_x +
+                      vg_font_get_cursor_x(
+                          input->font, input->font_size, line_text, (int)column);
+            caret_y = widget->y + 6.0f - input->scroll_y +
+                      (float)line * textinput_line_height(input);
+            caret_height = textinput_line_height(input);
+        }
+        vgfx_text_input_state_t native_state = {
+            .surrounding_text = input->text,
+            .cursor_byte = cursor_byte > INT32_MAX ? INT32_MAX : (int32_t)cursor_byte,
+            .anchor_byte = anchor_byte > INT32_MAX ? INT32_MAX : (int32_t)anchor_byte,
+            .cursor_x = (int32_t)caret_x,
+            .cursor_y = (int32_t)caret_y,
+            .cursor_width = 1,
+            .cursor_height = caret_height > 0.0f ? (int32_t)caret_height : 0,
+            .purpose = input->password_mode ? VGFX_TEXT_INPUT_PASSWORD : VGFX_TEXT_INPUT_NORMAL};
+        (void)vgfx_set_text_input_enabled(win, 1);
+        (void)vgfx_set_text_input_state(win, &native_state);
+    }
 
     size_t visual_preedit_start = 0;
     size_t visual_preedit_end = 0;
@@ -2167,6 +2213,8 @@ static void textinput_on_focus(vg_widget_t *widget, bool gained) {
     if (gained) {
         textinput_reset_cursor_blink(input);
     } else {
+        if (input->platform_window)
+            (void)vgfx_set_text_input_enabled((vgfx_window_t)input->platform_window, 0);
         vg_textinput_composition_cancel(input);
     }
 }

@@ -551,6 +551,7 @@ void *rt_promise_new(void) {
         return NULL;
     }
 
+    p->cond_uses_monotonic = 0;
 #if RT_PLATFORM_WINDOWS
     InitializeCriticalSection(&p->mutex);
     InitializeConditionVariable(&p->cond);
@@ -575,7 +576,6 @@ void *rt_promise_new(void) {
     p->done = 0;
     p->is_error = 0;
     p->owns_value = 0;
-    p->cond_uses_monotonic = 0;
     p->sync_alive = 1;
     p->future = NULL;
     p->listeners = NULL;

@@ -448,6 +448,13 @@ int vgfx_platform_process_events(struct vgfx_window *win);
 /// @pre win != NULL && win->platform_data != NULL
 int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms);
 
+/// @brief Toggle the platform input-method context for an editable control.
+int vgfx_platform_set_text_input_enabled(struct vgfx_window *win, int32_t enabled);
+
+/// @brief Publish validated, call-scoped editable text state to the platform input method.
+int vgfx_platform_set_text_input_state(struct vgfx_window *win,
+                                       const vgfx_text_input_state_t *state);
+
 /// @brief Present (blit) the framebuffer to the native window.
 /// @details Transfers the contents of win->pixels to the OS window surface
 ///          so they become visible on screen.  This may involve creating a

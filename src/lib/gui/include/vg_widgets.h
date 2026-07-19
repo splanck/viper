@@ -311,6 +311,7 @@ typedef struct vg_textinput {
     // Internal state
     float cursor_blink_time; ///< Cursor blink timer
     bool cursor_visible;     ///< Cursor visibility state
+    void *platform_window;   ///< Borrowed last-painted ZannaGFX window for native IME updates
 
     // Undo/redo ring buffer (max 32 snapshots)
     char *undo_stack[32];    ///< strdup'd text snapshots; NULL = empty slot

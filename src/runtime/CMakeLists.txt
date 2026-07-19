@@ -520,9 +520,34 @@ if (WIN32)
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/3d/backend/vgfx3d_backend_d3d11.c)
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_win32.c)
 endif ()
-if (UNIX AND NOT APPLE AND NOT ZANNAGFX_BACKEND STREQUAL "Headless")
-    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/3d/backend/vgfx3d_backend_opengl.c)
+if (UNIX AND NOT APPLE AND ZANNAGFX_BACKEND STREQUAL "X11")
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES
+         graphics/gui/rt_gui_linux_portal.c
+         graphics/gui/rt_gui_atspi_linux.c)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES
+         graphics/3d/backend/vgfx3d_backend_opengl.c
+         graphics/3d/backend/vgfx3d_egl_wayland.c)
     list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_linux.c)
+elseif (UNIX AND NOT APPLE AND ZANNAGFX_BACKEND STREQUAL "Wayland")
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES
+         graphics/gui/rt_gui_linux_portal.c
+         graphics/gui/rt_gui_atspi_linux.c)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES
+         graphics/3d/backend/vgfx3d_backend_opengl.c
+         graphics/3d/backend/vgfx3d_egl_wayland.c)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_wayland.c)
+elseif (UNIX AND NOT APPLE AND ZANNAGFX_BACKEND STREQUAL "LinuxAuto")
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES
+         graphics/gui/rt_gui_linux_portal.c
+         graphics/gui/rt_gui_atspi_linux.c)
+    list(APPEND RT_GRAPHICS_PLATFORM_SOURCES
+         graphics/3d/backend/vgfx3d_backend_opengl.c
+         graphics/3d/backend/vgfx3d_egl_wayland.c)
+    if (ZANNAGFX_AUTO_HAS_X11)
+        list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_linux.c)
+    else ()
+        list(APPEND RT_GRAPHICS_PLATFORM_SOURCES graphics/gui/rt_gui_accessibility_wayland.c)
+    endif ()
 endif ()
 
 set(RT_AUDIO_SOURCES
@@ -1046,6 +1071,18 @@ if (ZANNA_ENABLE_GRAPHICS AND TARGET zannagfx)
     if (ZANNAGFX_BACKEND STREQUAL "Headless")
         target_compile_definitions(zanna_rt_graphics_obj PRIVATE ZANNA_GRAPHICS_HEADLESS)
         target_compile_definitions(zanna_rt_audio_obj PRIVATE ZANNA_GRAPHICS_HEADLESS)
+    elseif (ZANNAGFX_BACKEND STREQUAL "Wayland")
+        target_compile_definitions(zanna_rt_graphics_obj PRIVATE ZANNA_GRAPHICS_WAYLAND)
+        target_compile_definitions(zanna_rt_audio_obj PRIVATE ZANNA_GRAPHICS_WAYLAND)
+    elseif (ZANNAGFX_BACKEND STREQUAL "LinuxAuto")
+        if (ZANNAGFX_AUTO_HAS_X11)
+            target_compile_definitions(zanna_rt_graphics_obj PRIVATE ZANNA_GRAPHICS_LINUX_AUTO)
+            target_compile_definitions(zanna_rt_audio_obj PRIVATE ZANNA_GRAPHICS_LINUX_AUTO)
+        else ()
+            # A Wayland-only AUTO build must not require X11 headers in the OpenGL adapter.
+            target_compile_definitions(zanna_rt_graphics_obj PRIVATE ZANNA_GRAPHICS_WAYLAND)
+            target_compile_definitions(zanna_rt_audio_obj PRIVATE ZANNA_GRAPHICS_WAYLAND)
+        endif ()
     endif ()
     if (ZANNA_BUILD_TESTING)
         target_compile_definitions(zanna_rt_graphics_obj PRIVATE RT_G3D_ALLOW_STACK_FIXTURES=1)

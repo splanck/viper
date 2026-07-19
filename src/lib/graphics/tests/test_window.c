@@ -179,6 +179,56 @@ void test_headless_clipboard_round_trip(void) {
     TEST_END();
 }
 
+void test_headless_native_handles_are_typed_none(void) {
+    TEST_BEGIN("Audit: Headless Native Handles Are Typed None");
+
+    vgfx_native_handles_t handles = {.backend = VGFX_NATIVE_BACKEND_WAYLAND,
+                                     .display = (void *)(uintptr_t)1,
+                                     .surface = (void *)(uintptr_t)1,
+                                     .window = 1};
+    ASSERT_EQ(vgfx_get_native_handles(NULL, &handles), 0);
+    ASSERT_EQ(vgfx_get_native_handles(NULL, NULL), 0);
+
+    vgfx_window_params_t params = vgfx_window_params_default();
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    ASSERT_EQ(vgfx_get_native_handles(win, NULL), 0);
+    ASSERT_EQ(vgfx_get_native_handles(win, &handles), 1);
+    ASSERT_EQ(handles.backend, VGFX_NATIVE_BACKEND_NONE);
+    ASSERT_NULL(handles.display);
+    ASSERT_NULL(handles.surface);
+    ASSERT_EQ(handles.window, 0);
+
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
+void test_text_input_state_contract(void) {
+    TEST_BEGIN("Text Input State Validates Offsets And Geometry");
+    vgfx_window_params_t params = vgfx_window_params_default();
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    ASSERT_EQ(vgfx_set_text_input_enabled(win, 1), 1);
+    ASSERT_EQ(vgfx_set_text_input_enabled(win, 2), 0);
+    vgfx_text_input_state_t state = {.surrounding_text = "caf\xC3\xA9",
+                                     .cursor_byte = 5,
+                                     .anchor_byte = 3,
+                                     .cursor_x = 20,
+                                     .cursor_y = 10,
+                                     .cursor_width = 2,
+                                     .cursor_height = 18,
+                                     .purpose = VGFX_TEXT_INPUT_NORMAL};
+    ASSERT_EQ(vgfx_set_text_input_state(win, &state), 1);
+    state.cursor_byte = 6;
+    ASSERT_EQ(vgfx_set_text_input_state(win, &state), 0);
+    state.cursor_byte = 5;
+    state.cursor_height = -1;
+    ASSERT_EQ(vgfx_set_text_input_state(win, &state), 0);
+    ASSERT_EQ(vgfx_set_text_input_enabled(win, 0), 1);
+    vgfx_destroy_window(win);
+    TEST_END();
+}
+
 /* Main test runner */
 /// What: Entry point for window lifecycle tests.
 /// Why:  Validate that window create/resize/teardown flows are robust.
@@ -195,6 +245,8 @@ int main(void) {
     test_hidpi_resize_reports_physical_and_logical_size();
     test_monitor_size_allows_null_window();
     test_headless_clipboard_round_trip();
+    test_headless_native_handles_are_typed_none();
+    test_text_input_state_contract();
 
     TEST_SUMMARY();
     return TEST_RETURN_CODE();

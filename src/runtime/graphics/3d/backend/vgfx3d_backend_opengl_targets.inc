@@ -1384,7 +1384,7 @@ static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
         return 0;
     }
 
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current(ctx))
         return 0;
     gl_capture_framebuffer_state(&saved_state);
     gl.PixelStorei(GL_PACK_ALIGNMENT, 1);

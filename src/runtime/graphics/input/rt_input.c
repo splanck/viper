@@ -51,9 +51,11 @@
 #include <windows.h>
 #elif RT_PLATFORM_MACOS
 #include <ApplicationServices/ApplicationServices.h>
-#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS)
+#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS) &&   \
+    !defined(ZANNA_GRAPHICS_WAYLAND)
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
+#include "vgfx.h"
 #endif
 
 #include <limits.h>
@@ -336,13 +338,22 @@ static int32_t rt_input_query_caps_lock_platform(void) {
 #elif RT_PLATFORM_MACOS
     CGEventFlags flags = CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
     return (flags & kCGEventFlagMaskAlphaShift) ? 1 : 0;
-#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS)
-    extern void *vgfx_get_native_display(void *window);
-
+#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS) &&   \
+    !defined(ZANNA_GRAPHICS_WAYLAND)
     Display *display = NULL;
     int opened_display = 0;
-    if (g_active_canvas)
-        display = (Display *)vgfx_get_native_display(g_active_canvas);
+    if (g_active_canvas) {
+        vgfx_native_handles_t handles = {0};
+        if (vgfx_get_native_handles((vgfx_window_t)g_active_canvas, &handles)) {
+            if (handles.backend != VGFX_NATIVE_BACKEND_X11)
+                return g_caps_lock ? 1 : 0;
+            display = (Display *)handles.display;
+        }
+    }
+#if defined(ZANNA_GRAPHICS_LINUX_AUTO)
+    if (!display && getenv("WAYLAND_DISPLAY"))
+        return g_caps_lock ? 1 : 0;
+#endif
     if (!display) {
         display = XOpenDisplay(NULL);
         opened_display = (display != NULL);
@@ -363,7 +374,10 @@ static int32_t rt_input_query_caps_lock_platform(void) {
 }
 
 #if defined(ZANNA_ENABLE_GRAPHICS)
+#if !(RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_WAYLAND) &&                              \
+      !defined(ZANNA_GRAPHICS_HEADLESS))
 extern void vgfx_warp_cursor(void *window, int32_t x, int32_t y);
+#endif
 #endif
 
 /// @brief Move the OS cursor to the given canvas-pixel position.

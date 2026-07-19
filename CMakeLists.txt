@@ -177,21 +177,22 @@ option(ZANNA_VM_OPCOUNTS "Enable op counters" ON)
 set(ZANNA_GRAPHICS_MODE "AUTO" CACHE STRING
     "Graphics capability mode: AUTO, REQUIRE, or OFF")
 set(ZANNA_GRAPHICS_BACKEND "AUTO" CACHE STRING
-    "Graphics backend: AUTO, NATIVE, X11, or HEADLESS")
+    "Graphics backend: AUTO, NATIVE, WAYLAND, X11, or HEADLESS")
 set(ZANNA_AUDIO_MODE "AUTO" CACHE STRING
     "Audio capability mode: AUTO, REQUIRE, or OFF")
 set_property(CACHE ZANNA_GRAPHICS_MODE PROPERTY STRINGS AUTO REQUIRE OFF)
-set_property(CACHE ZANNA_GRAPHICS_BACKEND PROPERTY STRINGS AUTO NATIVE X11 HEADLESS)
+set_property(CACHE ZANNA_GRAPHICS_BACKEND PROPERTY STRINGS AUTO NATIVE WAYLAND X11 HEADLESS)
 set_property(CACHE ZANNA_AUDIO_MODE PROPERTY STRINGS AUTO REQUIRE OFF)
 zanna_require_feature_mode(ZANNA_GRAPHICS_MODE)
 zanna_require_feature_mode(ZANNA_AUDIO_MODE)
 string(TOUPPER "${ZANNA_GRAPHICS_BACKEND}" ZANNA_GRAPHICS_BACKEND)
 if(NOT ZANNA_GRAPHICS_BACKEND STREQUAL "AUTO" AND
    NOT ZANNA_GRAPHICS_BACKEND STREQUAL "NATIVE" AND
+   NOT ZANNA_GRAPHICS_BACKEND STREQUAL "WAYLAND" AND
    NOT ZANNA_GRAPHICS_BACKEND STREQUAL "X11" AND
    NOT ZANNA_GRAPHICS_BACKEND STREQUAL "HEADLESS")
   message(FATAL_ERROR
-    "ZANNA_GRAPHICS_BACKEND must be AUTO, NATIVE, X11, or HEADLESS (got '${ZANNA_GRAPHICS_BACKEND}')")
+    "ZANNA_GRAPHICS_BACKEND must be AUTO, NATIVE, WAYLAND, X11, or HEADLESS (got '${ZANNA_GRAPHICS_BACKEND}')")
 endif()
 set(ZANNA_GRAPHICS_BACKEND "${ZANNA_GRAPHICS_BACKEND}" CACHE STRING "" FORCE)
 
@@ -406,6 +407,15 @@ if(ZANNA_FAST_DEBUG)
     add_compile_definitions("$<$<CONFIG:Debug>:_ITERATOR_DEBUG_LEVEL=0>")
   else()
     list(APPEND IL_COMPILE_FLAGS "$<$<CONFIG:Debug>:-Og>")
+    # Full DWARF for thousands of separately linked test executables can make a
+    # clean Debug tree tens of gigabytes.  Fast Debug is the routine local/CI
+    # configuration, so retain source/line backtraces without emitting variable
+    # and type debug records into every object and executable.
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      list(APPEND IL_COMPILE_FLAGS "$<$<CONFIG:Debug>:-gline-tables-only>")
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      list(APPEND IL_COMPILE_FLAGS "$<$<CONFIG:Debug>:-g1>")
+    endif()
   endif()
 endif()
 

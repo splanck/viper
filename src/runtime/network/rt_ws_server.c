@@ -168,6 +168,19 @@ static void ws_release_managed_reference(void **object_ptr) {
         rt_obj_free(object);
 }
 
+/// @brief Interrupt a slot's TCP transport and drop only the slot-owned reference.
+/// @details The worker retains its own reference and performs the final close
+///          after bidirectional shutdown wakes any blocked handshake or frame
+///          receive. The slot io and server state mutexes must be held.
+static void ws_interrupt_slot_transport_locked(ws_client_t *client) {
+    if (!client || !client->tcp)
+        return;
+    socket_t fd = rt_tcp_socket_fd(client->tcp);
+    if (fd != INVALID_SOCK)
+        (void)rt_socket_shutdown_both(fd);
+    ws_release_managed_reference(&client->tcp);
+}
+
 /// @brief Compute the internal worker-pool size for WS server instances.
 /// @details Mirrors the WSS server: CPU-aware default clamped to the range
 ///          accepted by @ref rt_threadpool_new.
@@ -1021,8 +1034,8 @@ void rt_ws_server_stop(void *obj) {
         for (int i = 0; i < s->client_io_count; i++) {
             WS_MUTEX_LOCK(&s->clients[i].io);
             WS_MUTEX_LOCK(&s->lock);
-            if (i < s->client_count && s->clients[i].tcp)
-                ws_release_tcp(&s->clients[i].tcp);
+            if (i < s->client_count && s->clients[i].occupied)
+                ws_interrupt_slot_transport_locked(&s->clients[i]);
             s->clients[i].active = false;
             WS_MUTEX_UNLOCK(&s->lock);
             WS_MUTEX_UNLOCK(&s->clients[i].io);

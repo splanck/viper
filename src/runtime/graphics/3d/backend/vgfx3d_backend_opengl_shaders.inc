@@ -265,7 +265,7 @@ static const char *const glsl_fragment_src[] = {
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "};\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform int uClusterGlobalCount;\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uniform vec4 uClusterParams;\n"
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         "uniform sampler2D uOpaqueDepthTex;\n",
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         ,
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "uint clusterOffsetAt(int i) {\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "    uint pair = uClusterOffsets[i >> 3][(i >> 1) & 3];\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          "    return ((i & 1) != 0) ? (pair >> 16) : (pair & 0xFFFFu);\n"
@@ -335,7 +335,7 @@ static const char *const glsl_fragment_src[] = {
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   "    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, "
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   "0.0, 1.0), 5.0);\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   "}\n"
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  "uniform sampler2D uBrdfLut;\n"
+
     "vec2 envBRDFApprox(float roughness, float NdotV) {\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   "    vec4 c0 = vec4(-1.0, -0.0275, -0.572, 0.022);\n"
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   "    vec4 c1 = vec4(1.0, 0.0425, 1.04, -0.04);\n"
@@ -560,7 +560,7 @@ static const char *const glsl_fragment_src[] = {
     "        float zf = uClusterParams.w;\n"
     /* Reversed-Z: the analytic linearization below expects standard window depth,
      * so flip the reversed buffer/fragment values (d_std = 1 - d_rev) first. */
-    "        float sceneD = 1.0 - texelFetch(uOpaqueDepthTex, ivec2(gl_FragCoord.xy), 0).r;\n"
+    "        float sceneD = 1.0 - texelFetch(uSplatTex, ivec2(gl_FragCoord.xy), 0).r;\n"
     "        float fragD = 1.0 - gl_FragCoord.z;\n"
     "        float linScene;\n"
     "        float linFrag;\n"
@@ -655,12 +655,14 @@ static const char *const glsl_fragment_src[] = {
     "            vec3 irradiance = evalSH9(N);\n"
     "            vec3 Ra = reflect(-V, N);\n"
     "            vec3 prefiltered = envSample(Ra, roughness);\n"
-    "            vec2 envAB = texture(uBrdfLut, vec2(NdotVa, roughness)).rg;\n"
+    "            vec2 envAB = (uHasSplat != 0) ? envBRDFApprox(roughness, NdotVa) :\n"
+    "                         texture(uSplatLayer3, vec2(NdotVa, roughness)).rg;\n"
     "            result = (kDa * irradiance * baseColor + prefiltered * (F0a * envAB.x + "
     "envAB.y)) * ao * uIblIntensity;\n"
     "            if (coatCC > 0.0) {\n"
     "                vec3 coatPre = envSample(Ra, coatRoughCC);\n"
-    "                vec2 coatAB = texture(uBrdfLut, vec2(NdotVa, coatRoughCC)).rg;\n"
+    "                vec2 coatAB = (uHasSplat != 0) ? envBRDFApprox(coatRoughCC, NdotVa) :\n"
+    "                              texture(uSplatLayer3, vec2(NdotVa, coatRoughCC)).rg;\n"
     "                float coatFa = 0.04 + 0.96 * pow(clamp(1.0 - NdotVa, 0.0, 1.0), 5.0);\n"
     "                float coatSpec = 0.04 * coatAB.x + coatAB.y;\n"
     "                result = result * (1.0 - coatCC * coatFa) +\n"
@@ -896,6 +898,72 @@ static const char *const glsl_fragment_src[] = {
     "    vec2 velocity = (currNdc - prevNdc) * 0.5;\n"
     "    MotionColor = vec4(clamp(velocity * 0.5 + 0.5, 0.0, 1.0), vHasObjectHistory, "
     "uPbrScalars1.w);\n"
+    "}\n",
+};
+
+/* A compact unlit material program keeps the GL 3.3 fragment-stage sampler
+ * footprint below the mandatory 16-unit baseline. It deliberately retains
+ * the common unlit feature set: UV transforms, splat terrain, emissive maps,
+ * alpha modes, soft particles, fog, and motion output. Reflective unlit draws
+ * remain on the environment-capable material variant. */
+static const char *const glsl_unlit_fragment_src[] = {
+    "#version 330 core\n"
+    "in vec3 vWorldPos; in vec3 vNormal; in vec4 vTangent; in vec2 vUV; in vec2 vUV1;\n"
+    "in vec4 vColor; in vec4 vCurrClip; in vec4 vPrevClip; flat in float vHasObjectHistory;\n"
+    "layout(location=0) out vec4 FragColor; layout(location=1) out vec4 MotionColor;\n"
+    "uniform vec4 uDiffuseColor; uniform vec3 uEmissiveColor; uniform float uAlpha;\n"
+    "uniform vec4 uPbrScalars0; uniform vec4 uPbrScalars1; uniform vec4 uClusterParams;\n"
+    "uniform int uHasTexture; uniform int uHasEmissiveMap;\n"
+    "uniform int uWorkflow; uniform int uAlphaMode; uniform int uHasSplat;\n"
+    "uniform int uFogEnabled; uniform int uCameraIsOrtho;\n"
+    "uniform float uFogNear;\n"
+    "uniform float uFogFar; uniform vec3 uFogColor; uniform vec3 uCameraPos;\n"
+    "uniform vec3 uCameraForward; uniform vec4 uHeightFog; uniform vec4 uHeightFogSun;\n"
+    "uniform vec4 uHeightFogSunDir; uniform ivec4 uTextureUvSets0; uniform ivec4 uTextureUvSets1;\n"
+    "uniform vec4 uTextureUvTransform0[6]; uniform vec4 uTextureUvTransform1[6];\n"
+    "uniform sampler2D uDiffuseTex; uniform sampler2D uEmissiveTex;\n"
+    "uniform sampler2D uSplatTex;\n"
+    "uniform sampler2D uSplatLayer0; uniform sampler2D uSplatLayer1;\n"
+    "uniform sampler2D uSplatLayer2; uniform sampler2D uSplatLayer3; uniform vec4 uSplatScales;\n",
+    "vec2 materialUv(int slot) {\n"
+    "  int uvSet = slot < 4 ? uTextureUvSets0[slot] : uTextureUvSets1[slot-4];\n"
+    "  vec2 uv = uvSet > 0.5 ? vUV1 : vUV;\n"
+    "  vec4 m=uTextureUvTransform0[slot]; vec4 t=uTextureUvTransform1[slot];\n"
+    "  return vec2(uv.x*m.x+uv.y*m.y+t.x,uv.x*m.z+uv.y*m.w+t.y);\n"
+    "}\n"
+    "vec3 srgbToLinear(vec3 c) { return pow(max(c,vec3(0.0)),vec3(2.2)); }\n"
+    "vec3 safeNorm(vec3 v, vec3 f) { float q=dot(v,v); return q>1e-12?v*inversesqrt(q):f; }\n",
+    "void main() {\n"
+    "  vec3 base=uDiffuseColor.rgb*vColor.rgb; float texAlpha=1.0;\n"
+    "  if(uHasTexture!=0){vec4 t=texture(uDiffuseTex,materialUv(0));"
+    "if(uWorkflow!=0)t.rgb=srgbToLinear(t.rgb);base*=t.rgb;texAlpha=t.a;}\n"
+    "  if(uHasSplat!=0){vec4 s=texture(uSplatTex,vUV);float q=dot(s,vec4(1.0));"
+    "if(q>0.0001){s/=q;base=(texture(uSplatLayer0,vUV*uSplatScales.x).rgb*s.r+"
+    "texture(uSplatLayer1,vUV*uSplatScales.y).rgb*s.g+"
+    "texture(uSplatLayer2,vUV*uSplatScales.z).rgb*s.b+"
+    "texture(uSplatLayer3,vUV*uSplatScales.w).rgb*s.a)*uDiffuseColor.rgb*vColor.rgb;}}\n"
+    "  vec3 emissive=uEmissiveColor*uPbrScalars0.w;\n"
+    "  if(uHasEmissiveMap!=0){vec3 e=texture(uEmissiveTex,materialUv(3)).rgb;"
+    "if(uWorkflow!=0)e=srgbToLinear(e);emissive*=e;}\n"
+    "  float a=uDiffuseColor.a*uAlpha*vColor.a*texAlpha;\n"
+    "  if(uAlphaMode==1){if(a<uPbrScalars1.y)discard;a=1.0;}else if(uAlphaMode==0)a=1.0;\n"
+    "  else if(uPbrScalars1.z>0.0&&uClusterParams.z>0.0&&uClusterParams.w>uClusterParams.z){\n"
+    "    float sd=1.0-texelFetch(uSplatTex,ivec2(gl_FragCoord.xy),0).r;"
+    "float fd=1.0-gl_FragCoord.z;float zn=uClusterParams.z;float zf=uClusterParams.w;\n"
+    "    float ls=uCameraIsOrtho!=0?zn+sd*(zf-zn):(2.0*zn*zf)/(zf+zn-(2.0*sd-1.0)*(zf-zn));\n"
+    "    float lf=uCameraIsOrtho!=0?zn+fd*(zf-zn):(2.0*zn*zf)/(zf+zn-(2.0*fd-1.0)*(zf-zn));\n"
+    "    a*=clamp((ls-lf)/uPbrScalars1.z,0.0,1.0);}\n"
+    "  vec3 earlyColor=base+emissive; vec3 earlyToCam=uCameraPos-vWorldPos;\n"
+    "  float earlyDist=uCameraIsOrtho!=0?abs(dot(vWorldPos-uCameraPos,uCameraForward)):length(earlyToCam);\n"
+    "  float earlyFog=uFogEnabled!=0?clamp((earlyDist-uFogNear)/max(uFogFar-uFogNear,0.001),0.0,1.0):0.0;\n"
+    "  if(uHeightFog.z>0.0){float ex=clamp(-(vWorldPos.y-uHeightFog.x)*uHeightFog.y,-80.0,80.0);"
+    "float hf=clamp(1.0-exp(-min(min(max(uHeightFog.z,0.0)*exp(ex),1e20)*max(earlyDist,0.0),80.0)),0.0,1.0);"
+    "earlyFog=1.0-(1.0-earlyFog)*(1.0-hf);}\n"
+    "  earlyColor=mix(earlyColor,uFogColor,earlyFog); FragColor=vec4(earlyColor,a);\n"
+    "  float dcw=(vCurrClip.w<0.0?-1.0:1.0)*max(abs(vCurrClip.w),0.0001);"
+    "float dpw=(vPrevClip.w<0.0?-1.0:1.0)*max(abs(vPrevClip.w),0.0001);\n"
+    "  vec2 dvel=(vCurrClip.xy/dcw-vPrevClip.xy/dpw)*0.5;"
+    "MotionColor=vec4(clamp(dvel*0.5+0.5,0.0,1.0),vHasObjectHistory,uPbrScalars1.w);\n"
     "}\n",
 };
 

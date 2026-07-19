@@ -44,6 +44,7 @@ set(ZANNAGFX_AVAILABLE OFF CACHE INTERNAL "Whether ZannaGFX is available in this
 set(ZANNAGFX_UNAVAILABLE_REASON "graphics support disabled" CACHE INTERNAL
         "Reason ZannaGFX is unavailable" FORCE)
 set(ZANNAGFX_BACKEND "disabled" CACHE INTERNAL "Selected ZannaGFX backend" FORCE)
+set(ZANNAGFX_AUTO_HAS_X11 OFF CACHE INTERNAL "Whether Linux AUTO contains X11" FORCE)
 
 if (NOT DEFINED ZANNA_GRAPHICS_MODE)
     message(FATAL_ERROR "ZANNA_GRAPHICS_MODE must be defined before adding src/lib/graphics")
@@ -66,8 +67,65 @@ if (ZANNA_GRAPHICS_BACKEND STREQUAL "HEADLESS")
     set(VGFX_PLATFORM_SOURCES src/vgfx_platform_mock.c)
     set(VGFX_PLATFORM_LIBS "")
     set(ZANNAGFX_BACKEND "Headless" CACHE INTERNAL "Selected ZannaGFX backend" FORCE)
-elseif (ZANNA_GRAPHICS_BACKEND STREQUAL "X11" AND (APPLE OR WIN32))
-    message(FATAL_ERROR "ZannaGFX: X11 backend is supported only on Linux/Unix hosts")
+elseif ((ZANNA_GRAPHICS_BACKEND STREQUAL "X11" OR
+         ZANNA_GRAPHICS_BACKEND STREQUAL "WAYLAND") AND (APPLE OR WIN32))
+    message(FATAL_ERROR
+            "ZannaGFX: ${ZANNA_GRAPHICS_BACKEND} backend is supported only on Linux/Unix hosts")
+elseif (ZANNA_GRAPHICS_BACKEND STREQUAL "AUTO" AND UNIX AND NOT APPLE)
+    message(STATUS "ZannaGFX: Building Linux runtime selector (Wayland first, X11 fallback)")
+    find_package(Threads REQUIRED)
+    find_package(X11 QUIET)
+    set(VGFX_PLATFORM_SOURCES
+            src/vgfx_platform_linux_auto.c
+            src/vgfx_platform_wayland.c
+            src/vgfx_wayland_activation.c
+            src/vgfx_wayland_connection.c
+            src/vgfx_wayland_csd.c
+            src/vgfx_wayland_cursor.c
+            src/vgfx_wayland_data.c
+            src/vgfx_wayland_input.c
+            src/vgfx_wayland_loader.c
+            src/vgfx_wayland_protocol.c
+            src/vgfx_wayland_relative.c
+            src/vgfx_wayland_scale.c
+            src/vgfx_wayland_shell.c
+            src/vgfx_wayland_shm.c
+            src/vgfx_wayland_text_input.c)
+    set_property(SOURCE src/vgfx_platform_wayland.c APPEND PROPERTY
+            COMPILE_OPTIONS "-include${CMAKE_CURRENT_SOURCE_DIR}/src/vgfx_platform_prefix_wayland.h")
+    set(VGFX_PLATFORM_LIBS ${CMAKE_DL_LIBS} Threads::Threads)
+    if (X11_FOUND)
+        list(APPEND VGFX_PLATFORM_SOURCES src/vgfx_platform_linux.c)
+        list(APPEND VGFX_PLATFORM_LIBS ${X11_LIBRARIES})
+        set_property(SOURCE src/vgfx_platform_linux.c APPEND PROPERTY
+                COMPILE_OPTIONS "-include${CMAKE_CURRENT_SOURCE_DIR}/src/vgfx_platform_prefix_x11.h")
+        set(VGFX_AUTO_HAS_X11 ON)
+        set(ZANNAGFX_AUTO_HAS_X11 ON CACHE INTERNAL "Whether Linux AUTO contains X11" FORCE)
+        include_directories(${X11_INCLUDE_DIR})
+    else ()
+        message(STATUS "ZannaGFX: X11 development files unavailable; AUTO will use Wayland only")
+    endif ()
+    set(ZANNAGFX_BACKEND "LinuxAuto" CACHE INTERNAL "Selected ZannaGFX backend" FORCE)
+elseif (ZANNA_GRAPHICS_BACKEND STREQUAL "WAYLAND" OR
+        (ZANNA_GRAPHICS_BACKEND STREQUAL "NATIVE" AND UNIX AND NOT APPLE))
+    message(STATUS "ZannaGFX: Building for Linux (native Wayland backend)")
+    set(VGFX_PLATFORM_SOURCES
+            src/vgfx_platform_wayland.c
+            src/vgfx_wayland_activation.c
+            src/vgfx_wayland_connection.c
+            src/vgfx_wayland_csd.c
+            src/vgfx_wayland_cursor.c
+            src/vgfx_wayland_data.c
+            src/vgfx_wayland_input.c
+            src/vgfx_wayland_loader.c
+            src/vgfx_wayland_protocol.c
+            src/vgfx_wayland_relative.c
+            src/vgfx_wayland_scale.c
+            src/vgfx_wayland_shell.c
+            src/vgfx_wayland_shm.c
+            src/vgfx_wayland_text_input.c)
+    set(VGFX_PLATFORM_LIBS ${CMAKE_DL_LIBS})
+    set(ZANNAGFX_BACKEND "Wayland" CACHE INTERNAL "Selected ZannaGFX backend" FORCE)
 elseif (APPLE)
     message(STATUS "ZannaGFX: Building for macOS (Cocoa backend)")
     set(VGFX_PLATFORM_SOURCES src/vgfx_platform_macos.m)
@@ -113,6 +171,15 @@ add_library(zannagfx STATIC
 )
 
 target_compile_features(zannagfx PUBLIC c_std_11)
+
+if (ZANNAGFX_BACKEND STREQUAL "Wayland")
+    target_compile_definitions(zannagfx PUBLIC ZANNA_GRAPHICS_WAYLAND)
+elseif (ZANNAGFX_BACKEND STREQUAL "LinuxAuto")
+    target_compile_definitions(zannagfx PUBLIC ZANNA_GRAPHICS_LINUX_AUTO)
+    if (VGFX_AUTO_HAS_X11)
+        target_compile_definitions(zannagfx PRIVATE VGFX_AUTO_HAS_X11)
+    endif ()
+endif ()
 
 # Public include directory
 target_include_directories(zannagfx

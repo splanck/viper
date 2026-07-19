@@ -26,6 +26,7 @@ RUNTIME_ARCHIVE="$BUILD_DIR/src/runtime/libzanna_runtime.a"
 GUI_LIB="$BUILD_DIR/src/lib/gui/libzannagui.a"
 GFX_LIB="$BUILD_DIR/lib/libzannagfx.a"
 AUDIO_LIB="$BUILD_DIR/lib/libzannaaud.a"
+GRAPHICS_SYSTEM_LIBS=()
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -170,6 +171,13 @@ for required in "$RUNTIME_ARCHIVE" "$GUI_LIB" "$GFX_LIB" "$AUDIO_LIB"; do
     fi
 done
 
+# Explicit Wayland and AUTO-without-X11 builds have no Xlib symbols. Normal AUTO and explicit X11
+# builds retain the link because their static graphics archive contains the X11 adapter.
+if grep -qE '^ZANNAGFX_BACKEND:INTERNAL=X11$|^ZANNAGFX_AUTO_HAS_X11:INTERNAL=ON$' \
+        "$BUILD_DIR/CMakeCache.txt"; then
+    GRAPHICS_SYSTEM_LIBS=(-lX11)
+fi
+
 mkdir -p "$BIN_DIR" "$STAMP_DIR"
 
 if [[ $CLEAN -eq 1 ]]; then
@@ -224,7 +232,7 @@ link_demo() {
         "$GUI_LIB" \
         "$GFX_LIB" \
         "$AUDIO_LIB" \
-        -lX11 \
+        "${GRAPHICS_SYSTEM_LIBS[@]}" \
         -lasound \
         -pthread \
         -lm \

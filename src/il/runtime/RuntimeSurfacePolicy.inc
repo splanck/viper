@@ -59,8 +59,10 @@ RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_app_internal.h"
 // TestHarness access to validated borrowed App state, and system-font lookup.
 // None is a frontend-visible Zanna.GUI namespace.
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_accessibility_platform.h")
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_atspi_linux.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_automation_bridge.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_font_platform.h")
+RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/gui/rt_gui_linux_portal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/2d/rt_action_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/2d/rt_physics2d_internal.h")
 RUNTIME_SURFACE_INTERNAL_HEADER("src/runtime/graphics/2d/rt_pixels_internal.h")

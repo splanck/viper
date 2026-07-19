@@ -1150,7 +1150,7 @@ static void test_backend_select_platform_override() {
     const char *expected = "metal";
 #elif RT_PLATFORM_WINDOWS
     const char *expected = "d3d11";
-#elif RT_PLATFORM_LINUX
+#elif RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_HEADLESS)
     const char *expected = "opengl";
 #else
     const char *expected = "software";
@@ -1173,8 +1173,8 @@ static void test_backend_select_platform_override() {
 static void test_backend_default_policy_names() {
     TEST("Backend selection - default policy names");
     EXPECT_TRUE(strcmp(vgfx3d_default_backend_name_for_platform(VGFX3D_BACKEND_PLATFORM_LINUX),
-                       "software") == 0,
-                "Linux defaults to the stable software renderer; OpenGL remains opt-in");
+                       "opengl") == 0,
+                "Linux defaults to OpenGL and falls back when native context creation fails");
     EXPECT_TRUE(
         strcmp(vgfx3d_default_backend_name_for_platform(VGFX3D_BACKEND_PLATFORM_WINDOWS_ARM64),
                "software") == 0,
@@ -5369,7 +5369,7 @@ static void test_canvas_platform_gpu_clustered_lighting_capability() {
     canvas.backend = &vgfx3d_metal_backend;
 #elif RT_PLATFORM_WINDOWS
     canvas.backend = &vgfx3d_d3d11_backend;
-#elif RT_PLATFORM_LINUX
+#elif RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_HEADLESS)
     canvas.backend = &vgfx3d_opengl_backend;
 #else
     canvas.backend = &vgfx3d_software_backend;

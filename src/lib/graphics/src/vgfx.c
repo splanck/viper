@@ -473,7 +473,8 @@ void vgfx_internal_event_wait(void) {
 static int vgfx_event_is_release_state_event(vgfx_event_type_t type) {
     return type == VGFX_EVENT_CLOSE || type == VGFX_EVENT_KEY_UP || type == VGFX_EVENT_MOUSE_UP ||
            type == VGFX_EVENT_FOCUS_LOST || type == VGFX_EVENT_COMPOSITION_START ||
-           type == VGFX_EVENT_COMPOSITION_COMMIT || type == VGFX_EVENT_COMPOSITION_CANCEL;
+           type == VGFX_EVENT_COMPOSITION_COMMIT || type == VGFX_EVENT_COMPOSITION_CANCEL ||
+           type == VGFX_EVENT_TOUCH_UP || type == VGFX_EVENT_TOUCH_CANCEL;
 }
 
 /// @brief Test whether an event is cheap to evict during overflow.
@@ -1374,6 +1375,23 @@ int32_t vgfx_wait_events(vgfx_window_t window, int32_t timeout_ms) {
     if (timeout_ms == 0)
         return 0;
     return vgfx_platform_wait_events(window, timeout_ms);
+}
+
+int vgfx_set_text_input_enabled(vgfx_window_t window, int32_t enabled) {
+    if (!window || (enabled != 0 && enabled != 1))
+        return 0;
+    return vgfx_platform_set_text_input_enabled(window, enabled);
+}
+
+int vgfx_set_text_input_state(vgfx_window_t window, const vgfx_text_input_state_t *state) {
+    if (!window || !state || state->cursor_byte < 0 || state->anchor_byte < 0 ||
+        state->cursor_width < 0 || state->cursor_height < 0 ||
+        state->purpose < VGFX_TEXT_INPUT_NORMAL || state->purpose > VGFX_TEXT_INPUT_URL)
+        return 0;
+    size_t length = state->surrounding_text ? strlen(state->surrounding_text) : 0;
+    if ((size_t)state->cursor_byte > length || (size_t)state->anchor_byte > length)
+        return 0;
+    return vgfx_platform_set_text_input_state(window, state);
 }
 
 /// @brief Get the window's dimensions.

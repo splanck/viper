@@ -676,7 +676,7 @@ static inline const char *vgfx3d_default_backend_name_for_platform(
         case VGFX3D_BACKEND_PLATFORM_WINDOWS_ARM64:
             return "software";
         case VGFX3D_BACKEND_PLATFORM_LINUX:
-            return "software";
+            return "opengl";
         case VGFX3D_BACKEND_PLATFORM_OTHER:
         default:
             return "software";

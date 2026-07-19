@@ -82,6 +82,9 @@ void rt_gui_accessibility_platform_detach(vgfx_window_t window);
 /// @param widget Borrowed changed widget; NULL/stale handles are ignored.
 void rt_gui_accessibility_platform_notify(vgfx_window_t window, vg_widget_t *widget);
 
+/// @brief Publish coalesced native accessibility-tree changes after layout is current.
+void rt_gui_accessibility_platform_sync(vgfx_window_t window, vg_widget_t *root);
+
 /// @brief Project one semantic live-region announcement through the native bridge.
 /// @details The text remains stored in the headless widget record independently of projection.
 ///          Invalid UTF-8, absent bridges, stale widgets, and NULL windows are ignored safely.

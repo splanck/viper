@@ -1132,11 +1132,6 @@ static int ws_recv_frame(
         return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
     }
 
-    // M-9: RFC 6455 §5.1 — client MUST close connection if server sends a masked frame.
-    if (masked) {
-        return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
-    }
-
     // Extended payload length
     if (payload_len == 126) {
         uint8_t ext[2];
@@ -1153,6 +1148,16 @@ static int ws_recv_frame(
             return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
         if (payload_len < 65536)
             return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
+    }
+
+    // M-9: RFC 6455 §5.1 — client MUST close connection if server sends a masked frame.
+    // Consume the mask key first so a zero-length malformed frame does not leave
+    // unread transport bytes that turn the protocol close into a TCP reset.
+    if (masked) {
+        uint8_t mask_key[4];
+        if (!ws_recv_exact(ws, mask_key, sizeof(mask_key)))
+            return 0;
+        return ws_abort_connection(ws, WS_CLOSE_PROTOCOL_ERROR);
     }
 
     if (*opcode_out >= 0x08 && (!*fin_out || payload_len > 125))

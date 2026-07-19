@@ -38,6 +38,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_gui_font_platform.h"
+#include "rt_gui_accessibility_platform.h"
 #include "rt_gui_internal.h"
 #include "rt_option.h"
 #include "rt_platform.h"
@@ -48,6 +49,12 @@
 #ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "vg_icon_vector.h"
+
+static void rt_widget_notify_accessibility_tree(vg_widget_t *widget) {
+    rt_gui_app_t *app = rt_gui_app_from_widget(widget);
+    if (app)
+        rt_gui_accessibility_platform_notify(app->window, app->root);
+}
 
 /// @brief Resolve a parent-container handle to its widget.
 /// @details Three-state contract: a NULL handle returns NULL (legitimate top-level
@@ -418,6 +425,8 @@ void rt_widget_destroy(void *widget) {
         return;
 
     rt_widget_forget_runtime_refs(app, w);
+    if (app)
+        rt_gui_accessibility_platform_notify(app->window, app->root);
     vg_widget_destroy(w);
 }
 
@@ -430,8 +439,10 @@ void rt_widget_destroy(void *widget) {
 void rt_widget_set_visible(void *widget, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
-    if (w)
+    if (w) {
         vg_widget_set_visible(w, visible != 0);
+        rt_widget_notify_accessibility_tree(w);
+    }
 }
 
 /// @brief Enable or disable user interaction with a widget.
@@ -443,8 +454,10 @@ void rt_widget_set_visible(void *widget, int64_t visible) {
 void rt_widget_set_enabled(void *widget, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     vg_widget_t *w = rt_gui_widget_handle_checked(widget);
-    if (w)
+    if (w) {
         vg_widget_set_enabled(w, enabled != 0);
+        rt_widget_notify_accessibility_tree(w);
+    }
 }
 
 /// @brief Set a fixed width and height on the widget.
@@ -466,6 +479,7 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
         vg_widget_set_fixed_size(w,
                                  rt_gui_logical_length_to_physical(w, (double)width),
                                  rt_gui_logical_length_to_physical(w, (double)height));
+        rt_widget_notify_accessibility_tree(w);
     }
 }
 
@@ -585,6 +599,8 @@ void rt_widget_add_child(void *parent, void *child) {
             vg_widget_add_child(parent_widget, child_widget);
             if (new_app && old_app != new_app)
                 rt_gui_apply_default_font(child_widget);
+            if (new_app)
+                rt_gui_accessibility_platform_notify(new_app->window, new_app->root);
         }
     }
 }
@@ -642,6 +658,8 @@ int64_t rt_widget_remove_child(void *parent, void *child) {
     rt_gui_app_t *app = rt_gui_app_from_widget(parent_widget);
     rt_widget_forget_runtime_refs(app, child_widget);
     vg_widget_remove_child(parent_widget, child_widget);
+    if (app)
+        rt_gui_accessibility_platform_notify(app->window, app->root);
     return 1;
 }
 
@@ -660,6 +678,8 @@ void rt_widget_clear_children(void *parent) {
     for (vg_widget_t *child = parent_widget->first_child; child; child = child->next_sibling)
         rt_widget_forget_runtime_refs(app, child);
     vg_widget_clear_children(parent_widget);
+    if (app)
+        rt_gui_accessibility_platform_notify(app->window, app->root);
 }
 
 /// @brief Copy a runtime UTF-8 lookup name into a widget.
@@ -677,6 +697,7 @@ void rt_widget_set_name(void *widget, rt_string name) {
         return;
     vg_widget_set_name(w, cname);
     free(cname);
+    rt_widget_notify_accessibility_tree(w);
 }
 
 /// @brief Return a widget's copied lookup name as an owned runtime string.

@@ -36,9 +36,16 @@
 #include "vgfx3d_backend_opengl_shared.h"
 #include "vgfx3d_backend_utils.h"
 #include "vgfx3d_brdf_lut.h"
+#include "vgfx3d_egl_wayland.h"
 
+#if !defined(ZANNA_GRAPHICS_WAYLAND)
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#else
+typedef void Display;
+typedef unsigned long Window;
+typedef struct vgfx_xvisual_info XVisualInfo;
+#endif
 
 #include <dlfcn.h>
 #include <math.h>
@@ -533,6 +540,7 @@ static struct {
 } glx;
 
 static int gl_loaded = 0;
+static int gl_wayland_binding = 0;
 static int gl_load_lock = 0;
 
 /// @brief Acquire the process-global OpenGL dispatch table lock.
@@ -568,6 +576,7 @@ static void gl_unload_partial_dispatch(void) {
     memset(&gl, 0, sizeof(gl));
     memset(&glx, 0, sizeof(glx));
     gl_loaded = 0;
+    gl_wayland_binding = 0;
 }
 
 #define GLX_RGBA_BIT 0x0001
@@ -655,8 +664,10 @@ typedef struct {
     Window window;
     vgfx_window_t vgfx_win;
     GLXContext glxCtx;
+    vgfx3d_egl_wayland_t *egl_binding;
 
     GLuint program;
+    GLuint unlit_program;
     GLuint shadow_program;
     GLuint postfx_program;
     GLuint skybox_program;
@@ -839,6 +850,8 @@ typedef struct {
     vgfx3d_backend_stats_t stats;
     vgfx3d_opengl_target_kind_t active_target_kind;
     vgfx3d_postfx_chain_t gpu_postfx_chain;
+    GLint unlit_uniform_locations[2048];
+    size_t main_uniform_location_bytes;
 
     GLint uModelMatrix, uPrevModelMatrix, uViewProjection, uPrevViewProjection, uNormalMatrix;
     GLint uCameraPos, uCameraForward, uAmbientColor, uDiffuseColor, uSpecularColor, uEmissiveColor,
@@ -924,7 +937,49 @@ typedef struct {
     int32_t depth_probe_result_count;
 } gl_context_t;
 
+static int gl_make_current(gl_context_t *ctx) {
+    if (!ctx)
+        return 0;
+    if (ctx->egl_binding)
+        return vgfx3d_egl_wayland_make_current(ctx->egl_binding);
+    return ctx->display && ctx->window && ctx->glxCtx &&
+           glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx);
+}
+
+static void gl_destroy_native_binding(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    if (ctx->egl_binding) {
+        vgfx3d_egl_wayland_destroy(ctx->egl_binding);
+        ctx->egl_binding = NULL;
+    } else if (ctx->glxCtx && ctx->display) {
+        (void)glx.MakeCurrent(ctx->display, 0, NULL);
+        glx.DestroyContext(ctx->display, ctx->glxCtx);
+        ctx->glxCtx = NULL;
+    }
+}
+
+static void gl_swap_native_buffers(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    if (ctx->egl_binding)
+        (void)vgfx3d_egl_wayland_swap(ctx->egl_binding);
+    else
+        glx.SwapBuffers(ctx->display, ctx->window);
+}
+
 static void query_main_uniforms(gl_context_t *ctx);
+static int gl_query_unlit_uniforms(gl_context_t *ctx);
+static void gl_save_main_uniform_locations(gl_context_t *ctx, GLint *storage);
+static void gl_load_main_uniform_locations(gl_context_t *ctx, const GLint *storage);
+static int gl_begin_material_program(gl_context_t *ctx,
+                                     const vgfx3d_draw_cmd_t *cmd,
+                                     GLint *saved_locations,
+                                     GLuint *saved_program);
+static void gl_end_material_program(gl_context_t *ctx,
+                                    int specialized,
+                                    const GLint *saved_locations,
+                                    GLuint saved_program);
 static void query_shadow_uniforms(gl_context_t *ctx);
 static void query_skybox_uniforms(gl_context_t *ctx);
 static void query_postfx_uniforms(gl_context_t *ctx);
@@ -1206,7 +1261,7 @@ static int mat4f_inverse_gl(const float *m, float *out) {
 /// Returns 0 on success, -1 if any required function couldn't be
 /// resolved (the backend caller falls back to software in that case).
 /// Idempotent — `gl_loaded` flag short-circuits subsequent calls.
-static int load_gl(void) {
+static int load_gl(int wayland_binding) {
     const char *missing_symbol = NULL;
     if (gl_loaded)
         return 0;
@@ -1227,6 +1282,12 @@ static int load_gl(void) {
         gl_dispatch_unlock();
         return -1;
     }
+    if (wayland_binding && !vgfx3d_egl_wayland_available()) {
+        gl_unload_partial_dispatch();
+        gl_dispatch_unlock();
+        return -1;
+    }
+    gl_wayland_binding = wayland_binding ? 1 : 0;
 
 #define LOAD(name)                                                                                 \
     gl.name = (__typeof__(gl.name))dlsym(gl.lib, "gl" #name);                                      \
@@ -1240,12 +1301,31 @@ static int load_gl(void) {
         missing_symbol = "glX" #name;                                                              \
         goto fail;                                                                                 \
     }
+#if defined(ZANNA_GRAPHICS_WAYLAND)
+#define LOADP(name)                                                                                \
+    gl.name = (__typeof__(gl.name))vgfx3d_egl_wayland_get_proc("gl" #name);                        \
+    if (!gl.name) {                                                                                \
+        missing_symbol = "gl" #name;                                                               \
+        goto fail;                                                                                 \
+    }
+#elif defined(ZANNA_GRAPHICS_LINUX_AUTO)
+#define LOADP(name)                                                                                \
+    if (gl_wayland_binding)                                                                        \
+        gl.name = (__typeof__(gl.name))vgfx3d_egl_wayland_get_proc("gl" #name);                   \
+    else                                                                                           \
+        gl.name = (__typeof__(gl.name))glx.GetProcAddress((const unsigned char *)"gl" #name);     \
+    if (!gl.name) {                                                                                \
+        missing_symbol = "gl" #name;                                                              \
+        goto fail;                                                                                 \
+    }
+#else
 #define LOADP(name)                                                                                \
     gl.name = (__typeof__(gl.name))glx.GetProcAddress((const unsigned char *)"gl" #name);          \
     if (!gl.name) {                                                                                \
         missing_symbol = "gl" #name;                                                               \
         goto fail;                                                                                 \
     }
+#endif
 
     LOAD(GetError);
     LOAD(GetString);
@@ -1263,18 +1343,19 @@ static int load_gl(void) {
     LOAD(BlendFunc);
     LOAD(DepthMask);
 
-    LOADX(ChooseFBConfig);
-    LOADX(CreateNewContext);
-    LOADX(GetVisualFromFBConfig);
-    LOADX(SwapBuffers);
-    LOADX(MakeCurrent);
-    LOADX(DestroyContext);
-    LOADX(GetProcAddress);
-    glx.CreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)glx.GetProcAddress(
-        (const unsigned char *)"glXCreateContextAttribsARB");
-    /* Optional swap-interval extension; set_vsync no-ops when absent. */
-    glx.SwapIntervalEXT =
-        (PFNGLXSWAPINTERVALEXTPROC)glx.GetProcAddress((const unsigned char *)"glXSwapIntervalEXT");
+    if (!gl_wayland_binding) {
+        LOADX(ChooseFBConfig);
+        LOADX(CreateNewContext);
+        LOADX(GetVisualFromFBConfig);
+        LOADX(SwapBuffers);
+        LOADX(MakeCurrent);
+        LOADX(DestroyContext);
+        LOADX(GetProcAddress);
+        glx.CreateContextAttribsARB = (PFNGLXCREATECONTEXTATTRIBSARBPROC)glx.GetProcAddress(
+            (const unsigned char *)"glXCreateContextAttribsARB");
+        glx.SwapIntervalEXT = (PFNGLXSWAPINTERVALEXTPROC)glx.GetProcAddress(
+            (const unsigned char *)"glXSwapIntervalEXT");
+    }
 
     LOADP(PolygonMode);
     LOADP(PolygonOffset);
@@ -1286,8 +1367,18 @@ static int load_gl(void) {
     LOADP(CompileShader);
     /* Optional: ARB_clip_control (GL 4.5). NULL is fine — the backend keeps
      * the fixed [-1,1] depth mapping when the entry point is absent. */
+#if defined(ZANNA_GRAPHICS_WAYLAND)
+    gl.ClipControl = (PFNGLCLIPCONTROLPROC)vgfx3d_egl_wayland_get_proc("glClipControl");
+#elif defined(ZANNA_GRAPHICS_LINUX_AUTO)
+    if (gl_wayland_binding)
+        gl.ClipControl = (PFNGLCLIPCONTROLPROC)vgfx3d_egl_wayland_get_proc("glClipControl");
+    else
+        gl.ClipControl =
+            (PFNGLCLIPCONTROLPROC)glx.GetProcAddress((const unsigned char *)"glClipControl");
+#else
     gl.ClipControl =
         (PFNGLCLIPCONTROLPROC)glx.GetProcAddress((const unsigned char *)"glClipControl");
+#endif
     LOADP(GetShaderiv);
     LOADP(GetShaderInfoLog);
     LOADP(CreateProgram);
@@ -1333,10 +1424,29 @@ static int load_gl(void) {
     LOADP(PixelStorei);
     LOADP(TexImage2D);
     LOADP(TexSubImage2D);
+#if defined(ZANNA_GRAPHICS_WAYLAND)
+    gl.CompressedTexImage2D = (PFNGLCOMPRESSEDTEXIMAGE2DPROC)vgfx3d_egl_wayland_get_proc(
+        "glCompressedTexImage2D");
+    gl.CompressedTexSubImage2D = (PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC)vgfx3d_egl_wayland_get_proc(
+        "glCompressedTexSubImage2D");
+#elif defined(ZANNA_GRAPHICS_LINUX_AUTO)
+    if (gl_wayland_binding) {
+        gl.CompressedTexImage2D = (PFNGLCOMPRESSEDTEXIMAGE2DPROC)vgfx3d_egl_wayland_get_proc(
+            "glCompressedTexImage2D");
+        gl.CompressedTexSubImage2D = (PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC)vgfx3d_egl_wayland_get_proc(
+            "glCompressedTexSubImage2D");
+    } else {
+        gl.CompressedTexImage2D = (PFNGLCOMPRESSEDTEXIMAGE2DPROC)glx.GetProcAddress(
+            (const unsigned char *)"glCompressedTexImage2D");
+        gl.CompressedTexSubImage2D = (PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC)glx.GetProcAddress(
+            (const unsigned char *)"glCompressedTexSubImage2D");
+    }
+#else
     gl.CompressedTexImage2D = (PFNGLCOMPRESSEDTEXIMAGE2DPROC)glx.GetProcAddress(
         (const unsigned char *)"glCompressedTexImage2D");
     gl.CompressedTexSubImage2D = (PFNGLCOMPRESSEDTEXSUBIMAGE2DPROC)glx.GetProcAddress(
         (const unsigned char *)"glCompressedTexSubImage2D");
+#endif
     LOADP(TexParameteri);
     LOADP(TexParameterf);
     LOADP(TexBuffer);
@@ -1364,7 +1474,18 @@ static int load_gl(void) {
     LOADP(DrawBuffers);
     LOADP(ReadBuffer);
     LOADP(ColorMask);
-    gl.GetStringi = (PFNGLGETSTRINGIPROC)glx.GetProcAddress((const unsigned char *)"glGetStringi");
+#if defined(ZANNA_GRAPHICS_WAYLAND)
+    gl.GetStringi = (PFNGLGETSTRINGIPROC)vgfx3d_egl_wayland_get_proc("glGetStringi");
+#elif defined(ZANNA_GRAPHICS_LINUX_AUTO)
+    if (gl_wayland_binding)
+        gl.GetStringi = (PFNGLGETSTRINGIPROC)vgfx3d_egl_wayland_get_proc("glGetStringi");
+    else
+        gl.GetStringi =
+            (PFNGLGETSTRINGIPROC)glx.GetProcAddress((const unsigned char *)"glGetStringi");
+#else
+    gl.GetStringi =
+        (PFNGLGETSTRINGIPROC)glx.GetProcAddress((const unsigned char *)"glGetStringi");
+#endif
 
 #undef LOAD
 #undef LOADX
@@ -1407,7 +1528,8 @@ static int gl_zero_to_one_clip = 0;
 /// info log to stderr and deletes the shader.
 /// Returns the shader handle, or 0 on failure.
 static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei src_count) {
-    const char *spliced[20];
+    const char *spliced[24];
+    GLint lengths[24];
     const char *prologue = gl_zero_to_one_clip
                                ? "#define ZANNA_DEPTH_ZERO_TO_ONE 1\n"
                                  "#define ZANNA_DEPTH_TO_NDC(d) (d)\n"
@@ -1415,17 +1537,33 @@ static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei 
     GLuint shader = gl.CreateShader(type);
     if (!shader)
         return 0;
-    if (src_count > 0 && src_count < (GLsizei)(sizeof(spliced) / sizeof(spliced[0]))) {
+    if (src_count > 0 && src_count + 2 < (GLsizei)(sizeof(spliced) / sizeof(spliced[0]))) {
         GLsizei out = 0;
-        GLsizei start = 0;
         if (strncmp(src[0], "#version", 8) == 0) {
+            const char *newline = strchr(src[0], '\n');
+            if (!newline) {
+                gl.DeleteShader(shader);
+                return 0;
+            }
             spliced[out++] = src[0];
-            start = 1;
+            lengths[out - 1] = (GLint)(newline - src[0] + 1);
+            spliced[out++] = prologue;
+            lengths[out - 1] = -1;
+            spliced[out++] = newline + 1;
+            lengths[out - 1] = -1;
+            for (GLsizei i = 1; i < src_count; i++) {
+                spliced[out++] = src[i];
+                lengths[out - 1] = -1;
+            }
+        } else {
+            spliced[out++] = prologue;
+            lengths[out - 1] = -1;
+            for (GLsizei i = 0; i < src_count; i++) {
+                spliced[out++] = src[i];
+                lengths[out - 1] = -1;
+            }
         }
-        spliced[out++] = prologue;
-        for (GLsizei i = start; i < src_count; i++)
-            spliced[out++] = src[i];
-        gl.ShaderSource(shader, out, spliced, NULL);
+        gl.ShaderSource(shader, out, spliced, lengths);
     } else {
         gl.ShaderSource(shader, src_count, src, NULL);
     }
@@ -1481,6 +1619,7 @@ static GLuint link_program(GLuint vs, GLuint fs) {
 }
 
 #define GL_TEXTURE_CACHE_MAX_RESIDENT 256
+#define GL_MAIN_UNIFORM_SNAPSHOT_CAPACITY 2048
 #define GL_TEXTURE_CACHE_PRUNE_AGE 240u
 #define GL_CUBEMAP_CACHE_MAX_RESIDENT 64
 #define GL_CUBEMAP_CACHE_PRUNE_AGE 240u

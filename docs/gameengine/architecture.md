@@ -78,7 +78,7 @@ The lowest layer wraps platform-specific APIs into a common interface:
 
 - **macOS:** Cocoa (`NSWindow`, `NSView`, `NSApplication`) + Metal for 3D
 - **Windows:** Win32 (`CreateWindowEx`, `WndProc`, `GetMessage`) + Direct3D 11 for 3D
-- **Linux:** X11 (`XCreateWindow`, `XNextEvent`) + OpenGL 3.3 for 3D
+- **Linux:** native Wayland (preferred), X11 fallback, or headless + EGL/GLX OpenGL 3.3 for 3D
 
 This layer provides: window creation, event polling, keyboard/mouse/gamepad input, pixel buffer display, OpenGL/Metal/D3D context management, audio device output.
 

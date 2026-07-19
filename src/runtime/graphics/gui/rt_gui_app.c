@@ -2543,6 +2543,8 @@ void rt_gui_app_render(void *app_ptr) {
     if (app->active_context_menu)
         app->animations_active |= rt_gui_tick_widget_tree(&app->active_context_menu->base, dt);
 
+    rt_gui_accessibility_platform_sync(app->window, app->root);
+
     bool root_needs_paint = rt_gui_widget_tree_needs_paint(app->root);
     bool overlays_need_paint = rt_gui_app_overlays_need_paint(app);
     rt_gui_damage_t overlay_current = {0};

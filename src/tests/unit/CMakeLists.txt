@@ -853,6 +853,17 @@ function(zanna_add_runtime_tests)
     zanna_add_test_labels(test_rt_canvas3d graphics3d unit)
     set_tests_properties(test_rt_canvas3d PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+    if (UNIX AND NOT APPLE AND (ZANNAGFX_BACKEND STREQUAL "Wayland" OR
+                               ZANNAGFX_BACKEND STREQUAL "LinuxAuto"))
+        zanna_add_test(test_wayland_egl ${ZANNA_TESTS_DIR}/unit/test_wayland_egl.cpp)
+        target_link_libraries(test_wayland_egl PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+        target_include_directories(test_wayland_egl PRIVATE
+                ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/backend)
+        zanna_add_ctest(test_wayland_egl test_wayland_egl)
+        zanna_add_test_labels(test_wayland_egl graphics3d e2e gui requires_display requires_linux)
+        set_tests_properties(test_wayland_egl PROPERTIES TIMEOUT 20)
+    endif ()
+
     zanna_add_test(test_quickhull3d ${ZANNA_TESTS_DIR}/unit/test_quickhull3d.cpp)
     target_link_libraries(test_quickhull3d PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
     target_include_directories(test_quickhull3d PRIVATE ${CMAKE_SOURCE_DIR}/src/runtime/graphics/3d/physics)
@@ -1711,6 +1722,19 @@ function(zanna_add_runtime_tests)
     zanna_add_ctest(test_rt_gui_runtime test_rt_gui_runtime)
     zanna_add_test_labels(test_rt_gui_runtime requires_display)
     set_tests_properties(test_rt_gui_runtime PROPERTIES RESOURCE_LOCK zanna_display)
+
+    if (UNIX AND NOT APPLE AND
+        (ZANNAGFX_BACKEND STREQUAL "Wayland" OR ZANNAGFX_BACKEND STREQUAL "LinuxAuto" OR
+         ZANNAGFX_BACKEND STREQUAL "X11"))
+        zanna_add_test(test_rt_gui_atspi_linux
+                ${ZANNA_TESTS_DIR}/runtime/RTGuiAtspiLinuxTests.c)
+        target_link_libraries(test_rt_gui_atspi_linux PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+        target_compile_definitions(test_rt_gui_atspi_linux PRIVATE ZANNA_ENABLE_GRAPHICS)
+        target_link_libraries(test_rt_gui_atspi_linux PRIVATE zannagfx zannagui)
+        zanna_add_ctest(test_rt_gui_atspi_linux test_rt_gui_atspi_linux)
+        zanna_add_test_labels(test_rt_gui_atspi_linux runtime gui requires_linux requires_display)
+        set_tests_properties(test_rt_gui_atspi_linux PROPERTIES RESOURCE_LOCK zanna_display)
+    endif ()
 
     zanna_add_test(test_rt_gui_availability
             ${ZANNA_TESTS_DIR}/runtime/RTGuiAvailabilityTests.cpp)

@@ -546,9 +546,13 @@ static void bind_material_textures(gl_context_t *ctx, const vgfx3d_draw_cmd_t *c
     bind_texture_unit(ctx->uSplatLayer0, GL_TU_SPLAT_LAYER0, GL_TEXTURE_2D, splat_layer0);
     bind_texture_unit(ctx->uSplatLayer1, GL_TU_SPLAT_LAYER0 + 1, GL_TEXTURE_2D, splat_layer1);
     bind_texture_unit(ctx->uSplatLayer2, GL_TU_SPLAT_LAYER0 + 2, GL_TEXTURE_2D, splat_layer2);
-    bind_texture_unit(ctx->uSplatLayer3, GL_TU_SPLAT_LAYER0 + 3, GL_TEXTURE_2D, splat_layer3);
+    /* The BRDF LUT shares terrain layer 3's sampler. Terrain uses the analytic
+     * BRDF approximation; non-terrain materials retain the LUT path. */
+    bind_texture_unit(ctx->uSplatLayer3,
+                      GL_TU_SPLAT_LAYER0 + 3,
+                      GL_TEXTURE_2D,
+                      has_splat ? splat_layer3 : ctx->brdf_lut_tex);
     bind_texture_unit(ctx->uEnvMap, GL_TU_ENV_MAP, GL_TEXTURE_CUBE_MAP, env_tex);
-    bind_texture_unit(ctx->uBrdfLut, GL_TU_BRDF_LUT, GL_TEXTURE_2D, ctx->brdf_lut_tex);
     bind_texture_unit_with_sampler(ctx,
                                    ctx->uMetallicRoughnessTex,
                                    GL_TU_METALLIC_ROUGHNESS,
@@ -786,6 +790,10 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uSplatLayer3);
     U(uSplatScales);
 #undef U
+    /* The GL 3.3 baseline exposes only 16 fragment samplers. Soft-particle
+     * depth and terrain splatting are mutually exclusive, so the shader uses
+     * uSplatTex for both and the CPU-facing locations intentionally alias. */
+    ctx->uOpaqueDepthTex = ctx->uSplatTex;
     for (int i = 0; i < VGFX3D_MAX_LIGHTS; i++) {
         char name[64];
         snprintf(name, sizeof(name), "uLightType[%d]", i);
@@ -822,6 +830,64 @@ static void query_main_uniforms(gl_context_t *ctx) {
     ctx->uShadowTex[1] = gl.GetUniformLocation(ctx->program, "uShadowTex1");
     ctx->uShadowTex[2] = gl.GetUniformLocation(ctx->program, "uShadowTex2");
     ctx->uShadowTex[3] = gl.GetUniformLocation(ctx->program, "uShadowTex3");
+}
+
+static size_t gl_main_uniform_location_span(gl_context_t *ctx) {
+    return (size_t)((unsigned char *)(&ctx->uLightOuterCos[VGFX3D_MAX_LIGHTS]) -
+                    (unsigned char *)&ctx->uModelMatrix);
+}
+
+static void gl_save_main_uniform_locations(gl_context_t *ctx, GLint *storage) {
+    memcpy(storage, &ctx->uModelMatrix, ctx->main_uniform_location_bytes);
+}
+
+static void gl_load_main_uniform_locations(gl_context_t *ctx, const GLint *storage) {
+    memcpy(&ctx->uModelMatrix, storage, ctx->main_uniform_location_bytes);
+}
+
+static int gl_begin_material_program(gl_context_t *ctx,
+                                     const vgfx3d_draw_cmd_t *cmd,
+                                     GLint *saved_locations,
+                                     GLuint *saved_program) {
+    if (!ctx || !cmd || !cmd->unlit || cmd->env_map || !ctx->unlit_program)
+        return 0;
+    *saved_program = ctx->program;
+    gl_save_main_uniform_locations(ctx, saved_locations);
+    gl_load_main_uniform_locations(ctx, ctx->unlit_uniform_locations);
+    ctx->program = ctx->unlit_program;
+    return 1;
+}
+
+static void gl_end_material_program(gl_context_t *ctx,
+                                    int specialized,
+                                    const GLint *saved_locations,
+                                    GLuint saved_program) {
+    if (!specialized)
+        return;
+    ctx->program = saved_program;
+    gl_load_main_uniform_locations(ctx, saved_locations);
+    /* The specialized upload intentionally skips full-program light state. */
+    ctx->uploaded_lights_revision = 0;
+    ctx->uploaded_cluster_revision = 0;
+}
+
+static int gl_query_unlit_uniforms(gl_context_t *ctx) {
+    GLint full_locations[GL_MAIN_UNIFORM_SNAPSHOT_CAPACITY];
+    GLuint full_program;
+    if (!ctx || !ctx->unlit_program)
+        return 0;
+    ctx->main_uniform_location_bytes = gl_main_uniform_location_span(ctx);
+    if (ctx->main_uniform_location_bytes > sizeof(ctx->unlit_uniform_locations) ||
+        ctx->main_uniform_location_bytes > sizeof(full_locations))
+        return 0;
+    full_program = ctx->program;
+    gl_save_main_uniform_locations(ctx, full_locations);
+    ctx->program = ctx->unlit_program;
+    query_main_uniforms(ctx);
+    gl_save_main_uniform_locations(ctx, ctx->unlit_uniform_locations);
+    ctx->program = full_program;
+    gl_load_main_uniform_locations(ctx, full_locations);
+    return 1;
 }
 
 /// @brief Resolve uniform locations for the depth-only shadow program.
