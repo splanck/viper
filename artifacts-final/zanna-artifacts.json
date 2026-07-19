@@ -1,7 +1,0 @@
-{
-  "schema_version": 1,
-  "source_date_epoch": null,
-  "artifacts": [
-    {"file": "zanna-0.2.99-win-x64.exe", "format": "windows-exe", "platform": "windows", "arch": "x64", "version": "0.2.99", "size": 266250792, "sha256": "79654d538056a167b5d82a1f8d9d0f81456e08bac61bf09b5ab79863df9e3d80", "verified": true, "trust": "unsigned"}
-  ]
-}
