@@ -11,6 +11,7 @@ bind "../build/build_system";
 bind "../build/debug_session";
 bind "../commands/build_commands";
 bind "../commands/command_context";
+bind "../ui/command_input";
 bind "../commands/command_registry";
 bind "../commands/debug_commands";
 bind "../commands/edit_commands";
@@ -186,6 +187,33 @@ hide func DispatchFileCommands(ctx: command_context.CommandContext,
             ctx.indexer.Open(ctx.projMgr.RootPath(), ctx.docMgr);
             if ctx.projMgr.IsOpen() {
                 ctx.terminalCtrl.SetCwd(ctx.projMgr.RootPath());
+            }
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("newprojectconsole", cpSelected) {
+        ctx.commandInputOverlay.OpenNewProject(ctx.shell,
+            command_input.COMMAND_INPUT_NEW_PROJECT_CONSOLE, "Console App");
+    }
+    if dispatch_helpers.TriggeredNoMenu("newprojectgui", cpSelected) {
+        ctx.commandInputOverlay.OpenNewProject(ctx.shell,
+            command_input.COMMAND_INPUT_NEW_PROJECT_GUI, "GUI App");
+    }
+    if dispatch_helpers.TriggeredNoMenu("newprojectlibrary", cpSelected) {
+        ctx.commandInputOverlay.OpenNewProject(ctx.shell,
+            command_input.COMMAND_INPUT_NEW_PROJECT_LIBRARY, "Library");
+    }
+    if dispatch_helpers.TriggeredNoMenu("comparewithsaved", cpSelected) {
+        var activeDocOpt = ctx.docMgr.GetDocument(ctx.docMgr.activeIndex);
+        if activeDocOpt != null and ctx.diffOverlay != null
+           and ctx.engine != null and ctx.engine.editor != null {
+            var activeDoc = activeDocOpt!;
+            if activeDoc.filePath != "" {
+                var savedText = "";
+                if IO.File.Exists(activeDoc.filePath) {
+                    savedText = IO.File.ReadAllText(activeDoc.filePath);
+                }
+                ctx.diffOverlay.Open(activeDoc.filePath + "  (saved → buffer)",
+                                     savedText, ctx.engine.editor.Text);
             }
         }
     }

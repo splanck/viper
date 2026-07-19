@@ -109,6 +109,76 @@ class CommandRegistry {
         }
     }
 
+    /// @brief Apply user keybinding overrides (plan 08).
+    /// @details @p encoded is "id=shortcut;;id2=shortcut2"; an empty shortcut
+    ///          clears the binding. Unknown ids are ignored. Call before
+    ///          InstallShortcuts.
+    expose func ApplyOverrides(encoded: String) {
+        if encoded == "" { return; }
+        var pairs = Str.Split(encoded, ";;");
+        var i = 0;
+        while i < Seq.get_Count(pairs) {
+            var pair = Seq.GetStr(pairs, i);
+            var eq = Str.IndexOf(pair, "=");
+            if eq > 0 {
+                var id = Str.Left(pair, eq - 1);
+                var shortcut = Str.Mid(pair, eq + 1);
+                var entry = Find(id);
+                if entry != null {
+                    entry.shortcut = shortcut;
+                }
+            }
+            i = i + 1;
+        }
+    }
+
+    /// @brief Return the catalog-default shortcut for a command id.
+    expose func DefaultShortcutFor(id: String) -> String {
+        var specs = command_catalog.DefaultCommandSpecs();
+        var i = 0;
+        while i < specs.count() {
+            var spec = specs.get(i);
+            if spec.id == id { return spec.shortcut; }
+            i = i + 1;
+        }
+        return "";
+    }
+
+    /// @brief Upsert one override into the encoded "id=sc;;..." string.
+    expose func UpsertOverride(encoded: String, id: String, shortcut: String) -> String {
+        var rebuilt = "";
+        var pairs = Str.Split(encoded, ";;");
+        var i = 0;
+        while i < Seq.get_Count(pairs) {
+            var pair = Seq.GetStr(pairs, i);
+            var eq = Str.IndexOf(pair, "=");
+            if eq > 0 and Str.Left(pair, eq - 1) != id and pair != "" {
+                if rebuilt != "" { rebuilt = rebuilt + ";;"; }
+                rebuilt = rebuilt + pair;
+            }
+            i = i + 1;
+        }
+        if rebuilt != "" { rebuilt = rebuilt + ";;"; }
+        return rebuilt + id + "=" + shortcut;
+    }
+
+    /// @brief Remove one override from the encoded string.
+    expose func RemoveOverride(encoded: String, id: String) -> String {
+        var rebuilt = "";
+        var pairs = Str.Split(encoded, ";;");
+        var i = 0;
+        while i < Seq.get_Count(pairs) {
+            var pair = Seq.GetStr(pairs, i);
+            var eq = Str.IndexOf(pair, "=");
+            if pair != "" and (eq <= 0 or Str.Left(pair, eq - 1) != id) {
+                if rebuilt != "" { rebuilt = rebuilt + ";;"; }
+                rebuilt = rebuilt + pair;
+            }
+            i = i + 1;
+        }
+        return rebuilt;
+    }
+
     expose func InstallShortcuts() {
         Shortcuts.Clear();
         var i = 0;

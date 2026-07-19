@@ -220,10 +220,15 @@ static void outputpane_apply_sgr_params(vg_outputpane_t *pane, const int *params
             pane->current_fg = pane->default_fg;
             pane->current_bg = 0;
             pane->ansi_bold = false;
+            pane->ansi_reverse = false;
         } else if (code == 1) {
             pane->ansi_bold = true;
         } else if (code == 22) {
             pane->ansi_bold = false;
+        } else if (code == 7) {
+            pane->ansi_reverse = true;
+        } else if (code == 27) {
+            pane->ansi_reverse = false;
         } else if (code >= 30 && code <= 37) {
             pane->current_fg = ansi_code_to_color(code);
         } else if (code == 39) {
@@ -655,6 +660,10 @@ vg_outputpane_t *vg_outputpane_create(void) {
     pane->default_fg = 0xFFCCCCCC;
     pane->current_fg = pane->default_fg;
     pane->caret_visible = true;
+    pane->term_scroll_top = -1;
+    pane->term_scroll_bottom = -1;
+    pane->primary_term_scroll_top = -1;
+    pane->primary_term_scroll_bottom = -1;
 
     return pane;
 }
@@ -824,7 +833,7 @@ static void outputpane_paint(vg_widget_t *widget, void *canvas) {
         // line. The glyph under it is redrawn in the background color (inverse
         // video) so it stays readable when editing mid-line.
         if (pane->terminal_mode && pane->has_focus && pane->caret_visible &&
-            line_idx == (int)pane->term_cursor_line) {
+            !pane->term_cursor_hidden && line_idx == (int)pane->term_cursor_line) {
             float caret_x =
                 widget->x + 4.0f + outputpane_prefix_width(pane, line, pane->cursor_col);
             vg_text_metrics_t cw = {0};
@@ -890,6 +899,15 @@ static void term_queue_csi_final_key(vg_outputpane_t *pane,
                                      uint32_t mods) {
     int mod = term_modifier_parameter(mods);
     if (mod == 1) {
+        // DECSET ?1 (application cursor keys): unmodified arrows/home/end use
+        // SS3 finals so full-screen apps see the sequences they asked for.
+        if (pane->app_cursor_keys &&
+            (final == 'A' || final == 'B' || final == 'C' || final == 'D' || final == 'H' ||
+             final == 'F')) {
+            char seq[3] = {'\x1b', 'O', final};
+            term_queue_input(pane, seq, sizeof(seq));
+            return;
+        }
         term_queue_input(pane, plain, strlen(plain));
         return;
     }
@@ -1020,6 +1038,32 @@ static bool outputpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
         if (event->type == VG_EVENT_KEY_DOWN) {
             vg_key_t k = event->key.key;
             uint32_t mods = event->modifiers;
+            // Clipboard chords come before control-byte mapping so Cmd+V /
+            // Ctrl+Shift+V paste (bracketed when DECSET 2004 is on) and Cmd+C /
+            // Ctrl+Shift+C copy a selection. Plain Ctrl+V / Ctrl+C still reach
+            // the child as 0x16 / 0x03 (vim blockwise / SIGINT).
+            const bool clip_chord = (mods & VG_MOD_SUPER) != 0 ||
+                                    ((mods & VG_MOD_CTRL) != 0 && (mods & VG_MOD_SHIFT) != 0);
+            if (clip_chord && k == VG_KEY_V) {
+                char *text = vgfx_clipboard_get_text();
+                if (text) {
+                    if (pane->bracketed_paste)
+                        term_queue_input(pane, "\x1b[200~", 6);
+                    term_queue_input(pane, text, strlen(text));
+                    if (pane->bracketed_paste)
+                        term_queue_input(pane, "\x1b[201~", 6);
+                    free(text);
+                }
+                return true;
+            }
+            if (clip_chord && k == VG_KEY_C && pane->has_selection) {
+                char *sel = vg_outputpane_get_selection(pane);
+                if (sel) {
+                    vgfx_clipboard_set_text(sel);
+                    free(sel);
+                }
+                return true;
+            }
             // Ctrl + letter -> control byte (Ctrl-C = 0x03, Ctrl-D = 0x04, ...).
             if ((mods & (VG_MOD_CTRL | VG_MOD_SUPER)) != 0) {
                 char ctl = 0;
@@ -1302,8 +1346,15 @@ static void term_put_glyph(vg_outputpane_t *pane, const char *bytes, int len) {
     vg_term_cell_t *cell = &pane->cells[col];
     memcpy(cell->utf8, bytes, (size_t)len);
     cell->utf8[len] = '\0';
-    cell->fg = pane->current_fg;
-    cell->bg = pane->current_bg;
+    if (pane->ansi_reverse) {
+        // SGR 7 swaps roles; a transparent background substitutes the pane's
+        // own background color so reversed text stays a readable block.
+        cell->fg = pane->current_bg ? pane->current_bg : pane->bg_color;
+        cell->bg = pane->current_fg;
+    } else {
+        cell->fg = pane->current_fg;
+        cell->bg = pane->current_bg;
+    }
     cell->bold = pane->ansi_bold;
     pane->cursor_col = (uint32_t)(col + 1);
 }
@@ -1387,11 +1438,121 @@ static void term_restore_cursor(vg_outputpane_t *pane) {
     term_set_cursor_line_col(pane, pane->saved_cursor_line, pane->saved_cursor_col);
 }
 
+/// @brief Visible terminal rows for margin defaults (fallback before layout).
+static int term_screen_rows(const vg_outputpane_t *pane) {
+    int rows = vg_outputpane_rows_for_height(pane);
+    return rows > 0 ? rows : 24;
+}
+
+/// @brief True when a DECSTBM scroll region is set and well-formed.
+static bool term_region_active(const vg_outputpane_t *pane) {
+    return pane->term_scroll_top >= 0 && pane->term_scroll_bottom > pane->term_scroll_top;
+}
+
+/// @brief Absolute logical row of the active region's top margin.
+static size_t term_region_top_abs(const vg_outputpane_t *pane) {
+    return pane->term_origin_line + (size_t)(pane->term_scroll_top > 0 ? pane->term_scroll_top : 0);
+}
+
+/// @brief Absolute logical row of the active region's bottom margin (inclusive).
+static size_t term_region_bottom_abs(const vg_outputpane_t *pane) {
+    int bottom = term_region_active(pane) ? pane->term_scroll_bottom : term_screen_rows(pane) - 1;
+    return pane->term_origin_line + (size_t)(bottom > 0 ? bottom : 0);
+}
+
+/// @brief Swap the full line structs at two logical rows (segment ownership
+///        moves with the struct; both rows must exist).
+static void term_swap_lines(vg_outputpane_t *pane, size_t a, size_t b) {
+    vg_output_line_t *la = outputpane_line_at(pane, a);
+    vg_output_line_t *lb = outputpane_line_at(pane, b);
+    if (!la || !lb || la == lb)
+        return;
+    vg_output_line_t tmp = *la;
+    *la = *lb;
+    *lb = tmp;
+}
+
+/// @brief Scroll rows [top_abs, bottom_abs] by @p n lines, up or down, blanking
+///        the vacated rows. Content moves by whole-line struct swaps so segment
+///        allocations travel with their text; the cursor row's cell buffer is
+///        flushed first and reloaded after so the mutation is visible in cells.
+/// @param pane Terminal-mode pane to mutate.
+/// @param top_abs Absolute logical top row of the range.
+/// @param bottom_abs Absolute logical bottom row of the range (inclusive).
+/// @param n Line count to scroll (clamped to the range height).
+/// @param down False scrolls content up (text moves toward top_abs); true
+///        scrolls content down (blank rows appear at the top).
+static void term_scroll_range(
+    vg_outputpane_t *pane, size_t top_abs, size_t bottom_abs, size_t n, bool down) {
+    if (!pane || bottom_abs < top_abs || n == 0)
+        return;
+    term_flush_cells(pane);
+    if (!term_ensure_line(pane, bottom_abs))
+        return;
+    const size_t height = bottom_abs - top_abs + 1;
+    if (n > height)
+        n = height;
+    if (!down) {
+        for (size_t i = top_abs; i + n <= bottom_abs; i++)
+            term_swap_lines(pane, i, i + n);
+        for (size_t i = bottom_abs + 1 - n; i <= bottom_abs; i++)
+            outputpane_clear_line_segments(outputpane_line_at(pane, i));
+    } else {
+        for (size_t i = bottom_abs; i >= top_abs + n; i--)
+            term_swap_lines(pane, i, i - n);
+        for (size_t i = top_abs; i < top_abs + n; i++)
+            outputpane_clear_line_segments(outputpane_line_at(pane, i));
+    }
+    pane->term_cursor_line = term_clamp_line_index(pane, pane->term_cursor_line);
+    term_load_cells_from_line(pane, pane->term_cursor_line);
+    pane->base.needs_paint = true;
+    outputpane_clear_selection(pane);
+}
+
+/// @brief Reset the tab-stop bitset to the default every-8-columns ruler.
+static void term_init_default_tabs(vg_outputpane_t *pane) {
+    memset(pane->term_tab_stops, 0, sizeof(pane->term_tab_stops));
+    for (size_t col = 8; col < sizeof(pane->term_tab_stops) * 8; col += 8)
+        pane->term_tab_stops[col / 8] |= (uint8_t)(1u << (col % 8));
+}
+
+/// @brief Set or clear the tab stop at @p col in the bitset.
+static void term_set_tab_stop(vg_outputpane_t *pane, uint32_t col, bool set) {
+    if (col >= sizeof(pane->term_tab_stops) * 8)
+        return;
+    if (set)
+        pane->term_tab_stops[col / 8] |= (uint8_t)(1u << (col % 8));
+    else
+        pane->term_tab_stops[col / 8] &= (uint8_t)~(1u << (col % 8));
+}
+
+/// @brief Next tab stop strictly after @p col, or one column past the current
+///        width when no stop remains (HT never writes glyphs, it only moves).
+static uint32_t term_next_tab_stop(const vg_outputpane_t *pane, uint32_t col) {
+    const uint32_t limit = (uint32_t)(sizeof(pane->term_tab_stops) * 8);
+    for (uint32_t c = col + 1; c < limit; c++) {
+        if (pane->term_tab_stops[c / 8] & (uint8_t)(1u << (c % 8)))
+            return c;
+    }
+    int cols = vg_outputpane_columns_for_width(pane);
+    uint32_t edge = cols > 0 ? (uint32_t)(cols - 1) : col + 8;
+    return edge > col ? edge : col + 1;
+}
+
 /// @brief Finalize the current line and move to the next terminal row.
+/// @details At the bottom margin of an active DECSTBM region the region scrolls
+///          up in place instead of growing the buffer, which is how full-screen
+///          programs (vim, htop) keep their status rows pinned.
 /// @param pane Terminal-mode output pane to advance.
 static void term_newline(vg_outputpane_t *pane) {
     if (!pane)
         return;
+    if (term_region_active(pane) && pane->term_cursor_line == term_region_bottom_abs(pane)) {
+        term_scroll_range(
+            pane, term_region_top_abs(pane), term_region_bottom_abs(pane), 1, /*down=*/false);
+        pane->cursor_col = 0;
+        return;
+    }
     term_flush_cells(pane);
     if (pane->max_lines > 0 && pane->line_count >= pane->max_lines &&
         pane->term_cursor_line + 1 >= pane->max_lines) {
@@ -1465,6 +1626,10 @@ static void term_enter_alternate_screen(vg_outputpane_t *pane) {
     pane->primary_saved_cursor_line = pane->saved_cursor_line;
     pane->primary_saved_cursor_col = pane->saved_cursor_col;
     pane->primary_cursor_col = pane->cursor_col;
+    pane->primary_term_scroll_top = pane->term_scroll_top;
+    pane->primary_term_scroll_bottom = pane->term_scroll_bottom;
+    pane->term_scroll_top = -1;
+    pane->term_scroll_bottom = -1;
 
     pane->lines = NULL;
     pane->line_start = 0;
@@ -1522,6 +1687,10 @@ static void term_leave_alternate_screen(vg_outputpane_t *pane) {
     pane->primary_saved_cursor_line = 0;
     pane->primary_saved_cursor_col = 0;
     pane->primary_cursor_col = 0;
+    pane->term_scroll_top = pane->primary_term_scroll_top;
+    pane->term_scroll_bottom = pane->primary_term_scroll_bottom;
+    pane->primary_term_scroll_top = -1;
+    pane->primary_term_scroll_bottom = -1;
     pane->alternate_screen = false;
     pane->cell_count = 0;
 
@@ -1675,15 +1844,131 @@ static void term_dispatch_csi(vg_outputpane_t *pane, char final) {
         case 'u':
             term_restore_cursor(pane);
             break;
+        case 'r': { // DECSTBM: set scroll region; cursor homes to the origin
+            int top = pc >= 1 && params[0] > 0 ? params[0] - 1 : 0;
+            int bottom = pc >= 2 && params[1] > 0 ? params[1] - 1 : term_screen_rows(pane) - 1;
+            // Margins spanning the whole screen are equivalent to none; storing
+            // them as unset keeps primary-buffer scrollback growing normally
+            // after a full-screen program restores CSI r on exit.
+            if (bottom > top && !(top == 0 && bottom >= term_screen_rows(pane) - 1)) {
+                pane->term_scroll_top = top;
+                pane->term_scroll_bottom = bottom;
+            } else {
+                pane->term_scroll_top = -1;
+                pane->term_scroll_bottom = -1;
+            }
+            term_set_cursor_line_col(pane, pane->term_origin_line, 0);
+            break;
+        }
+        case 'S': { // SU: scroll region (or screen) up n lines
+            size_t n = p0 > 0 ? (size_t)p0 : 1;
+            term_scroll_range(
+                pane, term_region_top_abs(pane), term_region_bottom_abs(pane), n, /*down=*/false);
+            break;
+        }
+        case 'T': { // SD: scroll region (or screen) down n lines
+            size_t n = p0 > 0 ? (size_t)p0 : 1;
+            term_scroll_range(
+                pane, term_region_top_abs(pane), term_region_bottom_abs(pane), n, /*down=*/true);
+            break;
+        }
+        case 'L': { // IL: insert n blank lines at the cursor row
+            size_t bottom = term_region_bottom_abs(pane);
+            if (pane->term_cursor_line <= bottom) {
+                size_t n = p0 > 0 ? (size_t)p0 : 1;
+                term_scroll_range(pane, pane->term_cursor_line, bottom, n, /*down=*/true);
+            }
+            break;
+        }
+        case 'M': { // DL: delete n lines at the cursor row
+            size_t bottom = term_region_bottom_abs(pane);
+            if (pane->term_cursor_line <= bottom) {
+                size_t n = p0 > 0 ? (size_t)p0 : 1;
+                term_scroll_range(pane, pane->term_cursor_line, bottom, n, /*down=*/false);
+            }
+            break;
+        }
+        case '@': { // ICH: insert n blank cells at the cursor, shifting right
+            size_t n = p0 > 0 ? (size_t)p0 : 1;
+            size_t col = pane->cursor_col;
+            if (col > pane->cell_count)
+                col = pane->cell_count;
+            if (!term_ensure_cells(pane, pane->cell_count + n))
+                break;
+            memmove(&pane->cells[col + n],
+                    &pane->cells[col],
+                    (pane->cell_count - col) * sizeof(vg_term_cell_t));
+            for (size_t i = col; i < col + n; i++)
+                term_blank_cell(pane, &pane->cells[i]);
+            pane->cell_count += n;
+            break;
+        }
+        case 'P': { // DCH: delete n cells at the cursor, shifting left
+            size_t n = p0 > 0 ? (size_t)p0 : 1;
+            size_t col = pane->cursor_col;
+            if (col >= pane->cell_count)
+                break;
+            if (n > pane->cell_count - col)
+                n = pane->cell_count - col;
+            memmove(&pane->cells[col],
+                    &pane->cells[col + n],
+                    (pane->cell_count - col - n) * sizeof(vg_term_cell_t));
+            pane->cell_count -= n;
+            break;
+        }
+        case 'X': { // ECH: blank n cells at the cursor in place
+            size_t n = p0 > 0 ? (size_t)p0 : 1;
+            for (size_t i = pane->cursor_col; i < pane->cursor_col + n && i < pane->cell_count;
+                 i++)
+                term_blank_cell(pane, &pane->cells[i]);
+            break;
+        }
+        case 'g': // TBC: 0 = clear stop at cursor, 3 = clear all stops
+            if (p0 == 0)
+                term_set_tab_stop(pane, pane->cursor_col, false);
+            else if (p0 == 3)
+                memset(pane->term_tab_stops, 0, sizeof(pane->term_tab_stops));
+            break;
+        case 'n': // DSR: status (5) and cursor-position (6) reports
+            if (p0 == 5) {
+                term_queue_input(pane, "\x1b[0n", 4);
+            } else if (p0 == 6) {
+                char reply[32];
+                size_t row = pane->term_cursor_line >= pane->term_origin_line
+                                 ? pane->term_cursor_line - pane->term_origin_line + 1
+                                 : 1;
+                int len = snprintf(reply,
+                                   sizeof(reply),
+                                   "\x1b[%zu;%uR",
+                                   row,
+                                   (unsigned)(pane->cursor_col + 1));
+                if (len > 0)
+                    term_queue_input(pane, reply, (size_t)len);
+            }
+            break;
+        case 'c': // DA: identify as a VT100-with-AVO (primary) / VT220-ish (secondary)
+            if (pane->escape_buf[0] == '>')
+                term_queue_input(pane, "\x1b[>0;95;0c", 10);
+            else
+                term_queue_input(pane, "\x1b[?1;2c", 7);
+            break;
         case 'h':
         case 'l':
             if (private_mode) {
+                const bool set = final == 'h';
                 for (int i = 0; i < pc; i++) {
                     if (params[i] == 47 || params[i] == 1047 || params[i] == 1049) {
-                        if (final == 'h')
+                        if (set)
                             term_enter_alternate_screen(pane);
                         else
                             term_leave_alternate_screen(pane);
+                    } else if (params[i] == 25) {
+                        pane->term_cursor_hidden = !set;
+                        pane->base.needs_paint = true;
+                    } else if (params[i] == 2004) {
+                        pane->bracketed_paste = set;
+                    } else if (params[i] == 1) {
+                        pane->app_cursor_keys = set;
                     }
                 }
             }
@@ -1714,9 +1999,9 @@ static void outputpane_append_terminal(vg_outputpane_t *pane, const char *text) 
                         pane->cursor_col--;
                     p++;
                 } else if (c == '\t') {
-                    uint32_t next = (pane->cursor_col / 8 + 1) * 8;
-                    while (pane->cursor_col < next)
-                        term_put_glyph(pane, " ", 1);
+                    // HT only moves the cursor (never writes glyphs), so tabbing
+                    // across existing cursor-addressed content leaves it intact.
+                    pane->cursor_col = term_next_tab_stop(pane, pane->cursor_col);
                     p++;
                 } else if (c < 0x20 || c == 0x7f) {
                     p++; // BEL and other C0 controls: ignore
@@ -1747,21 +2032,52 @@ static void outputpane_append_terminal(vg_outputpane_t *pane, const char *text) 
                     term_restore_cursor(pane);
                     pane->esc_state = 0;
                 } else if (c == 'D') {
-                    term_set_cursor_line_col(pane, pane->term_cursor_line + 1, pane->cursor_col);
+                    // IND: at the bottom margin of an active region, scroll the
+                    // region up (column preserved) instead of advancing rows.
+                    if (term_region_active(pane) &&
+                        pane->term_cursor_line == term_region_bottom_abs(pane)) {
+                        term_scroll_range(pane,
+                                          term_region_top_abs(pane),
+                                          term_region_bottom_abs(pane),
+                                          1,
+                                          /*down=*/false);
+                    } else {
+                        term_set_cursor_line_col(
+                            pane, pane->term_cursor_line + 1, pane->cursor_col);
+                    }
                     pane->esc_state = 0;
                 } else if (c == 'E') {
                     term_newline(pane);
                     pane->esc_state = 0;
                 } else if (c == 'M') {
-                    if (pane->term_cursor_line > pane->term_origin_line) {
+                    // RI: at the top margin of an active region, scroll the
+                    // region down; otherwise move up within the screen.
+                    if (term_region_active(pane) &&
+                        pane->term_cursor_line == term_region_top_abs(pane)) {
+                        term_scroll_range(pane,
+                                          term_region_top_abs(pane),
+                                          term_region_bottom_abs(pane),
+                                          1,
+                                          /*down=*/true);
+                    } else if (pane->term_cursor_line > pane->term_origin_line) {
                         term_set_cursor_line_col(
                             pane, pane->term_cursor_line - 1, pane->cursor_col);
                     }
+                    pane->esc_state = 0;
+                } else if (c == 'H') {
+                    term_set_tab_stop(pane, pane->cursor_col, true); // HTS
                     pane->esc_state = 0;
                 } else if (c == 'c') {
                     pane->current_fg = pane->default_fg;
                     pane->current_bg = 0;
                     pane->ansi_bold = false;
+                    pane->ansi_reverse = false;
+                    pane->term_scroll_top = -1;
+                    pane->term_scroll_bottom = -1;
+                    pane->term_cursor_hidden = false;
+                    pane->bracketed_paste = false;
+                    pane->app_cursor_keys = false;
+                    term_init_default_tabs(pane);
                     term_clear_display(pane);
                     pane->esc_state = 0;
                 } else {
@@ -1842,6 +2158,13 @@ void vg_outputpane_set_terminal_mode(vg_outputpane_t *pane, bool enabled) {
         pane->term_origin_line = 0;
         pane->saved_cursor_line = pane->term_cursor_line;
         pane->saved_cursor_col = pane->cursor_col;
+        pane->term_scroll_top = -1;
+        pane->term_scroll_bottom = -1;
+        pane->term_cursor_hidden = false;
+        pane->bracketed_paste = false;
+        pane->app_cursor_keys = false;
+        pane->ansi_reverse = false;
+        term_init_default_tabs(pane);
         term_load_cells_from_line(pane, pane->term_cursor_line);
     }
 }

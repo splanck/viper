@@ -27,6 +27,29 @@ wizard with templates, and a findable settings panel.
    navigation; live theme preview on the Appearance card (apply-on-change
    with revert).
 
+## 2a. As-built record (2026-07-18)
+
+- **Keybindings editor**: new Settings "Keybindings" card (command list with
+  filter-following population, shortcut input, Set/Reset buttons, conflict
+  summary label). Overrides persist as `[settings] keybindingOverrides`
+  ("id=sc;;…" deltas); registry gained `ApplyOverrides` /
+  `UpsertOverride` / `RemoveOverride` / `DefaultShortcutFor`, applied after
+  settings load and re-installed live on every change. Text-entry shortcut
+  format (e.g. `Ctrl+Shift+K`); a key-capture modal remains future polish.
+- **New-project wizard**: `services/project_templates.zia` (console/GUI/
+  library starters; name validation; never overwrites) + three palette
+  commands (`newprojectconsole|gui|library`) driving the command-input
+  overlay; creation lands under `~/ZannaProjects/<name>`, opens the project,
+  points SCM/terminal at it, and opens `src/main.zia`.
+- **Settings search**: filter input above the cards shows/hides sections by
+  title (`ApplySettingsFilter`); the keybinding list follows the same
+  filter. Live theme preview already existed via the theme dropdown apply
+  path.
+- Probe `shell_config_probe` (override round-trip incl. 1-based string-index
+  regressions caught live; scaffold structure, overwrite refusal, and
+  **compile-the-result** via `zanna check` on the scaffolded console app).
+  Label total: 46 green.
+
 ## 3. Runtime surface
 
 None.

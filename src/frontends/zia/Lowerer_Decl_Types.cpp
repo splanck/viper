@@ -883,4 +883,89 @@ const ClassTypeInfo *Lowerer::getOrCreateClassTypeInfo(const std::string &typeNa
     return &slot;
 }
 
+/// @brief Classify one field layout into the debugger's read strategy.
+/// @details Storage follows the IL type the field's stores/loads use; managed
+///          vs raw pointers are split by semantic kind so the debugger never
+///          dereferences a non-runtime pointer. Anything wider than a machine
+///          word is an inline aggregate (fixed array/tuple storage) and is
+///          exported opaque so it stays a typed leaf.
+static DebugFieldExport exportField(const FieldLayout &field) {
+    DebugFieldExport out;
+    out.name = field.name;
+    out.typeName = field.type ? field.type->toString() : "";
+    out.offset = field.offset;
+
+    if (field.size > kMachineWordSize) {
+        out.store = DebugFieldStore::Opaque;
+        return out;
+    }
+    if (field.isWeak) {
+        out.store = DebugFieldStore::Weak;
+        return out;
+    }
+    if (!field.type) {
+        out.store = DebugFieldStore::Opaque;
+        return out;
+    }
+
+    switch (toILType(*field.type)) {
+        case il::core::Type::Kind::I64:
+            out.store = DebugFieldStore::I64;
+            out.boolDisplay = field.type->kind == TypeKindSem::Boolean;
+            return out;
+        case il::core::Type::Kind::I32:
+            out.store = DebugFieldStore::I32;
+            return out;
+        case il::core::Type::Kind::I16:
+            out.store = DebugFieldStore::I16;
+            return out;
+        case il::core::Type::Kind::I1:
+            out.store = DebugFieldStore::I1;
+            return out;
+        case il::core::Type::Kind::F64:
+            out.store = DebugFieldStore::F64;
+            return out;
+        case il::core::Type::Kind::Str:
+            out.store = DebugFieldStore::Str;
+            return out;
+        case il::core::Type::Kind::Ptr:
+            switch (field.type->kind) {
+                case TypeKindSem::Class:
+                case TypeKindSem::Interface:
+                case TypeKindSem::List:
+                case TypeKindSem::Map:
+                case TypeKindSem::Set:
+                case TypeKindSem::Optional:
+                case TypeKindSem::Result:
+                case TypeKindSem::Struct:
+                case TypeKindSem::Function:
+                case TypeKindSem::Tuple:
+                case TypeKindSem::Any:
+                    out.store = DebugFieldStore::Managed;
+                    return out;
+                default:
+                    out.store = DebugFieldStore::Raw;
+                    return out;
+            }
+        default:
+            out.store = DebugFieldStore::Opaque;
+            return out;
+    }
+}
+
+DebugClassLayoutExport Lowerer::collectDebugClassLayouts() const {
+    DebugClassLayoutExport table;
+    for (const auto &[typeName, info] : classTypes_) {
+        if (info.classId < 0)
+            continue; // uninstantiated generic template: no runtime instances
+        DebugClassExport entry;
+        entry.qname = info.name.empty() ? typeName : info.name;
+        entry.fields.reserve(info.fields.size());
+        for (const auto &field : info.fields)
+            entry.fields.push_back(exportField(field));
+        table.emplace(static_cast<int64_t>(info.classId), std::move(entry));
+    }
+    return table;
+}
+
 } // namespace il::frontends::zia

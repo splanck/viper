@@ -212,6 +212,8 @@ CompilerResult compile(const CompilerInput &input,
     result.module = lowerer.lower(*module);
     if (result.diagnostics.errorCount() > 0)
         return result;
+    if (options.captureDebugLayouts)
+        result.debugClassLayouts = lowerer.collectDebugClassLayouts();
     result.moduleVerified = false;
     printPhaseTime("lower");
     if (options.verifyAfterLowering) {

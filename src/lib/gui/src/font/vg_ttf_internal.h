@@ -256,6 +256,8 @@ struct vg_font {
     uint32_t loca_offset; ///< Byte offset to the 'loca' (glyph location index) table.
     uint32_t hmtx_offset; ///< Byte offset to the 'hmtx' (horizontal metrics) table.
     uint32_t kern_offset; ///< Byte offset to the 'kern' (kerning) table (0 if absent).
+    uint32_t gsub_offset; ///< Byte offset to the 'GSUB' table (0 if absent).
+    uint32_t sfnt_base;   ///< Offset of the sfnt table directory (non-zero for .ttc).
     uint32_t name_offset; ///< Byte offset to the 'name' (naming) table.
 
     //-- Table byte lengths ------------------------------------------------------
@@ -265,6 +267,7 @@ struct vg_font {
     uint32_t loca_len; ///< Length of the 'loca' table in bytes.
     uint32_t hmtx_len; ///< Length of the 'hmtx' table in bytes.
     uint32_t kern_len; ///< Length of the 'kern' table in bytes.
+    uint32_t gsub_len; ///< Length of the 'GSUB' table in bytes.
     uint32_t name_len; ///< Length of the 'name' table in bytes.
 
     //-- CMAP format 4 data (Basic Multilingual Plane, U+0000..U+FFFF) ---------
@@ -295,6 +298,12 @@ struct vg_font {
     ttf_kern_pair_t *kern_pairs; ///< Sorted array of kerning pairs (sorted by left then right glyph
                                  ///< index for binary search).
     uint32_t kern_pair_count;    ///< Number of kerning pairs in the kern_pairs array.
+
+    //-- GSUB ligature shaping (Zanna Studio plan 06) --------------------------
+
+    struct vg_font *fallback; ///< Borrowed per-glyph fallback face (may chain); not owned.
+    uint16_t *gsub_feature_lookups; ///< Lookup indices for liga/calt, load-resolved.
+    uint16_t gsub_feature_lookup_count; ///< Number of entries in gsub_feature_lookups.
 
     //-- Glyph cache -----------------------------------------------------------
 
@@ -446,6 +455,9 @@ static inline float ttf_read_fixed(const uint8_t *p) {
 
 /// @brief Tag for the 'hmtx' table (horizontal metrics -- advance widths and bearings).
 #define TTF_TAG_HMTX TTF_TAG('h', 'm', 't', 'x')
+
+/// @brief Tag constant for the 'GSUB' glyph-substitution table (ligatures).
+#define TTF_TAG_GSUB TTF_TAG('G', 'S', 'U', 'B')
 
 /// @brief Tag for the 'kern' table (kerning pairs -- inter-glyph spacing adjustments).
 #define TTF_TAG_KERN TTF_TAG('k', 'e', 'r', 'n')
@@ -708,3 +720,7 @@ void vg_cache_clear(vg_glyph_cache_t *cache);
 /// @return A heap-allocated vg_glyph with a filled bitmap, or NULL if the
 ///         glyph has no outline or rasterization fails.
 struct vg_glyph *vg_rasterize_glyph(struct vg_font *font, uint16_t glyph_id, float size);
+
+/// @brief Resolve the GSUB liga/calt lookup indices for a freshly parsed font.
+/// @details No-op when the font has no GSUB table or no matching features.
+void vg_gsub_init(struct vg_font *font);

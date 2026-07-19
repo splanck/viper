@@ -1,0 +1,99 @@
+module project_replace_probe;
+
+// ============================================================================
+// MODULE: project_replace_probe
+// PURPOSE: Verify plan 07 project-wide replace — closed files rewrite on
+//          disk from recorded search locations, matches re-verify at apply
+//          time (drifted lines are safe), open buffers update in memory and
+//          mark modified, and per-line multi-match replacement works.
+// ============================================================================
+
+bind "../commands/replace_commands";
+bind "../core/document_manager";
+bind "../services/locations";
+
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Terminal = Zanna.Terminal;
+bind Str = Zanna.String;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_replace_");
+
+    // Closed file: two matches on one line, one on another.
+    var alpha = Path.Join(root, "alpha.zia");
+    File.WriteAllText(alpha, "old plus old\nkeep\nvalue old here\n");
+    // Closed file with a line that will DRIFT before apply (no match anymore).
+    var beta = Path.Join(root, "beta.zia");
+    File.WriteAllText(beta, "nothing matching anymore\n");
+
+    var locStore = new locations.LocationStore();
+    locStore.Add(alpha, 1, 1, 1, 4, locations.KIND_SEARCH, "old plus old");
+    locStore.Add(alpha, 3, 7, 3, 10, locations.KIND_SEARCH, "value old here");
+    locStore.Add(alpha, 3, 7, 3, 10, locations.KIND_SEARCH, "duplicate row");
+    locStore.Add(beta, 1, 1, 1, 4, locations.KIND_SEARCH, "stale");
+
+    var docMgr = new document_manager.DocumentManager();
+    var summary = replace_commands.ReplaceAllFromResults(
+        locStore, docMgr, null, "old", "new", true, false, false);
+
+    var alphaText = File.ReadAllText(alpha);
+    if alphaText != "new plus new\nkeep\nvalue new here\n" {
+        fail("alpha content wrong: " + alphaText);
+        return;
+    }
+    var betaText = File.ReadAllText(beta);
+    if betaText != "nothing matching anymore\n" {
+        fail("drifted beta must stay untouched");
+        return;
+    }
+    if Str.Contains(summary, "3 match(es)") == false {
+        fail("summary should report 3 replacements: " + summary);
+        return;
+    }
+
+    // Open (inactive) document: buffer updates and marks modified; disk stays.
+    var gamma = Path.Join(root, "gamma.zia");
+    File.WriteAllText(gamma, "open old buffer\n");
+    var doc = docMgr.OpenFile(gamma);
+    if doc == null {
+        fail("could not open gamma");
+        return;
+    }
+    doc.isModified = false;
+    var locStore2 = new locations.LocationStore();
+    locStore2.Add(gamma, 1, 6, 1, 9, locations.KIND_SEARCH, "open old buffer");
+    replace_commands.ReplaceAllFromResults(
+        locStore2, docMgr, null, "old", "new", true, false, false);
+    if Str.Contains(doc.content, "open new buffer") == false {
+        fail("open buffer not updated: " + doc.content);
+        return;
+    }
+    if doc.isModified == false {
+        fail("open buffer should be marked modified");
+        return;
+    }
+    if Str.Contains(File.ReadAllText(gamma), "open old buffer") == false {
+        fail("disk copy of an open doc must not be rewritten");
+        return;
+    }
+
+    // Whole-word option respected at apply time.
+    var delta = Path.Join(root, "delta.zia");
+    File.WriteAllText(delta, "scold old\n");
+    var locStore3 = new locations.LocationStore();
+    locStore3.Add(delta, 1, 7, 1, 10, locations.KIND_SEARCH, "scold old");
+    replace_commands.ReplaceAllFromResults(
+        locStore3, docMgr, null, "old", "new", true, true, false);
+    if File.ReadAllText(delta) != "scold new\n" {
+        fail("whole-word replace wrong: " + File.ReadAllText(delta));
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

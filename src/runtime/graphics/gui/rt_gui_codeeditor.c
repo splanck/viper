@@ -1144,6 +1144,20 @@ void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
     vg_codeeditor_refresh_layout_state(ce);
 }
 
+/// @brief Enable or disable ligature shaping for one editor (ADR 0137).
+void rt_codeeditor_set_ligatures_enabled(void *editor, int64_t enabled) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    if (!ce)
+        return;
+    vg_codeeditor_set_ligatures_enabled(ce, enabled != 0);
+}
+
+/// @brief Return whether one editor renders ligatures.
+int64_t rt_codeeditor_get_ligatures_enabled(void *editor) {
+    vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
+    return ce && vg_codeeditor_get_ligatures_enabled(ce) ? 1 : 0;
+}
+
 /// @brief `CodeEditor.GetWordWrap` — return display-only word wrapping state.
 int64_t rt_codeeditor_get_word_wrap(void *editor) {
     vg_codeeditor_t *ce = rt_codeeditor_handle_checked(editor);
@@ -2315,6 +2329,18 @@ int64_t rt_codeeditor_get_insert_spaces(void *editor) {
 void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled) {
     (void)editor;
     (void)enabled;
+}
+
+/// @brief Graphics-disabled ligature setter stub.
+void rt_codeeditor_set_ligatures_enabled(void *editor, int64_t enabled) {
+    (void)editor;
+    (void)enabled;
+}
+
+/// @brief Graphics-disabled ligature getter stub.
+int64_t rt_codeeditor_get_ligatures_enabled(void *editor) {
+    (void)editor;
+    return 1;
 }
 
 /// @brief Stub: returns 0 (no word-wrap state in headless builds).

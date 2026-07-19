@@ -324,11 +324,19 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
     char *cfilter = rt_string_to_cstr_no_nul(filter);
     char *cpath = rt_string_to_cstr_no_nul(default_path);
 
-#if RT_PLATFORM_MACOS
-    // Use native macOS file dialog
-    char *result = vg_native_open_file(ctitle, cpath, "Files", cfilter);
+#if RT_PLATFORM_MACOS || RT_PLATFORM_WINDOWS
+    // Native OS dialog (macOS panels; Windows IFileOpenDialog via COM). A
+    // failed Windows COM probe routes to the drawn fallback below.
+    char *result = NULL;
+    int native_dialog_used = vg_native_dialogs_available();
+    if (native_dialog_used)
+        result = vg_native_open_file(ctitle, cpath, "Files", cfilter);
 #else
     char *result = NULL;
+    int native_dialog_used = 0;
+#endif
+#if !RT_PLATFORM_MACOS
+    if (!native_dialog_used) {
     vg_filedialog_t *dlg = vg_filedialog_create(VG_FILEDIALOG_OPEN);
     if (dlg) {
         if (ctitle)
@@ -344,7 +352,9 @@ rt_string rt_filedialog_open(rt_string title, rt_string default_path, rt_string 
         }
         vg_filedialog_destroy(dlg);
     }
+    }
 #endif
+    (void)native_dialog_used;
 
     if (ctitle)
         free(ctitle);
@@ -369,28 +379,31 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
     char *cpath = rt_string_to_cstr_no_nul(default_path);
     char *cfilter = rt_string_to_cstr_no_nul(filter);
 
-#if RT_PLATFORM_MACOS
-    size_t count = 0;
-    char **paths = vg_native_open_files(ctitle, cpath, "Files", cfilter, &count);
-    rt_string result = rt_str_empty();
-    if (paths && count > 0) {
-        size_t joined_len = 0;
-        char *joined = rt_filedialog_join_paths_escaped(paths, count, &joined_len);
-        if (joined) {
-            result = rt_string_from_bytes(joined, joined_len);
-            free(joined);
+#if RT_PLATFORM_MACOS || RT_PLATFORM_WINDOWS
+    if (vg_native_dialogs_available()) {
+        size_t count = 0;
+        char **paths = vg_native_open_files(ctitle, cpath, "Files", cfilter, &count);
+        rt_string result = rt_str_empty();
+        if (paths && count > 0) {
+            size_t joined_len = 0;
+            char *joined = rt_filedialog_join_paths_escaped(paths, count, &joined_len);
+            if (joined) {
+                result = rt_string_from_bytes(joined, joined_len);
+                free(joined);
+            }
         }
-    }
-    vg_native_free_paths(paths, count);
+        vg_native_free_paths(paths, count);
 
-    if (ctitle)
-        free(ctitle);
-    if (cpath)
-        free(cpath);
-    if (cfilter)
-        free(cfilter);
-    return result;
-#else
+        if (ctitle)
+            free(ctitle);
+        if (cpath)
+            free(cpath);
+        if (cfilter)
+            free(cfilter);
+        return result;
+    }
+#endif
+#if !RT_PLATFORM_MACOS
     vg_filedialog_t *dlg = vg_filedialog_create(VG_FILEDIALOG_OPEN);
     if (!dlg) {
         if (ctitle)
@@ -436,6 +449,8 @@ rt_string rt_filedialog_open_multiple(rt_string title, rt_string default_path, r
 
     vg_filedialog_destroy(dlg);
     return result;
+#else
+    return rt_str_empty(); /* unreachable: macOS native panels are always available */
 #endif
 }
 
@@ -452,11 +467,18 @@ rt_string rt_filedialog_save(rt_string title,
     char *cname = rt_string_to_gui_cstr(default_name);
     char *cpath = rt_string_to_cstr_no_nul(default_path);
 
-#if RT_PLATFORM_MACOS
-    // Use native macOS file dialog
-    char *result = vg_native_save_file(ctitle, cpath, cname, "Files", cfilter);
+#if RT_PLATFORM_MACOS || RT_PLATFORM_WINDOWS
+    // Native OS dialog with drawn fallback when Windows COM is unavailable.
+    char *result = NULL;
+    int native_dialog_used = vg_native_dialogs_available();
+    if (native_dialog_used)
+        result = vg_native_save_file(ctitle, cpath, cname, "Files", cfilter);
 #else
     char *result = NULL;
+    int native_dialog_used = 0;
+#endif
+#if !RT_PLATFORM_MACOS
+    if (!native_dialog_used) {
     vg_filedialog_t *dlg = vg_filedialog_create(VG_FILEDIALOG_SAVE);
     if (dlg) {
         if (ctitle)
@@ -474,7 +496,9 @@ rt_string rt_filedialog_save(rt_string title,
         }
         vg_filedialog_destroy(dlg);
     }
+    }
 #endif
+    (void)native_dialog_used;
 
     if (ctitle)
         free(ctitle);
@@ -499,11 +523,18 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
     char *ctitle = rt_string_to_gui_cstr(title);
     char *cpath = rt_string_to_cstr_no_nul(default_path);
 
-#if RT_PLATFORM_MACOS
-    // Use native macOS file dialog
-    char *result = vg_native_select_folder(ctitle, cpath);
+#if RT_PLATFORM_MACOS || RT_PLATFORM_WINDOWS
+    // Native OS dialog with drawn fallback when Windows COM is unavailable.
+    char *result = NULL;
+    int native_dialog_used = vg_native_dialogs_available();
+    if (native_dialog_used)
+        result = vg_native_select_folder(ctitle, cpath);
 #else
     char *result = NULL;
+    int native_dialog_used = 0;
+#endif
+#if !RT_PLATFORM_MACOS
+    if (!native_dialog_used) {
     vg_filedialog_t *dlg = vg_filedialog_create(VG_FILEDIALOG_SELECT_FOLDER);
     if (dlg) {
         if (ctitle)
@@ -517,7 +548,9 @@ rt_string rt_filedialog_select_folder(rt_string title, rt_string default_path) {
         }
         vg_filedialog_destroy(dlg);
     }
+    }
 #endif
+    (void)native_dialog_used;
 
     if (ctitle)
         free(ctitle);

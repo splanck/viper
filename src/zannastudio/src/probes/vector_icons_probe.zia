@@ -1,0 +1,53 @@
+module vector_icons_probe;
+
+// ============================================================================
+// MODULE: vector_icons_probe
+// PURPOSE: Verify the ADR 0137 vector icon runtime surface end-to-end — the
+//          welcome view builds with its brand mark and button icons, direct
+//          SetIconName calls succeed, unknown icon names are ignored without
+//          trapping, and clearing with an empty name is safe.
+// ============================================================================
+
+bind "../ui/app_shell";
+bind "../ui/welcome_view";
+
+bind Zanna.GUI as GUI;
+bind Terminal = Zanna.Terminal;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Icons Probe", 900, 640);
+
+    // The welcome view now applies vector icons during Setup; building it
+    // exercises Label.SetIconName ("zanna-mark") and Button.SetIconName.
+    var wv = new welcome_view.WelcomeView();
+    wv.Setup(shell.workbench.welcomeHost, shell.workbench.editorRow);
+    if wv.newFileButton == null or wv.openFolderButton == null {
+        fail(shell, "welcome widgets not built");
+        return;
+    }
+    wv.SetShown(true);
+    shell.Render();
+
+    // Direct surface checks on fresh widgets.
+    var label = GUI.Label.New(shell.workbench.welcomeHost, "icon check");
+    label.SetIconName("settings-gear");
+    label.SetIconName("not-a-real-icon-name"); // Unknown names are ignored.
+    label.SetIconName("");                     // Empty clears without trapping.
+    label.SetIconName("zanna-mark");
+
+    var button = GUI.Button.New(shell.workbench.welcomeHost, "icon check");
+    button.SetIconName("run");
+    button.SetIconName("also-not-real");
+    button.SetIconName("");
+    button.SetIconName("debug-step-over");
+
+    shell.Render();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

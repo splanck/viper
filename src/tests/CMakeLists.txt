@@ -1210,6 +1210,14 @@ set_tests_properties(zia_zannastudio_welcome PROPERTIES
         LABELS "zia;zannastudio;shell;requires_display"
         TIMEOUT 60)
 
+add_test(NAME zia_zannastudio_vector_icons
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/vector_icons_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_vector_icons PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;shell;requires_display"
+        TIMEOUT 60)
+
 add_test(NAME zia_zannastudio_editor_buffer
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/editor_buffer_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
@@ -1273,6 +1281,38 @@ set_tests_properties(zia_zannastudio_settings_migration PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;session"
         TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_project_replace
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/project_replace_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_project_replace PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;search"
+        TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_diff_engine
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/diff_view_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_diff_engine PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scm"
+        TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_editor_depth
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/editor_depth_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_editor_depth PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;editor"
+        TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_shell_config
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/shell_config_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_shell_config PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;shell"
+        TIMEOUT 120)
 
 add_test(NAME zia_zannastudio_palette_modes
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/palette_modes_probe.zia"
@@ -1338,6 +1378,14 @@ set_tests_properties(zia_zannastudio_scm PROPERTIES
         LABELS "zia;zannastudio;scm"
         TIMEOUT 30)
 
+add_test(NAME zia_zannastudio_scm_history
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scm_history_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scm_history PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scm"
+        TIMEOUT 60)
+
 add_test(NAME zia_zannastudio_terminal
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
@@ -1366,6 +1414,14 @@ add_test(NAME zia_zannastudio_terminal_render
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_render_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
 set_tests_properties(zia_zannastudio_terminal_render PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;terminal;requires_display"
+        TIMEOUT 30)
+
+add_test(NAME zia_zannastudio_terminal_altscreen
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_altscreen_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_terminal_altscreen PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;terminal;requires_display"
         TIMEOUT 30)
@@ -1415,6 +1471,15 @@ add_test(NAME zia_zannastudio_debug_vars
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/debug_vars_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
 set_tests_properties(zia_zannastudio_debug_vars PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;debug"
+        RUN_SERIAL TRUE
+        TIMEOUT 120)
+
+add_test(NAME zia_zannastudio_debug_fields
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/debug_fields_probe.zia" -- --zanna-bin $<TARGET_FILE:zanna>
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_debug_fields PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;debug"
         RUN_SERIAL TRUE

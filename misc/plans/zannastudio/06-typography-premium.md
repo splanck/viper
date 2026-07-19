@@ -33,6 +33,41 @@ zero-dependency, hand-written TTF stack.
 4. **Explicitly out of scope:** color emoji (COLR/CBDT/sbix), CFF/OTF
    outlines, subpixel/LCD AA, hinting — documented as future work.
 
+## 2a. As-built record (2026-07-18)
+
+- **Gamma-correct blending**: `vg_canvas_draw_glyph` blends AA coverage in
+  linear light via checked-in integer tables
+  (`src/lib/gui/src/font/vg_gamma_tables.inc`, generated once from the IEC
+  61966-2-1 curves so output is bit-identical everywhere). Escape hatch:
+  `ZANNA_GUI_TEXT_GAMMA=off`. The pset fallback path keeps the legacy blend.
+- **GSUB shaping**: new `src/lib/gui/src/font/vg_gsub.c` — ScriptList/
+  FeatureList/LookupList resolution at load (DFLT→latn, liga+calt),
+  LookupTypes 1/4/6 (+7 extension), Coverage fmt 1/2, ClassDef fmt 1/2,
+  chain formats 1/2/3, nested SubstLookupRecords (depth-capped), every read
+  bounds-checked. Public API `vg_font_shape` returns glyph ids + SOURCE
+  SPANS. Finding: **JetBrains Mono implements ligatures as contextual
+  alternates** — glyph count stays 1:1 with characters, ids substitute in
+  place — so the caret contract holds structurally; the draw path advances
+  by source-character widths and rasterizes shaped ids via a new
+  glyph-id-keyed cache namespace (`vg_font_get_glyph_by_id`).
+- **Toggles**: process-wide `vg_font_set_ligatures_enabled` (default on) +
+  per-editor `vg_codeeditor_set_ligatures_enabled` scoped around the editor
+  paint. Runtime surface `Zanna.GUI.CodeEditor.SetLigaturesEnabled` /
+  `GetLigaturesEnabled` (stubs included); ABI manifest pins updated.
+- **Per-glyph fallback**: `vg_font_set_fallback` chain consulted on cmap
+  miss (glyph/advance/has-glyph/shaped-path); runtime attaches a
+  process-shared embedded JetBrains Mono instance to every `Font.Load` and
+  platform system-UI face — the guaranteed terminal face. The OS-face
+  sources remain the existing per-platform candidate lists (directory
+  scanning beyond them stays future work, documented).
+- **.ttc**: TrueType Collection headers supported (first face; directory
+  re-based, file-absolute table offsets preserved).
+- Out (as planned): color emoji, CFF, subpixel AA, hinting.
+- Tests: `test_vg_gsub` (40 asserts against the shipped JetBrains Mono:
+  substitution occurs for `-> => != === <= >= ::`, spans cover all chars,
+  identity for plain text, measured width invariant, toggles, degenerate
+  inputs); gui label 24/24; zannastudio 42/42.
+
 ## 3. Runtime surface
 
 `Zanna.GUI.CodeEditor.SetLigaturesEnabled(enabled: Boolean)` (+ getter),

@@ -16,9 +16,12 @@ bind FileIndex = Zanna.Workspace.FileIndex;
 bind "../core/document_manager";
 bind "../zia/bind_utils";
 
-final TREE_ROOT_PREFIX = "▦ ";
-final TREE_FOLDER_PREFIX = "▤ ";
-final TREE_FILE_PREFIX = "· ";
+// Tree rows now carry real vector icons (plan 04 follow-up), so the text
+// prefixes that used to stand in for them are empty. The label helpers remain
+// the single decoration point if a future mode needs prefixes again.
+final TREE_ROOT_PREFIX = "";
+final TREE_FOLDER_PREFIX = "";
+final TREE_FILE_PREFIX = "";
 
 // ============================================================================
 // MODULE: project_manager
@@ -315,6 +318,7 @@ class ProjectManager {
             var root = all.get(i);
             var rootNode = treeView.AddNode(null, TreeRootLabel(root.name));
             GUI.TreeView.Node.SetData(rootNode, root.rootPath);
+            GUI.TreeView.Node.SetIcon(rootNode, "vector:zanna-mark");
             PopulateTreeChildren(root.rootPath, rootNode);
             treeView.Expand(rootNode);
             i = i + 1;
@@ -351,6 +355,7 @@ class ProjectManager {
             if ShouldExcludePath(fullPath, true) == false {
                 var folderNode = treeView.AddNode(parentNode, TreeFolderLabel(dirNameText));
                 GUI.TreeView.Node.SetData(folderNode, fullPath);
+                GUI.TreeView.Node.SetIcon(folderNode, "vector:folder|folder-open");
             }
         }
 
@@ -365,10 +370,29 @@ class ProjectManager {
             if ShouldExcludePath(fullPath, false) == false {
                 var fileNode = treeView.AddNode(parentNode, TreeFileLabel(fileNameText));
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
+                GUI.TreeView.Node.SetIcon(fileNode, FileIconName(fileNameText));
                 AddCachedFile(fullPath);
             }
         }
         return true;
+    }
+
+    /// @brief Map a file basename to its explorer vector-icon selector.
+    /// @details Extensions the toolchain owns get dedicated glyphs; everything
+    ///          else uses the generic file icon. Comparison is lowercase so
+    ///          `Main.ZIA` matches.
+    func FileIconName(name: String) -> String {
+        var lower = Str.ToLower(name);
+        if Str.EndsWith(lower, ".zia") { return "vector:file-zia"; }
+        if Str.EndsWith(lower, ".bas") { return "vector:file-basic"; }
+        if Str.EndsWith(lower, ".il") { return "vector:file-il"; }
+        if Str.EndsWith(lower, ".json") or Str.EndsWith(lower, ".zap")
+           or Str.EndsWith(lower, ".zpak") { return "vector:file-json"; }
+        if Str.EndsWith(lower, ".md") { return "vector:file-md"; }
+        if Str.EndsWith(lower, ".png") or Str.EndsWith(lower, ".jpg")
+           or Str.EndsWith(lower, ".jpeg") or Str.EndsWith(lower, ".bmp")
+           or Str.EndsWith(lower, ".gif") { return "vector:file-image"; }
+        return "vector:file";
     }
 
     /// @brief Build the project-wide file cache without constructing GUI nodes.

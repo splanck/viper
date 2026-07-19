@@ -37,12 +37,17 @@ class SessionManager {
     expose String settingsPath;
 
     expose func init() {
+        splitActive = false;
         settingsPath = "";
     }
 
     expose func Setup(path: String) {
         settingsPath = path;
     }
+
+    /// Split-editor state carried across sessions (plan 07): main.zia sets
+    /// this before Save and re-applies it after Restore.
+    expose Boolean splitActive;
 
     expose func Save(docMgr: document_manager.DocumentManager,
                      projMgr: project_manager.ProjectManager) {
@@ -69,6 +74,9 @@ class SessionManager {
         }
         Ini.Set(ini, "session", "activePath", activePath);
         Ini.Set(ini, "session", "activeIndex", "" + docMgr.activeIndex);
+        var splitFlag = "0";
+        if splitActive { splitFlag = "1"; }
+        Ini.Set(ini, "session", "splitActive", splitFlag);
 
         var i = 0;
         while i < docMgr.GetCount() {
@@ -131,6 +139,7 @@ class SessionManager {
         if IO.File.Exists(settingsPath) == false { return 0; }
 
         var ini = Ini.Parse(IO.File.ReadAllText(settingsPath));
+        splitActive = Ini.Get(ini, "session", "splitActive") == "1";
         var restoreSession = Ini.Get(ini, "settings", "restoreSession");
         if restoreSession == "0" { return 0; }
 

@@ -31,6 +31,9 @@ final COMMAND_INPUT_WORKSPACE_SYMBOLS: Integer = 4;
 final COMMAND_INPUT_RENAME_SYMBOL: Integer = 5;
 final COMMAND_INPUT_EXTRACT_LOCAL: Integer = 6;
 final COMMAND_INPUT_EXTRACT_FUNCTION: Integer = 7;
+final COMMAND_INPUT_NEW_PROJECT_CONSOLE: Integer = 8;
+final COMMAND_INPUT_NEW_PROJECT_GUI: Integer = 9;
+final COMMAND_INPUT_NEW_PROJECT_LIBRARY: Integer = 10;
 final COMMAND_INPUT_CANCEL: Integer = 99;
 
 final COMMAND_INPUT_WIDTH: Integer = 440;
@@ -119,6 +122,22 @@ class CommandInputOverlay {
     /// @brief Open the overlay for the Go To Line command.
     /// @param shell Workbench shell used for current viewport size.
     /// @param currentLine Initial line number shown in the input.
+    /// @brief Open the overlay for scaffolding a new project (plan 08).
+    /// @param shell Workbench shell used for current viewport size.
+    /// @param mode COMMAND_INPUT_NEW_PROJECT_* template selector.
+    /// @param templateLabel Human template name shown in the prompt.
+    expose func OpenNewProject(shell: app_shell.AppShell,
+                               mode: Integer,
+                               templateLabel: String) {
+        Open(shell,
+             mode,
+             "New Project (" + templateLabel + ")",
+             "Creates the project under ~/ZannaProjects and opens it.",
+             "Project name",
+             "",
+             "Create");
+    }
+
     expose func OpenGoToLine(shell: app_shell.AppShell,
                              currentLine: Integer) {
         var initial = "";

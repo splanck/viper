@@ -6,6 +6,7 @@ bind "../editor/scheduler";
 bind "../build/diagnostic";
 bind "../services/locations";
 bind "../editor/quick_fixes";
+bind "../services/theme_colors";
 
 bind ZiaToolchain = Zanna.Zia.Toolchain;
 bind BasicToolchain = Zanna.Basic.LanguageService;
@@ -53,9 +54,10 @@ bind Path = Zanna.IO.Path;
 // ============================================================================
 
 final DEBOUNCE_MS = 500;       // ms to wait after last edit before checking
-final ERROR_COLOR = 16711680;  // red    (0xFF0000)
-final WARN_COLOR  = 16776960;  // yellow (0xFFFF00)
-final INFO_COLOR  = 10066329;  // grey   (0x999999)
+/// @brief Squiggle/marker colors from the live theme palette.
+func ErrorColor() -> Integer { return theme_colors.Rgb("accentDanger"); }
+func WarnColor() -> Integer { return theme_colors.Rgb("accentWarning"); }
+func InfoColor() -> Integer { return theme_colors.Rgb("fgTertiary"); }
 
 /// @brief Live error/warning checker for the active document.
 class LiveDiagnostics {
@@ -318,13 +320,13 @@ class LiveDiagnostics {
             var msg = Map.GetStr(record, "message");
 
             var sevLabel = "error";
-            var markerColor = ERROR_COLOR;
+            var markerColor = ErrorColor();
             if sev == 1 {
                 sevLabel = "warning";
-                markerColor = WARN_COLOR;
+                markerColor = WarnColor();
             } else if sev == 2 {
                 sevLabel = "note";
-                markerColor = INFO_COLOR;
+                markerColor = InfoColor();
             }
 
             if sev == 0 { errorCount = errorCount + 1; }

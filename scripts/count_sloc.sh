@@ -107,8 +107,8 @@ SLOC_ZIA=$(find examples src/tests/fixtures -name '*.zia' 2>/dev/null | sloc_c)
 SLOC_BASIC=$(find examples src/tests/fixtures -name '*.bas' 2>/dev/null | sloc_basic)
 SLOC_CMAKE=$(find . -name 'CMakeLists.txt' -o -name '*.cmake' | grep -v build | sloc_shell)
 SLOC_SHELL=$(find scripts -name '*.sh' 2>/dev/null | sloc_shell)
-SLOC_BATCH=$(find scripts -name '*.cmd' 2>/dev/null | grep -cv '^\s*$\|^\s*REM\|^\s*::' 2>/dev/null || echo 0)
-SLOC_SCRIPTS=$((SLOC_SHELL + SLOC_BATCH))
+SLOC_PS1=$(find scripts -name '*.ps1' 2>/dev/null | sloc_shell)
+SLOC_SCRIPTS=$((SLOC_SHELL + SLOC_PS1))
 LOC_DOCS=$(find docs -name '*.md' 2>/dev/null | loc_any)
 SLOC_IL=$(find src/tests/fixtures examples -name '*.il' 2>/dev/null | sloc_c)
 
@@ -199,7 +199,7 @@ print_all() {
     printf "  %-24s %'10d SLOC\n" "Build system (CMake)" "$SLOC_CMAKE"
     printf "  %-24s %'10d LOC\n"  "Documentation (.md)" "$LOC_DOCS"
     printf "  %-24s %'10d SLOC\n" "IL fixtures (.il)"  "$SLOC_IL"
-    printf "  %-24s %'10d SLOC\n" "Scripts (sh/cmd)"   "$SLOC_SCRIPTS"
+    printf "  %-24s %'10d SLOC\n" "Scripts (sh/ps1)"   "$SLOC_SCRIPTS"
     echo ""
 
     echo -e "${BOLD}Totals${NC}"

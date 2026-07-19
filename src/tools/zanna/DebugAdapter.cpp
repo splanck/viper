@@ -482,7 +482,8 @@ class AdapterFrontend : public il::vm::DebugFrontend {
 int runDebugAdapter(il::core::Module &module,
                     const std::vector<std::string> &programArgs,
                     uint64_t maxSteps,
-                    il::support::SourceManager &sm) {
+                    il::support::SourceManager &sm,
+                    il::vm::DebugClassLayoutTable debugLayouts) {
     DebugChannel chan;
     chan.emit(JsonValue::object({
         {"type", JsonValue("initialized")},
@@ -494,6 +495,7 @@ int runDebugAdapter(il::core::Module &module,
     runCfg.maxSteps = maxSteps;
     runCfg.programArgs = programArgs;
     runCfg.debug.setSourceManager(&sm);
+    runCfg.debug.setClassLayouts(std::move(debugLayouts));
 
     // Handshake: accept breakpoints, then wait for an explicit launch so the IDE
     // can install breakpoints before the program runs.

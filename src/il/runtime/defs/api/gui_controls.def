@@ -43,6 +43,8 @@ RT_FUNC(GuiAppGetLogicalHeight, rt_app_get_logical_height, "Zanna.GUI.App.GetLog
 RT_FUNC(GuiAppToLogical, rt_app_to_logical, "Zanna.GUI.App.ToLogical", "i64(obj,i64)")
 RT_FUNC(GuiAppToPhysical, rt_app_to_physical, "Zanna.GUI.App.ToPhysical", "i64(obj,i64)")
 RT_FUNC(GuiAppSetUiScale, rt_app_set_ui_scale, "Zanna.GUI.App.SetUiScale", "void(obj,f64)")
+RT_FUNC(GuiAppSetSmoothScroll, rt_app_set_smooth_scroll, "Zanna.GUI.App.SetSmoothScroll", "void(obj,i1)")
+RT_FUNC(GuiAppGetSmoothScroll, rt_app_get_smooth_scroll, "Zanna.GUI.App.GetSmoothScroll", "i1(obj)")
 RT_FUNC(GuiAppGetUiScale, rt_app_get_ui_scale, "Zanna.GUI.App.GetUiScale", "f64(obj)")
 RT_FUNC(GuiAppGetEffectiveScale, rt_app_get_effective_scale, "Zanna.GUI.App.GetEffectiveScale", "f64(obj)")
 RT_FUNC(GuiAppSetWheelSpeed, rt_app_set_wheel_speed, "Zanna.GUI.App.SetWheelSpeed", "void(obj,f64)")
@@ -165,6 +167,7 @@ RT_FUNC(GuiLabelSetText, rt_label_set_text, "Zanna.GUI.Label.SetText", "void(obj
 RT_FUNC(GuiLabelSetFont, rt_label_set_font, "Zanna.GUI.Label.SetFont", "void(obj,obj,f64)")
 RT_FUNC(GuiLabelSetColor, rt_label_set_color, "Zanna.GUI.Label.SetColor", "void(obj,i64)")
 RT_FUNC(GuiLabelSetWordWrap, rt_label_set_word_wrap, "Zanna.GUI.Label.SetWordWrap", "void(obj,i1)")
+RT_FUNC(GuiLabelSetIconName, rt_label_set_icon_name, "Zanna.GUI.Label.SetIconName", "void(obj,str)")
 RT_FUNC(GuiLabelSetAlignment, rt_label_set_alignment, "Zanna.GUI.Label.SetAlignment", "void(obj,i64)")
 RT_FUNC(GuiLabelGetAlignment, rt_label_get_alignment, "Zanna.GUI.Label.GetAlignment", "i64(obj)")
 RT_FUNC(GuiLabelSetEllipsis, rt_label_set_ellipsis, "Zanna.GUI.Label.SetEllipsis", "void(obj,i1)")
@@ -182,6 +185,7 @@ RT_FUNC(GuiButtonSetFont, rt_button_set_font, "Zanna.GUI.Button.SetFont", "void(
 RT_FUNC(GuiButtonSetStyle, rt_button_set_style, "Zanna.GUI.Button.SetStyle", "void(obj,i64)")
 RT_FUNC(GuiButtonSetIcon, rt_button_set_icon, "Zanna.GUI.Button.SetIcon", "void(obj,str)")
 RT_FUNC(GuiButtonSetIconPosition, rt_button_set_icon_pos, "Zanna.GUI.Button.SetIconPosition", "void(obj,i64)")
+RT_FUNC(GuiButtonSetIconName, rt_button_set_icon_name, "Zanna.GUI.Button.SetIconName", "void(obj,str)")
 
 //=============================================================================
 // GUI - TEXTINPUT

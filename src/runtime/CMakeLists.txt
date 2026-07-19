@@ -953,6 +953,10 @@ if (WIN32)
     target_link_libraries(zanna_runtime PUBLIC ws2_32)
     target_link_libraries(zanna_rt_graphics PUBLIC Xinput9_1_0)
     target_link_libraries(zanna_runtime PUBLIC Xinput9_1_0)
+    # UI Automation bridge: BSTR/VARIANT/SAFEARRAY helpers live in oleaut32;
+    # uiautomationcore.dll itself is resolved dynamically at runtime.
+    target_link_libraries(zanna_rt_graphics PUBLIC oleaut32)
+    target_link_libraries(zanna_runtime PUBLIC oleaut32)
 endif ()
 
 if (NOT WIN32)

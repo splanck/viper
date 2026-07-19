@@ -216,6 +216,19 @@ static NSCursor *macos_cursor_for_type(int32_t cursor_type) {
             return [NSCursor resizeUpDownCursor];
         case 5:
             return [NSCursor arrowCursor];
+        case 6: /* resize NWSE: private selector unavailable; closest public */
+        case 7: /* resize NESW */
+            return [NSCursor crosshairCursor];
+        case 8:
+            return [NSCursor openHandCursor];
+        case 9:
+            return [NSCursor closedHandCursor];
+        case 10:
+            return [NSCursor crosshairCursor];
+        case 11:
+            return [NSCursor arrowCursor];
+        case 12:
+            return [NSCursor operationNotAllowedCursor];
         default:
             return [NSCursor arrowCursor];
     }

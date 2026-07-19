@@ -29,14 +29,21 @@ Zanna BASIC. It includes:
   definition, references, rename, and selected refactors.
 - BASIC completion, diagnostics, hover, signature help, document symbols,
   definition, references, rename, call hierarchy, and workspace symbols.
-- Project explorer, multi-root workspace support, Quick Open, project search,
-  workspace symbols, and recent files.
-- Build and run jobs through `Zanna.System.Process`.
-- VM-backed debug adapter launch through `zanna run --debug-adapter`.
-- Integrated PTY terminal through `Zanna.System.Pty`.
-- Lightweight Git source-control view.
-- Session restore, settings persistence, external-change detection, and
-  crash-recovery snapshots for small modified text buffers.
+- Project explorer with file-type icons, multi-root workspace support, Quick
+  Open, project search with project-wide replace, workspace symbols, and
+  recent files.
+- Side-by-side diff view (compare with saved, HEAD, or any commit).
+- Build and run jobs through `Zanna.System.Process`; a new-project wizard
+  with console/GUI/library templates.
+- VM-backed debug adapter launch through `zanna run --debug-adapter`, with
+  structured expansion of collections and class-instance fields.
+- Integrated PTY terminal through `Zanna.System.Pty`, emulating the
+  alternate-screen/scroll-region/mode sequences full-screen programs emit.
+- Git source-control view: status, staging, commit, paged history, queued
+  operations, and PTY-backed push/pull with in-app credential prompts.
+- Rebindable keyboard shortcuts, settings search, session restore, settings
+  persistence, external-change detection, and crash-recovery snapshots for
+  small modified text buffers.
 
 The app is not yet a full visual scene editor. `.scene` and `.level` files are
 recognized as scene documents, but they still open in the text editor. There is

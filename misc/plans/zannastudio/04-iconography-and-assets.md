@@ -49,6 +49,44 @@ for new `rt_*` files, graphics-off stubs, `check_runtime_completeness.sh`
 green. Any new class (e.g. `Zanna.GUI.Icon`) needs a hand-added `RTCLS_*` in
 `RuntimeClasses.hpp` and a globally-unique leaf name (`Icon` — verify).
 
+## 3a. As-built record (2026-07-18)
+
+- ADR landed as **0137**. Engine: `src/lib/gui/src/core/vg_icon_vector.c` +
+  `include/vg_icon_vector.h` — fully fixed-point (Q16 edges, integer
+  coverage, fixed 8-segment quad flattening), even-odd fill, 4x vertical
+  supersampling with analytic horizontal coverage, tint-independent
+  per-role coverage masks in a 96-entry LRU. **49 icons** registered,
+  including the multi-role `zanna-mark` (brand green/steel/teal).
+- The canonical `vg_icon_t` gained `VG_ICON_VECTOR` (+
+  `vg_icon_from_vector`); toolbar and context-menu render paths handle it.
+  The 14 hand-painted toolbar glyph painters were deleted — the legacy
+  codepoint keys now map onto vector icons inside
+  `toolbar_draw_vector_icon`, and the per-codepoint semantic colors come
+  from theme tokens instead of hardcoded hex.
+- Runtime surface: `Button.SetIconName` + `Label.SetIconName` (real +
+  graphics-off stubs, registry defs, rt_gui.h). **Toolbar items reuse the
+  existing `SetNamedIcon`** — its resolver consults the vector library
+  first. GUI ABI manifest pins reviewed and updated (+2 functions,
+  +2 methods, new hash).
+- IDE adoption: welcome hero (`zanna-mark` on the title, `new-file` /
+  `folder-open` button icons), About dialog mark. New probe
+  `vector_icons_probe.zia` (`zia_zannastudio_vector_icons`).
+- C test `test_vg_icon_vector` (212 assertions): registry round-trip,
+  per-icon in-box coverage, AA presence, cold/warm-cache bit-identical
+  hashes, tint sensitivity, brand-mark role colors, invalid-input no-ops.
+- **Staged follow-ups — CLOSED (2026-07-18):** the explorer tree now sets
+  per-node vector icons (`zanna-mark` roots, `folder|folder-open` folders,
+  extension-mapped file glyphs) through the existing `TreeView.Node.SetIcon`
+  surface via the new `vector:<name>[|<expanded>]` value form (no new RT
+  method; ADR 0137 amended), and the old text glyph prefixes were dropped;
+  the tab close X is drawn with the AA `close` vector icon (raw-line
+  fallback if the library is absent; the modified marker stays the `*`
+  title suffix); the status bar diagnostics item shows `error`/`warning`/
+  `check` severity glyphs via the new `Zanna.GUI.StatusBarItem.SetIconName`
+  (full runtime checklist; ABI manifest pins updated to 1115/1006, hash
+  0x2d61efa91809eb66). Remaining note: Label icons render on non-wrapped
+  labels only.
+
 ## 4. Tests / verification (exit gate)
 
 - C tests in `src/lib/gui/tests/`: path rasterization determinism (pixel-hash

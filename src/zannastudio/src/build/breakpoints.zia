@@ -2,6 +2,7 @@ module breakpoints;
 
 bind "../core/document";
 bind "../editor/editor_engine";
+bind "../services/theme_colors";
 
 bind Ini = Zanna.Data.Ini;
 bind IO = Zanna.IO;
@@ -12,8 +13,6 @@ bind Map = Zanna.Collections.Map;
 bind Pixels = Zanna.Graphics.Pixels;
 
 final BREAKPOINT_SLOT = 0;
-final BREAKPOINT_COLOR = 3893437439; // 0xE81123FF
-final BREAKPOINT_HIGHLIGHT = 4294967295; // 0xFFFFFFFF
 
 // ============================================================================
 // MODULE: breakpoints
@@ -255,8 +254,8 @@ class BreakpointStore {
     hide func BreakpointIcon() -> Any {
         var px = Pixels.New(8, 8);
         px.Clear();
-        px.DrawDisc(4, 4, 3, BREAKPOINT_COLOR);
-        px.DrawDisc(3, 3, 1, BREAKPOINT_HIGHLIGHT);
+        px.DrawDisc(4, 4, 3, theme_colors.Rgba("accentDanger"));
+        px.DrawDisc(3, 3, 1, theme_colors.Rgba("fgPrimary"));
         return px;
     }
 }

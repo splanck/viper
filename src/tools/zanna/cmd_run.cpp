@@ -243,7 +243,63 @@ void printRunBuildUsage(RunMode mode, std::ostream &out = std::cerr) {
 struct CompiledProjectModule {
     il::core::Module module; ///< The lowered IL module.
     bool verified{false};    ///< True if the module already passed verification.
+    /// @brief Class-layout sidecar for the VM debugger (ADR 0138). Populated
+    ///        only for pure-Zia debug-adapter runs; empty otherwise.
+    il::vm::DebugClassLayoutTable debugLayouts{};
 };
+
+/// @brief Convert the frontend's debug-layout export into the VM's table.
+/// @details The tool is the composition root: the frontend and the VM each own
+///          their plain-data shape (no cross-layer include), and this is the
+///          one place both are visible (ADR 0138).
+il::vm::DebugClassLayoutTable toVmDebugLayouts(
+    il::frontends::zia::DebugClassLayoutExport &&exported) {
+    using FrontStore = il::frontends::zia::DebugFieldStore;
+    using VmStore = il::vm::DebugFieldStorage;
+    auto mapStore = [](FrontStore s) {
+        switch (s) {
+            case FrontStore::I64:
+                return VmStore::I64;
+            case FrontStore::I32:
+                return VmStore::I32;
+            case FrontStore::I16:
+                return VmStore::I16;
+            case FrontStore::I1:
+                return VmStore::I1;
+            case FrontStore::F64:
+                return VmStore::F64;
+            case FrontStore::Str:
+                return VmStore::Str;
+            case FrontStore::Managed:
+                return VmStore::Managed;
+            case FrontStore::Weak:
+                return VmStore::Weak;
+            case FrontStore::Raw:
+                return VmStore::Raw;
+            case FrontStore::Opaque:
+            default:
+                return VmStore::Opaque;
+        }
+    };
+    il::vm::DebugClassLayoutTable table;
+    table.reserve(exported.size());
+    for (auto &[classId, cls] : exported) {
+        il::vm::DebugClassLayout layout;
+        layout.qname = std::move(cls.qname);
+        layout.fields.reserve(cls.fields.size());
+        for (auto &field : cls.fields) {
+            il::vm::DebugFieldLayout vf;
+            vf.name = std::move(field.name);
+            vf.typeName = std::move(field.typeName);
+            vf.offset = field.offset;
+            vf.storage = mapStore(field.store);
+            vf.boolDisplay = field.boolDisplay;
+            layout.fields.push_back(std::move(vf));
+        }
+        table.emplace(classId, std::move(layout));
+    }
+    return table;
+}
 
 /// @brief Map a build profile name to its default optimization level string.
 /// @return "O0"/"O1"/"O2" for debug/balanced/release, or nullopt if unrecognized.
@@ -596,7 +652,8 @@ int verifyAndExecute(il::core::Module &module,
                      bool debugVm,
                      bool debugAdapter,
                      bool moduleAlreadyVerified,
-                     il::support::SourceManager &sm) {
+                     il::support::SourceManager &sm,
+                     il::vm::DebugClassLayoutTable debugLayouts = {}) {
     if (!moduleAlreadyVerified &&
         !reportVerifierDiagnostics(
             module, std::cerr, sm, shared.diagnosticFormat, shared.showWarnings)) {
@@ -616,7 +673,8 @@ int verifyAndExecute(il::core::Module &module,
     }
 
     if (debugAdapter)
-        return il::tools::debug::runDebugAdapter(module, programArgs, shared.maxSteps, sm);
+        return il::tools::debug::runDebugAdapter(
+            module, programArgs, shared.maxSteps, sm, std::move(debugLayouts));
 
     bool useStandardVm = debugVm || shared.trace.enabled();
 
@@ -686,12 +744,14 @@ int verifyAndExecute(il::core::Module &module,
 il::support::Expected<CompiledProjectModule> compileZiaProject(const ProjectConfig &project,
                                                                const ilc::SharedCliOptions &shared,
                                                                il::support::SourceManager &sm,
-                                                               bool optimizeModule = true) {
+                                                               bool optimizeModule = true,
+                                                               bool captureDebugLayouts = false) {
     il::frontends::zia::CompilerOptions opts;
     opts.boundsChecks = project.boundsChecks;
     opts.overflowChecks = project.overflowChecks;
     opts.nullChecks = project.nullChecks;
     opts.allowUnsafePointers = shared.allowUnsafePointers;
+    opts.captureDebugLayouts = captureDebugLayouts;
     opts.dumpTokens = shared.dumpTokens;
     opts.dumpAst = shared.dumpAst;
     opts.dumpSemaAst = shared.dumpSemaAst;
@@ -742,7 +802,9 @@ il::support::Expected<CompiledProjectModule> compileZiaProject(const ProjectConf
             il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
     }
 
-    return CompiledProjectModule{std::move(result.module), result.moduleVerified};
+    return CompiledProjectModule{std::move(result.module),
+                                 result.moduleVerified,
+                                 toVmDebugLayouts(std::move(result.debugClassLayouts))};
 }
 
 /// @brief Compile a BASIC project and return the module.
@@ -1013,7 +1075,11 @@ int executeRunBuildConfig(RunBuildConfig config) {
         (proj.lang == ProjectLang::Mixed)
             ? compileMixedProject(proj, config.noRuntimeNamespaces, config.shared, sm)
         : (proj.lang == ProjectLang::Zia)
-            ? compileZiaProject(proj, config.shared, sm)
+            ? compileZiaProject(proj,
+                                config.shared,
+                                sm,
+                                /*optimizeModule=*/true,
+                                /*captureDebugLayouts=*/config.debugAdapter)
             : compileBasicProject(proj, config.noRuntimeNamespaces, config.shared, sm);
     printCompileTime(config.shared, "source-to-il", compileStart);
 
@@ -1165,7 +1231,8 @@ int executeRunBuildConfig(RunBuildConfig config) {
                             config.debugVm,
                             config.debugAdapter,
                             moduleVerified,
-                            sm);
+                            sm,
+                            std::move(compiled.debugLayouts));
 }
 
 } // namespace

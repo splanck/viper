@@ -49,7 +49,8 @@ typedef struct vg_icon {
         VG_ICON_NONE,  ///< No icon
         VG_ICON_GLYPH, ///< Unicode character
         VG_ICON_IMAGE, ///< Pixel data
-        VG_ICON_PATH   ///< File path
+        VG_ICON_PATH,  ///< File path
+        VG_ICON_VECTOR ///< Named scalable vector icon (vg_icon_vector library)
     } type;
 
     union {
@@ -62,6 +63,8 @@ typedef struct vg_icon {
         } image;
 
         char *path; ///< File path
+
+        int32_t vector_id; ///< Vector icon id from vg_icon_vector_find
     } data;
 } vg_icon_t;
 
@@ -76,6 +79,11 @@ vg_icon_t vg_icon_from_glyph(uint32_t codepoint);
 /// @param h Image height
 /// @return Icon specification
 vg_icon_t vg_icon_from_pixels(uint8_t *rgba, uint32_t w, uint32_t h);
+
+/// @brief Create icon referencing a named scalable vector icon (ADR 0137)
+/// @param vector_id Icon id from vg_icon_vector_find; negative yields VG_ICON_NONE
+/// @return Icon specification (no heap allocation)
+vg_icon_t vg_icon_from_vector(int32_t vector_id);
 
 /// @brief Create icon from file path
 /// @param path File path

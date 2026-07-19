@@ -94,6 +94,7 @@
 #include "frontends/common/LoopContext.hpp"
 #include "frontends/common/StringTable.hpp"
 #include "frontends/zia/AST.hpp"
+#include "frontends/zia/DebugLayoutExport.hpp"
 #include "frontends/zia/LowererTypes.hpp"
 #include "frontends/zia/Options.hpp"
 #include "frontends/zia/Sema.hpp"
@@ -200,6 +201,13 @@ class Lowerer {
     /// 3. Emit string constants
     /// 4. Declare external functions
     Module lower(ModuleDecl &module);
+
+    /// @brief Export per-class field layouts for the VM debugger (ADR 0138).
+    /// @details Valid after lower(): walks classTypes_ and emits, for every
+    ///          instantiated class, the flattened field list (inherited first)
+    ///          with byte offsets and storage kinds, keyed by the runtime class
+    ///          id that rt_obj_new_i64 stamps into instances.
+    [[nodiscard]] DebugClassLayoutExport collectDebugClassLayouts() const;
 
     /// @brief Get the current source location for IL emission.
     [[nodiscard]] il::support::SourceLoc sourceLocation() const noexcept {

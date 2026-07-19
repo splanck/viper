@@ -24,6 +24,24 @@
 #include "vgfx.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+
+#include "vg_gamma_tables.inc"
+
+/// @brief Return whether gamma-correct linear-light glyph blending is active.
+/// @details Default on; the ZANNA_GUI_TEXT_GAMMA=off environment escape hatch
+///          restores the legacy sRGB-space blend (checked once per process).
+static int vg_text_gamma_blend_enabled(void) {
+    static int s_state = -1;
+    if (s_state < 0) {
+        const char *setting = getenv("ZANNA_GUI_TEXT_GAMMA");
+        int off = setting && (setting[0] == '0' ||
+                              ((setting[0] == 'o' || setting[0] == 'O') &&
+                               (setting[1] == 'f' || setting[1] == 'F')));
+        s_state = off ? 0 : 1;
+    }
+    return s_state;
+}
 
 //=============================================================================
 // Canvas Glyph Drawing
@@ -112,8 +130,27 @@ void vg_canvas_draw_glyph(
                 pixel[1] = g;
                 pixel[2] = b;
                 pixel[3] = 0xFF;
+            } else if (vg_text_gamma_blend_enabled()) {
+                // Gamma-correct AA: blend coverage in linear light via the
+                // checked-in integer tables, then re-encode to sRGB. This
+                // stops light-on-dark text from over-darkening at glyph edges
+                // (Zanna Studio plan 06).
+                uint32_t inv_alpha = 255 - alpha;
+                uint32_t lin_fg_r = k_vg_srgb_to_linear[r];
+                uint32_t lin_fg_g = k_vg_srgb_to_linear[g];
+                uint32_t lin_fg_b = k_vg_srgb_to_linear[b];
+                uint32_t lin_bg_r = k_vg_srgb_to_linear[pixel[0]];
+                uint32_t lin_bg_g = k_vg_srgb_to_linear[pixel[1]];
+                uint32_t lin_bg_b = k_vg_srgb_to_linear[pixel[2]];
+                uint32_t out_r = (lin_fg_r * alpha + lin_bg_r * inv_alpha + 127) / 255;
+                uint32_t out_g = (lin_fg_g * alpha + lin_bg_g * inv_alpha + 127) / 255;
+                uint32_t out_b = (lin_fg_b * alpha + lin_bg_b * inv_alpha + 127) / 255;
+                pixel[0] = k_vg_linear_to_srgb[(out_r > 32767 ? 32767 : out_r) >> 3];
+                pixel[1] = k_vg_linear_to_srgb[(out_g > 32767 ? 32767 : out_g) >> 3];
+                pixel[2] = k_vg_linear_to_srgb[(out_b > 32767 ? 32767 : out_b) >> 3];
+                pixel[3] = 0xFF;
             } else {
-                // Alpha blend with background
+                // Legacy sRGB-space blend (ZANNA_GUI_TEXT_GAMMA=off).
                 uint8_t bg_r = pixel[0];
                 uint8_t bg_g = pixel[1];
                 uint8_t bg_b = pixel[2];

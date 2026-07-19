@@ -352,7 +352,7 @@ class LanguageToolFrameController {
             AddSearchPerf(perfSpan);
         }
         if searcher != null {
-            searcher.HandlePanel(shell, projMgr, docMgr, engine);
+            searcher.HandlePanel(shell, projMgr, docMgr, engine, locStore);
             if searcher.active and Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
                 searcher.Cancel(shell);
             }

@@ -675,6 +675,13 @@ void rt_label_set_color(void *label, int64_t color);
 /// @brief Enable (1) or disable (0) word wrapping on a label.
 void rt_label_set_word_wrap(void *label, int64_t enabled);
 
+/// @brief Set (or clear) a named scalable vector icon before a label's text.
+/// @details Unknown names are ignored; an empty name clears the icon. Rendered
+///          on non-wrapped labels only (ADR 0137).
+/// @param label Label widget handle.
+/// @param name Stable kebab-case icon name (e.g. "zanna-mark").
+void rt_label_set_icon_name(void *label, rt_string name);
+
 /// @brief Set a label's horizontal text alignment.
 /// @details Accepted values are `0` (left), `1` (center), and `2` (right). Invalid enum values and
 ///          invalid handles are ignored.
@@ -751,6 +758,13 @@ void rt_button_set_icon(void *button, rt_string icon);
 /// @param button Button widget handle.
 /// @param pos Icon position (RT_ICON_LEFT or RT_ICON_RIGHT).
 void rt_button_set_icon_pos(void *button, int64_t pos);
+
+/// @brief Set (or clear) a named scalable vector icon on a button.
+/// @details Unknown names are ignored; an empty name clears the icon. Vector
+///          icons take precedence over icon text (ADR 0137).
+/// @param button Button widget handle.
+/// @param name Stable kebab-case icon name (e.g. "run", "settings-gear").
+void rt_button_set_icon_name(void *button, rt_string name);
 
 //=========================================================================
 // TextInput Widget
@@ -3042,6 +3056,17 @@ int64_t rt_app_to_physical(void *app, int64_t logical);
 /// @param scale Zoom factor; clamped to [0.5, 3.0]. 1.0 is the default.
 void rt_app_set_ui_scale(void *app, double scale);
 
+/// @brief Enable or disable inertial smooth scrolling process-wide (ADR 0137).
+/// @details Reduced-motion themes suppress easing regardless of this flag.
+/// @param app App handle (accepted for symmetry; the flag is process-wide).
+/// @param enabled Non-zero eases wheel scrolling; zero jumps instantly.
+void rt_app_set_smooth_scroll(void *app, int64_t enabled);
+
+/// @brief Return whether inertial smooth scrolling is requested.
+/// @param app App handle (unused).
+/// @return One when smooth scrolling is requested, otherwise zero.
+int64_t rt_app_get_smooth_scroll(void *app);
+
 /// @brief Get the current user UI zoom multiplier.
 /// @param app GUI application handle.
 /// @return Zoom factor (1.0 = default).
@@ -3572,6 +3597,11 @@ void rt_statusbaritem_set_text(void *item, rt_string text);
 /// @param item StatusBarItem handle.
 /// @param color Text color as 0xRRGGBB.
 void rt_statusbaritem_set_text_color(void *item, int64_t color);
+
+/// @brief Set (or clear) a named scalable vector icon on a status bar item (ADR 0137).
+/// @param item StatusBarItem handle.
+/// @param name Icon name from the vg_icon_vector library; empty clears.
+void rt_statusbaritem_set_icon_name(void *item, rt_string name);
 
 /// @brief Get status bar item text.
 /// @param item StatusBarItem handle.
@@ -4168,6 +4198,17 @@ int64_t rt_codeeditor_get_insert_spaces(void *editor);
 /// @param editor CodeEditor handle.
 /// @param enabled Non-zero to enable.
 void rt_codeeditor_set_word_wrap(void *editor, int64_t enabled);
+
+/// @brief Enable or disable ligature shaping for one editor (ADR 0137).
+/// @param editor CodeEditor widget handle.
+/// @param enabled Non-zero renders liga/calt ligatures (default); zero shows
+///        plain per-character glyphs.
+void rt_codeeditor_set_ligatures_enabled(void *editor, int64_t enabled);
+
+/// @brief Return whether one editor renders ligatures.
+/// @param editor CodeEditor widget handle.
+/// @return One when ligatures render, otherwise zero.
+int64_t rt_codeeditor_get_ligatures_enabled(void *editor);
 
 /// @brief Check whether display-only word wrapping is enabled.
 /// @param editor CodeEditor handle.

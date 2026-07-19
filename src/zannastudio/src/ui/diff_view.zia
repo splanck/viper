@@ -1,0 +1,161 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/diff_view.zia
+// Purpose: Side-by-side diff overlay (plan 07) — aligned rows from the diff
+//          engine rendered into a floating panel with per-kind colors and a
+//          single synced scroll surface.
+// Key invariants:
+//   - Rows come from diff_engine.BuildRows, so both documents reconstruct
+//     exactly and the two columns stay aligned by construction.
+//   - Colors derive from the live theme palette (never hardcoded).
+// Ownership/Lifetime:
+//   - The floating panel and its children are created once per AppShell and
+//     reused for every diff.
+// Links: zannastudio/src/services/diff_engine.zia,
+//        zannastudio/src/scm/scm_view.zia
+//
+//===----------------------------------------------------------------------===//
+
+module diff_view;
+
+bind "../services/diff_engine";
+bind "../services/theme_colors";
+
+bind Zanna.GUI as GUI;
+bind Str = Zanna.String;
+
+final DIFF_COLUMN_WIDTH = 56;
+final DIFF_MAX_ROWS = 4000;
+
+/// @brief Reusable side-by-side diff overlay.
+class DiffView {
+    expose GUI.FloatingPanel panel;
+    expose GUI.Label titleLabel;
+    expose GUI.ListBox rowsList;
+    expose GUI.Button closeButton;
+    expose Boolean visible;
+
+    expose func init() {
+        panel = null;
+        titleLabel = null;
+        rowsList = null;
+        closeButton = null;
+        visible = false;
+    }
+
+    /// @brief Build the reusable overlay into the app root.
+    /// @param rootApp Application root the floating panel attaches to.
+    expose func Setup(rootApp: GUI.App) {
+        if rootApp == null or panel != null { return; }
+        panel = GUI.FloatingPanel.New(rootApp);
+        panel.SetSize(980.0, 560.0);
+
+        var column = GUI.VBox.New();
+        column.SetSpacing(6.0);
+        panel.AddChild(column);
+
+        var headerRow = GUI.HBox.New();
+        headerRow.SetSpacing(8.0);
+        column.AddChild(headerRow);
+        titleLabel = GUI.Label.New(headerRow, "Diff");
+        titleLabel.SetFlex(1.0);
+        closeButton = GUI.Button.New(headerRow, "Close");
+
+        rowsList = GUI.ListBox.New(null);
+        rowsList.SetFlex(1.0);
+        column.AddChild(rowsList);
+
+        panel.SetVisible(false);
+    }
+
+    /// @brief Pad or trim one cell to the fixed diff column width.
+    hide func Cell(text: String) -> String {
+        var cell = text;
+        if Str.get_Length(cell) > DIFF_COLUMN_WIDTH {
+            cell = Str.Left(cell, DIFF_COLUMN_WIDTH - 1) + "…";
+        }
+        while Str.get_Length(cell) < DIFF_COLUMN_WIDTH {
+            cell = cell + " ";
+        }
+        return cell;
+    }
+
+    /// @brief Format a 1-based line number cell (blank when zero).
+    hide func LineCell(lineNumber: Integer) -> String {
+        if lineNumber <= 0 { return "     "; }
+        var text = "" + lineNumber;
+        while Str.get_Length(text) < 5 {
+            text = " " + text;
+        }
+        return text;
+    }
+
+    /// @brief Show the overlay with an aligned side-by-side diff.
+    /// @param title Header text (e.g. the file path).
+    /// @param leftText "Before" document text.
+    /// @param rightText "After" document text.
+    expose func Open(title: String, leftText: String, rightText: String) {
+        if panel == null or rowsList == null { return; }
+        titleLabel.SetText(title);
+        rowsList.Clear();
+
+        var rows = diff_engine.BuildRows(leftText, rightText);
+        var shown = 0;
+        var i = 0;
+        while i < rows.count() and shown < DIFF_MAX_ROWS {
+            var row = rows.get(i) as diff_engine.DiffRow;
+            var marker = "  ";
+            if row.kind == diff_engine.ROW_ADDED { marker = "+ "; }
+            if row.kind == diff_engine.ROW_REMOVED { marker = "- "; }
+            if row.kind == diff_engine.ROW_CHANGED { marker = "~ "; }
+            var text = marker + LineCell(row.leftLine) + " " + Cell(row.leftText) +
+                       " │ " + LineCell(row.rightLine) + " " + row.rightText;
+            var item = rowsList.AddItem(text);
+            if row.kind == diff_engine.ROW_ADDED {
+                GUI.ListBox.ItemSetTextColor(item, theme_colors.Rgb("accentSuccess"));
+            }
+            if row.kind == diff_engine.ROW_REMOVED {
+                GUI.ListBox.ItemSetTextColor(item, theme_colors.Rgb("accentDanger"));
+            }
+            if row.kind == diff_engine.ROW_CHANGED {
+                GUI.ListBox.ItemSetTextColor(item, theme_colors.Rgb("accentWarning"));
+            }
+            shown = shown + 1;
+            i = i + 1;
+        }
+        if rows.count() > DIFF_MAX_ROWS {
+            rowsList.AddItem("… " + (rows.count() - DIFF_MAX_ROWS) + " more rows truncated");
+        }
+        var changed = diff_engine.CountKind(rows, diff_engine.ROW_CHANGED);
+        var added = diff_engine.CountKind(rows, diff_engine.ROW_ADDED);
+        var removed = diff_engine.CountKind(rows, diff_engine.ROW_REMOVED);
+        titleLabel.SetText(title + "  (~" + changed + "  +" + added + "  -" + removed + ")");
+
+        panel.CenterInParent();
+        panel.SetVisible(true);
+        visible = true;
+    }
+
+    /// @brief Hide the overlay.
+    expose func Close() {
+        if panel != null { panel.SetVisible(false); }
+        visible = false;
+    }
+
+    /// @brief Per-frame pump: close on button click or Escape.
+    expose func Pump() {
+        if visible == false { return; }
+        if closeButton != null and closeButton.WasClicked() {
+            Close();
+            return;
+        }
+        if Zanna.Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
+            Close();
+        }
+    }
+}

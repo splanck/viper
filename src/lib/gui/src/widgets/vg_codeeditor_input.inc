@@ -2138,12 +2138,36 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 wheel_dy = 0.0f;
             }
             float wheel_speed = vg_get_wheel_speed();
+            float step_y = wheel_dy * editor->line_height * CODEEDITOR_MOUSE_WHEEL_LINES * wheel_speed;
+            float step_x = editor->word_wrap
+                               ? 0.0f
+                               : wheel_dx * editor->char_width * CODEEDITOR_MOUSE_WHEEL_LINES *
+                                     wheel_speed;
+            if (vg_smooth_scroll_effective()) {
+                // Accumulate into an eased target; vg_codeeditor_smooth_tick
+                // advances scroll toward it each frame.
+                float keep_x = editor->scroll_x;
+                float keep_y = editor->scroll_y;
+                editor->scroll_x =
+                    (editor->smooth_animating ? editor->smooth_target_x : editor->scroll_x) -
+                    step_x;
+                editor->scroll_y =
+                    (editor->smooth_animating ? editor->smooth_target_y : editor->scroll_y) -
+                    step_y;
+                codeeditor_clamp_scroll(editor, widget);
+                editor->smooth_target_x = editor->scroll_x;
+                editor->smooth_target_y = editor->scroll_y;
+                editor->scroll_x = keep_x;
+                editor->scroll_y = keep_y;
+                editor->smooth_animating = editor->smooth_target_x != editor->scroll_x ||
+                                           editor->smooth_target_y != editor->scroll_y;
+                widget->needs_paint = true;
+                return true;
+            }
             if (wheel_dy != 0.0f)
-                editor->scroll_y -=
-                    wheel_dy * editor->line_height * CODEEDITOR_MOUSE_WHEEL_LINES * wheel_speed;
+                editor->scroll_y -= step_y;
             if (wheel_dx != 0.0f && !editor->word_wrap)
-                editor->scroll_x -=
-                    wheel_dx * editor->char_width * CODEEDITOR_MOUSE_WHEEL_LINES * wheel_speed;
+                editor->scroll_x -= step_x;
             codeeditor_clamp_scroll(editor, widget);
             widget->needs_paint = true;
             return true;

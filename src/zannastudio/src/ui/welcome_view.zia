@@ -20,6 +20,7 @@ module welcome_view;
 
 bind "../app/build_info";
 bind "../core/session";
+bind "../services/theme_colors";
 
 bind Zanna.GUI as GUI;
 
@@ -46,20 +47,35 @@ class WelcomeView {
         host = hostArg;
         editorRow = editorRowArg;
 
-        GUI.Label.New(host, "Zanna Studio");
-        GUI.Label.New(host, build_info.BuildSummary());
+        host.SetSpacing(8.0);
+
+        // Brand hero: the Zanna mark before the product name, tagline in the
+        // accent green, and the build line in muted steel so the hierarchy
+        // reads at a glance.
+        var title = GUI.Label.New(host, "Zanna Studio");
+        title.SetColor(theme_colors.Rgb("fgPrimary"));
+        title.SetIconName("zanna-mark");
+        var tagline = GUI.Label.New(host, "Code. Create. Compile. Conquer.");
+        tagline.SetColor(theme_colors.Rgb("accentPrimary"));
+        var buildLine = GUI.Label.New(host, build_info.BuildSummary());
+        buildLine.SetColor(theme_colors.Rgb("fgTertiary"));
 
         var startRow = GUI.HBox.New();
         startRow.SetSpacing(8.0);
         host.AddChild(startRow);
         newFileButton = GUI.Button.New(startRow, "New File");
+        newFileButton.SetIconName("new-file");
         openFolderButton = GUI.Button.New(startRow, "Open Folder...");
+        openFolderButton.SetStyle(1);
+        openFolderButton.SetIconName("folder-open");
 
-        GUI.Label.New(host, "Recent Files");
+        var recentHeader = GUI.Label.New(host, "Recent Files");
+        recentHeader.SetColor(theme_colors.Rgb("fgSecondary"));
         recentList = GUI.ListBox.New(host);
         recentList.SetFlex(1.0);
 
-        GUI.Label.New(host, "Press Ctrl+Shift+P for all commands");
+        var hint = GUI.Label.New(host, "Press Ctrl+Shift+P for all commands");
+        hint.SetColor(theme_colors.Rgb("fgTertiary"));
     }
 
     /// @brief Repopulate the recent-files list from the session (up to 8 entries).

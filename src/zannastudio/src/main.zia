@@ -76,6 +76,9 @@ bind "commands/view_commands";
 bind "app/dispatch_helpers";
 bind "commands/debug_commands";
 bind "commands/search_commands";
+bind "zia/function_scan";
+bind "services/project_templates";
+bind "ui/diff_view";
 
 bind Zanna.GUI;
 bind Env = Zanna.System.Environment;
@@ -235,6 +238,7 @@ func main() {
     var projMgr = new project_manager.ProjectManager();
     var activityBarCtrl = new activity_bar.ActivityBar();
     var scmView = new scm_view.ScmView();
+    var diffOverlay = new diff_view.DiffView();
     var terminalCtrl = new terminal_controller.TerminalController();
     var buildSys = new build_system.BuildSystem();
     var breakpointStore = new breakpoints.BreakpointStore();
@@ -317,6 +321,8 @@ func main() {
     projMgr.Setup(shell.workbench.sidebarTree);
     activityBarCtrl.Setup(shell.workbench.explorerView, shell.workbench.scmViewHost, shell.workbench.abExplorer, shell.workbench.abSourceControl);
     scmView.Setup(shell.workbench.scmViewHost);
+    diffOverlay.Setup(shell.app);
+    scmView.diffOverlay = diffOverlay;
     if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
     terminalCtrl.Setup(shell.toolPanels.terminalPanel, shell.toolPanels.terminalPane,
                        shell.toolPanels.terminalKill, shell.toolPanels.terminalRestart);
@@ -332,6 +338,10 @@ func main() {
     // ========================================================================
     var appSettings = new settings.SettingsManager();
     appSettings.Load();
+    if appSettings.keybindingOverrides != "" {
+        commandRegistry.ApplyOverrides(appSettings.keybindingOverrides);
+        commandRegistry.InstallShortcuts();
+    }
     breakpointStore.Setup(appSettings.settingsPath);
     breakpointStore.Load();
     editorScheduler.Configure(appSettings.diagnosticsDelayMs, appSettings.completionDelayMs);
@@ -347,6 +357,9 @@ func main() {
     var restoredCount = 0;
     if appSettings.restoreSession {
         restoredCount = sessionMgr.Restore(docMgr, projMgr, tabs);
+        if sessionMgr.splitActive and engine.PaneCount() < 2 {
+            engine.SplitRight(shell.workbench.editorRow);
+        }
     }
 
     // After an unclean exit, re-open documents captured in swap files with their
@@ -431,6 +444,7 @@ func main() {
     commandContext.buildSys = buildSys;
     commandContext.dbgSession = dbgSession;
     commandContext.terminalCtrl = terminalCtrl;
+    commandContext.diffOverlay = diffOverlay;
     commandContext.fileWatchCtrl = fileWatchCtrl;
     commandContext.workspaceWatcherState = workspaceWatcherState;
     commandContext.indexer = indexer;
@@ -490,6 +504,7 @@ func main() {
             if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
         }
         scmView.HandleEvents();
+        diffOverlay.Pump();
         terminalCtrl.Pump();
 
         // Welcome / start surface: shown only when no documents are open.
@@ -518,6 +533,7 @@ func main() {
         if shell.WasCloseRequested() {
             file_commands.SaveEditorState(docMgr, engine);
             breakpointStore.Save();
+            sessionMgr.splitActive = engine.PaneCount() >= 2;
             sessionMgr.Save(docMgr, projMgr);
             if file_commands.handleExit(shell, docMgr, engine) {
                 recoveryStore.MarkCleanExit();
@@ -689,6 +705,56 @@ func main() {
         shell.toolPanels.PumpToolTabs();
 
         // Inline overlay actions
+        // Keybindings card + settings filter (plan 08). Populated lazily the
+        // first frame the settings panel is visible, then kept in sync with
+        // Set/Reset actions and the section filter.
+        if overlays.settingsVisible {
+            if overlays.keybindingList != null and overlays.keybindingList.Count == 0 {
+                overlays.PopulateKeybindings(commandRegistry,
+                                             overlays.settingsFilterInput.get_Text());
+            }
+            if overlays.settingsFilterInput != null
+               and overlays.settingsFilterInput.WasChanged() {
+                var settingsFilter = overlays.settingsFilterInput.get_Text();
+                overlays.ApplySettingsFilter(settingsFilter);
+                overlays.PopulateKeybindings(commandRegistry, settingsFilter);
+            }
+            if overlays.keybindingSetButton != null
+               and overlays.keybindingSetButton.WasClicked() {
+                var keyId = overlays.SelectedKeybindingId();
+                if keyId != "" {
+                    var newShortcut = Str.Trim(overlays.keybindingShortcutInput.get_Text());
+                    appSettings.keybindingOverrides = commandRegistry.UpsertOverride(
+                        appSettings.keybindingOverrides, keyId, newShortcut);
+                    var keyEntry = commandRegistry.Find(keyId);
+                    if keyEntry != null { keyEntry.shortcut = newShortcut; }
+                    commandRegistry.InstallShortcuts();
+                    appSettings.Save();
+                    overlays.PopulateKeybindings(commandRegistry,
+                                                 overlays.settingsFilterInput.get_Text());
+                    overlays.keybindingStatusLabel.SetText(
+                        commandRegistry.ShortcutConflictSummary());
+                }
+            }
+            if overlays.keybindingClearButton != null
+               and overlays.keybindingClearButton.WasClicked() {
+                var resetId = overlays.SelectedKeybindingId();
+                if resetId != "" {
+                    appSettings.keybindingOverrides = commandRegistry.RemoveOverride(
+                        appSettings.keybindingOverrides, resetId);
+                    var resetEntry = commandRegistry.Find(resetId);
+                    if resetEntry != null {
+                        resetEntry.shortcut = commandRegistry.DefaultShortcutFor(resetId);
+                    }
+                    commandRegistry.InstallShortcuts();
+                    appSettings.Save();
+                    overlays.PopulateKeybindings(commandRegistry,
+                                                 overlays.settingsFilterInput.get_Text());
+                    overlays.keybindingStatusLabel.SetText(
+                        commandRegistry.ShortcutConflictSummary());
+                }
+            }
+        }
         var overlayAction = overlays.Pump(shell);
         if overlayAction == ide_overlays.ACTION_BROWSE_FONT {
             var fontPath = GUI.FileDialog.Open("Choose Editor Font", "", "*.ttf;*.otf;*.ttc");
@@ -728,6 +794,34 @@ func main() {
         }
 
         var commandInputAction = commandInputOverlay.Pump(shell);
+        if commandInputAction == command_input.COMMAND_INPUT_NEW_PROJECT_CONSOLE
+           or commandInputAction == command_input.COMMAND_INPUT_NEW_PROJECT_GUI
+           or commandInputAction == command_input.COMMAND_INPUT_NEW_PROJECT_LIBRARY {
+            var templateKind = project_templates.KIND_CONSOLE;
+            if commandInputAction == command_input.COMMAND_INPUT_NEW_PROJECT_GUI {
+                templateKind = project_templates.KIND_GUI;
+            }
+            if commandInputAction == command_input.COMMAND_INPUT_NEW_PROJECT_LIBRARY {
+                templateKind = project_templates.KIND_LIBRARY;
+            }
+            var projectName = Str.Trim(commandInputOverlay.ReadValue());
+            var homeDir = Env.GetVariable("HOME");
+            if homeDir == "" { homeDir = "."; }
+            var projectsBase = Path.Join(homeDir, "ZannaProjects");
+            Dir.MakeAll(projectsBase);
+            var newProjectPath = project_templates.Scaffold(projectsBase, projectName, templateKind);
+            if newProjectPath == "" {
+                GUI.Toast.Info("Could not create project (name invalid or folder exists)");
+            } else {
+                projMgr.OpenFolder(newProjectPath);
+                scmView.SetRepo(projMgr.RootPath());
+                terminalCtrl.SetCwd(projMgr.RootPath());
+                var mainPath = Path.Join(Path.Join(newProjectPath, "src"), "main.zia");
+                file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, mainPath);
+                GUI.Toast.Info("Created " + projectName);
+            }
+            commandInputOverlay.Finish();
+        }
         if commandInputAction == command_input.COMMAND_INPUT_GOTO_LINE {
             edit_commands.handleGoToLineText(shell, engine, commandInputOverlay.ReadValue());
             commandInputOverlay.Finish();
@@ -770,6 +864,11 @@ func main() {
         // ====================================================================
         // Tab switching
         // ====================================================================
+        if shell.workbench.tabBar.WasReordered() {
+            var reorderFrom = shell.workbench.tabBar.GetReorderedFrom();
+            var reorderTo = shell.workbench.tabBar.GetReorderedTo();
+            docMgr.MoveDocument(reorderFrom, reorderTo);
+        }
         if shell.workbench.tabBar.WasChanged() {
             var newIdx = shell.workbench.tabBar.GetActiveIndex();
             if newIdx >= 0 and newIdx < docMgr.GetCount() and newIdx != docMgr.activeIndex {
@@ -882,6 +981,24 @@ func main() {
                 cursorText = cursorText + "  |  Cursors: " + statusCursorCount;
             }
             shell.SetStatusCenter(cursorText);
+        }
+        // Breadcrumb symbol segment (plan 07): on caret line changes in a Zia
+        // document, append the enclosing function to the file path.
+        if curCursorLine != prevCursorLine {
+            var crumbDocOpt = docMgr.GetActive();
+            if crumbDocOpt != null {
+                var crumbDoc = crumbDocOpt!;
+                if crumbDoc.isNew == false and crumbDoc.filePath != ""
+                   and file_utils.KindName(crumbDoc.kind) == "zia" {
+                    var enclosing = function_scan.EnclosingZiaFunctionName(
+                        engine.editor.Text, curCursorLine);
+                    if enclosing != "" {
+                        shell.SetBreadcrumbPath(crumbDoc.filePath + "  ›  " + enclosing);
+                    } else {
+                        shell.SetBreadcrumbPath(crumbDoc.filePath);
+                    }
+                }
+            }
         }
         prevCursorLine = curCursorLine;
         prevCursorCol  = curCursorCol;

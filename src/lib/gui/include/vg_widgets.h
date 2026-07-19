@@ -57,6 +57,7 @@ typedef struct vg_label {
     int max_lines;           ///< Maximum lines (0 = unlimited)
     bool ellipsis;           ///< Show an ellipsis when visible text is truncated
     bool selectable;         ///< Allow pointer/keyboard text selection
+    int32_t icon_vector_id;  ///< Vector icon before the text (non-wrapped labels); negative = none.
     bool selection_dragging; ///< Pointer drag currently extends the selection
     size_t selection_anchor; ///< Fixed byte endpoint for shift/drag selection
     size_t selection_start;  ///< First selection endpoint as a UTF-8 byte offset
@@ -90,6 +91,12 @@ void vg_label_set_text(vg_label_t *label, const char *text);
 /// @param label   Label widget
 /// @param enabled true to wrap text to the laid-out width; false for single line
 void vg_label_set_word_wrap(vg_label_t *label, bool enabled);
+
+/// @brief Set (or clear) a scalable vector icon drawn before the text (ADR 0137).
+/// @details Rendered on non-wrapped labels only; word-wrapped labels ignore it.
+/// @param label The label to configure.
+/// @param vector_id Icon id from vg_icon_vector_find; negative clears it.
+void vg_label_set_vector_icon(vg_label_t *label, int32_t vector_id);
 
 /// @brief Get label text
 /// @param label Label widget
@@ -184,8 +191,9 @@ typedef struct vg_button {
     float border_radius;   ///< Corner radius
 
     // Icon
-    char *icon_text; ///< UTF-8 icon/emoji string (NULL = no icon, owned by button)
-    int icon_pos;    ///< Icon position: 0 = left of text (default), 1 = right of text
+    char *icon_text;        ///< UTF-8 icon/emoji string (NULL = no icon, owned by button)
+    int icon_pos;           ///< Icon position: 0 = left of text (default), 1 = right of text
+    int32_t icon_vector_id; ///< Vector icon id (vg_icon_vector); negative = none.
 } vg_button_t;
 
 /// @brief Create a new button widget
@@ -229,6 +237,12 @@ void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size);
 /// @param button Button widget.
 /// @param icon   UTF-8 icon string (copied), or NULL to clear.
 void vg_button_set_icon(vg_button_t *button, const char *icon);
+
+/// @brief Set (or clear) the button's scalable vector icon (ADR 0137).
+/// @details Vector icons take precedence over icon text when both are set.
+/// @param button The button to configure.
+/// @param vector_id Icon id from vg_icon_vector_find; negative clears it.
+void vg_button_set_vector_icon(vg_button_t *button, int32_t vector_id);
 
 /// @brief Set which side of the label the icon appears on.
 ///
@@ -700,6 +714,9 @@ typedef struct vg_scrollview {
 
     float scroll_x;       ///< Horizontal scroll position
     float scroll_y;       ///< Vertical scroll position
+    float smooth_target_x; ///< Wheel easing destination (smooth scrolling)
+    float smooth_target_y; ///< Wheel easing destination (smooth scrolling)
+    bool smooth_animating; ///< True while wheel easing is in flight
     float content_width;  ///< Effective content width after auto/explicit resolution
     float content_height; ///< Effective content height after auto/explicit resolution
     float
@@ -739,6 +756,12 @@ vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent);
 /// @param x Horizontal scroll position
 /// @param y Vertical scroll position
 void vg_scrollview_set_scroll(vg_scrollview_t *scroll, float x, float y);
+
+/// @brief Advance wheel smooth-scroll easing by one frame (ADR 0137).
+/// @param scroll Scroll view to advance.
+/// @param delta_ms Elapsed milliseconds this frame.
+/// @return True while easing is still in flight (keeps the app animating).
+bool vg_scrollview_tick(vg_scrollview_t *scroll, float delta_ms);
 
 /// @brief Get scroll position
 /// @param scroll Scroll view widget

@@ -60,6 +60,7 @@ class SettingsManager {
     expose String  fontPath;       // Optional custom .ttf/.ttc path; "" = default fallback chain.
     expose String  theme;          // "dark" or "light".
     expose Boolean minimapVisible; // Whether the minimap panel is shown.
+    expose String keybindingOverrides; // "id=shortcut;;..." user deltas (plan 08).
     expose Boolean autoCheckOnSave;// Legacy key: whether live diagnostics run on edit.
     expose Boolean codeFolding;    // Whether the editor offers code-folding regions.
     expose Boolean statusBarVisible; // Whether the status bar is shown.
@@ -90,10 +91,11 @@ class SettingsManager {
         fontSize       = DEFAULT_FONT_SIZE;
         fontPath       = "";
         theme          = "dark";
-        // The minimap is useful on small files, but it is still a measurable
-        // paint-path cost on large buffers. Keep it opt-in until the minimap
-        // has a full incremental renderer.
-        minimapVisible = false;
+        // The minimap's line-summary cache renders incrementally (bounded,
+        // O(1) per-line lookups), so it defaults on; the editor hot-path perf
+        // probe guards the cost on large buffers.
+        minimapVisible = true;
+        keybindingOverrides = "";
         autoCheckOnSave = true;
         codeFolding    = true;
         statusBarVisible = true;
@@ -192,6 +194,11 @@ class SettingsManager {
         var mmStr = Ini.Get(ini, "settings", "minimap");
         if mmStr != "" {
             minimapVisible = mmStr == "1";
+        }
+
+        var kbStr = Ini.Get(ini, "settings", "keybindingOverrides");
+        if kbStr != "" {
+            keybindingOverrides = kbStr;
         }
 
         var acStr = Ini.Get(ini, "settings", "autoCheck");
@@ -329,6 +336,7 @@ class SettingsManager {
         } else {
             Ini.Set(ini, "settings", "minimap", "0");
         }
+        Ini.Set(ini, "settings", "keybindingOverrides", keybindingOverrides);
         if autoCheckOnSave {
             Ini.Set(ini, "settings", "autoCheck", "1");
         } else {

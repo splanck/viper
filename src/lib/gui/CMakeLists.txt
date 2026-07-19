@@ -8,6 +8,7 @@ include(GNUInstallDirs)
 set(VG_GUI_FONT_SOURCES
         src/font/vg_ttf.c
         src/font/vg_raster.c
+        src/font/vg_gsub.c
         src/font/vg_cache.c
         src/font/vg_font.c
         src/font/vg_canvas_integration.c
@@ -20,6 +21,7 @@ set(VG_GUI_CORE_SOURCES
         src/core/vg_grapheme.c
         src/core/vg_theme.c
         src/core/vg_draw.c
+        src/core/vg_icon_vector.c
 )
 
 set(VG_GUI_WIDGET_SOURCES
@@ -75,6 +77,10 @@ if (APPLE)
     set(VG_GUI_NATIVE_DIALOG_SOURCES
             src/dialogs/vg_filedialog_native.m
     )
+elseif (WIN32)
+    set(VG_GUI_NATIVE_DIALOG_SOURCES
+            src/dialogs/vg_filedialog_native_win32.c
+    )
 endif ()
 
 # Phase 1 + Phase 2 + Phase 3 + Phase 5: Font engine + Widget core + Widgets + IDE Widgets
@@ -100,6 +106,11 @@ target_link_libraries(zannagui
         zannagfx
         zanna_text_core
 )
+
+# Native dialog + shell services on Windows
+if (WIN32)
+    target_link_libraries(zannagui PRIVATE ole32 shell32)
+endif ()
 
 # Link math library on Unix
 if (UNIX AND NOT APPLE)
@@ -144,6 +155,25 @@ if (ZANNA_BUILD_TESTING)
     )
     add_test(NAME test_vg_font COMMAND test_vg_font)
     set_tests_properties(test_vg_font PROPERTIES LABELS "gui")
+
+    add_executable(test_vg_smooth_scroll tests/test_vg_smooth_scroll.c)
+    target_link_libraries(test_vg_smooth_scroll zannagui)
+    target_include_directories(test_vg_smooth_scroll PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_smooth_scroll COMMAND test_vg_smooth_scroll)
+    set_tests_properties(test_vg_smooth_scroll PROPERTIES LABELS "gui" TIMEOUT 15)
+
+    # GSUB ligature shaping against the shipped JetBrains Mono face.
+    add_executable(test_vg_gsub tests/test_vg_gsub.c)
+    target_link_libraries(test_vg_gsub zannagui)
+    target_include_directories(test_vg_gsub PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_compile_definitions(test_vg_gsub PRIVATE
+            ZANNA_TEST_FONT_PATH="${CMAKE_SOURCE_DIR}/src/runtime/graphics/text/fonts/JetBrainsMono-Regular.ttf")
+    add_test(NAME test_vg_gsub COMMAND test_vg_gsub)
+    set_tests_properties(test_vg_gsub PROPERTIES LABELS "gui" TIMEOUT 30)
 
     add_executable(test_vg_widgets_new tests/test_vg_widgets_new.c)
     target_link_libraries(test_vg_widgets_new zannagui)
@@ -216,6 +246,14 @@ if (ZANNA_BUILD_TESTING)
     )
     add_test(NAME test_vg_outputpane_metrics COMMAND test_vg_outputpane_metrics)
     set_tests_properties(test_vg_outputpane_metrics PROPERTIES LABELS "gui" TIMEOUT 60 RUN_SERIAL TRUE)
+
+    add_executable(test_vg_outputpane_term tests/test_vg_outputpane_term.c)
+    target_link_libraries(test_vg_outputpane_term zannagui)
+    target_include_directories(test_vg_outputpane_term PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    add_test(NAME test_vg_outputpane_term COMMAND test_vg_outputpane_term)
+    set_tests_properties(test_vg_outputpane_term PROPERTIES LABELS "gui" TIMEOUT 60 RUN_SERIAL TRUE)
 
     add_executable(test_vg_datagrid tests/test_vg_datagrid.c)
     target_link_libraries(test_vg_datagrid zannagui)
@@ -301,6 +339,43 @@ if (ZANNA_BUILD_TESTING)
     endif ()
     add_test(NAME test_vg_draw COMMAND test_vg_draw)
     set_tests_properties(test_vg_draw PROPERTIES LABELS "gui" TIMEOUT 15)
+
+    # WCAG contrast gate over every built-in theme palette. Palette-agnostic:
+    # protects future retunes without pinning any color value.
+    add_executable(test_vg_theme_contrast
+            tests/test_vg_theme_contrast.c
+            src/core/vg_theme.c
+    )
+    target_include_directories(test_vg_theme_contrast PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
+    )
+    if (UNIX AND NOT APPLE)
+        target_compile_definitions(test_vg_theme_contrast PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+        target_link_libraries(test_vg_theme_contrast PRIVATE m)
+    endif ()
+    add_test(NAME test_vg_theme_contrast COMMAND test_vg_theme_contrast)
+    set_tests_properties(test_vg_theme_contrast PROPERTIES LABELS "gui" TIMEOUT 15)
+
+    # Vector icon library: registry integrity, AA coverage, determinism, and
+    # brand-mark roles against the mock backend framebuffer.
+    add_executable(test_vg_icon_vector
+            tests/test_vg_icon_vector.c
+            src/core/vg_icon_vector.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/src/vgfx.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/src/vgfx_draw.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/src/vgfx_platform_mock.c
+    )
+    target_include_directories(test_vg_icon_vector PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/../graphics/src
+    )
+    if (UNIX AND NOT APPLE)
+        target_compile_definitions(test_vg_icon_vector PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
+    endif ()
+    add_test(NAME test_vg_icon_vector COMMAND test_vg_icon_vector)
+    set_tests_properties(test_vg_icon_vector PROPERTIES LABELS "gui" TIMEOUT 30)
 
     if (UNIX AND NOT APPLE)
         foreach (vg_gui_test_target

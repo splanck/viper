@@ -2112,6 +2112,13 @@ void vgfx_set_gpu_present(vgfx_window_t window, int32_t enabled) {
         window->skip_software_present = enabled ? 1 : 0;
 }
 
+void vgfx_set_native_msg_hook(vgfx_window_t window, vgfx_native_msg_hook_t hook, void *user) {
+    if (!window)
+        return;
+    window->native_msg_hook = hook;
+    window->native_msg_hook_user = hook ? user : NULL;
+}
+
 //===----------------------------------------------------------------------===//
 // End of Core Implementation
 //===----------------------------------------------------------------------===//

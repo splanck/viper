@@ -31,15 +31,39 @@ tree (`rt_gui_accessibility.c`) — this plan brings Windows to parity.
 - Lifetime: `UiaDisconnectProvider` on widget destroy; providers hold weak
   references into the widget tree with generation checks.
 
-## 3. Threading contract (decide before code)
+## 3. Threading contract (DECIDED, as-built 2026-07-18)
 
-UIA may call providers off the UI thread while the rt_gui loop is
-single-threaded. Decision to record at implementation start: either
-`ProviderOptions_UseComThreading` with a marshal-to-UI-thread bridge (hidden
-message window + `SendMessage`), or full snapshotting of the accessibility
-tree into provider-owned immutable data updated once per frame. The snapshot
-approach avoids cross-thread widget access entirely and matches the existing
-per-frame accessibility sync; prefer it unless measurement says otherwise.
+**Live-access on the HWND thread.** HWND-based server-side providers
+(`ProviderOptions_ServerSideProvider`, no `UseComThreading`) have their calls
+marshalled by UIA to the thread that owns the HWND, delivered while the
+platform pumps messages — the same thread that owns the widget tree. This
+matches the macOS bridge exactly (live widgets guarded by
+`vg_widget_is_live` + immutable widget ID), so no snapshotting is needed.
+
+## 3a. As-built record (2026-07-18)
+
+- `vgfx` gained a generic native-message hook
+  (`vgfx_set_native_msg_hook`, stored on the shared `struct vgfx_window`;
+  the Win32 wndproc consults it for `WM_GETOBJECT` only).
+- `rt_gui_accessibility_win32.c` implements the full provider: hand-rolled
+  C COM (Simple/Fragment/FragmentRoot + Invoke/Toggle/Value/RangeValue/
+  SelectionItem), role→control-type mapping mirroring the macOS bridge,
+  bounds via `vg_widget_get_screen_bounds` + `ClientToScreen`, hit-testing,
+  focus tracking, property-changed + focus events, live-region announcements
+  via `UiaRaiseNotificationEvent` (dynamically resolved, tolerant of older
+  Windows). `uiautomationcore.dll` is loaded dynamically (ConPTY precedent);
+  `oleaut32` linked for BSTR/VARIANT/SAFEARRAY.
+- **Editor content is surfaced through the Value pattern (read-only,
+  `Document` control type) in this revision; the full TextPattern
+  (ITextProvider/ITextRangeProvider, viewport ranges) is the staged
+  follow-up** — tracked as the remaining scope item of this plan.
+- Sliders/progress/spinners expose read-only RangeValue; adjustment is
+  focus + arrow keys. Selection surfaces are single-select
+  (AddToSelection/RemoveFromSelection intentionally fail).
+- Headless vtable test: `src/tests/runtime/RTUiaProviderTests.c`
+  (`test_rt_uia_provider`, WIN32-only, labels runtime/gui/accessibility) via
+  the `rt_gui_accessibility_win32_test_root/_teardown` seams — no UIA
+  client, HWND, or uiautomationcore.dll needed.
 
 ## 4. Zero-dependency compliance
 
@@ -53,10 +77,20 @@ accessibility metadata.
 - Headless C unit tests calling provider vtables directly (no UIA client
   runtime required): tree navigation, property values, pattern behavior —
   Windows-only compilation, registered like other platform-specific tests.
-- Manual screen-reader checklist (the owner validates): menu navigation
-  announces items; editor read-back by line/word; completion list announces
-  selection; dialogs announce title/focus; status-bar announcements on build
-  results.
+- Manual screen-reader checklist (the owner validates on Windows, Narrator
+  or NVDA):
+  1. Launch `zannastudio.exe`; Narrator announces the window.
+  2. Tab through the toolbar — each button announces its name and "button".
+  3. Open the File menu — menu items announce as "menu item" with names.
+  4. Focus the editor — announced as a document; content is read back
+     (whole-buffer Value in this revision).
+  5. Open the command palette — the input announces; typed text reads back.
+  6. Trigger a build — the status-bar diagnostics change is announced
+     (live-region notification).
+  7. Open Settings — checkboxes announce name + checked state; toggling
+     with Space announces the new state.
+  8. Arrow through the file tree — items announce selection.
+  9. Run `test_rt_uia_provider` (ctest) — all assertions pass.
 - Incremental build + targeted ctest; `lint_platform_policy.sh` green (file
   is an approved adapter layer).
 

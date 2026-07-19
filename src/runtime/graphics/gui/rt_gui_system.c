@@ -852,6 +852,22 @@ int64_t rt_app_to_physical(void *app, int64_t logical) {
 ///          UI grows or shrinks as one. Clamped to a legible range. A changed
 ///          value immediately rebuilds the per-app theme, reapplies logical font
 ///          sizes, and invalidates layout/paint so an idle frame cannot hide it.
+/// @brief Enable or disable inertial smooth scrolling for the app (ADR 0137).
+/// @details Applies process-wide to scroll views and code editors; themes that
+///          request reduced motion suppress easing regardless of this flag.
+void rt_app_set_smooth_scroll(void *app, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    (void)app;
+    vg_set_smooth_scroll_enabled(enabled != 0);
+}
+
+/// @brief Return whether inertial smooth scrolling is requested (ADR 0137).
+int64_t rt_app_get_smooth_scroll(void *app) {
+    RT_ASSERT_MAIN_THREAD();
+    (void)app;
+    return vg_smooth_scroll_enabled() ? 1 : 0;
+}
+
 void rt_app_set_ui_scale(void *app, double scale) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *gui_app = rt_app_checked(app);
@@ -1178,7 +1194,7 @@ void rt_cursor_set(int64_t type) {
     rt_gui_app_t *app = rt_shortcuts_app();
     if (!app || !app->window)
         return;
-    if (type < VGFX_CURSOR_DEFAULT || type > VGFX_CURSOR_WAIT)
+    if (type < VGFX_CURSOR_DEFAULT || type > VGFX_CURSOR_NOT_ALLOWED)
         type = VGFX_CURSOR_DEFAULT;
     vgfx_set_cursor(app->window, (int32_t)type);
 }
@@ -1354,6 +1370,18 @@ int64_t rt_app_to_physical(void *app, int64_t logical) {
 }
 
 /// @brief Stub: graphics disabled — UI zoom has no effect.
+/// @brief Graphics-disabled smooth-scroll setter stub.
+void rt_app_set_smooth_scroll(void *app, int64_t enabled) {
+    (void)app;
+    (void)enabled;
+}
+
+/// @brief Graphics-disabled smooth-scroll getter stub.
+int64_t rt_app_get_smooth_scroll(void *app) {
+    (void)app;
+    return 1;
+}
+
 void rt_app_set_ui_scale(void *app, double scale) {
     (void)app;
     (void)scale;

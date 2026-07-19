@@ -569,12 +569,40 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_scrollview_t *scroll = (vg_scrollview_t *)widget;
 
     if (event->type == VG_EVENT_MOUSE_WHEEL) {
-        // Scroll content
-        float old_x = scroll->scroll_x;
-        float old_y = scroll->scroll_y;
         float delta_x = event->wheel.delta_x * 20.0f;
         float delta_y = event->wheel.delta_y * 20.0f;
 
+        if (vg_smooth_scroll_effective()) {
+            // Ease toward an accumulated wheel target; vg_scrollview_tick
+            // advances the position every frame until it lands.
+            float target_x = scroll->smooth_animating ? scroll->smooth_target_x : scroll->scroll_x;
+            float target_y = scroll->smooth_animating ? scroll->smooth_target_y : scroll->scroll_y;
+            if (scroll->direction & VG_SCROLL_HORIZONTAL)
+                target_x -= delta_x;
+            if (scroll->direction & VG_SCROLL_VERTICAL)
+                target_y -= delta_y;
+            float keep_x = scroll->scroll_x;
+            float keep_y = scroll->scroll_y;
+            scroll->scroll_x = target_x;
+            scroll->scroll_y = target_y;
+            clamp_scroll(scroll);
+            scroll->smooth_target_x = scroll->scroll_x;
+            scroll->smooth_target_y = scroll->scroll_y;
+            scroll->scroll_x = keep_x;
+            scroll->scroll_y = keep_y;
+            if (scroll->smooth_target_x != scroll->scroll_x ||
+                scroll->smooth_target_y != scroll->scroll_y) {
+                scroll->smooth_animating = true;
+                event->handled = true;
+                return true;
+            }
+            scroll->smooth_animating = false;
+            return false;
+        }
+
+        // Instant path (smooth scrolling off or reduced motion requested).
+        float old_x = scroll->scroll_x;
+        float old_y = scroll->scroll_y;
         if (scroll->direction & VG_SCROLL_HORIZONTAL) {
             scroll->scroll_x -= delta_x;
         }
@@ -612,6 +640,7 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             if (event->mouse.y >= thumb_y && event->mouse.y < thumb_y + thumb_height) {
                 scroll->v_scrollbar_dragging = true;
+                scroll->smooth_animating = false;
                 scroll->drag_offset = event->mouse.y - thumb_y;
                 vg_widget_set_input_capture(widget);
             } else if (scroll_range > 0.0f) {
@@ -638,6 +667,7 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
             if (event->mouse.x >= thumb_x && event->mouse.x < thumb_x + thumb_width) {
                 scroll->h_scrollbar_dragging = true;
+                scroll->smooth_animating = false;
                 scroll->drag_offset = event->mouse.x - thumb_x;
                 vg_widget_set_input_capture(widget);
             } else if (scroll_range > 0.0f) {
@@ -739,9 +769,24 @@ void vg_scrollview_set_scroll(vg_scrollview_t *scroll, float x, float y) {
 
     scroll->scroll_x = x;
     scroll->scroll_y = y;
+    scroll->smooth_animating = false;
     clamp_scroll(scroll);
     scroll->base.needs_layout = true;
     scroll->base.needs_paint = true;
+}
+
+bool vg_scrollview_tick(vg_scrollview_t *scroll, float delta_ms) {
+    if (!scroll || !scroll->smooth_animating)
+        return false;
+    bool moving_x =
+        vg_smooth_scroll_step(&scroll->scroll_x, scroll->smooth_target_x, delta_ms);
+    bool moving_y =
+        vg_smooth_scroll_step(&scroll->scroll_y, scroll->smooth_target_y, delta_ms);
+    clamp_scroll(scroll);
+    scroll->base.needs_layout = true;
+    scroll->base.needs_paint = true;
+    scroll->smooth_animating = moving_x || moving_y;
+    return scroll->smooth_animating;
 }
 
 /// @brief Retrieve the current scroll offset.

@@ -82,18 +82,18 @@ static bool ttf_mul_size_overflows(size_t a, size_t b) {
 /// @brief Locate a TTF table by 4-byte tag; returns a pointer into font->data and
 ///        writes the table length to *out_len, or returns NULL if not found.
 static const uint8_t *ttf_find_table(vg_font_t *font, uint32_t tag, uint32_t *out_len) {
-    const uint8_t *data = font->data;
+    const uint8_t *data = font->data + font->sfnt_base;
     if (out_len)
         *out_len = 0;
 
     /* Minimum header size: 12 bytes (sfVersion + numTables + searchRange + ...) */
-    if (font->data_size < 12)
+    if (font->data_size < font->sfnt_base + 12)
         return NULL;
 
     uint16_t num_tables = ttf_read_u16(data + 4);
 
     /* Validate that the entire table directory fits within the file */
-    size_t directory_bytes = 12u + (size_t)num_tables * 16u;
+    size_t directory_bytes = (size_t)font->sfnt_base + 12u + (size_t)num_tables * 16u;
     if (directory_bytes > font->data_size)
         return NULL;
 
@@ -106,7 +106,8 @@ static const uint8_t *ttf_find_table(vg_font_t *font, uint32_t tag, uint32_t *ou
             if (ttf_range_fits(font->data_size, offset, length)) {
                 if (out_len)
                     *out_len = length;
-                return data + offset;
+                // Table offsets are file-absolute (also inside .ttc members).
+                return font->data + offset;
             }
             return NULL;
         }
@@ -551,8 +552,24 @@ static int ttf_kern_pair_cmp(const void *a, const void *b) {
 bool ttf_parse_tables(vg_font_t *font) {
     const uint8_t *data = font->data;
 
-    // Validate sfnt version
+    // TrueType Collections (.ttc): use the first face's table directory.
+    // Table offsets inside the directory stay file-absolute, so only the
+    // directory location is re-based.
     uint32_t sfnt_version = ttf_read_u32(data);
+    if (sfnt_version == TTF_TAG('t', 't', 'c', 'f')) {
+        if (font->data_size < 16)
+            return false;
+        uint32_t num_fonts = ttf_read_u32(data + 8);
+        if (num_fonts == 0)
+            return false;
+        uint32_t first_offset = ttf_read_u32(data + 12);
+        if ((size_t)first_offset + 12 > font->data_size)
+            return false;
+        font->sfnt_base = first_offset;
+        sfnt_version = ttf_read_u32(data + first_offset);
+    }
+
+    // Validate sfnt version
     if (sfnt_version != 0x00010000 && sfnt_version != TTF_TAG('t', 'r', 'u', 'e')) {
         // Not a TrueType font
         return false;
@@ -612,6 +629,13 @@ bool ttf_parse_tables(vg_font_t *font) {
                   sizeof(ttf_kern_pair_t),
                   ttf_kern_pair_cmp);
         }
+    }
+
+    table = ttf_find_table(font, TTF_TAG_GSUB, &len);
+    if (table) {
+        font->gsub_offset = (uint32_t)(table - font->data);
+        font->gsub_len = len;
+        vg_gsub_init(font);
     }
 
     table = ttf_find_table(font, TTF_TAG_NAME, &len);

@@ -381,6 +381,11 @@ static bool rt_gui_tick_widget_tree(vg_widget_t *widget, float dt) {
                 break;
             case VG_WIDGET_CODEEDITOR:
                 vg_codeeditor_tick((vg_codeeditor_t *)node, dt);
+                animation_active |=
+                    vg_codeeditor_smooth_tick((vg_codeeditor_t *)node, dt * 1000.0f);
+                break;
+            case VG_WIDGET_SCROLLVIEW:
+                animation_active |= vg_scrollview_tick((vg_scrollview_t *)node, dt * 1000.0f);
                 break;
             case VG_WIDGET_OUTPUTPANE:
                 vg_outputpane_tick((vg_outputpane_t *)node, dt);

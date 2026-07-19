@@ -1,0 +1,108 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/services/project_templates.zia
+// Purpose: New-project scaffolding templates (plan 08) — console, GUI, and
+//          library starters written as a zanna.project manifest plus starter
+//          sources that compile out of the box.
+// Key invariants:
+//   - Scaffold never overwrites: an existing target directory aborts.
+//   - Every template's starter compiles with the stock toolchain (probed).
+// Ownership/Lifetime:
+//   - Stateless module.
+// Links: zannastudio/src/ui/command_input.zia, zannastudio/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
+module project_templates;
+
+bind Dir = Zanna.IO.Dir;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+
+final KIND_CONSOLE = "console";
+final KIND_GUI = "gui";
+final KIND_LIBRARY = "library";
+
+/// @brief Return the manifest text for a new project.
+func ManifestText(name: String) -> String {
+    return "# " + name + " — created with Zanna Studio\n" +
+           "project " + name + "\n" +
+           "version 0.1.0\n" +
+           "lang zia\n" +
+           "entry src/main.zia\n";
+}
+
+/// @brief Return the starter source for one template kind.
+func StarterSource(name: String, kind: String) -> String {
+    if kind == KIND_GUI {
+        return "bind Zanna.GUI as GUI;\n" +
+               "bind Terminal = Zanna.Terminal;\n\n" +
+               "func main() {\n" +
+               "    var app = GUI.App.New(\"" + name + "\", 900, 600);\n" +
+               "    if app == null {\n" +
+               "        Terminal.Say(\"could not create a window\");\n" +
+               "        return;\n" +
+               "    }\n" +
+               "    var column = GUI.VBox.New();\n" +
+               "    app.SetRoot(column);\n" +
+               "    GUI.Label.New(column, \"Hello from " + name + "!\");\n" +
+               "    var quitButton = GUI.Button.New(column, \"Quit\");\n" +
+               "    app.Activate();\n" +
+               "    while app.ShouldClose() == false {\n" +
+               "        if quitButton.WasClicked() { return; }\n" +
+               "        app.Render();\n" +
+               "    }\n" +
+               "}\n";
+    }
+    if kind == KIND_LIBRARY {
+        return "// " + name + " — library starter. Bind this module from other\n" +
+               "// projects and call Greet().\n\n" +
+               "expose func Greet(who: String) -> String {\n" +
+               "    return \"Hello, \" + who + \" — from " + name + "\";\n" +
+               "}\n\n" +
+               "func main() {\n" +
+               "    Zanna.Terminal.Say(Greet(\"library self-test\"));\n" +
+               "}\n";
+    }
+    return "bind Terminal = Zanna.Terminal;\n\n" +
+           "func main() {\n" +
+           "    Terminal.Say(\"Hello from " + name + "!\");\n" +
+           "}\n";
+}
+
+/// @brief Return whether a project name is acceptable for scaffolding.
+expose func ValidName(name: String) -> Boolean {
+    if name == "" or Str.get_Length(name) > 64 { return false; }
+    var i = 0;
+    while i < Str.get_Length(name) {
+        var ch = Str.MidLen(name, i + 1, 1);
+        var ok = (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or
+                 (ch >= "0" and ch <= "9") or ch == "-" or ch == "_";
+        if ok == false { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+/// @brief Scaffold a new project directory.
+/// @param baseDir Parent directory the project folder is created under.
+/// @param name Validated project name (also the folder name).
+/// @param kind One of "console", "gui", "library".
+/// @return Absolute project path, or "" on failure/existing target.
+expose func Scaffold(baseDir: String, name: String, kind: String) -> String {
+    if baseDir == "" or ValidName(name) == false { return ""; }
+    var projectDir = Path.Join(baseDir, name);
+    if Dir.Exists(projectDir) or File.Exists(projectDir) { return ""; }
+    var srcDir = Path.Join(projectDir, "src");
+    Dir.MakeAll(srcDir);
+    if Dir.Exists(srcDir) == false { return ""; }
+    File.WriteAllText(Path.Join(projectDir, "zanna.project"), ManifestText(name));
+    File.WriteAllText(Path.Join(srcDir, "main.zia"), StarterSource(name, kind));
+    return projectDir;
+}

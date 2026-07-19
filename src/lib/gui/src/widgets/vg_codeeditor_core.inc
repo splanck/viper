@@ -2155,6 +2155,37 @@ static void codeeditor_locate_visual_row(vg_codeeditor_t *editor,
 }
 
 /// @brief Clamps scroll_x to 0 in word-wrap mode and clamps scroll_y to [0, max_scroll_y].
+static void codeeditor_clamp_scroll(vg_codeeditor_t *editor, const vg_widget_t *widget);
+
+/// @brief Advance wheel smooth-scroll easing by one frame (ADR 0137).
+/// @details Programmatic scrolls, caret reveals, and drags write scroll_x/y
+///          directly; easing only runs while a wheel gesture is in flight and
+///          cancels itself the moment it lands on the target.
+void vg_codeeditor_set_ligatures_enabled(vg_codeeditor_t *editor, bool enabled) {
+    if (!editor || editor->ligatures_enabled == enabled)
+        return;
+    editor->ligatures_enabled = enabled;
+    editor->base.needs_paint = true;
+    vg_widget_note_revision(&editor->base);
+}
+
+bool vg_codeeditor_get_ligatures_enabled(const vg_codeeditor_t *editor) {
+    return editor ? editor->ligatures_enabled : false;
+}
+
+bool vg_codeeditor_smooth_tick(vg_codeeditor_t *editor, float delta_ms) {
+    if (!editor || !editor->smooth_animating)
+        return false;
+    bool moving_x =
+        vg_smooth_scroll_step(&editor->scroll_x, editor->smooth_target_x, delta_ms);
+    bool moving_y =
+        vg_smooth_scroll_step(&editor->scroll_y, editor->smooth_target_y, delta_ms);
+    codeeditor_clamp_scroll(editor, &editor->base);
+    editor->base.needs_paint = true;
+    editor->smooth_animating = moving_x || moving_y;
+    return editor->smooth_animating;
+}
+
 static void codeeditor_clamp_scroll(vg_codeeditor_t *editor, const vg_widget_t *widget) {
     if (!editor || !widget)
         return;

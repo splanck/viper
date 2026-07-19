@@ -73,6 +73,7 @@
 
 #pragma once
 
+#include "frontends/zia/DebugLayoutExport.hpp"
 #include "frontends/zia/Options.hpp"
 #include "il/core/Module.hpp"
 #include "support/diagnostics.hpp"
@@ -114,6 +115,11 @@ struct CompilerResult {
 
     /// @brief True when the module has been verified since the last mutation.
     bool moduleVerified{false};
+
+    /// @brief Per-class field layouts for the VM debugger, keyed by runtime
+    ///        class id. Populated only when CompilerOptions.captureDebugLayouts
+    ///        is set (ADR 0138); empty otherwise.
+    DebugClassLayoutExport debugClassLayouts{};
 
     /// @brief Helper indicating whether compilation succeeded without errors.
     [[nodiscard]] bool succeeded() const;

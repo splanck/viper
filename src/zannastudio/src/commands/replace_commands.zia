@@ -1,0 +1,226 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/replace_commands.zia
+// Purpose: Project-wide replace over the current search results (plan 07).
+// Key invariants:
+//   - Replacement re-matches every recorded line at apply time with the same
+//     query/options, so stale results never corrupt drifted lines.
+//   - Open documents are edited through their in-memory buffers (the active
+//     document through the undoable editor path); only closed files are
+//     written directly to disk.
+//   - Line-scoped replacement never shifts other recorded lines.
+// Ownership/Lifetime:
+//   - Stateless helpers; all stores are borrowed from the caller.
+// Links: zannastudio/src/commands/search_commands.zia,
+//        zannastudio/src/services/search_matcher.zia
+//
+//===----------------------------------------------------------------------===//
+
+module replace_commands;
+
+bind "../core/document";
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+bind "../services/locations";
+bind "../services/search_matcher";
+bind "editor_document_edit";
+
+bind IO = Zanna.IO;
+bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
+
+
+/// @brief Outcome of one replace-all run, for the status summary.
+class ReplaceOutcome {
+    expose Integer replacements;
+    expose Integer filesChanged;
+    expose Integer filesFailed;
+
+    expose func init() {
+        replacements = 0;
+        filesChanged = 0;
+        filesFailed = 0;
+    }
+}
+
+/// @brief Replace every match of @p query in one line.
+/// @details Loops FindLineMatch and splices; an empty-width match aborts the
+///          loop so malformed regexes can never spin.
+/// @return The rewritten line (unchanged when nothing matched).
+expose func ReplaceAllInLine(line: String,
+                             query: String,
+                             replacement: String,
+                             caseSensitive: Boolean,
+                             wholeWord: Boolean,
+                             regexMode: Boolean,
+                             counter: ReplaceOutcome) -> String {
+    var result = "";
+    var rest = line;
+    var iterations = 0;
+    while iterations < 1000 {
+        iterations = iterations + 1;
+        var found = search_matcher.FindLineMatch(rest, query, caseSensitive, wholeWord, regexMode);
+        if found.matched == false or found.length <= 0 {
+            return result + rest;
+        }
+        var before = Str.Left(rest, found.startCol - 1);
+        result = result + before + replacement;
+        rest = Str.Mid(rest, found.startCol + found.length);
+        if counter != null { counter.replacements = counter.replacements + 1; }
+    }
+    return result + rest;
+}
+
+/// @brief Rewrite the recorded match lines of one file's content.
+/// @param content Full file text.
+/// @param lineNumbers 1-based line numbers to rewrite (duplicates tolerated).
+/// @return Rewritten full text.
+func ReplaceInContent(content: String,
+                      lineNumbers: List,
+                      query: String,
+                      replacement: String,
+                      caseSensitive: Boolean,
+                      wholeWord: Boolean,
+                      regexMode: Boolean,
+                      counter: ReplaceOutcome) -> String {
+    var lines = Str.Split(content, "\n");
+    var lineCount = Seq.get_Count(lines);
+    var rebuilt = "";
+    var index = 0;
+    while index < lineCount {
+        var text = Seq.GetStr(lines, index);
+        if ContainsInt(lineNumbers, index + 1) {
+            text = ReplaceAllInLine(text, query, replacement,
+                                    caseSensitive, wholeWord, regexMode, counter);
+        }
+        if index > 0 { rebuilt = rebuilt + "\n"; }
+        rebuilt = rebuilt + text;
+        index = index + 1;
+    }
+    return rebuilt;
+}
+
+/// @brief Return whether @p value already exists in @p list.
+func ContainsInt(list: List, value: Integer) -> Boolean {
+    var i = 0;
+    while i < list.count() {
+        if (list.get(i) as Integer) == value { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Return whether @p value already exists in @p list.
+func ContainsStr(list: List, value: String) -> Boolean {
+    var i = 0;
+    while i < list.count() {
+        if (list.get(i) as String) == value { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+/// @brief Apply replace-all across the current search results.
+/// @details Groups KIND_SEARCH locations by file; every recorded line is
+///          re-matched at apply time. The active document goes through the
+///          undoable whole-document editor path; other open documents update
+///          their buffers and mark modified; closed files rewrite on disk.
+/// @param locStore Location store populated by the last search run.
+/// @param docMgr Document manager (open-buffer routing).
+/// @param engine Editor engine (undoable active-document path).
+/// @return Human-readable summary for the status surface.
+expose func ReplaceAllFromResults(locStore: locations.LocationStore,
+                                  docMgr: document_manager.DocumentManager,
+                                  engine: editor_engine.EditorEngine,
+                                  query: String,
+                                  replacement: String,
+                                  caseSensitive: Boolean,
+                                  wholeWord: Boolean,
+                                  regexMode: Boolean) -> String {
+    if locStore == null or query == "" {
+        return "Replace: nothing to do";
+    }
+    var outcome = new ReplaceOutcome();
+
+    // Distinct files, in first-seen order.
+    var files: List = [];
+    var i = 0;
+    while i < locStore.items.count() {
+        var loc = locStore.items.get(i) as locations.Location;
+        if loc.kind == locations.KIND_SEARCH and loc.filePath != "" {
+            if ContainsStr(files, loc.filePath) == false {
+                files.add(loc.filePath);
+            }
+        }
+        i = i + 1;
+    }
+
+    var f = 0;
+    while f < files.count() {
+        var filePath = files.get(f) as String;
+        var lineNumbers: List = [];
+        i = 0;
+        while i < locStore.items.count() {
+            var loc = locStore.items.get(i) as locations.Location;
+            if loc.kind == locations.KIND_SEARCH and loc.filePath == filePath {
+                if ContainsInt(lineNumbers, loc.line) == false {
+                    lineNumbers.add(loc.line);
+                }
+            }
+            i = i + 1;
+        }
+
+        var before = outcome.replacements;
+        var docIndex = -1;
+        if docMgr != null {
+            docIndex = docMgr.FindByPath(filePath);
+        }
+        var doc: document.Document? = null;
+        if docIndex >= 0 {
+            doc = docMgr.GetDocument(docIndex);
+        }
+        if doc != null {
+            var isActive = docMgr.activeIndex == docIndex;
+            var content = doc.content;
+            if isActive and engine != null and engine.editor != null {
+                content = engine.editor.Text;
+            }
+            var updated = ReplaceInContent(content, lineNumbers, query, replacement,
+                                           caseSensitive, wholeWord, regexMode, outcome);
+            if outcome.replacements > before {
+                if isActive and engine != null and engine.editor != null {
+                    editor_document_edit.ReplaceWholeDocument(engine, updated);
+                } else {
+                    doc.content = updated;
+                    doc.isModified = true;
+                }
+                outcome.filesChanged = outcome.filesChanged + 1;
+            }
+        } else {
+            if IO.File.Exists(filePath) {
+                var diskContent = IO.File.ReadAllText(filePath);
+                var updatedDisk = ReplaceInContent(diskContent, lineNumbers, query, replacement,
+                                                   caseSensitive, wholeWord, regexMode, outcome);
+                if outcome.replacements > before {
+                    IO.File.WriteAllText(filePath, updatedDisk);
+                    outcome.filesChanged = outcome.filesChanged + 1;
+                }
+            } else {
+                outcome.filesFailed = outcome.filesFailed + 1;
+            }
+        }
+        f = f + 1;
+    }
+
+    var summary = "Replaced " + outcome.replacements + " match(es) in " +
+                  outcome.filesChanged + " file(s)";
+    if outcome.filesFailed > 0 {
+        summary = summary + "; " + outcome.filesFailed + " missing file(s) skipped";
+    }
+    return summary;
+}

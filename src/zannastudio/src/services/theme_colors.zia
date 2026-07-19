@@ -1,0 +1,36 @@
+module theme_colors;
+
+// ============================================================================
+// MODULE: theme_colors
+// PURPOSE: Single source for semantic UI colors derived from the live
+//          Zanna.GUI theme palette. Replaces per-module hardcoded hex
+//          constants so every surface follows the active theme (and the
+//          Zanna brand palette) automatically, including runtime theme
+//          switches.
+// FORMATS: Rgb returns 0x00RRGGBB (widget text/marker APIs); Rgba returns
+//          0xRRGGBBAA (pixel-buffer APIs); Argb returns 0xAARRGGBB
+//          (gutter-marker APIs). Alpha is always opaque.
+// ============================================================================
+
+bind Zanna.GUI as GUI;
+
+/// @brief Read one palette color token as packed 0x00RRGGBB.
+/// @param token Palette token name (e.g. "accentDanger", "fgTertiary").
+/// @return Palette color, or 0 when no palette is installed (headless).
+expose func Rgb(token: String) -> Integer {
+    var palette = GUI.Theme.GetPalette();
+    if palette == null {
+        return 0;
+    }
+    return GUI.ThemePalette.GetColor(palette, token);
+}
+
+/// @brief Read one palette color token as packed 0xRRGGBBAA (opaque).
+expose func Rgba(token: String) -> Integer {
+    return Rgb(token) * 256 + 255;
+}
+
+/// @brief Read one palette color token as packed 0xAARRGGBB (opaque).
+expose func Argb(token: String) -> Integer {
+    return 4278190080 + Rgb(token);
+}

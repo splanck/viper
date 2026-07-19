@@ -177,6 +177,20 @@ const il::support::SourceManager *DebugCtrl::getSourceManager() const {
     return sm_;
 }
 
+/// @brief Install the class-layout sidecar used to expand user class instances
+///        field-by-field at debugger stops (ADR 0138).
+///
+/// @param layouts Class id -> field layout table produced from the frontend's
+///        compile of the debugged module; ownership transfers to the controller.
+void DebugCtrl::setClassLayouts(DebugClassLayoutTable layouts) {
+    classLayouts_ = std::move(layouts);
+}
+
+/// @brief Access the installed class-layout sidecar (empty when none was set).
+const DebugClassLayoutTable &DebugCtrl::classLayouts() const {
+    return classLayouts_;
+}
+
 /// @brief Determine whether the given instruction hits a source breakpoint.
 ///
 /// @details The helper resolves the instruction's source file identifier through

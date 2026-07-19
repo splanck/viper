@@ -36,46 +36,48 @@ static vg_theme_t g_dark_theme = {
     .name = "Dark",
     .colors =
         {
+            // Zanna brand palette: charcoal-green field, green primary accent,
+            // teal informational accent, steel secondary text.
             // Background colors (0x00RRGGBB format for vgfx compatibility)
-            .bg_primary = 0x131922,
-            .bg_secondary = 0x1A2230,
-            .bg_tertiary = 0x243041,
-            .bg_hover = 0x2D3B50,
-            .bg_active = 0x1E527E,
-            .bg_selected = 0x214F7A,
-            .bg_disabled = 0x293240,
+            .bg_primary = 0x0D1A1C,
+            .bg_secondary = 0x132325,
+            .bg_tertiary = 0x1A2E30,
+            .bg_hover = 0x233B3C,
+            .bg_active = 0x1E4A43,
+            .bg_selected = 0x1C443F,
+            .bg_disabled = 0x172629,
 
             // Foreground colors
-            .fg_primary = 0xE7EEF7,
-            .fg_secondary = 0xA9B5C6,
-            .fg_tertiary = 0x7D8A9C,
-            .fg_disabled = 0x627080,
-            .fg_placeholder = 0x718097,
-            .fg_link = 0x7CC4FF,
+            .fg_primary = 0xE9F1EF,
+            .fg_secondary = 0xAFBEBC,
+            .fg_tertiary = 0x87999B,
+            .fg_disabled = 0x60716F,
+            .fg_placeholder = 0x7E908D,
+            .fg_link = 0x4FD4CE,
 
             // Accent colors
-            .accent_primary = 0x49A6FF,
-            .accent_secondary = 0x2F7DC6,
+            .accent_primary = 0x8CC63F,
+            .accent_secondary = 0x5FA832,
             .accent_danger = 0xFF6B6B,
             .accent_warning = 0xE8B04C,
             .accent_success = 0x71C784,
-            .accent_info = 0x69B9FF,
+            .accent_info = 0x2BC8C4,
 
             // Border colors
-            .border_primary = 0x334156,
-            .border_secondary = 0x273247,
-            .border_focus = 0x49A6FF,
+            .border_primary = 0x2B4241,
+            .border_secondary = 0x203434,
+            .border_focus = 0x8CC63F,
 
             // Syntax highlighting
-            .syntax_keyword = 0x569CD6,  // Blue
-            .syntax_type = 0x4EC9B0,     // Teal
-            .syntax_function = 0xDCDCAA, // Yellow
-            .syntax_variable = 0x9CDCFE, // Light blue
-            .syntax_string = 0xCE9178,   // Orange
-            .syntax_number = 0xB5CEA8,   // Light green
-            .syntax_comment = 0x6A9955,  // Green
-            .syntax_operator = 0xE0E0E0, // White
-            .syntax_error = 0xF14C4C,    // Red
+            .syntax_keyword = 0x9BD24A,  // Brand green
+            .syntax_type = 0x45D0BF,     // Brand teal
+            .syntax_function = 0xE5CA7E, // Warm gold
+            .syntax_variable = 0xA8D8DC, // Light steel-teal
+            .syntax_string = 0xD9A176,   // Amber-orange
+            .syntax_number = 0xBDD3A5,   // Pale sage
+            .syntax_comment = 0x7B9A88,  // Muted green-grey
+            .syntax_operator = 0xD8E2DF, // Soft steel white
+            .syntax_error = 0xF25C5C,    // Red
         },
     .typography =
         {
@@ -128,7 +130,7 @@ static vg_theme_t g_dark_theme = {
             .level3 = {.blur = 20.0f, .dx = 0, .dy = 8, .alpha = 90},
         },
     .gradient = {.enabled = true, .strength = 0.06f},
-    .focus = {.glow_color = 0x49A6FF, .glow_width = 2.0f, .glow_alpha = 120},
+    .focus = {.glow_color = 0x8CC63F, .glow_width = 2.0f, .glow_alpha = 120},
     .motion = {.enabled = true, .hover_ms = 90.0f, .press_ms = 60.0f, .focus_ms = 120.0f},
 };
 
@@ -140,46 +142,48 @@ static vg_theme_t g_light_theme = {
     .name = "Light",
     .colors =
         {
+            // Zanna brand palette on a light field: green-tinted neutrals,
+            // deep-green primary accent, deep-teal informational accent.
             // Background colors (0x00RRGGBB format for vgfx compatibility)
-            .bg_primary = 0xFAFBFC,
-            .bg_secondary = 0xF1F4F8,
-            .bg_tertiary = 0xE6ECF2,
-            .bg_hover = 0xDFE8F2,
-            .bg_active = 0xC6E0FF,
-            .bg_selected = 0xD7E9FF,
-            .bg_disabled = 0xF0F2F5,
+            .bg_primary = 0xFAFCFA,
+            .bg_secondary = 0xF0F5F1,
+            .bg_tertiary = 0xE4EDE7,
+            .bg_hover = 0xDCE8E0,
+            .bg_active = 0xC8E8D0,
+            .bg_selected = 0xCDE9D4,
+            .bg_disabled = 0xF0F3F1,
 
             // Foreground colors
-            .fg_primary = 0x17212E,
-            .fg_secondary = 0x556273,
-            .fg_tertiary = 0x788598,
-            .fg_disabled = 0x99A3AF,
-            .fg_placeholder = 0x8894A5,
-            .fg_link = 0x1877F2,
+            .fg_primary = 0x16211D,
+            .fg_secondary = 0x4F615A,
+            .fg_tertiary = 0x6C7E77,
+            .fg_disabled = 0x97A5A0,
+            .fg_placeholder = 0x66776F,
+            .fg_link = 0x0C7B77,
 
             // Accent colors
-            .accent_primary = 0x1877F2,
-            .accent_secondary = 0x0D5FCC,
+            .accent_primary = 0x4E8A22,
+            .accent_secondary = 0x3D701B,
             .accent_danger = 0xD64545,
-            .accent_warning = 0xC88926,
+            .accent_warning = 0xA8731A,
             .accent_success = 0x2C8F5A,
-            .accent_info = 0x1877F2,
+            .accent_info = 0x0C7B77,
 
             // Border colors
-            .border_primary = 0xCAD4E0,
-            .border_secondary = 0xE0E6EE,
-            .border_focus = 0x1877F2,
+            .border_primary = 0xC3D3CA,
+            .border_secondary = 0xDCE6DF,
+            .border_focus = 0x4E8A22,
 
             // Syntax highlighting
-            .syntax_keyword = 0x0000FF,  // Blue
-            .syntax_type = 0x267F99,     // Teal
-            .syntax_function = 0x795E26, // Brown
-            .syntax_variable = 0x001080, // Dark blue
-            .syntax_string = 0xA31515,   // Red
-            .syntax_number = 0x098658,   // Green
-            .syntax_comment = 0x008000,  // Green
-            .syntax_operator = 0x000000, // Black
-            .syntax_error = 0xE81123,    // Red
+            .syntax_keyword = 0x2E7D0F,  // Deep green
+            .syntax_type = 0x0F766E,     // Deep teal
+            .syntax_function = 0x7A5D14, // Dark gold
+            .syntax_variable = 0x175E73, // Steel-teal
+            .syntax_string = 0xA34A2A,   // Rust
+            .syntax_number = 0x0E7A52,   // Teal-green
+            .syntax_comment = 0x5C7568,  // Grey-green
+            .syntax_operator = 0x24312C, // Near-black green
+            .syntax_error = 0xD5121E,    // Red
         },
     .typography =
         {
@@ -231,7 +235,7 @@ static vg_theme_t g_light_theme = {
             .level3 = {.blur = 26.0f, .dx = 0, .dy = 10, .alpha = 56},
         },
     .gradient = {.enabled = true, .strength = 0.04f},
-    .focus = {.glow_color = 0x1877F2, .glow_width = 2.0f, .glow_alpha = 110},
+    .focus = {.glow_color = 0x4E8A22, .glow_width = 2.0f, .glow_alpha = 110},
     .motion = {.enabled = true, .hover_ms = 90.0f, .press_ms = 60.0f, .focus_ms = 120.0f},
 };
 

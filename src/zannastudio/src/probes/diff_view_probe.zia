@@ -1,0 +1,132 @@
+module diff_view_probe;
+
+// ============================================================================
+// MODULE: diff_view_probe
+// PURPOSE: Verify the plan 07 diff engine — identical inputs align as SAME,
+//          insertions/deletions/changes classify correctly, row line numbers
+//          stay 1-based and monotone, and the aligned rows reconstruct both
+//          input documents exactly.
+// ============================================================================
+
+bind "../services/diff_engine";
+
+bind Terminal = Zanna.Terminal;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Rebuild the left document from aligned rows.
+func RebuildLeft(rows: List) -> String {
+    var out = "";
+    var first = true;
+    var i = 0;
+    while i < rows.count() {
+        var row = rows.get(i) as diff_engine.DiffRow;
+        if row.kind != diff_engine.ROW_ADDED {
+            if first == false { out = out + "\n"; }
+            out = out + row.leftText;
+            first = false;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+/// @brief Rebuild the right document from aligned rows.
+func RebuildRight(rows: List) -> String {
+    var out = "";
+    var first = true;
+    var i = 0;
+    while i < rows.count() {
+        var row = rows.get(i) as diff_engine.DiffRow;
+        if row.kind != diff_engine.ROW_REMOVED {
+            if first == false { out = out + "\n"; }
+            out = out + row.rightText;
+            first = false;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+func main() {
+    // Identical documents: every row SAME.
+    var same = diff_engine.BuildRows("a\nb\nc", "a\nb\nc");
+    if diff_engine.CountKind(same, diff_engine.ROW_SAME) != 3
+       or same.count() != 3 {
+        fail("identical inputs must align as three SAME rows");
+        return;
+    }
+
+    // Pure insertion.
+    var ins = diff_engine.BuildRows("a\nc", "a\nb\nc");
+    if diff_engine.CountKind(ins, diff_engine.ROW_ADDED) != 1 {
+        fail("insertion not classified");
+        return;
+    }
+
+    // Pure deletion.
+    var del = diff_engine.BuildRows("a\nb\nc", "a\nc");
+    if diff_engine.CountKind(del, diff_engine.ROW_REMOVED) != 1 {
+        fail("deletion not classified");
+        return;
+    }
+
+    // Change pairs into a CHANGED row.
+    var chg = diff_engine.BuildRows("a\nold\nc", "a\nnew\nc");
+    if diff_engine.CountKind(chg, diff_engine.ROW_CHANGED) != 1 {
+        fail("change not classified");
+        return;
+    }
+
+    // Reconstruction: rows must rebuild both documents exactly.
+    var leftDoc = "alpha\nbravo\ncharlie\ndelta\necho";
+    var rightDoc = "alpha\nbravo2\ncharlie\ninserted\ndelta\nfoxtrot";
+    var rows = diff_engine.BuildRows(leftDoc, rightDoc);
+    if RebuildLeft(rows) != leftDoc {
+        fail("left reconstruction mismatch: " + RebuildLeft(rows));
+        return;
+    }
+    if RebuildRight(rows) != rightDoc {
+        fail("right reconstruction mismatch: " + RebuildRight(rows));
+        return;
+    }
+
+    // Line numbers stay monotone and 1-based.
+    var lastLeft = 0;
+    var lastRight = 0;
+    var i = 0;
+    while i < rows.count() {
+        var row = rows.get(i) as diff_engine.DiffRow;
+        if row.leftLine != 0 {
+            if row.leftLine != lastLeft + 1 {
+                fail("left line numbering broke at row " + i);
+                return;
+            }
+            lastLeft = row.leftLine;
+        }
+        if row.rightLine != 0 {
+            if row.rightLine != lastRight + 1 {
+                fail("right line numbering broke at row " + i);
+                return;
+            }
+            lastRight = row.rightLine;
+        }
+        i = i + 1;
+    }
+
+    // Empty edges.
+    var emptyBoth = diff_engine.BuildRows("", "");
+    if diff_engine.CountKind(emptyBoth, diff_engine.ROW_SAME) != emptyBoth.count() {
+        fail("empty-vs-empty should be trivially same");
+        return;
+    }
+    var addAll = diff_engine.BuildRows("", "x\ny");
+    if diff_engine.CountKind(addAll, diff_engine.ROW_ADDED) < 1 {
+        fail("empty-to-content should classify additions");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

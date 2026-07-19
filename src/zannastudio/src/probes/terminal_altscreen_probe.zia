@@ -1,0 +1,111 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: zannastudio/src/probes/terminal_altscreen_probe.zia
+// Purpose: Display-backed regression for the plan-11 terminal emulator depth:
+//          alternate-screen isolation, DECSTBM region scrolling with a pinned
+//          status row, line/character edits (IL/DL/ICH/DCH/ECH), DSR replies
+//          on the input queue, and mode sequences being swallowed cleanly.
+//
+//===----------------------------------------------------------------------===//
+
+module terminal_altscreen_probe;
+
+bind "../ui/app_shell";
+
+bind Zanna.GUI as GUI;
+bind Terminal = Zanna.Terminal;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: terminal_altscreen_probe
+// PURPOSE: Assert the vim/less/htop sequence table works through the runtime
+//          OutputPane surface, not just the C unit test: the exact bytes a
+//          full-screen program emits go through Append and the visible text
+//          plus queued replies are checked.
+//
+// WHERE-THIS-FITS: test_vg_outputpane_term.c pins the parser grid-state table;
+//          this probe pins the RT dispatch + selection-text integration.
+// ============================================================================
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio AltScreen Probe", 1000, 700);
+    var pane = shell.toolPanels.terminalPane;
+    pane.SetTerminalMode(true);
+
+    // ── Alternate screen isolates full-screen output from scrollback ─────────
+    pane.Append("shell$ ls\n");
+    pane.Append("\x1b[?1049h\x1b[2J\x1b[1;1HFULLSCREEN");
+    pane.SelectAll();
+    var alt = pane.GetSelection();
+    if alt.Contains("FULLSCREEN") == false { fail(shell, "alt text missing: " + alt); return; }
+    if alt.Contains("shell$") { fail(shell, "primary scrollback leaked into alt: " + alt); return; }
+    pane.Append("\x1b[?1049l");
+    pane.SelectAll();
+    var back = pane.GetSelection();
+    if back.Contains("shell$ ls") == false { fail(shell, "primary lost after alt: " + back); return; }
+    if back.Contains("FULLSCREEN") { fail(shell, "alt text leaked into primary: " + back); return; }
+
+    // ── DECSTBM region scroll keeps the status row pinned (vim/htop shape) ───
+    pane.Append("\x1b[?1049h");
+    pane.Append("\x1b[1;1Hline-a\x1b[2;1Hline-b\x1b[3;1Hline-c\x1b[4;1HSTATUS");
+    pane.Append("\x1b[1;3r\x1b[3;1H\n\x1b[3;1Hline-d\x1b[r");
+    pane.SelectAll();
+    var region = pane.GetSelection();
+    if region.Contains("line-a") { fail(shell, "region scroll kept line-a: " + region); return; }
+    if region.Contains("line-b") == false { fail(shell, "line-b missing: " + region); return; }
+    if region.Contains("line-d") == false { fail(shell, "line-d missing: " + region); return; }
+    if region.Contains("STATUS") == false { fail(shell, "status row not pinned: " + region); return; }
+
+    // ── IL/DL insert and delete rows in place ────────────────────────────────
+    pane.Append("\x1b[2J\x1b[1;1Hrow1\x1b[2;1Hrow2\x1b[1;1H\x1b[L\x1b[1;1Hnew0");
+    pane.SelectAll();
+    var il = pane.GetSelection();
+    if il.Contains("new0") == false or il.Contains("row1") == false {
+        fail(shell, "IL lost a row: " + il);
+        return;
+    }
+    pane.Append("\x1b[1;1H\x1b[M");
+    pane.SelectAll();
+    var dl = pane.GetSelection();
+    if dl.Contains("new0") { fail(shell, "DL kept deleted row: " + dl); return; }
+    if dl.Contains("row1") == false { fail(shell, "DL removed wrong row: " + dl); return; }
+
+    // ── ICH/DCH/ECH edit within a row ────────────────────────────────────────
+    pane.Append("\x1b[2J\x1b[1;1Habcdef\x1b[1;3H\x1b[2@XY");
+    pane.SelectAll();
+    var ich = pane.GetSelection();
+    if ich.Contains("abXYcdef") == false { fail(shell, "ICH wrong: " + ich); return; }
+    pane.Append("\x1b[1;3H\x1b[2P");
+    pane.SelectAll();
+    var dch = pane.GetSelection();
+    if dch.Contains("abcdef") == false { fail(shell, "DCH wrong: " + dch); return; }
+
+    // ── DSR replies land on the child-input queue ────────────────────────────
+    pane.TakeInput(); // drain anything queued so far
+    pane.Append("\x1b[2;5H\x1b[6n");
+    var reply = pane.TakeInput();
+    if reply.Contains("[2;5R") == false { fail(shell, "CPR reply was '" + reply + "'"); return; }
+
+    // ── Mode sequences are swallowed, never rendered ─────────────────────────
+    pane.Append("\x1b[?25l\x1b[?2004h\x1b[?1hquiet\x1b[?25h");
+    pane.SelectAll();
+    var modes = pane.GetSelection();
+    if modes.Contains("quiet") == false { fail(shell, "text after modes missing: " + modes); return; }
+    if modes.Contains("?25") or modes.Contains("2004") {
+        fail(shell, "mode sequence leaked: " + modes);
+        return;
+    }
+
+    pane.Append("\x1b[?1049l");
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

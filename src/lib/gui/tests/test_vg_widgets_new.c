@@ -896,6 +896,11 @@ TEST(codeeditor_mouse_wheel_scrolls_per_notch) {
     wheel.type = VG_EVENT_MOUSE_WHEEL;
     wheel.wheel.delta_y = -1.0f;
     ASSERT(ed->base.vtable->handle_event(&ed->base, &wheel));
+    // Wheel input eases toward its target (Zanna Studio plan 05); settle the
+    // animation so the landed distance is observable.
+    int settle_guard = 0;
+    while (vg_codeeditor_smooth_tick(ed, 16.0f) && settle_guard++ < 1000) {
+    }
     // CODEEDITOR_MOUSE_WHEEL_LINES = 0.3f (slowed default; see vg_codeeditor.c).
     // One wheel notch produces 0.3 line_heights of scroll, not a full line.
     // Using a small tolerance to absorb any floating-point rounding from

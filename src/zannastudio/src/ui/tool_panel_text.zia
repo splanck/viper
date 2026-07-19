@@ -1,5 +1,6 @@
 module tool_panel_text;
 
+bind "../services/theme_colors";
 bind Str = Zanna.String;
 bind TextWrap = Zanna.Text.TextWrapper;
 
@@ -20,23 +21,23 @@ bind TextWrap = Zanna.Text.TextWrapper;
 
 /// @brief Color used for error rows and summaries.
 /// @return RGB integer color value.
-expose func ErrorColor() -> Integer { return 14707829; }
+expose func ErrorColor() -> Integer { return theme_colors.Rgb("accentDanger"); }
 
 /// @brief Color used for warning rows and summaries.
 /// @return RGB integer color value.
-expose func WarningColor() -> Integer { return 15911349; }
+expose func WarningColor() -> Integer { return theme_colors.Rgb("accentWarning"); }
 
 /// @brief Color used for informational rows and summaries.
 /// @return RGB integer color value.
-expose func InfoColor() -> Integer { return 6662382; }
+expose func InfoColor() -> Integer { return theme_colors.Rgb("accentInfo"); }
 
 /// @brief Color used for successful or clean-state rows.
 /// @return RGB integer color value.
-expose func SuccessColor() -> Integer { return 10264905; }
+expose func SuccessColor() -> Integer { return theme_colors.Rgb("accentSuccess"); }
 
 /// @brief Color used for muted headers and inactive state rows.
 /// @return RGB integer color value.
-expose func MutedColor() -> Integer { return 10066329; }
+expose func MutedColor() -> Integer { return theme_colors.Rgb("fgTertiary"); }
 
 /// @brief Width of the tool row kind column.
 /// @return Fixed character width for the kind column.

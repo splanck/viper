@@ -29,6 +29,7 @@
 #include "rt_gui_internal.h"
 #include "rt_pixels.h"
 #include "rt_platform.h"
+#include "vg_icon_vector.h"
 
 #include <string.h>
 
@@ -348,6 +349,26 @@ void rt_statusbaritem_set_text_color(void *item, int64_t color) {
     vg_statusbar_item_set_text_color(sbi, (uint32_t)color);
 }
 
+/// @brief Set (or clear) a named scalable vector icon on a status bar item (ADR 0137).
+/// @details Unknown names are ignored so callers can probe icon availability;
+///          an empty name clears the current vector icon.
+void rt_statusbaritem_set_icon_name(void *item, rt_string name) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_statusbar_item_t *sbi = rt_statusbaritem_checked(item);
+    if (!sbi)
+        return;
+    char *cname = rt_string_to_gui_cstr(name);
+    if (!cname || !cname[0]) {
+        vg_statusbar_item_set_icon_vector(sbi, -1);
+        free(cname);
+        return;
+    }
+    int32_t icon_id = vg_icon_vector_find(cname);
+    free(cname);
+    if (icon_id != VG_ICON_VECTOR_INVALID)
+        vg_statusbar_item_set_icon_vector(sbi, icon_id);
+}
+
 /// @brief Get the text of the statusbaritem.
 rt_string rt_statusbaritem_get_text(void *item) {
     RT_ASSERT_MAIN_THREAD();
@@ -479,6 +500,13 @@ static vg_icon_t rt_toolbar_icon_from_name(rt_string icon_name) {
     char *cname = rt_string_to_cstr_no_nul(icon_name);
     if (icon_name && !cname)
         return icon;
+    // Scalable vector icons take precedence (ADR 0137); the legacy builtin
+    // codepoint table remains the fallback for unmapped names.
+    int32_t vector_id = vg_icon_vector_find(cname);
+    if (vector_id != VG_ICON_VECTOR_INVALID) {
+        free(cname);
+        return vg_icon_from_vector(vector_id);
+    }
     uint32_t cp = rt_toolbar_builtin_icon_codepoint(cname);
     free(cname);
     if (cp != 0)
@@ -1064,6 +1092,12 @@ void rt_statusbaritem_set_text(void *item, rt_string text) {
 void rt_statusbaritem_set_text_color(void *item, int64_t color) {
     (void)item;
     (void)color;
+}
+
+/// @brief Graphics-disabled statusbaritem vector-icon setter stub.
+void rt_statusbaritem_set_icon_name(void *item, rt_string name) {
+    (void)item;
+    (void)name;
 }
 
 /// @brief Get the text of the statusbaritem.

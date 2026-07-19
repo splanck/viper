@@ -31,6 +31,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_icon_vector.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <math.h>
@@ -1402,37 +1403,33 @@ static void toolbar_fill_tri(
 static uint32_t toolbar_vector_icon_color(uint32_t cp, uint32_t fallback, bool enabled) {
     if (!enabled)
         return fallback;
-
+    const vg_color_scheme_t *colors = &vg_theme_get_current()->colors;
     switch (cp) {
         case 0x2B:   // New
         case 0x25A4: // Open
-            return 0x2F80EDu;
+        case 0x2192: // Step
+            return colors->accent_info;
         case 0x25BC: // Save
         case 0x21D3: // Save all
-            return 0x22A6B3u;
+            return colors->fg_link;
         case 0x25A3: // Build
-            return 0xD99000u;
+            return colors->accent_warning;
         case 0x25B6: // Run
         case 0x25B7: // Continue
-            return 0x23A55Au;
+            return colors->accent_success;
         case 0x25A0: // Stop
-            return 0xD64545u;
+            return colors->accent_danger;
         case 0x25C7: // Debug
-            return 0x8A63D2u;
-        case 0x2192: // Step
-            return 0x4E8FD8u;
-        case 0x3F: // Find
-            return 0xC65BCFu;
-        case 0x25A6: // Explorer
-            return 0x5AA3E8u;
-        case 0x2387: // Source control
-            return 0xD08A45u;
+            return colors->accent_primary;
         default:
             return fallback;
     }
 }
 
 /// @brief Draw a recognisable vector icon for a known toolbar codepoint.
+/// @details Maps the legacy single-codepoint toolbar keys onto the shared
+///          scalable vector icon library (ADR 0137); unmapped codepoints fall
+///          back to the font glyph path.
 /// @param win Destination window/framebuffer.
 /// @param cp Unicode codepoint used as the icon key.
 /// @param bx Left edge of the icon box.
@@ -1443,111 +1440,61 @@ static uint32_t toolbar_vector_icon_color(uint32_t cp, uint32_t fallback, bool e
 /// @return true if handled (caller skips the font glyph); false to fall back.
 static bool toolbar_draw_vector_icon(
     vgfx_window_t win, uint32_t cp, float bx, float by, float sz, uint32_t color, bool enabled) {
-    float sw = sz * 0.10f;
-    if (sw < 1.4f)
-        sw = 1.4f;
-    uint32_t icon_color = toolbar_vector_icon_color(cp, color, enabled);
-#define IX(fx) (bx + (fx) * sz)
-#define IY(fy) (by + (fy) * sz)
-#define ILINE(x0, y0, x1, y1) vg_draw_line_aa(win, IX(x0), IY(y0), IX(x1), IY(y1), sw, icon_color)
-#define IRING(cx, cy, r) vg_draw_circle_stroke(win, IX(cx), IY(cy), (r) * sz, sw, icon_color)
-#define IDISC(cx, cy, r) vg_draw_disc_fill(win, IX(cx), IY(cy), (r) * sz, icon_color)
-#define IRRS(x0, y0, w, h, rad)                                                                    \
-    vg_draw_round_rect_stroke(win, IX(x0), IY(y0), (w) * sz, (h) * sz, (rad) * sz, sw, icon_color)
-#define IRRF(x0, y0, w, h, rad)                                                                    \
-    vg_draw_round_rect_fill(win, IX(x0), IY(y0), (w) * sz, (h) * sz, (rad) * sz, icon_color)
-#define ITRI(x0, y0, x1, y1, x2, y2)                                                               \
-    toolbar_fill_tri(win, IX(x0), IY(y0), IX(x1), IY(y1), IX(x2), IY(y2), icon_color)
-
+    const char *name = NULL;
     switch (cp) {
-        case 0x2B: // New file (document with text lines)
-            IRRS(0.28f, 0.14f, 0.42f, 0.72f, 0.08f);
-            ILINE(0.37f, 0.42f, 0.61f, 0.42f);
-            ILINE(0.37f, 0.55f, 0.61f, 0.55f);
-            ILINE(0.37f, 0.68f, 0.54f, 0.68f);
-            return true;
-        case 0x25A4: // Open (folder)
-            IRRS(0.18f, 0.26f, 0.26f, 0.12f, 0.04f);
-            IRRS(0.16f, 0.34f, 0.68f, 0.44f, 0.06f);
-            return true;
-        case 0x25BC: // Save (down arrow onto a tray line)
-            ILINE(0.5f, 0.18f, 0.5f, 0.6f);
-            ILINE(0.34f, 0.44f, 0.5f, 0.62f);
-            ILINE(0.66f, 0.44f, 0.5f, 0.62f);
-            ILINE(0.26f, 0.78f, 0.74f, 0.78f);
-            return true;
-        case 0x21D3: // Save all (double chevron down onto a line)
-            ILINE(0.36f, 0.3f, 0.5f, 0.44f);
-            ILINE(0.64f, 0.3f, 0.5f, 0.44f);
-            ILINE(0.36f, 0.48f, 0.5f, 0.62f);
-            ILINE(0.64f, 0.48f, 0.5f, 0.62f);
-            ILINE(0.26f, 0.78f, 0.74f, 0.78f);
-            return true;
-        case 0x25A3: // Build (stacked diamond layers)
-            ILINE(0.5f, 0.16f, 0.8f, 0.34f);
-            ILINE(0.8f, 0.34f, 0.5f, 0.52f);
-            ILINE(0.5f, 0.52f, 0.2f, 0.34f);
-            ILINE(0.2f, 0.34f, 0.5f, 0.16f);
-            ILINE(0.2f, 0.5f, 0.5f, 0.68f);
-            ILINE(0.8f, 0.5f, 0.5f, 0.68f);
-            return true;
-        case 0x25B6: // Run (play triangle)
-            ITRI(0.32f, 0.2f, 0.32f, 0.8f, 0.8f, 0.5f);
-            return true;
-        case 0x25A0: // Stop (rounded square)
-            IRRF(0.26f, 0.26f, 0.48f, 0.48f, 0.1f);
-            return true;
-        case 0x25C7: // Debug (bug)
-            IDISC(0.5f, 0.54f, 0.2f);
-            IDISC(0.5f, 0.3f, 0.1f);
-            ILINE(0.3f, 0.46f, 0.4f, 0.52f);
-            ILINE(0.3f, 0.64f, 0.41f, 0.6f);
-            ILINE(0.7f, 0.46f, 0.6f, 0.52f);
-            ILINE(0.7f, 0.64f, 0.59f, 0.6f);
-            return true;
-        case 0x25B7: // Continue (play + bar)
-            ITRI(0.26f, 0.22f, 0.26f, 0.78f, 0.62f, 0.5f);
-            IRRF(0.66f, 0.22f, 0.1f, 0.56f, 0.03f);
-            return true;
-        case 0x2192: // Step over (right arrow)
-            ILINE(0.22f, 0.5f, 0.72f, 0.5f);
-            ILINE(0.56f, 0.36f, 0.74f, 0.5f);
-            ILINE(0.56f, 0.64f, 0.74f, 0.5f);
-            return true;
-        case 0x3F: // Find (magnifying glass)
-            IRING(0.44f, 0.42f, 0.2f);
-            ILINE(0.6f, 0.58f, 0.78f, 0.76f);
-            return true;
-        case 0x25A6: // Explorer (file tree)
-            IRRS(0.22f, 0.16f, 0.42f, 0.26f, 0.05f);
-            ILINE(0.43f, 0.42f, 0.72f, 0.42f);
-            ILINE(0.43f, 0.58f, 0.72f, 0.58f);
-            ILINE(0.43f, 0.74f, 0.64f, 0.74f);
-            IDISC(0.28f, 0.42f, 0.045f);
-            IDISC(0.28f, 0.58f, 0.045f);
-            IDISC(0.28f, 0.74f, 0.045f);
-            ILINE(0.28f, 0.46f, 0.28f, 0.54f);
-            ILINE(0.28f, 0.62f, 0.28f, 0.70f);
-            return true;
-        case 0x2387: // Source control (branch)
-            IRING(0.28f, 0.25f, 0.075f);
-            IRING(0.28f, 0.75f, 0.075f);
-            IRING(0.72f, 0.5f, 0.075f);
-            ILINE(0.28f, 0.33f, 0.28f, 0.67f);
-            ILINE(0.34f, 0.42f, 0.64f, 0.5f);
-            ILINE(0.5f, 0.45f, 0.64f, 0.5f);
-            return true;
+        case 0x2B:
+            name = "new-file";
+            break;
+        case 0x25A4:
+            name = "folder-open";
+            break;
+        case 0x25BC:
+            name = "save";
+            break;
+        case 0x21D3:
+            name = "save-all";
+            break;
+        case 0x25A3:
+            name = "build";
+            break;
+        case 0x25B6:
+            name = "run";
+            break;
+        case 0x25A0:
+            name = "debug-stop";
+            break;
+        case 0x25C7:
+            name = "debug";
+            break;
+        case 0x25B7:
+            name = "debug-continue";
+            break;
+        case 0x2192:
+            name = "debug-step-over";
+            break;
+        case 0x3F:
+            name = "find";
+            break;
+        case 0x25A6:
+            name = "explorer";
+            break;
+        case 0x2387:
+            name = "source-control";
+            break;
         default:
             return false;
     }
-#undef IX
-#undef IY
-#undef ILINE
-#undef IRING
-#undef IDISC
-#undef IRRS
-#undef IRRF
-#undef ITRI
+    int32_t icon_id = vg_icon_vector_find(name);
+    if (icon_id == VG_ICON_VECTOR_INVALID)
+        return false;
+    uint32_t icon_color = toolbar_vector_icon_color(cp, color, enabled);
+    vg_icon_vector_draw(win,
+                        icon_id,
+                        (int32_t)(bx + 0.5f),
+                        (int32_t)(by + 0.5f),
+                        (int32_t)(sz + 0.5f),
+                        icon_color);
+    return true;
 }
 
 /// @brief If @p s is exactly one UTF-8 codepoint, return it; otherwise return 0.
@@ -1732,6 +1679,15 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas) {
                     case VG_ICON_IMAGE:
                         toolbar_draw_image_icon(
                             win, &item->icon, icon_x, icon_y, icon_px, icon_px, item->enabled);
+                        break;
+
+                    case VG_ICON_VECTOR:
+                        vg_icon_vector_draw(win,
+                                            item->icon.data.vector_id,
+                                            (int32_t)(icon_x + 0.5f),
+                                            (int32_t)(icon_y + 0.5f),
+                                            (int32_t)(icon_px + 0.5f),
+                                            txt_color);
                         break;
 
                     default:
@@ -2717,6 +2673,19 @@ vg_icon_t vg_icon_from_file(const char *path) {
     return icon;
 }
 
+/// @brief Create a VG_ICON_VECTOR icon referencing a named scalable icon.
+///
+/// @param vector_id Icon id from vg_icon_vector_find; negative returns VG_ICON_NONE.
+/// @return          Vector icon reference (no heap allocation).
+vg_icon_t vg_icon_from_vector(int32_t vector_id) {
+    vg_icon_t icon = {0};
+    if (vector_id < 0)
+        return icon;
+    icon.type = VG_ICON_VECTOR;
+    icon.data.vector_id = vector_id;
+    return icon;
+}
+
 /// @brief Deep-copy an icon descriptor, duplicating heap allocations for IMAGE and PATH types.
 ///
 /// @param icon Source icon; may be NULL (returns VG_ICON_NONE).
@@ -2734,6 +2703,8 @@ vg_icon_t vg_icon_clone(const vg_icon_t *icon) {
                 icon->data.image.pixels, icon->data.image.width, icon->data.image.height);
         case VG_ICON_PATH:
             return vg_icon_from_file(icon->data.path);
+        case VG_ICON_VECTOR:
+            return vg_icon_from_vector(icon->data.vector_id);
         default:
             return copy;
     }

@@ -1718,6 +1718,17 @@ function(zanna_add_runtime_tests)
     zanna_add_ctest(test_rt_gui_availability test_rt_gui_availability)
     zanna_add_test_labels(test_rt_gui_availability runtime gui contract)
 
+    # Headless vtable tests for the Windows UI Automation provider bridge.
+    # No UIA client or HWND is involved, so this runs on any Windows session.
+    if (WIN32 AND TARGET zannagfx)
+        zanna_add_test(test_rt_uia_provider ${ZANNA_TESTS_DIR}/runtime/RTUiaProviderTests.c)
+        target_link_libraries(test_rt_uia_provider PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+        target_compile_definitions(test_rt_uia_provider PRIVATE ZANNA_ENABLE_GRAPHICS)
+        target_link_libraries(test_rt_uia_provider PRIVATE zannagfx zannagui oleaut32)
+        zanna_add_ctest(test_rt_uia_provider test_rt_uia_provider)
+        zanna_add_test_labels(test_rt_uia_provider runtime gui accessibility)
+    endif ()
+
     zanna_add_test(test_rt_gui_ide ${ZANNA_TESTS_DIR}/runtime/RTGuiIdeTests.cpp)
     target_link_libraries(test_rt_gui_ide PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
     zanna_add_ctest(test_rt_gui_ide test_rt_gui_ide)

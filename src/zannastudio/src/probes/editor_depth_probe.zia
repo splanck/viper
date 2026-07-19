@@ -1,0 +1,86 @@
+module editor_depth_probe;
+
+// ============================================================================
+// MODULE: editor_depth_probe
+// PURPOSE: Verify plan 07 model-level behaviors — document reorder mirrors
+//          tab drag-reorder (active document follows its new index), and the
+//          session split flag round-trips through save/restore.
+// ============================================================================
+
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../core/session";
+bind "../editor/editor_tabs";
+bind "../zia/function_scan";
+
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Terminal = Zanna.Terminal;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_editor_depth_");
+
+    // Three documents; make the middle one active, then move it to front.
+    var docMgr = new document_manager.DocumentManager();
+    var a = Path.Join(root, "a.zia");
+    var b = Path.Join(root, "b.zia");
+    var c = Path.Join(root, "c.zia");
+    File.WriteAllText(a, "func A() {}\n");
+    File.WriteAllText(b, "func B() {}\n");
+    File.WriteAllText(c, "func C() {}\n");
+    docMgr.OpenFile(a);
+    docMgr.OpenFile(b);
+    docMgr.OpenFile(c);
+    docMgr.SetActive(1);
+
+    docMgr.MoveDocument(1, 0);
+    if docMgr.activeIndex != 0 {
+        fail("active doc should follow its new index, got " + docMgr.activeIndex);
+        return;
+    }
+    var first = docMgr.GetDocument(0);
+    if first == null or first!.filePath != b {
+        fail("b.zia should now be first");
+        return;
+    }
+
+    // Degenerate moves are safe no-ops.
+    docMgr.MoveDocument(-1, 0);
+    docMgr.MoveDocument(0, 99);
+    docMgr.MoveDocument(2, 2);
+    if docMgr.GetCount() != 3 {
+        fail("degenerate moves must not change the count");
+        return;
+    }
+
+    // Session split flag round-trips.
+    var sessionDir = TempFile.CreateDirWithPrefix("zannastudio_split_session_");
+    var mgr = new session.SessionManager();
+    mgr.Setup(Path.Join(sessionDir, "settings.ini"));
+    mgr.splitActive = true;
+    var projMgr = new project_manager.ProjectManager();
+    mgr.Save(docMgr, projMgr);
+
+    var mgr2 = new session.SessionManager();
+    mgr2.Setup(Path.Join(sessionDir, "settings.ini"));
+    var tabs = new editor_tabs.EditorTabs();
+    mgr2.Restore(docMgr, projMgr, tabs);
+    if mgr2.splitActive == false {
+        fail("splitActive flag lost across save/restore");
+        return;
+    }
+
+    // Breadcrumb symbol inference finds the enclosing function.
+    var source = "func Outer() {\n    var x = 1;\n}\n\nfunc Later() {\n}\n";
+    if function_scan.EnclosingZiaFunctionName(source, 2) != "Outer" {
+        fail("enclosing function lookup failed");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

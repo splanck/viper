@@ -93,6 +93,7 @@ See the [Getting Started Guide](docs/getting-started.md) for platform-specific s
 | **[Assembler](docs/internals/native-assembler.md) / [Linker](docs/internals/native-linker.md)** | In-tree ELF, Mach-O, and PE object/link support with DWARF and platform packaging integration |
 | **[Runtime](docs/zannalib/README.md)** | Shared standard library for collections, graphics, 3D, GUI, games, networking, crypto, text, threads, localization, and more |
 | **[Language servers](docs/tools/zia-server.md)** | Zia and BASIC servers with LSP and MCP modes for editors and AI coding tools |
+| **[Zanna Studio](src/zannastudio/README.md)** | IDE written in Zia on the Zanna GUI runtime: semantic editing, project search/replace, side-by-side diffs, VM debugging with structured inspection, PTY terminal, and Git source control |
 | **[Tools](docs/tools/cli.md)** | Unified `zanna` driver plus `zia`, `vbasic`, `ilrun`, `il-verify`, `il-dis`, REPL, package, installer, and benchmark commands |
 
 ### Why Zanna?

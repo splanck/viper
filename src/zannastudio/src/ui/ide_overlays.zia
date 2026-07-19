@@ -3,6 +3,8 @@ module ide_overlays;
 bind "../ui/app_shell";
 bind "../core/settings";
 bind "../app/build_info";
+bind "../services/theme_colors";
+bind "../commands/command_registry";
 
 bind Zanna.GUI as GUI;
 bind Str = Zanna.String;
@@ -81,6 +83,18 @@ class IdeOverlays {
     expose GUI.Button resetIntelliSenseButton;
     expose GUI.Button resetStartupButton;
     expose GUI.Button applySettingsButton;
+    expose GUI.TextInput settingsFilterInput;
+    expose GUI.ListBox keybindingList;
+    expose GUI.TextInput keybindingShortcutInput;
+    expose GUI.Button keybindingSetButton;
+    expose GUI.Button keybindingClearButton;
+    expose GUI.Label keybindingStatusLabel;
+    expose String keybindingOverridesDraft;
+    hide GUI.GroupBox appCardRef;
+    hide GUI.GroupBox editCardRef;
+    hide GUI.GroupBox intelliCardRef;
+    hide GUI.GroupBox startupCardRef;
+    hide GUI.GroupBox keybindingCardRef;
     expose GUI.Button closeSettingsButton;
     expose GUI.Button aboutCloseButton;
 
@@ -137,6 +151,57 @@ class IdeOverlays {
             aboutPanel.SetVisible(false);
         }
         aboutVisible = false;
+    }
+
+    /// @brief Fill the keybinding list from the live registry (plan 08).
+    /// @param registry Command registry with current shortcuts applied.
+    /// @param filter Case-insensitive substring filter over id/label.
+    expose func PopulateKeybindings(registry: command_registry.CommandRegistry,
+                                    filter: String) {
+        if keybindingList == null { return; }
+        keybindingList.Clear();
+        var needle = Str.ToLower(filter);
+        var i = 0;
+        while i < registry.commands.count() {
+            var cmd = registry.commands.get(i);
+            var haystack = Str.ToLower(cmd.id + " " + cmd.label);
+            if needle == "" or Str.Contains(haystack, needle) {
+                var text = cmd.label;
+                if cmd.shortcut != "" {
+                    text = text + "   —   " + cmd.shortcut;
+                }
+                var item = keybindingList.AddItem(text);
+                GUI.ListBox.ItemSetData(item, cmd.id);
+            }
+            i = i + 1;
+        }
+    }
+
+    /// @brief Return the selected keybinding command id, or "".
+    expose func SelectedKeybindingId() -> String {
+        if keybindingList == null { return ""; }
+        var item = keybindingList.Selected;
+        if item == null { return ""; }
+        return GUI.ListBox.ItemGetData(item);
+    }
+
+    /// @brief Show/hide settings cards whose titles match the filter.
+    expose func ApplySettingsFilter(filter: String) {
+        var needle = Str.ToLower(filter);
+        ApplyCardFilter(appCardRef, "appearance", needle);
+        ApplyCardFilter(editCardRef, "editing", needle);
+        ApplyCardFilter(intelliCardRef, "intellisense", needle);
+        ApplyCardFilter(startupCardRef, "startup and safety", needle);
+        ApplyCardFilter(keybindingCardRef, "keybindings", needle);
+    }
+
+    hide func ApplyCardFilter(card: GUI.GroupBox, title: String, needle: String) {
+        if card == null { return; }
+        if needle == "" or Str.Contains(title, needle) {
+            card.SetVisible(true);
+        } else {
+            card.SetVisible(false);
+        }
     }
 
     expose func SyncSettings(appSettings: settings.SettingsManager) {
@@ -477,8 +542,16 @@ class IdeOverlays {
         body.SetSpacing(20.0);
         bodyScroll.AddChild(body);
 
+        var filterRow = GUI.HBox.New();
+        filterRow.SetSpacing(6.0);
+        body.AddChild(filterRow);
+        settingsFilterInput = GUI.TextInput.New(filterRow);
+        settingsFilterInput.SetFlex(1.0);
+        settingsFilterInput.SetPlaceholder("Filter settings sections...");
+
         var appCard = GUI.GroupBox.New(body, "Appearance");
         appCard.SetMargin(2);
+        appCardRef = appCard;
 
         var fontPathControls =
             AddPreferenceRow(appCard, "Editor font", "Optional .ttf or .ttc file.");
@@ -540,6 +613,7 @@ class IdeOverlays {
         resetAppearanceButton.SetStyle(2);
 
         var editCard = GUI.GroupBox.New(body, "Editing");
+        editCardRef = editCard;
         editCard.SetMargin(2);
 
         autoCheckCheck = GUI.Checkbox.New(editCard, "Run diagnostics while typing");
@@ -555,6 +629,7 @@ class IdeOverlays {
         resetEditingButton.SetStyle(2);
 
         var intelliCard = GUI.GroupBox.New(body, "IntelliSense");
+        intelliCardRef = intelliCard;
         intelliCard.SetMargin(2);
 
         var diagnosticsDelayBox =
@@ -583,6 +658,7 @@ class IdeOverlays {
 
         var startupCard = GUI.GroupBox.New(body, "Startup and safety");
         startupCard.SetMargin(2);
+        startupCardRef = startupCard;
 
         restoreSessionCheck = GUI.Checkbox.New(startupCard, "Restore open files on launch");
         restoreLastProjectCheck =
@@ -598,6 +674,25 @@ class IdeOverlays {
         footerSpacer.SetFlex(1.0);
         closeSettingsButton = GUI.Button.New(footer, "Cancel");
         closeSettingsButton.SetStyle(2);
+        var keyCard = GUI.GroupBox.New(body, "Keybindings");
+        keyCard.SetMargin(2);
+        keybindingCardRef = keyCard;
+        var keyHint = GUI.Label.New(keyCard,
+            "Select a command, type a shortcut (e.g. Ctrl+Shift+K), then Set. Empty + Set clears.");
+        keyHint.SetWordWrap(true);
+        keybindingList = GUI.ListBox.New(keyCard);
+        keybindingList.SetSize(0, 180);
+        var keyEditRow = GUI.HBox.New();
+        keyEditRow.SetSpacing(6.0);
+        keyCard.AddChild(keyEditRow);
+        keybindingShortcutInput = GUI.TextInput.New(keyEditRow);
+        keybindingShortcutInput.SetFlex(1.0);
+        keybindingShortcutInput.SetPlaceholder("Shortcut");
+        keybindingSetButton = GUI.Button.New(keyEditRow, "Set");
+        keybindingClearButton = GUI.Button.New(keyEditRow, "Reset");
+        keybindingStatusLabel = GUI.Label.New(keyCard, "");
+        keybindingStatusLabel.SetWordWrap(true);
+
         applySettingsButton = GUI.Button.New(footer, "Save Changes");
         applySettingsButton.SetStyle(1);
     }
@@ -649,6 +744,10 @@ class IdeOverlays {
 
         var title = GUI.Label.New(root, "About Zanna Studio");
         title.SetMargin(1);
+        title.SetIconName("zanna-mark");
+
+        var aboutTagline = GUI.Label.New(root, "Code. Create. Compile. Conquer.");
+        aboutTagline.SetColor(theme_colors.Rgb("accentPrimary"));
 
         var aboutLine1 = GUI.Label.New(
             root,
@@ -664,6 +763,7 @@ class IdeOverlays {
         aboutLine3.SetWordWrap(true);
         aboutBuildInfo = GUI.Label.New(root, build_info.BuildSummary());
         aboutBuildInfo.SetWordWrap(true);
+        aboutBuildInfo.SetColor(theme_colors.Rgb("fgTertiary"));
 
         var footer = GUI.HBox.New();
         footer.SetSpacing(10.0);

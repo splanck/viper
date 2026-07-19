@@ -1,0 +1,117 @@
+module shell_config_probe;
+
+// ============================================================================
+// MODULE: shell_config_probe
+// PURPOSE: Verify plan 08 — keybinding override round-trips (upsert, apply,
+//          remove, catalog defaults) and project-template scaffolding whose
+//          console starter type-checks with the real toolchain when
+//          --zanna-bin is supplied.
+// ============================================================================
+
+bind "../commands/command_registry";
+bind "../services/project_templates";
+
+bind Dir = Zanna.IO.Dir;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Terminal = Zanna.Terminal;
+bind Env = Zanna.System.Environment;
+bind Exec = Zanna.System.Exec;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func ArgValue(name: String) -> String {
+    var i = 0;
+    while i < Env.GetArgumentCount() - 1 {
+        if Env.GetArgument(i) == name {
+            return Env.GetArgument(i + 1);
+        }
+        i = i + 1;
+    }
+    return "";
+}
+
+func main() {
+    // Keybinding overrides: upsert/replace/remove + application.
+    var registry = new command_registry.CommandRegistry();
+    registry.RegisterDefaults();
+
+    var encoded = registry.UpsertOverride("", "save", "Ctrl+Alt+S");
+    encoded = registry.UpsertOverride(encoded, "build", "F9");
+    encoded = registry.UpsertOverride(encoded, "save", "Ctrl+Shift+S");
+    if Str.Contains(encoded, "save=Ctrl+Shift+S") == false
+       or Str.Contains(encoded, "Ctrl+Alt+S") {
+        fail("upsert should replace the previous override: " + encoded);
+        return;
+    }
+
+    registry.ApplyOverrides(encoded);
+    var savedEntry = registry.Find("save");
+    if savedEntry == null or savedEntry.shortcut != "Ctrl+Shift+S" {
+        fail("override not applied to the registry");
+        return;
+    }
+
+    encoded = registry.RemoveOverride(encoded, "save");
+    if Str.Contains(encoded, "save") {
+        fail("remove should drop the override: " + encoded);
+        return;
+    }
+    if Str.Contains(encoded, "build=F9") == false {
+        fail("remove must keep other overrides: " + encoded);
+        return;
+    }
+
+    var defaultShortcut = registry.DefaultShortcutFor("save");
+    if defaultShortcut == "" {
+        fail("savefile should have a catalog default shortcut");
+        return;
+    }
+
+    // Template scaffolding: files land, names validate, no overwrite.
+    var base = TempFile.CreateDirWithPrefix("zannastudio_templates_");
+    if project_templates.ValidName("bad name!") {
+        fail("invalid names must be rejected");
+        return;
+    }
+    var consoleDir = project_templates.Scaffold(base, "probeapp", "console");
+    if consoleDir == "" {
+        fail("console scaffold failed");
+        return;
+    }
+    if File.Exists(Path.Join(consoleDir, "zanna.project")) == false
+       or File.Exists(Path.Join(Path.Join(consoleDir, "src"), "main.zia")) == false {
+        fail("scaffold files missing");
+        return;
+    }
+    if project_templates.Scaffold(base, "probeapp", "console") != "" {
+        fail("scaffold must refuse to overwrite an existing project");
+        return;
+    }
+    var libDir = project_templates.Scaffold(base, "probelib", "library");
+    var guiDir = project_templates.Scaffold(base, "probegui", "gui");
+    if libDir == "" or guiDir == "" {
+        fail("library/gui scaffolds failed");
+        return;
+    }
+
+    // Compile-the-result: the console starter must type-check cleanly.
+    var zannaBin = ArgValue("--zanna-bin");
+    if zannaBin != "" {
+        var checkArgs = Seq.New();
+        Seq.Push(checkArgs, "check");
+        Seq.Push(checkArgs, consoleDir);
+        var output = Exec.CaptureArgs(zannaBin, checkArgs);
+        if Str.Contains(output, "error[") {
+            fail("scaffolded console project fails zanna check: " + output);
+            return;
+        }
+    }
+
+    Terminal.Say("RESULT: ok");
+}

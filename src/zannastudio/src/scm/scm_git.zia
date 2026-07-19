@@ -3,6 +3,7 @@ module scm_git;
 bind "../build/bounded_output";
 
 bind Process = Zanna.System.Process;
+bind Pty = Zanna.System.Pty;
 bind Env = Zanna.System.Environment;
 bind Machine = Zanna.System.Machine;
 bind IO = Zanna.IO;
@@ -68,6 +69,21 @@ class GitStatus {
         branch = "";
         entries = [];
         errorText = "";
+    }
+}
+
+/// @brief One commit row parsed from `git log` (plan 11 history view).
+class GitCommit {
+    expose String sha;
+    expose String author;
+    expose String date;
+    expose String subject;
+
+    expose func init() {
+        sha = "";
+        author = "";
+        date = "";
+        subject = "";
     }
 }
 
@@ -215,6 +231,196 @@ class GitJob {
     }
 }
 
+/// @brief One PTY-backed interactive git process (push/pull) whose credential
+///        prompts are detected in the merged output and answered in-app.
+/// @details The child controls terminal echo, so secrets typed through
+///          SendInput are not echoed back by password prompts. Output is
+///          bounded like GitJob streams.
+class GitPtyJob {
+    expose Pty.PtySession session;
+    expose String kind;
+    expose String outputText;   // merged stdout+stderr (bounded)
+    expose String lastDelta;    // bytes drained by the most recent Pump
+    expose Integer exitCode;
+    expose Boolean running;
+    expose Boolean started;
+    expose String promptText;   // non-empty while git waits for an answer
+
+    expose func init() {
+        session = null;
+        kind = "";
+        outputText = "";
+        lastDelta = "";
+        exitCode = -1;
+        running = false;
+        started = false;
+        promptText = "";
+    }
+
+    expose func Start(program: String, args: Any, cwd: String,
+                      jobKind: String, env: Any) -> Boolean {
+        kind = jobKind;
+        outputText = "";
+        lastDelta = "";
+        exitCode = -1;
+        promptText = "";
+        if Pty.IsSupported() == false {
+            outputText = "PTY support is not available on this platform";
+            return false;
+        }
+        var opened = Pty.OpenResult(program, args, cwd, env, 120, 12);
+        if not opened.IsOk {
+            outputText = opened.UnwrapErrStr();
+            if outputText == "" { outputText = "Could not start interactive git"; }
+            return false;
+        }
+        session = opened.Unwrap();
+        if session.IsValid() == false {
+            outputText = "PTY session handle was invalid";
+            session = null;
+            return false;
+        }
+        running = true;
+        started = true;
+        return true;
+    }
+
+    /// @brief Drain output, refresh prompt detection, and detect exit.
+    /// @return True while the child is still running.
+    expose func Pump() -> Boolean {
+        lastDelta = "";
+        if session == null { running = false; return false; }
+        lastDelta = Drain();
+        if session.IsRunning() {
+            promptText = DetectPrompt(outputText);
+            running = true;
+            return true;
+        }
+        lastDelta = lastDelta + Drain();
+        exitCode = session.ExitCode();
+        session.Destroy();
+        session = null;
+        running = false;
+        promptText = "";
+        return false;
+    }
+
+    /// @brief Answer the pending prompt (a newline is appended).
+    expose func SendInput(text: String) {
+        if session == null or running == false { return; }
+        session.Write(text + "\n");
+        promptText = "";
+    }
+
+    expose func Kill() {
+        if session == null { return; }
+        session.Kill();
+        session.Destroy();
+        session = null;
+        running = false;
+        promptText = "";
+        exitCode = -1;
+    }
+
+    expose func Success() -> Boolean {
+        return started and running == false and exitCode == 0;
+    }
+
+    expose func IsWaitingForInput() -> Boolean {
+        return running and promptText != "";
+    }
+
+    hide func Drain() -> String {
+        if session == null { return ""; }
+        var result = session.ReadResult();
+        var out = Map.GetStr(result, "text");
+        if out != "" {
+            outputText = bounded_output.Append(outputText, out,
+                                               "[git output truncated]\n",
+                                               MAX_GIT_STDOUT_CHARS);
+        }
+        return out;
+    }
+}
+
+/// @brief Detect a credential/confirmation prompt at the tail of PTY output.
+/// @details A prompt is an unterminated final line matching the patterns git,
+///          git-credential, and ssh actually emit. Detection is heuristic and
+///          fails open: unmatched output simply streams to the panel.
+/// @param text Merged PTY output so far.
+/// @return The prompt line (trimmed) when one is pending, else empty.
+expose func DetectPrompt(text: String) -> String {
+    if text == "" { return ""; }
+    if Str.EndsWith(text, "\n") { return ""; }
+    var tail = text;
+    var nl = Str.LastIndexOf(text, "\n");
+    if nl != 0 { tail = Str.Mid(text, nl + 1); }
+    tail = Str.Trim(Str.Replace(tail, "\r", ""));
+    if tail == "" { return ""; }
+    var lower = Str.ToLower(tail);
+    if Str.IndexOf(lower, "username for") != 0 { return tail; }
+    if Str.IndexOf(lower, "password for") != 0 { return tail; }
+    if Str.IndexOf(lower, "passphrase") != 0 { return tail; }
+    if Str.EndsWith(lower, "password:") { return tail; }
+    if Str.IndexOf(lower, "are you sure you want to continue connecting") != 0 { return tail; }
+    return "";
+}
+
+/// @brief True when @p prompt asks for a secret (mask the input field).
+expose func PromptWantsMask(prompt: String) -> Boolean {
+    var lower = Str.ToLower(prompt);
+    if Str.IndexOf(lower, "password") != 0 { return true; }
+    if Str.IndexOf(lower, "passphrase") != 0 { return true; }
+    return false;
+}
+
+/// @brief Parse `git log` output produced by StartLog into commit rows.
+/// @details Records are separated by ASCII RS (30) and fields by US (31), so
+///          subjects containing any printable text parse unambiguously.
+expose func ParseLog(text: String) -> List[GitCommit] {
+    var commits: List[GitCommit] = [];
+    if text == "" { return commits; }
+    var records = Str.Split(text, Str.Chr(30));
+    var i = 0;
+    while i < Seq.get_Count(records) {
+        var record = Str.Trim(Obj.ToString(Seq.Get(records, i)));
+        i = i + 1;
+        if record == "" { continue; }
+        var fields = Str.Split(record, Str.Chr(31));
+        if Seq.get_Count(fields) < 4 { continue; }
+        var c = new GitCommit();
+        c.sha = Str.Trim(Obj.ToString(Seq.Get(fields, 0)));
+        c.author = Obj.ToString(Seq.Get(fields, 1));
+        c.date = Obj.ToString(Seq.Get(fields, 2));
+        c.subject = Obj.ToString(Seq.Get(fields, 3));
+        if c.sha != "" { commits.Push(c); }
+    }
+    return commits;
+}
+
+/// @brief Parse `git show --name-status` output into "STATUS<tab>path" rows.
+/// @details The pretty header (sha/author/date/subject joined by US) occupies
+///          the first line; name-status rows follow after a blank line. Rename
+///          rows keep both paths joined by a tab.
+expose func ParseCommitFiles(text: String) -> List[String] {
+    var files: List[String] = [];
+    var lines = Str.Split(text, "\n");
+    var i = 0;
+    while i < Seq.get_Count(lines) {
+        var line = Obj.ToString(Seq.Get(lines, i));
+        i = i + 1;
+        line = Str.Replace(line, "\r", "");
+        if line == "" { continue; }
+        if Str.IndexOf(line, Str.Chr(31)) != 0 { continue; } // pretty header row
+        var first = Str.Left(line, 1);
+        if first == "A" or first == "M" or first == "D" or first == "R"
+           or first == "C" or first == "T" {
+            files.Push(line);
+        }
+    }
+    return files;
+}
+
 /// @brief git command layer bound to one repository root.
 class Git {
     expose String repo;
@@ -253,6 +459,13 @@ class Git {
         Seq.Push(args, "--branch");
         Seq.Push(args, "--renames");
         return StartCommand("status", args, "", false);
+    }
+
+    expose func StartShowHead(path: String) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "show");
+        Seq.Push(args, "HEAD:" + path);
+        return StartCommand("show", args, path, false);
     }
 
     expose func StartDiff(path: String,
@@ -321,6 +534,109 @@ class Git {
         Seq.Push(args, "branch");
         Seq.Push(args, "--format=%(refname:short)");
         return StartCommand("branches", args, "", false);
+    }
+
+    /// @brief Start a lazily-paged `git log` (plan 11 history view).
+    /// @param skip Commits to skip (paging offset).
+    /// @param count Maximum commits to return for this page.
+    /// @details Fields are separated with the ASCII unit separator and records
+    ///          with the record separator so subjects containing tabs, quotes,
+    ///          or newlines parse without ambiguity (see ParseLog).
+    expose func StartLog(skip: Integer, count: Integer) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "log");
+        Seq.Push(args, "--skip=" + skip);
+        Seq.Push(args, "--max-count=" + count);
+        Seq.Push(args, "--date=short");
+        Seq.Push(args, "--pretty=format:%H%x1f%an%x1f%ad%x1f%s%x1e");
+        return StartCommand("log", args, "" + skip, false);
+    }
+
+    /// @brief Start listing the files touched by one commit (name-status form).
+    expose func StartCommitFiles(sha: String) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "show");
+        Seq.Push(args, "--name-status");
+        Seq.Push(args, "--pretty=format:%H%x1f%an%x1f%ad%x1f%s");
+        Seq.Push(args, "--date=short");
+        Seq.Push(args, sha);
+        return StartCommand("logfiles", args, sha, false);
+    }
+
+    /// @brief Start fetching one file's content at a specific revision.
+    /// @param rev Revision expression (e.g. a sha, or sha with a `~1` suffix).
+    /// @param path Repo-relative file path.
+    /// @param jobKind Job kind tag so the completion handler can route the text.
+    expose func StartShowAt(rev: String, path: String, jobKind: String) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "show");
+        Seq.Push(args, rev + ":" + path);
+        return StartCommand(jobKind, args, path, false);
+    }
+
+    /// @brief Start an interactive (PTY-backed) network operation such as push
+    ///        or pull so git can ask for credentials (plan 11).
+    /// @details Unlike StartCommand jobs, the PTY environment leaves terminal
+    ///          prompting enabled; the view detects prompt lines in the merged
+    ///          output and answers through GitPtyJob.SendInput.
+    expose func StartInteractive(kind: String, args: Any) -> GitPtyJob {
+        var job = new GitPtyJob();
+        lastError = "";
+        if repo == "" {
+            lastError = "No repository is open";
+            job.outputText = lastError;
+            return job;
+        }
+        var program = ResolveGit();
+        if program == "" {
+            lastError = "Could not find git. Add git to PATH or set ZANNA_GIT_BINARY.";
+            job.outputText = lastError;
+            return job;
+        }
+        if job.Start(program, args, repo, kind, GitInteractiveEnvironment()) == false {
+            lastError = job.outputText;
+        }
+        return job;
+    }
+
+    /// @brief Interactive push (credentials answered in-app when prompted).
+    expose func StartPushInteractive() -> GitPtyJob {
+        var args = Seq.New();
+        Seq.Push(args, "push");
+        return StartInteractive("push", args);
+    }
+
+    /// @brief Interactive pull (credentials answered in-app when prompted).
+    expose func StartPullInteractive() -> GitPtyJob {
+        var args = Seq.New();
+        Seq.Push(args, "pull");
+        return StartInteractive("pull", args);
+    }
+
+    /// @brief Environment for PTY-backed git: identical inheritance to the
+    ///        non-interactive set, but terminal prompting stays enabled so
+    ///        credential questions surface in-app instead of failing.
+    hide func GitInteractiveEnvironment() -> Any {
+        var env = Seq.New();
+        CopyEnvIfPresent(env, "PATH");
+        CopyEnvIfPresent(env, "HOME");
+        CopyEnvIfPresent(env, "USER");
+        CopyEnvIfPresent(env, "LOGNAME");
+        CopyEnvIfPresent(env, "USERPROFILE");
+        CopyEnvIfPresent(env, "HOMEDRIVE");
+        CopyEnvIfPresent(env, "HOMEPATH");
+        CopyEnvIfPresent(env, "SystemRoot");
+        CopyEnvIfPresent(env, "WINDIR");
+        CopyEnvIfPresent(env, "TEMP");
+        CopyEnvIfPresent(env, "TMP");
+        CopyEnvIfPresent(env, "TMPDIR");
+        CopyEnvIfPresent(env, "SSH_AUTH_SOCK");
+        CopyEnvIfPresent(env, "SSH_AGENT_PID");
+        Seq.Push(env, "TERM=dumb");
+        Seq.Push(env, "GIT_MERGE_AUTOEDIT=no");
+        Seq.Push(env, "GIT_PAGER=cat");
+        Seq.Push(env, "PAGER=cat");
+        return env;
     }
 
     hide func StartCommand(kind: String,

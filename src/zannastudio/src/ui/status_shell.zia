@@ -53,7 +53,7 @@ class StatusShell {
         taskItem = null;
         diagnosticsItem = null;
         lastDiagnosticsStatus = "Diagnostics: clean";
-        lastDiagnosticsColor = 10264905;
+        lastDiagnosticsColor = tool_panel_text.SuccessColor();
         lastProjectStatus = "No project";
         lastIndexStatus = "Workspace index idle";
         lastLanguageStatus = "Lang: text";
@@ -78,7 +78,8 @@ class StatusShell {
         taskItem = statusBar.AddText("Tasks: idle", 2);
         taskItem.SetTooltip("Background editor tasks");
         diagnosticsItem = statusBar.AddText("Diagnostics: clean", 2);
-        diagnosticsItem.SetTextColor(10264905);
+        diagnosticsItem.SetTextColor(tool_panel_text.SuccessColor());
+        diagnosticsItem.SetIconName("check");
         diagnosticsItem.SetTooltip("Live diagnostics summary");
         statusBar.SetRightText("Zanna Studio");
     }
@@ -153,6 +154,17 @@ class StatusShell {
             diagnosticsItem.SetText(text);
             diagnosticsItem.SetTextColor(color);
             diagnosticsItem.SetTooltip(text);
+            // Severity glyph (plan 04 follow-up): errors dominate warnings;
+            // a clean project shows the check mark.
+            if errors > 0 {
+                diagnosticsItem.SetIconName("error");
+            } else {
+                if warnings > 0 {
+                    diagnosticsItem.SetIconName("warning");
+                } else {
+                    diagnosticsItem.SetIconName("check");
+                }
+            }
         }
     }
 

@@ -24,14 +24,16 @@ bind "../scm/scm_diff";
 bind "../editor/editor_engine";
 bind "../core/document_manager";
 bind "../core/project_manager";
+bind "../services/theme_colors";
 
 bind Exec = Zanna.System.Exec;
 bind Seq = Zanna.Collections.Seq;
 
 final SCM_GUTTER_SLOT = 4;
-final COLOR_ADDED = 4283353422;    // 0xFF4EC94E green
-final COLOR_MODIFIED = 4282093290; // 0xFF3B8EEA blue
-final COLOR_DELETED = 4292891218;  // 0xFFE05252 red
+/// @brief Gutter change-bar colors from the live theme palette.
+func ColorAdded() -> Integer { return theme_colors.Argb("accentSuccess"); }
+func ColorModified() -> Integer { return theme_colors.Argb("accentInfo"); }
+func ColorDeleted() -> Integer { return theme_colors.Argb("accentDanger"); }
 
 /// @brief Applies diff hunks as gutter change bars on the active editor.
 class ScmGutterController {
@@ -46,11 +48,11 @@ class ScmGutterController {
         var hi = 0;
         while hi < n {
             var h = hunks.get(hi) as scm_diff.DiffHunk;
-            var color = COLOR_MODIFIED;
+            var color = ColorModified();
             if h.kind == scm_diff.KIND_ADDED {
-                color = COLOR_ADDED;
+                color = ColorAdded();
             } else if h.kind == scm_diff.KIND_DELETED {
-                color = COLOR_DELETED;
+                color = ColorDeleted();
             }
             var line = h.startLine;
             while line <= h.endLine {

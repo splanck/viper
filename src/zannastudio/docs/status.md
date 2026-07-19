@@ -1,6 +1,6 @@
 # Zanna Studio Current Status
 
-Last reviewed against source: 2026-07-04.
+Last reviewed against source: 2026-07-18.
 
 This file is the current-state reference for Zanna Studio. It intentionally avoids
 future-phase language and records limitations in the same place as shipped
@@ -18,12 +18,11 @@ It is not yet a polished product-complete IDE. The largest current gaps are:
 - Bottom tool surfaces now share bounded stable-row models, but they are still
   listbox/output-pane based rather than fully virtualized, dockable workbench
   views.
-- Source Control is async and useful for common local Git actions, but still not
-  a full Git client.
+- Source Control covers status, staging, commit, paged history, per-commit
+  diffs, queued jobs, and in-app credential prompts for push/pull, but is
+  still not a full Git client (no merge/rebase/conflict workflows).
 - BASIC semantic navigation and rename are implemented by the IDE-side scanner,
   not by the Zia project index or external BASIC server.
-- Debugging has persistent watch expressions, basic watch-management commands,
-  and grouped watch/local rendering, but still lacks rich object expansion.
 - Some workflow prompts and overlays are still modal or command-palette based,
   although project search now uses a docked non-modal panel.
 - The application source still has several oversized coordinator modules.
@@ -40,17 +39,21 @@ search, build, run, diagnose, and debug one active program.
 The roughness shows up when the workflow starts to look like a mature IDE. Some
 panels are still row dumps instead of rich work surfaces. Common short inputs
 use integrated overlays, but some operations still rely on prompt-style input.
-The debug substrate is real and includes persistent watches, but variable
-inspection is still shallow. BASIC support is intentionally honest but
-incomplete. Source Control is useful for common Git actions and runs operations
-through async processes, but it does not have the workflow depth, progress UI,
-complete conflict recovery, or authentication
-surface of a full client. Scene support exists in the runtime, and the IDE
-recognizes scene file extensions, but no visual editor is mounted.
+The debug substrate is real: persistent watches, and structured expansion of
+collections and class instances (field-by-field, via the compile-time layout
+sidecar of ADR 0138). BASIC support is intentionally honest but incomplete.
+Source Control covers daily local Git plus commit history, queued operations,
+live push/pull output, and in-app credential prompts, but it does not have the
+merge/rebase workflow depth or conflict recovery of a full client. Scene
+support exists in the runtime, and the IDE recognizes scene file extensions,
+but no visual editor is mounted.
 
 This distinction matters for documentation and release notes. Zanna Studio should
-not be described as a complete scene editor, full terminal emulator, full SCM
-client, or full multi-language IDE. It should be described as a growing IDE with
+not be described as a complete scene editor, complete SCM client, or full
+multi-language IDE. The terminal now emulates the sequences full-screen
+programs (vim, less, htop) actually emit — alternate screen, scroll regions,
+cursor modes, bracketed paste, and status replies — but VT coverage beyond
+that pinned table is not claimed. It should be described as a growing IDE with
 clear working slices and clearly documented gaps.
 
 ## What "Implemented" Means Here
@@ -80,15 +83,15 @@ For a game developer expecting scene tooling, the runtime data foundation exists
 below the IDE, but the IDE user experience is not there yet.
 
 For a user expecting a polished workbench, the rough areas are mostly around
-panel density, icons, prompt flows, terminal fidelity, Source Control depth, and
-debug inspection.
+panel density, remaining prompt flows, Source Control conflict workflows, and
+panel virtualization for very large result sets.
 
 ## Feature Matrix
 
 | Area | Status | Notes |
 | --- | --- | --- |
 | Text editing | Implemented | Multi-tab CodeEditor, undo/redo, selections, comments, formatting, folding, minimap option. |
-| Split editor | Implemented (v1) | Two side-by-side panes ("Split Editor Right", "Focus Other Editor Pane", "Close Editor Split", click-to-focus). The focused pane drives typing, IntelliSense, find, minimap, and status. Two different files are fully independent. v1 limits: exactly two panes; the same document opened in both panes uses independent buffers (edits do not live-sync — shared multi-view needs runtime support); the split is not yet restored across sessions. |
+| Split editor | Implemented (v1) | Two side-by-side panes ("Split Editor Right", "Focus Other Editor Pane", "Close Editor Split", click-to-focus). The focused pane drives typing, IntelliSense, find, minimap, and status. Two different files are fully independent, and the split-active state is restored across sessions. v1 limits: exactly two panes; the same document opened in both panes uses independent buffers (edits do not live-sync — shared multi-view needs runtime support). |
 | Zia IntelliSense | Implemented with limits | Completion, diagnostics, hover, signature help, symbols, definition, references, rename, workspace symbols. |
 | BASIC IntelliSense | Implemented with limits | Completion, diagnostics, hover, document symbols, scanner-backed definition, references, rename, workspace symbols, call hierarchy, and signature help. |
 | Plain text | Implemented | Opens unknown/text-like files as text without semantic features. |
@@ -96,13 +99,13 @@ debug inspection.
 | Project explorer | Implemented with limits | Demand-loaded tree, multi-root support, Quick Open cache, file actions, ignores. |
 | Search | Implemented | Docked project/folder search panel, runtime-paged file discovery, literal/regex, case/word filters, include/exclude filters, grouped results. |
 | Build/run | Implemented | Argument-vector jobs, project manifest overrides, streamed bounded output, JSON diagnostics. |
-| Debugging | Implemented with UX gaps | External VM debug adapter, breakpoints, stepping, pause, async restart, run to cursor, locals, call stack, evaluate, watches, conditions, logpoints. |
-| Terminal | Partial | PTY-backed shell in OutputPane terminal mode. Uses OutputPane cell metrics for resize and drains already-running hidden sessions into a bounded replay buffer, but is not a full terminal emulator. |
-| Source Control | Partial | Async Git status, stage/unstage, commit, diff, branch basics, push/pull. Porcelain v2 status with spaces, renames, and basic unmerged conflict markers covered. |
-| Settings | Implemented | Platform config path, theme, editor behavior, auto-save, save-before-build, session options. |
+| Debugging | Implemented with UX gaps | External VM debug adapter, breakpoints, stepping, pause, async restart, run to cursor, locals, call stack, evaluate, watches, conditions, logpoints; structured expansion of lists/seqs/maps and class-instance fields with value previews. |
+| Terminal | Implemented with limits | PTY-backed shell in OutputPane terminal mode: alternate screen, DECSTBM scroll regions, IL/DL/ICH/DCH/ECH, tab stops, cursor visibility, bracketed paste, application cursor keys, DSR/DA replies, SGR 16/256/truecolor + reverse. Coverage is pinned to the vim/less/htop sequence table, not full VT. |
+| Source Control | Implemented with limits | Async Git status, stage/unstage, commit, per-path diff, side-by-side diffs, paged commit history with per-commit files and diffs, queued serialized jobs, PTY-backed push/pull with live output and in-app credential prompts. No merge/rebase/conflict workflows. |
+| Settings | Implemented | Platform config path, theme, editor behavior, auto-save, save-before-build, session options, settings search, and rebindable keyboard shortcuts persisted as overrides. |
 | Session restore | Implemented | Project, tabs, cursor/scroll, recent files/projects, bounded recovery text. |
 | File watching | Implemented with limits | Active file watcher, inactive document polling, missing/deleted/moved-file conflict state, and capped recursive workspace watcher set with fallback scans. |
-| Visual polish | Partial | Functional shell, activity bar, status, panels; still reads as utilitarian/prototype in places. |
+| Visual polish | Implemented with limits | Zanna-brand palettes (WCAG-gated), scalable vector icons across toolbar/tree/tabs/status, smooth scrolling, gamma-correct text with ligatures, welcome/About brand surfaces. Remaining density work is tracked per panel. |
 | Cross-platform | Intended | Runtime adapters exist for process, PTY, GUI; display/runtime behavior still needs regular platform smoke. |
 
 ## Language Support
@@ -261,12 +264,17 @@ Supported behavior:
   its children lazily through the adapter's `variables` request and shows them
   indented; nested containers expand one level at a time. Expansion state is kept
   by variable name-path, so stepping re-opens the same nodes automatically.
+- Class instances expand field-by-field with `{field=value}` previews on the
+  locals row. Field layouts come from the module's own compile (the ADR 0138
+  class-layout sidecar), so display types are the semantic Zia types; objects
+  nest with collections in both directions.
 - Debug console output.
 
 Known debugger UX gaps:
 
-- Class instances are shown as `<TypeName>` leaves; per-field expansion needs a
-  runtime reflection ABI and is not yet available.
+- Boxed struct-typed fields display as typed leaves (struct payload expansion
+  is a recorded follow-up); direct-IL and BASIC debug sessions have no layout
+  sidecar and keep `<TypeName>` leaves for objects.
 - Watch management is command-palette based; a dedicated in-panel watch toolbar
   is planned alongside the bottom-panel layout work.
 - Breakpoint metadata editing exists, but the UX is still lightweight.
@@ -280,13 +288,25 @@ is shown. It supports prompt output, raw typed input, line editing delegated to
 the shell, resize, Stop, Restart, and workspace-root working directory selection
 for new sessions.
 
+Emulation coverage (pinned to the vim/less/htop sequence table, exercised by
+`test_vg_outputpane_term.c` and `terminal_altscreen_probe.zia`):
+
+- Cursor addressing, save/restore, line/display erase, insert/delete lines and
+  characters, tab stops (HT/HTS/TBC).
+- Alternate screen (47/1047/1049) with primary scrollback preserved.
+- DECSTBM scroll regions with region-aware LF/IND/RI and SU/SD, so status
+  rows stay pinned during full-screen redraws.
+- DEC private modes 25 (cursor visibility), 2004 (bracketed paste), 1
+  (application cursor keys); DSR and DA replies on the input stream.
+- SGR 16/256/truecolor plus bold and reverse video.
+- Clipboard chords: Cmd+V / Ctrl+Shift+V paste (bracketed when armed),
+  Cmd+C / Ctrl+Shift+C copy a selection; plain Ctrl+C/Ctrl+V still reach the
+  child process.
+
 Current limitations:
 
-- The OutputPane terminal mode is not a full terminal emulator.
-- Common cursor row/column addressing, cursor save/restore, line erase, and
-  display erase sequences are handled for shell redraws.
-- Full-screen TUI programs that require complete alternate-screen and terminal
-  mode semantics are still out of scope.
+- VT features outside the pinned table (e.g. underline rendering, Sixel,
+  mouse reporting, OSC beyond swallowing) are not claimed.
 - Terminal dimensions come from OutputPane cell metrics via `ColumnsForWidth()`
   and `RowsForHeight()`.
 - Hidden panels do not auto-start shells, but already-running sessions are pumped
@@ -305,22 +325,26 @@ It supports:
 - Unstage one file.
 - Stage all.
 - Commit staged changes with a message.
-- Diff selected path.
-- Push and pull.
+- Diff selected path (unified in the panel, or side-by-side via the diff view).
+- Commit history: lazily paged log, per-commit file lists, and side-by-side
+  parent-vs-commit diffs for any file in a commit.
+- Push and pull on a PTY with live output streaming into the panel; detected
+  Username/Password/passphrase/host-key prompts surface an in-app credential
+  row (masked input for secrets) — no external askpass helper.
+- Queued operations: actions requested while a job runs wait in a bounded,
+  visible queue and run in order; Cancel clears the active job and the queue.
 - Switch branch basics.
 
 Known limits:
 
-- Git operations run through `Zanna.System.Process`, use non-trapping
-  stdout/stderr result reads, and do not block the frame loop, but the UI still
-  shows only one active Source Control job at a time.
-- Active Source Control jobs can be canceled from the view.
-- Push and pull can be long-running and have no rich progress or credential UI.
+- Operations remain serialized by design (git mutates shared repository
+  state); the queue makes waiting visible rather than adding parallelism.
+- Credential prompt detection is a heuristic over PTY output and fails open:
+  unrecognized prompts simply stream into the panel.
 - Status parsing uses porcelain v2 and handles common spaces, renames, and basic
   unmerged conflict rows, but exotic path bytes and complex conflict recovery
   still need more coverage.
-- Error feedback is captured from stderr and surfaced in the view, but recovery
-  workflows are still basic.
+- No merge, rebase, stash, or conflict-resolution workflows.
 
 ## Data Safety
 
@@ -348,7 +372,7 @@ Known data-safety gaps:
 
 These gaps are current documentation, not a plan commitment:
 
-- Extend named toolbar icons when new workbench actions are added.
+- Extend named vector icons when new workbench actions are added.
 - Move remaining prompt-style workflows into non-modal workbench overlays.
 - The editor and bottom tool panels share one vertical splitter: every panel tab
   has the same height (no editor jump on switch), the boundary is drag-resizable
@@ -356,8 +380,9 @@ These gaps are current documentation, not a plan commitment:
   open. Remaining: fully virtualize panel content beyond the bounded stable-row
   model, and persist the exact dragged height (a configured percentage is stored
   today; live drags persist within the session).
-- Add richer debugger object expansion and a dedicated watch-management panel.
-- Harden Source Control progress, conflict, credential, and recovery workflows.
+- Add a dedicated in-panel watch toolbar and struct-payload expansion in the
+  debugger.
+- Add Source Control merge/rebase/conflict workflows.
 - Add real scene editing before advertising scene editor functionality.
 - Split oversized coordinator modules.
 - Expand platform and display test coverage.
@@ -370,12 +395,14 @@ Use these phrasing rules when updating user-facing docs:
   rename, call hierarchy, workspace symbols, and signature help.
 - Say "BASIC compiler-backed completion, diagnostics, hover, and symbols" when
   discussing the `Zanna.Basic.LanguageService` runtime bridge specifically.
-- Say "integrated PTY shell" instead of "full terminal".
+- Say "integrated PTY terminal covering the vim/less/htop sequence table"
+  instead of "full terminal emulator".
 - Say "Git Source Control view" instead of "SCM platform".
 - Say "scene files are recognized and open as text" instead of "scene editor".
 - Say "debug adapter supports stepping, breakpoints, locals, call stack,
-  evaluate, watches, watch commands, and grouped watch/local rows" while still
-  mentioning missing object expansion and dedicated watch panel UX.
+  evaluate, watches, watch commands, and structured expansion of collections
+  and class-instance fields" while still mentioning the struct-payload leaf
+  and dedicated watch panel UX as gaps.
 
 The goal is to make the app feel more trustworthy by making the docs less
 optimistic than the code.

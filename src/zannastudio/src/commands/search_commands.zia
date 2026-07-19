@@ -5,6 +5,7 @@ bind "../core/project_manager";
 bind "../editor/editor_engine";
 bind "../editor/editor_tabs";
 bind "../commands/file_commands";
+bind "replace_commands";
 bind "../commands/quick_open_commands";
 bind "../core/document_manager";
 bind "../services/file_utils";
@@ -216,10 +217,25 @@ class SearchController {
     expose func HandlePanel(shell: app_shell.AppShell,
                             projMgr: project_manager.ProjectManager,
                             docMgr: document_manager.DocumentManager,
-                            engine: editor_engine.EditorEngine) {
+                            engine: editor_engine.EditorEngine,
+                            locStore: locations.LocationStore) {
         if shell == null { return; }
         if shell.toolPanels.searchCancelButton != null and shell.toolPanels.searchCancelButton.WasClicked() {
             Cancel(shell);
+        }
+        if shell.toolPanels.searchReplaceButton != null
+           and shell.toolPanels.searchReplaceButton.WasClicked() and active == false {
+            var replaceQuery = Str.Trim(shell.toolPanels.searchQueryInput.get_Text());
+            if replaceQuery != "" and locStore != null {
+                var summary = replace_commands.ReplaceAllFromResults(
+                    locStore, docMgr, engine, replaceQuery,
+                    shell.toolPanels.searchReplaceInput.get_Text(),
+                    shell.toolPanels.searchCaseCheck.IsChecked(),
+                    shell.toolPanels.searchWholeWordCheck.IsChecked(),
+                    shell.toolPanels.searchRegexCheck.IsChecked());
+                GUI.Toast.Info(summary);
+                RunPanel(shell, projMgr, docMgr, engine);
+            }
         }
         var runRequested = false;
         if shell.toolPanels.searchRunButton != null and shell.toolPanels.searchRunButton.WasClicked() {

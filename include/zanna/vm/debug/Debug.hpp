@@ -24,6 +24,7 @@
 #include "support/source_location.hpp"
 #include "support/string_interner.hpp"
 #include "support/symbol.hpp"
+#include "zanna/vm/debug/DebugClassLayout.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -182,6 +183,13 @@ class DebugCtrl
     /// @brief Retrieve associated source manager.
     [[nodiscard]] const il::support::SourceManager *getSourceManager() const;
 
+    /// @brief Install the class-layout sidecar for field-level expansion of
+    ///        user class instances at debugger stops (ADR 0138).
+    void setClassLayouts(DebugClassLayoutTable layouts);
+
+    /// @brief Class-layout sidecar installed by the host (empty when absent).
+    [[nodiscard]] const DebugClassLayoutTable &classLayouts() const;
+
     /// @brief Normalize @p path by canonicalizing separators and dot segments.
     static std::string normalizePath(std::string path);
 
@@ -256,6 +264,7 @@ class DebugCtrl
     };
 
     const il::support::SourceManager *sm_ = nullptr;
+    DebugClassLayoutTable classLayouts_; ///< Class-layout sidecar (ADR 0138).
     std::vector<SrcLineBP> srcLineBPs_;
     std::unordered_map<uint32_t, std::vector<size_t>> srcLineBPsByLine_; ///< Line -> indices into srcLineBPs_
     mutable std::optional<std::pair<uint32_t, uint32_t>> lastHitSrc_;

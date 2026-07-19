@@ -553,6 +553,51 @@ void vg_widget_anim_tick(vg_widget_t *widget, void *canvas) {
     (void)vg_widget_anim_advance(widget, 16.0f);
 }
 
+//=============================================================================
+// Smooth scrolling (shared toggle; ADR 0137)
+//=============================================================================
+
+static bool g_smooth_scroll_enabled = true;
+
+/// @brief Enable or disable inertial smooth scrolling process-wide.
+/// @details Wheel input on scroll surfaces eases toward its target when
+///          enabled; reduced-motion themes disable easing regardless.
+void vg_set_smooth_scroll_enabled(bool enabled) {
+    g_smooth_scroll_enabled = enabled;
+}
+
+/// @brief Return whether smooth scrolling is requested process-wide.
+bool vg_smooth_scroll_enabled(void) {
+    return g_smooth_scroll_enabled;
+}
+
+/// @brief Return whether wheel easing is effective under the current theme.
+/// @details Combines the process-wide toggle with the theme's reduced-motion
+///          contract so assistive settings always win.
+bool vg_smooth_scroll_effective(void) {
+    return g_smooth_scroll_enabled && vg_theme_get_current()->motion.enabled;
+}
+
+/// @brief Ease one scroll axis toward its target with a frame-rate-free step.
+/// @param position Current scroll position (updated in place).
+/// @param target Destination scroll position.
+/// @param delta_ms Elapsed milliseconds this frame (clamped by the caller).
+/// @return True while still animating; false once snapped onto the target.
+bool vg_smooth_scroll_step(float *position, float target, float delta_ms) {
+    if (!position)
+        return false;
+    float remaining = target - *position;
+    if (remaining < 0.5f && remaining > -0.5f) {
+        *position = target;
+        return false;
+    }
+    float blend = delta_ms * 0.016f; // ~63% of the distance per 62 ms.
+    if (blend > 1.0f)
+        blend = 1.0f;
+    *position += remaining * blend;
+    return true;
+}
+
 /// @brief Recursively paints the widget tree in pre-order, converting each widget's position to
 /// screen space before calling its paint vtable.
 static void paint_widget_normal_tree(vg_widget_t *root, void *canvas) {

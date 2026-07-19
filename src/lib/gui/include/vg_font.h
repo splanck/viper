@@ -152,6 +152,61 @@ float vg_font_get_logical_size(const vg_font_t *font);
 ///                preserved when a font is supplied.
 void vg_font_get_metrics(vg_font_t *font, float size, vg_font_metrics_t *metrics);
 
+//=============================================================================
+// Ligature shaping (GSUB; Zanna Studio plan 06 / ADR 0137)
+//=============================================================================
+
+/// @brief One shaped glyph and the source-character span it covers.
+/// @details Plain glyphs cover one character; ligatures cover several. The
+///          span keeps per-character columns/selection intact: callers
+///          advance by the SOURCE characters' widths, not the ligature's.
+typedef struct vg_shaped_glyph {
+    uint16_t glyph_id;     ///< Font glyph index to rasterize.
+    uint16_t source_start; ///< Index of the first source character covered.
+    uint16_t source_len;   ///< Number of source characters merged (1 = plain).
+} vg_shaped_glyph_t;
+
+/// @brief Shape a codepoint run through the font's liga/calt GSUB lookups.
+/// @param font Font to shape with; fonts without GSUB return identity runs.
+/// @param codepoints Source characters (no newlines).
+/// @param count Number of source characters.
+/// @param out Receives shaped glyphs; capacity must be at least @p count.
+/// @param out_capacity Capacity of @p out.
+/// @return Number of shaped glyphs written (never exceeds @p count).
+int32_t vg_font_shape(vg_font_t *font,
+                      const uint32_t *codepoints,
+                      int32_t count,
+                      vg_shaped_glyph_t *out,
+                      int32_t out_capacity);
+
+/// @brief Return whether the font resolved any liga/calt GSUB lookups.
+bool vg_font_has_ligatures(vg_font_t *font);
+
+/// @brief Enable or disable ligature shaping in vg_font_draw_text process-wide.
+/// @details Default on; per-widget overrides push/restore around their draws.
+void vg_font_set_ligatures_enabled(bool enabled);
+
+/// @brief Return the process-wide ligature shaping flag.
+bool vg_font_ligatures_enabled(void);
+
+/// @brief Rasterize (and cache) a glyph by font glyph index instead of codepoint.
+/// @details Backs ligature rendering; the cache keys ids in a private range
+///          above Unicode so codepoint entries never collide.
+/// @param font Font owning the glyph.
+/// @param size Pixel size.
+/// @param glyph_id Font glyph index.
+/// @return Cached glyph, or NULL when rasterization fails.
+const vg_glyph_t *vg_font_get_glyph_by_id(vg_font_t *font, float size, uint16_t glyph_id);
+
+/// @brief Attach a per-glyph fallback face consulted on cmap misses (plan 06).
+/// @details Borrowed reference: the caller keeps @p fallback alive for the
+///          primary font's lifetime. Fallbacks may chain (fallback's own
+///          fallback is consulted next). NULL clears the link.
+void vg_font_set_fallback(vg_font_t *font, vg_font_t *fallback);
+
+/// @brief Return the font's per-glyph fallback face, or NULL.
+vg_font_t *vg_font_get_fallback(vg_font_t *font);
+
 /// @brief Retrieve the font's family name (e.g. "Noto Sans", "Fira Code").
 ///
 /// @param font The font to query.

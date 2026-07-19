@@ -56,6 +56,10 @@ expose func DefaultCommandSpecs() -> List[CommandSpec] {
     AddSpec(specs, "open", "Open File...", "Open a file from disk", "Ctrl+O", "", true);
     AddSpec(specs, "openfolder", "Open Folder...", "Open a project folder", "Ctrl+Alt+O", "", true);
     AddSpec(specs, "addfolder", "Add Folder to Workspace...", "Add another folder as a workspace root", "", "", true);
+    AddSpec(specs, "comparewithsaved", "Compare with Saved", "Side-by-side diff of the active document against its saved file", "", "", true);
+    AddSpec(specs, "newprojectconsole", "New Project: Console App", "Scaffold a console application and open it", "", "", true);
+    AddSpec(specs, "newprojectgui", "New Project: GUI App", "Scaffold a windowed application and open it", "", "", true);
+    AddSpec(specs, "newprojectlibrary", "New Project: Library", "Scaffold a reusable library and open it", "", "", true);
     AddSpec(specs, "palette", "Command Palette", "Open the command palette", "Ctrl+Shift+P", "", false);
     AddSpec(specs, "terminal", "Toggle Terminal", "Show or hide the integrated terminal", "Ctrl+`", "", true);
     AddSpec(specs, "save", "Save", "Save the current file", "Ctrl+S", "", true);

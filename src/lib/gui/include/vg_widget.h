@@ -870,6 +870,23 @@ bool vg_widget_anim_advance(vg_widget_t *widget, float delta_ms);
 /// @param canvas Ignored compatibility canvas handle; may be NULL.
 void vg_widget_anim_tick(vg_widget_t *widget, void *canvas);
 
+/// @brief Enable or disable inertial smooth scrolling process-wide (ADR 0137).
+/// @param enabled True to ease wheel scrolling; false for instant jumps.
+void vg_set_smooth_scroll_enabled(bool enabled);
+
+/// @brief Return the process-wide smooth-scrolling request flag.
+bool vg_smooth_scroll_enabled(void);
+
+/// @brief Return whether wheel easing is effective (toggle AND theme motion).
+bool vg_smooth_scroll_effective(void);
+
+/// @brief Ease one scroll axis toward a target with a frame-rate-free step.
+/// @param position Current scroll position, updated in place.
+/// @param target Destination position.
+/// @param delta_ms Elapsed milliseconds this frame.
+/// @return True while still animating; false once snapped onto the target.
+bool vg_smooth_scroll_step(float *position, float target, float delta_ms);
+
 /// @brief Mark a widget as needing to be repainted.
 ///
 /// @details Sets the needs_paint flag on the widget. The application's event

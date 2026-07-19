@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_icon_vector.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <ctype.h>
@@ -294,6 +295,7 @@ vg_label_t *vg_label_create(vg_widget_t *parent, const char *text) {
     label->h_align = VG_ALIGN_H_LEFT;
     label->v_align = VG_ALIGN_V_CENTER;
     label->word_wrap = false;
+    label->icon_vector_id = -1;
     label->max_lines = 0;
     label->ellipsis = false;
     label->selectable = false;
@@ -617,6 +619,8 @@ static void label_measure(vg_widget_t *widget, float available_width, float avai
         vg_font_measure_text(label->font, label->font_size, label->text, &metrics);
 
         widget->measured_width = metrics.width;
+        if (label->icon_vector_id >= 0)
+            widget->measured_width += label->font_size + 7.0f; // icon box + gap
         if (label->ellipsis && available_width > 0.0f && widget->measured_width > available_width)
             widget->measured_width = available_width;
         widget->measured_height = metrics.height;
@@ -766,8 +770,25 @@ static char *label_copy_selection(const vg_label_t *label) {
 /// @brief VTable paint: render cached/fitted text, alignment, and selectable highlights.
 static void label_paint(vg_widget_t *widget, void *canvas) {
     vg_label_t *label = (vg_label_t *)widget;
-    if (!label->text || !label->text[0] || !label->font)
+    if (!label->font)
         return;
+    if (!label->text || !label->text[0]) {
+        if (label->icon_vector_id >= 0 && !label->word_wrap) {
+            vg_theme_t *icon_theme = vg_theme_get_current();
+            uint32_t icon_color = (widget->state & VG_STATE_DISABLED)
+                                      ? icon_theme->colors.fg_disabled
+                                      : label->text_color;
+            float icon_sz = label->font_size + 2.0f;
+            float icon_y = widget->y + (widget->height - icon_sz) / 2.0f;
+            vg_icon_vector_draw((vgfx_window_t)canvas,
+                                label->icon_vector_id,
+                                (int32_t)(widget->x + 0.5f),
+                                (int32_t)(icon_y + 0.5f),
+                                (int32_t)(icon_sz + 0.5f),
+                                icon_color);
+        }
+        return;
+    }
 
     vg_font_metrics_t font_metrics;
     vg_font_get_metrics(label->font, label->font_size, &font_metrics);
@@ -827,6 +848,17 @@ static void label_paint(vg_widget_t *widget, void *canvas) {
     vg_text_metrics_t metrics;
     vg_font_measure_text(label->font, label->font_size, display, &metrics);
     float local_x = label_line_origin_x(label, display, widget->width);
+    if (label->icon_vector_id >= 0) {
+        float icon_sz = label->font_size + 2.0f;
+        float icon_y = widget->y + (widget->height - icon_sz) / 2.0f;
+        vg_icon_vector_draw((vgfx_window_t)canvas,
+                            label->icon_vector_id,
+                            (int32_t)(widget->x + local_x + 0.5f),
+                            (int32_t)(icon_y + 0.5f),
+                            (int32_t)(icon_sz + 0.5f),
+                            color);
+        local_x += icon_sz + 5.0f;
+    }
     float top = label_block_origin_y(label, metrics.height);
     float baseline = label->v_align == VG_ALIGN_V_BOTTOM ? widget->height - font_metrics.descent
                                                          : top + font_metrics.ascent;
@@ -1005,6 +1037,19 @@ void vg_label_set_font(vg_label_t *label, vg_font_t *font, float size) {
 ///
 /// @param label The label to configure.
 /// @param color Text colour in 0xRRGGBB format.
+void vg_label_set_vector_icon(vg_label_t *label, int32_t vector_id) {
+    if (!label)
+        return;
+    if (vector_id < 0)
+        vector_id = -1;
+    if (label->icon_vector_id == vector_id)
+        return;
+    label->icon_vector_id = vector_id;
+    label->base.needs_layout = true;
+    label->base.needs_paint = true;
+    vg_widget_note_revision(&label->base);
+}
+
 void vg_label_set_color(vg_label_t *label, uint32_t color) {
     if (!label)
         return;

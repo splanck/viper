@@ -36,6 +36,34 @@ and symbol breadcrumbs.
    (`editor/symbols.zia`) into `vg_breadcrumb` segments on debounced caret
    moves; clicking a segment opens the symbol picker scoped to that level.
 
+## 2a. As-built record (2026-07-18)
+
+- **Project-wide replace**: `commands/replace_commands.zia` applies over the
+  current search results (KIND_SEARCH locations grouped by file), re-matching
+  each recorded line at apply time (drift-safe); active doc via the undoable
+  `ReplaceWholeDocument` path, open buffers in memory + modified flag,
+  closed files on disk. Panel gained a Replace input + "Replace All" button
+  (results refresh after). Probe: `project_replace_probe`.
+- **Diff view**: `services/diff_engine.zia` — bounded Myers O(ND) with
+  aligned side-by-side row builder (SAME/CHANGED/ADDED/REMOVED, exact
+  reconstruction proven by probe `diff_view_probe`). `ui/diff_view.zia` —
+  reusable floating-panel overlay, theme-colored rows, close/Escape. Entry
+  points: SCM "Side-by-Side Diff" button (new `scm_git.StartShowHead`
+  HEAD-vs-worktree job) and the `comparewithsaved` palette command
+  (saved-vs-buffer). Intraline char-LCS emphasis staged as follow-up.
+- **Split restore**: `session.splitActive` flag saved on exit, re-applied
+  after restore (`SplitRight` when needed). Shared-buffer sync between panes
+  remains the documented v1 limit.
+- **Tab drag-reorder**: the C tabbar + RT polling surface (`WasReordered`/
+  `GetReorderedFrom/To`) already existed but was never consumed — added
+  `DocumentManager.MoveDocument` (active follows its new index) and the
+  main-loop consumption, aligning doc order with the visual reorder.
+- **Breadcrumb symbols**: on caret-line change in Zia documents the
+  breadcrumb shows `path › EnclosingFunction` via the pure
+  `function_scan.EnclosingZiaFunctionName`.
+- Model-level probe: `editor_depth_probe` (reorder semantics, split-flag
+  round-trip, enclosing-function inference). Label total: 45 green.
+
 ## 3. Runtime surface
 
 Possible `AttachSharedBuffer` (see §2.3) and the tabbar reorder event —

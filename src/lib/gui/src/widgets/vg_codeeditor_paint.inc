@@ -426,6 +426,11 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
     if (!editor->font)
         return;
 
+    // Scope ligature shaping to this editor's preference for the duration of
+    // the paint (single-threaded paint contract).
+    bool ligatures_were_enabled = vg_font_ligatures_enabled();
+    vg_font_set_ligatures_enabled(ligatures_were_enabled && editor->ligatures_enabled);
+
     float content_x = widget->x + editor->gutter_width;
     float content_width = codeeditor_content_draw_width(editor, widget);
     float total_content_height = codeeditor_total_content_height_for_width(editor, content_width);
@@ -1058,4 +1063,6 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
                                     thumb_color);
         }
     }
+
+    vg_font_set_ligatures_enabled(ligatures_were_enabled);
 }

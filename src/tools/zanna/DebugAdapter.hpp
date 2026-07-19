@@ -23,6 +23,8 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include "zanna/vm/debug/DebugClassLayout.hpp"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -41,10 +43,14 @@ namespace il::tools::debug {
 /// @param programArgs Arguments passed to the debuggee.
 /// @param maxSteps Optional VM step limit (0 = unlimited).
 /// @param sm Source manager mapping file ids to paths (for stop locations).
+/// @param debugLayouts Class-layout sidecar from the module's own compile so
+///        stops can expand user class instances field-by-field (ADR 0138);
+///        pass empty when unavailable (direct IL, BASIC) to keep leaves.
 /// @return The debuggee's exit code.
 int runDebugAdapter(il::core::Module &module,
                     const std::vector<std::string> &programArgs,
                     uint64_t maxSteps,
-                    il::support::SourceManager &sm);
+                    il::support::SourceManager &sm,
+                    il::vm::DebugClassLayoutTable debugLayouts = {});
 
 } // namespace il::tools::debug

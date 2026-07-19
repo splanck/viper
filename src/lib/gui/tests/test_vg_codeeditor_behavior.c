@@ -257,6 +257,11 @@ static vg_codeeditor_t *make_long_line_editor(void) {
 static void dispatch_n(vg_codeeditor_t *e, vg_event_t *ev, int n) {
     for (int i = 0; i < n; i++)
         e->base.vtable->handle_event(&e->base, ev);
+    // Wheel input eases toward its target since Zanna Studio plan 05; settle
+    // the animation so assertions observe the landed scroll position.
+    int settle_guard = 0;
+    while (vg_codeeditor_smooth_tick(e, 16.0f) && settle_guard++ < 1000) {
+    }
 }
 
 static void test_horizontal_wheel_scroll(void) {
@@ -310,12 +315,12 @@ static void test_wheel_speed_multiplier(void) {
 
     vg_set_wheel_speed(1.0f);
     e->scroll_y = 0.0f;
-    e->base.vtable->handle_event(&e->base, &ev);
+    dispatch_n(e, &ev, 1);
     float at1x = e->scroll_y;
 
     vg_set_wheel_speed(2.0f);
     e->scroll_y = 0.0f;
-    e->base.vtable->handle_event(&e->base, &ev);
+    dispatch_n(e, &ev, 1);
     float at2x = e->scroll_y;
 
     check("wheel moved at 1x speed", at1x > 0.0f);

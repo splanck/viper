@@ -178,13 +178,18 @@ Known areas needing stronger tests:
 
 - Full visual scene editor behavior does not exist yet and therefore has no app
   tests.
-- Source Control push/pull, credential prompts, complex conflict recovery, and
-  exotic path bytes are not deeply covered.
-- Terminal row-addressing redraws are covered by probes; full-screen TUI behavior
-  remains out of scope and is not tested.
+- Source Control status, staging, commit, paged history, per-commit diffs, and
+  the credential-prompt detector are probe-covered (`scm_probe`,
+  `scm_history_probe`); a real credentialed push and complex conflict
+  recovery still need manual passes.
+- Terminal emulation is pinned by `test_vg_outputpane_term.c` (grid-state
+  sequence table) and `terminal_altscreen_probe.zia` (alt screen, scroll
+  regions, edits, replies through the runtime surface); running vim/less/htop
+  in the built IDE remains a manual per-platform gate.
 - Cross-platform PTY/ConPTY behavior needs regular Windows/macOS/Linux smoke.
 - Tool-panel virtualization and huge-output behavior need stronger UI stress
   coverage.
-- Rich debugger object expansion and a dedicated watch-management panel are not
-  present or covered.
+- Debugger class-field expansion is covered end-to-end by
+  `zia_zannastudio_debug_fields`; struct-payload expansion and a dedicated
+  watch-management panel are not present.
 - Accessibility and keyboard-focus behavior need more systematic checks.

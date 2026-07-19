@@ -1,13 +1,15 @@
 module inlay_hints;
 
 bind "editor_engine";
+bind "../services/theme_colors";
 
 bind Str = Zanna.String;
 bind Obj = Zanna.Core.Object;
 bind Seq = Zanna.Collections.Seq;
 bind Threads = Zanna.Threads;
 
-final HINT_COLOR = 9482461; // 0x90A0AD
+/// @brief Inlay-hint text color from the live theme palette.
+func HintColor() -> Integer { return theme_colors.Rgb("fgTertiary"); }
 final HINT_DEBOUNCE_MS = 300;
 final MAX_INLAY_SCAN_LINES = 1000;
 final MAX_INLAY_HINTS = 160;
@@ -95,14 +97,14 @@ class InlayHintController {
             if trimmed != "" and Str.StartsWith(trimmed, "//") == false {
                 var inferred = InferredVarHint(line, funcs);
                 if inferred != "" {
-                    engine.editor.AddInlayHint(i, Str.get_Length(line), HEURISTIC_HINT_PREFIX + inferred, HINT_COLOR);
+                    engine.editor.AddInlayHint(i, Str.get_Length(line), HEURISTIC_HINT_PREFIX + inferred, HintColor());
                     count = count + 1;
                 }
 
                 if count < MAX_INLAY_HINTS {
                     var params = ParameterHintText(line, funcs);
                     if params != "" {
-                        engine.editor.AddInlayHint(i, Str.get_Length(line), HEURISTIC_HINT_PREFIX + params, HINT_COLOR);
+                        engine.editor.AddInlayHint(i, Str.get_Length(line), HEURISTIC_HINT_PREFIX + params, HintColor());
                         count = count + 1;
                     }
                 }

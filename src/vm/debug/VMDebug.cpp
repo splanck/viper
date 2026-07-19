@@ -302,27 +302,40 @@ void formatRegScalar(const Frame &fr, size_t id, Type::Kind kind, DebugLocalInfo
 constexpr int64_t kMaxEagerMapPairs = 2000;
 
 /// @brief Lazy, one-level child provider backing DebugStopInfo::vars for the
-///        current stop. Expands List, Seq, and the canonical Map; every other
-///        managed value (user class instances, other collection kinds) is a leaf.
+///        current stop. Expands List, Seq, the canonical Map, and — when the
+///        host installed a class-layout sidecar (ADR 0138) — user class
+///        instances field-by-field; every other managed value is a leaf.
 /// @details Safety: this runs on the paused VM thread inside onStop, so it must
 ///          never re-enter the interpreter. Values are formatted purely — boxed
 ///          primitives via rt_unbox_* (guarded by a rt_box_type tag check so they
-///          cannot trap), strings quoted directly — never through user ToString.
-///          List/Seq handles are owned by the paused frame and read in place
-///          (no retain). The only allocations are the transient key/value seqs
-///          used to enumerate a map, which are released immediately.
+///          cannot trap), strings quoted directly, object fields by raw reads of
+///          frame-owned object memory at compiler-recorded offsets — never
+///          through user ToString. List/Seq/object handles are owned by the
+///          paused frame and read in place (no retain). The only allocations are
+///          the transient key/value seqs used to enumerate a map, which are
+///          released immediately.
 class VmDebugVarStore : public DebugVarExpander {
   public:
+    /// @param layouts Class-layout sidecar for object expansion, or null/empty
+    ///        when the host installed none (objects then stay leaves).
+    explicit VmDebugVarStore(const DebugClassLayoutTable *layouts) : layouts_(layouts) {}
+
     /// @brief If @p v is an expandable container, register it and populate the
     ///        display fields for a top-level local; return true. Leaves return false.
     bool classify(void *v, DebugLocalInfo &local) {
         Kind k;
         int64_t n = 0;
-        if (!detect(v, k, n))
+        const DebugClassLayout *layout = nullptr;
+        if (!detect(v, k, n, layout))
             return false;
-        local.type = kindName(k);
-        local.value = summaryOf(k, n);
-        local.varRef = registerContainer(v, k, n);
+        if (k == Kind::Object) {
+            local.type = layout->qname;
+            local.value = objectPreview(v, *layout);
+        } else {
+            local.type = kindName(k);
+            local.value = summaryOf(k, n);
+        }
+        local.varRef = registerContainer(v, k, n, layout);
         local.childCount = childCountOf(local.varRef, k, n);
         return true;
     }
@@ -335,21 +348,42 @@ class VmDebugVarStore : public DebugVarExpander {
         std::vector<DebugLocalInfo> out;
         if (ref < 1 || static_cast<size_t>(ref) > entries_.size() || count <= 0)
             return out;
-        Entry &e = entries_[static_cast<size_t>(ref) - 1];
+        // Copy the entry's fixed state before iterating: describing a nested
+        // container registers it (entries_.push_back), which can reallocate the
+        // vector and would dangle any reference held across the loop. The layout
+        // pointer is stable (it targets the host-owned sidecar, not entries_).
+        const Entry &e = entries_[static_cast<size_t>(ref) - 1];
+        const Kind kind = e.kind;
+        void *const handle = e.handle;
+        const int64_t total = e.count;
+        const DebugClassLayout *const layout = e.layout;
         if (start < 0)
             start = 0;
-        if (e.kind == Kind::Map) {
-            for (int64_t i = start;
-                 i < start + count && static_cast<size_t>(i) < e.mapChildren.size();
-                 ++i)
-                out.push_back(e.mapChildren[static_cast<size_t>(i)]);
+        if (kind == Kind::Map) {
+            // Map children are pre-materialized leaves; nothing registers while
+            // copying them out, so indexing entries_ fresh each pass is safe.
+            for (int64_t i = start; i < start + count; ++i) {
+                const Entry &me = entries_[static_cast<size_t>(ref) - 1];
+                if (static_cast<size_t>(i) >= me.mapChildren.size())
+                    break;
+                out.push_back(me.mapChildren[static_cast<size_t>(i)]);
+            }
             return out;
         }
-        for (int64_t i = start; i < start + count && i < e.count; ++i) {
+        if (kind == Kind::Object) {
+            for (int64_t i = start; i < start + count && i < total; ++i) {
+                DebugLocalInfo child;
+                const DebugFieldLayout &field = layout->fields[static_cast<size_t>(i)];
+                child.name = field.name;
+                describeField(handle, field, child, /*allowRegister=*/true);
+                out.push_back(std::move(child));
+            }
+            return out;
+        }
+        for (int64_t i = start; i < start + count && i < total; ++i) {
             DebugLocalInfo child;
             child.name = "[" + std::to_string(i) + "]";
-            void *elem =
-                (e.kind == Kind::List) ? rt_list_get(e.handle, i) : rt_seq_get(e.handle, i);
+            void *elem = (kind == Kind::List) ? rt_list_get(handle, i) : rt_seq_get(handle, i);
             describeValue(elem, child, /*allowRegister=*/true);
             out.push_back(std::move(child));
         }
@@ -357,13 +391,14 @@ class VmDebugVarStore : public DebugVarExpander {
     }
 
   private:
-    enum class Kind { List, Seq, Map };
+    enum class Kind { List, Seq, Map, Object };
 
     struct Entry {
         Kind kind = Kind::List;
-        void *handle = nullptr; // frame-owned list/seq handle (Map: unused)
+        void *handle = nullptr; // frame-owned list/seq/object handle (Map: unused)
         int64_t count = 0;
-        std::vector<DebugLocalInfo> mapChildren; // Map only, pre-materialized
+        const DebugClassLayout *layout = nullptr; // Object only, sidecar-owned
+        std::vector<DebugLocalInfo> mapChildren;  // Map only, pre-materialized
     };
 
     static const char *kindName(Kind k) {
@@ -387,7 +422,8 @@ class VmDebugVarStore : public DebugVarExpander {
         return n < 0 ? 0 : n;
     }
 
-    static bool detect(void *v, Kind &k, int64_t &n) {
+    bool detect(void *v, Kind &k, int64_t &n, const DebugClassLayout *&layout) const {
+        layout = nullptr;
         if (rt_obj_is_instance(v, RT_LIST_CLASS_ID, 0)) {
             k = Kind::List;
             n = rt_list_len(v);
@@ -403,14 +439,30 @@ class VmDebugVarStore : public DebugVarExpander {
             n = rt_map_len(v);
             return true;
         }
+        // User class instance with a known layout: ids are positive and
+        // compiler-assigned; builtin runtime ids are negative, so a table hit
+        // can only be the debugged module's own class (ADR 0138).
+        if (layouts_ && !layouts_->empty()) {
+            const int64_t typeId = rt_obj_type_id(v);
+            if (typeId > 0) {
+                auto it = layouts_->find(typeId);
+                if (it != layouts_->end()) {
+                    k = Kind::Object;
+                    n = static_cast<int64_t>(it->second.fields.size());
+                    layout = &it->second;
+                    return true;
+                }
+            }
+        }
         return false;
     }
 
-    int64_t registerContainer(void *v, Kind k, int64_t n) {
+    int64_t registerContainer(void *v, Kind k, int64_t n, const DebugClassLayout *layout) {
         Entry e;
         e.kind = k;
         e.handle = v;
         e.count = n < 0 ? 0 : n;
+        e.layout = layout;
         if (k == Kind::Map)
             materializeMap(v, e);
         entries_.push_back(std::move(e));
@@ -493,11 +545,21 @@ class VmDebugVarStore : public DebugVarExpander {
         }
         Kind k;
         int64_t n = 0;
-        if (detect(v, k, n)) {
-            out.type = kindName(k);
-            out.value = summaryOf(k, n);
+        const DebugClassLayout *layout = nullptr;
+        if (detect(v, k, n, layout)) {
+            if (k == Kind::Object) {
+                out.type = layout->qname;
+                // Nested previews are depth-capped so cyclic object graphs
+                // (a.next == a) terminate; expansion itself stays user-driven
+                // one level per request and needs no guard.
+                out.value = previewDepth_ < 2 ? objectPreview(v, *layout)
+                                              : "<" + layout->qname + ">";
+            } else {
+                out.type = kindName(k);
+                out.value = summaryOf(k, n);
+            }
             if (allowRegister) {
-                out.varRef = registerContainer(v, k, n);
+                out.varRef = registerContainer(v, k, n, layout);
                 out.childCount = childCountOf(out.varRef, k, n);
             }
             return;
@@ -509,6 +571,126 @@ class VmDebugVarStore : public DebugVarExpander {
         out.value = "<" + tn + ">";
     }
 
+    /// @brief Fill @p out from one instance field of the object at @p base by a
+    ///        raw read of frame-owned memory at the compiler-recorded offset.
+    ///        Managed fields recurse through describeValue so nested objects and
+    ///        collections stay expandable; weak slots resolve via rt_weak_load
+    ///        (non-retaining, may be null after collection).
+    void describeField(void *base,
+                       const DebugFieldLayout &field,
+                       DebugLocalInfo &out,
+                       bool allowRegister) {
+        char *addr = static_cast<char *>(base) + field.offset;
+        switch (field.storage) {
+            case DebugFieldStorage::I64: {
+                int64_t v = 0;
+                std::memcpy(&v, addr, sizeof(v));
+                out.type = field.typeName.empty() ? "i64" : field.typeName;
+                out.value = field.boolDisplay ? (v != 0 ? "true" : "false") : std::to_string(v);
+                return;
+            }
+            case DebugFieldStorage::I32: {
+                int32_t v = 0;
+                std::memcpy(&v, addr, sizeof(v));
+                out.type = field.typeName.empty() ? "i32" : field.typeName;
+                out.value = field.boolDisplay ? (v != 0 ? "true" : "false") : std::to_string(v);
+                return;
+            }
+            case DebugFieldStorage::I16: {
+                int16_t v = 0;
+                std::memcpy(&v, addr, sizeof(v));
+                out.type = field.typeName.empty() ? "i16" : field.typeName;
+                out.value = std::to_string(v);
+                return;
+            }
+            case DebugFieldStorage::I1: {
+                unsigned char v = 0;
+                std::memcpy(&v, addr, sizeof(v));
+                out.type = field.typeName.empty() ? "bool" : field.typeName;
+                out.value = v != 0 ? "true" : "false";
+                return;
+            }
+            case DebugFieldStorage::F64: {
+                double v = 0.0;
+                std::memcpy(&v, addr, sizeof(v));
+                out.type = field.typeName.empty() ? "f64" : field.typeName;
+                out.value = formatDouble(v);
+                return;
+            }
+            case DebugFieldStorage::Str: {
+                void *p = nullptr;
+                std::memcpy(&p, addr, sizeof(p));
+                out.type = field.typeName.empty() ? "str" : field.typeName;
+                out.value = p ? quoteRtString(static_cast<rt_string>(p)) : "null";
+                return;
+            }
+            case DebugFieldStorage::Managed: {
+                void *p = nullptr;
+                std::memcpy(&p, addr, sizeof(p));
+                if (!p) {
+                    out.type = field.typeName.empty() ? "object" : field.typeName;
+                    out.value = "null";
+                    return;
+                }
+                describeValue(p, out, allowRegister);
+                if (out.type.empty())
+                    out.type = field.typeName;
+                return;
+            }
+            case DebugFieldStorage::Weak: {
+                void *p = rt_weak_load(reinterpret_cast<void **>(addr));
+                if (!p) {
+                    out.type = field.typeName.empty() ? "weak" : field.typeName;
+                    out.value = "null";
+                    return;
+                }
+                describeValue(p, out, allowRegister);
+                if (out.type.empty())
+                    out.type = field.typeName;
+                return;
+            }
+            case DebugFieldStorage::Raw: {
+                out.type = field.typeName.empty() ? "ptr" : field.typeName;
+                out.value = "<ptr>";
+                return;
+            }
+            case DebugFieldStorage::Opaque:
+            default: {
+                out.type = field.typeName.empty() ? "object" : field.typeName;
+                out.value = "<" + out.type + ">";
+                return;
+            }
+        }
+    }
+
+    /// @brief Compact `{a=1, b="x", ...}` summary of an object's leading fields
+    ///        for the Variables panel row, truncated to stay scannable. Fields
+    ///        are described without registration so previews never mint varRefs.
+    std::string objectPreview(void *base, const DebugClassLayout &layout) {
+        constexpr size_t kMaxPreviewFields = 3;
+        constexpr size_t kMaxPreviewLen = 80;
+        ++previewDepth_;
+        std::string out = "{";
+        size_t shown = 0;
+        for (const auto &field : layout.fields) {
+            if (shown == kMaxPreviewFields || out.size() > kMaxPreviewLen)
+                break;
+            DebugLocalInfo tmp;
+            describeField(base, field, tmp, /*allowRegister=*/false);
+            if (shown)
+                out += ", ";
+            out += field.name + "=" + tmp.value;
+            ++shown;
+        }
+        if (shown < layout.fields.size())
+            out += shown ? ", ..." : "...";
+        out += "}";
+        --previewDepth_;
+        return out;
+    }
+
+    const DebugClassLayoutTable *layouts_ = nullptr;
+    int previewDepth_ = 0; ///< Recursion guard for nested object previews.
     std::vector<Entry> entries_;
 };
 
@@ -635,7 +817,7 @@ DebugStopInfo VM::buildStopInfo(std::string_view reason, const il::support::Sour
             // Offer structured expansion for any local that is an inspectable
             // container. The store owns the varRefs; it lives on the stop info and
             // dies when execution resumes, invalidating those refs (DAP semantics).
-            auto store = std::make_shared<VmDebugVarStore>();
+            auto store = std::make_shared<VmDebugVarStore>(&debug.classLayouts());
             for (size_t i = 0; i < info.locals.size() && i < managed.size(); ++i) {
                 if (managed[i])
                     store->classify(managed[i], info.locals[i]);

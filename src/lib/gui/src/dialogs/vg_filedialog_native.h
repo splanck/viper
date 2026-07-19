@@ -36,6 +36,11 @@ extern "C" {
 /// @param filter_name    Human-readable filter label (e.g. "C Source Files").
 /// @param filter_pattern Semicolon-separated glob patterns (e.g. "*.c;*.h").
 /// @return Heap-allocated full file path, or NULL if the user cancelled.
+/// @brief Return whether native OS dialogs are usable in this session.
+/// @details macOS: always 1. Windows: probes COM once (IFileOpenDialog); a
+///          failed probe routes callers to the drawn fallback dialog.
+int vg_native_dialogs_available(void);
+
 char *vg_native_open_file(const char *title,
                           const char *initial_path,
                           const char *filter_name,

@@ -350,6 +350,15 @@ struct vgfx_window {
     /// @details Updated by the platform backend on focus-gained/lost events.
     int32_t is_focused;
 
+    /// @brief Optional native message hook installed by higher layers.
+    /// @details Consulted by platform backends that route native protocol
+    ///          messages (Win32 WM_GETOBJECT accessibility today); NULL when
+    ///          no hook is installed. See vgfx_set_native_msg_hook().
+    vgfx_native_msg_hook_t native_msg_hook;
+
+    /// @brief Opaque user pointer passed back to native_msg_hook.
+    void *native_msg_hook_user;
+
     //===------------------------------------------------------------------===//
     // Resize Callback
     //===------------------------------------------------------------------===//

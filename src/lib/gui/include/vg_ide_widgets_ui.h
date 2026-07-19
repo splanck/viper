@@ -60,6 +60,7 @@ typedef struct vg_statusbar_item {
     uint32_t text_color;           ///< Optional per-item text color.
     bool has_text_color;           ///< True when text_color overrides the status bar default.
     bool visible;                  ///< Is item visible
+    int32_t icon_vector_id;        ///< Vector icon id (vg_icon_vector); negative = none.
     float progress;                ///< Progress value (0-1) for progress items
     void *user_data;               ///< User data
     void (*on_click)(struct vg_statusbar_item *, void *); ///< Click callback for buttons
@@ -181,6 +182,11 @@ void vg_statusbar_item_set_text(vg_statusbar_item_t *item, const char *text);
 /// @param item  Item to modify.
 /// @param color Text color as 0xRRGGBB.
 void vg_statusbar_item_set_text_color(vg_statusbar_item_t *item, uint32_t color);
+
+/// @brief Set (or clear) a leading scalable vector icon on a text/button item.
+/// @param item      Item to modify.
+/// @param vector_id Icon id from vg_icon_vector_find; negative clears it.
+void vg_statusbar_item_set_icon_vector(vg_statusbar_item_t *item, int32_t vector_id);
 
 /// @brief Set the hover tooltip for a status bar item.
 /// @param item    Item to modify.

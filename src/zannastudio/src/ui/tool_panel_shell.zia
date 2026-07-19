@@ -22,17 +22,19 @@ module tool_panel_shell;
 bind "../ui/output_cache";
 bind "../ui/tool_panel_model";
 bind "../ui/tool_panel_text";
+bind "../services/theme_colors";
 
 bind Zanna.GUI as GUI;
 bind Zanna.Collections.Seq as Seq;
 bind Obj = Zanna.Core.Object;
 bind Str = Zanna.String;
 
-final TOOL_COLOR_ERROR = 14707829;   // 0xE06C75
-final TOOL_COLOR_WARNING = 15911349; // 0xF2C76D
-final TOOL_COLOR_INFO = 6662382;     // 0x65A5EE
-final TOOL_COLOR_SUCCESS = 10264905; // 0x9CD67D
-final TOOL_COLOR_MUTED = 10066329;   // 0x999999
+/// @brief Semantic tool-panel row colors from the live theme palette.
+func ToolColorError() -> Integer { return theme_colors.Rgb("accentDanger"); }
+func ToolColorWarning() -> Integer { return theme_colors.Rgb("accentWarning"); }
+func ToolColorInfo() -> Integer { return theme_colors.Rgb("accentInfo"); }
+func ToolColorSuccess() -> Integer { return theme_colors.Rgb("accentSuccess"); }
+func ToolColorMuted() -> Integer { return theme_colors.Rgb("fgTertiary"); }
 final TOOL_KIND_COL = 10;
 final TOOL_SOURCE_COL = 10;
 final TOOL_LOCATION_COL = 24;
@@ -61,6 +63,8 @@ class ToolPanelShell {
     expose GUI.VirtualList outputVirtualList;
     expose GUI.VBox searchPanel;
     expose GUI.TextInput searchQueryInput;
+    expose GUI.TextInput searchReplaceInput;
+    expose GUI.Button searchReplaceButton;
     expose GUI.TextInput searchKindsInput;
     expose GUI.TextInput searchIncludeInput;
     expose GUI.TextInput searchExcludeInput;
@@ -123,6 +127,8 @@ class ToolPanelShell {
         outputVirtualList = null;
         searchPanel = null;
         searchQueryInput = null;
+        searchReplaceInput = null;
+        searchReplaceButton = null;
         searchKindsInput = null;
         searchIncludeInput = null;
         searchExcludeInput = null;
@@ -215,6 +221,15 @@ class ToolPanelShell {
         searchQueryInput.SetPlaceholder("Search");
         searchRunButton = GUI.Button.New(searchQueryRow, "Search");
         searchCancelButton = GUI.Button.New(searchQueryRow, "Stop");
+
+        var searchReplaceRow = GUI.HBox.New();
+        searchReplaceRow.SetSpacing(4.0);
+        searchPanel.AddChild(searchReplaceRow);
+        searchReplaceInput = GUI.TextInput.New(searchReplaceRow);
+        searchReplaceInput.SetFlex(1.0);
+        searchReplaceInput.SetPlaceholder("Replace");
+        searchReplaceButton = GUI.Button.New(searchReplaceRow, "Replace All");
+        searchReplaceButton.SetIconName("replace");
 
         var searchOptionsRow = GUI.HBox.New();
         searchOptionsRow.SetSpacing(4.0);
@@ -543,7 +558,7 @@ class ToolPanelShell {
     /// @return Concrete ListBox item handle, or null.
     expose func AddToolSectionRow(listBox: GUI.ListBox,
                                   text: String) -> Any {
-        return AddToolPlainRow(listBox, text, TOOL_COLOR_MUTED);
+        return AddToolPlainRow(listBox, text, ToolColorMuted());
     }
 
     /// @brief Return the row model associated with a concrete ListBox.
@@ -613,19 +628,19 @@ class ToolPanelShell {
            or Str.IndexOf(lower, "failed") != 0
            or Str.IndexOf(lower, "trap") != 0
            or Str.IndexOf(lower, "not found") != 0 {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_ERROR);
+            GUI.ListBox.ItemSetTextColor(item, ToolColorError());
         } else if Str.IndexOf(lower, "warning") != 0
                   or Str.IndexOf(lower, "warn") != 0 {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_WARNING);
+            GUI.ListBox.ItemSetTextColor(item, ToolColorWarning());
         } else if Str.IndexOf(lower, "stopped") != 0
                   or Str.IndexOf(lower, "breakpoint") != 0 {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_INFO);
+            GUI.ListBox.ItemSetTextColor(item, ToolColorInfo());
         } else if Str.IndexOf(lower, "terminated") != 0
                   or Str.IndexOf(lower, "exited") != 0
                   or Str.IndexOf(lower, "exit") != 0 {
-            GUI.ListBox.ItemSetTextColor(item, 10264905);
+            GUI.ListBox.ItemSetTextColor(item, ToolColorSuccess());
         } else if Str.StartsWith(lower, "[debug]") {
-            GUI.ListBox.ItemSetTextColor(item, TOOL_COLOR_MUTED);
+            GUI.ListBox.ItemSetTextColor(item, ToolColorMuted());
         }
     }
 
@@ -841,8 +856,8 @@ class ToolPanelShell {
                                      + "  " + PadToolColumn("CODE", TOOL_CODE_COL)
                                      + "  MESSAGE"
                                      + "  " + PadToolColumn("ACTION", TOOL_ACTION_COL),
-                                     TOOL_COLOR_MUTED);
-        GUI.ListBox.ItemSetTextColor(header, TOOL_COLOR_MUTED);
+                                     ToolColorMuted());
+        GUI.ListBox.ItemSetTextColor(header, ToolColorMuted());
     }
 
     /// @brief Add one diagnostics row to Problems.
@@ -880,7 +895,7 @@ class ToolPanelShell {
         if detail != "" and detail != title {
             text = text + "  " + TrimToolText(detail, 96);
         }
-        return AddToolPlainRow(listBox, text, TOOL_COLOR_MUTED);
+        return AddToolPlainRow(listBox, text, ToolColorMuted());
     }
 
     /// @brief Add a fixed-column location row to a tool panel.
@@ -929,7 +944,7 @@ class ToolPanelShell {
     expose func AddToolInfoRow(listBox: GUI.ListBox,
                                source: String,
                                message: String) -> Any {
-        return AddToolStateRow(listBox, "INFO", source, message, TOOL_COLOR_MUTED);
+        return AddToolStateRow(listBox, "INFO", source, message, ToolColorMuted());
     }
 
     /// @brief Add a success state row.
@@ -937,7 +952,7 @@ class ToolPanelShell {
     expose func AddToolSuccessRow(listBox: GUI.ListBox,
                                   source: String,
                                   message: String) -> Any {
-        return AddToolStateRow(listBox, "OK", source, message, 10264905);
+        return AddToolStateRow(listBox, "OK", source, message, ToolColorSuccess());
     }
 
     /// @brief Format a diagnostics severity label.

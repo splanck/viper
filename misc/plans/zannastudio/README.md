@@ -1,6 +1,11 @@
 # Zanna Studio Flagship Program
 
-Date: 2026-07-17
+Date: 2026-07-17 · **All 11 phases implemented 2026-07-17..18** (as-built
+records in each plan; P4's staged glyph adoption closed with the program).
+Owner validation remaining: Windows machine pass (P1 packaging artifacts, P3
+UIA screen-reader checklist, P9 native dialogs/cursors), vim/less/htop in the
+built terminal per platform, a real credentialed push, and the Linux AT-SPI
+provider recorded as the program's one carve-out (plan 09).
 
 ## 1. Summary and objective
 

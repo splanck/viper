@@ -548,6 +548,18 @@ typedef struct vg_outputpane {
     uint32_t primary_saved_cursor_col; ///< Saved primary saved-cursor column.
     uint32_t primary_cursor_col;       ///< Saved primary terminal cursor column.
 
+    // Extended VT state (plan 11): scroll margins, DEC private modes, reverse
+    // video, and tab stops — the pinned vim/less/htop sequence table.
+    int term_scroll_top;            ///< DECSTBM top row (0-based, screen-relative; -1 unset).
+    int term_scroll_bottom;         ///< DECSTBM bottom row (0-based, inclusive; -1 unset).
+    int primary_term_scroll_top;    ///< Saved primary DECSTBM top while alternate_screen.
+    int primary_term_scroll_bottom; ///< Saved primary DECSTBM bottom while alternate_screen.
+    bool term_cursor_hidden;        ///< DECRST ?25: terminal caret suppressed.
+    bool bracketed_paste;           ///< DECSET ?2004: wrap pastes in ESC[200~ / ESC[201~.
+    bool app_cursor_keys;           ///< DECSET ?1: unmodified arrows send SS3 (ESC O A..D).
+    bool ansi_reverse;              ///< SGR 7: swap fg/bg for newly written cells.
+    uint8_t term_tab_stops[512];    ///< Tab-stop bitset, one bit per column (4096 columns).
+
     // Callbacks
     void (*on_line_click)(struct vg_outputpane *pane, int line, int col, void *user_data);
     void *user_data;

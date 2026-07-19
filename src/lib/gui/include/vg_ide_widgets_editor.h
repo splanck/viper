@@ -191,6 +191,10 @@ typedef struct vg_codeeditor {
     // Scroll
     float scroll_x;         ///< Horizontal scroll
     float scroll_y;         ///< Vertical scroll
+    bool ligatures_enabled; ///< Ligature shaping for this editor (default on)
+    float smooth_target_x;  ///< Wheel easing destination (smooth scrolling)
+    float smooth_target_y;  ///< Wheel easing destination (smooth scrolling)
+    bool smooth_animating;  ///< True while wheel easing is in flight
     int visible_first_line; ///< First visible line
     int visible_line_count; ///< Number of visible lines
 
@@ -538,6 +542,20 @@ void vg_codeeditor_set_text_bytes(vg_codeeditor_t *editor, const char *text, siz
 /// @param editor Code editor widget.
 /// @return Caller-owned null-terminated string; must be freed with free().
 char *vg_codeeditor_get_text(vg_codeeditor_t *editor);
+
+/// @brief Advance wheel smooth-scroll easing by one frame (ADR 0137).
+/// @param editor Editor to advance.
+/// @param delta_ms Elapsed milliseconds this frame.
+/// @return True while easing is still in flight (keeps the app animating).
+bool vg_codeeditor_smooth_tick(vg_codeeditor_t *editor, float delta_ms);
+
+/// @brief Enable or disable ligature shaping for this editor (ADR 0137).
+/// @param editor Editor to configure.
+/// @param enabled True renders liga/calt ligatures; false shows plain glyphs.
+void vg_codeeditor_set_ligatures_enabled(vg_codeeditor_t *editor, bool enabled);
+
+/// @brief Return whether this editor renders ligatures.
+bool vg_codeeditor_get_ligatures_enabled(const vg_codeeditor_t *editor);
 
 /// @brief Return the monotonic content revision.
 /// @param editor Code editor widget.

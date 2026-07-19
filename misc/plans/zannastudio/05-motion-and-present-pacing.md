@@ -31,6 +31,36 @@ good enough to default on.
    `vg_minimap.c` integrated with the damage-region system; then flip the IDE
    setting default (`core/settings.zia`) and welcome-page mention.
 
+## 2a. As-built record (2026-07-18)
+
+- Real-dt animation was already flowing: `rt_gui_tick_widget_tree`
+  (`rt_gui_app.c`) advances `vg_widget_anim_advance(node, dt*1000)` with the
+  frame's clamped dt; the hardcoded-16ms `vg_widget_anim_tick` is only a
+  legacy compat wrapper with no remaining callers.
+- Smooth scrolling: shared easing in `vg_widget.c`
+  (`vg_smooth_scroll_step`, ~63%/62ms exponential approach, half-pixel
+  snap; `vg_set_smooth_scroll_enabled` global honoring
+  `theme->motion.enabled` via `vg_smooth_scroll_effective`). Wheel input on
+  `vg_scrollview` and `vg_codeeditor` accumulates into clamped targets;
+  per-frame `vg_scrollview_tick` / `vg_codeeditor_smooth_tick` run from the
+  app loop's per-type dispatch. Direct scrolls (drags, click-jump,
+  SetScroll, caret reveals) cancel easing.
+- Runtime surface (ADR 0137): `Zanna.GUI.App.SetSmoothScroll` /
+  `GetSmoothScroll` (default on; stubs included). GUI ABI manifest pins
+  reviewed and updated.
+- Present pacing: Windows present now calls `DwmFlush` after the blit
+  (dynamically resolved dwmapi; absent/legacy sessions keep sleep pacing).
+  macOS is compositor-synced by design (`setNeedsDisplay` path); Linux
+  keeps the drift-corrected sleep as the documented first-class fallback.
+- Minimap: the line-summary raster cache already renders incrementally
+  (bounded, O(1) lookups), so the default flipped ON
+  (`settings.zia` + `phase0_phase1_probe` pin updated); the
+  `editor_hot_path` perf probe stays green.
+- Tests: new `test_vg_smooth_scroll` (convergence, snap, symmetry,
+  large-delta clamp, identical trajectories, toggle); wheel tests in
+  `test_vg_codeeditor_behavior` / `test_vg_widgets_new` settle easing
+  before asserting.
+
 ## 3. Runtime surface
 
 At most `Zanna.GUI.App.SetSmoothScroll(enabled: Boolean)` (+ getter) — folded

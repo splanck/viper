@@ -105,6 +105,7 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
 
     // Gutter
     editor->show_line_numbers = true;
+    editor->ligatures_enabled = true;
     editor->gutter_width = 50.0f;
     editor->line_number_width_override = 0.0f;
     editor->gutter_bg = theme->colors.bg_secondary;

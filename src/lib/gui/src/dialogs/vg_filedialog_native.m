@@ -109,6 +109,10 @@ static void setAllowedExtensions(NSSavePanel *panel, NSArray *extensions) {
 /// @param filter_pattern Win32 filter string; restricts the panel's selection.
 /// @return `vg_strdup()`-allocated UTF-8 path on selection; `NULL` if the user
 ///         cancelled. Caller owns the result and must `free()` it.
+int vg_native_dialogs_available(void) {
+    return 1;
+}
+
 char *vg_native_open_file(const char *title,
                           const char *initial_path,
                           const char *filter_name,

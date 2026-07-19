@@ -30,6 +30,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_icon_vector.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <math.h>
@@ -727,12 +728,25 @@ static void tabbar_paint(vg_widget_t *widget, void *canvas) {
                                vg_color_blend(bg, theme->colors.bg_hover, 0.65f));
             }
 
-            // Draw X button as two crossing diagonal lines
-            int32_t cx = (int32_t)(close_x + tabbar->close_button_size / 2.0f);
-            int32_t cy = (int32_t)(close_y + tabbar->close_button_size / 2.0f);
-            int32_t r = (int32_t)(tabbar->close_button_size / 2.0f) - 1;
-            vgfx_line(win, cx - r, cy - r, cx + r, cy + r, close_color);
-            vgfx_line(win, cx - r, cy + r, cx + r, cy - r, close_color);
+            // Close glyph: the shared vector icon (anti-aliased, brand-
+            // consistent); fall back to two raw lines if the library is absent.
+            static int32_t s_close_icon = -2;
+            if (s_close_icon == -2)
+                s_close_icon = vg_icon_vector_find("close");
+            if (s_close_icon >= 0) {
+                vg_icon_vector_draw(win,
+                                    s_close_icon,
+                                    (int32_t)(close_x + 0.5f),
+                                    (int32_t)(close_y + 0.5f),
+                                    (int32_t)(tabbar->close_button_size + 0.5f),
+                                    close_color);
+            } else {
+                int32_t cx = (int32_t)(close_x + tabbar->close_button_size / 2.0f);
+                int32_t cy = (int32_t)(close_y + tabbar->close_button_size / 2.0f);
+                int32_t r = (int32_t)(tabbar->close_button_size / 2.0f) - 1;
+                vgfx_line(win, cx - r, cy - r, cx + r, cy + r, close_color);
+                vgfx_line(win, cx - r, cy + r, cx + r, cy - r, close_color);
+            }
         }
 
         tab_x += width;

@@ -564,7 +564,14 @@ typedef enum {
     VGFX_CURSOR_TEXT = 2,     ///< I-beam text cursor
     VGFX_CURSOR_RESIZE_H = 3, ///< Horizontal resize cursor
     VGFX_CURSOR_RESIZE_V = 4, ///< Vertical resize cursor
-    VGFX_CURSOR_WAIT = 5      ///< Busy/spinner cursor
+    VGFX_CURSOR_WAIT = 5,        ///< Busy/spinner cursor
+    VGFX_CURSOR_RESIZE_NWSE = 6, ///< Diagonal resize (top-left/bottom-right)
+    VGFX_CURSOR_RESIZE_NESW = 7, ///< Diagonal resize (top-right/bottom-left)
+    VGFX_CURSOR_GRAB = 8,        ///< Open-hand grab cursor (draggable)
+    VGFX_CURSOR_GRABBING = 9,    ///< Closed-hand grabbing cursor (dragging)
+    VGFX_CURSOR_CROSSHAIR = 10,  ///< Precision crosshair cursor
+    VGFX_CURSOR_HELP = 11,       ///< Help cursor (question mark)
+    VGFX_CURSOR_NOT_ALLOWED = 12 ///< Action-not-allowed cursor
 } vgfx_cursor_type_t;
 
 /// @brief Set the mouse cursor shape.
@@ -667,6 +674,39 @@ void vgfx_set_gpu_present(vgfx_window_t window, int32_t enabled);
 /// @param window Window handle
 /// @return Native display handle, or NULL if unavailable
 void *vgfx_get_native_display(vgfx_window_t window);
+
+/// @brief Callback consulted for selected native platform window messages.
+/// @details Installed by higher layers that must answer native protocol
+///          messages arriving at the platform window procedure (today:
+///          Windows WM_GETOBJECT for the UI Automation accessibility bridge).
+///          The hook runs on the thread that owns the native window while the
+///          platform pumps events. Set @p handled non-zero and fill
+///          @p result to consume the message; leave it zero to fall through
+///          to default handling.
+/// @param user Opaque pointer supplied at registration.
+/// @param native_window Native window handle (HWND on Windows).
+/// @param msg Native message identifier.
+/// @param wparam Native message word parameter.
+/// @param lparam Native message long parameter.
+/// @param result Receives the message result when handled.
+/// @param handled Set non-zero when the hook fully handled the message.
+typedef void (*vgfx_native_msg_hook_t)(void *user,
+                                       void *native_window,
+                                       uint32_t msg,
+                                       uintptr_t wparam,
+                                       intptr_t lparam,
+                                       intptr_t *result,
+                                       int32_t *handled);
+
+/// @brief Install (or clear) the native message hook for one window.
+/// @details At most one hook is stored per window; passing NULL clears it.
+///          Only platform backends that route native protocol messages
+///          (currently Win32) consult the hook; elsewhere it is stored but
+///          never invoked, which keeps callers platform-neutral.
+/// @param window Window handle; NULL is a no-op.
+/// @param hook Hook function, or NULL to remove the current hook.
+/// @param user Opaque pointer passed back to the hook.
+void vgfx_set_native_msg_hook(vgfx_window_t window, vgfx_native_msg_hook_t hook, void *user);
 
 //===----------------------------------------------------------------------===//
 // Clipping

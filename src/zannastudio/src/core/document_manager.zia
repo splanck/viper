@@ -580,6 +580,34 @@ class DocumentManager {
     }
 
     /// @brief Set the active document by index. Out-of-range is a no-op.
+    /// @brief Move a document to a new position (tab drag-reorder; plan 07).
+    /// @details Mirrors the TabBar's visual reorder so tab indexes and
+    ///          document indexes stay aligned; the active document follows
+    ///          its new position.
+    /// @param from Source index.
+    /// @param to Destination index.
+    expose func MoveDocument(from: Integer, to: Integer) {
+        var count = documents.count();
+        if from < 0 or from >= count or to < 0 or to >= count or from == to {
+            return;
+        }
+        var activeDoc = GetActive();
+        var moved = documents.get(from);
+        documents.removeAt(from);
+        documents.insert(to, moved);
+        if activeDoc != null {
+            var i = 0;
+            while i < documents.count() {
+                if documents.get(i) == activeDoc {
+                    activeIndex = i;
+                    i = documents.count();
+                } else {
+                    i = i + 1;
+                }
+            }
+        }
+    }
+
     expose func SetActive(index: Integer) {
         if index >= 0 and index < documents.count() {
             activeIndex = index;

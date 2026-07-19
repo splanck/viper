@@ -1,0 +1,165 @@
+module scm_history_probe;
+
+// ============================================================================
+// MODULE: scm_history_probe
+// PURPOSE: Headless probe for the plan-11 SCM depth layer: lazily-paged
+//          `git log` parsing, per-commit file lists, revision content fetch
+//          (the two halves of the commit diff view), and the pure credential
+//          prompt detector used by interactive push/pull.
+//
+// WHERE-THIS-FITS: scm_git.zia owns the command layer; scm_view.zia consumes
+//          these primitives for the History mode and the credential row. Like
+//          scm_probe, real Git processes are used because log formatting and
+//          revision addressing are external contracts.
+//
+// TEACHING-NOTE: Log records are split on ASCII RS/US separators, so subjects
+//          with tabs and quotes parse without ambiguity — one commit here
+//          deliberately contains both.
+// ============================================================================
+
+bind "../scm/scm_git";
+
+bind Terminal = Zanna.Terminal;
+bind Exec = Zanna.System.Exec;
+bind Seq = Zanna.Collections.Seq;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Str = Zanna.String;
+bind Time = Zanna.Time;
+
+func pumpJob(job: scm_git.GitJob, budgetMs: Integer) -> Boolean {
+    var waited = 0;
+    while job.running and waited < budgetMs {
+        job.Pump();
+        if job.running {
+            Time.Clock.Sleep(5);
+            waited = waited + 5;
+        }
+    }
+    job.Pump();
+    return job.started and job.running == false;
+}
+
+func gitConfig(dir: String, key: String, val: String) {
+    var a = Seq.New();
+    Seq.Push(a, "-C");
+    Seq.Push(a, dir);
+    Seq.Push(a, "config");
+    Seq.Push(a, key);
+    Seq.Push(a, val);
+    Exec.CaptureArgs("git", a);
+}
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var dir = TempFile.CreateDirWithPrefix("zannastudio_scmhist_");
+
+    var verArgs = Seq.New();
+    Seq.Push(verArgs, "--version");
+    if Exec.RunArgs("git", verArgs) != 0 {
+        Terminal.Say("RESULT: ok (git unavailable, skipped)");
+        return;
+    }
+    var initArgs = Seq.New();
+    Seq.Push(initArgs, "-C");
+    Seq.Push(initArgs, dir);
+    Seq.Push(initArgs, "init");
+    if Exec.RunArgs("git", initArgs) != 0 {
+        fail("git init");
+        return;
+    }
+    gitConfig(dir, "user.email", "probe@example.com");
+    gitConfig(dir, "user.name", "Probe");
+    gitConfig(dir, "commit.gpgsign", "false");
+
+    var git = new scm_git.Git();
+    git.SetRepo(dir);
+
+    // ── Seed three commits: add, modify, add-second-file ─────────────────────
+    File.WriteAllText(Path.Join(dir, "alpha.zia"), "module Alpha; // v1\n");
+    if git.StageAll() == false { fail("stage 1"); return; }
+    if git.Commit("first commit") == false { fail("commit 1"); return; }
+
+    File.WriteAllText(Path.Join(dir, "alpha.zia"), "module Alpha; // v2\n");
+    if git.StageAll() == false { fail("stage 2"); return; }
+    if git.Commit("second\tcommit \"quoted\"") == false { fail("commit 2"); return; }
+
+    File.WriteAllText(Path.Join(dir, "beta.zia"), "module Beta;\n");
+    if git.StageAll() == false { fail("stage 3"); return; }
+    if git.Commit("third commit") == false { fail("commit 3"); return; }
+
+    // ── Paged log: page size 2 → 2 newest, then 1 older ──────────────────────
+    var page1 = git.StartLog(0, 2);
+    if pumpJob(page1, 8000) == false or page1.exitCode != 0 { fail("log page 1"); return; }
+    var commits1 = scm_git.ParseLog(page1.stdoutText);
+    if commits1.count() != 2 {
+        fail("page 1 had " + commits1.count() + " commits (expected 2)");
+        return;
+    }
+    if commits1.get(0).subject != "third commit" {
+        fail("newest subject was '" + commits1.get(0).subject + "'");
+        return;
+    }
+    if Str.get_Length(commits1.get(0).sha) != 40 {
+        fail("sha length " + Str.get_Length(commits1.get(0).sha));
+        return;
+    }
+    if commits1.get(0).author != "Probe" { fail("author '" + commits1.get(0).author + "'"); return; }
+    // The awkward subject (tab + quotes) survives RS/US parsing byte-for-byte.
+    if commits1.get(1).subject != "second\tcommit \"quoted\"" {
+        fail("awkward subject was '" + commits1.get(1).subject + "'");
+        return;
+    }
+
+    var page2 = git.StartLog(2, 2);
+    if pumpJob(page2, 8000) == false or page2.exitCode != 0 { fail("log page 2"); return; }
+    var commits2 = scm_git.ParseLog(page2.stdoutText);
+    if commits2.count() != 1 {
+        fail("page 2 had " + commits2.count() + " commits (expected 1)");
+        return;
+    }
+    if commits2.get(0).subject != "first commit" {
+        fail("oldest subject was '" + commits2.get(0).subject + "'");
+        return;
+    }
+
+    // ── Per-commit file list: the modify commit touched exactly alpha.zia ────
+    var modSha = commits1.get(1).sha;
+    var filesJob = git.StartCommitFiles(modSha);
+    if pumpJob(filesJob, 8000) == false or filesJob.exitCode != 0 { fail("commit files"); return; }
+    var files = scm_git.ParseCommitFiles(filesJob.stdoutText);
+    if files.count() != 1 { fail("modify commit touched " + files.count() + " files"); return; }
+    if Str.StartsWith(files.get(0), "M") == false or Str.Contains(files.get(0), "alpha.zia") == false {
+        fail("file row was '" + files.get(0) + "'");
+        return;
+    }
+
+    // ── Revision content fetch: both halves of the commit diff ───────────────
+    var newJob = git.StartShowAt(modSha, "alpha.zia", "shownew");
+    if pumpJob(newJob, 8000) == false or newJob.exitCode != 0 { fail("show new"); return; }
+    if Str.Contains(newJob.stdoutText, "v2") == false { fail("new content missing v2"); return; }
+    var oldJob = git.StartShowAt(modSha + "~1", "alpha.zia", "showold");
+    if pumpJob(oldJob, 8000) == false or oldJob.exitCode != 0 { fail("show old"); return; }
+    if Str.Contains(oldJob.stdoutText, "v1") == false { fail("old content missing v1"); return; }
+    // A file that does not exist in the parent fails cleanly (added-file case).
+    var thirdSha = commits1.get(0).sha;
+    var missingJob = git.StartShowAt(thirdSha + "~1", "beta.zia", "showold");
+    if pumpJob(missingJob, 8000) == false { fail("missing show did not finish"); return; }
+    if missingJob.exitCode == 0 { fail("parent beta.zia unexpectedly existed"); return; }
+
+    // ── Credential prompt detector (pure; no network involved) ───────────────
+    if scm_git.DetectPrompt("Counting objects: done.\n") != "" { fail("prompt on complete line"); return; }
+    if scm_git.DetectPrompt("Username for 'https://example.com':") == "" { fail("username prompt missed"); return; }
+    if scm_git.DetectPrompt("Password for 'https://user@example.com':") == "" { fail("password prompt missed"); return; }
+    if scm_git.DetectPrompt("Enter passphrase for key '/home/u/.ssh/id_ed25519':") == "" { fail("passphrase prompt missed"); return; }
+    if scm_git.DetectPrompt("remote: Enumerating objects") != "" { fail("false prompt on progress line"); return; }
+    if scm_git.PromptWantsMask("Username for 'https://example.com':") { fail("username should not mask"); return; }
+    if scm_git.PromptWantsMask("Password for 'https://example.com':") == false { fail("password should mask"); return; }
+    if scm_git.PromptWantsMask("Enter passphrase for key:") == false { fail("passphrase should mask"); return; }
+
+    Terminal.Say("RESULT: ok");
+}

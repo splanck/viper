@@ -47,6 +47,8 @@
 
 #ifdef ZANNA_ENABLE_GRAPHICS
 
+#include "vg_icon_vector.h"
+
 /// @brief Resolve a parent-container handle to its widget.
 /// @details Three-state contract: a NULL handle returns NULL (legitimate top-level
 ///          placement); a valid handle returns its container widget; a non-NULL
@@ -182,6 +184,16 @@ static void *rt_gui_font_wrap(vg_font_t *font) {
 ///          is not automatically applied to any widget; use a SetFont operation to apply it.
 /// @param path File path to a .ttf or .ttc font file (runtime string).
 /// @return Opaque font handle, or NULL if the file could not be loaded.
+/// @brief Return the process-shared embedded fallback face (lazy, never freed).
+/// @details Guarantees per-glyph coverage for codepoints a user or system face
+///          cannot map (plan 06). Lives for the process lifetime by design.
+static vg_font_t *rt_gui_font_embedded_fallback(void) {
+    static vg_font_t *s_fallback;
+    if (!s_fallback)
+        s_fallback = vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
+    return s_fallback;
+}
+
 void *rt_font_load(rt_string path) {
     RT_ASSERT_MAIN_THREAD();
     char *cpath = rt_string_to_cstr_no_nul(path);
@@ -190,7 +202,12 @@ void *rt_font_load(rt_string path) {
 
     vg_font_t *font = vg_font_load_file(cpath);
     free(cpath);
-    return font ? rt_gui_font_wrap(font) : NULL;
+    if (!font)
+        return NULL;
+    vg_font_t *fallback = rt_gui_font_embedded_fallback();
+    if (fallback && fallback != font)
+        vg_font_set_fallback(font, fallback);
+    return rt_gui_font_wrap(font);
 }
 
 /// @brief Validate a public system-font logical size.
@@ -214,7 +231,9 @@ static void *rt_gui_font_load_system_ui_result(double size, int bold) {
             rt_const_cstr("font size must be finite and between 1 and 512 logical points"));
     }
     vg_font_t *font = rt_gui_font_platform_load_system_ui(bold != 0);
-    if (!font)
+    if (font)
+        vg_font_set_fallback(font, rt_gui_font_embedded_fallback());
+    else
         font = vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
     if (!font) {
         return rt_result_err_str(
@@ -1064,6 +1083,26 @@ void rt_label_set_word_wrap(void *label, int64_t enabled) {
         vg_label_set_word_wrap(lbl, enabled != 0);
 }
 
+/// @brief Set (or clear) a named scalable vector icon before a label's text (ADR 0137).
+/// @details Unknown names are ignored; an empty name clears the icon. Rendered
+///          on non-wrapped labels only.
+void rt_label_set_icon_name(void *label, rt_string name) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_label_t *lbl = (vg_label_t *)rt_gui_widget_handle_checked_type(label, VG_WIDGET_LABEL);
+    if (!lbl)
+        return;
+    char *cname = rt_string_to_gui_cstr(name);
+    if (!cname || !cname[0]) {
+        vg_label_set_vector_icon(lbl, -1);
+        free(cname);
+        return;
+    }
+    int32_t icon_id = vg_icon_vector_find(cname);
+    free(cname);
+    if (icon_id != VG_ICON_VECTOR_INVALID)
+        vg_label_set_vector_icon(lbl, icon_id);
+}
+
 /// @brief Set a label's horizontal text alignment.
 /// @details Accepted values are zero (left), one (center), and two (right). Invalid values and
 ///          invalid/stale handles are ignored without changing the label.
@@ -1217,6 +1256,26 @@ void rt_button_set_icon(void *button, rt_string icon) {
     char *cicon = rt_string_to_gui_cstr(icon);
     vg_button_set_icon(btn, cicon);
     free(cicon);
+}
+
+/// @brief Set (or clear) a named scalable vector icon on a button (ADR 0137).
+/// @details Unknown names are ignored so callers can probe icon availability;
+///          an empty name clears the current vector icon.
+void rt_button_set_icon_name(void *button, rt_string name) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_button_t *btn = (vg_button_t *)rt_gui_widget_handle_checked_type(button, VG_WIDGET_BUTTON);
+    if (!btn)
+        return;
+    char *cname = rt_string_to_gui_cstr(name);
+    if (!cname || !cname[0]) {
+        vg_button_set_vector_icon(btn, -1);
+        free(cname);
+        return;
+    }
+    int32_t icon_id = vg_icon_vector_find(cname);
+    free(cname);
+    if (icon_id != VG_ICON_VECTOR_INVALID)
+        vg_button_set_vector_icon(btn, icon_id);
 }
 
 /// @brief Set the icon position relative to the button label.
@@ -2773,6 +2832,18 @@ void rt_label_set_color(void *label, int64_t color) {
 void rt_label_set_word_wrap(void *label, int64_t enabled) {
     (void)label;
     (void)enabled;
+}
+
+/// @brief Graphics-disabled label vector-icon setter stub.
+void rt_label_set_icon_name(void *label, rt_string name) {
+    (void)label;
+    (void)name;
+}
+
+/// @brief Graphics-disabled button vector-icon setter stub.
+void rt_button_set_icon_name(void *button, rt_string name) {
+    (void)button;
+    (void)name;
 }
 
 /// @brief Graphics-disabled label alignment setter stub.

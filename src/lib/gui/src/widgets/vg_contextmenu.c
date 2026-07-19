@@ -34,6 +34,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_icon_vector.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <stdint.h>
@@ -701,6 +702,15 @@ static void contextmenu_paint(vg_widget_t *widget, void *canvas) {
                                                 ICON_DRAW_SIZE,
                                                 ICON_DRAW_SIZE,
                                                 item->enabled);
+                } else if (item->icon.type == VG_ICON_VECTOR) {
+                    float icon_x = icon_slot_x + (ICON_SLOT_WIDTH - ICON_DRAW_SIZE) * 0.5f;
+                    float icon_y = item_y + (item_height - ICON_DRAW_SIZE) * 0.5f;
+                    vg_icon_vector_draw(win,
+                                        item->icon.data.vector_id,
+                                        (int32_t)(icon_x + 0.5f),
+                                        (int32_t)(icon_y + 0.5f),
+                                        (int32_t)(ICON_DRAW_SIZE + 0.5f),
+                                        text_color);
                 }
                 text_x += ICON_SLOT_WIDTH + ICON_TEXT_GAP;
             }

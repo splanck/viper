@@ -10,6 +10,7 @@ bind "../build/diagnostic";
 bind "../build/run_config";
 bind "../commands/file_commands";
 bind "../services/locations";
+bind "../services/theme_colors";
 
 bind Zanna.GUI;
 bind Convert = Zanna.Core.Convert;
@@ -45,9 +46,10 @@ bind Obj = Zanna.Core.Object;
 //     prevents drift between the two paths.
 // ============================================================================
 
-final ERROR_MARKER_COLOR = 16711680;     // red    (0xFF0000)
-final WARNING_MARKER_COLOR = 16776960;   // yellow (0xFFFF00)
-final INFO_MARKER_COLOR = 10066329;      // grey   (0x999999)
+/// @brief Diagnostic marker colors from the live theme palette.
+func ErrorMarkerColor() -> Integer { return theme_colors.Rgb("accentDanger"); }
+func WarningMarkerColor() -> Integer { return theme_colors.Rgb("accentWarning"); }
+func InfoMarkerColor() -> Integer { return theme_colors.Rgb("fgTertiary"); }
 
 /// @brief Build the active file, refresh diagnostics, report status.
 func handleBuild(shell: app_shell.AppShell,
@@ -221,13 +223,13 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
                 continue;
             }
             var sevLabel = "error";
-            var markerColor = ERROR_MARKER_COLOR;
+            var markerColor = ErrorMarkerColor();
             if diag.severity == 1 {
                 sevLabel = "warning";
-                markerColor = WARNING_MARKER_COLOR;
+                markerColor = WarningMarkerColor();
             } else if diag.severity == 2 {
                 sevLabel = "info";
-                markerColor = INFO_MARKER_COLOR;
+                markerColor = InfoMarkerColor();
             }
             var action = "No quick fix";
             if diag.fixitCount > 0 {
@@ -278,11 +280,11 @@ func PopulateBuildOutput(shell: app_shell.AppShell,
                 if diag != null {
                     var d = diag!;
                     if d.severity == diagnostic.SEV_WARNING {
-                        GUI.ListBox.ItemSetTextColor(item, WARNING_MARKER_COLOR);
+                        GUI.ListBox.ItemSetTextColor(item, WarningMarkerColor());
                     } else if d.severity == diagnostic.SEV_INFO {
-                        GUI.ListBox.ItemSetTextColor(item, INFO_MARKER_COLOR);
+                        GUI.ListBox.ItemSetTextColor(item, InfoMarkerColor());
                     } else {
-                        GUI.ListBox.ItemSetTextColor(item, ERROR_MARKER_COLOR);
+                        GUI.ListBox.ItemSetTextColor(item, ErrorMarkerColor());
                     }
                     var locId = locStore.Add(d.filePath, d.line, d.column,
                                              d.line, d.column + 1,

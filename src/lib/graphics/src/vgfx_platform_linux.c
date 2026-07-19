@@ -183,7 +183,7 @@ typedef struct {
     int ime_active;                   ///< 1 between XIM preedit start and terminal event
     int cursor_type;                  ///< Last requested cursor type
     int cursor_visible;               ///< 1 if cursor should be visible
-    Cursor cursor_cache[6];           ///< Cached visible cursor handles by public cursor type
+    Cursor cursor_cache[13];          ///< Cached visible cursor handles by public cursor type
     Cursor blank_cursor;              ///< Cached invisible cursor
     struct vgfx_window *owner_window; ///< Backlink for multi-window global services
     struct vgfx_window *next_window;  ///< Intrusive list of live X11 windows
@@ -2797,7 +2797,7 @@ void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
 /// @param cursor_type Public cursor type value.
 /// @return Cache index in the range [0, 5].
 static int x11_cursor_index_for_type(int32_t cursor_type) {
-    return (cursor_type >= 0 && cursor_type < 6) ? (int)cursor_type : 0;
+    return (cursor_type >= 0 && cursor_type < 13) ? (int)cursor_type : 0;
 }
 
 static unsigned int x11_cursor_shape_for_type(int32_t cursor_type) {
@@ -2812,6 +2812,20 @@ static unsigned int x11_cursor_shape_for_type(int32_t cursor_type) {
             return XC_sb_v_double_arrow;
         case 5:
             return XC_watch;
+        case 6:
+            return XC_bottom_right_corner;
+        case 7:
+            return XC_bottom_left_corner;
+        case 8:
+            return XC_hand1;
+        case 9:
+            return XC_fleur;
+        case 10:
+            return XC_crosshair;
+        case 11:
+            return XC_question_arrow;
+        case 12:
+            return XC_pirate;
         default:
             return XC_left_ptr;
     }

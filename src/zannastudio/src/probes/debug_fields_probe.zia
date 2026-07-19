@@ -1,0 +1,277 @@
+module debug_fields_probe;
+
+// ============================================================================
+// MODULE: debug_fields_probe
+// PURPOSE: End-to-end probe for class-instance field expansion in the debugger
+//          (plan 10, ADR 0138). Drives the real `zanna run --debug-adapter` and
+//          asserts that user class locals advertise a varRef + field count with
+//          a `{field=value}` preview, expand into named fields (scalars, a
+//          string, a boolean, a list, and a nested object), and compose with
+//          collection expansion in both directions (list field inside a class,
+//          class element inside a list).
+//
+// WHERE-THIS-FITS: The Zia frontend exports class layouts when compiling for a
+//          debug-adapter run; cmd_run converts them to the VM's table; the VM's
+//          stop-time store (VMDebug.cpp) reads object memory field-by-field.
+//          Requires `--zanna-bin <path>`.
+//
+// TEACHING-NOTE: Field children are ordered exactly as the class layout orders
+//          them (inherited first, then declaration order), so index-based
+//          assertions are deterministic.
+// ============================================================================
+
+bind "../build/debug_session";
+bind "../build/breakpoints";
+
+bind Env = Zanna.System.Environment;
+bind Time = Zanna.Time;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Str = Zanna.String;
+bind Terminal = Zanna.Terminal;
+
+func argValue(name: String) -> String {
+    var i = 0;
+    while i < Env.GetArgumentCount() - 1 {
+        if Env.GetArgument(i) == name { return Env.GetArgument(i + 1); }
+        i = i + 1;
+    }
+    return "";
+}
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Poll until the session stops/terminates or the budget elapses.
+func pollUntilSettled(session: debug_session.DebugSession, budgetMs: Integer) {
+    var waited = 0;
+    while session.IsActive() and session.stopped == false and waited < budgetMs {
+        session.Poll();
+        if session.stopped or session.terminated { return; }
+        Time.Clock.Sleep(5);
+        waited = waited + 5;
+    }
+    session.Poll();
+}
+
+/// @brief Poll until the last `variables` reply is for @p wantRef, or budget ends.
+func pollVars(session: debug_session.DebugSession, wantRef: Integer, budgetMs: Integer) {
+    var waited = 0;
+    while waited < budgetMs and session.lastVarRef != wantRef {
+        session.Poll();
+        if session.lastVarRef == wantRef { return; }
+        Time.Clock.Sleep(5);
+        waited = waited + 5;
+    }
+}
+
+/// @brief Index of the first local whose name equals @p name, or -1.
+func findLocal(session: debug_session.DebugSession, name: String) -> Integer {
+    var i = 0;
+    while i < session.LocalCount() {
+        if Str.StartsWith(session.LocalLabel(i), name + " =") { return i; }
+        i = i + 1;
+    }
+    return -1;
+}
+
+func main() {
+    var zannaBin = argValue("--zanna-bin");
+    if zannaBin == "" {
+        fail("no --zanna-bin argument");
+        return;
+    }
+
+    var dir = TempFile.CreateDirWithPrefix("zannastudio_dbgfields_");
+    var prog = Path.Join(dir, "fields.zia");
+    // Player mixes every field storage the debugger reads: i64, string handle,
+    // boolean, managed list, nested object. Break on line 22 while all locals
+    // are live; the program exits 2 so termination is asserted too.
+    File.WriteAllText(prog,
+        "class Vec {\n"                                  // 1
+        + "    expose var x: Integer;\n"                  // 2
+        + "    expose var y: Number;\n"                   // 3
+        + "}\n"                                            // 4
+        + "\n"                                             // 5
+        + "class Player {\n"                               // 6
+        + "    expose var hp: Integer;\n"                  // 7
+        + "    expose var name: String;\n"                 // 8
+        + "    expose var alive: Boolean;\n"               // 9
+        + "    expose var scores: List[Integer];\n"        // 10
+        + "    expose var pos: Vec;\n"                     // 11
+        + "}\n"                                            // 12
+        + "\n"                                             // 13
+        + "func main() -> Integer {\n"                     // 14
+        + "    var v = new Vec(3, 1.5);\n"                 // 15
+        + "    var scores: List[Integer] = [];\n"          // 16
+        + "    scores.add(7);\n"                            // 17
+        + "    scores.add(9);\n"                            // 18
+        + "    var p = new Player(100, \"Ann\", true, scores, v);\n" // 19
+        + "    var team: List[Any] = [];\n"                // 20
+        + "    team.add(p);\n"                              // 21
+        + "    var total = p.hp;\n"                        // 22  <- breakpoint
+        + "    return total - 98;\n"                        // 23
+        + "}\n");                                           // 24
+
+    var store = new breakpoints.BreakpointStore();
+    store.Toggle(prog, 22);
+
+    var session = new debug_session.DebugSession();
+    if session.Launch(zannaBin, prog, store) == false {
+        fail("Launch returned false");
+        return;
+    }
+
+    pollUntilSettled(session, 8000);
+    if session.stopped == false {
+        fail("did not stop at breakpoint (terminated=" + session.terminated + ")");
+        return;
+    }
+    if session.lastLine != 22 {
+        fail("stopped at wrong line: " + session.lastLine);
+        return;
+    }
+
+    // ── Class local: p advertises its type, a field preview, and 5 children ──
+    var pIdx = findLocal(session, "p");
+    if pIdx < 0 {
+        fail("local 'p' not found among locals");
+        return;
+    }
+    var pLabel = session.LocalLabel(pIdx);
+    if Str.IndexOf(pLabel, "hp=100") < 1 {
+        fail("p preview missing hp=100 (label=" + pLabel + ")");
+        return;
+    }
+    var pRef = session.LocalVarRef(pIdx);
+    if pRef <= 0 {
+        fail("p has no varRef (label=" + pLabel + ")");
+        return;
+    }
+    if session.LocalChildCount(pIdx) != 5 {
+        fail("p childCount was " + session.LocalChildCount(pIdx) + " (expected 5)");
+        return;
+    }
+
+    // ── Expand p: named fields in layout order with typed leaf values ────────
+    session.RequestVariables(pRef, 0, 100);
+    pollVars(session, pRef, 8000);
+    if session.VarChildCount() != 5 {
+        fail("expanded p returned " + session.VarChildCount() + " children (expected 5)");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(0), "hp = 100") < 1 {
+        fail("field 0 label was '" + session.VarChildLabel(0) + "' (expected 'hp = 100')");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(1), "name = \"Ann\"") < 1 {
+        fail("field 1 label was '" + session.VarChildLabel(1) + "'");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(2), "alive = true") < 1 {
+        fail("field 2 label was '" + session.VarChildLabel(2) + "'");
+        return;
+    }
+    // scores is a live list field: expandable with 2 elements.
+    if Str.IndexOf(session.VarChildLabel(3), "scores = List(2)") < 1 {
+        fail("field 3 label was '" + session.VarChildLabel(3) + "'");
+        return;
+    }
+    var scoresRef = session.VarChildVarRef(3);
+    if scoresRef <= 0 {
+        fail("scores field should be expandable");
+        return;
+    }
+    var posRef = session.VarChildVarRef(4);
+    if posRef <= 0 {
+        fail("pos field should be expandable (label=" + session.VarChildLabel(4) + ")");
+        return;
+    }
+
+    // ── List field inside the class expands to its elements ──────────────────
+    session.RequestVariables(scoresRef, 0, 100);
+    pollVars(session, scoresRef, 8000);
+    if session.VarChildCount() != 2 {
+        fail("scores expanded to " + session.VarChildCount() + " children (expected 2)");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(0), "[0] = 7") < 1 {
+        fail("scores[0] label was '" + session.VarChildLabel(0) + "'");
+        return;
+    }
+
+    // ── Nested object field expands to its own fields ────────────────────────
+    session.RequestVariables(posRef, 0, 100);
+    pollVars(session, posRef, 8000);
+    if session.VarChildCount() != 2 {
+        fail("pos expanded to " + session.VarChildCount() + " children (expected 2)");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(0), "x = 3") < 1 {
+        fail("pos.x label was '" + session.VarChildLabel(0) + "'");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(1), "y = 1.5") < 1 {
+        fail("pos.y label was '" + session.VarChildLabel(1) + "'");
+        return;
+    }
+
+    // ── Class element inside a list is itself expandable ─────────────────────
+    var teamIdx = findLocal(session, "team");
+    if teamIdx < 0 {
+        fail("local 'team' not found");
+        return;
+    }
+    var teamRef = session.LocalVarRef(teamIdx);
+    if teamRef <= 0 {
+        fail("team has no varRef");
+        return;
+    }
+    session.RequestVariables(teamRef, 0, 100);
+    pollVars(session, teamRef, 8000);
+    if session.VarChildCount() != 1 {
+        fail("team expanded to " + session.VarChildCount() + " children (expected 1)");
+        return;
+    }
+    if Str.IndexOf(session.VarChildLabel(0), "hp=100") < 1 {
+        fail("team[0] should preview the Player (label=" + session.VarChildLabel(0) + ")");
+        return;
+    }
+    var memberRef = session.VarChildVarRef(0);
+    if memberRef <= 0 {
+        fail("team[0] should be expandable");
+        return;
+    }
+    session.RequestVariables(memberRef, 0, 100);
+    pollVars(session, memberRef, 8000);
+    if session.VarChildCount() != 5 {
+        fail("team[0] expanded to " + session.VarChildCount() + " children (expected 5)");
+        return;
+    }
+
+    // ── Scalar local stays a leaf ────────────────────────────────────────────
+    var totalIdx = findLocal(session, "total");
+    if totalIdx >= 0 and session.LocalVarRef(totalIdx) != 0 {
+        fail("scalar 'total' should be a leaf (varRef 0)");
+        return;
+    }
+
+    // ── Run to termination: exit code proves the debuggee was undisturbed ────
+    if session.Continue() == false {
+        fail("Continue rejected while stopped");
+        return;
+    }
+    pollUntilSettled(session, 8000);
+    if session.terminated == false {
+        fail("did not terminate after Continue");
+        return;
+    }
+    if session.exitCode != 2 {
+        fail("exit code was " + session.exitCode + " (expected 2 = hp - 98)");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

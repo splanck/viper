@@ -1,0 +1,241 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/services/diff_engine.zia
+// Purpose: Pure line-diff engine (Myers O(ND)) plus an aligned side-by-side
+//          row builder for the diff view (plan 07).
+// Key invariants:
+//   - Deterministic: identical inputs produce identical scripts and rows.
+//   - The edit script converts A into B exactly (verified by the probe).
+//   - The D-path search is bounded; pathological inputs degrade to a
+//     replace-everything script rather than unbounded work.
+// Ownership/Lifetime:
+//   - Stateless module; returned lists are caller-owned.
+// Links: zannastudio/src/ui/diff_view.zia, zannastudio/src/scm/scm_view.zia
+//
+//===----------------------------------------------------------------------===//
+
+module diff_engine;
+
+bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
+
+/// Row kinds for the aligned side-by-side view.
+final ROW_SAME = 0;
+final ROW_CHANGED = 1;
+final ROW_ADDED = 2;   // Present only on the right side.
+final ROW_REMOVED = 3; // Present only on the left side.
+
+/// @brief One aligned side-by-side row.
+class DiffRow {
+    expose Integer kind;      // ROW_* classification.
+    expose Integer leftLine;  // 1-based left line number, 0 when blank.
+    expose Integer rightLine; // 1-based right line number, 0 when blank.
+    expose String leftText;
+    expose String rightText;
+
+    expose func init() {
+        kind = ROW_SAME;
+        leftLine = 0;
+        rightLine = 0;
+        leftText = "";
+        rightText = "";
+    }
+}
+
+/// @brief Longest-common-subsequence length table row walker (Myers greedy).
+/// @details Returns a List of Integer pairs encoded as (aIndex * 1000000 +
+///          bIndex) marking matched line pairs, in order. Inputs beyond the
+///          bound fall back to "no matches" (full replace) to stay bounded.
+func MatchedPairs(aLines: Any, bLines: Any) -> List {
+    var pairs: List = [];
+    var aCount = Seq.get_Count(aLines);
+    var bCount = Seq.get_Count(bLines);
+    if aCount == 0 or bCount == 0 {
+        return pairs;
+    }
+    if aCount + bCount > 20000 {
+        return pairs; // Bounded: degrade to replace-everything.
+    }
+
+    // Myers greedy forward search recording the middle-snake-free trace.
+    var maxD = aCount + bCount;
+    var offset = maxD;
+    var vSize = 2 * maxD + 1;
+    var v: List = [];
+    var fill = 0;
+    while fill < vSize {
+        v.add(0);
+        fill = fill + 1;
+    }
+    var trace: List = [];
+    var d = 0;
+    var solved = false;
+    while d <= maxD and solved == false {
+        // Snapshot v for backtracking.
+        var snapshot: List = [];
+        var s = 0;
+        while s < vSize {
+            snapshot.add(v.get(s) as Integer);
+            s = s + 1;
+        }
+        trace.add(snapshot);
+
+        var k = 0 - d;
+        while k <= d {
+            var x = 0;
+            if k == 0 - d or (k != d and (v.get(offset + k - 1) as Integer) < (v.get(offset + k + 1) as Integer)) {
+                x = v.get(offset + k + 1) as Integer;
+            } else {
+                x = (v.get(offset + k - 1) as Integer) + 1;
+            }
+            var y = x - k;
+            while x < aCount and y < bCount
+                  and Seq.GetStr(aLines, x) == Seq.GetStr(bLines, y) {
+                x = x + 1;
+                y = y + 1;
+            }
+            v.set(offset + k, x);
+            if x >= aCount and y >= bCount {
+                solved = true;
+            }
+            k = k + 2;
+        }
+        if solved == false {
+            d = d + 1;
+        }
+    }
+    if solved == false {
+        return pairs;
+    }
+
+    // Backtrack from (aCount, bCount) through the recorded traces.
+    var matched: List = [];
+    var cx = aCount;
+    var cy = bCount;
+    var depth = d;
+    while depth > 0 {
+        var vs = trace.get(depth) as List;
+        var ck = cx - cy;
+        var prevK = 0;
+        if ck == 0 - depth or (ck != depth and (vs.get(offset + ck - 1) as Integer) < (vs.get(offset + ck + 1) as Integer)) {
+            prevK = ck + 1;
+        } else {
+            prevK = ck - 1;
+        }
+        var prevX = vs.get(offset + prevK) as Integer;
+        var prevY = prevX - prevK;
+        // Diagonal (matched) steps above the edit.
+        while cx > prevX and cy > prevY {
+            cx = cx - 1;
+            cy = cy - 1;
+            matched.add(cx * 1000000 + cy);
+        }
+        if ck == prevK + 1 {
+            // Down edge: insertion from B.
+            cy = prevY;
+            cx = prevX;
+        } else {
+            // Right edge: deletion from A.
+            cx = prevX;
+            cy = prevY;
+        }
+        depth = depth - 1;
+    }
+    // Depth 0: leading diagonal.
+    while cx > 0 and cy > 0 {
+        cx = cx - 1;
+        cy = cy - 1;
+        matched.add(cx * 1000000 + cy);
+    }
+    // Reverse into ascending order.
+    var idx = matched.count() - 1;
+    while idx >= 0 {
+        pairs.add(matched.get(idx) as Integer);
+        idx = idx - 1;
+    }
+    return pairs;
+}
+
+/// @brief Build aligned side-by-side rows for two documents.
+/// @param leftText Full "before" text.
+/// @param rightText Full "after" text.
+/// @return Caller-owned List of DiffRow.
+expose func BuildRows(leftText: String, rightText: String) -> List {
+    var aLines = Str.Split(leftText, "\n");
+    var bLines = Str.Split(rightText, "\n");
+    var pairs = MatchedPairs(aLines, bLines);
+    var rows: List = [];
+
+    var aIndex = 0;
+    var bIndex = 0;
+    var p = 0;
+    while p <= pairs.count() {
+        var pairA = Seq.get_Count(aLines);
+        var pairB = Seq.get_Count(bLines);
+        if p < pairs.count() {
+            var encoded = pairs.get(p) as Integer;
+            pairA = encoded / 1000000;
+            pairB = encoded % 1000000;
+        }
+        // Unmatched block before this pair: pair removed/added lines into
+        // CHANGED rows while both sides have content, then emit the tail.
+        while aIndex < pairA and bIndex < pairB {
+            var row = new DiffRow();
+            row.kind = ROW_CHANGED;
+            row.leftLine = aIndex + 1;
+            row.rightLine = bIndex + 1;
+            row.leftText = Seq.GetStr(aLines, aIndex);
+            row.rightText = Seq.GetStr(bLines, bIndex);
+            rows.add(row);
+            aIndex = aIndex + 1;
+            bIndex = bIndex + 1;
+        }
+        while aIndex < pairA {
+            var removed = new DiffRow();
+            removed.kind = ROW_REMOVED;
+            removed.leftLine = aIndex + 1;
+            removed.leftText = Seq.GetStr(aLines, aIndex);
+            rows.add(removed);
+            aIndex = aIndex + 1;
+        }
+        while bIndex < pairB {
+            var added = new DiffRow();
+            added.kind = ROW_ADDED;
+            added.rightLine = bIndex + 1;
+            added.rightText = Seq.GetStr(bLines, bIndex);
+            rows.add(added);
+            bIndex = bIndex + 1;
+        }
+        if p < pairs.count() {
+            var same = new DiffRow();
+            same.kind = ROW_SAME;
+            same.leftLine = aIndex + 1;
+            same.rightLine = bIndex + 1;
+            same.leftText = Seq.GetStr(aLines, aIndex);
+            same.rightText = Seq.GetStr(bLines, bIndex);
+            rows.add(same);
+            aIndex = aIndex + 1;
+            bIndex = bIndex + 1;
+        }
+        p = p + 1;
+    }
+    return rows;
+}
+
+/// @brief Count rows of one kind (summary + probe helper).
+expose func CountKind(rows: List, kind: Integer) -> Integer {
+    var total = 0;
+    var i = 0;
+    while i < rows.count() {
+        if (rows.get(i) as DiffRow).kind == kind {
+            total = total + 1;
+        }
+        i = i + 1;
+    }
+    return total;
+}

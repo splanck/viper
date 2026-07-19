@@ -88,6 +88,11 @@ struct CompilerOptions {
     /// @brief Print frontend phase timings to stderr.
     bool timeCompile{false};
 
+    /// @brief Export per-class field layouts on the CompilerResult for the VM
+    ///        debugger's class-instance expansion (ADR 0138). Off by default;
+    ///        only debug-adapter runs pay the (small) capture cost.
+    bool captureDebugLayouts{false};
+
     /// @brief Allow audited function passes to run in parallel.
     bool parallelFunctionPasses{false};
 

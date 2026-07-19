@@ -266,14 +266,21 @@ static BOOL win32_adjust_window_rect_for_scale(
 
 static HCURSOR win32_cursor_handle(int32_t type) {
     static LPCTSTR const s_cursor_ids[] = {
-        IDC_ARROW,  /* 0: default */
-        IDC_HAND,   /* 1: pointer */
-        IDC_IBEAM,  /* 2: text    */
-        IDC_SIZEWE, /* 3: resize_h */
-        IDC_SIZENS, /* 4: resize_v */
-        IDC_WAIT,   /* 5: wait    */
+        IDC_ARROW,    /* 0: default */
+        IDC_HAND,     /* 1: pointer */
+        IDC_IBEAM,    /* 2: text    */
+        IDC_SIZEWE,   /* 3: resize_h */
+        IDC_SIZENS,   /* 4: resize_v */
+        IDC_WAIT,     /* 5: wait    */
+        IDC_SIZENWSE, /* 6: resize NWSE */
+        IDC_SIZENESW, /* 7: resize NESW */
+        IDC_SIZEALL,  /* 8: grab (closest stock cursor) */
+        IDC_SIZEALL,  /* 9: grabbing */
+        IDC_CROSS,    /* 10: crosshair */
+        IDC_HELP,     /* 11: help */
+        IDC_NO,       /* 12: not allowed */
     };
-    int idx = (type >= 0 && type < 6) ? type : 0;
+    int idx = (type >= 0 && type < 13) ? type : 0;
     return LoadCursor(NULL, s_cursor_ids[idx]);
 }
 
@@ -842,6 +849,23 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
     int64_t timestamp = vgfx_platform_now_ms();
+
+    /* Native protocol messages answered by higher layers (UI Automation). The
+       hook runs on this window's owning thread during normal message pumping;
+       only WM_GETOBJECT is routed so ordinary input paths stay untouched. */
+    if (msg == WM_GETOBJECT && win->native_msg_hook) {
+        intptr_t hook_result = 0;
+        int32_t handled = 0;
+        win->native_msg_hook(win->native_msg_hook_user,
+                             (void *)hwnd,
+                             (uint32_t)msg,
+                             (uintptr_t)wparam,
+                             (intptr_t)lparam,
+                             &hook_result,
+                             &handled);
+        if (handled)
+            return (LRESULT)hook_result;
+    }
 
     switch (msg) {
         case WM_CLOSE: {
@@ -1663,6 +1687,24 @@ int vgfx_platform_present(struct vgfx_window *win) {
                     win->height, /* Source height in physical pixels */
                     SRCCOPY)) {
         return 0;
+    }
+
+    /* Align the presented frame with the DWM compositor's vertical blank so
+     * animated frames pace against the display instead of only the sleep
+     * limiter (Zanna Studio plan 05). DwmFlush is resolved dynamically once;
+     * absence (or composition off / remote sessions) leaves sleep pacing. */
+    {
+        typedef HRESULT(WINAPI * dwm_flush_fn)(void);
+        static dwm_flush_fn s_dwm_flush;
+        static int s_dwm_resolved;
+        if (!s_dwm_resolved) {
+            s_dwm_resolved = 1;
+            HMODULE dwm = LoadLibraryW(L"dwmapi.dll");
+            if (dwm)
+                s_dwm_flush = (dwm_flush_fn)GetProcAddress(dwm, "DwmFlush");
+        }
+        if (s_dwm_flush)
+            (void)s_dwm_flush();
     }
 
     return 1;

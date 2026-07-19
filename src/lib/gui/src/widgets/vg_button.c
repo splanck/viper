@@ -23,6 +23,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_icon_vector.h"
 #include "../../include/vg_theme.h"
 #include "../../include/vg_widgets.h"
 #include <stdlib.h>
@@ -94,6 +95,7 @@ vg_button_t *vg_button_create(vg_widget_t *parent, const char *text) {
     button->font_size = theme->typography.size_normal;
     button->style = VG_BUTTON_STYLE_DEFAULT;
     button->on_click = NULL;
+    button->icon_vector_id = -1;
     button->user_data = NULL;
 
     // Default appearance from theme
@@ -149,7 +151,11 @@ static void button_measure(vg_widget_t *widget, float available_width, float ava
             content_w = metrics.width;
         }
 
-        if (button->icon_text && button->icon_text[0]) {
+        if (button->icon_vector_id >= 0) {
+            content_w += button->font_size + 2.0f; // vector icon box
+            if (button->text && button->text[0])
+                content_w += 5.0f; // gap between icon and label
+        } else if (button->icon_text && button->icon_text[0]) {
             vg_text_metrics_t icon_metrics;
             vg_font_measure_text(button->font, button->font_size, button->icon_text, &icon_metrics);
             content_w += icon_metrics.width;
@@ -296,8 +302,35 @@ static void button_paint(vg_widget_t *widget, void *canvas) {
 
         bool has_text = button->text && button->text[0];
         bool has_icon = button->icon_text && button->icon_text[0];
+        bool has_vector = button->icon_vector_id >= 0;
 
-        if (!has_icon) {
+        if (has_vector) {
+            // Vector icon (takes precedence over icon text): icon box left of
+            // the centred icon+text pair, vertically centred in the button.
+            float icon_sz = button->font_size + 2.0f;
+            vg_text_metrics_t text_m = {0};
+            if (has_text)
+                vg_font_measure_text(button->font, button->font_size, button->text, &text_m);
+            float gap = has_text ? 5.0f : 0.0f;
+            float total_w = icon_sz + gap + text_m.width;
+            float start_x = widget->x + (widget->width - total_w) / 2.0f;
+            float icon_y = widget->y + (widget->height - icon_sz) / 2.0f;
+            vg_icon_vector_draw(win,
+                                button->icon_vector_id,
+                                (int32_t)(start_x + 0.5f),
+                                (int32_t)(icon_y + 0.5f),
+                                (int32_t)(icon_sz + 0.5f),
+                                fg_color);
+            if (has_text) {
+                vg_font_draw_text(canvas,
+                                  button->font,
+                                  button->font_size,
+                                  start_x + icon_sz + gap,
+                                  baseline_y,
+                                  button->text,
+                                  fg_color);
+            }
+        } else if (!has_icon) {
             // Text-only (original behaviour)
             if (has_text) {
                 vg_text_metrics_t metrics;
@@ -543,6 +576,23 @@ void vg_button_set_icon(vg_button_t *button, const char *icon) {
     free(button->icon_text);
     button->icon_text = copy;
     button->base.needs_layout = true;
+}
+
+/// @brief Set (or clear) the button's scalable vector icon.
+/// @details Vector icons take precedence over icon text when both are set.
+/// @param button The button to configure.
+/// @param vector_id Icon id from vg_icon_vector_find; negative clears it.
+void vg_button_set_vector_icon(vg_button_t *button, int32_t vector_id) {
+    if (!button)
+        return;
+    if (vector_id < 0)
+        vector_id = -1;
+    if (button->icon_vector_id == vector_id)
+        return;
+    button->icon_vector_id = vector_id;
+    button->base.needs_layout = true;
+    button->base.needs_paint = true;
+    vg_widget_note_revision(&button->base);
     button->base.needs_paint = true;
 }
 

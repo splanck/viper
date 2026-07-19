@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-16
+last-verified: 2026-07-18
 ---
 
 # CODEMAP: Zanna Studio
@@ -32,15 +32,36 @@ tree — this page is a locator, not a duplicate:
 |-----------|---------|
 | `src/app/` | Application shell, startup, session restore (12 files) |
 | `src/basic/` | BASIC language-service integration |
-| `src/build/` | Build and run job management via `Zanna.System.Process` (8 files) |
-| `src/commands/` | Command registry and palette actions (16 files) |
-| `src/core/` | Shared core utilities and state (9 files) |
+| `src/build/` | Build/run/debug job management; debug adapter client (8 files) |
+| `src/commands/` | Command registry, palette actions, project-wide replace (17 files) |
+| `src/core/` | Documents, projects, settings, keybinding overrides (9 files) |
 | `src/editor/` | Multi-tab editing on `Zanna.GUI.CodeEditor` (20 files) |
-| `src/probes/` | Headless CTest probes (36 files) |
-| `src/scm/` | Git source-control view (4 files) |
-| `src/services/` | Workspace indexing, settings, external-change detection (8 files) |
+| `src/probes/` | Headless CTest probes (45 files) |
+| `src/scm/` | Git view: status, commit history, interactive push/pull (4 files) |
+| `src/services/` | Workspace indexing, diff engine, project templates, theme palette access (11 files) |
 | `src/terminal/` | Integrated PTY terminal via `Zanna.System.Pty` (2 files) |
-| `src/tests/` | In-tree test helpers (4 files) |
-| `src/ui/` | Panels, dialogs, explorer, status bar (15 files) |
+| `src/tests/` | In-tree test helpers (3 files) |
+| `src/ui/` | Panels, dialogs, explorer, welcome, diff view, status bar (16 files) |
 | `src/zia/` | Zia language-service integration (10 files) |
 | `bin/`, `scripts/` | Launch and packaging helpers |
+
+## Flagship-program landmarks (plan suite `misc/plans/zannastudio/`)
+
+The 2026-07 Zanna Studio program landed capability across the IDE, the GUI
+toolkit, the runtime, and the VM. Each plan document carries an as-built
+record with file-level detail; the load-bearing locations:
+
+| Capability | Where |
+|-----------|-------|
+| Brand palettes + WCAG contrast gate | `src/lib/gui/src/core/vg_theme.c`, `src/lib/gui/tests/test_vg_theme_contrast.c` |
+| Vector icon library (ADR 0137) | `src/lib/gui/src/core/vg_icon_vector.c`, `include/vg_icon_vector.h` |
+| Windows UIA accessibility provider | `src/runtime/graphics/gui/rt_gui_accessibility_win32.c` |
+| Smooth scrolling + present pacing | `src/lib/gui/src/core/vg_widget.c`, `src/lib/gui/src/widgets/vg_scrollview.c` |
+| Gamma-correct AA, GSUB ligatures, font fallback | `src/lib/gui/src/font/` (`vg_gsub.c`, `vg_font.c`, `vg_ttf.c`) |
+| Side-by-side diff engine and view | `src/zannastudio/src/services/diff_engine.zia`, `src/zannastudio/src/ui/diff_view.zia` |
+| Project templates + new-project wizard | `src/zannastudio/src/services/project_templates.zia` |
+| Keybinding overrides | `src/zannastudio/src/commands/command_registry.zia`, `src/zannastudio/src/core/settings.zia` |
+| Native Windows file dialogs, cursor set | `src/lib/gui/src/dialogs/vg_filedialog_native_win32.c`, `src/lib/graphics/` |
+| Debugger class-field expansion (ADR 0138) | `src/vm/debug/VMDebug.cpp`, `src/frontends/zia/DebugLayoutExport.hpp` |
+| Terminal emulator (regions, modes, replies) | `src/lib/gui/src/widgets/vg_outputpane.c`, `src/zannastudio/src/terminal/` |
+| SCM history, job queue, credential prompts | `src/zannastudio/src/scm/scm_git.zia`, `src/zannastudio/src/scm/scm_view.zia` |

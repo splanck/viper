@@ -28,6 +28,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_icon_vector.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <stdint.h>
@@ -176,6 +177,7 @@ static vg_statusbar_item_t *create_item(vg_statusbar_item_type_t type, const cha
     item->min_width = 0;
     item->max_width = 0;
     item->visible = true;
+    item->icon_vector_id = -1;
     item->progress = 0.0f;
     item->user_data = NULL;
     item->on_click = NULL;
@@ -204,6 +206,8 @@ static float measure_item_width(vg_statusbar_t *sb, vg_statusbar_item_t *item) {
                 vg_text_metrics_t metrics;
                 vg_font_measure_text(sb->font, sb->font_size, item->text, &metrics);
                 float width = metrics.width + STATUSBAR_ITEM_PADDING * 2;
+                if (item->icon_vector_id >= 0)
+                    width += sb->font_size + 4.0f; // leading vector glyph + gap
                 if (item->min_width > 0 && width < item->min_width)
                     width = item->min_width;
                 if (item->max_width > 0 && width > item->max_width)
@@ -485,13 +489,26 @@ static void statusbar_draw_item(vg_statusbar_t *sb,
         case VG_STATUSBAR_ITEM_BUTTON:
             if (item->text) {
                 uint32_t text_color = item->has_text_color ? item->text_color : sb->text_color;
+                float content_x = x + sb->item_padding;
                 float text_width = item_width - sb->item_padding * 2.0f;
+                if (item->icon_vector_id >= 0) {
+                    float icon_sz = sb->font_size;
+                    float icon_y = wy + (wh - icon_sz) / 2.0f;
+                    vg_icon_vector_draw(win,
+                                        item->icon_vector_id,
+                                        (int32_t)(content_x + 0.5f),
+                                        (int32_t)(icon_y + 0.5f),
+                                        (int32_t)(icon_sz + 0.5f),
+                                        text_color);
+                    content_x += icon_sz + 4.0f;
+                    text_width -= icon_sz + 4.0f;
+                }
                 char *fitted = statusbar_fit_text(sb, item->text, text_width);
                 if (fitted && fitted[0] != '\0') {
                     vg_font_draw_text(canvas,
                                       sb->font,
                                       sb->font_size,
-                                      x + sb->item_padding,
+                                      content_x,
                                       text_y,
                                       fitted,
                                       text_color);
@@ -1040,6 +1057,20 @@ void vg_statusbar_item_set_text_color(vg_statusbar_item_t *item, uint32_t color)
     item->has_text_color = true;
     if (item->owner)
         item->owner->base.needs_paint = true;
+}
+
+void vg_statusbar_item_set_icon_vector(vg_statusbar_item_t *item, int32_t vector_id) {
+    if (!vg_statusbar_item_is_live(item))
+        return;
+    if (vector_id < 0)
+        vector_id = -1;
+    if (item->icon_vector_id == vector_id)
+        return;
+    item->icon_vector_id = vector_id;
+    if (item->owner) {
+        item->owner->base.needs_layout = true;
+        item->owner->base.needs_paint = true;
+    }
 }
 
 /// @brief Set the hover tooltip string for a status bar item.

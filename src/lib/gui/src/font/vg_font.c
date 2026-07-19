@@ -305,6 +305,7 @@ void vg_font_destroy(vg_font_t *font) {
 
     // Free kerning data
     free(font->kern_pairs);
+    free(font->gsub_feature_lookups);
 
     // Free font data
     if (font->owns_data) {
@@ -362,7 +363,9 @@ const char *vg_font_get_family(vg_font_t *font) {
 bool vg_font_has_glyph(vg_font_t *font, uint32_t codepoint) {
     if (!font)
         return false;
-    return ttf_get_glyph_index(font, codepoint) != 0;
+    if (ttf_get_glyph_index(font, codepoint) != 0)
+        return true;
+    return font->fallback && vg_font_has_glyph(font->fallback, codepoint);
 }
 
 //=============================================================================
@@ -390,6 +393,11 @@ const vg_glyph_t *vg_font_get_glyph(vg_font_t *font, float size, uint32_t codepo
     // Get glyph index
     uint16_t glyph_id = ttf_get_glyph_index(font, codepoint);
 
+    // Per-glyph fallback: codepoints this face cannot map render from the
+    // fallback chain instead of .notdef (plan 06).
+    if (glyph_id == 0 && codepoint != 0 && font->fallback)
+        return vg_font_get_glyph(font->fallback, size, codepoint);
+
     // Rasterize
     vg_glyph_t *glyph = vg_rasterize_glyph(font, glyph_id, size);
     if (!glyph)
@@ -408,6 +416,53 @@ const vg_glyph_t *vg_font_get_glyph(vg_font_t *font, float size, uint32_t codepo
     return vg_cache_get(font->cache, size, codepoint);
 }
 
+//=============================================================================
+// Ligature shaping support (Zanna Studio plan 06)
+//=============================================================================
+
+static bool g_font_ligatures_enabled = true;
+
+/// @brief Enable or disable ligature shaping in vg_font_draw_text process-wide.
+void vg_font_set_ligatures_enabled(bool enabled) {
+    g_font_ligatures_enabled = enabled;
+}
+
+/// @brief Return the process-wide ligature shaping flag.
+bool vg_font_ligatures_enabled(void) {
+    return g_font_ligatures_enabled;
+}
+
+void vg_font_set_fallback(vg_font_t *font, vg_font_t *fallback) {
+    if (!font || font == fallback)
+        return;
+    font->fallback = fallback;
+}
+
+vg_font_t *vg_font_get_fallback(vg_font_t *font) {
+    return font ? font->fallback : NULL;
+}
+
+// Cache namespace for glyph-id entries: above the Unicode range so id keys
+// can never collide with codepoint keys.
+#define VG_FONT_GLYPH_ID_CACHE_BASE 0x40000000u
+
+const vg_glyph_t *vg_font_get_glyph_by_id(vg_font_t *font, float size, uint16_t glyph_id) {
+    if (!font || !vg_font_valid_size(size))
+        return NULL;
+    uint32_t key = VG_FONT_GLYPH_ID_CACHE_BASE + glyph_id;
+    const vg_glyph_t *cached = vg_cache_get(font->cache, size, key);
+    if (cached)
+        return cached;
+    vg_glyph_t *glyph = vg_rasterize_glyph(font, glyph_id, size);
+    if (!glyph)
+        return NULL;
+    glyph->codepoint = key;
+    vg_cache_put(font->cache, size, key, glyph);
+    free(glyph->bitmap);
+    free(glyph);
+    return vg_cache_get(font->cache, size, key);
+}
+
 /// @brief Return the rounded horizontal advance for a codepoint without rasterizing it.
 /// @details Text measurement and cursor hit-testing only need glyph advance.  Reading
 ///          the `hmtx` metrics directly avoids populating the raster glyph cache
@@ -420,6 +475,8 @@ static float vg_font_get_codepoint_advance(vg_font_t *font, float size, uint32_t
     if (!font || !vg_font_valid_size(size) || font->head.units_per_em == 0)
         return 0.0f;
     uint16_t glyph_id = ttf_get_glyph_index(font, codepoint);
+    if (glyph_id == 0 && codepoint != 0 && font->fallback)
+        return vg_font_get_codepoint_advance(font->fallback, size, codepoint);
     int advance_width = 0;
     int left_side_bearing = 0;
     ttf_get_h_metrics(font, glyph_id, &advance_width, &left_side_bearing);
@@ -754,10 +811,85 @@ extern void vg_canvas_draw_glyph(
 /// @param y      Pixel y-coordinate of the baseline.
 /// @param text   Null-terminated UTF-8 string to render.
 /// @param color  Foreground colour in 0xRRGGBB format.
+/// @brief Maximum characters shaped as one ligature run before splitting.
+#define VG_FONT_SHAPE_RUN_CAP 256
+
+/// @brief Draw one shaped segment (no newlines) with ligature substitution.
+/// @details Advances by the SOURCE characters' widths so text layout is
+///          identical to the unshaped path — ligature glyphs render across
+///          the columns they replace (plan 06 caret contract).
+static float vg_font_draw_shaped_segment(void *canvas,
+                                         vg_font_t *font,
+                                         float size,
+                                         float cursor_x,
+                                         float y,
+                                         const uint32_t *codepoints,
+                                         int32_t count,
+                                         uint32_t color) {
+    vg_shaped_glyph_t shaped[VG_FONT_SHAPE_RUN_CAP];
+    int32_t shaped_count = vg_font_shape(font, codepoints, count, shaped, VG_FONT_SHAPE_RUN_CAP);
+    for (int32_t i = 0; i < shaped_count; ++i) {
+        // Kerning between adjacent single-character glyphs only (merged
+        // ligatures already bake their spacing).
+        if (i > 0 && shaped[i - 1].source_len == 1 && shaped[i].source_len == 1) {
+            cursor_x += vg_font_get_kerning(font,
+                                            size,
+                                            codepoints[shaped[i - 1].source_start],
+                                            codepoints[shaped[i].source_start]);
+        }
+        float advance = 0.0f;
+        for (uint16_t s = 0; s < shaped[i].source_len; ++s)
+            advance += vg_font_get_codepoint_advance(font, size, codepoints[shaped[i].source_start + s]);
+        // Always rasterize the SHAPED glyph id: fonts substitute in place
+        // (contextual alternates keep one glyph per character with new ids —
+        // the JetBrains Mono model) or merge (classic LookupType 4).
+        const vg_glyph_t *glyph =
+            (shaped[i].glyph_id == 0 && font->fallback)
+                ? vg_font_get_glyph(font->fallback, size, codepoints[shaped[i].source_start])
+                : vg_font_get_glyph_by_id(font, size, shaped[i].glyph_id);
+        if (glyph && glyph->bitmap) {
+            int draw_x = (int)(cursor_x + glyph->bearing_x + 0.5f);
+            int draw_y = (int)(y - glyph->bearing_y + 0.5f);
+            vg_canvas_draw_glyph(
+                canvas, draw_x, draw_y, glyph->bitmap, glyph->width, glyph->height, color);
+        }
+        cursor_x += advance;
+    }
+    return cursor_x;
+}
+
 void vg_font_draw_text(
     void *canvas, vg_font_t *font, float size, float x, float y, const char *text, uint32_t color) {
     if (!canvas || !font || !text || size <= 0)
         return;
+
+    if (g_font_ligatures_enabled && font->gsub_feature_lookup_count > 0) {
+        // Shaped path: decode into newline-split runs and substitute
+        // liga/calt ligatures per run.
+        uint32_t run[VG_FONT_SHAPE_RUN_CAP];
+        int32_t run_count = 0;
+        float cursor_x = x;
+        vg_font_metrics_t fm;
+        vg_font_get_metrics(font, size, &fm);
+        const char *p = text;
+        for (;;) {
+            uint32_t cp = *p ? vg_utf8_decode(&p) : 0;
+            if (cp == 0 || cp == '\n' || run_count == VG_FONT_SHAPE_RUN_CAP) {
+                if (run_count > 0)
+                    cursor_x = vg_font_draw_shaped_segment(
+                        canvas, font, size, cursor_x, y, run, run_count, color);
+                run_count = 0;
+                if (cp == '\n') {
+                    cursor_x = x;
+                    y += fm.line_height;
+                    continue;
+                }
+                if (cp == 0)
+                    return;
+            }
+            run[run_count++] = cp;
+        }
+    }
 
     float cursor_x = x;
     uint32_t prev_cp = 0;

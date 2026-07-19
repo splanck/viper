@@ -34,6 +34,7 @@
 #include "../../../graphics/include/vgfx.h"
 #include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
+#include "../../include/vg_icon_vector.h"
 #include "../../include/vg_ide_widgets.h"
 #include "../../include/vg_theme.h"
 #include <float.h>
@@ -609,6 +610,17 @@ static void treeview_paint_icon(vg_treeview_t *tree,
             row_y + (tree->row_height + (float)metrics.ascent + (float)metrics.descent) * 0.5f,
             node->icon_text,
             color);
+        return;
+    }
+
+    if (icon.type == VG_ICON_VECTOR) {
+        float icon_y = icon_center_y - tree->icon_size * 0.5f;
+        vg_icon_vector_draw(win,
+                            icon.data.vector_id,
+                            (int32_t)(icon_x + 0.5f),
+                            (int32_t)(icon_y + 0.5f),
+                            (int32_t)(tree->icon_size + 0.5f),
+                            color);
         return;
     }
 
@@ -2074,10 +2086,48 @@ bool vg_tree_node_set_text(vg_tree_node_t *node, const char *text) {
 }
 
 /// @brief Replace a live node's UTF-8 icon text and clear any resource-backed icon.
+/// @details The value "vector:<name>" (optionally "vector:<name>|<expanded>")
+///          selects named scalable icons from the vg_icon_vector library
+///          instead of literal text, so the existing TreeView.Node.SetIcon
+///          runtime surface reaches vector icons with no new API (plan 04).
+///          Unknown names degrade to no icon (the fallback dot renders).
 bool vg_tree_node_set_icon_text(vg_tree_node_t *node, const char *icon_text) {
     if (!vg_tree_node_is_live(node))
         return false;
     const char *value = icon_text ? icon_text : "";
+
+    if (strncmp(value, "vector:", 7) == 0) {
+        const char *name = value + 7;
+        const char *sep = strchr(name, '|');
+        int32_t base_id = VG_ICON_VECTOR_INVALID;
+        int32_t expanded_id = VG_ICON_VECTOR_INVALID;
+        if (sep) {
+            size_t base_len = (size_t)(sep - name);
+            char base_name[64];
+            if (base_len < sizeof(base_name)) {
+                memcpy(base_name, name, base_len);
+                base_name[base_len] = '\0';
+                base_id = vg_icon_vector_find(base_name);
+            }
+            expanded_id = vg_icon_vector_find(sep + 1);
+        } else {
+            base_id = vg_icon_vector_find(name);
+        }
+        free(node->icon_text);
+        node->icon_text = NULL;
+        node->icon_text_len = 0;
+        vg_icon_destroy(&node->icon);
+        vg_icon_destroy(&node->expanded_icon);
+        if (base_id != VG_ICON_VECTOR_INVALID)
+            node->icon = vg_icon_from_vector(base_id);
+        if (expanded_id != VG_ICON_VECTOR_INVALID)
+            node->expanded_icon = vg_icon_from_vector(expanded_id);
+        node->owner->base.needs_layout = true;
+        node->owner->base.needs_paint = true;
+        vg_widget_note_revision(&node->owner->base);
+        return true;
+    }
+
     if (node->icon_text && strcmp(node->icon_text, value) == 0 && node->icon.type == VG_ICON_NONE)
         return true;
     if (!node->icon_text && value[0] == '\0' && node->icon.type == VG_ICON_NONE)
