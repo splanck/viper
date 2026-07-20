@@ -44,11 +44,21 @@ func argValue(flag: String, fallback: Integer) -> Integer {
 }
 
 func start() {
-    var g = new game.Game();
-    game.setGame(g);
-
     var smoke = hasArg("--smoke");
     var windowed = hasArg("--windowed");
+
+    // Ashfall's full interactive frame drives a large fixed-step simulation,
+    // physics, and the 3D renderer. The bytecode VM remains useful for bounded
+    // probes, but cannot sustain real-time play for this workload. Fail fast
+    // with the native build command instead of opening an unusably slow window.
+    if smoke == false && Env.IsNative() == false {
+        Terminal.Say("ASHFALL interactive mode requires a native build.");
+        Terminal.Say("Build: zanna build examples/games/ashfall --build-profile release -o examples/bin/ashfall");
+        return;
+    }
+
+    var g = new game.Game();
+    game.setGame(g);
     g.setHeadless(smoke);
     g.setFullscreen(windowed == false);
     g.initCore(0x5A17F00D);

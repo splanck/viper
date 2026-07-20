@@ -7377,6 +7377,52 @@ static void test_canvas_overlay_draws_replay_after_3d_frame() {
     PASS();
 }
 
+static void test_canvas_aa_text_reuses_persistent_raster() {
+    TEST("Canvas3D DrawText2DAA reuses unchanged rasters across frames");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    void *cam = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *first_pixels;
+    uint64_t first_identity;
+
+    backend.name = "opengl";
+    backend.gpu_skinning = 1;
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_text2d_aa(&canvas, 8, 8, rt_const_cstr("HP 87"), 0xFF5040, 1.5);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(canvas.aa_text_cache_count, 1);
+    first_pixels = canvas.aa_text_cache[0].pixels;
+    EXPECT_TRUE(first_pixels != nullptr, "First AA text draw retains its raster");
+    first_identity = ((rt_pixels_impl *)first_pixels)->cache_identity;
+
+    rt_canvas3d_begin(&canvas, cam);
+    /* High color bits are ignored by the renderer and must not split the cache. */
+    rt_canvas3d_draw_text2d_aa(&canvas, 32, 12, rt_const_cstr("HP 87"), 0x12FF5040, 1.5);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(canvas.aa_text_cache_count, 1);
+    EXPECT_TRUE(canvas.aa_text_cache[0].pixels == first_pixels,
+                "Second AA text draw reuses the same Pixels object");
+    EXPECT_EQ(((rt_pixels_impl *)canvas.aa_text_cache[0].pixels)->cache_identity, first_identity);
+
+    rt_canvas3d_begin(&canvas, cam);
+    rt_canvas3d_draw_text2d_aa(&canvas, 8, 8, rt_const_cstr("HP 86"), 0xFF5040, 1.5);
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(canvas.aa_text_cache_count, 2);
+
+    canvas3d_clear_aa_text_cache(&canvas);
+    EXPECT_EQ(canvas.aa_text_cache_count, 0);
+    EXPECT_TRUE(canvas.aa_text_cache == nullptr, "AA text cache releases its storage");
+    PASS();
+}
+
 static void test_canvas_overlay_clip_and_new_primitives() {
     TEST("Canvas3D overlay clip trims queued 2D primitives (Plan 08)");
     vgfx3d_backend_t backend = {};
@@ -7881,6 +7927,16 @@ static void test_canvas_boolean_setters_normalize() {
     rt_canvas3d_set_backface_cull(&canvas, 0);
     EXPECT_EQ(canvas.wireframe, 0);
     EXPECT_EQ(canvas.backface_cull, 0);
+    PASS();
+}
+
+static void test_canvas_uses_single_present_pacer() {
+    TEST("Canvas3D uses one presentation pacer per backend");
+    EXPECT_EQ(canvas3d_window_pacing_fps(1, 1, 60), 60);
+    EXPECT_EQ(canvas3d_window_pacing_fps(1, 0, 60), -1);
+    EXPECT_EQ(canvas3d_window_pacing_fps(0, 1, 60), -1);
+    EXPECT_EQ(canvas3d_window_pacing_fps(0, 0, 60), -1);
+    EXPECT_EQ(canvas3d_window_pacing_fps(1, 1, -1), -1);
     PASS();
 }
 
@@ -10291,6 +10347,7 @@ int main() {
     test_canvas_fog_and_shadow_state_sanitize_inputs();
     test_canvas_begin_applies_camera_shake_without_follow();
     test_canvas_overlay_draws_replay_after_3d_frame();
+    test_canvas_aa_text_reuses_persistent_raster();
     test_canvas_postfx_uses_render_target_pixels();
     test_canvas_overlay_clip_and_new_primitives();
     test_canvas_round_rect_clip_bounds_vertices();
@@ -10332,6 +10389,7 @@ int main() {
     test_canvas_synthetic_mouse_accumulation_clamps();
     test_canvas_fps_uses_rolling_microsecond_samples();
     test_canvas_boolean_setters_normalize();
+    test_canvas_uses_single_present_pacer();
     test_canvas_material_shading_model_mapping();
     test_canvas_material_command_sanitizes_corrupt_fields();
     test_canvas_material_textureasset_resolves_resident_mip_on_draw();

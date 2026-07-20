@@ -241,6 +241,8 @@ class Game {
     expose func getRng() -> rng.RngStreams { return rngs; }
     expose func getSave() -> savegame.SaveManager { return save; }
     expose func getDiag() -> devtools.Diagnostics { return diag; }
+    expose func getWorld() -> Game3D.World3D { return world; }
+    expose func getCanvas() -> G3D.Canvas3D { return canvas; }
     expose func getPlayer() -> playerctl.PlayerCtl { return player; }
     expose func getCamRig() -> camera_rig.CameraRig { return camRig; }
     expose func getArena() -> arena.Arena { return arenaMap; }
@@ -432,6 +434,14 @@ class Game {
             var renderScale = 1.0;
             if menuSys.qualityTier() == 0 { renderScale = 0.85; }
             G3D.Canvas3D.TrySetRenderScale(canvas, renderScale);
+
+            // Spread first-use texture transfers over frames. Stable textures
+            // remain cached, while a level transition cannot submit an
+            // unbounded upload burst on a lower-bandwidth GPU.
+            var uploadBudget = 8388608;
+            if menuSys.qualityTier() == 0 { uploadBudget = 4194304; }
+            if menuSys.qualityTier() == 2 { uploadBudget = 16777216; }
+            G3D.Canvas3D.SetTextureUploadBudget(canvas, uploadBudget);
         }
         // These public visibility/light controls are deterministic on the
         // software backend too, so render probes exercise the same path.
@@ -1501,6 +1511,12 @@ class Game {
     }
 
     hide func updateDiag() {
+        diag.setTiming(canvas.Fps + 0.0, canvas.DeltaTimeSec * 1000.0);
+        diag.setDraws(canvas.DrawsSubmitted,
+                      canvas.FrustumCulledDrawCount + canvas.CpuOccludedDrawCount);
+        diag.setLights(canvas.LightCount, canvas.DroppedLightCount, canvas.ClusterOverflowCount);
+        diag.setShadows(canvas.ShadowSlotsUsed, canvas.ShadowRequestsDropped);
+        diag.setPhysics(phys.LastSolverActiveBodyCount, phys.CcdToiCount);
         diag.setCounts(reg.countOf(config.ARCH_ENEMY), reg.countOf(config.ARCH_PROJECTILE), 0, 0);
     }
 

@@ -71,18 +71,15 @@ class LightRig {
     expose func setup(e: level_env.LevelEnv, w: Game3D.World3D, c: G3D.Canvas3D,
                       hl: Boolean, cosmetic: rng.RngStream) {
         env = e; world = w; canvas = c; headless = hl; cosmeticRng = cosmetic;
-        // Shadow pipeline once (interactive only; probes stay flat).
+        // Store quality-independent shadow controls now. applyShadowTier runs
+        // after settings load and performs the first allocation at the user's
+        // actual tier, avoiding a throwaway 2048px/three-cascade setup for a
+        // persisted Performance configuration.
         if hl == false {
-            G3D.Canvas3D.EnableShadows(canvas, 2048);
-            var cascades = 1;
-            if G3D.Canvas3D.BackendSupports(canvas, "shadow-csm") { cascades = 3; }
-            G3D.Canvas3D.SetShadowCascades(canvas, cascades);
             // Combat spaces top out well below the camera's 600 m far plane;
             // concentrating shadow precision here avoids wasting texels on fog.
             G3D.Canvas3D.SetShadowDistance(canvas, 140.0);
-            G3D.Canvas3D.SetShadowQuality(canvas, 2);
             G3D.Canvas3D.SetShadowBias(canvas, 0.004);
-            G3D.Canvas3D.SetShadowStrength(canvas, 0.85);
         }
         // Reserved gameplay pulse lights, parked dark.
         var i = 0;

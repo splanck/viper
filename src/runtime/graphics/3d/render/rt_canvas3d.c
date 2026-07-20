@@ -1612,6 +1612,7 @@ static void rt_canvas3d_finalize(void *obj) {
     free(c->text_indices);
     c->text_indices = NULL;
     c->text_index_capacity = 0;
+    canvas3d_clear_aa_text_cache(c);
     free(c->readback_rgba_scratch);
     c->readback_rgba_scratch = NULL;
     c->readback_rgba_scratch_capacity = 0u;
@@ -1662,6 +1663,21 @@ static void canvas3d_close_window(rt_canvas3d *c) {
     c->should_close = 1;
 }
 
+/// @brief Apply exactly one presentation clock to the Canvas3D window.
+/// @details GPU backends use native display-sync/swap-interval control, so vgfx must not add its
+///          independent CPU sleep. Software presentation has no native swap clock and keeps the
+///          frame limit captured when the window was created while requested vsync is enabled.
+static void canvas3d_apply_window_pacing(rt_canvas3d *c) {
+    int software_backend;
+
+    if (!c || !c->gfx_win)
+        return;
+    software_backend = c->backend == &vgfx3d_software_backend;
+    vgfx_set_fps(
+        c->gfx_win,
+        canvas3d_window_pacing_fps(software_backend, c->vsync_enabled, c->software_frame_limit));
+}
+
 /// @brief Create a new 3D rendering canvas (window + backend context).
 /// @details Opens a platform window, selects the platform-default rendering backend
 ///          with software fallback if initialization fails, and initializes the framebuffer,
@@ -1703,6 +1719,7 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
         return NULL;
     }
     memset(c, 0, sizeof(rt_canvas3d));
+    c->vsync_enabled = 1;
     rt_obj_set_finalizer(c, rt_canvas3d_finalize);
 
     /* Create window */
@@ -1720,6 +1737,7 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
         rt_trap("Canvas3D.New: failed to create window (display server unavailable?)");
         return NULL;
     }
+    c->software_frame_limit = vgfx_get_fps(c->gfx_win);
 
     vgfx_set_coord_scale(c->gfx_win, vgfx_window_get_scale(c->gfx_win));
     if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.width > 0 && fb.height > 0) {
@@ -1787,6 +1805,9 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
         }
     }
     vgfx_set_gpu_present(c->gfx_win, c->backend != &vgfx3d_software_backend);
+    if (c->backend && c->backend->set_vsync && c->backend_ctx)
+        c->backend->set_vsync(c->backend_ctx, c->vsync_enabled);
+    canvas3d_apply_window_pacing(c);
 
     /* Plan 07: clustered forward+ defaults on for GPU backends (identified by the
      * present_postfx hook; software keeps the 16-light flat path and its perf
@@ -1825,6 +1846,9 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     c->mesh_snapshot_hash_capacity = 0;
     c->temp_objects = NULL;
     c->temp_obj_count = c->temp_obj_capacity = 0;
+    c->aa_text_cache = NULL;
+    c->aa_text_cache_count = 0;
+    c->aa_text_cache_bytes = 0;
     c->fog_enabled = 0;
     c->fog_near = 10.0f;
     c->fog_far = 50.0f;
@@ -1871,7 +1895,6 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
      * occlusion culling stays opt-in. */
     c->frustum_culling = 1;
     c->occlusion_culling = 0;
-    c->vsync_enabled = 1;
     c->render_scale = 1.0f;
     c->last_submission_status = (int32_t)RT_CANVAS3D_SUBMISSION_OK;
     c->submission_failure_count = 0;
@@ -2950,10 +2973,11 @@ double rt_canvas3d_get_shadow_distance(void *obj) {
 }
 
 /// @brief Enable or disable vertical-sync presentation pacing.
-/// @details Every backend defaults to vsync on. Disabling presents frames immediately
-///   for lowest latency (with possible tearing). No-op on backends without present
-///   pacing control (BackendSupports("vsync-control") reports availability); the
-///   requested state is retained either way so the getter reflects intent.
+/// @details Every backend defaults to vsync on. GPU paths delegate pacing exclusively to the
+///   backend's native display-sync mechanism; software presentation uses the vgfx window cap.
+///   Disabling removes both forms of pacing for lowest latency (with possible tearing). The
+///   requested state is retained even when a backend has no native control so the getter reflects
+///   intent and the software limiter still follows it.
 void rt_canvas3d_set_vsync(void *obj, int8_t enabled) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
@@ -2961,6 +2985,7 @@ void rt_canvas3d_set_vsync(void *obj, int8_t enabled) {
     c->vsync_enabled = enabled ? 1 : 0;
     if (c->backend && c->backend->set_vsync && c->backend_ctx)
         c->backend->set_vsync(c->backend_ctx, c->vsync_enabled);
+    canvas3d_apply_window_pacing(c);
 }
 
 /// @brief Requested vsync state (defaults to on).

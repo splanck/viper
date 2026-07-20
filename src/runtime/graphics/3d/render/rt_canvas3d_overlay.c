@@ -54,6 +54,143 @@ extern int8_t rt_textureasset3d_cpu_supports_format(const char *format_name);
 /// @brief Internal KTX2 parser/fallback availability query used by Canvas3D.BackendSupports.
 extern int8_t rt_textureasset3d_cpu_supports_ktx2(void);
 
+/* DrawText2DAA produces CPU-rasterized Pixels. Bound both entry count and retained bytes so
+ * dynamic labels (timers, coordinates, chat) cannot grow the cache without limit. Typical HUD
+ * text occupies only a few KiB, while unusually large one-off strings keep the frame-local path. */
+#define CANVAS3D_AA_TEXT_CACHE_MAX_ENTRIES 128
+#define CANVAS3D_AA_TEXT_CACHE_MAX_BYTES (8u * 1024u * 1024u)
+#define CANVAS3D_AA_TEXT_CACHE_MAX_ENTRY_BYTES (2u * 1024u * 1024u)
+
+/// @brief Drop one AA text cache entry and compact the live prefix.
+static void canvas3d_remove_aa_text_cache_entry(rt_canvas3d *c, int32_t index) {
+    rt_canvas3d_aa_text_cache_entry *entry;
+    int32_t last;
+
+    if (!c || !c->aa_text_cache || index < 0 || index >= c->aa_text_cache_count)
+        return;
+    entry = &c->aa_text_cache[index];
+    if (entry->pixels && rt_obj_release_check0(entry->pixels))
+        rt_obj_free(entry->pixels);
+    free(entry->text);
+    if (entry->retained_bytes <= c->aa_text_cache_bytes)
+        c->aa_text_cache_bytes -= entry->retained_bytes;
+    else
+        c->aa_text_cache_bytes = 0;
+
+    last = c->aa_text_cache_count - 1;
+    if (index != last)
+        c->aa_text_cache[index] = c->aa_text_cache[last];
+    memset(&c->aa_text_cache[last], 0, sizeof(c->aa_text_cache[last]));
+    c->aa_text_cache_count = last;
+}
+
+/// @brief Find the least-recently-used AA text raster.
+static int32_t canvas3d_oldest_aa_text_cache_entry(const rt_canvas3d *c) {
+    int32_t oldest = 0;
+
+    if (!c || c->aa_text_cache_count <= 0)
+        return -1;
+    for (int32_t i = 1; i < c->aa_text_cache_count; i++) {
+        if (c->aa_text_cache[i].last_used_frame < c->aa_text_cache[oldest].last_used_frame)
+            oldest = i;
+    }
+    return oldest;
+}
+
+/// @brief Release all persistent AA text rasters owned by a canvas.
+void canvas3d_clear_aa_text_cache(rt_canvas3d *c) {
+    if (!c)
+        return;
+    while (c->aa_text_cache_count > 0)
+        canvas3d_remove_aa_text_cache_entry(c, c->aa_text_cache_count - 1);
+    free(c->aa_text_cache);
+    c->aa_text_cache = NULL;
+    c->aa_text_cache_bytes = 0;
+}
+
+/// @brief Return a cached raster that exactly matches the rendered AA text inputs.
+static void *canvas3d_find_aa_text_cache_entry(rt_canvas3d *c,
+                                               const char *text,
+                                               size_t text_len,
+                                               int64_t color,
+                                               double scale,
+                                               int32_t width,
+                                               int32_t height) {
+    if (!c || !text)
+        return NULL;
+    for (int32_t i = 0; i < c->aa_text_cache_count; i++) {
+        rt_canvas3d_aa_text_cache_entry *entry = &c->aa_text_cache[i];
+        if (entry->text_len != text_len || entry->color != color || entry->scale != scale ||
+            entry->width != width || entry->height != height || !entry->text ||
+            memcmp(entry->text, text, text_len) != 0)
+            continue;
+        entry->last_used_frame = c->frame_serial;
+        return entry->pixels;
+    }
+    return NULL;
+}
+
+/// @brief Make @p pixels the persistent raster for one rendered AA label.
+/// @return 1 when the cache owns the Pixels reference, or 0 for frame-local fallback.
+static int canvas3d_insert_aa_text_cache_entry(rt_canvas3d *c,
+                                               const char *text,
+                                               size_t text_len,
+                                               int64_t color,
+                                               double scale,
+                                               int32_t width,
+                                               int32_t height,
+                                               void *pixels) {
+    rt_canvas3d_aa_text_cache_entry *entry;
+    size_t pixel_count;
+    size_t retained_bytes;
+    char *text_copy;
+
+    if (!c || !text || !pixels || width <= 0 || height <= 0)
+        return 0;
+    if ((size_t)width > SIZE_MAX / (size_t)height)
+        return 0;
+    pixel_count = (size_t)width * (size_t)height;
+    if (pixel_count > (SIZE_MAX - text_len - 1u) / 4u)
+        return 0;
+    retained_bytes = pixel_count * 4u + text_len + 1u;
+    if (retained_bytes > CANVAS3D_AA_TEXT_CACHE_MAX_ENTRY_BYTES ||
+        retained_bytes > CANVAS3D_AA_TEXT_CACHE_MAX_BYTES)
+        return 0;
+
+    if (!c->aa_text_cache) {
+        c->aa_text_cache = (rt_canvas3d_aa_text_cache_entry *)calloc(
+            CANVAS3D_AA_TEXT_CACHE_MAX_ENTRIES, sizeof(*c->aa_text_cache));
+        if (!c->aa_text_cache)
+            return 0;
+    }
+    while (c->aa_text_cache_count >= CANVAS3D_AA_TEXT_CACHE_MAX_ENTRIES ||
+           c->aa_text_cache_bytes > CANVAS3D_AA_TEXT_CACHE_MAX_BYTES - retained_bytes) {
+        int32_t oldest = canvas3d_oldest_aa_text_cache_entry(c);
+        if (oldest < 0)
+            return 0;
+        canvas3d_remove_aa_text_cache_entry(c, oldest);
+    }
+
+    text_copy = (char *)malloc(text_len + 1u);
+    if (!text_copy)
+        return 0;
+    memcpy(text_copy, text, text_len);
+    text_copy[text_len] = '\0';
+
+    entry = &c->aa_text_cache[c->aa_text_cache_count++];
+    entry->text = text_copy;
+    entry->text_len = text_len;
+    entry->pixels = pixels;
+    entry->retained_bytes = retained_bytes;
+    entry->scale = scale;
+    entry->color = color;
+    entry->last_used_frame = c->frame_serial;
+    entry->width = width;
+    entry->height = height;
+    c->aa_text_cache_bytes += retained_bytes;
+    return 1;
+}
+
 /// @brief Project a 3D world-space point onto 2D screen coordinates using the active scene VP.
 /// @details Standard `world → clip → NDC → screen` pipeline:
 ///          1. Multiply (wp.x, wp.y, wp.z, 1) by the cached view-projection
@@ -628,9 +765,10 @@ void rt_canvas3d_draw_image2d_region(void *obj,
 /// @brief Draw anti-aliased screen-space text at an arbitrary scale.
 /// @details The string is rasterized from the built-in 8x8 bitmap font with a
 ///   4x4 box filter per output pixel (coverage -> alpha), written into a
-///   temp Pixels, and queued as one image blit. This keeps the chunky pixel
-///   *style* while giving clean edges at fractional scales (1.5x, 3.7x, ...).
-///   The Pixels rides the canvas temp-object queue, so lifetime is frame-bound.
+///   Pixels, and queued as one image blit. This keeps the chunky pixel *style*
+///   while giving clean edges at fractional scales (1.5x, 3.7x, ...). A bounded
+///   canvas-owned LRU retains repeated labels across frames; the normal temp-object
+///   queue adds a submission-lifetime reference for the current frame.
 void rt_canvas3d_draw_text2d_aa(
     void *obj, int64_t x, int64_t y, rt_string text, int64_t color, double scale) {
     int8_t started_temp_frame = 0;
@@ -639,6 +777,8 @@ void rt_canvas3d_draw_text2d_aa(
     int32_t out_w;
     int32_t out_h;
     void *pixels;
+    int cache_owns_pixels = 0;
+    int64_t rgb_color;
 
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c || !text)
@@ -659,57 +799,65 @@ void rt_canvas3d_draw_text2d_aa(
     out_h = (int32_t)ceil(8.0 * scale);
     if (out_w <= 0 || out_h <= 0 || out_w > VGFX3D_RENDERTARGET_DIM_MAX)
         return;
+    rgb_color = color & 0xFFFFFF;
 
-    pixels = rt_pixels_new((int64_t)out_w, (int64_t)out_h);
-    if (!pixels)
-        return;
-    {
-        int64_t rgb_hi = ((color >> 16) & 0xFF);
-        int64_t rgb_mid = ((color >> 8) & 0xFF);
-        int64_t rgb_lo = (color & 0xFF);
-        double inv_scale = 1.0 / scale;
-        for (int32_t oy = 0; oy < out_h; oy++) {
-            for (int32_t ox = 0; ox < out_w; ox++) {
-                int hits = 0;
-                for (int sy = 0; sy < 4; sy++) {
-                    for (int sx = 0; sx < 4; sx++) {
-                        double fx = ((double)ox + ((double)sx + 0.5) * 0.25) * inv_scale;
-                        double fy = ((double)oy + ((double)sy + 0.5) * 0.25) * inv_scale;
-                        int32_t ci = (int32_t)(fx / 8.0);
-                        int32_t gx = (int32_t)fx - ci * 8;
-                        int32_t gy = (int32_t)fy;
-                        if (ci < 0 || (size_t)ci >= len || gx < 0 || gx > 7 || gy < 0 || gy > 7)
-                            continue;
-                        const uint8_t *glyph = rt_font_get_glyph((int)(unsigned char)str[ci]);
-                        if (glyph && (glyph[gy] & (uint8_t)(0x80u >> gx)))
-                            hits++;
+    pixels = canvas3d_find_aa_text_cache_entry(c, str, len, rgb_color, scale, out_w, out_h);
+    if (pixels) {
+        cache_owns_pixels = 1;
+    } else {
+        pixels = rt_pixels_new((int64_t)out_w, (int64_t)out_h);
+        if (!pixels)
+            return;
+        {
+            int64_t rgb_hi = ((rgb_color >> 16) & 0xFF);
+            int64_t rgb_mid = ((rgb_color >> 8) & 0xFF);
+            int64_t rgb_lo = (rgb_color & 0xFF);
+            double inv_scale = 1.0 / scale;
+            for (int32_t oy = 0; oy < out_h; oy++) {
+                for (int32_t ox = 0; ox < out_w; ox++) {
+                    int hits = 0;
+                    for (int sy = 0; sy < 4; sy++) {
+                        for (int sx = 0; sx < 4; sx++) {
+                            double fx = ((double)ox + ((double)sx + 0.5) * 0.25) * inv_scale;
+                            double fy = ((double)oy + ((double)sy + 0.5) * 0.25) * inv_scale;
+                            int32_t ci = (int32_t)(fx / 8.0);
+                            int32_t gx = (int32_t)fx - ci * 8;
+                            int32_t gy = (int32_t)fy;
+                            if (ci < 0 || (size_t)ci >= len || gx < 0 || gx > 7 || gy < 0 || gy > 7)
+                                continue;
+                            const uint8_t *glyph = rt_font_get_glyph((int)(unsigned char)str[ci]);
+                            if (glyph && (glyph[gy] & (uint8_t)(0x80u >> gx)))
+                                hits++;
+                        }
                     }
+                    if (hits == 0)
+                        continue;
+                    int64_t alpha = (int64_t)((hits * 255) / 16);
+                    int64_t packed = (rgb_hi << 24) | (rgb_mid << 16) | (rgb_lo << 8) | alpha;
+                    rt_pixels_set_rgba(pixels, ox, oy, packed);
                 }
-                if (hits == 0)
-                    continue;
-                int64_t alpha = (int64_t)((hits * 255) / 16);
-                int64_t packed = (rgb_hi << 24) | (rgb_mid << 16) | (rgb_lo << 8) | alpha;
-                rt_pixels_set_rgba(pixels, ox, oy, packed);
             }
         }
+        cache_owns_pixels = canvas3d_insert_aa_text_cache_entry(
+            c, str, len, rgb_color, scale, out_w, out_h, pixels);
     }
 
     if (!c->in_frame) {
         if (!canvas3d_begin_overlay_frame(c, 1)) {
-            if (rt_obj_release_check0(pixels))
+            if (!cache_owns_pixels && rt_obj_release_check0(pixels))
                 rt_obj_free(pixels);
             return;
         }
         started_temp_frame = 1;
     }
     if (!rt_canvas3d_add_temp_object(c, pixels)) {
-        if (rt_obj_release_check0(pixels))
+        if (!cache_owns_pixels && rt_obj_release_check0(pixels))
             rt_obj_free(pixels);
         if (started_temp_frame)
             rt_canvas3d_end(c);
         return;
     }
-    if (rt_obj_release_check0(pixels))
+    if (!cache_owns_pixels && rt_obj_release_check0(pixels))
         rt_obj_free(pixels); /* temp queue holds the surviving reference */
     (void)canvas3d_queue_screen_image_uv(
         c, (float)x, (float)y, (float)out_w, (float)out_h, pixels, 0.0f, 0.0f, 1.0f, 1.0f);
