@@ -13,6 +13,8 @@
 // Key invariants:
 //   - Only hoists instructions that are pure, non-trapping, and whose operands
 //     are defined outside the loop or are themselves loop-invariant.
+//   - Never hoists string loads, whose results carry one owned reference per
+//     dynamic execution.
 //   - Assumes LoopSimplify has provided dedicated preheader/latch blocks.
 // Ownership/Lifetime: Stateless FunctionPass; instantiated by the registry.
 // Links: il/transform/PassRegistry.hpp, il/transform/analysis/LoopInfo.hpp,
@@ -30,6 +32,7 @@ namespace il::transform {
 /// @details Hoists instructions whose operands are loop-invariant, whose opcode
 ///          is side-effect free and non-trapping, and (for loads) only when the
 ///          loop contains no memory writes (based on BasicAA/modref metadata).
+///          String loads are excluded because their results are ownership-bearing.
 ///          Assumes LoopSimplify has provided a dedicated preheader/latch.
 class LICM : public FunctionPass {
   public:

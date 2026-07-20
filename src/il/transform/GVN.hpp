@@ -14,6 +14,7 @@
 //   - Only eliminates side-effect-free, non-trapping computations.
 //   - Available loads are invalidated by intervening stores/calls that may
 //     clobber memory per BasicAA.
+//   - Ownership-bearing string loads are never treated as redundant.
 // Ownership/Lifetime: Stateless FunctionPass; instantiated by the registry.
 // Links: il/transform/PassRegistry.hpp, il/analysis/BasicAA.hpp,
 //        il/analysis/Dominators.hpp
@@ -31,7 +32,7 @@ namespace il::transform {
 ///          to pure instructions. Instructions with duplicate value numbers are
 ///          replaced with the dominating equivalent. Also performs redundant load
 ///          elimination using BasicAA memory disambiguation to track available
-///          memory values.
+///          memory values, excluding ownership-bearing string loads.
 class GVN : public FunctionPass {
   public:
     /// @brief Return the pass identifier string ("gvn").

@@ -386,6 +386,10 @@ PreservedAnalyses IfConvert::run(Function &function, AnalysisManager & /*analysi
             std::vector<Value> joinArgs;
             joinArgs.reserve(join.params.size());
             for (std::size_t i = 0; i < join.params.size(); ++i) {
+                if (valueEquals(trueArgs[i], falseArgs[i])) {
+                    joinArgs.push_back(trueArgs[i]);
+                    continue;
+                }
                 Instr sel;
                 sel.op = Opcode::Select;
                 sel.type = join.params[i].type;

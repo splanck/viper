@@ -15,6 +15,8 @@
 //   - Only rotates loops with a single latch and single exit.
 //   - SSA form maintained via block parameter threading.
 //   - Header must contain only a conditional branch (no side-effecting ops).
+//   - Range-demoted signed arithmetic is restored to checked form before the
+//     CFG rewrite can invalidate its verifier proof.
 // Ownership/Lifetime: Stateless FunctionPass instantiated by the registry.
 // Links: il/transform/PassRegistry.hpp, il/transform/analysis/LoopInfo.hpp
 //

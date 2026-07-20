@@ -7,6 +7,15 @@
 //
 // File: il/transform/LoopRotate.cpp
 // Purpose: Implements loop rotation (while → do-while transformation).
+// Key invariants:
+//   - Only single-latch, single-exit loops with duplicable headers rotate.
+//   - Header parameters used in the body are reconstructed as block params.
+//   - Plain signed arithmetic is restored to checked form before CFG changes
+//     can invalidate the range proof that allowed its demotion.
+// Ownership/Lifetime: Rewrites functions in place; analysis results and IL
+//                     values are borrowed for the duration of each attempt.
+// Links: il/transform/LoopRotate.hpp, il/transform/analysis/LoopInfo.hpp,
+//        il/analysis/IntRangeAnalysis.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -204,7 +213,7 @@ bool rotateLoop(Function &function, const Loop &loop) {
     const std::string headerLabel = function.blocks[headerIdx].label;
     const std::vector<Param> headerParams = function.blocks[headerIdx].params;
     const auto &headerBlockInstrs = function.blocks[headerIdx].instructions;
-    const std::vector<Instr> headerInstrs(headerBlockInstrs.begin(), headerBlockInstrs.end());
+    std::vector<Instr> headerInstrs(headerBlockInstrs.begin(), headerBlockInstrs.end());
     const Instr &headerTerm = headerInstrs.back();
 
     // Identify the body successor (inside loop) and exit successor (outside loop)
@@ -356,6 +365,37 @@ bool rotateLoop(Function &function, const Loop &loop) {
                 return false;
         }
     }
+
+    // Plain add/sub/mul instructions are accepted only while range analysis
+    // can prove that their checked counterparts cannot overflow. Rotation
+    // changes the control-flow facts reaching the body and latch, so that
+    // proof may no longer be reconstructible even though runtime semantics
+    // are unchanged. Restore checked form before committing the CFG rewrite;
+    // a later CheckOpt pass may demote instructions whose proof survives the
+    // rotated shape.
+    const auto restoreCheckedArithmetic = [](Instr &instr) {
+        switch (instr.op) {
+            case Opcode::Add:
+                instr.op = Opcode::IAddOvf;
+                break;
+            case Opcode::Sub:
+                instr.op = Opcode::ISubOvf;
+                break;
+            case Opcode::Mul:
+                instr.op = Opcode::IMulOvf;
+                break;
+            default:
+                break;
+        }
+    };
+    for (auto &block : function.blocks) {
+        if (loopLabels.count(block.label) == 0)
+            continue;
+        for (auto &instr : block.instructions)
+            restoreCheckedArithmetic(instr);
+    }
+    for (auto &instr : headerInstrs)
+        restoreCheckedArithmetic(instr);
 
     unsigned nextId = zanna::il::nextTempId(function);
 

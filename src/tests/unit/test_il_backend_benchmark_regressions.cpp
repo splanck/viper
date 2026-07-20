@@ -9,9 +9,9 @@
 // Purpose: Correctness regression tests for optimizer/backend issues that were first
 //          exposed by the Zanna benchmark suite. NOTE: despite the file name, these
 //          assert IL/result correctness only — they do NOT measure or gate performance.
-// Key invariants: Owned string materialization is not CSE/LICM-safe, O2 keeps
-//                 verifier-clean checked unsigned div/rem, and O2 has a
-//                 bounded multi-block inliner.
+// Key invariants: Owned string materialization and loads are not CSE/LICM-safe,
+//                 O2 keeps verifier-clean checked unsigned div/rem, and O2 has
+//                 a bounded multi-block inliner.
 // Ownership/Lifetime: Ephemeral modules only.
 // Links: docs/il/il-passes.md
 //
@@ -73,6 +73,16 @@ std::size_t countOpcode(const Module &module, Opcode opcode) {
         for (const auto &block : fn.blocks)
             for (const auto &instr : block.instructions)
                 if (instr.op == opcode)
+                    ++count;
+    return count;
+}
+
+std::size_t countStringLoads(const Module &module) {
+    std::size_t count = 0;
+    for (const auto &fn : module.functions)
+        for (const auto &block : fn.blocks)
+            for (const auto &instr : block.instructions)
+                if (instr.op == Opcode::Load && instr.type.kind == Type::Kind::Str)
                     ++count;
     return count;
 }
@@ -161,6 +171,75 @@ exit(%out:i64):
     assert(!hasCallTo(module, "rt_str_concat"));
 }
 
+void testO2DoesNotHoistOrMergeOwnedStringLoads() {
+    Module module = parseModule(R"(il 0.3.0
+extern @rt_str_concat(str, str) -> str
+extern @rt_str_len(str) -> i64
+extern @rt_str_release_maybe(str) -> void
+global const str @.Lbase = "slot"
+global const str @.Lsuffix = "key"
+func @main(%limit:i64) -> i64 {
+entry(%limit:i64):
+  %slot = alloca 8
+  %base = const_str @.Lbase
+  store str, %slot, %base
+  br loop(0, 0)
+loop(%i:i64, %sum:i64):
+  %done = scmp_ge %i, %limit
+  cbr %done, exit(%sum), body(%i, %sum)
+body(%bi:i64, %bsum:i64):
+  %a = load str, %slot
+  %sa = const_str @.Lsuffix
+  %ca = call @rt_str_concat(%a, %sa)
+  %na = call @rt_str_len(%ca)
+  call @rt_str_release_maybe(%ca)
+  %b = load str, %slot
+  %sb = const_str @.Lsuffix
+  %cb = call @rt_str_concat(%b, %sb)
+  %nb = call @rt_str_len(%cb)
+  call @rt_str_release_maybe(%cb)
+  %partial = iadd.ovf %bsum, %na
+  %next_sum = iadd.ovf %partial, %nb
+  %next_i = iadd.ovf %bi, 1
+  br loop(%next_i, %next_sum)
+exit(%out:i64):
+  %final = load str, %slot
+  call @rt_str_release_maybe(%final)
+  ret %out
+}
+)");
+    runO2(module);
+
+    // Each load produces an owned reference. The two body loads must remain
+    // distinct per iteration; hoisting or merging them lets concat consume the
+    // same reference repeatedly and frees the alloca's live string.
+    assert(countStringLoads(module) == 3);
+}
+
+void testGVNDoesNotMergeOwnedStringLoads() {
+    Module module = parseModule(R"(il 0.3.0
+extern @rt_str_release_maybe(str) -> void
+global const str @.Lbase = "slot"
+func @main() -> void {
+entry:
+  %slot = alloca 8
+  %base = const_str @.Lbase
+  store str, %slot, %base
+  %first = load str, %slot
+  %second = load str, %slot
+  call @rt_str_release_maybe(%first)
+  call @rt_str_release_maybe(%second)
+  ret
+}
+)");
+    il::transform::PassManager pm;
+    assert(pm.run(module, {"gvn"}));
+
+    // A string load mints one owned reference. Replacing the second load with
+    // the first result leaves two releases consuming a single reference.
+    assert(countStringLoads(module) == 2);
+}
+
 void testO2StrengthReducesCheckedUnsignedPowerOfTwoDivRem() {
     Module module = parseModule(R"(il 0.3.0
 func @main(%x:i64) -> i64 {
@@ -244,6 +323,8 @@ int main() {
     testConstStrOwnershipSemantics();
     testStringOwnershipMetadata();
     testO2DoesNotHoistOwnedConstStr();
+    testGVNDoesNotMergeOwnedStringLoads();
+    testO2DoesNotHoistOrMergeOwnedStringLoads();
     testO2StrengthReducesCheckedUnsignedPowerOfTwoDivRem();
     testO2InlineUsesSmallCfgBudget();
     testO2InlineMapsEntryParamsByPosition();
