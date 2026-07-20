@@ -498,6 +498,30 @@ static void test_metal_shader_source_uses_safe_normalization(void) {
     free(source);
 }
 
+static void test_metal_mipmap_generation_never_waits_on_cpu(void) {
+    char *source = read_metal_backend_sources();
+    const char *begin;
+    const char *end;
+    const char *commit;
+    const char *wait;
+
+    EXPECT_TRUE(source != NULL,
+                "Metal backend source chunks are readable for mipmap synchronization checks");
+    if (!source)
+        return;
+    begin = strstr(source, "static void metal_generate_mipmaps");
+    end = begin ? strstr(begin, "\n}\n") : NULL;
+    EXPECT_TRUE(begin != NULL && end != NULL, "Metal mipmap helper body is present");
+    if (begin && end) {
+        commit = strstr(begin, "[cmd_buf commit]");
+        wait = strstr(begin, "waitUntilCompleted");
+        EXPECT_TRUE(commit != NULL && commit < end, "Metal mipmap helper commits its blit work");
+        EXPECT_TRUE(wait == NULL || wait >= end,
+                    "Metal mipmap helper never blocks the CPU for GPU completion");
+    }
+    free(source);
+}
+
 int main(void) {
     test_pack_bone_palette_identity_pads_unused_bones();
     test_pack_bone_palette_identity_pads_empty_source();
@@ -508,6 +532,7 @@ int main(void) {
     test_capacity_mip_and_morph_cache_helpers();
     test_shadow_projection_helper_handles_orthographic_and_perspective();
     test_metal_shader_source_uses_safe_normalization();
+    test_metal_mipmap_generation_never_waits_on_cpu();
 
     printf("vgfx3d metal shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

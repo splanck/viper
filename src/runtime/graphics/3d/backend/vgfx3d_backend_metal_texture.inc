@@ -872,4 +872,3 @@ static void metal_ensure_instance_storage(VGFXMetalContext *ctx, int32_t instanc
         ctx.instanceCapacity = (NSUInteger)next_capacity;
     }
 }
-

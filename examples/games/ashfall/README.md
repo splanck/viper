@@ -18,12 +18,32 @@ were removed from all nine missions.
 
 ## Running
 
+Ashfall's interactive workload is intended for a release-mode native binary.
+The bytecode VM remains useful for bounded probes, but is not a real-time game
+execution target; interactive VM launches exit with the native build command
+instead of opening an unplayably slow window.
+
 ```sh
-# From a built Zanna checkout:
-build/src/tools/zanna/zanna run examples/games/ashfall/main.zia
-build/src/tools/zanna/zanna run examples/games/ashfall/main.zia -- --windowed
-build/src/tools/zanna/zanna run examples/games/ashfall/main.zia -- --level 1
+# macOS/Linux, from a built Zanna checkout:
+mkdir -p examples/bin
+build/src/tools/zanna/zanna build examples/games/ashfall \
+  --build-profile release -o examples/bin/ashfall
+
+./examples/bin/ashfall
+./examples/bin/ashfall --windowed
+./examples/bin/ashfall --windowed --level 1
+
+# The bounded headless smoke may still run in the VM:
 build/src/tools/zanna/zanna run examples/games/ashfall/main.zia -- --smoke
+```
+
+On Windows, use the built or installed `zanna.exe`, select an `.exe` output,
+then launch it from PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force examples/bin | Out-Null
+zanna build examples/games/ashfall --build-profile release -o examples/bin/ashfall.exe
+.\examples\bin\ashfall.exe --windowed
 ```
 
 Fullscreen is the default. `--windowed` forces a window, `--level 1` through
@@ -109,12 +129,12 @@ probes/     deterministic Ashfall-specific validation programs
 
 ## Direct validation
 
-The 13 probes can be run without ctest:
+The 14 portable probes can be run without ctest:
 
 ```sh
 zanna check examples/games/ashfall --diagnostic-format=json
 
-for probe in core movement perf combat enemy level manifest meta render campaign menu assets smoke; do
+for probe in core movement perf stress_combat combat enemy level manifest meta render campaign menu assets smoke; do
   zanna run "examples/games/ashfall/probes/${probe}_probe.zia"
 done
 ```
@@ -123,6 +143,17 @@ They cover compiler cleanliness, deterministic simulation, movement, budgets,
 weapons/damage/audio mapping, AI/navigation/bosses, every level and hazard,
 manifest round-trip, meta progression, rendering, the full nine-level campaign,
 menus/accessibility/checkpoints, asset fallback, and bounded smoke execution.
+
+For real GPU timing, build the dedicated benchmark natively. It sweeps all nine
+campaign levels without presentation pacing; `--paced` additionally validates
+frame delivery at the display's actual refresh rate:
+
+```sh
+zanna build examples/games/ashfall/probes/gpu_perf_probe.zia \
+  --build-profile release -o /tmp/ashfall_gpu_perf
+/tmp/ashfall_gpu_perf
+/tmp/ashfall_gpu_perf --paced
+```
 
 See `misc/plans/fps/` for the original design material and [CREDITS.md](CREDITS.md)
 for asset licensing.

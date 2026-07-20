@@ -2,18 +2,20 @@
 // probes/perf_probe.zia — the standing perf harness (arena + load)
 // =============================================================================
 //
-// Boots the arena and runs a fixed number of simulation steps under load,
-// printing a machine-readable line (`fps= frame_ms= draws= culled= ...`) in the
-// open-world slice-probe format so later phases can diff against the P1 baseline.
-// Headless (software) it measures simulation cost; on Metal it is re-run by hand
-// for real frame timing. It never fails on perf (perf is a recorded metric, not
-// a hard gate here) — it fails only on a trap or a budget assertion.
+// Boots the arena and runs fixed simulation and software-render workloads,
+// printing measured wall time plus live renderer/physics counters. This probe
+// remains a portable CTest budget/trap gate; gpu_perf_probe.zia is the bounded
+// native benchmark for real presentation backends. It never hard-fails on a
+// timing threshold because shared CI hosts vary, but its values are real and
+// machine-readable for regression comparisons.
 // =============================================================================
 module perf_probe;
 
+bind Zanna.Graphics3D as G3D;
 bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Time.Clock as Clock;
 bind "../config" as config;
-bind "../core/strings" as S;
 bind "../game" as game;
 
 func start() {
@@ -26,6 +28,7 @@ func start() {
     // Drive continuous motion so the character controller + physics stay hot.
     var steps = 600;
     var i = 0;
+    var simStart = Clock.NowMicros();
     while i < steps {
         var mz = 1.0;
         if (i / 60) % 2 == 1 { mz = -1.0; }
@@ -35,6 +38,25 @@ func start() {
         g.stepPhysics(config.FIXED_DT);
         i = i + 1;
     }
+    var simUs = Clock.NowMicros() - simStart;
+
+    // Exercise the complete draw/HUD submission path at the deterministic
+    // 160x90 software-probe resolution. The warmup fills persistent caches so
+    // the measured block represents steady state rather than one-time setup.
+    var canvas = g.getCanvas();
+    i = 0;
+    while i < 8 {
+        g.devRenderFrame();
+        i = i + 1;
+    }
+    var renderFrames = 30;
+    var renderStart = Clock.NowMicros();
+    i = 0;
+    while i < renderFrames {
+        g.devRenderFrame();
+        i = i + 1;
+    }
+    var renderUs = Clock.NowMicros() - renderStart;
 
     var diag = g.getDiag();
     if diag.hasFailed() {
@@ -42,12 +64,17 @@ func start() {
         return;
     }
 
-    // Machine-readable telemetry line (sim-side; render timing added on Metal).
-    Terminal.Say("perf steps=" + S.intStr(steps) +
-                 " enemies=" + S.intStr(0) +
-                 " proj=" + S.intStr(0) +
-                 " draws=" + S.intStr(0) +
+    Terminal.Say("perf steps=" + Fmt.Int(steps) +
+                 " sim_ms=" + Fmt.NumFixed((simUs + 0.0) / 1000.0, 3) +
+                 " sim_us_per_step=" + Fmt.NumFixed((simUs + 0.0) / steps, 3) +
+                 " render_frames=" + Fmt.Int(renderFrames) +
+                 " render_avg_ms=" + Fmt.NumFixed((renderUs + 0.0) / (renderFrames * 1000.0), 3) +
+                 " draws=" + Fmt.Int(canvas.DrawsSubmitted) +
+                 " culled=" + Fmt.Int(canvas.FrustumCulledDrawCount + canvas.CpuOccludedDrawCount) +
+                 " active_bodies=" + Fmt.Int(g.getPhys().LastSolverActiveBodyCount) +
+                 " upload_bytes=" + Fmt.Int(canvas.TextureUploadBytes) +
                  " budgets=clean");
+    g.getWorld().Destroy();
     Terminal.Say("RESULT: ok");
     Terminal.Say("PASS");
 }

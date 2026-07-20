@@ -1,0 +1,147 @@
+// =============================================================================
+// probes/gpu_perf_probe.zia — bounded native Ashfall frame benchmark
+// =============================================================================
+//
+// Boots the real windowed presentation path, sweeps all nine campaign levels,
+// warms procedural textures and render pipelines, disables presentation
+// pacing, and records wall/GPU/pass time plus draw, culling, and upload
+// telemetry. This is a developer benchmark rather than a CTest: compile it
+// natively on the target GPU so results measure frame headroom, not VM overhead.
+// =============================================================================
+module gpu_perf_probe;
+
+bind Zanna.Graphics3D as G3D;
+bind Zanna.System.Environment as Env;
+bind Zanna.Terminal as Terminal;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Time.Clock as Clock;
+bind "../config" as config;
+bind "../game" as game;
+
+var measuredFrames: Integer = 0;
+var measuredUs: Integer = 0;
+var worstFrameUs: Integer = 0;
+var worstFrameLevel: Integer = 0;
+var worstAverageMs: Float = 0.0;
+var worstAverageLevel: Integer = 0;
+var peakUploadBytes: Integer = 0;
+var presentationPaced: Boolean = false;
+
+func hasArg(wanted: String) -> Boolean {
+    var count = Env.GetArgumentCount();
+    var i = 0;
+    while i < count {
+        if Env.GetArgument(i) == wanted { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func step(g: game.Game) {
+    g.tickSim(config.FIXED_DT);
+    g.stepPhysics(config.FIXED_DT);
+    g.devRenderFrame();
+}
+
+func benchmarkLevel(g: game.Game, canvas: G3D.Canvas3D, level: Integer) {
+    var loadStart = Clock.NowMicros();
+    g.loadCampaignLevel(level);
+    var loadUs = Clock.NowMicros() - loadStart;
+
+    // Drain first-use uploads and pipeline setup outside the steady-state
+    // sample while still reporting the level-load wall time separately.
+    var warmup = 30;
+    var i = 0;
+    while i < warmup {
+        step(g);
+        i = i + 1;
+    }
+
+    var frames = 90;
+    var totalGpuUs = 0;
+    var maxGpuUs = 0;
+    var maxFrameUs = 0;
+    var totalUploads = 0;
+    var maxUploads = 0;
+    var runStart = Clock.NowMicros();
+    i = 0;
+    while i < frames {
+        var frameStart = Clock.NowMicros();
+        step(g);
+        var frameUs = Clock.NowMicros() - frameStart;
+        var gpuUs = canvas.FrameGpuTimeUs;
+        var uploads = canvas.TextureUploadBytes;
+        if frameUs > maxFrameUs { maxFrameUs = frameUs; }
+        if gpuUs > maxGpuUs { maxGpuUs = gpuUs; }
+        if uploads > maxUploads { maxUploads = uploads; }
+        totalGpuUs = totalGpuUs + gpuUs;
+        totalUploads = totalUploads + uploads;
+        i = i + 1;
+    }
+    var elapsedUs = Clock.NowMicros() - runStart;
+    var avgMs = (elapsedUs + 0.0) / (frames * 1000.0);
+    var fps = (frames * 1000000.0) / elapsedUs;
+    var avgGpuMs = (totalGpuUs + 0.0) / (frames * 1000.0);
+
+    measuredFrames = measuredFrames + frames;
+    measuredUs = measuredUs + elapsedUs;
+    if maxFrameUs > worstFrameUs {
+        worstFrameUs = maxFrameUs;
+        worstFrameLevel = level;
+    }
+    if avgMs > worstAverageMs {
+        worstAverageMs = avgMs;
+        worstAverageLevel = level;
+    }
+    if maxUploads > peakUploadBytes { peakUploadBytes = maxUploads; }
+
+    Terminal.Say("PERF_LEVEL: level=" + Fmt.Int(level) +
+                 " load_ms=" + Fmt.NumFixed((loadUs + 0.0) / 1000.0, 3) +
+                 " frames=" + Fmt.Int(frames) +
+                 " avg_ms=" + Fmt.NumFixed(avgMs, 3) +
+                 " fps=" + Fmt.NumFixed(fps, 3) +
+                 " max_ms=" + Fmt.NumFixed((maxFrameUs + 0.0) / 1000.0, 3) +
+                 " avg_gpu_ms=" + Fmt.NumFixed(avgGpuMs, 3) +
+                 " max_gpu_ms=" + Fmt.NumFixed((maxGpuUs + 0.0) / 1000.0, 3) +
+                 " draws=" + Fmt.Int(canvas.DrawsSubmitted) +
+                 " culled=" + Fmt.Int(canvas.FrustumCulledDrawCount + canvas.CpuOccludedDrawCount) +
+                 " avg_upload_bytes=" + Fmt.NumFixed((totalUploads + 0.0) / frames, 1) +
+                 " max_upload_bytes=" + Fmt.Int(maxUploads));
+}
+
+func start() {
+    var g = new game.Game();
+    g.initCore(0xA55FA11);
+    g.setScripted(true);
+    g.setFullscreen(false);
+    g.getSave().setupTransient();
+    g.setLevel(config.LV_L1);
+    g.boot(false, false);
+
+    var canvas = g.getCanvas();
+    presentationPaced = hasArg("--paced");
+    if presentationPaced == false { G3D.Canvas3D.SetVSync(canvas, false); }
+
+    var level = config.LV_L1;
+    while level <= config.LV_L9 {
+        benchmarkLevel(g, canvas, level);
+        level = level + 1;
+    }
+
+    Terminal.Say("PERF: backend=" + canvas.Backend +
+                 " paced=" + toString(presentationPaced) +
+                 " levels=9 frames=" + Fmt.Int(measuredFrames) +
+                 " elapsed_ms=" + Fmt.NumFixed((measuredUs + 0.0) / 1000.0, 3) +
+                 " avg_ms=" + Fmt.NumFixed((measuredUs + 0.0) / (measuredFrames * 1000.0), 3) +
+                 " fps=" + Fmt.NumFixed((measuredFrames * 1000000.0) / measuredUs, 3) +
+                 " worst_avg_ms=" + Fmt.NumFixed(worstAverageMs, 3) +
+                 " worst_avg_level=" + Fmt.Int(worstAverageLevel) +
+                 " worst_frame_ms=" + Fmt.NumFixed((worstFrameUs + 0.0) / 1000.0, 3) +
+                 " worst_frame_level=" + Fmt.Int(worstFrameLevel) +
+                 " peak_upload_bytes=" + Fmt.Int(peakUploadBytes) +
+                 " render_scale=" + Fmt.NumFixed(canvas.RenderScale, 3));
+
+    g.getWorld().Destroy();
+    Terminal.Say("RESULT: ok");
+    Terminal.Say("PASS");
+}

@@ -267,8 +267,11 @@ static id<MTLTexture> metal_new_depth_texture(VGFXMetalContext *ctx,
     return [ctx.device newTextureWithDescriptor:td];
 }
 
-/// @brief Generate the full mip chain for a texture via a one-shot blit encoder (blocks until
-/// done).
+/// @brief Generate the full mip chain for a texture via a one-shot blit encoder.
+/// @details The command buffer is committed without a CPU wait. It uses the same serial Metal
+///   command queue as frame rendering, so a subsequently committed draw buffer cannot sample the
+///   texture before mip generation completes. Waiting here turns every cache miss into a main-
+///   thread/GPU round trip and causes persistent frame hitches when content streams in.
 static void metal_generate_mipmaps(VGFXMetalContext *ctx, id<MTLTexture> texture) {
     id<MTLCommandBuffer> cmd_buf;
     id<MTLBlitCommandEncoder> blit;
@@ -284,7 +287,6 @@ static void metal_generate_mipmaps(VGFXMetalContext *ctx, id<MTLTexture> texture
     [blit generateMipmapsForTexture:texture];
     [blit endEncoding];
     [cmd_buf commit];
-    [cmd_buf waitUntilCompleted];
 }
 
 /// @brief Evict texture-cache entries that are empty or older than the max-age threshold.

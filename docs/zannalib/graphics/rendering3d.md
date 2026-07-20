@@ -612,7 +612,7 @@ paths are not GPU occlusion queries or Hi-Z culling.
 |--------|-----------|-------------|
 | `SetFrustumCulling(enabled)` | `Void(Boolean)` | Toggle frustum rejection (default on) |
 | `SetOcclusionCulling(enabled)` | `Void(Boolean)` | Toggle conservative CPU occlusion skips (independent of frustum culling) |
-| `SetVSync(enabled)` | `Void(Boolean)` | Present pacing: vsync defaults on; disabling presents immediately for lowest latency where `BackendSupports("vsync-control")` |
+| `SetVSync(enabled)` | `Void(Boolean)` | Present pacing: vsync defaults on; GPU backends use their native display-sync clock, software presentation uses the window frame limiter, and disabling removes the active limiter for lowest latency |
 | `VSync` | `Boolean` | Requested vsync state |
 | `TrySetRenderScale(scale)` | `Boolean(Double)` | Render the window-backed 3D scene at `scale` x output size (`[0.25, 1]`) and upscale before full-size overlays, readback, and presentation; reduced scales require `BackendSupports("render-scale")`. `>= 1` requests native rendering even on fixed-scale backends. A capable backend can return `false` during an active frame/present transaction or if target allocation fails; the previous scale remains active. Explicit render targets retain their authored size. |
 | `RenderScale` | `Double` | Currently requested render scale (`1` = native) |

@@ -730,6 +730,23 @@ typedef struct {
     float *snapshot;
 } rt_canvas3d_float_snapshot_entry;
 
+/// @brief Persistent raster cache entry for one DrawText2DAA result.
+/// @details The legacy AA path rasterizes into Pixels and submits a textured overlay quad. Keeping
+///          the Pixels alive across frames prevents unchanged HUD labels from allocating and
+///          uploading a fresh GPU texture on every draw. Entries own both @p text and @p pixels;
+///          the canvas releases them on LRU eviction or teardown.
+typedef struct {
+    char *text;
+    size_t text_len;
+    void *pixels;
+    size_t retained_bytes;
+    double scale;
+    int64_t color;
+    int64_t last_used_frame;
+    int32_t width;
+    int32_t height;
+} rt_canvas3d_aa_text_cache_entry;
+
 /// @brief CPU occlusion history entry keyed by stable draw identity.
 /// @details Coarse occlusion culling is intentionally delayed for objects that have only just
 ///          become covered. Requiring repeated covered results prevents one-frame projected-AABB
@@ -1231,6 +1248,9 @@ typedef struct {
     int32_t text_vertex_capacity;
     uint32_t *text_indices;
     int32_t text_index_capacity;
+    rt_canvas3d_aa_text_cache_entry *aa_text_cache;
+    int32_t aa_text_cache_count;
+    size_t aa_text_cache_bytes;
 
     /* Distance fog */
     int8_t fog_enabled;
@@ -1239,8 +1259,10 @@ typedef struct {
     float fog_color[3];
 
     /* Present pacing: requested vsync state (default on); applied through the
-     * backend set_vsync hook when available. */
+     * backend set_vsync hook when available. GPU backends own their pacing;
+     * software_frame_limit preserves the vgfx creation cap for the CPU backend. */
     int8_t vsync_enabled;
+    int32_t software_frame_limit;
 
     /* Requested scene render scale (1 = native); applied through the backend
      * set_render_scale hook when supported. */
@@ -1881,6 +1903,18 @@ int canvas3d_track_temp_object(rt_canvas3d *c, void *obj);
 void canvas3d_release_tracked_temp_object(rt_canvas3d *c, void *obj);
 void canvas3d_clear_temp_buffers(rt_canvas3d *c);
 void canvas3d_clear_temp_objects(rt_canvas3d *c);
+/// @brief Release every persistent DrawText2DAA raster owned by @p c.
+void canvas3d_clear_aa_text_cache(rt_canvas3d *c);
+
+/// @brief Resolve the vgfx frame limiter for Canvas3D's selected presentation path.
+/// @details Native GPU backends pace through swap-interval/display-sync APIs and must leave
+///          vgfx unlimited to avoid a second independent limiter. The software backend retains
+///          the window's configured creation limit while requested vsync is enabled.
+static inline int32_t canvas3d_window_pacing_fps(int software_backend,
+                                                 int vsync_enabled,
+                                                 int32_t software_frame_limit) {
+    return software_backend && vsync_enabled ? software_frame_limit : -1;
+}
 #ifdef __cplusplus
 extern "C" {
 #endif
