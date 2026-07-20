@@ -35,17 +35,41 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#include <initguid.h>
 #include <oleauto.h>
 #include <uiautomationcore.h>
 #include <uiautomationcoreapi.h>
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "vg_event.h"
 #include "vg_ide_widgets.h"
 #include "vg_widgets.h"
+
+//=============================================================================
+// COM GUIDs
+//=============================================================================
+
+/* Define GUIDs we need so native Zanna links do not depend on uuid.lib. */
+static const GUID RT_UIA_IID_IUnknown = {
+    0x00000000, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
+static const GUID RT_UIA_IID_IRawElementProviderSimple = {
+    0xD6DD68D1, 0x86FD, 0x4332, {0x86, 0x66, 0x9A, 0xBE, 0xDE, 0xA2, 0xD2, 0x4C}};
+static const GUID RT_UIA_IID_IRawElementProviderFragment = {
+    0xF7063DA8, 0x8359, 0x439C, {0x92, 0x97, 0xBB, 0xC5, 0x29, 0x9A, 0x7D, 0x87}};
+static const GUID RT_UIA_IID_IRawElementProviderFragmentRoot = {
+    0x620CE2A5, 0xAB8F, 0x40A9, {0x86, 0xCB, 0xDE, 0x3C, 0x75, 0x59, 0x9B, 0x58}};
+static const GUID RT_UIA_IID_IInvokeProvider = {
+    0x54FCB24B, 0xE18E, 0x47A2, {0xB4, 0xD3, 0xEC, 0xCB, 0xE7, 0x75, 0x99, 0xA2}};
+static const GUID RT_UIA_IID_IToggleProvider = {
+    0x56D00BD0, 0xC4F4, 0x433C, {0xA8, 0x36, 0x1A, 0x52, 0xA5, 0x7E, 0x08, 0x92}};
+static const GUID RT_UIA_IID_IValueProvider = {
+    0xC7935180, 0x6FB3, 0x4201, {0xB1, 0x74, 0x7D, 0xF7, 0x3A, 0xDB, 0xF6, 0x4A}};
+static const GUID RT_UIA_IID_IRangeValueProvider = {
+    0x36DC7AEF, 0x33E6, 0x4691, {0xAF, 0xE1, 0x2B, 0xE7, 0x27, 0x4B, 0x3D, 0x33}};
+static const GUID RT_UIA_IID_ISelectionItemProvider = {
+    0x2ACAD808, 0xB2D4, 0x452D, {0xA4, 0x07, 0x91, 0xFF, 0x1A, 0xD1, 0x67, 0xB2}};
 
 //=============================================================================
 // Protocol constants (stable UIA wire values, guarded for older SDKs)
@@ -147,11 +171,8 @@ typedef HRESULT(WINAPI *rt_uia_raise_prop_fn)(IRawElementProviderSimple *,
                                               VARIANT);
 typedef BOOL(WINAPI *rt_uia_clients_listening_fn)(void);
 typedef HRESULT(WINAPI *rt_uia_disconnect_fn)(IRawElementProviderSimple *);
-typedef HRESULT(WINAPI *rt_uia_raise_notification_fn)(IRawElementProviderSimple *,
-                                                      int,
-                                                      int,
-                                                      BSTR,
-                                                      BSTR);
+typedef HRESULT(WINAPI *rt_uia_raise_notification_fn)(
+    IRawElementProviderSimple *, int, int, BSTR, BSTR);
 
 typedef struct rt_uia_api {
     int32_t attempted;
@@ -178,8 +199,8 @@ static rt_uia_api_t *rt_uia_api(void) {
                 g_rt_uia_api.module, "UiaReturnRawElementProvider");
             g_rt_uia_api.host_provider_from_hwnd = (rt_uia_host_from_hwnd_fn)GetProcAddress(
                 g_rt_uia_api.module, "UiaHostProviderFromHwnd");
-            g_rt_uia_api.raise_automation_event =
-                (rt_uia_raise_event_fn)GetProcAddress(g_rt_uia_api.module, "UiaRaiseAutomationEvent");
+            g_rt_uia_api.raise_automation_event = (rt_uia_raise_event_fn)GetProcAddress(
+                g_rt_uia_api.module, "UiaRaiseAutomationEvent");
             g_rt_uia_api.raise_property_changed_event = (rt_uia_raise_prop_fn)GetProcAddress(
                 g_rt_uia_api.module, "UiaRaiseAutomationPropertyChangedEvent");
             g_rt_uia_api.clients_are_listening = (rt_uia_clients_listening_fn)GetProcAddress(
@@ -370,10 +391,10 @@ static int32_t rt_uia_activate(vg_widget_t *widget) {
 typedef struct rt_uia_provider rt_uia_provider_t;
 
 typedef struct rt_uia_window_bridge {
-    vgfx_window_t window;      ///< Borrowed owning ZannaGFX window; NULL = free slot.
-    HWND hwnd;                 ///< Native window answering WM_GETOBJECT.
-    vg_widget_t *root;         ///< Borrowed semantic root widget.
-    uint64_t root_id;          ///< Immutable ID guarding the root pointer.
+    vgfx_window_t window;             ///< Borrowed owning ZannaGFX window; NULL = free slot.
+    HWND hwnd;                        ///< Native window answering WM_GETOBJECT.
+    vg_widget_t *root;                ///< Borrowed semantic root widget.
+    uint64_t root_id;                 ///< Immutable ID guarding the root pointer.
     rt_uia_provider_t *root_provider; ///< Bridge-owned root provider reference.
 } rt_uia_window_bridge_t;
 
@@ -412,7 +433,7 @@ struct rt_uia_provider {
 };
 
 #define RT_UIA_FROM(iface, member)                                                                 \
-    ((rt_uia_provider_t *)((char *)(iface)-offsetof(rt_uia_provider_t, member)))
+    ((rt_uia_provider_t *)((char *)(iface) - offsetof(rt_uia_provider_t, member)))
 
 static rt_uia_provider_t *rt_uia_provider_create(rt_uia_window_bridge_t *bridge,
                                                  vg_widget_t *widget);
@@ -436,27 +457,29 @@ static HRESULT rt_uia_provider_qi(rt_uia_provider_t *provider, REFIID riid, void
     vg_widget_t *widget = rt_uia_resolve(provider);
     vg_accessible_role_t role = widget ? widget->accessibility.role : VG_ACCESSIBLE_ROLE_NONE;
 
-    if (IsEqualIID(riid, &IID_IUnknown) || IsEqualIID(riid, &IID_IRawElementProviderSimple)) {
+    if (IsEqualIID(riid, &RT_UIA_IID_IUnknown) ||
+        IsEqualIID(riid, &RT_UIA_IID_IRawElementProviderSimple)) {
         *out = &provider->simple;
-    } else if (IsEqualIID(riid, &IID_IRawElementProviderFragment)) {
+    } else if (IsEqualIID(riid, &RT_UIA_IID_IRawElementProviderFragment)) {
         *out = &provider->fragment;
-    } else if (IsEqualIID(riid, &IID_IRawElementProviderFragmentRoot) && provider->is_root) {
+    } else if (IsEqualIID(riid, &RT_UIA_IID_IRawElementProviderFragmentRoot) && provider->is_root) {
         *out = &provider->fragment_root;
-    } else if (IsEqualIID(riid, &IID_IInvokeProvider) &&
+    } else if (IsEqualIID(riid, &RT_UIA_IID_IInvokeProvider) &&
                (role == VG_ACCESSIBLE_ROLE_BUTTON || role == VG_ACCESSIBLE_ROLE_MENUITEM ||
                 role == VG_ACCESSIBLE_ROLE_LINK)) {
         *out = &provider->invoke;
-    } else if (IsEqualIID(riid, &IID_IToggleProvider) && role == VG_ACCESSIBLE_ROLE_CHECKBOX) {
+    } else if (IsEqualIID(riid, &RT_UIA_IID_IToggleProvider) &&
+               role == VG_ACCESSIBLE_ROLE_CHECKBOX) {
         *out = &provider->toggle;
-    } else if (IsEqualIID(riid, &IID_IValueProvider) &&
+    } else if (IsEqualIID(riid, &RT_UIA_IID_IValueProvider) &&
                (role == VG_ACCESSIBLE_ROLE_TEXTBOX || role == VG_ACCESSIBLE_ROLE_SEARCHBOX ||
                 role == VG_ACCESSIBLE_ROLE_COMBOBOX)) {
         *out = &provider->value;
-    } else if (IsEqualIID(riid, &IID_IRangeValueProvider) &&
+    } else if (IsEqualIID(riid, &RT_UIA_IID_IRangeValueProvider) &&
                (role == VG_ACCESSIBLE_ROLE_SLIDER || role == VG_ACCESSIBLE_ROLE_PROGRESSBAR ||
                 (widget && widget->type == VG_WIDGET_SPINNER))) {
         *out = &provider->range_value;
-    } else if (IsEqualIID(riid, &IID_ISelectionItemProvider) &&
+    } else if (IsEqualIID(riid, &RT_UIA_IID_ISelectionItemProvider) &&
                (role == VG_ACCESSIBLE_ROLE_RADIOBUTTON || role == VG_ACCESSIBLE_ROLE_LISTITEM ||
                 role == VG_ACCESSIBLE_ROLE_TREEITEM || role == VG_ACCESSIBLE_ROLE_TAB ||
                 role == VG_ACCESSIBLE_ROLE_ROW)) {
@@ -497,8 +520,8 @@ static ULONG rt_uia_provider_release(rt_uia_provider_t *provider) {
 
 RT_UIA_IUNKNOWN_THUNKS(rt_uia_simple, IRawElementProviderSimple, simple)
 
-static HRESULT STDMETHODCALLTYPE rt_uia_simple_get_ProviderOptions(
-    IRawElementProviderSimple *iface, enum ProviderOptions *out) {
+static HRESULT STDMETHODCALLTYPE rt_uia_simple_get_ProviderOptions(IRawElementProviderSimple *iface,
+                                                                   enum ProviderOptions *out) {
     (void)iface;
     if (!out)
         return E_POINTER;
@@ -506,28 +529,29 @@ static HRESULT STDMETHODCALLTYPE rt_uia_simple_get_ProviderOptions(
     return S_OK;
 }
 
-static HRESULT STDMETHODCALLTYPE rt_uia_simple_GetPatternProvider(
-    IRawElementProviderSimple *iface, PATTERNID pattern_id, IUnknown **out) {
+static HRESULT STDMETHODCALLTYPE rt_uia_simple_GetPatternProvider(IRawElementProviderSimple *iface,
+                                                                  PATTERNID pattern_id,
+                                                                  IUnknown **out) {
     rt_uia_provider_t *provider = RT_UIA_FROM(iface, simple);
     if (!out)
         return E_POINTER;
     *out = NULL;
-    REFIID riid = NULL;
+    const IID *riid = NULL;
     switch (pattern_id) {
         case UIA_InvokePatternId:
-            riid = &IID_IInvokeProvider;
+            riid = &RT_UIA_IID_IInvokeProvider;
             break;
         case UIA_TogglePatternId:
-            riid = &IID_IToggleProvider;
+            riid = &RT_UIA_IID_IToggleProvider;
             break;
         case UIA_ValuePatternId:
-            riid = &IID_IValueProvider;
+            riid = &RT_UIA_IID_IValueProvider;
             break;
         case UIA_RangeValuePatternId:
-            riid = &IID_IRangeValueProvider;
+            riid = &RT_UIA_IID_IRangeValueProvider;
             break;
         case UIA_SelectionItemPatternId:
-            riid = &IID_ISelectionItemProvider;
+            riid = &RT_UIA_IID_ISelectionItemProvider;
             break;
         default:
             return S_OK;
@@ -541,8 +565,9 @@ static HRESULT STDMETHODCALLTYPE rt_uia_simple_GetPatternProvider(
     return S_OK;
 }
 
-static HRESULT STDMETHODCALLTYPE rt_uia_simple_GetPropertyValue(
-    IRawElementProviderSimple *iface, PROPERTYID property_id, VARIANT *out) {
+static HRESULT STDMETHODCALLTYPE rt_uia_simple_GetPropertyValue(IRawElementProviderSimple *iface,
+                                                                PROPERTYID property_id,
+                                                                VARIANT *out) {
     rt_uia_provider_t *provider = RT_UIA_FROM(iface, simple);
     if (!out)
         return E_POINTER;
@@ -573,8 +598,8 @@ static HRESULT STDMETHODCALLTYPE rt_uia_simple_GetPropertyValue(
             break;
         case UIA_IsKeyboardFocusablePropertyId:
             out->vt = VT_BOOL;
-            out->boolVal = rt_uia_role_focusable(widget->accessibility.role) ? VARIANT_TRUE
-                                                                              : VARIANT_FALSE;
+            out->boolVal =
+                rt_uia_role_focusable(widget->accessibility.role) ? VARIANT_TRUE : VARIANT_FALSE;
             break;
         case UIA_AutomationIdPropertyId: {
             out->vt = VT_BSTR;
@@ -582,11 +607,10 @@ static HRESULT STDMETHODCALLTYPE rt_uia_simple_GetPropertyValue(
                 out->bstrVal = rt_uia_bstr(widget->name);
             } else {
                 char generated[48];
-                _snprintf_s(generated,
-                            sizeof(generated),
-                            _TRUNCATE,
-                            "zanna-widget-%llu",
-                            (unsigned long long)widget->id);
+                (void)snprintf(generated,
+                               sizeof(generated),
+                               "zanna-widget-%llu",
+                               (unsigned long long)widget->id);
                 out->bstrVal = rt_uia_bstr(generated);
             }
             break;
@@ -595,7 +619,7 @@ static HRESULT STDMETHODCALLTYPE rt_uia_simple_GetPropertyValue(
         case UIA_IsContentElementPropertyId:
             out->vt = VT_BOOL;
             out->boolVal = widget->accessibility.role != VG_ACCESSIBLE_ROLE_NONE ? VARIANT_TRUE
-                                                                                  : VARIANT_FALSE;
+                                                                                 : VARIANT_FALSE;
             break;
         default:
             break;
@@ -640,9 +664,9 @@ static IRawElementProviderFragment *rt_uia_fragment_for(rt_uia_window_bridge_t *
     return provider ? &provider->fragment : NULL;
 }
 
-static HRESULT STDMETHODCALLTYPE rt_uia_fragment_Navigate(
-    IRawElementProviderFragment *iface, enum NavigateDirection direction,
-    IRawElementProviderFragment **out) {
+static HRESULT STDMETHODCALLTYPE rt_uia_fragment_Navigate(IRawElementProviderFragment *iface,
+                                                          enum NavigateDirection direction,
+                                                          IRawElementProviderFragment **out) {
     rt_uia_provider_t *provider = RT_UIA_FROM(iface, fragment);
     if (!out)
         return E_POINTER;
@@ -723,8 +747,8 @@ static HRESULT STDMETHODCALLTYPE rt_uia_fragment_GetRuntimeId(IRawElementProvide
     return S_OK;
 }
 
-static HRESULT STDMETHODCALLTYPE rt_uia_fragment_get_BoundingRectangle(
-    IRawElementProviderFragment *iface, struct UiaRect *out) {
+static HRESULT STDMETHODCALLTYPE
+rt_uia_fragment_get_BoundingRectangle(IRawElementProviderFragment *iface, struct UiaRect *out) {
     rt_uia_provider_t *provider = RT_UIA_FROM(iface, fragment);
     if (!out)
         return E_POINTER;
@@ -743,8 +767,8 @@ static HRESULT STDMETHODCALLTYPE rt_uia_fragment_get_BoundingRectangle(
     return S_OK;
 }
 
-static HRESULT STDMETHODCALLTYPE rt_uia_fragment_GetEmbeddedFragmentRoots(
-    IRawElementProviderFragment *iface, SAFEARRAY **out) {
+static HRESULT STDMETHODCALLTYPE
+rt_uia_fragment_GetEmbeddedFragmentRoots(IRawElementProviderFragment *iface, SAFEARRAY **out) {
     (void)iface;
     if (!out)
         return E_POINTER;
@@ -770,9 +794,8 @@ static HRESULT STDMETHODCALLTYPE rt_uia_fragment_get_FragmentRoot(
     rt_uia_window_bridge_t *bridge = provider->bridge;
     if (!bridge || !bridge->root_provider)
         return S_OK;
-    return rt_uia_provider_qi(bridge->root_provider,
-                              &IID_IRawElementProviderFragmentRoot,
-                              (void **)out);
+    return rt_uia_provider_qi(
+        bridge->root_provider, &RT_UIA_IID_IRawElementProviderFragmentRoot, (void **)out);
 }
 
 static IRawElementProviderFragmentVtbl g_rt_uia_fragment_vtbl = {
@@ -811,9 +834,11 @@ static vg_widget_t *rt_uia_hit_test(vg_widget_t *widget, float x, float y) {
     return best;
 }
 
-static HRESULT STDMETHODCALLTYPE rt_uia_root_ElementProviderFromPoint(
-    IRawElementProviderFragmentRoot *iface, double screen_x, double screen_y,
-    IRawElementProviderFragment **out) {
+static HRESULT STDMETHODCALLTYPE
+rt_uia_root_ElementProviderFromPoint(IRawElementProviderFragmentRoot *iface,
+                                     double screen_x,
+                                     double screen_y,
+                                     IRawElementProviderFragment **out) {
     rt_uia_provider_t *provider = RT_UIA_FROM(iface, fragment_root);
     if (!out)
         return E_POINTER;
@@ -1207,10 +1232,8 @@ static void rt_uia_msg_hook(void *user,
         return;
     if (!vg_widget_is_live(bridge->root) || bridge->root->id != bridge->root_id)
         return;
-    *result = (intptr_t)api->return_raw_element_provider((HWND)native_window,
-                                                         (WPARAM)wparam,
-                                                         (LPARAM)lparam,
-                                                         &bridge->root_provider->simple);
+    *result = (intptr_t)api->return_raw_element_provider(
+        (HWND)native_window, (WPARAM)wparam, (LPARAM)lparam, &bridge->root_provider->simple);
     *handled = 1;
 }
 
@@ -1352,10 +1375,8 @@ void rt_gui_accessibility_platform_notify(vgfx_window_t window, vg_widget_t *wid
         VARIANT empty_old, empty_new;
         VariantInit(&empty_old);
         VariantInit(&empty_new);
-        api->raise_property_changed_event(&provider->simple,
-                                          UIA_ValueValuePropertyId,
-                                          empty_old,
-                                          empty_new);
+        api->raise_property_changed_event(
+            &provider->simple, UIA_ValueValuePropertyId, empty_old, empty_new);
     }
     if ((widget->state & VG_STATE_FOCUSED) && api->raise_automation_event)
         api->raise_automation_event(&provider->simple, UIA_AutomationFocusChangedEventId);
@@ -1412,7 +1433,7 @@ void rt_gui_accessibility_platform_announce(vgfx_window_t window,
 /// @param root Borrowed live semantic root widget.
 /// @return IRawElementProviderSimple with one caller-owned reference, or NULL.
 IRawElementProviderSimple *rt_gui_accessibility_win32_test_root(void *bridge_key,
-                                                               vg_widget_t *root) {
+                                                                vg_widget_t *root) {
     if (!bridge_key || !vg_widget_is_live(root))
         return NULL;
     rt_uia_window_bridge_t *bridge = rt_uia_bridge_for_window((vgfx_window_t)bridge_key);

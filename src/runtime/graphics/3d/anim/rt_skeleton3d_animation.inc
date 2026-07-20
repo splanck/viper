@@ -362,7 +362,7 @@ static int animation3d_keyframe_is_redundant(const vgfx3d_keyframe_t *a,
                                              float pos_tolerance,
                                              float rot_tolerance,
                                              float scl_tolerance) {
-    float span = b->time - a->time;
+    double span = b->time - a->time;
     float alpha;
     if (a->cubic_mask || mid->cubic_mask || b->cubic_mask)
         return 0; /* never reduce across Hermite segments */
@@ -372,7 +372,7 @@ static int animation3d_keyframe_is_redundant(const vgfx3d_keyframe_t *a,
         return 0;
     if (!(span > 0.0f))
         return 0;
-    alpha = (mid->time - a->time) / span;
+    alpha = (float)((mid->time - a->time) / span);
     if (!(alpha >= 0.0f && alpha <= 1.0f))
         return 0;
     for (int i = 0; i < 3; i++) {

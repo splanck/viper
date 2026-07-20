@@ -23,6 +23,9 @@
 #include <windows.h>
 
 #include <oleauto.h>
+// The C form of this SDK header otherwise defines an external-linkage double
+// in every translation unit that includes it.
+#define __UIA_OtherConstants_MODULE_DEFINED__
 #include <uiautomationcore.h>
 
 #include <assert.h>
@@ -32,6 +35,11 @@
 #include "vg_layout.h"
 #include "vg_widget.h"
 #include "vg_widgets.h"
+
+enum {
+    RT_UIA_TEST_CONTROL_TYPE_PROPERTY_ID = 30003,
+    RT_UIA_TEST_NAME_PROPERTY_ID = 30005,
+};
 
 // Test seams exported by the Windows accessibility adapter.
 extern IRawElementProviderSimple *rt_gui_accessibility_win32_test_root(void *bridge_key,
@@ -65,8 +73,7 @@ int main(void) {
     assert(button && checkbox && input);
     vg_textinput_set_text(input, "hello");
 
-    IRawElementProviderSimple *root_simple =
-        rt_gui_accessibility_win32_test_root(bridge_key, root);
+    IRawElementProviderSimple *root_simple = rt_gui_accessibility_win32_test_root(bridge_key, root);
     assert(root_simple != NULL);
 
     // Provider options identify a server-side provider.
@@ -76,47 +83,40 @@ int main(void) {
 
     // The root answers Fragment and FragmentRoot; children only Fragment.
     IRawElementProviderFragment *root_fragment = NULL;
-    assert(root_simple->lpVtbl->QueryInterface(root_simple,
-                                               &IID_IRawElementProviderFragment,
-                                               (void **)&root_fragment) == S_OK);
+    assert(root_simple->lpVtbl->QueryInterface(
+               root_simple, &IID_IRawElementProviderFragment, (void **)&root_fragment) == S_OK);
     IRawElementProviderFragmentRoot *fragment_root = NULL;
-    assert(root_simple->lpVtbl->QueryInterface(root_simple,
-                                               &IID_IRawElementProviderFragmentRoot,
-                                               (void **)&fragment_root) == S_OK);
+    assert(root_simple->lpVtbl->QueryInterface(
+               root_simple, &IID_IRawElementProviderFragmentRoot, (void **)&fragment_root) == S_OK);
 
     // Navigation: first child is the button; sibling chain reaches the input.
     IRawElementProviderFragment *first_child = NULL;
-    assert(root_fragment->lpVtbl->Navigate(root_fragment,
-                                           NavigateDirection_FirstChild,
-                                           &first_child) == S_OK);
+    assert(root_fragment->lpVtbl->Navigate(
+               root_fragment, NavigateDirection_FirstChild, &first_child) == S_OK);
     assert(first_child != NULL);
 
     IRawElementProviderSimple *button_simple = NULL;
-    assert(first_child->lpVtbl->QueryInterface(first_child,
-                                               &IID_IRawElementProviderSimple,
-                                               (void **)&button_simple) == S_OK);
-    expect_bstr_property(button_simple, UIA_NamePropertyId, L"Build Project");
+    assert(first_child->lpVtbl->QueryInterface(
+               first_child, &IID_IRawElementProviderSimple, (void **)&button_simple) == S_OK);
+    expect_bstr_property(button_simple, RT_UIA_TEST_NAME_PROPERTY_ID, L"Build Project");
 
     VARIANT control_type;
     VariantInit(&control_type);
-    assert(button_simple->lpVtbl->GetPropertyValue(button_simple,
-                                                   UIA_ControlTypePropertyId,
-                                                   &control_type) == S_OK);
+    assert(button_simple->lpVtbl->GetPropertyValue(
+               button_simple, RT_UIA_TEST_CONTROL_TYPE_PROPERTY_ID, &control_type) == S_OK);
     assert(control_type.vt == VT_I4);
     assert(control_type.lVal == 50000 /* UIA_ButtonControlTypeId */);
     VariantClear(&control_type);
 
     // Pattern gating: the button invokes but does not toggle.
     IUnknown *pattern = NULL;
-    assert(button_simple->lpVtbl->GetPatternProvider(button_simple,
-                                                     10000 /* Invoke */,
-                                                     &pattern) == S_OK);
+    assert(button_simple->lpVtbl->GetPatternProvider(button_simple, 10000 /* Invoke */, &pattern) ==
+           S_OK);
     assert(pattern != NULL);
     pattern->lpVtbl->Release(pattern);
     pattern = NULL;
-    assert(button_simple->lpVtbl->GetPatternProvider(button_simple,
-                                                     10015 /* Toggle */,
-                                                     &pattern) == S_OK);
+    assert(button_simple->lpVtbl->GetPatternProvider(button_simple, 10015 /* Toggle */, &pattern) ==
+           S_OK);
     assert(pattern == NULL);
 
     // Runtime IDs exist for children and are suppressed for the root.
@@ -130,9 +130,8 @@ int main(void) {
 
     // Sibling walk: button -> checkbox -> input -> end.
     IRawElementProviderFragment *second = NULL;
-    assert(first_child->lpVtbl->Navigate(first_child,
-                                         NavigateDirection_NextSibling,
-                                         &second) == S_OK);
+    assert(first_child->lpVtbl->Navigate(first_child, NavigateDirection_NextSibling, &second) ==
+           S_OK);
     assert(second != NULL);
     IRawElementProviderFragment *third = NULL;
     assert(second->lpVtbl->Navigate(second, NavigateDirection_NextSibling, &third) == S_OK);
@@ -143,13 +142,11 @@ int main(void) {
 
     // Checkbox toggle state follows the widget state.
     IRawElementProviderSimple *checkbox_simple = NULL;
-    assert(second->lpVtbl->QueryInterface(second,
-                                          &IID_IRawElementProviderSimple,
-                                          (void **)&checkbox_simple) == S_OK);
+    assert(second->lpVtbl->QueryInterface(
+               second, &IID_IRawElementProviderSimple, (void **)&checkbox_simple) == S_OK);
     IToggleProvider *toggle = NULL;
-    assert(checkbox_simple->lpVtbl->GetPatternProvider(checkbox_simple,
-                                                       10015 /* Toggle */,
-                                                       (IUnknown **)&toggle) == S_OK);
+    assert(checkbox_simple->lpVtbl->GetPatternProvider(
+               checkbox_simple, 10015 /* Toggle */, (IUnknown **)&toggle) == S_OK);
     assert(toggle != NULL);
     enum ToggleState toggle_state = ToggleState_Indeterminate;
     assert(toggle->lpVtbl->get_ToggleState(toggle, &toggle_state) == S_OK);
@@ -160,13 +157,11 @@ int main(void) {
 
     // Text input surfaces the Value pattern with live text.
     IRawElementProviderSimple *input_simple = NULL;
-    assert(third->lpVtbl->QueryInterface(third,
-                                         &IID_IRawElementProviderSimple,
-                                         (void **)&input_simple) == S_OK);
+    assert(third->lpVtbl->QueryInterface(
+               third, &IID_IRawElementProviderSimple, (void **)&input_simple) == S_OK);
     IValueProvider *value = NULL;
-    assert(input_simple->lpVtbl->GetPatternProvider(input_simple,
-                                                    10002 /* Value */,
-                                                    (IUnknown **)&value) == S_OK);
+    assert(input_simple->lpVtbl->GetPatternProvider(
+               input_simple, 10002 /* Value */, (IUnknown **)&value) == S_OK);
     assert(value != NULL);
     BSTR text = NULL;
     assert(value->lpVtbl->get_Value(value, &text) == S_OK);
@@ -183,15 +178,12 @@ int main(void) {
 
     // Parent navigation returns to the root; the root has no parent.
     IRawElementProviderFragment *parent = NULL;
-    assert(first_child->lpVtbl->Navigate(first_child,
-                                         NavigateDirection_Parent,
-                                         &parent) == S_OK);
+    assert(first_child->lpVtbl->Navigate(first_child, NavigateDirection_Parent, &parent) == S_OK);
     assert(parent != NULL);
     parent->lpVtbl->Release(parent);
     parent = NULL;
-    assert(root_fragment->lpVtbl->Navigate(root_fragment,
-                                           NavigateDirection_Parent,
-                                           &parent) == S_OK);
+    assert(root_fragment->lpVtbl->Navigate(root_fragment, NavigateDirection_Parent, &parent) ==
+           S_OK);
     assert(parent == NULL);
 
     // Stale-widget degradation: destroying the tree empties properties.
@@ -206,12 +198,10 @@ int main(void) {
     vg_widget_destroy((vg_widget_t *)button);
     VARIANT stale_name;
     VariantInit(&stale_name);
-    assert(first_child->lpVtbl->QueryInterface(first_child,
-                                               &IID_IRawElementProviderSimple,
-                                               (void **)&button_simple) == S_OK);
-    assert(button_simple->lpVtbl->GetPropertyValue(button_simple,
-                                                   UIA_NamePropertyId,
-                                                   &stale_name) == S_OK);
+    assert(first_child->lpVtbl->QueryInterface(
+               first_child, &IID_IRawElementProviderSimple, (void **)&button_simple) == S_OK);
+    assert(button_simple->lpVtbl->GetPropertyValue(
+               button_simple, RT_UIA_TEST_NAME_PROPERTY_ID, &stale_name) == S_OK);
     assert(stale_name.vt == VT_EMPTY);
     VariantClear(&stale_name);
     button_simple->lpVtbl->Release(button_simple);

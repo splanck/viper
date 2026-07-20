@@ -533,9 +533,9 @@ static void ws_invalid_utf8_server_thread(int port) {
 /// @details RFC 6455 forbids masking from server to client. The hardened client
 ///          must answer with a masked close carrying code 1002 and then close
 ///          TCP promptly, rather than leaving the partially parsed stream open.
-///          Sending only the header exposes the illegal mask bit without
-///          leaving a masking key unread, which could make Winsock discard the
-///          queued close frame while resetting the connection.
+///          A complete zero-length frame lets the client consume the illegal
+///          mask key before replying, avoiding unread bytes that can make
+///          Winsock reset the transport and discard the queued close frame.
 /// @param port Loopback port reserved by the caller.
 static void ws_protocol_error_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
@@ -570,8 +570,8 @@ static void ws_protocol_error_server_thread(int port) {
     headers[total] = '\0';
     ws_send_handshake(client, headers);
 
-    const uint8_t invalid_masked_header[2] = {0x81, 0x80};
-    rt_tcp_send_all_raw(client, invalid_masked_header, sizeof(invalid_masked_header));
+    const uint8_t invalid_masked_frame[6] = {0x81, 0x80, 0, 0, 0, 0};
+    rt_tcp_send_all_raw(client, invalid_masked_frame, sizeof(invalid_masked_frame));
     rt_tcp_set_recv_timeout(client, 5000);
 
     void *close_frame = rt_tcp_recv_exact(client, 8);

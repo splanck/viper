@@ -36,8 +36,8 @@
 #include "../lib/gui/include/vg_widget.h"
 #include "../lib/gui/include/vg_widgets.h"
 
-// Native file dialogs on macOS
-#if RT_PLATFORM_MACOS
+// Native file dialogs on macOS and Windows
+#if RT_PLATFORM_MACOS || RT_PLATFORM_WINDOWS
 #include "../lib/gui/src/dialogs/vg_filedialog_native.h"
 #endif
 

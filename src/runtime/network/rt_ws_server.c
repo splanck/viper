@@ -73,6 +73,8 @@ extern int rt_trap_get_net_code(void);
 #define WS_MAX_HANDSHAKE_HEADERS 100
 #define WS_MAX_HANDSHAKE_BYTES (16u * 1024u)
 #define WS_MAX_MESSAGE_BYTES (64u * 1024u * 1024u)
+#define WS_HANDSHAKE_TIMEOUT_MS 10000
+#define WS_HANDSHAKE_POLL_MS 100
 #define WS_CLIENT_SEND_TIMEOUT_MS 2000
 
 // WebSocket opcodes (duplicated from rt_websocket.c to avoid dependency)
@@ -262,6 +264,68 @@ static int ws_tcp_recv_exact_native(void *tcp, uint8_t *data, size_t len) {
     return 1;
 }
 
+/// @brief Receive handshake bytes with prompt server-stop cancellation.
+/// @details Short readiness waits avoid relying on another thread's shutdown
+///          call to interrupt a synchronous Winsock receive. One monotonic
+///          deadline still preserves the ten-second aggregate handshake limit.
+/// @param server Owning server whose running state controls cancellation.
+/// @param tcp Valid runtime TCP connection.
+/// @param deadline_ms Absolute monotonic deadline, or zero when unavailable.
+/// @param timeout_polls_remaining Fallback timeout budget when no clock exists.
+/// @param data Destination buffer.
+/// @param len Exact byte count to receive.
+/// @return Nonzero only when all bytes arrive before cancellation or timeout.
+static int ws_tcp_recv_exact_handshake(rt_ws_server_impl *server,
+                                       void *tcp,
+                                       uint64_t deadline_ms,
+                                       int *timeout_polls_remaining,
+                                       uint8_t *data,
+                                       size_t len) {
+    socket_t sock = rt_tcp_socket_fd(tcp);
+    size_t total = 0;
+    if (!server || sock == INVALID_SOCK || !timeout_polls_remaining || (!data && len > 0))
+        return 0;
+
+    while (total < len) {
+        if (!ws_server_is_running_locked(server))
+            return 0;
+
+        int wait_ms = WS_HANDSHAKE_POLL_MS;
+        if (deadline_ms != 0) {
+            uint64_t now_ms = rt_socket_monotonic_ms();
+            if (now_ms != 0) {
+                if (now_ms >= deadline_ms)
+                    return 0;
+                uint64_t remaining_ms = deadline_ms - now_ms;
+                if (remaining_ms < (uint64_t)wait_ms)
+                    wait_ms = (int)remaining_ms;
+            }
+        }
+
+        int ready = wait_socket(sock, wait_ms, false);
+        if (ready == 0) {
+            if (--*timeout_polls_remaining <= 0)
+                return 0;
+            continue;
+        }
+        if (ready < 0)
+            return 0;
+
+        size_t remaining = len - total;
+        int chunk = (int)(remaining > (size_t)INT_MAX ? INT_MAX : remaining);
+        int received = recv(sock, (char *)data + total, chunk, 0);
+        if (received == SOCK_ERROR) {
+            if (rt_socket_error_is_interrupted(rt_socket_last_error()))
+                continue;
+            return 0;
+        }
+        if (received == 0)
+            return 0;
+        total += (size_t)received;
+    }
+    return 1;
+}
+
 /// @brief Read one strictly CRLF-terminated HTTP line into native storage.
 /// @details Bare LF, embedded NUL, stray CR, over-limit input, EOF, and native
 ///          allocation failure all reject the handshake. The caller owns the
@@ -270,7 +334,12 @@ static int ws_tcp_recv_exact_native(void *tcp, uint8_t *data, size_t len) {
 /// @param max_len Maximum line bytes excluding CRLF.
 /// @param len_out Receives the exact line length.
 /// @return Caller-owned line, or NULL on rejection/failure.
-static char *ws_tcp_recv_line_strict(void *tcp, size_t max_len, size_t *len_out) {
+static char *ws_tcp_recv_line_strict(rt_ws_server_impl *server,
+                                     void *tcp,
+                                     uint64_t deadline_ms,
+                                     int *timeout_polls_remaining,
+                                     size_t max_len,
+                                     size_t *len_out) {
     size_t cap = max_len < 256u ? max_len + 1u : 256u;
     size_t len = 0;
     char *line = NULL;
@@ -283,13 +352,16 @@ static char *ws_tcp_recv_line_strict(void *tcp, size_t max_len, size_t *len_out)
 
     for (;;) {
         uint8_t byte = 0;
-        if (!ws_tcp_recv_exact_native(tcp, &byte, 1)) {
+        if (!ws_tcp_recv_exact_handshake(
+                server, tcp, deadline_ms, timeout_polls_remaining, &byte, 1)) {
             free(line);
             return NULL;
         }
         if (byte == '\r') {
             uint8_t lf = 0;
-            if (!ws_tcp_recv_exact_native(tcp, &lf, 1) || lf != '\n') {
+            if (!ws_tcp_recv_exact_handshake(
+                    server, tcp, deadline_ms, timeout_polls_remaining, &lf, 1) ||
+                lf != '\n') {
                 free(line);
                 return NULL;
             }
@@ -462,13 +534,21 @@ static int ws_server_recv_frame(
 }
 
 /// @brief Perform server-side WebSocket upgrade handshake.
-static int ws_server_handshake(void *tcp, const char *required_subprotocol) {
+static int ws_server_handshake(rt_ws_server_impl *server,
+                               void *tcp,
+                               const char *required_subprotocol) {
     ws_handshake_headers_t headers;
     size_t total_bytes = 0;
     size_t line_len = 0;
+    uint64_t started_ms = rt_socket_monotonic_ms();
+    uint64_t deadline_ms = started_ms + WS_HANDSHAKE_TIMEOUT_MS;
+    int timeout_polls_remaining = WS_HANDSHAKE_TIMEOUT_MS / WS_HANDSHAKE_POLL_MS;
+    if (started_ms == 0 || deadline_ms < started_ms)
+        deadline_ms = 0;
     memset(&headers, 0, sizeof(headers));
 
-    char *line = ws_tcp_recv_line_strict(tcp, WS_MAX_HANDSHAKE_BYTES - 2u, &line_len);
+    char *line = ws_tcp_recv_line_strict(
+        server, tcp, deadline_ms, &timeout_polls_remaining, WS_MAX_HANDSHAKE_BYTES - 2u, &line_len);
     if (!line)
         return 0;
     total_bytes = line_len + 2u;
@@ -485,7 +565,8 @@ static int ws_server_handshake(void *tcp, const char *required_subprotocol) {
         if (total_bytes > WS_MAX_HANDSHAKE_BYTES - 2u)
             return 0;
         size_t remaining = WS_MAX_HANDSHAKE_BYTES - total_bytes - 2u;
-        line = ws_tcp_recv_line_strict(tcp, remaining, &line_len);
+        line = ws_tcp_recv_line_strict(
+            server, tcp, deadline_ms, &timeout_polls_remaining, remaining, &line_len);
         if (!line)
             return 0;
         total_bytes += line_len + 2u;
@@ -766,8 +847,7 @@ static void ws_accept_task_run(void *arg) {
         ws_release_tcp(&tcp);
         return;
     }
-    rt_tcp_set_recv_timeout(tcp, 10000);
-    int handshake_ok = ws_server_handshake(tcp, s->subprotocol);
+    int handshake_ok = ws_server_handshake(s, tcp, s->subprotocol);
     if (handshake_ok) {
         rt_tcp_set_recv_timeout(tcp, 0);
         rt_tcp_set_send_timeout(tcp, WS_CLIENT_SEND_TIMEOUT_MS);
@@ -1362,7 +1442,7 @@ void *rt_ws_server_accept(void *obj) {
         return NULL;
     }
 
-    int upgraded = ws_server_handshake(tcp, subprotocol);
+    int upgraded = ws_server_handshake(s, tcp, subprotocol);
     free(subprotocol);
     if (!upgraded) {
         ws_release_tcp(&tcp);

@@ -100,6 +100,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
     static const std::unordered_set<std::string> kernel32 = {
         "ExitProcess",
         "FreeLibrary",
+        "LoadLibraryW",
         "GetCurrentProcessId",
         "GetCurrentThreadId",
         "GetEnvironmentVariableA",
@@ -312,9 +313,23 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
     static const std::unordered_set<std::string> imm32 = {
         "ImmGetCompositionStringW", "ImmGetContext", "ImmReleaseContext"};
     static const std::unordered_set<std::string> shell32 = {
-        "CommandLineToArgvW", "DragAcceptFiles", "DragFinish", "DragQueryFileA", "DragQueryFileW"};
+        "CommandLineToArgvW",
+        "DragAcceptFiles",
+        "DragFinish",
+        "DragQueryFileA",
+        "DragQueryFileW",
+        "SHCreateItemFromParsingName",
+    };
     static const std::unordered_set<std::string> ole32 = {
         "CoCreateInstance", "CoInitializeEx", "CoTaskMemFree", "CoUninitialize"};
+    static const std::unordered_set<std::string> oleaut32 = {
+        "SafeArrayCreateVector",
+        "SafeArrayPutElement",
+        "SysAllocString",
+        "SysAllocStringLen",
+        "SysFreeString",
+        "VariantInit",
+    };
     static const std::unordered_set<std::string> xinput = {"XInputGetState", "XInputSetState"};
     static const std::unordered_set<std::string> advapi32 = {
         "CryptAcquireContextA",
@@ -675,6 +690,10 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
     }
     if (ole32.count(name) || ole32.count(stripped)) {
         dllName = "ole32.dll";
+        return true;
+    }
+    if (oleaut32.count(name) || oleaut32.count(stripped)) {
+        dllName = "oleaut32.dll";
         return true;
     }
     if (xinput.count(name) || xinput.count(stripped)) {

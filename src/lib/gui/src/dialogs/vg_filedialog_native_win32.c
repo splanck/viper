@@ -27,13 +27,28 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#include <initguid.h>
 #include <objbase.h>
 #include <shlobj.h>
 #include <shobjidl.h>
 
 #include <stdlib.h>
 #include <string.h>
+
+//=============================================================================
+// COM GUIDs
+//=============================================================================
+
+/* Define GUIDs we need so native Zanna links do not depend on uuid.lib. */
+static const GUID VGFD_CLSID_FileOpenDialog = {
+    0xDC1C5A9C, 0xE88A, 0x4DDE, {0xA5, 0xA1, 0x60, 0xF8, 0x2A, 0x20, 0xAE, 0xF7}};
+static const GUID VGFD_CLSID_FileSaveDialog = {
+    0xC0B4E2F3, 0xBA21, 0x4773, {0x8D, 0xBA, 0x33, 0x5E, 0xC9, 0x46, 0xEB, 0x8B}};
+static const GUID VGFD_IID_IFileOpenDialog = {
+    0xD57C7288, 0xD4AD, 0x4768, {0xBE, 0x02, 0x9D, 0x96, 0x95, 0x32, 0xD9, 0x60}};
+static const GUID VGFD_IID_IFileSaveDialog = {
+    0x84BCCD23, 0x5FDE, 0x4CDB, {0xAE, 0xA4, 0xAF, 0x64, 0xB8, 0x3D, 0x78, 0xAB}};
+static const GUID VGFD_IID_IShellItem = {
+    0x43826D1E, 0xE718, 0x42EE, {0xBC, 0x55, 0xA1, 0xE2, 0x61, 0xC3, 0x7B, 0xFE}};
 
 //=============================================================================
 // UTF conversion helpers
@@ -83,10 +98,10 @@ int vg_native_dialogs_available(void) {
         return 0;
     }
     IFileOpenDialog *probe = NULL;
-    hr = CoCreateInstance(&CLSID_FileOpenDialog,
+    hr = CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
                           NULL,
                           CLSCTX_INPROC_SERVER,
-                          &IID_IFileOpenDialog,
+                          &VGFD_IID_IFileOpenDialog,
                           (void **)&probe);
     if (SUCCEEDED(hr) && probe) {
         probe->lpVtbl->Release(probe);
@@ -125,8 +140,8 @@ static void vgfd_apply_common(IFileDialog *dialog,
     wchar_t *initial_w = vgfd_wide(initial_path);
     if (initial_w) {
         IShellItem *folder = NULL;
-        if (SUCCEEDED(SHCreateItemFromParsingName(initial_w, NULL, &IID_IShellItem,
-                                                  (void **)&folder)) &&
+        if (SUCCEEDED(SHCreateItemFromParsingName(
+                initial_w, NULL, &VGFD_IID_IShellItem, (void **)&folder)) &&
             folder) {
             dialog->lpVtbl->SetDefaultFolder(dialog, folder);
             folder->lpVtbl->Release(folder);
@@ -156,13 +171,16 @@ char *vg_native_open_file(const char *title,
     if (!vg_native_dialogs_available())
         return NULL;
     IFileOpenDialog *dialog = NULL;
-    if (FAILED(CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER,
-                                &IID_IFileOpenDialog, (void **)&dialog)) ||
+    if (FAILED(CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
+                                NULL,
+                                CLSCTX_INPROC_SERVER,
+                                &VGFD_IID_IFileOpenDialog,
+                                (void **)&dialog)) ||
         !dialog)
         return NULL;
     wchar_t *fname = NULL, *fspec = NULL;
-    vgfd_apply_common((IFileDialog *)dialog, title, initial_path, filter_name, filter_pattern,
-                      &fname, &fspec);
+    vgfd_apply_common(
+        (IFileDialog *)dialog, title, initial_path, filter_name, filter_pattern, &fname, &fspec);
     char *result = NULL;
     if (SUCCEEDED(dialog->lpVtbl->Show(dialog, NULL))) {
         IShellItem *item = NULL;
@@ -187,16 +205,19 @@ char **vg_native_open_files(const char *title,
     if (!vg_native_dialogs_available() || !out_count)
         return NULL;
     IFileOpenDialog *dialog = NULL;
-    if (FAILED(CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER,
-                                &IID_IFileOpenDialog, (void **)&dialog)) ||
+    if (FAILED(CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
+                                NULL,
+                                CLSCTX_INPROC_SERVER,
+                                &VGFD_IID_IFileOpenDialog,
+                                (void **)&dialog)) ||
         !dialog)
         return NULL;
     FILEOPENDIALOGOPTIONS options = 0;
     if (SUCCEEDED(dialog->lpVtbl->GetOptions(dialog, &options)))
         dialog->lpVtbl->SetOptions(dialog, options | FOS_ALLOWMULTISELECT);
     wchar_t *fname = NULL, *fspec = NULL;
-    vgfd_apply_common((IFileDialog *)dialog, title, initial_path, filter_name, filter_pattern,
-                      &fname, &fspec);
+    vgfd_apply_common(
+        (IFileDialog *)dialog, title, initial_path, filter_name, filter_pattern, &fname, &fspec);
     char **paths = NULL;
     if (SUCCEEDED(dialog->lpVtbl->Show(dialog, NULL))) {
         IShellItemArray *items = NULL;
@@ -247,13 +268,16 @@ char *vg_native_save_file(const char *title,
     if (!vg_native_dialogs_available())
         return NULL;
     IFileSaveDialog *dialog = NULL;
-    if (FAILED(CoCreateInstance(&CLSID_FileSaveDialog, NULL, CLSCTX_INPROC_SERVER,
-                                &IID_IFileSaveDialog, (void **)&dialog)) ||
+    if (FAILED(CoCreateInstance(&VGFD_CLSID_FileSaveDialog,
+                                NULL,
+                                CLSCTX_INPROC_SERVER,
+                                &VGFD_IID_IFileSaveDialog,
+                                (void **)&dialog)) ||
         !dialog)
         return NULL;
     wchar_t *fname = NULL, *fspec = NULL;
-    vgfd_apply_common((IFileDialog *)dialog, title, initial_path, filter_name, filter_pattern,
-                      &fname, &fspec);
+    vgfd_apply_common(
+        (IFileDialog *)dialog, title, initial_path, filter_name, filter_pattern, &fname, &fspec);
     wchar_t *name_w = vgfd_wide(default_name);
     if (name_w) {
         dialog->lpVtbl->SetFileName(dialog, name_w);
@@ -277,8 +301,11 @@ char *vg_native_select_folder(const char *title, const char *initial_path) {
     if (!vg_native_dialogs_available())
         return NULL;
     IFileOpenDialog *dialog = NULL;
-    if (FAILED(CoCreateInstance(&CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER,
-                                &IID_IFileOpenDialog, (void **)&dialog)) ||
+    if (FAILED(CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
+                                NULL,
+                                CLSCTX_INPROC_SERVER,
+                                &VGFD_IID_IFileOpenDialog,
+                                (void **)&dialog)) ||
         !dialog)
         return NULL;
     FILEOPENDIALOGOPTIONS options = 0;

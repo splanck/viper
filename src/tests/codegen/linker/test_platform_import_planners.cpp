@@ -517,6 +517,39 @@ TEST(PlatformImportPlanners, WindowsComAudioSymbolsResolveToOle32) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ole32.dll", "CoUninitialize"));
 }
 
+TEST(PlatformImportPlanners, WindowsGuiAutomationSymbolsResolveToSystemDlls) {
+    const std::unordered_set<std::string> syms = {
+        "LoadLibraryW",
+        "SafeArrayCreateVector",
+        "SafeArrayPutElement",
+        "SHCreateItemFromParsingName",
+        "SysAllocString",
+        "SysAllocStringLen",
+        "SysFreeString",
+        "VariantInit",
+    };
+
+    for (const auto &sym : syms) {
+        EXPECT_TRUE(isKnownDynamicSymbol(sym, LinkPlatform::Windows));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::Linux));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::macOS));
+    }
+
+    WindowsImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64, syms, false, plan, err));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "LoadLibraryW"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "shell32.dll", "SHCreateItemFromParsingName"));
+    for (const char *sym : {"SafeArrayCreateVector",
+                            "SafeArrayPutElement",
+                            "SysAllocString",
+                            "SysAllocStringLen",
+                            "SysFreeString",
+                            "VariantInit"}) {
+        EXPECT_TRUE(importPlanDllHasFunction(plan, "oleaut32.dll", sym));
+    }
+}
+
 TEST(PlatformImportPlanners, WindowsImeSymbolsResolveToImm32) {
     const std::unordered_set<std::string> syms = {
         "ImmGetCompositionStringW", "ImmGetContext", "ImmReleaseContext"};

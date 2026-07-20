@@ -3,6 +3,7 @@
 # Purpose: Helper functions to keep the test CMake files concise.
 
 set(_ZANNA_TEST_LABEL_WHITELIST
+        accessibility
         arm64
         assemble_link
         basic
