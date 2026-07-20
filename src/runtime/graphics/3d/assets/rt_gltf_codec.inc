@@ -34,6 +34,7 @@ typedef enum {
 #define GLTF_PRELOAD_MESH_POD_HAS_UV0 0x2u
 #define GLTF_PRELOAD_MESH_POD_HAS_TANGENTS 0x4u
 #define GLTF_PRELOAD_MESH_POD_HAS_SKINNING 0x8u
+#define GLTF_PRELOAD_MESH_POD_HAS_UV1 0x10u
 
 #define GLTF_PRELOAD_MORPH_POD_MAGIC 0x544D4756u /* "VGMT" little-endian */
 #define GLTF_PRELOAD_MORPH_POD_VERSION 1u
@@ -497,6 +498,87 @@ static void *gltf_preload_bundle_take_object_dependency(rt_gltf_preload_bundle *
 ///   GLB (binary glTF) header and chunk-header magic/length fields.
 static uint32_t gltf_read_u32_le(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+/// @brief Borrowed JSON/BIN spans extracted from one validated glTF root document.
+/// @details The spans point into the caller-owned root byte buffer. Plain JSON documents set
+///   `is_glb` to zero and leave the BIN span empty; GLB documents set it to one and may carry one
+///   optional BIN chunk after the required JSON chunk.
+typedef struct gltf_root_document_view {
+    uint8_t *json;
+    size_t json_len;
+    uint8_t *bin;
+    size_t bin_len;
+    int is_glb;
+} gltf_root_document_view;
+
+/// @brief Validate a plain glTF JSON document or the complete GLB 2.0 chunk sequence.
+/// @details GLB input must contain exactly one non-empty JSON chunk first and at most one BIN
+///   chunk second. Chunk alignment, declared length, bounds, duplicate/unknown chunks, truncated
+///   headers, and trailing bytes are rejected before any span is published. Literal NUL bytes are
+///   rejected in both plain and GLB JSON so downstream length-aware parsing cannot be truncated by
+///   a C-string conversion. The returned spans borrow @p data and remain valid only while it lives.
+/// @param data Root glTF/GLB bytes.
+/// @param len Exact byte length of @p data.
+/// @param out Receives a fully initialized borrowed document view on success.
+/// @return 1 for a valid root document, otherwise 0 with @p out cleared.
+static int gltf_parse_root_document_view(uint8_t *data, size_t len, gltf_root_document_view *out) {
+    static const uint32_t json_chunk_type = UINT32_C(0x4E4F534A);
+    static const uint32_t bin_chunk_type = UINT32_C(0x004E4942);
+    gltf_root_document_view parsed;
+    size_t pos;
+    int chunk_index;
+    memset(&parsed, 0, sizeof(parsed));
+    if (out)
+        memset(out, 0, sizeof(*out));
+    if (!data || !out || len == 0 || len > (size_t)UINT32_MAX)
+        return 0;
+
+    if (len >= 4u && data[0] == 0x67 && data[1] == 0x6C && data[2] == 0x54 && data[3] == 0x46) {
+        if (len < 12u || gltf_read_u32_le(data + 4u) != 2u ||
+            gltf_read_u32_le(data + 8u) != (uint32_t)len)
+            return 0;
+        parsed.is_glb = 1;
+        pos = 12u;
+        chunk_index = 0;
+        while (pos < len) {
+            uint32_t chunk_len;
+            uint32_t chunk_type;
+            if (len - pos < 8u)
+                return 0;
+            chunk_len = gltf_read_u32_le(data + pos);
+            chunk_type = gltf_read_u32_le(data + pos + 4u);
+            pos += 8u;
+            if ((chunk_len & 3u) != 0u || (size_t)chunk_len > len - pos)
+                return 0;
+            if (chunk_index == 0) {
+                if (chunk_type != json_chunk_type || chunk_len == 0u)
+                    return 0;
+                parsed.json = data + pos;
+                parsed.json_len = (size_t)chunk_len;
+                if (memchr(parsed.json, '\0', parsed.json_len) != NULL)
+                    return 0;
+            } else if (chunk_index == 1) {
+                if (chunk_type != bin_chunk_type)
+                    return 0;
+                parsed.bin = data + pos;
+                parsed.bin_len = (size_t)chunk_len;
+            } else {
+                return 0;
+            }
+            pos += (size_t)chunk_len;
+            chunk_index++;
+        }
+        if (pos != len || chunk_index < 1 || !parsed.json)
+            return 0;
+    } else {
+        if (memchr(data, '\0', len) != NULL)
+            return 0;
+        parsed.json = data;
+        parsed.json_len = len;
+    }
+    *out = parsed;
+    return 1;
 }
 
 /// @brief Overflow-safe size_t addition: sets *out = a+b and returns 1, or returns 0 on overflow.

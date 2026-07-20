@@ -168,6 +168,19 @@ extern "C" void rt_trap(const char *) {
 
 extern "C" void rt_mesh3d_note_global_geometry_change(void) {}
 
+/**
+ * @brief Satisfy the isolated Water3D target's retained-geometry invalidation contract.
+ *
+ * Water3D calls this hook after rewriting its generated grid mesh. The contract test
+ * does not exercise retained snapshots or acceleration structures, so there is no
+ * cache to discard in the local mesh stub.
+ *
+ * @param mesh Generated mesh whose production retained state would be invalidated.
+ */
+extern "C" void rt_mesh3d_invalidate_retained_geometry(rt_mesh3d *mesh) {
+    (void)mesh;
+}
+
 extern "C" void *rt_mesh3d_new(void) {
     void *mesh = std::calloc(1, sizeof(rt_mesh3d));
     stub_track_pointer(g_stub_meshes,

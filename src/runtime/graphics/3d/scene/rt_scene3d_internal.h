@@ -9,7 +9,13 @@
 // Purpose: Internal shared structs for Scene3D / SceneNode3D implementation,
 //   including node-animation (glTF-style channel) types. Private to the scene
 //   runtime — not part of the public Graphics3D ABI.
-//
+// Key invariants:
+//   - Public handles are validated before their private payload is accessed.
+//   - Hierarchy owner changes are collected completely before publication.
+// Ownership/Lifetime:
+//   - Scene nodes and scenes are runtime-managed objects referenced by opaque handles.
+//   - Internal transaction buffers are native allocations owned by their transaction.
+// Links: rt_scene3d.c, rt_scene3d_node.c, rt_scene3d_helpers.inc
 //===----------------------------------------------------------------------===//
 #pragma once
 
@@ -32,6 +38,7 @@
 #define SCENE3D_ABS_MAX 1000000000000.0
 #define SCENE3D_FLOAT_ABS_MAX 3.40282346638528859812e38
 #define SCENE3D_PI 3.14159265358979323846
+#define RT_SCENE3D_MAX_OWNER_TRANSACTION_NODES 1000000u
 
 /// @brief One node-animation channel (glTF-style): the target node name, the animated
 ///   path (TRS/weights), interpolation mode, and the keyframe times/values plus optional
@@ -384,8 +391,43 @@ void scene_mesh_bounds(rt_mesh3d *mesh, float out_min[3], float out_max[3], floa
 uint32_t scene_node_geometry_revision_signature(rt_scene_node3d *node);
 /// @brief Refresh a node's cached local mesh bounds if its primary mesh geometry changed.
 void scene_node_refresh_mesh_bounds(rt_scene_node3d *node);
-void scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner);
-void scene_node_clear_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner);
+
+/// @brief Preflight state for one transactional subtree owner change.
+/// @ownership `nodes` is native storage owned by this value until discarded.
+typedef struct scene_owner_transaction {
+    rt_scene_node3d **nodes;
+    size_t count;
+    size_t capacity;
+} scene_owner_transaction;
+
+/// @brief Collect a complete subtree before any owner field is mutated.
+/// @param node Borrowed root of the subtree to collect.
+/// @param transaction Caller-owned, zero-initialized transaction destination.
+/// @return `1` with every valid node collected, or `0` after releasing partial
+///   native storage on overflow/allocation failure.
+int scene_node_owner_transaction_prepare(rt_scene_node3d *node,
+                                         scene_owner_transaction *transaction);
+/// @brief Release a prepared owner transaction without changing any scene node.
+/// @param transaction Caller-owned transaction to discard; zeroed on return.
+void scene_node_owner_transaction_discard(scene_owner_transaction *transaction);
+/// @brief Assign @p owner to every node in a completely prepared transaction.
+/// @details This commit phase performs no allocation and cannot partially fail.
+void scene_node_owner_transaction_assign(scene_owner_transaction *transaction, rt_scene3d *owner);
+/// @brief Clear @p owner from matching nodes in a completely prepared transaction.
+/// @details Nodes with a different owner are preserved to tolerate corrupt or
+///   deliberately detached subtrees without stealing another scene's ownership.
+void scene_node_owner_transaction_clear(scene_owner_transaction *transaction, rt_scene3d *owner);
+/// @brief Clear matching owners below the transaction root while preserving the root itself.
+void scene_node_owner_transaction_clear_descendants(scene_owner_transaction *transaction,
+                                                    rt_scene3d *owner);
+/// @brief Transactionally assign an owner across one subtree; traps and returns 0 on preflight OOM.
+int scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner);
+/// @brief Transactionally clear a matching owner across one subtree; traps and returns 0 on OOM.
+int scene_node_clear_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner);
+/// @brief Test-only fault injection for owner-transaction native growth.
+/// @param successful_growths Number of required buffer growths to allow before
+///   failing one; `-1` disables injection and `0` fails the next growth.
+void rt_scene3d_test_set_owner_growth_failure(int32_t successful_growths);
 int scene_node_collect_subtree_bounds(rt_scene_node3d *node,
                                       const double *node_to_root,
                                       float out_min[3],

@@ -584,13 +584,21 @@ RT_FUNC(Particles3DGetCount,     rt_particles3d_get_count,      "Zanna.Graphics3
 RT_FUNC(Particles3DGetEmitting,  rt_particles3d_get_emitting,   "Zanna.Graphics3D.Particles3D.get_IsEmitting", "i1(obj)")
 RT_FUNC(Particles3DSetSeed,      rt_particles3d_set_seed,       "Zanna.Graphics3D.Particles3D.set_Seed",     "void(obj,i64)")
 RT_FUNC(Particles3DGetSeed,      rt_particles3d_get_seed,       "Zanna.Graphics3D.Particles3D.get_Seed",     "i64(obj)")
+RT_FUNC(Particles3DSetRenderFinalFrame,rt_particles3d_set_render_final_frame,"Zanna.Graphics3D.Particles3D.set_RenderFinalFrame","void(obj,i1)")
+RT_FUNC(Particles3DGetRenderFinalFrame,rt_particles3d_get_render_final_frame,"Zanna.Graphics3D.Particles3D.get_RenderFinalFrame","i1(obj)")
+RT_FUNC(Particles3DGetDroppedTime,rt_particles3d_get_dropped_time,"Zanna.Graphics3D.Particles3D.get_DroppedTime","f64(obj)")
+RT_FUNC(Particles3DGetLastDroppedTime,rt_particles3d_get_last_dropped_time,"Zanna.Graphics3D.Particles3D.get_LastDroppedTime","f64(obj)")
+RT_FUNC(Particles3DGetResidualTime,rt_particles3d_get_residual_time,"Zanna.Graphics3D.Particles3D.get_ResidualTime","f64(obj)")
+RT_FUNC(Particles3DResetDroppedTime,rt_particles3d_reset_dropped_time,"Zanna.Graphics3D.Particles3D.ResetDroppedTime","void(obj)")
 
 /// @summary Provides Particles 3D functionality for 3D rendering and scene applications.
 /// @details
 /// Create `Zanna.Graphics3D.Particles3D` values through its registered constructor and use the
-/// returned object with the instance members below. Its public surface exposes properties such as
-/// `Count`, `IsEmitting`, `Additive` and operations including `SetStretch`, `SetTrail`,
-/// `SetSoftness`, `SetPosition`.
+/// returned object with the instance members below. `Update` advances deterministic 60 Hz steps,
+/// retains ordinary fractional time in `ResidualTime`, and exposes safety-budget overflow through
+/// `DroppedTime` and `LastDroppedTime`. `Count` contains live particles only; when
+/// `RenderFinalFrame` is enabled, an expired endpoint remains drawable until the next valid update
+/// without remaining live. Call `ResetDroppedTime` after consuming cumulative timing telemetry.
 RT_CLASS_BEGIN("Zanna.Graphics3D.Particles3D", Particles3D, "obj", Particles3DNew)
     RT_PROP("Count", "i64", Particles3DGetCount, none)
     RT_PROP("IsEmitting", "i1", Particles3DGetEmitting, none)
@@ -599,6 +607,14 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.Particles3D", Particles3D, "obj", Particles3DNe
     // read to checkpoint the stream. Emitters otherwise seed from a process
     // counter, so streams depend on global construction order.
     RT_PROP("Seed", "i64", Particles3DGetSeed, Particles3DSetSeed)
+    // Expired particles leave Count immediately. This compatibility option retains their exact
+    // endpoint in a non-live draw snapshot until the next valid Update.
+    RT_PROP("RenderFinalFrame", "i1", Particles3DGetRenderFinalFrame, Particles3DSetRenderFinalFrame)
+    // Fixed-step observability: normal fractional time is residual, while safety-budget overflow is
+    // reported rather than silently consumed.
+    RT_PROP("DroppedTime", "f64", Particles3DGetDroppedTime, none)
+    RT_PROP("LastDroppedTime", "f64", Particles3DGetLastDroppedTime, none)
+    RT_PROP("ResidualTime", "f64", Particles3DGetResidualTime, none)
     // Velocity-aligned stretch + ribbon trails (tracers, rivets, EMP ribbons).
     RT_METHOD("SetStretch", "void(f64)", Particles3DSetStretch)
     RT_METHOD("SetTrail", "void(f64,i64)", Particles3DSetTrail)
@@ -619,6 +635,7 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.Particles3D", Particles3D, "obj", Particles3DNe
     RT_METHOD("Stop", "void()", Particles3DStop)
     RT_METHOD("Burst", "void(i64)", Particles3DBurst)
     RT_METHOD("Clear", "void()", Particles3DClear)
+    RT_METHOD("ResetDroppedTime", "void()", Particles3DResetDroppedTime)
     RT_METHOD("RebaseOrigin", "void(f64,f64,f64)", Particles3DRebaseOrigin)
     RT_METHOD("Update", "void(f64)", Particles3DUpdate)
     RT_METHOD("Draw", "void(obj,obj)", Particles3DDraw)

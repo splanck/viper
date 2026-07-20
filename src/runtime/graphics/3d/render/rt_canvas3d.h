@@ -30,6 +30,7 @@
 #include <stdint.h>
 
 #include "rt_string.h"
+#include "rt_textureasset3d.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,6 +39,19 @@ extern "C" {
 //=========================================================================
 // Canvas3D — 3D rendering surface
 //=========================================================================
+
+/** @name Canvas3D submission diagnostic status codes
+ *
+ * These values are returned by @ref rt_canvas3d_get_last_submission_status.
+ * The status is sticky until @ref rt_canvas3d_reset_submission_diagnostics so
+ * a later successful legacy `void` draw cannot erase evidence of a failure.
+ * @{ */
+#define RT_CANVAS3D_SUBMISSION_OK 0LL
+#define RT_CANVAS3D_SUBMISSION_QUEUE_FAILURE 1LL
+#define RT_CANVAS3D_SUBMISSION_SNAPSHOT_FAILURE 2LL
+#define RT_CANVAS3D_SUBMISSION_RESOURCE_FAILURE 3LL
+#define RT_CANVAS3D_SUBMISSION_INSTANCE_FAILURE 4LL
+/** @} */
 
 /// @brief Report whether the Canvas3D runtime is usable in this build.
 /// @details Graphics-enabled builds return 1. Graphics-disabled stub builds return 0 so
@@ -213,9 +227,9 @@ rt_string rt_canvas3d_get_backend_fallback_reason(void *obj);
 #define RT_CANVAS3D_BACKEND_CAP_SHADOW_CSM 0x2000LL
 #define RT_CANVAS3D_BACKEND_CAP_OCCLUSION 0x4000LL
 #define RT_CANVAS3D_BACKEND_CAP_HLOD 0x8000LL
-#define RT_CANVAS3D_BACKEND_CAP_BC7 0x10000LL
-#define RT_CANVAS3D_BACKEND_CAP_ASTC 0x20000LL
-#define RT_CANVAS3D_BACKEND_CAP_ETC2 0x40000LL
+#define RT_CANVAS3D_BACKEND_CAP_BC7 RT_TEXTUREASSET3D_BACKEND_CAP_BC7
+#define RT_CANVAS3D_BACKEND_CAP_ASTC RT_TEXTUREASSET3D_BACKEND_CAP_ASTC
+#define RT_CANVAS3D_BACKEND_CAP_ETC2 RT_TEXTUREASSET3D_BACKEND_CAP_ETC2
 #define RT_CANVAS3D_BACKEND_CAP_ANISOTROPY 0x80000LL
 #define RT_CANVAS3D_BACKEND_CAP_PBR 0x100000LL
 #define RT_CANVAS3D_BACKEND_CAP_NORMAL_MAPS 0x200000LL
@@ -223,10 +237,10 @@ rt_string rt_canvas3d_get_backend_fallback_reason(void *obj);
 #define RT_CANVAS3D_BACKEND_CAP_MORPH_TARGETS 0x800000LL
 #define RT_CANVAS3D_BACKEND_CAP_SKINNING 0x1000000LL
 #define RT_CANVAS3D_BACKEND_CAP_TERRAIN_SPLAT 0x2000000LL
-#define RT_CANVAS3D_BACKEND_CAP_BC1 0x4000000LL
-#define RT_CANVAS3D_BACKEND_CAP_BC3 0x8000000LL
-#define RT_CANVAS3D_BACKEND_CAP_BC4 0x10000000LL
-#define RT_CANVAS3D_BACKEND_CAP_BC5 0x20000000LL
+#define RT_CANVAS3D_BACKEND_CAP_BC1 RT_TEXTUREASSET3D_BACKEND_CAP_BC1
+#define RT_CANVAS3D_BACKEND_CAP_BC3 RT_TEXTUREASSET3D_BACKEND_CAP_BC3
+#define RT_CANVAS3D_BACKEND_CAP_BC4 RT_TEXTUREASSET3D_BACKEND_CAP_BC4
+#define RT_CANVAS3D_BACKEND_CAP_BC5 RT_TEXTUREASSET3D_BACKEND_CAP_BC5
 #define RT_CANVAS3D_BACKEND_CAP_HDR_SCENE 0x40000000LL
 #define RT_CANVAS3D_BACKEND_CAP_TAA 0x80000000LL
 #define RT_CANVAS3D_BACKEND_CAP_SOFT_PARTICLES 0x100000000LL
@@ -287,8 +301,24 @@ void rt_canvas3d_draw_image2d_nine_slice(void *obj,
                                          int64_t inset_b);
 /// @brief Instances drawn via the per-draw instanced fallback this frame.
 int64_t rt_canvas3d_get_instanced_fallback_count(void *obj);
-/// @brief Instances skipped because the bounded per-draw instanced fallback queue overflowed.
+/// @brief Instances skipped because a chunked fallback queue reservation actually failed.
 int64_t rt_canvas3d_get_instanced_fallback_dropped_count(void *obj);
+/// @brief Return the sticky status code for the most recently recorded draw-submission failure.
+/// @details A zero result means no failure has been recorded since construction or the latest
+///   diagnostic reset. Successful submissions do not clear a non-zero status; see the
+///   `RT_CANVAS3D_SUBMISSION_*` constants for failure classes.
+/// @param obj Canvas3D handle. Invalid handles return @ref RT_CANVAS3D_SUBMISSION_OK.
+/// @return One of the `RT_CANVAS3D_SUBMISSION_*` status constants.
+int64_t rt_canvas3d_get_last_submission_status(void *obj);
+/// @brief Return the saturating number of submission failures recorded since construction/reset.
+/// @param obj Canvas3D handle. Invalid handles return zero.
+/// @return Non-negative failure count, saturated at `INT64_MAX`.
+int64_t rt_canvas3d_get_submission_failure_count(void *obj);
+/// @brief Clear both sticky Canvas3D submission diagnostics.
+/// @details This resets `LastSubmissionStatus` to zero and `SubmissionFailureCount` to zero without
+///   changing queued commands, frame state, or backend resources.
+/// @param obj Canvas3D handle; invalid handles are ignored.
+void rt_canvas3d_reset_submission_diagnostics(void *obj);
 /// @brief Window/input events dropped from Canvas3D's public PollEvent ring since creation.
 int64_t rt_canvas3d_get_event_drop_count(void *obj);
 /// @brief Mesh snapshot bytes copied by the current/latest frame.
@@ -860,9 +890,26 @@ double rt_canvas3d_get_shadow_distance(void *canvas);
 void rt_canvas3d_set_vsync(void *canvas, int8_t enabled);
 /// @brief Requested vsync state (defaults to on).
 int8_t rt_canvas3d_get_vsync(void *canvas);
-/// @brief Try to render the scene at a reduced scale ([0.25, 1]); see "render-scale" cap.
+/**
+ * @brief Try to render the window-backed 3D scene at a scale in `[0.25, 1]`.
+ *
+ * Reduced scales require the `"render-scale"` backend capability and are upscaled to
+ * the logical output dimensions before overlays, readback, and presentation. Values
+ * greater than or equal to one request native resolution and work on fixed-scale
+ * backends. A capable backend can reject a transition during an active frame or when
+ * target allocation fails; on rejection, the previous scale remains active.
+ *
+ * @param canvas Canvas3D receiver, or `NULL`.
+ * @param scale Requested scene scale. Non-finite and values at least one request 1:1;
+ * finite values below 0.25 are clamped to 0.25.
+ * @return Non-zero if the requested scale is active, otherwise zero.
+ */
 int8_t rt_canvas3d_try_set_render_scale(void *canvas, double scale);
-/// @brief Currently requested render scale (1 = native resolution).
+/**
+ * @brief Return the currently active window-backed scene scale.
+ * @param canvas Canvas3D receiver, or `NULL`.
+ * @return A finite scale in `[0.25, 1]`, or `1` for a null/corrupt receiver.
+ */
 double rt_canvas3d_get_render_scale(void *canvas);
 /// @brief Toggle coarse CPU frustum rejection (default on).
 void rt_canvas3d_set_frustum_culling(void *canvas, int8_t enabled);

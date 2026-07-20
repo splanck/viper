@@ -14,6 +14,12 @@
 //   - Adjacency: triangles sharing 2 vertices are neighbors.
 //   - A* uses centroid-to-centroid distance weighted by polygon traversal cost.
 //   - FindPath returns a Path3D with waypoints through triangle centroids.
+//   - Read-only path queries lease independent retained workspaces and can overlap.
+//   - SamplePosition expands through the spatial index with an exact bounded fallback.
+//
+// Ownership/Lifetime:
+//   - NavMesh3D owns baked polygons, adjacency, grid state, and query workspaces.
+//   - Returned Path3D/query values are GC-managed and do not borrow workspace arrays.
 //
 // Links: rt_path3d.h, rt_canvas3d.h
 //
@@ -103,7 +109,9 @@ double rt_navmesh3d_get_traversal_cost(void *navmesh, void *point);
 ///        Falls back to a whole-mesh refilter for non-tiled meshes. Tile (tx,tz) covers world XZ
 ///        [meshMin + t*tile_size, meshMin + (t+1)*tile_size).
 int8_t rt_navmesh3d_rebuild_tile(void *navmesh, int64_t tile_x, int64_t tile_z);
-/// @brief Set the maximum walkable slope (degrees) used when baking.
+/// @brief Set the maximum walkable slope (degrees) and transactionally rebuild derived topology.
+/// @details If staging adjacency or the spatial query index fails, the previous slope, triangles,
+///          neighbor graph, and query results remain published unchanged.
 void rt_navmesh3d_set_max_slope(void *navmesh, double degrees);
 /// @brief Set the A* heuristic policy: 0 = strict/optimal (Dijkstra once any
 ///        off-mesh link exists), 1 = always Euclidean (faster, near-optimal).
@@ -123,6 +131,25 @@ int64_t rt_navmesh3d_copy_path_points(void *navmesh, void *from, void *to, doubl
 ///        (or the navmesh has no grid), 0 on any mismatch / invalid handle.
 int8_t rt_navmesh3d_check_query_grid_parity(void *navmesh);
 
+/// @brief Test-only: reset the peak count of concurrently active A* searches.
+/// @details Call while no path query is running. The hook does not alter query results or become
+///          part of the scripting surface.
+/// @param navmesh NavMesh3D handle whose overlap watermark is reset.
+void rt_navmesh3d_test_reset_path_peak_concurrency(void *navmesh);
+/// @brief Test-only: read the peak number of A* queries that owned distinct workspace slots.
+/// @param navmesh NavMesh3D handle to inspect.
+/// @return Peak overlapping query count, or zero for an invalid handle.
+int64_t rt_navmesh3d_test_get_path_peak_concurrency(void *navmesh);
+/// @brief Test-only: read triangle-reference probes from the latest SamplePosition query.
+/// @details Duplicate cell references and bounded-fallback probes are included conservatively.
+/// @param navmesh NavMesh3D handle to inspect.
+/// @return Non-negative triangle probe count, or zero for an invalid handle.
+int64_t rt_navmesh3d_test_get_last_sample_probe_count(void *navmesh);
+/// @brief Test-only: whether the latest SamplePosition query required its bounded linear fallback.
+/// @param navmesh NavMesh3D handle to inspect.
+/// @return One after fallback, otherwise zero.
+int8_t rt_navmesh3d_test_get_last_sample_used_fallback(void *navmesh);
+
 /// @brief Test-only: append an obstacle WITHOUT re-flagging any tile, leaving the tiled navmesh in
 ///        a deliberately stale state so a subsequent RebuildTile can be shown to affect exactly one
 ///        tile. @return 1 on success, 0 on invalid handle / OOM.
@@ -134,6 +161,37 @@ int8_t rt_navmesh3d_test_tile_of_point(
 /// @brief Test-only: edit retained tiled voxel source for one tile without rebuilding it.
 int8_t rt_navmesh3d_test_set_tile_source(
     void *navmesh, int64_t tile_x, int64_t tile_z, double height, int8_t walkable);
+
+/// @brief Test-only: enable deterministic query-grid staging failure before live mutation.
+/// @details The process-global hook is not part of the scripting surface. Callers must restore zero
+///          after the assertion so later navigation builds use normal allocation behavior.
+/// @param enabled Nonzero to force staging failure; zero to disable injection.
+void rt_navmesh3d_test_set_query_grid_alloc_failure(int8_t enabled);
+
+/// @brief Test-only: enable deterministic adjacency staging failure before live mutation.
+/// @details The process-global hook is not part of the scripting surface. Callers must restore zero
+///          after the assertion so later navigation builds use normal allocation behavior.
+/// @param enabled Nonzero to force staging failure; zero to disable injection.
+void rt_navmesh3d_test_set_adjacency_alloc_failure(int8_t enabled);
+
+/// @brief Test-only: calculate bounded voxel-grid dimensions without allocating grid storage.
+/// @details Uses production sanitization, coarsening, and checked product logic. Every output is
+///          written only on success; the entry point is not part of the scripting surface.
+/// @param span_x Nonnegative finite X extent.
+/// @param span_z Nonnegative finite Z extent.
+/// @param requested_cell_size Requested cell size before sanitization/coarsening.
+/// @param out_nx Receives the bounded X dimension.
+/// @param out_nz Receives the bounded Z dimension.
+/// @param out_cell_count Receives the checked product of both dimensions.
+/// @param out_effective_cell_size Receives the final coarsened cell size.
+/// @return 1 on success, or 0 for invalid inputs/unrepresentable arithmetic.
+int8_t rt_navmesh3d_test_voxel_grid_dimensions(double span_x,
+                                               double span_z,
+                                               double requested_cell_size,
+                                               int32_t *out_nx,
+                                               int32_t *out_nz,
+                                               uint64_t *out_cell_count,
+                                               double *out_effective_cell_size);
 
 #ifdef __cplusplus
 }

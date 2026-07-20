@@ -56,13 +56,17 @@ static int sw_render_scale_active(const sw_context_t *ctx) {
     return ctx && !ctx->render_target && isfinite(ctx->render_scale) && ctx->render_scale < 0.999f;
 }
 
-/// @brief Compute the scaled rasterization dimensions for a framebuffer size.
+/// @brief Compute scaled software-rasterization dimensions using the shared backend contract.
+/// @details The context scale is maintained in `[0.25, 1]`; a defensive native-size fallback
+///          keeps callers safe if private state is ever corrupt.
 static void sw_scaled_dims(
     const sw_context_t *ctx, int32_t fb_w, int32_t fb_h, int32_t *out_w, int32_t *out_h) {
-    int32_t w = (int32_t)((float)fb_w * ctx->render_scale);
-    int32_t h = (int32_t)((float)fb_h * ctx->render_scale);
-    *out_w = w > 0 ? w : 1;
-    *out_h = h > 0 ? h : 1;
+    if (!ctx || !vgfx3d_compute_scaled_scene_extent(fb_w, fb_h, ctx->render_scale, out_w, out_h)) {
+        if (out_w)
+            *out_w = fb_w > 0 ? fb_w : 1;
+        if (out_h)
+            *out_h = fb_h > 0 ? fb_h : 1;
+    }
 }
 
 /// @brief Ensure the internal scaled color buffer holds at least w*h pixels.

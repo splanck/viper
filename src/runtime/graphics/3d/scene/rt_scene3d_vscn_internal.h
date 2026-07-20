@@ -101,6 +101,18 @@ static inline int32_t vscn_filter_or(int64_t value, int32_t fallback) {
     return fallback;
 }
 
+/// @brief Accept a texture mip-selection mode (none/nearest/linear), else use @p fallback.
+/// @param value Candidate serialized `RT_MATERIAL3D_TEXTURE_MIP_FILTER_*` value.
+/// @param fallback Previously validated value used when @p value is outside the enum domain.
+/// @return A valid three-state mip-selection mode.
+static inline int32_t vscn_mip_filter_or(int64_t value, int32_t fallback) {
+    if (value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE ||
+        value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST ||
+        value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR)
+        return (int32_t)value;
+    return fallback;
+}
+
 /// @brief Normalize a loaded quaternion in place; non-finite or near-zero-length values
 ///   reset to the identity quaternion (0,0,0,1).
 static inline void vscn_normalize_quat(double q[4]) {

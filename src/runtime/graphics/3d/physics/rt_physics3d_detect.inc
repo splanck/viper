@@ -691,8 +691,8 @@ static void body3d_compute_inv_inertia(rt_body3d *b) {
         double r2 = r * r;
         double cylinder_height = fmax(b->height - 2.0 * r, 0.0);
         double h2 = cylinder_height * cylinder_height;
-        double vol_cyl = r2 * cylinder_height;   /* / pi */
-        double vol_caps = (4.0 / 3.0) * r2 * r;  /* / pi */
+        double vol_cyl = r2 * cylinder_height;  /* / pi */
+        double vol_caps = (4.0 / 3.0) * r2 * r; /* / pi */
         double vol_total = vol_cyl + vol_caps;
         double mass_cyl = vol_total > 1e-30 ? b->mass * (vol_cyl / vol_total) : 0.0;
         double mass_caps = b->mass - mass_cyl;
@@ -1225,8 +1225,9 @@ static int world3d_event_diff_fallback_allowed(const rt_world3d *w,
 }
 
 /// @brief Clear all collision/event counts visible to public query APIs.
-/// @details Used by explicit ClearCollisionEvents and by Step failure cleanup so
-///   callers never observe stale contacts after a failed allocation or overflow.
+/// @details Used by explicit ClearCollisionEvents. Failed transactional steps
+///   restore the previous arrays instead, so callers keep the last committed
+///   contacts and event state when allocation or overflow prevents progress.
 static void world3d_clear_visible_collision_events(rt_world3d *w) {
     if (!w)
         return;
@@ -1274,26 +1275,26 @@ static int world3d_build_event_buffers(rt_world3d *w) {
     current_table = contact_pair_table_build_scratch(
         w, PH3D_SCRATCH_PAIR_TABLE_B, w->contacts, w->contact_count, &current_table_capacity);
     if (!world3d_event_diff_fallback_allowed(w, previous_table, current_table)) {
-        rt_trap("Physics3D.World.Step: collision-event diff allocation failed");
+        world3d_step_fail(w, "Physics3D.World.Step: collision-event diff allocation failed");
         goto fail;
     }
     if (w->contact_count > 0 || w->previous_contact_count > 0) {
         size_t flag_bytes;
         uint8_t *flags;
         if ((size_t)w->contact_count > SIZE_MAX - (size_t)w->previous_contact_count) {
-            rt_trap("Physics3D.World.Step: event-diff classification allocation failed");
+            world3d_step_fail(w,
+                              "Physics3D.World.Step: event-diff classification allocation failed");
             goto fail;
         }
         flag_bytes = (size_t)w->contact_count + (size_t)w->previous_contact_count;
-        flags = (uint8_t *)world3d_step_scratch_acquire(
-            w, PH3D_SCRATCH_EVENT_FLAGS, flag_bytes, 1);
+        flags = (uint8_t *)world3d_step_scratch_acquire(w, PH3D_SCRATCH_EVENT_FLAGS, flag_bytes, 1);
         if (!flags) {
-            rt_trap("Physics3D.World.Step: event-diff classification allocation failed");
+            world3d_step_fail(w,
+                              "Physics3D.World.Step: event-diff classification allocation failed");
             goto fail;
         }
         current_was_previous = w->contact_count > 0 ? flags : NULL;
-        previous_still_current =
-            w->previous_contact_count > 0 ? flags + w->contact_count : NULL;
+        previous_still_current = w->previous_contact_count > 0 ? flags + w->contact_count : NULL;
     }
 
     for (int32_t i = 0; i < w->contact_count; ++i) {
@@ -1343,7 +1344,7 @@ static int world3d_build_event_buffers(rt_world3d *w) {
         !world3d_reserve_stay_events(w, stay_count) ||
         !world3d_reserve_exit_events(w, exit_count) ||
         !world3d_reserve_previous_contacts(w, w->contact_count)) {
-        rt_trap("Physics3D.World.Step: event-buffer allocation failed");
+        world3d_step_fail(w, "Physics3D.World.Step: event-buffer allocation failed");
         goto fail;
     }
 
@@ -1368,7 +1369,7 @@ static int world3d_build_event_buffers(rt_world3d *w) {
     return 1;
 
 overflow:
-    rt_trap("Physics3D.World.Step: event count overflow");
+    world3d_step_fail(w, "Physics3D.World.Step: event count overflow");
 fail:
     /* Transients are world step-scratch; nothing to free on either path. */
     return 0;

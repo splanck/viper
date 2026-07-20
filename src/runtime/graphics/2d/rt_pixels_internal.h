@@ -38,16 +38,27 @@
 
 #define RT_PIXELS_COLOR_EXPLICIT_ALPHA_FLAG (INT64_C(1) << 56)
 
+/// @brief Cached alpha-content classes used by deferred material routing.
+/// @details Opaque contains only alpha 255, binary contains alpha 0/255 with at least one zero,
+///   and fractional contains at least one alpha value strictly between 0 and 255. Values are
+///   ordered from cheapest/most depth-friendly routing to full blending.
+typedef enum rt_pixels_alpha_classification {
+    RT_PIXELS_ALPHA_OPAQUE = 0,
+    RT_PIXELS_ALPHA_BINARY = 1,
+    RT_PIXELS_ALPHA_FRACTIONAL = 2
+} rt_pixels_alpha_classification;
+
 /// @brief Pixels implementation structure.
 typedef struct rt_pixels_impl {
-    int64_t width;           ///< Width in pixels.
-    int64_t height;          ///< Height in pixels.
-    uint32_t *data;          ///< Pixel storage (RGBA, row-major).
-    uint64_t generation;     ///< Monotonic content version for GPU caches.
-    uint64_t cache_identity; ///< Stable cache key to survive allocator address reuse.
+    int64_t width;                  ///< Width in pixels.
+    int64_t height;                 ///< Height in pixels.
+    uint32_t *data;                 ///< Pixel storage (RGBA, row-major).
+    uint64_t generation;            ///< Monotonic content version for GPU caches.
+    uint64_t cache_identity;        ///< Stable cache key to survive allocator address reuse.
     uint64_t alpha_scan_generation; ///< Pixels generation used for cached alpha classification.
-    int8_t alpha_scan_valid;        ///< True once alpha_scan_has_alpha matches alpha_scan_generation.
-    int8_t alpha_scan_has_alpha;    ///< Cached non-opaque-alpha result for 3D material routing.
+    uint64_t alpha_classification_scan_count; ///< Lifetime cache-miss classifications (diagnostic).
+    int8_t alpha_scan_valid;          ///< True when the cached class matches alpha_scan_generation.
+    int8_t alpha_scan_classification; ///< Cached `rt_pixels_alpha_classification` value.
 } rt_pixels_impl;
 
 /// @brief Trap for invalid opaque Pixels handles without exposing runtime.def symbols here.
@@ -145,37 +156,55 @@ static inline void pixels_touch(rt_pixels_impl *p) {
     }
 }
 
-/// @brief Return whether a Pixels buffer has any texel with alpha below 255, caching by generation.
-/// @details 3D material classification may query the same texture every draw. The Pixels content
-///          generation already changes on mutation, so the alpha scan can be cached directly on the
-///          image object without changing public Pixels behavior.
-/// @warning Not thread-safe: it writes alpha_scan_valid/generation/has_alpha without
-///          synchronization. Call it only from a single thread per Pixels object
-///          (the main render thread); concurrent classification of the same image
-///          could tear these fields and return a stale result.
-static inline int rt_pixels_has_alpha_texels_cached(rt_pixels_impl *p) {
+/// @brief Classify a Pixels buffer as opaque, binary-alpha, or fractional-alpha by generation.
+/// @details A cache miss performs one linear scan. It remembers a zero-alpha texel while
+///   continuing until a fractional texel is found; therefore the same pass supplies both the
+///   alpha-bearing and blend-vs-mask decisions. `pixels_touch` invalidates the result after every
+///   supported write. Corrupt dimension multiplication is classified as fractional, the safest
+///   conservative route because blending cannot incorrectly depth-occlude geometry behind it.
+/// @warning This internal cache is main-render-thread state. Concurrent classification/mutation of
+///   one Pixels object is unsupported and could observe torn cache fields.
+/// @param p Pixels payload, or NULL.
+/// @return One `rt_pixels_alpha_classification` value; invalid/empty buffers are opaque.
+static inline rt_pixels_alpha_classification rt_pixels_alpha_classification_cached(
+    rt_pixels_impl *p) {
     uint64_t count;
+    rt_pixels_alpha_classification classification = RT_PIXELS_ALPHA_OPAQUE;
     if (!p || p->width <= 0 || p->height <= 0 || !p->data)
-        return 0;
+        return RT_PIXELS_ALPHA_OPAQUE;
     if (p->alpha_scan_valid && p->alpha_scan_generation == p->generation)
-        return p->alpha_scan_has_alpha ? 1 : 0;
+        return (rt_pixels_alpha_classification)p->alpha_scan_classification;
+    if (p->alpha_classification_scan_count < UINT64_MAX)
+        p->alpha_classification_scan_count++;
     if ((uint64_t)p->width > UINT64_MAX / (uint64_t)p->height) {
         p->alpha_scan_generation = p->generation;
-        p->alpha_scan_has_alpha = 1;
+        p->alpha_scan_classification = RT_PIXELS_ALPHA_FRACTIONAL;
         p->alpha_scan_valid = 1;
-        return 1;
+        return RT_PIXELS_ALPHA_FRACTIONAL;
     }
     count = (uint64_t)p->width * (uint64_t)p->height;
-    p->alpha_scan_has_alpha = 0;
     for (uint64_t i = 0; i < count; i++) {
-        if ((p->data[i] & 0xFFu) < 0xFFu) {
-            p->alpha_scan_has_alpha = 1;
+        uint32_t alpha = p->data[i] & 0xFFu;
+        if (alpha > 0u && alpha < 0xFFu) {
+            classification = RT_PIXELS_ALPHA_FRACTIONAL;
             break;
         }
+        if (alpha == 0u)
+            classification = RT_PIXELS_ALPHA_BINARY;
     }
     p->alpha_scan_generation = p->generation;
+    p->alpha_scan_classification = (int8_t)classification;
     p->alpha_scan_valid = 1;
-    return p->alpha_scan_has_alpha ? 1 : 0;
+    return classification;
+}
+
+/// @brief Return whether cached Pixels classification contains any non-opaque alpha.
+/// @details Compatibility wrapper for TextureAsset3D metadata callers; it reuses the same single
+///   generation-keyed classification scan as Canvas3D's blend/mask routing.
+/// @param p Pixels payload, or NULL.
+/// @return Non-zero for binary or fractional alpha, zero for opaque/invalid buffers.
+static inline int rt_pixels_has_alpha_texels_cached(rt_pixels_impl *p) {
+    return rt_pixels_alpha_classification_cached(p) != RT_PIXELS_ALPHA_OPAQUE;
 }
 
 /// @brief Saturating int64 addition for clipping math.

@@ -247,10 +247,7 @@ static int zstd_highbit32(uint32_t v) {
 ///   remaining cells are spread with the standard (5/8·size + 3) step. Cell
 ///   states then get their bit counts and baselines from the per-symbol
 ///   occurrence counters.
-static int zstd_fse_build(zstd_fse_table *t,
-                          const int16_t *norm,
-                          int max_symbol,
-                          int table_log) {
+static int zstd_fse_build(zstd_fse_table *t, const int16_t *norm, int max_symbol, int table_log) {
     uint32_t table_size;
     uint32_t high_threshold;
     uint32_t position = 0;
@@ -488,8 +485,8 @@ static size_t zstd_huf_read_weights(const uint8_t *data,
         if (1 + payload > len)
             return 0;
         memset(norm, 0, sizeof(norm));
-        ncount_bytes = zstd_fse_read_ncount(
-            data + 1, payload, norm, &max_symbol, &table_log, 255, 6);
+        ncount_bytes =
+            zstd_fse_read_ncount(data + 1, payload, norm, &max_symbol, &table_log, 255, 6);
         if (ncount_bytes == 0 || ncount_bytes >= payload)
             return 0;
         if (!zstd_fse_build(&fse, norm, max_symbol, table_log))
@@ -561,11 +558,8 @@ static size_t zstd_huf_read_weights(const uint8_t *data,
 /// @details Each symbol peeks table_log bits (zero padding past the stream
 ///   start is fine for the peek) but consumes only its code length; the stream
 ///   is valid when consumption lands exactly on the payload size.
-static int zstd_huf_decode_stream(const zstd_huf_table *t,
-                                  const uint8_t *data,
-                                  size_t len,
-                                  uint8_t *out,
-                                  size_t out_len) {
+static int zstd_huf_decode_stream(
+    const zstd_huf_table *t, const uint8_t *data, size_t len, uint8_t *out, size_t out_len) {
     zstd_rbits bits;
     size_t produced = 0;
 
@@ -589,28 +583,28 @@ static int zstd_huf_decode_stream(const zstd_huf_table *t,
  * Sequence code tables (RFC 8878 §3.1.1.3.2.1.1)
  *=========================================================================*/
 
-static const uint32_t zstd_ll_base[36] = {0,  1,  2,   3,   4,   5,    6,    7,    8,   9,   10, 11,
-                                          12, 13, 14,  15,  16,  18,   20,   22,   24,  28,  32, 40,
-                                          48, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
-                                          32768, 65536};
-static const uint8_t zstd_ll_bits[36] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1,
-                                         1, 1, 2, 2, 3, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-                                         15, 16};
+static const uint32_t zstd_ll_base[36] = {
+    0,  1,  2,  3,  4,  5,  6,  7,  8,   9,   10,  11,   12,   13,   14,   15,    16,    18,
+    20, 22, 24, 28, 32, 40, 48, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536};
+static const uint8_t zstd_ll_bits[36] = {0, 0, 0, 0, 0, 0,  0,  0,  0,  0,  0,  0,
+                                         0, 0, 0, 0, 1, 1,  1,  1,  2,  2,  3,  3,
+                                         4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
 static const uint32_t zstd_ml_base[53] = {
-    3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17,  18,  19,  20,
-    21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35,  37,  39,  41,
+    3,  4,  5,  6,  7,  8,  9,  10,  11,  12,  13,   14,   15,   16,   17,    18,    19,   20,
+    21, 22, 23, 24, 25, 26, 27, 28,  29,  30,  31,   32,   33,   34,   35,    37,    39,   41,
     43, 47, 51, 59, 67, 83, 99, 131, 259, 515, 1027, 2051, 4099, 8195, 16387, 32771, 65539};
-static const uint8_t zstd_ml_bits[53] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1,
+static const uint8_t zstd_ml_bits[53] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0,  0,  0,  0,  0,  0, 0,
+                                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  0,  0,  0,  1,  1,  1, 1,
                                          2, 2, 3, 3, 4, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
 
 /* Predefined FSE distributions (RFC 8878 §3.1.1.3.2.2). */
-static const int16_t zstd_ll_default[36] = {4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2,
-                                            2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1, -1, -1, -1, -1};
-static const int16_t zstd_ml_default[53] = {1, 4, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                                            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-                                            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1};
-static const int16_t zstd_of_default[29] = {1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1,
+static const int16_t zstd_ll_default[36] = {4, 3, 2, 2, 2, 2, 2, 2, 2,  2,  2,  2,
+                                            2, 1, 1, 1, 2, 2, 2, 2, 2,  2,  2,  2,
+                                            2, 3, 2, 1, 1, 1, 1, 1, -1, -1, -1, -1};
+static const int16_t zstd_ml_default[53] = {
+    1, 4, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,  1,  1,  1,  1,  1,  1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1};
+static const int16_t zstd_of_default[29] = {1, 1, 1, 1, 1, 1, 2, 2, 2, 1,  1,  1,  1,  1, 1,
                                             1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1};
 
 /*==========================================================================
@@ -677,23 +671,23 @@ static size_t zstd_decode_literals(zstd_ctx *ctx, const uint8_t *data, size_t le
     if (type == 0 || type == 1) {
         /* Raw / RLE literals. */
         switch (size_format) {
-        case 0:
-        case 2:
-            regen = data[0] >> 3;
-            header_bytes = 1;
-            break;
-        case 1:
-            if (len < 2)
-                return 0;
-            regen = ((size_t)(data[0] >> 4)) | ((size_t)data[1] << 4);
-            header_bytes = 2;
-            break;
-        case 3:
-            if (len < 3)
-                return 0;
-            regen = ((size_t)(data[0] >> 4)) | ((size_t)data[1] << 4) | ((size_t)data[2] << 12);
-            header_bytes = 3;
-            break;
+            case 0:
+            case 2:
+                regen = data[0] >> 3;
+                header_bytes = 1;
+                break;
+            case 1:
+                if (len < 2)
+                    return 0;
+                regen = ((size_t)(data[0] >> 4)) | ((size_t)data[1] << 4);
+                header_bytes = 2;
+                break;
+            case 3:
+                if (len < 3)
+                    return 0;
+                regen = ((size_t)(data[0] >> 4)) | ((size_t)data[1] << 4) | ((size_t)data[2] << 12);
+                header_bytes = 3;
+                break;
         }
         if (!zstd_ensure_literals(ctx, regen))
             return 0;
@@ -713,40 +707,40 @@ static size_t zstd_decode_literals(zstd_ctx *ctx, const uint8_t *data, size_t le
 
     /* Compressed (2) or treeless (3) literals. */
     switch (size_format) {
-    case 0: /* 1 stream, 10+10 bits */
-        if (len < 3)
-            return 0;
-        regen = ((size_t)(data[0] >> 4)) | (((size_t)data[1] & 0x3F) << 4);
-        comp = ((size_t)data[1] >> 6) | ((size_t)data[2] << 2);
-        header_bytes = 3;
-        four_streams = 0;
-        break;
-    case 1: /* 4 streams, 10+10 bits */
-        if (len < 3)
-            return 0;
-        regen = ((size_t)(data[0] >> 4)) | (((size_t)data[1] & 0x3F) << 4);
-        comp = ((size_t)data[1] >> 6) | ((size_t)data[2] << 2);
-        header_bytes = 3;
-        four_streams = 1;
-        break;
-    case 2: /* 4 streams, 14+14 bits */
-        if (len < 4)
-            return 0;
-        regen = ((size_t)(data[0] >> 4)) | ((size_t)data[1] << 4) |
-                (((size_t)data[2] & 0x03) << 12);
-        comp = ((size_t)data[2] >> 2) | ((size_t)data[3] << 6);
-        header_bytes = 4;
-        four_streams = 1;
-        break;
-    case 3: /* 4 streams, 18+18 bits */
-        if (len < 5)
-            return 0;
-        regen = ((size_t)(data[0] >> 4)) | ((size_t)data[1] << 4) |
-                (((size_t)data[2] & 0x3F) << 12);
-        comp = ((size_t)data[2] >> 6) | ((size_t)data[3] << 2) | ((size_t)data[4] << 10);
-        header_bytes = 5;
-        four_streams = 1;
-        break;
+        case 0: /* 1 stream, 10+10 bits */
+            if (len < 3)
+                return 0;
+            regen = ((size_t)(data[0] >> 4)) | (((size_t)data[1] & 0x3F) << 4);
+            comp = ((size_t)data[1] >> 6) | ((size_t)data[2] << 2);
+            header_bytes = 3;
+            four_streams = 0;
+            break;
+        case 1: /* 4 streams, 10+10 bits */
+            if (len < 3)
+                return 0;
+            regen = ((size_t)(data[0] >> 4)) | (((size_t)data[1] & 0x3F) << 4);
+            comp = ((size_t)data[1] >> 6) | ((size_t)data[2] << 2);
+            header_bytes = 3;
+            four_streams = 1;
+            break;
+        case 2: /* 4 streams, 14+14 bits */
+            if (len < 4)
+                return 0;
+            regen = ((size_t)(data[0] >> 4)) | ((size_t)data[1] << 4) |
+                    (((size_t)data[2] & 0x03) << 12);
+            comp = ((size_t)data[2] >> 2) | ((size_t)data[3] << 6);
+            header_bytes = 4;
+            four_streams = 1;
+            break;
+        case 3: /* 4 streams, 18+18 bits */
+            if (len < 5)
+                return 0;
+            regen = ((size_t)(data[0] >> 4)) | ((size_t)data[1] << 4) |
+                    (((size_t)data[2] & 0x3F) << 12);
+            comp = ((size_t)data[2] >> 6) | ((size_t)data[3] << 2) | ((size_t)data[4] << 10);
+            header_bytes = 5;
+            four_streams = 1;
+            break;
     }
     if (header_bytes + comp > len)
         return 0;
@@ -760,8 +754,7 @@ static size_t zstd_decode_literals(zstd_ctx *ctx, const uint8_t *data, size_t le
         if (type == 2) {
             int num_symbols = 0;
             uint8_t weights[256];
-            size_t tree_bytes =
-                zstd_huf_read_weights(payload, payload_len, weights, &num_symbols);
+            size_t tree_bytes = zstd_huf_read_weights(payload, payload_len, weights, &num_symbols);
             if (tree_bytes == 0 || tree_bytes > payload_len)
                 return 0;
             if (!zstd_huf_build(&ctx->huf, weights, num_symbols))
@@ -793,8 +786,11 @@ static size_t zstd_decode_literals(zstd_ctx *ctx, const uint8_t *data, size_t le
                 size_t want = stream == 3 ? regen - 3 * seg : seg;
                 if (stream == 3 && 3 * seg > regen)
                     return 0;
-                if (!zstd_huf_decode_stream(
-                        &ctx->huf, payload + off, sizes[stream], ctx->literals + stream * seg, want))
+                if (!zstd_huf_decode_stream(&ctx->huf,
+                                            payload + off,
+                                            sizes[stream],
+                                            ctx->literals + stream * seg,
+                                            want))
                     return 0;
                 off += sizes[stream];
             }
@@ -822,38 +818,38 @@ static size_t zstd_setup_seq_table(zstd_ctx *ctx,
                                    int *is_rle) {
     *is_rle = 0;
     switch (mode) {
-    case 0: /* predefined */
-        if (!zstd_fse_build(table, default_norm, default_max_symbol, default_log))
-            return (size_t)-1;
-        *valid_flag = 1;
-        return 0;
-    case 1: /* RLE: one byte symbol */
-        if (len < 1)
-            return (size_t)-1;
-        *rle_symbol = data[0];
-        if (*rle_symbol > max_symbol_limit)
-            return (size_t)-1;
-        *is_rle = 1;
-        return 1;
-    case 2: { /* FSE-described */
-        int16_t norm[256];
-        int max_symbol = 0;
-        int table_log = 0;
-        size_t consumed;
-        memset(norm, 0, sizeof(norm));
-        consumed = zstd_fse_read_ncount(
-            data, len, norm, &max_symbol, &table_log, max_symbol_limit, max_log);
-        if (consumed == 0)
-            return (size_t)-1;
-        if (!zstd_fse_build(table, norm, max_symbol, table_log))
-            return (size_t)-1;
-        *valid_flag = 1;
-        return consumed;
-    }
-    case 3: /* repeat previous */
-        if (!*valid_flag)
-            return (size_t)-1;
-        return 0;
+        case 0: /* predefined */
+            if (!zstd_fse_build(table, default_norm, default_max_symbol, default_log))
+                return (size_t)-1;
+            *valid_flag = 1;
+            return 0;
+        case 1: /* RLE: one byte symbol */
+            if (len < 1)
+                return (size_t)-1;
+            *rle_symbol = data[0];
+            if (*rle_symbol > max_symbol_limit)
+                return (size_t)-1;
+            *is_rle = 1;
+            return 1;
+        case 2: { /* FSE-described */
+            int16_t norm[256];
+            int max_symbol = 0;
+            int table_log = 0;
+            size_t consumed;
+            memset(norm, 0, sizeof(norm));
+            consumed = zstd_fse_read_ncount(
+                data, len, norm, &max_symbol, &table_log, max_symbol_limit, max_log);
+            if (consumed == 0)
+                return (size_t)-1;
+            if (!zstd_fse_build(table, norm, max_symbol, table_log))
+                return (size_t)-1;
+            *valid_flag = 1;
+            return consumed;
+        }
+        case 3: /* repeat previous */
+            if (!*valid_flag)
+                return (size_t)-1;
+            return 0;
     }
     return (size_t)-1;
 }
@@ -992,8 +988,7 @@ static int zstd_decode_sequences(zstd_ctx *ctx, const uint8_t *data, size_t len)
             /* Extra bits are read offset, match, literals — in that order. */
             offset_value = (1u << of_code) + zstd_rbits_read(&bits, of_code);
             match_length = zstd_ml_base[ml_code] + zstd_rbits_read(&bits, zstd_ml_bits[ml_code]);
-            literal_length =
-                zstd_ll_base[ll_code] + zstd_rbits_read(&bits, zstd_ll_bits[ll_code]);
+            literal_length = zstd_ll_base[ll_code] + zstd_rbits_read(&bits, zstd_ll_bits[ll_code]);
 
             /* Repeated-offset resolution (RFC 8878 §3.1.1.5): values 1-3 select
              * a repeat slot (shifted by one when the literal run is empty); the
@@ -1080,8 +1075,26 @@ static int zstd_decode_sequences(zstd_ctx *ctx, const uint8_t *data, size_t len)
     return 1;
 }
 
-int rt_zstd_decompress_raw(
-    const uint8_t *data, size_t len, size_t max_output, uint8_t **out_data, size_t *out_len) {
+/// @brief Shared Zstandard frame worker for allocated and exact-destination decoding.
+/// @details When @p fixed_output is non-NULL the worker borrows that exact-size destination;
+///          otherwise it allocates the bounded output and transfers it through @p out_data. Both
+///          modes require complete frame consumption and run the same dictionary, bounds, entropy,
+///          content-size, and checksum validation.
+/// @param data Complete frame bytes.
+/// @param len Frame byte count.
+/// @param max_output Maximum allocation/output size for allocating mode.
+/// @param fixed_output Optional caller-owned exact destination.
+/// @param fixed_size Exact required output size when @p fixed_output is non-NULL.
+/// @param out_data Receives allocated output in allocating mode; ignored in fixed mode.
+/// @param out_len Receives decoded bytes in allocating mode; ignored in fixed mode.
+/// @return 1 on complete success, otherwise 0.
+static int zstd_decompress_impl(const uint8_t *data,
+                                size_t len,
+                                size_t max_output,
+                                uint8_t *fixed_output,
+                                size_t fixed_size,
+                                uint8_t **out_data,
+                                size_t *out_len) {
     size_t pos = 0;
     uint8_t fhd;
     int single_segment;
@@ -1093,12 +1106,13 @@ int rt_zstd_decompress_raw(
     size_t out_cap;
     zstd_ctx ctx;
     int ok = 0;
+    int owns_output = fixed_output ? 0 : 1;
 
     if (out_data)
         *out_data = NULL;
     if (out_len)
         *out_len = 0;
-    if (!data || !out_data || !out_len || len < 5)
+    if (!data || len < 5 || (!fixed_output && (!out_data || !out_len)))
         return 0;
     if (((uint32_t)data[0] | ((uint32_t)data[1] << 8) | ((uint32_t)data[2] << 16) |
          ((uint32_t)data[3] << 24)) != ZSTD_MAGIC)
@@ -1118,49 +1132,55 @@ int rt_zstd_decompress_raw(
         pos++; /* window descriptor: one-shot decode ignores the window hint */
     }
     switch (fcs_size) {
-    case 0:
-        if (single_segment) {
-            if (pos >= len)
+        case 0:
+            if (single_segment) {
+                if (pos >= len)
+                    return 0;
+                content_size = data[pos++];
+                content_size_known = 1;
+            }
+            break;
+        case 1:
+            if (pos + 2 > len)
                 return 0;
-            content_size = data[pos++];
+            content_size = 256u + ((uint64_t)data[pos] | ((uint64_t)data[pos + 1] << 8));
+            pos += 2;
             content_size_known = 1;
-        }
-        break;
-    case 1:
-        if (pos + 2 > len)
-            return 0;
-        content_size = 256u + ((uint64_t)data[pos] | ((uint64_t)data[pos + 1] << 8));
-        pos += 2;
-        content_size_known = 1;
-        break;
-    case 2:
-        if (pos + 4 > len)
-            return 0;
-        content_size = (uint64_t)data[pos] | ((uint64_t)data[pos + 1] << 8) |
-                       ((uint64_t)data[pos + 2] << 16) | ((uint64_t)data[pos + 3] << 24);
-        pos += 4;
-        content_size_known = 1;
-        break;
-    case 3:
-        if (pos + 8 > len)
-            return 0;
-        content_size = 0;
-        for (int i = 7; i >= 0; i--)
-            content_size = (content_size << 8) | data[pos + i];
-        pos += 8;
-        content_size_known = 1;
-        break;
+            break;
+        case 2:
+            if (pos + 4 > len)
+                return 0;
+            content_size = (uint64_t)data[pos] | ((uint64_t)data[pos + 1] << 8) |
+                           ((uint64_t)data[pos + 2] << 16) | ((uint64_t)data[pos + 3] << 24);
+            pos += 4;
+            content_size_known = 1;
+            break;
+        case 3:
+            if (pos + 8 > len)
+                return 0;
+            content_size = 0;
+            for (int i = 7; i >= 0; i--)
+                content_size = (content_size << 8) | data[pos + i];
+            pos += 8;
+            content_size_known = 1;
+            break;
     }
     if (content_size_known && content_size > (uint64_t)max_output)
         return 0;
-    out_cap = content_size_known ? (size_t)content_size : max_output;
+    out_cap = fixed_output ? fixed_size : (content_size_known ? (size_t)content_size : max_output);
     if (out_cap > max_output)
+        return 0;
+    if (fixed_output && content_size_known && content_size != (uint64_t)fixed_size)
         return 0;
 
     memset(&ctx, 0, sizeof(ctx));
-    ctx.out = (uint8_t *)malloc(out_cap ? out_cap : 1);
-    if (!ctx.out)
-        return 0;
+    if (fixed_output) {
+        ctx.out = fixed_output;
+    } else {
+        ctx.out = (uint8_t *)malloc(out_cap ? out_cap : 1);
+        if (!ctx.out)
+            return 0;
+    }
     ctx.out_cap = out_cap;
     ctx.rep[0] = 1;
     ctx.rep[1] = 4;
@@ -1174,48 +1194,50 @@ int rt_zstd_decompress_raw(
 
         if (pos + 3 > len)
             goto done;
-        block_header = (uint32_t)data[pos] | ((uint32_t)data[pos + 1] << 8) |
-                       ((uint32_t)data[pos + 2] << 16);
+        block_header =
+            (uint32_t)data[pos] | ((uint32_t)data[pos + 1] << 8) | ((uint32_t)data[pos + 2] << 16);
         pos += 3;
         last_block = block_header & 1;
         block_type = (block_header >> 1) & 3;
         block_size = block_header >> 3;
 
         switch (block_type) {
-        case 0: /* raw */
-            if (pos + block_size > len || ctx.out_len + block_size > ctx.out_cap)
-                goto done;
-            memcpy(ctx.out + ctx.out_len, data + pos, block_size);
-            ctx.out_len += block_size;
-            pos += block_size;
-            break;
-        case 1: /* RLE: block_size copies of one byte */
-            if (pos + 1 > len || ctx.out_len + block_size > ctx.out_cap)
-                goto done;
-            memset(ctx.out + ctx.out_len, data[pos], block_size);
-            ctx.out_len += block_size;
-            pos += 1;
-            break;
-        case 2: { /* compressed */
-            size_t lit_bytes;
-            if (pos + block_size > len)
-                goto done;
-            lit_bytes = zstd_decode_literals(&ctx, data + pos, block_size);
-            if (lit_bytes == 0 || lit_bytes > block_size)
-                goto done;
-            if (!zstd_decode_sequences(&ctx, data + pos + lit_bytes, block_size - lit_bytes))
-                goto done;
-            pos += block_size;
-            break;
-        }
-        default:
-            goto done; /* reserved */
+            case 0: /* raw */
+                if (pos + block_size > len || ctx.out_len + block_size > ctx.out_cap)
+                    goto done;
+                memcpy(ctx.out + ctx.out_len, data + pos, block_size);
+                ctx.out_len += block_size;
+                pos += block_size;
+                break;
+            case 1: /* RLE: block_size copies of one byte */
+                if (pos + 1 > len || ctx.out_len + block_size > ctx.out_cap)
+                    goto done;
+                memset(ctx.out + ctx.out_len, data[pos], block_size);
+                ctx.out_len += block_size;
+                pos += 1;
+                break;
+            case 2: { /* compressed */
+                size_t lit_bytes;
+                if (pos + block_size > len)
+                    goto done;
+                lit_bytes = zstd_decode_literals(&ctx, data + pos, block_size);
+                if (lit_bytes == 0 || lit_bytes > block_size)
+                    goto done;
+                if (!zstd_decode_sequences(&ctx, data + pos + lit_bytes, block_size - lit_bytes))
+                    goto done;
+                pos += block_size;
+                break;
+            }
+            default:
+                goto done; /* reserved */
         }
         if (last_block)
             break;
     }
 
     if (content_size_known && ctx.out_len != (size_t)content_size)
+        goto done;
+    if (fixed_output && ctx.out_len != fixed_size)
         goto done;
     if (checksum_flag) {
         uint32_t stored;
@@ -1225,15 +1247,38 @@ int rt_zstd_decompress_raw(
                  ((uint32_t)data[pos + 2] << 16) | ((uint32_t)data[pos + 3] << 24);
         if ((uint32_t)(xxhash64(ctx.out, ctx.out_len) & 0xFFFFFFFFu) != stored)
             goto done;
+        pos += 4;
     }
+    if (pos != len)
+        goto done;
 
-    *out_data = ctx.out;
-    *out_len = ctx.out_len;
-    ctx.out = NULL;
+    if (!fixed_output) {
+        *out_data = ctx.out;
+        *out_len = ctx.out_len;
+        ctx.out = NULL;
+    }
     ok = 1;
 
 done:
-    free(ctx.out);
+    if (owns_output)
+        free(ctx.out);
     free(ctx.literals);
     return ok;
+}
+
+/// @brief Decompress one complete Zstandard frame into a malloc-owned buffer.
+/// @details Compatibility wrapper retaining the established bounded allocation API.
+int rt_zstd_decompress_raw(
+    const uint8_t *data, size_t len, size_t max_output, uint8_t **out_data, size_t *out_len) {
+    return zstd_decompress_impl(data, len, max_output, NULL, 0, out_data, out_len);
+}
+
+/// @brief Decompress one complete Zstandard frame into exact caller-owned storage.
+/// @details The output buffer is borrowed and remains caller-owned on both success and failure;
+///          only temporary entropy/literal state can allocate. The exact-size contract rejects
+///          both short and overproducing frames before publication.
+int rt_zstd_decompress_into(const uint8_t *data, size_t len, uint8_t *output, size_t output_size) {
+    if (!output)
+        return 0;
+    return zstd_decompress_impl(data, len, output_size, output, output_size, NULL, NULL);
 }

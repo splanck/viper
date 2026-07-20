@@ -13,8 +13,8 @@
 //   submission — without a GPU backend, GC, or mesh allocator.
 // Key invariants:
 //   - rt_vegetation3d.c is compiled against the stubs below; only its own logic
-//     is under test. Stubs mirror the private struct as VegetationView and the
-//     terrain handle as FakeTerrain.
+//     is under test. VegetationView mirrors only the unit under test; Terrain3D
+//     metadata crosses the same opaque descriptor boundary used in production.
 //   - Population is deterministic: a no-density populate(count) yields exactly
 //     `count` blades; a full-density (R=255) map keeps all; a zero map keeps none.
 // Ownership/Lifetime:
@@ -27,6 +27,7 @@
 extern "C" {
 #include "rt_canvas3d_internal.h"
 #include "rt_pixels_internal.h"
+#include "rt_terrain3d_internal.h"
 #include "rt_vegetation3d.h"
 }
 
@@ -91,10 +92,7 @@ struct VegetationView {
     int32_t grid_ready;
 };
 
-// Layout the local terrain_view in rt_vegetation3d_populate casts the handle to.
 struct FakeTerrain {
-    void *vptr;
-    float *heights;
     int32_t width;
     int32_t depth;
     double scale[3];
@@ -161,6 +159,19 @@ extern "C" int8_t rt_heap_is_payload(void *) {
 
 extern "C" void rt_mesh3d_note_global_geometry_change(void) {}
 
+/**
+ * @brief Satisfy the isolated Vegetation3D target's retained-geometry invalidation contract.
+ *
+ * The production hook retires cached snapshots after blade geometry changes. This
+ * test target owns only a minimal mesh stub and never creates retained geometry,
+ * leaving the invalidation operation intentionally empty.
+ *
+ * @param mesh Blade mesh whose production retained state would be invalidated.
+ */
+extern "C" void rt_mesh3d_invalidate_retained_geometry(rt_mesh3d *mesh) {
+    (void)mesh;
+}
+
 extern "C" void rt_obj_set_finalizer(void *, void (*)(void *)) {}
 
 extern "C" void rt_obj_retain_maybe(void *) {}
@@ -223,6 +234,34 @@ extern "C" double rt_terrain3d_get_height_at(void *, double, double) {
     return 0.0;
 }
 
+/// @brief Test double for Terrain3D's layout-independent metadata query.
+/// @param terrain Borrowed FakeTerrain registered as the active terrain fixture.
+/// @param out_info Caller-owned descriptor that is zeroed on rejection.
+/// @return `1` for a valid active fixture, otherwise `0`.
+/// @details Keeping this stub independent of Terrain3D's private payload makes
+///   the contract test fail if Vegetation3D resumes reading payload offsets.
+extern "C" int8_t rt_terrain3d_get_grid_info_internal(void *terrain,
+                                                      rt_terrain3d_grid_info *out_info) {
+    if (!out_info)
+        return 0;
+    std::memset(out_info, 0, sizeof(*out_info));
+    if (!terrain || terrain != g_terrain)
+        return 0;
+    auto *fixture = static_cast<FakeTerrain *>(terrain);
+    if (fixture->width < 2 || fixture->depth < 2 || !std::isfinite(fixture->scale[0]) ||
+        fixture->scale[0] <= 0.0 || !std::isfinite(fixture->scale[1]) ||
+        !std::isfinite(fixture->scale[2]) || fixture->scale[2] <= 0.0)
+        return 0;
+    out_info->width = fixture->width;
+    out_info->depth = fixture->depth;
+    out_info->spacing_x = fixture->scale[0];
+    out_info->height_scale = fixture->scale[1];
+    out_info->spacing_z = fixture->scale[2];
+    out_info->extent_x = static_cast<double>(fixture->width - 1) * fixture->scale[0];
+    out_info->extent_z = static_cast<double>(fixture->depth - 1) * fixture->scale[2];
+    return 1;
+}
+
 extern "C" void rt_canvas3d_queue_instanced_batch(void *canvas_obj,
                                                   void *,
                                                   void *,
@@ -263,14 +302,37 @@ extern "C" void vgfx3d_compute_mesh_aabb(
 
 static FakeTerrain make_terrain(int32_t w, int32_t d) {
     FakeTerrain t = {};
-    t.vptr = nullptr;
-    t.heights = nullptr; // populate samples height via rt_terrain3d_get_height_at
     t.width = w;
     t.depth = d;
     t.scale[0] = 1.0;
     t.scale[1] = 1.0;
     t.scale[2] = 1.0;
     return t;
+}
+
+/// @brief Verify population respects sample-interval extents under non-unit scale.
+/// @details A Terrain3D with N samples ends at sample N-1. This catches both the
+///   former private-layout cast and the former `dimension * spacing` off-by-one.
+static void test_populate_uses_opaque_scaled_terrain_extents() {
+    void *veg = rt_vegetation3d_new(nullptr);
+    auto *view = static_cast<VegetationView *>(veg);
+    FakeTerrain terrain = make_terrain(3, 4);
+    terrain.scale[0] = 2.5;
+    terrain.scale[1] = 7.0;
+    terrain.scale[2] = 3.0;
+    g_terrain = &terrain;
+
+    rt_vegetation3d_set_seed(veg, 0x12345678);
+    rt_vegetation3d_populate(veg, &terrain, 512);
+
+    assert(view->total_count == 512);
+    for (int32_t i = 0; i < view->total_count; i++) {
+        const double x = view->positions[i * 3 + 0];
+        const double z = view->positions[i * 3 + 2];
+        assert(x >= 0.0 && x <= 5.0);
+        assert(z >= 0.0 && z <= 9.0);
+    }
+    g_terrain = nullptr;
 }
 
 static rt_canvas3d make_frame_canvas() {
@@ -696,6 +758,7 @@ static void test_grid_rebuilds_after_repopulate() {
 int main() {
     test_new_builds_blade_mesh_and_defaults();
     test_populate_scatters_requested_count();
+    test_populate_uses_opaque_scaled_terrain_extents();
     test_seed_controls_population_layout();
     test_populate_nonpositive_count_clears();
     test_populate_overflow_count_traps();

@@ -50,9 +50,19 @@ static void d3d11_harvest_depth_probes(d3d11_context_t *ctx);
 static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     HRESULT hr;
+    int32_t scene_width;
+    int32_t scene_height;
 
     if (!ctx || !cam)
         return;
+    ctx->frame_active = 1;
+    if (!ctx->rtt_active)
+        ctx->frame_pending_present = 1;
+    if (!vgfx3d_compute_scaled_scene_extent(
+            ctx->width, ctx->height, ctx->render_scale, &scene_width, &scene_height)) {
+        scene_width = ctx->width;
+        scene_height = ctx->height;
+    }
 
     ctx->frame_serial++;
     ctx->presented_color_valid = 0;
@@ -80,11 +90,11 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         ctx->taa_jitter_clip[0] = 0.0f;
         ctx->taa_jitter_clip[1] = 0.0f;
         if (ctx->gpu_postfx_enabled && ctx->gpu_postfx_chain_valid && ctx->ps_taa &&
-            ctx->width > 0 && ctx->height > 0 &&
+            scene_width > 0 && scene_height > 0 &&
             d3d11_chain_has_effect(&ctx->gpu_postfx_chain, (int32_t)VGFX3D_POSTFX_EFFECT_TAA)) {
             uint32_t idx = (ctx->taa_frame_index++ & 7u) + 1u;
-            float jx = (d3d11_halton(idx, 2) - 0.5f) * 2.0f / (float)ctx->width;
-            float jy = (d3d11_halton(idx, 3) - 0.5f) * 2.0f / (float)ctx->height;
+            float jx = (d3d11_halton(idx, 2) - 0.5f) * 2.0f / (float)scene_width;
+            float jy = (d3d11_halton(idx, 3) - 0.5f) * 2.0f / (float)scene_height;
             ctx->taa_jitter_clip[0] = jx;
             ctx->taa_jitter_clip[1] = jy;
             /* Row-major clip-space translate: x-row += jx * w-row, y-row += jy * w-row. */
@@ -175,7 +185,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
                                                                  cam->load_existing_color))
         ctx->scene_composited_to_swapchain = 0;
     ctx->active_target_kind = vgfx3d_d3d11_choose_target_kind(
-        ctx->rtt_active, ctx->gpu_postfx_enabled, cam->load_existing_color);
+        ctx->rtt_active, d3d11_window_scene_route_enabled(ctx), cam->load_existing_color);
     if (!ctx->rtt_active && cam->load_existing_color && ctx->scene_composited_to_swapchain)
         ctx->active_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
 
@@ -189,7 +199,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     }
 
     if (!ctx->rtt_active && ctx->active_target_kind != VGFX3D_D3D11_TARGET_SWAPCHAIN) {
-        hr = d3d11_ensure_scene_targets(ctx, ctx->width, ctx->height);
+        hr = d3d11_ensure_scene_targets(ctx, scene_width, scene_height);
         if (FAILED(hr)) {
             d3d11_log_hresult("CreateSceneTargets", hr);
             ctx->active_target_kind = VGFX3D_D3D11_TARGET_SWAPCHAIN;
@@ -271,7 +281,7 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
     }
     source_kind = vgfx3d_d3d11_choose_depth_probe_target(
         ctx->rtt_active,
-        ctx->gpu_postfx_enabled,
+        d3d11_window_scene_route_enabled(ctx),
         d3d11_has_rtt_targets(ctx),
         d3d11_has_scene_targets(ctx),
         ctx->depth_tex && ctx->dsv &&
@@ -426,6 +436,7 @@ static void d3d11_end_frame(void *ctx_ptr) {
 
     if (!ctx)
         return;
+    ctx->frame_active = 0;
     d3d11_issue_depth_probes(ctx);
     d3d11_end_frame_timing(ctx);
     if (!vgfx3d_d3d11_should_mark_rtt_dirty(ctx->rtt_active,
@@ -1296,7 +1307,7 @@ static int d3d11_readback_rgba(
         ctx->presented_color_valid,
         ctx->presented_color_tex != NULL,
         ctx->scene_composited_to_swapchain,
-        ctx->gpu_postfx_enabled,
+        d3d11_window_scene_route_enabled(ctx),
         ctx->gpu_postfx_chain_valid,
         ctx->gpu_postfx_chain.enabled,
         ctx->gpu_postfx_chain.effect_count,
@@ -1306,12 +1317,25 @@ static int d3d11_readback_rgba(
     if (readback_kind == VGFX3D_D3D11_READBACK_PRESENTED_SNAPSHOT) {
         source_tex = ctx->presented_color_tex;
     } else if (readback_kind == VGFX3D_D3D11_READBACK_POSTFX_COMPOSITE) {
-        if (!d3d11_apply_postfx_chain(ctx, &ctx->gpu_postfx_chain, NULL, 0, 0, 1, &source_tex) &&
-            d3d11_has_scene_targets(ctx))
+        if (d3d11_apply_postfx_chain(
+                ctx, &ctx->gpu_postfx_chain, ctx->rtv, ctx->width, ctx->height, 0, NULL)) {
+            ctx->scene_composited_to_swapchain = 1;
+            if (d3d11_acquire_backbuffer_for_readback(ctx, &back_buffer))
+                source_tex = back_buffer;
+        }
+        if (!source_tex && d3d11_has_scene_targets(ctx))
             source_tex = ctx->scene_color_tex;
     } else if (readback_kind == VGFX3D_D3D11_READBACK_SCENE_COLOR && ctx->scene_width > 0 &&
                ctx->scene_height > 0) {
-        if (ctx->overlay_used_this_frame && d3d11_has_overlay_target(ctx)) {
+        if (!ctx->rtt_active && d3d11_render_scale_active(ctx)) {
+            if (d3d11_resolve_scene_to_target(ctx, ctx->rtv, ctx->width, ctx->height, 0, NULL)) {
+                ctx->scene_composited_to_swapchain = 1;
+                if (d3d11_acquire_backbuffer_for_readback(ctx, &back_buffer))
+                    source_tex = back_buffer;
+            }
+            if (!source_tex)
+                source_tex = ctx->scene_color_tex;
+        } else if (ctx->overlay_used_this_frame && d3d11_has_overlay_target(ctx)) {
             if (!d3d11_resolve_scene_to_target(ctx, NULL, 0, 0, 1, &source_tex))
                 source_tex = ctx->scene_color_tex;
         } else {
@@ -1338,6 +1362,7 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_cha
 
     if (!ctx || ctx->rtt_active)
         return;
+    ctx->frame_pending_present = 0;
     if (ctx->scene_composited_to_swapchain) {
         d3d11_present_swapchain(ctx);
         ctx->scene_composited_to_swapchain = 0;
@@ -1348,7 +1373,7 @@ static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_cha
                      ? 1
                      : 0;
     if (!use_postfx) {
-        if (ctx->gpu_postfx_enabled && d3d11_has_scene_targets(ctx) &&
+        if (d3d11_window_scene_route_enabled(ctx) && d3d11_has_scene_targets(ctx) &&
             d3d11_resolve_scene_to_target(ctx, ctx->rtv, ctx->width, ctx->height, 0, NULL)) {
             d3d11_present_swapchain(ctx);
             ctx->scene_composited_to_swapchain = 0;
@@ -1384,7 +1409,7 @@ static void d3d11_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postf
     if (ctx->scene_composited_to_swapchain)
         return;
     if (!vgfx3d_d3d11_should_composite_to_swapchain(ctx->rtt_active,
-                                                    ctx->gpu_postfx_enabled,
+                                                    d3d11_window_scene_route_enabled(ctx),
                                                     d3d11_has_scene_targets(ctx),
                                                     ctx->scene_composited_to_swapchain))
         return;
@@ -1393,7 +1418,7 @@ static void d3d11_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postf
                      ? 1
                      : 0;
     if (!use_postfx) {
-        if (ctx->gpu_postfx_enabled && d3d11_has_scene_targets(ctx) &&
+        if (d3d11_window_scene_route_enabled(ctx) && d3d11_has_scene_targets(ctx) &&
             d3d11_resolve_scene_to_target(ctx, ctx->rtv, ctx->width, ctx->height, 0, NULL))
             ctx->scene_composited_to_swapchain = 1;
         return;
@@ -1437,6 +1462,74 @@ static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
         d3d11_unbind_postfx_resources(ctx);
         d3d11_reset_temporal_scene_state(ctx);
     }
+}
+
+/// @brief Apply a reduced window-scene render scale to the D3D11 backend.
+/// @details Rebuilds the offscreen HDR scene at the shared scaled extent and keeps the overlay at
+///          logical output size. Presentation then resolves through the existing full-screen
+///          post-FX shader into the swapchain viewport, whether or not user effects are enabled.
+///          Allocation is transactional with respect to the stored scale: a failed scene/overlay
+///          build restores the prior scale and reconstructs its route for a later retry. Explicit
+///          render-target dimensions are never changed.
+/// @param ctx_ptr Borrowed `d3d11_context_t` backend handle.
+/// @param scale Finite requested scale in `[0.25, 1]`; values at least `0.999` normalize to 1.
+/// @return 1 when the requested/native route is ready, or 0 for invalid input, missing composite
+///         shaders, or target allocation failure.
+static int8_t d3d11_set_render_scale(void *ctx_ptr, float scale) {
+    d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
+    float prior_scale;
+    float next_scale;
+    int32_t scene_width;
+    int32_t scene_height;
+    HRESULT scene_hr = S_OK;
+    HRESULT overlay_hr = S_OK;
+
+    if (!ctx || !vgfx3d_compute_scaled_scene_extent(
+                    ctx->width, ctx->height, scale, &scene_width, &scene_height)) {
+        return 0;
+    }
+    next_scale = scale >= 0.999f ? 1.0f : scale;
+    if (next_scale < 1.0f && (!ctx->vs_postfx || !ctx->ps_postfx))
+        return 0;
+    if (ctx->frame_active || ctx->frame_pending_present)
+        return 0;
+    prior_scale =
+        (isfinite(ctx->render_scale) && ctx->render_scale >= 0.25f && ctx->render_scale <= 1.0f)
+            ? ctx->render_scale
+            : 1.0f;
+    if (fabsf(prior_scale - next_scale) <= 1.0e-6f)
+        return 1;
+
+    d3d11_unbind_draw_resources(ctx);
+    d3d11_destroy_scene_targets(ctx);
+    ctx->render_scale = next_scale;
+    if (d3d11_window_scene_route_enabled(ctx)) {
+        if (!vgfx3d_compute_scaled_scene_extent(
+                ctx->width, ctx->height, next_scale, &scene_width, &scene_height)) {
+            scene_hr = E_INVALIDARG;
+        } else {
+            scene_hr = d3d11_ensure_scene_targets(ctx, scene_width, scene_height);
+            if (SUCCEEDED(scene_hr))
+                overlay_hr = d3d11_ensure_overlay_target(ctx, ctx->width, ctx->height);
+        }
+    }
+    if (SUCCEEDED(scene_hr) && SUCCEEDED(overlay_hr)) {
+        if (!ctx->rtt_active)
+            d3d11_bind_swapchain_target(ctx);
+        return 1;
+    }
+
+    d3d11_destroy_scene_targets(ctx);
+    ctx->render_scale = prior_scale;
+    if (d3d11_window_scene_route_enabled(ctx) &&
+        vgfx3d_compute_scaled_scene_extent(
+            ctx->width, ctx->height, prior_scale, &scene_width, &scene_height)) {
+        if (SUCCEEDED(d3d11_ensure_scene_targets(ctx, scene_width, scene_height)))
+            (void)d3d11_ensure_overlay_target(ctx, ctx->width, ctx->height);
+    }
+    if (!ctx->rtt_active)
+        d3d11_bind_swapchain_target(ctx);
+    return 0;
 }
 
 /// @brief Invalidate stale presented snapshots when a new post-FX latch starts a frame.

@@ -615,8 +615,8 @@ static void gltf_material_synthesize_spec_gloss_mr_map(void *spec_gloss,
         metallic = (max_spec - 0.04) / (1.0 - 0.04);
         roughness_u8 = gltf_unit_to_u8(1.0 - gloss);
         metallic_u8 = gltf_unit_to_u8(metallic);
-        mr->data[i] = 0xFF000000u | ((uint32_t)roughness_u8 << 16) | ((uint32_t)metallic_u8 << 8) |
-                      0xFFu;
+        mr->data[i] =
+            0xFF000000u | ((uint32_t)roughness_u8 << 16) | ((uint32_t)metallic_u8 << 8) | 0xFFu;
     }
     pixels_touch(mr);
     rt_material3d_set_metallic_roughness_map(material, mr);
@@ -893,12 +893,12 @@ static int gltf_material_apply_extensions(void *mat_json,
         if (att_distance > 0.0) {
             double avg = 1.0;
             if (jarr_len(att_color) >= 3) {
-                double r = gltf_clamp_double(jvalue_num(rt_seq_get(att_color, 0), 1.0), 1e-4,
-                                             1.0, 1.0);
-                double g = gltf_clamp_double(jvalue_num(rt_seq_get(att_color, 1), 1.0), 1e-4,
-                                             1.0, 1.0);
-                double b = gltf_clamp_double(jvalue_num(rt_seq_get(att_color, 2), 1.0), 1e-4,
-                                             1.0, 1.0);
+                double r =
+                    gltf_clamp_double(jvalue_num(rt_seq_get(att_color, 0), 1.0), 1e-4, 1.0, 1.0);
+                double g =
+                    gltf_clamp_double(jvalue_num(rt_seq_get(att_color, 1), 1.0), 1e-4, 1.0, 1.0);
+                double b =
+                    gltf_clamp_double(jvalue_num(rt_seq_get(att_color, 2), 1.0), 1e-4, 1.0, 1.0);
                 avg = (r + g + b) / 3.0;
             }
             sigma = -log(avg) / att_distance;
@@ -915,12 +915,12 @@ static int gltf_material_apply_extensions(void *mat_json,
             gltf_clamp_double(jnum(sheen_ext, "sheenRoughnessFactor", 0.0), 0.0, 1.0, 0.0);
         double intensity = 0.0;
         if (jarr_len(sheen_color) >= 3) {
-            double r = gltf_clamp_double(jvalue_num(rt_seq_get(sheen_color, 0), 0.0), 0.0, 1.0,
-                                         0.0);
-            double g = gltf_clamp_double(jvalue_num(rt_seq_get(sheen_color, 1), 0.0), 0.0, 1.0,
-                                         0.0);
-            double b = gltf_clamp_double(jvalue_num(rt_seq_get(sheen_color, 2), 0.0), 0.0, 1.0,
-                                         0.0);
+            double r =
+                gltf_clamp_double(jvalue_num(rt_seq_get(sheen_color, 0), 0.0), 0.0, 1.0, 0.0);
+            double g =
+                gltf_clamp_double(jvalue_num(rt_seq_get(sheen_color, 1), 0.0), 0.0, 1.0, 0.0);
+            double b =
+                gltf_clamp_double(jvalue_num(rt_seq_get(sheen_color, 2), 0.0), 0.0, 1.0, 0.0);
             intensity = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         }
         if (intensity > 0.0) {
@@ -1010,7 +1010,7 @@ static void gltf_material_apply_alpha_and_sided(void *mat_json, void *material) 
     } else {
         rt_material3d_set_alpha_mode(material, RT_MATERIAL3D_ALPHA_MODE_OPAQUE);
     }
-    rt_material3d_set_double_sided(material, jint(mat_json, "doubleSided", 0) ? 1 : 0);
+    rt_material3d_set_double_sided(material, jbool(mat_json, "doubleSided", 0) ? 1 : 0);
 }
 
 /// @brief Resolve glTF materials (PBR factors, KHR material extensions, and the
@@ -1060,8 +1060,7 @@ static void gltf_load_materials(rt_gltf_asset *asset,
             void *pbr = jget(mat_json, "pbrMetallicRoughness");
             void *mat_extensions = jget(mat_json, "extensions");
             void *spec_gloss =
-                mat_extensions ? jget(mat_extensions, "KHR_materials_pbrSpecularGlossiness")
-                               : NULL;
+                mat_extensions ? jget(mat_extensions, "KHR_materials_pbrSpecularGlossiness") : NULL;
 
             if (spec_gloss) {
                 /* Plan 09: legacy spec-gloss materials convert to metallic-roughness;

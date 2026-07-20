@@ -16,12 +16,15 @@
 //   - When a CharacterController3D is bound it owns the authoritative position;
 //     otherwise the agent integrates `desired_velocity * dt` directly.
 //   - Auto-repath fires every `repath_interval` seconds while a target is active.
+//   - Batch updates prepare all agents, snapshot all peers, solve immutably, and
+//     apply in monotonic creation order, independent of caller array order.
 //
 // Ownership/Lifetime:
 //   - NavAgent3D is GC-managed; finalizer frees the path buffer and releases the
 //     navmesh / bound character / bound node refs.
 //   - All bindings (navmesh, character, node) are retained on assignment and
 //     released on rebind / finalize.
+//   - Process-lifetime batch scratch borrows but never retains agent pointers.
 //
 // Links: rt_navagent3d.h, rt_navmesh3d.h, rt_physics3d.h, rt_scene3d.h
 //
@@ -91,6 +94,7 @@ typedef struct rt_navagent3d {
     int32_t grid_cx;
     int32_t grid_cz;
     int8_t in_grid;
+    uint64_t stable_order;
 } rt_navagent3d;
 
 static rt_navagent3d *g_navagent3d_registry = NULL;
@@ -123,6 +127,9 @@ static rt_navagent3d *g_navagent3d_grid[NAVAGENT_GRID_BUCKETS];
 /* Monotonic max of (effective avoidance radius + desired speed) across agents; bounds the cell
  * neighborhood a query must cover so the grid never misses a contributing peer. */
 static double g_navagent3d_max_reach = 0.0;
+/* Monotonic creation order used to canonicalize batch publication independently of the caller's
+ * array order. Registry operations and agent construction are main-thread-only. */
+static uint64_t g_navagent3d_next_stable_order = 0;
 
 static void navagent_grid_refresh(rt_navagent3d *agent);
 static void navagent_grid_remove(rt_navagent3d *agent);
@@ -940,6 +947,476 @@ static void navagent_apply_local_avoidance(rt_navagent3d *agent, double dt) {
     }
 }
 
+/// @brief Immutable start-of-tick state consumed by one batch avoidance solve.
+/// @details Every live agent is represented so selected agents see both selected and unselected
+///   peers at one consistent instant. The snapshot carries the explicit position and velocity as
+///   well as the preferred velocity derived after path preparation.
+typedef struct {
+    rt_navagent3d *agent;
+    void *navmesh;
+    uint64_t stable_order;
+    double position[3];
+    double velocity[3];
+    double desired_velocity[3];
+    double preferred_x;
+    double preferred_z;
+    double desired_speed;
+    double avoidance_radius;
+    double reach;
+    int32_t grid_cx;
+    int32_t grid_cz;
+    int32_t grid_next;
+    int8_t avoidance_enabled;
+} navagent_batch_snapshot_t;
+
+/// @brief One selected agent's staged preparation, solved velocity, and apply inputs.
+typedef struct {
+    rt_navagent3d *agent;
+    uint64_t stable_order;
+    double previous_position[3];
+    double solved_velocity[3];
+    double stopping_distance;
+    int32_t snapshot_index;
+    int8_t should_apply;
+} navagent_batch_item_t;
+
+/// @brief Read-only lookup context for a complete batch solve.
+typedef struct {
+    navagent_batch_snapshot_t *snapshots;
+    int32_t snapshot_count;
+    int32_t bucket_heads[NAVAGENT_GRID_BUCKETS];
+    double max_reach;
+} navagent_batch_context_t;
+
+/* Main-thread reusable staging buffers remove per-frame allocation churn for crowd updates. They
+ * are process-lifetime scratch, do not retain the raw object pointers they temporarily contain,
+ * and are overwritten by every batch. */
+static navagent_batch_item_t *g_navagent_batch_items = NULL;
+static int32_t g_navagent_batch_item_capacity = 0;
+static navagent_batch_snapshot_t *g_navagent_batch_snapshots = NULL;
+static int32_t g_navagent_batch_snapshot_capacity = 0;
+static int32_t *g_navagent_batch_neighbor_indices = NULL;
+static int32_t g_navagent_batch_neighbor_capacity = 0;
+static int g_navagent_batch_active = 0;
+
+/// @brief Grow the reusable selected-agent staging array.
+/// @param needed Minimum number of batch-item records required.
+/// @return 1 when capacity is available, or 0 on invalid size/overflow/allocation failure.
+static int navagent_batch_reserve_items(int32_t needed) {
+    navagent_batch_item_t *grown;
+    int32_t capacity;
+    if (needed < 0)
+        return 0;
+    if (needed <= g_navagent_batch_item_capacity)
+        return 1;
+    capacity = g_navagent_batch_item_capacity > 0 ? g_navagent_batch_item_capacity : 16;
+    while (capacity < needed) {
+        if (capacity > INT32_MAX / 2) {
+            capacity = needed;
+            break;
+        }
+        capacity *= 2;
+    }
+    if ((size_t)capacity > SIZE_MAX / sizeof(*grown))
+        return 0;
+    grown =
+        (navagent_batch_item_t *)realloc(g_navagent_batch_items, (size_t)capacity * sizeof(*grown));
+    if (!grown)
+        return 0;
+    g_navagent_batch_items = grown;
+    g_navagent_batch_item_capacity = capacity;
+    return 1;
+}
+
+/// @brief Grow the reusable whole-registry snapshot array.
+/// @param needed Minimum number of immutable snapshot records required.
+/// @return 1 when capacity is available, or 0 on invalid size/overflow/allocation failure.
+static int navagent_batch_reserve_snapshots(int32_t needed) {
+    navagent_batch_snapshot_t *grown;
+    int32_t capacity;
+    if (needed < 0)
+        return 0;
+    if (needed <= g_navagent_batch_snapshot_capacity)
+        return 1;
+    capacity = g_navagent_batch_snapshot_capacity > 0 ? g_navagent_batch_snapshot_capacity : 32;
+    while (capacity < needed) {
+        if (capacity > INT32_MAX / 2) {
+            capacity = needed;
+            break;
+        }
+        capacity *= 2;
+    }
+    if ((size_t)capacity > SIZE_MAX / sizeof(*grown))
+        return 0;
+    grown = (navagent_batch_snapshot_t *)realloc(g_navagent_batch_snapshots,
+                                                 (size_t)capacity * sizeof(*grown));
+    if (!grown)
+        return 0;
+    g_navagent_batch_snapshots = grown;
+    g_navagent_batch_snapshot_capacity = capacity;
+    return 1;
+}
+
+/// @brief Grow the reusable snapshot-neighbor index list.
+/// @param needed Minimum number of peer indices required by an exhaustive solve.
+/// @return 1 when capacity is available, or 0 on invalid size/overflow/allocation failure.
+static int navagent_batch_reserve_neighbors(int32_t needed) {
+    int32_t *grown;
+    int32_t capacity;
+    if (needed < 0)
+        return 0;
+    if (needed <= g_navagent_batch_neighbor_capacity)
+        return 1;
+    capacity = g_navagent_batch_neighbor_capacity > 0 ? g_navagent_batch_neighbor_capacity : 32;
+    while (capacity < needed) {
+        if (capacity > INT32_MAX / 2) {
+            capacity = needed;
+            break;
+        }
+        capacity *= 2;
+    }
+    if ((size_t)capacity > SIZE_MAX / sizeof(*grown))
+        return 0;
+    grown =
+        (int32_t *)realloc(g_navagent_batch_neighbor_indices, (size_t)capacity * sizeof(*grown));
+    if (!grown)
+        return 0;
+    g_navagent_batch_neighbor_indices = grown;
+    g_navagent_batch_neighbor_capacity = capacity;
+    return 1;
+}
+
+/// @brief Compare selected batch items by stable creation order, then numeric handle value.
+/// @param lhs Pointer to a `navagent_batch_item_t`.
+/// @param rhs Pointer to a `navagent_batch_item_t`.
+/// @return Negative/zero/positive according to deterministic handle order.
+static int navagent_batch_item_compare(const void *lhs, const void *rhs) {
+    const navagent_batch_item_t *a = (const navagent_batch_item_t *)lhs;
+    const navagent_batch_item_t *b = (const navagent_batch_item_t *)rhs;
+    if (a->stable_order < b->stable_order)
+        return -1;
+    if (a->stable_order > b->stable_order)
+        return 1;
+    uintptr_t ap = (uintptr_t)a->agent;
+    uintptr_t bp = (uintptr_t)b->agent;
+    return ap < bp ? -1 : ap > bp ? 1 : 0;
+}
+
+/// @brief Compare immutable snapshots by stable creation order, then numeric handle value.
+/// @param lhs Pointer to a `navagent_batch_snapshot_t`.
+/// @param rhs Pointer to a `navagent_batch_snapshot_t`.
+/// @return Negative/zero/positive according to deterministic handle order.
+static int navagent_batch_snapshot_compare(const void *lhs, const void *rhs) {
+    const navagent_batch_snapshot_t *a = (const navagent_batch_snapshot_t *)lhs;
+    const navagent_batch_snapshot_t *b = (const navagent_batch_snapshot_t *)rhs;
+    if (a->stable_order < b->stable_order)
+        return -1;
+    if (a->stable_order > b->stable_order)
+        return 1;
+    uintptr_t ap = (uintptr_t)a->agent;
+    uintptr_t bp = (uintptr_t)b->agent;
+    return ap < bp ? -1 : ap > bp ? 1 : 0;
+}
+
+/// @brief Locate one selected live agent in the stable-order snapshot array.
+/// @param snapshots Sorted immutable snapshot array.
+/// @param count Number of valid snapshots.
+/// @param agent Agent pointer to locate.
+/// @return Snapshot index, or -1 when absent.
+static int32_t navagent_batch_find_snapshot(const navagent_batch_snapshot_t *snapshots,
+                                            int32_t count,
+                                            const rt_navagent3d *agent) {
+    int32_t low = 0;
+    int32_t high = count;
+    if (!snapshots || count <= 0 || !agent)
+        return -1;
+    while (low < high) {
+        int32_t mid = low + (high - low) / 2;
+        if (snapshots[mid].stable_order < agent->stable_order)
+            low = mid + 1;
+        else
+            high = mid;
+    }
+    for (int32_t i = low; i < count && snapshots[i].stable_order == agent->stable_order; i++)
+        if (snapshots[i].agent == agent)
+            return i;
+    return -1;
+}
+
+/// @brief Populate and spatially index an immutable snapshot of every registered agent.
+/// @details Snapshots are sorted by stable handle order before hash insertion, so both full scans
+///   and hash-bucket walks have deterministic order independent of the caller's selected array.
+/// @param context Output context whose fixed bucket table and reusable snapshot pointer are filled.
+/// @return 1 on success, or 0 if registry accounting exceeds reserved bounds.
+static int navagent_batch_build_snapshot(navagent_batch_context_t *context) {
+    int32_t count = 0;
+    if (!context || g_navagent3d_registry_count < 0 || g_navagent3d_registry_count > INT32_MAX)
+        return 0;
+    for (rt_navagent3d *agent = g_navagent3d_registry; agent; agent = agent->registry_next) {
+        if (count >= g_navagent_batch_snapshot_capacity)
+            return 0;
+        navagent_batch_snapshot_t *snapshot = &g_navagent_batch_snapshots[count++];
+        memset(snapshot, 0, sizeof(*snapshot));
+        snapshot->agent = agent;
+        snapshot->navmesh = agent->navmesh;
+        snapshot->stable_order = agent->stable_order;
+        navagent_vec_copy(snapshot->position, agent->position);
+        navagent_vec_copy(snapshot->velocity, agent->velocity);
+        navagent_vec_copy(snapshot->desired_velocity, agent->desired_velocity);
+        navagent_preferred_velocity_xz(agent, &snapshot->preferred_x, &snapshot->preferred_z);
+        snapshot->desired_speed =
+            navagent_nonnegative_capped_or(agent->desired_speed, 0.0, NAVAGENT_SPEED_MAX);
+        snapshot->avoidance_radius = navagent_effective_avoidance_radius(agent);
+        snapshot->reach = navagent_reach(agent);
+        snapshot->grid_cx = navagent_grid_coord(snapshot->position[0]);
+        snapshot->grid_cz = navagent_grid_coord(snapshot->position[2]);
+        snapshot->grid_next = -1;
+        snapshot->avoidance_enabled = agent->avoidance_enabled ? 1 : 0;
+    }
+    qsort(g_navagent_batch_snapshots,
+          (size_t)count,
+          sizeof(*g_navagent_batch_snapshots),
+          navagent_batch_snapshot_compare);
+    context->snapshots = g_navagent_batch_snapshots;
+    context->snapshot_count = count;
+    context->max_reach = 0.0;
+    for (uint32_t bucket = 0; bucket < NAVAGENT_GRID_BUCKETS; bucket++)
+        context->bucket_heads[bucket] = -1;
+    for (int32_t i = 0; i < count; i++) {
+        navagent_batch_snapshot_t *snapshot = &context->snapshots[i];
+        uint32_t bucket = navagent_grid_bucket(snapshot->grid_cx, snapshot->grid_cz);
+        snapshot->grid_next = context->bucket_heads[bucket];
+        context->bucket_heads[bucket] = i;
+        if (snapshot->reach > context->max_reach)
+            context->max_reach = snapshot->reach;
+    }
+    return 1;
+}
+
+/// @brief Append a qualifying immutable peer index to the reusable neighbor list.
+/// @param context Snapshot context containing @p candidate_index.
+/// @param self_index Snapshot index of the agent being solved.
+/// @param candidate_index Potential peer snapshot index.
+/// @param count In/out number of appended peers.
+/// @return 1 on success, or 0 for corrupt indices/capacity.
+static int navagent_batch_append_peer(const navagent_batch_context_t *context,
+                                      int32_t self_index,
+                                      int32_t candidate_index,
+                                      int32_t *count) {
+    if (!context || !count || self_index < 0 || candidate_index < 0 ||
+        self_index >= context->snapshot_count || candidate_index >= context->snapshot_count ||
+        *count < 0 || *count >= g_navagent_batch_neighbor_capacity)
+        return 0;
+    const navagent_batch_snapshot_t *self = &context->snapshots[self_index];
+    const navagent_batch_snapshot_t *candidate = &context->snapshots[candidate_index];
+    if (candidate_index == self_index || !candidate->avoidance_enabled ||
+        candidate->navmesh != self->navmesh || candidate->avoidance_radius <= 0.0)
+        return 1;
+    g_navagent_batch_neighbor_indices[(*count)++] = candidate_index;
+    return 1;
+}
+
+/// @brief Collect a deterministic spatially culled peer list from immutable snapshots.
+/// @param context Complete start-of-tick snapshot and spatial hash.
+/// @param self_index Snapshot index of the selected agent.
+/// @param out_count Receives the number of indices in `g_navagent_batch_neighbor_indices`.
+/// @return 1 on success, or 0 for invalid state/capacity.
+static int navagent_batch_collect_peers(const navagent_batch_context_t *context,
+                                        int32_t self_index,
+                                        int32_t *out_count) {
+    int32_t count = 0;
+    if (out_count)
+        *out_count = 0;
+    if (!context || !out_count || self_index < 0 || self_index >= context->snapshot_count)
+        return 0;
+    const navagent_batch_snapshot_t *self = &context->snapshots[self_index];
+    double max_distance = self->reach + context->max_reach;
+    int ring = (int)ceil(max_distance / NAVAGENT_GRID_CELL) + 1;
+    int64_t grid_cells = (int64_t)(2 * ring + 1) * (int64_t)(2 * ring + 1);
+    if (ring >= 1 && (ring <= NAVAGENT_GRID_MAX_RING || grid_cells <= context->snapshot_count)) {
+        for (int32_t dz = -ring; dz <= ring; dz++) {
+            for (int32_t dx = -ring; dx <= ring; dx++) {
+                int32_t cell_x = self->grid_cx + dx;
+                int32_t cell_z = self->grid_cz + dz;
+                uint32_t bucket = navagent_grid_bucket(cell_x, cell_z);
+                for (int32_t candidate_index = context->bucket_heads[bucket]; candidate_index >= 0;
+                     candidate_index = context->snapshots[candidate_index].grid_next) {
+                    const navagent_batch_snapshot_t *candidate =
+                        &context->snapshots[candidate_index];
+                    if (candidate->grid_cx == cell_x && candidate->grid_cz == cell_z &&
+                        !navagent_batch_append_peer(context, self_index, candidate_index, &count))
+                        return 0;
+                }
+            }
+        }
+    } else {
+        for (int32_t candidate_index = 0; candidate_index < context->snapshot_count;
+             candidate_index++) {
+            if (!navagent_batch_append_peer(context, self_index, candidate_index, &count))
+                return 0;
+        }
+    }
+    *out_count = count;
+    return 1;
+}
+
+/// @brief Score one candidate velocity against one immutable peer snapshot.
+/// @details The formula mirrors individual RVO solving but reads no live agent field, ensuring an
+///   earlier solve/apply cannot influence a later one in the same batch.
+/// @param self Start-of-tick state for the agent being solved.
+/// @param other Start-of-tick peer state.
+/// @param horizon Bounded prediction horizon.
+/// @param candidate_x Candidate X velocity.
+/// @param candidate_z Candidate Z velocity.
+/// @return Non-negative collision-risk penalty.
+static double navagent_batch_peer_penalty(const navagent_batch_snapshot_t *self,
+                                          const navagent_batch_snapshot_t *other,
+                                          double horizon,
+                                          double candidate_x,
+                                          double candidate_z) {
+    double combined;
+    double relative_x;
+    double relative_z;
+    double relative_velocity_x;
+    double relative_velocity_z;
+    double distance_sq;
+    double combined_sq;
+    double relative_speed_sq;
+    double dot;
+    double time;
+    double closest_x;
+    double closest_z;
+    double closest_sq;
+    if (!self || !other || self == other || !other->avoidance_enabled ||
+        other->navmesh != self->navmesh)
+        return 0.0;
+    combined = self->avoidance_radius + other->avoidance_radius;
+    if (combined <= 0.0)
+        return 0.0;
+    relative_x = other->position[0] - self->position[0];
+    relative_z = other->position[2] - self->position[2];
+    distance_sq = relative_x * relative_x + relative_z * relative_z;
+    combined_sq = combined * combined;
+    relative_velocity_x = other->preferred_x - candidate_x;
+    relative_velocity_z = other->preferred_z - candidate_z;
+    relative_speed_sq =
+        relative_velocity_x * relative_velocity_x + relative_velocity_z * relative_velocity_z;
+    if (distance_sq < combined_sq) {
+        double distance = distance_sq > 1e-12 ? sqrt(distance_sq) : 0.0;
+        double penetration = (combined - distance) / combined;
+        double separation_rate;
+        if (distance > 1e-9) {
+            separation_rate =
+                (relative_x * relative_velocity_x + relative_z * relative_velocity_z) / distance;
+        } else {
+            separation_rate = -sqrt(candidate_x * candidate_x + candidate_z * candidate_z);
+        }
+        return 2500.0 * penetration * penetration +
+               50.0 * fmax(0.0, (combined / horizon) - separation_rate);
+    }
+    if (relative_speed_sq <= 1e-10)
+        return 0.0;
+    dot = relative_x * relative_velocity_x + relative_z * relative_velocity_z;
+    time = -dot / relative_speed_sq;
+    if (time < 0.0 || time > horizon)
+        return 0.0;
+    closest_x = relative_x + relative_velocity_x * time;
+    closest_z = relative_z + relative_velocity_z * time;
+    closest_sq = closest_x * closest_x + closest_z * closest_z;
+    if (closest_sq >= combined_sq)
+        return 0.0;
+    double closest = closest_sq > 1e-12 ? sqrt(closest_sq) : 0.0;
+    double risk = (combined - closest) / combined;
+    double time_weight = 1.0 + (horizon - time) / horizon;
+    return 1000.0 * risk * risk * time_weight;
+}
+
+/// @brief Solve one selected agent's final desired velocity from immutable batch state.
+/// @param context Complete start-of-tick snapshot context.
+/// @param snapshot_index Snapshot index of the selected agent.
+/// @param dt Sanitized positive tick duration.
+/// @param out_velocity Receives the solved XYZ desired velocity.
+/// @return 1 after writing a solution, or 0 for invalid state/peer collection failure.
+static int navagent_batch_solve_velocity(const navagent_batch_context_t *context,
+                                         int32_t snapshot_index,
+                                         double dt,
+                                         double out_velocity[3]) {
+    double candidates[NAVAGENT_RVO_MAX_CANDIDATES][2];
+    double best_x;
+    double best_z;
+    double best_score = 1.0e300;
+    double horizon;
+    double preferred_length;
+    double right_x;
+    double right_z;
+    int32_t neighbor_count = 0;
+    if (!context || !out_velocity || snapshot_index < 0 ||
+        snapshot_index >= context->snapshot_count)
+        return 0;
+    const navagent_batch_snapshot_t *self = &context->snapshots[snapshot_index];
+    navagent_vec_copy(out_velocity, self->desired_velocity);
+    if (!self->avoidance_enabled || self->avoidance_radius <= 0.0 || self->desired_speed <= 0.0)
+        return 1;
+    double preferred_x = self->desired_velocity[0];
+    double preferred_z = self->desired_velocity[2];
+    preferred_length = sqrt(preferred_x * preferred_x + preferred_z * preferred_z);
+    if (!isfinite(preferred_length) || preferred_length <= 1e-9)
+        return 1;
+    if (!navagent_batch_collect_peers(context, snapshot_index, &neighbor_count))
+        return 0;
+    horizon = dt * 12.0;
+    if (horizon < NAVAGENT_RVO_MIN_TIME_HORIZON)
+        horizon = NAVAGENT_RVO_MIN_TIME_HORIZON;
+    if (horizon > NAVAGENT_RVO_MAX_TIME_HORIZON)
+        horizon = NAVAGENT_RVO_MAX_TIME_HORIZON;
+    right_x = preferred_z / preferred_length;
+    right_z = -preferred_x / preferred_length;
+    int candidate_count = navagent_build_velocity_candidates(
+        preferred_x, preferred_z, self->desired_speed, candidates);
+    best_x = preferred_x;
+    best_z = preferred_z;
+    for (int candidate = 0; candidate < candidate_count; candidate++) {
+        double candidate_x = candidates[candidate][0];
+        double candidate_z = candidates[candidate][1];
+        double dx = candidate_x - preferred_x;
+        double dz = candidate_z - preferred_z;
+        double candidate_speed = sqrt(candidate_x * candidate_x + candidate_z * candidate_z);
+        double score = dx * dx + dz * dz;
+        double forward = candidate_x * preferred_x + candidate_z * preferred_z;
+        double side = candidate_x * right_x + candidate_z * right_z;
+        double speed_loss = self->desired_speed - candidate_speed;
+        for (int32_t peer = 0; peer < neighbor_count; peer++) {
+            score += navagent_batch_peer_penalty(
+                self,
+                &context->snapshots[g_navagent_batch_neighbor_indices[peer]],
+                horizon,
+                candidate_x,
+                candidate_z);
+        }
+        if (speed_loss > 0.0)
+            score += speed_loss * speed_loss * 1.5;
+        if (forward < 0.0)
+            score += self->desired_speed * self->desired_speed * 2.0;
+        score -= side * self->desired_speed * 1e-4;
+        if (score < best_score) {
+            best_score = score;
+            best_x = candidate_x;
+            best_z = candidate_z;
+        }
+    }
+    out_velocity[0] = best_x;
+    out_velocity[2] = best_z;
+    double speed_sq = navagent_len_sq(out_velocity);
+    double max_speed_sq = self->desired_speed * self->desired_speed;
+    if (speed_sq > max_speed_sq && speed_sq > 1e-10) {
+        double scale = self->desired_speed / sqrt(speed_sq);
+        out_velocity[0] *= scale;
+        out_velocity[1] *= scale;
+        out_velocity[2] *= scale;
+    }
+    return 1;
+}
+
 /// @brief Test-only: verify the spatial-grid avoidance query produces the same steering adjustment
 ///   as a full registry scan for every registered agent (they must agree up to floating-point
 ///   summation order). @return 1 if all agents agree (or none registered), 0 on any mismatch. Not
@@ -1245,6 +1722,9 @@ void *rt_navagent3d_new(void *navmesh, double radius, double height) {
     agent->desired_speed = 4.0;
     agent->repath_interval = 0.25;
     agent->auto_repath = 1;
+    agent->stable_order = ++g_navagent3d_next_stable_order;
+    if (agent->stable_order == 0)
+        agent->stable_order = ++g_navagent3d_next_stable_order;
     if (navmesh)
         rt_obj_retain_maybe(navmesh);
     agent->navmesh = navmesh;
@@ -1284,25 +1764,30 @@ void rt_navagent3d_clear_target(void *obj) {
     navagent_zero_motion(agent);
 }
 
-/// @brief Per-frame steering tick. Optionally re-paths if the auto-repath interval has elapsed,
-/// computes a desired velocity toward the next path waypoint, then either moves a bound
-/// CharacterController3D (if any) or integrates position directly. Falls back to snapping to the
-/// navmesh after each step. Stops cleanly when within `stopping_distance` of the target.
-void rt_navagent3d_update(void *obj, double dt) {
-    rt_navagent3d *agent = navagent3d_checked(obj);
-    double prev_pos[3];
+/// @brief Prepare one agent's path-following state without solving avoidance or moving it.
+/// @details This is the snapshot phase shared by individual and batch updates. It synchronizes
+///   bindings, performs any due repath, advances path corners, and publishes the preferred velocity
+///   for the current start-of-tick position. No peer state is read and no position integration is
+///   performed, so every member of a batch can complete this phase before avoidance starts.
+/// @param agent Valid NavAgent3D instance to prepare.
+/// @param dt Sanitized positive tick duration.
+/// @param out_previous_position Receives the start-of-tick position for velocity reconstruction.
+/// @param out_stopping_distance Receives the sanitized stopping distance used during apply.
+/// @return 1 when the agent has motion to solve/apply, or 0 after publishing a stopped state.
+static int navagent_prepare_update(rt_navagent3d *agent,
+                                   double dt,
+                                   double out_previous_position[3],
+                                   double *out_stopping_distance) {
     double target_dist;
     double stopping_distance;
-    if (!agent)
-        return;
-    dt = navagent_nonnegative_capped_or(dt, 0.0, NAVAGENT_DT_MAX);
-    if (dt <= 0.0)
-        return;
+    if (!agent || !out_previous_position || !out_stopping_distance || !(dt > 0.0))
+        return 0;
 
     navagent_sync_position_from_bindings(agent);
-    navagent_vec_copy(prev_pos, agent->position);
+    navagent_vec_copy(out_previous_position, agent->position);
     stopping_distance =
         navagent_nonnegative_capped_or(agent->stopping_distance, 0.0, NAVAGENT_DISTANCE_MAX);
+    *out_stopping_distance = stopping_distance;
     target_dist = agent->has_target ? navagent_dist(agent->position, agent->target) : 0.0;
 
     if (agent->auto_repath && agent->has_target && target_dist > stopping_distance) {
@@ -1325,7 +1810,7 @@ void rt_navagent3d_update(void *obj, double dt) {
         if (agent->bound_character && agent->bound_node) {
             navagent_push_position_to_bindings(agent);
         }
-        return;
+        return 0;
     }
 
     {
@@ -1340,7 +1825,7 @@ void rt_navagent3d_update(void *obj, double dt) {
             navagent_refresh_path_index(agent);
             navagent_zero_motion(agent);
             agent->remaining_distance = navagent_compute_remaining_distance(agent);
-            return;
+            return 0;
         }
         if (!isfinite(speed) || speed < 0.0)
             speed = 0.0;
@@ -1354,8 +1839,23 @@ void rt_navagent3d_update(void *obj, double dt) {
         agent->desired_velocity[1] = delta[1] / dist * speed;
         agent->desired_velocity[2] = delta[2] / dist * speed;
     }
+    return 1;
+}
 
-    navagent_apply_local_avoidance(agent, dt);
+/// @brief Apply one already-solved desired velocity and finish post-move bookkeeping.
+/// @details Character-bound agents delegate motion to the controller; unbound agents integrate
+///   directly and snap to the navmesh. Actual velocity, path progress, arrival state, bindings, and
+///   the live avoidance grid are then updated from the resulting position.
+/// @param agent Prepared NavAgent3D whose desired velocity is final for this tick.
+/// @param dt Sanitized positive tick duration.
+/// @param previous_position Start-of-tick position captured by `navagent_prepare_update`.
+/// @param stopping_distance Sanitized stopping distance captured during preparation.
+static void navagent_apply_prepared_update(rt_navagent3d *agent,
+                                           double dt,
+                                           const double previous_position[3],
+                                           double stopping_distance) {
+    if (!agent || !previous_position || !(dt > 0.0))
+        return;
 
     if (agent->bound_character) {
         void *move_vec = rt_vec3_new(
@@ -1375,12 +1875,13 @@ void rt_navagent3d_update(void *obj, double dt) {
             navagent_set_node_world_position(agent->bound_node, agent->position);
     }
 
-    agent->velocity[0] =
-        navagent_clamp_abs_or((agent->position[0] - prev_pos[0]) / dt, 0.0, NAVAGENT_SPEED_MAX);
-    agent->velocity[1] =
-        navagent_clamp_abs_or((agent->position[1] - prev_pos[1]) / dt, 0.0, NAVAGENT_SPEED_MAX);
-    agent->velocity[2] =
-        navagent_clamp_abs_or((agent->position[2] - prev_pos[2]) / dt, 0.0, NAVAGENT_SPEED_MAX);
+    agent->velocity[0] = navagent_clamp_abs_or(
+        (agent->position[0] - previous_position[0]) / dt, 0.0, NAVAGENT_SPEED_MAX);
+    agent->velocity[1] = navagent_clamp_abs_or(
+        (agent->position[1] - previous_position[1]) / dt, 0.0, NAVAGENT_SPEED_MAX);
+    agent->velocity[2] = navagent_clamp_abs_or(
+        (agent->position[2] - previous_position[2]) / dt, 0.0, NAVAGENT_SPEED_MAX);
+    navagent_grid_refresh(agent);
     navagent_refresh_path_index(agent);
     agent->remaining_distance = navagent_compute_remaining_distance(agent);
     if (agent->has_target && navagent_dist(agent->position, agent->target) <= stopping_distance) {
@@ -1388,6 +1889,122 @@ void rt_navagent3d_update(void *obj, double dt) {
         agent->remaining_distance = 0.0;
         navagent_zero_motion(agent);
     }
+}
+
+/// @brief Per-frame steering tick. Optionally re-paths if the auto-repath interval has elapsed,
+/// computes a desired velocity toward the next path waypoint, then either moves a bound
+/// CharacterController3D (if any) or integrates position directly. Falls back to snapping to the
+/// navmesh after each step. Stops cleanly when within `stopping_distance` of the target.
+void rt_navagent3d_update(void *obj, double dt) {
+    rt_navagent3d *agent = navagent3d_checked(obj);
+    double previous_position[3];
+    double stopping_distance = 0.0;
+    if (!agent)
+        return;
+    dt = navagent_nonnegative_capped_or(dt, 0.0, NAVAGENT_DT_MAX);
+    if (dt <= 0.0 || !navagent_prepare_update(agent, dt, previous_position, &stopping_distance))
+        return;
+    navagent_apply_local_avoidance(agent, dt);
+    navagent_apply_prepared_update(agent, dt, previous_position, stopping_distance);
+}
+
+/// @brief Update an arbitrary set of agents through deterministic snapshot/solve/apply phases.
+/// @details Valid unique handles are canonicalized by monotonic creation order, so caller array
+///   order cannot affect preparation or publication. All selected agents first prepare their path
+///   velocity; the complete live registry is then snapshotted once; every avoidance solve reads
+///   only that immutable state; solved velocities and positions are finally published in the same
+///   stable handle order. Invalid handles and duplicates are ignored. The function is main-thread
+///   only, matching agent registration, binding, and the live spatial grid. Reusable process-owned
+///   scratch buffers avoid allocation after the largest observed batch has warmed up.
+/// @param agents Array of candidate NavAgent3D handles. The array is borrowed for the call.
+/// @param agent_count Number of entries available in @p agents.
+/// @param dt Tick duration in seconds, sanitized and capped identically to individual Update.
+/// @return Number of unique valid agents processed, or zero for invalid input, non-positive time,
+///   or staging allocation failure. No agent is prepared before all required staging is reserved.
+int64_t rt_navagent3d_update_batch(void *const *agents, int64_t agent_count, double dt) {
+    navagent_batch_context_t context;
+    int32_t selected_count = 0;
+    int32_t registry_count;
+    RT_ASSERT_MAIN_THREAD();
+    dt = navagent_nonnegative_capped_or(dt, 0.0, NAVAGENT_DT_MAX);
+    if (!agents || agent_count <= 0 || agent_count > INT32_MAX || dt <= 0.0 ||
+        g_navagent3d_registry_count < 0 || g_navagent3d_registry_count > INT32_MAX ||
+        g_navagent_batch_active)
+        return 0;
+    registry_count = (int32_t)g_navagent3d_registry_count;
+    if (!navagent_batch_reserve_items((int32_t)agent_count) ||
+        !navagent_batch_reserve_snapshots(registry_count) ||
+        !navagent_batch_reserve_neighbors(registry_count))
+        return 0;
+
+    for (int64_t i = 0; i < agent_count; i++) {
+        rt_navagent3d *agent = navagent3d_checked(agents[i]);
+        if (!agent)
+            continue;
+        navagent_batch_item_t *item = &g_navagent_batch_items[selected_count++];
+        memset(item, 0, sizeof(*item));
+        item->agent = agent;
+        item->stable_order = agent->stable_order;
+        item->snapshot_index = -1;
+    }
+    if (selected_count <= 0)
+        return 0;
+    qsort(g_navagent_batch_items,
+          (size_t)selected_count,
+          sizeof(*g_navagent_batch_items),
+          navagent_batch_item_compare);
+    int32_t unique_count = 0;
+    for (int32_t i = 0; i < selected_count; i++) {
+        if (unique_count > 0 &&
+            g_navagent_batch_items[unique_count - 1].agent == g_navagent_batch_items[i].agent)
+            continue;
+        if (unique_count != i)
+            g_navagent_batch_items[unique_count] = g_navagent_batch_items[i];
+        unique_count++;
+    }
+
+    g_navagent_batch_active = 1;
+    for (int32_t i = 0; i < unique_count; i++) {
+        navagent_batch_item_t *item = &g_navagent_batch_items[i];
+        item->should_apply = navagent_prepare_update(
+                                 item->agent, dt, item->previous_position, &item->stopping_distance)
+                                 ? 1
+                                 : 0;
+    }
+    memset(&context, 0, sizeof(context));
+    if (!navagent_batch_build_snapshot(&context)) {
+        g_navagent_batch_active = 0;
+        return 0;
+    }
+    for (int32_t i = 0; i < unique_count; i++) {
+        navagent_batch_item_t *item = &g_navagent_batch_items[i];
+        item->snapshot_index =
+            navagent_batch_find_snapshot(context.snapshots, context.snapshot_count, item->agent);
+        if (!item->should_apply)
+            continue;
+        if (item->snapshot_index < 0 ||
+            !navagent_batch_solve_velocity(
+                &context, item->snapshot_index, dt, item->solved_velocity)) {
+            navagent_vec_copy(item->solved_velocity, item->agent->desired_velocity);
+        }
+    }
+
+    /* Publish every solve result before any position changes, then integrate in the same stable
+     * order. This keeps observers and binding side effects deterministic as well as the math. */
+    for (int32_t i = 0; i < unique_count; i++) {
+        navagent_batch_item_t *item = &g_navagent_batch_items[i];
+        if (item->should_apply)
+            navagent_vec_copy(item->agent->desired_velocity, item->solved_velocity);
+    }
+    for (int32_t i = 0; i < unique_count; i++) {
+        navagent_batch_item_t *item = &g_navagent_batch_items[i];
+        if (item->should_apply) {
+            navagent_apply_prepared_update(
+                item->agent, dt, item->previous_position, item->stopping_distance);
+        }
+    }
+    g_navagent_batch_active = 0;
+    return unique_count;
 }
 
 /// @brief Teleport the agent to `position` (snapped onto the navmesh). Pushes the new position

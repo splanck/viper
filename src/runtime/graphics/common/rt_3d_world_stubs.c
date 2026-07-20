@@ -1008,6 +1008,20 @@ void rt_navagent3d_update(void *a, double dt) {
     (void)dt;
 }
 
+/// @brief Graphics-disabled silent fallback for deterministic NavAgent3D batch updates.
+/// @details No navigation state exists without graphics support, so the borrowed handle array and
+///   delta time are ignored and no entries are reported as processed.
+/// @param agents Borrowed array of NavAgent3D handles (ignored).
+/// @param agent_count Number of entries in @p agents (ignored).
+/// @param dt Tick duration in seconds (ignored).
+/// @return Always zero.
+int64_t rt_navagent3d_update_batch(void *const *agents, int64_t agent_count, double dt) {
+    (void)agents;
+    (void)agent_count;
+    (void)dt;
+    return 0;
+}
+
 /// @brief Stub for `NavAgent3D.Warp` — teleport the agent to `p` without
 ///        running steering / collision response. Use for spawn / respawn.
 ///

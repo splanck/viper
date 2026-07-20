@@ -6,21 +6,25 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_canvas3d_snapshot.c
-// Purpose: Canvas3D mesh-geometry snapshotting — copy a mesh's vertex/index
-//   buffers into canvas-owned temp buffers for deferred upload (optionally
-//   rebased for camera-relative frames), with a per-frame revision-keyed cache.
-//   Split out of rt_canvas3d.c; shares state via rt_canvas3d_internal.h.
+// Purpose: Canvas3D deferred mesh geometry binding. Heap meshes retain immutable
+//   cross-frame geometry revisions; stack/rebased geometry uses canvas-owned
+//   frame snapshots. Missing tangent variants are cached with retained revisions.
 // Key invariants:
-//   - Snapshot buffers are tracked via the transient-resource tracker so they
-//     survive until end-of-frame.
-//   - The cache returns an existing snapshot only when the mesh's geometry
-//     revision and vertex/index counts are unchanged.
+//   - A queued heap draw holds a revision reference until frame cleanup, so a
+//     later source mutation cannot invalidate command vertex/index pointers.
+//   - Cache hits require an exact source, revision, vertex-count, and index-count
+//     tuple; generated tangents never mutate the raw retained vertex variant.
+// Ownership/Lifetime:
+//   - Mesh3D owns the current retained revision; snapshot-table entries acquire
+//     one frame reference and release it before the table count resets.
+//   - Rebased and transient copies remain owned by the frame temp-buffer tracker.
 // Links: rt_canvas3d_internal.h, rt_canvas3d_tempmgr.c
 //
 //===----------------------------------------------------------------------===//
 
 #ifdef ZANNA_ENABLE_GRAPHICS
 
+#include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_heap.h"
 
@@ -174,12 +178,28 @@ static int32_t canvas3d_find_mesh_snapshot(rt_canvas3d *c,
 static void canvas3d_record_mesh_snapshot_drop(rt_canvas3d *c, size_t requested_bytes) {
     if (!c)
         return;
+    canvas3d_record_submission_failure(c, RT_CANVAS3D_SUBMISSION_SNAPSHOT_FAILURE);
     if (c->last_mesh_snapshot_drop_count < INT64_MAX)
         c->last_mesh_snapshot_drop_count++;
     if (requested_bytes > (size_t)(INT64_MAX - c->last_mesh_snapshot_dropped_bytes))
         c->last_mesh_snapshot_dropped_bytes = INT64_MAX;
     else
         c->last_mesh_snapshot_dropped_bytes += (int64_t)requested_bytes;
+}
+
+/// @brief Consume the one-shot CTest snapshot failure before publishing snapshot state.
+/// @details Production callers pass the exact overflow-checked byte request. When armed, this
+///   helper clears the flag, updates both legacy snapshot-drop counters and additive submission
+///   diagnostics, then asks the caller to return without allocating or changing cache entries.
+/// @param c Canvas that may carry the one-shot test flag.
+/// @param requested_bytes Bytes the rejected geometry binding would have required.
+/// @return Non-zero only when an injected failure was consumed.
+static int canvas3d_consume_injected_snapshot_failure(rt_canvas3d *c, size_t requested_bytes) {
+    if (!c || !c->test_fail_next_mesh_snapshot)
+        return 0;
+    c->test_fail_next_mesh_snapshot = 0;
+    canvas3d_record_mesh_snapshot_drop(c, requested_bytes);
+    return 1;
 }
 
 /// @brief Copy mesh vertex+index arrays into canvas-owned temp buffers.
@@ -211,6 +231,8 @@ int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
         return 0;
     size_t total_bytes = vertex_bytes + index_bytes;
     size_t snapshot_budget = (size_t)RT_CANVAS3D_MESH_SNAPSHOT_FRAME_BYTE_BUDGET;
+    if (canvas3d_consume_injected_snapshot_failure(c, total_bytes))
+        return 0;
     if (total_bytes > snapshot_budget || c->mesh_snapshot_bytes > snapshot_budget - total_bytes) {
         canvas3d_record_mesh_snapshot_drop(c, total_bytes);
         return 0;
@@ -329,21 +351,35 @@ int canvas3d_reserve_mesh_snapshot_cache(rt_canvas3d *c, int32_t needed) {
     return 1;
 }
 
-/// @brief Snapshot a mesh's geometry for deferred upload, reusing the cache when unchanged.
-/// @details Keyed by the mesh's geometry revision: an unchanged mesh returns its cached snapshot,
-/// so
-///          repeated draws of the same mesh in a frame don't re-copy vertex data.
+/// @brief Bind immutable geometry for deferred upload, reusing the current revision when unchanged.
+/// @details Heap meshes use their cross-frame retained revision: the canvas takes one reference,
+///          so a later source mutation cannot invalidate already queued pointers. Stack/transient
+///          meshes retain the legacy per-frame copy path. The frame snapshot table deduplicates
+///          both forms by source, source revision, and safe element counts.
 int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
-                                           const rt_mesh3d *mesh,
+                                           rt_mesh3d *mesh,
                                            void *mesh_obj,
                                            vgfx3d_vertex_t **out_vertices,
                                            uint32_t **out_indices) {
+    rt_mesh3d_geometry_revision *revision = NULL;
     uint32_t vertex_count;
     uint32_t index_count;
     if (!c || !mesh || !out_vertices || !out_indices)
         return 0;
     vertex_count = rt_mesh3d_safe_vertex_count(mesh);
     index_count = rt_mesh3d_safe_index_count(mesh);
+    if ((size_t)vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
+        (size_t)index_count > SIZE_MAX / sizeof(uint32_t) ||
+        (size_t)vertex_count * sizeof(vgfx3d_vertex_t) >
+            SIZE_MAX - (size_t)index_count * sizeof(uint32_t)) {
+        if (canvas3d_consume_injected_snapshot_failure(c, SIZE_MAX))
+            return 0;
+    } else if (canvas3d_consume_injected_snapshot_failure(
+                   c,
+                   (size_t)vertex_count * sizeof(vgfx3d_vertex_t) +
+                       (size_t)index_count * sizeof(uint32_t))) {
+        return 0;
+    }
     int can_cache = mesh_obj && rt_heap_is_payload(mesh_obj);
     if (can_cache) {
         int32_t index = canvas3d_find_mesh_snapshot(
@@ -352,6 +388,24 @@ int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
             rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[index];
             *out_vertices = entry->vertices;
             *out_indices = entry->indices;
+            return 1;
+        }
+        revision = rt_mesh3d_get_retained_geometry(mesh);
+        if (revision && c->mesh_snapshot_count < INT32_MAX &&
+            canvas3d_reserve_mesh_snapshot_cache(c, c->mesh_snapshot_count + 1)) {
+            rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[c->mesh_snapshot_count++];
+            rt_mesh3d_geometry_revision_retain(revision);
+            entry->source = mesh_obj;
+            entry->geometry_revision = revision->source_revision;
+            entry->vertex_count = revision->vertex_count;
+            entry->index_count = revision->index_count;
+            entry->vertices = revision->vertices;
+            entry->indices = revision->indices;
+            entry->tangents_generated = 0;
+            entry->retained_revision = revision;
+            (void)canvas3d_ensure_mesh_snapshot_hash(c, c->mesh_snapshot_count);
+            *out_vertices = revision->vertices;
+            *out_indices = revision->indices;
             return 1;
         }
     }
@@ -370,6 +424,7 @@ int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
         entry->vertices = *out_vertices;
         entry->indices = *out_indices;
         entry->tangents_generated = 0;
+        entry->retained_revision = NULL;
         (void)canvas3d_ensure_mesh_snapshot_hash(c, c->mesh_snapshot_count);
     }
     return 1;
@@ -393,20 +448,23 @@ static int canvas3d_generate_cached_snapshot_tangents(const rt_mesh3d *source,
     temp.index_count = rt_mesh3d_safe_index_count(source);
     temp.index_capacity = temp.index_count;
     temp.geometry_revision = source->geometry_revision;
+    temp.transient_geometry_facade = 1;
     rt_mesh3d_calc_tangents_impl(&temp);
     return temp.tangents_ready ? 1 : 0;
 }
 
-/// @brief Snapshot geometry and ensure generated tangents are cached for this frame.
-/// @details Normal-mapped draws with missing authored tangents need a generated tangent basis, but
-///   recomputing it for every repeated draw of the same mesh is wasteful. This function keys the
-///   generated snapshot by source object, geometry revision, and vertex/index counts. If a matching
-///   snapshot already exists, tangents are generated into it at most once and then reused.
+/// @brief Bind geometry and lazily reuse a persistent generated-tangent vertex variant.
+/// @details Heap meshes generate tangents into their immutable retained revision, keyed by the
+///          source geometry revision (which covers positions, normals, UVs, and topology). The
+///          variant therefore survives frame cleanup and is shared by every backend submission
+///          until mutation forks the mesh revision. Stack/transient sources keep the legacy
+///          frame-owned snapshot behavior.
 int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
-                                                         const rt_mesh3d *mesh,
+                                                         rt_mesh3d *mesh,
                                                          void *mesh_obj,
                                                          vgfx3d_vertex_t **out_vertices,
                                                          uint32_t **out_indices) {
+    rt_mesh3d_geometry_revision *revision = NULL;
     uint32_t vertex_count;
     uint32_t index_count;
     int can_cache;
@@ -415,12 +473,28 @@ int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
         return 0;
     vertex_count = rt_mesh3d_safe_vertex_count(mesh);
     index_count = rt_mesh3d_safe_index_count(mesh);
+    if ((size_t)vertex_count <= SIZE_MAX / sizeof(vgfx3d_vertex_t) &&
+        (size_t)index_count <= SIZE_MAX / sizeof(uint32_t) &&
+        (size_t)vertex_count * sizeof(vgfx3d_vertex_t) <=
+            SIZE_MAX - (size_t)index_count * sizeof(uint32_t) &&
+        canvas3d_consume_injected_snapshot_failure(c,
+                                                   (size_t)vertex_count * sizeof(vgfx3d_vertex_t) +
+                                                       (size_t)index_count * sizeof(uint32_t)))
+        return 0;
     can_cache = mesh_obj && rt_heap_is_payload(mesh_obj);
     if (can_cache) {
         int32_t index = canvas3d_find_mesh_snapshot(
             c, mesh_obj, mesh->geometry_revision, vertex_count, index_count);
         if (index >= 0) {
             rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[index];
+            if (entry->retained_revision) {
+                if (!rt_mesh3d_geometry_revision_ensure_tangents(mesh, entry->retained_revision))
+                    return 0;
+                entry->tangents_generated = 1;
+                *out_vertices = entry->retained_revision->tangent_vertices;
+                *out_indices = entry->retained_revision->indices;
+                return 1;
+            }
             if (!entry->tangents_generated) {
                 if (!canvas3d_generate_cached_snapshot_tangents(
                         mesh, entry->vertices, entry->indices))
@@ -429,6 +503,25 @@ int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
             }
             *out_vertices = entry->vertices;
             *out_indices = entry->indices;
+            return 1;
+        }
+        revision = rt_mesh3d_get_retained_geometry(mesh);
+        if (revision && rt_mesh3d_geometry_revision_ensure_tangents(mesh, revision) &&
+            c->mesh_snapshot_count < INT32_MAX &&
+            canvas3d_reserve_mesh_snapshot_cache(c, c->mesh_snapshot_count + 1)) {
+            rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[c->mesh_snapshot_count++];
+            rt_mesh3d_geometry_revision_retain(revision);
+            entry->source = mesh_obj;
+            entry->geometry_revision = revision->source_revision;
+            entry->vertex_count = revision->vertex_count;
+            entry->index_count = revision->index_count;
+            entry->vertices = revision->vertices;
+            entry->indices = revision->indices;
+            entry->tangents_generated = 1;
+            entry->retained_revision = revision;
+            (void)canvas3d_ensure_mesh_snapshot_hash(c, c->mesh_snapshot_count);
+            *out_vertices = revision->tangent_vertices;
+            *out_indices = revision->indices;
             return 1;
         }
     }
@@ -456,16 +549,34 @@ int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
         entry->vertices = *out_vertices;
         entry->indices = *out_indices;
         entry->tangents_generated = 1;
+        entry->retained_revision = NULL;
         (void)canvas3d_ensure_mesh_snapshot_hash(c, c->mesh_snapshot_count);
     }
     return 1;
 }
 
-/// @brief Decide whether to snapshot a mesh's geometry into canvas-owned buffers.
-/// @details Heap meshes snapshot their vertex/index buffers so a user mutation after
-///          enqueue cannot change submitted deferred geometry. Draw-time deformation
-///          payloads stay on the original mesh so GPU skinning/morph paths can bind
-///          their palettes and weights without allocating CPU geometry snapshots.
+/// @brief Release every immutable mesh revision retained by the frame snapshot table.
+/// @details Called before the table's logical count is reset. Per-frame malloc snapshots have a
+///          NULL revision pointer and continue to be reclaimed by the ordinary temp-buffer list;
+///          retained revisions instead drop their canvas ownership reference here.
+/// @param c Canvas whose current frame snapshot entries should relinquish revision ownership.
+void canvas3d_release_retained_mesh_revisions(rt_canvas3d *c) {
+    if (!c)
+        return;
+    for (int32_t i = 0; i < c->mesh_snapshot_count; ++i) {
+        rt_canvas3d_mesh_snapshot_entry *entry = &c->mesh_snapshots[i];
+        if (entry->retained_revision) {
+            rt_mesh3d_geometry_revision_release(entry->retained_revision);
+            entry->retained_revision = NULL;
+        }
+    }
+}
+
+/// @brief Decide whether a mesh requires a stable deferred geometry binding.
+/// @details Heap meshes bind an immutable retained revision (or a frame snapshot if retained
+///          allocation fails) so a later mutation cannot alter submitted bytes. Draw-time
+///          deformation payloads stay on the original retained mesh object so GPU skinning/morph
+///          paths can bind palettes and weights without forcing CPU geometry snapshots.
 int canvas3d_should_snapshot_geometry(const rt_mesh3d *mesh, void *mesh_obj) {
     if (!mesh || !mesh_obj)
         return 0;

@@ -1,8 +1,21 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/scene/rt_scene3d_api.inc  (#included from rt_scene3d.c; not a
-// standalone translation unit) Purpose: Scene3D public class: load, lifecycle, getters, and
-// visibility queries
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/scene/rt_scene3d_api.inc
+// Purpose: Scene3D public lifecycle, load, query, draw, and transactional clear
+//   implementation included by rt_scene3d.c.
+// Key invariants:
+//   - The implicit root survives Clear and remains owned by its scene.
+//   - Subtree ownership is preflighted before hierarchy publication.
+// Ownership/Lifetime:
+//   - Scene3D retains its root and root children retain their subtrees.
+//   - Temporary owner transactions own only their native node-pointer arrays.
+// Links: rt_scene3d.c, rt_scene3d_node.c, rt_scene3d_internal.h
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Scene3D
@@ -529,12 +542,17 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
 void rt_scene3d_clear(void *obj) {
     rt_scene3d *s = scene3d_checked(obj);
     rt_scene_node3d *root;
+    scene_owner_transaction owner_transaction;
     if (!s)
         return;
     root = scene_node3d_checked(s->root);
     if (!root) {
         s->node_count = 0;
         scene3d_mark_spatial_dirty(s);
+        return;
+    }
+    if (!scene_node_owner_transaction_prepare(root, &owner_transaction)) {
+        rt_trap("Scene3D: owner traversal stack allocation failed");
         return;
     }
     /* Detach all children from root */
@@ -545,7 +563,15 @@ void rt_scene3d_clear(void *obj) {
             continue;
         }
         child->parent = NULL;
-        scene_node_clear_owner_recursive(child, s);
+    }
+    scene_node_owner_transaction_clear_descendants(&owner_transaction, s);
+    scene_node_owner_transaction_discard(&owner_transaction);
+    for (int32_t i = 0, child_count = scene3d_node_child_count(root); i < child_count; i++) {
+        rt_scene_node3d *child = scene_node3d_checked(root->children[i]);
+        if (!child) {
+            root->children[i] = NULL;
+            continue;
+        }
         scene3d_release_ref((void **)&root->children[i]);
     }
     root->child_count = 0;

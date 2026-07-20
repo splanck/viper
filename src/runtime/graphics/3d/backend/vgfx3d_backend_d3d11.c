@@ -369,7 +369,7 @@ typedef struct {
     ID3D11SamplerState *linear_wrap_sampler;
     ID3D11SamplerState *linear_clamp_sampler;
     ID3D11SamplerState *shadow_cmp_sampler;
-    ID3D11SamplerState *material_samplers[3][3][2][VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT];
+    ID3D11SamplerState *material_samplers[3][3][12][VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT];
     ID3D11Texture2D *fallback_white_tex;
     ID3D11ShaderResourceView *fallback_white_srv;
     ID3D11Texture2D *fallback_white_cube_tex;
@@ -379,6 +379,7 @@ typedef struct {
 
     ID3D11VertexShader *vs_main;
     ID3D11VertexShader *vs_instanced;
+    ID3D11VertexShader *vs_particles;
     ID3D11PixelShader *ps_main;
     ID3D11VertexShader *vs_shadow;
     ID3D11PixelShader *ps_shadow;
@@ -395,6 +396,7 @@ typedef struct {
 
     ID3D11InputLayout *input_layout;
     ID3D11InputLayout *input_layout_instanced;
+    ID3D11InputLayout *input_layout_particles;
     ID3D11InputLayout *input_layout_skybox;
     /* R20 compact-vertex-stream twins (48-byte packed static-cache layout).
      * NULL when creation failed; the cache and draw paths then keep the full
@@ -579,6 +581,7 @@ typedef struct {
 
     int32_t width;
     int32_t height;
+    float render_scale;
     float view[16];
     float projection[16];
     float vp[16];
@@ -611,6 +614,8 @@ typedef struct {
     uint32_t uploaded_lights_revision;
     int8_t gpu_postfx_enabled;
     int8_t gpu_postfx_chain_valid;
+    int8_t frame_active;
+    int8_t frame_pending_present;
     int8_t current_pass_is_overlay;
     int8_t current_load_existing_color;
     int8_t overlay_used_this_frame;
@@ -1361,6 +1366,25 @@ static int d3d11_has_scene_targets(const d3d11_context_t *ctx) {
            ctx->scene_depth_tex && ctx->scene_dsv && ctx->scene_depth_srv;
 }
 
+/// @brief Return whether the next D3D11 window scene uses a reduced render extent.
+/// @details The predicate intentionally ignores current RTT binding: RTT selection remains higher
+///          priority, while main-window resources may still be rebuilt for the stored scale.
+/// @param ctx Borrowed D3D11 backend context.
+/// @return Non-zero for a finite stored scale in `[0.25, 0.999)`.
+static int d3d11_render_scale_active(const d3d11_context_t *ctx) {
+    return ctx && isfinite(ctx->render_scale) && ctx->render_scale >= 0.25f &&
+           ctx->render_scale < 0.999f;
+}
+
+/// @brief Return whether D3D11 window rendering needs scene targets and a final composite.
+/// @details Post-processing and render scaling share the same offscreen HDR scene route; effect
+///          selection still depends only on `gpu_postfx_enabled` at the final composite.
+/// @param ctx Borrowed D3D11 backend context.
+/// @return Non-zero when either feature requires the offscreen scene route.
+static int8_t d3d11_window_scene_route_enabled(const d3d11_context_t *ctx) {
+    return (ctx && (ctx->gpu_postfx_enabled || d3d11_render_scale_active(ctx))) ? 1 : 0;
+}
+
 /// @brief Return whether the separate overlay color target is complete.
 static int d3d11_has_overlay_target(const d3d11_context_t *ctx) {
     return ctx && ctx->overlay_color_tex && ctx->overlay_color_rtv && ctx->overlay_color_srv;
@@ -2000,6 +2024,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .reversed_z = 1,
     .name = "d3d11",
     .gpu_skinning = 1,
+    .particle_instancing = 1,
     /* Slots >= VGFX3D_CSM_SLOTS render into the internal 4x2 depth atlas (t17). */
     .shadow_atlas_slots = 1,
     .create_ctx = d3d11_create_ctx,
@@ -2031,6 +2056,7 @@ const vgfx3d_backend_t vgfx3d_d3d11_backend = {
     .get_feature_caps = d3d11_get_feature_caps,
     .get_backend_stats = d3d11_get_backend_stats,
     .set_vsync = d3d11_set_vsync,
+    .set_render_scale = d3d11_set_render_scale,
     .queue_depth_probe = d3d11_queue_depth_probe,
     .read_depth_probe = d3d11_read_depth_probe,
 };

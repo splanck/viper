@@ -13,10 +13,15 @@
 // Key invariants:
 //   - The software backend is always available as a fallback.
 //   - GPU backends return non-zero from init() on failure → fallback to software.
-//   - All vtable function pointers must be non-NULL.
-//   - ctx is an opaque pointer owned by the backend (created in init, freed in destroy).
+//   - Capability flags and optional hook pointers agree; unsupported hooks may be NULL.
+//   - Compact particle instances are four contiguous float4 lanes on every GPU backend.
 //
-// Links: plans/3d/05-backend-abstraction.md, rt_canvas3d_internal.h
+// Ownership/Lifetime:
+//   - ctx is opaque backend-owned state created by create_ctx and released by destroy_ctx.
+//   - Draw commands and pointed payloads remain Canvas3D-owned for the deferred frame lifetime.
+//
+// Links: plans/3d/05-backend-abstraction.md, rt_canvas3d_internal.h,
+//   docs/adr/0139-graphics3d-transactional-hardening-and-retained-work.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -88,10 +93,16 @@ typedef struct {
     int32_t texture_wrap_s;   /* RT_MATERIAL3D_TEXTURE_WRAP_* */
     int32_t texture_wrap_t;   /* RT_MATERIAL3D_TEXTURE_WRAP_* */
     int32_t texture_filter;   /* RT_MATERIAL3D_TEXTURE_FILTER_* */
+    int32_t texture_min_filter;
+    int32_t texture_mag_filter;
+    int32_t texture_mip_filter; /* RT_MATERIAL3D_TEXTURE_MIP_FILTER_* */
     int32_t texture_anisotropy;
     int32_t texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     float texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
@@ -155,6 +166,9 @@ typedef struct {
     float depth_bias; /* constant depth offset; negative pulls coplanar draws forward */
     float slope_scaled_depth_bias; /* slope-proportional depth offset for steep coplanar polygons */
     int8_t has_alpha_texture;      /* draw-time texture scan found non-opaque alpha */
+    /* Recommendation 48: non-NULL selects the retained-unit-quad particle vertex path for an
+     * instanced submission. Records are frame-owned and already sorted/rebased. */
+    const vgfx3d_particle_instance_t *particle_instances;
 } vgfx3d_draw_cmd_t;
 
 /* R20 compact static-mesh vertex stream: an opt-in 48-byte packed twin of the
@@ -462,6 +476,10 @@ typedef struct vgfx3d_backend {
      * stream (cmd->extra_influences), so 8-weight meshes keep GPU skinning.
      * Backends without it fall back to CPU skinning for such meshes. */
     int8_t gpu_skinning_extras;
+
+    /* 1 = submit_draw_instanced recognizes cmd->particle_instances and consumes the compact
+     * retained-unit-quad payload. Software deliberately leaves this false. */
+    int8_t particle_instancing;
 
     /* Lifecycle */
     void *(*create_ctx)(vgfx_window_t win, int32_t w, int32_t h);

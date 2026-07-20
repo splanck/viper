@@ -16,6 +16,10 @@
 //   - Morphed vertices are applied on GPU when supported, otherwise on CPU.
 //   - Normal/tangent deltas are optional per shape (NULL = channel unchanged).
 //
+// Ownership/Lifetime:
+//   - MorphTarget3D objects are GC-managed and own every shape name/delta array.
+//   - Mesh bindings retain the container; packed GPU views remain borrowed.
+//
 // Links: plans/3d/16-morph-targets.md, rt_canvas3d.h
 //
 //===----------------------------------------------------------------------===//
@@ -32,6 +36,23 @@ extern "C" {
 void *rt_morphtarget3d_new(int64_t vertex_count);
 /// @brief Deep-copy a morph-target container, including shapes, deltas, and weights.
 void *rt_morphtarget3d_clone(void *mt);
+/**
+ * @brief Deep-copy a morph-target container through a simplified vertex map.
+ *
+ * Each output vertex `i` receives the position, normal, and tangent deltas from
+ * source vertex `new_to_old[i]` for every shape. Shape names, current/previous
+ * weights, motion snapshots, and motion-history state are preserved. The result
+ * owns independent arrays and has exactly @p new_vertex_count vertices.
+ *
+ * @param mt Source MorphTarget3D handle.
+ * @param new_to_old Borrowed output-to-source vertex index map.
+ * @param new_vertex_count Number of output vertices and entries in @p new_to_old.
+ * @return A new MorphTarget3D, or `NULL` for an invalid map/handle or allocation
+ * failure. The source remains unchanged.
+ */
+void *rt_morphtarget3d_clone_remapped(void *mt,
+                                      const uint32_t *new_to_old,
+                                      uint32_t new_vertex_count);
 /// @brief Register a named blendshape and allocate its delta arrays. Returns the new shape index.
 int64_t rt_morphtarget3d_add_shape(void *mt, rt_string name);
 /// @brief Set position delta for one vertex of one shape.

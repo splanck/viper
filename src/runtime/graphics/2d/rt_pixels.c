@@ -167,8 +167,9 @@ rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
     pixels->generation = 0;
     pixels->cache_identity = pixels_next_cache_identity();
     pixels->alpha_scan_generation = 0;
+    pixels->alpha_classification_scan_count = 0;
     pixels->alpha_scan_valid = 0;
-    pixels->alpha_scan_has_alpha = 0;
+    pixels->alpha_scan_classification = RT_PIXELS_ALPHA_OPAQUE;
 
     // Zero-fill (transparent black)
     if (pixels->data && data_size > 0)

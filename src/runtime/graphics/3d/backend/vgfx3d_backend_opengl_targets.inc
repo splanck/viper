@@ -244,6 +244,64 @@ static int ensure_postfx_scratch_target(gl_context_t *ctx, int32_t w, int32_t h)
     return 0;
 }
 
+/// @brief Release the logical-output-sized OpenGL presentation FBO and color texture.
+/// @details This target is separate from scene-sized post-FX ping-pong storage so a reduced scene
+///          can be sampled into a native-size final image without invalidating an intermediate
+///          that is still the source of the last pass.
+/// @param ctx Borrowed OpenGL context that owns the objects; null is a no-op.
+static void destroy_present_target(gl_context_t *ctx) {
+    if (!ctx)
+        return;
+    if (ctx->present_tex)
+        gl.DeleteTextures(1, &ctx->present_tex);
+    if (ctx->present_fbo)
+        gl.DeleteFramebuffers(1, &ctx->present_fbo);
+    ctx->present_tex = 0;
+    ctx->present_fbo = 0;
+    ctx->present_width = 0;
+    ctx->present_height = 0;
+}
+
+/// @brief Allocate an RGBA8 final-composite target at the logical output extent.
+/// @details The target is used for screenshot readback and for the ZannaGFX presentation fallback
+///          when the GLX default framebuffer is not writable. Linear filtering in the full-screen
+///          pass provides the explicit scene upscale; the texture itself is never scene-sized.
+/// @param ctx Borrowed initialized OpenGL context.
+/// @param w Positive logical output width.
+/// @param h Positive logical output height.
+/// @return 0 when a complete target of exactly @p w × @p h is ready, otherwise -1 after cleaning
+///         any partial objects.
+static int ensure_present_target(gl_context_t *ctx, int32_t w, int32_t h) {
+    if (!ctx || w <= 0 || h <= 0)
+        return -1;
+    if (ctx->present_fbo && ctx->present_tex && ctx->present_width == w &&
+        ctx->present_height == h) {
+        return 0;
+    }
+
+    destroy_present_target(ctx);
+    gl.GenFramebuffers(1, &ctx->present_fbo);
+    gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->present_fbo);
+    gl.GenTextures(1, &ctx->present_tex);
+    gl.BindTexture(GL_TEXTURE_2D, ctx->present_tex);
+    gl.TexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    gl.TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    gl.FramebufferTexture2D(
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ctx->present_tex, 0);
+    gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+    if (gl.CheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE || !gl_upload_ok()) {
+        destroy_present_target(ctx);
+        return -1;
+    }
+    ctx->present_width = w;
+    ctx->present_height = h;
+    return 0;
+}
+
 /// @brief Release the Plan 05 bloom mip-chain textures and FBOs.
 static void destroy_bloom_targets(gl_context_t *ctx) {
     if (!ctx)
@@ -868,7 +926,12 @@ static void bind_main_framebuffer(gl_context_t *ctx) {
         gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
         gl.Viewport(0, 0, ctx->rtt_width, ctx->rtt_height);
     } else if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SWAPCHAIN) {
-        if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
+        if (!ctx->default_framebuffer_writable && ctx->scene_composited_to_backbuffer &&
+            ctx->present_fbo) {
+            gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->present_fbo);
+            gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+            gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
+        } else if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
             gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
             gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
             gl.ReadBuffer(GL_COLOR_ATTACHMENT0);
@@ -942,7 +1005,11 @@ static void gl_configure_draw_output(gl_context_t *ctx, const vgfx3d_draw_cmd_t 
         gl.Viewport(0, 0, ctx->rtt_width, ctx->rtt_height);
         return;
     }
-    if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
+    if (!ctx->default_framebuffer_writable && ctx->scene_composited_to_backbuffer &&
+        ctx->present_fbo) {
+        gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->present_fbo);
+        gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
+    } else if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
         gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->scene_fbo);
         gl.DrawBuffer(GL_COLOR_ATTACHMENT0);
     } else {
@@ -980,15 +1047,18 @@ static void gl_apply_depth_bias(const vgfx3d_draw_cmd_t *cmd, int reversed_z) {
 /// NULL snapshot zeros every toggle (post-FX disabled). The camera
 /// + inverse VP + previous VP go through unconditionally so motion-
 /// blur and SSAO can do their world-space reconstructions.
-static void gl_apply_postfx_uniforms(gl_context_t *ctx, const vgfx3d_postfx_snapshot_t *snapshot) {
+static void gl_apply_postfx_uniforms(gl_context_t *ctx,
+                                     const vgfx3d_postfx_snapshot_t *snapshot,
+                                     int32_t source_width,
+                                     int32_t source_height) {
     int32_t bloom_passes;
     int32_t ssao_samples;
     int32_t motion_samples;
     if (!ctx)
         return;
     gl.Uniform2f(ctx->postfx_uInvResolution,
-                 1.0f / (float)ctx->scene_width,
-                 1.0f / (float)ctx->scene_height);
+                 source_width > 0 ? 1.0f / (float)source_width : 0.0f,
+                 source_height > 0 ? 1.0f / (float)source_height : 0.0f);
     gl.Uniform3f(ctx->postfx_uCameraPos,
                  ctx->scene_cam_pos[0],
                  ctx->scene_cam_pos[1],
@@ -1091,20 +1161,23 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
                                      GLuint source_color_tex,
                                      GLuint framebuffer,
                                      GLenum draw_buffer,
-                                     int32_t width,
-                                     int32_t height,
+                                     int32_t source_width,
+                                     int32_t source_height,
+                                     int32_t target_width,
+                                     int32_t target_height,
                                      const vgfx3d_postfx_snapshot_t *snapshot) {
     gl_framebuffer_state_t saved;
     int ok;
 
-    if (!ctx || !ctx->postfx_program || !source_color_tex || width <= 0 || height <= 0)
+    if (!ctx || !ctx->postfx_program || !source_color_tex || source_width <= 0 ||
+        source_height <= 0 || target_width <= 0 || target_height <= 0)
         return 0;
 
     gl_capture_framebuffer_state(&saved);
     gl.BindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     gl.DrawBuffer(draw_buffer);
     gl.ReadBuffer(draw_buffer);
-    gl.Viewport(0, 0, width, height);
+    gl.Viewport(0, 0, target_width, target_height);
     gl.Disable(GL_SCISSOR_TEST);
     gl.Disable(GL_DEPTH_TEST);
     gl.Disable(GL_CULL_FACE);
@@ -1126,7 +1199,7 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
                       GL_TEXTURE_2D,
                       ctx->postfx_current_bloom_tex ? ctx->postfx_current_bloom_tex
                                                     : ctx->default_white_tex);
-    gl_apply_postfx_uniforms(ctx, snapshot);
+    gl_apply_postfx_uniforms(ctx, snapshot, source_width, source_height);
     gl.DrawArrays(GL_TRIANGLES, 0, 3);
     ok = gl_drain_errors("postfx draw");
     gl_restore_framebuffer_state(&saved);
@@ -1168,6 +1241,8 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
                                        dst_attachment,
                                        width,
                                        height,
+                                       width,
+                                       height,
                                        &chain->effects[i].snapshot)) {
             return 0;
         }
@@ -1175,8 +1250,15 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
     }
 
     if (source_tex != ctx->scene_color_tex) {
-        if (!gl_draw_texture_to_target(
-                ctx, source_tex, ctx->scene_fbo, GL_COLOR_ATTACHMENT0, width, height, NULL)) {
+        if (!gl_draw_texture_to_target(ctx,
+                                       source_tex,
+                                       ctx->scene_fbo,
+                                       GL_COLOR_ATTACHMENT0,
+                                       width,
+                                       height,
+                                       width,
+                                       height,
+                                       NULL)) {
             return 0;
         }
     }
@@ -1206,6 +1288,8 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
 /// @param chain                  Effect chain descriptor (enabled flag + effects array).
 /// @param final_framebuffer      FBO to write the last pass into (0 = default framebuffer).
 /// @param final_draw_buffer      Draw buffer attachment for @p final_framebuffer.
+/// @param final_width            Logical destination width for the final pass.
+/// @param final_height           Logical destination height for the final pass.
 /// @param force_offscreen_final  If non-zero, always write the last pass to an offscreen FBO.
 /// @param out_result_framebuffer Receives the FBO holding the last pass's output when
 ///                               @p force_offscreen_final is set.
@@ -1218,6 +1302,8 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
                                  const vgfx3d_postfx_chain_t *chain,
                                  GLuint final_framebuffer,
                                  GLenum final_draw_buffer,
+                                 int32_t final_width,
+                                 int32_t final_height,
                                  int force_offscreen_final,
                                  GLuint *out_result_framebuffer,
                                  GLenum *out_result_read_buffer) {
@@ -1228,8 +1314,8 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
         *out_result_framebuffer = 0;
     if (out_result_read_buffer)
         *out_result_read_buffer = ctx ? ctx->default_draw_buffer : GL_BACK;
-    if (!ctx || !source_tex || width <= 0 || height <= 0 || !chain || !chain->enabled ||
-        chain->effect_count <= 0 || !chain->effects) {
+    if (!ctx || !source_tex || width <= 0 || height <= 0 || final_width <= 0 || final_height <= 0 ||
+        !chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects) {
         return 0;
     }
     if (ensure_postfx_readback_target(ctx, width, height) != 0)
@@ -1300,12 +1386,17 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
                  chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_SSR)
                     ? NULL
                     : &chain->effects[i].snapshot;
+            const int32_t target_width = (is_last && !force_offscreen_final) ? final_width : width;
+            const int32_t target_height =
+                (is_last && !force_offscreen_final) ? final_height : height;
             if (!gl_draw_texture_to_target(ctx,
                                            source_tex,
                                            dst_framebuffer,
                                            dst_draw_buffer,
                                            width,
                                            height,
+                                           target_width,
+                                           target_height,
                                            pass_snapshot)) {
                 ctx->postfx_current_bloom_tex = 0;
                 return 0;
@@ -1324,6 +1415,8 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
                                        source_tex,
                                        ctx->postfx_readback_fbo,
                                        GL_COLOR_ATTACHMENT0,
+                                       width,
+                                       height,
                                        width,
                                        height,
                                        NULL)) {

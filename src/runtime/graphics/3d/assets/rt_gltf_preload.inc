@@ -43,53 +43,20 @@ static int gltf_json_texture_source_index(const char *json,
 /// @details For GLB (magic "glTF", version 2) it validates the chunk table and copies the first
 ///          (JSON) chunk; for plain .gltf it copies the bytes verbatim. Returns a NUL-terminated
 ///          owned copy (caller frees) with @p out_len set, or NULL on a malformed container.
-static char *gltf_json_copy_from_root_bytes(const uint8_t *data, size_t len, size_t *out_len) {
-    char *json_copy = NULL;
+static char *gltf_json_copy_from_root_bytes(uint8_t *data, size_t len, size_t *out_len) {
+    gltf_root_document_view document;
+    char *json_copy;
     if (out_len)
         *out_len = 0;
-    if (!data || len == 0)
+    if (!gltf_parse_root_document_view(data, len, &document) || document.json_len > SIZE_MAX - 1u)
         return NULL;
-    if (len > (size_t)UINT32_MAX)
-        return NULL;
-    if (len >= 12 && data[0] == 0x67 && data[1] == 0x6C && data[2] == 0x54 && data[3] == 0x46) {
-        uint32_t version = gltf_read_u32_le(data + 4);
-        uint32_t declared_len = gltf_read_u32_le(data + 8);
-        size_t pos = 12;
-        int chunk_index = 0;
-        if (version != 2 || declared_len != (uint32_t)len)
-            return NULL;
-        while (pos + 8u <= len) {
-            uint32_t chunk_len = gltf_read_u32_le(data + pos);
-            uint32_t chunk_type = gltf_read_u32_le(data + pos + 4u);
-            pos += 8u;
-            if ((chunk_len & 3u) != 0 || chunk_len > len - pos)
-                return NULL;
-            if (chunk_index == 0 && chunk_type != 0x4E4F534A)
-                return NULL;
-            if (chunk_type == 0x4E4F534A) {
-                json_copy = (char *)malloc((size_t)chunk_len + 1u);
-                if (!json_copy)
-                    return NULL;
-                memcpy(json_copy, data + pos, (size_t)chunk_len);
-                json_copy[chunk_len] = '\0';
-                if (out_len)
-                    *out_len = (size_t)chunk_len;
-                return json_copy;
-            }
-            pos += (size_t)chunk_len;
-            chunk_index++;
-        }
-        return NULL;
-    }
-    if (len > SIZE_MAX - 1u)
-        return NULL;
-    json_copy = (char *)malloc(len + 1u);
+    json_copy = (char *)malloc(document.json_len + 1u);
     if (!json_copy)
         return NULL;
-    memcpy(json_copy, data, len);
-    json_copy[len] = '\0';
+    memcpy(json_copy, document.json, document.json_len);
+    json_copy[document.json_len] = '\0';
     if (out_len)
-        *out_len = len;
+        *out_len = document.json_len;
     return json_copy;
 }
 
@@ -212,42 +179,22 @@ static void gltf_preload_morph_key(int mesh_index, int primitive_index, char *ou
 /// @details Validates the "glTF" magic/version/length and walks the chunk table (the JSON chunk
 ///          must come first) to find the 0x004E4942 ("BIN\0") chunk.
 /// @return 1 with @p out_bin / @p out_bin_len set, 0 for a plain .gltf or a malformed/absent BIN.
-static int gltf_root_find_glb_bin(const uint8_t *data,
+static int gltf_root_find_glb_bin(uint8_t *data,
                                   size_t len,
                                   const uint8_t **out_bin,
                                   size_t *out_bin_len) {
-    size_t pos = 12;
-    int chunk_index = 0;
+    gltf_root_document_view document;
     if (out_bin)
         *out_bin = NULL;
     if (out_bin_len)
         *out_bin_len = 0;
-    if (!data || len < 12 || data[0] != 0x67 || data[1] != 0x6C || data[2] != 0x54 ||
-        data[3] != 0x46)
+    if (!gltf_parse_root_document_view(data, len, &document) || !document.is_glb || !document.bin)
         return 0;
-    if (len > (size_t)UINT32_MAX)
-        return 0;
-    if (gltf_read_u32_le(data + 4) != 2 || gltf_read_u32_le(data + 8) != (uint32_t)len)
-        return 0;
-    while (pos + 8u <= len) {
-        uint32_t chunk_len = gltf_read_u32_le(data + pos);
-        uint32_t chunk_type = gltf_read_u32_le(data + pos + 4u);
-        pos += 8u;
-        if ((chunk_len & 3u) != 0 || chunk_len > len - pos)
-            return 0;
-        if (chunk_index == 0 && chunk_type != 0x4E4F534A)
-            return 0;
-        if (chunk_type == 0x004E4942) {
-            if (out_bin)
-                *out_bin = data + pos;
-            if (out_bin_len)
-                *out_bin_len = (size_t)chunk_len;
-            return 1;
-        }
-        pos += (size_t)chunk_len;
-        chunk_index++;
-    }
-    return 0;
+    if (out_bin)
+        *out_bin = document.bin;
+    if (out_bin_len)
+        *out_bin_len = document.bin_len;
+    return 1;
 }
 
 /// @brief Ensure the buffer-ref array holds at least @p required_count entries, zero-filling
@@ -1454,8 +1401,7 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                          views,
                                                          view_count,
                                                          &pos_view) &&
-                      gltf_accessor_has_payload(&pos_view) &&
-                      gltf_accessor_is_position(&pos_view);
+                      gltf_accessor_has_payload(&pos_view) && gltf_accessor_is_position(&pos_view);
             has_norm = gltf_preload_resolve_accessor_view(accessors,
                                                           accessor_count,
                                                           norm_acc,
@@ -1464,8 +1410,7 @@ static int gltf_preload_stage_morph_targets(rt_gltf_preload_bundle *bundle,
                                                           views,
                                                           view_count,
                                                           &norm_view) &&
-                       gltf_accessor_has_payload(&norm_view) &&
-                       gltf_accessor_is_normal(&norm_view);
+                       gltf_accessor_has_payload(&norm_view) && gltf_accessor_is_normal(&norm_view);
             has_tangent = gltf_preload_resolve_accessor_view(accessors,
                                                              accessor_count,
                                                              tangent_acc,
@@ -2055,6 +2000,8 @@ static int gltf_preload_stage_mesh_primitive(rt_gltf_preload_bundle *bundle,
         flags |= GLTF_PRELOAD_MESH_POD_HAS_NORMALS;
     if (attribs.has_uv0)
         flags |= GLTF_PRELOAD_MESH_POD_HAS_UV0;
+    if (attribs.has_uv1)
+        flags |= GLTF_PRELOAD_MESH_POD_HAS_UV1;
     if (valid_tangents)
         flags |= GLTF_PRELOAD_MESH_POD_HAS_TANGENTS;
     if (attribs.has_skinning_attrs)
@@ -2741,7 +2688,25 @@ rt_gltf_preload_bundle *rt_gltf_preload_bundle_create_cstr(const char *model_pat
         return NULL;
     }
     json = gltf_json_copy_from_root_bytes(root_data, root_size, &json_len);
-    if (json) {
+    if (!json) {
+        gltf_preload_set_error(error, error_cap, "invalid glTF/GLB root document");
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                    "GLTF.Preload: invalid glTF/GLB root document");
+        rt_gltf_preload_bundle_free(bundle);
+        return NULL;
+    }
+    if (!gltf_json_validate_document(json, json_len) ||
+        !gltf_json_validate_gltf_integral_tokens(json, json_len) ||
+        gltf_json_skip_ws(json, json_len, 0) >= json_len ||
+        json[gltf_json_skip_ws(json, json_len, 0)] != '{') {
+        free(json);
+        gltf_preload_set_error(error, error_cap, "invalid glTF JSON document");
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                    "GLTF.Preload: invalid glTF JSON document");
+        rt_gltf_preload_bundle_free(bundle);
+        return NULL;
+    }
+    {
         int ok = gltf_preload_stage_bundle_json(
             bundle, model_path, json, json_len, load_assets, error, error_cap);
         free(json);

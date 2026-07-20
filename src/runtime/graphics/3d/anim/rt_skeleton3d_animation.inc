@@ -186,24 +186,25 @@ void *rt_animation3d_new(rt_string name, double duration) {
     return a;
 }
 
-/// @brief Append one keyframe (time, position, rotation, scale) to a bone's track.
-///
-/// Keyframes are sorted by time within a track so the player can
-/// binary-search to find the correct interpolation interval.
-void rt_animation3d_add_keyframe(
+/// @brief Try to append one keyframe to a bone's time-sorted track.
+/// @details This status-returning internal implementation lets transactional importers reject a
+///          complete asset when channel/keyframe growth fails. Equal-time keys replace the existing
+///          value, matching the compatibility void API.
+/// @return Nonzero when the key was inserted or replaced.
+int rt_animation3d_try_add_keyframe(
     void *obj, int64_t bone_index, double time, void *position, void *rotation, void *scale) {
     rt_animation3d *a = (rt_animation3d *)rt_g3d_checked_or_null(obj, RT_G3D_ANIMATION3D_CLASS_ID);
     if (!a || bone_index < 0 || bone_index >= VGFX3D_MAX_SKELETON_BONES || !isfinite(time) ||
         fabs(time) > FLT_MAX)
-        return;
+        return 0;
     if (time < 0.0)
         time = 0.0;
     if ((position && !rt_g3d_is_vec3(position)) || (rotation && !rt_g3d_is_quat(rotation)) ||
         (scale && !rt_g3d_is_vec3(scale)))
-        return;
+        return 0;
     vgfx3d_keyframe_t new_kf;
     memset(&new_kf, 0, sizeof(new_kf));
-    new_kf.time = (float)time;
+    new_kf.time = time;
     if (position) {
         double px = rt_vec3_x(position);
         double py = rt_vec3_y(position);
@@ -275,21 +276,21 @@ void rt_animation3d_add_keyframe(
 
     if (!ch) {
         if (a->channel_count >= RT_ANIMATION3D_MAX_CHANNELS)
-            return;
+            return 0;
         if (a->channel_count >= a->channel_capacity) {
             if (a->channel_capacity > INT32_MAX / 2)
-                return;
+                return 0;
             int32_t new_cap = a->channel_capacity == 0 ? 8 : a->channel_capacity * 2;
             if (new_cap > RT_ANIMATION3D_MAX_CHANNELS)
                 new_cap = RT_ANIMATION3D_MAX_CHANNELS;
             if (new_cap <= a->channel_count)
-                return;
+                return 0;
             if ((size_t)new_cap > SIZE_MAX / sizeof(vgfx3d_anim_channel_t))
-                return;
+                return 0;
             vgfx3d_anim_channel_t *nc = (vgfx3d_anim_channel_t *)realloc(
                 a->channels, (size_t)new_cap * sizeof(vgfx3d_anim_channel_t));
             if (!nc)
-                return;
+                return 0;
             a->channels = nc;
             a->channel_capacity = new_cap;
         }
@@ -303,20 +304,20 @@ void rt_animation3d_add_keyframe(
         ch->keyframe_capacity = 0;
     if (ch->keyframe_count >= ch->keyframe_capacity) {
         if (ch->keyframe_count >= RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL)
-            return;
+            return 0;
         if (ch->keyframe_capacity > INT32_MAX / 2)
-            return;
+            return 0;
         int32_t new_cap = ch->keyframe_capacity == 0 ? 16 : ch->keyframe_capacity * 2;
         if (new_cap > RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL)
             new_cap = RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL;
         if (new_cap <= ch->keyframe_count)
-            return;
+            return 0;
         if ((size_t)new_cap > SIZE_MAX / sizeof(vgfx3d_keyframe_t))
-            return;
+            return 0;
         vgfx3d_keyframe_t *nk = (vgfx3d_keyframe_t *)realloc(
             ch->keyframes, (size_t)new_cap * sizeof(vgfx3d_keyframe_t));
         if (!nk)
-            return;
+            return 0;
         ch->keyframes = nk;
         ch->keyframe_capacity = new_cap;
     }
@@ -325,16 +326,16 @@ void rt_animation3d_add_keyframe(
     if (insert > 0 && ch->keyframes[insert - 1].time <= new_kf.time) {
         if (skeleton3d_key_time_equal(ch->keyframes[insert - 1].time, new_kf.time)) {
             ch->keyframes[insert - 1] = new_kf;
-            return;
+            return 1;
         }
     } else {
-        while (insert > 0 && ch->keyframes[insert - 1].time > new_kf.time + 1e-6f)
+        while (insert > 0 && ch->keyframes[insert - 1].time > new_kf.time + 1e-13)
             insert--;
     }
     if (insert < ch->keyframe_count &&
         skeleton3d_key_time_equal(ch->keyframes[insert].time, new_kf.time)) {
         ch->keyframes[insert] = new_kf;
-        return;
+        return 1;
     }
     if (insert < ch->keyframe_count) {
         memmove(&ch->keyframes[insert + 1],
@@ -343,6 +344,14 @@ void rt_animation3d_add_keyframe(
     }
     ch->keyframes[insert] = new_kf;
     ch->keyframe_count++;
+    return 1;
+}
+
+/// @brief Append one keyframe through the compatibility-preserving public void API.
+/// @details Callers requiring failure status use `rt_animation3d_try_add_keyframe` internally.
+void rt_animation3d_add_keyframe(
+    void *obj, int64_t bone_index, double time, void *position, void *rotation, void *scale) {
+    (void)rt_animation3d_try_add_keyframe(obj, bone_index, time, position, rotation, scale);
 }
 
 /// @brief True when @p mid is reproduced within tolerance by interpolating between
@@ -457,7 +466,7 @@ void rt_animation3d_set_keyframe_tangents(void *obj,
     if (!ch)
         return;
     for (int32_t k = 0, count = animation3d_safe_keyframe_count(ch); k < count; k++) {
-        if (skeleton3d_key_time_equal(ch->keyframes[k].time, (float)time)) {
+        if (skeleton3d_key_time_equal(ch->keyframes[k].time, time)) {
             kf = &ch->keyframes[k];
             break;
         }
@@ -590,7 +599,8 @@ static int32_t *animation3d_build_humanoid_role_cache(const rt_skeleton3d *skel)
     if (!roles)
         return NULL;
     for (int32_t i = 0; i < bone_count; ++i)
-        roles[i] = animation3d_humanoid_role(skel->bones[i].name);
+        roles[i] = animation3d_humanoid_role(
+            skel->bones[i].name ? rt_string_cstr(skel->bones[i].name) : "");
     return roles;
 }
 
@@ -607,7 +617,8 @@ static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
     int32_t dst_count = skeleton3d_safe_bone_count(dst);
     if (!src || !dst || src_bone < 0 || src_bone >= src_count)
         return -1;
-    const char *name = src->bones[src_bone].name;
+    rt_string name_string = src->bones[src_bone].name;
+    const char *name = name_string ? rt_string_cstr(name_string) : "";
     int role;
     if (name && name[0] != '\0') {
         /* Destination-side alias: "a rig calling this bone <name> means my
@@ -616,11 +627,11 @@ static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
         const char *aliased = skeleton3d_alias_lookup(dst, name);
         if (aliased && aliased[0] != '\0') {
             for (int32_t i = 0; i < dst_count; ++i)
-                if (strcmp(dst->bones[i].name, aliased) == 0)
+                if (skeleton3d_name_equals_cstr(dst->bones[i].name, aliased))
                     return i;
         }
         for (int32_t i = 0; i < dst_count; ++i)
-            if (strcmp(dst->bones[i].name, name) == 0)
+            if (skeleton3d_names_equal(dst->bones[i].name, name_string))
                 return i;
         /* Source-side alias reversal: if the source skeleton declares that a
          * canonical external name maps to this bone, try that canonical name
@@ -632,7 +643,7 @@ static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
             const char *dst_local = skeleton3d_alias_lookup(dst, canonical);
             const char *want = dst_local && dst_local[0] != '\0' ? dst_local : canonical;
             for (int32_t i = 0; i < dst_count; ++i)
-                if (strcmp(dst->bones[i].name, want) == 0)
+                if (skeleton3d_name_equals_cstr(dst->bones[i].name, want))
                     return i;
         }
     }
@@ -640,7 +651,10 @@ static int32_t animation3d_retarget_find_bone(const rt_skeleton3d *src,
     role = src_roles ? src_roles[src_bone] : animation3d_humanoid_role(name);
     if (role != 0) {
         for (int32_t i = 0; i < dst_count; ++i)
-            if ((dst_roles ? dst_roles[i] : animation3d_humanoid_role(dst->bones[i].name)) == role)
+            if ((dst_roles
+                     ? dst_roles[i]
+                     : animation3d_humanoid_role(
+                           dst->bones[i].name ? rt_string_cstr(dst->bones[i].name) : "")) == role)
                 return i;
     }
     return src_bone < dst_count ? src_bone : -1;
@@ -716,7 +730,8 @@ static int animation3d_retarget_copy_channel(rt_animation3d *dst,
      * clip authored on one skeleton fits a differently-proportioned one.
      * Rotations and scales transfer unchanged. */
     for (int32_t k = 0; k < out->keyframe_count; ++k) {
-        out->keyframes[k].time = skeleton3d_clamp_nonnegative_float(out->keyframes[k].time, 0.0f);
+        if (!isfinite(out->keyframes[k].time) || out->keyframes[k].time < 0.0)
+            out->keyframes[k].time = 0.0;
         if (pos_scale != 1.0f) {
             out->keyframes[k].position[0] =
                 skeleton3d_clamp_to_float((double)out->keyframes[k].position[0] * pos_scale, 0.0f);
@@ -880,9 +895,9 @@ static void sample_channel_trs_with_fallback(const vgfx3d_anim_channel_t *ch,
             k1 = mid;
     }
 
-    float t0 = ch->keyframes[k0].time;
-    float t1 = ch->keyframes[k1].time;
-    float alpha = skeleton3d_clamp01f((t1 > t0) ? (t - t0) / (t1 - t0) : 0.0f);
+    double t0 = ch->keyframes[k0].time;
+    double t1 = ch->keyframes[k1].time;
+    float alpha = skeleton3d_clamp01f((float)((t1 > t0) ? ((double)t - t0) / (t1 - t0) : 0.0));
 
     const vgfx3d_keyframe_t *key0 = &ch->keyframes[k0];
     const vgfx3d_keyframe_t *key1 = &ch->keyframes[k1];
@@ -895,7 +910,7 @@ static void sample_channel_trs_with_fallback(const vgfx3d_anim_channel_t *ch,
         /* glTF CUBICSPLINE Hermite basis; a channel plays cubic only when both
          * bracketing keys carry its tangents. Tangents are stored in value units
          * per second, so they scale by the segment duration. */
-        float dt = t1 - t0;
+        float dt = (float)(t1 - t0);
         float a2 = alpha * alpha;
         float a3 = a2 * alpha;
         float h00 = 2.0f * a3 - 3.0f * a2 + 1.0f;

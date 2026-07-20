@@ -34,7 +34,6 @@
 #include "rt_g3d_commit_queue.h"
 #include "rt_game3d.h"
 #include "rt_game3d_internal.h"
-#include "rt_ragdoll3d.h"
 #include "rt_gltf.h"
 #include "rt_graphics3d_ids.h"
 #include "rt_input.h"
@@ -51,6 +50,7 @@
 #include "rt_platform.h"
 #include "rt_postfx3d.h"
 #include "rt_quat.h"
+#include "rt_ragdoll3d.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
 #include "rt_seq.h"
@@ -182,22 +182,84 @@ void *rt_game3d_entity_of(void *mesh, void *material) {
     return entity;
 }
 
-/// @brief Wrap an existing SceneNode3D hierarchy as a group entity; traps if `root`
-///   is not a SceneNode3D.
+/// @brief Wrap an existing SceneNode3D hierarchy as a group entity.
+/// @details A detached node, or a non-root node already owned by a scene, is retained normally.
+///   When @p root is a Scene3D's implicit root, the operation first allocates and preflights a
+///   replacement empty root. It then atomically transfers the old root's scene-owned reference to
+///   the new entity, clears the transferred subtree's owner links without further allocation, and
+///   leaves the source scene valid and empty. This preserves the invariant that an implicit scene
+///   root is never reparented while retaining the complete imported hierarchy and its bindings.
+/// @param root SceneNode3D hierarchy root to wrap; must be a valid runtime SceneNode3D handle.
+/// @return Newly allocated group Entity3D owning @p root, or NULL after a runtime trap on invalid
+///   input or allocation/preflight failure.
 void *rt_game3d_entity_from_node(void *root) {
+    rt_scene_node3d *node;
+#ifdef ZANNA_ENABLE_GRAPHICS
+    rt_scene3d *source_scene = NULL;
+    rt_scene_node3d *replacement_root = NULL;
+    scene_owner_transaction owner_transaction;
+    int transfer_scene_root = 0;
+    memset(&owner_transaction, 0, sizeof(owner_transaction));
+#endif
     if (!rt_g3d_has_class(root, RT_G3D_SCENENODE3D_CLASS_ID)) {
         rt_trap("Game3D.Entity3D.FromNode: root must be a SceneNode3D");
         return NULL;
     }
+    node = (rt_scene_node3d *)root;
+#ifdef ZANNA_ENABLE_GRAPHICS
+    source_scene = scene3d_checked(node->owner_scene);
+    transfer_scene_root = source_scene && scene_node3d_checked(source_scene->root) == node;
+    if (transfer_scene_root) {
+        if (node->parent) {
+            rt_trap("Game3D.Entity3D.FromNode: scene root has an invalid parent");
+            return NULL;
+        }
+        replacement_root = (rt_scene_node3d *)rt_scene_node3d_new();
+        if (!replacement_root)
+            return NULL;
+        if (!scene_node_owner_transaction_prepare(node, &owner_transaction)) {
+            game3d_release_ref((void **)&replacement_root);
+            rt_trap("Game3D.Entity3D.FromNode: owner traversal stack allocation failed");
+            return NULL;
+        }
+    }
+#endif
     rt_game3d_entity *entity =
         (rt_game3d_entity *)rt_obj_new_i64(RT_G3D_GAME3D_ENTITY_CLASS_ID, (int64_t)sizeof(*entity));
     if (!entity) {
+#ifdef ZANNA_ENABLE_GRAPHICS
+        scene_node_owner_transaction_discard(&owner_transaction);
+        game3d_release_ref((void **)&replacement_root);
+#endif
         rt_trap("Game3D.Entity3D.FromNode: allocation failed");
         return NULL;
     }
     memset(entity, 0, sizeof(*entity));
     rt_obj_set_finalizer(entity, game3d_entity_finalize);
-    game3d_assign_typed_ref(&entity->node, root, RT_G3D_SCENENODE3D_CLASS_ID);
+#ifdef ZANNA_ENABLE_GRAPHICS
+    if (transfer_scene_root) {
+        /* Every fallible operation completed above. Publish the replacement root and transfer the
+         * source scene's existing ownership reference directly into the entity without a retain /
+         * release window. */
+        source_scene->root = replacement_root;
+        replacement_root->owner_scene = source_scene;
+        replacement_root = NULL;
+        entity->node = node;
+        scene_node_owner_transaction_clear(&owner_transaction, source_scene);
+        scene_node_owner_transaction_discard(&owner_transaction);
+        node->parent = NULL;
+        source_scene->node_count = 1;
+        source_scene->last_culled_count = 0;
+        source_scene->last_visible_node_count = 0;
+        source_scene->last_pvs_culled_count = 0;
+        source_scene->last_portal_traversal_count = 0;
+        scene3d_mark_spatial_dirty(source_scene);
+        mark_dirty(node);
+    } else
+#endif
+    {
+        game3d_assign_typed_ref(&entity->node, root, RT_G3D_SCENENODE3D_CLASS_ID);
+    }
     entity->layer = RT_GAME3D_LAYER_DYNAMIC;
     entity->collision_mask_bits = ~(int64_t)0;
     entity->registry_index = -1;
@@ -964,8 +1026,8 @@ void *rt_game3d_entity_enable_ragdoll(void *obj) {
         game3d_entity_checked(obj, "Game3D.Entity3D.enableRagdoll: invalid entity");
     if (!entity)
         return NULL;
-    rt_game3d_world *world = (rt_game3d_world *)rt_g3d_checked_or_null(
-        entity->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
+    rt_game3d_world *world =
+        (rt_game3d_world *)rt_g3d_checked_or_null(entity->world, RT_G3D_GAME3D_WORLD_CLASS_ID);
     void *animator = game3d_entity_anim_ref(entity);
     void *controller = animator ? rt_game3d_animator_get_controller(animator) : NULL;
     void *skeleton = controller ? rt_anim_controller3d_get_skeleton(controller) : NULL;

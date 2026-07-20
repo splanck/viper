@@ -8,7 +8,8 @@
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_utils.c
 // Purpose: Cross-backend utility helpers shared between the Metal/OpenGL/D3D11
 //   3D backends — pixel/cubemap unpack to RGBA8, generation tracking,
-//   row-flip, normal-matrix derivation from a model matrix, and 4×4 inverse.
+//   row-flip, scaled scene-target sizing, normal-matrix derivation from a model
+//   matrix, and 4×4 inverse.
 //
 // Key invariants:
 //   - Pixels payloads are 0xRRGGBBAA in `uint32_t`, row-major, top-left origin.
@@ -18,6 +19,10 @@
 //     generations, enabling cheap "did anything change?" checks for backend
 //     caches even when the allocator reuses object addresses.
 //
+// Ownership/Lifetime:
+//   - Object arguments and unpacked source bytes are borrowed for each call.
+//   - Callers own all destination buffers; helpers retain no backend resources.
+//
 // Links: vgfx3d_backend_utils.h, vgfx3d_backend_*.c (per-API implementations)
 //
 //===----------------------------------------------------------------------===//
@@ -25,8 +30,8 @@
 #include "vgfx3d_backend_utils.h"
 
 #include "rt_canvas3d.h"
-#include "vgfx3d_backend.h"
 #include "rt_textureasset3d.h"
+#include "vgfx3d_backend.h"
 
 #include <limits.h>
 #include <math.h>
@@ -56,6 +61,42 @@ typedef struct {
     int64_t face_size;
     uint64_t cache_identity;
 } vgfx3d_cubemap_view_t;
+
+/// @brief Compute a cross-backend scaled scene extent from logical output dimensions.
+/// @details Uses truncation toward zero after multiplying positive dimensions, which is exactly
+///          `floor` for the accepted positive range. Multiplication is performed in double
+///          precision so large, valid `int32_t` dimensions do not acquire avoidable float
+///          rounding error. Since `scale <= 1`, a successful result never exceeds its logical
+///          output dimension.
+/// @param output_width Logical presentation width in pixels; must be positive.
+/// @param output_height Logical presentation height in pixels; must be positive.
+/// @param scale Finite render scale in the closed interval `[0.25, 1]`.
+/// @param out_scene_width Receives the positive scene width; cleared before validation.
+/// @param out_scene_height Receives the positive scene height; cleared before validation.
+/// @return 1 on success, or 0 for invalid dimensions, scale, or output pointers.
+int vgfx3d_compute_scaled_scene_extent(int32_t output_width,
+                                       int32_t output_height,
+                                       float scale,
+                                       int32_t *out_scene_width,
+                                       int32_t *out_scene_height) {
+    int32_t width;
+    int32_t height;
+
+    if (out_scene_width)
+        *out_scene_width = 0;
+    if (out_scene_height)
+        *out_scene_height = 0;
+    if (!out_scene_width || !out_scene_height || output_width <= 0 || output_height <= 0 ||
+        !isfinite(scale) || scale < 0.25f || scale > 1.0f) {
+        return 0;
+    }
+
+    width = (int32_t)((double)output_width * (double)scale);
+    height = (int32_t)((double)output_height * (double)scale);
+    *out_scene_width = width > 0 ? width : 1;
+    *out_scene_height = height > 0 ? height : 1;
+    return 1;
+}
 
 /// @brief Read the monotonic generation counter on a Pixels object.
 /// Returns 0 for null. Backends compare against last-seen generation to detect
@@ -91,31 +132,17 @@ uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr) {
     return signature;
 }
 
-/// @brief Whether a texture asset's native compressed format can be uploaded under @p native_caps.
-/// @details Maps the asset's native format id (BC1/BC3/BC4/BC5/BC7/ASTC/ETC2) to the matching
-///          backend capability bit; returns 0 for uncompressed assets or formats the backend
-///          cannot upload natively.
+/// @brief Whether a texture asset's row-derived native capability is present in @p native_caps.
+/// @details TextureAsset3D's authoritative format table supplies the exact backend bit, so this
+///          cross-backend query cannot drift from parser block geometry or native format identity.
+///          Assets without retained native blocks or a resident range report unsupported.
 int vgfx3d_textureasset_native_supported(void *asset, int64_t native_caps) {
-    int32_t format_id;
+    int64_t capability_bit;
 
     if (!asset || rt_textureasset3d_get_native_cache_key(asset) == 0)
         return 0;
-    format_id = rt_textureasset3d_get_native_format_id(asset);
-    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1)
-        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC1) != 0;
-    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3)
-        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC3) != 0;
-    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4)
-        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC4) != 0;
-    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5)
-        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC5) != 0;
-    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7)
-        return (native_caps & RT_CANVAS3D_BACKEND_CAP_BC7) != 0;
-    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC)
-        return (native_caps & RT_CANVAS3D_BACKEND_CAP_ASTC) != 0;
-    if (format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2)
-        return (native_caps & RT_CANVAS3D_BACKEND_CAP_ETC2) != 0;
-    return 0;
+    capability_bit = rt_textureasset3d_get_native_capability_bit(asset);
+    return capability_bit != 0 && (native_caps & capability_bit) != 0;
 }
 
 /// @brief Fill @p out_mip with the native compressed payload for the resident mip at @p

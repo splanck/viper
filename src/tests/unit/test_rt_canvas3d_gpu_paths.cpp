@@ -12,6 +12,7 @@
 // Key invariants:
 //   - Stack Canvas3D fixtures exercise backend dispatch without opening windows.
 //   - Deferred draw mirrors stay layout-compatible with runtime deferred draws.
+//   - Compact particle commands snapshot instances and share retained unit geometry.
 //
 // Ownership/Lifetime:
 //   - Test-created runtime objects are process-local and released by existing helpers.
@@ -27,8 +28,9 @@
 #endif
 
 #include "rt_canvas3d.h"
-#include "rt_canvas3d_internal.h"
 extern "C" {
+#include "rt_canvas3d_internal.h"
+#include "rt_pixels_internal.h"
 #include "vgfx3d_brdf_lut.h"
 }
 #include "rt_heap.h"
@@ -53,9 +55,12 @@ extern "C" {
 
 extern "C" {
 extern void *rt_mat4_identity(void);
+extern void *rt_mat4_translate(double tx, double ty, double tz);
 extern rt_string rt_const_cstr(const char *s);
 extern void *rt_pixels_new(int64_t width, int64_t height);
 extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
+extern void rt_pixels_set_rgba(void *pixels, int64_t x, int64_t y, int64_t rgba);
+extern void rt_pixels_fill_rgba(void *pixels, int64_t rgba);
 extern void *rt_canvas3d_screenshot(void *canvas);
 extern void rt_obj_retain_maybe(void *obj);
 extern int rt_obj_release_check0(void *obj);
@@ -498,6 +503,7 @@ static void init_fake_canvas(rt_canvas3d *canvas, const vgfx3d_backend_t *backen
 }
 
 static void cleanup_fake_canvas(rt_canvas3d *canvas) {
+    canvas3d_release_retained_mesh_revisions(canvas);
     canvas3d_frame_arena_free(canvas);
     for (int32_t i = 0; i < canvas->temp_buf_count; i++)
         std::free(canvas->temp_buffers[i]);
@@ -507,6 +513,11 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     }
     std::free(canvas->temp_buffers);
     std::free(canvas->temp_objects);
+    std::free(canvas->temp_buffer_set);
+    std::free(canvas->temp_object_set);
+    std::free(canvas->float_snapshots);
+    std::free(canvas->mesh_snapshots);
+    std::free(canvas->mesh_snapshot_hash);
     for (int32_t i = 0; i < canvas->final_overlay_temp_buf_count; i++)
         std::free(canvas->final_overlay_temp_buffers[i]);
     std::free(canvas->final_overlay_cmds);
@@ -520,6 +531,11 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     vgfx3d_postfx_chain_free(&canvas->frame_postfx_chain);
     canvas->temp_buffers = nullptr;
     canvas->temp_objects = nullptr;
+    canvas->temp_buffer_set = nullptr;
+    canvas->temp_object_set = nullptr;
+    canvas->float_snapshots = nullptr;
+    canvas->mesh_snapshots = nullptr;
+    canvas->mesh_snapshot_hash = nullptr;
     canvas->final_overlay_cmds = nullptr;
     canvas->final_overlay_temp_buffers = nullptr;
     canvas->draw_cmds = nullptr;
@@ -530,6 +546,11 @@ static void cleanup_fake_canvas(rt_canvas3d *canvas) {
     canvas->postfx = nullptr;
     canvas->temp_buf_count = canvas->temp_buf_capacity = 0;
     canvas->temp_obj_count = canvas->temp_obj_capacity = 0;
+    canvas->temp_buffer_set_capacity = 0;
+    canvas->temp_object_set_capacity = 0;
+    canvas->float_snapshot_count = canvas->float_snapshot_capacity = 0;
+    canvas->mesh_snapshot_count = canvas->mesh_snapshot_capacity = 0;
+    canvas->mesh_snapshot_hash_capacity = 0;
     canvas->final_overlay_count = canvas->final_overlay_capacity = 0;
     canvas->final_overlay_temp_buf_count = canvas->final_overlay_temp_buf_capacity = 0;
     canvas->draw_count = canvas->draw_capacity = 0;
@@ -1776,36 +1797,6 @@ static void test_metal_robustness_probe_accepts_degenerate_basis_and_skybox_forw
     cleanup_fake_canvas(&canvas);
 }
 
-static void test_static_mesh_geometry_identity_forwarded(void) {
-    rt_canvas3d canvas;
-    init_fake_canvas(&canvas, &kOpenGLBackend);
-
-    void *mesh = make_test_mesh();
-    void *material = rt_material3d_new();
-    void *transform = rt_mat4_identity();
-
-    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
-
-    rt_mesh3d *mesh_view = (rt_mesh3d *)mesh;
-    test_deferred_draw_t *draws = (test_deferred_draw_t *)canvas.draw_cmds;
-    EXPECT_TRUE(canvas.draw_count == 1, "Static mesh draw enqueues one draw");
-    EXPECT_TRUE(draws[0].cmd.geometry_key == mesh,
-                "Static mesh draw forwards a stable geometry identity for backend caches");
-    EXPECT_TRUE(draws[0].cmd.geometry_revision == mesh_view->geometry_revision,
-                "Static mesh draw forwards the current geometry revision");
-    EXPECT_TRUE(draws[0].cmd.vertices != mesh_view->vertices,
-                "Static heap mesh draw snapshots vertex data for deferred submission");
-    EXPECT_TRUE(draws[0].cmd.indices != mesh_view->indices,
-                "Static heap mesh draw snapshots index data for deferred submission");
-    EXPECT_TRUE(draws[0].cmd.vertices[1].pos[0] == mesh_view->vertices[1].pos[0] &&
-                    draws[0].cmd.indices[2] == mesh_view->indices[2],
-                "Static heap mesh geometry snapshot preserves submitted contents");
-    EXPECT_TRUE(canvas.temp_buf_count == 2,
-                "Static heap mesh geometry snapshot is owned by frame temp buffers");
-
-    cleanup_fake_canvas(&canvas);
-}
-
 static void test_deferred_draw_retains_mesh_and_material_until_end(void) {
     rt_canvas3d canvas;
     init_fake_canvas(&canvas, &kOpenGLBackend);
@@ -1849,15 +1840,35 @@ static void test_mesh_draw_traps_when_deferred_queue_cannot_grow(void) {
     void *material = rt_material3d_new();
     void *transform = rt_mat4_identity();
 
-    canvas.draw_count = INT_MAX;
+    rt_canvas3d_draw_mesh(&canvas, mesh, transform, material);
+    EXPECT_TRUE(canvas.draw_count == 1, "Queue-failure fixture publishes its first command");
+    const test_deferred_draw_t first_before = ((test_deferred_draw_t *)canvas.draw_cmds)[0];
+
+    rt_canvas3d_reset_submission_diagnostics(&canvas);
+    rt_canvas3d_test_fail_next_queue_reserve(&canvas);
     EXPECT_TRUE(
         expect_trap_contains([&] { rt_canvas3d_draw_mesh(&canvas, mesh, transform, material); },
                              "deferred draw queue allocation failed"),
         "Mesh draw traps when the deferred queue cannot grow");
     EXPECT_TRUE(draw_submit_calls == 0,
                 "Mesh draw does not bypass the sorted deferred queue after allocation failure");
-    EXPECT_TRUE(canvas.draw_cmds == nullptr,
-                "Failed deferred enqueue does not allocate a partial deferred queue");
+    EXPECT_TRUE(canvas.draw_count == 1,
+                "Failed deferred enqueue preserves the command already published in the frame");
+    EXPECT_TRUE(std::memcmp(&first_before,
+                            &((test_deferred_draw_t *)canvas.draw_cmds)[0],
+                            sizeof(first_before)) == 0,
+                "Failed deferred enqueue leaves the prior command byte-for-byte unchanged");
+    EXPECT_TRUE(rt_canvas3d_get_last_submission_status(&canvas) ==
+                    RT_CANVAS3D_SUBMISSION_QUEUE_FAILURE,
+                "Deferred queue failure publishes the additive queue status");
+    EXPECT_TRUE(rt_canvas3d_get_submission_failure_count(&canvas) == 1,
+                "Deferred queue failure increments the resettable diagnostic count once");
+    rt_canvas3d_reset_submission_diagnostics(&canvas);
+    EXPECT_TRUE(rt_canvas3d_get_last_submission_status(&canvas) == RT_CANVAS3D_SUBMISSION_OK &&
+                    rt_canvas3d_get_submission_failure_count(&canvas) == 0,
+                "Submission diagnostic reset clears status and count without clearing commands");
+    EXPECT_TRUE(canvas.draw_count == 1,
+                "Submission diagnostic reset does not mutate the deferred queue");
 
     cleanup_fake_canvas(&canvas);
 }
@@ -2266,9 +2277,20 @@ static void test_pbr_material_payload_forwarded(void) {
     ((rt_material3d *)material)
         ->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
         RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT;
-    ((rt_material3d *)material)
-        ->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] =
-        RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    rt_material3d_set_import_texture_slot_sampler_axes(
+        material,
+        RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS,
+        1,
+        0.0,
+        0.25,
+        1.5,
+        1.0,
+        0.0,
+        RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE,
+        RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT,
+        RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+        RT_MATERIAL3D_TEXTURE_FILTER_LINEAR,
+        RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST);
     ((rt_material3d *)material)
         ->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS][0] = 1.5;
     ((rt_material3d *)material)
@@ -2307,8 +2329,12 @@ static void test_pbr_material_payload_forwarded(void) {
                 RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
             draws[0].cmd.texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
                 RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
-            draws[0].cmd.texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
-                RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+            draws[0].cmd.texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                RT_MATERIAL3D_TEXTURE_FILTER_NEAREST &&
+            draws[0].cmd.texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                RT_MATERIAL3D_TEXTURE_FILTER_LINEAR &&
+            draws[0].cmd.texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS] ==
+                RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST,
         "PBR material draw forwards imported texture slot sampler state");
     EXPECT_TRUE(
         std::fabs(
@@ -3835,6 +3861,8 @@ static void test_quality_profile_enables_gpu_effects_when_backend_supports_postf
     cleanup_fake_canvas(&canvas);
 }
 
+#include "test_rt_canvas3d_gpu_hardening.inc"
+
 int main() {
     test_brdf_lut_concurrent_first_use_is_safe();
     test_gpu_skinning_bypass_for_opengl();
@@ -3874,18 +3902,21 @@ int main() {
     test_static_mesh_geometry_identity_forwarded();
     test_deferred_draw_retains_mesh_and_material_until_end();
     test_mesh_draw_traps_when_deferred_queue_cannot_grow();
+    test_mesh_snapshot_failure_reports_status_and_preserves_prior_commands();
     test_rect2d_queues_overlay_pass();
     test_transform_history_forwarded_for_motion_blur();
     test_morph_weight_history_forwarded();
     test_skinning_palette_history_forwarded();
     test_skinning_missing_previous_palette_disables_history();
     test_instanced_transform_history_forwarded();
+    test_compact_particle_batches_snapshot_instances_and_retain_unit_geometry();
     test_instanced_transform_history_survives_count_changes();
     test_deferred_instanced_draw_snapshots_instance_buffers();
     test_instanced_transform_history_skips_payload_without_motion_blur();
     test_instanced_material_payload_forwarded();
     test_pbr_material_payload_forwarded();
     test_material_draw_uses_neutral_fallbacks_for_nonfinite_private_scalars();
+    test_pixels_alpha_classification_is_cached_by_content_generation();
     test_instanced_runtime_culls_outside_frustum();
     test_instanced_shadow_pass_includes_instances();
     test_transparent_sort_key_uses_mesh_bounds_depth();

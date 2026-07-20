@@ -776,6 +776,139 @@ static void test_ccd_prevents_fast_sphere_tunneling() {
                 "CCD clamp diagnostics count saturated extreme speeds");
 }
 
+/// @brief Verify that a fast rotated box's complete swept volume participates in CCD.
+/// @details The target lies inside the moving box's rotated Y/Z silhouette but
+///   outside the old max-half-extent swept sphere. A half-diagonal proxy catches
+///   the target, whereas the former proxy allowed the box corner to tunnel.
+static void test_ccd_proxy_encloses_rotated_box_corners() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *target = rt_body3d_new_aabb(0.05, 0.05, 0.05, 0.0);
+    void *moving = rt_body3d_new_aabb(0.25, 1.0, 1.0, 1.0);
+    void *rotation = rt_quat_from_axis_angle(rt_vec3_new(1.0, 0.0, 0.0), TEST_PI * 0.25);
+    rt_body3d_set_position(target, 5.0, 1.2, 0.0);
+    rt_body3d_set_orientation(moving, rotation);
+    rt_body3d_set_velocity(moving, 100.0, 0.0, 0.0);
+    rt_body3d_set_restitution(moving, 0.0);
+    rt_body3d_set_use_ccd(moving, 1);
+    rt_world3d_add(world, target);
+    rt_world3d_add(world, moving);
+
+    rt_world3d_step(world, 0.1);
+
+    EXPECT_TRUE(rt_vec3_x(rt_body3d_get_position(moving)) < 5.0,
+                "CCD proxy encloses rotated box corners instead of tunneling");
+    EXPECT_TRUE(static_cast<rt_world3d *>(world)->ccd_toi_count > 0,
+                "Rotated box corner collision is resolved as a swept time of impact");
+}
+
+struct CcdMaterialResult {
+    double normal_velocity;
+    double tangent_velocity;
+};
+
+/// @brief Run one high-speed wall impact with explicit target-collider material overrides.
+/// @details The moving sphere deliberately keeps identical body material in
+///   every run. Only the static target collider's restitution and friction are
+///   varied, proving that swept TOI contacts retain both material participants.
+/// @param target_restitution Target collider restitution override in `[0, 1]`.
+/// @param target_friction Target collider friction override in `[0, +inf)`.
+/// @param tangent_speed Initial velocity tangent to the wall.
+/// @return Post-step normal and tangent components of the moving sphere velocity.
+static CcdMaterialResult run_ccd_material_impact(double target_restitution,
+                                                 double target_friction,
+                                                 double tangent_speed) {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *wall = rt_body3d_new_aabb(0.05, 5.0, 5.0, 0.0);
+    void *sphere = rt_body3d_new_sphere(0.5, 1.0);
+    void *wall_collider = rt_body3d_get_collider(wall);
+    rt_body3d_set_position(wall, 5.0, 0.0, 0.0);
+    rt_body3d_set_velocity(sphere, 100.0, tangent_speed, 0.0);
+    rt_body3d_set_restitution(sphere, 1.0);
+    rt_body3d_set_friction(sphere, 1.0);
+    rt_collider3d_set_restitution(wall_collider, target_restitution);
+    rt_collider3d_set_friction(wall_collider, target_friction);
+    rt_body3d_set_use_ccd(sphere, 1);
+    rt_world3d_add(world, wall);
+    rt_world3d_add(world, sphere);
+
+    rt_world3d_step(world, 0.1);
+
+    void *velocity = rt_body3d_get_velocity(sphere);
+    return {rt_vec3_x(velocity), rt_vec3_y(velocity)};
+}
+
+/// @brief Verify swept contacts use both colliders' restitution and friction.
+/// @details Restitution uses the ordinary minimum combine and friction uses the
+///   ordinary geometric-mean combine. These comparisons fail if CCD reflects
+///   from only the moving body's material or preserves tangent velocity blindly.
+static void test_ccd_toi_uses_target_collider_material() {
+    CcdMaterialResult inelastic = run_ccd_material_impact(0.0, 0.0, 0.0);
+    CcdMaterialResult elastic = run_ccd_material_impact(1.0, 0.0, 0.0);
+    CcdMaterialResult frictionless = run_ccd_material_impact(0.0, 0.0, 20.0);
+    CcdMaterialResult gripping = run_ccd_material_impact(0.0, 1.0, 20.0);
+
+    EXPECT_TRUE(inelastic.normal_velocity > -5.0,
+                "Zero target restitution prevents an artificial CCD rebound");
+    EXPECT_TRUE(elastic.normal_velocity < -50.0,
+                "Unit target restitution produces the ordinary elastic CCD rebound");
+    EXPECT_TRUE(fabs(gripping.tangent_velocity) + 1.0 < fabs(frictionless.tangent_velocity),
+                "Target collider friction reduces tangent speed during the CCD impact");
+}
+
+/// @brief Verify one fast CCD body does not globally subdivide unrelated integration.
+/// @details Two worlds integrate identical slow bodies for the same frame; one
+///   world also contains a distant high-speed CCD sphere. The slow trajectory is
+///   bit-identical and both worlds report one integration pass, while only the
+///   mixed world reports multiple local CCD segments.
+static void test_ccd_segmentation_is_body_local() {
+    void *baseline_world = rt_world3d_new(0.0, -9.81, 0.0);
+    void *mixed_world = rt_world3d_new(0.0, -9.81, 0.0);
+    void *baseline_slow = rt_body3d_new_sphere(0.5, 1.0);
+    void *mixed_slow = rt_body3d_new_sphere(0.5, 1.0);
+    void *bullet = rt_body3d_new_sphere(0.25, 1.0);
+    rt_body3d_set_position(baseline_slow, 0.0, 10.0, 0.0);
+    rt_body3d_set_position(mixed_slow, 0.0, 10.0, 0.0);
+    rt_body3d_set_velocity(baseline_slow, 1.25, 0.0, -0.5);
+    rt_body3d_set_velocity(mixed_slow, 1.25, 0.0, -0.5);
+    rt_body3d_set_linear_damping(baseline_slow, 0.7);
+    rt_body3d_set_linear_damping(mixed_slow, 0.7);
+    rt_body3d_set_position(bullet, 0.0, 1000.0, 1000.0);
+    rt_body3d_set_velocity(bullet, 1000.0, 0.0, 0.0);
+    rt_body3d_set_use_ccd(bullet, 1);
+    rt_world3d_add(baseline_world, baseline_slow);
+    rt_world3d_add(mixed_world, mixed_slow);
+    rt_world3d_add(mixed_world, bullet);
+
+    rt_world3d_step(baseline_world, 0.1);
+    rt_world3d_step(mixed_world, 0.1);
+
+    void *baseline_position = rt_body3d_get_position(baseline_slow);
+    void *mixed_position = rt_body3d_get_position(mixed_slow);
+    void *baseline_velocity = rt_body3d_get_velocity(baseline_slow);
+    void *mixed_velocity = rt_body3d_get_velocity(mixed_slow);
+    EXPECT_NEAR(rt_vec3_x(mixed_position),
+                rt_vec3_x(baseline_position),
+                0.0,
+                "A distant CCD bullet does not alter slow-body X integration");
+    EXPECT_NEAR(rt_vec3_y(mixed_position),
+                rt_vec3_y(baseline_position),
+                0.0,
+                "A distant CCD bullet does not alter slow-body Y integration");
+    EXPECT_NEAR(rt_vec3_z(mixed_position),
+                rt_vec3_z(baseline_position),
+                0.0,
+                "A distant CCD bullet does not alter slow-body Z integration");
+    EXPECT_NEAR(rt_vec3_x(mixed_velocity),
+                rt_vec3_x(baseline_velocity),
+                0.0,
+                "A distant CCD bullet does not alter slow-body damping");
+    EXPECT_TRUE(static_cast<rt_world3d *>(baseline_world)->last_integration_pass_count == 1 &&
+                    static_cast<rt_world3d *>(mixed_world)->last_integration_pass_count == 1,
+                "CCD segmentation never multiplies the world integration pass");
+    EXPECT_TRUE(rt_world3d_get_last_ccd_substeps(mixed_world) > 1,
+                "Fast CCD motion is still divided into body-local segments");
+}
+
 /*==========================================================================
  * World tests
  *=========================================================================*/
@@ -998,6 +1131,82 @@ static void test_force_at_point_adds_spin() {
     void *ang = rt_body3d_get_angular_velocity(box);
     EXPECT_TRUE(rt_vec3_x(vel) > 0.01, "Off-center force builds linear velocity");
     EXPECT_TRUE(fabs(rt_vec3_y(ang)) > 0.01, "Off-center force builds angular velocity (spin)");
+}
+
+/// @brief Verify public angular impulses and accumulated torques both use world inertia.
+/// @details A +90-degree Z rotation maps world X onto the box's local Y principal
+///   axis. For half-extents `(1, 2, 3)` and mass 2, `I_y^-1` is exactly 0.15;
+///   the old component-wise world multiplication incorrectly used `I_x^-1`.
+static void test_rotated_anisotropic_body_uses_world_inverse_inertia() {
+    constexpr double kQuarterTurn = 0.70710678118654752440;
+    void *impulse_body = rt_body3d_new_aabb(1.0, 2.0, 3.0, 2.0);
+    rt_body3d_set_orientation(impulse_body, rt_quat_new(0.0, 0.0, kQuarterTurn, kQuarterTurn));
+    rt_body3d_apply_angular_impulse(impulse_body, 1.0, 0.0, 0.0);
+    void *impulse_omega = rt_body3d_get_angular_velocity(impulse_body);
+    EXPECT_NEAR(rt_vec3_x(impulse_omega),
+                0.15,
+                1e-10,
+                "Rotated anisotropic angular impulse uses local-Y inverse inertia in world X");
+    EXPECT_NEAR(rt_vec3_y(impulse_omega),
+                0.0,
+                1e-10,
+                "Rotated angular impulse does not leak onto the orthogonal world axis");
+
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *torque_body = rt_body3d_new_aabb(1.0, 2.0, 3.0, 2.0);
+    rt_body3d_set_orientation(torque_body, rt_quat_new(0.0, 0.0, kQuarterTurn, kQuarterTurn));
+    rt_body3d_set_angular_damping(torque_body, 0.0);
+    rt_world3d_add(world, torque_body);
+    rt_body3d_apply_torque(torque_body, 1.0, 0.0, 0.0);
+    rt_world3d_step(world, 0.25);
+    void *torque_omega = rt_body3d_get_angular_velocity(torque_body);
+    EXPECT_NEAR(rt_vec3_x(torque_omega),
+                0.15 * 0.25,
+                1e-10,
+                "Rotated anisotropic torque uses the shared world inverse-inertia transform");
+}
+
+/// @brief Verify exponential linear and angular damping are invariant to step partitioning.
+static void test_exponential_damping_is_substep_partition_invariant() {
+    void *single_world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *split_world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *single = rt_body3d_new_sphere(0.5, 1.0);
+    void *split = rt_body3d_new_sphere(0.5, 1.0);
+    void *bodies[] = {single, split};
+    for (void *body : bodies) {
+        rt_body3d_set_velocity(body, 8.0, -4.0, 2.0);
+        rt_body3d_set_angular_velocity(body, 3.0, -2.0, 1.0);
+        rt_body3d_set_linear_damping(body, 2.0);
+        rt_body3d_set_angular_damping(body, 3.0);
+        rt_body3d_set_can_sleep(body, 0);
+    }
+    rt_world3d_add(single_world, single);
+    rt_world3d_add(split_world, split);
+
+    rt_world3d_step(single_world, 0.5);
+    for (int i = 0; i < 10; ++i)
+        rt_world3d_step(split_world, 0.05);
+
+    void *single_velocity = rt_body3d_get_velocity(single);
+    void *split_velocity = rt_body3d_get_velocity(split);
+    void *single_angular = rt_body3d_get_angular_velocity(single);
+    void *split_angular = rt_body3d_get_angular_velocity(split);
+    EXPECT_NEAR(rt_vec3_x(single_velocity),
+                rt_vec3_x(split_velocity),
+                1e-10,
+                "Linear exponential damping matches across equal elapsed time");
+    EXPECT_NEAR(rt_vec3_y(single_velocity),
+                rt_vec3_y(split_velocity),
+                1e-10,
+                "Linear exponential damping is component-independent");
+    EXPECT_NEAR(rt_vec3_x(single_angular),
+                rt_vec3_x(split_angular),
+                1e-10,
+                "Angular exponential damping matches across equal elapsed time");
+    EXPECT_NEAR(rt_vec3_z(single_angular),
+                rt_vec3_z(split_angular),
+                1e-10,
+                "Angular exponential damping is component-independent");
 }
 
 /*==========================================================================
@@ -2125,8 +2334,8 @@ static void test_physics_world_event_hit_getters_sanitize_corrupt_private_state(
                 "World3D active-body telemetry caps at live body count");
     EXPECT_TRUE(rt_world3d_get_last_solver_contact_count(world) == 1,
                 "World3D contact telemetry caps at live contact count");
-    EXPECT_TRUE(rt_world3d_get_last_ccd_requested_substeps(world) == PH3D_MAX_CCD_SUBSTEPS,
-                "World3D requested CCD substeps cap at runtime maximum");
+    EXPECT_TRUE(rt_world3d_get_last_ccd_requested_substeps(world) == INT32_MAX,
+                "World3D requested CCD telemetry preserves saturated unclamped demand");
     EXPECT_TRUE(rt_world3d_get_last_ccd_substeps(world) == PH3D_MAX_CCD_SUBSTEPS,
                 "World3D CCD substeps cap at runtime maximum");
     EXPECT_TRUE(rt_world3d_get_ccd_substep_clamped_count(world) == 0,
@@ -3810,6 +4019,100 @@ static void test_world_step_fixed_accumulator_and_determinism() {
                 "StepFixed: dropped overflow clears remainder after capped frame");
 }
 
+/// @brief Verify failed world steps restore simulation/event state and retain fixed time.
+/// @details The deterministic hook fires only after integration has changed body
+///   payloads. The test first establishes a public collision event, then proves a
+///   failed direct Step restores both bodies, every visible count, contact bytes,
+///   force/torque accumulators, query revision, and the cached event object. A
+///   second world proves StepFixed leaves its quantum queued and can drain it with
+///   a zero-delta retry after the failure condition is removed.
+static void test_world_step_failure_is_atomic_and_retryable() {
+    void *world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *floor = rt_body3d_new_aabb(3.0, 0.5, 3.0, 0.0);
+    void *body = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
+    rt_body3d_set_position(floor, 0.0, -0.5, 0.0);
+    rt_body3d_set_position(body, 0.0, 0.4, 0.0);
+    rt_world3d_add(world, floor);
+    rt_world3d_add(world, body);
+    rt_world3d_step(world, 1.0 / 60.0);
+    EXPECT_TRUE(rt_world3d_get_collision_count(world) > 0,
+                "Atomic-step fixture establishes a committed collision");
+    void *cached_event_before = rt_world3d_get_collision_event(world, 0);
+    rt_body3d_apply_force(body, 3.0, 4.0, 5.0);
+    rt_body3d_apply_torque(body, 0.5, 1.0, 1.5);
+
+    auto *world_view = static_cast<rt_world3d *>(world);
+    auto *floor_view = static_cast<rt_body3d *>(floor);
+    auto *body_view = static_cast<rt_body3d *>(body);
+    rt_body3d floor_before;
+    rt_body3d body_before;
+    rt_contact3d contact_before;
+    memcpy(&floor_before, floor_view, sizeof(floor_before));
+    memcpy(&body_before, body_view, sizeof(body_before));
+    memcpy(&contact_before, &world_view->contacts[0], sizeof(contact_before));
+    int32_t contact_count_before = world_view->contact_count;
+    int32_t previous_count_before = world_view->previous_contact_count;
+    int32_t enter_count_before = world_view->enter_event_count;
+    int32_t stay_count_before = world_view->stay_event_count;
+    int32_t exit_count_before = world_view->exit_event_count;
+    uint64_t revision_before = world_view->broadphase_world_revision;
+
+    rt_world3d_test_set_step_failure(1);
+    bool trapped =
+        expect_trap_contains([&] { rt_world3d_step(world, 0.1); }, "injected transaction failure");
+    rt_world3d_test_set_step_failure(0);
+
+    EXPECT_TRUE(trapped, "Injected post-integration failure reaches the public Step trap");
+    EXPECT_TRUE(memcmp(floor_view, &floor_before, sizeof(floor_before)) == 0,
+                "Failed Step restores the complete static-body payload");
+    EXPECT_TRUE(memcmp(body_view, &body_before, sizeof(body_before)) == 0,
+                "Failed Step restores pose, velocity, sleep, force, and torque payloads");
+    EXPECT_TRUE(world_view->contact_count == contact_count_before &&
+                    world_view->previous_contact_count == previous_count_before &&
+                    world_view->enter_event_count == enter_count_before &&
+                    world_view->stay_event_count == stay_count_before &&
+                    world_view->exit_event_count == exit_count_before,
+                "Failed Step restores all visible collision and event counts");
+    EXPECT_TRUE(memcmp(&world_view->contacts[0], &contact_before, sizeof(contact_before)) == 0,
+                "Failed Step restores the prior committed contact bytes");
+    EXPECT_TRUE(world_view->broadphase_world_revision == revision_before,
+                "Failed Step restores query broadphase revision state");
+    EXPECT_TRUE(world_view->step_transaction_active == 0 &&
+                    world_view->step_failure_message == nullptr,
+                "Failed Step closes its transaction before raising the public trap");
+    EXPECT_TRUE(rt_world3d_get_collision_event(world, 0) == cached_event_before,
+                "Failed Step retains the cached object for the prior committed event");
+
+    void *fixed_world = rt_world3d_new(0.0, 0.0, 0.0);
+    void *fixed_body = rt_body3d_new_sphere(0.5, 1.0);
+    rt_body3d_set_velocity(fixed_body, 1.0, 0.0, 0.0);
+    rt_body3d_set_linear_damping(fixed_body, 0.0);
+    rt_world3d_add(fixed_world, fixed_body);
+    rt_world3d_test_set_step_failure(1);
+    trapped = expect_trap_contains([&] { rt_world3d_step_fixed(fixed_world, 0.1, 0.1, 4); },
+                                   "injected transaction failure");
+    rt_world3d_test_set_step_failure(0);
+    EXPECT_TRUE(trapped, "StepFixed propagates failure only after transactional rollback");
+    EXPECT_NEAR(static_cast<rt_world3d *>(fixed_world)->fixed_step_accumulator,
+                0.1,
+                1e-12,
+                "StepFixed retains an uncommitted fixed quantum");
+    EXPECT_NEAR(rt_vec3_x(rt_body3d_get_position(fixed_body)),
+                0.0,
+                0.0,
+                "Failed fixed step restores body position");
+    int64_t retry_steps = rt_world3d_step_fixed(fixed_world, 0.0, 0.1, 4);
+    EXPECT_TRUE(retry_steps == 1, "Zero-delta StepFixed retries retained time exactly once");
+    EXPECT_NEAR(rt_vec3_x(rt_body3d_get_position(fixed_body)),
+                0.1,
+                1e-12,
+                "Retried fixed quantum advances the body once");
+    EXPECT_NEAR(static_cast<rt_world3d *>(fixed_world)->fixed_step_accumulator,
+                0.0,
+                1e-12,
+                "Successful retry consumes the retained fixed quantum");
+}
+
 static void test_world_solver_iteration_controls() {
     void *world = rt_world3d_new(0, 0, 0);
     EXPECT_TRUE(rt_world3d_get_solver_iterations(world) == 6,
@@ -4502,6 +4805,9 @@ int main() {
     test_body_auto_sleep();
     test_kinematic_body_ignores_gravity_but_integrates_velocity();
     test_ccd_prevents_fast_sphere_tunneling();
+    test_ccd_proxy_encloses_rotated_box_corners();
+    test_ccd_toi_uses_target_collider_material();
+    test_ccd_segmentation_is_body_local();
     test_ccd_clamped_body_catchup_segments_no_tunnel();
 
     /* Vehicle3D */
@@ -4528,6 +4834,8 @@ int main() {
     test_impulse_application();
     test_impulse_at_point_adds_spin();
     test_force_at_point_adds_spin();
+    test_rotated_anisotropic_body_uses_world_inverse_inertia();
+    test_exponential_damping_is_substep_partition_invariant();
 
     /* Collision */
     test_collision_aabb_overlap();
@@ -4647,6 +4955,7 @@ int main() {
     test_sixdof_joint_linear_motor();
     test_joint_type_validation_for_new_joint_classes();
     test_world_step_fixed_accumulator_and_determinism();
+    test_world_step_failure_is_atomic_and_retryable();
     test_replay_checksum_is_run_to_run_deterministic();
     test_replay_checksum_parallel_matches_serial();
     test_world_solver_iteration_controls();

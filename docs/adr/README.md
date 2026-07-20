@@ -162,6 +162,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0112](0112-linux-graphics-backend-selection.md) — Linux Graphics Backend Selection
 - [ADR 0139](0139-native-wayland-backend-and-linux-runtime-selection.md) — Native Wayland Backend and Linux Runtime Selection
 - [ADR 0114](0114-ieee-floating-constant-folding.md) — Preserve IEEE-754 Results During IL Constant Folding
+- [ADR 0139](0139-graphics3d-transactional-hardening-and-retained-work.md) — Make Graphics3D State Transactional and Retain Reusable Work
 
 ## Release & Packaging
 

@@ -334,6 +334,20 @@ static void *world3d_query_sphere_collider(rt_world3d *w, double radius) {
     return w->query_sphere_collider;
 }
 
+/// @brief Prepare the reusable swept-sphere collider before transactional integration.
+/// @details Existing storage is left untouched; only a world that has never run
+///   a sphere query allocates. CCD sweeps subsequently resize this same collider
+///   in place, eliminating the only query-shape allocation from the mutated step.
+/// @param w Borrowed world that owns the query scratch collider.
+/// @return `1` when a valid scratch collider exists, otherwise `0`.
+int world3d_ccd_prepare_sweep_collider(rt_world3d *w) {
+    if (!w)
+        return 0;
+    if (w->query_sphere_collider)
+        return 1;
+    return world3d_query_sphere_collider(w, 1.0) != NULL;
+}
+
 /// @brief Borrow the world's reusable box collider, creating it on first use.
 /// @details The collider dimensions are reset in place before every AABB overlap query, avoiding
 ///          allocation/free pairs for the query shape.
@@ -813,9 +827,11 @@ int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
                                  const rt_body3d *ignore_body,
                                  double sub_dt,
                                  double *out_t,
-                                 double *out_normal) {
+                                 double *out_normal,
+                                 rt_query_hit3d *out_hit) {
     double best_toi = 0.0;
     double best_normal[3] = {0.0, 1.0, 0.0};
+    rt_query_hit3d best_hit = {0};
     int found = 0;
     double max_distance;
     void *sphere_collider;
@@ -888,6 +904,7 @@ int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
             best_normal[0] = hit.normal[0];
             best_normal[1] = hit.normal[1];
             best_normal[2] = hit.normal[2];
+            best_hit = hit;
             found = 1;
         }
     }
@@ -900,6 +917,72 @@ int world3d_ccd_sweep_sphere_raw(rt_world3d *w,
         out_normal[0] = best_normal[0];
         out_normal[1] = best_normal[1];
         out_normal[2] = best_normal[2];
+    }
+    if (out_hit)
+        *out_hit = best_hit;
+    return 1;
+}
+
+/// @brief Record every trigger crossed by one conservative local CCD segment.
+int world3d_ccd_record_trigger_crossings(rt_world3d *w,
+                                         const double *center,
+                                         double radius,
+                                         const double *delta,
+                                         rt_body3d *moving_body,
+                                         double segment_dt) {
+    double max_distance;
+    void *sphere_collider;
+    if (!w || !center || !delta || !moving_body || !isfinite(radius) || radius <= 0.0)
+        return 1;
+    max_distance = vec3_len(delta);
+    if (!isfinite(max_distance) || max_distance <= 1e-12)
+        return 1;
+    sphere_collider = world3d_query_sphere_collider(w, radius);
+    if (!sphere_collider)
+        return 0;
+
+    for (int32_t i = 0; i < w->body_count; ++i) {
+        rt_body3d *trigger = w->bodies[i];
+        rt_query_hit3d hit;
+        rt_contact3d contact;
+        double sweep_delta[3];
+        double sweep_len;
+        if (!trigger || trigger == moving_body || !trigger->is_trigger ||
+            !body3d_has_collision_geometry(trigger))
+            continue;
+        if (!(moving_body->collision_layer & trigger->collision_mask) ||
+            !(trigger->collision_layer & moving_body->collision_mask))
+            continue;
+        vec3_copy(sweep_delta, delta);
+        if (trigger->motion_mode == PH3D_MODE_DYNAMIC && isfinite(segment_dt) && segment_dt > 0.0) {
+            sweep_delta[0] -= trigger->velocity[0] * segment_dt;
+            sweep_delta[1] -= trigger->velocity[1] * segment_dt;
+            sweep_delta[2] -= trigger->velocity[2] * segment_dt;
+        }
+        sweep_len = vec3_len(sweep_delta);
+        if (!isfinite(sweep_len) || sweep_len <= 1e-12 ||
+            !sweep_sphere_against_body(
+                sphere_collider, center, radius, sweep_delta, trigger, sweep_len, &hit))
+            continue;
+        memset(&contact, 0, sizeof(contact));
+        contact.body_a = trigger;
+        contact.body_b = moving_body;
+        contact.collider_a = hit.collider ? hit.collider : trigger->collider;
+        contact.collider_b = moving_body->collider;
+        vec3_copy(contact.point, hit.point);
+        vec3_copy(contact.normal, hit.normal);
+        /* Contact normals use the solver's A->B convention. Query fallbacks
+           can report the opposite orientation, so force the moving relative
+           displacement to be approaching (negative projected velocity). */
+        if (vec3_dot(sweep_delta, contact.normal) > 0.0)
+            vec3_scale_in_place(contact.normal, -1.0);
+        contact.separation = 0.0;
+        contact3d_init_single_point(&contact, contact.point, contact.normal, 0.0);
+        contact.relative_speed =
+            fabs(vec3_dot(sweep_delta, contact.normal)) / (segment_dt > 1e-12 ? segment_dt : 1.0);
+        contact.is_trigger = 1;
+        if (!world3d_append_frame_contact_unique(w, &contact))
+            return 0;
     }
     return 1;
 }

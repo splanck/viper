@@ -1,8 +1,28 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/nav/rt_navmesh3d_build.inc  (#included from rt_navmesh3d.c; not a
-// standalone translation unit) Purpose: NavMesh3D construction, tiles, areas, off-mesh links, and
-// obstacles
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/nav/rt_navmesh3d_build.inc
+// Purpose: NavMesh3D construction, transactional adjacency/query indices,
+//   tile rebuilding, areas, off-mesh links, and obstacles. This implementation
+//   fragment is included by rt_navmesh3d.c and is not a standalone translation
+//   unit.
+//
+// Key invariants:
+//   - Derived topology and query grids are staged before replacing live state.
+//   - Every allocation and replicated-cell product is checked before use.
+//   - A first build may publish a correct linear-scan fallback; a failed
+//     rebuild retains the prior published topology and query index.
+//
+// Ownership/Lifetime:
+//   - Staging helpers own their temporary arrays until commit or discard.
+//   - Committing a query-grid stage transfers its arrays to the NavMesh3D.
+//
+// Links: rt_navmesh3d.c, rt_navmesh3d_bake.inc, rt_navmesh3d_query.inc
+//
 //===----------------------------------------------------------------------===//
 static int32_t navmesh3d_clamped_array_count(const void *array, int32_t count, int32_t capacity) {
     if (!array || count <= 0 || capacity <= 0)
@@ -66,10 +86,12 @@ static void navmesh3d_finalizer(void *obj) {
     free(nm->obstacles);
     free(nm->qgrid_starts);
     free(nm->qgrid_tris);
-    free(nm->path_g_cost);
-    free(nm->path_parent);
-    free(nm->path_closed);
-    free(nm->path_heap);
+    for (int i = 0; i < NAVMESH3D_PATH_WORKSPACE_COUNT; i++) {
+        free(nm->path_workspaces[i].g_cost);
+        free(nm->path_workspaces[i].parent);
+        free(nm->path_workspaces[i].closed);
+        free(nm->path_workspaces[i].heap);
+    }
     free(nm->voxel_cell_height);
     free(nm->voxel_cell_walkable);
     free(nm->voxel_corner_vertices);
@@ -84,12 +106,9 @@ static void navmesh3d_finalizer(void *obj) {
     nm->obstacles = NULL;
     nm->qgrid_starts = NULL;
     nm->qgrid_tris = NULL;
-    nm->path_g_cost = NULL;
-    nm->path_parent = NULL;
-    nm->path_closed = NULL;
-    nm->path_heap = NULL;
-    nm->path_triangle_capacity = 0;
-    nm->path_heap_capacity = 0;
+    memset(nm->path_workspaces, 0, sizeof(nm->path_workspaces));
+    nm->path_active_queries = 0;
+    nm->path_peak_active_queries = 0;
     nm->voxel_cell_height = NULL;
     nm->voxel_cell_walkable = NULL;
     nm->voxel_corner_vertices = NULL;
@@ -551,23 +570,37 @@ static uint32_t navmesh3d_hash_edge_key(uint64_t key) {
     return (uint32_t)(key ^ (key >> 32));
 }
 
-/// @brief Compute triangle-edge adjacency, populating each triangle's `neighbors[3]` slots.
-/// @details Hash table keyed on `(min_vertex << 32) | max_vertex` matches each shared edge to
-///          the two triangles that own it; first hit records the triangle, second hit cross-
-///          links them. Boundary edges remain with neighbor index -1.
-static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
-    int32_t tc;
+/// @brief Stage and atomically publish edge adjacency for an explicit triangle array.
+/// @details A temporary neighbor array and edge hash are completed before any `neighbors` member in
+///   @p triangles changes. Hash entries match `(min_vertex << 32) | max_vertex`; the first owner is
+///   recorded and the second owner is cross-linked when the portal admits the configured agent. A
+///   third owner is a non-manifold edge and rejects the complete rebuild. Boundary edges remain -1.
+/// @param nm Navigation mesh supplying validated vertices and agent-width policy.
+/// @param triangles Triangle array whose neighbor lanes are replaced only after full success.
+/// @param tc Number of elements available in @p triangles.
+/// @return 1 after committing a complete adjacency graph, or 0 on invalid input, non-manifold
+///   topology, checked-size failure, injected failure, or allocation failure. On zero, every input
+///   triangle retains its previous neighbor lanes.
+static int navmesh3d_build_adjacency_for(rt_navmesh3d *nm, nav_triangle_t *triangles, int32_t tc) {
     int32_t map_cap;
-    if (!nm)
+    int32_t *neighbors = NULL;
+    size_t neighbor_slots;
+    if (!nm || tc < 0 || (tc > 0 && !triangles))
         return 0;
-    tc = nm->triangle_count;
-    for (int32_t i = 0; i < tc; i++)
-        nm->triangles[i].neighbors[0] = nm->triangles[i].neighbors[1] =
-            nm->triangles[i].neighbors[2] = -1;
     if (tc <= 0)
         return 1;
-    if (tc > INT32_MAX / 4)
+    if (g_navmesh3d_test_force_adjacency_alloc_failure || tc > INT32_MAX / 4 ||
+        (size_t)tc > SIZE_MAX / 3u)
         return 0;
+    neighbor_slots = (size_t)tc * 3u;
+    if (neighbor_slots > SIZE_MAX / sizeof(*neighbors))
+        return 0;
+    neighbors = (int32_t *)malloc(neighbor_slots * sizeof(*neighbors));
+    if (!neighbors)
+        return 0;
+    for (size_t i = 0; i < neighbor_slots; i++)
+        neighbors[i] = -1;
+
     map_cap = tc * 4;
     if (map_cap < 16)
         map_cap = 16;
@@ -580,18 +613,25 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
         int8_t matched;
     } edge_entry_t;
 
-    if ((size_t)map_cap > SIZE_MAX / sizeof(edge_entry_t))
+    if ((size_t)map_cap > SIZE_MAX / sizeof(edge_entry_t)) {
+        free(neighbors);
         return 0;
+    }
     edge_entry_t *emap = (edge_entry_t *)calloc((size_t)map_cap, sizeof(edge_entry_t));
-    if (!emap)
+    if (!emap) {
+        free(neighbors);
         return 0;
+    }
 
     for (int32_t i = 0; i < tc; i++) {
         for (int e = 0; e < 3; e++) {
-            int32_t va = nm->triangles[i].v[e];
-            int32_t vb = nm->triangles[i].v[(e + 1) % 3];
+            int32_t va = triangles[i].v[e];
+            int32_t vb = triangles[i].v[(e + 1) % 3];
             int32_t lo = va < vb ? va : vb;
             int32_t hi = va < vb ? vb : va;
+            int matched_or_inserted = 0;
+            if (lo < 0 || hi < 0 || lo >= nm->vertex_count || hi >= nm->vertex_count)
+                goto adjacency_fail;
             uint64_t key = ((uint64_t)(uint32_t)lo << 32) | (uint32_t)hi;
             uint32_t slot = navmesh3d_hash_edge_key(key) % (uint32_t)map_cap;
             for (int probe = 0; probe < map_cap; probe++) {
@@ -601,31 +641,49 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
                     emap[idx].tri_idx = i;
                     emap[idx].edge_idx = e;
                     emap[idx].used = 1;
+                    matched_or_inserted = 1;
                     break;
                 }
                 if (emap[idx].key == key) {
                     int32_t j = emap[idx].tri_idx;
                     int32_t je = emap[idx].edge_idx;
-                    if (emap[idx].matched) {
-                        free(emap);
-                        return 0;
-                    }
+                    if (emap[idx].matched)
+                        goto adjacency_fail;
                     emap[idx].matched = 1;
-                    if (nm->triangles[i].neighbors[e] >= 0 || nm->triangles[j].neighbors[je] >= 0) {
-                        free(emap);
-                        return 0;
-                    }
+                    if (neighbors[(size_t)i * 3u + (size_t)e] >= 0 ||
+                        neighbors[(size_t)j * 3u + (size_t)je] >= 0)
+                        goto adjacency_fail;
                     if (navmesh3d_portal_allows_agent(nm, lo, hi)) {
-                        nm->triangles[i].neighbors[e] = j;
-                        nm->triangles[j].neighbors[je] = i;
+                        neighbors[(size_t)i * 3u + (size_t)e] = j;
+                        neighbors[(size_t)j * 3u + (size_t)je] = i;
                     }
+                    matched_or_inserted = 1;
                     break;
                 }
             }
+            if (!matched_or_inserted)
+                goto adjacency_fail;
         }
     }
+    for (int32_t i = 0; i < tc; i++)
+        memcpy(triangles[i].neighbors, &neighbors[(size_t)i * 3u], 3u * sizeof(int32_t));
     free(emap);
+    free(neighbors);
     return 1;
+
+adjacency_fail:
+    free(emap);
+    free(neighbors);
+    return 0;
+}
+
+/// @brief Atomically rebuild adjacency for the current live triangle array.
+/// @param nm Navigation mesh whose live triangles are to be rebuilt.
+/// @return 1 on success, or 0 with all prior neighbor lanes retained.
+static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
+    if (!nm)
+        return 0;
+    return navmesh3d_build_adjacency_for(nm, nm->triangles, nm->triangle_count);
 }
 
 /// @brief Filter source triangles by max-slope angle, keeping only walkable surfaces.
@@ -633,7 +691,8 @@ static int navmesh3d_build_adjacency(rt_navmesh3d *nm) {
 ///          triangles with normals pitched too steeply are dropped. Rebuilds adjacency
 ///          afterwards via `navmesh3d_build_adjacency`.
 
-/// @brief Release the spatial query-grid index.
+/// @brief Release the spatial query-grid index and reset all derived grid metadata.
+/// @param nm Navigation mesh that exclusively owns the live grid arrays.
 static void navmesh3d_free_query_grid(rt_navmesh3d *nm) {
     if (!nm)
         return;
@@ -641,161 +700,183 @@ static void navmesh3d_free_query_grid(rt_navmesh3d *nm) {
     free(nm->qgrid_tris);
     nm->qgrid_starts = NULL;
     nm->qgrid_tris = NULL;
+    nm->qgrid_min_x = 0.0;
+    nm->qgrid_min_z = 0.0;
+    nm->qgrid_inv_cell = 0.0;
     nm->qgrid_nx = 0;
     nm->qgrid_nz = 0;
 }
 
-/// @brief Compute the inclusive grid-cell range covered by triangle @p i's XZ bounding box.
-static void navmesh3d_tri_cell_range(const rt_navmesh3d *nm,
-                                     int32_t i,
-                                     double min_x,
-                                     double min_z,
-                                     double inv,
-                                     int32_t gnx,
-                                     int32_t gnz,
-                                     int *cx0,
-                                     int *cx1,
-                                     int *cz0,
-                                     int *cz1) {
-    const nav_triangle_t *t = &nm->triangles[i];
+/// @brief Complete temporary ownership for one candidate query-grid representation.
+/// @details An all-zero value represents the correct non-grid linear-scan fallback. Non-NULL array
+///   members are exclusively owned by the stage until committed or discarded.
+typedef struct {
+    double min_x;
+    double min_z;
+    double inv_cell;
+    int32_t nx;
+    int32_t nz;
+    int32_t *starts;
+    int32_t *tris;
+} navmesh3d_query_grid_stage;
+
+/// @brief Result category for query-grid staging.
+typedef enum {
+    NAVMESH3D_QUERY_GRID_ERROR = 0,
+    NAVMESH3D_QUERY_GRID_READY = 1,
+    NAVMESH3D_QUERY_GRID_BOUNDED_FALLBACK = 2,
+} navmesh3d_query_grid_result;
+
+/// @brief Release every array owned by a query-grid stage and reset it to the empty fallback.
+/// @param stage Stage to discard; NULL is accepted.
+static void navmesh3d_discard_query_grid_stage(navmesh3d_query_grid_stage *stage) {
+    if (!stage)
+        return;
+    free(stage->starts);
+    free(stage->tris);
+    memset(stage, 0, sizeof(*stage));
+}
+
+/// @brief Replace a live spatial grid with one complete staged representation.
+/// @details Old arrays are released only after staging has succeeded. Ownership of @p stage arrays
+///   transfers to @p nm and the stage is reset so cleanup cannot double-free them.
+/// @param nm Navigation mesh receiving the staged representation.
+/// @param stage Complete grid or all-zero bounded fallback to publish.
+static void navmesh3d_commit_query_grid_stage(rt_navmesh3d *nm, navmesh3d_query_grid_stage *stage) {
+    if (!nm || !stage)
+        return;
+    navmesh3d_free_query_grid(nm);
+    nm->qgrid_min_x = stage->min_x;
+    nm->qgrid_min_z = stage->min_z;
+    nm->qgrid_inv_cell = stage->inv_cell;
+    nm->qgrid_nx = stage->nx;
+    nm->qgrid_nz = stage->nz;
+    nm->qgrid_starts = stage->starts;
+    nm->qgrid_tris = stage->tris;
+    memset(stage, 0, sizeof(*stage));
+}
+
+/// @brief Convert a finite grid-space coordinate to a clamped cell index without narrowing UB.
+/// @param value World-space coordinate on one grid axis.
+/// @param minimum World-space minimum of that axis.
+/// @param inv Reciprocal cell size.
+/// @param dimension Positive number of grid cells on the axis.
+/// @return An index in `[0, dimension - 1]`.
+static int32_t navmesh3d_grid_axis_clamped(double value,
+                                           double minimum,
+                                           double inv,
+                                           int32_t dimension) {
+    double scaled = (value - minimum) * inv;
+    if (!isfinite(scaled) || scaled <= 0.0)
+        return 0;
+    if (scaled >= (double)dimension)
+        return dimension - 1;
+    return (int32_t)scaled;
+}
+
+/// @brief Convert a world coordinate to an in-bounds cell without a narrowing conversion first.
+/// @param value World-space coordinate on one grid axis.
+/// @param minimum World-space grid origin for the axis.
+/// @param inv Reciprocal cell size.
+/// @param dimension Positive number of cells along the axis.
+/// @param out_index Receives a value in `[0, dimension - 1]` on success.
+/// @return 1 when the coordinate lies in the grid, otherwise 0 with @p out_index untouched.
+static int navmesh3d_grid_axis_checked(
+    double value, double minimum, double inv, int32_t dimension, int32_t *out_index) {
+    if (!out_index || dimension <= 0 || !isfinite(value) || !isfinite(minimum) || !isfinite(inv) ||
+        inv <= 0.0)
+        return 0;
+    double scaled = (value - minimum) * inv;
+    if (!isfinite(scaled) || scaled < 0.0 || scaled >= (double)dimension)
+        return 0;
+    *out_index = (int32_t)scaled;
+    return 1;
+}
+
+/// @brief Compute the inclusive grid-cell range covered by one triangle's XZ bounding box.
+/// @param nm Navigation mesh supplying the vertex array.
+/// @param t Triangle whose vertex indices and bounds are validated.
+/// @param min_x Grid X origin.
+/// @param min_z Grid Z origin.
+/// @param inv Reciprocal grid-cell size.
+/// @param gnx Grid width in cells.
+/// @param gnz Grid depth in cells.
+/// @param cx0 Output minimum X cell.
+/// @param cx1 Output maximum X cell.
+/// @param cz0 Output minimum Z cell.
+/// @param cz1 Output maximum Z cell.
+/// @return 1 when the triangle is valid and all outputs were written, otherwise 0.
+static int navmesh3d_tri_cell_range(const rt_navmesh3d *nm,
+                                    const nav_triangle_t *t,
+                                    double min_x,
+                                    double min_z,
+                                    double inv,
+                                    int32_t gnx,
+                                    int32_t gnz,
+                                    int32_t *cx0,
+                                    int32_t *cx1,
+                                    int32_t *cz0,
+                                    int32_t *cz1) {
+    if (!nm || !t || !nm->vertices || gnx <= 0 || gnz <= 0 || !cx0 || !cx1 || !cz0 || !cz1)
+        return 0;
+    for (int k = 0; k < 3; k++)
+        if (t->v[k] < 0 || t->v[k] >= nm->vertex_count)
+            return 0;
     const float *a = nm->vertices[t->v[0]].position;
     const float *b = nm->vertices[t->v[1]].position;
     const float *c = nm->vertices[t->v[2]].position;
-    if (!navmesh3d_float3_finite(a) || !navmesh3d_float3_finite(b) || !navmesh3d_float3_finite(c)) {
-        *cx0 = *cx1 = *cz0 = *cz1 = 0;
-        return;
-    }
-    int x0 = (int)(((double)fminf(a[0], fminf(b[0], c[0])) - min_x) * inv);
-    int x1 = (int)(((double)fmaxf(a[0], fmaxf(b[0], c[0])) - min_x) * inv);
-    int z0 = (int)(((double)fminf(a[2], fminf(b[2], c[2])) - min_z) * inv);
-    int z1 = (int)(((double)fmaxf(a[2], fmaxf(b[2], c[2])) - min_z) * inv);
-    if (x0 < 0)
-        x0 = 0;
-    if (z0 < 0)
-        z0 = 0;
-    if (x1 >= gnx)
-        x1 = gnx - 1;
-    if (z1 >= gnz)
-        z1 = gnz - 1;
-    if (x1 < x0)
-        x1 = x0;
-    if (z1 < z0)
-        z1 = z0;
-    *cx0 = x0;
-    *cx1 = x1;
-    *cz0 = z0;
-    *cz1 = z1;
+    if (!navmesh3d_float3_finite(a) || !navmesh3d_float3_finite(b) || !navmesh3d_float3_finite(c))
+        return 0;
+    *cx0 = navmesh3d_grid_axis_clamped((double)fminf(a[0], fminf(b[0], c[0])), min_x, inv, gnx);
+    *cx1 = navmesh3d_grid_axis_clamped((double)fmaxf(a[0], fmaxf(b[0], c[0])), min_x, inv, gnx);
+    *cz0 = navmesh3d_grid_axis_clamped((double)fminf(a[2], fminf(b[2], c[2])), min_z, inv, gnz);
+    *cz1 = navmesh3d_grid_axis_clamped((double)fmaxf(a[2], fmaxf(b[2], c[2])), min_z, inv, gnz);
+    return 1;
 }
 
-/// @brief Build a uniform XZ grid over `triangles` so point location scans only the triangles whose
-///   XZ bounding box overlaps the query cell. A point inside a triangle is inside that triangle's
-///   AABB, so the triangle is inserted into the point's cell — scanning one cell is exact. On any
-///   allocation failure the grid is left empty and find_tri falls back to a (correct) linear scan.
-static void navmesh3d_build_query_grid(rt_navmesh3d *nm) {
-    double min_x = DBL_MAX, min_z = DBL_MAX, max_x = -DBL_MAX, max_z = -DBL_MAX;
-    double span_x, span_z, cell, inv;
-    int32_t dim, gnx, gnz;
-    size_t ncells, total;
-    int32_t *starts, *tris, *cursor;
-    navmesh3d_free_query_grid(nm);
-    if (!nm || nm->triangle_count <= 0 || !nm->triangles || !nm->vertices)
-        return;
-    for (int32_t i = 0; i < nm->triangle_count; i++) {
-        const nav_triangle_t *t = &nm->triangles[i];
-        for (int k = 0; k < 3; k++) {
-            const float *p = nm->vertices[t->v[k]].position;
-            if (!navmesh3d_float3_finite(p))
-                continue;
-            if (p[0] < min_x)
-                min_x = p[0];
-            if (p[0] > max_x)
-                max_x = p[0];
-            if (p[2] < min_z)
-                min_z = p[2];
-            if (p[2] > max_z)
-                max_z = p[2];
-        }
-    }
-    if (!(max_x >= min_x) || !(max_z >= min_z) || !isfinite(min_x) || !isfinite(min_z) ||
-        !isfinite(max_x) || !isfinite(max_z))
-        return;
-    span_x = max_x - min_x;
-    span_z = max_z - min_z;
-    dim = (int32_t)sqrt((double)nm->triangle_count); /* ~1-2 triangles per cell */
-    if (dim < 1)
-        dim = 1;
-    if (dim > 256)
-        dim = 256;
-    cell = fmax(span_x, span_z) / (double)dim;
-    if (!(cell > 1e-9))
-        cell = 1.0;
-    inv = 1.0 / cell;
-    gnx = (int32_t)(span_x / cell) + 1;
-    gnz = (int32_t)(span_z / cell) + 1;
-    if (gnx < 1)
-        gnx = 1;
-    if (gnz < 1)
-        gnz = 1;
-    if (gnx > 512)
-        gnx = 512;
-    if (gnz > 512)
-        gnz = 512;
-    ncells = (size_t)gnx * (size_t)gnz;
-    if (g_navmesh3d_test_force_query_grid_alloc_failure) {
+#include "rt_navmesh3d_query_grid_stage.inc"
+
+/// @brief Rebuild the live uniform query grid through stage-and-swap publication.
+/// @details Allocation failure retains the prior grid. A checked replication-budget refusal
+///   publishes the correct empty-grid representation so queries use the linear scan.
+/// @param nm Navigation mesh whose current triangles are indexed.
+/// @return 1 when a grid or bounded fallback was published, otherwise 0 with prior state retained.
+static int navmesh3d_build_query_grid(rt_navmesh3d *nm) {
+    navmesh3d_query_grid_stage stage;
+    if (!nm)
+        return 0;
+    navmesh3d_query_grid_result result =
+        navmesh3d_stage_query_grid(nm, nm->triangles, nm->triangle_count, &stage);
+    if (result == NAVMESH3D_QUERY_GRID_ERROR) {
+        navmesh3d_discard_query_grid_stage(&stage);
         navmesh3d_record_query_grid_fallback(nm);
-        return;
+        return 0;
     }
-    starts = (int32_t *)calloc(ncells + 1, sizeof(int32_t));
-    if (!starts) {
+    if (result == NAVMESH3D_QUERY_GRID_BOUNDED_FALLBACK)
         navmesh3d_record_query_grid_fallback(nm);
-        return;
-    }
-    for (int32_t i = 0; i < nm->triangle_count; i++) {
-        int cx0, cx1, cz0, cz1;
-        navmesh3d_tri_cell_range(nm, i, min_x, min_z, inv, gnx, gnz, &cx0, &cx1, &cz0, &cz1);
-        for (int cz = cz0; cz <= cz1; cz++)
-            for (int cx = cx0; cx <= cx1; cx++)
-                starts[(size_t)cz * (size_t)gnx + (size_t)cx + 1]++;
-    }
-    for (size_t c = 0; c < ncells; c++)
-        starts[c + 1] += starts[c];
-    total = (size_t)starts[ncells];
-    tris = (int32_t *)malloc((total ? total : 1) * sizeof(int32_t));
-    cursor = (int32_t *)malloc(ncells * sizeof(int32_t));
-    if (!tris || !cursor) {
-        free(starts);
-        free(tris);
-        free(cursor);
-        navmesh3d_record_query_grid_fallback(nm);
-        return;
-    }
-    for (size_t c = 0; c < ncells; c++)
-        cursor[c] = starts[c];
-    for (int32_t i = 0; i < nm->triangle_count; i++) {
-        int cx0, cx1, cz0, cz1;
-        navmesh3d_tri_cell_range(nm, i, min_x, min_z, inv, gnx, gnz, &cx0, &cx1, &cz0, &cz1);
-        for (int cz = cz0; cz <= cz1; cz++)
-            for (int cx = cx0; cx <= cx1; cx++)
-                tris[cursor[(size_t)cz * (size_t)gnx + (size_t)cx]++] = i;
-    }
-    free(cursor);
-    nm->qgrid_min_x = min_x;
-    nm->qgrid_min_z = min_z;
-    nm->qgrid_inv_cell = inv;
-    nm->qgrid_nx = gnx;
-    nm->qgrid_nz = gnz;
-    nm->qgrid_starts = starts;
-    nm->qgrid_tris = tris;
+    navmesh3d_commit_query_grid_stage(nm, &stage);
+    return 1;
 }
 
 /// @brief Rebuild the walkable triangle set from the source triangles, dropping over-steep ones.
 /// @details A triangle is walkable when its upward normal's angle from vertical is within
-///          nm->max_slope (compared via cosines). Repopulates nm->triangles / triangle_count.
+///   `nm->max_slope` (compared via cosines). Candidate triangles, adjacency, and query-grid arrays
+///   are completed before publication. An initial build may publish the bounded linear fallback;
+///   later allocation failure leaves the previous triangles and grid bit-identical.
+/// @param nm Navigation mesh with preserved source triangles and destination capacity.
+/// @return 1 after one complete representation is published, or 0 with prior live topology intact.
 static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
     if (!nm || !nm->source_triangles || !nm->triangles)
         return 0;
+    if (nm->source_triangle_count < 0 ||
+        (size_t)nm->source_triangle_count > SIZE_MAX / sizeof(nav_triangle_t))
+        return 0;
+    size_t stage_count = nm->source_triangle_count > 0 ? (size_t)nm->source_triangle_count : 1u;
+    nav_triangle_t *staged = (nav_triangle_t *)malloc(stage_count * sizeof(nav_triangle_t));
+    if (!staged)
+        return 0;
     double max_slope_cos = cos(nm->max_slope * M_PI / 180.0);
-    nm->triangle_count = 0;
+    int32_t staged_count = 0;
     for (int32_t i = 0; i < nm->source_triangle_count; i++) {
         nav_triangle_t tri = nm->source_triangles[i];
         if (tri.normal[1] < (float)max_slope_cos)
@@ -805,14 +886,29 @@ static int navmesh3d_apply_slope_filter(rt_navmesh3d *nm) {
          * blocked, so a per-tile rebuild can flip flags/geometry without recompacting arrays. */
         tri.blocked = (tri.blocked || navmesh3d_triangle_blocked_by_obstacle(nm, &tri)) ? 1 : 0;
         tri.traversal_cost = navmesh3d_sanitize_traversal_cost((double)tri.traversal_cost);
-        nm->triangles[nm->triangle_count++] = tri;
+        staged[staged_count++] = tri;
     }
-    if (!navmesh3d_build_adjacency(nm)) {
-        rt_trap("NavMesh3D: adjacency build failed (non-manifold edge or allocation failure)");
+    if (!navmesh3d_build_adjacency_for(nm, staged, staged_count)) {
+        free(staged);
         return 0;
     }
+    navmesh3d_query_grid_stage grid_stage;
+    navmesh3d_query_grid_result grid_result =
+        navmesh3d_stage_query_grid(nm, staged, staged_count, &grid_stage);
+    if (grid_result != NAVMESH3D_QUERY_GRID_READY)
+        navmesh3d_record_query_grid_fallback(nm);
+    if (grid_result == NAVMESH3D_QUERY_GRID_ERROR && nm->topology_revision != 0u) {
+        navmesh3d_discard_query_grid_stage(&grid_stage);
+        free(staged);
+        return 0;
+    }
+    memcpy(nm->triangles, staged, (size_t)staged_count * sizeof(nav_triangle_t));
+    nm->triangle_count = staged_count;
+    free(staged);
+    navmesh3d_commit_query_grid_stage(nm, &grid_stage);
+    if (nm->topology_revision != UINT64_MAX)
+        nm->topology_revision++;
     navmesh3d_refresh_offmesh_links(nm);
-    navmesh3d_build_query_grid(nm);
     return 1;
 }
 
@@ -1327,6 +1423,7 @@ void *rt_navmesh3d_build(void *mesh_obj, double agent_radius, double agent_heigh
 
     if (!navmesh3d_apply_slope_filter(nm)) {
         navmesh3d_free_partial(nm);
+        rt_trap("NavMesh3D: adjacency build failed (non-manifold edge or allocation failure)");
         return NULL;
     }
 
@@ -1556,7 +1653,8 @@ static rt_navmesh3d *navmesh3d_import_v1_after_magic(FILE *f) {
 
     if (!navmesh3d_build_adjacency(nm))
         goto fail;
-    navmesh3d_build_query_grid(nm);
+    (void)navmesh3d_build_query_grid(nm);
+    nm->topology_revision = 1u;
     return nm;
 
 fail:

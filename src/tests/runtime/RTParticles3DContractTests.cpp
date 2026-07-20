@@ -10,6 +10,7 @@
 // Key invariants:
 //   - Particle draw ordering is deterministic for alpha-blended billboards.
 //   - Persistent draw and sort scratch buffers grow predictably and are reused.
+//   - Hardware compact records reconstruct the software billboard corners and preserve CPU trails.
 // Ownership/Lifetime:
 //   - Runtime objects are allocated through local test stubs and freed by process exit.
 //   - Captured draw data is copied into test-owned globals before each assertion.
@@ -50,6 +51,13 @@ double g_last_draw_alpha = 0.0;
 int g_last_draw_additive = 0;
 int g_last_draw_alpha_mode = 0;
 uint64_t g_last_mesh_signature = 0;
+vgfx3d_vertex_t g_last_mesh_vertices[64] = {};
+int g_particle_instancing_supported = 0;
+int g_particle_batch_calls = 0;
+int g_particle_batch_count = 0;
+vgfx3d_particle_instance_t g_particle_batch_instances[64] = {};
+double g_particle_batch_alpha = 0.0;
+int g_particle_batch_additive = 0;
 
 struct StubMaterial {
     void *vptr = nullptr;
@@ -83,10 +91,16 @@ struct StubMaterial {
     int32_t texture_wrap_s = 0;
     int32_t texture_wrap_t = 0;
     int32_t texture_filter = 0;
+    int32_t texture_min_filter = 0;
+    int32_t texture_mag_filter = 0;
+    int32_t texture_mip_filter = 0;
     int32_t anisotropy = 1;
     int32_t texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
     int32_t texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
     int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
+    int32_t texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
+    int32_t texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
+    int32_t texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
     int32_t texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {0};
     double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6] = {{0.0}};
@@ -125,8 +139,8 @@ struct ParticlesView {
     double accumulator;
     int8_t emitting;
     int8_t additive_blend;
-    double stretch_k;      /* velocity-aligned stretch factor */
-    float trail_lifetime;  /* ribbon trail history seconds */
+    double stretch_k;     /* velocity-aligned stretch factor */
+    float trail_lifetime; /* ribbon trail history seconds */
     int32_t trail_segments;
     float *trail_pos;
     float *trail_age;
@@ -138,6 +152,16 @@ struct ParticlesView {
     double emitter_size[3];
     uint32_t prng_state;
     void *cached_material;
+};
+
+struct RealParticleView {
+    double pos[3];
+    double vel[3];
+    float color[4];
+    float size;
+    float life;
+    float max_life;
+    double remaining_life;
 };
 
 static uint64_t hash_bytes(uint64_t seed, const void *data, size_t size) {
@@ -154,6 +178,8 @@ static uint64_t hash_bytes(uint64_t seed, const void *data, size_t size) {
 
 extern "C" int64_t rt_particles3d_test_sort_key_capacity(void *o);
 extern "C" uint64_t rt_particles3d_test_sort_key_grow_count(void *o);
+extern "C" int64_t rt_particles3d_test_instance_scratch_capacity(void *o);
+extern "C" uint64_t rt_particles3d_test_instance_scratch_grow_count(void *o);
 
 extern "C" void *rt_obj_new_i64(int64_t, int64_t byte_size) {
     return std::calloc(1, static_cast<size_t>(byte_size));
@@ -198,6 +224,35 @@ extern "C" int rt_canvas3d_get_camera_relative_origin(void *, double out_origin[
         out_origin[2] = 0.0;
     }
     return 0;
+}
+
+/// @brief Test double exposing whether the fixture should take the hardware particle path.
+/// @return The mutable fixture capability flag; no Canvas3D state is inspected.
+extern "C" int rt_canvas3d_supports_particle_instancing(void *) {
+    return g_particle_instancing_supported;
+}
+
+/// @brief Snapshot one compact particle batch for equivalence assertions.
+/// @details Invalid or oversized inputs are rejected; accepted records and the configured blend
+///   material are copied into test-owned globals before the emitter may reuse its scratch.
+/// @return Non-zero when the batch fits the fixed capture buffer; otherwise zero.
+extern "C" int rt_canvas3d_queue_particle_batch(void *,
+                                                void *material,
+                                                const vgfx3d_particle_instance_t *instances,
+                                                int32_t instance_count) {
+    g_particle_batch_calls++;
+    g_particle_batch_count = instance_count;
+    if (!instances || instance_count <= 0 ||
+        instance_count > static_cast<int32_t>(sizeof(g_particle_batch_instances) /
+                                              sizeof(g_particle_batch_instances[0])))
+        return 0;
+    std::memcpy(g_particle_batch_instances,
+                instances,
+                static_cast<size_t>(instance_count) * sizeof(*instances));
+    g_particle_batch_alpha = material ? static_cast<StubMaterial *>(material)->alpha : 0.0;
+    g_particle_batch_additive =
+        material ? static_cast<StubMaterial *>(material)->additive_blend : 0;
+    return 1;
 }
 
 extern "C" void *rt_material3d_new(void) {
@@ -245,7 +300,13 @@ extern "C" void rt_canvas3d_draw_mesh(void *, void *mesh, void *, void *material
     g_last_mesh_signature = hash_bytes(
         g_last_mesh_signature, &g_last_mesh_index_count, sizeof(g_last_mesh_index_count));
     std::memset(g_last_mesh_quad_z, 0, sizeof(g_last_mesh_quad_z));
+    std::memset(g_last_mesh_vertices, 0, sizeof(g_last_mesh_vertices));
     if (m && m->vertices) {
+        size_t copied_vertices = m->vertex_count;
+        if (copied_vertices > sizeof(g_last_mesh_vertices) / sizeof(g_last_mesh_vertices[0]))
+            copied_vertices = sizeof(g_last_mesh_vertices) / sizeof(g_last_mesh_vertices[0]);
+        std::memcpy(
+            g_last_mesh_vertices, m->vertices, copied_vertices * sizeof(g_last_mesh_vertices[0]));
         g_last_mesh_signature =
             hash_bytes(g_last_mesh_signature,
                        m->vertices,
@@ -359,13 +420,13 @@ static void test_particles_expire_after_lifetime() {
     rt_particles3d_burst(ps, 4);
     assert(rt_particles3d_get_count(ps) == 4);
 
-    // Render-then-reap: the update that exhausts a particle's life pins it at its exact
-    // age=1 end state for one final rendered frame; the following update reaps it.
-    rt_particles3d_update(ps, 0.2);
-    assert(rt_particles3d_get_count(ps) == 4);
+    // Expiration is part of this update: terminal rendering does not keep particles live.
     rt_particles3d_update(ps, 0.2);
     assert(rt_particles3d_get_count(ps) == 0);
 }
+
+static void reset_draw_records();
+static rt_camera3d make_test_camera();
 
 static void test_particle_final_frame_renders_end_state() {
     void *ps = rt_particles3d_new(4);
@@ -373,44 +434,133 @@ static void test_particle_final_frame_renders_end_state() {
     ParticlesView *view = static_cast<ParticlesView *>(ps);
 
     rt_particles3d_set_lifetime(ps, 0.1, 0.1);
+    rt_particles3d_set_position(ps, 0.0, 0.0, 2.0);
+    rt_particles3d_set_direction(ps, 0.0, 0.0, 1.0, 0.0);
+    rt_particles3d_set_speed(ps, 1.0, 1.0);
+    rt_particles3d_set_gravity(ps, 0.0, 0.0, 0.0);
     rt_particles3d_set_size(ps, 0.5, 2.5);
-    rt_particles3d_set_alpha(ps, 1.0, 0.8);                    // does NOT fade to zero
-    rt_particles3d_set_color(ps, 0xFFFFFFll, 0x336699ll);      // end = (0.2, 0.4, 0.6)
+    rt_particles3d_set_alpha(ps, 1.0, 0.8);               // does NOT fade to zero
+    rt_particles3d_set_color(ps, 0xFFFFFFll, 0x336699ll); // end = (0.2, 0.4, 0.6)
     rt_particles3d_burst(ps, 1);
     assert(rt_particles3d_get_count(ps) == 1);
+    const RealParticleView *live = static_cast<const RealParticleView *>(view->particles);
+    double expected_endpoint_z = live[0].pos[2] + live[0].vel[2] * (double)live[0].max_life;
 
-    // Exhaust the lifetime in one step: the particle must survive this update pinned at
-    // its end state so the nonzero end alpha/color actually reaches the screen.
+    // Exhaust the lifetime in one call. The live particle expires now, while its exact endpoint is
+    // copied to the pool-tail terminal snapshot for this update's optional final draw.
     rt_particles3d_update(ps, 0.2);
-    assert(rt_particles3d_get_count(ps) == 1);
-    struct RealParticleView {
-        double pos[3];
-        double vel[3];
-        float color[4];
-        float size;
-        float life;
-        float max_life;
-    };
+    assert(rt_particles3d_get_count(ps) == 0);
+    assert(rt_particles3d_get_render_final_frame(ps) == 1);
     const RealParticleView *p = static_cast<const RealParticleView *>(view->particles);
-    assert(p[0].life == 0.0f);
-    assert(std::fabs(p[0].size - 2.5f) < 1e-6f);
-    assert(std::fabs(p[0].color[0] - 0.2f) < 0.01f);
-    assert(std::fabs(p[0].color[1] - 0.4f) < 0.01f);
-    assert(std::fabs(p[0].color[2] - 0.6f) < 0.01f);
-    assert(std::fabs(p[0].color[3] - 0.8f) < 1e-6f);
+    const RealParticleView &terminal = p[view->max_particles - 1];
+    assert(terminal.life == 0.0f);
+    assert(std::fabs(terminal.pos[2] - expected_endpoint_z) < 1e-9);
+    assert(std::fabs(terminal.size - 2.5f) < 1e-6f);
+    assert(std::fabs(terminal.color[0] - 0.2f) < 0.01f);
+    assert(std::fabs(terminal.color[1] - 0.4f) < 0.01f);
+    assert(std::fabs(terminal.color[2] - 0.6f) < 0.01f);
+    assert(std::fabs(terminal.color[3] - 0.8f) < 1e-6f);
 
-    rt_particles3d_update(ps, 0.016);
-    assert(rt_particles3d_get_count(ps) == 0); // reaped after its end-state frame
+    rt_canvas3d canvas = {};
+    rt_camera3d cam = make_test_camera();
+    reset_draw_records();
+    rt_particles3d_draw(ps, &canvas, &cam);
+    assert(g_draw_mesh_calls == 1);
+    assert(g_last_mesh_vertex_count == 4);
+    assert(g_last_mesh_index_count == 6);
+    assert(std::fabs(g_last_mesh_quad_z[0] - expected_endpoint_z) < 1e-5);
+
+    // Any subsequent valid update ends the terminal interval, even if it only carries a residual.
+    rt_particles3d_update(ps, 0.001);
+    reset_draw_records();
+    rt_particles3d_draw(ps, &canvas, &cam);
+    assert(g_draw_mesh_calls == 0);
 }
 
-static void test_update_clamps_large_finite_delta_time() {
-    void *ps = rt_particles3d_new(8);
+/// @brief Verify callers can disable the one-update terminal endpoint snapshot.
+/// @details A particle that expires during a large update must leave the live count and emit no
+///          billboard when RenderFinalFrame is false, while preserving the compatibility setter/
+///          getter contract.
+static void test_particle_final_frame_can_be_disabled() {
+    void *ps = rt_particles3d_new(4);
+    rt_canvas3d canvas = {};
+    rt_camera3d cam = make_test_camera();
     assert(ps != nullptr);
+    rt_particles3d_set_render_final_frame(ps, 0);
+    assert(rt_particles3d_get_render_final_frame(ps) == 0);
+    rt_particles3d_set_lifetime(ps, 0.1, 0.1);
+    rt_particles3d_burst(ps, 1);
+    rt_particles3d_update(ps, 0.2);
+    assert(rt_particles3d_get_count(ps) == 0);
+    reset_draw_records();
+    rt_particles3d_draw(ps, &canvas, &cam);
+    assert(g_draw_mesh_calls == 0);
+}
 
+/// @brief Configure one deterministic particle used to compare time partitioning.
+/// @param ps Particles3D object receiving fixed direction, speed, gravity, lifetime, and one burst.
+static void configure_partition_fixture(void *ps) {
+    rt_particles3d_set_direction(ps, 1.0, 0.0, 0.0, 0.0);
+    rt_particles3d_set_speed(ps, 3.0, 3.0);
+    rt_particles3d_set_gravity(ps, 0.0, -2.0, 0.0);
     rt_particles3d_set_lifetime(ps, 10.0, 10.0);
     rt_particles3d_burst(ps, 1);
-    rt_particles3d_update(ps, 1.0e300);
-    assert(rt_particles3d_get_count(ps) == 1);
+}
+
+/// @brief Verify bounded catch-up matches explicit substeps and reports discarded time exactly.
+/// @details A 2.25-second update advances only the one-second safety budget, produces the same
+///          particle state as sixty explicit steps, carries a sub-step residual, and exposes the
+///          remaining 1.25 seconds through both per-update and cumulative telemetry.
+static void test_update_is_bounded_and_reports_exact_dropped_time() {
+    constexpr double step = 1.0 / 60.0;
+    void *large = rt_particles3d_new(8);
+    void *partitioned = rt_particles3d_new(8);
+    assert(large != nullptr && partitioned != nullptr);
+    configure_partition_fixture(large);
+    configure_partition_fixture(partitioned);
+
+    rt_particles3d_update(large, 2.25);
+    for (int i = 0; i < 60; ++i)
+        rt_particles3d_update(partitioned, step);
+
+    assert(rt_particles3d_get_count(large) == 1);
+    assert(rt_particles3d_get_count(partitioned) == 1);
+    const ParticlesView *large_view = static_cast<const ParticlesView *>(large);
+    const ParticlesView *partitioned_view = static_cast<const ParticlesView *>(partitioned);
+    const RealParticleView *large_particle =
+        static_cast<const RealParticleView *>(large_view->particles);
+    const RealParticleView *partitioned_particle =
+        static_cast<const RealParticleView *>(partitioned_view->particles);
+    for (int c = 0; c < 3; ++c) {
+        assert(std::fabs(large_particle[0].pos[c] - partitioned_particle[0].pos[c]) < 1e-12);
+        assert(std::fabs(large_particle[0].vel[c] - partitioned_particle[0].vel[c]) < 1e-12);
+    }
+    assert(std::fabs((double)large_particle[0].life - (double)partitioned_particle[0].life) < 1e-6);
+    assert(std::fabs(rt_particles3d_get_last_dropped_time(large) - 1.25) < 1e-9);
+    assert(std::fabs(rt_particles3d_get_dropped_time(large) - 1.25) < 1e-9);
+    assert(rt_particles3d_get_residual_time(large) < step);
+    assert(rt_particles3d_get_dropped_time(partitioned) == 0.0);
+
+    rt_particles3d_reset_dropped_time(large);
+    assert(rt_particles3d_get_dropped_time(large) == 0.0);
+    assert(rt_particles3d_get_last_dropped_time(large) == 0.0);
+
+    void *residual = rt_particles3d_new(4);
+    configure_partition_fixture(residual);
+    const ParticlesView *residual_view = static_cast<const ParticlesView *>(residual);
+    const RealParticleView *residual_particle =
+        static_cast<const RealParticleView *>(residual_view->particles);
+    double start_x = residual_particle[0].pos[0];
+    rt_particles3d_update(residual, 0.01);
+    assert(std::fabs(rt_particles3d_get_residual_time(residual) - 0.01) < 1e-12);
+    assert(std::fabs(residual_particle[0].pos[0] - start_x) < 1e-12);
+    rt_particles3d_update(residual, step - 0.01);
+    assert(rt_particles3d_get_residual_time(residual) < 1e-12);
+    assert(std::fabs(residual_particle[0].pos[0] - (start_x + 3.0 * step)) < 1e-12);
+
+    rt_particles3d_update(residual, 1.0e300);
+    assert(rt_particles3d_get_count(residual) == 1);
+    assert(rt_particles3d_get_last_dropped_time(residual) > 1.0e299);
 }
 
 static void test_setters_sanitize_nonfinite_ranges() {
@@ -517,7 +667,13 @@ static void reset_draw_records() {
     g_last_draw_additive = 0;
     g_last_draw_alpha_mode = 0;
     g_last_mesh_signature = 0;
+    g_particle_batch_calls = 0;
+    g_particle_batch_count = 0;
+    g_particle_batch_alpha = 0.0;
+    g_particle_batch_additive = 0;
     std::memset(g_last_mesh_quad_z, 0, sizeof(g_last_mesh_quad_z));
+    std::memset(g_last_mesh_vertices, 0, sizeof(g_last_mesh_vertices));
+    std::memset(g_particle_batch_instances, 0, sizeof(g_particle_batch_instances));
     std::memset(g_keyed_draw_z, 0, sizeof(g_keyed_draw_z));
     std::memset(g_keyed_draw_alpha, 0, sizeof(g_keyed_draw_alpha));
     std::memset(g_keyed_draw_additive, 0, sizeof(g_keyed_draw_additive));
@@ -578,6 +734,127 @@ static void test_draw_batches_additive_and_alpha_particles() {
     assert(std::fabs(g_last_draw_alpha - 1.0) < 1e-6);
     assert(g_last_draw_additive == 0);
     assert(g_last_draw_alpha_mode == kAlphaModeBlend);
+}
+
+/// @brief Prove compact records reconstruct the sorted software billboard mesh exactly.
+/// @details Ten repeated hardware frames must preserve scratch capacity, queue one compact batch,
+///   and submit no CPU billboard mesh.
+static void test_hardware_instances_match_software_billboards_and_reuse_scratch() {
+    void *ps = rt_particles3d_new(8);
+    rt_canvas3d canvas = {};
+    rt_camera3d cam = make_test_camera();
+    vgfx3d_vertex_t software_vertices[8] = {};
+    assert(ps != nullptr);
+
+    rt_particles3d_set_direction(ps, 0.0, 1.0, 0.0, 0.0);
+    rt_particles3d_set_speed(ps, 2.0, 2.0);
+    rt_particles3d_set_lifetime(ps, 10.0, 10.0);
+    rt_particles3d_set_size(ps, 2.0, 2.0);
+    rt_particles3d_set_color(ps, 0x3366CC, 0x3366CC);
+    rt_particles3d_set_alpha(ps, 0.75, 0.75);
+    rt_particles3d_set_gravity(ps, 0.0, 0.0, 0.0);
+    rt_particles3d_set_stretch(ps, 2.0);
+    rt_particles3d_set_position(ps, 2.0, 3.0, 1.0);
+    rt_particles3d_burst(ps, 1);
+    rt_particles3d_set_position(ps, -4.0, 6.0, 5.0);
+    rt_particles3d_burst(ps, 1);
+
+    g_particle_instancing_supported = 0;
+    canvas.frame_serial = 1;
+    reset_draw_records();
+    rt_particles3d_draw(ps, &canvas, &cam);
+    assert(g_draw_mesh_calls == 1);
+    assert(g_particle_batch_calls == 0);
+    assert(g_last_mesh_vertex_count == 8);
+    assert(g_last_mesh_index_count == 12);
+    std::memcpy(software_vertices, g_last_mesh_vertices, sizeof(software_vertices));
+
+    g_particle_instancing_supported = 1;
+    canvas.frame_serial = 2;
+    reset_draw_records();
+    rt_particles3d_draw(ps, &canvas, &cam);
+    assert(g_draw_mesh_calls == 0);
+    assert(g_particle_batch_calls == 1);
+    assert(g_particle_batch_count == 2);
+    assert(std::fabs(g_particle_batch_alpha - 1.0) < 1e-6);
+    assert(g_particle_batch_additive == 0);
+    assert(std::fabs(g_particle_batch_instances[0].center[2] - 5.0f) < 1e-6f);
+    assert(std::fabs(g_particle_batch_instances[1].center[2] - 1.0f) < 1e-6f);
+
+    constexpr float unit_corners[4][2] = {
+        {-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f}, {-1.0f, 1.0f}};
+    for (int particle = 0; particle < 2; particle++) {
+        const vgfx3d_particle_instance_t &instance = g_particle_batch_instances[particle];
+        assert(instance.center[3] == 1.0f);
+        assert(instance.right[3] == 0.0f);
+        assert(instance.up[3] == 0.0f);
+        for (int corner = 0; corner < 4; corner++) {
+            const vgfx3d_vertex_t &vertex = software_vertices[particle * 4 + corner];
+            for (int axis = 0; axis < 3; axis++) {
+                float reconstructed = instance.center[axis] +
+                                      instance.right[axis] * unit_corners[corner][0] +
+                                      instance.up[axis] * unit_corners[corner][1];
+                assert(std::fabs(reconstructed - vertex.pos[axis]) < 1e-6f);
+            }
+            for (int channel = 0; channel < 4; channel++)
+                assert(std::fabs(instance.color[channel] - vertex.color[channel]) < 1e-6f);
+        }
+    }
+
+    int64_t retained_capacity = rt_particles3d_test_instance_scratch_capacity(ps);
+    uint64_t retained_grows = rt_particles3d_test_instance_scratch_grow_count(ps);
+    assert(retained_capacity >= 2);
+    assert(retained_grows == 1);
+    for (int frame = 3; frame <= 12; frame++) {
+        canvas.frame_serial = frame;
+        reset_draw_records();
+        rt_particles3d_draw(ps, &canvas, &cam);
+        assert(g_draw_mesh_calls == 0);
+        assert(g_particle_batch_calls == 1);
+        assert(g_particle_batch_count == 2);
+        assert(rt_particles3d_test_instance_scratch_capacity(ps) == retained_capacity);
+        assert(rt_particles3d_test_instance_scratch_grow_count(ps) == retained_grows);
+    }
+    g_particle_instancing_supported = 0;
+}
+
+/// @brief Prove hardware billboards do not remove the CPU ribbon-trail feature.
+/// @details The hardware frame must queue one compact billboard while retaining precisely the
+///   software trail vertices and indices after subtracting the one expanded billboard quad.
+static void test_hardware_particle_path_preserves_cpu_trail_ribbons() {
+    void *ps = rt_particles3d_new(4);
+    rt_canvas3d canvas = {};
+    rt_camera3d cam = make_test_camera();
+    assert(ps != nullptr);
+
+    rt_particles3d_set_direction(ps, 1.0, 0.0, 0.0, 0.0);
+    rt_particles3d_set_speed(ps, 1.0, 1.0);
+    rt_particles3d_set_lifetime(ps, 10.0, 10.0);
+    rt_particles3d_set_gravity(ps, 0.0, 0.0, 0.0);
+    rt_particles3d_set_trail(ps, 0.1, 4);
+    rt_particles3d_burst(ps, 1);
+    rt_particles3d_update(ps, 0.05);
+
+    g_particle_instancing_supported = 0;
+    canvas.frame_serial = 20;
+    reset_draw_records();
+    rt_particles3d_draw(ps, &canvas, &cam);
+    assert(g_draw_mesh_calls == 1);
+    assert(g_particle_batch_calls == 0);
+    assert(g_last_mesh_vertex_count >= 8);
+    int software_vertex_count = g_last_mesh_vertex_count;
+    int software_index_count = g_last_mesh_index_count;
+
+    g_particle_instancing_supported = 1;
+    canvas.frame_serial = 21;
+    reset_draw_records();
+    rt_particles3d_draw(ps, &canvas, &cam);
+    assert(g_particle_batch_calls == 1);
+    assert(g_particle_batch_count == 1);
+    assert(g_draw_mesh_calls == 1);
+    assert(g_last_mesh_vertex_count == software_vertex_count - 4);
+    assert(g_last_mesh_index_count == software_index_count - 6);
+    g_particle_instancing_supported = 0;
 }
 
 static void fill_particle_line(void *ps, double z_start, double z_step, int count) {
@@ -654,10 +931,13 @@ int main() {
     test_start_stop_and_update_spawns_particles();
     test_particles_expire_after_lifetime();
     test_particle_final_frame_renders_end_state();
-    test_update_clamps_large_finite_delta_time();
+    test_particle_final_frame_can_be_disabled();
+    test_update_is_bounded_and_reports_exact_dropped_time();
     test_setters_sanitize_nonfinite_ranges();
     test_rebase_origin_shifts_emitter_and_live_particles();
     test_draw_batches_additive_and_alpha_particles();
+    test_hardware_instances_match_software_billboards_and_reuse_scratch();
+    test_hardware_particle_path_preserves_cpu_trail_ribbons();
     test_alpha_sort_scratch_grows_to_capacity_and_reuses_for_repeated_draws();
     std::printf("RTParticles3DContractTests passed.\n");
     return 0;

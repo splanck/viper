@@ -12,18 +12,23 @@ static void fbx_release_ref(void **slot) {
     rt_g3d_ref_slot_release(slot);
 }
 
-/// @brief Stash a namespace-stripped FBX object name onto a `SceneNode3D`. Skips the
-/// assignment entirely when the decoded name is empty so a node without a meaningful
-/// name keeps whatever default was already set (instead of being overwritten with `""`).
-/// 128-byte stack buffer matches the decode limit — longer FBX names get truncated.
-static void fbx_set_clean_object_name(void *node, const char *raw_name) {
-    char name[128];
-    fbx_decode_object_name(raw_name, name, sizeof(name));
-    if (*name) {
-        rt_string runtime_name = rt_const_cstr(name);
-        rt_scene_node3d_set_name(node, runtime_name);
-        rt_string_unref(runtime_name);
-    }
+/// @brief Assign one FBX object's exact namespace-stripped name to a `SceneNode3D`.
+/// @details The length-carrying property view preserves arbitrarily long distinct names and stops
+///          at the first embedded binary suffix NUL. Empty names leave the scene node's existing
+///          default unchanged.
+/// @param scene_node Runtime scene node to rename.
+/// @param object_node Typed FBX object whose property one contains its display name.
+static void fbx_set_clean_object_name(void *scene_node, fbx_node_t *object_node) {
+    const char *data = "";
+    size_t length = 0;
+    rt_string runtime_name;
+    if (!scene_node || !fbx_object_name_view(object_node, 1, &data, &length) || length == 0)
+        return;
+    runtime_name = rt_string_from_bytes(data, length);
+    if (!runtime_name)
+        return;
+    rt_scene_node3d_set_name(scene_node, runtime_name);
+    rt_string_unref(runtime_name);
 }
 
 /// @brief Parsed FBX `Model` transform properties before matrix composition.
@@ -46,6 +51,7 @@ typedef struct {
     double geometric_scale[3];
     int rotation_order;
     int rotation_active;
+    int inherit_type;
 } fbx_transform_components_t;
 
 /// @brief Initialize an FBX transform component record to identity/default values.
@@ -63,6 +69,7 @@ static void fbx_transform_components_init(fbx_transform_components_t *out) {
     out->geometric_scale[2] = 1.0;
     out->rotation_order = 0;
     out->rotation_active = 1;
+    out->inherit_type = 0;
 }
 
 /// @brief Read a vector-style `Properties70` P-node into a fixed XYZ array.
@@ -139,6 +146,10 @@ static void fbx_read_model_transform_components(fbx_node_t *model_node,
                 out->rotation_order = (int)order;
         } else if (fbx_ascii_equals_i(pn, "RotationActive") && p->prop_count >= 5) {
             out->rotation_active = fbx_prop_truthy(p, 4);
+        } else if (fbx_ascii_equals_i(pn, "InheritType") && p->prop_count >= 5) {
+            int64_t inherit_type = fbx_prop_i64(p, 4);
+            if (inherit_type >= 0 && inherit_type <= 2)
+                out->inherit_type = (int)inherit_type;
         }
     }
     for (int i = 0; i < 3; i++) {
@@ -664,6 +675,141 @@ static void fbx_decompose_matrix_trs(const double m[16], double *pos, double *qu
     }
 }
 
+/// @brief Build a row-major pure-rotation matrix from a normalized XYZW quaternion.
+/// @details Non-finite or degenerate input falls back to identity. The helper matches the matrix
+///          convention used by @ref fbx_decompose_matrix_trs and is used to separate a parent's
+///          global rotation from its inherited shear/scale component.
+/// @param quat Four-element XYZW quaternion.
+/// @param out Receives a row-major affine rotation matrix.
+static void fbx_mat4_quaternion_rotation(const double quat[4], double out[16]) {
+    double x;
+    double y;
+    double z;
+    double w;
+    double length;
+    fbx_mat4_identity_local(out);
+    if (!quat)
+        return;
+    x = quat[0];
+    y = quat[1];
+    z = quat[2];
+    w = quat[3];
+    length = sqrt(x * x + y * y + z * z + w * w);
+    if (!isfinite(length) || length <= 1e-12)
+        return;
+    x /= length;
+    y /= length;
+    z /= length;
+    w /= length;
+    out[0] = 1.0 - 2.0 * (y * y + z * z);
+    out[1] = 2.0 * (x * y - z * w);
+    out[2] = 2.0 * (x * z + y * w);
+    out[4] = 2.0 * (x * y + z * w);
+    out[5] = 1.0 - 2.0 * (x * x + z * z);
+    out[6] = 2.0 * (y * z - x * w);
+    out[8] = 2.0 * (x * z - y * w);
+    out[9] = 2.0 * (y * z + x * w);
+    out[10] = 1.0 - 2.0 * (x * x + y * y);
+}
+
+/// @brief Compose one child's FBX global matrix according to its scaling-inheritance mode.
+/// @details This follows Autodesk's published evaluator decomposition. Translation is transformed
+///          by the complete parent global matrix. The linear part is then composed as:
+///          `RrSs = parentR * localR * parentGlobalScaleShear * localS`,
+///          `RSrs = parentR * parentGlobalScaleShear * localR * localS`, or
+///          `Rrs = parentR * localR * parentScaleWithoutLocal * localS`.
+///          Pivots, pre/post rotation, rotation order, and geometric transforms have already been
+///          folded into @p child_local by the shared local composer. Passing no parent copies the
+///          local matrix unchanged.
+/// @param parent_global Parent's already evaluated global affine matrix, or NULL for a root.
+/// @param parent_components Parent's authored transform components, required for Rrs compensation.
+/// @param child_local Child matrix produced by @ref fbx_build_model_transform_matrix.
+/// @param child_components Child components carrying the InheritType selector.
+/// @param out Receives the evaluated child global affine matrix.
+static void fbx_build_inherited_global_matrix(const double parent_global[16],
+                                              const fbx_transform_components_t *parent_components,
+                                              const double child_local[16],
+                                              const fbx_transform_components_t *child_components,
+                                              double out[16]) {
+    double standard[16];
+    double parent_position[3];
+    double parent_quaternion[4];
+    double child_quaternion[4];
+    double child_scale[3];
+    double parent_translation[16];
+    double inverse_parent_translation[16];
+    double parent_rotation[16];
+    double inverse_parent_rotation[16];
+    double parent_rs[16];
+    double parent_scale_shear[16];
+    double child_rotation[16];
+    double child_scaling[16];
+    double global_rs[16];
+    double step[16];
+    int inherit_type;
+    if (!out)
+        return;
+    if (!child_local) {
+        fbx_mat4_identity_local(out);
+        return;
+    }
+    if (!parent_global || !child_components) {
+        memcpy(out, child_local, 16u * sizeof(double));
+        return;
+    }
+    fbx_mat4_mul_local(parent_global, child_local, standard);
+    fbx_decompose_matrix_trs(parent_global, parent_position, parent_quaternion, NULL);
+    fbx_decompose_matrix_trs(child_local, NULL, child_quaternion, child_scale);
+    fbx_mat4_translate_local(
+        parent_position[0], parent_position[1], parent_position[2], parent_translation);
+    if (!fbx_mat4_inverse_affine(parent_translation, inverse_parent_translation)) {
+        memcpy(out, standard, sizeof(standard));
+        return;
+    }
+    fbx_mat4_quaternion_rotation(parent_quaternion, parent_rotation);
+    if (!fbx_mat4_inverse_affine(parent_rotation, inverse_parent_rotation)) {
+        memcpy(out, standard, sizeof(standard));
+        return;
+    }
+    fbx_mat4_mul_local(inverse_parent_translation, parent_global, parent_rs);
+    fbx_mat4_mul_local(inverse_parent_rotation, parent_rs, parent_scale_shear);
+    fbx_mat4_quaternion_rotation(child_quaternion, child_rotation);
+    fbx_mat4_scale_local(child_scale[0], child_scale[1], child_scale[2], child_scaling);
+    inherit_type = child_components->inherit_type;
+    if (inherit_type == 1) {
+        fbx_mat4_mul_local(parent_rotation, parent_scale_shear, global_rs);
+        fbx_mat4_append_local(global_rs, child_rotation);
+        fbx_mat4_append_local(global_rs, child_scaling);
+    } else if (inherit_type == 2) {
+        double parent_local_scaling[16];
+        double inverse_parent_local_scaling[16];
+        double compensated_parent_scale[16];
+        double parent_scale[3] = {1.0, 1.0, 1.0};
+        if (parent_components) {
+            parent_scale[0] = parent_components->scale[0];
+            parent_scale[1] = parent_components->scale[1];
+            parent_scale[2] = parent_components->scale[2];
+        }
+        fbx_mat4_scale_local(
+            parent_scale[0], parent_scale[1], parent_scale[2], parent_local_scaling);
+        if (!fbx_mat4_inverse_affine(parent_local_scaling, inverse_parent_local_scaling)) {
+            memcpy(out, standard, sizeof(standard));
+            return;
+        }
+        fbx_mat4_mul_local(
+            parent_scale_shear, inverse_parent_local_scaling, compensated_parent_scale);
+        fbx_mat4_mul_local(parent_rotation, child_rotation, global_rs);
+        fbx_mat4_append_local(global_rs, compensated_parent_scale);
+        fbx_mat4_append_local(global_rs, child_scaling);
+    } else {
+        fbx_mat4_mul_local(parent_rotation, child_rotation, global_rs);
+        fbx_mat4_append_local(global_rs, parent_scale_shear);
+        fbx_mat4_append_local(global_rs, child_scaling);
+    }
+    fbx_mat4_translate_local(standard[3], standard[7], standard[11], step);
+    fbx_mat4_mul_local(step, global_rs, out);
+}
+
 /// @brief Pull the complete FBX transform stack off a `Model` node and expose it as TRS.
 /// @details Unlike the older local-TRS-only path, this honors RotationOrder, pivots, offsets,
 ///          PreRotation/PostRotation, and geometric transforms before decomposing to the
@@ -800,17 +946,44 @@ static void *fbx_lookup_material_binding(const fbx_material_binding_t *bindings,
     return NULL;
 }
 
-/// @brief Apply an FBX Model node's name and TRS (position, rotation quaternion, scale) to a
-///        freshly created scene node, honoring the Z-up axis convention.
-static void fbx_apply_model_node_trs(fbx_node_t *obj, void *node, int z_up) {
+/// @brief Decompose an evaluated affine matrix and assign its TRS to one scene node.
+/// @details SceneNode3D stores TRS rather than a raw affine matrix. Any inheritance-generated shear
+///          is reduced through the same deterministic decomposition used by animation keyframes.
+/// @param node Runtime scene node to mutate.
+/// @param matrix Evaluated parent-relative affine matrix.
+static void fbx_apply_matrix_to_scene_node(void *node, const double matrix[16]) {
     void *quat_obj;
     double pos[3];
     double quat[4];
     double scale[3];
-    fbx_set_clean_object_name(node, fbx_prop_str(obj, 1));
-    fbx_extract_model_trs(obj, z_up, pos, quat, scale);
+    if (!node || !matrix)
+        return;
+    fbx_decompose_matrix_trs(matrix, pos, quat, scale);
     rt_scene_node3d_set_position(node, pos[0], pos[1], pos[2]);
     quat_obj = rt_quat_new(quat[0], quat[1], quat[2], quat[3]);
+    if (quat_obj) {
+        rt_scene_node3d_set_rotation(node, quat_obj);
+        fbx_release_ref(&quat_obj);
+    }
+    rt_scene_node3d_set_scale(node, scale[0], scale[1], scale[2]);
+}
+
+/// @brief Apply an FBX Model node's exact name and locally composed transform to a scene node.
+/// @details This initial local assignment is later replaced with an inheritance-adjusted matrix
+///          after the full model parent table is available. Keeping it here makes root/orphan
+///          behavior explicit and provides one shared local conversion path.
+/// @param obj Typed FBX Model node.
+/// @param node Fresh runtime scene node.
+/// @param z_up Nonzero to apply the FBX-to-Zanna basis conversion.
+static void fbx_apply_model_node_trs(fbx_node_t *obj, void *node, int z_up) {
+    void *quat_obj;
+    double position[3];
+    double quaternion[4];
+    double scale[3];
+    fbx_set_clean_object_name(node, obj);
+    fbx_extract_model_trs(obj, z_up, position, quaternion, scale);
+    rt_scene_node3d_set_position(node, position[0], position[1], position[2]);
+    quat_obj = rt_quat_new(quaternion[0], quaternion[1], quaternion[2], quaternion[3]);
     if (quat_obj) {
         rt_scene_node3d_set_rotation(node, quat_obj);
         fbx_release_ref(&quat_obj);
@@ -875,6 +1048,10 @@ static void *fbx_build_scene_root(fbx_node_t *root,
         int64_t parent_id;
         fbx_node_t *source;
         void *node;
+        fbx_transform_components_t components;
+        double local_matrix[16];
+        double global_matrix[16];
+        int global_evaluated;
     } fbx_model_binding_t;
 
     fbx_model_binding_t *models = NULL;
@@ -933,6 +1110,12 @@ static void *fbx_build_scene_root(fbx_node_t *root,
         models[model_count].parent_id = fbx_find_parent(ct, model_id);
         models[model_count].source = obj;
         models[model_count].node = node;
+        fbx_read_model_transform_components(obj, &models[model_count].components);
+        fbx_build_model_transform_matrix(&models[model_count].components,
+                                         models[model_count].local_matrix);
+        if (z_up)
+            fbx_mat4_apply_zup(models[model_count].local_matrix);
+        models[model_count].global_evaluated = 0;
         model_count++;
     }
 
@@ -952,14 +1135,12 @@ static void *fbx_build_scene_root(fbx_node_t *root,
         void **model_materials = NULL;
         int32_t model_material_count = 0;
         int32_t model_material_capacity = 0;
-        for (int32_t ci = 0; ci < ct->count; ci++) {
+        for (int32_t ci = fbx_connections_first_for_parent(ct, models[i].id); ci >= 0;
+             ci = fbx_connections_next_for_parent(ct, ci)) {
             int64_t child_id = ct->entries[ci].child_id;
-            int64_t parent_id = ct->entries[ci].parent_id;
             fbx_node_t *child_obj;
             void *material;
 
-            if (parent_id != models[i].id)
-                continue;
             child_obj = fbx_find_object_by_id(objects, child_id);
             if (!child_obj || child_obj->prop_count < 1)
                 continue;
@@ -991,17 +1172,15 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                     primary_material = material;
             }
         }
-        for (int32_t ci = 0; !failed && ci < ct->count; ci++) {
+        for (int32_t ci = fbx_connections_first_for_parent(ct, models[i].id); !failed && ci >= 0;
+             ci = fbx_connections_next_for_parent(ct, ci)) {
             int64_t child_id = ct->entries[ci].child_id;
-            int64_t parent_id = ct->entries[ci].parent_id;
             fbx_node_t *child_obj;
             const fbx_mesh_binding_t *binding;
             void *mesh;
             void *material;
             void *mesh_node;
 
-            if (parent_id != models[i].id)
-                continue;
             child_obj = fbx_find_object_by_id(objects, child_id);
             if (!child_obj || child_obj->prop_count < 3)
                 continue;
@@ -1077,7 +1256,7 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                 break;
             }
             if (child_obj->prop_count >= 2)
-                fbx_set_clean_object_name(mesh_node, fbx_prop_str(child_obj, 1));
+                fbx_set_clean_object_name(mesh_node, child_obj);
             if (extra_mesh_count > 0) {
                 char generated_name[64];
                 snprintf(generated_name, sizeof(generated_name), "mesh_%d", extra_mesh_count);
@@ -1139,6 +1318,57 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                                 break;
                             }
                 }
+            }
+        }
+    }
+
+    /* Evaluate parent globals in topological waves using the same FBX inheritance composer that
+     * animation sampling uses, then derive the parent-relative TRS consumed by SceneNode3D. */
+    if (!failed && model_count > 0) {
+        int32_t evaluated_count = 0;
+        for (int32_t pass = 0; pass < model_count && evaluated_count < model_count; pass++) {
+            int32_t progress = 0;
+            for (int32_t i = 0; i < model_count; i++) {
+                int32_t parent = parent_idx[i];
+                if (models[i].global_evaluated ||
+                    (parent >= 0 && !models[parent].global_evaluated)) {
+                    continue;
+                }
+                if (parent >= 0) {
+                    fbx_build_inherited_global_matrix(models[parent].global_matrix,
+                                                      &models[parent].components,
+                                                      models[i].local_matrix,
+                                                      &models[i].components,
+                                                      models[i].global_matrix);
+                } else {
+                    memcpy(models[i].global_matrix,
+                           models[i].local_matrix,
+                           sizeof(models[i].global_matrix));
+                }
+                models[i].global_evaluated = 1;
+                evaluated_count++;
+                progress++;
+            }
+            if (progress == 0)
+                break;
+        }
+        if (evaluated_count != model_count) {
+            failed = 1;
+        } else {
+            for (int32_t i = 0; i < model_count; i++) {
+                int32_t parent = parent_idx[i];
+                double runtime_local[16];
+                if (parent >= 0) {
+                    double inverse_parent[16];
+                    if (!fbx_mat4_inverse_affine(models[parent].global_matrix, inverse_parent)) {
+                        failed = 1;
+                        break;
+                    }
+                    fbx_mat4_mul_local(inverse_parent, models[i].global_matrix, runtime_local);
+                } else {
+                    memcpy(runtime_local, models[i].global_matrix, sizeof(runtime_local));
+                }
+                fbx_apply_matrix_to_scene_node(models[i].node, runtime_local);
             }
         }
     }

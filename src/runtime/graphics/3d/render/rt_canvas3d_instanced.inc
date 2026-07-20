@@ -1,8 +1,23 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_canvas3d_instanced.inc  (#included from rt_canvas3d.c;
-// not a standalone translation unit) Purpose: Canvas3D instanced-batch submission (fallback and
-// hardware paths)
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/render/rt_canvas3d_instanced.inc
+// Purpose: Canvas3D instanced-batch submission for fallback, hardware, and compact particles.
+// Key invariants:
+//   - Deferred commands snapshot mutable instance payloads before their callers may reuse storage.
+//   - Heap base geometry binds an immutable retained revision; generated tangents use a distinct
+//     stable backend cache key while sharing the same source geometry revision.
+//   - Compact particles share one process-lifetime unit quad and a stable geometry-cache identity.
+// Ownership/Lifetime:
+//   - Canvas3D owns queued snapshots and tracked references until the deferred frame is released.
+//   - The unit quad is immutable static storage and is never freed or modified after
+//   initialization.
+// Links: rt_canvas3d.c, rt_canvas3d_internal.h, vgfx3d_backend.h
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Queue an instanced draw — render `instance_count` copies of `mesh` with per-instance
@@ -73,7 +88,10 @@ static void canvas3d_select_instanced_local_bounds(const rt_mesh3d *mesh,
 }
 
 /// @brief Fallback instanced submission: enqueue each instance as an individual mesh draw.
-/// @details Used when the backend lacks hardware instancing or the material needs blending.
+/// @details Used when the backend lacks hardware instancing or the material needs blending. Queue
+///   growth is split into bounded 65,536-instance reservations, but the global instance index is
+///   retained across chunks so transform order and motion-history identity remain stable. No
+///   instance is omitted merely because the request crosses a chunk boundary.
 static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *b,
                                               const vgfx3d_draw_cmd_t *base_cmd,
                                               const float *instance_matrices,
@@ -97,12 +115,8 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
                                            explicit_local_bounds_max,
                                            local_bounds_min,
                                            local_bounds_max);
-    if (!ensure_deferred_capacity(
-            &c->draw_cmds, &c->draw_capacity, c->draw_count + instance_count)) {
-        canvas3d_instanced_release_refs(b);
-        rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
-        return;
-    }
+    /* Validate the full request before publishing its first chunk. A non-finite matrix must not
+     * leave an otherwise avoidable partial batch in the queue. */
     for (int32_t i = 0; i < instance_count; i++) {
         float preflight[16];
         double shift[3];
@@ -123,90 +137,117 @@ static void canvas3d_queue_instanced_fallback(const canvas3d_instanced_batch_t *
             return;
         }
     }
-    for (int32_t i = 0; i < instance_count; i++) {
-        vgfx3d_draw_cmd_t per_instance = *base_cmd;
-        uintptr_t instance_motion_key = canvas3d_instance_motion_key(
-            b->mesh_obj, b->material_obj, instance_matrices, instance_count, i);
-        if (rebase_positions64_instances) {
-            double vertex_rebase_origin[3] = {0.0, 0.0, 0.0};
-            vgfx3d_vertex_t *rebased_vertices = NULL;
-            uint32_t *rebased_indices = NULL;
-            if (!canvas3d_compute_vertex_rebase_shift_f32(c,
-                                                          &instance_matrices[(size_t)i * 16u],
-                                                          vertex_rebase_origin,
-                                                          per_instance.model_matrix) ||
-                !canvas3d_snapshot_mesh_geometry_rebased(
-                    c, mesh, vertex_rebase_origin, &rebased_vertices, &rebased_indices)) {
-                rt_trap("Canvas3D.DrawMeshInstanced: rebased instance geometry allocation failed");
-                return;
-            }
-            if (generate_rebased_tangents &&
-                !canvas3d_generate_snapshot_tangents(mesh, rebased_vertices, rebased_indices))
-                canvas3d_disable_cmd_normal_map(&per_instance);
-            per_instance.vertices = rebased_vertices;
-            per_instance.indices = rebased_indices;
-            per_instance.geometry_key = NULL;
-            per_instance.geometry_revision = 0;
-            memcpy(per_instance.prev_model_matrix,
-                   per_instance.model_matrix,
-                   sizeof(per_instance.prev_model_matrix));
-            per_instance.has_prev_model_matrix = 0;
-        } else if (!canvas3d_copy_mat4_f32_for_frame(
-                       c, &instance_matrices[(size_t)i * 16u], per_instance.model_matrix)) {
-            rt_trap("Canvas3D.DrawMeshInstanced: rebased instance matrix is out of float range");
-            return;
-        }
-        if (!rebase_positions64_instances && has_prev_instance_matrices && prev_instance_matrices) {
-            if (!canvas3d_copy_mat4_f32_for_frame(
-                    c, &prev_instance_matrices[(size_t)i * 16u], per_instance.prev_model_matrix)) {
-                rt_trap("Canvas3D.DrawMeshInstanced: rebased previous instance matrix is out of "
-                        "float range");
-                return;
-            }
-            per_instance.has_prev_model_matrix = 1;
-        } else if (!rebase_positions64_instances) {
-            canvas3d_resolve_previous_model(c,
-                                            instance_motion_key,
-                                            per_instance.model_matrix,
-                                            per_instance.prev_model_matrix,
-                                            &per_instance.has_prev_model_matrix);
-        }
-        per_instance.prev_instance_matrices = NULL;
-        per_instance.has_prev_instance_matrices = 0;
-        int8_t instance_blends = canvas3d_cmd_requires_blend(&per_instance);
-        if (!canvas3d_enqueue_draw(
-                c,
-                &per_instance,
-                DEFERRED_DRAW_MESH,
-                DEFERRED_PASS_MAIN,
-                NULL,
-                0,
-                1,
-                c->wireframe,
-                canvas3d_material_backface_cull(c, mat),
-                canvas3d_sanitize_sort_key(canvas3d_compute_sort_key(c,
-                                                                     per_instance.model_matrix,
-                                                                     local_bounds_min,
-                                                                     local_bounds_max,
-                                                                     1,
-                                                                     instance_blends),
-                                           instance_blends),
-                local_bounds_min,
-                local_bounds_max)) {
-            /* Earlier instances may already be queued and still borrow the retained refs. */
+    for (int32_t chunk_begin = 0; chunk_begin < instance_count;) {
+        int32_t chunk_count = instance_count - chunk_begin;
+        if (chunk_count > CANVAS3D_FALLBACK_CHUNK_INSTANCES)
+            chunk_count = CANVAS3D_FALLBACK_CHUNK_INSTANCES;
+        if (c->draw_count < 0 || c->draw_count > INT32_MAX - chunk_count ||
+            !ensure_deferred_capacity(
+                &c->draw_cmds, &c->draw_capacity, c->draw_count + chunk_count)) {
+            int64_t remaining = (int64_t)instance_count - (int64_t)chunk_begin;
+            canvas3d_record_submission_failure(c, RT_CANVAS3D_SUBMISSION_QUEUE_FAILURE);
+            if (remaining > INT64_MAX - c->last_instanced_fallback_dropped_count)
+                c->last_instanced_fallback_dropped_count = INT64_MAX;
+            else
+                c->last_instanced_fallback_dropped_count += remaining;
+            if (chunk_begin == 0)
+                canvas3d_instanced_release_refs(b);
             rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
             return;
         }
-        {
-            deferred_draw_t *queued = &((deferred_draw_t *)c->draw_cmds)[c->draw_count - 1];
-            queued->stable_sort_id = instance_motion_key
-                                         ? instance_motion_key
-                                         : (queued->stable_sort_id ^ (uintptr_t)(uint32_t)i);
-            queued->occlusion_fingerprint = 0;
-            queued->occlusion_key = 0;
-            canvas3d_finalize_deferred_visibility_flags(
-                queued, conservative_bounds, disable_occlusion);
+        for (int32_t offset = 0; offset < chunk_count; offset++) {
+            int32_t i = chunk_begin + offset;
+            vgfx3d_draw_cmd_t per_instance = *base_cmd;
+            uintptr_t instance_motion_key = canvas3d_instance_motion_key(
+                b->mesh_obj, b->material_obj, instance_matrices, instance_count, i);
+            if (rebase_positions64_instances) {
+                double vertex_rebase_origin[3] = {0.0, 0.0, 0.0};
+                vgfx3d_vertex_t *rebased_vertices = NULL;
+                uint32_t *rebased_indices = NULL;
+                if (!canvas3d_compute_vertex_rebase_shift_f32(c,
+                                                              &instance_matrices[(size_t)i * 16u],
+                                                              vertex_rebase_origin,
+                                                              per_instance.model_matrix) ||
+                    !canvas3d_snapshot_mesh_geometry_rebased(
+                        c, mesh, vertex_rebase_origin, &rebased_vertices, &rebased_indices)) {
+                    rt_trap(
+                        "Canvas3D.DrawMeshInstanced: rebased instance geometry allocation failed");
+                    return;
+                }
+                if (generate_rebased_tangents &&
+                    !canvas3d_generate_snapshot_tangents(mesh, rebased_vertices, rebased_indices))
+                    canvas3d_disable_cmd_normal_map(&per_instance);
+                per_instance.vertices = rebased_vertices;
+                per_instance.indices = rebased_indices;
+                per_instance.geometry_key = NULL;
+                per_instance.geometry_revision = 0;
+                memcpy(per_instance.prev_model_matrix,
+                       per_instance.model_matrix,
+                       sizeof(per_instance.prev_model_matrix));
+                per_instance.has_prev_model_matrix = 0;
+            } else if (!canvas3d_copy_mat4_f32_for_frame(
+                           c, &instance_matrices[(size_t)i * 16u], per_instance.model_matrix)) {
+                rt_trap(
+                    "Canvas3D.DrawMeshInstanced: rebased instance matrix is out of float range");
+                return;
+            }
+            if (!rebase_positions64_instances && has_prev_instance_matrices &&
+                prev_instance_matrices) {
+                if (!canvas3d_copy_mat4_f32_for_frame(c,
+                                                      &prev_instance_matrices[(size_t)i * 16u],
+                                                      per_instance.prev_model_matrix)) {
+                    rt_trap("Canvas3D.DrawMeshInstanced: rebased previous instance matrix is out "
+                            "of float range");
+                    return;
+                }
+                per_instance.has_prev_model_matrix = 1;
+            } else if (!rebase_positions64_instances) {
+                canvas3d_resolve_previous_model(c,
+                                                instance_motion_key,
+                                                per_instance.model_matrix,
+                                                per_instance.prev_model_matrix,
+                                                &per_instance.has_prev_model_matrix);
+            }
+            per_instance.prev_instance_matrices = NULL;
+            per_instance.has_prev_instance_matrices = 0;
+            int8_t instance_blends = canvas3d_cmd_requires_blend(&per_instance);
+            if (!canvas3d_enqueue_draw(
+                    c,
+                    &per_instance,
+                    DEFERRED_DRAW_MESH,
+                    DEFERRED_PASS_MAIN,
+                    NULL,
+                    0,
+                    1,
+                    c->wireframe,
+                    canvas3d_material_backface_cull(c, mat),
+                    canvas3d_sanitize_sort_key(canvas3d_compute_sort_key(c,
+                                                                         per_instance.model_matrix,
+                                                                         local_bounds_min,
+                                                                         local_bounds_max,
+                                                                         1,
+                                                                         instance_blends),
+                                               instance_blends),
+                    local_bounds_min,
+                    local_bounds_max)) {
+                /* Earlier instances may already be queued and still borrow the retained refs. */
+                rt_trap("Canvas3D.DrawMeshInstanced: deferred draw queue allocation failed");
+                return;
+            }
+            {
+                deferred_draw_t *queued = &((deferred_draw_t *)c->draw_cmds)[c->draw_count - 1];
+                queued->stable_sort_id = instance_motion_key
+                                             ? instance_motion_key
+                                             : (queued->stable_sort_id ^ (uintptr_t)(uint32_t)i);
+                queued->occlusion_fingerprint = 0;
+                queued->occlusion_key = 0;
+                canvas3d_finalize_deferred_visibility_flags(
+                    queued, conservative_bounds, disable_occlusion);
+            }
+            if (c->last_instanced_fallback_count < INT64_MAX)
+                c->last_instanced_fallback_count++;
         }
+        chunk_begin += chunk_count;
     }
 }
 
@@ -231,8 +272,8 @@ static float *canvas3d_alloc_instance_matrix_snapshot(rt_canvas3d *c,
                                                       int8_t *out_has_world_bounds) {
     size_t matrix_float_count;
     float *snapshot;
-    int accumulate_bounds = union_local_min && union_local_max && out_world_min &&
-                            out_world_max && out_has_world_bounds &&
+    int accumulate_bounds = union_local_min && union_local_max && out_world_min && out_world_max &&
+                            out_has_world_bounds &&
                             canvas3d_bounds_are_valid(union_local_min, union_local_max);
     if (out_has_world_bounds)
         *out_has_world_bounds = 0;
@@ -246,6 +287,7 @@ static float *canvas3d_alloc_instance_matrix_snapshot(rt_canvas3d *c,
     matrix_float_count = (size_t)instance_count * 16u;
     snapshot = (float *)malloc(matrix_float_count * sizeof(*snapshot));
     if (!snapshot) {
+        canvas3d_record_submission_failure(c, RT_CANVAS3D_SUBMISSION_INSTANCE_FAILURE);
         rt_trap(trap_message ? trap_message
                              : "Canvas3D.DrawMeshInstanced: matrix allocation failed");
         return NULL;
@@ -359,6 +401,7 @@ static void canvas3d_queue_instanced_hardware(const canvas3d_instanced_batch_t *
                 (float *)malloc(matrix_float_count * sizeof(*queued_prev_instance_matrices));
         }
         if (!queued_prev_instance_matrices) {
+            canvas3d_record_submission_failure(c, RT_CANVAS3D_SUBMISSION_INSTANCE_FAILURE);
             canvas3d_release_tracked_temp_buffer(c, queued_instance_matrices);
             canvas3d_instanced_release_refs(b);
             if (!(has_prev_instance_matrices && prev_instance_matrices))
@@ -522,10 +565,11 @@ static int canvas3d_queue_instanced_split(const canvas3d_instanced_batch_t *b,
     memcpy(cursor, starts, (size_t)cell_count * sizeof(int32_t));
     for (int32_t i = 0; i < instance_count; i++) {
         int32_t dst = cursor[cell_of[i]]++;
-        memcpy(&staged[(size_t)dst * 16u], &instance_matrices[(size_t)i * 16u],
-               16u * sizeof(float));
+        memcpy(
+            &staged[(size_t)dst * 16u], &instance_matrices[(size_t)i * 16u], 16u * sizeof(float));
         if (staged_prev)
-            memcpy(&staged_prev[(size_t)dst * 16u], &prev_instance_matrices[(size_t)i * 16u],
+            memcpy(&staged_prev[(size_t)dst * 16u],
+                   &prev_instance_matrices[(size_t)i * 16u],
                    16u * sizeof(float));
         remap[dst] = i;
     }
@@ -594,7 +638,6 @@ static int canvas3d_queue_instanced_batch_common(void *canvas_obj,
     int use_fallback_instances;
     int rebase_positions64_instances;
     int suppress_normal_map = 0;
-    int32_t requested_instance_count;
 
     if (!instance_matrices || instance_count <= 0)
         return 1;
@@ -619,10 +662,9 @@ static int canvas3d_queue_instanced_batch_common(void *canvas_obj,
         rt_trap("Canvas3D.DrawMeshInstanced: previous instance matrices pointer is required");
         return 1;
     }
-    requested_instance_count = instance_count;
-    if (!canvas3d_matrices_f32_are_finite(instance_matrices, requested_instance_count) ||
+    if (!canvas3d_matrices_f32_are_finite(instance_matrices, instance_count) ||
         (has_prev_instance_matrices && prev_instance_matrices &&
-         !canvas3d_matrices_f32_are_finite(prev_instance_matrices, requested_instance_count))) {
+         !canvas3d_matrices_f32_are_finite(prev_instance_matrices, instance_count))) {
         rt_trap("Canvas3D.DrawMeshInstanced: instance matrices must contain finite values");
         return 1;
     }
@@ -649,18 +691,6 @@ static int canvas3d_queue_instanced_batch_common(void *canvas_obj,
                              !c->backend->submit_draw_instanced;
     if (override_palette && (use_fallback_instances || instance_bone_stride <= 0))
         return 0; /* per-instance palettes require the hardware-instanced path */
-    if (use_fallback_instances) {
-        /* Per-instance queueing is bounded to keep the deferred queue sane;
-         * overflow clamps but is now observable via get_InstancedFallbackDroppedCount
-         * in addition to the queued fallback count. Opaque batches take the backend
-         * instanced hook on every backend, including software, and never hit this path. */
-        if (instance_count > CANVAS3D_MAX_FALLBACK_INSTANCES) {
-            c->last_instanced_fallback_dropped_count +=
-                (int64_t)instance_count - (int64_t)CANVAS3D_MAX_FALLBACK_INSTANCES;
-            instance_count = CANVAS3D_MAX_FALLBACK_INSTANCES;
-        }
-        c->last_instanced_fallback_count += instance_count;
-    }
 
     batch.c = c;
     batch.mesh = mesh;
@@ -716,8 +746,9 @@ static int canvas3d_queue_instanced_batch_common(void *canvas_obj,
     base_cmd.vertices = queued_vertices;
     base_cmd.indices = queued_indices;
     base_cmd.geometry_key =
-        (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents && !rebase_positions64_instances)
-            ? mesh_obj
+        (rt_heap_is_payload(mesh_obj) && !rebase_positions64_instances)
+            ? (needs_generated_tangents ? (const void *)&mesh->retained_tangent_cache_key
+                                        : mesh_obj)
             : NULL;
     base_cmd.geometry_revision = base_cmd.geometry_key ? mesh->geometry_revision : 0;
     base_cmd.compact_vertex_stream = (base_cmd.geometry_key && mesh->compact_streams) ? 1 : 0;
@@ -740,15 +771,15 @@ static int canvas3d_queue_instanced_batch_common(void *canvas_obj,
         return 1;
     }
     if (!override_palette && canvas3d_queue_instanced_split(&batch,
-                                       &base_cmd,
-                                       instance_matrices,
-                                       instance_count,
-                                       prev_instance_matrices,
-                                       has_prev_instance_matrices,
-                                       explicit_local_bounds_min,
-                                       explicit_local_bounds_max,
-                                       conservative_bounds,
-                                       disable_occlusion))
+                                                            &base_cmd,
+                                                            instance_matrices,
+                                                            instance_count,
+                                                            prev_instance_matrices,
+                                                            has_prev_instance_matrices,
+                                                            explicit_local_bounds_min,
+                                                            explicit_local_bounds_max,
+                                                            conservative_bounds,
+                                                            disable_occlusion))
         return 1;
     canvas3d_queue_instanced_hardware(&batch,
                                       &base_cmd,
@@ -880,6 +911,183 @@ void rt_canvas3d_queue_instanced_batch_frame_matrices(void *canvas_obj,
                                              0,
                                              0);
     c->camera_relative_upload = saved_camera_relative;
+}
+
+/* Process-lifetime unit quad used only by compact particle instancing. Backends key their static
+ * geometry cache with g_canvas3d_particle_unit_quad_key, so its four vertices and six indices are
+ * uploaded once per backend context rather than rebuilt per particle or per frame. */
+static int g_canvas3d_particle_unit_quad_key;
+static vgfx3d_vertex_t g_canvas3d_particle_unit_vertices[4] = {
+    {.pos = {-1.0f, -1.0f, 0.0f},
+     .normal = {0.0f, 0.0f, 1.0f},
+     .uv = {0.0f, 1.0f},
+     .uv1 = {0.0f, 1.0f},
+     .color = {1.0f, 1.0f, 1.0f, 1.0f},
+     .tangent = {1.0f, 0.0f, 0.0f, 1.0f}},
+    {.pos = {1.0f, -1.0f, 0.0f},
+     .normal = {0.0f, 0.0f, 1.0f},
+     .uv = {1.0f, 1.0f},
+     .uv1 = {1.0f, 1.0f},
+     .color = {1.0f, 1.0f, 1.0f, 1.0f},
+     .tangent = {1.0f, 0.0f, 0.0f, 1.0f}},
+    {.pos = {1.0f, 1.0f, 0.0f},
+     .normal = {0.0f, 0.0f, 1.0f},
+     .uv = {1.0f, 0.0f},
+     .uv1 = {1.0f, 0.0f},
+     .color = {1.0f, 1.0f, 1.0f, 1.0f},
+     .tangent = {1.0f, 0.0f, 0.0f, 1.0f}},
+    {.pos = {-1.0f, 1.0f, 0.0f},
+     .normal = {0.0f, 0.0f, 1.0f},
+     .uv = {0.0f, 0.0f},
+     .uv1 = {0.0f, 0.0f},
+     .color = {1.0f, 1.0f, 1.0f, 1.0f},
+     .tangent = {1.0f, 0.0f, 0.0f, 1.0f}},
+};
+static uint32_t g_canvas3d_particle_unit_indices[6] = {0u, 1u, 2u, 0u, 2u, 3u};
+
+/// @brief Validate one compact particle record and expand the aggregate axis-aligned bounds.
+/// @details Right/up are arbitrary camera-plane half axes; the exact conservative contribution on
+///   each world axis is `abs(right) + abs(up)`. Color is required to remain finite and normalized
+///   because every backend multiplies it directly into the material/texture result.
+/// @param instance Record to validate.
+/// @param first Non-zero when this is the first aggregate record.
+/// @param bounds_min Aggregate minimum updated on success.
+/// @param bounds_max Aggregate maximum updated on success.
+/// @return Non-zero for a finite normalized record whose bound arithmetic remains finite.
+static int canvas3d_accumulate_particle_instance_bounds(const vgfx3d_particle_instance_t *instance,
+                                                        int first,
+                                                        float bounds_min[3],
+                                                        float bounds_max[3]) {
+    if (!instance || !bounds_min || !bounds_max)
+        return 0;
+    for (int axis = 0; axis < 3; axis++) {
+        float center = instance->center[axis];
+        float extent = fabsf(instance->right[axis]) + fabsf(instance->up[axis]);
+        float lo = center - extent;
+        float hi = center + extent;
+        if (!isfinite(center) || !isfinite(extent) || !isfinite(lo) || !isfinite(hi))
+            return 0;
+        if (first || lo < bounds_min[axis])
+            bounds_min[axis] = lo;
+        if (first || hi > bounds_max[axis])
+            bounds_max[axis] = hi;
+    }
+    for (int lane = 0; lane < 4; lane++) {
+        if (!isfinite(instance->center[lane]) || !isfinite(instance->right[lane]) ||
+            !isfinite(instance->up[lane]) || !isfinite(instance->color[lane]) ||
+            instance->color[lane] < 0.0f || instance->color[lane] > 1.0f)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Report whether the active Canvas3D backend accepts compact particle instances.
+/// @details The explicit vtable capability avoids backend-name branching and prevents the software
+///   instanced fallback from receiving a payload whose vertices have not been CPU-expanded.
+int rt_canvas3d_supports_particle_instancing(void *canvas_obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas_obj);
+    return c && c->backend && c->backend->particle_instancing && c->backend->submit_draw_instanced;
+}
+
+/// @brief Queue a sorted compact particle batch against the retained unit quad.
+/// @details Instance bytes are copied into Canvas-owned frame storage before the caller may reuse
+///   its scratch buffer. The material and its texture dependencies are retained transactionally;
+///   every failure before enqueue releases only references acquired by this call. Aggregate bounds
+///   permit frustum rejection, while CPU occlusion is disabled for the spatially distributed batch.
+int rt_canvas3d_queue_particle_batch(void *canvas_obj,
+                                     void *material_obj,
+                                     const vgfx3d_particle_instance_t *instances,
+                                     int32_t instance_count) {
+    canvas3d_instanced_batch_t batch = {0};
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas_obj);
+    rt_material3d *mat =
+        (rt_material3d *)rt_g3d_checked_or_null(material_obj, RT_G3D_MATERIAL3D_CLASS_ID);
+    rt_mesh3d unit_mesh = {0};
+    vgfx3d_draw_cmd_t cmd;
+    vgfx3d_particle_instance_t *snapshot;
+    float bounds_min[3] = {0.0f, 0.0f, 0.0f};
+    float bounds_max[3] = {0.0f, 0.0f, 0.0f};
+    size_t bytes;
+
+    if (!c || !mat || !instances || instance_count <= 0 || !c->in_frame ||
+        !rt_canvas3d_supports_particle_instancing(canvas_obj))
+        return 0;
+    if (instance_count > CANVAS3D_MAX_INSTANCES ||
+        (size_t)instance_count > SIZE_MAX / sizeof(*snapshot)) {
+        rt_trap("Particles3D.Draw: compact instance count exceeds renderer limit");
+        return 0;
+    }
+    for (int32_t i = 0; i < instance_count; i++) {
+        if (!canvas3d_accumulate_particle_instance_bounds(
+                &instances[i], i == 0, bounds_min, bounds_max)) {
+            rt_trap("Particles3D.Draw: compact instance data must be finite");
+            return 0;
+        }
+    }
+
+    bytes = (size_t)instance_count * sizeof(*snapshot);
+    snapshot = (vgfx3d_particle_instance_t *)malloc(bytes);
+    if (!snapshot) {
+        rt_trap("Particles3D.Draw: compact instance allocation failed");
+        return 0;
+    }
+    memcpy(snapshot, instances, bytes);
+    if (!canvas3d_track_temp_buffer(c, snapshot)) {
+        free(snapshot);
+        return 0;
+    }
+
+    batch.c = c;
+    batch.mat = mat;
+    batch.material_obj = material_obj;
+    if (!canvas3d_track_draw_resource(c,
+                                      material_obj,
+                                      batch.new_refs,
+                                      &batch.new_ref_count,
+                                      CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP) ||
+        !canvas3d_track_material_resources(
+            c, mat, batch.new_refs, &batch.new_ref_count, CANVAS3D_DRAW_RESOURCE_ROLLBACK_CAP)) {
+        canvas3d_release_tracked_temp_buffer(c, snapshot);
+        canvas3d_instanced_release_refs(&batch);
+        return 0;
+    }
+
+    unit_mesh.vertices = g_canvas3d_particle_unit_vertices;
+    unit_mesh.vertex_count = 4u;
+    unit_mesh.vertex_capacity = 4u;
+    unit_mesh.indices = g_canvas3d_particle_unit_indices;
+    unit_mesh.index_count = 6u;
+    unit_mesh.index_capacity = 6u;
+    unit_mesh.geometry_revision = 1u;
+    unit_mesh.resident = 1;
+    canvas3d_build_instanced_base_cmd(&unit_mesh, mat, c, &cmd);
+    cmd.geometry_key = &g_canvas3d_particle_unit_quad_key;
+    cmd.geometry_revision = 1u;
+    cmd.validated_index_count = 6u;
+    cmd.particle_instances = snapshot;
+
+    if (!canvas3d_enqueue_draw_world_bounds(
+            c,
+            &cmd,
+            DEFERRED_DRAW_INSTANCED,
+            DEFERRED_PASS_MAIN,
+            NULL,
+            instance_count,
+            1,
+            c->wireframe,
+            canvas3d_material_backface_cull(c, mat),
+            canvas3d_compute_sort_key(c, cmd.model_matrix, bounds_min, bounds_max, 1, 1),
+            bounds_min,
+            bounds_max,
+            bounds_min,
+            bounds_max)) {
+        canvas3d_release_tracked_temp_buffer(c, snapshot);
+        canvas3d_instanced_release_refs(&batch);
+        return 0;
+    }
+    canvas3d_finalize_deferred_visibility_flags(
+        &((deferred_draw_t *)c->draw_cmds)[c->draw_count - 1], 1, 1);
+    return 1;
 }
 
 /// @brief Recompute the canvas's pending/active texture-upload byte counters for this frame.

@@ -34,6 +34,7 @@
 #include "rt_graphics3d_ids.h"
 #include "rt_pixels_internal.h"
 #include "rt_platform.h"
+#include "rt_terrain3d_internal.h"
 #include "rt_world3d_common.h"
 
 #include "vgfx3d_frustum.h"
@@ -154,6 +155,45 @@ typedef struct {
 #include "rt_terrain3d_build.inc"
 #include "rt_terrain3d_draw.inc"
 // clang-format on
+
+/// @brief Copy validated Terrain3D dimensions, scale, and cell-derived extents.
+/// @param obj Borrowed opaque Terrain3D handle.
+/// @param out_info Caller-owned destination; always zeroed before validation.
+/// @return `1` when the terrain grid and all copied scalar values are valid,
+///   otherwise `0` with a zero descriptor.
+/// @details This is the sole cross-module metadata bridge for code such as
+///   Vegetation3D. Keeping the copy here prevents sibling modules and isolated
+///   tests from mirroring the private `rt_terrain3d` payload. Extents count
+///   intervals between samples and therefore use `(dimension - 1) * spacing`.
+int8_t rt_terrain3d_get_grid_info_internal(void *obj, rt_terrain3d_grid_info *out_info) {
+    rt_terrain3d *terrain;
+    double extent_x;
+    double extent_z;
+
+    if (!out_info)
+        return 0;
+    memset(out_info, 0, sizeof(*out_info));
+
+    terrain = (rt_terrain3d *)rt_g3d_checked_or_null(obj, RT_G3D_TERRAIN3D_CLASS_ID);
+    if (!terrain || !terrain_has_valid_grid(terrain) || !isfinite(terrain->scale[0]) ||
+        terrain->scale[0] <= 0.0 || !isfinite(terrain->scale[1]) || !isfinite(terrain->scale[2]) ||
+        terrain->scale[2] <= 0.0)
+        return 0;
+
+    extent_x = (double)(terrain->width - 1) * terrain->scale[0];
+    extent_z = (double)(terrain->depth - 1) * terrain->scale[2];
+    if (!isfinite(extent_x) || extent_x <= 0.0 || !isfinite(extent_z) || extent_z <= 0.0)
+        return 0;
+
+    out_info->width = terrain->width;
+    out_info->depth = terrain->depth;
+    out_info->spacing_x = terrain->scale[0];
+    out_info->height_scale = terrain->scale[1];
+    out_info->spacing_z = terrain->scale[2];
+    out_info->extent_x = extent_x;
+    out_info->extent_z = extent_z;
+    return 1;
+}
 #else
 typedef int rt_graphics_disabled_tu_guard;
 #endif /* ZANNA_ENABLE_GRAPHICS */

@@ -1,8 +1,23 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_canvas3d_deferred.inc  (#included from rt_canvas3d.c; not
-// a standalone translation unit) Purpose: Canvas3D deferred-draw queue, sorting, visibility flags,
-// and material command fill
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/render/rt_canvas3d_deferred.inc
+// Purpose: Canvas3D deferred-draw command representation, queue growth, sorting,
+//   visibility bookkeeping, material flattening, and transient tangent generation.
+// Key invariants:
+//   - Included only by rt_canvas3d.c; this is not a standalone translation unit.
+//   - Published commands reference frame-owned or retained immutable payloads.
+//   - Tangent generation through a stack mesh facade cannot publish a global
+//     Mesh3D geometry mutation notification.
+// Ownership/Lifetime:
+//   - The Canvas3D frame owns queued command storage and all tracked resources
+//     until submission and frame cleanup complete.
+// Links: rt_canvas3d.c, rt_canvas3d_internal.h, rt_canvas3d_snapshot.c
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Deferred draw command (for transparency sorting)
@@ -263,15 +278,15 @@ static int canvas3d_assign_frame_lights(rt_canvas3d *c, deferred_draw_t *dd) {
     dd->light_count = c->frame_light_cache_count;
     /* Re-derive the pointer from the offset each time: the arena base can move when a
      * later store grows it (queued draws are remapped, this cache is not). */
-    dd->lights = (c->frame_light_cache_offset >= 0 && c->frame_light_snapshots)
-                     ? (vgfx3d_light_params_t *)c->frame_light_snapshots +
-                           c->frame_light_cache_offset
-                     : NULL;
+    dd->lights =
+        (c->frame_light_cache_offset >= 0 && c->frame_light_snapshots)
+            ? (vgfx3d_light_params_t *)c->frame_light_snapshots + c->frame_light_cache_offset
+            : NULL;
     dd->light_offset = c->frame_light_cache_offset;
     dd->cmd.lights_revision = c->frame_light_cache_stamp;
     /* Plan 07: attach the revision's froxel table (NULL keeps the flat loop). */
-    dd->cmd.cluster_table =
-        canvas3d_cluster_table_for_revision(c, dd->lights, dd->light_count, dd->cmd.lights_revision);
+    dd->cmd.cluster_table = canvas3d_cluster_table_for_revision(
+        c, dd->lights, dd->light_count, dd->cmd.lights_revision);
     return 1;
 }
 
@@ -402,6 +417,9 @@ static uint64_t canvas3d_backend_state_key_core(deferred_draw_kind_t kind,
         key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_wrap_s[slot]);
         key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_wrap_t[slot]);
         key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_filter[slot]);
+        key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_min_filter[slot]);
+        key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_mag_filter[slot]);
+        key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_mip_filter[slot]);
         key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_anisotropy[slot]);
         key = canvas3d_mix_sort_u64(key, (uint64_t)(uint32_t)cmd->texture_slot_uv_set[slot]);
     }
@@ -964,6 +982,7 @@ static int canvas3d_generate_snapshot_tangents(const rt_mesh3d *source,
     temp.index_count = index_count;
     temp.index_capacity = index_count;
     temp.geometry_revision = source->geometry_revision ? source->geometry_revision : 1u;
+    temp.transient_geometry_facade = 1;
     temp.bounds_dirty = source->bounds_dirty;
     memcpy(temp.aabb_min, source->aabb_min, sizeof(temp.aabb_min));
     memcpy(temp.aabb_max, source->aabb_max, sizeof(temp.aabb_max));
@@ -1011,6 +1030,17 @@ static int32_t canvas3d_sanitize_material_filter(int32_t value) {
                                                          : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
 
+/// @brief Coerce a material mip-filter value to none, nearest, or linear.
+/// @param value Candidate `RT_MATERIAL3D_TEXTURE_MIP_FILTER_*` value.
+/// @return A backend-safe mip-selection filter; unknown values disable mip sampling.
+static int32_t canvas3d_sanitize_material_mip_filter(int32_t value) {
+    if (value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST)
+        return RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST;
+    if (value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR)
+        return RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR;
+    return RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE;
+}
+
 /// @brief Clamp requested texture anisotropy to the cross-backend public [1,16] range.
 static int32_t canvas3d_sanitize_material_anisotropy(int32_t value) {
     if (value < 1)
@@ -1050,74 +1080,41 @@ static float canvas3d_sanitize_splat_layer_scale(float value) {
     return value;
 }
 
-/// @brief Return non-zero when a live Pixels object contains at least one non-opaque texel.
-/// @details Used only for draw classification. The scan is conservative: invalid handles and
-///          empty buffers return 0, while any alpha byte below 255 promotes the material to an
-///          alpha-mask draw so cutout textures do not depth-write as solid quads.
-static int canvas3d_pixels_has_alpha_texels(void *pixels_ref) {
+/// @brief Return generation-cached alpha classification for a live Pixels object.
+/// @details Invalid handles and empty buffers are opaque. A valid image is scanned at most once
+///   per content generation by the Pixels-owned cache, yielding opaque, binary cutout, or
+///   fractional blend routing without a second per-draw texel pass.
+static rt_pixels_alpha_classification canvas3d_pixels_alpha_classification(void *pixels_ref) {
     rt_pixels_impl *pixels = rt_pixels_checked_impl_or_null(pixels_ref);
 
-    return rt_pixels_has_alpha_texels_cached(pixels);
+    return rt_pixels_alpha_classification_cached(pixels);
 }
 
-/// @brief Return non-zero when a live Pixels object contains soft alpha.
-/// @details Binary cutout textures should keep the alpha-mask path for depth writes and shadows,
-///          but textures with alpha values strictly between 0 and 255 need real blending to avoid
-///          visibly jagged edges. The existing cached alpha scan only records "any alpha", so this
-///          precise fractional test is kept local to material classification.
-static int canvas3d_pixels_has_fractional_alpha_texels(void *pixels_ref) {
-    rt_pixels_impl *pixels = rt_pixels_checked_impl_or_null(pixels_ref);
-    uint64_t count;
-    if (!pixels || pixels->width <= 0 || pixels->height <= 0 || !pixels->data)
-        return 0;
-    if ((uint64_t)pixels->width > UINT64_MAX / (uint64_t)pixels->height)
-        return 1;
-    count = (uint64_t)pixels->width * (uint64_t)pixels->height;
-    for (uint64_t i = 0; i < count; i++) {
-        uint32_t alpha = pixels->data[i] & 0xFFu;
-        if (alpha > 0u && alpha < 0xFFu)
-            return 1;
-    }
-    return 0;
-}
-
-/// @brief Return non-zero when a material texture source should be treated as alpha-bearing.
-/// @details Checks raw Pixels first, then TextureAsset3D's currently resident decoded fallback,
-///          and finally exact TextureAsset3D alpha metadata computed at load time. Native-only
-///          assets without exact metadata are treated as alpha-bearing until metadata proves them
-///          opaque, avoiding one-frame cutout/depth pops while native texture metadata catches up.
-static int canvas3d_texture_source_has_alpha(void *texture_ref) {
+/// @brief Classify a material texture source for opaque, cutout, or blended deferred routing.
+/// @details Raw Pixels and a TextureAsset3D's decoded resident fallback use their generation cache.
+///   Exact asset metadata can prove an otherwise native-only asset opaque; known-alpha and unknown
+///   native-only assets conservatively use binary cutout because metadata does not encode whether
+///   their alpha is fractional. This preserves foliage depth behavior without rescanning texels.
+static rt_pixels_alpha_classification canvas3d_texture_source_alpha_classification(
+    void *texture_ref) {
     void *pixels;
+    rt_pixels_alpha_classification classification;
 
     if (!texture_ref)
-        return 0;
-    if (canvas3d_pixels_has_alpha_texels(texture_ref))
-        return 1;
+        return RT_PIXELS_ALPHA_OPAQUE;
+    classification = canvas3d_pixels_alpha_classification(texture_ref);
+    if (rt_pixels_checked_impl_or_null(texture_ref))
+        return classification;
     if (!rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID))
-        return 0;
+        return RT_PIXELS_ALPHA_OPAQUE;
     pixels = rt_textureasset3d_get_pixels(texture_ref);
-    if (canvas3d_pixels_has_alpha_texels(pixels))
-        return 1;
+    classification = canvas3d_pixels_alpha_classification(pixels);
+    if (classification != RT_PIXELS_ALPHA_OPAQUE)
+        return classification;
     if (rt_textureasset3d_alpha_metadata_known(texture_ref))
-        return rt_textureasset3d_has_alpha_texels(texture_ref) ? 1 : 0;
-    return 1;
-}
-
-/// @brief Return non-zero when a material texture source has decoded fractional alpha.
-/// @details Unknown native-only compressed assets return 0 here and continue down the alpha-mask
-///          path until decoded fallback metadata exists. That preserves foliage/cutout defaults
-///          while allowing PNG/UI/card textures with soft edges to blend automatically.
-static int canvas3d_texture_source_has_fractional_alpha(void *texture_ref) {
-    void *pixels;
-
-    if (!texture_ref)
-        return 0;
-    if (canvas3d_pixels_has_fractional_alpha_texels(texture_ref))
-        return 1;
-    if (!rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID))
-        return 0;
-    pixels = rt_textureasset3d_get_pixels(texture_ref);
-    return canvas3d_pixels_has_fractional_alpha_texels(pixels) ? 1 : 0;
+        return rt_textureasset3d_has_alpha_texels(texture_ref) ? RT_PIXELS_ALPHA_BINARY
+                                                               : RT_PIXELS_ALPHA_OPAQUE;
+    return RT_PIXELS_ALPHA_BINARY;
 }
 
 /// @brief Capture a TextureAsset3D native cache key and mip window into a draw command slot.
@@ -1146,6 +1143,7 @@ static void canvas3d_capture_texture_asset_snapshot(vgfx3d_draw_cmd_t *cmd,
 /// performs the narrowing conversion plus the material→command name
 /// remapping (e.g., `mat->shininess` → `cmd->shininess`).
 static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd_t *cmd) {
+    rt_pixels_alpha_classification alpha_classification;
     if (!mat || !cmd)
         return;
 
@@ -1201,9 +1199,10 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->additive_blend = mat->additive_blend ? 1 : 0;
     cmd->workflow = (mat->workflow == 1) ? 1 : 0;
     cmd->alpha_mode = (mat->alpha_mode >= 0 && mat->alpha_mode <= 2) ? mat->alpha_mode : 0;
-    cmd->has_alpha_texture = canvas3d_texture_source_has_alpha(mat->texture) ? 1 : 0;
+    alpha_classification = canvas3d_texture_source_alpha_classification(mat->texture);
+    cmd->has_alpha_texture = alpha_classification != RT_PIXELS_ALPHA_OPAQUE ? 1 : 0;
     if (cmd->has_alpha_texture && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE) {
-        cmd->alpha_mode = canvas3d_texture_source_has_fractional_alpha(mat->texture)
+        cmd->alpha_mode = alpha_classification == RT_PIXELS_ALPHA_FRACTIONAL
                               ? RT_MATERIAL3D_ALPHA_MODE_BLEND
                               : RT_MATERIAL3D_ALPHA_MODE_MASK;
     }
@@ -1219,6 +1218,9 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
     cmd->texture_wrap_s = canvas3d_sanitize_material_wrap(mat->texture_wrap_s);
     cmd->texture_wrap_t = canvas3d_sanitize_material_wrap(mat->texture_wrap_t);
     cmd->texture_filter = canvas3d_sanitize_material_filter(mat->texture_filter);
+    cmd->texture_min_filter = canvas3d_sanitize_material_filter(mat->texture_min_filter);
+    cmd->texture_mag_filter = canvas3d_sanitize_material_filter(mat->texture_mag_filter);
+    cmd->texture_mip_filter = canvas3d_sanitize_material_mip_filter(mat->texture_mip_filter);
     cmd->texture_anisotropy = canvas3d_sanitize_material_anisotropy(mat->anisotropy);
     for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
         cmd->texture_slot_wrap_s[slot] =
@@ -1227,6 +1229,12 @@ static void canvas3d_fill_material_cmd(const rt_material3d *mat, vgfx3d_draw_cmd
             canvas3d_sanitize_material_wrap(mat->texture_slot_wrap_t[slot]);
         cmd->texture_slot_filter[slot] =
             canvas3d_sanitize_material_filter(mat->texture_slot_filter[slot]);
+        cmd->texture_slot_min_filter[slot] =
+            canvas3d_sanitize_material_filter(mat->texture_slot_min_filter[slot]);
+        cmd->texture_slot_mag_filter[slot] =
+            canvas3d_sanitize_material_filter(mat->texture_slot_mag_filter[slot]);
+        cmd->texture_slot_mip_filter[slot] =
+            canvas3d_sanitize_material_mip_filter(mat->texture_slot_mip_filter[slot]);
         cmd->texture_slot_anisotropy[slot] =
             canvas3d_sanitize_material_anisotropy(mat->texture_slot_anisotropy[slot]);
         cmd->texture_slot_uv_set[slot] = mat->texture_slot_uv_set[slot] > 0 ? 1 : 0;

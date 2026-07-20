@@ -13,10 +13,12 @@
 //   - Vertices stored as vgfx3d_vertex_t (92 bytes, float internally)
 //   - Indices are uint32_t (max 16M vertices per mesh)
 //   - CCW winding is front-facing
-//   - GC finalizer frees vertex/index arrays
+//   - Deferred draws retain immutable geometry revisions; mutation forks rather
+//     than editing bytes already referenced by a queued command.
 //
 // Ownership/Lifetime:
-//   - rt_mesh3d is GC-managed; finalizer frees heap arrays
+//   - rt_mesh3d is GC-managed; its finalizer frees authored arrays, retained
+//     revision ownership, and physics/scene raycast acceleration structures.
 //
 // Links: rt_canvas3d.h, rt_canvas3d_internal.h
 //
@@ -94,6 +96,15 @@ static rt_mesh3d *mesh3d_checked(void *obj) {
     return (rt_mesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_MESH3D_CLASS_ID);
 }
 
+/// @brief Increment a diagnostic counter without allowing unsigned wraparound.
+/// @param counter Counter to advance; NULL is accepted as a no-op.
+static void mesh3d_increment_counter(uint64_t *counter) {
+    if (counter && *counter != UINT64_MAX)
+        (*counter)++;
+}
+
+#include "rt_mesh3d_retained.inc"
+
 /// @brief Release oversized empty mesh buffers after Clear while keeping small reuse capacity.
 /// @details Dynamic meshes often clear and rebuild every frame; retaining modest buffers avoids
 ///          churn. Very large one-off meshes, however, should not pin vertex/index/positions64
@@ -155,6 +166,8 @@ static double *mesh3d_prepare_normal_accumulator(rt_mesh3d *m,
 static void mesh3d_bump_vertex_revision(rt_mesh3d *m, int invalidate_tangents) {
     if (!m)
         return;
+    if (!m->transient_geometry_facade)
+        rt_mesh3d_invalidate_retained_geometry(m);
     m->resident = 1;
     if (m->geometry_revision == UINT32_MAX)
         m->geometry_revision = 1;
@@ -174,7 +187,8 @@ static void mesh3d_bump_vertex_revision(rt_mesh3d *m, int invalidate_tangents) {
     m->morph_bound_shape_count = 0;
     m->morph_bound_pad = 0.0;
     m->morph_bound_valid = 0;
-    rt_mesh3d_note_global_geometry_change();
+    if (!m->transient_geometry_facade)
+        rt_mesh3d_note_global_geometry_change();
 }
 
 /// @brief Estimate vertex/index payload bytes, saturating to INT64_MAX for ABI stability.
@@ -853,12 +867,17 @@ static void mesh3d_clear_transient_animation_payloads(rt_mesh3d *m) {
 /// @brief GC finalizer for Mesh3D — releases the owned vertex and index buffers.
 static void rt_mesh3d_finalize(void *obj) {
     rt_mesh3d *m = (rt_mesh3d *)obj;
+    rt_mesh3d_invalidate_retained_geometry(m);
     free(m->vertices);
     m->vertices = NULL;
     free(m->positions64);
     m->positions64 = NULL;
     free(m->indices);
     m->indices = NULL;
+    free(m->submesh_ranges);
+    m->submesh_ranges = NULL;
+    m->submesh_range_count = 0;
+    m->submesh_range_capacity = 0;
     free(m->normal_accum_scratch);
     m->normal_accum_scratch = NULL;
     m->normal_accum_scratch_values = 0u;
@@ -866,6 +885,10 @@ static void rt_mesh3d_finalize(void *obj) {
     m->physics_bvh_nodes = NULL;
     free(m->physics_bvh_tri_indices);
     m->physics_bvh_tri_indices = NULL;
+    free(m->raycast_bvh_nodes);
+    m->raycast_bvh_nodes = NULL;
+    free(m->raycast_bvh_tri_indices);
+    m->raycast_bvh_tri_indices = NULL;
     free(m->bone_map);
     m->bone_map = NULL;
     free(m->extra_influences);
@@ -898,6 +921,12 @@ static rt_mesh3d *mesh3d_new_initialized(int allocate_default_storage) {
         allocate_default_storage ? (uint32_t *)calloc(MESH_INIT_IDXS, sizeof(uint32_t)) : NULL;
     m->index_count = 0;
     m->index_capacity = allocate_default_storage ? MESH_INIT_IDXS : 0;
+    m->submesh_ranges = NULL;
+    m->submesh_range_count = 0;
+    m->submesh_range_capacity = 0;
+    m->simplify_requested_triangles = 0;
+    m->simplify_achieved_triangles = 0;
+    m->simplify_status = RT_MESH3D_SIMPLIFY_STATUS_NOT_RUN;
     m->normal_accum_scratch = NULL;
     m->normal_accum_scratch_values = 0u;
     m->bone_palette = NULL;
@@ -923,13 +952,28 @@ static rt_mesh3d *mesh3d_new_initialized(int allocate_default_storage) {
     m->positions64_rebase_revision = 0;
     m->positions64_rebase_needed = 0;
     m->resident = 1;
+    m->compact_streams = 0;
     m->geometry_batch_depth = 0;
     m->geometry_batch_dirty = 0;
+    m->transient_geometry_facade = 0;
     m->physics_bvh_nodes = NULL;
     m->physics_bvh_tri_indices = NULL;
     m->physics_bvh_revision = 0;
     m->physics_bvh_node_count = 0;
     m->physics_bvh_tri_count = 0;
+    m->raycast_bvh_nodes = NULL;
+    m->raycast_bvh_tri_indices = NULL;
+    m->raycast_bvh_revision = 0;
+    m->raycast_bvh_node_count = 0;
+    m->raycast_bvh_tri_count = 0;
+    m->raycast_bvh_rebuild_count = 0;
+    m->raycast_last_triangle_probe_count = 0;
+    m->retained_geometry = NULL;
+    m->retained_geometry_build_count = 0;
+    m->retained_geometry_cache_hit_count = 0;
+    m->retained_tangent_build_count = 0;
+    m->retained_tangent_cache_hit_count = 0;
+    m->retained_tangent_cache_key = 0;
     rt_mesh3d_reset_bounds(m);
     if (allocate_default_storage && (!m->vertices || !m->indices)) {
         free(m->vertices);
@@ -973,6 +1017,13 @@ void rt_mesh3d_clear(void *obj) {
         return;
     m->vertex_count = 0;
     m->index_count = 0;
+    free(m->submesh_ranges);
+    m->submesh_ranges = NULL;
+    m->submesh_range_count = 0;
+    m->submesh_range_capacity = 0;
+    m->simplify_requested_triangles = 0;
+    m->simplify_achieved_triangles = 0;
+    m->simplify_status = RT_MESH3D_SIMPLIFY_STATUS_NOT_RUN;
     mesh3d_clear_transient_animation_payloads(m);
     m->build_failed = 0;
     mesh_release_skeleton_slot(&m->skeleton_ref);
@@ -984,6 +1035,13 @@ void rt_mesh3d_clear(void *obj) {
     m->physics_bvh_revision = 0;
     m->physics_bvh_node_count = 0;
     m->physics_bvh_tri_count = 0;
+    free(m->raycast_bvh_nodes);
+    m->raycast_bvh_nodes = NULL;
+    free(m->raycast_bvh_tri_indices);
+    m->raycast_bvh_tri_indices = NULL;
+    m->raycast_bvh_revision = 0;
+    m->raycast_bvh_node_count = 0;
+    m->raycast_bvh_tri_count = 0;
     mesh3d_shrink_empty_storage_if_oversized(m);
     rt_mesh3d_touch_geometry(m);
     rt_mesh3d_reset_bounds(m);
@@ -1473,6 +1531,7 @@ void *rt_mesh3d_clone(void *obj) {
     rt_mesh3d *src = mesh3d_checked(obj);
     uint32_t vertex_count;
     uint32_t index_count;
+    uint32_t submesh_range_count;
     if (!src)
         return NULL;
     if (src->build_failed) {
@@ -1484,12 +1543,18 @@ void *rt_mesh3d_clone(void *obj) {
         return NULL;
     vertex_count = rt_mesh3d_safe_vertex_count(src);
     index_count = rt_mesh3d_safe_index_count(src);
+    submesh_range_count =
+        (src->submesh_ranges && src->submesh_range_capacity > 0)
+            ? (src->submesh_range_count < src->submesh_range_capacity ? src->submesh_range_count
+                                                                      : src->submesh_range_capacity)
+            : 0;
     rt_mesh3d *dst = (rt_mesh3d *)rt_mesh3d_new_empty_storage();
     if (!dst)
         return NULL;
 
     if ((size_t)vertex_count > SIZE_MAX / sizeof(vgfx3d_vertex_t) ||
         (size_t)index_count > SIZE_MAX / sizeof(uint32_t) ||
+        (size_t)submesh_range_count > SIZE_MAX / sizeof(rt_mesh3d_submesh_range) ||
         (src->positions64 && (size_t)vertex_count > SIZE_MAX / (3u * sizeof(double)))) {
         if (rt_obj_release_check0(dst))
             rt_obj_free(dst);
@@ -1508,9 +1573,15 @@ void *rt_mesh3d_clone(void *obj) {
     dst->indices = dst->index_capacity > 0
                        ? (uint32_t *)malloc((size_t)dst->index_capacity * sizeof(uint32_t))
                        : NULL;
+    dst->submesh_range_capacity = submesh_range_count;
+    dst->submesh_ranges = submesh_range_count > 0
+                              ? (rt_mesh3d_submesh_range *)malloc((size_t)submesh_range_count *
+                                                                  sizeof(rt_mesh3d_submesh_range))
+                              : NULL;
 
     if ((dst->vertex_capacity > 0 && !dst->vertices) ||
         (dst->index_capacity > 0 && !dst->indices) ||
+        (submesh_range_count > 0 && !dst->submesh_ranges) ||
         (src->positions64 && vertex_count > 0 && !dst->positions64)) {
         if (rt_obj_release_check0(dst))
             rt_obj_free(dst);
@@ -1538,6 +1609,15 @@ void *rt_mesh3d_clone(void *obj) {
     dst->index_count = index_count;
     if (index_count > 0)
         memcpy(dst->indices, src->indices, (size_t)index_count * sizeof(uint32_t));
+    dst->submesh_range_count = submesh_range_count;
+    if (submesh_range_count > 0) {
+        memcpy(dst->submesh_ranges,
+               src->submesh_ranges,
+               (size_t)submesh_range_count * sizeof(rt_mesh3d_submesh_range));
+    }
+    dst->simplify_requested_triangles = src->simplify_requested_triangles;
+    dst->simplify_achieved_triangles = src->simplify_achieved_triangles;
+    dst->simplify_status = src->simplify_status;
     dst->bone_palette = NULL;
     dst->prev_bone_palette = NULL;
     mesh_repair_animation_refs(src);
@@ -1587,6 +1667,7 @@ void *rt_mesh3d_clone(void *obj) {
     dst->positions64_rebase_revision = src->positions64_rebase_revision;
     dst->positions64_rebase_needed = src->positions64_rebase_needed;
     dst->resident = src->resident ? 1 : 0;
+    dst->compact_streams = src->compact_streams ? 1 : 0;
     dst->build_failed = 0;
     dst->aabb_min[0] = src->aabb_min[0];
     dst->aabb_min[1] = src->aabb_min[1];

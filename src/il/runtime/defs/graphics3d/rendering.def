@@ -150,6 +150,9 @@ RT_FUNC(Canvas3DGetSkinningUploadBytes, rt_canvas3d_get_skinning_upload_bytes, "
 RT_FUNC(Canvas3DGetOccludedDrawCount, rt_canvas3d_get_occluded_draw_count, "Zanna.Graphics3D.Canvas3D.get_OccludedDrawCount", "i64(obj)")
 RT_FUNC(Canvas3DGetInstancedFallbackCount, rt_canvas3d_get_instanced_fallback_count, "Zanna.Graphics3D.Canvas3D.get_InstancedFallbackCount", "i64(obj)")
 RT_FUNC(Canvas3DGetInstancedFallbackDroppedCount, rt_canvas3d_get_instanced_fallback_dropped_count, "Zanna.Graphics3D.Canvas3D.get_InstancedFallbackDroppedCount", "i64(obj)")
+RT_FUNC(Canvas3DGetLastSubmissionStatus, rt_canvas3d_get_last_submission_status, "Zanna.Graphics3D.Canvas3D.get_LastSubmissionStatus", "i64(obj)")
+RT_FUNC(Canvas3DGetSubmissionFailureCount, rt_canvas3d_get_submission_failure_count, "Zanna.Graphics3D.Canvas3D.get_SubmissionFailureCount", "i64(obj)")
+RT_FUNC(Canvas3DResetSubmissionDiagnostics, rt_canvas3d_reset_submission_diagnostics, "Zanna.Graphics3D.Canvas3D.ResetSubmissionDiagnostics", "void(obj)")
 RT_FUNC(Canvas3DGetEventDropCount, rt_canvas3d_get_event_drop_count, "Zanna.Graphics3D.Canvas3D.get_EventDropCount", "i64(obj)")
 RT_FUNC(Canvas3DGetMeshSnapshotBytes, rt_canvas3d_get_mesh_snapshot_bytes, "Zanna.Graphics3D.Canvas3D.get_MeshSnapshotBytes", "i64(obj)")
 RT_FUNC(Canvas3DGetMeshSnapshotDropCount, rt_canvas3d_get_mesh_snapshot_drop_count, "Zanna.Graphics3D.Canvas3D.get_MeshSnapshotDropCount", "i64(obj)")
@@ -243,6 +246,11 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.Canvas3D", Canvas3D, "obj", Canvas3DNew)
     // instanced batches use the backend hook on every backend and report 0.
     RT_PROP("InstancedFallbackCount", "i64", Canvas3DGetInstancedFallbackCount, none)
     RT_PROP("InstancedFallbackDroppedCount", "i64", Canvas3DGetInstancedFallbackDroppedCount, none)
+    // Sticky failure status plus a resettable saturating count preserve evidence
+    // from legacy void submissions without changing their signatures.
+    RT_PROP("LastSubmissionStatus", "i64", Canvas3DGetLastSubmissionStatus, none)
+    RT_PROP("SubmissionFailureCount", "i64", Canvas3DGetSubmissionFailureCount, none)
+    RT_METHOD("ResetSubmissionDiagnostics", "void()", Canvas3DResetSubmissionDiagnostics)
     RT_PROP("EventDropCount", "i64", Canvas3DGetEventDropCount, none)
     RT_PROP("MeshSnapshotBytes", "i64", Canvas3DGetMeshSnapshotBytes, none)
     RT_PROP("MeshSnapshotDropCount", "i64", Canvas3DGetMeshSnapshotDropCount, none)
@@ -420,6 +428,9 @@ RT_CLASS_END()
 
 RT_FUNC(Mesh3DNew,              rt_mesh3d_new,              "Zanna.Graphics3D.Mesh3D.New",              "obj()")
 RT_FUNC(Mesh3DSimplify,         rt_mesh3d_simplify,         "Zanna.Graphics3D.Mesh3D.Simplify",         "obj(obj,i64)")
+RT_FUNC(Mesh3DGetSimplifyRequestedTriangles, rt_mesh3d_get_simplify_requested_triangles, "Zanna.Graphics3D.Mesh3D.get_SimplifyRequestedTriangles", "i64(obj)")
+RT_FUNC(Mesh3DGetSimplifyAchievedTriangles, rt_mesh3d_get_simplify_achieved_triangles, "Zanna.Graphics3D.Mesh3D.get_SimplifyAchievedTriangles", "i64(obj)")
+RT_FUNC(Mesh3DGetSimplifyStatus, rt_mesh3d_get_simplify_status, "Zanna.Graphics3D.Mesh3D.get_SimplifyStatus", "i64(obj)")
 RT_FUNC(SceneNode3DGenerateLODs, rt_scene_node3d_generate_lods, "Zanna.Graphics3D.SceneNode.GenerateLods", "void(obj,i64,f64)")
 RT_FUNC(Mesh3DBox,              rt_mesh3d_new_box,          "Zanna.Graphics3D.Mesh3D.Box",              "obj(f64,f64,f64)")
 RT_FUNC(Mesh3DSphere,           rt_mesh3d_new_sphere,       "Zanna.Graphics3D.Mesh3D.Sphere",           "obj(f64,i64)")
@@ -457,6 +468,10 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.Mesh3D", Mesh3D, "obj", Mesh3DNew)
     RT_PROP("ResidentBytes", "i64", Mesh3DGetResidentBytes, none)
     RT_PROP("CompactStreams", "i1", Mesh3DGetCompactStreams, Mesh3DSetCompactStreams)
     RT_PROP("RetainedBytes", "i64", Mesh3DGetRetainedBytes, none)
+    // Simplification diagnostics: status 0=not-run, 1=complete, 2=valid partial result.
+    RT_PROP("SimplifyRequestedTriangles", "i64", Mesh3DGetSimplifyRequestedTriangles, none)
+    RT_PROP("SimplifyAchievedTriangles", "i64", Mesh3DGetSimplifyAchievedTriangles, none)
+    RT_PROP("SimplifyStatus", "i64", Mesh3DGetSimplifyStatus, none)
     // QEM decimation: returns a NEW mesh; attributes never interpolated.
     RT_METHOD("Simplify", "obj<Zanna.Graphics3D.Mesh3D>(i64)", Mesh3DSimplify)
     RT_METHOD("Box", "obj(f64,f64,f64)", Mesh3DBox)
@@ -551,33 +566,43 @@ RT_CLASS_END()
 
 RT_FUNC(TextureAsset3DLoadKTX2,      rt_textureasset3d_load_ktx2,       "Zanna.Graphics3D.TextureAsset3D.LoadKtx2",      "obj(str)")
 RT_FUNC(TextureAsset3DLoadKTX2Asset, rt_textureasset3d_load_ktx2_asset, "Zanna.Graphics3D.TextureAsset3D.LoadKtx2Asset", "obj(str)")
+RT_FUNC(TextureAsset3DLoadKTX2Strict, rt_textureasset3d_load_ktx2_strict, "Zanna.Graphics3D.TextureAsset3D.LoadKtx2Strict", "obj(str)")
+RT_FUNC(TextureAsset3DLoadKTX2AssetStrict, rt_textureasset3d_load_ktx2_asset_strict, "Zanna.Graphics3D.TextureAsset3D.LoadKtx2AssetStrict", "obj(str)")
 RT_FUNC(TextureAsset3DGetWidth,      rt_textureasset3d_get_width,       "Zanna.Graphics3D.TextureAsset3D.get_Width",     "i64(obj)")
 RT_FUNC(TextureAsset3DGetHeight,     rt_textureasset3d_get_height,      "Zanna.Graphics3D.TextureAsset3D.get_Height",    "i64(obj)")
 RT_FUNC(TextureAsset3DGetMipCount,   rt_textureasset3d_get_mip_count,   "Zanna.Graphics3D.TextureAsset3D.get_MipCount",  "i64(obj)")
 RT_FUNC(TextureAsset3DGetFormat,     rt_textureasset3d_get_format,      "Zanna.Graphics3D.TextureAsset3D.get_Format",    "str(obj)")
 RT_FUNC(TextureAsset3DGetCompressed, rt_textureasset3d_get_compressed,  "Zanna.Graphics3D.TextureAsset3D.get_Compressed","i1(obj)")
+RT_FUNC(TextureAsset3DGetDegraded, rt_textureasset3d_get_degraded, "Zanna.Graphics3D.TextureAsset3D.get_Degraded", "i1(obj)")
+RT_FUNC(TextureAsset3DGetDegradedReason, rt_textureasset3d_get_degraded_reason, "Zanna.Graphics3D.TextureAsset3D.get_DegradedReason", "str(obj)")
 RT_FUNC(TextureAsset3DGetResidentMipStart, rt_textureasset3d_get_resident_mip_start, "Zanna.Graphics3D.TextureAsset3D.get_ResidentMipStart", "i64(obj)")
 RT_FUNC(TextureAsset3DGetResidentMipCount, rt_textureasset3d_get_resident_mip_count, "Zanna.Graphics3D.TextureAsset3D.get_ResidentMipCount", "i64(obj)")
 RT_FUNC(TextureAsset3DGetResidentBytes,    rt_textureasset3d_get_resident_bytes,     "Zanna.Graphics3D.TextureAsset3D.get_ResidentBytes",    "i64(obj)")
+RT_FUNC(TextureAsset3DGetRetainedBytes,    rt_textureasset3d_get_retained_bytes,     "Zanna.Graphics3D.TextureAsset3D.get_RetainedBytes",    "i64(obj)")
 RT_FUNC(TextureAsset3DSetResidentMipRange, rt_textureasset3d_set_resident_mip_range, "Zanna.Graphics3D.TextureAsset3D.SetResidentMipRange",  "void(obj,i64,i64)")
 
 /// @summary Provides Texture Asset 3D functionality for 3D rendering and scene applications.
 /// @details
 /// `Zanna.Graphics3D.TextureAsset3D` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes properties such as
-/// `Width`, `Height`, `MipCount` and operations including `LoadKtx2`, `LoadKtx2Asset`,
-/// `SetResidentMipRange`.
+/// `Width`, `Height`, `MipCount`, degradation and residency telemetry, and permissive/strict KTX2
+/// load operations. Strict loaders reject inputs that would require checker substitution.
 RT_CLASS_BEGIN("Zanna.Graphics3D.TextureAsset3D", TextureAsset3D, "obj", none)
     RT_PROP("Width", "i64", TextureAsset3DGetWidth, none)
     RT_PROP("Height", "i64", TextureAsset3DGetHeight, none)
     RT_PROP("MipCount", "i64", TextureAsset3DGetMipCount, none)
     RT_PROP("Format", "str", TextureAsset3DGetFormat, none)
     RT_PROP("Compressed", "i1", TextureAsset3DGetCompressed, none)
+    RT_PROP("Degraded", "i1", TextureAsset3DGetDegraded, none)
+    RT_PROP("DegradedReason", "str", TextureAsset3DGetDegradedReason, none)
     RT_PROP("ResidentMipStart", "i64", TextureAsset3DGetResidentMipStart, none)
     RT_PROP("ResidentMipCount", "i64", TextureAsset3DGetResidentMipCount, none)
     RT_PROP("ResidentBytes", "i64", TextureAsset3DGetResidentBytes, none)
+    RT_PROP("RetainedBytes", "i64", TextureAsset3DGetRetainedBytes, none)
     RT_METHOD("LoadKtx2", "obj<Zanna.Graphics3D.TextureAsset3D>(str)", TextureAsset3DLoadKTX2)
     RT_METHOD("LoadKtx2Asset", "obj<Zanna.Graphics3D.TextureAsset3D>(str)", TextureAsset3DLoadKTX2Asset)
+    RT_METHOD("LoadKtx2Strict", "obj<Zanna.Graphics3D.TextureAsset3D>(str)", TextureAsset3DLoadKTX2Strict)
+    RT_METHOD("LoadKtx2AssetStrict", "obj<Zanna.Graphics3D.TextureAsset3D>(str)", TextureAsset3DLoadKTX2AssetStrict)
     RT_METHOD("SetResidentMipRange", "void(i64,i64)", TextureAsset3DSetResidentMipRange)
 RT_CLASS_END()
 

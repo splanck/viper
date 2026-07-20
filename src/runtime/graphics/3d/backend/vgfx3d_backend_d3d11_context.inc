@@ -1,12 +1,26 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_context.inc  (#included from
-// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11
-// device/swapchain/context creation, state objects, and teardown
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_context.inc
+// Purpose: D3D11 device/context creation, shader compilation, state objects, and teardown.
+// Key invariants:
+//   - Every required shader and input layout is created before a context is published.
+//   - Particle input slot 1 is four float4 lanes with a 64-byte per-instance stride.
+// Ownership/Lifetime:
+//   - Temporary blobs are released after context creation; context COM resources survive to
+//   destroy.
+//   - The including vgfx3d_backend_d3d11.c translation unit owns all declarations used here.
+// Links: vgfx3d_backend_d3d11.c, vgfx3d_backend_d3d11_shaders.inc
+//
 //===----------------------------------------------------------------------===//
 typedef struct d3d11_shader_blobs_t {
     ID3DBlob *vs;
     ID3DBlob *vs_instanced;
+    ID3DBlob *vs_particles;
     ID3DBlob *ps;
     ID3DBlob *vs_shadow;
     ID3DBlob *ps_shadow;
@@ -25,6 +39,7 @@ typedef struct d3d11_shader_blobs_t {
 static void d3d11_release_shader_blobs(d3d11_shader_blobs_t *blobs) {
     SAFE_RELEASE(blobs->vs);
     SAFE_RELEASE(blobs->vs_instanced);
+    SAFE_RELEASE(blobs->vs_particles);
     SAFE_RELEASE(blobs->ps);
     SAFE_RELEASE(blobs->vs_shadow);
     SAFE_RELEASE(blobs->ps_shadow);
@@ -43,6 +58,7 @@ static void d3d11_release_shader_blobs(d3d11_shader_blobs_t *blobs) {
 static void d3d11_init_context_defaults(d3d11_context_t *ctx, int32_t width, int32_t height) {
     ctx->width = width;
     ctx->height = height;
+    ctx->render_scale = 1.0f;
     memcpy(ctx->view, k_identity4x4, sizeof(ctx->view));
     memcpy(ctx->projection, k_identity4x4, sizeof(ctx->projection));
     memcpy(ctx->vp, k_identity4x4, sizeof(ctx->vp));
@@ -296,6 +312,10 @@ static HRESULT d3d11_compile_context_shaders(d3d11_shader_blobs_t *blobs) {
         d3d11_shader_source, "VSMainInstanced", "vs_5_0", &blobs->vs_instanced);
     if (FAILED(hr))
         return hr;
+    hr = d3d11_compile_shader(
+        d3d11_shader_source, "VSMainParticles", "vs_5_0", &blobs->vs_particles);
+    if (FAILED(hr))
+        return hr;
     hr = d3d11_compile_shader(d3d11_shader_source, "PSMain", "ps_5_0", &blobs->ps);
     if (FAILED(hr))
         return hr;
@@ -354,6 +374,15 @@ static HRESULT d3d11_create_context_shader_objects(d3d11_context_t *ctx,
                                          &ctx->vs_instanced);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateVertexShader(instanced)", hr);
+        return hr;
+    }
+    hr = ID3D11Device_CreateVertexShader(ctx->device,
+                                         ID3D10Blob_GetBufferPointer(blobs->vs_particles),
+                                         ID3D10Blob_GetBufferSize(blobs->vs_particles),
+                                         NULL,
+                                         &ctx->vs_particles);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateVertexShader(particles)", hr);
         return hr;
     }
     hr = ID3D11Device_CreatePixelShader(ctx->device,
@@ -585,11 +614,31 @@ static void d3d11_fill_instanced_layout(D3D11_INPUT_ELEMENT_DESC instanced_layou
     }
 }
 
+/// @brief Extend the full unit-quad vertex layout with four compact particle vec4 lanes.
+/// @details Slot 1 advances once per instance and maps directly onto
+///   `vgfx3d_particle_instance_t`; unlike ordinary instancing it carries no model, normal, or
+///   previous-model matrices.
+static void d3d11_fill_particle_layout(D3D11_INPUT_ELEMENT_DESC particle_layout[12],
+                                       const D3D11_INPUT_ELEMENT_DESC layout[8]) {
+    memcpy(particle_layout, layout, sizeof(D3D11_INPUT_ELEMENT_DESC) * 8u);
+    for (int lane = 0; lane < 4; lane++) {
+        D3D11_INPUT_ELEMENT_DESC *element = &particle_layout[8 + lane];
+        element->SemanticName = "TEXCOORD";
+        element->SemanticIndex = 4u + (UINT)lane;
+        element->Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        element->InputSlot = 1;
+        element->AlignedByteOffset = (UINT)((size_t)lane * 4u * sizeof(float));
+        element->InputSlotClass = D3D11_INPUT_PER_INSTANCE_DATA;
+        element->InstanceDataStepRate = 1;
+    }
+}
+
 /// @brief Create main, instanced, and skybox input layouts.
 static HRESULT d3d11_create_context_input_layouts(d3d11_context_t *ctx,
                                                   const d3d11_shader_blobs_t *blobs) {
     D3D11_INPUT_ELEMENT_DESC layout[8];
     D3D11_INPUT_ELEMENT_DESC instanced_layout[20];
+    D3D11_INPUT_ELEMENT_DESC particle_layout[12];
     D3D11_INPUT_ELEMENT_DESC skybox_layout[1];
     HRESULT hr;
 
@@ -614,6 +663,18 @@ static HRESULT d3d11_create_context_input_layouts(d3d11_context_t *ctx,
                                         &ctx->input_layout_instanced);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateInputLayout(instanced)", hr);
+        return hr;
+    }
+
+    d3d11_fill_particle_layout(particle_layout, layout);
+    hr = ID3D11Device_CreateInputLayout(ctx->device,
+                                        particle_layout,
+                                        12,
+                                        ID3D10Blob_GetBufferPointer(blobs->vs_particles),
+                                        ID3D10Blob_GetBufferSize(blobs->vs_particles),
+                                        &ctx->input_layout_particles);
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CreateInputLayout(particles)", hr);
         return hr;
     }
 
@@ -963,6 +1024,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->cb_per_scene);
     SAFE_RELEASE(ctx->cb_per_object);
     SAFE_RELEASE(ctx->input_layout_skybox);
+    SAFE_RELEASE(ctx->input_layout_particles);
     SAFE_RELEASE(ctx->input_layout_instanced);
     SAFE_RELEASE(ctx->input_layout);
     SAFE_RELEASE(ctx->input_layout_compact);
@@ -983,10 +1045,11 @@ static void d3d11_destroy_ctx(void *ctx_ptr) {
     SAFE_RELEASE(ctx->vs_shadow);
     SAFE_RELEASE(ctx->ps_main);
     SAFE_RELEASE(ctx->vs_instanced);
+    SAFE_RELEASE(ctx->vs_particles);
     SAFE_RELEASE(ctx->vs_main);
     for (int ws = 0; ws < 3; ws++) {
         for (int wt = 0; wt < 3; wt++) {
-            for (int filter = 0; filter < 2; filter++) {
+            for (int filter = 0; filter < 12; filter++) {
                 for (int anisotropy = 0; anisotropy < VGFX3D_D3D11_ANISOTROPY_LEVEL_COUNT;
                      anisotropy++)
                     SAFE_RELEASE(ctx->material_samplers[ws][wt][filter][anisotropy]);

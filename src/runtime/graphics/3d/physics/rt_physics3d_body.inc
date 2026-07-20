@@ -432,22 +432,25 @@ void rt_body3d_apply_torque(void *o, double tx, double ty, double tz) {
     }
 }
 
-/// @brief `Body3D.ApplyAngularImpulse(ix, iy, iz)` — instant angular velocity change.
-///
-/// Δω = impulse · I⁻¹ (per axis, since the inertia tensor is diagonal).
+/// @brief `Body3D.ApplyAngularImpulse(ix, iy, iz)` — apply a world-space angular impulse.
+/// @details The stored diagonal inverse inertia is expressed in the body's local
+///   principal-axis frame. The shared world-inertia helper evaluates
+///   `R * I_local^-1 * R^T * impulse`, so a rotated anisotropic body responds on
+///   the correct world axes instead of treating its local diagonal as world-space.
 void rt_body3d_apply_angular_impulse(void *o, double ix, double iy, double iz) {
     rt_body3d *b = body3d_checked(o);
+    double impulse[3];
+    double angular_delta[3];
     if (b) {
         if (b->motion_mode != PH3D_MODE_DYNAMIC)
             return;
-        ix = ph3d_saturate_state_value(ix);
-        iy = ph3d_saturate_state_value(iy);
-        iz = ph3d_saturate_state_value(iz);
-        ph3d_vec3_accumulate_state(b->angular_velocity,
-                                   ix * b->inv_inertia[0],
-                                   iy * b->inv_inertia[1],
-                                   iz * b->inv_inertia[2]);
-        if (ix != 0.0 || iy != 0.0 || iz != 0.0)
+        impulse[0] = ph3d_saturate_state_value(ix);
+        impulse[1] = ph3d_saturate_state_value(iy);
+        impulse[2] = ph3d_saturate_state_value(iz);
+        body3d_world_inv_inertia_mul(b, impulse, angular_delta);
+        ph3d_vec3_accumulate_state(
+            b->angular_velocity, angular_delta[0], angular_delta[1], angular_delta[2]);
+        if (impulse[0] != 0.0 || impulse[1] != 0.0 || impulse[2] != 0.0)
             body3d_wake_if_dynamic(b);
     }
 }

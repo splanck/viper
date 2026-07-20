@@ -35,6 +35,7 @@
 #include "rt_g3d_ref_slots.h"
 #include "rt_pixels_internal.h"
 #include "rt_platform.h"
+#include "rt_terrain3d_internal.h"
 #include "rt_world3d_common.h"
 #include "vgfx3d_backend.h"
 
@@ -668,22 +669,13 @@ void rt_vegetation3d_populate(void *obj, void *terrain, int64_t count) {
         return;
     }
 
-    /* Get terrain dimensions for scatter bounds */
-    typedef struct {
-        void *vptr;
-        float *heights;
-        int32_t width, depth;
-        double scale[3];
-    } terrain_view;
-
-    terrain_view *tv = (terrain_view *)rt_g3d_checked_or_null(terrain, RT_G3D_TERRAIN3D_CLASS_ID);
-    if (!tv || tv->width <= 0 || tv->depth <= 0)
+    /* Copy validated metadata through Terrain3D's opaque internal contract. */
+    rt_terrain3d_grid_info terrain_info;
+    if (!rt_terrain3d_get_grid_info_internal(terrain, &terrain_info))
         return;
 
-    double sx = vegetation_positive_or(tv->scale[0], 1.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
-    double sz = vegetation_positive_or(tv->scale[2], 1.0, VEGETATION3D_TERRAIN_EXTENT_MAX);
-    double tw = (double)tv->width * sx;
-    double td = (double)tv->depth * sz;
+    double tw = terrain_info.extent_x;
+    double td = terrain_info.extent_z;
     if (tw > VEGETATION3D_TERRAIN_EXTENT_MAX)
         tw = VEGETATION3D_TERRAIN_EXTENT_MAX;
     if (td > VEGETATION3D_TERRAIN_EXTENT_MAX)
@@ -934,8 +926,9 @@ static int32_t vegetation3d_clamp_grid_cell(double coordinate, int32_t cell_coun
 }
 
 /// @brief Cull, thin, fade, and wind-shear one blade, appending it to the visible buffer.
-static void
-vegetation3d_collect_blade(rt_vegetation3d *v, int32_t i, const vegetation3d_update_params *p) {
+static void vegetation3d_collect_blade(rt_vegetation3d *v,
+                                       int32_t i,
+                                       const vegetation3d_update_params *p) {
     if (i < 0 || i >= v->total_count)
         return; /* stale grid entry after a state repair shrank the population */
     float bx = v->positions[i * 3 + 0];

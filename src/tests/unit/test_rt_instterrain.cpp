@@ -5,10 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/test_rt_instterrain.cpp
+// File: src/tests/unit/test_rt_instterrain.cpp
 // Purpose: Unit tests for InstanceBatch3D and Terrain3D.
-//
-// Links: rt_instbatch3d.h, rt_terrain3d.h
+// Key invariants:
+//   - Instance transforms retain aligned motion history across mutation.
+//   - Terrain sampling, scaling, LOD storage, and opaque grid metadata agree.
+// Ownership/Lifetime:
+//   - Runtime objects created by tests are managed by the runtime test heap.
+//   - White-box views are borrowed only for the duration of each assertion.
+// Links: rt_instbatch3d.h, rt_terrain3d.h, rt_terrain3d_internal.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,6 +22,7 @@
 #include "rt_instbatch3d.h"
 #include "rt_internal.h"
 #include "rt_terrain3d.h"
+#include "rt_terrain3d_internal.h"
 #include <cassert>
 #include <cmath>
 #include <cstdint>
@@ -215,24 +221,11 @@ static void test_instbatch_sanitizes_nonfinite_matrices() {
     EXPECT_NEAR(
         view->transforms[15], 1.0, 0.001, "NaN homogeneous component falls back to identity");
 
-    void *huge = rt_mat4_new(1.0,
-                             0.0,
-                             0.0,
-                             1.0e20,
-                             0.0,
-                             1.0,
-                             0.0,
-                             -1.0e20,
-                             0.0,
-                             0.0,
-                             1.0,
-                             5.0e19,
-                             0.0,
-                             0.0,
-                             0.0,
-                             1.0);
+    void *huge = rt_mat4_new(
+        1.0, 0.0, 0.0, 1.0e20, 0.0, 1.0, 0.0, -1.0e20, 0.0, 0.0, 1.0, 5.0e19, 0.0, 0.0, 0.0, 1.0);
     rt_instbatch3d_add(batch, huge);
-    EXPECT_TRUE(rt_instbatch3d_count(batch) == 2, "Batch accepts huge finite matrix after clamping");
+    EXPECT_TRUE(rt_instbatch3d_count(batch) == 2,
+                "Batch accepts huge finite matrix after clamping");
     EXPECT_NEAR(view->transforms[16 + 3],
                 1000000000000.0,
                 10000.0,
@@ -283,14 +276,10 @@ static void test_terrain_edge_normals_use_one_sided_spacing() {
     view->heights[3] = 1.0f;
     void *normal = rt_terrain3d_get_normal_at(terrain, 0.0, 0.0);
     const double inv_sqrt2 = 0.7071067811865475;
-    EXPECT_NEAR(rt_vec3_x(normal),
-                -inv_sqrt2,
-                0.01,
-                "Terrain edge normal uses one-sided X spacing");
-    EXPECT_NEAR(rt_vec3_y(normal),
-                inv_sqrt2,
-                0.01,
-                "Terrain edge normal preserves the true edge slope");
+    EXPECT_NEAR(
+        rt_vec3_x(normal), -inv_sqrt2, 0.01, "Terrain edge normal uses one-sided X spacing");
+    EXPECT_NEAR(
+        rt_vec3_y(normal), inv_sqrt2, 0.01, "Terrain edge normal preserves the true edge slope");
     EXPECT_NEAR(rt_vec3_z(normal), 0.0, 0.01, "Terrain edge normal keeps flat Z slope");
 }
 
@@ -302,6 +291,31 @@ static void test_terrain_scale() {
                 0.0,
                 0.01,
                 "Scaled flat terrain: height = 0");
+}
+
+/// @brief Verify the opaque Terrain3D descriptor reports sample intervals rather than samples.
+/// @details Non-unit X/Z spacing and height scale must survive the layout-independent boundary;
+///          extents use `(count - 1) * spacing`, and rejected handles zero the caller's output.
+static void test_terrain_grid_info_uses_sample_intervals() {
+    void *terrain = rt_terrain3d_new(3, 4);
+    rt_terrain3d_grid_info info = {};
+    rt_terrain3d_set_scale(terrain, 2.5, 7.0, 3.0);
+
+    EXPECT_TRUE(rt_terrain3d_get_grid_info_internal(terrain, &info) == 1,
+                "Terrain opaque grid descriptor accepts a valid terrain");
+    EXPECT_TRUE(info.width == 3 && info.depth == 4,
+                "Terrain opaque grid descriptor preserves sample counts");
+    EXPECT_NEAR(info.spacing_x, 2.5, 0.001, "Terrain grid descriptor preserves X spacing");
+    EXPECT_NEAR(info.height_scale, 7.0, 0.001, "Terrain grid descriptor preserves height scale");
+    EXPECT_NEAR(info.spacing_z, 3.0, 0.001, "Terrain grid descriptor preserves Z spacing");
+    EXPECT_NEAR(info.extent_x, 5.0, 0.001, "Terrain X extent counts sample intervals");
+    EXPECT_NEAR(info.extent_z, 9.0, 0.001, "Terrain Z extent counts sample intervals");
+
+    info.width = 99;
+    EXPECT_TRUE(rt_terrain3d_get_grid_info_internal(nullptr, &info) == 0,
+                "Terrain opaque grid descriptor rejects null handles");
+    EXPECT_TRUE(info.width == 0 && info.extent_x == 0.0,
+                "Terrain opaque grid descriptor zeroes rejected output");
 }
 
 static void test_terrain_material() {
@@ -456,8 +470,8 @@ static void test_terrain_corrupt_height_samples_are_clamped() {
                 "Terrain height query clamps huge private samples");
     void *normal = rt_terrain3d_get_normal_at(terrain, 1.0, 1.0);
     double normal_len =
-        std::sqrt(rt_vec3_x(normal) * rt_vec3_x(normal) +
-                  rt_vec3_y(normal) * rt_vec3_y(normal) + rt_vec3_z(normal) * rt_vec3_z(normal));
+        std::sqrt(rt_vec3_x(normal) * rt_vec3_x(normal) + rt_vec3_y(normal) * rt_vec3_y(normal) +
+                  rt_vec3_z(normal) * rt_vec3_z(normal));
     EXPECT_TRUE(std::isfinite(normal_len) && normal_len > 0.9 && normal_len < 1.1,
                 "Terrain normal remains normalized with huge private samples");
     EXPECT_TRUE(rt_terrain3d_build_nav_mesh(terrain, 1) != nullptr,
@@ -485,8 +499,7 @@ static void test_terrain_layer_scale_setter_repairs_invalid_values() {
     EXPECT_NEAR(view->layer_scales[1], 1.0, 0.001, "Negative terrain layer scale falls back to 1");
 
     rt_terrain3d_set_layer_scale(terrain, 2, std::numeric_limits<double>::infinity());
-    EXPECT_NEAR(
-        view->layer_scales[2], 1.0, 0.001, "Infinite terrain layer scale falls back to 1");
+    EXPECT_NEAR(view->layer_scales[2], 1.0, 0.001, "Infinite terrain layer scale falls back to 1");
 
     rt_terrain3d_set_layer_scale(terrain, 3, 1.0e30);
     EXPECT_NEAR(view->layer_scales[3],
@@ -510,6 +523,7 @@ int main() {
     test_terrain_normal_flat();
     test_terrain_edge_normals_use_one_sided_spacing();
     test_terrain_scale();
+    test_terrain_grid_info_uses_sample_intervals();
     test_terrain_material();
     test_terrain_heightmap_resample_preserves_source_edges();
     test_terrain_corrupt_private_counts_are_safe();

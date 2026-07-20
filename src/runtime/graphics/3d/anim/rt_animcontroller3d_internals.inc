@@ -1085,9 +1085,9 @@ static void controller_sample_channel_trs(const vgfx3d_anim_channel_t *channel,
         else
             k1 = mid;
     }
-    float t0 = channel->keyframes[k0].time;
-    float t1 = channel->keyframes[k1].time;
-    float alpha = (t1 > t0) ? (time - t0) / (t1 - t0) : 0.0f;
+    double t0 = channel->keyframes[k0].time;
+    double t1 = channel->keyframes[k1].time;
+    float alpha = (float)((t1 > t0) ? ((double)time - t0) / (t1 - t0) : 0.0);
     if (!isfinite(alpha) || alpha < 0.0f)
         alpha = 0.0f;
     if (alpha > 1.0f)

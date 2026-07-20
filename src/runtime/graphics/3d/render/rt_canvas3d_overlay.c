@@ -1228,26 +1228,16 @@ static int64_t canvas3d_native_texture_capability_from_name(const char *name) {
 /// @brief Return a CPU texture fallback support answer for `texture:*` capability keys.
 /// @return 0/1 for recognized texture keys, -1 when @p name is not a texture capability key.
 static int canvas3d_texture_capability_from_name(const char *name) {
+    const char *format_name;
+
     if (!name)
         return -1;
-    if (strcmp(name, "texture:bc1") == 0)
-        return rt_textureasset3d_cpu_supports_format("bc1") ? 1 : 0;
-    if (strcmp(name, "texture:bc3") == 0)
-        return rt_textureasset3d_cpu_supports_format("bc3") ? 1 : 0;
-    if (strcmp(name, "texture:bc4") == 0)
-        return rt_textureasset3d_cpu_supports_format("bc4") ? 1 : 0;
-    if (strcmp(name, "texture:bc5") == 0)
-        return rt_textureasset3d_cpu_supports_format("bc5") ? 1 : 0;
-    if (strcmp(name, "texture:bc7") == 0)
-        return rt_textureasset3d_cpu_supports_format("bc7") ? 1 : 0;
-    if (strcmp(name, "texture:etc2") == 0)
-        return rt_textureasset3d_cpu_supports_format("etc2") ? 1 : 0;
-    if (strcmp(name, "texture:astc") == 0)
-        return rt_textureasset3d_cpu_supports_format("astc") ? 1 : 0;
     if (strcmp(name, "texture:ktx2-cpu") == 0 || strcmp(name, "texture:ktx2_cpu") == 0)
         return rt_textureasset3d_cpu_supports_ktx2() ? 1 : 0;
-    if (strncmp(name, "texture:", 8) == 0)
-        return 0;
+    if (strncmp(name, "texture:", 8) == 0) {
+        format_name = name + 8;
+        return *format_name && rt_textureasset3d_cpu_supports_format(format_name) ? 1 : 0;
+    }
     return -1;
 }
 
@@ -1409,10 +1399,41 @@ int64_t rt_canvas3d_get_instanced_fallback_count(void *obj) {
     return c ? c->last_instanced_fallback_count : 0;
 }
 
-/// @brief Instances skipped because the bounded fallback instancing path overflowed.
+/// @brief Instances skipped because a chunked fallback queue reservation actually failed.
 int64_t rt_canvas3d_get_instanced_fallback_dropped_count(void *obj) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     return c ? c->last_instanced_fallback_dropped_count : 0;
+}
+
+/// @brief Return the sticky status of the most recently recorded Canvas3D submission failure.
+/// @details Successful draws do not clear this diagnostic; callers explicitly reset it after
+///   observing the condition. This preserves evidence across legacy `void` draws and degraded
+///   snapshot paths.
+/// @param obj Canvas3D handle or approved stack fixture.
+/// @return A `RT_CANVAS3D_SUBMISSION_*` code, or zero for an invalid handle/no failure.
+int64_t rt_canvas3d_get_last_submission_status(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c && c->last_submission_status > 0 ? (int64_t)c->last_submission_status
+                                              : RT_CANVAS3D_SUBMISSION_OK;
+}
+
+/// @brief Return the saturating Canvas3D submission-failure count since construction/reset.
+/// @param obj Canvas3D handle or approved stack fixture.
+/// @return Non-negative failure count, or zero for an invalid handle.
+int64_t rt_canvas3d_get_submission_failure_count(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c && c->submission_failure_count > 0 ? c->submission_failure_count : 0;
+}
+
+/// @brief Clear the sticky Canvas3D submission status and its cumulative diagnostic count.
+/// @details Queue contents, snapshot storage, and active frame state are deliberately untouched.
+/// @param obj Canvas3D handle or approved stack fixture; invalid handles are ignored.
+void rt_canvas3d_reset_submission_diagnostics(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    if (!c)
+        return;
+    c->last_submission_status = (int32_t)RT_CANVAS3D_SUBMISSION_OK;
+    c->submission_failure_count = 0;
 }
 
 /// @brief Lifetime count of window/input events dropped from the public PollEvent ring.

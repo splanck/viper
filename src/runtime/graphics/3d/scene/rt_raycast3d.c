@@ -13,13 +13,16 @@
 // Key invariants:
 //   - Public ray queries normalize non-zero directions internally, so distances are world units.
 //   - Möller–Trumbore returns parametric t; t < 0 means behind ray origin.
-//   - Ray-mesh transforms the ray into object space via inverse model matrix.
+//   - Ray-mesh transforms the ray into object space via inverse model matrix and
+//     traverses a retained geometry-revision-keyed BVH.
+//   - Singular transforms retain the exact world-space linear triangle fallback.
 //   - AABB penetration returns the minimum push-out vector (shortest axis).
 //   - Capsule-vs-AABB uses exact segment-to-AABB distance.
 //
 // Ownership/Lifetime:
 //   - RayHit3D is GC-managed; no finalizer needed (no owned heap allocations).
 //   - Returned Vec3 hit-point / normal handles are caller-owned.
+//   - Mesh3D owns retained raycast BVH nodes and triangle permutations.
 //
 // Links: rt_raycast3d.h, rt_canvas3d_internal.h
 //
@@ -151,9 +154,8 @@ static void vec3_normalize_or_up_raw(double *v) {
 
 /// @brief Allocate a Vec3 after applying the scene-raycast coordinate clamp.
 static void *vec3_new_sanitized(double x, double y, double z) {
-    return rt_vec3_new(raycast3d_saturate_coord(x),
-                       raycast3d_saturate_coord(y),
-                       raycast3d_saturate_coord(z));
+    return rt_vec3_new(
+        raycast3d_saturate_coord(x), raycast3d_saturate_coord(y), raycast3d_saturate_coord(z));
 }
 
 /// @brief Checked cast of an opaque handle to a Mat4 payload; NULL on class mismatch.
@@ -218,8 +220,7 @@ static void segment3d_closest_point_raw(const double *a,
         closest[2] = aa[2];
         return;
     }
-    double t = ((pp[0] - aa[0]) * dx + (pp[1] - aa[1]) * dy + (pp[2] - aa[2]) * dz) /
-               len_sq;
+    double t = ((pp[0] - aa[0]) * dx + (pp[1] - aa[1]) * dy + (pp[2] - aa[2]) * dz) / len_sq;
     t = clampd(t, 0.0, 1.0);
     closest[0] = aa[0] + t * dx;
     closest[1] = aa[1] + t * dy;
@@ -678,17 +679,15 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
 }
 
 /*==========================================================================
- * Ray-mesh intersection (iterate triangles, AABB early-out)
+ * Ray-mesh intersection (retained BVH, AABB early-out, exact fallback)
  *=========================================================================*/
 
-/// @brief Test ray–mesh intersection by iterating all triangles.
-/// @details Performs an AABB early-out test, then iterates each triangle with the
-///          Möller–Trumbore algorithm. When a transform is provided and invertible,
-///          the ray is moved into the mesh's object space once (a single matrix
-///          inverse) and triangles are tested untransformed; only a singular
-///          transform falls back to transforming each triangle's vertices into
-///          world space. Returns a RayHit3D with distance, position, normal, and
-///          triangle index on hit, or NULL on miss.
+/// @brief Test ray–mesh intersection through a retained triangle BVH.
+/// @details Performs a mesh AABB early-out, then lazily builds or reuses a local-space BVH keyed by
+///          geometry revision. When a transform is invertible, the ray is moved to object space
+///          once and traverses that tree. A singular transform or BVH allocation failure preserves
+///          the exact Möller–Trumbore triangle sweep. Returns a RayHit3D with world distance,
+///          position, normal, and deterministic source triangle index, or NULL on a miss.
 /// @param origin        Vec3 ray origin in world space.
 /// @param dir           Vec3 ray direction (need not be normalized).
 /// @param mesh_obj      Mesh handle to test against.
@@ -763,91 +762,425 @@ static int ray3d_mesh_misses_bounds(const ray3d_mesh_ctx_t *ctx) {
             }
         }
         aabb3d_canonicalize_raw(world_min, world_max);
-        return rt_ray3d_intersect_aabb_raw(ctx->world_origin, ctx->world_dir, world_min, world_max) <
-               0.0;
+        return rt_ray3d_intersect_aabb_raw(
+                   ctx->world_origin, ctx->world_dir, world_min, world_max) < 0.0;
     }
     return rt_ray3d_intersect_aabb_raw(ctx->obj_origin, ctx->obj_dir, bounds_min, bounds_max) < 0.0;
 }
 
-/// @brief Narrow phase: Möller–Trumbore sweep over every triangle, keeping the nearest hit.
-/// @return 1 if a triangle was hit (results in @p out), 0 otherwise.
-static int ray3d_find_closest_triangle(const ray3d_mesh_ctx_t *ctx, ray3d_mesh_hit_t *out) {
-    rt_mesh3d *m = ctx->m;
-    uint32_t vertex_count = rt_mesh3d_safe_vertex_count(m);
-    uint32_t index_count = rt_mesh3d_safe_index_count(m);
-    out->best_t = 1e30;
-    out->best_tri = -1;
-    out->best_i0 = out->best_i1 = out->best_i2 = 0;
-    out->best_obj_point[0] = out->best_obj_point[1] = out->best_obj_point[2] = 0;
+/// @brief One retained scene-raycast BVH node over a contiguous triangle-index range.
+/// @details Interior nodes have non-negative `left`/`right` and `count == 0`; leaves instead store
+///          `[start, start + count)` into the mesh-owned `raycast_bvh_tri_indices` array.
+typedef struct {
+    float min[3];
+    float max[3];
+    int32_t left;
+    int32_t right;
+    int32_t start;
+    int32_t count;
+} ray3d_mesh_bvh_node_t;
 
-    for (uint32_t i = 0; i + 2 < index_count; i += 3) {
-        uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
-        if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
-            continue;
+/// @brief Expand an AABB in place to include one finite three-component point.
+/// @param mn Current minimum corner.
+/// @param mx Current maximum corner.
+/// @param point Point to include.
+static void ray3d_bvh_expand(float *mn, float *mx, const float *point) {
+    for (int axis = 0; axis < 3; ++axis) {
+        if (point[axis] < mn[axis])
+            mn[axis] = point[axis];
+        if (point[axis] > mx[axis])
+            mx[axis] = point[axis];
+    }
+}
 
-        double a[3] = {m->vertices[i0].pos[0], m->vertices[i0].pos[1], m->vertices[i0].pos[2]};
-        double b[3] = {m->vertices[i1].pos[0], m->vertices[i1].pos[1], m->vertices[i1].pos[2]};
-        double c[3] = {m->vertices[i2].pos[0], m->vertices[i2].pos[1], m->vertices[i2].pos[2]};
-        if (!vec3_is_finite_raw(a) || !vec3_is_finite_raw(b) || !vec3_is_finite_raw(c))
-            continue;
-        vec3_sanitize_raw(a);
-        vec3_sanitize_raw(b);
-        vec3_sanitize_raw(c);
+/// @brief Validate one indexed triangle and compute its local AABB and centroid.
+/// @details Non-finite vertices are excluded from the retained BVH, matching the narrow phase's
+///          existing rule that such triangles cannot produce hits.
+/// @param mesh Mesh containing the source index and vertex arrays.
+/// @param triangle Triangle number (`index offset / 3`).
+/// @param out_min Receives the local minimum corner.
+/// @param out_max Receives the local maximum corner.
+/// @param out_centroid Receives the arithmetic centroid.
+/// @return Non-zero for a complete in-range finite triangle; zero otherwise.
+static int ray3d_bvh_triangle_bounds(
+    const rt_mesh3d *mesh, uint32_t triangle, float *out_min, float *out_max, float *out_centroid) {
+    uint32_t vertex_count;
+    uint32_t base;
+    uint32_t indices[3];
+    if (!mesh || !out_min || !out_max || !out_centroid || triangle > (UINT32_MAX - 2u) / 3u)
+        return 0;
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    base = triangle * 3u;
+    if (base + 2u >= rt_mesh3d_safe_index_count(mesh))
+        return 0;
+    indices[0] = mesh->indices[base + 0u];
+    indices[1] = mesh->indices[base + 1u];
+    indices[2] = mesh->indices[base + 2u];
+    if (indices[0] >= vertex_count || indices[1] >= vertex_count || indices[2] >= vertex_count)
+        return 0;
+    for (int axis = 0; axis < 3; ++axis) {
+        float a = mesh->vertices[indices[0]].pos[axis];
+        float b = mesh->vertices[indices[1]].pos[axis];
+        float c = mesh->vertices[indices[2]].pos[axis];
+        if (!isfinite((double)a) || !isfinite((double)b) || !isfinite((double)c))
+            return 0;
+        out_min[axis] = fminf(a, fminf(b, c));
+        out_max[axis] = fmaxf(a, fmaxf(b, c));
+        out_centroid[axis] = (a + b + c) / 3.0f;
+    }
+    return 1;
+}
 
-        if (ctx->has_transform && !ctx->use_object_space) {
-            const double *model = ctx->transform->m;
-            mat4_transform_point_raw(model, a, a);
-            mat4_transform_point_raw(model, b, b);
-            mat4_transform_point_raw(model, c, c);
-        }
-
-        {
-            double ax = a[0], ay = a[1], az = a[2];
-            double bx = b[0], by = b[1], bz = b[2];
-            double cx = c[0], cy = c[1], cz = c[2];
-            double e1x = bx - ax, e1y = by - ay, e1z = bz - az;
-            double e2x = cx - ax, e2y = cy - ay, e2z = cz - az;
-            double px = ctx->obj_dir[1] * e2z - ctx->obj_dir[2] * e2y;
-            double py = ctx->obj_dir[2] * e2x - ctx->obj_dir[0] * e2z;
-            double pz = ctx->obj_dir[0] * e2y - ctx->obj_dir[1] * e2x;
-            double det = e1x * px + e1y * py + e1z * pz;
-            if (!isfinite(px) || !isfinite(py) || !isfinite(pz) || !isfinite(det) ||
-                fabs(det) < EPSILON)
-                continue;
-            {
-                double inv_det = 1.0 / det;
-                double tvx = ctx->obj_origin[0] - ax, tvy = ctx->obj_origin[1] - ay,
-                       tvz = ctx->obj_origin[2] - az;
-                double u = (tvx * px + tvy * py + tvz * pz) * inv_det;
-                if (!isfinite(u) || u < 0.0 || u > 1.0)
-                    continue;
-                {
-                    double qx = tvy * e1z - tvz * e1y;
-                    double qy = tvz * e1x - tvx * e1z;
-                    double qz = tvx * e1y - tvy * e1x;
-                    double v =
-                        (ctx->obj_dir[0] * qx + ctx->obj_dir[1] * qy + ctx->obj_dir[2] * qz) *
-                        inv_det;
-                    if (!isfinite(v) || v < 0.0 || u + v > 1.0)
-                        continue;
-                    {
-                        double t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
-                        if (isfinite(t) && t >= 0.0 && t < out->best_t) {
-                            out->best_t = t;
-                            out->best_tri = (int64_t)(i / 3);
-                            out->best_i0 = i0;
-                            out->best_i1 = i1;
-                            out->best_i2 = i2;
-                            out->best_obj_point[0] = ctx->obj_origin[0] + ctx->obj_dir[0] * t;
-                            out->best_obj_point[1] = ctx->obj_origin[1] + ctx->obj_dir[1] * t;
-                            out->best_obj_point[2] = ctx->obj_origin[2] + ctx->obj_dir[2] * t;
-                            vec3_sanitize_raw(out->best_obj_point);
-                        }
-                    }
-                }
+/// @brief Recursively build a balanced retained BVH over a triangle-index subrange.
+/// @details The widest centroid axis supplies a spatial pivot. Extremely imbalanced pivot splits
+///          fall back to the range midpoint; child AABBs remain exact while tree depth stays
+///          logarithmic even for adversarial centroid distributions.
+/// @param mesh Source geometry.
+/// @param nodes Preallocated node array.
+/// @param node_count In/out number of initialized nodes.
+/// @param node_capacity Capacity of @p nodes.
+/// @param triangles Mutable triangle permutation.
+/// @param start First triangle-permutation slot in this node.
+/// @param count Number of slots in this node.
+/// @return Node index, or -1 when inputs/capacity are invalid.
+static int32_t ray3d_bvh_build_node(const rt_mesh3d *mesh,
+                                    ray3d_mesh_bvh_node_t *nodes,
+                                    int32_t *node_count,
+                                    int32_t node_capacity,
+                                    uint32_t *triangles,
+                                    int32_t start,
+                                    int32_t count) {
+    ray3d_mesh_bvh_node_t *node;
+    float centroid_min[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+    float centroid_max[3] = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    int32_t node_index;
+    int split_axis = 0;
+    if (!mesh || !nodes || !node_count || !triangles || start < 0 || count <= 0 ||
+        *node_count < 0 || *node_count >= node_capacity)
+        return -1;
+    node_index = (*node_count)++;
+    node = &nodes[node_index];
+    node->min[0] = node->min[1] = node->min[2] = FLT_MAX;
+    node->max[0] = node->max[1] = node->max[2] = -FLT_MAX;
+    node->left = -1;
+    node->right = -1;
+    node->start = start;
+    node->count = count;
+    for (int32_t i = start; i < start + count; ++i) {
+        float tri_min[3];
+        float tri_max[3];
+        float centroid[3];
+        if (!ray3d_bvh_triangle_bounds(mesh, triangles[i], tri_min, tri_max, centroid))
+            return -1;
+        ray3d_bvh_expand(node->min, node->max, tri_min);
+        ray3d_bvh_expand(node->min, node->max, tri_max);
+        ray3d_bvh_expand(centroid_min, centroid_max, centroid);
+    }
+    if (count <= 8)
+        return node_index;
+    {
+        float extent_x = centroid_max[0] - centroid_min[0];
+        float extent_y = centroid_max[1] - centroid_min[1];
+        float extent_z = centroid_max[2] - centroid_min[2];
+        if (extent_y > extent_x && extent_y >= extent_z)
+            split_axis = 1;
+        else if (extent_z > extent_x && extent_z >= extent_y)
+            split_axis = 2;
+    }
+    {
+        float pivot = 0.5f * (centroid_min[split_axis] + centroid_max[split_axis]);
+        int32_t lo = start;
+        int32_t hi = start + count - 1;
+        int32_t left_count;
+        while (lo <= hi) {
+            float tri_min[3];
+            float tri_max[3];
+            float centroid[3];
+            if (!ray3d_bvh_triangle_bounds(mesh, triangles[lo], tri_min, tri_max, centroid))
+                return -1;
+            if (centroid[split_axis] < pivot) {
+                ++lo;
+            } else {
+                uint32_t tmp = triangles[lo];
+                triangles[lo] = triangles[hi];
+                triangles[hi] = tmp;
+                --hi;
             }
         }
+        left_count = lo - start;
+        if (left_count < count / 4 || left_count > count - count / 4)
+            left_count = count / 2;
+        node->left = ray3d_bvh_build_node(
+            mesh, nodes, node_count, node_capacity, triangles, start, left_count);
+        node->right = ray3d_bvh_build_node(mesh,
+                                           nodes,
+                                           node_count,
+                                           node_capacity,
+                                           triangles,
+                                           start + left_count,
+                                           count - left_count);
+        if (node->left < 0 || node->right < 0)
+            return -1;
+        node->count = 0;
     }
+    return node_index;
+}
+
+/// @brief Build or reuse the scene-raycast BVH for the mesh's current geometry revision.
+/// @details Valid finite triangles are gathered transactionally, then a balanced local-space tree
+///          is installed only after construction succeeds. Repeated queries on an unchanged mesh
+///          perform no allocation or triangle-bound rebuild. Corrupt triangles remain skippable,
+///          preserving the legacy linear query's tolerant behavior.
+/// @param mesh Mesh whose retained raycast acceleration should be made current.
+/// @return Non-zero when a non-empty BVH is available; zero on empty geometry or allocation error.
+static int ray3d_mesh_bvh_rebuild(rt_mesh3d *mesh) {
+    ray3d_mesh_bvh_node_t *nodes = NULL;
+    uint32_t *triangles = NULL;
+    uint32_t triangle_total;
+    int32_t triangle_count = 0;
+    int32_t node_capacity;
+    int32_t node_count = 0;
+    if (!mesh)
+        return 0;
+    if (mesh->raycast_bvh_revision == mesh->geometry_revision)
+        return mesh->raycast_bvh_nodes && mesh->raycast_bvh_node_count > 0;
+    triangle_total = rt_mesh3d_safe_index_count(mesh) / 3u;
+    if (triangle_total == 0 || triangle_total > (uint32_t)(INT32_MAX / 2))
+        return 0;
+    triangles = (uint32_t *)malloc((size_t)triangle_total * sizeof(*triangles));
+    if (!triangles)
+        return 0;
+    for (uint32_t triangle = 0; triangle < triangle_total; ++triangle) {
+        float tri_min[3];
+        float tri_max[3];
+        float centroid[3];
+        if (ray3d_bvh_triangle_bounds(mesh, triangle, tri_min, tri_max, centroid))
+            triangles[triangle_count++] = triangle;
+    }
+    if (triangle_count == 0) {
+        free(triangles);
+        free(mesh->raycast_bvh_nodes);
+        free(mesh->raycast_bvh_tri_indices);
+        mesh->raycast_bvh_nodes = NULL;
+        mesh->raycast_bvh_tri_indices = NULL;
+        mesh->raycast_bvh_node_count = 0;
+        mesh->raycast_bvh_tri_count = 0;
+        mesh->raycast_bvh_revision = mesh->geometry_revision;
+        return 0;
+    }
+    node_capacity = triangle_count * 2;
+    nodes = (ray3d_mesh_bvh_node_t *)calloc((size_t)node_capacity, sizeof(*nodes));
+    if (!nodes) {
+        free(triangles);
+        return 0;
+    }
+    if (ray3d_bvh_build_node(
+            mesh, nodes, &node_count, node_capacity, triangles, 0, triangle_count) < 0) {
+        free(nodes);
+        free(triangles);
+        return 0;
+    }
+    free(mesh->raycast_bvh_nodes);
+    free(mesh->raycast_bvh_tri_indices);
+    mesh->raycast_bvh_nodes = nodes;
+    mesh->raycast_bvh_tri_indices = triangles;
+    mesh->raycast_bvh_revision = mesh->geometry_revision;
+    mesh->raycast_bvh_node_count = node_count;
+    mesh->raycast_bvh_tri_count = triangle_count;
+    if (mesh->raycast_bvh_rebuild_count != UINT64_MAX)
+        mesh->raycast_bvh_rebuild_count++;
+    return 1;
+}
+
+/// @brief Test one mesh triangle and update the deterministic closest-hit accumulator.
+/// @details Triangle probe instrumentation is incremented before validation. Equal-distance hits
+///          resolve to the lower source triangle index, preserving the result of the former
+///          ascending linear scan regardless of BVH traversal order.
+/// @param ctx Prepared ray/mesh state.
+/// @param triangle Source triangle number.
+/// @param out In/out closest-hit record.
+static void ray3d_consider_mesh_triangle(const ray3d_mesh_ctx_t *ctx,
+                                         uint32_t triangle,
+                                         ray3d_mesh_hit_t *out) {
+    rt_mesh3d *mesh = ctx ? ctx->m : NULL;
+    uint32_t base;
+    uint32_t vertex_count;
+    uint32_t i0;
+    uint32_t i1;
+    uint32_t i2;
+    double a[3];
+    double b[3];
+    double c[3];
+    if (!mesh || !out || triangle > (UINT32_MAX - 2u) / 3u)
+        return;
+    if (mesh->raycast_last_triangle_probe_count != UINT64_MAX)
+        mesh->raycast_last_triangle_probe_count++;
+    base = triangle * 3u;
+    if (base + 2u >= rt_mesh3d_safe_index_count(mesh))
+        return;
+    vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    i0 = mesh->indices[base + 0u];
+    i1 = mesh->indices[base + 1u];
+    i2 = mesh->indices[base + 2u];
+    if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
+        return;
+    for (int axis = 0; axis < 3; ++axis) {
+        a[axis] = mesh->vertices[i0].pos[axis];
+        b[axis] = mesh->vertices[i1].pos[axis];
+        c[axis] = mesh->vertices[i2].pos[axis];
+    }
+    if (!vec3_is_finite_raw(a) || !vec3_is_finite_raw(b) || !vec3_is_finite_raw(c))
+        return;
+    vec3_sanitize_raw(a);
+    vec3_sanitize_raw(b);
+    vec3_sanitize_raw(c);
+    if (ctx->has_transform && !ctx->use_object_space) {
+        const double *model = ctx->transform->m;
+        mat4_transform_point_raw(model, a, a);
+        mat4_transform_point_raw(model, b, b);
+        mat4_transform_point_raw(model, c, c);
+    }
+    {
+        double e1x = b[0] - a[0];
+        double e1y = b[1] - a[1];
+        double e1z = b[2] - a[2];
+        double e2x = c[0] - a[0];
+        double e2y = c[1] - a[1];
+        double e2z = c[2] - a[2];
+        double px = ctx->obj_dir[1] * e2z - ctx->obj_dir[2] * e2y;
+        double py = ctx->obj_dir[2] * e2x - ctx->obj_dir[0] * e2z;
+        double pz = ctx->obj_dir[0] * e2y - ctx->obj_dir[1] * e2x;
+        double det = e1x * px + e1y * py + e1z * pz;
+        double inv_det;
+        double tvx;
+        double tvy;
+        double tvz;
+        double u;
+        double qx;
+        double qy;
+        double qz;
+        double v;
+        double t;
+        if (!isfinite(px) || !isfinite(py) || !isfinite(pz) || !isfinite(det) ||
+            fabs(det) < EPSILON)
+            return;
+        inv_det = 1.0 / det;
+        tvx = ctx->obj_origin[0] - a[0];
+        tvy = ctx->obj_origin[1] - a[1];
+        tvz = ctx->obj_origin[2] - a[2];
+        u = (tvx * px + tvy * py + tvz * pz) * inv_det;
+        if (!isfinite(u) || u < 0.0 || u > 1.0)
+            return;
+        qx = tvy * e1z - tvz * e1y;
+        qy = tvz * e1x - tvx * e1z;
+        qz = tvx * e1y - tvy * e1x;
+        v = (ctx->obj_dir[0] * qx + ctx->obj_dir[1] * qy + ctx->obj_dir[2] * qz) * inv_det;
+        if (!isfinite(v) || v < 0.0 || u + v > 1.0)
+            return;
+        t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
+        if (!isfinite(t) || t < 0.0 ||
+            !(t < out->best_t || (t == out->best_t && (int64_t)triangle < out->best_tri)))
+            return;
+        out->best_t = t;
+        out->best_tri = (int64_t)triangle;
+        out->best_i0 = i0;
+        out->best_i1 = i1;
+        out->best_i2 = i2;
+        out->best_obj_point[0] = ctx->obj_origin[0] + ctx->obj_dir[0] * t;
+        out->best_obj_point[1] = ctx->obj_origin[1] + ctx->obj_dir[1] * t;
+        out->best_obj_point[2] = ctx->obj_origin[2] + ctx->obj_dir[2] * t;
+        vec3_sanitize_raw(out->best_obj_point);
+    }
+}
+
+/// @brief Return the ray entry distance for one retained BVH node, or -1 on a miss.
+/// @param ctx Prepared object-space ray state.
+/// @param node Node whose local AABB should be tested.
+static double ray3d_bvh_node_entry(const ray3d_mesh_ctx_t *ctx, const ray3d_mesh_bvh_node_t *node) {
+    double mn[3];
+    double mx[3];
+    if (!ctx || !node)
+        return -1.0;
+    for (int axis = 0; axis < 3; ++axis) {
+        mn[axis] = node->min[axis];
+        mx[axis] = node->max[axis];
+    }
+    return rt_ray3d_intersect_aabb_raw(ctx->obj_origin, ctx->obj_dir, mn, mx);
+}
+
+/// @brief Traverse one retained BVH subtree near-first and test candidate leaf triangles.
+/// @details Child entry distances select traversal order. The current closest triangle distance
+///          prunes farther nodes, while equal-entry child nodes use node index as a deterministic
+///          tie-break.
+/// @param ctx Prepared object-space ray/mesh state.
+/// @param nodes Retained node array.
+/// @param node_index Subtree root index.
+/// @param out In/out closest-hit record.
+static void ray3d_bvh_traverse(const ray3d_mesh_ctx_t *ctx,
+                               const ray3d_mesh_bvh_node_t *nodes,
+                               int32_t node_index,
+                               ray3d_mesh_hit_t *out) {
+    const ray3d_mesh_bvh_node_t *node;
+    double node_t;
+    if (!ctx || !ctx->m || !nodes || !out || node_index < 0 ||
+        node_index >= ctx->m->raycast_bvh_node_count)
+        return;
+    node = &nodes[node_index];
+    node_t = ray3d_bvh_node_entry(ctx, node);
+    if (node_t < 0.0 || node_t > out->best_t)
+        return;
+    if (node->count > 0) {
+        for (int32_t i = node->start; i < node->start + node->count; ++i) {
+            if (i >= 0 && i < ctx->m->raycast_bvh_tri_count)
+                ray3d_consider_mesh_triangle(ctx, ctx->m->raycast_bvh_tri_indices[i], out);
+        }
+        return;
+    }
+    {
+        int32_t first = node->left;
+        int32_t second = node->right;
+        double first_t = first >= 0 ? ray3d_bvh_node_entry(ctx, &nodes[first]) : -1.0;
+        double second_t = second >= 0 ? ray3d_bvh_node_entry(ctx, &nodes[second]) : -1.0;
+        if (second_t >= 0.0 &&
+            (first_t < 0.0 || second_t < first_t || (second_t == first_t && second < first))) {
+            int32_t tmp_index = first;
+            double tmp_t = first_t;
+            first = second;
+            first_t = second_t;
+            second = tmp_index;
+            second_t = tmp_t;
+        }
+        if (first_t >= 0.0 && first_t <= out->best_t)
+            ray3d_bvh_traverse(ctx, nodes, first, out);
+        if (second_t >= 0.0 && second_t <= out->best_t)
+            ray3d_bvh_traverse(ctx, nodes, second, out);
+    }
+}
+
+/// @brief Find the nearest triangle using a retained local-space BVH where possible.
+/// @details Identity and invertible-transform queries reuse the mesh BVH. Singular transforms
+///          cannot transform the ray to local space, so they preserve the exact world-space linear
+///          fallback. Allocation/build failure also degrades safely to the legacy sweep.
+/// @param ctx Prepared ray/mesh state.
+/// @param out Receives the deterministic closest triangle and intersection data.
+/// @return Non-zero when a triangle was hit; zero otherwise.
+static int ray3d_find_closest_triangle(const ray3d_mesh_ctx_t *ctx, ray3d_mesh_hit_t *out) {
+    rt_mesh3d *mesh = ctx ? ctx->m : NULL;
+    uint32_t triangle_count;
+    if (!mesh || !out)
+        return 0;
+    out->best_t = DBL_MAX;
+    out->best_tri = -1;
+    out->best_i0 = out->best_i1 = out->best_i2 = 0;
+    out->best_obj_point[0] = out->best_obj_point[1] = out->best_obj_point[2] = 0.0;
+    mesh->raycast_last_triangle_probe_count = 0;
+    if ((!ctx->has_transform || ctx->use_object_space) && ray3d_mesh_bvh_rebuild(mesh)) {
+        ray3d_bvh_traverse(ctx, (const ray3d_mesh_bvh_node_t *)mesh->raycast_bvh_nodes, 0, out);
+        return out->best_tri >= 0;
+    }
+    triangle_count = rt_mesh3d_safe_index_count(mesh) / 3u;
+    for (uint32_t triangle = 0; triangle < triangle_count; ++triangle)
+        ray3d_consider_mesh_triangle(ctx, triangle, out);
     return out->best_tri >= 0;
 }
 
@@ -950,6 +1283,7 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
 
     if (!vec3_read_finite(origin, ctx.world_origin) || !vec3_read_finite(dir, ctx.world_dir) || !m)
         return NULL;
+    m->raycast_last_triangle_probe_count = 0;
     if (!vec3_normalize_raw(ctx.world_dir))
         return NULL;
     if (transform_obj) {
@@ -1000,8 +1334,7 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
     vec3_sanitize_raw(ctx.obj_origin);
     vec3_sanitize_raw(ctx.obj_dir);
     {
-        double obj_dir_len_sq = ctx.obj_dir[0] * ctx.obj_dir[0] +
-                                ctx.obj_dir[1] * ctx.obj_dir[1] +
+        double obj_dir_len_sq = ctx.obj_dir[0] * ctx.obj_dir[0] + ctx.obj_dir[1] * ctx.obj_dir[1] +
                                 ctx.obj_dir[2] * ctx.obj_dir[2];
         if (!isfinite(obj_dir_len_sq) || obj_dir_len_sq < EPSILON * EPSILON)
             return NULL;
@@ -1149,7 +1482,8 @@ void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, d
     if (dist < 1e-12)
         return vec3_new_sanitized(0, raycast3d_sanitize_distance(depth), 0);
     double inv_dist = 1.0 / dist;
-    return vec3_new_sanitized(-dx * inv_dist * depth, -dy * inv_dist * depth, -dz * inv_dist * depth);
+    return vec3_new_sanitized(
+        -dx * inv_dist * depth, -dy * inv_dist * depth, -dz * inv_dist * depth);
 }
 
 /// @brief Find the closest point on an AABB surface to a given point.

@@ -2,7 +2,8 @@
 // Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_targets.inc
 //   (#included from vgfx3d_backend_metal.m; not a standalone translation unit)
-// Purpose: Cluster buffers, math helpers, color/depth texture creation, cache pruning, render-target cache, scene pass descriptors, and main-target recreation
+// Purpose: Cluster buffers, math helpers, color/depth texture creation, cache pruning,
+// render-target cache, scene pass descriptors, and main-target recreation
 //===----------------------------------------------------------------------===//
 
 /// @brief Fetch (or upload into the ring) the GPU buffer for a CPU cluster table.
@@ -165,6 +166,26 @@ static id<MTLCommandBuffer> metal_acquire_command_buffer(VGFXMetalContext *ctx);
 static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted);
 static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
                                                     const vgfx3d_postfx_chain_t *postfx);
+
+/// @brief Return whether Metal's next window-backed scene must render below logical output size.
+/// @details The stored scale never changes explicit render-target dimensions because RTT target
+///          selection takes precedence; this predicate remains independent of the currently bound
+///          RTT so main-window targets can be rebuilt correctly while an RTT is bound.
+/// @param ctx Borrowed Metal context.
+/// @return Non-zero only for a finite reduced scale in the supported interval.
+static int metal_render_scale_active(VGFXMetalContext *ctx) {
+    return ctx && isfinite(ctx.renderScale) && ctx.renderScale >= 0.25f && ctx.renderScale < 0.999f;
+}
+
+/// @brief Return whether window rendering needs the offscreen scene/composite route.
+/// @details GPU post-processing and reduced render scale share scene color, motion, and depth
+///          targets. Keeping one predicate prevents target selection, readback, and presentation
+///          from disagreeing about where the current frame lives.
+/// @param ctx Borrowed Metal context.
+/// @return Non-zero when post-processing or reduced render scale requires an offscreen scene.
+static int8_t metal_window_scene_route_enabled(VGFXMetalContext *ctx) {
+    return (ctx && (ctx.gpuPostfxEnabled || metal_render_scale_active(ctx))) ? 1 : 0;
+}
 
 /// @brief Maximum mip LOD index for a cubemap (0 if it has no mip chain).
 static float metal_cubemap_max_lod(const rt_cubemap3d *cubemap) {
@@ -589,35 +610,53 @@ static void metal_begin_scene_encoder(VGFXMetalContext *ctx,
                                             ? ctx.pipelineState
                                             : ctx.pipelineStateColorOnly];
     [ctx.encoder setDepthStencilState:ctx.depthState];
-    vw = (double)(ctx.rttActive ? ctx.rttWidth : ctx.width);
-    vh = (double)(ctx.rttActive ? ctx.rttHeight : ctx.height);
+    vw = (double)rp.colorAttachments[0].texture.width;
+    vh = (double)rp.colorAttachments[0].texture.height;
     viewport = (MTLViewport){0, 0, vw, vh, 0.0, 1.0};
     [ctx.encoder setViewport:viewport];
     [ctx.encoder setFrontFacingWinding:MTLWindingCounterClockwise];
     [ctx.encoder setCullMode:MTLCullModeBack];
 }
 
-/// @brief Recreate the main offscreen color/motion/depth textures at size (w, h) after a resize.
+/// @brief Recreate window scene, overlay, and composite targets for a logical output extent.
+/// @details Scene color/motion/depth and temporal resources use the shared scaled extent. Overlay
+///          and post-FX output textures remain at @p w × @p h so the first full-screen pass is an
+///          explicit upscale and final UI/readback retain logical dimensions. Direct swapchain
+///          mode keeps its depth/motion attachments at the logical extent.
+/// @param ctx Borrowed Metal context whose prior size-dependent resources are replaced under ARC.
+/// @param w Positive logical output width.
+/// @param h Positive logical output height.
 static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_t h) {
+    int32_t scene_w = w;
+    int32_t scene_h = h;
+    int8_t scene_route;
+
     if (!ctx || w <= 0 || h <= 0)
         return;
 
-    ctx.depthTexture =
-        metal_new_depth_texture(ctx, w, h, MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
+    scene_route = metal_window_scene_route_enabled(ctx);
+    if (scene_route &&
+        !vgfx3d_compute_scaled_scene_extent(w, h, ctx.renderScale, &scene_w, &scene_h)) {
+        scene_w = w;
+        scene_h = h;
+    }
 
-    if (ctx.gpuPostfxEnabled) {
+    ctx.depthTexture = metal_new_depth_texture(
+        ctx, scene_w, scene_h, MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead);
+
+    if (scene_route) {
         ctx.offscreenColor =
             metal_new_color_texture(ctx,
-                                    w,
-                                    h,
+                                    scene_w,
+                                    scene_h,
                                     metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_HDR16F),
                                     MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
                                     MTLStorageModePrivate,
                                     NO);
         ctx.offscreenMotion =
             metal_new_color_texture(ctx,
-                                    w,
-                                    h,
+                                    scene_w,
+                                    scene_h,
                                     MTLPixelFormatBGRA8Unorm,
                                     MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
                                     MTLStorageModePrivate,
@@ -662,10 +701,10 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
         }
         /* Plan 05: half-res RGBA16F bloom mip chain (min dim 8, up to 6 levels). */
         ctx.bloomMipTextures = nil;
-        if (ctx.bloomDownPipeline && ctx.bloomUpPipeline) {
+        if (ctx.gpuPostfxEnabled && ctx.bloomDownPipeline && ctx.bloomUpPipeline) {
             MTLPixelFormat hdrFmt = metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_HDR16F);
-            int32_t mw = w / 2;
-            int32_t mh = h / 2;
+            int32_t mw = scene_w / 2;
+            int32_t mh = scene_h / 2;
             NSMutableArray<id<MTLTexture>> *mips = [NSMutableArray arrayWithCapacity:6];
             for (int32_t i = 0; i < 6 && mw >= 1 && mh >= 1; i++) {
                 id<MTLTexture> mip =
@@ -692,20 +731,20 @@ static void metal_recreate_main_targets(VGFXMetalContext *ctx, int32_t w, int32_
         ctx.taaHistoryB = nil;
         ctx.taaHistoryValid = 0;
         ctx.taaHistoryParity = 0;
-        if (ctx.taaResolvePipeline) {
+        if (ctx.gpuPostfxEnabled && ctx.taaResolvePipeline) {
             MTLPixelFormat hdrFmt = metal_color_pixel_format(VGFX3D_METAL_COLOR_FORMAT_HDR16F);
             ctx.taaHistoryA =
                 metal_new_color_texture(ctx,
-                                        w,
-                                        h,
+                                        scene_w,
+                                        scene_h,
                                         hdrFmt,
                                         MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
                                         MTLStorageModePrivate,
                                         NO);
             ctx.taaHistoryB =
                 metal_new_color_texture(ctx,
-                                        w,
-                                        h,
+                                        scene_w,
+                                        scene_h,
                                         hdrFmt,
                                         MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead,
                                         MTLStorageModePrivate,
@@ -921,4 +960,3 @@ static int metal_copy_texture_to_rgba(VGFXMetalContext *ctx,
     }
     return 1;
 }
-

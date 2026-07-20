@@ -9,6 +9,13 @@
 // Purpose: Link-smoke coverage for the graphics/runtime surface that must
 //          remain exported in both full and graphics-disabled builds.
 //
+// Key invariants:
+//   - Every declared graphics entry point resolves in both feature configurations.
+//   - Additive runtime symbols never displace an established export.
+// Ownership/Lifetime:
+//   - The test owns no runtime objects; it validates function addresses only.
+// Links: src/il/runtime/defs/graphics3d, src/runtime/graphics/common
+//
 //===----------------------------------------------------------------------===//
 
 #include "rt_animcontroller3d.h"
@@ -23,6 +30,7 @@
 #include "rt_gui.h"
 #include "rt_iksolver3d.h"
 #include "rt_joints3d.h"
+#include "rt_mesh_simplify.h"
 #include "rt_model3d.h"
 #include "rt_navagent3d.h"
 #include "rt_navmesh3d.h"
@@ -80,6 +88,10 @@ int main() {
         fn_bits(&rt_canvas3d_get_occluded_draw_count),
         fn_bits(&rt_mesh3d_clear),
         fn_bits(&rt_mesh3d_from_stl),
+        fn_bits(&rt_mesh3d_simplify),
+        fn_bits(&rt_mesh3d_get_simplify_requested_triangles),
+        fn_bits(&rt_mesh3d_get_simplify_achieved_triangles),
+        fn_bits(&rt_mesh3d_get_simplify_status),
         fn_bits(&rt_camera3d_new_ortho),
         fn_bits(&rt_camera3d_is_ortho),
         fn_bits(&rt_light3d_new_spot),
@@ -328,6 +340,7 @@ int main() {
         fn_bits(&rt_navagent3d_set_target),
         fn_bits(&rt_navagent3d_clear_target),
         fn_bits(&rt_navagent3d_update),
+        fn_bits(&rt_navagent3d_update_batch),
         fn_bits(&rt_navagent3d_warp),
         fn_bits(&rt_navagent3d_get_position),
         fn_bits(&rt_navagent3d_get_velocity),

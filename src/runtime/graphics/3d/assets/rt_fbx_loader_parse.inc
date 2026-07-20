@@ -1,8 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/assets/rt_fbx_loader_parse.inc  (#included from rt_fbx_loader.c;
-// not a standalone translation unit) Purpose: FBX binary reader, node tree, array decompression,
-// property/node parsing, queries, connections
+// not a standalone translation unit) Purpose: FBX typed node/property graph, binary reader,
+// budgeted property/node parsing, numeric object index, and connection adjacency indexes
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Binary reader helpers
@@ -15,6 +15,7 @@ typedef struct {
     uint32_t version;
     int is_64bit; /* version >= 7500 */
     int error;
+    fbx_load_context_t *context;
 } fbx_reader_t;
 
 /// @brief Treat POSIX roots, UNC-style roots, and `C:` prefixes as absolute paths.
@@ -587,74 +588,163 @@ typedef struct {
     } v;
 } fbx_prop_t;
 
+struct fbx_object_index;
+
 typedef struct fbx_node {
-    char name[128];
+    char *name;
+    uint32_t name_len;
     fbx_prop_t *props;
     int32_t prop_count;
+    int32_t prop_capacity;
     struct fbx_node *children;
     int32_t child_count;
     int32_t child_capacity;
+    struct fbx_object_index *object_index;
 } fbx_node_t;
 
 static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id);
+static void fbx_free_object_index(struct fbx_object_index *index);
+
+/// @brief Assign an exact, NUL-free structural name to an empty FBX node.
+/// @details Structural node names (`Objects`, `Geometry`, `Vertices`, and similar) are carried with
+///          an explicit byte length even though a trailing NUL is allocated for existing query
+///          helpers. The allocation is charged before it is attempted and embedded NUL bytes are
+///          rejected so binary and ASCII trees obey the same lookup rules.
+/// @param node Destination node whose current name must be NULL.
+/// @param data Name bytes; may be NULL only when @p length is zero.
+/// @param length Exact byte count, excluding the synthesized trailing NUL.
+/// @param context Active load context charged for the allocation.
+/// @return Nonzero on success, zero on invalid input, overflow, budget exhaustion, or allocation
+///         failure.
+static int fbx_node_set_name(fbx_node_t *node,
+                             const char *data,
+                             size_t length,
+                             fbx_load_context_t *context) {
+    char *name;
+    if (!node || node->name || length > UINT32_MAX || (length > 0 && !data) ||
+        (length > 0 && memchr(data, '\0', length) != NULL) || length == SIZE_MAX ||
+        !fbx_budget_charge(context, (uint64_t)length + 1u, 1u)) {
+        return 0;
+    }
+    name = (char *)malloc(length + 1u);
+    if (!name)
+        return 0;
+    if (length > 0)
+        memcpy(name, data, length);
+    name[length] = '\0';
+    node->name = name;
+    node->name_len = (uint32_t)length;
+    return 1;
+}
+
+/// @brief Grow a node's child array while charging only newly reserved slots.
+/// @details Capacity grows geometrically up to @ref FBX_MAX_CHILDREN. Existing child addresses may
+///          change, so callers must obtain the returned array slot only after this helper succeeds.
+///          Newly exposed storage is cleared to make failure cleanup deterministic.
+/// @param node Node whose child storage should accommodate one more entry.
+/// @param context Active load context charged for the capacity delta.
+/// @return Nonzero when at least one unused child slot is available.
+static int fbx_node_reserve_child(fbx_node_t *node, fbx_load_context_t *context) {
+    int32_t new_capacity;
+    fbx_node_t *grown;
+    size_t old_bytes;
+    size_t new_bytes;
+    if (!node)
+        return 0;
+    if (node->child_count < node->child_capacity)
+        return 1;
+    if (node->child_count < 0 || node->child_capacity < 0 ||
+        node->child_count >= FBX_MAX_CHILDREN || node->child_capacity > INT32_MAX / 2) {
+        return 0;
+    }
+    new_capacity = node->child_capacity == 0 ? 8 : node->child_capacity * 2;
+    if (new_capacity > FBX_MAX_CHILDREN)
+        new_capacity = FBX_MAX_CHILDREN;
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(*grown) ||
+        !fbx_budget_charge(
+            context, (uint64_t)(new_capacity - node->child_capacity), sizeof(*grown))) {
+        return 0;
+    }
+    old_bytes = (size_t)node->child_capacity * sizeof(*grown);
+    new_bytes = (size_t)new_capacity * sizeof(*grown);
+    grown = (fbx_node_t *)realloc(node->children, new_bytes);
+    if (!grown)
+        return 0;
+    memset((uint8_t *)grown + old_bytes, 0, new_bytes - old_bytes);
+    node->children = grown;
+    node->child_capacity = new_capacity;
+    return 1;
+}
+
+/// @brief Grow a node's property array while charging only newly reserved slots.
+/// @details The binary parser normally reserves its exact declared count; the ASCII parser uses
+///          this geometric helper because a line's property count is not known until tokenization.
+///          Newly exposed slots are cleared for safe recursive rollback.
+/// @param node Node whose property storage should accommodate one more entry.
+/// @param context Active load context charged for the capacity delta.
+/// @return Nonzero when at least one unused property slot is available.
+static int fbx_node_reserve_property(fbx_node_t *node, fbx_load_context_t *context) {
+    int32_t new_capacity;
+    fbx_prop_t *grown;
+    size_t old_bytes;
+    size_t new_bytes;
+    if (!node)
+        return 0;
+    if (node->prop_count < node->prop_capacity)
+        return 1;
+    if (node->prop_count < 0 || node->prop_capacity < 0 || node->prop_count >= FBX_MAX_NODE_PROPS ||
+        node->prop_capacity > INT32_MAX / 2) {
+        return 0;
+    }
+    new_capacity = node->prop_capacity == 0 ? 4 : node->prop_capacity * 2;
+    if (new_capacity > FBX_MAX_NODE_PROPS)
+        new_capacity = FBX_MAX_NODE_PROPS;
+    if ((size_t)new_capacity > SIZE_MAX / sizeof(*grown) ||
+        !fbx_budget_charge(
+            context, (uint64_t)(new_capacity - node->prop_capacity), sizeof(*grown))) {
+        return 0;
+    }
+    old_bytes = (size_t)node->prop_capacity * sizeof(*grown);
+    new_bytes = (size_t)new_capacity * sizeof(*grown);
+    grown = (fbx_prop_t *)realloc(node->props, new_bytes);
+    if (!grown)
+        return 0;
+    memset((uint8_t *)grown + old_bytes, 0, new_bytes - old_bytes);
+    node->props = grown;
+    node->prop_capacity = new_capacity;
+    return 1;
+}
 
 /*==========================================================================
- * Array decompression (zlib → raw DEFLATE → rt_compress_inflate)
+ * Array decompression (strict shared RFC 1950 decoder)
  *=========================================================================*/
-
-static uint32_t fbx_adler32(const uint8_t *data, size_t len) {
-    uint32_t a = 1u;
-    uint32_t b = 0u;
-    for (size_t i = 0; i < len; ++i) {
-        a += data ? data[i] : 0u;
-        a %= 65521u;
-        b += a;
-        b %= 65521u;
-    }
-    return (b << 16) | a;
-}
 
 /// @brief Inflate a zlib-wrapped FBX array property to raw bytes.
 ///
-/// FBX wraps array data in standard zlib (2-byte CMF/FLG header
-/// + DEFLATE payload + 4-byte adler32). We strip the header,
-/// hand the raw DEFLATE to `rt_compress_inflate`, and validate
-/// the result equals `count * elem_size` bytes.
+/// FBX wraps array data in standard zlib. The shared decoder validates CMF/FLG,
+/// dictionary prohibition, exact DEFLATE consumption/output length, and Adler-32,
+/// while writing directly into the one budgeted destination allocation.
 /// @return Newly-allocated buffer (caller `free`s) or NULL on failure.
 static void *fbx_decompress_array(const uint8_t *data,
                                   uint32_t comp_len,
                                   uint32_t count,
-                                  uint32_t elem_size) {
+                                  uint32_t elem_size,
+                                  fbx_load_context_t *context) {
     size_t expected;
-    uint8_t *inflated = NULL;
-    size_t inflated_len = 0;
+    uint8_t *inflated;
     if (comp_len < 6)
         return NULL;
     if (comp_len > FBX_MAX_COMPRESSED_ARRAY_BYTES)
         return NULL;
     if (!rt_untrusted_count_ok((int64_t)count, (size_t)elem_size, FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
         return NULL;
-    /* Need the 2-byte zlib header + 4-byte adler32 trailer; comp_len >= 6 also keeps
-     * `comp_len - 6` (deflate_len) from underflowing and the data[comp_len-4..] adler reads
-     * in bounds. Callers pass an fbx_require'd length, but assert the precondition here. */
-    if (comp_len < 6u)
-        return NULL;
     expected = (size_t)count * (size_t)elem_size;
-    if ((data[0] & 0x0fu) != 8u || (data[0] >> 4) > 7u ||
-        ((((uint32_t)data[0] << 8) | (uint32_t)data[1]) % 31u) != 0u || (data[1] & 0x20u) != 0u)
+    if (!fbx_budget_charge(context, expected ? expected : 1u, 1u))
         return NULL;
-    uint32_t deflate_len = comp_len - 6; /* strip 2-byte header + 4-byte adler32 */
-    uint32_t expected_adler = ((uint32_t)data[comp_len - 4] << 24) |
-                              ((uint32_t)data[comp_len - 3] << 16) |
-                              ((uint32_t)data[comp_len - 2] << 8) | (uint32_t)data[comp_len - 1];
-
-    if (!rt_compress_inflate_raw(data + 2, deflate_len, expected, &inflated, &inflated_len))
+    inflated = (uint8_t *)malloc(expected ? expected : 1u);
+    if (!inflated)
         return NULL;
-    if (inflated_len != expected) {
-        free(inflated);
-        return NULL;
-    }
-    if (fbx_adler32(inflated, expected) != expected_adler) {
+    if (!rt_compress_inflate_zlib_into(data, comp_len, inflated, expected)) {
         free(inflated);
         return NULL;
     }
@@ -709,6 +799,8 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
             if (!fbx_require(r, len))
                 return -1;
             if (prop->type == 'S') {
+                if (!fbx_budget_charge(r->context, (uint64_t)len + 1u, 1u))
+                    return -1;
                 prop->v.string.str = (char *)malloc(len + 1);
                 if (!prop->v.string.str)
                     return -1;
@@ -722,6 +814,8 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
                  * path which always allocates len+1. */
                 prop->v.raw.data = NULL;
                 if (len > 0) {
+                    if (!fbx_budget_charge(r->context, len, 1u))
+                        return -1;
                     prop->v.raw.data = (uint8_t *)malloc(len);
                     if (!prop->v.raw.data)
                         return -1;
@@ -772,13 +866,15 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
             size_t expected = (size_t)count * (size_t)elem_size;
             if (encoding == 1) {
                 prop->v.array.data =
-                    fbx_decompress_array(r->data + r->pos, comp_len, count, elem_size);
+                    fbx_decompress_array(r->data + r->pos, comp_len, count, elem_size, r->context);
                 if (count > 0 && !prop->v.array.data)
                     return -1;
             } else if (encoding == 0) {
                 if (comp_len != expected)
                     return -1;
-                prop->v.array.data = malloc(expected);
+                if (!fbx_budget_charge(r->context, expected ? expected : 1u, 1u))
+                    return -1;
+                prop->v.array.data = malloc(expected ? expected : 1u);
                 if (expected > 0 && !prop->v.array.data)
                     return -1;
                 if (expected > 0)
@@ -822,12 +918,17 @@ static void fbx_free_prop(fbx_prop_t *p) {
 
 /// @brief Recursively free an FBX node tree (props + children).
 static void fbx_free_node(fbx_node_t *n) {
+    if (!n)
+        return;
     for (int32_t i = 0; i < n->prop_count; i++)
         fbx_free_prop(&n->props[i]);
     free(n->props);
     for (int32_t i = 0; i < n->child_count; i++)
         fbx_free_node(&n->children[i]);
     free(n->children);
+    free(n->name);
+    fbx_free_object_index(n->object_index);
+    memset(n, 0, sizeof(*n));
 }
 
 /// @brief Parse one FBX node (header + properties + children) at the cursor.
@@ -840,7 +941,6 @@ static void fbx_free_node(fbx_node_t *n) {
 /// @return 1 on success, 0 if the buffer is malformed.
 static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node, int depth) {
     uint8_t encoded_name_len;
-    uint8_t copy_name_len;
     uint64_t props_start;
     uint64_t props_end;
 
@@ -863,9 +963,9 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node, int depth) {
         return -1;
     if (!fbx_require(r, encoded_name_len))
         return -1;
-    copy_name_len = encoded_name_len > 127 ? 127 : encoded_name_len;
-    memcpy(node->name, r->data + r->pos, copy_name_len);
-    node->name[copy_name_len] = '\0';
+    if (!fbx_node_set_name(node, (const char *)(r->data + r->pos), encoded_name_len, r->context)) {
+        return -1;
+    }
     fbx_skip(r, encoded_name_len);
 
     props_start = (uint64_t)r->pos;
@@ -881,9 +981,12 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node, int depth) {
 
     /* Parse properties */
     if (num_props > 0) {
+        if (!fbx_budget_charge(r->context, num_props, sizeof(fbx_prop_t)))
+            return -1;
         node->props = (fbx_prop_t *)calloc((size_t)num_props, sizeof(fbx_prop_t));
         if (!node->props)
             return -1;
+        node->prop_capacity = (int32_t)num_props;
         for (uint64_t i = 0; i < num_props; i++) {
             if ((uint64_t)r->pos >= props_end) {
                 node->prop_count = (int32_t)i;
@@ -922,29 +1025,14 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node, int depth) {
             }
         }
 
-        if (node->child_count >= node->child_capacity) {
-            if (node->child_count >= FBX_MAX_CHILDREN)
-                return -1;
-            if (node->child_capacity < 0 || node->child_capacity > INT32_MAX / 2)
-                return -1;
-            int32_t new_cap = node->child_capacity == 0 ? 8 : node->child_capacity * 2;
-            if (new_cap > FBX_MAX_CHILDREN)
-                new_cap = FBX_MAX_CHILDREN;
-            if ((size_t)new_cap > SIZE_MAX / sizeof(fbx_node_t))
-                return -1;
-            if (!rt_untrusted_count_ok((int64_t)new_cap, r->is_64bit ? 25u : 13u, r->len))
-                return -1;
-            fbx_node_t *nc =
-                (fbx_node_t *)realloc(node->children, (size_t)new_cap * sizeof(fbx_node_t));
-            if (!nc)
-                return -1;
-            node->children = nc;
-            node->child_capacity = new_cap;
-        }
+        if (!fbx_node_reserve_child(node, r->context))
+            return -1;
 
         fbx_node_t *child = &node->children[node->child_count];
-        if (fbx_parse_node(r, child, depth + 1) < 0)
+        if (fbx_parse_node(r, child, depth + 1) < 0) {
+            fbx_free_node(child);
             return -1;
+        }
         node->child_count++;
     }
 
@@ -998,6 +1086,14 @@ static double fbx_prop_f64(fbx_node_t *node, int idx) {
         return p->v.f64;
     if (p->type == 'F')
         return p->v.f32;
+    if (p->type == 'L')
+        return (double)p->v.i64;
+    if (p->type == 'I')
+        return (double)p->v.i32;
+    if (p->type == 'Y')
+        return (double)p->v.i16;
+    if (p->type == 'C')
+        return (double)p->v.bool_val;
     return 0.0;
 }
 
@@ -1071,78 +1167,194 @@ static void fbx_decode_object_name(const char *raw_name, char *out, size_t out_s
     out[len] = '\0';
 }
 
-/*==========================================================================
- * Connection table
- *=========================================================================*/
+/// @brief Borrow an exact display-name span from a length-carrying FBX string property.
+/// @details The first embedded NUL terminates the human-readable portion (binary FBX commonly
+///          appends a NUL/type suffix). The last `::` namespace separator before that terminator is
+///          stripped. No fixed buffer or C-string scan is used, so long equal-prefix names remain
+///          distinct and malformed suffix bytes cannot cause an overread.
+/// @param node Node containing the object-name property.
+/// @param property_index String property index, normally one.
+/// @param out_data Receives a borrowed pointer into the property allocation.
+/// @param out_len Receives the exact stripped display-name byte count.
+/// @return Nonzero when a non-empty string property view was produced.
+static int fbx_object_name_view(fbx_node_t *node,
+                                int property_index,
+                                const char **out_data,
+                                size_t *out_len) {
+    const char *data;
+    size_t len;
+    size_t readable_len;
+    size_t start = 0;
 
+    if (out_data)
+        *out_data = "";
+    if (out_len)
+        *out_len = 0;
+    if (!node || !out_data || !out_len || property_index < 0 ||
+        property_index >= node->prop_count || node->props[property_index].type != 'S' ||
+        !node->props[property_index].v.string.str) {
+        return 0;
+    }
+    data = node->props[property_index].v.string.str;
+    len = node->props[property_index].v.string.len;
+    readable_len = 0;
+    while (readable_len < len && data[readable_len] != '\0')
+        readable_len++;
+    for (size_t i = 0; i + 1u < readable_len; i++) {
+        if (data[i] == ':' && data[i + 1u] == ':')
+            start = i + 2u;
+    }
+    *out_data = data + start;
+    *out_len = readable_len - start;
+    return *out_len > 0;
+}
+
+/// @brief Create an exact-length runtime string for one FBX object's decoded display name.
+/// @details See @ref fbx_object_name_view for namespace and embedded-NUL handling. The returned
+///          string follows ordinary runtime-string ownership and must be unreferenced by callers.
+/// @param node Source FBX object node.
+/// @param property_index Name property index.
+/// @return Runtime string containing the exact display name, or an owned empty string.
+static rt_string fbx_object_name_string(fbx_node_t *node, int property_index) {
+    const char *data = "";
+    size_t len = 0;
+    (void)fbx_object_name_view(node, property_index, &data, &len);
+    return rt_string_from_bytes(data, len);
+}
+
+/// @brief One open-addressed numeric object-id slot.
 typedef struct {
-    int64_t child_id;
-    int64_t parent_id;
-    char prop[64];
-} fbx_conn_t;
+    int64_t id;
+    fbx_node_t *node;
+    int8_t occupied;
+} fbx_object_index_slot_t;
 
-typedef struct {
-    fbx_conn_t *entries;
-    int32_t count;
-    int32_t capacity;
-} fbx_conn_table_t;
+/// @brief Load-local numeric object-id index owned by the parsed `Objects` node.
+struct fbx_object_index {
+    fbx_object_index_slot_t *slots;
+    size_t capacity;
+    fbx_load_context_t *context;
+};
 
-static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id);
+/// @brief Mix one signed FBX object id into a uniformly distributed 64-bit hash.
+/// @param id Numeric FBX object id.
+/// @return Deterministic mixed hash value.
+static uint64_t fbx_hash_object_id(int64_t id) {
+    uint64_t value = (uint64_t)id;
+    value ^= value >> 30;
+    value *= UINT64_C(0xbf58476d1ce4e5b9);
+    value ^= value >> 27;
+    value *= UINT64_C(0x94d049bb133111eb);
+    value ^= value >> 31;
+    return value;
+}
 
-/// @brief Walk the `Connections` block and populate the `(child_id, parent_id)` table.
-///
-/// FBX models use a flat object soup where parent/child relations
-/// are encoded as numeric IDs in a separate connections section.
-/// Pre-collecting them lets later passes look up the parent of any
-/// node in O(n) (linear scan — typical scenes have a few hundred connections).
-/// @return 1 on success, 0 when the connection table cannot be grown.
-static int fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
-    fbx_node_t *conns_node = fbx_find_child(root, "Connections");
-    if (!conns_node)
-        return 1;
+/// @brief Release an object-id index without touching the nodes it borrows.
+static void fbx_free_object_index(struct fbx_object_index *index) {
+    if (!index)
+        return;
+    free(index->slots);
+    free(index);
+}
 
-    for (int32_t i = 0; i < conns_node->child_count; i++) {
-        fbx_node_t *c = &conns_node->children[i];
-        if (strcmp(c->name, "C") != 0 || c->prop_count < 3)
-            continue;
+/// @brief Build the load-local numeric-id index for direct children of `Objects`.
+/// @details Capacity is a power of two at no more than 50% load. Duplicate IDs are rejected rather
+///          than making object identity depend on traversal order. Nodes without an integer-like
+///          first property are not indexable and remain available to ordinary typed traversal.
+/// @param objects Parsed top-level `Objects` node.
+/// @param context Active load context charged before both index allocations.
+/// @return Nonzero on success, zero on duplicate IDs, overflow, budget exhaustion, or allocation
+///         failure.
+static int fbx_build_object_index(fbx_node_t *objects, fbx_load_context_t *context) {
+    struct fbx_object_index *index;
+    size_t indexed_count = 0;
+    size_t capacity = 8u;
 
-        if (ct->count >= ct->capacity) {
-            if (ct->capacity < 0 || ct->capacity > INT32_MAX / 2)
-                return 0;
-            int32_t new_cap = ct->capacity == 0 ? 64 : ct->capacity * 2;
-            if (!rt_untrusted_count_ok(
-                    (int64_t)new_cap, sizeof(fbx_conn_t), FBX_MAX_DECOMPRESSED_ARRAY_BYTES))
-                return 0;
-            if ((size_t)new_cap > SIZE_MAX / sizeof(fbx_conn_t))
-                return 0;
-            fbx_conn_t *nc =
-                (fbx_conn_t *)realloc(ct->entries, (size_t)new_cap * sizeof(fbx_conn_t));
-            if (!nc)
-                return 0;
-            ct->entries = nc;
-            ct->capacity = new_cap;
-        }
-
-        fbx_conn_t *entry = &ct->entries[ct->count++];
-        entry->child_id = fbx_prop_i64(c, 1);
-        entry->parent_id = fbx_prop_i64(c, 2);
-        entry->prop[0] = '\0';
-        if (c->prop_count >= 4) {
-            const char *pname = fbx_prop_str(c, 3);
-            size_t plen = strlen(pname);
-            if (plen > 63)
-                plen = 63;
-            memcpy(entry->prop, pname, plen);
-            entry->prop[plen] = '\0';
+    if (!objects || objects->object_index)
+        return objects && objects->object_index;
+    for (int32_t i = 0; i < objects->child_count; i++) {
+        fbx_node_t *node = &objects->children[i];
+        if (node->prop_count > 0 && (node->props[0].type == 'L' || node->props[0].type == 'I' ||
+                                     node->props[0].type == 'Y' || node->props[0].type == 'C')) {
+            indexed_count++;
         }
     }
+    while (capacity < indexed_count * 2u) {
+        if (capacity > SIZE_MAX / 2u)
+            return 0;
+        capacity *= 2u;
+    }
+    if (!fbx_budget_charge(context, 1u, sizeof(*index)) ||
+        !fbx_budget_charge(context, capacity, sizeof(fbx_object_index_slot_t))) {
+        return 0;
+    }
+    index = (struct fbx_object_index *)calloc(1, sizeof(*index));
+    if (!index)
+        return 0;
+    index->slots = (fbx_object_index_slot_t *)calloc(capacity, sizeof(*index->slots));
+    if (!index->slots) {
+        free(index);
+        return 0;
+    }
+    index->capacity = capacity;
+    index->context = context;
+    for (int32_t i = 0; i < objects->child_count; i++) {
+        fbx_node_t *node = &objects->children[i];
+        size_t slot;
+        int64_t id;
+        if (node->prop_count <= 0 || (node->props[0].type != 'L' && node->props[0].type != 'I' &&
+                                      node->props[0].type != 'Y' && node->props[0].type != 'C')) {
+            continue;
+        }
+        id = fbx_prop_i64(node, 0);
+        slot = (size_t)fbx_hash_object_id(id) & (capacity - 1u);
+        while (index->slots[slot].occupied) {
+            if (index->slots[slot].id == id) {
+                fbx_free_object_index(index);
+                return 0;
+            }
+            slot = (slot + 1u) & (capacity - 1u);
+        }
+        index->slots[slot].occupied = 1;
+        index->slots[slot].id = id;
+        index->slots[slot].node = node;
+    }
+    objects->object_index = index;
     return 1;
 }
 
-/// @brief Return the parent ID of `child_id` from the connection table, or 0 if root/missing.
-static int64_t fbx_find_parent(const fbx_conn_table_t *ct, int64_t child_id) {
-    for (int32_t i = 0; i < ct->count; i++)
-        if (ct->entries[i].child_id == child_id)
-            return ct->entries[i].parent_id;
-    return 0;
+/// @brief Resolve an object through the load-local numeric-id hash index.
+/// @details A linear fallback is retained only for isolated synthetic callers that did not build
+///          an index; production loads always build one before extraction. Probe telemetry counts
+///          each examined hash slot.
+/// @param objects Parsed `Objects` node.
+/// @param id Numeric FBX object id.
+/// @return Borrowed matching node, or NULL.
+static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id) {
+    struct fbx_object_index *index;
+    size_t slot;
+    if (!objects)
+        return NULL;
+    index = objects->object_index;
+    if (!index || !index->slots || index->capacity == 0) {
+        for (int32_t i = 0; i < objects->child_count; i++) {
+            fbx_node_t *obj = &objects->children[i];
+            if (obj->prop_count >= 1 && fbx_prop_i64(obj, 0) == id)
+                return obj;
+        }
+        return NULL;
+    }
+    slot = (size_t)fbx_hash_object_id(id) & (index->capacity - 1u);
+    for (size_t probes = 0; probes < index->capacity; probes++) {
+        fbx_object_index_slot_t *entry = &index->slots[slot];
+        fbx_record_lookup_probes(index->context, 1u);
+        if (!entry->occupied)
+            return NULL;
+        if (entry->id == id)
+            return entry->node;
+        slot = (slot + 1u) & (index->capacity - 1u);
+    }
+    return NULL;
 }
+
+#include "rt_fbx_loader_connections.inc"

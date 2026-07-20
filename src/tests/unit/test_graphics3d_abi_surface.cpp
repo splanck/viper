@@ -617,6 +617,16 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Mesh3D.get_RetainedBytes\""),
                  "Mesh3D.RetainedBytes getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok =
+        require(contains(runtime_def, "\"Zanna.Graphics3D.Mesh3D.get_SimplifyRequestedTriangles\""),
+                "Mesh3D.SimplifyRequestedTriangles getter must use Graphics3D PascalCase naming") &&
+        ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Mesh3D.get_SimplifyAchievedTriangles\""),
+                 "Mesh3D.SimplifyAchievedTriangles getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Mesh3D.get_SimplifyStatus\""),
+                 "Mesh3D.SimplifyStatus getter must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.SetLodResident\""),
                  "SceneNode.SetLodResident must use Graphics3D PascalCase naming") &&
          ok;
@@ -634,6 +644,15 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "RT_PROP(\"RetainedBytes\""),
                  "Mesh3D.RetainedBytes property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"SimplifyRequestedTriangles\""),
+                 "Mesh3D.SimplifyRequestedTriangles property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"SimplifyAchievedTriangles\""),
+                 "Mesh3D.SimplifyAchievedTriangles property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"SimplifyStatus\""),
+                 "Mesh3D.SimplifyStatus property missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetLodResident\""),
                  "SceneNode.SetLodResident method missing") &&
@@ -722,6 +741,12 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.LoadKtx2Asset\""),
                  "TextureAsset3D.LoadKtx2Asset must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.LoadKtx2Strict\""),
+                 "TextureAsset3D.LoadKtx2Strict must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.LoadKtx2AssetStrict\""),
+                 "TextureAsset3D.LoadKtx2AssetStrict must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_Width\""),
                  "TextureAsset3D.Width getter must use Graphics3D PascalCase naming") &&
          ok;
@@ -737,6 +762,12 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_Compressed\""),
                  "TextureAsset3D.Compressed getter must use Graphics3D PascalCase naming") &&
          ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_Degraded\""),
+                 "TextureAsset3D.Degraded getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_DegradedReason\""),
+                 "TextureAsset3D.DegradedReason getter must use Graphics3D PascalCase naming") &&
+         ok;
     ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_ResidentMipStart\""),
                  "TextureAsset3D.ResidentMipStart getter must use Graphics3D PascalCase naming") &&
          ok;
@@ -745,6 +776,9 @@ bool check_runtime_surface_names() {
          ok;
     ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_ResidentBytes\""),
                  "TextureAsset3D.ResidentBytes getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.get_RetainedBytes\""),
+                 "TextureAsset3D.RetainedBytes getter must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Zanna.Graphics3D.TextureAsset3D.SetResidentMipRange\""),
                  "TextureAsset3D.SetResidentMipRange must use Graphics3D PascalCase naming") &&
@@ -806,8 +840,23 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_PROP(\"ResidentBytes\""),
                  "TextureAsset3D.ResidentBytes property missing") &&
          ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"RetainedBytes\""),
+                 "TextureAsset3D.RetainedBytes property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"Degraded\""),
+                 "TextureAsset3D.Degraded property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"DegradedReason\""),
+                 "TextureAsset3D.DegradedReason property missing") &&
+         ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"LoadKtx2Asset\""),
                  "TextureAsset3D.LoadKtx2Asset method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"LoadKtx2Strict\""),
+                 "TextureAsset3D.LoadKtx2Strict method missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_METHOD(\"LoadKtx2AssetStrict\""),
+                 "TextureAsset3D.LoadKtx2AssetStrict method missing") &&
          ok;
     ok = require(contains(runtime_def, "RT_METHOD(\"SetResidentMipRange\""),
                  "TextureAsset3D.SetResidentMipRange method missing") &&
@@ -1363,6 +1412,15 @@ bool check_runtime_surface_names() {
                           "\"Zanna.Graphics3D.Canvas3D.get_InstancedFallbackDroppedCount\""),
                  "Canvas3D.InstancedFallbackDroppedCount getter must use Graphics3D PascalCase "
                  "naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_LastSubmissionStatus\""),
+                 "Canvas3D.LastSubmissionStatus getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_SubmissionFailureCount\""),
+                 "Canvas3D.SubmissionFailureCount getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.ResetSubmissionDiagnostics\""),
+                 "Canvas3D.ResetSubmissionDiagnostics must use Graphics3D PascalCase naming") &&
          ok;
     ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Canvas3D.get_EventDropCount\""),
                  "Canvas3D.EventDropCount getter must use Graphics3D PascalCase naming") &&

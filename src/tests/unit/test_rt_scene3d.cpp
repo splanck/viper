@@ -5,12 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/test_rt_scene3d.cpp
+// File: src/tests/unit/test_rt_scene3d.cpp
 // Purpose: Unit tests for Zanna.Graphics3D.SceneGraph and SceneNode —
 //   hierarchy management, TRS transform propagation, dirty flags, and
 //   search-by-name.
-//
-// Links: src/runtime/graphics/rt_scene3d.h, plans/3d/12-scene-graph.md
+// Key invariants:
+//   - Scene roots cannot be reparented and owner changes are transactional.
+//   - World transforms, bounds, culling, persistence, and animation remain deterministic.
+// Ownership/Lifetime:
+//   - Runtime fixtures are managed by the runtime test heap.
+//   - White-box payload pointers are borrowed only while the owning fixture is live.
+// Links: src/runtime/graphics/3d/scene/rt_scene3d.h, rt_scene3d_internal.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -272,7 +277,23 @@ static void test_scene_rejects_reparenting_implicit_root() {
     EXPECT_TRUE(root_a->owner_scene == scene_a, "Rejected implicit root keeps its owner scene");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene_a) == 1, "Source scene root count is unchanged");
     EXPECT_TRUE(rt_scene3d_get_node_count(scene_b) == 2, "Destination scene count is unchanged");
+
+    void *root_b = rt_scene3d_get_root(scene_b);
+    EXPECT_TRUE(rt_scene_node3d_try_add_child(root_b, root_a) == 0,
+                "SceneNode.TryAddChild rejects a scene root under another scene root");
+    EXPECT_TRUE(root_a->parent == nullptr, "Cross-scene root attempt preserves the parent link");
+    EXPECT_TRUE(root_a->owner_scene == scene_a,
+                "Cross-scene root attempt preserves the owner link");
+    EXPECT_TRUE(rt_scene_node3d_child_count(root_b) == 1,
+                "Cross-scene root attempt preserves destination root children");
+    EXPECT_TRUE(expect_trap_contains([&] { rt_scene_node3d_add_child(root_b, root_a); },
+                                     "cannot reparent a scene root"),
+                "SceneNode.AddChild traps for a cross-scene root attempt");
+    EXPECT_TRUE(root_a->parent == nullptr && root_a->owner_scene == scene_a,
+                "Trapping root reparent attempt remains state-preserving");
 }
+
+#include "test_rt_scene3d_owner_atomic.inc"
 
 static void test_translation_propagation() {
     void *parent = rt_scene_node3d_new();
@@ -1878,6 +1899,12 @@ static void test_scene_roundtrip_loads_shared_assets() {
         RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT;
     material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] =
         RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    material->texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] =
+        RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    material->texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] =
+        RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    material->texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] =
+        RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST;
     material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][0] = 2.0;
     material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][3] = 3.0;
     material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][4] = 0.25;
@@ -1890,6 +1917,12 @@ static void test_scene_roundtrip_loads_shared_assets() {
     material->texture_wrap_s = material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     material->texture_wrap_t = material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     material->texture_filter = material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_min_filter =
+        material->texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_mag_filter =
+        material->texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_mip_filter =
+        material->texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     rt_material3d_set_texture(material, diffuse);
     rt_material3d_set_normal_map(material, normal);
     rt_material3d_set_specular_map(material, specular);
@@ -2026,8 +2059,12 @@ static void test_scene_roundtrip_loads_shared_assets() {
                     RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
                 loaded_material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
                     RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
-                loaded_material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
-                    RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
+                loaded_material->texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_FILTER_NEAREST &&
+                loaded_material->texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_FILTER_LINEAR &&
+                loaded_material->texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                    RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST,
             "SceneGraph.Load restores base texture slot sampler and UV set");
         EXPECT_NEAR(
             loaded_material->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR][0],
@@ -2039,11 +2076,14 @@ static void test_scene_roundtrip_loads_shared_assets() {
             0.5,
             0.001,
             "SceneGraph.Load restores base texture slot V offset");
-        EXPECT_TRUE(loaded_material->texture_wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
-                        loaded_material->texture_wrap_t ==
-                            RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
-                        loaded_material->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
-                    "SceneGraph.Load keeps legacy primary sampler fields in sync");
+        EXPECT_TRUE(
+            loaded_material->texture_wrap_s == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE &&
+                loaded_material->texture_wrap_t == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
+                loaded_material->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_LINEAR &&
+                loaded_material->texture_min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST &&
+                loaded_material->texture_mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_LINEAR &&
+                loaded_material->texture_mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST,
+            "SceneGraph.Load keeps legacy primary sampler fields in sync");
         EXPECT_TRUE(loaded_material->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_NORMAL] == 1,
                     "SceneGraph.Load restores normal-map texture coordinate set");
         EXPECT_NEAR(
@@ -3861,6 +3901,7 @@ int main() {
     test_try_add_reports_parenting_success();
     test_scene_remove_ignores_nodes_from_other_scenes();
     test_scene_rejects_reparenting_implicit_root();
+    test_owner_propagation_allocation_failure_is_atomic();
     test_translation_propagation();
     test_world_position_and_scale_getters();
     test_scene_rebase_origin_shifts_root_subtrees();

@@ -88,6 +88,8 @@ Constructor: `Zanna.Graphics3D.Canvas3D.New`
 | <a id="zanna-graphics3d-canvas3d-occludeddrawcount"></a>`OccludedDrawCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-canvas3d-instancedfallbackcount"></a>`InstancedFallbackCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-canvas3d-instancedfallbackdroppedcount"></a>`InstancedFallbackDroppedCount` | `i64` | read-only |
+| <a id="zanna-graphics3d-canvas3d-lastsubmissionstatus"></a>`LastSubmissionStatus` | `i64` | read-only |
+| <a id="zanna-graphics3d-canvas3d-submissionfailurecount"></a>`SubmissionFailureCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-canvas3d-eventdropcount"></a>`EventDropCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-canvas3d-meshsnapshotbytes"></a>`MeshSnapshotBytes` | `i64` | read-only |
 | <a id="zanna-graphics3d-canvas3d-meshsnapshotdropcount"></a>`MeshSnapshotDropCount` | `i64` | read-only |
@@ -140,6 +142,7 @@ Constructor: `Zanna.Graphics3D.Canvas3D.New`
 | <a id="zanna-graphics3d-canvas3d-isavailable"></a>`IsAvailable` | `i1()` | `Zanna.Graphics3D.Canvas3D.IsAvailable` |
 | <a id="zanna-graphics3d-canvas3d-newfullscreen"></a>`NewFullscreen` | `obj(str)` | `Zanna.Graphics3D.Canvas3D.NewFullscreen` |
 | <a id="zanna-graphics3d-canvas3d-setforcecpuskinning"></a>`SetForceCpuSkinning` | `void(i1)` | `Zanna.Graphics3D.Canvas3D.SetForceCpuSkinning` |
+| <a id="zanna-graphics3d-canvas3d-resetsubmissiondiagnostics"></a>`ResetSubmissionDiagnostics` | `void()` | `Zanna.Graphics3D.Canvas3D.ResetSubmissionDiagnostics` |
 | <a id="zanna-graphics3d-canvas3d-setshadowbudget"></a>`SetShadowBudget` | `void(i64)` | `Zanna.Graphics3D.Canvas3D.SetShadowBudget` |
 | <a id="zanna-graphics3d-canvas3d-setclusterlightbudget"></a>`SetClusterLightBudget` | `void(i64)` | `Zanna.Graphics3D.Canvas3D.SetClusterLightBudget` |
 | <a id="zanna-graphics3d-canvas3d-passcpums"></a>`PassCpuMs` | `f64(i64)` | `Zanna.Graphics3D.Canvas3D.PassCpuMs` |
@@ -268,6 +271,9 @@ Constructor: `Zanna.Graphics3D.Mesh3D.New`
 | <a id="zanna-graphics3d-mesh3d-residentbytes"></a>`ResidentBytes` | `i64` | read-only |
 | <a id="zanna-graphics3d-mesh3d-compactstreams"></a>`CompactStreams` | `i1` | read/write |
 | <a id="zanna-graphics3d-mesh3d-retainedbytes"></a>`RetainedBytes` | `i64` | read-only |
+| <a id="zanna-graphics3d-mesh3d-simplifyrequestedtriangles"></a>`SimplifyRequestedTriangles` | `i64` | read-only |
+| <a id="zanna-graphics3d-mesh3d-simplifyachievedtriangles"></a>`SimplifyAchievedTriangles` | `i64` | read-only |
+| <a id="zanna-graphics3d-mesh3d-simplifystatus"></a>`SimplifyStatus` | `i64` | read-only |
 
 #### Methods
 
@@ -348,8 +354,8 @@ Provides Texture Asset 3D functionality for 3D rendering and scene applications.
 
 `Zanna.Graphics3D.TextureAsset3D` exposes a registry-backed runtime surface without requiring
 callers to construct the class directly. Its public surface exposes properties such as
-`Width`, `Height`, `MipCount` and operations including `LoadKtx2`, `LoadKtx2Asset`,
-`SetResidentMipRange`.
+`Width`, `Height`, `MipCount`, degradation and residency telemetry, and permissive/strict KTX2
+load operations. Strict loaders reject inputs that would require checker substitution.
 
 #### Properties
 
@@ -360,9 +366,12 @@ callers to construct the class directly. Its public surface exposes properties s
 | <a id="zanna-graphics3d-textureasset3d-mipcount"></a>`MipCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-textureasset3d-format"></a>`Format` | `str` | read-only |
 | <a id="zanna-graphics3d-textureasset3d-compressed"></a>`Compressed` | `i1` | read-only |
+| <a id="zanna-graphics3d-textureasset3d-degraded"></a>`Degraded` | `i1` | read-only |
+| <a id="zanna-graphics3d-textureasset3d-degradedreason"></a>`DegradedReason` | `str` | read-only |
 | <a id="zanna-graphics3d-textureasset3d-residentmipstart"></a>`ResidentMipStart` | `i64` | read-only |
 | <a id="zanna-graphics3d-textureasset3d-residentmipcount"></a>`ResidentMipCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-textureasset3d-residentbytes"></a>`ResidentBytes` | `i64` | read-only |
+| <a id="zanna-graphics3d-textureasset3d-retainedbytes"></a>`RetainedBytes` | `i64` | read-only |
 
 #### Methods
 
@@ -370,6 +379,8 @@ callers to construct the class directly. Its public surface exposes properties s
 |---|---|---|
 | <a id="zanna-graphics3d-textureasset3d-loadktx2"></a>`LoadKtx2` | `obj<Zanna.Graphics3D.TextureAsset3D>(str)` | `Zanna.Graphics3D.TextureAsset3D.LoadKtx2` |
 | <a id="zanna-graphics3d-textureasset3d-loadktx2asset"></a>`LoadKtx2Asset` | `obj<Zanna.Graphics3D.TextureAsset3D>(str)` | `Zanna.Graphics3D.TextureAsset3D.LoadKtx2Asset` |
+| <a id="zanna-graphics3d-textureasset3d-loadktx2strict"></a>`LoadKtx2Strict` | `obj<Zanna.Graphics3D.TextureAsset3D>(str)` | `Zanna.Graphics3D.TextureAsset3D.LoadKtx2Strict` |
+| <a id="zanna-graphics3d-textureasset3d-loadktx2assetstrict"></a>`LoadKtx2AssetStrict` | `obj<Zanna.Graphics3D.TextureAsset3D>(str)` | `Zanna.Graphics3D.TextureAsset3D.LoadKtx2AssetStrict` |
 | <a id="zanna-graphics3d-textureasset3d-setresidentmiprange"></a>`SetResidentMipRange` | `void(i64,i64)` | `Zanna.Graphics3D.TextureAsset3D.SetResidentMipRange` |
 
 <a id="zanna-graphics3d-material3d"></a>
@@ -909,9 +920,11 @@ Constructor: `Zanna.Graphics3D.MorphTarget3D.New`
 Provides Particles 3D functionality for 3D rendering and scene applications.
 
 Create `Zanna.Graphics3D.Particles3D` values through its registered constructor and use the
-returned object with the instance members below. Its public surface exposes properties such as
-`Count`, `IsEmitting`, `Additive` and operations including `SetStretch`, `SetTrail`,
-`SetSoftness`, `SetPosition`.
+returned object with the instance members below. `Update` advances deterministic 60 Hz steps,
+retains ordinary fractional time in `ResidualTime`, and exposes safety-budget overflow through
+`DroppedTime` and `LastDroppedTime`. `Count` contains live particles only; when
+`RenderFinalFrame` is enabled, an expired endpoint remains drawable until the next valid update
+without remaining live. Call `ResetDroppedTime` after consuming cumulative timing telemetry.
 
 Constructor: `Zanna.Graphics3D.Particles3D.New`
 
@@ -923,6 +936,10 @@ Constructor: `Zanna.Graphics3D.Particles3D.New`
 | <a id="zanna-graphics3d-particles3d-isemitting"></a>`IsEmitting` | `i1` | read-only |
 | <a id="zanna-graphics3d-particles3d-additive"></a>`Additive` | `i1` | read/write |
 | <a id="zanna-graphics3d-particles3d-seed"></a>`Seed` | `i64` | read/write |
+| <a id="zanna-graphics3d-particles3d-renderfinalframe"></a>`RenderFinalFrame` | `i1` | read/write |
+| <a id="zanna-graphics3d-particles3d-droppedtime"></a>`DroppedTime` | `f64` | read-only |
+| <a id="zanna-graphics3d-particles3d-lastdroppedtime"></a>`LastDroppedTime` | `f64` | read-only |
+| <a id="zanna-graphics3d-particles3d-residualtime"></a>`ResidualTime` | `f64` | read-only |
 
 #### Methods
 
@@ -947,6 +964,7 @@ Constructor: `Zanna.Graphics3D.Particles3D.New`
 | <a id="zanna-graphics3d-particles3d-stop"></a>`Stop` | `void()` | `Zanna.Graphics3D.Particles3D.Stop` |
 | <a id="zanna-graphics3d-particles3d-burst"></a>`Burst` | `void(i64)` | `Zanna.Graphics3D.Particles3D.Burst` |
 | <a id="zanna-graphics3d-particles3d-clear"></a>`Clear` | `void()` | `Zanna.Graphics3D.Particles3D.Clear` |
+| <a id="zanna-graphics3d-particles3d-resetdroppedtime"></a>`ResetDroppedTime` | `void()` | `Zanna.Graphics3D.Particles3D.ResetDroppedTime` |
 | <a id="zanna-graphics3d-particles3d-rebaseorigin"></a>`RebaseOrigin` | `void(f64,f64,f64)` | `Zanna.Graphics3D.Particles3D.RebaseOrigin` |
 | <a id="zanna-graphics3d-particles3d-update"></a>`Update` | `void(f64)` | `Zanna.Graphics3D.Particles3D.Update` |
 | <a id="zanna-graphics3d-particles3d-draw"></a>`Draw` | `void(obj,obj)` | `Zanna.Graphics3D.Particles3D.Draw` |
@@ -2423,6 +2441,9 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | <a id="zanna-graphics3d-canvas3d-get-occludeddrawcount"></a>`Zanna.Graphics3D.Canvas3D.get_OccludedDrawCount` | `i64(obj)` | `rt_canvas3d_get_occluded_draw_count` |
 | <a id="zanna-graphics3d-canvas3d-get-instancedfallbackcount"></a>`Zanna.Graphics3D.Canvas3D.get_InstancedFallbackCount` | `i64(obj)` | `rt_canvas3d_get_instanced_fallback_count` |
 | <a id="zanna-graphics3d-canvas3d-get-instancedfallbackdroppedcount"></a>`Zanna.Graphics3D.Canvas3D.get_InstancedFallbackDroppedCount` | `i64(obj)` | `rt_canvas3d_get_instanced_fallback_dropped_count` |
+| <a id="zanna-graphics3d-canvas3d-get-lastsubmissionstatus"></a>`Zanna.Graphics3D.Canvas3D.get_LastSubmissionStatus` | `i64(obj)` | `rt_canvas3d_get_last_submission_status` |
+| <a id="zanna-graphics3d-canvas3d-get-submissionfailurecount"></a>`Zanna.Graphics3D.Canvas3D.get_SubmissionFailureCount` | `i64(obj)` | `rt_canvas3d_get_submission_failure_count` |
+| `Zanna.Graphics3D.Canvas3D.ResetSubmissionDiagnostics` | `void(obj)` | `rt_canvas3d_reset_submission_diagnostics` |
 | <a id="zanna-graphics3d-canvas3d-get-eventdropcount"></a>`Zanna.Graphics3D.Canvas3D.get_EventDropCount` | `i64(obj)` | `rt_canvas3d_get_event_drop_count` |
 | <a id="zanna-graphics3d-canvas3d-get-meshsnapshotbytes"></a>`Zanna.Graphics3D.Canvas3D.get_MeshSnapshotBytes` | `i64(obj)` | `rt_canvas3d_get_mesh_snapshot_bytes` |
 | <a id="zanna-graphics3d-canvas3d-get-meshsnapshotdropcount"></a>`Zanna.Graphics3D.Canvas3D.get_MeshSnapshotDropCount` | `i64(obj)` | `rt_canvas3d_get_mesh_snapshot_drop_count` |
@@ -2484,6 +2505,9 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | `Zanna.Graphics3D.Canvas3D.SetFrustumCulling` | `void(obj,i1)` | `rt_canvas3d_set_frustum_culling` |
 | `Zanna.Graphics3D.Mesh3D.New` | `obj()` | `rt_mesh3d_new` |
 | `Zanna.Graphics3D.Mesh3D.Simplify` | `obj(obj,i64)` | `rt_mesh3d_simplify` |
+| <a id="zanna-graphics3d-mesh3d-get-simplifyrequestedtriangles"></a>`Zanna.Graphics3D.Mesh3D.get_SimplifyRequestedTriangles` | `i64(obj)` | `rt_mesh3d_get_simplify_requested_triangles` |
+| <a id="zanna-graphics3d-mesh3d-get-simplifyachievedtriangles"></a>`Zanna.Graphics3D.Mesh3D.get_SimplifyAchievedTriangles` | `i64(obj)` | `rt_mesh3d_get_simplify_achieved_triangles` |
+| <a id="zanna-graphics3d-mesh3d-get-simplifystatus"></a>`Zanna.Graphics3D.Mesh3D.get_SimplifyStatus` | `i64(obj)` | `rt_mesh3d_get_simplify_status` |
 | `Zanna.Graphics3D.SceneNode.GenerateLods` | `void(obj,i64,f64)` | `rt_scene_node3d_generate_lods` |
 | `Zanna.Graphics3D.Mesh3D.Box` | `obj(f64,f64,f64)` | `rt_mesh3d_new_box` |
 | `Zanna.Graphics3D.Mesh3D.Sphere` | `obj(f64,i64)` | `rt_mesh3d_new_sphere` |
@@ -2534,14 +2558,19 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | `Zanna.Graphics3D.Camera3D.SmoothLookAt` | `void(obj,obj,f64,f64)` | `rt_camera3d_smooth_look_at` |
 | `Zanna.Graphics3D.TextureAsset3D.LoadKtx2` | `obj(str)` | `rt_textureasset3d_load_ktx2` |
 | `Zanna.Graphics3D.TextureAsset3D.LoadKtx2Asset` | `obj(str)` | `rt_textureasset3d_load_ktx2_asset` |
+| `Zanna.Graphics3D.TextureAsset3D.LoadKtx2Strict` | `obj(str)` | `rt_textureasset3d_load_ktx2_strict` |
+| `Zanna.Graphics3D.TextureAsset3D.LoadKtx2AssetStrict` | `obj(str)` | `rt_textureasset3d_load_ktx2_asset_strict` |
 | <a id="zanna-graphics3d-textureasset3d-get-width"></a>`Zanna.Graphics3D.TextureAsset3D.get_Width` | `i64(obj)` | `rt_textureasset3d_get_width` |
 | <a id="zanna-graphics3d-textureasset3d-get-height"></a>`Zanna.Graphics3D.TextureAsset3D.get_Height` | `i64(obj)` | `rt_textureasset3d_get_height` |
 | <a id="zanna-graphics3d-textureasset3d-get-mipcount"></a>`Zanna.Graphics3D.TextureAsset3D.get_MipCount` | `i64(obj)` | `rt_textureasset3d_get_mip_count` |
 | <a id="zanna-graphics3d-textureasset3d-get-format"></a>`Zanna.Graphics3D.TextureAsset3D.get_Format` | `str(obj)` | `rt_textureasset3d_get_format` |
 | <a id="zanna-graphics3d-textureasset3d-get-compressed"></a>`Zanna.Graphics3D.TextureAsset3D.get_Compressed` | `i1(obj)` | `rt_textureasset3d_get_compressed` |
+| <a id="zanna-graphics3d-textureasset3d-get-degraded"></a>`Zanna.Graphics3D.TextureAsset3D.get_Degraded` | `i1(obj)` | `rt_textureasset3d_get_degraded` |
+| <a id="zanna-graphics3d-textureasset3d-get-degradedreason"></a>`Zanna.Graphics3D.TextureAsset3D.get_DegradedReason` | `str(obj)` | `rt_textureasset3d_get_degraded_reason` |
 | <a id="zanna-graphics3d-textureasset3d-get-residentmipstart"></a>`Zanna.Graphics3D.TextureAsset3D.get_ResidentMipStart` | `i64(obj)` | `rt_textureasset3d_get_resident_mip_start` |
 | <a id="zanna-graphics3d-textureasset3d-get-residentmipcount"></a>`Zanna.Graphics3D.TextureAsset3D.get_ResidentMipCount` | `i64(obj)` | `rt_textureasset3d_get_resident_mip_count` |
 | <a id="zanna-graphics3d-textureasset3d-get-residentbytes"></a>`Zanna.Graphics3D.TextureAsset3D.get_ResidentBytes` | `i64(obj)` | `rt_textureasset3d_get_resident_bytes` |
+| <a id="zanna-graphics3d-textureasset3d-get-retainedbytes"></a>`Zanna.Graphics3D.TextureAsset3D.get_RetainedBytes` | `i64(obj)` | `rt_textureasset3d_get_retained_bytes` |
 | `Zanna.Graphics3D.TextureAsset3D.SetResidentMipRange` | `void(obj,i64,i64)` | `rt_textureasset3d_set_resident_mip_range` |
 | `Zanna.Graphics3D.Material3D.New` | `obj()` | `rt_material3d_new` |
 | `Zanna.Graphics3D.Material3D.FromColor` | `obj(f64,f64,f64)` | `rt_material3d_new_color` |
@@ -2838,6 +2867,12 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | <a id="zanna-graphics3d-particles3d-get-isemitting"></a>`Zanna.Graphics3D.Particles3D.get_IsEmitting` | `i1(obj)` | `rt_particles3d_get_emitting` |
 | <a id="zanna-graphics3d-particles3d-set-seed"></a>`Zanna.Graphics3D.Particles3D.set_Seed` | `void(obj,i64)` | `rt_particles3d_set_seed` |
 | <a id="zanna-graphics3d-particles3d-get-seed"></a>`Zanna.Graphics3D.Particles3D.get_Seed` | `i64(obj)` | `rt_particles3d_get_seed` |
+| <a id="zanna-graphics3d-particles3d-set-renderfinalframe"></a>`Zanna.Graphics3D.Particles3D.set_RenderFinalFrame` | `void(obj,i1)` | `rt_particles3d_set_render_final_frame` |
+| <a id="zanna-graphics3d-particles3d-get-renderfinalframe"></a>`Zanna.Graphics3D.Particles3D.get_RenderFinalFrame` | `i1(obj)` | `rt_particles3d_get_render_final_frame` |
+| <a id="zanna-graphics3d-particles3d-get-droppedtime"></a>`Zanna.Graphics3D.Particles3D.get_DroppedTime` | `f64(obj)` | `rt_particles3d_get_dropped_time` |
+| <a id="zanna-graphics3d-particles3d-get-lastdroppedtime"></a>`Zanna.Graphics3D.Particles3D.get_LastDroppedTime` | `f64(obj)` | `rt_particles3d_get_last_dropped_time` |
+| <a id="zanna-graphics3d-particles3d-get-residualtime"></a>`Zanna.Graphics3D.Particles3D.get_ResidualTime` | `f64(obj)` | `rt_particles3d_get_residual_time` |
+| `Zanna.Graphics3D.Particles3D.ResetDroppedTime` | `void(obj)` | `rt_particles3d_reset_dropped_time` |
 | `Zanna.Graphics3D.PostFX3D.New` | `obj()` | `rt_postfx3d_new` |
 | `Zanna.Graphics3D.PostFX3D.AddBloom` | `void(obj,f64,f64,i64)` | `rt_postfx3d_add_bloom` |
 | `Zanna.Graphics3D.PostFX3D.AddTonemap` | `void(obj,i64,f64)` | `rt_postfx3d_add_tonemap` |

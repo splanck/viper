@@ -93,9 +93,19 @@ static int vscn_parse_material_texture_slots(void *material_obj, rt_material3d *
         material->texture_slot_wrap_t[i] =
             vscn_wrap_or(vjson_i64(slot_obj, "wrapT", material->texture_slot_wrap_t[i]),
                          material->texture_slot_wrap_t[i]);
-        material->texture_slot_filter[i] =
-            vscn_filter_or(vjson_i64(slot_obj, "filter", material->texture_slot_filter[i]),
-                           material->texture_slot_filter[i]);
+        {
+            int32_t legacy_filter =
+                vscn_filter_or(vjson_i64(slot_obj, "filter", material->texture_slot_filter[i]),
+                               material->texture_slot_filter[i]);
+            material->texture_slot_min_filter[i] =
+                vscn_filter_or(vjson_i64(slot_obj, "minFilter", legacy_filter), legacy_filter);
+            material->texture_slot_mag_filter[i] =
+                vscn_filter_or(vjson_i64(slot_obj, "magFilter", legacy_filter), legacy_filter);
+            material->texture_slot_mip_filter[i] = vscn_mip_filter_or(
+                vjson_i64(slot_obj, "mipFilter", RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE),
+                RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE);
+            material->texture_slot_filter[i] = material->texture_slot_mag_filter[i];
+        }
         for (int j = 0; j < 6; j++) {
             if (uv_arr && j < vjson_len(uv_arr))
                 material->texture_slot_uv_transform[i][j] = vscn_clamp_abs_or(
@@ -103,12 +113,15 @@ static int vscn_parse_material_texture_slots(void *material_obj, rt_material3d *
                     material->texture_slot_uv_transform[i][j]);
         }
     }
-    material->texture_wrap_s =
-        material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
-    material->texture_wrap_t =
-        material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
-    material->texture_filter =
-        material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_wrap_s = material->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_wrap_t = material->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_filter = material->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_min_filter =
+        material->texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_mag_filter =
+        material->texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->texture_mip_filter =
+        material->texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     return 1;
 }
 
@@ -150,8 +163,12 @@ static int vscn_bind_material_refs(void *material_obj,
                                    int cubemap_count) {
     return vscn_bind_material_texture_ref(
                material_obj, "texture", material, textures, tex_count, rt_material3d_set_texture) &&
-           vscn_bind_material_texture_ref(
-               material_obj, "normalMap", material, textures, tex_count, rt_material3d_set_normal_map) &&
+           vscn_bind_material_texture_ref(material_obj,
+                                          "normalMap",
+                                          material,
+                                          textures,
+                                          tex_count,
+                                          rt_material3d_set_normal_map) &&
            vscn_bind_material_texture_ref(material_obj,
                                           "specularMap",
                                           material,
@@ -172,6 +189,10 @@ static int vscn_bind_material_refs(void *material_obj,
                                           rt_material3d_set_metallic_roughness_map) &&
            vscn_bind_material_texture_ref(
                material_obj, "aoMap", material, textures, tex_count, rt_material3d_set_ao_map) &&
-           vscn_bind_material_cubemap_ref(
-               material_obj, "envMap", material, cubemaps, cubemap_count, rt_material3d_set_env_map);
+           vscn_bind_material_cubemap_ref(material_obj,
+                                          "envMap",
+                                          material,
+                                          cubemaps,
+                                          cubemap_count,
+                                          rt_material3d_set_env_map);
 }

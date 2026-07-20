@@ -26,6 +26,7 @@
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_gltf.h"
+#include "rt_gltf_json.h"
 #include "rt_morphtarget3d.h"
 #include "rt_pixels.h"
 #include "rt_scene3d.h"
@@ -36,6 +37,7 @@
 extern "C" {
 #include "vgfx3d_skinning.h"
 }
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -638,8 +640,11 @@ static void test_gltf_preload_bundle_stages_data_uri_buffers_and_images() {
 
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 6.0f, 0.0f, 0.0f, 0.0f, 7.0f, 0.0f};
+    const float uv0[6] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
     const uint16_t indices[3] = {0, 1, 2};
     for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uv0)
         append_bytes(gltf_buffer, v);
     for (uint16_t v : indices)
         append_bytes(gltf_buffer, v);
@@ -654,18 +659,21 @@ static void test_gltf_preload_bundle_stages_data_uri_buffers_and_images() {
         "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
         "],"
         "\"images\":[{\"uri\":\"data:image/png;base64," +
         image_b64 +
         "\"}],"
         "\"textures\":[{\"source\":0}],"
         "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},"
+        "\"indices\":2,"
         "\"material\":0}]}]"
         "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload data-uri glTF can be written");
@@ -727,8 +735,11 @@ static void test_gltf_preload_bundle_decodes_bmp_images_to_rgba_pod() {
 
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 12.0f, 0.0f, 0.0f, 0.0f, 13.0f, 0.0f};
+    const float uv0[6] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
     const uint16_t indices[3] = {0, 1, 2};
     for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uv0)
         append_bytes(gltf_buffer, v);
     for (uint16_t v : indices)
         append_bytes(gltf_buffer, v);
@@ -743,18 +754,21 @@ static void test_gltf_preload_bundle_decodes_bmp_images_to_rgba_pod() {
         "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
         "],"
         "\"images\":[{\"uri\":\"data:image/bmp;base64," +
         image_b64 +
         "\"}],"
         "\"textures\":[{\"source\":0}],"
         "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},"
+        "\"indices\":2,"
         "\"material\":0}]}]"
         "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload data-uri BMP glTF can be written");
@@ -822,8 +836,11 @@ static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
 
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 16.0f, 0.0f, 0.0f, 0.0f, 17.0f, 0.0f};
+    const float uv0[6] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
     const uint16_t indices[3] = {0, 1, 2};
     for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uv0)
         append_bytes(gltf_buffer, v);
     for (uint16_t v : indices)
         append_bytes(gltf_buffer, v);
@@ -837,18 +854,21 @@ static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
         "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
         "],"
         "\"images\":[{\"uri\":\"data:image/jpeg;base64," +
         std::string(image_b64) +
         "\"}],"
         "\"textures\":[{\"source\":0}],"
         "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},"
+        "\"indices\":2,"
         "\"material\":0}]}]"
         "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload data-uri JPEG glTF can be written");
@@ -908,8 +928,11 @@ static void test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod() {
 
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 18.0f, 0.0f, 0.0f, 0.0f, 19.0f, 0.0f};
+    const float uv0[6] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
     const uint16_t indices[3] = {0, 1, 2};
     for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uv0)
         append_bytes(gltf_buffer, v);
     for (uint16_t v : indices)
         append_bytes(gltf_buffer, v);
@@ -924,18 +947,21 @@ static void test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod() {
         "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
         "],"
         "\"images\":[{\"uri\":\"data:image/gif;base64," +
         image_b64 +
         "\"}],"
         "\"textures\":[{\"source\":0}],"
         "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},"
+        "\"indices\":2,"
         "\"material\":0}]}]"
         "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload data-uri GIF glTF can be written");
@@ -1208,8 +1234,11 @@ static void test_gltf_preload_bundle_stages_buffer_view_images() {
 
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 8.0f, 0.0f, 0.0f, 0.0f, 9.0f, 0.0f};
+    const float uv0[6] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
     const uint16_t indices[3] = {0, 1, 2};
     for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uv0)
         append_bytes(gltf_buffer, v);
     for (uint16_t v : indices)
         append_bytes(gltf_buffer, v);
@@ -1225,19 +1254,22 @@ static void test_gltf_preload_bundle_stages_buffer_view_images() {
         "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6},"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6},"
         "{\"buffer\":0,\"byteOffset\":" +
         std::to_string(image_offset) + ",\"byteLength\":" + std::to_string(png_bytes.size()) +
         "}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
         "],"
-        "\"images\":[{\"bufferView\":2,\"mimeType\":\"image/png\"}],"
+        "\"images\":[{\"bufferView\":3,\"mimeType\":\"image/png\"}],"
         "\"textures\":[{\"source\":0}],"
         "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},"
+        "\"indices\":2,"
         "\"material\":0}]}]"
         "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "Preload bufferView glTF can be written");
@@ -1393,9 +1425,12 @@ static void test_gltf_load_asset_resolves_mounted_external_buffers() {
 
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f, 5.0f, 0.0f};
+    const float uv0[6] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
     const uint16_t indices[3] = {0, 1, 2};
 
     for (float v : positions)
+        append_bytes(gltf_buffer, v);
+    for (float v : uv0)
         append_bytes(gltf_buffer, v);
     for (uint16_t v : indices)
         append_bytes(gltf_buffer, v);
@@ -1408,16 +1443,19 @@ static void test_gltf_load_asset_resolves_mounted_external_buffers() {
         "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
         "],"
         "\"images\":[{\"uri\":\"textures/albedo.png\"}],"
         "\"textures\":[{\"source\":0}],"
         "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},"
+        "\"indices\":2,"
         "\"material\":0}]}]"
         "}";
 
@@ -2480,14 +2518,25 @@ static void test_gltf_eight_influence_import() {
     std::string b64 = base64_encode(buffer.data(), buffer.size());
     std::string gltf_json =
         "{\"asset\":{\"version\":\"2.0\"},"
-        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," + b64 +
-        "\",\"byteLength\":" + std::to_string(buffer.size()) + "}],"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        b64 + "\",\"byteLength\":" + std::to_string(buffer.size()) +
+        "}],"
         "\"bufferViews\":["
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(pos_off) + ",\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(j0_off) + ",\"byteLength\":12},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(w0_off) + ",\"byteLength\":48},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(j1_off) + ",\"byteLength\":12},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(w1_off) + ",\"byteLength\":48}"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(pos_off) +
+        ",\"byteLength\":36},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(j0_off) +
+        ",\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(w0_off) +
+        ",\"byteLength\":48},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(j1_off) +
+        ",\"byteLength\":12},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(w1_off) +
+        ",\"byteLength\":48}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
@@ -2520,11 +2569,10 @@ static void test_gltf_eight_influence_import() {
                 "eightInfluences does not warn about influence truncation");
     if (mesh->extra_influences) {
         const vgfx3d_extra_influences_t *extra = &mesh->extra_influences[0];
-        EXPECT_TRUE(mesh->vertices[0].bone_indices[0] == 0 &&
-                        mesh->vertices[0].bone_indices[1] == 1 &&
-                        mesh->vertices[0].bone_indices[2] == 2 &&
-                        mesh->vertices[0].bone_indices[3] == 3,
-                    "strongest four influences stay in the vertex record");
+        EXPECT_TRUE(
+            mesh->vertices[0].bone_indices[0] == 0 && mesh->vertices[0].bone_indices[1] == 1 &&
+                mesh->vertices[0].bone_indices[2] == 2 && mesh->vertices[0].bone_indices[3] == 3,
+            "strongest four influences stay in the vertex record");
         EXPECT_TRUE(extra->indices[0] == 4 && extra->indices[1] == 5,
                     "influences five and six land in the side stream");
         /* Vertex weights renormalize to the primary 4-set (sum 0.9); side-stream
@@ -2532,10 +2580,11 @@ static void test_gltf_eight_influence_import() {
          * 0.4/0.25/0.15/0.1/0.06/0.04 proportions. */
         EXPECT_NEAR(extra->weights[0], 0.06 / 0.9, 0.001, "fifth weight survives in scale");
         EXPECT_NEAR(extra->weights[1], 0.04 / 0.9, 0.001, "sixth weight survives in scale");
-        EXPECT_NEAR(mesh->vertices[0].bone_weights[0], 0.4 / 0.9, 0.001,
+        EXPECT_NEAR(mesh->vertices[0].bone_weights[0],
+                    0.4 / 0.9,
+                    0.001,
                     "primary weights renormalize to the vertex record");
-        EXPECT_TRUE(mesh->bone_count == 6,
-                    "bone palette covers the side-stream influences");
+        EXPECT_TRUE(mesh->bone_count == 6, "bone palette covers the side-stream influences");
         /* Functional: bone 4 translated by (8,0,0); all other bones identity.
          * Skinned x = src.x + w4 * 8. */
         {
@@ -2554,7 +2603,9 @@ static void test_gltf_eight_influence_import() {
                                        6,
                                        mesh->extra_influences,
                                        nullptr);
-            EXPECT_NEAR(skinned[0].pos[0], 0.0 + 0.06 * 8.0, 0.005,
+            EXPECT_NEAR(skinned[0].pos[0],
+                        0.0 + 0.06 * 8.0,
+                        0.005,
                         "CPU skinning applies side-stream influences");
         }
     }
@@ -2597,18 +2648,24 @@ static void test_gltf_compress_animations_option() {
         "\"scenes\":[{\"nodes\":[0]}],\"scene\":0,"
         "\"nodes\":[{\"children\":[1]},{}],"
         "\"skins\":[{\"joints\":[0,1]}],"
-        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," + b64 +
-        "\",\"byteLength\":" + std::to_string(buffer.size()) + "}],"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        b64 + "\",\"byteLength\":" + std::to_string(buffer.size()) +
+        "}],"
         "\"bufferViews\":["
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(times_off) +
-        ",\"byteLength\":" + std::to_string(values_off - times_off) + "},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(values_off) +
-        ",\"byteLength\":" + std::to_string(buffer.size() - values_off) + "}"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(times_off) + ",\"byteLength\":" + std::to_string(values_off - times_off) +
+        "},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(values_off) +
+        ",\"byteLength\":" + std::to_string(buffer.size() - values_off) +
+        "}"
         "],"
         "\"accessors\":["
-        "{\"bufferView\":0,\"componentType\":5126,\"count\":" + std::to_string(kKeys) +
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":" +
+        std::to_string(kKeys) +
         ",\"type\":\"SCALAR\",\"min\":[0.0],\"max\":[1.0]},"
-        "{\"bufferView\":1,\"componentType\":5126,\"count\":" + std::to_string(kKeys) +
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":" +
+        std::to_string(kKeys) +
         ",\"type\":\"VEC3\"}"
         "],"
         "\"animations\":[{\"channels\":[{\"sampler\":0,"
@@ -2622,8 +2679,7 @@ static void test_gltf_compress_animations_option() {
     EXPECT_TRUE(asset_raw != nullptr, "uncompressed clip loads");
     if (asset_raw) {
         auto *anim = static_cast<rt_animation3d *>(rt_gltf_get_animation(asset_raw, 0));
-        EXPECT_TRUE(anim && anim->channel_count == 1 &&
-                        anim->channels[0].keyframe_count == kKeys,
+        EXPECT_TRUE(anim && anim->channel_count == 1 && anim->channels[0].keyframe_count == kKeys,
                     "default load keeps every authored key");
     }
 
@@ -2641,10 +2697,10 @@ static void test_gltf_compress_animations_option() {
         return;
     EXPECT_TRUE(anim->channels[0].keyframe_count == 2,
                 "collinear keys reduce to the two endpoints");
-    EXPECT_NEAR(anim->channels[0].keyframes[0].position[0], 0.0, 1e-5,
-                "first key survives compression");
-    EXPECT_NEAR(anim->channels[0].keyframes[1].position[0], 1.0, 1e-5,
-                "last key survives compression");
+    EXPECT_NEAR(
+        anim->channels[0].keyframes[0].position[0], 0.0, 1e-5, "first key survives compression");
+    EXPECT_NEAR(
+        anim->channels[0].keyframes[1].position[0], 1.0, 1e-5, "last key survives compression");
     EXPECT_TRUE(import_report_contains("\"compressedAnimationKeysDropped\":9"),
                 "import report counts dropped animation keys");
 }
@@ -2654,16 +2710,15 @@ static void test_gltf_ior_and_volume_extensions() {
      * [4] = ior, [5] = thickness, [6] = folded Beer-Lambert absorption
      * (-ln(avg(attenuationColor)) / attenuationDistance). */
     const char *gltf_path = "/tmp/zanna_gltf_ior_volume.gltf";
-    std::string gltf_json =
-        "{\"asset\":{\"version\":\"2.0\"},"
-        "\"materials\":[{"
-        "\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
-        "\"extensions\":{"
-        "\"KHR_materials_ior\":{\"ior\":1.33},"
-        "\"KHR_materials_transmission\":{\"transmissionFactor\":0.9},"
-        "\"KHR_materials_volume\":{\"thicknessFactor\":0.5,"
-        "\"attenuationDistance\":2.0,\"attenuationColor\":[0.5,0.5,0.5]}"
-        "}}]}";
+    std::string gltf_json = "{\"asset\":{\"version\":\"2.0\"},"
+                            "\"materials\":[{"
+                            "\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
+                            "\"extensions\":{"
+                            "\"KHR_materials_ior\":{\"ior\":1.33},"
+                            "\"KHR_materials_transmission\":{\"transmissionFactor\":0.9},"
+                            "\"KHR_materials_volume\":{\"thicknessFactor\":0.5,"
+                            "\"attenuationDistance\":2.0,\"attenuationColor\":[0.5,0.5,0.5]}"
+                            "}}]}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "ior/volume fixture writes");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "ior/volume material loads");
@@ -2677,17 +2732,18 @@ static void test_gltf_ior_and_volume_extensions() {
     EXPECT_NEAR(mat->custom_params[3], 0.9, 0.001, "transmission factor lands in param 3");
     EXPECT_NEAR(mat->custom_params[5], 0.5, 0.001, "volume thickness lands in param 5");
     /* sigma = -ln(0.5) / 2 = 0.3466 */
-    EXPECT_NEAR(mat->custom_params[6], 0.34657, 0.001,
+    EXPECT_NEAR(mat->custom_params[6],
+                0.34657,
+                0.001,
                 "volume attenuation folds to the Beer-Lambert coefficient");
 
     /* KHR_materials_sheen: luminance-folded intensity + roughness. */
     const char *sheen_path = "/tmp/zanna_gltf_sheen.gltf";
-    std::string sheen_json =
-        "{\"asset\":{\"version\":\"2.0\"},"
-        "\"materials\":[{"
-        "\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
-        "\"extensions\":{\"KHR_materials_sheen\":{"
-        "\"sheenColorFactor\":[1.0,1.0,1.0],\"sheenRoughnessFactor\":0.4}}}]}";
+    std::string sheen_json = "{\"asset\":{\"version\":\"2.0\"},"
+                             "\"materials\":[{"
+                             "\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
+                             "\"extensions\":{\"KHR_materials_sheen\":{"
+                             "\"sheenColorFactor\":[1.0,1.0,1.0],\"sheenRoughnessFactor\":0.4}}}]}";
     EXPECT_TRUE(write_text_file(sheen_path, sheen_json), "sheen fixture writes");
     void *sheen_asset = rt_gltf_load(rt_const_cstr(sheen_path));
     EXPECT_TRUE(sheen_asset != nullptr, "sheen material loads");
@@ -2695,21 +2751,21 @@ static void test_gltf_ior_and_volume_extensions() {
         auto *sm = static_cast<rt_material3d *>(rt_gltf_get_material(sheen_asset, 0));
         EXPECT_TRUE(sm != nullptr, "sheen material imports");
         if (sm) {
-            EXPECT_NEAR(sm->custom_params[0], 1.0, 0.001,
+            EXPECT_NEAR(sm->custom_params[0],
+                        1.0,
+                        0.001,
                         "sheen color folds to a luminance intensity in param 0");
-            EXPECT_NEAR(sm->custom_params[7], 0.4, 0.001,
-                        "sheen roughness lands in param 7");
+            EXPECT_NEAR(sm->custom_params[7], 0.4, 0.001, "sheen roughness lands in param 7");
         }
     }
 
     /* KHR_materials_anisotropy: strength + rotation params. */
     const char *aniso_path = "/tmp/zanna_gltf_aniso.gltf";
-    std::string aniso_json =
-        "{\"asset\":{\"version\":\"2.0\"},"
-        "\"materials\":[{"
-        "\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
-        "\"extensions\":{\"KHR_materials_anisotropy\":{"
-        "\"anisotropyStrength\":0.8,\"anisotropyRotation\":0.5}}}]}";
+    std::string aniso_json = "{\"asset\":{\"version\":\"2.0\"},"
+                             "\"materials\":[{"
+                             "\"pbrMetallicRoughness\":{\"baseColorFactor\":[1,1,1,1]},"
+                             "\"extensions\":{\"KHR_materials_anisotropy\":{"
+                             "\"anisotropyStrength\":0.8,\"anisotropyRotation\":0.5}}}]}";
     EXPECT_TRUE(write_text_file(aniso_path, aniso_json), "anisotropy fixture writes");
     void *aniso_asset = rt_gltf_load(rt_const_cstr(aniso_path));
     EXPECT_TRUE(aniso_asset != nullptr, "anisotropy material loads");
@@ -2717,10 +2773,8 @@ static void test_gltf_ior_and_volume_extensions() {
         auto *am = static_cast<rt_material3d *>(rt_gltf_get_material(aniso_asset, 0));
         EXPECT_TRUE(am != nullptr, "anisotropy material imports");
         if (am) {
-            EXPECT_NEAR(am->custom_params[8], 0.8, 0.001,
-                        "anisotropy strength lands in param 8");
-            EXPECT_NEAR(am->custom_params[9], 0.5, 0.001,
-                        "anisotropy rotation lands in param 9");
+            EXPECT_NEAR(am->custom_params[8], 0.8, 0.001, "anisotropy strength lands in param 8");
+            EXPECT_NEAR(am->custom_params[9], 0.5, 0.001, "anisotropy rotation lands in param 9");
         }
     }
 }
@@ -2796,28 +2850,41 @@ static void test_gltf_partitions_oversized_skins() {
     std::string gltf_json =
         "{\"asset\":{\"version\":\"2.0\"},"
         "\"scenes\":[{\"nodes\":[0]}],\"scene\":0,"
-        "\"nodes\":[" + nodes + "],"
-        "\"skins\":[{\"joints\":[" + joints + "]}],"
-        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," + b64 +
-        "\",\"byteLength\":" + std::to_string(buffer.size()) + "}],"
+        "\"nodes\":[" +
+        nodes +
+        "],"
+        "\"skins\":[{\"joints\":[" +
+        joints +
+        "]}],"
+        "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," +
+        b64 + "\",\"byteLength\":" + std::to_string(buffer.size()) +
+        "}],"
         "\"bufferViews\":["
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(pos_off) +
-        ",\"byteLength\":" + std::to_string(joints_off - pos_off) + "},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(joints_off) +
-        ",\"byteLength\":" + std::to_string(weights_off - joints_off) + "},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(weights_off) +
-        ",\"byteLength\":" + std::to_string(idx_off - weights_off) + "},"
-        "{\"buffer\":0,\"byteOffset\":" + std::to_string(idx_off) +
-        ",\"byteLength\":" + std::to_string(buffer.size() - idx_off) + "}"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(pos_off) + ",\"byteLength\":" + std::to_string(joints_off - pos_off) +
+        "},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(joints_off) + ",\"byteLength\":" + std::to_string(weights_off - joints_off) +
+        "},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(weights_off) + ",\"byteLength\":" + std::to_string(idx_off - weights_off) +
+        "},"
+        "{\"buffer\":0,\"byteOffset\":" +
+        std::to_string(idx_off) + ",\"byteLength\":" + std::to_string(buffer.size() - idx_off) +
+        "}"
         "],"
         "\"accessors\":["
-        "{\"bufferView\":0,\"componentType\":5126,\"count\":" + std::to_string(vert_count) +
+        "{\"bufferView\":0,\"componentType\":5126,\"count\":" +
+        std::to_string(vert_count) +
         ",\"type\":\"VEC3\"},"
-        "{\"bufferView\":1,\"componentType\":5123,\"count\":" + std::to_string(vert_count) +
+        "{\"bufferView\":1,\"componentType\":5123,\"count\":" +
+        std::to_string(vert_count) +
         ",\"type\":\"VEC4\"},"
-        "{\"bufferView\":2,\"componentType\":5126,\"count\":" + std::to_string(vert_count) +
+        "{\"bufferView\":2,\"componentType\":5126,\"count\":" +
+        std::to_string(vert_count) +
         ",\"type\":\"VEC4\"},"
-        "{\"bufferView\":3,\"componentType\":5123,\"count\":" + std::to_string(kJoints * 6) +
+        "{\"bufferView\":3,\"componentType\":5123,\"count\":" +
+        std::to_string(kJoints * 6) +
         ",\"type\":\"SCALAR\"}"
         "],"
         "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"JOINTS_0\":1,"
@@ -2872,8 +2939,7 @@ static void test_gltf_partitions_oversized_skins() {
             if (m0->bone_map && m1->bone_map) {
                 EXPECT_TRUE(m0->bone_map[0] == 0 && m0->bone_map[255] == 255,
                             "first bucket maps palette slots to joints 0..255");
-                EXPECT_TRUE(m1->bone_map[0] == 256,
-                            "second bucket starts at joint 256");
+                EXPECT_TRUE(m1->bone_map[0] == 256, "second bucket starts at joint 256");
             }
         }
     }
@@ -4431,27 +4497,173 @@ static void test_gltf_uses_texture_texcoord_and_transform() {
                 "GLTF.Load records texture transform offset.y");
 }
 
-static void test_gltf_unsupported_texture_texcoord_falls_back_to_primary() {
-    const char *gltf_path = "/tmp/zanna_gltf_unsupported_texture_texcoord.gltf";
-    std::string gltf_json =
-        "{"
-        "\"asset\":{\"version\":\"2.0\"},"
-        "\"textures\":[{}],"
-        "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,"
-        "\"texCoord\":2}}}]"
-        "}";
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
-                "Unsupported texture texCoord fixture can be created");
-    void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
-    EXPECT_TRUE(asset != nullptr, "GLTF.Load parses unsupported texture texCoord fixture");
-    if (!asset)
-        return;
-    auto *mat = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
-    EXPECT_TRUE(mat != nullptr, "Unsupported texture texCoord fixture exposes a material");
-    if (!mat)
-        return;
-    EXPECT_TRUE(mat->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] == 0,
-                "GLTF.Load maps unsupported texture texCoord values to TEXCOORD_0");
+/**
+ * @brief Build a one-triangle glTF fixture with selectable authored UV streams/material demands.
+ * @details `INT_MIN` means the corresponding material has no texture. Any other texcoord is
+ *          serialized verbatim, including deliberately invalid negative/UV2 values. When a
+ *          variant texcoord is supplied the primitive maps one KHR_materials_variants entry to
+ *          that second material.
+ * @param base_texcoord Base material texture coordinate, or `INT_MIN` for an untextured base.
+ * @param variant_texcoord Variant material texture coordinate, or `INT_MIN` for no variant.
+ * @param include_uv0 Whether the primitive carries a valid TEXCOORD_0 accessor.
+ * @param include_uv1 Whether the primitive carries a valid TEXCOORD_1 accessor.
+ * @return Complete self-contained JSON glTF document with a data-URI buffer.
+ */
+static std::string build_texture_uv_requirement_fixture(int base_texcoord,
+                                                        int variant_texcoord,
+                                                        bool include_uv0,
+                                                        bool include_uv1) {
+    std::vector<uint8_t> buffer;
+    const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const float uv[6] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
+    const uint16_t indices[3] = {0, 1, 2};
+    std::string views;
+    std::string accessors;
+    std::string attributes = "\"POSITION\":0";
+    int view_index = 0;
+    int accessor_index = 0;
+    auto add_view_accessor =
+        [&](size_t offset, size_t length, int component_type, const char *type) {
+            if (!views.empty()) {
+                views += ',';
+                accessors += ',';
+            }
+            views += "{\"buffer\":0,\"byteOffset\":" + std::to_string(offset) +
+                     ",\"byteLength\":" + std::to_string(length) + "}";
+            accessors += "{\"bufferView\":" + std::to_string(view_index++) +
+                         ",\"componentType\":" + std::to_string(component_type) +
+                         ",\"count\":3,\"type\":\"" + type + "\"}";
+            return accessor_index++;
+        };
+    for (float value : positions)
+        append_bytes(buffer, value);
+    add_view_accessor(0u, sizeof(positions), 5126, "VEC3");
+    if (include_uv0) {
+        size_t offset = buffer.size();
+        for (float value : uv)
+            append_bytes(buffer, value);
+        attributes += ",\"TEXCOORD_0\":" +
+                      std::to_string(add_view_accessor(offset, sizeof(uv), 5126, "VEC2"));
+    }
+    if (include_uv1) {
+        size_t offset = buffer.size();
+        for (float value : uv)
+            append_bytes(buffer, value);
+        attributes += ",\"TEXCOORD_1\":" +
+                      std::to_string(add_view_accessor(offset, sizeof(uv), 5126, "VEC2"));
+    }
+    size_t index_offset = buffer.size();
+    for (uint16_t value : indices)
+        append_bytes(buffer, value);
+    int index_accessor = add_view_accessor(index_offset, sizeof(indices), 5123, "SCALAR");
+    auto material_json = [](int texcoord) {
+        if (texcoord == INT_MIN)
+            return std::string("{}");
+        return std::string("{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,") +
+               "\"texCoord\":" + std::to_string(texcoord) + "}}}";
+    };
+    std::string extension_prefix;
+    std::string primitive_extension;
+    std::string materials = material_json(base_texcoord);
+    if (variant_texcoord != INT_MIN) {
+        extension_prefix =
+            "\"extensionsUsed\":[\"KHR_materials_variants\"],"
+            "\"extensions\":{\"KHR_materials_variants\":{\"variants\":[{\"name\":\"alt\"}]}},";
+        primitive_extension =
+            ",\"extensions\":{\"KHR_materials_variants\":{\"mappings\":[{\"material\":1,"
+            "\"variants\":[0]}]}}";
+        materials += ',' + material_json(variant_texcoord);
+    }
+    std::string encoded = base64_encode(buffer.data(), buffer.size());
+    return "{\"asset\":{\"version\":\"2.0\"}," + extension_prefix +
+           "\"buffers\":[{\"uri\":\"data:application/octet-stream;base64," + encoded +
+           "\",\"byteLength\":" + std::to_string(buffer.size()) + "}],\"bufferViews\":[" + views +
+           "],\"accessors\":[" + accessors + "],\"textures\":[{}],\"materials\":[" + materials +
+           "],\"meshes\":[{\"primitives\":[{\"attributes\":{" + attributes +
+           "},\"indices\":" + std::to_string(index_accessor) + ",\"material\":0" +
+           primitive_extension + "}]}]}";
+}
+
+/// @brief Exercise UV0/UV1 success plus missing, unsupported, variant, and preload failures.
+static void test_gltf_validates_authored_texture_uv_streams() {
+    const char *path = "/tmp/zanna_gltf_texture_uv_validation.gltf";
+    EXPECT_TRUE(
+        write_text_file(path, build_texture_uv_requirement_fixture(0, INT_MIN, true, false)),
+        "UV0 requirement success fixture can be written");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(path)) != nullptr,
+                "GLTF.Load accepts an authored UV0 texture when TEXCOORD_0 decoded");
+
+    EXPECT_TRUE(
+        write_text_file(path, build_texture_uv_requirement_fixture(1, INT_MIN, false, true)),
+        "UV1 requirement success fixture can be written");
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(path)) != nullptr,
+                "GLTF.Load accepts an authored UV1 texture when TEXCOORD_1 decoded");
+
+    EXPECT_TRUE(
+        write_text_file(path, build_texture_uv_requirement_fixture(0, INT_MIN, false, false)),
+        "Missing UV0 fixture can be written");
+    rt_asset_error_clear();
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(path)) == nullptr,
+                "GLTF.Load rejects a texture whose TEXCOORD_0 stream is missing");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT &&
+                    std::strstr(rt_asset_error_get_message(), "missing TEXCOORD_0") != nullptr,
+                "Missing UV0 rejection records a precise corrupt-data diagnostic");
+
+    EXPECT_TRUE(
+        write_text_file(path, build_texture_uv_requirement_fixture(1, INT_MIN, true, false)),
+        "Missing UV1 fixture can be written");
+    rt_asset_error_clear();
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(path)) == nullptr,
+                "GLTF.Load rejects a texture whose TEXCOORD_1 stream is missing");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT &&
+                    std::strstr(rt_asset_error_get_message(), "missing TEXCOORD_1") != nullptr,
+                "Missing UV1 rejection records a precise corrupt-data diagnostic");
+
+    for (int unsupported : {-1, 2}) {
+        EXPECT_TRUE(
+            write_text_file(path,
+                            build_texture_uv_requirement_fixture(unsupported, INT_MIN, true, true)),
+            "Unsupported texture coordinate fixture can be written");
+        rt_asset_error_clear();
+        EXPECT_TRUE(rt_gltf_load(rt_const_cstr(path)) == nullptr,
+                    "GLTF.Load rejects an unrepresentable texture coordinate index");
+        EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_UNSUPPORTED &&
+                        std::strstr(rt_asset_error_get_message(), "unsupported TEXCOORD_") !=
+                            nullptr,
+                    "Unsupported UV rejection records a precise capability diagnostic");
+    }
+
+    EXPECT_TRUE(
+        write_text_file(path, build_texture_uv_requirement_fixture(INT_MIN, 1, true, false)),
+        "Variant UV mismatch fixture can be written");
+    rt_asset_error_clear();
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(path)) == nullptr,
+                "GLTF.Load validates variant materials before committing a primitive");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT &&
+                    std::strstr(rt_asset_error_get_message(), "material 1") != nullptr,
+                "Variant UV mismatch identifies the mapped material");
+
+    std::string missing_uv_json = build_texture_uv_requirement_fixture(0, INT_MIN, false, false);
+    uint8_t *owned = static_cast<uint8_t *>(std::malloc(missing_uv_json.size()));
+    EXPECT_TRUE(owned != nullptr, "Missing-UV preload root copy can be allocated");
+    if (owned) {
+        std::memcpy(owned, missing_uv_json.data(), missing_uv_json.size());
+        char error[160] = {0};
+        rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create_cstr(
+            path, owned, missing_uv_json.size(), 0, error, sizeof(error));
+        EXPECT_TRUE(bundle != nullptr,
+                    "Preload worker can stage a primitive before material commit");
+        if (bundle) {
+            rt_asset_error_clear();
+            EXPECT_TRUE(rt_gltf_load_preloaded_bundle(rt_const_cstr(path), bundle, 0) == nullptr,
+                        "Preloaded commit rejects the same missing UV0 stream");
+            EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT &&
+                            std::strstr(rt_asset_error_get_message(), "missing TEXCOORD_0") !=
+                                nullptr,
+                        "Preloaded UV rejection preserves the precise diagnostic");
+        }
+    }
+    std::remove(path);
 }
 
 static std::string build_variant_fixture_json() {
@@ -4549,8 +4761,8 @@ static std::vector<uint8_t> meshopt_test_encode_attributes(const uint8_t *elemen
                     size_t e = g * 16u + (size_t)j;
                     uint8_t cur = e < block ? elements[(done + e) * stride + k] : prev;
                     uint8_t delta = (uint8_t)(cur - prev);
-                    uint8_t zig = (delta & 0x80u) ? (uint8_t)~(uint8_t)(delta << 1)
-                                                  : (uint8_t)(delta << 1);
+                    uint8_t zig =
+                        (delta & 0x80u) ? (uint8_t)~(uint8_t)(delta << 1) : (uint8_t)(delta << 1);
                     out.push_back(zig);
                     if (e < block)
                         prev = cur;
@@ -4629,9 +4841,9 @@ static std::string meshopt_test_build_gltf(const std::vector<uint8_t> &pos_strea
            "{\"buffer\":1,\"byteOffset\":36,\"byteLength\":6,"
            "\"extensions\":{\"EXT_meshopt_compression\":{"
            "\"buffer\":0,\"byteOffset\":" +
-           std::to_string(pos_stream.size()) + ",\"byteLength\":" +
-           std::to_string(idx_stream.size()) + ",\"byteStride\":2,\"count\":3,\"mode\":\"" +
-           index_mode +
+           std::to_string(pos_stream.size()) +
+           ",\"byteLength\":" + std::to_string(idx_stream.size()) +
+           ",\"byteStride\":2,\"count\":3,\"mode\":\"" + index_mode +
            "\"}}}"
            "],"
            "\"accessors\":["
@@ -4669,22 +4881,21 @@ static void test_gltf_meshopt_compressed_views_roundtrip() {
     const uint32_t indices[3] = {0, 1, 2};
     std::vector<uint8_t> pos_bytes(sizeof(positions));
     std::memcpy(pos_bytes.data(), positions, sizeof(positions));
-    std::vector<uint8_t> pos_stream =
-        meshopt_test_encode_attributes(pos_bytes.data(), 3, 12);
+    std::vector<uint8_t> pos_stream = meshopt_test_encode_attributes(pos_bytes.data(), 3, 12);
     std::vector<uint8_t> tri_stream = meshopt_test_encode_triangles(indices, 3);
     std::vector<uint8_t> seq_stream = meshopt_test_encode_indices(indices, 3);
 
     const char *gltf_path = "/tmp/zanna_gltf_meshopt_triangles.gltf";
-    EXPECT_TRUE(write_text_file(gltf_path, meshopt_test_build_gltf(pos_stream, tri_stream,
-                                                                   "TRIANGLES")),
-                "meshopt TRIANGLES fixture can be created");
+    EXPECT_TRUE(
+        write_text_file(gltf_path, meshopt_test_build_gltf(pos_stream, tri_stream, "TRIANGLES")),
+        "meshopt TRIANGLES fixture can be created");
     meshopt_test_check_triangle_asset(rt_gltf_load(rt_const_cstr(gltf_path)),
                                       "meshopt ATTRIBUTES+TRIANGLES");
 
     const char *seq_path = "/tmp/zanna_gltf_meshopt_indices.gltf";
-    EXPECT_TRUE(write_text_file(seq_path, meshopt_test_build_gltf(pos_stream, seq_stream,
-                                                                  "INDICES")),
-                "meshopt INDICES fixture can be created");
+    EXPECT_TRUE(
+        write_text_file(seq_path, meshopt_test_build_gltf(pos_stream, seq_stream, "INDICES")),
+        "meshopt INDICES fixture can be created");
     meshopt_test_check_triangle_asset(rt_gltf_load(rt_const_cstr(seq_path)),
                                       "meshopt ATTRIBUTES+INDICES");
 
@@ -4692,8 +4903,8 @@ static void test_gltf_meshopt_compressed_views_roundtrip() {
     std::vector<uint8_t> corrupt_stream = pos_stream;
     corrupt_stream[0] = 0x00;
     const char *corrupt_path = "/tmp/zanna_gltf_meshopt_corrupt.gltf";
-    EXPECT_TRUE(write_text_file(corrupt_path, meshopt_test_build_gltf(corrupt_stream, tri_stream,
-                                                                      "TRIANGLES")),
+    EXPECT_TRUE(write_text_file(corrupt_path,
+                                meshopt_test_build_gltf(corrupt_stream, tri_stream, "TRIANGLES")),
                 "meshopt corrupt fixture can be created");
     void *corrupt_asset = rt_gltf_load(rt_const_cstr(corrupt_path));
     EXPECT_TRUE(corrupt_asset == nullptr, "Corrupt meshopt stream fails the load");
@@ -4707,9 +4918,18 @@ static void test_gltf_meshopt_octahedral_filter() {
     /* Octahedral texels (x, y, one=127, passthrough): (127,0) -> +X, (0,0) -> +Z,
      * (-127,0) after hemisphere fold -> -X... use simple axis cases. Normals bind as
      * normalized BYTE VEC3 over a 4-byte-stride view (KHR_mesh_quantization). */
-    const int8_t oct[12] = {127, 0, 127, 0, /* +X */
-                            0, 127, 127, 0, /* +Y */
-                            0, 0, 127, 0};  /* +Z */
+    const int8_t oct[12] = {127,
+                            0,
+                            127,
+                            0, /* +X */
+                            0,
+                            127,
+                            127,
+                            0, /* +Y */
+                            0,
+                            0,
+                            127,
+                            0}; /* +Z */
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
     const uint32_t indices[3] = {0, 1, 2};
     std::vector<uint8_t> pos_bytes(sizeof(positions));
@@ -4760,8 +4980,7 @@ static void test_gltf_meshopt_octahedral_filter() {
         "\"indices\":2}]}]"
         "}";
     const char *gltf_path = "/tmp/zanna_gltf_meshopt_octahedral.gltf";
-    EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
-                "meshopt OCTAHEDRAL fixture can be created");
+    EXPECT_TRUE(write_text_file(gltf_path, gltf_json), "meshopt OCTAHEDRAL fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
     EXPECT_TRUE(asset != nullptr, "meshopt OCTAHEDRAL asset loads");
     if (!asset)
@@ -4832,10 +5051,8 @@ static void test_gltf_quantized_attributes_roundtrip() {
         return;
     EXPECT_NEAR(mesh->vertices[1].pos[0], 2.0, 0.0001, "SHORT positions convert to plain floats");
     EXPECT_NEAR(mesh->vertices[2].pos[1], 3.0, 0.0001, "SHORT positions keep integer values");
-    EXPECT_NEAR(mesh->vertices[0].normal[2],
-                1.0,
-                0.01,
-                "Normalized BYTE normals decode to unit floats");
+    EXPECT_NEAR(
+        mesh->vertices[0].normal[2], 1.0, 0.01, "Normalized BYTE normals decode to unit floats");
 }
 
 static void test_gltf_meshopt_exponential_filter() {
@@ -5219,8 +5436,7 @@ static void test_gltf_rejects_skins_over_runtime_bone_limit() {
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json),
                 "Oversized-skin glTF fixture can be created");
     void *asset = rt_gltf_load(rt_const_cstr(gltf_path));
-    EXPECT_TRUE(asset == nullptr,
-                "GLTF.Load rejects skins above the 1024-bone skeleton limit");
+    EXPECT_TRUE(asset == nullptr, "GLTF.Load rejects skins above the 1024-bone skeleton limit");
 }
 
 static void test_gltf_rejects_unsupported_required_extensions() {
@@ -5429,6 +5645,10 @@ static void test_gltf_preserves_primary_texture_sampler_state() {
                 "GLTF.Load preserves sampler wrapT=MIRRORED_REPEAT");
     EXPECT_TRUE(mat->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
                 "GLTF.Load preserves nearest sampler filtering");
+    EXPECT_TRUE(mat->texture_min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST &&
+                    mat->texture_mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST &&
+                    mat->texture_mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE,
+                "GLTF.Load preserves non-mipmapped nearest min/mag axes independently");
     EXPECT_TRUE(mat->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
                     RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE,
                 "GLTF.Load mirrors base slot sampler wrapS");
@@ -5438,6 +5658,96 @@ static void test_gltf_preserves_primary_texture_sampler_state() {
     EXPECT_TRUE(mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
                     RT_MATERIAL3D_TEXTURE_FILTER_NEAREST,
                 "GLTF.Load mirrors base slot sampler filtering");
+}
+
+/// @brief Verify every glTF minification enum and both legal magnification enums independently.
+/// @details The fixture creates one material per 6-by-2 sampler tuple plus one sampler with
+///          omitted filters. It proves that the importer retains texel minification,
+///          magnification, and mip selection as three distinct axes rather than collapsing the
+///          glTF `minFilter` enum into one lossy nearest/linear value.
+static void test_gltf_maps_every_sampler_filter_enum_to_independent_axes() {
+    struct MinCase {
+        int gltf_value;
+        int32_t expected_min;
+        int32_t expected_mip;
+    };
+
+    static const MinCase min_cases[] = {
+        {9728, RT_MATERIAL3D_TEXTURE_FILTER_NEAREST, RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE},
+        {9729, RT_MATERIAL3D_TEXTURE_FILTER_LINEAR, RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE},
+        {9984, RT_MATERIAL3D_TEXTURE_FILTER_NEAREST, RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST},
+        {9985, RT_MATERIAL3D_TEXTURE_FILTER_LINEAR, RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST},
+        {9986, RT_MATERIAL3D_TEXTURE_FILTER_NEAREST, RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR},
+        {9987, RT_MATERIAL3D_TEXTURE_FILTER_LINEAR, RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR},
+    };
+    static const int mag_values[] = {9728, 9729};
+    const char *path = "/tmp/zanna_gltf_sampler_axis_table.gltf";
+    std::string samplers;
+    std::string textures;
+    std::string materials;
+    size_t case_count = 0;
+    for (const MinCase &min_case : min_cases) {
+        for (int mag_value : mag_values) {
+            if (!samplers.empty()) {
+                samplers += ',';
+                textures += ',';
+                materials += ',';
+            }
+            samplers += "{\"minFilter\":" + std::to_string(min_case.gltf_value) +
+                        ",\"magFilter\":" + std::to_string(mag_value) + "}";
+            textures += "{\"sampler\":" + std::to_string(case_count) + "}";
+            materials += "{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":" +
+                         std::to_string(case_count) + "}}}";
+            case_count++;
+        }
+    }
+    samplers += ",{}";
+    textures += ",{\"sampler\":" + std::to_string(case_count) + "}";
+    materials += ",{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":" +
+                 std::to_string(case_count) + "}}}";
+    std::string json = "{\"asset\":{\"version\":\"2.0\"},\"samplers\":[" + samplers +
+                       "],\"textures\":[" + textures + "],\"materials\":[" + materials + "]}";
+    EXPECT_TRUE(write_text_file(path, json), "Sampler-axis table fixture can be created");
+    void *asset = rt_gltf_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "GLTF.Load accepts every standard sampler filter enum");
+    if (!asset)
+        return;
+
+    size_t material_index = 0;
+    for (const MinCase &min_case : min_cases) {
+        for (int mag_value : mag_values) {
+            auto *mat = static_cast<rt_material3d *>(
+                rt_gltf_get_material(asset, static_cast<int64_t>(material_index)));
+            std::string prefix = "sampler tuple " + std::to_string(material_index);
+            EXPECT_TRUE(mat != nullptr, (prefix + " imports its material").c_str());
+            if (mat) {
+                EXPECT_TRUE(mat->texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                                min_case.expected_min,
+                            (prefix + " preserves minification").c_str());
+                EXPECT_TRUE(mat->texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                                (mag_value == 9728 ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                                                   : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR),
+                            (prefix + " preserves magnification").c_str());
+                EXPECT_TRUE(mat->texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                                min_case.expected_mip,
+                            (prefix + " preserves mip selection").c_str());
+            }
+            material_index++;
+        }
+    }
+    auto *defaults = static_cast<rt_material3d *>(
+        rt_gltf_get_material(asset, static_cast<int64_t>(material_index)));
+    EXPECT_TRUE(defaults != nullptr, "Sampler with omitted filters imports its material");
+    if (defaults) {
+        EXPECT_TRUE(defaults->texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                            RT_MATERIAL3D_TEXTURE_FILTER_LINEAR &&
+                        defaults->texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                            RT_MATERIAL3D_TEXTURE_FILTER_LINEAR &&
+                        defaults->texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] ==
+                            RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR,
+                    "Omitted glTF filters retain the specified linear trilinear default");
+    }
+    std::remove(path);
 }
 
 static void test_gltf_preserves_independent_texture_slot_metadata() {
@@ -5502,6 +5812,271 @@ static void test_gltf_rejects_invalid_scene_graph_links() {
                 "GLTF.Load rejects cyclic node graphs instead of returning an empty scene");
 }
 
+/// @brief Patch one little-endian 32-bit field already present in a byte vector.
+/// @param bytes Destination byte vector.
+/// @param offset Byte offset of the four-byte field.
+/// @param value Value to encode.
+static void patch_u32_le(std::vector<uint8_t> &bytes, size_t offset, uint32_t value) {
+    if (offset > bytes.size() || bytes.size() - offset < 4u)
+        return;
+    bytes[offset + 0u] = static_cast<uint8_t>(value & 0xFFu);
+    bytes[offset + 1u] = static_cast<uint8_t>((value >> 8u) & 0xFFu);
+    bytes[offset + 2u] = static_cast<uint8_t>((value >> 16u) & 0xFFu);
+    bytes[offset + 3u] = static_cast<uint8_t>((value >> 24u) & 0xFFu);
+}
+
+/// @brief Begin a GLB 2.0 fixture whose declared length is patched after chunks are appended.
+/// @return Twelve-byte GLB header with the standard magic/version and a provisional length.
+static std::vector<uint8_t> begin_glb_fixture() {
+    std::vector<uint8_t> bytes{'g', 'l', 'T', 'F'};
+    append_u32_le(bytes, 2u);
+    append_u32_le(bytes, 12u);
+    return bytes;
+}
+
+/// @brief Append one already-aligned GLB chunk to a test fixture.
+/// @param bytes GLB fixture under construction.
+/// @param type Raw GLB chunk type.
+/// @param payload Exact chunk payload; callers deliberately control malformed alignment.
+static void append_glb_test_chunk(std::vector<uint8_t> &bytes,
+                                  uint32_t type,
+                                  const std::vector<uint8_t> &payload) {
+    append_u32_le(bytes, static_cast<uint32_t>(payload.size()));
+    append_u32_le(bytes, type);
+    bytes.insert(bytes.end(), payload.begin(), payload.end());
+}
+
+/// @brief Set a fixture's GLB declared length to its current physical byte length.
+/// @param bytes GLB fixture containing at least the standard 12-byte header.
+static void finalize_glb_fixture(std::vector<uint8_t> &bytes) {
+    patch_u32_le(bytes, 8u, static_cast<uint32_t>(bytes.size()));
+}
+
+/// @brief Require synchronous and preload GLB paths to reject the same malformed root bytes.
+/// @details The preload call takes ownership of a malloc copy, so this also exercises its complete
+/// failure cleanup. Both paths must record `RT_ASSET_ERROR_CORRUPT` and publish no bundle/asset.
+/// @param bytes Malformed GLB bytes.
+/// @param case_index Stable index used to produce a unique temporary filename.
+static void expect_gltf_root_rejected_by_both_paths(const std::vector<uint8_t> &bytes,
+                                                    int case_index) {
+    std::string path = "/tmp/zanna_gltf_malformed_shared_" + std::to_string(case_index) + ".glb";
+    uint8_t *owned = static_cast<uint8_t *>(std::malloc(bytes.size()));
+    EXPECT_TRUE(owned != nullptr, "Malformed GLB preload copy can be allocated");
+    if (!owned)
+        return;
+    std::memcpy(owned, bytes.data(), bytes.size());
+    char error[160] = {0};
+    rt_asset_error_clear();
+    rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create_cstr(
+        path.c_str(), owned, bytes.size(), 0, error, sizeof(error));
+    EXPECT_TRUE(bundle == nullptr, "Malformed GLB preload publishes no partial bundle");
+    EXPECT_TRUE(error[0] != '\0', "Malformed GLB preload records a stable staging error");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                "Malformed GLB preload records invalid-data status");
+    if (bundle)
+        rt_gltf_preload_bundle_free(bundle);
+
+    EXPECT_TRUE(write_binary_file(path.c_str(), bytes),
+                "Malformed GLB sync fixture can be written");
+    rt_asset_error_clear();
+    void *asset = rt_gltf_load(rt_const_cstr(path.c_str()));
+    EXPECT_TRUE(asset == nullptr, "Malformed GLB synchronous load publishes no partial asset");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                "Malformed GLB synchronous load records the same invalid-data status");
+    std::remove(path.c_str());
+}
+
+/// @brief Exercise the shared bounded GLB iterator against every rejected layout class.
+/// @details Covers a missing/late JSON chunk, duplicate JSON/BIN chunks, an unknown chunk,
+/// truncated payload bounds, and malformed trailing bytes through both public load paths.
+static void test_gltf_shared_glb_chunk_validation_is_atomic() {
+    std::string json_text = "{\"asset\":{\"version\":\"2.0\"}}";
+    while ((json_text.size() & 3u) != 0u)
+        json_text.push_back(' ');
+    std::vector<uint8_t> json(json_text.begin(), json_text.end());
+    std::vector<uint8_t> empty;
+    std::vector<std::vector<uint8_t>> malformed;
+
+    malformed.push_back(begin_glb_fixture());
+    append_glb_test_chunk(malformed.back(), UINT32_C(0x004E4942), empty);
+    finalize_glb_fixture(malformed.back());
+
+    malformed.push_back(begin_glb_fixture());
+    append_glb_test_chunk(malformed.back(), UINT32_C(0x4E4F534A), json);
+    append_glb_test_chunk(malformed.back(), UINT32_C(0x4E4F534A), json);
+    finalize_glb_fixture(malformed.back());
+
+    malformed.push_back(begin_glb_fixture());
+    append_glb_test_chunk(malformed.back(), UINT32_C(0x4E4F534A), json);
+    append_glb_test_chunk(malformed.back(), UINT32_C(0x12345678), empty);
+    finalize_glb_fixture(malformed.back());
+
+    malformed.push_back(begin_glb_fixture());
+    append_glb_test_chunk(malformed.back(), UINT32_C(0x4E4F534A), json);
+    append_glb_test_chunk(malformed.back(), UINT32_C(0x004E4942), empty);
+    append_glb_test_chunk(malformed.back(), UINT32_C(0x004E4942), empty);
+    finalize_glb_fixture(malformed.back());
+
+    malformed.push_back(begin_glb_fixture());
+    append_u32_le(malformed.back(), static_cast<uint32_t>(json.size() + 4u));
+    append_u32_le(malformed.back(), UINT32_C(0x4E4F534A));
+    malformed.back().insert(malformed.back().end(), json.begin(), json.end());
+    finalize_glb_fixture(malformed.back());
+
+    malformed.push_back(begin_glb_fixture());
+    append_glb_test_chunk(malformed.back(), UINT32_C(0x4E4F534A), json);
+    malformed.back().push_back(0xA5u);
+    finalize_glb_fixture(malformed.back());
+
+    for (size_t i = 0; i < malformed.size(); ++i)
+        expect_gltf_root_rejected_by_both_paths(malformed[i], static_cast<int>(i));
+}
+
+/// @brief Verify exact-token parsing for every integral and boolean-like JSON helper.
+/// @details Fractional, exponent, sign-only, suffix, leading-zero, and overflow spellings all use
+/// the caller's fallback instead of being accepted as an integer prefix.
+static void test_gltf_json_integral_tokens_are_exact() {
+    struct IntegerCase {
+        const char *token;
+        int expected;
+    };
+
+    const IntegerCase cases[] = {{"0", 0},
+                                 {"-1", -1},
+                                 {"2147483647", INT_MAX},
+                                 {"-2147483648", INT_MIN},
+                                 {"1.0", 73},
+                                 {"1e2", 73},
+                                 {"-", 73},
+                                 {"1x", 73},
+                                 {"01", 73},
+                                 {"2147483648", 73},
+                                 {"-2147483649", 73}};
+    for (const IntegerCase &test_case : cases) {
+        std::string json = std::string("{\"v\":") + test_case.token + "}";
+        EXPECT_TRUE(gltf_json_object_get_int(json.data(), json.size(), 0, json.size(), "v", 73) ==
+                        test_case.expected,
+                    "glTF integer fields consume exactly one bounded JSON token");
+    }
+
+    const char *size_invalid[] = {"-1", "1.0", "1e2", "+1", "1x", "01", "184467440737095516160"};
+    for (const char *token : size_invalid) {
+        std::string json = std::string("{\"v\":") + token + "}";
+        EXPECT_TRUE(gltf_json_object_get_size(
+                        json.data(), json.size(), 0, json.size(), "v", SIZE_MAX) == SIZE_MAX,
+                    "glTF size fields reject non-integral or overflowing tokens");
+    }
+    const std::string fractional_bool = "{\"v\":1.5}";
+    EXPECT_TRUE(
+        gltf_json_object_get_boolish(
+            fractional_bool.data(), fractional_bool.size(), 0, fractional_bool.size(), "v", 0) == 0,
+        "Boolean-like fields do not interpret an integer prefix from a fractional token");
+
+    const char *invalid_documents[] = {
+        "{\"scene\":1e0}",
+        "{\"accessors\":[{\"count\":1.0}]}",
+        "{\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0e0}}]}]}",
+        "{\"scenes\":[{\"nodes\":[0e0]}]}",
+        "{\"accessors\":[{\"normalized\":1e0}]}",
+        "{\"extensions\":{\"KHR_texture_transform\":{\"texCoord\":1e0}}}"};
+    for (const char *json : invalid_documents) {
+        EXPECT_TRUE(!gltf_json_validate_gltf_integral_tokens(json, std::strlen(json)),
+                    "glTF schema integral positions reject decimal/exponent lexical forms");
+    }
+    const char *opaque_documents[] = {"{\"extras\":{\"count\":1e2}}",
+                                      "{\"extensions\":{\"VENDOR_optional\":{\"count\":1e2}}}"};
+    for (const char *json : opaque_documents) {
+        EXPECT_TRUE(gltf_json_validate_gltf_integral_tokens(json, std::strlen(json)),
+                    "Application extras and unknown optional extensions remain opaque");
+    }
+
+    const char *path = "/tmp/zanna_gltf_exponent_integral_field.gltf";
+    const std::string exponent_scene =
+        "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[],\"scene\":0e0}";
+    EXPECT_TRUE(write_text_file(path, exponent_scene),
+                "Exponent-form integral root fixture can be written");
+    rt_asset_error_clear();
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(path)) == nullptr,
+                "Synchronous GLTF.Load rejects exponent-form integral fields before the DOM");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                "Synchronous exponent rejection records corrupt input");
+    uint8_t *owned = static_cast<uint8_t *>(std::malloc(exponent_scene.size()));
+    EXPECT_TRUE(owned != nullptr, "Exponent-form preload root copy can be allocated");
+    if (owned) {
+        std::memcpy(owned, exponent_scene.data(), exponent_scene.size());
+        char error[128] = {0};
+        rt_asset_error_clear();
+        rt_gltf_preload_bundle *bundle = rt_gltf_preload_bundle_create_cstr(
+            path, owned, exponent_scene.size(), 0, error, sizeof(error));
+        EXPECT_TRUE(bundle == nullptr,
+                    "Preload rejects exponent-form integral fields before staging dependencies");
+        EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                    "Preload exponent rejection records corrupt input");
+        if (bundle)
+            rt_gltf_preload_bundle_free(bundle);
+    }
+    std::remove(path);
+}
+
+/// @brief Verify malformed array separators invalidate the full array before any prefix returns.
+/// @details Missing/duplicate commas, trailing commas, trailing junk, and malformed nested values
+/// all make item zero unavailable; a valid nested array still returns its requested object span.
+static void test_gltf_json_array_iteration_rejects_malformed_suffixes() {
+    const char *invalid[] = {"[1 2]", "[1,,2]", "[1,]", "[1,2 junk]", "[1,{\"x\":1,}]"};
+    for (const char *json : invalid) {
+        size_t start = SIZE_MAX;
+        size_t end = SIZE_MAX;
+        size_t len = std::strlen(json);
+        EXPECT_TRUE(!gltf_json_array_item_range(json, len, 0, len, 0, &start, &end),
+                    "Malformed array suffix invalidates every prefix element");
+        EXPECT_TRUE(!gltf_json_validate_document(json, len),
+                    "Malformed array separators invalidate the complete JSON document");
+    }
+    const char *valid = "[1,{\"x\":[2,3]},4]";
+    size_t start = SIZE_MAX;
+    size_t end = SIZE_MAX;
+    EXPECT_TRUE(gltf_json_array_item_range(
+                    valid, std::strlen(valid), 0, std::strlen(valid), 1, &start, &end),
+                "Strict array iteration preserves valid nested values");
+    EXPECT_TRUE(start < end && valid[start] == '{' && valid[end - 1u] == '}',
+                "Strict array iteration returns the exact requested nested span");
+}
+
+/// @brief Ensure plain `.gltf` bytes containing a literal NUL cannot parse as a valid prefix.
+/// @details Exercises both synchronous and preload entry points with a valid object before the NUL
+/// and attacker-controlled trailing bytes after it.
+static void test_gltf_embedded_nul_is_not_prefix_truncated() {
+    const char *path = "/tmp/zanna_gltf_embedded_nul.gltf";
+    const char prefix[] = "{\"asset\":{\"version\":\"2.0\"}}";
+    const char suffix[] = "{\"asset\":{\"version\":\"2.0\"}}";
+    std::vector<uint8_t> bytes(prefix, prefix + std::strlen(prefix));
+    bytes.push_back(0u);
+    bytes.insert(bytes.end(), suffix, suffix + std::strlen(suffix));
+    EXPECT_TRUE(write_binary_file(path, bytes), "Embedded-NUL glTF fixture can be written");
+    rt_asset_error_clear();
+    EXPECT_TRUE(rt_gltf_load(rt_const_cstr(path)) == nullptr,
+                "Synchronous glTF load rejects a valid JSON prefix before embedded NUL");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                "Embedded-NUL synchronous rejection records invalid data");
+
+    uint8_t *owned = static_cast<uint8_t *>(std::malloc(bytes.size()));
+    EXPECT_TRUE(owned != nullptr, "Embedded-NUL preload copy can be allocated");
+    if (owned) {
+        std::memcpy(owned, bytes.data(), bytes.size());
+        char error[128] = {0};
+        rt_asset_error_clear();
+        rt_gltf_preload_bundle *bundle =
+            rt_gltf_preload_bundle_create_cstr(path, owned, bytes.size(), 0, error, sizeof(error));
+        EXPECT_TRUE(bundle == nullptr,
+                    "Preload glTF path rejects a valid JSON prefix before embedded NUL");
+        EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                    "Embedded-NUL preload rejection records invalid data");
+        if (bundle)
+            rt_gltf_preload_bundle_free(bundle);
+    }
+    std::remove(path);
+}
+
 int main() {
     test_gltf_accessors_reject_wrong_handles();
     test_gltf_loads_data_uri_buffers_and_embedded_textures();
@@ -5563,7 +6138,7 @@ int main() {
     test_gltf_ignores_wrong_typed_optional_string_fields();
     test_gltf_assigns_default_material_to_materialless_primitives();
     test_gltf_uses_texture_texcoord_and_transform();
-    test_gltf_unsupported_texture_texcoord_falls_back_to_primary();
+    test_gltf_validates_authored_texture_uv_streams();
     test_gltf_imports_material_variants();
     test_gltf_meshopt_compressed_views_roundtrip();
     test_gltf_meshopt_exponential_filter();
@@ -5584,8 +6159,13 @@ int main() {
     test_gltf_accepts_supported_required_extensions_with_parser_coverage();
     test_gltf_imports_required_punctual_lights();
     test_gltf_preserves_primary_texture_sampler_state();
+    test_gltf_maps_every_sampler_filter_enum_to_independent_axes();
     test_gltf_preserves_independent_texture_slot_metadata();
     test_gltf_rejects_invalid_scene_graph_links();
+    test_gltf_shared_glb_chunk_validation_is_atomic();
+    test_gltf_json_integral_tokens_are_exact();
+    test_gltf_json_array_iteration_rejects_malformed_suffixes();
+    test_gltf_embedded_nul_is_not_prefix_truncated();
     std::printf("GLTF tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;
 }

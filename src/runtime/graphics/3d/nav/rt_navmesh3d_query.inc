@@ -1,7 +1,30 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/nav/rt_navmesh3d_query.inc  (#included from rt_navmesh3d.c; not a
-// standalone translation unit) Purpose: NavMesh3D A* pathfinding and point/poly queries
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/nav/rt_navmesh3d_query.inc
+// Purpose: NavMesh3D A* pathfinding, point/polygon queries, transactional
+//   obstacle edits, and test-only query instrumentation. This implementation
+//   fragment is included by rt_navmesh3d.c and is not a standalone translation
+//   unit.
+//
+// Key invariants:
+//   - Public point inputs are finite and bounded before float conversion.
+//   - Failed topology rebuilds preserve the previously published query state.
+//   - Path queries never return partially initialized point arrays.
+//   - In-flight A* queries exclusively own one slot from a four-workspace pool.
+//   - Indexed nearest-point search stops only after a conservative geometric
+//     bound proves every unvisited cell unable to improve the result.
+//
+// Ownership/Lifetime:
+//   - Returned path objects are runtime-managed.
+//   - Flat point arrays returned by copy helpers are caller-owned.
+//
+// Links: rt_navmesh3d.c, rt_navmesh3d_build.inc, rt_navmesh3d_bake.inc
+//
 //===----------------------------------------------------------------------===//
 
 /*==========================================================================
@@ -10,20 +33,38 @@
 
 typedef navmesh3d_heap_entry_t heap_entry_t;
 
-/// @brief Serialize use of one navmesh's reusable A* workspace.
-static void navmesh3d_path_workspace_acquire(rt_navmesh3d *nm) {
-    int expected;
+/// @brief Claim one independently mutable A* workspace from a navmesh's bounded pool.
+/// @details Every slot has its own arrays and ownership flag. The caller yields only when all
+///   slots are occupied, allowing the common multi-worker case to run searches concurrently.
+/// @param nm Navigation mesh whose workspace pool is queried.
+/// @return An exclusively owned slot, or NULL for a null navmesh.
+static navmesh3d_path_workspace_t *navmesh3d_path_workspace_acquire(rt_navmesh3d *nm) {
     int spins = 0;
     if (!nm)
-        return;
+        return NULL;
     for (;;) {
-        expected = 0;
-        if (rt_atomic_compare_exchange_i32(
-                &nm->path_workspace_lock, &expected, 1, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
-            return;
-        /* The whole A* run holds this lock, so a concurrent multi-agent query on
-         * the same navmesh would otherwise burn a core spinning. Brief spin, then
-         * yield the timeslice to the thread that holds the workspace. */
+        for (int i = 0; i < NAVMESH3D_PATH_WORKSPACE_COUNT; i++) {
+            int expected = 0;
+            if (rt_atomic_compare_exchange_i32(&nm->path_workspaces[i].in_use,
+                                               &expected,
+                                               1,
+                                               __ATOMIC_ACQ_REL,
+                                               __ATOMIC_ACQUIRE)) {
+                int active =
+                    rt_atomic_fetch_add_i32(&nm->path_active_queries, 1, __ATOMIC_ACQ_REL) + 1;
+                int peak = rt_atomic_load_i32(&nm->path_peak_active_queries, __ATOMIC_ACQUIRE);
+                while (active > peak &&
+                       !rt_atomic_compare_exchange_i32(&nm->path_peak_active_queries,
+                                                       &peak,
+                                                       active,
+                                                       __ATOMIC_ACQ_REL,
+                                                       __ATOMIC_ACQUIRE)) {
+                }
+                return &nm->path_workspaces[i];
+            }
+        }
+        /* A bounded pool deliberately applies back-pressure after four overlapping searches.
+         * Briefly spin to catch short queries, then yield to one of the owners. */
         if (++spins >= 64) {
             rt_thread_yield();
             spins = 0;
@@ -31,19 +72,24 @@ static void navmesh3d_path_workspace_acquire(rt_navmesh3d *nm) {
     }
 }
 
-/// @brief Publish one navmesh's reusable A* workspace for the next query.
-static void navmesh3d_path_workspace_release(rt_navmesh3d *nm) {
-    if (nm)
-        rt_atomic_store_i32(&nm->path_workspace_lock, 0, __ATOMIC_RELEASE);
+/// @brief Return one exclusively owned A* workspace to its navmesh pool.
+/// @param nm Navigation mesh that owns @p workspace.
+/// @param workspace Slot returned by `navmesh3d_path_workspace_acquire`.
+static void navmesh3d_path_workspace_release(rt_navmesh3d *nm,
+                                             navmesh3d_path_workspace_t *workspace) {
+    if (!nm || !workspace)
+        return;
+    rt_atomic_fetch_sub_i32(&nm->path_active_queries, 1, __ATOMIC_ACQ_REL);
+    rt_atomic_store_i32(&workspace->in_use, 0, __ATOMIC_RELEASE);
 }
 
 /// @brief Grow reusable A* arrays without discarding the previous workspace on allocation failure.
-static int navmesh3d_reserve_path_workspace(rt_navmesh3d *nm,
+static int navmesh3d_reserve_path_workspace(navmesh3d_path_workspace_t *workspace,
                                             int32_t triangle_count,
                                             int32_t heap_capacity) {
-    if (!nm || triangle_count <= 0 || heap_capacity <= 0)
+    if (!workspace || triangle_count <= 0 || heap_capacity <= 0)
         return 0;
-    if (triangle_count > nm->path_triangle_capacity) {
+    if (triangle_count > workspace->triangle_capacity) {
         float *g_cost = (float *)malloc((size_t)triangle_count * sizeof(*g_cost));
         int32_t *parent = (int32_t *)malloc((size_t)triangle_count * sizeof(*parent));
         int8_t *closed = (int8_t *)malloc((size_t)triangle_count * sizeof(*closed));
@@ -53,21 +99,21 @@ static int navmesh3d_reserve_path_workspace(rt_navmesh3d *nm,
             free(closed);
             return 0;
         }
-        free(nm->path_g_cost);
-        free(nm->path_parent);
-        free(nm->path_closed);
-        nm->path_g_cost = g_cost;
-        nm->path_parent = parent;
-        nm->path_closed = closed;
-        nm->path_triangle_capacity = triangle_count;
+        free(workspace->g_cost);
+        free(workspace->parent);
+        free(workspace->closed);
+        workspace->g_cost = g_cost;
+        workspace->parent = parent;
+        workspace->closed = closed;
+        workspace->triangle_capacity = triangle_count;
     }
-    if (heap_capacity > nm->path_heap_capacity) {
+    if (heap_capacity > workspace->heap_capacity) {
         heap_entry_t *heap = (heap_entry_t *)malloc((size_t)heap_capacity * sizeof(*heap));
         if (!heap)
             return 0;
-        free(nm->path_heap);
-        nm->path_heap = heap;
-        nm->path_heap_capacity = heap_capacity;
+        free(workspace->heap);
+        workspace->heap = heap;
+        workspace->heap_capacity = heap_capacity;
     }
     return 1;
 }
@@ -79,6 +125,29 @@ static void navmesh3d_store_last_path_cost(rt_navmesh3d *nm, double value) {
     if (!isfinite(value) || value < 0.0)
         value = 0.0;
     rt_atomic_store_f64(&nm->last_path_cost, &value, __ATOMIC_RELEASE);
+}
+
+/// @brief Reset the observed peak number of overlapping A* queries for one navmesh.
+/// @details This test-only instrumentation resets the peak to the number of searches currently
+///   holding workspace slots, so a caller should normally invoke it while no query is active. It
+///   does not alter path results, workspace ownership, or scripting-visible state.
+/// @param obj NavMesh3D handle whose concurrency watermark is reset.
+void rt_navmesh3d_test_reset_path_peak_concurrency(void *obj) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    if (!nm)
+        return;
+    int active = rt_atomic_load_i32(&nm->path_active_queries, __ATOMIC_ACQUIRE);
+    rt_atomic_store_i32(&nm->path_peak_active_queries, active, __ATOMIC_RELEASE);
+}
+
+/// @brief Read the peak number of A* searches that simultaneously owned independent workspaces.
+/// @details The value is an atomic test-only watermark used to distinguish true overlap from a
+///   merely thread-safe but fully serialized implementation. It is not part of the scripting API.
+/// @param obj NavMesh3D handle to inspect.
+/// @return Peak concurrent query count, or zero for an invalid handle.
+int64_t rt_navmesh3d_test_get_path_peak_concurrency(void *obj) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    return nm ? (int64_t)rt_atomic_load_i32(&nm->path_peak_active_queries, __ATOMIC_ACQUIRE) : 0;
 }
 
 /// @brief Push a `(triangle, f-score)` entry onto the A* min-heap and sift up. Comparison
@@ -681,15 +750,15 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
         (size_t)tc > SIZE_MAX / sizeof(int8_t) ||
         (size_t)heap_cap > SIZE_MAX / sizeof(heap_entry_t))
         return 0;
-    navmesh3d_path_workspace_acquire(nm);
-    if (!navmesh3d_reserve_path_workspace(nm, tc, heap_cap)) {
-        navmesh3d_path_workspace_release(nm);
+    navmesh3d_path_workspace_t *workspace = navmesh3d_path_workspace_acquire(nm);
+    if (!workspace || !navmesh3d_reserve_path_workspace(workspace, tc, heap_cap)) {
+        navmesh3d_path_workspace_release(nm, workspace);
         return 0;
     }
-    float *g_cost = nm->path_g_cost;
-    int32_t *parent = nm->path_parent;
-    int8_t *closed = nm->path_closed;
-    heap_entry_t *heap = nm->path_heap;
+    float *g_cost = workspace->g_cost;
+    int32_t *parent = workspace->parent;
+    int8_t *closed = workspace->closed;
+    heap_entry_t *heap = workspace->heap;
     memset(closed, 0, (size_t)tc * sizeof(*closed));
     memset(parent, -1, (size_t)tc * sizeof(int32_t));
     for (int32_t i = 0; i < tc; i++)
@@ -701,7 +770,7 @@ int64_t rt_navmesh3d_copy_path_points(void *obj,
             nm, parent, goal, fx, fy, fz, fdx, fdy, fdz, tdx, tdy, tdz, &point_count);
     }
 
-    navmesh3d_path_workspace_release(nm);
+    navmesh3d_path_workspace_release(nm, workspace);
     if (out_points_xyz)
         *out_points_xyz = points;
     else
@@ -749,6 +818,250 @@ void *rt_navmesh3d_find_path_option(void *obj, void *from_v, void *to_v) {
     return option;
 }
 
+/// @brief Mutable nearest-surface result accumulated by indexed SamplePosition queries.
+typedef struct {
+    float query_x;
+    float query_y;
+    float query_z;
+    float best_distance_sq;
+    float best_vertical_distance;
+    float best_x;
+    float best_y;
+    float best_z;
+    int32_t best_triangle;
+    int32_t triangle_probes;
+} navmesh3d_sample_search_t;
+
+/// @brief Test one triangle and update the nearest XZ surface projection with deterministic ties.
+/// @details Blocked triangles and invalid indices are ignored. Equal horizontal distances prefer
+///   the smaller vertical delta and then the lower triangle index, making results independent of
+///   the order in which expanding grid cells happen to expose candidates.
+/// @param nm Navigation mesh supplying triangles and vertices.
+/// @param triangle_index Candidate triangle index.
+/// @param search In/out nearest-point accumulator and probe counter.
+static void navmesh3d_sample_test_triangle(const rt_navmesh3d *nm,
+                                           int32_t triangle_index,
+                                           navmesh3d_sample_search_t *search) {
+    float cx;
+    float cy;
+    float cz;
+    float dx;
+    float dy;
+    float dz;
+    float distance_sq;
+    int better;
+    if (!nm || !search || triangle_index < 0 || triangle_index >= nm->triangle_count)
+        return;
+    if (search->triangle_probes < INT32_MAX)
+        search->triangle_probes++;
+    const nav_triangle_t *triangle = &nm->triangles[triangle_index];
+    if (triangle->blocked)
+        return;
+    const float *v0 = nm->vertices[triangle->v[0]].position;
+    const float *v1 = nm->vertices[triangle->v[1]].position;
+    const float *v2 = nm->vertices[triangle->v[2]].position;
+    closest_point_on_tri_xz(search->query_x, search->query_z, v0, v1, v2, &cx, &cz);
+    cy = triangle_y_at_xz(cx, cz, v0, v1, v2);
+    dx = search->query_x - cx;
+    dz = search->query_z - cz;
+    dy = fabsf(search->query_y - cy);
+    distance_sq = dx * dx + dz * dz;
+    if (!isfinite(distance_sq) || !isfinite(dy) || !isfinite(cy))
+        return;
+    better = distance_sq < search->best_distance_sq;
+    if (!better && fabsf(distance_sq - search->best_distance_sq) <= 1e-6f) {
+        better = dy < search->best_vertical_distance;
+        if (!better && fabsf(dy - search->best_vertical_distance) <= 1e-6f)
+            better = search->best_triangle < 0 || triangle_index < search->best_triangle;
+    }
+    if (!better)
+        return;
+    search->best_distance_sq = distance_sq;
+    search->best_vertical_distance = dy;
+    search->best_x = cx;
+    search->best_y = cy;
+    search->best_z = cz;
+    search->best_triangle = triangle_index;
+}
+
+/// @brief Return a lower bound on distance from the query to every cell outside a visited box.
+/// @details The expanding search has visited every cell in the inclusive rectangle. Any unvisited
+///   triangle reference lies beyond one of its four interior boundaries, so the minimum squared
+///   one-axis separation is a conservative lower bound on its possible XZ point distance.
+/// @param nm Navigation mesh defining the uniform grid.
+/// @param search Query coordinates and current result.
+/// @param min_cell_x Inclusive visited minimum X cell.
+/// @param max_cell_x Inclusive visited maximum X cell.
+/// @param min_cell_z Inclusive visited minimum Z cell.
+/// @param max_cell_z Inclusive visited maximum Z cell.
+/// @return Conservative squared distance, or FLT_MAX when every grid cell is visited.
+static float navmesh3d_sample_unvisited_lower_bound_sq(const rt_navmesh3d *nm,
+                                                       const navmesh3d_sample_search_t *search,
+                                                       int32_t min_cell_x,
+                                                       int32_t max_cell_x,
+                                                       int32_t min_cell_z,
+                                                       int32_t max_cell_z) {
+    double cell_size;
+    double lower_bound = DBL_MAX;
+    if (!nm || !search || !(nm->qgrid_inv_cell > 0.0))
+        return 0.0f;
+    cell_size = 1.0 / nm->qgrid_inv_cell;
+    if (min_cell_x > 0) {
+        double boundary = nm->qgrid_min_x + (double)min_cell_x * cell_size;
+        double separation = search->query_x > boundary ? search->query_x - boundary : 0.0;
+        if (separation < lower_bound)
+            lower_bound = separation;
+    }
+    if (max_cell_x + 1 < nm->qgrid_nx) {
+        double boundary = nm->qgrid_min_x + (double)(max_cell_x + 1) * cell_size;
+        double separation = search->query_x < boundary ? boundary - search->query_x : 0.0;
+        if (separation < lower_bound)
+            lower_bound = separation;
+    }
+    if (min_cell_z > 0) {
+        double boundary = nm->qgrid_min_z + (double)min_cell_z * cell_size;
+        double separation = search->query_z > boundary ? search->query_z - boundary : 0.0;
+        if (separation < lower_bound)
+            lower_bound = separation;
+    }
+    if (max_cell_z + 1 < nm->qgrid_nz) {
+        double boundary = nm->qgrid_min_z + (double)(max_cell_z + 1) * cell_size;
+        double separation = search->query_z < boundary ? boundary - search->query_z : 0.0;
+        if (separation < lower_bound)
+            lower_bound = separation;
+    }
+    if (lower_bound == DBL_MAX)
+        return FLT_MAX;
+    if (!isfinite(lower_bound) || lower_bound < 0.0 || lower_bound > sqrt((double)FLT_MAX))
+        return FLT_MAX;
+    return (float)(lower_bound * lower_bound);
+}
+
+/// @brief Scan one indexed grid cell into a nearest-surface accumulator.
+/// @param nm Navigation mesh supplying the CSR cell index.
+/// @param cell_x In-bounds X cell.
+/// @param cell_z In-bounds Z cell.
+/// @param search In/out nearest-point state.
+/// @return 1 on a valid bounded cell scan, or 0 when corrupt metadata or the per-query reference
+///   budget requires the bounded linear fallback.
+static int navmesh3d_sample_scan_cell(const rt_navmesh3d *nm,
+                                      int32_t cell_x,
+                                      int32_t cell_z,
+                                      navmesh3d_sample_search_t *search) {
+    size_t cell;
+    int32_t begin;
+    int32_t end;
+    if (!nm || !search || cell_x < 0 || cell_z < 0 || cell_x >= nm->qgrid_nx ||
+        cell_z >= nm->qgrid_nz)
+        return 0;
+    cell = (size_t)cell_z * (size_t)nm->qgrid_nx + (size_t)cell_x;
+    begin = nm->qgrid_starts[cell];
+    end = nm->qgrid_starts[cell + 1u];
+    if (begin < 0 || end < begin || end > (int32_t)NAVMESH3D_QUERY_GRID_MAX_REFERENCES)
+        return 0;
+    if (end - begin > NAVMESH3D_SAMPLE_MAX_GRID_REFERENCES - search->triangle_probes)
+        return 0;
+    for (int32_t k = begin; k < end; k++)
+        navmesh3d_sample_test_triangle(nm, nm->qgrid_tris[k], search);
+    return 1;
+}
+
+/// @brief Find the nearest surface by expanding through spatial-index cell rings.
+/// @details The search begins in the query's cell (or the nearest boundary cell for an external
+///   query), visits each rectangular ring, and stops once the best distance is strictly below the
+///   conservative distance to every unvisited cell. Cell/reference budgets bound pathological
+///   replication; exceeding either requests the exact linear fallback.
+/// @param nm Navigation mesh with a complete query grid.
+/// @param search In/out nearest-point state.
+/// @return 1 when the indexed search completed exactly, or 0 when the caller must use fallback.
+static int navmesh3d_sample_search_grid(const rt_navmesh3d *nm, navmesh3d_sample_search_t *search) {
+    int32_t origin_x;
+    int32_t origin_z;
+    int32_t max_ring;
+    int32_t cells_scanned = 0;
+    if (!nm || !search || nm->qgrid_nx <= 0 || nm->qgrid_nz <= 0 || !nm->qgrid_starts ||
+        !nm->qgrid_tris || !isfinite(nm->qgrid_min_x) || !isfinite(nm->qgrid_min_z) ||
+        !isfinite(nm->qgrid_inv_cell) || nm->qgrid_inv_cell <= 0.0)
+        return 0;
+    origin_x = navmesh3d_grid_axis_clamped(
+        (double)search->query_x, nm->qgrid_min_x, nm->qgrid_inv_cell, nm->qgrid_nx);
+    origin_z = navmesh3d_grid_axis_clamped(
+        (double)search->query_z, nm->qgrid_min_z, nm->qgrid_inv_cell, nm->qgrid_nz);
+    max_ring = nm->qgrid_nx > nm->qgrid_nz ? nm->qgrid_nx : nm->qgrid_nz;
+    for (int32_t ring = 0; ring < max_ring; ring++) {
+        int32_t left = origin_x - ring;
+        int32_t right = origin_x + ring;
+        int32_t top = origin_z - ring;
+        int32_t bottom = origin_z + ring;
+        int32_t min_x = origin_x - ring;
+        int32_t max_x = origin_x + ring;
+        int32_t min_z = origin_z - ring;
+        int32_t max_z = origin_z + ring;
+        if (min_x < 0)
+            min_x = 0;
+        if (max_x >= nm->qgrid_nx)
+            max_x = nm->qgrid_nx - 1;
+        if (min_z < 0)
+            min_z = 0;
+        if (max_z >= nm->qgrid_nz)
+            max_z = nm->qgrid_nz - 1;
+        if (left >= 0) {
+            for (int32_t z = min_z; z <= max_z; z++) {
+                if (++cells_scanned > NAVMESH3D_SAMPLE_MAX_GRID_CELLS ||
+                    !navmesh3d_sample_scan_cell(nm, left, z, search))
+                    return 0;
+            }
+        }
+        if (right < nm->qgrid_nx && right != left) {
+            for (int32_t z = min_z; z <= max_z; z++) {
+                if (++cells_scanned > NAVMESH3D_SAMPLE_MAX_GRID_CELLS ||
+                    !navmesh3d_sample_scan_cell(nm, right, z, search))
+                    return 0;
+            }
+        }
+        if (top >= 0) {
+            for (int32_t x = min_x; x <= max_x; x++) {
+                if (x == left || x == right)
+                    continue;
+                if (++cells_scanned > NAVMESH3D_SAMPLE_MAX_GRID_CELLS ||
+                    !navmesh3d_sample_scan_cell(nm, x, top, search))
+                    return 0;
+            }
+        }
+        if (bottom < nm->qgrid_nz && bottom != top) {
+            for (int32_t x = min_x; x <= max_x; x++) {
+                if (x == left || x == right)
+                    continue;
+                if (++cells_scanned > NAVMESH3D_SAMPLE_MAX_GRID_CELLS ||
+                    !navmesh3d_sample_scan_cell(nm, x, bottom, search))
+                    return 0;
+            }
+        }
+        if (search->best_triangle >= 0) {
+            float lower_bound =
+                navmesh3d_sample_unvisited_lower_bound_sq(nm, search, min_x, max_x, min_z, max_z);
+            if (search->best_distance_sq + 1e-6f < lower_bound)
+                return 1;
+        }
+        if (min_x == 0 && max_x == nm->qgrid_nx - 1 && min_z == 0 && max_z == nm->qgrid_nz - 1)
+            return 1;
+    }
+    return 1;
+}
+
+/// @brief Record SamplePosition query instrumentation atomically.
+/// @param nm Navigation mesh receiving the metrics.
+/// @param triangle_probes Number of triangle references evaluated by the completed query.
+/// @param used_fallback Nonzero when the exact bounded linear fallback ran.
+static void navmesh3d_sample_record_metrics(rt_navmesh3d *nm,
+                                            int32_t triangle_probes,
+                                            int used_fallback) {
+    if (!nm)
+        return;
+    rt_atomic_store_i32(&nm->sample_last_triangle_probes, triangle_probes, __ATOMIC_RELEASE);
+    rt_atomic_store_i32(&nm->sample_last_used_fallback, used_fallback ? 1 : 0, __ATOMIC_RELEASE);
+}
+
 /// @brief Snap `point` (Vec3) onto the nearest navmesh triangle and return the projected
 /// world-space position. Useful for pinning agent positions to walkable surface after
 /// teleports. Returns the input unchanged if no triangle is found nearby.
@@ -763,6 +1076,8 @@ void *rt_navmesh3d_sample_position(void *obj, void *point) {
     if (nm->triangle_count <= 0 || !nm->triangles || !nm->vertices)
         return rt_vec3_new(px, py, pz);
 
+    navmesh3d_sample_record_metrics(nm, 0, 0);
+
     int32_t tri = find_tri(nm, px, py, pz);
     if (tri >= 0) {
         nav_triangle_t *t = &nm->triangles[tri];
@@ -772,41 +1087,39 @@ void *rt_navmesh3d_sample_position(void *obj, void *point) {
         return rt_vec3_new(px, triangle_y_at_xz(px, pz, v0, v1, v2), pz);
     }
 
-    /* Find nearest point on the triangle surface in XZ, not merely nearest centroid. */
-    float best_d = FLT_MAX;
-    float best_dy = FLT_MAX;
-    float best_x = px;
-    float best_y = py;
-    float best_z = pz;
-    for (int32_t i = 0; i < nm->triangle_count; i++) {
-        nav_triangle_t *t = &nm->triangles[i];
-        if (t->blocked)
-            continue; /* don't snap onto a carved-out triangle */
-        const float *v0 = nm->vertices[t->v[0]].position;
-        const float *v1 = nm->vertices[t->v[1]].position;
-        const float *v2 = nm->vertices[t->v[2]].position;
-        float cx;
-        float cz;
-        float cy;
-        float dx;
-        float dz;
-        float dy;
-        float d;
-        closest_point_on_tri_xz(px, pz, v0, v1, v2, &cx, &cz);
-        cy = triangle_y_at_xz(cx, cz, v0, v1, v2);
-        dx = px - cx;
-        dz = pz - cz;
-        dy = fabsf(py - cy);
-        d = dx * dx + dz * dz;
-        if (d < best_d || (fabsf(d - best_d) <= 1e-6f && dy < best_dy)) {
-            best_d = d;
-            best_dy = dy;
-            best_x = cx;
-            best_y = cy;
-            best_z = cz;
-        }
+    /* Find the nearest point on the triangle surface in XZ through expanding grid rings. */
+    navmesh3d_sample_search_t search = {px, py, pz, FLT_MAX, FLT_MAX, px, py, pz, -1, 0};
+    int used_fallback = !navmesh3d_sample_search_grid(nm, &search);
+    if (used_fallback) {
+        /* The grid may be absent by policy or a pathological replicated query may hit its fixed
+         * budget. A whole-mesh pass is still exact and is bounded by the validated triangle count.
+         */
+        search.best_distance_sq = FLT_MAX;
+        search.best_vertical_distance = FLT_MAX;
+        search.best_triangle = -1;
+        for (int32_t i = 0; i < nm->triangle_count; i++)
+            navmesh3d_sample_test_triangle(nm, i, &search);
     }
-    return rt_vec3_new(best_x, best_y, best_z);
+    navmesh3d_sample_record_metrics(nm, search.triangle_probes, used_fallback);
+    return rt_vec3_new(search.best_x, search.best_y, search.best_z);
+}
+
+/// @brief Read the triangle-reference probe count from the most recent SamplePosition query.
+/// @details This atomic, test-only metric includes duplicate grid references and any fallback
+///   probes, making it a conservative measure of query work. It is not scripting-visible.
+/// @param obj NavMesh3D handle to inspect.
+/// @return Non-negative probe count, or zero for an invalid handle.
+int64_t rt_navmesh3d_test_get_last_sample_probe_count(void *obj) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    return nm ? (int64_t)rt_atomic_load_i32(&nm->sample_last_triangle_probes, __ATOMIC_ACQUIRE) : 0;
+}
+
+/// @brief Report whether the most recent SamplePosition query used its bounded linear fallback.
+/// @param obj NavMesh3D handle to inspect.
+/// @return One after fallback, otherwise zero (including invalid handles).
+int8_t rt_navmesh3d_test_get_last_sample_used_fallback(void *obj) {
+    rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
+    return nm && rt_atomic_load_i32(&nm->sample_last_used_fallback, __ATOMIC_ACQUIRE) ? 1 : 0;
 }
 
 /// @brief Returns 1 if `point` (Vec3) lies within (or near) any walkable triangle.
@@ -1017,7 +1330,6 @@ int8_t rt_navmesh3d_add_obstacle(void *obj, void *min_v, void *max_v) {
     }
     if (!navmesh3d_apply_slope_filter(nm)) {
         nm->obstacle_count--;
-        (void)navmesh3d_apply_slope_filter(nm);
         return 0;
     }
     return 1;
@@ -1042,7 +1354,6 @@ int8_t rt_navmesh3d_remove_obstacle(void *obj, int64_t index) {
             nm->obstacles[i] = nm->obstacles[i - 1];
         nm->obstacles[remove_at] = removed;
         nm->obstacle_count++;
-        (void)navmesh3d_apply_slope_filter(nm);
         return 0;
     }
     return 1;
@@ -1069,7 +1380,6 @@ int8_t rt_navmesh3d_update_obstacle(void *obj, int64_t index, void *min_v, void 
     }
     if (!navmesh3d_apply_slope_filter(nm)) {
         nm->obstacles[edit_at] = old_obstacle;
-        (void)navmesh3d_apply_slope_filter(nm);
         return 0;
     }
     return 1;
@@ -1306,8 +1616,10 @@ void rt_navmesh3d_set_max_slope(void *obj, double degrees) {
     rt_navmesh3d *nm = (rt_navmesh3d *)rt_g3d_checked_or_null(obj, RT_G3D_NAVMESH3D_CLASS_ID);
     if (!nm)
         return;
+    double previous_slope = nm->max_slope;
     nm->max_slope = navmesh3d_sanitize_slope(degrees);
-    (void)navmesh3d_apply_slope_filter(nm);
+    if (!navmesh3d_apply_slope_filter(nm))
+        nm->max_slope = previous_slope;
 }
 
 /// @brief Render the navmesh as wireframe / outlined triangles to a Canvas3D for debugging.

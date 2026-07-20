@@ -5,8 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/test_rt_navmesh_blend.cpp
-// Purpose: Unit tests for NavMesh3D, AnimBlend3D, and BlendTree3D.
+// File: src/tests/unit/test_rt_navmesh_blend.cpp
+// Purpose: Unit tests for NavMesh3D indexed queries/concurrent A* workspaces,
+//   AnimBlend3D, and BlendTree3D.
+//
+// Key invariants:
+//   - Indexed sampling remains exact while bounding local triangle probes.
+//   - Independent path queries overlap safely without sharing mutable arrays.
+// Ownership/Lifetime:
+//   - Worker threads borrow a retained navmesh for the duration of each stress case.
+//   - Runtime fixture objects remain owned by the test process.
 //
 // Links: rt_navmesh3d.h, rt_skeleton3d.h, rt_blendtree3d.h
 //
@@ -102,6 +110,46 @@ template <typename Fn> static bool expect_trap_contains(Fn &&fn, const char *nee
         }                                                                                          \
     } while (0)
 
+/// @brief Build a dense, connected square grid navmesh for query-scaling regressions.
+/// @details The helper emits shared vertices and two consistently upward-facing triangles per
+///   cell. Its predictable topology makes an edge-local SamplePosition query touch only a few
+///   spatial-index cells while a corner-to-corner A* query remains long enough for worker overlap.
+/// @param cells Number of unit cells on each XZ axis; must be positive.
+/// @return A newly built NavMesh3D handle, or NULL when mesh/navmesh construction fails.
+static void *make_dense_grid_navmesh(int cells) {
+    if (cells <= 0)
+        return nullptr;
+    void *mesh = rt_mesh3d_new();
+    if (!mesh)
+        return nullptr;
+    double half = (double)cells * 0.5;
+    for (int z = 0; z <= cells; z++) {
+        for (int x = 0; x <= cells; x++) {
+            rt_mesh3d_add_vertex(mesh,
+                                 (double)x - half,
+                                 0.0,
+                                 (double)z - half,
+                                 0.0,
+                                 1.0,
+                                 0.0,
+                                 (double)x / (double)cells,
+                                 (double)z / (double)cells);
+        }
+    }
+    int64_t stride = (int64_t)cells + 1;
+    for (int z = 0; z < cells; z++) {
+        for (int x = 0; x < cells; x++) {
+            int64_t a = (int64_t)z * stride + x;
+            int64_t b = a + 1;
+            int64_t d = a + stride;
+            int64_t c = d + 1;
+            rt_mesh3d_add_triangle(mesh, a, c, b);
+            rt_mesh3d_add_triangle(mesh, a, d, c);
+        }
+    }
+    return rt_navmesh3d_build(mesh, 0.2, 1.8);
+}
+
 typedef struct {
     float from[3];
     float to[3];
@@ -195,6 +243,31 @@ static void test_navmesh_sample_position() {
     EXPECT_NEAR(rt_vec3_y(snapped), 0.0, 0.5, "Sampled Y ≈ 0 (plane surface)");
 }
 
+/// @brief Verify off-mesh sampling uses an expanding spatial-index neighborhood.
+/// @details A query just outside a dense grid has a nearest point in its boundary cell. The exact
+///   result must therefore require a small, sublinear fraction of the mesh's triangle references
+///   and must not enter the bounded whole-mesh fallback.
+static void test_navmesh_sample_position_uses_sublinear_local_probe() {
+    constexpr int cells = 96;
+    void *nm = make_dense_grid_navmesh(cells);
+    void *query = rt_vec3_new((double)cells * 0.5 + 0.25, 3.0, 0.125);
+    void *sample = rt_navmesh3d_sample_position(nm, query);
+    int64_t triangle_count = rt_navmesh3d_get_triangle_count(nm);
+    int64_t probes = rt_navmesh3d_test_get_last_sample_probe_count(nm);
+
+    EXPECT_TRUE(nm != nullptr && sample != nullptr,
+                "NavMesh indexed sampling fixture builds successfully");
+    EXPECT_NEAR(rt_vec3_x(sample),
+                (double)cells * 0.5,
+                0.001,
+                "NavMesh indexed sampling finds the nearest boundary point");
+    EXPECT_NEAR(rt_vec3_y(sample), 0.0, 0.001, "NavMesh indexed sampling preserves surface Y");
+    EXPECT_TRUE(rt_navmesh3d_test_get_last_sample_used_fallback(nm) == 0,
+                "NavMesh local off-mesh sampling stays on the expanding-grid path");
+    EXPECT_TRUE(probes > 0 && triangle_count > 0 && probes < triangle_count / 8,
+                "NavMesh local off-mesh sampling probes a sublinear triangle fraction");
+}
+
 static void test_navmesh_find_path() {
     void *plane = rt_mesh3d_new_plane(10.0, 10.0);
     void *nm = rt_navmesh3d_build(plane, 0.4, 1.8);
@@ -227,16 +300,22 @@ static void test_navmesh_find_path_from_shared_edge() {
 }
 
 static void test_navmesh_path_workspace_reuse_is_concurrent_safe() {
-    void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
-    void *nm = rt_navmesh3d_build(mesh, 0.4, 1.8);
-    void *from = rt_vec3_new(-8.0, 0.0, -7.0);
-    void *to = rt_vec3_new(8.0, 0.0, 7.0);
+    constexpr int cells = 64;
+    void *nm = make_dense_grid_navmesh(cells);
+    void *from = rt_vec3_new(-31.0, 0.0, -31.0);
+    void *to = rt_vec3_new(31.0, 0.0, 31.0);
     std::atomic<bool> ok{true};
+    std::atomic<int> ready{0};
+    std::atomic<bool> start{false};
     constexpr int worker_count = 8;
     std::thread workers[worker_count];
+    rt_navmesh3d_test_reset_path_peak_concurrency(nm);
     for (int worker = 0; worker < worker_count; worker++) {
         workers[worker] = std::thread([&]() {
-            for (int iteration = 0; iteration < 100; iteration++) {
+            ready.fetch_add(1, std::memory_order_release);
+            while (!start.load(std::memory_order_acquire))
+                std::this_thread::yield();
+            for (int iteration = 0; iteration < 12; iteration++) {
                 double *points = nullptr;
                 int64_t count = rt_navmesh3d_copy_path_points(nm, from, to, &points);
                 if (count < 2 || !points || !std::isfinite(points[0]) ||
@@ -246,10 +325,15 @@ static void test_navmesh_path_workspace_reuse_is_concurrent_safe() {
             }
         });
     }
+    while (ready.load(std::memory_order_acquire) != worker_count)
+        std::this_thread::yield();
+    start.store(true, std::memory_order_release);
     for (auto &worker : workers)
         worker.join();
     EXPECT_TRUE(ok.load(std::memory_order_relaxed),
-                "NavMesh A* workspace is reusable across serialized concurrent queries");
+                "NavMesh A* workspace pool is reusable across concurrent queries");
+    EXPECT_TRUE(rt_navmesh3d_test_get_path_peak_concurrency(nm) >= 2,
+                "NavMesh independent A* workspace slots overlap in flight");
     EXPECT_TRUE(std::isfinite(rt_navmesh3d_get_last_path_cost(nm)),
                 "NavMesh LastPathCost remains atomically readable during workspace reuse");
 }
@@ -264,6 +348,124 @@ static void test_navmesh_box_slope_filter() {
      * Only top face (2 tris) should be walkable (normal pointing up).
      * Bottom face also has upward normal from the inside, so could be 2-4 walkable. */
     EXPECT_TRUE(tri_count > 0 && tri_count < 12, "Box: not all triangles walkable (slope filter)");
+}
+
+/// @brief Verify extreme finite voxel dimensions coarsen safely without integer wraparound.
+/// @details The production sizing helper must return an exact bounded product for enormous spans
+///          and tiny requested cells, while rejecting non-finite input without mutating outputs.
+static void test_navmesh_voxel_grid_extreme_arithmetic_is_bounded() {
+    int32_t nx = -1;
+    int32_t nz = -1;
+    uint64_t cell_count = UINT64_MAX;
+    double effective_cell = -1.0;
+
+    EXPECT_TRUE(rt_navmesh3d_test_voxel_grid_dimensions(
+                    1.0e300, 5.0e299, 1.0e-300, &nx, &nz, &cell_count, &effective_cell) != 0,
+                "NavMesh voxel sizing accepts extreme finite spans without narrowing overflow");
+    EXPECT_TRUE(nx > 0 && nx <= 512 && nz > 0 && nz <= 512,
+                "NavMesh voxel sizing keeps both dimensions inside the configured bound");
+    EXPECT_TRUE(cell_count == static_cast<uint64_t>(nx) * static_cast<uint64_t>(nz) &&
+                    cell_count <= 262144u,
+                "NavMesh voxel sizing returns the exact checked dimension product");
+    EXPECT_TRUE(
+        std::isfinite(effective_cell) && effective_cell > 1.0e290,
+        "NavMesh voxel sizing coarsens a tiny request instead of allocating undersized storage");
+
+    nx = 17;
+    nz = 19;
+    cell_count = 23;
+    effective_cell = 29.0;
+    EXPECT_TRUE(rt_navmesh3d_test_voxel_grid_dimensions(
+                    INFINITY, 1.0, 0.1, &nx, &nz, &cell_count, &effective_cell) == 0,
+                "NavMesh voxel sizing rejects non-finite extents");
+    EXPECT_TRUE(nx == 17 && nz == 19 && cell_count == 23 && effective_cell == 29.0,
+                "NavMesh voxel sizing leaves outputs untouched on failure");
+}
+
+/// @brief Build a two-island navmesh fixture whose second triangle is initially slope-filtered.
+/// @param out_slope_height Optional destination for the authored steep-island height.
+/// @return New NavMesh3D containing only the flat island at the default slope limit.
+static void *make_navmesh_transaction_fixture(double *out_slope_height) {
+    const double slope_height = std::sqrt(12.0);
+    void *mesh = rt_mesh3d_new();
+
+    /* Flat island: counter-clockwise in XZ so the computed face normal points upward. */
+    rt_mesh3d_add_vertex(mesh, -3.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, -1.0, 0.0, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_triangle(mesh, 0, 1, 2);
+
+    /* A disconnected 60-degree island is excluded at the default 45 degrees and admitted at 80. */
+    rt_mesh3d_add_vertex(mesh, 1.0, 0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 3.0, slope_height, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0);
+    rt_mesh3d_add_vertex(mesh, 3.0, slope_height, -1.0, 0.0, 1.0, 0.0, 1.0, 0.0);
+    rt_mesh3d_add_triangle(mesh, 3, 4, 5);
+    if (out_slope_height)
+        *out_slope_height = slope_height;
+    return rt_navmesh3d_build(mesh, 0.4, 1.8);
+}
+
+/// @brief Verify adjacency/grid rebuild failures preserve the last complete navmesh state.
+/// @details Fault injection admits a formerly filtered island and then fails each staged derived
+///          allocation. Baseline path bytes, walkability, and triangle counts must remain exact
+///          until a later allocation-successful rebuild commits all state together.
+static void test_navmesh_rebuild_allocation_failure_is_atomic() {
+    double slope_height = 0.0;
+    void *nm = make_navmesh_transaction_fixture(&slope_height);
+    void *flat_from = rt_vec3_new(-2.5, 0.0, -0.75);
+    void *flat_to = rt_vec3_new(-1.25, 0.0, -0.75);
+    void *steep_center = rt_vec3_new(7.0 / 3.0, slope_height * 2.0 / 3.0, -1.0 / 3.0);
+    double *baseline_path = nullptr;
+    int64_t baseline_count = rt_navmesh3d_copy_path_points(nm, flat_from, flat_to, &baseline_path);
+
+    EXPECT_TRUE(nm != nullptr && rt_navmesh3d_get_triangle_count(nm) == 1,
+                "NavMesh transaction fixture initially publishes only the flat triangle");
+    EXPECT_TRUE(baseline_count >= 2 && baseline_path != nullptr,
+                "NavMesh transaction fixture has a stable baseline query");
+    EXPECT_TRUE(rt_navmesh3d_is_walkable(nm, steep_center) == 0,
+                "NavMesh transaction fixture initially filters the steep island");
+
+    rt_navmesh3d_test_set_adjacency_alloc_failure(1);
+    rt_navmesh3d_set_max_slope(nm, 80.0);
+    rt_navmesh3d_test_set_adjacency_alloc_failure(0);
+    double *after_adjacency_failure = nullptr;
+    int64_t adjacency_count =
+        rt_navmesh3d_copy_path_points(nm, flat_from, flat_to, &after_adjacency_failure);
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 1 &&
+                    rt_navmesh3d_is_walkable(nm, steep_center) == 0,
+                "NavMesh adjacency allocation failure retains the prior walkable topology");
+    EXPECT_TRUE(adjacency_count == baseline_count && after_adjacency_failure && baseline_path &&
+                    std::memcmp(after_adjacency_failure,
+                                baseline_path,
+                                static_cast<size_t>(baseline_count) * 3u * sizeof(double)) == 0,
+                "NavMesh adjacency allocation failure keeps path queries bit-identical");
+    EXPECT_TRUE(rt_navmesh3d_check_query_grid_parity(nm) != 0,
+                "NavMesh adjacency allocation failure leaves the prior query grid usable");
+
+    rt_navmesh3d_test_set_query_grid_alloc_failure(1);
+    rt_navmesh3d_set_max_slope(nm, 80.0);
+    rt_navmesh3d_test_set_query_grid_alloc_failure(0);
+    double *after_grid_failure = nullptr;
+    int64_t grid_count = rt_navmesh3d_copy_path_points(nm, flat_from, flat_to, &after_grid_failure);
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 1 &&
+                    rt_navmesh3d_is_walkable(nm, steep_center) == 0,
+                "NavMesh query-grid allocation failure retains the prior walkable topology");
+    EXPECT_TRUE(grid_count == baseline_count && after_grid_failure && baseline_path &&
+                    std::memcmp(after_grid_failure,
+                                baseline_path,
+                                static_cast<size_t>(baseline_count) * 3u * sizeof(double)) == 0,
+                "NavMesh query-grid allocation failure keeps path queries bit-identical");
+    EXPECT_TRUE(rt_navmesh3d_check_query_grid_parity(nm) != 0,
+                "NavMesh query-grid allocation failure keeps the previous index usable");
+
+    rt_navmesh3d_set_max_slope(nm, 80.0);
+    EXPECT_TRUE(rt_navmesh3d_get_triangle_count(nm) == 2 &&
+                    rt_navmesh3d_is_walkable(nm, steep_center) != 0,
+                "NavMesh refilter publishes the requested topology after allocation recovers");
+
+    std::free(baseline_path);
+    std::free(after_adjacency_failure);
+    std::free(after_grid_failure);
 }
 
 static void test_navmesh_adjacency_edge_hash() {
@@ -1166,10 +1368,13 @@ int main() {
     test_navmesh_is_walkable();
     test_navmesh_not_walkable();
     test_navmesh_sample_position();
+    test_navmesh_sample_position_uses_sublinear_local_probe();
     test_navmesh_find_path();
     test_navmesh_find_path_from_shared_edge();
     test_navmesh_path_workspace_reuse_is_concurrent_safe();
     test_navmesh_box_slope_filter();
+    test_navmesh_voxel_grid_extreme_arithmetic_is_bounded();
+    test_navmesh_rebuild_allocation_failure_is_atomic();
     test_navmesh_adjacency_edge_hash();
     test_navmesh_rejects_non_manifold_edges();
     test_navmesh_large_mesh();

@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_mesh.inc  (#included from
-// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL mesh buffer/attribute
-// setup and bone-palette/morph payload upload
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_mesh.inc
+// Purpose: OpenGL mesh buffers/attributes and skin, morph, and compact-instance uploads.
+// Key invariants:
+//   - Vertex attribute layouts match the full or compact shared C record selected by each command.
+//   - Particle slots 7 through 10 advance once per 64-byte instance; prior-matrix slots are off.
+// Ownership/Lifetime:
+//   - Static caches and streaming VBOs belong to gl_context_t and are released with the context.
+//   - Uploaded source arrays are borrowed only for the duration of BufferSubData.
+// Links: vgfx3d_backend_opengl.c, vgfx3d_backend_opengl_frame.inc
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Release every mesh-cache slot's VBO + IBO.
@@ -419,6 +431,52 @@ static int configure_instance_attributes(gl_context_t *ctx,
         gl.VertexAttrib4f(12, 0.0f, 1.0f, 0.0f, 0.0f);
         gl.VertexAttrib4f(13, 0.0f, 0.0f, 1.0f, 0.0f);
         gl.VertexAttrib4f(14, 0.0f, 0.0f, 0.0f, 1.0f);
+    }
+    return 1;
+}
+
+/// @brief Upload compact retained-quad particle records into instance attribute slots 7..10.
+/// @details Each record is four aligned vec4 lanes: center, right half-axis, up half-axis, and
+///   color. The ordinary matrix and previous-matrix attributes are disabled, so the vertex shader
+///   advances exactly 64 bytes per particle and never materializes model/normal matrices.
+/// @return Non-zero after a successful orphan/upload/bind sequence.
+static int configure_particle_instance_attributes(gl_context_t *ctx,
+                                                  const vgfx3d_particle_instance_t *instances,
+                                                  int32_t instance_count) {
+    size_t bytes;
+    GLsizei stride = (GLsizei)sizeof(vgfx3d_particle_instance_t);
+    if (!ctx || !instances || instance_count <= 0 ||
+        (size_t)instance_count > (size_t)PTRDIFF_MAX / sizeof(*instances))
+        return 0;
+    bytes = (size_t)instance_count * sizeof(*instances);
+    if (ensure_buffer_capacity(GL_ARRAY_BUFFER,
+                               ctx->instance_vbo,
+                               &ctx->instance_vbo_capacity,
+                               bytes,
+                               64u * 1024u,
+                               GL_STREAM_DRAW) != 0 ||
+        !orphan_stream_buffer(
+            GL_ARRAY_BUFFER, ctx->instance_vbo, ctx->instance_vbo_capacity, GL_STREAM_DRAW))
+        return 0;
+    gl.BindBuffer(GL_ARRAY_BUFFER, ctx->instance_vbo);
+    gl.BufferSubData(GL_ARRAY_BUFFER, 0, (GLsizeiptr)bytes, instances);
+    if (!gl_upload_ok())
+        return 0;
+    for (GLuint slot = 7; slot <= 10; slot++) {
+        gl.EnableVertexAttribArray(slot);
+        gl.VertexAttribDivisor(slot, 1);
+    }
+    gl.VertexAttribPointer(
+        7, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_particle_instance_t, center));
+    gl.VertexAttribPointer(
+        8, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_particle_instance_t, right));
+    gl.VertexAttribPointer(
+        9, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_particle_instance_t, up));
+    gl.VertexAttribPointer(
+        10, 4, GL_FLOAT, GL_FALSE, stride, (void *)offsetof(vgfx3d_particle_instance_t, color));
+    for (GLuint slot = 11; slot <= 14; slot++) {
+        gl.DisableVertexAttribArray(slot);
+        gl.VertexAttribDivisor(slot, 0);
     }
     return 1;
 }

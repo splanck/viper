@@ -17,6 +17,10 @@
 //   - Bone palette = global_transform * inverse_bind_pose per bone.
 //   - Keyframe rotation uses SLERP; position/scale use linear interpolation.
 //
+// Ownership/Lifetime:
+//   - Skeleton/animation/player objects are GC-managed runtime values.
+//   - Skeletons retain exact bone-name strings; players retain bound skeletons/clips.
+//
 // Links: plans/3d/14-skeletal-animation.md, vgfx3d_skinning.h
 //
 //===----------------------------------------------------------------------===//
@@ -32,8 +36,10 @@ extern "C" {
 /* Skeleton3D */
 /// @brief Create an empty skeleton (no bones yet).
 void *rt_skeleton3d_new(void);
-/// @brief Append a bone with the given name, parent index (-1 = root bone), and bind-pose matrix.
-/// Returns the new bone's index. Bones must be added in topological (parent-first) order.
+/// @brief Append a bone with an exact retained name, parent index, and bind-pose matrix.
+/// @details The skeleton retains the complete runtime string without a fixed-length name limit.
+///          A parent index of -1 creates a root; other bones must be added parent-first.
+/// @return The new zero-based bone index, or -1 when validation/allocation fails.
 int64_t rt_skeleton3d_add_bone(void *skel, rt_string name, int64_t parent_index, void *bind_mat4);
 
 /// @brief Register (or remove, with empty local) an external bone-name alias
@@ -46,11 +52,13 @@ int64_t rt_skeleton3d_get_alias_count(void *skeleton);
 void rt_skeleton3d_compute_inverse_bind(void *skel);
 /// @brief Total number of bones in the skeleton.
 int64_t rt_skeleton3d_get_bone_count(void *skel);
-/// @brief Look up a bone index by name (-1 if not found).
+/// @brief Look up a bone by its complete byte-exact name (-1 if not found).
 int64_t rt_skeleton3d_find_bone(void *skel, rt_string name);
 /// @brief Look up a bone index by name as Some(index), or None when absent.
 void *rt_skeleton3d_find_bone_option(void *skel, rt_string name);
-/// @brief Get the name of the bone at @p index (empty string if out of range).
+/// @brief Get a retained exact name for the bone at @p index.
+/// @details The caller owns the returned reference. Out-of-range input returns the shared
+///          empty string.
 rt_string rt_skeleton3d_get_bone_name(void *skel, int64_t index);
 /// @brief Get the bind-pose matrix (Mat4) of the bone at @p index.
 void *rt_skeleton3d_get_bone_bind_pose(void *skel, int64_t index);

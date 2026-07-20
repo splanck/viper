@@ -5,9 +5,14 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/RTCompressTests.cpp
-// Purpose: Validate Zanna.IO.Compress DEFLATE/GZIP compression functions.
-// Key invariants: Round-trip compression/decompression preserves data.
+// File: src/tests/runtime/RTCompressTests.cpp
+// Purpose: Validate Zanna.IO.Compress DEFLATE/GZIP and strict zlib decoding.
+// Key invariants:
+//   - Round-trip compression/decompression preserves data.
+//   - Strict zlib rejects malformed framing, bounds, dictionary flags, and checksums.
+// Ownership/Lifetime:
+//   - Every test owns and releases its runtime Bytes/String handles.
+//   - Trap state is process-local test scaffolding and retains no runtime payload.
 // Links: docs/zannalib/io.md
 //
 //===----------------------------------------------------------------------===//
@@ -93,8 +98,7 @@ static void *make_invalid_bytes_object() {
         uint8_t *data;
     };
 
-    FakeBytes *bad =
-        static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
+    FakeBytes *bad = static_cast<FakeBytes *>(rt_obj_new_i64(RT_BYTES_CLASS_ID, sizeof(FakeBytes)));
     bad->len = 1;
     bad->data = nullptr;
     return bad;
@@ -493,6 +497,73 @@ static void test_inflate_truncated_data_traps() {
     test_result("Truncated input traps", true);
 }
 
+/// @brief Verify strict RFC 1950 framing around the shared exact-destination decoder.
+/// @details Uses a dependency-free stored-block stream for `Hello`, then independently corrupts
+///          compression method/FCHECK, FDICT, DEFLATE block type, stream bounds, declared output
+///          size, exact DEFLATE consumption, and Adler-32. This is the low-level contract consumed
+///          by KTX2 zlib supercompression and other container decoders.
+static void test_zlib_exact_destination_validation() {
+    printf("Testing strict zlib exact-destination decode:\n");
+
+    const uint8_t valid[] = {
+        0x78,
+        0x01, /* CMF/FLG: DEFLATE, 32 KiB, valid FCHECK. */
+        0x01,
+        0x05,
+        0x00,
+        0xFA,
+        0xFF, /* Final stored block, LEN=5, NLEN=~5. */
+        'H',
+        'e',
+        'l',
+        'l',
+        'o',
+        0x05,
+        0x8C,
+        0x01,
+        0xF5, /* Adler-32("Hello"). */
+    };
+    uint8_t output[6] = {0};
+    uint8_t corrupt[sizeof(valid) + 1];
+
+    test_result("valid zlib stream decodes",
+                rt_compress_inflate_zlib_into(valid, sizeof(valid), output, 5) == 1 &&
+                    memcmp(output, "Hello", 5) == 0);
+
+    memcpy(corrupt, valid, sizeof(valid));
+    corrupt[0] = 0x79; /* Non-DEFLATE method and invalid FCHECK. */
+    test_result("invalid CMF/FCHECK rejected",
+                rt_compress_inflate_zlib_into(corrupt, sizeof(valid), output, 5) == 0);
+
+    memcpy(corrupt, valid, sizeof(valid));
+    corrupt[1] = 0x20; /* 0x7820 has valid FCHECK but requests a preset dictionary. */
+    test_result("preset dictionary rejected",
+                rt_compress_inflate_zlib_into(corrupt, sizeof(valid), output, 5) == 0);
+
+    memcpy(corrupt, valid, sizeof(valid));
+    corrupt[2] = 0x07; /* BFINAL=1, reserved BTYPE=3. */
+    test_result("invalid DEFLATE block rejected",
+                rt_compress_inflate_zlib_into(corrupt, sizeof(valid), output, 5) == 0);
+
+    test_result("truncated DEFLATE/checksum bounds rejected",
+                rt_compress_inflate_zlib_into(valid, sizeof(valid) - 1, output, 5) == 0);
+    test_result("short declared destination rejected",
+                rt_compress_inflate_zlib_into(valid, sizeof(valid), output, 4) == 0);
+    test_result("long declared destination rejected",
+                rt_compress_inflate_zlib_into(valid, sizeof(valid), output, 6) == 0);
+
+    memcpy(corrupt, valid, sizeof(valid));
+    corrupt[sizeof(valid) - 1] ^= 0x01;
+    test_result("Adler-32 corruption rejected",
+                rt_compress_inflate_zlib_into(corrupt, sizeof(valid), output, 5) == 0);
+
+    memcpy(corrupt, valid, sizeof(valid) - 4);
+    corrupt[sizeof(valid) - 4] = 0x00; /* Hidden byte after the final raw block. */
+    memcpy(corrupt + sizeof(valid) - 3, valid + sizeof(valid) - 4, 4);
+    test_result("trailing raw-DEFLATE byte rejected",
+                rt_compress_inflate_zlib_into(corrupt, sizeof(corrupt), output, 5) == 0);
+}
+
 //=============================================================================
 // Large Data Test
 //=============================================================================
@@ -667,6 +738,8 @@ int main() {
     test_inflate_known_data();
     printf("\n");
     test_inflate_truncated_data_traps();
+    printf("\n");
+    test_zlib_exact_destination_validation();
     printf("\n");
     test_inflate_rejects_trailing_data();
     printf("\n");

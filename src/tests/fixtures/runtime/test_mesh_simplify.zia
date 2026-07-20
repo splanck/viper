@@ -32,6 +32,16 @@ func start() {
         Say("FAIL: Simplify should not collapse the sphere to a sliver");
         return;
     }
+    if (lod.SimplifyRequestedTriangles != 200 ||
+        lod.SimplifyAchievedTriangles != lod.TriangleCount) {
+        Say("FAIL: Simplify diagnostics should report exact requested/achieved counts");
+        return;
+    }
+    if ((lod.TriangleCount <= 200 && lod.SimplifyStatus != 1) ||
+        (lod.TriangleCount > 200 && lod.SimplifyStatus != 2)) {
+        Say("FAIL: SimplifyStatus should distinguish complete and valid partial results");
+        return;
+    }
 
     var lod2 = Mesh3D.Simplify(dense, 200);
     if (lod2.TriangleCount != lod.TriangleCount || lod2.VertexCount != lod.VertexCount) {
@@ -42,6 +52,12 @@ func start() {
     var noop = Mesh3D.Simplify(dense, 100000);
     if (noop == null || noop.TriangleCount > srcTris) {
         Say("FAIL: an over-large target must not grow the mesh");
+        return;
+    }
+    if (noop.SimplifyRequestedTriangles != 100000 ||
+        noop.SimplifyAchievedTriangles != noop.TriangleCount ||
+        noop.SimplifyStatus != 1) {
+        Say("FAIL: an over-large target should report an exact complete no-op result");
         return;
     }
 

@@ -61,16 +61,35 @@ the loader ignored, and skeletal CUBICSPLINE channels baked to sampled keys.
 | `SceneGraph.Load(path)` | Returns `null` for missing, unreadable, non-JSON, malformed, corrupt, or oversized `.vscn` content | None |
 | `Pixels.Load(path)` and image loads reached from materials | Return `null` for missing, unreadable, wrong-magic, corrupt, unsupported, or oversized PNG/JPEG/BMP/GIF content | Material loaders catch this and record a warning instead of failing the whole model |
 
-FBX files are limited to 256 MiB by default. Set `ZANNA_FBX_MAX_FILE_BYTES` to opt into a larger host-specific ceiling; values above the runtime's 1 GiB hard cap are clamped.
+FBX files are limited to 256 MiB by default. Set `ZANNA_FBX_MAX_FILE_BYTES`
+to opt into a larger host-specific ceiling; values above the runtime's 1 GiB
+hard cap are clamped. A separate 1 GiB aggregate load budget covers file bytes,
+typed graph metadata/properties, expanded arrays, hash/adjacency indexes, and
+generated animation samples. `ZANNA_FBX_MAX_LOAD_BYTES` can only lower that
+aggregate budget. Exhaustion releases the staged document and returns `null`.
 
-ASCII FBX files (the standard `; FBX` comment header, or bare node text)
-load through a geometry-subset parser: mesh positions, polygon
-triangulation, normals, UVs, and vertex colors are imported as one mesh per
-`Geometry` record. ASCII exports carrying skins or animation curves import
-their geometry only — re-export as binary FBX for rigged content. A
-signature-matching ASCII file with no parsable geometry returns `null` with
-the exact error `ASCII FBX file did not contain parsable mesh geometry`,
-distinct from wrong-magic and corrupt binary FBX diagnostics.
+ASCII FBX files (the standard `; FBX` comment header, or bare node text) use a
+length-bounded, brace-scoped lexer/parser and populate the same typed graph as
+binary FBX. Multiple models, geometries, materials, skeletons, connections, and
+animations therefore use the same extractor and transform/curve semantics in
+both encodings. Comments, quoted decoys, and closed sibling scopes cannot
+satisfy lookups. Names are dynamically sized for display, while numeric FBX IDs
+remain the only object/animation identity. A supported FBX input must contain a
+valid typed `Objects`/`Connections` graph. Every Geometry record declared as
+type `Mesh` must decode to at least one valid, non-degenerate triangle;
+malformed, non-finite, or empty declared mesh geometry rejects the complete load
+as corrupt instead of publishing a successful empty asset. Geometry type
+`Shape` and other non-mesh records remain available to their dedicated import
+passes. `unsupported` is reserved for a recognized feature or representation
+the runtime does not implement, not malformed content claiming a supported FBX
+structure.
+
+Static scene nodes, skeleton binds, and keyed poses use one composer for pivot,
+pre/post rotation, rotation order, geometric transform, and inheritance mode.
+Constant segments preserve the immediately preceding FBX tick, linear segments
+remain linear, and cubic Hermite segments subdivide adaptively to the configured
+time/value error bound. Any budget or key-capacity failure discards the staged
+clip instead of returning a truncated animation.
 
 glTF extension support is explicit:
 
@@ -97,6 +116,19 @@ glTF extension support is explicit:
 
 Unsupported required extensions fail the load and name the extension list, for
 example `GLTF.Load: requires EXT_texture_webp (unsupported)`.
+
+Plain `.gltf` input is length-aware and rejects embedded NUL bytes. Synchronous
+and preload `.glb` loads use the same bounded GLB 2.0 chunk iterator, so missing
+JSON/BIN chunks, invalid order, truncated payloads, and trailing bytes fail the
+same way. Recognized integer and boolean-like fields require one complete exact
+JSON token; malformed array separators invalidate the containing object rather
+than returning a parsed prefix.
+
+Each imported texture slot preserves wrap plus independent minification,
+magnification, and mip-filter axes through Canvas3D and every backend. UV0 and
+UV1 are supported only when the primitive actually carries the selected stream;
+a missing stream or UV2+ fails with an asset diagnostic instead of silently
+sampling UV0.
 
 Writable `Zanna.Graphics3D` properties expose `get_X` / `set_X` runtime
 accessors and language-level property assignment where supported, such as
@@ -436,14 +468,23 @@ casters ("peter-panning"), lower `SetShadowSlopeBias`; if surfaces show striping
 `native-texture:astc` report native compressed texture upload support for the
 active backend/device. Bare `bc1`/`bc3`/`bc4`/`bc5`/`bc7`/`astc`/`etc2` names
 remain accepted as legacy native-upload aliases. The older `texture:*` names
-report runtime CPU fallback coverage.
-KTX2 supercompression schemes 2 (Zstandard) and 3 (ZLIB) — the default output
-of `toktx --zcmp` and similar tools — are decompressed per level by the
-runtime's from-scratch decoders before decode/native retention; scheme 1
-(BasisLZ/ETC1S) is rejected with a recoverable diagnostic. Malformed or
-unsupported KTX2 input never traps: loads return null and the diagnostic is
-available through `AssetDiagnostics3D.GetLoadWarnings()`. Native mip payload lengths are
-validated against the declared format/block dimensions.
+report runtime CPU fallback coverage. That probe is true for either partial or
+full coverage; the authoritative internal table keeps those qualities distinct.
+
+KTX2 supercompression schemes 1 (BasisLZ/ETC1S), 2 (Zstandard), and 3 (ZLIB)
+are decoded per level by the runtime's from-scratch codecs. ZLIB validates its
+header, dictionary flag, bounded DEFLATE stream, exact output size, trailing
+input, and Adler-32. Zstandard likewise requires the exact destination length
+and complete frame consumption. Malformed KTX2 never traps: loads return null
+and the diagnostic is available through
+`AssetDiagnostics3D.GetLoadWarnings()`. Native mip payload lengths are
+validated against the declared format/block dimensions before publication.
+
+`TextureAsset3D.LoadKtx2` and `LoadKtx2Asset` remain permissive for recognized
+partial decoders: they return a checker-backed asset with `Degraded = true` and
+a stable `DegradedReason`. `LoadKtx2Strict` and `LoadKtx2AssetStrict` return
+null for the same decode failure. This lets tools reject degraded content while
+existing games keep their visible compatibility fallback.
 `BackendSupports("anisotropy")` reports whether the active GPU backend applies
 `Material3D.Anisotropy`; the software backend accepts the property but ignores
 it and reports false.
@@ -454,16 +495,19 @@ it and reports false.
 | BC1 KTX2 | Full DXT1 decode (opaque + punch-through) to `Pixels` | Device-dependent `native-texture:bc1` key | Load fails on malformed bytes |
 | BC3 KTX2 | Full BC3/DXT5 decode to `Pixels` | Device-dependent `native-texture:bc3` key | Load fails on malformed bytes |
 | BC4/BC5 KTX2 | Single/two-channel decode to `Pixels` (R replicated / RG) | Device-dependent `native-texture:bc4`/`native-texture:bc5` keys | Load fails on malformed bytes |
-| BC7 KTX2 | BC7 modes 0-7 decode to `Pixels`; `texture:bc7` reports true | Device-dependent `native-texture:bc7` key | 8x8 magenta/black checker + load warning |
-| BC6H KTX2 (signed + unsigned) | All 14 HDR block modes decode to `Pixels` (half floats clamped to [0, 1]; validated bit-exact against an independent reference decoder) | Software fallback only (no native HDR block upload yet) | Load fails on malformed bytes |
-| ETC2 RGBA8/EAC KTX2 | Individual/differential color modes decode; `texture:etc2` reports true | Device-dependent `native-texture:etc2` key | 8x8 magenta/black checker + load warning |
-| ASTC KTX2 | LDR 2D void-extent blocks decode; `texture:astc` reports true | Device-dependent `native-texture:astc` key | 8x8 magenta/black checker + load warning |
+| BC7 KTX2 | Full modes 0-7 decode to `Pixels`; `texture:bc7` reports true | Device-dependent `native-texture:bc7` key | Permissive checker / strict failure only for malformed data |
+| BC6H KTX2 (signed + unsigned) | Partial HDR block fallback; implemented modes decode to clamped `Pixels` and the capability row reports partial | Software fallback only (no native HDR block upload yet) | Permissive checker / strict failure for an unsupported or corrupt block |
+| ETC2 RGBA8/EAC KTX2 | Partial individual/differential color fallback; capability row reports partial | Device-dependent `native-texture:etc2` key | Permissive checker / strict failure for an unsupported or corrupt mode |
+| ASTC KTX2 | Partial LDR 2D fallback including void-extent blocks; capability row reports partial | Device-dependent `native-texture:astc` key | Permissive checker / strict failure for an unsupported or corrupt block type |
 
 All native block-compressed mip payloads are still retained internally for
 capability-gated backend upload. On the software backend, the native upload keys
 are false and the `texture:*` CPU keys are true for the decoder coverage above.
-`TextureAsset3D.SetResidentMipRange` switches the active fallback to the first
-resident mip while updating byte telemetry.
+`TextureAsset3D.SetResidentMipRange` first reconstructs every entering fallback
+from immutable canonical backing, publishes the new window, and then releases
+decoded `Pixels` outside it. `ResidentBytes` falls on eviction; `RetainedBytes`
+reports the reconstructable backing plus decoded mips still alive. Moving a mip
+back into the window reproduces its original pixels.
 Materials retain the texture asset and resolve that active fallback at draw
 time, so already-bound materials follow later residency changes; when no
 fallback exists, capable GPU backends receive the resident compressed blocks
@@ -493,8 +537,8 @@ earlier windows.
 
 `Material3D.Anisotropy = 1` disables anisotropic filtering. Values below `1`
 clamp to `1`; values above `16` clamp to `16`. GPU backends cache sampler
-states by wrap mode, filter, and effective anisotropy, so changed settings reuse
-existing sampler objects once created.
+states by wrap mode, minification/magnification/mip filter axes, and effective
+anisotropy, so changed settings reuse existing sampler objects once created.
 
 ### Canvas3D Performance Telemetry
 
@@ -570,7 +614,7 @@ paths are not GPU occlusion queries or Hi-Z culling.
 | `SetOcclusionCulling(enabled)` | `Void(Boolean)` | Toggle conservative CPU occlusion skips (independent of frustum culling) |
 | `SetVSync(enabled)` | `Void(Boolean)` | Present pacing: vsync defaults on; disabling presents immediately for lowest latency where `BackendSupports("vsync-control")` |
 | `VSync` | `Boolean` | Requested vsync state |
-| `TrySetRenderScale(scale)` | `Boolean(Double)` | Render the 3D scene at `scale` x output size (`[0.25, 1]`) and upscale at presentation; `>= 1` restores native rendering and always succeeds, reduced scales require `BackendSupports("render-scale")` |
+| `TrySetRenderScale(scale)` | `Boolean(Double)` | Render the window-backed 3D scene at `scale` x output size (`[0.25, 1]`) and upscale before full-size overlays, readback, and presentation; reduced scales require `BackendSupports("render-scale")`. `>= 1` requests native rendering even on fixed-scale backends. A capable backend can return `false` during an active frame/present transaction or if target allocation fails; the previous scale remains active. Explicit render targets retain their authored size. |
 | `RenderScale` | `Double` | Currently requested render scale (`1` = native) |
 | `DrawCount` | `Integer` | Main 3D draw submissions queued by the latest ended frame |
 | `OccludedDrawCount` | `Integer` | Latest scene draw submissions skipped by visibility culling |
@@ -713,6 +757,17 @@ Canvas3D/SceneGraph draw paths.
 SceneGraph `.vscn` save/load persists each mesh's resident flag, so authored
 streaming state survives scene round trips while older files default to
 resident meshes.
+
+`Mesh3D.Simplify(mesh, targetTriangles)` returns a new deterministic QEM mesh.
+The result exposes `SimplifyRequestedTriangles`,
+`SimplifyAchievedTriangles`, and `SimplifyStatus` (`0` not run/stale, `1`
+complete, `2` valid partial). A partial result means topology or a classified
+open/attribute/material boundary prevented the exact target; it is still safe
+to render. Subset placement keeps fixed vertex attributes, double positions,
+both skin-influence streams, remapped morph channels, material ranges, and
+retained animation references aligned. Collapses that violate the manifold
+link condition or create duplicate, degenerate, or inverted faces are skipped.
+Changing the returned mesh's geometry clears its simplification diagnostics.
 
 `Mesh3D.CompactStreams` (default false) opts a mesh into the compact GPU
 vertex-stream encoding: static-geometry-cache uploads on the Metal, Direct3D 11,
@@ -1187,6 +1242,12 @@ stay exact-name so typos still surface as `-1`/`None`. Re-registering an existin
 external name replaces its mapping. Use this to retarget clips from downloaded
 rigs whose naming convention does not match your skeleton without renaming bones.
 
+Bone names are retained as complete runtime strings, not fixed 64-byte buffers.
+Long names with equal prefixes remain distinct through lookup, retargeting,
+FBX import, and VSCN save/load. Animation key times are stored as doubles so
+adjacent FBX ticks remain distinct; only sub-tick arithmetic noise is replaced
+as a duplicate sample.
+
 Skinning weights are normalized consistently across CPU and GPU draw paths. Missing palettes copy
 vertices through unchanged, and unused backend bone-palette slots are treated as identity transforms.
 Add every bone before binding the skeleton to a mesh or constructing animation players, blenders, or
@@ -1484,9 +1545,16 @@ failure instead of reusing stale buffers; larger shape sets should use the CPU-a
 ### Zanna.Graphics3D.Particles3D
 
 3D particle emitter with configurable spawn, physics, color, and render properties.
-`Draw` submits one batched billboard mesh per emitter. Additive particles skip
-sorting; alpha particles sort a temporary key array back-to-front without
-mutating the emitter's live particle order.
+Simulation uses 60 Hz fixed steps and a maximum of 60 steps per `Update`. Fractional time is
+retained, while excess complete-step time is exposed through timing telemetry instead of silently
+clamped.
+`Draw` batches the emitter without mutating its live particle order. Additive
+particles skip sorting; alpha particles preserve their temporary back-to-front
+sort in instance order. Metal, D3D11, and OpenGL draw a retained unit quad from
+one compact 64-byte center/right/up/color record per particle, avoiding repeated
+expanded billboard vertex/index construction. Software reconstructs the same
+quad through its CPU mesh path. Ribbon trails remain CPU-expanded on every
+backend and can accompany the hardware billboard batch.
 
 **Type:** Instance (obj)
 **Constructor:** `Particles3D.New(maxParticles)`
@@ -1495,9 +1563,13 @@ mutating the emitter's live particle order.
 
 | Property   | Type    | Access | Description |
 |------------|---------|--------|-------------|
-| `Count`    | Integer | Read   | Currently active particle count |
+| `Count`    | Integer | Read   | Currently live particle count; terminal snapshots are excluded |
 | `Emitting` | Boolean | Read   | True while the emitter is running |
 | `Seed`     | Integer | Read/Write | Deterministic RNG seed for this emitter's spawn stream. Emitters no longer share a process-global sequence, so setting an explicit seed makes an effect bit-identical across runs regardless of construction order |
+| `RenderFinalFrame` | Boolean | Read/Write | Keep an expired particle's exact endpoint drawable until the next valid update. Defaults to true without keeping the particle live. |
+| `DroppedTime` | Double | Read | Cumulative complete-step time discarded by the one-second-per-call catch-up budget |
+| `LastDroppedTime` | Double | Read | Time discarded by the latest update call, or zero when none was discarded |
+| `ResidualTime` | Double | Read | Retained fractional fixed-step time, always less than 1/60 second |
 
 #### Methods
 
@@ -1519,8 +1591,9 @@ mutating the emitter's live particle order.
 | `Stop()` | `Void()` | Stop continuous emission |
 | `Burst(count)` | `Void(Integer)` | Emit `count` particles immediately |
 | `Clear()` | `Void()` | Remove all active particles |
+| `ResetDroppedTime()` | `Void()` | Clear cumulative/latest dropped-time telemetry without changing residual time |
 | `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift the emitter and live particles by `-delta` |
-| `Update(deltaSeconds)` | `Void(Double)` | Advance particle simulation |
+| `Update(deltaSeconds)` | `Void(Double)` | Advance bounded fixed-step simulation and update timing telemetry |
 | `Draw(canvas3D, camera)` | `Void(Object, Object)` | Render particles to the scene |
 
 ```rust
@@ -1745,6 +1818,12 @@ voxel heightfield source arrays remain runtime-derived and are not serialized;
 an imported tiled navmesh is queryable and editable from serialized triangles,
 but it cannot regenerate new voxel heights from an external tile source.
 
+`SamplePosition` uses the retained XZ query grid for off-mesh points, expanding
+cell rings until a geometric lower bound proves the nearest projection. A fixed
+query-work budget falls back to an exact triangle pass. Path queries lease one
+of four independently mutable A* workspaces per navmesh, so read-only searches
+can overlap without sharing costs, parents, closed flags, or heap entries.
+
 ---
 
 ### Zanna.Graphics3D.NavAgent3D
@@ -1783,6 +1862,13 @@ Pathfinding agent that moves along a `NavMesh3D` toward a target.
 | `BindNode(sceneNode)` | `Void(Object)` | Drive a `SceneNode` position from agent |
 
 Avoidance is local and opt-in. Agents on the same `NavMesh3D` with `AvoidanceEnabled=true` solve a deterministic reciprocal-velocity-obstacle candidate set over nearby grid peers before the update drives a character or node. The solver predicts collisions over a bounded horizon, prefers the path-following velocity, and has a named 200-agent CTest baseline.
+
+Native crowd schedulers may use the additive embedding API
+`rt_navagent3d_update_batch(void *const *agents, int64_t count, double dt)`.
+It canonicalizes unique valid handles by creation order, prepares the complete
+selected set, snapshots every live peer once, solves against only that immutable
+start-of-tick state, and then applies in the same deterministic order. The
+registered `Update(deltaSeconds)` method remains the single-agent interface.
 
 `OnOffMeshLink` and `LinkKind` let gameplay code react to authored traversal
 (play a jump animation, disable gravity on a ladder): they match the agent's
@@ -2123,5 +2209,6 @@ Texture atlas for 3D rendering with named-region management.
   while tiled obstacle edits re-carve only affected tiles. Keep baked meshes
   manifold at shared edges.
 - `Particles3D.Draw` should be called inside the `Canvas3D.Begin`/`End` scene pass after opaque geometry when you want particles over the main scene.
-- Deferred heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; public `DrawMesh` rejects raw stack mesh payloads, while internal skinned and morphed paths retain or snapshot the animation payloads needed for backend submission.
+- Deferred heap `Mesh3D` draws retain an immutable reference-counted geometry revision, so submitted bytes remain stable through `Canvas3D.End()` even if the live mesh mutates. Unchanged later frames reuse the same revision without copying vertex/index arrays. Missing normal-map tangents are a separate persistent variant of that revision and are invalidated by any position, normal, UV, or topology edit. Camera-relative rebase, skinned, and morphed paths keep explicit dynamic snapshots; public `DrawMesh` still rejects raw stack mesh payloads.
+- `Ray3D.IntersectMesh` lazily retains a local-space triangle BVH per mesh geometry revision. Repeated identity/invertible-transform queries reuse it, while singular transforms and allocation failure keep the exact linear fallback and deterministic lowest-triangle tie behavior.
 - `SpatialAudio3D.SyncBindings` must be called once per frame after physics/animation updates so bound sources and listeners track their nodes.

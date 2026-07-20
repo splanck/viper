@@ -6,7 +6,15 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/unit/test_rt_navagent3d.cpp
-// Purpose: Unit tests for NavAgent3D path following, bindings, and warp state.
+// Purpose: Unit tests for NavAgent3D path following, bindings, warp state, and
+//   deterministic snapshot/solve/apply crowd batches.
+//
+// Key invariants:
+//   - Reversing batch input order cannot change published navigation results.
+//   - Character/node bindings preserve the agent's authoritative position contract.
+// Ownership/Lifetime:
+//   - Test fixtures own temporary meshes/navmeshes/agents for process duration.
+// Links: rt_navagent3d.h, rt_navmesh3d.h, rt_physics3d.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -631,6 +639,87 @@ static void test_navagent_invalid_handle_numeric_getters_return_sentinel() {
                 "NavAgent3D.AvoidanceRadius is non-negative for a valid agent");
 }
 
+/// @brief Verify batch avoidance is invariant to caller iteration order.
+/// @details The same two-agent head-on state is advanced once in creation order, reset exactly,
+///   and advanced again with the input handles reversed. Position, actual velocity, and solved
+///   desired velocity must match lane-for-lane, while a nonzero lateral result confirms the test
+///   exercised avoidance rather than only straight-line integration.
+static void test_navagent_batch_update_is_order_independent() {
+    void *mesh = rt_mesh3d_new_plane(20.0, 20.0);
+    void *navmesh = rt_navmesh3d_build(mesh, 0.4, 1.8);
+    void *a = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    void *b = rt_navagent3d_new(navmesh, 0.4, 1.8);
+    void *forward[2] = {a, b};
+    void *reverse[2] = {b, a};
+    for (void *agent : forward) {
+        rt_navagent3d_set_desired_speed(agent, 2.0);
+        rt_navagent3d_set_stopping_distance(agent, 0.05);
+        rt_navagent3d_set_avoidance_enabled(agent, 1);
+        rt_navagent3d_set_avoidance_radius(agent, 0.8);
+    }
+
+    auto reset_pair = [&]() {
+        rt_navagent3d_clear_target(a);
+        rt_navagent3d_clear_target(b);
+        rt_navagent3d_warp(a, rt_vec3_new(-1.2, 0.0, 0.0));
+        rt_navagent3d_warp(b, rt_vec3_new(1.2, 0.0, 0.0));
+        rt_navagent3d_set_target(a, rt_vec3_new(4.0, 0.0, 0.0));
+        rt_navagent3d_set_target(b, rt_vec3_new(-4.0, 0.0, 0.0));
+    };
+    reset_pair();
+    EXPECT_TRUE(rt_navagent3d_update_batch(forward, 2, 0.1) == 2,
+                "NavAgent3D batch processes both unique valid handles");
+    double first_position[2][2];
+    double first_velocity[2][2];
+    double first_desired[2][2];
+    for (int i = 0; i < 2; i++) {
+        void *position = rt_navagent3d_get_position(forward[i]);
+        void *velocity = rt_navagent3d_get_velocity(forward[i]);
+        void *desired = rt_navagent3d_get_desired_velocity(forward[i]);
+        first_position[i][0] = rt_vec3_x(position);
+        first_position[i][1] = rt_vec3_z(position);
+        first_velocity[i][0] = rt_vec3_x(velocity);
+        first_velocity[i][1] = rt_vec3_z(velocity);
+        first_desired[i][0] = rt_vec3_x(desired);
+        first_desired[i][1] = rt_vec3_z(desired);
+    }
+    EXPECT_TRUE(std::fabs(first_desired[0][1]) > 0.1 || std::fabs(first_desired[1][1]) > 0.1,
+                "NavAgent3D batch fixture exercises lateral avoidance");
+
+    reset_pair();
+    EXPECT_TRUE(rt_navagent3d_update_batch(reverse, 2, 0.1) == 2,
+                "NavAgent3D batch accepts reversed caller iteration order");
+    for (int i = 0; i < 2; i++) {
+        void *position = rt_navagent3d_get_position(forward[i]);
+        void *velocity = rt_navagent3d_get_velocity(forward[i]);
+        void *desired = rt_navagent3d_get_desired_velocity(forward[i]);
+        EXPECT_NEAR(rt_vec3_x(position),
+                    first_position[i][0],
+                    1e-12,
+                    "NavAgent3D batch X position is caller-order invariant");
+        EXPECT_NEAR(rt_vec3_z(position),
+                    first_position[i][1],
+                    1e-12,
+                    "NavAgent3D batch Z position is caller-order invariant");
+        EXPECT_NEAR(rt_vec3_x(velocity),
+                    first_velocity[i][0],
+                    1e-12,
+                    "NavAgent3D batch X velocity is caller-order invariant");
+        EXPECT_NEAR(rt_vec3_z(velocity),
+                    first_velocity[i][1],
+                    1e-12,
+                    "NavAgent3D batch Z velocity is caller-order invariant");
+        EXPECT_NEAR(rt_vec3_x(desired),
+                    first_desired[i][0],
+                    1e-12,
+                    "NavAgent3D batch desired X is caller-order invariant");
+        EXPECT_NEAR(rt_vec3_z(desired),
+                    first_desired[i][1],
+                    1e-12,
+                    "NavAgent3D batch desired Z is caller-order invariant");
+    }
+}
+
 /// Funnel regression: an L-shaped corridor must string-pull a tight path that
 /// hugs the inside corner and never leaves the walkable area. A wrong-side
 /// left/right assignment in the portal ordering would emit a corner on the far
@@ -685,6 +774,7 @@ int main() {
     test_navagent_warp_resets_motion_and_rebuilds_path();
     test_navagent_character_binding_updates_bound_node();
     test_navagent_avoidance_properties();
+    test_navagent_batch_update_is_order_independent();
     test_navagent_local_avoidance_reduces_head_on_velocity();
     test_navagent_avoidance_breaks_head_on_deadlock();
     test_navagent_crowd_multiple_pairs_cross();

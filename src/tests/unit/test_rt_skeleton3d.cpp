@@ -5,9 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/test_rt_skeleton3d.cpp
+// File: src/tests/unit/test_rt_skeleton3d.cpp
 // Purpose: Unit tests for Skeleton3D, Animation3D, AnimPlayer3D — bone
 //   hierarchy, keyframe sampling, CPU skinning, crossfade.
+//
+// Key invariants:
+//   - Exact bone names and double key times survive private runtime storage.
+//   - Invalid/corrupt private counts are clamped before pose traversal.
+// Ownership/Lifetime:
+//   - Runtime fixtures are owned for the duration of the test process.
 //
 // Links: rt_skeleton3d.h, vgfx3d_skinning.h, plans/3d/14-skeletal-animation.md
 //
@@ -161,7 +167,10 @@ static void test_animation_keyframes_are_sorted() {
     EXPECT_NEAR(mv->m[3], 5.0, 0.1, "Out-of-order keyframes sample at sorted midpoint");
 }
 
-static void test_animation_near_duplicate_keyframes_replace_existing_sample() {
+/// @brief Verify arithmetic-noise duplicate key times replace instead of creating two samples.
+/// @details The delta is below the double-time equality tolerance but far below one FBX source
+///          tick; the later TRS must replace the earlier key without weakening tick preservation.
+static void test_animation_roundoff_duplicate_keyframes_replace_existing_sample() {
     void *skel = rt_skeleton3d_new();
     rt_skeleton3d_add_bone(skel, rt_const_cstr("root"), -1, rt_mat4_identity());
     rt_skeleton3d_compute_inverse_bind(skel);
@@ -170,12 +179,12 @@ static void test_animation_near_duplicate_keyframes_replace_existing_sample() {
     void *rot = rt_quat_new(0.0, 0.0, 0.0, 1.0);
     void *scl = rt_vec3_new(1.0, 1.0, 1.0);
     rt_animation3d_add_keyframe(anim, 0, 0.0, rt_vec3_new(1.0, 0.0, 0.0), rot, scl);
-    rt_animation3d_add_keyframe(anim, 0, 0.0000001, rt_vec3_new(2.0, 0.0, 0.0), rot, scl);
+    rt_animation3d_add_keyframe(anim, 0, 0.00000000000005, rt_vec3_new(2.0, 0.0, 0.0), rot, scl);
 
     rt_animation3d *impl = (rt_animation3d *)anim;
-    EXPECT_TRUE(impl->channel_count == 1, "Near-duplicate keyframes keep one channel");
+    EXPECT_TRUE(impl->channel_count == 1, "Roundoff-duplicate keyframes keep one channel");
     EXPECT_TRUE(impl->channels[0].keyframe_count == 1,
-                "Near-duplicate keyframes replace the existing sample");
+                "Roundoff-duplicate keyframes replace the existing sample");
 
     void *player = rt_anim_player3d_new(skel);
     rt_anim_player3d_play(player, anim);
@@ -186,7 +195,7 @@ static void test_animation_near_duplicate_keyframes_replace_existing_sample() {
     } mat4_view;
 
     mat4_view *mv = (mat4_view *)rt_anim_player3d_get_bone_matrix(player, 0);
-    EXPECT_NEAR(mv->m[3], 2.0, 0.05, "Near-duplicate keyframe keeps latest TRS values");
+    EXPECT_NEAR(mv->m[3], 2.0, 0.05, "Roundoff-duplicate keyframe keeps latest TRS values");
 }
 
 static void test_skeleton_animation_repairs_corrupt_counts() {
@@ -1008,7 +1017,7 @@ int main() {
     test_animation_create();
     test_animation_keyframes();
     test_animation_keyframes_are_sorted();
-    test_animation_near_duplicate_keyframes_replace_existing_sample();
+    test_animation_roundoff_duplicate_keyframes_replace_existing_sample();
     test_skeleton_animation_repairs_corrupt_counts();
     test_animation_safe_counts_have_domain_ceilings();
     test_anim_player_retains_inputs();

@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_draw.inc  (#included from
-// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 draw state,
-// constant-buffer packing, pipeline binding, and draw submission
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_draw.inc
+// Purpose: D3D11 draw-state packing, resource binding, and native submission.
+// Key invariants:
+//   - Draw resources are validated and unbound on every failed or completed submission path.
+//   - Compact particles upload exactly one shared 64-byte record per retained-quad instance.
+// Ownership/Lifetime:
+//   - Cache buffers belong to the D3D11 context; temporary draw resources are locally released.
+//   - Command payloads are borrowed from Canvas3D and remain valid through this synchronous call.
+// Links: vgfx3d_backend_d3d11.c, vgfx3d_backend_d3d11_context.inc
+//
 //===----------------------------------------------------------------------===//
 
 #define D3D11_MATERIAL_EMISSIVE_INTENSITY_MAX VGFX3D_D3D11_POSTFX_SCALAR_MAX
@@ -173,6 +185,44 @@ static D3D11_TEXTURE_ADDRESS_MODE d3d11_sampler_address_mode(int index) {
     return D3D11_TEXTURE_ADDRESS_WRAP;
 }
 
+/// @brief Pack independent nearest/linear min, mag, and three-state mip axes into a cache index.
+/// @param min_filter Sanitized minification filter.
+/// @param mag_filter Sanitized magnification filter.
+/// @param mip_filter Sanitized mip-selection filter.
+/// @return Stable index in `[0, 12)`.
+static int d3d11_sampler_filter_index(int32_t min_filter, int32_t mag_filter, int32_t mip_filter) {
+    int min_index = min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+    int mag_index = mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+    int mip_index = mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST
+                        ? 1
+                        : (mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR ? 2 : 0);
+    return min_index + mag_index * 2 + mip_index * 4;
+}
+
+/// @brief Map independent material sampler axes to the exact D3D11 filter enum.
+/// @details `NONE` uses the point-mip tuple with `MaxLOD=0` supplied by the caller, preserving the
+/// independent min/mag axes without allowing a lower mip to participate.
+/// @param min_filter Sanitized minification filter.
+/// @param mag_filter Sanitized magnification filter.
+/// @param mip_filter Sanitized mip-selection filter.
+/// @return One non-comparison `D3D11_FILTER` tuple.
+static D3D11_FILTER d3d11_sampler_filter_mode(int32_t min_filter,
+                                              int32_t mag_filter,
+                                              int32_t mip_filter) {
+    int min_nearest = min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    int mag_nearest = mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    int mip_linear = mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR;
+    if (min_nearest && mag_nearest)
+        return mip_linear ? D3D11_FILTER_MIN_MAG_POINT_MIP_LINEAR : D3D11_FILTER_MIN_MAG_MIP_POINT;
+    if (min_nearest)
+        return mip_linear ? D3D11_FILTER_MIN_POINT_MAG_MIP_LINEAR
+                          : D3D11_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT;
+    if (mag_nearest)
+        return mip_linear ? D3D11_FILTER_MIN_LINEAR_MAG_POINT_MIP_LINEAR
+                          : D3D11_FILTER_MIN_LINEAR_MAG_MIP_POINT;
+    return mip_linear ? D3D11_FILTER_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+}
+
 /// @brief Return a cached or newly-created D3D11 sampler state for the given draw command and
 /// texture slot.
 /// @details Resolves wrap_s, wrap_t, filter, and anisotropy from per-slot or primary material
@@ -186,7 +236,10 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
                                                       int32_t slot) {
     int wrap_s;
     int wrap_t;
-    int filter;
+    int32_t min_filter;
+    int32_t mag_filter;
+    int32_t mip_filter;
+    int filter_index;
     int32_t anisotropy;
     int32_t anisotropy_index;
     D3D11_SAMPLER_DESC desc;
@@ -199,23 +252,44 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
     if (slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT) {
         wrap_s = d3d11_sampler_wrap_index(cmd->texture_slot_wrap_s[slot]);
         wrap_t = d3d11_sampler_wrap_index(cmd->texture_slot_wrap_t[slot]);
-        filter = cmd->texture_slot_filter[slot] == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+        min_filter = cmd->texture_slot_min_filter[slot];
+        mag_filter = cmd->texture_slot_mag_filter[slot];
+        mip_filter = cmd->texture_slot_mip_filter[slot];
         anisotropy = cmd->texture_slot_anisotropy[slot];
     } else {
         wrap_s = d3d11_sampler_wrap_index(cmd->texture_wrap_s);
         wrap_t = d3d11_sampler_wrap_index(cmd->texture_wrap_t);
-        filter = cmd->texture_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+        min_filter = cmd->texture_min_filter;
+        mag_filter = cmd->texture_mag_filter;
+        mip_filter = cmd->texture_mip_filter;
         anisotropy = cmd->texture_anisotropy;
     }
-    anisotropy = filter ? 1 : vgfx3d_d3d11_sanitize_anisotropy(anisotropy);
+    min_filter = min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                     ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                     : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    mag_filter = mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                     ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                     : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    mip_filter = mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST
+                     ? RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST
+                     : (mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR
+                            ? RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR
+                            : RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE);
+    anisotropy = (min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ||
+                  mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST)
+                     ? 1
+                     : vgfx3d_d3d11_sanitize_anisotropy(anisotropy);
+    filter_index = d3d11_sampler_filter_index(min_filter, mag_filter, mip_filter);
     anisotropy_index = vgfx3d_d3d11_sampler_anisotropy_index(anisotropy);
-    if (ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index])
-        return ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index];
+    if (ctx->material_samplers[wrap_s][wrap_t][filter_index][anisotropy_index])
+        return ctx->material_samplers[wrap_s][wrap_t][filter_index][anisotropy_index];
     if (!ctx->device)
         return ctx->linear_wrap_sampler;
     d3d11_init_sampler_desc_defaults(&desc);
-    desc.Filter = filter ? D3D11_FILTER_MIN_MAG_MIP_POINT : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-    if (!filter && anisotropy > 1) {
+    desc.Filter = d3d11_sampler_filter_mode(min_filter, mag_filter, mip_filter);
+    if (mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE)
+        desc.MaxLOD = 0.0f;
+    if (anisotropy > 1) {
         desc.Filter = D3D11_FILTER_ANISOTROPIC;
         desc.MaxAnisotropy = (UINT)anisotropy;
     }
@@ -228,7 +302,7 @@ static ID3D11SamplerState *d3d11_get_material_sampler(d3d11_context_t *ctx,
         SAFE_RELEASE(created_sampler);
         return ctx->linear_wrap_sampler;
     }
-    ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index] = created_sampler;
+    ctx->material_samplers[wrap_s][wrap_t][filter_index][anisotropy_index] = created_sampler;
     return created_sampler;
 }
 
@@ -1405,8 +1479,11 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     d3d_light_t light_data[VGFX3D_MAX_LIGHTS];
     d3d_draw_resources_t draw_resources;
     int has_splat;
+    int particle_mode;
     HRESULT hr;
     size_t instance_upload_bytes;
+    const void *instance_upload_source;
+    size_t instance_stride;
     UINT strides[2];
     UINT offsets[2] = {0, 0};
     ID3D11Buffer *vertex_buffers[2];
@@ -1415,25 +1492,33 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     uint32_t index_count;
 
     (void)win;
-    if (!ctx || !cmd || !instance_matrices || instance_count <= 0 || !cmd->vertices ||
-        !cmd->indices)
+    if (!ctx || !cmd || instance_count <= 0 || !cmd->vertices || !cmd->indices ||
+        (!instance_matrices && !cmd->particle_instances))
         return;
+    particle_mode = cmd->particle_instances != NULL;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
     if (index_count == 0)
         return;
 
+    instance_stride =
+        particle_mode ? sizeof(vgfx3d_particle_instance_t) : sizeof(d3d_instance_data_t);
     if (!vgfx3d_d3d11_compute_instance_upload_bytes(
-            instance_count, sizeof(d3d_instance_data_t), &instance_upload_bytes))
+            instance_count, instance_stride, &instance_upload_bytes))
         return;
-    if (!d3d11_ensure_instance_upload_capacity(ctx, instance_count))
-        return;
-    vgfx3d_d3d11_fill_instance_data(
-        ctx->instance_upload_data,
-        instance_count,
-        instance_matrices,
-        cmd->prev_instance_matrices,
-        (int8_t)vgfx3d_d3d11_should_use_previous_instance_matrices(
-            cmd->prev_instance_matrices, cmd->has_prev_instance_matrices));
+    if (particle_mode) {
+        instance_upload_source = cmd->particle_instances;
+    } else {
+        if (!d3d11_ensure_instance_upload_capacity(ctx, instance_count))
+            return;
+        vgfx3d_d3d11_fill_instance_data(
+            ctx->instance_upload_data,
+            instance_count,
+            instance_matrices,
+            cmd->prev_instance_matrices,
+            (int8_t)vgfx3d_d3d11_should_use_previous_instance_matrices(
+                cmd->prev_instance_matrices, cmd->has_prev_instance_matrices));
+        instance_upload_source = ctx->instance_upload_data;
+    }
 
     d3d11_prepare_object_data(cmd, &object_data);
     object_data.has_prev_model_matrix = 0;
@@ -1522,7 +1607,7 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
                                      &ctx->instance_buffer,
                                      &ctx->instance_buffer_size,
                                      D3D11_BIND_VERTEX_BUFFER,
-                                     ctx->instance_upload_data,
+                                     instance_upload_source,
                                      instance_upload_bytes,
                                      D3D11_INITIAL_INSTANCE_BUFFER_SIZE)) {
         d3d11_unbind_draw_resources(ctx);
@@ -1532,12 +1617,16 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
 
     strides[0] = d3d11_cmd_uses_compact_stream(ctx, cmd) ? VGFX3D_COMPACT_VERTEX_STRIDE
                                                          : sizeof(vgfx3d_vertex_t);
-    strides[1] = sizeof(d3d_instance_data_t);
+    strides[1] = (UINT)instance_stride;
     vertex_buffers[0] = mesh_vb;
     vertex_buffers[1] = ctx->instance_buffer;
     ID3D11DeviceContext_IASetVertexBuffers(ctx->ctx, 0, 2, vertex_buffers, strides, offsets);
     ID3D11DeviceContext_IASetIndexBuffer(ctx->ctx, mesh_ib, DXGI_FORMAT_R32_UINT, 0);
     d3d11_bind_main_pipeline(ctx, cmd, wireframe, backface_cull, 1);
+    if (particle_mode) {
+        ID3D11DeviceContext_IASetInputLayout(ctx->ctx, ctx->input_layout_particles);
+        ID3D11DeviceContext_VSSetShader(ctx->ctx, ctx->vs_particles, NULL, 0);
+    }
     ID3D11DeviceContext_DrawIndexedInstanced(ctx->ctx, index_count, instance_count, 0, 0, 0);
 
     d3d11_unbind_draw_resources(ctx);

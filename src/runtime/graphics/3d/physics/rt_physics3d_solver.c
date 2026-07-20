@@ -19,6 +19,10 @@
 //   - Broad phase sorts entries by the widest axis with deterministic reusable-buffer sorting so
 //     the inner loop can break early once spans no longer overlap.
 //
+// Ownership/Lifetime:
+//   - World-owned scratch buffers are reserved transactionally and reused across steps.
+//   - Solver contacts borrow body/collider state only for the committed step.
+//
 // Links: rt_physics3d_internal.h, rt_physics3d.c
 //
 //===----------------------------------------------------------------------===//
@@ -120,7 +124,8 @@ static void world3d_solve_islands_dispatch(rt_world3d *w,
     ph3d_island_task_t tasks[PH3D_SOLVER_MAX_WORKERS];
     if (!w || !batch || batch->island_count <= 0)
         return;
-    if (batch->island_count >= 2 && batch->solver_contact_count >= PH3D_SOLVER_PARALLEL_MIN_CONTACTS)
+    if (batch->island_count >= 2 &&
+        batch->solver_contact_count >= PH3D_SOLVER_PARALLEL_MIN_CONTACTS)
         pool = world3d_solver_pool(w);
     if (!pool) {
         ph3d_island_task_t serial = {w, batch, 0, batch->island_count, solve_position, beta};
@@ -439,7 +444,7 @@ int world3d_build_solver_island_batch(rt_world3d *w, ph3d_solver_island_batch *b
 
     if (!ph3d_solver_island_batch_alloc(w, batch)) {
         ph3d_solver_island_batch_free(batch);
-        rt_trap("Physics3D.World.Step: solver island allocation failed");
+        world3d_step_fail(w, "Physics3D.World.Step: solver island allocation failed");
         return 0;
     }
 
@@ -706,6 +711,39 @@ static void world3d_solve_velocity_contact(rt_contact3d *c) {
     }
 }
 
+/// @brief Solve one swept time-of-impact manifold with the ordinary contact material rules.
+/// @details The TOI manifold is separated (zero penetration), so it needs only
+///   the standard warm-start/restitution initialization and velocity iterations.
+///   Reusing `world3d_solve_velocity_contact` makes collider overrides, geometric-
+///   mean friction, restitution thresholds, effective mass, and angular response
+///   identical to discrete contacts. No allocation or positional correction occurs.
+/// @param w Borrowed world supplying solver iteration and material configuration.
+/// @param contact Caller-owned single-point contact, updated with solved impulses.
+void world3d_solve_toi_contact(rt_world3d *w, rt_contact3d *contact) {
+    double total_impulse = 0.0;
+    int32_t iterations;
+    if (!w || !contact || contact->is_trigger || contact->contact_count <= 0)
+        return;
+    memset(contact->normal_impulse_acc, 0, sizeof(contact->normal_impulse_acc));
+    memset(contact->tangent_impulse_acc, 0, sizeof(contact->tangent_impulse_acc));
+    memset(contact->restitution_bias, 0, sizeof(contact->restitution_bias));
+    world3d_warm_start_contact(w, contact, NULL, 0);
+    iterations = w->solver_iterations;
+    if (iterations < 1)
+        iterations = 1;
+    else if (iterations > PH3D_MAX_SOLVER_ITERATIONS)
+        iterations = PH3D_MAX_SOLVER_ITERATIONS;
+    for (int32_t iteration = 0; iteration < iterations; ++iteration)
+        world3d_solve_velocity_contact(contact);
+    for (int32_t point = 0; point < contact->contact_count; ++point)
+        total_impulse += contact->normal_impulse_acc[point];
+    contact->normal_impulse = isfinite(total_impulse) && total_impulse > 0.0 ? total_impulse : 0.0;
+    if (contact->relative_speed > PH3D_CONTACT_WAKE_SPEED) {
+        body3d_wake_if_dynamic(contact->body_a);
+        body3d_wake_if_dynamic(contact->body_b);
+    }
+}
+
 /* Per-pass cap on the angular part of the positional correction (radians).
  * Long lever arms on light bodies could otherwise spin a box visibly in one
  * pass; the cap keeps NGS convergence smooth (mirrors Bullet's split-impulse
@@ -853,9 +891,11 @@ static void world3d_solve_position_contact(rt_contact3d *c, double beta) {
      * The world-level query_broadphase_dirty flag is set once, serially, by the
      * position-pass dispatcher (world3d_solve_position_solver_islands). */
     if (a->inv_mass > 0.0)
-        a->broadphase_revision = a->broadphase_revision == UINT64_MAX ? 1u : a->broadphase_revision + 1u;
+        a->broadphase_revision =
+            a->broadphase_revision == UINT64_MAX ? 1u : a->broadphase_revision + 1u;
     if (b->inv_mass > 0.0)
-        b->broadphase_revision = b->broadphase_revision == UINT64_MAX ? 1u : b->broadphase_revision + 1u;
+        b->broadphase_revision =
+            b->broadphase_revision == UINT64_MAX ? 1u : b->broadphase_revision + 1u;
 }
 
 /// @brief Warm-start every solvable contact, walking the batch island by island.
@@ -1178,7 +1218,7 @@ static int world3d_process_collision_pair(rt_world3d *w, rt_body3d *a, rt_body3d
     int32_t next_contact_count;
     if (!world3d_checked_increment(w->contact_count, &next_contact_count) ||
         !world3d_reserve_contacts(w, next_contact_count)) {
-        rt_trap("Physics3D.World.Step: contact allocation failed");
+        world3d_step_fail(w, "Physics3D.World.Step: contact allocation failed");
         return 0;
     }
 
@@ -1337,10 +1377,9 @@ int world3d_detect_contacts(rt_world3d *w) {
         return 1;
     if (!world3d_reserve_broadphase_capacity(w, geometry_count) ||
         !world3d_reserve_broadphase_sort_scratch(w, geometry_count)) {
-        w->broadphase_fallback_count++;
-        rt_game3d_diag_record_broadphase_fallback();
+        world3d_note_broadphase_fallback(w);
         if (geometry_count > PH3D_BROADPHASE_STACK_FALLBACK) {
-            rt_trap("Physics3D.World.Step: broadphase allocation failed");
+            world3d_step_fail(w, "Physics3D.World.Step: broadphase allocation failed");
             return 0;
         }
         entries = stack_entries;

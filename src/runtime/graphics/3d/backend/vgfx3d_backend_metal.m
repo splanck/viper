@@ -5,10 +5,20 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/vgfx3d_backend_metal.m
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal.m
 // Purpose: Metal GPU backend for Zanna.Graphics3D.
 //
-// Links: vgfx3d_backend.h, plans/3d/02-metal-backend.md
+// Key invariants:
+//   - MSL shaders compile at context creation and all required pipeline variants must exist.
+//   - Scene rendering uses reversed-Z while shadow maps retain the standard depth convention.
+//   - Compact particles bind one 64-byte center/right/up/color record at vertex buffer index 6.
+//
+// Ownership/Lifetime:
+//   - VGFXMetalContext owns all Metal resources and releases them when destroy_ctx drops the
+//   object.
+//   - Deferred command payloads remain Canvas3D-owned until the current frame has been encoded.
+//
+// Links: vgfx3d_backend.h, vgfx3d_backend_metal_shared.h, plans/3d/02-metal-backend.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,9 +36,9 @@
 #include "rt_textureasset3d.h"
 #include "vgfx.h"
 #include "vgfx3d_backend.h"
-#include "vgfx3d_brdf_lut.h"
 #include "vgfx3d_backend_metal_shared.h"
 #include "vgfx3d_backend_utils.h"
+#include "vgfx3d_brdf_lut.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -58,7 +68,7 @@
     float _fogColor[3];
     float _fogNear, _fogFar;
     BOOL _fogEnabled;
-    float _heightFog[4]; /* base, falloff, density (0 = off, folds blend), pad */
+    float _heightFog[4];       /* base, falloff, density (0 = off, folds blend), pad */
     float _heightFogSun[4];    /* sun tint rgb + amount (0 = off) */
     float _heightFogSunDir[4]; /* direction toward the sun + power */
     /* Image-based lighting (stored per-frame from begin_frame) */
@@ -131,6 +141,11 @@
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnly;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAlpha;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAdditive;
+/* Retained-unit-quad particle variants consume the compact four-vec4 instance record. */
+@property(nonatomic, strong) id<MTLRenderPipelineState> particlePipelineStateAlpha;
+@property(nonatomic, strong) id<MTLRenderPipelineState> particlePipelineStateAdditive;
+@property(nonatomic, strong) id<MTLRenderPipelineState> particlePipelineStateColorOnlyAlpha;
+@property(nonatomic, strong) id<MTLRenderPipelineState> particlePipelineStateColorOnlyAdditive;
 /* R20 compact-vertex-stream twins of the twelve mesh pipelines above plus the
  * shadow pipeline. Same shader functions; only the vertex descriptor differs
  * (48-byte packed layout). compactPipelinesReady gates both cache encoding and
@@ -146,7 +161,8 @@
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateAdditiveCompact;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyCompact;
 @property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAlphaCompact;
-@property(nonatomic, strong) id<MTLRenderPipelineState> instancedPipelineStateColorOnlyAdditiveCompact;
+@property(nonatomic, strong) id<MTLRenderPipelineState>
+    instancedPipelineStateColorOnlyAdditiveCompact;
 @property(nonatomic, strong) id<MTLRenderPipelineState> shadowPipelineCompact;
 @property(nonatomic) BOOL compactPipelinesReady;
 @property(nonatomic, strong) id<MTLDepthStencilState> depthState;
@@ -163,6 +179,7 @@
 @property(nonatomic, strong) id<CAMetalDrawable> drawable;
 @property(nonatomic) int32_t width;
 @property(nonatomic) int32_t height;
+@property(nonatomic) float renderScale;
 @property(nonatomic) float clearR, clearG, clearB;
 @property(nonatomic) BOOL inFrame;
 /* Per-frame Metal buffer references — prevents ARC from releasing vertex/index
@@ -367,17 +384,20 @@
  * unit): shader library, target/cache management, presentation, context
  * creation, texture uploads, and draw submission. Include order matters —
  * later chunks call earlier definitions directly. */
+// clang-format off
 #include "vgfx3d_backend_metal_shaders.inc"
 #include "vgfx3d_backend_metal_targets.inc"
 #include "vgfx3d_backend_metal_present.inc"
 #include "vgfx3d_backend_metal_context.inc"
 #include "vgfx3d_backend_metal_texture.inc"
 #include "vgfx3d_backend_metal_draw.inc"
+// clang-format on
 
 const vgfx3d_backend_t vgfx3d_metal_backend = {
     .name = "metal",
     .gpu_skinning = 1,
     .gpu_skinning_extras = 1,
+    .particle_instancing = 1,
     /* Slots >= VGFX3D_CSM_SLOTS render into the internal 4x2 depth atlas
      * (texture index 17); the shader remaps their UVs by static tile rects. */
     .shadow_atlas_slots = 1,
@@ -413,6 +433,7 @@ const vgfx3d_backend_t vgfx3d_metal_backend = {
     .get_native_texture_caps = metal_get_native_texture_caps,
     .get_feature_caps = metal_get_feature_caps,
     .set_vsync = metal_set_vsync,
+    .set_render_scale = metal_set_render_scale,
     .queue_depth_probe = metal_queue_depth_probe,
     .read_depth_probe = metal_read_depth_probe,
 };

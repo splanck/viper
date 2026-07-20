@@ -78,7 +78,7 @@ static int gltf_accessor_init_view(void *acc,
     out->stride = comp_size * comp_count;
     out->comp_type = comp_type;
     out->comp_count = comp_count;
-    out->normalized = jint(acc, "normalized", 0) ? 1 : 0;
+    out->normalized = jbool(acc, "normalized", 0) ? 1 : 0;
     *out_bv_idx = jint(acc, "bufferView", -1);
     *out_comp_size = comp_size;
     return 1;
@@ -713,8 +713,8 @@ static int gltf_accessor_is_indices(const gltf_accessor_view_t *view) {
 
 /// @brief True if the accessor uses one of the four 8/16-bit integer component types.
 static int gltf_accessor_is_quantized_int(const gltf_accessor_view_t *view) {
-    return view && (view->comp_type == 5120 || view->comp_type == 5121 ||
-                    view->comp_type == 5122 || view->comp_type == 5123);
+    return view && (view->comp_type == 5120 || view->comp_type == 5121 || view->comp_type == 5122 ||
+                    view->comp_type == 5123);
 }
 
 /// @brief True if the accessor is a valid POSITION stream: FLOAT VEC3, or a

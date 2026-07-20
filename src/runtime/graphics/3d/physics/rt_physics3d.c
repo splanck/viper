@@ -79,9 +79,80 @@ int ph3d_i32_stack_push(int32_t **items, int32_t *count, int32_t *capacity, int3
 #define PH3D_EVENT_DIFF_FALLBACK_PAIR_LIMIT 4194304LL
 
 static int8_t g_ph3d_test_force_broadphase_alloc_failure = 0;
+static int8_t g_ph3d_test_force_step_failure = 0;
 
+/// @brief Enable deterministic broadphase allocation failure for internal tests.
+/// @details The hook affects both simulation and query broadphase reserves and
+///   is never exposed through the public runtime registry.
 void rt_world3d_test_set_broadphase_alloc_failure(int8_t enabled) {
     g_ph3d_test_force_broadphase_alloc_failure = enabled ? 1 : 0;
+}
+
+/// @brief Enable deterministic failure after integration for transaction tests.
+/// @details The step boundary observes this flag only after body state has
+///   changed, ensuring tests exercise restoration rather than an early no-op.
+void rt_world3d_test_set_step_failure(int8_t enabled) {
+    g_ph3d_test_force_step_failure = enabled ? 1 : 0;
+}
+
+/// @brief Return whether the internal post-integration failure hook is enabled.
+/// @return Non-zero when the next active step must take its rollback path.
+int world3d_test_step_failure_requested(void) {
+    return g_ph3d_test_force_step_failure != 0;
+}
+
+/// @brief Record a step failure while preserving the active transaction boundary.
+/// @details Deep collision/solver helpers historically trapped immediately,
+///   which bypassed rollback. During a transactional step this function stores
+///   only the first static diagnostic; the outer public wrapper traps after it
+///   restores all body/contact/event state. Calls outside Step still trap now.
+/// @param w Borrowed world whose transaction state is inspected.
+/// @param message Static diagnostic text; a stable fallback is used for `NULL`.
+void world3d_step_fail(rt_world3d *w, const char *message) {
+    const char *safe_message = message ? message : "Physics3D.World.Step: internal failure";
+    if (w && w->step_transaction_active) {
+        if (!w->step_failure_message)
+            w->step_failure_message = safe_message;
+        return;
+    }
+    rt_trap(safe_message);
+}
+
+/// @brief Record one broadphase stack-fallback without leaking rolled-back telemetry.
+/// @details Active transactions defer both the world counter and global Game3D
+///   diagnostic. Non-transactional callers retain the historical immediate
+///   behavior. Pending count saturates instead of overflowing corrupt state.
+void world3d_note_broadphase_fallback(rt_world3d *w) {
+    if (!w)
+        return;
+    if (w->step_transaction_active) {
+        if (w->step_pending_broadphase_fallbacks < INT32_MAX)
+            w->step_pending_broadphase_fallbacks++;
+        return;
+    }
+    if (w->broadphase_fallback_count < INT64_MAX)
+        w->broadphase_fallback_count++;
+    rt_game3d_diag_record_broadphase_fallback();
+}
+
+/// @brief Commit deferred broadphase-fallback diagnostics after a successful step.
+/// @details Adds pending events to the persistent counter with saturation, then
+///   mirrors each event to Game3D diagnostics. The current step performs at most
+///   one detect pass, but the loop keeps the helper correct if that changes.
+void world3d_commit_broadphase_fallbacks(rt_world3d *w) {
+    int32_t pending;
+    if (!w)
+        return;
+    pending = w->step_pending_broadphase_fallbacks;
+    w->step_pending_broadphase_fallbacks = 0;
+    if (pending <= 0)
+        return;
+    if (w->broadphase_fallback_count <= INT64_MAX - pending)
+        w->broadphase_fallback_count += pending;
+    else
+        w->broadphase_fallback_count = INT64_MAX;
+    for (int32_t i = 0; i < pending; ++i)
+        rt_game3d_diag_record_broadphase_fallback();
 }
 
 /* The joint solver (rt_joints3d.c) reaches into a body's pose/velocity through

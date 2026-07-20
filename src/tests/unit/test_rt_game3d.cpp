@@ -824,8 +824,8 @@ struct Game3DTestZpakEntry {
 };
 
 static bool write_game3d_test_zpak(const char *path,
-                                  const Game3DTestZpakEntry *entries,
-                                  size_t entry_count) {
+                                   const Game3DTestZpakEntry *entries,
+                                   size_t entry_count) {
     std::vector<uint8_t> out;
     std::vector<uint64_t> offsets;
     out.reserve(512);
@@ -1457,6 +1457,76 @@ static bool test_entity_from_node_wraps_imported_subtree() {
                 "despawn removes imported wrapper from the entity index");
     EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("ImportedChild")) == nullptr,
                 "despawn detaches the imported raw subtree");
+
+    void *source_scene = rt_scene3d_new();
+    void *source_root = rt_scene3d_get_root(source_scene);
+    void *source_child = rt_scene_node3d_new();
+    rt_scene_node3d_set_name(source_root, rt_const_cstr("LoadedSceneRoot"));
+    rt_scene_node3d_set_name(source_child, rt_const_cstr("LoadedSceneChild"));
+    rt_scene_node3d_set_mesh(source_child, mesh_a);
+    rt_scene_node3d_add_child(source_root, source_child);
+    EXPECT_EQ_INT(rt_scene3d_get_node_count(source_scene),
+                  2,
+                  "loaded source scene initially owns its complete hierarchy");
+
+    void *loaded_entity = rt_game3d_entity_from_node(source_root);
+    void *replacement_root = rt_scene3d_get_root(source_scene);
+    EXPECT_TRUE(loaded_entity != nullptr, "FromNode wraps an implicit scene root");
+    EXPECT_TRUE(rt_game3d_entity_get_node(loaded_entity) == source_root,
+                "FromNode transfers the original scene root into the entity");
+    EXPECT_TRUE(replacement_root != nullptr && replacement_root != source_root,
+                "source scene receives a distinct replacement root");
+    EXPECT_TRUE(scene_node3d_checked(replacement_root)->owner_scene ==
+                    scene3d_checked(source_scene),
+                "replacement root remains owned by the source scene");
+    EXPECT_TRUE(scene_node3d_checked(source_root)->owner_scene == nullptr,
+                "transferred root is detached before world spawn");
+    EXPECT_TRUE(scene_node3d_checked(source_child)->owner_scene == nullptr,
+                "transferred descendants are detached before world spawn");
+    EXPECT_EQ_INT(rt_scene3d_get_node_count(source_scene),
+                  1,
+                  "source scene remains valid and empty after root transfer");
+
+    rt_game3d_world_spawn(world, loaded_entity);
+    EXPECT_TRUE(rt_game3d_world_find_entity(world, rt_const_cstr("LoadedSceneRoot")) ==
+                    loaded_entity,
+                "transferred scene-root entity spawns successfully");
+    EXPECT_TRUE(rt_game3d_world_find_node(world, rt_const_cstr("LoadedSceneChild")) == source_child,
+                "transferred source hierarchy remains intact after spawn");
+    EXPECT_EQ_INT(rt_scene3d_get_node_count(rt_game3d_world_get_scene(world)),
+                  3,
+                  "world owns its implicit root plus the transferred two-node hierarchy");
+    EXPECT_EQ_INT(rt_scene3d_get_node_count(source_scene),
+                  1,
+                  "source scene remains independent after its former root is spawned");
+    rt_game3d_world_despawn(world, loaded_entity);
+
+    void *transaction_scene = rt_scene3d_new();
+    void *transaction_root = rt_scene3d_get_root(transaction_scene);
+    void *last_transaction_child = nullptr;
+    for (int i = 0; i < 80; ++i) {
+        last_transaction_child = rt_scene_node3d_new();
+        rt_scene_node3d_add_child(transaction_root, last_transaction_child);
+    }
+    EXPECT_EQ_INT(rt_scene3d_get_node_count(transaction_scene),
+                  81,
+                  "owner-transaction fixture exceeds the inline growth quantum");
+    rt_scene3d_test_set_owner_growth_failure(1);
+    bool transfer_trapped = expect_trap_contains(
+        [&] { (void)rt_game3d_entity_from_node(transaction_root); }, "owner traversal");
+    rt_scene3d_test_set_owner_growth_failure(-1);
+    EXPECT_TRUE(transfer_trapped, "scene-root transfer reports owner preflight allocation failure");
+    EXPECT_TRUE(rt_scene3d_get_root(transaction_scene) == transaction_root,
+                "failed transfer preserves the original implicit root");
+    EXPECT_TRUE(scene_node3d_checked(transaction_root)->owner_scene ==
+                    scene3d_checked(transaction_scene),
+                "failed transfer preserves root ownership");
+    EXPECT_TRUE(scene_node3d_checked(last_transaction_child)->owner_scene ==
+                    scene3d_checked(transaction_scene),
+                "failed transfer preserves descendant ownership");
+    EXPECT_EQ_INT(rt_scene3d_get_node_count(transaction_scene),
+                  81,
+                  "failed transfer preserves the complete source hierarchy");
 
     void *not_node = rt_material3d_new_color(1.0, 1.0, 1.0);
     EXPECT_TRUE(expect_trap_contains([&] { rt_game3d_entity_from_node(not_node); }, "SceneNode"),
@@ -3154,8 +3224,8 @@ static bool test_phase4_assets3d_model_templates() {
     EXPECT_TRUE(wait_asset_ready(corrupt_handle),
                 "corrupt AssetHandle3D becomes terminal after worker commit");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_game3d_asset_handle_get_error(corrupt_handle)),
-                            "failed to load model") == 0,
-                "corrupt AssetHandle3D exposes a load error without trapping");
+                            "invalid glTF JSON document") == 0,
+                "corrupt AssetHandle3D preserves the specific parser diagnostic");
     EXPECT_TRUE(rt_game3d_asset_handle_get_entity(corrupt_handle) == nullptr,
                 "corrupt AssetHandle3D has no entity result");
     rt_string_unref(corrupt_path_s);
@@ -3506,8 +3576,11 @@ static bool test_phase4_assets3d_texture_residency_budget() {
 
     std::vector<uint8_t> gltf_buffer;
     const float positions[9] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f};
+    const float texcoords[6] = {0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};
     const uint16_t indices[3] = {0, 1, 2};
     for (float v : positions)
+        append_game3d_test_bytes(gltf_buffer, v);
+    for (float v : texcoords)
         append_game3d_test_bytes(gltf_buffer, v);
     for (uint16_t v : indices)
         append_game3d_test_bytes(gltf_buffer, v);
@@ -3522,18 +3595,21 @@ static bool test_phase4_assets3d_texture_residency_budget() {
         "}],"
         "\"bufferViews\":["
         "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":6}"
+        "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":24},"
+        "{\"buffer\":0,\"byteOffset\":60,\"byteLength\":6}"
         "],"
         "\"accessors\":["
         "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-        "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
+        "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC2\"},"
+        "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}"
         "],"
         "\"images\":[{\"uri\":\"data:image/png;base64," +
         image_b64 +
         "\"}],"
         "\"textures\":[{\"source\":0}],"
         "\"materials\":[{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
-        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,"
+        "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"TEXCOORD_0\":1},"
+        "\"indices\":2,"
         "\"material\":0}]}]"
         "}";
     EXPECT_TRUE(write_text_file(gltf_path, gltf_json.c_str()),

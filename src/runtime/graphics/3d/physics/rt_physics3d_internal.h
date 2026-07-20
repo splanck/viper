@@ -84,11 +84,13 @@ extern double rt_quat_w(void *q);
 #define PH3D_DEFAULT_CONTACT_BETA 0.8
 #define PH3D_DEFAULT_RESTITUTION_THRESHOLD 0.5
 #define PH3D_MAX_SOLVER_ITERATIONS 64
-/* Global substeps multiply the WHOLE world's integrate+detect+solve cost, and the
- * per-body swept-sphere TOI clip in rt_world3d_step already guarantees fast CCD
- * bodies cannot tunnel regardless of dt. Cap the whole-world multiplier low: one
- * bullet must not turn a frame into 64 full physics passes (the old cap). */
-#define PH3D_MAX_CCD_SUBSTEPS 8
+/* CCD segmentation is local to each opted-in body. One bullet must never
+ * multiply integration, broadphase, joints, or contact solving for unrelated
+ * bodies. The legacy SUBSTEPS spelling remains as an internal compatibility
+ * alias for existing diagnostics/tests; it now means the maximum local segment
+ * count reported by LastCcdSubsteps. */
+#define PH3D_MAX_CCD_BODY_SEGMENTS 64
+#define PH3D_MAX_CCD_SUBSTEPS PH3D_MAX_CCD_BODY_SEGMENTS
 #define PH3D_MAX_SWEEP_STEPS 512
 #define PH3D_MAX_MANIFOLD_POINTS 4
 #define PH3D_INITIAL_CONTACTS 128
@@ -101,7 +103,8 @@ extern double rt_quat_w(void *q);
 #define PH3D_SCRATCH_PAIR_TABLE_A 1
 #define PH3D_SCRATCH_PAIR_TABLE_B 2
 #define PH3D_SCRATCH_EVENT_FLAGS 3
-#define PH3D_WORLD_SCRATCH_SLOTS 4
+#define PH3D_SCRATCH_STEP_TRANSACTION 4
+#define PH3D_WORLD_SCRATCH_SLOTS 5
 /* Slop added to each cached query-broadphase AABB. Bodies that move without
  * escaping their fattened bounds do not invalidate the cache: the fat entry
  * remains a conservative candidate filter and narrow phase tests live body
@@ -278,6 +281,12 @@ struct rt_world3d {
     int32_t last_solver_island_count;
     int32_t last_solver_active_body_count;
     int32_t last_solver_contact_count;
+    int32_t last_integration_pass_count;
+    /* A Step transaction converts deep allocation traps into a status that the
+     * outer step can roll back before the public ABI raises the trap. */
+    const char *step_failure_message;
+    int32_t step_pending_broadphase_fallbacks;
+    int8_t step_transaction_active;
 };
 
 struct ph3d_broadphase_entry {
@@ -475,7 +484,29 @@ int world3d_reserve_broadphase_capacity(rt_world3d *w, int32_t needed);
 int world3d_reserve_query_broadphase_capacity(rt_world3d *w, int32_t needed);
 void *world3d_step_scratch_acquire(rt_world3d *w, int32_t slot, size_t bytes, int zeroed);
 void world3d_step_scratch_free_all(rt_world3d *w);
+/// @brief Record a step-path failure without escaping an active transaction.
+/// @details During `World3D.Step`, the first message is retained for the outer
+///   transaction boundary, which restores simulation state before trapping.
+///   Outside a transaction this preserves the historical immediate trap.
+/// @param w Borrowed world, or `NULL` when no transaction can be active.
+/// @param message Static diagnostic text passed to the public trap boundary.
+void world3d_step_fail(rt_world3d *w, const char *message);
+/// @brief Defer broadphase-fallback telemetry until the active step commits.
+/// @details Transactional steps accumulate pending events so a later rollback
+///   does not publish diagnostics for simulation work that never committed.
+void world3d_note_broadphase_fallback(rt_world3d *w);
+/// @brief Publish and clear broadphase-fallback telemetry for a successful step.
+/// @details Saturates the world counter and emits one global diagnostic per
+///   pending fallback. A failed transaction clears pending work by rollback.
+void world3d_commit_broadphase_fallbacks(rt_world3d *w);
 void rt_world3d_test_set_broadphase_alloc_failure(int8_t enabled);
+/// @brief Enable deterministic failure after integration for rollback tests.
+/// @details This internal-only hook leaves production behavior untouched and
+///   forces the active Step transaction through its ordinary failure boundary.
+void rt_world3d_test_set_step_failure(int8_t enabled);
+/// @brief Query the deterministic post-integration Step failure test hook.
+/// @return Non-zero only while the internal test hook is enabled.
+int world3d_test_step_failure_requested(void);
 void *physics_hit3d_new(const rt_query_hit3d *src);
 void *physics_hit_list3d_new_ex(const rt_query_hit3d *hits,
                                 int32_t count,
@@ -572,6 +603,12 @@ int world3d_build_solver_island_batch(rt_world3d *w, ph3d_solver_island_batch *b
 void world3d_warm_start_solver_islands(rt_world3d *w, const ph3d_solver_island_batch *batch);
 void world3d_solve_velocity_solver_islands(const ph3d_solver_island_batch *batch, rt_world3d *w);
 void world3d_solve_position_solver_islands(const ph3d_solver_island_batch *batch, rt_world3d *w);
+/// @brief Solve a separated time-of-impact constraint through the ordinary material path.
+/// @details Initializes restitution and friction exactly like a detected contact,
+///   then runs the configured velocity iterations without positional correction.
+/// @param w Borrowed owning world providing solver configuration and prior contacts.
+/// @param contact Caller-owned, single-point TOI manifold; impulse accumulators are updated.
+void world3d_solve_toi_contact(rt_world3d *w, rt_contact3d *contact);
 int world3d_detect_contacts(rt_world3d *w);
 void world3d_finalize_contacts(rt_world3d *w);
 void world3d_update_sleep(rt_world3d *w, double sub_dt);

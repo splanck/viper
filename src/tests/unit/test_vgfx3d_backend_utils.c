@@ -1176,8 +1176,7 @@ static void test_compact_vertex_stream_round_trip(void) {
 
     memcpy(pos_back, out + 0, sizeof(pos_back));
     EXPECT_NEAR(pos_back[0], 1.25f, 0.0f, "Compact stream keeps full-precision positions (X)");
-    EXPECT_NEAR(pos_back[2], 1024.0625f, 0.0f,
-                "Compact stream keeps full-precision positions (Z)");
+    EXPECT_NEAR(pos_back[2], 1024.0625f, 0.0f, "Compact stream keeps full-precision positions (Z)");
 
     memcpy(s16, out + 12, sizeof(s16));
     EXPECT_NEAR((float)s16[0] / 32767.0f, 0.267261f, 0.0001f, "Normal X survives snorm16");
@@ -1201,7 +1200,9 @@ static void test_compact_vertex_stream_round_trip(void) {
     EXPECT_TRUE(out[40] == 3 && out[41] == 200 && out[43] == 255,
                 "Bone indices copy through untouched");
     EXPECT_NEAR((float)out[44] / 255.0f, 0.7f, 0.003f, "Bone weight survives unorm8");
-    EXPECT_NEAR((float)out[44] / 255.0f + (float)out[45] / 255.0f, 1.0f, 0.006f,
+    EXPECT_NEAR((float)out[44] / 255.0f + (float)out[45] / 255.0f,
+                1.0f,
+                0.006f,
                 "Weight pair stays renormalizable");
 }
 
@@ -1216,8 +1217,7 @@ static void test_compact_vertex_stream_half_edge_cases(void) {
     vgfx3d_encode_compact_vertices(&v, 1u, out);
     memcpy(h16, out + 20, sizeof(h16));
     EXPECT_NEAR(test_half_bits_to_float(h16[0]), 65504.0f, 0.0f, "Half overflow clamps to max");
-    EXPECT_NEAR(test_half_bits_to_float(h16[1]), -65504.0f, 0.0f,
-                "Half overflow clamps to min");
+    EXPECT_NEAR(test_half_bits_to_float(h16[1]), -65504.0f, 0.0f, "Half overflow clamps to min");
 
     v.uv[0] = 1.0e-9f; /* below subnormal range: flushes to zero */
     vgfx3d_encode_compact_vertices(&v, 1u, out);
@@ -1231,6 +1231,47 @@ static void test_compact_vertex_stream_half_edge_cases(void) {
         memcpy(s16, out + 12, sizeof(s16));
         EXPECT_TRUE(s16[0] == 32767, "Out-of-range normal clamps to snorm16 max");
     }
+}
+
+/// @brief Verify the exact cross-backend render-scale sizing and rejection contract.
+/// @details Covers native/half/fractional extents, the one-pixel minimum, every scale boundary,
+///          invalid logical dimensions, non-finite input, and output clearing on failure.
+static void test_scaled_scene_extent_contract(void) {
+    int32_t width = -1;
+    int32_t height = -1;
+
+    EXPECT_TRUE(vgfx3d_compute_scaled_scene_extent(1920, 1080, 1.0f, &width, &height) == 1 &&
+                    width == 1920 && height == 1080,
+                "Native render scale preserves the logical output extent");
+    EXPECT_TRUE(vgfx3d_compute_scaled_scene_extent(1920, 1080, 0.5f, &width, &height) == 1 &&
+                    width == 960 && height == 540,
+                "Half render scale computes an exact half-size scene target");
+    EXPECT_TRUE(vgfx3d_compute_scaled_scene_extent(101, 51, 0.25f, &width, &height) == 1 &&
+                    width == 25 && height == 12,
+                "Scaled scene extents floor fractional positive dimensions");
+    EXPECT_TRUE(vgfx3d_compute_scaled_scene_extent(1, 1, 0.25f, &width, &height) == 1 &&
+                    width == 1 && height == 1,
+                "Scaled scene extents retain a one-pixel minimum");
+
+    width = -1;
+    height = -1;
+    EXPECT_TRUE(vgfx3d_compute_scaled_scene_extent(1920, 1080, NAN, &width, &height) == 0 &&
+                    width == 0 && height == 0,
+                "Non-finite render scale is rejected and clears outputs");
+    width = -1;
+    height = -1;
+    EXPECT_TRUE(vgfx3d_compute_scaled_scene_extent(1920, 1080, 0.249f, &width, &height) == 0 &&
+                    width == 0 && height == 0,
+                "Render scale below the public minimum is rejected");
+    EXPECT_TRUE(vgfx3d_compute_scaled_scene_extent(1920, 1080, 1.001f, &width, &height) == 0 &&
+                    width == 0 && height == 0,
+                "Render scale above native resolution is rejected");
+    EXPECT_TRUE(vgfx3d_compute_scaled_scene_extent(0, 1080, 0.5f, &width, &height) == 0 &&
+                    width == 0 && height == 0,
+                "Non-positive logical dimensions are rejected");
+    width = -1;
+    EXPECT_TRUE(vgfx3d_compute_scaled_scene_extent(100, 100, 0.5f, &width, NULL) == 0 && width == 0,
+                "Missing output pointer is rejected after clearing the available output");
 }
 
 int main(void) {
@@ -1265,6 +1306,7 @@ int main(void) {
     test_compute_normal_matrix_small_scale();
     test_compact_vertex_stream_round_trip();
     test_compact_vertex_stream_half_edge_cases();
+    test_scaled_scene_extent_contract();
 
     printf("vgfx3d_backend_utils tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

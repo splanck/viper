@@ -9,6 +9,13 @@
 // Purpose: Unit tests for AnimController3D state playback, events, root motion,
 //   and masked overlay layers.
 //
+// Key invariants:
+//   - Controller/blend-tree poses remain bounded across private storage growth.
+//   - Events, transitions, root motion, and overlays are deterministic.
+// Ownership/Lifetime:
+//   - Runtime objects are test-process managed and released by the runtime heap.
+// Links: rt_animcontroller3d.h, rt_blendtree3d.h, rt_skeleton3d.h
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef ZANNA_ENABLE_GRAPHICS
@@ -25,8 +32,8 @@
 #include "rt_string.h"
 #include <climits>
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -555,7 +562,7 @@ static void test_controller_private_skeleton_growth_stays_in_bounds() {
         return;
     skel_view->bones = grown;
     std::memset(&skel_view->bones[1], 0, sizeof(vgfx3d_bone_t));
-    std::strncpy(skel_view->bones[1].name, "late", sizeof(skel_view->bones[1].name) - 1);
+    skel_view->bones[1].name = rt_const_cstr("late");
     skel_view->bones[1].parent_index = 0;
     fill_identity_pose(skel_view->bones[1].bind_pose_local, 1);
     fill_identity_pose(skel_view->bones[1].inverse_bind, 1);
@@ -680,7 +687,8 @@ static void test_two_bone_ik_bends_bone_rotations() {
     double kz = rt_mat4_get(knee_mat, 2, 3) - rt_mat4_get(root_mat, 2, 3);
     double alen = std::sqrt(ax * ax + ay * ay + az * az);
     double klen = std::sqrt(kx * kx + ky * ky + kz * kz);
-    EXPECT_TRUE(alen > 1e-6 && klen > 1e-6, "IK bend: root axis and knee offset are non-degenerate");
+    EXPECT_TRUE(alen > 1e-6 && klen > 1e-6,
+                "IK bend: root axis and knee offset are non-degenerate");
     double align = (ax * kx + ay * ky + az * kz) / (alen * klen);
     EXPECT_TRUE(align > 0.99, "IK writes a root rotation that aims at the solved knee");
 
@@ -693,7 +701,8 @@ static void test_two_bone_ik_bends_bone_rotations() {
     double fz = rt_mat4_get(foot_mat, 2, 3) - rt_mat4_get(knee_mat, 2, 3);
     double blen = std::sqrt(bx * bx + by * by + bz * bz);
     double flen = std::sqrt(fx * fx + fy * fy + fz * fz);
-    EXPECT_TRUE(blen > 1e-6 && flen > 1e-6, "IK bend: knee axis and foot offset are non-degenerate");
+    EXPECT_TRUE(blen > 1e-6 && flen > 1e-6,
+                "IK bend: knee axis and foot offset are non-degenerate");
     double align_knee = (bx * fx + by * fy + bz * fz) / (blen * flen);
     EXPECT_TRUE(align_knee > 0.99, "IK writes a knee rotation that aims at the solved foot");
     /* The knee->foot segment leaves the bind axis (+X), so the knee bone must
@@ -939,12 +948,10 @@ static void test_controller_rejects_wrong_string_handles() {
     EXPECT_TRUE(rt_anim_controller3d_crossfade(controller, fake_name, 0.1) == 0,
                 "AnimController3D.Crossfade rejects wrong-class string handles");
     EXPECT_TRUE(
-        rt_anim_controller3d_add_transition(controller, fake_name, rt_const_cstr("move"), 0.1) ==
-            0,
+        rt_anim_controller3d_add_transition(controller, fake_name, rt_const_cstr("move"), 0.1) == 0,
         "AnimController3D.AddTransition rejects wrong-class source names");
     EXPECT_TRUE(
-        rt_anim_controller3d_add_transition(controller, rt_const_cstr("move"), fake_name, 0.1) ==
-            0,
+        rt_anim_controller3d_add_transition(controller, rt_const_cstr("move"), fake_name, 0.1) == 0,
         "AnimController3D.AddTransition rejects wrong-class target names");
     rt_anim_controller3d_add_event(controller, rt_const_cstr("move"), 0.0, fake_name);
     EXPECT_TRUE(rt_anim_controller3d_play(controller, rt_const_cstr("move")) == 1,
@@ -1155,19 +1162,16 @@ static void test_animation_objects_repair_corrupt_private_counts() {
     rt_blend_tree3d_set_param(bad_coord_tree, 0.5, 0.0);
     rt_blend_tree3d_update(bad_coord_tree, 0.5);
     int32_t corrupt_coord_bones = -1;
-    const float *corrupt_coord_locals =
-        rt_anim_blend3d_get_local_transform_data(rt_blend_tree3d_get_blend(bad_coord_tree),
-                                                 &corrupt_coord_bones);
+    const float *corrupt_coord_locals = rt_anim_blend3d_get_local_transform_data(
+        rt_blend_tree3d_get_blend(bad_coord_tree), &corrupt_coord_bones);
     EXPECT_TRUE(corrupt_coord_locals != nullptr && corrupt_coord_bones == 1 &&
                     std::isfinite(corrupt_coord_locals[3]),
                 "BlendTree3D falls back safely when all 1D sample coordinates are corrupt");
 
     void *ik_skel = rt_skeleton3d_new();
     int64_t root = rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("root"), -1, rt_mat4_identity());
-    int64_t mid =
-        rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("mid"), root, rt_mat4_identity());
-    int64_t end =
-        rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("end"), mid, rt_mat4_identity());
+    int64_t mid = rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("mid"), root, rt_mat4_identity());
+    int64_t end = rt_skeleton3d_add_bone(ik_skel, rt_const_cstr("end"), mid, rt_mat4_identity());
     rt_skeleton3d_compute_inverse_bind(ik_skel);
     void *solver = rt_ik_solver3d_two_bone(ik_skel, root, mid, end);
     auto *solver_bits = reinterpret_cast<IKSolver3DTestPrefix *>(solver);
@@ -1317,7 +1321,8 @@ static void test_anim_controller_private_refs_clear_wrong_class_without_release(
     if (rt_obj_release_check0(player_finalizer))
         rt_obj_free(player_finalizer);
     expect_retained_probe_untouched(
-        wrong_player_skeleton, "AnimPlayer3D finalizer does not release wrong-class skeleton slots");
+        wrong_player_skeleton,
+        "AnimPlayer3D finalizer does not release wrong-class skeleton slots");
     expect_retained_probe_untouched(
         wrong_player_current, "AnimPlayer3D finalizer does not release wrong-class current clips");
     expect_retained_probe_untouched(wrong_player_crossfade,

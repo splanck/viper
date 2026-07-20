@@ -2,7 +2,8 @@
 // Part of the Zanna project, under the GNU GPL v3. See LICENSE.
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_present.inc
 //   (#included from vgfx3d_backend_metal.m; not a standalone translation unit)
-// Purpose: Layer sizing, encoder/commit lifecycle, transient buffer ring, depth probes, drawable presentation, shared/transient buffers, and geometry caching
+// Purpose: Layer sizing, encoder/commit lifecycle, transient buffer ring, depth probes, drawable
+// presentation, shared/transient buffers, and geometry caching
 //===----------------------------------------------------------------------===//
 
 /// @brief Sync the CAMetalLayer's drawable size and scale to the current backing view.
@@ -145,14 +146,14 @@ static int32_t metal_encode_depth_probes(VGFXMetalContext *ctx, id<MTLCommandBuf
         if (py >= depth.height)
             py = depth.height - 1;
         [blit copyFromTexture:depth
-                     sourceSlice:0
-                     sourceLevel:0
-                    sourceOrigin:MTLOriginMake(px, py, 0)
-                      sourceSize:MTLSizeMake(1, 1, 1)
-                        toBuffer:ctx.depthProbeBuffer
-               destinationOffset:(NSUInteger)i * sizeof(float)
-          destinationBytesPerRow:sizeof(float)
-        destinationBytesPerImage:sizeof(float)];
+                         sourceSlice:0
+                         sourceLevel:0
+                        sourceOrigin:MTLOriginMake(px, py, 0)
+                          sourceSize:MTLSizeMake(1, 1, 1)
+                            toBuffer:ctx.depthProbeBuffer
+                   destinationOffset:(NSUInteger)i * sizeof(float)
+              destinationBytesPerRow:sizeof(float)
+            destinationBytesPerImage:sizeof(float)];
     }
     [blit endEncoding];
     ctx->_depthProbeRequestCount = 0;
@@ -508,8 +509,7 @@ static int metal_get_geometry_buffers(VGFXMetalContext *ctx,
         return 0;
 
     if (cmd->geometry_key && cmd->geometry_revision != 0) {
-        BOOL wants_compact =
-            (cmd->compact_vertex_stream && ctx.compactPipelinesReady) ? YES : NO;
+        BOOL wants_compact = (cmd->compact_vertex_stream && ctx.compactPipelinesReady) ? YES : NO;
         NSValue *key = [NSValue valueWithPointer:cmd->geometry_key];
         VGFXMetalGeometryCacheEntry *entry = ctx.geometryCache[key];
         if (!entry || entry.revision != cmd->geometry_revision ||
@@ -549,12 +549,11 @@ static int metal_get_geometry_buffers(VGFXMetalContext *ctx,
         return (*outVB && *outIB) ? 1 : 0;
     }
 
-    *outVB =
-        metal_upload_transient_buffer(ctx,
-                                      VGFX3D_METAL_TRANSIENT_VERTEX,
-                                      cmd->vertices,
-                                      (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t),
-                                      outVertexOffset);
+    *outVB = metal_upload_transient_buffer(ctx,
+                                           VGFX3D_METAL_TRANSIENT_VERTEX,
+                                           cmd->vertices,
+                                           (size_t)cmd->vertex_count * sizeof(vgfx3d_vertex_t),
+                                           outVertexOffset);
     *outIB = metal_upload_transient_buffer(ctx,
                                            VGFX3D_METAL_TRANSIENT_INDEX,
                                            cmd->indices,
@@ -572,7 +571,8 @@ static id<MTLTexture> metal_active_readback_texture(VGFXMetalContext *ctx) {
         return ctx.rttColorTexture;
     if (ctx.displayTexture)
         return ctx.displayTexture;
-    if (ctx.gpuPostfxEnabled && ctx.postfxEncodedThisFrame && ctx.postfxColorTexture)
+    if (metal_window_scene_route_enabled(ctx) && ctx.postfxEncodedThisFrame &&
+        ctx.postfxColorTexture)
         return ctx.postfxColorTexture;
     if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SWAPCHAIN && ctx.drawable)
         return ctx.drawable.texture;
@@ -620,4 +620,3 @@ static int metal_copy_gpu_postfx_chain(VGFXMetalContext *ctx, const vgfx3d_postf
 //=============================================================================
 // Vertex descriptor (92-byte vgfx3d_vertex_t)
 //=============================================================================
-

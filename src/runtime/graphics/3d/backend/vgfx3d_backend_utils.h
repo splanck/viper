@@ -8,7 +8,8 @@
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_utils.h
 // Purpose: Backend-agnostic helper declarations shared by the vgfx3d render
 //   backends — Pixels-to-RGBA8 decoding and other small format/utility
-//   routines used when uploading CPU images to GPU textures.
+//   routines used when uploading CPU images to GPU textures or sizing
+//   window-backed scene targets.
 //
 // Key invariants:
 //   - Helpers are pure/stateless; outputs are caller-owned heap buffers.
@@ -38,6 +39,24 @@ typedef struct {
     int32_t block_bytes;
     int32_t format_id;
 } vgfx3d_native_texture_mip_t;
+
+/// @brief Compute the normative scene-target extent for a logical output and render scale.
+/// @details Each result is `floor(output_dimension * scale)`, clamped to one pixel. A scale of
+///          exactly 1 preserves the input extent. The accepted scale range is the closed interval
+///          `[0.25, 1]`; accepting only that range keeps every backend's direct hook behavior
+///          consistent with `Canvas3D.TrySetRenderScale`.
+/// @param output_width Logical presentation width in pixels; must be positive.
+/// @param output_height Logical presentation height in pixels; must be positive.
+/// @param scale Finite scene scale in the closed interval `[0.25, 1]`.
+/// @param out_scene_width Receives the scaled scene width; cleared before validation.
+/// @param out_scene_height Receives the scaled scene height; cleared before validation.
+/// @return 1 when both outputs contain a valid extent, otherwise 0. Any non-null output pointer is
+///         cleared on failure.
+int vgfx3d_compute_scaled_scene_extent(int32_t output_width,
+                                       int32_t output_height,
+                                       float scale,
+                                       int32_t *out_scene_width,
+                                       int32_t *out_scene_height);
 
 /// @brief Decode a Pixels object into a freshly malloc'd RGBA8 byte array (caller frees).
 int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,

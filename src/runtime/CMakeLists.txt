@@ -500,6 +500,7 @@ set(RT_GRAPHICS_DISABLED_SOURCES
         graphics/common/rt_graphics_helper_stubs.c
         graphics/common/rt_canvas3d_stubs.c
         graphics/common/rt_3d_asset_stubs.c
+        graphics/common/rt_3d_textureasset_stubs.c
         graphics/common/rt_3d_scene_stubs.c
         graphics/common/rt_3d_physics_stubs.c
         graphics/common/rt_3d_world_stubs.c

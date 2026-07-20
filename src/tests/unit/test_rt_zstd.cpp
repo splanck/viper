@@ -15,6 +15,7 @@
 //   - Every fixture decodes to stable expected plaintext bytes or digest.
 //   - Corrupt or truncated frames return 0 without crashing or leaking.
 //   - max_output is honored as a hard budget.
+//   - Caller-owned decoding requires an exact destination and consumes the complete frame.
 //
 // Ownership/Lifetime:
 //   - Decoded buffers are freed by the test after each comparison.
@@ -222,6 +223,40 @@ static void test_honors_output_budget() {
     PASS();
 }
 
+/// @brief Verify the caller-owned decoder requires exact output size and complete input use.
+/// @details A known reference frame must decode byte-identically into its exact destination.
+///          Destinations one byte short/long and otherwise-valid frames with one trailing byte all
+///          fail without allocating or accepting a prefix.
+static void test_exact_destination_rejects_size_mismatch_and_trailing_input() {
+    TEST("exact destination rejects size mismatch and trailing input");
+    std::vector<uint8_t> compressed;
+    std::vector<uint8_t> expected;
+    EXPECT_TRUE(read_file(fixture_path("text.zst"), compressed), "fixture readable");
+    EXPECT_TRUE(expected_fixture_bytes("text", expected), "expected bytes available");
+    std::vector<uint8_t> decoded(expected.size(), 0u);
+    EXPECT_TRUE(rt_zstd_decompress_into(
+                    compressed.data(), compressed.size(), decoded.data(), decoded.size()) == 1,
+                "exact destination succeeds");
+    EXPECT_TRUE(decoded == expected, "exact destination bytes match");
+
+    std::vector<uint8_t> short_output(expected.size() - 1u, 0u);
+    EXPECT_TRUE(
+        rt_zstd_decompress_into(
+            compressed.data(), compressed.size(), short_output.data(), short_output.size()) == 0,
+        "short destination fails");
+    std::vector<uint8_t> long_output(expected.size() + 1u, 0u);
+    EXPECT_TRUE(rt_zstd_decompress_into(
+                    compressed.data(), compressed.size(), long_output.data(), long_output.size()) ==
+                    0,
+                "long destination fails");
+
+    compressed.push_back(0x00u);
+    EXPECT_TRUE(rt_zstd_decompress_into(
+                    compressed.data(), compressed.size(), decoded.data(), decoded.size()) == 0,
+                "trailing frame byte fails");
+    PASS();
+}
+
 int main() {
     printf("test_rt_zstd:\n");
     roundtrip_case("text");
@@ -233,6 +268,7 @@ int main() {
     test_rejects_truncation();
     test_rejects_checksum_mismatch();
     test_honors_output_budget();
+    test_exact_destination_rejects_size_mismatch_and_trailing_input();
     printf("%d/%d tests passed\n", tests_passed, tests_total);
     return tests_passed == tests_total ? 0 : 1;
 }

@@ -32,16 +32,20 @@
 #ifdef ZANNA_ENABLE_GRAPHICS
 
 #include "rt_mesh_simplify.h"
+#include "../anim/rt_morphtarget3d.h"
+#include "../anim/rt_skeleton3d_internal.h"
 #include "../render/rt_canvas3d.h"
 #include "../render/rt_canvas3d_internal.h"
 #include "../scene/rt_scene3d.h"
 #include "../scene/rt_scene3d_internal.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "rt_object.h"
 #include "rt_trap.h"
 extern int rt_obj_release_check0(void *obj);
 extern void rt_obj_free(void *obj);
@@ -72,8 +76,8 @@ static void quadric_add(simp_quadric_t *q, const simp_quadric_t *o) {
 }
 
 /// @brief Build a plane quadric (a,b,c,d normalized plane) scaled by @p weight.
-static void quadric_from_plane(simp_quadric_t *q, double a, double b, double c, double d,
-                               double weight) {
+static void quadric_from_plane(
+    simp_quadric_t *q, double a, double b, double c, double d, double weight) {
     q->a2 = a * a * weight;
     q->ab = a * b * weight;
     q->ac = a * c * weight;
@@ -86,14 +90,14 @@ static void quadric_from_plane(simp_quadric_t *q, double a, double b, double c, 
     q->d2 = d * d * weight;
 }
 
-/// @brief Evaluate v^T Q v at position p.
-static double quadric_eval(const simp_quadric_t *q, const float p[3]) {
+/// @brief Evaluate `v^T Q v` at one authoritative double-precision position.
+static double quadric_eval(const simp_quadric_t *q, const double p[3]) {
     double x = p[0];
     double y = p[1];
     double z = p[2];
     return q->a2 * x * x + 2.0 * q->ab * x * y + 2.0 * q->ac * x * z + 2.0 * q->ad * x +
-           q->b2 * y * y + 2.0 * q->bc * y * z + 2.0 * q->bd * y + q->c2 * z * z +
-           2.0 * q->cd * z + q->d2;
+           q->b2 * y * y + 2.0 * q->bc * y * z + 2.0 * q->bd * y + q->c2 * z * z + 2.0 * q->cd * z +
+           q->d2;
 }
 
 /*==========================================================================
@@ -109,20 +113,30 @@ typedef struct {
 } simp_heap_entry_t;
 
 typedef struct {
-    vgfx3d_vertex_t *verts; /* welded working vertices */
+    const rt_mesh3d *source_mesh;
+    vgfx3d_vertex_t *verts;    /* welded working vertices */
+    uint32_t *source_vertices; /* surviving source vertex for every welded endpoint */
     simp_quadric_t *quadrics;
-    uint32_t *stamps;   /* bumped on every collapse touching the vertex */
+    uint32_t *stamps; /* bumped on every collapse touching the vertex */
     int8_t *alive;
     uint32_t vert_count;
 
-    uint32_t *tris; /* 3 welded indices per face; alive when tris[i*3] != UINT32_MAX */
+    uint32_t *tris;              /* 3 welded indices per face; alive when tris[i*3] != UINT32_MAX */
+    int32_t *tri_material_slots; /* source material slot per face, -1 when unclassified */
     uint32_t tri_count;
     uint32_t live_tris;
+    int8_t has_submesh_ranges;
 
     /* CSR adjacency: faces incident to each vertex (rebuilt lazily per collapse
      * via linked lists to keep collapses O(valence)). */
     int32_t *vert_face_head; /* head index into face_links, -1 = none */
     int32_t *face_links;     /* per (face,corner): next link */
+
+    uint32_t *vertex_marks; /* generation-stamped one-ring scratch */
+    uint32_t vertex_mark_generation;
+    uint32_t *face_marks; /* generation-stamped fan traversal scratch */
+    uint32_t face_mark_generation;
+    uint32_t *face_queue; /* tri_count-entry fan traversal queue */
 
     simp_heap_entry_t *heap;
     uint32_t heap_count;
@@ -188,42 +202,109 @@ static int simp_heap_pop(simp_ctx_t *cx, simp_heap_entry_t *out) {
     return 1;
 }
 
-/// @brief Exact-record vertex weld: dedupe identical vgfx3d_vertex_t payloads.
-/// @details Attribute seams stay split (different UV/normal wedges never weld),
-///   which converts them into protected open borders. Deterministic FNV hash.
-static uint32_t *simp_weld(const vgfx3d_vertex_t *verts, uint32_t count,
-                           vgfx3d_vertex_t **out_welded, uint32_t *out_welded_count) {
+/**
+ * @brief Extend a deterministic FNV-1a hash with an arbitrary byte range.
+ * @param hash Existing hash state.
+ * @param bytes Borrowed byte range; may be `NULL` only when @p size is zero.
+ * @param size Number of bytes to consume.
+ * @return Updated 32-bit hash state.
+ */
+static uint32_t simp_hash_bytes(uint32_t hash, const void *bytes, size_t size) {
+    const uint8_t *input = (const uint8_t *)bytes;
+    for (size_t i = 0; i < size; ++i)
+        hash = (hash ^ input[i]) * 16777619u;
+    return hash;
+}
+
+/**
+ * @brief Test whether two source vertices have identical retained side-stream payloads.
+ *
+ * Interleaved normal/tangent/UV/color/joint data is compared with exact bytes. Optional
+ * authoritative double positions and influences 5–8 participate as well, preventing a weld
+ * from discarding data that cannot be reconstructed from the fixed vertex record.
+ *
+ * @param mesh Valid source mesh.
+ * @param a First source vertex index.
+ * @param b Second source vertex index.
+ * @return Non-zero only when every simplification-retained stream is byte-identical.
+ */
+static int simp_source_vertices_equal(const rt_mesh3d *mesh, uint32_t a, uint32_t b) {
+    if (!mesh || memcmp(&mesh->vertices[a], &mesh->vertices[b], sizeof(vgfx3d_vertex_t)) != 0)
+        return 0;
+    if (mesh->positions64 && memcmp(&mesh->positions64[(size_t)a * 3u],
+                                    &mesh->positions64[(size_t)b * 3u],
+                                    3u * sizeof(double)) != 0)
+        return 0;
+    if (mesh->extra_influences && memcmp(&mesh->extra_influences[a],
+                                         &mesh->extra_influences[b],
+                                         sizeof(vgfx3d_extra_influences_t)) != 0)
+        return 0;
+    return 1;
+}
+
+/**
+ * @brief Exact-record weld that preserves every retained per-vertex side stream.
+ *
+ * Attribute seams remain split because any differing fixed-record, double-position, or extra
+ * influence byte prevents a weld. Attached morph targets conservatively disable cross-index
+ * welding because their optional tangent channels are private to the owning module; shared source
+ * indices still retain ordinary indexed topology. `out_sources[w]` records the representative
+ * source vertex used later to remap side streams after subset collapses.
+ *
+ * @param mesh Valid source mesh with @p count readable vertices.
+ * @param count Safe source vertex count.
+ * @param out_welded Receives an exact-size-or-larger welded fixed-record array.
+ * @param out_sources Receives one representative source index per welded vertex.
+ * @param out_welded_count Receives the number of populated welded records.
+ * @return Source-to-welded map, or `NULL` on allocation failure.
+ */
+static uint32_t *simp_weld(const rt_mesh3d *mesh,
+                           uint32_t count,
+                           vgfx3d_vertex_t **out_welded,
+                           uint32_t **out_sources,
+                           uint32_t *out_welded_count) {
     uint32_t *remap = (uint32_t *)malloc((size_t)count * sizeof(uint32_t));
     vgfx3d_vertex_t *welded = (vgfx3d_vertex_t *)malloc((size_t)count * sizeof(*welded));
+    uint32_t *sources = (uint32_t *)malloc((size_t)count * sizeof(uint32_t));
     uint32_t table_size = 1;
     while (table_size < count * 2u + 1u)
         table_size <<= 1;
     uint32_t *table = (uint32_t *)malloc((size_t)table_size * sizeof(uint32_t));
-    if (!remap || !welded || !table) {
+    if (!mesh || !out_welded || !out_sources || !out_welded_count || !remap || !welded ||
+        !sources || !table) {
         free(remap);
         free(welded);
+        free(sources);
         free(table);
         return NULL;
     }
     memset(table, 0xFF, (size_t)table_size * sizeof(uint32_t));
     uint32_t welded_count = 0;
     for (uint32_t i = 0; i < count; i++) {
-        const uint8_t *bytes = (const uint8_t *)&verts[i];
         uint32_t hash = 2166136261u;
-        for (size_t k = 0; k < sizeof(vgfx3d_vertex_t); k++)
-            hash = (hash ^ bytes[k]) * 16777619u;
+        hash = simp_hash_bytes(hash, &mesh->vertices[i], sizeof(vgfx3d_vertex_t));
+        if (mesh->positions64) {
+            hash = simp_hash_bytes(hash, &mesh->positions64[(size_t)i * 3u], 3u * sizeof(double));
+        }
+        if (mesh->extra_influences) {
+            hash = simp_hash_bytes(
+                hash, &mesh->extra_influences[i], sizeof(vgfx3d_extra_influences_t));
+        }
         uint32_t slot = hash & (table_size - 1u);
         uint32_t found = UINT32_MAX;
-        while (table[slot] != UINT32_MAX) {
+        while (!mesh->morph_targets_ref && table[slot] != UINT32_MAX) {
             uint32_t cand = table[slot];
-            if (memcmp(&welded[cand], &verts[i], sizeof(vgfx3d_vertex_t)) == 0) {
+            if (simp_source_vertices_equal(mesh, sources[cand], i)) {
                 found = cand;
                 break;
             }
             slot = (slot + 1u) & (table_size - 1u);
         }
         if (found == UINT32_MAX) {
-            welded[welded_count] = verts[i];
+            while (table[slot] != UINT32_MAX)
+                slot = (slot + 1u) & (table_size - 1u);
+            welded[welded_count] = mesh->vertices[i];
+            sources[welded_count] = i;
             table[slot] = welded_count;
             found = welded_count++;
         }
@@ -231,15 +312,44 @@ static uint32_t *simp_weld(const vgfx3d_vertex_t *verts, uint32_t count,
     }
     free(table);
     *out_welded = welded;
+    *out_sources = sources;
     *out_welded_count = welded_count;
     return remap;
 }
 
-/// @brief Recompute a face's normal; returns 0 for degenerate faces.
+/**
+ * @brief Read one working endpoint's authoritative source position as doubles.
+ * @param cx Active simplification context.
+ * @param vertex Working/welded vertex index.
+ * @param out_position Receives XYZ; cleared for invalid input.
+ */
+static void simp_vertex_position(const simp_ctx_t *cx, uint32_t vertex, double out_position[3]) {
+    uint32_t source = 0;
+    if (!out_position)
+        return;
+    out_position[0] = out_position[1] = out_position[2] = 0.0;
+    if (!cx || !cx->source_mesh || !cx->source_vertices || vertex >= cx->vert_count)
+        return;
+    source = cx->source_vertices[vertex];
+    if (cx->source_mesh->positions64) {
+        out_position[0] = cx->source_mesh->positions64[(size_t)source * 3u + 0u];
+        out_position[1] = cx->source_mesh->positions64[(size_t)source * 3u + 1u];
+        out_position[2] = cx->source_mesh->positions64[(size_t)source * 3u + 2u];
+    } else {
+        out_position[0] = (double)cx->verts[vertex].pos[0];
+        out_position[1] = (double)cx->verts[vertex].pos[1];
+        out_position[2] = (double)cx->verts[vertex].pos[2];
+    }
+}
+
+/// @brief Recompute a face's normal from authoritative positions; returns 0 for degenerate faces.
 static int simp_face_normal(const simp_ctx_t *cx, uint32_t f, double n[3]) {
-    const float *p0 = cx->verts[cx->tris[f * 3 + 0]].pos;
-    const float *p1 = cx->verts[cx->tris[f * 3 + 1]].pos;
-    const float *p2 = cx->verts[cx->tris[f * 3 + 2]].pos;
+    double p0[3];
+    double p1[3];
+    double p2[3];
+    simp_vertex_position(cx, cx->tris[f * 3 + 0], p0);
+    simp_vertex_position(cx, cx->tris[f * 3 + 1], p1);
+    simp_vertex_position(cx, cx->tris[f * 3 + 2], p2);
     double e1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]};
     double e2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
     n[0] = e1[1] * e2[2] - e1[2] * e2[1];
@@ -265,8 +375,10 @@ static void simp_link_face(simp_ctx_t *cx, uint32_t f) {
 /// @brief Cost of collapsing b onto a (subset placement at a's position).
 static double simp_collapse_cost(const simp_ctx_t *cx, uint32_t a, uint32_t b) {
     simp_quadric_t q = cx->quadrics[a];
+    double position[3];
     quadric_add(&q, &cx->quadrics[b]);
-    double c = quadric_eval(&q, cx->verts[a].pos);
+    simp_vertex_position(cx, a, position);
+    double c = quadric_eval(&q, position);
     return c < 0.0 ? 0.0 : c;
 }
 
@@ -282,29 +394,617 @@ static void simp_push_edge(simp_ctx_t *cx, uint32_t a, uint32_t b) {
     (void)simp_heap_push(cx, e);
 }
 
-/// @brief Core QEM loop. Returns a NEW Mesh3D or NULL on failure.
+/** @brief Local incidence summary for one undirected working edge. */
+typedef struct {
+    uint32_t face_count;
+    uint32_t opposite[2];
+    int32_t material_slots[2];
+} simp_edge_info_t;
+
+/**
+ * @brief Return whether one source face remains live in the working triangle list.
+ * @param cx Active simplification context.
+ * @param face Source face index.
+ * @return Non-zero when all storage is valid and the face has not been retired.
+ */
+static int simp_face_is_live(const simp_ctx_t *cx, uint32_t face) {
+    return cx && cx->tris && face < cx->tri_count && cx->tris[(size_t)face * 3u] != UINT32_MAX;
+}
+
+/**
+ * @brief Return whether a live face currently references one working vertex.
+ * @param cx Active simplification context.
+ * @param face Source face index.
+ * @param vertex Working vertex index.
+ * @return Non-zero when @p vertex occupies any of the face's three corners.
+ */
+static int simp_face_contains(const simp_ctx_t *cx, uint32_t face, uint32_t vertex) {
+    const uint32_t *tri;
+    if (!simp_face_is_live(cx, face))
+        return 0;
+    tri = &cx->tris[(size_t)face * 3u];
+    return tri[0] == vertex || tri[1] == vertex || tri[2] == vertex;
+}
+
+/**
+ * @brief Collect incident faces, opposite vertices, and material classes for an edge.
+ *
+ * The face count is allowed to exceed two so callers can reject non-manifold edges. Only the
+ * first two opposite/material entries are retained because legal triangular edges have at most
+ * two incident faces.
+ *
+ * @param cx Active simplification context.
+ * @param a First endpoint.
+ * @param b Second endpoint.
+ * @param out_info Receives a zero-initialized incidence summary.
+ */
+static void simp_get_edge_info(const simp_ctx_t *cx,
+                               uint32_t a,
+                               uint32_t b,
+                               simp_edge_info_t *out_info) {
+    if (!out_info)
+        return;
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->material_slots[0] = -1;
+    out_info->material_slots[1] = -1;
+    if (!cx || !cx->vert_face_head || !cx->face_links || a >= cx->vert_count || b >= cx->vert_count)
+        return;
+    for (int32_t link = cx->vert_face_head[a]; link >= 0; link = cx->face_links[link]) {
+        uint32_t face = (uint32_t)link / 3u;
+        const uint32_t *tri;
+        uint32_t opposite = UINT32_MAX;
+        if (!simp_face_contains(cx, face, b))
+            continue;
+        tri = &cx->tris[(size_t)face * 3u];
+        for (int corner = 0; corner < 3; ++corner) {
+            if (tri[corner] != a && tri[corner] != b) {
+                opposite = tri[corner];
+                break;
+            }
+        }
+        if (out_info->face_count < 2u) {
+            out_info->opposite[out_info->face_count] = opposite;
+            out_info->material_slots[out_info->face_count] =
+                cx->tri_material_slots ? cx->tri_material_slots[face] : -1;
+        }
+        if (out_info->face_count != UINT32_MAX)
+            out_info->face_count++;
+    }
+}
+
+/**
+ * @brief Classify an edge as an open/attribute/material boundary.
+ * @param info Current edge incidence summary.
+ * @return Non-zero for a one-face edge or a legal two-face edge whose material slots differ.
+ */
+static int simp_edge_is_classified_boundary(const simp_edge_info_t *info) {
+    if (!info)
+        return 0;
+    if (info->face_count == 1u)
+        return 1;
+    return info->face_count == 2u && info->material_slots[0] != info->material_slots[1];
+}
+
+/**
+ * @brief Reserve two adjacent non-zero generations in the vertex scratch table.
+ * @param cx Mutable simplification context.
+ * @return First generation value; the second is exactly one greater.
+ */
+static uint32_t simp_claim_vertex_mark_pair(simp_ctx_t *cx) {
+    if (!cx || !cx->vertex_marks)
+        return 0;
+    if (cx->vertex_mark_generation == 0 || cx->vertex_mark_generation >= UINT32_MAX - 1u) {
+        memset(cx->vertex_marks, 0, (size_t)cx->vert_count * sizeof(uint32_t));
+        cx->vertex_mark_generation = 1u;
+    }
+    {
+        uint32_t generation = cx->vertex_mark_generation;
+        cx->vertex_mark_generation += 2u;
+        return generation;
+    }
+}
+
+/**
+ * @brief Reserve one non-zero generation in the face traversal scratch table.
+ * @param cx Mutable simplification context.
+ * @return Generation value used for the next connected-fan walk.
+ */
+static uint32_t simp_claim_face_mark(simp_ctx_t *cx) {
+    if (!cx || !cx->face_marks)
+        return 0;
+    if (cx->face_mark_generation == 0 || cx->face_mark_generation == UINT32_MAX) {
+        memset(cx->face_marks, 0, (size_t)cx->tri_count * sizeof(uint32_t));
+        cx->face_mark_generation = 1u;
+    }
+    return cx->face_mark_generation++;
+}
+
+/**
+ * @brief Determine whether a working vertex lies on any classified boundary edge.
+ * @param cx Active simplification context.
+ * @param vertex Working vertex index.
+ * @return Non-zero for an open, attribute-seam, or material-seam endpoint.
+ */
+static int simp_vertex_is_classified_boundary(const simp_ctx_t *cx, uint32_t vertex) {
+    if (!cx || vertex >= cx->vert_count)
+        return 0;
+    for (int32_t link = cx->vert_face_head[vertex]; link >= 0; link = cx->face_links[link]) {
+        uint32_t face = (uint32_t)link / 3u;
+        const uint32_t *tri;
+        if (!simp_face_is_live(cx, face))
+            continue;
+        tri = &cx->tris[(size_t)face * 3u];
+        for (int corner = 0; corner < 3; ++corner) {
+            simp_edge_info_t edge;
+            uint32_t neighbor = tri[corner];
+            if (neighbor == vertex)
+                continue;
+            simp_get_edge_info(cx, vertex, neighbor, &edge);
+            if (simp_edge_is_classified_boundary(&edge))
+                return 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * @brief Validate that one vertex's incident triangles form a connected manifold fan.
+ *
+ * Every spoke edge must have one or two incident triangles. A topological boundary fan has
+ * exactly two one-face spokes; a closed fan has none. A generation-stamped breadth-first walk
+ * then proves all incident faces belong to one component, rejecting bow-tie vertices even when
+ * their aggregate edge counts happen to look manifold.
+ *
+ * @param cx Mutable context providing reusable scratch marks/queue.
+ * @param vertex Working endpoint to validate.
+ * @return Non-zero only for one connected open or closed triangular fan.
+ */
+static int simp_vertex_fan_is_manifold(simp_ctx_t *cx, uint32_t vertex) {
+    uint32_t incident_count = 0;
+    uint32_t boundary_spokes = 0;
+    uint32_t first_face = UINT32_MAX;
+    uint32_t vertex_generation;
+    uint32_t face_generation;
+    uint32_t queue_head = 0;
+    uint32_t queue_tail = 0;
+    uint32_t visited_count = 0;
+
+    if (!cx || vertex >= cx->vert_count || !cx->face_queue)
+        return 0;
+    vertex_generation = simp_claim_vertex_mark_pair(cx);
+    face_generation = simp_claim_face_mark(cx);
+    if (vertex_generation == 0 || face_generation == 0)
+        return 0;
+
+    for (int32_t link = cx->vert_face_head[vertex]; link >= 0; link = cx->face_links[link]) {
+        uint32_t face = (uint32_t)link / 3u;
+        const uint32_t *tri;
+        if (!simp_face_is_live(cx, face))
+            continue;
+        if (first_face == UINT32_MAX)
+            first_face = face;
+        incident_count++;
+        tri = &cx->tris[(size_t)face * 3u];
+        for (int corner = 0; corner < 3; ++corner) {
+            simp_edge_info_t edge;
+            uint32_t neighbor = tri[corner];
+            if (neighbor == vertex || cx->vertex_marks[neighbor] == vertex_generation)
+                continue;
+            cx->vertex_marks[neighbor] = vertex_generation;
+            simp_get_edge_info(cx, vertex, neighbor, &edge);
+            if (edge.face_count == 0u || edge.face_count > 2u)
+                return 0;
+            if (edge.face_count == 1u)
+                boundary_spokes++;
+        }
+    }
+    if (incident_count == 0u || (boundary_spokes != 0u && boundary_spokes != 2u))
+        return 0;
+
+    cx->face_marks[first_face] = face_generation;
+    cx->face_queue[queue_tail++] = first_face;
+    while (queue_head < queue_tail) {
+        uint32_t face = cx->face_queue[queue_head++];
+        const uint32_t *tri = &cx->tris[(size_t)face * 3u];
+        visited_count++;
+        for (int corner = 0; corner < 3; ++corner) {
+            uint32_t neighbor = tri[corner];
+            if (neighbor == vertex)
+                continue;
+            for (int32_t link = cx->vert_face_head[vertex]; link >= 0;
+                 link = cx->face_links[link]) {
+                uint32_t adjacent_face = (uint32_t)link / 3u;
+                if (!simp_face_is_live(cx, adjacent_face) ||
+                    cx->face_marks[adjacent_face] == face_generation ||
+                    !simp_face_contains(cx, adjacent_face, neighbor))
+                    continue;
+                cx->face_marks[adjacent_face] = face_generation;
+                if (queue_tail >= cx->tri_count)
+                    return 0;
+                cx->face_queue[queue_tail++] = adjacent_face;
+            }
+        }
+    }
+    return visited_count == incident_count;
+}
+
+/**
+ * @brief Enforce the manifold link condition and classified-boundary preservation.
+ *
+ * For a legal triangle edge, the endpoints' common one-ring is exactly the set of opposite
+ * vertices in its one or two incident faces. Endpoint fans must already be connected manifolds.
+ * Boundary edges collapse only boundary-to-boundary, while interior edges collapse only between
+ * interior vertices.
+ *
+ * @param cx Mutable simplification context.
+ * @param a Surviving endpoint candidate.
+ * @param b Removed endpoint candidate.
+ * @return Non-zero when the topological collapse is legal.
+ */
+static int simp_link_condition_holds(simp_ctx_t *cx, uint32_t a, uint32_t b) {
+    simp_edge_info_t edge;
+    uint32_t generation;
+    uint32_t common_count = 0;
+    int edge_boundary;
+    int a_boundary;
+    int b_boundary;
+
+    simp_get_edge_info(cx, a, b, &edge);
+    if (edge.face_count < 1u || edge.face_count > 2u || !simp_vertex_fan_is_manifold(cx, a) ||
+        !simp_vertex_fan_is_manifold(cx, b))
+        return 0;
+    edge_boundary = simp_edge_is_classified_boundary(&edge);
+    a_boundary = simp_vertex_is_classified_boundary(cx, a);
+    b_boundary = simp_vertex_is_classified_boundary(cx, b);
+    if (edge_boundary ? (!a_boundary || !b_boundary) : (a_boundary || b_boundary))
+        return 0;
+
+    generation = simp_claim_vertex_mark_pair(cx);
+    if (generation == 0)
+        return 0;
+    for (int32_t link = cx->vert_face_head[b]; link >= 0; link = cx->face_links[link]) {
+        uint32_t face = (uint32_t)link / 3u;
+        const uint32_t *tri;
+        if (!simp_face_is_live(cx, face))
+            continue;
+        tri = &cx->tris[(size_t)face * 3u];
+        for (int corner = 0; corner < 3; ++corner) {
+            uint32_t neighbor = tri[corner];
+            if (neighbor != a && neighbor != b)
+                cx->vertex_marks[neighbor] = generation;
+        }
+    }
+    for (int32_t link = cx->vert_face_head[a]; link >= 0; link = cx->face_links[link]) {
+        uint32_t face = (uint32_t)link / 3u;
+        const uint32_t *tri;
+        if (!simp_face_is_live(cx, face))
+            continue;
+        tri = &cx->tris[(size_t)face * 3u];
+        for (int corner = 0; corner < 3; ++corner) {
+            uint32_t neighbor = tri[corner];
+            int expected = 0;
+            if (neighbor == a || neighbor == b || cx->vertex_marks[neighbor] != generation)
+                continue;
+            cx->vertex_marks[neighbor] = generation + 1u;
+            for (uint32_t i = 0; i < edge.face_count && i < 2u; ++i) {
+                if (edge.opposite[i] == neighbor)
+                    expected = 1;
+            }
+            if (!expected)
+                return 0;
+            common_count++;
+        }
+    }
+    return common_count == edge.face_count;
+}
+
+/**
+ * @brief Simulate replacing endpoint @p b with @p a in one live face.
+ * @param cx Active simplification context.
+ * @param face Source face index.
+ * @param a Surviving endpoint.
+ * @param b Removed endpoint.
+ * @param out_triangle Receives the simulated three indices.
+ * @return Non-zero for a surviving three-distinct-index face; zero for retired/vanishing faces.
+ */
+static int simp_simulate_face(
+    const simp_ctx_t *cx, uint32_t face, uint32_t a, uint32_t b, uint32_t out_triangle[3]) {
+    if (!out_triangle || !simp_face_is_live(cx, face))
+        return 0;
+    for (int corner = 0; corner < 3; ++corner) {
+        uint32_t vertex = cx->tris[(size_t)face * 3u + (size_t)corner];
+        out_triangle[corner] = vertex == b ? a : vertex;
+    }
+    return out_triangle[0] != out_triangle[1] && out_triangle[1] != out_triangle[2] &&
+           out_triangle[0] != out_triangle[2];
+}
+
+/**
+ * @brief Sort a triangle's indices into canonical order for duplicate comparison.
+ * @param triangle Three vertex indices, reordered in place.
+ */
+static void simp_sort_triangle(uint32_t triangle[3]) {
+    uint32_t tmp;
+    if (triangle[0] > triangle[1]) {
+        tmp = triangle[0];
+        triangle[0] = triangle[1];
+        triangle[1] = tmp;
+    }
+    if (triangle[1] > triangle[2]) {
+        tmp = triangle[1];
+        triangle[1] = triangle[2];
+        triangle[2] = tmp;
+    }
+    if (triangle[0] > triangle[1]) {
+        tmp = triangle[0];
+        triangle[0] = triangle[1];
+        triangle[1] = tmp;
+    }
+}
+
+/**
+ * @brief Reject a simulated face that degenerates or reverses orientation.
+ *
+ * Cross-product magnitude is compared to a scale-relative edge threshold, then the normalized
+ * before/after normals must retain a positive dot product. This catches near-zero slivers as well
+ * as exact degeneracy and inverted faces.
+ *
+ * @param cx Active simplification context.
+ * @param face Original live face index.
+ * @param triangle Simulated surviving indices.
+ * @return Non-zero when area and orientation remain valid.
+ */
+static int simp_simulated_face_geometry_valid(const simp_ctx_t *cx,
+                                              uint32_t face,
+                                              const uint32_t triangle[3]) {
+    double before[3];
+    double p0[3];
+    double p1[3];
+    double p2[3];
+    double e1[3];
+    double e2[3];
+    double e3[3];
+    double after[3];
+    double after_len;
+    double max_edge_sq;
+    double dot;
+    if (!triangle || !simp_face_normal(cx, face, before))
+        return 0;
+    simp_vertex_position(cx, triangle[0], p0);
+    simp_vertex_position(cx, triangle[1], p1);
+    simp_vertex_position(cx, triangle[2], p2);
+    for (int axis = 0; axis < 3; ++axis) {
+        e1[axis] = p1[axis] - p0[axis];
+        e2[axis] = p2[axis] - p0[axis];
+        e3[axis] = p2[axis] - p1[axis];
+    }
+    after[0] = e1[1] * e2[2] - e1[2] * e2[1];
+    after[1] = e1[2] * e2[0] - e1[0] * e2[2];
+    after[2] = e1[0] * e2[1] - e1[1] * e2[0];
+    after_len = hypot(hypot(after[0], after[1]), after[2]);
+    max_edge_sq = fmax(e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2],
+                       fmax(e2[0] * e2[0] + e2[1] * e2[1] + e2[2] * e2[2],
+                            e3[0] * e3[0] + e3[1] * e3[1] + e3[2] * e3[2]));
+    if (!isfinite(after_len) || !isfinite(max_edge_sq) || max_edge_sq <= 0.0 ||
+        after_len <= max_edge_sq * 1e-12)
+        return 0;
+    dot = before[0] * (after[0] / after_len) + before[1] * (after[1] / after_len) +
+          before[2] * (after[2] / after_len);
+    return isfinite(dot) && dot > 1e-8;
+}
+
+/**
+ * @brief Reject a collapse that would create an unordered duplicate triangle.
+ *
+ * Any new duplicate must contain the surviving endpoint, so only the current `a` and `b`
+ * incident lists need inspection. Both lists are simulated before canonical comparison, covering
+ * duplicates against existing `a` faces and between two transformed `b` faces.
+ *
+ * @param cx Active simplification context.
+ * @param face Transformed `b`-incident face being validated.
+ * @param a Surviving endpoint.
+ * @param b Removed endpoint.
+ * @param simulated Precomputed surviving indices for @p face.
+ * @return Non-zero when no other surviving/simulated local face has the same vertex set.
+ */
+static int simp_simulated_face_unique(
+    const simp_ctx_t *cx, uint32_t face, uint32_t a, uint32_t b, const uint32_t simulated[3]) {
+    uint32_t canonical[3] = {simulated[0], simulated[1], simulated[2]};
+    simp_sort_triangle(canonical);
+    for (int pass = 0; pass < 2; ++pass) {
+        uint32_t endpoint = pass == 0 ? a : b;
+        for (int32_t link = cx->vert_face_head[endpoint]; link >= 0; link = cx->face_links[link]) {
+            uint32_t other_face = (uint32_t)link / 3u;
+            uint32_t other[3];
+            if (other_face == face || !simp_simulate_face(cx, other_face, a, b, other))
+                continue;
+            simp_sort_triangle(other);
+            if (canonical[0] == other[0] && canonical[1] == other[1] && canonical[2] == other[2])
+                return 0;
+        }
+    }
+    return 1;
+}
+
+/**
+ * @brief Validate topology, boundary class, geometry, and uniqueness for one collapse.
+ * @param cx Mutable simplification context.
+ * @param a Surviving endpoint candidate.
+ * @param b Removed endpoint candidate.
+ * @return Non-zero only when applying `b -> a` preserves every simplifier invariant.
+ */
+static int simp_collapse_is_legal(simp_ctx_t *cx, uint32_t a, uint32_t b) {
+    if (!simp_link_condition_holds(cx, a, b))
+        return 0;
+    for (int32_t link = cx->vert_face_head[b]; link >= 0; link = cx->face_links[link]) {
+        uint32_t face = (uint32_t)link / 3u;
+        uint32_t simulated[3];
+        if (!simp_face_is_live(cx, face) || simp_face_contains(cx, face, a))
+            continue;
+        if (!simp_simulate_face(cx, face, a, b, simulated) ||
+            !simp_simulated_face_geometry_valid(cx, face, simulated) ||
+            !simp_simulated_face_unique(cx, face, a, b, simulated))
+            return 0;
+    }
+    return 1;
+}
+
+/**
+ * @brief Validate private submesh ranges and expand them to one material slot per source face.
+ *
+ * Expansion keeps collapse-time boundary classification and output-range compaction simple. Ranges
+ * must be ascending, non-overlapping, triangle aligned, inside the validated index buffer, and use
+ * non-negative material slots. Uncovered triangles retain slot `-1`.
+ *
+ * @param cx Mutable context with `tri_count` initialized.
+ * @param mesh Valid source mesh.
+ * @param source_index_count Validated source index count.
+ * @return Non-zero on success; zero for corrupt metadata or allocation failure.
+ */
+static int simp_prepare_material_slots(simp_ctx_t *cx,
+                                       const rt_mesh3d *mesh,
+                                       uint32_t source_index_count) {
+    uint32_t previous_end = 0;
+    if (!cx || !mesh || cx->tri_count == 0)
+        return 0;
+    cx->tri_material_slots = (int32_t *)malloc((size_t)cx->tri_count * sizeof(int32_t));
+    if (!cx->tri_material_slots)
+        return 0;
+    for (uint32_t face = 0; face < cx->tri_count; ++face)
+        cx->tri_material_slots[face] = -1;
+    if (mesh->submesh_range_count == 0)
+        return 1;
+    if (!mesh->submesh_ranges || mesh->submesh_range_capacity < mesh->submesh_range_count)
+        return 0;
+    cx->has_submesh_ranges = 1;
+    for (uint32_t range_index = 0; range_index < mesh->submesh_range_count; ++range_index) {
+        const rt_mesh3d_submesh_range *range = &mesh->submesh_ranges[range_index];
+        uint64_t end = (uint64_t)range->first_index + (uint64_t)range->index_count;
+        if (range->index_count == 0 || range->material_slot < 0 ||
+            (range->first_index % 3u) != 0u || (range->index_count % 3u) != 0u ||
+            range->first_index < previous_end || end > source_index_count)
+            return 0;
+        for (uint32_t index = range->first_index; index < (uint32_t)end; index += 3u)
+            cx->tri_material_slots[index / 3u] = range->material_slot;
+        previous_end = (uint32_t)end;
+    }
+    return 1;
+}
+
+/**
+ * @brief Release every native allocation owned by a simplification working context.
+ * @param cx Context to clear; `NULL` is accepted.
+ */
+static void simp_context_dispose(simp_ctx_t *cx) {
+    if (!cx)
+        return;
+    free(cx->verts);
+    free(cx->source_vertices);
+    free(cx->tris);
+    free(cx->tri_material_slots);
+    free(cx->quadrics);
+    free(cx->stamps);
+    free(cx->alive);
+    free(cx->vert_face_head);
+    free(cx->face_links);
+    free(cx->vertex_marks);
+    free(cx->face_marks);
+    free(cx->face_queue);
+    free(cx->heap);
+    memset(cx, 0, sizeof(*cx));
+}
+
+/**
+ * @brief Return the target recorded on a valid simplified Mesh3D.
+ * @param mesh_obj Mesh3D receiver.
+ * @return Sanitized requested triangle count, or zero for null/not-run state.
+ */
+int64_t rt_mesh3d_get_simplify_requested_triangles(void *mesh_obj) {
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    return mesh && mesh->simplify_status != RT_MESH3D_SIMPLIFY_STATUS_NOT_RUN &&
+                   mesh->simplify_requested_triangles > 0
+               ? mesh->simplify_requested_triangles
+               : 0;
+}
+
+/**
+ * @brief Return the exact triangle count recorded on a valid simplified Mesh3D.
+ * @param mesh_obj Mesh3D receiver.
+ * @return Achieved triangle count, or zero for null/not-run state.
+ */
+int64_t rt_mesh3d_get_simplify_achieved_triangles(void *mesh_obj) {
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    return mesh && mesh->simplify_status != RT_MESH3D_SIMPLIFY_STATUS_NOT_RUN &&
+                   mesh->simplify_achieved_triangles >= 0
+               ? mesh->simplify_achieved_triangles
+               : 0;
+}
+
+/**
+ * @brief Return the sanitized simplification status stored on a Mesh3D.
+ * @param mesh_obj Mesh3D receiver.
+ * @return `NOT_RUN`, `COMPLETE`, or `PARTIAL`; corrupt values degrade to `NOT_RUN`.
+ */
+int64_t rt_mesh3d_get_simplify_status(void *mesh_obj) {
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    if (!mesh || (mesh->simplify_status != RT_MESH3D_SIMPLIFY_STATUS_COMPLETE &&
+                  mesh->simplify_status != RT_MESH3D_SIMPLIFY_STATUS_PARTIAL))
+        return RT_MESH3D_SIMPLIFY_STATUS_NOT_RUN;
+    return mesh->simplify_status;
+}
+
+/**
+ * @brief Run deterministic subset-placement QEM with manifold-safe collapses.
+ *
+ * All output geometry, side streams, ranges, and retained animation objects are staged before the
+ * new Mesh3D publishes them. Exhausting legal edges is not an error: a valid partial mesh is
+ * returned with exact requested/achieved/status diagnostics. The source mesh is never mutated.
+ *
+ * @param mesh_obj Source Mesh3D handle.
+ * @param target_triangles Requested budget, sanitized to at least one.
+ * @return A new complete/partial Mesh3D, or `NULL` for invalid input/allocation failure.
+ */
 void *rt_mesh3d_simplify(void *mesh_obj, int64_t target_triangles) {
     rt_mesh3d *mesh = (rt_mesh3d *)rt_g3d_checked_or_null(mesh_obj, RT_G3D_MESH3D_CLASS_ID);
+    simp_ctx_t cx;
+    uint32_t src_verts;
+    uint32_t src_indices;
+    uint32_t target_u32;
+    uint32_t *remap = NULL;
+    uint32_t *out_map = NULL;
+    uint32_t *out_sources = NULL;
+    vgfx3d_vertex_t *out_vertices = NULL;
+    uint32_t *out_indices = NULL;
+    double *out_positions64 = NULL;
+    vgfx3d_extra_influences_t *out_extra_influences = NULL;
+    int32_t *out_bone_map = NULL;
+    rt_mesh3d_submesh_range *out_ranges = NULL;
+    uint32_t out_range_count = 0;
+    uint32_t out_vertex_count = 0;
+    uint32_t out_index_count = 0;
+    rt_mesh3d *out = NULL;
+    void *morph_clone = NULL;
+
+    memset(&cx, 0, sizeof(cx));
     if (!mesh) {
         rt_trap("Mesh3D.Simplify: invalid mesh");
         return NULL;
     }
     rt_mesh3d_repair_geometry_counts(mesh);
-    uint32_t src_verts = rt_mesh3d_safe_vertex_count(mesh);
-    uint32_t src_indices = rt_mesh3d_validated_index_count(mesh);
+    src_verts = rt_mesh3d_safe_vertex_count(mesh);
+    src_indices = rt_mesh3d_validated_index_count(mesh);
     if (src_verts == 0 || src_indices < 3) {
         rt_trap("Mesh3D.Simplify: mesh has no triangles");
         return NULL;
     }
     if (target_triangles < 1)
         target_triangles = 1;
+    target_u32 = target_triangles > (int64_t)UINT32_MAX ? UINT32_MAX : (uint32_t)target_triangles;
 
-    simp_ctx_t cx;
-    memset(&cx, 0, sizeof(cx));
-    uint32_t *remap = simp_weld(mesh->vertices, src_verts, &cx.verts, &cx.vert_count);
+    cx.source_mesh = mesh;
+    remap = simp_weld(mesh, src_verts, &cx.verts, &cx.source_vertices, &cx.vert_count);
     if (!remap)
-        return NULL;
-
+        goto fail;
     cx.tri_count = src_indices / 3u;
     cx.tris = (uint32_t *)malloc((size_t)cx.tri_count * 3u * sizeof(uint32_t));
     cx.quadrics = (simp_quadric_t *)calloc(cx.vert_count, sizeof(simp_quadric_t));
@@ -312,111 +1012,136 @@ void *rt_mesh3d_simplify(void *mesh_obj, int64_t target_triangles) {
     cx.alive = (int8_t *)malloc(cx.vert_count);
     cx.vert_face_head = (int32_t *)malloc((size_t)cx.vert_count * sizeof(int32_t));
     cx.face_links = (int32_t *)malloc((size_t)cx.tri_count * 3u * sizeof(int32_t));
+    cx.vertex_marks = (uint32_t *)calloc(cx.vert_count, sizeof(uint32_t));
+    cx.face_marks = (uint32_t *)calloc(cx.tri_count, sizeof(uint32_t));
+    cx.face_queue = (uint32_t *)malloc((size_t)cx.tri_count * sizeof(uint32_t));
     if (!cx.tris || !cx.quadrics || !cx.stamps || !cx.alive || !cx.vert_face_head ||
-        !cx.face_links)
+        !cx.face_links || !cx.vertex_marks || !cx.face_marks || !cx.face_queue ||
+        !simp_prepare_material_slots(&cx, mesh, src_indices))
         goto fail;
     memset(cx.alive, 1, cx.vert_count);
-    for (uint32_t v = 0; v < cx.vert_count; v++)
-        cx.vert_face_head[v] = -1;
+    for (uint32_t vertex = 0; vertex < cx.vert_count; ++vertex)
+        cx.vert_face_head[vertex] = -1;
 
-    cx.live_tris = 0;
-    for (uint32_t f = 0; f < cx.tri_count; f++) {
-        uint32_t i0 = remap[mesh->indices[f * 3 + 0]];
-        uint32_t i1 = remap[mesh->indices[f * 3 + 1]];
-        uint32_t i2 = remap[mesh->indices[f * 3 + 2]];
-        if (i0 == i1 || i1 == i2 || i0 == i2) {
-            cx.tris[f * 3 + 0] = UINT32_MAX; /* degenerate at load */
-            cx.tris[f * 3 + 1] = UINT32_MAX;
-            cx.tris[f * 3 + 2] = UINT32_MAX;
+    for (uint32_t face = 0; face < cx.tri_count; ++face) {
+        uint32_t i0 = remap[mesh->indices[(size_t)face * 3u + 0u]];
+        uint32_t i1 = remap[mesh->indices[(size_t)face * 3u + 1u]];
+        uint32_t i2 = remap[mesh->indices[(size_t)face * 3u + 2u]];
+        cx.tris[(size_t)face * 3u + 0u] = i0;
+        cx.tris[(size_t)face * 3u + 1u] = i1;
+        cx.tris[(size_t)face * 3u + 2u] = i2;
+        if (i0 == i1 || i1 == i2 || i0 == i2 || !simp_face_normal(&cx, face, (double[3]){0})) {
+            cx.tris[(size_t)face * 3u + 0u] = UINT32_MAX;
+            cx.tris[(size_t)face * 3u + 1u] = UINT32_MAX;
+            cx.tris[(size_t)face * 3u + 2u] = UINT32_MAX;
             continue;
         }
-        cx.tris[f * 3 + 0] = i0;
-        cx.tris[f * 3 + 1] = i1;
-        cx.tris[f * 3 + 2] = i2;
         cx.live_tris++;
-        simp_link_face(&cx, f);
+        simp_link_face(&cx, face);
+    }
+    if (cx.live_tris == 0u) {
+        rt_trap("Mesh3D.Simplify: mesh has no non-degenerate triangles");
+        goto fail;
     }
 
-    /* Face-plane quadrics (area-weighted) + boundary penalties. Boundary/seam
-     * edges (used by exactly one face after welding) get a perpendicular plane
-     * quadric x10 so borders and attribute seams hold their shape. */
+    /* Build face quadrics, classified-boundary penalties, and deterministic edge candidates. */
     {
-        /* Count directed edge occurrences via a small hash of undirected pairs. */
-        uint32_t table_size = 1;
-        while (table_size < cx.tri_count * 8u + 1u)
-            table_size <<= 1;
-        uint64_t *edge_keys = (uint64_t *)malloc((size_t)table_size * sizeof(uint64_t));
-        uint32_t *edge_counts = (uint32_t *)malloc((size_t)table_size * sizeof(uint32_t));
+        size_t desired_table_size;
+        size_t table_size = 1u;
+        uint64_t *edge_keys = NULL;
+        uint32_t *edge_counts = NULL;
+        if ((size_t)cx.tri_count > (SIZE_MAX - 1u) / 8u)
+            goto fail;
+        desired_table_size = (size_t)cx.tri_count * 8u + 1u;
+        while (table_size < desired_table_size) {
+            if (table_size > SIZE_MAX / 2u)
+                goto fail;
+            table_size <<= 1u;
+        }
+        if (table_size > SIZE_MAX / sizeof(uint64_t) || table_size > SIZE_MAX / sizeof(uint32_t))
+            goto fail;
+        edge_keys = (uint64_t *)malloc(table_size * sizeof(uint64_t));
+        edge_counts = (uint32_t *)calloc(table_size, sizeof(uint32_t));
         if (!edge_keys || !edge_counts) {
             free(edge_keys);
             free(edge_counts);
             goto fail;
         }
-        memset(edge_keys, 0xFF, (size_t)table_size * sizeof(uint64_t));
-        memset(edge_counts, 0, (size_t)table_size * sizeof(uint32_t));
+        memset(edge_keys, 0xFF, table_size * sizeof(uint64_t));
 
-        for (uint32_t f = 0; f < cx.tri_count; f++) {
-            if (cx.tris[f * 3] == UINT32_MAX)
-                continue;
-            double n[3];
-            if (!simp_face_normal(&cx, f, n))
-                continue;
-            const float *p0 = cx.verts[cx.tris[f * 3 + 0]].pos;
-            /* Area weight: quadrics from big faces matter more. */
-            double d = -(n[0] * p0[0] + n[1] * p0[1] + n[2] * p0[2]);
+        for (uint32_t face = 0; face < cx.tri_count; ++face) {
+            double normal[3];
+            double p0[3];
             simp_quadric_t q;
-            quadric_from_plane(&q, n[0], n[1], n[2], d, 1.0);
-            for (int c = 0; c < 3; c++)
-                quadric_add(&cx.quadrics[cx.tris[f * 3 + c]], &q);
-            for (int c = 0; c < 3; c++) {
-                uint32_t va = cx.tris[f * 3 + c];
-                uint32_t vb = cx.tris[f * 3 + (c + 1) % 3];
+            double d;
+            if (!simp_face_is_live(&cx, face) || !simp_face_normal(&cx, face, normal))
+                continue;
+            simp_vertex_position(&cx, cx.tris[(size_t)face * 3u], p0);
+            d = -(normal[0] * p0[0] + normal[1] * p0[1] + normal[2] * p0[2]);
+            quadric_from_plane(&q, normal[0], normal[1], normal[2], d, 1.0);
+            for (int corner = 0; corner < 3; ++corner)
+                quadric_add(&cx.quadrics[cx.tris[(size_t)face * 3u + (size_t)corner]], &q);
+            for (int corner = 0; corner < 3; ++corner) {
+                uint32_t va = cx.tris[(size_t)face * 3u + (size_t)corner];
+                uint32_t vb = cx.tris[(size_t)face * 3u + (size_t)((corner + 1) % 3)];
                 uint64_t key = va < vb ? ((uint64_t)va << 32) | vb : ((uint64_t)vb << 32) | va;
-                uint32_t slot = (uint32_t)((key ^ (key >> 29)) * 0x9E3779B97F4A7C15ull >> 40) &
-                                (table_size - 1u);
+                size_t slot = (size_t)(((key ^ (key >> 29)) * UINT64_C(0x9E3779B97F4A7C15)) >> 40) &
+                              (table_size - 1u);
                 while (edge_keys[slot] != UINT64_MAX && edge_keys[slot] != key)
                     slot = (slot + 1u) & (table_size - 1u);
                 edge_keys[slot] = key;
-                edge_counts[slot]++;
+                if (edge_counts[slot] != UINT32_MAX)
+                    edge_counts[slot]++;
             }
         }
-        /* Boundary quadrics + seed the collapse heap from unique edges. */
-        for (uint32_t slot = 0; slot < table_size; slot++) {
+        for (size_t slot = 0; slot < table_size; ++slot) {
+            uint32_t va;
+            uint32_t vb;
+            simp_edge_info_t edge;
             if (edge_keys[slot] == UINT64_MAX)
                 continue;
-            uint32_t va = (uint32_t)(edge_keys[slot] >> 32);
-            uint32_t vb = (uint32_t)edge_keys[slot];
-            if (edge_counts[slot] == 1) {
-                /* Open border or attribute seam: constrain with a plane through
-                 * the edge, perpendicular to an adjacent-face-ish direction. */
-                const float *pa = cx.verts[va].pos;
-                const float *pb = cx.verts[vb].pos;
-                double e[3] = {pb[0] - pa[0], pb[1] - pa[1], pb[2] - pa[2]};
+            va = (uint32_t)(edge_keys[slot] >> 32);
+            vb = (uint32_t)edge_keys[slot];
+            simp_get_edge_info(&cx, va, vb, &edge);
+            if (simp_edge_is_classified_boundary(&edge)) {
+                double pa[3];
+                double pb[3];
+                double direction[3];
                 double up[3] = {0.0, 1.0, 0.0};
-                if (fabs(e[1]) > fabs(e[0]) && fabs(e[1]) > fabs(e[2])) {
+                double normal[3];
+                double len;
+                simp_vertex_position(&cx, va, pa);
+                simp_vertex_position(&cx, vb, pb);
+                for (int axis = 0; axis < 3; ++axis)
+                    direction[axis] = pb[axis] - pa[axis];
+                if (fabs(direction[1]) > fabs(direction[0]) &&
+                    fabs(direction[1]) > fabs(direction[2])) {
                     up[0] = 1.0;
                     up[1] = 0.0;
                 }
-                double n[3] = {e[1] * up[2] - e[2] * up[1], e[2] * up[0] - e[0] * up[2],
-                               e[0] * up[1] - e[1] * up[0]};
-                double len = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+                normal[0] = direction[1] * up[2] - direction[2] * up[1];
+                normal[1] = direction[2] * up[0] - direction[0] * up[2];
+                normal[2] = direction[0] * up[1] - direction[1] * up[0];
+                len = hypot(hypot(normal[0], normal[1]), normal[2]);
                 if (isfinite(len) && len > 1e-12) {
-                    n[0] /= len;
-                    n[1] /= len;
-                    n[2] /= len;
-                    double d = -(n[0] * pa[0] + n[1] * pa[1] + n[2] * pa[2]);
                     simp_quadric_t q;
-                    quadric_from_plane(&q, n[0], n[1], n[2], d, 10.0);
+                    double d;
+                    for (int axis = 0; axis < 3; ++axis)
+                        normal[axis] /= len;
+                    d = -(normal[0] * pa[0] + normal[1] * pa[1] + normal[2] * pa[2]);
+                    quadric_from_plane(&q, normal[0], normal[1], normal[2], d, 10.0);
                     quadric_add(&cx.quadrics[va], &q);
                     quadric_add(&cx.quadrics[vb], &q);
                 }
             }
         }
-        for (uint32_t slot = 0; slot < table_size; slot++) {
+        for (size_t slot = 0; slot < table_size; ++slot) {
+            uint32_t va;
+            uint32_t vb;
             if (edge_keys[slot] == UINT64_MAX)
                 continue;
-            uint32_t va = (uint32_t)(edge_keys[slot] >> 32);
-            uint32_t vb = (uint32_t)edge_keys[slot];
+            va = (uint32_t)(edge_keys[slot] >> 32);
+            vb = (uint32_t)edge_keys[slot];
             simp_push_edge(&cx, va, vb);
             simp_push_edge(&cx, vb, va);
         }
@@ -424,178 +1149,235 @@ void *rt_mesh3d_simplify(void *mesh_obj, int64_t target_triangles) {
         free(edge_counts);
     }
 
-    /* Collapse loop with lazy heap invalidation and flip rejection. */
-    while (cx.live_tris > (uint32_t)target_triangles) {
-        simp_heap_entry_t e;
-        if (!simp_heap_pop(&cx, &e))
+    while (cx.live_tris > target_u32) {
+        simp_heap_entry_t entry;
+        uint32_t a;
+        uint32_t b;
+        int32_t link;
+        if (!simp_heap_pop(&cx, &entry))
             break;
-        uint32_t a = e.a;
-        uint32_t b = e.b;
-        if (!cx.alive[a] || !cx.alive[b] || cx.stamps[a] != e.stamp_a ||
-            cx.stamps[b] != e.stamp_b)
-            continue;
-        /* Verify a and b still share an edge, collect b's faces, flip-test. */
-        int adjacent = 0;
-        int flip = 0;
-        for (int32_t link = cx.vert_face_head[b]; link >= 0; link = cx.face_links[link]) {
-            uint32_t f = (uint32_t)link / 3u;
-            if (cx.tris[f * 3] == UINT32_MAX)
-                continue;
-            uint32_t t0 = cx.tris[f * 3 + 0];
-            uint32_t t1 = cx.tris[f * 3 + 1];
-            uint32_t t2 = cx.tris[f * 3 + 2];
-            int has_a = (t0 == a || t1 == a || t2 == a);
-            if (has_a) {
-                adjacent = 1;
-                continue; /* face vanishes on collapse */
-            }
-            double before[3];
-            if (!simp_face_normal(&cx, f, before))
-                continue;
-            /* Simulate the move: replace b with a. */
-            uint32_t sim[3] = {t0 == b ? a : t0, t1 == b ? a : t1, t2 == b ? a : t2};
-            const float *p0 = cx.verts[sim[0]].pos;
-            const float *p1 = cx.verts[sim[1]].pos;
-            const float *p2 = cx.verts[sim[2]].pos;
-            double e1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]};
-            double e2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
-            double after[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
-                               e1[0] * e2[1] - e1[1] * e2[0]};
-            double dot = before[0] * after[0] + before[1] * after[1] + before[2] * after[2];
-            if (dot <= 0.0) {
-                flip = 1;
-                break;
-            }
-        }
-        if (!adjacent || flip)
+        a = entry.a;
+        b = entry.b;
+        if (a >= cx.vert_count || b >= cx.vert_count || !cx.alive[a] || !cx.alive[b] ||
+            cx.stamps[a] != entry.stamp_a || cx.stamps[b] != entry.stamp_b ||
+            !simp_collapse_is_legal(&cx, a, b))
             continue;
 
-        /* Apply: retire b, move its faces to a, merge quadrics, restamp. */
         quadric_add(&cx.quadrics[a], &cx.quadrics[b]);
         cx.alive[b] = 0;
         cx.stamps[a]++;
         cx.stamps[b]++;
-        int32_t link = cx.vert_face_head[b];
+        link = cx.vert_face_head[b];
         cx.vert_face_head[b] = -1;
         while (link >= 0) {
             int32_t next = cx.face_links[link];
-            uint32_t f = (uint32_t)link / 3u;
-            if (cx.tris[f * 3] != UINT32_MAX) {
-                uint32_t t0 = cx.tris[f * 3 + 0];
-                uint32_t t1 = cx.tris[f * 3 + 1];
-                uint32_t t2 = cx.tris[f * 3 + 2];
-                if (t0 == a || t1 == a || t2 == a) {
-                    /* Shared face collapses away. */
-                    cx.tris[f * 3 + 0] = UINT32_MAX;
-                    cx.tris[f * 3 + 1] = UINT32_MAX;
-                    cx.tris[f * 3 + 2] = UINT32_MAX;
-                    if (cx.live_tris > 0)
-                        cx.live_tris--;
+            uint32_t face = (uint32_t)link / 3u;
+            if (simp_face_is_live(&cx, face)) {
+                if (simp_face_contains(&cx, face, a)) {
+                    cx.tris[(size_t)face * 3u + 0u] = UINT32_MAX;
+                    cx.tris[(size_t)face * 3u + 1u] = UINT32_MAX;
+                    cx.tris[(size_t)face * 3u + 2u] = UINT32_MAX;
+                    cx.live_tris--;
                 } else {
-                    for (int c = 0; c < 3; c++) {
-                        if (cx.tris[f * 3 + c] == b)
-                            cx.tris[f * 3 + c] = a;
+                    for (int corner = 0; corner < 3; ++corner) {
+                        if (cx.tris[(size_t)face * 3u + (size_t)corner] == b)
+                            cx.tris[(size_t)face * 3u + (size_t)corner] = a;
                     }
-                    /* Relink this corner under a. */
                     cx.face_links[link] = cx.vert_face_head[a];
                     cx.vert_face_head[a] = link;
                 }
             }
             link = next;
         }
-        /* Refresh candidate collapses around a (deterministic scan order). */
-        for (int32_t l2 = cx.vert_face_head[a]; l2 >= 0; l2 = cx.face_links[l2]) {
-            uint32_t f = (uint32_t)l2 / 3u;
-            if (cx.tris[f * 3] == UINT32_MAX)
+        for (int32_t adjacent_link = cx.vert_face_head[a]; adjacent_link >= 0;
+             adjacent_link = cx.face_links[adjacent_link]) {
+            uint32_t face = (uint32_t)adjacent_link / 3u;
+            if (!simp_face_is_live(&cx, face))
                 continue;
-            for (int c = 0; c < 3; c++) {
-                uint32_t v = cx.tris[f * 3 + c];
-                if (v != a && cx.alive[v]) {
-                    simp_push_edge(&cx, a, v);
-                    simp_push_edge(&cx, v, a);
+            for (int corner = 0; corner < 3; ++corner) {
+                uint32_t neighbor = cx.tris[(size_t)face * 3u + (size_t)corner];
+                if (neighbor != a && cx.alive[neighbor]) {
+                    simp_push_edge(&cx, a, neighbor);
+                    simp_push_edge(&cx, neighbor, a);
                 }
             }
         }
     }
 
-    /* Emit the surviving triangles into a new mesh (compacted vertices). */
-    {
-        uint32_t *out_map = (uint32_t *)malloc((size_t)cx.vert_count * sizeof(uint32_t));
-        rt_mesh3d *out = (rt_mesh3d *)rt_mesh3d_new();
-        if (!out_map || !out) {
-            free(out_map);
+    out_map = (uint32_t *)malloc((size_t)cx.vert_count * sizeof(uint32_t));
+    if (!out_map)
+        goto fail;
+    memset(out_map, 0xFF, (size_t)cx.vert_count * sizeof(uint32_t));
+    for (uint32_t face = 0; face < cx.tri_count; ++face) {
+        if (!simp_face_is_live(&cx, face))
+            continue;
+        for (int corner = 0; corner < 3; ++corner) {
+            uint32_t vertex = cx.tris[(size_t)face * 3u + (size_t)corner];
+            if (out_map[vertex] == UINT32_MAX)
+                out_map[vertex] = out_vertex_count++;
+        }
+        out_index_count += 3u;
+    }
+    if (out_vertex_count == 0u || out_index_count == 0u)
+        goto fail;
+    out_sources = (uint32_t *)malloc((size_t)out_vertex_count * sizeof(uint32_t));
+    out_vertices = (vgfx3d_vertex_t *)malloc((size_t)out_vertex_count * sizeof(vgfx3d_vertex_t));
+    out_indices = (uint32_t *)malloc((size_t)out_index_count * sizeof(uint32_t));
+    if (!out_sources || !out_vertices || !out_indices)
+        goto fail;
+    if (mesh->positions64) {
+        if ((size_t)out_vertex_count > SIZE_MAX / (3u * sizeof(double)))
             goto fail;
-        }
-        memset(out_map, 0xFF, (size_t)cx.vert_count * sizeof(uint32_t));
-        uint32_t out_vert_count = 0;
-        uint32_t out_index_count = 0;
-        for (uint32_t f = 0; f < cx.tri_count; f++) {
-            if (cx.tris[f * 3] == UINT32_MAX)
-                continue;
-            for (int c = 0; c < 3; c++) {
-                uint32_t v = cx.tris[f * 3 + c];
-                if (out_map[v] == UINT32_MAX)
-                    out_map[v] = out_vert_count++;
-            }
-            out_index_count += 3;
-        }
-        vgfx3d_vertex_t *ov =
-            (vgfx3d_vertex_t *)malloc((size_t)(out_vert_count ? out_vert_count : 1) *
-                                      sizeof(vgfx3d_vertex_t));
-        uint32_t *oi = (uint32_t *)malloc((size_t)(out_index_count ? out_index_count : 1) *
-                                          sizeof(uint32_t));
-        if (!ov || !oi) {
-            free(ov);
-            free(oi);
-            free(out_map);
+        out_positions64 = (double *)malloc((size_t)out_vertex_count * 3u * sizeof(double));
+        if (!out_positions64)
             goto fail;
-        }
-        for (uint32_t v = 0; v < cx.vert_count; v++) {
-            if (out_map[v] != UINT32_MAX)
-                ov[out_map[v]] = cx.verts[v];
-        }
-        uint32_t cursor = 0;
-        for (uint32_t f = 0; f < cx.tri_count; f++) {
-            if (cx.tris[f * 3] == UINT32_MAX)
-                continue;
-            oi[cursor++] = out_map[cx.tris[f * 3 + 0]];
-            oi[cursor++] = out_map[cx.tris[f * 3 + 1]];
-            oi[cursor++] = out_map[cx.tris[f * 3 + 2]];
-        }
-        free(out->vertices);
-        free(out->indices);
-        out->vertices = ov;
-        out->vertex_count = out_vert_count;
-        out->vertex_capacity = out_vert_count ? out_vert_count : 1;
-        out->indices = oi;
-        out->index_count = out_index_count;
-        out->index_capacity = out_index_count ? out_index_count : 1;
-        out->bounds_dirty = 1;
-        rt_mesh3d_touch_geometry(out);
-        rt_mesh3d_recalc_normals(out);
-        free(out_map);
-        free(remap);
-        free(cx.verts);
-        free(cx.tris);
-        free(cx.quadrics);
-        free(cx.stamps);
-        free(cx.alive);
-        free(cx.vert_face_head);
-        free(cx.face_links);
-        free(cx.heap);
-        return out;
+    }
+    if (mesh->extra_influences) {
+        out_extra_influences = (vgfx3d_extra_influences_t *)malloc(
+            (size_t)out_vertex_count * sizeof(vgfx3d_extra_influences_t));
+        if (!out_extra_influences)
+            goto fail;
+    }
+    if (mesh->bone_map && mesh->bone_count > 0 && mesh->bone_count <= VGFX3D_MAX_BONES) {
+        out_bone_map = (int32_t *)malloc((size_t)mesh->bone_count * sizeof(int32_t));
+        if (!out_bone_map)
+            goto fail;
+        memcpy(out_bone_map, mesh->bone_map, (size_t)mesh->bone_count * sizeof(int32_t));
+    }
+    if (cx.has_submesh_ranges) {
+        out_ranges = (rt_mesh3d_submesh_range *)malloc((size_t)cx.live_tris *
+                                                       sizeof(rt_mesh3d_submesh_range));
+        if (!out_ranges)
+            goto fail;
     }
 
-fail:
+    for (uint32_t vertex = 0; vertex < cx.vert_count; ++vertex) {
+        uint32_t output_vertex;
+        uint32_t source_vertex;
+        if (out_map[vertex] == UINT32_MAX)
+            continue;
+        output_vertex = out_map[vertex];
+        source_vertex = cx.source_vertices[vertex];
+        out_sources[output_vertex] = source_vertex;
+        out_vertices[output_vertex] = cx.verts[vertex];
+        if (out_positions64) {
+            memcpy(&out_positions64[(size_t)output_vertex * 3u],
+                   &mesh->positions64[(size_t)source_vertex * 3u],
+                   3u * sizeof(double));
+        }
+        if (out_extra_influences)
+            out_extra_influences[output_vertex] = mesh->extra_influences[source_vertex];
+    }
+    {
+        uint32_t cursor = 0;
+        for (uint32_t face = 0; face < cx.tri_count; ++face) {
+            int32_t material_slot;
+            if (!simp_face_is_live(&cx, face))
+                continue;
+            out_indices[cursor + 0u] = out_map[cx.tris[(size_t)face * 3u + 0u]];
+            out_indices[cursor + 1u] = out_map[cx.tris[(size_t)face * 3u + 1u]];
+            out_indices[cursor + 2u] = out_map[cx.tris[(size_t)face * 3u + 2u]];
+            material_slot = cx.tri_material_slots[face];
+            if (out_ranges && material_slot >= 0) {
+                if (out_range_count > 0u &&
+                    out_ranges[out_range_count - 1u].material_slot == material_slot &&
+                    out_ranges[out_range_count - 1u].first_index +
+                            out_ranges[out_range_count - 1u].index_count ==
+                        cursor) {
+                    out_ranges[out_range_count - 1u].index_count += 3u;
+                } else {
+                    out_ranges[out_range_count].first_index = cursor;
+                    out_ranges[out_range_count].index_count = 3u;
+                    out_ranges[out_range_count].material_slot = material_slot;
+                    out_range_count++;
+                }
+            }
+            cursor += 3u;
+        }
+        if (cursor != out_index_count)
+            goto fail;
+    }
+    if (out_range_count == 0u) {
+        free(out_ranges);
+        out_ranges = NULL;
+    }
+
+    if (mesh->skeleton_ref && !rt_g3d_has_class(mesh->skeleton_ref, RT_G3D_SKELETON3D_CLASS_ID))
+        goto fail;
+    if (mesh->morph_targets_ref) {
+        if (!rt_g3d_has_class(mesh->morph_targets_ref, RT_G3D_MORPHTARGET3D_CLASS_ID))
+            goto fail;
+        morph_clone =
+            rt_morphtarget3d_clone_remapped(mesh->morph_targets_ref, out_sources, out_vertex_count);
+        if (!morph_clone)
+            goto fail;
+    }
+
+    out = (rt_mesh3d *)rt_mesh3d_new_empty_storage();
+    if (!out)
+        goto fail;
+    out->vertices = out_vertices;
+    out_vertices = NULL;
+    out->vertex_count = out_vertex_count;
+    out->vertex_capacity = out_vertex_count;
+    out->indices = out_indices;
+    out_indices = NULL;
+    out->index_count = out_index_count;
+    out->index_capacity = out_index_count;
+    out->positions64 = out_positions64;
+    out_positions64 = NULL;
+    out->extra_influences = out_extra_influences;
+    out_extra_influences = NULL;
+    out->bone_map = out_bone_map;
+    out_bone_map = NULL;
+    out->bone_count =
+        mesh->bone_count > 0 && mesh->bone_count <= VGFX3D_MAX_BONES ? mesh->bone_count : 0;
+    out->submesh_ranges = out_ranges;
+    out_ranges = NULL;
+    out->submesh_range_count = out_range_count;
+    out->submesh_range_capacity = out_range_count;
+    out->compact_streams = mesh->compact_streams ? 1 : 0;
+    if (mesh->skeleton_ref) {
+        rt_obj_retain_maybe(mesh->skeleton_ref);
+        out->skeleton_ref = mesh->skeleton_ref;
+    }
+    out->morph_targets_ref = morph_clone;
+    morph_clone = NULL;
+    out->bounds_dirty = 1;
+    rt_mesh3d_touch_geometry(out);
+    out->resident = mesh->resident ? 1 : 0;
+    out->simplify_requested_triangles = target_triangles;
+    out->simplify_achieved_triangles = (int64_t)(out_index_count / 3u);
+    out->simplify_status = out->simplify_achieved_triangles <= target_triangles
+                               ? RT_MESH3D_SIMPLIFY_STATUS_COMPLETE
+                               : RT_MESH3D_SIMPLIFY_STATUS_PARTIAL;
+    if (mesh->tangents_ready) {
+        out->tangents_ready = 1;
+        out->tangent_revision = out->geometry_revision;
+    }
+    rt_mesh3d_refresh_bounds(out);
+
+    free(out_sources);
+    free(out_map);
     free(remap);
-    free(cx.verts);
-    free(cx.tris);
-    free(cx.quadrics);
-    free(cx.stamps);
-    free(cx.alive);
-    free(cx.vert_face_head);
-    free(cx.face_links);
-    free(cx.heap);
+    simp_context_dispose(&cx);
+    return out;
+
+fail:
+    if (morph_clone && rt_obj_release_check0(morph_clone))
+        rt_obj_free(morph_clone);
+    if (out && rt_obj_release_check0(out))
+        rt_obj_free(out);
+    free(out_ranges);
+    free(out_bone_map);
+    free(out_extra_influences);
+    free(out_positions64);
+    free(out_indices);
+    free(out_vertices);
+    free(out_sources);
+    free(out_map);
+    free(remap);
+    simp_context_dispose(&cx);
     return NULL;
 }
 
