@@ -785,5 +785,9 @@ RT_FUNC(TiledMapLoaderSetTileSize,   rt_tiledmaploader_set_tile_size,   "Zanna.G
 RT_FUNC(TiledMapLoaderGetTileWidth,  rt_tiledmaploader_get_tile_width,  "Zanna.Graphics.TiledMapLoader.get_TileWidth",  "i64(obj)")
 RT_FUNC(TiledMapLoaderGetTileHeight, rt_tiledmaploader_get_tile_height, "Zanna.Graphics.TiledMapLoader.get_TileHeight", "i64(obj)")
 RT_FUNC(TiledMapLoaderNewTilemap,    rt_tiledmaploader_new_tilemap,     "Zanna.Graphics.TiledMapLoader.NewTilemap",     "obj(obj,i64,i64)")
+RT_FUNC(TiledMapLoaderLoad,          rt_tiledmaploader_load,            "Zanna.Graphics.TiledMapLoader.Load",           "obj<Zanna.Graphics2D.Tilemap>(obj,str)")
+RT_FUNC(TiledMapLoaderLoadResult,    rt_tiledmaploader_load_result,     "Zanna.Graphics.TiledMapLoader.LoadResult",     "obj<Zanna.Result>(obj,str)")
+RT_FUNC(TiledMapLoaderLoadAsset,     rt_tiledmaploader_load_asset,      "Zanna.Graphics.TiledMapLoader.LoadAsset",      "obj<Zanna.Graphics2D.Tilemap>(obj,str)")
+RT_FUNC(TiledMapLoaderLoadAssetResult, rt_tiledmaploader_load_asset_result, "Zanna.Graphics.TiledMapLoader.LoadAssetResult", "obj<Zanna.Result>(obj,str)")
 
 //=============================================================================

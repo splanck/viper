@@ -1,7 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_model3d_api.inc  (#included from rt_model3d.c; not a
-// standalone translation unit) Purpose: Model3D public load API, accessors, and instantiation
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/render/rt_model3d_api.inc
+// Purpose: Implement SceneAsset loading, persistence, accessors, lookup, and instantiation.
+// Key invariants:
+//   - Public accessors clamp corrupt count/capacity pairs and reject wrong-class entries.
+//   - Instantiation clones mutable scene state while preserving retained resource ownership.
+// Ownership/Lifetime:
+//   - Load methods return owned SceneAsset handles; getters return borrowed runtime handles.
+//   - Result wrappers retain successful values before releasing the loader-local reference.
+// Links: rt_model3d.c, rt_model3d.h, rt_model3d_core.inc, rt_model3d_loaders.inc
+//
 //===----------------------------------------------------------------------===//
 /// @brief Convert a SceneAsset load return value into a Result.
 /// @details Successful values are retained by `Result.Ok` and then released from the local
@@ -49,6 +62,62 @@ void *rt_model3d_load(rt_string path) {
 /// @return Owned Zanna.Result value.
 void *rt_model3d_load_result(rt_string path) {
     return model3d_load_value_to_result(rt_model3d_load(path), "SceneAsset.Load failed");
+}
+
+/// @brief Save the complete Model3D inventory through the model-aware VSCN v4 serializer.
+int64_t rt_model3d_save(void *obj, rt_string path) {
+    rt_model3d *model = model3d_checked(obj);
+    rt_vscn_asset_save_view view = {0};
+    rt_vscn_asset_scene_view *scenes = NULL;
+    int32_t scene_count;
+    int64_t result;
+    if (!model || !path || !rt_string_is_handle(path) || !rt_string_cstr(path))
+        return 0;
+    scene_count = model_scene_count(model);
+    if (scene_count <= 0 || !model->template_root)
+        return 0;
+    scenes = (rt_vscn_asset_scene_view *)calloc((size_t)scene_count, sizeof(*scenes));
+    if (!scenes)
+        return 0;
+    for (int32_t i = 0; i < scene_count; ++i) {
+        model3d_scene_entry *source = &model->scenes[i];
+        scenes[i].root =
+            (rt_scene_node3d *)rt_g3d_checked_or_null(source->root, RT_G3D_SCENENODE3D_CLASS_ID);
+        scenes[i].name = source->name ? source->name : (i == 0 ? "default" : "scene");
+        scenes[i].camera_count = model_clamped_array_count(
+            source->cameras, source->camera_count, source->camera_capacity);
+        scenes[i].cameras = source->cameras;
+        if (!scenes[i].root) {
+            free(scenes);
+            return 0;
+        }
+    }
+    view.meshes = model->meshes;
+    view.mesh_count =
+        model_clamped_array_count(model->meshes, model->mesh_count, model->mesh_capacity);
+    view.materials = model->materials;
+    view.material_count = model_clamped_array_count(
+        model->materials, model->material_count, model->material_capacity);
+    view.skeletons = model->skeletons;
+    view.skeleton_count = model_clamped_array_count(
+        model->skeletons, model->skeleton_count, model->skeleton_capacity);
+    view.animations = model->animations;
+    view.animation_count = model_clamped_array_count(
+        model->animations, model->animation_count, model->animation_capacity);
+    view.node_animations = model->node_animations;
+    view.node_animation_count = model_clamped_array_count(
+        model->node_animations, model->node_animation_count, model->node_animation_capacity);
+    view.cameras = model->cameras;
+    view.camera_count =
+        model_clamped_array_count(model->cameras, model->camera_count, model->camera_capacity);
+    view.scenes = scenes;
+    view.scene_count = scene_count;
+    view.variant_names = (const char *const *)model->variant_names;
+    view.variant_count =
+        model->variant_names && model->variant_count > 0 ? model->variant_count : 0;
+    result = rt_vscn_save_asset_view(&view, path);
+    free(scenes);
+    return result;
 }
 
 /// @brief Load a model with explicit import options (Plan 09).
@@ -220,6 +289,41 @@ int64_t rt_model3d_get_node_animation_count(void *obj) {
                  : 0;
 }
 
+/// @brief Number of model mesh slots carrying a valid attached MorphTarget3D.
+int64_t rt_model3d_get_morph_target_count(void *obj) {
+    rt_model3d *model = model3d_checked(obj);
+    int32_t mesh_count =
+        model ? model_clamped_array_count(model->meshes, model->mesh_count, model->mesh_capacity)
+              : 0;
+    int64_t count = 0;
+    for (int32_t i = 0; i < mesh_count; ++i) {
+        rt_mesh3d *mesh =
+            (rt_mesh3d *)rt_g3d_checked_or_null(model->meshes[i], RT_G3D_MESH3D_CLASS_ID);
+        if (mesh && rt_g3d_has_class(mesh->morph_targets_ref, RT_G3D_MORPHTARGET3D_CLASS_ID))
+            count++;
+    }
+    return count;
+}
+
+/// @brief Total safe morph-shape count across every enumerable mesh.
+int64_t rt_model3d_get_morph_shape_count(void *obj) {
+    rt_model3d *model = model3d_checked(obj);
+    int32_t mesh_count =
+        model ? model_clamped_array_count(model->meshes, model->mesh_count, model->mesh_capacity)
+              : 0;
+    int64_t count = 0;
+    for (int32_t i = 0; i < mesh_count; ++i) {
+        rt_mesh3d *mesh =
+            (rt_mesh3d *)rt_g3d_checked_or_null(model->meshes[i], RT_G3D_MESH3D_CLASS_ID);
+        int64_t shapes = mesh ? rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref) : 0;
+        if (shapes > INT64_MAX - count)
+            return INT64_MAX;
+        if (shapes > 0)
+            count += shapes;
+    }
+    return count;
+}
+
 /// @brief Number of scene nodes in the template subtree (excludes the synthetic root).
 int64_t rt_model3d_get_node_count(void *obj) {
     rt_model3d *model = model3d_checked(obj);
@@ -310,6 +414,13 @@ void *rt_model3d_get_node_animation(void *obj, int64_t index) {
     if (!model || index < 0 || index >= animation_count)
         return NULL;
     return rt_g3d_checked_or_null(model->node_animations[index], RT_G3D_NODEANIMATION3D_CLASS_ID);
+}
+
+/// @brief Borrow the MorphTarget3D attached to mesh @p mesh_index.
+void *rt_model3d_get_morph_target(void *obj, int64_t mesh_index) {
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_model3d_get_mesh(obj, mesh_index);
+    return mesh ? rt_g3d_checked_or_null(mesh->morph_targets_ref, RT_G3D_MORPHTARGET3D_CLASS_ID)
+                : NULL;
 }
 
 /// @brief Borrow the i-th NodeAnimation3D name, or an empty string on out-of-range.

@@ -1501,7 +1501,7 @@ function(zanna_add_runtime_tests)
     zanna_add_test(test_rt_https_server ${ZANNA_TESTS_DIR}/runtime/RTHttpsServerTests.cpp)
     target_link_libraries(test_rt_https_server PRIVATE ${ZANNA_RUNTIME_TEST_LIBS} Threads::Threads)
     zanna_add_ctest(test_rt_https_server test_rt_https_server)
-    zanna_add_test_labels(test_rt_https_server requires_local_bind)
+    zanna_add_test_labels(test_rt_https_server requires_local_bind slow)
     set_tests_properties(test_rt_https_server PROPERTIES RUN_SERIAL TRUE TIMEOUT 90)
 
     zanna_add_test(test_rt_network_highlevel ${ZANNA_TESTS_DIR}/runtime/RTHighLevelNetworkTests.cpp)
@@ -1697,7 +1697,7 @@ function(zanna_add_runtime_tests)
     zanna_add_ctest(test_rt_scene test_rt_scene)
 
     zanna_add_test(test_rt_scene_editor ${ZANNA_TESTS_DIR}/runtime/RTSceneEditorTests.cpp)
-    target_link_libraries(test_rt_scene_editor PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+    target_link_libraries(test_rt_scene_editor PRIVATE ${ZANNA_RUNTIME_TEST_LIBS} zanna_packaging)
     target_compile_definitions(test_rt_scene_editor PRIVATE ZANNA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     zanna_add_ctest(test_rt_scene_editor test_rt_scene_editor)
 

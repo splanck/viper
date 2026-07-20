@@ -1,0 +1,939 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_nodeanim.inc
+// Purpose: Import non-skeletal FBX Model transform animation into NodeAnimation3D clips.
+// Key invariants:
+//   - Channel targets use the Model record's stable ordinal in Objects, matching SceneNode3D.
+//   - Full FBX transform stacks and TransformInheritType are sampled through the static composer.
+//   - One transactional NodeAnimation3D is emitted per AnimationStack that drives scene models.
+// Ownership/Lifetime:
+//   - Builder/sample arrays are native scratch allocations freed before return.
+//   - Successfully emitted clips are owned by the caller's reference array.
+// Links: rt_fbx_loader.c, rt_fbx_loader_anim.inc, rt_scene3d_nodeanim.c
+//
+//===----------------------------------------------------------------------===//
+
+/// @brief One non-skeletal Model participating in an FBX object-animation stack.
+typedef struct {
+    int64_t id;
+    int64_t parent_id;
+    int32_t parent_index;
+    int32_t import_index;
+    fbx_node_t *source;
+    fbx_anim_bone_builder_t animation;
+} fbx_node_anim_model_builder_t;
+
+/// @brief Evaluate one progressive FBX BlendShapeChannel lane for a local shape.
+/// @details Before the first FullWeights threshold the first shape ramps from the base. Between
+///          thresholds the adjacent shapes cross-fade, and values beyond the final threshold hold
+///          the final shape. Negative channel values extrapolate the first shape down to -1.
+static double fbx_morph_progressive_shape_weight(const fbx_morph_channel_binding_t *binding,
+                                                 double percent,
+                                                 int32_t local_shape) {
+    if (!binding || !binding->full_weights || binding->shape_count <= 0 || local_shape < 0 ||
+        local_shape >= binding->shape_count || !isfinite(percent)) {
+        return 0.0;
+    }
+    if (percent <= binding->full_weights[0]) {
+        if (local_shape != 0 || binding->full_weights[0] <= 0.0)
+            return 0.0;
+        return fbx_clamp_double(percent / binding->full_weights[0], -1.0, 1.0, 0.0);
+    }
+    for (int32_t upper = 1; upper < binding->shape_count; ++upper) {
+        double lower_weight = binding->full_weights[upper - 1];
+        double upper_weight = binding->full_weights[upper];
+        if (percent <= upper_weight) {
+            double alpha = (percent - lower_weight) / (upper_weight - lower_weight);
+            alpha = fbx_clamp_double(alpha, 0.0, 1.0, 0.0);
+            if (local_shape == upper - 1)
+                return 1.0 - alpha;
+            if (local_shape == upper)
+                return alpha;
+            return 0.0;
+        }
+    }
+    return local_shape == binding->shape_count - 1 ? 1.0 : 0.0;
+}
+
+/// @brief Populate one curve view from a typed AnimationCurve node.
+static int fbx_node_anim_read_curve_view(fbx_node_t *curve, fbx_anim_curve_view_t *out_view) {
+    uint32_t time_count = 0;
+    uint32_t value_count = 0;
+    uint32_t attr_flag_count = 0;
+    uint32_t attr_data_count = 0;
+    fbx_anim_curve_view_t candidate;
+    const int64_t *times;
+    const double *values64;
+    const float *values32 = NULL;
+    if (!curve || !out_view || strcmp(curve->name, "AnimationCurve") != 0)
+        return 0;
+    times = fbx_get_i64_array(curve, "KeyTime", &time_count);
+    values64 = fbx_get_f64_array(curve, "KeyValueFloat", &value_count);
+    if (!values64)
+        values32 = fbx_get_f32_array(curve, "KeyValueFloat", &value_count);
+    if (!times || (!values64 && !values32) || time_count == 0 || time_count != value_count)
+        return 0;
+    memset(&candidate, 0, sizeof(candidate));
+    candidate.times = times;
+    candidate.values64 = values64;
+    candidate.values32 = values32;
+    candidate.attr_flags = fbx_get_i32_array(curve, "KeyAttrFlags", &attr_flag_count);
+    candidate.attr_data64 = fbx_get_f64_array(curve, "KeyAttrDataFloat", &attr_data_count);
+    if (!candidate.attr_data64)
+        candidate.attr_data32 = fbx_get_f32_array(curve, "KeyAttrDataFloat", &attr_data_count);
+    candidate.count = time_count;
+    candidate.attr_flag_count = candidate.attr_flags ? attr_flag_count : 0;
+    candidate.attr_data_count =
+        (candidate.attr_data64 || candidate.attr_data32) ? attr_data_count : 0;
+    if (!fbx_anim_curve_view_valid(&candidate))
+        return 0;
+    *out_view = candidate;
+    return 1;
+}
+
+/// @brief Allocate and initialize the stable non-skeleton Model table for node animation.
+static int fbx_node_anim_make_model_table(fbx_node_t *objects,
+                                          const fbx_conn_table_t *ct,
+                                          fbx_node_anim_model_builder_t **out_models,
+                                          int32_t *out_count,
+                                          fbx_model_id_entry_t **out_ids,
+                                          fbx_load_context_t *context) {
+    fbx_node_anim_model_builder_t *models = NULL;
+    fbx_model_id_entry_t *ids = NULL;
+    int32_t count = 0;
+    if (!objects || !ct || !out_models || !out_count || !out_ids || !context)
+        return 0;
+    *out_models = NULL;
+    *out_count = 0;
+    *out_ids = NULL;
+    for (int32_t i = 0; i < objects->child_count; ++i) {
+        fbx_node_t *object = &objects->children[i];
+        if (strcmp(object->name, "Model") == 0 && object->prop_count >= 3 &&
+            !fbx_model_type_is_skeleton(fbx_prop_str(object, 2))) {
+            if (count == INT32_MAX)
+                return 0;
+            ++count;
+        }
+    }
+    if (count == 0)
+        return 1;
+    if ((size_t)count > SIZE_MAX / sizeof(*models) || (size_t)count > SIZE_MAX / sizeof(*ids) ||
+        !fbx_budget_charge(context, (uint64_t)count, sizeof(*models)) ||
+        !fbx_budget_charge(context, (uint64_t)count, sizeof(*ids))) {
+        return 0;
+    }
+    models = (fbx_node_anim_model_builder_t *)calloc((size_t)count, sizeof(*models));
+    ids = (fbx_model_id_entry_t *)malloc((size_t)count * sizeof(*ids));
+    if (!models || !ids) {
+        free(models);
+        free(ids);
+        return 0;
+    }
+    count = 0;
+    for (int32_t i = 0; i < objects->child_count; ++i) {
+        fbx_node_t *object = &objects->children[i];
+        if (strcmp(object->name, "Model") != 0 || object->prop_count < 3 ||
+            fbx_model_type_is_skeleton(fbx_prop_str(object, 2))) {
+            continue;
+        }
+        models[count].id = fbx_prop_i64(object, 0);
+        models[count].parent_id = fbx_find_parent(ct, models[count].id);
+        models[count].parent_index = -1;
+        models[count].import_index = i;
+        models[count].source = object;
+        fbx_read_model_transform_components(object, &models[count].animation.base_transform);
+        models[count].animation.initialized = 1;
+        ids[count].id = models[count].id;
+        ids[count].index = count;
+        ++count;
+    }
+    qsort(ids, (size_t)count, sizeof(*ids), fbx_model_id_entry_cmp);
+    for (int32_t i = 0; i < count; ++i) {
+        if (models[i].parent_id != 0)
+            models[i].parent_index = fbx_model_index_for_id(ids, count, models[i].parent_id);
+    }
+    *out_models = models;
+    *out_count = count;
+    *out_ids = ids;
+    return 1;
+}
+
+/// @brief Collect a stack's Lcl T/R/S curve graph into the non-skeleton Model table.
+static void fbx_node_anim_collect_transform_curves(fbx_node_t *objects,
+                                                   const fbx_conn_table_t *ct,
+                                                   int64_t stack_id,
+                                                   fbx_node_anim_model_builder_t *models,
+                                                   int32_t model_count,
+                                                   const fbx_model_id_entry_t *ids) {
+    if (!objects || !ct || !models || model_count <= 0 || !ids)
+        return;
+    for (int32_t layer_connection = fbx_connections_first_for_parent(ct, stack_id);
+         layer_connection >= 0;
+         layer_connection = fbx_connections_next_for_parent(ct, layer_connection)) {
+        fbx_node_t *layer = fbx_find_object_by_id(objects, ct->entries[layer_connection].child_id);
+        if (!layer || strcmp(layer->name, "AnimationLayer") != 0)
+            continue;
+        for (int32_t node_connection = fbx_connections_first_for_parent(ct, fbx_prop_i64(layer, 0));
+             node_connection >= 0;
+             node_connection = fbx_connections_next_for_parent(ct, node_connection)) {
+            int64_t curve_node_id = ct->entries[node_connection].child_id;
+            fbx_node_t *curve_node = fbx_find_object_by_id(objects, curve_node_id);
+            int32_t model_index = -1;
+            int32_t trs = -1;
+            if (!curve_node || strcmp(curve_node->name, "AnimationCurveNode") != 0)
+                continue;
+            for (int32_t target_connection = fbx_connections_first_for_child(ct, curve_node_id);
+                 target_connection >= 0;
+                 target_connection = fbx_connections_next_for_child(ct, target_connection)) {
+                int64_t target_id = ct->entries[target_connection].parent_id;
+                fbx_node_t *target = fbx_find_object_by_id(objects, target_id);
+                const char *property = ct->entries[target_connection].prop;
+                if (!target || strcmp(target->name, "Model") != 0 || !property)
+                    continue;
+                if (strcmp(property, "Lcl Translation") == 0)
+                    trs = 0;
+                else if (strcmp(property, "Lcl Rotation") == 0)
+                    trs = 1;
+                else if (strcmp(property, "Lcl Scaling") == 0)
+                    trs = 2;
+                if (trs >= 0) {
+                    model_index = fbx_model_index_for_id(ids, model_count, target_id);
+                    break;
+                }
+            }
+            if (model_index < 0 || trs < 0)
+                continue;
+            for (int32_t curve_connection = fbx_connections_first_for_parent(ct, curve_node_id);
+                 curve_connection >= 0;
+                 curve_connection = fbx_connections_next_for_parent(ct, curve_connection)) {
+                int32_t component =
+                    fbx_anim_component_from_connection_prop(ct->entries[curve_connection].prop);
+                fbx_node_t *curve;
+                if (component < 0 ||
+                    fbx_anim_curve_has_data(&models[model_index].animation.curves[trs][component]))
+                    continue;
+                curve = fbx_find_object_by_id(objects, ct->entries[curve_connection].child_id);
+                (void)fbx_node_anim_read_curve_view(
+                    curve, &models[model_index].animation.curves[trs][component]);
+            }
+        }
+    }
+}
+
+/// @brief Collect one DeformPercent curve per imported BlendShapeChannel for a stack.
+static void fbx_node_anim_collect_morph_curves(fbx_node_t *objects,
+                                               const fbx_conn_table_t *ct,
+                                               int64_t stack_id,
+                                               const fbx_morph_channel_binding_t *bindings,
+                                               int32_t binding_count,
+                                               fbx_anim_curve_view_t *curves) {
+    if (!objects || !ct || !bindings || binding_count <= 0 || !curves)
+        return;
+    for (int32_t layer_connection = fbx_connections_first_for_parent(ct, stack_id);
+         layer_connection >= 0;
+         layer_connection = fbx_connections_next_for_parent(ct, layer_connection)) {
+        fbx_node_t *layer = fbx_find_object_by_id(objects, ct->entries[layer_connection].child_id);
+        if (!layer || strcmp(layer->name, "AnimationLayer") != 0 || layer->prop_count < 1)
+            continue;
+        for (int32_t node_connection = fbx_connections_first_for_parent(ct, fbx_prop_i64(layer, 0));
+             node_connection >= 0;
+             node_connection = fbx_connections_next_for_parent(ct, node_connection)) {
+            int64_t curve_node_id = ct->entries[node_connection].child_id;
+            fbx_node_t *curve_node = fbx_find_object_by_id(objects, curve_node_id);
+            int32_t binding_index = -1;
+            if (!curve_node || strcmp(curve_node->name, "AnimationCurveNode") != 0)
+                continue;
+            for (int32_t target_connection = fbx_connections_first_for_child(ct, curve_node_id);
+                 target_connection >= 0;
+                 target_connection = fbx_connections_next_for_child(ct, target_connection)) {
+                int64_t target_id = ct->entries[target_connection].parent_id;
+                const char *property = ct->entries[target_connection].prop;
+                if (property && !fbx_ascii_contains_i(property, "DeformPercent"))
+                    continue;
+                for (int32_t i = 0; i < binding_count; ++i) {
+                    if (bindings[i].channel_id == target_id) {
+                        binding_index = i;
+                        break;
+                    }
+                }
+                if (binding_index >= 0)
+                    break;
+            }
+            if (binding_index < 0 || fbx_anim_curve_has_data(&curves[binding_index]))
+                continue;
+            fbx_node_t *fallback_curve = NULL;
+            for (int32_t curve_connection = fbx_connections_first_for_parent(ct, curve_node_id);
+                 curve_connection >= 0;
+                 curve_connection = fbx_connections_next_for_parent(ct, curve_connection)) {
+                fbx_node_t *curve =
+                    fbx_find_object_by_id(objects, ct->entries[curve_connection].child_id);
+                const char *property = ct->entries[curve_connection].prop;
+                if (!curve || strcmp(curve->name, "AnimationCurve") != 0)
+                    continue;
+                if (!fallback_curve)
+                    fallback_curve = curve;
+                if (!property || fbx_ascii_contains_i(property, "DeformPercent") ||
+                    fbx_anim_component_from_connection_prop(property) == 0) {
+                    if (fbx_node_anim_read_curve_view(curve, &curves[binding_index]))
+                        break;
+                }
+            }
+            if (!fbx_anim_curve_has_data(&curves[binding_index]) && fallback_curve)
+                (void)fbx_node_anim_read_curve_view(fallback_curve, &curves[binding_index]);
+        }
+    }
+}
+
+/// @brief Compute key bounds across all transform curves in a Model builder table.
+static int fbx_node_anim_transform_bounds(const fbx_node_anim_model_builder_t *models,
+                                          int32_t model_count,
+                                          int64_t *out_min,
+                                          int64_t *out_max) {
+    int found = 0;
+    int64_t minimum = 0;
+    int64_t maximum = 0;
+    if (!models || model_count <= 0 || !out_min || !out_max)
+        return 0;
+    for (int32_t i = 0; i < model_count; ++i) {
+        for (int trs = 0; trs < 3; ++trs) {
+            for (int component = 0; component < 3; ++component) {
+                const fbx_anim_curve_view_t *curve = &models[i].animation.curves[trs][component];
+                if (!fbx_anim_curve_has_data(curve))
+                    continue;
+                if (!found || curve->times[0] < minimum)
+                    minimum = curve->times[0];
+                if (!found || curve->times[curve->count - 1] > maximum)
+                    maximum = curve->times[curve->count - 1];
+                found = 1;
+            }
+        }
+    }
+    if (!found)
+        return 0;
+    *out_min = minimum;
+    *out_max = maximum;
+    return 1;
+}
+
+/// @brief Expand a clip's source-time bounds to cover every animated morph channel.
+static int fbx_node_anim_include_morph_bounds(const fbx_anim_curve_view_t *curves,
+                                              int32_t curve_count,
+                                              int have_bounds,
+                                              int64_t *minimum,
+                                              int64_t *maximum) {
+    if (!curves || curve_count <= 0 || !minimum || !maximum)
+        return have_bounds;
+    for (int32_t i = 0; i < curve_count; ++i) {
+        if (!fbx_anim_curve_has_data(&curves[i]))
+            continue;
+        if (!have_bounds || curves[i].times[0] < *minimum)
+            *minimum = curves[i].times[0];
+        if (!have_bounds || curves[i].times[curves[i].count - 1] > *maximum)
+            *maximum = curves[i].times[curves[i].count - 1];
+        have_bounds = 1;
+    }
+    return have_bounds;
+}
+
+/// @brief Append transform sample times for a Model and every included scene ancestor.
+static int fbx_node_anim_append_inherited_times(int64_t **times,
+                                                int32_t *count,
+                                                int32_t *capacity,
+                                                const fbx_node_anim_model_builder_t *models,
+                                                int32_t model_count,
+                                                int32_t model_index,
+                                                fbx_load_context_t *context) {
+    int32_t guard = 0;
+    for (int32_t current = model_index; current >= 0; current = models[current].parent_index) {
+        if (current >= model_count || ++guard > model_count)
+            return 0;
+        for (int trs = 0; trs < 3; ++trs)
+            for (int component = 0; component < 3; ++component)
+                if (!fbx_anim_append_curve_sample_times(
+                        times,
+                        count,
+                        capacity,
+                        &models[current].animation.curves[trs][component],
+                        context)) {
+                    return 0;
+                }
+    }
+    return 1;
+}
+
+/// @brief Sample one Model's FBX hierarchy and derive the runtime parent-relative TRS.
+static int fbx_node_anim_sample_runtime_trs(const fbx_node_anim_model_builder_t *models,
+                                            int32_t model_count,
+                                            int32_t model_index,
+                                            int64_t source_time,
+                                            int z_up,
+                                            int32_t *chain,
+                                            double position[3],
+                                            double quaternion[4],
+                                            double scale[3]) {
+    int32_t chain_count = 0;
+    int32_t walk = model_index;
+    double parent_global[16];
+    fbx_transform_components_t parent_components;
+    int has_parent = 0;
+    if (!models || model_count <= 0 || model_index < 0 || model_index >= model_count || !chain)
+        return 0;
+    while (walk >= 0) {
+        if (walk >= model_count || chain_count >= model_count)
+            return 0;
+        for (int32_t i = 0; i < chain_count; ++i)
+            if (chain[i] == walk)
+                return 0;
+        chain[chain_count++] = walk;
+        walk = models[walk].parent_index;
+    }
+    for (int32_t ci = chain_count - 1; ci >= 0; --ci) {
+        int32_t current = chain[ci];
+        fbx_transform_components_t components;
+        double local[16];
+        double global[16];
+        double runtime_local[16];
+        if (!fbx_anim_sample_components(&models[current].animation, source_time, &components))
+            return 0;
+        fbx_build_model_transform_matrix(&components, local);
+        if (z_up)
+            fbx_mat4_apply_zup(local);
+        if (has_parent) {
+            double inverse_parent[16];
+            fbx_build_inherited_global_matrix(
+                parent_global, &parent_components, local, &components, global);
+            if (!fbx_mat4_inverse_affine(parent_global, inverse_parent))
+                return 0;
+            fbx_mat4_mul_local(inverse_parent, global, runtime_local);
+        } else {
+            memcpy(global, local, sizeof(global));
+            memcpy(runtime_local, local, sizeof(runtime_local));
+        }
+        if (ci == 0)
+            fbx_decompose_matrix_trs(runtime_local, position, quaternion, scale);
+        memcpy(parent_global, global, sizeof(parent_global));
+        parent_components = components;
+        has_parent = 1;
+    }
+    return 1;
+}
+
+/// @brief Add the T/R/S channels for one Model affected by this animation stack.
+/// @return 1 when channels were emitted, 0 when unaffected, or -1 on hard failure.
+static int fbx_node_anim_emit_model_channels(void *clip,
+                                             const fbx_node_anim_model_builder_t *models,
+                                             int32_t model_count,
+                                             int32_t model_index,
+                                             int64_t clip_start,
+                                             int z_up,
+                                             fbx_load_context_t *context) {
+    int64_t *source_times = NULL;
+    int32_t source_count = 0;
+    int32_t source_capacity = 0;
+    int32_t *chain = NULL;
+    double *times = NULL;
+    float *translations = NULL;
+    float *rotations = NULL;
+    float *scales = NULL;
+    rt_string target_name = NULL;
+    int64_t channel_indices[3] = {-1, -1, -1};
+    if (!fbx_node_anim_append_inherited_times(&source_times,
+                                              &source_count,
+                                              &source_capacity,
+                                              models,
+                                              model_count,
+                                              model_index,
+                                              context)) {
+        free(source_times);
+        return -1;
+    }
+    fbx_anim_sort_unique_times(source_times, &source_count);
+    if (source_count == 0) {
+        free(source_times);
+        return 0;
+    }
+    if ((size_t)model_count > SIZE_MAX / sizeof(*chain) ||
+        (size_t)source_count > SIZE_MAX / sizeof(*times) ||
+        (size_t)source_count > SIZE_MAX / (4u * sizeof(float)) ||
+        !fbx_budget_charge(context, (uint64_t)model_count, sizeof(*chain)) ||
+        !fbx_budget_charge(context, (uint64_t)source_count, sizeof(*times)) ||
+        !fbx_budget_charge(context, (uint64_t)source_count, 10u * sizeof(float)) ||
+        !fbx_budget_charge(context, 3u, sizeof(rt_node_anim_channel3d)) ||
+        !fbx_budget_charge(context, (uint64_t)source_count, 10u * sizeof(float)) ||
+        !fbx_budget_charge(context, (uint64_t)source_count, 3u * sizeof(double))) {
+        free(source_times);
+        return -1;
+    }
+    chain = (int32_t *)malloc((size_t)model_count * sizeof(*chain));
+    times = (double *)malloc((size_t)source_count * sizeof(*times));
+    translations = (float *)malloc((size_t)source_count * 3u * sizeof(*translations));
+    rotations = (float *)malloc((size_t)source_count * 4u * sizeof(*rotations));
+    scales = (float *)malloc((size_t)source_count * 3u * sizeof(*scales));
+    if (!chain || !times || !translations || !rotations || !scales)
+        goto fail;
+    for (int32_t i = 0; i < source_count; ++i) {
+        double p[3];
+        double q[4];
+        double s[3];
+        if (!fbx_node_anim_sample_runtime_trs(
+                models, model_count, model_index, source_times[i], z_up, chain, p, q, s)) {
+            goto fail;
+        }
+        times[i] = ((double)source_times[i] - (double)clip_start) / (double)FBX_TIME_SECOND;
+        for (int component = 0; component < 3; ++component) {
+            translations[(size_t)i * 3u + (size_t)component] = (float)p[component];
+            scales[(size_t)i * 3u + (size_t)component] = (float)s[component];
+        }
+        for (int component = 0; component < 4; ++component)
+            rotations[(size_t)i * 4u + (size_t)component] = (float)q[component];
+        if (i > 0) {
+            float *previous = &rotations[(size_t)(i - 1) * 4u];
+            float *current = &rotations[(size_t)i * 4u];
+            double dot = (double)previous[0] * current[0] + (double)previous[1] * current[1] +
+                         (double)previous[2] * current[2] + (double)previous[3] * current[3];
+            if (dot < 0.0)
+                for (int component = 0; component < 4; ++component)
+                    current[component] = -current[component];
+        }
+    }
+    target_name = fbx_object_name_string(models[model_index].source, 1);
+    if (!target_name || rt_str_is_empty(target_name)) {
+        char generated[64];
+        rt_string_unref(target_name);
+        snprintf(generated, sizeof(generated), "Model_%d", models[model_index].import_index);
+        target_name = rt_const_cstr(generated);
+    }
+    channel_indices[0] = rt_node_animation3d_add_channel(clip,
+                                                         target_name,
+                                                         RT_NODE_ANIM_PATH_TRANSLATION,
+                                                         RT_NODE_ANIM_INTERP_LINEAR,
+                                                         source_count,
+                                                         3,
+                                                         times,
+                                                         translations);
+    channel_indices[1] = rt_node_animation3d_add_channel(clip,
+                                                         target_name,
+                                                         RT_NODE_ANIM_PATH_ROTATION,
+                                                         RT_NODE_ANIM_INTERP_LINEAR,
+                                                         source_count,
+                                                         4,
+                                                         times,
+                                                         rotations);
+    channel_indices[2] = rt_node_animation3d_add_channel(clip,
+                                                         target_name,
+                                                         RT_NODE_ANIM_PATH_SCALE,
+                                                         RT_NODE_ANIM_INTERP_LINEAR,
+                                                         source_count,
+                                                         3,
+                                                         times,
+                                                         scales);
+    if (channel_indices[0] < 0 || channel_indices[1] < 0 || channel_indices[2] < 0)
+        goto fail;
+    for (int path = 0; path < 3; ++path)
+        rt_node_animation3d_set_channel_target_node_index(
+            clip, channel_indices[path], models[model_index].import_index);
+    rt_string_unref(target_name);
+    free(chain);
+    free(times);
+    free(translations);
+    free(rotations);
+    free(scales);
+    free(source_times);
+    return 1;
+fail:
+    rt_string_unref(target_name);
+    free(chain);
+    free(times);
+    free(translations);
+    free(rotations);
+    free(scales);
+    free(source_times);
+    return -1;
+}
+
+/// @brief Whether a Model has a standard FBX object connection to a Geometry.
+static int fbx_node_anim_model_uses_geometry(const fbx_conn_table_t *ct,
+                                             int64_t model_id,
+                                             int64_t geometry_id) {
+    if (!ct)
+        return 0;
+    for (int32_t connection = fbx_connections_first_for_child(ct, geometry_id); connection >= 0;
+         connection = fbx_connections_next_for_child(ct, connection))
+        if (ct->entries[connection].parent_id == model_id)
+            return 1;
+    return 0;
+}
+
+/// @brief Add source ticks where a DeformPercent curve crosses progressive-weight breakpoints.
+/// @details FullWeights turns a scalar curve into a piecewise-linear vector. Authored/adaptive
+///          scalar samples alone can straddle a breakpoint and would then interpolate the wrong
+///          shape vector, so crossings are located by integer-tick bisection and inserted.
+static int fbx_node_anim_append_morph_threshold_times(int64_t **times,
+                                                      int32_t *count,
+                                                      int32_t *capacity,
+                                                      const fbx_morph_channel_binding_t *binding,
+                                                      const fbx_anim_curve_view_t *curve,
+                                                      fbx_load_context_t *context) {
+    int32_t base_count;
+    if (!times || !count || !capacity || !binding || !curve || !context ||
+        !fbx_anim_curve_has_data(curve) || binding->shape_count <= 0 || !binding->full_weights) {
+        return 1;
+    }
+    fbx_anim_sort_unique_times(*times, count);
+    base_count = *count;
+    for (int32_t interval = 0; interval + 1 < base_count; ++interval) {
+        int64_t interval_start = (*times)[interval];
+        int64_t interval_end = (*times)[interval + 1];
+        for (int32_t threshold_index = -1; threshold_index < binding->shape_count;
+             ++threshold_index) {
+            double threshold = threshold_index < 0 ? -binding->full_weights[0]
+                                                   : binding->full_weights[threshold_index];
+            int64_t lo = interval_start;
+            int64_t hi = interval_end;
+            double lo_delta = fbx_anim_curve_value(curve, lo, binding->default_percent) - threshold;
+            double hi_delta = fbx_anim_curve_value(curve, hi, binding->default_percent) - threshold;
+            if (!isfinite(lo_delta) || !isfinite(hi_delta) || lo_delta == 0.0 || hi_delta == 0.0 ||
+                (lo_delta < 0.0) == (hi_delta < 0.0)) {
+                continue;
+            }
+            while (hi - lo > 1) {
+                int64_t midpoint = lo + (hi - lo) / 2;
+                double midpoint_delta =
+                    fbx_anim_curve_value(curve, midpoint, binding->default_percent) - threshold;
+                if (!isfinite(midpoint_delta))
+                    return 0;
+                if (midpoint_delta == 0.0) {
+                    lo = midpoint;
+                    hi = midpoint;
+                    break;
+                }
+                if ((midpoint_delta < 0.0) == (lo_delta < 0.0)) {
+                    lo = midpoint;
+                    lo_delta = midpoint_delta;
+                } else {
+                    hi = midpoint;
+                }
+            }
+            if (!fbx_anim_append_time(times, count, capacity, hi, context))
+                return 0;
+        }
+    }
+    return 1;
+}
+
+/// @brief Emit one combined weight-vector channel per Model instance of each animated morph mesh.
+/// @return 1 when any channel was emitted, 0 when none were targetable, or -1 on hard failure.
+static int fbx_node_anim_emit_morph_channels(void *clip,
+                                             fbx_node_t *objects,
+                                             const fbx_conn_table_t *ct,
+                                             const fbx_node_anim_model_builder_t *models,
+                                             int32_t model_count,
+                                             const rt_fbx_asset *asset,
+                                             const fbx_morph_channel_binding_t *bindings,
+                                             const fbx_anim_curve_view_t *curves,
+                                             int32_t binding_count,
+                                             int64_t clip_start,
+                                             fbx_load_context_t *context) {
+    int emitted = 0;
+    (void)objects;
+    if (!clip || !ct || !models || model_count <= 0 || !asset || !bindings || !curves ||
+        binding_count <= 0 || !context) {
+        return 0;
+    }
+    for (int32_t first = 0; first < binding_count; ++first) {
+        int already_processed = 0;
+        int has_animation = 0;
+        int32_t mesh_index = bindings[first].mesh_index;
+        int64_t geometry_id = bindings[first].geometry_id;
+        int64_t *source_times = NULL;
+        int32_t source_count = 0;
+        int32_t source_capacity = 0;
+        double *times = NULL;
+        float *values = NULL;
+        int64_t shape_count64;
+        int32_t shape_count;
+        for (int32_t previous = 0; previous < first; ++previous)
+            if (bindings[previous].mesh_index == mesh_index) {
+                already_processed = 1;
+                break;
+            }
+        if (already_processed || mesh_index < 0 || mesh_index >= asset->morph_count ||
+            !asset->morph_targets || !asset->morph_targets[mesh_index])
+            continue;
+        for (int32_t i = 0; i < binding_count; ++i) {
+            if (bindings[i].mesh_index != mesh_index)
+                continue;
+            if (fbx_anim_curve_has_data(&curves[i]))
+                has_animation = 1;
+            if (!fbx_anim_append_curve_sample_times(
+                    &source_times, &source_count, &source_capacity, &curves[i], context)) {
+                free(source_times);
+                return -1;
+            }
+        }
+        if (!has_animation) {
+            free(source_times);
+            continue;
+        }
+        fbx_anim_sort_unique_times(source_times, &source_count);
+        for (int32_t i = 0; i < binding_count; ++i) {
+            if (bindings[i].mesh_index == mesh_index &&
+                !fbx_node_anim_append_morph_threshold_times(&source_times,
+                                                            &source_count,
+                                                            &source_capacity,
+                                                            &bindings[i],
+                                                            &curves[i],
+                                                            context)) {
+                free(source_times);
+                return -1;
+            }
+        }
+        fbx_anim_sort_unique_times(source_times, &source_count);
+        shape_count64 = rt_morphtarget3d_get_shape_count(asset->morph_targets[mesh_index]);
+        if (source_count <= 0 || shape_count64 <= 0 || shape_count64 > 4096 ||
+            (uint64_t)source_count * (uint64_t)shape_count64 > 4000000u ||
+            (size_t)source_count > SIZE_MAX / sizeof(*times) ||
+            (size_t)source_count > SIZE_MAX / ((size_t)shape_count64 * sizeof(*values))) {
+            free(source_times);
+            return -1;
+        }
+        shape_count = (int32_t)shape_count64;
+        if (!fbx_budget_charge(context, (uint64_t)source_count, sizeof(*times)) ||
+            !fbx_budget_charge(
+                context, (uint64_t)source_count * (uint64_t)shape_count, sizeof(*values))) {
+            free(source_times);
+            return -1;
+        }
+        times = (double *)malloc((size_t)source_count * sizeof(*times));
+        values = (float *)calloc((size_t)source_count * (size_t)shape_count, sizeof(*values));
+        if (!times || !values) {
+            free(source_times);
+            free(times);
+            free(values);
+            return -1;
+        }
+        for (int32_t key = 0; key < source_count; ++key) {
+            times[key] = ((double)source_times[key] - (double)clip_start) / (double)FBX_TIME_SECOND;
+            for (int32_t binding_index = 0; binding_index < binding_count; ++binding_index) {
+                const fbx_morph_channel_binding_t *binding = &bindings[binding_index];
+                double percent;
+                if (binding->mesh_index != mesh_index)
+                    continue;
+                percent = fbx_anim_curve_value(
+                    &curves[binding_index], source_times[key], binding->default_percent);
+                for (int32_t local_shape = 0; local_shape < binding->shape_count; ++local_shape) {
+                    int32_t shape_index = binding->shape_indices[local_shape];
+                    if (shape_index >= 0 && shape_index < shape_count) {
+                        values[(size_t)key * (size_t)shape_count + (size_t)shape_index] =
+                            (float)fbx_morph_progressive_shape_weight(
+                                binding, percent, local_shape);
+                    }
+                }
+            }
+        }
+        for (int32_t model_index = 0; model_index < model_count; ++model_index) {
+            rt_string target_name;
+            int64_t channel_index;
+            if (!fbx_node_anim_model_uses_geometry(ct, models[model_index].id, geometry_id))
+                continue;
+            if (!fbx_budget_charge(context, 1u, sizeof(rt_node_anim_channel3d)) ||
+                !fbx_budget_charge(context, (uint64_t)source_count, sizeof(*times)) ||
+                !fbx_budget_charge(
+                    context, (uint64_t)source_count * (uint64_t)shape_count, sizeof(*values))) {
+                free(source_times);
+                free(times);
+                free(values);
+                return -1;
+            }
+            target_name = fbx_object_name_string(models[model_index].source, 1);
+            if (!target_name || rt_str_is_empty(target_name)) {
+                char generated[64];
+                rt_string_unref(target_name);
+                snprintf(
+                    generated, sizeof(generated), "Model_%d", models[model_index].import_index);
+                target_name = rt_const_cstr(generated);
+            }
+            channel_index = rt_node_animation3d_add_channel(clip,
+                                                            target_name,
+                                                            RT_NODE_ANIM_PATH_WEIGHTS,
+                                                            RT_NODE_ANIM_INTERP_LINEAR,
+                                                            source_count,
+                                                            shape_count,
+                                                            times,
+                                                            values);
+            rt_string_unref(target_name);
+            if (channel_index < 0) {
+                free(source_times);
+                free(times);
+                free(values);
+                return -1;
+            }
+            rt_node_animation3d_set_channel_target_node_index(
+                clip, channel_index, models[model_index].import_index);
+            emitted = 1;
+        }
+        free(source_times);
+        free(times);
+        free(values);
+    }
+    return emitted;
+}
+
+/// @brief Extract non-skeletal transform clips from all FBX AnimationStack records.
+static int fbx_extract_node_animations(fbx_node_t *root,
+                                       const fbx_conn_table_t *ct,
+                                       int z_up,
+                                       const rt_fbx_asset *asset,
+                                       const fbx_morph_channel_binding_t *morph_bindings,
+                                       int32_t morph_binding_count,
+                                       void ***out_animations,
+                                       int32_t *out_count,
+                                       int32_t *out_capacity,
+                                       fbx_load_context_t *context) {
+    fbx_node_t *objects;
+    if (!root || !ct || !out_animations || !out_count || !out_capacity || !context)
+        return 0;
+    *out_animations = NULL;
+    *out_count = 0;
+    *out_capacity = 0;
+    objects = fbx_find_child(root, "Objects");
+    if (!objects)
+        return 1;
+    for (int32_t stack_index = 0; stack_index < objects->child_count; ++stack_index) {
+        fbx_node_t *stack = &objects->children[stack_index];
+        fbx_node_anim_model_builder_t *models = NULL;
+        fbx_model_id_entry_t *ids = NULL;
+        fbx_anim_curve_view_t *morph_curves = NULL;
+        int32_t model_count = 0;
+        int64_t minimum;
+        int64_t maximum;
+        int emitted = 0;
+        void *clip = NULL;
+        rt_string name = NULL;
+        if (strcmp(stack->name, "AnimationStack") != 0 || stack->prop_count < 1 ||
+            !fbx_anim_stack_has_layer(objects, ct, fbx_prop_i64(stack, 0))) {
+            continue;
+        }
+        if (!fbx_node_anim_make_model_table(objects, ct, &models, &model_count, &ids, context)) {
+            goto fail;
+        }
+        if (model_count == 0) {
+            free(models);
+            free(ids);
+            continue;
+        }
+        fbx_node_anim_collect_transform_curves(
+            objects, ct, fbx_prop_i64(stack, 0), models, model_count, ids);
+        if (morph_binding_count > 0) {
+            if ((size_t)morph_binding_count > SIZE_MAX / sizeof(*morph_curves) ||
+                !fbx_budget_charge(context, (uint64_t)morph_binding_count, sizeof(*morph_curves))) {
+                free(models);
+                free(ids);
+                goto fail;
+            }
+            morph_curves =
+                (fbx_anim_curve_view_t *)calloc((size_t)morph_binding_count, sizeof(*morph_curves));
+            if (!morph_curves) {
+                free(models);
+                free(ids);
+                goto fail;
+            }
+            fbx_node_anim_collect_morph_curves(objects,
+                                               ct,
+                                               fbx_prop_i64(stack, 0),
+                                               morph_bindings,
+                                               morph_binding_count,
+                                               morph_curves);
+        }
+        int have_bounds = fbx_node_anim_transform_bounds(models, model_count, &minimum, &maximum);
+        have_bounds = fbx_node_anim_include_morph_bounds(
+            morph_curves, morph_binding_count, have_bounds, &minimum, &maximum);
+        if (!have_bounds) {
+            free(models);
+            free(ids);
+            free(morph_curves);
+            continue;
+        }
+        name = fbx_object_name_string(stack, 1);
+        if (!name || rt_str_is_empty(name)) {
+            char generated[64];
+            rt_string_unref(name);
+            snprintf(generated, sizeof(generated), "node_animation_%d", stack_index);
+            name = rt_const_cstr(generated);
+        }
+        if (!fbx_budget_charge(context, 1u, sizeof(rt_node_animation3d))) {
+            rt_string_unref(name);
+            free(models);
+            free(ids);
+            free(morph_curves);
+            goto fail;
+        }
+        clip = rt_node_animation3d_new(
+            name, ((double)maximum - (double)minimum) / (double)FBX_TIME_SECOND);
+        rt_string_unref(name);
+        name = NULL;
+        if (!clip) {
+            free(models);
+            free(ids);
+            free(morph_curves);
+            goto fail;
+        }
+        for (int32_t model_index = 0; model_index < model_count; ++model_index) {
+            int status = fbx_node_anim_emit_model_channels(
+                clip, models, model_count, model_index, minimum, z_up, context);
+            if (status < 0) {
+                fbx_release_ref(&clip);
+                free(models);
+                free(ids);
+                free(morph_curves);
+                goto fail;
+            }
+            if (status > 0)
+                emitted = 1;
+        }
+        {
+            int morph_status = fbx_node_anim_emit_morph_channels(clip,
+                                                                 objects,
+                                                                 ct,
+                                                                 models,
+                                                                 model_count,
+                                                                 asset,
+                                                                 morph_bindings,
+                                                                 morph_curves,
+                                                                 morph_binding_count,
+                                                                 minimum,
+                                                                 context);
+            if (morph_status < 0) {
+                fbx_release_ref(&clip);
+                free(models);
+                free(ids);
+                free(morph_curves);
+                goto fail;
+            }
+            if (morph_status > 0)
+                emitted = 1;
+        }
+        free(models);
+        free(ids);
+        free(morph_curves);
+        if (!emitted) {
+            fbx_release_ref(&clip);
+            continue;
+        }
+        if (*out_count == INT32_MAX || !fbx_budget_charge(context, 1u, sizeof(void *)) ||
+            !fbx_asset_reserve_ref_array(out_animations, out_capacity, *out_count + 1)) {
+            fbx_release_ref(&clip);
+            goto fail;
+        }
+        (*out_animations)[(*out_count)++] = clip;
+    }
+    return 1;
+fail:
+    fbx_asset_release_ref_array(out_animations, out_count, out_capacity);
+    return 0;
+}

@@ -391,6 +391,11 @@ RT_FUNC(FBXGetSkeleton,   rt_fbx_get_skeleton,      "Zanna.Graphics3D.Fbx.GetSke
 RT_FUNC(FBXAnimCount,     rt_fbx_animation_count,   "Zanna.Graphics3D.Fbx.get_AnimationCount","i64(obj)")
 RT_FUNC(FBXGetAnim,       rt_fbx_get_animation,     "Zanna.Graphics3D.Fbx.GetAnimation",      "obj<Zanna.Graphics3D.Animation3D>(obj,i64)")
 RT_FUNC(FBXGetAnimName,   rt_fbx_get_animation_name,"Zanna.Graphics3D.Fbx.GetAnimationName",  "str(obj,i64)")
+RT_FUNC(FBXNodeAnimCount, rt_fbx_node_animation_count,"Zanna.Graphics3D.Fbx.get_NodeAnimationCount","i64(obj)")
+RT_FUNC(FBXGetNodeAnim,   rt_fbx_get_node_animation, "Zanna.Graphics3D.Fbx.GetNodeAnimation", "obj<Zanna.Graphics3D.NodeAnimation3D>(obj,i64)")
+RT_FUNC(FBXGetNodeAnimName,rt_fbx_get_node_animation_name,"Zanna.Graphics3D.Fbx.GetNodeAnimationName","str(obj,i64)")
+RT_FUNC(FBXCameraCount,   rt_fbx_camera_count,       "Zanna.Graphics3D.Fbx.get_CameraCount",   "i64(obj)")
+RT_FUNC(FBXGetCamera,     rt_fbx_get_camera,         "Zanna.Graphics3D.Fbx.GetCamera",         "obj<Zanna.Graphics3D.Camera3D>(obj,i64)")
 RT_FUNC(FBXMaterialCount, rt_fbx_material_count,    "Zanna.Graphics3D.Fbx.get_MaterialCount", "i64(obj)")
 RT_FUNC(FBXGetMaterial,   rt_fbx_get_material,      "Zanna.Graphics3D.Fbx.GetMaterial",       "obj<Zanna.Graphics3D.Material3D>(obj,i64)")
 RT_FUNC(FBXGetMorph,     rt_fbx_get_morph_target,  "Zanna.Graphics3D.Fbx.GetMorphTarget",   "obj<Zanna.Graphics3D.MorphTarget3D>(obj,i64)")
@@ -412,11 +417,14 @@ RT_FUNC(Model3DLoadWithOptions, rt_model3d_load_with_options, "Zanna.Graphics3D.
 RT_FUNC(Model3DLoadWithOptionsEx, rt_model3d_load_with_options_ex, "Zanna.Graphics3D.SceneAsset.LoadWithOptionsEx", "obj(str,str)")
 RT_FUNC(Model3DLoadResultWithOptions, rt_model3d_load_result_with_options, "Zanna.Graphics3D.SceneAsset.LoadResultWithOptions", "obj<Zanna.Result>(str,i1)")
 RT_FUNC(Model3DLoadAssetResult, rt_model3d_load_asset_result, "Zanna.Graphics3D.SceneAsset.LoadAssetResult",   "obj<Zanna.Result>(str)")
+RT_FUNC(Model3DSave,           rt_model3d_save,              "Zanna.Graphics3D.SceneAsset.Save",              "i64(obj,str)")
 RT_FUNC(Model3DMeshCount,      rt_model3d_get_mesh_count,     "Zanna.Graphics3D.SceneAsset.get_MeshCount",     "i64(obj)")
 RT_FUNC(Model3DMaterialCount,  rt_model3d_get_material_count, "Zanna.Graphics3D.SceneAsset.get_MaterialCount", "i64(obj)")
 RT_FUNC(Model3DSkeletonCount,  rt_model3d_get_skeleton_count, "Zanna.Graphics3D.SceneAsset.get_SkeletonCount", "i64(obj)")
 RT_FUNC(Model3DAnimationCount, rt_model3d_get_animation_count,"Zanna.Graphics3D.SceneAsset.get_AnimationCount","i64(obj)")
 RT_FUNC(Model3DNodeAnimationCount, rt_model3d_get_node_animation_count,"Zanna.Graphics3D.SceneAsset.get_NodeAnimationCount","i64(obj)")
+RT_FUNC(Model3DMorphTargetCount, rt_model3d_get_morph_target_count,"Zanna.Graphics3D.SceneAsset.get_MorphTargetCount","i64(obj)")
+RT_FUNC(Model3DMorphShapeCount, rt_model3d_get_morph_shape_count,"Zanna.Graphics3D.SceneAsset.get_MorphShapeCount","i64(obj)")
 RT_FUNC(Model3DNodeCount,      rt_model3d_get_node_count,     "Zanna.Graphics3D.SceneAsset.get_NodeCount",     "i64(obj)")
 RT_FUNC(Model3DSceneCount,     rt_model3d_get_scene_count,    "Zanna.Graphics3D.SceneAsset.get_SceneCount",    "i64(obj)")
 RT_FUNC(Model3DGetCameraCount, rt_model3d_get_camera_count,   "Zanna.Graphics3D.SceneAsset.GetCameraCount",    "i64(obj,i64)")
@@ -425,6 +433,7 @@ RT_FUNC(Model3DGetMaterial,    rt_model3d_get_material,       "Zanna.Graphics3D.
 RT_FUNC(Model3DGetSkeleton,    rt_model3d_get_skeleton,       "Zanna.Graphics3D.SceneAsset.GetSkeleton",       "obj<Zanna.Graphics3D.Skeleton3D>(obj,i64)")
 RT_FUNC(Model3DGetAnimation,   rt_model3d_get_animation,      "Zanna.Graphics3D.SceneAsset.GetAnimation",      "obj(obj,i64)")
 RT_FUNC(Model3DGetNodeAnimation, rt_model3d_get_node_animation, "Zanna.Graphics3D.SceneAsset.GetNodeAnimation", "obj<Zanna.Graphics3D.NodeAnimation3D>(obj,i64)")
+RT_FUNC(Model3DGetMorphTarget, rt_model3d_get_morph_target, "Zanna.Graphics3D.SceneAsset.GetMorphTarget", "obj<Zanna.Graphics3D.MorphTarget3D>(obj,i64)")
 RT_FUNC(Model3DGetNodeAnimationName, rt_model3d_get_node_animation_name, "Zanna.Graphics3D.SceneAsset.GetNodeAnimationName", "str(obj,i64)")
 RT_FUNC(Model3DGetCamera,      rt_model3d_get_camera,         "Zanna.Graphics3D.SceneAsset.GetCamera",         "obj<Zanna.Graphics3D.Camera3D>(obj,i64,i64)")
 RT_FUNC(Model3DGetSceneName,   rt_model3d_get_scene_name,     "Zanna.Graphics3D.SceneAsset.GetSceneName",      "str(obj,i64)")
@@ -471,17 +480,22 @@ RT_CLASS_END()
 /// @details
 /// `Zanna.Graphics3D.FBX` exposes a registry-backed runtime surface without requiring callers to
 /// construct the class directly. Its public surface exposes properties such as `MeshCount`,
-/// `AnimationCount`, `MaterialCount` and operations including `Load`, `GetMesh`, `GetSkeleton`,
-/// `GetAnimation`.
+/// `AnimationCount`, `NodeAnimationCount`, `CameraCount`, `MaterialCount` and operations including
+/// `Load`, `GetMesh`, `GetSkeleton`, `GetAnimation`, `GetNodeAnimation`, and `GetCamera`.
 RT_CLASS_BEGIN("Zanna.Graphics3D.Fbx", FBX, "obj", none)
     RT_PROP("MeshCount", "i64", FBXMeshCount, none)
     RT_PROP("AnimationCount", "i64", FBXAnimCount, none)
+    RT_PROP("NodeAnimationCount", "i64", FBXNodeAnimCount, none)
+    RT_PROP("CameraCount", "i64", FBXCameraCount, none)
     RT_PROP("MaterialCount", "i64", FBXMaterialCount, none)
     RT_METHOD("Load", "obj<Zanna.Graphics3D.Fbx>(str)", FBXLoad)
     RT_METHOD("GetMesh", "obj<Zanna.Graphics3D.Mesh3D>(i64)", FBXGetMesh)
     RT_METHOD("GetSkeleton", "obj<Zanna.Graphics3D.Skeleton3D>()", FBXGetSkeleton)
     RT_METHOD("GetAnimation", "obj<Zanna.Graphics3D.Animation3D>(i64)", FBXGetAnim)
     RT_METHOD("GetAnimationName", "str(i64)", FBXGetAnimName)
+    RT_METHOD("GetNodeAnimation", "obj<Zanna.Graphics3D.NodeAnimation3D>(i64)", FBXGetNodeAnim)
+    RT_METHOD("GetNodeAnimationName", "str(i64)", FBXGetNodeAnimName)
+    RT_METHOD("GetCamera", "obj<Zanna.Graphics3D.Camera3D>(i64)", FBXGetCamera)
     RT_METHOD("GetMaterial", "obj<Zanna.Graphics3D.Material3D>(i64)", FBXGetMaterial)
     RT_METHOD("GetMorphTarget", "obj<Zanna.Graphics3D.MorphTarget3D>(i64)", FBXGetMorph)
 RT_CLASS_END()
@@ -489,15 +503,17 @@ RT_CLASS_END()
 /// @summary Provides Scene Asset functionality for 3D rendering and scene applications.
 /// @details
 /// `Zanna.Graphics3D.SceneAsset` exposes a registry-backed runtime surface without requiring
-/// callers to construct the class directly. Its public surface exposes properties such as
-/// `MeshCount`, `MaterialCount`, `SkeletonCount` and operations including `LoadResult`,
-/// `LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
+/// callers to construct the class directly. Its public surface exposes resource counts,
+/// mesh-aligned morph access, complete VSCN v4 persistence through `Save`, and operations
+/// including `LoadResult`, `LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
 RT_CLASS_BEGIN("Zanna.Graphics3D.SceneAsset", Model3D, "obj", none)
     RT_PROP("MeshCount", "i64", Model3DMeshCount, none)
     RT_PROP("MaterialCount", "i64", Model3DMaterialCount, none)
     RT_PROP("SkeletonCount", "i64", Model3DSkeletonCount, none)
     RT_PROP("AnimationCount", "i64", Model3DAnimationCount, none)
     RT_PROP("NodeAnimationCount", "i64", Model3DNodeAnimationCount, none)
+    RT_PROP("MorphTargetCount", "i64", Model3DMorphTargetCount, none)
+    RT_PROP("MorphShapeCount", "i64", Model3DMorphShapeCount, none)
     RT_PROP("NodeCount", "i64", Model3DNodeCount, none)
     RT_PROP("SceneCount", "i64", Model3DSceneCount, none)
     RT_PROP("VariantCount", "i64", Model3DVariantCount, none)
@@ -506,12 +522,14 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.SceneAsset", Model3D, "obj", none)
     RT_METHOD("LoadWithOptionsEx", "obj<Zanna.Graphics3D.SceneAsset>(str,str)", Model3DLoadWithOptionsEx)
     RT_METHOD("LoadResultWithOptions", "obj<Zanna.Result>(str,i1)", Model3DLoadResultWithOptions)
     RT_METHOD("LoadAssetResult", "obj<Zanna.Result>(str)", Model3DLoadAssetResult)
+    RT_METHOD("Save", "i64(str)", Model3DSave)
     RT_METHOD("GetCameraCount", "i64(i64)", Model3DGetCameraCount)
     RT_METHOD("GetMesh", "obj<Zanna.Graphics3D.Mesh3D>(i64)", Model3DGetMesh)
     RT_METHOD("GetMaterial", "obj<Zanna.Graphics3D.Material3D>(i64)", Model3DGetMaterial)
     RT_METHOD("GetSkeleton", "obj<Zanna.Graphics3D.Skeleton3D>(i64)", Model3DGetSkeleton)
     RT_METHOD("GetAnimation", "obj<Zanna.Graphics3D.Animation3D>(i64)", Model3DGetAnimation)
     RT_METHOD("GetNodeAnimation", "obj<Zanna.Graphics3D.NodeAnimation3D>(i64)", Model3DGetNodeAnimation)
+    RT_METHOD("GetMorphTarget", "obj<Zanna.Graphics3D.MorphTarget3D>(i64)", Model3DGetMorphTarget)
     RT_METHOD("GetNodeAnimationName", "str(i64)", Model3DGetNodeAnimationName)
     RT_METHOD("GetCamera", "obj<Zanna.Graphics3D.Camera3D>(i64,i64)", Model3DGetCamera)
     RT_METHOD("GetSceneName", "str(i64)", Model3DGetSceneName)

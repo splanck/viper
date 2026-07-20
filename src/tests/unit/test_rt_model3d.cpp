@@ -30,6 +30,7 @@
 #include "rt_gltf.h"
 #include "rt_model3d.h"
 #include "rt_morphtarget3d.h"
+#include "rt_morphtarget3d_internal.h"
 #include "rt_option.h"
 #include "rt_pixels.h"
 #include "rt_result.h"
@@ -111,6 +112,12 @@ struct FbxAssetView {
     void **animations;
     int32_t animation_count;
     int32_t animation_capacity;
+    void **node_animations;
+    int32_t node_animation_count;
+    int32_t node_animation_capacity;
+    void **cameras;
+    int32_t camera_count;
+    int32_t camera_capacity;
     void **materials;
     int32_t material_count;
     int32_t material_capacity;
@@ -245,6 +252,31 @@ static bool read_binary_file(const char *path, std::vector<uint8_t> &out) {
     bool ok = len == 0 || std::fread(out.data(), 1, (size_t)len, f) == (size_t)len;
     std::fclose(f);
     return ok;
+}
+
+static bool replace_first_text(std::string &text,
+                               const std::string &needle,
+                               const std::string &replacement) {
+    size_t offset = text.find(needle);
+    if (offset == std::string::npos)
+        return false;
+    text.replace(offset, needle.size(), replacement);
+    return true;
+}
+
+static bool replace_first_json_string_value(std::string &text,
+                                            const char *field,
+                                            const char *replacement) {
+    std::string prefix = std::string("\"") + field + "\": \"";
+    size_t value_offset = text.find(prefix);
+    if (value_offset == std::string::npos)
+        return false;
+    value_offset += prefix.size();
+    size_t value_end = text.find('"', value_offset);
+    if (value_end == std::string::npos)
+        return false;
+    text.replace(value_offset, value_end - value_offset, replacement);
+    return true;
 }
 
 static std::string base64_encode(const uint8_t *data, size_t len) {
@@ -957,6 +989,348 @@ static bool write_fbx_multimaterial_fixture(const char *path) {
     bool ok = std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
     std::fclose(f);
     return ok;
+}
+
+/// @brief Write an FBX scene containing typed camera/light attributes and object animation.
+static bool write_fbx_camera_light_animation_fixture(const char *path) {
+    static const int64_t kSecond = 46186158000LL;
+    static const int64_t kTimes[2] = {0, kSecond};
+    static const double kValues[2] = {1.0, 5.0};
+    constexpr int64_t kCameraModel = 2400;
+    constexpr int64_t kTargetModel = 2401;
+    constexpr int64_t kLightModel = 2402;
+    constexpr int64_t kPointModel = 2403;
+    constexpr int64_t kDirectionalModel = 2404;
+    constexpr int64_t kAreaModel = 2405;
+    constexpr int64_t kCameraAttribute = 2410;
+    constexpr int64_t kLightAttribute = 2411;
+    constexpr int64_t kPointAttribute = 2412;
+    constexpr int64_t kDirectionalAttribute = 2413;
+    constexpr int64_t kAreaAttribute = 2414;
+    constexpr int64_t kStack = 2420;
+    constexpr int64_t kLayer = 2421;
+    constexpr int64_t kCurveNode = 2422;
+    constexpr int64_t kCurve = 2423;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture camera_model =
+        make_fbx_model_fixture(kCameraModel, "Camera01", "Camera", 2.0, 3.0, 4.0);
+    FbxNodeFixture target_model =
+        make_fbx_model_fixture(kTargetModel, "CameraTarget", "Marker", 2.0, 3.0, 0.0);
+    FbxNodeFixture light_model =
+        make_fbx_model_fixture(kLightModel, "KeyLight", "Light", 1.0, 2.0, 3.0);
+    FbxNodeFixture point_model =
+        make_fbx_model_fixture(kPointModel, "FillLight", "Light", 4.0, 5.0, 6.0);
+    FbxNodeFixture directional_model =
+        make_fbx_model_fixture(kDirectionalModel, "SunLight", "Light", 0.0, 0.0, 0.0);
+    FbxNodeFixture area_model =
+        make_fbx_model_fixture(kAreaModel, "PanelLight", "Light", 7.0, 8.0, 9.0);
+    FbxNodeFixture camera_attribute;
+    FbxNodeFixture camera_properties;
+    FbxNodeFixture light_attribute;
+    FbxNodeFixture light_properties;
+    FbxNodeFixture point_attribute;
+    FbxNodeFixture point_properties;
+    FbxNodeFixture directional_attribute;
+    FbxNodeFixture directional_properties;
+    FbxNodeFixture area_attribute;
+    FbxNodeFixture area_properties;
+    FbxNodeFixture stack;
+    FbxNodeFixture layer;
+    FbxNodeFixture curve_node;
+
+    camera_attribute.name = "NodeAttribute";
+    camera_attribute.props = {
+        fbx_prop_i64_fixture(kCameraAttribute),
+        fbx_prop_string_fixture(make_fbx_object_name("Camera01", "NodeAttribute")),
+        fbx_prop_string_fixture("Camera")};
+    camera_properties.name = "Properties70";
+    camera_properties.children.push_back(make_fbx_property_int("CameraProjectionType", 0));
+    camera_properties.children.push_back(make_fbx_property_scalar("FieldOfViewY", 40.0));
+    camera_properties.children.push_back(make_fbx_property_scalar("AspectWidth", 16.0));
+    camera_properties.children.push_back(make_fbx_property_scalar("AspectHeight", 9.0));
+    camera_properties.children.push_back(make_fbx_property_scalar("NearPlane", 0.25));
+    camera_properties.children.push_back(make_fbx_property_scalar("FarPlane", 500.0));
+    camera_attribute.children.push_back(camera_properties);
+
+    light_attribute.name = "NodeAttribute";
+    light_attribute.props = {
+        fbx_prop_i64_fixture(kLightAttribute),
+        fbx_prop_string_fixture(make_fbx_object_name("KeyLight", "NodeAttribute")),
+        fbx_prop_string_fixture("Light")};
+    light_properties.name = "Properties70";
+    light_properties.children.push_back(make_fbx_property_vec3("Color", 0.25, 0.5, 0.75));
+    light_properties.children.push_back(make_fbx_property_scalar("Intensity", 250.0));
+    light_properties.children.push_back(make_fbx_property_int("LightType", 2));
+    light_properties.children.push_back(make_fbx_property_scalar("InnerAngle", 20.0));
+    light_properties.children.push_back(make_fbx_property_scalar("OuterAngle", 60.0));
+    light_properties.children.push_back(make_fbx_property_scalar("FarAttenuationEnd", 10.0));
+    light_properties.children.push_back(make_fbx_property_int("CastShadows", 1));
+    light_attribute.children.push_back(light_properties);
+
+    point_attribute.name = "NodeAttribute";
+    point_attribute.props = {
+        fbx_prop_i64_fixture(kPointAttribute),
+        fbx_prop_string_fixture(make_fbx_object_name("FillLight", "NodeAttribute")),
+        fbx_prop_string_fixture("Light")};
+    point_properties.name = "Properties70";
+    point_properties.children.push_back(make_fbx_property_int("LightType", 0));
+    point_attribute.children.push_back(point_properties);
+
+    directional_attribute.name = "NodeAttribute";
+    directional_attribute.props = {
+        fbx_prop_i64_fixture(kDirectionalAttribute),
+        fbx_prop_string_fixture(make_fbx_object_name("SunLight", "NodeAttribute")),
+        fbx_prop_string_fixture("Light")};
+    directional_properties.name = "Properties70";
+    directional_properties.children.push_back(make_fbx_property_int("LightType", 1));
+    directional_attribute.children.push_back(directional_properties);
+
+    area_attribute.name = "NodeAttribute";
+    area_attribute.props = {
+        fbx_prop_i64_fixture(kAreaAttribute),
+        fbx_prop_string_fixture(make_fbx_object_name("PanelLight", "NodeAttribute")),
+        fbx_prop_string_fixture("Light")};
+    area_properties.name = "Properties70";
+    area_properties.children.push_back(make_fbx_property_int("LightType", 3));
+    area_attribute.children.push_back(area_properties);
+
+    stack.name = "AnimationStack";
+    stack.props = {fbx_prop_i64_fixture(kStack),
+                   fbx_prop_string_fixture(make_fbx_object_name("MoveLight", "AnimStack")),
+                   fbx_prop_string_fixture("")};
+    layer.name = "AnimationLayer";
+    layer.props = {fbx_prop_i64_fixture(kLayer),
+                   fbx_prop_string_fixture(make_fbx_object_name("Base", "AnimLayer")),
+                   fbx_prop_string_fixture("")};
+    curve_node.name = "AnimationCurveNode";
+    curve_node.props = {
+        fbx_prop_i64_fixture(kCurveNode),
+        fbx_prop_string_fixture(make_fbx_object_name("MoveLightX", "AnimCurveNode")),
+        fbx_prop_string_fixture("")};
+
+    objects.name = "Objects";
+    objects.children = {camera_model,
+                        target_model,
+                        light_model,
+                        point_model,
+                        directional_model,
+                        area_model,
+                        camera_attribute,
+                        light_attribute,
+                        point_attribute,
+                        directional_attribute,
+                        area_attribute,
+                        stack,
+                        layer,
+                        curve_node,
+                        make_fbx_animation_curve_fixture(kCurve, kTimes, kValues, 2u)};
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kCameraModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kTargetModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kLightModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kPointModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kDirectionalModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kAreaModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kCameraAttribute, kCameraModel));
+    connections.children.push_back(make_fbx_connection_fixture(kLightAttribute, kLightModel));
+    connections.children.push_back(make_fbx_connection_fixture(kPointAttribute, kPointModel));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kDirectionalAttribute, kDirectionalModel));
+    connections.children.push_back(make_fbx_connection_fixture(kAreaAttribute, kAreaModel));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kTargetModel, kCameraAttribute, "LookAtProperty"));
+    connections.children.push_back(make_fbx_connection_fixture(kLayer, kStack));
+    connections.children.push_back(make_fbx_connection_fixture(kCurveNode, kLayer));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kCurveNode, kLightModel, "Lcl Translation"));
+    connections.children.push_back(make_fbx_connection_fixture(kCurve, kCurveNode, "d|X"));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief ASCII counterpart of the typed camera/light/object-animation fixture.
+static bool write_fbx_camera_light_animation_ascii_fixture(const char *path) {
+    static const char text[] =
+        "; FBX 7.4.0 camera/light/object animation fixture\n"
+        "Objects: {\n"
+        " Model: 2400, \"Model::Camera01\", \"Camera\" { Properties70: {\n"
+        "  P: \"Lcl Translation\",\"Vector3D\",\"\",\"A\",2,3,4\n"
+        "  P: \"Lcl Rotation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "  P: \"Lcl Scaling\",\"Vector3D\",\"\",\"A\",1,1,1 } }\n"
+        " Model: 2401, \"Model::CameraTarget\", \"Marker\" { Properties70: {\n"
+        "  P: \"Lcl Translation\",\"Vector3D\",\"\",\"A\",2,3,0\n"
+        "  P: \"Lcl Rotation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "  P: \"Lcl Scaling\",\"Vector3D\",\"\",\"A\",1,1,1 } }\n"
+        " Model: 2402, \"Model::KeyLight\", \"Light\" { Properties70: {\n"
+        "  P: \"Lcl Translation\",\"Vector3D\",\"\",\"A\",1,2,3\n"
+        "  P: \"Lcl Rotation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "  P: \"Lcl Scaling\",\"Vector3D\",\"\",\"A\",1,1,1 } }\n"
+        " NodeAttribute: 2410, \"NodeAttribute::Camera01\", \"Camera\" { Properties70: {\n"
+        "  P: \"CameraProjectionType\",\"enum\",\"\",\"A\",1\n"
+        "  P: \"OrthoZoom\",\"double\",\"\",\"A\",8\n"
+        "  P: \"AspectWidth\",\"double\",\"\",\"A\",4\n"
+        "  P: \"AspectHeight\",\"double\",\"\",\"A\",3\n"
+        "  P: \"NearPlane\",\"double\",\"\",\"A\",0.5\n"
+        "  P: \"FarPlane\",\"double\",\"\",\"A\",250 } }\n"
+        " NodeAttribute: 2411, \"NodeAttribute::KeyLight\", \"Light\" { Properties70: {\n"
+        "  P: \"Color\",\"Color\",\"\",\"A\",0.25,0.5,0.75\n"
+        "  P: \"Intensity\",\"double\",\"\",\"A\",250\n"
+        "  P: \"LightType\",\"enum\",\"\",\"A\",2\n"
+        "  P: \"InnerAngle\",\"double\",\"\",\"A\",20\n"
+        "  P: \"OuterAngle\",\"double\",\"\",\"A\",60 } }\n"
+        " AnimationStack: 2420, \"AnimationStack::MoveLight\", \"\"\n"
+        " AnimationLayer: 2421, \"AnimationLayer::Base\", \"\"\n"
+        " AnimationCurveNode: 2422, \"AnimationCurveNode::MoveLightX\", \"\"\n"
+        " AnimationCurve: 2423, \"AnimationCurve::X\", \"\" {\n"
+        "  KeyTime: *2 { a: 0,46186158000 }\n"
+        "  KeyValueFloat: *2 { a: 1,5 } }\n"
+        "}\n"
+        "Connections: {\n"
+        " C: \"OO\",2400,0\n C: \"OO\",2401,0\n C: \"OO\",2402,0\n"
+        " C: \"OO\",2410,2400\n C: \"OO\",2411,2402\n"
+        " C: \"OP\",2401,2410,\"LookAtProperty\"\n"
+        " C: \"OO\",2421,2420\n C: \"OO\",2422,2421\n"
+        " C: \"OP\",2422,2402,\"Lcl Translation\"\n"
+        " C: \"OP\",2423,2422,\"d|X\"\n"
+        "}\n";
+    return write_text_file(path, text);
+}
+
+/// @brief Write a progressive, animated two-shape FBX morph on a split-material mesh.
+static bool write_fbx_progressive_morph_fixture(const char *path) {
+    static const double kPositions[12] = {
+        0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+    static const int32_t kPolygons[6] = {0, 1, -3, 0, 2, -4};
+    static const int32_t kMaterialSlots[2] = {0, 1};
+    static const int32_t kShapeIndex0[1] = {0};
+    static const int64_t kShapeIndex1[1] = {1};
+    static const float kShape0Positions[3] = {1.0f, 0.0f, 0.0f};
+    static const float kShape0Normals[3] = {0.0f, 1.0f, 0.0f};
+    static const float kShape0Tangents[3] = {0.0f, 0.0f, 1.0f};
+    static const double kShape1Positions[3] = {2.0, 0.0, 0.0};
+    static const float kFullWeights[2] = {50.0f, 100.0f};
+    static const int64_t kTimes[3] = {0, 46186158000LL, 2LL * 46186158000LL};
+    static const double kPercentValues[3] = {25.0, 75.0, 125.0};
+    constexpr int64_t kGeometry = 2500;
+    constexpr int64_t kMaterial0 = 2501;
+    constexpr int64_t kMaterial1 = 2502;
+    constexpr int64_t kModel = 2503;
+    constexpr int64_t kBlendShape = 2510;
+    constexpr int64_t kChannel = 2511;
+    constexpr int64_t kShape0 = 2512;
+    constexpr int64_t kShape1 = 2513;
+    constexpr int64_t kStack = 2520;
+    constexpr int64_t kLayer = 2521;
+    constexpr int64_t kCurveNode = 2522;
+    constexpr int64_t kCurve = 2523;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture geometry;
+    FbxNodeFixture material_layer;
+    FbxNodeFixture blend_shape;
+    FbxNodeFixture channel;
+    FbxNodeFixture channel_properties;
+    FbxNodeFixture shape0;
+    FbxNodeFixture shape1;
+    FbxNodeFixture stack;
+    FbxNodeFixture layer;
+    FbxNodeFixture curve_node;
+
+    geometry.name = "Geometry";
+    geometry.props = {fbx_prop_i64_fixture(kGeometry),
+                      fbx_prop_string_fixture(make_fbx_object_name("ProgressiveMesh", "Geometry")),
+                      fbx_prop_string_fixture("Mesh")};
+    geometry.children.push_back(
+        FbxNodeFixture{"Vertices", {fbx_prop_array_fixture('d', kPositions, 12u)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"PolygonVertexIndex", {fbx_prop_array_fixture('i', kPolygons, 6u)}, {}});
+    material_layer.name = "LayerElementMaterial";
+    material_layer.children.push_back(
+        FbxNodeFixture{"MappingInformationType", {fbx_prop_string_fixture("ByPolygon")}, {}});
+    material_layer.children.push_back(
+        FbxNodeFixture{"ReferenceInformationType", {fbx_prop_string_fixture("IndexToDirect")}, {}});
+    material_layer.children.push_back(
+        FbxNodeFixture{"Materials", {fbx_prop_array_fixture('i', kMaterialSlots, 2u)}, {}});
+    geometry.children.push_back(material_layer);
+
+    blend_shape.name = "Deformer";
+    blend_shape.props = {fbx_prop_i64_fixture(kBlendShape),
+                         fbx_prop_string_fixture(make_fbx_object_name("Face", "Deformer")),
+                         fbx_prop_string_fixture("BlendShape")};
+    channel.name = "Deformer";
+    channel.props = {fbx_prop_i64_fixture(kChannel),
+                     fbx_prop_string_fixture(make_fbx_object_name("Expression", "SubDeformer")),
+                     fbx_prop_string_fixture("BlendShapeChannel")};
+    channel.children.push_back(
+        FbxNodeFixture{"FullWeights", {fbx_prop_array_fixture('f', kFullWeights, 2u)}, {}});
+    channel_properties.name = "Properties70";
+    channel_properties.children.push_back(make_fbx_property_scalar("DeformPercent", 25.0));
+    channel.children.push_back(channel_properties);
+
+    shape0.name = "Geometry";
+    shape0.props = {fbx_prop_i64_fixture(kShape0),
+                    fbx_prop_string_fixture(make_fbx_object_name("Smile", "Geometry")),
+                    fbx_prop_string_fixture("Shape")};
+    shape0.children.push_back(
+        FbxNodeFixture{"Indexes", {fbx_prop_array_fixture('i', kShapeIndex0, 1u)}, {}});
+    shape0.children.push_back(
+        FbxNodeFixture{"Vertices", {fbx_prop_array_fixture('f', kShape0Positions, 3u)}, {}});
+    shape0.children.push_back(
+        FbxNodeFixture{"Normals", {fbx_prop_array_fixture('f', kShape0Normals, 3u)}, {}});
+    shape0.children.push_back(
+        FbxNodeFixture{"Tangents", {fbx_prop_array_fixture('f', kShape0Tangents, 3u)}, {}});
+    shape1.name = "Geometry";
+    shape1.props = {fbx_prop_i64_fixture(kShape1),
+                    fbx_prop_string_fixture(make_fbx_object_name("WideSmile", "Geometry")),
+                    fbx_prop_string_fixture("Shape")};
+    shape1.children.push_back(
+        FbxNodeFixture{"Indexes", {fbx_prop_array_fixture('l', kShapeIndex1, 1u)}, {}});
+    shape1.children.push_back(
+        FbxNodeFixture{"Vertices", {fbx_prop_array_fixture('d', kShape1Positions, 3u)}, {}});
+
+    stack.name = "AnimationStack";
+    stack.props = {fbx_prop_i64_fixture(kStack),
+                   fbx_prop_string_fixture(make_fbx_object_name("Expressions", "AnimStack")),
+                   fbx_prop_string_fixture("")};
+    layer.name = "AnimationLayer";
+    layer.props = {fbx_prop_i64_fixture(kLayer),
+                   fbx_prop_string_fixture(make_fbx_object_name("Base", "AnimLayer")),
+                   fbx_prop_string_fixture("")};
+    curve_node.name = "AnimationCurveNode";
+    curve_node.props = {
+        fbx_prop_i64_fixture(kCurveNode),
+        fbx_prop_string_fixture(make_fbx_object_name("ExpressionWeight", "AnimCurveNode")),
+        fbx_prop_string_fixture("")};
+
+    objects.name = "Objects";
+    objects.children = {geometry,
+                        make_fbx_material_fixture(kMaterial0, "Red", 1.0, 0.0, 0.0),
+                        make_fbx_material_fixture(kMaterial1, "Blue", 0.0, 0.0, 1.0),
+                        make_fbx_model_fixture(kModel, "MorphModel", "Mesh", 0.0, 0.0, 0.0),
+                        blend_shape,
+                        channel,
+                        shape0,
+                        shape1,
+                        stack,
+                        layer,
+                        curve_node,
+                        make_fbx_animation_curve_fixture(kCurve, kTimes, kPercentValues, 3u)};
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometry, kModel));
+    connections.children.push_back(make_fbx_connection_fixture(kMaterial0, kModel));
+    connections.children.push_back(make_fbx_connection_fixture(kMaterial1, kModel));
+    connections.children.push_back(make_fbx_connection_fixture(kBlendShape, kGeometry));
+    connections.children.push_back(make_fbx_connection_fixture(kChannel, kBlendShape));
+    connections.children.push_back(make_fbx_connection_fixture(kShape0, kChannel));
+    connections.children.push_back(make_fbx_connection_fixture(kShape1, kChannel));
+    connections.children.push_back(make_fbx_connection_fixture(kLayer, kStack));
+    connections.children.push_back(make_fbx_connection_fixture(kCurveNode, kLayer));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kCurveNode, kChannel, "DeformPercent"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kCurve, kCurveNode, "d|DeformPercent"));
+    return write_fbx_document_fixture(path, objects, connections);
 }
 
 static bool write_fbx_embedded_texture_fixture(const char *path,
@@ -2762,6 +3136,119 @@ static void test_model3d_load_asset_diagnostics_name_missing_dependency() {
         std::strstr(rt_asset_error_get_message(), "assets/models/missing_dep.gltf") != nullptr &&
             std::strstr(rt_asset_error_get_message(), "assets/models/missing.bin") != nullptr,
         "SceneAsset.LoadAsset diagnostics name the model and missing dependency");
+
+    rt_asset_unmount(rt_const_cstr(pack_path));
+    std::remove(pack_path);
+}
+
+static void test_model3d_load_asset_resolves_vscn_obj_and_stl_packages() {
+    const char *pack_path = "/tmp/zanna_model3d_native_asset_pack.zpak";
+    const char *vscn_path = "/tmp/zanna_model3d_native_asset_scene.vscn";
+    const char *png_path = "/tmp/zanna_model3d_native_asset_texture.png";
+    std::vector<uint8_t> vscn_bytes;
+    std::vector<uint8_t> png_bytes;
+    const std::string obj = "mtllib materials/packed.mtl\n"
+                            "v 0 0 0\n"
+                            "v 2 0 0\n"
+                            "v 0 3 0\n"
+                            "vt 0 0\n"
+                            "vt 1 0\n"
+                            "vt 0 1\n"
+                            "usemtl Packed\n"
+                            "f 1/1 2/2 3/3\n";
+    const std::string mtl = "newmtl Packed\n"
+                            "Kd 0.25 0.5 0.75\n"
+                            "map_Kd textures/albedo.png\n";
+    const std::string stl = "solid packed\n"
+                            "facet normal 0 0 1\n"
+                            "outer loop\n"
+                            "vertex 0 0 0\n"
+                            "vertex 4 0 0\n"
+                            "vertex 0 5 0\n"
+                            "endloop\n"
+                            "endfacet\n"
+                            "endsolid packed\n";
+
+    EXPECT_TRUE(write_scene_fixture(vscn_path), "Packaged VSCN fixture can be written");
+    EXPECT_TRUE(read_binary_file(vscn_path, vscn_bytes), "Packaged VSCN fixture can be read");
+    void *pixels = rt_pixels_new(1, 1);
+    EXPECT_TRUE(pixels != nullptr, "Packaged OBJ texture fixture can allocate pixels");
+    if (pixels) {
+        rt_pixels_set(pixels, 0, 0, 0x3366CCFFll);
+        EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
+                    "Packaged OBJ texture fixture can be written");
+        if (rt_obj_release_check0(pixels))
+            rt_obj_free(pixels);
+    }
+    EXPECT_TRUE(read_binary_file(png_path, png_bytes), "Packaged OBJ texture fixture can be read");
+
+    zanna::asset::ZpakWriter writer;
+    writer.addEntry("assets/scenes/packed.vscn", vscn_bytes.data(), vscn_bytes.size(), false);
+    writer.addEntry("assets/models/packed.obj",
+                    reinterpret_cast<const uint8_t *>(obj.data()),
+                    obj.size(),
+                    false);
+    writer.addEntry("assets/models/materials/packed.mtl",
+                    reinterpret_cast<const uint8_t *>(mtl.data()),
+                    mtl.size(),
+                    false);
+    writer.addEntry(
+        "assets/models/materials/textures/albedo.png", png_bytes.data(), png_bytes.size(), false);
+    writer.addEntry("assets/models/packed.stl",
+                    reinterpret_cast<const uint8_t *>(stl.data()),
+                    stl.size(),
+                    false);
+    std::string err;
+    bool wrote_pack = writer.writeToFile(pack_path, err);
+    EXPECT_TRUE(wrote_pack, "Native SceneAsset asset pack can be written");
+    std::remove(vscn_path);
+    std::remove(png_path);
+    if (!wrote_pack)
+        return;
+    bool mounted = rt_asset_mount(rt_const_cstr(pack_path)) == 1;
+    EXPECT_TRUE(mounted, "Native SceneAsset asset pack can mount");
+    if (!mounted) {
+        std::remove(pack_path);
+        return;
+    }
+
+    void *vscn = rt_model3d_load_asset(rt_const_cstr("asset://assets/scenes/packed.vscn"));
+    EXPECT_TRUE(vscn != nullptr, "SceneAsset.LoadAsset loads mounted VSCN bytes");
+    if (vscn) {
+        EXPECT_TRUE(rt_model3d_get_mesh_count(vscn) == 1,
+                    "Mounted VSCN exposes its deduplicated mesh");
+        EXPECT_TRUE(rt_model3d_find_node(vscn, rt_const_cstr("parent")) != nullptr,
+                    "Mounted VSCN preserves its scene hierarchy");
+        if (rt_obj_release_check0(vscn))
+            rt_obj_free(vscn);
+    }
+
+    void *obj_model = rt_model3d_load_asset(rt_const_cstr("assets/models/packed.obj"));
+    EXPECT_TRUE(obj_model != nullptr, "SceneAsset.LoadAsset loads mounted OBJ bytes");
+    if (obj_model) {
+        EXPECT_TRUE(rt_model3d_get_mesh_count(obj_model) == 1,
+                    "Mounted OBJ exposes geometry from its root asset");
+        auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(obj_model, 0));
+        auto *material = static_cast<rt_material3d *>(rt_model3d_get_material(obj_model, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "Mounted OBJ preserves triangle geometry");
+        EXPECT_TRUE(material != nullptr && material->diffuse[1] > 0.49f,
+                    "Mounted OBJ resolves its package-relative MTL library");
+        EXPECT_TRUE(material != nullptr && rt_material3d_get_has_texture(material) == 1,
+                    "Mounted OBJ resolves its package-relative MTL texture");
+        if (rt_obj_release_check0(obj_model))
+            rt_obj_free(obj_model);
+    }
+
+    void *stl_model = rt_model3d_load_asset(rt_const_cstr("asset://assets/models/packed.stl"));
+    EXPECT_TRUE(stl_model != nullptr, "SceneAsset.LoadAsset loads mounted STL bytes");
+    if (stl_model) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(stl_model, 0));
+        EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
+                    "Mounted STL preserves triangle geometry");
+        if (rt_obj_release_check0(stl_model))
+            rt_obj_free(stl_model);
+    }
 
     rt_asset_unmount(rt_const_cstr(pack_path));
     std::remove(pack_path);
@@ -4810,6 +5297,8 @@ static void test_model3d_vscn_v3_rig_roundtrip() {
     EXPECT_TRUE(model != nullptr, "skinned agent loads");
     if (!model)
         return;
+    int64_t src_skeletons = rt_model3d_get_skeleton_count(model);
+    EXPECT_TRUE(src_skeletons > 0, "skinned agent carries a skeleton");
     int64_t src_anims = rt_model3d_get_animation_count(model);
     EXPECT_TRUE(src_anims > 0, "skinned agent carries animation clips");
     void *scene = rt_model3d_instantiate_scene(model);
@@ -4827,17 +5316,397 @@ static void test_model3d_vscn_v3_rig_roundtrip() {
     void *baked = rt_model3d_load(rt_const_cstr(baked_path));
     EXPECT_TRUE(baked != nullptr, "baked v3 vscn loads as a SceneAsset");
     if (baked) {
+        EXPECT_TRUE(rt_model3d_get_skeleton_count(baked) == src_skeletons,
+                    "baked vscn exposes its mesh skeleton through SceneAsset");
         EXPECT_TRUE(rt_model3d_get_animation_count(baked) == src_anims,
                     "baked vscn preserves the animation clips");
         auto *mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(baked, 0));
         EXPECT_TRUE(mesh != nullptr && mesh->skeleton_ref != nullptr,
                     "baked vscn rebinds the skeleton to the mesh");
+        EXPECT_TRUE(mesh != nullptr && rt_model3d_get_skeleton(baked, 0) == mesh->skeleton_ref,
+                    "baked vscn enumerates the skeleton attached to its mesh");
         EXPECT_TRUE(mesh != nullptr && mesh->bone_count > 0,
                     "baked vscn keeps the mesh bone palette");
+        void *instance = rt_model3d_instantiate(baked);
+        auto *instance_root = static_cast<rt_scene_node3d *>(instance);
+        EXPECT_TRUE(instance_root != nullptr && instance_root->bound_animator != nullptr,
+                    "baked vscn automatically binds its skeletal animator");
+        if (instance && rt_obj_release_check0(instance))
+            rt_obj_free(instance);
         if (rt_obj_release_check0(baked))
             rt_obj_free(baked);
     }
     std::remove(baked_path);
+}
+
+static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
+    const char *source_path = find_existing_path(
+        {"src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf",
+         "../src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf",
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf"
+#endif
+        });
+    const char *baked_path = "/tmp/zanna_model3d_baked_full_asset_v4.vscn";
+    EXPECT_TRUE(source_path != nullptr, "VSCN v4 full-fidelity glTF fixture is present");
+    if (!source_path)
+        return;
+    void *source = rt_model3d_load(rt_const_cstr(source_path));
+    EXPECT_TRUE(source != nullptr, "VSCN v4 source SceneAsset loads");
+    if (!source)
+        return;
+    auto *source_mover =
+        static_cast<rt_scene_node3d *>(rt_model3d_find_node(source, rt_const_cstr("Mover")));
+    auto *source_material = static_cast<rt_material3d *>(rt_model3d_get_material(source, 0));
+    EXPECT_TRUE(source_mover != nullptr && source_mover->import_index == 0,
+                "VSCN v4 fixture carries stable importer node indexes");
+    EXPECT_TRUE(source_material != nullptr, "VSCN v4 fixture carries a material payload");
+    if (source_mover) {
+        rt_scene_node3d_set_static(source_mover, 1);
+        rt_scene_node3d_set_sync_mode(source_mover,
+                                      RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION);
+    }
+    if (source_material) {
+        rt_material3d_set_custom_param(source_material, 8, 0.625);
+        rt_material3d_set_custom_param(source_material, 9, -0.375);
+        rt_material3d_set_anisotropy(source_material, 8);
+    }
+    EXPECT_TRUE(rt_model3d_save(nullptr, rt_const_cstr(baked_path)) == 0,
+                "SceneAsset.Save rejects a null receiver");
+    EXPECT_TRUE(rt_model3d_save(source, rt_const_cstr(baked_path)) == 1,
+                "SceneAsset.Save writes a complete VSCN v4 asset");
+    std::vector<uint8_t> baked_bytes;
+    EXPECT_TRUE(read_binary_file(baked_path, baked_bytes), "VSCN v4 output is readable");
+    if (!baked_bytes.empty()) {
+        std::string baked_text(reinterpret_cast<const char *>(baked_bytes.data()),
+                               baked_bytes.size());
+        EXPECT_TRUE(baked_text.find("\"version\": 4") != std::string::npos,
+                    "SceneAsset.Save emits VSCN version 4");
+        EXPECT_TRUE(baked_text.find("\"nodeAnimations\"") != std::string::npos &&
+                        baked_text.find("\"morphTargets\"") != std::string::npos &&
+                        baked_text.find("\"importIndex\"") != std::string::npos &&
+                        baked_text.find("\"variantMaterials\"") != std::string::npos &&
+                        baked_text.find("\"scenes\"") != std::string::npos,
+                    "VSCN v4 document carries animation, morph, variant, and scene sections");
+    }
+
+    void *baked = rt_model3d_load(rt_const_cstr(baked_path));
+    EXPECT_TRUE(baked != nullptr, "VSCN v4 reloads as a SceneAsset");
+    if (!baked) {
+        if (rt_obj_release_check0(source))
+            rt_obj_free(source);
+        std::remove(baked_path);
+        return;
+    }
+    EXPECT_TRUE(rt_model3d_get_mesh_count(baked) == rt_model3d_get_mesh_count(source),
+                "VSCN v4 preserves the complete mesh inventory");
+    EXPECT_TRUE(rt_model3d_get_material_count(baked) == rt_model3d_get_material_count(source),
+                "VSCN v4 preserves the complete material inventory");
+    EXPECT_TRUE(rt_model3d_get_scene_count(baked) == 2, "VSCN v4 preserves all immutable scenes");
+    EXPECT_TRUE(rt_model3d_get_camera_count(baked, 0) == 1 &&
+                    rt_model3d_get_camera_count(baked, 1) == 0,
+                "VSCN v4 preserves per-scene camera membership");
+    EXPECT_TRUE(rt_model3d_get_node_animation_count(baked) == 1,
+                "VSCN v4 preserves node and morph animation clips");
+    EXPECT_TRUE(rt_model3d_get_morph_target_count(source) > 0 &&
+                    rt_model3d_get_morph_target_count(baked) ==
+                        rt_model3d_get_morph_target_count(source),
+                "VSCN v4 preserves every mesh-attached morph container");
+    EXPECT_TRUE(rt_model3d_get_morph_shape_count(source) > 0 &&
+                    rt_model3d_get_morph_shape_count(baked) ==
+                        rt_model3d_get_morph_shape_count(source),
+                "VSCN v4 preserves the aggregate morph-shape inventory");
+    EXPECT_TRUE(rt_model3d_get_morph_target(baked, -1) == nullptr &&
+                    rt_model3d_get_morph_target(baked, rt_model3d_get_mesh_count(baked)) == nullptr,
+                "SceneAsset.GetMorphTarget rejects out-of-range mesh indexes");
+    EXPECT_TRUE(rt_model3d_get_variant_count(baked) == 2,
+                "VSCN v4 preserves material-variant names");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(baked, 0)), "PrimaryScene") == 0 &&
+            std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(baked, 1)), "SecondaryScene") == 0,
+        "VSCN v4 preserves immutable scene names and order");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_variant_name(baked, 0)), "day") == 0 &&
+                    std::strcmp(rt_string_cstr(rt_model3d_get_variant_name(baked, 1)), "night") ==
+                        0,
+                "VSCN v4 preserves ordered variant display names");
+    auto *baked_mover =
+        static_cast<rt_scene_node3d *>(rt_model3d_find_node(baked, rt_const_cstr("Mover")));
+    auto *baked_material = static_cast<rt_material3d *>(rt_model3d_get_material(baked, 0));
+    EXPECT_TRUE(baked_mover && source_mover &&
+                    baked_mover->import_index == source_mover->import_index &&
+                    rt_scene_node3d_get_static(baked_mover) == 1 &&
+                    rt_scene_node3d_get_sync_mode(baked_mover) ==
+                        RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION,
+                "VSCN v4 preserves node import identity and authored flags");
+    EXPECT_TRUE(baked_material && source_material &&
+                    baked_material->custom_params[8] == source_material->custom_params[8] &&
+                    baked_material->custom_params[9] == source_material->custom_params[9] &&
+                    rt_material3d_get_anisotropy(baked_material) == 8,
+                "VSCN v4 preserves extended material parameters and anisotropy");
+
+    int64_t mesh_count = rt_model3d_get_mesh_count(source);
+    int morph_meshes = 0;
+    for (int64_t mesh_index = 0; mesh_index < mesh_count; ++mesh_index) {
+        auto *source_mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(source, mesh_index));
+        auto *baked_mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(baked, mesh_index));
+        EXPECT_TRUE(source_mesh != nullptr && baked_mesh != nullptr,
+                    "VSCN v4 mesh slots remain index-aligned");
+        if (!source_mesh || !baked_mesh || !source_mesh->morph_targets_ref)
+            continue;
+        morph_meshes++;
+        EXPECT_TRUE(
+            rt_model3d_get_morph_target(source, mesh_index) == source_mesh->morph_targets_ref &&
+                rt_model3d_get_morph_target(baked, mesh_index) == baked_mesh->morph_targets_ref,
+            "SceneAsset.GetMorphTarget remains aligned with mesh indexes");
+        EXPECT_TRUE(baked_mesh->morph_targets_ref != nullptr,
+                    "VSCN v4 preserves attached static morph containers");
+        int64_t shape_count = rt_morphtarget3d_get_shape_count(source_mesh->morph_targets_ref);
+        EXPECT_TRUE(rt_morphtarget3d_get_shape_count(baked_mesh->morph_targets_ref) == shape_count,
+                    "VSCN v4 preserves every morph shape");
+        for (int64_t shape = 0; shape < shape_count; ++shape) {
+            rt_morphtarget3d_shape_view_internal source_view = {};
+            rt_morphtarget3d_shape_view_internal baked_view = {};
+            bool views_ok = rt_morphtarget3d_get_shape_view_internal(
+                                source_mesh->morph_targets_ref, shape, &source_view) &&
+                            rt_morphtarget3d_get_shape_view_internal(
+                                baked_mesh->morph_targets_ref, shape, &baked_view);
+            EXPECT_TRUE(views_ok, "VSCN v4 morph shape views remain valid");
+            if (!views_ok)
+                continue;
+            size_t delta_bytes = static_cast<size_t>(source_view.vertex_count) * 3u * sizeof(float);
+            EXPECT_TRUE(std::strcmp(source_view.name, baked_view.name) == 0,
+                        "VSCN v4 preserves morph shape names");
+            EXPECT_TRUE(source_view.weight == baked_view.weight,
+                        "VSCN v4 preserves static morph weights");
+            EXPECT_TRUE(source_view.vertex_count == baked_view.vertex_count &&
+                            std::memcmp(source_view.position_deltas,
+                                        baked_view.position_deltas,
+                                        delta_bytes) == 0,
+                        "VSCN v4 preserves position morph deltas exactly");
+            EXPECT_TRUE((source_view.normal_deltas == nullptr) ==
+                                (baked_view.normal_deltas == nullptr) &&
+                            (!source_view.normal_deltas || std::memcmp(source_view.normal_deltas,
+                                                                       baked_view.normal_deltas,
+                                                                       delta_bytes) == 0),
+                        "VSCN v4 preserves optional normal morph deltas exactly");
+            EXPECT_TRUE((source_view.tangent_deltas == nullptr) ==
+                                (baked_view.tangent_deltas == nullptr) &&
+                            (!source_view.tangent_deltas || std::memcmp(source_view.tangent_deltas,
+                                                                        baked_view.tangent_deltas,
+                                                                        delta_bytes) == 0),
+                        "VSCN v4 preserves optional tangent morph deltas exactly");
+        }
+    }
+    EXPECT_TRUE(morph_meshes > 0, "VSCN v4 fixture exercises static morph persistence");
+
+    auto *source_animation =
+        static_cast<rt_node_animation3d *>(rt_model3d_get_node_animation(source, 0));
+    auto *baked_animation =
+        static_cast<rt_node_animation3d *>(rt_model3d_get_node_animation(baked, 0));
+    EXPECT_TRUE(source_animation && baked_animation &&
+                    source_animation->channel_count == baked_animation->channel_count,
+                "VSCN v4 preserves node-animation channel counts");
+    if (source_animation && baked_animation) {
+        EXPECT_TRUE(source_animation->duration == baked_animation->duration &&
+                        source_animation->looping == baked_animation->looping,
+                    "VSCN v4 preserves node-animation timing metadata");
+        int32_t channel_count = scene3d_node_animation_channel_count(source_animation);
+        for (int32_t channel_index = 0; channel_index < channel_count; ++channel_index) {
+            const rt_node_anim_channel3d &source_channel =
+                source_animation->channels[channel_index];
+            const rt_node_anim_channel3d &baked_channel = baked_animation->channels[channel_index];
+            size_t value_count = static_cast<size_t>(source_channel.key_count) *
+                                 static_cast<size_t>(source_channel.value_width);
+            EXPECT_TRUE(source_channel.path == baked_channel.path &&
+                            source_channel.interpolation == baked_channel.interpolation &&
+                            source_channel.key_count == baked_channel.key_count &&
+                            source_channel.value_width == baked_channel.value_width &&
+                            source_channel.target_node_index == baked_channel.target_node_index &&
+                            std::strcmp(rt_string_cstr(source_channel.target_name),
+                                        rt_string_cstr(baked_channel.target_name)) == 0,
+                        "VSCN v4 preserves node-animation channel identity");
+            EXPECT_TRUE(
+                std::memcmp(source_channel.times,
+                            baked_channel.times,
+                            static_cast<size_t>(source_channel.key_count) * sizeof(double)) == 0 &&
+                    std::memcmp(source_channel.values,
+                                baked_channel.values,
+                                value_count * sizeof(float)) == 0,
+                "VSCN v4 preserves animation key times and values exactly");
+        }
+    }
+
+    auto *source_camera = static_cast<rt_camera3d *>(rt_model3d_get_camera(source, 0, 0));
+    auto *baked_camera = static_cast<rt_camera3d *>(rt_model3d_get_camera(baked, 0, 0));
+    EXPECT_TRUE(
+        source_camera && baked_camera && source_camera->is_ortho == baked_camera->is_ortho &&
+            source_camera->fov == baked_camera->fov &&
+            source_camera->aspect == baked_camera->aspect &&
+            source_camera->near_plane == baked_camera->near_plane &&
+            source_camera->far_plane == baked_camera->far_plane &&
+            std::memcmp(source_camera->eye, baked_camera->eye, sizeof(source_camera->eye)) == 0 &&
+            std::memcmp(source_camera->view, baked_camera->view, sizeof(source_camera->view)) == 0,
+        "VSCN v4 preserves camera projection and world transform exactly");
+
+    void *primary = rt_model3d_instantiate_scene_at(baked, 0);
+    void *secondary = rt_model3d_instantiate_scene_at(baked, 1);
+    EXPECT_TRUE(primary && rt_scene3d_find(primary, rt_const_cstr("Mover")) != nullptr &&
+                    rt_scene3d_find(primary, rt_const_cstr("SecondaryMover")) == nullptr,
+                "VSCN v4 default scene contains only its authored hierarchy");
+    EXPECT_TRUE(secondary &&
+                    rt_scene3d_find(secondary, rt_const_cstr("SecondaryMover")) != nullptr &&
+                    rt_scene3d_find(secondary, rt_const_cstr("Mover")) == nullptr,
+                "VSCN v4 secondary scene remains independently instantiable");
+    EXPECT_TRUE(primary && rt_model3d_apply_variant(baked, primary, 1) == 1,
+                "VSCN v4 preserves per-node material-variant mappings");
+
+    const char *padded_variant_path = "/tmp/zanna_model3d_vscn_v4_padded_variants.vscn";
+    int32_t source_variant_count = source_mover ? source_mover->variant_material_count : 0;
+    if (source_mover && source_variant_count == 2)
+        source_mover->variant_material_count = 1;
+    int64_t padded_saved = source_mover && source_variant_count == 2
+                               ? rt_model3d_save(source, rt_const_cstr(padded_variant_path))
+                               : 0;
+    if (source_mover)
+        source_mover->variant_material_count = source_variant_count;
+    EXPECT_TRUE(padded_saved == 1,
+                "VSCN v4 pads a short node variant table to the global variant inventory");
+    void *padded_variant_asset =
+        padded_saved ? rt_model3d_load(rt_const_cstr(padded_variant_path)) : nullptr;
+    auto *padded_variant_node = padded_variant_asset
+                                    ? static_cast<rt_scene_node3d *>(rt_model3d_find_node(
+                                          padded_variant_asset, rt_const_cstr("Mover")))
+                                    : nullptr;
+    EXPECT_TRUE(padded_variant_node && padded_variant_node->variant_material_count == 2 &&
+                    padded_variant_node->variant_materials &&
+                    padded_variant_node->variant_materials[0] != nullptr &&
+                    padded_variant_node->variant_materials[1] == nullptr,
+                "A padded VSCN v4 variant table reloads with missing mappings as defaults");
+    if (padded_variant_asset && rt_obj_release_check0(padded_variant_asset))
+        rt_obj_free(padded_variant_asset);
+    std::remove(padded_variant_path);
+
+    const char *atomic_path = "/tmp/zanna_model3d_vscn_v4_atomic_failure.vscn";
+    const std::string sentinel = "existing-destination";
+    bool sentinel_written = write_text_file(atomic_path, sentinel);
+    int32_t source_import_index = source_mover ? source_mover->import_index : -1;
+    if (source_mover)
+        source_mover->import_index = -2;
+    int64_t invalid_saved = source_mover ? rt_model3d_save(source, rt_const_cstr(atomic_path)) : 1;
+    if (source_mover)
+        source_mover->import_index = source_import_index;
+    std::vector<uint8_t> atomic_bytes;
+    bool sentinel_read = read_binary_file(atomic_path, atomic_bytes);
+    std::string atomic_text(atomic_bytes.begin(), atomic_bytes.end());
+    EXPECT_TRUE(sentinel_written && invalid_saved == 0 && sentinel_read && atomic_text == sentinel,
+                "SceneAsset.Save validation failure leaves an existing destination untouched");
+    std::remove(atomic_path);
+    if (primary && rt_obj_release_check0(primary))
+        rt_obj_free(primary);
+    if (secondary && rt_obj_release_check0(secondary))
+        rt_obj_free(secondary);
+    if (rt_obj_release_check0(baked))
+        rt_obj_free(baked);
+    if (rt_obj_release_check0(source))
+        rt_obj_free(source);
+    std::remove(baked_path);
+}
+
+static void test_model3d_vscn_v4_corruption_rolls_back() {
+    const char *source_path = find_existing_path(
+        {"src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf",
+         "../src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf",
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf"
+#endif
+        });
+    const char *valid_path = "/tmp/zanna_model3d_vscn_v4_rollback_valid.vscn";
+    const char *corrupt_path = "/tmp/zanna_model3d_vscn_v4_rollback_corrupt.vscn";
+    EXPECT_TRUE(source_path != nullptr, "VSCN v4 rollback fixture is present");
+    if (!source_path)
+        return;
+
+    void *source = rt_model3d_load(rt_const_cstr(source_path));
+    EXPECT_TRUE(source != nullptr, "VSCN v4 rollback source loads");
+    if (!source)
+        return;
+    bool saved = rt_model3d_save(source, rt_const_cstr(valid_path)) == 1;
+    EXPECT_TRUE(saved, "VSCN v4 rollback baseline can be saved");
+    std::vector<uint8_t> bytes;
+    bool read = saved && read_binary_file(valid_path, bytes);
+    EXPECT_TRUE(read, "VSCN v4 rollback baseline can be read");
+    if (!read) {
+        if (rt_obj_release_check0(source))
+            rt_obj_free(source);
+        std::remove(valid_path);
+        return;
+    }
+    const std::string baseline(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+
+    auto expect_rejected = [&](const std::string &mutated,
+                               bool mutation_applied,
+                               const char *mutation_message,
+                               const char *rejection_message) {
+        EXPECT_TRUE(mutation_applied, mutation_message);
+        if (!mutation_applied)
+            return;
+        bool wrote = write_text_file(corrupt_path, mutated);
+        EXPECT_TRUE(wrote, "Malformed VSCN v4 fixture can be written");
+        if (!wrote)
+            return;
+        void *rejected = rt_model3d_load(rt_const_cstr(corrupt_path));
+        EXPECT_TRUE(rejected == nullptr, rejection_message);
+        EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
+                    "Malformed VSCN v4 load records a recoverable asset error");
+        if (rejected && rt_obj_release_check0(rejected))
+            rt_obj_free(rejected);
+
+        void *recovered = rt_model3d_load(rt_const_cstr(valid_path));
+        EXPECT_TRUE(recovered != nullptr && rt_model3d_get_scene_count(recovered) == 2 &&
+                        rt_model3d_get_morph_shape_count(recovered) == 2,
+                    "A rejected VSCN v4 document leaves the next complete load intact");
+        if (recovered && rt_obj_release_check0(recovered))
+            rt_obj_free(recovered);
+    };
+
+    std::string invalid_camera = baseline;
+    bool camera_mutated =
+        replace_first_text(invalid_camera, "\"cameras\": [0]", "\"cameras\": [999]");
+    expect_rejected(invalid_camera,
+                    camera_mutated,
+                    "VSCN v4 camera-index mutation finds its target",
+                    "VSCN v4 rejects an out-of-range per-scene camera index atomically");
+
+    std::string invalid_morph = baseline;
+    bool morph_mutated = replace_first_json_string_value(invalid_morph, "positionBase64", "AA==");
+    expect_rejected(invalid_morph,
+                    morph_mutated,
+                    "VSCN v4 morph-payload mutation finds its target",
+                    "VSCN v4 rejects a truncated morph delta payload atomically");
+
+    std::string invalid_variant = baseline;
+    bool variant_mutated = replace_first_text(
+        invalid_variant, "\"variantMaterials\": [0, 1]", "\"variantMaterials\": [0, 999]");
+    expect_rejected(invalid_variant,
+                    variant_mutated,
+                    "VSCN v4 variant-index mutation finds its target",
+                    "VSCN v4 rejects an out-of-range variant material atomically");
+
+    std::string invalid_animation = baseline;
+    bool animation_mutated =
+        replace_first_json_string_value(invalid_animation, "timesBase64", "AA==");
+    expect_rejected(invalid_animation,
+                    animation_mutated,
+                    "VSCN v4 animation-payload mutation finds its target",
+                    "VSCN v4 rejects a truncated animation sample payload atomically");
+
+    EXPECT_TRUE(rt_model3d_get_scene_count(source) == 2 &&
+                    rt_model3d_get_morph_shape_count(source) == 2,
+                "Rejected VSCN v4 documents do not mutate an existing SceneAsset");
+    if (rt_obj_release_check0(source))
+        rt_obj_free(source);
+    std::remove(corrupt_path);
+    std::remove(valid_path);
 }
 
 static void test_model3d_draco_corrupt_payloads_fail_cleanly() {
@@ -5722,6 +6591,277 @@ static void test_model3d_clamps_corrupt_counts_and_child_walks() {
     std::remove(path);
 }
 
+static void test_fbx_imports_cameras_lights_and_object_animation() {
+    const char *path = "/tmp/zanna_fbx_camera_light_animation.fbx";
+    const char *ascii_path = "/tmp/zanna_fbx_camera_light_animation_ascii.fbx";
+    EXPECT_TRUE(write_fbx_camera_light_animation_fixture(path),
+                "FBX camera/light/object-animation fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "FBX.Load imports typed camera/light scene attributes");
+    if (!asset) {
+        std::remove(path);
+        return;
+    }
+    EXPECT_TRUE(rt_fbx_camera_count(asset) == 1, "FBX exposes imported Camera3D objects");
+    void *camera = rt_fbx_get_camera(asset, 0);
+    EXPECT_TRUE(camera != nullptr && rt_camera3d_is_ortho(camera) == 0,
+                "FBX perspective camera retains its projection type");
+    EXPECT_NEAR(rt_camera3d_get_fov(camera), 40.0, 0.001, "FBX camera retains vertical FOV");
+    EXPECT_NEAR(
+        rt_camera3d_get_near_plane(camera), 0.25, 0.001, "FBX camera retains its near plane");
+    EXPECT_NEAR(
+        rt_camera3d_get_far_plane(camera), 500.0, 0.001, "FBX camera retains its far plane");
+    EXPECT_NEAR(rt_vec3_x(rt_camera3d_get_position(camera)),
+                2.0,
+                0.001,
+                "FBX camera uses the evaluated model position");
+    EXPECT_NEAR(rt_vec3_z(rt_camera3d_get_forward(camera)),
+                -1.0,
+                0.001,
+                "FBX camera honors its LookAtProperty target");
+    EXPECT_TRUE(rt_fbx_get_camera(asset, 1) == nullptr,
+                "FBX camera accessor rejects out-of-range indices");
+
+    void *scene_root = rt_fbx_get_scene_root(asset);
+    void *light_node =
+        scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("KeyLight")) : nullptr;
+    void *light = light_node ? rt_scene_node3d_get_light(light_node) : nullptr;
+    EXPECT_TRUE(light != nullptr, "FBX light NodeAttribute attaches to its SceneNode3D");
+    EXPECT_TRUE(rt_light3d_get_type(light) == 3, "FBX spot lights retain their light type");
+    EXPECT_NEAR(rt_light3d_get_intensity(light),
+                2.5,
+                0.001,
+                "FBX percentage intensity maps to runtime intensity");
+    EXPECT_TRUE(rt_light3d_get_casts_shadows(light) == 1,
+                "FBX CastShadows maps to the runtime light");
+    void *point_node =
+        scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("FillLight")) : nullptr;
+    void *directional_node =
+        scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("SunLight")) : nullptr;
+    void *area_node =
+        scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("PanelLight")) : nullptr;
+    EXPECT_TRUE(point_node && rt_light3d_get_type(rt_scene_node3d_get_light(point_node)) == 1,
+                "FBX point lights map to native point lights");
+    EXPECT_TRUE(directional_node &&
+                    rt_light3d_get_type(rt_scene_node3d_get_light(directional_node)) == 0,
+                "FBX directional lights map to native directional lights");
+    EXPECT_TRUE(area_node && rt_light3d_get_type(rt_scene_node3d_get_light(area_node)) == 1,
+                "FBX area lights use the documented point-light approximation");
+    EXPECT_TRUE(asset_warning_contains("area/volume", "imported as point"),
+                "FBX area-light approximation records a bounded import warning");
+
+    EXPECT_TRUE(rt_fbx_node_animation_count(asset) == 1,
+                "FBX exposes non-skeletal object animation clips");
+    auto *clip = static_cast<rt_node_animation3d *>(rt_fbx_get_node_animation(asset, 0));
+    EXPECT_TRUE(clip != nullptr && scene3d_node_animation_channel_count(clip) == 3,
+                "FBX object animation emits complete T/R/S channels");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_fbx_get_node_animation_name(asset, 0)), "MoveLight") == 0,
+        "FBX exposes object animation names");
+    if (clip && scene3d_node_animation_channel_count(clip) == 3) {
+        EXPECT_TRUE(clip->channels[0].target_node_index == 2,
+                    "FBX object channels bind by stable Objects ordinal");
+        EXPECT_NEAR(clip->channels[0].values[0],
+                    1.0,
+                    0.001,
+                    "FBX object animation begins at the authored transform");
+        EXPECT_NEAR(clip->channels[0].values[3],
+                    5.0,
+                    0.001,
+                    "FBX object animation ends at the authored transform");
+    }
+    {
+        auto *view = static_cast<FbxAssetView *>(asset);
+        int32_t saved_node_animation_count = view->node_animation_count;
+        int32_t saved_node_animation_capacity = view->node_animation_capacity;
+        int32_t saved_camera_count = view->camera_count;
+        int32_t saved_camera_capacity = view->camera_capacity;
+        void *saved_node_animation = view->node_animations[0];
+        void *saved_camera = view->cameras[0];
+        view->node_animation_count = 99;
+        view->node_animation_capacity = 1;
+        view->camera_count = 99;
+        view->camera_capacity = 1;
+        EXPECT_TRUE(rt_fbx_node_animation_count(asset) == 1 && rt_fbx_camera_count(asset) == 1,
+                    "FBX new accessor counts clamp corrupt counts to capacity");
+        view->node_animations[0] = light;
+        view->cameras[0] = light;
+        EXPECT_TRUE(rt_fbx_get_node_animation(asset, 0) == nullptr &&
+                        rt_fbx_get_camera(asset, 0) == nullptr,
+                    "FBX new accessors reject wrong-class array entries");
+        EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_fbx_get_node_animation_name(asset, 0)), "") == 0,
+                    "FBX node-animation names use an empty wrong-class fallback");
+        view->node_animations[0] = saved_node_animation;
+        view->cameras[0] = saved_camera;
+        view->node_animation_count = saved_node_animation_count;
+        view->node_animation_capacity = saved_node_animation_capacity;
+        view->camera_count = saved_camera_count;
+        view->camera_capacity = saved_camera_capacity;
+    }
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "SceneAsset adapts complete FBX scene attributes");
+    if (model) {
+        EXPECT_TRUE(rt_model3d_get_node_animation_count(model) == 1,
+                    "SceneAsset retains FBX object animation clips");
+        EXPECT_TRUE(rt_model3d_get_scene_count(model) == 1 &&
+                        rt_model3d_get_camera_count(model, 0) == 1,
+                    "SceneAsset associates FBX cameras with its default scene");
+        void *scene = rt_model3d_instantiate_scene(model);
+        EXPECT_TRUE(scene != nullptr, "FBX SceneAsset scene instantiates with default animators");
+        if (scene) {
+            rt_scene3d_sync_bindings(scene, 0.5);
+            void *animated_light = rt_scene3d_find(scene, rt_const_cstr("KeyLight"));
+            EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(animated_light)),
+                        3.0,
+                        0.001,
+                        "SceneGraph.SyncBindings advances FBX object animation");
+            if (rt_obj_release_check0(scene))
+                rt_obj_free(scene);
+        }
+        if (rt_obj_release_check0(model))
+            rt_obj_free(model);
+    }
+    if (rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    EXPECT_TRUE(write_fbx_camera_light_animation_ascii_fixture(ascii_path),
+                "ASCII FBX camera/light/object-animation fixture can be written");
+    void *ascii_asset = rt_fbx_load(rt_const_cstr(ascii_path));
+    EXPECT_TRUE(ascii_asset != nullptr,
+                "ASCII FBX imports camera/light/object animation through the typed graph");
+    if (ascii_asset) {
+        void *ascii_camera = rt_fbx_get_camera(ascii_asset, 0);
+        EXPECT_TRUE(rt_fbx_camera_count(ascii_asset) == 1 && ascii_camera != nullptr &&
+                        rt_camera3d_is_ortho(ascii_camera) == 1,
+                    "ASCII FBX retains orthographic camera attributes");
+        EXPECT_TRUE(rt_fbx_node_animation_count(ascii_asset) == 1,
+                    "ASCII FBX retains non-skeletal animation stacks");
+        void *ascii_light_node =
+            rt_scene_node3d_find(rt_fbx_get_scene_root(ascii_asset), rt_const_cstr("KeyLight"));
+        EXPECT_TRUE(ascii_light_node && rt_scene_node3d_get_light(ascii_light_node),
+                    "ASCII FBX retains light NodeAttributes");
+        if (rt_obj_release_check0(ascii_asset))
+            rt_obj_free(ascii_asset);
+    }
+    std::remove(path);
+    std::remove(ascii_path);
+}
+
+static void test_fbx_imports_progressive_morph_fidelity_and_animation() {
+    const char *path = "/tmp/zanna_fbx_progressive_morph.fbx";
+    EXPECT_TRUE(write_fbx_progressive_morph_fixture(path),
+                "FBX progressive morph fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "FBX.Load imports progressive BlendShapeChannels");
+    if (!asset) {
+        std::remove(path);
+        return;
+    }
+    void *morph = rt_fbx_get_morph_target(asset, 0);
+    EXPECT_TRUE(morph != nullptr && rt_morphtarget3d_get_shape_count(morph) == 2,
+                "FBX imports every progressive morph shape");
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(morph, 0),
+                0.5,
+                0.001,
+                "FBX DeformPercent initializes the first progressive shape");
+    EXPECT_NEAR(rt_morphtarget3d_get_weight(morph, 1),
+                0.0,
+                0.001,
+                "FBX DeformPercent leaves later progressive shapes inactive below threshold");
+    rt_morphtarget3d_shape_view_internal shape_view{};
+    EXPECT_TRUE(rt_morphtarget3d_get_shape_view_internal(morph, 0, &shape_view) == 1,
+                "FBX imported morph shape exposes complete delta payloads");
+    if (shape_view.position_deltas) {
+        EXPECT_NEAR(shape_view.position_deltas[0],
+                    1.0,
+                    0.001,
+                    "FBX float position deltas retain their value");
+        EXPECT_TRUE(shape_view.normal_deltas != nullptr && shape_view.tangent_deltas != nullptr,
+                    "FBX imports optional normal and tangent shape deltas");
+    }
+    EXPECT_TRUE(rt_fbx_node_animation_count(asset) == 1,
+                "FBX DeformPercent curves become node animation clips");
+    auto *clip = static_cast<rt_node_animation3d *>(rt_fbx_get_node_animation(asset, 0));
+    EXPECT_TRUE(clip != nullptr && scene3d_node_animation_channel_count(clip) == 1,
+                "FBX morph-only stack emits one combined weight-vector channel");
+    if (clip && scene3d_node_animation_channel_count(clip) == 1) {
+        const rt_node_anim_channel3d &channel = clip->channels[0];
+        EXPECT_TRUE(channel.path == RT_NODE_ANIM_PATH_WEIGHTS && channel.value_width == 2,
+                    "FBX morph animation targets the full mesh-local shape vector");
+        EXPECT_TRUE(channel.target_node_index == 3,
+                    "FBX morph channel binds to the owning Model's Objects ordinal");
+        EXPECT_NEAR(channel.values[0],
+                    0.5,
+                    0.001,
+                    "FBX morph animation evaluates the first FullWeights threshold");
+        EXPECT_TRUE(channel.key_count == 5,
+                    "FBX morph animation inserts every progressive threshold crossing");
+        EXPECT_NEAR(channel.values[4],
+                    0.5,
+                    0.001,
+                    "FBX progressive cross-fade retains the preceding shape");
+        EXPECT_NEAR(channel.values[5],
+                    0.5,
+                    0.001,
+                    "FBX progressive cross-fade activates the following shape");
+        EXPECT_NEAR(channel.values[8],
+                    0.0,
+                    0.001,
+                    "FBX progressive morph clears preceding shapes beyond the final threshold");
+        EXPECT_NEAR(channel.values[9],
+                    1.0,
+                    0.001,
+                    "FBX progressive morph holds the final target beyond its threshold");
+    }
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "SceneAsset adapts animated FBX morph targets");
+    if (model) {
+        void *template_node = rt_model3d_find_node(model, rt_const_cstr("MorphModel"));
+        EXPECT_TRUE(template_node != nullptr && rt_scene_node3d_child_count(template_node) == 2,
+                    "FBX multi-material morph mesh remains split into two render nodes");
+        if (template_node) {
+            for (int64_t child_index = 0; child_index < rt_scene_node3d_child_count(template_node);
+                 ++child_index) {
+                auto *mesh = static_cast<rt_mesh3d *>(rt_scene_node3d_get_mesh(
+                    rt_scene_node3d_get_child(template_node, child_index)));
+                EXPECT_TRUE(mesh != nullptr && mesh->morph_targets_ref != nullptr,
+                            "FBX material-split meshes preserve remapped morph payloads");
+            }
+        }
+        void *scene = rt_model3d_instantiate_scene(model);
+        EXPECT_TRUE(scene != nullptr, "Animated FBX morph SceneAsset instantiates");
+        if (scene) {
+            rt_scene3d_sync_bindings(scene, 0.75);
+            auto *instance_node =
+                static_cast<rt_scene_node3d *>(rt_scene3d_find(scene, rt_const_cstr("MorphModel")));
+            auto *child = instance_node && scene3d_node_child_count(instance_node) > 0
+                              ? instance_node->children[0]
+                              : nullptr;
+            auto *mesh = child ? static_cast<rt_mesh3d *>(child->mesh) : nullptr;
+            EXPECT_TRUE(mesh != nullptr && mesh->morph_targets_ref != nullptr,
+                        "FBX instantiated split mesh retains instance-local morph state");
+            if (mesh && mesh->morph_targets_ref) {
+                EXPECT_NEAR(rt_morphtarget3d_get_weight(mesh->morph_targets_ref, 0),
+                            0.75,
+                            0.001,
+                            "FBX progressive animation cross-fades the lower shape");
+                EXPECT_NEAR(rt_morphtarget3d_get_weight(mesh->morph_targets_ref, 1),
+                            0.25,
+                            0.001,
+                            "FBX progressive animation cross-fades the upper shape");
+            }
+            if (rt_obj_release_check0(scene))
+                rt_obj_free(scene);
+        }
+        if (rt_obj_release_check0(model))
+            rt_obj_free(model);
+    }
+    if (rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+}
+
 static void test_bc6h_all_modes_are_finite_and_deterministic() {
     static const uint8_t modes[] = {0, 1, 2, 6, 10, 14, 18, 22, 26, 30, 3, 7, 11, 15};
     for (int signed_mode = 0; signed_mode <= 1; signed_mode++) {
@@ -5771,6 +6911,7 @@ int main() {
     test_gltf_asset_accessors_clamp_corrupt_counts();
     test_model3d_load_asset_resolves_mounted_gltf_dependencies();
     test_model3d_load_asset_diagnostics_name_missing_dependency();
+    test_model3d_load_asset_resolves_vscn_obj_and_stl_packages();
     test_model3d_adapts_fbx_scene_graphs();
     test_model3d_imports_fbx_nodes_with_many_properties();
     test_model3d_loads_preloaded_fbx_bytes();
@@ -5810,6 +6951,8 @@ int main() {
     test_fbx_animation_curve_nodes_beyond_fixed_cap_import();
     test_fbx_duplicate_bone_names_resolve_by_model_id();
     test_fbx_asset_accessors_clamp_corrupt_counts();
+    test_fbx_imports_cameras_lights_and_object_animation();
+    test_fbx_imports_progressive_morph_fidelity_and_animation();
     test_model3d_rejects_truncated_fbx();
     test_model3d_missing_fbx_returns_null_without_trap();
     test_model3d_loads_demo_fbx_textures();
@@ -5822,6 +6965,8 @@ int main() {
     test_model3d_loads_draco_sequential_fixture();
     test_model3d_loads_draco_edgebreaker_spheres();
     test_model3d_vscn_v3_rig_roundtrip();
+    test_model3d_vscn_v4_full_scene_asset_roundtrip();
+    test_model3d_vscn_v4_corruption_rolls_back();
     test_model3d_draco_corrupt_payloads_fail_cleanly();
     test_model3d_generate_lods_builds_chains();
     test_model3d_applies_material_variants();

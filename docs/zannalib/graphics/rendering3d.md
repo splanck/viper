@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-13
+last-verified: 2026-07-20
 ---
 
 # 3D Rendering, Animation, and Environment
@@ -54,7 +54,7 @@ the loader ignored, and skeletal CUBICSPLINE channels baked to sampled keys.
 | `SceneAsset.LoadAnimationResult(path, index)` / `LoadNodeAnimationResult(path, index)` and asset variants | Returns `Err(message)` for failed asset loads or absent/out-of-range animation clips | Preserves lower-level warnings from dependency loads |
 | `SceneAsset.LoadWithOptions(path, forceTangents)` / `LoadResultWithOptions` | `LoadWithOptions` returns `null` and sets warnings for routine content failures; `LoadResultWithOptions` returns `Err(message)` | `forceTangents = true` generates tangents for every UV0-mapped glTF primitive even when its material has no normal map at load time — for materials that gain normal maps after import (FBX ignores the option) |
 | `SceneAsset.LoadWithOptionsEx(path, options)` | Returns `null` for routine content failures | `options` is a comma-separated flag string; unknown flags are ignored. `forceTangents` — as above. `eightInfluences` — keep up to 8 bone influences per vertex (the strongest 4 in the vertex record, influences 5-8 on a per-mesh side stream applied by CPU skinning; such meshes bypass the GPU skinning fast path). `compressAnimations` — tolerance-based keyframe reduction on imported clips (keys reconstructible by lerp/slerp are dropped; cubic keys and endpoints always survive; dropped counts appear in `AssetDiagnostics3D.GetImportReport()` as `compressedAnimationKeysDropped`). `compactStreams` — every imported mesh opts into the compact 48-byte GPU static-cache vertex encoding (see `Mesh3D.CompactStreams`) |
-| `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing texture references leave the material untextured and add warnings |
+| `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing textures and malformed optional morph normal/tangent streams are omitted with warnings; area/volume lights use a warned point-light approximation |
 | `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
 | `Mesh3D.FromObj(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
 | `Mesh3D.FromStl(path)` | Returns `null` for missing files, unreadable files, wrong magic, truncated binary payloads, malformed ASCII payloads, or oversized files | Degenerate triangles are skipped as before |
@@ -90,6 +90,44 @@ Constant segments preserve the immediately preceding FBX tick, linear segments
 remain linear, and cubic Hermite segments subdivide adaptively to the configured
 time/value error bound. Any budget or key-capacity failure discards the staged
 clip instead of returning a truncated animation.
+
+### FBX scene and animation fidelity
+
+The dependency-free FBX importer handles binary FBX 7100–7700 and brace-scoped
+ASCII FBX through the same typed object/connection graph. Its current fidelity
+boundary is explicit:
+
+| FBX content | Imported behavior |
+|---|---|
+| Meshes and materials | Polygon meshes, layer attributes, material bindings, textures, multiple mesh Models, and per-polygon material slots are imported. Multi-material geometry becomes material-specific child meshes. |
+| Scene hierarchy | Every non-skeleton `Model` becomes a named `SceneNode3D`. Full local transforms, pivots, pre/post rotations, geometric transforms, inheritance mode, parent hierarchy, and Z-up basis conversion are preserved. Numeric FBX IDs and stable `Objects` ordinals establish identity; names are display/fallback data only. |
+| Skeletons and skinning | Bone hierarchy, bind transforms, the strongest four influences per vertex, and `AnimationStack` skeletal clips are imported. |
+| Cameras | Perspective/orthographic projection, vertical or horizontal FOV (with focal-length fallback), aspect, clipping planes, orthographic zoom, evaluated world transform, and `LookAtProperty`/`UpVectorProperty` targets become standalone `Camera3D` objects. FBX contributes one scene, so all cameras belong to scene index `0`. |
+| Lights | Point, directional, and spot attributes become node-local `Light3D` objects with color, percent intensity, enabled/shadow flags, spot cones, and available attenuation range. Area/volume types become point lights and record a load warning because native light shapes/volumes are not representable. |
+| Object animation | Non-skeleton local translation/rotation/scale curves become one `NodeAnimation3D` per animation stack. Sampling preserves constant edges, authored linear keys, adaptive cubic motion, transform inheritance, and quaternion continuity. Channels bind by stable source-node index and play automatically on an instantiated `SceneAsset`. |
+| Blend shapes | Float/double position, normal, and tangent deltas plus 32/64-bit control-point indexes are remapped through triangulation. Static `DeformPercent`, progressive `FullWeights`, animated deform curves, multiple channels, and material-split clones are preserved as `MorphTarget3D` plus node weight channels. |
+
+Progressive morph channels interpolate base → first shape before the first full
+weight, cross-fade adjacent shapes between full-weight thresholds, and hold the
+last shape fully active beyond the final threshold. Invalid or non-increasing
+thresholds use deterministic 100-percent steps and add a warning. Generated
+animation keys include every crossed threshold so runtime linear interpolation
+cannot skip a progressive-morph corner.
+
+`Zanna.Graphics3D.Fbx` exposes `MeshCount`, `AnimationCount`,
+`NodeAnimationCount`, `CameraCount`, and `MaterialCount`, with matching
+`GetMesh`, `GetSkeleton`, `GetAnimation`, `GetAnimationName`,
+`GetNodeAnimation`, `GetNodeAnimationName`, `GetCamera`, `GetMaterial`, and
+`GetMorphTarget` methods. Loading the same file through `SceneAsset` carries the
+hierarchy, camera membership, lights, skeletal clips, node/object clips, and
+morph data into instancing and VSCN v4 bake/reload.
+
+Not currently representable are NURBS/patch geometry, animation-layer blend
+modes, general FBX constraints, camera projection-property animation, automatic
+coupling of an animated camera Model to the standalone immutable `Camera3D`,
+area-light shape emission, and volumetric lighting. Camera Model transform
+curves remain available as ordinary node-animation channels for applications
+that want to drive a camera explicitly.
 
 glTF extension support is explicit:
 
@@ -1131,6 +1169,15 @@ Ray queries normalize non-zero directions internally. Zero-length or non-finite 
 
 High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`, and `.stl` assets. OBJ imports preserve safe relative `mtllib`/`usemtl` material groups as separate template nodes; STL imports synthesize one default-material mesh node.
 
+For offline conversion, `zanna asset bake <input> <output.vscn>` reloads the
+written VSCN and compares its enumerable resources with the source
+`SceneAsset`. Human mode warns with stable `*-count-reduced` codes when a
+round-trip drops resources. `--json` emits the machine-readable
+`zanna.asset-bake-report/v1` object, including source and baked counts, losses,
+and the source import diagnostics. This makes format-fidelity decisions visible
+in asset pipelines instead of treating a successfully written file as proof of
+a lossless conversion.
+
 #### Properties
 
 | Property | Type | Description |
@@ -1140,11 +1187,13 @@ High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`
 | `SkeletonCount` | Integer | Number of imported skeletons |
 | `AnimationCount` | Integer | Number of imported skeletal animation clips |
 | `NodeAnimationCount` | Integer | Number of imported node animation clips |
+| `MorphTargetCount` | Integer | Number of mesh slots with an attached `MorphTarget3D` |
+| `MorphShapeCount` | Integer | Total number of static morph shapes across all meshes |
 | `NodeCount` | Integer | Number of imported nodes |
 | `SceneCount` | Integer | Number of immutable scenes addressable by indexed APIs |
 | `VariantCount` | Integer | Number of imported `KHR_materials_variants` names |
 
-#### Load Methods
+#### Load and Persistence Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
@@ -1155,6 +1204,29 @@ High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`
 | `LoadNodeAnimationResult(path, index)` | `Result[NodeAnimation3D](String, Integer)` | Load an imported node animation clip as `Ok(NodeAnimation3D)` or `Err(message)` |
 | `LoadNodeAnimationAssetResult(path, index)` | `Result[NodeAnimation3D](String, Integer)` | Load a node animation clip through `Zanna.IO.Assets` |
 | `Load(path)` / `LoadAsset(path)` | `SceneAsset(String)` | Compatibility loaders that return `null` for routine content failures |
+| `Save(path)` | `Integer(String)` | Atomically save the complete asset as VSCN v4; returns `1` on success or `0` on validation/allocation/I/O failure |
+
+`LoadAsset` and every `*AssetResult` root load accept ordinary logical asset
+paths or `asset://` paths. All six `SceneAsset` formats resolve from embedded
+assets, mounted ZPAK files, or the filesystem. OBJ `mtllib` files and their
+supported image maps resolve relative to the original logical OBJ/MTL paths,
+including when the parsers stage root bytes in temporary files. Absolute,
+URI-like, and parent-traversing OBJ dependency references remain rejected.
+
+`SceneAsset.Save` differs from `SceneGraph.Save`: the asset operation preserves
+all immutable scenes and their camera membership, the complete indexed
+mesh/material/skeleton/animation inventories (including resources not reachable
+from scene zero), node/object/morph animation samples, material-variant names
+and node mappings, and static morph position/normal/tangent deltas and weights.
+Stable source-node indexes preserve animation targeting when node names are
+duplicated; all twelve material custom parameters and per-slot anisotropy also
+round-trip, including imported glTF anisotropy factors.
+VSCN v4 stores numeric sample streams as explicitly little-endian binary data
+inside Base64 and rejects malformed lengths, non-finite values, or invalid
+table indexes before publishing an asset. Loaders remain compatible with VSCN
+versions 1–3. Texture dimensions, decoded RGBA texels, sampler state, UV
+transforms, and cubemap faces round-trip; original PNG/JPEG/KTX container or
+compression bytes intentionally do not.
 
 #### Scene and Camera Methods
 
@@ -1164,6 +1236,7 @@ High-level reusable model container for `.vscn`, `.fbx`, `.gltf`, `.glb`, `.obj`
 | `GetCameraCount(sceneIndex)` | `Integer(Integer)` | Number of imported cameras for a scene |
 | `GetCamera(sceneIndex, index)` | `Object(Integer, Integer)` | Imported `Camera3D`, or `null` when absent/out of range |
 | `InstantiateSceneAt(index)` | `Object(Integer)` | Clone a scene by index as a fresh `SceneGraph` |
+| `GetMorphTarget(meshIndex)` | `MorphTarget3D(Integer)` | Borrow the morph container attached to the corresponding `GetMesh` slot, or `null` |
 
 glTF cameras are imported as standalone `Camera3D` handles with the node's world transform applied. Cached `SceneAsset` assets remain immutable: index `0` is the active/default scene, secondary glTF scene roots follow it, and invalid scene indices return zero/null rather than changing shared loader state. FBX imports preserve authored model hierarchy where available and split polygon material assignments into instantiable material-specific mesh nodes.
 

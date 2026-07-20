@@ -1532,12 +1532,17 @@ RT_CLASS_END()
 /// @details
 /// Create `Zanna.Graphics.TiledMapLoader` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `TileWidth`, `TileHeight` and operations including `SetTileSize`, `NewTilemap`.
+/// `TileWidth`, `TileHeight` and operations including `SetTileSize`, `NewTilemap`, and
+/// dependency-aware filesystem/asset Tiled JSON/TMX loading.
 RT_CLASS_BEGIN("Zanna.Graphics.TiledMapLoader", TiledMapLoader, "obj", TiledMapLoaderNew)
     RT_PROP("TileWidth", "i64", TiledMapLoaderGetTileWidth, none)
     RT_PROP("TileHeight", "i64", TiledMapLoaderGetTileHeight, none)
     RT_METHOD("SetTileSize", "void(i64,i64)", TiledMapLoaderSetTileSize)
     RT_METHOD("NewTilemap", "obj(i64,i64)", TiledMapLoaderNewTilemap)
+    RT_METHOD("Load", "obj<Zanna.Graphics2D.Tilemap>(str)", TiledMapLoaderLoad)
+    RT_METHOD("LoadResult", "obj<Zanna.Result>(str)", TiledMapLoaderLoadResult)
+    RT_METHOD("LoadAsset", "obj<Zanna.Graphics2D.Tilemap>(str)", TiledMapLoaderLoadAsset)
+    RT_METHOD("LoadAssetResult", "obj<Zanna.Result>(str)", TiledMapLoaderLoadAssetResult)
 RT_CLASS_END()
 
 //=============================================================================

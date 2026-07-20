@@ -3,7 +3,7 @@
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/rt_graphics2d.h
+// File: src/runtime/graphics/2d/rt_graphics2d.h
 // Purpose: Runtime bridge declarations for the Zanna.Graphics 2D support layer —
 // render targets, textures, batched/sprite renderers, materials, shaders and
 // post-process effects, viewports, tile maps, paths, shape/text renderers,
@@ -27,8 +27,9 @@
 //   - `*_apply` helpers that return a `void *` produce a new Pixels/handle owned
 //     by the caller; inputs are not consumed.
 //
-// Links: src/runtime/graphics/rt_graphics2d.c (implementation),
-//        src/runtime/graphics/rt_pixels.h (Pixels buffer type)
+// Links: src/runtime/graphics/2d/rt_graphics2d.c (implementation),
+//        src/runtime/graphics/2d/rt_pixels.h (Pixels buffer type),
+//        src/runtime/game/rt_tiled_import.cpp (Tiled file adapters)
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -836,6 +837,14 @@ int64_t rt_tiledmaploader_get_tile_width(void *loader);
 int64_t rt_tiledmaploader_get_tile_height(void *loader);
 /// @brief Create a new empty tilemap of the given size using loader settings.
 void *rt_tiledmaploader_new_tilemap(void *loader, int64_t width, int64_t height);
+/// @brief Load a filesystem Tiled JSON/TMX map as a render-ready Tilemap.
+void *rt_tiledmaploader_load(void *loader, rt_string path);
+/// @brief Result-returning filesystem companion to @ref rt_tiledmaploader_load.
+void *rt_tiledmaploader_load_result(void *loader, rt_string path);
+/// @brief Load a packed/embedded Tiled map and dependencies as a Tilemap.
+void *rt_tiledmaploader_load_asset(void *loader, rt_string path);
+/// @brief Result-returning asset companion to @ref rt_tiledmaploader_load_asset.
+void *rt_tiledmaploader_load_asset_result(void *loader, rt_string path);
 
 #ifdef __cplusplus
 }

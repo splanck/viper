@@ -78,6 +78,16 @@ int64_t rt_fbx_animation_count(void *fbx);
 void *rt_fbx_get_animation(void *fbx, int64_t index);
 /// @brief Name of the animation clip at @p index.
 rt_string rt_fbx_get_animation_name(void *fbx, int64_t index);
+/// @brief Number of non-skeletal object/morph animation clips in the FBX.
+int64_t rt_fbx_node_animation_count(void *fbx);
+/// @brief Get the object/morph animation clip at @p index (NULL if out of range).
+void *rt_fbx_get_node_animation(void *fbx, int64_t index);
+/// @brief Name of the object/morph animation clip at @p index.
+rt_string rt_fbx_get_node_animation_name(void *fbx, int64_t index);
+/// @brief Number of cameras in the loaded FBX scene.
+int64_t rt_fbx_camera_count(void *fbx);
+/// @brief Get the camera at @p index (NULL if out of range).
+void *rt_fbx_get_camera(void *fbx, int64_t index);
 /// @brief Number of materials in the FBX.
 int64_t rt_fbx_material_count(void *fbx);
 /// @brief Get the material at @p index (NULL if out of range).

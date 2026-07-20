@@ -1,0 +1,84 @@
+{
+  "asset": { "version": "2.0", "generator": "Zanna bake-fidelity fixture" },
+  "extensionsUsed": [ "KHR_materials_variants" ],
+  "extensions": {
+    "KHR_materials_variants": {
+      "variants": [ { "name": "day" }, { "name": "night" } ]
+    }
+  },
+  "buffers": [
+    {
+      "uri": "data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAABAAIAAAAAAAAAAAAAAAAAAADNzEw+AAAAAAAAAAAAAAAAmpmZPgAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAIA/",
+      "byteLength": 120
+    }
+  ],
+  "bufferViews": [
+    { "buffer": 0, "byteOffset": 0, "byteLength": 36 },
+    { "buffer": 0, "byteOffset": 36, "byteLength": 6 },
+    { "buffer": 0, "byteOffset": 44, "byteLength": 36 },
+    { "buffer": 0, "byteOffset": 80, "byteLength": 8 },
+    { "buffer": 0, "byteOffset": 88, "byteLength": 24 },
+    { "buffer": 0, "byteOffset": 112, "byteLength": 8 }
+  ],
+  "accessors": [
+    { "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3" },
+    { "bufferView": 1, "componentType": 5123, "count": 3, "type": "SCALAR" },
+    { "bufferView": 2, "componentType": 5126, "count": 3, "type": "VEC3" },
+    { "bufferView": 3, "componentType": 5126, "count": 2, "type": "SCALAR" },
+    { "bufferView": 4, "componentType": 5126, "count": 2, "type": "VEC3" },
+    { "bufferView": 5, "componentType": 5126, "count": 2, "type": "SCALAR" }
+  ],
+  "materials": [
+    { "name": "day", "pbrMetallicRoughness": { "baseColorFactor": [ 1, 0, 0, 1 ] } },
+    { "name": "night", "pbrMetallicRoughness": { "baseColorFactor": [ 0, 0, 1, 1 ] } }
+  ],
+  "meshes": [
+    {
+      "name": "morphing_triangle",
+      "weights": [ 0 ],
+      "primitives": [
+        {
+          "attributes": { "POSITION": 0 },
+          "indices": 1,
+          "material": 0,
+          "targets": [ { "POSITION": 2 } ],
+          "extensions": {
+            "KHR_materials_variants": {
+              "mappings": [ { "material": 1, "variants": [ 1 ] } ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "cameras": [
+    {
+      "name": "authored_camera",
+      "type": "perspective",
+      "perspective": { "yfov": 1.0471975512, "aspectRatio": 1.7777777778, "znear": 0.1, "zfar": 100 }
+    }
+  ],
+  "nodes": [
+    { "name": "Mover", "mesh": 0, "weights": [ 0 ] },
+    { "name": "CameraNode", "camera": 0, "translation": [ 0, 1, 4 ] },
+    { "name": "SecondaryMover", "mesh": 0, "translation": [ -2, 0, 0 ] }
+  ],
+  "scenes": [
+    { "name": "PrimaryScene", "nodes": [ 0, 1 ] },
+    { "name": "SecondaryScene", "nodes": [ 2 ] }
+  ],
+  "scene": 0,
+  "animations": [
+    {
+      "name": "MoveAndSmile",
+      "samplers": [
+        { "input": 3, "output": 4 },
+        { "input": 3, "output": 5 }
+      ],
+      "channels": [
+        { "sampler": 0, "target": { "node": 0, "path": "translation" } },
+        { "sampler": 1, "target": { "node": 0, "path": "weights" } }
+      ]
+    }
+  ]
+}

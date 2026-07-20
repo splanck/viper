@@ -9,8 +9,8 @@
 // Purpose: Model3D high-level asset wrapper over imported scene/resources.
 //   Owns a template scene-graph root and per-asset reference arrays for
 //   meshes, materials, skeletons, animations, and node animations imported
-//   from FBX or glTF. Each `Instantiate()` clones the template root into a
-//   fresh scene subtree that can be parented anywhere.
+//   from VSCN, FBX, glTF, OBJ, or STL. Each `Instantiate()` clones the template
+//   root into a fresh scene subtree that can be parented anywhere.
 //
 // Key invariants:
 //   - The template root is a synthetic node — its children represent the
@@ -26,7 +26,7 @@
 //   - Cloning a node retains the source's mesh/material; only morph-enabled
 //     meshes are deep-cloned for per-instance blend-shape state.
 //
-// Links: rt_model3d.h, rt_scene3d.h, rt_fbx_loader.h, rt_gltf.h
+// Links: rt_model3d.h, rt_scene3d.h, rt_fbx_loader.h, rt_gltf.h, rt_asset.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -51,9 +51,11 @@
 #include "rt_numeric.h"
 #include "rt_object.h"
 #include "rt_option.h"
+#include "rt_pixels.h"
 #include "rt_result.h"
 #include "rt_scene3d.h"
 #include "rt_scene3d_internal.h"
+#include "rt_scene3d_vscn_internal.h"
 #include "rt_skeleton3d.h"
 #include "rt_string.h"
 #include "rt_tempfile.h"

@@ -39,6 +39,39 @@ static void rt_scene3d_finalize(void *obj) {
     free(scene->baked_animations);
     scene->baked_animations = NULL;
     scene->baked_animation_count = 0;
+    if (scene->baked_asset) {
+        rt_vscn_loaded_asset3d *asset = scene->baked_asset;
+        void ***arrays[] = {&asset->meshes,
+                            &asset->materials,
+                            &asset->skeletons,
+                            &asset->animations,
+                            &asset->node_animations,
+                            &asset->cameras};
+        int32_t *counts[] = {&asset->mesh_count,
+                             &asset->material_count,
+                             &asset->skeleton_count,
+                             &asset->animation_count,
+                             &asset->node_animation_count,
+                             &asset->camera_count};
+        for (size_t table = 0; table < sizeof(arrays) / sizeof(arrays[0]); ++table) {
+            for (int32_t i = 0; i < *counts[table]; ++i)
+                scene3d_release_ref(&(*arrays[table])[i]);
+            free(*arrays[table]);
+            *arrays[table] = NULL;
+            *counts[table] = 0;
+        }
+        for (int32_t i = 0; i < asset->scene_count; ++i) {
+            scene3d_release_ref((void **)&asset->scenes[i].root);
+            free(asset->scenes[i].name);
+            free(asset->scenes[i].camera_indices);
+        }
+        free(asset->scenes);
+        for (int32_t i = 0; asset->variant_names && i < asset->variant_count; ++i)
+            free(asset->variant_names[i]);
+        free(asset->variant_names);
+        free(asset);
+        scene->baked_asset = NULL;
+    }
     free(scene->spatial_index.entries);
     free(scene->spatial_index.entry_indices);
     free(scene->spatial_index.nodes);
@@ -110,6 +143,9 @@ void *rt_scene3d_new(void) {
     s->query_traversal_stack_capacity = 0;
     s->world_matrix_stack_capacity = 0;
     s->sync_stack_capacity = 0;
+    s->baked_animations = NULL;
+    s->baked_animation_count = 0;
+    s->baked_asset = NULL;
     rt_obj_set_finalizer(s, rt_scene3d_finalize);
     return s;
 }

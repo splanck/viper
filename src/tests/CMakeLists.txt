@@ -2067,6 +2067,16 @@ set_tests_properties(zanna_asset_validate_report PROPERTIES
         LABELS "tools;graphics3d;smoke"
         TIMEOUT 60)
 
+add_test(NAME zanna_asset_bake_fidelity_report
+        COMMAND ${CMAKE_COMMAND}
+        -DZANNA_EXE=$<TARGET_FILE:zanna>
+        -DINPUT=${CMAKE_SOURCE_DIR}/src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf
+        -DOUTPUT=${CMAKE_BINARY_DIR}/asset_bake_fidelity_test.vscn
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_asset_bake_fidelity.cmake)
+set_tests_properties(zanna_asset_bake_fidelity_report PROPERTIES
+        LABELS "tools;graphics3d;smoke"
+        TIMEOUT 60)
+
 if (NOT WIN32)
     foreach (probe IN ITEMS mechanics campaign)
         add_test(NAME native_xenoscape_${probe}

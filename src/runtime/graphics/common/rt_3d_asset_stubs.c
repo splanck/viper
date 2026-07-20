@@ -672,14 +672,14 @@ int64_t rt_material3d_get_shading_model(void *o) {
     return 0;
 }
 
-/// @brief Stub for `Material3D.SetCustomParam` — write to one of the 8
+/// @brief Stub for `Material3D.SetCustomParam` — write to one of the 12
 ///        per-material float parameter slots used by the active shading
 ///        model (e.g. Toon band count, Fresnel power/bias).
 ///
 /// Silent no-op stub.
 ///
 /// @param o Material3D handle (ignored).
-/// @param i Parameter slot index, 0..7 (ignored).
+/// @param i Parameter slot index, 0..11 (ignored).
 /// @param v Parameter value (ignored).
 void rt_material3d_set_custom_param(void *o, int64_t i, double v) {
     (void)o;
@@ -1780,6 +1780,39 @@ rt_string rt_fbx_get_animation_name(void *f, int64_t i) {
     return NULL;
 }
 
+/// @brief Stub object/morph animation count for graphics-disabled builds.
+int64_t rt_fbx_node_animation_count(void *f) {
+    (void)f;
+    return 0;
+}
+
+/// @brief Stub object/morph animation lookup for graphics-disabled builds.
+void *rt_fbx_get_node_animation(void *f, int64_t i) {
+    (void)f;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub object/morph animation name lookup for graphics-disabled builds.
+rt_string rt_fbx_get_node_animation_name(void *f, int64_t i) {
+    (void)f;
+    (void)i;
+    return rt_const_cstr("");
+}
+
+/// @brief Stub imported-camera count for graphics-disabled builds.
+int64_t rt_fbx_camera_count(void *f) {
+    (void)f;
+    return 0;
+}
+
+/// @brief Stub imported-camera lookup for graphics-disabled builds.
+void *rt_fbx_get_camera(void *f, int64_t i) {
+    (void)f;
+    (void)i;
+    return NULL;
+}
+
 /// @brief Stub for `FBX.MaterialCount` — number of materials defined in
 ///        the document.
 ///
@@ -2029,6 +2062,13 @@ void *rt_model3d_load_asset_result(rt_string p) {
         rt_const_cstr("SceneAsset.LoadAsset: graphics support not compiled in"));
 }
 
+/// @brief Stub for `SceneAsset.Save` in graphics-disabled builds.
+int64_t rt_model3d_save(void *model, rt_string path) {
+    (void)model;
+    (void)path;
+    RT_GRAPHICS_TRAP_RET("SceneAsset.Save: graphics support not compiled in", 0);
+}
+
 /// @brief Stub for `Model3D.MeshCount` — number of meshes in the loaded
 ///        model's resource collection.
 ///
@@ -2082,6 +2122,18 @@ int64_t rt_model3d_get_animation_count(void *m) {
 
 /// @brief Stub for `Model3D.NodeAnimationCount`.
 int64_t rt_model3d_get_node_animation_count(void *m) {
+    (void)m;
+    return 0;
+}
+
+/// @brief Stub for `SceneAsset.MorphTargetCount`.
+int64_t rt_model3d_get_morph_target_count(void *m) {
+    (void)m;
+    return 0;
+}
+
+/// @brief Stub for `SceneAsset.MorphShapeCount`.
+int64_t rt_model3d_get_morph_shape_count(void *m) {
     (void)m;
     return 0;
 }
@@ -2158,6 +2210,13 @@ void *rt_model3d_get_animation(void *m, int64_t i) {
 
 /// @brief Stub for `Model3D.GetNodeAnimation`.
 void *rt_model3d_get_node_animation(void *m, int64_t i) {
+    (void)m;
+    (void)i;
+    return NULL;
+}
+
+/// @brief Stub for `SceneAsset.GetMorphTarget(meshIndex)`.
+void *rt_model3d_get_morph_target(void *m, int64_t i) {
     (void)m;
     (void)i;
     return NULL;

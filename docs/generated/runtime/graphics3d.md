@@ -809,8 +809,8 @@ Provides FBX model import for 3D rendering and scene applications.
 
 `Zanna.Graphics3D.FBX` exposes a registry-backed runtime surface without requiring callers to
 construct the class directly. Its public surface exposes properties such as `MeshCount`,
-`AnimationCount`, `MaterialCount` and operations including `Load`, `GetMesh`, `GetSkeleton`,
-`GetAnimation`.
+`AnimationCount`, `NodeAnimationCount`, `CameraCount`, `MaterialCount` and operations including
+`Load`, `GetMesh`, `GetSkeleton`, `GetAnimation`, `GetNodeAnimation`, and `GetCamera`.
 
 #### Properties
 
@@ -818,6 +818,8 @@ construct the class directly. Its public surface exposes properties such as `Mes
 |---|---|---|
 | <a id="zanna-graphics3d-fbx-meshcount"></a>`MeshCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-fbx-animationcount"></a>`AnimationCount` | `i64` | read-only |
+| <a id="zanna-graphics3d-fbx-nodeanimationcount"></a>`NodeAnimationCount` | `i64` | read-only |
+| <a id="zanna-graphics3d-fbx-cameracount"></a>`CameraCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-fbx-materialcount"></a>`MaterialCount` | `i64` | read-only |
 
 #### Methods
@@ -829,6 +831,9 @@ construct the class directly. Its public surface exposes properties such as `Mes
 | <a id="zanna-graphics3d-fbx-getskeleton"></a>`GetSkeleton` | `obj<Zanna.Graphics3D.Skeleton3D>()` | `Zanna.Graphics3D.Fbx.GetSkeleton` |
 | <a id="zanna-graphics3d-fbx-getanimation"></a>`GetAnimation` | `obj<Zanna.Graphics3D.Animation3D>(i64)` | `Zanna.Graphics3D.Fbx.GetAnimation` |
 | <a id="zanna-graphics3d-fbx-getanimationname"></a>`GetAnimationName` | `str(i64)` | `Zanna.Graphics3D.Fbx.GetAnimationName` |
+| <a id="zanna-graphics3d-fbx-getnodeanimation"></a>`GetNodeAnimation` | `obj<Zanna.Graphics3D.NodeAnimation3D>(i64)` | `Zanna.Graphics3D.Fbx.GetNodeAnimation` |
+| <a id="zanna-graphics3d-fbx-getnodeanimationname"></a>`GetNodeAnimationName` | `str(i64)` | `Zanna.Graphics3D.Fbx.GetNodeAnimationName` |
+| <a id="zanna-graphics3d-fbx-getcamera"></a>`GetCamera` | `obj<Zanna.Graphics3D.Camera3D>(i64)` | `Zanna.Graphics3D.Fbx.GetCamera` |
 | <a id="zanna-graphics3d-fbx-getmaterial"></a>`GetMaterial` | `obj<Zanna.Graphics3D.Material3D>(i64)` | `Zanna.Graphics3D.Fbx.GetMaterial` |
 | <a id="zanna-graphics3d-fbx-getmorphtarget"></a>`GetMorphTarget` | `obj<Zanna.Graphics3D.MorphTarget3D>(i64)` | `Zanna.Graphics3D.Fbx.GetMorphTarget` |
 
@@ -838,9 +843,9 @@ construct the class directly. Its public surface exposes properties such as `Mes
 Provides Scene Asset functionality for 3D rendering and scene applications.
 
 `Zanna.Graphics3D.SceneAsset` exposes a registry-backed runtime surface without requiring
-callers to construct the class directly. Its public surface exposes properties such as
-`MeshCount`, `MaterialCount`, `SkeletonCount` and operations including `LoadResult`,
-`LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
+callers to construct the class directly. Its public surface exposes resource counts,
+mesh-aligned morph access, complete VSCN v4 persistence through `Save`, and operations
+including `LoadResult`, `LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
 
 #### Properties
 
@@ -851,6 +856,8 @@ callers to construct the class directly. Its public surface exposes properties s
 | <a id="zanna-graphics3d-sceneasset-skeletoncount"></a>`SkeletonCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-sceneasset-animationcount"></a>`AnimationCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-sceneasset-nodeanimationcount"></a>`NodeAnimationCount` | `i64` | read-only |
+| <a id="zanna-graphics3d-sceneasset-morphtargetcount"></a>`MorphTargetCount` | `i64` | read-only |
+| <a id="zanna-graphics3d-sceneasset-morphshapecount"></a>`MorphShapeCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-sceneasset-nodecount"></a>`NodeCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-sceneasset-scenecount"></a>`SceneCount` | `i64` | read-only |
 | <a id="zanna-graphics3d-sceneasset-variantcount"></a>`VariantCount` | `i64` | read-only |
@@ -864,12 +871,14 @@ callers to construct the class directly. Its public surface exposes properties s
 | <a id="zanna-graphics3d-sceneasset-loadwithoptionsex"></a>`LoadWithOptionsEx` | `obj<Zanna.Graphics3D.SceneAsset>(str,str)` | `Zanna.Graphics3D.SceneAsset.LoadWithOptionsEx` |
 | <a id="zanna-graphics3d-sceneasset-loadresultwithoptions"></a>`LoadResultWithOptions` | `obj<Zanna.Result>(str,i1)` | `Zanna.Graphics3D.SceneAsset.LoadResultWithOptions` |
 | <a id="zanna-graphics3d-sceneasset-loadassetresult"></a>`LoadAssetResult` | `obj<Zanna.Result>(str)` | `Zanna.Graphics3D.SceneAsset.LoadAssetResult` |
+| <a id="zanna-graphics3d-sceneasset-save"></a>`Save` | `i64(str)` | `Zanna.Graphics3D.SceneAsset.Save` |
 | <a id="zanna-graphics3d-sceneasset-getcameracount"></a>`GetCameraCount` | `i64(i64)` | `Zanna.Graphics3D.SceneAsset.GetCameraCount` |
 | <a id="zanna-graphics3d-sceneasset-getmesh"></a>`GetMesh` | `obj<Zanna.Graphics3D.Mesh3D>(i64)` | `Zanna.Graphics3D.SceneAsset.GetMesh` |
 | <a id="zanna-graphics3d-sceneasset-getmaterial"></a>`GetMaterial` | `obj<Zanna.Graphics3D.Material3D>(i64)` | `Zanna.Graphics3D.SceneAsset.GetMaterial` |
 | <a id="zanna-graphics3d-sceneasset-getskeleton"></a>`GetSkeleton` | `obj<Zanna.Graphics3D.Skeleton3D>(i64)` | `Zanna.Graphics3D.SceneAsset.GetSkeleton` |
 | <a id="zanna-graphics3d-sceneasset-getanimation"></a>`GetAnimation` | `obj<Zanna.Graphics3D.Animation3D>(i64)` | `Zanna.Graphics3D.SceneAsset.GetAnimation` |
 | <a id="zanna-graphics3d-sceneasset-getnodeanimation"></a>`GetNodeAnimation` | `obj<Zanna.Graphics3D.NodeAnimation3D>(i64)` | `Zanna.Graphics3D.SceneAsset.GetNodeAnimation` |
+| <a id="zanna-graphics3d-sceneasset-getmorphtarget"></a>`GetMorphTarget` | `obj<Zanna.Graphics3D.MorphTarget3D>(i64)` | `Zanna.Graphics3D.SceneAsset.GetMorphTarget` |
 | <a id="zanna-graphics3d-sceneasset-getnodeanimationname"></a>`GetNodeAnimationName` | `str(i64)` | `Zanna.Graphics3D.SceneAsset.GetNodeAnimationName` |
 | <a id="zanna-graphics3d-sceneasset-getcamera"></a>`GetCamera` | `obj<Zanna.Graphics3D.Camera3D>(i64,i64)` | `Zanna.Graphics3D.SceneAsset.GetCamera` |
 | <a id="zanna-graphics3d-sceneasset-getscenename"></a>`GetSceneName` | `str(i64)` | `Zanna.Graphics3D.SceneAsset.GetSceneName` |
@@ -2783,6 +2792,11 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | <a id="zanna-graphics3d-fbx-get-animationcount"></a>`Zanna.Graphics3D.Fbx.get_AnimationCount` | `i64(obj)` | `rt_fbx_animation_count` |
 | `Zanna.Graphics3D.Fbx.GetAnimation` | `obj<Zanna.Graphics3D.Animation3D>(obj,i64)` | `rt_fbx_get_animation` |
 | `Zanna.Graphics3D.Fbx.GetAnimationName` | `str(obj,i64)` | `rt_fbx_get_animation_name` |
+| <a id="zanna-graphics3d-fbx-get-nodeanimationcount"></a>`Zanna.Graphics3D.Fbx.get_NodeAnimationCount` | `i64(obj)` | `rt_fbx_node_animation_count` |
+| `Zanna.Graphics3D.Fbx.GetNodeAnimation` | `obj<Zanna.Graphics3D.NodeAnimation3D>(obj,i64)` | `rt_fbx_get_node_animation` |
+| `Zanna.Graphics3D.Fbx.GetNodeAnimationName` | `str(obj,i64)` | `rt_fbx_get_node_animation_name` |
+| <a id="zanna-graphics3d-fbx-get-cameracount"></a>`Zanna.Graphics3D.Fbx.get_CameraCount` | `i64(obj)` | `rt_fbx_camera_count` |
+| `Zanna.Graphics3D.Fbx.GetCamera` | `obj<Zanna.Graphics3D.Camera3D>(obj,i64)` | `rt_fbx_get_camera` |
 | <a id="zanna-graphics3d-fbx-get-materialcount"></a>`Zanna.Graphics3D.Fbx.get_MaterialCount` | `i64(obj)` | `rt_fbx_material_count` |
 | `Zanna.Graphics3D.Fbx.GetMaterial` | `obj<Zanna.Graphics3D.Material3D>(obj,i64)` | `rt_fbx_get_material` |
 | `Zanna.Graphics3D.Fbx.GetMorphTarget` | `obj<Zanna.Graphics3D.MorphTarget3D>(obj,i64)` | `rt_fbx_get_morph_target` |
@@ -2801,11 +2815,14 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | `Zanna.Graphics3D.SceneAsset.LoadWithOptionsEx` | `obj(str,str)` | `rt_model3d_load_with_options_ex` |
 | `Zanna.Graphics3D.SceneAsset.LoadResultWithOptions` | `obj<Zanna.Result>(str,i1)` | `rt_model3d_load_result_with_options` |
 | `Zanna.Graphics3D.SceneAsset.LoadAssetResult` | `obj<Zanna.Result>(str)` | `rt_model3d_load_asset_result` |
+| `Zanna.Graphics3D.SceneAsset.Save` | `i64(obj,str)` | `rt_model3d_save` |
 | <a id="zanna-graphics3d-sceneasset-get-meshcount"></a>`Zanna.Graphics3D.SceneAsset.get_MeshCount` | `i64(obj)` | `rt_model3d_get_mesh_count` |
 | <a id="zanna-graphics3d-sceneasset-get-materialcount"></a>`Zanna.Graphics3D.SceneAsset.get_MaterialCount` | `i64(obj)` | `rt_model3d_get_material_count` |
 | <a id="zanna-graphics3d-sceneasset-get-skeletoncount"></a>`Zanna.Graphics3D.SceneAsset.get_SkeletonCount` | `i64(obj)` | `rt_model3d_get_skeleton_count` |
 | <a id="zanna-graphics3d-sceneasset-get-animationcount"></a>`Zanna.Graphics3D.SceneAsset.get_AnimationCount` | `i64(obj)` | `rt_model3d_get_animation_count` |
 | <a id="zanna-graphics3d-sceneasset-get-nodeanimationcount"></a>`Zanna.Graphics3D.SceneAsset.get_NodeAnimationCount` | `i64(obj)` | `rt_model3d_get_node_animation_count` |
+| <a id="zanna-graphics3d-sceneasset-get-morphtargetcount"></a>`Zanna.Graphics3D.SceneAsset.get_MorphTargetCount` | `i64(obj)` | `rt_model3d_get_morph_target_count` |
+| <a id="zanna-graphics3d-sceneasset-get-morphshapecount"></a>`Zanna.Graphics3D.SceneAsset.get_MorphShapeCount` | `i64(obj)` | `rt_model3d_get_morph_shape_count` |
 | <a id="zanna-graphics3d-sceneasset-get-nodecount"></a>`Zanna.Graphics3D.SceneAsset.get_NodeCount` | `i64(obj)` | `rt_model3d_get_node_count` |
 | <a id="zanna-graphics3d-sceneasset-get-scenecount"></a>`Zanna.Graphics3D.SceneAsset.get_SceneCount` | `i64(obj)` | `rt_model3d_get_scene_count` |
 | `Zanna.Graphics3D.SceneAsset.GetCameraCount` | `i64(obj,i64)` | `rt_model3d_get_camera_count` |
@@ -2814,6 +2831,7 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | `Zanna.Graphics3D.SceneAsset.GetSkeleton` | `obj<Zanna.Graphics3D.Skeleton3D>(obj,i64)` | `rt_model3d_get_skeleton` |
 | `Zanna.Graphics3D.SceneAsset.GetAnimation` | `obj(obj,i64)` | `rt_model3d_get_animation` |
 | `Zanna.Graphics3D.SceneAsset.GetNodeAnimation` | `obj<Zanna.Graphics3D.NodeAnimation3D>(obj,i64)` | `rt_model3d_get_node_animation` |
+| `Zanna.Graphics3D.SceneAsset.GetMorphTarget` | `obj<Zanna.Graphics3D.MorphTarget3D>(obj,i64)` | `rt_model3d_get_morph_target` |
 | `Zanna.Graphics3D.SceneAsset.GetNodeAnimationName` | `str(obj,i64)` | `rt_model3d_get_node_animation_name` |
 | `Zanna.Graphics3D.SceneAsset.GetCamera` | `obj<Zanna.Graphics3D.Camera3D>(obj,i64,i64)` | `rt_model3d_get_camera` |
 | `Zanna.Graphics3D.SceneAsset.GetSceneName` | `str(obj,i64)` | `rt_model3d_get_scene_name` |

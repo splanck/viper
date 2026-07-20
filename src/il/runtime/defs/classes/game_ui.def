@@ -98,7 +98,7 @@ RT_CLASS_END()
 /// Create `Zanna.Game2D.SceneDocument` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Width`, `Height`, `TileWidth` and operations including `LoadJson`, `LoadJsonResult`, `Load`,
-/// `LoadResult`.
+/// `LoadResult`, plus filesystem and asset-package Tiled JSON/TMX import methods.
 RT_CLASS_BEGIN("Zanna.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
     RT_PROP("Width", "i64", GameSceneGetWidth, none)
     RT_PROP("Height", "i64", GameSceneGetHeight, none)
@@ -108,6 +108,10 @@ RT_CLASS_BEGIN("Zanna.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
     RT_METHOD("LoadJsonResult", "obj<Zanna.Result>(str)", GameSceneLoadJsonResult)
     RT_METHOD("Load", "obj<Zanna.Game2D.SceneDocument>(str)", GameSceneLoadFile)
     RT_METHOD("LoadResult", "obj<Zanna.Result>(str)", GameSceneLoadFileResult)
+    RT_METHOD("ImportTiled", "obj<Zanna.Game2D.SceneDocument>(str)", GameSceneImportTiled)
+    RT_METHOD("ImportTiledResult", "obj<Zanna.Result>(str)", GameSceneImportTiledResult)
+    RT_METHOD("ImportTiledAsset", "obj<Zanna.Game2D.SceneDocument>(str)", GameSceneImportTiledAsset)
+    RT_METHOD("ImportTiledAssetResult", "obj<Zanna.Result>(str)", GameSceneImportTiledAssetResult)
     RT_METHOD("ToJson", "str()", GameSceneToJson)
     RT_METHOD("Save", "i1(str)", GameSceneSaveFile)
     RT_METHOD("Diagnostics", "obj<Zanna.Collections.Seq>()", GameSceneDiagnostics)

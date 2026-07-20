@@ -32,6 +32,41 @@
 #include <math.h>
 #include <stdint.h>
 
+struct rt_scene_node3d;
+
+/// @brief Borrowed immutable-scene input for the model-aware VSCN v4 serializer.
+typedef struct rt_vscn_asset_scene_view {
+    struct rt_scene_node3d *root;
+    const char *name;
+    void *const *cameras;
+    int32_t camera_count;
+} rt_vscn_asset_scene_view;
+
+/// @brief Borrowed complete SceneAsset inventory consumed synchronously by VSCN v4 save.
+/// @details Every array remains owned by Model3D. The serializer validates class ids/counts and
+/// copies all output before this call returns.
+typedef struct rt_vscn_asset_save_view {
+    void *const *meshes;
+    int32_t mesh_count;
+    void *const *materials;
+    int32_t material_count;
+    void *const *skeletons;
+    int32_t skeleton_count;
+    void *const *animations;
+    int32_t animation_count;
+    void *const *node_animations;
+    int32_t node_animation_count;
+    void *const *cameras;
+    int32_t camera_count;
+    const rt_vscn_asset_scene_view *scenes;
+    int32_t scene_count;
+    const char *const *variant_names;
+    int32_t variant_count;
+} rt_vscn_asset_save_view;
+
+/// @brief Save a complete imported asset as VSCN v4.
+int64_t rt_vscn_save_asset_view(const rt_vscn_asset_save_view *view, rt_string path);
+
 /* A VSCN node adds an object and, except at the leaf, a children array to the shared JSON parser's
  * 200-level nesting budget. Ninety-eight node levels leave room for the document root plus the
  * deepest node's optional light/LOD/auto-LOD objects. Save and load enforce this same limit. */

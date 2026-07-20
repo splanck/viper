@@ -4,7 +4,20 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_scene_editor.h
-// Purpose: Scene-owned editable level document primitives for IDE scene tools.
+// Purpose: Scene-owned editable level document primitives for IDE scene tools,
+//   including dependency-aware Tiled JSON/TMX import.
+//
+// Key invariants:
+//   - SceneDocument loads never publish partially parsed external documents.
+//   - Tiled filesystem and asset-package dependency resolution are separate,
+//     explicit entry points with Result companions for recoverable failures.
+//
+// Ownership/Lifetime:
+//   - Returned SceneDocument and Result handles are owned runtime objects.
+//   - Input runtime strings are borrowed for the duration of each call.
+//
+// Links: rt_scene_editor.cpp, rt_tiled_import.cpp,
+//   docs/adr/0140-tiled-map-and-scene-import.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -38,6 +51,14 @@ void *rt_game_scene_load_file(rt_string path);
 /// @param path Scene file path.
 /// @return Opaque Zanna.Result object containing a SceneDocument or error string.
 void *rt_game_scene_load_file_result(rt_string path);
+/// @brief Import a filesystem Tiled JSON/TMX map as a SceneDocument, or NULL.
+void *rt_game_scene_import_tiled(rt_string path);
+/// @brief Result-returning filesystem companion to @ref rt_game_scene_import_tiled.
+void *rt_game_scene_import_tiled_result(rt_string path);
+/// @brief Import a Tiled JSON/TMX map and dependencies through the asset manager.
+void *rt_game_scene_import_tiled_asset(rt_string path);
+/// @brief Result-returning asset companion to @ref rt_game_scene_import_tiled_asset.
+void *rt_game_scene_import_tiled_asset_result(rt_string path);
 rt_string rt_game_scene_to_json(void *scene);
 int8_t rt_game_scene_save_file(void *scene, rt_string path);
 rt_string rt_game_scene_last_error(void *scene);

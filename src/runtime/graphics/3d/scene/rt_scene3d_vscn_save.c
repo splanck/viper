@@ -32,6 +32,8 @@
 #include "rt_file_stdio.h"
 #include "rt_json.h"
 #include "rt_map.h"
+#include "rt_morphtarget3d.h"
+#include "rt_morphtarget3d_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
@@ -64,8 +66,16 @@ typedef struct {
     /* v3 rig payload: skeletons referenced by collected meshes, plus optional
      * animation clips supplied by the baking caller (scene graphs own no clips). */
     vscn_ptr_table_t skeletons;
-    void **animations; /* borrowed rt_animation3d handles, not owned */
+    vscn_ptr_table_t cameras;
+    void *const *animations; /* borrowed rt_animation3d handles, not owned */
     int32_t animation_count;
+    void *const *node_animations; /* borrowed rt_node_animation3d handles */
+    int32_t node_animation_count;
+    const rt_vscn_asset_scene_view *scenes;
+    int32_t scene_count;
+    const char *const *variant_names;
+    int32_t variant_count;
+    int8_t asset_mode;
 } vscn_save_context_t;
 
 /// @brief Base64 alphabet table used by the encoder.
@@ -116,6 +126,48 @@ static char *vscn_base64_encode(const uint8_t *data, size_t len, size_t *out_len
     return output;
 }
 
+/// @brief Encode IEEE-754 float values in explicit little-endian order before Base64.
+static char *vscn_base64_encode_f32_le(const float *values, size_t count) {
+    uint8_t *bytes;
+    char *encoded;
+    if ((!values && count > 0) || count > SIZE_MAX / 4u)
+        return NULL;
+    bytes = (uint8_t *)malloc(count > 0 ? count * 4u : 1u);
+    if (!bytes)
+        return NULL;
+    for (size_t i = 0; i < count; ++i) {
+        uint32_t bits;
+        memcpy(&bits, &values[i], sizeof(bits));
+        bytes[i * 4u + 0u] = (uint8_t)(bits & 0xffu);
+        bytes[i * 4u + 1u] = (uint8_t)((bits >> 8u) & 0xffu);
+        bytes[i * 4u + 2u] = (uint8_t)((bits >> 16u) & 0xffu);
+        bytes[i * 4u + 3u] = (uint8_t)((bits >> 24u) & 0xffu);
+    }
+    encoded = vscn_base64_encode(bytes, count * 4u, NULL);
+    free(bytes);
+    return encoded;
+}
+
+/// @brief Encode IEEE-754 double values in explicit little-endian order before Base64.
+static char *vscn_base64_encode_f64_le(const double *values, size_t count) {
+    uint8_t *bytes;
+    char *encoded;
+    if ((!values && count > 0) || count > SIZE_MAX / 8u)
+        return NULL;
+    bytes = (uint8_t *)malloc(count > 0 ? count * 8u : 1u);
+    if (!bytes)
+        return NULL;
+    for (size_t i = 0; i < count; ++i) {
+        uint64_t bits;
+        memcpy(&bits, &values[i], sizeof(bits));
+        for (size_t byte = 0; byte < 8u; ++byte)
+            bytes[i * 8u + byte] = (uint8_t)((bits >> (byte * 8u)) & UINT64_C(0xff));
+    }
+    encoded = vscn_base64_encode(bytes, count * 8u, NULL);
+    free(bytes);
+    return encoded;
+}
+
 /// @brief Reset a pointer table — free its backing array and zero counts.
 static void vscn_free_ptr_table(vscn_ptr_table_t *table) {
     if (!table)
@@ -154,6 +206,17 @@ static int vscn_ptr_table_index_or_add(vscn_ptr_table_t *table, void *item) {
     table->items[table->count] = item;
     table->count++;
     return table->count - 1;
+}
+
+/// @brief Find an already-collected pointer without mutating table order.
+static int vscn_ptr_table_index(const vscn_ptr_table_t *table, const void *item) {
+    if (!table || !item)
+        return -1;
+    for (int32_t i = 0; i < table->count; ++i) {
+        if (table->items[i] == item)
+            return i;
+    }
+    return -1;
 }
 
 /// @brief Write `depth` levels of two-space indentation into `indent` (NUL-terminated).
@@ -375,6 +438,26 @@ static int vscn_collect_material_assets(rt_material3d *material, vscn_save_conte
     return 1;
 }
 
+/// @brief Register one validated material and all texture/cubemap dependencies.
+static int vscn_collect_material(rt_material3d *material, vscn_save_context_t *ctx) {
+    if (!material)
+        return 1;
+    return vscn_ptr_table_index_or_add(&ctx->materials, material) >= 0 &&
+           vscn_collect_material_assets(material, ctx);
+}
+
+/// @brief Register one validated mesh and its attached skeleton.
+static int vscn_collect_mesh(rt_mesh3d *mesh, vscn_save_context_t *ctx) {
+    if (!mesh)
+        return 1;
+    if (vscn_ptr_table_index_or_add(&ctx->meshes, mesh) < 0)
+        return 0;
+    if (rt_g3d_has_class(mesh->skeleton_ref, RT_G3D_SKELETON3D_CLASS_ID) &&
+        vscn_ptr_table_index_or_add(&ctx->skeletons, mesh->skeleton_ref) < 0)
+        return 0;
+    return 1;
+}
+
 /// @brief Collect mesh / material / texture references from a node subtree without recursion.
 static int vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t *ctx) {
     rt_scene_node3d **stack = NULL;
@@ -393,30 +476,49 @@ static int vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t *
     }
     while (count > 0) {
         rt_scene_node3d *current = stack[--count];
+        rt_mesh3d *mesh;
+        rt_material3d *material;
         if (!current)
             continue;
-        if (rt_g3d_has_class(current->mesh, RT_G3D_MESH3D_CLASS_ID)) {
-            rt_mesh3d *node_mesh = (rt_mesh3d *)current->mesh;
-            if (vscn_ptr_table_index_or_add(&ctx->meshes, current->mesh) < 0) {
-                free(stack);
-                return 0;
-            }
-            if (rt_g3d_has_class(node_mesh->skeleton_ref, RT_G3D_SKELETON3D_CLASS_ID) &&
-                vscn_ptr_table_index_or_add(&ctx->skeletons, node_mesh->skeleton_ref) < 0) {
-                free(stack);
-                return 0;
-            }
+        mesh = (rt_mesh3d *)rt_g3d_checked_or_null(current->mesh, RT_G3D_MESH3D_CLASS_ID);
+        material =
+            (rt_material3d *)rt_g3d_checked_or_null(current->material, RT_G3D_MATERIAL3D_CLASS_ID);
+        if ((current->mesh && !mesh) || (current->material && !material) ||
+            (current->light && !rt_g3d_has_class(current->light, RT_G3D_LIGHT3D_CLASS_ID))) {
+            free(stack);
+            return 0;
         }
-        if (rt_g3d_has_class(current->material, RT_G3D_MATERIAL3D_CLASS_ID)) {
-            if (vscn_ptr_table_index_or_add(&ctx->materials, current->material) < 0 ||
-                !vscn_collect_material_assets((rt_material3d *)current->material, ctx)) {
+        if (!vscn_collect_mesh(mesh, ctx) || !vscn_collect_material(material, ctx)) {
+            free(stack);
+            return 0;
+        }
+        if (ctx->asset_mode && current->variant_material_count > 0) {
+            if (!current->variant_materials ||
+                current->variant_material_count > ctx->variant_count) {
                 free(stack);
                 return 0;
+            }
+            for (int32_t i = 0; i < current->variant_material_count; ++i) {
+                rt_material3d *variant = (rt_material3d *)rt_g3d_checked_or_null(
+                    current->variant_materials[i], RT_G3D_MATERIAL3D_CLASS_ID);
+                if (current->variant_materials[i] && !variant) {
+                    free(stack);
+                    return 0;
+                }
+                if (!vscn_collect_material(variant, ctx)) {
+                    free(stack);
+                    return 0;
+                }
             }
         }
         for (int32_t i = 0, lod_count = scene3d_node_lod_count(current); i < lod_count; i++) {
-            if (rt_g3d_has_class(current->lod_levels[i].mesh, RT_G3D_MESH3D_CLASS_ID) &&
-                vscn_ptr_table_index_or_add(&ctx->meshes, current->lod_levels[i].mesh) < 0) {
+            rt_mesh3d *lod_mesh = (rt_mesh3d *)rt_g3d_checked_or_null(current->lod_levels[i].mesh,
+                                                                      RT_G3D_MESH3D_CLASS_ID);
+            if (current->lod_levels[i].mesh && !lod_mesh) {
+                free(stack);
+                return 0;
+            }
+            if (!vscn_collect_mesh(lod_mesh, ctx)) {
                 free(stack);
                 return 0;
             }
@@ -446,6 +548,84 @@ static int vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t *
         }
     }
     free(stack);
+    return 1;
+}
+
+/// @brief Validate and seed every shared table from a complete SceneAsset view before tree walks.
+static int vscn_collect_asset_view(const rt_vscn_asset_save_view *view, vscn_save_context_t *ctx) {
+    if (!view || !ctx || view->scene_count <= 0 || view->scene_count > 65536 || !view->scenes ||
+        view->mesh_count < 0 || view->material_count < 0 || view->skeleton_count < 0 ||
+        view->animation_count < 0 || view->node_animation_count < 0 || view->camera_count < 0 ||
+        view->variant_count < 0)
+        return 0;
+    ctx->asset_mode = 1;
+    ctx->animations = view->animations;
+    ctx->animation_count = view->animation_count;
+    ctx->node_animations = view->node_animations;
+    ctx->node_animation_count = view->node_animation_count;
+    ctx->scenes = view->scenes;
+    ctx->scene_count = view->scene_count;
+    ctx->variant_names = view->variant_names;
+    ctx->variant_count = view->variant_count;
+
+    for (int32_t i = 0; i < view->mesh_count; ++i) {
+        rt_mesh3d *mesh = view->meshes ? (rt_mesh3d *)rt_g3d_checked_or_null(view->meshes[i],
+                                                                             RT_G3D_MESH3D_CLASS_ID)
+                                       : NULL;
+        if (!mesh || !vscn_collect_mesh(mesh, ctx))
+            return 0;
+    }
+    for (int32_t i = 0; i < view->material_count; ++i) {
+        rt_material3d *material =
+            view->materials ? (rt_material3d *)rt_g3d_checked_or_null(view->materials[i],
+                                                                      RT_G3D_MATERIAL3D_CLASS_ID)
+                            : NULL;
+        if (!material || !vscn_collect_material(material, ctx))
+            return 0;
+    }
+    for (int32_t i = 0; i < view->skeleton_count; ++i) {
+        void *skeleton =
+            view->skeletons ? rt_g3d_checked_or_null(view->skeletons[i], RT_G3D_SKELETON3D_CLASS_ID)
+                            : NULL;
+        if (!skeleton || vscn_ptr_table_index_or_add(&ctx->skeletons, skeleton) < 0)
+            return 0;
+    }
+    for (int32_t i = 0; i < view->animation_count; ++i) {
+        if (!view->animations ||
+            !rt_g3d_has_class(view->animations[i], RT_G3D_ANIMATION3D_CLASS_ID))
+            return 0;
+    }
+    for (int32_t i = 0; i < view->node_animation_count; ++i) {
+        if (!view->node_animations ||
+            !rt_g3d_has_class(view->node_animations[i], RT_G3D_NODEANIMATION3D_CLASS_ID))
+            return 0;
+    }
+    for (int32_t i = 0; i < view->camera_count; ++i) {
+        void *camera = view->cameras
+                           ? rt_g3d_checked_or_null(view->cameras[i], RT_G3D_CAMERA3D_CLASS_ID)
+                           : NULL;
+        if (!camera || vscn_ptr_table_index_or_add(&ctx->cameras, camera) < 0)
+            return 0;
+    }
+    if (view->variant_count > 0 && !view->variant_names)
+        return 0;
+    for (int32_t i = 0; i < view->variant_count; ++i) {
+        if (!view->variant_names[i])
+            return 0;
+    }
+    for (int32_t i = 0; i < view->scene_count; ++i) {
+        const rt_vscn_asset_scene_view *scene = &view->scenes[i];
+        if (!rt_g3d_has_class(scene->root, RT_G3D_SCENENODE3D_CLASS_ID) || !scene->name ||
+            scene->camera_count < 0 || (scene->camera_count > 0 && !scene->cameras) ||
+            !vscn_collect_node_assets(scene->root, ctx))
+            return 0;
+        for (int32_t camera_index = 0; camera_index < scene->camera_count; ++camera_index) {
+            void *camera =
+                rt_g3d_checked_or_null(scene->cameras[camera_index], RT_G3D_CAMERA3D_CLASS_ID);
+            if (!camera || vscn_ptr_table_index_or_add(&ctx->cameras, camera) < 0)
+                return 0;
+        }
+    }
     return 1;
 }
 
@@ -626,7 +806,7 @@ static int vscn_serialize_material(rt_material3d *material,
         return 0;
     }
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 12; i++) {
         if (!vscn_append(buf,
                          len,
                          cap,
@@ -646,6 +826,7 @@ static int vscn_serialize_material(rt_material3d *material,
                 cap,
                 "%s{\"uvSet\": %d, \"wrapS\": %d, \"wrapT\": %d, "
                 "\"filter\": %d, \"minFilter\": %d, \"magFilter\": %d, \"mipFilter\": %d, "
+                "\"anisotropy\": %d, "
                 "\"uvTransform\": [%.17g, %.17g, %.17g, %.17g, %.17g, %.17g]}",
                 i == 0 ? "" : ", ",
                 material->texture_slot_uv_set[i] > 0 ? 1 : 0,
@@ -659,6 +840,11 @@ static int vscn_serialize_material(rt_material3d *material,
                                RT_MATERIAL3D_TEXTURE_FILTER_LINEAR),
                 vscn_mip_filter_or(material->texture_slot_mip_filter[i],
                                    RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE),
+                material->texture_slot_anisotropy[i] < 1
+                    ? 1
+                    : (material->texture_slot_anisotropy[i] > 16
+                           ? 16
+                           : material->texture_slot_anisotropy[i]),
                 vscn_clamp_abs_or(uvm[0], 1.0),
                 vscn_clamp_abs_or(uvm[1], 0.0),
                 vscn_clamp_abs_or(uvm[2], 0.0),
@@ -667,6 +853,77 @@ static int vscn_serialize_material(rt_material3d *material,
                 vscn_clamp_abs_or(uvm[5], 0.0))) {
             return 0;
         }
+    }
+    return vscn_append(buf, len, cap, "]}");
+}
+
+/// @brief Append a mesh's complete VSCN v4 morph-target block, if attached.
+static int vscn_serialize_mesh_morph_targets(rt_mesh3d *mesh,
+                                             char **buf,
+                                             size_t *len,
+                                             size_t *cap) {
+    int64_t shape_count;
+    if (!mesh || !mesh->morph_targets_ref)
+        return 1;
+    if (!rt_g3d_has_class(mesh->morph_targets_ref, RT_G3D_MORPHTARGET3D_CLASS_ID))
+        return 0;
+    shape_count = rt_morphtarget3d_get_shape_count(mesh->morph_targets_ref);
+    if (shape_count < 0 || shape_count > 65536 ||
+        !vscn_append(buf,
+                     len,
+                     cap,
+                     ", \"morphTargets\": {\"deltaFormat\": \"f32le-v1\", "
+                     "\"vertexCount\": %u, \"shapes\": [",
+                     mesh->vertex_count))
+        return 0;
+    for (int64_t shape = 0; shape < shape_count; ++shape) {
+        rt_morphtarget3d_shape_view_internal view;
+        size_t value_count;
+        char *positions = NULL;
+        char *normals = NULL;
+        char *tangents = NULL;
+        int ok;
+        if (!rt_morphtarget3d_get_shape_view_internal(mesh->morph_targets_ref, shape, &view) ||
+            view.vertex_count != (int32_t)mesh->vertex_count || view.vertex_count <= 0 ||
+            (size_t)view.vertex_count > SIZE_MAX / 3u)
+            return 0;
+        value_count = (size_t)view.vertex_count * 3u;
+        if (!isfinite(view.weight))
+            return 0;
+        for (size_t value = 0; value < value_count; ++value) {
+            if (!isfinite(view.position_deltas[value]) ||
+                (view.normal_deltas && !isfinite(view.normal_deltas[value])) ||
+                (view.tangent_deltas && !isfinite(view.tangent_deltas[value])))
+                return 0;
+        }
+        positions = vscn_base64_encode_f32_le(view.position_deltas, value_count);
+        if (view.normal_deltas)
+            normals = vscn_base64_encode_f32_le(view.normal_deltas, value_count);
+        if (view.tangent_deltas)
+            tangents = vscn_base64_encode_f32_le(view.tangent_deltas, value_count);
+        if (!positions || (view.normal_deltas && !normals) || (view.tangent_deltas && !tangents)) {
+            free(positions);
+            free(normals);
+            free(tangents);
+            return 0;
+        }
+        ok = vscn_append(buf, len, cap, shape > 0 ? ",{\"name\": " : "{\"name\": ") &&
+             vscn_append_json_string(buf, len, cap, view.name ? view.name : "") &&
+             vscn_append(buf, len, cap, ", \"weight\": %.9g, \"positionBase64\": ", view.weight) &&
+             vscn_append_json_string(buf, len, cap, positions);
+        if (ok && normals)
+            ok = vscn_append(buf, len, cap, ", \"normalBase64\": ") &&
+                 vscn_append_json_string(buf, len, cap, normals);
+        if (ok && tangents)
+            ok = vscn_append(buf, len, cap, ", \"tangentBase64\": ") &&
+                 vscn_append_json_string(buf, len, cap, tangents);
+        if (ok)
+            ok = vscn_append(buf, len, cap, "}");
+        free(positions);
+        free(normals);
+        free(tangents);
+        if (!ok)
+            return 0;
     }
     return vscn_append(buf, len, cap, "]}");
 }
@@ -758,6 +1015,8 @@ static int vscn_serialize_mesh(
             if (!ok)
                 return 0;
         }
+        if (ctx && ctx->asset_mode && !vscn_serialize_mesh_morph_targets(mesh, buf, len, cap))
+            return 0;
         return vscn_append(buf, len, cap, "}");
     }
 }
@@ -774,16 +1033,22 @@ static int vscn_serialize_node_fields(rt_scene_node3d *node,
     char indent[64];
     vscn_make_indent(indent, sizeof(indent), depth);
 
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_g3d_checked_or_null(node->mesh, RT_G3D_MESH3D_CLASS_ID);
+    rt_material3d *material =
+        (rt_material3d *)rt_g3d_checked_or_null(node->material, RT_G3D_MATERIAL3D_CLASS_ID);
     const char *name = node->name ? rt_string_cstr(node->name) : "node";
     if (!name)
         name = "node";
+    if ((node->mesh && !mesh) || (node->material && !material) ||
+        (node->light && !rt_g3d_has_class(node->light, RT_G3D_LIGHT3D_CLASS_ID)) ||
+        (ctx->asset_mode && node->import_index < -1))
+        return 0;
     double rotation[4] = {
         node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]};
     vscn_normalize_quat(rotation);
-    int mesh_index = node->mesh ? vscn_ptr_table_index_or_add(&ctx->meshes, node->mesh) : -1;
-    int material_index =
-        node->material ? vscn_ptr_table_index_or_add(&ctx->materials, node->material) : -1;
-    if ((node->mesh && mesh_index < 0) || (node->material && material_index < 0))
+    int mesh_index = mesh ? vscn_ptr_table_index_or_add(&ctx->meshes, mesh) : -1;
+    int material_index = material ? vscn_ptr_table_index_or_add(&ctx->materials, material) : -1;
+    if ((mesh && mesh_index < 0) || (material && material_index < 0))
         return 0;
 
     if (!vscn_append(buf, len, cap, "%s{\n", indent) ||
@@ -822,14 +1087,9 @@ static int vscn_serialize_node_fields(rt_scene_node3d *node,
         !vscn_append(
             buf, len, cap, "%s  \"isStatic\": %s,\n", indent, node->is_static ? "true" : "false") ||
         !vscn_append(buf, len, cap, "%s  \"syncMode\": %d,\n", indent, (int)node->sync_mode) ||
+        !vscn_append(buf, len, cap, "%s  \"hasMesh\": %s,\n", indent, mesh ? "true" : "false") ||
         !vscn_append(
-            buf, len, cap, "%s  \"hasMesh\": %s,\n", indent, node->mesh ? "true" : "false") ||
-        !vscn_append(buf,
-                     len,
-                     cap,
-                     "%s  \"hasMaterial\": %s,\n",
-                     indent,
-                     node->material ? "true" : "false") ||
+            buf, len, cap, "%s  \"hasMaterial\": %s,\n", indent, material ? "true" : "false") ||
         !vscn_append(buf,
                      len,
                      cap,
@@ -839,6 +1099,32 @@ static int vscn_serialize_node_fields(rt_scene_node3d *node,
                      indent,
                      material_index)) {
         return 0;
+    }
+
+    if (ctx->asset_mode &&
+        !vscn_append(buf, len, cap, ",\n%s  \"importIndex\": %d", indent, node->import_index))
+        return 0;
+
+    if (ctx->asset_mode && node->variant_material_count > 0) {
+        if (!node->variant_materials || node->variant_material_count > ctx->variant_count ||
+            !vscn_append(buf, len, cap, ",\n%s  \"variantMaterials\": [", indent))
+            return 0;
+        for (int32_t i = 0; i < ctx->variant_count; ++i) {
+            int variant_index = -1;
+            void *variant_material =
+                i < node->variant_material_count ? node->variant_materials[i] : NULL;
+            if (variant_material) {
+                if (!rt_g3d_has_class(variant_material, RT_G3D_MATERIAL3D_CLASS_ID))
+                    return 0;
+                variant_index = vscn_ptr_table_index_or_add(&ctx->materials, variant_material);
+                if (variant_index < 0)
+                    return 0;
+            }
+            if (!vscn_append(buf, len, cap, i > 0 ? ", %d" : "%d", variant_index))
+                return 0;
+        }
+        if (!vscn_append(buf, len, cap, "]"))
+            return 0;
     }
 
     if (node->light) {
@@ -1012,6 +1298,7 @@ static void vscn_save_free_ctx(vscn_save_context_t *ctx) {
     vscn_free_ptr_table(&ctx->textures);
     vscn_free_ptr_table(&ctx->cubemaps);
     vscn_free_ptr_table(&ctx->skeletons);
+    vscn_free_ptr_table(&ctx->cameras);
 }
 
 /// @brief Emit the `"textures": [ ... ],` array. @return 1 on success, 0 on append failure.
@@ -1158,6 +1445,176 @@ static int vscn_save_emit_animations(char **buf,
     return vscn_append(buf, len, cap, "  ],\n");
 }
 
+/// @brief Emit complete VSCN v4 node/object/morph animation clips.
+static int vscn_save_emit_node_animations(char **buf,
+                                          size_t *len,
+                                          size_t *cap,
+                                          vscn_save_context_t *ctx) {
+    if (!vscn_append(buf, len, cap, "  \"nodeAnimations\": [\n"))
+        return 0;
+    for (int32_t i = 0; i < ctx->node_animation_count; ++i) {
+        rt_node_animation3d *animation = (rt_node_animation3d *)rt_g3d_checked_or_null(
+            ctx->node_animations[i], RT_G3D_NODEANIMATION3D_CLASS_ID);
+        int32_t channel_count;
+        const char *name;
+        if (!animation || !isfinite(animation->duration) || animation->duration <= 0.0)
+            return 0;
+        name = animation->name && rt_string_is_handle(animation->name)
+                   ? rt_string_cstr(animation->name)
+                   : NULL;
+        channel_count = scene3d_node_animation_channel_count(animation);
+        if (!name || !vscn_append(buf, len, cap, "    {\"name\": ") ||
+            !vscn_append_json_string(buf, len, cap, name) ||
+            !vscn_append(buf,
+                         len,
+                         cap,
+                         ", \"duration\": %.17g, \"looping\": %s, "
+                         "\"sampleFormat\": \"f64le-f32le-v1\", \"channels\": [\n",
+                         animation->duration,
+                         animation->looping ? "true" : "false"))
+            return 0;
+        for (int32_t channel_index = 0; channel_index < channel_count; ++channel_index) {
+            const rt_node_anim_channel3d *channel = &animation->channels[channel_index];
+            const char *target;
+            size_t value_count;
+            char *times = NULL;
+            char *values = NULL;
+            char *in_tangents = NULL;
+            char *out_tangents = NULL;
+            int ok;
+            if (!channel->target_name || !rt_string_is_handle(channel->target_name) ||
+                channel->key_count <= 0 || channel->value_width <= 0 || !channel->times ||
+                !channel->values || channel->path < RT_NODE_ANIM_PATH_TRANSLATION ||
+                channel->path > RT_NODE_ANIM_PATH_WEIGHTS ||
+                channel->interpolation < RT_NODE_ANIM_INTERP_LINEAR ||
+                channel->interpolation > RT_NODE_ANIM_INTERP_CUBICSPLINE ||
+                (size_t)channel->key_count > SIZE_MAX / (size_t)channel->value_width)
+                return 0;
+            target = rt_string_cstr(channel->target_name);
+            value_count = (size_t)channel->key_count * (size_t)channel->value_width;
+            for (int32_t key = 0; key < channel->key_count; ++key) {
+                if (!isfinite(channel->times[key]))
+                    return 0;
+            }
+            for (size_t value = 0; value < value_count; ++value) {
+                if (!isfinite(channel->values[value]) ||
+                    (channel->interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE &&
+                     (!channel->in_tangents || !channel->out_tangents ||
+                      !isfinite(channel->in_tangents[value]) ||
+                      !isfinite(channel->out_tangents[value]))))
+                    return 0;
+            }
+            times = vscn_base64_encode_f64_le(channel->times, (size_t)channel->key_count);
+            values = vscn_base64_encode_f32_le(channel->values, value_count);
+            if (channel->interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE) {
+                in_tangents = vscn_base64_encode_f32_le(channel->in_tangents, value_count);
+                out_tangents = vscn_base64_encode_f32_le(channel->out_tangents, value_count);
+            }
+            if (!target || target[0] == '\0' || !times || !values ||
+                (channel->interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE &&
+                 (!in_tangents || !out_tangents))) {
+                free(times);
+                free(values);
+                free(in_tangents);
+                free(out_tangents);
+                return 0;
+            }
+            ok = vscn_append(buf, len, cap, "      {\"target\": ") &&
+                 vscn_append_json_string(buf, len, cap, target) &&
+                 vscn_append(buf,
+                             len,
+                             cap,
+                             ", \"targetNode\": %d, \"path\": %d, "
+                             "\"interpolation\": %d, \"keyCount\": %d, "
+                             "\"valueWidth\": %d, \"timesBase64\": ",
+                             channel->target_node_index,
+                             channel->path,
+                             channel->interpolation,
+                             channel->key_count,
+                             channel->value_width) &&
+                 vscn_append_json_string(buf, len, cap, times) &&
+                 vscn_append(buf, len, cap, ", \"valuesBase64\": ") &&
+                 vscn_append_json_string(buf, len, cap, values);
+            if (ok && in_tangents)
+                ok = vscn_append(buf, len, cap, ", \"inTangentsBase64\": ") &&
+                     vscn_append_json_string(buf, len, cap, in_tangents) &&
+                     vscn_append(buf, len, cap, ", \"outTangentsBase64\": ") &&
+                     vscn_append_json_string(buf, len, cap, out_tangents);
+            if (ok)
+                ok = vscn_append(buf, len, cap, channel_index + 1 < channel_count ? "},\n" : "}\n");
+            free(times);
+            free(values);
+            free(in_tangents);
+            free(out_tangents);
+            if (!ok)
+                return 0;
+        }
+        if (!vscn_append(
+                buf, len, cap, i + 1 < ctx->node_animation_count ? "    ]},\n" : "    ]}\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ],\n");
+}
+
+/// @brief Emit the deduplicated VSCN v4 Camera3D table.
+static int vscn_save_emit_cameras(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
+    if (!vscn_append(buf, len, cap, "  \"cameras\": [\n"))
+        return 0;
+    for (int32_t i = 0; i < ctx->cameras.count; ++i) {
+        rt_camera3d *camera =
+            (rt_camera3d *)rt_g3d_checked_or_null(ctx->cameras.items[i], RT_G3D_CAMERA3D_CLASS_ID);
+        if (!camera || !isfinite(camera->fov) || !isfinite(camera->aspect) ||
+            !isfinite(camera->near_plane) || !isfinite(camera->far_plane) ||
+            !isfinite(camera->ortho_size) || camera->aspect <= 0.0 || camera->near_plane <= 0.0 ||
+            camera->far_plane <= camera->near_plane || camera->ortho_size <= 0.0 ||
+            (!camera->is_ortho && (camera->fov <= 0.0 || camera->fov >= 180.0)) ||
+            !vscn_append(buf,
+                         len,
+                         cap,
+                         "    {\"isOrtho\": %s, \"fov\": %.17g, \"aspect\": %.17g, "
+                         "\"near\": %.17g, \"far\": %.17g, \"orthoSize\": %.17g, "
+                         "\"eye\": [",
+                         camera->is_ortho ? "true" : "false",
+                         camera->fov,
+                         camera->aspect,
+                         camera->near_plane,
+                         camera->far_plane,
+                         camera->ortho_size))
+            return 0;
+        for (int lane = 0; lane < 3; ++lane) {
+            if (!isfinite(camera->eye[lane]) ||
+                !vscn_append(buf, len, cap, lane ? ", %.17g" : "%.17g", camera->eye[lane]))
+                return 0;
+        }
+        if (!vscn_append(buf, len, cap, "], \"view\": ["))
+            return 0;
+        for (int lane = 0; lane < 16; ++lane) {
+            if (!isfinite(camera->view[lane]) ||
+                !vscn_append(buf, len, cap, lane ? ", %.17g" : "%.17g", camera->view[lane]))
+                return 0;
+        }
+        if (!vscn_append(buf, len, cap, i + 1 < ctx->cameras.count ? "]},\n" : "]}\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ],\n");
+}
+
+/// @brief Emit ordered VSCN v4 material-variant display names.
+static int vscn_save_emit_variant_names(char **buf,
+                                        size_t *len,
+                                        size_t *cap,
+                                        vscn_save_context_t *ctx) {
+    if (!vscn_append(buf, len, cap, "  \"variantNames\": ["))
+        return 0;
+    for (int32_t i = 0; i < ctx->variant_count; ++i) {
+        if (!ctx->variant_names || !ctx->variant_names[i] ||
+            (i > 0 && !vscn_append(buf, len, cap, ", ")) ||
+            !vscn_append_json_string(buf, len, cap, ctx->variant_names[i]))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "],\n");
+}
+
 /// @brief Emit the `"meshes": [ ... ],` array. @return 1 on success, 0 on append failure.
 static int vscn_save_emit_meshes(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
     if (!vscn_append(buf, len, cap, "  \"meshes\": [\n"))
@@ -1194,6 +1651,121 @@ static int vscn_save_emit_nodes(
     return vscn_append(buf, len, cap, "  ]\n");
 }
 
+/// @brief Emit one synthetic scene root's children as a nested node array.
+static int vscn_save_emit_scene_node_array(
+    char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx, rt_scene_node3d *root) {
+    int32_t child_count = scene3d_node_child_count(root);
+    int32_t emitted = 0;
+    if (!root || !vscn_append(buf, len, cap, "[\n"))
+        return 0;
+    for (int32_t i = 0; i < child_count; ++i) {
+        rt_scene_node3d *child = scene_node3d_checked(root->children[i]);
+        if (!child)
+            continue;
+        if (emitted > 0 && !vscn_append(buf, len, cap, ",\n"))
+            return 0;
+        if (!vscn_serialize_node(child, ctx, buf, len, cap, 3))
+            return 0;
+        emitted++;
+    }
+    return vscn_append(buf, len, cap, emitted > 0 ? "\n    ]" : "    ]");
+}
+
+/// @brief Emit ordered VSCN v4 immutable scenes and their camera memberships.
+static int vscn_save_emit_scenes(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
+    if (!ctx->scenes || ctx->scene_count <= 0 || !vscn_append(buf, len, cap, "  \"scenes\": [\n"))
+        return 0;
+    for (int32_t scene_index = 0; scene_index < ctx->scene_count; ++scene_index) {
+        const rt_vscn_asset_scene_view *scene = &ctx->scenes[scene_index];
+        if (!scene->root || !scene->name || !vscn_append(buf, len, cap, "    {\"name\": ") ||
+            !vscn_append_json_string(buf, len, cap, scene->name) ||
+            !vscn_append(buf, len, cap, ", \"cameras\": ["))
+            return 0;
+        for (int32_t camera_index = 0; camera_index < scene->camera_count; ++camera_index) {
+            int table_index = vscn_ptr_table_index(&ctx->cameras, scene->cameras[camera_index]);
+            if (table_index < 0 ||
+                !vscn_append(buf, len, cap, camera_index > 0 ? ", %d" : "%d", table_index))
+                return 0;
+        }
+        if (!vscn_append(buf, len, cap, "], \"nodes\": ") ||
+            !vscn_save_emit_scene_node_array(buf, len, cap, ctx, scene->root) ||
+            !vscn_append(buf, len, cap, scene_index + 1 < ctx->scene_count ? "},\n" : "}\n"))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "  ]\n");
+}
+
+/// @brief Atomically publish a completed VSCN text buffer at @p filepath.
+static int64_t vscn_write_atomic(const char *filepath, const char *buf, size_t len) {
+    FILE *file;
+    char *tmp_path = NULL;
+    size_t written = 0;
+    int64_t result;
+    if (!filepath || !buf || len > VSCN_MAX_FILE_BYTES)
+        return 0;
+    file = rt_file_stdio_open_temp_for_replace_utf8(filepath, &tmp_path);
+    if (!file)
+        return 0;
+    while (written < len) {
+        size_t chunk = fwrite(buf + written, 1, len - written, file);
+        if (chunk == 0) {
+            fclose(file);
+            (void)rt_file_stdio_unlink_utf8(tmp_path);
+            free(tmp_path);
+            return 0;
+        }
+        written += chunk;
+    }
+    if (fflush(file) != 0 || fclose(file) != 0) {
+        (void)rt_file_stdio_unlink_utf8(tmp_path);
+        free(tmp_path);
+        return 0;
+    }
+    result = rt_file_stdio_replace_utf8(tmp_path, filepath) ? 1 : 0;
+    if (!result)
+        (void)rt_file_stdio_unlink_utf8(tmp_path);
+    free(tmp_path);
+    return result;
+}
+
+/// @brief Serialize a complete imported SceneAsset as VSCN v4.
+int64_t rt_vscn_save_asset_view(const rt_vscn_asset_save_view *view, rt_string path) {
+    vscn_save_context_t ctx = {0};
+    char *buf = NULL;
+    size_t len = 0;
+    size_t cap = 0;
+    const char *filepath;
+    int64_t result;
+    if (!view || !path || !rt_string_is_handle(path))
+        return 0;
+    filepath = rt_string_cstr(path);
+    if (!filepath || filepath[0] == '\0' || !vscn_collect_asset_view(view, &ctx)) {
+        vscn_save_free_ctx(&ctx);
+        return 0;
+    }
+    if (!vscn_append(&buf, &len, &cap, "{\n") ||
+        !vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n") ||
+        !vscn_append(&buf, &len, &cap, "  \"version\": 4,\n") ||
+        !vscn_save_emit_textures(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_cubemaps(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_materials(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_skeletons(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_animations(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_node_animations(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_cameras(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_variant_names(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_meshes(&buf, &len, &cap, &ctx) ||
+        !vscn_save_emit_scenes(&buf, &len, &cap, &ctx) || !vscn_append(&buf, &len, &cap, "}\n")) {
+        vscn_save_free_ctx(&ctx);
+        free(buf);
+        return 0;
+    }
+    result = vscn_write_atomic(filepath, buf, len);
+    vscn_save_free_ctx(&ctx);
+    free(buf);
+    return result;
+}
+
 /// @brief Serialize the scene to a .vscn file. @return 1 on success, 0 on failure.
 int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     if (!scene_obj || !path)
@@ -1211,9 +1783,6 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     vscn_save_context_t ctx = {0};
     char *buf = NULL;
     size_t len = 0, cap = 0;
-    FILE *f = NULL;
-    char *tmp_path = NULL;
-    size_t written = 0;
     int64_t result = 0;
 
     for (int32_t i = 0, child_count = scene3d_node_child_count(scene->root); i < child_count; i++) {
@@ -1255,35 +1824,7 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
         return 0;
     }
 
-    f = rt_file_stdio_open_temp_for_replace_utf8(filepath, &tmp_path);
-    if (!f) {
-        vscn_save_free_ctx(&ctx);
-        free(buf);
-        return 0;
-    }
-    while (written < len) {
-        size_t chunk = fwrite(buf + written, 1, len - written, f);
-        if (chunk == 0) {
-            fclose(f);
-            (void)rt_file_stdio_unlink_utf8(tmp_path);
-            free(tmp_path);
-            vscn_save_free_ctx(&ctx);
-            free(buf);
-            return 0;
-        }
-        written += chunk;
-    }
-    if (fflush(f) != 0 || fclose(f) != 0) {
-        (void)rt_file_stdio_unlink_utf8(tmp_path);
-        free(tmp_path);
-        vscn_save_free_ctx(&ctx);
-        free(buf);
-        return 0;
-    }
-    result = rt_file_stdio_replace_utf8(tmp_path, filepath) ? 1 : 0;
-    if (!result)
-        (void)rt_file_stdio_unlink_utf8(tmp_path);
-    free(tmp_path);
+    result = vscn_write_atomic(filepath, buf, len);
     vscn_save_free_ctx(&ctx);
     free(buf);
     return result;

@@ -35,6 +35,7 @@
 #include "rt_g3d_ref_slots.h"
 #include "rt_heap.h"
 #include "rt_mat4.h"
+#include "rt_morphtarget3d_internal.h"
 #include "rt_object.h"
 #include "rt_string.h"
 #include "rt_trap.h"
@@ -853,6 +854,91 @@ void rt_morphtarget3d_set_weight_by_name(void *obj, rt_string name, double weigh
 int64_t rt_morphtarget3d_get_shape_count(void *obj) {
     rt_morphtarget3d *mt = morphtarget_checked(obj);
     return mt ? morphtarget_safe_shape_count(mt) : 0;
+}
+
+/// @brief Expose one validated shape through the narrow persistence-only borrowed view.
+int8_t rt_morphtarget3d_get_shape_view_internal(void *obj,
+                                                int64_t shape_index,
+                                                rt_morphtarget3d_shape_view_internal *out_view) {
+    rt_morphtarget3d *mt = morphtarget_checked(obj);
+    int32_t shape_count;
+    if (out_view)
+        memset(out_view, 0, sizeof(*out_view));
+    if (!mt || !out_view || shape_index < 0)
+        return 0;
+    shape_count = morphtarget_safe_shape_count(mt);
+    if (shape_index >= shape_count)
+        return 0;
+    out_view->name = mt->shapes[shape_index].name;
+    out_view->position_deltas = mt->shapes[shape_index].pos_deltas;
+    out_view->normal_deltas = mt->shapes[shape_index].nrm_deltas;
+    out_view->tangent_deltas = mt->shapes[shape_index].tan_deltas;
+    out_view->weight = mt->weights ? morphtarget_sanitize_weight(mt->weights[shape_index]) : 0.0;
+    out_view->vertex_count = mt->vertex_count;
+    return out_view->position_deltas && out_view->vertex_count > 0 ? 1 : 0;
+}
+
+/// @brief Validate and copy a complete persistence shape into a morph container.
+int8_t rt_morphtarget3d_append_shape_internal(void *obj,
+                                              const rt_morphtarget3d_shape_view_internal *view) {
+    rt_morphtarget3d *mt = morphtarget_checked(obj);
+    vgfx3d_morph_shape_t *shape;
+    float *position_copy = NULL;
+    float *normal_copy = NULL;
+    float *tangent_copy = NULL;
+    size_t delta_size;
+    size_t value_count;
+    if (!mt || !view || !view->name || !view->position_deltas || view->vertex_count <= 0 ||
+        view->vertex_count != mt->vertex_count || strlen(view->name) > 63 ||
+        !isfinite(view->weight) || !morphtarget_vertex_delta_bytes(mt->vertex_count, &delta_size))
+        return 0;
+    value_count = (size_t)mt->vertex_count * 3u;
+    for (size_t i = 0; i < value_count; ++i) {
+        if (!isfinite(view->position_deltas[i]) ||
+            (view->normal_deltas && !isfinite(view->normal_deltas[i])) ||
+            (view->tangent_deltas && !isfinite(view->tangent_deltas[i])))
+            return 0;
+    }
+    position_copy = (float *)malloc(delta_size);
+    if (!position_copy)
+        goto fail;
+    memcpy(position_copy, view->position_deltas, delta_size);
+    if (view->normal_deltas) {
+        normal_copy = (float *)malloc(delta_size);
+        if (!normal_copy)
+            goto fail;
+        memcpy(normal_copy, view->normal_deltas, delta_size);
+    }
+    if (view->tangent_deltas) {
+        tangent_copy = (float *)malloc(delta_size);
+        if (!tangent_copy)
+            goto fail;
+        memcpy(tangent_copy, view->tangent_deltas, delta_size);
+    }
+    morphtarget_repair_shape_table(mt);
+    if (mt->shape_count == INT32_MAX || !morphtarget_reserve_shapes(mt, mt->shape_count + 1))
+        goto fail;
+    shape = &mt->shapes[mt->shape_count];
+    memset(shape, 0, sizeof(*shape));
+    memcpy(shape->name, view->name, strlen(view->name) + 1u);
+    shape->pos_deltas = position_copy;
+    shape->nrm_deltas = normal_copy;
+    shape->tan_deltas = tangent_copy;
+    position_copy = NULL;
+    normal_copy = NULL;
+    tangent_copy = NULL;
+    mt->weights[mt->shape_count] = morphtarget_sanitize_weight(view->weight);
+    mt->prev_weights[mt->shape_count] = mt->weights[mt->shape_count];
+    mt->motion_weight_snapshot[mt->shape_count] = mt->weights[mt->shape_count];
+    mt->shape_count++;
+    morphtarget_touch_payload(mt);
+    return 1;
+
+fail:
+    free(position_copy);
+    free(normal_copy);
+    free(tangent_copy);
+    return 0;
 }
 
 /// @brief Borrow the contiguous packed position-delta payload for GPU upload.

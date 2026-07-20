@@ -91,6 +91,36 @@ typedef struct rt_node_animator3d {
     size_t traversal_stack_capacity;
 } rt_node_animator3d;
 
+/// @brief One immutable VSCN v4 scene carried privately from SceneGraph.Load to SceneAsset.Load.
+typedef struct rt_vscn_loaded_scene3d {
+    struct rt_scene_node3d *root;
+    char *name;
+    int32_t *camera_indices;
+    int32_t camera_count;
+} rt_vscn_loaded_scene3d;
+
+/// @brief Complete retained VSCN v4 asset inventory staged by the scene parser.
+/// @details Arrays own one runtime reference per slot. Scene roots are additionally retained even
+/// when scene zero aliases the live Scene3D root. Names and camera-index arrays are native-owned.
+typedef struct rt_vscn_loaded_asset3d {
+    void **meshes;
+    int32_t mesh_count;
+    void **materials;
+    int32_t material_count;
+    void **skeletons;
+    int32_t skeleton_count;
+    void **animations;
+    int32_t animation_count;
+    void **node_animations;
+    int32_t node_animation_count;
+    void **cameras;
+    int32_t camera_count;
+    rt_vscn_loaded_scene3d *scenes;
+    int32_t scene_count;
+    char **variant_names;
+    int32_t variant_count;
+} rt_vscn_loaded_asset3d;
+
 struct rt_scene3d;
 
 typedef struct {
@@ -289,6 +319,9 @@ typedef struct rt_scene3d {
      * leftovers release with the scene. Retained rt_animation3d handles. */
     void **baked_animations;
     int32_t baked_animation_count;
+    /* Complete v4 SceneAsset carrier. SceneGraph callers never inspect it; the Model3D
+     * loader copies its retained inventories and immutable scene definitions. */
+    rt_vscn_loaded_asset3d *baked_asset;
 } rt_scene3d;
 
 /// @brief Bound a private dynamic-array count by the pointer and recorded capacity.

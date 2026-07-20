@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-17
+last-verified: 2026-07-20
 ---
 
 # 2D Tilemaps and Layers
@@ -23,7 +23,7 @@ Use this page for tile-oriented map data and editor/import helpers. The core `Ti
 | `TileChunkCache2D` | Chunk sizing and dirty-count tracking for tilemap renderers and editors. |
 | `TexturePackerAtlas` | Texture-atlas authoring wrapper over `TextureAtlas` for named regions. |
 | `AsepriteImporter` | Grid-to-atlas helper for Aseprite-style sprite sheets. |
-| `TiledMapLoader` | Tile-size helper that creates `Tilemap` objects using Tiled-compatible dimensions. |
+| `TiledMapLoader` | Tile-size helper plus dependency-aware Tiled JSON/TMX import to a render-ready `Tilemap`. |
 
 ## Tilesets, Layers, And Atlas Helpers
 
@@ -50,12 +50,27 @@ drawable tileset frame.
 
 `ObjectLayer2D.AddRect` normalizes negative width or height by moving the origin to the rectangle's top-left corner. Zero-size rectangles and dimensions that cannot be represented are rejected.
 
+## TiledMapLoader
+
+`TiledMapLoader.LoadResult(path)` imports a loose finite orthogonal Tiled JSON or
+TMX map and returns `Ok(Tilemap)` or `Err(message)`. `LoadAssetResult(path)` uses
+the asset manager for the root, external TSJ/TSX tilesets, templates, and images,
+so the dependency graph can live in a mounted ZPAK or embedded asset blob. `Load`
+and `LoadAsset` are nullable compatibility forms.
+
+Both paths use the same normalization as
+[`SceneDocument.ImportTiled*`](../game/scene.md#tiled-json-and-tmx-import), then
+call `BuildTilemap` and bind each layer's sole tileset image. Spaced or margined
+atlases are copied into a tight runtime grid. The map-authored tile size is used;
+`SetTileSize` remains the default only for `NewTilemap(width, height)`.
+
 ## Notes
 
 - `TexturePackerAtlas`, `AsepriteImporter`, and `TiledMapLoader` are runtime-side helpers for common 2D asset layouts.
 - `TilemapRenderer2D.DrawCount` reports the number of non-empty, valid tiles drawn by the last `Draw` or `DrawRegion` call, not the number of renderer method calls.
 - `Tilemap.CountDrawnRegion(x, y, width, height)`, `Tilemap.CountDrawnVisible(canvas, offsetX, offsetY)`, and `Tilemap.CountDrawnVisibleScaled(canvas, offsetX, offsetY, scalePercent)` expose drawable-tile counting logic for tests, debug overlays, and editor diagnostics.
 - `Tilemap.DrawScaled` and `Tilemap.HitTestScaled` are intended for scene-editor viewports that need pan/zoom rendering and local mouse-to-tile conversion without duplicating tile math in UI code.
-- Import helpers currently provide atlas/tilemap construction primitives rather than full external JSON or `.aseprite` file parsing.
+- `AsepriteImporter` is a grid helper rather than a `.aseprite` parser; `TiledMapLoader`
+  does parse supported Tiled JSON/TMX files and returns explicit Result diagnostics.
 - Atlas regions are validated against their backing `Pixels` buffer before registration.
 - `AsepriteImporter.SetGrid(width, height)` treats non-positive dimensions as an unset grid. `ToAtlas(pixels)` returns `null` until both frame dimensions are positive.

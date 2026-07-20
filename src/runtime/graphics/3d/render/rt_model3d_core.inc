@@ -1,8 +1,21 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_model3d_core.inc  (#included from rt_model3d.c; not a
-// standalone translation unit) Purpose: Model3D types, lifecycle, node-tree, skeleton/animation
-// binding
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/render/rt_model3d_core.inc
+// Purpose: Model3D types, lifecycle, scene-tree cloning, resource collection,
+//   and default animation binding.
+// Key invariants:
+//   - Model component arrays contain retained, class-valid resource handles.
+//   - Scene-tree collection deduplicates shared meshes, materials, and skeletons.
+// Ownership/Lifetime:
+//   - This implementation fragment is included by rt_model3d.c.
+//   - Model3D finalization releases every retained component and scene reference.
+// Links: rt_model3d.c, rt_model3d.h, rt_scene3d_internal.h, rt_canvas3d_internal.h
+//
 //===----------------------------------------------------------------------===//
 typedef struct {
     rt_scene_node3d *root;
@@ -451,6 +464,27 @@ static int model_append_unique_ref(
     return model_append_ref(arr, count, cap, obj, trap_msg);
 }
 
+/// @brief Register one class-valid mesh and its attached skeleton in the model inventory.
+/// @details Both references are deduplicated independently because a scene may reuse a mesh or
+///          attach one skeleton to several meshes and LOD levels. Invalid mesh and skeleton
+///          handles are ignored so a corrupt private scene node cannot poison public accessors.
+static int model_collect_mesh_refs(rt_model3d *model, void *candidate) {
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_g3d_checked_or_null(candidate, RT_G3D_MESH3D_CLASS_ID);
+    void *skeleton =
+        mesh ? rt_g3d_checked_or_null(mesh->skeleton_ref, RT_G3D_SKELETON3D_CLASS_ID) : NULL;
+    if (!model_append_unique_ref(&model->meshes,
+                                 &model->mesh_count,
+                                 &model->mesh_capacity,
+                                 mesh,
+                                 "Model3D.Load: mesh list allocation failed"))
+        return 0;
+    return model_append_unique_ref(&model->skeletons,
+                                   &model->skeleton_count,
+                                   &model->skeleton_capacity,
+                                   skeleton,
+                                   "Model3D.Load: skeleton list allocation failed");
+}
+
 /// @brief Recursively count nodes in the subtree rooted at `node`, including `node`
 /// itself. Used by `rt_model3d_get_node_count` (which subtracts 1 to exclude the synthetic
 /// template root from the user-visible count).
@@ -637,6 +671,11 @@ static rt_scene_node3d *model_clone_node_shallow(const rt_scene_node3d *src,
     dst->world_dirty = 1;
     dst->import_index = src->import_index;
     dst->visible = src->visible ? 1 : 0;
+    dst->is_static = src->is_static ? 1 : 0;
+    dst->sync_mode = src->sync_mode >= RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY &&
+                             src->sync_mode <= RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC
+                         ? src->sync_mode
+                         : RT_SCENE_NODE3D_SYNC_NODE_FROM_BODY;
     dst->auto_lod_enabled = src->auto_lod_enabled ? 1 : 0;
     dst->auto_lod_screen_error_px = model_nonnegative_double_or(src->auto_lod_screen_error_px, 8.0);
     if (dst->auto_lod_screen_error_px < 1.0)
@@ -987,8 +1026,8 @@ static void model_bind_default_node_animator(rt_model3d *model, rt_scene_node3d 
     model_release_local(animator);
 }
 
-/// @brief Walk the scene subtree at `node` and register every unique `mesh` / `material`
-/// reference (including those stored on LOD entries) into the model's component arrays.
+/// @brief Walk the scene subtree at `node` and register every unique mesh, attached skeleton,
+/// and material reference (including meshes stored on LOD entries) into the model arrays.
 /// Used after cloning imported scene-graph nodes so consumers can enumerate the assets
 /// without re-walking the tree. Recurses into every child; duplicates are skipped by
 /// `model_append_unique_ref`.
@@ -1008,17 +1047,11 @@ static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *no
     stack[stack_count++] = node;
     while (stack_count > 0) {
         const rt_scene_node3d *current = stack[--stack_count];
-        void *mesh;
         void *material;
         if (!current)
             continue;
-        mesh = rt_g3d_checked_or_null(current->mesh, RT_G3D_MESH3D_CLASS_ID);
         material = rt_g3d_checked_or_null(current->material, RT_G3D_MATERIAL3D_CLASS_ID);
-        if (!model_append_unique_ref(&model->meshes,
-                                     &model->mesh_count,
-                                     &model->mesh_capacity,
-                                     mesh,
-                                     "Model3D.Load: mesh list allocation failed")) {
+        if (!model_collect_mesh_refs(model, current->mesh)) {
             free(stack);
             return 0;
         }
@@ -1033,13 +1066,7 @@ static int model_collect_scene_refs(rt_model3d *model, const rt_scene_node3d *no
         int32_t lod_count = model_node_lod_count(current);
         int32_t child_count = model_node_child_count(current);
         for (int32_t i = 0; i < lod_count; i++) {
-            void *lod_mesh =
-                rt_g3d_checked_or_null(current->lod_levels[i].mesh, RT_G3D_MESH3D_CLASS_ID);
-            if (!model_append_unique_ref(&model->meshes,
-                                         &model->mesh_count,
-                                         &model->mesh_capacity,
-                                         lod_mesh,
-                                         "Model3D.Load: mesh list allocation failed")) {
+            if (!model_collect_mesh_refs(model, current->lod_levels[i].mesh)) {
                 free(stack);
                 return 0;
             }

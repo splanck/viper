@@ -36,6 +36,8 @@
 #include "rt_file_stdio.h"
 #include "rt_json.h"
 #include "rt_map.h"
+#include "rt_morphtarget3d.h"
+#include "rt_morphtarget3d_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
@@ -272,6 +274,99 @@ static uint8_t *vscn_base64_decode_ex(const char *data,
     if (out_len)
         *out_len = olen;
     return output;
+}
+
+/// @brief Decode an exact f32 little-endian Base64 payload into host floats.
+static float *vscn_base64_decode_f32_le(const char *data,
+                                        size_t len,
+                                        size_t expected_count,
+                                        const char *field) {
+    size_t raw_len = 0;
+    size_t error_offset = SIZE_MAX;
+    uint8_t *raw;
+    float *values;
+    if (!data || expected_count > SIZE_MAX / sizeof(float))
+        return NULL;
+    raw = vscn_base64_decode_ex(data, len, &raw_len, &error_offset);
+    if (!raw) {
+        if (error_offset != SIZE_MAX)
+            vscn_set_base64_error(field, error_offset);
+        return NULL;
+    }
+    if (raw_len != expected_count * sizeof(float)) {
+        free(raw);
+        rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                            "Scene3D.Load: %s decoded size does not match its count",
+                            field ? field : "f32 payload");
+        return NULL;
+    }
+    values = (float *)malloc(expected_count > 0 ? expected_count * sizeof(float) : 1u);
+    if (!values) {
+        free(raw);
+        return NULL;
+    }
+    for (size_t i = 0; i < expected_count; ++i) {
+        uint32_t bits = ((uint32_t)raw[i * 4u + 0u]) | ((uint32_t)raw[i * 4u + 1u] << 8u) |
+                        ((uint32_t)raw[i * 4u + 2u] << 16u) | ((uint32_t)raw[i * 4u + 3u] << 24u);
+        memcpy(&values[i], &bits, sizeof(bits));
+        if (!isfinite(values[i])) {
+            free(values);
+            free(raw);
+            rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                                "Scene3D.Load: %s contains a non-finite value",
+                                field ? field : "f32 payload");
+            return NULL;
+        }
+    }
+    free(raw);
+    return values;
+}
+
+/// @brief Decode an exact f64 little-endian Base64 payload into host doubles.
+static double *vscn_base64_decode_f64_le(const char *data,
+                                         size_t len,
+                                         size_t expected_count,
+                                         const char *field) {
+    size_t raw_len = 0;
+    size_t error_offset = SIZE_MAX;
+    uint8_t *raw;
+    double *values;
+    if (!data || expected_count > SIZE_MAX / sizeof(double))
+        return NULL;
+    raw = vscn_base64_decode_ex(data, len, &raw_len, &error_offset);
+    if (!raw) {
+        if (error_offset != SIZE_MAX)
+            vscn_set_base64_error(field, error_offset);
+        return NULL;
+    }
+    if (raw_len != expected_count * sizeof(double)) {
+        free(raw);
+        rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                            "Scene3D.Load: %s decoded size does not match its count",
+                            field ? field : "f64 payload");
+        return NULL;
+    }
+    values = (double *)malloc(expected_count > 0 ? expected_count * sizeof(double) : 1u);
+    if (!values) {
+        free(raw);
+        return NULL;
+    }
+    for (size_t i = 0; i < expected_count; ++i) {
+        uint64_t bits = 0;
+        for (size_t byte = 0; byte < 8u; ++byte)
+            bits |= (uint64_t)raw[i * 8u + byte] << (byte * 8u);
+        memcpy(&values[i], &bits, sizeof(bits));
+        if (!isfinite(values[i])) {
+            free(values);
+            free(raw);
+            rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                                "Scene3D.Load: %s contains a non-finite value",
+                                field ? field : "f64 payload");
+            return NULL;
+        }
+    }
+    free(raw);
+    return values;
 }
 
 /// @brief Decode base64 RGBA bytes directly into a Pixels object's packed RGBA32 storage.
@@ -542,6 +637,28 @@ static int vjson_i64_exact(void *obj, const char *key, int64_t def, int64_t *out
     return vjson_value_i64_exact(value, out);
 }
 
+/// @brief Read an object finite numeric property exactly, defaulting only when absent.
+static int vjson_f64_exact(void *obj, const char *key, double def, double *out) {
+    void *value;
+    double number;
+    if (!out)
+        return 0;
+    *out = def;
+    value = vjson_get(obj, key);
+    if (!value)
+        return 1;
+    if (rt_box_type(value) == 0)
+        number = (double)rt_unbox_i64(value);
+    else if (rt_box_type(value) == 1)
+        number = rt_unbox_f64(value);
+    else
+        return 0;
+    if (!isfinite(number))
+        return 0;
+    *out = number;
+    return 1;
+}
+
 /// @brief Read an array integer element exactly, defaulting only when the index is absent.
 static int vjson_arr_i64_exact(void *arr, int64_t index, int64_t def, int64_t *out) {
     if (!out)
@@ -783,6 +900,95 @@ static int vscn_vertex_payload_is_valid(const vgfx3d_vertex_t *vertices,
             return 0;
     }
     return 1;
+}
+
+/// @brief Parse and attach a complete VSCN v4 morph-target block to @p mesh.
+static int vscn_parse_mesh_morph_targets(rt_mesh3d *mesh, void *mesh_obj) {
+    void *morph_obj = vjson_get(mesh_obj, "morphTargets");
+    void *shapes;
+    const char *format;
+    int64_t vertex_count;
+    int64_t shape_count;
+    void *morph = NULL;
+    if (!morph_obj)
+        return 1;
+    if (!mesh || !vjson_is_map(morph_obj))
+        return 0;
+    format = vjson_cstr(morph_obj, "deltaFormat");
+    shapes = vjson_get(morph_obj, "shapes");
+    if (!format || strcmp(format, "f32le-v1") != 0 || !vjson_is_seq(shapes) ||
+        !vjson_i64_exact(morph_obj, "vertexCount", -1, &vertex_count) || vertex_count <= 0 ||
+        vertex_count != (int64_t)mesh->vertex_count)
+        return 0;
+    shape_count = vjson_len(shapes);
+    if (shape_count < 0 || shape_count > 65536 || (size_t)vertex_count > SIZE_MAX / 3u)
+        return 0;
+    morph = rt_morphtarget3d_new(vertex_count);
+    if (!morph)
+        return 0;
+    for (int64_t shape_index = 0; shape_index < shape_count; ++shape_index) {
+        void *shape_obj = rt_seq_get(shapes, shape_index);
+        rt_morphtarget3d_shape_view_internal view = {0};
+        const char *position_text;
+        const char *normal_text = NULL;
+        const char *tangent_text = NULL;
+        size_t position_len = 0;
+        size_t normal_len = 0;
+        size_t tangent_len = 0;
+        size_t value_count = (size_t)vertex_count * 3u;
+        float *positions = NULL;
+        float *normals = NULL;
+        float *tangents = NULL;
+        int ok = 0;
+        if (!vjson_is_map(shape_obj))
+            goto shape_cleanup;
+        view.name = vjson_cstr(shape_obj, "name");
+        if (!view.name || strlen(view.name) > 63 ||
+            !vjson_f64_exact(shape_obj, "weight", 0.0, &view.weight))
+            goto shape_cleanup;
+        position_text = vjson_cstr_len(shape_obj, "positionBase64", &position_len);
+        if (!position_text)
+            goto shape_cleanup;
+        positions = vscn_base64_decode_f32_le(
+            position_text, position_len, value_count, "mesh.morphTargets.positionBase64");
+        if (!positions)
+            goto shape_cleanup;
+        if (vjson_get(shape_obj, "normalBase64")) {
+            normal_text = vjson_cstr_len(shape_obj, "normalBase64", &normal_len);
+            if (!normal_text)
+                goto shape_cleanup;
+            normals = vscn_base64_decode_f32_le(
+                normal_text, normal_len, value_count, "mesh.morphTargets.normalBase64");
+            if (!normals)
+                goto shape_cleanup;
+        }
+        if (vjson_get(shape_obj, "tangentBase64")) {
+            tangent_text = vjson_cstr_len(shape_obj, "tangentBase64", &tangent_len);
+            if (!tangent_text)
+                goto shape_cleanup;
+            tangents = vscn_base64_decode_f32_le(
+                tangent_text, tangent_len, value_count, "mesh.morphTargets.tangentBase64");
+            if (!tangents)
+                goto shape_cleanup;
+        }
+        view.position_deltas = positions;
+        view.normal_deltas = normals;
+        view.tangent_deltas = tangents;
+        view.vertex_count = (int32_t)vertex_count;
+        ok = rt_morphtarget3d_append_shape_internal(morph, &view) ? 1 : 0;
+    shape_cleanup:
+        free(positions);
+        free(normals);
+        free(tangents);
+        if (!ok)
+            goto fail;
+    }
+    rt_mesh3d_set_morph_targets(mesh, morph);
+    scene3d_release_ref(&morph);
+    return mesh->morph_targets_ref ? 1 : 0;
+fail:
+    scene3d_release_ref(&morph);
+    return 0;
 }
 
 /// @brief Reverse of `vscn_serialize_mesh` — decode base64 buffers and rebuild the mesh.
@@ -1037,6 +1243,10 @@ static rt_mesh3d *vscn_parse_mesh(void *mesh_obj) {
 
     free(vertices_raw);
     free(indices_raw);
+    if (!vscn_parse_mesh_morph_targets(mesh, mesh_obj)) {
+        scene3d_release_ref((void **)&mesh);
+        return NULL;
+    }
     return mesh;
 }
 
@@ -1165,6 +1375,183 @@ fail:
     return NULL;
 }
 
+/// @brief Parse one complete VSCN v4 node/object/morph animation clip.
+static void *vscn_parse_node_animation(void *animation_obj) {
+    const char *name;
+    const char *format;
+    void *channels;
+    int64_t channel_count;
+    double duration;
+    rt_string runtime_name;
+    rt_node_animation3d *animation;
+    if (!vjson_is_map(animation_obj) ||
+        !vjson_f64_exact(animation_obj, "duration", 1.0, &duration) || duration <= 0.0)
+        return NULL;
+    name = vjson_cstr(animation_obj, "name");
+    format = vjson_cstr(animation_obj, "sampleFormat");
+    channels = vjson_get(animation_obj, "channels");
+    channel_count = vjson_len(channels);
+    if (!name || !format || strcmp(format, "f64le-f32le-v1") != 0 || !vjson_is_seq(channels) ||
+        channel_count < 0 || channel_count > 65536)
+        return NULL;
+    runtime_name = rt_const_cstr(name);
+    animation = (rt_node_animation3d *)rt_node_animation3d_new(runtime_name, duration);
+    rt_string_unref(runtime_name);
+    if (!animation)
+        return NULL;
+    animation->looping = vjson_bool(animation_obj, "looping", 1) ? 1 : 0;
+    for (int64_t channel_index = 0; channel_index < channel_count; ++channel_index) {
+        void *channel_obj = rt_seq_get(channels, channel_index);
+        const char *target;
+        const char *times_text;
+        const char *values_text;
+        const char *in_text = NULL;
+        const char *out_text = NULL;
+        size_t times_len = 0;
+        size_t values_len = 0;
+        size_t in_len = 0;
+        size_t out_len = 0;
+        int64_t target_node;
+        int64_t path;
+        int64_t interpolation;
+        int64_t key_count;
+        int64_t value_width;
+        size_t value_count;
+        double *times = NULL;
+        float *values = NULL;
+        float *in_tangents = NULL;
+        float *out_tangents = NULL;
+        rt_string runtime_target = NULL;
+        int64_t added = -1;
+        if (!vjson_is_map(channel_obj) ||
+            !vjson_i64_exact(channel_obj, "targetNode", -1, &target_node) || target_node < -1 ||
+            target_node > INT32_MAX || !vjson_i64_exact(channel_obj, "path", -1, &path) ||
+            path < RT_NODE_ANIM_PATH_TRANSLATION || path > RT_NODE_ANIM_PATH_WEIGHTS ||
+            !vjson_i64_exact(channel_obj, "interpolation", -1, &interpolation) ||
+            interpolation < RT_NODE_ANIM_INTERP_LINEAR ||
+            interpolation > RT_NODE_ANIM_INTERP_CUBICSPLINE ||
+            !vjson_i64_exact(channel_obj, "keyCount", 0, &key_count) || key_count <= 0 ||
+            key_count > 1000000 || !vjson_i64_exact(channel_obj, "valueWidth", 0, &value_width) ||
+            value_width <= 0 || value_width > 4096 ||
+            (size_t)key_count > SIZE_MAX / (size_t)value_width)
+            goto fail_channel;
+        value_count = (size_t)key_count * (size_t)value_width;
+        if (value_count > 4000000u)
+            goto fail_channel;
+        target = vjson_cstr(channel_obj, "target");
+        times_text = vjson_cstr_len(channel_obj, "timesBase64", &times_len);
+        values_text = vjson_cstr_len(channel_obj, "valuesBase64", &values_len);
+        if (!target || target[0] == '\0' || !times_text || !values_text)
+            goto fail_channel;
+        times = vscn_base64_decode_f64_le(
+            times_text, times_len, (size_t)key_count, "nodeAnimation.timesBase64");
+        values = vscn_base64_decode_f32_le(
+            values_text, values_len, value_count, "nodeAnimation.valuesBase64");
+        if (!times || !values)
+            goto fail_channel;
+        if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE) {
+            in_text = vjson_cstr_len(channel_obj, "inTangentsBase64", &in_len);
+            out_text = vjson_cstr_len(channel_obj, "outTangentsBase64", &out_len);
+            if (!in_text || !out_text)
+                goto fail_channel;
+            in_tangents = vscn_base64_decode_f32_le(
+                in_text, in_len, value_count, "nodeAnimation.inTangentsBase64");
+            out_tangents = vscn_base64_decode_f32_le(
+                out_text, out_len, value_count, "nodeAnimation.outTangentsBase64");
+            if (!in_tangents || !out_tangents)
+                goto fail_channel;
+        }
+        runtime_target = rt_const_cstr(target);
+        if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE) {
+            added = rt_node_animation3d_add_cubic_channel(animation,
+                                                          runtime_target,
+                                                          path,
+                                                          key_count,
+                                                          value_width,
+                                                          times,
+                                                          values,
+                                                          in_tangents,
+                                                          out_tangents);
+        } else {
+            added = rt_node_animation3d_add_channel(animation,
+                                                    runtime_target,
+                                                    path,
+                                                    interpolation,
+                                                    key_count,
+                                                    value_width,
+                                                    times,
+                                                    values);
+        }
+        rt_string_unref(runtime_target);
+        runtime_target = NULL;
+        if (added != channel_index)
+            goto fail_channel;
+        rt_node_animation3d_set_channel_target_node_index(animation, added, target_node);
+        free(times);
+        free(values);
+        free(in_tangents);
+        free(out_tangents);
+        continue;
+    fail_channel:
+        if (runtime_target)
+            rt_string_unref(runtime_target);
+        free(times);
+        free(values);
+        free(in_tangents);
+        free(out_tangents);
+        scene3d_release_ref((void **)&animation);
+        return NULL;
+    }
+    return animation;
+}
+
+/// @brief Parse one VSCN v4 camera, preserving projection parameters and full view transform.
+static void *vscn_parse_camera(void *camera_obj) {
+    void *eye;
+    void *view;
+    double fov;
+    double aspect;
+    double near_plane;
+    double far_plane;
+    double ortho_size;
+    int8_t is_ortho;
+    rt_camera3d *camera;
+    if (!vjson_is_map(camera_obj) || !vjson_f64_exact(camera_obj, "fov", 60.0, &fov) ||
+        !vjson_f64_exact(camera_obj, "aspect", 1.0, &aspect) ||
+        !vjson_f64_exact(camera_obj, "near", 0.1, &near_plane) ||
+        !vjson_f64_exact(camera_obj, "far", 1000.0, &far_plane) ||
+        !vjson_f64_exact(camera_obj, "orthoSize", 10.0, &ortho_size))
+        return NULL;
+    eye = vjson_get(camera_obj, "eye");
+    view = vjson_get(camera_obj, "view");
+    is_ortho = vjson_bool(camera_obj, "isOrtho", 0);
+    if (!vjson_is_seq(eye) || vjson_len(eye) != 3 || !vjson_is_seq(view) || vjson_len(view) != 16 ||
+        aspect <= 0.0 || near_plane <= 0.0 || far_plane <= near_plane || ortho_size <= 0.0 ||
+        (!is_ortho && (fov <= 0.0 || fov >= 180.0)))
+        return NULL;
+    camera =
+        (rt_camera3d *)(is_ortho ? rt_camera3d_new_ortho(ortho_size, aspect, near_plane, far_plane)
+                                 : rt_camera3d_new(fov, aspect, near_plane, far_plane));
+    if (!camera)
+        return NULL;
+    for (int lane = 0; lane < 3; ++lane) {
+        double value = vjson_arr_f64(eye, lane, NAN);
+        if (!isfinite(value))
+            goto fail;
+        camera->eye[lane] = value;
+    }
+    for (int lane = 0; lane < 16; ++lane) {
+        double value = vjson_arr_f64(view, lane, NAN);
+        if (!isfinite(value))
+            goto fail;
+        camera->view[lane] = value;
+    }
+    return camera;
+fail:
+    scene3d_release_ref((void **)&camera);
+    return NULL;
+}
+
 /// @brief Parse a JSON light object from a VSCN file into an `rt_light3d` struct.
 /// @details Reads type, direction, color, intensity, attenuation, and spot-cone
 ///          cosines from the vjson object. Defaults to a point light (type 1) when
@@ -1232,6 +1619,7 @@ static rt_scene_node3d *vscn_parse_node_fields(void *node_obj,
                                                int mesh_count,
                                                rt_material3d **materials,
                                                int material_count,
+                                               int variant_count,
                                                int *io_error) {
     rt_scene_node3d *node;
     void *arr;
@@ -1304,6 +1692,17 @@ static rt_scene_node3d *vscn_parse_node_fields(void *node_obj,
             sync_mode = 0;
         node->sync_mode = (int32_t)sync_mode;
     }
+    {
+        int64_t import_index = -1;
+        if (!vjson_i64_exact(node_obj, "importIndex", -1, &import_index) || import_index < -1 ||
+            import_index > INT32_MAX) {
+            if (io_error)
+                *io_error = 1;
+            scene3d_release_ref((void **)&node);
+            return NULL;
+        }
+        node->import_index = (int32_t)import_index;
+    }
     node->world_dirty = 1;
 
     {
@@ -1330,6 +1729,35 @@ static rt_scene_node3d *vscn_parse_node_fields(void *node_obj,
         }
         if (material_index >= 0 && material_index < material_count && materials[material_index])
             rt_scene_node3d_set_material(node, materials[material_index]);
+    }
+    {
+        void *variants = vjson_get(node_obj, "variantMaterials");
+        if (variants) {
+            void **table = NULL;
+            int64_t count = vjson_len(variants);
+            int ok = vjson_is_seq(variants) && count >= 0 && count == variant_count;
+            if (ok && count > 0)
+                table = (void **)calloc((size_t)count, sizeof(void *));
+            if (ok && count > 0 && !table)
+                ok = 0;
+            for (int64_t i = 0; ok && i < count; ++i) {
+                int64_t material_index = -1;
+                if (!vjson_arr_i64_exact(variants, i, -1, &material_index) || material_index < -1 ||
+                    material_index >= material_count)
+                    ok = 0;
+                else if (material_index >= 0)
+                    table[i] = materials[material_index];
+            }
+            if (ok)
+                ok = rt_scene_node3d_assign_variant_materials(node, table, (int32_t)count);
+            free(table);
+            if (!ok) {
+                if (io_error)
+                    *io_error = 1;
+                scene3d_release_ref((void **)&node);
+                return NULL;
+            }
+        }
     }
     {
         void *light_obj = vjson_get(node_obj, "light");
@@ -1395,6 +1823,7 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
                                         int mesh_count,
                                         rt_material3d **materials,
                                         int material_count,
+                                        int variant_count,
                                         int *io_error) {
     typedef struct vscn_parse_node_frame {
         void *children;
@@ -1407,8 +1836,8 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
     rt_scene_node3d *root;
     size_t frame_count = 0;
 
-    root =
-        vscn_parse_node_fields(node_obj, meshes, mesh_count, materials, material_count, io_error);
+    root = vscn_parse_node_fields(
+        node_obj, meshes, mesh_count, materials, material_count, variant_count, io_error);
     if (!root)
         return NULL;
     frames[frame_count++] = (vscn_parse_node_frame_t){vjson_get(node_obj, "children"), root, 0, 0};
@@ -1434,7 +1863,7 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
             goto fail;
         child_obj = rt_seq_get(frame->children, frame->next_child++);
         child = vscn_parse_node_fields(
-            child_obj, meshes, mesh_count, materials, material_count, io_error);
+            child_obj, meshes, mesh_count, materials, material_count, variant_count, io_error);
         if (!child)
             goto fail;
         if (!rt_scene_node3d_try_add_child(frame->node, child)) {
@@ -1514,23 +1943,31 @@ static char *vscn_read_file(const char *filepath, size_t *out_size) {
 
 /// @brief Parse `nodes_arr` into scene-graph children of @p scene's root (no-op when array absent).
 /// @return 1 on success, 0 on a node parse failure (the offending node is released).
-static int vscn_load_nodes(rt_scene3d *scene,
-                           void *nodes_arr,
-                           rt_mesh3d **meshes,
-                           int mesh_count,
-                           rt_material3d **materials,
-                           int material_count) {
+static int vscn_load_nodes_into_root(rt_scene_node3d *target_root,
+                                     void *nodes_arr,
+                                     rt_mesh3d **meshes,
+                                     int mesh_count,
+                                     rt_material3d **materials,
+                                     int material_count,
+                                     int variant_count) {
+    if (!target_root)
+        return 0;
     if (!nodes_arr)
         return 1;
     for (int64_t i = 0; i < vjson_len(nodes_arr); i++) {
         int parse_error = 0;
-        rt_scene_node3d *node = vscn_parse_node(
-            rt_seq_get(nodes_arr, i), meshes, mesh_count, materials, material_count, &parse_error);
+        rt_scene_node3d *node = vscn_parse_node(rt_seq_get(nodes_arr, i),
+                                                meshes,
+                                                mesh_count,
+                                                materials,
+                                                material_count,
+                                                variant_count,
+                                                &parse_error);
         if (parse_error || !node) {
             scene3d_release_ref((void **)&node);
             return 0;
         }
-        if (!rt_scene_node3d_try_add_child(scene->root, node)) {
+        if (!rt_scene_node3d_try_add_child(target_root, node)) {
             scene3d_release_ref((void **)&node);
             return 0;
         }
@@ -1540,6 +1977,22 @@ static int vscn_load_nodes(rt_scene3d *scene,
         }
     }
     return 1;
+}
+
+/// @brief Copy a NUL-terminated VSCN metadata string into native ownership.
+static char *vscn_strdup_cstr(const char *text) {
+    size_t length;
+    char *copy;
+    if (!text)
+        return NULL;
+    length = strlen(text);
+    if (length == SIZE_MAX)
+        return NULL;
+    copy = (char *)malloc(length + 1u);
+    if (!copy)
+        return NULL;
+    memcpy(copy, text, length + 1u);
+    return copy;
 }
 
 /// @brief Deserialize a Scene3D from a `.vscn` (JSON) file; returns NULL on failure.
@@ -1553,19 +2006,36 @@ static int vscn_load_nodes(rt_scene3d *scene,
 static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, size_t file_size) {
     rt_string json_text = NULL;
     void *root = NULL;
-    void *textures_arr;
-    void *cubemaps_arr;
-    void *materials_arr;
-    void *meshes_arr;
-    void *nodes_arr;
+    void *textures_arr = NULL;
+    void *cubemaps_arr = NULL;
+    void *materials_arr = NULL;
+    void *meshes_arr = NULL;
+    void *nodes_arr = NULL;
+    void *skeletons_arr = NULL;
+    void *animations_arr = NULL;
+    void *node_animations_arr = NULL;
+    void *cameras_arr = NULL;
+    void *variant_names_arr = NULL;
+    void *scenes_arr = NULL;
+    int64_t version = 1;
     int tex_count = 0;
     int cubemap_count = 0;
     int material_count = 0;
     int mesh_count = 0;
+    int skeleton_count = 0;
+    int animation_count = 0;
+    int node_animation_count = 0;
+    int camera_count = 0;
+    int variant_count = 0;
+    int scene_count = 0;
     rt_pixels_impl **textures = NULL;
     rt_cubemap3d **cubemaps = NULL;
     rt_material3d **materials = NULL;
     rt_mesh3d **meshes = NULL;
+    void **skeletons = NULL;
+    void **animations = NULL;
+    void **node_animations = NULL;
+    void **cameras = NULL;
     rt_scene3d *scene = NULL;
 
     if (!json)
@@ -1607,29 +2077,50 @@ static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, 
     materials_arr = vjson_get(root, "materials");
     meshes_arr = vjson_get(root, "meshes");
     nodes_arr = vjson_get(root, "nodes");
+    skeletons_arr = vjson_get(root, "skeletons");
+    animations_arr = vjson_get(root, "animations");
+    node_animations_arr = vjson_get(root, "nodeAnimations");
+    cameras_arr = vjson_get(root, "cameras");
+    variant_names_arr = vjson_get(root, "variantNames");
+    scenes_arr = vjson_get(root, "scenes");
 
     {
         const char *format = vjson_cstr(root, "format");
         void *version_value = vjson_get(root, "version");
-        int64_t version = 1;
         if (version_value && !vjson_value_i64_exact(version_value, &version))
             goto fail;
-        if ((format && strcmp(format, "vscn") != 0) || version < 1 || version > 3)
+        if ((format && strcmp(format, "vscn") != 0) || version < 1 || version > 4)
             goto fail;
         if ((textures_arr && !vjson_is_seq(textures_arr)) ||
             (cubemaps_arr && !vjson_is_seq(cubemaps_arr)) ||
             (materials_arr && !vjson_is_seq(materials_arr)) ||
-            (meshes_arr && !vjson_is_seq(meshes_arr)) || (nodes_arr && !vjson_is_seq(nodes_arr)))
+            (meshes_arr && !vjson_is_seq(meshes_arr)) || (nodes_arr && !vjson_is_seq(nodes_arr)) ||
+            (skeletons_arr && !vjson_is_seq(skeletons_arr)) ||
+            (animations_arr && !vjson_is_seq(animations_arr)) ||
+            (node_animations_arr && !vjson_is_seq(node_animations_arr)) ||
+            (cameras_arr && !vjson_is_seq(cameras_arr)) ||
+            (variant_names_arr && !vjson_is_seq(variant_names_arr)) ||
+            (scenes_arr && !vjson_is_seq(scenes_arr)) ||
+            (version == 4 && (!scenes_arr || vjson_len(scenes_arr) <= 0)))
             goto fail;
     }
 
     if (vjson_len(textures_arr) > INT32_MAX || vjson_len(cubemaps_arr) > INT32_MAX ||
-        vjson_len(materials_arr) > INT32_MAX || vjson_len(meshes_arr) > INT32_MAX)
+        vjson_len(materials_arr) > INT32_MAX || vjson_len(meshes_arr) > INT32_MAX ||
+        vjson_len(skeletons_arr) > INT32_MAX || vjson_len(animations_arr) > INT32_MAX ||
+        vjson_len(node_animations_arr) > INT32_MAX || vjson_len(cameras_arr) > INT32_MAX ||
+        vjson_len(variant_names_arr) > INT32_MAX || vjson_len(scenes_arr) > 65536)
         goto fail;
     tex_count = (int)vjson_len(textures_arr);
     cubemap_count = (int)vjson_len(cubemaps_arr);
     material_count = (int)vjson_len(materials_arr);
     mesh_count = (int)vjson_len(meshes_arr);
+    skeleton_count = (int)vjson_len(skeletons_arr);
+    animation_count = (int)vjson_len(animations_arr);
+    node_animation_count = (int)vjson_len(node_animations_arr);
+    camera_count = (int)vjson_len(cameras_arr);
+    variant_count = (int)vjson_len(variant_names_arr);
+    scene_count = (int)vjson_len(scenes_arr);
 
     if (tex_count > 0)
         textures = (rt_pixels_impl **)calloc((size_t)tex_count, sizeof(rt_pixels_impl *));
@@ -1639,15 +2130,19 @@ static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, 
         materials = (rt_material3d **)calloc((size_t)material_count, sizeof(rt_material3d *));
     if (mesh_count > 0)
         meshes = (rt_mesh3d **)calloc((size_t)mesh_count, sizeof(rt_mesh3d *));
+    if (skeleton_count > 0)
+        skeletons = (void **)calloc((size_t)skeleton_count, sizeof(void *));
+    if (animation_count > 0)
+        animations = (void **)calloc((size_t)animation_count, sizeof(void *));
+    if (node_animation_count > 0)
+        node_animations = (void **)calloc((size_t)node_animation_count, sizeof(void *));
+    if (camera_count > 0)
+        cameras = (void **)calloc((size_t)camera_count, sizeof(void *));
     if ((tex_count > 0 && !textures) || (cubemap_count > 0 && !cubemaps) ||
-        (material_count > 0 && !materials) || (mesh_count > 0 && !meshes)) {
-        free(textures);
-        free(cubemaps);
-        free(materials);
-        free(meshes);
-        scene3d_release_ref(&root);
-        return NULL;
-    }
+        (material_count > 0 && !materials) || (mesh_count > 0 && !meshes) ||
+        (skeleton_count > 0 && !skeletons) || (animation_count > 0 && !animations) ||
+        (node_animation_count > 0 && !node_animations) || (camera_count > 0 && !cameras))
+        goto fail;
 
     for (int i = 0; i < tex_count; i++) {
         textures[i] = vscn_parse_texture(rt_seq_get(textures_arr, (int64_t)i));
@@ -1675,52 +2170,142 @@ static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, 
     if (!scene)
         goto fail;
 
-    /* v3 rig blocks: skeletons bind to meshes by index; animation clips ride the
-     * scene so the SceneAsset wrapper can claim them. Absent blocks no-op. */
-    {
-        void *skeletons_arr = vjson_get(root, "skeletons");
-        void *animations_arr = vjson_get(root, "animations");
-        int64_t skeleton_count = vjson_len(skeletons_arr);
-        int64_t animation_count = vjson_len(animations_arr);
-        if (skeleton_count > 0) {
-            void **skeletons = (void **)calloc((size_t)skeleton_count, sizeof(void *));
-            if (!skeletons)
-                goto fail;
-            for (int64_t i = 0; i < skeleton_count; i++) {
-                skeletons[i] = vscn_parse_skeleton(rt_seq_get(skeletons_arr, i));
-                if (!skeletons[i]) {
-                    for (int64_t j = 0; j < i; j++)
-                        scene3d_release_ref(&skeletons[j]);
-                    free(skeletons);
-                    goto fail;
-                }
-            }
-            for (int i = 0; i < mesh_count; i++) {
-                int64_t skeleton_index = -1;
-                void *mesh_obj = rt_seq_get(meshes_arr, (int64_t)i);
-                if (vjson_i64_exact(mesh_obj, "skeletonIndex", -1, &skeleton_index) &&
-                    skeleton_index >= 0 && skeleton_index < skeleton_count)
-                    rt_mesh3d_set_skeleton(meshes[i], skeletons[skeleton_index]);
-            }
-            for (int64_t i = 0; i < skeleton_count; i++)
-                scene3d_release_ref(&skeletons[i]); /* meshes retain their refs */
-            free(skeletons);
-        }
-        if (animation_count > 0) {
-            scene->baked_animations = (void **)calloc((size_t)animation_count, sizeof(void *));
-            if (!scene->baked_animations)
-                goto fail;
-            for (int64_t i = 0; i < animation_count; i++) {
-                void *anim = vscn_parse_animation(rt_seq_get(animations_arr, i));
-                if (!anim)
-                    goto fail; /* finalize releases the clips parsed so far */
-                scene->baked_animations[scene->baked_animation_count++] = anim;
-            }
-        }
+    for (int i = 0; i < skeleton_count; ++i) {
+        skeletons[i] = vscn_parse_skeleton(rt_seq_get(skeletons_arr, i));
+        if (!skeletons[i])
+            goto fail;
+    }
+    for (int i = 0; i < mesh_count; ++i) {
+        int64_t skeleton_index = -1;
+        void *mesh_obj = rt_seq_get(meshes_arr, i);
+        if (!vjson_i64_exact(mesh_obj, "skeletonIndex", -1, &skeleton_index) ||
+            skeleton_index < -1 || skeleton_index >= skeleton_count)
+            goto fail;
+        if (skeleton_index >= 0)
+            rt_mesh3d_set_skeleton(meshes[i], skeletons[skeleton_index]);
+    }
+    for (int i = 0; i < animation_count; ++i) {
+        animations[i] = vscn_parse_animation(rt_seq_get(animations_arr, i));
+        if (!animations[i])
+            goto fail;
+    }
+    for (int i = 0; i < node_animation_count; ++i) {
+        node_animations[i] = vscn_parse_node_animation(rt_seq_get(node_animations_arr, i));
+        if (!node_animations[i])
+            goto fail;
+    }
+    for (int i = 0; i < camera_count; ++i) {
+        cameras[i] = vscn_parse_camera(rt_seq_get(cameras_arr, i));
+        if (!cameras[i])
+            goto fail;
     }
 
-    if (!vscn_load_nodes(scene, nodes_arr, meshes, mesh_count, materials, material_count))
-        goto fail;
+    if (version == 4) {
+        rt_vscn_loaded_asset3d *asset =
+            (rt_vscn_loaded_asset3d *)calloc(1, sizeof(rt_vscn_loaded_asset3d));
+        if (!asset)
+            goto fail;
+        scene->baked_asset = asset;
+        asset->meshes = (void **)meshes;
+        asset->mesh_count = mesh_count;
+        meshes = NULL;
+        mesh_count = 0;
+        asset->materials = (void **)materials;
+        asset->material_count = material_count;
+        materials = NULL;
+        material_count = 0;
+        asset->skeletons = skeletons;
+        asset->skeleton_count = skeleton_count;
+        skeletons = NULL;
+        skeleton_count = 0;
+        asset->animations = animations;
+        asset->animation_count = animation_count;
+        animations = NULL;
+        animation_count = 0;
+        asset->node_animations = node_animations;
+        asset->node_animation_count = node_animation_count;
+        node_animations = NULL;
+        node_animation_count = 0;
+        asset->cameras = cameras;
+        asset->camera_count = camera_count;
+        cameras = NULL;
+        camera_count = 0;
+
+        asset->variant_count = variant_count;
+        if (variant_count > 0) {
+            asset->variant_names = (char **)calloc((size_t)variant_count, sizeof(char *));
+            if (!asset->variant_names)
+                goto fail;
+            for (int i = 0; i < variant_count; ++i) {
+                rt_string name = rt_seq_get(variant_names_arr, i);
+                if (!rt_string_is_handle(name) ||
+                    !(asset->variant_names[i] = vscn_strdup_cstr(rt_string_cstr(name))))
+                    goto fail;
+            }
+        }
+
+        asset->scenes =
+            (rt_vscn_loaded_scene3d *)calloc((size_t)scene_count, sizeof(*asset->scenes));
+        if (!asset->scenes)
+            goto fail;
+        asset->scene_count = scene_count;
+        for (int scene_index = 0; scene_index < scene_count; ++scene_index) {
+            void *scene_obj = rt_seq_get(scenes_arr, scene_index);
+            void *scene_nodes = vjson_get(scene_obj, "nodes");
+            void *scene_cameras = vjson_get(scene_obj, "cameras");
+            const char *scene_name = vjson_cstr(scene_obj, "name");
+            rt_scene_node3d *scene_root = NULL;
+            int64_t scene_camera_count;
+            if (!vjson_is_map(scene_obj) || !scene_name || !vjson_is_seq(scene_nodes) ||
+                !vjson_is_seq(scene_cameras))
+                goto fail;
+            scene_camera_count = vjson_len(scene_cameras);
+            if (scene_camera_count < 0 || scene_camera_count > INT32_MAX)
+                goto fail;
+            asset->scenes[scene_index].name = vscn_strdup_cstr(scene_name);
+            if (!asset->scenes[scene_index].name)
+                goto fail;
+            if (scene_index == 0) {
+                scene_root = scene->root;
+                rt_obj_retain_maybe(scene_root);
+            } else {
+                scene_root = (rt_scene_node3d *)rt_scene_node3d_new();
+                if (!scene_root)
+                    goto fail;
+            }
+            asset->scenes[scene_index].root = scene_root;
+            if (!vscn_load_nodes_into_root(scene_root,
+                                           scene_nodes,
+                                           (rt_mesh3d **)asset->meshes,
+                                           asset->mesh_count,
+                                           (rt_material3d **)asset->materials,
+                                           asset->material_count,
+                                           asset->variant_count))
+                goto fail;
+            asset->scenes[scene_index].camera_count = (int32_t)scene_camera_count;
+            if (scene_camera_count > 0) {
+                asset->scenes[scene_index].camera_indices =
+                    (int32_t *)calloc((size_t)scene_camera_count, sizeof(int32_t));
+                if (!asset->scenes[scene_index].camera_indices)
+                    goto fail;
+            }
+            for (int64_t camera_index = 0; camera_index < scene_camera_count; ++camera_index) {
+                int64_t table_index;
+                if (!vjson_arr_i64_exact(scene_cameras, camera_index, -1, &table_index) ||
+                    table_index < 0 || table_index >= asset->camera_count)
+                    goto fail;
+                asset->scenes[scene_index].camera_indices[camera_index] = (int32_t)table_index;
+            }
+        }
+    } else {
+        scene->baked_animations = animations;
+        scene->baked_animation_count = animation_count;
+        animations = NULL;
+        animation_count = 0;
+        if (!vscn_load_nodes_into_root(
+                scene->root, nodes_arr, meshes, mesh_count, materials, material_count, 0))
+            goto fail;
+    }
     scene->node_count = scene3d_count_subtree(scene->root);
     if (scene->node_count < 0) {
         rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE,
@@ -1735,6 +2320,10 @@ static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, 
         goto fail;
     scene->last_culled_count = 0;
 
+    vscn_release_loaded_refs((void **)skeletons, skeleton_count);
+    vscn_release_loaded_refs(animations, animation_count);
+    vscn_release_loaded_refs(node_animations, node_animation_count);
+    vscn_release_loaded_refs(cameras, camera_count);
     vscn_release_loaded_refs((void **)meshes, mesh_count);
     vscn_release_loaded_refs((void **)materials, material_count);
     vscn_release_loaded_refs((void **)cubemaps, cubemap_count);
@@ -1745,6 +2334,10 @@ static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, 
 fail:
     if (json_text)
         rt_string_unref(json_text);
+    vscn_release_loaded_refs(skeletons, skeleton_count);
+    vscn_release_loaded_refs(animations, animation_count);
+    vscn_release_loaded_refs(node_animations, node_animation_count);
+    vscn_release_loaded_refs(cameras, camera_count);
     vscn_release_loaded_refs((void **)meshes, mesh_count);
     vscn_release_loaded_refs((void **)materials, material_count);
     vscn_release_loaded_refs((void **)cubemaps, cubemap_count);

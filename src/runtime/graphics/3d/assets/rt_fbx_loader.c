@@ -6,9 +6,8 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/assets/rt_fbx_loader.c
-// Purpose: FBX binary format parser and asset extractor. Parses the binary
-//   node tree, resolves connections, and extracts geometry, skeleton,
-//   animation, and material data into runtime objects.
+// Purpose: Dependency-free binary/ASCII FBX parser and complete scene asset extractor for
+//   geometry, materials, skeletons, cameras, lights, object animation, and morph animation.
 //
 // Key invariants:
 //   - Supports FBX versions 7100-7700 (both 32-bit and 64-bit offsets).
@@ -22,14 +21,15 @@
 //     vertex and renormalized to sum to 1.
 //
 // Ownership/Lifetime:
-//   - rt_fbx_asset is GC-managed; finalizer releases every owned mesh,
-//     material, animation, morph target, skeleton, and scene root.
+//   - rt_fbx_asset is GC-managed; finalizer releases every owned mesh, material, skeletal/node
+//     animation, camera, morph target, skeleton, and scene root.
 //   - Parser scratch state (node tree, connection table, binding tables,
 //     mesh remaps) is freed before returning from rt_fbx_load.
 //   - Texture references loaded from disk are released after assignment to
 //     the materials that retain them.
 //
-// Links: rt_fbx_loader.h, plans/3d/15-fbx-loader.md
+// Links: rt_fbx_loader.h, rt_fbx_loader_morph.inc, rt_fbx_loader_nodeanim.inc,
+//   plans/3d/15-fbx-loader.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -50,7 +50,7 @@
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_quat.h"
-#include "rt_scene3d.h"
+#include "rt_scene3d_internal.h"
 #include "rt_skeleton3d.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
@@ -65,6 +65,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern void rt_camera3d_look_at_components(void *obj,
+                                           double eye_x,
+                                           double eye_y,
+                                           double eye_z,
+                                           double target_x,
+                                           double target_y,
+                                           double target_z,
+                                           double up_x,
+                                           double up_y,
+                                           double up_z);
 
 #define RT_FBX_HARD_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
 #define RT_FBX_DEFAULT_MAX_FILE_BYTES (256ull * 1024ull * 1024ull)
@@ -113,6 +124,12 @@ typedef struct {
     void **animations;
     int32_t animation_count;
     int32_t animation_capacity;
+    void **node_animations;
+    int32_t node_animation_count;
+    int32_t node_animation_capacity;
+    void **cameras;
+    int32_t camera_count;
+    int32_t camera_capacity;
     void **materials;
     int32_t material_count;
     int32_t material_capacity;
@@ -161,6 +178,17 @@ typedef struct {
     int64_t model_id;
     int32_t bone_index;
 } fbx_bone_binding_t;
+
+/// @brief One FBX BlendShapeChannel mapped into a mesh-local MorphTarget3D shape range.
+typedef struct {
+    int64_t channel_id;
+    int64_t geometry_id;
+    int32_t mesh_index;
+    int32_t shape_count;
+    int32_t *shape_indices;
+    double *full_weights;
+    double default_percent;
+} fbx_morph_channel_binding_t;
 
 #define FBX_NUMERIC_ABS_MAX 1000000000000.0
 #define FBX_UV_ABS_MAX 1000000.0
@@ -457,6 +485,7 @@ static void fbx_asset_release_ref_array(void ***items, int32_t *count, int32_t *
 #include "rt_fbx_loader_scene.inc"
 #include "rt_fbx_loader_skeleton.inc"
 #include "rt_fbx_loader_anim.inc"
+#include "rt_fbx_loader_nodeanim.inc"
 #include "rt_fbx_loader_loader.inc"
 // clang-format on
 
@@ -501,6 +530,51 @@ void *rt_fbx_get_scene_root(void *obj) {
 int64_t rt_fbx_animation_count(void *obj) {
     rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
     return a ? fbx_asset_safe_count(a->animations, a->animation_count, a->animation_capacity) : 0;
+}
+
+/// @brief Get the number of object/morph animation clips in the FBX file.
+int64_t rt_fbx_node_animation_count(void *obj) {
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    return a ? fbx_asset_safe_count(
+                   a->node_animations, a->node_animation_count, a->node_animation_capacity)
+             : 0;
+}
+
+/// @brief Get an object/morph animation clip by index from the loaded FBX asset.
+void *rt_fbx_get_node_animation(void *obj, int64_t index) {
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    int32_t count;
+    if (!a)
+        return NULL;
+    count = fbx_asset_safe_count(
+        a->node_animations, a->node_animation_count, a->node_animation_capacity);
+    if (index < 0 || index >= count)
+        return NULL;
+    return rt_g3d_checked_or_null(a->node_animations[index], RT_G3D_NODEANIMATION3D_CLASS_ID);
+}
+
+/// @brief Get the name of an object/morph animation clip by index.
+rt_string rt_fbx_get_node_animation_name(void *obj, int64_t index) {
+    void *animation = rt_fbx_get_node_animation(obj, index);
+    return animation ? rt_node_animation3d_get_name(animation) : rt_const_cstr("");
+}
+
+/// @brief Get the number of cameras extracted from the FBX file.
+int64_t rt_fbx_camera_count(void *obj) {
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    return a ? fbx_asset_safe_count(a->cameras, a->camera_count, a->camera_capacity) : 0;
+}
+
+/// @brief Get a camera by index from the loaded FBX asset.
+void *rt_fbx_get_camera(void *obj, int64_t index) {
+    rt_fbx_asset *a = (rt_fbx_asset *)rt_g3d_checked_or_null(obj, RT_G3D_FBX_ASSET_CLASS_ID);
+    int32_t count;
+    if (!a)
+        return NULL;
+    count = fbx_asset_safe_count(a->cameras, a->camera_count, a->camera_capacity);
+    if (index < 0 || index >= count)
+        return NULL;
+    return rt_g3d_checked_or_null(a->cameras[index], RT_G3D_CAMERA3D_CLASS_ID);
 }
 
 /// @brief Get an animation clip by index from the loaded FBX asset.

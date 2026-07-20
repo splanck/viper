@@ -16,6 +16,11 @@
 //   - InstantiateScene() creates a fresh Scene3D and attaches cloned top-level
 //     nodes below the scene root.
 //
+// Ownership/Lifetime:
+//   - SceneAsset retains imported resources and immutable scene templates until finalization.
+//   - Instantiation returns independent scene/node graphs with shared immutable resources and
+//     instance-local mutable morph state.
+//
 // Links: rt_scene3d.h, rt_fbx_loader.h, rt_gltf.h
 //
 //===----------------------------------------------------------------------===//
@@ -53,6 +58,11 @@ void *rt_model3d_load_asset(rt_string path);
 /// @details Failure diagnostics are returned in the Result instead of requiring
 /// `AssetDiagnostics3D.LastLoadError`.
 void *rt_model3d_load_asset_result(rt_string path);
+/// @brief Save the complete imported scene asset as a VSCN v4 file.
+/// @details Unlike SceneGraph.Save, this preserves every immutable scene, camera association,
+/// animation class, material variant, morph target, and enumerable shared resource.
+/// @return One after atomic publication, otherwise zero.
+int64_t rt_model3d_save(void *obj, rt_string path);
 /// @brief Internal async path: build a glTF/GLB model from preloaded root bytes.
 /// @details Takes ownership of @p preloaded_data; callers must not reuse it.
 void *rt_model3d_load_preloaded_gltf(rt_string path,
@@ -84,6 +94,10 @@ int64_t rt_model3d_get_animation_count(void *obj);
 /// @details NodeAnimation3D clips are imported from glTF node animation channels and are
 /// separate from skeletal Animation3D clips.
 int64_t rt_model3d_get_node_animation_count(void *obj);
+/// @brief Number of enumerable meshes carrying an attached MorphTarget3D container.
+int64_t rt_model3d_get_morph_target_count(void *obj);
+/// @brief Total number of morph shapes across every enumerable mesh.
+int64_t rt_model3d_get_morph_shape_count(void *obj);
 /// @brief Number of scene-graph nodes contained in the model.
 int64_t rt_model3d_get_node_count(void *obj);
 /// @brief Number of immutable scenes contained in the model.
@@ -101,6 +115,8 @@ void *rt_model3d_get_skeleton(void *obj, int64_t index);
 void *rt_model3d_get_animation(void *obj, int64_t index);
 /// @brief Get the node animation at @p index (NULL if out of range).
 void *rt_model3d_get_node_animation(void *obj, int64_t index);
+/// @brief Get the MorphTarget3D attached to mesh @p mesh_index, or NULL.
+void *rt_model3d_get_morph_target(void *obj, int64_t mesh_index);
 /// @brief Get the node animation name at @p index (empty string if out of range).
 rt_string rt_model3d_get_node_animation_name(void *obj, int64_t index);
 /// @brief Get the imported camera at @p index in @p scene_index (NULL if out of range).

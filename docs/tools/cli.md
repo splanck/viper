@@ -518,9 +518,33 @@ Built artifacts are structurally and payload-verified by default: macOS ZIPs mus
 Offline 3D asset conditioning. `zanna asset bake <input> <output.vscn>` loads a
 model (glTF/GLB/FBX/OBJ/STL) through the full runtime import pipeline —
 including the meshopt, Draco, and Basis Universal decoders and the import
-options — optionally generates LOD chains, and saves the instantiated scene as
-a versioned `.vscn` for near-instant loading. Options: `--force-tangents`,
-`--eight-influences`, `--compress-anims`, `--lods N` (0-8, halving ratio).
+options — optionally generates LOD chains, and saves the complete `SceneAsset`
+as VSCN v4 for near-instant loading. Version 4 retains every immutable scene,
+camera association, enumerable resource, node/skeletal animation, material
+variant, and static morph payload; decoded texture pixels are canonicalized
+rather than preserving the source image-container bytes. The command reloads
+the written file before reporting success. Options: `--force-tangents`,
+`--eight-influences`, `--compress-anims`, `--lods N` (0-8, halving ratio), and
+`--json`.
+
+In the default output mode, success keeps the historical `baked <input> ->
+<output>` line on stdout. Any resource class whose count was reduced by the
+round trip produces a warning on stderr with a stable code such as
+`[scene-count-reduced]`, `[camera-count-reduced]`,
+`[node-animation-count-reduced]`, `[morph-target-count-reduced]`,
+`[morph-shape-count-reduced]`, or `[variant-count-reduced]`.
+
+`--json` suppresses the human success line and fidelity warnings and writes one
+compact report object to stdout. Its stable schema identifier is
+`zanna.asset-bake-report/v1`. The report contains `status`, `input`, `output`,
+`lossy`, `source`, `baked`, `losses`, and the source loader's `importReport`.
+The source/baked snapshots expose mesh, material, skeleton, skeletal-animation,
+node-animation, morph-target, morph-shape, node, scene, camera, and
+material-variant counts. Each loss has a stable `code`, the affected `resource`,
+both counts, and `dropped`. A failed JSON bake instead reports
+`status: "error"` and the failing `stage` (`load`, `save`, or `verify`) and exits
+with code 2. Successful JSON mode does not write to stderr, so build tools can
+parse stdout directly.
 
 `zanna asset validate <input>` loads a model and prints the
 `AssetDiagnostics3D` import report as JSON (skipped primitives, truncated

@@ -72,9 +72,10 @@ Tilemap copies.
 
 **Detailed docs:** [Editable Scene Documents](game/scene.md)
 
-Core methods include `LoadJsonResult`, `LoadResult`, `LoadJson`, `Load`, `ToJson`, `Save`,
-`HasErrors`, `DiagnosticRecords`, typed scene/object property accessors,
-`AssetDescriptors`, `AssetPaths`, and `BuildTilemap`.
+Core methods include `LoadJsonResult`, `LoadResult`, Tiled JSON/TMX
+`ImportTiledResult`/`ImportTiledAssetResult`, their compatibility object-returning
+forms, `ToJson`, `Save`, `HasErrors`, `DiagnosticRecords`, typed scene/object
+property accessors, `AssetDescriptors`, `AssetPaths`, and `BuildTilemap`.
 
 Prefer `LoadJsonResult` and `LoadResult` when application code needs a clear
 success/failure value. The legacy `LoadJson` and `Load` methods still return

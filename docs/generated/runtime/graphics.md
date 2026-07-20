@@ -1410,7 +1410,8 @@ Provides Tiled Map Loader functionality for 2D graphics and media applications.
 
 Create `Zanna.Graphics.TiledMapLoader` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`TileWidth`, `TileHeight` and operations including `SetTileSize`, `NewTilemap`.
+`TileWidth`, `TileHeight` and operations including `SetTileSize`, `NewTilemap`, and
+dependency-aware filesystem/asset Tiled JSON/TMX loading.
 
 Constructor: `Zanna.Graphics.TiledMapLoader.New`
 
@@ -1427,6 +1428,10 @@ Constructor: `Zanna.Graphics.TiledMapLoader.New`
 |---|---|---|
 | <a id="zanna-graphics-tiledmaploader-settilesize"></a>`SetTileSize` | `void(i64,i64)` | `Zanna.Graphics.TiledMapLoader.SetTileSize` |
 | <a id="zanna-graphics-tiledmaploader-newtilemap"></a>`NewTilemap` | `obj(i64,i64)` | `Zanna.Graphics.TiledMapLoader.NewTilemap` |
+| <a id="zanna-graphics-tiledmaploader-load"></a>`Load` | `obj<Zanna.Graphics2D.Tilemap>(str)` | `Zanna.Graphics.TiledMapLoader.Load` |
+| <a id="zanna-graphics-tiledmaploader-loadresult"></a>`LoadResult` | `obj<Zanna.Result>(str)` | `Zanna.Graphics.TiledMapLoader.LoadResult` |
+| <a id="zanna-graphics-tiledmaploader-loadasset"></a>`LoadAsset` | `obj<Zanna.Graphics2D.Tilemap>(str)` | `Zanna.Graphics.TiledMapLoader.LoadAsset` |
+| <a id="zanna-graphics-tiledmaploader-loadassetresult"></a>`LoadAssetResult` | `obj<Zanna.Result>(str)` | `Zanna.Graphics.TiledMapLoader.LoadAssetResult` |
 | <a id="zanna-graphics-tiledmaploader-new"></a>`New` | `obj()` | `Zanna.Graphics.TiledMapLoader.New` |
 
 <a id="zanna-graphics-spritesheet"></a>
@@ -2053,6 +2058,10 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="zanna-graphics-tiledmaploader-get-tilewidth"></a>`Zanna.Graphics.TiledMapLoader.get_TileWidth` | `i64(obj)` | `rt_tiledmaploader_get_tile_width` |
 | <a id="zanna-graphics-tiledmaploader-get-tileheight"></a>`Zanna.Graphics.TiledMapLoader.get_TileHeight` | `i64(obj)` | `rt_tiledmaploader_get_tile_height` |
 | `Zanna.Graphics.TiledMapLoader.NewTilemap` | `obj(obj,i64,i64)` | `rt_tiledmaploader_new_tilemap` |
+| `Zanna.Graphics.TiledMapLoader.Load` | `obj<Zanna.Graphics2D.Tilemap>(obj,str)` | `rt_tiledmaploader_load` |
+| `Zanna.Graphics.TiledMapLoader.LoadResult` | `obj<Zanna.Result>(obj,str)` | `rt_tiledmaploader_load_result` |
+| `Zanna.Graphics.TiledMapLoader.LoadAsset` | `obj<Zanna.Graphics2D.Tilemap>(obj,str)` | `rt_tiledmaploader_load_asset` |
+| `Zanna.Graphics.TiledMapLoader.LoadAssetResult` | `obj<Zanna.Result>(obj,str)` | `rt_tiledmaploader_load_asset_result` |
 | `Zanna.Graphics.VideoPlayer.Open` | `obj(str)` | `rt_videoplayer_open` |
 | `Zanna.Graphics.VideoPlayer.Play` | `void(obj)` | `rt_videoplayer_play` |
 | `Zanna.Graphics.VideoPlayer.Pause` | `void(obj)` | `rt_videoplayer_pause` |

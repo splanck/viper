@@ -14,7 +14,7 @@ Provides scene-owned editor document model.
 Create `Zanna.Game2D.SceneDocument` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
 `Width`, `Height`, `TileWidth` and operations including `LoadJson`, `LoadJsonResult`, `Load`,
-`LoadResult`.
+`LoadResult`, plus filesystem and asset-package Tiled JSON/TMX import methods.
 
 Constructor: `Zanna.Game2D.SceneDocument.New`
 
@@ -35,6 +35,10 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | <a id="zanna-game2d-scenedocument-loadjsonresult"></a>`LoadJsonResult` | `obj<Zanna.Result>(str)` | `Zanna.Game2D.SceneDocument.LoadJsonResult` |
 | <a id="zanna-game2d-scenedocument-load"></a>`Load` | `obj<Zanna.Game2D.SceneDocument>(str)` | `Zanna.Game2D.SceneDocument.Load` |
 | <a id="zanna-game2d-scenedocument-loadresult"></a>`LoadResult` | `obj<Zanna.Result>(str)` | `Zanna.Game2D.SceneDocument.LoadResult` |
+| <a id="zanna-game2d-scenedocument-importtiled"></a>`ImportTiled` | `obj<Zanna.Game2D.SceneDocument>(str)` | `Zanna.Game2D.SceneDocument.ImportTiled` |
+| <a id="zanna-game2d-scenedocument-importtiledresult"></a>`ImportTiledResult` | `obj<Zanna.Result>(str)` | `Zanna.Game2D.SceneDocument.ImportTiledResult` |
+| <a id="zanna-game2d-scenedocument-importtiledasset"></a>`ImportTiledAsset` | `obj<Zanna.Game2D.SceneDocument>(str)` | `Zanna.Game2D.SceneDocument.ImportTiledAsset` |
+| <a id="zanna-game2d-scenedocument-importtiledassetresult"></a>`ImportTiledAssetResult` | `obj<Zanna.Result>(str)` | `Zanna.Game2D.SceneDocument.ImportTiledAssetResult` |
 | <a id="zanna-game2d-scenedocument-tojson"></a>`ToJson` | `str()` | `Zanna.Game2D.SceneDocument.ToJson` |
 | <a id="zanna-game2d-scenedocument-save"></a>`Save` | `i1(str)` | `Zanna.Game2D.SceneDocument.Save` |
 | <a id="zanna-game2d-scenedocument-diagnostics"></a>`Diagnostics` | `obj<Zanna.Collections.Seq>()` | `Zanna.Game2D.SceneDocument.Diagnostics` |
@@ -117,6 +121,10 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | `Zanna.Game2D.SceneDocument.LoadJsonResult` | `obj<Zanna.Result>(str)` | `rt_game_scene_load_json_result` |
 | `Zanna.Game2D.SceneDocument.Load` | `obj<Zanna.Game2D.SceneDocument>(str)` | `rt_game_scene_load_file` |
 | `Zanna.Game2D.SceneDocument.LoadResult` | `obj<Zanna.Result>(str)` | `rt_game_scene_load_file_result` |
+| `Zanna.Game2D.SceneDocument.ImportTiled` | `obj<Zanna.Game2D.SceneDocument>(str)` | `rt_game_scene_import_tiled` |
+| `Zanna.Game2D.SceneDocument.ImportTiledResult` | `obj<Zanna.Result>(str)` | `rt_game_scene_import_tiled_result` |
+| `Zanna.Game2D.SceneDocument.ImportTiledAsset` | `obj<Zanna.Game2D.SceneDocument>(str)` | `rt_game_scene_import_tiled_asset` |
+| `Zanna.Game2D.SceneDocument.ImportTiledAssetResult` | `obj<Zanna.Result>(str)` | `rt_game_scene_import_tiled_asset_result` |
 | `Zanna.Game2D.SceneDocument.ToJson` | `str(obj)` | `rt_game_scene_to_json` |
 | `Zanna.Game2D.SceneDocument.Save` | `i1(obj,str)` | `rt_game_scene_save_file` |
 | `Zanna.Game2D.SceneDocument.Diagnostics` | `obj<Zanna.Collections.Seq>(obj)` | `rt_game_scene_diagnostics` |

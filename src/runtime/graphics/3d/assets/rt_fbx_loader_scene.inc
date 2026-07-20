@@ -1,7 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_scene.inc  (#included from rt_fbx_loader.c;
-// not a standalone translation unit) Purpose: FBX scene-graph extraction
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_scene.inc
+// Purpose: Build FBX scene hierarchies, typed cameras/lights, and material-split meshes.
+// Key invariants:
+//   - Numeric FBX IDs resolve hierarchy/resources; display names never establish identity.
+//   - Static nodes and animated samples share the complete FBX transform-stack composer.
+// Ownership/Lifetime:
+//   - Returned roots own retained node resources; FBX asset arrays retain standalone cameras.
+//   - Model tables, parent indexes, and mesh remaps are scratch allocations freed before return.
+// Links: rt_fbx_loader.c, rt_fbx_loader_loader.inc, rt_fbx_loader_nodeanim.inc
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Scene graph extraction
@@ -93,6 +106,83 @@ static int fbx_read_p_xyz(fbx_node_t *p, double out_xyz[3]) {
     out_xyz[1] = y;
     out_xyz[2] = z;
     return 1;
+}
+
+/// @brief Return the named `Properties70/P` record, or NULL when the property is absent.
+static fbx_node_t *fbx_find_property70(fbx_node_t *node, const char *name) {
+    fbx_node_t *properties;
+    if (!node || !name)
+        return NULL;
+    properties = fbx_find_child(node, "Properties70");
+    if (!properties)
+        return NULL;
+    for (int32_t i = 0; i < properties->child_count; ++i) {
+        fbx_node_t *property = &properties->children[i];
+        if (strcmp(property->name, "P") == 0 && property->prop_count > 0 &&
+            fbx_ascii_equals_i(fbx_prop_str(property, 0), name)) {
+            return property;
+        }
+    }
+    return NULL;
+}
+
+/// @brief Read one scalar from `Properties70` or an exporter-style direct child.
+/// @param node FBX object carrying the property.
+/// @param name Property/child name.
+/// @param fallback Returned when the value is absent or non-finite.
+/// @param out_found Optional presence flag, set only for a finite numeric value.
+static double fbx_read_object_number(fbx_node_t *node,
+                                     const char *name,
+                                     double fallback,
+                                     int *out_found) {
+    fbx_node_t *property;
+    double value;
+    if (out_found)
+        *out_found = 0;
+    property = fbx_find_property70(node, name);
+    if (property && property->prop_count >= 5) {
+        value = fbx_prop_f64(property, 4);
+        if (isfinite(value)) {
+            if (out_found)
+                *out_found = 1;
+            return value;
+        }
+    }
+    property = node ? fbx_find_child(node, name) : NULL;
+    if (property && property->prop_count > 0) {
+        value = fbx_prop_f64(property, 0);
+        if (isfinite(value)) {
+            if (out_found)
+                *out_found = 1;
+            return value;
+        }
+    }
+    return fallback;
+}
+
+/// @brief Read a finite XYZ property from `Properties70` or a three-scalar direct child.
+static int fbx_read_object_xyz(fbx_node_t *node, const char *name, double out_xyz[3]) {
+    fbx_node_t *property;
+    if (!node || !name || !out_xyz)
+        return 0;
+    property = fbx_find_property70(node, name);
+    if (property && fbx_read_p_xyz(property, out_xyz))
+        return 1;
+    property = fbx_find_child(node, name);
+    if (!property || property->prop_count < 3)
+        return 0;
+    for (int i = 0; i < 3; ++i) {
+        out_xyz[i] = fbx_prop_f64(property, i);
+        if (!isfinite(out_xyz[i]))
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Whether an FBX `Model` subtype belongs to the skeletal hierarchy.
+static int fbx_model_type_is_skeleton(const char *type) {
+    return type && (strcmp(type, "LimbNode") == 0 || strcmp(type, "Limb") == 0 ||
+                    strcmp(type, "Root") == 0);
 }
 
 /// @brief Parse every FBX transform-stack property from a `Model` node.
@@ -865,6 +955,7 @@ static void *fbx_clone_mesh_for_material_slot(const rt_mesh3d *src,
     rt_mesh3d *dst;
     uint32_t selected_triangles = 0;
     uint32_t *vertex_map = NULL;
+    uint32_t *new_to_old = NULL;
     if (!src || !map || !map->triangle_slots || material_slot < 0)
         return NULL;
     for (uint32_t tri = 0; tri < map->triangle_count; tri++) {
@@ -891,7 +982,10 @@ static void *fbx_clone_mesh_for_material_slot(const rt_mesh3d *src,
     if ((size_t)src->vertex_count > SIZE_MAX / sizeof(*vertex_map))
         goto fail;
     vertex_map = (uint32_t *)malloc((size_t)src->vertex_count * sizeof(*vertex_map));
-    if (!vertex_map)
+    if ((size_t)dst->vertex_capacity > SIZE_MAX / sizeof(*new_to_old))
+        goto fail;
+    new_to_old = (uint32_t *)malloc((size_t)dst->vertex_capacity * sizeof(*new_to_old));
+    if (!vertex_map || !new_to_old)
         goto fail;
     for (uint32_t i = 0; i < src->vertex_count; i++)
         vertex_map[i] = UINT32_MAX;
@@ -908,6 +1002,7 @@ static void *fbx_clone_mesh_for_material_slot(const rt_mesh3d *src,
                     goto fail;
                 new_index = dst->vertex_count++;
                 vertex_map[old_index] = new_index;
+                new_to_old[new_index] = old_index;
                 dst->vertices[new_index] = src->vertices[old_index];
                 if (dst->positions64 && src->positions64) {
                     memcpy(&dst->positions64[(size_t)new_index * 3u],
@@ -925,11 +1020,27 @@ static void *fbx_clone_mesh_for_material_slot(const rt_mesh3d *src,
     dst->bone_count = src->bone_count;
     dst->bounds_dirty = 1;
     rt_mesh3d_end_geometry_batch(dst);
+    if (src->morph_targets_ref) {
+        void *remapped_morph =
+            rt_morphtarget3d_clone_remapped(src->morph_targets_ref, new_to_old, dst->vertex_count);
+        if (!remapped_morph)
+            goto fail_after_batch;
+        rt_mesh3d_set_morph_targets(dst, remapped_morph);
+        fbx_release_ref(&remapped_morph);
+    }
     free(vertex_map);
+    free(new_to_old);
     return mesh_obj;
+fail_after_batch:
+    free(vertex_map);
+    free(new_to_old);
+    if (rt_obj_release_check0(mesh_obj))
+        rt_obj_free(mesh_obj);
+    return NULL;
 fail:
     rt_mesh3d_end_geometry_batch(dst);
     free(vertex_map);
+    free(new_to_old);
     if (rt_obj_release_check0(mesh_obj))
         rt_obj_free(mesh_obj);
     return NULL;
@@ -998,6 +1109,19 @@ typedef struct {
     int32_t index;
 } fbx_model_id_entry_t;
 
+/// @brief One imported non-skeleton FBX Model and its evaluated runtime scene node.
+typedef struct {
+    int64_t id;
+    int64_t parent_id;
+    int32_t import_index;
+    fbx_node_t *source;
+    void *node;
+    fbx_transform_components_t components;
+    double local_matrix[16];
+    double global_matrix[16];
+    int global_evaluated;
+} fbx_scene_model_binding_t;
+
 /// @brief qsort comparator ordering fbx_model_id_entry_t by ascending id.
 static int fbx_model_id_entry_cmp(const void *a, const void *b) {
     int64_t ia = ((const fbx_model_id_entry_t *)a)->id;
@@ -1023,6 +1147,308 @@ static int32_t fbx_model_index_for_id(const fbx_model_id_entry_t *sorted,
     return -1;
 }
 
+/// @brief Find one scene-model binding by FBX numeric ID.
+static fbx_scene_model_binding_t *fbx_scene_model_for_id(fbx_scene_model_binding_t *models,
+                                                         int32_t model_count,
+                                                         int64_t id) {
+    if (!models || id == 0)
+        return NULL;
+    for (int32_t i = 0; i < model_count; ++i) {
+        if (models[i].id == id)
+            return &models[i];
+    }
+    return NULL;
+}
+
+/// @brief Find a connected `NodeAttribute` with the requested subtype.
+/// @details Standard FBX connects `NodeAttribute -> Model`; the reverse direction is accepted for
+/// exporter compatibility. Numeric connection endpoints remain the only identity keys.
+static fbx_node_t *fbx_find_model_node_attribute(fbx_node_t *objects,
+                                                 const fbx_conn_table_t *ct,
+                                                 int64_t model_id,
+                                                 const char *subtype) {
+    if (!objects || !ct || !subtype)
+        return NULL;
+    for (int32_t ci = fbx_connections_first_for_parent(ct, model_id); ci >= 0;
+         ci = fbx_connections_next_for_parent(ct, ci)) {
+        if (ct->entries[ci].prop && ct->entries[ci].prop[0] != '\0')
+            continue;
+        fbx_node_t *object = fbx_find_object_by_id(objects, ct->entries[ci].child_id);
+        if (object && strcmp(object->name, "NodeAttribute") == 0 && object->prop_count >= 3 &&
+            fbx_ascii_equals_i(fbx_prop_str(object, 2), subtype)) {
+            return object;
+        }
+    }
+    for (int32_t ci = fbx_connections_first_for_child(ct, model_id); ci >= 0;
+         ci = fbx_connections_next_for_child(ct, ci)) {
+        if (ct->entries[ci].prop && ct->entries[ci].prop[0] != '\0')
+            continue;
+        fbx_node_t *object = fbx_find_object_by_id(objects, ct->entries[ci].parent_id);
+        if (object && strcmp(object->name, "NodeAttribute") == 0 && object->prop_count >= 3 &&
+            fbx_ascii_equals_i(fbx_prop_str(object, 2), subtype)) {
+            return object;
+        }
+    }
+    return NULL;
+}
+
+/// @brief Read a scalar from an attribute, falling back to its owning Model.
+static double fbx_read_attribute_number(
+    fbx_node_t *attribute, fbx_node_t *model, const char *name, double fallback, int *out_found) {
+    int found = 0;
+    double value = fbx_read_object_number(attribute, name, fallback, &found);
+    if (!found)
+        value = fbx_read_object_number(model, name, fallback, &found);
+    if (out_found)
+        *out_found = found;
+    return value;
+}
+
+/// @brief Read an XYZ property from an attribute, falling back to its owning Model.
+static int fbx_read_attribute_xyz(fbx_node_t *attribute,
+                                  fbx_node_t *model,
+                                  const char *name,
+                                  double out_xyz[3]) {
+    return fbx_read_object_xyz(attribute, name, out_xyz) ||
+           fbx_read_object_xyz(model, name, out_xyz);
+}
+
+/// @brief Normalize a finite vector, substituting the requested fallback on degeneracy.
+static void fbx_normalize_vec3_or(double vector[3], double x, double y, double z) {
+    double maximum;
+    double length;
+    if (!vector)
+        return;
+    maximum = fmax(fabs(vector[0]), fmax(fabs(vector[1]), fabs(vector[2])));
+    if (!isfinite(maximum) || maximum <= 1e-12) {
+        vector[0] = x;
+        vector[1] = y;
+        vector[2] = z;
+        return;
+    }
+    vector[0] /= maximum;
+    vector[1] /= maximum;
+    vector[2] /= maximum;
+    length = sqrt(vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2]);
+    if (!isfinite(length) || length <= 1e-12) {
+        vector[0] = x;
+        vector[1] = y;
+        vector[2] = z;
+        return;
+    }
+    vector[0] /= length;
+    vector[1] /= length;
+    vector[2] /= length;
+}
+
+/// @brief Build a node-local Light3D from an FBX light attribute.
+static void *fbx_make_model_light(fbx_node_t *attribute,
+                                  fbx_node_t *model,
+                                  fbx_load_context_t *context) {
+    void *light = NULL;
+    void *position = NULL;
+    void *direction = NULL;
+    double color[3] = {1.0, 1.0, 1.0};
+    double intensity;
+    double range;
+    double attenuation = RT_LIGHT3D_DEFAULT_ATTENUATION;
+    double inner_angle;
+    double outer_angle;
+    int found = 0;
+    int light_type;
+    if ((!attribute && !model) || !context || !fbx_budget_charge(context, 1u, sizeof(rt_light3d)))
+        return NULL;
+    (void)fbx_read_attribute_xyz(attribute, model, "Color", color);
+    for (int i = 0; i < 3; ++i)
+        color[i] = fbx_clamp_double(color[i], 0.0, 1.0, 1.0);
+    intensity = fbx_read_attribute_number(attribute, model, "Intensity", 100.0, NULL) / 100.0;
+    intensity = fbx_clamp_double(intensity, 0.0, 1000000.0, 1.0);
+    light_type = (int)fbx_read_attribute_number(attribute, model, "LightType", 0.0, NULL);
+    range = fbx_read_attribute_number(attribute, model, "FarAttenuationEnd", 0.0, &found);
+    if (!found || range <= 0.0)
+        range = fbx_read_attribute_number(attribute, model, "DecayStart", 0.0, &found);
+    if (found && isfinite(range) && range > 0.0) {
+        attenuation = 1.0 / (range * range);
+        if (!isfinite(attenuation) || attenuation < RT_LIGHT3D_DEFAULT_ATTENUATION)
+            attenuation = RT_LIGHT3D_DEFAULT_ATTENUATION;
+    }
+    position = rt_vec3_new(0.0, 0.0, 0.0);
+    direction = rt_vec3_new(0.0, 0.0, -1.0);
+    if (!position || !direction) {
+        fbx_release_ref(&position);
+        fbx_release_ref(&direction);
+        return NULL;
+    }
+    switch (light_type) {
+        case 1:
+            light = rt_light3d_new_directional(direction, color[0], color[1], color[2]);
+            break;
+        case 2:
+            outer_angle =
+                fbx_read_attribute_number(attribute, model, "OuterAngle", 45.0, NULL) * 0.5;
+            inner_angle =
+                fbx_read_attribute_number(attribute, model, "InnerAngle", 30.0, NULL) * 0.5;
+            outer_angle = fbx_clamp_double(outer_angle, 0.01, 89.0, 22.5);
+            inner_angle = fbx_clamp_double(inner_angle, 0.0, outer_angle - 0.01, 15.0);
+            light = rt_light3d_new_spot(position,
+                                        direction,
+                                        color[0],
+                                        color[1],
+                                        color[2],
+                                        attenuation,
+                                        inner_angle,
+                                        outer_angle);
+            break;
+        case 3:
+        case 4:
+            light = rt_light3d_new_point(position, color[0], color[1], color[2], attenuation);
+            rt_asset_error_add_warningf(
+                "FBX light type %d has no native area/volume representation; imported as point",
+                light_type);
+            break;
+        default:
+            light = rt_light3d_new_point(position, color[0], color[1], color[2], attenuation);
+            break;
+    }
+    fbx_release_ref(&position);
+    fbx_release_ref(&direction);
+    if (!light)
+        return NULL;
+    rt_light3d_set_intensity(light, intensity);
+    rt_light3d_set_enabled(
+        light, fbx_read_attribute_number(attribute, model, "CastLightOnObject", 1.0, NULL) != 0.0);
+    rt_light3d_set_casts_shadows(
+        light, fbx_read_attribute_number(attribute, model, "CastShadows", 0.0, NULL) != 0.0);
+    return light;
+}
+
+/// @brief Resolve a camera look-at/up target connected by the named FBX relationship.
+static fbx_scene_model_binding_t *fbx_find_camera_target(fbx_scene_model_binding_t *models,
+                                                         int32_t model_count,
+                                                         const fbx_conn_table_t *ct,
+                                                         int64_t model_id,
+                                                         int64_t attribute_id,
+                                                         const char *relationship) {
+    if (!models || !ct || !relationship)
+        return NULL;
+    for (int32_t i = 0; i < ct->count; ++i) {
+        const fbx_conn_t *connection = &ct->entries[i];
+        int64_t other = 0;
+        if (!connection->prop || !fbx_ascii_equals_i(connection->prop, relationship))
+            continue;
+        if (connection->parent_id == model_id || connection->parent_id == attribute_id)
+            other = connection->child_id;
+        else if (connection->child_id == model_id || connection->child_id == attribute_id)
+            other = connection->parent_id;
+        if (other != 0) {
+            fbx_scene_model_binding_t *target = fbx_scene_model_for_id(models, model_count, other);
+            if (target)
+                return target;
+        }
+    }
+    return NULL;
+}
+
+/// @brief Build and orient one Camera3D from an evaluated FBX camera model.
+static void *fbx_make_model_camera(fbx_node_t *attribute,
+                                   fbx_scene_model_binding_t *model,
+                                   fbx_scene_model_binding_t *models,
+                                   int32_t model_count,
+                                   const fbx_conn_table_t *ct,
+                                   fbx_load_context_t *context) {
+    static const double pi = 3.14159265358979323846;
+    int projection_type;
+    int found_y = 0;
+    int found_fov = 0;
+    int found_x = 0;
+    double fov;
+    double aspect_width;
+    double aspect_height;
+    double aspect;
+    double near_plane;
+    double far_plane;
+    double ortho_zoom;
+    int found_ortho_zoom = 0;
+    void *camera;
+    double eye[3];
+    double forward[3];
+    double up[3];
+    double target[3];
+    int64_t attribute_id = attribute && attribute->prop_count > 0 ? fbx_prop_i64(attribute, 0) : 0;
+    fbx_scene_model_binding_t *look_at;
+    fbx_scene_model_binding_t *up_target;
+    if (!model || !ct || !context || !fbx_budget_charge(context, 1u, sizeof(rt_camera3d)))
+        return NULL;
+    projection_type =
+        (int)fbx_read_attribute_number(attribute, model->source, "CameraProjectionType", 0.0, NULL);
+    fov = fbx_read_attribute_number(attribute, model->source, "FieldOfViewY", 60.0, &found_y);
+    if (!found_y)
+        fov = fbx_read_attribute_number(attribute, model->source, "FieldOfView", 60.0, &found_fov);
+    if (!found_y && !found_fov)
+        fov = fbx_read_attribute_number(attribute, model->source, "FieldOfViewX", 60.0, &found_x);
+    if (!found_y && !found_fov && !found_x) {
+        double focal =
+            fbx_read_attribute_number(attribute, model->source, "FocalLength", 0.0, NULL);
+        double film_height =
+            fbx_read_attribute_number(attribute, model->source, "FilmHeight", 0.0, NULL);
+        if (focal > 0.0 && film_height > 0.0)
+            fov = 2.0 * atan((film_height * 25.4 * 0.5) / focal) * 180.0 / pi;
+    }
+    aspect_width = fbx_read_attribute_number(attribute, model->source, "AspectWidth", 1.0, NULL);
+    aspect_height = fbx_read_attribute_number(attribute, model->source, "AspectHeight", 1.0, NULL);
+    aspect = isfinite(aspect_width) && isfinite(aspect_height) && aspect_width > 0.0 &&
+                     aspect_height > 0.0
+                 ? aspect_width / aspect_height
+                 : 1.0;
+    near_plane = fbx_read_attribute_number(attribute, model->source, "NearPlane", 0.1, NULL);
+    far_plane = fbx_read_attribute_number(attribute, model->source, "FarPlane", 1000.0, NULL);
+    ortho_zoom =
+        fbx_read_attribute_number(attribute, model->source, "OrthoZoom", 10.0, &found_ortho_zoom);
+    if (!found_ortho_zoom)
+        ortho_zoom =
+            fbx_read_attribute_number(attribute, model->source, "CameraOrthoZoom", 10.0, NULL);
+    if (projection_type == 1)
+        camera = rt_camera3d_new_ortho(fabs(ortho_zoom), aspect, near_plane, far_plane);
+    else if (found_x && !found_y && !found_fov)
+        camera = rt_camera3d_new_horizontal_fov(fov, aspect, near_plane, far_plane);
+    else
+        camera = rt_camera3d_new(fov, aspect, near_plane, far_plane);
+    if (!camera)
+        return NULL;
+    eye[0] = model->global_matrix[3];
+    eye[1] = model->global_matrix[7];
+    eye[2] = model->global_matrix[11];
+    forward[0] = -model->global_matrix[2];
+    forward[1] = -model->global_matrix[6];
+    forward[2] = -model->global_matrix[10];
+    up[0] = model->global_matrix[1];
+    up[1] = model->global_matrix[5];
+    up[2] = model->global_matrix[9];
+    fbx_normalize_vec3_or(forward, 0.0, 0.0, -1.0);
+    fbx_normalize_vec3_or(up, 0.0, 1.0, 0.0);
+    target[0] = eye[0] + forward[0];
+    target[1] = eye[1] + forward[1];
+    target[2] = eye[2] + forward[2];
+    look_at =
+        fbx_find_camera_target(models, model_count, ct, model->id, attribute_id, "LookAtProperty");
+    if (look_at) {
+        target[0] = look_at->global_matrix[3];
+        target[1] = look_at->global_matrix[7];
+        target[2] = look_at->global_matrix[11];
+    }
+    up_target = fbx_find_camera_target(
+        models, model_count, ct, model->id, attribute_id, "UpVectorProperty");
+    if (up_target) {
+        up[0] = up_target->global_matrix[3] - eye[0];
+        up[1] = up_target->global_matrix[7] - eye[1];
+        up[2] = up_target->global_matrix[11] - eye[2];
+        fbx_normalize_vec3_or(up, 0.0, 1.0, 0.0);
+    }
+    rt_camera3d_look_at_components(
+        camera, eye[0], eye[1], eye[2], target[0], target[1], target[2], up[0], up[1], up[2]);
+    return camera;
+}
+
 /// @brief Three-phase builder that assembles a Zanna `SceneNode3D` graph from the flat
 /// FBX `Objects` / `Connections` soup. Phase 1: iterate `Model` entries, skip skeleton
 /// limbs (handled by the skeleton importer), allocate a scene node per model with
@@ -1034,7 +1460,8 @@ static int32_t fbx_model_index_for_id(const fbx_model_id_entry_t *sorted,
 /// released via the GC on failure — no manual cleanup needed). This is the "scene
 /// graph" half of the FBX importer; the flat mesh/material/animation lists live on
 /// `rt_fbx_asset` alongside the root.
-static void *fbx_build_scene_root(fbx_node_t *root,
+static void *fbx_build_scene_root(rt_fbx_asset *asset,
+                                  fbx_node_t *root,
                                   fbx_node_t *objects,
                                   const fbx_conn_table_t *ct,
                                   const fbx_mesh_binding_t *mesh_bindings,
@@ -1042,19 +1469,9 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                                   const fbx_material_binding_t *material_bindings,
                                   int32_t material_binding_count,
                                   int z_up,
+                                  fbx_load_context_t *context,
                                   int *out_failed) {
-    typedef struct {
-        int64_t id;
-        int64_t parent_id;
-        fbx_node_t *source;
-        void *node;
-        fbx_transform_components_t components;
-        double local_matrix[16];
-        double global_matrix[16];
-        int global_evaluated;
-    } fbx_model_binding_t;
-
-    fbx_model_binding_t *models = NULL;
+    fbx_scene_model_binding_t *models = NULL;
     int32_t model_count = 0;
     int32_t model_capacity = 0;
     void *scene_root = NULL;
@@ -1064,7 +1481,7 @@ static void *fbx_build_scene_root(fbx_node_t *root,
     if (out_failed)
         *out_failed = 0;
 
-    if (!root || !objects)
+    if (!asset || !root || !objects || !context)
         return NULL;
 
     for (int32_t i = 0; i < objects->child_count; i++) {
@@ -1076,8 +1493,7 @@ static void *fbx_build_scene_root(fbx_node_t *root,
         if (strcmp(obj->name, "Model") != 0 || obj->prop_count < 3)
             continue;
         type_str = fbx_prop_str(obj, 2);
-        if (strcmp(type_str, "LimbNode") == 0 || strcmp(type_str, "Limb") == 0 ||
-            strcmp(type_str, "Root") == 0) {
+        if (fbx_model_type_is_skeleton(type_str)) {
             continue;
         }
 
@@ -1094,7 +1510,7 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                 failed = 1;
                 break;
             }
-            models = (fbx_model_binding_t *)nm;
+            models = (fbx_scene_model_binding_t *)nm;
             model_capacity = new_capacity;
         }
 
@@ -1108,8 +1524,10 @@ static void *fbx_build_scene_root(fbx_node_t *root,
 
         models[model_count].id = model_id;
         models[model_count].parent_id = fbx_find_parent(ct, model_id);
+        models[model_count].import_index = i;
         models[model_count].source = obj;
         models[model_count].node = node;
+        ((rt_scene_node3d *)node)->import_index = i;
         fbx_read_model_transform_components(obj, &models[model_count].components);
         fbx_build_model_transform_matrix(&models[model_count].components,
                                          models[model_count].local_matrix);
@@ -1282,6 +1700,21 @@ static void *fbx_build_scene_root(fbx_node_t *root,
             rt_scene_node3d_set_material(models[i].node,
                                          primary_material ? primary_material : default_material);
         }
+        {
+            fbx_node_t *light_attribute =
+                fbx_find_model_node_attribute(objects, ct, models[i].id, "Light");
+            if (light_attribute ||
+                (models[i].source->prop_count >= 3 &&
+                 fbx_ascii_equals_i(fbx_prop_str(models[i].source, 2), "Light"))) {
+                void *light = fbx_make_model_light(light_attribute, models[i].source, context);
+                if (!light) {
+                    failed = 1;
+                    break;
+                }
+                rt_scene_node3d_set_light(models[i].node, light);
+                fbx_release_ref(&light);
+            }
+        }
     }
 
     /* Resolve each model's direct parent index once (O(n log n)) so the hierarchy
@@ -1370,6 +1803,28 @@ static void *fbx_build_scene_root(fbx_node_t *root,
                 }
                 fbx_apply_matrix_to_scene_node(models[i].node, runtime_local);
             }
+        }
+    }
+
+    /* Cameras live on SceneAsset rather than SceneNode3D. Build them only after every model's
+     * global transform is evaluated so authored look-at and up-vector target relationships can
+     * resolve against stable world-space positions. */
+    for (int32_t i = 0; !failed && i < model_count; ++i) {
+        fbx_node_t *camera_attribute =
+            fbx_find_model_node_attribute(objects, ct, models[i].id, "Camera");
+        if (camera_attribute || (models[i].source->prop_count >= 3 &&
+                                 fbx_ascii_equals_i(fbx_prop_str(models[i].source, 2), "Camera"))) {
+            void *camera = fbx_make_model_camera(
+                camera_attribute, &models[i], models, model_count, ct, context);
+            if (!camera || asset->camera_count == INT32_MAX ||
+                !fbx_budget_charge(context, 1u, sizeof(void *)) ||
+                !fbx_asset_reserve_ref_array(
+                    &asset->cameras, &asset->camera_capacity, asset->camera_count + 1)) {
+                fbx_release_ref(&camera);
+                failed = 1;
+                break;
+            }
+            asset->cameras[asset->camera_count++] = camera;
         }
     }
 

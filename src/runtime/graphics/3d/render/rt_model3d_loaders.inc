@@ -1,8 +1,27 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_model3d_loaders.inc  (#included from rt_model3d.c; not a
-// standalone translation unit) Purpose: Model3D OBJ/glTF/FBX import bridges
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
 //===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/render/rt_model3d_loaders.inc
+// Purpose: SceneAsset import bridges for VSCN, OBJ, STL, glTF, and FBX sources.
+// Key invariants:
+//   - LoadAsset resolves root bytes and dependencies through the asset manager.
+//   - Temporary spill files never replace the original logical dependency base path.
+// Ownership/Lifetime:
+//   - This implementation fragment is included by rt_model3d.c.
+//   - Temporary bytes, paths, and files are released before each loader returns.
+// Links: rt_model3d.c, rt_asset.h, rt_scene3d.h, rt_tempfile.h
+//
+//===----------------------------------------------------------------------===//
+
+static int model3d_write_temp_asset_bytes(rt_string path, const uint8_t *bytes, size_t size);
+static rt_string model3d_spill_asset_bytes(const char *prefix_cstr,
+                                           const char *suffix_cstr,
+                                           const uint8_t *bytes,
+                                           size_t size);
 
 /// @brief Extract the next token from *@p cursor — honoring single/double quotes so paths or
 ///   material names containing spaces survive — and advance @p cursor past it (and any closing
@@ -38,10 +57,8 @@ static char *model_obj_next_path_token(const char **cursor) {
 /// @brief Load the texture named by an MTL map directive (sanitized via the path-traversal
 ///   guard and joined to @p mtl_dir) and assign it to @p material's @p slot
 ///   (normal/specular/emissive, else base color). No-op on a missing/unsafe/unloadable path.
-static void model_obj_set_texture_from_map(void *material,
-                                           const char *mtl_dir,
-                                           const char *map_value,
-                                           int32_t slot) {
+static void model_obj_set_texture_from_map(
+    void *material, const char *mtl_dir, const char *map_value, int32_t slot, int load_assets) {
     char *map_ref;
     char safe_ref[MODEL3D_OBJ_MAX_PATH_BYTES];
     char *path;
@@ -65,8 +82,12 @@ static void model_obj_set_texture_from_map(void *material,
     }
     {
         rt_string runtime_path = rt_const_cstr(path);
-        pixels = rt_pixels_load(runtime_path);
+        pixels = load_assets ? rt_asset_load(runtime_path) : rt_pixels_load(runtime_path);
         rt_string_unref(runtime_path);
+    }
+    if (pixels && rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+        model_release_local(pixels);
+        pixels = NULL;
     }
     if (!pixels) {
         rt_asset_error_add_warningf("material texture '%s' not loaded: %s",
@@ -98,11 +119,13 @@ static void model_obj_set_texture_from_map(void *material,
 ///   each "newmtl" material — with its colors and map_* textures — to @p table.
 static void model_obj_parse_mtl_file(model_obj_material_table *table,
                                      const char *obj_dir,
-                                     const char *mtllib_ref) {
+                                     const char *mtllib_ref,
+                                     int load_assets) {
     char safe_ref[MODEL3D_OBJ_MAX_PATH_BYTES];
     char mtl_dir[MODEL3D_OBJ_MAX_PATH_BYTES];
     char *path;
-    FILE *f;
+    FILE *f = NULL;
+    rt_string temp_path = NULL;
     char *line = NULL;
     size_t line_cap = 0;
     int line_status = 0;
@@ -114,13 +137,30 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
     if (!path)
         return;
     model_parent_dir(mtl_dir, sizeof(mtl_dir), path);
-    f = rt_file_stdio_open_utf8(path, "rb");
+    if (load_assets) {
+        size_t asset_size = 0;
+        rt_string runtime_path = rt_const_cstr(path);
+        uint8_t *asset_bytes = rt_asset_load_raw(runtime_path, &asset_size);
+        rt_string_unref(runtime_path);
+        if (asset_bytes) {
+            temp_path =
+                model3d_spill_asset_bytes("zanna_obj_mtl_", ".mtl", asset_bytes, asset_size);
+            free(asset_bytes);
+            if (temp_path)
+                f = rt_file_stdio_open_utf8(rt_string_cstr(temp_path), "rb");
+        }
+    }
+    if (!f)
+        f = rt_file_stdio_open_utf8(path, "rb");
     if (!f) {
         rt_asset_error_add_warningf("material library '%s' not found", safe_ref);
+        if (temp_path) {
+            rt_io_file_delete(temp_path);
+            rt_string_unref(temp_path);
+        }
         free(path);
         return;
     }
-    free(path);
     while ((line_status = model_read_text_line(f, &line, &line_cap, MODEL3D_OBJ_MAX_LINE_BYTES)) >
            0) {
         const char *p = line;
@@ -167,20 +207,26 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
             if (model_obj_parse_double1(p, &ns))
                 rt_material3d_set_shininess(current_material, ns);
         } else if (current_material && strncmp(p, "map_Kd ", 7) == 0) {
-            model_obj_set_texture_from_map(
-                current_material, mtl_dir, p + 7, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
+            model_obj_set_texture_from_map(current_material,
+                                           mtl_dir,
+                                           p + 7,
+                                           RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR,
+                                           load_assets);
         } else if (current_material && strncmp(p, "map_Ks ", 7) == 0) {
             model_obj_set_texture_from_map(
-                current_material, mtl_dir, p + 7, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR);
+                current_material, mtl_dir, p + 7, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR, load_assets);
         } else if (current_material && strncmp(p, "map_Ke ", 7) == 0) {
             model_obj_set_texture_from_map(
-                current_material, mtl_dir, p + 7, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE);
+                current_material, mtl_dir, p + 7, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE, load_assets);
         } else if (current_material &&
                    (strncmp(p, "map_Bump ", 9) == 0 || strncmp(p, "map_bump ", 9) == 0 ||
                     strncmp(p, "bump ", 5) == 0 || strncmp(p, "norm ", 5) == 0)) {
             const char *map_value = (p[0] == 'b' || p[0] == 'n') ? p + 5 : p + 9;
-            model_obj_set_texture_from_map(
-                current_material, mtl_dir, map_value, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL);
+            model_obj_set_texture_from_map(current_material,
+                                           mtl_dir,
+                                           map_value,
+                                           RT_MATERIAL3D_TEXTURE_SLOT_NORMAL,
+                                           load_assets);
         } else if (current_material && (strncmp(p, "d ", 2) == 0 || strncmp(p, "Tr ", 3) == 0)) {
             double a;
             const char *value = p + (p[0] == 'T' ? 3 : 2);
@@ -192,6 +238,11 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
         }
     }
     fclose(f);
+    if (temp_path) {
+        rt_io_file_delete(temp_path);
+        rt_string_unref(temp_path);
+    }
+    free(path);
     if (current_name && current_material &&
         !model_obj_material_table_append(table, current_name, current_material)) {
         free(current_name);
@@ -206,17 +257,19 @@ static void model_obj_parse_mtl_file(model_obj_material_table *table,
 
 /// @brief Scan the OBJ file at @p obj_path for "mtllib" directives and parse each referenced
 ///   .mtl library into @p table.
-static void model_obj_load_material_libraries(const char *obj_path,
-                                              model_obj_material_table *table) {
+static void model_obj_load_material_libraries(const char *obj_scan_path,
+                                              const char *logical_obj_path,
+                                              model_obj_material_table *table,
+                                              int load_assets) {
     char obj_dir[MODEL3D_OBJ_MAX_PATH_BYTES];
     FILE *f;
     char *line = NULL;
     size_t line_cap = 0;
     int line_status = 0;
-    if (!obj_path || !table)
+    if (!obj_scan_path || !table)
         return;
-    model_parent_dir(obj_dir, sizeof(obj_dir), obj_path);
-    f = rt_file_stdio_open_utf8(obj_path, "rb");
+    model_parent_dir(obj_dir, sizeof(obj_dir), logical_obj_path ? logical_obj_path : obj_scan_path);
+    f = rt_file_stdio_open_utf8(obj_scan_path, "rb");
     if (!f)
         return;
     while ((line_status = model_read_text_line(f, &line, &line_cap, MODEL3D_OBJ_MAX_LINE_BYTES)) >
@@ -231,7 +284,7 @@ static void model_obj_load_material_libraries(const char *obj_path,
                 if (!name)
                     break;
                 if (name) {
-                    model_obj_parse_mtl_file(table, obj_dir, name);
+                    model_obj_parse_mtl_file(table, obj_dir, name, load_assets);
                     free(name);
                 }
             }
@@ -248,21 +301,39 @@ static void model_obj_load_material_libraries(const char *obj_path,
 /// @brief Load a Wavefront OBJ file into @p model: parse vertices/normals/UVs and faces
 ///   (grouped by material), resolve materials from referenced .mtl libraries, and build the
 ///   model's per-material meshes. @return 1 on success, 0 on failure.
-static int model3d_load_from_obj(rt_model3d *model, rt_string path, const char *path_cstr) {
+static int model3d_load_from_obj(rt_model3d *model,
+                                 rt_string path,
+                                 const char *path_cstr,
+                                 int load_assets) {
     rt_mesh3d_obj_group_t *groups = NULL;
     int32_t group_count = 0;
     model_obj_material_table materials;
     void *default_material = NULL;
+    rt_string geometry_path = path;
+    rt_string temp_path = NULL;
+    int ok = 0;
     memset(&materials, 0, sizeof(materials));
-    if (!rt_mesh3d_from_obj_groups(path, &groups, &group_count) || group_count <= 0)
-        return 0;
-    model_obj_load_material_libraries(path_cstr, &materials);
-    default_material = rt_material3d_new();
-    if (!default_material) {
-        model_obj_material_table_free(&materials);
-        rt_mesh3d_obj_groups_free(groups, group_count);
-        return 0;
+    if (load_assets) {
+        size_t asset_size = 0;
+        uint8_t *asset_bytes = rt_asset_load_raw(path, &asset_size);
+        if (asset_bytes) {
+            temp_path = model3d_spill_asset_bytes("zanna_obj_", ".obj", asset_bytes, asset_size);
+            free(asset_bytes);
+            if (!temp_path) {
+                rt_asset_error_set_if_empty(RT_ASSET_ERROR_UNREADABLE,
+                                            "Model3D.LoadAsset: failed to stage OBJ bytes");
+                goto cleanup;
+            }
+            geometry_path = temp_path;
+        }
     }
+    if (!rt_mesh3d_from_obj_groups(geometry_path, &groups, &group_count) || group_count <= 0)
+        goto cleanup;
+    model_obj_load_material_libraries(
+        rt_string_cstr(geometry_path), path_cstr, &materials, load_assets);
+    default_material = rt_material3d_new();
+    if (!default_material)
+        goto cleanup;
     for (int32_t i = 0; i < group_count; i++) {
         void *material = model_obj_material_lookup(&materials, groups[i].material_name);
         rt_scene_node3d *node;
@@ -282,18 +353,11 @@ static int model3d_load_from_obj(rt_model3d *model, rt_string path, const char *
                                      &model->material_capacity,
                                      material,
                                      "Model3D.Load: material list allocation failed")) {
-            model_release_local(default_material);
-            model_obj_material_table_free(&materials);
-            rt_mesh3d_obj_groups_free(groups, group_count);
-            return 0;
+            goto cleanup;
         }
         node = (rt_scene_node3d *)rt_scene_node3d_new();
-        if (!node) {
-            model_release_local(default_material);
-            model_obj_material_table_free(&materials);
-            rt_mesh3d_obj_groups_free(groups, group_count);
-            return 0;
-        }
+        if (!node)
+            goto cleanup;
         if (!node_name) {
             snprintf(fallback_name, sizeof(fallback_name), "mesh_%d", (int)i);
             node_name = fallback_name;
@@ -307,17 +371,22 @@ static int model3d_load_from_obj(rt_model3d *model, rt_string path, const char *
         rt_scene_node3d_set_material(node, material);
         if (!rt_scene_node3d_try_add_child(model->template_root, node)) {
             model_release_local(node);
-            model_release_local(default_material);
-            model_obj_material_table_free(&materials);
-            rt_mesh3d_obj_groups_free(groups, group_count);
-            return 0;
+            goto cleanup;
         }
         model_release_local(node);
     }
-    model_release_local(default_material);
+    ok = 1;
+
+cleanup:
+    if (default_material)
+        model_release_local(default_material);
     model_obj_material_table_free(&materials);
     rt_mesh3d_obj_groups_free(groups, group_count);
-    return 1;
+    if (temp_path) {
+        rt_io_file_delete(temp_path);
+        rt_string_unref(temp_path);
+    }
+    return ok;
 }
 
 /// @brief .gltf/.glb branch of rt_model3d_load_impl: decode the asset and collect its
@@ -561,6 +630,32 @@ static int model3d_write_temp_asset_bytes(rt_string path, const uint8_t *bytes, 
     return 1;
 }
 
+/// @brief Stage asset bytes in a uniquely named temporary file with the requested extension.
+/// @return Owned runtime path on success, or NULL after cleaning a partial file on failure.
+static rt_string model3d_spill_asset_bytes(const char *prefix_cstr,
+                                           const char *suffix_cstr,
+                                           const uint8_t *bytes,
+                                           size_t size) {
+    rt_string prefix;
+    rt_string suffix;
+    rt_string path;
+    if (!prefix_cstr || !suffix_cstr || !bytes || size == 0)
+        return NULL;
+    prefix = rt_const_cstr(prefix_cstr);
+    suffix = rt_const_cstr(suffix_cstr);
+    path = rt_tempfile_path_with_ext(prefix, suffix);
+    rt_string_unref(prefix);
+    rt_string_unref(suffix);
+    if (!path)
+        return NULL;
+    if (!model3d_write_temp_asset_bytes(path, bytes, size)) {
+        rt_io_file_delete(path);
+        rt_string_unref(path);
+        return NULL;
+    }
+    return path;
+}
+
 /// @brief Decode a binary/ASCII FBX from in-memory asset bytes via a temp-file bridge.
 /// @details The FBX importer is path-based (binary parsing re-opens the file), so embedded or
 ///   packed assets are spilled to a temp file, decoded with the recoverable loader, and
@@ -628,6 +723,8 @@ static int model3d_load_from_fbx(rt_model3d *model,
     int32_t mesh_count;
     int32_t material_count;
     int32_t animation_count;
+    int32_t node_animation_count;
+    int32_t camera_count;
     void *skeleton;
     void *scene_root;
     if (!asset)
@@ -639,7 +736,12 @@ static int model3d_load_from_fbx(rt_model3d *model,
                                 "Model3D.Load: too many FBX materials") ||
         !model_count_i64_to_i32(rt_fbx_animation_count(asset),
                                 &animation_count,
-                                "Model3D.Load: too many FBX animations")) {
+                                "Model3D.Load: too many FBX animations") ||
+        !model_count_i64_to_i32(rt_fbx_node_animation_count(asset),
+                                &node_animation_count,
+                                "Model3D.Load: too many FBX node animations") ||
+        !model_count_i64_to_i32(
+            rt_fbx_camera_count(asset), &camera_count, "Model3D.Load: too many FBX cameras")) {
         model_release_local(asset);
         return 0;
     }
@@ -690,6 +792,26 @@ static int model3d_load_from_fbx(rt_model3d *model,
             return 0;
         }
     }
+    for (int32_t i = 0; i < node_animation_count; ++i) {
+        if (!model_append_ref(&model->node_animations,
+                              &model->node_animation_count,
+                              &model->node_animation_capacity,
+                              rt_fbx_get_node_animation(asset, i),
+                              "Model3D.Load: node animation list allocation failed")) {
+            model_release_local(asset);
+            return 0;
+        }
+    }
+    for (int32_t i = 0; i < camera_count; ++i) {
+        if (!model_append_ref(&model->cameras,
+                              &model->camera_count,
+                              &model->camera_capacity,
+                              rt_fbx_get_camera(asset, i),
+                              "Model3D.Load: camera list allocation failed")) {
+            model_release_local(asset);
+            return 0;
+        }
+    }
     if (scene_root) {
         if (!model_clone_children_to_root(model->template_root,
                                           (const rt_scene_node3d *)scene_root)) {
@@ -699,6 +821,20 @@ static int model3d_load_from_fbx(rt_model3d *model,
         if (!model_collect_template_refs(model)) {
             model_release_local(asset);
             return 0;
+        }
+        {
+            int32_t scene_index = -1;
+            if (!model_append_scene_entry(model, "default", model->template_root, &scene_index)) {
+                model_release_local(asset);
+                return 0;
+            }
+            for (int32_t i = 0; i < camera_count; ++i) {
+                if (!model_append_scene_camera(&model->scenes[scene_index],
+                                               rt_fbx_get_camera(asset, i))) {
+                    model_release_local(asset);
+                    return 0;
+                }
+            }
         }
     }
     if (!model_build_synth_mesh_nodes(model)) {
@@ -743,26 +879,146 @@ static void *rt_model3d_load_impl(rt_string path,
     model_set_root_name(model->template_root, path_cstr);
 
     if (model_has_ext(path_cstr, ".vscn")) {
-        rt_scene3d *scene = (rt_scene3d *)rt_scene3d_load(path);
+        rt_scene3d *scene = NULL;
+        if (load_assets) {
+            size_t asset_size = 0;
+            uint8_t *asset_bytes = rt_asset_load_raw(path, &asset_size);
+            if (asset_bytes) {
+                scene = (rt_scene3d *)rt_scene3d_load_from_memory(
+                    path, (const char *)asset_bytes, asset_size);
+                free(asset_bytes);
+                if (!scene)
+                    goto fail;
+            }
+        }
+        if (!scene)
+            scene = (rt_scene3d *)rt_scene3d_load(path);
         if (!scene)
             goto fail;
-        if (!model_clone_children_to_root(model->template_root, scene->root) ||
-            !model_collect_template_refs(model)) {
-            model_release_local(scene);
-            goto fail;
-        }
-        /* v3 baked files carry animation clips on the scene; the SceneAsset owns
-         * them from here (the scene's slots are cleared so its release skips them). */
-        if (scene->baked_animation_count > 0 && scene->baked_animations &&
-            model->animation_count == 0) {
-            free(model->animations);
-            model->animations = scene->baked_animations;
-            model->animation_count = scene->baked_animation_count;
-            model->animation_capacity = scene->baked_animation_count;
-            scene->baked_animations = NULL;
-            scene->baked_animation_count = 0;
+        if (scene->baked_asset) {
+            rt_vscn_loaded_asset3d *asset = scene->baked_asset;
+            if (!asset->scenes || asset->scene_count <= 0)
+                goto vscn_fail;
+            for (int32_t i = 0; i < asset->mesh_count; ++i) {
+                if (!model_append_ref(&model->meshes,
+                                      &model->mesh_count,
+                                      &model->mesh_capacity,
+                                      asset->meshes[i],
+                                      "Model3D.Load: VSCN mesh list allocation failed"))
+                    goto vscn_fail;
+            }
+            for (int32_t i = 0; i < asset->material_count; ++i) {
+                if (!model_append_ref(&model->materials,
+                                      &model->material_count,
+                                      &model->material_capacity,
+                                      asset->materials[i],
+                                      "Model3D.Load: VSCN material list allocation failed"))
+                    goto vscn_fail;
+            }
+            for (int32_t i = 0; i < asset->skeleton_count; ++i) {
+                if (!model_append_ref(&model->skeletons,
+                                      &model->skeleton_count,
+                                      &model->skeleton_capacity,
+                                      asset->skeletons[i],
+                                      "Model3D.Load: VSCN skeleton list allocation failed"))
+                    goto vscn_fail;
+            }
+            for (int32_t i = 0; i < asset->animation_count; ++i) {
+                if (!model_append_ref(&model->animations,
+                                      &model->animation_count,
+                                      &model->animation_capacity,
+                                      asset->animations[i],
+                                      "Model3D.Load: VSCN animation list allocation failed"))
+                    goto vscn_fail;
+            }
+            for (int32_t i = 0; i < asset->node_animation_count; ++i) {
+                if (!model_append_ref(&model->node_animations,
+                                      &model->node_animation_count,
+                                      &model->node_animation_capacity,
+                                      asset->node_animations[i],
+                                      "Model3D.Load: VSCN node-animation list allocation failed"))
+                    goto vscn_fail;
+            }
+            for (int32_t i = 0; i < asset->camera_count; ++i) {
+                if (!model_append_ref(&model->cameras,
+                                      &model->camera_count,
+                                      &model->camera_capacity,
+                                      asset->cameras[i],
+                                      "Model3D.Load: VSCN camera list allocation failed"))
+                    goto vscn_fail;
+            }
+            if (asset->variant_count > 0) {
+                model->variant_names =
+                    (char **)calloc((size_t)asset->variant_count, sizeof(char *));
+                if (!model->variant_names)
+                    goto vscn_fail;
+                model->variant_count = asset->variant_count;
+                for (int32_t i = 0; i < asset->variant_count; ++i) {
+                    model->variant_names[i] = model_strdup_or(asset->variant_names[i], "variant");
+                    if (!model->variant_names[i])
+                        goto vscn_fail;
+                }
+            }
+            if (!model_clone_children_to_root(model->template_root, asset->scenes[0].root) ||
+                !model_collect_template_refs(model))
+                goto vscn_fail;
+            for (int32_t scene_index = 0; scene_index < asset->scene_count; ++scene_index) {
+                rt_scene_node3d *scene_template = model->template_root;
+                int32_t model_scene_index = -1;
+                if (scene_index > 0) {
+                    scene_template = (rt_scene_node3d *)rt_scene_node3d_new();
+                    if (!scene_template || !model_clone_children_to_root(
+                                               scene_template, asset->scenes[scene_index].root)) {
+                        model_release_local(scene_template);
+                        goto vscn_fail;
+                    }
+                }
+                if (!model_append_scene_entry(model,
+                                              asset->scenes[scene_index].name,
+                                              scene_template,
+                                              &model_scene_index)) {
+                    if (scene_index > 0)
+                        model_release_local(scene_template);
+                    goto vscn_fail;
+                }
+                for (int32_t camera_index = 0;
+                     camera_index < asset->scenes[scene_index].camera_count;
+                     ++camera_index) {
+                    int32_t table_index = asset->scenes[scene_index].camera_indices[camera_index];
+                    if (table_index < 0 || table_index >= asset->camera_count ||
+                        !model_append_scene_camera(&model->scenes[model_scene_index],
+                                                   asset->cameras[table_index])) {
+                        if (scene_index > 0)
+                            model_release_local(scene_template);
+                        goto vscn_fail;
+                    }
+                }
+                if (scene_index > 0)
+                    model_release_local(scene_template);
+            }
+        } else {
+            if (!model_clone_children_to_root(model->template_root, scene->root) ||
+                !model_collect_template_refs(model))
+                goto vscn_fail;
+            /* v3 baked files carry animation clips on the scene; the SceneAsset owns
+             * them from here (the scene's slots are cleared so its release skips them). */
+            if (scene->baked_animation_count > 0 && scene->baked_animations &&
+                model->animation_count == 0) {
+                free(model->animations);
+                model->animations = scene->baked_animations;
+                model->animation_count = scene->baked_animation_count;
+                model->animation_capacity = scene->baked_animation_count;
+                scene->baked_animations = NULL;
+                scene->baked_animation_count = 0;
+            }
         }
         model_release_local(scene);
+        scene = NULL;
+        goto vscn_loaded;
+    vscn_fail:
+        model_release_local(scene);
+        goto fail;
+    vscn_loaded:;
     } else if (model_has_ext(path_cstr, ".gltf") || model_has_ext(path_cstr, ".glb")) {
         int gltf_ok = model3d_load_from_gltf(model,
                                              path,
@@ -783,11 +1039,32 @@ static void *rt_model3d_load_impl(rt_string path,
         if (!fbx_ok)
             goto fail;
     } else if (model_has_ext(path_cstr, ".obj")) {
-        if (!model3d_load_from_obj(model, path, path_cstr))
+        if (!model3d_load_from_obj(model, path, path_cstr, load_assets))
             goto fail;
     } else if (model_has_ext(path_cstr, ".stl")) {
-        void *mesh = rt_mesh3d_from_stl(path);
+        void *mesh = NULL;
         void *material = NULL;
+        if (load_assets) {
+            size_t asset_size = 0;
+            uint8_t *asset_bytes = rt_asset_load_raw(path, &asset_size);
+            if (asset_bytes) {
+                rt_string temp_path =
+                    model3d_spill_asset_bytes("zanna_stl_", ".stl", asset_bytes, asset_size);
+                free(asset_bytes);
+                if (!temp_path) {
+                    rt_asset_error_set_if_empty(RT_ASSET_ERROR_UNREADABLE,
+                                                "Model3D.LoadAsset: failed to stage STL bytes");
+                    goto fail;
+                }
+                mesh = rt_mesh3d_from_stl(temp_path);
+                rt_io_file_delete(temp_path);
+                rt_string_unref(temp_path);
+                if (!mesh)
+                    goto fail;
+            }
+        }
+        if (!mesh)
+            mesh = rt_mesh3d_from_stl(path);
         if (!mesh)
             goto fail;
         material = rt_material3d_new();

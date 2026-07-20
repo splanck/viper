@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-19
+last-verified: 2026-07-20
 ---
 
 # Zanna Compiler Platform — Release Notes
@@ -40,20 +40,21 @@ Zanna Studio and the GUI toolkit each take a top-to-bottom modernization pass, a
 - **A deep runtime reliability audit.** Sixty-four fixes across memory management, concurrency, archives, and networking keep long-running and multi-threaded programs predictable under load and teardown.
 - **`.zpak` archives get integrity checks.** ZPAK v2 adds per-entry CRC-32 checksums, so a corrupt asset archive is caught at load instead of silently used; v1 archives still read.
 - **The IL layer hardens against hostile input.** The IL parser enforces resource limits and fails cleanly on malformed text, floating-point folding follows IEEE-754 exactly, and analyses scale to much larger functions.
+- **Native Wayland on Linux (new).** Linux runs directly on Wayland — auto-selected, with X11 fallback — including full keyboard, pointer, touch, clipboard, drag-and-drop, and IME input, built-in window decorations, and GPU-accelerated presentation, all dependency-free.
 - **Windows builds run on PowerShell.** Every Windows build and test entry point is now a PowerShell script (`build_zanna_win.ps1` and friends), replacing the old batch files.
 
 ### By the Numbers
 
 | Metric | v0.2.7 | v0.2.99 | Delta |
 |---|---|---|---|
-| Commits | — | 128 | +128 |
-| Source files | 3,402 | 3,579 | +177 |
-| Production SLOC | 762K | 897K | +135K |
-| Test SLOC | 304K | 344K | +40K |
+| Commits | — | 132 | +132 |
+| Source files | 3,402 | 3,630 | +228 |
+| Production SLOC | 762K | 913K | +151K |
+| Test SLOC | 304K | 348K | +44K |
 | Zanna Studio SLOC | 28K | 40K | +12K |
 | Demo SLOC | 197K | 239K | +42K |
 
-Counts via `scripts/count_sloc.sh` (production 897,243 / test 344,098 / demo 238,941 / zannastudio 39,733 / source files 3,579); commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which the SLOC figures exclude.
+Counts via `scripts/count_sloc.sh` (production 913,170 / test 347,551 / demo 239,212 / zannastudio 39,733 / source files 3,630); commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which the SLOC figures exclude.
 
 ---
 
@@ -70,6 +71,7 @@ Counts via `scripts/count_sloc.sh` (production 897,243 / test 344,098 / demo 238
 - GPU backends render reversed-Z float depth: precision concentrates in the distance, so large open-world clip ranges stop z-fighting and shimmering. The software backend stays standard-depth as the deterministic reference.
 - The occlusion system rasterizes real triangles instead of bounding boxes, so near walls and rotated geometry actually cull what hides behind them — fewer wasted draws in dense scenes.
 - A flicker pass fixes two structural races in Metal frame pacing and transient buffers, corrects `Quat.FromEuler` to the documented axis order, and stops instanced forests and particles from popping as a block.
+- Frame delivery holds steadier over a long session: GPU backends pace through the platform's native display sync instead of a redundant CPU limiter, on-screen text reuses its rasterized glyphs instead of re-uploading them every frame, and Metal no longer stalls the CPU while streaming in textures — so steady-state frame rate stops periodically hitching.
 - On Windows, the D3D11 backend clamps every shader-facing constant buffer to safe values before upload and now supports the full BC compressed-texture family, closing a class of driver-dependent rendering glitches.
 - New observability surfaces — backend fallback reasons, dropped-draw counts, mesh memory budgets — plus `TrySet…` setters and accurate `BackendSupports` probes let your code query a capability instead of trapping on a backend that lacks it (ADRs 0069–0071).
 
@@ -151,6 +153,7 @@ Counts via `scripts/count_sloc.sh` (production 897,243 / test 344,098 / demo 238
 - Every Windows build, test, and demo entry point is now a PowerShell script (ADR 0113) — `build_zanna_win.ps1`, `build_demos_win.ps1`, and friends — compatible with PowerShell 5.1 and 7, replacing the old batch files.
 - A Windows adapter audit makes failure paths deterministic across sockets, entropy, locale, TLS, process launch, timed waits, and file watching; the D3D11 backend builds cleanly under MSVC.
 - The matching Linux audit hardens X11/GLX, ALSA, inotify, and PTY paths, and adds a dependency-free headless graphics backend, so graphics code runs without a display server.
+- Linux gains a complete, dependency-free Wayland backend: `AUTO` prefers Wayland with X11 fallback, covering xdg-shell window management, fractional scaling, client-side decorations, full input with relative-pointer and IME protocols, EGL-accelerated `Canvas3D` presentation, and AT-SPI screen-reader export.
 - Native builds are stable on both platforms: static archives no longer pull unresolved libgcc/libstdc++ helpers, and the generated codegen tables are checked in for clean source builds.
 
 ### Tests

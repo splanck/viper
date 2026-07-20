@@ -145,6 +145,7 @@ set(RT_GAME_SOURCES
         game/rt_scenemanager.c
         game/rt_config.c
         game/rt_scene_editor.cpp
+        game/rt_tiled_import.cpp
 )
 
 set(RT_TEXT_SOURCES

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-15
+last-verified: 2026-07-20
 ---
 
 # Editable Scene Documents
@@ -23,12 +23,49 @@ loads a scene and maps objects/properties into game-owned entities.
 | `SceneDocument.LoadResult(path)` | `Result(str)` | Read and load a scene file as `Ok(SceneDocument)` or `Err(message)`. |
 | `SceneDocument.LoadJson(text)` | `SceneDocument(str)` | Load scene JSON without trapping on malformed user input. |
 | `SceneDocument.Load(path)` | `SceneDocument(str)` | Read and load a scene file. |
+| `SceneDocument.ImportTiledResult(path)` | `Result(str)` | Import a loose Tiled JSON/TMX map and relative dependencies as `Ok(SceneDocument)` or `Err(message)`. |
+| `SceneDocument.ImportTiledAssetResult(path)` | `Result(str)` | Import a Tiled map, external tilesets/templates, and image paths through embedded/ZPAK/filesystem asset lookup. |
+| `SceneDocument.ImportTiled(path)` / `ImportTiledAsset(path)` | `SceneDocument(str)` | Nullable compatibility forms of the Result import methods. |
 | `ToJson()` | `String()` | Emit canonical schema v1 JSON. |
 | `Save(path)` | `Boolean(String)` | Save through a same-directory temporary file before replacement. |
 
 Canonical scene files use the `.scene` extension. The loader also accepts legacy
 unversioned JSON with `layers[].data` and LevelData-shaped scalar properties for
 import compatibility.
+
+## Tiled JSON And TMX Import
+
+`ImportTiledResult` and `ImportTiledAssetResult` convert finite orthogonal Tiled
+maps into the canonical scene schema. The filesystem method resolves dependencies
+relative to each owning file. The asset method uses normalized logical names and
+can resolve the complete graph from embedded assets or a mounted ZPAK; absolute,
+URI, and asset-root-escaping dependencies fail.
+
+The supported mapping includes:
+
+- JSON arrays, CSV, and Base64 little-endian GIDs, with raw, zlib, gzip, or Zstandard data;
+- inline or external TSJ/TSX atlas tilesets, including atlas margin and spacing;
+- source-order group flattening, inherited visibility, and integral tile offsets;
+- object and image layers, JSON or XML object templates, typed map/object properties,
+  and file-property path resolution;
+- full-tile collision objects, integer/Boolean tile properties, and tile animations.
+
+Group names are joined with `/`. Layer properties become scene properties named
+`tiled.layer.<group/layer>.<property>`. Imported objects preserve runtime-neutral
+Tiled metadata in `tiled.*` properties, including `tiled.layer`, `tiled.numericId`,
+`tiled.sourceX`, `tiled.sourceY`, dimensions, rotation, visibility, shape data,
+template path, and tile-object GID. This retains fractional authored coordinates
+even though the SceneDocument `x`/`y` compatibility fields are integers. Duplicate
+authored object names fall back to the globally unique numeric Tiled ID. Image
+layers use object type `tiled.image-layer` and carry `tiled.image`.
+
+Tiled frame durations are reduced to their greatest-common-divisor tick and
+expanded only when the result fits Tilemap's eight-frame animation limit. A tile
+layer may bind one tileset. Infinite/nonorthogonal maps, mixed tilesets in one
+layer, GID transform flags, fractional tile offsets, ambiguous metadata across
+multiple used tilesets, collection-of-images tilesets, and unsafe/malformed or
+oversized dependencies return `Err` rather than being approximated. See
+[ADR 0140](../../adr/0140-tiled-map-and-scene-import.md) for the complete contract.
 
 `Save` writes a temporary file next to the target and replaces the target
 only after that write succeeds. Failed replacement leaves the temporary file
@@ -148,6 +185,11 @@ added up to the Tilemap layer limit. Mutating the returned Tilemap does not
 change the scene or saved JSON. Asset paths are not resolved or loaded by
 `BuildTilemap()`; use `Zanna.Assets.Resolver.Resolve` and bind tilesets in game
 or editor code.
+
+`TiledMapLoader.Load*` is the convenience path when the caller wants the imported
+map and tileset images bound in one operation. It calls the same normalized
+importer, builds the Tilemap, repacks margin/spacing atlases into a tight grid,
+and binds the appropriate image per layer.
 
 When present, preserved `collision`, `tileProperties`, `animations`, and
 `autotiles` sections are applied to the returned Tilemap using the matching

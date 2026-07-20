@@ -1,7 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_loader.inc  (#included from rt_fbx_loader.c;
-// not a standalone translation unit) Purpose: FBX top-level loader and recoverable load paths
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_loader.inc
+// Purpose: Coordinate FBX loading, extraction, rollback, and public load entry points.
+// Key invariants:
+//   - Binary and ASCII documents publish through one typed extraction pipeline.
+//   - Any hard extraction, allocation, or aggregate-budget failure rolls back the whole asset.
+// Ownership/Lifetime:
+//   - The published FBX asset owns all retained runtime arrays and scene resources.
+//   - Parser nodes, connection indexes, remaps, and channel bindings are load-local scratch state.
+// Links: rt_fbx_loader.c, rt_fbx_loader_scene.inc, rt_fbx_loader_nodeanim.inc
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Top-level FBX loader
@@ -16,6 +29,9 @@ static void rt_fbx_asset_finalize(void *obj) {
     fbx_asset_release_ref_array(&fbx->meshes, &fbx->mesh_count, &fbx->mesh_capacity);
     fbx_release_ref(&fbx->skeleton);
     fbx_asset_release_ref_array(&fbx->animations, &fbx->animation_count, &fbx->animation_capacity);
+    fbx_asset_release_ref_array(
+        &fbx->node_animations, &fbx->node_animation_count, &fbx->node_animation_capacity);
+    fbx_asset_release_ref_array(&fbx->cameras, &fbx->camera_count, &fbx->camera_capacity);
     fbx_asset_release_ref_array(&fbx->materials, &fbx->material_count, &fbx->material_capacity);
     fbx_asset_release_ref_array(&fbx->morph_targets, &fbx->morph_count, &fbx->morph_capacity);
     fbx_release_ref(&fbx->scene_root);
@@ -949,157 +965,7 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
     }
 }
 
-/// @brief Extract BlendShape (morph target) deformers and attach them to their meshes.
-///   Extracted phase of rt_fbx_load; traces Shape -> BlendShapeChannel -> mesh via the
-///   connection table and records per-vertex deltas as MorphTarget3D channels.
-static void fbx_load_extract_morphs(rt_fbx_asset *asset,
-                                    fbx_node_t *objects,
-                                    fbx_conn_table_t ct,
-                                    int z_up,
-                                    fbx_mesh_remap_t *mesh_remaps,
-                                    int32_t mesh_remap_count) {
-    if (objects) {
-        int32_t mesh_count =
-            fbx_asset_safe_count(asset->meshes, asset->mesh_count, asset->mesh_capacity);
-        if (mesh_count <= 0)
-            return;
-        // Allocate parallel morph_targets array (one per mesh, NULL if no morph)
-        asset->morph_targets = (void **)calloc((size_t)mesh_count, sizeof(void *));
-        if (!asset->morph_targets)
-            return;
-        asset->morph_count = mesh_count;
-        asset->morph_capacity = mesh_count;
-
-        // Collect Shape geometry nodes (type "Shape")
-        for (int32_t i = 0; i < objects->child_count; i++) {
-            fbx_node_t *obj = &objects->children[i];
-            if (strcmp(obj->name, "Geometry") != 0 || obj->prop_count < 3)
-                continue;
-            const char *geo_type = fbx_prop_str(obj, 2);
-            if (strcmp(geo_type, "Shape") != 0)
-                continue;
-
-            int64_t shape_id = fbx_prop_i64(obj, 0);
-            // Get shape name from node (format: "ShapeName\x00\x01Geometry")
-            // Extract Indexes and Vertices arrays
-            fbx_node_t *idx_node = fbx_find_child(obj, "Indexes");
-            fbx_node_t *vtx_node = fbx_find_child(obj, "Vertices");
-            if (!idx_node || !vtx_node || idx_node->prop_count < 1 || vtx_node->prop_count < 1)
-                continue;
-
-            // Trace connections: Shape → BlendShapeChannel → BlendShape → Mesh Geometry
-            // Find which mesh this shape belongs to via the connection chain
-            int64_t channel_id = -1, blendshape_id = -1, mesh_geo_id = -1;
-            {
-                int32_t ci = fbx_connections_first_for_child(&ct, shape_id);
-                if (ci >= 0)
-                    channel_id = ct.entries[ci].parent_id;
-            }
-            if (channel_id >= 0) {
-                int32_t ci = fbx_connections_first_for_child(&ct, channel_id);
-                if (ci >= 0)
-                    blendshape_id = ct.entries[ci].parent_id;
-            }
-            if (blendshape_id >= 0) {
-                int32_t ci = fbx_connections_first_for_child(&ct, blendshape_id);
-                if (ci >= 0)
-                    mesh_geo_id = ct.entries[ci].parent_id;
-            }
-            if (mesh_geo_id < 0)
-                continue;
-
-            // Find which mesh index corresponds to this geometry ID
-            int mesh_idx = -1;
-            {
-                int counter = 0;
-                for (int32_t oi = 0; oi < objects->child_count; oi++) {
-                    fbx_node_t *geo = &objects->children[oi];
-                    if (strcmp(geo->name, "Geometry") != 0 || geo->prop_count < 3)
-                        continue;
-                    const char *gt = fbx_prop_str(geo, 2);
-                    if (strcmp(gt, "Mesh") != 0)
-                        continue;
-                    if (fbx_prop_i64(geo, 0) == mesh_geo_id) {
-                        mesh_idx = counter;
-                        break;
-                    }
-                    counter++;
-                }
-            }
-            if (mesh_idx < 0 || mesh_idx >= mesh_count)
-                continue;
-
-            // Create morph target if not yet created for this mesh
-            rt_mesh3d *mesh = (rt_mesh3d *)asset->meshes[mesh_idx];
-            const fbx_mesh_remap_t *shape_remap =
-                fbx_find_mesh_remap(mesh_remaps, mesh_remap_count, mesh_geo_id);
-            if (!mesh)
-                continue;
-            if (!shape_remap && mesh->vertex_count > (uint32_t)INT32_MAX)
-                continue;
-            if (!asset->morph_targets[mesh_idx]) {
-                asset->morph_targets[mesh_idx] = rt_morphtarget3d_new((int64_t)mesh->vertex_count);
-            }
-            void *morph = asset->morph_targets[mesh_idx];
-            if (!morph)
-                continue;
-
-            // Add this shape
-            rt_string sname = fbx_object_name_string(obj, 1);
-            if (!sname)
-                sname = rt_const_cstr("Shape");
-            int64_t si = rt_morphtarget3d_add_shape(morph, sname);
-            rt_string_unref(sname);
-            if (si < 0)
-                continue;
-
-            // Read delta data: Indexes (int32[]) and Vertices (double[3*count])
-            // The Indexes array contains affected vertex indices,
-            // Vertices contains corresponding position deltas (3 doubles per index)
-            fbx_prop_t *idx_prop = &idx_node->props[0];
-            fbx_prop_t *vtx_prop = &vtx_node->props[0];
-
-            int32_t delta_count = 0;
-            const int32_t *indices_ptr = NULL;
-            const double *deltas_ptr = NULL;
-
-            if (idx_prop->type == 'i' && idx_prop->v.array.count > 0 &&
-                idx_prop->v.array.count <= (uint32_t)INT32_MAX) {
-                delta_count = (int32_t)idx_prop->v.array.count;
-                indices_ptr = (const int32_t *)idx_prop->v.array.data;
-            }
-            if (vtx_prop->type == 'd' && delta_count > 0 &&
-                vtx_prop->v.array.count / 3u >= (uint32_t)delta_count) {
-                deltas_ptr = (const double *)vtx_prop->v.array.data;
-            }
-
-            if (indices_ptr && deltas_ptr) {
-                for (int32_t di = 0; di < delta_count; di++) {
-                    int32_t vi = indices_ptr[di];
-                    double dx = deltas_ptr[di * 3 + 0];
-                    double dy = deltas_ptr[di * 3 + 1];
-                    double dz = deltas_ptr[di * 3 + 2];
-                    if (z_up) {
-                        double tmp = dy;
-                        dy = dz;
-                        dz = -tmp;
-                    }
-                    if (!fbx_sanitize_position3(&dx, &dy, &dz))
-                        continue;
-                    if (shape_remap && shape_remap->control_vertices && vi >= 0 &&
-                        vi < shape_remap->control_count) {
-                        const fbx_vertex_index_list_t *list = &shape_remap->control_vertices[vi];
-                        for (int32_t li = 0; li < list->count; li++)
-                            rt_morphtarget3d_set_delta(
-                                morph, si, (int64_t)list->vertices[li], dx, dy, dz);
-                    } else if (vi >= 0 && vi < (int32_t)mesh->vertex_count) {
-                        rt_morphtarget3d_set_delta(morph, si, (int64_t)vi, dx, dy, dz);
-                    }
-                }
-            }
-        }
-    }
-}
+#include "rt_fbx_loader_morph.inc"
 
 /// @brief Walk the FBX "Objects" node, importing each "Geometry" into a Mesh3D (with optional
 ///   Z-up correction) and accumulating mesh bindings, geometry-id remaps, and material
@@ -1357,6 +1223,28 @@ static int fbx_has_ascii_fbx_signature(const uint8_t *data, long size) {
     return 0;
 }
 
+/// @brief Release every parser/extractor scratch table owned by one top-level load attempt.
+/// @details All arguments may be NULL/zero. Runtime resources already published on the staged
+///          asset are intentionally excluded and remain the asset finalizer's responsibility.
+static void fbx_load_cleanup_scratch(fbx_node_t *root,
+                                     fbx_conn_table_t *connections,
+                                     fbx_mesh_binding_t *mesh_bindings,
+                                     int32_t mesh_binding_count,
+                                     fbx_mesh_remap_t *mesh_remaps,
+                                     int32_t mesh_remap_count,
+                                     fbx_material_binding_t *material_bindings,
+                                     fbx_bone_binding_t *bone_bindings,
+                                     fbx_morph_channel_binding_t *morph_bindings,
+                                     int32_t morph_binding_count) {
+    fbx_free_connections(connections);
+    fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
+    fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
+    free(material_bindings);
+    free(bone_bindings);
+    fbx_morph_channel_bindings_free(morph_bindings, morph_binding_count);
+    fbx_free_node(root);
+}
+
 /// @brief Load an FBX binary file and extract meshes, skeleton, animations, and materials.
 /// @details Parses the FBX binary format (magic header "Kaydara FBX Binary"),
 ///          decodes geometry, deformers (skin clusters for skeletal binding),
@@ -1379,6 +1267,8 @@ static void *fbx_load_impl(rt_string path) {
     int32_t material_binding_count = 0;
     fbx_bone_binding_t *bone_bindings = NULL;
     int32_t bone_binding_count = 0;
+    fbx_morph_channel_binding_t *morph_channel_bindings = NULL;
+    int32_t morph_channel_binding_count = 0;
     memset(&root, 0, sizeof(root));
     memset(&ct, 0, sizeof(ct));
     fbx_load_context_init(&context);
@@ -1469,8 +1359,7 @@ static void *fbx_load_impl(rt_string path) {
     objects = fbx_find_child(&root, "Objects");
     if (!objects || !fbx_build_object_index(objects, &context) ||
         !fbx_parse_connections(&root, &ct, &context)) {
-        fbx_free_connections(&ct);
-        fbx_free_node(&root);
+        fbx_load_cleanup_scratch(&root, &ct, NULL, 0, NULL, 0, NULL, NULL, NULL, 0);
         rt_asset_error_set(
             context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
             context.budget_exhausted ? "FBX.Load: FBX graph exceeds the aggregate load budget"
@@ -1485,11 +1374,16 @@ static void *fbx_load_impl(rt_string path) {
     rt_fbx_asset *asset =
         (rt_fbx_asset *)rt_obj_new_i64(RT_G3D_FBX_ASSET_CLASS_ID, (int64_t)sizeof(rt_fbx_asset));
     if (!asset) {
-        fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
-        fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
-        free(material_bindings);
-        fbx_free_connections(&ct);
-        fbx_free_node(&root);
+        fbx_load_cleanup_scratch(&root,
+                                 &ct,
+                                 mesh_bindings,
+                                 mesh_binding_count,
+                                 mesh_remaps,
+                                 mesh_remap_count,
+                                 material_bindings,
+                                 NULL,
+                                 NULL,
+                                 0);
         rt_trap("FBX.Load: out of memory");
         return NULL;
     }
@@ -1501,6 +1395,12 @@ static void *fbx_load_impl(rt_string path) {
     asset->animations = NULL;
     asset->animation_count = 0;
     asset->animation_capacity = 0;
+    asset->node_animations = NULL;
+    asset->node_animation_count = 0;
+    asset->node_animation_capacity = 0;
+    asset->cameras = NULL;
+    asset->camera_count = 0;
+    asset->camera_capacity = 0;
     asset->materials = NULL;
     asset->material_count = 0;
     asset->material_capacity = 0;
@@ -1521,11 +1421,16 @@ static void *fbx_load_impl(rt_string path) {
                                    &material_bindings,
                                    &material_binding_count) ||
         !fbx_asset_ensure_default_material(asset)) {
-        fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
-        fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
-        free(material_bindings);
-        fbx_free_connections(&ct);
-        fbx_free_node(&root);
+        fbx_load_cleanup_scratch(&root,
+                                 &ct,
+                                 mesh_bindings,
+                                 mesh_binding_count,
+                                 mesh_remaps,
+                                 mesh_remap_count,
+                                 material_bindings,
+                                 NULL,
+                                 NULL,
+                                 0);
         fbx_release_ref((void **)&asset);
         rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
                            "FBX.Load: failed to collect geometry/material bindings");
@@ -1545,7 +1450,34 @@ static void *fbx_load_impl(rt_string path) {
     }
 
     /* Extract morph targets (BlendShape deformers) */
-    fbx_load_extract_morphs(asset, objects, ct, z_up, mesh_remaps, mesh_remap_count);
+    if (!fbx_load_extract_morphs(asset,
+                                 objects,
+                                 &ct,
+                                 z_up,
+                                 mesh_bindings,
+                                 mesh_binding_count,
+                                 mesh_remaps,
+                                 mesh_remap_count,
+                                 &morph_channel_bindings,
+                                 &morph_channel_binding_count,
+                                 &context)) {
+        fbx_load_cleanup_scratch(&root,
+                                 &ct,
+                                 mesh_bindings,
+                                 mesh_binding_count,
+                                 mesh_remaps,
+                                 mesh_remap_count,
+                                 material_bindings,
+                                 NULL,
+                                 morph_channel_bindings,
+                                 morph_channel_binding_count);
+        fbx_release_ref((void **)&asset);
+        rt_asset_error_set(
+            context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+            context.budget_exhausted ? "FBX.Load: morph targets exceed the aggregate load budget"
+                                     : "FBX.Load: failed to build complete FBX morph targets");
+        return NULL;
+    }
     /* Extract skeleton */
     asset->skeleton = fbx_extract_skeleton(&root, &ct, z_up, &bone_bindings, &bone_binding_count);
     fbx_apply_skinning(objects,
@@ -1569,12 +1501,16 @@ static void *fbx_load_impl(rt_string path) {
                                 &asset->animation_count,
                                 &asset->animation_capacity,
                                 &context)) {
-        fbx_free_connections(&ct);
-        fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
-        fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
-        free(material_bindings);
-        free(bone_bindings);
-        fbx_free_node(&root);
+        fbx_load_cleanup_scratch(&root,
+                                 &ct,
+                                 mesh_bindings,
+                                 mesh_binding_count,
+                                 mesh_remaps,
+                                 mesh_remap_count,
+                                 material_bindings,
+                                 bone_bindings,
+                                 morph_channel_bindings,
+                                 morph_channel_binding_count);
         fbx_release_ref((void **)&asset);
         rt_asset_error_set(context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE
                                                     : RT_ASSET_ERROR_CORRUPT,
@@ -1584,9 +1520,39 @@ static void *fbx_load_impl(rt_string path) {
         return NULL;
     }
 
+    if (!fbx_extract_node_animations(&root,
+                                     &ct,
+                                     z_up,
+                                     asset,
+                                     morph_channel_bindings,
+                                     morph_channel_binding_count,
+                                     &asset->node_animations,
+                                     &asset->node_animation_count,
+                                     &asset->node_animation_capacity,
+                                     &context)) {
+        fbx_load_cleanup_scratch(&root,
+                                 &ct,
+                                 mesh_bindings,
+                                 mesh_binding_count,
+                                 mesh_remaps,
+                                 mesh_remap_count,
+                                 material_bindings,
+                                 bone_bindings,
+                                 morph_channel_bindings,
+                                 morph_channel_binding_count);
+        fbx_release_ref((void **)&asset);
+        rt_asset_error_set(context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE
+                                                    : RT_ASSET_ERROR_CORRUPT,
+                           context.budget_exhausted
+                               ? "FBX.Load: node-animation samples exceed the aggregate load budget"
+                               : "FBX.Load: failed to build complete FBX node animations");
+        return NULL;
+    }
+
     {
         int scene_failed = 0;
-        asset->scene_root = fbx_build_scene_root(&root,
+        asset->scene_root = fbx_build_scene_root(asset,
+                                                 &root,
                                                  objects,
                                                  &ct,
                                                  mesh_bindings,
@@ -1594,27 +1560,40 @@ static void *fbx_load_impl(rt_string path) {
                                                  material_bindings,
                                                  material_binding_count,
                                                  z_up,
+                                                 &context,
                                                  &scene_failed);
         if (scene_failed) {
-            fbx_free_connections(&ct);
-            fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
-            fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
-            free(material_bindings);
-            free(bone_bindings);
-            fbx_free_node(&root);
+            fbx_load_cleanup_scratch(&root,
+                                     &ct,
+                                     mesh_bindings,
+                                     mesh_binding_count,
+                                     mesh_remaps,
+                                     mesh_remap_count,
+                                     material_bindings,
+                                     bone_bindings,
+                                     morph_channel_bindings,
+                                     morph_channel_binding_count);
             fbx_release_ref((void **)&asset);
-            rt_asset_error_set(RT_ASSET_ERROR_CORRUPT, "FBX.Load: failed to build scene hierarchy");
+            rt_asset_error_set(context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE
+                                                        : RT_ASSET_ERROR_CORRUPT,
+                               context.budget_exhausted
+                                   ? "FBX.Load: scene resources exceed the aggregate load budget"
+                                   : "FBX.Load: failed to build scene hierarchy");
             return NULL;
         }
     }
 
     /* Cleanup parser data */
-    fbx_free_connections(&ct);
-    fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
-    fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
-    free(material_bindings);
-    free(bone_bindings);
-    fbx_free_node(&root);
+    fbx_load_cleanup_scratch(&root,
+                             &ct,
+                             mesh_bindings,
+                             mesh_binding_count,
+                             mesh_remaps,
+                             mesh_remap_count,
+                             material_bindings,
+                             bone_bindings,
+                             morph_channel_bindings,
+                             morph_channel_binding_count);
 
     return asset;
 }

@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/scene/rt_scene3d_vscn_material_parse.inc
+// Purpose: Parse VSCN Material3D values, sampler metadata, and resource references.
+// Key invariants:
+//   - Numeric render state is finite/range-sanitized before publication.
+//   - Texture and cubemap indexes resolve only to complete staged table entries.
+// Ownership/Lifetime:
+//   - This implementation fragment is included by rt_scene3d_vscn_load.c.
+//   - Parsed materials retain referenced runtime texture/cubemap handles through setters.
+// Links: rt_scene3d_vscn_load.c, rt_scene3d_vscn_save.c, rt_canvas3d_internal.h
+//
+//===----------------------------------------------------------------------===//
+
 typedef void (*vscn_material_texture_setter_fn)(void *material, void *texture);
 typedef void (*vscn_material_cubemap_setter_fn)(void *material, void *cubemap);
 
@@ -67,7 +86,7 @@ static void vscn_parse_material_scalars(void *material_obj, rt_material3d *mater
 
 static void vscn_parse_material_custom_params(void *material_obj, rt_material3d *material) {
     void *arr = vjson_get(material_obj, "customParams");
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 12; i++) {
         if (arr && i < vjson_len(arr))
             material->custom_params[i] = vscn_clamp_abs_or(
                 vjson_arr_f64(arr, i, material->custom_params[i]), material->custom_params[i]);
@@ -104,6 +123,15 @@ static int vscn_parse_material_texture_slots(void *material_obj, rt_material3d *
             material->texture_slot_mip_filter[i] = vscn_mip_filter_or(
                 vjson_i64(slot_obj, "mipFilter", RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE),
                 RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE);
+            {
+                int64_t anisotropy =
+                    vjson_i64(slot_obj, "anisotropy", material->texture_slot_anisotropy[i]);
+                if (anisotropy < 1)
+                    anisotropy = 1;
+                if (anisotropy > 16)
+                    anisotropy = 16;
+                material->texture_slot_anisotropy[i] = (int32_t)anisotropy;
+            }
             material->texture_slot_filter[i] = material->texture_slot_mag_filter[i];
         }
         for (int j = 0; j < 6; j++) {
@@ -122,6 +150,7 @@ static int vscn_parse_material_texture_slots(void *material_obj, rt_material3d *
         material->texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     material->texture_mip_filter =
         material->texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    material->anisotropy = material->texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     return 1;
 }
 
