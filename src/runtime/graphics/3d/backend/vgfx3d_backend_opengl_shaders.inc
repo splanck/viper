@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_shaders.inc  (#included from
-// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL GLSL shader source
-// strings and static skybox/fullscreen geometry
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_shaders.inc
+// Purpose: Embedded GLSL sources and immutable skybox/fullscreen geometry for OpenGL.
+// Key invariants:
+//   - Particle mode reconstructs retained unit vertices from four shared compact float4 lanes.
+//   - Shader inputs preserve the shared full/compact mesh attribute locations.
+// Ownership/Lifetime:
+//   - Source chunks and static geometry are immutable process-lifetime translation-unit storage.
+//   - Linked program objects are owned and released by gl_context_t.
+// Links: vgfx3d_backend_opengl.c, vgfx3d_backend_opengl_material.inc
+//
 //===----------------------------------------------------------------------===//
 static const char *const glsl_vertex_src[] = {
     "#version 330 core\n"
@@ -30,6 +42,7 @@ static const char *const glsl_vertex_src[] = {
     "uniform mat4 uPrevViewProjection;\n"
     "uniform mat4 uNormalMatrix;\n"
     "uniform int uUseInstancing;\n"
+    "uniform int uParticleMode;\n"
     "uniform int uHasPrevModelMatrix;\n"
     "uniform int uHasPrevInstanceMatrices;\n"
     "uniform int uHasSkinning;\n"
@@ -112,6 +125,29 @@ static const char *const glsl_vertex_src[] = {
     "    return totalWeight > 0.0001 ? skinnedVector / totalWeight : localVector;\n"
     "}\n",
     "void main() {\n"
+    "    if (uParticleMode != 0) {\n"
+    "        vec3 world = aInstanceRow0.xyz + aInstanceRow1.xyz * aPosition.x + "
+    "aInstanceRow2.xyz * aPosition.y;\n"
+    "        vec3 particleNormal = safeNormalize3(cross(aInstanceRow1.xyz, "
+    "aInstanceRow2.xyz), vec3(0.0, 0.0, 1.0));\n"
+    "        vec3 particleTangent = safeNormalize3(aInstanceRow1.xyz, vec3(1.0, 0.0, "
+    "0.0));\n"
+    "        vec4 currClip = uViewProjection * vec4(world, 1.0);\n"
+    "        gl_Position = currClip;\n"
+    "#ifdef ZANNA_DEPTH_ZERO_TO_ONE\n"
+    "        gl_Position.z = gl_Position.z * 0.5 + gl_Position.w * 0.5;\n"
+    "#endif\n"
+    "        vWorldPos = world;\n"
+    "        vNormal = particleNormal;\n"
+    "        vTangent = vec4(particleTangent, 1.0);\n"
+    "        vUV = aUV;\n"
+    "        vUV1 = aUV1;\n"
+    "        vColor = aColor * aInstanceRow3;\n"
+    "        vCurrClip = gl_Position;\n"
+    "        vPrevClip = uPrevViewProjection * vec4(world, 1.0);\n"
+    "        vHasObjectHistory = 0.0;\n"
+    "        return;\n"
+    "    }\n"
     "    vec4 localPos = vec4(aPosition, 1.0);\n"
     "    vec4 prevLocalPos = localPos;\n"
     "    vec3 localNormal = safeNormalize3(aNormal, vec3(0.0, 0.0, 1.0));\n"

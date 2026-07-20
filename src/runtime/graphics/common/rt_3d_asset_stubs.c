@@ -71,6 +71,18 @@ void *rt_mesh3d_new(void) {
     return NULL;
 }
 
+/**
+ * @brief Graphics-disabled stub for `Mesh3D.Simplify`.
+ * @param o Mesh3D receiver (ignored).
+ * @param target_triangles Requested triangle budget (ignored).
+ * @return Never returns normally; graphics-unavailable handling yields `NULL`.
+ */
+void *rt_mesh3d_simplify(void *o, int64_t target_triangles) {
+    (void)o;
+    (void)target_triangles;
+    RT_GRAPHICS_TRAP_RET("Mesh3D.Simplify: graphics support not compiled in", NULL);
+}
+
 /// @brief Stub for `Mesh3D.Clear` — would normally reset vertex/index
 ///        counts to zero without freeing backing arrays (mesh reuse).
 ///
@@ -188,6 +200,36 @@ int64_t rt_mesh3d_get_vertex_count(void *o) {
 ///
 /// @return `0`.
 int64_t rt_mesh3d_get_triangle_count(void *o) {
+    (void)o;
+    return 0;
+}
+
+/**
+ * @brief Graphics-disabled fallback for `Mesh3D.SimplifyRequestedTriangles`.
+ * @param o Mesh3D receiver (ignored).
+ * @return Zero because no simplification result can exist without Graphics3D.
+ */
+int64_t rt_mesh3d_get_simplify_requested_triangles(void *o) {
+    (void)o;
+    return 0;
+}
+
+/**
+ * @brief Graphics-disabled fallback for `Mesh3D.SimplifyAchievedTriangles`.
+ * @param o Mesh3D receiver (ignored).
+ * @return Zero because no simplification result can exist without Graphics3D.
+ */
+int64_t rt_mesh3d_get_simplify_achieved_triangles(void *o) {
+    (void)o;
+    return 0;
+}
+
+/**
+ * @brief Graphics-disabled fallback for `Mesh3D.SimplifyStatus`.
+ * @param o Mesh3D receiver (ignored).
+ * @return Zero (`NOT_RUN`).
+ */
+int64_t rt_mesh3d_get_simplify_status(void *o) {
     (void)o;
     return 0;
 }
@@ -1783,109 +1825,6 @@ void *rt_fbx_get_morph_target(void *f, int64_t i) {
     return NULL;
 }
 
-/* TextureAsset3D stubs */
-
-void *rt_textureasset3d_load_ktx2(rt_string path) {
-    (void)path;
-    rt_graphics_unavailable_("TextureAsset3D.LoadKTX2: graphics support not compiled in");
-    return NULL;
-}
-
-void *rt_textureasset3d_load_ktx2_asset(rt_string path) {
-    (void)path;
-    rt_graphics_unavailable_("TextureAsset3D.LoadKTX2Asset: graphics support not compiled in");
-    return NULL;
-}
-
-int64_t rt_textureasset3d_get_width(void *obj) {
-    (void)obj;
-    return 0;
-}
-
-int64_t rt_textureasset3d_get_height(void *obj) {
-    (void)obj;
-    return 0;
-}
-
-int64_t rt_textureasset3d_get_mip_count(void *obj) {
-    (void)obj;
-    return 0;
-}
-
-rt_string rt_textureasset3d_get_format(void *obj) {
-    (void)obj;
-    return rt_const_cstr("");
-}
-
-int8_t rt_textureasset3d_get_compressed(void *obj) {
-    (void)obj;
-    return 0;
-}
-
-int64_t rt_textureasset3d_get_resident_mip_start(void *obj) {
-    (void)obj;
-    return 0;
-}
-
-int64_t rt_textureasset3d_get_resident_mip_count(void *obj) {
-    (void)obj;
-    return 0;
-}
-
-int64_t rt_textureasset3d_get_resident_bytes(void *obj) {
-    (void)obj;
-    return 0;
-}
-
-void rt_textureasset3d_set_resident_mip_range(void *obj, int64_t first_mip, int64_t mip_count) {
-    (void)obj;
-    (void)first_mip;
-    (void)mip_count;
-}
-
-void *rt_textureasset3d_get_pixels(void *obj) {
-    (void)obj;
-    return NULL;
-}
-
-uint64_t rt_textureasset3d_get_native_cache_key(void *obj) {
-    (void)obj;
-    return 0;
-}
-
-int32_t rt_textureasset3d_get_native_format_id(void *obj) {
-    (void)obj;
-    return RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
-}
-
-int rt_textureasset3d_get_native_mip_info(void *obj,
-                                          int64_t mip,
-                                          const uint8_t **out_data,
-                                          uint64_t *out_bytes,
-                                          int32_t *out_width,
-                                          int32_t *out_height,
-                                          int32_t *out_block_width,
-                                          int32_t *out_block_height,
-                                          int32_t *out_block_bytes) {
-    (void)obj;
-    (void)mip;
-    if (out_data)
-        *out_data = NULL;
-    if (out_bytes)
-        *out_bytes = 0;
-    if (out_width)
-        *out_width = 0;
-    if (out_height)
-        *out_height = 0;
-    if (out_block_width)
-        *out_block_width = 0;
-    if (out_block_height)
-        *out_block_height = 0;
-    if (out_block_bytes)
-        *out_block_bytes = 0;
-    return 0;
-}
-
 /* GLTF Loader stubs */
 
 /// @brief Stub for `glTF.Load` — would normally parse a `.gltf` (JSON +
@@ -2819,6 +2758,54 @@ int64_t rt_particles3d_get_count(void *o) {
 int8_t rt_particles3d_get_emitting(void *o) {
     (void)o;
     return 0;
+}
+
+/// @brief Graphics-disabled silent no-op stub for `Particles3D.set_RenderFinalFrame`.
+/// @details No particle object can be constructed in this configuration, so the compatibility
+///          option is accepted as a silent no-op to preserve the registry ABI.
+/// @param o Particles3D handle (ignored).
+/// @param enabled Requested terminal-frame state (ignored).
+void rt_particles3d_set_render_final_frame(void *o, int8_t enabled) {
+    (void)o;
+    (void)enabled;
+}
+
+/// @brief Graphics-disabled silent fallback for `Particles3D.get_RenderFinalFrame`.
+/// @param o Particles3D handle (ignored).
+/// @return 0 because no particle simulation exists.
+int8_t rt_particles3d_get_render_final_frame(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Graphics-disabled silent fallback for cumulative Particles3D dropped-time telemetry.
+/// @param o Particles3D handle (ignored).
+/// @return 0 because no particle simulation runs.
+double rt_particles3d_get_dropped_time(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/// @brief Graphics-disabled silent fallback for latest Particles3D dropped-time telemetry.
+/// @param o Particles3D handle (ignored).
+/// @return 0 because no particle simulation runs.
+double rt_particles3d_get_last_dropped_time(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/// @brief Graphics-disabled silent fallback for Particles3D fixed-step residual telemetry.
+/// @param o Particles3D handle (ignored).
+/// @return 0 because no particle simulation runs.
+double rt_particles3d_get_residual_time(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/// @brief Graphics-disabled silent no-op stub for resetting Particles3D dropped-time telemetry.
+/// @param o Particles3D handle (ignored).
+void rt_particles3d_reset_dropped_time(void *o) {
+    (void)o;
 }
 
 /* AnimBlend3D stubs */

@@ -4,15 +4,126 @@
 // rt_textureasset3d.c; not a standalone translation unit) Purpose: TextureAsset3D format info,
 // container lifecycle, mip residency, alpha, and RGBA8 fallback
 //===----------------------------------------------------------------------===//
-/// @brief Decoded properties of a Vulkan texture format: runtime name, whether it
-///        is block-compressed, and its block dimensions/byte size.
+/// @brief Internal CPU fallback implementation selected by the authoritative format table.
+typedef enum {
+    TEXTUREASSET3D_DECODER_NONE = 0,
+    TEXTUREASSET3D_DECODER_RGBA8,
+    TEXTUREASSET3D_DECODER_BC1,
+    TEXTUREASSET3D_DECODER_BC3,
+    TEXTUREASSET3D_DECODER_BC4,
+    TEXTUREASSET3D_DECODER_BC5,
+    TEXTUREASSET3D_DECODER_BC6H,
+    TEXTUREASSET3D_DECODER_BC6HS,
+    TEXTUREASSET3D_DECODER_BC7,
+    TEXTUREASSET3D_DECODER_ETC2,
+    TEXTUREASSET3D_DECODER_ASTC,
+    TEXTUREASSET3D_DECODER_UASTC,
+} textureasset3d_decoder_kind;
+
+/// @brief Persistent action used to reconstruct an evicted decoded mip.
+typedef enum {
+    TEXTUREASSET3D_FALLBACK_NONE = 0,    ///< Mip intentionally remains native/source-only.
+    TEXTUREASSET3D_FALLBACK_DECODE = 1,  ///< Re-run the row-selected decoder from backing bytes.
+    TEXTUREASSET3D_FALLBACK_CHECKER = 2, ///< Recreate the permissive checker substitution.
+} textureasset3d_fallback_kind;
+
+/// @brief Decoded properties of an authoritative Vulkan texture-format row.
+/// @details In addition to block geometry this carries the CPU quality/decoder and native backend
+///          mapping, making the row the only source of format behavior used by parser and renderer.
 typedef struct {
+    uint32_t vk_format_first;
+    uint32_t vk_format_last;
     const char *name;
     int8_t compressed;
+    int8_t cpu_support;
     int32_t block_width;
     int32_t block_height;
     int32_t block_bytes;
+    int32_t decoder_kind;
+    int32_t native_format_id;
+    int64_t backend_capability_bit;
 } textureasset3d_format_info;
+
+#define TEXTUREASSET3D_CPU_NONE RT_TEXTUREASSET3D_CPU_SUPPORT_NONE
+#define TEXTUREASSET3D_CPU_PARTIAL RT_TEXTUREASSET3D_CPU_SUPPORT_PARTIAL
+#define TEXTUREASSET3D_CPU_FULL RT_TEXTUREASSET3D_CPU_SUPPORT_FULL
+#define TEXTUREASSET3D_DECODER_NONE_VALUE TEXTUREASSET3D_DECODER_NONE
+#define TEXTUREASSET3D_DECODER_RGBA8_VALUE TEXTUREASSET3D_DECODER_RGBA8
+#define TEXTUREASSET3D_DECODER_BC1_VALUE TEXTUREASSET3D_DECODER_BC1
+#define TEXTUREASSET3D_DECODER_BC3_VALUE TEXTUREASSET3D_DECODER_BC3
+#define TEXTUREASSET3D_DECODER_BC4_VALUE TEXTUREASSET3D_DECODER_BC4
+#define TEXTUREASSET3D_DECODER_BC5_VALUE TEXTUREASSET3D_DECODER_BC5
+#define TEXTUREASSET3D_DECODER_BC6H_VALUE TEXTUREASSET3D_DECODER_BC6H
+#define TEXTUREASSET3D_DECODER_BC6HS_VALUE TEXTUREASSET3D_DECODER_BC6HS
+#define TEXTUREASSET3D_DECODER_BC7_VALUE TEXTUREASSET3D_DECODER_BC7
+#define TEXTUREASSET3D_DECODER_ETC2_VALUE TEXTUREASSET3D_DECODER_ETC2
+#define TEXTUREASSET3D_DECODER_ASTC_VALUE TEXTUREASSET3D_DECODER_ASTC
+#define TEXTUREASSET3D_NATIVE_NONE RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE
+#define TEXTUREASSET3D_NATIVE_BC1 RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1
+#define TEXTUREASSET3D_NATIVE_BC3 RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3
+#define TEXTUREASSET3D_NATIVE_BC4 RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4
+#define TEXTUREASSET3D_NATIVE_BC5 RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5
+#define TEXTUREASSET3D_NATIVE_BC7 RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7
+#define TEXTUREASSET3D_NATIVE_ETC2 RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2
+#define TEXTUREASSET3D_NATIVE_ASTC RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC
+#define TEXTUREASSET3D_BACKEND_NONE RT_TEXTUREASSET3D_BACKEND_CAP_NONE
+#define TEXTUREASSET3D_BACKEND_BC1 RT_TEXTUREASSET3D_BACKEND_CAP_BC1
+#define TEXTUREASSET3D_BACKEND_BC3 RT_TEXTUREASSET3D_BACKEND_CAP_BC3
+#define TEXTUREASSET3D_BACKEND_BC4 RT_TEXTUREASSET3D_BACKEND_CAP_BC4
+#define TEXTUREASSET3D_BACKEND_BC5 RT_TEXTUREASSET3D_BACKEND_CAP_BC5
+#define TEXTUREASSET3D_BACKEND_BC7 RT_TEXTUREASSET3D_BACKEND_CAP_BC7
+#define TEXTUREASSET3D_BACKEND_ETC2 RT_TEXTUREASSET3D_BACKEND_CAP_ETC2
+#define TEXTUREASSET3D_BACKEND_ASTC RT_TEXTUREASSET3D_BACKEND_CAP_ASTC
+
+/// @brief Immutable runtime materialization of rt_textureasset3d_formats.def.
+static const textureasset3d_format_info textureasset3d_format_capabilities[] = {
+#define RT_TEXTUREASSET3D_FORMAT_ROW(                                                              \
+    first, last, row_name, is_compressed, bw, bh, bb, cpu, decoder, native_id, backend_cap)        \
+    {first,                                                                                        \
+     last,                                                                                         \
+     row_name,                                                                                     \
+     is_compressed,                                                                                \
+     TEXTUREASSET3D_CPU_##cpu,                                                                     \
+     bw,                                                                                           \
+     bh,                                                                                           \
+     bb,                                                                                           \
+     TEXTUREASSET3D_DECODER_##decoder##_VALUE,                                                     \
+     TEXTUREASSET3D_NATIVE_##native_id,                                                            \
+     TEXTUREASSET3D_BACKEND_##backend_cap},
+#include "rt_textureasset3d_formats.def"
+#undef RT_TEXTUREASSET3D_FORMAT_ROW
+};
+
+#undef TEXTUREASSET3D_CPU_NONE
+#undef TEXTUREASSET3D_CPU_PARTIAL
+#undef TEXTUREASSET3D_CPU_FULL
+#undef TEXTUREASSET3D_DECODER_NONE_VALUE
+#undef TEXTUREASSET3D_DECODER_RGBA8_VALUE
+#undef TEXTUREASSET3D_DECODER_BC1_VALUE
+#undef TEXTUREASSET3D_DECODER_BC3_VALUE
+#undef TEXTUREASSET3D_DECODER_BC4_VALUE
+#undef TEXTUREASSET3D_DECODER_BC5_VALUE
+#undef TEXTUREASSET3D_DECODER_BC6H_VALUE
+#undef TEXTUREASSET3D_DECODER_BC6HS_VALUE
+#undef TEXTUREASSET3D_DECODER_BC7_VALUE
+#undef TEXTUREASSET3D_DECODER_ETC2_VALUE
+#undef TEXTUREASSET3D_DECODER_ASTC_VALUE
+#undef TEXTUREASSET3D_NATIVE_NONE
+#undef TEXTUREASSET3D_NATIVE_BC1
+#undef TEXTUREASSET3D_NATIVE_BC3
+#undef TEXTUREASSET3D_NATIVE_BC4
+#undef TEXTUREASSET3D_NATIVE_BC5
+#undef TEXTUREASSET3D_NATIVE_BC7
+#undef TEXTUREASSET3D_NATIVE_ETC2
+#undef TEXTUREASSET3D_NATIVE_ASTC
+#undef TEXTUREASSET3D_BACKEND_NONE
+#undef TEXTUREASSET3D_BACKEND_BC1
+#undef TEXTUREASSET3D_BACKEND_BC3
+#undef TEXTUREASSET3D_BACKEND_BC4
+#undef TEXTUREASSET3D_BACKEND_BC5
+#undef TEXTUREASSET3D_BACKEND_BC7
+#undef TEXTUREASSET3D_BACKEND_ETC2
+#undef TEXTUREASSET3D_BACKEND_ASTC
 
 /// @brief One mip level's location in the KTX2 byte stream (offset/length), its
 ///        uncompressed size, and pixel dimensions.
@@ -32,6 +143,8 @@ typedef struct {
     void *pixels;
     void **mip_pixels;
     uint8_t **mip_payloads;
+    uint8_t *source_backing;
+    uint8_t *mip_fallback_kinds;
     textureasset3d_mip *mips;
     int64_t width;
     int64_t height;
@@ -41,11 +154,17 @@ typedef struct {
     int64_t resident_mip_count;
     int64_t resident_bytes;
     int64_t retained_bytes;
+    uint64_t source_backing_bytes;
     const char *format;
+    const char *degraded_reason;
     int8_t compressed;
+    int8_t degraded;
     int32_t block_width;
     int32_t block_height;
     int32_t block_bytes;
+    int32_t decoder_kind;
+    int32_t native_format_id;
+    int64_t backend_capability_bit;
     uint64_t cache_identity;
     uint64_t native_revision;
     int8_t alpha_metadata_known;
@@ -68,6 +187,15 @@ static const uint8_t ktx2_identifier[12] = {
 };
 
 static uint64_t g_next_textureasset3d_cache_identity = 1;
+static volatile uint64_t g_textureasset3d_supercompression_final_bytes = 0;
+static volatile uint64_t g_textureasset3d_supercompression_peak_bytes = 0;
+
+/// @brief Reconstruct one decoded mip from immutable canonical backing.
+/// @details Defined after the format-specific codec includes. The forward declaration lets the
+///          residency transaction remain in the core lifecycle section while selecting decoders
+///          compiled later in the enclosing translation unit.
+static void *textureasset3d_decode_mip_from_backing(const rt_textureasset3d *asset, int64_t mip);
+static void *textureasset3d_make_decode_failure_checker(void);
 
 /// @brief Atomically allocate the next process-unique, nonzero cache identity.
 /// @details 0 is reserved as "no key", so the loop retries past a wrapped-to-zero value.
@@ -132,7 +260,9 @@ static void textureasset3d_release_pixels_ref(void **slot) {
     textureasset3d_release_ref(slot);
 }
 
-/// @brief GC finalizer: release each decoded Pixels mip and free the mip table and native payloads.
+/// @brief GC finalizer for decoded mips, borrowed native views, canonical backing, and metadata.
+/// @details Native mip pointers borrow slices of @c source_backing, so only the pointer table is
+///          freed. The one backing allocation is then released exactly once.
 static void textureasset3d_finalize(void *obj) {
     rt_textureasset3d *asset = (rt_textureasset3d *)obj;
     int64_t allocated;
@@ -147,11 +277,14 @@ static void textureasset3d_finalize(void *obj) {
         asset->mip_pixels = NULL;
     }
     if (asset->mip_payloads) {
-        for (int64_t i = 0; i < allocated; i++)
-            free(asset->mip_payloads[i]);
         free(asset->mip_payloads);
         asset->mip_payloads = NULL;
     }
+    free(asset->source_backing);
+    asset->source_backing = NULL;
+    asset->source_backing_bytes = 0;
+    free(asset->mip_fallback_kinds);
+    asset->mip_fallback_kinds = NULL;
     free(asset->mips);
     asset->mips = NULL;
     asset->mip_count = 0;
@@ -171,49 +304,31 @@ static uint64_t textureasset3d_read_u64le(const uint8_t *p) {
     return lo | (hi << 32);
 }
 
-/// @brief Map a Vulkan format enum to runtime format metadata (name, block size, compression).
-/// @details Recognizes RGBA8, BC3, BC7, ETC2, and the ASTC block sizes via a dimension table;
-///          unknown formats return a "unknown" entry flagged compressed with a zero block size.
+/// @brief Map a Vulkan format value through the authoritative capability table.
+/// @details Inclusive row bounds are checked without arithmetic, avoiding range-wrap hazards.
+///          Unknown formats return a compressed sentinel with no geometry, decoder, or backend
+///          capability, causing expected-size validation to reject their levels deterministically.
+/// @param vk_format Vulkan VkFormat numeric value stored by KTX2.
+/// @return A copy of the matching immutable row, or the unknown sentinel.
 static textureasset3d_format_info textureasset3d_format_from_vk(uint32_t vk_format) {
-    if (vk_format == VK_FORMAT_R8G8B8A8_UNORM || vk_format == VK_FORMAT_R8G8B8A8_SRGB)
-        return (textureasset3d_format_info){"rgba8", 0, 1, 1, 4};
-    if (vk_format >= VK_FORMAT_BC1_RGB_UNORM_BLOCK && vk_format <= VK_FORMAT_BC1_RGBA_SRGB_BLOCK)
-        return (textureasset3d_format_info){"bc1", 1, 4, 4, 8};
-    if (vk_format == VK_FORMAT_BC3_UNORM_BLOCK || vk_format == VK_FORMAT_BC3_SRGB_BLOCK)
-        return (textureasset3d_format_info){"bc3", 1, 4, 4, 16};
-    if (vk_format == VK_FORMAT_BC4_UNORM_BLOCK)
-        return (textureasset3d_format_info){"bc4", 1, 4, 4, 8};
-    if (vk_format == VK_FORMAT_BC5_UNORM_BLOCK)
-        return (textureasset3d_format_info){"bc5", 1, 4, 4, 16};
-    if (vk_format == VK_FORMAT_BC7_UNORM_BLOCK || vk_format == VK_FORMAT_BC7_SRGB_BLOCK)
-        return (textureasset3d_format_info){"bc7", 1, 4, 4, 16};
-    if (vk_format == VK_FORMAT_BC6H_UFLOAT_BLOCK)
-        return (textureasset3d_format_info){"bc6h", 1, 4, 4, 16};
-    if (vk_format == VK_FORMAT_BC6H_SFLOAT_BLOCK)
-        return (textureasset3d_format_info){"bc6hs", 1, 4, 4, 16};
-    if (vk_format == VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK ||
-        vk_format == VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK)
-        return (textureasset3d_format_info){"etc2", 1, 4, 4, 16};
-    if (vk_format >= VK_FORMAT_ASTC_4X4_UNORM_BLOCK &&
-        vk_format <= VK_FORMAT_ASTC_12X12_SRGB_BLOCK) {
-        static const int8_t astc_dims[][2] = {
-            {4, 4},  {4, 4},   {5, 4},   {5, 4},   {5, 5},   {5, 5},   {6, 5},
-            {6, 5},  {6, 6},   {6, 6},   {8, 5},   {8, 5},   {8, 6},   {8, 6},
-            {8, 8},  {8, 8},   {10, 5},  {10, 5},  {10, 6},  {10, 6},  {10, 8},
-            {10, 8}, {10, 10}, {10, 10}, {12, 10}, {12, 10}, {12, 12}, {12, 12},
-        };
-        /* Keep the dimension table locked to the handled ASTC VkFormat span so a
-         * future format addition can't silently index past the array. */
-        _Static_assert(sizeof(astc_dims) / sizeof(astc_dims[0]) ==
-                           (VK_FORMAT_ASTC_12X12_SRGB_BLOCK - VK_FORMAT_ASTC_4X4_UNORM_BLOCK + 1),
-                       "ASTC dimension table must cover every handled ASTC VkFormat");
-        uint32_t index = vk_format - VK_FORMAT_ASTC_4X4_UNORM_BLOCK;
-        if (index < (uint32_t)(sizeof(astc_dims) / sizeof(astc_dims[0]))) {
-            return (textureasset3d_format_info){
-                "astc", 1, astc_dims[index][0], astc_dims[index][1], 16};
-        }
+    for (size_t i = 0; i < sizeof(textureasset3d_format_capabilities) /
+                               sizeof(textureasset3d_format_capabilities[0]);
+         i++) {
+        const textureasset3d_format_info *row = &textureasset3d_format_capabilities[i];
+        if (vk_format >= row->vk_format_first && vk_format <= row->vk_format_last)
+            return *row;
     }
-    return (textureasset3d_format_info){"unknown", 1, 0, 0, 0};
+    return (textureasset3d_format_info){0,
+                                        0,
+                                        "unknown",
+                                        1,
+                                        RT_TEXTUREASSET3D_CPU_SUPPORT_NONE,
+                                        0,
+                                        0,
+                                        0,
+                                        TEXTUREASSET3D_DECODER_NONE,
+                                        RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE,
+                                        RT_TEXTUREASSET3D_BACKEND_CAP_NONE};
 }
 
 static int textureasset3d_expected_mip_bytes(const textureasset3d_format_info *format,
@@ -298,22 +413,18 @@ static int textureasset3d_compute_alpha_metadata(void **mip_pixels,
     return 1;
 }
 
-/// @brief Recompute the total bytes retained by all decoded/native mip payloads.
-/// @details Resident mip range controls what backends should upload, but this
-///          asset keeps decoded fallback `Pixels` objects and native block payloads
-///          alive so the resident range can move without re-reading source bytes.
-///          This helper sums retained payload memory for cache-budget accounting
-///          and saturates to INT64_MAX for ABI stability.
+/// @brief Recompute canonical backing plus currently decoded fallback bytes.
+/// @details Native payload pointers are zero-copy views into @c source_backing and must not be
+///          counted a second time. Decoded Pixels are counted only while resident/alive, so moving
+///          the window visibly reduces retained process memory while immutable source bytes remain
+///          sufficient to reconstruct an evicted level. The result saturates to INT64_MAX.
 static int64_t textureasset3d_compute_retained_bytes(rt_textureasset3d *asset) {
     uint64_t total = 0;
     int64_t safe_mip_count = textureasset3d_safe_mip_count(asset);
     if (!asset || safe_mip_count <= 0)
         return 0;
+    textureasset3d_add_saturating_u64(&total, asset->source_backing_bytes);
     for (int64_t i = 0; i < safe_mip_count; i++) {
-        const textureasset3d_mip *mip = &asset->mips[i];
-        if (asset->mip_payloads && asset->mip_payloads[i] && mip->length > 0) {
-            textureasset3d_add_saturating_u64(&total, mip->length);
-        }
         if (asset->mip_pixels && asset->mip_pixels[i]) {
             textureasset3d_add_saturating_u64(
                 &total, textureasset3d_pixels_allocation_bytes(asset->mip_pixels[i]));
@@ -322,20 +433,26 @@ static int64_t textureasset3d_compute_retained_bytes(rt_textureasset3d *asset) {
     return total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
 }
 
-/// @brief Set the resident mip window and recompute resident byte total / active Pixels.
-/// @details Clamps the range to the available mips, sums resident payload lengths (saturating
-///          to INT64_MAX), and points `pixels` at the first resident decoded mip. Bumps the
-///          native revision only when the start/count actually changed. Traps via @p api_name
-///          on a negative range. Returns 1 on success, 0 for a NULL asset.
+/// @brief Transactionally reconstruct, publish, and evict decoded mips for a resident window.
+/// @details The requested range is clamped to available levels. Every missing entering fallback
+///          is decoded into a fixed staging array before any live slot or residency metadata is
+///          changed. After staging succeeds, decoded Pixels outside the new range are released;
+///          immutable canonical backing/native views remain. Resident byte accounting uses native
+///          block bytes when available and decoded Pixels otherwise. A range change bumps the
+///          backend revision only after publication. Negative inputs trap through @p api_name.
+/// @return 1 on success, or 0 for a NULL asset or an unexpected reconstruction failure; the latter
+///         leaves the prior live window and decoded slots unchanged.
 static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *asset,
                                                           int64_t first_mip,
                                                           int64_t mip_count,
                                                           const char *api_name) {
     uint64_t total = 0;
+    void *staged[TEXTUREASSET3D_MAX_MIP_COUNT] = {0};
     int64_t old_start;
     int64_t old_count;
     int64_t safe_mip_count;
     int64_t clamped_mip_count;
+    int can_evict;
 
     if (!asset)
         return 0;
@@ -348,16 +465,44 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
     safe_mip_count = textureasset3d_safe_mip_count(asset);
     clamped_mip_count = safe_mip_count > 0 ? safe_mip_count : 0;
     if (mip_count == 0 || first_mip >= safe_mip_count || safe_mip_count <= 0) {
-        asset->resident_mip_start = first_mip > clamped_mip_count ? clamped_mip_count : first_mip;
-        asset->resident_mip_count = 0;
-        asset->resident_bytes = 0;
-        asset->pixels = NULL;
-        if (old_start != asset->resident_mip_start || old_count != asset->resident_mip_count)
-            textureasset3d_bump_native_revision(asset);
-        return 1;
-    }
-    if (mip_count > safe_mip_count - first_mip)
+        first_mip = first_mip > clamped_mip_count ? clamped_mip_count : first_mip;
+        mip_count = 0;
+    } else if (mip_count > safe_mip_count - first_mip) {
         mip_count = safe_mip_count - first_mip;
+    }
+
+    can_evict = asset->source_backing && asset->source_backing_bytes > 0 &&
+                asset->mip_fallback_kinds && asset->mip_pixels;
+
+    /* Prepare every entering decoded fallback before the eviction commit. */
+    if (can_evict) {
+        for (int64_t i = 0; i < mip_count; i++) {
+            int64_t absolute_mip = first_mip + i;
+            uint8_t fallback_kind;
+            if (asset->mip_pixels[absolute_mip])
+                continue;
+            fallback_kind = asset->mip_fallback_kinds[absolute_mip];
+            if (fallback_kind == TEXTUREASSET3D_FALLBACK_DECODE)
+                staged[absolute_mip] = textureasset3d_decode_mip_from_backing(asset, absolute_mip);
+            else if (fallback_kind == TEXTUREASSET3D_FALLBACK_CHECKER)
+                staged[absolute_mip] = textureasset3d_make_decode_failure_checker();
+            if (fallback_kind != TEXTUREASSET3D_FALLBACK_NONE && !staged[absolute_mip]) {
+                for (int64_t j = 0; j < safe_mip_count; j++)
+                    textureasset3d_release_pixels_ref(&staged[j]);
+                return 0;
+            }
+        }
+
+        for (int64_t i = 0; i < safe_mip_count; i++) {
+            int in_new_range = i >= first_mip && i - first_mip < mip_count;
+            if (staged[i]) {
+                asset->mip_pixels[i] = staged[i];
+                staged[i] = NULL;
+            } else if (!in_new_range) {
+                textureasset3d_release_pixels_ref(&asset->mip_pixels[i]);
+            }
+        }
+    }
 
     for (int64_t i = 0; i < mip_count; i++) {
         int64_t absolute_mip = first_mip + i;
@@ -373,7 +518,8 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
     asset->resident_mip_start = first_mip;
     asset->resident_mip_count = mip_count;
     asset->resident_bytes = total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
-    asset->pixels = asset->mip_pixels ? asset->mip_pixels[first_mip] : NULL;
+    asset->pixels = (mip_count > 0 && asset->mip_pixels) ? asset->mip_pixels[first_mip] : NULL;
+    asset->retained_bytes = textureasset3d_compute_retained_bytes(asset);
     if (old_start != asset->resident_mip_start || old_count != asset->resident_mip_count)
         textureasset3d_bump_native_revision(asset);
     return 1;
@@ -556,22 +702,25 @@ static void textureasset3d_release_mip_pixels(void **mip_pixels, int64_t mip_cou
     free(mip_pixels);
 }
 
-/// @brief Free every native payload buffer in the array, then free the array itself.
+/// @brief Free a native-payload view table without touching its borrowed backing slices.
+/// @details Every non-NULL slot points into the TextureAsset3D's single canonical backing span.
+///          The backing owner is released separately by the asset finalizer or parse cleanup.
 static void textureasset3d_release_mip_payloads(uint8_t **mip_payloads, int64_t mip_count) {
+    (void)mip_count;
     if (!mip_payloads)
         return;
-    for (int64_t i = 0; i < mip_count; i++)
-        free(mip_payloads[i]);
     free(mip_payloads);
 }
 
-/// @brief Copy each compressed mip's native bytes out of the file into owned per-mip buffers.
-/// @details Bounds-checks every mip against @p size; on any failure releases all buffers
-///          allocated so far and returns NULL. Zero-length mips leave a NULL slot.
-static uint8_t **textureasset3d_copy_native_mip_payloads(const uint8_t *data,
-                                                         size_t size,
-                                                         const textureasset3d_mip *mips,
-                                                         int64_t mip_count) {
+/// @brief Build per-mip native upload views over one immutable canonical backing span.
+/// @details Bounds-checks every `[offset,length)` slice against @p size. No level bytes are copied;
+///          the returned table alone is allocated and all slots borrow @p data for the asset's
+///          lifetime. Zero-length mips leave a NULL slot.
+/// @return Caller-owned pointer table, or NULL on invalid bounds/allocation failure.
+static uint8_t **textureasset3d_make_native_mip_payload_views(uint8_t *data,
+                                                              size_t size,
+                                                              const textureasset3d_mip *mips,
+                                                              int64_t mip_count) {
     uint8_t **mip_payloads;
 
     if (!data || !mips || mip_count <= 0)
@@ -587,18 +736,73 @@ static uint8_t **textureasset3d_copy_native_mip_payloads(const uint8_t *data,
             textureasset3d_release_mip_payloads(mip_payloads, mip_count);
             return NULL;
         }
-        if (mip->length > SIZE_MAX) {
-            textureasset3d_release_mip_payloads(mip_payloads, mip_count);
-            return NULL;
-        }
-        mip_payloads[i] = (uint8_t *)malloc((size_t)mip->length);
-        if (!mip_payloads[i]) {
-            textureasset3d_release_mip_payloads(mip_payloads, mip_count);
-            return NULL;
-        }
-        memcpy(mip_payloads[i], data + mip->offset, (size_t)mip->length);
+        mip_payloads[i] = data + mip->offset;
     }
     return mip_payloads;
+}
+
+/// @brief Capture decoded RGBA8 Pixels mips into one immutable canonical backing allocation.
+/// @details Used by BasisLZ after its codebook/slice decoder has produced Pixels. Each output level
+///          is encoded as byte-order-independent R,G,B,A bytes and receives a packed offset/length
+///          in @p mips. This one-time capture permits later residency eviction without retaining
+///          BasisLZ decoder state or re-reading the source file.
+/// @param mip_pixels Complete decoded Pixels array.
+/// @param mips Mutable mip metadata receiving packed canonical ranges.
+/// @param mip_count Number of levels in both arrays.
+/// @param out_backing Receives the malloc-owned canonical span.
+/// @param out_size Receives its byte count.
+/// @return 1 on success, 0 for invalid/missing Pixels, overflow, budget excess, or allocation
+///         failure. Outputs are cleared before validation.
+static int textureasset3d_capture_rgba8_backing(void **mip_pixels,
+                                                textureasset3d_mip *mips,
+                                                int64_t mip_count,
+                                                uint8_t **out_backing,
+                                                uint64_t *out_size) {
+    uint64_t total = 0;
+    uint8_t *backing;
+
+    if (out_backing)
+        *out_backing = NULL;
+    if (out_size)
+        *out_size = 0;
+    if (!mip_pixels || !mips || mip_count <= 0 || !out_backing || !out_size)
+        return 0;
+    for (int64_t i = 0; i < mip_count; i++) {
+        uint64_t level_bytes = 0;
+        rt_pixels_impl *pixels = rt_pixels_checked_impl_or_null(mip_pixels[i]);
+        if (!pixels || pixels->width != (int64_t)mips[i].width ||
+            pixels->height != (int64_t)mips[i].height ||
+            !textureasset3d_rgba8_byte_count(mips[i].width, mips[i].height, &level_bytes) ||
+            level_bytes > TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES ||
+            total > TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES - level_bytes)
+            return 0;
+        total += level_bytes;
+    }
+    backing = (uint8_t *)malloc(total ? (size_t)total : 1u);
+    if (!backing)
+        return 0;
+    total = 0;
+    for (int64_t i = 0; i < mip_count; i++) {
+        rt_pixels_impl *pixels = rt_pixels_checked_impl_or_null(mip_pixels[i]);
+        uint64_t level_bytes = (uint64_t)mips[i].width * (uint64_t)mips[i].height * 4u;
+        mips[i].offset = total;
+        mips[i].length = level_bytes;
+        mips[i].uncompressed_length = level_bytes;
+        for (uint32_t y = 0; y < mips[i].height; y++) {
+            for (uint32_t x = 0; x < mips[i].width; x++) {
+                uint32_t rgba = pixels->data[(uint64_t)y * mips[i].width + x];
+                uint8_t *dst = backing + total + ((uint64_t)y * mips[i].width + x) * 4u;
+                dst[0] = (uint8_t)(rgba >> 24);
+                dst[1] = (uint8_t)(rgba >> 16);
+                dst[2] = (uint8_t)(rgba >> 8);
+                dst[3] = (uint8_t)rgba;
+            }
+        }
+        total += level_bytes;
+    }
+    *out_backing = backing;
+    *out_size = total;
+    return 1;
 }
 
 /// @brief Decode all mips of a raw RGBA8 texture into a Pixels array (NULL if any mip fails).

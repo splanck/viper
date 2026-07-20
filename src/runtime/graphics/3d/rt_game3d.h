@@ -591,6 +591,11 @@ void *rt_game3d_entity_new(void);
 /// @brief Create an entity from an existing mesh and material.
 void *rt_game3d_entity_of(void *mesh, void *material);
 /// @brief Wrap an existing scene node hierarchy as an entity (e.g. a loaded model).
+/// @details If @p root is a Scene3D's implicit root, the source scene receives a new empty
+///   implicit root and the complete former root hierarchy is transactionally transferred to the
+///   entity. The source scene therefore remains valid, and no implicit scene root is reparented.
+/// @param root Valid SceneNode3D hierarchy root to retain or transfer.
+/// @return New group Entity3D that owns the hierarchy.
 void *rt_game3d_entity_from_node(void *root);
 /// @brief Get the entity's stable integer id.
 int64_t rt_game3d_entity_get_id(void *entity);

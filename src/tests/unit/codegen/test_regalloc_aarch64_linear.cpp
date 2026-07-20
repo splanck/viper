@@ -6,25 +6,29 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/codegen/test_regalloc_aarch64_linear.cpp
-// Purpose: Validate AArch64 linear-scan allocator assigns phys regs, spills,
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/internals/architecture.md
+// Purpose: Validate AArch64 linear allocation, spills, ABI constraints, and
+//          cross-block value restoration.
+// Key invariants: Every vreg is physicalized, live values survive pressure and
+//                 CFG edges, and ABI registers are protected when required.
+// Ownership/Lifetime: Tests own ephemeral machine functions and frame layouts.
+// Links: codegen/aarch64/ra/Allocator.hpp, docs/internals/architecture.md
 //
 //===----------------------------------------------------------------------===//
+
 #include "tests/TestHarness.hpp"
 #include <algorithm>
 #include <sstream>
 #include <string>
+#include <vector>
 
-#include <cstdio>
 #include "codegen/aarch64/AsmEmitter.hpp"
 #include "codegen/aarch64/FrameBuilder.hpp"
 #include "codegen/aarch64/LowerOvf.hpp"
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
-#include "codegen/aarch64/ra/RegPools.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
+#include "codegen/aarch64/ra/RegPools.hpp"
+#include <cstdio>
 
 using namespace zanna::codegen::aarch64;
 
@@ -290,8 +294,8 @@ TEST(Arm64RegAlloc, PhysDefEvictsResidentVreg) {
                                {MOperand::vregOp(RegClass::GPR, 2),
                                 MOperand::vregOp(RegClass::GPR, 1),
                                 MOperand::vregOp(RegClass::GPR, 1)}});
-    bb.instrs.push_back(MInstr{
-        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 2)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 2)}});
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     (void)allocate(fn, ti);
@@ -336,8 +340,7 @@ TEST(Arm64RegAlloc, PhysDefEvictsResidentVreg) {
                     static_cast<PhysReg>(mi.ops[1].reg.idOrPhys))
                 reloadedBetween = true;
         }
-        if (!reloadedBetween &&
-            static_cast<PhysReg>(mi.ops[1].reg.idOrPhys) == firstPool)
+        if (!reloadedBetween && static_cast<PhysReg>(mi.ops[1].reg.idOrPhys) == firstPool)
             addReadsClobberedReg = true;
     }
 
@@ -360,15 +363,15 @@ TEST(Arm64RegAlloc, MarshalledArgRegisterNotReassignedBeforeCall) {
     bb.instrs.push_back(
         MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(7)}});
     // Marshal the argument: x0 := v1
-    bb.instrs.push_back(MInstr{
-        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 1)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 1)}});
     // Fresh def between marshalling and the call must not take x0.
     bb.instrs.push_back(
         MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, 2), MOperand::immOp(5)}});
     bb.instrs.push_back(MInstr{MOpcode::Bl, {MOperand::labelOp("callee")}});
     // Keep v2 alive past the call.
-    bb.instrs.push_back(MInstr{
-        MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 2)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::vregOp(RegClass::GPR, 2)}});
     bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
 
     (void)allocate(fn, ti);
@@ -411,8 +414,8 @@ TEST(Arm64RegAlloc, AbiLiveInArgRegisterIsNeverAllocated) {
         MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X0), MOperand::immOp(-8)}});
     // Plenty of fresh vregs afterwards.
     for (uint16_t v = 1; v <= 20; ++v) {
-        bb.instrs.push_back(MInstr{
-            MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, v), MOperand::immOp(v)}});
+        bb.instrs.push_back(
+            MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, v), MOperand::immOp(v)}});
     }
     uint16_t acc = 1;
     uint16_t next = 21;
@@ -446,6 +449,59 @@ TEST(Arm64RegAlloc, AbiLiveInArgRegisterIsNeverAllocated) {
     }
     EXPECT_FALSE(x0Assigned);
     EXPECT_TRUE(x1Assigned);
+}
+
+TEST(Arm64RegAlloc, SiblingSuccessorsRestoreSpilledLiveInsIndependently) {
+    // Both successors read the same high-pressure live-out set. Allocating the
+    // first successor must not retire the predecessor spills needed by the
+    // second successor.
+    auto &ti = darwinTarget();
+    MFunction fn{};
+    fn.name = "sibling_liveins";
+    fn.blocks.resize(3);
+    fn.blocks[0].name = "entry";
+    fn.blocks[1].name = "true_edge";
+    fn.blocks[2].name = "false_edge";
+
+    constexpr uint16_t kValueCount = 40;
+    for (uint16_t value = 1; value <= kValueCount; ++value) {
+        fn.blocks[0].instrs.push_back(MInstr{
+            MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, value), MOperand::immOp(value)}});
+    }
+    fn.blocks[0].instrs.push_back(
+        MInstr{MOpcode::CmpRI, {MOperand::vregOp(RegClass::GPR, 1), MOperand::immOp(0)}});
+    fn.blocks[0].instrs.push_back(
+        MInstr{MOpcode::BCond, {MOperand::condOp("ne"), MOperand::labelOp("true_edge")}});
+    fn.blocks[0].instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("false_edge")}});
+
+    FrameBuilder destinationSlots{fn};
+    std::vector<int> offsets;
+    offsets.reserve(kValueCount);
+    for (uint16_t value = 1; value <= kValueCount; ++value)
+        offsets.push_back(destinationSlots.ensureSpill(60000u + value));
+
+    for (std::size_t blockIndex = 1; blockIndex <= 2; ++blockIndex) {
+        auto &block = fn.blocks[blockIndex];
+        for (uint16_t value = 1; value <= kValueCount; ++value) {
+            block.instrs.push_back(MInstr{
+                MOpcode::PhiStoreGPR,
+                {MOperand::vregOp(RegClass::GPR, value), MOperand::immOp(offsets[value - 1])}});
+        }
+        block.instrs.push_back(MInstr{MOpcode::Ret, {}});
+    }
+
+    (void)allocate(fn, ti);
+
+    const auto reloadCount = [](const MBasicBlock &block) {
+        return static_cast<int>(
+            std::count_if(block.instrs.begin(), block.instrs.end(), [](const MInstr &instr) {
+                return instr.opc == MOpcode::LdrRegFpImm;
+            }));
+    };
+    const int trueReloads = reloadCount(fn.blocks[1]);
+    const int falseReloads = reloadCount(fn.blocks[2]);
+    EXPECT_GT(trueReloads, 0);
+    EXPECT_EQ(falseReloads, trueReloads);
 }
 
 int main(int argc, char **argv) {

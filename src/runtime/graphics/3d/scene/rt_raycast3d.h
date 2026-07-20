@@ -7,7 +7,7 @@
 //
 // File: src/runtime/graphics/3d/scene/rt_raycast3d.h
 // Purpose: 3D raycasting and AABB collision — ray-triangle (Möller–Trumbore),
-//   ray-mesh (with AABB early-out), ray-AABB (slab method), ray-sphere,
+//   ray-mesh (retained BVH plus AABB early-out), ray-AABB (slab method), ray-sphere,
 //   and AABB-AABB overlap/penetration tests.
 //
 // Key invariants:
@@ -16,6 +16,10 @@
 //   - Distance return: >= 0 = Euclidean hit distance, -1 = no hit.
 //   - IntersectMesh returns a RayHit3D object (or NULL) with hit point, normal, triangle index.
 //   - AABB functions take Vec3 min/max corners.
+//
+// Ownership/Lifetime:
+//   - Query arguments are borrowed; returned hit/point/vector objects are GC-managed.
+//   - Mesh BVH storage remains privately owned by the queried Mesh3D revision.
 //
 // Links: plans/fps-support.md, rt_canvas3d_internal.h
 //
@@ -35,7 +39,7 @@ double rt_ray3d_intersect_triangle(void *origin, void *dir, void *v0, void *v1, 
 /// @brief Ray-triangle test with optional backface culling (front_only != 0 rejects backfaces).
 double rt_ray3d_intersect_triangle_cull(
     void *origin, void *dir, void *v0, void *v1, void *v2, int8_t front_only);
-/// @brief Test ray against every triangle in a transformed mesh; returns RayHit3D or NULL.
+/// @brief Test a transformed mesh through its retained triangle BVH; returns RayHit3D or NULL.
 void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh, void *transform);
 /// @brief Slab-method ray-AABB test. Returns Euclidean hit distance, -1 on miss.
 double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max);

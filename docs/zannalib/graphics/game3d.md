@@ -479,13 +479,19 @@ imported root and return `Some(value)` or `None`. The older `findEntity(name)`
 and `findNode(name)` methods remain available for compatibility with existing
 `null` checks. Raw child nodes stay raw scene nodes: they render and participate
 in scene lookup as part of the subtree, but they are not separate Game3D
-entities.
+entities. When `rootNode` is a `SceneGraph`'s implicit root, `FromNode`
+transactionally installs a new empty implicit root in that source graph and
+transfers the complete former hierarchy into the entity. The source graph stays
+valid and independent, animator/node bindings remain on the transferred nodes,
+and `World3D.spawn` never reparents an implicit scene root. If the transfer
+cannot preflight its complete owner update, it traps without changing the source
+graph.
 Transform helpers sanitize non-finite numbers before touching the node and update
 an attached body only when the node sync mode is `SyncMode.BodyFromNode`:
 
 | Method | Purpose |
 |--------|---------|
-| `FromNode(rootNode)` | Wrap an existing `SceneNode` hierarchy as a spawnable group entity |
+| `FromNode(rootNode)` | Wrap a detached hierarchy, or transactionally transfer a `SceneGraph`'s implicit root hierarchy into a spawnable group entity while replacing the source root |
 | `setPosition(x, y, z)` / `setPositionV(vec3)` | Set node position |
 | `setScale(s)` / `setScaleXYZ(x, y, z)` | Set node scale |
 | `setRotationEuler(xDeg, yDeg, zDeg)` | Set node orientation in degrees |
@@ -720,9 +726,14 @@ parses a VSCN streaming manifest with a `cells` array:
 {"cells":[{"name":"town_00","path":"cells/town_00.vscn","center":[0,0,0],"radius":64,"bytes":65536}]}
 ```
 
-Cell paths are resolved relative to the manifest, each resident cell loads its
-`.vscn` subtree into the world scene, and `update` loads/unloads cells around
-the current center using load/unload radii. `mountTiledTerrain` parses a
+Cell paths are resolved relative to the manifest. Each resident cell loads its
+`.vscn`, transactionally transfers the loader scene's root hierarchy into a
+detached Game3D entity, and then spawns that entity into the world. The retained
+loader scene remains valid with a replacement empty root for load metadata and
+teardown compatibility. Residency measurement, HLOD proxy baking, and impostor
+generation follow the entity-owned hierarchy, not that replacement root.
+`update` loads/unloads cells around the current center using load/unload radii.
+`mountTiledTerrain` parses a
 terrain manifest with a `tiles` array using the same `name`, `path`, `center`,
 `radius`, and `bytes` fields, plus optional `width`, `depth`, `scale`, and
 `heightmap` for the `Terrain3D` payload:

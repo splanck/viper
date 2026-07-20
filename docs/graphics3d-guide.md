@@ -452,7 +452,7 @@ For a compact, executable example of this path, see
 software-backend frame, captures with `ScreenshotFinal()`, checks the crisp final
 overlay, and compares to the committed baseline in `examples/3d/baselines/`.
 
-**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. Public `DrawMesh` requires a valid heap `Mesh3D` handle and finite transform matrix; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats. Deferred heap `Mesh3D` draws snapshot geometry when needed so submitted geometry remains stable through `Canvas3D.End()`; internal skinned and morphed draws retain or snapshot the animation payloads needed for backend submission.
+**Important:** `Begin`/`End` and `BeginOverlay`/`EndOverlay` must not nest. All 3D draw calls go between `Begin` and `End`; `DrawTerrain` and `DrawVegetation` are rejected during `Begin2D`. Legacy HUD overlay calls (`DrawRect2D`, `DrawText2D`, `DrawCrosshair`) may still be called between `End` and `Flip`, but final overlays should be grouped with `BeginOverlay`/`EndOverlay`. Public `DrawMesh` requires a valid heap `Mesh3D` handle and finite transform matrix; invalid matrices are rejected before they reach culling or backend submission. Draw submission clamps material colors and PBR scalars before narrowing to backend floats. Deferred heap `Mesh3D` draws retain immutable geometry revisions so submitted bytes remain stable through `Canvas3D.End()` and unchanged later frames avoid another whole-mesh copy; internal rebased, skinned, and morphed draws retain or snapshot their dynamic payloads as needed.
 
 ## Mesh3D
 
@@ -482,6 +482,9 @@ compatibility aliases for the shape factories.
 | `Resident` | Boolean | read/write | Whether the mesh payload is resident and eligible for draw/LOD selection |
 | `ResidentBytes` | Integer | read | Estimated resident vertex/index payload bytes; zero when `Resident` is false |
 | `RetainedBytes` | Integer | read | Estimated retained CPU vertex/index payload bytes regardless of `Resident` |
+| `SimplifyRequestedTriangles` | Integer | read | Sanitized target recorded on a mesh returned by `Simplify` (zero for ordinary or subsequently mutated meshes) |
+| `SimplifyAchievedTriangles` | Integer | read | Exact triangle count achieved by `Simplify` (zero for ordinary or subsequently mutated meshes) |
+| `SimplifyStatus` | Integer | read | `0` not run/stale, `1` complete, `2` valid partial result constrained by topology/boundaries |
 
 ### Methods
 
@@ -495,7 +498,17 @@ compatibility aliases for the shape factories.
 | `CalcTangents()` | `void()` | Compute tangent vectors (required for normal mapping) |
 | `Clone()` | `obj()` | Deep copy of mesh data, including attached morph targets |
 | `Transform(mat4)` | `void(obj)` | Transform all vertices in-place by Mat4 |
-| `Mesh3D.Simplify(mesh, targetTriangles)` | `obj(obj, i64)` | Return a new simplified mesh via quadric-error-metric edge collapse (static form; deterministic, boundary- and seam-preserving, never grows the mesh) |
+| `Mesh3D.Simplify(mesh, targetTriangles)` | `obj(obj, i64)` | Return a new simplified mesh via quadric-error-metric edge collapse (static form; deterministic, manifold-, boundary-, material-, and attribute-seam-preserving; may return a valid partial result) |
+
+`Simplify` keeps the existing object-returning API for both complete and partial
+results. Inspect the three diagnostic properties when an exact budget matters.
+Every surviving vertex uses subset placement: normals, tangents, UV sets,
+colors, primary/extra skin influences, authoritative double positions, morph
+deltas, material ranges, and retained skeleton/morph ownership remain aligned.
+The simplifier stops with status `2` instead of collapsing a non-manifold or
+bow-tie fan, pinching a classified boundary, or producing a duplicate,
+degenerate, or inverted face. Any later geometry mutation clears these
+diagnostics to status `0` so an old achieved count cannot describe new data.
 
 ### Skeletal and Morph Extensions
 
@@ -548,9 +561,9 @@ func start() {
 
 All mesh generators and the OBJ loader produce **counter-clockwise (CCW)** winding for front faces. When constructing meshes programmatically, vertices must be ordered CCW when viewed from the front.
 
-**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `Box` takes full extents, while collider boxes use half-extents. `Plane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `Reserve()` can be called before many `AddVertex`/`AddTriangle` calls to avoid repeated reallocations; it changes capacity only, not counts or geometry revision. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles. These public append validation traps do not poison the mesh; valid later appends can continue without `Clear()`. Allocation failures and importer failures still mark the build failed until `Clear()` resets it. `RecalcNormals` accumulates in double precision before normalizing back to renderer floats. `CalcTangents` skips degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats. Normal-mapped draws with missing or degenerate tangents generate finite tangents on the queued geometry snapshot; backend shaders still safe-normalize zero normals.
+**Mesh validation:** Procedural generators reject non-finite and non-positive dimensions. `Box` takes full extents, while collider boxes use half-extents. `Plane` emits +Y-facing triangles, matching its vertex normals and backface-culling expectations. Sphere and cylinder segment counts are clamped to production-safe maxima to avoid accidental unbounded allocation. `Reserve()` can be called before many `AddVertex`/`AddTriangle` calls to avoid repeated reallocations; it changes capacity only, not counts or geometry revision. `AddVertex` traps on non-finite or out-of-float-range vertex data. `AddTriangle` traps on negative, out-of-range, duplicate-index, collinear, or otherwise degenerate triangles. These public append validation traps do not poison the mesh; valid later appends can continue without `Clear()`. Allocation failures and importer failures still mark the build failed until `Clear()` resets it. `RecalcNormals` accumulates in double precision before normalizing back to renderer floats. `CalcTangents` skips degenerate or overflowing face contributions instead of narrowing invalid double intermediates into renderer floats. Deferred heap draws retain an immutable geometry revision, so a source mutation after `DrawMesh` cannot change the queued bytes; unchanged later frames reuse that revision without another vertex/index copy. Camera-relative rebase and other dynamic geometry retain their explicit frame snapshots.
 
-**Tangents:** `CalcTangents()` uses position/UV derivatives with Gram-Schmidt orthogonalization and `tangent.w` handedness for mirrored UVs. Degenerate UV islands get a normalized fallback tangent orthogonal to the vertex normal so normal maps never receive a tangent parallel to the normal.
+**Tangents:** `CalcTangents()` uses position/UV derivatives with Gram-Schmidt orthogonalization and `tangent.w` handedness for mirrored UVs. Degenerate UV islands get a normalized fallback tangent orthogonal to the vertex normal so normal maps never receive a tangent parallel to the normal. When a normal-mapped heap mesh has missing or degenerate tangents, Canvas3D generates a separate immutable tangent variant keyed by the mesh geometry revision. It is reused across frames and hardware backends without mutating the authored mesh; any position, normal, UV, or topology mutation forks a new raw/tangent revision.
 
 **OBJ loader:** Supports v/vn/vt tuples, negative indices, inline face comments, locale-independent decimal parsing, and arbitrary n-gons through ear-clipping triangulation. The loader deduplicates identical `(position, uv, normal)` tuples so indexed assets do not balloon into one vertex per face corner. Invalid face indices trap and abort the load instead of emitting corrupt geometry. `Mesh3D.FromOBJ` is a geometry-only loader: `.mtl`, `usemtl`, `g`, and `o` directives are parsed and flattened into one mesh. Use `SceneAsset.LoadResult(".obj")` when you want `mtllib`/`usemtl` material groups preserved as separate model nodes and materials.
 
@@ -733,8 +746,10 @@ KTX2 texture asset metadata and material binding bridge.
 
 | Constructor / Method | Signature | Description |
 |----------------------|-----------|-------------|
-| `LoadKTX2(path)` | `obj(str)` | Load a KTX2 file from the filesystem |
-| `LoadKTX2Asset(assetPath)` | `obj(str)` | Load a KTX2 file through the asset manager |
+| `LoadKTX2(path)` | `obj(str)` | Permissively load a KTX2 file; recognized but unsupported block modes may use a degraded checker fallback |
+| `LoadKTX2Asset(assetPath)` | `obj(str)` | Permissively load KTX2 through the asset manager |
+| `LoadKTX2Strict(path)` | `obj(str)` | Load from the filesystem and reject any input that would require checker substitution |
+| `LoadKTX2AssetStrict(assetPath)` | `obj(str)` | Strictly load KTX2 through the asset manager |
 | `SetResidentMipRange(firstMip, mipCount)` | `void(i64,i64)` | Request/count the resident mip-level range; count clamps to available mips |
 
 | Property | Type | Description |
@@ -744,24 +759,35 @@ KTX2 texture asset metadata and material binding bridge.
 | `MipCount` | Integer | Declared mip level count |
 | `Format` | String | `rgba8`, `bc1`, `bc3`, `bc4`, `bc5`, `bc7`, `astc`, `etc2`, or `unknown` |
 | `Compressed` | Bool | True for native block-compressed mip payloads |
+| `Degraded` | Bool | True when the permissive loader substituted a checker for a recognized decode failure |
+| `DegradedReason` | String | Stable decoder/format reason for degradation, or empty when complete |
 | `ResidentMipStart` | Integer | First resident/requested mip level |
 | `ResidentMipCount` | Integer | Number of resident/requested mip levels |
-| `ResidentBytes` | Integer | Declared byte size of resident/requested mip levels |
+| `ResidentBytes` | Integer | Active native/fallback bytes for the resident mip window |
+| `RetainedBytes` | Integer | Canonical source backing plus decoded fallbacks still retained in memory |
 
-The current runtime parses KTX2 headers, rejects unsupported supercompression,
-validates each mip payload length against the declared format/block dimensions,
-records declared mip byte ranges, and decodes RGBA8, BC1, BC3, BC4/BC5, BC7 modes 0-7,
-representative ETC2 RGBA8/EAC, and ASTC LDR void-extent mips into `Pixels` fallbacks.
-`SetResidentMipRange` updates mip residency telemetry and selects the first
-resident RGBA8 mip as the active fallback resolved by materials at draw time;
-negative arguments trap, `mipCount` clamps to the available range, and a zero
-count releases all resident telemetry/fallback binding. `Material3D.Textured`, `SetTexture`,
+The runtime validates KTX2 headers, exact block geometry, mip ranges, ZLIB
+framing/Adler-32, Zstandard destination length and trailing input, and
+BasisLZ/UASTC payload bounds before publication. One table is authoritative for
+CPU fallback quality (`none`, `partial`, or `full`), native backend capability,
+block dimensions, and decoder selection. RGBA8, BC1/3/4/5/7 have full CPU
+fallbacks; BC6H, ETC2, and ASTC intentionally report partial coverage because
+their in-tree decoders accept only the implemented block modes. Permissive loads
+retain native blocks and expose a checker plus `DegradedReason` when a recognized
+mode cannot be decoded; strict loads return null for that same input.
+
+`SetResidentMipRange` reconstructs every entering fallback from immutable
+canonical backing before publishing the new window, then releases decoded
+`Pixels` outside it. `ResidentBytes` therefore falls on eviction while a later
+range change reproduces the same pixels; `RetainedBytes` includes the smaller
+reconstructable backing. Negative arguments trap, `mipCount` clamps to the
+available range, and a zero count releases all decoded resident fallbacks.
+`Material3D.Textured`, `SetTexture`,
 `SetAlbedoMap`, `SetNormalMap`, `SetMetallicRoughnessMap`, `SetAOMap`,
 `SetSpecularMap`, and `SetEmissiveMap` accept texture assets directly when they
 have an RGBA8 fallback or native compressed mip blocks. BC1/BC3/BC4/BC5/BC7/ASTC/ETC2
-assets expose metadata, residency byte counts, retained native mip payloads,
-and software fallbacks for supported compressed blocks; unsupported ASTC or
-ETC2 modes remain native-only. Native mip block payloads upload through capable
+assets expose metadata, resident/retained byte counts, native mip payloads,
+and software fallbacks for supported compressed blocks. Native mip block payloads upload through capable
 GPU backends under `Canvas3D.SetTextureUploadBudget`;
 `BackendSupports("native-texture:bc1"|"native-texture:bc3"|"native-texture:bc4"|"native-texture:bc5"|"native-texture:bc7"|"native-texture:astc"|"native-texture:etc2")`
 advertises the device-specific native paths. Bare compressed-format names remain
@@ -1297,7 +1323,7 @@ Bone hierarchy for skeletal animation.
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `AddBone(name, parentIdx, bindPose)` | `i64(str, i64, obj)` | Add bone (returns index). parentIdx=-1 for root. bindPose is Mat4 |
+| `AddBone(name, parentIdx, bindPose)` | `i64(str, i64, obj)` | Add a bone with an exact retained name (returns index). parentIdx=-1 for root. bindPose is Mat4 |
 | `ComputeInverseBind()` | `void()` | Compute inverse bind matrices (call after all bones added) |
 | `FindBone(name)` | `i64(str)` | Find bone index by name (-1 if not found) |
 | `FindBoneOption(name)` | `obj<Zanna.Option>(str)` | Find bone index by name as `Some(index)`, or `None` |
@@ -1306,7 +1332,14 @@ Bone hierarchy for skeletal animation.
 Prefer `FindBoneOption()` for new code. `FindBone()` remains available for
 compatibility with existing `-1` checks.
 
-Bones must be added in topological order (parent before child). Max 256 bones per skeleton.
+Bone names are length-carrying runtime strings: `AddBone`, `FindBone`,
+`GetBoneName`, importer binding, retarget exact matching, and VSCN persistence do
+not truncate long equal prefixes. Numeric source IDs—not names—remain the
+identity used by FBX animation import.
+
+Bones must be added in topological order (parent before child). Max 1,024 bones
+per skeleton; each draw palette remains capped at 256 and imported meshes are
+partitioned/remapped when necessary.
 Add all bones before binding the skeleton to a mesh or creating an `AnimPlayer3D`, `AnimBlend3D`,
 or `AnimController3D`; those runtime objects allocate fixed-size pose buffers and freeze the
 skeleton topology.
@@ -1316,6 +1349,9 @@ skeleton topology.
 ## Animation3D
 
 Keyframe animation clip with per-bone position, rotation, and scale tracks.
+Key times use double precision internally. Arithmetic-noise duplicates replace
+the prior sample, while adjacent FBX source ticks remain distinct so constant
+segments can preserve an exact step boundary.
 
 ### Constructor
 
@@ -1518,15 +1554,26 @@ func start() {
 
 ## FBX Loader
 
-Low-level extractor API for meshes, skeletons, materials, animations, and morph targets from binary FBX files (v7100-7700), with a minimal ASCII FBX geometry fallback for simple `Vertices`/`PolygonVertexIndex` assets. For instantiation-ready imported assets, prefer `SceneAsset.LoadResult("asset.fbx")`.
+Low-level extractor API for meshes, skeletons, materials, animations, and morph
+targets from binary FBX files (v7100-7700) and brace-scoped ASCII FBX documents.
+Both encodings populate the same typed node/property/connection graph and run
+the same extraction pipeline. For instantiation-ready imported assets, prefer
+`SceneAsset.LoadResult("asset.fbx")`.
 
-FBX reads are capped at 256 MiB by default to avoid accidental whole-file allocations on oversized content. Hosts that intentionally process larger files can set `ZANNA_FBX_MAX_FILE_BYTES`; the runtime still clamps that value to the 1 GiB hard cap.
+FBX reads are capped at 256 MiB by default to avoid accidental whole-file
+allocations on oversized content. Hosts that intentionally process larger files
+can set `ZANNA_FBX_MAX_FILE_BYTES`; the runtime still clamps that value to the
+1 GiB hard cap. Independently, the complete load has a 1 GiB aggregate budget
+covering file bytes, typed nodes/properties, expanded arrays, indexes, and
+generated animation samples. `ZANNA_FBX_MAX_LOAD_BYTES` may lower (never raise)
+that budget for a host. Exceeding either limit returns null without publishing a
+partial asset.
 
 ### Constructor
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
-| `Load(path)` | `obj(str)` | Parse binary FBX file or minimal ASCII FBX geometry |
+| `Load(path)` | `obj(str)` | Parse binary or ASCII FBX through the shared typed graph |
 
 ### Properties
 
@@ -1584,7 +1631,24 @@ func start() {
 }
 ```
 
-Supports zlib-compressed array properties, negative polygon indices, arbitrary n-gon triangulation, LayerElementNormal/UV mapping modes, LayerElementMaterial polygon assignments, default materials for materialless meshes, common FBX transform properties, embedded Texture/Video PNG/JPEG/GIF payloads, external texture references, and Z-up to Y-up coordinate conversion. `SceneAsset.LoadResult("asset.fbx")` adapts these extracted resources into an instantiable scene asset and preserves authored FBX `Model` hierarchy when the file contains object connections.
+Supports zlib-compressed array properties, negative polygon indices, arbitrary
+n-gon triangulation, LayerElementNormal/UV mapping modes,
+LayerElementMaterial polygon assignments, default materials for materialless
+meshes, common FBX transform properties, embedded Texture/Video PNG/JPEG/GIF
+payloads, external texture references, and Z-up to Y-up coordinate conversion.
+The ASCII lexer is length-bounded and brace-scoped, so identifiers in comments,
+quoted strings, or closed sibling nodes never satisfy a lookup. Object identity
+is always the numeric FBX ID: dynamically sized display names—including long
+equal prefixes—remain distinct but never substitute for an ID.
+
+Static nodes, bind extraction, and animation evaluate the same pivot,
+pre/post-rotation, rotation-order, geometric-transform, and inheritance
+composer. Constant curves preserve the immediately preceding FBX tick, linear
+curves remain linear, and cubic Hermite curves subdivide adaptively to the
+documented time/value error bound; budget/capacity failure rejects the staged
+clip instead of publishing truncated keys. `SceneAsset.LoadResult("asset.fbx")`
+adapts these resources into an instantiable scene asset and preserves authored
+`Model` hierarchy.
 
 ---
 
@@ -1632,13 +1696,13 @@ func start() {
 }
 ```
 
-**Note:** GLTF is class-backed in the runtime catalog and also works as a low-level extractor helper. It preserves the active-scene hierarchy, matrix-authored node transforms, extended mesh attributes, materials, skeletons, animations, and morph targets listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `SceneAsset.LoadResult`.
+**Note:** GLTF is class-backed in the runtime catalog and also works as a low-level extractor helper. It preserves the active-scene hierarchy, matrix-authored node transforms, extended mesh attributes, materials, skeletons, animations, and morph targets listed above. For preserved node hierarchies and scene instantiation, load `.gltf` or `.glb` through `SceneAsset.LoadResult`. Plain JSON is parsed with its exact byte length and rejects embedded NUL. Synchronous and preload GLB paths share one bounded chunk iterator, so malformed ordering, missing JSON/BIN chunks, and trailing bytes fail identically. Recognized integer/boolean-like fields require complete exact tokens, and malformed array separators invalidate the containing object rather than returning a prefix.
 
 Supported glTF material fidelity:
 - Core metallic-roughness PBR, base-color / normal / metallic-roughness / occlusion / emissive texture slots, alpha modes, `doubleSided`, and `KHR_materials_emissive_strength`. PBR base-color and emissive textures are decoded from sRGB to linear before lighting on software, Metal, D3D11, and OpenGL.
 - `KHR_materials_unlit` and `KHR_materials_specular` are accepted in `extensionsRequired`; `KHR_materials_clearcoat` and `KHR_materials_transmission` are accepted only when optional (`extensionsUsed`) and mapped onto the current `Material3D` surface as best-effort material parameters.
 - Optional `KHR_texture_basisu` KTX2 images are imported as `TextureAsset3D` handles, preserving compressed texture metadata for backends that can upload native payloads while still exposing the material texture slot through `Material3D`; required BasisU textures are rejected until the renderer can guarantee full required-extension fidelity.
-- `KHR_texture_transform`, `textureInfo.texCoord`, wrap mode, and nearest/linear filter state are preserved independently for base-color, normal, specular, emissive, metallic-roughness, and occlusion texture slots across software, Metal, D3D11, and OpenGL.
+- `KHR_texture_transform`, `textureInfo.texCoord`, wrap mode, and independent minification, magnification, and mip filter axes are preserved for base-color, normal, specular, emissive, metallic-roughness, and occlusion texture slots across software, Metal, D3D11, and OpenGL. UV0/UV1 are accepted only when the primitive carries the selected stream; missing streams and UV2+ reject the primitive instead of silently sampling UV0.
 - `KHR_lights_punctual` directional, point, and spot lights attach to their authored scene nodes. `SceneGraph.Draw` transforms them by node world pose and includes them in the per-draw light snapshot; imported directional lights participate in shadow selection from that snapshot, and glTF `range` maps to the runtime quadratic attenuation coefficient.
 
 ## Particles3D
@@ -1646,9 +1710,17 @@ Supported glTF material fidelity:
 Emitter-based 3D particle effects with physics, lifetime, and billboard rendering.
 Particle setters sanitize non-finite values: ranges are kept non-negative and ordered, alpha and
 direction spread are clamped, invalid directions fall back to +Y, and invalid update deltas are ignored.
+`Update` advances the simulation in 60 Hz fixed steps, carries an ordinary fractional step in
+`ResidualTime`, and executes at most 60 steps (one simulated second) per call. Complete steps beyond
+that safety budget are not hidden: `LastDroppedTime` reports the amount dropped by the latest call,
+and `DroppedTime` accumulates it until `ResetDroppedTime()` is called.
 Rendering is batched per emitter. Additive particles skip sorting, while alpha particles sort a
-temporary key array back-to-front and submit one billboard mesh without reordering the live particle
-array.
+temporary key array back-to-front without reordering the live particle array. Metal, D3D11, and
+OpenGL draw one process-retained unit quad with a compact 64-byte center/right/up/color instance for
+each particle; repeated draws therefore do not rebuild or upload four expanded vertices and six
+indices per particle. The software renderer reconstructs the same corners through its deterministic
+CPU mesh path. Ribbon trails remain CPU-expanded on every backend and can be drawn alongside the
+compact hardware billboard batch.
 
 ### Constructor
 
@@ -1660,9 +1732,14 @@ array.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Count` | Integer | read | Number of active particles |
+| `Count` | Integer | read | Number of live particles; terminal-frame snapshots are excluded |
 | `Emitting` | Boolean | read | Whether emitter is active |
 | `Additive` | Boolean | write | Additive particle blending mode (fire, sparks). Default: false. Preserves each particle's own alpha/intensity. |
+| `Seed` | Integer | read/write | Deterministic per-emitter spawn-stream state |
+| `RenderFinalFrame` | Boolean | read/write | Render an expired particle's exact endpoint until the next valid update. Default: true; the endpoint is not counted as live. |
+| `DroppedTime` | Double | read | Cumulative complete-step time discarded by the per-call catch-up budget |
+| `LastDroppedTime` | Double | read | Time discarded by the most recent update call, or zero when none was discarded |
+| `ResidualTime` | Double | read | Fractional fixed-step time retained for a later update; always less than 1/60 second |
 
 ### Methods
 
@@ -1685,7 +1762,8 @@ array.
 | `Stop()` | `void()` | Stop emission |
 | `Burst(count)` | `void(i64)` | Instantly spawn N particles |
 | `Clear()` | `void()` | Remove all active particles |
-| `Update(dt)` | `void(f64)` | Advance simulation by dt seconds |
+| `ResetDroppedTime()` | `void()` | Reset cumulative and latest dropped-time telemetry; residual simulation time is unchanged |
+| `Update(dt)` | `void(f64)` | Advance bounded 60 Hz simulation and update residual/dropped-time telemetry |
 | `Draw(canvas, camera)` | `void(obj, obj)` | Render particles (between Begin/End) |
 
 ### Zia Example
@@ -1731,6 +1809,9 @@ func start() {
 - Particles are billboarded (camera-facing)
 - Additive mode uses true additive blending and stays fully batched in one draw call
 - Alpha blend mode sorts particles back-to-front and submits per-particle keyed draws so blending stays correct against the rest of the scene
+- Expiration integrates only the remaining lifetime. With `RenderFinalFrame` enabled, `Draw` can
+  show that exact terminal position during the update interval, while `Count` already reports the
+  particle as expired.
 
 ## PostFX3D
 
@@ -1816,11 +1897,11 @@ Effects are applied in chain order (first added = first applied). Chain storage 
 |----------|-----------|-------------|
 | `Ray3D.IntersectTriangle(o, d, v0, v1, v2)` | `f64(obj, obj, obj, obj, obj)` | Möller-Trumbore; returns distance or -1 |
 | `Ray3D.IntersectTriangleCull(o, d, v0, v1, v2, frontOnly)` | `f64(obj, obj, obj, obj, obj, i1)` | As above; `frontOnly = true` rejects back-facing triangles (natural for picking and line-of-sight) |
-| `Ray3D.IntersectMesh(o, d, mesh, transform)` | `obj(obj, obj, obj, obj)` | Test all triangles, returns closest RayHit3D or null |
+| `Ray3D.IntersectMesh(o, d, mesh, transform)` | `obj(obj, obj, obj, obj)` | Traverse the mesh's retained triangle BVH, returns closest RayHit3D or null |
 | `Ray3D.IntersectAABB(o, d, min, max)` | `f64(obj, obj, obj, obj)` | Slab method; returns distance or -1 |
 | `Ray3D.IntersectSphere(o, d, center, radius)` | `f64(obj, obj, obj, f64)` | Quadratic formula; returns distance or -1 |
 
-Ray directions are normalized internally for all `Ray3D` intersection helpers. A zero-length or non-finite direction is a miss, and returned distances are Euclidean world distances even when the input direction was not normalized. Sphere hits from inside the sphere return distance `0`.
+Ray directions are normalized internally for all `Ray3D` intersection helpers. A zero-length or non-finite direction is a miss, and returned distances are Euclidean world distances even when the input direction was not normalized. Sphere hits from inside the sphere return distance `0`. `IntersectMesh` retains a local-space BVH per mesh geometry revision and rebuilds it lazily after mutation. Identity and invertible transforms reuse that tree; singular transforms and allocation failure preserve an exact linear fallback. Equal-distance mesh hits choose the lowest source triangle index deterministically.
 
 ### RayHit3D — Hit result
 
@@ -2883,7 +2964,7 @@ more than two triangles on one undirected edge is rejected because adjacency wou
 Prefer `FindPathOption()` for new code. `FindPath()` remains available for
 compatibility with existing `null` checks.
 
-`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `Bake()` gathers every `Mesh3D` attached under a `SceneGraph`, applies each node's world transform, and runs the voxel baker. `BakeTiled()` keeps retained voxel-cell source data for each tile; `RebuildTile()` refreshes only the requested tile's geometry, heights, and blocked state from that retained source instead of running a whole-scene bake. `SetMaxSlope()` refilters preserved source triangles. Slope tests use upward-facing triangle planes. Shared-edge portals narrower than `agentRadius * 2` are not linked, so wider agents do not path through narrow authored passages. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid, while `FindPath()` / `FindPathOption()` and `IsWalkable()` require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
+`Build()` stores the source walkable geometry separately from the filtered navigation triangles. `Bake()` gathers every `Mesh3D` attached under a `SceneGraph`, applies each node's world transform, and runs the voxel baker. `BakeTiled()` keeps retained voxel-cell source data for each tile; `RebuildTile()` refreshes only the requested tile's geometry, heights, and blocked state from that retained source instead of running a whole-scene bake. `SetMaxSlope()` refilters preserved source triangles. Slope tests use upward-facing triangle planes. Shared-edge portals narrower than `agentRadius * 2` are not linked, so wider agents do not path through narrow authored passages. `SamplePosition()` projects to the closest point on the nearest walkable triangle instead of snapping to a centroid. Off-mesh samples search the retained spatial index in expanding cell rings and stop once a conservative distance bound proves that no unvisited cell can improve the result; a fixed cell/reference budget falls back to an exact triangle pass for pathological or unindexed meshes. `FindPath()` / `FindPathOption()` lease one of four independently mutable A* workspaces per navmesh, allowing ordinary worker queries to overlap while bounding retained scratch memory. Path and walkability queries require the query height to be near the triangle plane so stacked floors or points far above the mesh do not alias to the wrong layer.
 
 `AddOffMeshLink()` stores authored endpoint pairs such as jumps, ladders, and drop-downs. Both endpoints must resolve to current walkable polygons; pathfinding treats the link as an extra graph edge and emits the link endpoints as waypoints. `SetOffMeshLinkMetadata()` records the link kind, traversal-cost multiplier, and state flags; link cost contributes to A* and the final `LastPathCost`. `SetArea()` tags polygons whose exact XZ footprint intersects a finite volume, `GetArea()` / `GetTraversalCost()` query that metadata, and polygon traversal costs weight A* edges. `AddObstacle()` stores a finite world-space AABB and removes polygons whose triangle footprint intersects the obstacle volume. On tiled bakes, obstacle adds/removes/updates re-carve only overlapped tiles; non-tiled meshes still refilter the preserved source mesh. This remains polygon-level AABB carving rather than clipped sub-polygons; `NavAgent3D` covers local crowd avoidance.
 
@@ -2966,6 +3047,15 @@ Goal-driven navigation agent built on top of `NavMesh3D`. `NavAgent3D` owns a ta
 When both a `Character3D` and a `SceneNode` are bound, the character controller is authoritative and the node is updated to match it.
 
 `AvoidanceEnabled` is opt-in. When enabled on nearby agents sharing the same `NavMesh3D`, the path follower solves a deterministic reciprocal-velocity-obstacle candidate set over nearby grid peers before moving the bound character or node. The solver predicts collisions over a bounded horizon, prefers the path-following velocity, and uses a stable right-side tie-break for symmetric passes. A named CTest fixture records a 200-agent pathing/avoidance baseline.
+
+Native hosts that update crowds can call
+`rt_navagent3d_update_batch(void *const *agents, int64_t count, double dt)`.
+The additive C API filters invalid/duplicate handles, prepares all selected
+agents, snapshots start-of-tick positions and velocities once, solves avoidance
+without reading live mutations, and applies results in stable creation order.
+Reversing the caller's array therefore produces the same desired velocities,
+actual velocities, and positions. The scripting `Update(dt)` method remains the
+compatible single-agent path.
 
 ### Zia Example
 

@@ -157,9 +157,12 @@ static float skeleton3d_clamp01f(float value) {
     return value;
 }
 
-/// @brief Compare keyframe times with a small tolerance to collapse float-rounding duplicates.
-static int skeleton3d_key_time_equal(float a, float b) {
-    return fabsf(a - b) <= 1e-6f;
+/// @brief Compare double keyframe times while retaining adjacent FBX source ticks.
+/// @details A scale-aware 1e-13 tolerance removes arithmetic noise without collapsing the roughly
+///          2.17e-11-second tick spacing used by FBX animation curves near one second.
+static int skeleton3d_key_time_equal(double a, double b) {
+    double scale = fmax(1.0, fmax(fabs(a), fabs(b)));
+    return fabs(a - b) <= 1e-13 * scale;
 }
 
 /// @brief Once pose buffers exist, the skeleton topology can no longer grow safely.

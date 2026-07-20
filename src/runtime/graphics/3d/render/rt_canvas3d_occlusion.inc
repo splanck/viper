@@ -185,8 +185,15 @@ static int canvas3d_append_prepared_deferred_draw(
     rt_canvas3d *c, deferred_draw_t *dd, const canvas3d_world_bounds_cache_key_t *cache_key) {
     if (!c || !dd)
         return 0;
-    if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1))
+    if (c->test_fail_next_queue_reserve) {
+        c->test_fail_next_queue_reserve = 0;
+        canvas3d_record_submission_failure(c, RT_CANVAS3D_SUBMISSION_QUEUE_FAILURE);
         return 0;
+    }
+    if (!ensure_deferred_capacity(&c->draw_cmds, &c->draw_capacity, c->draw_count + 1)) {
+        canvas3d_record_submission_failure(c, RT_CANVAS3D_SUBMISSION_QUEUE_FAILURE);
+        return 0;
+    }
     dd->enqueue_index = c->draw_count;
     dd->occlusion_fingerprint = 0;
     dd->occlusion_key = 0;
@@ -319,9 +326,8 @@ static void canvas3d_submit_deferred(rt_canvas3d *c, const deferred_draw_t *dd) 
     {
         /* Plan 30 pass attribution: 1 = Opaque, 2 = Transparent, 4 = Overlay. */
         int pass = dd->pass_kind != DEFERRED_PASS_MAIN ? 4 : (dd->requires_blend ? 2 : 1);
-        int64_t instances = dd->kind == DEFERRED_DRAW_INSTANCED && dd->instance_count > 0
-                                ? dd->instance_count
-                                : 1;
+        int64_t instances =
+            dd->kind == DEFERRED_DRAW_INSTANCED && dd->instance_count > 0 ? dd->instance_count : 1;
         c->last_pass_draw_count[pass] += 1;
         c->last_pass_instance_count[pass] += instances;
     }
@@ -1255,9 +1261,10 @@ static void canvas3d_occlusion_grid_write(canvas3d_occlusion_grid_t *grid,
  * than the candidate, with margins and covered-streak hysteresis). WRITES now
  * rasterize the occluder's actual triangles into a fine per-texel view-depth
  * buffer and fold each fully-written 4x4 block into the coarse grid as its
- * conservative max depth. AABB rectangles remain only as the fallback for
- * draws past the triangle budget — so near walls, rotated geometry, and other
- * deep-AABB occluders finally contribute their true silhouettes.
+ * conservative max depth. Over-budget meshes use an exact bounded subset of
+ * their own triangles as a conservative coarse proxy: omitted triangles can
+ * reduce culling but can never invent coverage. AABB rectangles remain only
+ * as the final shallow-depth fallback.
  *=========================================================================*/
 
 #define CANVAS3D_HIZ_BLOCK 4
@@ -1267,12 +1274,15 @@ static void canvas3d_occlusion_grid_write(canvas3d_occlusion_grid_t *grid,
 #define CANVAS3D_HIZ_MAX_TRIS_PER_DRAW 1024
 #define CANVAS3D_HIZ_MAX_TRIS_PER_FRAME 8192
 #define CANVAS3D_HIZ_MAX_VERTS_PER_DRAW 4096
+#define CANVAS3D_HIZ_PROXY_TRIS_PER_DRAW 512
+#define CANVAS3D_HIZ_PROXY_TRIS_PER_FRAME 4096
 
 /// @brief Reset the fine Hi-Z buffer and the per-frame triangle budget.
 static void canvas3d_hiz_frame_reset(rt_canvas3d *c) {
     if (!c)
         return;
     c->hiz_frame_triangles = 0;
+    c->hiz_frame_proxy_triangles = 0;
     if (c->hiz_depth) {
         for (int32_t i = 0; i < CANVAS3D_HIZ_CELLS; i++)
             c->hiz_depth[i] = FLT_MAX;
@@ -1308,6 +1318,39 @@ static int canvas3d_hiz_ensure_scratch(rt_canvas3d *c, int32_t needed) {
     return 1;
 }
 
+/// @brief Project one object-space vertex into fine Hi-Z screen coordinates.
+/// @details The output stores fine-buffer X/Y, reciprocal clip W for perspective-correct depth,
+///   and a validity lane. Vertices outside the conservative clip guard are invalidated so every
+///   touching triangle is omitted instead of clipped into potentially invented coverage. The
+///   helper is shared by the full preproject path and allocation-free coarse-proxy path.
+/// @param mvp Row-major model-view-projection matrix.
+/// @param position Object-space XYZ position.
+/// @param out Four-float projected record receiving X, Y, reciprocal W, and validity.
+/// @return Non-zero when the vertex is finite and within the conservative clip guard.
+static int canvas3d_hiz_project_vertex(const float mvp[16], const float position[3], float out[4]) {
+    float cx;
+    float cy;
+    float cz;
+    float cw;
+    if (!mvp || !position || !out)
+        return 0;
+    cx = mvp[0] * position[0] + mvp[1] * position[1] + mvp[2] * position[2] + mvp[3];
+    cy = mvp[4] * position[0] + mvp[5] * position[1] + mvp[6] * position[2] + mvp[7];
+    cz = mvp[8] * position[0] + mvp[9] * position[1] + mvp[10] * position[2] + mvp[11];
+    cw = mvp[12] * position[0] + mvp[13] * position[1] + mvp[14] * position[2] + mvp[15];
+    if (!isfinite(cx) || !isfinite(cy) || !isfinite(cz) || !isfinite(cw) || cw <= 1e-6f ||
+        fabsf(cz) > cw * 1.05f) {
+        out[0] = out[1] = out[2] = 0.0f;
+        out[3] = 0.0f;
+        return 0;
+    }
+    out[0] = (cx / cw * 0.5f + 0.5f) * (float)CANVAS3D_HIZ_W;
+    out[1] = (0.5f - cy / cw * 0.5f) * (float)CANVAS3D_HIZ_H;
+    out[2] = 1.0f / cw;
+    out[3] = 1.0f;
+    return 1;
+}
+
 /// @brief Fold every coarse cell overlapping the fine-texel bbox into the grid.
 /// @details A cell becomes covered only when all 16 of its fine texels were written;
 ///   its contribution is the block's MAX (farthest) depth, so a candidate passes the
@@ -1338,9 +1381,9 @@ static void canvas3d_hiz_flush_blocks(const rt_canvas3d *c,
             float block_max = 0.0f;
             int complete = 1;
             for (int32_t by = 0; by < CANVAS3D_HIZ_BLOCK && complete; by++) {
-                const float *row = &c->hiz_depth[(size_t)(cy * CANVAS3D_HIZ_BLOCK + by) *
-                                                     (size_t)CANVAS3D_HIZ_W +
-                                                 (size_t)(cx * CANVAS3D_HIZ_BLOCK)];
+                const float *row =
+                    &c->hiz_depth[(size_t)(cy * CANVAS3D_HIZ_BLOCK + by) * (size_t)CANVAS3D_HIZ_W +
+                                  (size_t)(cx * CANVAS3D_HIZ_BLOCK)];
                 for (int32_t bx = 0; bx < CANVAS3D_HIZ_BLOCK; bx++) {
                     float d = row[bx];
                     if (d >= FLT_MAX * 0.5f) {
@@ -1363,17 +1406,26 @@ static void canvas3d_hiz_flush_blocks(const rt_canvas3d *c,
     }
 }
 
-/// @brief Rasterize one draw's triangles into the fine Hi-Z buffer.
-/// @return 1 when the draw was rasterized (no fallback rect write needed), 0 when it
-///   was rejected (ortho camera, deforming/instanced draw, over budget, allocation
-///   failure) and the caller should use the conservative AABB path instead.
+/// @brief Rasterize one draw's triangles or an exact bounded triangle-subset proxy into Hi-Z.
+/// @details Meshes within the precise budgets project every vertex once and rasterize every
+///   triangle. A draw that exceeds a vertex/triangle limit or the remaining precise frame budget
+///   instead rasterizes a centered contiguous subset of at most 512 source triangles. Proxy
+///   triangles are not enlarged or replaced: missing work can only create false-visible results.
+///   Fine blocks still publish only after all 16 texels have real coverage, so edge-visible
+///   candidates are never culled by an outer AABB rectangle.
+/// @return 1 when precise geometry or a proxy consumed the draw (disallowing an AABB write), or 0
+///   when the draw is ineligible/no raster budget or storage is available and the caller may try
+///   the separately depth-guarded AABB fallback.
 static int canvas3d_hiz_rasterize_draw(rt_canvas3d *c,
                                        canvas3d_occlusion_grid_t *grid,
                                        const deferred_draw_t *dd) {
     const vgfx3d_draw_cmd_t *cmd;
     float mvp[16];
     float *verts;
-    int32_t tri_count;
+    int32_t source_tri_count;
+    int32_t raster_tri_count;
+    int32_t triangle_begin = 0;
+    int use_proxy = 0;
     int32_t fine_min_x = CANVAS3D_HIZ_W;
     int32_t fine_min_y = CANVAS3D_HIZ_H;
     int32_t fine_max_x = -1;
@@ -1387,40 +1439,39 @@ static int canvas3d_hiz_rasterize_draw(rt_canvas3d *c,
         return 0;
     if (!cmd->vertices || !cmd->indices || cmd->index_count < 3u || cmd->vertex_count == 0)
         return 0;
-    tri_count = (int32_t)(cmd->index_count / 3u);
-    if (tri_count > CANVAS3D_HIZ_MAX_TRIS_PER_DRAW ||
-        cmd->vertex_count > (uint32_t)CANVAS3D_HIZ_MAX_VERTS_PER_DRAW)
-        return 0;
-    if (c->hiz_frame_triangles + tri_count > CANVAS3D_HIZ_MAX_TRIS_PER_FRAME)
-        return 0;
+    source_tri_count = (int32_t)(cmd->index_count / 3u);
+    raster_tri_count = source_tri_count;
+    if (source_tri_count > CANVAS3D_HIZ_MAX_TRIS_PER_DRAW ||
+        cmd->vertex_count > (uint32_t)CANVAS3D_HIZ_MAX_VERTS_PER_DRAW ||
+        source_tri_count > CANVAS3D_HIZ_MAX_TRIS_PER_FRAME - c->hiz_frame_triangles) {
+        int32_t remaining_proxy = CANVAS3D_HIZ_PROXY_TRIS_PER_FRAME - c->hiz_frame_proxy_triangles;
+        use_proxy = 1;
+        if (raster_tri_count > CANVAS3D_HIZ_PROXY_TRIS_PER_DRAW)
+            raster_tri_count = CANVAS3D_HIZ_PROXY_TRIS_PER_DRAW;
+        if (raster_tri_count > remaining_proxy)
+            raster_tri_count = remaining_proxy;
+        if (raster_tri_count <= 0)
+            return 0;
+        triangle_begin = (source_tri_count - raster_tri_count) / 2;
+    }
     if (!canvas3d_hiz_ensure_buffer(c) ||
-        !canvas3d_hiz_ensure_scratch(c, (int32_t)cmd->vertex_count))
+        (!use_proxy && !canvas3d_hiz_ensure_scratch(c, (int32_t)cmd->vertex_count)))
         return 0;
 
     canvas3d_mul_mat4(c->cached_vp, cmd->model_matrix, mvp);
     verts = c->hiz_vertex_scratch;
-    for (uint32_t i = 0; i < cmd->vertex_count; i++) {
-        const float *p = cmd->vertices[i].pos;
-        float cx = mvp[0] * p[0] + mvp[1] * p[1] + mvp[2] * p[2] + mvp[3];
-        float cy = mvp[4] * p[0] + mvp[5] * p[1] + mvp[6] * p[2] + mvp[7];
-        float cz = mvp[8] * p[0] + mvp[9] * p[1] + mvp[10] * p[2] + mvp[11];
-        float cw = mvp[12] * p[0] + mvp[13] * p[1] + mvp[14] * p[2] + mvp[15];
-        float *out = &verts[(size_t)i * 4u];
-        if (!isfinite(cx) || !isfinite(cy) || !isfinite(cz) || !isfinite(cw) || cw <= 1e-6f ||
-            fabsf(cz) > cw * 1.05f) {
-            out[3] = 0.0f; /* invalid: triangle touching it is skipped (conservative) */
-            continue;
-        }
-        out[0] = (cx / cw * 0.5f + 0.5f) * (float)CANVAS3D_HIZ_W;
-        out[1] = (0.5f - cy / cw * 0.5f) * (float)CANVAS3D_HIZ_H;
-        out[2] = 1.0f / cw; /* perspective-correct view-depth interpolant */
-        out[3] = 1.0f;
-    }
+    if (!use_proxy)
+        for (uint32_t i = 0; i < cmd->vertex_count; i++)
+            (void)canvas3d_hiz_project_vertex(mvp, cmd->vertices[i].pos, &verts[(size_t)i * 4u]);
 
-    for (int32_t t = 0; t < tri_count; t++) {
-        uint32_t i0 = cmd->indices[(size_t)t * 3u];
-        uint32_t i1 = cmd->indices[(size_t)t * 3u + 1u];
-        uint32_t i2 = cmd->indices[(size_t)t * 3u + 2u];
+    for (int32_t local_triangle = 0; local_triangle < raster_tri_count; local_triangle++) {
+        int32_t source_triangle = triangle_begin + local_triangle;
+        uint32_t i0 = cmd->indices[(size_t)source_triangle * 3u];
+        uint32_t i1 = cmd->indices[(size_t)source_triangle * 3u + 1u];
+        uint32_t i2 = cmd->indices[(size_t)source_triangle * 3u + 2u];
+        float proxy_v0[4];
+        float proxy_v1[4];
+        float proxy_v2[4];
         const float *v0;
         const float *v1;
         const float *v2;
@@ -1431,9 +1482,18 @@ static int canvas3d_hiz_rasterize_draw(rt_canvas3d *c,
         int32_t bb_max_y;
         if (i0 >= cmd->vertex_count || i1 >= cmd->vertex_count || i2 >= cmd->vertex_count)
             continue;
-        v0 = &verts[(size_t)i0 * 4u];
-        v1 = &verts[(size_t)i1 * 4u];
-        v2 = &verts[(size_t)i2 * 4u];
+        if (use_proxy) {
+            (void)canvas3d_hiz_project_vertex(mvp, cmd->vertices[i0].pos, proxy_v0);
+            (void)canvas3d_hiz_project_vertex(mvp, cmd->vertices[i1].pos, proxy_v1);
+            (void)canvas3d_hiz_project_vertex(mvp, cmd->vertices[i2].pos, proxy_v2);
+            v0 = proxy_v0;
+            v1 = proxy_v1;
+            v2 = proxy_v2;
+        } else {
+            v0 = &verts[(size_t)i0 * 4u];
+            v1 = &verts[(size_t)i1 * 4u];
+            v2 = &verts[(size_t)i2 * 4u];
+        }
         if (v0[3] == 0.0f || v1[3] == 0.0f || v2[3] == 0.0f)
             continue;
         area = (v1[0] - v0[0]) * (v2[1] - v0[1]) - (v1[1] - v0[1]) * (v2[0] - v0[0]);
@@ -1497,7 +1557,10 @@ static int canvas3d_hiz_rasterize_draw(rt_canvas3d *c,
             fine_max_y = bb_max_y;
         rasterized_any = 1;
     }
-    c->hiz_frame_triangles += tri_count;
+    if (use_proxy)
+        c->hiz_frame_proxy_triangles += raster_tri_count;
+    else
+        c->hiz_frame_triangles += raster_tri_count;
     if (rasterized_any)
         canvas3d_hiz_flush_blocks(c, grid, fine_min_x, fine_min_y, fine_max_x, fine_max_y);
     /* The draw was consumed by the rasterizer even if every triangle was clipped;

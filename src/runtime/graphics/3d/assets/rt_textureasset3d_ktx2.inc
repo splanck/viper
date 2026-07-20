@@ -4,6 +4,269 @@
 // rt_textureasset3d.c; not a standalone translation unit) Purpose: TextureAsset3D KTX2 parser and
 // the public TextureAsset3D API
 //===----------------------------------------------------------------------===//
+/// @brief Decode one mip from an asset's immutable canonical backing using its table-selected
+/// decoder.
+/// @details The asset retains exact packed ranges in @c mips. This helper validates the requested
+///          index/range through the existing per-format decoder and returns a new Pixels object;
+///          it never mutates residency or source state. UASTC remains internally distinguishable
+///          after its public normalized format changes to rgba8.
+/// @param asset Valid TextureAsset3D implementation with canonical backing.
+/// @param mip Absolute mip index.
+/// @return New GC-managed Pixels fallback, or NULL when the index/source/decoder is unavailable or
+///         the level uses a valid-but-partially-unsupported block mode.
+static void *textureasset3d_decode_mip_from_backing(const rt_textureasset3d *asset, int64_t mip) {
+    const textureasset3d_mip *level;
+    const uint8_t *data;
+    size_t size;
+
+    if (!asset || !asset->source_backing || asset->source_backing_bytes > SIZE_MAX ||
+        !asset->mips || mip < 0 || mip >= textureasset3d_safe_mip_count(asset))
+        return NULL;
+    level = &asset->mips[mip];
+    data = asset->source_backing;
+    size = (size_t)asset->source_backing_bytes;
+    switch ((textureasset3d_decoder_kind)asset->decoder_kind) {
+        case TEXTUREASSET3D_DECODER_RGBA8:
+            return textureasset3d_decode_rgba8_fallback(
+                data, size, level->width, level->height, level->offset, level->length);
+        case TEXTUREASSET3D_DECODER_BC1:
+            return textureasset3d_decode_compressed_fallback(
+                data,
+                size,
+                level->width,
+                level->height,
+                level->offset,
+                level->length,
+                asset->block_width,
+                asset->block_height,
+                asset->block_bytes,
+                textureasset3d_decode_bc1_block_adapter,
+                "TextureAsset3D: BC1 mip reconstruction allocation failed");
+        case TEXTUREASSET3D_DECODER_BC3:
+            return textureasset3d_decode_bc3_fallback(
+                data, size, level->width, level->height, level->offset, level->length);
+        case TEXTUREASSET3D_DECODER_BC4:
+            return textureasset3d_decode_compressed_fallback(
+                data,
+                size,
+                level->width,
+                level->height,
+                level->offset,
+                level->length,
+                asset->block_width,
+                asset->block_height,
+                asset->block_bytes,
+                textureasset3d_decode_bc4_block_adapter,
+                "TextureAsset3D: BC4 mip reconstruction allocation failed");
+        case TEXTUREASSET3D_DECODER_BC5:
+            return textureasset3d_decode_compressed_fallback(
+                data,
+                size,
+                level->width,
+                level->height,
+                level->offset,
+                level->length,
+                asset->block_width,
+                asset->block_height,
+                asset->block_bytes,
+                textureasset3d_decode_bc5_block_adapter,
+                "TextureAsset3D: BC5 mip reconstruction allocation failed");
+        case TEXTUREASSET3D_DECODER_BC6H:
+        case TEXTUREASSET3D_DECODER_BC6HS:
+            return textureasset3d_decode_bc6h_fallback(data,
+                                                       size,
+                                                       level->width,
+                                                       level->height,
+                                                       level->offset,
+                                                       level->length,
+                                                       asset->decoder_kind ==
+                                                           TEXTUREASSET3D_DECODER_BC6HS);
+        case TEXTUREASSET3D_DECODER_BC7:
+            return textureasset3d_decode_bc7_fallback(
+                data, size, level->width, level->height, level->offset, level->length);
+        case TEXTUREASSET3D_DECODER_ETC2:
+            return textureasset3d_decode_compressed_fallback(
+                data,
+                size,
+                level->width,
+                level->height,
+                level->offset,
+                level->length,
+                asset->block_width,
+                asset->block_height,
+                asset->block_bytes,
+                textureasset3d_decode_etc2_block_adapter,
+                "TextureAsset3D: ETC2 mip reconstruction allocation failed");
+        case TEXTUREASSET3D_DECODER_ASTC:
+            return textureasset3d_decode_compressed_fallback(
+                data,
+                size,
+                level->width,
+                level->height,
+                level->offset,
+                level->length,
+                asset->block_width,
+                asset->block_height,
+                asset->block_bytes,
+                textureasset3d_decode_astc_block_adapter,
+                "TextureAsset3D: ASTC mip reconstruction allocation failed");
+        case TEXTUREASSET3D_DECODER_UASTC:
+            return textureasset3d_decode_compressed_fallback(
+                data,
+                size,
+                level->width,
+                level->height,
+                level->offset,
+                level->length,
+                asset->block_width,
+                asset->block_height,
+                asset->block_bytes,
+                textureasset3d_decode_uastc_block_adapter,
+                "TextureAsset3D: UASTC mip reconstruction allocation failed");
+        default:
+            return NULL;
+    }
+}
+
+/// @brief Decode every table-supported mip once while preserving per-level partial misses.
+/// @details This is the common fallback-selection path for all capability rows. A returned pointer
+///          array always has @p mip_count slots; NULL slots accurately represent levels outside a
+///          partial decoder's coverage. When no level decodes, the table itself is freed and NULL
+///          is returned so strict/permissive policy can decide whether to reject or substitute.
+/// @param prototype Temporary asset view containing backing, mips, geometry, and decoder kind.
+/// @param mip_count Validated number of levels.
+/// @return Newly allocated Pixels pointer table with zero or more populated slots, or NULL when no
+///         level decoded/allocation failed.
+static void **textureasset3d_decode_capability_mips(const rt_textureasset3d *prototype,
+                                                    int64_t mip_count) {
+    if (!prototype || mip_count <= 0 || prototype->decoder_kind == TEXTUREASSET3D_DECODER_NONE)
+        return NULL;
+    if (!prototype->source_backing || prototype->source_backing_bytes > SIZE_MAX)
+        return NULL;
+    switch ((textureasset3d_decoder_kind)prototype->decoder_kind) {
+        case TEXTUREASSET3D_DECODER_RGBA8:
+            return textureasset3d_decode_rgba8_mips(prototype->source_backing,
+                                                    (size_t)prototype->source_backing_bytes,
+                                                    prototype->mips,
+                                                    mip_count);
+        case TEXTUREASSET3D_DECODER_BC1:
+            return textureasset3d_decode_compressed_mips(
+                prototype->source_backing,
+                (size_t)prototype->source_backing_bytes,
+                prototype->mips,
+                mip_count,
+                prototype->block_width,
+                prototype->block_height,
+                prototype->block_bytes,
+                textureasset3d_decode_bc1_block_adapter,
+                "TextureAsset3D.LoadKTX2: BC1 Pixels fallback allocation failed");
+        case TEXTUREASSET3D_DECODER_BC3:
+            return textureasset3d_decode_bc3_mips(prototype->source_backing,
+                                                  (size_t)prototype->source_backing_bytes,
+                                                  prototype->mips,
+                                                  mip_count);
+        case TEXTUREASSET3D_DECODER_BC4:
+            return textureasset3d_decode_compressed_mips(
+                prototype->source_backing,
+                (size_t)prototype->source_backing_bytes,
+                prototype->mips,
+                mip_count,
+                prototype->block_width,
+                prototype->block_height,
+                prototype->block_bytes,
+                textureasset3d_decode_bc4_block_adapter,
+                "TextureAsset3D.LoadKTX2: BC4 Pixels fallback allocation failed");
+        case TEXTUREASSET3D_DECODER_BC5:
+            return textureasset3d_decode_compressed_mips(
+                prototype->source_backing,
+                (size_t)prototype->source_backing_bytes,
+                prototype->mips,
+                mip_count,
+                prototype->block_width,
+                prototype->block_height,
+                prototype->block_bytes,
+                textureasset3d_decode_bc5_block_adapter,
+                "TextureAsset3D.LoadKTX2: BC5 Pixels fallback allocation failed");
+        case TEXTUREASSET3D_DECODER_BC6H:
+        case TEXTUREASSET3D_DECODER_BC6HS:
+            return textureasset3d_decode_bc6h_mips(prototype->source_backing,
+                                                   (size_t)prototype->source_backing_bytes,
+                                                   prototype->mips,
+                                                   mip_count,
+                                                   prototype->decoder_kind ==
+                                                       TEXTUREASSET3D_DECODER_BC6HS);
+        case TEXTUREASSET3D_DECODER_BC7:
+            return textureasset3d_decode_bc7_mips(prototype->source_backing,
+                                                  (size_t)prototype->source_backing_bytes,
+                                                  prototype->mips,
+                                                  mip_count);
+        case TEXTUREASSET3D_DECODER_ETC2:
+            return textureasset3d_decode_compressed_mips(
+                prototype->source_backing,
+                (size_t)prototype->source_backing_bytes,
+                prototype->mips,
+                mip_count,
+                prototype->block_width,
+                prototype->block_height,
+                prototype->block_bytes,
+                textureasset3d_decode_etc2_block_adapter,
+                "TextureAsset3D.LoadKTX2: ETC2 Pixels fallback allocation failed");
+        case TEXTUREASSET3D_DECODER_ASTC:
+            return textureasset3d_decode_compressed_mips(
+                prototype->source_backing,
+                (size_t)prototype->source_backing_bytes,
+                prototype->mips,
+                mip_count,
+                prototype->block_width,
+                prototype->block_height,
+                prototype->block_bytes,
+                textureasset3d_decode_astc_block_adapter,
+                "TextureAsset3D.LoadKTX2: ASTC Pixels fallback allocation failed");
+        case TEXTUREASSET3D_DECODER_UASTC:
+            return textureasset3d_decode_compressed_mips(
+                prototype->source_backing,
+                (size_t)prototype->source_backing_bytes,
+                prototype->mips,
+                mip_count,
+                prototype->block_width,
+                prototype->block_height,
+                prototype->block_bytes,
+                textureasset3d_decode_uastc_block_adapter,
+                "TextureAsset3D.LoadKTX2: UASTC Pixels fallback allocation failed");
+        default:
+            return NULL;
+    }
+}
+
+/// @brief Stable human-readable detail for a capability row's CPU decode failure.
+/// @param decoder Table-selected decoder kind.
+/// @return Static diagnostic text used in the existing load warning/error.
+static const char *textureasset3d_decoder_failure_detail(int32_t decoder) {
+    switch ((textureasset3d_decoder_kind)decoder) {
+        case TEXTUREASSET3D_DECODER_BC1:
+            return "corrupt BC1 block payload";
+        case TEXTUREASSET3D_DECODER_BC3:
+            return "corrupt BC3 block payload";
+        case TEXTUREASSET3D_DECODER_BC4:
+            return "corrupt BC4 block payload";
+        case TEXTUREASSET3D_DECODER_BC5:
+            return "corrupt BC5 block payload";
+        case TEXTUREASSET3D_DECODER_BC6H:
+        case TEXTUREASSET3D_DECODER_BC6HS:
+            return "corrupt BC6H block payload";
+        case TEXTUREASSET3D_DECODER_BC7:
+            return "unsupported reserved BC7 mode or corrupt block payload";
+        case TEXTUREASSET3D_DECODER_ETC2:
+            return "unsupported ETC2 color mode or corrupt block payload";
+        case TEXTUREASSET3D_DECODER_ASTC:
+            return "unsupported ASTC block type or corrupt block payload";
+        case TEXTUREASSET3D_DECODER_UASTC:
+            return "reserved UASTC mode or corrupt block payload";
+        default:
+            return "unsupported or corrupt compressed blocks";
+    }
+}
+
 /// @brief Parse a KTX2 byte stream into a fully-populated TextureAsset3D.
 /// @details Validates the identifier and dimensionality, reads the level index, builds the
 ///          mip table with bounds checks, then — for uncompressed level data — produces an
@@ -13,7 +276,10 @@
 ///          input reports through rt_asset_error (recoverable: callers receive NULL and can
 ///          query Assets3D.GetLastLoadError); only allocation failures trap.
 /// @return New TextureAsset3D handle, or NULL on validation/allocation failure.
-static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const char *api_name) {
+static void *textureasset3d_parse_ktx2(const uint8_t *data,
+                                       size_t size,
+                                       const char *api_name,
+                                       int strict) {
     uint32_t vk_format;
     uint32_t pixel_width;
     uint32_t pixel_height;
@@ -28,7 +294,11 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     int64_t mip_count;
     void **mip_pixels = NULL;
     uint8_t **mip_payloads = NULL;
+    uint8_t *source_backing = NULL;
+    uint8_t *fallback_kinds = NULL;
+    uint64_t source_backing_bytes = 0;
     int attempted_cpu_decode = 0;
+    int degraded = 0;
     const char *decode_failure_detail = "unsupported or corrupt compressed blocks";
     rt_textureasset3d *asset;
 
@@ -105,10 +375,19 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         uint32_t dfd_offset = textureasset3d_read_u32le(data + 48);
         uint32_t dfd_length = textureasset3d_read_u32le(data + 52);
         if (dfd_length >= 16u && (uint64_t)dfd_offset <= (uint64_t)size &&
-            (uint64_t)dfd_length <= (uint64_t)size - dfd_offset &&
-            data[dfd_offset + 12u] == 166u) {
+            (uint64_t)dfd_length <= (uint64_t)size - dfd_offset && data[dfd_offset + 12u] == 166u) {
             format_is_uastc = 1;
-            format = (textureasset3d_format_info){"uastc", 1, 4, 4, 16};
+            format = (textureasset3d_format_info){0,
+                                                  0,
+                                                  "uastc",
+                                                  1,
+                                                  RT_TEXTUREASSET3D_CPU_SUPPORT_PARTIAL,
+                                                  4,
+                                                  4,
+                                                  16,
+                                                  TEXTUREASSET3D_DECODER_UASTC,
+                                                  RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE,
+                                                  RT_TEXTUREASSET3D_BACKEND_CAP_NONE};
         }
     }
     mips = (textureasset3d_mip *)calloc((size_t)mip_count, sizeof(textureasset3d_mip));
@@ -131,8 +410,7 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
             if (mips[i].offset > (uint64_t)size ||
                 mips[i].length > (uint64_t)size - mips[i].offset) {
                 free(mips);
-                rt_asset_error_setf(
-                    RT_ASSET_ERROR_CORRUPT, "%s: truncated mip payload", api_name);
+                rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT, "%s: truncated mip payload", api_name);
                 return NULL;
             }
             {
@@ -172,61 +450,59 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
         }
     }
 
-    /* Supercompressed levels (Zstandard / ZLIB) are inflated into one packed
-     * buffer and the mip table is rewritten to point into it, so every decode
-     * and native-retention path below runs unchanged. */
-    const uint8_t *level_data = data;
-    size_t level_size = size;
-    uint8_t *unpacked = NULL;
-    if (supercompression_scheme != 0) {
+    /* Own every final level in one packed canonical span. Supercompressed levels decode directly
+     * into their assigned slices, so no whole-level output allocation coexists merely for a copy.
+     * Scheme 0 still copies source-file bytes once because filesystem/asset input is caller-owned.
+     */
+    {
         uint64_t total = 0;
         uint64_t cursor = 0;
         for (int64_t i = 0; i < mip_count; i++) {
-            if (mips[i].uncompressed_length > TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES ||
-                total > TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES - mips[i].uncompressed_length) {
+            uint64_t final_length =
+                supercompression_scheme == 0 ? mips[i].length : mips[i].uncompressed_length;
+            if (final_length == 0 || final_length > TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES ||
+                total > TEXTUREASSET3D_MAX_RGBA8_FALLBACK_BYTES - final_length) {
                 free(mips);
                 rt_asset_error_setf(
-                    RT_ASSET_ERROR_TOO_LARGE, "%s: supercompressed payload too large", api_name);
+                    RT_ASSET_ERROR_TOO_LARGE, "%s: canonical mip backing is too large", api_name);
                 return NULL;
             }
-            total += mips[i].uncompressed_length;
+            total += final_length;
         }
-        unpacked = (uint8_t *)malloc(total ? (size_t)total : 1u);
-        if (!unpacked) {
+        source_backing = (uint8_t *)malloc(total ? (size_t)total : 1u);
+        if (!source_backing) {
             free(mips);
-            rt_trap("TextureAsset3D.LoadKTX2: supercompression buffer allocation failed");
+            rt_trap("TextureAsset3D.LoadKTX2: canonical mip backing allocation failed");
             return NULL;
         }
+        source_backing_bytes = total;
+        if (supercompression_scheme != 0) {
+            rt_atomic_store_u64(
+                &g_textureasset3d_supercompression_final_bytes, total, __ATOMIC_RELEASE);
+            rt_atomic_store_u64(
+                &g_textureasset3d_supercompression_peak_bytes, total, __ATOMIC_RELEASE);
+        }
         for (int64_t i = 0; i < mip_count; i++) {
-            uint8_t *level_out = NULL;
-            size_t level_out_len = 0;
-            int ok;
-
-            if (supercompression_scheme == 2) {
-                ok = rt_zstd_decompress_raw(data + mips[i].offset,
-                                            (size_t)mips[i].length,
-                                            (size_t)mips[i].uncompressed_length,
-                                            &level_out,
-                                            &level_out_len);
+            uint64_t stored_offset = mips[i].offset;
+            uint64_t stored_length = mips[i].length;
+            uint64_t final_length =
+                supercompression_scheme == 0 ? stored_length : mips[i].uncompressed_length;
+            int ok = 1;
+            if (supercompression_scheme == 0) {
+                memcpy(source_backing + cursor, data + stored_offset, (size_t)final_length);
+            } else if (supercompression_scheme == 2) {
+                ok = rt_zstd_decompress_into(data + stored_offset,
+                                             (size_t)stored_length,
+                                             source_backing + cursor,
+                                             (size_t)final_length);
             } else {
-                /* Scheme 3 stores zlib-wrapped DEFLATE: validate and strip the
-                 * 2-byte CMF/FLG header and 4-byte adler32 trailer, mirroring
-                 * the FBX loader's use of the raw inflate entry point. */
-                const uint8_t *z = data + mips[i].offset;
-                uint64_t zlen = mips[i].length;
-                ok = 0;
-                if (zlen > 6 && (z[0] & 0x0F) == 8 &&
-                    (((uint32_t)z[0] << 8) | z[1]) % 31u == 0) {
-                    ok = rt_compress_inflate_raw(z + 2,
-                                                 (size_t)(zlen - 6),
-                                                 (size_t)mips[i].uncompressed_length,
-                                                 &level_out,
-                                                 &level_out_len);
-                }
+                ok = rt_compress_inflate_zlib_into(data + stored_offset,
+                                                   (size_t)stored_length,
+                                                   source_backing + cursor,
+                                                   (size_t)final_length);
             }
-            if (!ok || level_out_len != (size_t)mips[i].uncompressed_length) {
-                free(level_out);
-                free(unpacked);
+            if (!ok) {
+                free(source_backing);
                 free(mips);
                 rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
                                     "%s: level %lld failed %s decompression",
@@ -235,167 +511,99 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
                                     supercompression_scheme == 2 ? "Zstandard" : "ZLIB");
                 return NULL;
             }
-            memcpy(unpacked + cursor, level_out, level_out_len);
-            free(level_out);
             mips[i].offset = cursor;
-            mips[i].length = mips[i].uncompressed_length;
-            cursor += mips[i].uncompressed_length;
+            mips[i].length = final_length;
+            mips[i].uncompressed_length = final_length;
+            cursor += final_length;
         }
-        level_data = unpacked;
-        level_size = (size_t)total;
     }
 
-    if (strcmp(format.name, "rgba8") == 0)
-        mip_pixels = textureasset3d_decode_rgba8_mips(level_data, level_size, mips, mip_count);
-    /* BC3 software reference decode: also produce an RGBA8 Pixels fallback so BC3 textures render
-     * on backends that cannot upload BC3 natively (native blocks are still retained below). */
-    if (strcmp(format.name, "bc3") == 0) {
-        attempted_cpu_decode = 1;
-        decode_failure_detail = "corrupt BC3 block payload";
-        mip_pixels = textureasset3d_decode_bc3_mips(level_data, level_size, mips, mip_count);
-    }
-    /* BC6H decodes to an RGBA8 fallback only (halves clamp to [0, 1]); no
-     * native retention until the backends grow an HDR block upload path. */
-    if (strcmp(format.name, "bc6h") == 0 || strcmp(format.name, "bc6hs") == 0) {
-        attempted_cpu_decode = 1;
-        decode_failure_detail = "corrupt BC6H block payload";
-        mip_pixels = textureasset3d_decode_bc6h_mips(
-            level_data, level_size, mips, mip_count, format.name[4] != 0);
-    }
-    /* BC7 software reference decode -> RGBA8 Pixels fallback; native blocks are still retained. */
-    if (strcmp(format.name, "bc7") == 0) {
-        attempted_cpu_decode = 1;
-        decode_failure_detail = "unsupported reserved BC7 mode or corrupt block payload";
-        mip_pixels = textureasset3d_decode_bc7_mips(level_data, level_size, mips, mip_count);
-    }
-    if (strcmp(format.name, "bc1") == 0) {
-        attempted_cpu_decode = 1;
-        decode_failure_detail = "corrupt BC1 block payload";
-        mip_pixels = textureasset3d_decode_compressed_mips(
-            level_data,
-            level_size,
-            mips,
-            mip_count,
-            format.block_width,
-            format.block_height,
-            format.block_bytes,
-            textureasset3d_decode_bc1_block_adapter,
-            "TextureAsset3D.LoadKTX2: BC1 Pixels fallback allocation failed");
-    }
-    if (strcmp(format.name, "bc4") == 0) {
-        attempted_cpu_decode = 1;
-        decode_failure_detail = "corrupt BC4 block payload";
-        mip_pixels = textureasset3d_decode_compressed_mips(
-            level_data,
-            level_size,
-            mips,
-            mip_count,
-            format.block_width,
-            format.block_height,
-            format.block_bytes,
-            textureasset3d_decode_bc4_block_adapter,
-            "TextureAsset3D.LoadKTX2: BC4 Pixels fallback allocation failed");
-    }
-    if (strcmp(format.name, "bc5") == 0) {
-        attempted_cpu_decode = 1;
-        decode_failure_detail = "corrupt BC5 block payload";
-        mip_pixels = textureasset3d_decode_compressed_mips(
-            level_data,
-            level_size,
-            mips,
-            mip_count,
-            format.block_width,
-            format.block_height,
-            format.block_bytes,
-            textureasset3d_decode_bc5_block_adapter,
-            "TextureAsset3D.LoadKTX2: BC5 Pixels fallback allocation failed");
-    }
-    if (strcmp(format.name, "etc2") == 0) {
-        attempted_cpu_decode = 1;
-        decode_failure_detail = "unsupported ETC2 color mode or corrupt block payload";
-        mip_pixels = textureasset3d_decode_compressed_mips(
-            level_data,
-            level_size,
-            mips,
-            mip_count,
-            format.block_width,
-            format.block_height,
-            format.block_bytes,
-            textureasset3d_decode_etc2_block_adapter,
-            "TextureAsset3D.LoadKTX2: ETC2 Pixels fallback allocation failed");
-    }
-    if (strcmp(format.name, "astc") == 0) {
-        attempted_cpu_decode = 1;
-        decode_failure_detail = "unsupported ASTC block type or corrupt block payload";
-        mip_pixels = textureasset3d_decode_compressed_mips(
-            level_data,
-            level_size,
-            mips,
-            mip_count,
-            format.block_width,
-            format.block_height,
-            format.block_bytes,
-            textureasset3d_decode_astc_block_adapter,
-            "TextureAsset3D.LoadKTX2: ASTC Pixels fallback allocation failed");
-    }
-    if (format_is_uastc) {
-        attempted_cpu_decode = 1;
-        decode_failure_detail = "reserved UASTC mode or corrupt block payload";
-        mip_pixels = textureasset3d_decode_compressed_mips(
-            level_data,
-            level_size,
-            mips,
-            mip_count,
-            format.block_width,
-            format.block_height,
-            format.block_bytes,
-            textureasset3d_decode_uastc_block_adapter,
-            "TextureAsset3D.LoadKTX2: UASTC Pixels fallback allocation failed");
+    {
+        rt_textureasset3d prototype;
+        memset(&prototype, 0, sizeof(prototype));
+        prototype.source_backing = source_backing;
+        prototype.source_backing_bytes = source_backing_bytes;
+        prototype.mips = mips;
+        prototype.mip_count = mip_count;
+        prototype.mip_capacity = mip_count;
+        prototype.block_width = format.block_width;
+        prototype.block_height = format.block_height;
+        prototype.block_bytes = format.block_bytes;
+        prototype.decoder_kind = format.decoder_kind;
+        attempted_cpu_decode = format.cpu_support != RT_TEXTUREASSET3D_CPU_SUPPORT_NONE;
+        decode_failure_detail = textureasset3d_decoder_failure_detail(format.decoder_kind);
+        mip_pixels = textureasset3d_decode_capability_mips(&prototype, mip_count);
     }
     if (format.compressed && attempted_cpu_decode && !mip_pixels) {
+        if (strict) {
+            free(source_backing);
+            free(mips);
+            rt_asset_error_setf(RT_ASSET_ERROR_UNSUPPORTED,
+                                "%s: %s CPU texture decode failed (%s); strict loading forbids "
+                                "checker fallback",
+                                api_name,
+                                format.name,
+                                decode_failure_detail);
+            return NULL;
+        }
         mip_pixels = textureasset3d_make_decode_failure_checker_mips(mip_count);
         if (!mip_pixels) {
-            free(unpacked);
+            free(source_backing);
             free(mips);
             rt_trap("TextureAsset3D.LoadKTX2: checker fallback allocation failed");
             return NULL;
         }
+        degraded = 1;
         rt_asset_error_add_warningf("%s: %s CPU texture decode failed (%s); using 8x8 "
                                     "magenta/black checker fallback",
                                     api_name,
                                     format.name,
                                     decode_failure_detail);
     }
-    if (format.compressed && !format_is_uastc) {
-        mip_payloads =
-            textureasset3d_copy_native_mip_payloads(level_data, level_size, mips, mip_count);
+    if (format.compressed && format.native_format_id != RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE) {
+        mip_payloads = textureasset3d_make_native_mip_payload_views(
+            source_backing, (size_t)source_backing_bytes, mips, mip_count);
         if (!mip_payloads) {
             textureasset3d_release_mip_pixels(mip_pixels, mip_count);
-            free(unpacked);
+            free(source_backing);
             free(mips);
             rt_trap("TextureAsset3D.LoadKTX2: native mip payload allocation failed");
             return NULL;
         }
     }
-    if (format_is_uastc) {
-        /* No GPU consumes UASTC blocks directly here; the decoded RGBA8 Pixels are the
-         * texture. Clear the file byte ranges so accounting treats it as uncompressed. */
-        for (int64_t i = 0; i < mip_count; i++) {
-            mips[i].offset = 0;
-            mips[i].length = 0;
-            mips[i].uncompressed_length = 0;
-        }
-        format = (textureasset3d_format_info){"rgba8", 0, 1, 1, 4};
+    fallback_kinds = (uint8_t *)calloc((size_t)mip_count, sizeof(uint8_t));
+    if (!fallback_kinds) {
+        textureasset3d_release_mip_pixels(mip_pixels, mip_count);
+        textureasset3d_release_mip_payloads(mip_payloads, mip_count);
+        free(source_backing);
+        free(mips);
+        rt_trap("TextureAsset3D.LoadKTX2: fallback-state allocation failed");
+        return NULL;
     }
-    /* Decoded Pixels and native payload copies own their bytes now. */
-    free(unpacked);
-    unpacked = NULL;
+    for (int64_t i = 0; i < mip_count; i++) {
+        if (degraded)
+            fallback_kinds[i] = TEXTUREASSET3D_FALLBACK_CHECKER;
+        else if (mip_pixels && mip_pixels[i])
+            fallback_kinds[i] = TEXTUREASSET3D_FALLBACK_DECODE;
+        else
+            fallback_kinds[i] = TEXTUREASSET3D_FALLBACK_NONE;
+    }
+    if (format_is_uastc) {
+        /* No GPU consumes UASTC blocks directly. Keep its source ranges/decoder for residency
+         * reconstruction while exposing the successfully decoded texture as normalized RGBA8. */
+        format.name = "rgba8";
+        format.compressed = 0;
+        format.native_format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+        format.backend_capability_bit = RT_TEXTUREASSET3D_BACKEND_CAP_NONE;
+    }
 
     asset = (rt_textureasset3d *)rt_obj_new_i64(RT_G3D_TEXTUREASSET3D_CLASS_ID,
                                                 (int64_t)sizeof(rt_textureasset3d));
     if (!asset) {
         textureasset3d_release_mip_pixels(mip_pixels, mip_count);
         textureasset3d_release_mip_payloads(mip_payloads, mip_count);
+        free(fallback_kinds);
+        free(source_backing);
         free(mips);
         rt_trap("TextureAsset3D.LoadKTX2: allocation failed");
         return NULL;
@@ -404,16 +612,24 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data, size_t size, const c
     rt_obj_set_finalizer(asset, textureasset3d_finalize);
     asset->mip_pixels = mip_pixels;
     asset->mip_payloads = mip_payloads;
+    asset->source_backing = source_backing;
+    asset->source_backing_bytes = source_backing_bytes;
+    asset->mip_fallback_kinds = fallback_kinds;
     asset->mips = mips;
     asset->width = (int64_t)pixel_width;
     asset->height = (int64_t)pixel_height;
     asset->mip_count = mip_count;
     asset->mip_capacity = mip_count;
     asset->format = format.name;
+    asset->degraded_reason = degraded ? "cpu_decode_failed" : "";
     asset->compressed = format.compressed ? 1 : 0;
+    asset->degraded = degraded ? 1 : 0;
     asset->block_width = format.block_width;
     asset->block_height = format.block_height;
     asset->block_bytes = format.block_bytes;
+    asset->decoder_kind = format.decoder_kind;
+    asset->native_format_id = format.native_format_id;
+    asset->backend_capability_bit = format.backend_capability_bit;
     asset->cache_identity = textureasset3d_next_cache_identity();
     asset->native_revision = 1;
     asset->alpha_metadata_known =
@@ -437,12 +653,39 @@ void *rt_textureasset3d_load_ktx2_memory(const uint8_t *data, uint64_t size) {
     }
     rt_asset_error_begin_load();
     if (size == 0 || size > (uint64_t)SIZE_MAX || size > (uint64_t)TEXTUREASSET3D_MAX_FILE_BYTES) {
-        rt_asset_error_setf(
-            RT_ASSET_ERROR_TOO_LARGE, "TextureAsset3D.LoadKTX2Memory: invalid payload size");
+        rt_asset_error_setf(RT_ASSET_ERROR_TOO_LARGE,
+                            "TextureAsset3D.LoadKTX2Memory: invalid payload size");
         rt_asset_error_end_load_failure();
         return NULL;
     }
-    asset = textureasset3d_parse_ktx2(data, (size_t)size, "TextureAsset3D.LoadKTX2Memory");
+    asset = textureasset3d_parse_ktx2(data, (size_t)size, "TextureAsset3D.LoadKTX2Memory", 0);
+    if (asset)
+        rt_asset_error_end_load_success();
+    else
+        rt_asset_error_end_load_failure();
+    return asset;
+}
+
+/// @brief Strictly decode a caller-owned KTX2 byte span without checker substitution.
+/// @details Mirrors @ref rt_textureasset3d_load_ktx2_memory validation and load-error lifecycle,
+///          but passes strict policy into the shared parser. The input remains borrowed and may be
+///          released immediately after return because every accepted level is copied/decoded into
+///          canonical asset-owned backing.
+void *rt_textureasset3d_load_ktx2_memory_strict(const uint8_t *data, uint64_t size) {
+    void *asset;
+
+    if (!data) {
+        rt_trap("TextureAsset3D.LoadKTX2MemoryStrict: invalid payload");
+        return NULL;
+    }
+    rt_asset_error_begin_load();
+    if (size == 0 || size > (uint64_t)SIZE_MAX || size > (uint64_t)TEXTUREASSET3D_MAX_FILE_BYTES) {
+        rt_asset_error_setf(RT_ASSET_ERROR_TOO_LARGE,
+                            "TextureAsset3D.LoadKTX2MemoryStrict: invalid payload size");
+        rt_asset_error_end_load_failure();
+        return NULL;
+    }
+    asset = textureasset3d_parse_ktx2(data, (size_t)size, "TextureAsset3D.LoadKTX2MemoryStrict", 1);
     if (asset)
         rt_asset_error_end_load_success();
     else
@@ -472,7 +715,38 @@ void *rt_textureasset3d_load_ktx2(rt_string path) {
         rt_asset_error_end_load_failure();
         return NULL;
     }
-    asset = textureasset3d_parse_ktx2(data, size, "TextureAsset3D.LoadKTX2");
+    asset = textureasset3d_parse_ktx2(data, size, "TextureAsset3D.LoadKTX2", 0);
+    free(data);
+    if (asset)
+        rt_asset_error_end_load_success();
+    else
+        rt_asset_error_end_load_failure();
+    return asset;
+}
+
+/// @brief Strictly load KTX2 from a filesystem path without checker substitution.
+/// @details File acquisition, limits, canonical backing ownership, and recoverable error behavior
+///          match the compatibility loader. A partially supported decoder that cannot decode any
+///          mip causes a NULL result with an unsupported-data diagnostic.
+void *rt_textureasset3d_load_ktx2_strict(rt_string path) {
+    const char *cpath = path ? rt_string_cstr(path) : NULL;
+    size_t size = 0;
+    uint8_t *data;
+    void *asset;
+
+    if (!cpath || !*cpath) {
+        rt_trap("TextureAsset3D.LoadKTX2Strict: invalid path");
+        return NULL;
+    }
+    rt_asset_error_begin_load();
+    data = textureasset3d_read_file_bytes(cpath, &size);
+    if (!data) {
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_NOT_FOUND, "TextureAsset3D.LoadKTX2Strict: cannot read '%s'", cpath);
+        rt_asset_error_end_load_failure();
+        return NULL;
+    }
+    asset = textureasset3d_parse_ktx2(data, size, "TextureAsset3D.LoadKTX2Strict", 1);
     free(data);
     if (asset)
         rt_asset_error_end_load_success();
@@ -496,12 +770,12 @@ void *rt_textureasset3d_load_ktx2_asset(rt_string path) {
     rt_asset_error_begin_load();
     data = rt_asset_load_raw(path, &size);
     if (!data) {
-        rt_asset_error_setf(
-            RT_ASSET_ERROR_NOT_FOUND, "TextureAsset3D.LoadKTX2Asset: asset not found");
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND,
+                            "TextureAsset3D.LoadKTX2Asset: asset not found");
         rt_asset_error_end_load_failure();
         return NULL;
     }
-    asset = textureasset3d_parse_ktx2(data, size, "TextureAsset3D.LoadKTX2Asset");
+    asset = textureasset3d_parse_ktx2(data, size, "TextureAsset3D.LoadKTX2Asset", 0);
     free(data);
     if (asset)
         rt_asset_error_end_load_success();
@@ -510,19 +784,114 @@ void *rt_textureasset3d_load_ktx2_asset(rt_string path) {
     return asset;
 }
 
-/// @brief Return true when the runtime has a CPU fallback path for a KTX2 texture format.
-int8_t rt_textureasset3d_cpu_supports_format(const char *format_name) {
+/// @brief Strictly load KTX2 bytes through the packed-asset registry.
+/// @details The raw asset buffer is always released before return. Missing assets and malformed
+///          input remain recoverable; recognized blocks outside partial CPU decoder coverage are
+///          rejected instead of becoming a checker asset.
+void *rt_textureasset3d_load_ktx2_asset_strict(rt_string path) {
+    size_t size = 0;
+    uint8_t *data;
+    void *asset;
+
+    if (!path) {
+        rt_trap("TextureAsset3D.LoadKTX2AssetStrict: invalid path");
+        return NULL;
+    }
+    rt_asset_error_begin_load();
+    data = rt_asset_load_raw(path, &size);
+    if (!data) {
+        rt_asset_error_setf(RT_ASSET_ERROR_NOT_FOUND,
+                            "TextureAsset3D.LoadKTX2AssetStrict: asset not found");
+        rt_asset_error_end_load_failure();
+        return NULL;
+    }
+    asset = textureasset3d_parse_ktx2(data, size, "TextureAsset3D.LoadKTX2AssetStrict", 1);
+    free(data);
+    if (asset)
+        rt_asset_error_end_load_success();
+    else
+        rt_asset_error_end_load_failure();
+    return asset;
+}
+
+/// @brief Return NONE/PARTIAL/FULL CPU fallback quality from the authoritative format table.
+int32_t rt_textureasset3d_cpu_format_support_level(const char *format_name) {
+    int32_t support = RT_TEXTUREASSET3D_CPU_SUPPORT_NONE;
+
     if (!format_name)
-        return 0;
-    return strcmp(format_name, "rgba8") == 0 || strcmp(format_name, "bc1") == 0 ||
-           strcmp(format_name, "bc3") == 0 || strcmp(format_name, "bc4") == 0 ||
-           strcmp(format_name, "bc5") == 0 || strcmp(format_name, "bc7") == 0 ||
-           strcmp(format_name, "etc2") == 0 || strcmp(format_name, "astc") == 0;
+        return support;
+    for (size_t i = 0; i < sizeof(textureasset3d_format_capabilities) /
+                               sizeof(textureasset3d_format_capabilities[0]);
+         i++) {
+        const textureasset3d_format_info *row = &textureasset3d_format_capabilities[i];
+        if (strcmp(row->name, format_name) != 0)
+            continue;
+        if (support == RT_TEXTUREASSET3D_CPU_SUPPORT_NONE)
+            support = row->cpu_support;
+        else if (support != row->cpu_support)
+            return RT_TEXTUREASSET3D_CPU_SUPPORT_NONE;
+    }
+    return support;
+}
+
+/// @brief Legacy boolean CPU-support query derived from the table's quality value.
+int8_t rt_textureasset3d_cpu_supports_format(const char *format_name) {
+    return rt_textureasset3d_cpu_format_support_level(format_name) !=
+                   RT_TEXTUREASSET3D_CPU_SUPPORT_NONE
+               ? 1
+               : 0;
 }
 
 /// @brief Return true when the runtime KTX2 parser can produce CPU texture payloads.
 int8_t rt_textureasset3d_cpu_supports_ktx2(void) {
     return 1;
+}
+
+/// @brief Number of rows in the immutable authoritative format table.
+int64_t rt_textureasset3d_get_format_capability_count(void) {
+    return (int64_t)(sizeof(textureasset3d_format_capabilities) /
+                     sizeof(textureasset3d_format_capabilities[0]));
+}
+
+/// @brief Copy one authoritative capability row into caller-owned diagnostics storage.
+int8_t rt_textureasset3d_get_format_capability(
+    int64_t index, rt_textureasset3d_format_capability *out_capability) {
+    const textureasset3d_format_info *row;
+
+    if (out_capability)
+        memset(out_capability, 0, sizeof(*out_capability));
+    if (!out_capability || index < 0 || index >= rt_textureasset3d_get_format_capability_count())
+        return 0;
+    row = &textureasset3d_format_capabilities[index];
+    out_capability->vk_format_first = row->vk_format_first;
+    out_capability->vk_format_last = row->vk_format_last;
+    out_capability->name = row->name;
+    out_capability->compressed = row->compressed;
+    out_capability->cpu_support = row->cpu_support;
+    out_capability->block_width = row->block_width;
+    out_capability->block_height = row->block_height;
+    out_capability->block_bytes = row->block_bytes;
+    out_capability->native_format_id = row->native_format_id;
+    out_capability->backend_capability_bit = row->backend_capability_bit;
+    return 1;
+}
+
+/// @brief Clear direct-to-backing allocation telemetry for a deterministic next parse.
+void rt_textureasset3d_test_reset_supercompression_allocation_telemetry(void) {
+    rt_atomic_store_u64(
+        &g_textureasset3d_supercompression_final_bytes, UINT64_C(0), __ATOMIC_RELEASE);
+    rt_atomic_store_u64(
+        &g_textureasset3d_supercompression_peak_bytes, UINT64_C(0), __ATOMIC_RELEASE);
+}
+
+/// @brief Return final canonical bytes recorded by the latest supercompressed parse.
+uint64_t rt_textureasset3d_test_get_supercompression_final_bytes(void) {
+    return rt_atomic_load_u64(&g_textureasset3d_supercompression_final_bytes, __ATOMIC_ACQUIRE);
+}
+
+/// @brief Return peak live final-destination bytes recorded by that parse.
+uint64_t rt_textureasset3d_test_get_supercompression_peak_bytes(void) {
+    return rt_atomic_load_u64(&g_textureasset3d_supercompression_peak_bytes, __ATOMIC_ACQUIRE);
 }
 
 /// @brief Texture width in pixels (0 if the handle is invalid).
@@ -553,6 +922,19 @@ rt_string rt_textureasset3d_get_format(void *obj) {
 int8_t rt_textureasset3d_get_compressed(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
     return (asset && asset->compressed) ? 1 : 0;
+}
+
+/// @brief Whether permissive loading substituted the visible checker fallback.
+int8_t rt_textureasset3d_get_degraded(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    return asset && asset->degraded ? 1 : 0;
+}
+
+/// @brief Stable degradation reason token, or an empty string for normal/invalid assets.
+rt_string rt_textureasset3d_get_degraded_reason(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    return rt_const_cstr(asset && asset->degraded && asset->degraded_reason ? asset->degraded_reason
+                                                                            : "");
 }
 
 /// @brief First mip index currently marked resident.
@@ -657,28 +1039,20 @@ uint64_t rt_textureasset3d_get_cache_identity(void *obj) {
     return asset ? asset->cache_identity : 0;
 }
 
-/// @brief Map the asset's compressed format to a native format id for the backend (NONE if
-///        uncompressed/unknown). Used to pick the GPU upload path for retained native blocks.
+/// @brief Return the authoritative row's normalized native format id.
+/// @details The value is captured at load time from the same table that selected block geometry
+///          and fallback decoding, eliminating the former name-based mapping switch.
 int32_t rt_textureasset3d_get_native_format_id(void *obj) {
     rt_textureasset3d *asset = textureasset3d_checked(obj);
+    return asset && asset->compressed ? asset->native_format_id
+                                      : RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+}
 
-    if (!asset || !asset->compressed || !asset->format)
-        return RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
-    if (strcmp(asset->format, "bc1") == 0)
-        return RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1;
-    if (strcmp(asset->format, "bc3") == 0)
-        return RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3;
-    if (strcmp(asset->format, "bc4") == 0)
-        return RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4;
-    if (strcmp(asset->format, "bc5") == 0)
-        return RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5;
-    if (strcmp(asset->format, "bc7") == 0)
-        return RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7;
-    if (strcmp(asset->format, "astc") == 0)
-        return RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC;
-    if (strcmp(asset->format, "etc2") == 0)
-        return RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2;
-    return RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+/// @brief Return the same format row's backend capability bit for upload selection.
+int64_t rt_textureasset3d_get_native_capability_bit(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    return asset && asset->compressed ? asset->backend_capability_bit
+                                      : RT_TEXTUREASSET3D_BACKEND_CAP_NONE;
 }
 
 /// @brief Borrow a retained native compressed mip's bytes and geometry for backend upload.

@@ -52,6 +52,7 @@
 #include "rt_quat.h"
 #include "rt_scene3d.h"
 #include "rt_skeleton3d.h"
+#include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 #include "rt_untrusted_count.h"
@@ -67,6 +68,7 @@
 
 #define RT_FBX_HARD_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
 #define RT_FBX_DEFAULT_MAX_FILE_BYTES (256ull * 1024ull * 1024ull)
+#define RT_FBX_DEFAULT_LOAD_BUDGET_BYTES (1024ull * 1024ull * 1024ull)
 #define RT_FBX_MAX_TEXTURE_PATH_BYTES (1024u * 1024u)
 
 #if defined(_MSC_VER)
@@ -78,6 +80,25 @@
 /// @brief Thread-local original path used when a temp FBX file should resolve external textures
 /// beside the source asset rather than beside the temp spill file.
 static RT_FBX_THREAD_LOCAL rt_string g_fbx_texture_base_override = NULL;
+
+/// @brief Per-load accounting and diagnostics shared by binary/ASCII FBX parsing and extraction.
+/// @details Every retained allocation class named by ADR 0139 is charged before allocation. The
+///          context also accumulates hash/adjacency probe telemetry without introducing global
+///          mutable parser state. A context lives only until its load either publishes an asset or
+///          rolls back.
+typedef struct fbx_load_context {
+    uint64_t budget_limit;  ///< Maximum aggregate charged bytes for this load.
+    uint64_t budget_used;   ///< Saturating aggregate charged bytes.
+    uint64_t lookup_probes; ///< Object-id and connection-endpoint hash probes.
+    int budget_exhausted;   ///< Nonzero after overflow or a charge beyond the limit.
+} fbx_load_context_t;
+
+/// @brief One-shot thread-local budget override used only by deterministic CTests.
+static RT_FBX_THREAD_LOCAL uint64_t g_fbx_next_load_budget_bytes = 0;
+/// @brief Charged bytes observed for the most recent load on the calling thread.
+static RT_FBX_THREAD_LOCAL uint64_t g_fbx_last_budget_used_bytes = 0;
+/// @brief Hash/adjacency probes observed for the most recent load on the calling thread.
+static RT_FBX_THREAD_LOCAL uint64_t g_fbx_last_lookup_probe_count = 0;
 
 /*==========================================================================
  * FBX asset container
@@ -198,6 +219,97 @@ static uint64_t fbx_max_file_bytes(void) {
     if (!fbx_parse_file_byte_limit(env, &parsed))
         return RT_FBX_DEFAULT_MAX_FILE_BYTES;
     return parsed;
+}
+
+/// @brief Resolve the next load's aggregate memory budget.
+/// @details A CTest override is consumed once. Otherwise `ZANNA_FBX_MAX_LOAD_BYTES` may lower, but
+///          never raise, the 1 GiB default. Invalid or zero environment text is ignored. Keeping
+///          the ceiling independent from the file-size ceiling ensures compressed expansion and
+///          parser metadata remain bounded even for a small source file.
+/// @return Positive byte ceiling for one FBX load.
+static uint64_t fbx_next_load_budget_bytes(void) {
+    const char *env;
+    uint64_t parsed = 0;
+    uint64_t override = g_fbx_next_load_budget_bytes;
+
+    g_fbx_next_load_budget_bytes = 0;
+    if (override > 0)
+        return override < RT_FBX_DEFAULT_LOAD_BUDGET_BYTES ? override
+                                                           : RT_FBX_DEFAULT_LOAD_BUDGET_BYTES;
+    env = getenv("ZANNA_FBX_MAX_LOAD_BYTES");
+    if (env && *env && fbx_parse_file_byte_limit(env, &parsed) &&
+        parsed < RT_FBX_DEFAULT_LOAD_BUDGET_BYTES) {
+        return parsed;
+    }
+    return RT_FBX_DEFAULT_LOAD_BUDGET_BYTES;
+}
+
+/// @brief Initialize a per-load budget and reset thread-local test telemetry.
+/// @param context Caller-owned load context.
+static void fbx_load_context_init(fbx_load_context_t *context) {
+    if (!context)
+        return;
+    memset(context, 0, sizeof(*context));
+    context->budget_limit = fbx_next_load_budget_bytes();
+    g_fbx_last_budget_used_bytes = 0;
+    g_fbx_last_lookup_probe_count = 0;
+}
+
+/// @brief Charge a checked element-count allocation to one FBX load before allocating it.
+/// @details Both multiplication and addition are overflow checked. Charges are conservative and
+///          monotonic: memory released during a failed parse does not restore budget, preventing a
+///          malicious file from cycling allocations to bypass the aggregate work/memory ceiling.
+/// @param context Active load context.
+/// @param count Number of elements to charge.
+/// @param element_size Bytes per element.
+/// @return Nonzero when the charge fits; zero after marking the context exhausted.
+static int fbx_budget_charge(fbx_load_context_t *context, uint64_t count, uint64_t element_size) {
+    uint64_t bytes;
+    if (!context || context->budget_exhausted)
+        return 0;
+    if (count != 0 && element_size > UINT64_MAX / count) {
+        context->budget_exhausted = 1;
+        return 0;
+    }
+    bytes = count * element_size;
+    if (bytes > context->budget_limit || context->budget_used > context->budget_limit - bytes) {
+        context->budget_exhausted = 1;
+        return 0;
+    }
+    context->budget_used += bytes;
+    g_fbx_last_budget_used_bytes = context->budget_used;
+    return 1;
+}
+
+/// @brief Record one or more load-local lookup probes with saturation.
+/// @param context Active load context; NULL is ignored.
+/// @param count Probe increment.
+static void fbx_record_lookup_probes(fbx_load_context_t *context, uint64_t count) {
+    if (!context)
+        return;
+    if (UINT64_MAX - context->lookup_probes < count)
+        context->lookup_probes = UINT64_MAX;
+    else
+        context->lookup_probes += count;
+    g_fbx_last_lookup_probe_count = context->lookup_probes;
+}
+
+/// @brief Lower the aggregate budget of the next FBX load on this thread for CTest injection.
+/// @details Zero clears the override. Values above the production default are clamped so this hook
+///          cannot weaken the runtime resource limit.
+/// @param bytes Requested one-shot byte budget, or zero to restore normal selection.
+void rt_fbx_test_set_load_budget_bytes(uint64_t bytes) {
+    g_fbx_next_load_budget_bytes = bytes;
+}
+
+/// @brief Return aggregate bytes charged by the most recent FBX load on this thread.
+uint64_t rt_fbx_test_get_last_budget_used_bytes(void) {
+    return g_fbx_last_budget_used_bytes;
+}
+
+/// @brief Return object-id and connection-endpoint hash probes from the most recent FBX load.
+uint64_t rt_fbx_test_get_last_lookup_probe_count(void) {
+    return g_fbx_last_lookup_probe_count;
 }
 
 static void fbx_release_ref(void **slot);
@@ -340,6 +452,7 @@ static void fbx_asset_release_ref_array(void ***items, int32_t *count, int32_t *
 
 // clang-format off
 #include "rt_fbx_loader_parse.inc"
+#include "rt_fbx_loader_ascii.inc"
 #include "rt_fbx_loader_geometry.inc"
 #include "rt_fbx_loader_scene.inc"
 #include "rt_fbx_loader_skeleton.inc"

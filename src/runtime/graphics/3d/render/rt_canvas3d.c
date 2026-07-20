@@ -70,7 +70,7 @@ static const char CANVAS3D_FALLBACK_REASON_INIT_FAILED[] =
     "selected backend failed to initialize; using software";
 
 #define CANVAS3D_MAX_INSTANCES 1048576
-#define CANVAS3D_MAX_FALLBACK_INSTANCES 65536
+#define CANVAS3D_FALLBACK_CHUNK_INSTANCES 65536
 #define CANVAS3D_MAX_DIMENSION 16384
 #define CANVAS3D_FPS_SAMPLE_COUNT 32
 #define CANVAS3D_FLOAT_ABS_MAX 3.40282346638528859812e38
@@ -112,6 +112,45 @@ uint32_t canvas3d_stamp_light_snapshot(rt_canvas3d *c,
 ///         selects the real Graphics3D runtime.
 int8_t rt_canvas3d_is_available(void) {
     return 1;
+}
+
+/// @brief Record one failed Canvas3D submission without disturbing already queued commands.
+/// @details The failure status is sticky across successful draws and the diagnostic counter uses
+///   saturating arithmetic. Keeping this helper non-static lets snapshot and transient-resource
+///   translation units report failures through the same contract as deferred queue paths.
+/// @param c Canvas that observed the failure; NULL is ignored.
+/// @param status Non-zero `RT_CANVAS3D_SUBMISSION_*` failure class. Unknown values are normalized
+///   to @ref RT_CANVAS3D_SUBMISSION_RESOURCE_FAILURE.
+void canvas3d_record_submission_failure(rt_canvas3d *c, int32_t status) {
+    if (!c)
+        return;
+    if (status < RT_CANVAS3D_SUBMISSION_QUEUE_FAILURE ||
+        status > RT_CANVAS3D_SUBMISSION_INSTANCE_FAILURE)
+        status = (int32_t)RT_CANVAS3D_SUBMISSION_RESOURCE_FAILURE;
+    c->last_submission_status = status;
+    if (c->submission_failure_count < INT64_MAX)
+        c->submission_failure_count++;
+}
+
+/// @brief Arm the next main deferred-queue append to fail before command publication.
+/// @details This implementation-only one-shot hook accepts the same checked runtime handles and
+///   approved stack fixtures as production Canvas3D helpers. It allocates nothing and leaves all
+///   commands currently in the queue byte-for-byte unchanged.
+/// @param canvas Canvas3D handle or approved stack fixture; invalid handles are ignored.
+void rt_canvas3d_test_fail_next_queue_reserve(void *canvas) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    if (c)
+        c->test_fail_next_queue_reserve = 1;
+}
+
+/// @brief Arm the next dynamic mesh snapshot to fail before allocating frame storage.
+/// @details This implementation-only one-shot hook is consumed by the production snapshot path,
+///   which records both legacy snapshot-drop telemetry and the additive submission diagnostic.
+/// @param canvas Canvas3D handle or approved stack fixture; invalid handles are ignored.
+void rt_canvas3d_test_fail_next_mesh_snapshot(void *canvas) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
+    if (c)
+        c->test_fail_next_mesh_snapshot = 1;
 }
 
 static void canvas3d_emit_backend_fallback_notice_once(const char *requested, const char *active) {
@@ -1834,6 +1873,10 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     c->occlusion_culling = 0;
     c->vsync_enabled = 1;
     c->render_scale = 1.0f;
+    c->last_submission_status = (int32_t)RT_CANVAS3D_SUBMISSION_OK;
+    c->submission_failure_count = 0;
+    c->test_fail_next_queue_reserve = 0;
+    c->test_fail_next_mesh_snapshot = 0;
     c->frame_draws_submitted = 0;
     c->frame_aabb_transforms = 0;
     c->frame_sort_passes = 0;
@@ -2927,12 +2970,18 @@ int8_t rt_canvas3d_get_vsync(void *obj) {
 }
 
 /// @brief Attempt to set the scene render scale without trapping.
-/// @details Scale is clamped to [0.25, 1]; values >= 1 restore native-resolution
-///   rendering and always succeed. Reduced scales require backend support
-///   (BackendSupports("render-scale")); rendering happens at scale x output size and is
-///   upscaled at presentation — the single most effective performance lever on
-///   fill-rate/CPU-bound scenes.
-/// @return 1 when the requested scale is now active, 0 when unsupported/invalid.
+/// @details Scale is clamped to [0.25, 1]. Values greater than or equal to one
+///   request native-resolution rendering, including on fixed-scale backends. Reduced
+///   scales require backend support (`BackendSupports("render-scale")`). A capable
+///   backend may reject any scale transition while a frame or presentation transaction
+///   is active; in that case both the Canvas3D property and backend resources retain
+///   their previous scale. Successful reduced-scale rendering happens at scale times
+///   the logical output dimensions and is upscaled for presentation.
+/// @param obj Canvas3D receiver, or `NULL`.
+/// @param scale Requested scene scale. Non-finite and values at least one request 1:1;
+///   finite values below 0.25 are clamped to 0.25.
+/// @return 1 when the requested scale is active; 0 for a null receiver, an unsupported
+///   reduced scale, or a backend transaction/allocation failure.
 int8_t rt_canvas3d_try_set_render_scale(void *obj, double scale) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     float clamped;
@@ -2945,9 +2994,10 @@ int8_t rt_canvas3d_try_set_render_scale(void *obj, double scale) {
     else
         clamped = (float)scale;
     if (clamped >= 0.999f) {
+        if (c->backend && c->backend->set_render_scale && c->backend_ctx &&
+            !c->backend->set_render_scale(c->backend_ctx, 1.0f))
+            return 0;
         c->render_scale = 1.0f;
-        if (c->backend && c->backend->set_render_scale && c->backend_ctx)
-            c->backend->set_render_scale(c->backend_ctx, 1.0f);
         return 1;
     }
     if (!c->backend || !c->backend->set_render_scale || !c->backend_ctx)

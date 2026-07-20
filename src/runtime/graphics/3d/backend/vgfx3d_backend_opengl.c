@@ -729,6 +729,10 @@ typedef struct {
     GLuint postfx_scratch_tex;
     int32_t postfx_scratch_width;
     int32_t postfx_scratch_height;
+    GLuint present_fbo;
+    GLuint present_tex;
+    int32_t present_width;
+    int32_t present_height;
     uint8_t *readback_scratch_rgba;
     size_t readback_scratch_bytes;
 
@@ -776,7 +780,7 @@ typedef struct {
     float shadow_strength;
     float shadow_slope_bias;
     int32_t shadow_quality;
-    GLuint material_samplers[3][3][2][VGFX3D_OPENGL_ANISOTROPY_LEVEL_COUNT];
+    GLuint material_samplers[3][3][12][VGFX3D_OPENGL_ANISOTROPY_LEVEL_COUNT];
     int8_t anisotropy_supported;
     GLfloat max_texture_anisotropy;
 
@@ -809,6 +813,7 @@ typedef struct {
 
     int32_t width;
     int32_t height;
+    float render_scale;
     float view[16];
     float projection[16];
     float vp[16];
@@ -840,6 +845,7 @@ typedef struct {
     int8_t current_pass_is_overlay;
     int8_t gpu_postfx_enabled;
     int8_t gpu_postfx_chain_valid;
+    int8_t frame_active;
     int8_t rtt_color_dirty;
     int8_t scene_postfx_pending;
     int8_t scene_composited_to_backbuffer;
@@ -871,7 +877,7 @@ typedef struct {
     GLint uShadowSlopeBias, uShadowStrength, uShadowSampleCount;
     GLint uClusterGlobalCount, uClusterParams;
     GLint uOpaqueDepthTex;
-    GLint uUseInstancing, uHasSkinning, uMorphShapeCount, uVertexCount;
+    GLint uUseInstancing, uParticleMode, uHasSkinning, uMorphShapeCount, uVertexCount;
     GLint uInstanceBoneStride;
     GLint uHasPrevModelMatrix, uHasPrevInstanceMatrices, uHasPrevSkinning, uHasPrevMorphWeights;
     GLint uMorphWeights, uPrevMorphWeights, uMorphDeltas, uMorphNormalDeltas, uHasMorphNormalDeltas;
@@ -968,6 +974,26 @@ static void gl_swap_native_buffers(gl_context_t *ctx) {
         glx.SwapBuffers(ctx->display, ctx->window);
 }
 
+/// @brief Return whether the next OpenGL window scene uses a reduced render extent.
+/// @details RTT selection remains independent and higher priority; the stored scale can therefore
+///          rebuild window resources correctly even while an explicit target is temporarily
+///          bound.
+/// @param ctx Borrowed OpenGL backend context.
+/// @return Non-zero for a finite scale in `[0.25, 0.999)`.
+static int gl_render_scale_active(const gl_context_t *ctx) {
+    return ctx && isfinite(ctx->render_scale) && ctx->render_scale >= 0.25f &&
+           ctx->render_scale < 0.999f;
+}
+
+/// @brief Return whether OpenGL window rendering needs an offscreen scene and final composite.
+/// @details Post-processing and reduced render scale share one route; actual effect execution
+///          continues to depend only on `gpu_postfx_enabled` and the latched chain.
+/// @param ctx Borrowed OpenGL backend context.
+/// @return Non-zero when either feature requires the offscreen scene route.
+static int8_t gl_window_scene_route_enabled(const gl_context_t *ctx) {
+    return (ctx && (ctx->gpu_postfx_enabled || gl_render_scale_active(ctx))) ? 1 : 0;
+}
+
 static void query_main_uniforms(gl_context_t *ctx);
 static int gl_query_unlit_uniforms(gl_context_t *ctx);
 static void gl_save_main_uniform_locations(gl_context_t *ctx, GLint *storage);
@@ -1027,6 +1053,9 @@ static int configure_instance_attributes(gl_context_t *ctx,
                                          const float *instance_matrices,
                                          const float *prev_instance_matrices,
                                          int32_t instance_count);
+static int configure_particle_instance_attributes(gl_context_t *ctx,
+                                                  const vgfx3d_particle_instance_t *instances,
+                                                  int32_t instance_count);
 static int prepare_mesh_buffers(gl_context_t *ctx,
                                 const vgfx3d_draw_cmd_t *cmd,
                                 GLuint *out_vbo,
@@ -1037,6 +1066,8 @@ static void gl_draw_skybox_impl(gl_context_t *ctx, const rt_cubemap3d *cubemap);
 static void destroy_scene_targets(gl_context_t *ctx);
 static void destroy_postfx_readback_target(gl_context_t *ctx);
 static void destroy_postfx_scratch_target(gl_context_t *ctx);
+static void destroy_present_target(gl_context_t *ctx);
+static int ensure_present_target(gl_context_t *ctx, int32_t w, int32_t h);
 static int ensure_scene_targets(gl_context_t *ctx, int32_t w, int32_t h);
 static void destroy_rtt_targets(gl_context_t *ctx);
 static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt);
@@ -1059,8 +1090,10 @@ static int gl_draw_texture_to_target(gl_context_t *ctx,
                                      GLuint source_color_tex,
                                      GLuint framebuffer,
                                      GLenum draw_buffer,
-                                     int32_t width,
-                                     int32_t height,
+                                     int32_t source_width,
+                                     int32_t source_height,
+                                     int32_t target_width,
+                                     int32_t target_height,
                                      const vgfx3d_postfx_snapshot_t *snapshot);
 static int ensure_postfx_readback_target(gl_context_t *ctx, int32_t w, int32_t h);
 static int gl_apply_postfx_chain(gl_context_t *ctx,
@@ -1070,6 +1103,8 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
                                  const vgfx3d_postfx_chain_t *chain,
                                  GLuint final_framebuffer,
                                  GLenum final_draw_buffer,
+                                 int32_t final_width,
+                                 int32_t final_height,
                                  int force_offscreen_final,
                                  GLuint *out_result_framebuffer,
                                  GLenum *out_result_read_buffer);
@@ -1912,6 +1947,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .reversed_z = 1,
     .name = "opengl",
     .gpu_skinning = 1,
+    .particle_instancing = 1,
     .create_ctx = gl_create_ctx,
     .destroy_ctx = gl_destroy_ctx,
     .clear = gl_clear,
@@ -1940,6 +1976,7 @@ const vgfx3d_backend_t vgfx3d_opengl_backend = {
     .get_feature_caps = gl_get_feature_caps,
     .get_backend_stats = gl_get_backend_stats,
     .set_vsync = gl_set_vsync,
+    .set_render_scale = gl_set_render_scale,
     .queue_depth_probe = gl_queue_depth_probe,
     .read_depth_probe = gl_read_depth_probe,
 };

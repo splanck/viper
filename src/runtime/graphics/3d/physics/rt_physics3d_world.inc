@@ -109,6 +109,10 @@ static void world3d_finalizer(void *obj) {
     w->last_ccd_clamped_body_count = 0;
     w->ccd_substep_clamped_body_count = 0;
     w->ccd_toi_count = 0;
+    w->last_integration_pass_count = 0;
+    w->step_failure_message = NULL;
+    w->step_pending_broadphase_fallbacks = 0;
+    w->step_transaction_active = 0;
     w->body_capacity = 0;
     w->contact_capacity = 0;
     w->frame_contact_capacity = 0;
@@ -210,6 +214,10 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     w->fixed_step_accumulator = 0.0;
     w->fixed_step_alpha = 0.0;
     w->dropped_fixed_steps = 0;
+    w->last_integration_pass_count = 0;
+    w->step_failure_message = NULL;
+    w->step_pending_broadphase_fallbacks = 0;
+    w->step_transaction_active = 0;
     if (!world3d_reserve_body_capacity(w, PH3D_INITIAL_BODIES) ||
         !world3d_reserve_contacts(w, PH3D_INITIAL_CONTACTS) ||
         !world3d_reserve_frame_contacts(w, PH3D_INITIAL_CONTACTS) ||
@@ -230,71 +238,126 @@ void *rt_world3d_new(double gx, double gy, double gz) {
     return w;
 }
 
-/// @brief Decide how many CCD substeps to take this frame.
-///
-/// Walks every CCD-enabled dynamic body, estimates the maximum
-/// distance it will move in `dt` (current speed plus one step of
-/// gravity-plus-applied-force acceleration), and computes the number
-/// of substeps needed to keep each body's per-substep displacement
-/// below its `body3d_ccd_threshold` (≈ half the smallest extent).
-/// Clamped to `[1, PH3D_MAX_CCD_SUBSTEPS]`, with clamp diagnostics retained
-/// on the world for runtime inspection.
-static int world3d_compute_substeps(rt_world3d *w, double dt) {
-    int substeps = 1;
-    int requested = 1;
-    int clamped_body_count = 0;
-    if (!w || !isfinite(dt) || dt <= 0.0)
-        return substeps;
+/// @brief Reset per-step CCD diagnostics before local body segmentation begins.
+/// @details The simulation itself always performs one world integration/contact/
+///   joint pass. `LastCcd*Substeps` now reports the largest local segment demand
+///   and bounded segment count observed on any opted-in body.
+static void world3d_begin_ccd_diagnostics(rt_world3d *w) {
+    if (!w)
+        return;
+    w->last_ccd_requested_substeps = 1;
+    w->last_ccd_substeps = 1;
     w->last_ccd_clamped_body_count = 0;
-    for (int32_t i = 0; i < w->body_count; i++) {
-        const rt_body3d *b = w->bodies[i];
-        if (!b || !b->use_ccd || b->motion_mode == PH3D_MODE_STATIC)
-            continue;
-        double threshold = body3d_ccd_threshold(b);
-        if (threshold <= 1e-6)
-            continue;
-        double speed = vec3_len(b->velocity);
-        if (b->motion_mode == PH3D_MODE_DYNAMIC && b->inv_mass > 0.0) {
-            double accel[3] = {
-                w->gravity[0] + b->force[0] * b->inv_mass,
-                w->gravity[1] + b->force[1] * b->inv_mass,
-                w->gravity[2] + b->force[2] * b->inv_mass,
-            };
-            speed += vec3_len(accel) * dt;
-        }
-        if (!isfinite(speed))
-            continue;
-        {
-            double needed_f = ceil((speed * dt) / threshold);
-            int needed;
-            if (!isfinite(needed_f))
-                continue;
-            if (needed_f > (double)INT_MAX)
-                needed = INT_MAX;
-            else if (needed_f < 1.0)
-                needed = 1;
-            else
-                needed = (int)needed_f;
-            if (needed > PH3D_MAX_CCD_SUBSTEPS)
-                clamped_body_count++;
-            if (needed > substeps)
-                substeps = needed;
-        }
-    }
-    if (substeps < 1)
-        substeps = 1;
-    requested = substeps;
-    if (substeps > PH3D_MAX_CCD_SUBSTEPS)
-        substeps = PH3D_MAX_CCD_SUBSTEPS;
-    w->last_ccd_requested_substeps = requested;
-    w->last_ccd_substeps = substeps;
-    if (requested > substeps) {
+}
+
+/// @brief Compute and record a bounded local segment count for one CCD body.
+/// @param w Borrowed world whose per-step diagnostics are updated.
+/// @param move_length Finite translation length for this body and step.
+/// @param threshold Positive body-local CCD feature threshold.
+/// @return A count in `[1, PH3D_MAX_CCD_BODY_SEGMENTS]`.
+static int32_t world3d_ccd_body_segment_count(rt_world3d *w, double move_length, double threshold) {
+    double requested_f;
+    int32_t requested;
+    int32_t actual;
+    if (!w || !isfinite(move_length) || move_length <= 0.0 || !isfinite(threshold) ||
+        threshold <= 1e-6)
+        return 1;
+    requested_f = ceil(move_length / threshold);
+    if (!isfinite(requested_f) || requested_f >= (double)INT32_MAX)
+        requested = INT32_MAX;
+    else if (requested_f <= 1.0)
+        requested = 1;
+    else
+        requested = (int32_t)requested_f;
+    actual = requested > PH3D_MAX_CCD_BODY_SEGMENTS ? PH3D_MAX_CCD_BODY_SEGMENTS : requested;
+    if (requested > w->last_ccd_requested_substeps)
+        w->last_ccd_requested_substeps = requested;
+    if (actual > w->last_ccd_substeps)
+        w->last_ccd_substeps = actual;
+    if (requested > actual && w->last_ccd_clamped_body_count < INT32_MAX)
+        w->last_ccd_clamped_body_count++;
+    return actual;
+}
+
+/// @brief Commit aggregate local-segmentation clamp telemetry after integration.
+static void world3d_finish_ccd_diagnostics(rt_world3d *w) {
+    int32_t clamped;
+    if (!w || w->last_ccd_clamped_body_count <= 0)
+        return;
+    clamped = w->last_ccd_clamped_body_count;
+    if (w->ccd_substep_clamped_count < INT64_MAX)
         w->ccd_substep_clamped_count++;
-        w->last_ccd_clamped_body_count = clamped_body_count;
-        w->ccd_substep_clamped_body_count += clamped_body_count;
-        rt_game3d_diag_record_ccd_clamp(clamped_body_count);
+    if (w->ccd_substep_clamped_body_count <= INT64_MAX - clamped)
+        w->ccd_substep_clamped_body_count += clamped;
+    else
+        w->ccd_substep_clamped_body_count = INT64_MAX;
+    rt_game3d_diag_record_ccd_clamp(clamped);
+}
+
+/// @brief Derive a conservative swept-sphere proxy that encloses the complete collider.
+/// @details Spheres keep their exact radius, capsules use the exact enclosing
+///   radius `height/2`, and boxes/convexes/meshes use the half-diagonal of their
+///   transformed world AABB. The AABB center also captures non-origin local
+///   geometry. This cannot omit corners the former max-half-extent proxy missed.
+/// @return `1` with finite center/radius, otherwise `0`.
+static int world3d_ccd_body_proxy(const rt_body3d *body, double center[3], double *radius) {
+    double bounds_min[3];
+    double bounds_max[3];
+    double half[3];
+    if (!body || !center || !radius || !body3d_has_collision_geometry(body))
+        return 0;
+    body_aabb(body, bounds_min, bounds_max);
+    for (int axis = 0; axis < 3; ++axis) {
+        center[axis] = 0.5 * (bounds_min[axis] + bounds_max[axis]);
+        half[axis] = 0.5 * (bounds_max[axis] - bounds_min[axis]);
     }
-    return substeps;
+    if (body->shape == PH3D_SHAPE_SPHERE) {
+        *radius = fmax(half[0], fmax(half[1], half[2]));
+    } else if (body->shape == PH3D_SHAPE_CAPSULE) {
+        *radius = fmax(body->height * 0.5, body->radius);
+    } else {
+        *radius = sqrt(half[0] * half[0] + half[1] * half[1] + half[2] * half[2]);
+    }
+    return ph3d_vec3_all_finite(center) && isfinite(*radius) && *radius > 1e-6;
+}
+
+/// @brief Build, solve, and retain a single swept time-of-impact contact.
+/// @details The target is contact side A and the moving body is side B, matching
+///   the target-surface normal convention. Query fallbacks with the opposite
+///   sign are flipped so relative approach velocity is negative before the
+///   ordinary restitution/friction solver runs.
+/// @return `1` on success, or `0` if frame-contact publication fails.
+static int world3d_resolve_ccd_hit(rt_world3d *w,
+                                   rt_body3d *moving,
+                                   const rt_query_hit3d *hit,
+                                   double normal[3]) {
+    rt_contact3d contact;
+    double relative_velocity[3];
+    double projected_speed;
+    if (!w || !moving || !hit || !hit->body || !normal)
+        return 1;
+    relative_velocity[0] = moving->velocity[0] - hit->body->velocity[0];
+    relative_velocity[1] = moving->velocity[1] - hit->body->velocity[1];
+    relative_velocity[2] = moving->velocity[2] - hit->body->velocity[2];
+    if (vec3_dot(relative_velocity, normal) > 0.0)
+        vec3_scale_in_place(normal, -1.0);
+    projected_speed = vec3_dot(relative_velocity, normal);
+    memset(&contact, 0, sizeof(contact));
+    contact.body_a = hit->body;
+    contact.body_b = moving;
+    contact.collider_a = hit->collider ? hit->collider : hit->body->collider;
+    contact.collider_b = moving->collider;
+    vec3_copy(contact.point, hit->point);
+    vec3_copy(contact.normal, normal);
+    contact.separation = 0.0;
+    contact3d_init_single_point(&contact, contact.point, contact.normal, 0.0);
+    contact.relative_speed = isfinite(projected_speed) ? fabs(projected_speed) : 0.0;
+    world3d_solve_toi_contact(w, &contact);
+    if (normal[1] > 0.7) {
+        moving->is_grounded = 1;
+        vec3_copy(moving->ground_normal, normal);
+    }
+    return world3d_append_frame_contact_unique(w, &contact);
 }
 
 /// @brief Clear one-shot force and torque accumulators from every registered body.
@@ -310,7 +373,296 @@ static void world3d_clear_body_accumulators(rt_world3d *w) {
     }
 }
 
-/// @brief `World3D.Step(dt)` — advance the simulation by one frame.
+/// @brief Convert a non-negative damping rate into a partition-invariant decay factor.
+/// @details Exponential damping composes exactly across substeps:
+///   `exp(-rate*a) * exp(-rate*b) == exp(-rate*(a+b))` up to floating-point
+///   rounding. Invalid rates are treated as zero; an overflowing exponent is
+///   the physically meaningful fully-damped factor zero.
+/// @param rate Damping rate in inverse seconds.
+/// @param dt Positive integration interval in seconds.
+/// @return A finite multiplier in `[0, 1]`.
+static double world3d_damping_scale(double rate, double dt) {
+    double exponent;
+    rate = ph3d_clamp_nonnegative_finite(rate, 0.0);
+    if (!isfinite(dt) || dt <= 0.0 || rate <= 0.0)
+        return 1.0;
+    exponent = -rate * dt;
+    if (!isfinite(exponent))
+        return 0.0;
+    return exp(exponent);
+}
+
+/// @brief Snapshot storage and scalar metadata for one atomic World3D step.
+/// @details Array payloads point into the dedicated persistent transaction
+///   scratch slot. Capacities may grow during a failed step and remain grown,
+///   but every observable element/count and every body payload is restored.
+typedef struct ph3d_step_transaction {
+    rt_body3d *body_states;
+    rt_contact3d *contacts;
+    rt_contact3d *frame_contacts;
+    rt_contact3d *previous_contacts;
+    rt_contact3d *enter_events;
+    rt_contact3d *stay_events;
+    rt_contact3d *exit_events;
+    int32_t body_count;
+    int32_t contact_count;
+    int32_t frame_contact_count;
+    int32_t previous_contact_count;
+    int32_t enter_event_count;
+    int32_t stay_event_count;
+    int32_t exit_event_count;
+    uint64_t broadphase_world_revision;
+    uint64_t query_broadphase_signature;
+    int32_t query_broadphase_count;
+    int8_t query_broadphase_valid;
+    int8_t query_broadphase_dirty;
+    int64_t broadphase_fallback_count;
+    int32_t last_ccd_requested_substeps;
+    int32_t last_ccd_substeps;
+    int64_t ccd_substep_clamped_count;
+    int32_t last_ccd_clamped_body_count;
+    int64_t ccd_substep_clamped_body_count;
+    int64_t ccd_toi_count;
+    int32_t last_solver_island_count;
+    int32_t last_solver_active_body_count;
+    int32_t last_solver_contact_count;
+    int32_t last_integration_pass_count;
+    int32_t step_pending_broadphase_fallbacks;
+    int8_t solver_pool_failed;
+    double fixed_step_accumulator;
+    double fixed_step_alpha;
+    int64_t dropped_fixed_steps;
+} ph3d_step_transaction;
+
+/// @brief Append one aligned array region to a checked transaction layout.
+/// @details Performs alignment, multiplication, and addition overflow checks
+///   before updating @p cursor. Empty arrays consume no bytes but still receive
+///   a deterministic offset. This keeps snapshot pointer arithmetic defined for
+///   pathological private-state counts.
+/// @param count Non-negative element count.
+/// @param element_size Size of one array element.
+/// @param alignment Required power-of-two-or-ordinary C object alignment.
+/// @param cursor In/out total byte cursor.
+/// @param offset_out Receives the aligned start offset.
+/// @return `1` on success, `0` for invalid arguments or size overflow.
+static int world3d_step_transaction_add_region(
+    int32_t count, size_t element_size, size_t alignment, size_t *cursor, size_t *offset_out) {
+    size_t padding;
+    size_t bytes;
+    if (count < 0 || element_size == 0 || alignment == 0 || !cursor || !offset_out)
+        return 0;
+    padding = (alignment - (*cursor % alignment)) % alignment;
+    if (*cursor > SIZE_MAX - padding)
+        return 0;
+    *cursor += padding;
+    *offset_out = *cursor;
+    if ((size_t)count > SIZE_MAX / element_size)
+        return 0;
+    bytes = (size_t)count * element_size;
+    if (*cursor > SIZE_MAX - bytes)
+        return 0;
+    *cursor += bytes;
+    return 1;
+}
+
+/// @brief Copy a live contact/event prefix when its count is non-zero.
+/// @details Transaction arrays are plain snapshots and do not alter body or
+///   collider ownership; contact entries hold borrowed references owned by the
+///   world/body registries.
+static void world3d_step_transaction_copy_contacts(rt_contact3d *destination,
+                                                   const rt_contact3d *source,
+                                                   int32_t count) {
+    if (destination && source && count > 0)
+        memcpy(destination, source, (size_t)count * sizeof(*destination));
+}
+
+/// @brief Capture every state mutation that World3D.Step may publish.
+/// @details A single persistent scratch allocation stores full body payloads
+///   plus all contact/event array prefixes. Scalar diagnostics, query-cache
+///   validity, and fixed-step accounting are retained in the local transaction
+///   descriptor. Event object pools are intentionally not copied because Step
+///   no longer releases them until commit.
+/// @param w Borrowed world whose sanitized counts and arrays are snapshotted.
+/// @param transaction Caller-owned descriptor initialized on success.
+/// @return `1` on success, or `0` without mutating simulation state.
+static int world3d_step_transaction_begin(rt_world3d *w, ph3d_step_transaction *transaction) {
+    size_t cursor = 0;
+    size_t body_offset;
+    size_t contact_offset;
+    size_t frame_offset;
+    size_t previous_offset;
+    size_t enter_offset;
+    size_t stay_offset;
+    size_t exit_offset;
+    uint8_t *storage;
+    if (!w || !transaction)
+        return 0;
+    memset(transaction, 0, sizeof(*transaction));
+    transaction->body_count = w->body_count;
+    transaction->contact_count = w->contact_count;
+    transaction->frame_contact_count = w->frame_contact_count;
+    transaction->previous_contact_count = w->previous_contact_count;
+    transaction->enter_event_count = w->enter_event_count;
+    transaction->stay_event_count = w->stay_event_count;
+    transaction->exit_event_count = w->exit_event_count;
+    if (!world3d_step_transaction_add_region(transaction->body_count,
+                                             sizeof(rt_body3d),
+                                             _Alignof(rt_body3d),
+                                             &cursor,
+                                             &body_offset) ||
+        !world3d_step_transaction_add_region(transaction->contact_count,
+                                             sizeof(rt_contact3d),
+                                             _Alignof(rt_contact3d),
+                                             &cursor,
+                                             &contact_offset) ||
+        !world3d_step_transaction_add_region(transaction->frame_contact_count,
+                                             sizeof(rt_contact3d),
+                                             _Alignof(rt_contact3d),
+                                             &cursor,
+                                             &frame_offset) ||
+        !world3d_step_transaction_add_region(transaction->previous_contact_count,
+                                             sizeof(rt_contact3d),
+                                             _Alignof(rt_contact3d),
+                                             &cursor,
+                                             &previous_offset) ||
+        !world3d_step_transaction_add_region(transaction->enter_event_count,
+                                             sizeof(rt_contact3d),
+                                             _Alignof(rt_contact3d),
+                                             &cursor,
+                                             &enter_offset) ||
+        !world3d_step_transaction_add_region(transaction->stay_event_count,
+                                             sizeof(rt_contact3d),
+                                             _Alignof(rt_contact3d),
+                                             &cursor,
+                                             &stay_offset) ||
+        !world3d_step_transaction_add_region(transaction->exit_event_count,
+                                             sizeof(rt_contact3d),
+                                             _Alignof(rt_contact3d),
+                                             &cursor,
+                                             &exit_offset))
+        return 0;
+    if (cursor == 0)
+        cursor = 1;
+    storage = (uint8_t *)world3d_step_scratch_acquire(w, PH3D_SCRATCH_STEP_TRANSACTION, cursor, 0);
+    if (!storage)
+        return 0;
+    transaction->body_states = (rt_body3d *)(void *)(storage + body_offset);
+    transaction->contacts = (rt_contact3d *)(void *)(storage + contact_offset);
+    transaction->frame_contacts = (rt_contact3d *)(void *)(storage + frame_offset);
+    transaction->previous_contacts = (rt_contact3d *)(void *)(storage + previous_offset);
+    transaction->enter_events = (rt_contact3d *)(void *)(storage + enter_offset);
+    transaction->stay_events = (rt_contact3d *)(void *)(storage + stay_offset);
+    transaction->exit_events = (rt_contact3d *)(void *)(storage + exit_offset);
+    for (int32_t i = 0; i < transaction->body_count; ++i)
+        transaction->body_states[i] = *w->bodies[i];
+    world3d_step_transaction_copy_contacts(
+        transaction->contacts, w->contacts, transaction->contact_count);
+    world3d_step_transaction_copy_contacts(
+        transaction->frame_contacts, w->frame_contacts, transaction->frame_contact_count);
+    world3d_step_transaction_copy_contacts(
+        transaction->previous_contacts, w->previous_contacts, transaction->previous_contact_count);
+    world3d_step_transaction_copy_contacts(
+        transaction->enter_events, w->enter_events, transaction->enter_event_count);
+    world3d_step_transaction_copy_contacts(
+        transaction->stay_events, w->stay_events, transaction->stay_event_count);
+    world3d_step_transaction_copy_contacts(
+        transaction->exit_events, w->exit_events, transaction->exit_event_count);
+    transaction->broadphase_world_revision = w->broadphase_world_revision;
+    transaction->query_broadphase_signature = w->query_broadphase_signature;
+    transaction->query_broadphase_count = w->query_broadphase_count;
+    transaction->query_broadphase_valid = w->query_broadphase_valid;
+    transaction->query_broadphase_dirty = w->query_broadphase_dirty;
+    transaction->broadphase_fallback_count = w->broadphase_fallback_count;
+    transaction->last_ccd_requested_substeps = w->last_ccd_requested_substeps;
+    transaction->last_ccd_substeps = w->last_ccd_substeps;
+    transaction->ccd_substep_clamped_count = w->ccd_substep_clamped_count;
+    transaction->last_ccd_clamped_body_count = w->last_ccd_clamped_body_count;
+    transaction->ccd_substep_clamped_body_count = w->ccd_substep_clamped_body_count;
+    transaction->ccd_toi_count = w->ccd_toi_count;
+    transaction->last_solver_island_count = w->last_solver_island_count;
+    transaction->last_solver_active_body_count = w->last_solver_active_body_count;
+    transaction->last_solver_contact_count = w->last_solver_contact_count;
+    transaction->last_integration_pass_count = w->last_integration_pass_count;
+    transaction->step_pending_broadphase_fallbacks = w->step_pending_broadphase_fallbacks;
+    transaction->solver_pool_failed = w->solver_pool_failed;
+    transaction->fixed_step_accumulator = w->fixed_step_accumulator;
+    transaction->fixed_step_alpha = w->fixed_step_alpha;
+    transaction->dropped_fixed_steps = w->dropped_fixed_steps;
+    return 1;
+}
+
+/// @brief Restore a failed World3D step from a completed transaction snapshot.
+/// @details Full body payload restoration includes pose, velocities, sleep,
+///   grounding, force/torque accumulators, and broadphase revisions. Contact and
+///   event arrays regain their exact prefixes and counts. Allocator capacity
+///   growth and lazily-created internal caches are harmless retained work.
+/// @param w Borrowed world being rolled back.
+/// @param transaction Immutable snapshot produced by the begin helper.
+static void world3d_step_transaction_restore(rt_world3d *w,
+                                             const ph3d_step_transaction *transaction) {
+    if (!w || !transaction)
+        return;
+    for (int32_t i = 0; i < transaction->body_count; ++i)
+        *w->bodies[i] = transaction->body_states[i];
+    world3d_step_transaction_copy_contacts(
+        w->contacts, transaction->contacts, transaction->contact_count);
+    world3d_step_transaction_copy_contacts(
+        w->frame_contacts, transaction->frame_contacts, transaction->frame_contact_count);
+    world3d_step_transaction_copy_contacts(
+        w->previous_contacts, transaction->previous_contacts, transaction->previous_contact_count);
+    world3d_step_transaction_copy_contacts(
+        w->enter_events, transaction->enter_events, transaction->enter_event_count);
+    world3d_step_transaction_copy_contacts(
+        w->stay_events, transaction->stay_events, transaction->stay_event_count);
+    world3d_step_transaction_copy_contacts(
+        w->exit_events, transaction->exit_events, transaction->exit_event_count);
+    w->body_count = transaction->body_count;
+    w->contact_count = transaction->contact_count;
+    w->frame_contact_count = transaction->frame_contact_count;
+    w->previous_contact_count = transaction->previous_contact_count;
+    w->enter_event_count = transaction->enter_event_count;
+    w->stay_event_count = transaction->stay_event_count;
+    w->exit_event_count = transaction->exit_event_count;
+    w->broadphase_world_revision = transaction->broadphase_world_revision;
+    w->query_broadphase_signature = transaction->query_broadphase_signature;
+    w->query_broadphase_count = transaction->query_broadphase_count;
+    w->query_broadphase_valid = transaction->query_broadphase_valid;
+    w->query_broadphase_dirty = transaction->query_broadphase_dirty;
+    w->broadphase_fallback_count = transaction->broadphase_fallback_count;
+    w->last_ccd_requested_substeps = transaction->last_ccd_requested_substeps;
+    w->last_ccd_substeps = transaction->last_ccd_substeps;
+    w->ccd_substep_clamped_count = transaction->ccd_substep_clamped_count;
+    w->last_ccd_clamped_body_count = transaction->last_ccd_clamped_body_count;
+    w->ccd_substep_clamped_body_count = transaction->ccd_substep_clamped_body_count;
+    w->ccd_toi_count = transaction->ccd_toi_count;
+    w->last_solver_island_count = transaction->last_solver_island_count;
+    w->last_solver_active_body_count = transaction->last_solver_active_body_count;
+    w->last_solver_contact_count = transaction->last_solver_contact_count;
+    w->last_integration_pass_count = transaction->last_integration_pass_count;
+    w->step_pending_broadphase_fallbacks = transaction->step_pending_broadphase_fallbacks;
+    w->solver_pool_failed = transaction->solver_pool_failed;
+    w->fixed_step_accumulator = transaction->fixed_step_accumulator;
+    w->fixed_step_alpha = transaction->fixed_step_alpha;
+    w->dropped_fixed_steps = transaction->dropped_fixed_steps;
+}
+
+/// @brief Return whether this step can execute a body-local CCD sweep.
+/// @details Scans only valid registered bodies and treats any enabled dynamic
+///   body as needing the reusable sphere query collider, even if it is currently
+///   asleep; this avoids a later wake introducing allocation after mutation.
+static int world3d_step_needs_ccd_sweep(const rt_world3d *w) {
+    if (!w)
+        return 0;
+    for (int32_t i = 0; i < w->body_count; ++i) {
+        const rt_body3d *body = w->bodies[i];
+        if (body && body->use_ccd && body->motion_mode == PH3D_MODE_DYNAMIC &&
+            body3d_has_collision_geometry(body))
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Advance one world frame as an all-or-nothing internal transaction.
 ///
 /// Per-substep:
 ///   1. **Integration**: forces → velocity (symplectic Euler), apply
@@ -325,15 +677,29 @@ static void world3d_clear_body_accumulators(rt_world3d *w) {
 /// the previous frame to fire enter/stay/exit events, and per-step
 /// forces/torques are zeroed for the next frame.
 ///
-/// @param obj `World3D` handle.
-/// @param dt  Step duration (seconds). No-op for `dt <= 0`.
-void rt_world3d_step(void *obj, double dt) {
-    rt_world3d *w = world3d_checked(obj);
+/// @param w Borrowed validated world handle.
+/// @param dt Step duration in seconds; invalid/non-positive values are no-ops.
+/// @param error_out Optional destination for a static diagnostic on failure.
+/// @return `1` after a committed step/no-op, or `0` after complete rollback.
+static int world3d_step_internal(rt_world3d *w, double dt, const char **error_out) {
+    ph3d_step_transaction transaction;
+    const char *failure_message = NULL;
+    int transaction_started = 0;
+    int step_ok = 0;
+    const int substeps = 1;
+    double sub_dt;
+    if (error_out)
+        *error_out = NULL;
     if (!w)
-        return;
+        return 1;
     dt = ph3d_sanitize_step_dt(dt);
     if (dt <= 0.0)
-        return;
+        return 1;
+    if (w->step_transaction_active) {
+        if (error_out)
+            *error_out = "Physics3D.World.Step: reentrant step is not supported";
+        return 0;
+    }
     w->body_count = world3d_body_count_safe(w);
     w->joint_count = world3d_joint_count_safe(w);
     w->contact_count =
@@ -348,15 +714,28 @@ void rt_world3d_step(void *obj, double dt) {
         world3d_contact_count_safe(w->stay_events, w->stay_event_count, w->stay_event_capacity);
     w->exit_event_count =
         world3d_contact_count_safe(w->exit_events, w->exit_event_count, w->exit_event_capacity);
-    int step_ok = 0;
-    int substeps = world3d_compute_substeps(w, dt);
-    double sub_dt = dt / (double)substeps;
+    if (world3d_step_needs_ccd_sweep(w) && !world3d_ccd_prepare_sweep_collider(w)) {
+        if (error_out)
+            *error_out = "Physics3D.World.Step: CCD scratch allocation failed";
+        return 0;
+    }
+    if (!world3d_step_transaction_begin(w, &transaction)) {
+        if (error_out)
+            *error_out = "Physics3D.World.Step: transaction snapshot allocation failed";
+        return 0;
+    }
+    transaction_started = 1;
+    w->step_transaction_active = 1;
+    w->step_failure_message = NULL;
+    w->step_pending_broadphase_fallbacks = 0;
+    sub_dt = dt;
+    world3d_begin_ccd_diagnostics(w);
     world3d_invalidate_query_broadphase(w);
-    world3d_release_cached_event_objects(w);
     w->frame_contact_count = 0;
     w->last_solver_island_count = 0;
     w->last_solver_active_body_count = 0;
     w->last_solver_contact_count = 0;
+    w->last_integration_pass_count = 0;
     for (int32_t i = 0; i < w->body_count; i++) {
         rt_body3d *b = w->bodies[i];
         if (!b)
@@ -366,11 +745,13 @@ void rt_world3d_step(void *obj, double dt) {
     }
 
     for (int substep = 0; substep < substeps; substep++) {
+        w->last_integration_pass_count++;
         /* Phase 1: Integration */
         for (int32_t i = 0; i < w->body_count; i++) {
             rt_body3d *b = w->bodies[i];
             double linear_scale;
             double angular_scale;
+            double angular_acceleration[3];
             if (!b)
                 continue;
 
@@ -387,13 +768,14 @@ void rt_world3d_step(void *obj, double dt) {
                                            (w->gravity[0] + b->force[0] * b->inv_mass) * sub_dt,
                                            (w->gravity[1] + b->force[1] * b->inv_mass) * sub_dt,
                                            (w->gravity[2] + b->force[2] * b->inv_mass) * sub_dt);
+                body3d_world_inv_inertia_mul(b, b->torque, angular_acceleration);
                 ph3d_vec3_accumulate_state(b->angular_velocity,
-                                           b->torque[0] * b->inv_inertia[0] * sub_dt,
-                                           b->torque[1] * b->inv_inertia[1] * sub_dt,
-                                           b->torque[2] * b->inv_inertia[2] * sub_dt);
+                                           angular_acceleration[0] * sub_dt,
+                                           angular_acceleration[1] * sub_dt,
+                                           angular_acceleration[2] * sub_dt);
 
-                linear_scale = fmax(0.0, 1.0 - b->linear_damping * sub_dt);
-                angular_scale = fmax(0.0, 1.0 - b->angular_damping * sub_dt);
+                linear_scale = world3d_damping_scale(b->linear_damping, sub_dt);
+                angular_scale = world3d_damping_scale(b->angular_damping, sub_dt);
                 vec3_scale_in_place(b->velocity, linear_scale);
                 vec3_scale_in_place(b->angular_velocity, angular_scale);
                 ph3d_vec3_sanitize_state(b->velocity);
@@ -403,21 +785,11 @@ void rt_world3d_step(void *obj, double dt) {
                  * point and only returns to ~0 once contacts are resolved. */
             }
 
-            /* Swept CCD (time of impact): clip this substep's translation at
-             * the first static/kinematic surface so fast bodies can never
-             * tunnel regardless of dt. The substep subdivision above keeps
-             * displacements small; this pass makes the guarantee exact. The
-             * bounding sphere over-approximates non-spherical colliders
-             * (conservative — clipping early is safe; the regular contact
-             * solve takes over at the surface).
-             *
-             * Per-body catch-up: when the global substep cap
-             * (PH3D_MAX_CCD_SUBSTEPS) left THIS body moving more than its CCD
-             * threshold per substep, its advance is subdivided into swept
-             * segments here — the whole world integrates once and only the
-             * fast body pays for extra sweeps. Unclamped bodies always take
-             * exactly one segment, keeping their trajectories bit-identical
-             * to the single-sweep path. */
+            /* Swept CCD is entirely body-local: opted-in bodies divide only
+             * their own translation into bounded TOI segments. Integration,
+             * broadphase, joints, and the discrete solver still run exactly
+             * once for the world, so an unrelated bullet cannot multiply the
+             * simulation cost or alter slow-body damping/solver trajectories. */
             if (b->use_ccd && b->motion_mode == PH3D_MODE_DYNAMIC && !b->is_sleeping) {
                 double first_delta[3] = {
                     b->velocity[0] * sub_dt,
@@ -426,96 +798,74 @@ void rt_world3d_step(void *obj, double dt) {
                 };
                 double move_len = vec3_len(first_delta);
                 double threshold = body3d_ccd_threshold(b);
-                if (isfinite(move_len) && threshold > 1e-6 && move_len > threshold * 0.5) {
-                    int32_t segments = 1;
-                    int clipped_any = 0;
-                    if (move_len > threshold) {
-                        double seg_f = ceil(move_len / threshold);
-                        segments = (isfinite(seg_f) && seg_f >= 1.0)
-                                       ? (seg_f >= 64.0 ? 64 : (int32_t)seg_f)
-                                       : 1;
-                    }
+                if (isfinite(move_len) && move_len > 1e-12 && threshold > 1e-6) {
+                    int32_t segments = world3d_ccd_body_segment_count(w, move_len, threshold);
                     double seg_dt = sub_dt / (double)segments;
                     for (int32_t seg = 0; seg < segments; seg++) {
-                        double delta[3] = {
-                            b->velocity[0] * seg_dt,
-                            b->velocity[1] * seg_dt,
-                            b->velocity[2] * seg_dt,
-                        };
-                        double bmin[3];
-                        double bmax[3];
-                        body_aabb(b, bmin, bmax);
-                        double radius = 0.5 * fmax(bmax[0] - bmin[0],
-                                                   fmax(bmax[1] - bmin[1], bmax[2] - bmin[2]));
-                        double toi = 1.0;
-                        double normal[3] = {0.0, 1.0, 0.0};
-                        if (radius > 1e-6 &&
-                            world3d_ccd_sweep_sphere_raw(
-                                w, b->position, radius, delta, b, seg_dt, &toi, normal) &&
-                            toi < 1.0) {
-                            /* Speculative clip: stop the NORMAL component of the
-                             * translation just before the surface, but carry the
-                             * full tangential component. A body rolling or sliding
-                             * along a surface it is barely separated from sweeps
-                             * into it every substep with toi ~= 0; clipping the
-                             * whole delta would freeze its tangential motion (the
-                             * bowling-ball-stalls-on-the-lane failure). Head-on
-                             * impacts have no tangential part, so the thin-wall
-                             * anti-tunneling guarantee is unchanged. */
-                            double dn =
-                                delta[0] * normal[0] + delta[1] * normal[1] + delta[2] * normal[2];
-                            double clipped_n = dn * toi;
-                            if (dn < 0.0) {
-                                /* Small skin keeps the narrowphase from starting
-                                 * embedded next substep. */
-                                clipped_n += 1e-3;
-                                if (clipped_n > 0.0)
-                                    clipped_n = 0.0;
+                        double remaining_dt = seg_dt;
+                        /* A bounded impact loop preserves the post-impact portion
+                         * of a segment (bounce/slide) without an unbounded corner
+                         * ping-pong on pathological geometry. */
+                        for (int impact = 0; impact < 4 && remaining_dt > 1e-12; ++impact) {
+                            double delta[3] = {
+                                b->velocity[0] * remaining_dt,
+                                b->velocity[1] * remaining_dt,
+                                b->velocity[2] * remaining_dt,
+                            };
+                            double center[3];
+                            double radius = 0.0;
+                            double toi = 1.0;
+                            double normal[3] = {0.0, 1.0, 0.0};
+                            rt_query_hit3d hit = {0};
+                            if (!world3d_ccd_body_proxy(b, center, &radius)) {
+                                ph3d_vec3_accumulate_state(
+                                    b->position, delta[0], delta[1], delta[2]);
+                                remaining_dt = 0.0;
+                                break;
                             }
+                            if (!world3d_ccd_record_trigger_crossings(
+                                    w, center, radius, delta, b, remaining_dt)) {
+                                world3d_step_fail(
+                                    w, "Physics3D.World.Step: trigger-contact allocation failed");
+                                goto cleanup;
+                            }
+                            if (!world3d_ccd_sweep_sphere_raw(w,
+                                                              center,
+                                                              radius,
+                                                              delta,
+                                                              b,
+                                                              remaining_dt,
+                                                              &toi,
+                                                              normal,
+                                                              &hit) ||
+                                toi >= 1.0) {
+                                ph3d_vec3_accumulate_state(
+                                    b->position, delta[0], delta[1], delta[2]);
+                                remaining_dt = 0.0;
+                                break;
+                            }
+                            if (toi < 0.0)
+                                toi = 0.0;
                             ph3d_vec3_accumulate_state(
-                                b->position,
-                                (delta[0] - dn * normal[0]) + normal[0] * clipped_n,
-                                (delta[1] - dn * normal[1]) + normal[1] * clipped_n,
-                                (delta[2] - dn * normal[2]) + normal[2] * clipped_n);
-                            /* Reflect the approaching normal component by the
-                             * body's restitution (matches what the solver would
-                             * do); the tangential component is preserved so the
-                             * body slides. If the contact persists next substep,
-                             * the solver sees a separating/neutral velocity and
-                             * adds no double bounce. Later segments re-derive
-                             * their delta from the reflected velocity. */
-                            double vn = b->velocity[0] * normal[0] + b->velocity[1] * normal[1] +
-                                        b->velocity[2] * normal[2];
-                            if (vn < 0.0) {
-                                double e = b->restitution;
-                                if (!isfinite(e) || e < 0.0)
-                                    e = 0.0;
-                                if (e > 1.0)
-                                    e = 1.0;
-                                double impulse = -(1.0 + e) * vn;
-                                ph3d_vec3_accumulate_state(b->velocity,
-                                                           normal[0] * impulse,
-                                                           normal[1] * impulse,
-                                                           normal[2] * impulse);
-                            }
+                                b->position, delta[0] * toi, delta[1] * toi, delta[2] * toi);
+                            if (!world3d_resolve_ccd_hit(w, b, &hit, normal))
+                                goto cleanup;
+                            /* One-millimetre skin keeps the next local sweep
+                             * separated from the just-hit surface. */
+                            ph3d_vec3_accumulate_state(
+                                b->position, normal[0] * 1e-3, normal[1] * 1e-3, normal[2] * 1e-3);
                             w->ccd_toi_count++;
-                            clipped_any = 1;
-                        } else if (segments > 1) {
-                            ph3d_vec3_accumulate_state(b->position, delta[0], delta[1], delta[2]);
+                            remaining_dt *= 1.0 - toi;
+                            if (!isfinite(remaining_dt) || remaining_dt < 0.0)
+                                remaining_dt = 0.0;
                         }
-                        /* segments == 1 with no hit: leave position untouched
-                         * and fall through to the shared plain-advance path
-                         * below — identical op order to the pre-segment code. */
                     }
-                    if (clipped_any || segments > 1) {
-                        quat_integrate(b->orientation, b->angular_velocity, sub_dt);
-                        ph3d_vec3_sanitize_state(b->position);
-                        if (clipped_any)
-                            ph3d_vec3_sanitize_state(b->velocity);
-                        quat_normalize(b->orientation);
-                        body3d_touch_broadphase_moved(b);
-                        continue;
-                    }
+                    quat_integrate(b->orientation, b->angular_velocity, sub_dt);
+                    ph3d_vec3_sanitize_state(b->position);
+                    ph3d_vec3_sanitize_state(b->velocity);
+                    quat_normalize(b->orientation);
+                    body3d_touch_broadphase_moved(b);
+                    continue;
                 }
             }
 
@@ -527,6 +877,10 @@ void rt_world3d_step(void *obj, double dt) {
             ph3d_vec3_sanitize_state(b->position);
             quat_normalize(b->orientation);
             body3d_touch_broadphase_moved(b);
+        }
+        if (world3d_test_step_failure_requested()) {
+            world3d_step_fail(w, "Physics3D.World.Step: injected transaction failure");
+            goto cleanup;
         }
 
         /* Phase 2: detect contacts once, then warm-started sequential-impulse solve.
@@ -569,28 +923,64 @@ void rt_world3d_step(void *obj, double dt) {
         goto cleanup;
     if (!world3d_build_event_buffers(w))
         goto cleanup;
+    world3d_finish_ccd_diagnostics(w);
+    world3d_commit_broadphase_fallbacks(w);
+    world3d_release_cached_event_objects(w);
+    world3d_clear_body_accumulators(w);
+    world3d_invalidate_query_broadphase(w);
     step_ok = 1;
 
 cleanup:
-    if (!step_ok)
-        world3d_clear_visible_collision_events(w);
-    world3d_invalidate_query_broadphase(w);
-    world3d_clear_body_accumulators(w);
+    if (!step_ok && transaction_started) {
+        failure_message = w->step_failure_message;
+        if (!failure_message)
+            failure_message = "Physics3D.World.Step: transactional simulation failed";
+        world3d_step_transaction_restore(w, &transaction);
+    }
+    w->step_transaction_active = 0;
+    w->step_failure_message = NULL;
+    if (!step_ok && error_out)
+        *error_out = failure_message;
+    return step_ok;
+}
+
+/// @brief `World3D.Step(dt)` — advance the simulation atomically by one frame.
+/// @details The internal step snapshots body/contact/event state and converts
+///   fallible solver paths to status returns. On failure it restores the exact
+///   pre-step simulation, then this public ABI boundary raises the historical
+///   trap. Successful steps clear one-shot forces and publish new events.
+/// @param obj `World3D` handle.
+/// @param dt Step duration in seconds; non-finite/non-positive values are no-ops.
+void rt_world3d_step(void *obj, double dt) {
+    rt_world3d *w = world3d_checked(obj);
+    const char *failure_message = NULL;
+    if (!w)
+        return;
+    if (!world3d_step_internal(w, dt, &failure_message)) {
+        rt_trap(failure_message ? failure_message : "Physics3D.World.Step: simulation failed");
+        return;
+    }
 }
 
 /// @brief `World3D.StepFixed(dt, fixedDt, maxSteps)` — run accumulated fixed steps.
+/// @details Incoming time is accumulated before stepping, but one fixed quantum
+///   is subtracted only after `world3d_step_internal` commits successfully. A
+///   failed step therefore remains queued for retry. Passing `dt == 0` drains
+///   previously retained time without adding another frame.
+/// @return Number of fixed steps committed during this call.
 int64_t rt_world3d_step_fixed(void *obj, double dt, double fixed_dt, int64_t max_steps) {
     rt_world3d *w = world3d_checked(obj);
     double frame_dt = ph3d_sanitize_step_dt(dt);
     double fixed = ph3d_sanitize_fixed_dt(fixed_dt);
     int32_t max_step_count = ph3d_clamp_fixed_step_limit(max_steps);
     int64_t steps = 0;
-    if (!w || frame_dt <= 0.0 || fixed <= 0.0 || max_step_count <= 0) {
+    if (!w || fixed <= 0.0 || max_step_count <= 0) {
         ph3d_update_fixed_step_alpha(w, fixed);
         return 0;
     }
 
-    w->fixed_step_accumulator += frame_dt;
+    if (frame_dt > 0.0)
+        w->fixed_step_accumulator += frame_dt;
     if (!isfinite(w->fixed_step_accumulator) || w->fixed_step_accumulator < 0.0)
         w->fixed_step_accumulator = 0.0;
     {
@@ -605,7 +995,13 @@ int64_t rt_world3d_step_fixed(void *obj, double dt, double fixed_dt, int64_t max
     }
 
     while (w->fixed_step_accumulator + 1e-12 >= fixed && steps < max_step_count) {
-        rt_world3d_step(w, fixed);
+        const char *failure_message = NULL;
+        if (!world3d_step_internal(w, fixed, &failure_message)) {
+            ph3d_update_fixed_step_alpha(w, fixed);
+            rt_trap(failure_message ? failure_message
+                                    : "Physics3D.World.StepFixed: simulation failed");
+            return steps;
+        }
         w->fixed_step_accumulator -= fixed;
         if (w->fixed_step_accumulator < 0.0 && w->fixed_step_accumulator > -1e-9)
             w->fixed_step_accumulator = 0.0;
@@ -979,16 +1375,15 @@ int8_t rt_world3d_contains_body(void *obj, void *body) {
     return world3d_body_is_registered(w, b) ? 1 : 0;
 }
 
-/// @brief `World3D.LastCcdRequestedSubsteps` — unclamped substep demand from the last Step.
+/// @brief `World3D.LastCcdRequestedSubsteps` — largest unclamped local body-segment demand.
 int64_t rt_world3d_get_last_ccd_requested_substeps(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || w->last_ccd_requested_substeps <= 0)
         return 0;
-    return w->last_ccd_requested_substeps == INT32_MAX ? PH3D_MAX_CCD_SUBSTEPS
-                                                       : w->last_ccd_requested_substeps;
+    return w->last_ccd_requested_substeps;
 }
 
-/// @brief `World3D.LastCcdSubsteps` — actual CCD substeps used by the last Step.
+/// @brief `World3D.LastCcdSubsteps` — largest bounded local body-segment count used.
 int64_t rt_world3d_get_last_ccd_substeps(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     if (!w || w->last_ccd_substeps <= 0)
@@ -997,7 +1392,7 @@ int64_t rt_world3d_get_last_ccd_substeps(void *obj) {
                                                         : w->last_ccd_substeps;
 }
 
-/// @brief `World3D.CcdSubstepClampedCount` — number of frames that hit the substep cap.
+/// @brief `World3D.CcdSubstepClampedCount` — frames where a body hit the segment cap.
 int64_t rt_world3d_get_ccd_substep_clamped_count(void *obj) {
     rt_world3d *w = world3d_checked(obj);
     return (w && w->ccd_substep_clamped_count > 0) ? w->ccd_substep_clamped_count : 0;

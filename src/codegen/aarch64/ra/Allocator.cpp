@@ -13,7 +13,8 @@
 // Key invariants:
 //   - All virtual registers are resolved to physical registers after run().
 //   - Spill/reload code is inserted in-place via prefix/suffix vectors.
-//   - Cross-block persistence uses single-predecessor exit states.
+//   - Cross-block persistence restores predecessor spill state before
+//     re-adopting registers from single-predecessor exit states.
 //
 // Ownership/Lifetime:
 //   - See Allocator.hpp.
@@ -262,6 +263,7 @@ void LinearAllocator::assignPinnedSlots() {
         bool written{false};
         bool fpr{false};
     };
+
     std::unordered_map<int, SlotStats> stats;
     std::unordered_set<int> disqualified;
     // Taking a frame address (AddFpImm at offset B) lets derived pointers
@@ -286,10 +288,9 @@ void LinearAllocator::assignPinnedSlots() {
                 const int off = static_cast<int>(ins.ops[1].imm);
                 auto &entry = stats[off];
                 entry.weight += blockWeight;
-                const bool isStore = ins.opc == MOpcode::StrRegFpImm ||
-                                     ins.opc == MOpcode::StrFprFpImm ||
-                                     ins.opc == MOpcode::PhiStoreGPR ||
-                                     ins.opc == MOpcode::PhiStoreFPR;
+                const bool isStore =
+                    ins.opc == MOpcode::StrRegFpImm || ins.opc == MOpcode::StrFprFpImm ||
+                    ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR;
                 if (isStore) {
                     entry.written = true;
                 }
@@ -346,8 +347,8 @@ void LinearAllocator::assignPinnedSlots() {
     constexpr double kMinPinWeight = 10.0;
     std::vector<std::pair<int, const SlotStats *>> ranked;
     for (const auto &[off, entry] : stats) {
-        if (off == 0 || !entry.written || entry.weight < kMinPinWeight ||
-            disqualified.count(off) || off >= minAddrTakenOff) {
+        if (off == 0 || !entry.written || entry.weight < kMinPinWeight || disqualified.count(off) ||
+            off >= minAddrTakenOff) {
             continue;
         }
         ranked.emplace_back(off, &entry);
@@ -365,8 +366,10 @@ void LinearAllocator::assignPinnedSlots() {
     // pools (never the reserved scratch registers, which are not pool
     // members). Each pinned register is removed from its pool for the whole
     // function and recorded as used so the prologue saves it.
-    auto pinFrom = [&](std::deque<PhysReg> &pool, const std::vector<PhysReg> &calleeSaved,
-                       int off, PhysReg &outReg) {
+    auto pinFrom = [&](std::deque<PhysReg> &pool,
+                       const std::vector<PhysReg> &calleeSaved,
+                       int off,
+                       PhysReg &outReg) {
         for (auto it = pool.begin(); it != pool.end(); ++it) {
             if (std::find(calleeSaved.begin(), calleeSaved.end(), *it) == calleeSaved.end()) {
                 continue;
@@ -401,8 +404,12 @@ void LinearAllocator::assignPinnedSlots() {
         for (const auto &[off, entry] : ranked) {
             const bool pinnedG = pinnedSlotGPR_.count(off) != 0;
             const bool pinnedF = pinnedSlotFPR_.count(off) != 0;
-            std::fprintf(stderr, "  off=%d weight=%.0f fpr=%d pinned=%d\n", off, entry->weight,
-                         entry->fpr ? 1 : 0, (pinnedG || pinnedF) ? 1 : 0);
+            std::fprintf(stderr,
+                         "  off=%d weight=%.0f fpr=%d pinned=%d\n",
+                         off,
+                         entry->weight,
+                         entry->fpr ? 1 : 0,
+                         (pinnedG || pinnedF) ? 1 : 0);
         }
         for (int off : disqualified) {
             if (stats.count(off))
@@ -479,6 +486,25 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi) {
         return;
 
     const auto &es = blockExitStates_[pred];
+
+    // Allocation of an earlier sibling successor may have consumed and then
+    // retired these same live-ins. Re-establish the predecessor's canonical
+    // spill state before restoring any register-carried values; allocator
+    // state from whichever block happened to be visited last is not valid on
+    // a different CFG edge.
+    const auto restoreSpills = [](auto &states, const auto &liveOut) {
+        for (const uint16_t vid : liveOut) {
+            auto it = states.find(vid);
+            if (it == states.end())
+                continue;
+            auto &st = it->second;
+            st.hasPhys = false;
+            st.spilled = st.fpOffset != 0;
+            st.dirty = false;
+        }
+    };
+    restoreSpills(gprStates_, liveness_.liveOutGPR(pred));
+    restoreSpills(fprStates_, liveness_.liveOutFPR(pred));
 
     // Restore in sorted vreg order so register-pool mutation order is
     // independent of hash-map iteration order (deterministic codegen).

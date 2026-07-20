@@ -645,13 +645,20 @@ static int vscn_serialize_material(rt_material3d *material,
                 len,
                 cap,
                 "%s{\"uvSet\": %d, \"wrapS\": %d, \"wrapT\": %d, "
-                "\"filter\": %d, \"uvTransform\": [%.17g, %.17g, %.17g, %.17g, %.17g, %.17g]}",
+                "\"filter\": %d, \"minFilter\": %d, \"magFilter\": %d, \"mipFilter\": %d, "
+                "\"uvTransform\": [%.17g, %.17g, %.17g, %.17g, %.17g, %.17g]}",
                 i == 0 ? "" : ", ",
                 material->texture_slot_uv_set[i] > 0 ? 1 : 0,
                 vscn_wrap_or(material->texture_slot_wrap_s[i], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT),
                 vscn_wrap_or(material->texture_slot_wrap_t[i], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT),
                 vscn_filter_or(material->texture_slot_filter[i],
                                RT_MATERIAL3D_TEXTURE_FILTER_LINEAR),
+                vscn_filter_or(material->texture_slot_min_filter[i],
+                               RT_MATERIAL3D_TEXTURE_FILTER_LINEAR),
+                vscn_filter_or(material->texture_slot_mag_filter[i],
+                               RT_MATERIAL3D_TEXTURE_FILTER_LINEAR),
+                vscn_mip_filter_or(material->texture_slot_mip_filter[i],
+                                   RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE),
                 vscn_clamp_abs_or(uvm[0], 1.0),
                 vscn_clamp_abs_or(uvm[1], 0.0),
                 vscn_clamp_abs_or(uvm[2], 0.0),
@@ -1069,7 +1076,8 @@ static int vscn_save_emit_skeletons(char **buf,
         for (int32_t b = 0; b < bone_count; b++) {
             const vgfx3d_bone_t *bone = &skel->bones[b];
             if (!vscn_append(buf, len, cap, "      {\"name\": ") ||
-                !vscn_append_json_string(buf, len, cap, bone->name) ||
+                !vscn_append_json_string(
+                    buf, len, cap, bone->name ? rt_string_cstr(bone->name) : "") ||
                 !vscn_append(
                     buf, len, cap, ", \"parent\": %d, \"bindLocal\": [", bone->parent_index))
                 return 0;

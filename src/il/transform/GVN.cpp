@@ -5,13 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements a dominator-tree based Global Value Numbering pass with a simple
-// Redundant Load Elimination. We conservatively match pure, side-effect-free
-// instructions by opcode/type/operands (with commutative normalization) and
-// reuse dominating results. For loads, we memoise (ptr,type) reads and reuse
-// when no intervening clobber occurs (based on BasicAA and coarse memory
-// effects). We traverse blocks in dominator-tree preorder and thread a local
-// state to children so information flows along dominating paths only.
+// File: il/transform/GVN.cpp
+// Purpose: Eliminate redundant ownership-neutral expressions and loads along
+//          dominator-tree paths.
+// Key invariants:
+//   - Reused values dominate every replacement and remain textually available.
+//   - String loads are never merged because each load creates a distinct owned
+//     reference even when the underlying bytes are unchanged.
+// Ownership/Lifetime: Rewrites functions in place; available-value state owns
+//                     copied IL values and borrows block identities.
+// Links: il/transform/GVN.hpp, il/transform/LoadSafety.hpp,
+//        docs/il/il-passes.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -152,8 +156,8 @@ void visitBlock(Function &F,
         Instr &I = B->instructions[idx];
 
         // Redundant Load Elimination
-        if (I.op == Opcode::Load && I.result && !I.operands.empty() &&
-            isLoadKnownNonTrapping(F, I)) {
+        if (I.op == Opcode::Load && I.type.kind != Type::Kind::Str && I.result &&
+            !I.operands.empty() && isLoadKnownNonTrapping(F, I)) {
             const Value &ptr = I.operands[0];
             auto loadSize = zanna::analysis::BasicAA::typeSizeBytes(I.type);
             LoadKey key{ptr, I.type.kind, loadSize};
@@ -324,7 +328,8 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis) {
 ///          a new @ref GVN instance.
 /// @param registry Pass registry to update.
 void registerGVNPass(PassRegistry &registry) {
-    // Sequential: depends on whole-module CFG-backed dominator analysis while deleting instructions.
+    // Sequential: depends on whole-module CFG-backed dominator analysis while deleting
+    // instructions.
     registry.registerFunctionPass("gvn", []() { return std::make_unique<GVN>(); }, false);
 }
 

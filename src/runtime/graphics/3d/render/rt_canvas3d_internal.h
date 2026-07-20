@@ -17,6 +17,8 @@
 // Ownership/Lifetime:
 //   - Runtime objects are GC-managed unless explicitly described as stack fixtures.
 //   - Internal scratch buffers are owned by their containing runtime object.
+//   - Immutable mesh geometry revisions use native atomic reference ownership
+//     shared by their source mesh and every Canvas3D frame that queues them.
 //
 // Links: rt_canvas3d.h, plans/3d/01-software-renderer.md
 //
@@ -58,6 +60,21 @@ typedef struct {
     float bone_weights[4];   /* blend weights (Phase 14) */
 } vgfx3d_vertex_t;           /* 92 bytes */
 
+/// @brief Compact hardware-particle instance consumed with the retained unit quad.
+/// @details `center` is already in the active frame's camera-relative render space. `right` and
+///   `up` are half-extent vectors, so a unit-quad corner `(x,y)` expands to
+///   `center + x*right + y*up`. Four-float lanes keep the record naturally aligned and identical
+///   across Metal, D3D11, and OpenGL while remaining far smaller than four expanded 92-byte
+///   vertices. `center.w` is 1, `right.w` and `up.w` are zero/reserved, and `color.w` carries
+///   particle alpha.
+/// @note This is an internal renderer ABI, not a public runtime object layout.
+typedef struct {
+    float center[4];
+    float right[4];
+    float up[4];
+    float color[4];
+} vgfx3d_particle_instance_t; /* 64 bytes */
+
 /// @brief Optional per-vertex bone influences 5-8 (palette-slot indices + weights),
 ///   carried as a mesh side stream so the fixed vertex record stays 92 bytes.
 ///   Consumed on the GPU by backends with gpu_skinning_extras (bound as a
@@ -67,6 +84,26 @@ typedef struct {
     float weights[4];
 } vgfx3d_extra_influences_t;
 
+/// @brief Immutable CPU geometry retained across deferred frames for one Mesh3D revision.
+/// @details Heap meshes publish one revision object lazily on their first deferred draw after a
+///          mutation. The source mesh owns one reference and every canvas frame that queues the
+///          revision owns another. Consequently, later mesh edits can fork to a new revision
+///          without invalidating vertex/index pointers already stored in deferred commands.
+///          Missing tangent data is generated into a separate immutable vertex variant so the raw
+///          source copy remains unchanged and both backend upload identities can coexist.
+/// @note The reference count is manipulated through `rt_mesh3d_geometry_revision_retain` and
+///       `rt_mesh3d_geometry_revision_release`; callers must never update it directly.
+typedef struct rt_mesh3d_geometry_revision {
+    volatile int ref_count;
+    uint32_t source_revision;
+    uint32_t vertex_count;
+    uint32_t index_count;
+    vgfx3d_vertex_t *vertices;
+    uint32_t *indices;
+    vgfx3d_vertex_t *tangent_vertices;
+    int8_t tangent_state; /* 0 = not built, 1 = ready */
+} rt_mesh3d_geometry_revision;
+
 /// @brief Notify shared spatial caches that some Mesh3D geometry changed.
 void rt_mesh3d_note_global_geometry_change(void);
 /// @brief Process-wide monotonic epoch for Mesh3D geometry mutations.
@@ -75,6 +112,27 @@ uint64_t rt_mesh3d_global_geometry_epoch(void);
 //=============================================================================
 // Mesh3D
 //=============================================================================
+
+/**
+ * @brief One triangle-aligned material span in a Mesh3D index buffer.
+ *
+ * Ranges are private retained metadata used by import, clone, and simplification
+ * paths. `first_index` and `index_count` are measured in indices (not triangles),
+ * are multiples of three, and must describe ascending non-overlapping spans.
+ * `material_slot` is the source asset's non-negative material/submesh identifier.
+ */
+typedef struct rt_mesh3d_submesh_range {
+    uint32_t first_index;
+    uint32_t index_count;
+    int32_t material_slot;
+} rt_mesh3d_submesh_range;
+
+/** @brief Mesh was not produced by Mesh3D.Simplify. */
+#define RT_MESH3D_SIMPLIFY_STATUS_NOT_RUN 0
+/** @brief Mesh3D.Simplify reached or surpassed its requested triangle budget. */
+#define RT_MESH3D_SIMPLIFY_STATUS_COMPLETE 1
+/** @brief Topology/boundary constraints stopped Mesh3D.Simplify above its target. */
+#define RT_MESH3D_SIMPLIFY_STATUS_PARTIAL 2
 
 /// @brief Mesh3D payload: growable vertex/index arrays, cached AABB/bounding-sphere,
 ///   a geometry revision counter, and transient skinning/morph pointers set per draw.
@@ -87,6 +145,12 @@ typedef struct {
     uint32_t *indices;
     uint32_t index_count;
     uint32_t index_capacity;
+    rt_mesh3d_submesh_range *submesh_ranges; /* owned material/index spans */
+    uint32_t submesh_range_count;
+    uint32_t submesh_range_capacity;
+    int64_t simplify_requested_triangles;
+    int64_t simplify_achieved_triangles;
+    int32_t simplify_status;            /* RT_MESH3D_SIMPLIFY_STATUS_* */
     double *normal_accum_scratch;       /* reusable vertex_count * 3 normal accumulator */
     size_t normal_accum_scratch_values; /* allocated double count for normal_accum_scratch */
     /* Transient: set by skinning path before draw, zero otherwise */
@@ -132,16 +196,65 @@ typedef struct {
                                          compact vertex encoding (R20); CPU payload unchanged */
     uint8_t geometry_batch_depth;
     int8_t geometry_batch_dirty;
+    int8_t transient_geometry_facade;  /* suppress global mutation notifications for stack copies */
     void *physics_bvh_nodes;           /* rt_physics_mesh_bvh_node[], owned by mesh */
     uint32_t *physics_bvh_tri_indices; /* triangle indices into indices[] / 3 */
     uint32_t physics_bvh_revision;
     int32_t physics_bvh_node_count;
     int32_t physics_bvh_tri_count;
+    void *raycast_bvh_nodes;           /* retained scene-raycast BVH nodes, owned by mesh */
+    uint32_t *raycast_bvh_tri_indices; /* triangle indices into indices[] / 3 */
+    uint32_t raycast_bvh_revision;
+    int32_t raycast_bvh_node_count;
+    int32_t raycast_bvh_tri_count;
+    uint64_t raycast_bvh_rebuild_count;
+    uint64_t raycast_last_triangle_probe_count;
+    rt_mesh3d_geometry_revision *retained_geometry;
+    uint64_t retained_geometry_build_count;
+    uint64_t retained_geometry_cache_hit_count;
+    uint64_t retained_tangent_build_count;
+    uint64_t retained_tangent_cache_hit_count;
+    uint8_t retained_tangent_cache_key; /* stable address distinguishes tangent GPU uploads */
     /* Allocation generation (rt_g3d_next_identity_serial): pointer-keyed history tables
      * (motion vectors, occlusion streaks) salt their keys with this so a freed object
      * and its same-address successor never inherit each other's temporal state. */
     uint32_t identity_serial;
 } rt_mesh3d;
+
+/// @brief Return the immutable retained copy for the mesh's current geometry revision.
+/// @details Reuses the current object when its revision/count tuple still matches; otherwise
+///          allocates and copies the safe vertex/index ranges exactly once. The returned pointer is
+///          borrowed from @p mesh and remains valid until the mesh mutates or is finalized unless
+///          the caller first acquires its own reference.
+/// @param mesh Source mesh whose current CPU geometry should be retained.
+/// @return Borrowed revision pointer, or NULL for empty/invalid geometry or allocation failure.
+rt_mesh3d_geometry_revision *rt_mesh3d_get_retained_geometry(rt_mesh3d *mesh);
+
+/// @brief Acquire one ownership reference to an immutable mesh geometry revision.
+/// @param revision Revision to retain; NULL is accepted as a no-op.
+void rt_mesh3d_geometry_revision_retain(rt_mesh3d_geometry_revision *revision);
+
+/// @brief Release one ownership reference and destroy the revision when it reaches zero.
+/// @details Destruction frees the raw vertex/index copies and any lazily generated tangent vertex
+///          variant. Passing NULL is a no-op.
+/// @param revision Revision whose reference should be released.
+void rt_mesh3d_geometry_revision_release(rt_mesh3d_geometry_revision *revision);
+
+/// @brief Drop the mesh-owned reference to its currently retained immutable geometry.
+/// @details Geometry mutation paths call this before bumping `geometry_revision`. Canvas-held
+///          references keep already queued bytes alive, providing copy-on-write/fork semantics.
+/// @param mesh Mesh whose current retained revision should be detached.
+void rt_mesh3d_invalidate_retained_geometry(rt_mesh3d *mesh);
+
+/// @brief Lazily build or reuse the immutable tangent-bearing vertex variant for a revision.
+/// @details Tangents are derived from the revision's position, normal, UV, and index data. Because
+///          all those inputs are covered by `source_revision`, an unchanged revision can safely
+///          reuse the result across frames and renderer backends.
+/// @param mesh Source mesh used for cache counters and revision consistency checks.
+/// @param revision Immutable raw revision to augment with a tangent vertex variant.
+/// @return Non-zero when `revision->tangent_vertices` is ready; zero on invalid input or failure.
+int rt_mesh3d_geometry_revision_ensure_tangents(rt_mesh3d *mesh,
+                                                rt_mesh3d_geometry_revision *revision);
 
 /// @brief Allocate a Mesh3D object with all runtime bookkeeping initialized but no default
 ///   vertex/index storage.
@@ -250,6 +363,8 @@ static inline float rt_mesh3d_bounds_f32_from_f64(double value) {
 static inline void rt_mesh3d_touch_geometry_now(rt_mesh3d *mesh) {
     if (!mesh)
         return;
+    if (!mesh->transient_geometry_facade)
+        rt_mesh3d_invalidate_retained_geometry(mesh);
     mesh->resident = 1;
     mesh->bounds_dirty = 1;
     if (mesh->geometry_revision == UINT32_MAX)
@@ -268,7 +383,11 @@ static inline void rt_mesh3d_touch_geometry_now(rt_mesh3d *mesh) {
     mesh->morph_bound_shape_count = 0;
     mesh->morph_bound_pad = 0.0;
     mesh->morph_bound_valid = 0;
-    rt_mesh3d_note_global_geometry_change();
+    mesh->simplify_requested_triangles = 0;
+    mesh->simplify_achieved_triangles = 0;
+    mesh->simplify_status = RT_MESH3D_SIMPLIFY_STATUS_NOT_RUN;
+    if (!mesh->transient_geometry_facade)
+        rt_mesh3d_note_global_geometry_change();
 }
 
 /// @brief Mark geometry changed: dirties bounds and bumps geometry_revision
@@ -466,11 +585,17 @@ typedef struct {
     int32_t shadow_mode;    /* 0=auto, 1=none, 2=cast even when alpha-blended */
     int32_t texture_wrap_s; /* RT_MATERIAL3D_TEXTURE_WRAP_* for imported material textures */
     int32_t texture_wrap_t;
-    int32_t texture_filter; /* RT_MATERIAL3D_TEXTURE_FILTER_* */
-    int32_t anisotropy;     /* 1=off, otherwise clamped to [1,16] */
+    int32_t texture_filter;     /* RT_MATERIAL3D_TEXTURE_FILTER_* */
+    int32_t texture_min_filter; /* independent imported minification filter */
+    int32_t texture_mag_filter; /* independent imported magnification filter */
+    int32_t texture_mip_filter; /* RT_MATERIAL3D_TEXTURE_MIP_FILTER_* */
+    int32_t anisotropy;         /* 1=off, otherwise clamped to [1,16] */
     int32_t texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
+    int32_t texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     int32_t texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_COUNT];
     double texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][6];
@@ -498,6 +623,45 @@ void *rt_material3d_resolve_texture_native_asset(void *texture_ref);
 
 #define RT_MATERIAL3D_TEXTURE_FILTER_LINEAR 0
 #define RT_MATERIAL3D_TEXTURE_FILTER_NEAREST 1
+
+#define RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE 0
+#define RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST 1
+#define RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR 2
+
+/**
+ * @brief Store independently authored texture sampler axes and UV metadata on one material slot.
+ * @details This implementation-only importer boundary preserves glTF's independent minification,
+ *          magnification, and mip-selection controls through Material3D state. Invalid material
+ *          handles or slot indices are ignored. Numeric UV transforms and enum values are
+ *          sanitized before publication, and the base-color slot also refreshes the legacy
+ *          material-wide mirrors.
+ * @param obj Borrowed Material3D runtime handle; ownership is unchanged.
+ * @param slot Texture slot in `[0, RT_MATERIAL3D_TEXTURE_SLOT_COUNT)`.
+ * @param uv_set Authored UV stream index; importers must validate representability first.
+ * @param offset_u Horizontal UV translation.
+ * @param offset_v Vertical UV translation.
+ * @param scale_u Horizontal UV scale.
+ * @param scale_v Vertical UV scale.
+ * @param rotation Counter-clockwise UV rotation in radians.
+ * @param wrap_s Horizontal `RT_MATERIAL3D_TEXTURE_WRAP_*` value.
+ * @param wrap_t Vertical `RT_MATERIAL3D_TEXTURE_WRAP_*` value.
+ * @param min_filter Independent `RT_MATERIAL3D_TEXTURE_FILTER_*` minification value.
+ * @param mag_filter Independent `RT_MATERIAL3D_TEXTURE_FILTER_*` magnification value.
+ * @param mip_filter Independent `RT_MATERIAL3D_TEXTURE_MIP_FILTER_*` selector.
+ */
+void rt_material3d_set_import_texture_slot_sampler_axes(void *obj,
+                                                        int64_t slot,
+                                                        int64_t uv_set,
+                                                        double offset_u,
+                                                        double offset_v,
+                                                        double scale_u,
+                                                        double scale_v,
+                                                        double rotation,
+                                                        int64_t wrap_s,
+                                                        int64_t wrap_t,
+                                                        int64_t min_filter,
+                                                        int64_t mag_filter,
+                                                        int64_t mip_filter);
 
 //=============================================================================
 // Light3D
@@ -551,6 +715,7 @@ typedef struct {
     vgfx3d_vertex_t *vertices;
     uint32_t *indices;
     int8_t tangents_generated;
+    rt_mesh3d_geometry_revision *retained_revision;
 } rt_canvas3d_mesh_snapshot_entry;
 
 /// @brief Per-frame cache entry for copied float payloads used by deferred draw commands.
@@ -880,8 +1045,12 @@ typedef struct {
                                               buffer (weapon view models); skips skybox + shadows */
     int64_t last_instanced_fallback_count; /* instances routed through the per-draw
                                               fallback (blend/rebase) this frame */
-    int64_t last_instanced_fallback_dropped_count; /* instances skipped because the bounded
-                                                      fallback queue could not accept them */
+    int64_t last_instanced_fallback_dropped_count; /* instances skipped after an actual chunked
+                                                      fallback queue allocation failure */
+    int32_t last_submission_status;      /* sticky RT_CANVAS3D_SUBMISSION_* failure code */
+    int64_t submission_failure_count;    /* saturating count since construction/explicit reset */
+    int8_t test_fail_next_queue_reserve; /* one-shot CTest injection before queue publication */
+    int8_t test_fail_next_mesh_snapshot; /* one-shot CTest injection before snapshot allocation */
     /* Exponential height fog (shares fog_color with distance fog). */
     int8_t height_fog_enabled;
     float height_fog_base;
@@ -1081,11 +1250,14 @@ typedef struct {
      * occluder rasterizer (lazily allocated while occlusion culling is enabled). The
      * coarse grid keeps the conservative max over each fine block, so the coverage
      * test is unchanged while writes gain true triangle silhouettes instead of AABB
-     * rectangles. The vertex scratch holds one frame draw's projected vertices. */
+     * rectangles. Over-budget draws rasterize an exact bounded subset of source triangles;
+     * omitted geometry reduces culling but cannot invent coverage. The vertex scratch holds one
+     * precise-path draw's projected vertices. */
     float *hiz_depth; /* CANVAS3D_HIZ_W * CANVAS3D_HIZ_H floats */
     float *hiz_vertex_scratch;
     int32_t hiz_vertex_scratch_capacity; /* in vertices (4 floats each) */
     int32_t hiz_frame_triangles;         /* rasterized this frame, budget-capped */
+    int32_t hiz_frame_proxy_triangles;   /* exact subset triangles after precise-budget overflow */
 
     /* Shadow mapping */
     int8_t shadows_enabled;
@@ -1430,6 +1602,31 @@ void rt_canvas3d_queue_instanced_batch_bounds(void *canvas_obj,
                                               const float *local_bounds_max,
                                               int8_t conservative_bounds,
                                               int8_t disable_occlusion);
+
+/// @brief Report whether the active Canvas3D backend accepts compact particle instances.
+/// @details Returns false for software and for a partially initialized GPU backend, allowing the
+///   caller to retain the deterministic CPU-expanded path without relying on backend-name tests.
+/// @param canvas_obj Canvas3D runtime handle or approved stack fixture.
+/// @return Non-zero only when the backend advertises particle instancing and has an instanced draw
+///   hook.
+int rt_canvas3d_supports_particle_instancing(void *canvas_obj);
+
+/// @brief Queue a sorted compact particle batch against the renderer's retained unit quad.
+/// @details The function snapshots the instance records into frame-owned storage, snapshots and
+///   retains the material dependencies through the ordinary deferred queue, computes conservative
+///   aggregate bounds, and disables batch-level occlusion because one aggregate rectangle cannot
+///   safely represent separated particles. The supplied order is preserved exactly, which is
+///   required for alpha-blended back-to-front rendering.
+/// @param canvas_obj Canvas3D runtime handle or approved stack fixture.
+/// @param material_obj Configured Material3D used by every particle in the batch.
+/// @param instances Finite camera-relative compact records in final draw order.
+/// @param instance_count Number of records; must be in `[1, CANVAS3D_MAX_INSTANCES]`.
+/// @return Non-zero when one deferred hardware command was queued; zero when unsupported or when
+///   validation/allocation prevents submission.
+int rt_canvas3d_queue_particle_batch(void *canvas_obj,
+                                     void *material_obj,
+                                     const vgfx3d_particle_instance_t *instances,
+                                     int32_t instance_count);
 /// @brief Internal: queue one per-instance-skinned hardware-instanced chunk (R18).
 /// @details bone_palettes packs instance_count consecutive palettes of instance_bone_stride
 ///   bones each (total_bone_count matrices, <= VGFX3D_MAX_BONES); storage must outlive the
@@ -1551,6 +1748,28 @@ uintptr_t canvas3d_instance_motion_key(const void *mesh_obj,
 // Shared finite-range check (rt_canvas3d.c) used by the geometry snapshotter.
 int canvas3d_double_fits_float(double value);
 
+/// @brief Record one Canvas3D submission failure in the sticky public diagnostics.
+/// @details The latest status is replaced with @p status and the failure count increments with
+///   saturation. A zero or unknown status is normalized to the generic resource failure class.
+///   This helper does not trap, mutate queued commands, or release caller-owned resources.
+/// @param c Canvas whose diagnostics receive the failure; NULL is ignored.
+/// @param status One of the non-zero `RT_CANVAS3D_SUBMISSION_*` constants.
+void canvas3d_record_submission_failure(rt_canvas3d *c, int32_t status);
+
+/// @brief Arm a one-shot deferred-command reserve failure for deterministic CTest coverage.
+/// @details The next main deferred-queue append consumes the flag and fails before publishing a
+///   command, even when spare queue capacity already exists. Existing queued commands are not
+///   changed. This is an implementation-only verification hook, not runtime registry surface.
+/// @param canvas Canvas3D handle or approved stack fixture.
+void rt_canvas3d_test_fail_next_queue_reserve(void *canvas);
+
+/// @brief Arm a one-shot mesh-geometry snapshot failure for deterministic CTest coverage.
+/// @details The next dynamic snapshot attempt consumes the flag, records snapshot diagnostics,
+///   and returns before allocating or publishing snapshot storage. Existing commands and cached
+///   snapshots remain valid. This is an implementation-only verification hook.
+/// @param canvas Canvas3D handle or approved stack fixture.
+void rt_canvas3d_test_fail_next_mesh_snapshot(void *canvas);
+
 // Mesh-geometry snapshotting (rt_canvas3d_snapshot.c).
 int canvas3d_snapshot_mesh_geometry(rt_canvas3d *c,
                                     const rt_mesh3d *mesh,
@@ -1568,15 +1787,18 @@ int canvas3d_snapshot_mesh_geometry_rebased(rt_canvas3d *c,
 int canvas3d_reserve_mesh_snapshot_cache(rt_canvas3d *c, int32_t needed);
 void canvas3d_mesh_snapshot_hash_clear(rt_canvas3d *c);
 int canvas3d_snapshot_mesh_geometry_cached(rt_canvas3d *c,
-                                           const rt_mesh3d *mesh,
+                                           rt_mesh3d *mesh,
                                            void *mesh_obj,
                                            vgfx3d_vertex_t **out_vertices,
                                            uint32_t **out_indices);
 int canvas3d_snapshot_mesh_geometry_with_tangents_cached(rt_canvas3d *c,
-                                                         const rt_mesh3d *mesh,
+                                                         rt_mesh3d *mesh,
                                                          void *mesh_obj,
                                                          vgfx3d_vertex_t **out_vertices,
                                                          uint32_t **out_indices);
+/// @brief Drop the canvas references held by retained mesh revisions in its frame snapshot table.
+/// @param c Canvas whose current snapshot entries are about to be reset or destroyed.
+void canvas3d_release_retained_mesh_revisions(rt_canvas3d *c);
 int canvas3d_should_snapshot_geometry(const rt_mesh3d *mesh, void *mesh_obj);
 
 // Shared pixel utilities (rt_canvas3d.c) used by the CPU skybox.

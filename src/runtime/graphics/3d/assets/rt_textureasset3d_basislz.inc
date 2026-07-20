@@ -159,15 +159,15 @@ static int basislz_read_huff_table(basislz_bit_reader *br, basislz_huff_table *o
             lengths[decoded++] = (uint8_t)sym;
             prev_len = sym;
         } else if (sym == 17 || sym == 18) {
-            uint32_t run = (sym == 17) ? basislz_get_bits(br, 3) + 3u
-                                       : basislz_get_bits(br, 7) + 11u;
+            uint32_t run =
+                (sym == 17) ? basislz_get_bits(br, 3) + 3u : basislz_get_bits(br, 7) + 11u;
             if (br->failed || decoded + run > total_used_syms)
                 goto fail;
             decoded += run; /* lengths are calloc'd zero */
             prev_len = 0;
         } else {
-            uint32_t run = (sym == 19) ? basislz_get_bits(br, 2) + 3u
-                                       : basislz_get_bits(br, 7) + 7u;
+            uint32_t run =
+                (sym == 19) ? basislz_get_bits(br, 2) + 3u : basislz_get_bits(br, 7) + 7u;
             if (br->failed || prev_len <= 0 || decoded + run > total_used_syms)
                 goto fail;
             for (uint32_t r = 0; r < run; r++)
@@ -415,11 +415,14 @@ static int basislz_decode_slice(const uint8_t *data,
         SELECTOR_HISTORY_BUF_RLE_COUNT_THRESH = 3,
         SELECTOR_HISTORY_BUF_RLE_COUNT_BITS = 6
     };
+
     basislz_bit_reader br;
+
     struct {
         uint16_t endpoint_index;
         uint8_t pred_bits;
     } *preds = NULL;
+
     uint16_t history[BASISLZ_MAX_SELECTOR_HISTORY];
     uint32_t history_size = tables->selector_history_buf_size;
     uint32_t history_rover = history_size / 2u;
@@ -511,8 +514,8 @@ static int basislz_decode_slice(const uint8_t *data,
                         if (run_sym < 0)
                             goto done;
                         if (run_sym == (1 << SELECTOR_HISTORY_BUF_RLE_COUNT_BITS) - 1)
-                            cur_selector_rle_count = basislz_decode_vlc(&br, 7) +
-                                                     SELECTOR_HISTORY_BUF_RLE_COUNT_THRESH;
+                            cur_selector_rle_count =
+                                basislz_decode_vlc(&br, 7) + SELECTOR_HISTORY_BUF_RLE_COUNT_THRESH;
                         else
                             cur_selector_rle_count =
                                 (uint32_t)run_sym + SELECTOR_HISTORY_BUF_RLE_COUNT_THRESH;
@@ -596,8 +599,8 @@ static int basislz_parse_global_data(const uint8_t *sgd,
     selectors_len = textureasset3d_read_u32le(sgd + 8);
     tables_len = textureasset3d_read_u32le(sgd + 12);
     extended_len = textureasset3d_read_u32le(sgd + 16);
-    need = 20u + (uint64_t)image_count * 20u + (uint64_t)endpoints_len +
-           (uint64_t)selectors_len + (uint64_t)tables_len + (uint64_t)extended_len;
+    need = 20u + (uint64_t)image_count * 20u + (uint64_t)endpoints_len + (uint64_t)selectors_len +
+           (uint64_t)tables_len + (uint64_t)extended_len;
     if (gd->endpoint_count == 0 || gd->selector_count == 0 || need > (uint64_t)sgd_size)
         return 0;
     gd->image_descs = sgd + 20u;
@@ -636,8 +639,7 @@ static int basislz_decode_slice_to_pixels(const basislz_global_data *gd,
     int ok = 0;
     if ((uint64_t)num_blocks_x * num_blocks_y > (uint64_t)SIZE_MAX / sizeof(*blocks))
         return 0;
-    blocks = (basislz_block_indices *)calloc((size_t)num_blocks_x * num_blocks_y,
-                                             sizeof(*blocks));
+    blocks = (basislz_block_indices *)calloc((size_t)num_blocks_x * num_blocks_y, sizeof(*blocks));
     if (!blocks)
         return 0;
     if (!basislz_decode_slice(slice_data,
@@ -779,12 +781,14 @@ static void *textureasset3d_parse_ktx2_basislz(const uint8_t *data,
     basislz_global_data gd;
     textureasset3d_mip *mips;
     void **mip_pixels;
+    uint8_t *source_backing = NULL;
+    uint8_t *fallback_kinds = NULL;
+    uint64_t source_backing_bytes = 0;
     rt_textureasset3d *asset;
     int64_t mip_count = (int64_t)level_count;
     if (sgd_length < 20u || sgd_offset > (uint64_t)size ||
         sgd_length > (uint64_t)size - sgd_offset) {
-        rt_asset_error_setf(
-            RT_ASSET_ERROR_CORRUPT, "%s: truncated BasisLZ global data", api_name);
+        rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT, "%s: truncated BasisLZ global data", api_name);
         return NULL;
     }
     mips = (textureasset3d_mip *)calloc((size_t)mip_count, sizeof(textureasset3d_mip));
@@ -808,8 +812,7 @@ static void *textureasset3d_parse_ktx2_basislz(const uint8_t *data,
     }
     if (!basislz_parse_global_data(data + sgd_offset, (size_t)sgd_length, level_count, &gd)) {
         free(mips);
-        rt_asset_error_setf(
-            RT_ASSET_ERROR_CORRUPT, "%s: invalid BasisLZ codebooks", api_name);
+        rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT, "%s: invalid BasisLZ codebooks", api_name);
         return NULL;
     }
     mip_pixels = textureasset3d_decode_basislz_mips(data, size, mips, mip_count, &gd);
@@ -820,17 +823,31 @@ static void *textureasset3d_parse_ktx2_basislz(const uint8_t *data,
             RT_ASSET_ERROR_CORRUPT, "%s: corrupt BasisLZ/ETC1S slice data", api_name);
         return NULL;
     }
-    /* Decoded levels are plain RGBA8 now; clear the file byte ranges so retained-byte
-     * accounting and native-upload paths treat this as an uncompressed asset. */
-    for (int64_t i = 0; i < mip_count; i++) {
-        mips[i].offset = 0;
-        mips[i].length = 0;
-        mips[i].uncompressed_length = 0;
+    /* Capture plain RGBA8 backing once so residency can release/reconstruct decoded Pixels without
+     * retaining the BasisLZ codebooks, source file, or a second decoder-specific object graph. */
+    if (!textureasset3d_capture_rgba8_backing(
+            mip_pixels, mips, mip_count, &source_backing, &source_backing_bytes)) {
+        textureasset3d_release_mip_pixels(mip_pixels, mip_count);
+        free(mips);
+        rt_trap("TextureAsset3D.LoadKTX2: BasisLZ canonical backing allocation failed");
+        return NULL;
     }
+    fallback_kinds = (uint8_t *)calloc((size_t)mip_count, sizeof(uint8_t));
+    if (!fallback_kinds) {
+        free(source_backing);
+        textureasset3d_release_mip_pixels(mip_pixels, mip_count);
+        free(mips);
+        rt_trap("TextureAsset3D.LoadKTX2: BasisLZ fallback-state allocation failed");
+        return NULL;
+    }
+    for (int64_t i = 0; i < mip_count; i++)
+        fallback_kinds[i] = TEXTUREASSET3D_FALLBACK_DECODE;
     asset = (rt_textureasset3d *)rt_obj_new_i64(RT_G3D_TEXTUREASSET3D_CLASS_ID,
                                                 (int64_t)sizeof(rt_textureasset3d));
     if (!asset) {
         textureasset3d_release_mip_pixels(mip_pixels, mip_count);
+        free(fallback_kinds);
+        free(source_backing);
         free(mips);
         rt_trap("TextureAsset3D.LoadKTX2: allocation failed");
         return NULL;
@@ -839,16 +856,24 @@ static void *textureasset3d_parse_ktx2_basislz(const uint8_t *data,
     rt_obj_set_finalizer(asset, textureasset3d_finalize);
     asset->mip_pixels = mip_pixels;
     asset->mip_payloads = NULL;
+    asset->source_backing = source_backing;
+    asset->source_backing_bytes = source_backing_bytes;
+    asset->mip_fallback_kinds = fallback_kinds;
     asset->mips = mips;
     asset->width = (int64_t)pixel_width;
     asset->height = (int64_t)pixel_height;
     asset->mip_count = mip_count;
     asset->mip_capacity = mip_count;
     asset->format = "rgba8";
+    asset->degraded_reason = "";
     asset->compressed = 0;
-    asset->block_width = 0;
-    asset->block_height = 0;
-    asset->block_bytes = 0;
+    asset->degraded = 0;
+    asset->block_width = 1;
+    asset->block_height = 1;
+    asset->block_bytes = 4;
+    asset->decoder_kind = TEXTUREASSET3D_DECODER_RGBA8;
+    asset->native_format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+    asset->backend_capability_bit = RT_TEXTUREASSET3D_BACKEND_CAP_NONE;
     asset->cache_identity = textureasset3d_next_cache_identity();
     asset->native_revision = 1;
     asset->alpha_metadata_known =

@@ -1,9 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_draw.inc
-//   (#included from vgfx3d_backend_metal.m; not a standalone translation unit)
-// Purpose: Draw submission (mesh/instanced/shadow), end-frame/present/resize/readback, GPU post-FX
-// encoding, skybox, and backend hook implementations
+// Purpose: Metal mesh/instance/shadow submission, presentation, readback, and post-FX encoding.
+// Key invariants:
+//   - Every encoded draw binds a target-compatible pipeline and complete resource snapshot.
+//   - Compact particle records receive an independent transient-ring slice for each deferred batch.
+// Ownership/Lifetime:
+//   - Encoders and transient buffers belong to VGFXMetalContext for the active in-flight frame.
+//   - Canvas command memory is borrowed only while the synchronous backend hook is encoding it.
+// Links: vgfx3d_backend_metal.m, vgfx3d_backend_metal_context.inc
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Encode and submit a single 3D draw command (the backend's main draw entry point).
@@ -154,8 +165,16 @@ static void metal_submit_draw(void *ctx_ptr,
                 clusterBuf
                     ? ((const vgfx3d_cluster_table_t *)cmd->cluster_table)->global_light_count
                     : -1;
-            scene.cluster_params[0] = (float)(ctx.rttActive ? ctx.rttWidth : ctx.width);
-            scene.cluster_params[1] = (float)(ctx.rttActive ? ctx.rttHeight : ctx.height);
+            scene.cluster_params[0] =
+                (float)(ctx.rttActive ? ctx.rttWidth
+                                      : (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE
+                                             ? (int32_t)ctx.offscreenColor.width
+                                             : ctx.width));
+            scene.cluster_params[1] =
+                (float)(ctx.rttActive ? ctx.rttHeight
+                                      : (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE
+                                             ? (int32_t)ctx.offscreenColor.height
+                                             : ctx.height));
             /* Plan 10: spare lanes carry the clip planes for depth linearization. */
             scene.cluster_params[2] = ctx->_camNear;
             scene.cluster_params[3] = ctx->_camFar;
@@ -476,12 +495,14 @@ static void metal_present(void *backend_ctx) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)backend_ctx;
         id<MTLTexture> final_texture = nil;
+        vgfx3d_postfx_chain_t stored_chain = {0};
+        const vgfx3d_postfx_chain_t *chain = NULL;
 
         if (!ctx || ctx.rttActive)
             return;
 
-        if (!ctx.gpuPostfxEnabled && ctx.currentTargetKind == VGFX3D_METAL_TARGET_SWAPCHAIN &&
-            ctx.cmdBuf && ctx.drawable) {
+        if (!metal_window_scene_route_enabled(ctx) &&
+            ctx.currentTargetKind == VGFX3D_METAL_TARGET_SWAPCHAIN && ctx.cmdBuf && ctx.drawable) {
             ctx.displayTexture = ctx.drawable.texture;
             [ctx.cmdBuf presentDrawable:ctx.drawable];
             metal_commit_pending(ctx, NO);
@@ -495,7 +516,15 @@ static void metal_present(void *backend_ctx) {
             return;
         }
 
-        final_texture = metal_active_readback_texture(ctx);
+        if (metal_window_scene_route_enabled(ctx)) {
+            if (ctx.gpuPostfxEnabled && ctx.gpuPostfxChainValid) {
+                stored_chain = ctx.gpuPostfxChain;
+                chain = &stored_chain;
+            }
+            final_texture = metal_encode_postfx_if_needed(ctx, chain);
+        }
+        if (!final_texture)
+            final_texture = metal_active_readback_texture(ctx);
         if (!final_texture)
             final_texture = ctx.offscreenColor;
         if (metal_present_texture(ctx, final_texture, YES))
@@ -540,8 +569,7 @@ static int metal_readback_rgba(
         if ((size_t)w > SIZE_MAX / 4u || (size_t)stride < (size_t)w * 4u)
             return 0;
 
-        readback_kind = vgfx3d_metal_choose_readback_kind(
-            (ctx.gpuPostfxEnabled && ctx.gpuPostfxChainValid) ? 1 : 0);
+        readback_kind = vgfx3d_metal_choose_readback_kind(metal_window_scene_route_enabled(ctx));
         if (!ctx.rttActive && ctx.cmdBuf) {
             if (ctx.postfxCompositedToDrawable) {
                 if (!metal_capture_current_drawable_to_display_texture(ctx))
@@ -871,11 +899,13 @@ static int8_t metal_shadow_reuse(
 //=============================================================================
 
 /// @brief Backend vtable entry: draw @p instance_count copies of the mesh in @p cmd in one
-/// instanced
-///   call, each positioned by a 4x4 transform from @p instance_matrices and lit by @p lights /
-///   @p ambient. Honors @p wireframe and @p backface_cull.
-/// @details No-op outside an active frame, on empty geometry, or with no instances. NULL @p ambient
-///   defaults to black and a negative @p light_count is treated as 0.
+///   instanced call.
+/// @details Ordinary draws consume one 4x4 transform from @p instance_matrices per instance.
+///   Particle commands instead point `cmd->particle_instances` at compact center/right/up/color
+///   records and may pass NULL for @p instance_matrices. Both modes are lit by @p lights and
+///   @p ambient and honor @p wireframe and @p backface_cull. The function is a no-op outside an
+///   active frame, on empty geometry, or with no instances. NULL @p ambient defaults to black and
+///   a negative @p light_count is treated as zero.
 static void metal_submit_draw_instanced(void *ctx_ptr,
                                         vgfx_window_t win,
                                         const vgfx3d_draw_cmd_t *cmd,
@@ -890,6 +920,9 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         (void)win;
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         vgfx3d_metal_instance_data_t *instance_data;
+        const void *instance_upload_data;
+        size_t instance_upload_bytes;
+        int particle_mode;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
         NSUInteger vb_offset = 0;
@@ -897,9 +930,10 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         uint32_t index_count;
         vgfx3d_metal_blend_mode_t blend_mode;
         static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+        particle_mode = cmd && cmd->particle_instances != NULL;
         if (!ctx || !ctx.encoder || !ctx.inFrame || !cmd || !cmd->vertices || !cmd->indices ||
-            cmd->vertex_count == 0 || cmd->index_count == 0 || !instance_matrices ||
-            instance_count <= 0)
+            cmd->vertex_count == 0 || cmd->index_count == 0 ||
+            (!particle_mode && !instance_matrices) || instance_count <= 0)
             return;
         index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
         if (index_count == 0)
@@ -909,33 +943,44 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         if (!lights || light_count < 0)
             light_count = 0;
 
-        metal_ensure_instance_storage(ctx, instance_count);
-        if (!ctx.instanceScratch)
-            return;
-        instance_data = (vgfx3d_metal_instance_data_t *)ctx.instanceScratch.mutableBytes;
-        if (!instance_data)
-            return;
-        vgfx3d_metal_fill_instance_data(instance_data,
-                                        instance_count,
-                                        instance_matrices,
-                                        cmd->prev_instance_matrices,
-                                        cmd->has_prev_instance_matrices ? 1 : 0);
+        if (particle_mode) {
+            if ((size_t)instance_count > SIZE_MAX / sizeof(vgfx3d_particle_instance_t))
+                return;
+            instance_upload_data = cmd->particle_instances;
+            instance_upload_bytes = (size_t)instance_count * sizeof(vgfx3d_particle_instance_t);
+        } else {
+            metal_ensure_instance_storage(ctx, instance_count);
+            if (!ctx.instanceScratch)
+                return;
+            instance_data = (vgfx3d_metal_instance_data_t *)ctx.instanceScratch.mutableBytes;
+            if (!instance_data)
+                return;
+            vgfx3d_metal_fill_instance_data(instance_data,
+                                            instance_count,
+                                            instance_matrices,
+                                            cmd->prev_instance_matrices,
+                                            cmd->has_prev_instance_matrices ? 1 : 0);
+            instance_upload_data = instance_data;
+            instance_upload_bytes = (size_t)instance_count * sizeof(vgfx3d_metal_instance_data_t);
+        }
         /* Each instanced batch gets its own slice of the transient ring. Binding one shared
          * buffer at offset 0 and memcpy-ing over it per draw corrupted every batch except the
          * last: the encoder records a reference, so the GPU read whatever the final memcpy
          * left behind — all batches rendered with the last batch's transforms. */
         NSUInteger instance_offset = 0;
-        id<MTLBuffer> instance_buffer = metal_upload_transient_buffer(
-            ctx,
-            VGFX3D_METAL_TRANSIENT_INSTANCE,
-            instance_data,
-            (size_t)instance_count * sizeof(vgfx3d_metal_instance_data_t),
-            &instance_offset);
+        id<MTLBuffer> instance_buffer =
+            metal_upload_transient_buffer(ctx,
+                                          VGFX3D_METAL_TRANSIENT_INSTANCE,
+                                          instance_upload_data,
+                                          instance_upload_bytes,
+                                          &instance_offset);
         if (!instance_buffer)
             return;
 
         blend_mode = vgfx3d_metal_choose_blend_mode(cmd);
-        [ctx.encoder setRenderPipelineState:metal_select_pipeline_state(ctx, cmd, YES)];
+        [ctx.encoder setRenderPipelineState:particle_mode
+                                                ? metal_select_particle_pipeline_state(ctx, cmd)
+                                                : metal_select_pipeline_state(ctx, cmd, YES)];
         [ctx.encoder setCullMode:backface_cull ? MTLCullModeBack : MTLCullModeNone];
         [ctx.encoder
             setTriangleFillMode:wireframe ? MTLTriangleFillModeLines : MTLTriangleFillModeFill];
@@ -1038,8 +1083,16 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 clusterBuf
                     ? ((const vgfx3d_cluster_table_t *)cmd->cluster_table)->global_light_count
                     : -1;
-            scene.cluster_params[0] = (float)(ctx.rttActive ? ctx.rttWidth : ctx.width);
-            scene.cluster_params[1] = (float)(ctx.rttActive ? ctx.rttHeight : ctx.height);
+            scene.cluster_params[0] =
+                (float)(ctx.rttActive ? ctx.rttWidth
+                                      : (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE
+                                             ? (int32_t)ctx.offscreenColor.width
+                                             : ctx.width));
+            scene.cluster_params[1] =
+                (float)(ctx.rttActive ? ctx.rttHeight
+                                      : (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE
+                                             ? (int32_t)ctx.offscreenColor.height
+                                             : ctx.height));
             /* Plan 10: spare lanes carry the clip planes for depth linearization. */
             scene.cluster_params[2] = ctx->_camNear;
             scene.cluster_params[3] = ctx->_camFar;
@@ -1417,12 +1470,16 @@ static int metal_capture_current_drawable_to_display_texture(VGFXMetalContext *c
     return 1;
 }
 
-/// @brief Populate the post-processing uniform parameters (exposure, tonemap, bloom, etc.) for a
-/// frame.
+/// @brief Populate post-processing uniforms for one source texture and effect snapshot.
+/// @details Resolution-dependent sampling uses the source extent, not the logical output extent,
+///          because the first pass may upscale a reduced scene while later passes consume an
+///          already native-sized intermediate.
 static void metal_fill_postfx_params(VGFXMetalContext *ctx,
                                      const vgfx3d_postfx_snapshot_t *postfx,
                                      int overlay_enabled,
                                      int bloom_tex_enabled,
+                                     NSUInteger source_width,
+                                     NSUInteger source_height,
                                      mtl_postfx_params_t *params) {
     if (!ctx || !params)
         return;
@@ -1431,8 +1488,8 @@ static void metal_fill_postfx_params(VGFXMetalContext *ctx,
     transpose4x4(ctx.frameHistory.scene_prev_vp, params->prevViewProjection);
     memcpy(params->cameraPosition, ctx.frameHistory.scene_cam_pos, sizeof(float) * 3);
     params->cameraPosition[3] = 1.0f;
-    params->invResolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
-    params->invResolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
+    params->invResolution[0] = source_width > 0 ? 1.0f / (float)source_width : 0.0f;
+    params->invResolution[1] = source_height > 0 ? 1.0f / (float)source_height : 0.0f;
     params->overlayEnabled = overlay_enabled ? 1 : 0;
     /* The Metal offscreen scene target is always RGBA16F (linear HDR). */
     params->sceneIsHdr = 1;
@@ -1507,7 +1564,13 @@ static id<MTLTexture> metal_encode_postfx_pass(VGFXMetalContext *ctx,
     [pfxEncoder setFragmentSamplerState:(ctx.sharedSampler ? ctx.sharedSampler : ctx.defaultSampler)
                                 atIndex:0];
 
-    metal_fill_postfx_params(ctx, postfx, overlay_enabled, bloom_tex_enabled, &params);
+    metal_fill_postfx_params(ctx,
+                             postfx,
+                             overlay_enabled,
+                             bloom_tex_enabled,
+                             source_texture.width,
+                             source_texture.height,
+                             &params);
     [pfxEncoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
 
     [pfxEncoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
@@ -1610,8 +1673,8 @@ static id<MTLTexture> metal_encode_taa_pass(VGFXMetalContext *ctx,
     memset(&tp, 0, sizeof(tp));
     transpose4x4(ctx.frameHistory.scene_inv_vp, tp.invViewProjection);
     transpose4x4(ctx.frameHistory.scene_prev_vp, tp.prevViewProjection);
-    tp.invResolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
-    tp.invResolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
+    tp.invResolution[0] = source_texture.width > 0 ? 1.0f / (float)source_texture.width : 0.0f;
+    tp.invResolution[1] = source_texture.height > 0 ? 1.0f / (float)source_texture.height : 0.0f;
     /* Clip-space (Y-up) jitter delta converted to the TEXTURE-space (top-left)
      * convention the motion/velocity path now uses: Y negates. */
     tp.jitterDelta[0] = (ctx->_taaJitterClip[0] - ctx->_taaPrevJitterClip[0]) * 0.5f;
@@ -1667,8 +1730,8 @@ static id<MTLTexture> metal_encode_ssr_pass(VGFXMetalContext *ctx,
     sp.params0[0] = postfx ? postfx->ssr_intensity : 0.5f;
     sp.params0[1] = postfx ? postfx->ssr_max_roughness : 0.4f;
     sp.params0[2] = (float)(postfx && postfx->ssr_steps > 0 ? postfx->ssr_steps : 24);
-    sp.inv_resolution[0] = ctx.width > 0 ? 1.0f / (float)ctx.width : 0.0f;
-    sp.inv_resolution[1] = ctx.height > 0 ? 1.0f / (float)ctx.height : 0.0f;
+    sp.inv_resolution[0] = source_texture.width > 0 ? 1.0f / (float)source_texture.width : 0.0f;
+    sp.inv_resolution[1] = source_texture.height > 0 ? 1.0f / (float)source_texture.height : 0.0f;
 
     [enc setRenderPipelineState:ctx.ssrPipeline];
     [enc setFragmentTexture:source_texture atIndex:0];
@@ -1904,6 +1967,79 @@ static void metal_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
             metal_commit_pending(ctx, YES);
         if (!ctx.rttActive && ctx.width > 0 && ctx.height > 0)
             metal_recreate_main_targets(ctx, ctx.width, ctx.height);
+    }
+}
+
+/// @brief Apply a reduced window-scene render scale to the Metal backend.
+/// @details Scale changes are accepted only between frames. Size-dependent scene, overlay,
+///          post-processing, and temporal resources are rebuilt immediately from the shared
+///          extent contract. A reduced scale requires the full-screen post-FX pipeline because
+///          that pipeline performs the explicit upscale into logical-output-sized targets. If
+///          any required allocation fails, the prior scale is restored and its resources are
+///          reconstructed before failure is reported. Explicit RTT dimensions are unaffected.
+/// @param ctx_ptr Borrowed `VGFXMetalContext` backend handle.
+/// @param scale Finite requested scale in `[0.25, 1]`; values at least `0.999` normalize to 1.
+/// @return 1 when the requested/native scale is active, or 0 when validation, frame state, shader
+///         availability, or resource reconstruction prevents the change.
+static int8_t metal_set_render_scale(void *ctx_ptr, float scale) {
+    @autoreleasepool {
+        VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        float prior_scale;
+        float next_scale;
+        int32_t expected_w;
+        int32_t expected_h;
+        int route_ready;
+
+        if (!ctx || !vgfx3d_compute_scaled_scene_extent(
+                        ctx.width, ctx.height, scale, &expected_w, &expected_h)) {
+            return 0;
+        }
+        next_scale = scale >= 0.999f ? 1.0f : scale;
+        if (next_scale < 1.0f && !ctx.postfxPipeline)
+            return 0;
+        if (ctx.inFrame || ctx.encoder || ctx.cmdBuf)
+            return 0;
+
+        prior_scale =
+            (isfinite(ctx.renderScale) && ctx.renderScale >= 0.25f && ctx.renderScale <= 1.0f)
+                ? ctx.renderScale
+                : 1.0f;
+        if (fabsf(prior_scale - next_scale) <= 1.0e-6f)
+            return 1;
+
+        ctx.renderScale = next_scale;
+        metal_recreate_main_targets(ctx, ctx.width, ctx.height);
+        if (!vgfx3d_compute_scaled_scene_extent(
+                ctx.width, ctx.height, next_scale, &expected_w, &expected_h)) {
+            route_ready = 0;
+        } else if (metal_window_scene_route_enabled(ctx)) {
+            route_ready = ctx.depthTexture && ctx.offscreenColor && ctx.offscreenMotion &&
+                          ctx.overlayColorTexture && ctx.overlayMotionTexture &&
+                          ctx.overlayDepthTexture && ctx.postfxColorTexture &&
+                          ctx.postfxScratchTexture &&
+                          (int32_t)ctx.depthTexture.width == expected_w &&
+                          (int32_t)ctx.depthTexture.height == expected_h &&
+                          (int32_t)ctx.offscreenColor.width == expected_w &&
+                          (int32_t)ctx.offscreenColor.height == expected_h &&
+                          (int32_t)ctx.offscreenMotion.width == expected_w &&
+                          (int32_t)ctx.offscreenMotion.height == expected_h &&
+                          (int32_t)ctx.overlayColorTexture.width == ctx.width &&
+                          (int32_t)ctx.overlayColorTexture.height == ctx.height &&
+                          (int32_t)ctx.postfxColorTexture.width == ctx.width &&
+                          (int32_t)ctx.postfxColorTexture.height == ctx.height;
+        } else {
+            route_ready = ctx.depthTexture && ctx.offscreenMotion &&
+                          (int32_t)ctx.depthTexture.width == ctx.width &&
+                          (int32_t)ctx.depthTexture.height == ctx.height &&
+                          (int32_t)ctx.offscreenMotion.width == ctx.width &&
+                          (int32_t)ctx.offscreenMotion.height == ctx.height;
+        }
+        if (route_ready)
+            return 1;
+
+        ctx.renderScale = prior_scale;
+        metal_recreate_main_targets(ctx, ctx.width, ctx.height);
+        return 0;
     }
 }
 

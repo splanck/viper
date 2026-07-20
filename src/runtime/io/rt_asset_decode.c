@@ -233,7 +233,6 @@ static void *asset_pixels_from_raw_rgba32(uint32_t *raw_pixels, int64_t width, i
     memcpy(pixels->data, raw_pixels, bytes);
     pixels->generation++;
     pixels->alpha_scan_valid = 0;
-    pixels->alpha_scan_has_alpha = 0;
     free(raw_pixels);
     return pixels_obj;
 }
@@ -502,9 +501,8 @@ static void *load_via_tempfile(const uint8_t *data,
 int rt_asset_extension_is_typed(const char *name) {
     if (!name)
         return 0;
-    return iext(name, ".jpg") || iext(name, ".jpeg") || iext(name, ".wav") ||
-           iext(name, ".ogg") || iext(name, ".mp3") || iext(name, ".png") ||
-           iext(name, ".bmp") || iext(name, ".gif");
+    return iext(name, ".jpg") || iext(name, ".jpeg") || iext(name, ".wav") || iext(name, ".ogg") ||
+           iext(name, ".mp3") || iext(name, ".png") || iext(name, ".bmp") || iext(name, ".gif");
 }
 
 void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size) {

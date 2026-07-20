@@ -2855,6 +2855,34 @@ if (EXISTS "${CANVAS3D_RENDER_SCALE_PROBE}")
             LABELS "runtime;graphics3d;zia;requires_display"
             ENVIRONMENT "ZANNA_3D_BACKEND=software"
             TIMEOUT 60)
+    if (APPLE)
+        add_test(NAME g3d_test_canvas3d_render_scale_metal
+                COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_RENDER_SCALE_PROBE}"
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(g3d_test_canvas3d_render_scale_metal PROPERTIES
+                PASS_REGULAR_EXPRESSION "PASS"
+                LABELS "runtime;graphics3d;zia;requires_display;metal"
+                ENVIRONMENT "ZANNA_3D_BACKEND=metal"
+                TIMEOUT 120)
+    elseif (WIN32)
+        add_test(NAME g3d_test_canvas3d_render_scale_d3d11
+                COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_RENDER_SCALE_PROBE}"
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(g3d_test_canvas3d_render_scale_d3d11 PROPERTIES
+                PASS_REGULAR_EXPRESSION "PASS"
+                LABELS "runtime;graphics3d;zia;requires_display;d3d11"
+                ENVIRONMENT "ZANNA_3D_BACKEND=d3d11"
+                TIMEOUT 120)
+    elseif (UNIX)
+        add_test(NAME g3d_test_canvas3d_render_scale_opengl
+                COMMAND $<TARGET_FILE:zanna> run "${CANVAS3D_RENDER_SCALE_PROBE}"
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(g3d_test_canvas3d_render_scale_opengl PROPERTIES
+                PASS_REGULAR_EXPRESSION "PASS"
+                LABELS "runtime;graphics3d;zia;requires_display;opengl"
+                ENVIRONMENT "ZANNA_3D_BACKEND=opengl"
+                TIMEOUT 120)
+    endif ()
 endif ()
 
 set(CANVAS3D_QUALITY_PROFILES_PROBE "${G3D_TESTS_DIR}/test_canvas3d_quality_profiles.zia")

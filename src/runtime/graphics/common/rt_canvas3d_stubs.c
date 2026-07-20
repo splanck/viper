@@ -765,10 +765,38 @@ int64_t rt_canvas3d_get_backend_texture_fallback_binds(void *o) {
 /// @brief Stub for `Canvas3D.InstancedFallbackDroppedCount`.
 ///
 /// No instanced drawing occurs in graphics-disabled builds, so no instances can
-/// be dropped by the bounded fallback queue.
+/// be dropped by a chunked fallback queue reservation.
 int64_t rt_canvas3d_get_instanced_fallback_dropped_count(void *o) {
     (void)o;
     return 0;
+}
+
+/// @brief Silent fallback for `Canvas3D.LastSubmissionStatus` in graphics-disabled builds.
+/// @details No renderer submission can begin, so there is no deferred queue or snapshot failure
+///   to report through this diagnostic surface.
+/// @param o Ignored Canvas3D handle.
+/// @return Zero (`RT_CANVAS3D_SUBMISSION_OK`).
+int64_t rt_canvas3d_get_last_submission_status(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Silent fallback for `Canvas3D.SubmissionFailureCount` in graphics-disabled builds.
+/// @details Stateful graphics calls keep their existing unavailable-runtime behavior; the disabled
+///   build has no Canvas3D instance on which to retain submission diagnostics.
+/// @param o Ignored Canvas3D handle.
+/// @return Zero because no renderer submission diagnostic is stored.
+int64_t rt_canvas3d_get_submission_failure_count(void *o) {
+    (void)o;
+    return 0;
+}
+
+/// @brief Stub for `Canvas3D.ResetSubmissionDiagnostics` in graphics-disabled builds.
+/// @details The operation is intentionally a silent no-op, matching other read-only diagnostic
+///   resets when the associated graphics subsystem is absent.
+/// @param o Ignored Canvas3D handle.
+void rt_canvas3d_reset_submission_diagnostics(void *o) {
+    (void)o;
 }
 
 /// @brief Stub for `Canvas3D.EventDropCount`.

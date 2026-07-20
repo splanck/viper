@@ -17,7 +17,9 @@
 // Ownership/Lifetime:
 //   - Temp buffers are malloc'd elsewhere; tracking takes ownership for the frame.
 //   - Tracked objects are retained on insert and released on removal/frame end.
-// Links: rt_canvas3d_internal.h
+//   - Mesh snapshot entries may instead own native retained-geometry references;
+//     those references are released before the snapshot table is reset.
+// Links: rt_canvas3d_internal.h, rt_canvas3d_snapshot.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -77,8 +79,8 @@ void *canvas3d_frame_arena_alloc(rt_canvas3d *c, size_t bytes) {
     canvas3d_frame_arena_chunk *chunk;
     if (!c || bytes == 0u)
         return NULL;
-    bytes = (bytes + (CANVAS3D_FRAME_ARENA_ALIGN - 1u)) &
-            ~(size_t)(CANVAS3D_FRAME_ARENA_ALIGN - 1u);
+    bytes =
+        (bytes + (CANVAS3D_FRAME_ARENA_ALIGN - 1u)) & ~(size_t)(CANVAS3D_FRAME_ARENA_ALIGN - 1u);
     if (bytes == 0u)
         return NULL; /* overflow in round-up */
     chunk = c->frame_arena_current;
@@ -662,6 +664,7 @@ void canvas3d_clear_temp_buffers(rt_canvas3d *c) {
     c->temp_buf_count = 0;
     canvas3d_temp_buffer_set_clear(c);
     c->float_snapshot_count = 0;
+    canvas3d_release_retained_mesh_revisions(c);
     c->mesh_snapshot_count = 0;
     canvas3d_mesh_snapshot_hash_clear(c);
     c->mesh_snapshot_bytes = 0u;

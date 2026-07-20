@@ -5,9 +5,15 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/test_rt_raycast3d.cpp
+// File: src/tests/unit/test_rt_raycast3d.cpp
 // Purpose: Unit tests for Ray3D, AABB3D collision — ray-triangle, ray-AABB,
 //   ray-sphere, AABB overlap, AABB penetration.
+//
+// Key invariants:
+//   - Retained BVH hits match an independent exhaustive triangle reference.
+//   - Geometry revisions rebuild once and preserve deterministic closest-hit ties.
+// Ownership/Lifetime:
+//   - Query and mesh objects are owned by the runtime for each test case.
 //
 // Links: rt_raycast3d.h
 //
@@ -25,8 +31,8 @@
 #include "rt_string.h"
 #include <cassert>
 #include <cmath>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 
 extern "C" {
 extern void *rt_vec3_new(double x, double y, double z);
@@ -281,6 +287,158 @@ static void test_ray_mesh_translated() {
     }
 }
 
+/// @brief Compute the deterministic closest hit against a mesh by an exhaustive triangle sweep.
+/// @details This independent Möller–Trumbore reference normalizes the input direction exactly as
+///          the public query does, skips incomplete/out-of-range triangles, and resolves exact
+///          distance ties to the lower triangle index. It is intentionally test-local so the BVH
+///          implementation cannot accidentally validate itself.
+/// @param mesh Mesh payload to scan in local space.
+/// @param origin Three-component ray origin.
+/// @param direction Three-component non-zero ray direction.
+/// @param out_distance Receives the closest normalized-ray distance when a hit exists.
+/// @param out_triangle Receives the source triangle index when a hit exists.
+/// @return True when at least one triangle is hit; false otherwise.
+static bool ray_mesh_linear_reference(const rt_mesh3d *mesh,
+                                      const double origin[3],
+                                      const double direction[3],
+                                      double *out_distance,
+                                      int64_t *out_triangle) {
+    double dir[3] = {direction[0], direction[1], direction[2]};
+    double length = std::sqrt(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+    double best = INFINITY;
+    int64_t best_triangle = -1;
+    if (!mesh || !std::isfinite(length) || length <= 1.0e-8)
+        return false;
+    dir[0] /= length;
+    dir[1] /= length;
+    dir[2] /= length;
+    uint32_t vertex_count = rt_mesh3d_safe_vertex_count(mesh);
+    uint32_t triangle_count = rt_mesh3d_safe_index_count(mesh) / 3u;
+    for (uint32_t triangle = 0; triangle < triangle_count; ++triangle) {
+        uint32_t i0 = mesh->indices[triangle * 3u + 0u];
+        uint32_t i1 = mesh->indices[triangle * 3u + 1u];
+        uint32_t i2 = mesh->indices[triangle * 3u + 2u];
+        if (i0 >= vertex_count || i1 >= vertex_count || i2 >= vertex_count)
+            continue;
+        const float *a = mesh->vertices[i0].pos;
+        const float *b = mesh->vertices[i1].pos;
+        const float *c = mesh->vertices[i2].pos;
+        double e1[3] = {(double)b[0] - a[0], (double)b[1] - a[1], (double)b[2] - a[2]};
+        double e2[3] = {(double)c[0] - a[0], (double)c[1] - a[1], (double)c[2] - a[2]};
+        double p[3] = {dir[1] * e2[2] - dir[2] * e2[1],
+                       dir[2] * e2[0] - dir[0] * e2[2],
+                       dir[0] * e2[1] - dir[1] * e2[0]};
+        double det = e1[0] * p[0] + e1[1] * p[1] + e1[2] * p[2];
+        if (!std::isfinite(det) || std::fabs(det) < 1.0e-8)
+            continue;
+        double inv_det = 1.0 / det;
+        double tv[3] = {origin[0] - a[0], origin[1] - a[1], origin[2] - a[2]};
+        double u = (tv[0] * p[0] + tv[1] * p[1] + tv[2] * p[2]) * inv_det;
+        if (!std::isfinite(u) || u < 0.0 || u > 1.0)
+            continue;
+        double q[3] = {tv[1] * e1[2] - tv[2] * e1[1],
+                       tv[2] * e1[0] - tv[0] * e1[2],
+                       tv[0] * e1[1] - tv[1] * e1[0]};
+        double v = (dir[0] * q[0] + dir[1] * q[1] + dir[2] * q[2]) * inv_det;
+        if (!std::isfinite(v) || v < 0.0 || u + v > 1.0)
+            continue;
+        double distance = (e2[0] * q[0] + e2[1] * q[1] + e2[2] * q[2]) * inv_det;
+        if (std::isfinite(distance) && distance >= 0.0 &&
+            (distance < best || (distance == best && (int64_t)triangle < best_triangle))) {
+            best = distance;
+            best_triangle = triangle;
+        }
+    }
+    if (best_triangle < 0)
+        return false;
+    if (out_distance)
+        *out_distance = best;
+    if (out_triangle)
+        *out_triangle = best_triangle;
+    return true;
+}
+
+/// @brief Verify retained mesh-ray BVH equivalence, sublinear probes, reuse, and invalidation.
+/// @details Builds a 2,048-triangle plane, compares 128 deterministic randomized rays against the
+///          independent exhaustive reference, and asserts that unchanged queries keep one BVH
+///          build. Appending a distant valid triangle bumps the geometry revision and must produce
+///          exactly one additional rebuild while preserving the original local hit.
+static void test_ray_mesh_retained_bvh_matches_linear_reference() {
+    constexpr int kCells = 32;
+    rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_new();
+    void *identity = rt_mat4_identity();
+    uint32_t random_state = UINT32_C(0x6d2b79f5);
+    uint64_t largest_probe_count = 0;
+    for (int y = 0; y <= kCells; ++y) {
+        for (int x = 0; x <= kCells; ++x) {
+            rt_mesh3d_add_vertex(mesh,
+                                 (double)x - kCells * 0.5,
+                                 (double)y - kCells * 0.5,
+                                 0.0,
+                                 0.0,
+                                 0.0,
+                                 1.0,
+                                 (double)x / kCells,
+                                 (double)y / kCells);
+        }
+    }
+    for (int y = 0; y < kCells; ++y) {
+        for (int x = 0; x < kCells; ++x) {
+            int64_t i0 = (int64_t)y * (kCells + 1) + x;
+            int64_t i1 = i0 + 1;
+            int64_t i2 = i0 + (kCells + 1);
+            int64_t i3 = i2 + 1;
+            rt_mesh3d_add_triangle(mesh, i0, i1, i3);
+            rt_mesh3d_add_triangle(mesh, i0, i3, i2);
+        }
+    }
+    for (int sample = 0; sample < 128; ++sample) {
+        auto next_unit = [&random_state]() {
+            random_state = random_state * UINT32_C(1664525) + UINT32_C(1013904223);
+            return (double)(random_state >> 8u) / (double)UINT32_C(0x01000000);
+        };
+        double origin[3] = {
+            -14.0 + next_unit() * 28.0, -14.0 + next_unit() * 28.0, 4.0 + next_unit() * 12.0};
+        double direction[3] = {(next_unit() - 0.5) * 0.12, (next_unit() - 0.5) * 0.12, -1.0};
+        double reference_distance = 0.0;
+        int64_t reference_triangle = -1;
+        bool reference_hit = ray_mesh_linear_reference(
+            mesh, origin, direction, &reference_distance, &reference_triangle);
+        void *hit = rt_ray3d_intersect_mesh(rt_vec3_new(origin[0], origin[1], origin[2]),
+                                            rt_vec3_new(direction[0], direction[1], direction[2]),
+                                            mesh,
+                                            identity);
+        EXPECT_TRUE((hit != nullptr) == reference_hit,
+                    "Retained ray BVH agrees with exhaustive hit/miss result");
+        if (hit && reference_hit) {
+            EXPECT_NEAR(rt_ray3d_hit_distance(hit),
+                        reference_distance,
+                        1.0e-6,
+                        "Retained ray BVH returns exhaustive closest distance");
+            EXPECT_TRUE(rt_ray3d_hit_triangle(hit) == reference_triangle,
+                        "Retained ray BVH returns exhaustive deterministic triangle");
+        }
+        if (mesh->raycast_last_triangle_probe_count > largest_probe_count)
+            largest_probe_count = mesh->raycast_last_triangle_probe_count;
+    }
+    EXPECT_TRUE(mesh->raycast_bvh_rebuild_count == 1,
+                "Unchanged randomized mesh rays reuse one retained BVH build");
+    EXPECT_TRUE(largest_probe_count < (uint64_t)(kCells * kCells * 2) / 4u,
+                "Localized retained BVH rays probe fewer than one quarter of mesh triangles");
+
+    rt_mesh3d_add_vertex(mesh, 100.0, 100.0, -5.0, 0.0, 0.0, 1.0, 0.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 101.0, 100.0, -5.0, 0.0, 0.0, 1.0, 1.0, 0.0);
+    rt_mesh3d_add_vertex(mesh, 100.0, 101.0, -5.0, 0.0, 0.0, 1.0, 0.0, 1.0);
+    int64_t far_base = rt_mesh3d_get_vertex_count(mesh) - 3;
+    rt_mesh3d_add_triangle(mesh, far_base, far_base + 1, far_base + 2);
+    void *post_mutation_hit = rt_ray3d_intersect_mesh(
+        rt_vec3_new(0.25, 0.25, 8.0), rt_vec3_new(0.0, 0.0, -1.0), mesh, identity);
+    EXPECT_TRUE(post_mutation_hit != nullptr,
+                "Ray BVH rebuild after geometry mutation preserves existing local hits");
+    EXPECT_TRUE(mesh->raycast_bvh_rebuild_count == 2,
+                "Geometry revision mutation triggers exactly one retained BVH rebuild");
+}
+
 static void test_ray_mesh_and_hit_accessors_reject_wrong_handles() {
     void *origin = rt_vec3_new(0, 0, 5);
     void *dir = rt_vec3_new(0, 0, -1);
@@ -373,9 +531,12 @@ static void test_translated_mesh_hit_transform_aliasing() {
     if (hit) {
         void *pt = rt_ray3d_hit_point(hit);
         void *normal = rt_ray3d_hit_normal(hit);
-        EXPECT_NEAR(rt_vec3_x(pt), 3.0, 0.01, "Translated mesh hit keeps X after alias-safe transform");
-        EXPECT_NEAR(rt_vec3_z(pt), 1.0, 0.01, "Translated mesh hit keeps Z after alias-safe transform");
-        EXPECT_TRUE(std::isfinite(rt_ray3d_hit_distance(hit)), "RayHit distance accessor is finite");
+        EXPECT_NEAR(
+            rt_vec3_x(pt), 3.0, 0.01, "Translated mesh hit keeps X after alias-safe transform");
+        EXPECT_NEAR(
+            rt_vec3_z(pt), 1.0, 0.01, "Translated mesh hit keeps Z after alias-safe transform");
+        EXPECT_TRUE(std::isfinite(rt_ray3d_hit_distance(hit)),
+                    "RayHit distance accessor is finite");
         EXPECT_TRUE(std::isfinite(rt_vec3_x(normal)) && std::isfinite(rt_vec3_y(normal)) &&
                         std::isfinite(rt_vec3_z(normal)),
                     "RayHit normal accessor returns finite components");
@@ -391,8 +552,8 @@ static void test_shape_queries_clamp_extreme_finite_inputs() {
                     std::isfinite(rt_vec3_z(closest)),
                 "AABB closest point clamps extreme finite inputs");
 
-    void *pen = rt_sphere3d_penetration(
-        rt_vec3_new(0, 0, 0), 1.0e300, rt_vec3_new(0.5, 0, 0), 1.0e300);
+    void *pen =
+        rt_sphere3d_penetration(rt_vec3_new(0, 0, 0), 1.0e300, rt_vec3_new(0.5, 0, 0), 1.0e300);
     EXPECT_TRUE(std::isfinite(rt_vec3_x(pen)) && std::isfinite(rt_vec3_y(pen)) &&
                     std::isfinite(rt_vec3_z(pen)),
                 "Sphere penetration clamps extreme finite radii");
@@ -423,6 +584,7 @@ int main() {
     test_ray_mesh_unnormalized_direction_reports_world_distance();
     test_ray_mesh_repairs_corrupt_geometry_counts();
     test_ray_mesh_translated();
+    test_ray_mesh_retained_bvh_matches_linear_reference();
     test_ray_mesh_and_hit_accessors_reject_wrong_handles();
     test_aabb_closest_point_surface_inside();
     test_aabb_sphere_overlap_inside_box();

@@ -32,8 +32,9 @@ static int fbx_find_cluster_transform_link_for_model(
             strcmp(fbx_prop_str(cluster, 2), "Cluster") != 0)
             continue;
         cluster_id = fbx_prop_i64(cluster, 0);
-        for (int32_t ci = 0; ci < ct->count; ci++) {
-            if (ct->entries[ci].child_id == cluster_id && ct->entries[ci].parent_id == model_id) {
+        for (int32_t ci = fbx_connections_first_for_child(ct, cluster_id); ci >= 0;
+             ci = fbx_connections_next_for_child(ct, ci)) {
+            if (ct->entries[ci].parent_id == model_id) {
                 connected = 1;
                 break;
             }
@@ -52,7 +53,7 @@ static int fbx_find_cluster_transform_link_for_model(
 
 typedef struct {
     int64_t id;
-    char name[64];
+    fbx_node_t *source;
     fbx_transform_components_t transform;
     double local_model_bind[16];
     double cluster_global_bind[16];
@@ -157,15 +158,7 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
         fbx_skel_bone_info_t *bi = &bones[bone_count++];
         *bi = zero_bone_info;
         bi->id = fbx_prop_i64(obj, 0);
-        char decoded_name[64];
-        const char *nstr;
-        fbx_decode_object_name(fbx_prop_str(obj, 1), decoded_name, sizeof(decoded_name));
-        nstr = decoded_name;
-        size_t nlen = strlen(nstr);
-        if (nlen > 63)
-            nlen = 63;
-        memcpy(bi->name, nstr, nlen);
-        bi->name[nlen] = '\0';
+        bi->source = obj;
         fbx_read_model_transform_components(obj, &bi->transform);
         fbx_build_model_transform_matrix(&bi->transform, bi->local_model_bind);
         if (z_up)
@@ -249,8 +242,11 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
         if (bi->has_cluster_global_bind) {
             memcpy(global_bind, bi->cluster_global_bind, sizeof(global_bind));
         } else if (parent_idx >= 0) {
-            fbx_mat4_mul_local(
-                &global_binds[(size_t)parent_idx * 16u], bi->local_model_bind, global_bind);
+            fbx_build_inherited_global_matrix(&global_binds[(size_t)parent_idx * 16u],
+                                              &bones[order[parent_idx]].transform,
+                                              bi->local_model_bind,
+                                              &bi->transform,
+                                              global_bind);
         } else {
             memcpy(global_bind, bi->local_model_bind, sizeof(global_bind));
         }
@@ -267,7 +263,9 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
         }
 
         void *bind_mat = fbx_mat4_to_rt(local_bind);
-        rt_string bone_name = rt_const_cstr(bi->name);
+        rt_string bone_name = fbx_object_name_string(bi->source, 1);
+        if (!bone_name)
+            bone_name = rt_const_cstr("Bone");
         int64_t added = rt_skeleton3d_add_bone(skel, bone_name, parent_idx, bind_mat);
         rt_string_unref(bone_name);
         fbx_release_ref(&bind_mat);

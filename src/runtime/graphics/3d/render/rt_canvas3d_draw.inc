@@ -1,8 +1,22 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/render/rt_canvas3d_draw.inc  (#included from rt_canvas3d.c; not a
-// standalone translation unit) Purpose: Canvas3D rendering dispatch: clear, screen-overlay
-// geometry, begin/draw mesh and text
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/render/rt_canvas3d_draw.inc
+// Purpose: Canvas3D rendering dispatch for clears, screen overlays, mesh queueing,
+//   retained geometry binding, camera-relative rebasing, and text submission.
+// Key invariants:
+//   - Included only by rt_canvas3d.c; this is not a standalone translation unit.
+//   - Heap mesh commands bind immutable retained revisions before publication.
+//   - Rebased, skinned, and otherwise dynamic geometry keeps an explicit frame lifetime.
+// Ownership/Lifetime:
+//   - Draw-resource references and native geometry revisions remain owned by the
+//     Canvas3D frame until backend submission and cleanup finish.
+// Links: rt_canvas3d.c, rt_canvas3d_internal.h, rt_canvas3d_snapshot.c
+//
 //===----------------------------------------------------------------------===//
 
 /*==========================================================================
@@ -1670,8 +1684,9 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
     dd->cmd.index_count = safe_index_count;
     canvas3d_mark_cmd_validated_indices(&dd->cmd, mesh);
     dd->cmd.geometry_key =
-        (rt_heap_is_payload(mesh_obj) && !needs_generated_tangents && !rebase_identity_vertices)
-            ? mesh_obj
+        (rt_heap_is_payload(mesh_obj) && !rebase_identity_vertices)
+            ? (needs_generated_tangents ? (const void *)&mesh->retained_tangent_cache_key
+                                        : mesh_obj)
             : NULL;
     dd->cmd.geometry_revision = dd->cmd.geometry_key ? mesh->geometry_revision : 0;
     dd->cmd.compact_vertex_stream = (dd->cmd.geometry_key && mesh->compact_streams) ? 1 : 0;

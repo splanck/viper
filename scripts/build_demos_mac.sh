@@ -1,4 +1,21 @@
 #!/bin/bash
+#===----------------------------------------------------------------------===#
+#
+# Part of the Zanna project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: scripts/build_demos_mac.sh
+# Purpose: Build curated macOS ARM64 demos with Zanna's native toolchain.
+# Key invariants: Every frontend and backend stage uses O2; packaged assets
+#                 remain attached to one-step project builds.
+# Ownership/Lifetime: Temporary build artifacts live under /tmp and are removed
+#                     after each demo; completed binaries live in examples/bin.
+# Links: scripts/demo_projects.list, scripts/build_demos.sh
+#
+#===----------------------------------------------------------------------===#
+
 # Build curated Zia showcase binaries on macOS arm64 using the native assembler
 # and linker. Optional smoke-run validation can be enabled with --run. This uses
 # zero external tools for the build path — no system assembler (cc -c), no
@@ -209,7 +226,7 @@ build_demo() {
     else
         # Step 1: Frontend — compile to IL.
         echo -n "  Frontend -> IL... "
-        if ! "$ZANNA" build "$project_dir" -o "$il_file" 2>"$frontend_err"; then
+        if ! "$ZANNA" build "$project_dir" "$codegen_opt" -o "$il_file" 2>"$frontend_err"; then
             echo -e "${RED}FAILED${NC}"
             head -20 "$frontend_err"
             rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"
@@ -219,7 +236,8 @@ build_demo() {
 
         # Step 2: Native codegen — binary encoder + native linker.
         echo -n "  Codegen (native asm+link)... "
-        if ! "$ZANNA" codegen arm64 "$il_file" --native-asm --native-link "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
+        if ! "$ZANNA" codegen arm64 "$il_file" --native-asm --native-link \
+            --skip-il-optimization "$codegen_opt" -o "$exe_file" 2>"$codegen_err"; then
             echo -e "${RED}FAILED${NC}"
             head -20 "$codegen_err"
             rm -f "$frontend_err" "$codegen_err" "$run_out" "$run_err" "$il_file"

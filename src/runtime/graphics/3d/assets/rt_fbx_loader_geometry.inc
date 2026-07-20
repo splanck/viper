@@ -309,8 +309,15 @@ static void fbx_parse_vertex_layer(fbx_node_t *geom_node,
                                    int components,
                                    int layer_index,
                                    fbx_vertex_layer_t *out) {
+    int direct_compatibility_layer = 0;
     memset(out, 0, sizeof(*out));
     fbx_node_t *layer = fbx_find_vertex_layer(geom_node, layer_name, layer_index);
+    if (!layer && layer_index == 0 && fbx_find_child(geom_node, data_name)) {
+        /* Preserve the compact ASCII form historically accepted by Zanna fixtures/exporters:
+         * direct attribute arrays under Geometry are interpreted as an implicit layer. */
+        layer = geom_node;
+        direct_compatibility_layer = 1;
+    }
     if (!layer)
         return;
     fbx_node_t *d_node = fbx_find_child(layer, data_name);
@@ -346,6 +353,16 @@ static void fbx_parse_vertex_layer(fbx_node_t *geom_node,
         if (!ni && index_name_alt)
             ni = fbx_find_child(layer, index_name_alt);
         if (ni && ni->prop_count >= 1 && ni->props[0].type == 'i') {
+            out->indices = (int32_t *)ni->props[0].v.array.data;
+            out->index_count = ni->props[0].v.array.count;
+        }
+    } else if (direct_compatibility_layer) {
+        fbx_node_t *ni = fbx_find_child(layer, index_name);
+        if (!ni && index_name_alt)
+            ni = fbx_find_child(layer, index_name_alt);
+        if (ni && ni->prop_count >= 1 && ni->props[0].type == 'i') {
+            out->index_to_direct = 1;
+            out->by_polygon_vertex = 1;
             out->indices = (int32_t *)ni->props[0].v.array.data;
             out->index_count = ni->props[0].v.array.count;
         }

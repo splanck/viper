@@ -487,6 +487,7 @@ typedef struct {
     size_t len;        ///< Number of valid bytes written to `data`.
     size_t capacity;   ///< Allocated capacity of `data` in bytes.
     size_t max_output; ///< Maximum allowed decompressed bytes.
+    bool owns_data;    ///< True when @c data must be freed/reallocated by this buffer.
 } output_buffer_t;
 
 /// @brief Initialize a growable output buffer.
@@ -507,6 +508,26 @@ static int out_init(output_buffer_t *out, size_t initial_cap, size_t max_output)
     }
     out->len = 0;
     out->max_output = max_output;
+    out->owns_data = true;
+    return 1;
+}
+
+/// @brief Initialize an inflate output view over an exact caller-owned destination.
+/// @details The fixed view never grows or frees @p data. Setting both capacity and output limit
+///          to @p size makes any decoded byte beyond the caller's exact destination fail through
+///          the ordinary output-limit path before a write occurs.
+/// @param out Output-buffer state to initialize.
+/// @param data Borrowed destination; must be non-NULL even when @p size is zero.
+/// @param size Exact destination capacity in bytes.
+/// @return 1 for valid arguments, otherwise 0.
+static int out_init_fixed(output_buffer_t *out, uint8_t *data, size_t size) {
+    if (!out || !data)
+        return 0;
+    out->data = data;
+    out->len = 0;
+    out->capacity = size;
+    out->max_output = size;
+    out->owns_data = false;
     return 1;
 }
 
@@ -532,6 +553,10 @@ static int out_ensure(output_buffer_t *out, size_t need) {
 
     if (required <= out->capacity)
         return 1;
+    if (!out->owns_data) {
+        rt_trap("Inflate: decoded output exceeds destination");
+        return 0;
+    }
     size_t new_cap = out->capacity ? out->capacity : 256;
     while (new_cap < required) {
         if (new_cap > out->max_output / 2) {
@@ -598,10 +623,12 @@ static int out_append(output_buffer_t *out, const uint8_t *data, size_t len) {
 
 /// @brief Release the output buffer's heap allocation.
 static void out_free(output_buffer_t *out) {
-    free(out->data);
+    if (out->owns_data)
+        free(out->data);
     out->data = NULL;
     out->capacity = 0;
     out->len = 0;
+    out->owns_data = false;
 }
 
 //=============================================================================
@@ -845,21 +872,27 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
 /// 256MB decompression-bomb limit. After the final block, any residual
 /// non-zero bits in the byte-aligned tail are a stream corruption —
 /// not just padding — and also trap.
-static uint8_t *inflate_raw_limited_ex(const uint8_t *data,
-                                       size_t len,
-                                       size_t max_output,
-                                       size_t *out_len,
-                                       size_t *consumed_bytes,
-                                       bool allow_trailing) {
+static uint8_t *inflate_raw_limited_to_ex(const uint8_t *data,
+                                          size_t len,
+                                          size_t max_output,
+                                          size_t *out_len,
+                                          size_t *consumed_bytes,
+                                          bool allow_trailing,
+                                          uint8_t *fixed_output) {
     init_fixed_trees();
 
     bit_reader_t br;
     br_init(&br, data, len);
 
     output_buffer_t out;
-    size_t estimate = len > max_output / 4 ? max_output : len * 4;
-    if (!out_init(&out, estimate, max_output))
-        return NULL; // Estimate 4x expansion without overflowing.
+    if (fixed_output) {
+        if (!out_init_fixed(&out, fixed_output, max_output))
+            return NULL;
+    } else {
+        size_t estimate = len > max_output / 4 ? max_output : len * 4;
+        if (!out_init(&out, estimate, max_output))
+            return NULL; // Estimate 4x expansion without overflowing.
+    }
 
     bool last_block = false;
 
@@ -934,6 +967,19 @@ static uint8_t *inflate_raw_limited_ex(const uint8_t *data,
     if (out_len)
         *out_len = out.len;
     return out.data;
+}
+
+/// @brief Allocate and decode a bounded raw DEFLATE stream.
+/// @details Compatibility wrapper around the destination-aware driver. A NULL fixed destination
+///          selects the original growable malloc-owned output behavior.
+static uint8_t *inflate_raw_limited_ex(const uint8_t *data,
+                                       size_t len,
+                                       size_t max_output,
+                                       size_t *out_len,
+                                       size_t *consumed_bytes,
+                                       bool allow_trailing) {
+    return inflate_raw_limited_to_ex(
+        data, len, max_output, out_len, consumed_bytes, allow_trailing, NULL);
 }
 
 static void *inflate_data_limited_ex(const uint8_t *data,
@@ -1229,6 +1275,87 @@ int rt_compress_inflate_raw(
     *out_data = raw;
     *out_len = raw_len;
     return 1;
+}
+
+/// @brief Compute RFC 1950 Adler-32 over a bounded byte span.
+/// @details Processes at most 5,552 bytes between reductions, the largest safe block for the
+///          32-bit running sums. A NULL pointer is accepted only for an empty span.
+/// @param data Input bytes.
+/// @param len Number of input bytes.
+/// @return `(s2 << 16) | s1`, initialized to the RFC-mandated value one.
+static uint32_t compress_adler32(const uint8_t *data, size_t len) {
+    uint32_t s1 = 1;
+    uint32_t s2 = 0;
+
+    while (len > 0) {
+        size_t chunk = len < 5552u ? len : 5552u;
+        for (size_t i = 0; i < chunk; i++) {
+            s1 += data[i];
+            s2 += s1;
+        }
+        s1 %= 65521u;
+        s2 %= 65521u;
+        data += chunk;
+        len -= chunk;
+    }
+    return (s2 << 16) | s1;
+}
+
+/// @brief Validate the RFC 1950 CMF/FLG header of a complete zlib stream.
+/// @details Requires DEFLATE compression, a window no larger than 32 KiB, a valid FCHECK value,
+///          and no preset dictionary. The six-byte minimum covers CMF/FLG and Adler-32; the raw
+///          DEFLATE decoder subsequently rejects a missing block payload.
+/// @param data Complete candidate stream.
+/// @param len Candidate byte count.
+/// @return 1 when the wrapper header can be decoded without a dictionary, otherwise 0.
+static int compress_validate_zlib_header(const uint8_t *data, size_t len) {
+    uint8_t cmf;
+    uint8_t flg;
+
+    if (!data || len < 6)
+        return 0;
+    cmf = data[0];
+    flg = data[1];
+    if ((cmf & 0x0Fu) != 8u || (cmf >> 4) > 7u)
+        return 0;
+    if ((((uint16_t)cmf << 8) | (uint16_t)flg) % 31u != 0u)
+        return 0;
+    if ((flg & 0x20u) != 0u)
+        return 0;
+    return 1;
+}
+
+/// @brief Decode one complete zlib-wrapped DEFLATE stream into exact caller storage.
+/// @details See the public declaration for the wrapper checks. Trap recovery converts every raw
+///          DEFLATE structural failure into a zero return while preserving the caller-owned
+///          destination. Passing `allow_trailing=false` makes the raw decoder consume precisely
+///          the bytes between CMF/FLG and Adler-32, so hidden bytes before the checksum cannot be
+///          accepted as padding.
+int rt_compress_inflate_zlib_into(const uint8_t *data,
+                                  size_t len,
+                                  uint8_t *output,
+                                  size_t output_size) {
+    jmp_buf recovery;
+    size_t decoded_size = 0;
+    uint8_t *decoded = NULL;
+    uint32_t expected_adler;
+    volatile int ok = 0;
+
+    if (!output || !compress_validate_zlib_header(data, len))
+        return 0;
+    expected_adler = ((uint32_t)data[len - 4] << 24) | ((uint32_t)data[len - 3] << 16) |
+                     ((uint32_t)data[len - 2] << 8) | (uint32_t)data[len - 1];
+
+    rt_trap_set_recovery(&recovery);
+    if (setjmp(recovery) == 0) {
+        decoded = inflate_raw_limited_to_ex(
+            data + 2, len - 6, output_size, &decoded_size, NULL, false, output);
+        ok = decoded == output && decoded_size == output_size;
+    }
+    rt_trap_clear_recovery();
+    if (!ok)
+        return 0;
+    return compress_adler32(output, output_size) == expected_adler ? 1 : 0;
 }
 
 /// @brief `Compress.Gzip(data)` — RFC 1952 GZIP wrap at default level.

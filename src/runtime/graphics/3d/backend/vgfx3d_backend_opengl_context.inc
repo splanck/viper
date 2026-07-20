@@ -71,6 +71,7 @@ static void gl_init_context_defaults(gl_context_t *ctx, int32_t w, int32_t h) {
     };
     ctx->width = w;
     ctx->height = h;
+    ctx->render_scale = 1.0f;
     memcpy(ctx->view, kIdentity4x4, sizeof(ctx->view));
     memcpy(ctx->projection, kIdentity4x4, sizeof(ctx->projection));
     memcpy(ctx->vp, kIdentity4x4, sizeof(ctx->vp));
@@ -800,8 +801,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     gl_bind_context_uniform_blocks(ctx);
     if (!gl_generate_context_objects(ctx) || !gl_init_streaming_buffers(ctx) ||
         !gl_init_static_geometry_buffers(ctx) || !gl_create_default_white_texture(ctx) ||
-        !gl_create_brdf_lut_texture(ctx) ||
-        !gl_create_default_white_cubemap(ctx)) {
+        !gl_create_brdf_lut_texture(ctx) || !gl_create_default_white_cubemap(ctx)) {
         gl_release_fixed_context_objects(ctx);
         gl_delete_context_programs(ctx);
         gl_destroy_native_binding(ctx);
@@ -835,6 +835,7 @@ static void gl_destroy_ctx(void *ctx_ptr) {
     destroy_scene_targets(ctx);
     destroy_postfx_readback_target(ctx);
     destroy_postfx_scratch_target(ctx);
+    destroy_present_target(ctx);
     destroy_bloom_targets(ctx);
     destroy_taa_targets(ctx);
     destroy_ssr_target(ctx);
@@ -844,7 +845,7 @@ static void gl_destroy_ctx(void *ctx_ptr) {
 
     for (int ws = 0; ws < 3; ws++) {
         for (int wt = 0; wt < 3; wt++) {
-            for (int filter = 0; filter < 2; filter++) {
+            for (int filter = 0; filter < 12; filter++) {
                 for (int anisotropy = 0; anisotropy < VGFX3D_OPENGL_ANISOTROPY_LEVEL_COUNT;
                      anisotropy++) {
                     if (ctx->material_samplers[ws][wt][filter][anisotropy])

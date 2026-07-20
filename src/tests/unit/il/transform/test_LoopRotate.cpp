@@ -11,6 +11,7 @@
 //   - Only rotates single-latch, single-exit loops with pure headers.
 //   - Non-rotatable loops (side effects in header, multiple exits) unchanged.
 //   - Guard block inserted for initial condition check.
+//   - Rotation preserves verifier-backed checked-arithmetic guarantees.
 // Ownership/Lifetime: Transient modules.
 // Links: il/transform/LoopRotate.cpp
 //
@@ -27,6 +28,7 @@
 #include "il/core/Param.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
+#include "il/io/Parser.hpp"
 #include "il/transform/AnalysisManager.hpp"
 #include "il/transform/LoopRotate.hpp"
 #include "il/transform/LoopSimplify.hpp"
@@ -35,9 +37,20 @@
 #include "il/verify/Verifier.hpp"
 #include "tests/TestHarness.hpp"
 
+#include <sstream>
+#include <string>
+
 using namespace il::core;
 
 namespace {
+
+Module parseModule(const std::string &text) {
+    Module module;
+    std::istringstream input(text);
+    auto parsed = il::io::Parser::parse(input, module);
+    ASSERT_TRUE(static_cast<bool>(parsed));
+    return module;
+}
 
 void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
@@ -556,6 +569,49 @@ TEST(LoopRotate, BailsWhenHeaderInstrResultUsedInBody) {
     // Whether or not it rotated, the module must still verify.
     auto verify = il::verify::Verifier::verify(module);
     EXPECT_TRUE(static_cast<bool>(verify));
+}
+
+TEST(LoopRotate, PreservesCheckedArithmeticProofAcrossDiamondLatch) {
+    Module module = parseModule(R"(il 0.3.0
+func @main(%choose: i1) -> i64 {
+entry(%choose: i1):
+  br header(0)
+header(%i: i64):
+  %more = scmp_lt %i, 7
+  cbr %more, body(%i), exit(%i)
+body(%j: i64):
+  cbr %choose, left(%j), right(%j)
+left(%l: i64):
+  br latch(%l)
+right(%r: i64):
+  br latch(%r)
+latch(%k: i64):
+  %next = add %k, 1
+  br header(%next)
+exit(%out: i64):
+  ret %out
+}
+)");
+    Function &function = module.functions.front();
+    EXPECT_TRUE(static_cast<bool>(il::verify::Verifier::verify(module)));
+
+    il::transform::AnalysisRegistry registry;
+    setupAnalysisRegistry(registry);
+    il::transform::AnalysisManager am(module, registry);
+
+    il::transform::LoopSimplify simplify;
+    auto simplifyResult = simplify.run(function, am);
+    am.invalidateAfterFunctionPass(simplifyResult, function);
+
+    il::transform::LoopRotate rotate;
+    auto rotateResult = rotate.run(function, am);
+    am.invalidateAfterFunctionPass(rotateResult, function);
+
+    bool sawGuard = false;
+    for (const auto &block : function.blocks)
+        sawGuard = sawGuard || block.label.find(".guard") != std::string::npos;
+    EXPECT_TRUE(sawGuard);
+    EXPECT_TRUE(static_cast<bool>(il::verify::Verifier::verify(module)));
 }
 
 int main(int argc, char **argv) {

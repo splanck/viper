@@ -1062,6 +1062,7 @@ static void *vscn_parse_skeleton(void *skel_obj) {
         return NULL;
     }
     skel->bone_capacity = (int32_t)bone_count;
+    skel->bone_count = (int32_t)bone_count;
     for (int64_t b = 0; b < bone_count; b++) {
         void *bone_obj = rt_seq_get(bones_arr, b);
         vgfx3d_bone_t *bone = &skel->bones[b];
@@ -1073,12 +1074,9 @@ static void *vscn_parse_skeleton(void *skel_obj) {
             parent < -1 || parent >= bone_count)
             goto fail;
         name = vjson_cstr(bone_obj, "name");
-        if (name) {
-            size_t n = strlen(name);
-            if (n >= sizeof(bone->name))
-                n = sizeof(bone->name) - 1u;
-            memcpy(bone->name, name, n);
-        }
+        bone->name = rt_const_cstr(name ? name : "");
+        if (!bone->name)
+            goto fail;
         bone->parent_index = (int32_t)parent;
         bind_arr = vjson_get(bone_obj, "bindLocal");
         inv_arr = vjson_get(bone_obj, "inverseBind");
@@ -1093,7 +1091,6 @@ static void *vscn_parse_skeleton(void *skel_obj) {
             bone->inverse_bind[k] = (float)iv;
         }
     }
-    skel->bone_count = (int32_t)bone_count;
     return skel;
 fail:
     scene3d_release_ref((void **)&skel);

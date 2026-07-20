@@ -333,6 +333,74 @@ static FbxPropFixture fbx_prop_array_fixture(char type, const T *data, size_t co
     return prop;
 }
 
+/// @brief Compute RFC 1950 Adler-32 for a fixture byte span.
+/// @param data Source bytes; may be NULL only when @p length is zero.
+/// @param length Number of bytes to checksum.
+/// @return Adler-32 value in host integer form.
+static uint32_t fbx_fixture_adler32(const uint8_t *data, size_t length) {
+    uint32_t a = 1u;
+    uint32_t b = 0u;
+    for (size_t i = 0; i < length; i++) {
+        a = (a + data[i]) % 65521u;
+        b = (b + a) % 65521u;
+    }
+    return (b << 16u) | a;
+}
+
+/// @brief Wrap raw bytes in a standards-compliant zlib stream containing stored DEFLATE blocks.
+/// @details Stored blocks keep fixture construction zero-dependency while still exercising FBX's
+///          compressed-array path and the shared strict RFC 1950 decoder.
+/// @param data Raw source bytes.
+/// @param length Raw byte count.
+/// @return Complete CMF/FLG + DEFLATE + Adler-32 stream.
+static std::vector<uint8_t> fbx_fixture_zlib_store(const uint8_t *data, size_t length) {
+    std::vector<uint8_t> out;
+    size_t offset = 0;
+    out.push_back(0x78u);
+    out.push_back(0x01u);
+    do {
+        size_t remaining = length - offset;
+        uint16_t block_length = (uint16_t)(remaining > UINT16_MAX ? UINT16_MAX : remaining);
+        uint16_t inverse_length = (uint16_t)~block_length;
+        int final_block = offset + block_length == length;
+        out.push_back((uint8_t)(final_block ? 1u : 0u));
+        out.push_back((uint8_t)(block_length & 0xffu));
+        out.push_back((uint8_t)(block_length >> 8u));
+        out.push_back((uint8_t)(inverse_length & 0xffu));
+        out.push_back((uint8_t)(inverse_length >> 8u));
+        if (block_length > 0) {
+            out.insert(out.end(), data + offset, data + offset + block_length);
+            offset += block_length;
+        }
+    } while (offset < length);
+    uint32_t adler = fbx_fixture_adler32(data, length);
+    out.push_back((uint8_t)(adler >> 24u));
+    out.push_back((uint8_t)(adler >> 16u));
+    out.push_back((uint8_t)(adler >> 8u));
+    out.push_back((uint8_t)adler);
+    return out;
+}
+
+/// @brief Build one encoding-1 FBX numeric array property from stored-block zlib bytes.
+/// @tparam T Trivially copyable numeric element type.
+/// @param type FBX array type byte (`i`, `l`, `f`, or `d`).
+/// @param data Numeric source array.
+/// @param count Element count.
+/// @return Compressed-array fixture property.
+template <typename T>
+static FbxPropFixture fbx_prop_compressed_array_fixture(char type, const T *data, size_t count) {
+    FbxPropFixture prop;
+    size_t byte_length = count * sizeof(T);
+    const uint8_t *bytes = reinterpret_cast<const uint8_t *>(data);
+    std::vector<uint8_t> compressed = fbx_fixture_zlib_store(bytes, byte_length);
+    prop.type = type;
+    append_bytes(prop.payload, (uint32_t)count);
+    append_bytes(prop.payload, (uint32_t)1);
+    append_bytes(prop.payload, (uint32_t)compressed.size());
+    prop.payload.insert(prop.payload.end(), compressed.begin(), compressed.end());
+    return prop;
+}
+
 static void write_fbx_node_fixture(const FbxNodeFixture &node, std::vector<uint8_t> &out) {
     size_t start = out.size();
     size_t prop_len_offset;
@@ -463,6 +531,174 @@ static bool write_fbx_document_fixture(const char *path,
     write_fbx_node_fixture(connections, bytes);
     bytes.resize(bytes.size() + 13, 0);
     return write_binary_file(path, bytes);
+}
+
+static FbxNodeFixture make_fbx_animation_curve_fixture(int64_t id,
+                                                       const int64_t *times,
+                                                       const double *values,
+                                                       size_t count);
+
+/// @brief Construct one triangle Geometry node for binary typed-graph parity fixtures.
+/// @param id Numeric object ID.
+/// @param name Display name.
+/// @param x_offset X offset applied to all control points.
+/// @return Complete mesh Geometry node.
+static FbxNodeFixture make_fbx_triangle_geometry_fixture(int64_t id,
+                                                         const char *name,
+                                                         double x_offset) {
+    const double positions[] = {x_offset, 0.0, 0.0, x_offset + 1.0, 0.0, 0.0, x_offset, 1.0, 0.0};
+    const int32_t indices[] = {0, 1, ~2};
+    FbxNodeFixture geometry;
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(id));
+    geometry.props.push_back(fbx_prop_string_fixture(make_fbx_object_name(name, "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Mesh"));
+    geometry.children.push_back(
+        FbxNodeFixture{"Vertices", {fbx_prop_array_fixture('d', positions, 9u)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"PolygonVertexIndex", {fbx_prop_array_fixture('i', indices, 3u)}, {}});
+    return geometry;
+}
+
+/// @brief Construct one material object with an authored DiffuseColor.
+/// @param id Numeric object ID.
+/// @param name Display name.
+/// @param red Diffuse red lane.
+/// @param green Diffuse green lane.
+/// @param blue Diffuse blue lane.
+/// @return Complete Material node.
+static FbxNodeFixture make_fbx_material_fixture(
+    int64_t id, const char *name, double red, double green, double blue) {
+    FbxNodeFixture material;
+    FbxNodeFixture properties;
+    material.name = "Material";
+    material.props.push_back(fbx_prop_i64_fixture(id));
+    material.props.push_back(fbx_prop_string_fixture(make_fbx_object_name(name, "Material")));
+    material.props.push_back(fbx_prop_string_fixture(""));
+    properties.name = "Properties70";
+    properties.children.push_back(make_fbx_property_vec3("DiffuseColor", red, green, blue));
+    material.children.push_back(properties);
+    return material;
+}
+
+/// @brief Build the binary counterpart of the multi-object typed ASCII regression graph.
+/// @details The graph contains two meshes/models/materials, a two-bone hierarchy, and one keyed
+///          animation stack so parity covers every extraction family enabled by ASCII FBX.
+/// @param objects Receives an `Objects` node.
+/// @param connections Receives a matching `Connections` node.
+static void make_fbx_multi_object_graph_fixture(FbxNodeFixture *objects,
+                                                FbxNodeFixture *connections) {
+    static const int64_t times[] = {0, 46186158000LL};
+    static const double values[] = {0.0, 2.0};
+    FbxNodeFixture stack;
+    FbxNodeFixture layer;
+    FbxNodeFixture curve_node;
+    if (!objects || !connections)
+        return;
+    objects->name = "Objects";
+    objects->children.push_back(make_fbx_triangle_geometry_fixture(100, "MeshA", 0.0));
+    objects->children.push_back(make_fbx_triangle_geometry_fixture(101, "MeshB", 2.0));
+    objects->children.push_back(make_fbx_model_fixture(200, "ModelA", "Mesh", 0.0, 0.0, 0.0));
+    objects->children.push_back(make_fbx_model_fixture(201, "ModelB", "Mesh", 0.0, 0.0, 0.0));
+    objects->children.push_back(make_fbx_material_fixture(300, "Red", 1.0, 0.0, 0.0));
+    objects->children.push_back(make_fbx_material_fixture(301, "Green", 0.0, 1.0, 0.0));
+    objects->children.push_back(make_fbx_model_fixture(400, "RigRoot", "Root", 0.0, 0.0, 0.0));
+    objects->children.push_back(make_fbx_model_fixture(401, "RigChild", "LimbNode", 0.0, 1.0, 0.0));
+    stack.name = "AnimationStack";
+    stack.props = {fbx_prop_i64_fixture(500),
+                   fbx_prop_string_fixture(make_fbx_object_name("Move", "AnimStack")),
+                   fbx_prop_string_fixture("")};
+    layer.name = "AnimationLayer";
+    layer.props = {fbx_prop_i64_fixture(501),
+                   fbx_prop_string_fixture(make_fbx_object_name("Base", "AnimLayer")),
+                   fbx_prop_string_fixture("")};
+    curve_node.name = "AnimationCurveNode";
+    curve_node.props = {fbx_prop_i64_fixture(502),
+                        fbx_prop_string_fixture(make_fbx_object_name("MoveX", "AnimCurveNode")),
+                        fbx_prop_string_fixture("")};
+    objects->children.push_back(stack);
+    objects->children.push_back(layer);
+    objects->children.push_back(curve_node);
+    objects->children.push_back(make_fbx_animation_curve_fixture(503, times, values, 2u));
+
+    connections->name = "Connections";
+    connections->children.push_back(make_fbx_connection_fixture(200, 0));
+    connections->children.push_back(make_fbx_connection_fixture(201, 0));
+    connections->children.push_back(make_fbx_connection_fixture(400, 0));
+    connections->children.push_back(make_fbx_connection_fixture(401, 400));
+    connections->children.push_back(make_fbx_connection_fixture(100, 200));
+    connections->children.push_back(make_fbx_connection_fixture(101, 201));
+    connections->children.push_back(make_fbx_connection_fixture(300, 200));
+    connections->children.push_back(make_fbx_connection_fixture(301, 201));
+    connections->children.push_back(make_fbx_connection_fixture(501, 500));
+    connections->children.push_back(make_fbx_connection_fixture(502, 501));
+    connections->children.push_back(make_fbx_connection_fixture(502, 401, "Lcl Translation"));
+    connections->children.push_back(make_fbx_connection_fixture(503, 502, "d|X"));
+}
+
+/// @brief Write the binary multi-object parity graph.
+/// @param path Destination fixture path.
+/// @return True when the document was written completely.
+static bool write_fbx_multi_object_binary_fixture(const char *path) {
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    make_fbx_multi_object_graph_fixture(&objects, &connections);
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write an ASCII FBX graph equivalent to @ref write_fbx_multi_object_binary_fixture.
+/// @param path Destination fixture path.
+/// @return True when the document was written completely.
+static bool write_fbx_multi_object_ascii_fixture(const char *path) {
+    static const char text[] =
+        "; FBX 7.4.0 typed parity fixture\n"
+        "Objects: {\n"
+        " Geometry: 100, \"Geometry::MeshA\", \"Mesh\" {\n"
+        "  Vertices: *9 { a: 0,0,0, 1,0,0, 0,1,0 }\n"
+        "  PolygonVertexIndex: *3 { a: 0,1,-3 }\n"
+        " }\n"
+        " Geometry: 101, \"Geometry::MeshB\", \"Mesh\" {\n"
+        "  Vertices: *9 { a: 2,0,0, 3,0,0, 2,1,0 }\n"
+        "  PolygonVertexIndex: *3 { a: 0,1,-3 }\n"
+        " }\n"
+        " Model: 200, \"Model::ModelA\", \"Mesh\" {\n"
+        "  Properties70: { P: \"Lcl Translation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "   P: \"Lcl Rotation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "   P: \"Lcl Scaling\",\"Vector3D\",\"\",\"A\",1,1,1 }\n"
+        " }\n"
+        " Model: 201, \"Model::ModelB\", \"Mesh\" {\n"
+        "  Properties70: { P: \"Lcl Translation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "   P: \"Lcl Rotation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "   P: \"Lcl Scaling\",\"Vector3D\",\"\",\"A\",1,1,1 }\n"
+        " }\n"
+        " Material: 300, \"Material::Red\", \"\" { Properties70: {\n"
+        "  P: \"DiffuseColor\",\"Color\",\"\",\"A\",1,0,0 } }\n"
+        " Material: 301, \"Material::Green\", \"\" { Properties70: {\n"
+        "  P: \"DiffuseColor\",\"Color\",\"\",\"A\",0,1,0 } }\n"
+        " Model: 400, \"Model::RigRoot\", \"Root\" { Properties70: {\n"
+        "  P: \"Lcl Translation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "  P: \"Lcl Rotation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "  P: \"Lcl Scaling\",\"Vector3D\",\"\",\"A\",1,1,1 } }\n"
+        " Model: 401, \"Model::RigChild\", \"LimbNode\" { Properties70: {\n"
+        "  P: \"Lcl Translation\",\"Vector3D\",\"\",\"A\",0,1,0\n"
+        "  P: \"Lcl Rotation\",\"Vector3D\",\"\",\"A\",0,0,0\n"
+        "  P: \"Lcl Scaling\",\"Vector3D\",\"\",\"A\",1,1,1 } }\n"
+        " AnimationStack: 500, \"AnimationStack::Move\", \"\"\n"
+        " AnimationLayer: 501, \"AnimationLayer::Base\", \"\"\n"
+        " AnimationCurveNode: 502, \"AnimationCurveNode::MoveX\", \"\"\n"
+        " AnimationCurve: 503, \"AnimationCurve::X\", \"\" {\n"
+        "  KeyTime: *2 { a: 0,46186158000 }\n"
+        "  KeyValueFloat: *2 { a: 0,2 }\n"
+        " }\n"
+        "}\n"
+        "Connections: {\n"
+        " C: \"OO\",200,0\n C: \"OO\",201,0\n C: \"OO\",400,0\n"
+        " C: \"OO\",401,400\n C: \"OO\",100,200\n C: \"OO\",101,201\n"
+        " C: \"OO\",300,200\n C: \"OO\",301,201\n C: \"OO\",501,500\n"
+        " C: \"OO\",502,501\n C: \"OP\",502,401,\"Lcl Translation\"\n"
+        " C: \"OP\",503,502,\"d|X\"\n"
+        "}\n";
+    return write_text_file(path, text);
 }
 
 /// @brief Write a skeleton-only FBX whose bone count crosses the historical 256-bone cap.
@@ -1291,7 +1527,14 @@ static bool write_fbx_cluster_transform_link_fixture(const char *path) {
     return write_fbx_document_fixture(path, objects, connections);
 }
 
-static bool write_fbx_constant_animation_fixture(const char *path) {
+/// @brief Write a compact skinned animation fixture for constant, cubic, or transform-stack tests.
+/// @details Mode zero emits a constant 0→10 step; mode one emits a 0→0 cubic Hermite arch with
+///          ±4 value/second tangents; mode two emits a linear 0→1 translation on a bone carrying
+///          pre-rotation, pivot, geometric translation, and scale-compensating inheritance fields.
+/// @param path Destination path.
+/// @param mode Fixture mode: 0 constant, 1 cubic, 2 transform stack.
+/// @return True when the binary FBX was written completely.
+static bool write_fbx_interpolation_animation_fixture(const char *path, int mode) {
     static const int64_t kGeometryId = 4701;
     static const int64_t kMeshModelId = 4702;
     static const int64_t kRootBoneId = 4703;
@@ -1307,8 +1550,14 @@ static bool write_fbx_constant_animation_fixture(const char *path) {
     static const int32_t kRootIndices[] = {0, 1, 2};
     static const double kRootWeights[] = {1.0, 1.0, 1.0};
     static const int64_t kTimes[] = {0, kFbxSecond};
-    static const double kValues[] = {0.0, 10.0};
-    static const int32_t kFlags[] = {0x00000002, 0x00000002};
+    const double values[] = {0.0, mode == 0 ? 10.0 : mode == 2 ? 1.0 : 0.0};
+    const int32_t flags[] = {mode == 0   ? 0x00000002
+                             : mode == 1 ? 0x00000008
+                                         : 0x00000004,
+                             mode == 0   ? 0x00000002
+                             : mode == 1 ? 0x00000008
+                                         : 0x00000004};
+    const double tangent_data[] = {4.0, 0.0, 0.0, 0.0, 0.0, -4.0, 0.0, 0.0};
     FbxNodeFixture geometry;
     FbxNodeFixture objects;
     FbxNodeFixture connections;
@@ -1316,6 +1565,17 @@ static bool write_fbx_constant_animation_fixture(const char *path) {
     FbxNodeFixture anim_stack;
     FbxNodeFixture anim_layer;
     FbxNodeFixture translate_node;
+    FbxNodeFixture root_model =
+        make_fbx_model_fixture(kRootBoneId, "RootBone", "Root", 0.0, 0.0, 0.0);
+    if (mode == 2) {
+        root_model.children[0].children.push_back(
+            make_fbx_property_vec3("PreRotation", 0.0, 0.0, 90.0));
+        root_model.children[0].children.push_back(
+            make_fbx_property_vec3("RotationPivot", 1.0, 0.0, 0.0));
+        root_model.children[0].children.push_back(
+            make_fbx_property_vec3("GeometricTranslation", 2.0, 0.0, 0.0));
+        root_model.children[0].children.push_back(make_fbx_property_int("InheritType", 2));
+    }
 
     geometry.name = "Geometry";
     geometry.props.push_back(fbx_prop_i64_fixture(kGeometryId));
@@ -1351,8 +1611,7 @@ static bool write_fbx_constant_animation_fixture(const char *path) {
     objects.children.push_back(geometry);
     objects.children.push_back(
         make_fbx_model_fixture(kMeshModelId, "MeshNode", "Mesh", 0.0, 0.0, 0.0));
-    objects.children.push_back(
-        make_fbx_model_fixture(kRootBoneId, "RootBone", "Root", 0.0, 0.0, 0.0));
+    objects.children.push_back(root_model);
     objects.children.push_back(skin);
     objects.children.push_back(
         make_fbx_cluster_fixture(kRootClusterId,
@@ -1364,8 +1623,18 @@ static bool write_fbx_constant_animation_fixture(const char *path) {
     objects.children.push_back(anim_stack);
     objects.children.push_back(anim_layer);
     objects.children.push_back(translate_node);
-    objects.children.push_back(make_fbx_animation_curve_fixture_with_attrs(
-        kCurveXId, kTimes, kValues, kFlags, sizeof(kTimes) / sizeof(kTimes[0])));
+    {
+        FbxNodeFixture curve = make_fbx_animation_curve_fixture_with_attrs(
+            kCurveXId, kTimes, values, flags, sizeof(kTimes) / sizeof(kTimes[0]));
+        if (mode == 1) {
+            curve.children.push_back(FbxNodeFixture{
+                "KeyAttrDataFloat",
+                {fbx_prop_array_fixture(
+                    'd', tangent_data, sizeof(tangent_data) / sizeof(tangent_data[0]))},
+                {}});
+        }
+        objects.children.push_back(curve);
+    }
 
     connections.name = "Connections";
     connections.children.push_back(make_fbx_connection_fixture(kMeshModelId, 0));
@@ -1380,6 +1649,21 @@ static bool write_fbx_constant_animation_fixture(const char *path) {
         make_fbx_connection_fixture(kTranslateNodeId, kRootBoneId, "Lcl Translation"));
     connections.children.push_back(make_fbx_connection_fixture(kCurveXId, kTranslateNodeId, "d|X"));
     return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write the exact-step constant interpolation regression fixture.
+static bool write_fbx_constant_animation_fixture(const char *path) {
+    return write_fbx_interpolation_animation_fixture(path, 0);
+}
+
+/// @brief Write the adaptive cubic-extrema/tangent regression fixture.
+static bool write_fbx_cubic_animation_fixture(const char *path) {
+    return write_fbx_interpolation_animation_fixture(path, 1);
+}
+
+/// @brief Write the shared static/animated transform-stack regression fixture.
+static bool write_fbx_transform_stack_animation_fixture(const char *path) {
+    return write_fbx_interpolation_animation_fixture(path, 2);
 }
 
 static bool write_fbx_rotation_order_fixture(const char *path) {
@@ -1644,6 +1928,89 @@ static bool write_fbx_lowercase_component_animation_curve_fixture(const char *pa
 static bool write_fbx_negative_time_animation_fixture(const char *path) {
     return write_fbx_skinned_animation_fixture_ex(
         path, false, 0, 0, false, false, false, false, false, -46186158000LL);
+}
+
+/// @brief Write many individually valid compressed arrays whose aggregate expansion exceeds a
+///        lowered per-load budget.
+/// @param path Destination fixture path.
+/// @return True when the binary fixture was written.
+static bool write_fbx_aggregate_budget_fixture(const char *path) {
+    std::vector<double> values(4096u);
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture geometry = make_fbx_triangle_geometry_fixture(9000, "BudgetMesh", 0.0);
+    for (size_t i = 0; i < values.size(); i++)
+        values[i] = (double)i * 0.125;
+    for (int array_index = 0; array_index < 80; array_index++) {
+        char name[32];
+        std::snprintf(name, sizeof(name), "BudgetArray%d", array_index);
+        geometry.children.push_back(FbxNodeFixture{
+            name, {fbx_prop_compressed_array_fixture('d', values.data(), values.size())}, {}});
+    }
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    connections.name = "Connections";
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Construct a long display name with a shared 180-byte prefix and unique suffix.
+/// @param suffix Unique suffix appended after the colliding prefix.
+/// @return Long UTF-8/ASCII fixture name.
+static std::string make_fbx_long_collision_name(const char *suffix) {
+    std::string name(180u, 'q');
+    name += suffix ? suffix : "";
+    return name;
+}
+
+/// @brief Write long colliding-prefix scene/bone names plus an ID-targeted child animation.
+/// @details The two scene names collide beyond the historical 128-byte buffer and the two bone
+///          names collide beyond the historical 64-byte buffer. The curve targets the second bone
+///          exclusively through its numeric object ID.
+/// @param path Destination fixture path.
+/// @return True when the binary fixture was written completely.
+static bool write_fbx_long_name_identity_fixture(const char *path) {
+    static const int64_t times[] = {0, 46186158000LL};
+    static const double values[] = {0.0, 3.0};
+    std::string scene_a = make_fbx_long_collision_name("_scene_a");
+    std::string scene_b = make_fbx_long_collision_name("_scene_b");
+    std::string bone_a = make_fbx_long_collision_name("_bone_a");
+    std::string bone_b = make_fbx_long_collision_name("_bone_b");
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture stack;
+    FbxNodeFixture layer;
+    FbxNodeFixture curve_node;
+    objects.name = "Objects";
+    objects.children.push_back(make_fbx_model_fixture(9100, scene_a.c_str(), "Null", 0, 0, 0));
+    objects.children.push_back(make_fbx_model_fixture(9101, scene_b.c_str(), "Null", 1, 0, 0));
+    objects.children.push_back(make_fbx_model_fixture(9200, bone_a.c_str(), "Root", 0, 0, 0));
+    objects.children.push_back(make_fbx_model_fixture(9201, bone_b.c_str(), "LimbNode", 0, 1, 0));
+    stack.name = "AnimationStack";
+    stack.props = {fbx_prop_i64_fixture(9300),
+                   fbx_prop_string_fixture(make_fbx_object_name("LongNames", "AnimStack")),
+                   fbx_prop_string_fixture("")};
+    layer.name = "AnimationLayer";
+    layer.props = {fbx_prop_i64_fixture(9301),
+                   fbx_prop_string_fixture(make_fbx_object_name("Base", "AnimLayer")),
+                   fbx_prop_string_fixture("")};
+    curve_node.name = "AnimationCurveNode";
+    curve_node.props = {fbx_prop_i64_fixture(9302),
+                        fbx_prop_string_fixture(make_fbx_object_name("ChildMove", "AnimCurveNode")),
+                        fbx_prop_string_fixture("")};
+    objects.children.push_back(stack);
+    objects.children.push_back(layer);
+    objects.children.push_back(curve_node);
+    objects.children.push_back(make_fbx_animation_curve_fixture(9303, times, values, 2u));
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(9100, 0));
+    connections.children.push_back(make_fbx_connection_fixture(9101, 0));
+    connections.children.push_back(make_fbx_connection_fixture(9200, 0));
+    connections.children.push_back(make_fbx_connection_fixture(9201, 9200));
+    connections.children.push_back(make_fbx_connection_fixture(9301, 9300));
+    connections.children.push_back(make_fbx_connection_fixture(9302, 9301));
+    connections.children.push_back(make_fbx_connection_fixture(9302, 9201, "Lcl Translation"));
+    connections.children.push_back(make_fbx_connection_fixture(9303, 9302, "d|X"));
+    return write_fbx_document_fixture(path, objects, connections);
 }
 
 static bool write_truncated_fbx_fixture(const char *path) {
@@ -3059,6 +3426,11 @@ static void test_fbx_constant_animation_curve_preserves_step() {
                 10.0,
                 0.001,
                 "FBX constant curve jumps at the authored next key");
+    EXPECT_NEAR(root_channel->keyframes[root_channel->keyframe_count - 1].time -
+                    root_channel->keyframes[root_channel->keyframe_count - 2].time,
+                1.0 / 46186158000.0,
+                1e-15,
+                "FBX constant curve pre-step is exactly one representable source tick");
 }
 
 static void test_model3d_loads_ascii_fbx_attributes_and_materials() {
@@ -3103,6 +3475,252 @@ static void test_model3d_loads_ascii_fbx_attributes_and_materials() {
         EXPECT_NEAR(mat->diffuse[0], 0.2, 0.001, "ASCII FBX DiffuseColor imports R");
         EXPECT_NEAR(mat->diffuse[2], 0.6, 0.001, "ASCII FBX DiffuseColor imports B");
     }
+}
+
+/// @brief Verify ASCII FBX produces the same multi-family asset graph as equivalent binary FBX.
+static void test_fbx_ascii_typed_graph_matches_binary_multi_object_graph() {
+    const char *ascii_path = "/tmp/zanna_fbx_typed_multi_ascii.fbx";
+    const char *binary_path = "/tmp/zanna_fbx_typed_multi_binary.fbx";
+    EXPECT_TRUE(write_fbx_multi_object_ascii_fixture(ascii_path),
+                "Typed multi-object ASCII FBX fixture can be written");
+    EXPECT_TRUE(write_fbx_multi_object_binary_fixture(binary_path),
+                "Equivalent multi-object binary FBX fixture can be written");
+    void *ascii_asset = rt_fbx_load(rt_const_cstr(ascii_path));
+    void *binary_asset = rt_fbx_load(rt_const_cstr(binary_path));
+    EXPECT_TRUE(ascii_asset != nullptr && binary_asset != nullptr,
+                "ASCII and binary typed multi-object FBX graphs both load");
+    if (ascii_asset && binary_asset) {
+        EXPECT_TRUE(rt_fbx_mesh_count(ascii_asset) == 2 &&
+                        rt_fbx_mesh_count(ascii_asset) == rt_fbx_mesh_count(binary_asset),
+                    "ASCII and binary FBX retain the same two geometries");
+        EXPECT_TRUE(rt_fbx_material_count(ascii_asset) == 2 &&
+                        rt_fbx_material_count(ascii_asset) == rt_fbx_material_count(binary_asset),
+                    "ASCII and binary FBX retain the same two materials");
+        EXPECT_TRUE(rt_skeleton3d_get_bone_count(rt_fbx_get_skeleton(ascii_asset)) == 2 &&
+                        rt_skeleton3d_get_bone_count(rt_fbx_get_skeleton(ascii_asset)) ==
+                            rt_skeleton3d_get_bone_count(rt_fbx_get_skeleton(binary_asset)),
+                    "ASCII and binary FBX retain the same two-bone skeleton");
+        EXPECT_TRUE(rt_fbx_animation_count(ascii_asset) == 1 &&
+                        rt_fbx_animation_count(ascii_asset) == rt_fbx_animation_count(binary_asset),
+                    "ASCII and binary FBX retain the same keyed animation stack");
+        EXPECT_TRUE(rt_scene_node3d_child_count(rt_fbx_get_scene_root(ascii_asset)) == 2 &&
+                        rt_scene_node3d_child_count(rt_fbx_get_scene_root(ascii_asset)) ==
+                            rt_scene_node3d_child_count(rt_fbx_get_scene_root(binary_asset)),
+                    "ASCII and binary FBX build equivalent two-model scene roots");
+    }
+    if (ascii_asset && rt_obj_release_check0(ascii_asset))
+        rt_obj_free(ascii_asset);
+    if (binary_asset && rt_obj_release_check0(binary_asset))
+        rt_obj_free(binary_asset);
+    std::remove(ascii_path);
+    std::remove(binary_path);
+}
+
+/// @brief Verify comments, strings, and sibling scopes cannot impersonate ASCII FBX nodes.
+static void test_fbx_ascii_parser_ignores_decoy_identifiers_and_scopes() {
+    const char *path = "/tmp/zanna_fbx_ascii_decoy_scopes.fbx";
+    const char *text =
+        "; FBX 7.4.0 project file\n"
+        "; Geometry: 999, \"Geometry::CommentDecoy\", \"Mesh\" { Vertices: *3 { a: 99,99,99 }\n"
+        "DocumentInfo: { Note: \"Vertices: *9 { a: 88,88,88 } Geometry: decoy\" }\n"
+        "Objects: {\n"
+        " Geometry: 1, \"Geometry::Real\", \"Mesh\" {\n"
+        "  Metadata: { Vertices: *9 { a: 77,77,77, 77,77,77, 77,77,77 } }\n"
+        "  Vertices: *9 { a: 5,0,0, 6,0,0, 5,1,0 }\n"
+        "  PolygonVertexIndex: *3 { a: 0,1,-3 }\n"
+        " }\n"
+        "}\n"
+        "Connections: { }\n";
+    EXPECT_TRUE(write_text_file(path, text), "ASCII FBX decoy-scope fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "Brace-scoped ASCII FBX with decoys still loads its real graph");
+    auto *mesh = asset ? static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, 0)) : nullptr;
+    EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3,
+                "Only the direct real Geometry arrays produce a mesh");
+    if (mesh && mesh->vertex_count == 3)
+        EXPECT_NEAR(mesh->vertices[0].pos[0],
+                    5.0,
+                    0.001,
+                    "Comment/string/sibling Vertices decoys cannot satisfy direct lookup");
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+}
+
+/// @brief Verify aggregate compressed-array expansion obeys the one-load FBX budget atomically.
+static void test_fbx_aggregate_budget_rejects_many_valid_compressed_arrays() {
+    const char *path = "/tmp/zanna_fbx_aggregate_budget.fbx";
+    const uint64_t budget = 4u * 1024u * 1024u;
+    EXPECT_TRUE(write_fbx_aggregate_budget_fixture(path),
+                "Aggregate-budget compressed FBX fixture can be written");
+    rt_fbx_test_set_load_budget_bytes(budget);
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset == nullptr,
+                "Many individually valid compressed arrays fail before publishing a partial FBX");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_TOO_LARGE,
+                "Aggregate FBX budget exhaustion reports the stable too-large diagnostic");
+    EXPECT_TRUE(rt_fbx_test_get_last_budget_used_bytes() <= budget &&
+                    rt_fbx_test_get_last_budget_used_bytes() > 2u * 1024u * 1024u,
+                "FBX aggregate telemetry remains bounded and includes source plus expansions");
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+}
+
+/// @brief Verify keyed FBX transforms retain pivots, pre-rotation, geometry, and source tick poses.
+static void test_fbx_animation_uses_static_transform_stack_composer() {
+    const char *path = "/tmp/zanna_fbx_animated_transform_stack.fbx";
+    EXPECT_TRUE(write_fbx_transform_stack_animation_fixture(path),
+                "Animated FBX transform-stack fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "Animated FBX transform-stack fixture loads");
+    void *skeleton = asset ? rt_fbx_get_skeleton(asset) : nullptr;
+    auto *animation =
+        asset ? static_cast<rt_animation3d *>(rt_fbx_get_animation(asset, 0)) : nullptr;
+    double bind_local[16] = {};
+    EXPECT_TRUE(skeleton && rt_skeleton3d_get_bone_bind_local_raw(skeleton, 0, bind_local),
+                "Transform-stack fixture exposes its static bind matrix");
+    const vgfx3d_anim_channel_t *channel = nullptr;
+    if (animation) {
+        for (int32_t i = 0; i < animation->channel_count; i++)
+            if (animation->channels[i].bone_index == 0)
+                channel = &animation->channels[i];
+    }
+    EXPECT_TRUE(channel && channel->keyframe_count >= 2,
+                "Transform-stack fixture produces keyed root-bone poses");
+    if (channel && channel->keyframe_count >= 2) {
+        const vgfx3d_keyframe_t &first = channel->keyframes[0];
+        const vgfx3d_keyframe_t &last = channel->keyframes[channel->keyframe_count - 1];
+        EXPECT_NEAR(first.position[0],
+                    bind_local[3],
+                    0.001,
+                    "Animated first pose matches static pivot/geometric bind translation X");
+        EXPECT_NEAR(first.position[1],
+                    bind_local[7],
+                    0.001,
+                    "Animated first pose matches static pre-rotated pivot translation Y");
+        EXPECT_NEAR(first.position[0], 3.0, 0.001, "Pivot plus geometric translation composes X");
+        EXPECT_NEAR(
+            first.position[1], -1.0, 0.001, "PreRotation rotates around the authored pivot");
+        EXPECT_NEAR(std::fabs(first.rotation[2]),
+                    std::sqrt(0.5),
+                    0.001,
+                    "Animated quaternion retains the static 90-degree PreRotation");
+        EXPECT_NEAR(last.position[0],
+                    4.0,
+                    0.001,
+                    "Keyed Lcl Translation replaces only its lane in the full transform stack");
+    }
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+}
+
+/// @brief Verify cubic FBX Hermite curves are adaptively sampled through extrema and tangents.
+static void test_fbx_cubic_animation_adaptive_sampling_preserves_shape() {
+    const char *path = "/tmp/zanna_fbx_cubic_adaptive.fbx";
+    EXPECT_TRUE(write_fbx_cubic_animation_fixture(path),
+                "Cubic FBX adaptive-sampling fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    auto *animation =
+        asset ? static_cast<rt_animation3d *>(rt_fbx_get_animation(asset, 0)) : nullptr;
+    const vgfx3d_anim_channel_t *channel = nullptr;
+    if (animation) {
+        for (int32_t i = 0; i < animation->channel_count; i++)
+            if (animation->channels[i].bone_index == 0)
+                channel = &animation->channels[i];
+    }
+    EXPECT_TRUE(channel && channel->keyframe_count >= 1001,
+                "One-second cubic FBX segment subdivides to the one-millisecond bound");
+    if (channel && channel->keyframe_count >= 3) {
+        double maximum = -1e30;
+        double maximum_gap = 0.0;
+        for (int32_t i = 0; i < channel->keyframe_count; i++) {
+            maximum = std::fmax(maximum, (double)channel->keyframes[i].position[0]);
+            if (i > 0)
+                maximum_gap = std::fmax(
+                    maximum_gap, channel->keyframes[i].time - channel->keyframes[i - 1].time);
+        }
+        double first_slope =
+            ((double)channel->keyframes[1].position[0] - channel->keyframes[0].position[0]) /
+            (channel->keyframes[1].time - channel->keyframes[0].time);
+        EXPECT_NEAR(maximum, 1.0, 0.0015, "Adaptive cubic samples preserve the Hermite extremum");
+        EXPECT_NEAR(first_slope, 4.0, 0.03, "Adaptive cubic samples preserve outgoing tangent");
+        EXPECT_TRUE(maximum_gap <= 0.001000001,
+                    "Every adaptive cubic runtime chord spans at most one millisecond");
+    }
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+}
+
+/// @brief Verify indexed FBX object/connection traversal scales near-linearly on large graphs.
+static void test_fbx_large_animation_graph_lookup_probes_are_near_linear() {
+    const char *small_path = "/tmp/zanna_fbx_probe_small.fbx";
+    const char *large_path = "/tmp/zanna_fbx_probe_large.fbx";
+    EXPECT_TRUE(
+        write_fbx_skinned_animation_fixture_ex(small_path, false, 0, 128, false, false, false),
+        "Small indexed FBX probe fixture can be written");
+    void *small_asset = rt_fbx_load(rt_const_cstr(small_path));
+    uint64_t small_probes = rt_fbx_test_get_last_lookup_probe_count();
+    EXPECT_TRUE(
+        write_fbx_skinned_animation_fixture_ex(large_path, false, 0, 1024, false, false, false),
+        "Large indexed FBX probe fixture can be written");
+    void *large_asset = rt_fbx_load(rt_const_cstr(large_path));
+    uint64_t large_probes = rt_fbx_test_get_last_lookup_probe_count();
+    EXPECT_TRUE(small_asset != nullptr && large_asset != nullptr,
+                "Both indexed FBX probe fixtures load completely");
+    EXPECT_TRUE(small_probes > 0 && large_probes < small_probes * 12u,
+                "Eightfold graph growth stays within a near-linear lookup-probe envelope");
+    EXPECT_TRUE(large_probes < 250000u,
+                "Large FBX animation graph avoids per-curve whole-graph rescans");
+    if (small_asset && rt_obj_release_check0(small_asset))
+        rt_obj_free(small_asset);
+    if (large_asset && rt_obj_release_check0(large_asset))
+        rt_obj_free(large_asset);
+    std::remove(small_path);
+    std::remove(large_path);
+}
+
+/// @brief Verify long equal-prefix display names stay distinct and curves bind only by object ID.
+static void test_fbx_long_colliding_names_remain_distinct_and_id_bound() {
+    const char *path = "/tmp/zanna_fbx_long_name_identity.fbx";
+    std::string scene_a = make_fbx_long_collision_name("_scene_a");
+    std::string scene_b = make_fbx_long_collision_name("_scene_b");
+    std::string bone_a = make_fbx_long_collision_name("_bone_a");
+    std::string bone_b = make_fbx_long_collision_name("_bone_b");
+    EXPECT_TRUE(write_fbx_long_name_identity_fixture(path),
+                "Long colliding-name FBX fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "Long colliding-name FBX fixture loads");
+    void *root = asset ? rt_fbx_get_scene_root(asset) : nullptr;
+    rt_string scene_a_string = rt_string_from_bytes(scene_a.data(), scene_a.size());
+    rt_string scene_b_string = rt_string_from_bytes(scene_b.data(), scene_b.size());
+    EXPECT_TRUE(root && rt_scene_node3d_find(root, scene_a_string) != nullptr &&
+                    rt_scene_node3d_find(root, scene_b_string) != nullptr,
+                "Scene nodes remain distinct beyond the former 128-byte name prefix");
+    rt_string_unref(scene_a_string);
+    rt_string_unref(scene_b_string);
+    void *skeleton = asset ? rt_fbx_get_skeleton(asset) : nullptr;
+    rt_string imported_bone_a = skeleton ? rt_skeleton3d_get_bone_name(skeleton, 0) : nullptr;
+    rt_string imported_bone_b = skeleton ? rt_skeleton3d_get_bone_name(skeleton, 1) : nullptr;
+    EXPECT_TRUE(imported_bone_a && imported_bone_b &&
+                    std::string(rt_string_cstr(imported_bone_a)) == bone_a &&
+                    std::string(rt_string_cstr(imported_bone_b)) == bone_b,
+                "Skeleton names remain distinct beyond the former 64-byte name prefix");
+    rt_string_unref(imported_bone_a);
+    rt_string_unref(imported_bone_b);
+    auto *animation =
+        asset ? static_cast<rt_animation3d *>(rt_fbx_get_animation(asset, 0)) : nullptr;
+    bool targets_second_bone = false;
+    if (animation)
+        for (int32_t i = 0; i < animation->channel_count; i++)
+            targets_second_bone |= animation->channels[i].bone_index == 1;
+    EXPECT_TRUE(targets_second_bone,
+                "Long-name animation resolves the intended second bone by numeric object ID");
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
 }
 
 static void test_model3d_honors_fbx_rotation_order() {
@@ -5174,6 +5792,13 @@ int main() {
     test_fbx_imports_skeletons_beyond_draw_palette_limit();
     test_fbx_constant_animation_curve_preserves_step();
     test_model3d_loads_ascii_fbx_attributes_and_materials();
+    test_fbx_ascii_typed_graph_matches_binary_multi_object_graph();
+    test_fbx_ascii_parser_ignores_decoy_identifiers_and_scopes();
+    test_fbx_aggregate_budget_rejects_many_valid_compressed_arrays();
+    test_fbx_animation_uses_static_transform_stack_composer();
+    test_fbx_cubic_animation_adaptive_sampling_preserves_shape();
+    test_fbx_large_animation_graph_lookup_probes_are_near_linear();
+    test_fbx_long_colliding_names_remain_distinct_and_id_bound();
     test_model3d_honors_fbx_rotation_order();
     test_model3d_imports_fbx_skinning_and_grouped_animation();
     test_fbx_duplicate_animation_curves_keep_first_component();

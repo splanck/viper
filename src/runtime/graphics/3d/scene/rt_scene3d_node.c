@@ -9,6 +9,12 @@
 // Purpose: SceneNode3D lifecycle + accessors (transform, mesh/material/light/body,
 //   hierarchy, animator binding, world-space queries). Split out of rt_scene3d.c;
 //   shares private structs/helpers via rt_scene3d_internal.h.
+// Key invariants:
+//   - Scene roots cannot be reparented or detached through node hierarchy APIs.
+//   - Reparenting preflights subtree owner propagation before topology mutation.
+// Ownership/Lifetime:
+//   - Parent nodes retain each child exactly once while it is attached.
+//   - Mesh, material, animator, physics, and name slots are runtime-managed references.
 // Links: rt_scene3d_internal.h, rt_scene3d.h
 //
 //===----------------------------------------------------------------------===//
@@ -674,12 +680,18 @@ void rt_scene_node3d_set_transform_batch(void *nodes, void *values) {
 static int8_t scene_node3d_try_add_child_impl(rt_scene_node3d *parent,
                                               rt_scene_node3d *child,
                                               int trap_on_reject) {
+    scene_owner_transaction owner_transaction;
+    rt_scene_node3d *old_parent;
+    rt_scene3d *old_owner;
+    rt_scene3d *new_owner;
+    int32_t old_child_index = -1;
+    int owner_change;
+
     if (!parent || !child || parent == child)
         return 0;
-    if (child->owner_scene && child->owner_scene->root == child &&
-        (!parent->owner_scene || parent->owner_scene->root != parent)) {
+    if (child->owner_scene && child->owner_scene->root == child) {
         if (trap_on_reject)
-            rt_trap("SceneNode3D.AddChild: cannot reparent a scene root under an external node");
+            rt_trap("SceneNode3D.AddChild: cannot reparent a scene root");
         return 0;
     }
     if (child->parent == parent)
@@ -700,6 +712,33 @@ static int8_t scene_node3d_try_add_child_impl(rt_scene_node3d *parent,
             return 0;
     }
 
+    old_parent = scene_node_ref(child->parent);
+    old_owner = child->owner_scene;
+    new_owner = parent->owner_scene;
+    owner_change = old_owner != new_owner;
+    /* Reserve the target parent's ownership reference before allocating the
+       owner transaction. A refcount-overflow trap therefore cannot strand a
+       prepared native buffer, and every later preflight failure can restore
+       the original retain count before it traps. */
+    rt_obj_retain_maybe(child);
+    memset(&owner_transaction, 0, sizeof(owner_transaction));
+    if (owner_change && !scene_node_owner_transaction_prepare(child, &owner_transaction)) {
+        if (rt_obj_release_check0(child))
+            rt_obj_free(child);
+        rt_trap("Scene3D: owner traversal stack allocation failed");
+        return 0;
+    }
+
+    if (old_parent) {
+        old_parent->child_count = scene3d_node_child_count(old_parent);
+        for (int32_t i = 0; i < old_parent->child_count; ++i) {
+            if (scene_node_ref(old_parent->children[i]) == child) {
+                old_child_index = i;
+                break;
+            }
+        }
+    }
+
     parent->child_count = scene3d_node_child_count(parent);
     if (!parent->children)
         parent->child_capacity = 0;
@@ -708,17 +747,26 @@ static int8_t scene_node3d_try_add_child_impl(rt_scene_node3d *parent,
     if (parent->child_count >= parent->child_capacity) {
         int32_t new_cap;
         if (parent->child_capacity < 0 || parent->child_capacity > INT32_MAX / 2) {
+            scene_node_owner_transaction_discard(&owner_transaction);
+            if (rt_obj_release_check0(child))
+                rt_obj_free(child);
             rt_trap("SceneNode3D.AddChild: too many children");
             return 0;
         }
         new_cap = parent->child_capacity == 0 ? NODE_INIT_CHILDREN : parent->child_capacity * 2;
         if ((size_t)new_cap > SIZE_MAX / sizeof(rt_scene_node3d *)) {
+            scene_node_owner_transaction_discard(&owner_transaction);
+            if (rt_obj_release_check0(child))
+                rt_obj_free(child);
             rt_trap("SceneNode3D.AddChild: too many children");
             return 0;
         }
         rt_scene_node3d **nc = (rt_scene_node3d **)realloc(
             parent->children, (size_t)new_cap * sizeof(rt_scene_node3d *));
         if (!nc) {
+            scene_node_owner_transaction_discard(&owner_transaction);
+            if (rt_obj_release_check0(child))
+                rt_obj_free(child);
             rt_trap("SceneNode3D.AddChild: allocation failed");
             return 0;
         }
@@ -729,22 +777,28 @@ static int8_t scene_node3d_try_add_child_impl(rt_scene_node3d *parent,
         parent->child_capacity = new_cap;
     }
 
-    rt_obj_retain_maybe(child);
-    /* Detach from previous parent if any. The temporary retain above becomes
-       the new parent's ownership after the old parent releases its reference. */
-    if (scene_node_ref(child->parent))
-        rt_scene_node3d_remove_child(child->parent, child);
-    else if (child->parent)
+    /* Transfer the old parent's retained slot to the already-reserved target
+       slot. No fallible work remains after this topology mutation begins. */
+    if (old_parent && old_child_index >= 0) {
+        for (int32_t i = old_child_index; i < old_parent->child_count - 1; ++i)
+            old_parent->children[i] = old_parent->children[i + 1];
+        old_parent->child_count--;
+        old_parent->children[old_parent->child_count] = NULL;
+    } else if (child->parent) {
         child->parent = NULL;
-    else if (child->owner_scene)
-        scene_node_clear_owner_recursive(child, child->owner_scene);
+    }
 
     parent->children[parent->child_count++] = child;
     child->parent = parent;
-    if (parent->owner_scene) {
-        scene_node_assign_owner_recursive(child, parent->owner_scene);
-        scene3d_mark_spatial_dirty(parent->owner_scene);
-    }
+    if (owner_change)
+        scene_node_owner_transaction_assign(&owner_transaction, new_owner);
+    scene_node_owner_transaction_discard(&owner_transaction);
+    if (old_parent && old_child_index >= 0 && rt_obj_release_check0(child))
+        rt_obj_free(child);
+    if (old_owner)
+        scene3d_mark_spatial_dirty(old_owner);
+    if (new_owner)
+        scene3d_mark_spatial_dirty(new_owner);
     mark_dirty(child);
     return 1;
 }
@@ -776,6 +830,12 @@ void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
     parent->child_count = scene3d_node_child_count(parent);
     for (int32_t i = 0; i < parent->child_count; i++) {
         if (scene_node_ref(parent->children[i]) == child) {
+            scene_owner_transaction owner_transaction;
+            memset(&owner_transaction, 0, sizeof(owner_transaction));
+            if (owner && !scene_node_owner_transaction_prepare(child, &owner_transaction)) {
+                rt_trap("Scene3D: owner traversal stack allocation failed");
+                return;
+            }
             /* Shift remaining children down */
             for (int32_t j = i; j < parent->child_count - 1; j++)
                 parent->children[j] = parent->children[j + 1];
@@ -783,9 +843,10 @@ void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
             parent->children[parent->child_count] = NULL;
             child->parent = NULL;
             if (owner) {
-                scene_node_clear_owner_recursive(child, owner);
+                scene_node_owner_transaction_clear(&owner_transaction, owner);
                 scene3d_mark_spatial_dirty(owner);
             }
+            scene_node_owner_transaction_discard(&owner_transaction);
             mark_dirty(child);
             if (rt_obj_release_check0(child))
                 rt_obj_free(child);

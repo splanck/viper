@@ -24,6 +24,10 @@
 //     GPU backends consume them for cubemap reflections; the software backend
 //     may still ignore them.
 //
+// Ownership/Lifetime:
+//   - Material3D is GC-managed and retains every accepted texture/cubemap source.
+//   - Backend command snapshots borrow only frame-owned resolved payloads.
+//
 // Links: rt_canvas3d.h, rt_canvas3d_internal.h
 //
 //===----------------------------------------------------------------------===//
@@ -71,8 +75,9 @@ void rt_material3d_set_import_texture_slot(void *obj,
                                            int64_t wrap_s,
                                            int64_t wrap_t,
                                            int64_t filter);
-
 static int material_texture_ref_supported(void *texture_ref);
+static int32_t material_sanitize_filter(int64_t value);
+static int32_t material_sanitize_mip_filter(int64_t value);
 
 /// @brief Release the GC reference at `*slot` and NULL it. NULL-safe both ways (slot ==
 /// NULL or *slot == NULL). Only frees the underlying object when the release drops its
@@ -348,6 +353,9 @@ static void material_init_texture_slots(rt_material3d *mat) {
         mat->texture_slot_wrap_s[slot] = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
         mat->texture_slot_wrap_t[slot] = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
         mat->texture_slot_filter[slot] = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+        mat->texture_slot_min_filter[slot] = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+        mat->texture_slot_mag_filter[slot] = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+        mat->texture_slot_mip_filter[slot] = RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE;
         mat->texture_slot_anisotropy[slot] = 1;
         mat->texture_slot_uv_set[slot] = 0;
         /* texture_slot_uv_transform is a 6-element affine: indices [0..3] are the
@@ -363,6 +371,9 @@ static void material_init_texture_slots(rt_material3d *mat) {
     mat->texture_wrap_s = mat->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->texture_wrap_t = mat->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->texture_filter = mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_min_filter = mat->texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_mag_filter = mat->texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_mip_filter = mat->texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->anisotropy = mat->texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
 }
 
@@ -468,6 +479,16 @@ static void material_sanitize_state(rt_material3d *mat) {
             mat->texture_slot_filter[slot] == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                 ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
                 : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+        mat->texture_slot_min_filter[slot] =
+            material_sanitize_filter(mat->texture_slot_min_filter[slot]);
+        mat->texture_slot_mag_filter[slot] =
+            material_sanitize_filter(mat->texture_slot_mag_filter[slot]);
+        mat->texture_slot_mip_filter[slot] =
+            mat->texture_slot_mip_filter[slot] == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST
+                ? RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST
+                : (mat->texture_slot_mip_filter[slot] == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR
+                       ? RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR
+                       : RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE);
         mat->texture_slot_anisotropy[slot] =
             material_sanitize_anisotropy(mat->texture_slot_anisotropy[slot]);
         mat->texture_slot_uv_set[slot] = mat->texture_slot_uv_set[slot] == 1 ? 1 : 0;
@@ -487,6 +508,9 @@ static void material_sanitize_state(rt_material3d *mat) {
     mat->texture_wrap_s = mat->texture_slot_wrap_s[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->texture_wrap_t = mat->texture_slot_wrap_t[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->texture_filter = mat->texture_slot_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_min_filter = mat->texture_slot_min_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_mag_filter = mat->texture_slot_mag_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
+    mat->texture_mip_filter = mat->texture_slot_mip_filter[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     mat->anisotropy = mat->texture_slot_anisotropy[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
     for (int i = 0; i < 12; i++)
         mat->custom_params[i] = clamp_range(mat->custom_params[i],
@@ -546,10 +570,22 @@ static void *material_clone_like(void *obj) {
     dst->texture_wrap_s = src->texture_wrap_s;
     dst->texture_wrap_t = src->texture_wrap_t;
     dst->texture_filter = src->texture_filter;
+    dst->texture_min_filter = src->texture_min_filter;
+    dst->texture_mag_filter = src->texture_mag_filter;
+    dst->texture_mip_filter = src->texture_mip_filter;
     dst->anisotropy = src->anisotropy;
     memcpy(dst->texture_slot_wrap_s, src->texture_slot_wrap_s, sizeof(dst->texture_slot_wrap_s));
     memcpy(dst->texture_slot_wrap_t, src->texture_slot_wrap_t, sizeof(dst->texture_slot_wrap_t));
     memcpy(dst->texture_slot_filter, src->texture_slot_filter, sizeof(dst->texture_slot_filter));
+    memcpy(dst->texture_slot_min_filter,
+           src->texture_slot_min_filter,
+           sizeof(dst->texture_slot_min_filter));
+    memcpy(dst->texture_slot_mag_filter,
+           src->texture_slot_mag_filter,
+           sizeof(dst->texture_slot_mag_filter));
+    memcpy(dst->texture_slot_mip_filter,
+           src->texture_slot_mip_filter,
+           sizeof(dst->texture_slot_mip_filter));
     memcpy(dst->texture_slot_anisotropy,
            src->texture_slot_anisotropy,
            sizeof(dst->texture_slot_anisotropy));
@@ -751,6 +787,17 @@ static int32_t material_sanitize_filter(int64_t value) {
                                                          : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
 
+/// @brief Coerce an imported mip-selection filter to none, nearest, or linear.
+/// @param value Candidate `RT_MATERIAL3D_TEXTURE_MIP_FILTER_*` value.
+/// @return A valid mip-filter constant; unknown values disable mip sampling.
+static int32_t material_sanitize_mip_filter(int64_t value) {
+    if (value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST)
+        return RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST;
+    if (value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR)
+        return RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR;
+    return RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE;
+}
+
 /// @brief Clamp requested texture anisotropy into the script-facing [1,16] range.
 static int32_t material_sanitize_anisotropy(int64_t value) {
     if (value < 1)
@@ -788,19 +835,39 @@ void rt_material3d_set_import_sampler(void *obj, int64_t wrap_s, int64_t wrap_t,
                                           filter);
 }
 
-/// @brief Internal importer hook: store sampler, UV set, and KHR_texture_transform
-/// metadata for one material texture slot.
-void rt_material3d_set_import_texture_slot(void *obj,
-                                           int64_t slot,
-                                           int64_t uv_set,
-                                           double offset_u,
-                                           double offset_v,
-                                           double scale_u,
-                                           double scale_v,
-                                           double rotation,
-                                           int64_t wrap_s,
-                                           int64_t wrap_t,
-                                           int64_t filter) {
+/**
+ * @brief Store independent imported sampler axes and UV metadata for one material texture slot.
+ * @details This is the lossless glTF importer boundary. Minification and magnification use the
+ * existing nearest/linear constants; mip selection additionally supports none. The legacy
+ * material-wide filter mirrors magnification for compatibility, while all three axes are retained
+ * in the per-slot and base-color mirrors consumed by draw snapshots.
+ * @param obj Material3D receiver.
+ * @param slot Texture slot in `[0, RT_MATERIAL3D_TEXTURE_SLOT_COUNT)`.
+ * @param uv_set Imported UV set (only 0/1 are representable after prior glTF validation).
+ * @param offset_u Horizontal UV translation.
+ * @param offset_v Vertical UV translation.
+ * @param scale_u Horizontal UV scale.
+ * @param scale_v Vertical UV scale.
+ * @param rotation UV rotation in radians.
+ * @param wrap_s Horizontal wrap mode.
+ * @param wrap_t Vertical wrap mode.
+ * @param min_filter Independent minification filter.
+ * @param mag_filter Independent magnification filter.
+ * @param mip_filter Independent mip-selection filter.
+ */
+void rt_material3d_set_import_texture_slot_sampler_axes(void *obj,
+                                                        int64_t slot,
+                                                        int64_t uv_set,
+                                                        double offset_u,
+                                                        double offset_v,
+                                                        double scale_u,
+                                                        double scale_v,
+                                                        double rotation,
+                                                        int64_t wrap_s,
+                                                        int64_t wrap_t,
+                                                        int64_t min_filter,
+                                                        int64_t mag_filter,
+                                                        int64_t mip_filter) {
     rt_material3d *mat = material_checked(obj);
     int32_t slot_index = material_sanitize_texture_slot(slot);
     double c;
@@ -819,7 +886,10 @@ void rt_material3d_set_import_texture_slot(void *obj,
     s = sin(rotation);
     mat->texture_slot_wrap_s[slot_index] = material_sanitize_wrap(wrap_s);
     mat->texture_slot_wrap_t[slot_index] = material_sanitize_wrap(wrap_t);
-    mat->texture_slot_filter[slot_index] = material_sanitize_filter(filter);
+    mat->texture_slot_min_filter[slot_index] = material_sanitize_filter(min_filter);
+    mat->texture_slot_mag_filter[slot_index] = material_sanitize_filter(mag_filter);
+    mat->texture_slot_mip_filter[slot_index] = material_sanitize_mip_filter(mip_filter);
+    mat->texture_slot_filter[slot_index] = mat->texture_slot_mag_filter[slot_index];
     mat->texture_slot_uv_set[slot_index] = uv_set == 1 ? 1 : 0;
     mat->texture_slot_uv_transform[slot_index][0] = material_clamp_uv_transform(scale_u * c, 1.0);
     mat->texture_slot_uv_transform[slot_index][1] = material_clamp_uv_transform(-scale_v * s, 0.0);
@@ -831,8 +901,53 @@ void rt_material3d_set_import_texture_slot(void *obj,
         mat->texture_wrap_s = mat->texture_slot_wrap_s[slot_index];
         mat->texture_wrap_t = mat->texture_slot_wrap_t[slot_index];
         mat->texture_filter = mat->texture_slot_filter[slot_index];
+        mat->texture_min_filter = mat->texture_slot_min_filter[slot_index];
+        mat->texture_mag_filter = mat->texture_slot_mag_filter[slot_index];
+        mat->texture_mip_filter = mat->texture_slot_mip_filter[slot_index];
         mat->anisotropy = mat->texture_slot_anisotropy[slot_index];
     }
+}
+
+/**
+ * @brief Compatibility importer hook that applies one filter to minification/magnification.
+ * @details Existing callers retain their non-mipmapped behavior. Lossless glTF import calls
+ * `rt_material3d_set_import_texture_slot_sampler_axes` instead.
+ * @param obj Material3D receiver.
+ * @param slot Texture slot index.
+ * @param uv_set UV set index.
+ * @param offset_u Horizontal UV translation.
+ * @param offset_v Vertical UV translation.
+ * @param scale_u Horizontal UV scale.
+ * @param scale_v Vertical UV scale.
+ * @param rotation UV rotation in radians.
+ * @param wrap_s Horizontal wrap mode.
+ * @param wrap_t Vertical wrap mode.
+ * @param filter Shared nearest/linear minification and magnification filter.
+ */
+void rt_material3d_set_import_texture_slot(void *obj,
+                                           int64_t slot,
+                                           int64_t uv_set,
+                                           double offset_u,
+                                           double offset_v,
+                                           double scale_u,
+                                           double scale_v,
+                                           double rotation,
+                                           int64_t wrap_s,
+                                           int64_t wrap_t,
+                                           int64_t filter) {
+    rt_material3d_set_import_texture_slot_sampler_axes(obj,
+                                                       slot,
+                                                       uv_set,
+                                                       offset_u,
+                                                       offset_v,
+                                                       scale_u,
+                                                       scale_v,
+                                                       rotation,
+                                                       wrap_s,
+                                                       wrap_t,
+                                                       filter,
+                                                       filter,
+                                                       RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE);
 }
 
 /// @brief Alias for `_set_texture` using PBR-style "albedo" terminology.

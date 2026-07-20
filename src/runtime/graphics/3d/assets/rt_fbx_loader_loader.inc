@@ -601,6 +601,9 @@ static void fbx_ascii_extract_model_name(const char *text, char *out, size_t out
 /// @brief ASCII-FBX fallback loader: parse mesh arrays, optional attributes, material properties,
 ///   and a model name into a single runtime asset.
 /// @return A new FBX asset, or NULL if the required arrays are missing or allocation fails.
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((unused))
+#endif
 static void *fbx_load_ascii_minimal(const char *text) {
     double *positions = NULL;
     int32_t *indices = NULL;
@@ -788,14 +791,13 @@ static void *fbx_try_decode_embedded_texture(fbx_node_t *objects,
                                              const char *fallback_hint) {
     if (!objects || !ct)
         return NULL;
-    for (int32_t ci = 0; ci < ct->count; ci++) {
+    for (int32_t ci = fbx_connections_first_for_parent(ct, texture_id); ci >= 0;
+         ci = fbx_connections_next_for_parent(ct, ci)) {
         fbx_node_t *video;
         uint32_t content_len = 0;
         const uint8_t *content;
         const char *hint;
         void *pixels;
-        if (ct->entries[ci].parent_id != texture_id)
-            continue;
         video = fbx_find_object_by_id(objects, ct->entries[ci].child_id);
         if (!video || strcmp(video->name, "Video") != 0)
             continue;
@@ -912,9 +914,8 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
             }
 
             // Find which material this texture connects to via Connections
-            for (int32_t ci = 0; ci < ct.count; ci++) {
-                if (ct.entries[ci].child_id != tex_id)
-                    continue;
+            for (int32_t ci = fbx_connections_first_for_child(&ct, tex_id); ci >= 0;
+                 ci = fbx_connections_next_for_child(&ct, ci)) {
                 int64_t mat_id = ct.entries[ci].parent_id;
                 const char *prop_name = ct.entries[ci].prop;
 
@@ -980,17 +981,6 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
 
             int64_t shape_id = fbx_prop_i64(obj, 0);
             // Get shape name from node (format: "ShapeName\x00\x01Geometry")
-            const char *raw_name = fbx_prop_str(obj, 1);
-            char shape_name[64];
-            {
-                const char *sep = strchr(raw_name, '\x00');
-                size_t nlen = sep ? (size_t)(sep - raw_name) : strlen(raw_name);
-                if (nlen >= sizeof(shape_name))
-                    nlen = sizeof(shape_name) - 1;
-                memcpy(shape_name, raw_name, nlen);
-                shape_name[nlen] = '\0';
-            }
-
             // Extract Indexes and Vertices arrays
             fbx_node_t *idx_node = fbx_find_child(obj, "Indexes");
             fbx_node_t *vtx_node = fbx_find_child(obj, "Vertices");
@@ -1000,21 +990,20 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
             // Trace connections: Shape → BlendShapeChannel → BlendShape → Mesh Geometry
             // Find which mesh this shape belongs to via the connection chain
             int64_t channel_id = -1, blendshape_id = -1, mesh_geo_id = -1;
-            for (int32_t ci = 0; ci < ct.count; ci++) {
-                if (ct.entries[ci].child_id == shape_id)
+            {
+                int32_t ci = fbx_connections_first_for_child(&ct, shape_id);
+                if (ci >= 0)
                     channel_id = ct.entries[ci].parent_id;
             }
             if (channel_id >= 0) {
-                for (int32_t ci = 0; ci < ct.count; ci++) {
-                    if (ct.entries[ci].child_id == channel_id)
-                        blendshape_id = ct.entries[ci].parent_id;
-                }
+                int32_t ci = fbx_connections_first_for_child(&ct, channel_id);
+                if (ci >= 0)
+                    blendshape_id = ct.entries[ci].parent_id;
             }
             if (blendshape_id >= 0) {
-                for (int32_t ci = 0; ci < ct.count; ci++) {
-                    if (ct.entries[ci].child_id == blendshape_id)
-                        mesh_geo_id = ct.entries[ci].parent_id;
-                }
+                int32_t ci = fbx_connections_first_for_child(&ct, blendshape_id);
+                if (ci >= 0)
+                    mesh_geo_id = ct.entries[ci].parent_id;
             }
             if (mesh_geo_id < 0)
                 continue;
@@ -1056,7 +1045,9 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
                 continue;
 
             // Add this shape
-            rt_string sname = rt_const_cstr(shape_name);
+            rt_string sname = fbx_object_name_string(obj, 1);
+            if (!sname)
+                sname = rt_const_cstr("Shape");
             int64_t si = rt_morphtarget3d_add_shape(morph, sname);
             rt_string_unref(sname);
             if (si < 0)
@@ -1113,7 +1104,11 @@ static void fbx_load_extract_morphs(rt_fbx_asset *asset,
 /// @brief Walk the FBX "Objects" node, importing each "Geometry" into a Mesh3D (with optional
 ///   Z-up correction) and accumulating mesh bindings, geometry-id remaps, and material
 ///   bindings through the in/out array and count pointers.
-/// @return 1 on success, 0 on allocation failure.
+/// @details Shape and other non-mesh Geometry records remain available to their dedicated import
+///   passes. A record declared as Geometry type `Mesh`, however, must decode into at least one
+///   valid triangle; silently publishing an asset after rejecting its declared mesh would turn
+///   malformed or non-finite source data into a misleading successful empty load.
+/// @return 1 on success, or 0 on allocation failure or an invalid declared Mesh Geometry record.
 static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                                      fbx_node_t *objects,
                                      int z_up,
@@ -1135,10 +1130,21 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
             if (strcmp(obj->name, "Geometry") == 0) {
                 fbx_mesh_remap_t remap;
                 fbx_mesh_material_map_t material_map;
+                const char *geometry_type;
+                if (obj->prop_count < 3)
+                    return 0;
+                geometry_type = fbx_prop_str(obj, 2);
+                if (strcmp(geometry_type, "Mesh") != 0)
+                    continue;
                 memset(&remap, 0, sizeof(remap));
                 memset(&material_map, 0, sizeof(material_map));
                 void *mesh = fbx_extract_geometry(obj, z_up, &remap, &material_map);
-                if (mesh) {
+                if (!mesh) {
+                    fbx_mesh_remap_free(&remap);
+                    fbx_mesh_material_map_free(&material_map);
+                    return 0;
+                }
+                {
                     asset->mesh_count = fbx_asset_safe_count(
                         asset->meshes, asset->mesh_count, asset->mesh_capacity);
                     if (asset->mesh_count == INT32_MAX) {
@@ -1232,10 +1238,40 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
     return 1;
 }
 
-/// @brief Read an entire FBX file into a NUL-padded malloc buffer.
-/// @details Content and I/O failures set asset diagnostics and return NULL. Allocation failure
-///          still traps because it is a runtime resource failure, not bad content.
-static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
+/// @brief Add one asset-owned default material when geometry has no authored material objects.
+/// @details Compact ASCII FBX and geometry-only binary files remain immediately renderable and
+///          preserve the loader's historical one-default-material contract. The material is added
+///          only after all authored objects have been collected, so real FBX materials always win.
+/// @param asset Transaction-local asset under construction.
+/// @return Nonzero when no default was needed or one was added; zero on allocation failure.
+static int fbx_asset_ensure_default_material(rt_fbx_asset *asset) {
+    void *material;
+    if (!asset || asset->mesh_count <= 0 || asset->material_count > 0)
+        return asset != NULL;
+    material = rt_material3d_new();
+    if (!material)
+        return 0;
+    if (!fbx_asset_reserve_ref_array(&asset->materials, &asset->material_capacity, 1)) {
+        fbx_release_ref(&material);
+        return 0;
+    }
+    asset->materials[0] = material;
+    asset->material_count = 1;
+    return 1;
+}
+
+/// @brief Read an entire FBX file into a NUL-padded, budgeted malloc buffer.
+/// @details Content and I/O failures set asset diagnostics and return NULL. The source allocation
+///          is charged before allocation so a lowered aggregate load budget applies even before
+///          compressed arrays and typed parser metadata are considered. Allocation failure still
+///          traps because it is a runtime resource failure, not bad content.
+/// @param cpath Native UTF-8 path.
+/// @param out_size Receives the exact source byte count.
+/// @param context Active per-load aggregate budget.
+/// @return Owned NUL-padded file bytes, or NULL on failure.
+static uint8_t *fbx_read_entire_file(const char *cpath,
+                                     long *out_size,
+                                     fbx_load_context_t *context) {
     uint64_t max_file_bytes = fbx_max_file_bytes();
     FILE *f = rt_file_stdio_open_utf8(cpath, "rb");
     if (!f) {
@@ -1258,7 +1294,7 @@ static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
         rt_asset_error_setf(RT_ASSET_ERROR_UNREADABLE, "FBX.Load: failed to seek '%s'", cpath);
         return NULL;
     }
-    if (fsize < 27) {
+    if (fsize <= 0) {
         fclose(f);
         rt_asset_error_setf(RT_ASSET_ERROR_BAD_MAGIC, "FBX.Load: '%s' is too small", cpath);
         return NULL;
@@ -1269,6 +1305,12 @@ static uint8_t *fbx_read_entire_file(const char *cpath, long *out_size) {
         return NULL;
     }
 
+    if (!fbx_budget_charge(context, (uint64_t)fsize + 1u, 1u)) {
+        fclose(f);
+        rt_asset_error_setf(
+            RT_ASSET_ERROR_TOO_LARGE, "FBX.Load: '%s' exceeds the aggregate load budget", cpath);
+        return NULL;
+    }
     uint8_t *data = (uint8_t *)malloc((size_t)fsize + 1u);
     if (!data) {
         fclose(f);
@@ -1323,6 +1365,12 @@ static int fbx_has_ascii_fbx_signature(const uint8_t *data, long size) {
 /// @param path File path to the .fbx file (runtime string).
 /// @return Opaque FBX asset handle containing meshes/skeleton/animations, or NULL.
 static void *fbx_load_impl(rt_string path) {
+    fbx_load_context_t context;
+    fbx_node_t root;
+    fbx_conn_table_t ct;
+    fbx_node_t *objects = NULL;
+    int is_binary = 0;
+    int is_ascii_signature = 0;
     fbx_mesh_binding_t *mesh_bindings = NULL;
     int32_t mesh_binding_count = 0;
     fbx_mesh_remap_t *mesh_remaps = NULL;
@@ -1331,6 +1379,9 @@ static void *fbx_load_impl(rt_string path) {
     int32_t material_binding_count = 0;
     fbx_bone_binding_t *bone_bindings = NULL;
     int32_t bone_binding_count = 0;
+    memset(&root, 0, sizeof(root));
+    memset(&ct, 0, sizeof(ct));
+    fbx_load_context_init(&context);
     if (!path) {
         rt_trap("FBX.Load: null path");
         return NULL;
@@ -1343,102 +1394,87 @@ static void *fbx_load_impl(rt_string path) {
 
     /* Read file */
     long fsize;
-    uint8_t *data = fbx_read_entire_file(cpath, &fsize);
+    uint8_t *data = fbx_read_entire_file(cpath, &fsize, &context);
     if (!data)
         return NULL;
 
-    /* Verify magic */
-    if (!fbx_has_binary_magic(data, fsize)) {
-        /* ASCII FBX (";FBX ..." header or bare node text): parse the geometry
-         * subset — meshes with normals/UVs/vertex colors — through the ASCII
-         * path. Skins and animation curves in ASCII exports are the recorded
-         * follow-up; the binary loader covers them today. */
-        void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
-        if (!ascii_asset && fbx_has_ascii_fbx_signature(data, fsize)) {
+    is_binary = fbx_has_binary_magic(data, fsize);
+    is_ascii_signature = fbx_has_ascii_fbx_signature(data, fsize);
+    if (is_binary) {
+        fbx_reader_t reader;
+        memset(&reader, 0, sizeof(reader));
+        if (fsize < 27) {
             free(data);
-            rt_asset_error_set(RT_ASSET_ERROR_UNSUPPORTED,
-                               "ASCII FBX file did not contain parsable mesh geometry");
+            rt_asset_error_set(RT_ASSET_ERROR_BAD_MAGIC, "FBX.Load: truncated binary FBX header");
             return NULL;
         }
-        free(data);
-        if (ascii_asset)
-            return ascii_asset;
-        rt_asset_error_set(RT_ASSET_ERROR_BAD_MAGIC, "FBX.Load: not a supported FBX file");
-        return NULL;
-    }
-
-    /* Parse header */
-    fbx_reader_t reader;
-    reader.data = data;
-    reader.len = (size_t)fsize;
-    reader.pos = 27; /* skip 23-byte magic + 2 unknown + 4 version */
-    reader.version = (uint32_t)data[23] | ((uint32_t)data[24] << 8u) | ((uint32_t)data[25] << 16u) |
-                     ((uint32_t)data[26] << 24u);
-    reader.is_64bit = (reader.version >= 7500);
-    reader.error = 0;
-
-    /* Parse all top-level nodes into a virtual root */
-    fbx_node_t root;
-    memset(&root, 0, sizeof(root));
-    snprintf(root.name, sizeof(root.name), "%s", "_root_");
-
-    while (!fbx_eof(&reader)) {
-        /* Check for file-level null sentinel */
-        size_t sentinel = reader.is_64bit ? 25 : 13;
-        if (reader.pos + sentinel <= reader.len) {
-            int is_null = 1;
-            for (size_t si = 0; si < sentinel; si++)
-                if (reader.data[reader.pos + si] != 0) {
-                    is_null = 0;
-                    break;
+        reader.data = data;
+        reader.len = (size_t)fsize;
+        reader.pos = 27; /* skip 23-byte magic + 2 unknown + 4 version */
+        reader.version = (uint32_t)data[23] | ((uint32_t)data[24] << 8u) |
+                         ((uint32_t)data[25] << 16u) | ((uint32_t)data[26] << 24u);
+        reader.is_64bit = reader.version >= 7500;
+        reader.context = &context;
+        if (!fbx_node_set_name(&root, "_root_", 6u, &context))
+            reader.error = 1;
+        while (!reader.error && !fbx_eof(&reader)) {
+            size_t sentinel = reader.is_64bit ? 25u : 13u;
+            int is_null = 0;
+            if (reader.pos + sentinel <= reader.len) {
+                is_null = 1;
+                for (size_t si = 0; si < sentinel; si++) {
+                    if (reader.data[reader.pos + si] != 0) {
+                        is_null = 0;
+                        break;
+                    }
                 }
+            }
             if (is_null)
                 break;
-        }
-
-        if (root.child_count >= root.child_capacity) {
-            if (root.child_count >= FBX_MAX_CHILDREN) {
+            if (!fbx_node_reserve_child(&root, &context)) {
                 reader.error = 1;
                 break;
             }
-            if (root.child_capacity < 0 || root.child_capacity > INT32_MAX / 2 ||
-                (size_t)(root.child_capacity == 0 ? 16 : root.child_capacity * 2) >
-                    SIZE_MAX / sizeof(fbx_node_t))
+            if (fbx_parse_node(&reader, &root.children[root.child_count], 0) < 0) {
+                fbx_free_node(&root.children[root.child_count]);
+                reader.error = 1;
                 break;
-            int32_t new_cap = root.child_capacity == 0 ? 16 : root.child_capacity * 2;
-            if (new_cap > FBX_MAX_CHILDREN)
-                new_cap = FBX_MAX_CHILDREN;
-            fbx_node_t *nc =
-                (fbx_node_t *)realloc(root.children, (size_t)new_cap * sizeof(fbx_node_t));
-            if (!nc)
-                break;
-            root.children = nc;
-            root.child_capacity = new_cap;
+            }
+            root.child_count++;
         }
-
-        fbx_node_t *child = &root.children[root.child_count];
-        if (fbx_parse_node(&reader, child, 0) < 0) {
-            reader.error = 1;
-            break;
+        free(data);
+        if (reader.error) {
+            fbx_free_node(&root);
+            rt_asset_error_set(
+                context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+                context.budget_exhausted ? "FBX.Load: binary FBX exceeds the aggregate load budget"
+                                         : "FBX.Load: malformed or truncated binary FBX");
+            return NULL;
         }
-        root.child_count++;
+    } else {
+        int parsed = fbx_parse_ascii_document(data, (size_t)fsize, &root, &context);
+        free(data);
+        if (!parsed) {
+            rt_asset_error_set(context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE
+                               : is_ascii_signature     ? RT_ASSET_ERROR_CORRUPT
+                                                        : RT_ASSET_ERROR_BAD_MAGIC,
+                               context.budget_exhausted
+                                   ? "FBX.Load: ASCII FBX exceeds the aggregate load budget"
+                               : is_ascii_signature ? "FBX.Load: malformed ASCII FBX"
+                                                    : "FBX.Load: not a supported FBX file");
+            return NULL;
+        }
     }
 
-    free(data);
-    if (reader.error) {
+    objects = fbx_find_child(&root, "Objects");
+    if (!objects || !fbx_build_object_index(objects, &context) ||
+        !fbx_parse_connections(&root, &ct, &context)) {
+        fbx_free_connections(&ct);
         fbx_free_node(&root);
-        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT, "FBX.Load: malformed or truncated binary FBX");
-        return NULL;
-    }
-
-    /* Build connection table */
-    fbx_conn_table_t ct;
-    memset(&ct, 0, sizeof(ct));
-    if (!fbx_parse_connections(&root, &ct)) {
-        free(ct.entries);
-        fbx_free_node(&root);
-        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
-                           "FBX.Load: failed to parse the connection table");
+        rt_asset_error_set(
+            context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+            context.budget_exhausted ? "FBX.Load: FBX graph exceeds the aggregate load budget"
+                                     : "FBX.Load: invalid Objects or Connections graph");
         return NULL;
     }
 
@@ -1452,7 +1488,7 @@ static void *fbx_load_impl(rt_string path) {
         fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
         fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
         free(material_bindings);
-        free(ct.entries);
+        fbx_free_connections(&ct);
         fbx_free_node(&root);
         rt_trap("FBX.Load: out of memory");
         return NULL;
@@ -1475,7 +1511,6 @@ static void *fbx_load_impl(rt_string path) {
     rt_obj_set_finalizer(asset, rt_fbx_asset_finalize);
 
     /* Extract geometry */
-    fbx_node_t *objects = fbx_find_child(&root, "Objects");
     if (!fbx_load_collect_geometry(asset,
                                    objects,
                                    z_up,
@@ -1484,11 +1519,12 @@ static void *fbx_load_impl(rt_string path) {
                                    &mesh_remaps,
                                    &mesh_remap_count,
                                    &material_bindings,
-                                   &material_binding_count)) {
+                                   &material_binding_count) ||
+        !fbx_asset_ensure_default_material(asset)) {
         fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
         fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
         free(material_bindings);
-        free(ct.entries);
+        fbx_free_connections(&ct);
         fbx_free_node(&root);
         fbx_release_ref((void **)&asset);
         rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
@@ -1523,15 +1559,30 @@ static void *fbx_load_impl(rt_string path) {
                        mesh_remap_count);
 
     /* Extract animations */
-    fbx_extract_animations(&root,
-                           &ct,
-                           asset->skeleton,
-                           bone_bindings,
-                           bone_binding_count,
-                           z_up,
-                           &asset->animations,
-                           &asset->animation_count,
-                           &asset->animation_capacity);
+    if (!fbx_extract_animations(&root,
+                                &ct,
+                                asset->skeleton,
+                                bone_bindings,
+                                bone_binding_count,
+                                z_up,
+                                &asset->animations,
+                                &asset->animation_count,
+                                &asset->animation_capacity,
+                                &context)) {
+        fbx_free_connections(&ct);
+        fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
+        fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
+        free(material_bindings);
+        free(bone_bindings);
+        fbx_free_node(&root);
+        fbx_release_ref((void **)&asset);
+        rt_asset_error_set(context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE
+                                                    : RT_ASSET_ERROR_CORRUPT,
+                           context.budget_exhausted
+                               ? "FBX.Load: animation samples exceed the aggregate load budget"
+                               : "FBX.Load: failed to build complete FBX animations");
+        return NULL;
+    }
 
     {
         int scene_failed = 0;
@@ -1545,7 +1596,7 @@ static void *fbx_load_impl(rt_string path) {
                                                  z_up,
                                                  &scene_failed);
         if (scene_failed) {
-            free(ct.entries);
+            fbx_free_connections(&ct);
             fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
             fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
             free(material_bindings);
@@ -1558,7 +1609,7 @@ static void *fbx_load_impl(rt_string path) {
     }
 
     /* Cleanup parser data */
-    free(ct.entries);
+    fbx_free_connections(&ct);
     fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
     fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
     free(material_bindings);
@@ -1620,7 +1671,7 @@ static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
         return NULL;
     }
     int64_t fsize = rt_file_stdio_tell64(f);
-    if (fsize < 27 || (uint64_t)fsize > max_file_bytes || (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
+    if (fsize <= 0 || (uint64_t)fsize > max_file_bytes || (uint64_t)fsize >= (uint64_t)SIZE_MAX) {
         fclose(f);
         rt_asset_error_setf((uint64_t)fsize > max_file_bytes ? RT_ASSET_ERROR_TOO_LARGE
                                                              : RT_ASSET_ERROR_BAD_MAGIC,
@@ -1652,12 +1703,12 @@ static uint8_t *fbx_read_recoverable_file(rt_string path, long *out_size) {
     return data;
 }
 
-/// @brief Recoverably load an FBX asset for high-level model loading.
-/// @details Missing/unreadable files, too-short files, and unsupported non-binary
-/// payloads return NULL instead of trapping. Valid binary FBX files are delegated to
-/// the strict `rt_fbx_load()` parser so malformed binary contents continue to produce
-/// the existing hard diagnostics. Minimal ASCII FBX files are parsed directly from the
-/// recoverable buffer to avoid routing unsupported ASCII input through the strict path.
+/// @brief Recoverably load a binary or ASCII FBX asset for high-level model loading.
+/// @details The preliminary bounded read retains the established recoverable filesystem behavior.
+///          All non-empty candidates are then delegated to `rt_fbx_load()`, where binary and ASCII
+///          inputs share the typed graph, aggregate budget, object index, connection adjacency,
+///          and transactional extraction path. Unsupported text therefore cannot fall through to
+///          the former substring-based single-mesh implementation.
 /// @param path Runtime string path to the candidate FBX file.
 /// @return An FBX handle on success, or NULL for recoverable load failures.
 void *rt_fbx_load_recoverable(rt_string path) {
@@ -1666,20 +1717,8 @@ void *rt_fbx_load_recoverable(rt_string path) {
     if (!data)
         return NULL;
 
-    if (fbx_has_binary_magic(data, fsize)) {
-        free(data);
-        return rt_fbx_load(path);
-    }
-
-    int has_ascii_signature = fbx_has_ascii_fbx_signature(data, fsize);
-    void *ascii_asset = fbx_load_ascii_minimal((const char *)data);
     free(data);
-    if (!ascii_asset && has_ascii_signature)
-        rt_asset_error_set(RT_ASSET_ERROR_UNSUPPORTED,
-                           "ASCII FBX is not supported; re-export as binary FBX");
-    else if (!ascii_asset)
-        rt_asset_error_set(RT_ASSET_ERROR_BAD_MAGIC, "FBX.Load: not a supported FBX file");
-    return ascii_asset;
+    return rt_fbx_load(path);
 }
 
 /// @brief Recoverably load an FBX path while overriding relative texture lookup base path.

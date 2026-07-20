@@ -13,7 +13,8 @@
 // Key invariants:
 //   - Dead particles are swapped to end (unstable removal, O(1) per kill).
 //   - Billboard quads use camera right/up vectors from the view matrix.
-//   - Each Draw fills a reusable per-frame vertex+index slot for all live particles.
+//   - Hardware draws upload compact center/axis/color instances against a retained unit quad;
+//     software draws and trail ribbons fill reusable CPU vertex+index slots.
 //   - Additive mode submits one batched draw; alpha mode sorts the batched quads
 //     back-to-front before upload so transparent draw order is deterministic.
 //   - xorshift32 PRNG seeded from a local monotonic counter for deterministic
@@ -51,7 +52,8 @@
 #define PARTICLES3D_WORLD_ABS_MAX 1000000000000.0
 #define PARTICLES3D_PARAM_MAX 1000000.0
 #define PARTICLES3D_DRAW_SLOT_COUNT 4
-#define PARTICLES3D_DT_MAX 1.0
+#define PARTICLES3D_SIMULATION_STEP (1.0 / 60.0)
+#define PARTICLES3D_MAX_SUBSTEPS 60
 
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
@@ -72,6 +74,10 @@ typedef struct {
     float size;
     float life;
     float max_life;
+    /* Authoritative simulation lifetime. The float fields remain suitable for render
+     * interpolation, while this value prevents per-substep float rounding from moving an
+     * expired particle past its exact endpoint. */
+    double remaining_life;
 } vgfx3d_particle_t;
 
 typedef struct {
@@ -128,6 +134,20 @@ typedef struct {
     uint64_t sort_key_grow_count;
     int64_t draw_frame_serial;
     int32_t draw_slots_used;
+    /* Fixed-step, terminal-frame, and compact-render state are appended to the private payload so
+     * existing implementation-only prefix views remain valid. Terminal snapshots occupy the pool
+     * tail and are excluded from `count`; live capacity plus terminal_count never exceeds
+     * max_particles. */
+    double simulation_residual;
+    double dropped_time_total;
+    double dropped_time_last_update;
+    int32_t terminal_count;
+    int8_t render_final_frame;
+    /* Compact hardware records are emitter-owned scratch only. Canvas3D snapshots the live prefix
+     * into frame storage before Draw returns, so repeated frames reuse this allocation safely. */
+    vgfx3d_particle_instance_t *instance_scratch;
+    int32_t instance_scratch_capacity;
+    uint64_t instance_scratch_grow_count;
 } rt_particles3d;
 
 /// @brief Generate a non-zero per-instance seed for Particles3D.
@@ -427,7 +447,9 @@ static int particle_state_is_finite(const vgfx3d_particle_t *p) {
     }
     return isfinite(p->color[3]) && p->color[3] >= 0.0f && p->color[3] <= 1.0f &&
            isfinite(p->size) && p->size >= 0.0f && p->size <= (float)PARTICLES3D_PARAM_MAX &&
-           isfinite(p->life) && isfinite(p->max_life) && p->max_life > 0.0f;
+           isfinite(p->life) && isfinite(p->max_life) && p->max_life > 0.0f &&
+           isfinite(p->remaining_life) && p->remaining_life >= 0.0 &&
+           p->remaining_life <= (double)p->max_life;
 }
 
 /*==========================================================================
@@ -484,6 +506,10 @@ static void rt_particles3d_finalize(void *obj) {
     ps->sort_scratch = NULL;
     ps->sort_key_capacity = 0;
     ps->sort_key_grow_count = 0;
+    free(ps->instance_scratch);
+    ps->instance_scratch = NULL;
+    ps->instance_scratch_capacity = 0;
+    ps->instance_scratch_grow_count = 0;
     particles3d_release_texture_slot(&ps->texture);
     particles3d_release_material_slot(&ps->cached_material);
 }
@@ -577,6 +603,14 @@ void *rt_particles3d_new(int64_t max_particles) {
     ps->sort_key_grow_count = 0;
     ps->draw_frame_serial = -1;
     ps->draw_slots_used = 0;
+    ps->simulation_residual = 0.0;
+    ps->dropped_time_total = 0.0;
+    ps->dropped_time_last_update = 0.0;
+    ps->terminal_count = 0;
+    ps->render_final_frame = 1;
+    ps->instance_scratch = NULL;
+    ps->instance_scratch_capacity = 0;
+    ps->instance_scratch_grow_count = 0;
 
     rt_obj_set_finalizer(ps, rt_particles3d_finalize);
     return ps;
@@ -836,6 +870,48 @@ static void particles3d_swap_kill(rt_particles3d *ps, int32_t i) {
     }
 }
 
+/// @brief Resolve one terminal-snapshot ordinal to its pool-tail storage index.
+/// @details Live particles occupy `[0, count)` while terminal snapshots occupy descending slots
+///   beginning at `max_particles - 1`. The regions cannot overlap when private count invariants
+///   hold.
+/// @param ps Particle system owning the shared pool.
+/// @param ordinal Zero-based terminal snapshot ordinal.
+/// @return Valid pool index, or -1 for invalid/corrupt state.
+static int32_t particles3d_terminal_slot(const rt_particles3d *ps, int32_t ordinal) {
+    if (!ps || !ps->particles || ordinal < 0 || ordinal >= ps->terminal_count ||
+        ps->terminal_count > ps->max_particles - ps->count)
+        return -1;
+    return ps->max_particles - 1 - ordinal;
+}
+
+/// @brief Retain an expired particle endpoint in the non-live pool tail for the next Draw.
+/// @details The caller must remove the particle from the live prefix first. No allocation occurs;
+///   snapshots are bounded by the slots released by expiration during the current update.
+/// @param ps Particle system receiving the endpoint snapshot.
+/// @param endpoint Fully integrated finite terminal state with life equal to zero.
+static void particles3d_retain_terminal_particle(rt_particles3d *ps,
+                                                 const vgfx3d_particle_t *endpoint) {
+    if (!ps || !endpoint || !ps->render_final_frame || !particle_state_is_finite(endpoint) ||
+        ps->terminal_count < 0 || ps->terminal_count >= ps->max_particles - ps->count)
+        return;
+    int32_t slot = ps->max_particles - 1 - ps->terminal_count;
+    ps->particles[slot] = *endpoint;
+    ps->terminal_count++;
+}
+
+/// @brief Resolve one billboard ordinal across the live prefix followed by terminal snapshots.
+/// @param ps Particle system supplying both representations.
+/// @param ordinal Draw-order source ordinal in `[0, count + terminal_count)`.
+/// @return Borrowed particle pointer, or NULL for corrupt/out-of-range state.
+static vgfx3d_particle_t *particles3d_draw_particle_at(rt_particles3d *ps, int32_t ordinal) {
+    if (!ps || ordinal < 0)
+        return NULL;
+    if (ordinal < ps->count)
+        return &ps->particles[ordinal];
+    int32_t slot = particles3d_terminal_slot(ps, ordinal - ps->count);
+    return slot >= 0 ? &ps->particles[slot] : NULL;
+}
+
 /// @brief Set the per-particle billboard texture. NULL produces solid color quads.
 void rt_particles3d_set_texture(void *o, void *tex) {
     rt_particles3d *ps = particles3d_checked(o);
@@ -899,6 +975,8 @@ void rt_particles3d_clear(void *o) {
         return;
     p->count = 0;
     p->accumulator = 0.0;
+    p->simulation_residual = 0.0;
+    p->terminal_count = 0;
 }
 
 /// @brief Number of particles currently alive.
@@ -944,6 +1022,74 @@ int8_t rt_particles3d_get_emitting(void *o) {
     return p && p->emitting ? 1 : 0;
 }
 
+/// @brief Enable or disable the one-update terminal-frame snapshot for expired particles.
+/// @details Enabled by default for visual compatibility. Expired particles are always removed from
+///   the live count in the update where their lifetime reaches zero. When enabled, their exact
+///   endpoint state is retained in non-live pool slots until the next valid update so Draw can show
+///   it once. Disabling the option immediately discards any pending terminal snapshots.
+/// @param o Particles3D handle; invalid handles are ignored.
+/// @param enabled Nonzero to retain endpoint snapshots, zero to expire without a final draw.
+void rt_particles3d_set_render_final_frame(void *o, int8_t enabled) {
+    rt_particles3d *ps = particles3d_checked(o);
+    if (!ps)
+        return;
+    ps->render_final_frame = enabled ? 1 : 0;
+    if (!ps->render_final_frame)
+        ps->terminal_count = 0;
+}
+
+/// @brief Return whether endpoint snapshots are retained for one terminal frame.
+/// @param o Particles3D handle.
+/// @return 1 when terminal-frame rendering is enabled, otherwise 0 (including invalid handles).
+int8_t rt_particles3d_get_render_final_frame(void *o) {
+    rt_particles3d *ps = particles3d_checked(o);
+    return ps && ps->render_final_frame ? 1 : 0;
+}
+
+/// @brief Return cumulative simulation time explicitly dropped by the catch-up safety budget.
+/// @details The value grows only when an Update contains more complete fixed steps than the bounded
+///   call can execute. Fractional residual time is carried and is not counted as dropped.
+/// @param o Particles3D handle.
+/// @return Finite nonnegative seconds dropped since construction or ResetDroppedTime; zero for an
+///   invalid handle.
+double rt_particles3d_get_dropped_time(void *o) {
+    rt_particles3d *ps = particles3d_checked(o);
+    return ps && isfinite(ps->dropped_time_total) && ps->dropped_time_total > 0.0
+               ? ps->dropped_time_total
+               : 0.0;
+}
+
+/// @brief Return simulation time dropped by the most recent Update call.
+/// @param o Particles3D handle.
+/// @return Finite nonnegative dropped seconds, or zero for no drop/invalid handle.
+double rt_particles3d_get_last_dropped_time(void *o) {
+    rt_particles3d *ps = particles3d_checked(o);
+    return ps && isfinite(ps->dropped_time_last_update) && ps->dropped_time_last_update > 0.0
+               ? ps->dropped_time_last_update
+               : 0.0;
+}
+
+/// @brief Return the normal fixed-step remainder carried into the next Update call.
+/// @param o Particles3D handle.
+/// @return Residual seconds in `[0, 1/60)`, or zero for an invalid/corrupt handle.
+double rt_particles3d_get_residual_time(void *o) {
+    rt_particles3d *ps = particles3d_checked(o);
+    return ps && isfinite(ps->simulation_residual) && ps->simulation_residual > 0.0 &&
+                   ps->simulation_residual < PARTICLES3D_SIMULATION_STEP
+               ? ps->simulation_residual
+               : 0.0;
+}
+
+/// @brief Reset cumulative and last-update dropped-time telemetry without changing simulation.
+/// @param o Particles3D handle; invalid handles are ignored.
+void rt_particles3d_reset_dropped_time(void *o) {
+    rt_particles3d *ps = particles3d_checked(o);
+    if (!ps)
+        return;
+    ps->dropped_time_total = 0.0;
+    ps->dropped_time_last_update = 0.0;
+}
+
 /*==========================================================================
  * Spawning
  *=========================================================================*/
@@ -960,7 +1106,9 @@ static void spawn_particle(rt_particles3d *ps) {
         return;
     if (ps->count < 0)
         ps->count = 0;
-    if (ps->count >= ps->max_particles)
+    if (ps->terminal_count < 0 || ps->terminal_count > ps->max_particles)
+        ps->terminal_count = 0;
+    if (ps->count >= ps->max_particles - ps->terminal_count)
         return;
     vgfx3d_particle_t *p = &ps->particles[ps->count++];
 
@@ -1004,6 +1152,7 @@ static void spawn_particle(rt_particles3d *ps) {
     if (p->max_life < 0.01f)
         p->max_life = 0.01f;
     p->life = p->max_life;
+    p->remaining_life = (double)p->max_life;
 
     /* Initial visuals */
     p->size = (float)particles_nonnegative_or_zero(ps->size_start);
@@ -1031,7 +1180,10 @@ void rt_particles3d_burst(void *o, int64_t count) {
         ps->count = 0;
     if (ps->count > ps->max_particles)
         ps->count = ps->max_particles;
-    int64_t available = (int64_t)ps->max_particles - (int64_t)ps->count;
+    if (ps->terminal_count < 0 || ps->terminal_count > ps->max_particles - ps->count)
+        ps->terminal_count = 0;
+    int64_t available =
+        (int64_t)ps->max_particles - (int64_t)ps->count - (int64_t)ps->terminal_count;
     if (available <= 0)
         return;
     if (count > available)
@@ -1073,167 +1225,263 @@ void rt_particles3d_rebase_origin(void *o, double dx, double dy, double dz) {
         ps->particles[i].pos[2] = z;
         i++;
     }
+    for (int32_t i = 0; i < ps->terminal_count; i++) {
+        int32_t slot = particles3d_terminal_slot(ps, i);
+        if (slot < 0) {
+            ps->terminal_count = 0;
+            break;
+        }
+        vgfx3d_particle_t *terminal = &ps->particles[slot];
+        terminal->pos[0] =
+            particles_clamp_abs_or(terminal->pos[0] - delta[0], 0.0, PARTICLES3D_WORLD_ABS_MAX);
+        terminal->pos[1] =
+            particles_clamp_abs_or(terminal->pos[1] - delta[1], 0.0, PARTICLES3D_WORLD_ABS_MAX);
+        terminal->pos[2] =
+            particles_clamp_abs_or(terminal->pos[2] - delta[2], 0.0, PARTICLES3D_WORLD_ABS_MAX);
+    }
 }
 
 /*==========================================================================
  * Update (Euler integration + lifetime + interpolation)
  *=========================================================================*/
 
-/// @brief Per-frame tick. Walks every live particle to apply Euler integration (pos += vel*dt,
-/// vel += gravity*dt), age-interpolate size/color/alpha, and reap dead ones via O(1) swap-with-
-/// last. Then accumulates and emits new particles from the rate while emission is enabled.
+/// @brief Sanitized visual and acceleration inputs shared by every substep in one public update.
+typedef struct {
+    double gravity[3];
+    double size_start;
+    double size_end;
+    float color_start[3];
+    float color_end[3];
+    double alpha_start;
+    double alpha_end;
+} particles3d_step_config;
+
+/// @brief Snapshot and sanitize emitter parameters once for a bounded substep batch.
+/// @param ps Particle system whose authored parameters are read.
+/// @param out_config Caller-owned output written with finite bounded values.
+static void particles3d_prepare_step_config(const rt_particles3d *ps,
+                                            particles3d_step_config *out_config) {
+    if (!ps || !out_config)
+        return;
+    for (int c = 0; c < 3; c++) {
+        out_config->gravity[c] = particles_clamp_abs_or(ps->gravity[c], 0.0, PARTICLES3D_PARAM_MAX);
+        out_config->color_start[c] = (float)particles_clamp((double)ps->color_start[c], 0.0, 1.0);
+        out_config->color_end[c] = (float)particles_clamp((double)ps->color_end[c], 0.0, 1.0);
+    }
+    out_config->size_start = particles_nonnegative_or_zero(ps->size_start);
+    out_config->size_end = particles_nonnegative_or_zero(ps->size_end);
+    out_config->alpha_start = particles_clamp(ps->alpha_start, 0.0, 1.0);
+    out_config->alpha_end = particles_clamp(ps->alpha_end, 0.0, 1.0);
+}
+
+/// @brief Apply the size/color/alpha envelope for one normalized lifetime age.
+/// @param p Particle receiving the visual state.
+/// @param config Sanitized update-batch configuration.
+/// @param age Normalized age, clamped internally to `[0, 1]`.
+static void particles3d_apply_visual_envelope(vgfx3d_particle_t *p,
+                                              const particles3d_step_config *config,
+                                              double age) {
+    if (!p || !config)
+        return;
+    age = particles_clamp(age, 0.0, 1.0);
+    p->size = (float)(config->size_start + age * (config->size_end - config->size_start));
+    for (int c = 0; c < 3; c++)
+        p->color[c] =
+            (float)((double)config->color_start[c] +
+                    age * ((double)config->color_end[c] - (double)config->color_start[c]));
+    p->color[3] = (float)(config->alpha_start + age * (config->alpha_end - config->alpha_start));
+}
+
+/// @brief Advance one live particle's ribbon history across an exact motion segment.
+/// @details Control points are interpolated between caller-provided pre/post positions, so an
+///   expiring particle never extrapolates beyond its remaining lifetime and fixed-step partitioning
+///   produces stable sampling cadence.
+/// @param ps Particle system owning parallel trail arrays.
+/// @param slot Live particle/trail slot index.
+/// @param previous Position before the motion segment.
+/// @param current Position after the motion segment.
+/// @param elapsed Exact simulated seconds in the motion segment.
+static void particles3d_advance_trail(rt_particles3d *ps,
+                                      int32_t slot,
+                                      const double previous[3],
+                                      const double current[3],
+                                      double elapsed) {
+    if (!ps || !previous || !current || slot < 0 || slot >= ps->count || !ps->trail_pos ||
+        ps->trail_segments <= 0 || ps->trail_lifetime <= 0.0f || !isfinite(elapsed) ||
+        elapsed <= 0.0)
+        return;
+    float spacing = ps->trail_lifetime / (float)ps->trail_segments;
+    ps->trail_age[slot] += (float)elapsed;
+    if (ps->trail_age[slot] < spacing && ps->trail_len[slot] != 0)
+        return;
+    size_t stride = (size_t)ps->trail_segments * 3u;
+    int32_t emit = 1;
+    if (ps->trail_len[slot] != 0 && spacing > 0.0f) {
+        float intervals = ps->trail_age[slot] / spacing;
+        if (isfinite(intervals) && intervals > 1.0f)
+            emit = intervals >= (float)ps->trail_segments ? ps->trail_segments : (int32_t)intervals;
+    }
+    for (int32_t e = 1; e <= emit; e++) {
+        double t = (double)e / (double)emit;
+        int16_t head = ps->trail_head[slot];
+        float *dst = &ps->trail_pos[(size_t)slot * stride + (size_t)head * 3u];
+        for (int c = 0; c < 3; c++)
+            dst[c] = (float)(previous[c] + (current[c] - previous[c]) * t);
+        ps->trail_head[slot] = (int16_t)((head + 1) % ps->trail_segments);
+        if (ps->trail_len[slot] < (int16_t)ps->trail_segments)
+            ps->trail_len[slot]++;
+    }
+    if (ps->trail_len[slot] != 0 && spacing > 0.0f) {
+        float remainder = ps->trail_age[slot] - (float)emit * spacing;
+        ps->trail_age[slot] = (isfinite(remainder) && remainder > 0.0f) ? remainder : 0.0f;
+    } else {
+        ps->trail_age[slot] = 0.0f;
+    }
+}
+
+/// @brief Simulate one fixed particle-system substep and emit rate-driven particles afterward.
+/// @details Every live particle integrates for `min(dt, remaining_lifetime)`. An expiring particle
+///   reaches its exact position/velocity/envelope endpoint, is removed from the live prefix in this
+///   substep, and may be copied to the terminal snapshot. Work is O(live particles + spawned count)
+///   with no allocation.
+/// @param ps Particle system to mutate.
+/// @param dt Positive finite fixed-step duration.
+/// @param config Sanitized configuration shared by the enclosing public update.
+static void particles3d_simulate_substep(rt_particles3d *ps,
+                                         double dt,
+                                         const particles3d_step_config *config) {
+    if (!ps || !config || !isfinite(dt) || dt <= 0.0)
+        return;
+    for (int32_t i = 0; i < ps->count;) {
+        vgfx3d_particle_t *p = &ps->particles[i];
+        if (!particle_state_is_finite(p) || p->remaining_life <= 0.0) {
+            particles3d_swap_kill(ps, i);
+            continue;
+        }
+        double remaining = p->remaining_life;
+        double active_dt = dt < remaining ? dt : remaining;
+        int expires = dt >= remaining;
+        double previous[3] = {p->pos[0], p->pos[1], p->pos[2]};
+        for (int c = 0; c < 3; c++) {
+            p->pos[c] = particles_clamp_abs_or(
+                p->pos[c] + p->vel[c] * active_dt, 0.0, PARTICLES3D_WORLD_ABS_MAX);
+            p->vel[c] = particles_clamp_abs_or(
+                p->vel[c] + config->gravity[c] * active_dt, 0.0, PARTICLES3D_PARAM_MAX);
+        }
+        p->remaining_life = expires ? 0.0 : remaining - active_dt;
+        p->life = (float)p->remaining_life;
+        particles3d_advance_trail(ps, i, previous, p->pos, active_dt);
+        double age = expires ? 1.0 : 1.0 - p->remaining_life / (double)p->max_life;
+        particles3d_apply_visual_envelope(p, config, age);
+        if (!particle_state_is_finite(p)) {
+            particles3d_swap_kill(ps, i);
+            continue;
+        }
+        if (expires) {
+            vgfx3d_particle_t endpoint = *p;
+            particles3d_swap_kill(ps, i);
+            particles3d_retain_terminal_particle(ps, &endpoint);
+            continue;
+        }
+        i++;
+    }
+
+    ps->rate = particles_nonnegative_or_zero(ps->rate);
+    if (ps->emitting && ps->rate > 0.0) {
+        int32_t available = ps->max_particles - ps->count - ps->terminal_count;
+        if (available < 0)
+            available = 0;
+        double max_budget = (double)available + 0.999999;
+        if (!isfinite(ps->accumulator) || ps->accumulator < 0.0)
+            ps->accumulator = 0.0;
+        ps->accumulator += ps->rate * dt;
+        if (!isfinite(ps->accumulator) || ps->accumulator > max_budget)
+            ps->accumulator = max_budget;
+        /* Repeated binary approximations of rate / 60 can land a few ulps below an
+         * integer emission boundary.  The tolerance is many orders of magnitude
+         * smaller than one particle, but preserves exact authored rates such as
+         * four particles over thirty fixed substeps. */
+        while (ps->accumulator >= 1.0 - 1e-12 &&
+               ps->count + ps->terminal_count < ps->max_particles) {
+            spawn_particle(ps);
+            ps->accumulator -= 1.0;
+            if (ps->accumulator < 0.0 && ps->accumulator > -1e-12)
+                ps->accumulator = 0.0;
+        }
+    }
+}
+
+/// @brief Advance the emitter through bounded 60 Hz fixed substeps.
+/// @details Normal fractional time is retained in `ResidualTime`. At most 60 complete substeps are
+///   executed per call. Additional complete-step time is explicitly accumulated in `DroppedTime`
+///   and `LastDroppedTime`; only the fractional remainder is carried. Terminal snapshots from the
+///   previous valid update are discarded before this update begins.
+/// @param o Particles3D handle; invalid handles are ignored.
+/// @param delta_time Positive finite elapsed seconds. Invalid/nonpositive values perform no update.
 void rt_particles3d_update(void *o, double delta_time) {
     rt_particles3d *ps = particles3d_checked(o);
-    if (!ps || !isfinite(delta_time) || delta_time <= 0.0)
+    if (!ps)
         return;
-    if (!ps->particles || ps->max_particles <= 0)
+    ps->dropped_time_last_update = 0.0;
+    if (!isfinite(delta_time) || delta_time <= 0.0 || !ps->particles || ps->max_particles <= 0)
         return;
     if (ps->count < 0)
         ps->count = 0;
     if (ps->count > ps->max_particles)
         ps->count = ps->max_particles;
-    if (delta_time > PARTICLES3D_DT_MAX)
-        delta_time = PARTICLES3D_DT_MAX;
-    double dt = delta_time;
-    if (!isfinite(dt) || dt <= 0.0)
-        return;
-    float dtf = (float)dt;
-    double gravity[3] = {
-        particles_clamp_abs_or(ps->gravity[0], 0.0, PARTICLES3D_PARAM_MAX),
-        particles_clamp_abs_or(ps->gravity[1], 0.0, PARTICLES3D_PARAM_MAX),
-        particles_clamp_abs_or(ps->gravity[2], 0.0, PARTICLES3D_PARAM_MAX),
-    };
-    double size_start = particles_nonnegative_or_zero(ps->size_start);
-    double size_end = particles_nonnegative_or_zero(ps->size_end);
-    float color_start[3];
-    float color_end[3];
-    for (int c = 0; c < 3; c++) {
-        color_start[c] = (float)particles_clamp((double)ps->color_start[c], 0.0, 1.0);
-        color_end[c] = (float)particles_clamp((double)ps->color_end[c], 0.0, 1.0);
+    if (ps->terminal_count < 0 || ps->terminal_count > ps->max_particles - ps->count)
+        ps->terminal_count = 0;
+    /* A terminal snapshot represents exactly the interval between two valid Update calls. */
+    ps->terminal_count = 0;
+    if (!isfinite(ps->simulation_residual) || ps->simulation_residual < 0.0 ||
+        ps->simulation_residual >= PARTICLES3D_SIMULATION_STEP)
+        ps->simulation_residual = 0.0;
+
+    double total = delta_time + ps->simulation_residual;
+    if (!isfinite(total) || total < delta_time)
+        total = DBL_MAX;
+    double ratio = total / PARTICLES3D_SIMULATION_STEP;
+    int32_t substeps = 0;
+    if (ratio >= (double)PARTICLES3D_MAX_SUBSTEPS) {
+        substeps = PARTICLES3D_MAX_SUBSTEPS;
+    } else if (ratio >= 1.0 - 1e-12) {
+        substeps = (int32_t)floor(ratio + 1e-12);
     }
-    double alpha_start = particles_clamp(ps->alpha_start, 0.0, 1.0);
-    double alpha_end = particles_clamp(ps->alpha_end, 0.0, 1.0);
+    if (substeps < 0)
+        substeps = 0;
+    if (substeps > PARTICLES3D_MAX_SUBSTEPS)
+        substeps = PARTICLES3D_MAX_SUBSTEPS;
 
-    /* Update alive particles */
-    for (int32_t i = 0; i < ps->count;) {
-        vgfx3d_particle_t *p = &ps->particles[i];
-        if (!particle_state_is_finite(p)) {
-            particles3d_swap_kill(ps, i);
-            continue;
-        }
-        if (p->life <= 0.0f) {
-            /* Already rendered its final age=1 frame last update — reap now.
-             * Kill: swap with last alive particle (O(1) unstable removal) */
-            particles3d_swap_kill(ps, i);
-            continue;
-        }
-        p->life -= dtf;
-        if (p->life <= 0.0f) {
-            /* Render-then-reap: pin the particle at its exact end state for one final frame.
-             * Emitters that do not fade to zero (additive glow, nonzero end alpha) end on a
-             * deterministic frame instead of popping out mid-brightness one step early. */
-            p->life = 0.0f;
-            p->size = (float)size_end;
-            p->color[0] = color_end[0];
-            p->color[1] = color_end[1];
-            p->color[2] = color_end[2];
-            p->color[3] = (float)alpha_end;
-            if (!particle_state_is_finite(p)) {
-                particles3d_swap_kill(ps, i);
-                continue;
-            }
-            i++;
-            continue;
-        }
-
-        /* Physics: pos += vel * dt, vel += gravity * dt */
-        p->pos[0] =
-            particles_clamp_abs_or(p->pos[0] + p->vel[0] * dt, 0.0, PARTICLES3D_WORLD_ABS_MAX);
-        p->pos[1] =
-            particles_clamp_abs_or(p->pos[1] + p->vel[1] * dt, 0.0, PARTICLES3D_WORLD_ABS_MAX);
-        p->pos[2] =
-            particles_clamp_abs_or(p->pos[2] + p->vel[2] * dt, 0.0, PARTICLES3D_WORLD_ABS_MAX);
-        p->vel[0] = particles_clamp_abs_or(p->vel[0] + gravity[0] * dt, 0.0, PARTICLES3D_PARAM_MAX);
-        p->vel[1] = particles_clamp_abs_or(p->vel[1] + gravity[1] * dt, 0.0, PARTICLES3D_PARAM_MAX);
-        p->vel[2] = particles_clamp_abs_or(p->vel[2] + gravity[2] * dt, 0.0, PARTICLES3D_PARAM_MAX);
-        if (ps->trail_pos && ps->trail_segments > 0 && ps->trail_lifetime > 0.0f) {
-            int32_t slot = (int32_t)(p - ps->particles);
-            float spacing = ps->trail_lifetime / (float)ps->trail_segments;
-            ps->trail_age[slot] += (float)dt;
-            if (ps->trail_age[slot] >= spacing || ps->trail_len[slot] == 0) {
-                /* Emit one control point per elapsed spacing interval (capped
-                 * at the ring size), interpolated along this update's motion —
-                 * so a low-FPS frame lays down the same samples a run of
-                 * high-FPS frames would, keeping trail shape frame-rate
-                 * independent instead of collapsing to a single jump. */
-                size_t stride = (size_t)ps->trail_segments * 3u;
-                int32_t emit = 1;
-                float prev[3] = {(float)(p->pos[0] - p->vel[0] * dt),
-                                 (float)(p->pos[1] - p->vel[1] * dt),
-                                 (float)(p->pos[2] - p->vel[2] * dt)};
-                if (ps->trail_len[slot] != 0 && spacing > 0.0f) {
-                    float intervals = ps->trail_age[slot] / spacing;
-                    if (isfinite(intervals) && intervals > 1.0f)
-                        emit = intervals >= (float)ps->trail_segments ? ps->trail_segments
-                                                                      : (int32_t)intervals;
-                }
-                for (int32_t e = 1; e <= emit; e++) {
-                    float t = (float)e / (float)emit;
-                    int16_t head = ps->trail_head[slot];
-                    float *dst = &ps->trail_pos[(size_t)slot * stride + (size_t)head * 3u];
-                    dst[0] = prev[0] + ((float)p->pos[0] - prev[0]) * t;
-                    dst[1] = prev[1] + ((float)p->pos[1] - prev[1]) * t;
-                    dst[2] = prev[2] + ((float)p->pos[2] - prev[2]) * t;
-                    ps->trail_head[slot] = (int16_t)((head + 1) % ps->trail_segments);
-                    if (ps->trail_len[slot] < (int16_t)ps->trail_segments)
-                        ps->trail_len[slot]++;
-                }
-                /* Keep the fractional remainder so the emission cadence stays
-                 * steady across frames instead of resetting each burst. */
-                if (ps->trail_len[slot] != 0 && spacing > 0.0f) {
-                    float remainder = ps->trail_age[slot] - (float)emit * spacing;
-                    ps->trail_age[slot] =
-                        (isfinite(remainder) && remainder > 0.0f) ? remainder : 0.0f;
-                } else {
-                    ps->trail_age[slot] = 0.0f;
-                }
-            }
-        }
-
-        /* Interpolate size, color, alpha based on age ratio */
-        float age = 1.0f - p->life / p->max_life; /* 0 = birth, 1 = death */
-        if (!isfinite(age) || age < 0.0f)
-            age = 0.0f;
-        if (age > 1.0f)
-            age = 1.0f;
-        p->size = (float)size_start + age * (float)(size_end - size_start);
-        p->color[0] = color_start[0] + age * (color_end[0] - color_start[0]);
-        p->color[1] = color_start[1] + age * (color_end[1] - color_start[1]);
-        p->color[2] = color_start[2] + age * (color_end[2] - color_start[2]);
-        p->color[3] = (float)alpha_start + age * (float)(alpha_end - alpha_start);
-
-        if (!particle_state_is_finite(p)) {
-            particles3d_swap_kill(ps, i);
-            continue;
-        }
-
-        i++;
+    double consumed = (double)substeps * PARTICLES3D_SIMULATION_STEP;
+    double remaining = total - consumed;
+    if (!isfinite(remaining) || remaining < 0.0)
+        remaining = 0.0;
+    double dropped = 0.0;
+    if (substeps == PARTICLES3D_MAX_SUBSTEPS && remaining >= PARTICLES3D_SIMULATION_STEP) {
+        double carried = fmod(remaining, PARTICLES3D_SIMULATION_STEP);
+        if (!isfinite(carried) || carried < 1e-12 || PARTICLES3D_SIMULATION_STEP - carried < 1e-12)
+            carried = 0.0;
+        dropped = remaining - carried;
+        ps->simulation_residual = carried;
+    } else {
+        ps->simulation_residual = remaining;
+        if (ps->simulation_residual >= PARTICLES3D_SIMULATION_STEP)
+            ps->simulation_residual = fmod(ps->simulation_residual, PARTICLES3D_SIMULATION_STEP);
+    }
+    if (dropped > 0.0 && isfinite(dropped)) {
+        ps->dropped_time_last_update = dropped;
+        if (!isfinite(ps->dropped_time_total) || ps->dropped_time_total < 0.0)
+            ps->dropped_time_total = 0.0;
+        if (dropped > DBL_MAX - ps->dropped_time_total)
+            ps->dropped_time_total = DBL_MAX;
+        else
+            ps->dropped_time_total += dropped;
     }
 
-    /* Spawn new particles */
-    ps->rate = particles_nonnegative_or_zero(ps->rate);
-    if (ps->emitting && ps->rate > 0.0) {
-        double max_budget = (double)(ps->max_particles - ps->count) + 0.999999;
-        if (!isfinite(ps->accumulator) || ps->accumulator < 0.0)
-            ps->accumulator = 0.0;
-        ps->accumulator += ps->rate * delta_time;
-        if (ps->accumulator > max_budget)
-            ps->accumulator = max_budget;
-        while (ps->accumulator >= 1.0 && ps->count < ps->max_particles) {
-            spawn_particle(ps);
-            ps->accumulator -= 1.0;
-        }
-    }
+    particles3d_step_config config;
+    particles3d_prepare_step_config(ps, &config);
+    for (int32_t step = 0; step < substeps; step++)
+        particles3d_simulate_substep(ps, PARTICLES3D_SIMULATION_STEP, &config);
 }
 
 /*==========================================================================
@@ -1434,6 +1682,65 @@ int64_t rt_particles3d_test_sort_key_capacity(void *o) {
 uint64_t rt_particles3d_test_sort_key_grow_count(void *o) {
     rt_particles3d *ps = particles3d_checked(o);
     return ps ? ps->sort_key_grow_count : 0;
+}
+
+/// @brief Ensure the emitter-owned compact particle instance scratch can hold @p count records.
+/// @details Capacity grows geometrically from a small initial block and never exceeds the emitter
+///   pool limit. The allocation is reused across cameras and frames; Canvas3D copies the active
+///   prefix when a draw is queued, so later fills cannot mutate an earlier deferred command.
+/// @param ps Particle emitter whose private scratch allocation is grown.
+/// @param count Number of compact instance records required by the pending draw.
+/// @return Non-zero when at least @p count records are writable, otherwise zero after trapping on
+///   overflow or allocation failure.
+static int particles3d_ensure_instance_scratch(rt_particles3d *ps, int32_t count) {
+    int32_t target_capacity;
+    vgfx3d_particle_instance_t *grown;
+    if (!ps || count <= 0 || count > ps->max_particles)
+        return 0;
+    if (ps->instance_scratch && ps->instance_scratch_capacity >= count)
+        return 1;
+
+    target_capacity = ps->instance_scratch_capacity > 0 ? ps->instance_scratch_capacity : 64;
+    if (target_capacity > ps->max_particles)
+        target_capacity = ps->max_particles;
+    while (target_capacity < count) {
+        if (target_capacity > ps->max_particles / 2) {
+            target_capacity = ps->max_particles;
+            break;
+        }
+        target_capacity *= 2;
+    }
+    if (target_capacity < count ||
+        (size_t)target_capacity > SIZE_MAX / sizeof(*ps->instance_scratch)) {
+        rt_trap("Particles3D.Draw: compact instance allocation overflow");
+        return 0;
+    }
+    grown = (vgfx3d_particle_instance_t *)realloc(ps->instance_scratch,
+                                                  (size_t)target_capacity * sizeof(*grown));
+    if (!grown) {
+        rt_trap("Particles3D.Draw: compact instance allocation failed");
+        return 0;
+    }
+    ps->instance_scratch = grown;
+    ps->instance_scratch_capacity = target_capacity;
+    ps->instance_scratch_grow_count++;
+    return 1;
+}
+
+/// @brief Test hook returning the retained compact-instance scratch capacity.
+/// @details This is intentionally absent from the public runtime registry; contract tests use it
+///   to prove that repeated hardware draws do not allocate or rebuild CPU billboard geometry.
+int64_t rt_particles3d_test_instance_scratch_capacity(void *o) {
+    rt_particles3d *ps = particles3d_checked(o);
+    return ps ? ps->instance_scratch_capacity : 0;
+}
+
+/// @brief Test hook returning the number of compact-instance scratch growth operations.
+/// @details The counter changes only after a successful realloc and therefore distinguishes
+///   retained-buffer reuse from per-frame scratch reconstruction.
+uint64_t rt_particles3d_test_instance_scratch_grow_count(void *o) {
+    rt_particles3d *ps = particles3d_checked(o);
+    return ps ? ps->instance_scratch_grow_count : 0;
 }
 
 /// @brief Lazily create the system's shared unlit white particle material in @p *slot.
@@ -1718,10 +2025,112 @@ static void particles3d_normalize3_or(float v[3], float fx, float fy, float fz) 
     v[2] = sz / len;
 }
 
-/// @brief Render every live particle as a camera-facing billboard quad. Extracts right/up from
-/// the camera view matrix to build the quads. Sorts back-to-front for alpha blending; skips the
-/// sort when in additive mode (order-independent). Both additive and alpha modes stay batched;
-/// alpha uses sorted indices so the backend draws quads back-to-front inside one mesh.
+/// @brief Compute the camera-plane half axes for one particle billboard.
+/// @details The default axes are camera right/up scaled by half the particle size. When velocity
+///   stretch is enabled, velocity is projected into the camera plane, normalized as the long axis,
+///   and capped at 64 times the unstretched half-size. The short axis is rebuilt so
+///   `cross(out_right, out_up)` retains the camera-facing winding used by the CPU quad and all
+///   hardware particle shaders.
+/// @param ps Emitter providing the velocity-stretch factor.
+/// @param particle Finite particle state whose size and velocity define the axes.
+/// @param camera_right Normalized camera right vector.
+/// @param camera_up Normalized camera up vector.
+/// @param camera_forward Normalized camera forward vector.
+/// @param out_right Receives the three-component right half-axis in render space.
+/// @param out_up Receives the three-component up/long half-axis in render space.
+static void particles3d_billboard_half_axes(const rt_particles3d *ps,
+                                            const vgfx3d_particle_t *particle,
+                                            const float camera_right[3],
+                                            const float camera_up[3],
+                                            const float camera_forward[3],
+                                            float out_right[3],
+                                            float out_up[3]) {
+    float axis_r[3];
+    float axis_u[3];
+    float half_size;
+    float half_length;
+    if (!ps || !particle || !camera_right || !camera_up || !camera_forward || !out_right || !out_up)
+        return;
+
+    half_size = particle->size * 0.5f;
+    half_length = half_size;
+    memcpy(axis_r, camera_right, sizeof(axis_r));
+    memcpy(axis_u, camera_up, sizeof(axis_u));
+    if (ps->stretch_k > 0.0) {
+        float velocity_x = (float)particle->vel[0];
+        float velocity_y = (float)particle->vel[1];
+        float velocity_z = (float)particle->vel[2];
+        float forward_velocity = velocity_x * camera_forward[0] + velocity_y * camera_forward[1] +
+                                 velocity_z * camera_forward[2];
+        float projected_x = velocity_x - camera_forward[0] * forward_velocity;
+        float projected_y = velocity_y - camera_forward[1] * forward_velocity;
+        float projected_z = velocity_z - camera_forward[2] * forward_velocity;
+        float projected_length = sqrtf(projected_x * projected_x + projected_y * projected_y +
+                                       projected_z * projected_z);
+        float speed =
+            sqrtf(velocity_x * velocity_x + velocity_y * velocity_y + velocity_z * velocity_z);
+        if (isfinite(projected_length) && projected_length > 1e-4f && isfinite(speed)) {
+            axis_u[0] = projected_x / projected_length;
+            axis_u[1] = projected_y / projected_length;
+            axis_u[2] = projected_z / projected_length;
+            axis_r[0] = axis_u[1] * camera_forward[2] - axis_u[2] * camera_forward[1];
+            axis_r[1] = axis_u[2] * camera_forward[0] - axis_u[0] * camera_forward[2];
+            axis_r[2] = axis_u[0] * camera_forward[1] - axis_u[1] * camera_forward[0];
+            half_length = half_size * (1.0f + (float)ps->stretch_k * speed);
+            if (half_length > half_size * 64.0f)
+                half_length = half_size * 64.0f;
+        }
+    }
+    for (int axis = 0; axis < 3; axis++) {
+        out_right[axis] = axis_r[axis] * half_size;
+        out_up[axis] = axis_u[axis] * half_length;
+    }
+}
+
+/// @brief Encode one sorted particle as a compact retained-unit-quad instance.
+/// @details Center is rebased by the Canvas3D frame origin before narrowing to float. Right/up are
+///   the exact half axes shared with the software expansion path, and color is copied unchanged so
+///   hardware and software draws reconstruct identical corners, winding, UVs, and modulation.
+/// @param ps Emitter providing billboard-stretch configuration.
+/// @param particle Particle state to encode.
+/// @param origin Camera-relative world origin used for this frame.
+/// @param camera_right Normalized camera right vector.
+/// @param camera_up Normalized camera up vector.
+/// @param camera_forward Normalized camera forward vector.
+/// @param out_instance Destination compact record.
+static void particles3d_write_compact_instance(const rt_particles3d *ps,
+                                               const vgfx3d_particle_t *particle,
+                                               const double origin[3],
+                                               const float camera_right[3],
+                                               const float camera_up[3],
+                                               const float camera_forward[3],
+                                               vgfx3d_particle_instance_t *out_instance) {
+    if (!ps || !particle || !origin || !camera_right || !camera_up || !camera_forward ||
+        !out_instance)
+        return;
+    memset(out_instance, 0, sizeof(*out_instance));
+    for (int axis = 0; axis < 3; axis++) {
+        double center = particles_clamp_abs_or(
+            particle->pos[axis] - origin[axis], 0.0, PARTICLES3D_WORLD_ABS_MAX);
+        out_instance->center[axis] = (float)center;
+    }
+    out_instance->center[3] = 1.0f;
+    particles3d_billboard_half_axes(ps,
+                                    particle,
+                                    camera_right,
+                                    camera_up,
+                                    camera_forward,
+                                    out_instance->right,
+                                    out_instance->up);
+    memcpy(out_instance->color, particle->color, sizeof(out_instance->color));
+}
+
+/// @brief Render every live particle as a camera-facing billboard quad.
+/// @details Camera right/up define the billboard axes; alpha particles are sorted back-to-front
+///   while additive particles retain pool order. Hardware backends receive one compact sorted
+///   center/right/up/color record per particle and draw a retained unit quad. Software backends
+///   reconstruct the same records into CPU vertices. Ribbon trails deliberately remain a separate
+///   CPU-expanded mesh because each ribbon segment has independent endpoint width and alpha.
 void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     rt_particles3d *ps = particles3d_checked(o);
     rt_canvas3d *canvas = rt_canvas3d_checked_or_stack(canvas3d);
@@ -1735,6 +2144,8 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         ps->count = 0;
     if (ps->count > ps->max_particles)
         ps->count = ps->max_particles;
+    if (ps->terminal_count < 0 || ps->terminal_count > ps->max_particles - ps->count)
+        ps->terminal_count = 0;
     for (int32_t i = 0; i < ps->count;) {
         if (particle_state_is_finite(&ps->particles[i])) {
             i++;
@@ -1742,7 +2153,15 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         }
         particles3d_swap_kill(ps, i);
     }
-    if (ps->count == 0)
+    for (int32_t i = 0; i < ps->terminal_count; i++) {
+        int32_t slot = particles3d_terminal_slot(ps, i);
+        if (slot < 0 || !particle_state_is_finite(&ps->particles[slot])) {
+            ps->terminal_count = 0;
+            break;
+        }
+    }
+    int32_t draw_particle_count = ps->count + ps->terminal_count;
+    if (draw_particle_count <= 0)
         return;
 
     double origin[3] = {0.0, 0.0, 0.0};
@@ -1766,13 +2185,15 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     particle3d_sort_key *sort_keys = NULL;
 
     /* Sort particles back-to-front for alpha blend (skip for additive or a single quad). */
-    if (!ps->additive_blend && ps->count > 1) {
-        if (!particles3d_ensure_sort_keys(ps, ps->count))
+    if (!ps->additive_blend && draw_particle_count > 1) {
+        if (!particles3d_ensure_sort_keys(ps, draw_particle_count))
             return;
         sort_keys = (particle3d_sort_key *)ps->sort_keys;
         if (sort_keys) {
-            for (int32_t i = 0; i < ps->count; i++) {
-                vgfx3d_particle_t *p = &ps->particles[i];
+            for (int32_t i = 0; i < draw_particle_count; i++) {
+                vgfx3d_particle_t *p = particles3d_draw_particle_at(ps, i);
+                if (!p)
+                    return;
                 double eye_x = particles_clamp_abs_or(cam->eye[0], 0.0, PARTICLES3D_WORLD_ABS_MAX);
                 double eye_y = particles_clamp_abs_or(cam->eye[1], 0.0, PARTICLES3D_WORLD_ABS_MAX);
                 double eye_z = particles_clamp_abs_or(cam->eye[2], 0.0, PARTICLES3D_WORLD_ABS_MAX);
@@ -1789,12 +2210,12 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
                     sort_keys[i].view_depth = 0.0;
             }
             particles3d_sort_keys_back_to_front(
-                sort_keys, (particle3d_sort_key *)ps->sort_scratch, ps->count);
+                sort_keys, (particle3d_sort_key *)ps->sort_scratch, draw_particle_count);
         }
     }
 
-    /* Build batched vertex + index buffers (trail ribbons add one quad per
-     * stored segment pair, appended after the billboards). */
+    /* Trail ribbons remain CPU-expanded on every backend. Hardware backends encode the particle
+     * billboards separately below, while software keeps billboards and trails in one CPU mesh. */
     uint32_t trail_quads = 0;
     if (ps->trail_pos && ps->trail_segments > 1) {
         for (int32_t i = 0; i < ps->count; i++) {
@@ -1802,14 +2223,21 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
                 trail_quads += (uint32_t)(ps->trail_len[i] - 1);
         }
     }
-    if ((uint64_t)ps->count + (uint64_t)trail_quads > UINT32_MAX / 6u ||
-        (size_t)ps->count + (size_t)trail_quads > SIZE_MAX / (4u * sizeof(vgfx3d_vertex_t)) ||
-        (size_t)ps->count + (size_t)trail_quads > SIZE_MAX / (6u * sizeof(uint32_t))) {
+    int compact_particles = rt_canvas3d_supports_particle_instancing(canvas3d);
+    if (compact_particles && !particles3d_ensure_instance_scratch(ps, draw_particle_count))
+        compact_particles = 0;
+    uint64_t cpu_quad_count64 = (uint64_t)trail_quads;
+    if (!compact_particles)
+        cpu_quad_count64 += (uint64_t)draw_particle_count;
+    if (cpu_quad_count64 > UINT32_MAX / 6u ||
+        cpu_quad_count64 > SIZE_MAX / (4u * sizeof(vgfx3d_vertex_t)) ||
+        cpu_quad_count64 > SIZE_MAX / (6u * sizeof(uint32_t))) {
         rt_trap("Particles3D.Draw: particle buffer allocation overflow");
         return;
     }
-    uint32_t vert_count = ((uint32_t)ps->count + trail_quads) * 4;
-    uint32_t idx_count = ((uint32_t)ps->count + trail_quads) * 6;
+    uint32_t cpu_quad_count = (uint32_t)cpu_quad_count64;
+    uint32_t vert_count = cpu_quad_count * 4u;
+    uint32_t idx_count = cpu_quad_count * 6u;
     vgfx3d_vertex_t *verts = NULL;
     uint32_t *indices = NULL;
     void *mat = NULL;
@@ -1826,92 +2254,76 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
         return;
     }
 
-    for (int32_t i = 0; i < ps->count; i++) {
-        int32_t particle_index = sort_keys ? sort_keys[i].index : i;
-        vgfx3d_particle_t *p = &ps->particles[particle_index];
-        float hs = p->size * 0.5f;
-        uint32_t base = (uint32_t)i * 4;
+    rt_material3d_set_texture(mat, ps->texture);
+    rt_material3d_set_alpha(mat, 1.0);
+    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
+    ((rt_material3d *)mat)->additive_blend = ps->additive_blend ? 1 : 0;
+    ((rt_material3d *)mat)->soft_fade = ps->softness;
 
-        /* Velocity-aligned stretching: orient the quad along the velocity
-         * projected onto the camera plane and scale its length by speed. */
-        float axis_r[3] = {right[0], right[1], right[2]};
-        float axis_u[3] = {up[0], up[1], up[2]};
-        float half_len = hs;
-        if (ps->stretch_k > 0.0) {
-            float vxp = (float)p->vel[0];
-            float vyp = (float)p->vel[1];
-            float vzp = (float)p->vel[2];
-            float vdotf = vxp * forward[0] + vyp * forward[1] + vzp * forward[2];
-            float ax = vxp - forward[0] * vdotf;
-            float ay = vyp - forward[1] * vdotf;
-            float az = vzp - forward[2] * vdotf;
-            float alen = sqrtf(ax * ax + ay * ay + az * az);
-            float speed = sqrtf(vxp * vxp + vyp * vyp + vzp * vzp);
-            if (isfinite(alen) && alen > 1e-4f && isfinite(speed)) {
-                axis_u[0] = ax / alen;
-                axis_u[1] = ay / alen;
-                axis_u[2] = az / alen;
-                /* axis_r x axis_u must equal forward (matches the camera-facing
-                 * quad's winding) or the stretched quads get backface-culled. */
-                axis_r[0] = axis_u[1] * forward[2] - axis_u[2] * forward[1];
-                axis_r[1] = axis_u[2] * forward[0] - axis_u[0] * forward[2];
-                axis_r[2] = axis_u[0] * forward[1] - axis_u[1] * forward[0];
-                half_len = hs * (1.0f + (float)ps->stretch_k * speed);
-                if (half_len > hs * 64.0f)
-                    half_len = hs * 64.0f;
+    if (compact_particles) {
+        for (int32_t i = 0; i < draw_particle_count; i++) {
+            int32_t particle_index = sort_keys ? sort_keys[i].index : i;
+            vgfx3d_particle_t *particle = particles3d_draw_particle_at(ps, particle_index);
+            if (!particle)
+                return;
+            particles3d_write_compact_instance(
+                ps, particle, origin, right, up, forward, &ps->instance_scratch[i]);
+        }
+        if (!rt_canvas3d_queue_particle_batch(
+                canvas3d, mat, ps->instance_scratch, draw_particle_count))
+            return;
+    } else {
+        for (int32_t i = 0; i < draw_particle_count; i++) {
+            int32_t particle_index = sort_keys ? sort_keys[i].index : i;
+            vgfx3d_particle_t *particle = particles3d_draw_particle_at(ps, particle_index);
+            vgfx3d_particle_instance_t billboard;
+            uint32_t base = (uint32_t)i * 4u;
+            if (!particle)
+                return;
+            particles3d_write_compact_instance(
+                ps, particle, origin, right, up, forward, &billboard);
+
+            /* v0 = bottom-left, v1 = bottom-right, v2 = top-right, v3 = top-left. */
+            for (int vi = 0; vi < 4; vi++) {
+                float right_sign = (vi == 1 || vi == 2) ? 1.0f : -1.0f;
+                float up_sign = (vi == 2 || vi == 3) ? 1.0f : -1.0f;
+                vgfx3d_vertex_t *vertex = &verts[base + (uint32_t)vi];
+                for (int axis = 0; axis < 3; axis++) {
+                    vertex->pos[axis] = billboard.center[axis] +
+                                        billboard.right[axis] * right_sign +
+                                        billboard.up[axis] * up_sign;
+                    vertex->normal[axis] = forward[axis];
+                }
+                memcpy(vertex->color, billboard.color, sizeof(vertex->color));
             }
-        }
+            verts[base + 0].uv[0] = 0.0f;
+            verts[base + 0].uv[1] = 1.0f;
+            verts[base + 1].uv[0] = 1.0f;
+            verts[base + 1].uv[1] = 1.0f;
+            verts[base + 2].uv[0] = 1.0f;
+            verts[base + 2].uv[1] = 0.0f;
+            verts[base + 3].uv[0] = 0.0f;
+            verts[base + 3].uv[1] = 0.0f;
+            for (int vi = 0; vi < 4; vi++)
+                particles3d_finalize_draw_vertex(&verts[base + (uint32_t)vi]);
 
-        /* v0 = bottom-left, v1 = bottom-right, v2 = top-right, v3 = top-left */
-        for (int vi = 0; vi < 4; vi++) {
-            float rs = (vi == 1 || vi == 2) ? hs : -hs;
-            float us = (vi == 2 || vi == 3) ? half_len : -half_len;
-            vgfx3d_vertex_t *v = &verts[base + vi];
-            double vx = p->pos[0] - origin[0] + (double)axis_r[0] * rs + (double)axis_u[0] * us;
-            double vy = p->pos[1] - origin[1] + (double)axis_r[1] * rs + (double)axis_u[1] * us;
-            double vz = p->pos[2] - origin[2] + (double)axis_r[2] * rs + (double)axis_u[2] * us;
-            vx = particles_clamp_abs_or(vx, 0.0, PARTICLES3D_WORLD_ABS_MAX);
-            vy = particles_clamp_abs_or(vy, 0.0, PARTICLES3D_WORLD_ABS_MAX);
-            vz = particles_clamp_abs_or(vz, 0.0, PARTICLES3D_WORLD_ABS_MAX);
-            v->pos[0] = (float)vx;
-            v->pos[1] = (float)vy;
-            v->pos[2] = (float)vz;
-            v->normal[0] = forward[0];
-            v->normal[1] = forward[1];
-            v->normal[2] = forward[2];
-            v->color[0] = p->color[0];
-            v->color[1] = p->color[1];
-            v->color[2] = p->color[2];
-            v->color[3] = p->color[3];
+            indices[i * 6 + 0] = base + 0;
+            indices[i * 6 + 1] = base + 1;
+            indices[i * 6 + 2] = base + 2;
+            indices[i * 6 + 3] = base + 0;
+            indices[i * 6 + 4] = base + 2;
+            indices[i * 6 + 5] = base + 3;
         }
-        /* UVs */
-        verts[base + 0].uv[0] = 0;
-        verts[base + 0].uv[1] = 1;
-        verts[base + 1].uv[0] = 1;
-        verts[base + 1].uv[1] = 1;
-        verts[base + 2].uv[0] = 1;
-        verts[base + 2].uv[1] = 0;
-        verts[base + 3].uv[0] = 0;
-        verts[base + 3].uv[1] = 0;
-        for (int vi = 0; vi < 4; vi++)
-            particles3d_finalize_draw_vertex(&verts[base + vi]);
-
-        /* 2 triangles per quad (CCW). Alpha particles are sorted by the vertex
-         * construction order above, so absolute indices preserve the sorted
-         * back-to-front order while keeping the emitter in a single draw. */
-        indices[i * 6 + 0] = base + 0;
-        indices[i * 6 + 1] = base + 1;
-        indices[i * 6 + 2] = base + 2;
-        indices[i * 6 + 3] = base + 0;
-        indices[i * 6 + 4] = base + 2;
-        indices[i * 6 + 5] = base + 3;
     }
     sort_keys = NULL;
+
+    if (cpu_quad_count == 0)
+        return;
 
     /* Ribbon trails: one camera-facing quad per stored segment pair, appended
      * after the billboards. Width tapers and alpha fades toward the tail. */
     if (trail_quads > 0) {
-        uint32_t cursor = (uint32_t)ps->count;
+        uint32_t cursor = compact_particles ? 0u : (uint32_t)draw_particle_count;
         for (int32_t i = 0; i < ps->count; i++) {
             vgfx3d_particle_t *p = &ps->particles[i];
             int16_t len = ps->trail_len[i];
@@ -1921,7 +2333,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
             const float *ring = &ps->trail_pos[(size_t)i * stride];
             int16_t head = ps->trail_head[i];
             /* Walk newest -> oldest: k = 0 is the most recent control point. */
-            for (int16_t k = 0; k + 1 < len && cursor < (uint32_t)ps->count + trail_quads; k++) {
+            for (int16_t k = 0; k + 1 < len && cursor < cpu_quad_count; k++) {
                 int16_t i0 =
                     (int16_t)((head - 1 - k + 2 * ps->trail_segments) % ps->trail_segments);
                 int16_t i1 =
@@ -1976,7 +2388,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
             }
         }
         /* Degenerate any unused reserved quads (culled zero-length segments). */
-        while (cursor < (uint32_t)ps->count + trail_quads) {
+        while (cursor < cpu_quad_count) {
             uint32_t base = cursor * 4;
             for (int vi = 0; vi < 4; vi++)
                 particles3d_write_degenerate_vertex(&verts[base + vi], forward);
@@ -1998,9 +2410,6 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     tmp_mesh.index_count = idx_count;
     tmp_mesh.index_capacity = idx_count;
     tmp_mesh.resident = 1;
-
-    rt_material3d_set_texture(mat, ps->texture);
-    ((rt_material3d *)mat)->additive_blend = 0;
 
     if (canvas_owned_storage) {
         int verts_tracked = rt_canvas3d_add_temp_buffer(canvas3d, verts);
@@ -2026,10 +2435,6 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
 
     double model[16];
     particles3d_origin_model_matrix(origin, model);
-    rt_material3d_set_alpha(mat, 1.0);
-    rt_material3d_set_alpha_mode(mat, RT_MATERIAL3D_ALPHA_MODE_BLEND);
-    ((rt_material3d *)mat)->additive_blend = ps->additive_blend ? 1 : 0;
-    ((rt_material3d *)mat)->soft_fade = ps->softness;
     rt_canvas3d_draw_mesh_matrix(canvas3d, &tmp_mesh, model, mat);
     if (canvas_owned_storage && rt_obj_release_check0(mat))
         rt_obj_free(mat);

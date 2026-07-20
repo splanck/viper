@@ -1,0 +1,56 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/assets/rt_textureasset3d_formats.def
+// Purpose: Authoritative X-macro table for KTX2 Vulkan-format matching,
+//   normalized runtime names, block geometry, CPU fallback quality/decoder,
+//   native upload identifiers, and Canvas3D backend capability bits.
+//
+// Key invariants:
+//   - Every inclusive Vulkan range contains only formats with identical block
+//     geometry and runtime behavior.
+//   - CPU support is NONE, PARTIAL, or FULL and never overstates decoder
+//     fidelity; in particular BC6H, ETC2, and ASTC are partial fallbacks.
+//   - Native ids and backend bits are zero together or describe the same
+//     backend upload family.
+//
+// Ownership/Lifetime:
+//   - This definition file owns no storage. Include sites define
+//     RT_TEXTUREASSET3D_FORMAT_ROW before inclusion and materialize immutable
+//     compile-time data.
+//
+// Links: rt_textureasset3d_core.inc, rt_textureasset3d.h,
+//   docs/adr/0139-graphics3d-transactional-hardening-and-retained-work.md
+//
+//===----------------------------------------------------------------------===//
+
+/* vk_first, vk_last, name, compressed, block_w, block_h, block_bytes,
+ * cpu_quality, decoder_kind, native_format_id, backend_capability_bit */
+RT_TEXTUREASSET3D_FORMAT_ROW(37u, 37u, "rgba8", 0, 1, 1, 4, FULL, RGBA8, NONE, NONE)
+RT_TEXTUREASSET3D_FORMAT_ROW(43u, 43u, "rgba8", 0, 1, 1, 4, FULL, RGBA8, NONE, NONE)
+RT_TEXTUREASSET3D_FORMAT_ROW(131u, 134u, "bc1", 1, 4, 4, 8, FULL, BC1, BC1, BC1)
+RT_TEXTUREASSET3D_FORMAT_ROW(137u, 138u, "bc3", 1, 4, 4, 16, FULL, BC3, BC3, BC3)
+RT_TEXTUREASSET3D_FORMAT_ROW(139u, 139u, "bc4", 1, 4, 4, 8, FULL, BC4, BC4, BC4)
+RT_TEXTUREASSET3D_FORMAT_ROW(141u, 141u, "bc5", 1, 4, 4, 16, FULL, BC5, BC5, BC5)
+RT_TEXTUREASSET3D_FORMAT_ROW(143u, 143u, "bc6h", 1, 4, 4, 16, PARTIAL, BC6H, NONE, NONE)
+RT_TEXTUREASSET3D_FORMAT_ROW(144u, 144u, "bc6hs", 1, 4, 4, 16, PARTIAL, BC6HS, NONE, NONE)
+RT_TEXTUREASSET3D_FORMAT_ROW(145u, 146u, "bc7", 1, 4, 4, 16, FULL, BC7, BC7, BC7)
+RT_TEXTUREASSET3D_FORMAT_ROW(151u, 152u, "etc2", 1, 4, 4, 16, PARTIAL, ETC2, ETC2, ETC2)
+RT_TEXTUREASSET3D_FORMAT_ROW(157u, 158u, "astc", 1, 4, 4, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(159u, 160u, "astc", 1, 5, 4, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(161u, 162u, "astc", 1, 5, 5, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(163u, 164u, "astc", 1, 6, 5, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(165u, 166u, "astc", 1, 6, 6, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(167u, 168u, "astc", 1, 8, 5, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(169u, 170u, "astc", 1, 8, 6, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(171u, 172u, "astc", 1, 8, 8, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(173u, 174u, "astc", 1, 10, 5, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(175u, 176u, "astc", 1, 10, 6, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(177u, 178u, "astc", 1, 10, 8, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(179u, 180u, "astc", 1, 10, 10, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(181u, 182u, "astc", 1, 12, 10, 16, PARTIAL, ASTC, ASTC, ASTC)
+RT_TEXTUREASSET3D_FORMAT_ROW(183u, 184u, "astc", 1, 12, 12, 16, PARTIAL, ASTC, ASTC, ASTC)

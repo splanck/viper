@@ -1,8 +1,21 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/scene/rt_scene3d_helpers.inc  (#included from rt_scene3d.c; not a
-// standalone translation unit) Purpose: Scene3D transform/world-matrix, node lifecycle, light, and
-// bounds helpers
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/scene/rt_scene3d_helpers.inc
+// Purpose: Scene3D transform, transactional ownership, node lifecycle, light,
+//   and bounds helpers included by rt_scene3d.c.
+// Key invariants:
+//   - Owner propagation completes traversal allocation before mutating nodes.
+//   - Transform and bounds helpers sanitize non-finite private state.
+// Ownership/Lifetime:
+//   - Traversal arrays are native allocations released in the same helper call.
+//   - Runtime object pointers are borrowed unless a helper explicitly retains them.
+// Links: rt_scene3d.c, rt_scene3d_internal.h, rt_scene3d_node.c
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Helpers
@@ -463,68 +476,130 @@ static int scene_node_const_stack_push(const rt_scene_node3d ***stack,
     return 1;
 }
 
-/// @brief Set @p owner as the owning scene on @p node and every descendant (iterative DFS).
-void scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner) {
-    rt_scene_node3d **stack = NULL;
-    size_t count = 0;
-    size_t capacity = 0;
-    if (!node)
-        return;
-    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
-        rt_trap("Scene3D: owner traversal stack allocation failed");
-        return;
-    }
-    while (count > 0) {
-        rt_scene_node3d *current = stack[--count];
-        int32_t child_count;
-        current->owner_scene = owner;
-        child_count = scene3d_node_child_count(current);
-        current->child_count = child_count;
-        for (int32_t i = child_count - 1; i >= 0; --i) {
-            rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
-            if (!child)
-                continue;
-            if (!scene_node_stack_push(&stack, &count, &capacity, child)) {
-                rt_trap("Scene3D: owner traversal stack allocation failed");
-                free(stack);
-                return;
-            }
-        }
-    }
-    free(stack);
+static int32_t g_scene3d_test_owner_growth_failure_after = -1;
+
+/// @brief Configure deterministic owner-transaction allocation fault injection for tests.
+void rt_scene3d_test_set_owner_growth_failure(int32_t successful_growths) {
+    g_scene3d_test_owner_growth_failure_after = successful_growths < -1 ? -1 : successful_growths;
 }
 
-/// @brief Clear @p owner from @p node and every descendant that still references it (iterative
-/// DFS).
-void scene_node_clear_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner) {
-    rt_scene_node3d **stack = NULL;
-    size_t count = 0;
-    size_t capacity = 0;
-    if (!node || !owner)
-        return;
-    if (!scene_node_stack_push(&stack, &count, &capacity, node)) {
-        rt_trap("Scene3D: owner traversal stack allocation failed");
-        return;
-    }
-    while (count > 0) {
-        rt_scene_node3d *current = stack[--count];
-        int32_t child_count;
-        if (current->owner_scene == owner)
-            current->owner_scene = NULL;
-        child_count = scene3d_node_child_count(current);
-        current->child_count = child_count;
-        for (int32_t i = child_count - 1; i >= 0; --i) {
+/// @brief Grow one owner transaction, honoring the deterministic test-only failure countdown.
+/// @return `1` when the buffer can accept another node, otherwise `0` without changing it.
+static int scene_owner_transaction_grow(scene_owner_transaction *transaction) {
+    if (!transaction)
+        return 0;
+    if (g_scene3d_test_owner_growth_failure_after == 0)
+        return 0;
+    if (g_scene3d_test_owner_growth_failure_after > 0)
+        g_scene3d_test_owner_growth_failure_after--;
+    return scene3d_grow_stack_storage(
+        (void **)&transaction->nodes, &transaction->capacity, sizeof(transaction->nodes[0]));
+}
+
+/// @brief Append one validated node to a preflight owner transaction.
+static int scene_owner_transaction_append(scene_owner_transaction *transaction,
+                                          rt_scene_node3d *node) {
+    if (!transaction || !node)
+        return 1;
+    if (transaction->count >= RT_SCENE3D_MAX_OWNER_TRANSACTION_NODES)
+        return 0;
+    if (transaction->count >= transaction->capacity && !scene_owner_transaction_grow(transaction))
+        return 0;
+    transaction->nodes[transaction->count++] = node;
+    return 1;
+}
+
+/// @brief Collect a complete subtree breadth-first before publishing any owner changes.
+int scene_node_owner_transaction_prepare(rt_scene_node3d *node,
+                                         scene_owner_transaction *transaction) {
+    size_t cursor = 0;
+    if (!transaction)
+        return 0;
+    memset(transaction, 0, sizeof(*transaction));
+    node = scene_node3d_checked(node);
+    if (!node)
+        return 1;
+    if (!scene_owner_transaction_append(transaction, node))
+        goto fail;
+    while (cursor < transaction->count) {
+        rt_scene_node3d *current = transaction->nodes[cursor++];
+        int32_t child_count = scene3d_node_child_count(current);
+        for (int32_t i = 0; i < child_count; ++i) {
             rt_scene_node3d *child = scene_node3d_checked(current->children[i]);
-            if (!child)
-                continue;
-            if (!scene_node_stack_push(&stack, &count, &capacity, child)) {
-                rt_trap("Scene3D: owner traversal stack allocation failed");
-                free(stack);
-                return;
-            }
+            if (child && !scene_owner_transaction_append(transaction, child))
+                goto fail;
         }
     }
-    free(stack);
+    return 1;
+
+fail:
+    scene_node_owner_transaction_discard(transaction);
+    return 0;
+}
+
+/// @brief Release a prepared owner transaction without publishing changes.
+void scene_node_owner_transaction_discard(scene_owner_transaction *transaction) {
+    if (!transaction)
+        return;
+    free(transaction->nodes);
+    memset(transaction, 0, sizeof(*transaction));
+}
+
+/// @brief Publish one prepared owner assignment without allocation or failure paths.
+void scene_node_owner_transaction_assign(scene_owner_transaction *transaction, rt_scene3d *owner) {
+    if (!transaction)
+        return;
+    for (size_t i = 0; i < transaction->count; ++i)
+        transaction->nodes[i]->owner_scene = owner;
+}
+
+/// @brief Publish one prepared conditional owner clear without allocation.
+void scene_node_owner_transaction_clear(scene_owner_transaction *transaction, rt_scene3d *owner) {
+    if (!transaction || !owner)
+        return;
+    for (size_t i = 0; i < transaction->count; ++i) {
+        if (transaction->nodes[i]->owner_scene == owner)
+            transaction->nodes[i]->owner_scene = NULL;
+    }
+}
+
+/// @brief Clear matching descendant owners while preserving the transaction root owner.
+void scene_node_owner_transaction_clear_descendants(scene_owner_transaction *transaction,
+                                                    rt_scene3d *owner) {
+    if (!transaction || !owner)
+        return;
+    for (size_t i = 1; i < transaction->count; ++i) {
+        if (transaction->nodes[i]->owner_scene == owner)
+            transaction->nodes[i]->owner_scene = NULL;
+    }
+}
+
+/// @brief Transactionally assign one owner to a complete subtree.
+int scene_node_assign_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner) {
+    scene_owner_transaction transaction;
+    if (!node)
+        return 1;
+    if (!scene_node_owner_transaction_prepare(node, &transaction)) {
+        rt_trap("Scene3D: owner traversal stack allocation failed");
+        return 0;
+    }
+    scene_node_owner_transaction_assign(&transaction, owner);
+    scene_node_owner_transaction_discard(&transaction);
+    return 1;
+}
+
+/// @brief Transactionally clear a matching owner from a complete subtree.
+int scene_node_clear_owner_recursive(rt_scene_node3d *node, rt_scene3d *owner) {
+    scene_owner_transaction transaction;
+    if (!node || !owner)
+        return 1;
+    if (!scene_node_owner_transaction_prepare(node, &transaction)) {
+        rt_trap("Scene3D: owner traversal stack allocation failed");
+        return 0;
+    }
+    scene_node_owner_transaction_clear(&transaction, owner);
+    scene_node_owner_transaction_discard(&transaction);
+    return 1;
 }
 
 /// @brief Mark a node's local world transform dirty.
@@ -577,7 +652,8 @@ static void recompute_world_matrix_single(rt_scene_node3d *node) {
          * recomputes and BVH refits through the whole subtree. */
         if (memcmp(next_world, node->world_matrix, sizeof(next_world)) != 0) {
             memcpy(node->world_matrix, next_world, sizeof(next_world));
-            node->world_revision = node->world_revision == UINT32_MAX ? 1u : node->world_revision + 1u;
+            node->world_revision =
+                node->world_revision == UINT32_MAX ? 1u : node->world_revision + 1u;
         }
     }
 }

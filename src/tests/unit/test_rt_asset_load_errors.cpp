@@ -294,9 +294,10 @@ TEST(AssetLoadErrors, AsciiFbxHeaderLoadsGeometryThroughAsciiPath) {
     std::remove(fbx.c_str());
 }
 
-TEST(AssetLoadErrors, AsciiFbxWithoutGeometryReportsUnsupported) {
-    /* Signature-matching ASCII with no parsable geometry payload still fails
-     * cleanly with a diagnostic naming the actual problem. */
+TEST(AssetLoadErrors, AsciiFbxWithoutObjectGraphReportsCorrupt) {
+    /* A header-only file claims the supported ASCII FBX format but lacks the
+     * required typed Objects/Connections graph, so it is malformed rather than
+     * an unsupported format or optional FBX feature. */
     std::string fbx = tmp_path("ascii_empty.fbx");
     write_text(fbx.c_str(),
                "; FBX 7.4.0 project file\n"
@@ -306,9 +307,9 @@ TEST(AssetLoadErrors, AsciiFbxWithoutGeometryReportsUnsupported) {
 
     void *asset = rt_fbx_load(rt_const_cstr(fbx.c_str()));
     EXPECT_EQ(asset, nullptr);
-    EXPECT_EQ(rt_asset_error_get_code(), RT_ASSET_ERROR_UNSUPPORTED);
+    EXPECT_EQ(rt_asset_error_get_code(), RT_ASSET_ERROR_CORRUPT);
     EXPECT_EQ(std::string(rt_asset_error_get_message()),
-              std::string("ASCII FBX file did not contain parsable mesh geometry"));
+              std::string("FBX.Load: invalid Objects or Connections graph"));
 
     std::remove(fbx.c_str());
 }

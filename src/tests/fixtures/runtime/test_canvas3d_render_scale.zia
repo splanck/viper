@@ -5,11 +5,11 @@ bind Zanna.Graphics;
 bind Zanna.Math;
 bind Zanna.Terminal;
 
-// Render-scale coverage (software backend):
+// Render-scale coverage (software plus the native platform GPU backend):
 //   - TrySetRenderScale succeeds where BackendSupports("render-scale") is true.
 //   - A scaled frame still fills the full-size framebuffer (upscale at present)
 //     and the drawn geometry remains visible at the same screen location.
-//   - Restoring scale 1.0 always succeeds.
+//   - Restoring scale 1.0 succeeds after the preceding frame is fully presented.
 
 func redAt(canvas: Canvas3D, gx: Integer, gy: Integer) -> Integer {
     var shot = Canvas3D.Screenshot(canvas);
@@ -67,7 +67,7 @@ func start() {
     }
 
     if (!Canvas3D.TrySetRenderScale(canvas, 1.0)) {
-        Say("FAIL: restoring native scale must always succeed");
+        Say("FAIL: restoring native scale should succeed between completed frames");
         return;
     }
     drawIt(canvas, cam, box, mat);

@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_frame.inc  (#included from
-// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL frame begin/end,
-// submit, resize, readback, present, post-FX, and shadow passes
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_frame.inc
+// Purpose: OpenGL frame lifecycle, draw submission, readback, post-FX, and shadow passes.
+// Key invariants:
+//   - Submission validates geometry and restores instanced attribute state on every exit path.
+//   - Compact particle commands use their dedicated attributes with a null matrix payload.
+// Ownership/Lifetime:
+//   - GL resources are owned by gl_context_t and remain bound only for the active synchronous call.
+//   - Canvas command payloads are borrowed and are never retained beyond backend dispatch.
+// Links: vgfx3d_backend_opengl.c, vgfx3d_backend_opengl_mesh.inc
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Backend `clear` op: store the clear color for use during `BeginFrame`.
@@ -58,6 +70,8 @@ static int gl_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t type_
 static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     vgfx3d_opengl_frame_history_t history;
+    int32_t scene_width;
+    int32_t scene_height;
     static const float kIdentity4x4[16] = {
         1.0f,
         0.0f,
@@ -78,8 +92,14 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     };
     if (!ctx || !cam)
         return;
+    if (!vgfx3d_compute_scaled_scene_extent(
+            ctx->width, ctx->height, ctx->render_scale, &scene_width, &scene_height)) {
+        scene_width = ctx->width;
+        scene_height = ctx->height;
+    }
     if (!gl_make_current(ctx))
         return;
+    ctx->frame_active = 1;
 
     ctx->frame_serial++;
     /* Plan 07: cluster tables are camera-dependent; a light revision surviving
@@ -140,11 +160,11 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
         ctx->taa_jitter_clip[0] = 0.0f;
         ctx->taa_jitter_clip[1] = 0.0f;
         if (ctx->gpu_postfx_enabled && ctx->gpu_postfx_chain_valid && ctx->taa_program &&
-            ctx->width > 0 && ctx->height > 0 &&
+            scene_width > 0 && scene_height > 0 &&
             gl_chain_has_effect(&ctx->gpu_postfx_chain, (int32_t)VGFX3D_POSTFX_EFFECT_TAA)) {
             uint32_t idx = (ctx->taa_frame_index++ & 7u) + 1u;
-            float jx = (gl_halton(idx, 2) - 0.5f) * 2.0f / (float)ctx->width;
-            float jy = (gl_halton(idx, 3) - 0.5f) * 2.0f / (float)ctx->height;
+            float jx = (gl_halton(idx, 2) - 0.5f) * 2.0f / (float)scene_width;
+            float jy = (gl_halton(idx, 3) - 0.5f) * 2.0f / (float)scene_height;
             ctx->taa_jitter_clip[0] = jx;
             ctx->taa_jitter_clip[1] = jy;
             /* Row-major clip-space translate: x-row += jx * w-row, y-row += jy * w-row. */
@@ -199,18 +219,17 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     memcpy(ctx->scene_cam_pos, history.scene_cam_pos, sizeof(ctx->scene_cam_pos));
     ctx->scene_history_valid = history.scene_history_valid;
 
-    if (ctx->current_pass_is_overlay && ctx->default_framebuffer_writable &&
-        ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
-        !ctx->scene_composited_to_backbuffer) {
+    if (ctx->current_pass_is_overlay && gl_window_scene_route_enabled(ctx) &&
+        ctx->scene_postfx_pending && !ctx->scene_composited_to_backbuffer) {
         if (draw_scene_texture(ctx, ctx->gpu_postfx_chain_valid ? &ctx->gpu_postfx_chain : NULL))
             ctx->scene_composited_to_backbuffer = 1;
     }
 
-    if (ctx->current_pass_is_overlay && ctx->gpu_postfx_enabled)
+    if (ctx->current_pass_is_overlay && gl_window_scene_route_enabled(ctx))
         ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
     else
         ctx->active_target_kind =
-            vgfx3d_opengl_choose_target_kind(ctx->rtt_active, ctx->gpu_postfx_enabled);
+            vgfx3d_opengl_choose_target_kind(ctx->rtt_active, gl_window_scene_route_enabled(ctx));
     if (!ctx->current_pass_is_overlay &&
         ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SWAPCHAIN &&
         !ctx->default_framebuffer_writable) {
@@ -218,7 +237,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     }
 
     if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
-        if (ensure_scene_targets(ctx, ctx->width, ctx->height) != 0)
+        if (ensure_scene_targets(ctx, scene_width, scene_height) != 0)
             ctx->active_target_kind = VGFX3D_OPENGL_TARGET_SWAPCHAIN;
         else
             ctx->scene_postfx_pending = 1;
@@ -460,6 +479,8 @@ static void gl_end_frame(void *ctx_ptr) {
     if (!ctx)
         return;
 
+    ctx->frame_active = 0;
+
     gl_issue_depth_probes(ctx);
     if (ctx->rtt_active && ctx->rtt_target && ctx->rtt_color_tex) {
         ctx->rtt_color_dirty = 1;
@@ -529,6 +550,7 @@ static void gl_resize(void *ctx_ptr, int32_t w, int32_t h) {
         destroy_scene_targets(ctx);
         destroy_postfx_readback_target(ctx);
         destroy_postfx_scratch_target(ctx);
+        destroy_present_target(ctx);
         destroy_bloom_targets(ctx);
         destroy_taa_targets(ctx);
         destroy_ssr_target(ctx);
@@ -585,29 +607,57 @@ static int gl_readback_rgba(
 
     if (!gl_make_current(ctx))
         return 0;
-    use_postfx_readback =
-        ctx->default_framebuffer_writable && !ctx->scene_composited_to_backbuffer &&
-        vgfx3d_opengl_choose_readback_kind((ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
-                                               ? 1
-                                               : 0) == VGFX3D_OPENGL_READBACK_POSTFX_COMPOSITE;
-    if (use_postfx_readback) {
-        if (!ctx->scene_fbo || ctx->scene_width <= 0 || ctx->scene_height <= 0)
-            return 0;
-        if (!ctx->gpu_postfx_chain_valid || !gl_apply_postfx_chain(ctx,
-                                                                   ctx->scene_color_tex,
-                                                                   ctx->scene_width,
-                                                                   ctx->scene_height,
-                                                                   &ctx->gpu_postfx_chain,
-                                                                   0,
-                                                                   ctx->default_draw_buffer,
-                                                                   1,
-                                                                   &readback_framebuffer,
-                                                                   &readback_buffer)) {
+    use_postfx_readback = 0;
+    if (gl_window_scene_route_enabled(ctx) && ctx->scene_postfx_pending &&
+        !ctx->scene_composited_to_backbuffer && ctx->scene_fbo && ctx->scene_width > 0 &&
+        ctx->scene_height > 0 && ensure_present_target(ctx, ctx->width, ctx->height) == 0) {
+        int composite_ok = 0;
+        if (ctx->gpu_postfx_enabled && ctx->gpu_postfx_chain_valid &&
+            ctx->gpu_postfx_chain.enabled && ctx->gpu_postfx_chain.effect_count > 0 &&
+            ctx->gpu_postfx_chain.effects) {
+            composite_ok = gl_apply_postfx_chain(ctx,
+                                                 ctx->scene_color_tex,
+                                                 ctx->scene_width,
+                                                 ctx->scene_height,
+                                                 &ctx->gpu_postfx_chain,
+                                                 ctx->present_fbo,
+                                                 GL_COLOR_ATTACHMENT0,
+                                                 ctx->width,
+                                                 ctx->height,
+                                                 0,
+                                                 NULL,
+                                                 NULL);
+        }
+        if (!composite_ok) {
+            composite_ok = gl_draw_texture_to_target(ctx,
+                                                     ctx->scene_color_tex,
+                                                     ctx->present_fbo,
+                                                     GL_COLOR_ATTACHMENT0,
+                                                     ctx->scene_width,
+                                                     ctx->scene_height,
+                                                     ctx->width,
+                                                     ctx->height,
+                                                     NULL);
+        }
+        if (composite_ok) {
+            readback_framebuffer = ctx->present_fbo;
+            readback_buffer = GL_COLOR_ATTACHMENT0;
+            source_w = ctx->present_width;
+            source_h = ctx->present_height;
+            use_postfx_readback = 1;
+        } else {
             readback_framebuffer = ctx->scene_fbo;
             readback_buffer = GL_COLOR_ATTACHMENT0;
+            source_w = ctx->scene_width;
+            source_h = ctx->scene_height;
+            use_postfx_readback = 1;
         }
-        source_w = ctx->scene_width;
-        source_h = ctx->scene_height;
+    } else if (!ctx->default_framebuffer_writable && ctx->present_fbo && ctx->present_tex) {
+        readback_framebuffer = ctx->present_fbo;
+        readback_buffer = GL_COLOR_ATTACHMENT0;
+        source_w = ctx->present_width;
+        source_h = ctx->present_height;
+        use_postfx_readback = 1;
     } else if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
         readback_framebuffer = ctx->scene_fbo;
         readback_buffer = GL_COLOR_ATTACHMENT0;
@@ -672,7 +722,12 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
 
     if (!ctx || !ctx->vgfx_win)
         return 0;
-    if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
+    if (ctx->present_fbo && ctx->present_tex && ctx->present_width > 0 && ctx->present_height > 0 &&
+        ctx->scene_composited_to_backbuffer) {
+        framebuffer = ctx->present_fbo;
+        source_w = ctx->present_width;
+        source_h = ctx->present_height;
+    } else if (!ctx->default_framebuffer_writable && ctx->scene_fbo) {
         framebuffer = ctx->scene_fbo;
         source_w = ctx->scene_width;
         source_h = ctx->scene_height;
@@ -734,7 +789,7 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
                      ? 1
                      : 0;
-    if (ctx->default_framebuffer_writable && ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
+    if (gl_window_scene_route_enabled(ctx) && ctx->scene_postfx_pending &&
         !ctx->scene_composited_to_backbuffer) {
         if (draw_scene_texture(ctx, use_postfx ? chain : NULL))
             ctx->scene_composited_to_backbuffer = 1;
@@ -799,7 +854,7 @@ static void gl_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) 
                   ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
                      ? 1
                      : 0;
-    if (ctx->gpu_postfx_enabled && ctx->scene_postfx_pending &&
+    if (gl_window_scene_route_enabled(ctx) && ctx->scene_postfx_pending &&
         !ctx->scene_composited_to_backbuffer) {
         int drawn = draw_scene_texture(ctx, use_postfx ? postfx : NULL);
         if (drawn)
@@ -826,6 +881,80 @@ static void gl_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
         vgfx3d_postfx_chain_reset(&ctx->gpu_postfx_chain);
         ctx->gpu_postfx_chain_valid = 0;
     }
+}
+
+/// @brief Apply a reduced window-scene render scale to the OpenGL backend.
+/// @details Scale changes are accepted only outside an active or pending frame. The function
+///          rebuilds scene color/motion/depth at the shared scaled extent and creates a distinct
+///          logical-output-sized presentation target used by screenshots and the X11 fallback.
+///          The existing full-screen post-FX shader performs the explicit upscale even when no
+///          user effects are active. On allocation failure, the prior scale is restored and its
+///          window route is reconstructed. Explicit RTT dimensions are unaffected.
+/// @param ctx_ptr Borrowed `gl_context_t` backend handle.
+/// @param scale Finite requested scale in `[0.25, 1]`; values at least `0.999` normalize to 1.
+/// @return 1 when the requested/native route is ready, or 0 for invalid input, an active frame,
+///         missing composite shader support, context activation failure, or target allocation
+///         failure.
+static int8_t gl_set_render_scale(void *ctx_ptr, float scale) {
+    gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    float prior_scale;
+    float next_scale;
+    int32_t scene_width;
+    int32_t scene_height;
+    int route_ready = 1;
+
+    if (!ctx || !vgfx3d_compute_scaled_scene_extent(
+                    ctx->width, ctx->height, scale, &scene_width, &scene_height)) {
+        return 0;
+    }
+    next_scale = scale >= 0.999f ? 1.0f : scale;
+    if (next_scale < 1.0f && !ctx->postfx_program)
+        return 0;
+    if (ctx->frame_active || ctx->scene_postfx_pending)
+        return 0;
+    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+        return 0;
+
+    prior_scale =
+        (isfinite(ctx->render_scale) && ctx->render_scale >= 0.25f && ctx->render_scale <= 1.0f)
+            ? ctx->render_scale
+            : 1.0f;
+    if (fabsf(prior_scale - next_scale) <= 1.0e-6f)
+        return 1;
+
+    destroy_scene_targets(ctx);
+    destroy_postfx_readback_target(ctx);
+    destroy_postfx_scratch_target(ctx);
+    destroy_present_target(ctx);
+    destroy_bloom_targets(ctx);
+    destroy_taa_targets(ctx);
+    destroy_ssr_target(ctx);
+    ctx->render_scale = next_scale;
+    if (gl_window_scene_route_enabled(ctx)) {
+        if (!vgfx3d_compute_scaled_scene_extent(
+                ctx->width, ctx->height, next_scale, &scene_width, &scene_height) ||
+            ensure_scene_targets(ctx, scene_width, scene_height) != 0 ||
+            ensure_present_target(ctx, ctx->width, ctx->height) != 0) {
+            route_ready = 0;
+        }
+    }
+    if (!route_ready) {
+        destroy_scene_targets(ctx);
+        destroy_present_target(ctx);
+        ctx->render_scale = prior_scale;
+        if (gl_window_scene_route_enabled(ctx) &&
+            vgfx3d_compute_scaled_scene_extent(
+                ctx->width, ctx->height, prior_scale, &scene_width, &scene_height)) {
+            (void)ensure_scene_targets(ctx, scene_width, scene_height);
+            (void)ensure_present_target(ctx, ctx->width, ctx->height);
+        }
+    }
+    ctx->scene_postfx_pending = 0;
+    ctx->scene_composited_to_backbuffer = 0;
+    ctx->active_target_kind =
+        vgfx3d_opengl_choose_target_kind(ctx->rtt_active, gl_window_scene_route_enabled(ctx));
+    bind_main_framebuffer(ctx);
+    return route_ready ? 1 : 0;
 }
 
 /// @brief Backend `set_gpu_postfx_snapshot` hook — latch a stable copy of the frame chain.
@@ -1130,13 +1259,16 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     GLuint saved_program = 0;
     int specialized_program;
     int mesh_compact = 0;
+    int particle_mode;
     uint32_t index_count;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
-        cmd->index_count == 0 || !instance_matrices || instance_count <= 0) {
+        cmd->index_count == 0 || instance_count <= 0 ||
+        (!instance_matrices && !cmd->particle_instances)) {
         if (ctx)
             ctx->stats.dropped_draws++;
         return;
     }
+    particle_mode = cmd->particle_instances != NULL;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
     if (index_count == 0) {
         ctx->stats.dropped_draws++;
@@ -1159,14 +1291,16 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     specialized_program =
         gl_begin_material_program(ctx, cmd, saved_uniform_locations, &saved_program);
     gl.UseProgram(ctx->program);
-    upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 1);
+    upload_main_uniforms(ctx, cmd, lights, light_count, ambient, particle_mode ? 0 : 1);
     bind_material_textures(ctx, cmd);
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
-    if (!configure_instance_attributes(ctx,
-                                       instance_matrices,
-                                       cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices
-                                                                       : NULL,
-                                       instance_count)) {
+    if (!(particle_mode
+              ? configure_particle_instance_attributes(ctx, cmd->particle_instances, instance_count)
+              : configure_instance_attributes(
+                    ctx,
+                    instance_matrices,
+                    cmd->has_prev_instance_matrices ? cmd->prev_instance_matrices : NULL,
+                    instance_count))) {
         set_identity_instance_constants();
         ctx->stats.dropped_draws++;
         gl_end_material_program(

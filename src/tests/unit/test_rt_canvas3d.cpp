@@ -101,6 +101,8 @@ typedef struct {
     void *pixels;
     void **mip_pixels;
     uint8_t **mip_payloads;
+    uint8_t *source_backing;
+    uint8_t *mip_fallback_kinds;
     TextureAsset3DTestMip *mips;
     int64_t width;
     int64_t height;
@@ -109,13 +111,22 @@ typedef struct {
     int64_t resident_mip_start;
     int64_t resident_mip_count;
     int64_t resident_bytes;
+    int64_t retained_bytes;
+    uint64_t source_backing_bytes;
     const char *format;
+    const char *degraded_reason;
     int8_t compressed;
+    int8_t degraded;
     int32_t block_width;
     int32_t block_height;
     int32_t block_bytes;
+    int32_t decoder_kind;
+    int32_t native_format_id;
+    int64_t backend_capability_bit;
     uint64_t cache_identity;
     uint64_t native_revision;
+    int8_t alpha_metadata_known;
+    int8_t has_alpha_texels;
 } TextureAsset3DTestLayout;
 
 typedef struct {
@@ -208,6 +219,123 @@ static void write_u32le(uint8_t *dst, uint32_t value) {
 static void write_u64le(uint8_t *dst, uint64_t value) {
     write_u32le(dst, (uint32_t)(value & 0xFFFFFFFFu));
     write_u32le(dst + 4, (uint32_t)(value >> 32));
+}
+
+/// @brief Read one little-endian 64-bit fixture field without host-alignment assumptions.
+static uint64_t read_u64le(const uint8_t *src) {
+    uint64_t value = 0;
+    for (int i = 7; i >= 0; i--)
+        value = (value << 8) | src[i];
+    return value;
+}
+
+/// @brief Read a complete binary fixture into caller-owned vector storage.
+/// @return True when open, sizing, and the exact read all succeed.
+static bool read_test_binary_file(const std::string &path, std::vector<uint8_t> &out) {
+    FILE *file = std::fopen(path.c_str(), "rb");
+    long size;
+    if (!file)
+        return false;
+    if (std::fseek(file, 0, SEEK_END) != 0 || (size = std::ftell(file)) < 0 ||
+        std::fseek(file, 0, SEEK_SET) != 0) {
+        std::fclose(file);
+        return false;
+    }
+    out.resize((size_t)size);
+    if (size > 0 && std::fread(out.data(), 1, (size_t)size, file) != (size_t)size) {
+        std::fclose(file);
+        return false;
+    }
+    std::fclose(file);
+    return true;
+}
+
+/// @brief Build one-level KTX2 bytes for direct memory-loader contract tests.
+/// @details The level index uses exact stored/uncompressed lengths and scheme 0. All KTX2 metadata
+///          outside the required 2D single-face header remains zero, matching the file helpers.
+static std::vector<uint8_t> make_test_ktx2_memory(uint32_t vk_format,
+                                                  uint32_t width,
+                                                  uint32_t height,
+                                                  const uint8_t *payload,
+                                                  size_t payload_bytes) {
+    static const uint8_t identifier[12] = {
+        0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A};
+    const size_t payload_offset = 80u + 24u;
+    std::vector<uint8_t> bytes(payload_offset + payload_bytes, 0);
+    std::memcpy(bytes.data(), identifier, sizeof(identifier));
+    write_u32le(bytes.data() + 12, vk_format);
+    write_u32le(bytes.data() + 16, 1);
+    write_u32le(bytes.data() + 20, width);
+    write_u32le(bytes.data() + 24, height);
+    write_u32le(bytes.data() + 36, 1);
+    write_u32le(bytes.data() + 40, 1);
+    write_u64le(bytes.data() + 80, payload_offset);
+    write_u64le(bytes.data() + 88, payload_bytes);
+    write_u64le(bytes.data() + 96, payload_bytes);
+    if (payload_bytes > 0)
+        std::memcpy(bytes.data() + payload_offset, payload, payload_bytes);
+    return bytes;
+}
+
+/// @brief Compute RFC 1950 Adler-32 for deterministic zlib fixture construction.
+static uint32_t test_adler32(const uint8_t *data, size_t size) {
+    uint32_t s1 = 1;
+    uint32_t s2 = 0;
+    while (size > 0) {
+        size_t chunk = size < 5552u ? size : 5552u;
+        for (size_t i = 0; i < chunk; i++) {
+            s1 += data[i];
+            s2 += s1;
+        }
+        s1 %= 65521u;
+        s2 %= 65521u;
+        data += chunk;
+        size -= chunk;
+    }
+    return (s2 << 16) | s1;
+}
+
+/// @brief Wrap bytes in a standards-conforming zlib stream made only of DEFLATE stored blocks.
+/// @details Stored blocks keep the large allocation-bound fixture deterministic and avoid using an
+///          external compressor. Each block is at most 65,535 bytes and carries one's-complement
+///          LEN/NLEN fields; the stream ends with a big-endian Adler-32 trailer.
+static std::vector<uint8_t> make_test_zlib_stored(const uint8_t *data, size_t size) {
+    std::vector<uint8_t> out = {0x78, 0x01};
+    size_t cursor = 0;
+    do {
+        size_t remaining = size - cursor;
+        uint16_t count = (uint16_t)(remaining > 65535u ? 65535u : remaining);
+        bool final = cursor + count == size;
+        uint16_t inverse = (uint16_t)~count;
+        out.push_back(final ? 0x01u : 0x00u);
+        out.push_back((uint8_t)count);
+        out.push_back((uint8_t)(count >> 8));
+        out.push_back((uint8_t)inverse);
+        out.push_back((uint8_t)(inverse >> 8));
+        out.insert(out.end(), data + cursor, data + cursor + count);
+        cursor += count;
+    } while (cursor < size);
+    uint32_t adler = test_adler32(data, size);
+    out.push_back((uint8_t)(adler >> 24));
+    out.push_back((uint8_t)(adler >> 16));
+    out.push_back((uint8_t)(adler >> 8));
+    out.push_back((uint8_t)adler);
+    return out;
+}
+
+/// @brief Build one-level supercompressed KTX2 bytes with an exact final-length declaration.
+static std::vector<uint8_t> make_test_supercompressed_ktx2_memory(uint32_t vk_format,
+                                                                  uint32_t width,
+                                                                  uint32_t height,
+                                                                  uint32_t scheme,
+                                                                  const uint8_t *payload,
+                                                                  size_t payload_bytes,
+                                                                  uint64_t final_bytes) {
+    std::vector<uint8_t> bytes =
+        make_test_ktx2_memory(vk_format, width, height, payload, payload_bytes);
+    write_u32le(bytes.data() + 44, scheme);
+    write_u64le(bytes.data() + 96, final_bytes);
+    return bytes;
 }
 
 static bool write_test_ktx2_mips(const char *path,
@@ -374,6 +502,7 @@ extern "C" void *rt_mat4_new(double m00,
                              double m33);
 extern "C" void *rt_mat4_identity(void);
 extern "C" void *rt_mat4_scale(double sx, double sy, double sz);
+extern "C" void *rt_mat4_translate(double tx, double ty, double tz);
 extern "C" void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern "C" void rt_obj_retain_maybe(void *obj);
 extern "C" int rt_obj_release_check0(void *obj);
@@ -404,6 +533,7 @@ static bool bounded_vec3(void *v, double limit) {
 static void free_canvas3d_test_draw_state(rt_canvas3d *canvas) {
     if (!canvas)
         return;
+    canvas3d_release_retained_mesh_revisions(canvas);
     for (int32_t i = 0; i < canvas->temp_buf_count; i++)
         free(canvas->temp_buffers[i]);
     for (int32_t i = 0; i < canvas->temp_obj_count; i++) {
@@ -1472,6 +1602,10 @@ static void test_textureasset3d_ktx2_material_bridge() {
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_textureasset3d_get_format(rgba_asset)), "rgba8") == 0,
                 "RGBA8 KTX2 reports rgba8 format");
     EXPECT_EQ(rt_textureasset3d_get_compressed(rgba_asset), 0);
+    EXPECT_EQ(rt_textureasset3d_get_degraded(rgba_asset), 0);
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_textureasset3d_get_degraded_reason(rgba_asset)), "") == 0,
+        "ordinary KTX2 reports no degradation reason");
     fallback_pixels = rt_textureasset3d_get_pixels(rgba_asset);
     EXPECT_TRUE(fallback_pixels != nullptr, "RGBA8 KTX2 exposes a Pixels fallback");
     EXPECT_EQ(rt_pixels_get_rgba(fallback_pixels, 0, 0), 0x01020304);
@@ -2017,6 +2151,34 @@ static void test_textureasset3d_decode_failure_checker_fallback() {
                 "decode failure warning names the format");
     EXPECT_TRUE(std::strstr(rt_asset_error_get_warning(0), "checker") != nullptr,
                 "decode failure warning names the checker fallback");
+    EXPECT_EQ(rt_textureasset3d_get_degraded(asset), 1);
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_textureasset3d_get_degraded_reason(asset)),
+                            "cpu_decode_failed") == 0,
+                "checker substitution exposes a stable degradation reason");
+
+    path_s = rt_string_from_bytes(path, std::strlen(path));
+    void *strict_asset = rt_textureasset3d_load_ktx2_strict(path_s);
+    rt_string_unref(path_s);
+    EXPECT_TRUE(strict_asset == nullptr,
+                "strict KTX2 loader rejects the same unsupported CPU block mode");
+    EXPECT_TRUE(std::strstr(rt_string_cstr(rt_assets3d_get_last_load_error()),
+                            "strict loading forbids checker fallback") != nullptr,
+                "strict rejection records a stable explanatory asset error");
+
+    {
+        std::vector<uint8_t> memory_fixture =
+            make_test_ktx2_memory(145u, 4u, 4u, reserved_bc7_block, sizeof(reserved_bc7_block));
+        strict_asset =
+            rt_textureasset3d_load_ktx2_memory_strict(memory_fixture.data(), memory_fixture.size());
+        EXPECT_TRUE(strict_asset == nullptr,
+                    "strict memory loader applies the same checker-substitution policy");
+        EXPECT_TRUE(std::strstr(rt_string_cstr(rt_assets3d_get_last_load_error()),
+                                "strict loading forbids checker fallback") != nullptr,
+                    "strict memory rejection preserves the explanatory asset error");
+    }
+
+    if (rt_obj_release_check0(asset))
+        rt_obj_free(asset);
 
     std::remove(path);
     PASS();
@@ -2089,6 +2251,7 @@ static void test_textureasset3d_mip_residency() {
     void *asset;
     void *material;
     rt_material3d *material_impl;
+    TextureAsset3DTestLayout *layout;
 
     for (size_t i = 0; i < sizeof(level0); i++)
         level0[i] = (uint8_t)(i + 1u);
@@ -2103,11 +2266,15 @@ static void test_textureasset3d_mip_residency() {
     asset = rt_textureasset3d_load_ktx2(path_s);
     rt_string_unref(path_s);
     assert(asset != nullptr);
+    layout = static_cast<TextureAsset3DTestLayout *>(asset);
 
     EXPECT_EQ(rt_textureasset3d_get_mip_count(asset), 3);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 0);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 3);
     EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 84);
+    EXPECT_EQ(rt_textureasset3d_get_retained_bytes(asset), 168);
+    EXPECT_TRUE(layout->source_backing != nullptr && layout->source_backing_bytes == 84,
+                "RGBA8 mip chain retains one exact canonical source backing");
     void *mip_pixels = rt_textureasset3d_get_pixels(asset);
     EXPECT_TRUE(mip_pixels != nullptr, "resident RGBA8 mip 0 exposes a Pixels fallback");
     EXPECT_EQ(rt_pixels_width(mip_pixels), 4);
@@ -2128,6 +2295,9 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 1);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 2);
     EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 20);
+    EXPECT_EQ(rt_textureasset3d_get_retained_bytes(asset), 104);
+    EXPECT_TRUE(layout->mip_pixels[0] == nullptr,
+                "decoded mip 0 CPU memory is released after leaving residency");
     mip_pixels = rt_textureasset3d_get_pixels(asset);
     EXPECT_TRUE(mip_pixels != nullptr, "resident RGBA8 mip 1 exposes a Pixels fallback");
     EXPECT_EQ(rt_pixels_width(mip_pixels), 2);
@@ -2135,6 +2305,19 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_EQ(rt_pixels_get_rgba(mip_pixels, 0, 0), 0x80818283);
     EXPECT_TRUE(rt_material3d_resolve_texture_pixels(material_impl->texture) == mip_pixels,
                 "Material3D follows TextureAsset3D residency changes after binding");
+
+    rt_textureasset3d_set_resident_mip_range(asset, 0, 1);
+    mip_pixels = rt_textureasset3d_get_pixels(asset);
+    EXPECT_TRUE(mip_pixels != nullptr,
+                "evicted mip 0 reconstructs from retained canonical source bytes");
+    EXPECT_EQ(rt_pixels_width(mip_pixels), 4);
+    EXPECT_EQ(rt_pixels_height(mip_pixels), 4);
+    EXPECT_EQ(rt_pixels_get_rgba(mip_pixels, 0, 0), 0x01020304);
+    EXPECT_EQ(rt_pixels_get_rgba(mip_pixels, 3, 3), 0x3D3E3F40);
+    EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 64);
+    EXPECT_EQ(rt_textureasset3d_get_retained_bytes(asset), 148);
+    EXPECT_TRUE(layout->mip_pixels[1] == nullptr && layout->mip_pixels[2] == nullptr,
+                "re-entering mip 0 evicts decoded mips 1 and 2 after reconstruction commits");
 
     rt_textureasset3d_set_resident_mip_range(asset, 2, 99);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 2);
@@ -2170,7 +2353,6 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
                 "out-of-range resident mip starts clamp to an empty range at mip_count");
 
-    auto *layout = static_cast<TextureAsset3DTestLayout *>(asset);
     EXPECT_TRUE(layout != nullptr && layout->mip_capacity == 3,
                 "TextureAsset3D test layout sees loaded mip capacity");
     if (layout) {
@@ -2592,6 +2774,30 @@ static bool ktx2_load_fails_with(rt_string path_s, const char *expected_substrin
     return err_cstr && std::strstr(err_cstr, expected_substring) != NULL;
 }
 
+/// @brief Require a caller-owned KTX2 span to fail recoverably with a matching diagnostic.
+/// @details Releases an unexpected asset before returning false, then reads the public
+///          last-load-error channel populated by the memory loader. This helper deliberately does
+///          not install trap recovery: malformed container data must remain an ordinary load
+///          failure rather than crossing the caller-misuse trap boundary.
+/// @param bytes Complete or intentionally corrupted KTX2 bytes.
+/// @param expected_substring Required fragment of the recoverable load diagnostic.
+/// @return True only when no asset was published and the diagnostic contains the fragment.
+static bool ktx2_memory_load_fails_with(const std::vector<uint8_t> &bytes,
+                                        const char *expected_substring) {
+    void *asset = rt_textureasset3d_load_ktx2_memory(bytes.data(), bytes.size());
+    rt_string err;
+    const char *err_cstr;
+
+    if (asset) {
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+        return false;
+    }
+    err = rt_assets3d_get_last_load_error();
+    err_cstr = err ? rt_string_cstr(err) : NULL;
+    return err_cstr && expected_substring && std::strstr(err_cstr, expected_substring) != NULL;
+}
+
 /// Supercompressed KTX2 fixtures (Zstandard scheme 2 and ZLIB scheme 3,
 /// produced by reference encoders) must load with correctly inflated levels.
 static void test_textureasset3d_supercompressed_ktx2_loads() {
@@ -2640,6 +2846,285 @@ static void test_textureasset3d_supercompressed_ktx2_loads() {
             if (rt_obj_release_check0(asset))
                 rt_obj_free(asset);
         }
+    }
+    PASS();
+}
+
+/// @brief Exercise KTX2's shared strict zlib path against independent wrapper corruptions.
+/// @details Builds one valid supercompressed RGBA8 level, confirms its decoded texels, then
+///          mutates CMF/FCHECK, FDICT, the raw DEFLATE block, stored bounds, declared output size,
+///          and Adler-32 one at a time. Every mutation must fail through the recoverable asset
+///          error path without publishing a partially initialized TextureAsset3D.
+static void test_textureasset3d_zlib_integrity_validation() {
+    TEST("TextureAsset3D validates complete zlib supercompression framing");
+    const uint8_t rgba[] = {
+        0x01,
+        0x02,
+        0x03,
+        0x04,
+        0x10,
+        0x20,
+        0x30,
+        0x40,
+        0x50,
+        0x60,
+        0x70,
+        0x80,
+        0x90,
+        0xA0,
+        0xB0,
+        0xC0,
+    };
+    std::vector<uint8_t> zlib = make_test_zlib_stored(rgba, sizeof(rgba));
+    std::vector<uint8_t> valid = make_test_supercompressed_ktx2_memory(
+        37u, 2u, 2u, 3u, zlib.data(), zlib.size(), sizeof(rgba));
+    const uint64_t level_offset = read_u64le(valid.data() + 80);
+    const uint64_t level_length = read_u64le(valid.data() + 88);
+    void *asset = rt_textureasset3d_load_ktx2_memory(valid.data(), valid.size());
+
+    EXPECT_TRUE(asset != nullptr, "valid generated zlib KTX2 loads through shared decoder");
+    if (asset) {
+        void *pixels = rt_textureasset3d_get_pixels(asset);
+        EXPECT_TRUE(pixels != nullptr, "valid zlib KTX2 publishes decoded Pixels");
+        if (pixels) {
+            EXPECT_EQ(rt_pixels_get_rgba(pixels, 0, 0), 0x01020304);
+            EXPECT_EQ(rt_pixels_get_rgba(pixels, 1, 1), 0x90A0B0C0);
+        }
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    EXPECT_TRUE(level_offset + level_length <= valid.size() && level_length >= 7,
+                "generated zlib level index describes an in-bounds complete stream");
+    if (level_offset + level_length <= valid.size() && level_length >= 7) {
+        std::vector<uint8_t> corrupt = valid;
+        corrupt[(size_t)level_offset] = 0x79;
+        EXPECT_TRUE(ktx2_memory_load_fails_with(corrupt, "ZLIB decompression"),
+                    "invalid zlib CMF/FCHECK fails recoverably");
+
+        corrupt = valid;
+        corrupt[(size_t)level_offset] = 0x78;
+        corrupt[(size_t)level_offset + 1u] = 0x20;
+        EXPECT_TRUE(ktx2_memory_load_fails_with(corrupt, "ZLIB decompression"),
+                    "zlib preset-dictionary request fails recoverably");
+
+        corrupt = valid;
+        corrupt[(size_t)level_offset + 2u] = 0x07;
+        EXPECT_TRUE(ktx2_memory_load_fails_with(corrupt, "ZLIB decompression"),
+                    "reserved raw-DEFLATE block type fails recoverably");
+
+        corrupt = valid;
+        write_u64le(corrupt.data() + 88, level_length - 1u);
+        EXPECT_TRUE(ktx2_memory_load_fails_with(corrupt, "ZLIB decompression"),
+                    "truncated zlib stream bounds fail recoverably");
+
+        corrupt = valid;
+        write_u64le(corrupt.data() + 96, sizeof(rgba) - 1u);
+        EXPECT_TRUE(ktx2_memory_load_fails_with(corrupt, "inconsistent uncompressed level length"),
+                    "mismatched KTX2 output-size declaration fails before allocation");
+
+        corrupt = valid;
+        corrupt[(size_t)(level_offset + level_length - 1u)] ^= 0x01;
+        EXPECT_TRUE(ktx2_memory_load_fails_with(corrupt, "ZLIB decompression"),
+                    "zlib Adler-32 corruption fails recoverably");
+    }
+    PASS();
+}
+
+/// @brief Prove every authoritative texture capability row matches an executable fallback.
+/// @details Enumerates every Vulkan value in every inclusive row, builds a single-block KTX2,
+///          and checks normalized name, compression state, CPU quality, decoder success, native
+///          id, and backend capability bit. Known-valid BC7, ETC2, and ASTC blocks exercise their
+///          partial/structured decoders; BC6H's reserved-zero block is specified to decode as
+///          opaque black. The test also verifies duplicate ASTC footprint rows agree on quality.
+static void test_textureasset3d_format_capability_table() {
+    TEST("TextureAsset3D authoritative format table drives decode and backend support");
+    const uint8_t valid_bc7[16] = {
+        0x11,
+        0x22,
+        0x33,
+        0x44,
+        0x55,
+        0x66,
+        0x77,
+        0x88,
+        0x99,
+        0xAA,
+        0xBB,
+        0xCC,
+        0xDD,
+        0xEE,
+        0xF0,
+        0x0F,
+    };
+    const uint8_t valid_etc2[16] = {
+        0x80,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0xFF,
+        0xFF,
+        0xFF,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+        0x00,
+    };
+    const uint8_t valid_astc[16] = {
+        0xFC,
+        0xFD,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0xFF,
+        0x00,
+        0x00,
+        0x00,
+        0x80,
+        0xFF,
+        0xFF,
+    };
+    const int64_t row_count = rt_textureasset3d_get_format_capability_count();
+
+    EXPECT_TRUE(row_count > 0, "format capability table is nonempty");
+    EXPECT_EQ(rt_textureasset3d_cpu_format_support_level("bc6h"),
+              RT_TEXTUREASSET3D_CPU_SUPPORT_PARTIAL);
+    EXPECT_EQ(rt_textureasset3d_cpu_format_support_level("bc6hs"),
+              RT_TEXTUREASSET3D_CPU_SUPPORT_PARTIAL);
+    EXPECT_EQ(rt_textureasset3d_cpu_format_support_level("etc2"),
+              RT_TEXTUREASSET3D_CPU_SUPPORT_PARTIAL);
+    EXPECT_EQ(rt_textureasset3d_cpu_format_support_level("astc"),
+              RT_TEXTUREASSET3D_CPU_SUPPORT_PARTIAL);
+    EXPECT_EQ(rt_textureasset3d_cpu_format_support_level("bc7"),
+              RT_TEXTUREASSET3D_CPU_SUPPORT_FULL);
+    EXPECT_EQ(rt_textureasset3d_cpu_format_support_level("not-a-format"),
+              RT_TEXTUREASSET3D_CPU_SUPPORT_NONE);
+
+    for (int64_t row_index = 0; row_index < row_count; row_index++) {
+        rt_textureasset3d_format_capability row = {};
+        EXPECT_TRUE(rt_textureasset3d_get_format_capability(row_index, &row) == 1,
+                    "capability row can be copied");
+        if (!row.name || row.vk_format_last < row.vk_format_first || row.block_width <= 0 ||
+            row.block_height <= 0 || row.block_bytes <= 0)
+            continue;
+        EXPECT_EQ(rt_textureasset3d_cpu_format_support_level(row.name), row.cpu_support);
+        EXPECT_TRUE(row.cpu_support == RT_TEXTUREASSET3D_CPU_SUPPORT_PARTIAL ||
+                        row.cpu_support == RT_TEXTUREASSET3D_CPU_SUPPORT_FULL,
+                    "every advertised table row has an executable CPU fallback");
+        EXPECT_TRUE((row.native_format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE) ==
+                        (row.backend_capability_bit == RT_TEXTUREASSET3D_BACKEND_CAP_NONE),
+                    "native id and backend capability are present together");
+
+        std::vector<uint8_t> payload((size_t)row.block_bytes, 0);
+        if (std::strcmp(row.name, "rgba8") == 0) {
+            payload[0] = 0x12;
+            payload[1] = 0x34;
+            payload[2] = 0x56;
+            payload[3] = 0x78;
+        } else if (std::strcmp(row.name, "bc7") == 0) {
+            std::memcpy(payload.data(), valid_bc7, sizeof(valid_bc7));
+        } else if (std::strcmp(row.name, "etc2") == 0) {
+            std::memcpy(payload.data(), valid_etc2, sizeof(valid_etc2));
+        } else if (std::strcmp(row.name, "astc") == 0) {
+            std::memcpy(payload.data(), valid_astc, sizeof(valid_astc));
+        }
+
+        for (uint32_t vk_format = row.vk_format_first; vk_format <= row.vk_format_last;
+             vk_format++) {
+            std::vector<uint8_t> bytes = make_test_ktx2_memory(vk_format,
+                                                               (uint32_t)row.block_width,
+                                                               (uint32_t)row.block_height,
+                                                               payload.data(),
+                                                               payload.size());
+            void *asset = rt_textureasset3d_load_ktx2_memory_strict(bytes.data(), bytes.size());
+            EXPECT_TRUE(asset != nullptr, "every Vulkan value in a capability row loads strictly");
+            if (!asset)
+                continue;
+            EXPECT_TRUE(
+                std::strcmp(rt_string_cstr(rt_textureasset3d_get_format(asset)), row.name) == 0,
+                "loaded texture name comes from its capability row");
+            EXPECT_EQ(rt_textureasset3d_get_compressed(asset), row.compressed ? 1 : 0);
+            EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) != nullptr,
+                        "advertised CPU decoder produces a Pixels fallback");
+            EXPECT_EQ(rt_textureasset3d_get_native_format_id(asset), row.native_format_id);
+            EXPECT_EQ(rt_textureasset3d_get_native_capability_bit(asset),
+                      row.backend_capability_bit);
+            if (row.backend_capability_bit != RT_TEXTUREASSET3D_BACKEND_CAP_NONE) {
+                EXPECT_TRUE(vgfx3d_textureasset_native_supported(asset, row.backend_capability_bit),
+                            "row-derived backend bit authorizes matching native upload");
+            } else {
+                EXPECT_TRUE(!vgfx3d_textureasset_native_supported(asset, INT64_MAX),
+                            "CPU-only row cannot acquire native support from unrelated bits");
+            }
+            if (rt_obj_release_check0(asset))
+                rt_obj_free(asset);
+            if (vk_format == UINT32_MAX)
+                break;
+        }
+    }
+
+    {
+        rt_textureasset3d_format_capability invalid = {};
+        invalid.vk_format_first = UINT32_MAX;
+        EXPECT_TRUE(rt_textureasset3d_get_format_capability(-1, &invalid) == 0,
+                    "negative capability index is rejected");
+        EXPECT_EQ(invalid.vk_format_first, 0);
+    }
+    PASS();
+}
+
+/// @brief Bound the live destination allocation for a large zlib-supercompressed level.
+/// @details Generates a deterministic 256x256 RGBA8 image and a stored-block zlib stream without
+///          external libraries. The strict memory loader must decode directly into one exact
+///          canonical backing span: allocation telemetry reports peak destination bytes equal to
+///          final bytes, and sampled corner texels prove that bypassing the intermediate copy did
+///          not change content.
+static void test_textureasset3d_supercompression_direct_backing_allocation() {
+    TEST("TextureAsset3D supercompression decodes directly into canonical backing");
+    const uint32_t width = 256;
+    const uint32_t height = 256;
+    std::vector<uint8_t> rgba((size_t)width * (size_t)height * 4u);
+
+    for (uint32_t y = 0; y < height; y++) {
+        for (uint32_t x = 0; x < width; x++) {
+            size_t offset = ((size_t)y * width + x) * 4u;
+            rgba[offset + 0] = (uint8_t)x;
+            rgba[offset + 1] = (uint8_t)y;
+            rgba[offset + 2] = (uint8_t)(x ^ y);
+            rgba[offset + 3] = 0xFF;
+        }
+    }
+    std::vector<uint8_t> zlib = make_test_zlib_stored(rgba.data(), rgba.size());
+    std::vector<uint8_t> bytes = make_test_supercompressed_ktx2_memory(
+        37u, width, height, 3u, zlib.data(), zlib.size(), rgba.size());
+
+    rt_textureasset3d_test_reset_supercompression_allocation_telemetry();
+    void *asset = rt_textureasset3d_load_ktx2_memory_strict(bytes.data(), bytes.size());
+    EXPECT_TRUE(asset != nullptr, "large generated zlib KTX2 loads strictly");
+    if (asset) {
+        TextureAsset3DTestLayout *layout = static_cast<TextureAsset3DTestLayout *>(asset);
+        void *pixels = rt_textureasset3d_get_pixels(asset);
+        EXPECT_TRUE(pixels != nullptr, "large supercompressed texture exposes decoded Pixels");
+        if (pixels) {
+            EXPECT_EQ(rt_pixels_get_rgba(pixels, 0, 0), 0x000000FF);
+            EXPECT_EQ(rt_pixels_get_rgba(pixels, 255, 255), 0xFFFF00FF);
+            EXPECT_EQ(rt_pixels_get_rgba(pixels, 173, 91), 0xAD5BF6FF);
+        }
+        EXPECT_TRUE(layout->source_backing != nullptr,
+                    "large supercompressed asset owns canonical backing");
+        EXPECT_EQ(layout->source_backing_bytes, rgba.size());
+        EXPECT_EQ(rt_textureasset3d_test_get_supercompression_final_bytes(), rgba.size());
+        EXPECT_EQ(rt_textureasset3d_test_get_supercompression_peak_bytes(), rgba.size());
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
     }
     PASS();
 }
@@ -4888,6 +5373,9 @@ static uint64_t g_backend_texture_upload_bytes = 0;
 static uint64_t g_backend_texture_upload_budget = UINT64_MAX;
 static uint64_t g_backend_texture_upload_pending_bytes = 0;
 static uint64_t g_backend_frame_gpu_time_us = 0;
+static int g_backend_render_scale_calls = 0;
+static float g_backend_requested_render_scale = 1.0f;
+static bool g_backend_render_scale_succeeds = true;
 } // namespace
 
 typedef struct {
@@ -4962,6 +5450,23 @@ static void tracked_backend_resize(void *, int32_t w, int32_t h) {
     g_backend_resize_calls++;
     g_backend_resize_w = w;
     g_backend_resize_h = h;
+}
+
+/**
+ * @brief Record a fake backend render-scale transition and return its injected result.
+ *
+ * This hook lets the Canvas3D contract test model an adapter that temporarily refuses
+ * target recreation, such as a GPU backend with an active frame or pending present.
+ *
+ * @param ctx Unused fake backend context; required to exercise the production hook.
+ * @param scale Scale requested by Canvas3D.
+ * @return Non-zero when the test configured the transition to succeed.
+ */
+static int8_t tracked_set_render_scale(void *ctx, float scale) {
+    (void)ctx;
+    g_backend_render_scale_calls++;
+    g_backend_requested_render_scale = scale;
+    return g_backend_render_scale_succeeds ? 1 : 0;
 }
 
 static void tracked_submit_draw(void *,
@@ -5484,6 +5989,8 @@ static void test_canvas_texture_backend_support_queries() {
                 "software backend reports BC4 CPU texture fallback support");
     EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:bc5")) == 1,
                 "software backend reports BC5 CPU texture fallback support");
+    EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:bc6h")) == 1,
+                "software backend reports partial BC6H CPU texture fallback support");
     EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:bc7")) == 1,
                 "software backend reports BC7 CPU texture fallback support");
     EXPECT_TRUE(rt_canvas3d_backend_supports(&canvas, rt_const_cstr("texture:etc2")) == 1,
@@ -5751,6 +6258,74 @@ static void test_canvas_hiz_rasterizer_culls_behind_rotated_occluder() {
 
     EXPECT_EQ(rt_canvas3d_get_draw_count(&canvas), hidden_draws + 1);
     EXPECT_EQ(g_canvas_submit_draw_calls, 1);
+    EXPECT_EQ(rt_canvas3d_get_occluded_draw_count(&canvas), hidden_draws);
+    PASS();
+}
+
+/// @brief Verify over-budget occluders use exact coarse proxies without false edge culls.
+/// @details A rotated box repeats its twelve real surface triangles until it exceeds the precise
+///   1,024-triangle limit. The bounded proxy must still establish central coverage and hide boxes
+///   fully behind it after history warm-up. A box crossing the projected silhouette edge must
+///   remain submitted because the proxy publishes only completely covered 4x4 fine blocks.
+static void test_canvas_hiz_high_poly_proxy_is_conservative() {
+    TEST("Canvas3D Hi-Z uses a conservative proxy for high-poly occluders");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+    const int64_t hidden_draws = 8;
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *eye = rt_vec3_new(0.0, 0.0, 5.0);
+    void *target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *occluder_mesh = rt_mesh3d_new_box(4.0, 4.0, 4.0);
+    void *hidden_mesh = rt_mesh3d_new_box(0.8, 0.8, 0.2);
+    void *material = rt_material3d_new();
+    auto *occluder_view = (rt_mesh3d *)occluder_mesh;
+    uint32_t base_indices[36];
+    const double c45 = 0.70710678118654752;
+    void *rot_xf = rt_mat4_new(
+        c45, 0.0, c45, 0.0, 0.0, 1.0, 0.0, 0.0, -c45, 0.0, c45, 0.0, 0.0, 0.0, 0.0, 1.0);
+    void *behind_xf = rt_mat4_new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -3.0, 0.0, 0.0, 0.0, 1.0);
+    void *edge_xf = rt_mat4_new(
+        1.0, 0.0, 0.0, 4.1, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, -3.0, 0.0, 0.0, 0.0, 1.0);
+
+    memcpy(base_indices, occluder_view->indices, sizeof(base_indices));
+    for (int repeat = 0; repeat < 128; repeat++) {
+        for (int triangle = 0; triangle < 12; triangle++) {
+            const uint32_t *indices = &base_indices[(size_t)triangle * 3u];
+            rt_mesh3d_add_triangle(occluder_mesh, indices[0], indices[1], indices[2]);
+        }
+    }
+    EXPECT_TRUE(rt_mesh3d_get_triangle_count(occluder_mesh) > 1024,
+                "High-poly proxy fixture exceeds the precise per-draw triangle budget");
+
+    backend.name = "opengl";
+    backend.gpu_skinning = 1;
+    backend.begin_frame = tracked_begin_frame;
+    backend.submit_draw = tracked_submit_draw;
+    backend.end_frame = tracked_end_frame;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 128;
+    canvas.height = 128;
+
+    rt_camera3d_look_at(camera, eye, target, up);
+    rt_canvas3d_set_occlusion_culling(&canvas, 1);
+    for (int frame = 0; frame < 3; frame++) {
+        if (frame == 2)
+            g_canvas_submit_draw_calls = 0;
+        rt_canvas3d_begin(&canvas, camera);
+        rt_canvas3d_draw_mesh(&canvas, occluder_mesh, rot_xf, material);
+        for (int64_t i = 0; i < hidden_draws; i++)
+            rt_canvas3d_draw_mesh(&canvas, hidden_mesh, behind_xf, material);
+        rt_canvas3d_draw_mesh(&canvas, hidden_mesh, edge_xf, material);
+        rt_canvas3d_end(&canvas);
+    }
+
+    EXPECT_EQ(canvas.hiz_frame_triangles, 12);
+    EXPECT_EQ(canvas.hiz_frame_proxy_triangles, 512);
+    EXPECT_EQ(g_canvas_submit_draw_calls, 2);
     EXPECT_EQ(rt_canvas3d_get_occluded_draw_count(&canvas), hidden_draws);
     PASS();
 }
@@ -6671,6 +7246,45 @@ static void test_canvas_resize_updates_backend_and_projection_aspect() {
     PASS();
 }
 
+/**
+ * @brief Verify failed backend scale transitions leave Canvas3D state unchanged.
+ *
+ * The regression covers both restoration to native resolution and a reduced-scale
+ * request. It prevents Canvas3D.RenderScale from reporting a value that the backend
+ * rejected while a frame/presentation transaction or target allocation was pending.
+ */
+static void test_canvas_render_scale_failure_preserves_state() {
+    TEST("Canvas3D render-scale failure preserves the active scale");
+    vgfx3d_backend_t backend = {};
+    rt_canvas3d canvas;
+
+    backend.name = "tracked-render-scale";
+    backend.set_render_scale = tracked_set_render_scale;
+    memset(&canvas, 0, sizeof(canvas));
+    canvas.backend = &backend;
+    canvas.backend_ctx = &canvas;
+    canvas.render_scale = 0.5f;
+
+    g_backend_render_scale_calls = 0;
+    g_backend_requested_render_scale = 0.0f;
+    g_backend_render_scale_succeeds = false;
+    EXPECT_EQ(rt_canvas3d_try_set_render_scale(&canvas, 1.0), 0);
+    EXPECT_EQ(g_backend_render_scale_calls, 1);
+    EXPECT_NEAR(g_backend_requested_render_scale, 1.0f, 0.0001f);
+    EXPECT_NEAR(rt_canvas3d_get_render_scale(&canvas), 0.5, 0.0001);
+
+    g_backend_render_scale_succeeds = true;
+    EXPECT_EQ(rt_canvas3d_try_set_render_scale(&canvas, 1.0), 1);
+    EXPECT_NEAR(rt_canvas3d_get_render_scale(&canvas), 1.0, 0.0001);
+
+    g_backend_render_scale_succeeds = false;
+    EXPECT_EQ(rt_canvas3d_try_set_render_scale(&canvas, 0.5), 0);
+    EXPECT_NEAR(g_backend_requested_render_scale, 0.5f, 0.0001f);
+    EXPECT_NEAR(rt_canvas3d_get_render_scale(&canvas), 1.0, 0.0001);
+
+    PASS();
+}
+
 static void test_canvas_fog_and_shadow_state_sanitize_inputs() {
     TEST("Canvas3D sanitizes fog and shadow inputs");
     rt_canvas3d canvas;
@@ -7349,10 +7963,16 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     mat->texture_wrap_s = 99;
     mat->texture_wrap_t = -7;
     mat->texture_filter = 123;
+    mat->texture_min_filter = 123;
+    mat->texture_mag_filter = -9;
+    mat->texture_mip_filter = 123;
     mat->anisotropy = 0;
     mat->texture_slot_wrap_s[0] = 99;
     mat->texture_slot_wrap_t[0] = -7;
     mat->texture_slot_filter[0] = 123;
+    mat->texture_slot_min_filter[0] = 123;
+    mat->texture_slot_mag_filter[0] = -9;
+    mat->texture_slot_mip_filter[0] = 123;
     mat->texture_slot_anisotropy[0] = 0;
     mat->texture_slot_uv_set[0] = 99;
     mat->texture_slot_uv_transform[0][0] = std::numeric_limits<double>::quiet_NaN();
@@ -7363,6 +7983,9 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     mat->texture_slot_wrap_s[1] = RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE;
     mat->texture_slot_wrap_t[1] = RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT;
     mat->texture_slot_filter[1] = RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    mat->texture_slot_min_filter[1] = RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    mat->texture_slot_mag_filter[1] = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    mat->texture_slot_mip_filter[1] = RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR;
     mat->texture_slot_anisotropy[1] = 64;
     mat->texture_slot_uv_set[1] = -1;
     mat->custom_params[0] = 1.0e300;
@@ -7383,10 +8006,16 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     EXPECT_EQ(g_last_draw_cmd.texture_wrap_s, RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_wrap_t, RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_filter, RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_min_filter, RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_mag_filter, RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_mip_filter, RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE);
     EXPECT_EQ(g_last_draw_cmd.texture_anisotropy, 1);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_s[0], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_t[0], RT_MATERIAL3D_TEXTURE_WRAP_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_filter[0], RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_min_filter[0], RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_mag_filter[0], RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_mip_filter[0], RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_anisotropy[0], 1);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_uv_set[0], 1);
     EXPECT_NEAR(g_last_draw_cmd.texture_slot_uv_transform[0][0], 1.0f, 0.0001f);
@@ -7397,6 +8026,9 @@ static void test_canvas_material_command_sanitizes_corrupt_fields() {
     EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_s[1], RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_wrap_t[1], RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_filter[1], RT_MATERIAL3D_TEXTURE_FILTER_NEAREST);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_min_filter[1], RT_MATERIAL3D_TEXTURE_FILTER_NEAREST);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_mag_filter[1], RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    EXPECT_EQ(g_last_draw_cmd.texture_slot_mip_filter[1], RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_anisotropy[1], 16);
     EXPECT_EQ(g_last_draw_cmd.texture_slot_uv_set[1], 0);
     EXPECT_NEAR(g_last_draw_cmd.custom_params[0], 1000000.0f, 1.0f);
@@ -8555,8 +9187,13 @@ static void test_mesh_tangent_fallback_is_orthogonal_to_normal() {
     PASS();
 }
 
-static void test_canvas_draw_auto_generates_missing_normal_map_tangents() {
-    TEST("Canvas3D.DrawMesh generates normal-map tangents on queued copies");
+/// @brief Verify persistent missing-tangent generation, reuse, and revision invalidation.
+/// @details The first normal-mapped draw must build immutable raw and tangent variants without
+///          touching source vertices or the global geometry epoch. A later unchanged frame must
+///          hit both caches with zero frame snapshot bytes, while a geometry/UV-bearing append must
+///          build exactly one new raw and tangent revision.
+static void test_canvas_draw_persistently_caches_missing_normal_map_tangents() {
+    TEST("Canvas3D.DrawMesh persistently caches generated normal-map tangents");
     vgfx3d_backend_t backend = {};
     rt_canvas3d canvas;
     rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_new_plane(2.0, 2.0);
@@ -8574,11 +9211,18 @@ static void test_canvas_draw_auto_generates_missing_normal_map_tangents() {
     model[0] = model[5] = model[10] = model[15] = 1.0;
 
     EXPECT_NEAR(mesh->vertices[0].tangent[0], 0.0, 0.001);
+    uint64_t geometry_epoch_before_draw = rt_mesh3d_global_geometry_epoch();
     rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
     EXPECT_NEAR(mesh->vertices[0].tangent[0], 0.0, 0.001);
-    EXPECT_TRUE(canvas.temp_buf_count >= 2, "normal-mapped draw snapshots geometry");
+    EXPECT_EQ(rt_mesh3d_global_geometry_epoch(), geometry_epoch_before_draw);
+    EXPECT_TRUE(canvas.temp_buf_count == 0 && canvas.mesh_snapshot_bytes == 0u,
+                "normal-mapped retained draw creates no frame geometry copies");
+    EXPECT_TRUE(canvas.mesh_snapshot_count == 1 &&
+                    canvas.mesh_snapshots[0].retained_revision != nullptr,
+                "normal-mapped draw retains one immutable geometry revision");
     {
-        vgfx3d_vertex_t *queued_vertices = (vgfx3d_vertex_t *)canvas.temp_buffers[0];
+        vgfx3d_vertex_t *queued_vertices =
+            canvas.mesh_snapshots[0].retained_revision->tangent_vertices;
         EXPECT_TRUE(queued_vertices != nullptr, "normal-mapped draw has queued vertices");
         EXPECT_TRUE(std::fabs(queued_vertices[0].tangent[0]) +
                             std::fabs(queued_vertices[0].tangent[1]) +
@@ -8586,12 +9230,37 @@ static void test_canvas_draw_auto_generates_missing_normal_map_tangents() {
                         0.5,
                     "queued normal-mapped draw has a usable tangent basis");
     }
+    EXPECT_EQ(mesh->retained_geometry_build_count, 1);
+    EXPECT_EQ(mesh->retained_tangent_build_count, 1);
+
+    canvas3d_clear_temp_buffers(&canvas);
+    canvas3d_clear_temp_objects(&canvas);
+    canvas.draw_count = 0;
+    rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
+    EXPECT_EQ(mesh->retained_geometry_build_count, 1);
+    EXPECT_EQ(mesh->retained_tangent_build_count, 1);
+    EXPECT_TRUE(mesh->retained_tangent_cache_hit_count >= 1,
+                "unchanged later frame reuses persistent generated tangents");
+    EXPECT_TRUE(canvas.temp_buf_count == 0 && canvas.mesh_snapshot_bytes == 0u,
+                "persistent tangent cache remains allocation-free at frame scope");
+
+    canvas3d_clear_temp_buffers(&canvas);
+    canvas3d_clear_temp_objects(&canvas);
+    canvas.draw_count = 0;
+    rt_mesh3d_add_vertex(mesh, 3.0, 0.0, 3.0, 0.0, 1.0, 0.0, 0.25, 0.75);
+    rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
+    EXPECT_EQ(mesh->retained_geometry_build_count, 2);
+    EXPECT_EQ(mesh->retained_tangent_build_count, 2);
     free_canvas3d_test_draw_state(&canvas);
     PASS();
 }
 
-static void test_canvas_draw_snapshots_heap_mesh_geometry() {
-    TEST("Canvas3D.DrawMesh snapshots heap mesh geometry for deferred draws");
+/// @brief Verify deferred heap draws retain immutable geometry across a source mutation.
+/// @details Queues one plane revision, transforms the live mesh before submission, and proves the
+///          queued bytes remain unchanged while a second draw forks to a distinct revision. The
+///          test also asserts that retained revisions use no canvas frame-temp geometry buffers.
+static void test_canvas_draw_retains_heap_mesh_geometry() {
+    TEST("Canvas3D.DrawMesh retains immutable heap geometry for deferred draws");
     vgfx3d_backend_t backend = {};
     rt_canvas3d canvas;
     rt_mesh3d *mesh = (rt_mesh3d *)rt_mesh3d_new_plane(2.0, 2.0);
@@ -8608,11 +9277,24 @@ static void test_canvas_draw_snapshots_heap_mesh_geometry() {
 
     float original_x = mesh->vertices[0].pos[0];
     rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
-    EXPECT_TRUE(canvas.temp_buf_count >= 2, "heap mesh draw records vertex/index snapshots");
-    vgfx3d_vertex_t *queued_vertices = (vgfx3d_vertex_t *)canvas.temp_buffers[0];
+    EXPECT_TRUE(canvas.temp_buf_count == 0 && canvas.mesh_snapshot_bytes == 0u,
+                "heap mesh draw avoids frame-owned vertex/index copies");
+    EXPECT_TRUE(canvas.mesh_snapshot_count == 1 &&
+                    canvas.mesh_snapshots[0].retained_revision != nullptr,
+                "heap mesh draw retains an immutable geometry revision");
+    vgfx3d_vertex_t *queued_vertices = canvas.mesh_snapshots[0].vertices;
     EXPECT_TRUE(queued_vertices != nullptr, "heap mesh draw has queued vertices");
-    mesh->vertices[0].pos[0] = 99.0f;
+    rt_mesh3d_transform(mesh, rt_mat4_translate(4.0, 0.0, 0.0));
     EXPECT_NEAR(queued_vertices[0].pos[0], original_x, 0.001);
+    EXPECT_NEAR(mesh->vertices[0].pos[0], original_x + 4.0, 0.001);
+    EXPECT_TRUE(mesh->retained_geometry == nullptr,
+                "geometry mutation forks away from the queued immutable revision");
+    rt_canvas3d_draw_mesh_matrix(&canvas, mesh, model, mat);
+    EXPECT_EQ(mesh->retained_geometry_build_count, 2);
+    EXPECT_TRUE(canvas.mesh_snapshot_count == 2,
+                "same-frame post-mutation draw retains both old and new revisions");
+    EXPECT_TRUE(canvas.mesh_snapshots[1].vertices != queued_vertices,
+                "post-mutation deferred draw references a distinct revision payload");
 
     free_canvas3d_test_draw_state(&canvas);
     PASS();
@@ -9162,31 +9844,75 @@ static void test_canvas_legacy_translucent_batch_falls_back_from_instancing() {
     PASS();
 }
 
-static void test_canvas_instanced_fallback_caps_instance_count() {
-    TEST("Canvas3D clamps per-instance fallback draws with telemetry");
+static int32_t g_chunked_fallback_submit_index = 0;
+static int8_t g_chunked_fallback_order_ok = 1;
+
+/// @brief Record one non-native fallback draw and verify its global instance order.
+/// @details The chunk-boundary regression stores each source index in model translation X. With
+///   opaque sorting disabled, backend submission must observe the exact monotonically increasing
+///   sequence across the 65,536/65,537 reservation boundary.
+static void tracked_chunked_fallback_submit_draw(void *,
+                                                 vgfx_window_t,
+                                                 const vgfx3d_draw_cmd_t *cmd,
+                                                 const vgfx3d_light_params_t *,
+                                                 int32_t,
+                                                 const float *,
+                                                 int8_t,
+                                                 int8_t) {
+    if (!cmd || cmd->model_matrix[3] != (float)g_chunked_fallback_submit_index)
+        g_chunked_fallback_order_ok = 0;
+    g_chunked_fallback_submit_index++;
+}
+
+/// @brief Verify non-native instancing crosses the 65,536-instance boundary without omissions.
+/// @details A backend with no instanced hook forces the per-instance fallback. The request is one
+///   element larger than a reservation chunk; every command must queue, telemetry must report no
+///   drop, and the backend must receive all model matrices in original stable order.
+static void test_canvas_instanced_fallback_chunks_without_omission() {
+    TEST("Canvas3D chunks per-instance fallback draws without omissions");
     vgfx3d_backend_t backend = {};
     rt_canvas3d canvas;
     void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     void *mat = rt_material3d_new();
-    const int32_t requested = 65537; /* CANVAS3D_MAX_FALLBACK_INSTANCES + 1 */
+    const int32_t requested = 65537; /* one beyond CANVAS3D_FALLBACK_CHUNK_INSTANCES */
     std::vector<float> instances((size_t)requested * 16, 0.0f);
 
     backend.name = "software";
+    backend.submit_draw = tracked_chunked_fallback_submit_draw;
+    backend.end_frame = tracked_end_frame;
     memset(&canvas, 0, sizeof(canvas));
     canvas.backend = &backend;
     canvas.gfx_win = (vgfx_window_t)1;
     canvas.in_frame = 1;
+    canvas.opaque_depth_sorting = 0;
     for (int32_t i = 0; i < requested; i++) {
         float *m = &instances[(size_t)i * 16];
         m[0] = m[5] = m[10] = m[15] = 1.0f;
+        m[3] = (float)i;
     }
 
-    /* The old hard trap is gone: overflow clamps to the fallback cap, the
-     * queued count remains observable, and skipped instances have explicit
-     * dropped-instance telemetry. */
     rt_canvas3d_queue_instanced_batch(&canvas, mesh, mat, instances.data(), requested, NULL, 0);
-    EXPECT_EQ(rt_canvas3d_get_instanced_fallback_count(&canvas), 65536);
-    EXPECT_EQ(rt_canvas3d_get_instanced_fallback_dropped_count(&canvas), 1);
+    EXPECT_EQ(canvas.draw_count, requested);
+    EXPECT_EQ(rt_canvas3d_get_instanced_fallback_count(&canvas), requested);
+    EXPECT_EQ(rt_canvas3d_get_instanced_fallback_dropped_count(&canvas), 0);
+
+    g_chunked_fallback_submit_index = 0;
+    g_chunked_fallback_order_ok = 1;
+    rt_canvas3d_end(&canvas);
+    EXPECT_EQ(g_chunked_fallback_submit_index, requested);
+    EXPECT_EQ(g_chunked_fallback_order_ok, 1);
+
+    free(canvas.draw_cmds);
+    free(canvas.temp_buffers);
+    free(canvas.temp_objects);
+    free(canvas.temp_buffer_set);
+    free(canvas.temp_object_set);
+    free(canvas.mesh_snapshots);
+    free(canvas.mesh_snapshot_hash);
+    if (rt_obj_release_check0(mat))
+        rt_obj_free(mat);
+    if (rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
     PASS();
 }
 
@@ -9466,6 +10192,9 @@ int main() {
     test_canvas3d_per_instance_skinning_chunking();
     test_canvas3d_compact_streams_flag();
     test_textureasset3d_supercompressed_ktx2_loads();
+    test_textureasset3d_zlib_integrity_validation();
+    test_textureasset3d_format_capability_table();
+    test_textureasset3d_supercompression_direct_backing_allocation();
     test_textureasset3d_rejects_unsupported_ktx2_headers();
     test_textureasset3d_native_resident_mips_feed_backend_utils();
     test_material_inspection_getters();
@@ -9558,6 +10287,7 @@ int main() {
     test_particles3d_extreme_finite_inputs_remain_bounded();
     test_particles3d_getters_sanitize_corrupt_private_state();
     test_canvas_resize_updates_backend_and_projection_aspect();
+    test_canvas_render_scale_failure_preserves_state();
     test_canvas_fog_and_shadow_state_sanitize_inputs();
     test_canvas_begin_applies_camera_shake_without_follow();
     test_canvas_overlay_draws_replay_after_3d_frame();
@@ -9587,6 +10317,7 @@ int main() {
     test_canvas_occlusion_culling_skips_covered_opaque_draws();
     test_backend_reversed_z_negates_projection_z_row();
     test_canvas_hiz_rasterizer_culls_behind_rotated_occluder();
+    test_canvas_hiz_high_poly_proxy_is_conservative();
     test_frame_light_flatten_cache_shares_snapshot_across_draws();
     test_shadow_distance_setter_and_effective_range();
     test_instanced_draw_precomputes_world_bounds_in_snapshot_pass();
@@ -9635,8 +10366,8 @@ int main() {
     test_shadow_enable_disable();
     test_mesh_tangents_for_normal_map();
     test_mesh_tangent_fallback_is_orthogonal_to_normal();
-    test_canvas_draw_auto_generates_missing_normal_map_tangents();
-    test_canvas_draw_snapshots_heap_mesh_geometry();
+    test_canvas_draw_persistently_caches_missing_normal_map_tangents();
+    test_canvas_draw_retains_heap_mesh_geometry();
     test_canvas_draw_rejects_public_raw_mesh_handles();
     test_mesh_transform_rejects_singular_normal_matrix();
     test_mesh_validation_errors_mark_build_failed();
@@ -9664,7 +10395,7 @@ int main() {
     test_canvas_instanced_gpu_uses_explicit_previous_matrices();
     test_canvas_instanced_motion_history_separates_batches();
     test_canvas_legacy_translucent_batch_falls_back_from_instancing();
-    test_canvas_instanced_fallback_caps_instance_count();
+    test_canvas_instanced_fallback_chunks_without_omission();
     test_canvas_instanced_previous_matrices_require_pointer();
     test_metal_terrain_splat_for_gpu();
     test_metal_postfx_new();

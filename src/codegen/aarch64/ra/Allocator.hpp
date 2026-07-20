@@ -14,7 +14,8 @@
 //   - After run(), every MReg in the MFunction has isPhys=true.
 //   - Spill slots are allocated via FrameBuilder; callee-saved usage is
 //     recorded for prologue/epilogue generation.
-//   - Cross-block register persistence uses single-predecessor exit states.
+//   - Cross-block register persistence restores canonical spills before
+//     re-adopting single-predecessor exit registers.
 //
 // Ownership/Lifetime:
 //   - Constructed per-function; borrows MFunction and TargetInfo references.
@@ -133,7 +134,7 @@ class LinearAllocator {
     std::vector<PhysReg> reservedForCall_;
 
     // ---- Cross-block ----
-    /// @brief Seed the current block's register state from the single predecessor's exit state.
+    /// @brief Restore predecessor spills and seed registers from its exit state.
     void restoreFromPredecessor(std::size_t bi);
 
     // ---- Physical-register clobbers ----

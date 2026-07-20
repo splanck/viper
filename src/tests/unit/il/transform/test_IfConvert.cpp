@@ -155,6 +155,27 @@ join(%v: i64):
     EXPECT_TRUE(static_cast<bool>(verified));
 }
 
+TEST(IfConvert, TriangleReusesIdenticalJoinArgs) {
+    Module module = parseModule(R"(il 0.3.0
+func @main(%c: i1, %x: i64) -> i64 {
+entry(%c: i1, %x: i64):
+  cbr %c, arm, join(%x, %x)
+arm:
+  %t = xor %x, 1
+  br join(%t, %x)
+join(%v: i64, %same: i64):
+  %r = or %v, %same
+  ret %r
+}
+)");
+    Function &fn = module.functions.front();
+    runIfConvert(module);
+    EXPECT_EQ(countOpcode(fn, Opcode::Select), 1u);
+    EXPECT_EQ(countOpcode(fn, Opcode::CBr), 0u);
+    auto verified = il::verify::Verifier::verify(module);
+    EXPECT_TRUE(static_cast<bool>(verified));
+}
+
 TEST(IfConvert, TrappingArmIsNotSpeculated) {
     // sdiv traps on divide-by-zero, so the arm must not be hoisted.
     Module module = parseModule(R"(il 0.3.0

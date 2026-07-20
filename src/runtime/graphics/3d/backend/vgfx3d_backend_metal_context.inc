@@ -1,9 +1,21 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_context.inc
-//   (#included from vgfx3d_backend_metal.m; not a standalone translation unit)
-// Purpose: Pipeline/sampler/depth-state creation, shader compilation, context create/destroy,
-// clear, and frame begin (TAA jitter, opaque resolve)
+// Purpose: Metal pipeline/state creation, shader loading, context lifecycle, and frame begin.
+// Key invariants:
+//   - All mandatory target, blend, instancing, and particle pipeline variants publish atomically.
+//   - Particle pipelines read compact records at buffer index 6 and retained vertices at index 0.
+// Ownership/Lifetime:
+//   - VGFXMetalContext strongly owns created Objective-C resources until context destruction.
+//   - MTLFunction temporaries remain valid through pipeline creation in the including translation
+//   unit.
+// Links: vgfx3d_backend_metal.m, vgfx3d_backend_metal_shaders.inc
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Build the MTLVertexDescriptor describing the interleaved 92-byte vgfx3d_vertex_t layout
@@ -219,6 +231,22 @@ static id<MTLRenderPipelineState> metal_select_pipeline_state(VGFXMetalContext *
                                                             : ctx.pipelineStateColorOnly);
 }
 
+/// @brief Select the compact-particle pipeline for the active target and blend equation.
+/// @details Particles are always transparent; additive emitters select the additive twin and all
+///   other emitters select standard alpha. The unit-quad stream uses the full retained vertex
+///   layout, while per-particle data arrives independently at buffer index 6.
+static id<MTLRenderPipelineState> metal_select_particle_pipeline_state(
+    VGFXMetalContext *ctx, const vgfx3d_draw_cmd_t *cmd) {
+    BOOL additive;
+    if (!ctx)
+        return nil;
+    additive = vgfx3d_metal_choose_blend_mode(cmd) == VGFX3D_METAL_BLEND_ADDITIVE;
+    if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE)
+        return additive ? ctx.particlePipelineStateAdditive : ctx.particlePipelineStateAlpha;
+    return additive ? ctx.particlePipelineStateColorOnlyAdditive
+                    : ctx.particlePipelineStateColorOnlyAlpha;
+}
+
 /// @brief Map a material texture-wrap mode to the corresponding MTLSamplerAddressMode.
 static MTLSamplerAddressMode metal_material_address_mode(int32_t mode) {
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE)
@@ -228,7 +256,44 @@ static MTLSamplerAddressMode metal_material_address_mode(int32_t mode) {
     return MTLSamplerAddressModeRepeat;
 }
 
-/// @brief Get or build the cached sampler state for a material's filter and wrap modes.
+/// @brief Sanitize one imported nearest/linear texel-filter axis.
+/// @param value Candidate `RT_MATERIAL3D_TEXTURE_FILTER_*` value.
+/// @return Nearest for the explicit nearest constant, otherwise linear.
+static int32_t metal_material_texel_filter(int32_t value) {
+    return value == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                                                         : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+}
+
+/// @brief Sanitize one imported three-state mip-selection axis.
+/// @param value Candidate `RT_MATERIAL3D_TEXTURE_MIP_FILTER_*` value.
+/// @return None, nearest, or linear; unknown values become none.
+static int32_t metal_material_mip_filter(int32_t value) {
+    if (value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST)
+        return RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST;
+    if (value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR)
+        return RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR;
+    return RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE;
+}
+
+/// @brief Map a sanitized mip-selection axis to Metal's exact sampler enum.
+/// @param value Sanitized `RT_MATERIAL3D_TEXTURE_MIP_FILTER_*` value.
+/// @return The corresponding Metal mip filter, including the non-mipmapped state.
+static MTLSamplerMipFilter metal_material_mip_filter_mode(int32_t value) {
+    if (value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST)
+        return MTLSamplerMipFilterNearest;
+    if (value == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR)
+        return MTLSamplerMipFilterLinear;
+    return MTLSamplerMipFilterNotMipmapped;
+}
+
+/// @brief Get or build a cached sampler preserving independent min, mag, mip, and wrap axes.
+/// @details The cache key contains every authored axis plus effective anisotropy. Anisotropic
+///          sampling remains an explicit material opt-in and is enabled only when both texel
+///          axes are linear, so it never overrides an authored nearest choice.
+/// @param ctx Active Metal backend context owning the sampler cache.
+/// @param cmd Borrowed immutable draw command; NULL selects the shared/default sampler.
+/// @param slot Material texture slot, or a value outside the slot range for global mirrors.
+/// @return Cached or newly created sampler state; falls back to the shared/default sampler.
 static id<MTLSamplerState> metal_get_material_sampler(VGFXMetalContext *ctx,
                                                       const vgfx3d_draw_cmd_t *cmd,
                                                       int32_t slot) {
@@ -240,25 +305,36 @@ static id<MTLSamplerState> metal_get_material_sampler(VGFXMetalContext *ctx,
 
     int32_t wrap_s = use_slot ? cmd->texture_slot_wrap_s[slot] : cmd->texture_wrap_s;
     int32_t wrap_t = use_slot ? cmd->texture_slot_wrap_t[slot] : cmd->texture_wrap_t;
-    int32_t filter = (use_slot ? cmd->texture_slot_filter[slot] : cmd->texture_filter) ==
-                             RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
-                         ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
-                         : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    int32_t min_filter = metal_material_texel_filter(use_slot ? cmd->texture_slot_min_filter[slot]
+                                                              : cmd->texture_min_filter);
+    int32_t mag_filter = metal_material_texel_filter(use_slot ? cmd->texture_slot_mag_filter[slot]
+                                                              : cmd->texture_mag_filter);
+    int32_t mip_filter = metal_material_mip_filter(use_slot ? cmd->texture_slot_mip_filter[slot]
+                                                            : cmd->texture_mip_filter);
     int32_t anisotropy = use_slot ? cmd->texture_slot_anisotropy[slot] : cmd->texture_anisotropy;
-    anisotropy = filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+    anisotropy = (min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ||
+                  mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST)
                      ? 1
                      : vgfx3d_metal_sanitize_anisotropy(anisotropy);
-    NSString *key = [NSString stringWithFormat:@"%d:%d:%d:%d", wrap_s, wrap_t, filter, anisotropy];
+    NSString *key = [NSString stringWithFormat:@"%d:%d:%d:%d:%d:%d",
+                                               wrap_s,
+                                               wrap_t,
+                                               min_filter,
+                                               mag_filter,
+                                               mip_filter,
+                                               anisotropy];
     id<MTLSamplerState> sampler = ctx.samplerCache[key];
     if (sampler)
         return sampler;
 
     MTLSamplerDescriptor *sd = [[MTLSamplerDescriptor alloc] init];
-    sd.minFilter = filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? MTLSamplerMinMagFilterNearest
-                                                                  : MTLSamplerMinMagFilterLinear;
-    sd.magFilter = sd.minFilter;
-    sd.mipFilter = filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? MTLSamplerMipFilterNearest
-                                                                  : MTLSamplerMipFilterLinear;
+    sd.minFilter = min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                       ? MTLSamplerMinMagFilterNearest
+                       : MTLSamplerMinMagFilterLinear;
+    sd.magFilter = mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                       ? MTLSamplerMinMagFilterNearest
+                       : MTLSamplerMinMagFilterLinear;
+    sd.mipFilter = metal_material_mip_filter_mode(mip_filter);
     sd.maxAnisotropy = (NSUInteger)anisotropy;
     sd.sAddressMode = metal_material_address_mode(wrap_s);
     sd.tAddressMode = metal_material_address_mode(wrap_t);
@@ -275,6 +351,7 @@ static id<MTLSamplerState> metal_get_material_sampler(VGFXMetalContext *ctx,
 typedef struct metal_main_functions_t {
     id<MTLFunction> vertex;
     id<MTLFunction> vertexInstanced;
+    id<MTLFunction> vertexParticles;
     id<MTLFunction> vertexShadow;
     id<MTLFunction> fragmentShadow;
     id<MTLFunction> fragment;
@@ -289,6 +366,7 @@ static VGFXMetalContext *metal_create_context_base(id<MTLDevice> device,
     ctx.device = device;
     ctx.width = w;
     ctx.height = h;
+    ctx.renderScale = 1.0f;
     ctx.vgfxWin = win;
     ctx.textureCache = [NSMutableDictionary dictionaryWithCapacity:32];
     ctx.cubemapCache = [NSMutableDictionary dictionaryWithCapacity:8];
@@ -351,20 +429,23 @@ static BOOL metal_compile_main_library(VGFXMetalContext *ctx, id<MTLDevice> devi
 static BOOL metal_load_main_functions(VGFXMetalContext *ctx, metal_main_functions_t *funcs) {
     funcs->vertex = nil;
     funcs->vertexInstanced = nil;
+    funcs->vertexParticles = nil;
     funcs->vertexShadow = nil;
     funcs->fragmentShadow = nil;
     funcs->fragment = nil;
     funcs->vertex = [ctx.library newFunctionWithName:@ "vertex_main"];
     funcs->vertexInstanced = [ctx.library newFunctionWithName:@ "vertex_main_instanced"];
+    funcs->vertexParticles = [ctx.library newFunctionWithName:@ "vertex_main_particles"];
     funcs->vertexShadow = [ctx.library newFunctionWithName:@ "vertex_shadow"];
     funcs->fragmentShadow = [ctx.library newFunctionWithName:@ "fragment_shadow"];
     funcs->fragment = [ctx.library newFunctionWithName:@ "fragment_main"];
-    if (!funcs->vertex || !funcs->vertexInstanced || !funcs->vertexShadow ||
-        !funcs->fragmentShadow || !funcs->fragment) {
-        NSLog(@ "[Metal] required shader entrypoints missing (vf=%@ inst=%@ shadow=%@ shadowf=%@ "
-               "ff=%@)",
+    if (!funcs->vertex || !funcs->vertexInstanced || !funcs->vertexParticles ||
+        !funcs->vertexShadow || !funcs->fragmentShadow || !funcs->fragment) {
+        NSLog(@ "[Metal] required shader entrypoints missing (vf=%@ inst=%@ particles=%@ shadow=%@ "
+               "shadowf=%@ ff=%@)",
               funcs->vertex,
               funcs->vertexInstanced,
+              funcs->vertexParticles,
               funcs->vertexShadow,
               funcs->fragmentShadow,
               funcs->fragment);
@@ -476,12 +557,48 @@ static BOOL metal_create_main_pipeline_states(VGFXMetalContext *ctx,
                                     VGFX3D_METAL_BLEND_ADDITIVE,
                                     YES,
                                     &error);
+    ctx.particlePipelineStateAlpha = metal_create_pipeline_state(device,
+                                                                 funcs->vertexParticles,
+                                                                 funcs->fragment,
+                                                                 create_vertex_descriptor(),
+                                                                 MTLPixelFormatRGBA16Float,
+                                                                 VGFX3D_METAL_BLEND_ALPHA,
+                                                                 YES,
+                                                                 &error);
+    ctx.particlePipelineStateAdditive = metal_create_pipeline_state(device,
+                                                                    funcs->vertexParticles,
+                                                                    funcs->fragment,
+                                                                    create_vertex_descriptor(),
+                                                                    MTLPixelFormatRGBA16Float,
+                                                                    VGFX3D_METAL_BLEND_ADDITIVE,
+                                                                    YES,
+                                                                    &error);
+    ctx.particlePipelineStateColorOnlyAlpha =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexParticles,
+                                    funcs->fragment,
+                                    create_vertex_descriptor(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_ALPHA,
+                                    YES,
+                                    &error);
+    ctx.particlePipelineStateColorOnlyAdditive =
+        metal_create_pipeline_state(device,
+                                    funcs->vertexParticles,
+                                    funcs->fragment,
+                                    create_vertex_descriptor(),
+                                    MTLPixelFormatBGRA8Unorm,
+                                    VGFX3D_METAL_BLEND_ADDITIVE,
+                                    YES,
+                                    &error);
     if (!ctx.pipelineState || !ctx.pipelineStateAlpha || !ctx.pipelineStateAdditive ||
         !ctx.pipelineStateColorOnly || !ctx.pipelineStateColorOnlyAlpha ||
         !ctx.pipelineStateColorOnlyAdditive || !ctx.instancedPipelineState ||
         !ctx.instancedPipelineStateAlpha || !ctx.instancedPipelineStateAdditive ||
         !ctx.instancedPipelineStateColorOnly || !ctx.instancedPipelineStateColorOnlyAlpha ||
-        !ctx.instancedPipelineStateColorOnlyAdditive) {
+        !ctx.instancedPipelineStateColorOnlyAdditive || !ctx.particlePipelineStateAlpha ||
+        !ctx.particlePipelineStateAdditive || !ctx.particlePipelineStateColorOnlyAlpha ||
+        !ctx.particlePipelineStateColorOnlyAdditive) {
         NSLog(@ "Metal pipeline error: %@", error);
         return NO;
     }
@@ -1598,12 +1715,13 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             ctx->_taaJitterClip[1] = 0.0f;
             ctx->_taaJitterActive = NO;
             if (ctx.gpuPostfxEnabled && ctx.gpuPostfxChainValid && ctx.taaResolvePipeline &&
-                ctx.width > 0 && ctx.height > 0) {
+                ctx.depthTexture.width > 0 && ctx.depthTexture.height > 0) {
                 vgfx3d_postfx_chain_t chain = ctx.gpuPostfxChain;
                 if (metal_chain_has_effect(&chain, (int32_t)VGFX3D_POSTFX_EFFECT_TAA)) {
                     uint32_t idx = (ctx->_taaFrameIndex++ & 7u) + 1u;
-                    float jx = (metal_halton(idx, 2) - 0.5f) * 2.0f / (float)ctx.width;
-                    float jy = (metal_halton(idx, 3) - 0.5f) * 2.0f / (float)ctx.height;
+                    float jx = (metal_halton(idx, 2) - 0.5f) * 2.0f / (float)ctx.depthTexture.width;
+                    float jy =
+                        (metal_halton(idx, 3) - 0.5f) * 2.0f / (float)ctx.depthTexture.height;
                     ctx->_taaJitterClip[0] = jx;
                     ctx->_taaJitterClip[1] = jy;
                     ctx->_taaJitterActive = YES;
@@ -1619,7 +1737,7 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             mat4f_identity(inv_vp);
 
         ctx.currentTargetKind = vgfx3d_metal_choose_target_kind(
-            ctx.rttActive ? 1 : 0, ctx.gpuPostfxEnabled, cam->load_existing_color);
+            ctx.rttActive ? 1 : 0, metal_window_scene_route_enabled(ctx), cam->load_existing_color);
         if (!ctx.rttActive && cam->load_existing_color && ctx.postfxCompositedToDrawable)
             ctx.currentTargetKind = VGFX3D_METAL_TARGET_SWAPCHAIN;
         is_overlay_pass = ctx.currentTargetKind == VGFX3D_METAL_TARGET_OVERLAY ? 1 : 0;

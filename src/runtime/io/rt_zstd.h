@@ -44,6 +44,20 @@ extern "C" {
 int rt_zstd_decompress_raw(
     const uint8_t *data, size_t len, size_t max_output, uint8_t **out_data, size_t *out_len);
 
+/// @brief Decompress one complete Zstandard frame directly into caller-owned storage.
+/// @details Uses the same frame parser, dictionary rejection, bounds validation, entropy decoder,
+///          and optional content-checksum verification as @ref rt_zstd_decompress_raw, but never
+///          allocates or replaces the final output buffer. Temporary entropy tables/literals may
+///          still allocate independently of the destination.
+/// @param data Complete Zstandard frame bytes.
+/// @param len Byte length of @p data.
+/// @param output Caller-owned destination with room for exactly @p output_size bytes.
+/// @param output_size Required decoded byte count and destination capacity.
+/// @return 1 only when the complete frame decodes to exactly @p output_size bytes; 0 for invalid
+///         arguments, malformed/truncated input, unsupported dictionaries, size mismatch, trailing
+///         bytes, checksum failure, or temporary allocation failure.
+int rt_zstd_decompress_into(const uint8_t *data, size_t len, uint8_t *output, size_t output_size);
+
 #ifdef __cplusplus
 }
 #endif

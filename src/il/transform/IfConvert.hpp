@@ -12,6 +12,7 @@
 // Key invariants:
 //   - Only side-effect-free, non-trapping arm instructions are speculated.
 //   - Arm blocks must be single-predecessor and joined through block params.
+//   - Identical values on both incoming edges are forwarded without a select.
 // Ownership/Lifetime:
 //   - Stateless function pass owned by the pass registry.
 // Links: docs/adr/0063-il-select-and-if-conversion.md

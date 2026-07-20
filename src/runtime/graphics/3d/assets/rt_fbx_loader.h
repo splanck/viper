@@ -6,15 +6,21 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/assets/rt_fbx_loader.h
-// Purpose: FBX binary file loader — extracts Mesh3D, Skeleton3D, Animation3D,
-//   and Material3D from .fbx files. Supports both v<7500 (32-bit offsets) and
-//   v>=7500 (64-bit offsets). Uses rt_compress_inflate for zlib decompression.
+// Purpose: Typed binary/ASCII FBX loader — extracts Mesh3D, Skeleton3D,
+//   Animation3D, Material3D, morph, and scene graph data from .fbx files.
+//   Supports binary v<7500/v>=7500 records plus brace-scoped ASCII documents.
 //
 // Key invariants:
 //   - Zero external dependencies (uses existing rt_compress for zlib).
 //   - Returns an FBX asset container with arrays of extracted objects.
 //   - All extracted objects (meshes, skeleton, etc.) are GC-managed.
 //   - Handles Blender Z-up → Y-up coordinate system conversion.
+//   - One checked per-load budget covers source, typed graph, indexes, expanded
+//     properties, and generated animation samples before allocation.
+//
+// Ownership/Lifetime:
+//   - A returned FBX asset owns retained runtime references to all extracted objects.
+//   - Test telemetry is thread-local and owns no asset storage.
 //
 // Links: plans/3d/15-fbx-loader.md, rt_skeleton3d.h
 //
@@ -45,6 +51,19 @@ void *rt_fbx_load_recoverable(rt_string path);
 /// path-based. Passing @p texture_base keeps relative texture references anchored beside the
 /// source asset rather than beside the temporary file.
 void *rt_fbx_load_recoverable_with_texture_base(rt_string path, rt_string texture_base);
+/// @brief CTest hook: lower the aggregate allocation budget of the next load on this thread.
+/// @details The override is consumed by one load. Passing zero clears it; values above the
+///          production default are clamped and therefore cannot weaken normal resource limits.
+///          This symbol is implementation-only and is not a registered runtime method.
+/// @param bytes One-shot byte ceiling, or zero for normal budget selection.
+void rt_fbx_test_set_load_budget_bytes(uint64_t bytes);
+/// @brief CTest hook: report aggregate bytes charged by the latest load on this thread.
+/// @return Monotonic charged byte count, including source bytes and retained parser/extraction
+///         allocations named by ADR 0139.
+uint64_t rt_fbx_test_get_last_budget_used_bytes(void);
+/// @brief CTest hook: report hash and adjacency probes from the latest load on this thread.
+/// @return Saturating probe count used to verify near-linear numeric graph resolution.
+uint64_t rt_fbx_test_get_last_lookup_probe_count(void);
 /// @brief Number of meshes in the loaded FBX.
 int64_t rt_fbx_mesh_count(void *fbx);
 /// @brief Get the mesh at @p index (NULL if out of range).

@@ -1,8 +1,27 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/nav/rt_navmesh3d_bake.inc  (#included from rt_navmesh3d.c; not a
-// standalone translation unit) Purpose: NavMesh3D versioned import/export and the from-scratch
-// voxel bake pipeline
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/nav/rt_navmesh3d_bake.inc
+// Purpose: Versioned NavMesh3D import/export and the bounded, from-scratch
+//   voxel-bake pipeline. This implementation fragment is included by
+//   rt_navmesh3d.c and is not a standalone translation unit.
+//
+// Key invariants:
+//   - File counts and allocation products are validated before allocation.
+//   - Voxel dimensions are coarsened to fixed dimension and memory budgets.
+//   - Imported and baked adjacency/query structures are fully derived before
+//     the new object is returned.
+//
+// Ownership/Lifetime:
+//   - Import and bake helpers own partial objects until successful return.
+//   - Error paths release all staged arrays through navmesh3d_free_partial.
+//
+// Links: rt_navmesh3d.c, rt_navmesh3d_build.inc, rt_navmesh3d_query.inc
+//
 //===----------------------------------------------------------------------===//
 /// @brief Parse a VNAVMSH2 navmesh body (after its magic has been consumed) into a fresh
 ///   NavMesh3D, or NULL on malformed or oversized data.
@@ -145,7 +164,8 @@ static rt_navmesh3d *navmesh3d_import_v2_after_magic(FILE *f) {
     if (!navmesh3d_build_adjacency(nm))
         goto fail;
     navmesh3d_refresh_offmesh_links(nm);
-    navmesh3d_build_query_grid(nm);
+    (void)navmesh3d_build_query_grid(nm);
+    nm->topology_revision = 1u;
     return nm;
 
 fail:
@@ -588,21 +608,39 @@ static int navmesh3d_voxel_grid_dims(
     double span_x, double span_z, double *cell_size, int32_t *out_nx, int32_t *out_nz) {
     const int64_t max_dim = NAVMESH3D_VOXEL_MAX_DIM;
     const int64_t max_cells = navmesh3d_voxel_cell_budget();
+    double effective_cell;
+    double required_x;
+    double required_z;
+    if (!cell_size || !out_nx || !out_nz || !isfinite(span_x) || !isfinite(span_z) ||
+        span_x < 0.0 || span_z < 0.0 || !isfinite(*cell_size) || *cell_size <= 0.0 ||
+        max_dim <= 1 || max_cells <= 0)
+        return 0;
+    effective_cell = *cell_size;
+    required_x = span_x / (double)(max_dim - 1);
+    required_z = span_z / (double)(max_dim - 1);
+    if (!isfinite(required_x) || !isfinite(required_z))
+        return 0;
+    if (effective_cell < required_x)
+        effective_cell = required_x;
+    if (effective_cell < required_z)
+        effective_cell = required_z;
+    if (!(effective_cell > 0.0) || !isfinite(effective_cell))
+        return 0;
     for (int guard = 0; guard < 64; guard++) {
         int64_t tnx = 0;
         int64_t tnz = 0;
-        if (navmesh3d_voxel_dim_for_span(span_x, *cell_size, &tnx) &&
-            navmesh3d_voxel_dim_for_span(span_z, *cell_size, &tnz) && tnx <= max_dim &&
+        if (navmesh3d_voxel_dim_for_span(span_x, effective_cell, &tnx) &&
+            navmesh3d_voxel_dim_for_span(span_z, effective_cell, &tnz) && tnx <= max_dim &&
             tnz <= max_dim && tnz > 0 && tnx <= max_cells / tnz)
             break;
-        *cell_size = navmesh3d_cell_size_or(*cell_size * 2.0, NAVMESH3D_CELL_SIZE_MAX);
-        if (!isfinite(*cell_size))
+        if (effective_cell > DBL_MAX * 0.5)
             return 0;
+        effective_cell *= 2.0;
     }
     int64_t nx64 = 0;
     int64_t nz64 = 0;
-    if (!navmesh3d_voxel_dim_for_span(span_x, *cell_size, &nx64) ||
-        !navmesh3d_voxel_dim_for_span(span_z, *cell_size, &nz64))
+    if (!navmesh3d_voxel_dim_for_span(span_x, effective_cell, &nx64) ||
+        !navmesh3d_voxel_dim_for_span(span_z, effective_cell, &nz64))
         return 0;
     if (nx64 > max_dim || nz64 > max_dim || nz64 <= 0 || nx64 > max_cells / nz64)
         return 0;
@@ -610,8 +648,50 @@ static int navmesh3d_voxel_grid_dims(
     int32_t nz = (int32_t)nz64;
     if (nx < 1)
         nx = 1;
+    *cell_size = effective_cell;
     *out_nx = nx;
     *out_nz = nz;
+    return 1;
+}
+
+/// @brief Derive bounded voxel-grid dimensions for arithmetic regression tests.
+/// @details This test-only entry point applies the same cell-size sanitization and checked sizing
+/// as
+///   a production bake without allocating a heightfield. It allows extreme finite spans and tiny
+///   requested cells to prove that dimension/product calculations neither narrow nor wrap. The
+///   function is intentionally absent from the scripting surface.
+/// @param span_x Nonnegative finite X extent.
+/// @param span_z Nonnegative finite Z extent.
+/// @param requested_cell_size Requested cell size; invalid or sub-minimum values are sanitized.
+/// @param out_nx Receives the bounded X cell count on success.
+/// @param out_nz Receives the bounded Z cell count on success.
+/// @param out_cell_count Receives the checked `nx * nz` product on success.
+/// @param out_effective_cell_size Receives the possibly coarsened cell size on success.
+/// @return 1 when every output is written, or 0 for invalid inputs or an unrepresentable grid.
+int8_t rt_navmesh3d_test_voxel_grid_dimensions(double span_x,
+                                               double span_z,
+                                               double requested_cell_size,
+                                               int32_t *out_nx,
+                                               int32_t *out_nz,
+                                               uint64_t *out_cell_count,
+                                               double *out_effective_cell_size) {
+    int32_t nx;
+    int32_t nz;
+    double cell_size;
+    uint64_t cells;
+    if (!out_nx || !out_nz || !out_cell_count || !out_effective_cell_size || !isfinite(span_x) ||
+        !isfinite(span_z) || span_x < 0.0 || span_z < 0.0)
+        return 0;
+    cell_size = navmesh3d_cell_size_or(requested_cell_size, 0.5);
+    if (!navmesh3d_voxel_grid_dims(span_x, span_z, &cell_size, &nx, &nz))
+        return 0;
+    cells = (uint64_t)(uint32_t)nx * (uint64_t)(uint32_t)nz;
+    if (cells == 0u || cells > (uint64_t)navmesh3d_voxel_cell_budget())
+        return 0;
+    *out_nx = nx;
+    *out_nz = nz;
+    *out_cell_count = cells;
+    *out_effective_cell_size = cell_size;
     return 1;
 }
 
@@ -901,9 +981,12 @@ static int32_t find_tri_with_max_dy(
      * linear scan. Points outside the grid bounds cannot lie on any triangle. */
     if (nm->qgrid_nx > 0 && nm->qgrid_starts && nm->qgrid_tris && isfinite(nm->qgrid_min_x) &&
         isfinite(nm->qgrid_min_z) && isfinite(nm->qgrid_inv_cell) && nm->qgrid_inv_cell > 0.0) {
-        int cx = (int)(((double)px - nm->qgrid_min_x) * nm->qgrid_inv_cell);
-        int cz = (int)(((double)pz - nm->qgrid_min_z) * nm->qgrid_inv_cell);
-        if (cx < 0 || cz < 0 || cx >= nm->qgrid_nx || cz >= nm->qgrid_nz)
+        int32_t cx;
+        int32_t cz;
+        if (!navmesh3d_grid_axis_checked(
+                (double)px, nm->qgrid_min_x, nm->qgrid_inv_cell, nm->qgrid_nx, &cx) ||
+            !navmesh3d_grid_axis_checked(
+                (double)pz, nm->qgrid_min_z, nm->qgrid_inv_cell, nm->qgrid_nz, &cz))
             return -1;
         size_t cell = (size_t)cz * (size_t)nm->qgrid_nx + (size_t)cx;
         for (int32_t k = nm->qgrid_starts[cell]; k < nm->qgrid_starts[cell + 1]; k++)

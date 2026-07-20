@@ -11,12 +11,21 @@
 //   camera-facing billboard rendering with batched draw calls.
 //
 // Key invariants:
-//   - Particles are pooled (pre-allocated, no per-frame allocation).
-//   - All particles batched into a single draw call per Draw().
+//   - Particle state is pooled; spawning and removal do not allocate.
+//   - Hardware billboards use compact instances; software and ribbons use CPU-expanded meshes.
 //   - Billboards face the camera using view matrix right/up vectors.
 //   - Alpha blend mode sorts particles back-to-front; additive is unordered.
+//   - Update executes bounded 60 Hz substeps, carries fractional time, and
+//     exposes any safety-budget drop through queryable telemetry.
+//   - Expired particles leave the live count immediately; an optional
+//     terminal snapshot can render their exact endpoint for one update frame.
 //
-// Links: plans/3d/17-particle-system.md, rt_canvas3d.h
+// Ownership/Lifetime:
+//   - The GC-managed emitter owns its particle, trail, sort, draw, and compact-instance scratch.
+//   - Texture/material references are retained by the emitter and repaired before use.
+//
+// Links: plans/3d/17-particle-system.md, rt_canvas3d.h,
+//   docs/internals/graphics3d-runtime-hardening-2026-07.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -70,7 +79,9 @@ void rt_particles3d_stop(void *obj);
 void rt_particles3d_burst(void *obj, int64_t count);
 /// @brief Despawn every active particle and reset the emitter timer.
 void rt_particles3d_clear(void *obj);
-/// @brief Advance every active particle by @p delta_time and spawn new ones if emitting.
+/// @brief Advance particles through bounded fixed substeps and spawn new ones if emitting.
+/// @details Fractional time is carried in `ResidualTime`. Calls execute at most 60 1/60-second
+///          steps; excess complete-step time is reported by dropped-time telemetry.
 void rt_particles3d_update(void *obj, double delta_time);
 /// @brief Render all active particles as camera-facing billboards in a single batched draw.
 void rt_particles3d_draw(void *obj, void *canvas3d, void *camera);
@@ -86,6 +97,37 @@ int8_t rt_particles3d_get_emitting(void *obj);
 void rt_particles3d_set_seed(void *obj, int64_t seed);
 /// @brief Current spawn PRNG state (checkpointable for replay).
 int64_t rt_particles3d_get_seed(void *obj);
+
+/// @brief Enable or disable rendering an expired particle's exact endpoint for one update frame.
+/// @details Enabled by default for visual compatibility. Expired particles are never included in
+///          `Count`; disabling this option immediately discards pending terminal snapshots.
+/// @param obj Particles3D handle.
+/// @param enabled Nonzero to retain one terminal render snapshot, zero to disable it.
+void rt_particles3d_set_render_final_frame(void *obj, int8_t enabled);
+
+/// @brief Return whether one-frame terminal endpoint rendering is enabled.
+/// @param obj Particles3D handle.
+/// @return 1 when enabled, otherwise 0 (including invalid handles).
+int8_t rt_particles3d_get_render_final_frame(void *obj);
+
+/// @brief Return cumulative catch-up time explicitly dropped by bounded Update calls.
+/// @param obj Particles3D handle.
+/// @return Nonnegative seconds since construction or `ResetDroppedTime`; zero if invalid.
+double rt_particles3d_get_dropped_time(void *obj);
+
+/// @brief Return catch-up time dropped by the most recent Update call.
+/// @param obj Particles3D handle.
+/// @return Nonnegative seconds, or zero when the last update dropped none/handle is invalid.
+double rt_particles3d_get_last_dropped_time(void *obj);
+
+/// @brief Return the fractional fixed-step time carried into the next Update.
+/// @param obj Particles3D handle.
+/// @return Residual seconds in `[0, 1/60)`, or zero for an invalid handle.
+double rt_particles3d_get_residual_time(void *obj);
+
+/// @brief Reset cumulative and last-update dropped-time telemetry without changing simulation.
+/// @param obj Particles3D handle; invalid handles are ignored.
+void rt_particles3d_reset_dropped_time(void *obj);
 
 #ifdef __cplusplus
 }

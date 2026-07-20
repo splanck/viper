@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_material.inc  (#included from
-// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL
-// sampler/material/light uniform binding, skybox draw, and uniform-location queries
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_material.inc
+// Purpose: OpenGL sampler/material/light binding, skybox draw, and uniform resolution.
+// Key invariants:
+//   - Every draw uploads an explicit particle/instancing mode and sanitized material snapshot.
+//   - Invalid uniform locations are skipped without changing texture-unit ownership.
+// Ownership/Lifetime:
+//   - Uniform locations and samplers belong to gl_context_t for the linked program lifetime.
+//   - Material textures are borrowed from the Canvas draw command during synchronous submission.
+// Links: vgfx3d_backend_opengl.c, vgfx3d_backend_opengl_shaders.inc
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Activate texture unit `unit`, bind `texture`, and tell the program about it.
@@ -36,6 +48,33 @@ static GLenum gl_material_wrap_mode(int32_t mode) {
 ///          all other values → GL_LINEAR (bilinear).
 static GLenum gl_material_filter_mode(int32_t mode) {
     return mode == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? GL_NEAREST : GL_LINEAR;
+}
+
+/// @brief Map independent minification and mip axes to an OpenGL MIN_FILTER enum.
+/// @param min_filter Nearest/linear texel filter.
+/// @param mip_filter None/nearest/linear mip selection.
+/// @return Exact OpenGL minification enum preserving both axes.
+static GLenum gl_material_min_filter_mode(int32_t min_filter, int32_t mip_filter) {
+    int nearest = min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
+    if (mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST)
+        return nearest ? GL_NEAREST_MIPMAP_NEAREST : GL_LINEAR_MIPMAP_NEAREST;
+    if (mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR)
+        return nearest ? GL_NEAREST_MIPMAP_LINEAR : GL_LINEAR_MIPMAP_LINEAR;
+    return nearest ? GL_NEAREST : GL_LINEAR;
+}
+
+/// @brief Pack independent min, mag, and mip axes into the sampler-cache filter index.
+/// @param min_filter Sanitized nearest/linear minification filter.
+/// @param mag_filter Sanitized nearest/linear magnification filter.
+/// @param mip_filter Sanitized none/nearest/linear mip selector.
+/// @return Stable index in `[0, 12)`.
+static int gl_sampler_filter_index(int32_t min_filter, int32_t mag_filter, int32_t mip_filter) {
+    int min_index = min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+    int mag_index = mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? 1 : 0;
+    int mip_index = mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST
+                        ? 1
+                        : (mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR ? 2 : 0);
+    return min_index + mag_index * 2 + mip_index * 4;
 }
 
 /// @brief Map a material texture-wrap mode constant to a 3-entry sampler-cache index.
@@ -84,31 +123,50 @@ static GLuint gl_get_material_sampler(gl_context_t *ctx,
     int use_slot = cmd && slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT;
     int wrap_s;
     int wrap_t;
-    int filter;
+    int32_t min_filter;
+    int32_t mag_filter;
+    int32_t mip_filter;
+    int filter_index;
     int32_t anisotropy;
     int32_t anisotropy_index;
-    GLenum gl_filter;
+    GLenum gl_min_filter;
+    GLenum gl_mag_filter;
     GLuint sampler;
     if (!ctx || !cmd)
         return 0;
     wrap_s = gl_sampler_wrap_index(use_slot ? cmd->texture_slot_wrap_s[slot] : cmd->texture_wrap_s);
     wrap_t = gl_sampler_wrap_index(use_slot ? cmd->texture_slot_wrap_t[slot] : cmd->texture_wrap_t);
-    filter = (use_slot ? cmd->texture_slot_filter[slot] : cmd->texture_filter) ==
-                     RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
-                 ? 1
-                 : 0;
+    min_filter = use_slot ? cmd->texture_slot_min_filter[slot] : cmd->texture_min_filter;
+    mag_filter = use_slot ? cmd->texture_slot_mag_filter[slot] : cmd->texture_mag_filter;
+    mip_filter = use_slot ? cmd->texture_slot_mip_filter[slot] : cmd->texture_mip_filter;
+    min_filter = min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                     ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                     : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    mag_filter = mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                     ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                     : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    mip_filter = mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST
+                     ? RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST
+                     : (mip_filter == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR
+                            ? RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR
+                            : RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE);
     anisotropy = gl_effective_sampler_anisotropy(
         ctx,
         use_slot ? cmd->texture_slot_anisotropy[slot] : cmd->texture_anisotropy,
-        filter ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+        (min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ||
+         mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST)
+            ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+            : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
+    filter_index = gl_sampler_filter_index(min_filter, mag_filter, mip_filter);
     anisotropy_index = vgfx3d_opengl_sampler_anisotropy_index(anisotropy);
-    sampler = ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index];
+    sampler = ctx->material_samplers[wrap_s][wrap_t][filter_index][anisotropy_index];
     if (sampler)
         return sampler;
     gl.GenSamplers(1, &sampler);
     if (!sampler)
         return 0;
-    gl_filter = filter ? GL_NEAREST : GL_LINEAR;
+    gl_min_filter = gl_material_min_filter_mode(min_filter, mip_filter);
+    gl_mag_filter = gl_material_filter_mode(mag_filter);
     gl.SamplerParameteri(sampler,
                          GL_TEXTURE_WRAP_S,
                          (GLint)gl_material_wrap_mode(use_slot ? cmd->texture_slot_wrap_s[slot]
@@ -123,15 +181,15 @@ static GLuint gl_get_material_sampler(gl_context_t *ctx,
      * texture uploads still configure mipmapped filtering when a full mip chain
      * is present.
      */
-    gl.SamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, (GLint)(filter ? GL_NEAREST : GL_LINEAR));
-    gl.SamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, (GLint)gl_filter);
+    gl.SamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, (GLint)gl_min_filter);
+    gl.SamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, (GLint)gl_mag_filter);
     if (anisotropy > 1)
         gl.SamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat)anisotropy);
     if (!gl_upload_ok()) {
         gl.DeleteSamplers(1, &sampler);
         return 0;
     }
-    ctx->material_samplers[wrap_s][wrap_t][filter][anisotropy_index] = sampler;
+    ctx->material_samplers[wrap_s][wrap_t][filter_index][anisotropy_index] = sampler;
     return sampler;
 }
 
@@ -164,12 +222,21 @@ static void bind_texture_unit_with_sampler(gl_context_t *ctx,
     bind_texture_unit(uniform_loc, unit, target, texture);
     if (texture != 0 && target == GL_TEXTURE_2D && cmd) {
         int use_slot = slot >= 0 && slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT;
-        GLenum filter = gl_material_filter_mode(use_slot ? cmd->texture_slot_filter[slot]
-                                                         : cmd->texture_filter);
+        int32_t min_filter =
+            use_slot ? cmd->texture_slot_min_filter[slot] : cmd->texture_min_filter;
+        int32_t mag_filter =
+            use_slot ? cmd->texture_slot_mag_filter[slot] : cmd->texture_mag_filter;
+        int32_t mip_filter =
+            use_slot ? cmd->texture_slot_mip_filter[slot] : cmd->texture_mip_filter;
+        GLenum gl_min_filter = gl_material_min_filter_mode(min_filter, mip_filter);
+        GLenum gl_mag_filter = gl_material_filter_mode(mag_filter);
         int32_t anisotropy = gl_effective_sampler_anisotropy(
             ctx,
             use_slot ? cmd->texture_slot_anisotropy[slot] : cmd->texture_anisotropy,
-            use_slot ? cmd->texture_slot_filter[slot] : cmd->texture_filter);
+            (min_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ||
+             mag_filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST)
+                ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR);
         GLuint sampler = gl_get_material_sampler(ctx, cmd, slot);
         if (sampler) {
             gl.BindSampler((GLuint)unit, sampler);
@@ -183,9 +250,8 @@ static void bind_texture_unit_with_sampler(gl_context_t *ctx,
                          GL_TEXTURE_WRAP_T,
                          (GLint)gl_material_wrap_mode(use_slot ? cmd->texture_slot_wrap_t[slot]
                                                                : cmd->texture_wrap_t));
-        gl.TexParameteri(
-            target, GL_TEXTURE_MIN_FILTER, (GLint)(filter == GL_NEAREST ? GL_NEAREST : GL_LINEAR));
-        gl.TexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint)filter);
+        gl.TexParameteri(target, GL_TEXTURE_MIN_FILTER, (GLint)gl_min_filter);
+        gl.TexParameteri(target, GL_TEXTURE_MAG_FILTER, (GLint)gl_mag_filter);
         if (anisotropy > 1)
             gl.TexParameterf(target, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLfloat)anisotropy);
     }
@@ -368,6 +434,7 @@ static void upload_main_uniforms(gl_context_t *ctx,
     gl.Uniform1i(ctx->uCameraIsOrtho, ctx->cam_is_ortho ? 1 : 0);
     gl.Uniform1fv(ctx->uCustomParams, 12, cmd->custom_params);
     gl.Uniform1i(ctx->uUseInstancing, instanced ? 1 : 0);
+    gl.Uniform1i(ctx->uParticleMode, cmd->particle_instances ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevModelMatrix, cmd->has_prev_model_matrix ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevInstanceMatrices, cmd->has_prev_instance_matrices ? 1 : 0);
     gl.Uniform1i(ctx->uHasPrevSkinning, cmd->prev_bone_palette ? 1 : 0);
@@ -596,31 +663,62 @@ static void bind_shadow_anim(gl_context_t *ctx, const vgfx3d_draw_cmd_t *cmd) {
 /// Convenience wrapper around `gl_apply_postfx_chain` that targets the display surface, falling
 /// back to an offscreen final target when the GLX default framebuffer cannot write RGB.
 static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chain) {
-    int32_t w;
-    int32_t h;
+    int32_t source_width;
+    int32_t source_height;
+    GLuint final_framebuffer;
+    GLenum final_draw_buffer;
+
     if (!ctx || !ctx->scene_color_tex || ctx->width <= 0 || ctx->height <= 0)
         return 0;
-    w = ctx->scene_width > 0 ? ctx->scene_width : ctx->width;
-    h = ctx->scene_height > 0 ? ctx->scene_height : ctx->height;
+    source_width = ctx->scene_width > 0 ? ctx->scene_width : ctx->width;
+    source_height = ctx->scene_height > 0 ? ctx->scene_height : ctx->height;
+    final_framebuffer = 0;
+    final_draw_buffer = ctx->default_draw_buffer;
+    if (!ctx->default_framebuffer_writable) {
+        if (ensure_present_target(ctx, ctx->width, ctx->height) != 0)
+            return 0;
+        final_framebuffer = ctx->present_fbo;
+        final_draw_buffer = GL_COLOR_ATTACHMENT0;
+    }
     if (chain && chain->enabled && chain->effect_count > 0 && chain->effects &&
-        !ctx->default_framebuffer_writable && gl_apply_postfx_chain_in_scene(ctx, w, h, chain)) {
+        gl_apply_postfx_chain(ctx,
+                              ctx->scene_color_tex,
+                              source_width,
+                              source_height,
+                              chain,
+                              final_framebuffer,
+                              final_draw_buffer,
+                              ctx->width,
+                              ctx->height,
+                              0,
+                              NULL,
+                              NULL)) {
         return 1;
     }
     if (chain && chain->enabled && chain->effect_count > 0 && chain->effects &&
-        gl_apply_postfx_chain(
-            ctx, ctx->scene_color_tex, w, h, chain, 0, ctx->default_draw_buffer, 0, NULL, NULL)) {
-        return 1;
+        !ctx->default_framebuffer_writable &&
+        gl_apply_postfx_chain_in_scene(ctx, source_width, source_height, chain)) {
+        return gl_draw_texture_to_target(ctx,
+                                         ctx->scene_color_tex,
+                                         final_framebuffer,
+                                         final_draw_buffer,
+                                         source_width,
+                                         source_height,
+                                         ctx->width,
+                                         ctx->height,
+                                         NULL);
     }
     if (!ctx->postfx_program)
         return 0;
-    if (!ctx->default_framebuffer_writable) {
-        if (ensure_postfx_readback_target(ctx, w, h) != 0)
-            return 0;
-        return gl_draw_texture_to_target(
-            ctx, ctx->scene_color_tex, ctx->postfx_readback_fbo, GL_COLOR_ATTACHMENT0, w, h, NULL);
-    }
-    return gl_draw_texture_to_target(
-        ctx, ctx->scene_color_tex, 0, ctx->default_draw_buffer, w, h, NULL);
+    return gl_draw_texture_to_target(ctx,
+                                     ctx->scene_color_tex,
+                                     final_framebuffer,
+                                     final_draw_buffer,
+                                     source_width,
+                                     source_height,
+                                     ctx->width,
+                                     ctx->height,
+                                     NULL);
 }
 
 /// @brief Internal skybox draw — full-screen triangle with reconstructed view rays.
@@ -762,6 +860,7 @@ static void query_main_uniforms(gl_context_t *ctx) {
     U(uClusterParams);
     U(uOpaqueDepthTex);
     U(uUseInstancing);
+    U(uParticleMode);
     U(uHasPrevModelMatrix);
     U(uHasPrevInstanceMatrices);
     U(uHasSkinning);

@@ -71,6 +71,24 @@ void *rt_compress_inflate_limit(void *data, int64_t max_output);
 int rt_compress_inflate_raw(
     const uint8_t *data, size_t len, size_t max_output, uint8_t **out_data, size_t *out_len);
 
+/// @brief Internal helper: decode one complete RFC 1950 zlib stream into caller-owned storage.
+/// @details Validates the CMF/FLG header (DEFLATE method, legal 32 KiB-or-smaller window,
+///          FCHECK, and no preset dictionary), consumes exactly the wrapped RFC 1951 stream,
+///          requires exactly @p output_size decoded bytes, and verifies the big-endian Adler-32
+///          trailer before reporting success. The decoder writes directly to @p output and never
+///          allocates or replaces that destination buffer.
+/// @param data Complete zlib stream, including its two-byte header and four-byte trailer.
+/// @param len Size of @p data in bytes.
+/// @param output Caller-owned destination with room for exactly @p output_size bytes.
+/// @param output_size Required decoded byte count and destination capacity.
+/// @return 1 on complete, checksum-valid success; 0 for invalid arguments, malformed/truncated
+///         input, a preset dictionary, output-size mismatch, trailing DEFLATE bytes, or checksum
+///         mismatch. On failure, bytes already written to @p output are unspecified.
+int rt_compress_inflate_zlib_into(const uint8_t *data,
+                                  size_t len,
+                                  uint8_t *output,
+                                  size_t output_size);
+
 //=========================================================================
 // GZIP Compression/Decompression (RFC 1952)
 //=========================================================================

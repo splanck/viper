@@ -551,6 +551,101 @@ void *rt_morphtarget3d_clone(void *obj) {
     return dst;
 }
 
+/**
+ * @brief Deep-copy all morph channels through an output-to-source vertex map.
+ *
+ * The complete map is validated before the destination is allocated. Every shape
+ * then receives exact subset copies of its position channel and any optional normal
+ * and tangent channels. Shape metadata and all three weight-history arrays remain
+ * index-aligned, allowing a simplified Mesh3D to retain animation semantics without
+ * referencing source-sized delta buffers.
+ *
+ * @param obj Source MorphTarget3D handle.
+ * @param new_to_old Borrowed array containing one valid source vertex index per output vertex.
+ * @param new_vertex_count Number of output vertices/map entries; must be positive and fit int32.
+ * @return A new independently owned MorphTarget3D, or `NULL` on validation/allocation failure.
+ */
+void *rt_morphtarget3d_clone_remapped(void *obj,
+                                      const uint32_t *new_to_old,
+                                      uint32_t new_vertex_count) {
+    rt_morphtarget3d *src = morphtarget_checked(obj);
+    rt_morphtarget3d *dst = NULL;
+    size_t delta_size;
+    int32_t shape_count;
+
+    if (!src || !new_to_old || new_vertex_count == 0 || new_vertex_count > (uint32_t)INT32_MAX ||
+        src->vertex_count <= 0)
+        return NULL;
+    morphtarget_repair_shape_table(src);
+    for (uint32_t vertex = 0; vertex < new_vertex_count; ++vertex) {
+        if (new_to_old[vertex] >= (uint32_t)src->vertex_count)
+            return NULL;
+    }
+    if (!morphtarget_vertex_delta_bytes((int32_t)new_vertex_count, &delta_size))
+        return NULL;
+
+    dst = (rt_morphtarget3d *)rt_morphtarget3d_new((int64_t)new_vertex_count);
+    if (!dst)
+        return NULL;
+    shape_count = morphtarget_safe_shape_count(src);
+    for (int32_t source_shape = 0; source_shape < shape_count; ++source_shape) {
+        rt_string shape_name = rt_const_cstr(src->shapes[source_shape].name);
+        int64_t output_shape = rt_morphtarget3d_add_shape(dst, shape_name);
+        rt_string_unref(shape_name);
+        if (output_shape < 0)
+            goto fail;
+
+        if (src->shapes[source_shape].nrm_deltas) {
+            dst->shapes[output_shape].nrm_deltas = (float *)calloc(1, delta_size);
+            if (!dst->shapes[output_shape].nrm_deltas) {
+                rt_trap("MorphTarget3D.CloneRemapped: normal-delta allocation failed");
+                goto fail;
+            }
+        }
+        if (src->shapes[source_shape].tan_deltas) {
+            dst->shapes[output_shape].tan_deltas = (float *)calloc(1, delta_size);
+            if (!dst->shapes[output_shape].tan_deltas) {
+                rt_trap("MorphTarget3D.CloneRemapped: tangent-delta allocation failed");
+                goto fail;
+            }
+        }
+        for (uint32_t output_vertex = 0; output_vertex < new_vertex_count; ++output_vertex) {
+            size_t source_offset = (size_t)new_to_old[output_vertex] * 3u;
+            size_t output_offset = (size_t)output_vertex * 3u;
+            memcpy(&dst->shapes[output_shape].pos_deltas[output_offset],
+                   &src->shapes[source_shape].pos_deltas[source_offset],
+                   3u * sizeof(float));
+            if (dst->shapes[output_shape].nrm_deltas) {
+                memcpy(&dst->shapes[output_shape].nrm_deltas[output_offset],
+                       &src->shapes[source_shape].nrm_deltas[source_offset],
+                       3u * sizeof(float));
+            }
+            if (dst->shapes[output_shape].tan_deltas) {
+                memcpy(&dst->shapes[output_shape].tan_deltas[output_offset],
+                       &src->shapes[source_shape].tan_deltas[source_offset],
+                       3u * sizeof(float));
+            }
+        }
+        dst->weights[output_shape] =
+            src->weights ? morphtarget_sanitize_weight(src->weights[source_shape]) : 0.0f;
+        dst->prev_weights[output_shape] =
+            src->prev_weights ? morphtarget_sanitize_weight(src->prev_weights[source_shape]) : 0.0f;
+        dst->motion_weight_snapshot[output_shape] =
+            src->motion_weight_snapshot
+                ? morphtarget_sanitize_weight(src->motion_weight_snapshot[source_shape])
+                : dst->weights[output_shape];
+    }
+    dst->has_prev_weights = src->has_prev_weights;
+    dst->last_motion_frame = src->last_motion_frame;
+    morphtarget_touch_payload(dst);
+    return dst;
+
+fail:
+    if (rt_obj_release_check0(dst))
+        rt_obj_free(dst);
+    return NULL;
+}
+
 /*==========================================================================
  * Shape management
  *=========================================================================*/

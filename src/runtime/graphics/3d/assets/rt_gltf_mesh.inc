@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_gltf_mesh.inc  (#included from rt_gltf.c; not a standalone translation unit)
-// Purpose: glTF mesh import (preloaded and JSON paths)
+// File: src/runtime/graphics/3d/assets/rt_gltf_mesh.inc  (#included from rt_gltf.c; not a
+// standalone translation unit) Purpose: glTF mesh import (preloaded and JSON paths)
 //===----------------------------------------------------------------------===//
 
 /// @brief Append one imported vertex to @p mesh during glTF import, taking position, normal,
@@ -89,18 +89,159 @@ static void *gltf_mesh_resolve_primitive_material(rt_gltf_asset *asset,
     return prim_material;
 }
 
+/**
+ * @brief Validate one imported material's authored texture slots against primitive UV streams.
+ * @details Only texture-info objects actually present in the source document impose a stream
+ *          requirement. UV sets other than 0 and 1 are unsupported. A representable set whose
+ *          accessor did not decode successfully is corrupt input. The first failure records a
+ *          stable diagnostic naming the mesh, primitive, material, slot, and UV set.
+ * @param asset Borrowed asset whose material count bounds @p material_index.
+ * @param material_infos Borrowed per-material texture metadata table.
+ * @param material_index glTF material index to validate; negative/default indices have no authored
+ *        texture requirement.
+ * @param has_uv0 Nonzero when TEXCOORD_0 decoded successfully for this primitive.
+ * @param has_uv1 Nonzero when TEXCOORD_1 decoded successfully for this primitive.
+ * @param mesh_json_index Source mesh index used in diagnostics.
+ * @param primitive_index Source primitive index used in diagnostics.
+ * @return 1 when every authored slot is satisfiable, otherwise 0 with an asset error recorded.
+ */
+static int gltf_mesh_validate_material_uv_streams(const rt_gltf_asset *asset,
+                                                  const gltf_material_info_t *material_infos,
+                                                  int64_t material_index,
+                                                  int has_uv0,
+                                                  int has_uv1,
+                                                  int mesh_json_index,
+                                                  int primitive_index) {
+    static const char *const slot_names[RT_MATERIAL3D_TEXTURE_SLOT_COUNT] = {
+        "baseColor", "normal", "specular", "emissive", "metallicRoughness", "occlusion"};
+    const gltf_material_info_t *info;
+    if (!asset || !material_infos || material_index < 0 || material_index >= asset->material_count)
+        return 1;
+    info = &material_infos[material_index];
+    for (int slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+        const gltf_texture_info_t *texture = &info->slots[slot];
+        if (!texture->present)
+            continue;
+        if (texture->texcoord < 0 || texture->texcoord > 1) {
+            rt_asset_error_setf(RT_ASSET_ERROR_UNSUPPORTED,
+                                "GLTF.Load: mesh %d primitive %d material %lld %s texture "
+                                "references unsupported TEXCOORD_%d",
+                                mesh_json_index,
+                                primitive_index,
+                                (long long)material_index,
+                                slot_names[slot],
+                                texture->texcoord);
+            return 0;
+        }
+        if ((texture->texcoord == 0 && !has_uv0) || (texture->texcoord == 1 && !has_uv1)) {
+            rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                                "GLTF.Load: mesh %d primitive %d material %lld %s texture "
+                                "requires missing TEXCOORD_%d",
+                                mesh_json_index,
+                                primitive_index,
+                                (long long)material_index,
+                                slot_names[slot],
+                                texture->texcoord);
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/**
+ * @brief Validate the base and every variant material against one primitive's decoded UV streams.
+ * @details KHR_materials_variants mappings can replace the base material after import, so all
+ *          valid mapped material indices must satisfy the same stream contract before the mesh is
+ *          committed. On failure this helper marks the enclosing load transaction failed.
+ * @param asset Borrowed destination asset and material table.
+ * @param material_infos Borrowed per-material authored texture metadata.
+ * @param prim Borrowed primitive JSON object containing optional variant mappings.
+ * @param base_material_index Base primitive material index, or -1 for the generated default.
+ * @param has_uv0 Nonzero when TEXCOORD_0 decoded successfully.
+ * @param has_uv1 Nonzero when TEXCOORD_1 decoded successfully.
+ * @param mesh_json_index Source mesh index for diagnostics.
+ * @param primitive_index Source primitive index for diagnostics.
+ * @param load_failed_io Optional enclosing transaction failure flag.
+ * @return 1 when all reachable materials are compatible, otherwise 0.
+ */
+static int gltf_mesh_validate_primitive_uv_streams(const rt_gltf_asset *asset,
+                                                   const gltf_material_info_t *material_infos,
+                                                   void *prim,
+                                                   int64_t base_material_index,
+                                                   int has_uv0,
+                                                   int has_uv1,
+                                                   int mesh_json_index,
+                                                   int primitive_index,
+                                                   int *load_failed_io) {
+    void *extensions;
+    void *variants_ext;
+    void *mappings;
+    int64_t mapping_count;
+    if (!gltf_mesh_validate_material_uv_streams(asset,
+                                                material_infos,
+                                                base_material_index,
+                                                has_uv0,
+                                                has_uv1,
+                                                mesh_json_index,
+                                                primitive_index))
+        goto fail;
+    extensions = jget(prim, "extensions");
+    variants_ext = extensions ? jget(extensions, "KHR_materials_variants") : NULL;
+    mappings = variants_ext ? jarr(variants_ext, "mappings") : NULL;
+    mapping_count = jarr_len(mappings);
+    for (int64_t mapping_index = 0; mapping_index < mapping_count; mapping_index++) {
+        void *mapping = rt_seq_get(mappings, mapping_index);
+        int64_t material_index = jint(mapping, "material", -1);
+        if (!gltf_mesh_validate_material_uv_streams(asset,
+                                                    material_infos,
+                                                    material_index,
+                                                    has_uv0,
+                                                    has_uv1,
+                                                    mesh_json_index,
+                                                    primitive_index))
+            goto fail;
+    }
+    return 1;
+fail:
+    if (load_failed_io)
+        *load_failed_io = 1;
+    return 0;
+}
+
+/**
+ * @brief Consume and commit a worker-decoded primitive after validating authored UV requirements.
+ * @return 1 when a decoded mesh was committed, 0 when no matching preload entry exists, and -1
+ *         when a decoded entry was consumed but rejected by UV/material validation.
+ */
 static int gltf_mesh_take_preloaded_primitive(rt_gltf_asset *asset,
                                               rt_gltf_preload_bundle *preload_bundle,
                                               int32_t mesh_json_index,
                                               int32_t primitive_index,
+                                              void *prim,
+                                              int64_t material_index,
+                                              const gltf_material_info_t *material_infos,
                                               void *primitive_material,
                                               void **primitive_materials,
+                                              int *load_failed_io,
                                               int32_t *mesh_idx_io) {
     uint32_t decoded_mesh_flags = 0u;
-    void *decoded_mesh =
-        gltf_preload_take_decoded_mesh(preload_bundle, mesh_json_index, primitive_index, &decoded_mesh_flags);
+    void *decoded_mesh = gltf_preload_take_decoded_mesh(
+        preload_bundle, mesh_json_index, primitive_index, &decoded_mesh_flags);
     if (!decoded_mesh)
         return 0;
+    if (!gltf_mesh_validate_primitive_uv_streams(
+            asset,
+            material_infos,
+            prim,
+            material_index,
+            (decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_UV0) != 0,
+            (decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_UV1) != 0,
+            mesh_json_index,
+            primitive_index,
+            load_failed_io)) {
+        gltf_release_local(decoded_mesh);
+        return -1;
+    }
     if ((decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_NORMALS) == 0)
         rt_mesh3d_recalc_normals(decoded_mesh);
     if ((decoded_mesh_flags & GLTF_PRELOAD_MESH_POD_HAS_TANGENTS) == 0 &&
@@ -118,23 +259,22 @@ static int gltf_mesh_take_preloaded_primitive(rt_gltf_asset *asset,
     return 1;
 }
 
-static int gltf_mesh_validate_skin_views(gltf_mesh_primitive_views_t *views,
-                                         int32_t vertex_count) {
+static int gltf_mesh_validate_skin_views(gltf_mesh_primitive_views_t *views, int32_t vertex_count) {
     if (!views)
         return 0;
     if ((views->has_joints != views->has_weights) || (views->has_joints1 != views->has_weights1))
         return 0;
     if (views->has_joints &&
-        (!gltf_accessor_has_payload(&views->joints) || !gltf_accessor_has_payload(&views->weights) ||
-         !gltf_accessor_is_joints(&views->joints) || !gltf_accessor_is_weights(&views->weights) ||
-         views->joints.count < vertex_count || views->weights.count < vertex_count))
+        (!gltf_accessor_has_payload(&views->joints) ||
+         !gltf_accessor_has_payload(&views->weights) || !gltf_accessor_is_joints(&views->joints) ||
+         !gltf_accessor_is_weights(&views->weights) || views->joints.count < vertex_count ||
+         views->weights.count < vertex_count))
         return 0;
     if (views->has_joints1 &&
         (!gltf_accessor_has_payload(&views->joints1) ||
          !gltf_accessor_has_payload(&views->weights1) ||
-         !gltf_accessor_is_joints(&views->joints1) ||
-         !gltf_accessor_is_weights(&views->weights1) || views->joints1.count < vertex_count ||
-         views->weights1.count < vertex_count))
+         !gltf_accessor_is_joints(&views->joints1) || !gltf_accessor_is_weights(&views->weights1) ||
+         views->joints1.count < vertex_count || views->weights1.count < vertex_count))
         return 0;
     return 1;
 }
@@ -171,7 +311,8 @@ static int gltf_mesh_read_primitive_views(void *root,
     views->has_colors = gltf_get_accessor_view(root, color_acc, buffers, buf_count, &views->color);
     views->has_tangents =
         gltf_get_accessor_view(root, tangent_acc, buffers, buf_count, &views->tangent);
-    views->has_joints = gltf_get_accessor_view(root, joints_acc, buffers, buf_count, &views->joints);
+    views->has_joints =
+        gltf_get_accessor_view(root, joints_acc, buffers, buf_count, &views->joints);
     views->has_weights =
         gltf_get_accessor_view(root, weights_acc, buffers, buf_count, &views->weights);
     views->has_joints1 =
@@ -205,8 +346,7 @@ static int gltf_mesh_read_primitive_views(void *root,
         views->has_colors = 0;
     if (views->has_tangents &&
         (!gltf_accessor_has_payload(&views->tangent) ||
-         !gltf_accessor_is_tangent(&views->tangent, 4) ||
-         views->tangent.count < views->pos.count))
+         !gltf_accessor_is_tangent(&views->tangent, 4) || views->tangent.count < views->pos.count))
         views->has_tangents = 0;
     if (views->has_indices &&
         (!gltf_accessor_has_payload(&views->idx) || !gltf_accessor_is_indices(&views->idx))) {
@@ -224,8 +364,8 @@ static int gltf_mesh_read_primitive_views(void *root,
     views->triangle_estimate = gltf_primitive_triangle_count(mode, draw_count);
     if (views->triangle_estimate < 0) {
         rt_asset_error_add_import_stat(RT_ASSET_IMPORT_STAT_SKIPPED_PRIMITIVES, 1);
-        rt_asset_error_add_warningf(
-            "glTF primitive mode %lld is unsupported; primitive skipped", (long long)mode);
+        rt_asset_error_add_warningf("glTF primitive mode %lld is unsupported; primitive skipped",
+                                    (long long)mode);
         return 0;
     }
     if (views->triangle_estimate == 0)
@@ -260,10 +400,8 @@ static void gltf_mesh_import_vertex_init(gltf_mesh_import_vertex_t *vertex) {
 
 static int gltf_mesh_import_vertex_is_finite(const gltf_mesh_primitive_views_t *views,
                                              const gltf_mesh_import_vertex_t *vertex) {
-    return gltf_f32_array_is_finite(vertex->pos, 3) &&
-           gltf_f32_array_is_finite(vertex->nrm, 3) &&
-           gltf_f32_array_is_finite(vertex->uv, 2) &&
-           gltf_f32_array_is_finite(vertex->uv1, 2) &&
+    return gltf_f32_array_is_finite(vertex->pos, 3) && gltf_f32_array_is_finite(vertex->nrm, 3) &&
+           gltf_f32_array_is_finite(vertex->uv, 2) && gltf_f32_array_is_finite(vertex->uv1, 2) &&
            gltf_f32_array_is_finite(vertex->color, 4) &&
            gltf_f32_array_is_finite(vertex->tangent, 4) &&
            (!views->has_skin0 || gltf_f32_array_is_finite(vertex->weights, 4)) &&
@@ -582,8 +720,7 @@ static int gltf_mesh_finalize_imported_primitive(rt_gltf_asset *asset,
         return 0;
     }
     rt_mesh3d_end_geometry_batch((rt_mesh3d *)mesh);
-    if ((!views->has_normals || invalid_authored_normals) &&
-        ((rt_mesh3d *)mesh)->vertex_count > 0)
+    if ((!views->has_normals || invalid_authored_normals) && ((rt_mesh3d *)mesh)->vertex_count > 0)
         rt_mesh3d_recalc_normals(mesh);
     if ((!views->has_tangents || invalid_authored_tangents) && views->has_uv0 &&
         material_idx >= 0 && material_idx < asset->material_count) {
@@ -599,6 +736,7 @@ static int gltf_mesh_finalize_imported_primitive(rt_gltf_asset *asset,
 
 typedef struct {
     rt_gltf_asset *asset;
+    const gltf_material_info_t *material_infos;
     void *root;
     gltf_buffer_t *buffers;
     int buf_count;
@@ -642,8 +780,7 @@ static int gltf_mesh_grow_output_tables(gltf_mesh_load_context_t *ctx, int extra
         asset->mesh_capacity = new_cap;
     }
     {
-        void **pm =
-            (void **)realloc(ctx->primitive_materials, (size_t)new_cap * sizeof(void *));
+        void **pm = (void **)realloc(ctx->primitive_materials, (size_t)new_cap * sizeof(void *));
         if (!pm)
             return 0;
         memset(pm + old_cap, 0, (size_t)(new_cap - old_cap) * sizeof(void *));
@@ -792,8 +929,7 @@ static int32_t gltf_mesh_scan_max_joint(const gltf_mesh_primitive_views_t *views
             gltf_accessor_read_u32(&views->joints, vi, joints, 4);
             gltf_accessor_read_f32(&views->weights, vi, weights, 4);
             for (int j = 0; j < 4; j++) {
-                if (isfinite(weights[j]) && weights[j] > 1e-8f &&
-                    (int32_t)joints[j] > max_joint)
+                if (isfinite(weights[j]) && weights[j] > 1e-8f && (int32_t)joints[j] > max_joint)
                     max_joint = (int32_t)joints[j];
             }
         }
@@ -801,8 +937,7 @@ static int32_t gltf_mesh_scan_max_joint(const gltf_mesh_primitive_views_t *views
             gltf_accessor_read_u32(&views->joints1, vi, joints, 4);
             gltf_accessor_read_f32(&views->weights1, vi, weights, 4);
             for (int j = 0; j < 4; j++) {
-                if (isfinite(weights[j]) && weights[j] > 1e-8f &&
-                    (int32_t)joints[j] > max_joint)
+                if (isfinite(weights[j]) && weights[j] > 1e-8f && (int32_t)joints[j] > max_joint)
                     max_joint = (int32_t)joints[j];
             }
         }
@@ -828,8 +963,7 @@ static int gltf_mesh_primitive_needs_partition(void *root,
         if (joints > largest_skin)
             largest_skin = joints;
     }
-    return (int64_t)max_joint < largest_skin &&
-           largest_skin <= (int64_t)VGFX3D_MAX_SKELETON_BONES;
+    return (int64_t)max_joint < largest_skin && largest_skin <= (int64_t)VGFX3D_MAX_SKELETON_BONES;
 }
 
 /// @brief Import a skinned primitive whose joint set exceeds the 256-slot draw
@@ -1059,11 +1193,8 @@ static void gltf_mesh_import_partitioned_primitive(gltf_mesh_load_context_t *ctx
                 }
                 local_idx[k] = (uint32_t)vertex_local[src_vi];
             }
-            emitted += gltf_emit_triangle(mesh,
-                                          (uint32_t)local_vertex_count,
-                                          local_idx[0],
-                                          local_idx[1],
-                                          local_idx[2]);
+            emitted += gltf_emit_triangle(
+                mesh, (uint32_t)local_vertex_count, local_idx[0], local_idx[1], local_idx[2]);
             if (mesh->build_failed) {
                 gltf_release_local(mesh);
                 goto fail;
@@ -1147,14 +1278,14 @@ static void gltf_mesh_import_primitive(gltf_mesh_load_context_t *ctx,
     int64_t mode = jint(prim, "mode", 4);
     void *prim_material = NULL;
     void *prim_extensions = jget(prim, "extensions");
-    void *draco_ext =
-        prim_extensions ? jget(prim_extensions, "KHR_draco_mesh_compression") : NULL;
+    void *draco_ext = prim_extensions ? jget(prim_extensions, "KHR_draco_mesh_compression") : NULL;
     gltf_mesh_primitive_views_t views;
     void *mesh;
     int primitive_failed = 0;
     int invalid_authored_normals = 0;
     int invalid_authored_tangents = 0;
     gltf_skin_import_stats_t skin_stats = {0u, 0u};
+    int preloaded_result;
     if (!attrs)
         return;
     prim_material = gltf_mesh_resolve_primitive_material(
@@ -1170,16 +1301,24 @@ static void gltf_mesh_import_primitive(gltf_mesh_load_context_t *ctx,
                                     mesh_idx_io);
         return;
     }
-    if (!(rt_gltf_active_load_options()->eight_bone_influences && jget(attrs, "JOINTS_1")) &&
-        gltf_mesh_take_preloaded_primitive(ctx->asset,
-                                           ctx->preload_bundle,
-                                           mesh_json_index,
-                                           primitive_index,
-                                           prim_material,
-                                           ctx->primitive_materials,
-                                           mesh_idx_io)) {
-        gltf_mesh_store_primitive_variant_mapping(ctx, prim, *mesh_idx_io - 1);
-        return;
+    if (!(rt_gltf_active_load_options()->eight_bone_influences && jget(attrs, "JOINTS_1"))) {
+        preloaded_result = gltf_mesh_take_preloaded_primitive(ctx->asset,
+                                                              ctx->preload_bundle,
+                                                              mesh_json_index,
+                                                              primitive_index,
+                                                              prim,
+                                                              material_idx,
+                                                              ctx->material_infos,
+                                                              prim_material,
+                                                              ctx->primitive_materials,
+                                                              ctx->load_failed_io,
+                                                              mesh_idx_io);
+        if (preloaded_result > 0) {
+            gltf_mesh_store_primitive_variant_mapping(ctx, prim, *mesh_idx_io - 1);
+            return;
+        }
+        if (preloaded_result < 0)
+            return;
     }
     if (!gltf_mesh_read_primitive_views(ctx->root,
                                         ctx->buffers,
@@ -1189,6 +1328,16 @@ static void gltf_mesh_import_primitive(gltf_mesh_load_context_t *ctx,
                                         mode,
                                         &views,
                                         ctx->load_failed_io))
+        return;
+    if (!gltf_mesh_validate_primitive_uv_streams(ctx->asset,
+                                                 ctx->material_infos,
+                                                 prim,
+                                                 material_idx,
+                                                 views.has_uv0,
+                                                 views.has_uv1,
+                                                 mesh_json_index,
+                                                 primitive_index,
+                                                 ctx->load_failed_io))
         return;
 
     if ((views.has_skin0 || views.has_skin1) &&
@@ -1283,12 +1432,8 @@ static void gltf_mesh_import_mesh_primitives(gltf_mesh_load_context_t *ctx,
     if (mesh_prim_count)
         mesh_prim_count[mesh_json_index] = 0;
     for (int pi = 0; pi < prim_count; pi++)
-        gltf_mesh_import_primitive(ctx,
-                                   mesh_json,
-                                   rt_seq_get(prims, (int64_t)pi),
-                                   mesh_json_index,
-                                   pi,
-                                   mesh_idx_io);
+        gltf_mesh_import_primitive(
+            ctx, mesh_json, rt_seq_get(prims, (int64_t)pi), mesh_json_index, pi, mesh_idx_io);
     if (mesh_prim_count)
         mesh_prim_count[mesh_json_index] = *mesh_idx_io - mesh_start;
 }
@@ -1386,8 +1531,7 @@ static void gltf_draco_import_primitive(gltf_mesh_load_context_t *ctx,
     color_att = draco_find_attribute(&draco, jint(ext_attrs, "COLOR_0", -1));
     joints_att = draco_find_attribute(&draco, jint(ext_attrs, "JOINTS_0", -1));
     weights_att = draco_find_attribute(&draco, jint(ext_attrs, "WEIGHTS_0", -1));
-    if (!pos_att || pos_att->components < 3 ||
-        (!pos_att->out_floats && !pos_att->out_ints)) {
+    if (!pos_att || pos_att->components < 3 || (!pos_att->out_floats && !pos_att->out_ints)) {
         draco_mesh_free(&draco);
         if (ctx->load_failed_io)
             *ctx->load_failed_io = 1;
@@ -1399,10 +1543,22 @@ static void gltf_draco_import_primitive(gltf_mesh_load_context_t *ctx,
         uv0_att = NULL;
     if (uv1_att && uv1_att->components < 2)
         uv1_att = NULL;
-    if (joints_att && (!weights_att || joints_att->components < 4 ||
-                       weights_att->components < 4 || !joints_att->out_ints)) {
+    if (joints_att && (!weights_att || joints_att->components < 4 || weights_att->components < 4 ||
+                       !joints_att->out_ints)) {
         joints_att = NULL;
         weights_att = NULL;
+    }
+    if (!gltf_mesh_validate_primitive_uv_streams(ctx->asset,
+                                                 ctx->material_infos,
+                                                 prim,
+                                                 jint(prim, "material", -1),
+                                                 uv0_att != NULL,
+                                                 uv1_att != NULL,
+                                                 mesh_json_index,
+                                                 primitive_index,
+                                                 ctx->load_failed_io)) {
+        draco_mesh_free(&draco);
+        return;
     }
 
     mesh = rt_mesh3d_new();
@@ -1448,8 +1604,7 @@ static void gltf_draco_import_primitive(gltf_mesh_load_context_t *ctx,
             nrm[1] = 0.0f;
             nrm[2] = 0.0f;
         }
-        if (!gltf_mesh_append_import_vertex(
-                (rt_mesh3d *)mesh, pos, nrm, uv, uv1, color, tangent))
+        if (!gltf_mesh_append_import_vertex((rt_mesh3d *)mesh, pos, nrm, uv, uv1, color, tangent))
             goto fail;
         if (joints_att) {
             uint32_t joints[4];
@@ -1517,13 +1672,8 @@ static void gltf_draco_import_primitive(gltf_mesh_load_context_t *ctx,
             (tangent_material && tangent_material->normal_map))
             rt_mesh3d_calc_tangents(mesh);
     }
-    gltf_import_primitive_morph_targets(ctx->root,
-                                        ctx->buffers,
-                                        ctx->buf_count,
-                                        mesh_json,
-                                        prim,
-                                        mesh,
-                                        (int32_t)draco.num_points);
+    gltf_import_primitive_morph_targets(
+        ctx->root, ctx->buffers, ctx->buf_count, mesh_json, prim, mesh, (int32_t)draco.num_points);
     gltf_emit_skin_import_warnings(mesh_json_index, primitive_index, &skin_stats);
     draco_mesh_free(&draco);
     ctx->asset->meshes[*mesh_idx_io] = mesh;
@@ -1552,6 +1702,7 @@ static void gltf_load_meshes(rt_gltf_asset *asset,
                              gltf_buffer_t *buffers,
                              int buf_count,
                              rt_gltf_preload_bundle *preload_bundle,
+                             const gltf_material_info_t *material_infos,
                              int **out_mesh_prim_start,
                              int **out_mesh_prim_count,
                              void ***out_primitive_materials,
@@ -1597,6 +1748,7 @@ static void gltf_load_meshes(rt_gltf_asset *asset,
                 goto finish;
             primitive_variant_mapping_count = total_prims;
             ctx.asset = asset;
+            ctx.material_infos = material_infos;
             ctx.root = root;
             ctx.buffers = buffers;
             ctx.buf_count = buf_count;

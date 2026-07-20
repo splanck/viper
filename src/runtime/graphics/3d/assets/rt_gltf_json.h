@@ -27,6 +27,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /// @brief Skip whitespace starting at pos; return the first non-space offset.
 size_t gltf_json_skip_ws(const char *json, size_t len, size_t pos);
 
@@ -46,6 +50,28 @@ int gltf_json_key_matches(
 /// @brief Skip a complete JSON value (object/array/string/number/literal) and
 ///   return the offset just past it.
 size_t gltf_json_skip_value(const char *json, size_t len, size_t pos);
+
+/**
+ * @brief Validate one complete JSON document without allocating a DOM.
+ * @param json Exact document bytes; embedded NUL/control bytes are invalid JSON.
+ * @param len Exact byte length of @p json.
+ * @return 1 when one value consumes the whole document after optional whitespace,
+ * otherwise 0.
+ */
+int gltf_json_validate_document(const char *json, size_t len);
+
+/**
+ * @brief Validate the lexical form of glTF fields whose schema requires integral tokens.
+ * @details Traverses core glTF objects plus supported extension objects without allocating a DOM.
+ *          Numeric values used by indices, counts, enum fields, integer arrays, attribute maps,
+ *          and boolean-like fields must be complete base-10 integers: fractions, exponents,
+ *          leading zeroes, suffixes, sign-only forms, and signed-64 overflow are rejected. Unknown
+ *          optional extension objects and application-defined `extras` remain opaque.
+ * @param json Exact structurally valid JSON document bytes.
+ * @param len Exact byte length of @p json.
+ * @return 1 when every recognized integral token is exact, otherwise 0.
+ */
+int gltf_json_validate_gltf_integral_tokens(const char *json, size_t len);
 
 /// @brief From an opening bracket/brace at pos, return the offset just past its
 ///   matching close character.
@@ -112,3 +138,7 @@ char *gltf_json_array_get_string_alloc(
 ///   `fallback` if absent.
 int gltf_json_object_get_boolish(
     const char *json, size_t len, size_t obj_start, size_t obj_end, const char *key, int fallback);
+
+#ifdef __cplusplus
+}
+#endif

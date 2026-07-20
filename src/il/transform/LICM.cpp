@@ -5,12 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements a lightweight loop-invariant code motion pass.  The pass hoists
-// trivially safe instructions—those proven non-trapping, side-effect free, and
-// operand-invariant—into the loop preheader so they execute only once before the
-// loop body.  It relies on LoopSimplify to guarantee the presence of a
-// dedicated preheader and uses dominance information to traverse blocks in a
-// stable order.
+// File: il/transform/LICM.cpp
+// Purpose: Hoist loop-invariant, ownership-neutral instructions into dedicated
+//          loop preheaders.
+// Key invariants:
+//   - Hoisted instructions are non-trapping and preserve memory ordering.
+//   - String loads stay inside loops because every load creates a distinct
+//     owned reference that a consuming use may spend.
+// Ownership/Lifetime: Rewrites functions in place; analysis results are borrowed
+//                     from the pass manager and invalidated after mutation.
+// Links: il/transform/LICM.hpp, il/transform/LoadSafety.hpp,
+//        docs/il/il-passes.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,6 +35,7 @@
 #include "il/transform/analysis/Liveness.hpp"
 #include "il/transform/analysis/LoopInfo.hpp"
 
+#include "il/analysis/AllocaRoots.hpp"
 #include "il/analysis/BasicAA.hpp"
 #include "il/analysis/Dominators.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -38,7 +44,6 @@
 #include "il/core/Module.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/core/Value.hpp"
-#include "il/analysis/AllocaRoots.hpp"
 #include "il/utils/Utils.hpp"
 #include "il/verify/VerifierTable.hpp"
 
@@ -143,6 +148,14 @@ bool isSafeToHoist(const Function &function,
     callHoist = CallHoistKind::NotHoistable;
 
     if (!instr.labels.empty() || !instr.brArgs.empty())
+        return false;
+
+    // A string load is not an ownership-neutral memory read: native and VM
+    // execution both mint a fresh owned reference for every load. Hoisting it
+    // would collapse the per-iteration retains while consuming uses remain in
+    // the loop, allowing the first iteration to free a value reused by later
+    // iterations.
+    if (instr.op == Opcode::Load && instr.type.kind == Type::Kind::Str)
         return false;
 
     // Calls are marked side-effecting in opcode metadata by default, so classify

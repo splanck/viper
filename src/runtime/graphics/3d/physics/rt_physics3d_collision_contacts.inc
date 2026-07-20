@@ -1,7 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/physics/rt_physics3d_collision_contacts.inc  (#included from rt_physics3d_collision.c; not a standalone translation unit)
-// Purpose: Physics3D contact generation, OBB SAT, and manifold helpers
+// File: src/runtime/graphics/3d/physics/rt_physics3d_collision_contacts.inc  (#included from
+// rt_physics3d_collision.c; not a standalone translation unit) Purpose: Physics3D contact
+// generation, OBB SAT, and manifold helpers
 //===----------------------------------------------------------------------===//
 /// @brief Build a stack-allocated dummy sphere body for transient queries.
 ///
@@ -971,9 +972,8 @@ int contact3d_expand_surface_support_manifold(rt_contact3d *contact,
         double he[3];
         rt_collider3d_get_box_half_extents_raw(solid_leaf, he);
         for (int i = 0; i < 8; ++i) {
-            double local[3] = {(i & 1) ? he[0] : -he[0],
-                               (i & 2) ? he[1] : -he[1],
-                               (i & 4) ? he[2] : -he[2]};
+            double local[3] = {
+                (i & 1) ? he[0] : -he[0], (i & 2) ? he[1] : -he[1], (i & 4) ? he[2] : -he[2]};
             double world[3];
             double rel[3];
             transform_point_from_pose(solid_pose, local, world);
@@ -1005,8 +1005,8 @@ int contact3d_expand_surface_support_manifold(rt_contact3d *contact,
         m_axis[2] *= solid_pose->scale[2];
         for (uint32_t i = 0; i < vertex_count; ++i) {
             const float *vp = mesh->vertices[i].pos;
-            double value = (double)vp[0] * m_axis[0] + (double)vp[1] * m_axis[1] +
-                           (double)vp[2] * m_axis[2];
+            double value =
+                (double)vp[0] * m_axis[0] + (double)vp[1] * m_axis[1] + (double)vp[2] * m_axis[2];
             if (isfinite(value) && value < local_min_value)
                 local_min_value = value;
         }
@@ -1018,8 +1018,8 @@ int contact3d_expand_surface_support_manifold(rt_contact3d *contact,
             support_tol = 0.45 * char_size;
         for (uint32_t i = 0; i < vertex_count; ++i) {
             const float *vp = mesh->vertices[i].pos;
-            double value = (double)vp[0] * m_axis[0] + (double)vp[1] * m_axis[1] +
-                           (double)vp[2] * m_axis[2];
+            double value =
+                (double)vp[0] * m_axis[0] + (double)vp[1] * m_axis[1] + (double)vp[2] * m_axis[2];
             double local[3];
             double world[3];
             double rel[3];
@@ -1093,8 +1093,7 @@ int contact3d_expand_surface_support_manifold(rt_contact3d *contact,
                 continue;
             {
                 int32_t before = contact->contact_count;
-                double separation =
-                    contact->separation + (candidates[best_index].distance - d_min);
+                double separation = contact->separation + (candidates[best_index].distance - d_min);
                 contact3d_try_add_manifold_point(
                     contact, candidates[best_index].point, contact->normal, separation);
                 if (contact->contact_count > before)
@@ -1161,7 +1160,7 @@ int world3d_append_frame_contact_unique(rt_world3d *w, const rt_contact3d *conta
     }
     if (!world3d_checked_increment(w->frame_contact_count, &next_count) ||
         !world3d_reserve_frame_contacts(w, next_count)) {
-        rt_trap("Physics3D.World.Step: frame-contact allocation failed");
+        world3d_step_fail(w, "Physics3D.World.Step: frame-contact allocation failed");
         return 0;
     }
     contact_snapshot_copy(&w->frame_contacts[w->frame_contact_count++], contact);
@@ -1173,7 +1172,7 @@ int world3d_publish_frame_contacts(rt_world3d *w) {
     if (!w)
         return 0;
     if (!world3d_reserve_contacts(w, w->frame_contact_count)) {
-        rt_trap("Physics3D.World.Step: contact allocation failed");
+        world3d_step_fail(w, "Physics3D.World.Step: contact allocation failed");
         return 0;
     }
     w->contact_count = w->frame_contact_count;

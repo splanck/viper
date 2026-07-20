@@ -108,9 +108,12 @@ extern void rt_material3d_set_shading_model(void *obj, int64_t model);
 extern void rt_material3d_set_reflectivity(void *obj, double value);
 extern void rt_material3d_set_custom_param(void *obj, int64_t index, double value);
 
-/// @brief Cast a JSON double to int64 only when the conversion is defined.
+/// @brief Cast a parsed JSON number to int64 only when it is finite, exact, and in range.
+/// @param value Parsed runtime JSON number.
+/// @param out Receives the exact integral value on success.
+/// @return 1 for a mathematically integral in-range value, otherwise 0.
 static int gltf_double_to_i64_checked(double value, int64_t *out) {
-    if (!out || !isfinite(value))
+    if (!out || !isfinite(value) || trunc(value) != value)
         return 0;
     if (value < (-9223372036854775807.0 - 1.0) || value >= 9223372036854775808.0)
         return 0;
@@ -196,11 +199,14 @@ typedef struct {
 typedef struct {
     int32_t wrap_s;
     int32_t wrap_t;
-    int32_t filter;
+    int32_t min_filter;
+    int32_t mag_filter;
+    int32_t mip_filter;
 } gltf_sampler_info_t;
 
 typedef struct {
     int32_t texcoord;
+    int8_t present;
     int8_t has_transform;
     double offset[2];
     double scale[2];
@@ -389,7 +395,7 @@ static double jnum(void *obj, const char *key, double def) {
     }
 }
 
-/// @brief Read `obj[key]` as an int64; returns `def` if absent or wrong type.
+/// @brief Read `obj[key]` as an exact mathematical integer; returns `def` otherwise.
 static int64_t jint(void *obj, const char *key, int64_t def) {
     void *v = jget(obj, key);
     if (!v)
@@ -406,6 +412,28 @@ static int64_t jint(void *obj, const char *key, int64_t def) {
         default:
             return def;
     }
+}
+
+/// @brief Read `obj[key]` as a strict boolean or exact compatibility integer 0/1.
+/// @param obj Borrowed JSON object.
+/// @param key Object property name.
+/// @param def Fallback returned for absence, wrong type, or an integer outside 0/1.
+/// @return Normalized 0/1 value or @p def.
+static int64_t jbool(void *obj, const char *key, int64_t def) {
+    void *v = jget(obj, key);
+    int64_t value;
+    if (!v)
+        return def;
+    if (rt_box_type(v) == 2)
+        return rt_unbox_i1(v) ? 1 : 0;
+    if (rt_box_type(v) == 0)
+        value = rt_unbox_i64(v);
+    else if (rt_box_type(v) == 1) {
+        if (!gltf_double_to_i64_checked(rt_unbox_f64(v), &value))
+            return def;
+    } else
+        return def;
+    return value == 0 || value == 1 ? value : def;
 }
 
 /// @brief Read `obj[key]` as a borrowed C string (NULL if absent or non-string).
@@ -454,7 +482,7 @@ double jvalue_num(void *value, double def) {
     }
 }
 
-/// @brief Coerce a boxed JSON value to int64 with default fallback.
+/// @brief Read a boxed JSON array value as an exact mathematical integer.
 static int64_t jvalue_int(void *value, int64_t def) {
     if (!value)
         return def;
@@ -465,8 +493,6 @@ static int64_t jvalue_int(void *value, int64_t def) {
             int64_t coerced;
             return gltf_double_to_i64_checked(rt_unbox_f64(value), &coerced) ? coerced : def;
         }
-        case 2:
-            return rt_unbox_i1(value);
         default:
             return def;
     }
@@ -660,6 +686,7 @@ static void gltf_texture_info_init(gltf_texture_info_t *info) {
     if (!info)
         return;
     info->texcoord = 0;
+    info->present = 0;
     info->has_transform = 0;
     info->offset[0] = 0.0;
     info->offset[1] = 0.0;
@@ -672,7 +699,9 @@ static void gltf_texture_info_init(gltf_texture_info_t *info) {
 /// @details Reads the `texCoord` index and, if the `KHR_texture_transform` extension block is
 ///   present in `extensions`, reads the UV transform (offset, scale, rotation) and sets
 ///   `has_transform = 1`. The extension's `texCoord` can override the base texcoord index,
-///   matching the KHR_texture_transform spec. When no transform block is present the struct
+///   matching the KHR_texture_transform spec. Authored indices remain unclamped so primitive
+///   validation can distinguish unsupported UV sets from TEXCOORD_0. When no transform block is
+///   present the struct
 ///   retains identity defaults from `gltf_texture_info_init`. Null @p texture_info leaves @p out
 ///   at defaults so callers need not guard against missing fields.
 /// @param texture_info  Parsed glTF `textureInfo` JSON object (may be NULL for default texture
@@ -688,17 +717,14 @@ static void gltf_read_texture_info(void *texture_info, gltf_texture_info_t *out)
     gltf_texture_info_init(out);
     if (!texture_info)
         return;
-    out->texcoord = gltf_i32_from_i64_or(jint(texture_info, "texCoord", 0), 0);
-    if (out->texcoord < 0)
-        out->texcoord = 0;
+    out->present = 1;
+    out->texcoord = gltf_i32_from_i64_or(jint(texture_info, "texCoord", 0), INT32_MAX);
     extensions = jget(texture_info, "extensions");
     transform = extensions ? jget(extensions, "KHR_texture_transform") : NULL;
     if (!transform)
         return;
     out->has_transform = 1;
-    out->texcoord = gltf_i32_from_i64_or(jint(transform, "texCoord", out->texcoord), out->texcoord);
-    if (out->texcoord < 0)
-        out->texcoord = 0;
+    out->texcoord = gltf_i32_from_i64_or(jint(transform, "texCoord", out->texcoord), INT32_MAX);
     offset = jarr(transform, "offset");
     scale = jarr(transform, "scale");
     if (offset && jarr_len(offset) >= 2) {
@@ -726,37 +752,46 @@ static int32_t gltf_map_sampler_wrap(int64_t wrap) {
     return RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
 }
 
-/// @brief Map a glTF sampler min/mag filter pair to a Zanna filter-mode constant.
-/// @details glTF separates min and mag filters; Zanna uses a single constant. The mag filter
-///   is preferred (it directly controls visible texel appearance). GL nearest constants:
-///   9728 = GL_NEAREST, 9984 = GL_NEAREST_MIPMAP_NEAREST, 9986 = GL_NEAREST_MIPMAP_LINEAR.
-///   All other values (including linear variants 9729, 9985, 9987) map to LINEAR. When
-///   @p mag_filter is -1 (absent in the JSON), falls back to @p min_filter.
-/// @param min_filter  Raw `minFilter` value from the glTF sampler JSON, or -1 if absent.
-/// @param mag_filter  Raw `magFilter` value, or -1 if absent.
-/// @return `RT_MATERIAL3D_TEXTURE_FILTER_NEAREST` or `RT_MATERIAL3D_TEXTURE_FILTER_LINEAR`.
-static int32_t gltf_map_sampler_filter(int64_t min_filter, int64_t mag_filter) {
-    int64_t filter = mag_filter >= 0 ? mag_filter : min_filter;
+/// @brief Map the texel-selection component of a glTF filter enum to nearest or linear.
+/// @param filter Raw glTF minification/magnification enum, or -1 when absent.
+/// @return The independent Zanna min/mag filter constant.
+static int32_t gltf_map_sampler_texel_filter(int64_t filter) {
     if (filter == 9728 || filter == 9984 || filter == 9986)
         return RT_MATERIAL3D_TEXTURE_FILTER_NEAREST;
     return RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
 }
 
+/// @brief Map a glTF minification enum to its independent mip-selection axis.
+/// @details 9728/9729 select no mipmapping, 9984/9985 select the nearest mip, and 9986/9987
+/// linearly blend adjacent mips. An absent or unknown value uses the loader's linear-mip default.
+/// @param min_filter Raw glTF `minFilter` enum, or -1 when absent.
+/// @return One `RT_MATERIAL3D_TEXTURE_MIP_FILTER_*` constant.
+static int32_t gltf_map_sampler_mip_filter(int64_t min_filter) {
+    if (min_filter == 9728 || min_filter == 9729)
+        return RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE;
+    if (min_filter == 9984 || min_filter == 9985)
+        return RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST;
+    return RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR;
+}
+
 /// @brief Initialise a `gltf_sampler_info_t` to the glTF default sampler state.
-/// @details glTF defaults: wrapS = wrapT = REPEAT, filter = LINEAR (per spec §5.24.1).
+/// @details glTF defaults are repeat wrapping with linear min/mag texel filtering and linear mip
+///          interpolation.
 static void gltf_sampler_info_init(gltf_sampler_info_t *info) {
     if (!info)
         return;
     info->wrap_s = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
     info->wrap_t = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
-    info->filter = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    info->min_filter = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    info->mag_filter = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    info->mip_filter = RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR;
 }
 
 /// @brief Parse a glTF sampler JSON object into a `gltf_sampler_info_t`.
 /// @details Reads `wrapS`, `wrapT`, `minFilter`, and `magFilter` using their glTF
 ///   default values (10497 = REPEAT for wrap; -1 = absent for filter) and maps them
-///   to Zanna constants via `gltf_map_sampler_wrap` / `gltf_map_sampler_filter`.
-///   A NULL @p sampler_json leaves @p out at the glTF defaults (REPEAT / LINEAR).
+///   to Zanna constants via the independent wrap, texel-filter, and mip-filter mappers.
+///   A NULL @p sampler_json leaves @p out at the glTF defaults.
 /// @param sampler_json  Parsed glTF sampler object JSON; may be NULL for default state.
 /// @param out           Output struct; always initialised before filling.
 static void gltf_read_sampler_info(void *sampler_json, gltf_sampler_info_t *out) {
@@ -767,8 +802,13 @@ static void gltf_read_sampler_info(void *sampler_json, gltf_sampler_info_t *out)
         return;
     out->wrap_s = gltf_map_sampler_wrap(jint(sampler_json, "wrapS", 10497));
     out->wrap_t = gltf_map_sampler_wrap(jint(sampler_json, "wrapT", 10497));
-    out->filter = gltf_map_sampler_filter(jint(sampler_json, "minFilter", -1),
-                                          jint(sampler_json, "magFilter", -1));
+    {
+        int64_t min_filter = jint(sampler_json, "minFilter", -1);
+        int64_t mag_filter = jint(sampler_json, "magFilter", -1);
+        out->min_filter = gltf_map_sampler_texel_filter(min_filter);
+        out->mag_filter = gltf_map_sampler_texel_filter(mag_filter);
+        out->mip_filter = gltf_map_sampler_mip_filter(min_filter);
+    }
 }
 
 /// @brief DFS helper for cycle detection in the glTF node graph.
@@ -932,9 +972,9 @@ static int gltf_validate_node_graph(void *nodes_arr, int32_t node_count, int **o
 }
 
 /// @brief Bind a texture index + sampler state + UV-transform to one material texture slot.
-/// @details Looks up wrap/filter from the pre-built @p texture_samplers array at @p texture_index
-///   (defaulting to REPEAT/LINEAR when the index is out of range), then calls
-///   `rt_material3d_set_import_texture_slot` with the full combined parameters. If @p info is NULL
+/// @details Looks up independent wrap/min/mag/mip state from the pre-built @p texture_samplers
+///   array at @p texture_index (using glTF defaults when the index is out of range), then calls
+///   `rt_material3d_set_import_texture_slot_sampler_axes`. If @p info is NULL
 ///   an identity `gltf_texture_info_t` (texcoord=0, no transform) is used so callers can pass NULL
 ///   for textures that have no `KHR_texture_transform` extension block. Slots outside the valid
 ///   range `[0, RT_MATERIAL3D_TEXTURE_SLOT_COUNT)` are silently ignored.
@@ -954,7 +994,9 @@ static void gltf_apply_texture_slot(const gltf_sampler_info_t *texture_samplers,
     const gltf_texture_info_t *texture_info = info;
     int32_t wrap_s = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
     int32_t wrap_t = RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
-    int32_t filter = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    int32_t min_filter = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    int32_t mag_filter = RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+    int32_t mip_filter = RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR;
     if (!material || slot < 0 || slot >= RT_MATERIAL3D_TEXTURE_SLOT_COUNT)
         return;
     if (!texture_info) {
@@ -964,19 +1006,23 @@ static void gltf_apply_texture_slot(const gltf_sampler_info_t *texture_samplers,
     if (texture_samplers && texture_index >= 0 && texture_index < texture_count) {
         wrap_s = texture_samplers[texture_index].wrap_s;
         wrap_t = texture_samplers[texture_index].wrap_t;
-        filter = texture_samplers[texture_index].filter;
+        min_filter = texture_samplers[texture_index].min_filter;
+        mag_filter = texture_samplers[texture_index].mag_filter;
+        mip_filter = texture_samplers[texture_index].mip_filter;
     }
-    rt_material3d_set_import_texture_slot(material,
-                                          slot,
-                                          texture_info->texcoord,
-                                          texture_info->offset[0],
-                                          texture_info->offset[1],
-                                          texture_info->scale[0],
-                                          texture_info->scale[1],
-                                          texture_info->rotation,
-                                          wrap_s,
-                                          wrap_t,
-                                          filter);
+    rt_material3d_set_import_texture_slot_sampler_axes(material,
+                                                       slot,
+                                                       texture_info->texcoord,
+                                                       texture_info->offset[0],
+                                                       texture_info->offset[1],
+                                                       texture_info->scale[0],
+                                                       texture_info->scale[1],
+                                                       texture_info->rotation,
+                                                       wrap_s,
+                                                       wrap_t,
+                                                       min_filter,
+                                                       mag_filter,
+                                                       mip_filter);
 }
 
 /// @brief True if a texture is a supported format but its decoded image is still missing.
@@ -1182,91 +1228,50 @@ static int gltf_extract_json_document(uint8_t *file_data,
                                       char **out_json_str,
                                       uint8_t **out_bin_chunk,
                                       size_t *out_bin_chunk_len) {
-    char *json_str = NULL;
-    uint8_t *bin_chunk = NULL;
-    size_t bin_chunk_len = 0;
-    int parse_error = 0;
+    gltf_root_document_view document;
+    char *json_str;
     *out_json_str = NULL;
     *out_bin_chunk = NULL;
     *out_bin_chunk_len = 0;
-
-    if (file_size >= 12 && file_data[0] == 0x67 && file_data[1] == 0x6C && file_data[2] == 0x54 &&
-        file_data[3] == 0x46) {
-        uint32_t version = gltf_read_u32_le(file_data + 4);
-        uint32_t declared_len = gltf_read_u32_le(file_data + 8);
-        size_t pos = 12;
-        int chunk_index = 0;
-        if (file_size > (size_t)UINT32_MAX || version != 2 || declared_len != (uint32_t)file_size)
-            parse_error = 1;
-        while (!parse_error && pos + 8 <= file_size) {
-            uint32_t chunk_len = gltf_read_u32_le(file_data + pos);
-            uint32_t chunk_type = gltf_read_u32_le(file_data + pos + 4);
-            pos += 8;
-            if ((chunk_len & 3u) != 0 || chunk_len > file_size - pos) {
-                parse_error = 1;
-                break;
-            }
-            if (chunk_index == 0 && chunk_type != 0x4E4F534A) {
-                parse_error = 1;
-                break;
-            }
-            if (chunk_type == 0x4E4F534A) {
-                if (json_str || chunk_len == 0) {
-                    parse_error = 1;
-                    break;
-                }
-                json_str = (char *)malloc((size_t)chunk_len + 1u);
-                if (!json_str) {
-                    parse_error = 1;
-                    break;
-                }
-                memcpy(json_str, file_data + pos, chunk_len);
-                json_str[chunk_len] = '\0';
-            } else if (chunk_type == 0x004E4942) {
-                if (bin_chunk) {
-                    parse_error = 1;
-                    break;
-                }
-                bin_chunk = file_data + pos;
-                bin_chunk_len = chunk_len;
-            }
-            pos += chunk_len;
-            chunk_index++;
-        }
-        if (!parse_error && pos != file_size)
-            parse_error = 1;
-    } else {
-        json_str = (char *)malloc(file_size + 1u);
-        if (!json_str)
-            return 0;
-        memcpy(json_str, file_data, file_size);
-        json_str[file_size] = '\0';
-    }
-
-    if (parse_error || !json_str) {
-        free(json_str);
+    if (!gltf_parse_root_document_view(file_data, file_size, &document) ||
+        document.json_len > SIZE_MAX - 1u)
         return 0;
-    }
+    json_str = (char *)malloc(document.json_len + 1u);
+    if (!json_str)
+        return 0;
+    memcpy(json_str, document.json, document.json_len);
+    json_str[document.json_len] = '\0';
     *out_json_str = json_str;
-    *out_bin_chunk = bin_chunk;
-    *out_bin_chunk_len = bin_chunk_len;
+    *out_bin_chunk = document.bin;
+    *out_bin_chunk_len = document.bin_len;
     return 1;
 }
 
-static void *gltf_parse_validated_root_json(char *json_str) {
+static void *gltf_parse_validated_root_json(char *json_str, size_t json_len) {
     rt_string json_rts;
     void *root = NULL;
     jmp_buf json_recovery;
     const char *trap_message = NULL;
     if (!json_str)
         return NULL;
-    if (!gltf_validate_required_data_uri_images(json_str, strlen(json_str))) {
+    if (json_len == 0 || memchr(json_str, '\0', json_len) != NULL) {
+        free(json_str);
+        return NULL;
+    }
+    if (!gltf_json_validate_gltf_integral_tokens(json_str, json_len)) {
+        rt_asset_error_set_if_empty(
+            RT_ASSET_ERROR_CORRUPT,
+            "GLTF.Load: integral fields must use exact non-exponent JSON integer tokens");
+        free(json_str);
+        return NULL;
+    }
+    if (!gltf_validate_required_data_uri_images(json_str, json_len)) {
         rt_asset_error_set_if_empty(RT_ASSET_ERROR_UNSUPPORTED,
                                     "GLTF.Load: required data URI image payload is invalid");
         free(json_str);
         return NULL;
     }
-    json_rts = rt_const_cstr(json_str);
+    json_rts = rt_string_from_bytes(json_str, json_len);
     rt_trap_set_recovery(&json_recovery);
     if (setjmp(json_recovery) == 0)
         root = rt_json_parse_object(json_rts);
@@ -1421,6 +1426,7 @@ static int gltf_load_asset_payload(rt_gltf_asset *asset,
                      buffers,
                      buf_count,
                      preload_bundle,
+                     scratch->material_infos,
                      &scratch->mesh_prim_start,
                      &scratch->mesh_prim_count,
                      &scratch->primitive_materials,
@@ -1520,12 +1526,17 @@ static void *rt_gltf_load_impl(rt_string path,
     size_t bin_chunk_len = 0;
     if (!gltf_extract_json_document(file_data, file_size, &json_str, &bin_chunk, &bin_chunk_len)) {
         free(file_data);
-        rt_asset_error_setf(
-            RT_ASSET_ERROR_BAD_MAGIC, "GLTF.Load: '%s' is not a supported glTF/GLB", filepath);
+        rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                            "GLTF.Load: '%s' has an invalid glTF/GLB root document",
+                            filepath);
         return NULL;
     }
 
-    void *root = gltf_parse_validated_root_json(json_str);
+    gltf_root_document_view root_document;
+    size_t json_len = 0;
+    if (gltf_parse_root_document_view(file_data, file_size, &root_document))
+        json_len = root_document.json_len;
+    void *root = gltf_parse_validated_root_json(json_str, json_len);
     if (!root) {
         free(file_data);
         rt_asset_error_setf_if_empty(

@@ -1466,7 +1466,9 @@ static int game3d_world_stream_adopt_cell_scene(rt_game3d_world_stream *stream,
             cell->entity = entity;
             cell->resident = 1;
             game3d_stream_push_loaded_event(stream, cell->name);
-            uint64_t measured = game3d_scene_estimate_resident_bytes(scene);
+            uint64_t measured = game3d_entity_estimate_resident_bytes(entity);
+            if (measured == 0)
+                measured = game3d_scene_estimate_resident_bytes(scene);
             cell->measured_resident_bytes = game3d_i64_from_u64_saturating(measured);
             if (cell->measured_resident_bytes <= 0)
                 cell->measured_resident_bytes =
@@ -1534,12 +1536,16 @@ static int game3d_world_stream_commit_staged_cell(rt_game3d_world_stream *stream
     return 1;
 }
 
-/// @brief Remeasure a loaded cell's scene residency after mesh/texture resident-state changes.
+/// @brief Remeasure a loaded cell's entity hierarchy after mesh/texture residency changes.
+/// @details Loaded Scene3D roots are transactionally transferred into the spawned entity, so the
+///   entity is authoritative. The retained source scene is consulted only as a defensive fallback.
 static void game3d_world_stream_refresh_cell_residency_bytes(rt_game3d_stream_cell *cell) {
     uint64_t measured;
-    if (!cell || !cell->resident || !cell->scene)
+    if (!cell || !cell->resident || !cell->entity)
         return;
-    measured = game3d_scene_estimate_resident_bytes(cell->scene);
+    measured = game3d_entity_estimate_resident_bytes(cell->entity);
+    if (measured == 0)
+        measured = game3d_scene_estimate_resident_bytes(cell->scene);
     cell->measured_resident_bytes = game3d_i64_from_u64_saturating(measured);
     if (cell->measured_resident_bytes <= 0)
         cell->measured_resident_bytes = cell->resident_bytes > 0 ? cell->resident_bytes : 64 * 1024;
@@ -2561,7 +2567,9 @@ static int game3d_world_stream_adopt_cell_proxy_scene(rt_game3d_world_stream *st
             cell->proxy_scene = scene;
             cell->proxy_entity = entity;
             cell->proxy_resident = 1;
-            uint64_t measured = game3d_scene_estimate_resident_bytes(scene);
+            uint64_t measured = game3d_entity_estimate_resident_bytes(entity);
+            if (measured == 0)
+                measured = game3d_scene_estimate_resident_bytes(scene);
             cell->measured_proxy_bytes = game3d_i64_from_u64_saturating(measured);
             if (cell->measured_proxy_bytes <= 0)
                 cell->measured_proxy_bytes = cell->proxy_bytes > 0 ? cell->proxy_bytes : 16 * 1024;
@@ -3195,19 +3203,19 @@ typedef struct game3d_proxy_bake_source {
     int32_t color_slot; /* atlas block index for this drawable's material */
 } game3d_proxy_bake_source;
 
-/// @brief Gather drawable (mesh+matrix) nodes from a scene subtree iteratively.
+/// @brief Gather drawable mesh/matrix pairs from a SceneNode3D hierarchy iteratively.
+/// @param root Borrowed hierarchy root, normally the detached root owned by a streamed entity.
+/// @param sources Caller-owned output array populated in traversal order.
+/// @param capacity Maximum number of output records and the traversal's drawable cap.
 /// @return Number of sources gathered (capped at @p capacity).
-static int32_t game3d_proxy_gather_sources(void *scene,
+static int32_t game3d_proxy_gather_sources(void *root,
                                            game3d_proxy_bake_source *sources,
                                            int32_t capacity) {
-    if (!scene || !sources || capacity <= 0)
+    if (!root || !rt_g3d_has_class(root, RT_G3D_SCENENODE3D_CLASS_ID) || !sources || capacity <= 0)
         return 0;
     void *stack[256];
     int32_t stack_count = 0;
     int32_t count = 0;
-    void *root = rt_scene3d_get_root(scene);
-    if (!root)
-        return 0;
     stack[stack_count++] = root;
     while (stack_count > 0 && count < capacity) {
         void *node = stack[--stack_count];
@@ -3285,7 +3293,12 @@ int8_t rt_game3d_world_stream_bake_cell_proxy(void *obj, int64_t index) {
     if (index < 0 || index >= cell_count)
         return 0;
     rt_game3d_stream_cell *cell = &stream->cells[index];
-    if (!cell->resident || !cell->scene || !cell->path)
+    if (!cell->resident || !cell->entity || !cell->path)
+        return 0;
+    rt_game3d_entity *cell_entity =
+        (rt_game3d_entity *)rt_g3d_checked_or_null(cell->entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    void *entity_root = game3d_entity_node_ref(cell_entity);
+    if (!entity_root)
         return 0;
 
     game3d_proxy_bake_source *sources = (game3d_proxy_bake_source *)calloc(
@@ -3293,7 +3306,7 @@ int8_t rt_game3d_world_stream_bake_cell_proxy(void *obj, int64_t index) {
     if (!sources)
         return 0;
     int32_t source_count =
-        game3d_proxy_gather_sources(cell->scene, sources, GAME3D_PROXY_MAX_MATERIALS * 4);
+        game3d_proxy_gather_sources(entity_root, sources, GAME3D_PROXY_MAX_MATERIALS * 4);
     if (source_count <= 0) {
         free(sources);
         return 0;
@@ -3302,8 +3315,7 @@ int8_t rt_game3d_world_stream_bake_cell_proxy(void *obj, int64_t index) {
     /* Cell-local space: subtract the spawned root's translation (rotation identity). */
     double root_matrix[16];
     double root_tx = 0.0, root_ty = 0.0, root_tz = 0.0;
-    void *scene_root = rt_scene3d_get_root(cell->scene);
-    if (scene_root && rt_scene_node3d_get_world_matrix_components(scene_root, root_matrix)) {
+    if (rt_scene_node3d_get_world_matrix_components(entity_root, root_matrix)) {
         root_tx = root_matrix[3];
         root_ty = root_matrix[7];
         root_tz = root_matrix[11];
@@ -3466,12 +3478,14 @@ int64_t rt_game3d_world_stream_generate_impostors(void *obj, double distance) {
     int32_t cell_count = game3d_world_stream_safe_cell_count(stream);
     for (int32_t i = 0; i < cell_count; ++i) {
         rt_game3d_stream_cell *cell = &stream->cells[i];
-        if (!cell->proxy_resident || !cell->proxy_scene)
+        if (!cell->proxy_resident || !cell->proxy_entity)
             continue;
-        void *scene_root = rt_scene3d_get_root(cell->proxy_scene);
-        if (!scene_root || rt_scene_node3d_child_count(scene_root) < 1)
+        rt_game3d_entity *proxy_entity = (rt_game3d_entity *)rt_g3d_checked_or_null(
+            cell->proxy_entity, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+        void *proxy_root = game3d_entity_node_ref(proxy_entity);
+        if (!proxy_root || rt_scene_node3d_child_count(proxy_root) < 1)
             continue;
-        void *proxy_node = rt_scene_node3d_get_child(scene_root, 0);
+        void *proxy_node = rt_scene_node3d_get_child(proxy_root, 0);
         void *proxy_mesh = proxy_node ? rt_scene_node3d_get_mesh(proxy_node) : NULL;
         void *proxy_material = proxy_node ? rt_scene_node3d_get_material(proxy_node) : NULL;
         if (!proxy_mesh)

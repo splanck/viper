@@ -9,20 +9,6 @@
 
 #define FBX_TIME_SECOND 46186158000LL
 
-/// @brief Find the direct child of the top-level Objects node whose first property matches @p id.
-/// @details FBX assigns every scene object a unique 64-bit ID stored as the first property on
-///          the node.  This linear scan is used for per-object resolution; call sites are bounded
-///          by the number of clusters / connections, not the total object count.
-/// @return Pointer into the @p objects children array, or NULL if no child carries that ID.
-static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id) {
-    for (int32_t i = 0; i < objects->child_count; i++) {
-        fbx_node_t *obj = &objects->children[i];
-        if (obj->prop_count >= 1 && fbx_prop_i64(obj, 0) == id)
-            return obj;
-    }
-    return NULL;
-}
-
 /// @brief Locate a child node named @p child_name and return its first property as an int64 array.
 /// @details Expects the property type byte to be `'l'` (FBX long-array).  Writes the element
 ///          count to *count and returns a pointer into the already-decoded in-memory array.
@@ -89,41 +75,26 @@ static const float *fbx_get_f32_array(fbx_node_t *node, const char *child_name, 
     return NULL;
 }
 
-/// @brief Resolve an FBX Model node ID to its engine bone index in @p skeleton.
-/// @details Looks up the Model node by @p model_id, decodes its display name (stripping the
-///          FBX `"Name\x00\x01Type"` suffix), then asks the engine skeleton for the matching
-///          bone index via `rt_skeleton3d_find_bone`.
-/// @return Engine bone index in [0, bone_count), or -1 if the model is not found or not a bone.
+/// @brief Resolve an FBX Model numeric ID to its engine bone index.
+/// @details Object IDs are the sole identity key. Display-name fallback is intentionally forbidden
+///          because duplicate or long equal-prefix names are legal FBX content and must never bind
+///          animation/skin data to a different bone. The object/skeleton parameters remain in the
+///          internal signature for source compatibility with extraction call sites.
+/// @return Engine bone index from the load-local binding table, or -1 when the ID is not a bone.
 static int32_t fbx_find_bone_index_for_model(fbx_node_t *objects,
                                              void *skeleton,
                                              const fbx_bone_binding_t *bone_bindings,
                                              int32_t bone_binding_count,
                                              int64_t model_id) {
-    fbx_node_t *model_node;
-    char decoded_name[64];
-    int64_t bone_index;
-    if (!objects || !skeleton || model_id == 0)
+    (void)objects;
+    (void)skeleton;
+    if (!bone_bindings || bone_binding_count <= 0 || model_id == 0)
         return -1;
-    if (bone_bindings && bone_binding_count > 0) {
-        for (int32_t i = 0; i < bone_binding_count; i++) {
-            if (bone_bindings[i].model_id == model_id && bone_bindings[i].bone_index >= 0)
-                return bone_bindings[i].bone_index;
-        }
+    for (int32_t i = 0; i < bone_binding_count; i++) {
+        if (bone_bindings[i].model_id == model_id && bone_bindings[i].bone_index >= 0)
+            return bone_bindings[i].bone_index;
     }
-    model_node = fbx_find_object_by_id(objects, model_id);
-    if (!model_node || strcmp(model_node->name, "Model") != 0 || model_node->prop_count < 2)
-        return -1;
-    fbx_decode_object_name(fbx_prop_str(model_node, 1), decoded_name, sizeof(decoded_name));
-    if (decoded_name[0] == '\0')
-        return -1;
-    {
-        rt_string name = rt_const_cstr(decoded_name);
-        bone_index = rt_skeleton3d_find_bone(skeleton, name);
-        rt_string_unref(name);
-    }
-    if (bone_index < 0 || bone_index > INT32_MAX)
-        return -1;
-    return (int32_t)bone_index;
+    return -1;
 }
 
 /// @brief Find the Model node that owns the given Cluster deformer in the FBX connection table.
@@ -136,10 +107,9 @@ static int64_t fbx_find_cluster_bone_model(fbx_node_t *objects,
                                            int64_t cluster_id) {
     if (!objects || !ct)
         return 0;
-    for (int32_t i = 0; i < ct->count; i++) {
+    for (int32_t i = fbx_connections_first_for_child(ct, cluster_id); i >= 0;
+         i = fbx_connections_next_for_child(ct, i)) {
         fbx_node_t *parent;
-        if (ct->entries[i].child_id != cluster_id)
-            continue;
         parent = fbx_find_object_by_id(objects, ct->entries[i].parent_id);
         if (parent && strcmp(parent->name, "Model") == 0)
             return ct->entries[i].parent_id;
@@ -157,10 +127,9 @@ static int64_t fbx_find_skin_geometry(fbx_node_t *objects,
                                       int64_t skin_id) {
     if (!objects || !ct)
         return 0;
-    for (int32_t i = 0; i < ct->count; i++) {
+    for (int32_t i = fbx_connections_first_for_child(ct, skin_id); i >= 0;
+         i = fbx_connections_next_for_child(ct, i)) {
         fbx_node_t *parent;
-        if (ct->entries[i].child_id != skin_id)
-            continue;
         parent = fbx_find_object_by_id(objects, ct->entries[i].parent_id);
         if (parent && strcmp(parent->name, "Geometry") == 0 && parent->prop_count >= 3 &&
             strcmp(fbx_prop_str(parent, 2), "Mesh") == 0)
@@ -357,7 +326,8 @@ static void fbx_apply_skinning(fbx_node_t *objects,
         if (!controls)
             continue;
 
-        for (int32_t ci = 0; ci < ct->count; ci++) {
+        for (int32_t ci = fbx_connections_first_for_parent(ct, skin_id); ci >= 0;
+             ci = fbx_connections_next_for_parent(ct, ci)) {
             fbx_node_t *cluster;
             int32_t bone_index;
             int64_t bone_model_id;
@@ -367,8 +337,6 @@ static void fbx_apply_skinning(fbx_node_t *objects,
             const double *weights64;
             const float *weights32 = NULL;
 
-            if (ct->entries[ci].parent_id != skin_id)
-                continue;
             cluster = fbx_find_object_by_id(objects, ct->entries[ci].child_id);
             if (!cluster || strcmp(cluster->name, "Deformer") != 0 || cluster->prop_count < 3 ||
                 strcmp(fbx_prop_str(cluster, 2), "Cluster") != 0)
@@ -421,72 +389,9 @@ typedef struct {
 
 typedef struct {
     int8_t initialized;
-    double base_translation[3];
-    double base_rotation[3];
-    double base_scale[3];
+    fbx_transform_components_t base_transform;
     fbx_anim_curve_view_t curves[3][3]; /* trs, component */
 } fbx_anim_bone_builder_t;
-
-/// @brief Extract the local-space TRS components from an FBX Model node's Properties70 block.
-/// @details Scans the `Properties70` child for `"Lcl Translation"`, `"Lcl Rotation"`, and
-///          `"Lcl Scaling"` P-nodes and writes their XYZ values to the caller's arrays.
-///          NULL output pointers are silently skipped. Arrays are pre-zeroed (translation/rotation)
-///          or set to {1,1,1} (scale) before parsing so the caller gets sane defaults when a
-///          component is absent.
-static void fbx_extract_model_lcl_components(fbx_node_t *model_node,
-                                             double *translation,
-                                             double *rotation,
-                                             double *scale) {
-    if (translation) {
-        translation[0] = translation[1] = translation[2] = 0.0;
-    }
-    if (rotation) {
-        rotation[0] = rotation[1] = rotation[2] = 0.0;
-    }
-    if (scale) {
-        scale[0] = scale[1] = scale[2] = 1.0;
-    }
-    if (!model_node)
-        return;
-    fbx_node_t *p70 = fbx_find_child(model_node, "Properties70");
-    if (!p70)
-        return;
-    for (int32_t pi = 0; pi < p70->child_count; pi++) {
-        fbx_node_t *p = &p70->children[pi];
-        const char *pn;
-        if (strcmp(p->name, "P") != 0 || p->prop_count < 7)
-            continue;
-        pn = fbx_prop_str(p, 0);
-        if (translation && strcmp(pn, "Lcl Translation") == 0) {
-            double x = fbx_prop_f64(p, 4);
-            double y = fbx_prop_f64(p, 5);
-            double z = fbx_prop_f64(p, 6);
-            if (fbx_sanitize_position3(&x, &y, &z)) {
-                translation[0] = x;
-                translation[1] = y;
-                translation[2] = z;
-            }
-        } else if (rotation && strcmp(pn, "Lcl Rotation") == 0) {
-            double x = fbx_prop_f64(p, 4);
-            double y = fbx_prop_f64(p, 5);
-            double z = fbx_prop_f64(p, 6);
-            if (isfinite(x) && isfinite(y) && isfinite(z)) {
-                rotation[0] = fbx_sanitize_rotation_degrees(x);
-                rotation[1] = fbx_sanitize_rotation_degrees(y);
-                rotation[2] = fbx_sanitize_rotation_degrees(z);
-            }
-        } else if (scale && strcmp(pn, "Lcl Scaling") == 0) {
-            double x = fbx_prop_f64(p, 4);
-            double y = fbx_prop_f64(p, 5);
-            double z = fbx_prop_f64(p, 6);
-            if (isfinite(x) && isfinite(y) && isfinite(z)) {
-                scale[0] = fbx_scale_or_unit(x);
-                scale[1] = fbx_scale_or_unit(y);
-                scale[2] = fbx_scale_or_unit(z);
-            }
-        }
-    }
-}
 
 /// @brief Return non-zero if @p curve contains at least one keyframe with usable value data.
 static int fbx_anim_curve_has_data(const fbx_anim_curve_view_t *curve) {
@@ -733,10 +638,15 @@ static int fbx_i64_compare(const void *a, const void *b) {
 /// @brief Append @p value to an unsorted key-time array; sorting/dedup happens once after collect.
 /// @details Non-finite or extreme key times indicate a corrupt animation curve and are reported as
 ///          failure so callers can reject the stack instead of silently producing an empty clip.
-static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capacity, int64_t value) {
+static int fbx_anim_append_time(int64_t **times,
+                                int32_t *count,
+                                int32_t *capacity,
+                                int64_t value,
+                                fbx_load_context_t *context) {
     double seconds = (double)value / (double)FBX_TIME_SECOND;
-    if (!times || !count || !capacity || *count < 0 || *capacity < 0 || *count > *capacity ||
-        (*count > 0 && !*times))
+    if (!times || !count || !capacity || !context || *count < 0 || *capacity < 0 ||
+        *count > *capacity || (*count > 0 && !*times) ||
+        *count >= RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL)
         return 0;
     if (!isfinite(seconds) || fabs(seconds) > FBX_ANIM_TIME_SECONDS_MAX)
         return 0;
@@ -746,7 +656,10 @@ static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capaci
             new_capacity = *count + 1;
         else
             new_capacity = *capacity == 0 ? 16 : *capacity * 2;
-        if (new_capacity <= *capacity || (size_t)new_capacity > SIZE_MAX / sizeof(**times))
+        if (new_capacity > RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL)
+            new_capacity = RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL;
+        if (new_capacity <= *capacity || (size_t)new_capacity > SIZE_MAX / sizeof(**times) ||
+            !fbx_budget_charge(context, (uint64_t)(new_capacity - *capacity), sizeof(**times)))
             return 0;
         int64_t *grown = (int64_t *)realloc(*times, (size_t)new_capacity * sizeof(*grown));
         if (!grown)
@@ -759,12 +672,118 @@ static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capaci
     return 1;
 }
 
+/// @brief Test whether one cubic sub-interval is sufficiently represented by a straight chord.
+/// @details The authored Hermite curve is evaluated at quarter, midpoint, and three-quarter ticks.
+///          Each sample is compared with linear interpolation between the sub-interval endpoints
+///          using the mixed bound `1e-4 + 1e-4 * max(abs(value))`. A sub-interval must also be no
+///          longer than one millisecond before it can terminate subdivision.
+/// @param curve Source curve.
+/// @param segment_lo Authored segment's starting key index.
+/// @param segment_hi Authored segment's ending key index.
+/// @param time_lo Current sub-interval start tick.
+/// @param time_hi Current sub-interval end tick.
+/// @return Nonzero when both time-span and value-error bounds are satisfied.
+static int fbx_anim_cubic_interval_satisfies_bounds(const fbx_anim_curve_view_t *curve,
+                                                    uint32_t segment_lo,
+                                                    uint32_t segment_hi,
+                                                    int64_t time_lo,
+                                                    int64_t time_hi) {
+    static const int fractions[3] = {1, 2, 3};
+    int64_t delta = time_hi - time_lo;
+    int64_t max_time_ticks = (FBX_TIME_SECOND + 999) / 1000;
+    double value_lo;
+    double value_hi;
+    if (delta <= 1)
+        return 1;
+    if (delta > max_time_ticks)
+        return 0;
+    value_lo = fbx_anim_curve_cubic_value(curve, segment_lo, segment_hi, time_lo, 0.0);
+    value_hi = fbx_anim_curve_cubic_value(curve, segment_lo, segment_hi, time_hi, value_lo);
+    if (!isfinite(value_lo) || !isfinite(value_hi))
+        return 0;
+    for (int i = 0; i < 3; i++) {
+        int64_t sample_time = time_lo + (delta * fractions[i]) / 4;
+        double fraction;
+        double exact;
+        double linear;
+        double magnitude;
+        double tolerance;
+        if (sample_time <= time_lo || sample_time >= time_hi)
+            continue;
+        fraction = (double)(sample_time - time_lo) / (double)delta;
+        exact = fbx_anim_curve_cubic_value(curve, segment_lo, segment_hi, sample_time, value_lo);
+        linear = value_lo + (value_hi - value_lo) * fraction;
+        magnitude = fmax(fmax(fabs(value_lo), fabs(value_hi)), fmax(fabs(exact), fabs(linear)));
+        tolerance = 1e-4 + 1e-4 * magnitude;
+        if (!isfinite(exact) || !isfinite(linear) || fabs(exact - linear) > tolerance)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Recursively add the minimum tick samples needed for one cubic Hermite interval.
+/// @details Subdivision stops only after @ref fbx_anim_cubic_interval_satisfies_bounds succeeds.
+///          Every midpoint is representable, budgeted, and bounded by the runtime channel ceiling;
+///          failure to meet those constraints propagates so the entire FBX load can roll back.
+/// @param times Dynamic unsorted sample-time array.
+/// @param count Current array element count.
+/// @param capacity Current array capacity.
+/// @param curve Source curve.
+/// @param segment_lo Authored segment start key index.
+/// @param segment_hi Authored segment end key index.
+/// @param time_lo Current sub-interval start tick.
+/// @param time_hi Current sub-interval end tick.
+/// @param depth Recursion depth guard.
+/// @param context Active aggregate load budget.
+/// @return Nonzero on success, zero when bounds cannot be met safely.
+static int fbx_anim_append_adaptive_cubic_times(int64_t **times,
+                                                int32_t *count,
+                                                int32_t *capacity,
+                                                const fbx_anim_curve_view_t *curve,
+                                                uint32_t segment_lo,
+                                                uint32_t segment_hi,
+                                                int64_t time_lo,
+                                                int64_t time_hi,
+                                                int depth,
+                                                fbx_load_context_t *context) {
+    int64_t midpoint;
+    if (fbx_anim_cubic_interval_satisfies_bounds(curve, segment_lo, segment_hi, time_lo, time_hi)) {
+        return 1;
+    }
+    if (depth >= 63 || time_hi - time_lo <= 1)
+        return 0;
+    midpoint = time_lo + (time_hi - time_lo) / 2;
+    if (midpoint <= time_lo || midpoint >= time_hi ||
+        !fbx_anim_append_time(times, count, capacity, midpoint, context)) {
+        return 0;
+    }
+    return fbx_anim_append_adaptive_cubic_times(times,
+                                                count,
+                                                capacity,
+                                                curve,
+                                                segment_lo,
+                                                segment_hi,
+                                                time_lo,
+                                                midpoint,
+                                                depth + 1,
+                                                context) &&
+           fbx_anim_append_adaptive_cubic_times(times,
+                                                count,
+                                                capacity,
+                                                curve,
+                                                segment_lo,
+                                                segment_hi,
+                                                midpoint,
+                                                time_hi,
+                                                depth + 1,
+                                                context);
+}
+
 /// @brief Append all runtime-needed sample times for an FBX animation curve.
 /// @details Adds authored key times unconditionally. Constant segments also add one representable
-///          pre-step sample before the next key so runtime linear interpolation holds the previous
-///          value until the step. Cubic segments add one-third and two-third samples, giving the
-///          existing keyframe runtime enough points to approximate Hermite source curves without
-///          changing Animation3D's storage model.
+///          immediately preceding FBX tick so runtime linear interpolation holds the previous value
+///          through the final representable instant. Cubic segments are recursively subdivided to
+///          the documented one-millisecond and mixed absolute/relative error bounds.
 /// @param times Dynamic array receiving unsorted FBX tick times.
 /// @param count Current array count.
 /// @param capacity Current array capacity.
@@ -773,11 +792,12 @@ static int fbx_anim_append_time(int64_t **times, int32_t *count, int32_t *capaci
 static int fbx_anim_append_curve_sample_times(int64_t **times,
                                               int32_t *count,
                                               int32_t *capacity,
-                                              const fbx_anim_curve_view_t *curve) {
+                                              const fbx_anim_curve_view_t *curve,
+                                              fbx_load_context_t *context) {
     if (!fbx_anim_curve_has_data(curve))
         return 1;
     for (uint32_t k = 0; k < curve->count; k++) {
-        if (!fbx_anim_append_time(times, count, capacity, curve->times[k]))
+        if (!fbx_anim_append_time(times, count, capacity, curve->times[k], context))
             return 0;
     }
     for (uint32_t k = 0; k + 1u < curve->count; k++) {
@@ -789,20 +809,12 @@ static int fbx_anim_append_curve_sample_times(int64_t **times,
             continue;
         mode = fbx_anim_curve_segment_mode(curve, k);
         if (mode == FBX_ANIM_INTERP_CONSTANT) {
-            int64_t step_delta = FBX_TIME_SECOND / 100000LL; /* 10 microseconds */
-            if (step_delta >= delta)
-                step_delta = 1;
-            if (t1 - step_delta > t0 &&
-                !fbx_anim_append_time(times, count, capacity, t1 - step_delta))
+            if (t1 - 1 > t0 && !fbx_anim_append_time(times, count, capacity, t1 - 1, context))
                 return 0;
-        } else if (mode == FBX_ANIM_INTERP_CUBIC && delta >= 3) {
-            int64_t t_a = t0 + delta / 3;
-            int64_t t_b = t0 + (delta * 2) / 3;
-            if (t_a > t0 && t_a < t1 && !fbx_anim_append_time(times, count, capacity, t_a))
-                return 0;
-            if (t_b > t0 && t_b < t1 && t_b != t_a &&
-                !fbx_anim_append_time(times, count, capacity, t_b))
-                return 0;
+        } else if (mode == FBX_ANIM_INTERP_CUBIC &&
+                   !fbx_anim_append_adaptive_cubic_times(
+                       times, count, capacity, curve, k, k + 1u, t0, t1, 0, context)) {
+            return 0;
         }
     }
     return 1;
@@ -866,7 +878,8 @@ static void fbx_anim_sort_unique_times(int64_t *times, int32_t *count) {
 ///        deliberate trade-off: FBX scenes typically carry only a few hundred connections, so
 ///        the one-time load cost is negligible. For very large rigs the optimization path is an
 ///        id→node hash plus connection indices keyed by parent_id/child_id (O(1) lookups); it is
-///        intentionally not built here to keep this untrusted-input parser simple and auditable.
+///        endpoint adjacency and numeric object indexes keep the work proportional to the graph
+///        actually reachable from @p stack_id.
 static void fbx_anim_collect_curves(fbx_node_t *objects,
                                     const fbx_conn_table_t *ct,
                                     void *skeleton,
@@ -877,21 +890,30 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
                                     fbx_anim_bone_builder_t *builders) {
     if (!objects || !ct || !builders)
         return;
-    for (int32_t li = 0; li < ct->count; li++) {
+    for (int32_t binding_index = 0; binding_index < bone_binding_count; binding_index++) {
+        int32_t bone_index = bone_bindings[binding_index].bone_index;
+        fbx_node_t *model_node;
+        if (bone_index < 0 || (int64_t)bone_index >= bone_count)
+            continue;
+        model_node = fbx_find_object_by_id(objects, bone_bindings[binding_index].model_id);
+        if (!model_node || !model_node->name || strcmp(model_node->name, "Model") != 0)
+            continue;
+        fbx_read_model_transform_components(model_node, &builders[bone_index].base_transform);
+        builders[bone_index].initialized = 1;
+    }
+    for (int32_t li = fbx_connections_first_for_parent(ct, stack_id); li >= 0;
+         li = fbx_connections_next_for_parent(ct, li)) {
         int64_t layer_id;
         fbx_node_t *layer_node;
-        if (ct->entries[li].parent_id != stack_id)
-            continue;
         layer_id = ct->entries[li].child_id;
         layer_node = fbx_find_object_by_id(objects, layer_id);
         if (!layer_node || strcmp(layer_node->name, "AnimationLayer") != 0)
             continue;
 
-        for (int32_t ci = 0; ci < ct->count; ci++) {
+        for (int32_t ci = fbx_connections_first_for_parent(ct, layer_id); ci >= 0;
+             ci = fbx_connections_next_for_parent(ct, ci)) {
             int64_t curve_node_id;
             fbx_node_t *cn_node;
-            if (ct->entries[ci].parent_id != layer_id)
-                continue;
             curve_node_id = ct->entries[ci].child_id;
             cn_node = fbx_find_object_by_id(objects, curve_node_id);
             if (!cn_node || strcmp(cn_node->name, "AnimationCurveNode") != 0)
@@ -902,23 +924,22 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
              * Scaling" */
             int32_t trs_type = -1; /* 0=T, 1=R, 2=S */
             int64_t model_id = 0;
-            for (int32_t ci2 = 0; ci2 < ct->count; ci2++) {
-                if (ct->entries[ci2].child_id == curve_node_id) {
-                    int64_t pid = ct->entries[ci2].parent_id;
-                    fbx_node_t *pnode = fbx_find_object_by_id(objects, pid);
-                    if (pnode && strcmp(pnode->name, "Model") == 0) {
-                        model_id = pid;
-                        const char *cprop = ct->entries[ci2].prop;
-                        if (!cprop)
-                            continue;
-                        if (strcmp(cprop, "Lcl Translation") == 0)
-                            trs_type = 0;
-                        else if (strcmp(cprop, "Lcl Rotation") == 0)
-                            trs_type = 1;
-                        else if (strcmp(cprop, "Lcl Scaling") == 0)
-                            trs_type = 2;
-                        break;
-                    }
+            for (int32_t ci2 = fbx_connections_first_for_child(ct, curve_node_id); ci2 >= 0;
+                 ci2 = fbx_connections_next_for_child(ct, ci2)) {
+                int64_t pid = ct->entries[ci2].parent_id;
+                fbx_node_t *pnode = fbx_find_object_by_id(objects, pid);
+                if (pnode && strcmp(pnode->name, "Model") == 0) {
+                    model_id = pid;
+                    const char *cprop = ct->entries[ci2].prop;
+                    if (!cprop)
+                        continue;
+                    if (strcmp(cprop, "Lcl Translation") == 0)
+                        trs_type = 0;
+                    else if (strcmp(cprop, "Lcl Rotation") == 0)
+                        trs_type = 1;
+                    else if (strcmp(cprop, "Lcl Scaling") == 0)
+                        trs_type = 2;
+                    break;
                 }
             }
             if (trs_type < 0 || model_id == 0)
@@ -930,19 +951,15 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
                 continue;
             if (!builders[bone_idx].initialized) {
                 fbx_node_t *model_node = fbx_find_object_by_id(objects, model_id);
-                fbx_extract_model_lcl_components(model_node,
-                                                 builders[bone_idx].base_translation,
-                                                 builders[bone_idx].base_rotation,
-                                                 builders[bone_idx].base_scale);
+                fbx_read_model_transform_components(model_node, &builders[bone_idx].base_transform);
                 builders[bone_idx].initialized = 1;
             }
 
             /* Find AnimationCurve children (d|X, d|Y, d|Z) */
-            for (int32_t ki = 0; ki < ct->count; ki++) {
+            for (int32_t ki = fbx_connections_first_for_parent(ct, curve_node_id); ki >= 0;
+                 ki = fbx_connections_next_for_parent(ct, ki)) {
                 fbx_node_t *curve;
                 const char *curve_prop;
-                if (ct->entries[ki].parent_id != curve_node_id)
-                    continue;
                 curve = fbx_find_object_by_id(objects, ct->entries[ki].child_id);
                 if (!curve || strcmp(curve->name, "AnimationCurve") != 0)
                     continue;
@@ -1007,10 +1024,9 @@ static int fbx_anim_stack_has_layer(fbx_node_t *objects,
                                     int64_t stack_id) {
     if (!objects || !ct)
         return 0;
-    for (int32_t i = 0; i < ct->count; i++) {
+    for (int32_t i = fbx_connections_first_for_parent(ct, stack_id); i >= 0;
+         i = fbx_connections_next_for_parent(ct, i)) {
         fbx_node_t *layer_node;
-        if (ct->entries[i].parent_id != stack_id)
-            continue;
         layer_node = fbx_find_object_by_id(objects, ct->entries[i].child_id);
         if (layer_node && strcmp(layer_node->name, "AnimationLayer") == 0)
             return 1;
@@ -1060,136 +1076,275 @@ static int fbx_anim_compute_time_bounds(const fbx_anim_bone_builder_t *builders,
     return 1;
 }
 
-/// @brief Sample one bone's T/R/S curves at each unique keyframe time and emit keyframes into
-///        @p anim (Euler degrees → quaternion). @return 1 if any keyframe was emitted.
+/// @brief Evaluate one bone builder's full transform-component record at an FBX tick.
+/// @details Only authored local T/R/S lanes are replaced by animation curves. Rotation order,
+///          activation, pivots, offsets, pre/post rotation, geometric transforms, and inheritance
+///          remain copied from the static base record.
+/// @param builder Initialized bone builder.
+/// @param fbx_time Source time in FBX ticks.
+/// @param out Receives the sampled and sanitized component record.
+/// @return Nonzero on success.
+static int fbx_anim_sample_components(const fbx_anim_bone_builder_t *builder,
+                                      int64_t fbx_time,
+                                      fbx_transform_components_t *out) {
+    if (!builder || !builder->initialized || !out)
+        return 0;
+    *out = builder->base_transform;
+    for (int component = 0; component < 3; component++) {
+        out->translation[component] = fbx_anim_curve_value(
+            &builder->curves[0][component], fbx_time, out->translation[component]);
+        out->rotation[component] = fbx_anim_curve_value(
+            &builder->curves[1][component], fbx_time, out->rotation[component]);
+        out->scale[component] =
+            fbx_anim_curve_value(&builder->curves[2][component], fbx_time, out->scale[component]);
+        out->translation[component] =
+            fbx_clamp_abs_or(out->translation[component], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->rotation[component] = fbx_sanitize_rotation_degrees(out->rotation[component]);
+        out->scale[component] = fbx_scale_or_unit(out->scale[component]);
+    }
+    return 1;
+}
+
+/// @brief Evaluate a bone and all ancestors through the shared FBX inheritance composer.
+/// @details The chain is sampled root-to-leaf at one source tick. Each global matrix uses
+///          @ref fbx_build_inherited_global_matrix; the target is converted back to the
+///          parent-relative matrix expected by Animation3D and decomposed with the same routine as
+///          static SceneNode3D construction. This also bakes non-standard inheritance when parent
+///          scale is animated.
+/// @param builders Builder array indexed by runtime bone index.
+/// @param bone_count Number of valid builders/bones.
+/// @param skeleton Skeleton providing parent indices.
+/// @param bone_idx Target bone index.
+/// @param fbx_time Source time in ticks.
+/// @param z_up Nonzero to apply basis conversion to every local matrix.
+/// @param position Receives target parent-relative XYZ.
+/// @param quaternion Receives target parent-relative XYZW.
+/// @param scale Receives target parent-relative XYZ scale.
+/// @return Nonzero on success, zero on an invalid/cyclic chain or singular parent transform.
+static int fbx_anim_sample_bone_runtime_trs(const fbx_anim_bone_builder_t *builders,
+                                            int64_t bone_count,
+                                            void *skeleton,
+                                            int64_t bone_idx,
+                                            int64_t fbx_time,
+                                            int z_up,
+                                            double position[3],
+                                            double quaternion[4],
+                                            double scale[3]) {
+    int32_t chain[FBX_MAX_SKELETON_BONES];
+    int32_t chain_count = 0;
+    int64_t walk = bone_idx;
+    double parent_global[16];
+    fbx_transform_components_t parent_components;
+    int has_parent = 0;
+    if (!builders || !skeleton || bone_count <= 0 || bone_count > FBX_MAX_SKELETON_BONES ||
+        bone_idx < 0 || bone_idx >= bone_count) {
+        return 0;
+    }
+    while (walk >= 0) {
+        if (walk >= bone_count || chain_count >= FBX_MAX_SKELETON_BONES)
+            return 0;
+        for (int32_t i = 0; i < chain_count; i++)
+            if (chain[i] == (int32_t)walk)
+                return 0;
+        chain[chain_count++] = (int32_t)walk;
+        walk = rt_skeleton3d_get_bone_parent_raw(skeleton, walk);
+    }
+    for (int32_t chain_index = chain_count - 1; chain_index >= 0; chain_index--) {
+        int32_t current = chain[chain_index];
+        fbx_transform_components_t components;
+        double local[16];
+        double global[16];
+        double runtime_local[16];
+        if (!fbx_anim_sample_components(&builders[current], fbx_time, &components))
+            return 0;
+        fbx_build_model_transform_matrix(&components, local);
+        if (z_up)
+            fbx_mat4_apply_zup(local);
+        if (has_parent) {
+            double inverse_parent[16];
+            fbx_build_inherited_global_matrix(
+                parent_global, &parent_components, local, &components, global);
+            if (!fbx_mat4_inverse_affine(parent_global, inverse_parent))
+                return 0;
+            fbx_mat4_mul_local(inverse_parent, global, runtime_local);
+        } else {
+            memcpy(global, local, sizeof(global));
+            memcpy(runtime_local, local, sizeof(runtime_local));
+        }
+        if (chain_index == 0)
+            fbx_decompose_matrix_trs(runtime_local, position, quaternion, scale);
+        memcpy(parent_global, global, sizeof(parent_global));
+        parent_components = components;
+        has_parent = 1;
+    }
+    return 1;
+}
+
+/// @brief Append curve sample times for a bone and every ancestor affecting its inherited pose.
+/// @details Parent curve times are included so non-standard scaling inheritance is baked whenever a
+///          parent changes, even when the child has no directly authored curve at that instant.
+/// @param times Dynamic unsorted tick array.
+/// @param count Current element count.
+/// @param capacity Current capacity.
+/// @param builders Builder array indexed by bone.
+/// @param bone_count Builder count.
+/// @param skeleton Skeleton parent table.
+/// @param bone_idx Starting bone.
+/// @param context Active aggregate budget.
+/// @return Nonzero on success, zero on invalid hierarchy or sample-limit/budget failure.
+static int fbx_anim_append_inherited_sample_times(int64_t **times,
+                                                  int32_t *count,
+                                                  int32_t *capacity,
+                                                  const fbx_anim_bone_builder_t *builders,
+                                                  int64_t bone_count,
+                                                  void *skeleton,
+                                                  int64_t bone_idx,
+                                                  fbx_load_context_t *context) {
+    int32_t guard = 0;
+    for (int64_t current = bone_idx; current >= 0;
+         current = rt_skeleton3d_get_bone_parent_raw(skeleton, current)) {
+        if (current >= bone_count || ++guard > bone_count)
+            return 0;
+        if (!builders[current].initialized)
+            return 0;
+        for (int trs = 0; trs < 3; trs++) {
+            for (int component = 0; component < 3; component++) {
+                const fbx_anim_curve_view_t *curve = &builders[current].curves[trs][component];
+                if (!fbx_anim_append_curve_sample_times(times, count, capacity, curve, context)) {
+                    return 0;
+                }
+            }
+        }
+    }
+    return 1;
+}
+
+/// @brief Emit one bone's inheritance-aware, fully composed Animation3D keyframes.
+/// @details Returns -1 on any allocation, budget, hierarchy, or insertion failure so the caller can
+///          roll back the complete FBX asset; zero means no source/ancestor curve affected this
+///          bone, and one means at least one keyframe was emitted.
 static int fbx_anim_build_bone_keyframes(void *anim,
                                          const fbx_anim_bone_builder_t *builders,
+                                         int64_t bone_count,
+                                         void *skeleton,
                                          int64_t bone_idx,
                                          int z_up,
-                                         int64_t clip_start_time) {
+                                         int64_t clip_start_time,
+                                         fbx_load_context_t *context) {
     int64_t *times = NULL;
     int32_t time_count = 0;
     int32_t time_capacity = 0;
     int emitted_any = 0;
-    int time_failed = 0;
     if (!builders[bone_idx].initialized)
         return 0;
-    for (int trs = 0; trs < 3; trs++) {
-        for (int comp = 0; comp < 3; comp++) {
-            const fbx_anim_curve_view_t *curve = &builders[bone_idx].curves[trs][comp];
-            if (!fbx_anim_curve_has_data(curve))
-                continue;
-            if (!fbx_anim_append_curve_sample_times(&times, &time_count, &time_capacity, curve)) {
-                time_failed = 1;
-                break;
-            }
-        }
-        if (time_failed)
-            break;
-    }
-    if (time_failed) {
+    if (!fbx_anim_append_inherited_sample_times(&times,
+                                                &time_count,
+                                                &time_capacity,
+                                                builders,
+                                                bone_count,
+                                                skeleton,
+                                                bone_idx,
+                                                context)) {
         free(times);
-        return 0;
+        return -1;
     }
     fbx_anim_sort_unique_times(times, &time_count);
+    if (time_count > 0) {
+        int32_t reserved_keyframes = 16;
+        while (reserved_keyframes < time_count) {
+            if (reserved_keyframes > RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL / 2) {
+                free(times);
+                return -1;
+            }
+            reserved_keyframes *= 2;
+        }
+        if (!fbx_budget_charge(context, (uint64_t)reserved_keyframes, sizeof(vgfx3d_keyframe_t)) ||
+            !fbx_budget_charge(context, 8u, sizeof(vgfx3d_anim_channel_t))) {
+            free(times);
+            return -1;
+        }
+    }
     for (int32_t ti = 0; ti < time_count; ti++) {
         int64_t fbx_time = times[ti];
         double t = ((double)fbx_time - (double)clip_start_time) / (double)FBX_TIME_SECOND;
-        double tv[3];
-        double rv[3];
-        double sv[3];
+        double position_value[3];
+        double quaternion_value[4];
+        double scale_value[3];
+        void *position;
+        void *rotation;
+        void *scale;
         if (isfinite(t) && t < 0.0 && t > -1e-9)
             t = 0.0;
         if (!isfinite(t) || t < 0.0 || t > FBX_ANIM_TIME_SECONDS_MAX)
             continue;
-        memcpy(tv, builders[bone_idx].base_translation, sizeof(tv));
-        memcpy(rv, builders[bone_idx].base_rotation, sizeof(rv));
-        memcpy(sv, builders[bone_idx].base_scale, sizeof(sv));
-        for (int comp = 0; comp < 3; comp++) {
-            tv[comp] =
-                fbx_anim_curve_value(&builders[bone_idx].curves[0][comp], fbx_time, tv[comp]);
-            rv[comp] =
-                fbx_anim_curve_value(&builders[bone_idx].curves[1][comp], fbx_time, rv[comp]);
-            sv[comp] =
-                fbx_anim_curve_value(&builders[bone_idx].curves[2][comp], fbx_time, sv[comp]);
+        if (!fbx_anim_sample_bone_runtime_trs(builders,
+                                              bone_count,
+                                              skeleton,
+                                              bone_idx,
+                                              fbx_time,
+                                              z_up,
+                                              position_value,
+                                              quaternion_value,
+                                              scale_value)) {
+            free(times);
+            return -1;
         }
-        if (z_up)
-            fbx_correct_zup(&tv[0], &tv[1], &tv[2]);
-        if (!fbx_sanitize_position3(&tv[0], &tv[1], &tv[2]))
-            continue;
-        rv[0] = fbx_sanitize_rotation_degrees(rv[0]);
-        rv[1] = fbx_sanitize_rotation_degrees(rv[1]);
-        rv[2] = fbx_sanitize_rotation_degrees(rv[2]);
-        sv[0] = fbx_scale_or_unit(sv[0]);
-        sv[1] = fbx_scale_or_unit(sv[1]);
-        sv[2] = fbx_scale_or_unit(sv[2]);
-
-        double rx = rv[0] * 3.14159265358979323846 / 180.0;
-        double ry = rv[1] * 3.14159265358979323846 / 180.0;
-        double rz = rv[2] * 3.14159265358979323846 / 180.0;
-        double cx = cos(rx * 0.5), sx = sin(rx * 0.5);
-        double cy = cos(ry * 0.5), sy = sin(ry * 0.5);
-        double cz = cos(rz * 0.5), sz = sin(rz * 0.5);
-        double qw = cx * cy * cz + sx * sy * sz;
-        double qx = sx * cy * cz - cx * sy * sz;
-        double qy = cx * sy * cz + sx * cy * sz;
-        double qz = cx * cy * sz - sx * sy * cz;
-        if (!isfinite(qx) || !isfinite(qy) || !isfinite(qz) || !isfinite(qw))
-            continue;
-        {
-            double qlen = sqrt(qx * qx + qy * qy + qz * qz + qw * qw);
-            if (!isfinite(qlen) || qlen <= 1e-12)
-                continue;
-            qx /= qlen;
-            qy /= qlen;
-            qz /= qlen;
-            qw /= qlen;
+        position = rt_vec3_new(position_value[0], position_value[1], position_value[2]);
+        rotation = rt_quat_new(
+            quaternion_value[0], quaternion_value[1], quaternion_value[2], quaternion_value[3]);
+        scale = rt_vec3_new(scale_value[0], scale_value[1], scale_value[2]);
+        if (!position || !rotation || !scale ||
+            !rt_animation3d_try_add_keyframe(anim, bone_idx, t, position, rotation, scale)) {
+            fbx_release_ref(&position);
+            fbx_release_ref(&rotation);
+            fbx_release_ref(&scale);
+            free(times);
+            return -1;
         }
-        void *pos = rt_vec3_new(tv[0], tv[1], tv[2]);
-        void *rot = rt_quat_new(qx, qy, qz, qw);
-        void *scl = rt_vec3_new(sv[0], sv[1], sv[2]);
-        if (pos && rot && scl) {
-            rt_animation3d_add_keyframe(anim, bone_idx, t, pos, rot, scl);
-            emitted_any = 1;
-        }
-        fbx_release_ref(&pos);
-        fbx_release_ref(&rot);
-        fbx_release_ref(&scl);
+        emitted_any = 1;
+        fbx_release_ref(&position);
+        fbx_release_ref(&rotation);
+        fbx_release_ref(&scale);
     }
     free(times);
     return emitted_any;
 }
 
-/// @brief Extract animation clips from the FBX node graph: for each animation stack, sample
-///   its bone AnimCurves over the union of keyframe times and emit TRS keyframes (Euler
-///   degrees converted to quaternions, with optional Z-up correction) into new Animation3Ds.
+/// @brief Extract animation clips transactionally from the indexed FBX node graph.
+/// @details Each stack samples full FBX component/inheritance matrices over authored and adaptive
+///          times. Builder and generated runtime storage are charged before allocation. Any hard
+///          failure releases all clips staged by this call so the enclosing asset cannot publish a
+///          truncated animation set.
 /// @param out_anims Receives a newly allocated array of animation objects (caller owns).
 /// @param out_count Receives the number of animations written.
-static void fbx_extract_animations(fbx_node_t *root,
-                                   const fbx_conn_table_t *ct,
-                                   void *skeleton,
-                                   const fbx_bone_binding_t *bone_bindings,
-                                   int32_t bone_binding_count,
-                                   int z_up,
-                                   void ***out_anims,
-                                   int32_t *out_count,
-                                   int32_t *out_capacity) {
+/// @param context Active aggregate load budget.
+/// @return Nonzero on success (including no animations), zero after rolling back on failure.
+static int fbx_extract_animations(fbx_node_t *root,
+                                  const fbx_conn_table_t *ct,
+                                  void *skeleton,
+                                  const fbx_bone_binding_t *bone_bindings,
+                                  int32_t bone_binding_count,
+                                  int z_up,
+                                  void ***out_anims,
+                                  int32_t *out_count,
+                                  int32_t *out_capacity,
+                                  fbx_load_context_t *context) {
     if (!out_anims || !out_count || !out_capacity)
-        return;
+        return 0;
     *out_anims = NULL;
     *out_count = 0;
     *out_capacity = 0;
 
     fbx_node_t *objects = fbx_find_child(root, "Objects");
     if (!objects)
-        return;
+        return 1;
 
     int64_t bone_count = skeleton ? rt_skeleton3d_get_bone_count(skeleton) : 0;
     if (bone_count <= 0)
-        return;
+        return 1;
     if (bone_count > FBX_MAX_SKELETON_BONES ||
         (size_t)bone_count > SIZE_MAX / sizeof(fbx_anim_bone_builder_t))
-        return;
+        return 0;
 
     /* Find AnimationStack nodes */
     for (int32_t i = 0; i < objects->child_count; i++) {
@@ -1202,23 +1357,17 @@ static void fbx_extract_animations(fbx_node_t *root,
             continue;
 
         int64_t stack_id = fbx_prop_i64(obj, 0);
-        char decoded_anim_name[64];
-        const char *anim_name = "Untitled";
-        if (obj->prop_count >= 2) {
-            fbx_decode_object_name(
-                fbx_prop_str(obj, 1), decoded_anim_name, sizeof(decoded_anim_name));
-            if (decoded_anim_name[0] != '\0')
-                anim_name = decoded_anim_name;
-        }
+        rt_string runtime_anim_name = NULL;
 
         if (!fbx_anim_stack_has_layer(objects, ct, stack_id))
             continue;
 
-        if ((size_t)bone_count > SIZE_MAX / sizeof(*builders))
-            continue;
+        if ((size_t)bone_count > SIZE_MAX / sizeof(*builders) ||
+            !fbx_budget_charge(context, (uint64_t)bone_count, sizeof(*builders)))
+            goto fail;
         builders = (fbx_anim_bone_builder_t *)calloc((size_t)bone_count, sizeof(*builders));
         if (!builders)
-            continue;
+            goto fail;
 
         fbx_anim_collect_curves(objects,
                                 ct,
@@ -1234,17 +1383,28 @@ static void fbx_extract_animations(fbx_node_t *root,
         }
         duration = ((double)max_time - (double)min_time) / (double)FBX_TIME_SECOND;
         duration = fbx_clamp_double(duration, 0.0, FBX_ANIM_TIME_SECONDS_MAX, 0.0);
-        rt_string runtime_anim_name = rt_const_cstr(anim_name);
+        runtime_anim_name = fbx_object_name_string(obj, 1);
+        if (!runtime_anim_name || rt_str_is_empty(runtime_anim_name)) {
+            rt_string_unref(runtime_anim_name);
+            runtime_anim_name = rt_const_cstr("Untitled");
+        }
         void *anim = rt_animation3d_new(runtime_anim_name, duration > 0.0 ? duration : 1.0);
         rt_string_unref(runtime_anim_name);
         int emitted_any = 0;
         if (!anim) {
             free(builders);
-            continue;
+            goto fail;
         }
 
         for (int64_t bone_idx = 0; bone_idx < bone_count; bone_idx++) {
-            if (fbx_anim_build_bone_keyframes(anim, builders, bone_idx, z_up, min_time))
+            int build_status = fbx_anim_build_bone_keyframes(
+                anim, builders, bone_count, skeleton, bone_idx, z_up, min_time, context);
+            if (build_status < 0) {
+                free(builders);
+                fbx_release_ref(&anim);
+                goto fail;
+            }
+            if (build_status > 0)
                 emitted_any = 1;
         }
         free(builders);
@@ -1257,13 +1417,21 @@ static void fbx_extract_animations(fbx_node_t *root,
 
         if (*out_count < 0 || *out_count == INT32_MAX) {
             fbx_release_ref(&anim);
-            continue;
+            goto fail;
+        }
+        if (!fbx_budget_charge(context, 1u, sizeof(void *))) {
+            fbx_release_ref(&anim);
+            goto fail;
         }
         if (!fbx_asset_reserve_ref_array(out_anims, out_capacity, *out_count + 1)) {
             fbx_release_ref(&anim);
-            continue;
+            goto fail;
         }
         (*out_anims)[*out_count] = anim;
         (*out_count)++;
     }
+    return 1;
+fail:
+    fbx_asset_release_ref_array(out_anims, out_count, out_capacity);
+    return 0;
 }

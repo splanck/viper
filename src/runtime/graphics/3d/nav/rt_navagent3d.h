@@ -11,8 +11,14 @@
 // Key invariants:
 //   - NavAgent3D owns a goal, sampled path corners, and local avoidance steering state.
 //   - Update() can drive a bound Character3D or directly reposition a SceneNode3D.
+//   - UpdateBatch() reads one immutable start-of-tick peer snapshot and publishes
+//     selected agents in stable creation order.
 //   - Auto-repath is intentionally simple in v1: periodic rebuilds while a goal
 //     remains active and the agent is not within the stopping distance.
+//
+// Ownership/Lifetime:
+//   - NavAgent3D is GC-managed and retains its navmesh and optional bindings.
+//   - Batch input arrays are borrowed only for the duration of UpdateBatch.
 //
 // Links: rt_navmesh3d.h, rt_physics3d.h, rt_scene3d.h
 //
@@ -37,6 +43,16 @@ void rt_navagent3d_set_target(void *agent, void *position);
 void rt_navagent3d_clear_target(void *agent);
 /// @brief Tick the agent: traverse path corners, drive bound character/node, optionally repath.
 void rt_navagent3d_update(void *agent, double dt);
+/// @brief Tick multiple agents through deterministic snapshot/solve/apply phases.
+/// @details Valid unique handles are sorted by stable creation order. Every avoidance solve reads
+///          the same immutable start-of-tick registry snapshot before any solved position is
+///          published, so reversing @p agents cannot alter results. Invalid handles and duplicates
+///          are ignored. This main-thread C API borrows the array for the duration of the call.
+/// @param agents Array containing @p agent_count candidate NavAgent3D handles.
+/// @param agent_count Number of entries in @p agents.
+/// @param dt Tick duration in seconds, sanitized identically to individual Update.
+/// @return Number of unique valid agents processed, or zero on invalid input/staging failure.
+int64_t rt_navagent3d_update_batch(void *const *agents, int64_t agent_count, double dt);
 /// @brief Teleport the agent to @p position (clears any active path).
 void rt_navagent3d_warp(void *agent, void *position);
 

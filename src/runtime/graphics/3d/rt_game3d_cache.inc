@@ -596,24 +596,29 @@ static int game3d_scene_stack_push(rt_scene_node3d ***stack_io,
     return 1;
 }
 
-/// @brief Estimate a scene's total resident memory by walking its nodes, deduping shared
-/// meshes/materials.
-static uint64_t game3d_scene_estimate_resident_bytes(void *scene_obj) {
-    rt_scene3d *scene = (rt_scene3d *)rt_g3d_checked_or_null(scene_obj, RT_G3D_SCENE3D_CLASS_ID);
-    rt_scene_node3d *root;
+/// @brief Estimate resident memory reachable from one SceneNode3D hierarchy root.
+/// @details Walks at most @p node_bound validated nodes and deduplicates meshes, materials, and
+///   textures shared anywhere in the hierarchy. Invalid child slots are ignored. Allocation
+///   failure returns the conservative total accumulated so far rather than affecting streaming.
+/// @param root_obj Borrowed SceneNode3D root to inspect.
+/// @param node_bound Positive traversal ceiling used to contain corrupt child graphs.
+/// @return Saturating estimate of resident node and render-resource bytes.
+static uint64_t game3d_scene_root_estimate_resident_bytes(void *root_obj, int32_t node_bound) {
+    rt_scene_node3d *root =
+        (rt_scene_node3d *)rt_g3d_checked_or_null(root_obj, RT_G3D_SCENENODE3D_CLASS_ID);
     rt_scene_node3d **stack = NULL;
     size_t count = 0;
     size_t capacity = 0;
     game3d_scene_residency_context residency;
-    int32_t scene_node_bound;
     int32_t visited_count = 0;
     uint64_t total = 0;
 
-    root = scene
-               ? (rt_scene_node3d *)rt_g3d_checked_or_null(scene->root, RT_G3D_SCENENODE3D_CLASS_ID)
-               : NULL;
-    if (!scene || !root)
+    if (!root)
         return 0;
+    if (node_bound <= 0)
+        node_bound = 1;
+    if ((uint32_t)node_bound > RT_SCENE3D_MAX_OWNER_TRANSACTION_NODES)
+        node_bound = (int32_t)RT_SCENE3D_MAX_OWNER_TRANSACTION_NODES;
     game3d_scene_residency_context_init(&residency);
 
     capacity = 32u;
@@ -621,20 +626,19 @@ static uint64_t game3d_scene_estimate_resident_bytes(void *scene_obj) {
     if (!stack)
         return 0;
     stack[count++] = root;
-    scene_node_bound = scene->node_count > 0 ? scene->node_count : 1;
 
     while (count > 0) {
         rt_scene_node3d *node = stack[--count];
         int32_t child_count;
         if (!node)
             continue;
-        if (++visited_count > scene_node_bound)
+        if (++visited_count > node_bound)
             break;
 
         total =
             game3d_u64_saturating_add(total, game3d_scene_count_node_resources(node, &residency));
 
-        child_count = game3d_scene_node_child_count(node, scene_node_bound - visited_count + 1);
+        child_count = game3d_scene_node_child_count(node, node_bound - visited_count + 1);
         for (int32_t i = 0; i < child_count; ++i) {
             if (!game3d_scene_stack_push(&stack, &count, &capacity, node->children[i])) {
                 free(stack);
@@ -646,6 +650,31 @@ static uint64_t game3d_scene_estimate_resident_bytes(void *scene_obj) {
     free(stack);
     game3d_scene_residency_context_free(&residency);
     return total;
+}
+
+/// @brief Estimate a Scene3D's resident hierarchy bytes using its validated cached node bound.
+/// @param scene_obj Borrowed Scene3D handle whose current root should be inspected.
+/// @return Saturating resident-byte estimate, or zero for an invalid/empty scene.
+static uint64_t game3d_scene_estimate_resident_bytes(void *scene_obj) {
+    rt_scene3d *scene = (rt_scene3d *)rt_g3d_checked_or_null(scene_obj, RT_G3D_SCENE3D_CLASS_ID);
+    int32_t node_bound;
+    if (!scene)
+        return 0;
+    node_bound = scene->node_count > 0 ? scene->node_count : 1;
+    return game3d_scene_root_estimate_resident_bytes(scene->root, node_bound);
+}
+
+/// @brief Estimate resident bytes owned by an Entity3D's detached scene-node hierarchy.
+/// @details Streamed scenes transfer their former implicit root into an entity before spawning.
+///   This estimator therefore follows the entity-owned root rather than the now-empty source
+///   Scene3D. The global owner-transaction ceiling bounds malformed or cyclic private state.
+/// @param entity_obj Borrowed Entity3D handle to inspect.
+/// @return Saturating resident-byte estimate, or zero for an invalid entity/node.
+static uint64_t game3d_entity_estimate_resident_bytes(void *entity_obj) {
+    rt_game3d_entity *entity =
+        (rt_game3d_entity *)rt_g3d_checked_or_null(entity_obj, RT_G3D_GAME3D_ENTITY_CLASS_ID);
+    return game3d_scene_root_estimate_resident_bytes(
+        game3d_entity_node_ref(entity), (int32_t)RT_SCENE3D_MAX_OWNER_TRANSACTION_NODES);
 }
 #else
 /// @brief Conservative resident-byte estimate for cache policy decisions in headless builds.
@@ -665,6 +694,14 @@ static uint64_t game3d_model_template_estimate_resident_bytes(
 /// @brief Scene residency is unavailable without the private graphics runtime layouts.
 static uint64_t game3d_scene_estimate_resident_bytes(void *scene_obj) {
     (void)scene_obj;
+    return 0;
+}
+
+/// @brief Entity hierarchy residency is unavailable without private graphics runtime layouts.
+/// @param entity_obj Ignored Entity3D handle retained for source-compatible streaming policy.
+/// @return Always zero so callers use their authored conservative fallback.
+static uint64_t game3d_entity_estimate_resident_bytes(void *entity_obj) {
+    (void)entity_obj;
     return 0;
 }
 #endif

@@ -27,10 +27,10 @@
 
 namespace {
 
-constexpr std::size_t kExpectedFunctionCount = 1958;
+constexpr std::size_t kExpectedFunctionCount = 1975;
 constexpr std::size_t kExpectedClassCount = 125;
-constexpr std::size_t kExpectedPropertyCount = 645;
-constexpr std::size_t kExpectedMethodCount = 1099;
+constexpr std::size_t kExpectedPropertyCount = 657;
+constexpr std::size_t kExpectedMethodCount = 1103;
 
 bool is3DName(std::string_view name) {
     return name.starts_with("Zanna.Graphics3D.") || name.starts_with("Zanna.Game3D.");
@@ -75,8 +75,7 @@ bool require(bool condition, std::string_view message) {
 }
 
 bool checkTarget(std::string_view target) {
-    const il::runtime::RuntimeDescriptor *descriptor =
-        il::runtime::findRuntimeDescriptor(target);
+    const il::runtime::RuntimeDescriptor *descriptor = il::runtime::findRuntimeDescriptor(target);
     bool ok = require(descriptor != nullptr, "3D class binding target is not registered");
     if (descriptor == nullptr)
         return false;
@@ -103,8 +102,8 @@ int main() {
                      "duplicate public 3D runtime function") &&
              ok;
         ok = require(!descriptor.cSymbol.empty(), "public 3D function has no C symbol") && ok;
-        ok = require(!descriptor.signatureText.empty(), "public 3D function has no signature") &&
-             ok;
+        ok =
+            require(!descriptor.signatureText.empty(), "public 3D function has no signature") && ok;
         ok = require(descriptor.signature.valid, "public 3D function has an invalid signature") &&
              ok;
         ok = require(descriptor.handler != nullptr, "public 3D function has no VM handler") && ok;
@@ -117,8 +116,7 @@ int main() {
     std::size_t classCount = 0;
     std::size_t propertyCount = 0;
     std::size_t methodCount = 0;
-    for (const il::runtime::RuntimeClass &runtimeClass :
-         il::runtime::runtimeClassCatalog()) {
+    for (const il::runtime::RuntimeClass &runtimeClass : il::runtime::runtimeClassCatalog()) {
         if (runtimeClass.qname == nullptr || !is3DName(runtimeClass.qname))
             continue;
 
@@ -178,7 +176,7 @@ int main() {
 
     // Filled from the canonical registry after deliberate ABI review. This one value
     // covers every function name/signature/C symbol and every class member binding.
-    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x49a07c6dca40192d);
+    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0xefa17508a7048784);
     if (hash.value() != kExpectedManifestHash) {
         std::cerr << "FAIL: 3D ABI manifest changed; reviewed hash is 0x" << std::hex
                   << hash.value() << '\n';
