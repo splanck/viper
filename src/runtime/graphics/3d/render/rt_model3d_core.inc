@@ -713,6 +713,22 @@ static rt_scene_node3d *model_clone_node_shallow(const rt_scene_node3d *src,
             dst->light = light;
         }
     }
+    if (src->camera) {
+        void *camera = rt_g3d_checked_or_null(src->camera, RT_G3D_CAMERA3D_CLASS_ID);
+        if (camera && clone_mutable_meshes) {
+            void *camera_clone = rt_camera3d_clone(camera);
+            if (!camera_clone) {
+                model_release_local(dst);
+                return NULL;
+            }
+            dst->camera = camera_clone;
+        } else if (camera) {
+            /* Immutable SceneAsset templates share the camera table's exact object so scene
+             * membership and node attachment retain one identity. Mutable instances clone it. */
+            rt_obj_retain_maybe(camera);
+            dst->camera = camera;
+        }
+    }
     if (src->name && rt_string_is_handle(src->name)) {
         rt_obj_retain_maybe(src->name);
         dst->name = src->name;

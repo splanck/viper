@@ -3504,6 +3504,7 @@ static void test_scene_draw_includes_node_attached_lights() {
     void *scene = rt_scene3d_new();
     void *mesh_node = rt_scene_node3d_new();
     void *light_node = rt_scene_node3d_new();
+    void *area_node = rt_scene_node3d_new();
     void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
     void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
@@ -3512,19 +3513,25 @@ static void test_scene_draw_includes_node_attached_lights() {
     void *up = rt_vec3_new(0.0, 1.0, 0.0);
     void *local_pos = rt_vec3_new(0.0, 0.0, 0.0);
     void *light = rt_light3d_new_point(local_pos, 0.25, 0.5, 1.0, 0.2);
+    void *area_light = rt_light3d_new_area_rectangle(
+        local_pos, rt_vec3_new(0.0, 0.0, -1.0), 4.0, 2.0, 1.0, 0.5, 0.25, 0.1, 12.0);
 
     rt_scene_node3d_set_mesh(mesh_node, mesh);
     rt_scene_node3d_set_material(mesh_node, material);
     rt_scene_node3d_set_position(light_node, 2.0, 3.0, 4.0);
     rt_scene_node3d_set_light(light_node, light);
+    rt_scene_node3d_set_position(area_node, -2.0, 1.0, -3.0);
+    rt_scene_node3d_set_scale(area_node, 2.0, 3.0, 4.0);
+    rt_scene_node3d_set_light(area_node, area_light);
     rt_scene3d_add(scene, mesh_node);
     rt_scene3d_add(scene, light_node);
+    rt_scene3d_add(scene, area_node);
     rt_camera3d_look_at(camera, eye, target, up);
 
     rt_scene3d_draw(scene, &canvas, camera);
 
     EXPECT_TRUE(g_scene_submit_count == 1, "SceneGraph draws lit scene geometry");
-    EXPECT_TRUE(g_scene_last_light_count == 1, "SceneGraph forwards node-attached lights");
+    EXPECT_TRUE(g_scene_last_light_count == 2, "SceneGraph forwards node-attached lights");
     if (g_scene_last_light_count > 0) {
         EXPECT_TRUE(g_scene_last_lights[0].type == 1,
                     "SceneGraph preserves node-attached point light type");
@@ -3541,6 +3548,81 @@ static void test_scene_draw_includes_node_attached_lights() {
                     0.001,
                     "SceneGraph transforms node-attached light Z position");
     }
+    if (g_scene_last_light_count > 1) {
+        EXPECT_TRUE(g_scene_last_lights[1].type == 4,
+                    "SceneGraph preserves native rectangle light type");
+        EXPECT_NEAR(g_scene_last_lights[1].position[0],
+                    -2.0,
+                    0.001,
+                    "SceneGraph transforms rectangle X position");
+        EXPECT_NEAR(g_scene_last_lights[1].position[1],
+                    1.0,
+                    0.001,
+                    "SceneGraph transforms rectangle Y position");
+        EXPECT_NEAR(g_scene_last_lights[1].position[2],
+                    -3.0,
+                    0.001,
+                    "SceneGraph transforms rectangle Z position");
+        EXPECT_NEAR(g_scene_last_lights[1].width,
+                    8.0,
+                    0.001,
+                    "SceneGraph scales rectangle width on its U axis");
+        EXPECT_NEAR(g_scene_last_lights[1].height,
+                    6.0,
+                    0.001,
+                    "SceneGraph scales rectangle height on its V axis");
+        EXPECT_NEAR(g_scene_last_lights[1].range,
+                    48.0,
+                    0.001,
+                    "SceneGraph scales rectangle range conservatively");
+        EXPECT_NEAR(g_scene_last_lights[1].basis_u[0] * g_scene_last_lights[1].basis_v[0] +
+                        g_scene_last_lights[1].basis_u[1] * g_scene_last_lights[1].basis_v[1] +
+                        g_scene_last_lights[1].basis_u[2] * g_scene_last_lights[1].basis_v[2],
+                    0.0,
+                    0.001,
+                    "SceneGraph keeps the transformed rectangle basis orthogonal");
+    }
+}
+
+static void test_scene_node_attached_camera_tracks_world_transform() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *node = rt_scene_node3d_new();
+    void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+    void *wrong_class = rt_material3d_new_color(1.0, 0.0, 0.0);
+
+    rt_scene_node3d_set_position(parent, 10.0, 2.0, 3.0);
+    rt_scene_node3d_set_position(node, 1.0, 2.0, 3.0);
+    rt_scene_node3d_set_camera(node, camera);
+    EXPECT_TRUE(rt_scene_node3d_get_camera(node) == camera,
+                "SceneNode retains an attached Camera3D");
+    rt_scene_node3d_set_camera(node, wrong_class);
+    EXPECT_TRUE(rt_scene_node3d_get_camera(node) == camera,
+                "SceneNode rejects wrong-class camera replacements");
+    rt_scene_node3d_add_child(parent, node);
+    rt_scene3d_add(scene, parent);
+
+    rt_scene3d_sync_bindings(scene, 0.0);
+    void *position = rt_camera3d_get_position(camera);
+    void *forward = rt_camera3d_get_forward(camera);
+    EXPECT_NEAR(rt_vec3_x(position), 11.0, 0.001, "Attached camera follows world X");
+    EXPECT_NEAR(rt_vec3_y(position), 4.0, 0.001, "Attached camera follows world Y");
+    EXPECT_NEAR(rt_vec3_z(position), 6.0, 0.001, "Attached camera follows world Z");
+    EXPECT_NEAR(rt_vec3_x(forward), 0.0, 0.001, "Identity node keeps camera forward X");
+    EXPECT_NEAR(rt_vec3_y(forward), 0.0, 0.001, "Identity node keeps camera forward Y");
+    EXPECT_NEAR(rt_vec3_z(forward), -1.0, 0.001, "Identity node keeps camera forward -Z");
+
+    const double half_sqrt2 = std::sqrt(0.5);
+    rt_scene_node3d_set_rotation(node, rt_quat_new(0.0, half_sqrt2, 0.0, half_sqrt2));
+    rt_scene3d_sync_bindings(scene, 0.0);
+    forward = rt_camera3d_get_forward(camera);
+    EXPECT_NEAR(rt_vec3_x(forward), -1.0, 0.001, "Attached camera follows world rotation");
+    EXPECT_NEAR(rt_vec3_y(forward), 0.0, 0.001, "Attached camera rotation stays level");
+    EXPECT_NEAR(rt_vec3_z(forward), 0.0, 0.001, "Attached camera rotates local -Z");
+
+    rt_scene_node3d_set_camera(node, nullptr);
+    EXPECT_TRUE(rt_scene_node3d_get_camera(node) == nullptr,
+                "SceneNode camera binding can be cleared");
 }
 
 static void test_scene_roundtrip_preserves_node_lights() {
@@ -3977,6 +4059,7 @@ int main() {
     test_node_animation_step_accepts_duplicate_key_times();
     test_node_animation_rejects_pathological_channel_sizes();
     test_scene_draw_includes_node_attached_lights();
+    test_scene_node_attached_camera_tracks_world_transform();
     test_scene_roundtrip_preserves_node_lights();
     test_scene_save_rejects_wrong_handle();
     test_scene_load_rejects_malformed_json();

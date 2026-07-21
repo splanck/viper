@@ -519,11 +519,13 @@ Offline 3D asset conditioning. `zanna asset bake <input> <output.vscn>` loads a
 model (glTF/GLB/FBX/OBJ/STL) through the full runtime import pipeline —
 including the meshopt, Draco, and Basis Universal decoders and the import
 options — optionally generates LOD chains, and saves the complete `SceneAsset`
-as VSCN v4 for near-instant loading. Version 4 retains every immutable scene,
-camera association, enumerable resource, node/skeletal animation, material
-variant, and static morph payload; decoded texture pixels are canonicalized
-rather than preserving the source image-container bytes. The command reloads
-the written file before reporting success. Options: `--force-tangents`,
+as VSCN v5 for near-instant loading. Version 5 retains every immutable scene,
+camera-to-node association, native light, enumerable resource, node/skeletal/
+camera animation, material variant, and static morph payload. It also retains
+the complete validated KTX2, PNG, JPEG, GIF, or BMP container when the importer
+had those bytes; otherwise it stores canonical RGBA8 texels. The command reloads
+the written file and compares texture content and metadata before reporting
+success. Options: `--force-tangents`,
 `--eight-influences`, `--compress-anims`, `--lods N` (0-8, halving ratio), and
 `--json`.
 
@@ -532,16 +534,36 @@ In the default output mode, success keeps the historical `baked <input> ->
 round trip produces a warning on stderr with a stable code such as
 `[scene-count-reduced]`, `[camera-count-reduced]`,
 `[node-animation-count-reduced]`, `[morph-target-count-reduced]`,
-`[morph-shape-count-reduced]`, or `[variant-count-reduced]`.
+`[morph-shape-count-reduced]`, or `[variant-count-reduced]`. A texture mismatch
+also warns with its material index, slot, and a stable code such as
+`[texture-source-container-lost]` or `[texture-decoded-texels-changed]`.
+When textures are present, stdout includes a compact count of the three texture
+fidelity states before the historical `baked` line.
 
 `--json` suppresses the human success line and fidelity warnings and writes one
 compact report object to stdout. Its stable schema identifier is
 `zanna.asset-bake-report/v1`. The report contains `status`, `input`, `output`,
-`lossy`, `source`, `baked`, `losses`, and the source loader's `importReport`.
+`lossy`, `source`, `baked`, `losses`, `textureFidelity`, and the source loader's
+`importReport`.
 The source/baked snapshots expose mesh, material, skeleton, skeletal-animation,
 node-animation, morph-target, morph-shape, node, scene, camera, and
 material-variant counts. Each loss has a stable `code`, the affected `resource`,
-both counts, and `dropped`. A failed JSON bake instead reports
+both counts, and `dropped`.
+`textureFidelity.summary` counts `preserved-source`, `preserved-decoded`,
+`changed-after-import`, and `losses`. Its per-material/per-slot entries compare
+the unresolved runtime reference kind, exact source-container kind and bytes,
+dimensions, mip count, compressed/native format, decoded texels, and shared
+reference identity. The states mean:
+
+- `preserved-source`: the same runtime texture kind and exact encoded container
+  survived the round trip;
+- `preserved-decoded`: no exact encoded source was available, and the canonical
+  decoded texels survived; and
+- `changed-after-import`: a retained decoded surface changed after import, so
+  the current RGBA8 texels correctly replaced stale encoded bytes.
+
+Losing an available exact container makes `lossy` true; the absence of source
+bytes at import time does not. A failed JSON bake instead reports
 `status: "error"` and the failing `stage` (`load`, `save`, or `verify`) and exits
 with code 2. Successful JSON mode does not write to stderr, so build tools can
 parse stdout directly.

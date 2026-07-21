@@ -100,8 +100,7 @@ static int canvas3d_reserve_auto_instance_matrices(rt_canvas3d *c, int32_t neede
     }
     if ((size_t)new_capacity > SIZE_MAX / (sizeof(float) * 16u))
         return 0;
-    grown = (float *)realloc(c->auto_instance_matrices,
-                             (size_t)new_capacity * sizeof(float) * 16u);
+    grown = (float *)realloc(c->auto_instance_matrices, (size_t)new_capacity * sizeof(float) * 16u);
     if (!grown)
         return 0;
     c->auto_instance_matrices = grown;
@@ -274,8 +273,9 @@ static int canvas3d_render_shadow_light_slot(
     slot = c->shadow_count;
     light = *selected_light;
     light.shadow_cascade_count = 1;
-    light.shadow_projection_type = light.type == 3 ? VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
-                                                   : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
+    light.shadow_projection_type = light.type == 3 || light.type == 4
+                                       ? VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
+                                       : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
     if (!canvas3d_ensure_shadow_target_slot(c, slot, c->shadow_resolution))
         return 0;
     shadow_rt = c->shadow_rts[slot];
@@ -665,7 +665,7 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                  has_shadow_bounds && slot < selected_shadow_count && c->shadow_count < slot_cap;
                  slot++) {
                 shadow_lights_granted +=
-                    selected_lights[slot].type == 1
+                    selected_lights[slot].type == 1 || selected_lights[slot].type == 5
                         ? canvas3d_render_point_shadow_cube(c,
                                                             cmds,
                                                             shadow_indices,
@@ -689,7 +689,7 @@ static void canvas3d_render_shadow_pass(rt_canvas3d *c, deferred_draw_t *cmds) {
                  has_shadow_bounds && slot < selected_shadow_count && c->shadow_count < slot_cap;
                  slot++)
                 shadow_lights_granted +=
-                    selected_lights[slot].type == 1
+                    selected_lights[slot].type == 1 || selected_lights[slot].type == 5
                         ? canvas3d_render_point_shadow_cube(c,
                                                             cmds,
                                                             shadow_indices,
@@ -1073,15 +1073,13 @@ void rt_canvas3d_end(void *obj) {
     if (!c->frame_is_2d && !c->frame_is_view_model && main_count > 0) {
         int64_t pass_t0 = rt_clock_ticks_us();
         canvas3d_render_shadow_pass(c, cmds);
-        c->pass_cpu_ms[RT_CANVAS3D_PASS_SHADOW] =
-            (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
+        c->pass_cpu_ms[RT_CANVAS3D_PASS_SHADOW] = (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
     }
 
     if (main_count > 0) {
         int64_t pass_t0 = rt_clock_ticks_us();
         canvas3d_render_main_pass(c, cmds);
-        c->pass_cpu_ms[RT_CANVAS3D_PASS_MAIN] =
-            (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
+        c->pass_cpu_ms[RT_CANVAS3D_PASS_MAIN] = (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
     }
     /* Catch-all: frames whose main pass culled everything (or had only overlay draws)
      * still need their sky; the latch makes this a no-op when the pass drew it. */
@@ -1109,8 +1107,7 @@ void rt_canvas3d_end(void *obj) {
             canvas3d_refresh_texture_upload_bytes(c);
             canvas3d_refresh_frame_gpu_time(c);
         }
-        c->pass_cpu_ms[RT_CANVAS3D_PASS_OVERLAY] =
-            (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
+        c->pass_cpu_ms[RT_CANVAS3D_PASS_OVERLAY] = (double)(rt_clock_ticks_us() - pass_t0) / 1000.0;
     }
 
     c->in_frame = 0;

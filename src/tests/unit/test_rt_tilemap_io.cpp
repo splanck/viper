@@ -6,11 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: tests/unit/test_rt_tilemap_io.cpp
-// Purpose: Unit tests for tilemap file I/O, CSV import, auto-tiling, and
-//   tile properties.
+// Purpose: Unit tests for tilemap file I/O, imported-layout persistence, CSV
+//   import, auto-tiling, and tile properties.
 //
 // Key invariants:
-//   - JSON round-trip preserves tile data and layer structure.
+//   - JSON round-trip preserves tile data, layer structure, imported projection,
+//     source-frame geometry, parallax, and exact composed-atlas tile count.
 //   - CSV import produces correct tilemap dimensions and tile values.
 //   - Auto-tiling computes correct 4-bit neighbor bitmasks.
 //   - Tile properties are stored/retrieved by key.
@@ -18,14 +19,17 @@
 // Ownership/Lifetime:
 //   - Uses runtime library. Tilemap objects are GC-managed.
 //
-// Links: src/runtime/graphics/rt_tilemap.h
+// Links: src/runtime/graphics/2d/rt_tilemap.h,
+//   docs/adr/0144-complete-tiled-map-import.md
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
 #include "rt_internal.h"
+#include "rt_pixels.h"
 #include "rt_string.h"
 #include "rt_tilemap.h"
+#include "rt_tilemap_internal.h"
 #include <cassert>
 #include <climits>
 #include <cstdint>
@@ -320,6 +324,89 @@ static void test_tile_anim_duplicate_base_replaces(void) {
     PASS();
 }
 
+static void test_variable_tile_animation_round_trip(void) {
+    TEST("Variable-duration tile animation JSON round-trip");
+    void *tm = rt_tilemap_new(1, 1, 16, 16);
+    const int64_t frames[] = {5, 9, 12};
+    const int64_t durations[] = {100, 200, 50};
+    assert(rt_tilemap_set_import_tile_anim(tm, 5, 3, frames, durations) == 1);
+    rt_tilemap_update_anims(tm, 150);
+    assert(rt_tilemap_resolve_anim_tile(tm, 5) == 9);
+
+    rt_string path = make_str("/tmp/test_tilemap_variable_anim.json");
+    assert(rt_tilemap_save_to_file(tm, path) == 1);
+    void *loaded = rt_tilemap_load_from_file(path);
+    assert(loaded != NULL);
+    assert(rt_tilemap_resolve_anim_tile(loaded, 5) == 9);
+    rt_tilemap_update_anims(loaded, 149);
+    assert(rt_tilemap_resolve_anim_tile(loaded, 5) == 9);
+    rt_tilemap_update_anims(loaded, 1);
+    assert(rt_tilemap_resolve_anim_tile(loaded, 5) == 12);
+    PASS();
+}
+
+static void test_import_layout_round_trip(void) {
+    TEST("Imported projection/source-frame/layer layout JSON round-trip");
+    void *tm = rt_tilemap_new(2, 2, 16, 8);
+    assert(tm != NULL);
+    assert(rt_tilemap_configure_import_layout(tm,
+                                              RT_TILEMAP_IMPORT_OBLIQUE,
+                                              -3,
+                                              5,
+                                              24,
+                                              16,
+                                              -4,
+                                              -7,
+                                              RT_TILEMAP_IMPORT_LEFT_UP,
+                                              0,
+                                              1,
+                                              0,
+                                              1.25,
+                                              -0.5,
+                                              3.5,
+                                              -2.25,
+                                              2) == 1);
+    int64_t overlay = rt_tilemap_add_layer(tm, make_str("overlay"));
+    assert(overlay == 1);
+    assert(rt_tilemap_configure_import_layer(tm, 0, 1.5, -1.25, 0.75, 0.5) == 1);
+    assert(rt_tilemap_configure_import_layer(tm, overlay, -2.5, 4.75, 1.25, 0.25) == 1);
+
+    void *atlas = rt_pixels_new(48, 16);
+    assert(atlas != NULL);
+    rt_tilemap_set_tileset(tm, atlas);
+    assert(rt_tilemap_get_tile_count(tm) == 2);
+    assert(rt_tilemap_set_import_tile_count(tm, 1) == 1);
+
+    rt_string path = make_str("/tmp/test_tilemap_import_layout.json");
+    assert(rt_tilemap_save_to_file(tm, path) == 1);
+    void *loaded = rt_tilemap_load_from_file(path);
+    assert(loaded != NULL);
+
+    auto *impl = static_cast<rt_tilemap_impl *>(loaded);
+    assert(impl->import_orientation == RT_TILEMAP_IMPORT_OBLIQUE);
+    assert(impl->import_origin_tile_x == -3 && impl->import_origin_tile_y == 5);
+    assert(impl->import_projection_height == 2);
+    assert(impl->source_frame_width == 24 && impl->source_frame_height == 16);
+    assert(impl->import_draw_offset_x == -4 && impl->import_draw_offset_y == -7);
+    assert(impl->import_render_order == RT_TILEMAP_IMPORT_LEFT_UP);
+    assert(impl->import_stagger_axis == 0 && impl->import_stagger_even == 1);
+    assert(impl->import_hex_side_length == 0);
+    assert(impl->import_skew_x == 1.25 && impl->import_skew_y == -0.5);
+    assert(impl->import_parallax_origin_x == 3.5);
+    assert(impl->import_parallax_origin_y == -2.25);
+    assert(impl->layers[0].import_offset_x == 1.5);
+    assert(impl->layers[0].import_offset_y == -1.25);
+    assert(impl->layers[0].import_parallax_x == 0.75);
+    assert(impl->layers[0].import_parallax_y == 0.5);
+    assert(impl->layers[1].import_offset_x == -2.5);
+    assert(impl->layers[1].import_offset_y == 4.75);
+    assert(impl->layers[1].import_parallax_x == 1.25);
+    assert(impl->layers[1].import_parallax_y == 0.25);
+    assert(impl->tileset_cols == 2 && impl->tileset_rows == 1);
+    assert(rt_tilemap_get_tile_count(loaded) == 1);
+    PASS();
+}
+
 static void test_json_rejects_wrong_layer_tile_count(void) {
     TEST("JSON load rejects wrong layer tile count");
     const char *path = "/tmp/test_tilemap_wrong_tile_count.json";
@@ -422,6 +509,8 @@ int main() {
     test_json_duplicate_animation_state_applies_to_replaced_base();
     test_tile_anim_sequential_frames_saturate();
     test_tile_anim_duplicate_base_replaces();
+    test_variable_tile_animation_round_trip();
+    test_import_layout_round_trip();
     test_json_rejects_wrong_layer_tile_count();
     test_json_rejects_truncated_tileset_pixels();
     test_json_excess_layers_are_ignored();

@@ -3,6 +3,22 @@
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
+// File: src/tests/runtime/RTTilemapRenderContractTests.cpp
+// Purpose: Pixel-placement, ownership, projection, source-frame, traversal,
+//   scaled rendering, and imported animation contract tests for Tilemap.
+//
+// Key invariants:
+//   - Ordinary orthogonal rendering retains its historical fast-path behavior.
+//   - Imported layouts project, scale, and round deterministically without losing
+//     source frames or authored traversal order.
+//
+// Ownership/Lifetime:
+//   - Stub runtime objects expose reference transitions to the test process.
+//   - Test-owned Tilemaps are destroyed when finalizer behavior is under test.
+//
+// Links: src/runtime/graphics/2d/rt_tilemap.c,
+//   docs/adr/0144-complete-tiled-map-import.md
+//
 //===----------------------------------------------------------------------===//
 
 extern "C" {
@@ -376,6 +392,348 @@ static void test_positive_offset_culls_to_visible_tiles() {
     assert(g_blits[1].dx == 24);
 }
 
+static void test_import_source_frame_and_common_draw_offset() {
+    reset_pixels_tracking();
+    StubPixels atlas{48, 32, 560, 0, false};
+    StubCanvas canvas{64, 64};
+    void *tm = rt_tilemap_new(1, 1, 16, 16);
+    assert(tm != nullptr);
+    assert(rt_tilemap_configure_import_layout(tm,
+                                              RT_TILEMAP_IMPORT_ORTHOGONAL,
+                                              0,
+                                              0,
+                                              24,
+                                              32,
+                                              -4,
+                                              -16,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              1) == 1);
+    rt_tilemap_set_tileset(tm, &atlas);
+    rt_tilemap_set_tile(tm, 0, 0, 2);
+
+    reset_blits();
+    rt_tilemap_draw(tm, &canvas, 0, 0);
+    assert(g_blit_count == 1);
+    assert(g_blits[0].dx == -4 && g_blits[0].dy == -16);
+    assert(g_blits[0].sx == 24 && g_blits[0].sy == 0);
+    assert(g_blits[0].w == 24 && g_blits[0].h == 32);
+    assert(rt_tilemap_get_tile_count(tm) == 2);
+}
+
+static void test_import_projection_and_fractional_layer_offset() {
+    reset_pixels_tracking();
+    StubPixels atlas{16, 8, 570, 0, false};
+    StubCanvas canvas{64, 64};
+    void *tm = rt_tilemap_new(2, 2, 16, 8);
+    assert(tm != nullptr);
+    assert(rt_tilemap_configure_import_layout(tm,
+                                              RT_TILEMAP_IMPORT_ISOMETRIC,
+                                              0,
+                                              0,
+                                              16,
+                                              8,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              2) == 1);
+    assert(rt_tilemap_configure_import_layer(tm, 0, 1.5, -1.5, 1.0, 1.0) == 1);
+    rt_tilemap_set_tileset(tm, &atlas);
+    rt_tilemap_set_tile(tm, 1, 0, 1);
+
+    reset_blits();
+    rt_tilemap_draw(tm, &canvas, 0, 0);
+    assert(g_blit_count == 1);
+    assert(g_blits[0].dx == 26);
+    assert(g_blits[0].dy == 3);
+}
+
+static void test_import_staggered_hex_and_oblique_projection() {
+    reset_pixels_tracking();
+    StubPixels stagger_atlas{16, 8, 580, 0, false};
+    StubPixels hex_atlas{16, 12, 581, 0, false};
+    StubCanvas canvas{128, 128};
+
+    void *staggered = rt_tilemap_new(2, 2, 16, 8);
+    assert(rt_tilemap_configure_import_layout(staggered,
+                                              RT_TILEMAP_IMPORT_STAGGERED,
+                                              0,
+                                              0,
+                                              16,
+                                              8,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              2) == 1);
+    rt_tilemap_set_tileset(staggered, &stagger_atlas);
+    rt_tilemap_set_tile(staggered, 1, 1, 1);
+    reset_blits();
+    rt_tilemap_draw(staggered, &canvas, 0, 0);
+    assert(g_blit_count == 1);
+    assert(g_blits[0].dx == 24 && g_blits[0].dy == 4);
+
+    void *hexagonal = rt_tilemap_new(1, 1, 16, 12);
+    assert(rt_tilemap_configure_import_layout(hexagonal,
+                                              RT_TILEMAP_IMPORT_HEXAGONAL,
+                                              0,
+                                              0,
+                                              16,
+                                              12,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              0,
+                                              1,
+                                              4,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              1) == 1);
+    rt_tilemap_set_tileset(hexagonal, &hex_atlas);
+    rt_tilemap_set_tile(hexagonal, 0, 0, 1);
+    reset_blits();
+    rt_tilemap_draw(hexagonal, &canvas, 0, 0);
+    assert(g_blit_count == 1);
+    assert(g_blits[0].dx == 0 && g_blits[0].dy == 6);
+
+    void *oblique = rt_tilemap_new(2, 2, 16, 8);
+    assert(rt_tilemap_configure_import_layout(oblique,
+                                              RT_TILEMAP_IMPORT_OBLIQUE,
+                                              0,
+                                              0,
+                                              16,
+                                              8,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              1.0,
+                                              -0.5,
+                                              0.0,
+                                              0.0,
+                                              2) == 1);
+    rt_tilemap_set_tileset(oblique, &stagger_atlas);
+    rt_tilemap_set_tile(oblique, 1, 1, 1);
+    reset_blits();
+    rt_tilemap_draw(oblique, &canvas, 0, 0);
+    assert(g_blit_count == 1);
+    assert(g_blits[0].dx == 17 && g_blits[0].dy == 8);
+
+    StubPixels odd_hex_atlas{5, 7, 582, 0, false};
+    void *odd_hex = rt_tilemap_new(1, 2, 5, 7);
+    assert(rt_tilemap_configure_import_layout(odd_hex,
+                                              RT_TILEMAP_IMPORT_HEXAGONAL,
+                                              0,
+                                              0,
+                                              5,
+                                              7,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              3,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              2) == 1);
+    rt_tilemap_set_tileset(odd_hex, &odd_hex_atlas);
+    rt_tilemap_set_tile(odd_hex, 0, 1, 1);
+    reset_blits();
+    rt_tilemap_draw(odd_hex, &canvas, 0, 0);
+    assert(g_blit_count == 1);
+    assert(g_blits[0].dx == 2 && g_blits[0].dy == 5);
+}
+
+static void test_import_parallax_and_variable_animation_durations() {
+    reset_pixels_tracking();
+    StubPixels atlas{48, 16, 590, 0, false};
+    StubCanvas canvas{64, 64};
+    void *tm = rt_tilemap_new(1, 1, 16, 16);
+    assert(rt_tilemap_configure_import_layout(tm,
+                                              RT_TILEMAP_IMPORT_ORTHOGONAL,
+                                              0,
+                                              0,
+                                              16,
+                                              16,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              4.0,
+                                              4.0,
+                                              1) == 1);
+    assert(rt_tilemap_configure_import_layer(tm, 0, 1.5, -1.5, 0.5, 0.5) == 1);
+    rt_tilemap_set_tileset(tm, &atlas);
+    rt_tilemap_set_tile(tm, 0, 0, 1);
+    reset_blits();
+    rt_tilemap_draw(tm, &canvas, 10, 10);
+    assert(g_blit_count == 1);
+    assert(g_blits[0].dx == 9 && g_blits[0].dy == 6);
+
+    const int64_t frames[] = {1, 2, 3};
+    const int64_t durations[] = {100, 200, 50};
+    assert(rt_tilemap_set_import_tile_anim(tm, 1, 3, frames, durations) == 1);
+    assert(rt_tilemap_resolve_anim_tile(tm, 1) == 1);
+    rt_tilemap_update_anims(tm, 100);
+    assert(rt_tilemap_resolve_anim_tile(tm, 1) == 2);
+    rt_tilemap_update_anims(tm, 199);
+    assert(rt_tilemap_resolve_anim_tile(tm, 1) == 2);
+    rt_tilemap_update_anims(tm, 1);
+    assert(rt_tilemap_resolve_anim_tile(tm, 1) == 3);
+    rt_tilemap_update_anims(tm, 50);
+    assert(rt_tilemap_resolve_anim_tile(tm, 1) == 1);
+}
+
+static void test_import_render_order_and_isometric_depth_order() {
+    reset_pixels_tracking();
+    StubPixels atlas{64, 16, 595, 0, false};
+    StubCanvas canvas{128, 128};
+
+    void *orthogonal = rt_tilemap_new(2, 2, 16, 16);
+    assert(rt_tilemap_configure_import_layout(orthogonal,
+                                              RT_TILEMAP_IMPORT_ORTHOGONAL,
+                                              0,
+                                              0,
+                                              16,
+                                              16,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_UP,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              2) == 1);
+    rt_tilemap_set_tileset(orthogonal, &atlas);
+    rt_tilemap_set_tile(orthogonal, 0, 0, 1);
+    rt_tilemap_set_tile(orthogonal, 1, 0, 2);
+    rt_tilemap_set_tile(orthogonal, 0, 1, 3);
+    rt_tilemap_set_tile(orthogonal, 1, 1, 4);
+    reset_blits();
+    rt_tilemap_draw(orthogonal, &canvas, 0, 0);
+    assert(g_blit_count == 4);
+    assert(g_blits[0].sx == 32 && g_blits[1].sx == 48);
+    assert(g_blits[2].sx == 0 && g_blits[3].sx == 16);
+
+    void *isometric = rt_tilemap_new(2, 2, 16, 8);
+    assert(rt_tilemap_configure_import_layout(isometric,
+                                              RT_TILEMAP_IMPORT_ISOMETRIC,
+                                              0,
+                                              0,
+                                              16,
+                                              16,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              2) == 1);
+    rt_tilemap_set_tileset(isometric, &atlas);
+    rt_tilemap_set_tile(isometric, 0, 0, 1);
+    rt_tilemap_set_tile(isometric, 1, 0, 2);
+    rt_tilemap_set_tile(isometric, 0, 1, 3);
+    rt_tilemap_set_tile(isometric, 1, 1, 4);
+    reset_blits();
+    rt_tilemap_draw(isometric, &canvas, 0, 0);
+    assert(g_blit_count == 4);
+    assert(g_blits[0].sx == 0 && g_blits[1].sx == 32);
+    assert(g_blits[2].sx == 16 && g_blits[3].sx == 48);
+}
+
+static void test_scaled_import_preserves_projection_and_source_frame() {
+    reset_pixels_tracking();
+    StubPixels atlas{48, 16, 596, 0, false};
+    StubCanvas canvas{128, 128};
+    void *tm = rt_tilemap_new(2, 2, 16, 8);
+    assert(rt_tilemap_configure_import_layout(tm,
+                                              RT_TILEMAP_IMPORT_ISOMETRIC,
+                                              0,
+                                              0,
+                                              24,
+                                              16,
+                                              -4,
+                                              -8,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              2) == 1);
+    assert(rt_tilemap_configure_import_layer(tm, 0, 1.5, -1.5, 1.0, 1.0) == 1);
+    rt_tilemap_set_tileset(tm, &atlas);
+    rt_tilemap_set_tile(tm, 1, 0, 2);
+
+    reset_blits();
+    rt_tilemap_draw_scaled(tm, &canvas, 10, 20, 200);
+    assert(g_blit_count == 1);
+    assert(g_blits[0].dx == 53 && g_blits[0].dy == 9);
+    assert(g_blits[0].w == 48 && g_blits[0].h == 32);
+
+    StubPixels count_atlas{24, 16, 597, 0, false};
+    StubCanvas small_canvas{32, 32};
+    void *count_map = rt_tilemap_new(4, 4, 16, 8);
+    assert(rt_tilemap_configure_import_layout(count_map,
+                                              RT_TILEMAP_IMPORT_ISOMETRIC,
+                                              0,
+                                              0,
+                                              24,
+                                              16,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              4) == 1);
+    rt_tilemap_set_tileset(count_map, &count_atlas);
+    rt_tilemap_set_tile(count_map, 0, 3, 1);
+    assert(rt_tilemap_count_drawn_visible_scaled(count_map, &small_canvas, 0, 0, 200) == 1);
+}
+
 static void test_one_way_platform_tolerance_rejects_starting_inside_surface() {
     void *tm = rt_tilemap_new(1, 2, 16, 16);
     assert(tm != nullptr);
@@ -413,6 +771,12 @@ int main() {
     test_tileset_clone_keeps_single_owned_reference();
     test_layer_tileset_clone_keeps_single_owned_reference();
     test_positive_offset_culls_to_visible_tiles();
+    test_import_source_frame_and_common_draw_offset();
+    test_import_projection_and_fractional_layer_offset();
+    test_import_staggered_hex_and_oblique_projection();
+    test_import_parallax_and_variable_animation_durations();
+    test_import_render_order_and_isometric_depth_order();
+    test_scaled_import_preserves_projection_and_source_frame();
     test_one_way_platform_tolerance_rejects_starting_inside_surface();
     test_finalizer_releases_owned_tilesets();
     std::printf("RTTilemapRenderContractTests passed.\n");

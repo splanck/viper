@@ -5,38 +5,24 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_tilemap.c
-// Purpose: Tile-based 2D map renderer for Zanna games. Manages a 2D array of
-//   tile IDs, a corresponding SpriteSheet atlas, and draws the visible portion
-//   of the map to a Canvas each frame by blitting individual tile cells from
-//   the sheet. Supports scrolling via a camera offset, solid/passable tile
-//   classification for physics integration, and efficient viewport culling to
-//   skip tiles outside the visible region.
+// File: src/runtime/graphics/2d/rt_tilemap.c
+// Purpose: Layered Tilemap storage, projected/source-frame rendering, scaled
+//   editor drawing and hit testing, animation, and grid collision.
 //
 // Key invariants:
-//   - Tile dimensions (tile_w, tile_h) and map dimensions (cols, rows) are
-//     fixed at creation. The tile array is a flat row-major int64 array with
-//       index = row × cols + col
-//     Tile ID 0 conventionally means "empty" (not drawn).
-//   - The tilemap blits tiles using the associated SpriteSheet. Tile IDs map
-//     to sprite sheet frames in row-major order: tile N → frame N.
-//   - Solid tiles are tracked separately via a passability bitmask or boolean
-//     array. rt_tilemap_is_solid() enables the Physics2D integration to treat
-//     tile cells as static collision geometry.
-//   - Camera offset (scroll_x, scroll_y) is in world-pixel coordinates.
-//     During Draw(), the visible tile range is computed from the offset and
-//     viewport size to avoid drawing off-screen tiles.
-//   - No dirty-region tracking: the full visible tile range is redrawn every
-//     frame. For static maps this is efficient; for dynamic maps consider
-//     partial-update strategies externally.
+//   - Logical cells remain a fixed, flat row-major int64 grid; tile ID zero is empty.
+//   - Imported source-frame dimensions never replace logical collision dimensions.
+//   - Projection and inverse-selection math is deterministic and saturating.
+//   - Native and scaled drawing share imported visual traversal order.
 //
 // Ownership/Lifetime:
-//   - Tilemap objects are GC-managed (rt_obj_new_i64). The tile array and any
-//     solid-flag array are freed by the GC finalizer.
+//   - Tilemaps use one managed allocation with an inline base tile array.
+//   - The finalizer releases cloned layer/base tilesets, owned layer arrays, and
+//     dynamically allocated animation frame/duration arrays.
+//   - Per-call scaled Pixels and caches are released before drawing returns.
 //
-// Links: src/runtime/graphics/rt_tilemap.h (public API),
-//        src/runtime/graphics/rt_spritesheet.h (tile atlas),
-//        docs/zannalib/game.md (Tilemap section)
+// Links: rt_tilemap.h, rt_tilemap_internal.h, rt_tilemap_io.c,
+//   docs/adr/0144-complete-tiled-map-import.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -230,6 +216,536 @@ static int64_t tilemap_scale_dimension(int64_t dim, int64_t scale_percent) {
     return scaled <= 0 ? 1 : scaled;
 }
 
+static int64_t tilemap_round_ties_away_saturating(double value) {
+    if (isnan(value))
+        return 0;
+    if (value >= (double)INT64_MAX)
+        return INT64_MAX;
+    if (value <= (double)INT64_MIN)
+        return INT64_MIN;
+    double rounded = value < 0.0 ? ceil(value - 0.5) : floor(value + 0.5);
+    if (rounded >= (double)INT64_MAX)
+        return INT64_MAX;
+    if (rounded <= (double)INT64_MIN)
+        return INT64_MIN;
+    return (int64_t)rounded;
+}
+
+static int tilemap_is_staggered_coordinate(const rt_tilemap_impl *tilemap, int64_t coordinate) {
+    int64_t remainder = coordinate % 2;
+    if (remainder < 0)
+        remainder += 2;
+    return tilemap->import_stagger_even ? remainder == 0 : remainder == 1;
+}
+
+static void tilemap_project_source(const rt_tilemap_impl *tilemap,
+                                   int64_t tile_x,
+                                   int64_t tile_y,
+                                   double *pixel_x,
+                                   double *pixel_y) {
+    int64_t source_x = tilemap_add_saturating(tile_x, tilemap->import_origin_tile_x);
+    int64_t source_y = tilemap_add_saturating(tile_y, tilemap->import_origin_tile_y);
+    double x = (double)source_x;
+    double y = (double)source_y;
+    double tw = (double)tilemap->tile_width;
+    double th = (double)tilemap->tile_height;
+    switch (tilemap->import_orientation) {
+        case RT_TILEMAP_IMPORT_ISOMETRIC:
+            *pixel_x = (x - y) * tw * 0.5 + (double)tilemap->import_projection_height * tw * 0.5;
+            *pixel_y = (x + y) * th * 0.5;
+            break;
+        case RT_TILEMAP_IMPORT_STAGGERED:
+        case RT_TILEMAP_IMPORT_HEXAGONAL: {
+            int64_t side_length_x = tilemap->import_orientation == RT_TILEMAP_IMPORT_HEXAGONAL &&
+                                            tilemap->import_stagger_axis == 0
+                                        ? tilemap->import_hex_side_length
+                                        : 0;
+            int64_t side_length_y = tilemap->import_orientation == RT_TILEMAP_IMPORT_HEXAGONAL &&
+                                            tilemap->import_stagger_axis == 1
+                                        ? tilemap->import_hex_side_length
+                                        : 0;
+            double side_x = (double)side_length_x;
+            double side_y = (double)side_length_y;
+            double side_offset_x = (double)((tilemap->tile_width - side_length_x) / 2);
+            double side_offset_y = (double)((tilemap->tile_height - side_length_y) / 2);
+            double column_width = side_offset_x + side_x;
+            double row_height = side_offset_y + side_y;
+            if (tilemap->import_stagger_axis == 0) {
+                *pixel_x = x * column_width;
+                *pixel_y = y * (th + side_y) +
+                           (tilemap_is_staggered_coordinate(tilemap, source_x) ? row_height : 0.0);
+            } else {
+                *pixel_x =
+                    x * (tw + side_x) +
+                    (tilemap_is_staggered_coordinate(tilemap, source_y) ? column_width : 0.0);
+                *pixel_y = y * row_height;
+            }
+            break;
+        }
+        case RT_TILEMAP_IMPORT_OBLIQUE: {
+            double base_x = x * tw;
+            double base_y = y * th;
+            *pixel_x = base_x + (tilemap->import_skew_x / th) * base_y;
+            *pixel_y = base_y + (tilemap->import_skew_y / tw) * base_x;
+            break;
+        }
+        case RT_TILEMAP_IMPORT_ORTHOGONAL:
+        default:
+            *pixel_x = x * tw;
+            *pixel_y = y * th;
+            break;
+    }
+}
+
+static void tilemap_effective_layer_offset(const rt_tilemap_impl *tilemap,
+                                           const tm_layer *layer,
+                                           int64_t camera_x,
+                                           int64_t camera_y,
+                                           double *offset_x,
+                                           double *offset_y) {
+    *offset_x = (double)camera_x * layer->import_parallax_x + layer->import_offset_x +
+                tilemap->import_parallax_origin_x * (1.0 - layer->import_parallax_x) +
+                (double)tilemap->import_draw_offset_x;
+    *offset_y = (double)camera_y * layer->import_parallax_y + layer->import_offset_y +
+                tilemap->import_parallax_origin_y * (1.0 - layer->import_parallax_y) +
+                (double)tilemap->import_draw_offset_y;
+}
+
+/// @brief Compute screen offset for a zoomed imported layer.
+/// @details Camera scroll is already expressed in destination pixels and is not
+///          zoomed. Authored layer, tileset-frame, and parallax-origin offsets are
+///          source-space geometry and therefore scale with the map.
+static void tilemap_effective_layer_offset_scaled(const rt_tilemap_impl *tilemap,
+                                                  const tm_layer *layer,
+                                                  int64_t camera_x,
+                                                  int64_t camera_y,
+                                                  double map_scale,
+                                                  double *offset_x,
+                                                  double *offset_y) {
+    double authored_x = layer->import_offset_x +
+                        tilemap->import_parallax_origin_x * (1.0 - layer->import_parallax_x) +
+                        (double)tilemap->import_draw_offset_x;
+    double authored_y = layer->import_offset_y +
+                        tilemap->import_parallax_origin_y * (1.0 - layer->import_parallax_y) +
+                        (double)tilemap->import_draw_offset_y;
+    *offset_x = (double)camera_x * layer->import_parallax_x + authored_x * map_scale;
+    *offset_y = (double)camera_y * layer->import_parallax_y + authored_y * map_scale;
+}
+
+static void tilemap_inverse_project_source(const rt_tilemap_impl *tilemap,
+                                           double pixel_x,
+                                           double pixel_y,
+                                           double *tile_x,
+                                           double *tile_y) {
+    double tw = (double)tilemap->tile_width;
+    double th = (double)tilemap->tile_height;
+    double source_x = 0.0;
+    double source_y = 0.0;
+    switch (tilemap->import_orientation) {
+        case RT_TILEMAP_IMPORT_ISOMETRIC: {
+            double dx = pixel_x - (double)tilemap->import_projection_height * tw * 0.5;
+            source_x = dx / tw + pixel_y / th;
+            source_y = pixel_y / th - dx / tw;
+            break;
+        }
+        case RT_TILEMAP_IMPORT_STAGGERED:
+        case RT_TILEMAP_IMPORT_HEXAGONAL: {
+            int64_t side_length_x = tilemap->import_orientation == RT_TILEMAP_IMPORT_HEXAGONAL &&
+                                            tilemap->import_stagger_axis == 0
+                                        ? tilemap->import_hex_side_length
+                                        : 0;
+            int64_t side_length_y = tilemap->import_orientation == RT_TILEMAP_IMPORT_HEXAGONAL &&
+                                            tilemap->import_stagger_axis == 1
+                                        ? tilemap->import_hex_side_length
+                                        : 0;
+            double side_x = (double)side_length_x;
+            double side_y = (double)side_length_y;
+            double column_width = (double)((tilemap->tile_width - side_length_x) / 2) + side_x;
+            double row_height = (double)((tilemap->tile_height - side_length_y) / 2) + side_y;
+            if (tilemap->import_stagger_axis == 0) {
+                source_x = pixel_x / column_width;
+                source_y = pixel_y / (th + side_y);
+            } else {
+                source_x = pixel_x / (tw + side_x);
+                source_y = pixel_y / row_height;
+            }
+            break;
+        }
+        case RT_TILEMAP_IMPORT_OBLIQUE: {
+            double horizontal = tilemap->import_skew_x / th;
+            double vertical = tilemap->import_skew_y / tw;
+            double determinant = 1.0 - horizontal * vertical;
+            double base_x = (pixel_x - horizontal * pixel_y) / determinant;
+            double base_y = (pixel_y - vertical * pixel_x) / determinant;
+            source_x = base_x / tw;
+            source_y = base_y / th;
+            break;
+        }
+        case RT_TILEMAP_IMPORT_ORTHOGONAL:
+        default:
+            source_x = pixel_x / tw;
+            source_y = pixel_y / th;
+            break;
+    }
+    *tile_x = source_x - (double)tilemap->import_origin_tile_x;
+    *tile_y = source_y - (double)tilemap->import_origin_tile_y;
+}
+
+static int64_t tilemap_floor_double_saturating(double value) {
+    if (!isfinite(value))
+        return value < 0.0 ? INT64_MIN : INT64_MAX;
+    value = floor(value);
+    if (value <= (double)INT64_MIN)
+        return INT64_MIN;
+    if (value >= (double)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)value;
+}
+
+static int64_t tilemap_ceil_double_saturating(double value) {
+    if (!isfinite(value))
+        return value < 0.0 ? INT64_MIN : INT64_MAX;
+    value = ceil(value);
+    if (value <= (double)INT64_MIN)
+        return INT64_MIN;
+    if (value >= (double)INT64_MAX)
+        return INT64_MAX;
+    return (int64_t)value;
+}
+
+enum tilemap_stagger_neighbor {
+    TILEMAP_NEIGHBOR_TOP_LEFT = 0,
+    TILEMAP_NEIGHBOR_TOP_RIGHT = 1,
+    TILEMAP_NEIGHBOR_BOTTOM_LEFT = 2,
+    TILEMAP_NEIGHBOR_BOTTOM_RIGHT = 3,
+};
+
+/// @brief Move one source-grid coordinate to a stagger-aware diagonal neighbor.
+static void tilemap_move_stagger_neighbor(const rt_tilemap_impl *tilemap,
+                                          int64_t *source_x,
+                                          int64_t *source_y,
+                                          enum tilemap_stagger_neighbor neighbor) {
+    if (!tilemap || !source_x || !source_y)
+        return;
+    int staggered = tilemap_is_staggered_coordinate(
+        tilemap, tilemap->import_stagger_axis == 0 ? *source_x : *source_y);
+    if (tilemap->import_stagger_axis == 1) {
+        int move_right =
+            neighbor == TILEMAP_NEIGHBOR_TOP_RIGHT || neighbor == TILEMAP_NEIGHBOR_BOTTOM_RIGHT;
+        int move_down =
+            neighbor == TILEMAP_NEIGHBOR_BOTTOM_LEFT || neighbor == TILEMAP_NEIGHBOR_BOTTOM_RIGHT;
+        if ((move_right && staggered) || (!move_right && !staggered))
+            *source_x = tilemap_add_saturating(*source_x, move_right ? 1 : -1);
+        *source_y = tilemap_add_saturating(*source_y, move_down ? 1 : -1);
+    } else {
+        int move_right =
+            neighbor == TILEMAP_NEIGHBOR_TOP_RIGHT || neighbor == TILEMAP_NEIGHBOR_BOTTOM_RIGHT;
+        int move_down =
+            neighbor == TILEMAP_NEIGHBOR_BOTTOM_LEFT || neighbor == TILEMAP_NEIGHBOR_BOTTOM_RIGHT;
+        *source_x = tilemap_add_saturating(*source_x, move_right ? 1 : -1);
+        if ((move_down && staggered) || (!move_down && !staggered))
+            *source_y = tilemap_add_saturating(*source_y, move_down ? 1 : -1);
+    }
+}
+
+/// @brief Resolve one projected pixel to its exact staggered/hexagonal grid cell.
+/// @details This follows Tiled's diamond corner tests for staggered maps and
+///          nearest-center selection for hexagonal maps. Other orientations use
+///          the analytic inverse projection.
+static void tilemap_projected_pixel_to_cell(const rt_tilemap_impl *tilemap,
+                                            double pixel_x,
+                                            double pixel_y,
+                                            int64_t *tile_x,
+                                            int64_t *tile_y) {
+    if (!tilemap || !tile_x || !tile_y)
+        return;
+    if (tilemap->import_orientation != RT_TILEMAP_IMPORT_STAGGERED &&
+        tilemap->import_orientation != RT_TILEMAP_IMPORT_HEXAGONAL) {
+        double projected_x = 0.0;
+        double projected_y = 0.0;
+        tilemap_inverse_project_source(tilemap, pixel_x, pixel_y, &projected_x, &projected_y);
+        *tile_x = tilemap_floor_double_saturating(projected_x);
+        *tile_y = tilemap_floor_double_saturating(projected_y);
+        return;
+    }
+
+    int64_t side_length_x = tilemap->import_orientation == RT_TILEMAP_IMPORT_HEXAGONAL &&
+                                    tilemap->import_stagger_axis == 0
+                                ? tilemap->import_hex_side_length
+                                : 0;
+    int64_t side_length_y = tilemap->import_orientation == RT_TILEMAP_IMPORT_HEXAGONAL &&
+                                    tilemap->import_stagger_axis == 1
+                                ? tilemap->import_hex_side_length
+                                : 0;
+    int64_t side_offset_x = (tilemap->tile_width - side_length_x) / 2;
+    int64_t side_offset_y = (tilemap->tile_height - side_length_y) / 2;
+    int64_t column_width = side_offset_x + side_length_x;
+    int64_t row_height = side_offset_y + side_length_y;
+    int64_t source_x = 0;
+    int64_t source_y = 0;
+
+    /* One-pixel perpendicular dimensions can collapse a half-step to zero.
+     * Tiled files permit this degenerate geometry and the forward transform is
+     * still deterministic, but nearest-center inversion is not. Preserve the
+     * non-collapsed axis and choose source coordinate zero for the collapsed one. */
+    if (column_width <= 0 || row_height <= 0) {
+        if (tilemap->import_stagger_axis == 0) {
+            source_x = column_width > 0
+                           ? tilemap_floor_double_saturating(pixel_x / (double)column_width)
+                           : 0;
+            source_y = tilemap_floor_double_saturating(pixel_y / (double)tilemap->tile_height);
+        } else {
+            source_x = tilemap_floor_double_saturating(pixel_x / (double)tilemap->tile_width);
+            source_y =
+                row_height > 0 ? tilemap_floor_double_saturating(pixel_y / (double)row_height) : 0;
+        }
+        *tile_x = tilemap_sub_saturating(source_x, tilemap->import_origin_tile_x);
+        *tile_y = tilemap_sub_saturating(source_y, tilemap->import_origin_tile_y);
+        return;
+    }
+
+    if (tilemap->import_orientation == RT_TILEMAP_IMPORT_HEXAGONAL) {
+        double aligned_x = pixel_x;
+        double aligned_y = pixel_y;
+        if (tilemap->import_stagger_axis == 0)
+            aligned_x -=
+                (double)(tilemap->import_stagger_even ? tilemap->tile_width : side_offset_x);
+        else
+            aligned_y -=
+                (double)(tilemap->import_stagger_even ? tilemap->tile_height : side_offset_y);
+        source_x = tilemap_floor_double_saturating(aligned_x / ((double)column_width * 2.0));
+        source_y = tilemap_floor_double_saturating(aligned_y / ((double)row_height * 2.0));
+        double relative_x = aligned_x - (double)source_x * (double)column_width * 2.0;
+        double relative_y = aligned_y - (double)source_y * (double)row_height * 2.0;
+        if (tilemap->import_stagger_axis == 0)
+            source_x = tilemap_mul_saturating(source_x, 2);
+        else
+            source_y = tilemap_mul_saturating(source_y, 2);
+        if (tilemap->import_stagger_even) {
+            if (tilemap->import_stagger_axis == 0)
+                source_x = tilemap_add_saturating(source_x, 1);
+            else
+                source_y = tilemap_add_saturating(source_y, 1);
+        }
+
+        double centers_x[4];
+        double centers_y[4];
+        int offsets_x[4];
+        int offsets_y[4];
+        if (tilemap->import_stagger_axis == 0) {
+            int64_t left = side_length_x / 2;
+            double center_x = (double)(left + column_width);
+            double center_y = (double)tilemap->tile_height / 2.0;
+            centers_x[0] = (double)left;
+            centers_y[0] = center_y;
+            centers_x[1] = center_x;
+            centers_y[1] = center_y - (double)row_height;
+            centers_x[2] = center_x;
+            centers_y[2] = center_y + (double)row_height;
+            centers_x[3] = center_x + (double)column_width;
+            centers_y[3] = center_y;
+            int x_values[4] = {0, 1, 1, 2};
+            int y_values[4] = {0, -1, 0, 0};
+            memcpy(offsets_x, x_values, sizeof(offsets_x));
+            memcpy(offsets_y, y_values, sizeof(offsets_y));
+        } else {
+            int64_t top = side_length_y / 2;
+            double center_x = (double)tilemap->tile_width / 2.0;
+            double center_y = (double)(top + row_height);
+            centers_x[0] = center_x;
+            centers_y[0] = (double)top;
+            centers_x[1] = center_x - (double)column_width;
+            centers_y[1] = center_y;
+            centers_x[2] = center_x + (double)column_width;
+            centers_y[2] = center_y;
+            centers_x[3] = center_x;
+            centers_y[3] = center_y + (double)row_height;
+            int x_values[4] = {0, -1, 0, 0};
+            int y_values[4] = {0, 1, 1, 2};
+            memcpy(offsets_x, x_values, sizeof(offsets_x));
+            memcpy(offsets_y, y_values, sizeof(offsets_y));
+        }
+        int nearest = 0;
+        double minimum_distance = INFINITY;
+        for (int index = 0; index < 4; ++index) {
+            double dx = centers_x[index] - relative_x;
+            double dy = centers_y[index] - relative_y;
+            double distance = dx * dx + dy * dy;
+            if (distance < minimum_distance) {
+                minimum_distance = distance;
+                nearest = index;
+            }
+        }
+        source_x = tilemap_add_saturating(source_x, offsets_x[nearest]);
+        source_y = tilemap_add_saturating(source_y, offsets_y[nearest]);
+    } else {
+        double aligned_x = pixel_x;
+        double aligned_y = pixel_y;
+        if (tilemap->import_stagger_axis == 0 && tilemap->import_stagger_even)
+            aligned_x -= (double)side_offset_x;
+        if (tilemap->import_stagger_axis == 1 && tilemap->import_stagger_even)
+            aligned_y -= (double)side_offset_y;
+        source_x = tilemap_floor_double_saturating(aligned_x / (double)tilemap->tile_width);
+        source_y = tilemap_floor_double_saturating(aligned_y / (double)tilemap->tile_height);
+        double relative_x = aligned_x - (double)source_x * (double)tilemap->tile_width;
+        double relative_y = aligned_y - (double)source_y * (double)tilemap->tile_height;
+        if (tilemap->import_stagger_axis == 0)
+            source_x = tilemap_mul_saturating(source_x, 2);
+        else
+            source_y = tilemap_mul_saturating(source_y, 2);
+        if (tilemap->import_stagger_even) {
+            if (tilemap->import_stagger_axis == 0)
+                source_x = tilemap_add_saturating(source_x, 1);
+            else
+                source_y = tilemap_add_saturating(source_y, 1);
+        }
+        double diagonal_y =
+            relative_x * ((double)tilemap->tile_height / (double)tilemap->tile_width);
+        if ((double)side_offset_y - diagonal_y > relative_y)
+            tilemap_move_stagger_neighbor(tilemap, &source_x, &source_y, TILEMAP_NEIGHBOR_TOP_LEFT);
+        if (-(double)side_offset_y + diagonal_y > relative_y)
+            tilemap_move_stagger_neighbor(
+                tilemap, &source_x, &source_y, TILEMAP_NEIGHBOR_TOP_RIGHT);
+        if ((double)side_offset_y + diagonal_y < relative_y)
+            tilemap_move_stagger_neighbor(
+                tilemap, &source_x, &source_y, TILEMAP_NEIGHBOR_BOTTOM_LEFT);
+        if ((double)side_offset_y * 3.0 - diagonal_y < relative_y)
+            tilemap_move_stagger_neighbor(
+                tilemap, &source_x, &source_y, TILEMAP_NEIGHBOR_BOTTOM_RIGHT);
+    }
+
+    *tile_x = tilemap_sub_saturating(source_x, tilemap->import_origin_tile_x);
+    *tile_y = tilemap_sub_saturating(source_y, tilemap->import_origin_tile_y);
+}
+
+static int32_t tilemap_visible_import_region(rt_tilemap_impl *tilemap,
+                                             tm_layer *layer,
+                                             int64_t canvas_width,
+                                             int64_t canvas_height,
+                                             int64_t camera_x,
+                                             int64_t camera_y,
+                                             int64_t *view_x,
+                                             int64_t *view_y,
+                                             int64_t *view_width,
+                                             int64_t *view_height) {
+    if (!tilemap || !layer || canvas_width <= 0 || canvas_height <= 0 || !view_x || !view_y ||
+        !view_width || !view_height)
+        return 0;
+    double offset_x = 0.0;
+    double offset_y = 0.0;
+    tilemap_effective_layer_offset(tilemap, layer, camera_x, camera_y, &offset_x, &offset_y);
+    double screen_x[2] = {-(double)tilemap->source_frame_width - offset_x,
+                          (double)canvas_width - offset_x};
+    double screen_y[2] = {-(double)tilemap->source_frame_height - offset_y,
+                          (double)canvas_height - offset_y};
+    double minimum_x = INFINITY;
+    double minimum_y = INFINITY;
+    double maximum_x = -INFINITY;
+    double maximum_y = -INFINITY;
+    for (int y = 0; y < 2; ++y) {
+        for (int x = 0; x < 2; ++x) {
+            double tile_x = 0.0;
+            double tile_y = 0.0;
+            tilemap_inverse_project_source(tilemap, screen_x[x], screen_y[y], &tile_x, &tile_y);
+            minimum_x = fmin(minimum_x, tile_x);
+            minimum_y = fmin(minimum_y, tile_y);
+            maximum_x = fmax(maximum_x, tile_x);
+            maximum_y = fmax(maximum_y, tile_y);
+        }
+    }
+    int64_t first_x = tilemap_add_saturating(tilemap_floor_double_saturating(minimum_x), -3);
+    int64_t first_y = tilemap_add_saturating(tilemap_floor_double_saturating(minimum_y), -3);
+    int64_t last_x = tilemap_add_saturating(tilemap_ceil_double_saturating(maximum_x), 3);
+    int64_t last_y = tilemap_add_saturating(tilemap_ceil_double_saturating(maximum_y), 3);
+    if (first_x < 0)
+        first_x = 0;
+    if (first_y < 0)
+        first_y = 0;
+    if (last_x >= tilemap->width)
+        last_x = tilemap->width - 1;
+    if (last_y >= tilemap->height)
+        last_y = tilemap->height - 1;
+    if (first_x > last_x || first_y > last_y)
+        return 0;
+    *view_x = first_x;
+    *view_y = first_y;
+    *view_width = last_x - first_x + 1;
+    *view_height = last_y - first_y + 1;
+    return 1;
+}
+
+/// @brief Compute a conservative imported-layout viewport at an editor zoom.
+static int32_t tilemap_visible_import_region_scaled(rt_tilemap_impl *tilemap,
+                                                    tm_layer *layer,
+                                                    int64_t canvas_width,
+                                                    int64_t canvas_height,
+                                                    int64_t camera_x,
+                                                    int64_t camera_y,
+                                                    double map_scale,
+                                                    int64_t *view_x,
+                                                    int64_t *view_y,
+                                                    int64_t *view_width,
+                                                    int64_t *view_height) {
+    if (!tilemap || !layer || canvas_width <= 0 || canvas_height <= 0 || map_scale <= 0.0 ||
+        !isfinite(map_scale) || !view_x || !view_y || !view_width || !view_height)
+        return 0;
+    double offset_x = 0.0;
+    double offset_y = 0.0;
+    tilemap_effective_layer_offset_scaled(
+        tilemap, layer, camera_x, camera_y, map_scale, &offset_x, &offset_y);
+    double screen_x[2] = {-(double)tilemap->source_frame_width - offset_x / map_scale,
+                          ((double)canvas_width - offset_x) / map_scale};
+    double screen_y[2] = {-(double)tilemap->source_frame_height - offset_y / map_scale,
+                          ((double)canvas_height - offset_y) / map_scale};
+    double minimum_x = INFINITY;
+    double minimum_y = INFINITY;
+    double maximum_x = -INFINITY;
+    double maximum_y = -INFINITY;
+    for (int y = 0; y < 2; ++y) {
+        for (int x = 0; x < 2; ++x) {
+            double tile_x = 0.0;
+            double tile_y = 0.0;
+            tilemap_inverse_project_source(tilemap, screen_x[x], screen_y[y], &tile_x, &tile_y);
+            minimum_x = fmin(minimum_x, tile_x);
+            minimum_y = fmin(minimum_y, tile_y);
+            maximum_x = fmax(maximum_x, tile_x);
+            maximum_y = fmax(maximum_y, tile_y);
+        }
+    }
+    int64_t first_x = tilemap_add_saturating(tilemap_floor_double_saturating(minimum_x), -3);
+    int64_t first_y = tilemap_add_saturating(tilemap_floor_double_saturating(minimum_y), -3);
+    int64_t last_x = tilemap_add_saturating(tilemap_ceil_double_saturating(maximum_x), 3);
+    int64_t last_y = tilemap_add_saturating(tilemap_ceil_double_saturating(maximum_y), 3);
+    if (first_x < 0)
+        first_x = 0;
+    if (first_y < 0)
+        first_y = 0;
+    if (last_x >= tilemap->width)
+        last_x = tilemap->width - 1;
+    if (last_y >= tilemap->height)
+        last_y = tilemap->height - 1;
+    if (first_x > last_x || first_y > last_y)
+        return 0;
+    *view_x = first_x;
+    *view_y = first_y;
+    *view_width = last_x - first_x + 1;
+    *view_height = last_y - first_y + 1;
+    return 1;
+}
+
+static int tilemap_layer_uses_default_layout(const rt_tilemap_impl *tilemap,
+                                             const tm_layer *layer) {
+    return tilemap->import_orientation == RT_TILEMAP_IMPORT_ORTHOGONAL &&
+           tilemap->import_render_order == RT_TILEMAP_IMPORT_RIGHT_DOWN &&
+           tilemap->import_origin_tile_x == 0 && tilemap->import_origin_tile_y == 0 &&
+           tilemap->source_frame_width == tilemap->tile_width &&
+           tilemap->source_frame_height == tilemap->tile_height &&
+           tilemap->import_draw_offset_x == 0 && tilemap->import_draw_offset_y == 0 &&
+           tilemap->import_parallax_origin_x == 0.0 && tilemap->import_parallax_origin_y == 0.0 &&
+           layer->import_offset_x == 0.0 && layer->import_offset_y == 0.0 &&
+           layer->import_parallax_x == 1.0 && layer->import_parallax_y == 1.0;
+}
+
 /// @brief Clip a 1-D span [*start, *start + *length) so it fits within [0, limit).
 /// @details Adjusts *start and *length in-place: negative starts are advanced to 0 (consuming
 ///          the leading skipped tiles from *length); spans that extend past @p limit are
@@ -320,6 +836,10 @@ static void tilemap_finalize(void *obj) {
         if (tm->layers[i].tileset)
             rt_heap_release(tm->layers[i].tileset);
     }
+    for (int32_t i = 0; i < tm->tile_anim_count; ++i) {
+        free(tm->tile_anims[i].frame_tiles);
+        free(tm->tile_anims[i].frame_durations);
+    }
 }
 
 /// @brief Create a `width × height` tile grid with cells of `tile_width × tile_height` pixels.
@@ -361,6 +881,12 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
     tilemap->height = height;
     tilemap->tile_width = tile_width;
     tilemap->tile_height = tile_height;
+    tilemap->source_frame_width = tile_width;
+    tilemap->source_frame_height = tile_height;
+    tilemap->import_projection_height = height;
+    tilemap->import_orientation = RT_TILEMAP_IMPORT_ORTHOGONAL;
+    tilemap->import_render_order = RT_TILEMAP_IMPORT_RIGHT_DOWN;
+    tilemap->import_stagger_axis = 1;
     tilemap->tileset_cols = 0;
     tilemap->tileset_rows = 0;
     tilemap->tile_count = 0;
@@ -380,6 +906,8 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
     tilemap->layers[0].tile_count = 0;
     tilemap->layers[0].visible = 1;
     tilemap->layers[0].owns_tiles = 0; // inline allocation
+    tilemap->layers[0].import_parallax_x = 1.0;
+    tilemap->layers[0].import_parallax_y = 1.0;
     memcpy(tilemap->layers[0].name, "base", 5);
 
     rt_obj_set_finalizer(tilemap, tilemap_finalize);
@@ -424,6 +952,83 @@ int64_t rt_tilemap_get_tile_height(void *tilemap_ptr) {
 // Tileset Management
 //=============================================================================
 
+int8_t rt_tilemap_configure_import_layout(void *tilemap_ptr,
+                                          int64_t orientation,
+                                          int64_t origin_tile_x,
+                                          int64_t origin_tile_y,
+                                          int64_t source_frame_width,
+                                          int64_t source_frame_height,
+                                          int64_t draw_offset_x,
+                                          int64_t draw_offset_y,
+                                          int64_t render_order,
+                                          int64_t stagger_axis,
+                                          int8_t stagger_even,
+                                          int64_t hex_side_length,
+                                          double skew_x,
+                                          double skew_y,
+                                          double parallax_origin_x,
+                                          double parallax_origin_y,
+                                          int64_t projection_height) {
+    rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
+    if (!tilemap || orientation < RT_TILEMAP_IMPORT_ORTHOGONAL ||
+        orientation > RT_TILEMAP_IMPORT_OBLIQUE || source_frame_width <= 0 ||
+        source_frame_height <= 0 || render_order < RT_TILEMAP_IMPORT_RIGHT_DOWN ||
+        render_order > RT_TILEMAP_IMPORT_LEFT_UP || (stagger_axis != 0 && stagger_axis != 1) ||
+        hex_side_length < 0 || !isfinite(skew_x) || !isfinite(skew_y) ||
+        !isfinite(parallax_origin_x) || !isfinite(parallax_origin_y) || projection_height < 0)
+        return 0;
+    int64_t hex_axis = stagger_axis == 0 ? tilemap->tile_width : tilemap->tile_height;
+    if (orientation == RT_TILEMAP_IMPORT_HEXAGONAL && hex_side_length > hex_axis)
+        return 0;
+    if (orientation == RT_TILEMAP_IMPORT_OBLIQUE &&
+        fabs(1.0 - (skew_x / (double)tilemap->tile_height) *
+                       (skew_y / (double)tilemap->tile_width)) < 1.0e-12)
+        return 0;
+    tilemap->import_orientation = (int32_t)orientation;
+    tilemap->import_origin_tile_x = origin_tile_x;
+    tilemap->import_origin_tile_y = origin_tile_y;
+    tilemap->import_projection_height = projection_height;
+    tilemap->source_frame_width = source_frame_width;
+    tilemap->source_frame_height = source_frame_height;
+    tilemap->import_draw_offset_x = draw_offset_x;
+    tilemap->import_draw_offset_y = draw_offset_y;
+    tilemap->import_render_order = (int32_t)render_order;
+    tilemap->import_stagger_axis = (int32_t)stagger_axis;
+    tilemap->import_stagger_even = stagger_even ? 1 : 0;
+    tilemap->import_hex_side_length = hex_side_length;
+    tilemap->import_skew_x = skew_x;
+    tilemap->import_skew_y = skew_y;
+    tilemap->import_parallax_origin_x = parallax_origin_x;
+    tilemap->import_parallax_origin_y = parallax_origin_y;
+    return 1;
+}
+
+int8_t rt_tilemap_configure_import_layer(void *tilemap_ptr,
+                                         int64_t layer,
+                                         double offset_x,
+                                         double offset_y,
+                                         double parallax_x,
+                                         double parallax_y) {
+    rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
+    if (!tilemap || layer < 0 || layer >= tilemap->layer_count || !isfinite(offset_x) ||
+        !isfinite(offset_y) || !isfinite(parallax_x) || !isfinite(parallax_y))
+        return 0;
+    tilemap->layers[layer].import_offset_x = offset_x;
+    tilemap->layers[layer].import_offset_y = offset_y;
+    tilemap->layers[layer].import_parallax_x = parallax_x;
+    tilemap->layers[layer].import_parallax_y = parallax_y;
+    return 1;
+}
+
+int8_t rt_tilemap_set_import_tile_count(void *tilemap_ptr, int64_t tile_count) {
+    rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
+    if (!tilemap || tile_count <= 0 || tile_count > tilemap->tileset_cols * tilemap->tileset_rows)
+        return 0;
+    tilemap->tile_count = tile_count;
+    tilemap->layers[0].tile_count = tile_count;
+    return 1;
+}
+
 /// @brief Bind the base tileset Pixels — auto-derives `tileset_cols/rows` from its dimensions.
 ///
 /// The tileset is laid out as a regular grid of `tile_width × tile_height`
@@ -456,8 +1061,8 @@ void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels) {
     int64_t ts_width = rt_pixels_width(cloned);
     int64_t ts_height = rt_pixels_height(cloned);
 
-    tilemap->tileset_cols = ts_width / tilemap->tile_width;
-    tilemap->tileset_rows = ts_height / tilemap->tile_height;
+    tilemap->tileset_cols = ts_width / tilemap->source_frame_width;
+    tilemap->tileset_rows = ts_height / tilemap->source_frame_height;
     if (tilemap->tileset_cols > 0 && tilemap->tileset_rows > INT64_MAX / tilemap->tileset_cols) {
         tilemap->tileset_cols = 0;
         tilemap->tileset_rows = 0;
@@ -555,6 +1160,119 @@ void rt_tilemap_fill_rect(
 // Rendering
 //=============================================================================
 
+typedef void (*tilemap_cell_visitor)(int64_t tile_x, int64_t tile_y, void *context);
+
+/// @brief Visit a clipped rectangle in the visual depth order of the imported map.
+/// @details Orthogonal and oblique maps honor Tiled's four render orders.
+///          Isometric maps walk screen-space diagonals from top to bottom. For
+///          X-staggered maps, non-staggered and staggered half-rows are interleaved;
+///          Y-staggered maps use ordinary top-to-bottom rows.
+static void tilemap_visit_draw_order(const rt_tilemap_impl *tilemap,
+                                     int64_t view_x,
+                                     int64_t view_y,
+                                     int64_t view_w,
+                                     int64_t view_h,
+                                     tilemap_cell_visitor visitor,
+                                     void *context) {
+    if (!tilemap || !visitor || view_w <= 0 || view_h <= 0)
+        return;
+
+    if (tilemap->import_orientation == RT_TILEMAP_IMPORT_ORTHOGONAL ||
+        tilemap->import_orientation == RT_TILEMAP_IMPORT_OBLIQUE) {
+        int reverse_x = tilemap->import_render_order == RT_TILEMAP_IMPORT_LEFT_DOWN ||
+                        tilemap->import_render_order == RT_TILEMAP_IMPORT_LEFT_UP;
+        int reverse_y = tilemap->import_render_order == RT_TILEMAP_IMPORT_RIGHT_UP ||
+                        tilemap->import_render_order == RT_TILEMAP_IMPORT_LEFT_UP;
+        for (int64_t row = 0; row < view_h; ++row) {
+            int64_t tile_y = reverse_y ? view_y + view_h - 1 - row : view_y + row;
+            for (int64_t column = 0; column < view_w; ++column) {
+                int64_t tile_x = reverse_x ? view_x + view_w - 1 - column : view_x + column;
+                visitor(tile_x, tile_y, context);
+            }
+        }
+        return;
+    }
+
+    if (tilemap->import_orientation == RT_TILEMAP_IMPORT_ISOMETRIC) {
+        int64_t first_sum = view_x + view_y;
+        int64_t diagonal_count = view_w + view_h - 1;
+        int64_t end_x = view_x + view_w;
+        int64_t end_y = view_y + view_h;
+        for (int64_t diagonal = 0; diagonal < diagonal_count; ++diagonal) {
+            int64_t sum = first_sum + diagonal;
+            int64_t first_x = sum - (end_y - 1);
+            if (first_x < view_x)
+                first_x = view_x;
+            int64_t last_x = sum - view_y;
+            if (last_x >= end_x)
+                last_x = end_x - 1;
+            for (int64_t tile_x = first_x; tile_x <= last_x; ++tile_x)
+                visitor(tile_x, sum - tile_x, context);
+        }
+        return;
+    }
+
+    int64_t end_x = view_x + view_w;
+    int64_t end_y = view_y + view_h;
+    for (int64_t tile_y = view_y; tile_y < end_y; ++tile_y) {
+        if (tilemap->import_stagger_axis == 0) {
+            for (int staggered = 0; staggered <= 1; ++staggered) {
+                for (int64_t tile_x = view_x; tile_x < end_x; ++tile_x) {
+                    int64_t source_x =
+                        tilemap_add_saturating(tile_x, tilemap->import_origin_tile_x);
+                    if (tilemap_is_staggered_coordinate(tilemap, source_x) == staggered)
+                        visitor(tile_x, tile_y, context);
+                }
+            }
+        } else {
+            for (int64_t tile_x = view_x; tile_x < end_x; ++tile_x)
+                visitor(tile_x, tile_y, context);
+        }
+    }
+}
+
+typedef struct {
+    rt_tilemap_impl *tilemap;
+    void *canvas;
+    tm_layer *layer;
+    void *tileset;
+    int64_t tileset_cols;
+    int64_t tile_count;
+    int64_t source_width;
+    int64_t source_height;
+    double layer_offset_x;
+    double layer_offset_y;
+} tilemap_native_draw_context;
+
+/// @brief Draw one imported-layout cell visited by tilemap_visit_draw_order.
+static void tilemap_draw_native_cell(int64_t tile_x, int64_t tile_y, void *opaque) {
+    tilemap_native_draw_context *context = (tilemap_native_draw_context *)opaque;
+    int64_t tile_index = tilemap_resolve_anim_tile_fast(
+        context->tilemap, context->layer->tiles[tile_y * context->tilemap->width + tile_x]);
+    if (tile_index <= 0 || tile_index > context->tile_count)
+        return;
+
+    int64_t source_index = tile_index - 1;
+    int64_t source_x =
+        tilemap_mul_saturating(source_index % context->tileset_cols, context->source_width);
+    int64_t source_y =
+        tilemap_mul_saturating(source_index / context->tileset_cols, context->source_height);
+    double projected_x = 0.0;
+    double projected_y = 0.0;
+    tilemap_project_source(context->tilemap, tile_x, tile_y, &projected_x, &projected_y);
+    int64_t screen_x = tilemap_round_ties_away_saturating(projected_x + context->layer_offset_x);
+    int64_t screen_y = tilemap_round_ties_away_saturating(projected_y + context->layer_offset_y);
+
+    rt_canvas_blit_region(context->canvas,
+                          screen_x,
+                          screen_y,
+                          context->tileset,
+                          source_x,
+                          source_y,
+                          context->source_width,
+                          context->source_height);
+}
+
 /// @brief Render one tilemap layer over a rectangular region of tile coordinates.
 /// @details Iterates over tile rows [view_y, view_y+view_h) and columns
 ///   [view_x, view_x+view_w), skipping empty (tile_index == 0) or out-of-range
@@ -586,27 +1304,26 @@ static void rt_tilemap_draw_region_layer_impl(rt_tilemap_impl *tilemap,
     if (!tileset || tile_count <= 0 || tileset_cols <= 0)
         return;
 
-    int64_t tw = tilemap->tile_width;
-    int64_t th = tilemap->tile_height;
+    int64_t source_width = tilemap->source_frame_width;
+    int64_t source_height = tilemap->source_frame_height;
+    double layer_offset_x = 0.0;
+    double layer_offset_y = 0.0;
+    tilemap_effective_layer_offset(
+        tilemap, layer, offset_x, offset_y, &layer_offset_x, &layer_offset_y);
 
-    int64_t end_y = tilemap_add_saturating(view_y, view_h);
-    int64_t end_x = tilemap_add_saturating(view_x, view_w);
-    for (int64_t ty = view_y; ty < end_y; ty++) {
-        for (int64_t tx = view_x; tx < end_x; tx++) {
-            int64_t tile_index =
-                tilemap_resolve_anim_tile_fast(tilemap, layer->tiles[ty * tilemap->width + tx]);
-            if (tile_index <= 0 || tile_index > tile_count)
-                continue;
-
-            int64_t ti = tile_index - 1;
-            int64_t ts_x = tilemap_mul_saturating(ti % tileset_cols, tw);
-            int64_t ts_y = tilemap_mul_saturating(ti / tileset_cols, th);
-            int64_t screen_x = tilemap_add_saturating(tilemap_mul_saturating(tx, tw), offset_x);
-            int64_t screen_y = tilemap_add_saturating(tilemap_mul_saturating(ty, th), offset_y);
-
-            rt_canvas_blit_region(canvas_ptr, screen_x, screen_y, tileset, ts_x, ts_y, tw, th);
-        }
-    }
+    (void)tilemap_ptr;
+    tilemap_native_draw_context context = {tilemap,
+                                           canvas_ptr,
+                                           layer,
+                                           tileset,
+                                           tileset_cols,
+                                           tile_count,
+                                           source_width,
+                                           source_height,
+                                           layer_offset_x,
+                                           layer_offset_y};
+    tilemap_visit_draw_order(
+        tilemap, view_x, view_y, view_w, view_h, tilemap_draw_native_cell, &context);
 }
 
 /// @brief Count non-empty tiles one layer would draw over a clipped tile region.
@@ -654,6 +1371,45 @@ void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int6
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
     if (!tilemap)
         return;
+    int default_layout = 1;
+    for (int32_t layer = 0; layer < tilemap->layer_count; ++layer) {
+        if (!tilemap_layer_uses_default_layout(tilemap, &tilemap->layers[layer])) {
+            default_layout = 0;
+            break;
+        }
+    }
+    if (!default_layout) {
+        int64_t canvas_w = rt_canvas_width(canvas_ptr);
+        int64_t canvas_h = rt_canvas_height(canvas_ptr);
+        for (int32_t layer = 0; layer < tilemap->layer_count; ++layer) {
+            int64_t first_x = 0;
+            int64_t first_y = 0;
+            int64_t visible_width = 0;
+            int64_t visible_height = 0;
+            if (!tilemap_visible_import_region(tilemap,
+                                               &tilemap->layers[layer],
+                                               canvas_w,
+                                               canvas_h,
+                                               offset_x,
+                                               offset_y,
+                                               &first_x,
+                                               &first_y,
+                                               &visible_width,
+                                               &visible_height))
+                continue;
+            rt_tilemap_draw_region_layer_impl(tilemap,
+                                              tilemap_ptr,
+                                              canvas_ptr,
+                                              &tilemap->layers[layer],
+                                              offset_x,
+                                              offset_y,
+                                              first_x,
+                                              first_y,
+                                              visible_width,
+                                              visible_height);
+        }
+        return;
+    }
     int64_t tw = tilemap->tile_width > 0 ? tilemap->tile_width : 1;
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
 
@@ -857,12 +1613,97 @@ static void tilemap_scaled_cache_release(tilemap_scaled_tile_cache_entry *entrie
     free(entries);
 }
 
+typedef struct {
+    rt_tilemap_impl *tilemap;
+    void *canvas;
+    tm_layer *layer;
+    void *tileset;
+    int64_t tileset_cols;
+    int64_t tile_count;
+    int64_t source_width;
+    int64_t source_height;
+    int64_t destination_width;
+    int64_t destination_height;
+    int64_t logical_destination_width;
+    int64_t logical_destination_height;
+    int64_t camera_x;
+    int64_t camera_y;
+    double map_scale;
+    double layer_offset_x;
+    double layer_offset_y;
+    int default_layout;
+    tilemap_scaled_tile_cache_entry **cache;
+    size_t *cache_count;
+    size_t *cache_capacity;
+} tilemap_scaled_draw_context;
+
+/// @brief Scale and draw one source-frame cell at its projected zoomed position.
+static void tilemap_draw_scaled_cell(int64_t tile_x, int64_t tile_y, void *opaque) {
+    tilemap_scaled_draw_context *context = (tilemap_scaled_draw_context *)opaque;
+    int64_t tile_index = tilemap_resolve_anim_tile_fast(
+        context->tilemap, context->layer->tiles[tile_y * context->tilemap->width + tile_x]);
+    if (tile_index <= 0 || tile_index > context->tile_count)
+        return;
+
+    void *scaled = tilemap_scaled_cache_find(
+        *context->cache, *context->cache_capacity, context->tileset, tile_index);
+    if (!scaled) {
+        int64_t source_index = tile_index - 1;
+        int64_t source_x =
+            tilemap_mul_saturating(source_index % context->tileset_cols, context->source_width);
+        int64_t source_y =
+            tilemap_mul_saturating(source_index / context->tileset_cols, context->source_height);
+        void *tile = rt_pixels_new(context->source_width, context->source_height);
+        if (!tile)
+            return;
+        rt_pixels_copy(tile,
+                       0,
+                       0,
+                       context->tileset,
+                       source_x,
+                       source_y,
+                       context->source_width,
+                       context->source_height);
+        scaled = rt_pixels_scale(tile, context->destination_width, context->destination_height);
+        tilemap_release_temp(tile);
+        if (scaled && !tilemap_scaled_cache_insert(context->cache,
+                                                   context->cache_count,
+                                                   context->cache_capacity,
+                                                   context->tileset,
+                                                   tile_index,
+                                                   scaled)) {
+            tilemap_release_temp(scaled);
+            scaled = NULL;
+        }
+    }
+    if (!scaled)
+        return;
+
+    int64_t screen_x = 0;
+    int64_t screen_y = 0;
+    if (context->default_layout) {
+        screen_x = tilemap_add_saturating(
+            tilemap_mul_saturating(tile_x, context->logical_destination_width), context->camera_x);
+        screen_y = tilemap_add_saturating(
+            tilemap_mul_saturating(tile_y, context->logical_destination_height), context->camera_y);
+    } else {
+        double projected_x = 0.0;
+        double projected_y = 0.0;
+        tilemap_project_source(context->tilemap, tile_x, tile_y, &projected_x, &projected_y);
+        screen_x = tilemap_round_ties_away_saturating(projected_x * context->map_scale +
+                                                      context->layer_offset_x);
+        screen_y = tilemap_round_ties_away_saturating(projected_y * context->map_scale +
+                                                      context->layer_offset_y);
+    }
+    rt_canvas_blit(context->canvas, screen_x, screen_y, scaled);
+}
+
 /// @brief Draw the tilemap using scaled destination tile cells.
-/// @details This editor-oriented path preserves tile IDs and viewport culling
-///          while scaling each visible source tile through Pixels.Scale before
-///          blitting it to the canvas. Scale 100 delegates to the native fast
-///          path. The implementation is intentionally simple and deterministic;
-///          renderers that need batching should use TilemapRenderer2D.
+/// @details This editor-oriented path scales complete imported source frames,
+///          projection geometry, authored offsets, and traversal order. Camera
+///          offsets remain destination-pixel values. Scale 100 delegates to the
+///          native fast path. Renderers that need batching should use
+///          TilemapRenderer2D.
 void rt_tilemap_draw_scaled(void *tilemap_ptr,
                             void *canvas_ptr,
                             int64_t offset_x,
@@ -883,21 +1724,12 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
     size_t scaled_cache_count = 0;
     size_t scaled_cache_cap = 0;
 
-    int64_t dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
-    int64_t dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
+    int64_t logical_dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
+    int64_t logical_dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
+    int64_t source_dst_w = tilemap_scale_dimension(tilemap->source_frame_width, scale_percent);
+    int64_t source_dst_h = tilemap_scale_dimension(tilemap->source_frame_height, scale_percent);
+    double map_scale = (double)scale_percent / 100.0;
 
-    int64_t first_x = 0;
-    int64_t first_y = 0;
-    int64_t vis_w = 0;
-    int64_t vis_h = 0;
-    if (!tilemap_visible_span(
-            rt_canvas_width(canvas_ptr), offset_x, dst_w, tilemap->width, &first_x, &vis_w) ||
-        !tilemap_visible_span(
-            rt_canvas_height(canvas_ptr), offset_y, dst_h, tilemap->height, &first_y, &vis_h))
-        return;
-
-    int64_t end_y = tilemap_add_saturating(first_y, vis_h);
-    int64_t end_x = tilemap_add_saturating(first_x, vis_w);
     for (int32_t li = 0; li < tilemap->layer_count; li++) {
         tm_layer *layer = &tilemap->layers[li];
         if (!layer->visible || !layer->tiles)
@@ -908,44 +1740,71 @@ void rt_tilemap_draw_scaled(void *tilemap_ptr,
         if (!tileset || tile_count <= 0 || tileset_cols <= 0)
             continue;
 
-        for (int64_t ty = first_y; ty < end_y; ty++) {
-            for (int64_t tx = first_x; tx < end_x; tx++) {
-                int64_t tile_index = tilemap_resolve_anim_tile_fast(
-                    tilemap, layer->tiles[ty * tilemap->width + tx]);
-                if (tile_index <= 0 || tile_index > tile_count)
-                    continue;
-                int64_t ti = tile_index - 1;
-                int64_t sx = tilemap_mul_saturating(ti % tileset_cols, tilemap->tile_width);
-                int64_t sy = tilemap_mul_saturating(ti / tileset_cols, tilemap->tile_height);
-                void *scaled =
-                    tilemap_scaled_cache_find(scaled_cache, scaled_cache_cap, tileset, tile_index);
-                if (!scaled) {
-                    void *tile = rt_pixels_new(tilemap->tile_width, tilemap->tile_height);
-                    if (!tile)
-                        continue;
-                    rt_pixels_copy(
-                        tile, 0, 0, tileset, sx, sy, tilemap->tile_width, tilemap->tile_height);
-                    scaled = rt_pixels_scale(tile, dst_w, dst_h);
-                    tilemap_release_temp(tile);
-                    if (scaled && !tilemap_scaled_cache_insert(&scaled_cache,
-                                                               &scaled_cache_count,
-                                                               &scaled_cache_cap,
-                                                               tileset,
-                                                               tile_index,
-                                                               scaled)) {
-                        tilemap_release_temp(scaled);
-                        scaled = NULL;
-                    }
-                }
-                if (scaled) {
-                    int64_t screen_x =
-                        tilemap_add_saturating(tilemap_mul_saturating(tx, dst_w), offset_x);
-                    int64_t screen_y =
-                        tilemap_add_saturating(tilemap_mul_saturating(ty, dst_h), offset_y);
-                    rt_canvas_blit(canvas_ptr, screen_x, screen_y, scaled);
-                }
-            }
+        int default_layout = tilemap_layer_uses_default_layout(tilemap, layer);
+        int64_t first_x = 0;
+        int64_t first_y = 0;
+        int64_t visible_width = 0;
+        int64_t visible_height = 0;
+        if (default_layout) {
+            if (!tilemap_visible_span(rt_canvas_width(canvas_ptr),
+                                      offset_x,
+                                      logical_dst_w,
+                                      tilemap->width,
+                                      &first_x,
+                                      &visible_width) ||
+                !tilemap_visible_span(rt_canvas_height(canvas_ptr),
+                                      offset_y,
+                                      logical_dst_h,
+                                      tilemap->height,
+                                      &first_y,
+                                      &visible_height))
+                continue;
+        } else if (!tilemap_visible_import_region_scaled(tilemap,
+                                                         layer,
+                                                         rt_canvas_width(canvas_ptr),
+                                                         rt_canvas_height(canvas_ptr),
+                                                         offset_x,
+                                                         offset_y,
+                                                         map_scale,
+                                                         &first_x,
+                                                         &first_y,
+                                                         &visible_width,
+                                                         &visible_height)) {
+            continue;
         }
+
+        double layer_offset_x = 0.0;
+        double layer_offset_y = 0.0;
+        tilemap_effective_layer_offset_scaled(
+            tilemap, layer, offset_x, offset_y, map_scale, &layer_offset_x, &layer_offset_y);
+        tilemap_scaled_draw_context context = {tilemap,
+                                               canvas_ptr,
+                                               layer,
+                                               tileset,
+                                               tileset_cols,
+                                               tile_count,
+                                               tilemap->source_frame_width,
+                                               tilemap->source_frame_height,
+                                               source_dst_w,
+                                               source_dst_h,
+                                               logical_dst_w,
+                                               logical_dst_h,
+                                               offset_x,
+                                               offset_y,
+                                               map_scale,
+                                               layer_offset_x,
+                                               layer_offset_y,
+                                               default_layout,
+                                               &scaled_cache,
+                                               &scaled_cache_count,
+                                               &scaled_cache_cap};
+        tilemap_visit_draw_order(tilemap,
+                                 first_x,
+                                 first_y,
+                                 visible_width,
+                                 visible_height,
+                                 tilemap_draw_scaled_cell,
+                                 &context);
     }
     tilemap_scaled_cache_release(scaled_cache, scaled_cache_cap);
 }
@@ -985,6 +1844,43 @@ int64_t rt_tilemap_count_drawn_visible(void *tilemap_ptr,
     if (!tilemap)
         return 0;
 
+    int default_layout = 1;
+    for (int32_t layer = 0; layer < tilemap->layer_count; ++layer) {
+        if (!tilemap_layer_uses_default_layout(tilemap, &tilemap->layers[layer])) {
+            default_layout = 0;
+            break;
+        }
+    }
+    if (!default_layout) {
+        int64_t total = 0;
+        for (int32_t layer = 0; layer < tilemap->layer_count; ++layer) {
+            int64_t first_x = 0;
+            int64_t first_y = 0;
+            int64_t visible_width = 0;
+            int64_t visible_height = 0;
+            if (!tilemap_visible_import_region(tilemap,
+                                               &tilemap->layers[layer],
+                                               rt_canvas_width(canvas_ptr),
+                                               rt_canvas_height(canvas_ptr),
+                                               offset_x,
+                                               offset_y,
+                                               &first_x,
+                                               &first_y,
+                                               &visible_width,
+                                               &visible_height))
+                continue;
+            int64_t count = rt_tilemap_count_drawn_region_layer_impl(tilemap,
+                                                                     tilemap_ptr,
+                                                                     &tilemap->layers[layer],
+                                                                     first_x,
+                                                                     first_y,
+                                                                     visible_width,
+                                                                     visible_height);
+            total = count > INT64_MAX - total ? INT64_MAX : total + count;
+        }
+        return total;
+    }
+
     int64_t tw = tilemap->tile_width > 0 ? tilemap->tile_width : 1;
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
     int64_t canvas_w = rt_canvas_width(canvas_ptr);
@@ -1012,18 +1908,48 @@ int64_t rt_tilemap_count_drawn_visible_scaled(void *tilemap_ptr,
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
     if (!tilemap)
         return 0;
-    int64_t dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
-    int64_t dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
-    int64_t first_x = 0;
-    int64_t first_y = 0;
-    int64_t vis_w = 0;
-    int64_t vis_h = 0;
-    if (!tilemap_visible_span(
-            rt_canvas_width(canvas_ptr), offset_x, dst_w, tilemap->width, &first_x, &vis_w) ||
-        !tilemap_visible_span(
-            rt_canvas_height(canvas_ptr), offset_y, dst_h, tilemap->height, &first_y, &vis_h))
-        return 0;
-    return rt_tilemap_count_drawn_region(tilemap_ptr, first_x, first_y, vis_w, vis_h);
+    int64_t logical_dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
+    int64_t logical_dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
+    double map_scale = (double)scale_percent / 100.0;
+    int64_t total = 0;
+    for (int32_t layer_index = 0; layer_index < tilemap->layer_count; ++layer_index) {
+        tm_layer *layer = &tilemap->layers[layer_index];
+        int64_t first_x = 0;
+        int64_t first_y = 0;
+        int64_t visible_width = 0;
+        int64_t visible_height = 0;
+        if (tilemap_layer_uses_default_layout(tilemap, layer)) {
+            if (!tilemap_visible_span(rt_canvas_width(canvas_ptr),
+                                      offset_x,
+                                      logical_dst_w,
+                                      tilemap->width,
+                                      &first_x,
+                                      &visible_width) ||
+                !tilemap_visible_span(rt_canvas_height(canvas_ptr),
+                                      offset_y,
+                                      logical_dst_h,
+                                      tilemap->height,
+                                      &first_y,
+                                      &visible_height))
+                continue;
+        } else if (!tilemap_visible_import_region_scaled(tilemap,
+                                                         layer,
+                                                         rt_canvas_width(canvas_ptr),
+                                                         rt_canvas_height(canvas_ptr),
+                                                         offset_x,
+                                                         offset_y,
+                                                         map_scale,
+                                                         &first_x,
+                                                         &first_y,
+                                                         &visible_width,
+                                                         &visible_height)) {
+            continue;
+        }
+        int64_t count = rt_tilemap_count_drawn_region_layer_impl(
+            tilemap, tilemap_ptr, layer, first_x, first_y, visible_width, visible_height);
+        total = count > INT64_MAX - total ? INT64_MAX : total + count;
+    }
+    return total;
 }
 
 /// @brief Convert scaled screen coordinates to tile coordinates and return a result map.
@@ -1040,10 +1966,27 @@ void *rt_tilemap_hit_test_scaled(void *tilemap_ptr,
     int8_t in_bounds = 0;
     int64_t tile = 0;
     if (tilemap && scale_percent > 0) {
-        int64_t dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
-        int64_t dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
-        tx = tilemap_floor_div(tilemap_sub_saturating(screen_x, offset_x), dst_w);
-        ty = tilemap_floor_div(tilemap_sub_saturating(screen_y, offset_y), dst_h);
+        tm_layer *base_layer = &tilemap->layers[0];
+        if (tilemap_layer_uses_default_layout(tilemap, base_layer)) {
+            int64_t dst_w = tilemap_scale_dimension(tilemap->tile_width, scale_percent);
+            int64_t dst_h = tilemap_scale_dimension(tilemap->tile_height, scale_percent);
+            tx = tilemap_floor_div(tilemap_sub_saturating(screen_x, offset_x), dst_w);
+            ty = tilemap_floor_div(tilemap_sub_saturating(screen_y, offset_y), dst_h);
+        } else {
+            double map_scale = (double)scale_percent / 100.0;
+            double layer_offset_x = 0.0;
+            double layer_offset_y = 0.0;
+            tilemap_effective_layer_offset_scaled(tilemap,
+                                                  base_layer,
+                                                  offset_x,
+                                                  offset_y,
+                                                  map_scale,
+                                                  &layer_offset_x,
+                                                  &layer_offset_y);
+            double projected_x = ((double)screen_x - layer_offset_x) / map_scale;
+            double projected_y = ((double)screen_y - layer_offset_y) / map_scale;
+            tilemap_projected_pixel_to_cell(tilemap, projected_x, projected_y, &tx, &ty);
+        }
         in_bounds = (tx >= 0 && ty >= 0 && tx < tilemap->width && ty < tilemap->height) ? 1 : 0;
         if (in_bounds)
             tile = rt_tilemap_get_tile(tilemap_ptr, tx, ty);
@@ -1076,20 +2019,41 @@ void rt_tilemap_pixel_to_tile(
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
     if (!tilemap)
         return;
-    *tile_x = tilemap_floor_div(pixel_x, tilemap->tile_width);
-    *tile_y = tilemap_floor_div(pixel_y, tilemap->tile_height);
+    if (tilemap->import_orientation == RT_TILEMAP_IMPORT_ORTHOGONAL &&
+        tilemap->import_origin_tile_x == 0 && tilemap->import_origin_tile_y == 0) {
+        *tile_x = tilemap_floor_div(pixel_x, tilemap->tile_width);
+        *tile_y = tilemap_floor_div(pixel_y, tilemap->tile_height);
+        return;
+    }
+    tilemap_projected_pixel_to_cell(tilemap, (double)pixel_x, (double)pixel_y, tile_x, tile_y);
 }
 
 /// @brief X-axis: convert pixel coordinate to tile-grid column.
 int64_t rt_tilemap_to_tile_x(void *tilemap_ptr, int64_t pixel_x) {
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
-    return tilemap ? tilemap_floor_div(pixel_x, tilemap->tile_width) : 0;
+    if (!tilemap)
+        return 0;
+    if (tilemap->import_orientation == RT_TILEMAP_IMPORT_ORTHOGONAL &&
+        tilemap->import_origin_tile_x == 0)
+        return tilemap_floor_div(pixel_x, tilemap->tile_width);
+    int64_t tile_x = 0;
+    int64_t tile_y = 0;
+    tilemap_projected_pixel_to_cell(tilemap, (double)pixel_x, 0.0, &tile_x, &tile_y);
+    return tile_x;
 }
 
 /// @brief Y-axis: convert pixel coordinate to tile-grid row.
 int64_t rt_tilemap_to_tile_y(void *tilemap_ptr, int64_t pixel_y) {
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
-    return tilemap ? tilemap_floor_div(pixel_y, tilemap->tile_height) : 0;
+    if (!tilemap)
+        return 0;
+    if (tilemap->import_orientation == RT_TILEMAP_IMPORT_ORTHOGONAL &&
+        tilemap->import_origin_tile_y == 0)
+        return tilemap_floor_div(pixel_y, tilemap->tile_height);
+    int64_t tile_x = 0;
+    int64_t tile_y = 0;
+    tilemap_projected_pixel_to_cell(tilemap, 0.0, (double)pixel_y, &tile_x, &tile_y);
+    return tile_y;
 }
 
 /// @brief Convert (tile_x, tile_y) grid coordinates to top-left pixel coordinates of that cell.
@@ -1102,20 +2066,33 @@ void rt_tilemap_tile_to_pixel(
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
     if (!tilemap)
         return;
-    *pixel_x = tilemap_mul_saturating(tile_x, tilemap->tile_width);
-    *pixel_y = tilemap_mul_saturating(tile_y, tilemap->tile_height);
+    double projected_x = 0.0;
+    double projected_y = 0.0;
+    tilemap_project_source(tilemap, tile_x, tile_y, &projected_x, &projected_y);
+    *pixel_x = tilemap_round_ties_away_saturating(projected_x);
+    *pixel_y = tilemap_round_ties_away_saturating(projected_y);
 }
 
 /// @brief X-axis: convert tile column to pixel coordinate (tile_x * tile_width).
 int64_t rt_tilemap_to_pixel_x(void *tilemap_ptr, int64_t tile_x) {
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
-    return tilemap ? tilemap_mul_saturating(tile_x, tilemap->tile_width) : 0;
+    if (!tilemap)
+        return 0;
+    double pixel_x = 0.0;
+    double pixel_y = 0.0;
+    tilemap_project_source(tilemap, tile_x, 0, &pixel_x, &pixel_y);
+    return tilemap_round_ties_away_saturating(pixel_x);
 }
 
 /// @brief Y-axis: convert tile row to pixel coordinate (tile_y * tile_height).
 int64_t rt_tilemap_to_pixel_y(void *tilemap_ptr, int64_t tile_y) {
     rt_tilemap_impl *tilemap = tilemap_checked(tilemap_ptr, NULL);
-    return tilemap ? tilemap_mul_saturating(tile_y, tilemap->tile_height) : 0;
+    if (!tilemap)
+        return 0;
+    double pixel_x = 0.0;
+    double pixel_y = 0.0;
+    tilemap_project_source(tilemap, 0, tile_y, &pixel_x, &pixel_y);
+    return tilemap_round_ties_away_saturating(pixel_y);
 }
 
 //=============================================================================
@@ -1347,6 +2324,8 @@ int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name) {
     layer->tile_count = 0;
     layer->visible = 1;
     layer->owns_tiles = 1;
+    layer->import_parallax_x = 1.0;
+    layer->import_parallax_y = 1.0;
 
     memcpy(layer->name, layer_name, sizeof(layer->name));
 
@@ -1542,8 +2521,8 @@ void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels
     int64_t ts_width = rt_pixels_width(cloned);
     int64_t ts_height = rt_pixels_height(cloned);
 
-    lyr->tileset_cols = ts_width / tilemap->tile_width;
-    lyr->tileset_rows = ts_height / tilemap->tile_height;
+    lyr->tileset_cols = ts_width / tilemap->source_frame_width;
+    lyr->tileset_rows = ts_height / tilemap->source_frame_height;
     lyr->tile_count = lyr->tileset_cols * lyr->tileset_rows;
 }
 
@@ -1566,6 +2545,35 @@ void rt_tilemap_draw_layer(
         return;
     if (layer < 0 || layer >= tilemap->layer_count)
         return;
+
+    if (!tilemap_layer_uses_default_layout(tilemap, &tilemap->layers[layer])) {
+        int64_t first_x = 0;
+        int64_t first_y = 0;
+        int64_t visible_width = 0;
+        int64_t visible_height = 0;
+        if (!tilemap_visible_import_region(tilemap,
+                                           &tilemap->layers[layer],
+                                           rt_canvas_width(canvas_ptr),
+                                           rt_canvas_height(canvas_ptr),
+                                           cam_x,
+                                           cam_y,
+                                           &first_x,
+                                           &first_y,
+                                           &visible_width,
+                                           &visible_height))
+            return;
+        rt_tilemap_draw_region_layer_impl(tilemap,
+                                          tilemap_ptr,
+                                          canvas_ptr,
+                                          &tilemap->layers[layer],
+                                          cam_x,
+                                          cam_y,
+                                          first_x,
+                                          first_y,
+                                          visible_width,
+                                          visible_height);
+        return;
+    }
 
     int64_t tw = tilemap->tile_width > 0 ? tilemap->tile_width : 1;
     int64_t th = tilemap->tile_height > 0 ? tilemap->tile_height : 1;
@@ -1616,6 +2624,63 @@ int64_t rt_tilemap_get_collision_layer(void *tilemap_ptr) {
 // Tile Animation
 //=============================================================================
 
+static tm_tile_anim *tilemap_find_anim(rt_tilemap_impl *tm, int64_t base_tile_id) {
+    if (!tm)
+        return NULL;
+    for (int32_t i = 0; i < tm->tile_anim_count; ++i) {
+        if (tm->tile_anims[i].base_tile_id == base_tile_id)
+            return &tm->tile_anims[i];
+    }
+    return NULL;
+}
+
+static int8_t tilemap_assign_anim(rt_tilemap_impl *tm,
+                                  int64_t base_tile_id,
+                                  int64_t frame_count,
+                                  const int64_t *frame_tiles,
+                                  const int64_t *frame_durations,
+                                  int64_t uniform_duration) {
+    if (!tm || base_tile_id <= 0 || frame_count <= 0 || frame_count > TM_MAX_IMPORT_ANIM_FRAMES ||
+        !frame_tiles || !frame_durations ||
+        (uint64_t)frame_count > (uint64_t)(SIZE_MAX / sizeof(int64_t)))
+        return 0;
+    for (int64_t i = 0; i < frame_count; ++i) {
+        if (frame_tiles[i] <= 0 || frame_durations[i] <= 0)
+            return 0;
+    }
+    size_t bytes = (size_t)frame_count * sizeof(int64_t);
+    int64_t *new_frames = (int64_t *)malloc(bytes);
+    int64_t *new_durations = (int64_t *)malloc(bytes);
+    if (!new_frames || !new_durations) {
+        free(new_frames);
+        free(new_durations);
+        return 0;
+    }
+    memcpy(new_frames, frame_tiles, bytes);
+    memcpy(new_durations, frame_durations, bytes);
+
+    tm_tile_anim *anim = tilemap_find_anim(tm, base_tile_id);
+    if (!anim && tm->tile_anim_count >= TM_MAX_TILE_ANIMS) {
+        free(new_frames);
+        free(new_durations);
+        return 0;
+    }
+    if (!anim) {
+        anim = &tm->tile_anims[tm->tile_anim_count++];
+        memset(anim, 0, sizeof(*anim));
+    }
+    free(anim->frame_tiles);
+    free(anim->frame_durations);
+    anim->base_tile_id = base_tile_id;
+    anim->frame_tiles = new_frames;
+    anim->frame_durations = new_durations;
+    anim->frame_count = (int32_t)frame_count;
+    anim->ms_per_frame = uniform_duration;
+    anim->timer = 0;
+    anim->current_frame = 0;
+    return 1;
+}
+
 /// @brief Register an animation that swaps `base_tile_id` for one of `frame_count` frames over
 /// time. The frame table defaults to sequential ids `(base, base+1, ..., base+frame_count-1)`;
 /// override individual frames with `set_tile_anim_frame`. Caps at `TM_MAX_TILE_ANIMS` registrations
@@ -1630,25 +2695,13 @@ void rt_tilemap_set_tile_anim(void *tilemap_ptr,
     rt_tilemap_impl *tm = tilemap_checked(tilemap_ptr, NULL);
     if (!tm)
         return;
-    tm_tile_anim *anim = NULL;
-    for (int32_t i = 0; i < tm->tile_anim_count; i++) {
-        if (tm->tile_anims[i].base_tile_id == base_tile_id) {
-            anim = &tm->tile_anims[i];
-            break;
-        }
+    int64_t frames[TM_MAX_ANIM_FRAMES];
+    int64_t durations[TM_MAX_ANIM_FRAMES];
+    for (int64_t i = 0; i < frame_count; ++i) {
+        frames[i] = base_tile_id > INT64_MAX - i ? INT64_MAX : base_tile_id + i;
+        durations[i] = ms_per_frame;
     }
-    if (!anim && tm->tile_anim_count >= TM_MAX_TILE_ANIMS)
-        return;
-
-    if (!anim)
-        anim = &tm->tile_anims[tm->tile_anim_count++];
-    memset(anim, 0, sizeof(tm_tile_anim));
-    anim->base_tile_id = base_tile_id;
-    anim->frame_count = (int32_t)frame_count;
-    anim->ms_per_frame = ms_per_frame;
-    // Default: sequential tile IDs (base, base+1, base+2, ...)
-    for (int32_t i = 0; i < anim->frame_count; i++)
-        anim->frame_tiles[i] = base_tile_id > INT64_MAX - i ? INT64_MAX : base_tile_id + i;
+    (void)tilemap_assign_anim(tm, base_tile_id, frame_count, frames, durations, ms_per_frame);
 }
 
 /// @brief Override one frame in an existing animation (selected by `base_tile_id`).
@@ -1672,6 +2725,15 @@ void rt_tilemap_set_tile_anim_frame(void *tilemap_ptr,
     }
 }
 
+int8_t rt_tilemap_set_import_tile_anim(void *tilemap_ptr,
+                                       int64_t base_tile_id,
+                                       int64_t frame_count,
+                                       const int64_t *frame_tiles,
+                                       const int64_t *frame_durations) {
+    rt_tilemap_impl *tm = tilemap_checked(tilemap_ptr, NULL);
+    return tilemap_assign_anim(tm, base_tile_id, frame_count, frame_tiles, frame_durations, 0);
+}
+
 /// @brief Advance all registered tile animations by `dt_ms` milliseconds.
 /// Negative deltas are ignored. Large deltas advance by division/modulo so one call can span many
 /// frames without looping once per elapsed frame.
@@ -1685,18 +2747,45 @@ void rt_tilemap_update_anims(void *tilemap_ptr, int64_t dt_ms) {
         return;
     for (int32_t i = 0; i < tm->tile_anim_count; i++) {
         tm_tile_anim *anim = &tm->tile_anims[i];
-        if (anim->ms_per_frame <= 0 || anim->frame_count <= 0)
+        if (!anim->frame_tiles || !anim->frame_durations || anim->frame_count <= 0)
             continue;
-        if (dt_ms > INT64_MAX - anim->timer)
-            anim->timer = INT64_MAX;
-        else
+        int64_t current_duration = anim->frame_durations[anim->current_frame];
+        if (current_duration <= 0)
+            continue;
+        int64_t remaining_in_frame = current_duration - anim->timer;
+        if (dt_ms < remaining_in_frame) {
             anim->timer += dt_ms;
-        int64_t steps = anim->timer / anim->ms_per_frame;
-        if (steps <= 0)
             continue;
-        anim->timer %= anim->ms_per_frame;
-        anim->current_frame =
-            (anim->current_frame + (int32_t)(steps % anim->frame_count)) % anim->frame_count;
+        }
+        int64_t remaining = dt_ms - remaining_in_frame;
+        anim->current_frame = (anim->current_frame + 1) % anim->frame_count;
+        anim->timer = 0;
+
+        int64_t cycle_duration = 0;
+        int cycle_overflow = 0;
+        for (int32_t frame = 0; frame < anim->frame_count; ++frame) {
+            int64_t duration = anim->frame_durations[frame];
+            if (duration <= 0) {
+                cycle_overflow = 1;
+                break;
+            }
+            if (cycle_duration > INT64_MAX - duration) {
+                cycle_overflow = 1;
+                break;
+            }
+            cycle_duration += duration;
+        }
+        if (!cycle_overflow && cycle_duration > 0)
+            remaining %= cycle_duration;
+        for (int32_t traversed = 0; traversed < anim->frame_count; ++traversed) {
+            current_duration = anim->frame_durations[anim->current_frame];
+            if (remaining < current_duration) {
+                anim->timer = remaining;
+                break;
+            }
+            remaining -= current_duration;
+            anim->current_frame = (anim->current_frame + 1) % anim->frame_count;
+        }
     }
 }
 

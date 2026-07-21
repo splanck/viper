@@ -1010,6 +1010,10 @@ static void test_d3d11_light_upload_sanitization_helpers(void) {
                 "Light-type sanitizer preserves directional lights");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_light_type(3) == 3,
                 "Light-type sanitizer preserves spot lights");
+    EXPECT_TRUE(vgfx3d_d3d11_sanitize_light_type(4) == 4 &&
+                    vgfx3d_d3d11_sanitize_light_type(5) == 5 &&
+                    vgfx3d_d3d11_sanitize_light_type(6) == 6,
+                "Light-type sanitizer preserves native area and volume lights");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_light_type(-1) == 0,
                 "Light-type sanitizer falls back below range");
     EXPECT_TRUE(vgfx3d_d3d11_sanitize_light_type(99) == 0,
@@ -1807,6 +1811,13 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
                 "Shadow HLSL consumes the shared CSM and atlas-grid constants");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "PS_OUTPUT PSMain(PS_INPUT input)"),
                 "Main D3D11 shader source remains available to the compile path");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "evalNativeLight") &&
+                    contains_text(d3d11_shader_source, "nativeLightDecay"),
+                "D3D11 shader retains native area/volume evaluation and FBX decay");
+    EXPECT_TRUE(contains_text(d3d11_shader_source, "float4 basisU") &&
+                    contains_text(d3d11_shader_source, "float4 basisV") &&
+                    contains_text(d3d11_shader_source, "float4 shape"),
+                "D3D11 light layout retains emitter basis and dimensions");
     EXPECT_TRUE(contains_text(d3d11_skybox_shader_source, "len2 > 1e-12 && len2 < 1e20"),
                 "Skybox D3D11 shader bounds safeNormalize before rsqrt");
     EXPECT_TRUE(contains_text(d3d11_postfx_shader_source,

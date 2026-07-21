@@ -115,8 +115,8 @@ void *rt_scene_node3d_get_world_scale(void *node);
 /// @brief Get the local position as raw components (1 on success, 0 on invalid node).
 int8_t rt_scene_node3d_get_position_components(void *node, double *x, double *y, double *z);
 /// @brief Get the local rotation quaternion as raw components (1 on success, 0 on invalid node).
-int8_t
-rt_scene_node3d_get_rotation_components(void *node, double *x, double *y, double *z, double *w);
+int8_t rt_scene_node3d_get_rotation_components(
+    void *node, double *x, double *y, double *z, double *w);
 /// @brief Get the world rotation quaternion as raw components (1 on success, 0 on invalid node).
 int8_t rt_scene_node3d_get_world_rotation_components(
     void *node, double *x, double *y, double *z, double *w);
@@ -166,6 +166,10 @@ void *rt_scene_node3d_get_mesh(void *node);
 void rt_scene_node3d_set_material(void *node, void *material);
 /// @brief Get the bound Material3D (NULL if none).
 void *rt_scene_node3d_get_material(void *node);
+/// @brief Bind a Camera3D whose view pose follows this node during SyncBindings.
+void rt_scene_node3d_set_camera(void *node, void *camera);
+/// @brief Get the node-attached Camera3D, or NULL.
+void *rt_scene_node3d_get_camera(void *node);
 /// @brief Toggle visibility (hidden nodes and their descendants are skipped during draw).
 void rt_scene_node3d_set_visible(void *node, int8_t visible);
 /// @brief Get the visibility flag.

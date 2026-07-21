@@ -80,10 +80,20 @@ static int gltf_preload_bundle_add_image_payload(rt_gltf_preload_bundle *bundle,
         return 1;
     if (gltf_decode_image_payload_to_rgba_blob(
             mime_or_name, data, data_len, &rgba_blob, &rgba_len)) {
-        free(data);
-        data = rgba_blob;
-        data_len = rgba_len;
-        kind = GLTF_PRELOAD_DEP_IMAGE_RGBA;
+        if (!gltf_preload_bundle_add_dependency(
+                bundle, key, GLTF_PRELOAD_DEP_IMAGE_SOURCE, data, data_len)) {
+            free(data);
+            free(rgba_blob);
+            gltf_preload_set_error(error, error_cap, "failed to stage glTF image source");
+            return 0;
+        }
+        if (!gltf_preload_bundle_add_dependency(
+                bundle, key, GLTF_PRELOAD_DEP_IMAGE_RGBA, rgba_blob, rgba_len)) {
+            free(rgba_blob);
+            gltf_preload_set_error(error, error_cap, "failed to stage glTF dependency");
+            return 0;
+        }
+        return 1;
     }
     if (required && kind != GLTF_PRELOAD_DEP_IMAGE_RGBA &&
         gltf_preload_image_is_supported_format(mime_or_name)) {

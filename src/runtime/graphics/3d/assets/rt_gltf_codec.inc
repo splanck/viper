@@ -19,7 +19,8 @@ typedef enum {
     GLTF_PRELOAD_DEP_IMAGE_RGBA = 3,
     GLTF_PRELOAD_DEP_MESH_POD = 4,
     GLTF_PRELOAD_DEP_MORPH_POD = 5,
-    GLTF_PRELOAD_DEP_IMAGE_PIXELS = 6
+    GLTF_PRELOAD_DEP_IMAGE_PIXELS = 6,
+    GLTF_PRELOAD_DEP_IMAGE_SOURCE = 7
 } gltf_preload_dependency_kind_t;
 
 #define GLTF_PRELOAD_MESH_POD_MAGIC 0x504D4756u /* "VGMP" little-endian */
@@ -719,6 +720,49 @@ static int gltf_image_is_ktx2(const char *mime_or_name) {
         return 1;
     len = strlen(mime_or_name);
     return len >= 5u && gltf_ascii_ieq_n(mime_or_name + len - 5u, ".ktx2", 5u);
+}
+
+/// @brief Identify one supported exact image container from its magic bytes.
+/// @details The returned spelling is the normalized kind accepted by TextureAsset3D's private
+///          source-container bridge. A filename or MIME declaration is deliberately not trusted:
+///          the exact bytes determine whether provenance can safely be retained.
+static const char *gltf_image_container_kind(const uint8_t *data, size_t len) {
+    static const uint8_t ktx2_magic[12] = {
+        0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A};
+    static const uint8_t png_magic[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    if (!data)
+        return NULL;
+    if (len >= sizeof(ktx2_magic) && memcmp(data, ktx2_magic, sizeof(ktx2_magic)) == 0)
+        return "ktx2";
+    if (len >= sizeof(png_magic) && memcmp(data, png_magic, sizeof(png_magic)) == 0)
+        return "png";
+    if (len >= 4u && data[0] == 0xFFu && data[1] == 0xD8u && data[2] == 0xFFu)
+        return "jpeg";
+    if (len >= 6u && (memcmp(data, "GIF87a", 6u) == 0 || memcmp(data, "GIF89a", 6u) == 0))
+        return "gif";
+    if (len >= 14u && data[0] == 'B' && data[1] == 'M')
+        return "bmp";
+    return NULL;
+}
+
+/// @brief Replace decoded Pixels with a TextureAsset3D that also owns the exact encoded bytes.
+/// @details Ownership of @p decoded is consumed only when wrapping succeeds or a recognized
+///          source container cannot be retained. KTX2 already decodes directly to a source-backed
+///          TextureAsset3D and therefore passes through unchanged.
+static void *gltf_preserve_decoded_image_source(void *decoded, const uint8_t *data, size_t len) {
+    const char *kind = gltf_image_container_kind(data, len);
+    void *wrapped;
+    if (!decoded || !kind || strcmp(kind, "ktx2") == 0)
+        return decoded;
+    if (!rt_pixels_checked_impl_or_null(decoded))
+        return decoded;
+    wrapped = rt_textureasset3d_wrap_encoded_pixels(decoded, data, (uint64_t)len, kind);
+    if (!wrapped) {
+        gltf_preload_release_object(&decoded);
+        return NULL;
+    }
+    gltf_preload_release_object(&decoded);
+    return wrapped;
 }
 
 /// @brief Decode KTX2 payloads under trap recovery so malformed textures fail the import cleanly.

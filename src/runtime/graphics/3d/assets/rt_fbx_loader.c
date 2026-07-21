@@ -46,6 +46,7 @@
 #include "rt_gif.h"
 #include "rt_mat4.h"
 #include "rt_morphtarget3d.h"
+#include "rt_morphtarget3d_internal.h"
 #include "rt_object.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
@@ -54,6 +55,7 @@
 #include "rt_skeleton3d.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
+#include "rt_textureasset3d.h"
 #include "rt_trap.h"
 #include "rt_untrusted_count.h"
 #include "rt_vec3.h"
@@ -76,11 +78,13 @@ extern void rt_camera3d_look_at_components(void *obj,
                                            double up_x,
                                            double up_y,
                                            double up_z);
+extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
 
 #define RT_FBX_HARD_MAX_FILE_BYTES (1024ull * 1024ull * 1024ull)
 #define RT_FBX_DEFAULT_MAX_FILE_BYTES (256ull * 1024ull * 1024ull)
 #define RT_FBX_DEFAULT_LOAD_BUDGET_BYTES (1024ull * 1024ull * 1024ull)
 #define RT_FBX_MAX_TEXTURE_PATH_BYTES (1024u * 1024u)
+#define RT_FBX_MAX_TEXTURE_FILE_BYTES (256u * 1024u * 1024u)
 
 #if defined(_MSC_VER)
 #define RT_FBX_THREAD_LOCAL __declspec(thread)
@@ -163,10 +167,21 @@ typedef struct {
     int32_t capacity;
 } fbx_vertex_index_list_t;
 
+/// @brief Sparse control-point contribution range for one tessellated surface vertex.
+typedef struct {
+    uint32_t offset;
+    uint32_t count;
+} fbx_surface_vertex_remap_t;
+
 typedef struct {
     int64_t id;
     fbx_vertex_index_list_t *control_vertices;
     int32_t control_count;
+    fbx_surface_vertex_remap_t *surface_vertices;
+    int32_t *surface_control_indices;
+    double *surface_control_weights;
+    uint32_t surface_vertex_count;
+    uint32_t surface_contribution_count;
 } fbx_mesh_remap_t;
 
 typedef struct {
@@ -479,10 +494,15 @@ static void fbx_asset_release_ref_array(void ***items, int32_t *count, int32_t *
 }
 
 // clang-format off
+typedef struct fbx_constraint_pose fbx_constraint_pose_t;
+static const double *fbx_constraint_static_global_for_id(const fbx_constraint_pose_t *pose,
+                                                         int64_t model_id);
+
 #include "rt_fbx_loader_parse.inc"
 #include "rt_fbx_loader_ascii.inc"
 #include "rt_fbx_loader_geometry.inc"
 #include "rt_fbx_loader_scene.inc"
+#include "rt_fbx_loader_constraints.inc"
 #include "rt_fbx_loader_skeleton.inc"
 #include "rt_fbx_loader_anim.inc"
 #include "rt_fbx_loader_nodeanim.inc"

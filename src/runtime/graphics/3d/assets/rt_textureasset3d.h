@@ -134,6 +134,26 @@ void *rt_textureasset3d_load_ktx2_memory(const uint8_t *data, uint64_t size);
 /// @param size Byte length, bounded by the runtime texture-file limit.
 /// @return New GC-managed non-degraded asset, or NULL after recording a recoverable asset error.
 void *rt_textureasset3d_load_ktx2_memory_strict(const uint8_t *data, uint64_t size);
+/// @brief Internal serializer bridge: borrow an exact, unchanged source container.
+/// @details Returns zero when no container exists or its decoded Pixels changed after import.
+int8_t rt_textureasset3d_get_source_container(void *asset,
+                                              const uint8_t **data,
+                                              uint64_t *size,
+                                              const char **kind);
+/// @brief Internal fidelity bridge: classify exact source provenance.
+/// @details Returns NONE when no exact container was retained, VALID while the encoded bytes
+///          still describe the current decoded surface, and CHANGED_AFTER_IMPORT after a native
+///          caller mutates that surface. Invalid/non-TextureAsset3D handles report NONE.
+#define RT_TEXTUREASSET3D_SOURCE_CONTAINER_NONE 0
+#define RT_TEXTUREASSET3D_SOURCE_CONTAINER_VALID 1
+#define RT_TEXTUREASSET3D_SOURCE_CONTAINER_CHANGED_AFTER_IMPORT 2
+int64_t rt_textureasset3d_get_source_container_state(void *asset);
+/// @brief Internal importer bridge: retain decoded Pixels plus an exact encoded source container.
+/// @details Supported normalized kinds are ktx2, png, jpeg, gif, and bmp. The byte span is copied.
+void *rt_textureasset3d_wrap_encoded_pixels(void *pixels,
+                                            const uint8_t *data,
+                                            uint64_t size,
+                                            const char *kind);
 /// @brief Texture width in pixels.
 int64_t rt_textureasset3d_get_width(void *obj);
 /// @brief Texture height in pixels.

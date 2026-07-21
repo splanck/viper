@@ -611,10 +611,7 @@ static void sw_shade_perturb_normal(const sw_fragment_ctx *fc,
     *out_nz = pnz;
 }
 
-/// @brief Compute the normalized light direction and distance attenuation for a
-///   directional (type 0), point (type 1), or spot (type 3) light at world point
-///   (wx,wy,wz). Returns 1 with (*llx,*lly,*llz,*la) filled, or 0 if the light is
-///   degenerate and should be skipped. Ambient lights are handled by the caller.
+/// @brief Preserve the historical punctual-light path and its cross-compiler snapshots.
 static int sw_eval_light_dir(const vgfx3d_light_params_t *lt,
                              float wx,
                              float wy,
@@ -625,12 +622,12 @@ static int sw_eval_light_dir(const vgfx3d_light_params_t *lt,
                              float *la) {
     float lx, ly, lz;
     float atten = 1.0f;
-    if (lt->type == 0) { /* directional */
+    if (lt->type == 0) {
         lx = -lt->direction[0];
         ly = -lt->direction[1];
         lz = -lt->direction[2];
         normalize3f(&lx, &ly, &lz);
-    } else if (lt->type == 1) { /* point */
+    } else if (lt->type == 1) {
         lx = lt->position[0] - wx;
         ly = lt->position[1] - wy;
         lz = lt->position[2] - wz;
@@ -641,7 +638,7 @@ static int sw_eval_light_dir(const vgfx3d_light_params_t *lt,
         ly /= dist;
         lz /= dist;
         atten = 1.0f / (1.0f + lt->attenuation * dist * dist);
-    } else { /* spot (type 3) */
+    } else {
         lx = lt->position[0] - wx;
         ly = lt->position[1] - wy;
         lz = lt->position[2] - wz;
@@ -843,17 +840,29 @@ static void sw_shade_lighting_pbr(const sw_fragment_ctx *fc,
         const vgfx3d_light_params_t *lt = &lights[li];
         float llx, lly, llz, la = 1.0f;
 
-        if (lt->type != 0 && lt->type != 1 && lt->type != 3) { /* ambient */
-            lit_r += lt->color[0] * lt->intensity * base_r * ao;
-            lit_g += lt->color[1] * lt->intensity * base_g * ao;
-            lit_b += lt->color[2] * lt->intensity * base_b * ao;
+        if (lt->type != 0 && lt->type != 1 && lt->type != 3) {
+            int light_mode;
+            if (lt->type == 2) {
+                lit_r += lt->color[0] * lt->intensity * base_r * ao;
+                lit_g += lt->color[1] * lt->intensity * base_g * ao;
+                lit_b += lt->color[2] * lt->intensity * base_b * ao;
+                continue;
+            }
+            light_mode = sw_eval_analytic_light(lt, wx, wy, wz, &llx, &lly, &llz, &la);
+            if (light_mode == 0)
+                continue;
+            if (light_mode == 2) {
+                lit_r += lt->color[0] * lt->intensity * base_r * ao * la;
+                lit_g += lt->color[1] * lt->intensity * base_g * ao * la;
+                lit_b += lt->color[2] * lt->intensity * base_b * ao * la;
+                continue;
+            }
+        } else if (!sw_eval_light_dir(lt, wx, wy, wz, &llx, &lly, &llz, &la)) {
             continue;
         }
-        if (!sw_eval_light_dir(lt, wx, wy, wz, &llx, &lly, &llz, &la))
-            continue;
 
-        if ((lt->type == 0 || lt->type == 1 || lt->type == 3) && lt->shadow_index >= 0 &&
-            la > 0.0f) {
+        if ((lt->type == 0 || lt->type == 1 || lt->type == 3 || lt->type == 4 || lt->type == 5) &&
+            lt->shadow_index >= 0 && la > 0.0f) {
             la *= sw_sample_shadow_light(fog_ctx, lt, wx, wy, wz, pnx, pny, pnz);
         }
 
@@ -1033,17 +1042,29 @@ static void sw_shade_lighting_phong(const sw_fragment_ctx *fc,
         const vgfx3d_light_params_t *lt = &lights[li];
         float llx, lly, llz, la = 1.0f;
 
-        if (lt->type != 0 && lt->type != 1 && lt->type != 3) { /* ambient */
-            lit_r += lt->color[0] * lt->intensity * base_r;
-            lit_g += lt->color[1] * lt->intensity * base_g;
-            lit_b += lt->color[2] * lt->intensity * base_b;
+        if (lt->type != 0 && lt->type != 1 && lt->type != 3) {
+            int light_mode;
+            if (lt->type == 2) {
+                lit_r += lt->color[0] * lt->intensity * base_r;
+                lit_g += lt->color[1] * lt->intensity * base_g;
+                lit_b += lt->color[2] * lt->intensity * base_b;
+                continue;
+            }
+            light_mode = sw_eval_analytic_light(lt, wx, wy, wz, &llx, &lly, &llz, &la);
+            if (light_mode == 0)
+                continue;
+            if (light_mode == 2) {
+                lit_r += lt->color[0] * lt->intensity * base_r * la;
+                lit_g += lt->color[1] * lt->intensity * base_g * la;
+                lit_b += lt->color[2] * lt->intensity * base_b * la;
+                continue;
+            }
+        } else if (!sw_eval_light_dir(lt, wx, wy, wz, &llx, &lly, &llz, &la)) {
             continue;
         }
-        if (!sw_eval_light_dir(lt, wx, wy, wz, &llx, &lly, &llz, &la))
-            continue;
 
-        if ((lt->type == 0 || lt->type == 1 || lt->type == 3) && lt->shadow_index >= 0 &&
-            la > 0.0f) {
+        if ((lt->type == 0 || lt->type == 1 || lt->type == 3 || lt->type == 4 || lt->type == 5) &&
+            lt->shadow_index >= 0 && la > 0.0f) {
             la *= sw_sample_shadow_light(fog_ctx, lt, wx, wy, wz, pnx, pny, pnz);
         }
 
@@ -1246,8 +1267,8 @@ static int sw_blend_and_write(const sw_fragment_ctx *fc,
      * stale snapshot captured at a different size cannot alias wrong texels. */
     if (cmd && cmd->soft_particle_fade > 0.0f && !depth_disabled && fc->fog_ctx &&
         fc->fog_ctx->opaque_zbuf_valid && fc->fog_ctx->opaque_zbuf &&
-        (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND || cmd->additive_blend) &&
-        x >= 0 && y >= 0 && x < fc->fog_ctx->opaque_zbuf_w && y < fc->fog_ctx->opaque_zbuf_h) {
+        (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_BLEND || cmd->additive_blend) && x >= 0 &&
+        y >= 0 && x < fc->fog_ctx->opaque_zbuf_w && y < fc->fog_ctx->opaque_zbuf_h) {
         const sw_context_t *sc = fc->fog_ctx;
         size_t snap_idx = (size_t)y * (size_t)sc->opaque_zbuf_w + (size_t)x;
         float lin_scene = sw_linearize_ndc_depth(sc, sc->opaque_zbuf[snap_idx]);
@@ -1677,7 +1698,8 @@ static void raster_triangle_scissored(uint8_t *pixels,
     int per_pixel_shadows = 0;
     if (fog_ctx && fog_ctx->shadow_count > 0 && lights) {
         for (int32_t li = 0; li < light_count; li++) {
-            if ((lights[li].type == 0 || lights[li].type == 1 || lights[li].type == 3) &&
+            if ((lights[li].type == 0 || lights[li].type == 1 || lights[li].type == 3 ||
+                 lights[li].type == 4 || lights[li].type == 5) &&
                 lights[li].shadow_index >= 0) {
                 per_pixel_shadows = 1;
                 break;

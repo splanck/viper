@@ -24,6 +24,9 @@ RT_FUNC(Light3DDirectional,     rt_light3d_new_directional, "Zanna.Graphics3D.Li
 RT_FUNC(Light3DPoint,           rt_light3d_new_point,       "Zanna.Graphics3D.Light3D.Point",           "obj(obj,f64,f64,f64,f64)")
 RT_FUNC(Light3DAmbient,         rt_light3d_new_ambient,     "Zanna.Graphics3D.Light3D.Ambient",         "obj(f64,f64,f64)")
 RT_FUNC(Light3DSpot,            rt_light3d_new_spot,        "Zanna.Graphics3D.Light3D.Spot",            "obj(obj,obj,f64,f64,f64,f64,f64,f64)")
+RT_FUNC(Light3DAreaRectangle,   rt_light3d_new_area_rectangle, "Zanna.Graphics3D.Light3D.AreaRectangle", "obj(obj,obj,f64,f64,f64,f64,f64,f64,f64)")
+RT_FUNC(Light3DAreaSphere,      rt_light3d_new_area_sphere, "Zanna.Graphics3D.Light3D.AreaSphere",       "obj(obj,f64,f64,f64,f64,f64)")
+RT_FUNC(Light3DVolume,          rt_light3d_new_volume,      "Zanna.Graphics3D.Light3D.Volume",           "obj(obj,f64,f64,f64,f64,f64)")
 RT_FUNC(Light3DSetIntensity,    rt_light3d_set_intensity,   "Zanna.Graphics3D.Light3D.SetIntensity",    "void(obj,f64)")
 RT_FUNC(Light3DSetAttenuation,  rt_light3d_set_attenuation, "Zanna.Graphics3D.Light3D.SetAttenuation",  "void(obj,f64)")
 RT_FUNC(Light3DGetAttenuation,  rt_light3d_get_attenuation, "Zanna.Graphics3D.Light3D.get_Attenuation", "f64(obj)")
@@ -39,6 +42,16 @@ RT_FUNC(Light3DGetDirection,    rt_light3d_get_direction,   "Zanna.Graphics3D.Li
 RT_FUNC(Light3DGetPosition,     rt_light3d_get_position,    "Zanna.Graphics3D.Light3D.get_Position",    "obj<Zanna.Math.Vec3>(obj)")
 RT_FUNC(Light3DSetPosition,     rt_light3d_set_position,    "Zanna.Graphics3D.Light3D.set_Position",    "void(obj,obj<Zanna.Math.Vec3>)")
 RT_FUNC(Light3DSetDirection,    rt_light3d_set_direction,   "Zanna.Graphics3D.Light3D.set_Direction",   "void(obj,obj<Zanna.Math.Vec3>)")
+RT_FUNC(Light3DGetWidth,        rt_light3d_get_width,       "Zanna.Graphics3D.Light3D.get_Width",       "f64(obj)")
+RT_FUNC(Light3DSetWidth,        rt_light3d_set_width,       "Zanna.Graphics3D.Light3D.set_Width",       "void(obj,f64)")
+RT_FUNC(Light3DGetHeight,       rt_light3d_get_height,      "Zanna.Graphics3D.Light3D.get_Height",      "f64(obj)")
+RT_FUNC(Light3DSetHeight,       rt_light3d_set_height,      "Zanna.Graphics3D.Light3D.set_Height",      "void(obj,f64)")
+RT_FUNC(Light3DGetRadius,       rt_light3d_get_radius,      "Zanna.Graphics3D.Light3D.get_Radius",      "f64(obj)")
+RT_FUNC(Light3DSetRadius,       rt_light3d_set_radius,      "Zanna.Graphics3D.Light3D.set_Radius",      "void(obj,f64)")
+RT_FUNC(Light3DGetDecayType,    rt_light3d_get_decay_type,  "Zanna.Graphics3D.Light3D.get_DecayType",   "i64(obj)")
+RT_FUNC(Light3DSetDecayType,    rt_light3d_set_decay_type,  "Zanna.Graphics3D.Light3D.set_DecayType",   "void(obj,i64)")
+RT_FUNC(Light3DGetRange,        rt_light3d_get_range,       "Zanna.Graphics3D.Light3D.get_Range",       "f64(obj)")
+RT_FUNC(Light3DSetRange,        rt_light3d_set_range,       "Zanna.Graphics3D.Light3D.set_Range",       "void(obj,f64)")
 
 /// @summary Provides Light 3D functionality for 3D rendering and scene applications.
 /// @details
@@ -53,10 +66,18 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.Light3D", Light3D, "obj", none)
     RT_PROP("CastsShadows", "i1", Light3DGetCastsShadows, Light3DSetCastsShadows)
     RT_PROP("Direction", "obj<Zanna.Math.Vec3>", Light3DGetDirection, Light3DSetDirection)
     RT_PROP("Position", "obj<Zanna.Math.Vec3>", Light3DGetPosition, Light3DSetPosition)
+    RT_PROP("Width", "f64", Light3DGetWidth, Light3DSetWidth)
+    RT_PROP("Height", "f64", Light3DGetHeight, Light3DSetHeight)
+    RT_PROP("Radius", "f64", Light3DGetRadius, Light3DSetRadius)
+    RT_PROP("DecayType", "i64", Light3DGetDecayType, Light3DSetDecayType)
+    RT_PROP("Range", "f64", Light3DGetRange, Light3DSetRange)
     RT_METHOD("Directional", "obj(obj,f64,f64,f64)", Light3DDirectional)
     RT_METHOD("Point", "obj(obj,f64,f64,f64,f64)", Light3DPoint)
     RT_METHOD("Ambient", "obj(f64,f64,f64)", Light3DAmbient)
     RT_METHOD("Spot", "obj(obj,obj,f64,f64,f64,f64,f64,f64)", Light3DSpot)
+    RT_METHOD("AreaRectangle", "obj(obj,obj,f64,f64,f64,f64,f64,f64,f64)", Light3DAreaRectangle)
+    RT_METHOD("AreaSphere", "obj(obj,f64,f64,f64,f64,f64)", Light3DAreaSphere)
+    RT_METHOD("Volume", "obj(obj,f64,f64,f64,f64,f64)", Light3DVolume)
     RT_METHOD("SetIntensity", "void(f64)", Light3DSetIntensity)
     // Distance falloff for point/spot lights; no-op on other types. Lets pooled
     // lights be retuned per effect instead of being recreated.
@@ -146,6 +167,8 @@ RT_FUNC(SceneNode3DSetMesh,        rt_scene_node3d_set_mesh,       "Zanna.Graphi
 RT_FUNC(SceneNode3DGetMesh,        rt_scene_node3d_get_mesh,       "Zanna.Graphics3D.SceneNode.get_Mesh",       "obj<Zanna.Graphics3D.Mesh3D>(obj)")
 RT_FUNC(SceneNode3DSetMaterial,    rt_scene_node3d_set_material,   "Zanna.Graphics3D.SceneNode.set_Material",   "void(obj,obj<Zanna.Graphics3D.Material3D>)")
 RT_FUNC(SceneNode3DGetMaterial,    rt_scene_node3d_get_material,   "Zanna.Graphics3D.SceneNode.get_Material",   "obj<Zanna.Graphics3D.Material3D>(obj)")
+RT_FUNC(SceneNode3DSetCamera,      rt_scene_node3d_set_camera,     "Zanna.Graphics3D.SceneNode.set_Camera",     "void(obj,obj<Zanna.Graphics3D.Camera3D>)")
+RT_FUNC(SceneNode3DGetCamera,      rt_scene_node3d_get_camera,     "Zanna.Graphics3D.SceneNode.get_Camera",     "obj<Zanna.Graphics3D.Camera3D>(obj)")
 RT_FUNC(SceneNode3DAddChild,       rt_scene_node3d_add_child,      "Zanna.Graphics3D.SceneNode.AddChild",       "void(obj,obj)")
 RT_FUNC(SceneNode3DTryAddChild,    rt_scene_node3d_try_add_child,  "Zanna.Graphics3D.SceneNode.TryAddChild",    "i1(obj,obj)")
 RT_FUNC(SceneNode3DRemoveChild,    rt_scene_node3d_remove_child,   "Zanna.Graphics3D.SceneNode.RemoveChild",    "void(obj,obj)")
@@ -207,6 +230,7 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.SceneNode", SceneNode3D, "obj", SceneNode3DNew)
     RT_PROP("Name", "str", SceneNode3DGetName, SceneNode3DSetName)
     RT_PROP("Mesh", "obj<Zanna.Graphics3D.Mesh3D>", SceneNode3DGetMesh, SceneNode3DSetMesh)
     RT_PROP("Material", "obj<Zanna.Graphics3D.Material3D>", SceneNode3DGetMaterial, SceneNode3DSetMaterial)
+    RT_PROP("Camera", "obj<Zanna.Graphics3D.Camera3D>", SceneNode3DGetCamera, SceneNode3DSetCamera)
     RT_PROP("BoundsMin", "obj<Zanna.Math.Vec3>", SceneNode3DGetBoundsMin, none)
     RT_PROP("BoundsMax", "obj<Zanna.Math.Vec3>", SceneNode3DGetBoundsMax, none)
     RT_PROP("Body", "obj", SceneNode3DGetBody, none)
@@ -504,7 +528,7 @@ RT_CLASS_END()
 /// @details
 /// `Zanna.Graphics3D.SceneAsset` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes resource counts,
-/// mesh-aligned morph access, complete VSCN v4 persistence through `Save`, and operations
+/// mesh-aligned morph access, complete VSCN v5 persistence through `Save`, and operations
 /// including `LoadResult`, `LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
 RT_CLASS_BEGIN("Zanna.Graphics3D.SceneAsset", Model3D, "obj", none)
     RT_PROP("MeshCount", "i64", Model3DMeshCount, none)

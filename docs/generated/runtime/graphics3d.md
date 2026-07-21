@@ -324,7 +324,8 @@ Constructor: `Zanna.Graphics3D.Camera3D.New`
 | <a id="zanna-graphics3d-camera3d-position"></a>`Position` | `obj<Zanna.Math.Vec3>` | read/write |
 | <a id="zanna-graphics3d-camera3d-forward"></a>`Forward` | `obj<Zanna.Math.Vec3>` | read-only |
 | <a id="zanna-graphics3d-camera3d-right"></a>`Right` | `obj<Zanna.Math.Vec3>` | read-only |
-| <a id="zanna-graphics3d-camera3d-isortho"></a>`IsOrtho` | `i1` | read-only |
+| <a id="zanna-graphics3d-camera3d-isortho"></a>`IsOrtho` | `i1` | read/write |
+| <a id="zanna-graphics3d-camera3d-orthosize"></a>`OrthoSize` | `f64` | read/write |
 | <a id="zanna-graphics3d-camera3d-yaw"></a>`Yaw` | `f64` | read/write |
 | <a id="zanna-graphics3d-camera3d-pitch"></a>`Pitch` | `f64` | read/write |
 
@@ -473,6 +474,11 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="zanna-graphics3d-light3d-castsshadows"></a>`CastsShadows` | `i1` | read/write |
 | <a id="zanna-graphics3d-light3d-direction"></a>`Direction` | `obj<Zanna.Math.Vec3>` | read/write |
 | <a id="zanna-graphics3d-light3d-position"></a>`Position` | `obj<Zanna.Math.Vec3>` | read/write |
+| <a id="zanna-graphics3d-light3d-width"></a>`Width` | `f64` | read/write |
+| <a id="zanna-graphics3d-light3d-height"></a>`Height` | `f64` | read/write |
+| <a id="zanna-graphics3d-light3d-radius"></a>`Radius` | `f64` | read/write |
+| <a id="zanna-graphics3d-light3d-decaytype"></a>`DecayType` | `i64` | read/write |
+| <a id="zanna-graphics3d-light3d-range"></a>`Range` | `f64` | read/write |
 | <a id="zanna-graphics3d-light3d-attenuation"></a>`Attenuation` | `f64` | read-only |
 
 #### Methods
@@ -483,6 +489,9 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="zanna-graphics3d-light3d-point"></a>`Point` | `obj(obj,f64,f64,f64,f64)` | `Zanna.Graphics3D.Light3D.Point` |
 | <a id="zanna-graphics3d-light3d-ambient"></a>`Ambient` | `obj(f64,f64,f64)` | `Zanna.Graphics3D.Light3D.Ambient` |
 | <a id="zanna-graphics3d-light3d-spot"></a>`Spot` | `obj(obj,obj,f64,f64,f64,f64,f64,f64)` | `Zanna.Graphics3D.Light3D.Spot` |
+| <a id="zanna-graphics3d-light3d-arearectangle"></a>`AreaRectangle` | `obj(obj,obj,f64,f64,f64,f64,f64,f64,f64)` | `Zanna.Graphics3D.Light3D.AreaRectangle` |
+| <a id="zanna-graphics3d-light3d-areasphere"></a>`AreaSphere` | `obj(obj,f64,f64,f64,f64,f64)` | `Zanna.Graphics3D.Light3D.AreaSphere` |
+| <a id="zanna-graphics3d-light3d-volume"></a>`Volume` | `obj(obj,f64,f64,f64,f64,f64)` | `Zanna.Graphics3D.Light3D.Volume` |
 | <a id="zanna-graphics3d-light3d-setintensity"></a>`SetIntensity` | `void(f64)` | `Zanna.Graphics3D.Light3D.SetIntensity` |
 | <a id="zanna-graphics3d-light3d-setattenuation"></a>`SetAttenuation` | `void(f64)` | `Zanna.Graphics3D.Light3D.SetAttenuation` |
 | <a id="zanna-graphics3d-light3d-setcolor"></a>`SetColor` | `void(f64,f64,f64)` | `Zanna.Graphics3D.Light3D.SetColor` |
@@ -563,6 +572,7 @@ Constructor: `Zanna.Graphics3D.SceneNode.New`
 | <a id="zanna-graphics3d-scenenode-name"></a>`Name` | `str` | read/write |
 | <a id="zanna-graphics3d-scenenode-mesh"></a>`Mesh` | `obj<Zanna.Graphics3D.Mesh3D>` | read/write |
 | <a id="zanna-graphics3d-scenenode-material"></a>`Material` | `obj<Zanna.Graphics3D.Material3D>` | read/write |
+| <a id="zanna-graphics3d-scenenode-camera"></a>`Camera` | `obj<Zanna.Graphics3D.Camera3D>` | read/write |
 | <a id="zanna-graphics3d-scenenode-boundsmin"></a>`BoundsMin` | `obj<Zanna.Math.Vec3>` | read-only |
 | <a id="zanna-graphics3d-scenenode-boundsmax"></a>`BoundsMax` | `obj<Zanna.Math.Vec3>` | read-only |
 | <a id="zanna-graphics3d-scenenode-body"></a>`Body` | `obj` | read-only |
@@ -844,7 +854,7 @@ Provides Scene Asset functionality for 3D rendering and scene applications.
 
 `Zanna.Graphics3D.SceneAsset` exposes a registry-backed runtime surface without requiring
 callers to construct the class directly. Its public surface exposes resource counts,
-mesh-aligned morph access, complete VSCN v4 persistence through `Save`, and operations
+mesh-aligned morph access, complete VSCN v5 persistence through `Save`, and operations
 including `LoadResult`, `LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
 
 #### Properties
@@ -2544,6 +2554,9 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | `Zanna.Graphics3D.Camera3D.WithHorizontalFov` | `obj(f64,f64,f64,f64)` | `rt_camera3d_new_horizontal_fov` |
 | `Zanna.Graphics3D.Camera3D.NewOrtho` | `obj(f64,f64,f64,f64)` | `rt_camera3d_new_ortho` |
 | <a id="zanna-graphics3d-camera3d-get-isortho"></a>`Zanna.Graphics3D.Camera3D.get_IsOrtho` | `i1(obj)` | `rt_camera3d_is_ortho` |
+| <a id="zanna-graphics3d-camera3d-set-isortho"></a>`Zanna.Graphics3D.Camera3D.set_IsOrtho` | `void(obj,i1)` | `rt_camera3d_set_is_ortho` |
+| <a id="zanna-graphics3d-camera3d-get-orthosize"></a>`Zanna.Graphics3D.Camera3D.get_OrthoSize` | `f64(obj)` | `rt_camera3d_get_ortho_size` |
+| <a id="zanna-graphics3d-camera3d-set-orthosize"></a>`Zanna.Graphics3D.Camera3D.set_OrthoSize` | `void(obj,f64)` | `rt_camera3d_set_ortho_size` |
 | `Zanna.Graphics3D.Camera3D.LookAt` | `void(obj,obj,obj,obj)` | `rt_camera3d_look_at` |
 | `Zanna.Graphics3D.Camera3D.Orbit` | `void(obj,obj,f64,f64,f64)` | `rt_camera3d_orbit` |
 | <a id="zanna-graphics3d-camera3d-get-fov"></a>`Zanna.Graphics3D.Camera3D.get_Fov` | `f64(obj)` | `rt_camera3d_get_fov` |
@@ -2641,6 +2654,9 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | `Zanna.Graphics3D.Light3D.Point` | `obj(obj,f64,f64,f64,f64)` | `rt_light3d_new_point` |
 | `Zanna.Graphics3D.Light3D.Ambient` | `obj(f64,f64,f64)` | `rt_light3d_new_ambient` |
 | `Zanna.Graphics3D.Light3D.Spot` | `obj(obj,obj,f64,f64,f64,f64,f64,f64)` | `rt_light3d_new_spot` |
+| `Zanna.Graphics3D.Light3D.AreaRectangle` | `obj(obj,obj,f64,f64,f64,f64,f64,f64,f64)` | `rt_light3d_new_area_rectangle` |
+| `Zanna.Graphics3D.Light3D.AreaSphere` | `obj(obj,f64,f64,f64,f64,f64)` | `rt_light3d_new_area_sphere` |
+| `Zanna.Graphics3D.Light3D.Volume` | `obj(obj,f64,f64,f64,f64,f64)` | `rt_light3d_new_volume` |
 | `Zanna.Graphics3D.Light3D.SetIntensity` | `void(obj,f64)` | `rt_light3d_set_intensity` |
 | `Zanna.Graphics3D.Light3D.SetAttenuation` | `void(obj,f64)` | `rt_light3d_set_attenuation` |
 | <a id="zanna-graphics3d-light3d-get-attenuation"></a>`Zanna.Graphics3D.Light3D.get_Attenuation` | `f64(obj)` | `rt_light3d_get_attenuation` |
@@ -2656,6 +2672,16 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | <a id="zanna-graphics3d-light3d-get-position"></a>`Zanna.Graphics3D.Light3D.get_Position` | `obj<Zanna.Math.Vec3>(obj)` | `rt_light3d_get_position` |
 | <a id="zanna-graphics3d-light3d-set-position"></a>`Zanna.Graphics3D.Light3D.set_Position` | `void(obj,obj<Zanna.Math.Vec3>)` | `rt_light3d_set_position` |
 | <a id="zanna-graphics3d-light3d-set-direction"></a>`Zanna.Graphics3D.Light3D.set_Direction` | `void(obj,obj<Zanna.Math.Vec3>)` | `rt_light3d_set_direction` |
+| <a id="zanna-graphics3d-light3d-get-width"></a>`Zanna.Graphics3D.Light3D.get_Width` | `f64(obj)` | `rt_light3d_get_width` |
+| <a id="zanna-graphics3d-light3d-set-width"></a>`Zanna.Graphics3D.Light3D.set_Width` | `void(obj,f64)` | `rt_light3d_set_width` |
+| <a id="zanna-graphics3d-light3d-get-height"></a>`Zanna.Graphics3D.Light3D.get_Height` | `f64(obj)` | `rt_light3d_get_height` |
+| <a id="zanna-graphics3d-light3d-set-height"></a>`Zanna.Graphics3D.Light3D.set_Height` | `void(obj,f64)` | `rt_light3d_set_height` |
+| <a id="zanna-graphics3d-light3d-get-radius"></a>`Zanna.Graphics3D.Light3D.get_Radius` | `f64(obj)` | `rt_light3d_get_radius` |
+| <a id="zanna-graphics3d-light3d-set-radius"></a>`Zanna.Graphics3D.Light3D.set_Radius` | `void(obj,f64)` | `rt_light3d_set_radius` |
+| <a id="zanna-graphics3d-light3d-get-decaytype"></a>`Zanna.Graphics3D.Light3D.get_DecayType` | `i64(obj)` | `rt_light3d_get_decay_type` |
+| <a id="zanna-graphics3d-light3d-set-decaytype"></a>`Zanna.Graphics3D.Light3D.set_DecayType` | `void(obj,i64)` | `rt_light3d_set_decay_type` |
+| <a id="zanna-graphics3d-light3d-get-range"></a>`Zanna.Graphics3D.Light3D.get_Range` | `f64(obj)` | `rt_light3d_get_range` |
+| <a id="zanna-graphics3d-light3d-set-range"></a>`Zanna.Graphics3D.Light3D.set_Range` | `void(obj,f64)` | `rt_light3d_set_range` |
 | `Zanna.Graphics3D.SceneGraph.New` | `obj()` | `rt_scene3d_new` |
 | <a id="zanna-graphics3d-scenegraph-get-root"></a>`Zanna.Graphics3D.SceneGraph.get_Root` | `obj<Zanna.Graphics3D.SceneNode>(obj)` | `rt_scene3d_get_root` |
 | `Zanna.Graphics3D.SceneGraph.Add` | `void(obj,obj)` | `rt_scene3d_add` |
@@ -2699,6 +2725,8 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | <a id="zanna-graphics3d-scenenode-get-mesh"></a>`Zanna.Graphics3D.SceneNode.get_Mesh` | `obj<Zanna.Graphics3D.Mesh3D>(obj)` | `rt_scene_node3d_get_mesh` |
 | <a id="zanna-graphics3d-scenenode-set-material"></a>`Zanna.Graphics3D.SceneNode.set_Material` | `void(obj,obj<Zanna.Graphics3D.Material3D>)` | `rt_scene_node3d_set_material` |
 | <a id="zanna-graphics3d-scenenode-get-material"></a>`Zanna.Graphics3D.SceneNode.get_Material` | `obj<Zanna.Graphics3D.Material3D>(obj)` | `rt_scene_node3d_get_material` |
+| <a id="zanna-graphics3d-scenenode-set-camera"></a>`Zanna.Graphics3D.SceneNode.set_Camera` | `void(obj,obj<Zanna.Graphics3D.Camera3D>)` | `rt_scene_node3d_set_camera` |
+| <a id="zanna-graphics3d-scenenode-get-camera"></a>`Zanna.Graphics3D.SceneNode.get_Camera` | `obj<Zanna.Graphics3D.Camera3D>(obj)` | `rt_scene_node3d_get_camera` |
 | `Zanna.Graphics3D.SceneNode.AddChild` | `void(obj,obj)` | `rt_scene_node3d_add_child` |
 | `Zanna.Graphics3D.SceneNode.TryAddChild` | `i1(obj,obj)` | `rt_scene_node3d_try_add_child` |
 | `Zanna.Graphics3D.SceneNode.RemoveChild` | `void(obj,obj)` | `rt_scene_node3d_remove_child` |

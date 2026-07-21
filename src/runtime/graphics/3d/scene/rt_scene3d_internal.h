@@ -29,6 +29,13 @@
 #define RT_NODE_ANIM_PATH_ROTATION 1
 #define RT_NODE_ANIM_PATH_SCALE 2
 #define RT_NODE_ANIM_PATH_WEIGHTS 3
+#define RT_NODE_ANIM_PATH_CAMERA_FOV 4
+#define RT_NODE_ANIM_PATH_CAMERA_ASPECT 5
+#define RT_NODE_ANIM_PATH_CAMERA_NEAR 6
+#define RT_NODE_ANIM_PATH_CAMERA_FAR 7
+#define RT_NODE_ANIM_PATH_CAMERA_ORTHO_SIZE 8
+#define RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE 9
+#define RT_NODE_ANIM_PATH_LAST RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE
 
 #define RT_NODE_ANIM_INTERP_LINEAR 0
 #define RT_NODE_ANIM_INTERP_STEP 1
@@ -91,7 +98,7 @@ typedef struct rt_node_animator3d {
     size_t traversal_stack_capacity;
 } rt_node_animator3d;
 
-/// @brief One immutable VSCN v4 scene carried privately from SceneGraph.Load to SceneAsset.Load.
+/// @brief One immutable VSCN v4+ scene carried privately from SceneGraph.Load to SceneAsset.Load.
 typedef struct rt_vscn_loaded_scene3d {
     struct rt_scene_node3d *root;
     char *name;
@@ -99,7 +106,7 @@ typedef struct rt_vscn_loaded_scene3d {
     int32_t camera_count;
 } rt_vscn_loaded_scene3d;
 
-/// @brief Complete retained VSCN v4 asset inventory staged by the scene parser.
+/// @brief Complete retained VSCN v4+ asset inventory staged by the scene parser.
 /// @details Arrays own one runtime reference per slot. Scene roots are additionally retained even
 /// when scene zero aliases the live Scene3D root. Names and camera-index arrays are native-owned.
 typedef struct rt_vscn_loaded_asset3d {
@@ -222,6 +229,7 @@ typedef struct rt_scene_node3d {
     void *mesh;
     void *material;
     void *light;
+    void *camera;
     void *bound_body;
     void *bound_animator;
     void *bound_node_animator;

@@ -17,7 +17,8 @@
 //   - Tilemap objects are heap-allocated opaque pointers.
 //   - Caller is responsible for lifetime management.
 //
-// Links: src/runtime/graphics/rt_tilemap.c (implementation)
+// Links: src/runtime/graphics/rt_tilemap.c (implementation),
+//   docs/adr/0144-complete-tiled-map-import.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -38,6 +39,23 @@ typedef enum {
     RT_TILE_COLLISION_SOLID = 1,      ///< Fully solid (blocks movement).
     RT_TILE_COLLISION_ONE_WAY_UP = 2, ///< One-way platform (passable from below).
 } rt_tilemap_collision_t;
+
+/// Private import-layout orientation values used by SceneDocument adapters.
+typedef enum {
+    RT_TILEMAP_IMPORT_ORTHOGONAL = 0,
+    RT_TILEMAP_IMPORT_ISOMETRIC = 1,
+    RT_TILEMAP_IMPORT_STAGGERED = 2,
+    RT_TILEMAP_IMPORT_HEXAGONAL = 3,
+    RT_TILEMAP_IMPORT_OBLIQUE = 4,
+} rt_tilemap_import_orientation_t;
+
+/// Private imported-map render-order values, matching Tiled's four orders.
+typedef enum {
+    RT_TILEMAP_IMPORT_RIGHT_DOWN = 0,
+    RT_TILEMAP_IMPORT_RIGHT_UP = 1,
+    RT_TILEMAP_IMPORT_LEFT_DOWN = 2,
+    RT_TILEMAP_IMPORT_LEFT_UP = 3,
+} rt_tilemap_import_render_order_t;
 
 //=========================================================================
 // Tilemap Creation
@@ -77,6 +95,37 @@ int64_t rt_tilemap_get_tile_height(void *tilemap);
 /// @note Tileset cells are numbered left-to-right, top-to-bottom starting at 1;
 ///       tile index 0 means "empty" (transparent, nothing drawn).
 void rt_tilemap_set_tileset(void *tilemap, void *pixels);
+
+/// @brief Configure source-frame and projected-layout state for an imported map.
+/// @note This is an adapter bridge. Ordinary Tilemap callers retain orthogonal defaults.
+int8_t rt_tilemap_configure_import_layout(void *tilemap,
+                                          int64_t orientation,
+                                          int64_t origin_tile_x,
+                                          int64_t origin_tile_y,
+                                          int64_t source_frame_width,
+                                          int64_t source_frame_height,
+                                          int64_t draw_offset_x,
+                                          int64_t draw_offset_y,
+                                          int64_t render_order,
+                                          int64_t stagger_axis,
+                                          int8_t stagger_even,
+                                          int64_t hex_side_length,
+                                          double skew_x,
+                                          double skew_y,
+                                          double parallax_origin_x,
+                                          double parallax_origin_y,
+                                          int64_t projection_height);
+
+/// @brief Configure effective imported placement/parallax for one Tilemap layer.
+int8_t rt_tilemap_configure_import_layer(void *tilemap,
+                                         int64_t layer,
+                                         double offset_x,
+                                         double offset_y,
+                                         double parallax_x,
+                                         double parallax_y);
+
+/// @brief Restrict a composed imported atlas to its non-padding tile count.
+int8_t rt_tilemap_set_import_tile_count(void *tilemap, int64_t tile_count);
 
 /// @brief Get number of tiles in the tileset.
 int64_t rt_tilemap_get_tile_count(void *tilemap);
@@ -379,6 +428,14 @@ void rt_tilemap_set_tile_anim_frame(void *tm,
                                     int64_t base_tile_id,
                                     int64_t frame_idx,
                                     int64_t tile_id);
+
+/// @brief Configure an imported animation with authored per-frame durations.
+/// @note Frame and duration arrays are copied; each duration must be positive.
+int8_t rt_tilemap_set_import_tile_anim(void *tm,
+                                       int64_t base_tile_id,
+                                       int64_t frame_count,
+                                       const int64_t *frame_tiles,
+                                       const int64_t *frame_durations);
 
 /// @brief Advance all tile animations by dt milliseconds.
 void rt_tilemap_update_anims(void *tm, int64_t dt_ms);

@@ -29,7 +29,17 @@
 
 /// @brief Clamp a Light3D type id to a backend-supported value.
 static int32_t canvas3d_sanitize_light_type(int32_t type) {
-    return (type >= 0 && type <= 3) ? type : 0;
+    return (type >= 0 && type <= 6) ? type : 0;
+}
+
+/// @brief Return whether a sanitized light type affects every cluster.
+static int canvas3d_light_type_is_global(int32_t type) {
+    return type == 0 || type == 2;
+}
+
+/// @brief Clamp a finite positive area/volume parameter for backend consumption.
+static float canvas3d_sanitize_positive_light_param(double value) {
+    return isfinite(value) && value > 1e-6 ? canvas3d_sanitize_f64_to_float(value, 1.0f) : 1.0f;
 }
 
 /// @brief Compact one canvas light into a backend param struct (camera-relative rebased,
@@ -60,6 +70,12 @@ static void canvas3d_copy_light_params(const rt_canvas3d *c,
     out->position[0] = canvas3d_sanitize_f64_to_float(l->position[0] - origin_x, 0.0f);
     out->position[1] = canvas3d_sanitize_f64_to_float(l->position[1] - origin_y, 0.0f);
     out->position[2] = canvas3d_sanitize_f64_to_float(l->position[2] - origin_z, 0.0f);
+    out->basis_u[0] = canvas3d_sanitize_f64_to_float(l->basis_u[0], 1.0f);
+    out->basis_u[1] = canvas3d_sanitize_f64_to_float(l->basis_u[1], 0.0f);
+    out->basis_u[2] = canvas3d_sanitize_f64_to_float(l->basis_u[2], 0.0f);
+    out->basis_v[0] = canvas3d_sanitize_f64_to_float(l->basis_v[0], 0.0f);
+    out->basis_v[1] = canvas3d_sanitize_f64_to_float(l->basis_v[1], 1.0f);
+    out->basis_v[2] = canvas3d_sanitize_f64_to_float(l->basis_v[2], 0.0f);
     out->color[0] = canvas3d_clamp01_f64(l->color[0]);
     out->color[1] = canvas3d_clamp01_f64(l->color[1]);
     out->color[2] = canvas3d_clamp01_f64(l->color[2]);
@@ -67,6 +83,15 @@ static void canvas3d_copy_light_params(const rt_canvas3d *c,
     out->attenuation = canvas3d_sanitize_nonnegative_f64(l->attenuation, 1.0f);
     out->inner_cos = canvas3d_clamp_f64_to_float(l->inner_cos, -1.0, 1.0, 1.0f);
     out->outer_cos = canvas3d_clamp_f64_to_float(l->outer_cos, -1.0, 1.0, 0.0f);
+    out->width = canvas3d_sanitize_positive_light_param(l->width);
+    out->height = canvas3d_sanitize_positive_light_param(l->height);
+    out->radius = canvas3d_sanitize_positive_light_param(l->radius);
+    out->range = canvas3d_sanitize_positive_light_param(l->range);
+    out->decay_type = l->decay_type >= 0 && l->decay_type <= 3 ? l->decay_type : 2;
+    if (out->type == 6) {
+        out->casts_shadows = 0;
+        out->shadow_index = -1;
+    }
 }
 
 /// @brief Return the active light payload limit for the selected lighting path.
@@ -81,7 +106,7 @@ int32_t canvas3d_active_light_limit(rt_canvas3d *c) {
     return VGFX3D_FORWARD_LIGHT_LIMIT;
 }
 
-/// @brief Relevance score for a local (point/spot) light as seen from the camera.
+/// @brief Relevance score for a local punctual, area, or volume light as seen from the camera.
 /// @details Uses the shader's own distance-falloff form so the score approximates the
 ///   light's strongest possible contribution to visible geometry. Incumbents from the
 ///   previous flatten receive a small boost so near-ties never swap membership
@@ -91,11 +116,24 @@ static double canvas3d_local_light_score(const rt_canvas3d *c, const rt_light3d 
     double dy = l->position[1] - (double)c->cached_world_cam_pos[1];
     double dz = l->position[2] - (double)c->cached_world_cam_pos[2];
     double dist2 = dx * dx + dy * dy + dz * dz;
+    double emitter_radius = 0.0;
     double attenuation = isfinite(l->attenuation) && l->attenuation > 0.0 ? l->attenuation : 1.0;
     double intensity = isfinite(l->intensity) && l->intensity > 0.0 ? l->intensity : 0.0;
     double score;
     if (!isfinite(dist2) || dist2 < 0.0)
         dist2 = 0.0;
+    if (l->type == 4) {
+        double half_width = isfinite(l->width) && l->width > 0.0 ? l->width * 0.5 : 0.5;
+        double half_height = isfinite(l->height) && l->height > 0.0 ? l->height * 0.5 : 0.5;
+        emitter_radius = sqrt(half_width * half_width + half_height * half_height);
+    } else if (l->type == 5 || l->type == 6) {
+        emitter_radius = isfinite(l->radius) && l->radius > 0.0 ? l->radius : 1.0;
+    }
+    if (emitter_radius > 0.0) {
+        double dist = sqrt(dist2);
+        dist = dist > emitter_radius ? dist - emitter_radius : 0.0;
+        dist2 = dist * dist;
+    }
     score = intensity / (1.0 + attenuation * dist2);
     return isfinite(score) ? score : 0.0;
 }
@@ -124,7 +162,8 @@ typedef struct {
 ///   "global" prefix the clustered shader loops flatly) followed by point/spot
 ///   lights (looped via per-cluster index lists). Shading is an order-independent
 ///   sum, so the flat path's output is unchanged by the reorder; within each
-///   group the original slot order is preserved so revision stamps stay stable.
+///   group the original slot order is preserved so revision stamps stay stable. Native
+///   rectangle/sphere/volume lights are finite local lights and therefore join the latter group.
 ///   When enabled local lights exceed the remaining budget, they are chosen by
 ///   camera-relative relevance (intensity over the shader's distance falloff) with
 ///   incumbent hysteresis, instead of arbitrary slot order — slot-order truncation
@@ -143,8 +182,7 @@ int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t m
         const rt_light3d *l = c->lights[i];
         if (!l || !l->enabled)
             continue;
-        if (canvas3d_sanitize_light_type(l->type) == 1 ||
-            canvas3d_sanitize_light_type(l->type) == 3)
+        if (!canvas3d_light_type_is_global(canvas3d_sanitize_light_type(l->type)))
             continue;
         canvas3d_copy_light_params(c, l, &out[count]);
         count++;
@@ -153,8 +191,7 @@ int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t m
         const rt_light3d *l = c->scene_lights[i];
         if (!l || !l->enabled)
             continue;
-        if (canvas3d_sanitize_light_type(l->type) == 1 ||
-            canvas3d_sanitize_light_type(l->type) == 3)
+        if (!canvas3d_light_type_is_global(canvas3d_sanitize_light_type(l->type)))
             continue;
         canvas3d_copy_light_params(c, l, &out[count]);
         count++;
@@ -166,7 +203,7 @@ int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t m
         if (!l || !l->enabled)
             continue;
         type = canvas3d_sanitize_light_type(l->type);
-        if (type != 1 && type != 3)
+        if (canvas3d_light_type_is_global(type))
             continue;
         locals[local_count].light = l;
         locals[local_count].order = order++;
@@ -180,7 +217,7 @@ int32_t build_light_params(rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t m
         if (!l || !l->enabled)
             continue;
         type = canvas3d_sanitize_light_type(l->type);
-        if (type != 1 && type != 3)
+        if (canvas3d_light_type_is_global(type))
             continue;
         locals[local_count].light = l;
         locals[local_count].order = order++;

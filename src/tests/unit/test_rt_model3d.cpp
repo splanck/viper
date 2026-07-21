@@ -46,6 +46,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ZpakWriter.hpp"
@@ -62,6 +63,8 @@ extern double rt_quat_w(void *q);
 extern void *rt_mat4_identity(void);
 extern void *rt_mesh3d_new_box(double w, double h, double d);
 extern void *rt_material3d_new_color(double r, double g, double b);
+extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t size);
+extern void *rt_vec3_new(double x, double y, double z);
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_retain_maybe(void *p);
 extern int32_t rt_obj_release_check0(void *p);
@@ -252,6 +255,23 @@ static bool read_binary_file(const char *path, std::vector<uint8_t> &out) {
     bool ok = len == 0 || std::fread(out.data(), 1, (size_t)len, f) == (size_t)len;
     std::fclose(f);
     return ok;
+}
+
+static bool texture_source_equals(void *texture,
+                                  const char *expected_kind,
+                                  const std::vector<uint8_t> &expected) {
+    const uint8_t *data = nullptr;
+    uint64_t size = 0;
+    const char *kind = nullptr;
+    return texture && expected_kind &&
+           rt_textureasset3d_get_source_container(texture, &data, &size, &kind) && data && kind &&
+           std::strcmp(kind, expected_kind) == 0 && size == expected.size() &&
+           std::memcmp(data, expected.data(), expected.size()) == 0;
+}
+
+static void release_test_ref(void *object) {
+    if (object && rt_obj_release_check0(object))
+        rt_obj_free(object);
 }
 
 static bool replace_first_text(std::string &text,
@@ -554,11 +574,21 @@ static FbxNodeFixture make_fbx_connection_fixture(int64_t child,
 
 static bool write_fbx_document_fixture(const char *path,
                                        const FbxNodeFixture &objects,
-                                       const FbxNodeFixture &connections) {
+                                       const FbxNodeFixture &connections,
+                                       bool z_up = false) {
     std::vector<uint8_t> bytes;
     bytes.insert(bytes.end(), {'K', 'a', 'y', 'd', 'a', 'r', 'a', ' ', 'F',  'B',    'X', ' ',
                                'B', 'i', 'n', 'a', 'r', 'y', ' ', ' ', '\0', '\x1A', '\0'});
     append_bytes(bytes, (uint32_t)7400);
+    if (z_up) {
+        FbxNodeFixture settings;
+        FbxNodeFixture properties70;
+        settings.name = "GlobalSettings";
+        properties70.name = "Properties70";
+        properties70.children.push_back(make_fbx_property_int("UpAxis", 2));
+        settings.children.push_back(std::move(properties70));
+        write_fbx_node_fixture(settings, bytes);
+    }
     write_fbx_node_fixture(objects, bytes);
     write_fbx_node_fixture(connections, bytes);
     bytes.resize(bytes.size() + 13, 0);
@@ -590,6 +620,354 @@ static FbxNodeFixture make_fbx_triangle_geometry_fixture(int64_t id,
     geometry.children.push_back(
         FbxNodeFixture{"PolygonVertexIndex", {fbx_prop_array_fixture('i', indices, 3u)}, {}});
     return geometry;
+}
+
+/// @brief Construct a small rational NURBS surface using the native FBX field layout.
+/// @details The four control points form a unit square. The final control point has weight two,
+///          so the evaluated center is `(0.6, 0.6, 0)` rather than `(0.5, 0.5, 0)`.
+/// @param id Numeric Geometry object ID.
+/// @param step_u Authored subdivisions per non-empty U knot span.
+/// @param descending_u_knots Whether to deliberately corrupt the U knot vector.
+/// @return Complete `NurbsSurface` Geometry node.
+static FbxNodeFixture make_fbx_nurbs_surface_geometry_fixture(int64_t id,
+                                                              int64_t step_u,
+                                                              bool descending_u_knots = false) {
+    static const double kPoints[] = {
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        2.0,
+    };
+    static const double kKnots[] = {0.0, 0.0, 1.0, 1.0};
+    static const double kDescendingKnots[] = {0.0, 1.0, 0.5, 1.0};
+    FbxNodeFixture geometry;
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(id));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("RationalSurface", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("NurbsSurface"));
+    geometry.children.push_back(FbxNodeFixture{
+        "NurbsSurfaceOrder", {fbx_prop_i64_fixture(2), fbx_prop_i64_fixture(2)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Dimensions", {fbx_prop_i64_fixture(2), fbx_prop_i64_fixture(2)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Step", {fbx_prop_i64_fixture(step_u), fbx_prop_i64_fixture(2)}, {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "Form", {fbx_prop_string_fixture("Open"), fbx_prop_string_fixture("Open")}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Points", {fbx_prop_array_fixture('d', kPoints, 16u)}, {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "KnotVectorU",
+        {fbx_prop_array_fixture('d', descending_u_knots ? kDescendingKnots : kKnots, 4u)},
+        {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"KnotVectorV", {fbx_prop_array_fixture('d', kKnots, 4u)}, {}});
+    return geometry;
+}
+
+/// @brief Construct a bilinear FBX Patch over the same unit square as the NURBS fixture.
+/// @param id Numeric Geometry object ID.
+/// @return Complete `Patch` Geometry node.
+static FbxNodeFixture make_fbx_linear_patch_geometry_fixture(int64_t id) {
+    static const double kPoints[] = {
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        1.0,
+        1.0,
+        0.0,
+        1.0,
+    };
+    FbxNodeFixture geometry;
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(id));
+    geometry.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("LinearPatch", "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Patch"));
+    geometry.children.push_back(FbxNodeFixture{
+        "PatchType", {fbx_prop_string_fixture("Linear"), fbx_prop_string_fixture("Linear")}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Dimensions", {fbx_prop_i64_fixture(2), fbx_prop_i64_fixture(2)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Step", {fbx_prop_i64_fixture(2), fbx_prop_i64_fixture(2)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Closed", {fbx_prop_i64_fixture(0), fbx_prop_i64_fixture(0)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Points", {fbx_prop_array_fixture('d', kPoints, 16u)}, {}});
+    return geometry;
+}
+
+/// @brief Construct one open patch whose U axis exercises a selected FBX basis.
+static FbxNodeFixture make_fbx_patch_basis_geometry_fixture(
+    int64_t id, const char *name, const char *basis_name, int64_t count_u, bool closed_u = false) {
+    std::vector<double> points;
+    FbxNodeFixture geometry;
+    points.reserve((size_t)count_u * 2u * 4u);
+    for (int64_t v = 0; v < 2; ++v) {
+        for (int64_t u = 0; u < count_u; ++u) {
+            points.push_back(count_u > 1 ? (double)u / (double)(count_u - 1) : 0.0);
+            points.push_back((double)v);
+            points.push_back((u == count_u / 2) ? 0.25 : 0.0);
+            points.push_back(1.0);
+        }
+    }
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(id));
+    geometry.props.push_back(fbx_prop_string_fixture(make_fbx_object_name(name, "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture("Patch"));
+    geometry.children.push_back(FbxNodeFixture{
+        "PatchType", {fbx_prop_string_fixture(basis_name), fbx_prop_string_fixture("Linear")}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Dimensions", {fbx_prop_i64_fixture(count_u), fbx_prop_i64_fixture(2)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Step", {fbx_prop_i64_fixture(2), fbx_prop_i64_fixture(1)}, {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "Closed", {fbx_prop_i64_fixture(closed_u ? 1 : 0), fbx_prop_i64_fixture(0)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Points", {fbx_prop_array_fixture('d', points.data(), points.size())}, {}});
+    return geometry;
+}
+
+/// @brief Construct a closed/periodic linear NURBS strip with an authored duplicate seam CV.
+static FbxNodeFixture make_fbx_closed_nurbs_geometry_fixture(int64_t id,
+                                                             const char *name,
+                                                             const char *form,
+                                                             const char *subtype = "NurbsSurface") {
+    static const double kPoints[] = {
+        1.0,  0.0, 0.0,           1.0, -0.5, 0.0, 0.8660254038, 1.0, -0.5, 0.0, -0.8660254038, 1.0,
+        1.0,  0.0, 0.0,           1.0, 1.0,  1.0, 0.0,          1.0, -0.5, 1.0, 0.8660254038,  1.0,
+        -0.5, 1.0, -0.8660254038, 1.0, 1.0,  1.0, 0.0,          1.0,
+    };
+    static const double kKnotsU[] = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0};
+    static const double kKnotsV[] = {0.0, 0.0, 1.0, 1.0};
+    FbxNodeFixture geometry;
+    geometry.name = "Geometry";
+    geometry.props.push_back(fbx_prop_i64_fixture(id));
+    geometry.props.push_back(fbx_prop_string_fixture(make_fbx_object_name(name, "Geometry")));
+    geometry.props.push_back(fbx_prop_string_fixture(subtype));
+    geometry.children.push_back(FbxNodeFixture{
+        "NurbsSurfaceOrder", {fbx_prop_i64_fixture(2), fbx_prop_i64_fixture(2)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Dimensions", {fbx_prop_i64_fixture(4), fbx_prop_i64_fixture(2)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Step", {fbx_prop_i64_fixture(1), fbx_prop_i64_fixture(1)}, {}});
+    geometry.children.push_back(FbxNodeFixture{
+        "Form", {fbx_prop_string_fixture(form), fbx_prop_string_fixture("Open")}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"Points", {fbx_prop_array_fixture('d', kPoints, 32u)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"KnotVectorU", {fbx_prop_array_fixture('d', kKnotsU, 6u)}, {}});
+    geometry.children.push_back(
+        FbxNodeFixture{"KnotVectorV", {fbx_prop_array_fixture('d', kKnotsV, 4u)}, {}});
+    return geometry;
+}
+
+static FbxNodeFixture make_fbx_material_fixture(
+    int64_t id, const char *name, double red, double green, double blue);
+
+/// @brief Write a typed binary FBX containing one NURBS surface and one linear patch.
+/// @param path Destination file path.
+/// @param step_u NURBS U step, allowing malformed-limit fixtures.
+/// @param descending_u_knots Whether to deliberately corrupt the NURBS U knots.
+/// @return True when the file was written.
+static bool write_fbx_procedural_surface_fixture(const char *path,
+                                                 int64_t step_u = 2,
+                                                 int64_t step_v = 2,
+                                                 bool descending_u_knots = false) {
+    static const int64_t kNurbsGeometryId = 5701;
+    static const int64_t kNurbsModelId = 5702;
+    static const int64_t kPatchGeometryId = 5703;
+    static const int64_t kPatchModelId = 5704;
+    static const int64_t kMaterialId = 5705;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    objects.name = "Objects";
+    FbxNodeFixture nurbs =
+        make_fbx_nurbs_surface_geometry_fixture(kNurbsGeometryId, step_u, descending_u_knots);
+    for (FbxNodeFixture &child : nurbs.children) {
+        if (child.name == "Step") {
+            child.props[1] = fbx_prop_i64_fixture(step_v);
+            break;
+        }
+    }
+    objects.children.push_back(nurbs);
+    objects.children.push_back(
+        make_fbx_model_fixture(kNurbsModelId, "RationalSurface", "NurbsSurface", 0.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_linear_patch_geometry_fixture(kPatchGeometryId));
+    objects.children.push_back(
+        make_fbx_model_fixture(kPatchModelId, "LinearPatch", "Patch", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_material_fixture(kMaterialId, "SurfaceMaterial", 0.2, 0.4, 0.6));
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kNurbsModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kNurbsGeometryId, kNurbsModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kPatchModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kPatchGeometryId, kPatchModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kMaterialId, kNurbsModelId));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write the ASCII counterpart of the rational NURBS surface fixture.
+/// @param path Destination file path.
+/// @return True when the file was written.
+static bool write_fbx_ascii_procedural_surface_fixture(const char *path) {
+    const std::string text =
+        "; FBX 7.4.0 procedural surface fixture\n"
+        "Objects: {\n"
+        "  Geometry: 5801, \"Geometry::AsciiSurface\", \"NurbsSurface\" {\n"
+        "    NurbsSurfaceOrder: 2, 2\n"
+        "    Dimensions: 2, 2\n"
+        "    Step: 2, 2\n"
+        "    Form: \"Open\", \"Open\"\n"
+        "    Points: *16 { a: 0,0,0,1, 1,0,0,1, 0,1,0,1, 1,1,0,2 }\n"
+        "    KnotVectorU: *4 { a: 0,0,1,1 }\n"
+        "    KnotVectorV: *4 { a: 0,0,1,1 }\n"
+        "  }\n"
+        "  Model: 5802, \"Model::AsciiSurface\", \"NurbsSurface\" {\n"
+        "    Properties70: {\n"
+        "      P: \"Lcl Translation\", \"Lcl Translation\", \"\", \"A\", 0,0,0\n"
+        "    }\n"
+        "  }\n"
+        "}\n"
+        "Connections: {\n"
+        "  C: \"OO\", 5802, 0\n"
+        "  C: \"OO\", 5801, 5802\n"
+        "}\n";
+    return write_text_file(path, text);
+}
+
+/// @brief Write closed/periodic NURBS and every supported patch basis in one typed graph.
+static bool write_fbx_procedural_surface_variants_fixture(const char *path) {
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    int64_t next_id = 5900;
+    objects.name = "Objects";
+    connections.name = "Connections";
+    auto append_geometry = [&](FbxNodeFixture geometry, const char *model_name, const char *type) {
+        int64_t geometry_id = 0;
+        if (!geometry.props.empty() && geometry.props[0].payload.size() >= sizeof(geometry_id))
+            std::memcpy(&geometry_id, geometry.props[0].payload.data(), sizeof(geometry_id));
+        int64_t model_id = ++next_id;
+        objects.children.push_back(geometry);
+        objects.children.push_back(
+            make_fbx_model_fixture(model_id, model_name, type, 0.0, 0.0, 0.0));
+        connections.children.push_back(make_fbx_connection_fixture(model_id, 0));
+        connections.children.push_back(make_fbx_connection_fixture(geometry_id, model_id));
+    };
+
+    append_geometry(
+        make_fbx_closed_nurbs_geometry_fixture(++next_id, "ClosedSurface", "Closed", "Nurb"),
+        "ClosedSurface",
+        "Nurb");
+    append_geometry(make_fbx_closed_nurbs_geometry_fixture(
+                        ++next_id, "PeriodicSurface", "Periodic", "NurbsSurface"),
+                    "PeriodicSurface",
+                    "NurbsSurface");
+    {
+        FbxNodeFixture missing_knots = make_fbx_nurbs_surface_geometry_fixture(++next_id, 1, false);
+        missing_knots.props[1] =
+            fbx_prop_string_fixture(make_fbx_object_name("GeneratedKnots", "Geometry"));
+        missing_knots.props[2] = fbx_prop_string_fixture("Nurbs");
+        for (auto it = missing_knots.children.begin(); it != missing_knots.children.end();) {
+            if (it->name == "KnotVectorU" || it->name == "KnotVectorV")
+                it = missing_knots.children.erase(it);
+            else
+                ++it;
+        }
+        append_geometry(missing_knots, "GeneratedKnots", "Nurbs");
+    }
+    append_geometry(make_fbx_patch_basis_geometry_fixture(++next_id, "BezierPatch", "Bezier", 4),
+                    "BezierPatch",
+                    "Patch");
+    append_geometry(
+        make_fbx_patch_basis_geometry_fixture(++next_id, "QuadraticPatch", "BezierQuadric", 3),
+        "QuadraticPatch",
+        "Patch");
+    append_geometry(
+        make_fbx_patch_basis_geometry_fixture(++next_id, "CardinalPatch", "Cardinal", 4),
+        "CardinalPatch",
+        "Patch");
+    append_geometry(make_fbx_patch_basis_geometry_fixture(++next_id, "BSplinePatch", "BSpline", 4),
+                    "BSplinePatch",
+                    "Patch");
+    append_geometry(
+        make_fbx_patch_basis_geometry_fixture(++next_id, "LinearBasisPatch", "Linear", 2),
+        "LinearBasisPatch",
+        "Patch");
+    append_geometry(
+        make_fbx_patch_basis_geometry_fixture(++next_id, "ClosedLinearPatch", "Linear", 4, true),
+        "ClosedLinearPatch",
+        "Patch");
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write a NURBS surface with a connected trim boundary, which must fail closed.
+static bool write_fbx_trimmed_surface_fixture(const char *path) {
+    static const int64_t kGeometryId = 6101;
+    static const int64_t kBoundaryId = 6102;
+    static const int64_t kModelId = 6103;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture boundary;
+    boundary.name = "Geometry";
+    boundary.props.push_back(fbx_prop_i64_fixture(kBoundaryId));
+    boundary.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("TrimBoundary", "Geometry")));
+    boundary.props.push_back(fbx_prop_string_fixture("Boundary"));
+    objects.name = "Objects";
+    objects.children.push_back(make_fbx_nurbs_surface_geometry_fixture(kGeometryId, 2));
+    objects.children.push_back(boundary);
+    objects.children.push_back(
+        make_fbx_model_fixture(kModelId, "TrimmedSurface", "NurbsSurface", 0.0, 0.0, 0.0));
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kBoundaryId, kGeometryId));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write a NURBS surface whose declared control counts do not match its point array.
+static bool write_fbx_bad_surface_control_count_fixture(const char *path) {
+    static const int64_t kGeometryId = 6201;
+    static const int64_t kModelId = 6202;
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture geometry = make_fbx_nurbs_surface_geometry_fixture(kGeometryId, 2);
+    for (FbxNodeFixture &child : geometry.children) {
+        if (child.name == "Dimensions") {
+            child.props[0] = fbx_prop_i64_fixture(3);
+            break;
+        }
+    }
+    objects.name = "Objects";
+    objects.children.push_back(geometry);
+    objects.children.push_back(
+        make_fbx_model_fixture(kModelId, "BadControlNet", "NurbsSurface", 0.0, 0.0, 0.0));
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+    return write_fbx_document_fixture(path, objects, connections);
 }
 
 /// @brief Construct one material object with an authored DiffuseColor.
@@ -992,7 +1370,7 @@ static bool write_fbx_multimaterial_fixture(const char *path) {
 }
 
 /// @brief Write an FBX scene containing typed camera/light attributes and object animation.
-static bool write_fbx_camera_light_animation_fixture(const char *path) {
+static bool write_fbx_camera_light_animation_fixture(const char *path, double area_width = 4.0) {
     static const int64_t kSecond = 46186158000LL;
     static const int64_t kTimes[2] = {0, kSecond};
     static const double kValues[2] = {1.0, 5.0};
@@ -1002,11 +1380,15 @@ static bool write_fbx_camera_light_animation_fixture(const char *path) {
     constexpr int64_t kPointModel = 2403;
     constexpr int64_t kDirectionalModel = 2404;
     constexpr int64_t kAreaModel = 2405;
+    constexpr int64_t kSphereAreaModel = 2406;
+    constexpr int64_t kVolumeModel = 2407;
     constexpr int64_t kCameraAttribute = 2410;
     constexpr int64_t kLightAttribute = 2411;
     constexpr int64_t kPointAttribute = 2412;
     constexpr int64_t kDirectionalAttribute = 2413;
     constexpr int64_t kAreaAttribute = 2414;
+    constexpr int64_t kSphereAreaAttribute = 2415;
+    constexpr int64_t kVolumeAttribute = 2416;
     constexpr int64_t kStack = 2420;
     constexpr int64_t kLayer = 2421;
     constexpr int64_t kCurveNode = 2422;
@@ -1025,6 +1407,10 @@ static bool write_fbx_camera_light_animation_fixture(const char *path) {
         make_fbx_model_fixture(kDirectionalModel, "SunLight", "Light", 0.0, 0.0, 0.0);
     FbxNodeFixture area_model =
         make_fbx_model_fixture(kAreaModel, "PanelLight", "Light", 7.0, 8.0, 9.0);
+    FbxNodeFixture sphere_area_model =
+        make_fbx_model_fixture(kSphereAreaModel, "OrbLight", "Light", -2.0, 3.0, 1.0);
+    FbxNodeFixture volume_model =
+        make_fbx_model_fixture(kVolumeModel, "FogLight", "Light", 0.0, 4.0, -2.0);
     FbxNodeFixture camera_attribute;
     FbxNodeFixture camera_properties;
     FbxNodeFixture light_attribute;
@@ -1035,6 +1421,10 @@ static bool write_fbx_camera_light_animation_fixture(const char *path) {
     FbxNodeFixture directional_properties;
     FbxNodeFixture area_attribute;
     FbxNodeFixture area_properties;
+    FbxNodeFixture sphere_area_attribute;
+    FbxNodeFixture sphere_area_properties;
+    FbxNodeFixture volume_attribute;
+    FbxNodeFixture volume_properties;
     FbxNodeFixture stack;
     FbxNodeFixture layer;
     FbxNodeFixture curve_node;
@@ -1093,7 +1483,38 @@ static bool write_fbx_camera_light_animation_fixture(const char *path) {
         fbx_prop_string_fixture("Light")};
     area_properties.name = "Properties70";
     area_properties.children.push_back(make_fbx_property_int("LightType", 3));
+    area_properties.children.push_back(make_fbx_property_int("AreaLightShape", 0));
+    area_properties.children.push_back(make_fbx_property_scalar("Width", area_width));
+    area_properties.children.push_back(make_fbx_property_scalar("Height", 2.0));
+    area_properties.children.push_back(make_fbx_property_int("DecayType", 2));
+    area_properties.children.push_back(make_fbx_property_scalar("DecayStart", 15.0));
     area_attribute.children.push_back(area_properties);
+
+    sphere_area_attribute.name = "NodeAttribute";
+    sphere_area_attribute.props = {
+        fbx_prop_i64_fixture(kSphereAreaAttribute),
+        fbx_prop_string_fixture(make_fbx_object_name("OrbLight", "NodeAttribute")),
+        fbx_prop_string_fixture("Light")};
+    sphere_area_properties.name = "Properties70";
+    sphere_area_properties.children.push_back(make_fbx_property_int("LightType", 3));
+    sphere_area_properties.children.push_back(make_fbx_property_int("AreaLightShape", 1));
+    sphere_area_properties.children.push_back(make_fbx_property_scalar("AreaLightRadius", 2.5));
+    sphere_area_properties.children.push_back(make_fbx_property_int("DecayType", 1));
+    sphere_area_properties.children.push_back(make_fbx_property_scalar("FarAttenuationEnd", 20.0));
+    sphere_area_attribute.children.push_back(sphere_area_properties);
+
+    volume_attribute.name = "NodeAttribute";
+    volume_attribute.props = {
+        fbx_prop_i64_fixture(kVolumeAttribute),
+        fbx_prop_string_fixture(make_fbx_object_name("FogLight", "NodeAttribute")),
+        fbx_prop_string_fixture("Light")};
+    volume_properties.name = "Properties70";
+    volume_properties.children.push_back(make_fbx_property_int("LightType", 4));
+    volume_properties.children.push_back(make_fbx_property_scalar("VolumeRadius", 6.0));
+    volume_properties.children.push_back(make_fbx_property_int("DecayType", 0));
+    volume_properties.children.push_back(make_fbx_property_scalar("DecayStart", 9.0));
+    volume_properties.children.push_back(make_fbx_property_int("CastShadows", 1));
+    volume_attribute.children.push_back(volume_properties);
 
     stack.name = "AnimationStack";
     stack.props = {fbx_prop_i64_fixture(kStack),
@@ -1116,11 +1537,15 @@ static bool write_fbx_camera_light_animation_fixture(const char *path) {
                         point_model,
                         directional_model,
                         area_model,
+                        sphere_area_model,
+                        volume_model,
                         camera_attribute,
                         light_attribute,
                         point_attribute,
                         directional_attribute,
                         area_attribute,
+                        sphere_area_attribute,
+                        volume_attribute,
                         stack,
                         layer,
                         curve_node,
@@ -1132,6 +1557,8 @@ static bool write_fbx_camera_light_animation_fixture(const char *path) {
     connections.children.push_back(make_fbx_connection_fixture(kPointModel, 0));
     connections.children.push_back(make_fbx_connection_fixture(kDirectionalModel, 0));
     connections.children.push_back(make_fbx_connection_fixture(kAreaModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kSphereAreaModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kVolumeModel, 0));
     connections.children.push_back(make_fbx_connection_fixture(kCameraAttribute, kCameraModel));
     connections.children.push_back(make_fbx_connection_fixture(kLightAttribute, kLightModel));
     connections.children.push_back(make_fbx_connection_fixture(kPointAttribute, kPointModel));
@@ -1139,12 +1566,114 @@ static bool write_fbx_camera_light_animation_fixture(const char *path) {
         make_fbx_connection_fixture(kDirectionalAttribute, kDirectionalModel));
     connections.children.push_back(make_fbx_connection_fixture(kAreaAttribute, kAreaModel));
     connections.children.push_back(
+        make_fbx_connection_fixture(kSphereAreaAttribute, kSphereAreaModel));
+    connections.children.push_back(make_fbx_connection_fixture(kVolumeAttribute, kVolumeModel));
+    connections.children.push_back(
         make_fbx_connection_fixture(kTargetModel, kCameraAttribute, "LookAtProperty"));
     connections.children.push_back(make_fbx_connection_fixture(kLayer, kStack));
     connections.children.push_back(make_fbx_connection_fixture(kCurveNode, kLayer));
     connections.children.push_back(
         make_fbx_connection_fixture(kCurveNode, kLightModel, "Lcl Translation"));
     connections.children.push_back(make_fbx_connection_fixture(kCurve, kCurveNode, "d|X"));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write fully animated FBX camera projection properties, including focal/aperture input.
+static bool write_fbx_camera_projection_animation_fixture(const char *path,
+                                                          bool invalid_projection = false) {
+    constexpr int64_t kCameraModel = 2450;
+    constexpr int64_t kCameraAttribute = 2451;
+    constexpr int64_t kStack = 2452;
+    constexpr int64_t kLayer = 2453;
+    static const int64_t kTimes[2] = {0, 46186158000LL};
+    static const int64_t kProjectionTimes[3] = {0, 23093079000LL, 46186158000LL};
+    static const double kFocal[2] = {50.0, 25.0};
+    static const double kFilmWidth[2] = {0.8, 1.0};
+    static const double kAspectWidth[2] = {2.0, 4.0};
+    static const double kAspectHeight[2] = {1.0, 1.0};
+    static const double kNear[2] = {0.25, 0.5};
+    static const double kFar[2] = {500.0, 1000.0};
+    static const double kOrtho[2] = {10.0, 20.0};
+    static const double kIgnoredFovY[2] = {40.0, 80.0};
+    static const double kProjection[3] = {0.0, 1.0, 1.0};
+    static const double kInvalidProjection[3] = {0.0, 1.0, 2.0};
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture attribute;
+    FbxNodeFixture properties70;
+    int64_t next_id = 2460;
+    objects.name = "Objects";
+    connections.name = "Connections";
+    objects.children.push_back(
+        make_fbx_model_fixture(kCameraModel, "AnimatedCamera", "Camera", 0.0, 1.0, 5.0));
+    attribute.name = "NodeAttribute";
+    attribute.props = {
+        fbx_prop_i64_fixture(kCameraAttribute),
+        fbx_prop_string_fixture(make_fbx_object_name("AnimatedCamera", "NodeAttribute")),
+        fbx_prop_string_fixture("Camera")};
+    properties70.name = "Properties70";
+    properties70.children = {make_fbx_property_int("CameraProjectionType", 0),
+                             make_fbx_property_int("ApertureMode", 3),
+                             make_fbx_property_scalar("FocalLength", 50.0),
+                             make_fbx_property_scalar("FilmWidth", 0.8),
+                             make_fbx_property_scalar("FilmHeight", 0.6),
+                             make_fbx_property_scalar("AspectWidth", 2.0),
+                             make_fbx_property_scalar("AspectHeight", 1.0),
+                             make_fbx_property_scalar("NearPlane", 0.25),
+                             make_fbx_property_scalar("FarPlane", 500.0),
+                             make_fbx_property_scalar("CameraOrthoZoom", 10.0),
+                             make_fbx_property_scalar("FieldOfViewY", 40.0)};
+    attribute.children.push_back(std::move(properties70));
+    objects.children.push_back(std::move(attribute));
+    objects.children.push_back(FbxNodeFixture{
+        "AnimationStack",
+        {fbx_prop_i64_fixture(kStack),
+         fbx_prop_string_fixture(make_fbx_object_name("CameraProjection", "AnimStack")),
+         fbx_prop_string_fixture("")},
+        {}});
+    objects.children.push_back(
+        FbxNodeFixture{"AnimationLayer",
+                       {fbx_prop_i64_fixture(kLayer),
+                        fbx_prop_string_fixture(make_fbx_object_name("Base", "AnimLayer")),
+                        fbx_prop_string_fixture("")},
+                       {}});
+    connections.children.push_back(make_fbx_connection_fixture(kCameraModel, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kCameraAttribute, kCameraModel));
+    connections.children.push_back(make_fbx_connection_fixture(kLayer, kStack));
+    auto add_curve = [&](int64_t target_id,
+                         const char *property,
+                         const int64_t *times,
+                         const double *values,
+                         size_t count) {
+        int64_t curve_node_id = next_id++;
+        int64_t curve_id = next_id++;
+        objects.children.push_back(FbxNodeFixture{
+            "AnimationCurveNode",
+            {fbx_prop_i64_fixture(curve_node_id),
+             fbx_prop_string_fixture(make_fbx_object_name(property, "AnimCurveNode")),
+             fbx_prop_string_fixture("")},
+            {}});
+        objects.children.push_back(
+            make_fbx_animation_curve_fixture(curve_id, times, values, count));
+        connections.children.push_back(make_fbx_connection_fixture(curve_node_id, kLayer));
+        connections.children.push_back(
+            make_fbx_connection_fixture(curve_node_id, target_id, property));
+        connections.children.push_back(make_fbx_connection_fixture(curve_id, curve_node_id, "d|X"));
+    };
+    add_curve(kCameraAttribute, "FocalLength", kTimes, kFocal, 2u);
+    add_curve(kCameraAttribute, "FilmWidth", kTimes, kFilmWidth, 2u);
+    add_curve(kCameraAttribute, "AspectWidth", kTimes, kAspectWidth, 2u);
+    add_curve(kCameraAttribute, "AspectHeight", kTimes, kAspectHeight, 2u);
+    /* Model-targeted camera properties are accepted for exporter compatibility. */
+    add_curve(kCameraModel, "NearPlane", kTimes, kNear, 2u);
+    add_curve(kCameraAttribute, "FarPlane", kTimes, kFar, 2u);
+    add_curve(kCameraAttribute, "CameraOrthoZoom", kTimes, kOrtho, 2u);
+    add_curve(kCameraAttribute, "FieldOfViewY", kTimes, kIgnoredFovY, 2u);
+    add_curve(kCameraAttribute,
+              "CameraProjectionType",
+              kProjectionTimes,
+              invalid_projection ? kInvalidProjection : kProjection,
+              3u);
     return write_fbx_document_fixture(path, objects, connections);
 }
 
@@ -1196,8 +1725,583 @@ static bool write_fbx_camera_light_animation_ascii_fixture(const char *path) {
     return write_text_file(path, text);
 }
 
+/// @brief Construct one typed FBX Constraint object with a Properties70 payload.
+static FbxNodeFixture make_fbx_constraint_fixture(int64_t id,
+                                                  const char *name,
+                                                  const char *type,
+                                                  std::vector<FbxNodeFixture> properties) {
+    FbxNodeFixture constraint;
+    FbxNodeFixture type_node;
+    FbxNodeFixture properties70;
+    constraint.name = "Constraint";
+    constraint.props.push_back(fbx_prop_i64_fixture(id));
+    constraint.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name(name ? name : "Constraint", "Constraint")));
+    constraint.props.push_back(fbx_prop_string_fixture(type ? type : "Custom"));
+    type_node.name = "Type";
+    type_node.props.push_back(fbx_prop_string_fixture(type ? type : "Custom"));
+    constraint.children.push_back(type_node);
+    properties70.name = "Properties70";
+    properties70.children = std::move(properties);
+    constraint.children.push_back(std::move(properties70));
+    return constraint;
+}
+
+/// @brief Write a compact zoo covering every built-in FBX constraint and animated dependency.
+static bool write_fbx_constraint_zoo_fixture(const char *path,
+                                             bool unreachable_ik = false,
+                                             double ik_weight = 100.0,
+                                             bool z_up = false) {
+    constexpr int64_t kPositionTarget = 3000;
+    constexpr int64_t kPositionSourceA = 3001;
+    constexpr int64_t kPositionSourceB = 3002;
+    constexpr int64_t kPositionConstraint = 3100;
+    constexpr int64_t kRotationTarget = 3010;
+    constexpr int64_t kRotationSource = 3011;
+    constexpr int64_t kRotationConstraint = 3110;
+    constexpr int64_t kScaleTarget = 3020;
+    constexpr int64_t kScaleSource = 3021;
+    constexpr int64_t kScaleConstraint = 3120;
+    constexpr int64_t kParentTarget = 3030;
+    constexpr int64_t kParentSource = 3031;
+    constexpr int64_t kParentConstraint = 3130;
+    constexpr int64_t kAimTarget = 3040;
+    constexpr int64_t kAimSource = 3041;
+    constexpr int64_t kAimUp = 3042;
+    constexpr int64_t kAimConstraint = 3140;
+    constexpr int64_t kInactiveTarget = 3050;
+    constexpr int64_t kInactiveSource = 3051;
+    constexpr int64_t kInactiveConstraint = 3150;
+    constexpr int64_t kIkFirst = 3060;
+    constexpr int64_t kIkMiddle = 3061;
+    constexpr int64_t kIkEnd = 3062;
+    constexpr int64_t kIkEffector = 3063;
+    constexpr int64_t kIkPole = 3064;
+    constexpr int64_t kIkConstraint = 3160;
+    constexpr int64_t kCustomConstraint = 3170;
+    constexpr int64_t kStack = 3200;
+    constexpr int64_t kLayer = 3201;
+    constexpr int64_t kCurveNode = 3202;
+    constexpr int64_t kCurve = 3203;
+    static const int64_t kTimes[2] = {0, 46186158000LL};
+    static const double kValues[2] = {2.0, 10.0};
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    objects.name = "Objects";
+    connections.name = "Connections";
+
+    objects.children.push_back(
+        make_fbx_model_fixture(kPositionTarget, "PositionTarget", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kPositionSourceA, "SourceA", "Null", 2.0, 4.0, 6.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kPositionSourceB, "SourceB", "Null", 6.0, 8.0, 10.0));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(kPositionConstraint,
+                                    "Point",
+                                    "Position From Positions",
+                                    {make_fbx_property_vec3("TranslationOffset", 1.0, 0.0, -1.0),
+                                     make_fbx_property_scalar("Weight", 50.0),
+                                     make_fbx_property_int("AffectY", 0),
+                                     make_fbx_property_scalar("SourceA.Weight", 100.0),
+                                     make_fbx_property_scalar("SourceB.Weight", 300.0)}));
+
+    FbxNodeFixture rotation_target =
+        make_fbx_model_fixture(kRotationTarget, "RotationTarget", "Null", 0.0, 0.0, 0.0);
+    FbxNodeFixture rotation_source =
+        make_fbx_model_fixture(kRotationSource, "RotationSource", "Null", 0.0, 0.0, 0.0);
+    rotation_source.children[0].children[1] =
+        make_fbx_property_vec3("Lcl Rotation", 0.0, 0.0, 90.0);
+    objects.children.push_back(std::move(rotation_target));
+    objects.children.push_back(std::move(rotation_source));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(kRotationConstraint,
+                                    "Orient",
+                                    "Rotation From Rotations",
+                                    {make_fbx_property_vec3("RotationOffset", 0.0, 0.0, 30.0),
+                                     make_fbx_property_scalar("RotationSource.Weight", 100.0)}));
+
+    FbxNodeFixture scale_source =
+        make_fbx_model_fixture(kScaleSource, "ScaleSource", "Null", 0.0, 0.0, 0.0);
+    scale_source.children[0].children[2] = make_fbx_property_vec3("Lcl Scaling", 2.0, 3.0, 4.0);
+    objects.children.push_back(
+        make_fbx_model_fixture(kScaleTarget, "ScaleTarget", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(std::move(scale_source));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(kScaleConstraint,
+                                    "Scale",
+                                    "Scale From Scales",
+                                    {make_fbx_property_vec3("ScalingOffset", 0.5, 2.0, 1.0),
+                                     make_fbx_property_scalar("Weight", 50.0),
+                                     make_fbx_property_scalar("ScaleSource.Weight", 100.0)}));
+
+    FbxNodeFixture parent_source =
+        make_fbx_model_fixture(kParentSource, "ParentSource", "Null", 10.0, 0.0, 0.0);
+    parent_source.children[0].children[1] = make_fbx_property_vec3("Lcl Rotation", 0.0, 0.0, 60.0);
+    objects.children.push_back(
+        make_fbx_model_fixture(kParentTarget, "ParentTarget", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(std::move(parent_source));
+    objects.children.push_back(make_fbx_constraint_fixture(
+        kParentConstraint,
+        "Parent",
+        "Parent-Child",
+        {make_fbx_property_scalar("ParentSource.Weight", 100.0),
+         make_fbx_property_vec3("ParentSource.Offset T", 2.0, 0.0, 0.0),
+         make_fbx_property_vec3("ParentSource.Offset R", 0.0, 0.0, 30.0),
+         make_fbx_property_vec3("ParentSource.Offset S", 1.0, 1.0, 1.0),
+         make_fbx_property_int("AffectScaleX", 1),
+         make_fbx_property_int("AffectScaleY", 1),
+         make_fbx_property_int("AffectScaleZ", 1)}));
+
+    objects.children.push_back(
+        make_fbx_model_fixture(kAimTarget, "AimTarget", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kAimSource, "AimSource", "Null", 0.0, 0.0, -5.0));
+    objects.children.push_back(make_fbx_model_fixture(kAimUp, "AimUp", "Null", 0.0, 5.0, 0.0));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(kAimConstraint,
+                                    "Aim",
+                                    "Aim",
+                                    {make_fbx_property_int("WorldUpType", 1),
+                                     make_fbx_property_vec3("AimVector", 1.0, 0.0, 0.0),
+                                     make_fbx_property_vec3("UpVector", 0.0, 1.0, 0.0),
+                                     make_fbx_property_scalar("AimSource.Weight", 100.0)}));
+
+    objects.children.push_back(
+        make_fbx_model_fixture(kInactiveTarget, "InactiveTarget", "Null", 1.0, 2.0, 3.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kInactiveSource, "InactiveSource", "Null", 9.0, 9.0, 9.0));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(kInactiveConstraint,
+                                    "Inactive",
+                                    "Position From Positions",
+                                    {make_fbx_property_int("Active", 0),
+                                     make_fbx_property_int("Lock", 1),
+                                     make_fbx_property_scalar("InactiveSource.Weight", 100.0)}));
+
+    objects.children.push_back(make_fbx_model_fixture(kIkFirst, "IkFirst", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kIkMiddle, "IkMiddle", "Null", 1.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_model_fixture(kIkEnd, "IkEnd", "Null", 1.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_model_fixture(kIkEffector,
+                                                      "IkEffector",
+                                                      "Null",
+                                                      unreachable_ik ? 5.0 : 1.0,
+                                                      unreachable_ik ? 0.0 : 1.0,
+                                                      0.0));
+    objects.children.push_back(make_fbx_model_fixture(kIkPole, "IkPole", "Null", 0.0, 0.0, 2.0));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(kIkConstraint,
+                                    "IK",
+                                    "Single Chain IK",
+                                    {make_fbx_property_int("PoleVectorType", 1),
+                                     make_fbx_property_vec3("PoleVector", 0.0, 0.0, 2.0),
+                                     make_fbx_property_scalar("Twist", 30.0),
+                                     make_fbx_property_scalar("Weight", ik_weight),
+                                     make_fbx_property_scalar("IkPole.Weight", 1.0)}));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(kCustomConstraint, "VendorTwist", "Vendor Twist", {}));
+
+    objects.children.push_back(FbxNodeFixture{
+        "AnimationStack",
+        {fbx_prop_i64_fixture(kStack),
+         fbx_prop_string_fixture(make_fbx_object_name("ConstraintMotion", "AnimStack")),
+         fbx_prop_string_fixture("")},
+        {}});
+    objects.children.push_back(
+        FbxNodeFixture{"AnimationLayer",
+                       {fbx_prop_i64_fixture(kLayer),
+                        fbx_prop_string_fixture(make_fbx_object_name("Base", "AnimLayer")),
+                        fbx_prop_string_fixture("")},
+                       {}});
+    objects.children.push_back(
+        FbxNodeFixture{"AnimationCurveNode",
+                       {fbx_prop_i64_fixture(kCurveNode),
+                        fbx_prop_string_fixture(make_fbx_object_name("SourceX", "AnimCurveNode")),
+                        fbx_prop_string_fixture("")},
+                       {}});
+    objects.children.push_back(make_fbx_animation_curve_fixture(kCurve, kTimes, kValues, 2u));
+
+    const int64_t roots[] = {kPositionTarget,
+                             kPositionSourceA,
+                             kPositionSourceB,
+                             kRotationTarget,
+                             kRotationSource,
+                             kScaleTarget,
+                             kScaleSource,
+                             kParentTarget,
+                             kParentSource,
+                             kAimTarget,
+                             kAimSource,
+                             kAimUp,
+                             kInactiveTarget,
+                             kInactiveSource,
+                             kIkFirst,
+                             kIkEffector,
+                             kIkPole};
+    for (int64_t id : roots)
+        connections.children.push_back(make_fbx_connection_fixture(id, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kIkMiddle, kIkFirst));
+    connections.children.push_back(make_fbx_connection_fixture(kIkEnd, kIkMiddle));
+
+    connections.children.push_back(
+        make_fbx_connection_fixture(kPositionTarget, kPositionConstraint, "Constrained Object"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kPositionSourceA, kPositionConstraint, "Source"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kPositionSourceB, kPositionConstraint, "Source"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kRotationTarget, kRotationConstraint, "Constrained Object"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kRotationSource, kRotationConstraint, "Source"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kScaleTarget, kScaleConstraint, "Constrained Object"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kScaleSource, kScaleConstraint, "Source"));
+    connections.children.push_back(make_fbx_connection_fixture(
+        kParentTarget, kParentConstraint, "Constrained object (Child)"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kParentSource, kParentConstraint, "Source (Parent)"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kAimTarget, kAimConstraint, "Constrained Object"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kAimSource, kAimConstraint, "Aim At Object"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kAimUp, kAimConstraint, "World Up Object"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kInactiveTarget, kInactiveConstraint, "Constrained Object"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kInactiveSource, kInactiveConstraint, "Source"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kIkFirst, kIkConstraint, "First Joint"));
+    connections.children.push_back(make_fbx_connection_fixture(kIkEnd, kIkConstraint, "End Joint"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kIkEffector, kIkConstraint, "Effector"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kIkPole, kIkConstraint, "Pole Vector Object"));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kAimTarget, kCustomConstraint, "Constrained Object"));
+    connections.children.push_back(make_fbx_connection_fixture(kLayer, kStack));
+    connections.children.push_back(make_fbx_connection_fixture(kCurveNode, kLayer));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kCurveNode, kPositionSourceA, "Lcl Translation"));
+    connections.children.push_back(make_fbx_connection_fixture(kCurve, kCurveNode, "d|X"));
+    return write_fbx_document_fixture(path, objects, connections, z_up);
+}
+
+enum class FbxBadConstraintFixture {
+    MissingTarget,
+    Cycle,
+    WeightMismatch,
+    NonFiniteOffset,
+    MismatchedIkChain,
+    DescendantSource,
+};
+
+/// @brief Write one malformed active constraint graph for transactional-rejection tests.
+static bool write_fbx_bad_constraint_fixture(const char *path, FbxBadConstraintFixture kind) {
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    objects.name = "Objects";
+    connections.name = "Connections";
+    objects.children.push_back(make_fbx_model_fixture(3300, "A", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_model_fixture(3301, "B", "Null", 1.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_model_fixture(3302, "C", "Null", 2.0, 0.0, 0.0));
+    connections.children.push_back(make_fbx_connection_fixture(3300, 0));
+    connections.children.push_back(make_fbx_connection_fixture(
+        3301, kind == FbxBadConstraintFixture::DescendantSource ? 3300 : 0));
+    connections.children.push_back(make_fbx_connection_fixture(3302, 0));
+    if (kind == FbxBadConstraintFixture::MismatchedIkChain) {
+        objects.children.push_back(make_fbx_constraint_fixture(
+            3400, "BrokenIK", "Single Chain IK", {make_fbx_property_scalar("C.Weight", 1.0)}));
+        connections.children.push_back(make_fbx_connection_fixture(3300, 3400, "First Joint"));
+        connections.children.push_back(make_fbx_connection_fixture(3301, 3400, "End Joint"));
+        connections.children.push_back(make_fbx_connection_fixture(3302, 3400, "Effector"));
+    } else {
+        std::vector<FbxNodeFixture> properties;
+        if (kind == FbxBadConstraintFixture::WeightMismatch)
+            properties.push_back(make_fbx_property_scalar("B.Weight", 100.0));
+        else if (kind == FbxBadConstraintFixture::NonFiniteOffset)
+            properties.push_back(make_fbx_property_vec3("Translation", NAN, 0.0, 0.0));
+        objects.children.push_back(make_fbx_constraint_fixture(
+            3400, "BrokenPoint", "Position From Positions", std::move(properties)));
+        if (kind != FbxBadConstraintFixture::MissingTarget)
+            connections.children.push_back(
+                make_fbx_connection_fixture(3300, 3400, "Constrained Object"));
+        connections.children.push_back(make_fbx_connection_fixture(3301, 3400, "Source"));
+        if (kind == FbxBadConstraintFixture::WeightMismatch)
+            connections.children.push_back(make_fbx_connection_fixture(3302, 3400, "Source"));
+        if (kind == FbxBadConstraintFixture::Cycle) {
+            objects.children.push_back(
+                make_fbx_constraint_fixture(3401, "CyclePoint", "Position From Positions", {}));
+            connections.children.push_back(
+                make_fbx_connection_fixture(3301, 3401, "Constrained Object"));
+            connections.children.push_back(make_fbx_connection_fixture(3300, 3401, "Source"));
+        }
+    }
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write constraints whose consumer reads through a producer-driven ancestor.
+static bool write_fbx_constraint_ancestor_order_fixture(const char *path) {
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    objects.name = "Objects";
+    connections.name = "Connections";
+    objects.children.push_back(make_fbx_model_fixture(3450, "Ancestor", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_model_fixture(3451, "NestedSource", "Null", 2.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_model_fixture(3452, "Target", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(make_fbx_model_fixture(3453, "Driver", "Null", 10.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(3460, "ConsumerFirst", "Position From Positions", {}));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(3461, "AncestorProducer", "Position From Positions", {}));
+    connections.children.push_back(make_fbx_connection_fixture(3450, 0));
+    connections.children.push_back(make_fbx_connection_fixture(3451, 3450));
+    connections.children.push_back(make_fbx_connection_fixture(3452, 0));
+    connections.children.push_back(make_fbx_connection_fixture(3453, 0));
+    connections.children.push_back(make_fbx_connection_fixture(3452, 3460, "Constrained Object"));
+    connections.children.push_back(make_fbx_connection_fixture(3451, 3460, "Source"));
+    connections.children.push_back(make_fbx_connection_fixture(3450, 3461, "Constrained Object"));
+    connections.children.push_back(make_fbx_connection_fixture(3453, 3461, "Source"));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write a bone constrained by an animated non-skeleton driver.
+static bool write_fbx_animated_skeleton_constraint_fixture(const char *path) {
+    constexpr int64_t kBone = 3500;
+    constexpr int64_t kDriver = 3501;
+    constexpr int64_t kConstraint = 3510;
+    constexpr int64_t kStack = 3520;
+    constexpr int64_t kLayer = 3521;
+    constexpr int64_t kCurveNode = 3522;
+    constexpr int64_t kCurve = 3523;
+    static const int64_t kTimes[2] = {0, 46186158000LL};
+    static const double kValues[2] = {2.0, 10.0};
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    objects.name = "Objects";
+    connections.name = "Connections";
+    objects.children.push_back(make_fbx_model_fixture(kBone, "DrivenBone", "LimbNode", 0, 0, 0));
+    objects.children.push_back(make_fbx_model_fixture(kDriver, "BoneDriver", "Null", 2, 0, 0));
+    objects.children.push_back(
+        make_fbx_constraint_fixture(kConstraint,
+                                    "DriveBone",
+                                    "Position From Positions",
+                                    {make_fbx_property_vec3("Translation", 1.0, 0.0, 0.0),
+                                     make_fbx_property_scalar("BoneDriver.Weight", 100.0)}));
+    objects.children.push_back(FbxNodeFixture{
+        "AnimationStack",
+        {fbx_prop_i64_fixture(kStack),
+         fbx_prop_string_fixture(make_fbx_object_name("DrivenBoneClip", "AnimStack")),
+         fbx_prop_string_fixture("")},
+        {}});
+    objects.children.push_back(
+        FbxNodeFixture{"AnimationLayer",
+                       {fbx_prop_i64_fixture(kLayer),
+                        fbx_prop_string_fixture(make_fbx_object_name("Base", "AnimLayer")),
+                        fbx_prop_string_fixture("")},
+                       {}});
+    objects.children.push_back(
+        FbxNodeFixture{"AnimationCurveNode",
+                       {fbx_prop_i64_fixture(kCurveNode),
+                        fbx_prop_string_fixture(make_fbx_object_name("DriverX", "AnimCurveNode")),
+                        fbx_prop_string_fixture("")},
+                       {}});
+    objects.children.push_back(make_fbx_animation_curve_fixture(kCurve, kTimes, kValues, 2u));
+    connections.children.push_back(make_fbx_connection_fixture(kBone, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kDriver, 0));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kBone, kConstraint, "Constrained Object"));
+    connections.children.push_back(make_fbx_connection_fixture(kDriver, kConstraint, "Source"));
+    connections.children.push_back(make_fbx_connection_fixture(kLayer, kStack));
+    connections.children.push_back(make_fbx_connection_fixture(kCurveNode, kLayer));
+    connections.children.push_back(
+        make_fbx_connection_fixture(kCurveNode, kDriver, "Lcl Translation"));
+    connections.children.push_back(make_fbx_connection_fixture(kCurve, kCurveNode, "d|X"));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write layered transform animation shared by one scene node and one skeleton bone.
+static bool write_fbx_animation_layer_composition_fixture(const char *path) {
+    constexpr int64_t kNode = 3600;
+    constexpr int64_t kBone = 3601;
+    constexpr int64_t kStack = 3610;
+    constexpr int64_t kBaseLayer = 3620;
+    constexpr int64_t kAddLayer = 3621;
+    constexpr int64_t kScaleAddLayer = 3622;
+    constexpr int64_t kOverrideLayer = 3623;
+    constexpr int64_t kPassthroughLayer = 3624;
+    constexpr int64_t kMutedLayer = 3625;
+    static const int64_t kTimes[2] = {-46186158000LL, 46186158000LL};
+    static const int64_t kWeightTimes[3] = {-46186158000LL, 0, 46186158000LL};
+    static const double kBaseTranslation[2] = {1.0, 2.0};
+    static const double kBaseRotation[2] = {10.0, 20.0};
+    static const double kBaseScale[2] = {2.0, 2.0};
+    static const double kAddTranslation[2] = {4.0, 4.0};
+    static const double kAddRotation[2] = {40.0, 40.0};
+    static const double kMultiplyScale[2] = {4.0, 4.0};
+    static const double kAdditiveScale[2] = {3.0, 3.0};
+    static const double kOverrideTranslation[2] = {8.0, 8.0};
+    static const double kPassthroughTranslation[2] = {10.0, 10.0};
+    static const double kPassthroughRotation[2] = {100.0, 100.0};
+    static const double kPassthroughScale[2] = {8.0, 8.0};
+    static const double kMutedTranslation[2] = {100.0, 100.0};
+    static const double kWeights[3] = {0.0, 50.0, 100.0};
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    int64_t next_id = 3700;
+    objects.name = "Objects";
+    connections.name = "Connections";
+    objects.children.push_back(make_fbx_model_fixture(kNode, "LayerNode", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kBone, "LayerBone", "LimbNode", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        FbxNodeFixture{"AnimationStack",
+                       {fbx_prop_i64_fixture(kStack),
+                        fbx_prop_string_fixture(make_fbx_object_name("Layered", "AnimStack")),
+                        fbx_prop_string_fixture("")},
+                       {}});
+    auto add_layer = [&](int64_t id,
+                         const char *name,
+                         int blend_mode,
+                         double weight,
+                         int rotation_mode,
+                         int scale_mode,
+                         bool mute) {
+        FbxNodeFixture layer;
+        FbxNodeFixture properties70;
+        layer.name = "AnimationLayer";
+        layer.props = {fbx_prop_i64_fixture(id),
+                       fbx_prop_string_fixture(make_fbx_object_name(name, "AnimLayer")),
+                       fbx_prop_string_fixture("")};
+        properties70.name = "Properties70";
+        properties70.children = {make_fbx_property_scalar("Weight", weight),
+                                 make_fbx_property_int("Mute", mute ? 1 : 0),
+                                 make_fbx_property_int("BlendMode", blend_mode),
+                                 make_fbx_property_int("RotationAccumulationMode", rotation_mode),
+                                 make_fbx_property_int("ScaleAccumulationMode", scale_mode)};
+        layer.children.push_back(std::move(properties70));
+        objects.children.push_back(std::move(layer));
+        connections.children.push_back(make_fbx_connection_fixture(id, kStack));
+    };
+    auto add_curve = [&](int64_t layer_id,
+                         int64_t target_id,
+                         const char *property,
+                         const char *component,
+                         const int64_t *times,
+                         const double *values,
+                         size_t count) {
+        const int64_t curve_node_id = next_id++;
+        const int64_t curve_id = next_id++;
+        objects.children.push_back(FbxNodeFixture{
+            "AnimationCurveNode",
+            {fbx_prop_i64_fixture(curve_node_id),
+             fbx_prop_string_fixture(make_fbx_object_name("LayerCurve", "AnimCurveNode")),
+             fbx_prop_string_fixture("")},
+            {}});
+        objects.children.push_back(
+            make_fbx_animation_curve_fixture(curve_id, times, values, count));
+        connections.children.push_back(make_fbx_connection_fixture(curve_node_id, layer_id));
+        connections.children.push_back(
+            make_fbx_connection_fixture(curve_node_id, target_id, property));
+        connections.children.push_back(
+            make_fbx_connection_fixture(curve_id, curve_node_id, component));
+    };
+    add_layer(kBaseLayer, "Base", 0, 100.0, 0, 0, false);
+    add_layer(kAddLayer, "Add", 0, 50.0, 1, 0, false);
+    add_layer(kScaleAddLayer, "ScaleAdd", 0, 50.0, 0, 1, false);
+    add_layer(kOverrideLayer, "Override", 1, 50.0, 0, 0, false);
+    add_layer(kPassthroughLayer, "Passthrough", 2, 100.0, 0, 0, false);
+    add_layer(kMutedLayer, "Muted", 0, 100.0, 0, 0, true);
+    for (int64_t target : {kNode, kBone}) {
+        add_curve(kBaseLayer, target, "Lcl Translation", "d|X", kTimes, kBaseTranslation, 2u);
+        add_curve(kBaseLayer, target, "Lcl Rotation", "d|Z", kTimes, kBaseRotation, 2u);
+        add_curve(kBaseLayer, target, "Lcl Scaling", "d|X", kTimes, kBaseScale, 2u);
+        add_curve(kAddLayer, target, "Lcl Translation", "d|X", kTimes, kAddTranslation, 2u);
+        add_curve(kAddLayer, target, "Lcl Rotation", "d|Z", kTimes, kAddRotation, 2u);
+        add_curve(kAddLayer, target, "Lcl Scaling", "d|X", kTimes, kMultiplyScale, 2u);
+        add_curve(kScaleAddLayer, target, "Lcl Scaling", "d|Y", kTimes, kAdditiveScale, 2u);
+        add_curve(
+            kOverrideLayer, target, "Lcl Translation", "d|X", kTimes, kOverrideTranslation, 2u);
+        add_curve(kPassthroughLayer,
+                  target,
+                  "Lcl Translation",
+                  "d|X",
+                  kTimes,
+                  kPassthroughTranslation,
+                  2u);
+        add_curve(
+            kPassthroughLayer, target, "Lcl Rotation", "d|Z", kTimes, kPassthroughRotation, 2u);
+        add_curve(kPassthroughLayer, target, "Lcl Scaling", "d|X", kTimes, kPassthroughScale, 2u);
+        add_curve(kMutedLayer, target, "Lcl Translation", "d|X", kTimes, kMutedTranslation, 2u);
+    }
+    add_curve(kPassthroughLayer, kPassthroughLayer, "Weight", "d|X", kWeightTimes, kWeights, 3u);
+    connections.children.push_back(make_fbx_connection_fixture(kNode, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kBone, 0));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write a solo layer with a simultaneously muted solo sibling.
+static bool write_fbx_animation_layer_solo_fixture(const char *path, bool invalid_weight = false) {
+    static const int64_t kTimes[2] = {0, 46186158000LL};
+    static const double kBaseValues[2] = {5.0, 5.0};
+    static const double kSoloValues[2] = {9.0, 9.0};
+    static const double kMutedValues[2] = {100.0, 100.0};
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    int64_t next_id = 3920;
+    objects.name = "Objects";
+    connections.name = "Connections";
+    objects.children.push_back(make_fbx_model_fixture(3900, "SoloNode", "Null", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        FbxNodeFixture{"AnimationStack",
+                       {fbx_prop_i64_fixture(3901),
+                        fbx_prop_string_fixture(make_fbx_object_name("Solo", "AnimStack")),
+                        fbx_prop_string_fixture("")},
+                       {}});
+    auto add_layer_curve = [&](int64_t layer_id,
+                               const char *name,
+                               bool solo,
+                               bool mute,
+                               const double *values) {
+        FbxNodeFixture layer;
+        FbxNodeFixture properties70;
+        const int64_t curve_node_id = next_id++;
+        const int64_t curve_id = next_id++;
+        layer.name = "AnimationLayer";
+        layer.props = {fbx_prop_i64_fixture(layer_id),
+                       fbx_prop_string_fixture(make_fbx_object_name(name, "AnimLayer")),
+                       fbx_prop_string_fixture("")};
+        properties70.name = "Properties70";
+        properties70.children = {make_fbx_property_int("Solo", solo ? 1 : 0),
+                                 make_fbx_property_int("Mute", mute ? 1 : 0)};
+        if (invalid_weight && layer_id == 3910)
+            properties70.children.push_back(make_fbx_property_scalar("Weight", NAN));
+        layer.children.push_back(std::move(properties70));
+        objects.children.push_back(std::move(layer));
+        objects.children.push_back(FbxNodeFixture{
+            "AnimationCurveNode",
+            {fbx_prop_i64_fixture(curve_node_id),
+             fbx_prop_string_fixture(make_fbx_object_name("SoloCurve", "AnimCurveNode")),
+             fbx_prop_string_fixture("")},
+            {}});
+        objects.children.push_back(make_fbx_animation_curve_fixture(curve_id, kTimes, values, 2u));
+        connections.children.push_back(make_fbx_connection_fixture(layer_id, 3901));
+        connections.children.push_back(make_fbx_connection_fixture(curve_node_id, layer_id));
+        connections.children.push_back(
+            make_fbx_connection_fixture(curve_node_id, 3900, "Lcl Translation"));
+        connections.children.push_back(make_fbx_connection_fixture(curve_id, curve_node_id, "d|X"));
+    };
+    add_layer_curve(3910, "Base", false, false, kBaseValues);
+    add_layer_curve(3911, "Solo", true, false, kSoloValues);
+    add_layer_curve(3912, "MutedSolo", true, true, kMutedValues);
+    connections.children.push_back(make_fbx_connection_fixture(3900, 0));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
 /// @brief Write a progressive, animated two-shape FBX morph on a split-material mesh.
-static bool write_fbx_progressive_morph_fixture(const char *path) {
+static bool write_fbx_progressive_morph_fixture(const char *path, bool layered = false) {
     static const double kPositions[12] = {
         0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
     static const int32_t kPolygons[6] = {0, 1, -3, 0, 2, -4};
@@ -1223,6 +2327,10 @@ static bool write_fbx_progressive_morph_fixture(const char *path) {
     constexpr int64_t kLayer = 2521;
     constexpr int64_t kCurveNode = 2522;
     constexpr int64_t kCurve = 2523;
+    constexpr int64_t kAddLayer = 2524;
+    constexpr int64_t kAddCurveNode = 2525;
+    constexpr int64_t kAddCurve = 2526;
+    static const double kAddPercentValues[3] = {25.0, 25.0, 25.0};
     FbxNodeFixture objects;
     FbxNodeFixture connections;
     FbxNodeFixture geometry;
@@ -1315,6 +2423,27 @@ static bool write_fbx_progressive_morph_fixture(const char *path) {
                         layer,
                         curve_node,
                         make_fbx_animation_curve_fixture(kCurve, kTimes, kPercentValues, 3u)};
+    if (layered) {
+        FbxNodeFixture add_layer;
+        FbxNodeFixture add_layer_properties;
+        add_layer.name = "AnimationLayer";
+        add_layer.props = {fbx_prop_i64_fixture(kAddLayer),
+                           fbx_prop_string_fixture(make_fbx_object_name("Additive", "AnimLayer")),
+                           fbx_prop_string_fixture("")};
+        add_layer_properties.name = "Properties70";
+        add_layer_properties.children = {make_fbx_property_scalar("Weight", 50.0),
+                                         make_fbx_property_int("BlendMode", 0)};
+        add_layer.children.push_back(std::move(add_layer_properties));
+        objects.children.push_back(std::move(add_layer));
+        objects.children.push_back(FbxNodeFixture{
+            "AnimationCurveNode",
+            {fbx_prop_i64_fixture(kAddCurveNode),
+             fbx_prop_string_fixture(make_fbx_object_name("AddWeight", "AnimCurveNode")),
+             fbx_prop_string_fixture("")},
+            {}});
+        objects.children.push_back(
+            make_fbx_animation_curve_fixture(kAddCurve, kTimes, kAddPercentValues, 3u));
+    }
     connections.name = "Connections";
     connections.children.push_back(make_fbx_connection_fixture(kModel, 0));
     connections.children.push_back(make_fbx_connection_fixture(kGeometry, kModel));
@@ -1330,6 +2459,14 @@ static bool write_fbx_progressive_morph_fixture(const char *path) {
         make_fbx_connection_fixture(kCurveNode, kChannel, "DeformPercent"));
     connections.children.push_back(
         make_fbx_connection_fixture(kCurve, kCurveNode, "d|DeformPercent"));
+    if (layered) {
+        connections.children.push_back(make_fbx_connection_fixture(kAddLayer, kStack));
+        connections.children.push_back(make_fbx_connection_fixture(kAddCurveNode, kAddLayer));
+        connections.children.push_back(
+            make_fbx_connection_fixture(kAddCurveNode, kChannel, "DeformPercent"));
+        connections.children.push_back(
+            make_fbx_connection_fixture(kAddCurve, kAddCurveNode, "d|DeformPercent"));
+    }
     return write_fbx_document_fixture(path, objects, connections);
 }
 
@@ -1898,6 +3035,97 @@ static bool write_fbx_cluster_transform_link_fixture(const char *path) {
     connections.children.push_back(make_fbx_connection_fixture(kRootClusterId, kRootBoneId));
     connections.children.push_back(make_fbx_connection_fixture(kChildClusterId, kSkinId));
     connections.children.push_back(make_fbx_connection_fixture(kChildClusterId, kChildBoneId));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write a rational NURBS whose four controls are skinned across two bones.
+static bool write_fbx_skinned_nurbs_fixture(const char *path) {
+    static const int64_t kGeometryId = 4651;
+    static const int64_t kMeshModelId = 4652;
+    static const int64_t kRootBoneId = 4653;
+    static const int64_t kChildBoneId = 4654;
+    static const int64_t kSkinId = 4655;
+    static const int64_t kRootClusterId = 4656;
+    static const int64_t kChildClusterId = 4657;
+    static const int32_t kRootIndices[] = {0, 2};
+    static const int32_t kChildIndices[] = {1, 3};
+    static const double kWeights[] = {1.0, 1.0};
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture skin = make_fbx_deformer_fixture(kSkinId, "SurfaceSkin", "Skin");
+    FbxNodeFixture root_cluster = make_fbx_cluster_fixture(
+        kRootClusterId, "SurfaceRootCluster", kRootIndices, 2u, kWeights, 2u);
+    FbxNodeFixture child_cluster = make_fbx_cluster_fixture(
+        kChildClusterId, "SurfaceChildCluster", kChildIndices, 2u, kWeights, 2u);
+    objects.name = "Objects";
+    objects.children.push_back(make_fbx_nurbs_surface_geometry_fixture(kGeometryId, 2));
+    objects.children.push_back(
+        make_fbx_model_fixture(kMeshModelId, "SkinnedSurface", "NurbsSurface", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kRootBoneId, "SurfaceRoot", "Root", 0.0, 0.0, 0.0));
+    objects.children.push_back(
+        make_fbx_model_fixture(kChildBoneId, "SurfaceChild", "LimbNode", 0.0, 1.0, 0.0));
+    objects.children.push_back(skin);
+    objects.children.push_back(root_cluster);
+    objects.children.push_back(child_cluster);
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kMeshModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kRootBoneId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kChildBoneId, kRootBoneId));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kMeshModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kSkinId, kGeometryId));
+    connections.children.push_back(make_fbx_connection_fixture(kRootClusterId, kSkinId));
+    connections.children.push_back(make_fbx_connection_fixture(kRootClusterId, kRootBoneId));
+    connections.children.push_back(make_fbx_connection_fixture(kChildClusterId, kSkinId));
+    connections.children.push_back(make_fbx_connection_fixture(kChildClusterId, kChildBoneId));
+    return write_fbx_document_fixture(path, objects, connections);
+}
+
+/// @brief Write a NURBS BlendShape that moves only the rational upper-right control.
+static bool write_fbx_morphed_nurbs_fixture(const char *path) {
+    static const int64_t kGeometryId = 4661;
+    static const int64_t kModelId = 4662;
+    static const int64_t kBlendShapeId = 4663;
+    static const int64_t kChannelId = 4664;
+    static const int64_t kShapeId = 4665;
+    static const int32_t kShapeIndices[] = {3};
+    static const double kShapeDelta[] = {1.0, 0.0, 0.0};
+    static const float kFullWeights[] = {100.0f};
+    FbxNodeFixture objects;
+    FbxNodeFixture connections;
+    FbxNodeFixture blend_shape =
+        make_fbx_deformer_fixture(kBlendShapeId, "SurfaceBlendShape", "BlendShape");
+    FbxNodeFixture channel =
+        make_fbx_deformer_fixture(kChannelId, "SurfaceBlendChannel", "BlendShapeChannel");
+    FbxNodeFixture channel_properties;
+    FbxNodeFixture shape;
+    channel_properties.name = "Properties70";
+    channel_properties.children.push_back(make_fbx_property_scalar("DeformPercent", 0.0));
+    channel.children.push_back(channel_properties);
+    channel.children.push_back(
+        FbxNodeFixture{"FullWeights", {fbx_prop_array_fixture('f', kFullWeights, 1u)}, {}});
+    shape.name = "Geometry";
+    shape.props.push_back(fbx_prop_i64_fixture(kShapeId));
+    shape.props.push_back(
+        fbx_prop_string_fixture(make_fbx_object_name("SurfaceControlMove", "Geometry")));
+    shape.props.push_back(fbx_prop_string_fixture("Shape"));
+    shape.children.push_back(
+        FbxNodeFixture{"Indexes", {fbx_prop_array_fixture('i', kShapeIndices, 1u)}, {}});
+    shape.children.push_back(
+        FbxNodeFixture{"Vertices", {fbx_prop_array_fixture('d', kShapeDelta, 3u)}, {}});
+    objects.name = "Objects";
+    objects.children.push_back(make_fbx_nurbs_surface_geometry_fixture(kGeometryId, 2));
+    objects.children.push_back(
+        make_fbx_model_fixture(kModelId, "MorphedSurface", "NurbsSurface", 0.0, 0.0, 0.0));
+    objects.children.push_back(blend_shape);
+    objects.children.push_back(channel);
+    objects.children.push_back(shape);
+    connections.name = "Connections";
+    connections.children.push_back(make_fbx_connection_fixture(kModelId, 0));
+    connections.children.push_back(make_fbx_connection_fixture(kGeometryId, kModelId));
+    connections.children.push_back(make_fbx_connection_fixture(kBlendShapeId, kGeometryId));
+    connections.children.push_back(make_fbx_connection_fixture(kChannelId, kBlendShapeId));
+    connections.children.push_back(make_fbx_connection_fixture(kShapeId, kChannelId));
     return write_fbx_document_fixture(path, objects, connections);
 }
 
@@ -3752,18 +4980,22 @@ static void test_model3d_imports_fbx_embedded_textures() {
     EXPECT_TRUE(mat != nullptr && rt_material3d_get_has_texture(mat) == 1,
                 "FBX embedded Video content imports as the diffuse material texture");
     EXPECT_TRUE(mat != nullptr && mat->texture != nullptr &&
-                    rt_pixels_get(mat->texture, 0, 0) == 0x4A6C8EFFll,
+                    rt_pixels_get(rt_textureasset3d_get_pixels(mat->texture), 0, 0) == 0x4A6C8EFFll,
                 "FBX embedded texture pixels preserve decoded PNG contents");
+    EXPECT_TRUE(mat != nullptr && texture_source_equals(mat->texture, "png", png_bytes),
+                "FBX embedded Video content retains its exact PNG bytes");
 }
 
 static void test_model3d_imports_fbx_texture_aliases_and_absolute_basename_fallback() {
     const char *path = "/tmp/zanna_model3d_texture_aliases.fbx";
     const char *png_path = "/tmp/zanna_model3d_texture_aliases.png";
     const char *exporter_path = "/missing/export/machine/zanna_model3d_texture_aliases.png";
+    std::vector<uint8_t> png_bytes;
     void *pixels = rt_pixels_new(1, 1);
     rt_pixels_set(pixels, 0, 0, 0x66AAEEFFll);
     EXPECT_TRUE(rt_pixels_save_png(pixels, rt_const_cstr(png_path)) == 1,
                 "FBX texture alias PNG fixture can be written");
+    EXPECT_TRUE(read_binary_file(png_path, png_bytes), "FBX external PNG fixture can be read");
     EXPECT_TRUE(write_fbx_texture_alias_fixture(path, exporter_path),
                 "FBX texture alias fixture can be written");
 
@@ -3779,6 +5011,9 @@ static void test_model3d_imports_fbx_texture_aliases_and_absolute_basename_fallb
                 "FBX Maya baseColor texture alias assigns the diffuse texture slot");
     EXPECT_TRUE(mat != nullptr && rt_material3d_get_has_normal_map(mat) == 1,
                 "FBX Maya normalCamera texture alias assigns the normal map slot");
+    EXPECT_TRUE(mat != nullptr && texture_source_equals(mat->texture, "png", png_bytes) &&
+                    texture_source_equals(mat->normal_map, "png", png_bytes),
+                "FBX external base-color and normal textures retain exact file bytes");
 }
 
 static void test_model3d_imports_fbx_material_scalar_aliases_and_allsame_uvs() {
@@ -3864,6 +5099,71 @@ static void test_fbx_cluster_transform_link_drives_bind_pose() {
                 4.0,
                 0.001,
                 "FBX child bind pose uses Cluster TransformLink instead of Model Lcl Translation");
+}
+
+static void test_fbx_procedural_surface_interpolates_skin_weights() {
+    const char *path = "/tmp/zanna_model3d_skinned_nurbs.fbx";
+    EXPECT_TRUE(write_fbx_skinned_nurbs_fixture(path),
+                "FBX skinned rational NURBS fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "FBX applies Skin deformers to tessellated NURBS geometry");
+    auto *mesh = asset ? static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, 0)) : nullptr;
+    EXPECT_TRUE(mesh && mesh->vertex_count == 9 && mesh->bone_count == 2,
+                "Tessellated NURBS retains its two-bone skin palette");
+    if (mesh && mesh->vertex_count == 9) {
+        double center_root_weight = 0.0;
+        double center_child_weight = 0.0;
+        for (int influence = 0; influence < 4; ++influence) {
+            if (mesh->vertices[4].bone_indices[influence] == 0)
+                center_root_weight += mesh->vertices[4].bone_weights[influence];
+            if (mesh->vertices[4].bone_indices[influence] == 1)
+                center_child_weight += mesh->vertices[4].bone_weights[influence];
+        }
+        EXPECT_NEAR(center_root_weight,
+                    0.4,
+                    0.001,
+                    "Surface skinning interpolates the two left control weights");
+        EXPECT_NEAR(center_child_weight,
+                    0.6,
+                    0.001,
+                    "Surface skinning includes rational weighting from the upper-right control");
+        EXPECT_NEAR(mesh->vertices[0].bone_weights[0],
+                    1.0,
+                    0.001,
+                    "Surface corner samples retain their exact control-point skin weight");
+    }
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+}
+
+static void test_fbx_procedural_surface_interpolates_morph_deltas() {
+    const char *path = "/tmp/zanna_model3d_morphed_nurbs.fbx";
+    EXPECT_TRUE(write_fbx_morphed_nurbs_fixture(path),
+                "FBX morphed rational NURBS fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "FBX applies BlendShapes to tessellated NURBS geometry");
+    void *morph = asset ? rt_fbx_get_morph_target(asset, 0) : nullptr;
+    rt_morphtarget3d_shape_view_internal view{};
+    EXPECT_TRUE(morph && rt_morphtarget3d_get_shape_view_internal(morph, 0, &view),
+                "Tessellated NURBS retains its imported BlendShape payload");
+    if (view.position_deltas && view.vertex_count == 9) {
+        EXPECT_NEAR(view.position_deltas[4 * 3 + 0],
+                    0.4,
+                    0.001,
+                    "Surface morph interpolation applies the rational center basis weight");
+        EXPECT_NEAR(view.position_deltas[8 * 3 + 0],
+                    1.0,
+                    0.001,
+                    "Surface morph interpolation preserves the exact authored corner delta");
+        EXPECT_NEAR(view.position_deltas[0],
+                    0.0,
+                    0.001,
+                    "Surface morph interpolation leaves unrelated control corners unchanged");
+    }
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
 }
 
 static void test_fbx_imports_skeletons_beyond_draw_palette_limit() {
@@ -5339,7 +6639,260 @@ static void test_model3d_vscn_v3_rig_roundtrip() {
     std::remove(baked_path);
 }
 
-static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
+static void test_scene3d_vscn_v5_source_texture_roundtrip() {
+    struct SourceCase {
+        const char *kind;
+        const char *decode_name;
+        std::vector<uint8_t> bytes;
+    };
+
+    const char *png_path =
+        find_existing_path({"src/tests/fixtures/runtime/test_sprite_load.png",
+                            "../src/tests/fixtures/runtime/test_sprite_load.png",
+#ifdef ZANNA_SOURCE_DIR
+                            ZANNA_SOURCE_DIR "/src/tests/fixtures/runtime/test_sprite_load.png"
+#endif
+        });
+    const char *bmp_path =
+        find_existing_path({"src/tests/fixtures/runtime/test_sprite_load.bmp",
+                            "../src/tests/fixtures/runtime/test_sprite_load.bmp",
+#ifdef ZANNA_SOURCE_DIR
+                            ZANNA_SOURCE_DIR "/src/tests/fixtures/runtime/test_sprite_load.bmp"
+#endif
+        });
+    const char *jpeg_path = find_existing_path({"zannaweb/legacy/zanna.jpg",
+                                                "../zannaweb/legacy/zanna.jpg",
+#ifdef ZANNA_SOURCE_DIR
+                                                ZANNA_SOURCE_DIR "/zannaweb/legacy/zanna.jpg"
+#endif
+    });
+    const char *ktx2_path = find_existing_path(
+        {"examples/3d/openworld_slice/assets/textures/checker_rgba8.ktx2",
+         "../examples/3d/openworld_slice/assets/textures/checker_rgba8.ktx2",
+#ifdef ZANNA_SOURCE_DIR
+         ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/checker_rgba8.ktx2"
+#endif
+        });
+    static const uint8_t gif_bytes[] = {'G',  'I',  'F',  '8',  '7',  'a',  0x01, 0x00, 0x01,
+                                        0x00, 0x80, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00,
+                                        0x00, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
+                                        0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3B};
+    EXPECT_TRUE(png_path && bmp_path && jpeg_path && ktx2_path,
+                "VSCN v5 source-container fixtures are present");
+    if (!png_path || !bmp_path || !jpeg_path || !ktx2_path)
+        return;
+    std::vector<SourceCase> cases = {{"png", "source.png", {}},
+                                     {"jpeg", "source.jpg", {}},
+                                     {"gif", "source.gif", {}},
+                                     {"bmp", "source.bmp", {}},
+                                     {"ktx2", "source.ktx2", {}}};
+    EXPECT_TRUE(read_binary_file(png_path, cases[0].bytes), "VSCN v5 PNG fixture is readable");
+    EXPECT_TRUE(read_binary_file(jpeg_path, cases[1].bytes), "VSCN v5 JPEG fixture is readable");
+    cases[2].bytes.assign(gif_bytes, gif_bytes + sizeof(gif_bytes));
+    EXPECT_TRUE(read_binary_file(bmp_path, cases[3].bytes), "VSCN v5 BMP fixture is readable");
+    EXPECT_TRUE(read_binary_file(ktx2_path, cases[4].bytes), "VSCN v5 KTX2 fixture is readable");
+
+    for (size_t index = 0; index < cases.size(); ++index) {
+        const SourceCase &source_case = cases[index];
+        const std::string path = "/tmp/zanna_vscn_v5_source_" + std::to_string(index) + ".vscn";
+        void *decoded = nullptr;
+        void *texture = nullptr;
+        if (std::strcmp(source_case.kind, "ktx2") == 0) {
+            texture = rt_textureasset3d_load_ktx2_memory_strict(source_case.bytes.data(),
+                                                                source_case.bytes.size());
+        } else {
+            decoded = rt_asset_decode_typed(
+                source_case.decode_name, source_case.bytes.data(), source_case.bytes.size());
+            if (decoded)
+                texture = rt_textureasset3d_wrap_encoded_pixels(
+                    decoded, source_case.bytes.data(), source_case.bytes.size(), source_case.kind);
+        }
+        EXPECT_TRUE(texture != nullptr, "supported VSCN source fixture decodes and wraps");
+        if (!texture) {
+            release_test_ref(decoded);
+            continue;
+        }
+        void *material = rt_material3d_new();
+        void *node = rt_scene_node3d_new();
+        void *scene = rt_scene3d_new();
+        rt_material3d_set_texture(material, texture);
+        rt_material3d_set_normal_map(material, texture);
+        rt_scene_node3d_set_name(node, rt_const_cstr("SourceTextureNode"));
+        rt_scene_node3d_set_material(node, material);
+        rt_scene3d_add(scene, node);
+        EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path.c_str())) == 1,
+                    "Scene3D.Save emits a VSCN v5 source texture");
+        std::vector<uint8_t> serialized;
+        EXPECT_TRUE(read_binary_file(path.c_str(), serialized),
+                    "VSCN v5 source output is readable");
+        std::string serialized_text(serialized.begin(), serialized.end());
+        size_t first_source = serialized_text.find("\"sourceBase64\"");
+        EXPECT_TRUE(serialized_text.find("\"version\": 5") != std::string::npos &&
+                        serialized_text.find("\"kind\": \"source\"") != std::string::npos &&
+                        first_source != std::string::npos &&
+                        serialized_text.find("\"sourceBase64\"", first_source + 1u) ==
+                            std::string::npos,
+                    "VSCN v5 emits one deduplicated discriminated source entry");
+        void *loaded = rt_scene3d_load(rt_const_cstr(path.c_str()));
+        auto *loaded_node = loaded ? static_cast<rt_scene_node3d *>(rt_scene3d_find(
+                                         loaded, rt_const_cstr("SourceTextureNode")))
+                                   : nullptr;
+        auto *loaded_material =
+            loaded_node ? static_cast<rt_material3d *>(loaded_node->material) : nullptr;
+        EXPECT_TRUE(loaded_material && loaded_material->texture == loaded_material->normal_map,
+                    "VSCN v5 restores one shared texture identity across material slots");
+        EXPECT_TRUE(loaded_material && texture_source_equals(loaded_material->texture,
+                                                             source_case.kind,
+                                                             source_case.bytes),
+                    "VSCN v5 restores exact source-container kind and bytes");
+        if (std::strcmp(source_case.kind, "ktx2") == 0) {
+            EXPECT_TRUE(loaded_material &&
+                            rt_textureasset3d_get_mip_count(loaded_material->texture) ==
+                                rt_textureasset3d_get_mip_count(texture) &&
+                            std::strcmp(rt_string_cstr(
+                                            rt_textureasset3d_get_format(loaded_material->texture)),
+                                        rt_string_cstr(rt_textureasset3d_get_format(texture))) == 0,
+                        "VSCN v5 restores KTX2 mip hierarchy and native format");
+        }
+        if (index == 0) {
+            const char *corrupt_path = "/tmp/zanna_vscn_v5_source_corrupt.vscn";
+            auto expect_source_rejected = [&](const std::string &mutated,
+                                              bool mutation_applied,
+                                              const char *mutation_message,
+                                              const char *rejection_message) {
+                EXPECT_TRUE(mutation_applied, mutation_message);
+                if (!mutation_applied)
+                    return;
+                EXPECT_TRUE(write_text_file(corrupt_path, mutated),
+                            "Malformed VSCN v5 source fixture can be written");
+                void *rejected = rt_scene3d_load(rt_const_cstr(corrupt_path));
+                EXPECT_TRUE(rejected == nullptr, rejection_message);
+                EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
+                            "Malformed VSCN v5 source records a recoverable asset error");
+                release_test_ref(rejected);
+
+                void *recovered = rt_scene3d_load(rt_const_cstr(path.c_str()));
+                auto *recovered_node =
+                    recovered ? static_cast<rt_scene_node3d *>(
+                                    rt_scene3d_find(recovered, rt_const_cstr("SourceTextureNode")))
+                              : nullptr;
+                auto *recovered_material =
+                    recovered_node ? static_cast<rt_material3d *>(recovered_node->material)
+                                   : nullptr;
+                EXPECT_TRUE(recovered_material && texture_source_equals(recovered_material->texture,
+                                                                        "png",
+                                                                        source_case.bytes),
+                            "A rejected VSCN v5 source leaves the next complete load intact");
+                release_test_ref(recovered);
+            };
+
+            std::string mismatched_magic = serialized_text;
+            bool mismatched_magic_applied = replace_first_text(
+                mismatched_magic, "\"container\": \"png\"", "\"container\": \"jpeg\"");
+            expect_source_rejected(mismatched_magic,
+                                   mismatched_magic_applied,
+                                   "VSCN v5 source magic mismatch mutation finds its target",
+                                   "VSCN v5 rejects source bytes whose magic mismatches the kind");
+
+            std::string unsupported_container = serialized_text;
+            bool unsupported_container_applied = replace_first_text(
+                unsupported_container, "\"container\": \"png\"", "\"container\": \"tga\"");
+            expect_source_rejected(unsupported_container,
+                                   unsupported_container_applied,
+                                   "VSCN v5 unsupported-container mutation finds its target",
+                                   "VSCN v5 rejects an unsupported source container");
+
+            std::string invalid_kind = serialized_text;
+            bool invalid_kind_applied =
+                replace_first_text(invalid_kind, "\"kind\": \"source\"", "\"kind\": \"unknown\"");
+            expect_source_rejected(invalid_kind,
+                                   invalid_kind_applied,
+                                   "VSCN v5 source-kind mutation finds its target",
+                                   "VSCN v5 rejects an unknown texture-entry kind");
+
+            std::string invalid_base64 = serialized_text;
+            bool invalid_base64_applied =
+                replace_first_json_string_value(invalid_base64, "sourceBase64", "%%%%");
+            expect_source_rejected(invalid_base64,
+                                   invalid_base64_applied,
+                                   "VSCN v5 invalid-Base64 mutation finds its target",
+                                   "VSCN v5 rejects malformed source Base64");
+
+            std::string truncated_source = serialized_text;
+            bool truncated_source_applied =
+                replace_first_json_string_value(truncated_source, "sourceBase64", "AAAA");
+            expect_source_rejected(truncated_source,
+                                   truncated_source_applied,
+                                   "VSCN v5 truncated-source mutation finds its target",
+                                   "VSCN v5 rejects a truncated encoded source image");
+            std::remove(corrupt_path);
+        }
+        release_test_ref(loaded);
+        release_test_ref(scene);
+        release_test_ref(node);
+        release_test_ref(material);
+        release_test_ref(texture);
+        release_test_ref(decoded);
+        std::remove(path.c_str());
+    }
+
+    /* A changed decoded surface must serialize current RGBA rather than stale encoded bytes. */
+    void *decoded =
+        rt_asset_decode_typed("source.png", cases[0].bytes.data(), cases[0].bytes.size());
+    void *texture = decoded ? rt_textureasset3d_wrap_encoded_pixels(
+                                  decoded, cases[0].bytes.data(), cases[0].bytes.size(), "png")
+                            : nullptr;
+    EXPECT_TRUE(texture != nullptr, "mutation-fallback source texture wraps");
+    if (texture) {
+        void *texture_pixels = rt_textureasset3d_get_pixels(texture);
+        rt_pixels_set(texture_pixels, 0, 0, 0x13579BDFll);
+        void *material = rt_material3d_new();
+        void *node = rt_scene_node3d_new();
+        void *scene = rt_scene3d_new();
+        void *camera = rt_camera3d_new(60.0, 1.0, 0.1, 100.0);
+        const char *path = "/tmp/zanna_vscn_v5_mutated_source.vscn";
+        rt_material3d_set_texture(material, texture);
+        rt_scene_node3d_set_name(node, rt_const_cstr("MutatedTextureNode"));
+        rt_scene_node3d_set_material(node, material);
+        rt_scene_node3d_set_camera(node, camera);
+        rt_scene3d_add(scene, node);
+        EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                    "changed source texture scene saves");
+        std::vector<uint8_t> serialized;
+        EXPECT_TRUE(read_binary_file(path, serialized),
+                    "changed source texture output is readable");
+        std::string serialized_text(serialized.begin(), serialized.end());
+        EXPECT_TRUE(serialized_text.find("\"kind\": \"rgba8\"") != std::string::npos &&
+                        serialized_text.find("\"sourceBase64\"") == std::string::npos,
+                    "changed decoded Pixels serialize as current RGBA8, not stale source bytes");
+        void *loaded = rt_scene3d_load(rt_const_cstr(path));
+        auto *loaded_node = loaded ? static_cast<rt_scene_node3d *>(rt_scene3d_find(
+                                         loaded, rt_const_cstr("MutatedTextureNode")))
+                                   : nullptr;
+        auto *loaded_material =
+            loaded_node ? static_cast<rt_material3d *>(loaded_node->material) : nullptr;
+        EXPECT_TRUE(loaded_material && loaded_material->texture &&
+                        rt_pixels_get(loaded_material->texture, 0, 0) == 0x13579BDFll,
+                    "mutation fallback reloads the current decoded texels");
+        release_test_ref(loaded);
+        release_test_ref(scene);
+        release_test_ref(node);
+        release_test_ref(material);
+        release_test_ref(camera);
+        std::remove(path);
+    }
+    release_test_ref(texture);
+    release_test_ref(decoded);
+
+    const char tiny_document[] = "{}";
+    void *oversized = rt_scene3d_load_from_memory(
+        rt_const_cstr("oversized.vscn"), tiny_document, (size_t)256u * 1024u * 1024u + 1u);
+    EXPECT_TRUE(oversized == nullptr && rt_asset_error_get_code() == RT_ASSET_ERROR_TOO_LARGE,
+                "VSCN memory loading rejects oversized documents before reading the payload");
+    release_test_ref(oversized);
+}
+
+static void test_model3d_vscn_v5_full_scene_asset_roundtrip() {
     const char *source_path = find_existing_path(
         {"src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf",
          "../src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf",
@@ -5347,20 +6900,25 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
          ZANNA_SOURCE_DIR "/src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf"
 #endif
         });
-    const char *baked_path = "/tmp/zanna_model3d_baked_full_asset_v4.vscn";
-    EXPECT_TRUE(source_path != nullptr, "VSCN v4 full-fidelity glTF fixture is present");
+    const char *baked_path = "/tmp/zanna_model3d_baked_full_asset_v5.vscn";
+    EXPECT_TRUE(source_path != nullptr, "VSCN v5 full-fidelity glTF fixture is present");
     if (!source_path)
         return;
     void *source = rt_model3d_load(rt_const_cstr(source_path));
-    EXPECT_TRUE(source != nullptr, "VSCN v4 source SceneAsset loads");
+    EXPECT_TRUE(source != nullptr, "VSCN v5 source SceneAsset loads");
     if (!source)
         return;
     auto *source_mover =
         static_cast<rt_scene_node3d *>(rt_model3d_find_node(source, rt_const_cstr("Mover")));
+    auto *source_camera_node =
+        static_cast<rt_scene_node3d *>(rt_model3d_find_node(source, rt_const_cstr("CameraNode")));
+    auto *source_camera = static_cast<rt_camera3d *>(rt_model3d_get_camera(source, 0, 0));
     auto *source_material = static_cast<rt_material3d *>(rt_model3d_get_material(source, 0));
     EXPECT_TRUE(source_mover != nullptr && source_mover->import_index == 0,
-                "VSCN v4 fixture carries stable importer node indexes");
-    EXPECT_TRUE(source_material != nullptr, "VSCN v4 fixture carries a material payload");
+                "VSCN v5 fixture carries stable importer node indexes");
+    EXPECT_TRUE(source_material != nullptr, "VSCN v5 fixture carries a material payload");
+    EXPECT_TRUE(source_camera_node && source_camera && source_camera_node->camera == source_camera,
+                "VSCN v5 fixture binds its authored camera to CameraNode");
     if (source_mover) {
         rt_scene_node3d_set_static(source_mover, 1);
         rt_scene_node3d_set_sync_mode(source_mover,
@@ -5371,27 +6929,85 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
         rt_material3d_set_custom_param(source_material, 9, -0.375);
         rt_material3d_set_anisotropy(source_material, 8);
     }
+    void *light_position = rt_vec3_new(1.0, 2.0, 3.0);
+    void *light_direction = rt_vec3_new(0.25, -1.0, 0.5);
+    void *source_light_handle = rt_light3d_new_area_rectangle(
+        light_position, light_direction, 2.5, 1.25, 0.2, 0.4, 0.8, 0.02, 8.0);
+    if (source_light_handle) {
+        rt_light3d_set_intensity(source_light_handle, 3.5);
+        rt_light3d_set_decay_type(source_light_handle, 3);
+        rt_light3d_set_enabled(source_light_handle, 0);
+        rt_light3d_set_casts_shadows(source_light_handle, 1);
+    }
+    if (source_mover)
+        rt_scene_node3d_set_light(source_mover, source_light_handle);
+    release_test_ref(source_light_handle);
+    release_test_ref(light_direction);
+    release_test_ref(light_position);
+    auto *source_light = source_mover ? static_cast<rt_light3d *>(source_mover->light) : nullptr;
+    EXPECT_TRUE(source_light && source_light->type == 4,
+                "VSCN v5 fixture carries a native rectangle light");
+
+    auto *extended_animation =
+        static_cast<rt_node_animation3d *>(rt_model3d_get_node_animation(source, 0));
+    if (extended_animation) {
+        const double times[2] = {0.0, 1.0};
+        const int64_t paths[] = {RT_NODE_ANIM_PATH_CAMERA_FOV,
+                                 RT_NODE_ANIM_PATH_CAMERA_ASPECT,
+                                 RT_NODE_ANIM_PATH_CAMERA_NEAR,
+                                 RT_NODE_ANIM_PATH_CAMERA_FAR,
+                                 RT_NODE_ANIM_PATH_CAMERA_ORTHO_SIZE,
+                                 RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE};
+        const int64_t interpolations[] = {RT_NODE_ANIM_INTERP_LINEAR,
+                                          RT_NODE_ANIM_INTERP_LINEAR,
+                                          RT_NODE_ANIM_INTERP_LINEAR,
+                                          RT_NODE_ANIM_INTERP_LINEAR,
+                                          RT_NODE_ANIM_INTERP_LINEAR,
+                                          RT_NODE_ANIM_INTERP_STEP};
+        const float values[][2] = {{60.0f, 45.0f},
+                                   {1.7777778f, 1.3333334f},
+                                   {0.1f, 0.2f},
+                                   {100.0f, 200.0f},
+                                   {2.0f, 4.0f},
+                                   {0.0f, 1.0f}};
+        int added_camera_channels = 0;
+        for (size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); ++i) {
+            int64_t channel = rt_node_animation3d_add_channel(extended_animation,
+                                                              rt_const_cstr("CameraNode"),
+                                                              paths[i],
+                                                              interpolations[i],
+                                                              2,
+                                                              1,
+                                                              times,
+                                                              values[i]);
+            if (channel >= 0) {
+                rt_node_animation3d_set_channel_target_node_index(extended_animation, channel, 1);
+                added_camera_channels++;
+            }
+        }
+        EXPECT_TRUE(added_camera_channels == 6, "VSCN v5 fixture adds every camera animation path");
+    }
     EXPECT_TRUE(rt_model3d_save(nullptr, rt_const_cstr(baked_path)) == 0,
                 "SceneAsset.Save rejects a null receiver");
     EXPECT_TRUE(rt_model3d_save(source, rt_const_cstr(baked_path)) == 1,
-                "SceneAsset.Save writes a complete VSCN v4 asset");
+                "SceneAsset.Save writes a complete VSCN v5 asset");
     std::vector<uint8_t> baked_bytes;
-    EXPECT_TRUE(read_binary_file(baked_path, baked_bytes), "VSCN v4 output is readable");
+    EXPECT_TRUE(read_binary_file(baked_path, baked_bytes), "VSCN v5 output is readable");
     if (!baked_bytes.empty()) {
         std::string baked_text(reinterpret_cast<const char *>(baked_bytes.data()),
                                baked_bytes.size());
-        EXPECT_TRUE(baked_text.find("\"version\": 4") != std::string::npos,
-                    "SceneAsset.Save emits VSCN version 4");
+        EXPECT_TRUE(baked_text.find("\"version\": 5") != std::string::npos,
+                    "SceneAsset.Save emits VSCN version 5");
         EXPECT_TRUE(baked_text.find("\"nodeAnimations\"") != std::string::npos &&
                         baked_text.find("\"morphTargets\"") != std::string::npos &&
                         baked_text.find("\"importIndex\"") != std::string::npos &&
                         baked_text.find("\"variantMaterials\"") != std::string::npos &&
                         baked_text.find("\"scenes\"") != std::string::npos,
-                    "VSCN v4 document carries animation, morph, variant, and scene sections");
+                    "VSCN v5 document carries animation, morph, variant, and scene sections");
     }
 
     void *baked = rt_model3d_load(rt_const_cstr(baked_path));
-    EXPECT_TRUE(baked != nullptr, "VSCN v4 reloads as a SceneAsset");
+    EXPECT_TRUE(baked != nullptr, "VSCN v5 reloads as a SceneAsset");
     if (!baked) {
         if (rt_obj_release_check0(source))
             rt_obj_free(source);
@@ -5399,50 +7015,73 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
         return;
     }
     EXPECT_TRUE(rt_model3d_get_mesh_count(baked) == rt_model3d_get_mesh_count(source),
-                "VSCN v4 preserves the complete mesh inventory");
+                "VSCN v5 preserves the complete mesh inventory");
     EXPECT_TRUE(rt_model3d_get_material_count(baked) == rt_model3d_get_material_count(source),
-                "VSCN v4 preserves the complete material inventory");
-    EXPECT_TRUE(rt_model3d_get_scene_count(baked) == 2, "VSCN v4 preserves all immutable scenes");
+                "VSCN v5 preserves the complete material inventory");
+    EXPECT_TRUE(rt_model3d_get_scene_count(baked) == 2, "VSCN v5 preserves all immutable scenes");
     EXPECT_TRUE(rt_model3d_get_camera_count(baked, 0) == 1 &&
                     rt_model3d_get_camera_count(baked, 1) == 0,
-                "VSCN v4 preserves per-scene camera membership");
+                "VSCN v5 preserves per-scene camera membership");
     EXPECT_TRUE(rt_model3d_get_node_animation_count(baked) == 1,
-                "VSCN v4 preserves node and morph animation clips");
+                "VSCN v5 preserves node and morph animation clips");
     EXPECT_TRUE(rt_model3d_get_morph_target_count(source) > 0 &&
                     rt_model3d_get_morph_target_count(baked) ==
                         rt_model3d_get_morph_target_count(source),
-                "VSCN v4 preserves every mesh-attached morph container");
+                "VSCN v5 preserves every mesh-attached morph container");
     EXPECT_TRUE(rt_model3d_get_morph_shape_count(source) > 0 &&
                     rt_model3d_get_morph_shape_count(baked) ==
                         rt_model3d_get_morph_shape_count(source),
-                "VSCN v4 preserves the aggregate morph-shape inventory");
+                "VSCN v5 preserves the aggregate morph-shape inventory");
     EXPECT_TRUE(rt_model3d_get_morph_target(baked, -1) == nullptr &&
                     rt_model3d_get_morph_target(baked, rt_model3d_get_mesh_count(baked)) == nullptr,
                 "SceneAsset.GetMorphTarget rejects out-of-range mesh indexes");
     EXPECT_TRUE(rt_model3d_get_variant_count(baked) == 2,
-                "VSCN v4 preserves material-variant names");
+                "VSCN v5 preserves material-variant names");
     EXPECT_TRUE(
         std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(baked, 0)), "PrimaryScene") == 0 &&
             std::strcmp(rt_string_cstr(rt_model3d_get_scene_name(baked, 1)), "SecondaryScene") == 0,
-        "VSCN v4 preserves immutable scene names and order");
+        "VSCN v5 preserves immutable scene names and order");
     EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_model3d_get_variant_name(baked, 0)), "day") == 0 &&
                     std::strcmp(rt_string_cstr(rt_model3d_get_variant_name(baked, 1)), "night") ==
                         0,
-                "VSCN v4 preserves ordered variant display names");
+                "VSCN v5 preserves ordered variant display names");
     auto *baked_mover =
         static_cast<rt_scene_node3d *>(rt_model3d_find_node(baked, rt_const_cstr("Mover")));
+    auto *baked_camera_node =
+        static_cast<rt_scene_node3d *>(rt_model3d_find_node(baked, rt_const_cstr("CameraNode")));
     auto *baked_material = static_cast<rt_material3d *>(rt_model3d_get_material(baked, 0));
     EXPECT_TRUE(baked_mover && source_mover &&
                     baked_mover->import_index == source_mover->import_index &&
                     rt_scene_node3d_get_static(baked_mover) == 1 &&
                     rt_scene_node3d_get_sync_mode(baked_mover) ==
                         RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION,
-                "VSCN v4 preserves node import identity and authored flags");
+                "VSCN v5 preserves node import identity and authored flags");
     EXPECT_TRUE(baked_material && source_material &&
                     baked_material->custom_params[8] == source_material->custom_params[8] &&
                     baked_material->custom_params[9] == source_material->custom_params[9] &&
                     rt_material3d_get_anisotropy(baked_material) == 8,
-                "VSCN v4 preserves extended material parameters and anisotropy");
+                "VSCN v5 preserves extended material parameters and anisotropy");
+    auto *baked_light = baked_mover ? static_cast<rt_light3d *>(baked_mover->light) : nullptr;
+    auto vec3_near = [](const double *a, const double *b) {
+        return a && b && std::fabs(a[0] - b[0]) <= 1e-12 && std::fabs(a[1] - b[1]) <= 1e-12 &&
+               std::fabs(a[2] - b[2]) <= 1e-12;
+    };
+    EXPECT_TRUE(source_light && baked_light && baked_light->type == source_light->type &&
+                    baked_light->enabled == source_light->enabled &&
+                    baked_light->casts_shadows == source_light->casts_shadows &&
+                    baked_light->decay_type == source_light->decay_type &&
+                    baked_light->intensity == source_light->intensity &&
+                    baked_light->attenuation == source_light->attenuation &&
+                    baked_light->width == source_light->width &&
+                    baked_light->height == source_light->height &&
+                    baked_light->radius == source_light->radius &&
+                    baked_light->range == source_light->range &&
+                    vec3_near(baked_light->direction, source_light->direction) &&
+                    vec3_near(baked_light->position, source_light->position) &&
+                    vec3_near(baked_light->color, source_light->color) &&
+                    vec3_near(baked_light->basis_u, source_light->basis_u) &&
+                    vec3_near(baked_light->basis_v, source_light->basis_v),
+                "VSCN v5 preserves complete native rectangle-light state");
 
     int64_t mesh_count = rt_model3d_get_mesh_count(source);
     int morph_meshes = 0;
@@ -5450,7 +7089,7 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
         auto *source_mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(source, mesh_index));
         auto *baked_mesh = static_cast<rt_mesh3d *>(rt_model3d_get_mesh(baked, mesh_index));
         EXPECT_TRUE(source_mesh != nullptr && baked_mesh != nullptr,
-                    "VSCN v4 mesh slots remain index-aligned");
+                    "VSCN v5 mesh slots remain index-aligned");
         if (!source_mesh || !baked_mesh || !source_mesh->morph_targets_ref)
             continue;
         morph_meshes++;
@@ -5459,10 +7098,10 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
                 rt_model3d_get_morph_target(baked, mesh_index) == baked_mesh->morph_targets_ref,
             "SceneAsset.GetMorphTarget remains aligned with mesh indexes");
         EXPECT_TRUE(baked_mesh->morph_targets_ref != nullptr,
-                    "VSCN v4 preserves attached static morph containers");
+                    "VSCN v5 preserves attached static morph containers");
         int64_t shape_count = rt_morphtarget3d_get_shape_count(source_mesh->morph_targets_ref);
         EXPECT_TRUE(rt_morphtarget3d_get_shape_count(baked_mesh->morph_targets_ref) == shape_count,
-                    "VSCN v4 preserves every morph shape");
+                    "VSCN v5 preserves every morph shape");
         for (int64_t shape = 0; shape < shape_count; ++shape) {
             rt_morphtarget3d_shape_view_internal source_view = {};
             rt_morphtarget3d_shape_view_internal baked_view = {};
@@ -5470,34 +7109,34 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
                                 source_mesh->morph_targets_ref, shape, &source_view) &&
                             rt_morphtarget3d_get_shape_view_internal(
                                 baked_mesh->morph_targets_ref, shape, &baked_view);
-            EXPECT_TRUE(views_ok, "VSCN v4 morph shape views remain valid");
+            EXPECT_TRUE(views_ok, "VSCN v5 morph shape views remain valid");
             if (!views_ok)
                 continue;
             size_t delta_bytes = static_cast<size_t>(source_view.vertex_count) * 3u * sizeof(float);
             EXPECT_TRUE(std::strcmp(source_view.name, baked_view.name) == 0,
-                        "VSCN v4 preserves morph shape names");
+                        "VSCN v5 preserves morph shape names");
             EXPECT_TRUE(source_view.weight == baked_view.weight,
-                        "VSCN v4 preserves static morph weights");
+                        "VSCN v5 preserves static morph weights");
             EXPECT_TRUE(source_view.vertex_count == baked_view.vertex_count &&
                             std::memcmp(source_view.position_deltas,
                                         baked_view.position_deltas,
                                         delta_bytes) == 0,
-                        "VSCN v4 preserves position morph deltas exactly");
+                        "VSCN v5 preserves position morph deltas exactly");
             EXPECT_TRUE((source_view.normal_deltas == nullptr) ==
                                 (baked_view.normal_deltas == nullptr) &&
                             (!source_view.normal_deltas || std::memcmp(source_view.normal_deltas,
                                                                        baked_view.normal_deltas,
                                                                        delta_bytes) == 0),
-                        "VSCN v4 preserves optional normal morph deltas exactly");
+                        "VSCN v5 preserves optional normal morph deltas exactly");
             EXPECT_TRUE((source_view.tangent_deltas == nullptr) ==
                                 (baked_view.tangent_deltas == nullptr) &&
                             (!source_view.tangent_deltas || std::memcmp(source_view.tangent_deltas,
                                                                         baked_view.tangent_deltas,
                                                                         delta_bytes) == 0),
-                        "VSCN v4 preserves optional tangent morph deltas exactly");
+                        "VSCN v5 preserves optional tangent morph deltas exactly");
         }
     }
-    EXPECT_TRUE(morph_meshes > 0, "VSCN v4 fixture exercises static morph persistence");
+    EXPECT_TRUE(morph_meshes > 0, "VSCN v5 fixture exercises static morph persistence");
 
     auto *source_animation =
         static_cast<rt_node_animation3d *>(rt_model3d_get_node_animation(source, 0));
@@ -5505,11 +7144,11 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
         static_cast<rt_node_animation3d *>(rt_model3d_get_node_animation(baked, 0));
     EXPECT_TRUE(source_animation && baked_animation &&
                     source_animation->channel_count == baked_animation->channel_count,
-                "VSCN v4 preserves node-animation channel counts");
+                "VSCN v5 preserves node-animation channel counts");
     if (source_animation && baked_animation) {
         EXPECT_TRUE(source_animation->duration == baked_animation->duration &&
                         source_animation->looping == baked_animation->looping,
-                    "VSCN v4 preserves node-animation timing metadata");
+                    "VSCN v5 preserves node-animation timing metadata");
         int32_t channel_count = scene3d_node_animation_channel_count(source_animation);
         for (int32_t channel_index = 0; channel_index < channel_count; ++channel_index) {
             const rt_node_anim_channel3d &source_channel =
@@ -5524,7 +7163,7 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
                             source_channel.target_node_index == baked_channel.target_node_index &&
                             std::strcmp(rt_string_cstr(source_channel.target_name),
                                         rt_string_cstr(baked_channel.target_name)) == 0,
-                        "VSCN v4 preserves node-animation channel identity");
+                        "VSCN v5 preserves node-animation channel identity");
             EXPECT_TRUE(
                 std::memcmp(source_channel.times,
                             baked_channel.times,
@@ -5532,11 +7171,10 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
                     std::memcmp(source_channel.values,
                                 baked_channel.values,
                                 value_count * sizeof(float)) == 0,
-                "VSCN v4 preserves animation key times and values exactly");
+                "VSCN v5 preserves animation key times and values exactly");
         }
     }
 
-    auto *source_camera = static_cast<rt_camera3d *>(rt_model3d_get_camera(source, 0, 0));
     auto *baked_camera = static_cast<rt_camera3d *>(rt_model3d_get_camera(baked, 0, 0));
     EXPECT_TRUE(
         source_camera && baked_camera && source_camera->is_ortho == baked_camera->is_ortho &&
@@ -5546,21 +7184,25 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
             source_camera->far_plane == baked_camera->far_plane &&
             std::memcmp(source_camera->eye, baked_camera->eye, sizeof(source_camera->eye)) == 0 &&
             std::memcmp(source_camera->view, baked_camera->view, sizeof(source_camera->view)) == 0,
-        "VSCN v4 preserves camera projection and world transform exactly");
+        "VSCN v5 preserves camera projection and world transform exactly");
+    EXPECT_TRUE(source_camera_node && baked_camera_node && source_camera && baked_camera &&
+                    source_camera_node->camera == source_camera &&
+                    baked_camera_node->camera == baked_camera,
+                "VSCN v5 preserves camera-to-node attachment identity");
 
     void *primary = rt_model3d_instantiate_scene_at(baked, 0);
     void *secondary = rt_model3d_instantiate_scene_at(baked, 1);
     EXPECT_TRUE(primary && rt_scene3d_find(primary, rt_const_cstr("Mover")) != nullptr &&
                     rt_scene3d_find(primary, rt_const_cstr("SecondaryMover")) == nullptr,
-                "VSCN v4 default scene contains only its authored hierarchy");
+                "VSCN v5 default scene contains only its authored hierarchy");
     EXPECT_TRUE(secondary &&
                     rt_scene3d_find(secondary, rt_const_cstr("SecondaryMover")) != nullptr &&
                     rt_scene3d_find(secondary, rt_const_cstr("Mover")) == nullptr,
-                "VSCN v4 secondary scene remains independently instantiable");
+                "VSCN v5 secondary scene remains independently instantiable");
     EXPECT_TRUE(primary && rt_model3d_apply_variant(baked, primary, 1) == 1,
-                "VSCN v4 preserves per-node material-variant mappings");
+                "VSCN v5 preserves per-node material-variant mappings");
 
-    const char *padded_variant_path = "/tmp/zanna_model3d_vscn_v4_padded_variants.vscn";
+    const char *padded_variant_path = "/tmp/zanna_model3d_vscn_v5_padded_variants.vscn";
     int32_t source_variant_count = source_mover ? source_mover->variant_material_count : 0;
     if (source_mover && source_variant_count == 2)
         source_mover->variant_material_count = 1;
@@ -5570,7 +7212,7 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
     if (source_mover)
         source_mover->variant_material_count = source_variant_count;
     EXPECT_TRUE(padded_saved == 1,
-                "VSCN v4 pads a short node variant table to the global variant inventory");
+                "VSCN v5 pads a short node variant table to the global variant inventory");
     void *padded_variant_asset =
         padded_saved ? rt_model3d_load(rt_const_cstr(padded_variant_path)) : nullptr;
     auto *padded_variant_node = padded_variant_asset
@@ -5581,12 +7223,12 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
                     padded_variant_node->variant_materials &&
                     padded_variant_node->variant_materials[0] != nullptr &&
                     padded_variant_node->variant_materials[1] == nullptr,
-                "A padded VSCN v4 variant table reloads with missing mappings as defaults");
+                "A padded VSCN v5 variant table reloads with missing mappings as defaults");
     if (padded_variant_asset && rt_obj_release_check0(padded_variant_asset))
         rt_obj_free(padded_variant_asset);
     std::remove(padded_variant_path);
 
-    const char *atomic_path = "/tmp/zanna_model3d_vscn_v4_atomic_failure.vscn";
+    const char *atomic_path = "/tmp/zanna_model3d_vscn_v5_atomic_failure.vscn";
     const std::string sentinel = "existing-destination";
     bool sentinel_written = write_text_file(atomic_path, sentinel);
     int32_t source_import_index = source_mover ? source_mover->import_index : -1;
@@ -5612,7 +7254,7 @@ static void test_model3d_vscn_v4_full_scene_asset_roundtrip() {
     std::remove(baked_path);
 }
 
-static void test_model3d_vscn_v4_corruption_rolls_back() {
+static void test_model3d_vscn_v5_corruption_rolls_back() {
     const char *source_path = find_existing_path(
         {"src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf",
          "../src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf",
@@ -5620,21 +7262,21 @@ static void test_model3d_vscn_v4_corruption_rolls_back() {
          ZANNA_SOURCE_DIR "/src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf"
 #endif
         });
-    const char *valid_path = "/tmp/zanna_model3d_vscn_v4_rollback_valid.vscn";
-    const char *corrupt_path = "/tmp/zanna_model3d_vscn_v4_rollback_corrupt.vscn";
-    EXPECT_TRUE(source_path != nullptr, "VSCN v4 rollback fixture is present");
+    const char *valid_path = "/tmp/zanna_model3d_vscn_v5_rollback_valid.vscn";
+    const char *corrupt_path = "/tmp/zanna_model3d_vscn_v5_rollback_corrupt.vscn";
+    EXPECT_TRUE(source_path != nullptr, "VSCN v5 rollback fixture is present");
     if (!source_path)
         return;
 
     void *source = rt_model3d_load(rt_const_cstr(source_path));
-    EXPECT_TRUE(source != nullptr, "VSCN v4 rollback source loads");
+    EXPECT_TRUE(source != nullptr, "VSCN v5 rollback source loads");
     if (!source)
         return;
     bool saved = rt_model3d_save(source, rt_const_cstr(valid_path)) == 1;
-    EXPECT_TRUE(saved, "VSCN v4 rollback baseline can be saved");
+    EXPECT_TRUE(saved, "VSCN v5 rollback baseline can be saved");
     std::vector<uint8_t> bytes;
     bool read = saved && read_binary_file(valid_path, bytes);
-    EXPECT_TRUE(read, "VSCN v4 rollback baseline can be read");
+    EXPECT_TRUE(read, "VSCN v5 rollback baseline can be read");
     if (!read) {
         if (rt_obj_release_check0(source))
             rt_obj_free(source);
@@ -5651,20 +7293,20 @@ static void test_model3d_vscn_v4_corruption_rolls_back() {
         if (!mutation_applied)
             return;
         bool wrote = write_text_file(corrupt_path, mutated);
-        EXPECT_TRUE(wrote, "Malformed VSCN v4 fixture can be written");
+        EXPECT_TRUE(wrote, "Malformed VSCN v5 fixture can be written");
         if (!wrote)
             return;
         void *rejected = rt_model3d_load(rt_const_cstr(corrupt_path));
         EXPECT_TRUE(rejected == nullptr, rejection_message);
         EXPECT_TRUE(rt_asset_error_get_code() != RT_ASSET_ERROR_NONE,
-                    "Malformed VSCN v4 load records a recoverable asset error");
+                    "Malformed VSCN v5 load records a recoverable asset error");
         if (rejected && rt_obj_release_check0(rejected))
             rt_obj_free(rejected);
 
         void *recovered = rt_model3d_load(rt_const_cstr(valid_path));
         EXPECT_TRUE(recovered != nullptr && rt_model3d_get_scene_count(recovered) == 2 &&
                         rt_model3d_get_morph_shape_count(recovered) == 2,
-                    "A rejected VSCN v4 document leaves the next complete load intact");
+                    "A rejected VSCN v5 document leaves the next complete load intact");
         if (recovered && rt_obj_release_check0(recovered))
             rt_obj_free(recovered);
     };
@@ -5674,35 +7316,35 @@ static void test_model3d_vscn_v4_corruption_rolls_back() {
         replace_first_text(invalid_camera, "\"cameras\": [0]", "\"cameras\": [999]");
     expect_rejected(invalid_camera,
                     camera_mutated,
-                    "VSCN v4 camera-index mutation finds its target",
-                    "VSCN v4 rejects an out-of-range per-scene camera index atomically");
+                    "VSCN v5 camera-index mutation finds its target",
+                    "VSCN v5 rejects an out-of-range per-scene camera index atomically");
 
     std::string invalid_morph = baseline;
     bool morph_mutated = replace_first_json_string_value(invalid_morph, "positionBase64", "AA==");
     expect_rejected(invalid_morph,
                     morph_mutated,
-                    "VSCN v4 morph-payload mutation finds its target",
-                    "VSCN v4 rejects a truncated morph delta payload atomically");
+                    "VSCN v5 morph-payload mutation finds its target",
+                    "VSCN v5 rejects a truncated morph delta payload atomically");
 
     std::string invalid_variant = baseline;
     bool variant_mutated = replace_first_text(
         invalid_variant, "\"variantMaterials\": [0, 1]", "\"variantMaterials\": [0, 999]");
     expect_rejected(invalid_variant,
                     variant_mutated,
-                    "VSCN v4 variant-index mutation finds its target",
-                    "VSCN v4 rejects an out-of-range variant material atomically");
+                    "VSCN v5 variant-index mutation finds its target",
+                    "VSCN v5 rejects an out-of-range variant material atomically");
 
     std::string invalid_animation = baseline;
     bool animation_mutated =
         replace_first_json_string_value(invalid_animation, "timesBase64", "AA==");
     expect_rejected(invalid_animation,
                     animation_mutated,
-                    "VSCN v4 animation-payload mutation finds its target",
-                    "VSCN v4 rejects a truncated animation sample payload atomically");
+                    "VSCN v5 animation-payload mutation finds its target",
+                    "VSCN v5 rejects a truncated animation sample payload atomically");
 
     EXPECT_TRUE(rt_model3d_get_scene_count(source) == 2 &&
                     rt_model3d_get_morph_shape_count(source) == 2,
-                "Rejected VSCN v4 documents do not mutate an existing SceneAsset");
+                "Rejected VSCN v5 documents do not mutate an existing SceneAsset");
     if (rt_obj_release_check0(source))
         rt_obj_free(source);
     std::remove(corrupt_path);
@@ -6623,6 +8265,10 @@ static void test_fbx_imports_cameras_lights_and_object_animation() {
                 "FBX camera accessor rejects out-of-range indices");
 
     void *scene_root = rt_fbx_get_scene_root(asset);
+    void *camera_node =
+        scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("Camera01")) : nullptr;
+    EXPECT_TRUE(camera_node && rt_scene_node3d_get_camera(camera_node) == camera,
+                "FBX camera attaches to its owning SceneNode");
     void *light_node =
         scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("KeyLight")) : nullptr;
     void *light = light_node ? rt_scene_node3d_get_light(light_node) : nullptr;
@@ -6640,15 +8286,45 @@ static void test_fbx_imports_cameras_lights_and_object_animation() {
         scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("SunLight")) : nullptr;
     void *area_node =
         scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("PanelLight")) : nullptr;
+    void *sphere_area_node =
+        scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("OrbLight")) : nullptr;
+    void *volume_node =
+        scene_root ? rt_scene_node3d_find(scene_root, rt_const_cstr("FogLight")) : nullptr;
     EXPECT_TRUE(point_node && rt_light3d_get_type(rt_scene_node3d_get_light(point_node)) == 1,
                 "FBX point lights map to native point lights");
     EXPECT_TRUE(directional_node &&
                     rt_light3d_get_type(rt_scene_node3d_get_light(directional_node)) == 0,
                 "FBX directional lights map to native directional lights");
-    EXPECT_TRUE(area_node && rt_light3d_get_type(rt_scene_node3d_get_light(area_node)) == 1,
-                "FBX area lights use the documented point-light approximation");
-    EXPECT_TRUE(asset_warning_contains("area/volume", "imported as point"),
-                "FBX area-light approximation records a bounded import warning");
+    void *area_light = area_node ? rt_scene_node3d_get_light(area_node) : nullptr;
+    EXPECT_TRUE(area_light && rt_light3d_get_type(area_light) == 4,
+                "FBX rectangle area lights map to native rectangle emitters");
+    EXPECT_NEAR(rt_light3d_get_width(area_light), 4.0, 0.001, "FBX area width is preserved");
+    EXPECT_NEAR(rt_light3d_get_height(area_light), 2.0, 0.001, "FBX area height is preserved");
+    EXPECT_NEAR(rt_light3d_get_range(area_light), 15.0, 0.001, "FBX area range is preserved");
+    EXPECT_TRUE(rt_light3d_get_decay_type(area_light) == 2,
+                "FBX rectangle decay type is preserved");
+    void *sphere_area_light =
+        sphere_area_node ? rt_scene_node3d_get_light(sphere_area_node) : nullptr;
+    EXPECT_TRUE(sphere_area_light && rt_light3d_get_type(sphere_area_light) == 5,
+                "FBX sphere area lights map to native sphere emitters");
+    EXPECT_NEAR(rt_light3d_get_radius(sphere_area_light),
+                2.5,
+                0.001,
+                "FBX sphere area radius alias is preserved");
+    EXPECT_NEAR(
+        rt_light3d_get_range(sphere_area_light), 20.0, 0.001, "FBX sphere area range is preserved");
+    EXPECT_TRUE(rt_light3d_get_decay_type(sphere_area_light) == 1,
+                "FBX sphere area linear decay is preserved");
+    void *volume_light = volume_node ? rt_scene_node3d_get_light(volume_node) : nullptr;
+    EXPECT_TRUE(volume_light && rt_light3d_get_type(volume_light) == 6,
+                "FBX volume lights map to native volume emitters");
+    EXPECT_NEAR(
+        rt_light3d_get_radius(volume_light), 6.0, 0.001, "FBX volume radius alias is preserved");
+    EXPECT_NEAR(rt_light3d_get_range(volume_light), 9.0, 0.001, "FBX volume range is preserved");
+    EXPECT_TRUE(rt_light3d_get_decay_type(volume_light) == 0,
+                "FBX volume no-decay mode is preserved");
+    EXPECT_TRUE(rt_light3d_get_casts_shadows(volume_light) == 0,
+                "FBX volume lights never claim unsupported shadow slots");
 
     EXPECT_TRUE(rt_fbx_node_animation_count(asset) == 1,
                 "FBX exposes non-skeletal object animation clips");
@@ -6710,7 +8386,28 @@ static void test_fbx_imports_cameras_lights_and_object_animation() {
         void *scene = rt_model3d_instantiate_scene(model);
         EXPECT_TRUE(scene != nullptr, "FBX SceneAsset scene instantiates with default animators");
         if (scene) {
+            void *instanced_camera_node = rt_scene3d_find(scene, rt_const_cstr("Camera01"));
+            void *instanced_camera =
+                instanced_camera_node ? rt_scene_node3d_get_camera(instanced_camera_node) : nullptr;
+            void *inventory_camera = rt_model3d_get_camera(model, 0, 0);
+            EXPECT_TRUE(instanced_camera && instanced_camera != inventory_camera,
+                        "SceneAsset instantiation clones attached cameras independently");
+            if (instanced_camera && inventory_camera) {
+                rt_camera3d_set_fov(instanced_camera, 75.0);
+                EXPECT_NEAR(
+                    rt_camera3d_get_fov(inventory_camera),
+                    40.0,
+                    0.001,
+                    "Instanced camera projection changes do not mutate the asset inventory");
+            }
             rt_scene3d_sync_bindings(scene, 0.5);
+            if (instanced_camera) {
+                void *instanced_position = rt_camera3d_get_position(instanced_camera);
+                EXPECT_NEAR(rt_vec3_x(instanced_position),
+                            2.0,
+                            0.001,
+                            "SceneGraph.SyncBindings couples an FBX camera to its node");
+            }
             void *animated_light = rt_scene3d_find(scene, rt_const_cstr("KeyLight"));
             EXPECT_NEAR(rt_vec3_x(rt_scene_node3d_get_position(animated_light)),
                         3.0,
@@ -6745,6 +8442,779 @@ static void test_fbx_imports_cameras_lights_and_object_animation() {
     }
     std::remove(path);
     std::remove(ascii_path);
+}
+
+static void test_fbx_animates_complete_camera_projection_state() {
+    const char *path = "/tmp/zanna_fbx_camera_projection_animation.fbx";
+    EXPECT_TRUE(write_fbx_camera_projection_animation_fixture(path),
+                "FBX camera projection-animation fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "FBX imports coupled camera scalar animation");
+    if (asset) {
+        auto *clip = static_cast<rt_node_animation3d *>(rt_fbx_get_node_animation(asset, 0));
+        const rt_node_anim_channel3d *channels[6] = {};
+        if (clip)
+            for (int32_t i = 0; i < scene3d_node_animation_channel_count(clip); ++i) {
+                const rt_node_anim_channel3d &channel = clip->channels[i];
+                if (channel.path >= RT_NODE_ANIM_PATH_CAMERA_FOV &&
+                    channel.path <= RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE) {
+                    int slot = -1;
+                    if (channel.path == RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE)
+                        slot = 0;
+                    else if (channel.path == RT_NODE_ANIM_PATH_CAMERA_ASPECT)
+                        slot = 1;
+                    else if (channel.path == RT_NODE_ANIM_PATH_CAMERA_FOV)
+                        slot = 2;
+                    else if (channel.path == RT_NODE_ANIM_PATH_CAMERA_NEAR)
+                        slot = 3;
+                    else if (channel.path == RT_NODE_ANIM_PATH_CAMERA_FAR)
+                        slot = 4;
+                    else if (channel.path == RT_NODE_ANIM_PATH_CAMERA_ORTHO_SIZE)
+                        slot = 5;
+                    if (slot >= 0)
+                        channels[slot] = &channel;
+                }
+            }
+        EXPECT_TRUE(clip && scene3d_node_animation_channel_count(clip) == 6,
+                    "FBX emits exactly six derived camera projection channels");
+        EXPECT_TRUE(channels[0] && channels[1] && channels[2] && channels[3] && channels[4] &&
+                        channels[5],
+                    "Camera clip contains projection, aspect, FOV, clip-plane, and ortho paths");
+        if (channels[0]) {
+            EXPECT_TRUE(channels[0]->interpolation == RT_NODE_ANIM_INTERP_STEP,
+                        "Camera projection mode always uses step interpolation");
+            EXPECT_TRUE(channels[0]->key_count == 5,
+                        "Discrete camera modes retain pre-switch FBX ticks");
+        }
+        for (const rt_node_anim_channel3d *channel : channels)
+            if (channel)
+                EXPECT_TRUE(channel->value_width == 1,
+                            "Every private camera animation path is scalar");
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "SceneAsset adapts complete FBX camera projection animation");
+    if (model) {
+        void *scene = rt_model3d_instantiate_scene(model);
+        EXPECT_TRUE(scene != nullptr, "Animated FBX camera SceneAsset instantiates");
+        if (scene) {
+            rt_scene3d_sync_bindings(scene, 0.5);
+            void *node = rt_scene3d_find(scene, rt_const_cstr("AnimatedCamera"));
+            void *camera = node ? rt_scene_node3d_get_camera(node) : nullptr;
+            EXPECT_TRUE(camera != nullptr && rt_camera3d_is_ortho(camera) == 1,
+                        "Projection step switches the attached camera to orthographic");
+            if (camera) {
+                auto *camera_view = static_cast<rt_camera3d *>(camera);
+                EXPECT_NEAR(camera_view->aspect,
+                            3.0,
+                            0.001,
+                            "AspectWidth/AspectHeight curves evaluate as a coupled ratio");
+                EXPECT_NEAR(rt_camera3d_get_near_plane(camera),
+                            0.375,
+                            0.001,
+                            "Model-targeted FBX near-plane animation reaches Camera3D");
+                EXPECT_NEAR(rt_camera3d_get_far_plane(camera),
+                            750.0,
+                            0.01,
+                            "FBX far-plane animation reaches Camera3D");
+                EXPECT_NEAR(rt_camera3d_get_ortho_size(camera),
+                            15.0,
+                            0.001,
+                            "CameraOrthoZoom alias animation reaches the retained ortho size");
+                const double focal = 37.5;
+                const double film_width_inches = 0.9;
+                const double horizontal = 2.0 * std::atan((film_width_inches * 25.4 * 0.5) / focal);
+                const double expected_vertical = 2.0 * std::atan(std::tan(horizontal * 0.5) / 3.0) *
+                                                 180.0 / 3.14159265358979323846;
+                rt_camera3d_set_is_ortho(camera, 0);
+                EXPECT_NEAR(
+                    rt_camera3d_get_fov(camera),
+                    expected_vertical,
+                    0.002,
+                    "Animated focal length and film aperture produce retained vertical FOV");
+                EXPECT_TRUE(std::fabs(rt_camera3d_get_fov(camera) - 60.0) > 1.0,
+                            "Focal-length aperture mode ignores an unrelated FieldOfViewY curve");
+            }
+            if (rt_obj_release_check0(scene))
+                rt_obj_free(scene);
+        }
+        if (rt_obj_release_check0(model))
+            rt_obj_free(model);
+    }
+    std::remove(path);
+
+    const char *invalid_path = "/tmp/zanna_fbx_camera_projection_invalid.fbx";
+    EXPECT_TRUE(write_fbx_camera_projection_animation_fixture(invalid_path, true),
+                "Invalid FBX camera projection fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(invalid_path));
+    EXPECT_TRUE(asset == nullptr, "Unknown animated FBX projection modes reject the whole asset");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT &&
+                    rt_asset_error_get_message() &&
+                    std::strstr(rt_asset_error_get_message(), "camera projection") != nullptr,
+                "Invalid camera animation reports a stable projection-specific diagnostic");
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(invalid_path);
+}
+
+static void test_fbx_composes_animation_layers_for_nodes_and_bones() {
+    const char *path = "/tmp/zanna_fbx_animation_layers.fbx";
+    EXPECT_TRUE(write_fbx_animation_layer_composition_fixture(path),
+                "FBX animation-layer composition fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "FBX composes every active animation layer transactionally");
+    if (asset) {
+        auto *node_clip = static_cast<rt_node_animation3d *>(rt_fbx_get_node_animation(asset, 0));
+        const rt_node_anim_channel3d *translation = nullptr;
+        const rt_node_anim_channel3d *rotation = nullptr;
+        const rt_node_anim_channel3d *scale = nullptr;
+        if (node_clip)
+            for (int32_t i = 0; i < scene3d_node_animation_channel_count(node_clip); ++i) {
+                const rt_node_anim_channel3d &channel = node_clip->channels[i];
+                const char *name = channel.target_name ? rt_string_cstr(channel.target_name) : "";
+                if (std::strcmp(name, "LayerNode") != 0)
+                    continue;
+                if (channel.path == RT_NODE_ANIM_PATH_TRANSLATION)
+                    translation = &channel;
+                else if (channel.path == RT_NODE_ANIM_PATH_ROTATION)
+                    rotation = &channel;
+                else if (channel.path == RT_NODE_ANIM_PATH_SCALE)
+                    scale = &channel;
+            }
+        EXPECT_TRUE(node_clip && translation && rotation && scale,
+                    "Layered scene model emits composed translation, rotation, and scale channels");
+        if (translation && rotation && scale) {
+            EXPECT_TRUE(translation->key_count == 3 && rotation->key_count == 3 &&
+                            scale->key_count == 3,
+                        "Animated layer weight joins the shared sample-time union");
+            EXPECT_NEAR(translation->times[0],
+                        0.0,
+                        0.0001,
+                        "Negative FBX layer time normalizes to clip start");
+            EXPECT_NEAR(translation->values[0],
+                        5.5,
+                        0.002,
+                        "Base, additive, and explicit override layers compose at zero weight");
+            EXPECT_NEAR(translation->values[3],
+                        7.875,
+                        0.002,
+                        "Animated override-passthrough weight composes at its midpoint");
+            EXPECT_NEAR(translation->values[6],
+                        10.0,
+                        0.002,
+                        "Full passthrough weight overrides preceding translation layers");
+            EXPECT_NEAR(scale->values[0],
+                        4.0,
+                        0.002,
+                        "Multiply scale accumulation exponentiates by layer weight");
+            EXPECT_NEAR(scale->values[3],
+                        6.0,
+                        0.002,
+                        "Scale override-passthrough interpolates the accumulated scale");
+            EXPECT_NEAR(scale->values[6],
+                        8.0,
+                        0.002,
+                        "Full scale passthrough reaches the authored layer value");
+            EXPECT_NEAR(scale->values[1],
+                        2.0,
+                        0.002,
+                        "Additive scale mode applies weighted delta from unit scale");
+            EXPECT_NEAR(rotation->values[2],
+                        std::sin(15.0 * 3.14159265358979323846 / 180.0),
+                        0.003,
+                        "Rotation-by-channel adds weighted Euler lanes on the base layer");
+            EXPECT_NEAR(rotation->values[6],
+                        std::sin(33.75 * 3.14159265358979323846 / 180.0),
+                        0.003,
+                        "Rotation-by-layer uses shortest-path quaternion interpolation");
+            EXPECT_NEAR(rotation->values[10],
+                        std::sin(50.0 * 3.14159265358979323846 / 180.0),
+                        0.003,
+                        "Full rotation layer reaches its authored quaternion");
+        }
+        auto *skeleton_clip = static_cast<rt_animation3d *>(rt_fbx_get_animation(asset, 0));
+        const vgfx3d_anim_channel_t *bone_channel = nullptr;
+        if (skeleton_clip)
+            for (int32_t i = 0; i < skeleton_clip->channel_count; ++i)
+                if (skeleton_clip->channels[i].bone_index == 0)
+                    bone_channel = &skeleton_clip->channels[i];
+        EXPECT_TRUE(bone_channel && bone_channel->keyframe_count == 3,
+                    "The same layer evaluator emits three skeletal samples");
+        if (bone_channel && bone_channel->keyframe_count == 3) {
+            EXPECT_NEAR(bone_channel->keyframes[1].position[0],
+                        7.875,
+                        0.002,
+                        "Skeletal and scene-node layer composition produce identical translation");
+            EXPECT_NEAR(bone_channel->keyframes[1].rotation[2],
+                        std::sin(33.75 * 3.14159265358979323846 / 180.0),
+                        0.003,
+                        "Skeletal and scene-node layer composition produce identical rotation");
+            EXPECT_NEAR(bone_channel->keyframes[1].scale_xyz[0],
+                        6.0,
+                        0.002,
+                        "Skeletal and scene-node layer composition produce identical scale");
+        }
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(path);
+
+    const char *solo_path = "/tmp/zanna_fbx_animation_layer_solo.fbx";
+    EXPECT_TRUE(write_fbx_animation_layer_solo_fixture(solo_path),
+                "FBX solo/mute layer fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(solo_path));
+    EXPECT_TRUE(asset != nullptr, "FBX evaluates solo and mute layer state");
+    if (asset) {
+        auto *clip = static_cast<rt_node_animation3d *>(rt_fbx_get_node_animation(asset, 0));
+        const rt_node_anim_channel3d *translation = nullptr;
+        if (clip)
+            for (int32_t i = 0; i < scene3d_node_animation_channel_count(clip); ++i)
+                if (clip->channels[i].path == RT_NODE_ANIM_PATH_TRANSLATION)
+                    translation = &clip->channels[i];
+        EXPECT_TRUE(translation && translation->key_count >= 2,
+                    "Solo layer retains its authored transform channel");
+        if (translation)
+            EXPECT_NEAR(translation->values[0],
+                        9.0,
+                        0.001,
+                        "Active solo suppresses non-solo and muted-solo layers");
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(solo_path);
+
+    const char *invalid_path = "/tmp/zanna_fbx_animation_layer_nonfinite.fbx";
+    EXPECT_TRUE(write_fbx_animation_layer_solo_fixture(invalid_path, true),
+                "Non-finite FBX layer-weight fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(invalid_path));
+    EXPECT_TRUE(asset == nullptr, "Non-finite animation-layer weight rejects the complete load");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT &&
+                    rt_asset_error_get_message() &&
+                    std::strstr(rt_asset_error_get_message(), "animation layer") != nullptr,
+                "Malformed animation layers use a stable layer-specific diagnostic");
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(invalid_path);
+}
+
+static void test_fbx_imports_general_constraints_and_animated_dependencies() {
+    const char *path = "/tmp/zanna_fbx_constraint_zoo.fbx";
+    EXPECT_TRUE(write_fbx_constraint_zoo_fixture(path),
+                "FBX built-in constraint zoo fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr,
+                "FBX imports every supported built-in constraint transactionally");
+    if (!asset) {
+        std::remove(path);
+        return;
+    }
+    void *root = rt_fbx_get_scene_root(asset);
+    void *position = root ? rt_scene_node3d_find(root, rt_const_cstr("PositionTarget")) : nullptr;
+    void *rotation = root ? rt_scene_node3d_find(root, rt_const_cstr("RotationTarget")) : nullptr;
+    void *scale = root ? rt_scene_node3d_find(root, rt_const_cstr("ScaleTarget")) : nullptr;
+    void *parent = root ? rt_scene_node3d_find(root, rt_const_cstr("ParentTarget")) : nullptr;
+    void *aim = root ? rt_scene_node3d_find(root, rt_const_cstr("AimTarget")) : nullptr;
+    void *inactive = root ? rt_scene_node3d_find(root, rt_const_cstr("InactiveTarget")) : nullptr;
+    void *ik_first = root ? rt_scene_node3d_find(root, rt_const_cstr("IkFirst")) : nullptr;
+    void *ik_middle = root ? rt_scene_node3d_find(root, rt_const_cstr("IkMiddle")) : nullptr;
+    void *ik_end = root ? rt_scene_node3d_find(root, rt_const_cstr("IkEnd")) : nullptr;
+    double matrix[16] = {};
+    EXPECT_TRUE(position && rt_scene_node3d_get_world_matrix_components(position, matrix),
+                "Position-constrained model remains in the imported scene hierarchy");
+    EXPECT_NEAR(matrix[3], 3.0, 0.001, "Position constraint blends weighted sources and offset");
+    EXPECT_NEAR(matrix[7], 0.0, 0.001, "Position constraint honors a disabled Y affect mask");
+    EXPECT_NEAR(matrix[11], 4.0, 0.001, "Position constraint blends its remaining world axes");
+
+    EXPECT_TRUE(rotation && rt_scene_node3d_get_world_matrix_components(rotation, matrix),
+                "Rotation-constrained model remains addressable by name");
+    EXPECT_NEAR(matrix[0], -0.5, 0.002, "Rotation constraint composes its authored offset");
+    EXPECT_NEAR(matrix[4], 0.8660254, 0.002, "Rotation constraint retains world orientation");
+
+    EXPECT_TRUE(scale && rt_scene_node3d_get_world_matrix_components(scale, matrix),
+                "Scale-constrained model has a finite world matrix");
+    EXPECT_NEAR(matrix[0], 1.0, 0.002, "Scale constraint multiplies the X offset before blending");
+    EXPECT_NEAR(matrix[5], 3.5, 0.002, "Scale constraint blends weighted Y scale");
+    EXPECT_NEAR(matrix[10], 2.5, 0.002, "Scale constraint blends weighted Z scale");
+
+    EXPECT_TRUE(parent && rt_scene_node3d_get_world_matrix_components(parent, matrix),
+                "Parent-constrained model has an evaluated world transform");
+    EXPECT_NEAR(matrix[3], 11.0, 0.003, "Parent offset translation is evaluated in source space");
+    EXPECT_NEAR(matrix[7], 1.7320508, 0.003, "Parent offset follows the source orientation");
+    EXPECT_NEAR(matrix[0], 0.0, 0.003, "Parent constraint composes source and offset rotation");
+    EXPECT_NEAR(matrix[4], 1.0, 0.003, "Parent rotation uses normalized quaternion blending");
+
+    EXPECT_TRUE(aim && rt_scene_node3d_get_world_matrix_components(aim, matrix),
+                "Aim-constrained model has an evaluated orthonormal basis");
+    EXPECT_NEAR(matrix[0], 0.0, 0.003, "Aim maps the authored local aim X axis away from world X");
+    EXPECT_NEAR(matrix[4], 0.0, 0.003, "Aim direction remains orthogonal to its up object");
+    EXPECT_NEAR(matrix[8], -1.0, 0.003, "Aim maps the local X axis toward its weighted target");
+    EXPECT_NEAR(matrix[5], 1.0, 0.003, "Aim honors object-position world-up mode");
+
+    EXPECT_TRUE(inactive && rt_scene_node3d_get_world_matrix_components(inactive, matrix),
+                "Inactive constrained model remains in the scene");
+    EXPECT_NEAR(matrix[3], 1.0, 0.001, "Inactive constraint does not alter translation");
+    EXPECT_NEAR(matrix[7], 2.0, 0.001, "Inactive constraint preserves every local axis");
+    EXPECT_NEAR(matrix[11], 3.0, 0.001, "Inactive constraint preserves Z translation");
+
+    EXPECT_TRUE(ik_end && rt_scene_node3d_get_world_matrix_components(ik_end, matrix),
+                "Single-chain IK end joint remains part of its original hierarchy");
+    EXPECT_NEAR(matrix[3], 1.0, 0.002, "FABRIK reaches the effector X coordinate");
+    EXPECT_NEAR(matrix[7], 1.0, 0.002, "FABRIK reaches the effector Y coordinate");
+    EXPECT_NEAR(matrix[11], 0.0, 0.002, "FABRIK preserves the constrained solve plane");
+    double first_world[16] = {};
+    double middle_world[16] = {};
+    double end_world[16] = {};
+    EXPECT_TRUE(ik_first && ik_middle &&
+                    rt_scene_node3d_get_world_matrix_components(ik_first, first_world) &&
+                    rt_scene_node3d_get_world_matrix_components(ik_middle, middle_world) &&
+                    rt_scene_node3d_get_world_matrix_components(ik_end, end_world),
+                "Single-chain IK publishes every solved joint transform");
+    auto segment_length = [](const double a[16], const double b[16]) {
+        const double x = b[3] - a[3];
+        const double y = b[7] - a[7];
+        const double z = b[11] - a[11];
+        return std::sqrt(x * x + y * y + z * z);
+    };
+    EXPECT_NEAR(segment_length(first_world, middle_world),
+                1.0,
+                0.002,
+                "FABRIK preserves the first authored segment length");
+    EXPECT_NEAR(segment_length(middle_world, end_world),
+                1.0,
+                0.002,
+                "Pole and twist guidance preserve the second segment length");
+    EXPECT_TRUE(std::fabs(middle_world[11]) > 0.05,
+                "Pole-object and twist properties guide the internal IK joint out of plane");
+    EXPECT_TRUE(asset_warning_contains("custom constraint", nullptr) ||
+                    asset_warning_contains("Vendor Twist", nullptr),
+                "Unknown custom constraints are preserved as bounded import warnings");
+
+    auto *clip = static_cast<rt_node_animation3d *>(rt_fbx_get_node_animation(asset, 0));
+    bool found_constrained_translation = false;
+    if (clip) {
+        for (int32_t i = 0; i < scene3d_node_animation_channel_count(clip); ++i) {
+            const rt_node_anim_channel3d &channel = clip->channels[i];
+            if (channel.target_node_index == 0 && channel.path == RT_NODE_ANIM_PATH_TRANSLATION &&
+                channel.key_count >= 2 && channel.value_width == 3) {
+                found_constrained_translation = true;
+                EXPECT_NEAR(channel.values[(size_t)(channel.key_count - 1) * 3u],
+                            4.0,
+                            0.002,
+                            "Constraint source keys propagate into constrained-node samples");
+            }
+        }
+    }
+    EXPECT_TRUE(found_constrained_translation,
+                "Constraint-only animated targets emit baked NodeAnimation3D channels");
+    if (rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+}
+
+static void test_fbx_constraint_validation_and_bounded_ik_failure() {
+    const struct {
+        FbxBadConstraintFixture kind;
+        const char *suffix;
+    } malformed[] = {{FbxBadConstraintFixture::MissingTarget, "missing_target"},
+                     {FbxBadConstraintFixture::Cycle, "cycle"},
+                     {FbxBadConstraintFixture::WeightMismatch, "weights"},
+                     {FbxBadConstraintFixture::NonFiniteOffset, "nonfinite"},
+                     {FbxBadConstraintFixture::MismatchedIkChain, "ik_chain"},
+                     {FbxBadConstraintFixture::DescendantSource, "descendant_source"}};
+
+    for (const auto &entry : malformed) {
+        std::string path = std::string("/tmp/zanna_fbx_bad_constraint_") + entry.suffix + ".fbx";
+        EXPECT_TRUE(write_fbx_bad_constraint_fixture(path.c_str(), entry.kind),
+                    "Malformed FBX constraint fixture can be written");
+        void *asset = rt_fbx_load(rt_const_cstr(path.c_str()));
+        EXPECT_TRUE(asset == nullptr, "Malformed active FBX constraint rejects the complete load");
+        EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                    "Malformed active FBX constraint reports a content error");
+        EXPECT_TRUE(rt_asset_error_get_message() &&
+                        std::strstr(rt_asset_error_get_message(), "constraint") != nullptr,
+                    "Constraint validation uses a stable constraint-specific diagnostic");
+        if (asset && rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+        std::remove(path.c_str());
+    }
+
+    const char *ancestor_path = "/tmp/zanna_fbx_constraint_ancestor_order.fbx";
+    EXPECT_TRUE(write_fbx_constraint_ancestor_order_fixture(ancestor_path),
+                "Ancestor-dependent FBX constraint fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(ancestor_path));
+    EXPECT_TRUE(asset != nullptr,
+                "Constraint ordering follows full source ancestry rather than object order");
+    if (asset) {
+        void *target = rt_scene_node3d_find(rt_fbx_get_scene_root(asset), rt_const_cstr("Target"));
+        double world[16] = {};
+        EXPECT_TRUE(target && rt_scene_node3d_get_world_matrix_components(target, world),
+                    "Ancestor-dependent constrained target remains addressable");
+        EXPECT_NEAR(world[3],
+                    12.0,
+                    0.001,
+                    "Producer constraint runs before a consumer of its nested source");
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(ancestor_path);
+
+    const char *unreachable_path = "/tmp/zanna_fbx_unreachable_ik.fbx";
+    EXPECT_TRUE(write_fbx_constraint_zoo_fixture(unreachable_path, true),
+                "Unreachable FBX IK fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(unreachable_path));
+    EXPECT_TRUE(asset != nullptr, "Unreachable but valid IK keeps the closest finite pose");
+    if (asset) {
+        void *end = rt_scene_node3d_find(rt_fbx_get_scene_root(asset), rt_const_cstr("IkEnd"));
+        double world[16] = {};
+        EXPECT_TRUE(end && rt_scene_node3d_get_world_matrix_components(end, world),
+                    "Unreachable IK publishes a finite end-joint transform");
+        EXPECT_NEAR(world[3], 2.0, 0.002, "Unreachable IK preserves total segment length");
+        EXPECT_NEAR(world[7], 0.0, 0.002, "Unreachable IK stretches toward the effector only");
+        EXPECT_TRUE(asset_warning_contains("IK", "unreachable"),
+                    "Unreachable IK emits one bounded degradation warning");
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(unreachable_path);
+
+    const char *partial_path = "/tmp/zanna_fbx_partial_ik.fbx";
+    EXPECT_TRUE(write_fbx_constraint_zoo_fixture(partial_path, false, 50.0),
+                "Partial-weight FBX IK fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(partial_path));
+    EXPECT_TRUE(asset != nullptr, "Partial-weight IK evaluates to a finite blended chain");
+    if (asset) {
+        void *root = rt_fbx_get_scene_root(asset);
+        void *first = rt_scene_node3d_find(root, rt_const_cstr("IkFirst"));
+        void *middle = rt_scene_node3d_find(root, rt_const_cstr("IkMiddle"));
+        void *end = rt_scene_node3d_find(root, rt_const_cstr("IkEnd"));
+        double first_world[16] = {};
+        double middle_world[16] = {};
+        double end_world[16] = {};
+        EXPECT_TRUE(first && middle && end &&
+                        rt_scene_node3d_get_world_matrix_components(first, first_world) &&
+                        rt_scene_node3d_get_world_matrix_components(middle, middle_world) &&
+                        rt_scene_node3d_get_world_matrix_components(end, end_world),
+                    "Partial-weight IK retains the complete chain hierarchy");
+        auto segment_length = [](const double a[16], const double b[16]) {
+            const double x = b[3] - a[3];
+            const double y = b[7] - a[7];
+            const double z = b[11] - a[11];
+            return std::sqrt(x * x + y * y + z * z);
+        };
+        EXPECT_NEAR(segment_length(first_world, middle_world),
+                    1.0,
+                    0.002,
+                    "Partial IK weight preserves the first segment length");
+        EXPECT_NEAR(segment_length(middle_world, end_world),
+                    1.0,
+                    0.002,
+                    "Partial IK weight preserves the second segment length");
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(partial_path);
+
+    const char *z_up_path = "/tmp/zanna_fbx_z_up_constraints.fbx";
+    EXPECT_TRUE(write_fbx_constraint_zoo_fixture(z_up_path, false, 100.0, true),
+                "Z-up FBX constraint fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(z_up_path));
+    EXPECT_TRUE(asset != nullptr, "Z-up constraints import through the common basis conversion");
+    if (asset) {
+        void *position =
+            rt_scene_node3d_find(rt_fbx_get_scene_root(asset), rt_const_cstr("PositionTarget"));
+        double world[16] = {};
+        EXPECT_TRUE(position && rt_scene_node3d_get_world_matrix_components(position, world),
+                    "Z-up constrained target publishes a finite converted transform");
+        EXPECT_NEAR(world[3], 3.0, 0.002, "Z-up translation offsets retain source X");
+        EXPECT_NEAR(world[7], 4.0, 0.002, "Z-up translation offsets map source Z to runtime Y");
+        EXPECT_NEAR(
+            world[11], 0.0, 0.002, "Z-up affect masks map the disabled source Y axis to runtime Z");
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(z_up_path);
+}
+
+static void test_fbx_constraints_drive_static_and_animated_skeleton_poses() {
+    const char *path = "/tmp/zanna_fbx_animated_skeleton_constraint.fbx";
+    EXPECT_TRUE(write_fbx_animated_skeleton_constraint_fixture(path),
+                "Animated skeletal FBX constraint fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "Animated non-bone source can constrain an FBX skeleton bone");
+    if (asset) {
+        void *skeleton = rt_fbx_get_skeleton(asset);
+        double bind_local[16] = {};
+        EXPECT_TRUE(skeleton && rt_skeleton3d_get_bone_count(skeleton) == 1,
+                    "Constrained skeletal fixture retains its single bone");
+        EXPECT_TRUE(skeleton && rt_skeleton3d_get_bone_bind_local_raw(skeleton, 0, bind_local),
+                    "Constrained skeleton publishes a finite static bind pose");
+        EXPECT_NEAR(bind_local[3], 3.0, 0.001, "Static bone pose includes its point constraint");
+        auto *animation = static_cast<rt_animation3d *>(rt_fbx_get_animation(asset, 0));
+        const vgfx3d_anim_channel_t *channel = nullptr;
+        if (animation)
+            for (int32_t i = 0; i < animation->channel_count; ++i)
+                if (animation->channels[i].bone_index == 0)
+                    channel = &animation->channels[i];
+        EXPECT_TRUE(channel && channel->keyframe_count >= 2,
+                    "Constraint-only bone motion emits skeletal animation keyframes");
+        if (channel && channel->keyframe_count >= 2) {
+            EXPECT_NEAR(channel->keyframes[0].position[0],
+                        3.0,
+                        0.001,
+                        "Skeletal constraint begins at the evaluated source pose");
+            EXPECT_NEAR(channel->keyframes[channel->keyframe_count - 1].position[0],
+                        11.0,
+                        0.001,
+                        "Animated external driver propagates through the bone constraint");
+        }
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(path);
+}
+
+static void test_fbx_tessellates_binary_and_ascii_procedural_surfaces() {
+    const char *path = "/tmp/zanna_fbx_procedural_surfaces.fbx";
+    const char *ascii_path = "/tmp/zanna_fbx_procedural_surface_ascii.fbx";
+    EXPECT_TRUE(write_fbx_procedural_surface_fixture(path),
+                "Binary FBX procedural-surface fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "FBX.Load tessellates NURBS surfaces and patches");
+    if (asset) {
+        EXPECT_TRUE(rt_fbx_mesh_count(asset) == 2,
+                    "FBX procedural Geometry records become ordinary mesh resources");
+        auto *nurbs = static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, 0));
+        auto *patch = static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, 1));
+        EXPECT_TRUE(nurbs && nurbs->vertex_count == 9 && nurbs->index_count == 24,
+                    "Open two-step NURBS emits a shared 3x3 grid and eight triangles");
+        if (nurbs && nurbs->vertex_count == 9) {
+            EXPECT_NEAR(nurbs->vertices[4].pos[0],
+                        0.6,
+                        0.0001,
+                        "NURBS tessellation applies rational control-point weights in U");
+            EXPECT_NEAR(nurbs->vertices[4].pos[1],
+                        0.6,
+                        0.0001,
+                        "NURBS tessellation applies rational control-point weights in V");
+            EXPECT_TRUE(std::isfinite(nurbs->vertices[4].normal[0]) &&
+                            std::isfinite(nurbs->vertices[4].normal[1]) &&
+                            std::isfinite(nurbs->vertices[4].normal[2]) &&
+                            nurbs->vertices[4].normal[2] > 0.99f,
+                        "NURBS tessellation emits finite derivative normals");
+            EXPECT_NEAR(nurbs->vertices[4].uv[0],
+                        0.5,
+                        0.0001,
+                        "NURBS tessellation emits normalized row-major U coordinates");
+            EXPECT_NEAR(nurbs->vertices[4].uv[1],
+                        0.5,
+                        0.0001,
+                        "NURBS tessellation emits normalized row-major V coordinates");
+        }
+        EXPECT_TRUE(patch && patch->vertex_count == 9 && patch->index_count == 24,
+                    "Linear FBX Patch emits a shared 3x3 grid and eight triangles");
+        if (patch && patch->vertex_count == 9) {
+            EXPECT_NEAR(patch->vertices[4].pos[0],
+                        0.5,
+                        0.0001,
+                        "Patch tensor-product evaluation preserves bilinear U");
+            EXPECT_NEAR(patch->vertices[4].pos[1],
+                        0.5,
+                        0.0001,
+                        "Patch tensor-product evaluation preserves bilinear V");
+        }
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+
+    void *model = rt_model3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(model != nullptr, "SceneAsset adapts tessellated FBX procedural geometry");
+    if (model) {
+        void *nurbs_node = rt_model3d_find_node(model, rt_const_cstr("RationalSurface"));
+        void *patch_node = rt_model3d_find_node(model, rt_const_cstr("LinearPatch"));
+        EXPECT_TRUE(nurbs_node && rt_scene_node3d_get_mesh(nurbs_node),
+                    "Tessellated NURBS binds to its authored model node");
+        auto *surface_material =
+            nurbs_node ? static_cast<rt_material3d *>(rt_scene_node3d_get_material(nurbs_node))
+                       : nullptr;
+        EXPECT_TRUE(surface_material != nullptr,
+                    "Tessellated NURBS uses the ordinary connected-material path");
+        if (surface_material)
+            EXPECT_NEAR(surface_material->diffuse[2],
+                        0.6,
+                        0.001,
+                        "Tessellated NURBS retains its connected FBX material values");
+        EXPECT_TRUE(patch_node && rt_scene_node3d_get_mesh(patch_node),
+                    "Tessellated patch binds to its authored model node");
+        if (rt_obj_release_check0(model))
+            rt_obj_free(model);
+    }
+
+    EXPECT_TRUE(write_fbx_ascii_procedural_surface_fixture(ascii_path),
+                "ASCII FBX procedural-surface fixture can be written");
+    void *ascii_asset = rt_fbx_load(rt_const_cstr(ascii_path));
+    EXPECT_TRUE(ascii_asset != nullptr && rt_fbx_mesh_count(ascii_asset) == 1,
+                "ASCII FBX uses the same procedural-surface tessellator as binary FBX");
+    if (ascii_asset) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_fbx_get_mesh(ascii_asset, 0));
+        EXPECT_TRUE(mesh && mesh->vertex_count == 9 && mesh->index_count == 24,
+                    "ASCII rational NURBS retains the binary grid topology");
+        if (rt_obj_release_check0(ascii_asset))
+            rt_obj_free(ascii_asset);
+    }
+    std::remove(path);
+    std::remove(ascii_path);
+}
+
+static void test_fbx_tessellates_surface_forms_and_every_patch_basis() {
+    const char *path = "/tmp/zanna_fbx_procedural_surface_variants.fbx";
+    EXPECT_TRUE(write_fbx_procedural_surface_variants_fixture(path),
+                "FBX procedural-surface variant fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset != nullptr, "FBX imports closed/periodic NURBS and every patch basis");
+    if (!asset) {
+        std::remove(path);
+        return;
+    }
+    EXPECT_TRUE(rt_fbx_mesh_count(asset) == 9,
+                "Every renderable procedural Geometry becomes one mesh resource");
+    for (int64_t mesh_index = 0; mesh_index < rt_fbx_mesh_count(asset); ++mesh_index) {
+        auto *mesh = static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, mesh_index));
+        bool finite = mesh && mesh->vertex_count > 0 && mesh->index_count >= 3;
+        if (mesh) {
+            for (uint32_t vertex = 0; finite && vertex < mesh->vertex_count; ++vertex) {
+                for (int lane = 0; lane < 3; ++lane) {
+                    finite = finite && std::isfinite(mesh->vertices[vertex].pos[lane]) &&
+                             std::isfinite(mesh->vertices[vertex].normal[lane]);
+                }
+            }
+        }
+        EXPECT_TRUE(finite, "Every procedural basis emits finite positions and normals");
+    }
+    auto *closed = static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, 0));
+    auto *periodic = static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, 1));
+    auto *generated_knots = static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, 2));
+    auto *closed_patch = static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, 8));
+    EXPECT_TRUE(closed && closed->vertex_count == 6 && closed->index_count == 18,
+                "Closed NURBS omits its duplicated U seam vertex and wraps topology");
+    EXPECT_TRUE(periodic && periodic->vertex_count == 6 && periodic->index_count == 18,
+                "Periodic NURBS omits its duplicated U seam vertex and wraps topology");
+    EXPECT_TRUE(generated_knots && generated_knots->vertex_count == 6 &&
+                    generated_knots->index_count == 12,
+                "Missing legal open knot vectors are generated deterministically");
+    const double expected_patch_mid_z[] = {
+        0.09375,
+        0.125,
+        0.140625,
+        0.1197916667,
+        0.125,
+    };
+    for (int basis = 0; basis < 5; ++basis) {
+        auto *basis_mesh = static_cast<rt_mesh3d *>(rt_fbx_get_mesh(asset, 3 + basis));
+        EXPECT_TRUE(basis_mesh && basis_mesh->vertex_count == 6 && basis_mesh->index_count == 12,
+                    "Open single-span patch basis preserves shared two-step topology");
+        if (basis_mesh && basis_mesh->vertex_count > 1) {
+            EXPECT_NEAR(basis_mesh->vertices[1].pos[2],
+                        expected_patch_mid_z[basis],
+                        0.0001,
+                        "Patch basis tensor evaluates the authored midpoint weights");
+        }
+    }
+    EXPECT_TRUE(closed_patch && closed_patch->vertex_count == 16 && closed_patch->index_count == 48,
+                "Closed Patch shares its seam vertices across wrapped quads");
+    if (closed_patch && closed_patch->index_count >= 6) {
+        bool found_wrapped_edge = false;
+        for (uint32_t index = 0; index + 1 < closed_patch->index_count; ++index) {
+            uint32_t a = closed_patch->indices[index];
+            uint32_t b = closed_patch->indices[index + 1];
+            if ((a == 7u && b == 0u) || (a == 0u && b == 7u)) {
+                found_wrapped_edge = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found_wrapped_edge,
+                    "Closed Patch topology references the first row vertex from the final span");
+    }
+    if (rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(path);
+}
+
+static void test_fbx_rejects_malformed_procedural_surfaces_transactionally() {
+    const char *step_path = "/tmp/zanna_fbx_bad_nurbs_step.fbx";
+    const char *knot_path = "/tmp/zanna_fbx_bad_nurbs_knots.fbx";
+    const char *control_path = "/tmp/zanna_fbx_bad_nurbs_controls.fbx";
+    const char *trim_path = "/tmp/zanna_fbx_trimmed_nurbs.fbx";
+    const char *budget_path = "/tmp/zanna_fbx_budgeted_nurbs.fbx";
+    EXPECT_TRUE(write_fbx_procedural_surface_fixture(step_path, 257),
+                "Oversized NURBS-step fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(step_path));
+    EXPECT_TRUE(asset == nullptr, "FBX rejects NURBS step counts above the audited maximum");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                "Oversized NURBS step reports corrupt authored content");
+    EXPECT_TRUE(rt_asset_error_get_message() &&
+                    std::strstr(rt_asset_error_get_message(), "step") != nullptr,
+                "Oversized NURBS step diagnostic identifies the invalid field");
+
+    EXPECT_TRUE(write_fbx_procedural_surface_fixture(knot_path, 2, 2, true),
+                "Descending NURBS-knot fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(knot_path));
+    EXPECT_TRUE(asset == nullptr, "FBX rejects descending NURBS knot vectors transactionally");
+    EXPECT_TRUE(rt_asset_error_get_message() &&
+                    std::strstr(rt_asset_error_get_message(), "knot") != nullptr,
+                "Descending-knot diagnostic identifies the invalid field");
+
+    EXPECT_TRUE(write_fbx_bad_surface_control_count_fixture(control_path),
+                "Mismatched NURBS control-net fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(control_path));
+    EXPECT_TRUE(asset == nullptr,
+                "FBX rejects a procedural control net that does not match Dimensions");
+    EXPECT_TRUE(rt_asset_error_get_message() &&
+                    std::strstr(rt_asset_error_get_message(), "control net") != nullptr,
+                "Mismatched control-net diagnostic identifies the invalid payload");
+
+    EXPECT_TRUE(write_fbx_trimmed_surface_fixture(trim_path),
+                "Connected NURBS trim-boundary fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(trim_path));
+    EXPECT_TRUE(asset == nullptr,
+                "FBX rejects active NURBS trim graphs instead of changing the boundary");
+    EXPECT_TRUE(rt_asset_error_get_message() &&
+                    std::strstr(rt_asset_error_get_message(), "trimmed NURBS") != nullptr,
+                "Trim rejection uses the stable procedural-surface diagnostic");
+
+    EXPECT_TRUE(write_fbx_procedural_surface_fixture(budget_path, 256, 256),
+                "High-resolution NURBS budget fixture can be written");
+    rt_fbx_test_set_load_budget_bytes(1024u * 1024u);
+    asset = rt_fbx_load(rt_const_cstr(budget_path));
+    EXPECT_TRUE(asset == nullptr,
+                "Generated procedural mesh storage participates in the aggregate FBX budget");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_TOO_LARGE,
+                "Generated procedural mesh budget exhaustion reports too-large content");
+    asset = rt_fbx_load(rt_const_cstr(step_path));
+    EXPECT_TRUE(asset == nullptr && rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                "The procedural mesh test budget is consumed once and cannot leak to later loads");
+    if (asset && rt_obj_release_check0(asset))
+        rt_obj_free(asset);
+    std::remove(step_path);
+    std::remove(knot_path);
+    std::remove(control_path);
+    std::remove(trim_path);
+    std::remove(budget_path);
+}
+
+static void test_fbx_rejects_invalid_native_light_dimensions() {
+    const char *path = "/tmp/zanna_fbx_invalid_area_light.fbx";
+    EXPECT_TRUE(write_fbx_camera_light_animation_fixture(path, 0.0),
+                "Malformed FBX area-light fixture can be written");
+    void *asset = rt_fbx_load(rt_const_cstr(path));
+    EXPECT_TRUE(asset == nullptr, "FBX rejects non-positive native area-light dimensions");
+    EXPECT_TRUE(rt_asset_error_get_code() == RT_ASSET_ERROR_CORRUPT,
+                "Malformed native FBX light reports a corrupt-content error");
+    EXPECT_TRUE(rt_asset_error_get_message() &&
+                    std::strstr(rt_asset_error_get_message(), "rectangle width") != nullptr,
+                "Malformed native FBX light diagnostic names the invalid dimension");
+    std::remove(path);
 }
 
 static void test_fbx_imports_progressive_morph_fidelity_and_animation() {
@@ -6860,6 +9330,53 @@ static void test_fbx_imports_progressive_morph_fidelity_and_animation() {
     if (rt_obj_release_check0(asset))
         rt_obj_free(asset);
     std::remove(path);
+
+    const char *layered_path = "/tmp/zanna_fbx_progressive_morph_layers.fbx";
+    EXPECT_TRUE(write_fbx_progressive_morph_fixture(layered_path, true),
+                "Layer-composed progressive morph fixture can be written");
+    asset = rt_fbx_load(rt_const_cstr(layered_path));
+    EXPECT_TRUE(asset != nullptr,
+                "FBX composes progressive morph percentages across every active layer");
+    if (asset) {
+        clip = static_cast<rt_node_animation3d *>(rt_fbx_get_node_animation(asset, 0));
+        const rt_node_anim_channel3d *channel =
+            clip && scene3d_node_animation_channel_count(clip) == 1 ? &clip->channels[0] : nullptr;
+        EXPECT_TRUE(channel && channel->key_count == 5,
+                    "Composed morph layers insert their own threshold-crossing samples");
+        if (channel && channel->key_count == 5) {
+            EXPECT_NEAR(channel->values[0],
+                        0.75,
+                        0.001,
+                        "Additive layer weight contributes to the initial progressive shape");
+            EXPECT_NEAR(channel->times[1],
+                        0.25,
+                        0.000001,
+                        "First FullWeights crossing is solved from the composed layer value");
+            EXPECT_NEAR(channel->values[2],
+                        1.0,
+                        0.001,
+                        "Composed first threshold reaches the lower shape exactly");
+            EXPECT_NEAR(channel->values[3],
+                        0.0,
+                        0.001,
+                        "Composed first threshold has not activated the upper shape");
+            EXPECT_NEAR(channel->times[3],
+                        1.25,
+                        0.000001,
+                        "Second FullWeights crossing is solved from the composed layer value");
+            EXPECT_NEAR(channel->values[6],
+                        0.0,
+                        0.001,
+                        "Composed final threshold clears the preceding shape exactly");
+            EXPECT_NEAR(channel->values[7],
+                        1.0,
+                        0.001,
+                        "Composed final threshold activates the final shape exactly");
+        }
+        if (rt_obj_release_check0(asset))
+            rt_obj_free(asset);
+    }
+    std::remove(layered_path);
 }
 
 static void test_bc6h_all_modes_are_finite_and_deterministic() {
@@ -6930,6 +9447,8 @@ int main() {
     test_model3d_imports_fbx_material_scalar_aliases_and_allsame_uvs();
     test_model3d_imports_fbx_secondary_uvs_and_vertex_colors();
     test_fbx_cluster_transform_link_drives_bind_pose();
+    test_fbx_procedural_surface_interpolates_skin_weights();
+    test_fbx_procedural_surface_interpolates_morph_deltas();
     test_fbx_imports_skeletons_beyond_draw_palette_limit();
     test_fbx_constant_animation_curve_preserves_step();
     test_model3d_loads_ascii_fbx_attributes_and_materials();
@@ -6952,6 +9471,15 @@ int main() {
     test_fbx_duplicate_bone_names_resolve_by_model_id();
     test_fbx_asset_accessors_clamp_corrupt_counts();
     test_fbx_imports_cameras_lights_and_object_animation();
+    test_fbx_animates_complete_camera_projection_state();
+    test_fbx_composes_animation_layers_for_nodes_and_bones();
+    test_fbx_imports_general_constraints_and_animated_dependencies();
+    test_fbx_constraint_validation_and_bounded_ik_failure();
+    test_fbx_constraints_drive_static_and_animated_skeleton_poses();
+    test_fbx_tessellates_binary_and_ascii_procedural_surfaces();
+    test_fbx_tessellates_surface_forms_and_every_patch_basis();
+    test_fbx_rejects_malformed_procedural_surfaces_transactionally();
+    test_fbx_rejects_invalid_native_light_dimensions();
     test_fbx_imports_progressive_morph_fidelity_and_animation();
     test_model3d_rejects_truncated_fbx();
     test_model3d_missing_fbx_returns_null_without_trap();
@@ -6965,8 +9493,9 @@ int main() {
     test_model3d_loads_draco_sequential_fixture();
     test_model3d_loads_draco_edgebreaker_spheres();
     test_model3d_vscn_v3_rig_roundtrip();
-    test_model3d_vscn_v4_full_scene_asset_roundtrip();
-    test_model3d_vscn_v4_corruption_rolls_back();
+    test_scene3d_vscn_v5_source_texture_roundtrip();
+    test_model3d_vscn_v5_full_scene_asset_roundtrip();
+    test_model3d_vscn_v5_corruption_rolls_back();
     test_model3d_draco_corrupt_payloads_fail_cleanly();
     test_model3d_generate_lods_builds_chains();
     test_model3d_applies_material_variants();

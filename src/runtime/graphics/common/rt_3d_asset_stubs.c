@@ -1044,6 +1044,52 @@ void *rt_light3d_new_spot(
     return NULL;
 }
 
+void *rt_light3d_new_area_rectangle(void *position,
+                                    void *direction,
+                                    double width,
+                                    double height,
+                                    double r,
+                                    double g,
+                                    double b,
+                                    double attenuation,
+                                    double range) {
+    (void)position;
+    (void)direction;
+    (void)width;
+    (void)height;
+    (void)r;
+    (void)g;
+    (void)b;
+    (void)attenuation;
+    (void)range;
+    rt_graphics_unavailable_("Light3D.AreaRectangle: graphics support not compiled in");
+    return NULL;
+}
+
+void *rt_light3d_new_area_sphere(
+    void *position, double radius, double r, double g, double b, double range) {
+    (void)position;
+    (void)radius;
+    (void)r;
+    (void)g;
+    (void)b;
+    (void)range;
+    rt_graphics_unavailable_("Light3D.AreaSphere: graphics support not compiled in");
+    return NULL;
+}
+
+void *rt_light3d_new_volume(
+    void *position, double radius, double r, double g, double b, double range) {
+    (void)position;
+    (void)radius;
+    (void)r;
+    (void)g;
+    (void)b;
+    (void)range;
+    rt_graphics_unavailable_("Light3D.Volume: graphics support not compiled in");
+    return NULL;
+}
+
 /// @brief Stub for `Light3D.SetIntensity` — multiplier applied to the
 ///        light's RGB contribution (HDR-friendly, may exceed 1.0).
 ///
@@ -1146,6 +1192,56 @@ void rt_light3d_set_position(void *o, void *position) {
 void rt_light3d_set_direction(void *o, void *direction) {
     (void)o;
     (void)direction;
+}
+
+double rt_light3d_get_width(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_light3d_set_width(void *o, double width) {
+    (void)o;
+    (void)width;
+}
+
+double rt_light3d_get_height(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_light3d_set_height(void *o, double height) {
+    (void)o;
+    (void)height;
+}
+
+double rt_light3d_get_radius(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_light3d_set_radius(void *o, double radius) {
+    (void)o;
+    (void)radius;
+}
+
+int64_t rt_light3d_get_decay_type(void *o) {
+    (void)o;
+    return 0;
+}
+
+void rt_light3d_set_decay_type(void *o, int64_t decay_type) {
+    (void)o;
+    (void)decay_type;
+}
+
+double rt_light3d_get_range(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+void rt_light3d_set_range(void *o, double range) {
+    (void)o;
+    (void)range;
 }
 
 /// @brief Stub for `NodeAnimation3D.New`; graphics support is unavailable.

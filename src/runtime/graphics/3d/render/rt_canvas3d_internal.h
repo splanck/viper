@@ -515,6 +515,8 @@ typedef struct {
 
 /// @brief Update a camera's cached projection for the given viewport aspect.
 void rt_camera3d_sync_render_aspect(void *cam, double aspect);
+/// @brief Set the retained perspective FOV even while an orthographic projection is active.
+void rt_camera3d_set_retained_fov(void *cam, double fov);
 /// @brief Compute a camera's 4x4 projection matrix into @p out_projection,
 ///        optionally overriding the aspect ratio (<= 0 keeps the camera's).
 void rt_camera3d_get_render_projection(void *cam, double aspect_override, float *out_projection);
@@ -522,6 +524,19 @@ void rt_camera3d_get_render_projection(void *cam, double aspect_override, float 
 void rt_camera3d_update_shake_for_frame(void *cam, double dt);
 /// @brief Internal: advance camera shake at most once for a renderer timing token.
 void rt_camera3d_update_shake_for_frame_token(void *cam, double dt, int64_t frame_token);
+/// @brief Internal deep copy used when instantiating scene-template cameras.
+void *rt_camera3d_clone(void *cam);
+/// @brief Internal scalar look-at path used by importers and scene-node camera coupling.
+void rt_camera3d_look_at_components(void *obj,
+                                    double eye_x,
+                                    double eye_y,
+                                    double eye_z,
+                                    double target_x,
+                                    double target_y,
+                                    double target_z,
+                                    double up_x,
+                                    double up_y,
+                                    double up_z);
 
 /// @brief Internal Mesh3D tangent generator for already-validated mesh storage.
 void rt_mesh3d_calc_tangents_impl(rt_mesh3d *mesh);
@@ -616,6 +631,12 @@ uint32_t rt_g3d_next_identity_serial(void);
 void *rt_material3d_resolve_texture_pixels(void *texture_ref);
 /// @brief Resolve a Material3D texture slot source to a native TextureAsset3D, if any.
 void *rt_material3d_resolve_texture_native_asset(void *texture_ref);
+/// @brief Private persistence/fidelity slot index for the baked lightmap reference.
+#define RT_MATERIAL3D_PERSISTED_TEXTURE_SLOT_LIGHTMAP 6
+#define RT_MATERIAL3D_PERSISTED_TEXTURE_SLOT_COUNT 7
+/// @brief Borrow one original material texture reference without resolving it to Pixels.
+/// @details Slots 0..5 use RT_MATERIAL3D_TEXTURE_SLOT_* ordering; slot 6 is the lightmap.
+void *rt_material3d_get_persisted_texture_ref(void *obj, int64_t slot);
 
 #define RT_MATERIAL3D_TEXTURE_WRAP_REPEAT 0
 #define RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE 1
@@ -667,11 +688,11 @@ void rt_material3d_set_import_texture_slot_sampler_axes(void *obj,
 // Light3D
 //=============================================================================
 
-/// @brief Light3D payload: light kind, direction/position, color/intensity/attenuation,
-///   spot cone cosines, an enabled flag, and whether it may claim shadow-map slots.
+/// @brief Light3D payload: punctual/ambient/area/volume kind, pose and emitter basis,
+///   color/intensity/decay, dimensions/range, and shadow eligibility.
 typedef struct {
     void *vptr;
-    int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot */
+    int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot, 4=rect, 5=sphere, 6=volume */
     double direction[3];
     double position[3];
     double color[3];
@@ -679,6 +700,13 @@ typedef struct {
     double attenuation;
     double inner_cos; /* spot light inner cone cosine (full brightness inside) */
     double outer_cos; /* spot light outer cone cosine (zero brightness outside) */
+    double basis_u[3];
+    double basis_v[3];
+    double width;
+    double height;
+    double radius;
+    double range;
+    int32_t decay_type; /* 0=none, 1=linear, 2=quadratic, 3=cubic */
     int8_t enabled;
     int8_t casts_shadows;
 } rt_light3d;

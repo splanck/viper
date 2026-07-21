@@ -627,6 +627,18 @@ void *rt_scene_node3d_get_material(void *n) {
     return NULL;
 }
 
+/// @brief Graphics-disabled SceneNode.Camera setter stub.
+void rt_scene_node3d_set_camera(void *n, void *camera) {
+    (void)n;
+    (void)camera;
+}
+
+/// @brief Graphics-disabled SceneNode.Camera getter stub.
+void *rt_scene_node3d_get_camera(void *n) {
+    (void)n;
+    return NULL;
+}
+
 /// @brief Stub for `SceneNode3D.SetVisible`.
 ///
 /// Silent no-op by default, or an unavailable-graphics trap when

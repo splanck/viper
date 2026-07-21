@@ -49,8 +49,16 @@ static void fbx_mesh_remap_free(fbx_mesh_remap_t *remap) {
             free(remap->control_vertices[i].vertices);
     }
     free(remap->control_vertices);
+    free(remap->surface_vertices);
+    free(remap->surface_control_indices);
+    free(remap->surface_control_weights);
     remap->control_vertices = NULL;
+    remap->surface_vertices = NULL;
+    remap->surface_control_indices = NULL;
+    remap->surface_control_weights = NULL;
     remap->control_count = 0;
+    remap->surface_vertex_count = 0;
+    remap->surface_contribution_count = 0;
     remap->id = 0;
 }
 
@@ -474,6 +482,1224 @@ static void fbx_parse_geometry_layers(fbx_node_t *geom_node,
     fbx_parse_vertex_layer(
         geom_node, "LayerElementColor", "Colors", "ColorIndex", "ColorIndex", 4, 0, color_layer);
     fbx_parse_material_layer(geom_node, mat);
+}
+
+#define FBX_SURFACE_MAX_STEP 256
+#define FBX_SURFACE_DENOM_EPSILON 1e-12
+
+typedef enum {
+    FBX_SURFACE_OPEN = 0,
+    FBX_SURFACE_CLOSED = 1,
+    FBX_SURFACE_PERIODIC = 2,
+} fbx_surface_form_t;
+
+typedef enum {
+    FBX_PATCH_BEZIER = 0,
+    FBX_PATCH_BEZIER_QUADRATIC = 1,
+    FBX_PATCH_CARDINAL = 2,
+    FBX_PATCH_BSPLINE = 3,
+    FBX_PATCH_LINEAR = 4,
+} fbx_patch_basis_t;
+
+/// @brief Sparse basis values for every generated sample along one surface axis.
+typedef struct {
+    int32_t sample_count;
+    int32_t segment_count;
+    int32_t support;
+    int closed;
+    int32_t *indices;
+    double *weights;
+    double *derivatives;
+} fbx_surface_axis_samples_t;
+
+/// @brief Release all heap storage owned by one sampled surface axis.
+static void fbx_surface_axis_samples_free(fbx_surface_axis_samples_t *axis) {
+    if (!axis)
+        return;
+    free(axis->indices);
+    free(axis->weights);
+    free(axis->derivatives);
+    memset(axis, 0, sizeof(*axis));
+}
+
+/// @brief Report a specific malformed procedural-surface diagnostic.
+/// @param message Stable user-facing error text.
+/// @return Zero for direct use in failure branches.
+static int fbx_surface_error(const char *message) {
+    rt_asset_error_set(RT_ASSET_ERROR_CORRUPT, message);
+    return 0;
+}
+
+/// @brief Return whether an FBX scalar property is numeric.
+static int fbx_surface_property_is_number(const fbx_prop_t *property) {
+    if (!property)
+        return 0;
+    return property->type == 'Y' || property->type == 'I' || property->type == 'L' ||
+           property->type == 'C' || property->type == 'F' || property->type == 'D';
+}
+
+/// @brief Read an exact two-scalar child node.
+static int fbx_surface_read_pair_i64(fbx_node_t *geometry,
+                                     const char *name,
+                                     int64_t out_values[2]) {
+    fbx_node_t *child = fbx_find_child(geometry, name);
+    if (!child || child->prop_count != 2 || !fbx_surface_property_is_number(&child->props[0]) ||
+        !fbx_surface_property_is_number(&child->props[1]))
+        return 0;
+    out_values[0] = fbx_prop_i64(child, 0);
+    out_values[1] = fbx_prop_i64(child, 1);
+    return 1;
+}
+
+/// @brief Read one float/double numeric-array element as double.
+static int fbx_surface_array_number(const fbx_prop_t *property, uint32_t index, double *out_value) {
+    double value;
+    if (!property || !out_value || !property->v.array.data || index >= property->v.array.count)
+        return 0;
+    if (property->type == 'd')
+        value = ((const double *)property->v.array.data)[index];
+    else if (property->type == 'f')
+        value = (double)((const float *)property->v.array.data)[index];
+    else
+        return 0;
+    if (!isfinite(value))
+        return 0;
+    *out_value = value;
+    return 1;
+}
+
+/// @brief Parse one NURBS form lane from string or SDK enum encoding.
+static int fbx_surface_parse_form(fbx_node_t *form_node, int index, fbx_surface_form_t *out_form) {
+    fbx_prop_t *property;
+    if (!form_node || !out_form || index < 0 || index >= form_node->prop_count)
+        return 0;
+    property = &form_node->props[index];
+    if (property->type == 'S') {
+        const char *text = fbx_prop_str(form_node, index);
+        if (fbx_ascii_equals_i(text, "Open"))
+            *out_form = FBX_SURFACE_OPEN;
+        else if (fbx_ascii_equals_i(text, "Closed"))
+            *out_form = FBX_SURFACE_CLOSED;
+        else if (fbx_ascii_equals_i(text, "Periodic"))
+            *out_form = FBX_SURFACE_PERIODIC;
+        else
+            return 0;
+        return 1;
+    }
+    if (fbx_surface_property_is_number(property)) {
+        /* FbxNurbsSurface::EType is ePeriodic=0, eClosed=1, eOpen=2. */
+        int64_t value = fbx_prop_i64(form_node, index);
+        if (value == 0)
+            *out_form = FBX_SURFACE_PERIODIC;
+        else if (value == 1)
+            *out_form = FBX_SURFACE_CLOSED;
+        else if (value == 2)
+            *out_form = FBX_SURFACE_OPEN;
+        else
+            return 0;
+        return 1;
+    }
+    return 0;
+}
+
+/// @brief Parse one FBX Patch basis lane from string or SDK enum encoding.
+static int fbx_surface_parse_patch_basis(fbx_node_t *type_node,
+                                         int index,
+                                         fbx_patch_basis_t *out_basis) {
+    fbx_prop_t *property;
+    if (!type_node || !out_basis || index < 0 || index >= type_node->prop_count)
+        return 0;
+    property = &type_node->props[index];
+    if (property->type == 'S') {
+        const char *text = fbx_prop_str(type_node, index);
+        if (fbx_ascii_equals_i(text, "Bezier"))
+            *out_basis = FBX_PATCH_BEZIER;
+        else if (fbx_ascii_equals_i(text, "BezierQuadric") ||
+                 fbx_ascii_equals_i(text, "BezierQuadratic") ||
+                 fbx_ascii_equals_i(text, "QuadraticBezier"))
+            *out_basis = FBX_PATCH_BEZIER_QUADRATIC;
+        else if (fbx_ascii_equals_i(text, "Cardinal"))
+            *out_basis = FBX_PATCH_CARDINAL;
+        else if (fbx_ascii_equals_i(text, "BSpline") || fbx_ascii_equals_i(text, "B-Spline"))
+            *out_basis = FBX_PATCH_BSPLINE;
+        else if (fbx_ascii_equals_i(text, "Linear"))
+            *out_basis = FBX_PATCH_LINEAR;
+        else
+            return 0;
+        return 1;
+    }
+    if (fbx_surface_property_is_number(property)) {
+        int64_t value = fbx_prop_i64(type_node, index);
+        if (value < FBX_PATCH_BEZIER || value > FBX_PATCH_LINEAR)
+            return 0;
+        *out_basis = (fbx_patch_basis_t)value;
+        return 1;
+    }
+    return 0;
+}
+
+/// @brief Resolve and validate authored subdivisions, applying the FBX minimum of one.
+static int fbx_surface_validate_steps(const int64_t authored[2], int32_t out_steps[2]) {
+    for (int axis = 0; axis < 2; ++axis) {
+        if (authored[axis] > FBX_SURFACE_MAX_STEP)
+            return fbx_surface_error("FBX: procedural surface step exceeds 256 subdivisions");
+        out_steps[axis] = authored[axis] < 1 ? 1 : (int32_t)authored[axis];
+    }
+    return 1;
+}
+
+/// @brief Load and normalize an exact four-lane control net.
+/// @details FBX NURBS points store Euclidean xyz plus a rational weight. Patch points use the
+///          same four-lane representation but do not require a nonzero weight.
+static double *fbx_surface_load_control_net(fbx_node_t *geometry,
+                                            int32_t count_u,
+                                            int32_t count_v,
+                                            int rational,
+                                            int z_up,
+                                            fbx_load_context_t *context) {
+    fbx_node_t *points_node = fbx_find_child(geometry, "Points");
+    uint64_t control_count;
+    uint64_t component_count;
+    double *controls;
+    if (!points_node)
+        points_node = fbx_find_child(geometry, "Vertices");
+    if (!points_node || points_node->prop_count != 1 || count_u <= 0 || count_v <= 0)
+        return NULL;
+    if ((uint64_t)count_u > UINT64_MAX / (uint64_t)count_v)
+        return NULL;
+    control_count = (uint64_t)count_u * (uint64_t)count_v;
+    if (control_count > INT32_MAX || control_count > UINT64_MAX / 4u)
+        return NULL;
+    component_count = control_count * 4u;
+    if ((points_node->props[0].type != 'd' && points_node->props[0].type != 'f') ||
+        points_node->props[0].v.array.count != component_count ||
+        !rt_untrusted_count_ok(
+            (int64_t)component_count, sizeof(double), FBX_MAX_DECOMPRESSED_ARRAY_BYTES) ||
+        !fbx_budget_charge(context, component_count, sizeof(double)))
+        return NULL;
+    controls = (double *)malloc((size_t)component_count * sizeof(*controls));
+    if (!controls)
+        return NULL;
+    for (uint64_t control = 0; control < control_count; ++control) {
+        double x, y, z, weight;
+        uint32_t offset = (uint32_t)(control * 4u);
+        if (!fbx_surface_array_number(&points_node->props[0], offset + 0u, &x) ||
+            !fbx_surface_array_number(&points_node->props[0], offset + 1u, &y) ||
+            !fbx_surface_array_number(&points_node->props[0], offset + 2u, &z) ||
+            !fbx_surface_array_number(&points_node->props[0], offset + 3u, &weight) ||
+            !fbx_sanitize_position3(&x, &y, &z) ||
+            (rational && fabs(weight) <= FBX_SURFACE_DENOM_EPSILON)) {
+            free(controls);
+            return NULL;
+        }
+        if (z_up)
+            fbx_correct_zup(&x, &y, &z);
+        controls[offset + 0u] = x;
+        controls[offset + 1u] = y;
+        controls[offset + 2u] = z;
+        controls[offset + 3u] = weight;
+    }
+    return controls;
+}
+
+/// @brief Copy and validate one NURBS knot vector, or generate a deterministic legal vector.
+static double *fbx_surface_load_knots(fbx_node_t *geometry,
+                                      const char *name,
+                                      int32_t control_count,
+                                      int32_t order,
+                                      fbx_surface_form_t form,
+                                      fbx_load_context_t *context) {
+    fbx_node_t *knot_node = fbx_find_child(geometry, name);
+    int32_t knot_count;
+    double *knots;
+    if (control_count <= 0 || order < 2 || order > control_count ||
+        control_count > INT32_MAX - order)
+        return NULL;
+    knot_count = control_count + order;
+    if (!rt_untrusted_count_ok(knot_count, sizeof(double), FBX_MAX_DECOMPRESSED_ARRAY_BYTES) ||
+        !fbx_budget_charge(context, (uint64_t)knot_count, sizeof(double)))
+        return NULL;
+    knots = (double *)malloc((size_t)knot_count * sizeof(*knots));
+    if (!knots)
+        return NULL;
+    if (knot_node) {
+        if (knot_node->prop_count != 1 ||
+            (knot_node->props[0].type != 'd' && knot_node->props[0].type != 'f') ||
+            knot_node->props[0].v.array.count != (uint32_t)knot_count) {
+            free(knots);
+            return NULL;
+        }
+        for (int32_t i = 0; i < knot_count; ++i) {
+            if (!fbx_surface_array_number(&knot_node->props[0], (uint32_t)i, &knots[i]) ||
+                (i > 0 && knots[i] < knots[i - 1])) {
+                free(knots);
+                return NULL;
+            }
+        }
+    } else if (form == FBX_SURFACE_OPEN) {
+        int32_t span_count = control_count - order + 1;
+        for (int32_t i = 0; i < knot_count; ++i) {
+            if (i < order)
+                knots[i] = 0.0;
+            else if (i >= control_count)
+                knots[i] = 1.0;
+            else
+                knots[i] = (double)(i - order + 1) / (double)span_count;
+        }
+    } else {
+        for (int32_t i = 0; i < knot_count; ++i)
+            knots[i] = (double)i;
+    }
+    if (!isfinite(knots[order - 1]) || !isfinite(knots[control_count]) ||
+        knots[control_count] <= knots[order - 1]) {
+        free(knots);
+        return NULL;
+    }
+    return knots;
+}
+
+/// @brief Allocate fixed-width sparse basis arrays for one sampled axis.
+static int fbx_surface_axis_allocate(fbx_surface_axis_samples_t *axis,
+                                     int32_t sample_count,
+                                     int32_t segment_count,
+                                     int32_t support,
+                                     int closed,
+                                     fbx_load_context_t *context) {
+    uint64_t contribution_count;
+    if (!axis || sample_count <= 0 || segment_count <= 0 || support <= 0 ||
+        (uint64_t)sample_count > UINT64_MAX / (uint64_t)support)
+        return 0;
+    contribution_count = (uint64_t)sample_count * (uint64_t)support;
+    if (contribution_count > SIZE_MAX / sizeof(*axis->indices) ||
+        contribution_count > SIZE_MAX / sizeof(*axis->weights) ||
+        contribution_count > SIZE_MAX / sizeof(*axis->derivatives) ||
+        !rt_untrusted_count_ok((int64_t)contribution_count,
+                               sizeof(*axis->indices),
+                               FBX_MAX_DECOMPRESSED_ARRAY_BYTES) ||
+        !rt_untrusted_count_ok((int64_t)contribution_count,
+                               sizeof(*axis->weights),
+                               FBX_MAX_DECOMPRESSED_ARRAY_BYTES) ||
+        !rt_untrusted_count_ok((int64_t)contribution_count,
+                               sizeof(*axis->derivatives),
+                               FBX_MAX_DECOMPRESSED_ARRAY_BYTES) ||
+        !fbx_budget_charge(context, contribution_count, sizeof(*axis->indices)) ||
+        !fbx_budget_charge(context, contribution_count, sizeof(*axis->weights)) ||
+        !fbx_budget_charge(context, contribution_count, sizeof(*axis->derivatives)))
+        return 0;
+    memset(axis, 0, sizeof(*axis));
+    axis->indices = (int32_t *)malloc((size_t)contribution_count * sizeof(*axis->indices));
+    axis->weights = (double *)calloc((size_t)contribution_count, sizeof(*axis->weights));
+    axis->derivatives = (double *)calloc((size_t)contribution_count, sizeof(*axis->derivatives));
+    if (!axis->indices || !axis->weights || !axis->derivatives) {
+        fbx_surface_axis_samples_free(axis);
+        return 0;
+    }
+    for (uint64_t i = 0; i < contribution_count; ++i)
+        axis->indices[i] = -1;
+    axis->sample_count = sample_count;
+    axis->segment_count = segment_count;
+    axis->support = support;
+    axis->closed = closed;
+    return 1;
+}
+
+/// @brief Evaluate one order of Cox-de Boor values for a known knot span.
+static int fbx_surface_nurbs_basis_values(const double *knots,
+                                          int32_t order,
+                                          int32_t span,
+                                          double parameter,
+                                          double *basis,
+                                          double *left,
+                                          double *right) {
+    int32_t degree = order - 1;
+    if (!knots || !basis || !left || !right || order < 1 || span < degree || !isfinite(parameter))
+        return 0;
+    memset(basis, 0, (size_t)order * sizeof(*basis));
+    basis[0] = 1.0;
+    for (int32_t j = 1; j <= degree; ++j) {
+        double saved = 0.0;
+        left[j] = parameter - knots[span + 1 - j];
+        right[j] = knots[span + j] - parameter;
+        for (int32_t r = 0; r < j; ++r) {
+            double denominator = right[r + 1] + left[j - r];
+            double temporary =
+                fabs(denominator) > FBX_SURFACE_DENOM_EPSILON ? basis[r] / denominator : 0.0;
+            basis[r] = saved + right[r + 1] * temporary;
+            saved = left[j - r] * temporary;
+        }
+        basis[j] = saved;
+    }
+    return 1;
+}
+
+/// @brief Evaluate nonzero NURBS basis functions and their analytic derivatives.
+static int fbx_surface_nurbs_basis(const double *knots,
+                                   int32_t control_count,
+                                   int32_t order,
+                                   int32_t span,
+                                   double parameter,
+                                   int32_t *out_indices,
+                                   double *out_weights,
+                                   double *out_derivatives,
+                                   double *basis,
+                                   double *left,
+                                   double *right) {
+    int32_t degree = order - 1;
+    double sum = 0.0;
+    if (!knots || !out_indices || !out_weights || !out_derivatives || !basis || !left || !right ||
+        order < 2 || span < degree || span >= control_count ||
+        !fbx_surface_nurbs_basis_values(knots, order, span, parameter, basis, left, right))
+        return 0;
+    for (int32_t i = 0; i < order; ++i) {
+        int32_t control_index = span - degree + i;
+        if (control_index < 0 || control_index >= control_count || !isfinite(basis[i]))
+            return 0;
+        out_indices[i] = control_index;
+        out_weights[i] = fabs(basis[i]) <= 1e-15 ? 0.0 : basis[i];
+        sum += out_weights[i];
+    }
+    if (!isfinite(sum) || fabs(sum) <= FBX_SURFACE_DENOM_EPSILON)
+        return 0;
+    for (int32_t i = 0; i < order; ++i)
+        out_weights[i] /= sum;
+    if (!fbx_surface_nurbs_basis_values(knots, order - 1, span, parameter, basis, left, right))
+        return 0;
+    for (int32_t i = 0; i < order; ++i) {
+        int32_t control_index = out_indices[i];
+        double first = i > 0 ? basis[i - 1] : 0.0;
+        double second = i < degree ? basis[i] : 0.0;
+        double first_denominator = knots[control_index + degree] - knots[control_index];
+        double second_denominator = knots[control_index + degree + 1] - knots[control_index + 1];
+        double derivative = 0.0;
+        if (fabs(first_denominator) > FBX_SURFACE_DENOM_EPSILON)
+            derivative += (double)degree * first / first_denominator;
+        if (fabs(second_denominator) > FBX_SURFACE_DENOM_EPSILON)
+            derivative -= (double)degree * second / second_denominator;
+        if (!isfinite(derivative))
+            return 0;
+        out_derivatives[i] = fabs(derivative) <= 1e-15 ? 0.0 : derivative;
+    }
+    return 1;
+}
+
+/// @brief Sample one complete NURBS axis at the authored frequency.
+static int fbx_surface_build_nurbs_axis(const double *knots,
+                                        int32_t control_count,
+                                        int32_t order,
+                                        int32_t step,
+                                        fbx_surface_form_t form,
+                                        fbx_load_context_t *context,
+                                        fbx_surface_axis_samples_t *out_axis) {
+    int32_t degree = order - 1;
+    int32_t nonempty_spans = 0;
+    int64_t segment_count64;
+    int64_t sample_count64;
+    int32_t sample_index = 0;
+    double *scratch;
+    double *basis;
+    double *left;
+    double *right;
+    int closed = form != FBX_SURFACE_OPEN;
+    if (!knots || !out_axis || control_count <= 0 || order < 2 || order > control_count ||
+        step < 1 || step > FBX_SURFACE_MAX_STEP)
+        return 0;
+    for (int32_t span = degree; span < control_count; ++span) {
+        if (!isfinite(knots[span]) || !isfinite(knots[span + 1]) || knots[span + 1] < knots[span])
+            return 0;
+        if (knots[span + 1] > knots[span])
+            nonempty_spans++;
+    }
+    if (nonempty_spans <= 0)
+        return 0;
+    segment_count64 = (int64_t)nonempty_spans * (int64_t)step;
+    sample_count64 = segment_count64 + (closed ? 0 : 1);
+    if (segment_count64 <= 0 || segment_count64 > INT32_MAX || sample_count64 <= 1 ||
+        sample_count64 > INT32_MAX ||
+        !fbx_surface_axis_allocate(
+            out_axis, (int32_t)sample_count64, (int32_t)segment_count64, order, closed, context) ||
+        !fbx_budget_charge(context, (uint64_t)order * 3u, sizeof(double)))
+        return 0;
+    scratch = (double *)calloc((size_t)order * 3u, sizeof(*scratch));
+    if (!scratch) {
+        fbx_surface_axis_samples_free(out_axis);
+        return 0;
+    }
+    basis = scratch;
+    left = scratch + order;
+    right = scratch + order * 2;
+    for (int32_t span = degree; span < control_count; ++span) {
+        double start = knots[span];
+        double end = knots[span + 1];
+        if (end <= start)
+            continue;
+        for (int32_t subdivision = 0; subdivision < step; ++subdivision) {
+            double parameter = start + (end - start) * ((double)subdivision / (double)step);
+            size_t offset = (size_t)sample_index * (size_t)order;
+            if (!fbx_surface_nurbs_basis(knots,
+                                         control_count,
+                                         order,
+                                         span,
+                                         parameter,
+                                         out_axis->indices + offset,
+                                         out_axis->weights + offset,
+                                         out_axis->derivatives + offset,
+                                         basis,
+                                         left,
+                                         right)) {
+                free(scratch);
+                fbx_surface_axis_samples_free(out_axis);
+                return 0;
+            }
+            sample_index++;
+        }
+    }
+    if (!closed) {
+        int32_t span = control_count - 1;
+        size_t offset = (size_t)sample_index * (size_t)order;
+        if (!fbx_surface_nurbs_basis(knots,
+                                     control_count,
+                                     order,
+                                     span,
+                                     knots[control_count],
+                                     out_axis->indices + offset,
+                                     out_axis->weights + offset,
+                                     out_axis->derivatives + offset,
+                                     basis,
+                                     left,
+                                     right)) {
+            free(scratch);
+            fbx_surface_axis_samples_free(out_axis);
+            return 0;
+        }
+        sample_index++;
+    }
+    free(scratch);
+    if (sample_index != out_axis->sample_count) {
+        fbx_surface_axis_samples_free(out_axis);
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Wrap a signed control index into one closed patch axis.
+static int32_t fbx_surface_wrap_index(int32_t index, int32_t count) {
+    int32_t wrapped;
+    if (count <= 0)
+        return -1;
+    wrapped = index % count;
+    return wrapped < 0 ? wrapped + count : wrapped;
+}
+
+/// @brief Validate one patch axis and return its authored span/support counts.
+static int fbx_surface_patch_layout(fbx_patch_basis_t basis,
+                                    int32_t control_count,
+                                    int closed,
+                                    int32_t *out_span_count,
+                                    int32_t *out_support) {
+    int32_t spans = 0;
+    int32_t support = 0;
+    if (!out_span_count || !out_support || control_count <= 0)
+        return 0;
+    switch (basis) {
+        case FBX_PATCH_LINEAR:
+            if (control_count < 2)
+                return 0;
+            spans = closed ? control_count : control_count - 1;
+            support = 2;
+            break;
+        case FBX_PATCH_BEZIER:
+            support = 4;
+            if (closed) {
+                if (control_count < 3 || control_count % 3 != 0)
+                    return 0;
+                spans = control_count / 3;
+            } else {
+                if (control_count < 4 || (control_count - 1) % 3 != 0)
+                    return 0;
+                spans = (control_count - 1) / 3;
+            }
+            break;
+        case FBX_PATCH_BEZIER_QUADRATIC:
+            support = 3;
+            if (closed) {
+                if (control_count < 2 || control_count % 2 != 0)
+                    return 0;
+                spans = control_count / 2;
+            } else {
+                if (control_count < 3 || (control_count - 1) % 2 != 0)
+                    return 0;
+                spans = (control_count - 1) / 2;
+            }
+            break;
+        case FBX_PATCH_CARDINAL:
+        case FBX_PATCH_BSPLINE:
+            if (control_count < 4)
+                return 0;
+            spans = closed ? control_count : control_count - 3;
+            support = 4;
+            break;
+        default:
+            return 0;
+    }
+    if (spans <= 0)
+        return 0;
+    *out_span_count = spans;
+    *out_support = support;
+    return 1;
+}
+
+/// @brief Fill sparse control indices and basis values for one patch span sample.
+static int fbx_surface_patch_basis(fbx_patch_basis_t basis,
+                                   int32_t control_count,
+                                   int closed,
+                                   int32_t span,
+                                   double t,
+                                   int32_t *out_indices,
+                                   double *out_weights,
+                                   double *out_derivatives) {
+    int32_t first = 0;
+    int32_t support = 0;
+    double one_minus_t = 1.0 - t;
+    if (!out_indices || !out_weights || !out_derivatives || !isfinite(t) || t < 0.0 || t > 1.0)
+        return 0;
+    switch (basis) {
+        case FBX_PATCH_LINEAR:
+            support = 2;
+            first = span;
+            out_weights[0] = one_minus_t;
+            out_weights[1] = t;
+            out_derivatives[0] = -1.0;
+            out_derivatives[1] = 1.0;
+            break;
+        case FBX_PATCH_BEZIER:
+            support = 4;
+            first = span * 3;
+            out_weights[0] = one_minus_t * one_minus_t * one_minus_t;
+            out_weights[1] = 3.0 * t * one_minus_t * one_minus_t;
+            out_weights[2] = 3.0 * t * t * one_minus_t;
+            out_weights[3] = t * t * t;
+            out_derivatives[0] = -3.0 * one_minus_t * one_minus_t;
+            out_derivatives[1] = 3.0 * one_minus_t * one_minus_t - 6.0 * t * one_minus_t;
+            out_derivatives[2] = 6.0 * t * one_minus_t - 3.0 * t * t;
+            out_derivatives[3] = 3.0 * t * t;
+            break;
+        case FBX_PATCH_BEZIER_QUADRATIC:
+            support = 3;
+            first = span * 2;
+            out_weights[0] = one_minus_t * one_minus_t;
+            out_weights[1] = 2.0 * t * one_minus_t;
+            out_weights[2] = t * t;
+            out_derivatives[0] = -2.0 * one_minus_t;
+            out_derivatives[1] = 2.0 - 4.0 * t;
+            out_derivatives[2] = 2.0 * t;
+            break;
+        case FBX_PATCH_CARDINAL: {
+            double t2 = t * t;
+            double t3 = t2 * t;
+            support = 4;
+            first = closed ? span - 1 : span;
+            out_weights[0] = -0.5 * t + t2 - 0.5 * t3;
+            out_weights[1] = 1.0 - 2.5 * t2 + 1.5 * t3;
+            out_weights[2] = 0.5 * t + 2.0 * t2 - 1.5 * t3;
+            out_weights[3] = -0.5 * t2 + 0.5 * t3;
+            out_derivatives[0] = -0.5 + 2.0 * t - 1.5 * t2;
+            out_derivatives[1] = -5.0 * t + 4.5 * t2;
+            out_derivatives[2] = 0.5 + 4.0 * t - 4.5 * t2;
+            out_derivatives[3] = -t + 1.5 * t2;
+            break;
+        }
+        case FBX_PATCH_BSPLINE: {
+            double t2 = t * t;
+            double t3 = t2 * t;
+            support = 4;
+            first = closed ? span - 1 : span;
+            out_weights[0] = one_minus_t * one_minus_t * one_minus_t / 6.0;
+            out_weights[1] = (3.0 * t3 - 6.0 * t2 + 4.0) / 6.0;
+            out_weights[2] = (-3.0 * t3 + 3.0 * t2 + 3.0 * t + 1.0) / 6.0;
+            out_weights[3] = t3 / 6.0;
+            out_derivatives[0] = -0.5 * one_minus_t * one_minus_t;
+            out_derivatives[1] = (9.0 * t2 - 12.0 * t) / 6.0;
+            out_derivatives[2] = (-9.0 * t2 + 6.0 * t + 3.0) / 6.0;
+            out_derivatives[3] = 0.5 * t2;
+            break;
+        }
+        default:
+            return 0;
+    }
+    for (int32_t i = 0; i < support; ++i) {
+        int32_t index = first + i;
+        if (closed)
+            index = fbx_surface_wrap_index(index, control_count);
+        if (index < 0 || index >= control_count || !isfinite(out_weights[i]) ||
+            !isfinite(out_derivatives[i]))
+            return 0;
+        out_indices[i] = index;
+        if (fabs(out_weights[i]) <= 1e-15)
+            out_weights[i] = 0.0;
+        if (fabs(out_derivatives[i]) <= 1e-15)
+            out_derivatives[i] = 0.0;
+    }
+    return 1;
+}
+
+/// @brief Sample one complete FBX Patch axis at its authored frequency.
+static int fbx_surface_build_patch_axis(fbx_patch_basis_t basis,
+                                        int32_t control_count,
+                                        int32_t step,
+                                        int closed,
+                                        fbx_load_context_t *context,
+                                        fbx_surface_axis_samples_t *out_axis) {
+    int32_t span_count;
+    int32_t support;
+    int64_t segment_count64;
+    int64_t sample_count64;
+    int32_t sample_index = 0;
+    if (!out_axis || step < 1 || step > FBX_SURFACE_MAX_STEP ||
+        !fbx_surface_patch_layout(basis, control_count, closed, &span_count, &support))
+        return 0;
+    segment_count64 = (int64_t)span_count * (int64_t)step;
+    sample_count64 = segment_count64 + (closed ? 0 : 1);
+    if (segment_count64 <= 0 || segment_count64 > INT32_MAX || sample_count64 <= 1 ||
+        sample_count64 > INT32_MAX ||
+        !fbx_surface_axis_allocate(
+            out_axis, (int32_t)sample_count64, (int32_t)segment_count64, support, closed, context))
+        return 0;
+    for (int32_t span = 0; span < span_count; ++span) {
+        for (int32_t subdivision = 0; subdivision < step; ++subdivision) {
+            double t = (double)subdivision / (double)step;
+            size_t offset = (size_t)sample_index * (size_t)support;
+            if (!fbx_surface_patch_basis(basis,
+                                         control_count,
+                                         closed,
+                                         span,
+                                         t,
+                                         out_axis->indices + offset,
+                                         out_axis->weights + offset,
+                                         out_axis->derivatives + offset)) {
+                fbx_surface_axis_samples_free(out_axis);
+                return 0;
+            }
+            sample_index++;
+        }
+    }
+    if (!closed) {
+        size_t offset = (size_t)sample_index * (size_t)support;
+        if (!fbx_surface_patch_basis(basis,
+                                     control_count,
+                                     0,
+                                     span_count - 1,
+                                     1.0,
+                                     out_axis->indices + offset,
+                                     out_axis->weights + offset,
+                                     out_axis->derivatives + offset)) {
+            fbx_surface_axis_samples_free(out_axis);
+            return 0;
+        }
+        sample_index++;
+    }
+    if (sample_index != out_axis->sample_count) {
+        fbx_surface_axis_samples_free(out_axis);
+        return 0;
+    }
+    return 1;
+}
+
+/// @brief Whether a Geometry subtype is converted into a runtime triangle mesh.
+static int fbx_geometry_type_is_renderable(const char *geometry_type) {
+    return geometry_type &&
+           (strcmp(geometry_type, "Mesh") == 0 || strcmp(geometry_type, "NurbsSurface") == 0 ||
+            strcmp(geometry_type, "Nurb") == 0 || strcmp(geometry_type, "Nurbs") == 0 ||
+            strcmp(geometry_type, "Patch") == 0);
+}
+
+/// @brief Allocate sparse procedural control contributions on an initialized mesh remap.
+static int fbx_surface_prepare_remap(fbx_mesh_remap_t *remap,
+                                     int64_t geometry_id,
+                                     int32_t control_count,
+                                     int32_t vertex_count,
+                                     int32_t max_contributions_per_vertex,
+                                     fbx_load_context_t *context) {
+    uint64_t contribution_capacity;
+    if (!remap || control_count <= 0 || vertex_count <= 0 || max_contributions_per_vertex <= 0 ||
+        (uint64_t)vertex_count > UINT64_MAX / (uint64_t)max_contributions_per_vertex ||
+        !fbx_budget_charge(context, (uint64_t)control_count, sizeof(fbx_vertex_index_list_t)) ||
+        !fbx_mesh_remap_init(remap, geometry_id, control_count))
+        return 0;
+    contribution_capacity = (uint64_t)vertex_count * (uint64_t)max_contributions_per_vertex;
+    if (contribution_capacity > UINT32_MAX ||
+        (uint64_t)vertex_count > SIZE_MAX / sizeof(*remap->surface_vertices) ||
+        contribution_capacity > SIZE_MAX / sizeof(*remap->surface_control_indices) ||
+        contribution_capacity > SIZE_MAX / sizeof(*remap->surface_control_weights) ||
+        !fbx_budget_charge(context, (uint64_t)vertex_count, sizeof(*remap->surface_vertices)) ||
+        !fbx_budget_charge(
+            context, contribution_capacity, sizeof(*remap->surface_control_indices)) ||
+        !fbx_budget_charge(
+            context, contribution_capacity, sizeof(*remap->surface_control_weights))) {
+        fbx_mesh_remap_free(remap);
+        return 0;
+    }
+    remap->surface_vertices = (fbx_surface_vertex_remap_t *)calloc(
+        (size_t)vertex_count, sizeof(*remap->surface_vertices));
+    remap->surface_control_indices =
+        (int32_t *)malloc((size_t)contribution_capacity * sizeof(*remap->surface_control_indices));
+    remap->surface_control_weights =
+        (double *)malloc((size_t)contribution_capacity * sizeof(*remap->surface_control_weights));
+    if (!remap->surface_vertices || !remap->surface_control_indices ||
+        !remap->surface_control_weights) {
+        fbx_mesh_remap_free(remap);
+        return 0;
+    }
+    remap->surface_vertex_count = (uint32_t)vertex_count;
+    remap->surface_contribution_count = 0;
+    return 1;
+}
+
+/// @brief Read one optional boolean pair, using false/false when absent.
+static int fbx_surface_read_closed_pair(fbx_node_t *geometry, int out_closed[2]) {
+    fbx_node_t *closed_node = fbx_find_child(geometry, "Closed");
+    out_closed[0] = 0;
+    out_closed[1] = 0;
+    if (!closed_node)
+        return 1;
+    if (closed_node->prop_count != 2)
+        return 0;
+    out_closed[0] = fbx_prop_truthy(closed_node, 0);
+    out_closed[1] = fbx_prop_truthy(closed_node, 1);
+    return 1;
+}
+
+/// @brief Return whether one optional scalar child is truthy.
+static int fbx_surface_child_truthy(fbx_node_t *geometry, const char *name) {
+    fbx_node_t *child = fbx_find_child(geometry, name);
+    return child && child->prop_count > 0 ? fbx_prop_truthy(child, 0) : 0;
+}
+
+/// @brief Evaluate sampled basis tensors, generate normals/topology, and publish a Mesh3D.
+static void *fbx_surface_build_mesh(fbx_node_t *geometry,
+                                    const double *controls,
+                                    int32_t count_u,
+                                    int32_t count_v,
+                                    const fbx_surface_axis_samples_t *axis_u,
+                                    const fbx_surface_axis_samples_t *axis_v,
+                                    int rational,
+                                    int flip_normals,
+                                    fbx_load_context_t *context,
+                                    fbx_mesh_remap_t *remap,
+                                    fbx_mesh_material_map_t *material_map) {
+    uint64_t vertex_count64;
+    uint64_t quad_u;
+    uint64_t quad_v;
+    uint64_t triangle_count64;
+    uint64_t index_count64;
+    uint64_t max_contributions64;
+    double *positions = NULL;
+    double *normals = NULL;
+    void *mesh = NULL;
+    uint32_t contribution_cursor = 0;
+    if (!geometry || !controls || !axis_u || !axis_v || !context || !remap || count_u <= 0 ||
+        count_v <= 0 || axis_u->sample_count <= 1 || axis_v->sample_count <= 1 ||
+        axis_u->support <= 0 || axis_v->support <= 0)
+        return NULL;
+    if ((uint64_t)axis_u->sample_count > UINT64_MAX / (uint64_t)axis_v->sample_count)
+        return NULL;
+    vertex_count64 = (uint64_t)axis_u->sample_count * (uint64_t)axis_v->sample_count;
+    quad_u = axis_u->closed ? (uint64_t)axis_u->sample_count : (uint64_t)axis_u->sample_count - 1u;
+    quad_v = axis_v->closed ? (uint64_t)axis_v->sample_count : (uint64_t)axis_v->sample_count - 1u;
+    if (quad_u == 0 || quad_v == 0 || quad_u > UINT64_MAX / quad_v ||
+        quad_u * quad_v > UINT64_MAX / 2u)
+        return NULL;
+    triangle_count64 = quad_u * quad_v * 2u;
+    if (triangle_count64 > UINT64_MAX / 3u)
+        return NULL;
+    index_count64 = triangle_count64 * 3u;
+    if ((uint64_t)axis_u->support > UINT64_MAX / (uint64_t)axis_v->support)
+        return NULL;
+    max_contributions64 = (uint64_t)axis_u->support * (uint64_t)axis_v->support;
+    if (vertex_count64 > INT32_MAX || vertex_count64 > UINT64_MAX / 6u ||
+        triangle_count64 > UINT32_MAX / 3u || index_count64 > UINT32_MAX ||
+        max_contributions64 > INT32_MAX ||
+        !rt_untrusted_count_ok(
+            (int64_t)(vertex_count64 * 3u), sizeof(double), FBX_MAX_DECOMPRESSED_ARRAY_BYTES) ||
+        !fbx_budget_charge(context, vertex_count64 * 6u, sizeof(double)) ||
+        !fbx_budget_charge(context, vertex_count64, sizeof(vgfx3d_vertex_t)) ||
+        !fbx_budget_charge(context, index_count64, sizeof(uint32_t)) ||
+        !fbx_surface_prepare_remap(remap,
+                                   fbx_prop_i64(geometry, 0),
+                                   count_u * count_v,
+                                   (int32_t)vertex_count64,
+                                   (int32_t)max_contributions64,
+                                   context))
+        return NULL;
+    positions = (double *)malloc((size_t)vertex_count64 * 3u * sizeof(*positions));
+    normals = (double *)malloc((size_t)vertex_count64 * 3u * sizeof(*normals));
+    if (!positions || !normals)
+        goto fail;
+
+    for (int32_t v = 0; v < axis_v->sample_count; ++v) {
+        size_t v_basis_offset = (size_t)v * (size_t)axis_v->support;
+        for (int32_t u = 0; u < axis_u->sample_count; ++u) {
+            size_t u_basis_offset = (size_t)u * (size_t)axis_u->support;
+            uint32_t vertex =
+                (uint32_t)((uint64_t)v * (uint64_t)axis_u->sample_count + (uint64_t)u);
+            double denominator = rational ? 0.0 : 1.0;
+            double denominator_u = 0.0;
+            double denominator_v = 0.0;
+            double position[3] = {0.0, 0.0, 0.0};
+            double tangent_u[3] = {0.0, 0.0, 0.0};
+            double tangent_v[3] = {0.0, 0.0, 0.0};
+            fbx_surface_vertex_remap_t *vertex_remap = &remap->surface_vertices[vertex];
+            vertex_remap->offset = contribution_cursor;
+            vertex_remap->count = 0;
+            if (rational) {
+                for (int32_t sv = 0; sv < axis_v->support; ++sv) {
+                    int32_t cv = axis_v->indices[v_basis_offset + (size_t)sv];
+                    double bv = axis_v->weights[v_basis_offset + (size_t)sv];
+                    double dbv = axis_v->derivatives[v_basis_offset + (size_t)sv];
+                    for (int32_t su = 0; su < axis_u->support; ++su) {
+                        int32_t cu = axis_u->indices[u_basis_offset + (size_t)su];
+                        double bu = axis_u->weights[u_basis_offset + (size_t)su];
+                        double dbu = axis_u->derivatives[u_basis_offset + (size_t)su];
+                        int32_t control;
+                        double control_weight;
+                        if (cu < 0 || cu >= count_u || cv < 0 || cv >= count_v)
+                            goto fail;
+                        control = cv * count_u + cu;
+                        control_weight = controls[(size_t)control * 4u + 3u];
+                        denominator += bu * bv * control_weight;
+                        denominator_u += dbu * bv * control_weight;
+                        denominator_v += bu * dbv * control_weight;
+                    }
+                }
+                if (!isfinite(denominator) || !isfinite(denominator_u) ||
+                    !isfinite(denominator_v) || fabs(denominator) <= FBX_SURFACE_DENOM_EPSILON)
+                    goto fail;
+            }
+            for (int32_t sv = 0; sv < axis_v->support; ++sv) {
+                int32_t cv = axis_v->indices[v_basis_offset + (size_t)sv];
+                double bv = axis_v->weights[v_basis_offset + (size_t)sv];
+                double dbv = axis_v->derivatives[v_basis_offset + (size_t)sv];
+                for (int32_t su = 0; su < axis_u->support; ++su) {
+                    int32_t cu = axis_u->indices[u_basis_offset + (size_t)su];
+                    double bu = axis_u->weights[u_basis_offset + (size_t)su];
+                    double dbu = axis_u->derivatives[u_basis_offset + (size_t)su];
+                    int32_t control;
+                    double coefficient;
+                    double derivative_u;
+                    double derivative_v;
+                    double control_weight;
+                    if (cu < 0 || cu >= count_u || cv < 0 || cv >= count_v)
+                        goto fail;
+                    control = cv * count_u + cu;
+                    control_weight = rational ? controls[(size_t)control * 4u + 3u] : 1.0;
+                    coefficient = bu * bv * control_weight;
+                    derivative_u = dbu * bv * control_weight;
+                    derivative_v = bu * dbv * control_weight;
+                    if (rational)
+                        coefficient /= denominator;
+                    if (!isfinite(coefficient) || !isfinite(derivative_u) ||
+                        !isfinite(derivative_v))
+                        goto fail;
+                    for (int lane = 0; lane < 3; ++lane) {
+                        double control_value = controls[(size_t)control * 4u + (size_t)lane];
+                        position[lane] += coefficient * control_value;
+                        tangent_u[lane] += derivative_u * control_value;
+                        tangent_v[lane] += derivative_v * control_value;
+                    }
+                    if (fabs(coefficient) > 1e-15) {
+                        if (contribution_cursor == UINT32_MAX)
+                            goto fail;
+                        remap->surface_control_indices[contribution_cursor] = control;
+                        remap->surface_control_weights[contribution_cursor] = coefficient;
+                        contribution_cursor++;
+                        vertex_remap->count++;
+                    }
+                }
+            }
+            if (!fbx_sanitize_position3(&position[0], &position[1], &position[2]) ||
+                vertex_remap->count == 0)
+                goto fail;
+            if (rational) {
+                for (int lane = 0; lane < 3; ++lane) {
+                    tangent_u[lane] =
+                        (tangent_u[lane] - position[lane] * denominator_u) / denominator;
+                    tangent_v[lane] =
+                        (tangent_v[lane] - position[lane] * denominator_v) / denominator;
+                }
+            }
+            positions[(size_t)vertex * 3u + 0u] = position[0];
+            positions[(size_t)vertex * 3u + 1u] = position[1];
+            positions[(size_t)vertex * 3u + 2u] = position[2];
+            normals[(size_t)vertex * 3u + 0u] =
+                tangent_u[1] * tangent_v[2] - tangent_u[2] * tangent_v[1];
+            normals[(size_t)vertex * 3u + 1u] =
+                tangent_u[2] * tangent_v[0] - tangent_u[0] * tangent_v[2];
+            normals[(size_t)vertex * 3u + 2u] =
+                tangent_u[0] * tangent_v[1] - tangent_u[1] * tangent_v[0];
+        }
+    }
+    remap->surface_contribution_count = contribution_cursor;
+
+    for (int32_t v = 0; v < axis_v->sample_count; ++v) {
+        int32_t prev_v = v > 0 ? v - 1 : (axis_v->closed ? axis_v->sample_count - 1 : v);
+        int32_t next_v = v + 1 < axis_v->sample_count ? v + 1 : (axis_v->closed ? 0 : v);
+        for (int32_t u = 0; u < axis_u->sample_count; ++u) {
+            int32_t prev_u = u > 0 ? u - 1 : (axis_u->closed ? axis_u->sample_count - 1 : u);
+            int32_t next_u = u + 1 < axis_u->sample_count ? u + 1 : (axis_u->closed ? 0 : u);
+            uint32_t vertex =
+                (uint32_t)((uint64_t)v * (uint64_t)axis_u->sample_count + (uint64_t)u);
+            uint32_t u0 =
+                (uint32_t)((uint64_t)v * (uint64_t)axis_u->sample_count + (uint64_t)prev_u);
+            uint32_t u1 =
+                (uint32_t)((uint64_t)v * (uint64_t)axis_u->sample_count + (uint64_t)next_u);
+            uint32_t v0 =
+                (uint32_t)((uint64_t)prev_v * (uint64_t)axis_u->sample_count + (uint64_t)u);
+            uint32_t v1 =
+                (uint32_t)((uint64_t)next_v * (uint64_t)axis_u->sample_count + (uint64_t)u);
+            double normal[3] = {normals[(size_t)vertex * 3u + 0u],
+                                normals[(size_t)vertex * 3u + 1u],
+                                normals[(size_t)vertex * 3u + 2u]};
+            double normal_length2 =
+                normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2];
+            if (!isfinite(normal_length2) || normal_length2 <= 1e-20) {
+                double du[3];
+                double dv[3];
+                for (int lane = 0; lane < 3; ++lane) {
+                    du[lane] = positions[(size_t)u1 * 3u + (size_t)lane] -
+                               positions[(size_t)u0 * 3u + (size_t)lane];
+                    dv[lane] = positions[(size_t)v1 * 3u + (size_t)lane] -
+                               positions[(size_t)v0 * 3u + (size_t)lane];
+                }
+                normal[0] = du[1] * dv[2] - du[2] * dv[1];
+                normal[1] = du[2] * dv[0] - du[0] * dv[2];
+                normal[2] = du[0] * dv[1] - du[1] * dv[0];
+            }
+            fbx_sanitize_normal3(&normal[0], &normal[1], &normal[2]);
+            if (flip_normals) {
+                normal[0] = -normal[0];
+                normal[1] = -normal[1];
+                normal[2] = -normal[2];
+            }
+            normals[(size_t)vertex * 3u + 0u] = normal[0];
+            normals[(size_t)vertex * 3u + 1u] = normal[1];
+            normals[(size_t)vertex * 3u + 2u] = normal[2];
+        }
+    }
+
+    mesh = rt_mesh3d_new();
+    if (!mesh)
+        goto fail;
+    rt_mesh3d_reserve(mesh, (int64_t)vertex_count64, (int64_t)triangle_count64);
+    if (((rt_mesh3d *)mesh)->build_failed)
+        goto fail;
+    for (int32_t v = 0; v < axis_v->sample_count; ++v) {
+        double texture_v = axis_v->closed ? (double)v / (double)axis_v->sample_count
+                                          : (double)v / (double)(axis_v->sample_count - 1);
+        for (int32_t u = 0; u < axis_u->sample_count; ++u) {
+            uint32_t vertex =
+                (uint32_t)((uint64_t)v * (uint64_t)axis_u->sample_count + (uint64_t)u);
+            double texture_u = axis_u->closed ? (double)u / (double)axis_u->sample_count
+                                              : (double)u / (double)(axis_u->sample_count - 1);
+            rt_mesh3d_add_vertex(mesh,
+                                 positions[(size_t)vertex * 3u + 0u],
+                                 positions[(size_t)vertex * 3u + 1u],
+                                 positions[(size_t)vertex * 3u + 2u],
+                                 normals[(size_t)vertex * 3u + 0u],
+                                 normals[(size_t)vertex * 3u + 1u],
+                                 normals[(size_t)vertex * 3u + 2u],
+                                 texture_u,
+                                 texture_v);
+            if (((rt_mesh3d *)mesh)->build_failed)
+                goto fail;
+        }
+    }
+    for (uint32_t v = 0; v < quad_v; ++v) {
+        uint32_t next_v = (v + 1u) % (uint32_t)axis_v->sample_count;
+        for (uint32_t u = 0; u < quad_u; ++u) {
+            uint32_t next_u = (u + 1u) % (uint32_t)axis_u->sample_count;
+            uint32_t a = v * (uint32_t)axis_u->sample_count + u;
+            uint32_t b = v * (uint32_t)axis_u->sample_count + next_u;
+            uint32_t c = next_v * (uint32_t)axis_u->sample_count + u;
+            uint32_t d = next_v * (uint32_t)axis_u->sample_count + next_u;
+            if (flip_normals) {
+                rt_mesh3d_add_triangle(mesh, a, d, b);
+                rt_mesh3d_add_triangle(mesh, a, c, d);
+            } else {
+                rt_mesh3d_add_triangle(mesh, a, b, d);
+                rt_mesh3d_add_triangle(mesh, a, d, c);
+            }
+            if (((rt_mesh3d *)mesh)->build_failed)
+                goto fail;
+        }
+    }
+    if (material_map)
+        memset(material_map, 0, sizeof(*material_map));
+    free(normals);
+    free(positions);
+    return mesh;
+
+fail:
+    free(normals);
+    free(positions);
+    fbx_mesh_remap_free(remap);
+    if (mesh && rt_obj_release_check0(mesh))
+        rt_obj_free(mesh);
+    return NULL;
+}
+
+/// @brief Convert an FBX NURBS surface or Patch into an ordinary indexed Mesh3D.
+static void *fbx_extract_procedural_geometry(fbx_node_t *geometry,
+                                             const char *geometry_type,
+                                             int z_up,
+                                             fbx_load_context_t *context,
+                                             fbx_mesh_remap_t *remap,
+                                             fbx_mesh_material_map_t *material_map) {
+    int64_t dimensions64[2];
+    int64_t authored_steps[2] = {1, 1};
+    int32_t dimensions[2];
+    int32_t steps[2];
+    double *controls = NULL;
+    double *knots_u = NULL;
+    double *knots_v = NULL;
+    fbx_surface_axis_samples_t axis_u = {0};
+    fbx_surface_axis_samples_t axis_v = {0};
+    void *mesh = NULL;
+    int rational = strcmp(geometry_type, "Patch") != 0;
+    int flip_normals = fbx_surface_child_truthy(geometry, "FlipNormals");
+    if (!geometry || !geometry_type || !context || !remap || !material_map ||
+        !fbx_surface_read_pair_i64(geometry, "Dimensions", dimensions64) || dimensions64[0] <= 0 ||
+        dimensions64[0] > INT32_MAX || dimensions64[1] <= 0 || dimensions64[1] > INT32_MAX ||
+        dimensions64[0] > INT32_MAX / dimensions64[1]) {
+        fbx_surface_error("FBX: procedural surface dimensions are invalid");
+        return NULL;
+    }
+    dimensions[0] = (int32_t)dimensions64[0];
+    dimensions[1] = (int32_t)dimensions64[1];
+    if (fbx_find_child(geometry, "Step") &&
+        !fbx_surface_read_pair_i64(geometry, "Step", authored_steps)) {
+        fbx_surface_error("FBX: procedural surface step is invalid");
+        return NULL;
+    }
+    if (!fbx_surface_validate_steps(authored_steps, steps))
+        return NULL;
+    controls = fbx_surface_load_control_net(
+        geometry, dimensions[0], dimensions[1], rational, z_up, context);
+    if (!controls) {
+        if (context->budget_exhausted)
+            rt_asset_error_set(
+                RT_ASSET_ERROR_TOO_LARGE,
+                "FBX: procedural surface control net exceeds the aggregate load budget");
+        else
+            fbx_surface_error("FBX: procedural surface control net is malformed");
+        goto done;
+    }
+
+    if (rational) {
+        int64_t orders64[2];
+        int32_t orders[2];
+        fbx_surface_form_t forms[2];
+        fbx_node_t *order_node = fbx_find_child(geometry, "NurbsSurfaceOrder");
+        fbx_node_t *form_node = fbx_find_child(geometry, "Form");
+        if (!order_node)
+            order_node = fbx_find_child(geometry, "NurbOrder");
+        if (!order_node)
+            order_node = fbx_find_child(geometry, "Order");
+        if (!order_node || order_node->prop_count != 2 ||
+            !fbx_surface_property_is_number(&order_node->props[0]) ||
+            !fbx_surface_property_is_number(&order_node->props[1])) {
+            fbx_surface_error("FBX: NURBS surface order is invalid");
+            goto done;
+        }
+        orders64[0] = fbx_prop_i64(order_node, 0);
+        orders64[1] = fbx_prop_i64(order_node, 1);
+        if (orders64[0] < 2 || orders64[0] > dimensions[0] || orders64[1] < 2 ||
+            orders64[1] > dimensions[1]) {
+            fbx_surface_error("FBX: NURBS surface order/control-count relationship is invalid");
+            goto done;
+        }
+        orders[0] = (int32_t)orders64[0];
+        orders[1] = (int32_t)orders64[1];
+        if (!form_node || form_node->prop_count != 2 ||
+            !fbx_surface_parse_form(form_node, 0, &forms[0]) ||
+            !fbx_surface_parse_form(form_node, 1, &forms[1])) {
+            fbx_surface_error("FBX: NURBS surface form is invalid");
+            goto done;
+        }
+        knots_u = fbx_surface_load_knots(
+            geometry, "KnotVectorU", dimensions[0], orders[0], forms[0], context);
+        knots_v = fbx_surface_load_knots(
+            geometry, "KnotVectorV", dimensions[1], orders[1], forms[1], context);
+        if (!knots_u || !knots_v) {
+            if (context->budget_exhausted)
+                rt_asset_error_set(
+                    RT_ASSET_ERROR_TOO_LARGE,
+                    "FBX: NURBS surface knot vectors exceed the aggregate load budget");
+            else
+                fbx_surface_error("FBX: NURBS surface knot vector is malformed");
+            goto done;
+        }
+        if (!fbx_surface_build_nurbs_axis(
+                knots_u, dimensions[0], orders[0], steps[0], forms[0], context, &axis_u) ||
+            !fbx_surface_build_nurbs_axis(
+                knots_v, dimensions[1], orders[1], steps[1], forms[1], context, &axis_v)) {
+            if (context->budget_exhausted)
+                rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE,
+                                   "FBX: NURBS surface samples exceed the aggregate load budget");
+            else
+                fbx_surface_error("FBX: NURBS surface parameter domain is invalid");
+            goto done;
+        }
+    } else {
+        fbx_node_t *type_node = fbx_find_child(geometry, "PatchType");
+        fbx_patch_basis_t basis[2];
+        int closed[2];
+        if (!type_node || type_node->prop_count != 2 ||
+            !fbx_surface_parse_patch_basis(type_node, 0, &basis[0]) ||
+            !fbx_surface_parse_patch_basis(type_node, 1, &basis[1])) {
+            fbx_surface_error("FBX: patch basis type is invalid");
+            goto done;
+        }
+        if (!fbx_surface_read_closed_pair(geometry, closed)) {
+            fbx_surface_error("FBX: patch closed flags are invalid");
+            goto done;
+        }
+        if (!fbx_surface_build_patch_axis(
+                basis[0], dimensions[0], steps[0], closed[0], context, &axis_u) ||
+            !fbx_surface_build_patch_axis(
+                basis[1], dimensions[1], steps[1], closed[1], context, &axis_v)) {
+            if (context->budget_exhausted)
+                rt_asset_error_set(RT_ASSET_ERROR_TOO_LARGE,
+                                   "FBX: patch samples exceed the aggregate load budget");
+            else
+                fbx_surface_error("FBX: patch basis/control-count relationship is invalid");
+            goto done;
+        }
+    }
+
+    mesh = fbx_surface_build_mesh(geometry,
+                                  controls,
+                                  dimensions[0],
+                                  dimensions[1],
+                                  &axis_u,
+                                  &axis_v,
+                                  rational,
+                                  flip_normals,
+                                  context,
+                                  remap,
+                                  material_map);
+    if (!mesh) {
+        rt_asset_error_set_if_empty(
+            context->budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+            context->budget_exhausted ? "FBX: procedural surface exceeds the aggregate load budget"
+                                      : "FBX: procedural surface tessellation failed");
+    }
+
+done:
+    fbx_surface_axis_samples_free(&axis_v);
+    fbx_surface_axis_samples_free(&axis_u);
+    free(knots_v);
+    free(knots_u);
+    free(controls);
+    return mesh;
 }
 
 /// @brief Convert an FBX `Geometry` node into a Zanna `rt_mesh3d_t`.

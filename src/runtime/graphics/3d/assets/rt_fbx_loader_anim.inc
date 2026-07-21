@@ -132,7 +132,7 @@ static int64_t fbx_find_skin_geometry(fbx_node_t *objects,
         fbx_node_t *parent;
         parent = fbx_find_object_by_id(objects, ct->entries[i].parent_id);
         if (parent && strcmp(parent->name, "Geometry") == 0 && parent->prop_count >= 3 &&
-            strcmp(fbx_prop_str(parent, 2), "Mesh") == 0)
+            fbx_geometry_type_is_renderable(fbx_prop_str(parent, 2)))
             return ct->entries[i].parent_id;
     }
     return 0;
@@ -254,6 +254,35 @@ static void fbx_apply_skin_to_mesh(void *mesh_obj,
     rt_mesh3d *mesh = (rt_mesh3d *)mesh_obj;
     if (!mesh || !controls || control_count <= 0)
         return;
+    if (remap && remap->surface_vertices && remap->surface_control_indices &&
+        remap->surface_control_weights && remap->surface_vertex_count == mesh->vertex_count) {
+        for (uint32_t vertex = 0; vertex < remap->surface_vertex_count; ++vertex) {
+            const fbx_surface_vertex_remap_t *range = &remap->surface_vertices[vertex];
+            fbx_skin_influence_t blended;
+            memset(&blended, 0, sizeof(blended));
+            if (range->offset > remap->surface_contribution_count ||
+                range->count > remap->surface_contribution_count - range->offset)
+                continue;
+            for (uint32_t contribution = 0; contribution < range->count; ++contribution) {
+                uint32_t index = range->offset + contribution;
+                int32_t control = remap->surface_control_indices[index];
+                double basis_weight = remap->surface_control_weights[index];
+                if (control < 0 || control >= control_count || !isfinite(basis_weight) ||
+                    basis_weight <= 0.0)
+                    continue;
+                for (int influence = 0; influence < 4; ++influence) {
+                    if (controls[control].bone_indices[influence] >= 0 &&
+                        controls[control].weights[influence] > 0.0) {
+                        fbx_skin_add_influence(&blended,
+                                               controls[control].bone_indices[influence],
+                                               basis_weight * controls[control].weights[influence]);
+                    }
+                }
+            }
+            fbx_apply_control_skin_to_vertex(mesh, (int32_t)vertex, &blended);
+        }
+        return;
+    }
     for (int32_t ci = 0; ci < control_count; ci++) {
         if (remap && remap->control_vertices && ci < remap->control_count) {
             const fbx_vertex_index_list_t *list = &remap->control_vertices[ci];
@@ -380,6 +409,36 @@ typedef struct {
     uint32_t attr_data_count;
 } fbx_anim_curve_view_t;
 
+typedef struct {
+    int64_t id;
+    double weight;
+    int mute;
+    int solo;
+    int blend_mode;
+    int rotation_accumulation_mode;
+    int scale_accumulation_mode;
+    fbx_anim_curve_view_t weight_curve;
+} fbx_anim_layer_t;
+
+typedef struct {
+    int32_t layer_index;
+    int64_t target_id;
+    const char *property;
+    int transform_path;
+    double default_values[3];
+    uint8_t default_mask;
+    uint8_t curve_mask;
+    fbx_anim_curve_view_t curves[3];
+} fbx_anim_layer_channel_t;
+
+typedef struct {
+    fbx_anim_layer_t *layers;
+    int32_t layer_count;
+    fbx_anim_layer_channel_t *channels;
+    int32_t channel_count;
+    int has_solo;
+} fbx_anim_layer_stack_t;
+
 #define FBX_ANIM_INTERP_LINEAR 0
 #define FBX_ANIM_INTERP_CONSTANT 1
 #define FBX_ANIM_INTERP_CUBIC 2
@@ -389,9 +448,22 @@ typedef struct {
 
 typedef struct {
     int8_t initialized;
+    int64_t target_id;
+    const fbx_anim_layer_stack_t *layer_stack;
     fbx_transform_components_t base_transform;
     fbx_anim_curve_view_t curves[3][3]; /* trs, component */
 } fbx_anim_bone_builder_t;
+
+/// @brief One all-model animation builder used when constraints cross skeleton boundaries.
+typedef struct {
+    int64_t id;
+    int64_t parent_id;
+    int32_t parent_index;
+    int32_t import_index;
+    int is_skeleton;
+    fbx_node_t *source;
+    fbx_anim_bone_builder_t animation;
+} fbx_anim_constraint_model_t;
 
 /// @brief Return non-zero if @p curve contains at least one keyframe with usable value data.
 static int fbx_anim_curve_has_data(const fbx_anim_curve_view_t *curve) {
@@ -628,6 +700,567 @@ static double fbx_anim_curve_value(const fbx_anim_curve_view_t *curve,
     return v0 + (v1 - v0) * a;
 }
 
+static int fbx_anim_read_curve_view(fbx_node_t *curve, fbx_anim_curve_view_t *out) {
+    uint32_t time_count = 0;
+    uint32_t value_count = 0;
+    uint32_t flag_count = 0;
+    uint32_t data_count = 0;
+    fbx_anim_curve_view_t candidate;
+    if (!curve || !out || !curve->name || strcmp(curve->name, "AnimationCurve") != 0)
+        return 0;
+    memset(&candidate, 0, sizeof(candidate));
+    candidate.times = fbx_get_i64_array(curve, "KeyTime", &time_count);
+    candidate.values64 = fbx_get_f64_array(curve, "KeyValueFloat", &value_count);
+    if (!candidate.values64)
+        candidate.values32 = fbx_get_f32_array(curve, "KeyValueFloat", &value_count);
+    candidate.attr_flags = fbx_get_i32_array(curve, "KeyAttrFlags", &flag_count);
+    candidate.attr_data64 = fbx_get_f64_array(curve, "KeyAttrDataFloat", &data_count);
+    if (!candidate.attr_data64)
+        candidate.attr_data32 = fbx_get_f32_array(curve, "KeyAttrDataFloat", &data_count);
+    candidate.count = time_count;
+    candidate.attr_flag_count = candidate.attr_flags ? flag_count : 0;
+    candidate.attr_data_count = (candidate.attr_data64 || candidate.attr_data32) ? data_count : 0;
+    if (time_count == 0 || time_count != value_count || !fbx_anim_curve_view_valid(&candidate))
+        return 0;
+    *out = candidate;
+    return 1;
+}
+
+static int fbx_anim_curve_has_unsafe_numeric_data(fbx_node_t *curve) {
+    uint32_t time_count = 0;
+    uint32_t value_count = 0;
+    const int64_t *times;
+    const double *values64;
+    const float *values32 = NULL;
+    if (!curve)
+        return 0;
+    times = fbx_get_i64_array(curve, "KeyTime", &time_count);
+    values64 = fbx_get_f64_array(curve, "KeyValueFloat", &value_count);
+    if (!values64)
+        values32 = fbx_get_f32_array(curve, "KeyValueFloat", &value_count);
+    for (uint32_t i = 0; i < time_count; ++i) {
+        double seconds = (double)times[i] / (double)FBX_TIME_SECOND;
+        if (!isfinite(seconds) || fabs(seconds) > FBX_ANIM_TIME_SECONDS_MAX)
+            return 1;
+    }
+    for (uint32_t i = 0; i < value_count; ++i) {
+        double value = values64 ? values64[i] : values32 ? (double)values32[i] : 0.0;
+        if (!isfinite(value))
+            return 1;
+    }
+    return 0;
+}
+
+static int fbx_anim_layer_property_number(
+    fbx_node_t *node, const char *name, double fallback, double *out, int *out_found) {
+    fbx_node_t *property;
+    double value;
+    if (out_found)
+        *out_found = 0;
+    if (!out)
+        return 0;
+    *out = fallback;
+    property = fbx_find_property70(node, name);
+    if (property && property->prop_count >= 5) {
+        value = fbx_prop_f64(property, 4);
+        if (!isfinite(value))
+            return 0;
+        *out = value;
+        if (out_found)
+            *out_found = 1;
+        return 1;
+    }
+    property = node ? fbx_find_child(node, name) : NULL;
+    if (property && property->prop_count > 0) {
+        value = fbx_prop_f64(property, 0);
+        if (!isfinite(value))
+            return 0;
+        *out = value;
+        if (out_found)
+            *out_found = 1;
+    }
+    return 1;
+}
+
+static int fbx_anim_transform_path(const char *property) {
+    if (fbx_ascii_streq_ignore_case(property, "Lcl Translation"))
+        return 0;
+    if (fbx_ascii_streq_ignore_case(property, "Lcl Rotation"))
+        return 1;
+    if (fbx_ascii_streq_ignore_case(property, "Lcl Scaling"))
+        return 2;
+    return -1;
+}
+
+static int fbx_anim_layer_is_active(const fbx_anim_layer_stack_t *stack, int32_t layer_index) {
+    const fbx_anim_layer_t *layer;
+    if (!stack || layer_index < 0 || layer_index >= stack->layer_count)
+        return 0;
+    layer = &stack->layers[layer_index];
+    return !layer->mute && (!stack->has_solo || layer->solo);
+}
+
+static void fbx_anim_layer_stack_free(fbx_anim_layer_stack_t *stack) {
+    if (!stack)
+        return;
+    free(stack->layers);
+    free(stack->channels);
+    memset(stack, 0, sizeof(*stack));
+}
+
+static int fbx_anim_layer_stack_parse(fbx_node_t *objects,
+                                      const fbx_conn_table_t *ct,
+                                      int64_t stack_id,
+                                      fbx_load_context_t *context,
+                                      fbx_anim_layer_stack_t *out) {
+    int32_t layer_count = 0;
+    int32_t channel_capacity = 0;
+    if (!objects || !ct || !context || !out)
+        return 0;
+    memset(out, 0, sizeof(*out));
+    for (int32_t connection = fbx_connections_first_for_parent(ct, stack_id); connection >= 0;
+         connection = fbx_connections_next_for_parent(ct, connection)) {
+        fbx_node_t *layer = fbx_find_object_by_id(objects, ct->entries[connection].child_id);
+        if (layer && layer->name && strcmp(layer->name, "AnimationLayer") == 0) {
+            if (layer_count == INT32_MAX)
+                return 0;
+            ++layer_count;
+            if (layer->prop_count > 0) {
+                int64_t layer_id = fbx_prop_i64(layer, 0);
+                for (int32_t child = fbx_connections_first_for_parent(ct, layer_id); child >= 0;
+                     child = fbx_connections_next_for_parent(ct, child)) {
+                    fbx_node_t *curve_node =
+                        fbx_find_object_by_id(objects, ct->entries[child].child_id);
+                    if (curve_node && curve_node->name &&
+                        strcmp(curve_node->name, "AnimationCurveNode") == 0) {
+                        if (channel_capacity == INT32_MAX)
+                            return 0;
+                        ++channel_capacity;
+                    }
+                }
+            }
+        }
+    }
+    if (layer_count == 0)
+        return 1;
+    if ((size_t)layer_count > SIZE_MAX / sizeof(*out->layers) ||
+        (size_t)channel_capacity > SIZE_MAX / sizeof(*out->channels) ||
+        !fbx_budget_charge(context, (uint64_t)layer_count, sizeof(*out->layers)) ||
+        !fbx_budget_charge(context, (uint64_t)channel_capacity, sizeof(*out->channels)))
+        return 0;
+    out->layers = (fbx_anim_layer_t *)calloc((size_t)layer_count, sizeof(*out->layers));
+    out->channels =
+        channel_capacity > 0
+            ? (fbx_anim_layer_channel_t *)calloc((size_t)channel_capacity, sizeof(*out->channels))
+            : NULL;
+    if (!out->layers || (channel_capacity > 0 && !out->channels)) {
+        fbx_anim_layer_stack_free(out);
+        return 0;
+    }
+    for (int32_t connection = fbx_connections_first_for_parent(ct, stack_id); connection >= 0;
+         connection = fbx_connections_next_for_parent(ct, connection)) {
+        fbx_node_t *layer_node = fbx_find_object_by_id(objects, ct->entries[connection].child_id);
+        fbx_anim_layer_t *layer;
+        double value;
+        int32_t layer_index;
+        if (!layer_node || !layer_node->name || strcmp(layer_node->name, "AnimationLayer") != 0)
+            continue;
+        if (layer_node->prop_count < 1 || out->layer_count >= layer_count)
+            goto invalid;
+        layer_index = out->layer_count++;
+        layer = &out->layers[layer_index];
+        layer->id = fbx_prop_i64(layer_node, 0);
+        if (!fbx_anim_layer_property_number(layer_node, "Weight", 100.0, &value, NULL))
+            goto invalid;
+        layer->weight = fbx_clamp_double(value, 0.0, 100.0, 100.0);
+        if (!fbx_anim_layer_property_number(layer_node, "Mute", 0.0, &value, NULL))
+            goto invalid;
+        layer->mute = value != 0.0;
+        if (!fbx_anim_layer_property_number(layer_node, "Solo", 0.0, &value, NULL))
+            goto invalid;
+        layer->solo = value != 0.0;
+        if (!fbx_anim_layer_property_number(layer_node, "BlendMode", 0.0, &value, NULL) ||
+            value < 0.0 || value > 2.0 || value != floor(value))
+            goto invalid;
+        layer->blend_mode = (int)value;
+        if (!fbx_anim_layer_property_number(
+                layer_node, "RotationAccumulationMode", 0.0, &value, NULL) ||
+            value < 0.0 || value > 1.0 || value != floor(value))
+            goto invalid;
+        layer->rotation_accumulation_mode = (int)value;
+        if (!fbx_anim_layer_property_number(
+                layer_node, "ScaleAccumulationMode", 0.0, &value, NULL) ||
+            value < 0.0 || value > 1.0 || value != floor(value))
+            goto invalid;
+        layer->scale_accumulation_mode = (int)value;
+        if (layer->solo && !layer->mute)
+            out->has_solo = 1;
+        for (int32_t node_connection = fbx_connections_first_for_parent(ct, layer->id);
+             node_connection >= 0;
+             node_connection = fbx_connections_next_for_parent(ct, node_connection)) {
+            int64_t curve_node_id = ct->entries[node_connection].child_id;
+            fbx_node_t *curve_node = fbx_find_object_by_id(objects, curve_node_id);
+            int64_t target_id = 0;
+            const char *target_property = NULL;
+            int target_count = 0;
+            int already_visited = 0;
+            fbx_anim_layer_channel_t candidate;
+            if (!curve_node || !curve_node->name ||
+                strcmp(curve_node->name, "AnimationCurveNode") != 0)
+                continue;
+            /* A curve node that animates an AnimationLayer property (usually Weight) has both
+             * its ordinary ownership edge and an OP target edge to that same layer. Parent
+             * adjacency therefore exposes the logical node twice; parse it only once while
+             * retaining both edges for target resolution. */
+            for (int32_t prior = fbx_connections_first_for_parent(ct, layer->id);
+                 prior >= 0 && prior != node_connection;
+                 prior = fbx_connections_next_for_parent(ct, prior)) {
+                if (ct->entries[prior].child_id == curve_node_id) {
+                    already_visited = 1;
+                    break;
+                }
+            }
+            if (already_visited)
+                continue;
+            memset(&candidate, 0, sizeof(candidate));
+            candidate.layer_index = layer_index;
+            candidate.transform_path = -1;
+            for (int32_t target_connection = fbx_connections_first_for_child(ct, curve_node_id);
+                 target_connection >= 0;
+                 target_connection = fbx_connections_next_for_child(ct, target_connection)) {
+                const char *property = ct->entries[target_connection].prop;
+                if (!property || !property[0])
+                    continue;
+                if (target_count > 0 && (target_id != ct->entries[target_connection].parent_id ||
+                                         !fbx_ascii_streq_ignore_case(target_property, property)))
+                    goto invalid;
+                target_id = ct->entries[target_connection].parent_id;
+                target_property = property;
+                ++target_count;
+            }
+            if (target_count == 0)
+                continue;
+            candidate.target_id = target_id;
+            candidate.property = target_property;
+            candidate.transform_path = fbx_anim_transform_path(target_property);
+            for (int component = 0; component < 3; ++component) {
+                static const char *names[3] = {"d|X", "d|Y", "d|Z"};
+                static const char *aliases[3] = {"X", "Y", "Z"};
+                double default_value = candidate.transform_path == 2 ? 1.0 : 0.0;
+                int found = 0;
+                if (!fbx_anim_layer_property_number(
+                        curve_node, names[component], default_value, &default_value, &found))
+                    goto invalid;
+                if (!found &&
+                    !fbx_anim_layer_property_number(
+                        curve_node, aliases[component], default_value, &default_value, &found))
+                    goto invalid;
+                candidate.default_values[component] = default_value;
+                if (found)
+                    candidate.default_mask |= (uint8_t)(1u << component);
+            }
+            for (int32_t curve_connection = fbx_connections_first_for_parent(ct, curve_node_id);
+                 curve_connection >= 0;
+                 curve_connection = fbx_connections_next_for_parent(ct, curve_connection)) {
+                fbx_node_t *curve =
+                    fbx_find_object_by_id(objects, ct->entries[curve_connection].child_id);
+                int component;
+                if (!curve || !curve->name || strcmp(curve->name, "AnimationCurve") != 0)
+                    continue;
+                component =
+                    fbx_anim_component_from_connection_prop(ct->entries[curve_connection].prop);
+                if (component < 0 && candidate.transform_path < 0)
+                    component = 0;
+                if (component < 0 || component > 2)
+                    goto invalid;
+                if (candidate.curve_mask & (uint8_t)(1u << component))
+                    continue;
+                if (!fbx_anim_read_curve_view(curve, &candidate.curves[component])) {
+                    if (fbx_anim_curve_has_unsafe_numeric_data(curve))
+                        goto invalid;
+                    continue;
+                }
+                candidate.curve_mask |= (uint8_t)(1u << component);
+            }
+            if (target_id == layer->id && fbx_ascii_streq_ignore_case(target_property, "Weight")) {
+                if ((candidate.curve_mask & 1u) == 0 ||
+                    fbx_anim_curve_has_data(&layer->weight_curve))
+                    goto invalid;
+                layer->weight_curve = candidate.curves[0];
+                continue;
+            }
+            for (int32_t existing = 0; existing < out->channel_count; ++existing) {
+                const fbx_anim_layer_channel_t *prior = &out->channels[existing];
+                if (prior->layer_index == candidate.layer_index &&
+                    prior->target_id == candidate.target_id &&
+                    fbx_ascii_streq_ignore_case(prior->property, candidate.property))
+                    goto invalid;
+            }
+            if (out->channel_count >= channel_capacity)
+                goto invalid;
+            out->channels[out->channel_count++] = candidate;
+        }
+    }
+    return 1;
+invalid:
+    rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                "FBX.Load: invalid animation layer graph or properties");
+    fbx_anim_layer_stack_free(out);
+    return 0;
+}
+
+static double fbx_anim_layer_weight_at(const fbx_anim_layer_t *layer, int64_t time) {
+    double percent;
+    if (!layer)
+        return 0.0;
+    percent = fbx_anim_curve_value(&layer->weight_curve, time, layer->weight);
+    return fbx_clamp_double(percent, 0.0, 100.0, layer->weight) / 100.0;
+}
+
+static const fbx_anim_layer_channel_t *fbx_anim_layer_find_channel(
+    const fbx_anim_layer_stack_t *stack,
+    int32_t layer_index,
+    int64_t target_id,
+    int transform_path) {
+    if (!stack)
+        return NULL;
+    for (int32_t i = 0; i < stack->channel_count; ++i) {
+        const fbx_anim_layer_channel_t *channel = &stack->channels[i];
+        if (channel->layer_index == layer_index && channel->target_id == target_id &&
+            channel->transform_path == transform_path)
+            return channel;
+    }
+    return NULL;
+}
+
+static int fbx_anim_layer_channel_value(const fbx_anim_layer_channel_t *channel,
+                                        int component,
+                                        int64_t time,
+                                        double fallback,
+                                        double *out,
+                                        int *out_present) {
+    uint8_t bit = (uint8_t)(1u << component);
+    int present;
+    if (!channel || component < 0 || component > 2 || !out)
+        return 0;
+    present = (channel->curve_mask & bit) != 0 || (channel->default_mask & bit) != 0;
+    *out = (channel->default_mask & bit) != 0 ? channel->default_values[component] : fallback;
+    if (channel->curve_mask & bit)
+        *out = fbx_anim_curve_value(&channel->curves[component], time, *out);
+    if (!isfinite(*out))
+        return 0;
+    if (out_present)
+        *out_present = present;
+    return 1;
+}
+
+static void fbx_anim_quaternion_from_euler_order(const double euler[3],
+                                                 int rotation_order,
+                                                 double quaternion[4]) {
+    double matrix[16];
+    fbx_mat4_euler_degrees(euler, rotation_order, matrix);
+    fbx_decompose_matrix_trs(matrix, NULL, quaternion, NULL);
+}
+
+static int fbx_anim_layer_sample_components(const fbx_anim_layer_stack_t *stack,
+                                            int64_t target_id,
+                                            const fbx_transform_components_t *base,
+                                            int64_t time,
+                                            fbx_transform_components_t *out) {
+    double accumulated_quaternion[4];
+    double accumulated_euler[3];
+    int euler_valid = 1;
+    if (!base || !out)
+        return 0;
+    *out = *base;
+    memcpy(accumulated_euler, base->rotation, sizeof(accumulated_euler));
+    fbx_anim_quaternion_from_euler_order(
+        accumulated_euler, base->rotation_order, accumulated_quaternion);
+    if (!stack || stack->layer_count == 0)
+        return 1;
+    for (int32_t layer_index = 0; layer_index < stack->layer_count; ++layer_index) {
+        const fbx_anim_layer_t *layer = &stack->layers[layer_index];
+        const fbx_anim_layer_channel_t *translation;
+        const fbx_anim_layer_channel_t *rotation;
+        const fbx_anim_layer_channel_t *scale;
+        double weight;
+        int blend_mode;
+        if (!fbx_anim_layer_is_active(stack, layer_index))
+            continue;
+        weight = fbx_anim_layer_weight_at(layer, time);
+        if (weight <= 0.0)
+            continue;
+        blend_mode = layer_index == 0 ? 1 : layer->blend_mode;
+        translation = fbx_anim_layer_find_channel(stack, layer_index, target_id, 0);
+        rotation = fbx_anim_layer_find_channel(stack, layer_index, target_id, 1);
+        scale = fbx_anim_layer_find_channel(stack, layer_index, target_id, 2);
+        if (translation) {
+            for (int component = 0; component < 3; ++component) {
+                double value;
+                int present;
+                if (!fbx_anim_layer_channel_value(translation,
+                                                  component,
+                                                  time,
+                                                  base->translation[component],
+                                                  &value,
+                                                  &present))
+                    return 0;
+                if (blend_mode == 1)
+                    present = 1;
+                if (!present)
+                    continue;
+                if (blend_mode == 0)
+                    out->translation[component] += value * weight;
+                else
+                    out->translation[component] += (value - out->translation[component]) * weight;
+            }
+        }
+        if (scale) {
+            for (int component = 0; component < 3; ++component) {
+                double value;
+                int present;
+                if (!fbx_anim_layer_channel_value(
+                        scale, component, time, base->scale[component], &value, &present))
+                    return 0;
+                if (blend_mode == 1)
+                    present = 1;
+                if (!present)
+                    continue;
+                if (blend_mode == 0 && layer->scale_accumulation_mode == 0) {
+                    double factor;
+                    if (!(value > 0.0))
+                        return 0;
+                    factor = pow(value, weight);
+                    if (!isfinite(factor))
+                        return 0;
+                    out->scale[component] *= factor;
+                } else if (blend_mode == 0) {
+                    out->scale[component] += (value - 1.0) * weight;
+                } else {
+                    out->scale[component] += (value - out->scale[component]) * weight;
+                }
+            }
+        }
+        if (rotation) {
+            double layer_euler[3];
+            int any_present = 0;
+            for (int component = 0; component < 3; ++component) {
+                double fallback = blend_mode == 0 ? 0.0 : base->rotation[component];
+                int present;
+                if (!fbx_anim_layer_channel_value(
+                        rotation, component, time, fallback, &layer_euler[component], &present))
+                    return 0;
+                if (blend_mode == 1)
+                    present = 1;
+                if (!present)
+                    layer_euler[component] = fallback;
+                else
+                    any_present = 1;
+            }
+            if (!any_present && blend_mode != 1)
+                continue;
+            if (layer->rotation_accumulation_mode == 1) {
+                if (!euler_valid)
+                    fbx_constraint_euler_xyz_from_quaternion(accumulated_quaternion,
+                                                             accumulated_euler);
+                for (int component = 0; component < 3; ++component) {
+                    uint8_t bit = (uint8_t)(1u << component);
+                    int present = (rotation->curve_mask & bit) != 0 ||
+                                  (rotation->default_mask & bit) != 0 || blend_mode == 1;
+                    if (!present)
+                        continue;
+                    if (blend_mode == 0)
+                        accumulated_euler[component] += layer_euler[component] * weight;
+                    else
+                        accumulated_euler[component] +=
+                            (layer_euler[component] - accumulated_euler[component]) * weight;
+                    accumulated_euler[component] =
+                        fbx_sanitize_rotation_degrees(accumulated_euler[component]);
+                }
+                fbx_anim_quaternion_from_euler_order(
+                    accumulated_euler, base->rotation_order, accumulated_quaternion);
+                euler_valid = 1;
+            } else {
+                double layer_quaternion[4];
+                fbx_anim_quaternion_from_euler_order(
+                    layer_euler, base->rotation_order, layer_quaternion);
+                if (blend_mode == 0) {
+                    static const double identity[4] = {0.0, 0.0, 0.0, 1.0};
+                    double weighted[4];
+                    fbx_constraint_quaternion_nlerp(identity, layer_quaternion, weight, weighted);
+                    fbx_constraint_quaternion_multiply(
+                        accumulated_quaternion, weighted, accumulated_quaternion);
+                } else {
+                    fbx_constraint_quaternion_nlerp(
+                        accumulated_quaternion, layer_quaternion, weight, accumulated_quaternion);
+                }
+                euler_valid = 0;
+            }
+        }
+    }
+    for (int component = 0; component < 3; ++component) {
+        out->translation[component] =
+            fbx_clamp_abs_or(out->translation[component], 0.0, FBX_NUMERIC_ABS_MAX);
+        out->scale[component] = fbx_scale_or_unit(out->scale[component]);
+        if (euler_valid)
+            out->rotation[component] = accumulated_euler[component];
+    }
+    memcpy(out->sampled_rotation_quaternion,
+           accumulated_quaternion,
+           sizeof(out->sampled_rotation_quaternion));
+    out->use_sampled_rotation_quaternion = 1;
+    return 1;
+}
+
+static int fbx_anim_layer_sample_scalar(const fbx_anim_layer_stack_t *stack,
+                                        int64_t target_id,
+                                        const char *property,
+                                        double base,
+                                        int64_t time,
+                                        double *out,
+                                        int *out_found) {
+    double value = base;
+    int found = 0;
+    if (!out)
+        return 0;
+    if (stack)
+        for (int32_t layer_index = 0; layer_index < stack->layer_count; ++layer_index) {
+            const fbx_anim_layer_t *layer = &stack->layers[layer_index];
+            double weight;
+            int blend_mode;
+            if (!fbx_anim_layer_is_active(stack, layer_index))
+                continue;
+            weight = fbx_anim_layer_weight_at(layer, time);
+            if (weight <= 0.0)
+                continue;
+            blend_mode = layer_index == 0 ? 1 : layer->blend_mode;
+            for (int32_t channel_index = 0; channel_index < stack->channel_count; ++channel_index) {
+                const fbx_anim_layer_channel_t *channel = &stack->channels[channel_index];
+                double layer_value;
+                int present;
+                if (channel->layer_index != layer_index || channel->target_id != target_id ||
+                    (property && !fbx_ascii_streq_ignore_case(channel->property, property)) ||
+                    (!property && channel->transform_path >= 0))
+                    continue;
+                if (!fbx_anim_layer_channel_value(channel, 0, time, base, &layer_value, &present))
+                    return 0;
+                if (!present && blend_mode != 1)
+                    continue;
+                found = 1;
+                if (blend_mode == 0)
+                    value += layer_value * weight;
+                else
+                    value += (layer_value - value) * weight;
+            }
+        }
+    if (!isfinite(value))
+        return 0;
+    *out = value;
+    if (out_found)
+        *out_found = found;
+    return 1;
+}
+
 /// @brief qsort comparator for int64 keys, ascending (returns -1/0/1).
 static int fbx_i64_compare(const void *a, const void *b) {
     int64_t av = *(const int64_t *)a;
@@ -820,6 +1453,82 @@ static int fbx_anim_append_curve_sample_times(int64_t **times,
     return 1;
 }
 
+static int fbx_anim_layer_stack_append_times(int64_t **times,
+                                             int32_t *count,
+                                             int32_t *capacity,
+                                             const fbx_anim_layer_stack_t *stack,
+                                             int64_t target_id,
+                                             int transform_only,
+                                             const char *property,
+                                             fbx_load_context_t *context) {
+    if (!stack)
+        return 1;
+    for (int32_t layer_index = 0; layer_index < stack->layer_count; ++layer_index) {
+        int layer_used = 0;
+        if (!fbx_anim_layer_is_active(stack, layer_index))
+            continue;
+        for (int32_t channel_index = 0; channel_index < stack->channel_count; ++channel_index) {
+            const fbx_anim_layer_channel_t *channel = &stack->channels[channel_index];
+            if (channel->layer_index != layer_index ||
+                (target_id != 0 && channel->target_id != target_id) ||
+                (transform_only && channel->transform_path < 0) ||
+                (property && !fbx_ascii_streq_ignore_case(channel->property, property)))
+                continue;
+            layer_used = 1;
+            for (int component = 0; component < 3; ++component)
+                if (!fbx_anim_append_curve_sample_times(
+                        times, count, capacity, &channel->curves[component], context))
+                    return 0;
+        }
+        if (layer_used &&
+            !fbx_anim_append_curve_sample_times(
+                times, count, capacity, &stack->layers[layer_index].weight_curve, context))
+            return 0;
+    }
+    return 1;
+}
+
+static int fbx_anim_layer_stack_bounds(const fbx_anim_layer_stack_t *stack,
+                                       int transform_only,
+                                       int64_t *minimum,
+                                       int64_t *maximum) {
+    int found = 0;
+    if (!stack || !minimum || !maximum)
+        return 0;
+    for (int32_t layer_index = 0; layer_index < stack->layer_count; ++layer_index) {
+        int layer_used = 0;
+        if (!fbx_anim_layer_is_active(stack, layer_index))
+            continue;
+        for (int32_t channel_index = 0; channel_index < stack->channel_count; ++channel_index) {
+            const fbx_anim_layer_channel_t *channel = &stack->channels[channel_index];
+            if (channel->layer_index != layer_index ||
+                (transform_only && channel->transform_path < 0))
+                continue;
+            if (channel->curve_mask != 0 || channel->default_mask != 0)
+                layer_used = 1;
+            for (int component = 0; component < 3; ++component) {
+                const fbx_anim_curve_view_t *curve = &channel->curves[component];
+                if (!fbx_anim_curve_has_data(curve))
+                    continue;
+                if (!found || curve->times[0] < *minimum)
+                    *minimum = curve->times[0];
+                if (!found || curve->times[curve->count - 1] > *maximum)
+                    *maximum = curve->times[curve->count - 1];
+                found = 1;
+            }
+        }
+        if (layer_used && fbx_anim_curve_has_data(&stack->layers[layer_index].weight_curve)) {
+            const fbx_anim_curve_view_t *weight = &stack->layers[layer_index].weight_curve;
+            if (!found || weight->times[0] < *minimum)
+                *minimum = weight->times[0];
+            if (!found || weight->times[weight->count - 1] > *maximum)
+                *maximum = weight->times[weight->count - 1];
+            found = 1;
+        }
+    }
+    return found;
+}
+
 /// @brief Sort key times and compact duplicates in place.
 static void fbx_anim_sort_unique_times(int64_t *times, int32_t *count) {
     int32_t write = 0;
@@ -887,6 +1596,7 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
                                     int32_t bone_binding_count,
                                     int64_t bone_count,
                                     int64_t stack_id,
+                                    const fbx_anim_layer_stack_t *layer_stack,
                                     fbx_anim_bone_builder_t *builders) {
     if (!objects || !ct || !builders)
         return;
@@ -899,8 +1609,12 @@ static void fbx_anim_collect_curves(fbx_node_t *objects,
         if (!model_node || !model_node->name || strcmp(model_node->name, "Model") != 0)
             continue;
         fbx_read_model_transform_components(model_node, &builders[bone_index].base_transform);
+        builders[bone_index].target_id = bone_bindings[binding_index].model_id;
+        builders[bone_index].layer_stack = layer_stack;
         builders[bone_index].initialized = 1;
     }
+    if (layer_stack)
+        return;
     for (int32_t li = fbx_connections_first_for_parent(ct, stack_id); li >= 0;
          li = fbx_connections_next_for_parent(ct, li)) {
         int64_t layer_id;
@@ -1046,6 +1760,11 @@ static int fbx_anim_compute_time_bounds(const fbx_anim_bone_builder_t *builders,
         *out_min_time = 0;
     if (out_max_time)
         *out_max_time = 0;
+    if (builders)
+        for (int64_t bone_idx = 0; bone_idx < bone_count; ++bone_idx)
+            if (builders[bone_idx].layer_stack)
+                return fbx_anim_layer_stack_bounds(
+                    builders[bone_idx].layer_stack, 1, out_min_time, out_max_time);
     for (int64_t bone_idx = 0; bone_idx < bone_count; bone_idx++) {
         if (!builders[bone_idx].initialized)
             continue;
@@ -1089,6 +1808,9 @@ static int fbx_anim_sample_components(const fbx_anim_bone_builder_t *builder,
                                       fbx_transform_components_t *out) {
     if (!builder || !builder->initialized || !out)
         return 0;
+    if (builder->layer_stack)
+        return fbx_anim_layer_sample_components(
+            builder->layer_stack, builder->target_id, &builder->base_transform, fbx_time, out);
     *out = builder->base_transform;
     for (int component = 0; component < 3; component++) {
         out->translation[component] = fbx_anim_curve_value(
@@ -1103,6 +1825,561 @@ static int fbx_anim_sample_components(const fbx_anim_bone_builder_t *builder,
         out->scale[component] = fbx_scale_or_unit(out->scale[component]);
     }
     return 1;
+}
+
+static int fbx_anim_constraint_read_curve(fbx_node_t *curve, fbx_anim_curve_view_t *out) {
+    uint32_t time_count = 0;
+    uint32_t value_count = 0;
+    uint32_t flag_count = 0;
+    uint32_t data_count = 0;
+    fbx_anim_curve_view_t candidate;
+    if (!curve || !out || strcmp(curve->name, "AnimationCurve") != 0)
+        return 0;
+    memset(&candidate, 0, sizeof(candidate));
+    candidate.times = fbx_get_i64_array(curve, "KeyTime", &time_count);
+    candidate.values64 = fbx_get_f64_array(curve, "KeyValueFloat", &value_count);
+    if (!candidate.values64)
+        candidate.values32 = fbx_get_f32_array(curve, "KeyValueFloat", &value_count);
+    candidate.attr_flags = fbx_get_i32_array(curve, "KeyAttrFlags", &flag_count);
+    candidate.attr_data64 = fbx_get_f64_array(curve, "KeyAttrDataFloat", &data_count);
+    if (!candidate.attr_data64)
+        candidate.attr_data32 = fbx_get_f32_array(curve, "KeyAttrDataFloat", &data_count);
+    candidate.count = time_count;
+    candidate.attr_flag_count = candidate.attr_flags ? flag_count : 0;
+    candidate.attr_data_count = (candidate.attr_data64 || candidate.attr_data32) ? data_count : 0;
+    if (time_count == 0 || time_count != value_count || !fbx_anim_curve_view_valid(&candidate))
+        return 0;
+    *out = candidate;
+    return 1;
+}
+
+static int fbx_anim_constraint_make_models(fbx_node_t *objects,
+                                           const fbx_conn_table_t *ct,
+                                           fbx_anim_constraint_model_t **out_models,
+                                           int32_t *out_count,
+                                           fbx_model_id_entry_t **out_ids,
+                                           fbx_load_context_t *context) {
+    fbx_anim_constraint_model_t *models;
+    fbx_model_id_entry_t *ids;
+    int32_t count = 0;
+    if (!objects || !ct || !out_models || !out_count || !out_ids || !context)
+        return 0;
+    *out_models = NULL;
+    *out_count = 0;
+    *out_ids = NULL;
+    for (int32_t i = 0; i < objects->child_count; ++i)
+        if (objects->children[i].name && strcmp(objects->children[i].name, "Model") == 0 &&
+            objects->children[i].prop_count >= 3)
+            ++count;
+    if (count == 0)
+        return 1;
+    if ((size_t)count > SIZE_MAX / sizeof(*models) || (size_t)count > SIZE_MAX / sizeof(*ids) ||
+        !fbx_budget_charge(context, (uint64_t)count, sizeof(*models)) ||
+        !fbx_budget_charge(context, (uint64_t)count, sizeof(*ids)))
+        return 0;
+    models = (fbx_anim_constraint_model_t *)calloc((size_t)count, sizeof(*models));
+    ids = (fbx_model_id_entry_t *)malloc((size_t)count * sizeof(*ids));
+    if (!models || !ids) {
+        free(models);
+        free(ids);
+        return 0;
+    }
+    count = 0;
+    for (int32_t i = 0; i < objects->child_count; ++i) {
+        fbx_node_t *model = &objects->children[i];
+        if (!model->name || strcmp(model->name, "Model") != 0 || model->prop_count < 3)
+            continue;
+        models[count].id = fbx_prop_i64(model, 0);
+        models[count].parent_id = fbx_find_parent(ct, models[count].id);
+        models[count].parent_index = -1;
+        models[count].import_index = i;
+        models[count].is_skeleton = fbx_model_type_is_skeleton(fbx_prop_str(model, 2));
+        models[count].source = model;
+        models[count].animation.target_id = models[count].id;
+        fbx_read_model_transform_components(model, &models[count].animation.base_transform);
+        models[count].animation.initialized = 1;
+        ids[count].id = models[count].id;
+        ids[count].index = count;
+        ++count;
+    }
+    qsort(ids, (size_t)count, sizeof(*ids), fbx_model_id_entry_cmp);
+    for (int32_t i = 0; i < count; ++i)
+        if (models[i].parent_id != 0)
+            models[i].parent_index = fbx_model_index_for_id(ids, count, models[i].parent_id);
+    *out_models = models;
+    *out_count = count;
+    *out_ids = ids;
+    return 1;
+}
+
+static void fbx_anim_constraint_collect_curves(fbx_node_t *objects,
+                                               const fbx_conn_table_t *ct,
+                                               int64_t stack_id,
+                                               const fbx_anim_layer_stack_t *layer_stack,
+                                               fbx_anim_constraint_model_t *models,
+                                               int32_t model_count,
+                                               const fbx_model_id_entry_t *ids) {
+    if (layer_stack) {
+        for (int32_t model = 0; model < model_count; ++model)
+            models[model].animation.layer_stack = layer_stack;
+        return;
+    }
+    for (int32_t layer_connection = fbx_connections_first_for_parent(ct, stack_id);
+         layer_connection >= 0;
+         layer_connection = fbx_connections_next_for_parent(ct, layer_connection)) {
+        fbx_node_t *layer = fbx_find_object_by_id(objects, ct->entries[layer_connection].child_id);
+        if (!layer || strcmp(layer->name, "AnimationLayer") != 0 || layer->prop_count < 1)
+            continue;
+        for (int32_t node_connection = fbx_connections_first_for_parent(ct, fbx_prop_i64(layer, 0));
+             node_connection >= 0;
+             node_connection = fbx_connections_next_for_parent(ct, node_connection)) {
+            int64_t curve_node_id = ct->entries[node_connection].child_id;
+            fbx_node_t *curve_node = fbx_find_object_by_id(objects, curve_node_id);
+            int32_t model_index = -1;
+            int32_t trs = -1;
+            if (!curve_node || strcmp(curve_node->name, "AnimationCurveNode") != 0)
+                continue;
+            for (int32_t target_connection = fbx_connections_first_for_child(ct, curve_node_id);
+                 target_connection >= 0;
+                 target_connection = fbx_connections_next_for_child(ct, target_connection)) {
+                fbx_node_t *target =
+                    fbx_find_object_by_id(objects, ct->entries[target_connection].parent_id);
+                const char *property = ct->entries[target_connection].prop;
+                if (!target || strcmp(target->name, "Model") != 0 || !property)
+                    continue;
+                if (strcmp(property, "Lcl Translation") == 0)
+                    trs = 0;
+                else if (strcmp(property, "Lcl Rotation") == 0)
+                    trs = 1;
+                else if (strcmp(property, "Lcl Scaling") == 0)
+                    trs = 2;
+                if (trs >= 0) {
+                    model_index = fbx_model_index_for_id(
+                        ids, model_count, ct->entries[target_connection].parent_id);
+                    break;
+                }
+            }
+            if (model_index < 0 || trs < 0)
+                continue;
+            for (int32_t curve_connection = fbx_connections_first_for_parent(ct, curve_node_id);
+                 curve_connection >= 0;
+                 curve_connection = fbx_connections_next_for_parent(ct, curve_connection)) {
+                int component =
+                    fbx_anim_component_from_connection_prop(ct->entries[curve_connection].prop);
+                fbx_node_t *curve;
+                if (component < 0 ||
+                    fbx_anim_curve_has_data(&models[model_index].animation.curves[trs][component]))
+                    continue;
+                curve = fbx_find_object_by_id(objects, ct->entries[curve_connection].child_id);
+                (void)fbx_anim_constraint_read_curve(
+                    curve, &models[model_index].animation.curves[trs][component]);
+            }
+        }
+    }
+}
+
+static int fbx_anim_constraint_bounds(const fbx_anim_constraint_model_t *models,
+                                      int32_t model_count,
+                                      int64_t *minimum,
+                                      int64_t *maximum) {
+    int found = 0;
+    for (int32_t model = 0; model < model_count; ++model)
+        if (models[model].animation.layer_stack)
+            return fbx_anim_layer_stack_bounds(
+                models[model].animation.layer_stack, 1, minimum, maximum);
+    for (int32_t model = 0; model < model_count; ++model)
+        for (int trs = 0; trs < 3; ++trs)
+            for (int component = 0; component < 3; ++component) {
+                const fbx_anim_curve_view_t *curve =
+                    &models[model].animation.curves[trs][component];
+                if (!fbx_anim_curve_has_data(curve))
+                    continue;
+                if (!found || curve->times[0] < *minimum)
+                    *minimum = curve->times[0];
+                if (!found || curve->times[curve->count - 1] > *maximum)
+                    *maximum = curve->times[curve->count - 1];
+                found = 1;
+            }
+    return found;
+}
+
+static int fbx_anim_constraint_initialize_pose(const fbx_anim_constraint_model_t *models,
+                                               int32_t model_count,
+                                               fbx_load_context_t *context,
+                                               fbx_constraint_pose_t *pose) {
+    if (!fbx_constraint_pose_allocate(pose, model_count, context))
+        return 0;
+    for (int32_t i = 0; i < model_count; ++i) {
+        pose->ids[i] = models[i].id;
+        pose->parent_indices[i] = models[i].parent_index;
+        pose->sources[i] = models[i].source;
+        pose->id_table[i].id = models[i].id;
+        pose->id_table[i].index = i;
+    }
+    qsort(pose->id_table, (size_t)model_count, sizeof(*pose->id_table), fbx_model_id_entry_cmp);
+    return 1;
+}
+
+static int fbx_anim_constraint_writes_model(const fbx_constraint_t *constraint,
+                                            const fbx_constraint_pose_t *pose,
+                                            int32_t model_index) {
+    if (!constraint || !constraint->active || constraint->kind == FBX_CONSTRAINT_UNKNOWN || !pose ||
+        model_index < 0 || model_index >= pose->count)
+        return 0;
+    if (constraint->kind != FBX_CONSTRAINT_SINGLE_CHAIN_IK)
+        return constraint->target_id == pose->ids[model_index];
+    for (int32_t current = fbx_constraint_pose_index(pose, constraint->ik_end_id), guard = 0;
+         current >= 0 && guard++ <= pose->count;
+         current = pose->parent_indices[current]) {
+        if (current == model_index)
+            return 1;
+        if (pose->ids[current] == constraint->target_id)
+            break;
+    }
+    return 0;
+}
+
+static int fbx_anim_constraint_append_times(int64_t **times,
+                                            int32_t *count,
+                                            int32_t *capacity,
+                                            const fbx_anim_constraint_model_t *models,
+                                            int32_t model_count,
+                                            int32_t model_index,
+                                            const fbx_constraint_set_t *constraints,
+                                            fbx_constraint_pose_t *pose,
+                                            fbx_load_context_t *context) {
+    uint8_t *marked;
+    if (!models || model_count <= 0 || model_index < 0 || model_index >= model_count || !pose ||
+        pose->count != model_count || !pose->evaluation_flags)
+        return 0;
+    marked = pose->evaluation_flags;
+    memset(marked, 0, (size_t)model_count * sizeof(*marked));
+    marked[model_index] = 1;
+    for (int32_t pass = 0; pass < model_count + constraints->count; ++pass) {
+        int progress = 0;
+        for (int32_t current = 0; current < model_count; ++current) {
+            int32_t parent;
+            if (!marked[current])
+                continue;
+            parent = models[current].parent_index;
+            if (parent >= 0 && !marked[parent]) {
+                marked[parent] = 1;
+                progress = 1;
+            }
+            for (int32_t ci = 0; ci < constraints->count; ++ci) {
+                const fbx_constraint_t *constraint = &constraints->entries[ci];
+                if (!fbx_anim_constraint_writes_model(constraint, pose, current))
+                    continue;
+                for (int32_t source = 0; source < constraint->source_count; ++source) {
+                    int32_t dependency =
+                        fbx_constraint_pose_index(pose, constraint->sources[source].model_id);
+                    if (dependency >= 0 && !marked[dependency]) {
+                        marked[dependency] = 1;
+                        progress = 1;
+                    }
+                }
+                const int64_t roles[] = {
+                    constraint->world_up_id, constraint->ik_effector_id, constraint->ik_pole_id};
+                for (size_t role = 0; role < sizeof(roles) / sizeof(roles[0]); ++role) {
+                    int32_t dependency = fbx_constraint_pose_index(pose, roles[role]);
+                    if (dependency >= 0 && !marked[dependency]) {
+                        marked[dependency] = 1;
+                        progress = 1;
+                    }
+                }
+            }
+        }
+        if (!progress)
+            break;
+    }
+    for (int32_t model = 0; model < model_count; ++model) {
+        if (!marked[model])
+            continue;
+        if (models[model].animation.layer_stack) {
+            if (!fbx_anim_layer_stack_append_times(times,
+                                                   count,
+                                                   capacity,
+                                                   models[model].animation.layer_stack,
+                                                   models[model].id,
+                                                   1,
+                                                   NULL,
+                                                   context))
+                return 0;
+            continue;
+        }
+        for (int trs = 0; trs < 3; ++trs)
+            for (int component = 0; component < 3; ++component)
+                if (!fbx_anim_append_curve_sample_times(
+                        times,
+                        count,
+                        capacity,
+                        &models[model].animation.curves[trs][component],
+                        context))
+                    return 0;
+    }
+    return 1;
+}
+
+static int32_t fbx_anim_constraint_model_for_bone(const fbx_bone_binding_t *bone_bindings,
+                                                  int32_t bone_binding_count,
+                                                  const fbx_constraint_pose_t *pose,
+                                                  int32_t bone_index) {
+    for (int32_t i = 0; i < bone_binding_count; ++i)
+        if (bone_bindings[i].bone_index == bone_index)
+            return fbx_constraint_pose_index(pose, bone_bindings[i].model_id);
+    return -1;
+}
+
+static int fbx_anim_constraint_sample_pose(const fbx_anim_constraint_model_t *models,
+                                           int32_t model_count,
+                                           int32_t model_index,
+                                           int32_t parent_model_index,
+                                           int64_t source_time,
+                                           int z_up,
+                                           fbx_constraint_set_t *constraints,
+                                           fbx_constraint_pose_t *pose,
+                                           fbx_load_context_t *context,
+                                           double position[3],
+                                           double quaternion[4],
+                                           double scale[3]) {
+    double runtime_local[16];
+    pose->z_up = z_up;
+    memset(pose->fixed_globals, 0, (size_t)model_count * sizeof(*pose->fixed_globals));
+    for (int32_t model = 0; model < model_count; ++model) {
+        if (!fbx_anim_sample_components(
+                &models[model].animation, source_time, &pose->components[model]))
+            return 0;
+        fbx_build_model_transform_matrix(&pose->components[model],
+                                         fbx_constraint_pose_local(pose, model));
+        if (z_up)
+            fbx_mat4_apply_zup(fbx_constraint_pose_local(pose, model));
+    }
+    if (!fbx_constraint_pose_recompute(pose) ||
+        !fbx_constraint_apply_set(constraints, pose, context))
+        return 0;
+    if (parent_model_index >= 0) {
+        double inverse_parent[16];
+        if (!fbx_mat4_inverse_affine(fbx_constraint_pose_global(pose, parent_model_index),
+                                     inverse_parent))
+            return 0;
+        fbx_mat4_mul_local(
+            inverse_parent, fbx_constraint_pose_global(pose, model_index), runtime_local);
+    } else {
+        memcpy(runtime_local, fbx_constraint_pose_global(pose, model_index), sizeof(runtime_local));
+    }
+    fbx_decompose_matrix_trs(runtime_local, position, quaternion, scale);
+    return 1;
+}
+
+static int fbx_anim_constraint_emit_bone(void *animation,
+                                         const fbx_anim_constraint_model_t *models,
+                                         int32_t model_count,
+                                         int32_t model_index,
+                                         int32_t parent_model_index,
+                                         int32_t bone_index,
+                                         int64_t clip_start,
+                                         int z_up,
+                                         fbx_constraint_set_t *constraints,
+                                         fbx_constraint_pose_t *pose,
+                                         fbx_load_context_t *context) {
+    int64_t *times = NULL;
+    int32_t count = 0;
+    int32_t capacity = 0;
+    if (!fbx_anim_constraint_append_times(&times,
+                                          &count,
+                                          &capacity,
+                                          models,
+                                          model_count,
+                                          model_index,
+                                          constraints,
+                                          pose,
+                                          context)) {
+        free(times);
+        return -1;
+    }
+    fbx_anim_sort_unique_times(times, &count);
+    if (count == 0) {
+        free(times);
+        return 0;
+    }
+    {
+        int32_t reserved = 16;
+        while (reserved < count) {
+            if (reserved > RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL / 2) {
+                free(times);
+                return -1;
+            }
+            reserved *= 2;
+        }
+        if (!fbx_budget_charge(context, (uint64_t)reserved, sizeof(vgfx3d_keyframe_t)) ||
+            !fbx_budget_charge(context, 8u, sizeof(vgfx3d_anim_channel_t))) {
+            free(times);
+            return -1;
+        }
+    }
+    for (int32_t i = 0; i < count; ++i) {
+        double relative_time = ((double)times[i] - (double)clip_start) / (double)FBX_TIME_SECOND;
+        double position_value[3];
+        double quaternion_value[4];
+        double scale_value[3];
+        void *position;
+        void *rotation;
+        void *scale;
+        if (!fbx_anim_constraint_sample_pose(models,
+                                             model_count,
+                                             model_index,
+                                             parent_model_index,
+                                             times[i],
+                                             z_up,
+                                             constraints,
+                                             pose,
+                                             context,
+                                             position_value,
+                                             quaternion_value,
+                                             scale_value)) {
+            free(times);
+            return -1;
+        }
+        position = rt_vec3_new(position_value[0], position_value[1], position_value[2]);
+        rotation = rt_quat_new(
+            quaternion_value[0], quaternion_value[1], quaternion_value[2], quaternion_value[3]);
+        scale = rt_vec3_new(scale_value[0], scale_value[1], scale_value[2]);
+        if (!position || !rotation || !scale || !isfinite(relative_time) || relative_time < 0.0 ||
+            !rt_animation3d_try_add_keyframe(
+                animation, bone_index, relative_time, position, rotation, scale)) {
+            fbx_release_ref(&position);
+            fbx_release_ref(&rotation);
+            fbx_release_ref(&scale);
+            free(times);
+            return -1;
+        }
+        fbx_release_ref(&position);
+        fbx_release_ref(&rotation);
+        fbx_release_ref(&scale);
+    }
+    free(times);
+    return 1;
+}
+
+static int fbx_extract_constraint_animations(fbx_node_t *objects,
+                                             const fbx_conn_table_t *ct,
+                                             void *skeleton,
+                                             const fbx_bone_binding_t *bone_bindings,
+                                             int32_t bone_binding_count,
+                                             int z_up,
+                                             fbx_constraint_set_t *constraints,
+                                             void ***out_anims,
+                                             int32_t *out_count,
+                                             int32_t *out_capacity,
+                                             fbx_load_context_t *context) {
+    int64_t bone_count = rt_skeleton3d_get_bone_count(skeleton);
+    for (int32_t stack_index = 0; stack_index < objects->child_count; ++stack_index) {
+        fbx_node_t *stack = &objects->children[stack_index];
+        fbx_anim_constraint_model_t *models = NULL;
+        fbx_model_id_entry_t *ids = NULL;
+        fbx_anim_layer_stack_t layer_stack;
+        fbx_constraint_pose_t pose;
+        int32_t model_count = 0;
+        int64_t minimum = 0;
+        int64_t maximum = 0;
+        void *animation = NULL;
+        int emitted = 0;
+        memset(&pose, 0, sizeof(pose));
+        memset(&layer_stack, 0, sizeof(layer_stack));
+        if (strcmp(stack->name, "AnimationStack") != 0 || stack->prop_count < 1 ||
+            !fbx_anim_stack_has_layer(objects, ct, fbx_prop_i64(stack, 0)))
+            continue;
+        if (!fbx_anim_layer_stack_parse(objects, ct, fbx_prop_i64(stack, 0), context, &layer_stack))
+            goto fail;
+        if (!fbx_anim_constraint_make_models(objects, ct, &models, &model_count, &ids, context)) {
+            fbx_anim_layer_stack_free(&layer_stack);
+            goto fail;
+        }
+        fbx_anim_constraint_collect_curves(
+            objects, ct, fbx_prop_i64(stack, 0), &layer_stack, models, model_count, ids);
+        if (!fbx_anim_constraint_bounds(models, model_count, &minimum, &maximum)) {
+            free(models);
+            free(ids);
+            fbx_anim_layer_stack_free(&layer_stack);
+            continue;
+        }
+        if (!fbx_anim_constraint_initialize_pose(models, model_count, context, &pose)) {
+            free(models);
+            free(ids);
+            fbx_anim_layer_stack_free(&layer_stack);
+            goto fail;
+        }
+        {
+            rt_string name = fbx_object_name_string(stack, 1);
+            double duration = ((double)maximum - (double)minimum) / (double)FBX_TIME_SECOND;
+            if (!name || rt_str_is_empty(name)) {
+                rt_string_unref(name);
+                name = rt_const_cstr("Untitled");
+            }
+            animation = rt_animation3d_new(name, duration > 0.0 ? duration : 1.0);
+            rt_string_unref(name);
+        }
+        if (!animation) {
+            fbx_constraint_pose_free(&pose);
+            free(models);
+            free(ids);
+            fbx_anim_layer_stack_free(&layer_stack);
+            goto fail;
+        }
+        for (int32_t bone = 0; bone < bone_count; ++bone) {
+            int32_t model_index =
+                fbx_anim_constraint_model_for_bone(bone_bindings, bone_binding_count, &pose, bone);
+            int64_t parent_bone = rt_skeleton3d_get_bone_parent_raw(skeleton, bone);
+            int32_t parent_model =
+                parent_bone >= 0
+                    ? fbx_anim_constraint_model_for_bone(
+                          bone_bindings, bone_binding_count, &pose, (int32_t)parent_bone)
+                    : -1;
+            int status;
+            if (model_index < 0)
+                continue;
+            status = fbx_anim_constraint_emit_bone(animation,
+                                                   models,
+                                                   model_count,
+                                                   model_index,
+                                                   parent_model,
+                                                   bone,
+                                                   minimum,
+                                                   z_up,
+                                                   constraints,
+                                                   &pose,
+                                                   context);
+            if (status < 0) {
+                fbx_release_ref(&animation);
+                fbx_constraint_pose_free(&pose);
+                free(models);
+                free(ids);
+                fbx_anim_layer_stack_free(&layer_stack);
+                goto fail;
+            }
+            if (status > 0)
+                emitted = 1;
+        }
+        fbx_constraint_pose_free(&pose);
+        free(models);
+        free(ids);
+        fbx_anim_layer_stack_free(&layer_stack);
+        if (!emitted) {
+            fbx_release_ref(&animation);
+            continue;
+        }
+        rt_animation3d_set_looping(animation, 1);
+        if (*out_count == INT32_MAX || !fbx_budget_charge(context, 1u, sizeof(void *)) ||
+            !fbx_asset_reserve_ref_array(out_anims, out_capacity, *out_count + 1)) {
+            fbx_release_ref(&animation);
+            goto fail;
+        }
+        (*out_anims)[(*out_count)++] = animation;
+    }
+    return 1;
+fail:
+    fbx_asset_release_ref_array(out_anims, out_count, out_capacity);
+    return 0;
 }
 
 /// @brief Evaluate a bone and all ancestors through the shared FBX inheritance composer.
@@ -1207,6 +2484,18 @@ static int fbx_anim_append_inherited_sample_times(int64_t **times,
             return 0;
         if (!builders[current].initialized)
             return 0;
+        if (builders[current].layer_stack) {
+            if (!fbx_anim_layer_stack_append_times(times,
+                                                   count,
+                                                   capacity,
+                                                   builders[current].layer_stack,
+                                                   builders[current].target_id,
+                                                   1,
+                                                   NULL,
+                                                   context))
+                return 0;
+            continue;
+        }
         for (int trs = 0; trs < 3; trs++) {
             for (int component = 0; component < 3; component++) {
                 const fbx_anim_curve_view_t *curve = &builders[current].curves[trs][component];
@@ -1245,6 +2534,12 @@ static int fbx_anim_build_bone_keyframes(void *anim,
                                                 skeleton,
                                                 bone_idx,
                                                 context)) {
+        rt_asset_error_set_if_empty(
+            context && context->budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE
+                                                 : RT_ASSET_ERROR_CORRUPT,
+            context && context->budget_exhausted
+                ? "FBX.Load: animation-layer sample times exceed the aggregate load budget"
+                : "FBX.Load: failed to collect animation-layer sample times");
         free(times);
         return -1;
     }
@@ -1253,6 +2548,9 @@ static int fbx_anim_build_bone_keyframes(void *anim,
         int32_t reserved_keyframes = 16;
         while (reserved_keyframes < time_count) {
             if (reserved_keyframes > RT_ANIMATION3D_MAX_KEYFRAMES_PER_CHANNEL / 2) {
+                rt_asset_error_set_if_empty(
+                    RT_ASSET_ERROR_TOO_LARGE,
+                    "FBX.Load: animation-layer channel exceeds the keyframe limit");
                 free(times);
                 return -1;
             }
@@ -1260,6 +2558,9 @@ static int fbx_anim_build_bone_keyframes(void *anim,
         }
         if (!fbx_budget_charge(context, (uint64_t)reserved_keyframes, sizeof(vgfx3d_keyframe_t)) ||
             !fbx_budget_charge(context, 8u, sizeof(vgfx3d_anim_channel_t))) {
+            rt_asset_error_set_if_empty(
+                RT_ASSET_ERROR_TOO_LARGE,
+                "FBX.Load: animation-layer keyframes exceed the aggregate load budget");
             free(times);
             return -1;
         }
@@ -1286,6 +2587,9 @@ static int fbx_anim_build_bone_keyframes(void *anim,
                                               position_value,
                                               quaternion_value,
                                               scale_value)) {
+            rt_asset_error_set_if_empty(
+                RT_ASSET_ERROR_CORRUPT,
+                "FBX.Load: animation layer transform evaluation produced an invalid pose");
             free(times);
             return -1;
         }
@@ -1295,6 +2599,9 @@ static int fbx_anim_build_bone_keyframes(void *anim,
         scale = rt_vec3_new(scale_value[0], scale_value[1], scale_value[2]);
         if (!position || !rotation || !scale ||
             !rt_animation3d_try_add_keyframe(anim, bone_idx, t, position, rotation, scale)) {
+            rt_asset_error_set_if_empty(
+                RT_ASSET_ERROR_CORRUPT,
+                "FBX.Load: failed to store a composed animation-layer bone keyframe");
             fbx_release_ref(&position);
             fbx_release_ref(&rotation);
             fbx_release_ref(&scale);
@@ -1325,6 +2632,7 @@ static int fbx_extract_animations(fbx_node_t *root,
                                   const fbx_bone_binding_t *bone_bindings,
                                   int32_t bone_binding_count,
                                   int z_up,
+                                  fbx_constraint_set_t *constraints,
                                   void ***out_anims,
                                   int32_t *out_count,
                                   int32_t *out_capacity,
@@ -1345,29 +2653,50 @@ static int fbx_extract_animations(fbx_node_t *root,
     if (bone_count > FBX_MAX_SKELETON_BONES ||
         (size_t)bone_count > SIZE_MAX / sizeof(fbx_anim_bone_builder_t))
         return 0;
+    if (constraints && constraints->count > 0)
+        return fbx_extract_constraint_animations(objects,
+                                                 ct,
+                                                 skeleton,
+                                                 bone_bindings,
+                                                 bone_binding_count,
+                                                 z_up,
+                                                 constraints,
+                                                 out_anims,
+                                                 out_count,
+                                                 out_capacity,
+                                                 context);
 
     /* Find AnimationStack nodes */
     for (int32_t i = 0; i < objects->child_count; i++) {
         fbx_node_t *obj = &objects->children[i];
         fbx_anim_bone_builder_t *builders;
+        fbx_anim_layer_stack_t layer_stack;
         int64_t min_time;
         int64_t max_time;
         double duration;
         if (strcmp(obj->name, "AnimationStack") != 0)
             continue;
 
+        memset(&layer_stack, 0, sizeof(layer_stack));
+
         int64_t stack_id = fbx_prop_i64(obj, 0);
         rt_string runtime_anim_name = NULL;
 
         if (!fbx_anim_stack_has_layer(objects, ct, stack_id))
             continue;
+        if (!fbx_anim_layer_stack_parse(objects, ct, stack_id, context, &layer_stack))
+            goto fail;
 
         if ((size_t)bone_count > SIZE_MAX / sizeof(*builders) ||
-            !fbx_budget_charge(context, (uint64_t)bone_count, sizeof(*builders)))
+            !fbx_budget_charge(context, (uint64_t)bone_count, sizeof(*builders))) {
+            fbx_anim_layer_stack_free(&layer_stack);
             goto fail;
+        }
         builders = (fbx_anim_bone_builder_t *)calloc((size_t)bone_count, sizeof(*builders));
-        if (!builders)
+        if (!builders) {
+            fbx_anim_layer_stack_free(&layer_stack);
             goto fail;
+        }
 
         fbx_anim_collect_curves(objects,
                                 ct,
@@ -1376,9 +2705,11 @@ static int fbx_extract_animations(fbx_node_t *root,
                                 bone_binding_count,
                                 bone_count,
                                 stack_id,
+                                &layer_stack,
                                 builders);
         if (!fbx_anim_compute_time_bounds(builders, bone_count, &min_time, &max_time)) {
             free(builders);
+            fbx_anim_layer_stack_free(&layer_stack);
             continue;
         }
         duration = ((double)max_time - (double)min_time) / (double)FBX_TIME_SECOND;
@@ -1392,7 +2723,11 @@ static int fbx_extract_animations(fbx_node_t *root,
         rt_string_unref(runtime_anim_name);
         int emitted_any = 0;
         if (!anim) {
+            rt_asset_error_set_if_empty(
+                RT_ASSET_ERROR_CORRUPT,
+                "FBX.Load: failed to allocate a composed animation-layer clip");
             free(builders);
+            fbx_anim_layer_stack_free(&layer_stack);
             goto fail;
         }
 
@@ -1401,6 +2736,7 @@ static int fbx_extract_animations(fbx_node_t *root,
                 anim, builders, bone_count, skeleton, bone_idx, z_up, min_time, context);
             if (build_status < 0) {
                 free(builders);
+                fbx_anim_layer_stack_free(&layer_stack);
                 fbx_release_ref(&anim);
                 goto fail;
             }
@@ -1408,6 +2744,7 @@ static int fbx_extract_animations(fbx_node_t *root,
                 emitted_any = 1;
         }
         free(builders);
+        fbx_anim_layer_stack_free(&layer_stack);
 
         if (!emitted_any) {
             fbx_release_ref(&anim);
@@ -1416,14 +2753,23 @@ static int fbx_extract_animations(fbx_node_t *root,
         rt_animation3d_set_looping(anim, 1);
 
         if (*out_count < 0 || *out_count == INT32_MAX) {
+            rt_asset_error_set_if_empty(
+                RT_ASSET_ERROR_TOO_LARGE,
+                "FBX.Load: animation-layer clip count exceeds the runtime limit");
             fbx_release_ref(&anim);
             goto fail;
         }
         if (!fbx_budget_charge(context, 1u, sizeof(void *))) {
+            rt_asset_error_set_if_empty(
+                RT_ASSET_ERROR_TOO_LARGE,
+                "FBX.Load: animation-layer clips exceed the aggregate load budget");
             fbx_release_ref(&anim);
             goto fail;
         }
         if (!fbx_asset_reserve_ref_array(out_anims, out_capacity, *out_count + 1)) {
+            rt_asset_error_set_if_empty(
+                RT_ASSET_ERROR_CORRUPT,
+                "FBX.Load: failed to store a composed animation-layer clip");
             fbx_release_ref(&anim);
             goto fail;
         }

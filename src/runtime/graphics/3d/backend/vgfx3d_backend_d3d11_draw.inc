@@ -817,6 +817,19 @@ static void d3d11_prepare_light_data(const vgfx3d_light_params_t *lights,
             lights[i].shadow_cascade_splits,
             sizeof(light_data[i].shadow_cascade_splits) /
                 sizeof(light_data[i].shadow_cascade_splits[0]));
+        vgfx3d_d3d11_copy_float_array_clamped_finite_or(
+            light_data[i].basis_u, lights[i].basis_u, 3u, -1.0f, 1.0f, 0.0f);
+        vgfx3d_d3d11_copy_float_array_clamped_finite_or(
+            light_data[i].basis_v, lights[i].basis_v, 3u, -1.0f, 1.0f, 0.0f);
+        light_data[i].shape[0] = vgfx3d_d3d11_clamp_float_param(
+            lights[i].width, 0.000001f, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX, 1.0f);
+        light_data[i].shape[1] = vgfx3d_d3d11_clamp_float_param(
+            lights[i].height, 0.000001f, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX, 1.0f);
+        light_data[i].shape[2] = vgfx3d_d3d11_clamp_float_param(
+            lights[i].radius, 0.000001f, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX, 1.0f);
+        light_data[i].shape[3] = vgfx3d_d3d11_clamp_float_param(
+            lights[i].range, 0.000001f, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX, 1.0f);
+        light_data[i].decay_type = vgfx3d_d3d11_clamp_int_param(lights[i].decay_type, 0, 3);
     }
 }
 

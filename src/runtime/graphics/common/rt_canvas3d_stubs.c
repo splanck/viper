@@ -1091,6 +1091,26 @@ int8_t rt_camera3d_is_ortho(void *o) {
     return 0;
 }
 
+/// @brief Graphics-disabled stub for writable Camera3D projection mode.
+void rt_camera3d_set_is_ortho(void *o, int8_t is_ortho) {
+    (void)o;
+    (void)is_ortho;
+    RT_GRAPHICS_TRAP_VOID("Camera3D.IsOrtho: graphics support not compiled in");
+}
+
+/// @brief Graphics-disabled stub for Camera3D.OrthoSize.
+double rt_camera3d_get_ortho_size(void *o) {
+    (void)o;
+    return 0.0;
+}
+
+/// @brief Graphics-disabled stub for writable Camera3D.OrthoSize.
+void rt_camera3d_set_ortho_size(void *o, double size) {
+    (void)o;
+    (void)size;
+    RT_GRAPHICS_TRAP_VOID("Camera3D.OrthoSize: graphics support not compiled in");
+}
+
 /// @brief Stub for `Camera3D.LookAt` — orient the camera so it sits at
 ///        eye position `e` looking at world-space target `t`, with `u`
 ///        as the up reference (typically `(0, 1, 0)`).

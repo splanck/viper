@@ -102,6 +102,7 @@ typedef struct {
     void **mip_pixels;
     uint8_t **mip_payloads;
     uint8_t *source_backing;
+    uint8_t *container_backing;
     uint8_t *mip_fallback_kinds;
     TextureAsset3DTestMip *mips;
     int64_t width;
@@ -113,6 +114,11 @@ typedef struct {
     int64_t resident_bytes;
     int64_t retained_bytes;
     uint64_t source_backing_bytes;
+    uint64_t container_backing_bytes;
+    uint64_t container_pixels_generation;
+    int64_t container_pixels_width;
+    int64_t container_pixels_height;
+    const char *container_kind;
     const char *format;
     const char *degraded_reason;
     int8_t compressed;
@@ -127,6 +133,7 @@ typedef struct {
     uint64_t native_revision;
     int8_t alpha_metadata_known;
     int8_t has_alpha_texels;
+    int8_t container_tracks_pixels;
 } TextureAsset3DTestLayout;
 
 typedef struct {
@@ -605,8 +612,16 @@ static bool finite_light_state(rt_light3d *light) {
     for (double value : light->color)
         if (!std::isfinite(value))
             return false;
+    for (double value : light->basis_u)
+        if (!std::isfinite(value))
+            return false;
+    for (double value : light->basis_v)
+        if (!std::isfinite(value))
+            return false;
     return std::isfinite(light->intensity) && std::isfinite(light->attenuation) &&
-           std::isfinite(light->inner_cos) && std::isfinite(light->outer_cos);
+           std::isfinite(light->inner_cos) && std::isfinite(light->outer_cos) &&
+           std::isfinite(light->width) && std::isfinite(light->height) &&
+           std::isfinite(light->radius) && std::isfinite(light->range);
 }
 
 //=============================================================================
@@ -1338,6 +1353,31 @@ static void test_camera_set_fov() {
     PASS();
 }
 
+static void test_camera_projection_mode_and_ortho_size_are_mutable() {
+    TEST("Camera3D projection mode and orthographic size are mutable");
+    auto *cam = static_cast<rt_camera3d *>(rt_camera3d_new(60.0, 1.5, 0.1, 100.0));
+    assert(cam);
+    double perspective_projection[16];
+    std::memcpy(perspective_projection, cam->projection, sizeof(perspective_projection));
+
+    EXPECT_EQ(rt_camera3d_is_ortho(cam), 0);
+    EXPECT_NEAR(rt_camera3d_get_ortho_size(cam), 10.0, 0.001);
+    rt_camera3d_set_ortho_size(cam, 7.5);
+    EXPECT_NEAR(rt_camera3d_get_ortho_size(cam), 7.5, 0.001);
+    rt_camera3d_set_is_ortho(cam, 1);
+    EXPECT_EQ(rt_camera3d_is_ortho(cam), 1);
+    EXPECT_TRUE(
+        std::memcmp(perspective_projection, cam->projection, sizeof(perspective_projection)) != 0,
+        "Projection matrix changes when orthographic mode is enabled");
+
+    rt_camera3d_set_ortho_size(cam, std::numeric_limits<double>::quiet_NaN());
+    EXPECT_NEAR(rt_camera3d_get_ortho_size(cam), 1.0, 0.001);
+    rt_camera3d_set_is_ortho(cam, 0);
+    EXPECT_EQ(rt_camera3d_is_ortho(cam), 0);
+    EXPECT_NEAR(rt_camera3d_get_fov(cam), 60.0, 0.001);
+    PASS();
+}
+
 static void test_camera_clip_planes() {
     TEST("Camera3D.NearPlane/FarPlane — tunable clip distances");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
@@ -1528,6 +1568,109 @@ static void test_material_texture_setters_repair_stale_slots_before_rejecting_in
 
     EXPECT_TRUE(rt_heap_hdr(fake)->refcnt == fake_refcnt,
                 "Repairing stale material texture slots does not release unowned wrong-class refs");
+    PASS();
+}
+
+static void release_texture_test_object(void *object) {
+    if (object && rt_obj_release_check0(object))
+        rt_obj_free(object);
+}
+
+static void test_textureasset3d_source_container_bridge() {
+    TEST("TextureAsset3D exact source containers — kinds, accounting, mutation, rejection");
+
+    struct ContainerCase {
+        const char *input_kind;
+        const char *expected_kind;
+        const uint8_t *bytes;
+        size_t size;
+    };
+
+    static const uint8_t ktx2[] = {
+        0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A};
+    static const uint8_t png[] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    static const uint8_t jpeg[] = {0xFF, 0xD8, 0xFF, 0xD9};
+    static const uint8_t gif[] = {'G', 'I', 'F', '8', '9', 'a'};
+    static const uint8_t bmp[] = {'B', 'M', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    static const ContainerCase cases[] = {{"ktx2", "ktx2", ktx2, sizeof(ktx2)},
+                                          {"png", "png", png, sizeof(png)},
+                                          {"jpg", "jpeg", jpeg, sizeof(jpeg)},
+                                          {"gif", "gif", gif, sizeof(gif)},
+                                          {"bmp", "bmp", bmp, sizeof(bmp)}};
+    for (const auto &entry : cases) {
+        void *pixels = rt_pixels_new(1, 1);
+        void *asset = rt_textureasset3d_wrap_encoded_pixels(
+            pixels, entry.bytes, (uint64_t)entry.size, entry.input_kind);
+        const uint8_t *borrowed = nullptr;
+        uint64_t borrowed_size = 0;
+        const char *borrowed_kind = nullptr;
+        if (!pixels || !asset ||
+            !rt_textureasset3d_get_source_container(
+                asset, &borrowed, &borrowed_size, &borrowed_kind) ||
+            borrowed_size != entry.size || !borrowed_kind ||
+            std::strcmp(borrowed_kind, entry.expected_kind) != 0 ||
+            std::memcmp(borrowed, entry.bytes, entry.size) != 0 ||
+            rt_textureasset3d_get_source_container_state(asset) !=
+                RT_TEXTUREASSET3D_SOURCE_CONTAINER_VALID ||
+            rt_textureasset3d_get_retained_bytes(asset) < (int64_t)entry.size + 4) {
+            release_texture_test_object(asset);
+            release_texture_test_object(pixels);
+            FAIL("every supported source kind is retained exactly and counted");
+            return;
+        }
+        release_texture_test_object(asset);
+        release_texture_test_object(pixels);
+    }
+
+    void *pixels = rt_pixels_new(1, 1);
+    void *asset = rt_textureasset3d_wrap_encoded_pixels(pixels, png, sizeof(png), "png");
+    assert(pixels != nullptr && asset != nullptr);
+    rt_pixels_set_rgba(pixels, 0, 0, 0x12345678);
+    const uint8_t *borrowed = reinterpret_cast<const uint8_t *>(uintptr_t(1));
+    uint64_t borrowed_size = 9;
+    const char *borrowed_kind = reinterpret_cast<const char *>(uintptr_t(1));
+    EXPECT_TRUE(
+        !rt_textureasset3d_get_source_container(asset, &borrowed, &borrowed_size, &borrowed_kind) &&
+            borrowed == nullptr && borrowed_size == 0 && borrowed_kind == nullptr,
+        "mutating decoded Pixels invalidates stale encoded provenance");
+    EXPECT_TRUE(rt_textureasset3d_get_source_container_state(asset) ==
+                        RT_TEXTUREASSET3D_SOURCE_CONTAINER_CHANGED_AFTER_IMPORT &&
+                    rt_textureasset3d_get_source_container_state(pixels) ==
+                        RT_TEXTUREASSET3D_SOURCE_CONTAINER_NONE,
+                "fidelity state distinguishes changed provenance from ordinary Pixels");
+    EXPECT_TRUE(rt_pixels_get_rgba(rt_textureasset3d_get_pixels(asset), 0, 0) == 0x12345678,
+                "mutation invalidation retains the current drawable pixels");
+    release_texture_test_object(asset);
+    release_texture_test_object(pixels);
+
+    pixels = rt_pixels_new(1, 1);
+    asset = rt_textureasset3d_wrap_encoded_pixels(pixels, png, sizeof(png), "jpeg");
+    EXPECT_TRUE(asset == nullptr, "container kind/magic mismatches are rejected");
+    release_texture_test_object(pixels);
+    PASS();
+}
+
+static void test_textureasset3d_ktx2_retains_exact_container() {
+    TEST("TextureAsset3D KTX2 load retains the complete validated file");
+    const char *path = "/tmp/zanna_textureasset3d_source_container.ktx2";
+    const uint8_t rgba[] = {0x12, 0x34, 0x56, 0x78};
+    std::vector<uint8_t> file_bytes;
+    EXPECT_TRUE(write_test_ktx2(path, 37u, 1u, 1u, rgba, sizeof(rgba)),
+                "source-container KTX2 fixture written");
+    EXPECT_TRUE(read_test_binary_file(path, file_bytes), "source-container KTX2 fixture read");
+    void *asset = rt_textureasset3d_load_ktx2_memory(file_bytes.data(), file_bytes.size());
+    assert(asset != nullptr);
+    const uint8_t *source = nullptr;
+    uint64_t source_size = 0;
+    const char *kind = nullptr;
+    EXPECT_TRUE(rt_textureasset3d_get_source_container(asset, &source, &source_size, &kind) &&
+                    source_size == file_bytes.size() && kind && std::strcmp(kind, "ktx2") == 0 &&
+                    std::memcmp(source, file_bytes.data(), file_bytes.size()) == 0,
+                "KTX2 source span includes header, metadata tables, and mip bytes exactly");
+    EXPECT_TRUE(rt_textureasset3d_get_retained_bytes(asset) >= (int64_t)file_bytes.size() + 4,
+                "KTX2 retained-byte accounting includes exact container plus canonical payload");
+    release_texture_test_object(asset);
+    std::remove(path);
     PASS();
 }
 
@@ -2272,7 +2415,8 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 0);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 3);
     EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 84);
-    EXPECT_EQ(rt_textureasset3d_get_retained_bytes(asset), 168);
+    EXPECT_EQ(rt_textureasset3d_get_retained_bytes(asset),
+              168 + (int64_t)layout->container_backing_bytes);
     EXPECT_TRUE(layout->source_backing != nullptr && layout->source_backing_bytes == 84,
                 "RGBA8 mip chain retains one exact canonical source backing");
     void *mip_pixels = rt_textureasset3d_get_pixels(asset);
@@ -2295,7 +2439,8 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_start(asset), 1);
     EXPECT_EQ(rt_textureasset3d_get_resident_mip_count(asset), 2);
     EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 20);
-    EXPECT_EQ(rt_textureasset3d_get_retained_bytes(asset), 104);
+    EXPECT_EQ(rt_textureasset3d_get_retained_bytes(asset),
+              104 + (int64_t)layout->container_backing_bytes);
     EXPECT_TRUE(layout->mip_pixels[0] == nullptr,
                 "decoded mip 0 CPU memory is released after leaving residency");
     mip_pixels = rt_textureasset3d_get_pixels(asset);
@@ -2315,7 +2460,17 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_EQ(rt_pixels_get_rgba(mip_pixels, 0, 0), 0x01020304);
     EXPECT_EQ(rt_pixels_get_rgba(mip_pixels, 3, 3), 0x3D3E3F40);
     EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 64);
-    EXPECT_EQ(rt_textureasset3d_get_retained_bytes(asset), 148);
+    EXPECT_EQ(rt_textureasset3d_get_retained_bytes(asset),
+              148 + (int64_t)layout->container_backing_bytes);
+    {
+        const uint8_t *source = nullptr;
+        uint64_t source_size = 0;
+        const char *source_kind = nullptr;
+        EXPECT_TRUE(
+            rt_textureasset3d_get_source_container(asset, &source, &source_size, &source_kind) &&
+                source_size == layout->container_backing_bytes,
+            "internally reconstructed mip residency keeps exact KTX2 provenance valid");
+    }
     EXPECT_TRUE(layout->mip_pixels[1] == nullptr && layout->mip_pixels[2] == nullptr,
                 "re-entering mip 0 evicts decoded mips 1 and 2 after reconstruction commits");
 
@@ -2336,6 +2491,15 @@ static void test_textureasset3d_mip_residency() {
     EXPECT_EQ(rt_textureasset3d_get_resident_bytes(asset), 0);
     EXPECT_TRUE(rt_textureasset3d_get_pixels(asset) == nullptr,
                 "zero resident mip count clears the active Pixels fallback");
+    {
+        const uint8_t *source = nullptr;
+        uint64_t source_size = 0;
+        const char *source_kind = nullptr;
+        EXPECT_TRUE(
+            rt_textureasset3d_get_source_container(asset, &source, &source_size, &source_kind) &&
+                source_size == layout->container_backing_bytes,
+            "evicting decoded KTX2 mips does not discard exact source provenance");
+    }
     EXPECT_TRUE(material_impl->texture == asset,
                 "Material3D keeps the TextureAsset3D source while residency is temporarily empty");
     EXPECT_TRUE(rt_material3d_resolve_texture_pixels(material_impl->texture) == nullptr,
@@ -3398,8 +3562,10 @@ static void test_cluster_slice_and_radius_math() {
                     "Radius solves the attenuation threshold");
     }
     EXPECT_TRUE(canvas3d_cluster_light_is_global(0) && canvas3d_cluster_light_is_global(2) &&
-                    !canvas3d_cluster_light_is_global(1) && !canvas3d_cluster_light_is_global(3),
-                "Directional/ambient are global; point/spot bin");
+                    !canvas3d_cluster_light_is_global(1) && !canvas3d_cluster_light_is_global(3) &&
+                    !canvas3d_cluster_light_is_global(4) && !canvas3d_cluster_light_is_global(5) &&
+                    !canvas3d_cluster_light_is_global(6),
+                "Directional/ambient are global; punctual/area/volume lights bin");
     PASS();
 }
 
@@ -3766,6 +3932,80 @@ static void test_soft_particle_fade_software() {
     PASS();
 }
 
+static uint8_t render_native_light_center_pixel(rt_canvas3d *canvas,
+                                                rt_rendertarget3d *target,
+                                                void *camera,
+                                                void *mesh,
+                                                void *material,
+                                                void *transform,
+                                                void *light) {
+    const size_t center = (size_t)8 * 16 * 4 + (size_t)8 * 4;
+    rt_canvas3d_set_light(canvas, 0, light);
+    rt_canvas3d_begin(canvas, camera);
+    rt_canvas3d_draw_mesh(canvas, mesh, transform, material);
+    rt_canvas3d_end(canvas);
+    return target->target->color_buf[center];
+}
+
+/// Native emitter semantics must execute in the software reference path, including
+/// rectangle sidedness and volume boundary fading. GPU shader twins mirror this math.
+static void test_native_area_volume_lighting_software() {
+    TEST("Software renderer shades native rectangle, sphere, and volume lights");
+    rt_canvas3d canvas = {};
+    auto *target = static_cast<rt_rendertarget3d *>(rt_rendertarget3d_new(16, 16));
+    void *camera = rt_camera3d_new(55.0, 1.0, 0.1, 50.0);
+    void *mesh = rt_mesh3d_new_plane(4.0, 4.0);
+    void *material = rt_material3d_new_color(1.0, 1.0, 1.0);
+    void *transform = rt_mat4_identity();
+    void *position = rt_vec3_new(0.0, 2.0, 0.0);
+    void *down = rt_vec3_new(0.0, -1.0, 0.0);
+    void *up = rt_vec3_new(0.0, 1.0, 0.0);
+    void *rectangle =
+        rt_light3d_new_area_rectangle(position, down, 3.0, 3.0, 1.0, 1.0, 1.0, 0.1, 8.0);
+    void *rectangle_back =
+        rt_light3d_new_area_rectangle(position, up, 3.0, 3.0, 1.0, 1.0, 1.0, 0.1, 8.0);
+    void *sphere = rt_light3d_new_area_sphere(position, 1.0, 1.0, 1.0, 1.0, 8.0);
+    void *volume = rt_light3d_new_volume(rt_vec3_new(0.0, 0.0, 0.0), 6.0, 1.0, 1.0, 1.0, 6.0);
+    uint8_t rectangle_pixel;
+    uint8_t backside_pixel;
+    uint8_t sphere_pixel;
+    uint8_t volume_pixel;
+    assert(target && target->target && camera && mesh && material && transform && rectangle &&
+           rectangle_back && sphere && volume);
+    rt_light3d_set_intensity(sphere, 3.0);
+
+    canvas.backend = &vgfx3d_software_backend;
+    canvas.backend_ctx = vgfx3d_software_backend.create_ctx((vgfx_window_t)0, 16, 16);
+    canvas.gfx_win = (vgfx_window_t)1;
+    canvas.width = 16;
+    canvas.height = 16;
+    assert(canvas.backend_ctx);
+    rt_canvas3d_set_render_target(&canvas, target);
+    rt_camera3d_look_at(camera,
+                        rt_vec3_new(0.0, 5.0, 0.0),
+                        rt_vec3_new(0.0, 0.0, 0.0),
+                        rt_vec3_new(0.0, 0.0, -1.0));
+
+    rectangle_pixel = render_native_light_center_pixel(
+        &canvas, target, camera, mesh, material, transform, rectangle);
+    backside_pixel = render_native_light_center_pixel(
+        &canvas, target, camera, mesh, material, transform, rectangle_back);
+    sphere_pixel = render_native_light_center_pixel(
+        &canvas, target, camera, mesh, material, transform, sphere);
+    volume_pixel = render_native_light_center_pixel(
+        &canvas, target, camera, mesh, material, transform, volume);
+
+    EXPECT_TRUE(rectangle_pixel > 20, "Front-facing rectangle illuminates the receiver");
+    EXPECT_TRUE(backside_pixel + 10 < rectangle_pixel,
+                "Rectangle emitter contributes only from its authored side");
+    EXPECT_TRUE(sphere_pixel > 20, "Sphere area light illuminates the receiver");
+    EXPECT_TRUE(volume_pixel > 20, "Volume light contributes isotropic in-volume irradiance");
+
+    rt_canvas3d_set_light(&canvas, 0, NULL);
+    vgfx3d_software_backend.destroy_ctx(canvas.backend_ctx);
+    PASS();
+}
+
 /// Plan 10: AddSSR exports a chain entry with its snapshot params, counts as a
 /// GPU-scene effect (rejected on software canvases with a recoverable error),
 /// and the ssr draw-cmd mask helper follows the material flag + reflectivity.
@@ -3812,23 +4052,51 @@ static void test_ssr_chain_and_mask_plumbing() {
 }
 
 static void test_build_light_params_sorts_globals_first() {
-    TEST("build_light_params orders directional/ambient before point/spot (Plan 07)");
+    TEST("build_light_params orders globals before punctual/area/volume lights");
     rt_canvas3d canvas;
     memset(&canvas, 0, sizeof(canvas));
 
     void *point = rt_light3d_new_point(rt_vec3_new(1.0, 2.0, 3.0), 1.0, 0.0, 0.0, 0.5);
     void *dir = rt_light3d_new_directional(rt_vec3_new(0.0, -1.0, 0.0), 0.0, 1.0, 0.0);
     void *ambient = rt_light3d_new_ambient(0.1, 0.1, 0.1);
+    auto *rectangle =
+        static_cast<rt_light3d *>(rt_light3d_new_area_rectangle(rt_vec3_new(4.0, 5.0, 6.0),
+                                                                rt_vec3_new(0.0, 0.0, -1.0),
+                                                                8.0,
+                                                                3.0,
+                                                                0.2,
+                                                                0.3,
+                                                                0.4,
+                                                                0.25,
+                                                                14.0));
+    auto *volume = static_cast<rt_light3d *>(
+        rt_light3d_new_volume(rt_vec3_new(7.0, 8.0, 9.0), 2.5, 0.5, 0.6, 0.7, 5.0));
+    rt_light3d_set_decay_type(rectangle, 3);
     canvas.lights[0] = (rt_light3d *)point;
     canvas.lights[1] = (rt_light3d *)dir;
     canvas.lights[2] = (rt_light3d *)ambient;
+    canvas.lights[3] = rectangle;
+    canvas.lights[4] = volume;
 
     vgfx3d_light_params_t out[8];
     int32_t count = build_light_params(&canvas, out, 8);
-    EXPECT_EQ(count, 3);
+    EXPECT_EQ(count, 5);
     EXPECT_EQ(out[0].type, 0); /* directional first */
     EXPECT_EQ(out[1].type, 2); /* then ambient */
     EXPECT_EQ(out[2].type, 1); /* locals last */
+    EXPECT_EQ(out[3].type, 4);
+    EXPECT_EQ(out[4].type, 6);
+    EXPECT_NEAR(out[3].width, 8.0, 0.001);
+    EXPECT_NEAR(out[3].height, 3.0, 0.001);
+    EXPECT_NEAR(out[3].range, 14.0, 0.001);
+    EXPECT_EQ(out[3].decay_type, 3);
+    EXPECT_NEAR(out[3].basis_u[0] * out[3].direction[0] + out[3].basis_u[1] * out[3].direction[1] +
+                    out[3].basis_u[2] * out[3].direction[2],
+                0.0,
+                0.001);
+    EXPECT_NEAR(out[4].radius, 2.5, 0.001);
+    EXPECT_NEAR(out[4].range, 5.0, 0.001);
+    EXPECT_EQ(out[4].casts_shadows, 0);
     /* Identity survives the reorder (shadow patching matches by identity). */
     EXPECT_TRUE(out[0].identity == (uintptr_t)dir && out[2].identity == (uintptr_t)point,
                 "Reordered entries keep their light identities");
@@ -4590,6 +4858,68 @@ static void test_light_spot_intensity() {
     void *dir = rt_vec3_new(0, -1, 0);
     void *light = rt_light3d_new_spot(pos, dir, 1.0, 1.0, 1.0, 0.1, 30.0, 45.0);
     rt_light3d_set_intensity(light, 2.5);
+    PASS();
+}
+
+static void test_light_native_area_and_volume_types() {
+    TEST("Light3D native rectangle, sphere, and volume lights");
+    void *position = rt_vec3_new(1.0, 2.0, 3.0);
+    void *direction = rt_vec3_new(0.0, 0.0, -2.0);
+    auto *rectangle = static_cast<rt_light3d *>(
+        rt_light3d_new_area_rectangle(position, direction, 4.0, 2.0, 0.25, 0.5, 0.75, 0.2, 12.0));
+    auto *sphere =
+        static_cast<rt_light3d *>(rt_light3d_new_area_sphere(position, 1.5, 0.4, 0.5, 0.6, 9.0));
+    auto *volume =
+        static_cast<rt_light3d *>(rt_light3d_new_volume(position, 3.0, 0.7, 0.8, 0.9, 6.0));
+    assert(rectangle && sphere && volume);
+
+    EXPECT_EQ(rt_light3d_get_type(rectangle), 4);
+    EXPECT_EQ(rt_light3d_get_type(sphere), 5);
+    EXPECT_EQ(rt_light3d_get_type(volume), 6);
+    EXPECT_NEAR(rt_light3d_get_width(rectangle), 4.0, 0.001);
+    EXPECT_NEAR(rt_light3d_get_height(rectangle), 2.0, 0.001);
+    EXPECT_NEAR(rt_light3d_get_radius(sphere), 1.5, 0.001);
+    EXPECT_NEAR(rt_light3d_get_radius(volume), 3.0, 0.001);
+    EXPECT_NEAR(rt_light3d_get_range(rectangle), 12.0, 0.001);
+    EXPECT_NEAR(rt_light3d_get_range(sphere), 9.0, 0.001);
+    EXPECT_NEAR(rt_light3d_get_range(volume), 6.0, 0.001);
+    EXPECT_EQ(rt_light3d_get_decay_type(rectangle), 2);
+    EXPECT_NEAR(rectangle->direction[2], -1.0, 0.001);
+    EXPECT_NEAR(rectangle->basis_u[0] * rectangle->direction[0] +
+                    rectangle->basis_u[1] * rectangle->direction[1] +
+                    rectangle->basis_u[2] * rectangle->direction[2],
+                0.0,
+                0.001);
+    EXPECT_NEAR(rectangle->basis_v[0] * rectangle->direction[0] +
+                    rectangle->basis_v[1] * rectangle->direction[1] +
+                    rectangle->basis_v[2] * rectangle->direction[2],
+                0.0,
+                0.001);
+
+    rt_light3d_set_width(rectangle, 5.0);
+    rt_light3d_set_height(rectangle, 2.5);
+    rt_light3d_set_radius(sphere, 2.0);
+    rt_light3d_set_range(volume, 4.0);
+    rt_light3d_set_decay_type(rectangle, 3);
+    EXPECT_NEAR(rt_light3d_get_width(rectangle), 5.0, 0.001);
+    EXPECT_NEAR(rt_light3d_get_height(rectangle), 2.5, 0.001);
+    EXPECT_NEAR(rt_light3d_get_radius(sphere), 2.0, 0.001);
+    EXPECT_NEAR(rt_light3d_get_range(volume), 4.0, 0.001);
+    EXPECT_EQ(rt_light3d_get_decay_type(rectangle), 3);
+    rt_light3d_set_width(rectangle, NAN);
+    rt_light3d_set_radius(sphere, -1.0);
+    rt_light3d_set_range(volume, INFINITY);
+    rt_light3d_set_decay_type(rectangle, 99);
+    EXPECT_TRUE(rt_light3d_get_width(rectangle) > 0.0,
+                "Rectangle width remains positive after invalid input");
+    EXPECT_TRUE(rt_light3d_get_radius(sphere) > 0.0,
+                "Sphere radius remains positive after invalid input");
+    EXPECT_TRUE(rt_light3d_get_range(volume) > 0.0,
+                "Volume range remains positive after invalid input");
+    EXPECT_EQ(rt_light3d_get_decay_type(rectangle), 3);
+    EXPECT_EQ(rt_light3d_get_casts_shadows(volume), 0);
+    rt_light3d_set_casts_shadows(volume, 1);
+    EXPECT_EQ(rt_light3d_get_casts_shadows(volume), 0);
     PASS();
 }
 
@@ -10200,6 +10530,7 @@ int main() {
     /* Camera3D — basic */
     test_camera_new();
     test_camera_set_fov();
+    test_camera_projection_mode_and_ortho_size_are_mutable();
     test_camera_clip_planes();
     test_camera_look_at();
     test_camera_forward();
@@ -10235,6 +10566,8 @@ int main() {
     test_material_new_textured();
     test_material_texture_setters_reject_invalid_handles();
     test_material_texture_setters_repair_stale_slots_before_rejecting_invalid_handles();
+    test_textureasset3d_source_container_bridge();
+    test_textureasset3d_ktx2_retains_exact_container();
     test_textureasset3d_ktx2_material_bridge();
     test_textureasset3d_bc3_software_decode();
     test_textureasset3d_bc1_bc4_bc5_software_decode();
@@ -10270,6 +10603,7 @@ int main() {
     test_cluster_table_ring_and_gating();
     test_build_light_params_sorts_globals_first();
     test_soft_particle_fade_software();
+    test_native_area_volume_lighting_software();
     test_ssr_chain_and_mask_plumbing();
     test_light_directional();
     test_light_point();
@@ -10281,6 +10615,7 @@ int main() {
     test_light_null_safety();
     test_light_spot();
     test_light_spot_intensity();
+    test_light_native_area_and_volume_types();
     test_light_validation_and_clamping();
     test_light_sanitizes_nonfinite_inputs();
     test_light_clamps_extreme_finite_inputs();

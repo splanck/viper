@@ -34,7 +34,7 @@
 
 struct rt_scene_node3d;
 
-/// @brief Borrowed immutable-scene input for the model-aware VSCN v4 serializer.
+/// @brief Borrowed immutable-scene input for the model-aware VSCN v5 serializer.
 typedef struct rt_vscn_asset_scene_view {
     struct rt_scene_node3d *root;
     const char *name;
@@ -42,7 +42,7 @@ typedef struct rt_vscn_asset_scene_view {
     int32_t camera_count;
 } rt_vscn_asset_scene_view;
 
-/// @brief Borrowed complete SceneAsset inventory consumed synchronously by VSCN v4 save.
+/// @brief Borrowed complete SceneAsset inventory consumed synchronously by VSCN v5 save.
 /// @details Every array remains owned by Model3D. The serializer validates class ids/counts and
 /// copies all output before this call returns.
 typedef struct rt_vscn_asset_save_view {
@@ -64,7 +64,7 @@ typedef struct rt_vscn_asset_save_view {
     int32_t variant_count;
 } rt_vscn_asset_save_view;
 
-/// @brief Save a complete imported asset as VSCN v4.
+/// @brief Save a complete imported asset as VSCN v5.
 int64_t rt_vscn_save_asset_view(const rt_vscn_asset_save_view *view, rt_string path);
 
 /* A VSCN node adds an object and, except at the leaf, a children array to the shared JSON parser's

@@ -31,7 +31,7 @@ library.
 - [Mesh3D](#mesh3d) — Geometry: box, sphere, plane, OBJ/FBX/glTF loading
 - [Camera3D](#camera3d) — Perspective and orthographic cameras
 - [Material3D](#material3d) — Color, textures, shading models
-- [Light3D](#light3d) — Directional, point, and spot lights
+- [Light3D](#light3d) — Directional, point, ambient, spot, area, and volume lights
 
 **Rendering Infrastructure**
 - [RenderTarget3D](#rendertarget3d) — Off-screen render targets
@@ -589,7 +589,8 @@ Perspective or orthographic camera with view and projection matrices.
 | `Position` | Vec3 | read/write | Camera world position |
 | `Forward` | Vec3 | read | Camera forward direction |
 | `Right` | Vec3 | read | Camera right direction |
-| `IsOrtho` | Boolean | read | True for orthographic cameras |
+| `IsOrtho` | Boolean | read/write | Switch perspective/orthographic projection mode |
+| `OrthoSize` | Float | read/write | Orthographic half-height in world units |
 | `Yaw` | Float | read/write | Horizontal rotation angle (FPS mode, degrees) |
 | `Pitch` | Float | read/write | Vertical rotation angle (FPS mode, degrees) |
 
@@ -611,7 +612,7 @@ Perspective or orthographic camera with view and projection matrices.
 `Yaw`, `Pitch`, `Orbit`, and `Light3D.Spot` all use degrees. Writing `Yaw` or `Pitch` updates the camera view immediately.
 Use `NewHorizontalFov` or `SetHorizontalFov` for game cameras authored with familiar horizontal FOV values; the runtime converts them to the vertical FOV stored in `Fov` using the camera aspect ratio, which avoids edge stretching from passing a horizontal value to `New`.
 `Canvas3D.Begin(canvas, camera)` uses the active output's aspect ratio (window or bound `RenderTarget3D`) when building that frame's projection, so perspective remains correct across resizes and RTT passes without mutating the camera object's stored projection/aspect.
-Camera constructors and control methods sanitize invalid numeric inputs at the API boundary: non-finite FOV/aspect/clip planes, degenerate `LookAt` vectors, invalid FPS deltas, and invalid shake/follow parameters fall back to finite defaults so view matrices, projection matrices, `ScreenToRay()`, and `ScreenToRayOrigin()` results remain usable.
+Camera constructors and control methods sanitize invalid numeric inputs at the API boundary: non-finite FOV/aspect/clip planes/orthographic sizes, degenerate `LookAt` vectors, invalid FPS deltas, and invalid shake/follow parameters fall back to finite defaults so view matrices, projection matrices, `ScreenToRay()`, and `ScreenToRayOrigin()` results remain usable. Imported camera animation can switch `IsOrtho` with step keys and animate `Fov`, aspect, clip planes, and `OrthoSize` through its attached `SceneNode`.
 
 ### Zia Example
 
@@ -764,7 +765,7 @@ KTX2 texture asset metadata and material binding bridge.
 | `ResidentMipStart` | Integer | First resident/requested mip level |
 | `ResidentMipCount` | Integer | Number of resident/requested mip levels |
 | `ResidentBytes` | Integer | Active native/fallback bytes for the resident mip window |
-| `RetainedBytes` | Integer | Canonical source backing plus decoded fallbacks still retained in memory |
+| `RetainedBytes` | Integer | Exact imported source container, canonical mip backing, and decoded fallbacks still retained in memory |
 
 The runtime validates KTX2 headers, exact block geometry, mip ranges, ZLIB
 framing/Adler-32, Zstandard destination length and trailing input, and
@@ -779,8 +780,9 @@ mode cannot be decoded; strict loads return null for that same input.
 `SetResidentMipRange` reconstructs every entering fallback from immutable
 canonical backing before publishing the new window, then releases decoded
 `Pixels` outside it. `ResidentBytes` therefore falls on eviction while a later
-range change reproduces the same pixels; `RetainedBytes` includes the smaller
-reconstructable backing. Negative arguments trap, `mipCount` clamps to the
+range change reproduces the same pixels; `RetainedBytes` includes that
+reconstructable backing and, for PNG, JPEG, GIF, BMP, or KTX2 imports, the exact
+bounded source container retained for lossless VSCN v5 bake. Negative arguments trap, `mipCount` clamps to the
 available range, and a zero count releases all decoded resident fallbacks.
 `Material3D.Textured`, `SetTexture`,
 `SetAlbedoMap`, `SetNormalMap`, `SetMetallicRoughnessMap`, `SetAOMap`,
@@ -833,6 +835,9 @@ Light sources for the scene. The software backend applies up to 16 lights simult
 | `Point(position, r, g, b, attenuation)` | `obj(obj, f64, f64, f64, f64)` | Local point light with distance falloff |
 | `Spot(pos, dir, r, g, b, atten, inner, outer)` | `obj(obj, obj, f64, f64, f64, f64, f64, f64)` | Spot light with cone falloff (angles in degrees) |
 | `Ambient(r, g, b)` | `obj(f64, f64, f64)` | Uniform ambient light |
+| `AreaRectangle(pos, dir, width, height, r, g, b, atten, range)` | `obj(obj, obj, f64, f64, f64, f64, f64, f64, f64)` | One-sided oriented rectangle emitter |
+| `AreaSphere(pos, radius, r, g, b, range)` | `obj(obj, f64, f64, f64, f64, f64)` | Omnidirectional spherical area emitter |
+| `Volume(pos, radius, r, g, b, range)` | `obj(obj, f64, f64, f64, f64, f64)` | Isotropic volume emitter fading inside its radius |
 
 `NewDirectional`, `NewPoint`, `NewSpot`, and `NewAmbient` remain available as
 compatibility aliases.
@@ -843,20 +848,34 @@ compatibility aliases.
 |--------|-----------|-------------|
 | `SetIntensity(value)` | `void(f64)` | Brightness multiplier (default 1.0) |
 | `SetColor(r, g, b)` | `void(f64, f64, f64)` | Change light color |
-| `SetEnabled(enabled)` | `void(i1)` | Toggle whether the light contributes without clearing its slot |
+| `SetAttenuation(value)` | `void(f64)` | Set point/spot distance attenuation |
 
 ### Properties
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Type` | Integer | read | `0=directional`, `1=point`, `2=ambient`, `3=spot` |
+| `Type` | Integer | read | `0=directional`, `1=point`, `2=ambient`, `3=spot`, `4=rectangle`, `5=sphere`, `6=volume` |
 | `Color` | Vec3 | read | Current normalized RGB color |
 | `Intensity` | Float | read | Current brightness multiplier |
-| `Enabled` | Bool | read/write | Disabled lights are skipped by `Canvas3D` light submission |
-| `Direction` | Vec3 | read | Normalized direction for directional and spot lights |
-| `Position` | Vec3 | read | Position for point and spot lights |
+| `IsEnabled` | Bool | read/write | Disabled lights are skipped by `Canvas3D` light submission |
+| `CastsShadows` | Bool | read/write | Opt the light into its supported shadow path |
+| `Attenuation` | Float | read | Current point/spot attenuation |
+| `Direction` | Vec3 | read/write | Normalized direction and area-emitter normal |
+| `Position` | Vec3 | read/write | World/local position for finite lights |
+| `Width` | Float | read/write | Rectangle emitter width |
+| `Height` | Float | read/write | Rectangle emitter height |
+| `Radius` | Float | read/write | Sphere/volume radius |
+| `DecayType` | Integer | read/write | FBX-compatible `0=none`, `1=linear`, `2=quadratic`, `3=cubic` falloff |
+| `Range` | Float | read/write | Finite local-light range (`0` means constructor/importer default behavior) |
 
-Light colors are clamped to `[0, 1]`, intensities are clamped to non-negative values, and point/spot attenuation uses a small non-zero floor when callers pass zero, negative, or non-finite values. Non-finite positions/directions fall back to finite defaults. Spot cone angles are clamped to `0..89` degrees and reordered when needed so `inner_cos >= outer_cos`.
+Light colors are clamped to `[0, 1]`, intensities and dimensions are clamped to
+finite non-negative ranges, and point/spot attenuation uses a small non-zero
+floor when callers pass zero, negative, or non-finite values. Non-finite
+positions/directions fall back to finite defaults. Spot cone angles are clamped
+to `0..89` degrees and reordered when needed so `inner_cos >= outer_cos`.
+Rectangle and sphere shadows use a center-point approximation; volume lights do
+not claim a shadow slot. Software, OpenGL, Metal, and D3D11 share the same native
+area/volume light parameter contract.
 
 ### Zia Example
 
@@ -1093,6 +1112,7 @@ Individual node in a SceneGraph tree with transform, mesh, material, and child h
 | `Name` | String | read/write | Name for Find() lookup |
 | `Mesh` | Mesh3D | write | Mesh to render |
 | `Material` | Material3D | write | Material for rendering |
+| `Camera` | Camera3D | read/write | Camera attached to this node; imported camera animation updates this exact object |
 | `BoundsMin` | Vec3 | read | Subtree axis-aligned bounding box minimum in this node's local space |
 | `BoundsMax` | Vec3 | read | Subtree axis-aligned bounding box maximum in this node's local space |
 | `Body` | Physics3DBody | read | Bound body used by `SyncBindings` |
@@ -1177,7 +1197,7 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest resident threshold that does not exceed camera distance, falling back to the base mesh when the selected LOD has been demoted. `SceneGraph.Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use the internal SceneGraph BVH spatial index, with an exact flat-walk fallback kept for parity. Transform-only changes refit the BVH; hierarchy, visibility, mesh, LOD, and impostor changes rebuild it lazily. `SceneGraph.AddVisibilityZone(name, min, max)` and `AddVisibilityPortal(from, to, bidirectional)` author an interior portal/PVS graph; during `Draw`, nodes inside zones unreachable from the camera zone are skipped, while unzoned nodes stay visible. `PvsCulledCount`, `VisibilityZoneCount`, and `VisibilityPortalCount` expose that state and clamp malformed counters to the live zone/portal allocations before traversal or append. The normal runtime tests include a generated 10k drawable-node grid to guard BVH shape, isolated-query reduction, frame-cull candidate reduction, indexed CPU-occlusion candidate reduction, portal/PVS room culling, and parity with the flat path. The open-world slice's `visibility_dense_probe.zia` adds a named dense city/forest PVS fixture and records 169 authored drawables reduced to 49 submitted draws with matching final-frame pixels on the local software Release lane. Finite zero scale is preserved on `Transform3D` and `SceneNode`; only non-finite scale components are replaced. `SceneGraph.Save` writes a `.vscn` asset with embedded meshes, materials, textures, cubemaps, and node hierarchy using round-trip float precision. `SceneGraph.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
+Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest resident threshold that does not exceed camera distance, falling back to the base mesh when the selected LOD has been demoted. `SceneGraph.Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use the internal SceneGraph BVH spatial index, with an exact flat-walk fallback kept for parity. Transform-only changes refit the BVH; hierarchy, visibility, mesh, LOD, and impostor changes rebuild it lazily. `SceneGraph.AddVisibilityZone(name, min, max)` and `AddVisibilityPortal(from, to, bidirectional)` author an interior portal/PVS graph; during `Draw`, nodes inside zones unreachable from the camera zone are skipped, while unzoned nodes stay visible. `PvsCulledCount`, `VisibilityZoneCount`, and `VisibilityPortalCount` expose that state and clamp malformed counters to the live zone/portal allocations before traversal or append. The normal runtime tests include a generated 10k drawable-node grid to guard BVH shape, isolated-query reduction, frame-cull candidate reduction, indexed CPU-occlusion candidate reduction, portal/PVS room culling, and parity with the flat path. The open-world slice's `visibility_dense_probe.zia` adds a named dense city/forest PVS fixture and records 169 authored drawables reduced to 49 submitted draws with matching final-frame pixels on the local software Release lane. Finite zero scale is preserved on `Transform3D` and `SceneNode`; only non-finite scale components are replaced. An attached `Camera` follows the node hierarchy and is cloned with the node, while each mutable scene instance receives an independent camera. `SceneGraph.Save` writes VSCN v5 with embedded meshes, materials, exact source texture containers or canonical RGBA fallbacks, cubemaps, cameras, native lights, animation, and node hierarchy using round-trip float precision. `SceneGraph.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
 
 ### Binding Sync
 
@@ -1248,13 +1268,13 @@ Current scope:
 
 - Imported meshes, materials, skeletons, and animations are shared across instances.
 - OBJ-backed models preserve `mtllib`/`usemtl` material groups as synthesized template nodes with matching `Material3D` handles when the referenced `.mtl` is available; missing materials fall back to a default white material. Multiple `mtllib` entries on one line are supported, and common MTL maps such as `map_Kd`, `map_Ks`, `map_Ke`, and `map_Bump` / `bump` are resolved safely relative to the MTL file.
-- `Instantiate()` clones nodes and transforms only. The returned node is a synthetic root group that owns the imported top-level nodes.
+- `Instantiate()` clones nodes, transforms, and attached cameras. The returned node is a synthetic root group that owns the imported top-level nodes; meshes, materials, lights, skeletons, and animation resources remain shared.
 - Prefer `LoadResult()` / `LoadAssetResult()` for new code. `Load()` and `LoadAsset()` remain available for compatibility with existing `null` checks.
 - Prefer `FindNodeOption()` for new code. `FindNode()` remains available for compatibility with existing `null` checks.
 - Mutating an instantiated node does not mutate the template returned by `FindNode` / `FindNodeOption`.
 - `InstantiateScene()` is the easiest way to drop an imported asset into a fresh scene while preserving node names and hierarchy.
 - glTF imports order immutable scenes with the active/default scene at index `0` and secondary glTF scene roots after it. `GetSceneName(index)` preserves authored scene names where available and falls back to `"default"`/`"scene_N"`.
-- glTF cameras reachable from each imported scene populate `GetCameraCount(sceneIndex)` and `GetCamera(sceneIndex, index)` as standalone `Camera3D` handles with node world transforms applied.
+- glTF cameras reachable from each imported scene populate `GetCameraCount(sceneIndex)` and `GetCamera(sceneIndex, index)`. Each immutable table entry is the same `Camera3D` attached to its authored template node; mutable instances receive independent camera clones with node world transforms applied.
 - Use `InstantiateSceneAt(index)` for scene-indexed code. Index `0` is equivalent to `InstantiateScene()`; invalid indices return `null` instead of mutating shared model state.
 
 ### Zia Example
@@ -1288,20 +1308,20 @@ For game-facing asset loading, prefer `SceneAsset.LoadResult` for loose filesyst
 
 Format note:
 - `.vscn`, FBX, and glTF imports can populate shared skeletons and animation clips when the source format contains supported skin/animation data.
-- FBX-backed `SceneAsset` assets preserve authored `Model` hierarchy, common local transform properties, mesh/material attachments, LayerElementMaterial polygon assignments, external texture files, embedded Texture->Video image payloads, and materialless meshes when the source file contains object connections, instead of always collapsing to synthetic `mesh_N` nodes.
+- FBX-backed `SceneAsset` assets preserve authored `Model` hierarchy and full transform stacks; polygon and tessellated NURBS/patch geometry; mesh/material/skin/morph attachments; composed animation layers; built-in constraints; node-coupled cameras and projection animation; native punctual/area/volume lights; external textures; and embedded Texture/Video image payloads. Numeric FBX IDs remain the binding identity throughout evaluation.
 - OBJ-backed `SceneAsset` assets synthesize template nodes per material group, resolve relative `.mtl` files and texture maps safely beside the source OBJ/MTL, and reject absolute paths, URI schemes, traversal, and NUL-containing references.
 - STL-backed `SceneAsset` assets synthesize a single mesh node and default material around the existing binary/ASCII STL geometry loader.
-- glTF imports populate meshes, materials, active-scene and secondary scene hierarchies, scene-local cameras, skins, morph targets, punctual lights, skeletal clips, and node/morph animation clips.
+- glTF imports populate meshes, materials, active-scene and secondary scene hierarchies, scene-local cameras attached to their authored nodes, skins, morph targets, punctual lights, skeletal clips, and node/morph animation clips. Immutable camera tables share the node attachment; instantiated scenes clone each camera.
 - glTF skeletal tracks map to `Skeleton3D` / `Animation3D`; non-joint node translation, rotation, scale, and morph `weights` tracks are bound automatically on `SceneAsset.Instantiate()` and `InstantiateScene()`. Node animation channels reject non-finite sample data and non-increasing key times before playback; LINEAR rotation tracks use quaternion slerp, and CUBICSPLINE tracks use glTF Hermite tangents. Call `SceneGraph.SyncBindings(dt)` each frame to advance those imported node clips.
 - glTF mesh extraction supports `POSITION`, `NORMAL`, `TEXCOORD_0`, `TEXCOORD_1`, `COLOR_0`, `TANGENT`, `JOINTS_0`/`WEIGHTS_0`, and `JOINTS_1`/`WEIGHTS_1`. Secondary joint sets are reduced to the four strongest supported influences and renormalized. Invalid optional attributes are dropped with normals regenerated when needed; invalid indices, sparse accessors, and skin references fail the import. Skins above the runtime 256-bone palette are rejected instead of silently dropping the rig.
 - glTF morph targets import `POSITION`, `NORMAL`, and `TANGENT` deltas. Position/normal morphs can use the GPU path; tangent morphs currently route through the CPU morph path so tangent-space normal mapping stays correct.
 - glTF node hierarchies are rejected if they contain invalid child references, duplicate parents, or cycles; valid meshes/materials still remain available to the asset container.
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import. Points and line modes are skipped because the current renderer has no line/point primitive surface.
 - Materialless glTF primitives receive a shared default white PBR material so valid assets render through `SceneGraph` / `SceneAsset` without manual material assignment.
-- VSCN round-trips the current `vgfx3d_vertex_le_v2` vertex layout, per-slot material texture metadata, node-attached lights, and high-precision node transforms, while still loading older `vgfx3d_vertex_le_v1` scenes. The loader rejects malformed JSON/base64, invalid mesh index buffers, broken node references, and partial child subtrees; finite transform/material/light values are sanitized during load.
+- Complete `SceneAsset.Save` writes VSCN v5. It round-trips the current `vgfx3d_vertex_le_v2` vertex layout, every immutable scene, camera-node attachments and scalar camera animation, native light state, morph/animation/variant inventories, per-slot material metadata, lightmaps, and high-precision node transforms while loading VSCN versions 1–4 and older `vgfx3d_vertex_le_v1` scenes. Texture entries retain exact KTX2/PNG/JPEG/GIF/BMP bytes and native KTX2 mips when available, otherwise canonical RGBA8. The loader rejects malformed JSON/Base64, invalid source-image magic or decoding, invalid mesh indexes, broken table/node references, and partial child subtrees transactionally.
 - `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are URI-decoded and resolved relative to the asset path; `./` relative paths are accepted, while absolute paths, URI schemes, `..` traversal, and NUL-containing references are rejected before opening files. In `LoadAsset`, those external dependencies are loaded through `Zanna.IO.Assets` first and missing-dependency diagnostics name both the parent model and dependency path.
 - glTF matrix-authored node transforms are decomposed to runtime TRS. Reflections preserve negative scale sign, while unsupported shear is reduced to an orthonormal rotation basis instead of leaking into unstable quaternions.
-- glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_materials_specular`, and `KHR_lights_punctual` are accepted when the corresponding parser path is present. Optional `KHR_texture_basisu`, `KHR_materials_clearcoat`, and `KHR_materials_transmission` can be interpreted as best-effort material/texture data, but assets that list them in `extensionsRequired` are rejected because the current renderer cannot guarantee full required-extension fidelity. Unsupported required extensions such as Draco, Meshopt, WebP, and DDS also fail load rather than rendering incomplete fallback data.
+- glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_materials_specular`, `KHR_lights_punctual`, `KHR_materials_variants`, `KHR_mesh_quantization`, `EXT_meshopt_compression`, `KHR_draco_mesh_compression`, and `KHR_texture_basisu` are accepted by their complete parser paths. Optional factor-level clearcoat, transmission, IOR, sheen, anisotropy, and volume features remain best-effort and are rejected when listed as required unless their full required semantics are representable. Required WebP, DDS, or unknown extensions fail load rather than rendering an incomplete fallback.
 
 ## Skeleton3D
 
@@ -1581,6 +1601,8 @@ partial asset.
 |----------|------|--------|-------------|
 | `MeshCount` | Integer | read | Number of geometry objects |
 | `AnimationCount` | Integer | read | Number of animation stacks |
+| `NodeAnimationCount` | Integer | read | Number of object/morph/camera animation stacks |
+| `CameraCount` | Integer | read | Number of imported cameras |
 | `MaterialCount` | Integer | read | Number of materials |
 
 ### Methods
@@ -1591,6 +1613,9 @@ partial asset.
 | `GetSkeleton()` | `obj()` | Get Skeleton3D (or null) |
 | `GetAnimation(index)` | `obj(i64)` | Get Animation3D by index |
 | `GetAnimationName(index)` | `str(i64)` | Get animation name by index |
+| `GetNodeAnimation(index)` | `obj(i64)` | Get NodeAnimation3D by index |
+| `GetNodeAnimationName(index)` | `str(i64)` | Get node animation name by index |
+| `GetCamera(index)` | `obj(i64)` | Get Camera3D by index |
 | `GetMaterial(index)` | `obj(i64)` | Get Material3D by index |
 | `GetMorphTarget(index)` | `obj(i64)` | Get MorphTarget3D by index |
 
@@ -1634,8 +1659,10 @@ func start() {
 Supports zlib-compressed array properties, negative polygon indices, arbitrary
 n-gon triangulation, LayerElementNormal/UV mapping modes,
 LayerElementMaterial polygon assignments, default materials for materialless
-meshes, common FBX transform properties, embedded Texture/Video PNG/JPEG/GIF
-payloads, external texture references, and Z-up to Y-up coordinate conversion.
+meshes, complete FBX transform properties, embedded Texture/Video
+PNG/JPEG/GIF/BMP/KTX2 payloads, external texture references, and Z-up to Y-up
+coordinate conversion. Exact supported encoded texture bytes are retained for
+VSCN v5 rather than being discarded after decode.
 The ASCII lexer is length-bounded and brace-scoped, so identifiers in comments,
 quoted strings, or closed sibling nodes never satisfy a lookup. Object identity
 is always the numeric FBX ID: dynamically sized display names—including long
@@ -1643,12 +1670,25 @@ equal prefixes—remain distinct but never substitute for an ID.
 
 Static nodes, bind extraction, and animation evaluate the same pivot,
 pre/post-rotation, rotation-order, geometric-transform, and inheritance
-composer. Constant curves preserve the immediately preceding FBX tick, linear
-curves remain linear, and cubic Hermite curves subdivide adaptively to the
-documented time/value error bound; budget/capacity failure rejects the staged
-clip instead of publishing truncated keys. `SceneAsset.LoadResult("asset.fbx")`
-adapts these resources into an instantiable scene asset and preserves authored
-`Model` hierarchy.
+composer. Every AnimationStack composes connected layers in order with
+mute/solo, animated weight, additive/override behavior, rotation accumulation,
+and scale accumulation. Constant curves preserve the immediately preceding FBX
+tick, linear curves remain linear, and cubic Hermite curves subdivide adaptively
+to the documented time/value error bound.
+
+Open/closed/periodic rational NURBS surfaces and linear, Bézier, quadratic
+Bézier, cardinal, and B-spline patches tessellate into bounded ordinary meshes.
+Position, rotation, scale, parent, aim, and single-chain IK constraints feed the
+same static/animated evaluator. Cameras remain attached to their model nodes and
+accept animated FOV/aspect/clipping/orthographic/projection properties. FBX
+rectangle/sphere area and volume lights become native Light3D types with their
+oriented size, range, and decay. Invalid topology, active trim regions, cyclic
+constraints, non-finite samples, or budget/capacity failure reject the complete
+staged load instead of publishing partial output.
+
+`SceneAsset.LoadResult("asset.fbx")` adapts these resources into an instantiable
+scene asset and preserves the authored `Model` hierarchy, camera coupling,
+lights, and animation through VSCN v5.
 
 ---
 

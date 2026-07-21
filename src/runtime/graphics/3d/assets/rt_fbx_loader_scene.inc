@@ -62,10 +62,14 @@ typedef struct {
     double geometric_translation[3];
     double geometric_rotation[3];
     double geometric_scale[3];
+    double sampled_rotation_quaternion[4];
     int rotation_order;
     int rotation_active;
     int inherit_type;
+    int use_sampled_rotation_quaternion;
 } fbx_transform_components_t;
+
+static void fbx_mat4_quaternion_rotation(const double quat[4], double out[16]);
 
 /// @brief Initialize an FBX transform component record to identity/default values.
 /// @param out Destination component record; ignored when NULL.
@@ -83,6 +87,7 @@ static void fbx_transform_components_init(fbx_transform_components_t *out) {
     out->rotation_order = 0;
     out->rotation_active = 1;
     out->inherit_type = 0;
+    out->sampled_rotation_quaternion[3] = 1.0;
 }
 
 /// @brief Read a vector-style `Properties70` P-node into a fixed XYZ array.
@@ -488,7 +493,10 @@ static void fbx_build_model_transform_matrix(const fbx_transform_components_t *c
     if (c->rotation_active) {
         fbx_mat4_euler_degrees(c->pre_rotation, c->rotation_order, step);
         fbx_mat4_append_local(out, step);
-        fbx_mat4_euler_degrees(c->rotation, c->rotation_order, step);
+        if (c->use_sampled_rotation_quaternion)
+            fbx_mat4_quaternion_rotation(c->sampled_rotation_quaternion, step);
+        else
+            fbx_mat4_euler_degrees(c->rotation, c->rotation_order, step);
         fbx_mat4_append_local(out, step);
         post_inverse[0] = -c->post_rotation[0];
         post_inverse[1] = -c->post_rotation[1];
@@ -1204,6 +1212,42 @@ static double fbx_read_attribute_number(
     return value;
 }
 
+/// @brief Read the first present scalar from a list of exporter-compatible property names.
+static double fbx_read_attribute_number_aliases(fbx_node_t *attribute,
+                                                fbx_node_t *model,
+                                                const char *const *names,
+                                                size_t name_count,
+                                                double fallback,
+                                                int *out_found) {
+    if (out_found)
+        *out_found = 0;
+    if (!names)
+        return fallback;
+    for (size_t i = 0; i < name_count; i++) {
+        int found = 0;
+        double value;
+        if (!names[i] || names[i][0] == '\0')
+            continue;
+        value = fbx_read_attribute_number(attribute, model, names[i], fallback, &found);
+        if (found) {
+            if (out_found)
+                *out_found = 1;
+            return value;
+        }
+    }
+    return fallback;
+}
+
+/// @brief Validate a required positive finite imported light dimension.
+static int fbx_validate_light_dimension(double value, const char *property_name) {
+    if (isfinite(value) && value > 1e-6 && value <= 1000000.0)
+        return 1;
+    rt_asset_error_setf(RT_ASSET_ERROR_CORRUPT,
+                        "FBX.Load: light %s must be finite and greater than zero",
+                        property_name ? property_name : "dimension");
+    return 0;
+}
+
 /// @brief Read an XYZ property from an attribute, falling back to its owning Model.
 static int fbx_read_attribute_xyz(fbx_node_t *attribute,
                                   fbx_node_t *model,
@@ -1255,6 +1299,8 @@ static void *fbx_make_model_light(fbx_node_t *attribute,
     double inner_angle;
     double outer_angle;
     int found = 0;
+    int range_found = 0;
+    int decay_type;
     int light_type;
     if ((!attribute && !model) || !context || !fbx_budget_charge(context, 1u, sizeof(rt_light3d)))
         return NULL;
@@ -1263,14 +1309,37 @@ static void *fbx_make_model_light(fbx_node_t *attribute,
         color[i] = fbx_clamp_double(color[i], 0.0, 1.0, 1.0);
     intensity = fbx_read_attribute_number(attribute, model, "Intensity", 100.0, NULL) / 100.0;
     intensity = fbx_clamp_double(intensity, 0.0, 1000000.0, 1.0);
-    light_type = (int)fbx_read_attribute_number(attribute, model, "LightType", 0.0, NULL);
-    range = fbx_read_attribute_number(attribute, model, "FarAttenuationEnd", 0.0, &found);
-    if (!found || range <= 0.0)
-        range = fbx_read_attribute_number(attribute, model, "DecayStart", 0.0, &found);
-    if (found && isfinite(range) && range > 0.0) {
+    {
+        double light_type_value =
+            fbx_read_attribute_number(attribute, model, "LightType", 0.0, NULL);
+        double decay_type_value =
+            fbx_read_attribute_number(attribute, model, "DecayType", 2.0, NULL);
+        if (!isfinite(light_type_value) || light_type_value < 0.0 || light_type_value > 4.0 ||
+            floor(light_type_value) != light_type_value) {
+            rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                               "FBX.Load: light type is outside the FBX SDK enum range");
+            return NULL;
+        }
+        if (!isfinite(decay_type_value) || decay_type_value < 0.0 || decay_type_value > 3.0 ||
+            floor(decay_type_value) != decay_type_value) {
+            rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                               "FBX.Load: light decay type is outside the FBX SDK enum range");
+            return NULL;
+        }
+        light_type = (int)light_type_value;
+        decay_type = (int)decay_type_value;
+    }
+    range = fbx_read_attribute_number(attribute, model, "FarAttenuationEnd", 0.0, &range_found);
+    if (!range_found)
+        range = fbx_read_attribute_number(attribute, model, "DecayStart", 0.0, &range_found);
+    if (range_found) {
+        if (!fbx_validate_light_dimension(range, "range"))
+            return NULL;
         attenuation = 1.0 / (range * range);
         if (!isfinite(attenuation) || attenuation < RT_LIGHT3D_DEFAULT_ATTENUATION)
             attenuation = RT_LIGHT3D_DEFAULT_ATTENUATION;
+    } else {
+        range = 1.0 / sqrt(RT_LIGHT3D_DEFAULT_ATTENUATION);
     }
     position = rt_vec3_new(0.0, 0.0, 0.0);
     direction = rt_vec3_new(0.0, 0.0, -1.0);
@@ -1299,13 +1368,77 @@ static void *fbx_make_model_light(fbx_node_t *attribute,
                                         inner_angle,
                                         outer_angle);
             break;
-        case 3:
-        case 4:
-            light = rt_light3d_new_point(position, color[0], color[1], color[2], attenuation);
-            rt_asset_error_add_warningf(
-                "FBX light type %d has no native area/volume representation; imported as point",
-                light_type);
+        case 3: {
+            static const char *const width_names[] = {"Width", "AreaLightWidth", "Size"};
+            static const char *const height_names[] = {"Height", "AreaLightHeight", "Size"};
+            static const char *const radius_names[] = {"Radius", "AreaLightRadius", "Size"};
+            double shape_value =
+                fbx_read_attribute_number(attribute, model, "AreaLightShape", 0.0, NULL);
+            int shape;
+            if (!isfinite(shape_value) || shape_value < 0.0 || shape_value > 1.0 ||
+                floor(shape_value) != shape_value) {
+                rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
+                                   "FBX.Load: area light shape is outside the FBX SDK enum range");
+                break;
+            }
+            shape = (int)shape_value;
+            if (shape == 0) {
+                double width =
+                    fbx_read_attribute_number_aliases(attribute,
+                                                      model,
+                                                      width_names,
+                                                      sizeof(width_names) / sizeof(width_names[0]),
+                                                      1.0,
+                                                      &found);
+                double height = fbx_read_attribute_number_aliases(attribute,
+                                                                  model,
+                                                                  height_names,
+                                                                  sizeof(height_names) /
+                                                                      sizeof(height_names[0]),
+                                                                  1.0,
+                                                                  &found);
+                if (!fbx_validate_light_dimension(width, "rectangle width") ||
+                    !fbx_validate_light_dimension(height, "rectangle height"))
+                    break;
+                light = rt_light3d_new_area_rectangle(position,
+                                                      direction,
+                                                      width,
+                                                      height,
+                                                      color[0],
+                                                      color[1],
+                                                      color[2],
+                                                      attenuation,
+                                                      range);
+            } else {
+                double radius = fbx_read_attribute_number_aliases(attribute,
+                                                                  model,
+                                                                  radius_names,
+                                                                  sizeof(radius_names) /
+                                                                      sizeof(radius_names[0]),
+                                                                  1.0,
+                                                                  &found);
+                if (!fbx_validate_light_dimension(radius, "sphere radius"))
+                    break;
+                light = rt_light3d_new_area_sphere(
+                    position, radius, color[0], color[1], color[2], range);
+                rt_light3d_set_attenuation(light, attenuation);
+            }
             break;
+        }
+        case 4: {
+            static const char *const radius_names[] = {"VolumeRadius", "Radius", "Size"};
+            double radius =
+                fbx_read_attribute_number_aliases(attribute,
+                                                  model,
+                                                  radius_names,
+                                                  sizeof(radius_names) / sizeof(radius_names[0]),
+                                                  1.0,
+                                                  &found);
+            if (!fbx_validate_light_dimension(radius, "volume radius"))
+                break;
+            light = rt_light3d_new_volume(position, radius, color[0], color[1], color[2], range);
+            break;
+        }
         default:
             light = rt_light3d_new_point(position, color[0], color[1], color[2], attenuation);
             break;
@@ -1315,8 +1448,17 @@ static void *fbx_make_model_light(fbx_node_t *attribute,
     if (!light)
         return NULL;
     rt_light3d_set_intensity(light, intensity);
+    rt_light3d_set_decay_type(light, decay_type);
+    if (light_type == 0 || light_type == 2)
+        ((rt_light3d *)light)->range = range_found ? range : 0.0;
     rt_light3d_set_enabled(
-        light, fbx_read_attribute_number(attribute, model, "CastLightOnObject", 1.0, NULL) != 0.0);
+        light,
+        fbx_read_attribute_number(
+            attribute,
+            model,
+            "CastLight",
+            fbx_read_attribute_number(attribute, model, "CastLightOnObject", 1.0, NULL),
+            NULL) != 0.0);
     rt_light3d_set_casts_shadows(
         light, fbx_read_attribute_number(attribute, model, "CastShadows", 0.0, NULL) != 0.0);
     return light;
@@ -1349,6 +1491,151 @@ static fbx_scene_model_binding_t *fbx_find_camera_target(fbx_scene_model_binding
     return NULL;
 }
 
+/// @brief Raw FBX camera projection properties before conversion to Camera3D's vertical-FOV form.
+typedef struct {
+    double projection_type;
+    double aperture_mode;
+    double field_of_view;
+    double field_of_view_x;
+    double field_of_view_y;
+    double focal_length;
+    double film_width;
+    double film_height;
+    double aspect_width;
+    double aspect_height;
+    double near_plane;
+    double far_plane;
+    double ortho_zoom;
+    int has_field_of_view;
+    int has_field_of_view_x;
+    int has_field_of_view_y;
+    int has_focal_length;
+} fbx_camera_property_state_t;
+
+/// @brief Read one camera's complete scalar state with documented FBX SDK defaults.
+static void fbx_read_camera_property_state(fbx_node_t *attribute,
+                                           fbx_node_t *model,
+                                           fbx_camera_property_state_t *state) {
+    int found_ortho_zoom = 0;
+    if (!state)
+        return;
+    memset(state, 0, sizeof(*state));
+    state->projection_type =
+        fbx_read_attribute_number(attribute, model, "CameraProjectionType", 0.0, NULL);
+    /* Autodesk's current SDK default is eVertical (enum value 2). */
+    state->aperture_mode = fbx_read_attribute_number(attribute, model, "ApertureMode", 2.0, NULL);
+    state->field_of_view =
+        fbx_read_attribute_number(attribute, model, "FieldOfView", 60.0, &state->has_field_of_view);
+    state->field_of_view_x = fbx_read_attribute_number(
+        attribute, model, "FieldOfViewX", 60.0, &state->has_field_of_view_x);
+    state->field_of_view_y = fbx_read_attribute_number(
+        attribute, model, "FieldOfViewY", 60.0, &state->has_field_of_view_y);
+    state->focal_length =
+        fbx_read_attribute_number(attribute, model, "FocalLength", 0.0, &state->has_focal_length);
+    state->film_width = fbx_read_attribute_number(attribute, model, "FilmWidth", 0.816, NULL);
+    state->film_height = fbx_read_attribute_number(attribute, model, "FilmHeight", 0.612, NULL);
+    state->aspect_width = fbx_read_attribute_number(attribute, model, "AspectWidth", 1.0, NULL);
+    state->aspect_height = fbx_read_attribute_number(attribute, model, "AspectHeight", 1.0, NULL);
+    state->near_plane = fbx_read_attribute_number(attribute, model, "NearPlane", 0.1, NULL);
+    state->far_plane = fbx_read_attribute_number(attribute, model, "FarPlane", 1000.0, NULL);
+    state->ortho_zoom =
+        fbx_read_attribute_number(attribute, model, "OrthoZoom", 10.0, &found_ortho_zoom);
+    if (!found_ortho_zoom)
+        state->ortho_zoom =
+            fbx_read_attribute_number(attribute, model, "CameraOrthoZoom", 10.0, NULL);
+}
+
+/// @brief Return a finite positive FBX camera aspect, falling back to square pixels.
+static double fbx_camera_state_aspect(const fbx_camera_property_state_t *state) {
+    if (!state || !isfinite(state->aspect_width) || !isfinite(state->aspect_height) ||
+        state->aspect_width <= 0.0 || state->aspect_height <= 0.0)
+        return 1.0;
+    return fbx_clamp_double(state->aspect_width / state->aspect_height, 1e-6, 1000000.0, 1.0);
+}
+
+/// @brief Convert an FBX horizontal field of view to Camera3D's vertical convention.
+static double fbx_camera_horizontal_to_vertical_fov(double horizontal_degrees, double aspect) {
+    static const double pi = 3.14159265358979323846;
+    double radians;
+    double vertical;
+    if (!isfinite(horizontal_degrees) || horizontal_degrees <= 0.0 || horizontal_degrees >= 180.0 ||
+        !isfinite(aspect) || aspect <= 0.0)
+        return 60.0;
+    radians = horizontal_degrees * pi / 180.0;
+    vertical = 2.0 * atan(tan(radians * 0.5) / aspect) * 180.0 / pi;
+    return fbx_clamp_double(vertical, 1.0, 179.0, 60.0);
+}
+
+/// @brief Evaluate the active FBX aperture mode into a vertical runtime field of view.
+/// @details FBX stores film aperture in inches and focal length in millimetres. The SDK treats
+///          focal-length mode as horizontal unless the active aperture mode is explicitly
+///          vertical; the runtime always stores a vertical FOV, so horizontal results are
+///          converted through the evaluated AspectWidth/AspectHeight ratio.
+static double fbx_camera_state_vertical_fov(const fbx_camera_property_state_t *state) {
+    static const double pi = 3.14159265358979323846;
+    int aperture_mode;
+    double aspect;
+    double horizontal;
+    if (!state)
+        return 60.0;
+    aspect = fbx_camera_state_aspect(state);
+    aperture_mode = (int)floor(state->aperture_mode + 0.5);
+    if (aperture_mode == 0) { /* eHorizAndVert */
+        if (state->has_field_of_view_y)
+            return fbx_clamp_double(state->field_of_view_y, 1.0, 179.0, 60.0);
+        if (state->has_field_of_view_x)
+            return fbx_camera_horizontal_to_vertical_fov(state->field_of_view_x, aspect);
+    } else if (aperture_mode == 1) { /* eHorizontal */
+        if (state->has_field_of_view)
+            return fbx_camera_horizontal_to_vertical_fov(state->field_of_view, aspect);
+        if (state->has_field_of_view_x)
+            return fbx_camera_horizontal_to_vertical_fov(state->field_of_view_x, aspect);
+    } else if (aperture_mode == 2) { /* eVertical */
+        if (state->has_field_of_view)
+            return fbx_clamp_double(state->field_of_view, 1.0, 179.0, 60.0);
+        if (state->has_field_of_view_y)
+            return fbx_clamp_double(state->field_of_view_y, 1.0, 179.0, 60.0);
+    } else if (aperture_mode == 3 && state->has_focal_length && state->focal_length > 0.0 &&
+               state->film_width > 0.0) { /* eFocalLength */
+        horizontal =
+            2.0 * atan((state->film_width * 25.4 * 0.5) / state->focal_length) * 180.0 / pi;
+        return fbx_camera_horizontal_to_vertical_fov(horizontal, aspect);
+    }
+    /* Exporter-compatible fallback for sparse camera records. */
+    if (state->has_field_of_view_y)
+        return fbx_clamp_double(state->field_of_view_y, 1.0, 179.0, 60.0);
+    if (state->has_field_of_view)
+        return fbx_clamp_double(state->field_of_view, 1.0, 179.0, 60.0);
+    if (state->has_field_of_view_x)
+        return fbx_camera_horizontal_to_vertical_fov(state->field_of_view_x, aspect);
+    if (state->has_focal_length && state->focal_length > 0.0 && state->film_height > 0.0)
+        return fbx_clamp_double(
+            2.0 * atan((state->film_height * 25.4 * 0.5) / state->focal_length) * 180.0 / pi,
+            1.0,
+            179.0,
+            60.0);
+    return 60.0;
+}
+
+/// @brief Validate the two discrete FBX camera enums required to construct a projection.
+static int fbx_camera_state_validate_enums(const fbx_camera_property_state_t *state) {
+    if (!state || !isfinite(state->projection_type) ||
+        state->projection_type != floor(state->projection_type) || state->projection_type < 0.0 ||
+        state->projection_type > 1.0) {
+        rt_asset_error_set_if_empty(
+            RT_ASSET_ERROR_CORRUPT,
+            "FBX.Load: camera projection mode must be perspective or orthographic");
+        return 0;
+    }
+    if (!isfinite(state->aperture_mode) || state->aperture_mode != floor(state->aperture_mode) ||
+        state->aperture_mode < 0.0 || state->aperture_mode > 3.0) {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                    "FBX.Load: camera aperture mode is outside the FBX enum range");
+        return 0;
+    }
+    return 1;
+}
+
 /// @brief Build and orient one Camera3D from an evaluated FBX camera model.
 static void *fbx_make_model_camera(fbx_node_t *attribute,
                                    fbx_scene_model_binding_t *model,
@@ -1356,19 +1643,8 @@ static void *fbx_make_model_camera(fbx_node_t *attribute,
                                    int32_t model_count,
                                    const fbx_conn_table_t *ct,
                                    fbx_load_context_t *context) {
-    static const double pi = 3.14159265358979323846;
-    int projection_type;
-    int found_y = 0;
-    int found_fov = 0;
-    int found_x = 0;
-    double fov;
-    double aspect_width;
-    double aspect_height;
+    fbx_camera_property_state_t state;
     double aspect;
-    double near_plane;
-    double far_plane;
-    double ortho_zoom;
-    int found_ortho_zoom = 0;
     void *camera;
     double eye[3];
     double forward[3];
@@ -1379,40 +1655,16 @@ static void *fbx_make_model_camera(fbx_node_t *attribute,
     fbx_scene_model_binding_t *up_target;
     if (!model || !ct || !context || !fbx_budget_charge(context, 1u, sizeof(rt_camera3d)))
         return NULL;
-    projection_type =
-        (int)fbx_read_attribute_number(attribute, model->source, "CameraProjectionType", 0.0, NULL);
-    fov = fbx_read_attribute_number(attribute, model->source, "FieldOfViewY", 60.0, &found_y);
-    if (!found_y)
-        fov = fbx_read_attribute_number(attribute, model->source, "FieldOfView", 60.0, &found_fov);
-    if (!found_y && !found_fov)
-        fov = fbx_read_attribute_number(attribute, model->source, "FieldOfViewX", 60.0, &found_x);
-    if (!found_y && !found_fov && !found_x) {
-        double focal =
-            fbx_read_attribute_number(attribute, model->source, "FocalLength", 0.0, NULL);
-        double film_height =
-            fbx_read_attribute_number(attribute, model->source, "FilmHeight", 0.0, NULL);
-        if (focal > 0.0 && film_height > 0.0)
-            fov = 2.0 * atan((film_height * 25.4 * 0.5) / focal) * 180.0 / pi;
-    }
-    aspect_width = fbx_read_attribute_number(attribute, model->source, "AspectWidth", 1.0, NULL);
-    aspect_height = fbx_read_attribute_number(attribute, model->source, "AspectHeight", 1.0, NULL);
-    aspect = isfinite(aspect_width) && isfinite(aspect_height) && aspect_width > 0.0 &&
-                     aspect_height > 0.0
-                 ? aspect_width / aspect_height
-                 : 1.0;
-    near_plane = fbx_read_attribute_number(attribute, model->source, "NearPlane", 0.1, NULL);
-    far_plane = fbx_read_attribute_number(attribute, model->source, "FarPlane", 1000.0, NULL);
-    ortho_zoom =
-        fbx_read_attribute_number(attribute, model->source, "OrthoZoom", 10.0, &found_ortho_zoom);
-    if (!found_ortho_zoom)
-        ortho_zoom =
-            fbx_read_attribute_number(attribute, model->source, "CameraOrthoZoom", 10.0, NULL);
-    if (projection_type == 1)
-        camera = rt_camera3d_new_ortho(fabs(ortho_zoom), aspect, near_plane, far_plane);
-    else if (found_x && !found_y && !found_fov)
-        camera = rt_camera3d_new_horizontal_fov(fov, aspect, near_plane, far_plane);
+    fbx_read_camera_property_state(attribute, model->source, &state);
+    if (!fbx_camera_state_validate_enums(&state))
+        return NULL;
+    aspect = fbx_camera_state_aspect(&state);
+    if ((int)state.projection_type == 1)
+        camera = rt_camera3d_new_ortho(
+            fabs(state.ortho_zoom), aspect, state.near_plane, state.far_plane);
     else
-        camera = rt_camera3d_new(fov, aspect, near_plane, far_plane);
+        camera = rt_camera3d_new(
+            fbx_camera_state_vertical_fov(&state), aspect, state.near_plane, state.far_plane);
     if (!camera)
         return NULL;
     eye[0] = model->global_matrix[3];
@@ -1464,6 +1716,7 @@ static void *fbx_build_scene_root(rt_fbx_asset *asset,
                                   fbx_node_t *root,
                                   fbx_node_t *objects,
                                   const fbx_conn_table_t *ct,
+                                  const fbx_constraint_pose_t *constraint_pose,
                                   const fbx_mesh_binding_t *mesh_bindings,
                                   int32_t mesh_binding_count,
                                   const fbx_material_binding_t *material_bindings,
@@ -1603,7 +1856,7 @@ static void *fbx_build_scene_root(rt_fbx_asset *asset,
             if (!child_obj || child_obj->prop_count < 3)
                 continue;
             if (strcmp(child_obj->name, "Geometry") != 0 ||
-                strcmp(fbx_prop_str(child_obj, 2), "Mesh") != 0) {
+                !fbx_geometry_type_is_renderable(fbx_prop_str(child_obj, 2))) {
                 continue;
             }
             binding = fbx_lookup_mesh_binding_entry(mesh_bindings, mesh_binding_count, child_id);
@@ -1757,7 +2010,35 @@ static void *fbx_build_scene_root(rt_fbx_asset *asset,
 
     /* Evaluate parent globals in topological waves using the same FBX inheritance composer that
      * animation sampling uses, then derive the parent-relative TRS consumed by SceneNode3D. */
-    if (!failed && model_count > 0) {
+    if (!failed && model_count > 0 && constraint_pose) {
+        for (int32_t i = 0; i < model_count; ++i) {
+            const double *evaluated =
+                fbx_constraint_static_global_for_id(constraint_pose, models[i].id);
+            if (!evaluated) {
+                failed = 1;
+                break;
+            }
+            memcpy(models[i].global_matrix, evaluated, sizeof(models[i].global_matrix));
+            models[i].global_evaluated = 1;
+        }
+        if (!failed) {
+            for (int32_t i = 0; i < model_count; ++i) {
+                int32_t parent = parent_idx[i];
+                double runtime_local[16];
+                if (parent >= 0) {
+                    double inverse_parent[16];
+                    if (!fbx_mat4_inverse_affine(models[parent].global_matrix, inverse_parent)) {
+                        failed = 1;
+                        break;
+                    }
+                    fbx_mat4_mul_local(inverse_parent, models[i].global_matrix, runtime_local);
+                } else {
+                    memcpy(runtime_local, models[i].global_matrix, sizeof(runtime_local));
+                }
+                fbx_apply_matrix_to_scene_node(models[i].node, runtime_local);
+            }
+        }
+    } else if (!failed && model_count > 0) {
         int32_t evaluated_count = 0;
         for (int32_t pass = 0; pass < model_count && evaluated_count < model_count; pass++) {
             int32_t progress = 0;
@@ -1806,9 +2087,10 @@ static void *fbx_build_scene_root(rt_fbx_asset *asset,
         }
     }
 
-    /* Cameras live on SceneAsset rather than SceneNode3D. Build them only after every model's
-     * global transform is evaluated so authored look-at and up-vector target relationships can
-     * resolve against stable world-space positions. */
+    /* Build cameras only after every model's global transform is evaluated so authored look-at
+     * and up-vector target relationships resolve against stable world-space positions. The asset
+     * inventory and owning model node retain the same template camera; scene instantiation deep
+     * clones the node attachment for independent mutable view/projection state. */
     for (int32_t i = 0; !failed && i < model_count; ++i) {
         fbx_node_t *camera_attribute =
             fbx_find_model_node_attribute(objects, ct, models[i].id, "Camera");
@@ -1824,6 +2106,7 @@ static void *fbx_build_scene_root(rt_fbx_asset *asset,
                 failed = 1;
                 break;
             }
+            rt_scene_node3d_set_camera(models[i].node, camera);
             asset->cameras[asset->camera_count++] = camera;
         }
     }

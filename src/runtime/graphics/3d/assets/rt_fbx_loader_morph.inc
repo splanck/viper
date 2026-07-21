@@ -65,7 +65,7 @@ static int32_t fbx_morph_mesh_index(const fbx_mesh_binding_t *bindings,
     return -1;
 }
 
-/// @brief Find a parent object connected from @p child_id with an exact node/subtype pair.
+/// @brief Find a parent object connected from @p child_id with a node and optional subtype.
 static fbx_node_t *fbx_morph_find_parent(fbx_node_t *objects,
                                          const fbx_conn_table_t *ct,
                                          int64_t child_id,
@@ -75,7 +75,7 @@ static fbx_node_t *fbx_morph_find_parent(fbx_node_t *objects,
          connection = fbx_connections_next_for_child(ct, connection)) {
         fbx_node_t *parent = fbx_find_object_by_id(objects, ct->entries[connection].parent_id);
         if (parent && strcmp(parent->name, node_name) == 0 && parent->prop_count >= 3 &&
-            strcmp(fbx_prop_str(parent, 2), subtype) == 0) {
+            (!subtype || strcmp(fbx_prop_str(parent, 2), subtype) == 0)) {
             return parent;
         }
     }
@@ -105,7 +105,57 @@ static void fbx_morph_set_remapped_delta(void *morph,
                                          double z) {
     if (!morph || !mesh || control_index < 0)
         return;
-    if (remap && remap->control_vertices && control_index < remap->control_count) {
+    if (remap && remap->surface_vertices && remap->surface_control_indices &&
+        remap->surface_control_weights && control_index < remap->control_count &&
+        remap->surface_vertex_count == mesh->vertex_count) {
+        for (uint32_t vertex = 0; vertex < remap->surface_vertex_count; ++vertex) {
+            const fbx_surface_vertex_remap_t *range = &remap->surface_vertices[vertex];
+            double coefficient = 0.0;
+            rt_morphtarget3d_shape_view_internal view;
+            const float *current = NULL;
+            if (range->offset > remap->surface_contribution_count ||
+                range->count > remap->surface_contribution_count - range->offset)
+                continue;
+            for (uint32_t contribution = 0; contribution < range->count; ++contribution) {
+                uint32_t index = range->offset + contribution;
+                if (remap->surface_control_indices[index] == control_index)
+                    coefficient += remap->surface_control_weights[index];
+            }
+            if (!isfinite(coefficient) || fabs(coefficient) <= 1e-15 ||
+                !rt_morphtarget3d_get_shape_view_internal(morph, shape, &view))
+                continue;
+            if (delta_kind == 1)
+                current = view.normal_deltas;
+            else if (delta_kind == 2)
+                current = view.tangent_deltas;
+            else
+                current = view.position_deltas;
+            double old_x = current ? current[(size_t)vertex * 3u + 0u] : 0.0;
+            double old_y = current ? current[(size_t)vertex * 3u + 1u] : 0.0;
+            double old_z = current ? current[(size_t)vertex * 3u + 2u] : 0.0;
+            if (delta_kind == 1)
+                rt_morphtarget3d_set_normal_delta(morph,
+                                                  shape,
+                                                  vertex,
+                                                  old_x + coefficient * x,
+                                                  old_y + coefficient * y,
+                                                  old_z + coefficient * z);
+            else if (delta_kind == 2)
+                rt_morphtarget3d_set_tangent_delta(morph,
+                                                   shape,
+                                                   vertex,
+                                                   old_x + coefficient * x,
+                                                   old_y + coefficient * y,
+                                                   old_z + coefficient * z);
+            else
+                rt_morphtarget3d_set_delta(morph,
+                                           shape,
+                                           vertex,
+                                           old_x + coefficient * x,
+                                           old_y + coefficient * y,
+                                           old_z + coefficient * z);
+        }
+    } else if (remap && remap->control_vertices && control_index < remap->control_count) {
         const fbx_vertex_index_list_t *vertices = &remap->control_vertices[control_index];
         for (int32_t i = 0; i < vertices->count; ++i) {
             int64_t vertex = (int64_t)vertices->vertices[i];
@@ -179,10 +229,11 @@ static int fbx_load_extract_morphs(rt_fbx_asset *asset,
             continue;
         blend_shape =
             fbx_morph_find_parent(objects, ct, fbx_prop_i64(channel, 0), "Deformer", "BlendShape");
-        geometry = blend_shape ? fbx_morph_find_parent(
-                                     objects, ct, fbx_prop_i64(blend_shape, 0), "Geometry", "Mesh")
-                               : NULL;
-        if (!geometry)
+        geometry =
+            blend_shape
+                ? fbx_morph_find_parent(objects, ct, fbx_prop_i64(blend_shape, 0), "Geometry", NULL)
+                : NULL;
+        if (!geometry || !fbx_geometry_type_is_renderable(fbx_prop_str(geometry, 2)))
             continue;
         mesh_index =
             fbx_morph_mesh_index(mesh_bindings, mesh_binding_count, fbx_prop_i64(geometry, 0));

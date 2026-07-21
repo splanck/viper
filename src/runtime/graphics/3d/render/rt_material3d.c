@@ -181,6 +181,31 @@ void *rt_material3d_resolve_texture_native_asset(void *texture_ref) {
     return rt_textureasset3d_get_native_cache_key(texture_ref) ? texture_ref : NULL;
 }
 
+/// @brief Borrow an unresolved texture reference in stable VSCN persistence order.
+void *rt_material3d_get_persisted_texture_ref(void *obj, int64_t slot) {
+    rt_material3d *material = material_checked(obj);
+    if (!material)
+        return NULL;
+    switch (slot) {
+        case RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR:
+            return material->texture;
+        case RT_MATERIAL3D_TEXTURE_SLOT_NORMAL:
+            return material->normal_map;
+        case RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR:
+            return material->specular_map;
+        case RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE:
+            return material->emissive_map;
+        case RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS:
+            return material->metallic_roughness_map;
+        case RT_MATERIAL3D_TEXTURE_SLOT_AO:
+            return material->ao_map;
+        case RT_MATERIAL3D_PERSISTED_TEXTURE_SLOT_LIGHTMAP:
+            return material->lightmap;
+        default:
+            return NULL;
+    }
+}
+
 /// @brief Whether a texture reference has any usable source (RGBA Pixels or native blocks).
 static int material_texture_ref_has_drawable_source(void *texture_ref) {
     return rt_material3d_resolve_texture_pixels(texture_ref) ||

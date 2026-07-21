@@ -167,6 +167,9 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0140](0140-tiled-map-and-scene-import.md) — Import Tiled Maps as Scene Documents and Tilemaps
 - [ADR 0141](0141-vscn-v4-scene-asset-fidelity.md) — Preserve Complete Scene Assets in VSCN v4
 - [ADR 0142](0142-complete-fbx-scene-animation-import.md) — Complete FBX Scene and Animation Import
+- [ADR 0144](0144-complete-tiled-map-import.md) — Complete Tiled Map Import and Projected Tilemap Rendering
+- [ADR 0145](0145-complete-fbx-evaluation-and-native-lights.md) — Complete FBX Evaluation and Native Authored Lights
+- [ADR 0146](0146-vscn-v5-source-texture-containers.md) — Preserve Source Texture Containers in VSCN v5
 
 ## Release & Packaging
 

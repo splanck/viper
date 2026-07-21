@@ -6,10 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/rt_tilemap_io.c
-// Purpose: File I/O (JSON save/load, CSV import) and auto-tiling for tilemaps.
+// Purpose: File I/O (JSON save/load, CSV import), duration-aware animation
+// persistence, and auto-tiling for tilemaps.
 //
 // Key invariants:
-//   - JSON format version 1; includes layers, collision, tile properties.
+//   - JSON format version 1 retains layers, imported layout, collision,
+//     properties, and animation durations while accepting legacy omissions.
 //   - CSV import creates a single-layer tilemap from comma-separated values.
 //   - Auto-tiling uses 4-bit neighbor bitmask (up|right|down|left) → 16 variants.
 //   - Tile properties are stored in a flat array indexed by tile ID.
@@ -18,7 +20,8 @@
 //   - LoadFromFile/LoadCSV return newly allocated tilemaps.
 //   - Property storage is embedded in the tilemap struct.
 //
-// Links: rt_tilemap.h, rt_json.h, rt_csv.h
+// Links: rt_tilemap.h, rt_json.h, rt_csv.h,
+//   docs/adr/0144-complete-tiled-map-import.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -458,6 +461,20 @@ static int64_t map_get_i64(void *map, const char *key) {
     return value;
 }
 
+/// @brief Read a required finite numeric value from a JSON map.
+/// @details Both JSON integer and floating-point boxes are accepted. Non-numeric,
+///          non-finite, and missing values are rejected so imported projection
+///          metadata cannot inject undefined coordinate arithmetic.
+static int8_t map_get_f64_checked(void *map, const char *key, double *out) {
+    if (!map || !key || !out)
+        return 0;
+    double value = 0.0;
+    if (!rt_box_try_to_f64(rt_map_get(map, rt_const_cstr(key)), &value) || !isfinite(value))
+        return 0;
+    *out = value;
+    return 1;
+}
+
 /// @brief Create a Seq that owns its elements so they are released when the Seq
 ///        is collected. Used for the per-serialized-object pixel data arrays so the
 ///        boxed integer elements are freed along with the containing sequence.
@@ -627,8 +644,12 @@ static void assign_base_tileset(rt_tilemap_impl *tm, void *pixels) {
     if (tm->tileset && tm->tileset != pixels)
         rt_heap_release(tm->tileset);
     tm->tileset = pixels;
-    tm->tileset_cols = pixels ? rt_pixels_width(pixels) / tm->tile_width : 0;
-    tm->tileset_rows = pixels ? rt_pixels_height(pixels) / tm->tile_height : 0;
+    tm->tileset_cols = pixels ? rt_pixels_width(pixels) / tm->source_frame_width : 0;
+    tm->tileset_rows = pixels ? rt_pixels_height(pixels) / tm->source_frame_height : 0;
+    if (tm->tileset_cols > 0 && tm->tileset_rows > INT64_MAX / tm->tileset_cols) {
+        tm->tileset_cols = 0;
+        tm->tileset_rows = 0;
+    }
     tm->tile_count = tm->tileset_cols * tm->tileset_rows;
     tm->layers[0].tileset_cols = tm->tileset_cols;
     tm->layers[0].tileset_rows = tm->tileset_rows;
@@ -648,8 +669,12 @@ static void assign_layer_tileset(rt_tilemap_impl *tm, int64_t layer, void *pixel
     if (lyr->tileset && lyr->tileset != pixels)
         rt_heap_release(lyr->tileset);
     lyr->tileset = pixels;
-    lyr->tileset_cols = pixels ? rt_pixels_width(pixels) / tm->tile_width : 0;
-    lyr->tileset_rows = pixels ? rt_pixels_height(pixels) / tm->tile_height : 0;
+    lyr->tileset_cols = pixels ? rt_pixels_width(pixels) / tm->source_frame_width : 0;
+    lyr->tileset_rows = pixels ? rt_pixels_height(pixels) / tm->source_frame_height : 0;
+    if (lyr->tileset_cols > 0 && lyr->tileset_rows > INT64_MAX / lyr->tileset_cols) {
+        lyr->tileset_cols = 0;
+        lyr->tileset_rows = 0;
+    }
     lyr->tile_count = lyr->tileset_cols * lyr->tileset_rows;
 }
 
@@ -699,6 +724,32 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
     rt_map_set_int(root, rt_const_cstr("height"), h);
     rt_map_set_int(root, rt_const_cstr("tileWidth"), tw);
     rt_map_set_int(root, rt_const_cstr("tileHeight"), th);
+
+    void *layout_obj = rt_map_new();
+    if (!layout_obj)
+        goto cleanup;
+    rt_map_set_int(layout_obj, rt_const_cstr("orientation"), tilemap->import_orientation);
+    rt_map_set_int(layout_obj, rt_const_cstr("originTileX"), tilemap->import_origin_tile_x);
+    rt_map_set_int(layout_obj, rt_const_cstr("originTileY"), tilemap->import_origin_tile_y);
+    rt_map_set_int(
+        layout_obj, rt_const_cstr("projectionHeight"), tilemap->import_projection_height);
+    rt_map_set_int(layout_obj, rt_const_cstr("sourceFrameWidth"), tilemap->source_frame_width);
+    rt_map_set_int(layout_obj, rt_const_cstr("sourceFrameHeight"), tilemap->source_frame_height);
+    rt_map_set_int(layout_obj, rt_const_cstr("drawOffsetX"), tilemap->import_draw_offset_x);
+    rt_map_set_int(layout_obj, rt_const_cstr("drawOffsetY"), tilemap->import_draw_offset_y);
+    rt_map_set_int(layout_obj, rt_const_cstr("renderOrder"), tilemap->import_render_order);
+    rt_map_set_int(layout_obj, rt_const_cstr("staggerAxis"), tilemap->import_stagger_axis);
+    rt_map_set_int(layout_obj, rt_const_cstr("staggerEven"), tilemap->import_stagger_even);
+    rt_map_set_int(layout_obj, rt_const_cstr("hexSideLength"), tilemap->import_hex_side_length);
+    rt_map_set_float(layout_obj, rt_const_cstr("skewX"), tilemap->import_skew_x);
+    rt_map_set_float(layout_obj, rt_const_cstr("skewY"), tilemap->import_skew_y);
+    rt_map_set_float(
+        layout_obj, rt_const_cstr("parallaxOriginX"), tilemap->import_parallax_origin_x);
+    rt_map_set_float(
+        layout_obj, rt_const_cstr("parallaxOriginY"), tilemap->import_parallax_origin_y);
+    rt_map_set_int(layout_obj, rt_const_cstr("tileCount"), tilemap->tile_count);
+    map_set_owned(root, "importLayout", layout_obj);
+
     if (tilemap->tileset) {
         void *tileset_obj = serialize_pixels_blob(tilemap->tileset);
         if (tileset_obj)
@@ -733,6 +784,14 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
         map_set_owned(layer_obj, "tiles", tiles_arr);
         rt_map_set_int(layer_obj, rt_const_cstr("visible"), rt_tilemap_get_layer_visible(tm, li));
         map_set_string_copy(layer_obj, "name", tilemap->layers[li].name);
+        rt_map_set_float(
+            layer_obj, rt_const_cstr("importOffsetX"), tilemap->layers[li].import_offset_x);
+        rt_map_set_float(
+            layer_obj, rt_const_cstr("importOffsetY"), tilemap->layers[li].import_offset_y);
+        rt_map_set_float(
+            layer_obj, rt_const_cstr("importParallaxX"), tilemap->layers[li].import_parallax_x);
+        rt_map_set_float(
+            layer_obj, rt_const_cstr("importParallaxY"), tilemap->layers[li].import_parallax_y);
         if (li > 0 && tilemap->layers[li].tileset) {
             void *tileset_obj = serialize_pixels_blob(tilemap->layers[li].tileset);
             if (tileset_obj)
@@ -838,8 +897,10 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
         tm_tile_anim *anim = &tilemap->tile_anims[i];
         void *anim_obj = rt_map_new();
         void *frames = seq_new_owned();
-        if (!anim_obj || !frames) {
+        void *durations = seq_new_owned();
+        if (!anim_obj || !frames || !durations) {
             tilemap_io_release_ref(&frames);
+            tilemap_io_release_ref(&durations);
             tilemap_io_release_ref(&anim_obj);
             tilemap_io_release_ref(&anim_arr);
             goto cleanup;
@@ -852,12 +913,21 @@ int8_t rt_tilemap_save_to_file(void *tm, rt_string path) {
         for (int32_t fidx = 0; fidx < anim->frame_count; fidx++) {
             if (!seq_push_i64_owned(frames, anim->frame_tiles[fidx])) {
                 tilemap_io_release_ref(&frames);
+                tilemap_io_release_ref(&durations);
+                tilemap_io_release_ref(&anim_obj);
+                tilemap_io_release_ref(&anim_arr);
+                goto cleanup;
+            }
+            if (!seq_push_i64_owned(durations, anim->frame_durations[fidx])) {
+                tilemap_io_release_ref(&frames);
+                tilemap_io_release_ref(&durations);
                 tilemap_io_release_ref(&anim_obj);
                 tilemap_io_release_ref(&anim_arr);
                 goto cleanup;
             }
         }
         map_set_owned(anim_obj, "frames", frames);
+        map_set_owned(anim_obj, "durations", durations);
         seq_push_owned(anim_arr, anim_obj);
     }
     map_set_owned(root, "animations", anim_arr);
@@ -975,6 +1045,64 @@ void *rt_tilemap_load_from_file(rt_string path) {
         goto cleanup;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tm;
 
+    int64_t imported_tile_count = 0;
+    void *layout_obj = rt_map_get(root, rt_const_cstr("importLayout"));
+    if (layout_obj) {
+        int64_t orientation = 0;
+        int64_t origin_tile_x = 0;
+        int64_t origin_tile_y = 0;
+        int64_t projection_height = h;
+        int64_t source_frame_width = 0;
+        int64_t source_frame_height = 0;
+        int64_t draw_offset_x = 0;
+        int64_t draw_offset_y = 0;
+        int64_t render_order = 0;
+        int64_t stagger_axis = 0;
+        int64_t stagger_even = 0;
+        int64_t hex_side_length = 0;
+        double skew_x = 0.0;
+        double skew_y = 0.0;
+        double parallax_origin_x = 0.0;
+        double parallax_origin_y = 0.0;
+        if (!map_get_i64_checked(layout_obj, "orientation", &orientation) ||
+            !map_get_i64_checked(layout_obj, "originTileX", &origin_tile_x) ||
+            !map_get_i64_checked(layout_obj, "originTileY", &origin_tile_y) ||
+            (rt_map_get(layout_obj, rt_const_cstr("projectionHeight")) &&
+             !map_get_i64_checked(layout_obj, "projectionHeight", &projection_height)) ||
+            !map_get_i64_checked(layout_obj, "sourceFrameWidth", &source_frame_width) ||
+            !map_get_i64_checked(layout_obj, "sourceFrameHeight", &source_frame_height) ||
+            !map_get_i64_checked(layout_obj, "drawOffsetX", &draw_offset_x) ||
+            !map_get_i64_checked(layout_obj, "drawOffsetY", &draw_offset_y) ||
+            !map_get_i64_checked(layout_obj, "renderOrder", &render_order) ||
+            !map_get_i64_checked(layout_obj, "staggerAxis", &stagger_axis) ||
+            !map_get_i64_checked(layout_obj, "staggerEven", &stagger_even) ||
+            !map_get_i64_checked(layout_obj, "hexSideLength", &hex_side_length) ||
+            !map_get_f64_checked(layout_obj, "skewX", &skew_x) ||
+            !map_get_f64_checked(layout_obj, "skewY", &skew_y) ||
+            !map_get_f64_checked(layout_obj, "parallaxOriginX", &parallax_origin_x) ||
+            !map_get_f64_checked(layout_obj, "parallaxOriginY", &parallax_origin_y) ||
+            !map_get_i64_checked(layout_obj, "tileCount", &imported_tile_count) ||
+            imported_tile_count < 0 ||
+            !rt_tilemap_configure_import_layout(tm,
+                                                orientation,
+                                                origin_tile_x,
+                                                origin_tile_y,
+                                                source_frame_width,
+                                                source_frame_height,
+                                                draw_offset_x,
+                                                draw_offset_y,
+                                                render_order,
+                                                stagger_axis,
+                                                (int8_t)(stagger_even != 0),
+                                                hex_side_length,
+                                                skew_x,
+                                                skew_y,
+                                                parallax_origin_x,
+                                                parallax_origin_y,
+                                                projection_height))
+            goto cleanup;
+    }
+
     void *tileset_blob = rt_map_get(root, rt_const_cstr("tileset"));
     if (tileset_blob) {
         void *pixels = deserialize_pixels_blob(tileset_blob);
@@ -982,6 +1110,11 @@ void *rt_tilemap_load_from_file(rt_string path) {
             goto cleanup;
         }
         assign_base_tileset(tilemap, pixels);
+        if (layout_obj && imported_tile_count > 0 &&
+            !rt_tilemap_set_import_tile_count(tm, imported_tile_count))
+            goto cleanup;
+    } else if (layout_obj && imported_tile_count > 0) {
+        goto cleanup;
     }
 
     // Load layers
@@ -1047,6 +1180,23 @@ void *rt_tilemap_load_from_file(rt_string path) {
                     }
                     assign_layer_tileset(tilemap, layer_index, pixels);
                 }
+            }
+            void *import_offset_x = rt_map_get(layer_obj, rt_const_cstr("importOffsetX"));
+            void *import_offset_y = rt_map_get(layer_obj, rt_const_cstr("importOffsetY"));
+            void *import_parallax_x = rt_map_get(layer_obj, rt_const_cstr("importParallaxX"));
+            void *import_parallax_y = rt_map_get(layer_obj, rt_const_cstr("importParallaxY"));
+            if (import_offset_x || import_offset_y || import_parallax_x || import_parallax_y) {
+                double offset_x = 0.0;
+                double offset_y = 0.0;
+                double parallax_x = 0.0;
+                double parallax_y = 0.0;
+                if (!map_get_f64_checked(layer_obj, "importOffsetX", &offset_x) ||
+                    !map_get_f64_checked(layer_obj, "importOffsetY", &offset_y) ||
+                    !map_get_f64_checked(layer_obj, "importParallaxX", &parallax_x) ||
+                    !map_get_f64_checked(layer_obj, "importParallaxY", &parallax_y) ||
+                    !rt_tilemap_configure_import_layer(
+                        tm, layer_index, offset_x, offset_y, parallax_x, parallax_y))
+                    goto cleanup;
             }
         }
     }
@@ -1148,22 +1298,53 @@ void *rt_tilemap_load_from_file(rt_string path) {
             int64_t frame_count = map_get_i64(anim_obj, "frameCount");
             int64_t ms_per_frame = map_get_i64(anim_obj, "msPerFrame");
             void *frames = rt_map_get(anim_obj, rt_const_cstr("frames"));
-            if (!frames || frame_count <= 0 || frame_count > TM_MAX_ANIM_FRAMES)
+            void *durations = rt_map_get(anim_obj, rt_const_cstr("durations"));
+            if (!frames || frame_count <= 0 || frame_count > TM_MAX_IMPORT_ANIM_FRAMES)
                 continue;
             if (rt_seq_len(frames) < frame_count)
                 continue;
-            rt_tilemap_set_tile_anim(tm, base_tile, frame_count, ms_per_frame);
-            for (int64_t fi = 0; fi < frame_count; fi++) {
-                void *boxed = rt_seq_get(frames, fi);
-                int64_t frame_tile = 0;
-                if (boxed_to_i64_exact(boxed, &frame_tile))
-                    rt_tilemap_set_tile_anim_frame(tm, base_tile, fi, frame_tile);
+            int configured = 0;
+            if (durations && rt_seq_len(durations) == frame_count &&
+                (uint64_t)frame_count <= (uint64_t)(SIZE_MAX / sizeof(int64_t))) {
+                size_t bytes = (size_t)frame_count * sizeof(int64_t);
+                int64_t *frame_values = (int64_t *)malloc(bytes);
+                int64_t *duration_values = (int64_t *)malloc(bytes);
+                if (!frame_values || !duration_values) {
+                    free(frame_values);
+                    free(duration_values);
+                    continue;
+                }
+                configured = 1;
+                for (int64_t fi = 0; fi < frame_count; ++fi) {
+                    if (!boxed_to_i64_exact(rt_seq_get(frames, fi), &frame_values[fi]) ||
+                        frame_values[fi] <= 0 ||
+                        !boxed_to_i64_exact(rt_seq_get(durations, fi), &duration_values[fi]) ||
+                        duration_values[fi] <= 0) {
+                        configured = 0;
+                        break;
+                    }
+                }
+                if (configured)
+                    configured = rt_tilemap_set_import_tile_anim(
+                        tm, base_tile, frame_count, frame_values, duration_values);
+                free(frame_values);
+                free(duration_values);
+            } else if (frame_count <= TM_MAX_ANIM_FRAMES && ms_per_frame > 0) {
+                rt_tilemap_set_tile_anim(tm, base_tile, frame_count, ms_per_frame);
+                configured = find_tile_anim(tilemap, base_tile) != NULL;
+                for (int64_t fi = 0; configured && fi < frame_count; fi++) {
+                    void *boxed = rt_seq_get(frames, fi);
+                    int64_t frame_tile = 0;
+                    if (boxed_to_i64_exact(boxed, &frame_tile))
+                        rt_tilemap_set_tile_anim_frame(tm, base_tile, fi, frame_tile);
+                }
             }
+            if (!configured)
+                continue;
             {
                 tm_tile_anim *anim = find_tile_anim(tilemap, base_tile);
                 if (!anim)
                     continue;
-                anim->timer = map_get_i64(anim_obj, "timer");
                 int64_t current = map_get_i64(anim_obj, "currentFrame");
                 if (anim->frame_count > 0) {
                     current %= anim->frame_count;
@@ -1173,6 +1354,12 @@ void *rt_tilemap_load_from_file(rt_string path) {
                 } else {
                     anim->current_frame = 0;
                 }
+                anim->timer = map_get_i64(anim_obj, "timer");
+                if (anim->timer < 0)
+                    anim->timer = 0;
+                if (anim->frame_durations && anim->frame_count > 0 &&
+                    anim->frame_durations[anim->current_frame] > 0)
+                    anim->timer %= anim->frame_durations[anim->current_frame];
             }
         }
     }

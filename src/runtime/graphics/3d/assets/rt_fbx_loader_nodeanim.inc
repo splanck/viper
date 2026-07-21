@@ -24,6 +24,7 @@ typedef struct {
     int64_t parent_id;
     int32_t parent_index;
     int32_t import_index;
+    int is_skeleton;
     fbx_node_t *source;
     fbx_anim_bone_builder_t animation;
 } fbx_node_anim_model_builder_t;
@@ -113,8 +114,7 @@ static int fbx_node_anim_make_model_table(fbx_node_t *objects,
     *out_ids = NULL;
     for (int32_t i = 0; i < objects->child_count; ++i) {
         fbx_node_t *object = &objects->children[i];
-        if (strcmp(object->name, "Model") == 0 && object->prop_count >= 3 &&
-            !fbx_model_type_is_skeleton(fbx_prop_str(object, 2))) {
+        if (strcmp(object->name, "Model") == 0 && object->prop_count >= 3) {
             if (count == INT32_MAX)
                 return 0;
             ++count;
@@ -137,15 +137,16 @@ static int fbx_node_anim_make_model_table(fbx_node_t *objects,
     count = 0;
     for (int32_t i = 0; i < objects->child_count; ++i) {
         fbx_node_t *object = &objects->children[i];
-        if (strcmp(object->name, "Model") != 0 || object->prop_count < 3 ||
-            fbx_model_type_is_skeleton(fbx_prop_str(object, 2))) {
+        if (strcmp(object->name, "Model") != 0 || object->prop_count < 3) {
             continue;
         }
         models[count].id = fbx_prop_i64(object, 0);
         models[count].parent_id = fbx_find_parent(ct, models[count].id);
         models[count].parent_index = -1;
         models[count].import_index = i;
+        models[count].is_skeleton = fbx_model_type_is_skeleton(fbx_prop_str(object, 2));
         models[count].source = object;
+        models[count].animation.target_id = models[count].id;
         fbx_read_model_transform_components(object, &models[count].animation.base_transform);
         models[count].animation.initialized = 1;
         ids[count].id = models[count].id;
@@ -167,11 +168,17 @@ static int fbx_node_anim_make_model_table(fbx_node_t *objects,
 static void fbx_node_anim_collect_transform_curves(fbx_node_t *objects,
                                                    const fbx_conn_table_t *ct,
                                                    int64_t stack_id,
+                                                   const fbx_anim_layer_stack_t *layer_stack,
                                                    fbx_node_anim_model_builder_t *models,
                                                    int32_t model_count,
                                                    const fbx_model_id_entry_t *ids) {
     if (!objects || !ct || !models || model_count <= 0 || !ids)
         return;
+    if (layer_stack) {
+        for (int32_t i = 0; i < model_count; ++i)
+            models[i].animation.layer_stack = layer_stack;
+        return;
+    }
     for (int32_t layer_connection = fbx_connections_first_for_parent(ct, stack_id);
          layer_connection >= 0;
          layer_connection = fbx_connections_next_for_parent(ct, layer_connection)) {
@@ -299,6 +306,10 @@ static int fbx_node_anim_transform_bounds(const fbx_node_anim_model_builder_t *m
     int64_t maximum = 0;
     if (!models || model_count <= 0 || !out_min || !out_max)
         return 0;
+    for (int32_t i = 0; i < model_count; ++i)
+        if (models[i].animation.layer_stack)
+            return fbx_anim_layer_stack_bounds(
+                models[i].animation.layer_stack, 1, out_min, out_max);
     for (int32_t i = 0; i < model_count; ++i) {
         for (int trs = 0; trs < 3; ++trs) {
             for (int component = 0; component < 3; ++component) {
@@ -340,18 +351,96 @@ static int fbx_node_anim_include_morph_bounds(const fbx_anim_curve_view_t *curve
     return have_bounds;
 }
 
-/// @brief Append transform sample times for a Model and every included scene ancestor.
+static int fbx_node_anim_constraint_writes_index(const fbx_constraint_t *constraint,
+                                                 const fbx_constraint_pose_t *pose,
+                                                 int32_t model_index) {
+    if (!constraint || !pose || model_index < 0 || model_index >= pose->count ||
+        !constraint->active || constraint->kind == FBX_CONSTRAINT_UNKNOWN)
+        return 0;
+    if (constraint->kind != FBX_CONSTRAINT_SINGLE_CHAIN_IK)
+        return constraint->target_id == pose->ids[model_index];
+    for (int32_t current = fbx_constraint_pose_index(pose, constraint->ik_end_id), guard = 0;
+         current >= 0 && guard++ <= pose->count;
+         current = pose->parent_indices[current]) {
+        if (current == model_index)
+            return 1;
+        if (pose->ids[current] == constraint->target_id)
+            break;
+    }
+    return 0;
+}
+
+/// @brief Append transform times from hierarchy and constraint dependencies of one Model.
 static int fbx_node_anim_append_inherited_times(int64_t **times,
                                                 int32_t *count,
                                                 int32_t *capacity,
                                                 const fbx_node_anim_model_builder_t *models,
                                                 int32_t model_count,
                                                 int32_t model_index,
+                                                const fbx_constraint_set_t *constraints,
+                                                fbx_constraint_pose_t *pose,
                                                 fbx_load_context_t *context) {
-    int32_t guard = 0;
-    for (int32_t current = model_index; current >= 0; current = models[current].parent_index) {
-        if (current >= model_count || ++guard > model_count)
-            return 0;
+    uint8_t *marked;
+    if (!models || model_count <= 0 || model_index < 0 || model_index >= model_count || !pose ||
+        pose->count != model_count || !pose->evaluation_flags)
+        return 0;
+    marked = pose->evaluation_flags;
+    memset(marked, 0, (size_t)model_count * sizeof(*marked));
+    marked[model_index] = 1;
+    for (int32_t pass = 0; pass < model_count + (constraints ? constraints->count : 0); ++pass) {
+        int progress = 0;
+        for (int32_t current = 0; current < model_count; ++current) {
+            int32_t parent;
+            if (!marked[current])
+                continue;
+            parent = models[current].parent_index;
+            if (parent >= 0 && !marked[parent]) {
+                marked[parent] = 1;
+                progress = 1;
+            }
+            if (!constraints)
+                continue;
+            for (int32_t ci = 0; ci < constraints->count; ++ci) {
+                const fbx_constraint_t *constraint = &constraints->entries[ci];
+                if (!fbx_node_anim_constraint_writes_index(constraint, pose, current))
+                    continue;
+                for (int32_t source = 0; source < constraint->source_count; ++source) {
+                    int32_t dependency =
+                        fbx_constraint_pose_index(pose, constraint->sources[source].model_id);
+                    if (dependency >= 0 && !marked[dependency]) {
+                        marked[dependency] = 1;
+                        progress = 1;
+                    }
+                }
+                const int64_t role_ids[] = {
+                    constraint->world_up_id, constraint->ik_effector_id, constraint->ik_pole_id};
+                for (size_t role = 0; role < sizeof(role_ids) / sizeof(role_ids[0]); ++role) {
+                    int32_t dependency = fbx_constraint_pose_index(pose, role_ids[role]);
+                    if (dependency >= 0 && !marked[dependency]) {
+                        marked[dependency] = 1;
+                        progress = 1;
+                    }
+                }
+            }
+        }
+        if (!progress)
+            break;
+    }
+    for (int32_t current = 0; current < model_count; ++current) {
+        if (!marked[current])
+            continue;
+        if (models[current].animation.layer_stack) {
+            if (!fbx_anim_layer_stack_append_times(times,
+                                                   count,
+                                                   capacity,
+                                                   models[current].animation.layer_stack,
+                                                   models[current].id,
+                                                   1,
+                                                   NULL,
+                                                   context))
+                return 0;
+            continue;
+        }
         for (int trs = 0; trs < 3; ++trs)
             for (int component = 0; component < 3; ++component)
                 if (!fbx_anim_append_curve_sample_times(
@@ -359,67 +448,57 @@ static int fbx_node_anim_append_inherited_times(int64_t **times,
                         count,
                         capacity,
                         &models[current].animation.curves[trs][component],
-                        context)) {
+                        context))
                     return 0;
-                }
     }
     return 1;
 }
 
-/// @brief Sample one Model's FBX hierarchy and derive the runtime parent-relative TRS.
+/// @brief Sample the complete Model graph, apply constraints, and derive one runtime local TRS.
 static int fbx_node_anim_sample_runtime_trs(const fbx_node_anim_model_builder_t *models,
                                             int32_t model_count,
                                             int32_t model_index,
                                             int64_t source_time,
                                             int z_up,
-                                            int32_t *chain,
+                                            fbx_constraint_pose_t *pose,
+                                            fbx_constraint_set_t *constraints,
+                                            fbx_load_context_t *context,
                                             double position[3],
                                             double quaternion[4],
                                             double scale[3]) {
-    int32_t chain_count = 0;
-    int32_t walk = model_index;
-    double parent_global[16];
-    fbx_transform_components_t parent_components;
-    int has_parent = 0;
-    if (!models || model_count <= 0 || model_index < 0 || model_index >= model_count || !chain)
+    double runtime_local[16];
+    int32_t runtime_parent;
+    if (!models || model_count <= 0 || model_index < 0 || model_index >= model_count || !pose ||
+        pose->count != model_count || !context)
         return 0;
-    while (walk >= 0) {
-        if (walk >= model_count || chain_count >= model_count)
+    pose->z_up = z_up;
+    memset(pose->fixed_globals, 0, (size_t)model_count * sizeof(*pose->fixed_globals));
+    for (int32_t current = 0; current < model_count; ++current) {
+        if (!fbx_anim_sample_components(
+                &models[current].animation, source_time, &pose->components[current]))
             return 0;
-        for (int32_t i = 0; i < chain_count; ++i)
-            if (chain[i] == walk)
-                return 0;
-        chain[chain_count++] = walk;
-        walk = models[walk].parent_index;
-    }
-    for (int32_t ci = chain_count - 1; ci >= 0; --ci) {
-        int32_t current = chain[ci];
-        fbx_transform_components_t components;
-        double local[16];
-        double global[16];
-        double runtime_local[16];
-        if (!fbx_anim_sample_components(&models[current].animation, source_time, &components))
-            return 0;
-        fbx_build_model_transform_matrix(&components, local);
+        fbx_build_model_transform_matrix(&pose->components[current],
+                                         fbx_constraint_pose_local(pose, current));
         if (z_up)
-            fbx_mat4_apply_zup(local);
-        if (has_parent) {
-            double inverse_parent[16];
-            fbx_build_inherited_global_matrix(
-                parent_global, &parent_components, local, &components, global);
-            if (!fbx_mat4_inverse_affine(parent_global, inverse_parent))
-                return 0;
-            fbx_mat4_mul_local(inverse_parent, global, runtime_local);
-        } else {
-            memcpy(global, local, sizeof(global));
-            memcpy(runtime_local, local, sizeof(runtime_local));
-        }
-        if (ci == 0)
-            fbx_decompose_matrix_trs(runtime_local, position, quaternion, scale);
-        memcpy(parent_global, global, sizeof(parent_global));
-        parent_components = components;
-        has_parent = 1;
+            fbx_mat4_apply_zup(fbx_constraint_pose_local(pose, current));
     }
+    if (!fbx_constraint_pose_recompute(pose) ||
+        (constraints && !fbx_constraint_apply_set(constraints, pose, context)))
+        return 0;
+    runtime_parent = models[model_index].parent_index;
+    if (runtime_parent >= 0 && models[runtime_parent].is_skeleton)
+        runtime_parent = -1;
+    if (runtime_parent >= 0) {
+        double inverse_parent[16];
+        if (!fbx_mat4_inverse_affine(fbx_constraint_pose_global(pose, runtime_parent),
+                                     inverse_parent))
+            return 0;
+        fbx_mat4_mul_local(
+            inverse_parent, fbx_constraint_pose_global(pose, model_index), runtime_local);
+    } else {
+        memcpy(runtime_local, fbx_constraint_pose_global(pose, model_index), sizeof(runtime_local));
+    }
+    fbx_decompose_matrix_trs(runtime_local, position, quaternion, scale);
     return 1;
 }
 
@@ -431,11 +510,12 @@ static int fbx_node_anim_emit_model_channels(void *clip,
                                              int32_t model_index,
                                              int64_t clip_start,
                                              int z_up,
+                                             fbx_constraint_pose_t *pose,
+                                             fbx_constraint_set_t *constraints,
                                              fbx_load_context_t *context) {
     int64_t *source_times = NULL;
     int32_t source_count = 0;
     int32_t source_capacity = 0;
-    int32_t *chain = NULL;
     double *times = NULL;
     float *translations = NULL;
     float *rotations = NULL;
@@ -448,6 +528,8 @@ static int fbx_node_anim_emit_model_channels(void *clip,
                                               models,
                                               model_count,
                                               model_index,
+                                              constraints,
+                                              pose,
                                               context)) {
         free(source_times);
         return -1;
@@ -457,10 +539,8 @@ static int fbx_node_anim_emit_model_channels(void *clip,
         free(source_times);
         return 0;
     }
-    if ((size_t)model_count > SIZE_MAX / sizeof(*chain) ||
-        (size_t)source_count > SIZE_MAX / sizeof(*times) ||
+    if ((size_t)source_count > SIZE_MAX / sizeof(*times) ||
         (size_t)source_count > SIZE_MAX / (4u * sizeof(float)) ||
-        !fbx_budget_charge(context, (uint64_t)model_count, sizeof(*chain)) ||
         !fbx_budget_charge(context, (uint64_t)source_count, sizeof(*times)) ||
         !fbx_budget_charge(context, (uint64_t)source_count, 10u * sizeof(float)) ||
         !fbx_budget_charge(context, 3u, sizeof(rt_node_anim_channel3d)) ||
@@ -469,19 +549,27 @@ static int fbx_node_anim_emit_model_channels(void *clip,
         free(source_times);
         return -1;
     }
-    chain = (int32_t *)malloc((size_t)model_count * sizeof(*chain));
     times = (double *)malloc((size_t)source_count * sizeof(*times));
     translations = (float *)malloc((size_t)source_count * 3u * sizeof(*translations));
     rotations = (float *)malloc((size_t)source_count * 4u * sizeof(*rotations));
     scales = (float *)malloc((size_t)source_count * 3u * sizeof(*scales));
-    if (!chain || !times || !translations || !rotations || !scales)
+    if (!times || !translations || !rotations || !scales)
         goto fail;
     for (int32_t i = 0; i < source_count; ++i) {
         double p[3];
         double q[4];
         double s[3];
-        if (!fbx_node_anim_sample_runtime_trs(
-                models, model_count, model_index, source_times[i], z_up, chain, p, q, s)) {
+        if (!fbx_node_anim_sample_runtime_trs(models,
+                                              model_count,
+                                              model_index,
+                                              source_times[i],
+                                              z_up,
+                                              pose,
+                                              constraints,
+                                              context,
+                                              p,
+                                              q,
+                                              s)) {
             goto fail;
         }
         times[i] = ((double)source_times[i] - (double)clip_start) / (double)FBX_TIME_SECOND;
@@ -538,7 +626,6 @@ static int fbx_node_anim_emit_model_channels(void *clip,
         rt_node_animation3d_set_channel_target_node_index(
             clip, channel_indices[path], models[model_index].import_index);
     rt_string_unref(target_name);
-    free(chain);
     free(times);
     free(translations);
     free(rotations);
@@ -547,12 +634,375 @@ static int fbx_node_anim_emit_model_channels(void *clip,
     return 1;
 fail:
     rt_string_unref(target_name);
-    free(chain);
     free(times);
     free(translations);
     free(rotations);
     free(scales);
     free(source_times);
+    return -1;
+}
+
+enum {
+    FBX_CAMERA_ANIM_PROJECTION = 1u << 0,
+    FBX_CAMERA_ANIM_APERTURE_MODE = 1u << 1,
+    FBX_CAMERA_ANIM_FOV = 1u << 2,
+    FBX_CAMERA_ANIM_FOV_X = 1u << 3,
+    FBX_CAMERA_ANIM_FOV_Y = 1u << 4,
+    FBX_CAMERA_ANIM_FOCAL_LENGTH = 1u << 5,
+    FBX_CAMERA_ANIM_FILM_WIDTH = 1u << 6,
+    FBX_CAMERA_ANIM_FILM_HEIGHT = 1u << 7,
+    FBX_CAMERA_ANIM_ASPECT_WIDTH = 1u << 8,
+    FBX_CAMERA_ANIM_ASPECT_HEIGHT = 1u << 9,
+    FBX_CAMERA_ANIM_NEAR = 1u << 10,
+    FBX_CAMERA_ANIM_FAR = 1u << 11,
+    FBX_CAMERA_ANIM_ORTHO_ZOOM = 1u << 12
+};
+
+/// @brief Map a raw FBX camera property to its canonical animation dependency bit.
+static uint32_t fbx_node_anim_camera_property_flag(const char *property) {
+    if (fbx_ascii_streq_ignore_case(property, "CameraProjectionType"))
+        return FBX_CAMERA_ANIM_PROJECTION;
+    if (fbx_ascii_streq_ignore_case(property, "ApertureMode"))
+        return FBX_CAMERA_ANIM_APERTURE_MODE;
+    if (fbx_ascii_streq_ignore_case(property, "FieldOfView"))
+        return FBX_CAMERA_ANIM_FOV;
+    if (fbx_ascii_streq_ignore_case(property, "FieldOfViewX"))
+        return FBX_CAMERA_ANIM_FOV_X;
+    if (fbx_ascii_streq_ignore_case(property, "FieldOfViewY"))
+        return FBX_CAMERA_ANIM_FOV_Y;
+    if (fbx_ascii_streq_ignore_case(property, "FocalLength"))
+        return FBX_CAMERA_ANIM_FOCAL_LENGTH;
+    if (fbx_ascii_streq_ignore_case(property, "FilmWidth"))
+        return FBX_CAMERA_ANIM_FILM_WIDTH;
+    if (fbx_ascii_streq_ignore_case(property, "FilmHeight"))
+        return FBX_CAMERA_ANIM_FILM_HEIGHT;
+    if (fbx_ascii_streq_ignore_case(property, "AspectWidth"))
+        return FBX_CAMERA_ANIM_ASPECT_WIDTH;
+    if (fbx_ascii_streq_ignore_case(property, "AspectHeight"))
+        return FBX_CAMERA_ANIM_ASPECT_HEIGHT;
+    if (fbx_ascii_streq_ignore_case(property, "NearPlane"))
+        return FBX_CAMERA_ANIM_NEAR;
+    if (fbx_ascii_streq_ignore_case(property, "FarPlane"))
+        return FBX_CAMERA_ANIM_FAR;
+    if (fbx_ascii_streq_ignore_case(property, "OrthoZoom") ||
+        fbx_ascii_streq_ignore_case(property, "CameraOrthoZoom"))
+        return FBX_CAMERA_ANIM_ORTHO_ZOOM;
+    return 0;
+}
+
+/// @brief Append every active raw camera-curve/weight time and report affected properties.
+static int fbx_node_anim_append_camera_times(int64_t **times,
+                                             int32_t *count,
+                                             int32_t *capacity,
+                                             const fbx_anim_layer_stack_t *stack,
+                                             int64_t attribute_id,
+                                             int64_t model_id,
+                                             uint32_t *out_flags,
+                                             fbx_load_context_t *context) {
+    uint32_t flags = 0;
+    if (!times || !count || !capacity || !stack || !out_flags || !context)
+        return 0;
+    for (int32_t layer_index = 0; layer_index < stack->layer_count; ++layer_index) {
+        int layer_used = 0;
+        if (!fbx_anim_layer_is_active(stack, layer_index))
+            continue;
+        for (int32_t channel_index = 0; channel_index < stack->channel_count; ++channel_index) {
+            const fbx_anim_layer_channel_t *channel = &stack->channels[channel_index];
+            uint32_t flag;
+            if (channel->layer_index != layer_index || channel->transform_path >= 0 ||
+                (channel->target_id != attribute_id && channel->target_id != model_id))
+                continue;
+            flag = fbx_node_anim_camera_property_flag(channel->property);
+            if (flag == 0)
+                continue;
+            if (channel->curve_mask == 0 && channel->default_mask == 0)
+                continue;
+            flags |= flag;
+            layer_used = 1;
+            for (int component = 0; component < 3; ++component) {
+                const fbx_anim_curve_view_t *curve = &channel->curves[component];
+                if (!fbx_anim_append_curve_sample_times(times, count, capacity, curve, context))
+                    return 0;
+                if ((flag == FBX_CAMERA_ANIM_PROJECTION || flag == FBX_CAMERA_ANIM_APERTURE_MODE) &&
+                    fbx_anim_curve_has_data(curve)) {
+                    /* Enum properties are step-valued even when an exporter omits interpolation
+                     * flags. Preserve the old value through the final representable source tick. */
+                    for (uint32_t key = 1; key < curve->count; ++key)
+                        if (curve->times[key] - 1 > curve->times[key - 1] &&
+                            !fbx_anim_append_time(
+                                times, count, capacity, curve->times[key] - 1, context))
+                            return 0;
+                }
+            }
+        }
+        if (layer_used &&
+            !fbx_anim_append_curve_sample_times(
+                times, count, capacity, &stack->layers[layer_index].weight_curve, context))
+            return 0;
+    }
+    *out_flags = flags;
+    return 1;
+}
+
+/// @brief Find one canonical camera property channel on a layer, preferring NodeAttribute.
+static const fbx_anim_layer_channel_t *fbx_node_anim_find_camera_channel(
+    const fbx_anim_layer_stack_t *stack,
+    int32_t layer_index,
+    int64_t attribute_id,
+    int64_t model_id,
+    uint32_t property_flag) {
+    const fbx_anim_layer_channel_t *model_channel = NULL;
+    if (!stack)
+        return NULL;
+    for (int32_t channel_index = 0; channel_index < stack->channel_count; ++channel_index) {
+        const fbx_anim_layer_channel_t *channel = &stack->channels[channel_index];
+        if (channel->layer_index != layer_index || channel->transform_path >= 0 ||
+            fbx_node_anim_camera_property_flag(channel->property) != property_flag)
+            continue;
+        if (attribute_id != 0 && channel->target_id == attribute_id)
+            return channel;
+        if (channel->target_id == model_id)
+            model_channel = channel;
+    }
+    return model_channel;
+}
+
+/// @brief Compose one canonical camera scalar across all active FBX animation layers.
+static int fbx_node_anim_sample_camera_scalar(const fbx_anim_layer_stack_t *stack,
+                                              int64_t attribute_id,
+                                              int64_t model_id,
+                                              uint32_t property_flag,
+                                              double base,
+                                              int64_t source_time,
+                                              double *out) {
+    double value = base;
+    if (!stack || !out)
+        return 0;
+    for (int32_t layer_index = 0; layer_index < stack->layer_count; ++layer_index) {
+        const fbx_anim_layer_channel_t *channel;
+        double layer_value;
+        double weight;
+        int present;
+        int blend_mode;
+        if (!fbx_anim_layer_is_active(stack, layer_index))
+            continue;
+        channel = fbx_node_anim_find_camera_channel(
+            stack, layer_index, attribute_id, model_id, property_flag);
+        if (!channel)
+            continue;
+        weight = fbx_anim_layer_weight_at(&stack->layers[layer_index], source_time);
+        if (weight <= 0.0)
+            continue;
+        blend_mode = layer_index == 0 ? 1 : stack->layers[layer_index].blend_mode;
+        if (!fbx_anim_layer_channel_value(channel, 0, source_time, base, &layer_value, &present))
+            return 0;
+        if (!present && blend_mode != 1)
+            continue;
+        if (blend_mode == 0)
+            value += layer_value * weight;
+        else
+            value += (layer_value - value) * weight;
+    }
+    if (!isfinite(value))
+        return 0;
+    *out = value;
+    return 1;
+}
+
+/// @brief Evaluate all animated raw camera properties at one source tick.
+static int fbx_node_anim_sample_camera_state(const fbx_anim_layer_stack_t *stack,
+                                             int64_t attribute_id,
+                                             int64_t model_id,
+                                             uint32_t flags,
+                                             const fbx_camera_property_state_t *base,
+                                             int64_t source_time,
+                                             fbx_camera_property_state_t *out) {
+    if (!stack || !base || !out)
+        return 0;
+    *out = *base;
+#define FBX_SAMPLE_CAMERA_PROPERTY(flag_, member_)                                                 \
+    do {                                                                                           \
+        if ((flags & (flag_)) != 0 && !fbx_node_anim_sample_camera_scalar(stack,                   \
+                                                                          attribute_id,            \
+                                                                          model_id,                \
+                                                                          (flag_),                 \
+                                                                          base->member_,           \
+                                                                          source_time,             \
+                                                                          &out->member_))          \
+            return 0;                                                                              \
+    } while (0)
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_PROJECTION, projection_type);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_APERTURE_MODE, aperture_mode);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_FOV, field_of_view);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_FOV_X, field_of_view_x);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_FOV_Y, field_of_view_y);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_FOCAL_LENGTH, focal_length);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_FILM_WIDTH, film_width);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_FILM_HEIGHT, film_height);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_ASPECT_WIDTH, aspect_width);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_ASPECT_HEIGHT, aspect_height);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_NEAR, near_plane);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_FAR, far_plane);
+    FBX_SAMPLE_CAMERA_PROPERTY(FBX_CAMERA_ANIM_ORTHO_ZOOM, ortho_zoom);
+#undef FBX_SAMPLE_CAMERA_PROPERTY
+    if (flags & FBX_CAMERA_ANIM_FOV)
+        out->has_field_of_view = 1;
+    if (flags & FBX_CAMERA_ANIM_FOV_X)
+        out->has_field_of_view_x = 1;
+    if (flags & FBX_CAMERA_ANIM_FOV_Y)
+        out->has_field_of_view_y = 1;
+    if (flags & FBX_CAMERA_ANIM_FOCAL_LENGTH)
+        out->has_focal_length = 1;
+    if (out->projection_type < 0.0 || out->projection_type > 1.0 || out->aperture_mode < 0.0 ||
+        out->aperture_mode > 3.0)
+        return 0;
+    /* Layer weights can blend enum lanes. Resolve the composed value at the halfway boundary,
+     * then publish it through a STEP runtime channel. */
+    out->projection_type = floor(out->projection_type + 0.5);
+    out->aperture_mode = floor(out->aperture_mode + 0.5);
+    return fbx_camera_state_validate_enums(out);
+}
+
+/// @brief Emit derived runtime camera projection channels for one FBX camera Model.
+/// @return 1 when channels were emitted, 0 when the stack does not animate this camera, -1 on
+///         allocation, validation, or channel-publication failure.
+static int fbx_node_anim_emit_camera_channels(void *clip,
+                                              fbx_node_t *objects,
+                                              const fbx_conn_table_t *ct,
+                                              const fbx_node_anim_model_builder_t *model,
+                                              const fbx_anim_layer_stack_t *stack,
+                                              int64_t clip_start,
+                                              fbx_load_context_t *context) {
+    enum { PROJECTION = 0, ASPECT = 1, FOV = 2, NEAR = 3, FAR = 4, ORTHO = 5, VALUE_LANES = 6 };
+
+    static const int64_t paths[VALUE_LANES] = {RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE,
+                                               RT_NODE_ANIM_PATH_CAMERA_ASPECT,
+                                               RT_NODE_ANIM_PATH_CAMERA_FOV,
+                                               RT_NODE_ANIM_PATH_CAMERA_NEAR,
+                                               RT_NODE_ANIM_PATH_CAMERA_FAR,
+                                               RT_NODE_ANIM_PATH_CAMERA_ORTHO_SIZE};
+    fbx_node_t *attribute;
+    fbx_camera_property_state_t base;
+    int64_t attribute_id;
+    int64_t *source_times = NULL;
+    int32_t source_count = 0;
+    int32_t source_capacity = 0;
+    uint32_t raw_flags = 0;
+    uint32_t output_flags = 0;
+    double *times = NULL;
+    float *values = NULL;
+    rt_string target_name = NULL;
+    int emitted = 0;
+    if (!clip || !objects || !ct || !model || !stack || !context)
+        return 0;
+    attribute = fbx_find_model_node_attribute(objects, ct, model->id, "Camera");
+    if (!attribute && !(model->source->prop_count >= 3 &&
+                        fbx_ascii_equals_i(fbx_prop_str(model->source, 2), "Camera")))
+        return 0;
+    attribute_id = attribute && attribute->prop_count > 0 ? fbx_prop_i64(attribute, 0) : 0;
+    if (!fbx_node_anim_append_camera_times(&source_times,
+                                           &source_count,
+                                           &source_capacity,
+                                           stack,
+                                           attribute_id,
+                                           model->id,
+                                           &raw_flags,
+                                           context))
+        goto fail;
+    fbx_anim_sort_unique_times(source_times, &source_count);
+    if (raw_flags == 0 || source_count == 0) {
+        free(source_times);
+        return 0;
+    }
+    fbx_read_camera_property_state(attribute, model->source, &base);
+    if (!fbx_camera_state_validate_enums(&base))
+        goto fail;
+    if (raw_flags & FBX_CAMERA_ANIM_PROJECTION)
+        output_flags |= 1u << PROJECTION;
+    if (raw_flags & (FBX_CAMERA_ANIM_ASPECT_WIDTH | FBX_CAMERA_ANIM_ASPECT_HEIGHT))
+        output_flags |= 1u << ASPECT;
+    if (raw_flags & (FBX_CAMERA_ANIM_APERTURE_MODE | FBX_CAMERA_ANIM_FOV | FBX_CAMERA_ANIM_FOV_X |
+                     FBX_CAMERA_ANIM_FOV_Y | FBX_CAMERA_ANIM_FOCAL_LENGTH |
+                     FBX_CAMERA_ANIM_FILM_WIDTH | FBX_CAMERA_ANIM_FILM_HEIGHT |
+                     FBX_CAMERA_ANIM_ASPECT_WIDTH | FBX_CAMERA_ANIM_ASPECT_HEIGHT))
+        output_flags |= 1u << FOV;
+    if (raw_flags & FBX_CAMERA_ANIM_NEAR)
+        output_flags |= 1u << NEAR;
+    if (raw_flags & FBX_CAMERA_ANIM_FAR)
+        output_flags |= 1u << FAR;
+    if (raw_flags & FBX_CAMERA_ANIM_ORTHO_ZOOM)
+        output_flags |= 1u << ORTHO;
+    if ((size_t)source_count > SIZE_MAX / sizeof(*times) ||
+        (size_t)source_count > SIZE_MAX / (VALUE_LANES * sizeof(*values)) ||
+        !fbx_budget_charge(context, (uint64_t)source_count, sizeof(*times)) ||
+        !fbx_budget_charge(context, (uint64_t)source_count * VALUE_LANES, sizeof(*values)))
+        goto fail;
+    times = (double *)malloc((size_t)source_count * sizeof(*times));
+    values = (float *)calloc((size_t)source_count * VALUE_LANES, sizeof(*values));
+    if (!times || !values)
+        goto fail;
+    for (int32_t key = 0; key < source_count; ++key) {
+        fbx_camera_property_state_t sampled;
+        if (!fbx_node_anim_sample_camera_state(
+                stack, attribute_id, model->id, raw_flags, &base, source_times[key], &sampled))
+            goto fail;
+        times[key] = ((double)source_times[key] - (double)clip_start) / (double)FBX_TIME_SECOND;
+        values[(size_t)key * VALUE_LANES + PROJECTION] = (float)sampled.projection_type;
+        values[(size_t)key * VALUE_LANES + ASPECT] = (float)fbx_camera_state_aspect(&sampled);
+        values[(size_t)key * VALUE_LANES + FOV] = (float)fbx_camera_state_vertical_fov(&sampled);
+        values[(size_t)key * VALUE_LANES + NEAR] = (float)sampled.near_plane;
+        values[(size_t)key * VALUE_LANES + FAR] = (float)sampled.far_plane;
+        values[(size_t)key * VALUE_LANES + ORTHO] = (float)fabs(sampled.ortho_zoom);
+        for (int lane = 0; lane < VALUE_LANES; ++lane)
+            if (!isfinite(values[(size_t)key * VALUE_LANES + (size_t)lane]))
+                goto fail;
+    }
+    target_name = fbx_object_name_string(model->source, 1);
+    if (!target_name || rt_str_is_empty(target_name)) {
+        char generated[64];
+        rt_string_unref(target_name);
+        snprintf(generated, sizeof(generated), "Model_%d", model->import_index);
+        target_name = rt_const_cstr(generated);
+    }
+    for (int lane = 0; lane < VALUE_LANES; ++lane) {
+        float *lane_values;
+        int64_t channel_index;
+        int interpolation =
+            lane == PROJECTION ? RT_NODE_ANIM_INTERP_STEP : RT_NODE_ANIM_INTERP_LINEAR;
+        if ((output_flags & (1u << lane)) == 0)
+            continue;
+        if (!fbx_budget_charge(context, 1u, sizeof(rt_node_anim_channel3d)) ||
+            !fbx_budget_charge(context, (uint64_t)source_count, sizeof(*times)) ||
+            !fbx_budget_charge(context, (uint64_t)source_count, sizeof(*lane_values)))
+            goto fail;
+        lane_values = (float *)malloc((size_t)source_count * sizeof(*lane_values));
+        if (!lane_values)
+            goto fail;
+        for (int32_t key = 0; key < source_count; ++key)
+            lane_values[key] = values[(size_t)key * VALUE_LANES + (size_t)lane];
+        channel_index = rt_node_animation3d_add_channel(
+            clip, target_name, paths[lane], interpolation, source_count, 1, times, lane_values);
+        free(lane_values);
+        if (channel_index < 0)
+            goto fail;
+        rt_node_animation3d_set_channel_target_node_index(clip, channel_index, model->import_index);
+        emitted = 1;
+    }
+    rt_string_unref(target_name);
+    free(source_times);
+    free(times);
+    free(values);
+    return emitted;
+fail:
+    rt_asset_error_set_if_empty(
+        context && context->budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+        context && context->budget_exhausted
+            ? "FBX.Load: camera animation exceeds the aggregate load budget"
+            : "FBX.Load: invalid or incomplete camera projection animation");
+    rt_string_unref(target_name);
+    free(source_times);
+    free(times);
+    free(values);
     return -1;
 }
 
@@ -578,10 +1028,12 @@ static int fbx_node_anim_append_morph_threshold_times(int64_t **times,
                                                       int32_t *capacity,
                                                       const fbx_morph_channel_binding_t *binding,
                                                       const fbx_anim_curve_view_t *curve,
+                                                      const fbx_anim_layer_stack_t *layer_stack,
                                                       fbx_load_context_t *context) {
     int32_t base_count;
     if (!times || !count || !capacity || !binding || !curve || !context ||
-        !fbx_anim_curve_has_data(curve) || binding->shape_count <= 0 || !binding->full_weights) {
+        (!layer_stack && !fbx_anim_curve_has_data(curve)) || binding->shape_count <= 0 ||
+        !binding->full_weights) {
         return 1;
     }
     fbx_anim_sort_unique_times(*times, count);
@@ -595,16 +1047,56 @@ static int fbx_node_anim_append_morph_threshold_times(int64_t **times,
                                                    : binding->full_weights[threshold_index];
             int64_t lo = interval_start;
             int64_t hi = interval_end;
-            double lo_delta = fbx_anim_curve_value(curve, lo, binding->default_percent) - threshold;
-            double hi_delta = fbx_anim_curve_value(curve, hi, binding->default_percent) - threshold;
+            double lo_percent;
+            double hi_percent;
+            double lo_delta;
+            double hi_delta;
+            if (layer_stack) {
+                if (!fbx_anim_layer_sample_scalar(layer_stack,
+                                                  binding->channel_id,
+                                                  NULL,
+                                                  binding->default_percent,
+                                                  lo,
+                                                  &lo_percent,
+                                                  NULL) ||
+                    !fbx_anim_layer_sample_scalar(layer_stack,
+                                                  binding->channel_id,
+                                                  NULL,
+                                                  binding->default_percent,
+                                                  hi,
+                                                  &hi_percent,
+                                                  NULL)) {
+                    return 0;
+                }
+            } else {
+                lo_percent = fbx_anim_curve_value(curve, lo, binding->default_percent);
+                hi_percent = fbx_anim_curve_value(curve, hi, binding->default_percent);
+            }
+            lo_delta = lo_percent - threshold;
+            hi_delta = hi_percent - threshold;
             if (!isfinite(lo_delta) || !isfinite(hi_delta) || lo_delta == 0.0 || hi_delta == 0.0 ||
                 (lo_delta < 0.0) == (hi_delta < 0.0)) {
                 continue;
             }
             while (hi - lo > 1) {
                 int64_t midpoint = lo + (hi - lo) / 2;
-                double midpoint_delta =
-                    fbx_anim_curve_value(curve, midpoint, binding->default_percent) - threshold;
+                double midpoint_percent;
+                double midpoint_delta;
+                if (layer_stack) {
+                    if (!fbx_anim_layer_sample_scalar(layer_stack,
+                                                      binding->channel_id,
+                                                      NULL,
+                                                      binding->default_percent,
+                                                      midpoint,
+                                                      &midpoint_percent,
+                                                      NULL)) {
+                        return 0;
+                    }
+                } else {
+                    midpoint_percent =
+                        fbx_anim_curve_value(curve, midpoint, binding->default_percent);
+                }
+                midpoint_delta = midpoint_percent - threshold;
                 if (!isfinite(midpoint_delta))
                     return 0;
                 if (midpoint_delta == 0.0) {
@@ -636,6 +1128,7 @@ static int fbx_node_anim_emit_morph_channels(void *clip,
                                              const rt_fbx_asset *asset,
                                              const fbx_morph_channel_binding_t *bindings,
                                              const fbx_anim_curve_view_t *curves,
+                                             const fbx_anim_layer_stack_t *layer_stack,
                                              int32_t binding_count,
                                              int64_t clip_start,
                                              fbx_load_context_t *context) {
@@ -666,11 +1159,24 @@ static int fbx_node_anim_emit_morph_channels(void *clip,
             !asset->morph_targets || !asset->morph_targets[mesh_index])
             continue;
         for (int32_t i = 0; i < binding_count; ++i) {
+            int32_t previous_count = source_count;
             if (bindings[i].mesh_index != mesh_index)
                 continue;
-            if (fbx_anim_curve_has_data(&curves[i]))
+            if (layer_stack && !fbx_anim_layer_stack_append_times(&source_times,
+                                                                  &source_count,
+                                                                  &source_capacity,
+                                                                  layer_stack,
+                                                                  bindings[i].channel_id,
+                                                                  0,
+                                                                  NULL,
+                                                                  context)) {
+                free(source_times);
+                return -1;
+            }
+            if (source_count > previous_count || fbx_anim_curve_has_data(&curves[i]))
                 has_animation = 1;
-            if (!fbx_anim_append_curve_sample_times(
+            if (!layer_stack &&
+                !fbx_anim_append_curve_sample_times(
                     &source_times, &source_count, &source_capacity, &curves[i], context)) {
                 free(source_times);
                 return -1;
@@ -688,6 +1194,7 @@ static int fbx_node_anim_emit_morph_channels(void *clip,
                                                             &source_capacity,
                                                             &bindings[i],
                                                             &curves[i],
+                                                            layer_stack,
                                                             context)) {
                 free(source_times);
                 return -1;
@@ -724,8 +1231,23 @@ static int fbx_node_anim_emit_morph_channels(void *clip,
                 double percent;
                 if (binding->mesh_index != mesh_index)
                     continue;
-                percent = fbx_anim_curve_value(
-                    &curves[binding_index], source_times[key], binding->default_percent);
+                if (layer_stack) {
+                    if (!fbx_anim_layer_sample_scalar(layer_stack,
+                                                      binding->channel_id,
+                                                      NULL,
+                                                      binding->default_percent,
+                                                      source_times[key],
+                                                      &percent,
+                                                      NULL)) {
+                        free(source_times);
+                        free(times);
+                        free(values);
+                        return -1;
+                    }
+                } else {
+                    percent = fbx_anim_curve_value(
+                        &curves[binding_index], source_times[key], binding->default_percent);
+                }
                 for (int32_t local_shape = 0; local_shape < binding->shape_count; ++local_shape) {
                     int32_t shape_index = binding->shape_indices[local_shape];
                     if (shape_index >= 0 && shape_index < shape_count) {
@@ -785,8 +1307,27 @@ static int fbx_node_anim_emit_morph_channels(void *clip,
 }
 
 /// @brief Extract non-skeletal transform clips from all FBX AnimationStack records.
+static int fbx_node_anim_initialize_pose(const fbx_node_anim_model_builder_t *models,
+                                         int32_t model_count,
+                                         fbx_load_context_t *context,
+                                         fbx_constraint_pose_t *pose) {
+    if (!models || model_count <= 0 || !context || !pose ||
+        !fbx_constraint_pose_allocate(pose, model_count, context))
+        return 0;
+    for (int32_t i = 0; i < model_count; ++i) {
+        pose->ids[i] = models[i].id;
+        pose->parent_indices[i] = models[i].parent_index;
+        pose->sources[i] = models[i].source;
+        pose->id_table[i].id = models[i].id;
+        pose->id_table[i].index = i;
+    }
+    qsort(pose->id_table, (size_t)model_count, sizeof(*pose->id_table), fbx_model_id_entry_cmp);
+    return 1;
+}
+
 static int fbx_extract_node_animations(fbx_node_t *root,
                                        const fbx_conn_table_t *ct,
+                                       fbx_constraint_set_t *constraints,
                                        int z_up,
                                        const rt_fbx_asset *asset,
                                        const fbx_morph_channel_binding_t *morph_bindings,
@@ -809,31 +1350,40 @@ static int fbx_extract_node_animations(fbx_node_t *root,
         fbx_node_anim_model_builder_t *models = NULL;
         fbx_model_id_entry_t *ids = NULL;
         fbx_anim_curve_view_t *morph_curves = NULL;
+        fbx_anim_layer_stack_t layer_stack;
+        fbx_constraint_pose_t pose;
         int32_t model_count = 0;
         int64_t minimum;
         int64_t maximum;
         int emitted = 0;
         void *clip = NULL;
         rt_string name = NULL;
+        memset(&pose, 0, sizeof(pose));
+        memset(&layer_stack, 0, sizeof(layer_stack));
         if (strcmp(stack->name, "AnimationStack") != 0 || stack->prop_count < 1 ||
             !fbx_anim_stack_has_layer(objects, ct, fbx_prop_i64(stack, 0))) {
             continue;
         }
+        if (!fbx_anim_layer_stack_parse(objects, ct, fbx_prop_i64(stack, 0), context, &layer_stack))
+            goto fail;
         if (!fbx_node_anim_make_model_table(objects, ct, &models, &model_count, &ids, context)) {
+            fbx_anim_layer_stack_free(&layer_stack);
             goto fail;
         }
         if (model_count == 0) {
             free(models);
             free(ids);
+            fbx_anim_layer_stack_free(&layer_stack);
             continue;
         }
         fbx_node_anim_collect_transform_curves(
-            objects, ct, fbx_prop_i64(stack, 0), models, model_count, ids);
+            objects, ct, fbx_prop_i64(stack, 0), &layer_stack, models, model_count, ids);
         if (morph_binding_count > 0) {
             if ((size_t)morph_binding_count > SIZE_MAX / sizeof(*morph_curves) ||
                 !fbx_budget_charge(context, (uint64_t)morph_binding_count, sizeof(*morph_curves))) {
                 free(models);
                 free(ids);
+                fbx_anim_layer_stack_free(&layer_stack);
                 goto fail;
             }
             morph_curves =
@@ -841,6 +1391,7 @@ static int fbx_extract_node_animations(fbx_node_t *root,
             if (!morph_curves) {
                 free(models);
                 free(ids);
+                fbx_anim_layer_stack_free(&layer_stack);
                 goto fail;
             }
             fbx_node_anim_collect_morph_curves(objects,
@@ -853,10 +1404,22 @@ static int fbx_extract_node_animations(fbx_node_t *root,
         int have_bounds = fbx_node_anim_transform_bounds(models, model_count, &minimum, &maximum);
         have_bounds = fbx_node_anim_include_morph_bounds(
             morph_curves, morph_binding_count, have_bounds, &minimum, &maximum);
+        if (layer_stack.layer_count > 0) {
+            int64_t layer_minimum = 0;
+            int64_t layer_maximum = 0;
+            if (fbx_anim_layer_stack_bounds(&layer_stack, 0, &layer_minimum, &layer_maximum)) {
+                if (!have_bounds || layer_minimum < minimum)
+                    minimum = layer_minimum;
+                if (!have_bounds || layer_maximum > maximum)
+                    maximum = layer_maximum;
+                have_bounds = 1;
+            }
+        }
         if (!have_bounds) {
             free(models);
             free(ids);
             free(morph_curves);
+            fbx_anim_layer_stack_free(&layer_stack);
             continue;
         }
         name = fbx_object_name_string(stack, 1);
@@ -871,6 +1434,7 @@ static int fbx_extract_node_animations(fbx_node_t *root,
             free(models);
             free(ids);
             free(morph_curves);
+            fbx_anim_layer_stack_free(&layer_stack);
             goto fail;
         }
         clip = rt_node_animation3d_new(
@@ -881,16 +1445,42 @@ static int fbx_extract_node_animations(fbx_node_t *root,
             free(models);
             free(ids);
             free(morph_curves);
+            fbx_anim_layer_stack_free(&layer_stack);
+            goto fail;
+        }
+        if (!fbx_node_anim_initialize_pose(models, model_count, context, &pose)) {
+            fbx_release_ref(&clip);
+            free(models);
+            free(ids);
+            free(morph_curves);
+            fbx_anim_layer_stack_free(&layer_stack);
             goto fail;
         }
         for (int32_t model_index = 0; model_index < model_count; ++model_index) {
+            if (models[model_index].is_skeleton)
+                continue;
             int status = fbx_node_anim_emit_model_channels(
-                clip, models, model_count, model_index, minimum, z_up, context);
+                clip, models, model_count, model_index, minimum, z_up, &pose, constraints, context);
             if (status < 0) {
                 fbx_release_ref(&clip);
+                fbx_constraint_pose_free(&pose);
                 free(models);
                 free(ids);
                 free(morph_curves);
+                fbx_anim_layer_stack_free(&layer_stack);
+                goto fail;
+            }
+            if (status > 0)
+                emitted = 1;
+            status = fbx_node_anim_emit_camera_channels(
+                clip, objects, ct, &models[model_index], &layer_stack, minimum, context);
+            if (status < 0) {
+                fbx_release_ref(&clip);
+                fbx_constraint_pose_free(&pose);
+                free(models);
+                free(ids);
+                free(morph_curves);
+                fbx_anim_layer_stack_free(&layer_stack);
                 goto fail;
             }
             if (status > 0)
@@ -905,22 +1495,27 @@ static int fbx_extract_node_animations(fbx_node_t *root,
                                                                  asset,
                                                                  morph_bindings,
                                                                  morph_curves,
+                                                                 &layer_stack,
                                                                  morph_binding_count,
                                                                  minimum,
                                                                  context);
             if (morph_status < 0) {
                 fbx_release_ref(&clip);
+                fbx_constraint_pose_free(&pose);
                 free(models);
                 free(ids);
                 free(morph_curves);
+                fbx_anim_layer_stack_free(&layer_stack);
                 goto fail;
             }
             if (morph_status > 0)
                 emitted = 1;
         }
+        fbx_constraint_pose_free(&pose);
         free(models);
         free(ids);
         free(morph_curves);
+        fbx_anim_layer_stack_free(&layer_stack);
         if (!emitted) {
             fbx_release_ref(&clip);
             continue;

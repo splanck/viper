@@ -4,25 +4,27 @@
 // See LICENSE for license information.
 //
 // File: src/tests/runtime/RTSceneEditorTests.cpp
-// Purpose: Tests for scene-owned editor primitives, Tiled JSON/TMX import, and
-//   scaled tile hit testing.
+// Purpose: Tests for scene-owned editor primitives, complete Tiled JSON/TMX
+//   import, projected-map retention, and scaled tile hit testing.
 //
 // Key invariants:
 //   - Canonical SceneDocument editing and compatibility loads remain stable.
-//   - Tiled imports preserve supported layers, objects, properties, collision,
-//     animation, and render-ready tileset binding, while rejecting lossy flags.
+//   - Tiled imports preserve chunks, projections, GID transforms, mixed
+//     tilesets, objects, properties, collision, animation, and render state.
 //
 // Ownership/Lifetime:
 //   - Test-owned runtime handles live for the process-length test invocation.
 //   - Temporary external-scene fixtures are removed before the test exits.
 //
 // Links: src/runtime/game/rt_scene_editor.cpp,
-//   src/runtime/game/rt_tiled_import.cpp, docs/adr/0140-tiled-map-and-scene-import.md
+//   src/runtime/game/rt_tiled_import.cpp, docs/adr/0140-tiled-map-and-scene-import.md,
+//   docs/adr/0144-complete-tiled-map-import.md
 //
 //===----------------------------------------------------------------------===//
 
 #include "rt_asset.h"
 #include "rt_crc32.h"
+#include "rt_graphics.h"
 #include "rt_graphics2d.h"
 #include "rt_pixels.h"
 #include "rt_scene_editor.h"
@@ -728,6 +730,232 @@ int main() {
         assert(rt_game_scene_get_tile(encoded_scene, 0, 1, 1) == 4);
     }
 
+    // ADR 0144: infinite layers are flattened against their signed chunk
+    // union. Negative source coordinates remain available in tiledRuntime.
+    write_text(tiled_dir / "infinite.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":true,
+"width":0,"height":0,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"terrain.tsj"}],
+"layers":[{"type":"tilelayer","name":"chunks","width":0,"height":0,
+"chunks":[{"x":-2,"y":-1,"width":2,"height":2,"data":[1,0,0,2]},
+          {"x":0,"y":-1,"width":1,"height":2,"data":[3,4]}]}]})json");
+    void *infinite_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "infinite.tmj").string().c_str()));
+    if (rt_result_is_err(infinite_result))
+        std::fprintf(stderr,
+                     "infinite import failed: %s\n",
+                     to_std(rt_result_unwrap_err_str(infinite_result)).c_str());
+    assert(rt_result_is_ok(infinite_result) == 1);
+    void *infinite_scene = rt_result_unwrap(infinite_result);
+    assert(rt_game_scene_get_width(infinite_scene) == 3);
+    assert(rt_game_scene_get_height(infinite_scene) == 2);
+    assert(rt_game_scene_get_tile(infinite_scene, 0, 0, 0) == 1);
+    assert(rt_game_scene_get_tile(infinite_scene, 0, 2, 0) == 3);
+    assert(rt_game_scene_get_tile(infinite_scene, 0, 1, 1) == 2);
+    assert(rt_game_scene_get_tile(infinite_scene, 0, 2, 1) == 4);
+    std::string infinite_json = scene_json(infinite_scene);
+    assert(infinite_json.find("\"originTileX\":-2") != std::string::npos);
+    assert(infinite_json.find("\"originTileY\":-1") != std::string::npos);
+    void *infinite_tilemap = rt_game_scene_build_tilemap(infinite_scene);
+    int64_t infinite_pixel_x = 0;
+    int64_t infinite_pixel_y = 0;
+    rt_tilemap_tile_to_pixel(infinite_tilemap, 0, 0, &infinite_pixel_x, &infinite_pixel_y);
+    assert(infinite_pixel_x == -4 && infinite_pixel_y == -2);
+
+    write_text(tiled_dir / "infinite-empty.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":true,
+"width":0,"height":0,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"terrain.tsj"}],
+"layers":[{"type":"tilelayer","name":"empty","width":0,"height":0,"chunks":[]}]})json");
+    void *empty_infinite_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "infinite-empty.tmj").string().c_str()));
+    assert(rt_result_is_ok(empty_infinite_result) == 1);
+    void *empty_infinite_scene = rt_result_unwrap(empty_infinite_result);
+    assert(rt_game_scene_get_width(empty_infinite_scene) == 1);
+    assert(rt_game_scene_get_height(empty_infinite_scene) == 1);
+    assert(rt_game_scene_get_tile(empty_infinite_scene, 0, 0, 0) == 0);
+
+    write_text(tiled_dir / "infinite-isometric.tmj",
+               R"json({"type":"map","orientation":"isometric","infinite":true,
+"width":0,"height":0,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"terrain.tsj"}],
+"layers":[{"type":"tilelayer","name":"iso","width":0,"height":0,
+"chunks":[{"x":0,"y":0,"width":1,"height":1,"data":[1]}]}]})json");
+    void *infinite_iso_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "infinite-isometric.tmj").string().c_str()));
+    assert(rt_result_is_ok(infinite_iso_result) == 1);
+    void *infinite_iso_tilemap = rt_game_scene_build_tilemap(rt_result_unwrap(infinite_iso_result));
+    int64_t infinite_iso_x = -1;
+    int64_t infinite_iso_y = -1;
+    rt_tilemap_tile_to_pixel(infinite_iso_tilemap, 0, 0, &infinite_iso_x, &infinite_iso_y);
+    assert(infinite_iso_x == 0 && infinite_iso_y == 0);
+
+    write_text(tiled_dir / "infinite.tmx",
+               R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" infinite="1"
+     width="0" height="0" tilewidth="2" tileheight="2">
+  <tileset firstgid="1" source="terrain.tsx"/>
+  <layer id="1" name="chunks" width="0" height="0">
+    <data encoding="csv">
+      <chunk x="-1" y="-1" width="2" height="1">1,2</chunk>
+      <chunk x="-1" y="0" width="2" height="1">3,4</chunk>
+    </data>
+  </layer>
+</map>)xml");
+    void *infinite_tmx_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "infinite.tmx").string().c_str()));
+    assert(rt_result_is_ok(infinite_tmx_result) == 1);
+    void *infinite_tmx_scene = rt_result_unwrap(infinite_tmx_result);
+    assert(rt_game_scene_get_width(infinite_tmx_scene) == 2);
+    assert(rt_game_scene_get_height(infinite_tmx_scene) == 2);
+    assert(rt_game_scene_get_tile(infinite_tmx_scene, 0, 0, 0) == 1);
+    assert(rt_game_scene_get_tile(infinite_tmx_scene, 0, 1, 1) == 4);
+    assert(scene_json(infinite_tmx_scene).find("\"originTileX\":-1") != std::string::npos);
+
+    std::vector<uint8_t> chunk_payload = zlib_stored(tiled_gid_bytes({2, 3}));
+    write_text(tiled_dir / "infinite-encoded.tmj",
+               std::string("{\"type\":\"map\",\"orientation\":\"orthogonal\","
+                           "\"infinite\":true,\"width\":0,\"height\":0,"
+                           "\"tilewidth\":2,\"tileheight\":2,"
+                           "\"tilesets\":[{\"firstgid\":1,\"source\":\"terrain.tsj\"}],"
+                           "\"layers\":[{\"type\":\"tilelayer\",\"name\":\"encoded\","
+                           "\"width\":0,\"height\":0,\"encoding\":\"base64\","
+                           "\"compression\":\"zlib\",\"chunks\":[{\"x\":-3,\"y\":4,"
+                           "\"width\":2,\"height\":1,\"data\":\"") +
+                   base64(chunk_payload) + "\"}]}]}");
+    void *encoded_chunk_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "infinite-encoded.tmj").string().c_str()));
+    assert(rt_result_is_ok(encoded_chunk_result) == 1);
+    void *encoded_chunk_scene = rt_result_unwrap(encoded_chunk_result);
+    assert(rt_game_scene_get_width(encoded_chunk_scene) == 2);
+    assert(rt_game_scene_get_height(encoded_chunk_scene) == 1);
+    assert(rt_game_scene_get_tile(encoded_chunk_scene, 0, 0, 0) == 2);
+    assert(rt_game_scene_get_tile(encoded_chunk_scene, 0, 1, 0) == 3);
+
+    write_text(tiled_dir / "overlapping-chunks.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":true,
+"width":0,"height":0,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"terrain.tsj"}],
+"layers":[{"type":"tilelayer","name":"overlap","width":0,"height":0,
+"chunks":[{"x":0,"y":0,"width":2,"height":1,"data":[1,2]},
+          {"x":1,"y":0,"width":1,"height":1,"data":[3]}]}]})json");
+    void *overlap_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "overlapping-chunks.tmj").string().c_str()));
+    assert(rt_result_is_err(overlap_result) == 1);
+    assert(to_std(rt_result_unwrap_err_str(overlap_result)).find("overlap") != std::string::npos);
+
+    write_text(tiled_dir / "overflowing-chunk.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":true,
+"width":0,"height":0,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"terrain.tsj"}],
+"layers":[{"type":"tilelayer","name":"overflow","width":0,"height":0,
+"chunks":[{"x":9223372036854775807,"y":0,"width":2,"height":1,"data":[1,2]}]}]})json");
+    void *overflow_chunk_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "overflowing-chunk.tmj").string().c_str()));
+    assert(rt_result_is_err(overflow_chunk_result) == 1);
+
+    struct ProjectionCase {
+        const char *name;
+        const char *orientation;
+        const char *extra;
+        int64_t tile_x;
+        int64_t tile_y;
+        int64_t pixel_x;
+        int64_t pixel_y;
+    };
+
+    const ProjectionCase projection_cases[] = {
+        {"isometric", "isometric", "", 1, 0, 3, 1},
+        {"staggered-y-odd",
+         "staggered",
+         ",\"staggeraxis\":\"y\",\"staggerindex\":\"odd\"",
+         0,
+         1,
+         1,
+         1},
+        {"staggered-x-even",
+         "staggered",
+         ",\"staggeraxis\":\"x\",\"staggerindex\":\"even\"",
+         0,
+         0,
+         0,
+         1},
+        {"hexagonal-x-even",
+         "hexagonal",
+         ",\"staggeraxis\":\"x\",\"staggerindex\":\"even\",\"hexsidelength\":1",
+         0,
+         0,
+         0,
+         1},
+        {"hexagonal-y-odd",
+         "hexagonal",
+         ",\"staggeraxis\":\"y\",\"staggerindex\":\"odd\",\"hexsidelength\":1",
+         0,
+         1,
+         1,
+         1},
+        {"oblique", "oblique", ",\"skewx\":1.0,\"skewy\":-0.5", 1, 1, 3, 2},
+    };
+    for (const ProjectionCase &projection_case : projection_cases) {
+        std::string projected = std::string("{\"type\":\"map\",\"orientation\":\"") +
+                                projection_case.orientation +
+                                "\",\"infinite\":false,\"width\":2,\"height\":2,"
+                                "\"tilewidth\":2,\"tileheight\":2" +
+                                projection_case.extra +
+                                ",\"tilesets\":[{\"firstgid\":1,\"source\":\"terrain.tsj\"}],"
+                                "\"layers\":[{\"type\":\"tilelayer\",\"name\":\"projected\","
+                                "\"width\":2,\"height\":2,\"data\":[1,2,3,4]}]}";
+        std::filesystem::path projected_path =
+            tiled_dir / (std::string(projection_case.name) + ".tmj");
+        write_text(projected_path, projected);
+        void *projected_result =
+            rt_game_scene_import_tiled_result(rt_const_cstr(projected_path.string().c_str()));
+        if (rt_result_is_err(projected_result))
+            std::fprintf(stderr,
+                         "%s import failed: %s\n",
+                         projection_case.orientation,
+                         to_std(rt_result_unwrap_err_str(projected_result)).c_str());
+        assert(rt_result_is_ok(projected_result) == 1);
+        std::string projected_json = scene_json(rt_result_unwrap(projected_result));
+        assert(projected_json.find(std::string("\"orientation\":\"") + projection_case.orientation +
+                                   "\"") != std::string::npos);
+        void *projected_tilemap = rt_game_scene_build_tilemap(rt_result_unwrap(projected_result));
+        int64_t projected_x = 0;
+        int64_t projected_y = 0;
+        rt_tilemap_tile_to_pixel(projected_tilemap,
+                                 projection_case.tile_x,
+                                 projection_case.tile_y,
+                                 &projected_x,
+                                 &projected_y);
+        assert(projected_x == projection_case.pixel_x && projected_y == projection_case.pixel_y);
+        void *reloaded_projected = load_text(projected_json);
+        void *roundtrip_tilemap = rt_game_scene_build_tilemap(reloaded_projected);
+        rt_tilemap_tile_to_pixel(roundtrip_tilemap,
+                                 projection_case.tile_x,
+                                 projection_case.tile_y,
+                                 &projected_x,
+                                 &projected_y);
+        assert(projected_x == projection_case.pixel_x && projected_y == projection_case.pixel_y);
+    }
+
+    write_text(tiled_dir / "fractional-image.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":1,"height":1,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"terrain.tsj"}],
+"layers":[{"type":"imagelayer","name":"fractional","image":"tiles.png",
+"offsetx":1.5,"offsety":-1.5}]})json");
+    void *fractional_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "fractional-image.tmj").string().c_str()));
+    assert(rt_result_is_ok(fractional_result) == 1);
+    void *fractional_scene = rt_result_unwrap(fractional_result);
+    assert(rt_game_scene_object_count(fractional_scene) == 1);
+    assert(rt_game_scene_object_x(fractional_scene, 0) == 2);
+    assert(rt_game_scene_object_y(fractional_scene, 0) == -2);
+    assert(rt_game_scene_object_get_float(
+               fractional_scene, 0, rt_const_cstr("tiled.sourceX"), 0.0) == 1.5);
+    assert(rt_game_scene_object_get_float(
+               fractional_scene, 0, rt_const_cstr("tiled.sourceY"), 0.0) == -1.5);
+
     // The asset-mode entry points must resolve the entire map/tileset/template/
     // image graph from a mounted package after loose-file paths are irrelevant.
     std::filesystem::path tiled_pack = tiled_dir.parent_path() / "zanna_tiled_import_test.zpak";
@@ -784,9 +1012,10 @@ int main() {
 "data":[2147483649]}]})json");
     void *flipped_result = rt_game_scene_import_tiled_result(
         rt_const_cstr((tiled_dir / "flipped.tmj").string().c_str()));
-    assert(rt_result_is_err(flipped_result) == 1);
-    assert(to_std(rt_result_unwrap_err_str(flipped_result)).find("transform flags") !=
-           std::string::npos);
+    assert(rt_result_is_ok(flipped_result) == 1);
+    void *flipped_scene = rt_result_unwrap(flipped_result);
+    int64_t flipped_id = rt_game_scene_get_tile(flipped_scene, 0, 0, 0);
+    assert(flipped_id > 4);
 
     write_text(tiled_dir / "mixed.tmj",
                R"json({"type":"map","orientation":"orthogonal","infinite":false,
@@ -796,8 +1025,320 @@ int main() {
 "layers":[{"type":"tilelayer","name":"mixed","width":2,"height":1,"data":[1,5]}]})json");
     void *mixed_result = rt_game_scene_import_tiled_result(
         rt_const_cstr((tiled_dir / "mixed.tmj").string().c_str()));
-    assert(rt_result_is_err(mixed_result) == 1);
-    assert(to_std(rt_result_unwrap_err_str(mixed_result)).find("more than one tileset") !=
+    assert(rt_result_is_ok(mixed_result) == 1);
+    void *mixed_scene = rt_result_unwrap(mixed_result);
+    assert(rt_game_scene_get_tile(mixed_scene, 0, 0, 0) == 1);
+    assert(rt_game_scene_get_tile(mixed_scene, 0, 1, 0) == 5);
+    void *mixed_map_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "mixed.tmj").string().c_str()));
+    assert(rt_result_is_ok(mixed_map_result) == 1);
+    assert(rt_tilemap_get_tile_count(rt_result_unwrap(mixed_map_result)) == 8);
+
+    void *transform_pixels = rt_pixels_new(2, 2);
+    rt_pixels_set(transform_pixels, 0, 0, 0xff0000ff);
+    rt_pixels_set(transform_pixels, 1, 0, 0x00ff00ff);
+    rt_pixels_set(transform_pixels, 0, 1, 0x0000ffff);
+    rt_pixels_set(transform_pixels, 1, 1, 0xffffffff);
+    assert(rt_pixels_save_png(transform_pixels,
+                              rt_const_cstr((tiled_dir / "transform.png").string().c_str())) == 1);
+    write_text(tiled_dir / "transform.tsj",
+               R"json({"type":"tileset","name":"transform","tilewidth":2,"tileheight":2,
+"tilecount":1,"columns":1,"image":"transform.png","imagewidth":2,"imageheight":2})json");
+    write_text(tiled_dir / "transform.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":1,"height":1,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"transform.tsj"}],
+"layers":[{"type":"tilelayer","name":"flipped","width":1,"height":1,
+"data":[2147483649]}]})json");
+    void *transform_map_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "transform.tmj").string().c_str()));
+    assert(rt_result_is_ok(transform_map_result) == 1);
+    void *transform_canvas = rt_canvas_new(rt_const_cstr("transform-test"), 2, 2);
+    rt_tilemap_draw(rt_result_unwrap(transform_map_result), transform_canvas, 0, 0);
+    assert(rt_canvas_get_pixel(transform_canvas, 0, 0) == 0x00ff00);
+    assert(rt_canvas_get_pixel(transform_canvas, 1, 0) == 0xff0000);
+    assert(rt_canvas_get_pixel(transform_canvas, 0, 1) == 0xffffff);
+    assert(rt_canvas_get_pixel(transform_canvas, 1, 1) == 0x0000ff);
+
+    write_text(tiled_dir / "diagonal.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":1,"height":1,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"transform.tsj"}],
+"layers":[{"type":"tilelayer","name":"diagonal","width":1,"height":1,
+"data":[536870913]}]})json");
+    void *diagonal_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "diagonal.tmj").string().c_str()));
+    assert(rt_result_is_ok(diagonal_result) == 1);
+    void *diagonal_canvas = rt_canvas_new(rt_const_cstr("diagonal-test"), 2, 2);
+    rt_tilemap_draw(rt_result_unwrap(diagonal_result), diagonal_canvas, 0, 0);
+    assert(rt_canvas_get_pixel(diagonal_canvas, 0, 0) == 0xffffff);
+    assert(rt_canvas_get_pixel(diagonal_canvas, 1, 0) == 0x00ff00);
+    assert(rt_canvas_get_pixel(diagonal_canvas, 0, 1) == 0x0000ff);
+    assert(rt_canvas_get_pixel(diagonal_canvas, 1, 1) == 0xff0000);
+
+    struct TransformCase {
+        const char *name;
+        uint32_t gid;
+        uint32_t expected[4];
+    };
+
+    const TransformCase transform_cases[] = {
+        {"vertical", UINT32_C(1073741825), {0x0000ff, 0xffffff, 0xff0000, 0x00ff00}},
+        {"diagonal-horizontal", UINT32_C(2684354561), {0x00ff00, 0xffffff, 0xff0000, 0x0000ff}},
+        {"diagonal-vertical", UINT32_C(1610612737), {0x0000ff, 0xff0000, 0xffffff, 0x00ff00}},
+        {"diagonal-both", UINT32_C(3758096385), {0xff0000, 0x0000ff, 0x00ff00, 0xffffff}},
+    };
+    for (const TransformCase &transform_case : transform_cases) {
+        std::filesystem::path transform_path =
+            tiled_dir / (std::string(transform_case.name) + ".tmj");
+        write_text(transform_path,
+                   std::string("{\"type\":\"map\",\"orientation\":\"orthogonal\","
+                               "\"infinite\":false,\"width\":1,\"height\":1,"
+                               "\"tilewidth\":2,\"tileheight\":2,"
+                               "\"tilesets\":[{\"firstgid\":1,"
+                               "\"source\":\"transform.tsj\"}],"
+                               "\"layers\":[{\"type\":\"tilelayer\","
+                               "\"name\":\"transform\",\"width\":1,\"height\":1,"
+                               "\"data\":[") +
+                       std::to_string(transform_case.gid) + "]}]}");
+        void *result = rt_tiledmaploader_load_result(
+            tiled_loader, rt_const_cstr(transform_path.string().c_str()));
+        assert(rt_result_is_ok(result) == 1);
+        void *canvas = rt_canvas_new(rt_const_cstr(transform_case.name), 2, 2);
+        rt_tilemap_draw(rt_result_unwrap(result), canvas, 0, 0);
+        for (int64_t y = 0; y < 2; ++y) {
+            for (int64_t x = 0; x < 2; ++x) {
+                assert(static_cast<uint32_t>(rt_canvas_get_pixel(canvas, x, y)) ==
+                       transform_case.expected[y * 2 + x]);
+            }
+        }
+    }
+
+    write_text(tiled_dir / "ignored-bit.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":1,"height":1,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"terrain.tsj"}],
+"layers":[{"type":"tilelayer","name":"ignored","width":1,"height":1,
+"data":[268435457]}]})json");
+    void *ignored_bit_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "ignored-bit.tmj").string().c_str()));
+    assert(rt_result_is_ok(ignored_bit_result) == 1);
+    assert(rt_game_scene_get_tile(rt_result_unwrap(ignored_bit_result), 0, 0, 0) == 1);
+
+    void *white_pixel = rt_pixels_new(1, 1);
+    rt_pixels_fill(white_pixel, 0xffffffff);
+    assert(rt_pixels_save_png(white_pixel,
+                              rt_const_cstr((tiled_dir / "white.png").string().c_str())) == 1);
+    write_text(tiled_dir / "white.tsj",
+               R"json({"type":"tileset","name":"white","tilewidth":1,"tileheight":1,
+"tilecount":1,"columns":1,"image":"white.png","imagewidth":1,"imageheight":1})json");
+    write_text(tiled_dir / "styled.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":1,"height":1,"tilewidth":1,"tileheight":1,
+"tilesets":[{"firstgid":1,"source":"white.tsj"}],
+"layers":[{"type":"group","name":"style","opacity":0.5,"tintcolor":"#80ffff",
+"parallaxx":0.5,"layers":[{"type":"tilelayer","name":"tile","width":1,"height":1,
+"offsetx":1.5,"offsety":1.5,"tintcolor":"#ff80ff","data":[1]}]}]})json");
+    void *styled_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "styled.tmj").string().c_str()));
+    assert(rt_result_is_ok(styled_result) == 1);
+    void *styled_canvas = rt_canvas_new(rt_const_cstr("styled-test"), 4, 4);
+    rt_tilemap_draw(rt_result_unwrap(styled_result), styled_canvas, 0, 0);
+    void *styled_copy = rt_canvas_copy_rect(styled_canvas, 2, 2, 1, 1);
+    assert(static_cast<uint32_t>(rt_pixels_get(styled_copy, 0, 0)) == UINT32_C(0x8080ff80));
+
+    write_text(tiled_dir / "object-gid.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":1,"height":1,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"terrain.tsj"}],
+"layers":[{"type":"objectgroup","name":"objects","objects":[
+{"id":42,"name":"tile-object","gid":2147483649,"x":0,"y":2}]}]})json");
+    void *object_gid_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "object-gid.tmj").string().c_str()));
+    assert(rt_result_is_ok(object_gid_result) == 1);
+    void *object_gid_scene = rt_result_unwrap(object_gid_result);
+    assert(rt_game_scene_object_get_int(object_gid_scene, 0, rt_const_cstr("tiled.rawGid"), 0) ==
+           2147483649LL);
+    assert(rt_game_scene_object_get_int(object_gid_scene, 0, rt_const_cstr("tiled.gidFlags"), 0) ==
+           2147483648LL);
+
+    write_text(tiled_dir / "hex-rotation.tmj",
+               R"json({"type":"map","orientation":"hexagonal","infinite":false,
+"width":1,"height":1,"tilewidth":1,"tileheight":1,"staggeraxis":"x",
+"staggerindex":"odd","hexsidelength":1,
+"tilesets":[{"firstgid":1,"source":"white.tsj"}],
+"layers":[{"type":"tilelayer","name":"hex","width":1,"height":1,
+"data":[805306369]}]})json");
+    void *hex_rotation_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "hex-rotation.tmj").string().c_str()));
+    assert(rt_result_is_ok(hex_rotation_result) == 1);
+
+    void *hex_pixels = rt_pixels_new(3, 3);
+    const uint32_t hex_source[] = {0xff0000ff,
+                                   0x00ff00ff,
+                                   0x0000ffff,
+                                   0x00ffffff,
+                                   0xff00ffff,
+                                   0xffff00ff,
+                                   0x101010ff,
+                                   0xffffffff,
+                                   0x804000ff};
+    for (int64_t y = 0; y < 3; ++y) {
+        for (int64_t x = 0; x < 3; ++x)
+            rt_pixels_set(hex_pixels, x, y, hex_source[y * 3 + x]);
+    }
+    assert(rt_pixels_save_png(hex_pixels,
+                              rt_const_cstr((tiled_dir / "hex-source.png").string().c_str())) == 1);
+    write_text(tiled_dir / "hex-source.tsj",
+               R"json({"type":"tileset","name":"hex-source","tilewidth":3,"tileheight":3,
+"tilecount":1,"columns":1,"image":"hex-source.png","imagewidth":3,"imageheight":3})json");
+
+    struct HexRotationCase {
+        const char *name;
+        uint32_t gid;
+        uint32_t expected[25];
+    };
+
+    const HexRotationCase hex_rotation_cases[] = {
+        {"hex-60",
+         UINT32_C(536870913),
+         {0,        0, 0,        0,        0,        0, 0x00ffff, 0xff0000, 0x00ff00,
+          0,        0, 0x101010, 0xff00ff, 0x0000ff, 0, 0,        0xffffff, 0x804000,
+          0xffff00, 0, 0,        0,        0,        0, 0}},
+        {"hex-120",
+         UINT32_C(268435457),
+         {0,        0, 0,        0,        0,        0, 0xffffff, 0x00ffff, 0x00ffff,
+          0,        0, 0xffffff, 0xff00ff, 0x00ff00, 0, 0,        0xffff00, 0xffff00,
+          0x00ff00, 0, 0,        0,        0,        0, 0}},
+    };
+    for (const HexRotationCase &rotation_case : hex_rotation_cases) {
+        std::filesystem::path rotation_path =
+            tiled_dir / (std::string(rotation_case.name) + ".tmj");
+        write_text(rotation_path,
+                   std::string("{\"type\":\"map\",\"orientation\":\"hexagonal\","
+                               "\"infinite\":false,\"width\":1,\"height\":1,"
+                               "\"tilewidth\":3,\"tileheight\":3,"
+                               "\"staggeraxis\":\"x\",\"staggerindex\":\"odd\","
+                               "\"hexsidelength\":1,\"tilesets\":[{\"firstgid\":1,"
+                               "\"source\":\"hex-source.tsj\"}],"
+                               "\"layers\":[{\"type\":\"tilelayer\",\"name\":\"hex\","
+                               "\"width\":1,\"height\":1,\"data\":[") +
+                       std::to_string(rotation_case.gid) + "]}]}");
+        void *result = rt_tiledmaploader_load_result(tiled_loader,
+                                                     rt_const_cstr(rotation_path.string().c_str()));
+        assert(rt_result_is_ok(result) == 1);
+        void *canvas = rt_canvas_new(rt_const_cstr(rotation_case.name), 5, 5);
+        rt_tilemap_draw(rt_result_unwrap(result), canvas, 1, 1);
+        for (int64_t y = 0; y < 5; ++y) {
+            for (int64_t x = 0; x < 5; ++x) {
+                assert(static_cast<uint32_t>(rt_canvas_get_pixel(canvas, x, y)) ==
+                       rotation_case.expected[y * 5 + x]);
+            }
+        }
+    }
+
+    void *collection_a = rt_pixels_new(2, 3);
+    void *collection_b = rt_pixels_new(3, 1);
+    rt_pixels_fill(collection_a, 0xff00ffff);
+    rt_pixels_fill(collection_b, 0xffff00ff);
+    assert(rt_pixels_save_png(collection_a,
+                              rt_const_cstr((tiled_dir / "collection-a.png").string().c_str())) ==
+           1);
+    assert(rt_pixels_save_png(collection_b,
+                              rt_const_cstr((tiled_dir / "collection-b.png").string().c_str())) ==
+           1);
+    write_text(tiled_dir / "collection.tsj",
+               R"json({"type":"tileset","name":"collection","tilewidth":2,"tileheight":2,
+"tilecount":2,"columns":0,"tileoffset":{"x":1,"y":-1},
+"tiles":[{"id":0,"image":"collection-a.png","imagewidth":2,"imageheight":3},
+         {"id":1,"image":"collection-b.png","imagewidth":3,"imageheight":1}]})json");
+    write_text(tiled_dir / "collection.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":2,"height":1,"tilewidth":2,"tileheight":2,
+"tilesets":[{"firstgid":1,"source":"collection.tsj"}],
+"layers":[{"type":"tilelayer","name":"collection","width":2,"height":1,
+"data":[1,2]}]})json");
+    void *collection_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "collection.tmj").string().c_str()));
+    assert(rt_result_is_ok(collection_result) == 1);
+    void *collection_map = rt_result_unwrap(collection_result);
+    assert(rt_tilemap_get_tile_count(collection_map) == 2);
+    void *collection_canvas = rt_canvas_new(rt_const_cstr("collection-placement"), 8, 6);
+    rt_tilemap_draw(collection_map, collection_canvas, 0, 2);
+    assert(rt_canvas_get_pixel(collection_canvas, 0, 0) == 0);
+    assert(rt_canvas_get_pixel(collection_canvas, 1, 0) == 0xff00ff);
+    assert(rt_canvas_get_pixel(collection_canvas, 3, 2) == 0xffff00);
+    void *collection_scene_result = rt_game_scene_import_tiled_result(
+        rt_const_cstr((tiled_dir / "collection.tmj").string().c_str()));
+    assert(rt_result_is_ok(collection_scene_result) == 1);
+    std::string collection_json = scene_json(rt_result_unwrap(collection_scene_result));
+    assert(collection_json.find("collection-a.png") != std::string::npos);
+    assert(collection_json.find("collection-b.png") != std::string::npos);
+
+    write_text(tiled_dir / "collection.tsx",
+               R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<tileset version="1.10" name="collection" tilewidth="2" tileheight="2"
+         tilecount="2" columns="0">
+  <tileoffset x="1" y="-1"/>
+  <tile id="0"><image source="collection-a.png" width="2" height="3"/></tile>
+  <tile id="1"><image source="collection-b.png" width="3" height="1"/></tile>
+</tileset>)xml");
+    write_text(tiled_dir / "collection.tmx",
+               R"xml(<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" orientation="orthogonal" infinite="0"
+     width="2" height="1" tilewidth="2" tileheight="2">
+  <tileset firstgid="1" source="collection.tsx"/>
+  <layer id="1" name="collection" width="2" height="1">
+    <data encoding="csv">1,2</data>
+  </layer>
+</map>)xml");
+    void *collection_tmx_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "collection.tmx").string().c_str()));
+    assert(rt_result_is_ok(collection_tmx_result) == 1);
+    assert(rt_tilemap_get_tile_count(rt_result_unwrap(collection_tmx_result)) == 2);
+
+    write_text(tiled_dir / "missing-collection.tsj",
+               R"json({"type":"tileset","name":"missing","tilewidth":1,"tileheight":1,
+"tilecount":2,"columns":0,"tiles":[
+{"id":0,"image":"white.png","imagewidth":1,"imageheight":1},
+{"id":1,"image":"does-not-exist.png","imagewidth":1,"imageheight":1}]})json");
+    write_text(tiled_dir / "unreachable-missing.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":1,"height":1,"tilewidth":1,"tileheight":1,
+"tilesets":[{"firstgid":1,"source":"missing-collection.tsj"}],
+"layers":[{"type":"tilelayer","name":"reachable-zero","width":1,"height":1,
+"data":[1]}]})json");
+    void *unreachable_missing_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "unreachable-missing.tmj").string().c_str()));
+    assert(rt_result_is_ok(unreachable_missing_result) == 1);
+    assert(rt_tilemap_get_tile_count(rt_result_unwrap(unreachable_missing_result)) == 2);
+    write_text(tiled_dir / "reachable-missing.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":1,"height":1,"tilewidth":1,"tileheight":1,
+"tilesets":[{"firstgid":1,"source":"missing-collection.tsj"}],
+"layers":[{"type":"tilelayer","name":"missing","width":1,"height":1,"data":[2]}]})json");
+    void *reachable_missing_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "reachable-missing.tmj").string().c_str()));
+    assert(rt_result_is_err(reachable_missing_result) == 1);
+
+    write_text(tiled_dir / "offset-a.tsj",
+               R"json({"type":"tileset","name":"a","tilewidth":1,"tileheight":1,
+"tilecount":1,"columns":1,"image":"white.png","imagewidth":1,"imageheight":1})json");
+    write_text(tiled_dir / "offset-b.tsj",
+               R"json({"type":"tileset","name":"b","tilewidth":1,"tileheight":1,
+"tilecount":1,"columns":1,"tileoffset":{"x":70000000,"y":0},
+"image":"white.png","imagewidth":1,"imageheight":1})json");
+    write_text(tiled_dir / "oversized-atlas.tmj",
+               R"json({"type":"map","orientation":"orthogonal","infinite":false,
+"width":2,"height":1,"tilewidth":1,"tileheight":1,
+"tilesets":[{"firstgid":1,"source":"offset-a.tsj"},
+            {"firstgid":2,"source":"offset-b.tsj"}],
+"layers":[{"type":"tilelayer","name":"huge-frame","width":2,"height":1,
+"data":[1,2]}]})json");
+    void *oversized_atlas_result = rt_tiledmaploader_load_result(
+        tiled_loader, rt_const_cstr((tiled_dir / "oversized-atlas.tmj").string().c_str()));
+    assert(rt_result_is_err(oversized_atlas_result) == 1);
+    assert(to_std(rt_result_unwrap_err_str(oversized_atlas_result)).find("256 MiB") !=
            std::string::npos);
 
     write_text(tiled_dir / "bad-base64.tmj",
@@ -825,5 +1366,79 @@ int main() {
     hit = rt_tilemap_hit_test_scaled(tilemap, 16, 16, 0, 0, 200);
     assert(rt_map_get_int(hit, rt_const_cstr("tileX")) == 0);
     assert(rt_map_get_int(hit, rt_const_cstr("tileY")) == 0);
+
+    void *projected_tilemap = rt_tilemap_new(2, 2, 16, 8);
+    assert(rt_tilemap_configure_import_layout(projected_tilemap,
+                                              RT_TILEMAP_IMPORT_ISOMETRIC,
+                                              0,
+                                              0,
+                                              24,
+                                              16,
+                                              -4,
+                                              -8,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              2) == 1);
+    assert(rt_tilemap_configure_import_layer(projected_tilemap, 0, 1.5, -1.5, 1.0, 1.0) == 1);
+    rt_tilemap_set_tile(projected_tilemap, 1, 0, 17);
+    hit = rt_tilemap_hit_test_scaled(projected_tilemap, 53, 9, 10, 20, 200);
+    assert(rt_map_get_bool(hit, rt_const_cstr("inBounds")) == 1);
+    assert(rt_map_get_int(hit, rt_const_cstr("tileX")) == 1);
+    assert(rt_map_get_int(hit, rt_const_cstr("tileY")) == 0);
+    assert(rt_map_get_int(hit, rt_const_cstr("tile")) == 17);
+
+    void *hex_hit_map = rt_tilemap_new(3, 3, 10, 8);
+    assert(rt_tilemap_configure_import_layout(hex_hit_map,
+                                              RT_TILEMAP_IMPORT_HEXAGONAL,
+                                              0,
+                                              0,
+                                              10,
+                                              8,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              2,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              3) == 1);
+    rt_tilemap_set_tile(hex_hit_map, 1, 1, 23);
+    hit = rt_tilemap_hit_test_scaled(hex_hit_map, 20, 9, 0, 0, 100);
+    assert(rt_map_get_int(hit, rt_const_cstr("tileX")) == 1);
+    assert(rt_map_get_int(hit, rt_const_cstr("tileY")) == 1);
+    assert(rt_map_get_int(hit, rt_const_cstr("tile")) == 23);
+
+    void *staggered_hit_map = rt_tilemap_new(3, 3, 10, 8);
+    assert(rt_tilemap_configure_import_layout(staggered_hit_map,
+                                              RT_TILEMAP_IMPORT_STAGGERED,
+                                              0,
+                                              0,
+                                              10,
+                                              8,
+                                              0,
+                                              0,
+                                              RT_TILEMAP_IMPORT_RIGHT_DOWN,
+                                              1,
+                                              0,
+                                              0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              0.0,
+                                              3) == 1);
+    rt_tilemap_set_tile(staggered_hit_map, 1, 1, 29);
+    hit = rt_tilemap_hit_test_scaled(staggered_hit_map, 20, 8, 0, 0, 100);
+    assert(rt_map_get_int(hit, rt_const_cstr("tileX")) == 1);
+    assert(rt_map_get_int(hit, rt_const_cstr("tileY")) == 1);
+    assert(rt_map_get_int(hit, rt_const_cstr("tile")) == 29);
     return 0;
 }

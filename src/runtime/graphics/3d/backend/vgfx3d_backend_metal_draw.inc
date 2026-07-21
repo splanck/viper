@@ -425,6 +425,13 @@ static void metal_submit_draw(void *ctx_ptr,
                 memcpy(ml[i].shadow_cascade_splits,
                        lights[i].shadow_cascade_splits,
                        sizeof(ml[i].shadow_cascade_splits));
+                memcpy(ml[i].basis_u, lights[i].basis_u, sizeof(lights[i].basis_u));
+                memcpy(ml[i].basis_v, lights[i].basis_v, sizeof(lights[i].basis_v));
+                ml[i].shape[0] = lights[i].width;
+                ml[i].shape[1] = lights[i].height;
+                ml[i].shape[2] = lights[i].radius;
+                ml[i].shape[3] = lights[i].range;
+                ml[i].decay_type = lights[i].decay_type;
             }
             int32_t buf_count =
                 light_count > 0
@@ -1337,6 +1344,13 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 memcpy(ml[i].shadow_cascade_splits,
                        lights[i].shadow_cascade_splits,
                        sizeof(ml[i].shadow_cascade_splits));
+                memcpy(ml[i].basis_u, lights[i].basis_u, sizeof(lights[i].basis_u));
+                memcpy(ml[i].basis_v, lights[i].basis_v, sizeof(lights[i].basis_v));
+                ml[i].shape[0] = lights[i].width;
+                ml[i].shape[1] = lights[i].height;
+                ml[i].shape[2] = lights[i].radius;
+                ml[i].shape[3] = lights[i].range;
+                ml[i].decay_type = lights[i].decay_type;
             }
             int32_t bc = light_count > 0
                              ? (light_count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : light_count)

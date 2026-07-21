@@ -121,6 +121,31 @@ static bool read_file_bytes(const char *path, std::vector<uint8_t> &out) {
     return ok;
 }
 
+static void *gltf_test_texture_pixels(void *texture) {
+    void *pixels = texture ? rt_textureasset3d_get_pixels(texture) : nullptr;
+    return pixels ? pixels : texture;
+}
+
+static bool gltf_test_texture_source_equals_bytes(void *texture,
+                                                  const char *expected_kind,
+                                                  const uint8_t *expected,
+                                                  size_t expected_size) {
+    const uint8_t *data = nullptr;
+    uint64_t size = 0;
+    const char *kind = nullptr;
+    return texture && expected_kind &&
+           rt_textureasset3d_get_source_container(texture, &data, &size, &kind) && data && kind &&
+           std::strcmp(kind, expected_kind) == 0 && size == expected_size &&
+           std::memcmp(data, expected, expected_size) == 0;
+}
+
+static bool gltf_test_texture_source_equals(void *texture,
+                                            const char *expected_kind,
+                                            const std::vector<uint8_t> &expected) {
+    return gltf_test_texture_source_equals_bytes(
+        texture, expected_kind, expected.data(), expected.size());
+}
+
 static bool write_text_file(const char *path, const std::string &text) {
     FILE *f = std::fopen(path, "wb");
     if (!f)
@@ -331,20 +356,32 @@ static void test_gltf_loads_data_uri_buffers_and_embedded_textures() {
     EXPECT_TRUE(material->workflow == RT_MATERIAL3D_WORKFLOW_PBR,
                 "GLTF.Load preserves the PBR workflow");
     EXPECT_TRUE(material->texture != nullptr &&
-                    rt_pixels_get(material->texture, 0, 0) == 0x336699FFll,
+                    rt_pixels_get(gltf_test_texture_pixels(material->texture), 0, 0) ==
+                        0x336699FFll,
                 "GLTF.Load wires base color textures into Material3D");
     EXPECT_TRUE(material->normal_map != nullptr &&
-                    rt_pixels_get(material->normal_map, 0, 0) == 0x336699FFll,
+                    rt_pixels_get(gltf_test_texture_pixels(material->normal_map), 0, 0) ==
+                        0x336699FFll,
                 "GLTF.Load wires normal textures into Material3D");
     EXPECT_TRUE(material->metallic_roughness_map != nullptr &&
-                    rt_pixels_get(material->metallic_roughness_map, 0, 0) == 0x336699FFll,
+                    rt_pixels_get(gltf_test_texture_pixels(material->metallic_roughness_map),
+                                  0,
+                                  0) == 0x336699FFll,
                 "GLTF.Load wires metallic-roughness textures into Material3D");
     EXPECT_TRUE(material->ao_map != nullptr &&
-                    rt_pixels_get(material->ao_map, 0, 0) == 0x336699FFll,
+                    rt_pixels_get(gltf_test_texture_pixels(material->ao_map), 0, 0) == 0x336699FFll,
                 "GLTF.Load wires occlusion textures into Material3D");
     EXPECT_TRUE(material->emissive_map != nullptr &&
-                    rt_pixels_get(material->emissive_map, 0, 0) == 0x336699FFll,
+                    rt_pixels_get(gltf_test_texture_pixels(material->emissive_map), 0, 0) ==
+                        0x336699FFll,
                 "GLTF.Load wires emissive textures into Material3D");
+    EXPECT_TRUE(gltf_test_texture_source_equals(material->texture, "png", png_bytes),
+                "GLTF.Load retains data-URI PNG bytes exactly");
+    EXPECT_TRUE(material->texture == material->normal_map &&
+                    material->texture == material->metallic_roughness_map &&
+                    material->texture == material->ao_map &&
+                    material->texture == material->emissive_map,
+                "one glTF image preserves shared texture identity across material slots");
     EXPECT_NEAR(material->metallic, 0.75, 0.001, "GLTF.Load preserves metallicFactor");
     EXPECT_NEAR(material->roughness, 0.25, 0.001, "GLTF.Load preserves roughnessFactor");
     EXPECT_NEAR(material->ao, 0.5, 0.001, "GLTF.Load preserves occlusion strength");
@@ -693,8 +730,8 @@ static void test_gltf_preload_bundle_stages_data_uri_buffers_and_images() {
         rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
     EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage data-uri payloads");
     EXPECT_TRUE(error[0] == '\0', "Preload data-uri bundle build has no terminal error");
-    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
-                "Preload bundle stages data-uri buffer, decoded PNG image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 4,
+                "Preload bundle stages buffer, exact PNG source, decoded image, and mesh POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
                 "Preload bundle worker-decodes PNG image bytes to raw RGBA POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
@@ -711,8 +748,11 @@ static void test_gltf_preload_bundle_stages_data_uri_buffers_and_images() {
     EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
                 "Preloaded data-uri buffer builds the expected mesh");
     EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
-                    rt_pixels_get(material->texture, 0, 0) == 0x5588CCFFll,
+                    rt_pixels_get(gltf_test_texture_pixels(material->texture), 0, 0) ==
+                        0x5588CCFFll,
                 "Preloaded data-uri image builds the expected material texture");
+    EXPECT_TRUE(gltf_test_texture_source_equals(material->texture, "png", png_bytes),
+                "Preloaded data-URI image retains its exact PNG source");
     if (mesh) {
         EXPECT_NEAR(mesh->vertices[1].pos[0], 6.0, 0.001, "Data-uri preload vertex X loads");
         EXPECT_NEAR(mesh->vertices[2].pos[1], 7.0, 0.001, "Data-uri preload vertex Y loads");
@@ -788,8 +828,8 @@ static void test_gltf_preload_bundle_decodes_bmp_images_to_rgba_pod() {
         rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
     EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage BMP payloads");
     EXPECT_TRUE(error[0] == '\0', "Preload data-uri BMP bundle build has no terminal error");
-    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
-                "Preload bundle stages data-uri buffer, decoded BMP image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 4,
+                "Preload bundle stages buffer, exact BMP source, decoded image, and mesh POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
                 "Preload bundle worker-decodes BMP image bytes to raw RGBA POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
@@ -806,8 +846,11 @@ static void test_gltf_preload_bundle_decodes_bmp_images_to_rgba_pod() {
     EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
                 "Preloaded BMP data-uri buffer builds the expected mesh");
     EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
-                    rt_pixels_get(material->texture, 0, 0) == 0xCC8844FFll,
+                    rt_pixels_get(gltf_test_texture_pixels(material->texture), 0, 0) ==
+                        0xCC8844FFll,
                 "Preloaded worker-decoded BMP image builds the expected material texture");
+    EXPECT_TRUE(gltf_test_texture_source_equals(material->texture, "bmp", bmp_bytes),
+                "Preloaded data-URI image retains its exact BMP source");
     if (mesh) {
         EXPECT_NEAR(mesh->vertices[1].pos[0], 12.0, 0.001, "BMP preload vertex X loads");
         EXPECT_NEAR(mesh->vertices[2].pos[1], 13.0, 0.001, "BMP preload vertex Y loads");
@@ -888,8 +931,8 @@ static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
         rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
     EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage JPEG payloads");
     EXPECT_TRUE(error[0] == '\0', "Preload data-uri JPEG bundle build has no terminal error");
-    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
-                "Preload bundle stages data-uri buffer, decoded JPEG image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 4,
+                "Preload bundle stages buffer, exact JPEG source, decoded image, and mesh POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
                 "Preload bundle worker-decodes JPEG image bytes to raw RGBA POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
@@ -905,7 +948,9 @@ static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
     auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
     EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
                 "Preloaded JPEG data-uri buffer builds the expected mesh");
-    int64_t rgba = material && material->texture ? rt_pixels_get(material->texture, 0, 0) : 0;
+    int64_t rgba = material && material->texture
+                       ? rt_pixels_get(gltf_test_texture_pixels(material->texture), 0, 0)
+                       : 0;
     int red = (int)((rgba >> 24) & 0xFF);
     int green = (int)((rgba >> 16) & 0xFF);
     int blue = (int)((rgba >> 8) & 0xFF);
@@ -913,6 +958,17 @@ static void test_gltf_preload_bundle_decodes_jpeg_images_to_rgba_pod() {
     EXPECT_TRUE(material != nullptr && material->texture != nullptr && red >= 140 && green >= 60 &&
                     green <= 200 && blue <= 160 && alpha == 0xFF,
                 "Preloaded worker-decoded JPEG image builds the expected material texture");
+    {
+        const uint8_t *source = nullptr;
+        uint64_t source_size = 0;
+        const char *source_kind = nullptr;
+        EXPECT_TRUE(material && material->texture &&
+                        rt_textureasset3d_get_source_container(
+                            material->texture, &source, &source_size, &source_kind) &&
+                        source_kind && std::strcmp(source_kind, "jpeg") == 0 &&
+                        base64_encode(source, (size_t)source_size) == image_b64,
+                    "Preloaded data-URI image retains its exact JPEG source");
+    }
     if (mesh) {
         EXPECT_NEAR(mesh->vertices[1].pos[0], 16.0, 0.001, "JPEG preload vertex X loads");
         EXPECT_NEAR(mesh->vertices[2].pos[1], 17.0, 0.001, "JPEG preload vertex Y loads");
@@ -981,8 +1037,8 @@ static void test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod() {
         rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
     EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage GIF payloads");
     EXPECT_TRUE(error[0] == '\0', "Preload data-uri GIF bundle build has no terminal error");
-    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 3,
-                "Preload bundle stages data-uri buffer, decoded GIF image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 4,
+                "Preload bundle stages buffer, exact GIF source, decoded image, and mesh POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
                 "Preload bundle worker-decodes GIF image bytes to raw RGBA POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
@@ -999,8 +1055,12 @@ static void test_gltf_preload_bundle_decodes_gif_images_to_rgba_pod() {
     EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
                 "Preloaded GIF data-uri buffer builds the expected mesh");
     EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
-                    rt_pixels_get(material->texture, 0, 0) == 0xFF0000FFll,
+                    rt_pixels_get(gltf_test_texture_pixels(material->texture), 0, 0) ==
+                        0xFF0000FFll,
                 "Preloaded worker-decoded GIF image builds the expected material texture");
+    EXPECT_TRUE(gltf_test_texture_source_equals_bytes(
+                    material->texture, "gif", gif_bytes, sizeof(gif_bytes)),
+                "Preloaded data-URI image retains its exact GIF source");
     if (mesh) {
         EXPECT_NEAR(mesh->vertices[1].pos[0], 18.0, 0.001, "GIF preload vertex X loads");
         EXPECT_NEAR(mesh->vertices[2].pos[1], 19.0, 0.001, "GIF preload vertex Y loads");
@@ -1289,9 +1349,8 @@ static void test_gltf_preload_bundle_stages_buffer_view_images() {
         rt_const_cstr(gltf_path), owned_root, root.size(), 0, error, sizeof(error));
     EXPECT_TRUE(bundle != nullptr, "Preload bundle can stage bufferView image payloads");
     EXPECT_TRUE(error[0] == '\0', "Preload bufferView bundle build has no terminal error");
-    EXPECT_TRUE(
-        rt_gltf_preload_bundle_dependency_count(bundle) == 3,
-        "Preload bundle stages data-uri buffer, decoded bufferView PNG image, and mesh POD");
+    EXPECT_TRUE(rt_gltf_preload_bundle_dependency_count(bundle) == 4,
+                "Preload bundle stages buffer, exact bufferView PNG, decoded image, and mesh POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_image_count(bundle) == 1,
                 "Preload bundle worker-decodes bufferView PNG image bytes to raw RGBA POD");
     EXPECT_TRUE(rt_gltf_preload_bundle_decoded_mesh_count(bundle) == 1,
@@ -1307,15 +1366,18 @@ static void test_gltf_preload_bundle_stages_buffer_view_images() {
     auto *material = static_cast<rt_material3d *>(rt_gltf_get_material(asset, 0));
     EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
                 "Preloaded bufferView fixture builds the expected mesh");
+    EXPECT_TRUE(
+        material != nullptr && material->texture != nullptr &&
+            rt_pixels_get(gltf_test_texture_pixels(material->texture), 0, 0) == 0xAA6633FFll &&
+            rt_pixels_get(gltf_test_texture_pixels(material->texture), 1, 0) == 0x11223344ll &&
+            rt_pixels_get(gltf_test_texture_pixels(material->texture), 0, 1) == 0x55667788ll &&
+            rt_pixels_get(gltf_test_texture_pixels(material->texture), 1, 1) == 0x99AABBCCll,
+        "Preloaded bufferView image builds the expected material texture");
     EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
-                    rt_pixels_get(material->texture, 0, 0) == 0xAA6633FFll &&
-                    rt_pixels_get(material->texture, 1, 0) == 0x11223344ll &&
-                    rt_pixels_get(material->texture, 0, 1) == 0x55667788ll &&
-                    rt_pixels_get(material->texture, 1, 1) == 0x99AABBCCll,
-                "Preloaded bufferView image builds the expected material texture");
-    EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
-                    rt_pixels_generation(material->texture) <= 1,
+                    rt_pixels_generation(gltf_test_texture_pixels(material->texture)) <= 1,
                 "Preloaded RGBA POD commits texture pixels through one bulk mutation");
+    EXPECT_TRUE(gltf_test_texture_source_equals(material->texture, "png", png_bytes),
+                "Preloaded bufferView image retains its exact PNG source");
     if (mesh) {
         EXPECT_NEAR(mesh->vertices[1].pos[0], 8.0, 0.001, "BufferView preload vertex X loads");
         EXPECT_NEAR(mesh->vertices[2].pos[1], 9.0, 0.001, "BufferView preload vertex Y loads");
@@ -1404,8 +1466,11 @@ static void test_gltf_preload_bundle_slices_decoded_image_commit() {
         EXPECT_TRUE(mat != nullptr && mat->texture != nullptr,
                     "Sliced preload material keeps the prepared Pixels texture");
         EXPECT_TRUE(mat != nullptr && mat->texture != nullptr &&
-                        rt_pixels_get(mat->texture, 17, 13) == 0xAA7744FFll,
+                        rt_pixels_get(gltf_test_texture_pixels(mat->texture), 17, 13) ==
+                            0xAA7744FFll,
                     "Sliced preload prepared texture preserves pixel contents");
+        EXPECT_TRUE(gltf_test_texture_source_equals(mat->texture, "png", png_bytes),
+                    "Sliced preload keeps encoded PNG bytes beside prepared Pixels");
     }
     std::remove(gltf_path);
     std::remove(png_path);
@@ -1486,8 +1551,11 @@ static void test_gltf_load_asset_resolves_mounted_external_buffers() {
         EXPECT_TRUE(mesh != nullptr && mesh->vertex_count == 3 && mesh->index_count == 3,
                     "GLTF.LoadAsset imports geometry from a mounted external buffer");
         EXPECT_TRUE(material != nullptr && material->texture != nullptr &&
-                        rt_pixels_get(material->texture, 0, 0) == 0x224466FFll,
+                        rt_pixels_get(gltf_test_texture_pixels(material->texture), 0, 0) ==
+                            0x224466FFll,
                     "GLTF.LoadAsset imports package-relative external textures");
+        EXPECT_TRUE(gltf_test_texture_source_equals(material->texture, "png", png_bytes),
+                    "GLTF.LoadAsset retains exact packed external texture bytes");
         if (mesh) {
             EXPECT_NEAR(
                 mesh->vertices[1].pos[0], 4.0, 0.001, "Mounted external buffer vertex X is loaded");

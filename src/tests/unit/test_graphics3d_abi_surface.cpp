@@ -723,6 +723,51 @@ bool check_runtime_surface_names() {
     ok = require(contains(runtime_def, "RT_METHOD(\"BindNodeAnimator\""),
                  "SceneNode.BindNodeAnimator method missing") &&
          ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.set_Camera\""),
+                 "SceneNode.Camera setter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.SceneNode.get_Camera\""),
+                 "SceneNode.Camera getter must use Graphics3D PascalCase naming") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"Camera\", \"obj<Zanna.Graphics3D.Camera3D>\""),
+                 "SceneNode.Camera property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Camera3D.set_IsOrtho\""),
+                 "Camera3D.IsOrtho setter must be registered") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Camera3D.get_OrthoSize\""),
+                 "Camera3D.OrthoSize getter must be registered") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Camera3D.set_OrthoSize\""),
+                 "Camera3D.OrthoSize setter must be registered") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"OrthoSize\", \"f64\""),
+                 "Camera3D.OrthoSize property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Light3D.AreaRectangle\""),
+                 "Light3D.AreaRectangle constructor missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Light3D.AreaSphere\""),
+                 "Light3D.AreaSphere constructor missing") &&
+         ok;
+    ok = require(contains(runtime_def, "\"Zanna.Graphics3D.Light3D.Volume\""),
+                 "Light3D.Volume constructor missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"Width\", \"f64\""),
+                 "Light3D.Width property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"Height\", \"f64\""),
+                 "Light3D.Height property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"Radius\", \"f64\""),
+                 "Light3D.Radius property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"DecayType\", \"i64\""),
+                 "Light3D.DecayType property missing") &&
+         ok;
+    ok = require(contains(runtime_def, "RT_PROP(\"Range\", \"f64\""),
+                 "Light3D.Range property missing") &&
+         ok;
     ok = require(contains(runtime_def, "RT_CLASS_BEGIN(\"Zanna.Graphics3D.NodeAnimation3D\""),
                  "NodeAnimation3D class missing") &&
          ok;

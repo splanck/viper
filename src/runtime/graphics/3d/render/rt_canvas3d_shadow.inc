@@ -259,7 +259,10 @@ static float canvas3d_shadow_spot_range_from_bounds(const vgfx3d_light_params_t 
     float corners[8][3];
     float max_distance = 0.0f;
 
-    if (light && isfinite(light->attenuation) && light->attenuation > 1e-8f)
+    if (light && light->type >= 4 && light->type <= 5 && isfinite(light->range) &&
+        light->range > 0.0f)
+        range = light->range;
+    else if (light && isfinite(light->attenuation) && light->attenuation > 1e-8f)
         range = 1.0f / sqrtf(light->attenuation);
     if (isfinite(range) && range > 0.05f)
         return range;
@@ -464,7 +467,7 @@ static int canvas3d_build_shadow_light_vp(const float *world_min,
         return 0;
     if (!canvas3d_shadow_bounds_are_valid(world_min, world_max))
         return 0;
-    if (shadow_light->type == 3)
+    if (shadow_light->type == 3 || shadow_light->type == 4)
         return canvas3d_build_spot_shadow_light_vp(
             world_min, world_max, shadow_light, out_light_vp);
     canvas3d_shadow_bounds_center(world_min, world_max, center);

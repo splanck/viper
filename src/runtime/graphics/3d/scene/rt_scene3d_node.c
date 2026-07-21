@@ -168,6 +168,7 @@ static void rt_scene_node3d_finalize(void *obj) {
     scene_node_release_class_slot(&node->mesh, RT_G3D_MESH3D_CLASS_ID);
     scene_node_release_class_slot(&node->material, RT_G3D_MATERIAL3D_CLASS_ID);
     scene_node_release_class_slot(&node->light, RT_G3D_LIGHT3D_CLASS_ID);
+    scene_node_release_class_slot(&node->camera, RT_G3D_CAMERA3D_CLASS_ID);
     scene_node_release_class_slot(&node->bound_body, RT_G3D_BODY3D_CLASS_ID);
     scene_node_release_class_slot(&node->bound_animator, RT_G3D_ANIMCONTROLLER3D_CLASS_ID);
     {
@@ -281,6 +282,7 @@ void *rt_scene_node3d_new(void) {
     node->mesh = NULL;
     node->material = NULL;
     node->light = NULL;
+    node->camera = NULL;
     node->bound_body = NULL;
     node->bound_animator = NULL;
     node->bound_node_animator = NULL;
@@ -976,6 +978,25 @@ void rt_scene_node3d_set_light(void *obj, void *light) {
 void *rt_scene_node3d_get_light(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     return node ? rt_g3d_checked_or_null(node->light, RT_G3D_LIGHT3D_CLASS_ID) : NULL;
+}
+
+/// @brief Attach a retained Camera3D whose view pose follows this node's world transform.
+void rt_scene_node3d_set_camera(void *obj, void *camera) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    if (!node)
+        return;
+    scene_node_repair_class_slot(&node->camera, RT_G3D_CAMERA3D_CLASS_ID);
+    if (camera && !rt_g3d_has_class(camera, RT_G3D_CAMERA3D_CLASS_ID))
+        return;
+    if (node->camera == camera)
+        return;
+    scene_node_assign_class_ref(&node->camera, camera, RT_G3D_CAMERA3D_CLASS_ID);
+}
+
+/// @brief Return the Camera3D attached to this node, or NULL on absence/class corruption.
+void *rt_scene_node3d_get_camera(void *obj) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    return node ? rt_g3d_checked_or_null(node->camera, RT_G3D_CAMERA3D_CLASS_ID) : NULL;
 }
 
 /// @brief Toggle whether this node participates in rendering.

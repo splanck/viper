@@ -202,9 +202,14 @@ typedef struct {
     float inner_cos;
     float outer_cos;
     float shadow_cascade_splits[4];
+    float basis_u[4];
+    float basis_v[4];
+    float shape[4]; /* width, height, radius, range */
+    int32_t decay_type;
+    int32_t emitter_pad[3];
 } d3d_light_t;
 
-_Static_assert(sizeof(d3d_light_t) == 96u,
+_Static_assert(sizeof(d3d_light_t) == 160u,
                "D3D11 Light cbuffer element must match its HLSL layout");
 _Static_assert(VGFX3D_MAX_SHADOW_LIGHTS - VGFX3D_CSM_SLOTS ==
                    VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS * VGFX3D_D3D11_SHADOW_ATLAS_ROWS,

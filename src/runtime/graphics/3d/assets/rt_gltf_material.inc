@@ -181,6 +181,8 @@ static int gltf_decode_loaded_image(void **image_slot,
                 image_type, state->image_data, state->image_len, &rgba_blob, &rgba_len)) {
             *image_slot = gltf_pixels_from_rgba_blob(rgba_blob, rgba_len);
             free(rgba_blob);
+            *image_slot = gltf_preserve_decoded_image_source(
+                *image_slot, state->image_data, state->image_len);
             return *image_slot || !required_image;
         }
         if (required_image)
@@ -188,6 +190,8 @@ static int gltf_decode_loaded_image(void **image_slot,
         return 1;
     }
     *image_slot = rt_asset_decode_typed(image_name, state->image_data, state->image_len);
+    *image_slot =
+        gltf_preserve_decoded_image_source(*image_slot, state->image_data, state->image_len);
     return 1;
 }
 
@@ -585,7 +589,8 @@ static void gltf_material_synthesize_spec_gloss_mr_map(void *spec_gloss,
     size_t pixel_count;
     if (!material || !texture_images || tex_idx < 0 || tex_idx >= texture_count)
         return;
-    src = rt_pixels_checked_impl_or_null(texture_images[tex_idx]);
+    src = rt_pixels_checked_impl_or_null(
+        rt_material3d_resolve_texture_pixels(texture_images[tex_idx]));
     if (!src || !src->data || src->width <= 0 || src->height <= 0)
         return;
     gloss_factor = gltf_clamp_double(jnum(spec_gloss, "glossinessFactor", 1.0), 0.0, 1.0, 1.0);

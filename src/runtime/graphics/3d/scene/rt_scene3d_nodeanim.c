@@ -333,6 +333,10 @@ static int node_animation_validate_channel_data(int64_t path,
         return 0;
     if (path == RT_NODE_ANIM_PATH_ROTATION && value_width != 4)
         return 0;
+    if (path >= RT_NODE_ANIM_PATH_CAMERA_FOV && path <= RT_NODE_ANIM_PATH_LAST && value_width != 1)
+        return 0;
+    if (path == RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE && !step)
+        return 0;
     if (key_count <= 0 || key_count > NODE_ANIM_KEY_COUNT_MAX || value_width < min_width ||
         value_width > NODE_ANIM_VALUE_WIDTH_MAX || !times || !values)
         return 0;
@@ -368,7 +372,7 @@ static int node_anim_channel_runtime_valid(const rt_node_anim_channel3d *channel
         return 0;
     if (!rt_string_is_handle(channel->target_name))
         return 0;
-    if (channel->path < RT_NODE_ANIM_PATH_TRANSLATION || channel->path > RT_NODE_ANIM_PATH_WEIGHTS)
+    if (channel->path < RT_NODE_ANIM_PATH_TRANSLATION || channel->path > RT_NODE_ANIM_PATH_LAST)
         return 0;
     if (channel->interpolation < RT_NODE_ANIM_INTERP_LINEAR ||
         channel->interpolation > RT_NODE_ANIM_INTERP_CUBICSPLINE)
@@ -378,6 +382,12 @@ static int node_anim_channel_runtime_valid(const rt_node_anim_channel3d *channel
         channel->value_width != 3)
         return 0;
     if (channel->path == RT_NODE_ANIM_PATH_ROTATION && channel->value_width != 4)
+        return 0;
+    if (channel->path >= RT_NODE_ANIM_PATH_CAMERA_FOV && channel->path <= RT_NODE_ANIM_PATH_LAST &&
+        channel->value_width != 1)
+        return 0;
+    if (channel->path == RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE &&
+        channel->interpolation != RT_NODE_ANIM_INTERP_STEP)
         return 0;
     if (channel->interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE &&
         (!channel->in_tangents || !channel->out_tangents))
@@ -436,7 +446,7 @@ static int64_t node_animation_add_channel_impl(void *obj,
         return -1;
     if (interpolation == RT_NODE_ANIM_INTERP_CUBICSPLINE && (!in_tangents || !out_tangents))
         return -1;
-    if (path < RT_NODE_ANIM_PATH_TRANSLATION || path > RT_NODE_ANIM_PATH_WEIGHTS)
+    if (path < RT_NODE_ANIM_PATH_TRANSLATION || path > RT_NODE_ANIM_PATH_LAST)
         return -1;
     if (key_count > INT32_MAX || value_width > INT32_MAX)
         return -1;
@@ -1301,6 +1311,30 @@ static void node_anim_apply_channel(rt_node_animator3d *animator,
             break;
         case RT_NODE_ANIM_PATH_WEIGHTS:
             node_anim_apply_weights_recursive(animator, target, values, width);
+            break;
+        case RT_NODE_ANIM_PATH_CAMERA_FOV:
+            if (width == 1 && rt_g3d_has_class(target->camera, RT_G3D_CAMERA3D_CLASS_ID))
+                rt_camera3d_set_retained_fov(target->camera, values[0]);
+            break;
+        case RT_NODE_ANIM_PATH_CAMERA_ASPECT:
+            if (width == 1 && rt_g3d_has_class(target->camera, RT_G3D_CAMERA3D_CLASS_ID))
+                rt_camera3d_sync_render_aspect(target->camera, values[0]);
+            break;
+        case RT_NODE_ANIM_PATH_CAMERA_NEAR:
+            if (width == 1 && rt_g3d_has_class(target->camera, RT_G3D_CAMERA3D_CLASS_ID))
+                rt_camera3d_set_near_plane(target->camera, values[0]);
+            break;
+        case RT_NODE_ANIM_PATH_CAMERA_FAR:
+            if (width == 1 && rt_g3d_has_class(target->camera, RT_G3D_CAMERA3D_CLASS_ID))
+                rt_camera3d_set_far_plane(target->camera, values[0]);
+            break;
+        case RT_NODE_ANIM_PATH_CAMERA_ORTHO_SIZE:
+            if (width == 1 && rt_g3d_has_class(target->camera, RT_G3D_CAMERA3D_CLASS_ID))
+                rt_camera3d_set_ortho_size(target->camera, values[0]);
+            break;
+        case RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE:
+            if (width == 1 && rt_g3d_has_class(target->camera, RT_G3D_CAMERA3D_CLASS_ID))
+                rt_camera3d_set_is_ortho(target->camera, values[0] >= 0.5f);
             break;
     }
 }

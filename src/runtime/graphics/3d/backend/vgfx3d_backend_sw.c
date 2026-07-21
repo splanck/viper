@@ -224,6 +224,205 @@ static int sw_normalize3(
     return 1;
 }
 
+/// @brief Smoothly fade a finite-range emitter to zero at its authored boundary.
+static float sw_light_range_fade(float distance, float range) {
+    float remaining;
+    if (!isfinite(distance) || !isfinite(range) || range <= 1e-7f || distance >= range)
+        return 0.0f;
+    remaining = 1.0f - distance / range;
+    return remaining * remaining * (3.0f - 2.0f * remaining);
+}
+
+/// @brief Evaluate the FBX decay exponent using the light's legacy attenuation coefficient.
+static float sw_light_distance_decay(const vgfx3d_light_params_t *light, float distance) {
+    float attenuation;
+    float powered_distance;
+    if (!light || !isfinite(distance) || distance < 0.0f)
+        return 0.0f;
+    if (light->decay_type == 0)
+        return 1.0f;
+    attenuation =
+        isfinite(light->attenuation) && light->attenuation > 0.0f ? light->attenuation : 0.001f;
+    powered_distance = distance;
+    if (light->decay_type >= 2)
+        powered_distance *= distance;
+    if (light->decay_type >= 3)
+        powered_distance *= distance;
+    if (!isfinite(powered_distance))
+        return 0.0f;
+    return 1.0f / (1.0f + attenuation * powered_distance);
+}
+
+/// @brief Evaluate one analytic light at a world point.
+/// @return 0 for no contribution/ambient, 1 for directional BRDF lighting, or 2 for isotropic
+///   volume irradiance. For result 1, @p out_l* is the unit fragment-to-emitter direction.
+static int sw_eval_analytic_light(const vgfx3d_light_params_t *light,
+                                  float wx,
+                                  float wy,
+                                  float wz,
+                                  float *out_lx,
+                                  float *out_ly,
+                                  float *out_lz,
+                                  float *out_attenuation) {
+    float lx;
+    float ly;
+    float lz;
+    float attenuation = 1.0f;
+    float distance;
+    if (!light || !out_lx || !out_ly || !out_lz || !out_attenuation)
+        return 0;
+    if (light->type == 0) {
+        lx = -light->direction[0];
+        ly = -light->direction[1];
+        lz = -light->direction[2];
+        (void)sw_normalize3(&lx, &ly, &lz, 0.0f, 0.0f, 0.0f);
+    } else if (light->type == 1) {
+        lx = light->position[0] - wx;
+        ly = light->position[1] - wy;
+        lz = light->position[2] - wz;
+        distance = sw_length3(lx, ly, lz);
+        if (!isfinite(distance) || distance <= 1e-7f)
+            return 0;
+        lx /= distance;
+        ly /= distance;
+        lz /= distance;
+        attenuation = 1.0f / (1.0f + light->attenuation * distance * distance);
+    } else if (light->type == 3) {
+        float sx;
+        float sy;
+        float sz;
+        float spot_dot;
+        lx = light->position[0] - wx;
+        ly = light->position[1] - wy;
+        lz = light->position[2] - wz;
+        distance = sw_length3(lx, ly, lz);
+        if (!isfinite(distance) || distance <= 1e-7f)
+            return 0;
+        lx /= distance;
+        ly /= distance;
+        lz /= distance;
+        attenuation = 1.0f / (1.0f + light->attenuation * distance * distance);
+        sx = -light->direction[0];
+        sy = -light->direction[1];
+        sz = -light->direction[2];
+        (void)sw_normalize3(&sx, &sy, &sz, 0.0f, 0.0f, 0.0f);
+        spot_dot = lx * sx + ly * sy + lz * sz;
+        if (spot_dot < light->outer_cos) {
+            attenuation = 0.0f;
+        } else if (spot_dot < light->inner_cos) {
+            float cone_range = light->inner_cos - light->outer_cos;
+            if (cone_range <= 1e-6f) {
+                attenuation = 0.0f;
+            } else {
+                float t = (spot_dot - light->outer_cos) / cone_range;
+                attenuation *= t * t * (3.0f - 2.0f * t);
+            }
+        }
+    } else if (light->type == 4) {
+        float ux = light->basis_u[0];
+        float uy = light->basis_u[1];
+        float uz = light->basis_u[2];
+        float vx = light->basis_v[0];
+        float vy = light->basis_v[1];
+        float vz = light->basis_v[2];
+        float rel_x = wx - light->position[0];
+        float rel_y = wy - light->position[1];
+        float rel_z = wz - light->position[2];
+        float half_width = fmaxf(light->width * 0.5f, 1e-6f);
+        float half_height = fmaxf(light->height * 0.5f, 1e-6f);
+        float u;
+        float v;
+        float emitter_cosine;
+        float area;
+        float solid_angle;
+        if (!sw_normalize3(&ux, &uy, &uz, 1.0f, 0.0f, 0.0f) ||
+            !sw_normalize3(&vx, &vy, &vz, 0.0f, 1.0f, 0.0f))
+            return 0;
+        u = rel_x * ux + rel_y * uy + rel_z * uz;
+        v = rel_x * vx + rel_y * vy + rel_z * vz;
+        if (u < -half_width)
+            u = -half_width;
+        if (u > half_width)
+            u = half_width;
+        if (v < -half_height)
+            v = -half_height;
+        if (v > half_height)
+            v = half_height;
+        lx = light->position[0] + ux * u + vx * v - wx;
+        ly = light->position[1] + uy * u + vy * v - wy;
+        lz = light->position[2] + uz * u + vz * v - wz;
+        distance = sw_length3(lx, ly, lz);
+        if (!isfinite(distance))
+            return 0;
+        if (distance <= 1e-7f) {
+            lx = -light->direction[0];
+            ly = -light->direction[1];
+            lz = -light->direction[2];
+            if (!sw_normalize3(&lx, &ly, &lz, 0.0f, 0.0f, 1.0f))
+                return 0;
+            distance = 0.0f;
+        } else {
+            lx /= distance;
+            ly /= distance;
+            lz /= distance;
+        }
+        emitter_cosine =
+            -(light->direction[0] * lx + light->direction[1] * ly + light->direction[2] * lz);
+        if (!isfinite(emitter_cosine) || emitter_cosine <= 0.0f)
+            return 0;
+        if (emitter_cosine > 1.0f)
+            emitter_cosine = 1.0f;
+        area = fmaxf(light->width * light->height, 1e-6f);
+        solid_angle = area / (area + 3.14159265f * distance * distance);
+        attenuation = emitter_cosine * solid_angle * sw_light_distance_decay(light, distance) *
+                      sw_light_range_fade(distance, light->range);
+    } else if (light->type == 5) {
+        float radius = fmaxf(light->radius, 1e-6f);
+        float center_distance;
+        float solid_angle;
+        lx = light->position[0] - wx;
+        ly = light->position[1] - wy;
+        lz = light->position[2] - wz;
+        center_distance = sw_length3(lx, ly, lz);
+        if (!isfinite(center_distance))
+            return 0;
+        if (center_distance <= 1e-7f) {
+            lx = 0.0f;
+            ly = 1.0f;
+            lz = 0.0f;
+            distance = 0.0f;
+        } else {
+            lx /= center_distance;
+            ly /= center_distance;
+            lz /= center_distance;
+            distance = center_distance > radius ? center_distance - radius : 0.0f;
+        }
+        solid_angle = radius * radius / (radius * radius + distance * distance);
+        attenuation = solid_angle * sw_light_distance_decay(light, distance) *
+                      sw_light_range_fade(distance, light->range);
+    } else if (light->type == 6) {
+        float radius = fmaxf(light->radius, 1e-6f);
+        float t;
+        distance =
+            sw_length3(wx - light->position[0], wy - light->position[1], wz - light->position[2]);
+        if (!isfinite(distance) || distance >= radius)
+            return 0;
+        t = 1.0f - distance / radius;
+        *out_lx = *out_ly = *out_lz = 0.0f;
+        *out_attenuation = t * t * (3.0f - 2.0f * t);
+        return 2;
+    } else {
+        return 0;
+    }
+    if (!isfinite(attenuation) || attenuation <= 0.0f)
+        return 0;
+    *out_lx = lx;
+    *out_ly = ly;
+    *out_lz = lz;
+    *out_attenuation = attenuation;
+    return 1;
+}
+
 /// @brief Recount the highest complete shadow slot and cache the scan bound.
 /// @details Shadow slots can be sparse while lights are reconfigured. Counting
 ///          through the highest valid slot lets later valid slots remain visible

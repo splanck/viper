@@ -6,16 +6,17 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/graphics/3d/render/rt_light3d.c
-// Purpose: Zanna.Graphics3D.Light3D — directional, point, and ambient lights.
+// Purpose: Zanna.Graphics3D.Light3D directional, point, ambient, spot,
+//   area, and volume light state.
 //
 // Key invariants:
-//   - Light types: 0=directional (uses direction), 1=point (uses position
-//     + attenuation), 2=ambient (uniform, uses color * intensity only),
-//     3=spot (uses both, plus inner/outer cone cosines).
+//   - Light types: 0=directional, 1=point, 2=ambient, 3=spot,
+//     4=rectangle area, 5=sphere area, and 6=volume.
 //   - Up to VGFX3D_MAX_LIGHTS (64) per Canvas3D, set via SetLight(canvas, slot, light).
 //     The fixed-forward path shades the first 16; the clustered path shades all 64
 //     (drops observable via Canvas3D.DroppedLightCount / ClusterOverflowCount).
-//   - Default intensity=1.0, attenuation>=0.001 for point/spot falloff.
+//   - Default intensity=1.0; local lights use finite non-negative range,
+//     attenuation, decay, shape, and orientation parameters.
 //   - Direction/position are borrowed Vec3 values, copied at creation time.
 //   - Spot cone angles are stored as cosines for cheap shader comparison.
 //
@@ -203,6 +204,92 @@ static void normalize_light_direction(double *x, double *y, double *z) {
     *z = sz / len;
 }
 
+/// @brief Sanitize a strictly-positive emitter dimension or finite range.
+static double sanitize_positive_light_param(double value) {
+    if (!isfinite(value) || value <= 1e-6)
+        return 1.0;
+    return value > LIGHT3D_PARAM_MAX ? LIGHT3D_PARAM_MAX : value;
+}
+
+/// @brief Build an orthonormal rectangle basis around the light's emission direction.
+static void light3d_build_emitter_basis(rt_light3d *light) {
+    double hx;
+    double hy;
+    double hz;
+    double ux;
+    double uy;
+    double uz;
+    double vx;
+    double vy;
+    double vz;
+    double length;
+    if (!light)
+        return;
+    normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
+    if (fabs(light->direction[1]) < 0.999) {
+        hx = 0.0;
+        hy = 1.0;
+        hz = 0.0;
+    } else {
+        hx = 1.0;
+        hy = 0.0;
+        hz = 0.0;
+    }
+    ux = hy * light->direction[2] - hz * light->direction[1];
+    uy = hz * light->direction[0] - hx * light->direction[2];
+    uz = hx * light->direction[1] - hy * light->direction[0];
+    length = sqrt(ux * ux + uy * uy + uz * uz);
+    if (!isfinite(length) || length <= 1e-8) {
+        ux = 1.0;
+        uy = 0.0;
+        uz = 0.0;
+    } else {
+        ux /= length;
+        uy /= length;
+        uz /= length;
+    }
+    vx = light->direction[1] * uz - light->direction[2] * uy;
+    vy = light->direction[2] * ux - light->direction[0] * uz;
+    vz = light->direction[0] * uy - light->direction[1] * ux;
+    length = sqrt(vx * vx + vy * vy + vz * vz);
+    if (!isfinite(length) || length <= 1e-8) {
+        vx = 0.0;
+        vy = 1.0;
+        vz = 0.0;
+    } else {
+        vx /= length;
+        vy /= length;
+        vz /= length;
+    }
+    light->basis_u[0] = ux;
+    light->basis_u[1] = uy;
+    light->basis_u[2] = uz;
+    light->basis_v[0] = vx;
+    light->basis_v[1] = vy;
+    light->basis_v[2] = vz;
+}
+
+/// @brief Initialize the shared finite state of a newly allocated light.
+static void light3d_init_common(rt_light3d *light, int32_t type, double r, double g, double b) {
+    if (!light)
+        return;
+    memset(light, 0, sizeof(*light));
+    light->vptr = NULL;
+    light->type = type;
+    light->color[0] = clamp01(r);
+    light->color[1] = clamp01(g);
+    light->color[2] = clamp01(b);
+    light->intensity = 1.0;
+    light->inner_cos = 0.0;
+    light->outer_cos = 0.0;
+    light->width = 1.0;
+    light->height = 1.0;
+    light->radius = 1.0;
+    light->range = 0.0;
+    light->decay_type = 2;
+    light->enabled = 1;
+}
+
 /// @brief Create a directional light (e.g., sun or moon).
 /// @details Directional lights have no position — only a direction vector.
 ///          All surfaces in the scene receive parallel rays along this direction,
@@ -224,20 +311,13 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b) 
         rt_trap("Light3D.NewDirectional: memory allocation failed");
         return NULL;
     }
-    memset(light, 0, sizeof(*light));
-    light->vptr = NULL;
-    light->type = 0; /* directional */
+    light3d_init_common(light, 0, r, g, b);
     light->direction[0] = rt_vec3_x(direction);
     light->direction[1] = rt_vec3_y(direction);
     light->direction[2] = rt_vec3_z(direction);
     normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
     light->position[0] = light->position[1] = light->position[2] = 0.0;
-    light->color[0] = clamp01(r);
-    light->color[1] = clamp01(g);
-    light->color[2] = clamp01(b);
-    light->intensity = 1.0;
     light->attenuation = 0.0;
-    light->enabled = 1;
     light->casts_shadows = 1;
     return light;
 }
@@ -263,19 +343,12 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
         rt_trap("Light3D.NewPoint: memory allocation failed");
         return NULL;
     }
-    memset(light, 0, sizeof(*light));
-    light->vptr = NULL;
-    light->type = 1; /* point */
+    light3d_init_common(light, 1, r, g, b);
     light->direction[0] = light->direction[1] = light->direction[2] = 0.0;
     light->position[0] = light_coord_or_zero(rt_vec3_x(position));
     light->position[1] = light_coord_or_zero(rt_vec3_y(position));
     light->position[2] = light_coord_or_zero(rt_vec3_z(position));
-    light->color[0] = clamp01(r);
-    light->color[1] = clamp01(g);
-    light->color[2] = clamp01(b);
-    light->intensity = 1.0;
     light->attenuation = sanitize_local_attenuation(attenuation);
-    light->enabled = 1;
     light->casts_shadows = 0;
     return light;
 }
@@ -295,17 +368,10 @@ void *rt_light3d_new_ambient(double r, double g, double b) {
         rt_trap("Light3D.NewAmbient: memory allocation failed");
         return NULL;
     }
-    memset(light, 0, sizeof(*light));
-    light->vptr = NULL;
-    light->type = 2; /* ambient */
+    light3d_init_common(light, 2, r, g, b);
     memset(light->direction, 0, sizeof(light->direction));
     memset(light->position, 0, sizeof(light->position));
-    light->color[0] = clamp01(r);
-    light->color[1] = clamp01(g);
-    light->color[2] = clamp01(b);
-    light->intensity = 1.0;
     light->attenuation = 0.0;
-    light->enabled = 1;
     light->casts_shadows = 0;
     return light;
 }
@@ -343,9 +409,7 @@ void *rt_light3d_new_spot(void *position,
         rt_trap("Light3D.NewSpot: memory allocation failed");
         return NULL;
     }
-    memset(light, 0, sizeof(*light));
-    light->vptr = NULL;
-    light->type = 3; /* spot */
+    light3d_init_common(light, 3, r, g, b);
     light->direction[0] = rt_vec3_x(direction);
     light->direction[1] = rt_vec3_y(direction);
     light->direction[2] = rt_vec3_z(direction);
@@ -353,17 +417,94 @@ void *rt_light3d_new_spot(void *position,
     light->position[0] = light_coord_or_zero(rt_vec3_x(position));
     light->position[1] = light_coord_or_zero(rt_vec3_y(position));
     light->position[2] = light_coord_or_zero(rt_vec3_z(position));
-    light->color[0] = clamp01(r);
-    light->color[1] = clamp01(g);
-    light->color[2] = clamp01(b);
-    light->intensity = 1.0;
     light->attenuation = sanitize_local_attenuation(attenuation);
     /* Convert angles (degrees) to cosines for shader comparison */
     double pi = 3.14159265358979323846;
     sanitize_spot_angles(&inner_angle, &outer_angle);
     light->inner_cos = cos(inner_angle * pi / 180.0);
     light->outer_cos = cos(outer_angle * pi / 180.0);
-    light->enabled = 1;
+    light->casts_shadows = 0;
+    return light;
+}
+
+/// @brief Allocate a native one-sided rectangle area light.
+void *rt_light3d_new_area_rectangle(void *position,
+                                    void *direction,
+                                    double width,
+                                    double height,
+                                    double r,
+                                    double g,
+                                    double b,
+                                    double attenuation,
+                                    double range) {
+    rt_light3d *light;
+    if (!rt_g3d_is_vec3(position) || !rt_g3d_is_vec3(direction)) {
+        rt_trap("Light3D.AreaRectangle: position and direction must be Vec3");
+        return NULL;
+    }
+    light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(*light));
+    if (!light) {
+        rt_trap("Light3D.AreaRectangle: memory allocation failed");
+        return NULL;
+    }
+    light3d_init_common(light, 4, r, g, b);
+    light->position[0] = light_coord_or_zero(rt_vec3_x(position));
+    light->position[1] = light_coord_or_zero(rt_vec3_y(position));
+    light->position[2] = light_coord_or_zero(rt_vec3_z(position));
+    light->direction[0] = rt_vec3_x(direction);
+    light->direction[1] = rt_vec3_y(direction);
+    light->direction[2] = rt_vec3_z(direction);
+    light3d_build_emitter_basis(light);
+    light->width = sanitize_positive_light_param(width);
+    light->height = sanitize_positive_light_param(height);
+    light->attenuation = sanitize_local_attenuation(attenuation);
+    light->range = sanitize_positive_light_param(range);
+    return light;
+}
+
+/// @brief Allocate a native spherical area light.
+void *rt_light3d_new_area_sphere(
+    void *position, double radius, double r, double g, double b, double range) {
+    rt_light3d *light;
+    if (!rt_g3d_is_vec3(position)) {
+        rt_trap("Light3D.AreaSphere: position must be a Vec3");
+        return NULL;
+    }
+    light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(*light));
+    if (!light) {
+        rt_trap("Light3D.AreaSphere: memory allocation failed");
+        return NULL;
+    }
+    light3d_init_common(light, 5, r, g, b);
+    light->position[0] = light_coord_or_zero(rt_vec3_x(position));
+    light->position[1] = light_coord_or_zero(rt_vec3_y(position));
+    light->position[2] = light_coord_or_zero(rt_vec3_z(position));
+    light->radius = sanitize_positive_light_param(radius);
+    light->range = sanitize_positive_light_param(range);
+    light->attenuation = RT_LIGHT3D_DEFAULT_ATTENUATION;
+    return light;
+}
+
+/// @brief Allocate a native isotropic volume light.
+void *rt_light3d_new_volume(
+    void *position, double radius, double r, double g, double b, double range) {
+    rt_light3d *light;
+    if (!rt_g3d_is_vec3(position)) {
+        rt_trap("Light3D.Volume: position must be a Vec3");
+        return NULL;
+    }
+    light = (rt_light3d *)rt_obj_new_i64(RT_G3D_LIGHT3D_CLASS_ID, (int64_t)sizeof(*light));
+    if (!light) {
+        rt_trap("Light3D.Volume: memory allocation failed");
+        return NULL;
+    }
+    light3d_init_common(light, 6, r, g, b);
+    light->position[0] = light_coord_or_zero(rt_vec3_x(position));
+    light->position[1] = light_coord_or_zero(rt_vec3_y(position));
+    light->position[2] = light_coord_or_zero(rt_vec3_z(position));
+    light->radius = sanitize_positive_light_param(radius);
+    light->range = sanitize_positive_light_param(range);
+    light->attenuation = RT_LIGHT3D_DEFAULT_ATTENUATION;
     light->casts_shadows = 0;
     return light;
 }
@@ -393,7 +534,7 @@ void rt_light3d_set_attenuation(void *obj, double attenuation) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return;
-    if (light->type != 1 && light->type != 3)
+    if (light->type != 1 && light->type != 3 && light->type != 4 && light->type != 5)
         return;
     light->attenuation = sanitize_local_attenuation(attenuation);
     light3d_note_mutation();
@@ -425,7 +566,7 @@ int64_t rt_light3d_get_type(void *obj) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return 0;
-    if (light->type < 0 || light->type > 3)
+    if (light->type < 0 || light->type > 6)
         light->type = 0;
     return light->type;
 }
@@ -469,7 +610,7 @@ void rt_light3d_set_casts_shadows(void *obj, int8_t enabled) {
     rt_light3d *light = light3d_checked(obj);
     if (!light)
         return;
-    light->casts_shadows = enabled ? 1 : 0;
+    light->casts_shadows = light->type == 6 ? 0 : (enabled ? 1 : 0);
     light3d_note_mutation();
 }
 
@@ -531,6 +672,81 @@ void rt_light3d_set_direction(void *obj, void *direction) {
     light->direction[1] = rt_vec3_y(direction);
     light->direction[2] = rt_vec3_z(direction);
     normalize_light_direction(&light->direction[0], &light->direction[1], &light->direction[2]);
+    if (light->type == 4)
+        light3d_build_emitter_basis(light);
+    light3d_note_mutation();
+}
+
+double rt_light3d_get_width(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    return light && light->type == 4 ? sanitize_positive_light_param(light->width) : 0.0;
+}
+
+void rt_light3d_set_width(void *obj, double width) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light || light->type != 4)
+        return;
+    light->width = sanitize_positive_light_param(width);
+    light3d_note_mutation();
+}
+
+double rt_light3d_get_height(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    return light && light->type == 4 ? sanitize_positive_light_param(light->height) : 0.0;
+}
+
+void rt_light3d_set_height(void *obj, double height) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light || light->type != 4)
+        return;
+    light->height = sanitize_positive_light_param(height);
+    light3d_note_mutation();
+}
+
+double rt_light3d_get_radius(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    return light && (light->type == 5 || light->type == 6)
+               ? sanitize_positive_light_param(light->radius)
+               : 0.0;
+}
+
+void rt_light3d_set_radius(void *obj, double radius) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light || (light->type != 5 && light->type != 6))
+        return;
+    light->radius = sanitize_positive_light_param(radius);
+    light3d_note_mutation();
+}
+
+int64_t rt_light3d_get_decay_type(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light)
+        return 0;
+    if (light->decay_type < 0 || light->decay_type > 3)
+        light->decay_type = 2;
+    return light->decay_type;
+}
+
+void rt_light3d_set_decay_type(void *obj, int64_t decay_type) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light || decay_type < 0 || decay_type > 3)
+        return;
+    light->decay_type = (int32_t)decay_type;
+    light3d_note_mutation();
+}
+
+double rt_light3d_get_range(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    return light && light->type >= 4 && light->type <= 6
+               ? sanitize_positive_light_param(light->range)
+               : 0.0;
+}
+
+void rt_light3d_set_range(void *obj, double range) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light || light->type < 4 || light->type > 6)
+        return;
+    light->range = sanitize_positive_light_param(range);
     light3d_note_mutation();
 }
 

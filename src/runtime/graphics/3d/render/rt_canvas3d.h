@@ -539,6 +539,12 @@ void *rt_camera3d_new_horizontal_fov(double horizontal_fov,
 void *rt_camera3d_new_ortho(double size, double aspect, double near_val, double far_val);
 /// @brief True if the camera was created via `_new_ortho` (no perspective foreshortening).
 int8_t rt_camera3d_is_ortho(void *cam);
+/// @brief Switch between perspective and orthographic projection, preserving both parameter sets.
+void rt_camera3d_set_is_ortho(void *cam, int8_t is_ortho);
+/// @brief Get the orthographic view-volume half-height retained by the camera.
+double rt_camera3d_get_ortho_size(void *cam);
+/// @brief Set the orthographic view-volume half-height retained by the camera.
+void rt_camera3d_set_ortho_size(void *cam, double size);
 /// @brief Aim the camera at a target point with an explicit up direction.
 void rt_camera3d_look_at(void *obj, void *eye, void *target, void *up);
 /// @brief Position the camera on a sphere around @p target at the given yaw/pitch in degrees.
@@ -745,6 +751,22 @@ void *rt_light3d_new_spot(void *position,
                           double attenuation,
                           double inner_angle,
                           double outer_angle);
+/// @brief Create a one-sided oriented rectangle area light.
+void *rt_light3d_new_area_rectangle(void *position,
+                                    void *direction,
+                                    double width,
+                                    double height,
+                                    double r,
+                                    double g,
+                                    double b,
+                                    double attenuation,
+                                    double range);
+/// @brief Create an omnidirectional spherical area light.
+void *rt_light3d_new_area_sphere(
+    void *position, double radius, double r, double g, double b, double range);
+/// @brief Create an isotropic volume light bounded by @p radius.
+void *rt_light3d_new_volume(
+    void *position, double radius, double r, double g, double b, double range);
 /// @brief Multiply the light color by an intensity scalar (HDR-friendly).
 void rt_light3d_set_intensity(void *obj, double intensity);
 /// @brief Set the distance-falloff factor of a point/spot light (no-op for other types).
@@ -775,6 +797,21 @@ void *rt_light3d_get_position(void *obj);
 void rt_light3d_set_position(void *obj, void *position);
 /// @brief Re-aim the light; the direction (Vec3) is normalized.
 void rt_light3d_set_direction(void *obj, void *direction);
+/// @brief Get/set rectangle emitter width.
+double rt_light3d_get_width(void *obj);
+void rt_light3d_set_width(void *obj, double width);
+/// @brief Get/set rectangle emitter height.
+double rt_light3d_get_height(void *obj);
+void rt_light3d_set_height(void *obj, double height);
+/// @brief Get/set sphere/volume radius.
+double rt_light3d_get_radius(void *obj);
+void rt_light3d_set_radius(void *obj, double radius);
+/// @brief Get/set FBX-compatible distance-decay mode (0 none, 1 linear, 2 quadratic, 3 cubic).
+int64_t rt_light3d_get_decay_type(void *obj);
+void rt_light3d_set_decay_type(void *obj, int64_t decay_type);
+/// @brief Get/set finite local-light range.
+double rt_light3d_get_range(void *obj);
+void rt_light3d_set_range(void *obj, double range);
 
 /// @brief Register a temporary buffer to be freed at the end of the current frame.
 /// @return 1 when ownership transfers to the canvas, 0 when the caller still owns `buffer`.

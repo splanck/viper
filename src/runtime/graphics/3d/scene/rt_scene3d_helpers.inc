@@ -948,6 +948,35 @@ static void scene_node_apply_root_motion(rt_scene_node3d *node) {
     mark_dirty(node);
 }
 
+/// @brief Derive a node-attached camera's eye/forward/up basis from the current world matrix.
+static void scene_node_sync_camera(rt_scene_node3d *node) {
+    rt_camera3d *camera;
+    double eye[3];
+    double forward[3];
+    double up[3];
+    double target[3];
+    if (!node)
+        return;
+    camera = (rt_camera3d *)rt_g3d_checked_or_null(node->camera, RT_G3D_CAMERA3D_CLASS_ID);
+    if (!camera)
+        return;
+    recompute_world_matrix(node);
+    eye[0] = node->world_matrix[3];
+    eye[1] = node->world_matrix[7];
+    eye[2] = node->world_matrix[11];
+    forward[0] = -node->world_matrix[2];
+    forward[1] = -node->world_matrix[6];
+    forward[2] = -node->world_matrix[10];
+    up[0] = node->world_matrix[1];
+    up[1] = node->world_matrix[5];
+    up[2] = node->world_matrix[9];
+    target[0] = eye[0] + forward[0];
+    target[1] = eye[1] + forward[1];
+    target[2] = eye[2] + forward[2];
+    rt_camera3d_look_at_components(
+        camera, eye[0], eye[1], eye[2], target[0], target[1], target[2], up[0], up[1], up[2]);
+}
+
 /// @brief Walk the subtree synchronising node transforms with bound bodies / animators.
 ///
 /// Per node, depending on `sync_mode`:
@@ -1018,6 +1047,8 @@ static void scene_node_sync_recursive(rt_scene3d *scene, rt_scene_node3d *node, 
                 scene3d_release_ref(&quat);
             }
         }
+
+        scene_node_sync_camera(current);
 
         for (int32_t i = scene3d_node_child_count(current) - 1; i >= 0; i--) {
             if (!scene_node_stack_push(&scene->sync_stack,
@@ -1257,6 +1288,57 @@ static void scene_normalize_f32_vec3(float v[3],
     v[2] /= len;
 }
 
+/// @brief Transform a local vector by a finite world matrix's linear 3x3 portion.
+static void scene_world_vector_d(const double world_matrix[16],
+                                 const double local[3],
+                                 double out[3]) {
+    if (!world_matrix || !local || !out || !scene3d_matrix_is_finite(world_matrix)) {
+        if (out)
+            out[0] = out[1] = out[2] = 0.0;
+        return;
+    }
+    out[0] = scene3d_clamp_abs_or(
+        world_matrix[0] * local[0] + world_matrix[1] * local[1] + world_matrix[2] * local[2], 0.0);
+    out[1] = scene3d_clamp_abs_or(
+        world_matrix[4] * local[0] + world_matrix[5] * local[1] + world_matrix[6] * local[2], 0.0);
+    out[2] = scene3d_clamp_abs_or(
+        world_matrix[8] * local[0] + world_matrix[9] * local[1] + world_matrix[10] * local[2], 0.0);
+}
+
+/// @brief Normalize a double vector and return its original length, or zero on degeneration.
+static double scene_normalize_f64_vec3(double value[3]) {
+    double scale;
+    double length;
+    if (!value)
+        return 0.0;
+    scale = fmax(fabs(value[0]), fmax(fabs(value[1]), fabs(value[2])));
+    if (!isfinite(scale) || scale <= 1e-12)
+        return 0.0;
+    length = scale * sqrt((value[0] / scale) * (value[0] / scale) +
+                          (value[1] / scale) * (value[1] / scale) +
+                          (value[2] / scale) * (value[2] / scale));
+    if (!isfinite(length) || length <= 1e-12)
+        return 0.0;
+    value[0] /= length;
+    value[1] /= length;
+    value[2] /= length;
+    return length;
+}
+
+/// @brief Conservative maximum axis scale of a world matrix.
+static double scene_world_max_scale(const double world_matrix[16]) {
+    double maximum = 0.0;
+    if (!world_matrix || !scene3d_matrix_is_finite(world_matrix))
+        return 1.0;
+    for (int column = 0; column < 3; column++) {
+        double axis[3] = {world_matrix[column], world_matrix[4 + column], world_matrix[8 + column]};
+        double length = scene_normalize_f64_vec3(axis);
+        if (length > maximum)
+            maximum = length;
+    }
+    return isfinite(maximum) && maximum > 1e-12 ? maximum : 1.0;
+}
+
 /// @brief Transform a node-attached light into world space for the current draw snapshot.
 static void scene_transform_node_light(rt_scene_node3d *node,
                                        const rt_light3d *src,
@@ -1297,6 +1379,76 @@ static void scene_transform_node_light(rt_scene_node3d *node,
     dst->direction[0] = world_dir[0];
     dst->direction[1] = world_dir[1];
     dst->direction[2] = world_dir[2];
+
+    if (src->type == 4) {
+        double transformed_u[3];
+        double transformed_v[3];
+        double transformed_direction[3];
+        double source_u[3] = {src->basis_u[0], src->basis_u[1], src->basis_u[2]};
+        double source_v[3] = {src->basis_v[0], src->basis_v[1], src->basis_v[2]};
+        double source_direction[3] = {src->direction[0], src->direction[1], src->direction[2]};
+        double scale_u;
+        double scale_v;
+        double projection;
+        double orientation;
+        scene_world_vector_d(node->world_matrix, source_u, transformed_u);
+        scene_world_vector_d(node->world_matrix, source_v, transformed_v);
+        scene_world_vector_d(node->world_matrix, source_direction, transformed_direction);
+        scale_u = scene_normalize_f64_vec3(transformed_u);
+        if (scale_u <= 0.0) {
+            transformed_u[0] = 1.0;
+            transformed_u[1] = transformed_u[2] = 0.0;
+            scale_u = 1.0;
+        }
+        projection = transformed_v[0] * transformed_u[0] + transformed_v[1] * transformed_u[1] +
+                     transformed_v[2] * transformed_u[2];
+        transformed_v[0] -= projection * transformed_u[0];
+        transformed_v[1] -= projection * transformed_u[1];
+        transformed_v[2] -= projection * transformed_u[2];
+        scale_v = scene_normalize_f64_vec3(transformed_v);
+        if (scale_v <= 0.0) {
+            transformed_v[0] = 0.0;
+            transformed_v[1] = 1.0;
+            transformed_v[2] = 0.0;
+            projection = transformed_v[0] * transformed_u[0] + transformed_v[1] * transformed_u[1] +
+                         transformed_v[2] * transformed_u[2];
+            transformed_v[0] -= projection * transformed_u[0];
+            transformed_v[1] -= projection * transformed_u[1];
+            transformed_v[2] -= projection * transformed_u[2];
+            if (scene_normalize_f64_vec3(transformed_v) <= 0.0) {
+                transformed_v[0] = 0.0;
+                transformed_v[1] = 0.0;
+                transformed_v[2] = 1.0;
+            }
+            scale_v = 1.0;
+        }
+        transformed_direction[0] =
+            transformed_u[1] * transformed_v[2] - transformed_u[2] * transformed_v[1];
+        transformed_direction[1] =
+            transformed_u[2] * transformed_v[0] - transformed_u[0] * transformed_v[2];
+        transformed_direction[2] =
+            transformed_u[0] * transformed_v[1] - transformed_u[1] * transformed_v[0];
+        scene_normalize_f64_vec3(transformed_direction);
+        orientation = transformed_direction[0] * world_dir[0] +
+                      transformed_direction[1] * world_dir[1] +
+                      transformed_direction[2] * world_dir[2];
+        if (orientation < 0.0) {
+            transformed_direction[0] = -transformed_direction[0];
+            transformed_direction[1] = -transformed_direction[1];
+            transformed_direction[2] = -transformed_direction[2];
+        }
+        memcpy(dst->basis_u, transformed_u, sizeof(transformed_u));
+        memcpy(dst->basis_v, transformed_v, sizeof(transformed_v));
+        memcpy(dst->direction, transformed_direction, sizeof(transformed_direction));
+        dst->width = scene3d_clamp_abs_or(src->width * scale_u, 1.0);
+        dst->height = scene3d_clamp_abs_or(src->height * scale_v, 1.0);
+    }
+    if (src->type == 5 || src->type == 6)
+        dst->radius =
+            scene3d_clamp_abs_or(src->radius * scene_world_max_scale(node->world_matrix), 1.0);
+    if (src->type >= 4 && src->type <= 6)
+        dst->range =
+            scene3d_clamp_abs_or(src->range * scene_world_max_scale(node->world_matrix), 1.0);
 }
 
 /// @brief Recursively collect world-space lights from visible nodes into the draw snapshot.

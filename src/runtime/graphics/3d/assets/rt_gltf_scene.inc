@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 // Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_gltf_scene.inc  (#included from rt_gltf.c; not a standalone translation unit)
-// Purpose: glTF scene-graph node build and scene import
+// File: src/runtime/graphics/3d/assets/rt_gltf_scene.inc  (#included from rt_gltf.c; not a
+// standalone translation unit) Purpose: glTF scene-graph node build and scene import
 //===----------------------------------------------------------------------===//
 
 static void gltf_node_read_transform(void *node_json, rt_scene_node3d *node) {
@@ -72,8 +72,7 @@ static void gltf_node_bind_variant_materials(rt_gltf_asset *asset,
     count = asset->variant_name_count;
     if (!mapping || count <= 0)
         return;
-    default_material =
-        primitive_materials ? primitive_materials[primitive_index] : NULL;
+    default_material = primitive_materials ? primitive_materials[primitive_index] : NULL;
     table = (void **)calloc((size_t)count, sizeof(void *));
     if (!table)
         return;
@@ -167,27 +166,22 @@ static int gltf_node_attach_mesh_primitives(rt_gltf_asset *asset,
     if (prim_start < 0 || prim_start > asset->mesh_count ||
         prim_count > asset->mesh_count - prim_start)
         return 0;
-    if (!gltf_node_attach_primitive_mesh(asset,
-                                         node,
-                                         prim_start,
-                                         skin_ref,
-                                         weights_arr,
-                                         skins,
-                                         skin_count))
+    if (!gltf_node_attach_primitive_mesh(
+            asset, node, prim_start, skin_ref, weights_arr, skins, skin_count))
         return 0;
     gltf_node_set_primitive_material(node, primitive_materials, prim_start);
     gltf_node_bind_variant_materials(
         asset, node, primitive_variant_mappings, prim_start, primitive_materials);
     for (int32_t pi = 1; pi < prim_count; pi++) {
         if (!gltf_node_attach_extra_primitive(asset,
-                                             node,
-                                             prim_start + pi,
-                                             skin_ref,
-                                             weights_arr,
-                                             primitive_materials,
-                                             primitive_variant_mappings,
-                                             skins,
-                                             skin_count))
+                                              node,
+                                              prim_start + pi,
+                                              skin_ref,
+                                              weights_arr,
+                                              primitive_materials,
+                                              primitive_variant_mappings,
+                                              skins,
+                                              skin_count))
             return 0;
     }
     return 1;
@@ -234,17 +228,17 @@ static int gltf_build_template_node(rt_gltf_asset *asset,
     if (skin_ref >= 0 && skin_ref >= skin_count)
         return 0;
     return gltf_node_attach_mesh_primitives(asset,
-                                           node,
-                                           mesh_ref,
-                                           skin_ref,
-                                           weights_arr,
-                                           mesh_json_count,
-                                           mesh_prim_start,
-                                           mesh_prim_count,
-                                           primitive_materials,
-                                           primitive_variant_mappings,
-                                           skins,
-                                           skin_count);
+                                            node,
+                                            mesh_ref,
+                                            skin_ref,
+                                            weights_arr,
+                                            mesh_json_count,
+                                            mesh_prim_start,
+                                            mesh_prim_count,
+                                            primitive_materials,
+                                            primitive_variant_mappings,
+                                            skins,
+                                            skin_count);
 }
 
 static int gltf_link_template_node_children(void *nodes_arr,
@@ -340,11 +334,10 @@ static int gltf_import_scene_from_json(rt_gltf_asset *asset,
         ok = gltf_append_scene(asset,
                                scene_root,
                                (scene_name && scene_name[0] != '\0') ? scene_name
-                                                                      : fallback_scene_name);
+                                                                     : fallback_scene_name);
         if (ok) {
             gltf_scene_info_t *scene = &asset->scenes[asset->scene_count - 1];
-            ok =
-                gltf_import_scene_cameras(scene, root, nodes_arr, nodes, node_json_count, scene_active);
+            ok = gltf_import_scene_cameras(scene, root, nodes_arr, node_json_count, scene_active);
             scene_root = NULL;
             *built_any_io = 1;
         }
@@ -376,7 +369,7 @@ static int gltf_import_fallback_scene(rt_gltf_asset *asset,
     }
     if (ok && attached_any && gltf_append_scene(asset, scene_root, "default")) {
         gltf_scene_info_t *scene = &asset->scenes[asset->scene_count - 1];
-        ok = gltf_import_scene_cameras(scene, root, nodes_arr, nodes, node_json_count, scene_active);
+        ok = gltf_import_scene_cameras(scene, root, nodes_arr, node_json_count, scene_active);
         scene_root = NULL;
     } else if (ok) {
         ok = 0;
@@ -467,10 +460,12 @@ static int gltf_build_node_hierarchy(rt_gltf_asset *asset,
                 }
             }
 
-            if (!load_failed && !gltf_link_template_node_children(nodes_arr, node_json_count, nodes))
+            if (!load_failed &&
+                !gltf_link_template_node_children(nodes_arr, node_json_count, nodes))
                 load_failed = 1;
             if (!load_failed && graph_valid && nodes &&
-                !gltf_import_node_scenes(asset, root, nodes_arr, nodes, node_json_count, node_parent))
+                !gltf_import_node_scenes(
+                    asset, root, nodes_arr, nodes, node_json_count, node_parent))
                 load_failed = 1;
 
             for (int i = 0; i < node_json_count && nodes; i++)

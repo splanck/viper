@@ -1,0 +1,4 @@
+# Uses the existing checked-in PNG, while OBJ intentionally exposes decoded Pixels.
+newmtl decoded_texture
+Kd 1.0 1.0 1.0
+map_Kd test_sprite_load.png

@@ -54,7 +54,7 @@ the loader ignored, and skeletal CUBICSPLINE channels baked to sampled keys.
 | `SceneAsset.LoadAnimationResult(path, index)` / `LoadNodeAnimationResult(path, index)` and asset variants | Returns `Err(message)` for failed asset loads or absent/out-of-range animation clips | Preserves lower-level warnings from dependency loads |
 | `SceneAsset.LoadWithOptions(path, forceTangents)` / `LoadResultWithOptions` | `LoadWithOptions` returns `null` and sets warnings for routine content failures; `LoadResultWithOptions` returns `Err(message)` | `forceTangents = true` generates tangents for every UV0-mapped glTF primitive even when its material has no normal map at load time — for materials that gain normal maps after import (FBX ignores the option) |
 | `SceneAsset.LoadWithOptionsEx(path, options)` | Returns `null` for routine content failures | `options` is a comma-separated flag string; unknown flags are ignored. `forceTangents` — as above. `eightInfluences` — keep up to 8 bone influences per vertex (the strongest 4 in the vertex record, influences 5-8 on a per-mesh side stream applied by CPU skinning; such meshes bypass the GPU skinning fast path). `compressAnimations` — tolerance-based keyframe reduction on imported clips (keys reconstructible by lerp/slerp are dropped; cubic keys and endpoints always survive; dropped counts appear in `AssetDiagnostics3D.GetImportReport()` as `compressedAnimationKeysDropped`). `compactStreams` — every imported mesh opts into the compact 48-byte GPU static-cache vertex encoding (see `Mesh3D.CompactStreams`) |
-| `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing textures and malformed optional morph normal/tangent streams are omitted with warnings; area/volume lights use a warned point-light approximation |
+| `FBX.Load(path)` | Returns `null` for missing, unreadable, wrong-magic, truncated, malformed, unsupported, or oversized FBX content | Missing textures and malformed optional morph normal/tangent streams are omitted with warnings; bounded IK may retain its closest finite pose with a warning |
 | `GLTF.Load(path)` / `GLTF.LoadAsset(path)` | Returns `null` for missing roots, unreadable roots, wrong JSON/GLB magic, malformed JSON, corrupt buffers/accessors, missing required buffers, unsupported dependencies, or oversized content | Missing or unreadable material images leave that texture slot empty and add warnings |
 | `Mesh3D.FromObj(path)` | Returns `null` for missing files, invalid face indices, invalid numeric tokens, empty geometry, malformed syntax, or oversized accumulators | None |
 | `Mesh3D.FromStl(path)` | Returns `null` for missing files, unreadable files, wrong magic, truncated binary payloads, malformed ASCII payloads, or oversized files | Degenerate triangles are skipped as before |
@@ -99,12 +99,14 @@ boundary is explicit:
 
 | FBX content | Imported behavior |
 |---|---|
-| Meshes and materials | Polygon meshes, layer attributes, material bindings, textures, multiple mesh Models, and per-polygon material slots are imported. Multi-material geometry becomes material-specific child meshes. |
+| Meshes and materials | Polygon meshes, layer attributes, material bindings, textures, multiple mesh Models, and per-polygon material slots are imported. Multi-material geometry becomes material-specific child meshes. Rational open/closed/periodic NURBS surfaces and linear, Bézier, quadratic Bézier, cardinal, and B-spline patches are tessellated into ordinary meshes with UVs and derivative normals. |
 | Scene hierarchy | Every non-skeleton `Model` becomes a named `SceneNode3D`. Full local transforms, pivots, pre/post rotations, geometric transforms, inheritance mode, parent hierarchy, and Z-up basis conversion are preserved. Numeric FBX IDs and stable `Objects` ordinals establish identity; names are display/fallback data only. |
 | Skeletons and skinning | Bone hierarchy, bind transforms, the strongest four influences per vertex, and `AnimationStack` skeletal clips are imported. |
-| Cameras | Perspective/orthographic projection, vertical or horizontal FOV (with focal-length fallback), aspect, clipping planes, orthographic zoom, evaluated world transform, and `LookAtProperty`/`UpVectorProperty` targets become standalone `Camera3D` objects. FBX contributes one scene, so all cameras belong to scene index `0`. |
-| Lights | Point, directional, and spot attributes become node-local `Light3D` objects with color, percent intensity, enabled/shadow flags, spot cones, and available attenuation range. Area/volume types become point lights and record a load warning because native light shapes/volumes are not representable. |
-| Object animation | Non-skeleton local translation/rotation/scale curves become one `NodeAnimation3D` per animation stack. Sampling preserves constant edges, authored linear keys, adaptive cubic motion, transform inheritance, and quaternion continuity. Channels bind by stable source-node index and play automatically on an instantiated `SceneAsset`. |
+| Cameras | Perspective/orthographic projection, vertical or horizontal FOV (with animated aperture/focal-length conversion), aspect, clipping planes, orthographic zoom, evaluated world transform, and `LookAtProperty`/`UpVectorProperty` targets become `Camera3D` objects attached to their authored nodes. Transform and scalar projection curves drive independent camera clones after scene instantiation. FBX contributes one scene, so all cameras belong to scene index `0`. |
+| Lights | Point, directional, spot, rectangle-area, sphere-area, and volume attributes become node-local native `Light3D` objects. Color, percent intensity, enabled/shadow flags, spot cones, oriented emitter basis/dimensions, radius, range, and none/linear/quadratic/cubic decay are retained. |
+| Animation layers | Every stack composes connected layers in source order, including mute/solo, animated layer weight, additive/override/override-passthrough channels, rotation accumulation, and additive/multiplicative scale accumulation. The same evaluator feeds skeletal, object, morph, camera, and constraint samples. |
+| Constraints | Position, rotation, scale, parent, aim, and single-chain IK constraints are resolved by numeric object ID and baked into static poses and animation samples. Source/overall weights, axis masks, maintain-offset state, world/up targets, poles, and authored axes are honored; active dependency cycles and structurally invalid graphs reject the load transactionally. |
+| Object animation | Non-skeleton local translation/rotation/scale curves become one `NodeAnimation3D` per animation stack. Sampling preserves constant edges, authored linear keys, adaptive cubic motion, transform inheritance, quaternion continuity, animation-layer composition, and constraint dependencies. Channels bind by stable source-node index and play automatically on an instantiated `SceneAsset`. |
 | Blend shapes | Float/double position, normal, and tangent deltas plus 32/64-bit control-point indexes are remapped through triangulation. Static `DeformPercent`, progressive `FullWeights`, animated deform curves, multiple channels, and material-split clones are preserved as `MorphTarget3D` plus node weight channels. |
 
 Progressive morph channels interpolate base → first shape before the first full
@@ -120,14 +122,16 @@ cannot skip a progressive-morph corner.
 `GetNodeAnimation`, `GetNodeAnimationName`, `GetCamera`, `GetMaterial`, and
 `GetMorphTarget` methods. Loading the same file through `SceneAsset` carries the
 hierarchy, camera membership, lights, skeletal clips, node/object clips, and
-morph data into instancing and VSCN v4 bake/reload.
+morph data into instancing and VSCN v5 bake/reload.
 
-Not currently representable are NURBS/patch geometry, animation-layer blend
-modes, general FBX constraints, camera projection-property animation, automatic
-coupling of an animated camera Model to the standalone immutable `Camera3D`,
-area-light shape emission, and volumetric lighting. Camera Model transform
-curves remain available as ordinary node-animation channels for applications
-that want to drive a camera explicitly.
+The remaining boundaries are explicit. A surface with an active trim region is
+rejected until trim curves have a runtime representation. Unknown custom
+constraint classes may be reported but are not claimed as evaluated built-ins.
+Malformed control nets, invalid knots, cyclic constraints, non-finite layer or
+camera curves, impossible light dimensions, and generated data beyond the
+document budgets reject the complete FBX transaction. Rectangle/sphere shadows
+currently use the existing center-point shadow approximation, and volume lights
+do not claim shadow slots.
 
 glTF extension support is explicit:
 
@@ -167,6 +171,15 @@ magnification, and mip-filter axes through Canvas3D and every backend. UV0 and
 UV1 are supported only when the primitive actually carries the selected stream;
 a missing stream or UV2+ fails with an asset diagnostic instead of silently
 sampling UV0.
+
+glTF/GLB and FBX also retain exact PNG, JPEG, GIF, BMP, and KTX2 bytes whenever
+the complete encoded payload is available from a data URI, buffer view,
+embedded FBX `Content`, packed asset, preload bundle, or dependency file.
+Materials still render through decoded Pixels (or native KTX2 blocks), but the
+unresolved slot remains a source-backed `TextureAsset3D`. This provenance is
+bounded, included in `TextureAsset3D.RetainedBytes`, and carried through VSCN
+v5. If native code mutates the decoded surface, the stale encoded source is
+invalidated and the next save stores the current RGBA8 texels.
 
 Writable `Zanna.Graphics3D` properties expose `get_X` / `set_X` runtime
 accessors and language-level property assignment where supported, such as
@@ -544,8 +557,9 @@ are false and the `texture:*` CPU keys are true for the decoder coverage above.
 `TextureAsset3D.SetResidentMipRange` first reconstructs every entering fallback
 from immutable canonical backing, publishes the new window, and then releases
 decoded `Pixels` outside it. `ResidentBytes` falls on eviction; `RetainedBytes`
-reports the reconstructable backing plus decoded mips still alive. Moving a mip
-back into the window reproduces its original pixels.
+reports the exact bounded PNG, JPEG, GIF, BMP, or KTX2 source container when one
+was imported, plus reconstructable mip backing and decoded mips still alive.
+Moving a mip back into the window reproduces its original pixels.
 Materials retain the texture asset and resolve that active fallback at draw
 time, so already-bound materials follow later residency changes; when no
 fallback exists, capable GPU backends receive the resident compressed blocks
@@ -851,6 +865,7 @@ skips nonresident meshes and falls back to the next resident choice.
 | `SetLodResident(index, resident)` | `Void(Integer, Boolean)` | Mark an LOD mesh payload resident/nonresident |
 | `GetLodResident(index)` | `Boolean(Integer)` | Return whether an LOD mesh payload is resident |
 | `GetLodResidentBytes(index)` | `Integer(Integer)` | Return resident bytes for an LOD mesh payload |
+| `Camera` | `Object` | Attached `Camera3D`, or `null`; read/write and cloned with the node hierarchy |
 
 `SetAutoLOD` selects among meshes registered with `AddLOD`; `GenerateLODs`
 synthesizes that chain automatically from the base mesh using quadric-error
@@ -1048,10 +1063,21 @@ visible inside its own feed) safe by construction.
 
 ### Zanna.Graphics3D.Light3D
 
-Scene light with configurable color, intensity, and enabled state.
+Directional, point, ambient, spot, rectangle-area, sphere-area, or volume scene light.
 
 **Type:** Instance (obj)
-**Constructor:** `Canvas3D.AddDirectionalLight(...)` (returned as `Light3D`)
+
+#### Constructors
+
+| Constructor | Signature | Description |
+|-------------|-----------|-------------|
+| `Directional(direction, r, g, b)` | `Object(Object, Double, Double, Double)` | Infinite directional emitter |
+| `Point(position, r, g, b, attenuation)` | `Object(Object, Double, Double, Double, Double)` | Point emitter with distance falloff |
+| `Ambient(r, g, b)` | `Object(Double, Double, Double)` | Uniform ambient contribution |
+| `Spot(position, direction, r, g, b, attenuation, inner, outer)` | `Object(Object, Object, Double, Double, Double, Double, Double, Double)` | Cone emitter; angles are degrees |
+| `AreaRectangle(position, direction, width, height, r, g, b, attenuation, range)` | `Object(Object, Object, Double, Double, Double, Double, Double, Double, Double)` | Oriented one-sided rectangle emitter |
+| `AreaSphere(position, radius, r, g, b, range)` | `Object(Object, Double, Double, Double, Double, Double)` | Omnidirectional sphere emitter |
+| `Volume(position, radius, r, g, b, range)` | `Object(Object, Double, Double, Double, Double, Double)` | Isotropic volume emitter |
 
 #### Methods
 
@@ -1059,18 +1085,29 @@ Scene light with configurable color, intensity, and enabled state.
 |--------|-----------|-------------|
 | `SetIntensity(value)` | `Void(Double)` | Set light intensity multiplier |
 | `SetColor(r, g, b)` | `Void(Double, Double, Double)` | Set light color using normalized RGB components |
+| `SetAttenuation(value)` | `Void(Double)` | Set point/spot distance attenuation |
 
 #### Properties
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Type` | Integer | Read | `0=directional`, `1=point`, `2=ambient`, `3=spot` |
+| `Type` | Integer | Read | `0=directional`, `1=point`, `2=ambient`, `3=spot`, `4=rectangle`, `5=sphere`, `6=volume` |
 | `Color` | Object | Read | RGB `Vec3` |
 | `Intensity` | Double | Read | Brightness multiplier |
-| `Enabled` | Boolean | Read/Write | Disabled lights are skipped by rendering |
-| `CastsShadows` | Boolean | Read/Write | Directional lights default to true; point, spot, and ambient lights default to false. Spot and point lights can opt in and use remaining budget (a point light claims six slots for its cube faces). |
-| `Direction` | Object | Read | Direction `Vec3` |
-| `Position` | Object | Read | Position `Vec3` |
+| `IsEnabled` | Boolean | Read/Write | Disabled lights are skipped by rendering |
+| `CastsShadows` | Boolean | Read/Write | Directional lights default to true. Point and spot lights may opt in; rectangle/sphere shadows use a center-point approximation; volume lights never claim a slot. |
+| `Direction` | Object | Read/Write | Direction or rectangle normal as a normalized `Vec3` |
+| `Position` | Object | Read/Write | Position `Vec3` for finite lights |
+| `Attenuation` | Double | Read | Current point/spot attenuation |
+| `Width` | Double | Read/Write | Rectangle width |
+| `Height` | Double | Read/Write | Rectangle height |
+| `Radius` | Double | Read/Write | Sphere/volume radius |
+| `DecayType` | Integer | Read/Write | FBX-compatible `0=none`, `1=linear`, `2=quadratic`, `3=cubic` falloff |
+| `Range` | Double | Read/Write | Finite-light range; zero selects constructor/importer default behavior |
+
+All backends consume the same native area/volume parameters. Constructors and
+property writes sanitize non-finite values, clamp colors and non-negative
+dimensions, normalize directions, and keep spot cones finite and ordered.
 
 ---
 
@@ -1174,9 +1211,12 @@ written VSCN and compares its enumerable resources with the source
 `SceneAsset`. Human mode warns with stable `*-count-reduced` codes when a
 round-trip drops resources. `--json` emits the machine-readable
 `zanna.asset-bake-report/v1` object, including source and baked counts, losses,
-and the source import diagnostics. This makes format-fidelity decisions visible
-in asset pipelines instead of treating a successfully written file as proof of
-a lossless conversion.
+per-slot `textureFidelity`, and the source import diagnostics. Texture entries
+distinguish exact `preserved-source`, canonical `preserved-decoded`, and
+intentional `changed-after-import` fallback while checking dimensions, mips,
+native format, decoded texels, and shared identity. This makes format-fidelity
+decisions visible in asset pipelines instead of treating a successfully written
+file as proof of a lossless conversion.
 
 #### Properties
 
@@ -1204,7 +1244,7 @@ a lossless conversion.
 | `LoadNodeAnimationResult(path, index)` | `Result[NodeAnimation3D](String, Integer)` | Load an imported node animation clip as `Ok(NodeAnimation3D)` or `Err(message)` |
 | `LoadNodeAnimationAssetResult(path, index)` | `Result[NodeAnimation3D](String, Integer)` | Load a node animation clip through `Zanna.IO.Assets` |
 | `Load(path)` / `LoadAsset(path)` | `SceneAsset(String)` | Compatibility loaders that return `null` for routine content failures |
-| `Save(path)` | `Integer(String)` | Atomically save the complete asset as VSCN v4; returns `1` on success or `0` on validation/allocation/I/O failure |
+| `Save(path)` | `Integer(String)` | Atomically save the complete asset as VSCN v5; returns `1` on success or `0` on validation/allocation/I/O failure |
 
 `LoadAsset` and every `*AssetResult` root load accept ordinary logical asset
 paths or `asset://` paths. All six `SceneAsset` formats resolve from embedded
@@ -1218,15 +1258,21 @@ all immutable scenes and their camera membership, the complete indexed
 mesh/material/skeleton/animation inventories (including resources not reachable
 from scene zero), node/object/morph animation samples, material-variant names
 and node mappings, and static morph position/normal/tangent deltas and weights.
-Stable source-node indexes preserve animation targeting when node names are
-duplicated; all twelve material custom parameters and per-slot anisotropy also
-round-trip, including imported glTF anisotropy factors.
-VSCN v4 stores numeric sample streams as explicitly little-endian binary data
-inside Base64 and rejects malformed lengths, non-finite values, or invalid
-table indexes before publishing an asset. Loaders remain compatible with VSCN
-versions 1–3. Texture dimensions, decoded RGBA texels, sampler state, UV
-transforms, and cubemap faces round-trip; original PNG/JPEG/KTX container or
-compression bytes intentionally do not.
+Camera attachments, camera scalar animation paths, and complete directional,
+punctual, area, and volume light state also round-trip. Stable source-node
+indexes preserve animation targeting when node names are duplicated; all twelve
+material custom parameters and per-slot anisotropy also round-trip, including
+imported glTF anisotropy factors.
+
+VSCN v5 stores numeric sample streams as explicitly little-endian binary data
+inside Base64 and rejects malformed lengths, non-finite values, invalid table
+indexes, unsupported source-container kinds, mismatched image magic, or failed
+image decoding before publishing an asset. Loaders remain compatible with VSCN
+versions 1–4. Texture entries are discriminated `rgba8` snapshots or `source`
+containers. Exact KTX2/PNG/JPEG/GIF/BMP bytes, native KTX2 format/mips, decoded
+texels, shared texture identity, sampler state, UV transforms, the lightmap
+slot, and cubemap faces survive when available. A decoded texture changed after
+import deliberately saves its current RGBA8 form instead of stale source bytes.
 
 #### Scene and Camera Methods
 
@@ -1238,7 +1284,15 @@ compression bytes intentionally do not.
 | `InstantiateSceneAt(index)` | `Object(Integer)` | Clone a scene by index as a fresh `SceneGraph` |
 | `GetMorphTarget(meshIndex)` | `MorphTarget3D(Integer)` | Borrow the morph container attached to the corresponding `GetMesh` slot, or `null` |
 
-glTF cameras are imported as standalone `Camera3D` handles with the node's world transform applied. Cached `SceneAsset` assets remain immutable: index `0` is the active/default scene, secondary glTF scene roots follow it, and invalid scene indices return zero/null rather than changing shared loader state. FBX imports preserve authored model hierarchy where available and split polygon material assignments into instantiable material-specific mesh nodes.
+glTF cameras are imported as `Camera3D` handles attached to their authored
+scene nodes with the node's world transform applied. The immutable template's
+scene camera table and node slot share one identity; each instantiated scene
+clones the camera so projection and view edits remain instance-local. Cached
+`SceneAsset` assets remain immutable: index `0` is the active/default scene,
+secondary glTF scene roots follow it, and invalid scene indices return zero/null
+rather than changing shared loader state. FBX imports preserve authored model
+hierarchy where available and split polygon material assignments into
+instantiable material-specific mesh nodes.
 
 #### Lookup and Instancing Methods
 

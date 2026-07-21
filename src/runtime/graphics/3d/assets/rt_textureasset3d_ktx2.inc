@@ -362,9 +362,15 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data,
 
     /* BasisLZ/ETC1S levels have no vkFormat and carry their own codebook segment;
      * they decode straight to RGBA8 Pixels through the dedicated path. */
-    if (supercompression_scheme == 1)
-        return textureasset3d_parse_ktx2_basislz(
+    if (supercompression_scheme == 1) {
+        asset = (rt_textureasset3d *)textureasset3d_parse_ktx2_basislz(
             data, size, api_name, pixel_width, pixel_height, level_count);
+        if (asset && !textureasset3d_attach_source_container(asset, data, (uint64_t)size, "ktx2")) {
+            textureasset3d_release_ref((void **)&asset);
+            return NULL;
+        }
+        return asset;
+    }
 
     format = textureasset3d_format_from_vk(vk_format);
     /* UASTC LDR 4x4 also carries vkFormat 0; it is identified by the Data Format
@@ -637,6 +643,10 @@ static void *textureasset3d_parse_ktx2(const uint8_t *data,
                                                                                                : 0;
     asset->retained_bytes = textureasset3d_compute_retained_bytes(asset);
     textureasset3d_set_resident_mip_range_internal(asset, 0, asset->mip_count, NULL);
+    if (!textureasset3d_attach_source_container(asset, data, (uint64_t)size, "ktx2")) {
+        textureasset3d_release_ref((void **)&asset);
+        return NULL;
+    }
     return asset;
 }
 

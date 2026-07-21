@@ -2074,6 +2074,8 @@ add_test(NAME zanna_asset_bake_fidelity_report
         COMMAND ${CMAKE_COMMAND}
         -DZANNA_EXE=$<TARGET_FILE:zanna>
         -DINPUT=${CMAKE_SOURCE_DIR}/src/tests/fixtures/runtime/assets/gltf/asset_bake_lossy.gltf
+        -DSOURCE_INPUT=${CMAKE_SOURCE_DIR}/examples/3d/openworld_slice/assets/models/quad_etc1s.glb
+        -DDECODED_INPUT=${CMAKE_SOURCE_DIR}/src/tests/fixtures/runtime/texture_fidelity_decoded.obj
         -DOUTPUT=${CMAKE_BINARY_DIR}/asset_bake_fidelity_test.vscn
         -P ${CMAKE_CURRENT_SOURCE_DIR}/e2e/test_asset_bake_fidelity.cmake)
 set_tests_properties(zanna_asset_bake_fidelity_report PROPERTIES

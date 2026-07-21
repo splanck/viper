@@ -35,20 +35,28 @@ import compatibility.
 
 ## Tiled JSON And TMX Import
 
-`ImportTiledResult` and `ImportTiledAssetResult` convert finite orthogonal Tiled
-maps into the canonical scene schema. The filesystem method resolves dependencies
-relative to each owning file. The asset method uses normalized logical names and
-can resolve the complete graph from embedded assets or a mounted ZPAK; absolute,
-URI, and asset-root-escaping dependencies fail.
+`ImportTiledResult` and `ImportTiledAssetResult` convert finite or infinite Tiled
+maps into the canonical scene schema. Orthogonal, isometric, staggered,
+hexagonal, and oblique projections are retained. The filesystem method resolves
+dependencies relative to each owning file. The asset method uses normalized
+logical names and can resolve the complete graph from embedded assets or a
+mounted ZPAK; absolute, URI, and asset-root-escaping dependencies fail.
 
 The supported mapping includes:
 
 - JSON arrays, CSV, and Base64 little-endian GIDs, with raw, zlib, gzip, or Zstandard data;
-- inline or external TSJ/TSX atlas tilesets, including atlas margin and spacing;
-- source-order group flattening, inherited visibility, and integral tile offsets;
+- inline or external TSJ/TSX atlas, mixed, and image-collection tilesets,
+  including margin, spacing, per-tile images, and tileset drawing offsets;
+- signed infinite chunks, including encoded/compressed chunk payloads; chunk
+  unions become bounded editable grids while their signed origin is retained;
+- map-wide canonical tile IDs and Tiled horizontal, vertical, diagonal, and
+  hexagonal 60/120-degree GID transforms;
+- source-order group flattening with inherited visibility, opacity, tint,
+  parallax, and fractional pixel offsets;
 - object and image layers, JSON or XML object templates, typed map/object properties,
   and file-property path resolution;
-- full-tile collision objects, integer/Boolean tile properties, and tile animations.
+- full-tile collision objects, typed tile metadata, and tile animations with
+  their authored per-frame durations.
 
 Group names are joined with `/`. Layer properties become scene properties named
 `tiled.layer.<group/layer>.<property>`. Imported objects preserve runtime-neutral
@@ -59,13 +67,19 @@ even though the SceneDocument `x`/`y` compatibility fields are integers. Duplica
 authored object names fall back to the globally unique numeric Tiled ID. Image
 layers use object type `tiled.image-layer` and carry `tiled.image`.
 
-Tiled frame durations are reduced to their greatest-common-divisor tick and
-expanded only when the result fits Tilemap's eight-frame animation limit. A tile
-layer may bind one tileset. Infinite/nonorthogonal maps, mixed tilesets in one
-layer, GID transform flags, fractional tile offsets, ambiguous metadata across
-multiple used tilesets, collection-of-images tilesets, and unsafe/malformed or
-oversized dependencies return `Err` rather than being approximated. See
-[ADR 0140](../../adr/0140-tiled-map-and-scene-import.md) for the complete contract.
+The preserved `tiledRuntime` section carries projection, render order, signed
+origin, source-frame geometry, effective layer placement/parallax, canonical
+variants, and image dependencies through `ToJson`, reload, and
+`BuildTilemap()`. Integer and Boolean tile properties also populate Tilemap's
+legacy fixed property table; other typed tile metadata remains in the preserved
+scene section without aliasing between tilesets.
+
+Malformed chunks, invalid or undeclared GIDs, overlapping GID ranges, cyclic or
+unsafe dependencies, mismatched declared image sizes, and inputs above the
+document/atlas resource limits return `Err` transactionally. See
+[ADR 0140](../../adr/0140-tiled-map-and-scene-import.md) for the original adapter
+and [ADR 0144](../../adr/0144-complete-tiled-map-import.md) for the complete
+projection/composed-atlas contract.
 
 `Save` writes a temporary file next to the target and replaces the target
 only after that write succeeds. Failed replacement leaves the temporary file
@@ -188,12 +202,16 @@ or editor code.
 
 `TiledMapLoader.Load*` is the convenience path when the caller wants the imported
 map and tileset images bound in one operation. It calls the same normalized
-importer, builds the Tilemap, repacks margin/spacing atlases into a tight grid,
-and binds the appropriate image per layer.
+importer and builds one bounded composed atlas with a shared source frame. That
+atlas crops spaced/margined sheets, places bottom-left-anchored image-collection
+art, applies GID transforms and effective tint/opacity, and preserves logical
+cell dimensions independently from artwork dimensions.
 
-When present, preserved `collision`, `tileProperties`, `animations`, and
-`autotiles` sections are applied to the returned Tilemap using the matching
-Tilemap runtime APIs.
+When present, preserved `collision`, `tileProperties`, `animations`,
+`autotiles`, and `tiledRuntime` sections are applied to the returned Tilemap
+using the matching runtime APIs. Variable animation durations, projected
+coordinate conversion, fractional layer placement, parallax, render order, and
+signed origins therefore survive scene JSON round trips.
 
 ## Resource Limits
 

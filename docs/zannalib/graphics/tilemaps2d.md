@@ -52,24 +52,32 @@ drawable tileset frame.
 
 ## TiledMapLoader
 
-`TiledMapLoader.LoadResult(path)` imports a loose finite orthogonal Tiled JSON or
-TMX map and returns `Ok(Tilemap)` or `Err(message)`. `LoadAssetResult(path)` uses
+`TiledMapLoader.LoadResult(path)` imports a loose finite or infinite Tiled JSON
+or TMX map and returns `Ok(Tilemap)` or `Err(message)`. `LoadAssetResult(path)` uses
 the asset manager for the root, external TSJ/TSX tilesets, templates, and images,
 so the dependency graph can live in a mounted ZPAK or embedded asset blob. `Load`
 and `LoadAsset` are nullable compatibility forms.
 
 Both paths use the same normalization as
 [`SceneDocument.ImportTiled*`](../game/scene.md#tiled-json-and-tmx-import), then
-call `BuildTilemap` and bind each layer's sole tileset image. Spaced or margined
-atlases are copied into a tight runtime grid. The map-authored tile size is used;
-`SetTileSize` remains the default only for `NewTilemap(width, height)`.
+call `BuildTilemap` and compose all reachable atlas/image-collection art into one
+bounded source-frame atlas. Mixed tilesets, margin/spacing, tile drawing offsets,
+larger artwork, GID transforms, inherited tint/opacity, and fractional layer
+placement are retained. Orthogonal, isometric, staggered, hexagonal, and oblique
+maps share the same logical collision grid; projection affects drawing,
+coordinate conversion, viewport culling, scaled drawing, and scaled hit tests.
+The map-authored tile size is used; `SetTileSize` remains the default only for
+`NewTilemap(width, height)`.
 
 ## Notes
 
 - `TexturePackerAtlas`, `AsepriteImporter`, and `TiledMapLoader` are runtime-side helpers for common 2D asset layouts.
 - `TilemapRenderer2D.DrawCount` reports the number of non-empty, valid tiles drawn by the last `Draw` or `DrawRegion` call, not the number of renderer method calls.
 - `Tilemap.CountDrawnRegion(x, y, width, height)`, `Tilemap.CountDrawnVisible(canvas, offsetX, offsetY)`, and `Tilemap.CountDrawnVisibleScaled(canvas, offsetX, offsetY, scalePercent)` expose drawable-tile counting logic for tests, debug overlays, and editor diagnostics.
-- `Tilemap.DrawScaled` and `Tilemap.HitTestScaled` are intended for scene-editor viewports that need pan/zoom rendering and local mouse-to-tile conversion without duplicating tile math in UI code.
+- `Tilemap.DrawScaled` and `Tilemap.HitTestScaled` scale imported source frames,
+  projection geometry, and authored offsets while keeping the caller's camera
+  offset in destination pixels. Staggered and hexagonal hit tests use their
+  exact cell shapes rather than an orthogonal approximation.
 - `AsepriteImporter` is a grid helper rather than a `.aseprite` parser; `TiledMapLoader`
   does parse supported Tiled JSON/TMX files and returns explicit Result diagnostics.
 - Atlas regions are validated against their backing `Pixels` buffer before registration.

@@ -1341,7 +1341,7 @@ static float canvas3d_shadow_spot_light_param_score(const vgfx3d_light_params_t 
     return base_score / (1.0f + distance);
 }
 
-/// @brief Score a shadow-requesting point light like a spot (luminance / camera proximity).
+/// @brief Score a shadow-requesting point/area light by luminance and camera proximity.
 static float canvas3d_shadow_point_light_param_score(const vgfx3d_light_params_t *l,
                                                      const float *camera_pos) {
     float base_score;
@@ -1350,7 +1350,7 @@ static float canvas3d_shadow_point_light_param_score(const vgfx3d_light_params_t
     float dz;
     float distance;
 
-    if (!l || l->type != 1)
+    if (!l || (l->type != 1 && l->type != 4 && l->type != 5))
         return -1.0f;
     base_score = canvas3d_shadow_light_luminance_score(l);
     if (base_score <= 0.0f)
@@ -1381,12 +1381,13 @@ static int canvas3d_light_param_close(float a, float b) {
 ///        for the purpose of shadow-slot de-duplication.
 /// @details Compares the fields that define the shadow projection and lighting contribution.
 ///          Directional lights use direction/color/intensity; spot lights also include position,
-///          attenuation, and cone cosines. Point lights remain unshadowed and never match.
+///          attenuation, cone, or emitter dimensions. Volume lights never match.
 static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
                                               const vgfx3d_light_params_t *b) {
     if (!a || !b || a->type != b->type)
         return 0;
-    if ((a->type != 0 && a->type != 1 && a->type != 3) || !a->casts_shadows || !b->casts_shadows)
+    if ((a->type != 0 && a->type != 1 && a->type != 3 && a->type != 4 && a->type != 5) ||
+        !a->casts_shadows || !b->casts_shadows)
         return 0;
     if (a->identity || b->identity)
         return a->identity == b->identity;
@@ -1397,7 +1398,7 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
     }
     if (!canvas3d_light_param_close(a->intensity, b->intensity))
         return 0;
-    if (a->type == 3 || a->type == 1) {
+    if (a->type == 3 || a->type == 1 || a->type == 4 || a->type == 5) {
         for (int i = 0; i < 3; i++) {
             if (!canvas3d_light_param_close(a->position[i], b->position[i]))
                 return 0;
@@ -1406,6 +1407,11 @@ static int canvas3d_shadow_light_params_match(const vgfx3d_light_params_t *a,
             return 0;
         if (a->type == 1)
             return 1;
+        if (a->type == 4)
+            return canvas3d_light_param_close(a->width, b->width) &&
+                   canvas3d_light_param_close(a->height, b->height);
+        if (a->type == 5)
+            return canvas3d_light_param_close(a->radius, b->radius);
         return canvas3d_light_param_close(a->inner_cos, b->inner_cos) &&
                canvas3d_light_param_close(a->outer_cos, b->outer_cos);
     }
@@ -1462,7 +1468,7 @@ static void canvas3d_insert_shadow_light_candidate(vgfx3d_light_params_t *out_li
         out_lights[insert_at] = *light;
         out_lights[insert_at].shadow_index = -1;
         out_lights[insert_at].shadow_cascade_count = 1;
-        out_lights[insert_at].shadow_projection_type = light->type == 3
+        out_lights[insert_at].shadow_projection_type = light->type == 3 || light->type == 4
                                                            ? VGFX3D_SHADOW_PROJECTION_PERSPECTIVE
                                                            : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
         if (*count < max_shadow_lights)
@@ -1550,7 +1556,7 @@ static int32_t canvas3d_select_shadow_lights_from_draws(const rt_canvas3d *c,
             const vgfx3d_light_params_t *light = &cmds[draw_index].lights[li];
             float score =
                 canvas3d_shadow_spot_light_param_score(light, c ? c->cached_cam_pos : NULL);
-            if (light->type == 1)
+            if (light->type == 1 || light->type == 4 || light->type == 5)
                 score =
                     canvas3d_shadow_point_light_param_score(light, c ? c->cached_cam_pos : NULL);
 

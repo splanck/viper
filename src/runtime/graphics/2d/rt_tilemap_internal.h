@@ -3,10 +3,20 @@
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-//===----------------------------------------------------------------------===//
+// File: src/runtime/graphics/2d/rt_tilemap_internal.h
+// Purpose: Shared private Tilemap storage for projection, imported artwork,
+//   animation, rendering, metadata, and serialization.
 //
-// File: src/runtime/graphics/rt_tilemap_internal.h
-// Purpose: Shared internal tilemap state for rendering, metadata, and I/O.
+// Key invariants:
+//   - Logical cell dimensions remain independent from imported source frames.
+//   - Dynamic animation arrays are owned by the containing Tilemap.
+//
+// Ownership/Lifetime:
+//   - Layer tiles, cloned tilesets, and animation arrays release in the finalizer.
+//   - The base tile array remains inline after rt_tilemap_impl.
+//
+// Links: rt_tilemap.h, rt_tilemap.c, rt_tilemap_io.c,
+//   docs/adr/0144-complete-tiled-map-import.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -17,6 +27,7 @@
 #define TM_MAX_LAYERS 16
 #define TM_MAX_TILE_ANIMS 64
 #define TM_MAX_ANIM_FRAMES 8
+#define TM_MAX_IMPORT_ANIM_FRAMES 4096
 #define MAX_TILE_PROPS 256
 #define MAX_PROP_KEYS 8
 #define MAX_PROP_KEY_LEN 32
@@ -47,11 +58,16 @@ typedef struct {
     char name[32];
     int8_t visible;
     int8_t owns_tiles;
+    double import_offset_x;
+    double import_offset_y;
+    double import_parallax_x;
+    double import_parallax_y;
 } tm_layer;
 
 typedef struct {
     int64_t base_tile_id;
-    int64_t frame_tiles[TM_MAX_ANIM_FRAMES];
+    int64_t *frame_tiles;
+    int64_t *frame_durations;
     int32_t frame_count;
     int64_t ms_per_frame;
     int64_t timer;
@@ -63,6 +79,22 @@ typedef struct rt_tilemap_impl {
     int64_t height;
     int64_t tile_width;
     int64_t tile_height;
+    int64_t source_frame_width;
+    int64_t source_frame_height;
+    int64_t import_draw_offset_x;
+    int64_t import_draw_offset_y;
+    int64_t import_origin_tile_x;
+    int64_t import_origin_tile_y;
+    int64_t import_projection_height;
+    int64_t import_hex_side_length;
+    int32_t import_orientation;
+    int32_t import_render_order;
+    int32_t import_stagger_axis;
+    int8_t import_stagger_even;
+    double import_skew_x;
+    double import_skew_y;
+    double import_parallax_origin_x;
+    double import_parallax_origin_y;
     int64_t tileset_cols;
     int64_t tileset_rows;
     int64_t tile_count;

@@ -71,6 +71,18 @@ static const std::vector<SignatureException> kSignatureExceptions = {
      "Spot",
      "Light3DSpot",
      "Static factory alias; the leading object parameters are direction and position inputs."},
+    {"Zanna.Graphics3D.Light3D",
+     "AreaRectangle",
+     "Light3DAreaRectangle",
+     "Static factory alias; the leading object parameters are position and direction inputs."},
+    {"Zanna.Graphics3D.Light3D",
+     "AreaSphere",
+     "Light3DAreaSphere",
+     "Static factory alias; the leading obj is the position input, not a receiver."},
+    {"Zanna.Graphics3D.Light3D",
+     "Volume",
+     "Light3DVolume",
+     "Static factory alias; the leading obj is the position input, not a receiver."},
 };
 
 struct RuntimeFunc {

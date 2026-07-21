@@ -4,7 +4,19 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_scene_editor.cpp
-// Purpose: Scene-owned editable level document primitives for IDE scene tools.
+// Purpose: Scene-owned editable level documents, preserved rich sections,
+//   imported-layout Tilemap reconstruction, diagnostics, and durable file I/O.
+//
+// Key invariants:
+//   - Scene edits are bounds-checked and preserved-section input is size-bounded.
+//   - Imported Tilemap state is optional and malformed fields fall back safely.
+//
+// Ownership/Lifetime:
+//   - Scene handles own C++ SceneState through their runtime finalizer.
+//   - Temporary parsed runtime values are released before each C ABI return.
+//
+// Links: rt_scene_editor.h, rt_tiled_import.cpp,
+//   docs/adr/0144-complete-tiled-map-import.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -533,6 +545,22 @@ bool jsonInt(void *map, const char *key, int64_t &out) {
     if (!mapHas(map, key))
         return false;
     return jsonNumberToInt(mapGet(map, key), out);
+}
+
+bool jsonDouble(void *map, const char *key, double &out) {
+    if (!mapHas(map, key))
+        return false;
+    void *value = mapGet(map, key);
+    if (!value)
+        return false;
+    int64_t tag = rt_box_type(value);
+    if (tag == RT_BOX_I64)
+        out = static_cast<double>(rt_unbox_i64(value));
+    else if (tag == RT_BOX_F64)
+        out = rt_unbox_f64(value);
+    else
+        return false;
+    return std::isfinite(out);
 }
 
 bool jsonBool(void *map, const char *key, bool &out, bool allowNumeric) {
@@ -1509,21 +1537,138 @@ void applyAnimationsSection(void *tilemap, void *root) {
         if (!isMap(anim))
             continue;
         int64_t base = 0;
-        int64_t frames = 0;
-        int64_t ms = 0;
-        if (!jsonInt(anim, "baseTile", base) || !jsonInt(anim, "frameCount", frames) ||
-            !jsonInt(anim, "msPerFrame", ms))
+        if (!jsonInt(anim, "baseTile", base))
             continue;
-        rt_tilemap_set_tile_anim(tilemap, base, frames, ms);
         void *frameList = mapGet(anim, "frames");
         if (!isSeq(frameList))
             continue;
         int64_t frameCount = rt_seq_len(frameList);
+        if (frameCount <= 0 || frameCount > 4096)
+            continue;
+        std::vector<int64_t> frameTiles(static_cast<size_t>(frameCount));
+        bool validFrames = true;
         for (int64_t fi = 0; fi < frameCount; ++fi) {
-            int64_t tile = 0;
-            if (jsonNumberToInt(rt_seq_get(frameList, fi), tile))
-                rt_tilemap_set_tile_anim_frame(tilemap, base, fi, tile);
+            validFrames = validFrames && jsonNumberToInt(rt_seq_get(frameList, fi),
+                                                         frameTiles[static_cast<size_t>(fi)]);
         }
+        if (!validFrames)
+            continue;
+        void *durationList = mapGet(anim, "durations");
+        if (isSeq(durationList) && rt_seq_len(durationList) == frameCount) {
+            std::vector<int64_t> durations(static_cast<size_t>(frameCount));
+            bool validDurations = true;
+            for (int64_t fi = 0; fi < frameCount; ++fi) {
+                validDurations = validDurations &&
+                                 jsonNumberToInt(rt_seq_get(durationList, fi),
+                                                 durations[static_cast<size_t>(fi)]) &&
+                                 durations[static_cast<size_t>(fi)] > 0;
+            }
+            if (validDurations)
+                rt_tilemap_set_import_tile_anim(
+                    tilemap, base, frameCount, frameTiles.data(), durations.data());
+            continue;
+        }
+        int64_t declaredFrames = 0;
+        int64_t ms = 0;
+        if (!jsonInt(anim, "frameCount", declaredFrames) || declaredFrames != frameCount ||
+            !jsonInt(anim, "msPerFrame", ms))
+            continue;
+        rt_tilemap_set_tile_anim(tilemap, base, frameCount, ms);
+        for (int64_t fi = 0; fi < frameCount; ++fi)
+            rt_tilemap_set_tile_anim_frame(tilemap, base, fi, frameTiles[static_cast<size_t>(fi)]);
+    }
+}
+
+void applyTiledRuntimeSection(void *tilemap, void *root) {
+    if (!isMap(root))
+        return;
+    std::string orientationName;
+    jsonString(root, "orientation", orientationName);
+    int64_t orientation = RT_TILEMAP_IMPORT_ORTHOGONAL;
+    if (orientationName == "isometric")
+        orientation = RT_TILEMAP_IMPORT_ISOMETRIC;
+    else if (orientationName == "staggered")
+        orientation = RT_TILEMAP_IMPORT_STAGGERED;
+    else if (orientationName == "hexagonal")
+        orientation = RT_TILEMAP_IMPORT_HEXAGONAL;
+    else if (orientationName == "oblique")
+        orientation = RT_TILEMAP_IMPORT_OBLIQUE;
+
+    int64_t originX = 0;
+    int64_t originY = 0;
+    int64_t projectionHeight = rt_tilemap_get_height(tilemap);
+    int64_t sourceWidth = rt_tilemap_get_tile_width(tilemap);
+    int64_t sourceHeight = rt_tilemap_get_tile_height(tilemap);
+    int64_t drawOffsetX = 0;
+    int64_t drawOffsetY = 0;
+    int64_t hexSideLength = 0;
+    jsonInt(root, "originTileX", originX);
+    jsonInt(root, "originTileY", originY);
+    jsonInt(root, "projectionHeight", projectionHeight);
+    jsonInt(root, "sourceFrameWidth", sourceWidth);
+    jsonInt(root, "sourceFrameHeight", sourceHeight);
+    jsonInt(root, "drawOffsetX", drawOffsetX);
+    jsonInt(root, "drawOffsetY", drawOffsetY);
+    jsonInt(root, "hexSideLength", hexSideLength);
+
+    std::string renderOrderName;
+    jsonString(root, "renderOrder", renderOrderName);
+    int64_t renderOrder = RT_TILEMAP_IMPORT_RIGHT_DOWN;
+    if (renderOrderName == "right-up")
+        renderOrder = RT_TILEMAP_IMPORT_RIGHT_UP;
+    else if (renderOrderName == "left-down")
+        renderOrder = RT_TILEMAP_IMPORT_LEFT_DOWN;
+    else if (renderOrderName == "left-up")
+        renderOrder = RT_TILEMAP_IMPORT_LEFT_UP;
+    std::string staggerAxisName;
+    jsonString(root, "staggerAxis", staggerAxisName);
+    int64_t staggerAxis = staggerAxisName == "x" ? 0 : 1;
+    std::string staggerIndexName;
+    jsonString(root, "staggerIndex", staggerIndexName);
+    int8_t staggerEven = staggerIndexName == "even" ? 1 : 0;
+    double skewX = 0.0;
+    double skewY = 0.0;
+    double parallaxOriginX = 0.0;
+    double parallaxOriginY = 0.0;
+    jsonDouble(root, "skewX", skewX);
+    jsonDouble(root, "skewY", skewY);
+    jsonDouble(root, "parallaxOriginX", parallaxOriginX);
+    jsonDouble(root, "parallaxOriginY", parallaxOriginY);
+    rt_tilemap_configure_import_layout(tilemap,
+                                       orientation,
+                                       originX,
+                                       originY,
+                                       sourceWidth,
+                                       sourceHeight,
+                                       drawOffsetX,
+                                       drawOffsetY,
+                                       renderOrder,
+                                       staggerAxis,
+                                       staggerEven,
+                                       hexSideLength,
+                                       skewX,
+                                       skewY,
+                                       parallaxOriginX,
+                                       parallaxOriginY,
+                                       projectionHeight);
+
+    void *layers = mapGet(root, "layers");
+    if (!isSeq(layers))
+        return;
+    int64_t layerCount = std::min(rt_seq_len(layers), rt_tilemap_get_layer_count(tilemap));
+    for (int64_t index = 0; index < layerCount; ++index) {
+        void *layer = rt_seq_get(layers, index);
+        if (!isMap(layer))
+            continue;
+        double offsetX = 0.0;
+        double offsetY = 0.0;
+        double parallaxX = 1.0;
+        double parallaxY = 1.0;
+        jsonDouble(layer, "offsetX", offsetX);
+        jsonDouble(layer, "offsetY", offsetY);
+        jsonDouble(layer, "parallaxX", parallaxX);
+        jsonDouble(layer, "parallaxY", parallaxY);
+        rt_tilemap_configure_import_layer(tilemap, index, offsetX, offsetY, parallaxX, parallaxY);
     }
 }
 
@@ -1556,7 +1701,7 @@ void applyAutotilesSection(void *tilemap, void *root) {
 void applyPreservedTilemapSections(const SceneState &s, void *tilemap) {
     for (const auto &[key, section] : s.preservedSections) {
         if (key != "collision" && key != "tileProperties" && key != "animations" &&
-            key != "autotiles")
+            key != "autotiles" && key != "tiledRuntime")
             continue;
         rt_string text = makeString(section.canonicalJson);
         void *root = nullptr;
@@ -1569,6 +1714,8 @@ void applyPreservedTilemapSections(const SceneState &s, void *tilemap) {
                 applyAnimationsSection(tilemap, root);
             else if (key == "autotiles")
                 applyAutotilesSection(tilemap, root);
+            else if (key == "tiledRuntime")
+                applyTiledRuntimeSection(tilemap, root);
             releaseJsonValue(root);
         }
         rt_string_unref(text);

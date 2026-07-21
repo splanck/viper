@@ -58,9 +58,10 @@ void *rt_model3d_load_asset(rt_string path);
 /// @details Failure diagnostics are returned in the Result instead of requiring
 /// `AssetDiagnostics3D.LastLoadError`.
 void *rt_model3d_load_asset_result(rt_string path);
-/// @brief Save the complete imported scene asset as a VSCN v4 file.
+/// @brief Save the complete imported scene asset as a VSCN v5 file.
 /// @details Unlike SceneGraph.Save, this preserves every immutable scene, camera association,
-/// animation class, material variant, morph target, and enumerable shared resource.
+/// animation class, material variant, morph target, enumerable shared resource, and exact
+/// supported texture source container.
 /// @return One after atomic publication, otherwise zero.
 int64_t rt_model3d_save(void *obj, rt_string path);
 /// @brief Internal async path: build a glTF/GLB model from preloaded root bytes.

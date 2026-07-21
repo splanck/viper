@@ -734,6 +734,68 @@ int8_t rt_camera3d_is_ortho(void *obj) {
     return cam && cam->is_ortho ? 1 : 0;
 }
 
+/// @brief Switch a camera between perspective and orthographic projection.
+/// @details Both projection parameter sets remain retained, so a perspective camera can be
+///          toggled to orthographic and back without losing its authored FOV. Cameras originally
+///          constructed as orthographic receive a safe 60-degree perspective FOV on their first
+///          switch because that constructor historically stored zero in the unused FOV field.
+void rt_camera3d_set_is_ortho(void *obj, int8_t is_ortho) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    int8_t next;
+    if (!cam)
+        return;
+    next = is_ortho ? 1 : 0;
+    if (cam->is_ortho == next)
+        return;
+    cam->is_ortho = next;
+    cam->ortho_size = sanitize_ortho_size(cam->ortho_size);
+    if (!next && (!isfinite(cam->fov) || cam->fov < 1.0 || cam->fov > 179.0))
+        cam->fov = 60.0;
+    rebuild_projection(cam);
+}
+
+/// @brief Read the camera's retained orthographic half-height through the native sanitizer.
+double rt_camera3d_get_ortho_size(void *obj) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    return cam ? sanitize_ortho_size(cam->ortho_size) : 0.0;
+}
+
+/// @brief Change the retained orthographic half-height and rebuild an active ortho projection.
+void rt_camera3d_set_ortho_size(void *obj, double size) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
+        return;
+    cam->ortho_size = sanitize_ortho_size(size);
+    if (cam->is_ortho)
+        rebuild_projection(cam);
+}
+
+/// @brief Deep-copy a Camera3D for an independently mutable scene instance.
+/// @details Camera3D owns no nested heap allocations, so copying its scalar and fixed-array state
+///          after allocating a correctly registered destination is a complete clone. The
+///          destination's runtime header lives outside this payload and is therefore unaffected.
+void *rt_camera3d_clone(void *obj) {
+    rt_camera3d *source = rt_camera3d_checked_or_stack(obj);
+    rt_camera3d *copy;
+    void *copy_vptr;
+    if (!source)
+        return NULL;
+    copy = (rt_camera3d *)(source->is_ortho ? rt_camera3d_new_ortho(source->ortho_size,
+                                                                    source->aspect,
+                                                                    source->near_plane,
+                                                                    source->far_plane)
+                                            : rt_camera3d_new(source->fov,
+                                                              source->aspect,
+                                                              source->near_plane,
+                                                              source->far_plane));
+    if (!copy)
+        return NULL;
+    copy_vptr = copy->vptr;
+    memcpy(copy, source, sizeof(*copy));
+    copy->vptr = copy_vptr;
+    return copy;
+}
+
 /// @brief Core look-at: position the camera at @p eye_in aiming at @p target_in with up @p up_in.
 /// @details Sanitizes inputs and recomputes the camera basis/view matrix; shared by the Vec3 and
 ///          scalar-component entry points.
@@ -890,6 +952,18 @@ void rt_camera3d_set_fov(void *obj, double fov) {
         return;
     cam->fov = sanitize_fov(fov);
     rebuild_projection(cam);
+}
+
+/// @brief Set the retained perspective FOV without discarding it on an orthographic camera.
+/// @details NodeAnimation3D uses this private path so an FBX camera can animate dormant
+///          perspective parameters before a later step channel switches projection mode.
+void rt_camera3d_set_retained_fov(void *obj, double fov) {
+    rt_camera3d *cam = rt_camera3d_checked_or_stack(obj);
+    if (!cam)
+        return;
+    cam->fov = sanitize_fov(fov);
+    if (!cam->is_ortho)
+        rebuild_projection(cam);
 }
 
 /// @brief Set a perspective camera's FOV from a horizontal aperture in degrees.

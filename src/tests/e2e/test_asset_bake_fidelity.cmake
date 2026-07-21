@@ -7,7 +7,7 @@
 #
 # File: src/tests/e2e/test_asset_bake_fidelity.cmake
 # Purpose: Verify the machine-readable and human-readable `zanna asset bake`
-#   fidelity diagnostics against a full VSCN v4 SceneAsset round trip.
+#   fidelity diagnostics against full VSCN v5 SceneAsset round trips.
 #
 # Key invariants:
 #   - JSON mode emits the stable v1 report schema on stdout.
@@ -19,8 +19,10 @@
 #
 #===----------------------------------------------------------------------===#
 
-if (NOT DEFINED ZANNA_EXE OR NOT DEFINED INPUT OR NOT DEFINED OUTPUT)
-    message(FATAL_ERROR "ZANNA_EXE, INPUT, and OUTPUT are required")
+if (NOT DEFINED ZANNA_EXE OR NOT DEFINED INPUT OR NOT DEFINED SOURCE_INPUT OR
+    NOT DEFINED DECODED_INPUT OR NOT DEFINED OUTPUT)
+    message(FATAL_ERROR
+            "ZANNA_EXE, INPUT, SOURCE_INPUT, DECODED_INPUT, and OUTPUT are required")
 endif ()
 
 execute_process(
@@ -72,4 +74,49 @@ if (NOT human_result EQUAL 0 OR NOT human_stdout MATCHES "baked ")
 endif ()
 if (human_stderr)
     message(FATAL_ERROR "lossless human bake wrote unexpected warnings: ${human_stderr}")
+endif ()
+
+execute_process(
+        COMMAND "${ZANNA_EXE}" asset bake "${SOURCE_INPUT}" "${OUTPUT}.source.vscn" --json
+        RESULT_VARIABLE source_result
+        OUTPUT_VARIABLE source_stdout
+        ERROR_VARIABLE source_stderr)
+if (NOT source_result EQUAL 0 OR source_stderr)
+    message(FATAL_ERROR
+            "source-container fidelity bake failed (${source_result}): ${source_stderr}")
+endif ()
+string(JSON source_lossy GET "${source_stdout}" lossy)
+string(JSON preserved_source GET "${source_stdout}"
+        textureFidelity summary preserved-source)
+string(JSON source_changed GET "${source_stdout}"
+        textureFidelity summary changed-after-import)
+string(JSON source_texture_losses GET "${source_stdout}" textureFidelity summary losses)
+string(JSON source_entry_state GET "${source_stdout}" textureFidelity entries 0 state)
+string(JSON source_entry_container GET "${source_stdout}" textureFidelity entries 0 sourceContainer)
+if (source_lossy OR NOT preserved_source EQUAL 1 OR NOT source_changed EQUAL 0 OR
+    NOT source_texture_losses EQUAL 0 OR NOT source_entry_state STREQUAL "preserved-source" OR
+    NOT source_entry_container STREQUAL "ktx2")
+    message(FATAL_ERROR "unexpected exact-source texture fidelity report: ${source_stdout}")
+endif ()
+
+execute_process(
+        COMMAND "${ZANNA_EXE}" asset bake "${DECODED_INPUT}" "${OUTPUT}.decoded.vscn" --json
+        RESULT_VARIABLE decoded_result
+        OUTPUT_VARIABLE decoded_stdout
+        ERROR_VARIABLE decoded_stderr)
+if (NOT decoded_result EQUAL 0 OR decoded_stderr)
+    message(FATAL_ERROR
+            "decoded-texture fidelity bake failed (${decoded_result}): ${decoded_stderr}")
+endif ()
+string(JSON decoded_lossy GET "${decoded_stdout}" lossy)
+string(JSON preserved_decoded GET "${decoded_stdout}"
+        textureFidelity summary preserved-decoded)
+string(JSON decoded_changed GET "${decoded_stdout}"
+        textureFidelity summary changed-after-import)
+string(JSON decoded_texture_losses GET "${decoded_stdout}" textureFidelity summary losses)
+string(JSON decoded_entry_state GET "${decoded_stdout}" textureFidelity entries 0 state)
+if (decoded_lossy OR NOT preserved_decoded EQUAL 1 OR NOT decoded_changed EQUAL 0 OR
+    NOT decoded_texture_losses EQUAL 0 OR
+    NOT decoded_entry_state STREQUAL "preserved-decoded")
+    message(FATAL_ERROR "unexpected decoded texture fidelity report: ${decoded_stdout}")
 endif ()

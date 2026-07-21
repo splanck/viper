@@ -43,6 +43,7 @@
 #include "rt_seq.h"
 #include "rt_skeleton3d_internal.h"
 #include "rt_string.h"
+#include "rt_textureasset3d.h"
 #include "rt_trap.h"
 
 #include <math.h>
@@ -75,7 +76,9 @@ typedef struct {
     int32_t scene_count;
     const char *const *variant_names;
     int32_t variant_count;
+    int32_t output_version;
     int8_t asset_mode;
+    int8_t requires_v5;
 } vscn_save_context_t;
 
 /// @brief Base64 alphabet table used by the encoder.
@@ -375,9 +378,19 @@ static int vscn_append_json_string(char **buf, size_t *len, size_t *cap, const c
 /// The save algorithm runs collection over the whole scene before
 /// any serialisation so each shared asset gets a stable index
 /// referenced from every material that uses it.
-static rt_pixels_impl *vscn_material_texture_pixels(void *texture_ref) {
-    void *pixels = rt_material3d_resolve_texture_pixels(texture_ref);
-    return rt_pixels_checked_impl_or_null(pixels);
+static void *vscn_material_texture_ref(void *texture_ref) {
+    const uint8_t *source = NULL;
+    uint64_t source_size = 0;
+    const char *source_kind = NULL;
+    void *pixels;
+    if (!texture_ref)
+        return NULL;
+    if (rt_g3d_has_class(texture_ref, RT_G3D_TEXTUREASSET3D_CLASS_ID) &&
+        rt_textureasset3d_get_source_container(texture_ref, &source, &source_size, &source_kind) &&
+        source && source_size > 0 && source_kind)
+        return texture_ref;
+    pixels = rt_material3d_resolve_texture_pixels(texture_ref);
+    return rt_pixels_checked_impl_or_null(pixels) ? texture_ref : NULL;
 }
 
 /// @brief True if a cubemap has all six faces present and square at its declared face size
@@ -403,26 +416,29 @@ static rt_cubemap3d *vscn_material_env_map(rt_material3d *material) {
 /// @brief Register a material's referenced textures and environment cubemap into the save
 ///   context's dedup tables; returns 0 on allocation failure, 1 on success (or nothing to do).
 static int vscn_collect_material_assets(rt_material3d *material, vscn_save_context_t *ctx) {
-    rt_pixels_impl *texture;
+    void *texture;
     rt_cubemap3d *cubemap;
     if (!material || !ctx)
         return 1;
-    texture = vscn_material_texture_pixels(material->texture);
+    texture = vscn_material_texture_ref(material->texture);
     if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    texture = vscn_material_texture_pixels(material->normal_map);
+    texture = vscn_material_texture_ref(material->normal_map);
     if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    texture = vscn_material_texture_pixels(material->specular_map);
+    texture = vscn_material_texture_ref(material->specular_map);
     if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    texture = vscn_material_texture_pixels(material->emissive_map);
+    texture = vscn_material_texture_ref(material->emissive_map);
     if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    texture = vscn_material_texture_pixels(material->metallic_roughness_map);
+    texture = vscn_material_texture_ref(material->metallic_roughness_map);
     if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
-    texture = vscn_material_texture_pixels(material->ao_map);
+    texture = vscn_material_texture_ref(material->ao_map);
+    if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
+        return 0;
+    texture = vscn_material_texture_ref(material->lightmap);
     if (texture && vscn_ptr_table_index_or_add(&ctx->textures, texture) < 0)
         return 0;
     cubemap = vscn_material_env_map(material);
@@ -484,10 +500,20 @@ static int vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t *
         material =
             (rt_material3d *)rt_g3d_checked_or_null(current->material, RT_G3D_MATERIAL3D_CLASS_ID);
         if ((current->mesh && !mesh) || (current->material && !material) ||
-            (current->light && !rt_g3d_has_class(current->light, RT_G3D_LIGHT3D_CLASS_ID))) {
+            (current->light && !rt_g3d_has_class(current->light, RT_G3D_LIGHT3D_CLASS_ID)) ||
+            (current->camera && !rt_g3d_has_class(current->camera, RT_G3D_CAMERA3D_CLASS_ID))) {
             free(stack);
             return 0;
         }
+        if (current->camera) {
+            if (vscn_ptr_table_index_or_add(&ctx->cameras, current->camera) < 0) {
+                free(stack);
+                return 0;
+            }
+            ctx->requires_v5 = 1;
+        }
+        if (current->light)
+            ctx->requires_v5 = 1;
         if (!vscn_collect_mesh(mesh, ctx) || !vscn_collect_material(material, ctx)) {
             free(stack);
             return 0;
@@ -629,15 +655,40 @@ static int vscn_collect_asset_view(const rt_vscn_asset_save_view *view, vscn_sav
     return 1;
 }
 
-/// @brief Emit a Pixels object as a `{"width":…, "height":…, "data":"<base64>"}` JSON entry.
+/// @brief Emit one original texture reference as exact source bytes or canonical RGBA8.
 static int vscn_serialize_texture(
-    rt_pixels_impl *pixels, char **buf, size_t *len, size_t *cap, int depth) {
+    void *texture_ref, char **buf, size_t *len, size_t *cap, int depth, int version) {
     char indent[64];
+    const uint8_t *source = NULL;
+    uint64_t source_size = 0;
+    const char *source_kind = NULL;
+    rt_pixels_impl *pixels;
     size_t pixel_count;
     size_t rgba_len;
     uint8_t *rgba = NULL;
     char *rgba_base64 = NULL;
 
+    if (!texture_ref)
+        return 0;
+    vscn_make_indent(indent, sizeof(indent), depth);
+    if (version >= 5 &&
+        rt_textureasset3d_get_source_container(texture_ref, &source, &source_size, &source_kind)) {
+        char *source_base64;
+        int ok;
+        if (!source || source_size == 0 || source_size > (uint64_t)SIZE_MAX || !source_kind)
+            return 0;
+        source_base64 = vscn_base64_encode(source, (size_t)source_size, NULL);
+        if (!source_base64)
+            return 0;
+        ok = vscn_append(buf, len, cap, "%s{\"kind\": \"source\", \"container\": ", indent) &&
+             vscn_append_json_string(buf, len, cap, source_kind) &&
+             vscn_append(buf, len, cap, ", \"sourceBase64\": ") &&
+             vscn_append_json_string(buf, len, cap, source_base64) &&
+             vscn_append(buf, len, cap, "}");
+        free(source_base64);
+        return ok;
+    }
+    pixels = rt_pixels_checked_impl_or_null(rt_material3d_resolve_texture_pixels(texture_ref));
     if (!pixels)
         return 0;
     if (pixels->width < 0 || pixels->height < 0)
@@ -645,7 +696,6 @@ static int vscn_serialize_texture(
     if ((size_t)pixels->width > SIZE_MAX / (size_t)(pixels->height > 0 ? pixels->height : 1))
         return 0;
 
-    vscn_make_indent(indent, sizeof(indent), depth);
     pixel_count = (size_t)pixels->width * (size_t)pixels->height;
     if (pixel_count > SIZE_MAX / 4)
         return 0;
@@ -673,7 +723,10 @@ static int vscn_serialize_texture(
         int ok = vscn_append(buf,
                              len,
                              cap,
-                             "%s{\"width\": %lld, \"height\": %lld, \"rgbaBase64\": ",
+                             version >= 5 ? "%s{\"kind\": \"rgba8\", \"width\": %lld, "
+                                            "\"height\": %lld, \"rgbaBase64\": "
+                                          : "%s{\"width\": %lld, \"height\": %lld, "
+                                            "\"rgbaBase64\": ",
                              indent,
                              (long long)pixels->width,
                              (long long)pixels->height) &&
@@ -723,18 +776,20 @@ static int vscn_serialize_material(rt_material3d *material,
         return 0;
     vscn_make_indent(indent, sizeof(indent), depth);
 
-    const int texture_index = vscn_ptr_table_index_or_add(
-        &ctx->textures, vscn_material_texture_pixels(material->texture));
+    const int texture_index =
+        vscn_ptr_table_index_or_add(&ctx->textures, vscn_material_texture_ref(material->texture));
     const int normal_index = vscn_ptr_table_index_or_add(
-        &ctx->textures, vscn_material_texture_pixels(material->normal_map));
+        &ctx->textures, vscn_material_texture_ref(material->normal_map));
     const int specular_index = vscn_ptr_table_index_or_add(
-        &ctx->textures, vscn_material_texture_pixels(material->specular_map));
+        &ctx->textures, vscn_material_texture_ref(material->specular_map));
     const int emissive_index = vscn_ptr_table_index_or_add(
-        &ctx->textures, vscn_material_texture_pixels(material->emissive_map));
+        &ctx->textures, vscn_material_texture_ref(material->emissive_map));
     const int metallic_roughness_index = vscn_ptr_table_index_or_add(
-        &ctx->textures, vscn_material_texture_pixels(material->metallic_roughness_map));
+        &ctx->textures, vscn_material_texture_ref(material->metallic_roughness_map));
     const int ao_index =
-        vscn_ptr_table_index_or_add(&ctx->textures, vscn_material_texture_pixels(material->ao_map));
+        vscn_ptr_table_index_or_add(&ctx->textures, vscn_material_texture_ref(material->ao_map));
+    const int lightmap_index =
+        vscn_ptr_table_index_or_add(&ctx->textures, vscn_material_texture_ref(material->lightmap));
     const int env_index =
         vscn_ptr_table_index_or_add(&ctx->cubemaps, vscn_material_env_map(material));
 
@@ -795,14 +850,15 @@ static int vscn_serialize_material(rt_material3d *material,
                      cap,
                      "\"texture\": %d, \"normalMap\": %d, \"specularMap\": %d, "
                      "\"emissiveMap\": %d, \"metallicRoughnessMap\": %d, \"aoMap\": %d, "
-                     "\"envMap\": %d, \"customParams\": [",
+                     "\"envMap\": %d, \"lightMap\": %d, \"customParams\": [",
                      texture_index,
                      normal_index,
                      specular_index,
                      emissive_index,
                      metallic_roughness_index,
                      ao_index,
-                     env_index)) {
+                     env_index,
+                     lightmap_index)) {
         return 0;
     }
 
@@ -857,7 +913,7 @@ static int vscn_serialize_material(rt_material3d *material,
     return vscn_append(buf, len, cap, "]}");
 }
 
-/// @brief Append a mesh's complete VSCN v4 morph-target block, if attached.
+/// @brief Append a mesh's complete VSCN v4+ morph-target block, if attached.
 static int vscn_serialize_mesh_morph_targets(rt_mesh3d *mesh,
                                              char **buf,
                                              size_t *len,
@@ -1127,6 +1183,13 @@ static int vscn_serialize_node_fields(rt_scene_node3d *node,
             return 0;
     }
 
+    if (ctx->output_version >= 5 && node->camera) {
+        int camera_index = vscn_ptr_table_index_or_add(&ctx->cameras, node->camera);
+        if (camera_index < 0 ||
+            !vscn_append(buf, len, cap, ",\n%s  \"camera\": %d", indent, camera_index))
+            return 0;
+    }
+
     if (node->light) {
         rt_light3d *light = (rt_light3d *)node->light;
         double light_dir[3] = {vscn_clamp_abs_or(light->direction[0], 0.0),
@@ -1142,9 +1205,11 @@ static int vscn_serialize_node_fields(rt_scene_node3d *node,
                          "\"color\": [%.17g, %.17g, %.17g], "
                          "\"intensity\": %.17g, \"attenuation\": %.17g, "
                          "\"innerCos\": %.17g, \"outerCos\": %.17g, "
-                         "\"castsShadows\": %s}",
+                         "\"castsShadows\": %s",
                          indent,
-                         (light->type >= 0 && light->type <= 3) ? light->type : 1,
+                         (light->type >= 0 && light->type <= (ctx->output_version >= 5 ? 6 : 3))
+                             ? light->type
+                             : 1,
                          light_dir[0],
                          light_dir[1],
                          light_dir[2],
@@ -1159,6 +1224,31 @@ static int vscn_serialize_node_fields(rt_scene_node3d *node,
                          vscn_clamp_or(light->inner_cos, 1.0, 0.0, 1.0),
                          vscn_clamp_or(light->outer_cos, 0.7071067811865476, 0.0, 1.0),
                          light->casts_shadows ? "true" : "false")) {
+            return 0;
+        }
+        if (ctx->output_version >= 5) {
+            if (!vscn_append(buf,
+                             len,
+                             cap,
+                             ", \"enabled\": %s, \"basisU\": [%.17g, %.17g, %.17g], "
+                             "\"basisV\": [%.17g, %.17g, %.17g], \"width\": %.17g, "
+                             "\"height\": %.17g, \"radius\": %.17g, \"range\": %.17g, "
+                             "\"decayType\": %d}",
+                             light->enabled ? "true" : "false",
+                             vscn_clamp_abs_or(light->basis_u[0], 1.0),
+                             vscn_clamp_abs_or(light->basis_u[1], 0.0),
+                             vscn_clamp_abs_or(light->basis_u[2], 0.0),
+                             vscn_clamp_abs_or(light->basis_v[0], 0.0),
+                             vscn_clamp_abs_or(light->basis_v[1], 1.0),
+                             vscn_clamp_abs_or(light->basis_v[2], 0.0),
+                             vscn_nonnegative_or(light->width, 1.0),
+                             vscn_nonnegative_or(light->height, 1.0),
+                             vscn_nonnegative_or(light->radius, 1.0),
+                             vscn_nonnegative_or(light->range, 0.0),
+                             light->decay_type >= 0 && light->decay_type <= 3 ? light->decay_type
+                                                                              : 2))
+                return 0;
+        } else if (!vscn_append(buf, len, cap, "}")) {
             return 0;
         }
     }
@@ -1301,12 +1391,28 @@ static void vscn_save_free_ctx(vscn_save_context_t *ctx) {
     vscn_free_ptr_table(&ctx->cameras);
 }
 
+/// @brief True when the texture table contains at least one still-valid exact source container.
+static int vscn_save_has_source_texture(const vscn_save_context_t *ctx) {
+    if (!ctx)
+        return 0;
+    for (int32_t i = 0; i < ctx->textures.count; ++i) {
+        const uint8_t *data = NULL;
+        uint64_t size = 0;
+        const char *kind = NULL;
+        if (rt_textureasset3d_get_source_container(ctx->textures.items[i], &data, &size, &kind) &&
+            data && size > 0 && kind)
+            return 1;
+    }
+    return 0;
+}
+
 /// @brief Emit the `"textures": [ ... ],` array. @return 1 on success, 0 on append failure.
 static int vscn_save_emit_textures(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
     if (!vscn_append(buf, len, cap, "  \"textures\": [\n"))
         return 0;
     for (int32_t i = 0; i < ctx->textures.count; i++) {
-        if (!vscn_serialize_texture((rt_pixels_impl *)ctx->textures.items[i], buf, len, cap, 2) ||
+        if (!vscn_serialize_texture(
+                ctx->textures.items[i], buf, len, cap, 2, ctx->output_version) ||
             (i < ctx->textures.count - 1 && !vscn_append(buf, len, cap, ",")) ||
             !vscn_append(buf, len, cap, "\n"))
             return 0;
@@ -1445,7 +1551,7 @@ static int vscn_save_emit_animations(char **buf,
     return vscn_append(buf, len, cap, "  ],\n");
 }
 
-/// @brief Emit complete VSCN v4 node/object/morph animation clips.
+/// @brief Emit complete VSCN v5 node/object/morph/camera animation clips.
 static int vscn_save_emit_node_animations(char **buf,
                                           size_t *len,
                                           size_t *cap,
@@ -1485,7 +1591,7 @@ static int vscn_save_emit_node_animations(char **buf,
             if (!channel->target_name || !rt_string_is_handle(channel->target_name) ||
                 channel->key_count <= 0 || channel->value_width <= 0 || !channel->times ||
                 !channel->values || channel->path < RT_NODE_ANIM_PATH_TRANSLATION ||
-                channel->path > RT_NODE_ANIM_PATH_WEIGHTS ||
+                channel->path > RT_NODE_ANIM_PATH_LAST ||
                 channel->interpolation < RT_NODE_ANIM_INTERP_LINEAR ||
                 channel->interpolation > RT_NODE_ANIM_INTERP_CUBICSPLINE ||
                 (size_t)channel->key_count > SIZE_MAX / (size_t)channel->value_width)
@@ -1556,7 +1662,7 @@ static int vscn_save_emit_node_animations(char **buf,
     return vscn_append(buf, len, cap, "  ],\n");
 }
 
-/// @brief Emit the deduplicated VSCN v4 Camera3D table.
+/// @brief Emit the deduplicated VSCN v5 Camera3D table.
 static int vscn_save_emit_cameras(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
     if (!vscn_append(buf, len, cap, "  \"cameras\": [\n"))
         return 0;
@@ -1599,7 +1705,7 @@ static int vscn_save_emit_cameras(char **buf, size_t *len, size_t *cap, vscn_sav
     return vscn_append(buf, len, cap, "  ],\n");
 }
 
-/// @brief Emit ordered VSCN v4 material-variant display names.
+/// @brief Emit ordered VSCN v5 material-variant display names.
 static int vscn_save_emit_variant_names(char **buf,
                                         size_t *len,
                                         size_t *cap,
@@ -1671,7 +1777,7 @@ static int vscn_save_emit_scene_node_array(
     return vscn_append(buf, len, cap, emitted > 0 ? "\n    ]" : "    ]");
 }
 
-/// @brief Emit ordered VSCN v4 immutable scenes and their camera memberships.
+/// @brief Emit ordered VSCN v5 immutable scenes and their camera memberships.
 static int vscn_save_emit_scenes(char **buf, size_t *len, size_t *cap, vscn_save_context_t *ctx) {
     if (!ctx->scenes || ctx->scene_count <= 0 || !vscn_append(buf, len, cap, "  \"scenes\": [\n"))
         return 0;
@@ -1728,7 +1834,7 @@ static int64_t vscn_write_atomic(const char *filepath, const char *buf, size_t l
     return result;
 }
 
-/// @brief Serialize a complete imported SceneAsset as VSCN v4.
+/// @brief Serialize a complete imported SceneAsset as VSCN v5.
 int64_t rt_vscn_save_asset_view(const rt_vscn_asset_save_view *view, rt_string path) {
     vscn_save_context_t ctx = {0};
     char *buf = NULL;
@@ -1736,6 +1842,7 @@ int64_t rt_vscn_save_asset_view(const rt_vscn_asset_save_view *view, rt_string p
     size_t cap = 0;
     const char *filepath;
     int64_t result;
+    ctx.output_version = 5;
     if (!view || !path || !rt_string_is_handle(path))
         return 0;
     filepath = rt_string_cstr(path);
@@ -1745,7 +1852,7 @@ int64_t rt_vscn_save_asset_view(const rt_vscn_asset_save_view *view, rt_string p
     }
     if (!vscn_append(&buf, &len, &cap, "{\n") ||
         !vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n") ||
-        !vscn_append(&buf, &len, &cap, "  \"version\": 4,\n") ||
+        !vscn_append(&buf, &len, &cap, "  \"version\": 5,\n") ||
         !vscn_save_emit_textures(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_cubemaps(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_materials(&buf, &len, &cap, &ctx) ||
@@ -1803,19 +1910,23 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
     /* Rig data (skeletons/animations/side streams) promotes the file to v3;
      * plain scenes keep emitting v2 so existing consumers see no change. */
     int has_rig = ctx.skeletons.count > 0 || ctx.animation_count > 0;
+    int version;
     for (int32_t i = 0; !has_rig && i < ctx.meshes.count; i++) {
         const rt_mesh3d *m = (const rt_mesh3d *)ctx.meshes.items[i];
         if (m->bone_map || m->extra_influences)
             has_rig = 1;
     }
+    version = (ctx.requires_v5 || vscn_save_has_source_texture(&ctx)) ? 5 : (has_rig ? 3 : 2);
+    ctx.output_version = version;
     if (!vscn_append(&buf, &len, &cap, "{\n") ||
         !vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n") ||
-        !vscn_append(&buf, &len, &cap, "  \"version\": %d,\n", has_rig ? 3 : 2) ||
+        !vscn_append(&buf, &len, &cap, "  \"version\": %d,\n", version) ||
         !vscn_save_emit_textures(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_cubemaps(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_materials(&buf, &len, &cap, &ctx) ||
         (has_rig && !vscn_save_emit_skeletons(&buf, &len, &cap, &ctx)) ||
         (has_rig && !vscn_save_emit_animations(&buf, &len, &cap, &ctx)) ||
+        (version >= 5 && !vscn_save_emit_cameras(&buf, &len, &cap, &ctx)) ||
         !vscn_save_emit_meshes(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_nodes(&buf, &len, &cap, &ctx, scene->root) ||
         !vscn_append(&buf, &len, &cap, "}\n")) {

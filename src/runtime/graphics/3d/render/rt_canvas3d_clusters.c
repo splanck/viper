@@ -152,13 +152,38 @@ typedef struct {
     int32_t z0, z1;
 } cluster_range_t;
 
-/// @brief Compute the conservative cluster ranges covered by one point/spot light.
+/// @brief Return a conservative world-space influence radius for a finite local light.
+static float cluster_local_light_radius(const vgfx3d_light_params_t *light) {
+    float emitter_radius;
+    float reach;
+    if (!light)
+        return 0.0f;
+    if (light->type == 6)
+        return isfinite(light->radius) && light->radius > 0.0f ? light->radius : 0.0f;
+    if (light->type == 4) {
+        float half_width =
+            isfinite(light->width) && light->width > 0.0f ? light->width * 0.5f : 0.5f;
+        float half_height =
+            isfinite(light->height) && light->height > 0.0f ? light->height * 0.5f : 0.5f;
+        emitter_radius = sqrtf(half_width * half_width + half_height * half_height);
+        reach = isfinite(light->range) && light->range > 0.0f ? light->range : 0.0f;
+        return emitter_radius + reach;
+    }
+    if (light->type == 5) {
+        emitter_radius = isfinite(light->radius) && light->radius > 0.0f ? light->radius : 1.0f;
+        reach = isfinite(light->range) && light->range > 0.0f ? light->range : 0.0f;
+        return emitter_radius + reach;
+    }
+    return canvas3d_cluster_light_radius(light->intensity, light->attenuation);
+}
+
+/// @brief Compute the conservative cluster ranges covered by one local light.
 static void cluster_range_for_light(const rt_canvas3d *c,
                                     const vgfx3d_light_params_t *light,
                                     float znear,
                                     float zfar,
                                     cluster_range_t *out) {
-    float radius = canvas3d_cluster_light_radius(light->intensity, light->attenuation);
+    float radius = cluster_local_light_radius(light);
     float depth;
     float min_x;
     float min_y;
@@ -211,7 +236,7 @@ static void cluster_range_for_light(const rt_canvas3d *c,
     }
 }
 
-/// @brief Sort-order key: directional(0)/ambient(2) lights precede point(1)/spot(3).
+/// @brief Sort-order key: directional(0)/ambient(2) precede every finite local light.
 int canvas3d_cluster_light_is_global(int32_t type) {
     return type == 0 || type == 2;
 }

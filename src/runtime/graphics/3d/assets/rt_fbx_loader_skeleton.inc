@@ -110,6 +110,7 @@ static int32_t fbx_skeleton_topo_order(const fbx_skel_bone_info_t *bones,
 /// rotations, pivots, and bind poses stay coherent.
 static void *fbx_extract_skeleton(fbx_node_t *root,
                                   const fbx_conn_table_t *ct,
+                                  const fbx_constraint_pose_t *constraint_pose,
                                   int z_up,
                                   fbx_bone_binding_t **out_bindings,
                                   int32_t *out_binding_count) {
@@ -239,8 +240,12 @@ static void *fbx_extract_skeleton(fbx_node_t *root,
             }
         }
 
+        const double *constraint_global =
+            fbx_constraint_static_global_for_id(constraint_pose, bi->id);
         if (bi->has_cluster_global_bind) {
             memcpy(global_bind, bi->cluster_global_bind, sizeof(global_bind));
+        } else if (constraint_global) {
+            memcpy(global_bind, constraint_global, sizeof(global_bind));
         } else if (parent_idx >= 0) {
             fbx_build_inherited_global_matrix(&global_binds[(size_t)parent_idx * 16u],
                                               &bones[order[parent_idx]].transform,

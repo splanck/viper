@@ -180,6 +180,11 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_crypto_module_set_mode")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_crypto_module_status_cstr")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_asset_load_raw")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_textureasset3d_get_pixels")
+// Exact encoded texture provenance is an importer/persistence bridge. These
+// helpers deliberately remain below the script-facing TextureAsset3D surface.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_textureasset3d_get_source_container")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_textureasset3d_get_source_container_state")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_textureasset3d_wrap_encoded_pixels")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_textureasset3d_alpha_metadata_known")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_textureasset3d_has_alpha_texels")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_textureasset3d_get_native_mip_info")
@@ -734,6 +739,12 @@ RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sprite_animator_get_current")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_sprite_animator_play")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_spritebatch_draw_region_ex")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_texatlas3d_get_uv_rect")
+// Normalized Tiled layout, layer, tile-count, and animation installation is a
+// private importer bridge rather than a general script mutation API.
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tilemap_configure_import_layout")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tilemap_configure_import_layer")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tilemap_set_import_tile_count")
+RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tilemap_set_import_tile_anim")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tilemap_pixel_to_tile")
 RUNTIME_SURFACE_INTERNAL_SYMBOL("rt_tilemap_tile_to_pixel")
 

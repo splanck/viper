@@ -188,8 +188,8 @@ static int clip_triangle(const pipe_vert_t *tri, pipe_vert_t *out) {
 /// @brief Per-vertex Blinn-Phong lighting (Gouraud shading).
 ///
 /// For each light, computes diffuse + Blinn-Phong specular contribution
-/// and accumulates into the vertex color. Light types: 0=directional,
-/// 1=point, 2=ambient (color-only), 3=spot (with smooth cone falloff).
+/// and accumulates into the vertex color. Native rectangle/sphere emitters use
+/// their closest analytic point; volume lights add isotropic local irradiance.
 /// Shaded color is later interpolated across triangle pixels (Gouraud).
 /// Materials with `unlit` flag bypass lighting entirely.
 static void compute_lighting(pipe_vert_t *v,
@@ -238,15 +238,13 @@ static void compute_lighting(pipe_vert_t *v,
         const vgfx3d_light_params_t *light = &lights[li];
         float lx, ly, lz, atten = 1.0f;
 
-        if (light->type == 0) /* directional */
-        {
+        if (light->type == 0) {
             lx = -light->direction[0];
             ly = -light->direction[1];
             lz = -light->direction[2];
             if (!sw_normalize3(&lx, &ly, &lz, 0.0f, 0.0f, 0.0f))
                 continue;
-        } else if (light->type == 1) /* point */
-        {
+        } else if (light->type == 1) {
             lx = light->position[0] - v->world[0];
             ly = light->position[1] - v->world[1];
             lz = light->position[2] - v->world[2];
@@ -257,8 +255,7 @@ static void compute_lighting(pipe_vert_t *v,
             ly /= dist;
             lz /= dist;
             atten = 1.0f / (1.0f + light->attenuation * dist * dist);
-        } else if (light->type == 3) /* spot */
-        {
+        } else if (light->type == 3) {
             lx = light->position[0] - v->world[0];
             ly = light->position[1] - v->world[1];
             lz = light->position[2] - v->world[2];
@@ -269,7 +266,6 @@ static void compute_lighting(pipe_vert_t *v,
             ly /= dist;
             lz /= dist;
             atten = 1.0f / (1.0f + light->attenuation * dist * dist);
-            /* Cone attenuation: smoothstep between outer and inner cosines */
             float sx = -light->direction[0];
             float sy = -light->direction[1];
             float sz = -light->direction[2];
@@ -277,22 +273,32 @@ static void compute_lighting(pipe_vert_t *v,
                 continue;
             float spot_dot = lx * sx + ly * sy + lz * sz;
             if (spot_dot < light->outer_cos)
-                atten = 0.0f; /* outside cone */
+                atten = 0.0f;
             else if (spot_dot < light->inner_cos) {
                 float cone_range = light->inner_cos - light->outer_cos;
                 if (cone_range <= 1e-6f) {
                     atten = 0.0f;
                 } else {
                     float t = (spot_dot - light->outer_cos) / cone_range;
-                    atten *= t * t * (3.0f - 2.0f * t); /* smoothstep */
+                    atten *= t * t * (3.0f - 2.0f * t);
                 }
             }
-        } else /* ambient */
-        {
+        } else if (light->type == 2) {
             r += light->color[0] * light->intensity * dr;
             g += light->color[1] * light->intensity * dg;
             b += light->color[2] * light->intensity * db;
             continue;
+        } else {
+            int light_mode = sw_eval_analytic_light(
+                light, v->world[0], v->world[1], v->world[2], &lx, &ly, &lz, &atten);
+            if (light_mode == 0)
+                continue;
+            if (light_mode == 2) {
+                r += light->color[0] * light->intensity * dr * atten;
+                g += light->color[1] * light->intensity * dg * atten;
+                b += light->color[2] * light->intensity * db * atten;
+                continue;
+            }
         }
 
         float intensity = light->intensity;

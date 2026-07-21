@@ -64,7 +64,7 @@ void *rt_model3d_load_result(rt_string path) {
     return model3d_load_value_to_result(rt_model3d_load(path), "SceneAsset.Load failed");
 }
 
-/// @brief Save the complete Model3D inventory through the model-aware VSCN v4 serializer.
+/// @brief Save the complete Model3D inventory through the model-aware VSCN v5 serializer.
 int64_t rt_model3d_save(void *obj, rt_string path) {
     rt_model3d *model = model3d_checked(obj);
     rt_vscn_asset_save_view view = {0};

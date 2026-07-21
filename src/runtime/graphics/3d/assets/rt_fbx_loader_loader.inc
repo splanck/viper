@@ -967,16 +967,43 @@ static void fbx_load_link_textures(rt_fbx_asset *asset,
 
 #include "rt_fbx_loader_morph.inc"
 
-/// @brief Walk the FBX "Objects" node, importing each "Geometry" into a Mesh3D (with optional
-///   Z-up correction) and accumulating mesh bindings, geometry-id remaps, and material
-///   bindings through the in/out array and count pointers.
-/// @details Shape and other non-mesh Geometry records remain available to their dedicated import
-///   passes. A record declared as Geometry type `Mesh`, however, must decode into at least one
-///   valid triangle; silently publishing an asset after rejecting its declared mesh would turn
-///   malformed or non-finite source data into a misleading successful empty load.
-/// @return 1 on success, or 0 on allocation failure or an invalid declared Mesh Geometry record.
+/// @brief Whether a Geometry object connected to a surface represents an active trim graph.
+static int fbx_geometry_has_active_trim(fbx_node_t *objects,
+                                        const fbx_conn_table_t *connections,
+                                        int64_t geometry_id) {
+    if (!objects || !connections)
+        return 0;
+    for (int32_t i = 0; i < connections->count; ++i) {
+        int64_t other_id;
+        fbx_node_t *other;
+        const char *other_type;
+        if (connections->entries[i].child_id == geometry_id)
+            other_id = connections->entries[i].parent_id;
+        else if (connections->entries[i].parent_id == geometry_id)
+            other_id = connections->entries[i].child_id;
+        else
+            continue;
+        other = fbx_find_object_by_id(objects, other_id);
+        if (!other || strcmp(other->name, "Geometry") != 0 || other->prop_count < 3)
+            continue;
+        other_type = fbx_prop_str(other, 2);
+        if (strcmp(other_type, "TrimNurbsSurface") == 0 || strcmp(other_type, "Boundary") == 0 ||
+            strcmp(other_type, "NurbsCurve") == 0)
+            return 1;
+    }
+    return 0;
+}
+
+/// @brief Import each renderable Geometry, with optional Z-up correction, into a Mesh3D.
+/// @details Polygon meshes and tessellated NURBS/patches share the same binding/remap arrays so
+///          later material, skin, morph, and scene-node passes do not need a parallel path. Shape
+///          and non-renderable curve records remain available to their dedicated passes. A
+///          declared renderable Geometry must decode into at least one valid triangle.
+/// @return One on success; zero on allocation failure or malformed renderable Geometry.
 static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                                      fbx_node_t *objects,
+                                     const fbx_conn_table_t *connections,
+                                     fbx_load_context_t *context,
                                      int z_up,
                                      fbx_mesh_binding_t **p_mesh_bindings,
                                      int32_t *p_mesh_binding_count,
@@ -1000,11 +1027,23 @@ static int fbx_load_collect_geometry(rt_fbx_asset *asset,
                 if (obj->prop_count < 3)
                     return 0;
                 geometry_type = fbx_prop_str(obj, 2);
-                if (strcmp(geometry_type, "Mesh") != 0)
+                if (strcmp(geometry_type, "TrimNurbsSurface") == 0) {
+                    return fbx_surface_error("FBX: trimmed NURBS surfaces are malformed or "
+                                             "unsupported by this file version");
+                }
+                if (!fbx_geometry_type_is_renderable(geometry_type))
                     continue;
+                if (strcmp(geometry_type, "Mesh") != 0 &&
+                    fbx_geometry_has_active_trim(objects, connections, fbx_prop_i64(obj, 0))) {
+                    return fbx_surface_error("FBX: trimmed NURBS surfaces are malformed or "
+                                             "unsupported by this file version");
+                }
                 memset(&remap, 0, sizeof(remap));
                 memset(&material_map, 0, sizeof(material_map));
-                void *mesh = fbx_extract_geometry(obj, z_up, &remap, &material_map);
+                void *mesh = strcmp(geometry_type, "Mesh") == 0
+                                 ? fbx_extract_geometry(obj, z_up, &remap, &material_map)
+                                 : fbx_extract_procedural_geometry(
+                                       obj, geometry_type, z_up, context, &remap, &material_map);
                 if (!mesh) {
                     fbx_mesh_remap_free(&remap);
                     fbx_mesh_material_map_free(&material_map);
@@ -1228,6 +1267,8 @@ static int fbx_has_ascii_fbx_signature(const uint8_t *data, long size) {
 ///          asset are intentionally excluded and remain the asset finalizer's responsibility.
 static void fbx_load_cleanup_scratch(fbx_node_t *root,
                                      fbx_conn_table_t *connections,
+                                     fbx_constraint_set_t *constraints,
+                                     fbx_constraint_pose_t *constraint_pose,
                                      fbx_mesh_binding_t *mesh_bindings,
                                      int32_t mesh_binding_count,
                                      fbx_mesh_remap_t *mesh_remaps,
@@ -1236,6 +1277,8 @@ static void fbx_load_cleanup_scratch(fbx_node_t *root,
                                      fbx_bone_binding_t *bone_bindings,
                                      fbx_morph_channel_binding_t *morph_bindings,
                                      int32_t morph_binding_count) {
+    fbx_constraint_pose_free(constraint_pose);
+    fbx_constraint_set_free(constraints);
     fbx_free_connections(connections);
     fbx_mesh_bindings_free(mesh_bindings, mesh_binding_count);
     fbx_mesh_remaps_free(mesh_remaps, mesh_remap_count);
@@ -1256,6 +1299,8 @@ static void *fbx_load_impl(rt_string path) {
     fbx_load_context_t context;
     fbx_node_t root;
     fbx_conn_table_t ct;
+    fbx_constraint_set_t constraints;
+    fbx_constraint_pose_t constraint_pose;
     fbx_node_t *objects = NULL;
     int is_binary = 0;
     int is_ascii_signature = 0;
@@ -1271,6 +1316,8 @@ static void *fbx_load_impl(rt_string path) {
     int32_t morph_channel_binding_count = 0;
     memset(&root, 0, sizeof(root));
     memset(&ct, 0, sizeof(ct));
+    memset(&constraints, 0, sizeof(constraints));
+    memset(&constraint_pose, 0, sizeof(constraint_pose));
     fbx_load_context_init(&context);
     if (!path) {
         rt_trap("FBX.Load: null path");
@@ -1359,7 +1406,8 @@ static void *fbx_load_impl(rt_string path) {
     objects = fbx_find_child(&root, "Objects");
     if (!objects || !fbx_build_object_index(objects, &context) ||
         !fbx_parse_connections(&root, &ct, &context)) {
-        fbx_load_cleanup_scratch(&root, &ct, NULL, 0, NULL, 0, NULL, NULL, NULL, 0);
+        fbx_load_cleanup_scratch(
+            &root, &ct, &constraints, &constraint_pose, NULL, 0, NULL, 0, NULL, NULL, NULL, 0);
         rt_asset_error_set(
             context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
             context.budget_exhausted ? "FBX.Load: FBX graph exceeds the aggregate load budget"
@@ -1370,12 +1418,27 @@ static void *fbx_load_impl(rt_string path) {
     /* Detect coordinate system */
     int z_up = fbx_is_z_up(&root);
 
+    if (!fbx_parse_constraints(objects, &ct, &context, &constraints) ||
+        (constraints.count > 0 &&
+         !fbx_constraint_build_static_pose(
+             objects, &ct, z_up, &constraints, &context, &constraint_pose))) {
+        fbx_load_cleanup_scratch(
+            &root, &ct, &constraints, &constraint_pose, NULL, 0, NULL, 0, NULL, NULL, NULL, 0);
+        rt_asset_error_set_if_empty(
+            context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+            context.budget_exhausted ? "FBX.Load: constraints exceed the aggregate load budget"
+                                     : "FBX.Load: invalid constraint graph or evaluated pose");
+        return NULL;
+    }
+
     /* Extract assets */
     rt_fbx_asset *asset =
         (rt_fbx_asset *)rt_obj_new_i64(RT_G3D_FBX_ASSET_CLASS_ID, (int64_t)sizeof(rt_fbx_asset));
     if (!asset) {
         fbx_load_cleanup_scratch(&root,
                                  &ct,
+                                 &constraints,
+                                 &constraint_pose,
                                  mesh_bindings,
                                  mesh_binding_count,
                                  mesh_remaps,
@@ -1413,6 +1476,8 @@ static void *fbx_load_impl(rt_string path) {
     /* Extract geometry */
     if (!fbx_load_collect_geometry(asset,
                                    objects,
+                                   &ct,
+                                   &context,
                                    z_up,
                                    &mesh_bindings,
                                    &mesh_binding_count,
@@ -1423,6 +1488,8 @@ static void *fbx_load_impl(rt_string path) {
         !fbx_asset_ensure_default_material(asset)) {
         fbx_load_cleanup_scratch(&root,
                                  &ct,
+                                 &constraints,
+                                 &constraint_pose,
                                  mesh_bindings,
                                  mesh_binding_count,
                                  mesh_remaps,
@@ -1432,8 +1499,11 @@ static void *fbx_load_impl(rt_string path) {
                                  NULL,
                                  0);
         fbx_release_ref((void **)&asset);
-        rt_asset_error_set(RT_ASSET_ERROR_CORRUPT,
-                           "FBX.Load: failed to collect geometry/material bindings");
+        rt_asset_error_set_if_empty(
+            context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+            context.budget_exhausted
+                ? "FBX.Load: geometry/material extraction exceeds the aggregate load budget"
+                : "FBX.Load: failed to collect geometry/material bindings");
         return NULL;
     }
 
@@ -1463,6 +1533,8 @@ static void *fbx_load_impl(rt_string path) {
                                  &context)) {
         fbx_load_cleanup_scratch(&root,
                                  &ct,
+                                 &constraints,
+                                 &constraint_pose,
                                  mesh_bindings,
                                  mesh_binding_count,
                                  mesh_remaps,
@@ -1479,7 +1551,12 @@ static void *fbx_load_impl(rt_string path) {
         return NULL;
     }
     /* Extract skeleton */
-    asset->skeleton = fbx_extract_skeleton(&root, &ct, z_up, &bone_bindings, &bone_binding_count);
+    asset->skeleton = fbx_extract_skeleton(&root,
+                                           &ct,
+                                           constraints.count > 0 ? &constraint_pose : NULL,
+                                           z_up,
+                                           &bone_bindings,
+                                           &bone_binding_count);
     fbx_apply_skinning(objects,
                        &ct,
                        asset->skeleton,
@@ -1497,12 +1574,15 @@ static void *fbx_load_impl(rt_string path) {
                                 bone_bindings,
                                 bone_binding_count,
                                 z_up,
+                                &constraints,
                                 &asset->animations,
                                 &asset->animation_count,
                                 &asset->animation_capacity,
                                 &context)) {
         fbx_load_cleanup_scratch(&root,
                                  &ct,
+                                 &constraints,
+                                 &constraint_pose,
                                  mesh_bindings,
                                  mesh_binding_count,
                                  mesh_remaps,
@@ -1512,16 +1592,17 @@ static void *fbx_load_impl(rt_string path) {
                                  morph_channel_bindings,
                                  morph_channel_binding_count);
         fbx_release_ref((void **)&asset);
-        rt_asset_error_set(context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE
-                                                    : RT_ASSET_ERROR_CORRUPT,
-                           context.budget_exhausted
-                               ? "FBX.Load: animation samples exceed the aggregate load budget"
-                               : "FBX.Load: failed to build complete FBX animations");
+        rt_asset_error_set_if_empty(
+            context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+            context.budget_exhausted
+                ? "FBX.Load: animation samples exceed the aggregate load budget"
+                : "FBX.Load: failed to build complete FBX animations");
         return NULL;
     }
 
     if (!fbx_extract_node_animations(&root,
                                      &ct,
+                                     &constraints,
                                      z_up,
                                      asset,
                                      morph_channel_bindings,
@@ -1532,6 +1613,8 @@ static void *fbx_load_impl(rt_string path) {
                                      &context)) {
         fbx_load_cleanup_scratch(&root,
                                  &ct,
+                                 &constraints,
+                                 &constraint_pose,
                                  mesh_bindings,
                                  mesh_binding_count,
                                  mesh_remaps,
@@ -1541,11 +1624,11 @@ static void *fbx_load_impl(rt_string path) {
                                  morph_channel_bindings,
                                  morph_channel_binding_count);
         fbx_release_ref((void **)&asset);
-        rt_asset_error_set(context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE
-                                                    : RT_ASSET_ERROR_CORRUPT,
-                           context.budget_exhausted
-                               ? "FBX.Load: node-animation samples exceed the aggregate load budget"
-                               : "FBX.Load: failed to build complete FBX node animations");
+        rt_asset_error_set_if_empty(
+            context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+            context.budget_exhausted
+                ? "FBX.Load: node-animation samples exceed the aggregate load budget"
+                : "FBX.Load: failed to build complete FBX node animations");
         return NULL;
     }
 
@@ -1555,6 +1638,7 @@ static void *fbx_load_impl(rt_string path) {
                                                  &root,
                                                  objects,
                                                  &ct,
+                                                 constraints.count > 0 ? &constraint_pose : NULL,
                                                  mesh_bindings,
                                                  mesh_binding_count,
                                                  material_bindings,
@@ -1565,6 +1649,8 @@ static void *fbx_load_impl(rt_string path) {
         if (scene_failed) {
             fbx_load_cleanup_scratch(&root,
                                      &ct,
+                                     &constraints,
+                                     &constraint_pose,
                                      mesh_bindings,
                                      mesh_binding_count,
                                      mesh_remaps,
@@ -1574,11 +1660,11 @@ static void *fbx_load_impl(rt_string path) {
                                      morph_channel_bindings,
                                      morph_channel_binding_count);
             fbx_release_ref((void **)&asset);
-            rt_asset_error_set(context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE
-                                                        : RT_ASSET_ERROR_CORRUPT,
-                               context.budget_exhausted
-                                   ? "FBX.Load: scene resources exceed the aggregate load budget"
-                                   : "FBX.Load: failed to build scene hierarchy");
+            rt_asset_error_set_if_empty(
+                context.budget_exhausted ? RT_ASSET_ERROR_TOO_LARGE : RT_ASSET_ERROR_CORRUPT,
+                context.budget_exhausted
+                    ? "FBX.Load: scene resources exceed the aggregate load budget"
+                    : "FBX.Load: failed to build scene hierarchy");
             return NULL;
         }
     }
@@ -1586,6 +1672,8 @@ static void *fbx_load_impl(rt_string path) {
     /* Cleanup parser data */
     fbx_load_cleanup_scratch(&root,
                              &ct,
+                             &constraints,
+                             &constraint_pose,
                              mesh_bindings,
                              mesh_binding_count,
                              mesh_remaps,

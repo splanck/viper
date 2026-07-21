@@ -411,11 +411,14 @@ typedef struct {
     uint16_t indices[VGFX3D_MAX_CLUSTER_LIGHT_INDICES];
 } vgfx3d_cluster_table_t;
 
-/// @brief One light passed to submit_draw: kind (directional/point/ambient/spot), an
-///   optional shadow-map slot index, direction/position/color/intensity/attenuation, and
-///   spot inner/outer cone cosines.
+/// @brief One light passed to submit_draw, including native area/volume emitter state.
+/// @details Directional, point, ambient, and spot lights use the historical fields. Rectangle
+///   and sphere area lights additionally use their finite emitter dimensions/range and FBX decay
+///   mode; volume lights use radius/range and never receive a shadow slot. Rectangle U/V basis
+///   vectors are orthonormal in render space. Keeping this as one plain finite payload lets the
+///   software and three GPU backends evaluate identical authored light semantics.
 typedef struct {
-    int32_t type;                   /* 0=directional, 1=point, 2=ambient, 3=spot */
+    int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot, 4=rect, 5=sphere, 6=volume */
     int32_t shadow_index;           /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
     int32_t shadow_cascade_count;   /* >1 means shadow_index is the first cascade slot */
     int32_t shadow_projection_type; /* VGFX3D_SHADOW_PROJECTION_* */
@@ -423,12 +426,19 @@ typedef struct {
     uintptr_t identity; /* stable CPU light identity used to match shadow slots after packing */
     float direction[3];
     float position[3];
+    float basis_u[3];
+    float basis_v[3];
     float color[3];
     float shadow_cascade_splits[VGFX3D_CSM_SLOTS]; /* consumed as one float4 by shaders */
     float intensity;
     float attenuation;
     float inner_cos; /* spot: cosine of inner cone angle (full brightness) */
     float outer_cos; /* spot: cosine of outer cone angle (zero brightness) */
+    float width;
+    float height;
+    float radius;
+    float range;
+    int32_t decay_type; /* 0=none, 1=linear, 2=quadratic, 3=cubic */
 } vgfx3d_light_params_t;
 
 /// @brief Optional backend telemetry snapshot for renderer diagnostics.

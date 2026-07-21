@@ -437,7 +437,7 @@ int32_t vgfx3d_d3d11_sanitize_bool_flag(int32_t requested) {
 
 /// @brief Normalize light type constants before indexing shader-side branches.
 int32_t vgfx3d_d3d11_sanitize_light_type(int32_t requested) {
-    return requested >= 0 && requested <= 3 ? requested : 0;
+    return requested >= 0 && requested <= 6 ? requested : 0;
 }
 
 /// @brief Normalize shadow projection constants after the shadow slot is known valid.

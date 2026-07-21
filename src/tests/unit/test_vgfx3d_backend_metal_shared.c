@@ -492,6 +492,13 @@ static void test_metal_shader_source_uses_safe_normalization(void) {
                 "Metal skybox inverse-projection path uses safe normalization");
     EXPECT_TRUE(strstr(source, "float3(0.0, 0.0, -1.0)") != NULL,
                 "Metal skybox zero-vector fallback follows the Canvas3D camera -Z convention");
+    EXPECT_TRUE(strstr(source, "eval_native_light") != NULL &&
+                    strstr(source, "native_light_decay") != NULL,
+                "Metal shader retains native area/volume evaluation and FBX decay");
+    EXPECT_TRUE(strstr(source, "float4 basisU") != NULL &&
+                    strstr(source, "float4 basisV") != NULL &&
+                    strstr(source, "float4 shape") != NULL,
+                "Metal light layout retains emitter basis and dimensions");
     EXPECT_TRUE(strstr(source, " normalize(") == NULL,
                 "Metal shader source avoids raw normalize calls");
 

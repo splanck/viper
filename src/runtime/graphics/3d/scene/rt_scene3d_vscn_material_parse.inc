@@ -157,7 +157,7 @@ static int vscn_parse_material_texture_slots(void *material_obj, rt_material3d *
 static int vscn_bind_material_texture_ref(void *material_obj,
                                           const char *key,
                                           rt_material3d *material,
-                                          rt_pixels_impl **textures,
+                                          void **textures,
                                           int tex_count,
                                           vscn_material_texture_setter_fn setter) {
     int64_t index;
@@ -186,7 +186,7 @@ static int vscn_bind_material_cubemap_ref(void *material_obj,
 
 static int vscn_bind_material_refs(void *material_obj,
                                    rt_material3d *material,
-                                   rt_pixels_impl **textures,
+                                   void **textures,
                                    int tex_count,
                                    rt_cubemap3d **cubemaps,
                                    int cubemap_count) {
@@ -218,6 +218,12 @@ static int vscn_bind_material_refs(void *material_obj,
                                           rt_material3d_set_metallic_roughness_map) &&
            vscn_bind_material_texture_ref(
                material_obj, "aoMap", material, textures, tex_count, rt_material3d_set_ao_map) &&
+           vscn_bind_material_texture_ref(material_obj,
+                                          "lightMap",
+                                          material,
+                                          textures,
+                                          tex_count,
+                                          rt_material3d_set_lightmap) &&
            vscn_bind_material_cubemap_ref(material_obj,
                                           "envMap",
                                           material,

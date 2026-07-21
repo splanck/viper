@@ -144,6 +144,7 @@ typedef struct {
     void **mip_pixels;
     uint8_t **mip_payloads;
     uint8_t *source_backing;
+    uint8_t *container_backing;
     uint8_t *mip_fallback_kinds;
     textureasset3d_mip *mips;
     int64_t width;
@@ -155,6 +156,11 @@ typedef struct {
     int64_t resident_bytes;
     int64_t retained_bytes;
     uint64_t source_backing_bytes;
+    uint64_t container_backing_bytes;
+    uint64_t container_pixels_generation;
+    int64_t container_pixels_width;
+    int64_t container_pixels_height;
+    const char *container_kind;
     const char *format;
     const char *degraded_reason;
     int8_t compressed;
@@ -169,6 +175,7 @@ typedef struct {
     uint64_t native_revision;
     int8_t alpha_metadata_known;
     int8_t has_alpha_texels;
+    int8_t container_tracks_pixels;
 } rt_textureasset3d;
 
 static const uint8_t ktx2_identifier[12] = {
@@ -196,6 +203,7 @@ static volatile uint64_t g_textureasset3d_supercompression_peak_bytes = 0;
 ///          compiled later in the enclosing translation unit.
 static void *textureasset3d_decode_mip_from_backing(const rt_textureasset3d *asset, int64_t mip);
 static void *textureasset3d_make_decode_failure_checker(void);
+static int64_t textureasset3d_compute_retained_bytes(rt_textureasset3d *asset);
 
 /// @brief Atomically allocate the next process-unique, nonzero cache identity.
 /// @details 0 is reserved as "no key", so the loop retries past a wrapped-to-zero value.
@@ -283,6 +291,11 @@ static void textureasset3d_finalize(void *obj) {
     free(asset->source_backing);
     asset->source_backing = NULL;
     asset->source_backing_bytes = 0;
+    free(asset->container_backing);
+    asset->container_backing = NULL;
+    asset->container_backing_bytes = 0;
+    asset->container_kind = NULL;
+    asset->container_tracks_pixels = 0;
     free(asset->mip_fallback_kinds);
     asset->mip_fallback_kinds = NULL;
     free(asset->mips);
@@ -367,6 +380,82 @@ static void textureasset3d_add_saturating_u64(uint64_t *total, uint64_t value) {
         *total += value;
 }
 
+/// @brief Normalize one supported exact source-container kind to immutable static storage.
+static const char *textureasset3d_normalize_container_kind(const char *kind) {
+    if (!kind)
+        return NULL;
+    if (strcmp(kind, "ktx2") == 0)
+        return "ktx2";
+    if (strcmp(kind, "png") == 0)
+        return "png";
+    if (strcmp(kind, "jpeg") == 0 || strcmp(kind, "jpg") == 0)
+        return "jpeg";
+    if (strcmp(kind, "gif") == 0)
+        return "gif";
+    if (strcmp(kind, "bmp") == 0)
+        return "bmp";
+    return NULL;
+}
+
+/// @brief Validate that a byte span begins with the selected supported container signature.
+static int textureasset3d_container_magic_matches(const uint8_t *data,
+                                                  uint64_t size,
+                                                  const char *kind) {
+    static const uint8_t png_magic[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    if (!data || !kind)
+        return 0;
+    if (strcmp(kind, "ktx2") == 0)
+        return size >= sizeof(ktx2_identifier) &&
+               memcmp(data, ktx2_identifier, sizeof(ktx2_identifier)) == 0;
+    if (strcmp(kind, "png") == 0)
+        return size >= sizeof(png_magic) && memcmp(data, png_magic, sizeof(png_magic)) == 0;
+    if (strcmp(kind, "jpeg") == 0)
+        return size >= 4 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF;
+    if (strcmp(kind, "gif") == 0)
+        return size >= 6 && (memcmp(data, "GIF87a", 6) == 0 || memcmp(data, "GIF89a", 6) == 0);
+    if (strcmp(kind, "bmp") == 0)
+        return size >= 14 && data[0] == 'B' && data[1] == 'M';
+    return 0;
+}
+
+/// @brief Copy a validated immutable source container onto a fully constructed asset.
+static int textureasset3d_attach_source_container(rt_textureasset3d *asset,
+                                                  const uint8_t *data,
+                                                  uint64_t size,
+                                                  const char *kind) {
+    const char *normalized = textureasset3d_normalize_container_kind(kind);
+    uint8_t *copy;
+    rt_pixels_impl *base_pixels;
+    if (!asset || !normalized || !data || size == 0 || size > TEXTUREASSET3D_MAX_FILE_BYTES ||
+        size > SIZE_MAX || !textureasset3d_container_magic_matches(data, size, normalized)) {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                    "TextureAsset3D: source container kind or magic is invalid");
+        return 0;
+    }
+    copy = (uint8_t *)malloc((size_t)size);
+    if (!copy) {
+        rt_trap("TextureAsset3D: source-container allocation failed");
+        return 0;
+    }
+    memcpy(copy, data, (size_t)size);
+    free(asset->container_backing);
+    asset->container_backing = copy;
+    asset->container_backing_bytes = size;
+    asset->container_kind = normalized;
+    asset->container_tracks_pixels = 0;
+    base_pixels = asset->mip_pixels && textureasset3d_safe_mip_count(asset) > 0
+                      ? rt_pixels_checked_impl_or_null(asset->mip_pixels[0])
+                      : NULL;
+    if (base_pixels && base_pixels->width == asset->width && base_pixels->height == asset->height) {
+        asset->container_tracks_pixels = 1;
+        asset->container_pixels_generation = base_pixels->generation;
+        asset->container_pixels_width = base_pixels->width;
+        asset->container_pixels_height = base_pixels->height;
+    }
+    asset->retained_bytes = textureasset3d_compute_retained_bytes(asset);
+    return 1;
+}
+
 static uint64_t textureasset3d_pixels_allocation_bytes(void *pixels) {
     rt_pixels_impl *p = rt_pixels_checked_impl_or_null(pixels);
     uint64_t pixel_count;
@@ -424,6 +513,7 @@ static int64_t textureasset3d_compute_retained_bytes(rt_textureasset3d *asset) {
     if (!asset || safe_mip_count <= 0)
         return 0;
     textureasset3d_add_saturating_u64(&total, asset->source_backing_bytes);
+    textureasset3d_add_saturating_u64(&total, asset->container_backing_bytes);
     for (int64_t i = 0; i < safe_mip_count; i++) {
         if (asset->mip_pixels && asset->mip_pixels[i]) {
             textureasset3d_add_saturating_u64(
@@ -431,6 +521,147 @@ static int64_t textureasset3d_compute_retained_bytes(rt_textureasset3d *asset) {
         }
     }
     return total > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)total;
+}
+
+/// @brief Borrow an exact source container only while its associated decoded surface is unchanged.
+int8_t rt_textureasset3d_get_source_container(void *obj,
+                                              const uint8_t **data,
+                                              uint64_t *size,
+                                              const char **kind) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    rt_pixels_impl *base_pixels = NULL;
+    if (data)
+        *data = NULL;
+    if (size)
+        *size = 0;
+    if (kind)
+        *kind = NULL;
+    if (!asset || !asset->container_backing || asset->container_backing_bytes == 0 ||
+        !asset->container_kind)
+        return 0;
+    if (asset->container_tracks_pixels) {
+        base_pixels = asset->mip_pixels && textureasset3d_safe_mip_count(asset) > 0
+                          ? rt_pixels_checked_impl_or_null(asset->mip_pixels[0])
+                          : NULL;
+        if (base_pixels &&
+            (base_pixels->generation != asset->container_pixels_generation ||
+             base_pixels->width != asset->container_pixels_width ||
+             base_pixels->height != asset->container_pixels_height ||
+             base_pixels->width != asset->width || base_pixels->height != asset->height))
+            return 0;
+    }
+    if (data)
+        *data = asset->container_backing;
+    if (size)
+        *size = asset->container_backing_bytes;
+    if (kind)
+        *kind = asset->container_kind;
+    return 1;
+}
+
+/// @brief Classify retained source provenance for bake-fidelity reporting.
+int64_t rt_textureasset3d_get_source_container_state(void *obj) {
+    rt_textureasset3d *asset = textureasset3d_checked(obj);
+    if (!asset || !asset->container_backing || asset->container_backing_bytes == 0 ||
+        !asset->container_kind)
+        return RT_TEXTUREASSET3D_SOURCE_CONTAINER_NONE;
+    return rt_textureasset3d_get_source_container(obj, NULL, NULL, NULL)
+               ? RT_TEXTUREASSET3D_SOURCE_CONTAINER_VALID
+               : RT_TEXTUREASSET3D_SOURCE_CONTAINER_CHANGED_AFTER_IMPORT;
+}
+
+/// @brief Build a one-mip RGBA8 TextureAsset3D retaining exact encoded source bytes.
+void *rt_textureasset3d_wrap_encoded_pixels(void *pixels,
+                                            const uint8_t *data,
+                                            uint64_t size,
+                                            const char *kind) {
+    rt_pixels_impl *source = rt_pixels_checked_impl_or_null(pixels);
+    const char *normalized = textureasset3d_normalize_container_kind(kind);
+    textureasset3d_mip *mips = NULL;
+    void **mip_pixels = NULL;
+    uint8_t *fallback_kinds = NULL;
+    uint8_t *container = NULL;
+    rt_textureasset3d *asset;
+    uint64_t pixel_bytes;
+    if (!source || source->width <= 0 || source->height <= 0 || !source->data) {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                    "TextureAsset3D: encoded source requires valid decoded Pixels");
+        return NULL;
+    }
+    if (!normalized || !data || size == 0 || size > TEXTUREASSET3D_MAX_FILE_BYTES ||
+        size > SIZE_MAX || !textureasset3d_container_magic_matches(data, size, normalized)) {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_CORRUPT,
+                                    "TextureAsset3D: source container kind or magic is invalid");
+        return NULL;
+    }
+    if ((uint64_t)source->width > UINT32_MAX || (uint64_t)source->height > UINT32_MAX ||
+        (uint64_t)source->width > UINT64_MAX / (uint64_t)source->height ||
+        (uint64_t)source->width * (uint64_t)source->height > UINT64_MAX / sizeof(uint32_t)) {
+        rt_asset_error_set_if_empty(RT_ASSET_ERROR_TOO_LARGE,
+                                    "TextureAsset3D: decoded source dimensions are too large");
+        return NULL;
+    }
+    pixel_bytes = (uint64_t)source->width * (uint64_t)source->height * (uint64_t)sizeof(uint32_t);
+    mips = (textureasset3d_mip *)calloc(1u, sizeof(*mips));
+    mip_pixels = (void **)calloc(1u, sizeof(*mip_pixels));
+    fallback_kinds = (uint8_t *)calloc(1u, sizeof(*fallback_kinds));
+    container = (uint8_t *)malloc((size_t)size);
+    if (!mips || !mip_pixels || !fallback_kinds || !container) {
+        free(mips);
+        free(mip_pixels);
+        free(fallback_kinds);
+        free(container);
+        rt_trap("TextureAsset3D: encoded-source wrapper allocation failed");
+        return NULL;
+    }
+    memcpy(container, data, (size_t)size);
+    asset = (rt_textureasset3d *)rt_obj_new_i64(RT_G3D_TEXTUREASSET3D_CLASS_ID,
+                                                (int64_t)sizeof(*asset));
+    if (!asset) {
+        free(mips);
+        free(mip_pixels);
+        free(fallback_kinds);
+        free(container);
+        rt_trap("TextureAsset3D: encoded-source object allocation failed");
+        return NULL;
+    }
+    memset(asset, 0, sizeof(*asset));
+    rt_obj_set_finalizer(asset, textureasset3d_finalize);
+    rt_obj_retain_maybe(pixels);
+    mip_pixels[0] = pixels;
+    mips[0].length = pixel_bytes;
+    mips[0].uncompressed_length = pixel_bytes;
+    mips[0].width = (uint32_t)source->width;
+    mips[0].height = (uint32_t)source->height;
+    fallback_kinds[0] = TEXTUREASSET3D_FALLBACK_NONE;
+    asset->pixels = pixels;
+    asset->mip_pixels = mip_pixels;
+    asset->mip_fallback_kinds = fallback_kinds;
+    asset->mips = mips;
+    asset->width = source->width;
+    asset->height = source->height;
+    asset->mip_count = 1;
+    asset->mip_capacity = 1;
+    asset->resident_mip_count = 1;
+    asset->resident_bytes = pixel_bytes > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)pixel_bytes;
+    asset->format = "rgba8";
+    asset->degraded_reason = "";
+    asset->block_width = 1;
+    asset->block_height = 1;
+    asset->block_bytes = 4;
+    asset->cache_identity = textureasset3d_next_cache_identity();
+    asset->native_revision = 1;
+    asset->alpha_metadata_known = 1;
+    asset->has_alpha_texels = textureasset3d_decoded_mip_has_alpha(pixels) ? 1 : 0;
+    asset->container_backing = container;
+    asset->container_backing_bytes = size;
+    asset->container_kind = normalized;
+    asset->container_tracks_pixels = 1;
+    asset->container_pixels_generation = source->generation;
+    asset->container_pixels_width = source->width;
+    asset->container_pixels_height = source->height;
+    asset->retained_bytes = textureasset3d_compute_retained_bytes(asset);
+    return asset;
 }
 
 /// @brief Transactionally reconstruct, publish, and evict decoded mips for a resident window.
@@ -453,6 +684,7 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
     int64_t safe_mip_count;
     int64_t clamped_mip_count;
     int can_evict;
+    int reconstructed_base = 0;
 
     if (!asset)
         return 0;
@@ -496,11 +728,22 @@ static int textureasset3d_set_resident_mip_range_internal(rt_textureasset3d *ass
         for (int64_t i = 0; i < safe_mip_count; i++) {
             int in_new_range = i >= first_mip && i - first_mip < mip_count;
             if (staged[i]) {
+                if (i == 0)
+                    reconstructed_base = 1;
                 asset->mip_pixels[i] = staged[i];
                 staged[i] = NULL;
             } else if (!in_new_range) {
                 textureasset3d_release_pixels_ref(&asset->mip_pixels[i]);
             }
+        }
+    }
+
+    if (reconstructed_base && asset->container_tracks_pixels && asset->mip_pixels[0]) {
+        rt_pixels_impl *base_pixels = rt_pixels_checked_impl_or_null(asset->mip_pixels[0]);
+        if (base_pixels) {
+            asset->container_pixels_generation = base_pixels->generation;
+            asset->container_pixels_width = base_pixels->width;
+            asset->container_pixels_height = base_pixels->height;
         }
     }
 

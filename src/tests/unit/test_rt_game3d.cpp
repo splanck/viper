@@ -3653,8 +3653,11 @@ static bool test_phase4_assets3d_texture_residency_budget() {
     void *model1 = rt_game3d_model_template_get_model(tpl1);
     auto *mat = static_cast<rt_material3d *>(rt_model3d_get_material(model1, 0));
     EXPECT_TRUE(mat != nullptr && mat->texture != nullptr, "textured template keeps material map");
-    EXPECT_EQ_INT(rt_pixels_width(mat->texture), 256, "budget texture width is decoded");
-    EXPECT_EQ_INT(rt_pixels_height(mat->texture), 256, "budget texture height is decoded");
+    void *decoded_texture = rt_material3d_resolve_texture_pixels(mat->texture);
+    EXPECT_TRUE(decoded_texture != nullptr,
+                "source-backed budget texture retains its decoded Pixels fallback");
+    EXPECT_EQ_INT(rt_pixels_width(decoded_texture), 256, "budget texture width is decoded");
+    EXPECT_EQ_INT(rt_pixels_height(decoded_texture), 256, "budget texture height is decoded");
 
     void *tpl2 = rt_game3d_assets_load_model_template(rt_const_cstr(gltf_path));
     EXPECT_TRUE(tpl2 != nullptr, "second textured template load succeeds");

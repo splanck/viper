@@ -758,33 +758,82 @@ static int gltf_mark_active_node_subtree(void *nodes_arr,
 static int gltf_import_scene_cameras(gltf_scene_info_t *scene,
                                      void *root,
                                      void *nodes_arr,
-                                     rt_scene_node3d **nodes,
                                      int32_t node_count,
                                      const uint8_t *active_nodes) {
     void *cameras_arr = jarr(root, "cameras");
     int64_t camera_def_count = jarr_len(cameras_arr);
-    if (!scene || !nodes_arr || !nodes || !active_nodes || camera_def_count <= 0)
+    rt_scene_node3d **scene_nodes = NULL;
+    rt_scene_node3d **stack = NULL;
+    size_t stack_count = 0;
+    size_t stack_capacity;
+    int result = 1;
+    if (!scene || !nodes_arr || !active_nodes || camera_def_count <= 0)
         return 1;
+    if (!scene->root || node_count <= 0 || (size_t)node_count > SIZE_MAX / sizeof(*scene_nodes) ||
+        (size_t)node_count >= SIZE_MAX / sizeof(*stack))
+        return 0;
+    scene_nodes = (rt_scene_node3d **)calloc((size_t)node_count, sizeof(*scene_nodes));
+    stack_capacity = (size_t)node_count + 1u;
+    stack = (rt_scene_node3d **)malloc(stack_capacity * sizeof(*stack));
+    if (!scene_nodes || !stack) {
+        free(stack);
+        free(scene_nodes);
+        return 0;
+    }
+    stack[stack_count++] = (rt_scene_node3d *)scene->root;
+    while (stack_count > 0) {
+        rt_scene_node3d *node = stack[--stack_count];
+        int32_t child_count;
+        if (!node)
+            continue;
+        if (node->import_index >= 0 && node->import_index < node_count) {
+            if (scene_nodes[node->import_index]) {
+                result = 0;
+                break;
+            }
+            scene_nodes[node->import_index] = node;
+        }
+        child_count = scene3d_node_child_count(node);
+        if ((size_t)child_count > stack_capacity - stack_count) {
+            result = 0;
+            break;
+        }
+        for (int32_t child = 0; child < child_count; ++child)
+            stack[stack_count++] = node->children[child];
+    }
+    if (!result)
+        goto done;
     for (int32_t ni = 0; ni < node_count; ni++) {
         void *node_json;
         int64_t camera_ref;
         void *camera;
-        if (!active_nodes[ni] || !nodes[ni])
+        rt_scene_node3d *camera_node;
+        if (!active_nodes[ni])
             continue;
         node_json = rt_seq_get(nodes_arr, ni);
         camera_ref = jvalue_int(jget(node_json, "camera"), -1);
         if (camera_ref < 0 || camera_ref >= camera_def_count)
             continue;
+        camera_node = scene_nodes[ni];
+        if (!camera_node) {
+            result = 0;
+            break;
+        }
         camera = gltf_make_camera(rt_seq_get(cameras_arr, camera_ref));
         if (!camera)
             continue;
-        gltf_apply_camera_node_transform(camera, nodes[ni]);
+        gltf_apply_camera_node_transform(camera, camera_node);
         if (!gltf_append_scene_camera(scene, camera)) {
             gltf_release_ref(&camera);
-            return 0;
+            result = 0;
+            break;
         }
+        rt_scene_node3d_set_camera(camera_node, camera);
     }
-    return 1;
+done:
+    free(stack);
+    free(scene_nodes);
+    return result;
 }
 
 /// @brief Mirror the first parsed scene onto the asset's legacy single-scene fields.
@@ -1334,18 +1383,26 @@ done:
 static void *gltf_preload_take_decoded_image(rt_gltf_preload_bundle *preload_bundle,
                                              const char *key) {
     uint8_t *rgba_blob;
+    uint8_t *source_data;
     size_t rgba_len = 0;
+    size_t source_len = 0;
     void *pixels;
     pixels = gltf_preload_bundle_take_object_dependency(
         preload_bundle, key, GLTF_PRELOAD_DEP_IMAGE_PIXELS);
-    if (pixels)
-        return pixels;
-    rgba_blob = gltf_preload_bundle_take_dependency(
-        preload_bundle, key, GLTF_PRELOAD_DEP_IMAGE_RGBA, &rgba_len);
-    if (!rgba_blob)
-        return NULL;
-    pixels = gltf_pixels_from_rgba_blob(rgba_blob, rgba_len);
-    free(rgba_blob);
+    if (!pixels) {
+        rgba_blob = gltf_preload_bundle_take_dependency(
+            preload_bundle, key, GLTF_PRELOAD_DEP_IMAGE_RGBA, &rgba_len);
+        if (!rgba_blob)
+            return NULL;
+        pixels = gltf_pixels_from_rgba_blob(rgba_blob, rgba_len);
+        free(rgba_blob);
+    }
+    source_data = gltf_preload_bundle_take_dependency(
+        preload_bundle, key, GLTF_PRELOAD_DEP_IMAGE_SOURCE, &source_len);
+    if (source_data) {
+        pixels = gltf_preserve_decoded_image_source(pixels, source_data, source_len);
+        free(source_data);
+    }
     return pixels;
 }
 
@@ -1369,6 +1426,7 @@ static void *gltf_load_dependency_image(const char *resource_path,
     if (staged) {
         void *decoded = is_ktx2 ? gltf_decode_ktx2_payload(staged, staged_len)
                                 : rt_asset_decode_typed(resource_path, staged, staged_len);
+        decoded = gltf_preserve_decoded_image_source(decoded, staged, staged_len);
         free(staged);
         if (decoded)
             return decoded;
@@ -1381,6 +1439,7 @@ static void *gltf_load_dependency_image(const char *resource_path,
         if (data) {
             void *decoded = is_ktx2 ? gltf_decode_ktx2_payload(data, data_len)
                                     : rt_asset_decode_typed(resource_path, data, data_len);
+            decoded = gltf_preserve_decoded_image_source(decoded, data, data_len);
             free(data);
             if (decoded)
                 return decoded;
@@ -1396,10 +1455,21 @@ static void *gltf_load_dependency_image(const char *resource_path,
         return decoded;
     }
     {
-        rt_string runtime_path = rt_const_cstr(resource_path);
-        void *pixels = rt_pixels_load(runtime_path);
-        rt_string_unref(runtime_path);
-        return pixels;
+        size_t data_len = 0;
+        uint8_t *data = gltf_read_file_bytes(resource_path, &data_len);
+        if (data) {
+            void *decoded = rt_asset_decode_typed(resource_path, data, data_len);
+            decoded = gltf_preserve_decoded_image_source(decoded, data, data_len);
+            free(data);
+            if (decoded)
+                return decoded;
+        }
+        {
+            rt_string runtime_path = rt_const_cstr(resource_path);
+            void *pixels = rt_pixels_load(runtime_path);
+            rt_string_unref(runtime_path);
+            return pixels;
+        }
     }
 }
 

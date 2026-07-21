@@ -272,18 +272,31 @@ static void upload_light_uniforms(gl_context_t *ctx,
     gl.Uniform1i(ctx->uLightCount, light_count);
     for (int32_t i = 0; i < light_count; i++) {
         int32_t shadow_index = gl_sanitize_shadow_slot(ctx, lights[i].shadow_index);
+        int32_t native_emitter = lights[i].type >= 4 && lights[i].type <= 6;
         gl.Uniform1i(ctx->uLightType[i], lights[i].type);
         gl.Uniform1i(ctx->uLightShadowIndex[i], shadow_index);
         gl.Uniform1i(ctx->uLightShadowCascadeCount[i],
-                     shadow_index >= 0 ? lights[i].shadow_cascade_count : 1);
+                     native_emitter ? lights[i].decay_type
+                                    : (shadow_index >= 0 ? lights[i].shadow_cascade_count : 1));
         gl.Uniform1i(ctx->uLightShadowProjectionType[i],
                      shadow_index >= 0 ? lights[i].shadow_projection_type
                                        : VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC);
-        gl.Uniform4f(ctx->uLightShadowCascadeSplits[i],
-                     lights[i].shadow_cascade_splits[0],
-                     lights[i].shadow_cascade_splits[1],
-                     lights[i].shadow_cascade_splits[2],
-                     lights[i].shadow_cascade_splits[3]);
+        if (native_emitter) {
+            /* Native emitters never use cascaded shadows. Pack their U basis/width into the
+             * otherwise-unused cascade vector and height-or-radius/range into the cone scalars.
+             * This preserves the GL 3.3 sampler/uniform baseline without losing emitter state. */
+            gl.Uniform4f(ctx->uLightShadowCascadeSplits[i],
+                         lights[i].basis_u[0],
+                         lights[i].basis_u[1],
+                         lights[i].basis_u[2],
+                         lights[i].width);
+        } else {
+            gl.Uniform4f(ctx->uLightShadowCascadeSplits[i],
+                         lights[i].shadow_cascade_splits[0],
+                         lights[i].shadow_cascade_splits[1],
+                         lights[i].shadow_cascade_splits[2],
+                         lights[i].shadow_cascade_splits[3]);
+        }
         gl.Uniform3f(ctx->uLightDir[i],
                      lights[i].direction[0],
                      lights[i].direction[1],
@@ -294,8 +307,11 @@ static void upload_light_uniforms(gl_context_t *ctx,
             ctx->uLightColor[i], lights[i].color[0], lights[i].color[1], lights[i].color[2]);
         gl.Uniform1f(ctx->uLightIntensity[i], lights[i].intensity);
         gl.Uniform1f(ctx->uLightAtten[i], lights[i].attenuation);
-        gl.Uniform1f(ctx->uLightInnerCos[i], lights[i].inner_cos);
-        gl.Uniform1f(ctx->uLightOuterCos[i], lights[i].outer_cos);
+        gl.Uniform1f(ctx->uLightInnerCos[i],
+                     native_emitter ? (lights[i].type == 4 ? lights[i].height : lights[i].radius)
+                                    : lights[i].inner_cos);
+        gl.Uniform1f(ctx->uLightOuterCos[i],
+                     native_emitter ? lights[i].range : lights[i].outer_cos);
     }
 }
 

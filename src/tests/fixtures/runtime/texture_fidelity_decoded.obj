@@ -1,0 +1,10 @@
+# Canonical decoded-texture fixture for `zanna asset bake` fidelity reporting.
+mtllib texture_fidelity_decoded.mtl
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 0.0 1.0 0.0
+vt 0.0 0.0
+vt 1.0 0.0
+vt 0.0 1.0
+usemtl decoded_texture
+f 1/1 2/2 3/3

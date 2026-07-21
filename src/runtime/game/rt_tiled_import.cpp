@@ -4,13 +4,13 @@
 // See LICENSE for license information.
 //
 // File: src/runtime/game/rt_tiled_import.cpp
-// Purpose: Dependency-aware import of finite orthogonal Tiled JSON/TMX maps
-//   into SceneDocument and render-ready Tilemap runtime objects.
+// Purpose: Dependency-aware import of bounded/infinite and projected Tiled
+//   JSON/TMX maps into SceneDocument and render-ready Tilemap runtime objects.
 //
 // Key invariants:
 //   - Filesystem and asset-package dependency graphs use separate readers.
-//   - Unsupported or ambiguous Tiled features fail before an object is published.
-//   - Layer GIDs are normalized to the one tileset bound to that layer.
+//   - Malformed, unsafe, or ambiguous Tiled input fails before publication.
+//   - Layer GIDs are normalized to map-wide canonical tile identities.
 //   - Input, decoded layer, dependency, and output sizes are explicitly bounded.
 //
 // Ownership/Lifetime:
@@ -19,7 +19,8 @@
 //   - Temporary Pixels and SceneDocument handles are released after transfer.
 //
 // Links: rt_scene_editor.h, ../graphics/2d/rt_graphics2d.h,
-//   docs/adr/0140-tiled-map-and-scene-import.md
+//   docs/adr/0140-tiled-map-and-scene-import.md,
+//   docs/adr/0144-complete-tiled-map-import.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -69,7 +70,12 @@ constexpr size_t kMaxLayers = 16u;
 constexpr size_t kMaxObjects = 65536u;
 constexpr size_t kMaxProperties = 16384u;
 constexpr size_t kMaxStringBytes = 64u * 1024u;
-constexpr uint64_t kTiledTransformMask = UINT64_C(0xF0000000);
+constexpr uint64_t kTiledHorizontalFlag = UINT64_C(0x80000000);
+constexpr uint64_t kTiledVerticalFlag = UINT64_C(0x40000000);
+constexpr uint64_t kTiledDiagonalOrHex60Flag = UINT64_C(0x20000000);
+constexpr uint64_t kTiledHex120Flag = UINT64_C(0x10000000);
+constexpr uint64_t kTiledTransformMask =
+    kTiledHorizontalFlag | kTiledVerticalFlag | kTiledDiagonalOrHex60Flag | kTiledHex120Flag;
 
 void releaseObject(void *object) {
     if (object && rt_obj_release_check0(object))
@@ -247,6 +253,17 @@ std::string jsonDouble(double value) {
     return out.str();
 }
 
+bool roundNearestTiesAway(double value, int64_t &out) {
+    if (!std::isfinite(value))
+        return false;
+    double rounded = value < 0.0 ? std::ceil(value - 0.5) : std::floor(value + 0.5);
+    long double wide = static_cast<long double>(rounded);
+    if (wide < static_cast<long double>(INT64_MIN) || wide > static_cast<long double>(INT64_MAX))
+        return false;
+    out = static_cast<int64_t>(rounded);
+    return true;
+}
+
 enum class ScalarKind { Null, Boolean, Integer, Float, String };
 
 struct Scalar {
@@ -348,6 +365,42 @@ std::string lowerAscii(std::string value) {
     return value;
 }
 
+int hexDigit(char ch) {
+    if (ch >= '0' && ch <= '9')
+        return ch - '0';
+    if (ch >= 'a' && ch <= 'f')
+        return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F')
+        return ch - 'A' + 10;
+    return -1;
+}
+
+bool parseTiledColor(const std::string &text, uint32_t &color) {
+    if ((text.size() != 7u && text.size() != 9u) || text.front() != '#')
+        return false;
+    uint32_t value = 0u;
+    for (size_t index = 1u; index < text.size(); ++index) {
+        int digit = hexDigit(text[index]);
+        if (digit < 0)
+            return false;
+        value = (value << 4u) | static_cast<uint32_t>(digit);
+    }
+    if (text.size() == 7u)
+        value |= UINT32_C(0xFF000000);
+    color = value;
+    return true;
+}
+
+uint32_t multiplyTiledColors(uint32_t left, uint32_t right) {
+    uint32_t result = 0u;
+    for (unsigned int shift : {24u, 16u, 8u, 0u}) {
+        uint32_t a = (left >> shift) & 0xFFu;
+        uint32_t b = (right >> shift) & 0xFFu;
+        result |= ((a * b + 127u) / 255u) << shift;
+    }
+    return result;
+}
+
 std::string normalizeTiledXmlInput(const std::string &text) {
     size_t position = 0;
     if (text.size() >= 3u && static_cast<unsigned char>(text[0]) == 0xEFu &&
@@ -369,6 +422,7 @@ struct TileAnimation {
     int64_t baseTile{0};
     int64_t milliseconds{0};
     std::vector<int64_t> frames;
+    std::vector<int64_t> durations;
 };
 
 struct TileMetadata {
@@ -376,6 +430,14 @@ struct TileMetadata {
     std::map<std::string, Scalar> properties;
     std::vector<int64_t> animationFrames;
     std::vector<int64_t> animationDurations;
+};
+
+struct TileImage {
+    std::string path;
+    int64_t width{0};
+    int64_t height{0};
+    uint32_t transparentColor{0};
+    bool hasTransparentColor{false};
 };
 
 struct Tileset {
@@ -389,7 +451,13 @@ struct Tileset {
     int64_t spacing{0};
     int64_t imageWidth{0};
     int64_t imageHeight{0};
+    int64_t tileOffsetX{0};
+    int64_t tileOffsetY{0};
+    int64_t canonicalFirstId{0};
     std::string image;
+    uint32_t transparentColor{0};
+    bool hasTransparentColor{false};
+    std::map<int64_t, TileImage> tileImages;
     std::map<int64_t, TileMetadata> metadata;
 };
 
@@ -397,7 +465,41 @@ struct Layer {
     std::string name;
     bool visible{true};
     std::vector<int64_t> tiles;
+    double offsetX{0.0};
+    double offsetY{0.0};
+    double opacity{1.0};
+    double parallaxX{1.0};
+    double parallaxY{1.0};
+    uint32_t tint{UINT32_C(0xFFFFFFFF)};
+};
+
+struct CanonicalTile {
     int64_t tileset{-1};
+    int64_t localId{0};
+    uint32_t transformFlags{0};
+    uint32_t tint{UINT32_C(0xFFFFFFFF)};
+    uint16_t opacity{UINT16_MAX};
+    bool reachable{false};
+};
+
+struct CanonicalTileKey {
+    int64_t tileset{-1};
+    int64_t localId{0};
+    uint32_t transformFlags{0};
+    uint32_t tint{UINT32_C(0xFFFFFFFF)};
+    uint16_t opacity{UINT16_MAX};
+
+    bool operator<(const CanonicalTileKey &other) const {
+        if (tileset != other.tileset)
+            return tileset < other.tileset;
+        if (localId != other.localId)
+            return localId < other.localId;
+        if (transformFlags != other.transformFlags)
+            return transformFlags < other.transformFlags;
+        if (tint != other.tint)
+            return tint < other.tint;
+        return opacity < other.opacity;
+    }
 };
 
 struct SceneObject {
@@ -410,12 +512,31 @@ struct SceneObject {
 
 struct MapDocument {
     std::string name;
+    std::string orientation{"orthogonal"};
+    std::string renderOrder{"right-down"};
+    std::string staggerAxis;
+    std::string staggerIndex;
+    bool infinite{false};
     int64_t width{0};
     int64_t height{0};
+    int64_t originTileX{0};
+    int64_t originTileY{0};
+    int64_t projectionHeight{0};
     int64_t tileWidth{0};
     int64_t tileHeight{0};
+    int64_t hexSideLength{0};
+    double skewX{0.0};
+    double skewY{0.0};
+    double parallaxOriginX{0.0};
+    double parallaxOriginY{0.0};
+    int64_t sourceFrameWidth{0};
+    int64_t sourceFrameHeight{0};
+    int64_t drawOffsetX{0};
+    int64_t drawOffsetY{0};
     std::map<std::string, Scalar> properties;
     std::vector<Tileset> tilesets;
+    std::vector<CanonicalTile> canonicalTiles;
+    std::map<CanonicalTileKey, int64_t> canonicalVariants;
     std::vector<Layer> layers;
     std::vector<SceneObject> objects;
     std::set<int64_t> solidTiles;
@@ -1169,6 +1290,274 @@ class ImportParser {
         return true;
     }
 
+    struct TileBounds {
+        bool any{false};
+        int64_t minimumX{0};
+        int64_t minimumY{0};
+        int64_t maximumX{0};
+        int64_t maximumY{0};
+    };
+
+    bool extendTileBounds(TileBounds &bounds,
+                          int64_t x,
+                          int64_t y,
+                          int64_t width,
+                          int64_t height,
+                          std::string &error) {
+        if (width <= 0 || height <= 0 || x > INT64_MAX - width || y > INT64_MAX - height) {
+            error = "Tiled infinite chunk rectangle is invalid or overflows";
+            return false;
+        }
+        int64_t endX = x + width;
+        int64_t endY = y + height;
+        if (!bounds.any) {
+            bounds = TileBounds{true, x, y, endX, endY};
+        } else {
+            bounds.minimumX = std::min(bounds.minimumX, x);
+            bounds.minimumY = std::min(bounds.minimumY, y);
+            bounds.maximumX = std::max(bounds.maximumX, endX);
+            bounds.maximumY = std::max(bounds.maximumY, endY);
+        }
+        return true;
+    }
+
+    bool scanJsonInfiniteLayers(void *layers,
+                                int64_t inheritedX,
+                                int64_t inheritedY,
+                                TileBounds &bounds,
+                                std::string &error) {
+        if (!isSeq(layers)) {
+            error = "Tiled map must contain a layers array";
+            return false;
+        }
+        int64_t count = rt_seq_len(layers);
+        for (int64_t index = 0; index < count; ++index) {
+            void *layer = rt_seq_get(layers, index);
+            std::string type;
+            if (!isMap(layer) || !jsonString(layer, "type", type)) {
+                error = "Tiled layer is missing a string type";
+                return false;
+            }
+            int64_t ownX = 0;
+            int64_t ownY = 0;
+            if ((mapHas(layer, "x") && !jsonInt(layer, "x", ownX)) ||
+                (mapHas(layer, "y") && !jsonInt(layer, "y", ownY)) ||
+                (ownX > 0 && inheritedX > INT64_MAX - ownX) ||
+                (ownX < 0 && inheritedX < INT64_MIN - ownX) ||
+                (ownY > 0 && inheritedY > INT64_MAX - ownY) ||
+                (ownY < 0 && inheritedY < INT64_MIN - ownY)) {
+                error = "Tiled infinite layer tile offset is invalid or overflows";
+                return false;
+            }
+            int64_t layerX = inheritedX + ownX;
+            int64_t layerY = inheritedY + ownY;
+            if (type == "tilelayer") {
+                void *chunks = mapGet(layer, "chunks");
+                if (!isSeq(chunks)) {
+                    error = "infinite Tiled tile layer must contain a chunks array";
+                    return false;
+                }
+                int64_t chunkCount = rt_seq_len(chunks);
+                for (int64_t chunkIndex = 0; chunkIndex < chunkCount; ++chunkIndex) {
+                    void *chunk = rt_seq_get(chunks, chunkIndex);
+                    int64_t x = 0;
+                    int64_t y = 0;
+                    int64_t width = 0;
+                    int64_t height = 0;
+                    if (!isMap(chunk) || !jsonInt(chunk, "x", x) || !jsonInt(chunk, "y", y) ||
+                        !jsonInt(chunk, "width", width) || !jsonInt(chunk, "height", height) ||
+                        (layerX > 0 && x > INT64_MAX - layerX) ||
+                        (layerX < 0 && x < INT64_MIN - layerX) ||
+                        (layerY > 0 && y > INT64_MAX - layerY) ||
+                        (layerY < 0 && y < INT64_MIN - layerY) ||
+                        !extendTileBounds(bounds, x + layerX, y + layerY, width, height, error))
+                        return false;
+                }
+            } else if (type == "group") {
+                if (!scanJsonInfiniteLayers(mapGet(layer, "layers"), layerX, layerY, bounds, error))
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    bool scanXmlInfiniteLayers(void *parent,
+                               int64_t inheritedX,
+                               int64_t inheritedY,
+                               TileBounds &bounds,
+                               std::string &error) {
+        int64_t count = rt_xml_child_count(parent);
+        for (int64_t index = 0; index < count; ++index) {
+            void *layer = rt_xml_child_at(parent, index);
+            if (rt_xml_node_type(layer) != XML_NODE_ELEMENT)
+                continue;
+            std::string tag = xmlTag(layer);
+            if (tag != "layer" && tag != "group")
+                continue;
+            int64_t ownX = 0;
+            int64_t ownY = 0;
+            if (!xmlInt(layer, "x", ownX, false, error) ||
+                !xmlInt(layer, "y", ownY, false, error) ||
+                (ownX > 0 && inheritedX > INT64_MAX - ownX) ||
+                (ownX < 0 && inheritedX < INT64_MIN - ownX) ||
+                (ownY > 0 && inheritedY > INT64_MAX - ownY) ||
+                (ownY < 0 && inheritedY < INT64_MIN - ownY)) {
+                if (error.empty())
+                    error = "TMX infinite layer tile offset is invalid or overflows";
+                return false;
+            }
+            int64_t layerX = inheritedX + ownX;
+            int64_t layerY = inheritedY + ownY;
+            if (tag == "group") {
+                if (!scanXmlInfiniteLayers(layer, layerX, layerY, bounds, error))
+                    return false;
+                continue;
+            }
+            void *data = firstXmlChild(layer, "data");
+            if (!data) {
+                error = "infinite TMX tile layer is missing <data>";
+                return false;
+            }
+            int64_t childCount = rt_xml_child_count(data);
+            for (int64_t childIndex = 0; childIndex < childCount; ++childIndex) {
+                void *chunk = rt_xml_child_at(data, childIndex);
+                if (rt_xml_node_type(chunk) != XML_NODE_ELEMENT || xmlTag(chunk) != "chunk")
+                    continue;
+                int64_t x = 0;
+                int64_t y = 0;
+                int64_t width = 0;
+                int64_t height = 0;
+                if (!xmlInt(chunk, "x", x, true, error) || !xmlInt(chunk, "y", y, true, error) ||
+                    !xmlInt(chunk, "width", width, true, error) ||
+                    !xmlInt(chunk, "height", height, true, error) ||
+                    (layerX > 0 && x > INT64_MAX - layerX) ||
+                    (layerX < 0 && x < INT64_MIN - layerX) ||
+                    (layerY > 0 && y > INT64_MAX - layerY) ||
+                    (layerY < 0 && y < INT64_MIN - layerY) ||
+                    !extendTileBounds(bounds, x + layerX, y + layerY, width, height, error))
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    bool applyInfiniteBounds(const TileBounds &bounds, MapDocument &document, std::string &error) {
+        if (!bounds.any) {
+            document.originTileX = 0;
+            document.originTileY = 0;
+            document.width = 1;
+            document.height = 1;
+            return validateMapDimensions(document, error);
+        }
+        if (bounds.maximumX <= bounds.minimumX || bounds.maximumY <= bounds.minimumY) {
+            error = "Tiled infinite map bounds are invalid";
+            return false;
+        }
+        document.originTileX = bounds.minimumX;
+        document.originTileY = bounds.minimumY;
+        document.width = bounds.maximumX - bounds.minimumX;
+        document.height = bounds.maximumY - bounds.minimumY;
+        return validateMapDimensions(document, error);
+    }
+
+    bool validateOrientation(MapDocument &document, std::string &error) {
+        if (document.orientation != "orthogonal" && document.orientation != "isometric" &&
+            document.orientation != "staggered" && document.orientation != "hexagonal" &&
+            document.orientation != "oblique") {
+            error = "unsupported Tiled map orientation '" + document.orientation + "'";
+            return false;
+        }
+        const bool validRenderOrder =
+            document.renderOrder == "right-down" || document.renderOrder == "right-up" ||
+            document.renderOrder == "left-down" || document.renderOrder == "left-up";
+        if (!validRenderOrder) {
+            error = "unsupported Tiled render order '" + document.renderOrder + "'";
+            return false;
+        }
+        bool staggered = document.orientation == "staggered" || document.orientation == "hexagonal";
+        if (staggered && document.staggerAxis != "x" && document.staggerAxis != "y") {
+            error = "staggered and hexagonal Tiled maps require stagger axis x or y";
+            return false;
+        }
+        if (staggered && document.staggerIndex != "odd" && document.staggerIndex != "even") {
+            error = "staggered and hexagonal Tiled maps require stagger index odd or even";
+            return false;
+        }
+        if (document.orientation == "hexagonal") {
+            int64_t axisSize =
+                document.staggerAxis == "x" ? document.tileWidth : document.tileHeight;
+            if (document.hexSideLength < 0 || document.hexSideLength > axisSize) {
+                error = "Tiled hex side length is outside its tile-axis extent";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool prepareCanonicalTiles(MapDocument &document, std::string &error) {
+        document.canonicalTiles.clear();
+        document.canonicalVariants.clear();
+        document.canonicalTiles.push_back(CanonicalTile{});
+        for (size_t index = 0; index < document.tilesets.size(); ++index) {
+            Tileset &tileset = document.tilesets[index];
+            if (index > 0 && document.tilesets[index - 1u].firstGid == tileset.firstGid) {
+                error = "Tiled tilesets have duplicate firstgid values";
+                return false;
+            }
+            if (tileset.tileCount <= 0 && tileset.columns > 0 && tileset.imageWidth > 0 &&
+                tileset.imageHeight > 0) {
+                int64_t usableWidth = tileset.imageWidth - tileset.margin * 2;
+                int64_t usableHeight = tileset.imageHeight - tileset.margin * 2;
+                if (usableWidth >= tileset.tileWidth && usableHeight >= tileset.tileHeight) {
+                    int64_t rows =
+                        (usableHeight + tileset.spacing) / (tileset.tileHeight + tileset.spacing);
+                    tileset.tileCount = tileset.columns * rows;
+                }
+            }
+            if (tileset.tileCount <= 0 && !tileset.metadata.empty()) {
+                int64_t maximumId = tileset.metadata.rbegin()->first;
+                if (maximumId < INT64_MAX)
+                    tileset.tileCount = maximumId + 1;
+            }
+            if (tileset.tileCount <= 0) {
+                error = "Tiled tileset tilecount cannot be derived safely";
+                return false;
+            }
+            if (tileset.firstGid > static_cast<int64_t>(UINT32_C(0x0FFFFFFF)) ||
+                tileset.tileCount - 1 >
+                    static_cast<int64_t>(UINT32_C(0x0FFFFFFF)) - tileset.firstGid) {
+                error = "Tiled tileset GID range overlaps transform bits";
+                return false;
+            }
+            if (index > 0) {
+                const Tileset &previous = document.tilesets[index - 1u];
+                if (previous.tileCount > tileset.firstGid - previous.firstGid) {
+                    error = "Tiled tileset GID ranges overlap";
+                    return false;
+                }
+            }
+            if (tileset.tileCount > static_cast<int64_t>(kMaxCellsPerLayer) ||
+                document.canonicalTiles.size() >
+                    kMaxCellsPerLayer - static_cast<size_t>(tileset.tileCount)) {
+                error = "Tiled canonical tile count exceeds 1048576";
+                return false;
+            }
+            tileset.canonicalFirstId = static_cast<int64_t>(document.canonicalTiles.size());
+            for (int64_t localId = 0; localId < tileset.tileCount; ++localId) {
+                CanonicalTile tile;
+                tile.tileset = static_cast<int64_t>(index);
+                tile.localId = localId;
+                document.canonicalTiles.push_back(tile);
+                CanonicalTileKey key;
+                key.tileset = tile.tileset;
+                key.localId = localId;
+                document.canonicalVariants[key] =
+                    static_cast<int64_t>(document.canonicalTiles.size() - 1u);
+            }
+        }
+        return true;
+    }
+
     bool parseJsonMap(const std::string &owner,
                       const std::string &text,
                       MapDocument &document,
@@ -1196,26 +1585,80 @@ class ImportParser {
             error = "Tiled JSON root must identify type 'map'";
             return false;
         }
-        std::string orientation;
-        if (!jsonString(root.get(), "orientation", orientation) || orientation != "orthogonal") {
-            error = "only orthogonal Tiled maps are supported";
+        if (!jsonString(root.get(), "orientation", document.orientation)) {
+            error = "Tiled map is missing a string orientation";
             return false;
         }
-        bool infinite = false;
-        if (mapHas(root.get(), "infinite") && !jsonBool(root.get(), "infinite", infinite)) {
+        if (mapHas(root.get(), "renderorder") &&
+            !jsonString(root.get(), "renderorder", document.renderOrder)) {
+            error = "Tiled map renderorder must be a string";
+            return false;
+        }
+        if (mapHas(root.get(), "infinite") &&
+            !jsonBool(root.get(), "infinite", document.infinite)) {
             error = "Tiled map 'infinite' must be boolean";
             return false;
         }
-        if (infinite) {
-            error = "infinite Tiled maps are not supported";
+        int64_t sourceWidth = 0;
+        int64_t sourceHeight = 0;
+        if (!jsonInt(root.get(), "width", sourceWidth) ||
+            !jsonInt(root.get(), "height", sourceHeight) ||
+            !jsonInt(root.get(), "tilewidth", document.tileWidth) ||
+            !jsonInt(root.get(), "tileheight", document.tileHeight) || document.tileWidth <= 0 ||
+            document.tileHeight <= 0) {
+            error = "Tiled map dimensions and tile dimensions are invalid";
             return false;
         }
-        if (!jsonInt(root.get(), "width", document.width) ||
-            !jsonInt(root.get(), "height", document.height) ||
-            !jsonInt(root.get(), "tilewidth", document.tileWidth) ||
-            !jsonInt(root.get(), "tileheight", document.tileHeight) ||
-            !validateMapDimensions(document, error))
+        document.projectionHeight = sourceHeight;
+        if (mapHas(root.get(), "staggeraxis") &&
+            !jsonString(root.get(), "staggeraxis", document.staggerAxis)) {
+            error = "Tiled map staggeraxis must be a string";
             return false;
+        }
+        if (mapHas(root.get(), "staggerindex") &&
+            !jsonString(root.get(), "staggerindex", document.staggerIndex)) {
+            error = "Tiled map staggerindex must be a string";
+            return false;
+        }
+        if (mapHas(root.get(), "hexsidelength") &&
+            !jsonInt(root.get(), "hexsidelength", document.hexSideLength)) {
+            error = "Tiled map hexsidelength must be integral";
+            return false;
+        }
+        if ((mapHas(root.get(), "skewx") &&
+             !jsonNumberValue(mapGet(root.get(), "skewx"), document.skewX)) ||
+            (mapHas(root.get(), "skewy") &&
+             !jsonNumberValue(mapGet(root.get(), "skewy"), document.skewY)) ||
+            (mapHas(root.get(), "parallaxoriginx") &&
+             !jsonNumberValue(mapGet(root.get(), "parallaxoriginx"), document.parallaxOriginX)) ||
+            (mapHas(root.get(), "parallaxoriginy") &&
+             !jsonNumberValue(mapGet(root.get(), "parallaxoriginy"), document.parallaxOriginY))) {
+            error = "Tiled projection and parallax-origin values must be finite numbers";
+            return false;
+        }
+        if (!validateOrientation(document, error))
+            return false;
+
+        void *layers = mapGet(root.get(), "layers");
+        if (!isSeq(layers)) {
+            error = "Tiled map must contain a layers array";
+            return false;
+        }
+        if (document.infinite) {
+            if (sourceWidth < 0 || sourceHeight < 0) {
+                error = "infinite Tiled map source dimensions cannot be negative";
+                return false;
+            }
+            TileBounds bounds;
+            if (!scanJsonInfiniteLayers(layers, 0, 0, bounds, error) ||
+                !applyInfiniteBounds(bounds, document, error))
+                return false;
+        } else {
+            document.width = sourceWidth;
+            document.height = sourceHeight;
+            if (!validateMapDimensions(document, error))
+                return false;
+        }
         if (!parseJsonProperties(
                 mapGet(root.get(), "properties"), document.properties, error, &reader_, owner))
             return false;
@@ -1256,13 +1699,21 @@ class ImportParser {
                   [](const Tileset &left, const Tileset &right) {
                       return left.firstGid < right.firstGid;
                   });
-
-        void *layers = mapGet(root.get(), "layers");
-        if (!isSeq(layers)) {
-            error = "Tiled map must contain a layers array";
+        if (!prepareCanonicalTiles(document, error))
             return false;
-        }
-        return parseJsonLayers(owner, layers, "", true, 0.0, 0.0, document, error);
+
+        return parseJsonLayers(owner,
+                               layers,
+                               "",
+                               true,
+                               0.0,
+                               0.0,
+                               1.0,
+                               1.0,
+                               1.0,
+                               UINT32_C(0xFFFFFFFF),
+                               document,
+                               error);
     }
 
     bool parseTilesetText(const std::string &owner,
@@ -1332,7 +1783,7 @@ class ImportParser {
             return false;
         }
         if (mapHas(root, "columns") &&
-            (!jsonInt(root, "columns", tileset.columns) || tileset.columns <= 0)) {
+            (!jsonInt(root, "columns", tileset.columns) || tileset.columns < 0)) {
             error = "Tiled tileset has invalid columns";
             return false;
         }
@@ -1349,20 +1800,33 @@ class ImportParser {
         void *tileOffset = mapGet(root, "tileoffset");
         int64_t offsetX = 0;
         int64_t offsetY = 0;
-        if (tileOffset && (!jsonInt(tileOffset, "x", offsetX) ||
-                           !jsonInt(tileOffset, "y", offsetY) || offsetX != 0 || offsetY != 0)) {
-            error = "nonzero Tiled tileset tile offsets are not supported";
+        if (tileOffset &&
+            (!jsonInt(tileOffset, "x", offsetX) || !jsonInt(tileOffset, "y", offsetY))) {
+            error = "Tiled tileset tile offsets must be integral";
             return false;
         }
+        tileset.tileOffsetX = offsetX;
+        tileset.tileOffsetY = offsetY;
         std::string imageReference;
-        if (!jsonString(root, "image", imageReference)) {
-            error = "image-collection Tiled tilesets are not supported";
-            return false;
+        if (jsonString(root, "image", imageReference)) {
+            if (!reader_.resolveDependencyPath(owner, imageReference, tileset.image, error))
+                return false;
+            if ((mapHas(root, "imagewidth") && !jsonInt(root, "imagewidth", tileset.imageWidth)) ||
+                (mapHas(root, "imageheight") &&
+                 !jsonInt(root, "imageheight", tileset.imageHeight)) ||
+                tileset.imageWidth < 0 || tileset.imageHeight < 0) {
+                error = "Tiled tileset image dimensions are invalid";
+                return false;
+            }
+            std::string transparent;
+            if (mapHas(root, "transparentcolor") &&
+                (!jsonString(root, "transparentcolor", transparent) ||
+                 !parseTiledColor(transparent, tileset.transparentColor))) {
+                error = "Tiled tileset transparentcolor is invalid";
+                return false;
+            }
+            tileset.hasTransparentColor = !transparent.empty();
         }
-        if (!reader_.resolveDependencyPath(owner, imageReference, tileset.image, error))
-            return false;
-        jsonInt(root, "imagewidth", tileset.imageWidth);
-        jsonInt(root, "imageheight", tileset.imageHeight);
 
         void *tiles = mapGet(root, "tiles");
         if (!tiles)
@@ -1379,20 +1843,32 @@ class ImportParser {
                 error = "Tiled tile metadata has an invalid id";
                 return false;
             }
-            if (mapHas(tile, "image")) {
-                error = "per-tile images are not supported in Tiled tilesets";
+            if (tileset.metadata.find(id) != tileset.metadata.end()) {
+                error = "Tiled tileset contains duplicate tile ids";
                 return false;
+            }
+            std::string tileImageReference;
+            if (jsonString(tile, "image", tileImageReference)) {
+                TileImage image;
+                if (!reader_.resolveDependencyPath(owner, tileImageReference, image.path, error) ||
+                    (mapHas(tile, "imagewidth") && !jsonInt(tile, "imagewidth", image.width)) ||
+                    (mapHas(tile, "imageheight") && !jsonInt(tile, "imageheight", image.height)) ||
+                    image.width < 0 || image.height < 0)
+                    return false;
+                std::string transparent;
+                if (mapHas(tile, "transparentcolor") &&
+                    (!jsonString(tile, "transparentcolor", transparent) ||
+                     !parseTiledColor(transparent, image.transparentColor))) {
+                    error = "Tiled per-tile transparentcolor is invalid";
+                    return false;
+                }
+                image.hasTransparentColor = !transparent.empty();
+                tileset.tileImages[id] = std::move(image);
             }
             TileMetadata metadata;
             if (!parseJsonProperties(
                     mapGet(tile, "properties"), metadata.properties, error, &reader_, owner))
                 return false;
-            for (const auto &[name, scalar] : metadata.properties) {
-                if (scalar.kind != ScalarKind::Integer && scalar.kind != ScalarKind::Boolean) {
-                    error = "Tiled tile property '" + name + "' must be int or bool";
-                    return false;
-                }
-            }
             if (!jsonCollisionIsSolid(mapGet(tile, "objectgroup"),
                                       tileset.tileWidth,
                                       tileset.tileHeight,
@@ -1421,6 +1897,10 @@ class ImportParser {
             }
             tileset.metadata[id] = std::move(metadata);
         }
+        if (tileset.image.empty() && tileset.tileImages.empty()) {
+            error = "Tiled tileset has neither a root image nor per-tile images";
+            return false;
+        }
         return true;
     }
 
@@ -1447,21 +1927,32 @@ class ImportParser {
             int64_t offsetX = 0;
             int64_t offsetY = 0;
             if (!xmlInt(tileOffset, "x", offsetX, false, error) ||
-                !xmlInt(tileOffset, "y", offsetY, false, error) || offsetX != 0 || offsetY != 0) {
-                error = "nonzero TMX tileset tile offsets are not supported";
+                !xmlInt(tileOffset, "y", offsetY, false, error)) {
+                error = "TMX tileset tile offsets must be integral";
                 return false;
             }
+            tileset.tileOffsetX = offsetX;
+            tileset.tileOffsetY = offsetY;
         }
         void *image = firstXmlChild(root, "image");
         std::string imageReference = image ? xmlString(image, "source") : std::string();
-        if (!image || imageReference.empty()) {
-            error = "image-collection TMX tilesets are not supported";
-            return false;
+        if (image && !imageReference.empty()) {
+            if (!reader_.resolveDependencyPath(owner, imageReference, tileset.image, error) ||
+                !xmlInt(image, "width", tileset.imageWidth, false, error) ||
+                !xmlInt(image, "height", tileset.imageHeight, false, error) ||
+                tileset.imageWidth < 0 || tileset.imageHeight < 0)
+                return false;
+            std::string transparent = xmlString(image, "trans");
+            if (!transparent.empty()) {
+                if (transparent.front() != '#')
+                    transparent.insert(transparent.begin(), '#');
+                if (!parseTiledColor(transparent, tileset.transparentColor)) {
+                    error = "TMX tileset transparent color is invalid";
+                    return false;
+                }
+                tileset.hasTransparentColor = true;
+            }
         }
-        if (!reader_.resolveDependencyPath(owner, imageReference, tileset.image, error) ||
-            !xmlInt(image, "width", tileset.imageWidth, false, error) ||
-            !xmlInt(image, "height", tileset.imageHeight, false, error))
-            return false;
 
         int64_t childCount = rt_xml_child_count(root);
         for (int64_t index = 0; index < childCount; ++index) {
@@ -1473,19 +1964,35 @@ class ImportParser {
                 error = "TMX tile metadata has an invalid id";
                 return false;
             }
-            if (firstXmlChild(tile, "image")) {
-                error = "per-tile images are not supported in TMX tilesets";
+            if (tileset.metadata.find(id) != tileset.metadata.end()) {
+                error = "TMX tileset contains duplicate tile ids";
                 return false;
+            }
+            void *tileImage = firstXmlChild(tile, "image");
+            if (tileImage) {
+                std::string reference = xmlString(tileImage, "source");
+                TileImage imageInfo;
+                if (reference.empty() ||
+                    !reader_.resolveDependencyPath(owner, reference, imageInfo.path, error) ||
+                    !xmlInt(tileImage, "width", imageInfo.width, false, error) ||
+                    !xmlInt(tileImage, "height", imageInfo.height, false, error) ||
+                    imageInfo.width < 0 || imageInfo.height < 0)
+                    return false;
+                std::string transparent = xmlString(tileImage, "trans");
+                if (!transparent.empty()) {
+                    if (transparent.front() != '#')
+                        transparent.insert(transparent.begin(), '#');
+                    if (!parseTiledColor(transparent, imageInfo.transparentColor)) {
+                        error = "TMX per-tile transparent color is invalid";
+                        return false;
+                    }
+                    imageInfo.hasTransparentColor = true;
+                }
+                tileset.tileImages[id] = std::move(imageInfo);
             }
             TileMetadata metadata;
             if (!parseXmlProperties(tile, metadata.properties, error, &reader_, owner))
                 return false;
-            for (const auto &[name, scalar] : metadata.properties) {
-                if (scalar.kind != ScalarKind::Integer && scalar.kind != ScalarKind::Boolean) {
-                    error = "TMX tile property '" + name + "' must be int or bool";
-                    return false;
-                }
-            }
             if (!xmlCollisionIsSolid(firstXmlChild(tile, "objectgroup"),
                                      tileset.tileWidth,
                                      tileset.tileHeight,
@@ -1516,29 +2023,38 @@ class ImportParser {
             }
             tileset.metadata[id] = std::move(metadata);
         }
+        if (tileset.image.empty() && tileset.tileImages.empty()) {
+            error = "TMX tileset has neither a root image nor per-tile images";
+            return false;
+        }
         return true;
     }
 
     bool normalizeGids(std::vector<int64_t> &gids,
                        MapDocument &document,
-                       int64_t &tilesetIndex,
+                       uint32_t tint,
+                       uint16_t opacity,
                        std::string &error) {
-        tilesetIndex = -1;
         for (int64_t &raw : gids) {
             if (raw < 0 || static_cast<uint64_t>(raw) > UINT32_MAX) {
                 error = "Tiled GID is outside the uint32 range";
                 return false;
             }
             uint64_t gid = static_cast<uint64_t>(raw);
-            if ((gid & kTiledTransformMask) != 0u) {
-                error = "Tiled tile transform flags are not representable by Tilemap";
-                return false;
-            }
-            if (gid == 0u)
+            uint32_t flags = static_cast<uint32_t>(gid & kTiledTransformMask);
+            uint64_t baseGid = gid & ~kTiledTransformMask;
+            if (baseGid == 0u) {
+                if (flags != 0u) {
+                    error = "Tiled empty GID cannot carry transform flags";
+                    return false;
+                }
                 continue;
+            }
+            if (document.orientation != "hexagonal")
+                flags &= ~static_cast<uint32_t>(kTiledHex120Flag);
             int64_t selected = -1;
             for (size_t index = 0; index < document.tilesets.size(); ++index) {
-                if (static_cast<uint64_t>(document.tilesets[index].firstGid) <= gid)
+                if (static_cast<uint64_t>(document.tilesets[index].firstGid) <= baseGid)
                     selected = static_cast<int64_t>(index);
                 else
                     break;
@@ -1548,26 +2064,51 @@ class ImportParser {
                 return false;
             }
             Tileset &tileset = document.tilesets[static_cast<size_t>(selected)];
-            int64_t local = static_cast<int64_t>(gid) - tileset.firstGid + 1;
-            if (local <= 0 || (tileset.tileCount > 0 && local > tileset.tileCount)) {
+            int64_t local = static_cast<int64_t>(baseGid) - tileset.firstGid;
+            if (local < 0 || local >= tileset.tileCount) {
                 error = "Tiled GID exceeds its tileset tilecount";
                 return false;
             }
-            if (tilesetIndex >= 0 && tilesetIndex != selected) {
-                error = "a Tiled tile layer uses more than one tileset";
-                return false;
+            CanonicalTileKey key;
+            key.tileset = selected;
+            key.localId = local;
+            key.transformFlags = flags;
+            key.tint = tint;
+            key.opacity = opacity;
+            auto found = document.canonicalVariants.find(key);
+            int64_t canonical = 0;
+            if (found == document.canonicalVariants.end()) {
+                if (document.canonicalTiles.size() >= kMaxCellsPerLayer) {
+                    error = "Tiled canonical tile variant count exceeds 1048575";
+                    return false;
+                }
+                CanonicalTile tile;
+                tile.tileset = selected;
+                tile.localId = local;
+                tile.transformFlags = flags;
+                tile.tint = tint;
+                tile.opacity = opacity;
+                document.canonicalTiles.push_back(tile);
+                canonical = static_cast<int64_t>(document.canonicalTiles.size() - 1u);
+                document.canonicalVariants.emplace(key, canonical);
+            } else {
+                canonical = found->second;
             }
-            tilesetIndex = selected;
-            raw = local;
+            document.canonicalTiles[static_cast<size_t>(canonical)].reachable = true;
+            raw = canonical;
         }
-        if (tilesetIndex < 0)
-            tilesetIndex = 0;
         return true;
     }
 
     bool addLayer(std::string name,
                   bool visible,
                   std::vector<int64_t> gids,
+                  double offsetX,
+                  double offsetY,
+                  double opacity,
+                  double parallaxX,
+                  double parallaxY,
+                  uint32_t tint,
                   MapDocument &document,
                   std::string &error) {
         if (document.layers.size() >= kMaxLayers) {
@@ -1586,7 +2127,16 @@ class ImportParser {
         layer.name =
             name.empty() ? "Layer" + std::to_string(document.layers.size()) : std::move(name);
         layer.visible = visible;
-        if (!normalizeGids(gids, document, layer.tileset, error))
+        layer.offsetX = offsetX;
+        layer.offsetY = offsetY;
+        layer.opacity = opacity;
+        layer.parallaxX = parallaxX;
+        layer.parallaxY = parallaxY;
+        layer.tint = tint;
+        double scaledOpacity = std::floor(opacity * static_cast<double>(UINT16_MAX) + 0.5);
+        uint16_t canonicalOpacity =
+            static_cast<uint16_t>(std::clamp(scaledOpacity, 0.0, static_cast<double>(UINT16_MAX)));
+        if (!normalizeGids(gids, document, tint, canonicalOpacity, error))
             return false;
         layer.tiles = std::move(gids);
         document.totalCells += layer.tiles.size();
@@ -1628,22 +2178,96 @@ class ImportParser {
         return true;
     }
 
-    bool validateLayerRenderingJson(void *layer, std::string &error) {
-        double opacity = 1.0;
-        double parallaxX = 1.0;
-        double parallaxY = 1.0;
-        std::string tint;
-        if ((mapHas(layer, "opacity") &&
-             (!jsonNumberValue(mapGet(layer, "opacity"), opacity) || opacity != 1.0)) ||
+    bool composeLayerRenderingJson(void *layer,
+                                   double inheritedOpacity,
+                                   double inheritedParallaxX,
+                                   double inheritedParallaxY,
+                                   uint32_t inheritedTint,
+                                   double &opacity,
+                                   double &parallaxX,
+                                   double &parallaxY,
+                                   uint32_t &tint,
+                                   std::string &error) {
+        double ownOpacity = 1.0;
+        double ownParallaxX = 1.0;
+        double ownParallaxY = 1.0;
+        if ((mapHas(layer, "opacity") && !jsonNumberValue(mapGet(layer, "opacity"), ownOpacity)) ||
             (mapHas(layer, "parallaxx") &&
-             (!jsonNumberValue(mapGet(layer, "parallaxx"), parallaxX) || parallaxX != 1.0)) ||
+             !jsonNumberValue(mapGet(layer, "parallaxx"), ownParallaxX)) ||
             (mapHas(layer, "parallaxy") &&
-             (!jsonNumberValue(mapGet(layer, "parallaxy"), parallaxY) || parallaxY != 1.0)) ||
-            (jsonString(layer, "tintcolor", tint) && !tint.empty())) {
-            error = "Tiled layer opacity, tint, and parallax are not representable by Tilemap";
+             !jsonNumberValue(mapGet(layer, "parallaxy"), ownParallaxY)) ||
+            ownOpacity < 0.0 || ownOpacity > 1.0) {
+            error = "Tiled layer opacity/parallax values are invalid";
+            return false;
+        }
+        uint32_t ownTint = UINT32_C(0xFFFFFFFF);
+        std::string tintText;
+        if (mapHas(layer, "tintcolor") &&
+            (!jsonString(layer, "tintcolor", tintText) || !parseTiledColor(tintText, ownTint))) {
+            error = "Tiled layer tintcolor must be #RRGGBB or #AARRGGBB";
+            return false;
+        }
+        std::string blendMode;
+        if (mapHas(layer, "blendmode") &&
+            (!jsonString(layer, "blendmode", blendMode) || blendMode != "normal")) {
+            error = "unsupported Tiled layer blend mode";
+            return false;
+        }
+        opacity = inheritedOpacity * ownOpacity;
+        parallaxX = inheritedParallaxX * ownParallaxX;
+        parallaxY = inheritedParallaxY * ownParallaxY;
+        tint = multiplyTiledColors(inheritedTint, ownTint);
+        if (!std::isfinite(opacity) || !std::isfinite(parallaxX) || !std::isfinite(parallaxY)) {
+            error = "composed Tiled layer rendering values overflow";
             return false;
         }
         return true;
+    }
+
+    bool parseJsonGidPayload(void *payload,
+                             void *encodingOwner,
+                             size_t cells,
+                             std::vector<int64_t> &gids,
+                             std::string &error) {
+        void *data = mapGet(payload, "data");
+        if (isSeq(data)) {
+            if (mapHas(encodingOwner, "encoding") || mapHas(encodingOwner, "compression")) {
+                error = "array-backed Tiled layer data cannot declare encoding/compression";
+                return false;
+            }
+            int64_t count = rt_seq_len(data);
+            if (count < 0 || static_cast<size_t>(count) != cells) {
+                error = "Tiled layer cell count does not match its dimensions";
+                return false;
+            }
+            gids.resize(cells);
+            for (int64_t index = 0; index < count; ++index) {
+                if (!jsonIntValue(rt_seq_get(data, index), gids[static_cast<size_t>(index)])) {
+                    error = "Tiled layer data contains a non-integer GID";
+                    return false;
+                }
+            }
+            return true;
+        }
+        std::string encoded;
+        std::string encoding;
+        std::string compression;
+        if (!jsonStringValue(data, encoded) || !jsonString(encodingOwner, "encoding", encoding)) {
+            error = "Tiled layer data must be an array, CSV string, or Base64 string";
+            return false;
+        }
+        jsonString(encodingOwner, "compression", compression);
+        if (encoding == "csv") {
+            if (!compression.empty()) {
+                error = "Tiled CSV layer data cannot be compressed";
+                return false;
+            }
+            return parseCsv(encoded, cells, gids, error);
+        }
+        if (encoding == "base64")
+            return decodeBase64Gids(encoded, compression, cells, gids, error);
+        error = "unsupported Tiled layer encoding '" + encoding + "'";
+        return false;
     }
 
     bool parseJsonTileLayer(void *layer,
@@ -1651,6 +2275,10 @@ class ImportParser {
                             bool visible,
                             double inheritedX,
                             double inheritedY,
+                            double opacity,
+                            double parallaxX,
+                            double parallaxY,
+                            uint32_t tint,
                             MapDocument &document,
                             std::string &error) {
         int64_t width = 0;
@@ -1659,11 +2287,6 @@ class ImportParser {
         int64_t layerY = 0;
         double offsetX = inheritedX;
         double offsetY = inheritedY;
-        if (!jsonInt(layer, "width", width) || !jsonInt(layer, "height", height) || width <= 0 ||
-            height <= 0 || width > static_cast<int64_t>(kMaxCellsPerLayer) / height) {
-            error = "finite Tiled tile layer dimensions are invalid";
-            return false;
-        }
         if (mapHas(layer, "x") && !jsonInt(layer, "x", layerX)) {
             error = "Tiled tile layer x offset must be integral";
             return false;
@@ -1688,64 +2311,85 @@ class ImportParser {
             }
             offsetY += ownOffset;
         }
-        if (offsetX < static_cast<double>(INT64_MIN) || offsetX > static_cast<double>(INT64_MAX) ||
-            offsetY < static_cast<double>(INT64_MIN) || offsetY > static_cast<double>(INT64_MAX) ||
-            std::trunc(offsetX) != offsetX || std::trunc(offsetY) != offsetY ||
-            static_cast<int64_t>(offsetX) % document.tileWidth != 0 ||
-            static_cast<int64_t>(offsetY) % document.tileHeight != 0) {
-            error = "Tiled tile-layer pixel offsets must be integral tile offsets";
+        if (!std::isfinite(offsetX) || !std::isfinite(offsetY)) {
+            error = "composed Tiled tile-layer pixel offset overflows";
             return false;
         }
-        size_t cells = static_cast<size_t>(width * height);
-        void *data = mapGet(layer, "data");
-        std::vector<int64_t> gids;
-        if (isSeq(data)) {
-            if (mapHas(layer, "encoding") || mapHas(layer, "compression")) {
-                error = "array-backed Tiled layer data cannot declare encoding/compression";
+        std::vector<int64_t> placed(static_cast<size_t>(document.width * document.height), 0);
+        if (document.infinite) {
+            void *chunks = mapGet(layer, "chunks");
+            if (!isSeq(chunks)) {
+                error = "infinite Tiled tile layer must contain a chunks array";
                 return false;
             }
-            int64_t count = rt_seq_len(data);
-            if (count < 0 || static_cast<size_t>(count) != cells) {
-                error = "Tiled layer cell count does not match its dimensions";
-                return false;
-            }
-            gids.resize(cells);
-            for (int64_t index = 0; index < count; ++index) {
-                if (!jsonIntValue(rt_seq_get(data, index), gids[static_cast<size_t>(index)])) {
-                    error = "Tiled layer data contains a non-integer GID";
+            std::vector<uint8_t> occupied(placed.size(), 0u);
+            int64_t count = rt_seq_len(chunks);
+            for (int64_t chunkIndex = 0; chunkIndex < count; ++chunkIndex) {
+                void *chunk = rt_seq_get(chunks, chunkIndex);
+                int64_t chunkX = 0;
+                int64_t chunkY = 0;
+                if (!isMap(chunk) || !jsonInt(chunk, "x", chunkX) || !jsonInt(chunk, "y", chunkY) ||
+                    !jsonInt(chunk, "width", width) || !jsonInt(chunk, "height", height) ||
+                    width <= 0 || height <= 0 ||
+                    width > static_cast<int64_t>(kMaxCellsPerLayer) / height) {
+                    error = "Tiled infinite chunk dimensions are invalid";
                     return false;
+                }
+                size_t cells = static_cast<size_t>(width * height);
+                std::vector<int64_t> gids;
+                if (!parseJsonGidPayload(chunk, layer, cells, gids, error))
+                    return false;
+                if ((layerX > 0 && chunkX > INT64_MAX - layerX) ||
+                    (layerX < 0 && chunkX < INT64_MIN - layerX) ||
+                    (layerY > 0 && chunkY > INT64_MAX - layerY) ||
+                    (layerY < 0 && chunkY < INT64_MIN - layerY)) {
+                    error = "Tiled infinite chunk placement overflows";
+                    return false;
+                }
+                int64_t destinationX = chunkX + layerX - document.originTileX;
+                int64_t destinationY = chunkY + layerY - document.originTileY;
+                if (destinationX < 0 || destinationY < 0 || destinationX > document.width - width ||
+                    destinationY > document.height - height) {
+                    error = "Tiled infinite chunk lies outside scanned map bounds";
+                    return false;
+                }
+                for (int64_t y = 0; y < height; ++y) {
+                    for (int64_t x = 0; x < width; ++x) {
+                        size_t destination = static_cast<size_t>(
+                            (destinationY + y) * document.width + destinationX + x);
+                        if (occupied[destination] != 0u) {
+                            error = "Tiled infinite chunks overlap within a layer";
+                            return false;
+                        }
+                        occupied[destination] = 1u;
+                        placed[destination] = gids[static_cast<size_t>(y * width + x)];
+                    }
                 }
             }
         } else {
-            std::string encoded;
-            std::string encoding;
-            std::string compression;
-            if (!jsonStringValue(data, encoded) || !jsonString(layer, "encoding", encoding)) {
-                error = "Tiled layer data must be an array, CSV string, or Base64 string";
+            if (!jsonInt(layer, "width", width) || !jsonInt(layer, "height", height) ||
+                width <= 0 || height <= 0 ||
+                width > static_cast<int64_t>(kMaxCellsPerLayer) / height) {
+                error = "finite Tiled tile layer dimensions are invalid";
                 return false;
             }
-            jsonString(layer, "compression", compression);
-            if (encoding == "csv") {
-                if (!compression.empty()) {
-                    error = "Tiled CSV layer data cannot be compressed";
-                    return false;
-                }
-                if (!parseCsv(encoded, cells, gids, error))
-                    return false;
-            } else if (encoding == "base64") {
-                if (!decodeBase64Gids(encoded, compression, cells, gids, error))
-                    return false;
-            } else {
-                error = "unsupported Tiled layer encoding '" + encoding + "'";
+            std::vector<int64_t> gids;
+            if (!parseJsonGidPayload(
+                    layer, layer, static_cast<size_t>(width * height), gids, error) ||
+                !placeLayerGids(gids, width, height, layerX, layerY, document, placed, error))
                 return false;
-            }
         }
-        std::vector<int64_t> placed;
-        int64_t tileOffsetX = layerX + static_cast<int64_t>(offsetX) / document.tileWidth;
-        int64_t tileOffsetY = layerY + static_cast<int64_t>(offsetY) / document.tileHeight;
-        if (!placeLayerGids(gids, width, height, tileOffsetX, tileOffsetY, document, placed, error))
-            return false;
-        return addLayer(name, visible, std::move(placed), document, error);
+        return addLayer(name,
+                        visible,
+                        std::move(placed),
+                        offsetX,
+                        offsetY,
+                        opacity,
+                        parallaxX,
+                        parallaxY,
+                        tint,
+                        document,
+                        error);
     }
 
     bool addReservedProperty(std::map<std::string, Scalar> &properties,
@@ -1977,14 +2621,11 @@ class ImportParser {
         }
         x += offsetX;
         y += offsetY;
-        if (x < static_cast<double>(INT64_MIN) || x > static_cast<double>(INT64_MAX) ||
-            y < static_cast<double>(INT64_MIN) || y > static_cast<double>(INT64_MAX)) {
+        SceneObject result;
+        if (!roundNearestTiesAway(x, result.x) || !roundNearestTiesAway(y, result.y)) {
             error = "Tiled object coordinates are outside the SceneDocument integer range";
             return false;
         }
-        SceneObject result;
-        result.x = static_cast<int64_t>(x);
-        result.y = static_cast<int64_t>(y);
         if (!jsonString(object, "class", result.type) || result.type.empty())
             jsonString(object, "type", result.type);
         if (result.type.empty())
@@ -2046,11 +2687,22 @@ class ImportParser {
                 error = "Tiled tile object GID is invalid";
                 return false;
             }
-            if ((static_cast<uint64_t>(gid) & kTiledTransformMask) != 0u) {
-                error = "Tiled object transform flags are not representable by SceneDocument";
+            int64_t rawGid = gid;
+            std::vector<int64_t> normalized{gid};
+            if (!normalizeGids(normalized, document, UINT32_C(0xFFFFFFFF), UINT16_MAX, error))
                 return false;
-            }
-            if (!addReservedProperty(result.properties, "tiled.gid", integerScalar(gid), error))
+            uint32_t flags =
+                static_cast<uint32_t>(rawGid) & static_cast<uint32_t>(kTiledTransformMask);
+            if (document.orientation != "hexagonal")
+                flags &= ~static_cast<uint32_t>(kTiledHex120Flag);
+            if (!addReservedProperty(
+                    result.properties, "tiled.gid", integerScalar(normalized.front()), error) ||
+                !addReservedProperty(
+                    result.properties, "tiled.rawGid", integerScalar(rawGid), error) ||
+                !addReservedProperty(result.properties,
+                                     "tiled.gidFlags",
+                                     integerScalar(static_cast<int64_t>(flags)),
+                                     error))
                 return false;
         }
         const char *shapeKeys[] = {"ellipse", "point", "polygon", "polyline", "text"};
@@ -2071,6 +2723,10 @@ class ImportParser {
                               bool visible,
                               double inheritedX,
                               double inheritedY,
+                              double opacity,
+                              double parallaxX,
+                              double parallaxY,
+                              uint32_t tint,
                               MapDocument &document,
                               std::string &error) {
         double offsetX = inheritedX;
@@ -2098,6 +2754,7 @@ class ImportParser {
         }
         int64_t count = rt_seq_len(objects);
         for (int64_t index = 0; index < count; ++index) {
+            size_t before = document.objects.size();
             if (!parseJsonObject(owner,
                                  rt_seq_get(objects, index),
                                  name,
@@ -2106,6 +2763,19 @@ class ImportParser {
                                  offsetY,
                                  document,
                                  error))
+                return false;
+            if (document.objects.size() != before + 1u) {
+                error = "Tiled object import did not produce exactly one object";
+                return false;
+            }
+            auto &properties = document.objects.back().properties;
+            if (!addReservedProperty(properties, "tiled.opacity", floatScalar(opacity), error) ||
+                !addReservedProperty(
+                    properties, "tiled.parallaxX", floatScalar(parallaxX), error) ||
+                !addReservedProperty(
+                    properties, "tiled.parallaxY", floatScalar(parallaxY), error) ||
+                !addReservedProperty(
+                    properties, "tiled.tint", integerScalar(static_cast<int64_t>(tint)), error))
                 return false;
         }
         return true;
@@ -2117,6 +2787,10 @@ class ImportParser {
                              bool visible,
                              double inheritedX,
                              double inheritedY,
+                             double opacity,
+                             double parallaxX,
+                             double parallaxY,
+                             uint32_t tint,
                              MapDocument &document,
                              std::string &error) {
         std::string reference;
@@ -2145,19 +2819,26 @@ class ImportParser {
             }
             y += value;
         }
-        if (std::trunc(x) != x || std::trunc(y) != y) {
-            error = "fractional Tiled image-layer offsets are not supported";
-            return false;
-        }
         SceneObject object;
         object.type = "tiled.image-layer";
         object.id = name;
-        object.x = static_cast<int64_t>(x);
-        object.y = static_cast<int64_t>(y);
+        if (!roundNearestTiesAway(x, object.x) || !roundNearestTiesAway(y, object.y)) {
+            error = "Tiled image-layer coordinates are outside the SceneDocument integer range";
+            return false;
+        }
         if (!parseJsonProperties(
                 mapGet(layer, "properties"), object.properties, error, &reader_, owner) ||
             !addReservedProperty(object.properties, "tiled.image", stringScalar(resolved), error) ||
-            !addReservedProperty(object.properties, "tiled.visible", boolScalar(visible), error))
+            !addReservedProperty(object.properties, "tiled.visible", boolScalar(visible), error) ||
+            !addReservedProperty(object.properties, "tiled.sourceX", floatScalar(x), error) ||
+            !addReservedProperty(object.properties, "tiled.sourceY", floatScalar(y), error) ||
+            !addReservedProperty(object.properties, "tiled.opacity", floatScalar(opacity), error) ||
+            !addReservedProperty(
+                object.properties, "tiled.parallaxX", floatScalar(parallaxX), error) ||
+            !addReservedProperty(
+                object.properties, "tiled.parallaxY", floatScalar(parallaxY), error) ||
+            !addReservedProperty(
+                object.properties, "tiled.tint", integerScalar(static_cast<int64_t>(tint)), error))
             return false;
         bool repeatX = false;
         bool repeatY = false;
@@ -2179,6 +2860,10 @@ class ImportParser {
                          bool inheritedVisible,
                          double inheritedX,
                          double inheritedY,
+                         double inheritedOpacity,
+                         double inheritedParallaxX,
+                         double inheritedParallaxY,
+                         uint32_t inheritedTint,
                          MapDocument &document,
                          std::string &error) {
         int64_t count = rt_seq_len(layers);
@@ -2198,21 +2883,63 @@ class ImportParser {
                 return false;
             }
             bool visible = inheritedVisible && ownVisible;
-            if (!validateLayerRenderingJson(layer, error))
+            double opacity = 1.0;
+            double parallaxX = 1.0;
+            double parallaxY = 1.0;
+            uint32_t tint = UINT32_C(0xFFFFFFFF);
+            if (!composeLayerRenderingJson(layer,
+                                           inheritedOpacity,
+                                           inheritedParallaxX,
+                                           inheritedParallaxY,
+                                           inheritedTint,
+                                           opacity,
+                                           parallaxX,
+                                           parallaxY,
+                                           tint,
+                                           error))
                 return false;
             if (!preserveLayerPropertiesJson(owner, layer, name, document, error))
                 return false;
             if (type == "tilelayer") {
-                if (!parseJsonTileLayer(
-                        layer, name, visible, inheritedX, inheritedY, document, error))
+                if (!parseJsonTileLayer(layer,
+                                        name,
+                                        visible,
+                                        inheritedX,
+                                        inheritedY,
+                                        opacity,
+                                        parallaxX,
+                                        parallaxY,
+                                        tint,
+                                        document,
+                                        error))
                     return false;
             } else if (type == "objectgroup") {
-                if (!parseJsonObjectLayer(
-                        owner, layer, name, visible, inheritedX, inheritedY, document, error))
+                if (!parseJsonObjectLayer(owner,
+                                          layer,
+                                          name,
+                                          visible,
+                                          inheritedX,
+                                          inheritedY,
+                                          opacity,
+                                          parallaxX,
+                                          parallaxY,
+                                          tint,
+                                          document,
+                                          error))
                     return false;
             } else if (type == "imagelayer") {
-                if (!parseJsonImageLayer(
-                        owner, layer, name, visible, inheritedX, inheritedY, document, error))
+                if (!parseJsonImageLayer(owner,
+                                         layer,
+                                         name,
+                                         visible,
+                                         inheritedX,
+                                         inheritedY,
+                                         opacity,
+                                         parallaxX,
+                                         parallaxY,
+                                         tint,
+                                         document,
+                                         error))
                     return false;
             } else if (type == "group") {
                 double groupX = inheritedX;
@@ -2234,9 +2961,18 @@ class ImportParser {
                     groupY += offset;
                 }
                 void *children = mapGet(layer, "layers");
-                if (!isSeq(children) ||
-                    !parseJsonLayers(
-                        owner, children, name, visible, groupX, groupY, document, error))
+                if (!isSeq(children) || !parseJsonLayers(owner,
+                                                         children,
+                                                         name,
+                                                         visible,
+                                                         groupX,
+                                                         groupY,
+                                                         opacity,
+                                                         parallaxX,
+                                                         parallaxY,
+                                                         tint,
+                                                         document,
+                                                         error))
                     return false;
             } else {
                 error = "unsupported Tiled layer type '" + type + "'";
@@ -2246,76 +2982,64 @@ class ImportParser {
         return true;
     }
 
-    bool validateLayerRenderingXml(void *layer, std::string &error) {
-        double opacity = 1.0;
-        double parallaxX = 1.0;
-        double parallaxY = 1.0;
-        if (!xmlDouble(layer, "opacity", opacity, false, error) ||
-            !xmlDouble(layer, "parallaxx", parallaxX, false, error) ||
-            !xmlDouble(layer, "parallaxy", parallaxY, false, error))
+    bool composeLayerRenderingXml(void *layer,
+                                  double inheritedOpacity,
+                                  double inheritedParallaxX,
+                                  double inheritedParallaxY,
+                                  uint32_t inheritedTint,
+                                  double &opacity,
+                                  double &parallaxX,
+                                  double &parallaxY,
+                                  uint32_t &tint,
+                                  std::string &error) {
+        double ownOpacity = 1.0;
+        double ownParallaxX = 1.0;
+        double ownParallaxY = 1.0;
+        if (!xmlDouble(layer, "opacity", ownOpacity, false, error) ||
+            !xmlDouble(layer, "parallaxx", ownParallaxX, false, error) ||
+            !xmlDouble(layer, "parallaxy", ownParallaxY, false, error) || ownOpacity < 0.0 ||
+            ownOpacity > 1.0) {
+            if (error.empty())
+                error = "TMX layer opacity/parallax values are invalid";
             return false;
-        if (opacity != 1.0 || parallaxX != 1.0 || parallaxY != 1.0 ||
-            !xmlString(layer, "tintcolor").empty()) {
-            error = "TMX layer opacity, tint, and parallax are not representable by Tilemap";
+        }
+        uint32_t ownTint = UINT32_C(0xFFFFFFFF);
+        std::string tintText = xmlString(layer, "tintcolor");
+        if (!tintText.empty() && !parseTiledColor(tintText, ownTint)) {
+            error = "TMX layer tintcolor must be #RRGGBB or #AARRGGBB";
+            return false;
+        }
+        std::string blendMode = xmlString(layer, "blendmode");
+        if (!blendMode.empty() && blendMode != "normal") {
+            error = "unsupported TMX layer blend mode '" + blendMode + "'";
+            return false;
+        }
+        opacity = inheritedOpacity * ownOpacity;
+        parallaxX = inheritedParallaxX * ownParallaxX;
+        parallaxY = inheritedParallaxY * ownParallaxY;
+        tint = multiplyTiledColors(inheritedTint, ownTint);
+        if (!std::isfinite(opacity) || !std::isfinite(parallaxX) || !std::isfinite(parallaxY)) {
+            error = "composed TMX layer rendering values overflow";
             return false;
         }
         return true;
     }
 
-    bool parseXmlTileLayer(void *layer,
-                           const std::string &name,
-                           bool visible,
-                           double inheritedX,
-                           double inheritedY,
-                           MapDocument &document,
-                           std::string &error) {
-        int64_t width = 0;
-        int64_t height = 0;
-        int64_t layerX = 0;
-        int64_t layerY = 0;
-        double offsetX = inheritedX;
-        double offsetY = inheritedY;
-        double ownOffset = 0.0;
-        if (!xmlInt(layer, "width", width, true, error) ||
-            !xmlInt(layer, "height", height, true, error) || width <= 0 || height <= 0 ||
-            width > static_cast<int64_t>(kMaxCellsPerLayer) / height ||
-            !xmlInt(layer, "x", layerX, false, error) ||
-            !xmlInt(layer, "y", layerY, false, error) ||
-            !xmlDouble(layer, "offsetx", ownOffset, false, error)) {
-            if (error.empty())
-                error = "finite TMX tile layer dimensions are invalid";
-            return false;
-        }
-        offsetX += ownOffset;
-        ownOffset = 0.0;
-        if (!xmlDouble(layer, "offsety", ownOffset, false, error))
-            return false;
-        offsetY += ownOffset;
-        if (offsetX < static_cast<double>(INT64_MIN) || offsetX > static_cast<double>(INT64_MAX) ||
-            offsetY < static_cast<double>(INT64_MIN) || offsetY > static_cast<double>(INT64_MAX) ||
-            std::trunc(offsetX) != offsetX || std::trunc(offsetY) != offsetY ||
-            static_cast<int64_t>(offsetX) % document.tileWidth != 0 ||
-            static_cast<int64_t>(offsetY) % document.tileHeight != 0) {
-            error = "TMX tile-layer pixel offsets must be integral tile offsets";
-            return false;
-        }
-        void *data = firstXmlChild(layer, "data");
-        if (!data) {
-            error = "TMX tile layer is missing <data>";
-            return false;
-        }
-        size_t cells = static_cast<size_t>(width * height);
-        std::string encoding = xmlString(data, "encoding");
-        std::string compression = xmlString(data, "compression");
-        std::vector<int64_t> gids;
+    bool parseXmlGidPayload(void *payload,
+                            void *encodingOwner,
+                            size_t cells,
+                            std::vector<int64_t> &gids,
+                            std::string &error) {
+        std::string encoding = xmlString(encodingOwner, "encoding");
+        std::string compression = xmlString(encodingOwner, "compression");
         if (encoding.empty()) {
             if (!compression.empty()) {
                 error = "unencoded TMX layer data cannot be compressed";
                 return false;
             }
-            int64_t childCount = rt_xml_child_count(data);
+            int64_t childCount = rt_xml_child_count(payload);
             for (int64_t index = 0; index < childCount; ++index) {
-                void *tile = rt_xml_child_at(data, index);
+                void *tile = rt_xml_child_at(payload, index);
                 if (rt_xml_node_type(tile) != XML_NODE_ELEMENT || xmlTag(tile) != "tile")
                     continue;
                 int64_t gid = 0;
@@ -2327,26 +3051,138 @@ class ImportParser {
                 error = "TMX layer cell count does not match its dimensions";
                 return false;
             }
-        } else if (encoding == "csv") {
+            return true;
+        }
+        if (encoding == "csv") {
             if (!compression.empty()) {
                 error = "TMX CSV layer data cannot be compressed";
                 return false;
             }
-            if (!parseCsv(xmlText(data), cells, gids, error))
-                return false;
-        } else if (encoding == "base64") {
-            if (!decodeBase64Gids(xmlText(data), compression, cells, gids, error))
-                return false;
-        } else {
-            error = "unsupported TMX layer encoding '" + encoding + "'";
+            return parseCsv(xmlText(payload), cells, gids, error);
+        }
+        if (encoding == "base64")
+            return decodeBase64Gids(xmlText(payload), compression, cells, gids, error);
+        error = "unsupported TMX layer encoding '" + encoding + "'";
+        return false;
+    }
+
+    bool parseXmlTileLayer(void *layer,
+                           const std::string &name,
+                           bool visible,
+                           double inheritedX,
+                           double inheritedY,
+                           double opacity,
+                           double parallaxX,
+                           double parallaxY,
+                           uint32_t tint,
+                           MapDocument &document,
+                           std::string &error) {
+        int64_t width = 0;
+        int64_t height = 0;
+        int64_t layerX = 0;
+        int64_t layerY = 0;
+        double offsetX = inheritedX;
+        double offsetY = inheritedY;
+        double ownOffset = 0.0;
+        if (!xmlInt(layer, "x", layerX, false, error) ||
+            !xmlInt(layer, "y", layerY, false, error) ||
+            !xmlDouble(layer, "offsetx", ownOffset, false, error)) {
             return false;
         }
-        std::vector<int64_t> placed;
-        int64_t tileOffsetX = layerX + static_cast<int64_t>(offsetX) / document.tileWidth;
-        int64_t tileOffsetY = layerY + static_cast<int64_t>(offsetY) / document.tileHeight;
-        if (!placeLayerGids(gids, width, height, tileOffsetX, tileOffsetY, document, placed, error))
+        offsetX += ownOffset;
+        ownOffset = 0.0;
+        if (!xmlDouble(layer, "offsety", ownOffset, false, error))
             return false;
-        return addLayer(name, visible, std::move(placed), document, error);
+        offsetY += ownOffset;
+        if (!std::isfinite(offsetX) || !std::isfinite(offsetY)) {
+            error = "composed TMX tile-layer pixel offset overflows";
+            return false;
+        }
+        void *data = firstXmlChild(layer, "data");
+        if (!data) {
+            error = "TMX tile layer is missing <data>";
+            return false;
+        }
+        std::vector<int64_t> placed(static_cast<size_t>(document.width * document.height), 0);
+        if (document.infinite) {
+            std::vector<uint8_t> occupied(placed.size(), 0u);
+            bool sawChunk = false;
+            int64_t childCount = rt_xml_child_count(data);
+            for (int64_t chunkIndex = 0; chunkIndex < childCount; ++chunkIndex) {
+                void *chunk = rt_xml_child_at(data, chunkIndex);
+                if (rt_xml_node_type(chunk) != XML_NODE_ELEMENT || xmlTag(chunk) != "chunk")
+                    continue;
+                sawChunk = true;
+                int64_t chunkX = 0;
+                int64_t chunkY = 0;
+                if (!xmlInt(chunk, "x", chunkX, true, error) ||
+                    !xmlInt(chunk, "y", chunkY, true, error) ||
+                    !xmlInt(chunk, "width", width, true, error) ||
+                    !xmlInt(chunk, "height", height, true, error) || width <= 0 || height <= 0 ||
+                    width > static_cast<int64_t>(kMaxCellsPerLayer) / height) {
+                    if (error.empty())
+                        error = "TMX infinite chunk dimensions are invalid";
+                    return false;
+                }
+                std::vector<int64_t> gids;
+                if (!parseXmlGidPayload(
+                        chunk, data, static_cast<size_t>(width * height), gids, error))
+                    return false;
+                if ((layerX > 0 && chunkX > INT64_MAX - layerX) ||
+                    (layerX < 0 && chunkX < INT64_MIN - layerX) ||
+                    (layerY > 0 && chunkY > INT64_MAX - layerY) ||
+                    (layerY < 0 && chunkY < INT64_MIN - layerY)) {
+                    error = "TMX infinite chunk placement overflows";
+                    return false;
+                }
+                int64_t destinationX = chunkX + layerX - document.originTileX;
+                int64_t destinationY = chunkY + layerY - document.originTileY;
+                if (destinationX < 0 || destinationY < 0 || destinationX > document.width - width ||
+                    destinationY > document.height - height) {
+                    error = "TMX infinite chunk lies outside scanned map bounds";
+                    return false;
+                }
+                for (int64_t y = 0; y < height; ++y) {
+                    for (int64_t x = 0; x < width; ++x) {
+                        size_t destination = static_cast<size_t>(
+                            (destinationY + y) * document.width + destinationX + x);
+                        if (occupied[destination] != 0u) {
+                            error = "TMX infinite chunks overlap within a layer";
+                            return false;
+                        }
+                        occupied[destination] = 1u;
+                        placed[destination] = gids[static_cast<size_t>(y * width + x)];
+                    }
+                }
+            }
+            if (!sawChunk && rt_xml_child_count(data) > 0) {
+                error = "infinite TMX tile layer data contains no chunks";
+                return false;
+            }
+        } else {
+            if (!xmlInt(layer, "width", width, true, error) ||
+                !xmlInt(layer, "height", height, true, error) || width <= 0 || height <= 0 ||
+                width > static_cast<int64_t>(kMaxCellsPerLayer) / height) {
+                if (error.empty())
+                    error = "finite TMX tile layer dimensions are invalid";
+                return false;
+            }
+            std::vector<int64_t> gids;
+            if (!parseXmlGidPayload(data, data, static_cast<size_t>(width * height), gids, error) ||
+                !placeLayerGids(gids, width, height, layerX, layerY, document, placed, error))
+                return false;
+        }
+        return addLayer(name,
+                        visible,
+                        std::move(placed),
+                        offsetX,
+                        offsetY,
+                        opacity,
+                        parallaxX,
+                        parallaxY,
+                        tint,
+                        document,
+                        error);
     }
 
     bool preserveXmlShape(void *shape,
@@ -2537,14 +3373,11 @@ class ImportParser {
             return false;
         x += offsetX;
         y += offsetY;
-        if (x < static_cast<double>(INT64_MIN) || x > static_cast<double>(INT64_MAX) ||
-            y < static_cast<double>(INT64_MIN) || y > static_cast<double>(INT64_MAX)) {
+        SceneObject result;
+        if (!roundNearestTiesAway(x, result.x) || !roundNearestTiesAway(y, result.y)) {
             error = "TMX object coordinates are outside the SceneDocument integer range";
             return false;
         }
-        SceneObject result;
-        result.x = static_cast<int64_t>(x);
-        result.y = static_cast<int64_t>(y);
         result.type = xmlString(object, "class");
         if (result.type.empty())
             result.type = xmlString(object, "type");
@@ -2598,11 +3431,22 @@ class ImportParser {
                 error = "TMX tile object GID is invalid";
                 return false;
             }
-            if ((static_cast<uint64_t>(gid) & kTiledTransformMask) != 0u) {
-                error = "TMX object transform flags are not representable by SceneDocument";
+            int64_t rawGid = gid;
+            std::vector<int64_t> normalized{gid};
+            if (!normalizeGids(normalized, document, UINT32_C(0xFFFFFFFF), UINT16_MAX, error))
                 return false;
-            }
-            if (!addReservedProperty(result.properties, "tiled.gid", integerScalar(gid), error))
+            uint32_t flags =
+                static_cast<uint32_t>(rawGid) & static_cast<uint32_t>(kTiledTransformMask);
+            if (document.orientation != "hexagonal")
+                flags &= ~static_cast<uint32_t>(kTiledHex120Flag);
+            if (!addReservedProperty(
+                    result.properties, "tiled.gid", integerScalar(normalized.front()), error) ||
+                !addReservedProperty(
+                    result.properties, "tiled.rawGid", integerScalar(rawGid), error) ||
+                !addReservedProperty(result.properties,
+                                     "tiled.gidFlags",
+                                     integerScalar(static_cast<int64_t>(flags)),
+                                     error))
                 return false;
         }
         int64_t childCount = rt_xml_child_count(object);
@@ -2631,6 +3475,10 @@ class ImportParser {
                              bool visible,
                              double inheritedX,
                              double inheritedY,
+                             double opacity,
+                             double parallaxX,
+                             double parallaxY,
+                             uint32_t tint,
                              MapDocument &document,
                              std::string &error) {
         double offsetX = inheritedX;
@@ -2648,7 +3496,21 @@ class ImportParser {
             void *object = rt_xml_child_at(layer, index);
             if (rt_xml_node_type(object) != XML_NODE_ELEMENT || xmlTag(object) != "object")
                 continue;
+            size_t before = document.objects.size();
             if (!parseXmlObject(owner, object, name, visible, offsetX, offsetY, document, error))
+                return false;
+            if (document.objects.size() != before + 1u) {
+                error = "TMX object import did not produce exactly one object";
+                return false;
+            }
+            auto &properties = document.objects.back().properties;
+            if (!addReservedProperty(properties, "tiled.opacity", floatScalar(opacity), error) ||
+                !addReservedProperty(
+                    properties, "tiled.parallaxX", floatScalar(parallaxX), error) ||
+                !addReservedProperty(
+                    properties, "tiled.parallaxY", floatScalar(parallaxY), error) ||
+                !addReservedProperty(
+                    properties, "tiled.tint", integerScalar(static_cast<int64_t>(tint)), error))
                 return false;
         }
         return true;
@@ -2660,6 +3522,10 @@ class ImportParser {
                             bool visible,
                             double inheritedX,
                             double inheritedY,
+                            double opacity,
+                            double parallaxX,
+                            double parallaxY,
+                            uint32_t tint,
                             MapDocument &document,
                             std::string &error) {
         void *image = firstXmlChild(layer, "image");
@@ -2681,15 +3547,13 @@ class ImportParser {
         if (!xmlDouble(layer, "offsety", offset, false, error))
             return false;
         y += offset;
-        if (std::trunc(x) != x || std::trunc(y) != y) {
-            error = "fractional TMX image-layer offsets are not supported";
-            return false;
-        }
         SceneObject object;
         object.type = "tiled.image-layer";
         object.id = name;
-        object.x = static_cast<int64_t>(x);
-        object.y = static_cast<int64_t>(y);
+        if (!roundNearestTiesAway(x, object.x) || !roundNearestTiesAway(y, object.y)) {
+            error = "TMX image-layer coordinates are outside the SceneDocument integer range";
+            return false;
+        }
         int64_t repeatX = 0;
         int64_t repeatY = 0;
         if (!xmlInt(layer, "repeatx", repeatX, false, error) ||
@@ -2697,6 +3561,17 @@ class ImportParser {
             !parseXmlProperties(layer, object.properties, error, &reader_, owner) ||
             !addReservedProperty(object.properties, "tiled.image", stringScalar(resolved), error) ||
             !addReservedProperty(object.properties, "tiled.visible", boolScalar(visible), error) ||
+            !addReservedProperty(object.properties, "tiled.sourceX", floatScalar(x), error) ||
+            !addReservedProperty(object.properties, "tiled.sourceY", floatScalar(y), error) ||
+            !addReservedProperty(object.properties, "tiled.opacity", floatScalar(opacity), error) ||
+            !addReservedProperty(
+                object.properties, "tiled.parallaxX", floatScalar(parallaxX), error) ||
+            !addReservedProperty(
+                object.properties, "tiled.parallaxY", floatScalar(parallaxY), error) ||
+            !addReservedProperty(object.properties,
+                                 "tiled.tint",
+                                 integerScalar(static_cast<int64_t>(tint)),
+                                 error) ||
             !addReservedProperty(
                 object.properties, "tiled.repeatX", boolScalar(repeatX != 0), error) ||
             !addReservedProperty(
@@ -2712,6 +3587,10 @@ class ImportParser {
                         bool inheritedVisible,
                         double inheritedX,
                         double inheritedY,
+                        double inheritedOpacity,
+                        double inheritedParallaxX,
+                        double inheritedParallaxY,
+                        uint32_t inheritedTint,
                         MapDocument &document,
                         std::string &error) {
         int64_t count = rt_xml_child_count(parent);
@@ -2725,23 +3604,66 @@ class ImportParser {
             std::string ownName = xmlString(layer, "name");
             std::string name = prefix.empty() ? ownName : prefix + "/" + ownName;
             int64_t ownVisible = 1;
-            if (!xmlInt(layer, "visible", ownVisible, false, error) ||
-                !validateLayerRenderingXml(layer, error))
+            if (!xmlInt(layer, "visible", ownVisible, false, error))
                 return false;
             bool visible = inheritedVisible && ownVisible != 0;
+            double opacity = 1.0;
+            double parallaxX = 1.0;
+            double parallaxY = 1.0;
+            uint32_t tint = UINT32_C(0xFFFFFFFF);
+            if (!composeLayerRenderingXml(layer,
+                                          inheritedOpacity,
+                                          inheritedParallaxX,
+                                          inheritedParallaxY,
+                                          inheritedTint,
+                                          opacity,
+                                          parallaxX,
+                                          parallaxY,
+                                          tint,
+                                          error))
+                return false;
             if (!preserveLayerPropertiesXml(owner, layer, name, document, error))
                 return false;
             if (tag == "layer") {
-                if (!parseXmlTileLayer(
-                        layer, name, visible, inheritedX, inheritedY, document, error))
+                if (!parseXmlTileLayer(layer,
+                                       name,
+                                       visible,
+                                       inheritedX,
+                                       inheritedY,
+                                       opacity,
+                                       parallaxX,
+                                       parallaxY,
+                                       tint,
+                                       document,
+                                       error))
                     return false;
             } else if (tag == "objectgroup") {
-                if (!parseXmlObjectLayer(
-                        owner, layer, name, visible, inheritedX, inheritedY, document, error))
+                if (!parseXmlObjectLayer(owner,
+                                         layer,
+                                         name,
+                                         visible,
+                                         inheritedX,
+                                         inheritedY,
+                                         opacity,
+                                         parallaxX,
+                                         parallaxY,
+                                         tint,
+                                         document,
+                                         error))
                     return false;
             } else if (tag == "imagelayer") {
-                if (!parseXmlImageLayer(
-                        owner, layer, name, visible, inheritedX, inheritedY, document, error))
+                if (!parseXmlImageLayer(owner,
+                                        layer,
+                                        name,
+                                        visible,
+                                        inheritedX,
+                                        inheritedY,
+                                        opacity,
+                                        parallaxX,
+                                        parallaxY,
+                                        tint,
+                                        document,
+                                        error))
                     return false;
             } else {
                 double groupX = inheritedX;
@@ -2754,7 +3676,18 @@ class ImportParser {
                 if (!xmlDouble(layer, "offsety", offset, false, error))
                     return false;
                 groupY += offset;
-                if (!parseXmlLayers(owner, layer, name, visible, groupX, groupY, document, error))
+                if (!parseXmlLayers(owner,
+                                    layer,
+                                    name,
+                                    visible,
+                                    groupX,
+                                    groupY,
+                                    opacity,
+                                    parallaxX,
+                                    parallaxY,
+                                    tint,
+                                    document,
+                                    error))
                     return false;
             }
         }
@@ -2779,22 +3712,55 @@ class ImportParser {
                 error += ": " + detail;
             return false;
         }
-        if (xmlString(root, "orientation") != "orthogonal") {
-            error = "only orthogonal TMX maps are supported";
+        document.orientation = xmlString(root, "orientation");
+        if (document.orientation.empty()) {
+            error = "TMX map is missing orientation";
             return false;
         }
+        std::string renderOrder = xmlString(root, "renderorder");
+        if (!renderOrder.empty())
+            document.renderOrder = std::move(renderOrder);
         int64_t infinite = 0;
-        if (!xmlInt(root, "infinite", infinite, false, error) || infinite != 0) {
+        if (!xmlInt(root, "infinite", infinite, false, error) || (infinite != 0 && infinite != 1)) {
             if (error.empty())
-                error = "infinite TMX maps are not supported";
+                error = "TMX map infinite attribute must be 0 or 1";
             return false;
         }
-        if (!xmlInt(root, "width", document.width, true, error) ||
-            !xmlInt(root, "height", document.height, true, error) ||
+        document.infinite = infinite != 0;
+        int64_t sourceWidth = 0;
+        int64_t sourceHeight = 0;
+        if (!xmlInt(root, "width", sourceWidth, true, error) ||
+            !xmlInt(root, "height", sourceHeight, true, error) ||
             !xmlInt(root, "tilewidth", document.tileWidth, true, error) ||
             !xmlInt(root, "tileheight", document.tileHeight, true, error) ||
-            !validateMapDimensions(document, error) ||
-            !parseXmlProperties(root, document.properties, error, &reader_, owner))
+            document.tileWidth <= 0 || document.tileHeight <= 0)
+            return false;
+        document.projectionHeight = sourceHeight;
+        document.staggerAxis = xmlString(root, "staggeraxis");
+        document.staggerIndex = xmlString(root, "staggerindex");
+        if (!xmlInt(root, "hexsidelength", document.hexSideLength, false, error) ||
+            !xmlDouble(root, "skewx", document.skewX, false, error) ||
+            !xmlDouble(root, "skewy", document.skewY, false, error) ||
+            !xmlDouble(root, "parallaxoriginx", document.parallaxOriginX, false, error) ||
+            !xmlDouble(root, "parallaxoriginy", document.parallaxOriginY, false, error) ||
+            !validateOrientation(document, error))
+            return false;
+        if (document.infinite) {
+            if (sourceWidth < 0 || sourceHeight < 0) {
+                error = "infinite TMX map source dimensions cannot be negative";
+                return false;
+            }
+            TileBounds bounds;
+            if (!scanXmlInfiniteLayers(root, 0, 0, bounds, error) ||
+                !applyInfiniteBounds(bounds, document, error))
+                return false;
+        } else {
+            document.width = sourceWidth;
+            document.height = sourceHeight;
+            if (!validateMapDimensions(document, error))
+                return false;
+        }
+        if (!parseXmlProperties(root, document.properties, error, &reader_, owner))
             return false;
 
         int64_t count = rt_xml_child_count(root);
@@ -2830,7 +3796,10 @@ class ImportParser {
                   [](const Tileset &left, const Tileset &right) {
                       return left.firstGid < right.firstGid;
                   });
-        return parseXmlLayers(owner, root, "", true, 0.0, 0.0, document, error);
+        if (!prepareCanonicalTiles(document, error))
+            return false;
+        return parseXmlLayers(
+            owner, root, "", true, 0.0, 0.0, 1.0, 1.0, 1.0, UINT32_C(0xFFFFFFFF), document, error);
     }
 
     bool mergeMetadata(MapDocument &document,
@@ -2856,30 +3825,16 @@ class ImportParser {
                 error = "Tiled animation frame/duration count mismatch";
                 return false;
             }
-            int64_t tick = 0;
-            for (int64_t duration : metadata.animationDurations)
-                tick = std::gcd(tick, duration);
-            if (tick <= 0) {
-                error = "Tiled animation has an invalid frame duration";
-                return false;
-            }
             TileAnimation animation;
             animation.baseTile = canonicalTile;
-            animation.milliseconds = tick;
-            for (size_t index = 0; index < metadata.animationFrames.size(); ++index) {
-                int64_t repeats = metadata.animationDurations[index] / tick;
-                if (repeats <= 0 || repeats > 8 ||
-                    animation.frames.size() > 8u - static_cast<size_t>(repeats)) {
-                    error = "Tiled animation cannot fit Tilemap's eight-frame runtime limit";
-                    return false;
-                }
-                for (int64_t repeat = 0; repeat < repeats; ++repeat)
-                    animation.frames.push_back(metadata.animationFrames[index]);
-            }
+            animation.frames = metadata.animationFrames;
+            animation.durations = metadata.animationDurations;
+            animation.milliseconds = metadata.animationDurations.front();
             auto found = document.animations.find(canonicalTile);
             if (found != document.animations.end() &&
                 (found->second.milliseconds != animation.milliseconds ||
-                 found->second.frames != animation.frames)) {
+                 found->second.frames != animation.frames ||
+                 found->second.durations != animation.durations)) {
                 error = "different Tiled tilesets assign conflicting animations to local tile " +
                         std::to_string(canonicalTile);
                 return false;
@@ -2889,62 +3844,176 @@ class ImportParser {
         return true;
     }
 
-    bool finalize(MapDocument &document, std::string &error) {
-        for (size_t index = 1; index < document.tilesets.size(); ++index) {
-            if (document.tilesets[index - 1u].firstGid == document.tilesets[index].firstGid) {
-                error = "Tiled tilesets have duplicate firstgid values";
+    bool computeDeclaredArtworkLayout(MapDocument &document, std::string &error) {
+        long double minimumX = 0.0L;
+        long double minimumY = 0.0L;
+        long double maximumX = 0.0L;
+        long double maximumY = 0.0L;
+        bool haveBounds = false;
+        for (size_t index = 1u; index < document.canonicalTiles.size(); ++index) {
+            const CanonicalTile &tile = document.canonicalTiles[index];
+            const Tileset &tileset = document.tilesets[static_cast<size_t>(tile.tileset)];
+            int64_t sourceWidth = tileset.tileWidth;
+            int64_t sourceHeight = tileset.tileHeight;
+            auto image = tileset.tileImages.find(tile.localId);
+            if (image != tileset.tileImages.end()) {
+                if (image->second.width > 0)
+                    sourceWidth = image->second.width;
+                if (image->second.height > 0)
+                    sourceHeight = image->second.height;
+            } else if (tileset.image.empty()) {
+                continue;
+            }
+            if (sourceWidth <= 0 || sourceHeight <= 0 || sourceWidth > INT32_MAX ||
+                sourceHeight > INT32_MAX) {
+                error = "Tiled declared tile artwork dimensions are unsafe";
                 return false;
             }
-        }
-        if (document.layers.empty()) {
-            std::vector<int64_t> empty(static_cast<size_t>(document.width * document.height), 0);
-            if (!addLayer("base", true, std::move(empty), document, error))
-                return false;
-        }
-        std::set<int64_t> usedTilesets;
-        for (const Layer &layer : document.layers)
-            usedTilesets.insert(layer.tileset);
-        if (usedTilesets.size() > 1u) {
-            for (int64_t index : usedTilesets) {
-                const Tileset &tileset = document.tilesets[static_cast<size_t>(index)];
-                for (const auto &[_, metadata] : tileset.metadata) {
-                    if (metadata.solid || !metadata.properties.empty() ||
-                        !metadata.animationFrames.empty()) {
-                        error = "Tiled tile collision, properties, and animation metadata are "
-                                "ambiguous across multiple used tilesets";
-                        return false;
-                    }
+            int64_t transformedWidth = sourceWidth;
+            int64_t transformedHeight = sourceHeight;
+            if (document.orientation != "hexagonal" &&
+                (tile.transformFlags & kTiledDiagonalOrHex60Flag) != 0u) {
+                transformedWidth = sourceHeight;
+                transformedHeight = sourceWidth;
+            } else if (document.orientation == "hexagonal") {
+                int degrees = 0;
+                if ((tile.transformFlags & kTiledDiagonalOrHex60Flag) != 0u)
+                    degrees += 60;
+                if ((tile.transformFlags & kTiledHex120Flag) != 0u)
+                    degrees += 120;
+                if (degrees != 0 && degrees != 180) {
+                    double radians = static_cast<double>(degrees) * 3.14159265358979323846 / 180.0;
+                    transformedWidth =
+                        std::max<int64_t>(1,
+                                          static_cast<int64_t>(std::ceil(
+                                              std::fabs(std::cos(radians)) * sourceWidth +
+                                              std::fabs(std::sin(radians)) * sourceHeight)));
+                    transformedHeight =
+                        std::max<int64_t>(1,
+                                          static_cast<int64_t>(std::ceil(
+                                              std::fabs(std::sin(radians)) * sourceWidth +
+                                              std::fabs(std::cos(radians)) * sourceHeight)));
                 }
             }
+            long double relativeX = static_cast<long double>(tileset.tileOffsetX) +
+                                    (sourceWidth - transformedWidth) / 2;
+            long double relativeY = static_cast<long double>(document.tileHeight) - sourceHeight +
+                                    tileset.tileOffsetY + (sourceHeight - transformedHeight) / 2;
+            long double endX = relativeX + transformedWidth;
+            long double endY = relativeY + transformedHeight;
+            if (!haveBounds) {
+                minimumX = relativeX;
+                minimumY = relativeY;
+                maximumX = endX;
+                maximumY = endY;
+                haveBounds = true;
+            } else {
+                minimumX = std::min(minimumX, relativeX);
+                minimumY = std::min(minimumY, relativeY);
+                maximumX = std::max(maximumX, endX);
+                maximumY = std::max(maximumY, endY);
+            }
         }
-        for (int64_t index : usedTilesets) {
-            if (index < 0 || static_cast<size_t>(index) >= document.tilesets.size()) {
-                error = "internal Tiled tileset selection failed";
+        if (!haveBounds) {
+            minimumX = 0.0L;
+            minimumY = 0.0L;
+            maximumX = document.tileWidth;
+            maximumY = document.tileHeight;
+        }
+        long double frameWidth = maximumX - minimumX;
+        long double frameHeight = maximumY - minimumY;
+        if (minimumX < static_cast<long double>(INT64_MIN) ||
+            minimumX > static_cast<long double>(INT64_MAX) ||
+            minimumY < static_cast<long double>(INT64_MIN) ||
+            minimumY > static_cast<long double>(INT64_MAX) || frameWidth <= 0.0L ||
+            frameHeight <= 0.0L || frameWidth > static_cast<long double>(INT64_MAX) ||
+            frameHeight > static_cast<long double>(INT64_MAX)) {
+            error = "Tiled declared artwork bounds overflow";
+            return false;
+        }
+        document.drawOffsetX = static_cast<int64_t>(minimumX);
+        document.drawOffsetY = static_cast<int64_t>(minimumY);
+        document.sourceFrameWidth = static_cast<int64_t>(frameWidth);
+        document.sourceFrameHeight = static_cast<int64_t>(frameHeight);
+        return true;
+    }
+
+    bool finalize(MapDocument &document, std::string &error) {
+        if (document.layers.empty()) {
+            std::vector<int64_t> empty(static_cast<size_t>(document.width * document.height), 0);
+            if (!addLayer("base",
+                          true,
+                          std::move(empty),
+                          0.0,
+                          0.0,
+                          1.0,
+                          1.0,
+                          1.0,
+                          UINT32_C(0xFFFFFFFF),
+                          document,
+                          error))
                 return false;
-            }
-            const Tileset &tileset = document.tilesets[static_cast<size_t>(index)];
-            if (tileset.tileWidth > document.tileWidth ||
-                tileset.tileHeight > document.tileHeight) {
-                error = "Tiled tileset tiles cannot be larger than the map tile dimensions";
-                return false;
-            }
+        }
+        for (const Tileset &tileset : document.tilesets) {
             for (const auto &[zeroBasedTile, metadata] : tileset.metadata) {
-                int64_t canonicalTile = zeroBasedTile + 1;
-                if (tileset.tileCount > 0 && canonicalTile > tileset.tileCount) {
+                if (zeroBasedTile < 0 || zeroBasedTile >= tileset.tileCount) {
                     error = "Tiled tile metadata id exceeds tileset tilecount";
                     return false;
                 }
                 for (int64_t frame : metadata.animationFrames) {
-                    if (frame <= 0 || (tileset.tileCount > 0 && frame > tileset.tileCount)) {
+                    if (frame <= 0 || frame > tileset.tileCount) {
                         error = "Tiled animation frame exceeds tileset tilecount";
                         return false;
                     }
                 }
-                if (!mergeMetadata(document, canonicalTile, metadata, error))
-                    return false;
             }
         }
-        return true;
+        for (size_t canonicalIndex = 1u; canonicalIndex < document.canonicalTiles.size();
+             ++canonicalIndex) {
+            const CanonicalTile source = document.canonicalTiles[canonicalIndex];
+            if (source.tileset < 0 ||
+                static_cast<size_t>(source.tileset) >= document.tilesets.size()) {
+                error = "internal Tiled canonical tileset selection failed";
+                return false;
+            }
+            const Tileset &tileset = document.tilesets[static_cast<size_t>(source.tileset)];
+            auto metadataIt = tileset.metadata.find(source.localId);
+            if (metadataIt == tileset.metadata.end())
+                continue;
+            TileMetadata metadata = metadataIt->second;
+            for (int64_t &frame : metadata.animationFrames) {
+                CanonicalTileKey key;
+                key.tileset = source.tileset;
+                key.localId = frame - 1;
+                key.transformFlags = source.transformFlags;
+                key.tint = source.tint;
+                key.opacity = source.opacity;
+                auto found = document.canonicalVariants.find(key);
+                if (found == document.canonicalVariants.end()) {
+                    if (document.canonicalTiles.size() >= kMaxCellsPerLayer) {
+                        error = "Tiled canonical animation variant count exceeds 1048575";
+                        return false;
+                    }
+                    CanonicalTile variant;
+                    variant.tileset = key.tileset;
+                    variant.localId = key.localId;
+                    variant.transformFlags = key.transformFlags;
+                    variant.tint = key.tint;
+                    variant.opacity = key.opacity;
+                    variant.reachable = source.reachable;
+                    document.canonicalTiles.push_back(variant);
+                    frame = static_cast<int64_t>(document.canonicalTiles.size() - 1u);
+                    document.canonicalVariants.emplace(key, frame);
+                } else {
+                    frame = found->second;
+                    if (source.reachable)
+                        document.canonicalTiles[static_cast<size_t>(frame)].reachable = true;
+                }
+            }
+            if (!mergeMetadata(document, static_cast<int64_t>(canonicalIndex), metadata, error))
+                return false;
+        }
+        return computeDeclaredArtworkLayout(document, error);
     }
 
     SourceReader reader_;
@@ -2974,10 +4043,8 @@ std::string toSceneJson(const MapDocument &document) {
     out << ",\"tileWidth\":" << document.tileWidth;
     out << ",\"tileHeight\":" << document.tileHeight;
     std::string defaultAsset;
-    if (!document.layers.empty() && document.layers.front().tileset >= 0 &&
-        static_cast<size_t>(document.layers.front().tileset) < document.tilesets.size())
-        defaultAsset =
-            document.tilesets[static_cast<size_t>(document.layers.front().tileset)].image;
+    if (document.tilesets.size() == 1u)
+        defaultAsset = document.tilesets.front().image;
     out << ",\"tilesetAsset\":" << jsonEscape(defaultAsset);
     out << ",\"properties\":";
     writeScalarMap(out, document.properties);
@@ -2986,11 +4053,10 @@ std::string toSceneJson(const MapDocument &document) {
         if (layerIndex > 0)
             out << ',';
         const Layer &layer = document.layers[layerIndex];
-        const Tileset &tileset = document.tilesets[static_cast<size_t>(layer.tileset)];
         out << '{';
         out << "\"name\":" << jsonEscape(layer.name);
         out << ",\"visible\":" << (layer.visible ? "true" : "false");
-        out << ",\"asset\":" << jsonEscape(tileset.image);
+        out << ",\"asset\":" << jsonEscape(defaultAsset);
         out << ",\"tiles\":[";
         for (size_t tileIndex = 0; tileIndex < layer.tiles.size(); ++tileIndex) {
             if (tileIndex > 0)
@@ -3049,9 +4115,99 @@ std::string toSceneJson(const MapDocument &document) {
                 out << ',';
             out << animation.frames[frame];
         }
+        out << "],\"durations\":[";
+        for (size_t frame = 0; frame < animation.durations.size(); ++frame) {
+            if (frame > 0)
+                out << ',';
+            out << animation.durations[frame];
+        }
         out << "]}";
     }
-    out << "]}";
+    out << ']';
+    out << ",\"tiledRuntime\":{";
+    out << "\"orientation\":" << jsonEscape(document.orientation);
+    out << ",\"renderOrder\":" << jsonEscape(document.renderOrder);
+    out << ",\"infinite\":" << (document.infinite ? "true" : "false");
+    out << ",\"originTileX\":" << document.originTileX;
+    out << ",\"originTileY\":" << document.originTileY;
+    out << ",\"projectionHeight\":" << document.projectionHeight;
+    out << ",\"staggerAxis\":" << jsonEscape(document.staggerAxis);
+    out << ",\"staggerIndex\":" << jsonEscape(document.staggerIndex);
+    out << ",\"hexSideLength\":" << document.hexSideLength;
+    out << ",\"skewX\":" << jsonDouble(document.skewX);
+    out << ",\"skewY\":" << jsonDouble(document.skewY);
+    out << ",\"parallaxOriginX\":" << jsonDouble(document.parallaxOriginX);
+    out << ",\"parallaxOriginY\":" << jsonDouble(document.parallaxOriginY);
+    out << ",\"sourceFrameWidth\":" << document.sourceFrameWidth;
+    out << ",\"sourceFrameHeight\":" << document.sourceFrameHeight;
+    out << ",\"drawOffsetX\":" << document.drawOffsetX;
+    out << ",\"drawOffsetY\":" << document.drawOffsetY;
+    out << ",\"layers\":[";
+    for (size_t layerIndex = 0; layerIndex < document.layers.size(); ++layerIndex) {
+        if (layerIndex > 0)
+            out << ',';
+        const Layer &layer = document.layers[layerIndex];
+        out << '{';
+        out << "\"offsetX\":" << jsonDouble(layer.offsetX);
+        out << ",\"offsetY\":" << jsonDouble(layer.offsetY);
+        out << ",\"opacity\":" << jsonDouble(layer.opacity);
+        out << ",\"parallaxX\":" << jsonDouble(layer.parallaxX);
+        out << ",\"parallaxY\":" << jsonDouble(layer.parallaxY);
+        out << ",\"tint\":" << layer.tint;
+        out << '}';
+    }
+    out << ']';
+    out << ",\"tilesets\":[";
+    for (size_t index = 0; index < document.tilesets.size(); ++index) {
+        if (index > 0)
+            out << ',';
+        const Tileset &tileset = document.tilesets[index];
+        out << '{';
+        out << "\"canonicalFirstId\":" << tileset.canonicalFirstId;
+        out << ",\"tileCount\":" << tileset.tileCount;
+        out << ",\"firstGid\":" << tileset.firstGid;
+        out << ",\"tileOffsetX\":" << tileset.tileOffsetX;
+        out << ",\"tileOffsetY\":" << tileset.tileOffsetY;
+        out << ",\"image\":" << jsonEscape(tileset.image);
+        out << '}';
+    }
+    out << ']';
+    out << ",\"canonicalVariants\":[";
+    bool firstVariant = true;
+    for (size_t index = 1u; index < document.canonicalTiles.size(); ++index) {
+        const CanonicalTile &tile = document.canonicalTiles[index];
+        if (tile.transformFlags == 0u && tile.tint == UINT32_C(0xFFFFFFFF) &&
+            tile.opacity == UINT16_MAX)
+            continue;
+        if (!firstVariant)
+            out << ',';
+        firstVariant = false;
+        out << '{';
+        out << "\"id\":" << index;
+        out << ",\"tileset\":" << tile.tileset;
+        out << ",\"localId\":" << tile.localId;
+        out << ",\"flags\":" << tile.transformFlags;
+        out << ",\"tint\":" << tile.tint;
+        out << ",\"opacity\":" << tile.opacity;
+        out << '}';
+    }
+    out << ']';
+    out << ",\"dependencies\":[";
+    bool firstDependency = true;
+    std::set<std::string> dependencies;
+    for (const Tileset &tileset : document.tilesets) {
+        if (!tileset.image.empty())
+            dependencies.insert(tileset.image);
+        for (const auto &[_, image] : tileset.tileImages)
+            dependencies.insert(image.path);
+    }
+    for (const std::string &dependency : dependencies) {
+        if (!firstDependency)
+            out << ',';
+        firstDependency = false;
+        out << jsonEscape(dependency);
+    }
+    out << "]}}";
     return out.str();
 }
 
@@ -3094,88 +4250,459 @@ void *makeOkResult(void *value) {
     return result;
 }
 
-void *loadTilesetPixels(const Tileset &tileset,
-                        bool assetMode,
-                        int64_t mapTileWidth,
-                        int64_t mapTileHeight,
-                        std::string &error) {
-    void *source = nullptr;
-    rt_string path = makeString(tileset.image);
-    if (assetMode)
-        source = rt_asset_load(path);
-    else
-        source = rt_pixels_load(path);
-    rt_string_unref(path);
-    if (!source || rt_obj_class_id(source) != RT_PIXELS_CLASS_ID) {
-        releaseObject(source);
-        error = "cannot load Tiled tileset image as Pixels: " + tileset.image;
+struct TiledSourceTile {
+    void *pixels{nullptr};
+    int64_t sourceX{0};
+    int64_t sourceY{0};
+    int64_t width{0};
+    int64_t height{0};
+    uint32_t transparentColor{0};
+    bool hasTransparentColor{false};
+};
+
+struct TiledAtlasInfo {
+    void *rootPixels{nullptr};
+    int64_t columns{0};
+    int64_t rows{0};
+};
+
+struct ComposedTiledAtlas {
+    void *pixels{nullptr};
+    int64_t frameWidth{0};
+    int64_t frameHeight{0};
+    int64_t drawOffsetX{0};
+    int64_t drawOffsetY{0};
+    int64_t columns{0};
+    int64_t tileCount{0};
+};
+
+void releasePixelCache(std::map<std::string, void *> &cache) {
+    for (const auto &[_, pixels] : cache)
+        releaseObject(pixels);
+    cache.clear();
+}
+
+void *loadTiledPixels(const std::string &path,
+                      bool assetMode,
+                      std::map<std::string, void *> &cache,
+                      uint64_t &sourceBytes,
+                      std::string &error) {
+    auto found = cache.find(path);
+    if (found != cache.end())
+        return found->second;
+    rt_string runtimePath = makeString(path);
+    void *pixels = assetMode ? rt_asset_load(runtimePath) : rt_pixels_load(runtimePath);
+    rt_string_unref(runtimePath);
+    if (!pixels || rt_obj_class_id(pixels) != RT_PIXELS_CLASS_ID) {
+        releaseObject(pixels);
+        error = "cannot load Tiled source image as Pixels: " + path;
         return nullptr;
     }
-    int64_t sourceWidth = rt_pixels_width(source);
-    int64_t sourceHeight = rt_pixels_height(source);
-    if (sourceWidth <= 0 || sourceHeight <= 0 ||
-        (tileset.imageWidth > 0 && tileset.imageWidth != sourceWidth) ||
-        (tileset.imageHeight > 0 && tileset.imageHeight != sourceHeight)) {
-        releaseObject(source);
-        error = "Tiled tileset image dimensions do not match its metadata: " + tileset.image;
+    int64_t width = rt_pixels_width(pixels);
+    int64_t height = rt_pixels_height(pixels);
+    if (width <= 0 || height <= 0 || width > INT64_MAX / height) {
+        releaseObject(pixels);
+        error = "Tiled source image has invalid dimensions: " + path;
         return nullptr;
     }
-    if (tileset.tileWidth > mapTileWidth || tileset.tileHeight > mapTileHeight) {
-        releaseObject(source);
-        error = "Tiled tileset tiles are larger than the map tile dimensions";
+    uint64_t count = static_cast<uint64_t>(width) * static_cast<uint64_t>(height);
+    if (count > (UINT64_C(256) * 1024u * 1024u - sourceBytes) / 4u) {
+        releaseObject(pixels);
+        error = "Tiled decoded source images exceed 256 MiB";
         return nullptr;
     }
-    if (sourceWidth < tileset.margin * 2 + tileset.tileWidth ||
-        sourceHeight < tileset.margin * 2 + tileset.tileHeight) {
-        releaseObject(source);
-        error = "Tiled tileset image is too small for its margin and tile dimensions";
-        return nullptr;
+    sourceBytes += count * 4u;
+    cache[path] = pixels;
+    return pixels;
+}
+
+void transformedTileDimensions(const CanonicalTile &tile,
+                               int64_t sourceWidth,
+                               int64_t sourceHeight,
+                               bool hexagonal,
+                               int64_t &width,
+                               int64_t &height) {
+    width = sourceWidth;
+    height = sourceHeight;
+    if (!hexagonal && (tile.transformFlags & kTiledDiagonalOrHex60Flag) != 0u) {
+        width = sourceHeight;
+        height = sourceWidth;
+        return;
     }
-    int64_t derivedColumns = (sourceWidth - tileset.margin * 2 + tileset.spacing) /
-                             (tileset.tileWidth + tileset.spacing);
-    int64_t derivedRows = (sourceHeight - tileset.margin * 2 + tileset.spacing) /
-                          (tileset.tileHeight + tileset.spacing);
-    int64_t columns = tileset.columns > 0 ? tileset.columns : derivedColumns;
-    if (columns <= 0 || columns > derivedColumns || derivedRows <= 0) {
-        releaseObject(source);
-        error = "Tiled tileset columns do not fit its image";
-        return nullptr;
+    if (hexagonal) {
+        int degrees = 0;
+        if ((tile.transformFlags & kTiledDiagonalOrHex60Flag) != 0u)
+            degrees += 60;
+        if ((tile.transformFlags & kTiledHex120Flag) != 0u)
+            degrees += 120;
+        if (degrees != 0 && degrees != 180) {
+            double radians = static_cast<double>(degrees) * 3.14159265358979323846 / 180.0;
+            width = std::max<int64_t>(
+                1,
+                static_cast<int64_t>(std::ceil(std::fabs(std::cos(radians)) * sourceWidth +
+                                               std::fabs(std::sin(radians)) * sourceHeight)));
+            height = std::max<int64_t>(
+                1,
+                static_cast<int64_t>(std::ceil(std::fabs(std::sin(radians)) * sourceWidth +
+                                               std::fabs(std::cos(radians)) * sourceHeight)));
+        }
     }
-    int64_t tileCount = tileset.tileCount > 0 ? tileset.tileCount : columns * derivedRows;
-    if (tileCount <= 0 || tileCount > columns * derivedRows) {
-        releaseObject(source);
-        error = "Tiled tileset tilecount does not fit its image";
-        return nullptr;
+}
+
+bool tileArtworkPosition(const Tileset &tileset,
+                         int64_t mapTileHeight,
+                         int64_t sourceWidth,
+                         int64_t sourceHeight,
+                         int64_t transformedWidth,
+                         int64_t transformedHeight,
+                         int64_t &relativeX,
+                         int64_t &relativeY,
+                         std::string &error) {
+    long double x =
+        static_cast<long double>(tileset.tileOffsetX) + (sourceWidth - transformedWidth) / 2;
+    long double y = static_cast<long double>(mapTileHeight) - sourceHeight + tileset.tileOffsetY +
+                    (sourceHeight - transformedHeight) / 2;
+    if (x < static_cast<long double>(INT64_MIN) || x > static_cast<long double>(INT64_MAX) ||
+        y < static_cast<long double>(INT64_MIN) || y > static_cast<long double>(INT64_MAX) ||
+        x + transformedWidth > static_cast<long double>(INT64_MAX) ||
+        y + transformedHeight > static_cast<long double>(INT64_MAX)) {
+        error = "Tiled tile artwork placement overflows";
+        return false;
     }
-    int64_t rows = (tileCount + columns - 1) / columns;
-    if (columns > INT64_MAX / mapTileWidth || rows > INT64_MAX / mapTileHeight) {
-        releaseObject(source);
-        error = "Tiled repacked tileset dimensions overflow";
-        return nullptr;
+    relativeX = static_cast<int64_t>(x);
+    relativeY = static_cast<int64_t>(y);
+    return true;
+}
+
+uint32_t applyCanonicalColor(uint32_t pixel,
+                             const CanonicalTile &tile,
+                             const TiledSourceTile &source) {
+    if (source.hasTransparentColor &&
+        ((pixel >> 8u) & UINT32_C(0x00FFFFFF)) == (source.transparentColor & UINT32_C(0x00FFFFFF)))
+        return 0u;
+    uint32_t tintA = (tile.tint >> 24u) & 0xFFu;
+    uint32_t tintR = (tile.tint >> 16u) & 0xFFu;
+    uint32_t tintG = (tile.tint >> 8u) & 0xFFu;
+    uint32_t tintB = tile.tint & 0xFFu;
+    uint32_t red = (((pixel >> 24u) & 0xFFu) * tintR + 127u) / 255u;
+    uint32_t green = (((pixel >> 16u) & 0xFFu) * tintG + 127u) / 255u;
+    uint32_t blue = (((pixel >> 8u) & 0xFFu) * tintB + 127u) / 255u;
+    uint32_t alpha = ((pixel & 0xFFu) * tintA + 127u) / 255u;
+    alpha = (alpha * static_cast<uint32_t>(tile.opacity) + UINT32_C(32767)) / UINT32_C(65535);
+    return (red << 24u) | (green << 16u) | (blue << 8u) | alpha;
+}
+
+void writeCanonicalTile(void *atlas,
+                        int64_t destinationX,
+                        int64_t destinationY,
+                        const TiledSourceTile &source,
+                        const CanonicalTile &tile,
+                        bool hexagonal,
+                        int64_t transformedWidth,
+                        int64_t transformedHeight) {
+    bool horizontal = (tile.transformFlags & kTiledHorizontalFlag) != 0u;
+    bool vertical = (tile.transformFlags & kTiledVerticalFlag) != 0u;
+    if (!hexagonal) {
+        bool diagonal = (tile.transformFlags & kTiledDiagonalOrHex60Flag) != 0u;
+        for (int64_t sourceY = 0; sourceY < source.height; ++sourceY) {
+            for (int64_t sourceX = 0; sourceX < source.width; ++sourceX) {
+                int64_t x = sourceX;
+                int64_t y = sourceY;
+                if (diagonal) {
+                    x = source.height - 1 - sourceY;
+                    y = source.width - 1 - sourceX;
+                }
+                if (horizontal)
+                    x = transformedWidth - 1 - x;
+                if (vertical)
+                    y = transformedHeight - 1 - y;
+                uint32_t pixel = static_cast<uint32_t>(rt_pixels_get(
+                    source.pixels, source.sourceX + sourceX, source.sourceY + sourceY));
+                rt_pixels_set(atlas,
+                              destinationX + x,
+                              destinationY + y,
+                              static_cast<int64_t>(applyCanonicalColor(pixel, tile, source)));
+            }
+        }
+        return;
     }
-    void *packed = rt_pixels_new(columns * mapTileWidth, rows * mapTileHeight);
-    if (!packed) {
-        releaseObject(source);
-        error = "cannot allocate repacked Tiled tileset Pixels";
-        return nullptr;
+
+    int degrees = 0;
+    if ((tile.transformFlags & kTiledDiagonalOrHex60Flag) != 0u)
+        degrees += 60;
+    if ((tile.transformFlags & kTiledHex120Flag) != 0u)
+        degrees += 120;
+    double radians = static_cast<double>(degrees) * 3.14159265358979323846 / 180.0;
+    double cosine = std::cos(radians);
+    double sine = std::sin(radians);
+    double sourceCenterX = (static_cast<double>(source.width) - 1.0) * 0.5;
+    double sourceCenterY = (static_cast<double>(source.height) - 1.0) * 0.5;
+    double targetCenterX = (static_cast<double>(transformedWidth) - 1.0) * 0.5;
+    double targetCenterY = (static_cast<double>(transformedHeight) - 1.0) * 0.5;
+    for (int64_t targetY = 0; targetY < transformedHeight; ++targetY) {
+        for (int64_t targetX = 0; targetX < transformedWidth; ++targetX) {
+            int64_t flippedX = horizontal ? transformedWidth - 1 - targetX : targetX;
+            int64_t flippedY = vertical ? transformedHeight - 1 - targetY : targetY;
+            double centeredX = static_cast<double>(flippedX) - targetCenterX;
+            double centeredY = static_cast<double>(flippedY) - targetCenterY;
+            double sourceX = cosine * centeredX + sine * centeredY + sourceCenterX;
+            double sourceY = -sine * centeredX + cosine * centeredY + sourceCenterY;
+            int64_t nearestX = 0;
+            int64_t nearestY = 0;
+            if (!roundNearestTiesAway(sourceX, nearestX) ||
+                !roundNearestTiesAway(sourceY, nearestY) || nearestX < 0 || nearestY < 0 ||
+                nearestX >= source.width || nearestY >= source.height)
+                continue;
+            uint32_t pixel = static_cast<uint32_t>(
+                rt_pixels_get(source.pixels, source.sourceX + nearestX, source.sourceY + nearestY));
+            rt_pixels_set(atlas,
+                          destinationX + targetX,
+                          destinationY + targetY,
+                          static_cast<int64_t>(applyCanonicalColor(pixel, tile, source)));
+        }
     }
-    for (int64_t tile = 0; tile < tileCount; ++tile) {
-        int64_t sourceX = tileset.margin + (tile % columns) * (tileset.tileWidth + tileset.spacing);
-        int64_t sourceY =
-            tileset.margin + (tile / columns) * (tileset.tileHeight + tileset.spacing);
-        int64_t destinationX = (tile % columns) * mapTileWidth;
-        int64_t destinationY = (tile / columns) * mapTileHeight;
-        rt_pixels_copy(packed,
-                       destinationX,
-                       destinationY,
-                       source,
-                       sourceX,
-                       sourceY,
-                       tileset.tileWidth,
-                       tileset.tileHeight);
+}
+
+bool composeTiledAtlas(const MapDocument &document,
+                       bool assetMode,
+                       ComposedTiledAtlas &result,
+                       std::string &error) {
+    std::map<std::string, void *> cache;
+    uint64_t sourceBytes = 0u;
+    std::vector<TiledAtlasInfo> atlasInfo(document.tilesets.size());
+    std::vector<bool> rootImageNeeded(document.tilesets.size(), false);
+    std::vector<std::set<int64_t>> tileImagesNeeded(document.tilesets.size());
+    for (size_t canonicalIndex = 1u; canonicalIndex < document.canonicalTiles.size();
+         ++canonicalIndex) {
+        const CanonicalTile &tile = document.canonicalTiles[canonicalIndex];
+        if (!tile.reachable || tile.tileset < 0 ||
+            static_cast<size_t>(tile.tileset) >= document.tilesets.size())
+            continue;
+        const Tileset &tileset = document.tilesets[static_cast<size_t>(tile.tileset)];
+        if (tileset.tileImages.find(tile.localId) != tileset.tileImages.end())
+            tileImagesNeeded[static_cast<size_t>(tile.tileset)].insert(tile.localId);
+        else
+            rootImageNeeded[static_cast<size_t>(tile.tileset)] = true;
     }
-    releaseObject(source);
-    return packed;
+    for (size_t index = 0; index < document.tilesets.size(); ++index) {
+        const Tileset &tileset = document.tilesets[index];
+        TiledAtlasInfo &info = atlasInfo[index];
+        if (!tileset.image.empty() && rootImageNeeded[index]) {
+            info.rootPixels = loadTiledPixels(tileset.image, assetMode, cache, sourceBytes, error);
+            if (!info.rootPixels) {
+                releasePixelCache(cache);
+                return false;
+            }
+            int64_t width = rt_pixels_width(info.rootPixels);
+            int64_t height = rt_pixels_height(info.rootPixels);
+            if ((tileset.imageWidth > 0 && tileset.imageWidth != width) ||
+                (tileset.imageHeight > 0 && tileset.imageHeight != height) ||
+                width < tileset.margin * 2 + tileset.tileWidth ||
+                height < tileset.margin * 2 + tileset.tileHeight) {
+                error =
+                    "Tiled root image dimensions do not match tileset metadata: " + tileset.image;
+                releasePixelCache(cache);
+                return false;
+            }
+            int64_t derivedColumns = (width - tileset.margin * 2 + tileset.spacing) /
+                                     (tileset.tileWidth + tileset.spacing);
+            int64_t derivedRows = (height - tileset.margin * 2 + tileset.spacing) /
+                                  (tileset.tileHeight + tileset.spacing);
+            info.columns = tileset.columns > 0 ? tileset.columns : derivedColumns;
+            info.rows = derivedRows;
+            if (info.columns <= 0 || info.columns > derivedColumns || info.rows <= 0) {
+                error = "Tiled tileset columns do not fit its root image";
+                releasePixelCache(cache);
+                return false;
+            }
+        }
+        for (const auto &[localId, image] : tileset.tileImages) {
+            if (tileImagesNeeded[index].find(localId) == tileImagesNeeded[index].end())
+                continue;
+            void *pixels = loadTiledPixels(image.path, assetMode, cache, sourceBytes, error);
+            if (!pixels || (image.width > 0 && image.width != rt_pixels_width(pixels)) ||
+                (image.height > 0 && image.height != rt_pixels_height(pixels))) {
+                if (error.empty())
+                    error = "Tiled per-tile image dimensions do not match metadata: " + image.path;
+                releasePixelCache(cache);
+                return false;
+            }
+        }
+    }
+
+    std::vector<TiledSourceTile> sources(document.canonicalTiles.size());
+    int64_t minimumX = 0;
+    int64_t minimumY = 0;
+    int64_t maximumX = 0;
+    int64_t maximumY = 0;
+    bool haveBounds = false;
+    for (size_t canonicalIndex = 1u; canonicalIndex < document.canonicalTiles.size();
+         ++canonicalIndex) {
+        const CanonicalTile &tile = document.canonicalTiles[canonicalIndex];
+        const Tileset &tileset = document.tilesets[static_cast<size_t>(tile.tileset)];
+        TiledSourceTile &source = sources[canonicalIndex];
+        auto image = tileset.tileImages.find(tile.localId);
+        if (image != tileset.tileImages.end()) {
+            auto cached = cache.find(image->second.path);
+            if (cached == cache.end()) {
+                if (tile.reachable) {
+                    error = "reachable Tiled image-collection tile has no decoded image";
+                    releasePixelCache(cache);
+                    return false;
+                }
+                continue;
+            }
+            source.pixels = cached->second;
+            source.width = rt_pixels_width(source.pixels);
+            source.height = rt_pixels_height(source.pixels);
+            source.transparentColor = image->second.transparentColor;
+            source.hasTransparentColor = image->second.hasTransparentColor;
+        } else if (atlasInfo[static_cast<size_t>(tile.tileset)].rootPixels &&
+                   tile.localId < atlasInfo[static_cast<size_t>(tile.tileset)].columns *
+                                      atlasInfo[static_cast<size_t>(tile.tileset)].rows) {
+            const TiledAtlasInfo &info = atlasInfo[static_cast<size_t>(tile.tileset)];
+            source.pixels = info.rootPixels;
+            source.width = tileset.tileWidth;
+            source.height = tileset.tileHeight;
+            source.sourceX = tileset.margin +
+                             (tile.localId % info.columns) * (tileset.tileWidth + tileset.spacing);
+            source.sourceY = tileset.margin +
+                             (tile.localId / info.columns) * (tileset.tileHeight + tileset.spacing);
+            source.transparentColor = tileset.transparentColor;
+            source.hasTransparentColor = tileset.hasTransparentColor;
+        } else if (tile.reachable) {
+            error = "reachable Tiled image-collection tile has no image";
+            releasePixelCache(cache);
+            return false;
+        } else {
+            continue;
+        }
+        int64_t transformedWidth = 0;
+        int64_t transformedHeight = 0;
+        transformedTileDimensions(tile,
+                                  source.width,
+                                  source.height,
+                                  document.orientation == "hexagonal",
+                                  transformedWidth,
+                                  transformedHeight);
+        int64_t relativeX = 0;
+        int64_t relativeY = 0;
+        if (!tileArtworkPosition(tileset,
+                                 document.tileHeight,
+                                 source.width,
+                                 source.height,
+                                 transformedWidth,
+                                 transformedHeight,
+                                 relativeX,
+                                 relativeY,
+                                 error)) {
+            releasePixelCache(cache);
+            return false;
+        }
+        if (!haveBounds) {
+            minimumX = relativeX;
+            minimumY = relativeY;
+            maximumX = relativeX + transformedWidth;
+            maximumY = relativeY + transformedHeight;
+            haveBounds = true;
+        } else {
+            minimumX = std::min(minimumX, relativeX);
+            minimumY = std::min(minimumY, relativeY);
+            maximumX = std::max(maximumX, relativeX + transformedWidth);
+            maximumY = std::max(maximumY, relativeY + transformedHeight);
+        }
+    }
+    if (!haveBounds) {
+        minimumX = 0;
+        minimumY = 0;
+        maximumX = document.tileWidth;
+        maximumY = document.tileHeight;
+    }
+    long double frameWidth =
+        static_cast<long double>(maximumX) - static_cast<long double>(minimumX);
+    long double frameHeight =
+        static_cast<long double>(maximumY) - static_cast<long double>(minimumY);
+    if (frameWidth <= 0.0L || frameHeight <= 0.0L ||
+        frameWidth > static_cast<long double>(INT64_MAX) ||
+        frameHeight > static_cast<long double>(INT64_MAX)) {
+        error = "composed Tiled source-frame bounds overflow";
+        releasePixelCache(cache);
+        return false;
+    }
+    result.frameWidth = static_cast<int64_t>(frameWidth);
+    result.frameHeight = static_cast<int64_t>(frameHeight);
+    result.drawOffsetX = minimumX;
+    result.drawOffsetY = minimumY;
+    result.tileCount = static_cast<int64_t>(document.canonicalTiles.size() - 1u);
+    result.columns = static_cast<int64_t>(
+        std::ceil(std::sqrt(static_cast<double>(std::max<int64_t>(result.tileCount, 1)))));
+    int64_t rows = (result.tileCount + result.columns - 1) / result.columns;
+    if (result.frameWidth <= 0 || result.frameHeight <= 0 ||
+        result.columns > INT64_MAX / result.frameWidth || rows > INT64_MAX / result.frameHeight) {
+        error = "composed Tiled atlas dimensions overflow";
+        releasePixelCache(cache);
+        return false;
+    }
+    int64_t atlasWidth = result.columns * result.frameWidth;
+    int64_t atlasHeight = rows * result.frameHeight;
+    if (atlasWidth <= 0 || atlasHeight <= 0 || atlasWidth > INT64_MAX / atlasHeight ||
+        static_cast<uint64_t>(atlasWidth) * static_cast<uint64_t>(atlasHeight) >
+            UINT64_C(256) * 1024u * 1024u / 4u) {
+        error = "composed Tiled atlas exceeds 256 MiB";
+        releasePixelCache(cache);
+        return false;
+    }
+    result.pixels = rt_pixels_new(atlasWidth, atlasHeight);
+    if (!result.pixels) {
+        error = "cannot allocate composed Tiled atlas Pixels";
+        releasePixelCache(cache);
+        return false;
+    }
+    for (size_t canonicalIndex = 1u; canonicalIndex < document.canonicalTiles.size();
+         ++canonicalIndex) {
+        const TiledSourceTile &source = sources[canonicalIndex];
+        if (!source.pixels)
+            continue;
+        const CanonicalTile &tile = document.canonicalTiles[canonicalIndex];
+        const Tileset &tileset = document.tilesets[static_cast<size_t>(tile.tileset)];
+        int64_t transformedWidth = 0;
+        int64_t transformedHeight = 0;
+        transformedTileDimensions(tile,
+                                  source.width,
+                                  source.height,
+                                  document.orientation == "hexagonal",
+                                  transformedWidth,
+                                  transformedHeight);
+        int64_t relativeX = 0;
+        int64_t relativeY = 0;
+        if (!tileArtworkPosition(tileset,
+                                 document.tileHeight,
+                                 source.width,
+                                 source.height,
+                                 transformedWidth,
+                                 transformedHeight,
+                                 relativeX,
+                                 relativeY,
+                                 error)) {
+            releaseObject(result.pixels);
+            result.pixels = nullptr;
+            releasePixelCache(cache);
+            return false;
+        }
+        int64_t frame = static_cast<int64_t>(canonicalIndex - 1u);
+        int64_t destinationX = (frame % result.columns) * result.frameWidth + relativeX - minimumX;
+        int64_t destinationY = (frame / result.columns) * result.frameHeight + relativeY - minimumY;
+        writeCanonicalTile(result.pixels,
+                           destinationX,
+                           destinationY,
+                           source,
+                           tile,
+                           document.orientation == "hexagonal",
+                           transformedWidth,
+                           transformedHeight);
+    }
+    releasePixelCache(cache);
+    return true;
 }
 
 void *buildRenderTilemap(ImportProduct &product, bool assetMode, std::string &error) {
@@ -3189,34 +4716,66 @@ void *buildRenderTilemap(ImportProduct &product, bool assetMode, std::string &er
         error = "cannot build Tilemap from imported SceneDocument";
         return nullptr;
     }
-    std::map<int64_t, void *> pixelsByTileset;
-    for (size_t layerIndex = 0; layerIndex < product.document.layers.size(); ++layerIndex) {
-        int64_t tilesetIndex = product.document.layers[layerIndex].tileset;
-        void *pixels = nullptr;
-        auto found = pixelsByTileset.find(tilesetIndex);
-        if (found != pixelsByTileset.end()) {
-            pixels = found->second;
-        } else {
-            pixels = loadTilesetPixels(product.document.tilesets[static_cast<size_t>(tilesetIndex)],
-                                       assetMode,
-                                       product.document.tileWidth,
-                                       product.document.tileHeight,
-                                       error);
-            if (!pixels) {
-                for (const auto &[_, value] : pixelsByTileset)
-                    releaseObject(value);
-                releaseObject(tilemap);
-                return nullptr;
-            }
-            pixelsByTileset[tilesetIndex] = pixels;
-        }
-        if (layerIndex == 0)
-            rt_tilemap_set_tileset(tilemap, pixels);
-        else
-            rt_tilemap_set_layer_tileset(tilemap, static_cast<int64_t>(layerIndex), pixels);
+    ComposedTiledAtlas atlas;
+    if (!composeTiledAtlas(product.document, assetMode, atlas, error)) {
+        releaseObject(tilemap);
+        return nullptr;
     }
-    for (const auto &[_, value] : pixelsByTileset)
-        releaseObject(value);
+    int64_t orientation = RT_TILEMAP_IMPORT_ORTHOGONAL;
+    if (product.document.orientation == "isometric")
+        orientation = RT_TILEMAP_IMPORT_ISOMETRIC;
+    else if (product.document.orientation == "staggered")
+        orientation = RT_TILEMAP_IMPORT_STAGGERED;
+    else if (product.document.orientation == "hexagonal")
+        orientation = RT_TILEMAP_IMPORT_HEXAGONAL;
+    else if (product.document.orientation == "oblique")
+        orientation = RT_TILEMAP_IMPORT_OBLIQUE;
+    int64_t renderOrder = RT_TILEMAP_IMPORT_RIGHT_DOWN;
+    if (product.document.renderOrder == "right-up")
+        renderOrder = RT_TILEMAP_IMPORT_RIGHT_UP;
+    else if (product.document.renderOrder == "left-down")
+        renderOrder = RT_TILEMAP_IMPORT_LEFT_DOWN;
+    else if (product.document.renderOrder == "left-up")
+        renderOrder = RT_TILEMAP_IMPORT_LEFT_UP;
+    if (!rt_tilemap_configure_import_layout(tilemap,
+                                            orientation,
+                                            product.document.originTileX,
+                                            product.document.originTileY,
+                                            atlas.frameWidth,
+                                            atlas.frameHeight,
+                                            atlas.drawOffsetX,
+                                            atlas.drawOffsetY,
+                                            renderOrder,
+                                            product.document.staggerAxis == "x" ? 0 : 1,
+                                            product.document.staggerIndex == "even" ? 1 : 0,
+                                            product.document.hexSideLength,
+                                            product.document.skewX,
+                                            product.document.skewY,
+                                            product.document.parallaxOriginX,
+                                            product.document.parallaxOriginY,
+                                            product.document.projectionHeight)) {
+        releaseObject(atlas.pixels);
+        releaseObject(tilemap);
+        error = "cannot configure composed Tiled atlas layout";
+        return nullptr;
+    }
+    rt_tilemap_set_tileset(tilemap, atlas.pixels);
+    if (!rt_tilemap_set_import_tile_count(tilemap, atlas.tileCount)) {
+        releaseObject(atlas.pixels);
+        releaseObject(tilemap);
+        error = "cannot apply composed Tiled atlas tile count";
+        return nullptr;
+    }
+    for (size_t layerIndex = 0; layerIndex < product.document.layers.size(); ++layerIndex) {
+        const Layer &layer = product.document.layers[layerIndex];
+        rt_tilemap_configure_import_layer(tilemap,
+                                          static_cast<int64_t>(layerIndex),
+                                          layer.offsetX,
+                                          layer.offsetY,
+                                          layer.parallaxX,
+                                          layer.parallaxY);
+    }
+    releaseObject(atlas.pixels);
     return tilemap;
 }
 

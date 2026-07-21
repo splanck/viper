@@ -257,8 +257,56 @@ static int fbx_absolute_texture_paths_allowed(void) {
     return value && value[0] == '1' && value[1] == '\0';
 }
 
-/// @brief Load Pixels from a transient C path without leaking the runtime-string adapter.
-static void *fbx_pixels_load_cstr(const char *path) {
+static void *fbx_decode_texture_payload(const char *name, const uint8_t *data, size_t len);
+
+/// @brief Read one bounded external texture so its exact source bytes can survive import.
+static uint8_t *fbx_read_texture_bytes(const char *path, size_t *out_len) {
+    FILE *file;
+    int64_t file_size;
+    uint8_t *data;
+    if (out_len)
+        *out_len = 0;
+    if (!path || !out_len)
+        return NULL;
+    file = rt_file_stdio_open_utf8(path, "rb");
+    if (!file)
+        return NULL;
+    if (rt_file_stdio_seek64(file, 0, SEEK_END) != 0 ||
+        (file_size = rt_file_stdio_tell64(file)) <= 0 ||
+        (uint64_t)file_size > RT_FBX_MAX_TEXTURE_FILE_BYTES ||
+        (uint64_t)file_size > (uint64_t)SIZE_MAX || rt_file_stdio_seek64(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return NULL;
+    }
+    data = (uint8_t *)malloc((size_t)file_size);
+    if (!data) {
+        fclose(file);
+        rt_trap("FBX.Load: external texture allocation failed");
+        return NULL;
+    }
+    if (fread(data, 1u, (size_t)file_size, file) != (size_t)file_size) {
+        free(data);
+        fclose(file);
+        return NULL;
+    }
+    fclose(file);
+    *out_len = (size_t)file_size;
+    return data;
+}
+
+/// @brief Decode a bounded external texture while retaining its exact source container.
+static void *fbx_texture_load_cstr(const char *path) {
+    uint8_t *data;
+    size_t data_len = 0;
+    void *texture = NULL;
+    data = fbx_read_texture_bytes(path, &data_len);
+    if (data) {
+        texture = fbx_decode_texture_payload(path, data, data_len);
+        free(data);
+        if (texture)
+            return texture;
+    }
+    /* Preserve the established decoder fallback for unusual but supported filesystem paths. */
     rt_string runtime_path = rt_const_cstr(path);
     void *pixels = rt_pixels_load(runtime_path);
     rt_string_unref(runtime_path);
@@ -287,7 +335,7 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
     if (!dir)
         goto done;
     if (fbx_is_absolute_path(raw_ref) && fbx_absolute_texture_paths_allowed()) {
-        pixels = fbx_pixels_load_cstr(raw_ref);
+        pixels = fbx_texture_load_cstr(raw_ref);
         if (pixels)
             goto done;
     }
@@ -297,9 +345,9 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
         if (*dir) {
             candidate = fbx_join_path_alloc(dir, normalized_ref);
             if (candidate)
-                pixels = fbx_pixels_load_cstr(candidate);
+                pixels = fbx_texture_load_cstr(candidate);
         } else {
-            pixels = fbx_pixels_load_cstr(normalized_ref);
+            pixels = fbx_texture_load_cstr(normalized_ref);
         }
         if (pixels)
             goto done;
@@ -322,7 +370,7 @@ static void *fbx_try_load_texture_path(const char *fbx_path, const char *texture
         if (!candidate)
             goto done;
     }
-    pixels = fbx_pixels_load_cstr(candidate);
+    pixels = fbx_texture_load_cstr(candidate);
 
 done:
     free(candidate);
@@ -423,6 +471,40 @@ static int fbx_payload_looks_gif(const uint8_t *data, size_t len) {
     return data && len >= 6u && (memcmp(data, "GIF87a", 6) == 0 || memcmp(data, "GIF89a", 6) == 0);
 }
 
+/// @brief Identify supported encoded texture bytes independently of an untrusted filename hint.
+static const char *fbx_texture_container_kind(const uint8_t *data, size_t len) {
+    static const uint8_t ktx2_magic[12] = {
+        0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A};
+    if (data && len >= sizeof(ktx2_magic) && memcmp(data, ktx2_magic, sizeof(ktx2_magic)) == 0)
+        return "ktx2";
+    if (fbx_payload_looks_png(data, len))
+        return "png";
+    if (data && len >= 4u && data[0] == 0xFFu && data[1] == 0xD8u && data[2] == 0xFFu)
+        return "jpeg";
+    if (fbx_payload_looks_gif(data, len))
+        return "gif";
+    if (data && len >= 14u && data[0] == 'B' && data[1] == 'M')
+        return "bmp";
+    return NULL;
+}
+
+/// @brief Wrap decoded Pixels with exact encoded bytes, consuming the Pixels reference.
+static void *fbx_preserve_texture_source(void *pixels,
+                                         const uint8_t *data,
+                                         size_t len,
+                                         const char *kind) {
+    void *texture;
+    if (!pixels || !kind)
+        return pixels;
+    texture = rt_textureasset3d_wrap_encoded_pixels(pixels, data, (uint64_t)len, kind);
+    if (!texture) {
+        fbx_release_ref(&pixels);
+        return NULL;
+    }
+    fbx_release_ref(&pixels);
+    return texture;
+}
+
 /// @brief Decode an embedded texture payload into a Pixels object, selecting the codec by
 ///   magic bytes or by @p name's extension (PNG/JPEG/GIF/...). NULL if unrecognized or
 ///   undecodable.
@@ -431,20 +513,24 @@ static void *fbx_decode_texture_payload(const char *name, const uint8_t *data, s
     int64_t width = 0;
     int64_t height = 0;
     void *pixels = NULL;
+    const char *kind;
     if (!data || len == 0)
         return NULL;
+    kind = fbx_texture_container_kind(data, len);
+    if (kind && strcmp(kind, "ktx2") == 0)
+        return rt_textureasset3d_load_ktx2_memory(data, (uint64_t)len);
     if (fbx_payload_looks_png(data, len) || fbx_ascii_ends_with_i(name, ".png")) {
         if (rt_png_decode_buffer_rgba32(data, len, &rgba32, &width, &height))
             pixels = fbx_pixels_from_rgba32(rgba32, width, height);
         free(rgba32);
-        return pixels;
+        return fbx_preserve_texture_source(pixels, data, len, kind);
     }
     if (fbx_payload_looks_jpeg(data, len) || fbx_ascii_ends_with_i(name, ".jpg") ||
         fbx_ascii_ends_with_i(name, ".jpeg")) {
         if (rt_jpeg_decode_buffer_rgba32(data, len, &rgba32, &width, &height))
             pixels = fbx_pixels_from_rgba32(rgba32, width, height);
         free(rgba32);
-        return pixels;
+        return fbx_preserve_texture_source(pixels, data, len, kind);
     }
     if (fbx_payload_looks_gif(data, len) || fbx_ascii_ends_with_i(name, ".gif")) {
         int gif_width = 0;
@@ -452,7 +538,11 @@ static void *fbx_decode_texture_payload(const char *name, const uint8_t *data, s
         if (rt_gif_decode_memory_first_rgba32(data, len, &rgba32, &gif_width, &gif_height))
             pixels = fbx_pixels_from_rgba32(rgba32, (int64_t)gif_width, (int64_t)gif_height);
         free(rgba32);
-        return pixels;
+        return fbx_preserve_texture_source(pixels, data, len, kind);
+    }
+    if ((kind && strcmp(kind, "bmp") == 0) || fbx_ascii_ends_with_i(name, ".bmp")) {
+        pixels = rt_asset_decode_typed("embedded.bmp", data, len);
+        return fbx_preserve_texture_source(pixels, data, len, kind);
     }
     return NULL;
 }
