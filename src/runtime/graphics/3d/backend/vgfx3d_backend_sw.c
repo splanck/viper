@@ -52,6 +52,7 @@
 #define SW_MAX_WORKERS 16
 #define SW_MAX_TASKS (SW_MAX_WORKERS + 1)
 #define SW_PARALLEL_MIN_INDICES 192u
+#define SW_MATERIAL_PARAM_ABS_MAX 1000000.0f
 
 /// @brief Submit a typed task callback to the runtime thread pool.
 /// @details The public Pool API accepts callbacks through the generic runtime
@@ -101,7 +102,7 @@ typedef struct {
     float *shadow_depth[VGFX3D_MAX_SHADOW_LIGHTS];
     int32_t shadow_w[VGFX3D_MAX_SHADOW_LIGHTS], shadow_h[VGFX3D_MAX_SHADOW_LIGHTS];
     float shadow_vp[VGFX3D_MAX_SHADOW_LIGHTS][16];
-    float shadow_bias;
+    float shadow_bias[VGFX3D_MAX_SHADOW_LIGHTS];
     /* Plan 06: per-frame shadow filtering params from camera params. */
     float shadow_strength;
     float shadow_slope_bias;
@@ -224,6 +225,131 @@ static int sw_normalize3(
     return 1;
 }
 
+/// @brief Clamp a float to [0, 1], mapping every non-positive/NaN value to zero.
+static inline float clamp01f(float value) {
+    if (!(value > 0.0f))
+        return 0.0f;
+    return value >= 1.0f ? 1.0f : value;
+}
+
+/// @brief Compute x^5 without a libm call for Schlick Fresnel terms.
+static inline float pow5f_fast(float value) {
+    float squared = value * value;
+    return squared * squared * value;
+}
+
+/// @brief Raise a clamped material term to a finite, bounded exponent.
+static inline float sw_material_powf(float value, float power) {
+    value = clamp01f(value);
+    if (!isfinite(power))
+        power = 1.0f;
+    if (power > 4096.0f)
+        power = 4096.0f;
+    if (power <= 0.0f)
+        return 1.0f;
+    if (fabsf(power - 1.0f) < 1e-6f)
+        return value;
+    if (fabsf(power - 2.0f) < 1e-6f)
+        return value * value;
+    if (fabsf(power - 3.0f) < 1e-6f)
+        return value * value * value;
+    if (fabsf(power - 4.0f) < 1e-6f) {
+        float squared = value * value;
+        return squared * squared;
+    }
+    if (fabsf(power - 5.0f) < 1e-6f)
+        return pow5f_fast(value);
+    return powf(value, power);
+}
+
+/// @brief Clamp a caller-provided light array count to the fixed renderer payload.
+static int32_t sw_sanitize_light_count(const vgfx3d_light_params_t *lights, int32_t count) {
+    if (!lights || count <= 0)
+        return 0;
+    return count > VGFX3D_MAX_LIGHTS ? VGFX3D_MAX_LIGHTS : count;
+}
+
+/// @brief Validate an RGBA8 surface before any row or pixel pointer arithmetic.
+static int sw_rgba_surface_is_valid(const uint8_t *pixels,
+                                    int32_t width,
+                                    int32_t height,
+                                    int32_t stride) {
+    size_t row_bytes;
+    size_t final_offset;
+    if (!pixels || width <= 0 || height <= 0 || stride <= 0)
+        return 0;
+    if ((size_t)width > SIZE_MAX / 4u)
+        return 0;
+    row_bytes = (size_t)width * 4u;
+    if ((size_t)stride < row_bytes)
+        return 0;
+    if ((size_t)(height - 1) > (SIZE_MAX - row_bytes) / (size_t)stride)
+        return 0;
+    final_offset = (size_t)(height - 1) * (size_t)stride + row_bytes;
+    return final_offset >= row_bytes;
+}
+
+/// @brief Floor a finite screen coordinate and clamp it to an inclusive pixel extent.
+static int32_t sw_floor_pixel_coord(float value, int32_t max_inclusive) {
+    double rounded;
+    if (!isfinite(value) || max_inclusive <= 0 || value <= 0.0f)
+        return 0;
+    rounded = floor((double)value);
+    if (rounded >= (double)max_inclusive)
+        return max_inclusive;
+    return (int32_t)rounded;
+}
+
+/// @brief Ceil a finite screen coordinate and clamp it to an inclusive pixel extent.
+static int32_t sw_ceil_pixel_coord(float value, int32_t max_inclusive) {
+    double rounded;
+    if (!isfinite(value))
+        return -1;
+    if (value < 0.0f)
+        return -1;
+    if (max_inclusive <= 0 || value == 0.0f)
+        return 0;
+    rounded = ceil((double)value);
+    if (rounded >= (double)max_inclusive)
+        return max_inclusive;
+    return (int32_t)rounded;
+}
+
+/// @brief Convert a normalized half-open coordinate to a valid texture/depth index.
+static int32_t sw_unit_coord_to_index(float value, int32_t extent) {
+    double scaled;
+    if (!isfinite(value) || extent <= 0)
+        return 0;
+    if (value <= 0.0f)
+        return 0;
+    if (value >= 1.0f)
+        return extent - 1;
+    scaled = floor((double)value * (double)extent);
+    if (scaled >= (double)extent)
+        return extent - 1;
+    return (int32_t)scaled;
+}
+
+/// @brief Copy one draw command while replacing malformed numeric material state.
+/// @details The canvas normally resolves finite values before backend dispatch, but the
+///          backend vtable is also an internal C boundary exercised by tests and tools.
+///          Keeping sanitization here prevents NaNs from reaching libm or byte casts.
+static void sw_sanitize_draw_command(const vgfx3d_draw_cmd_t *src, vgfx3d_draw_cmd_t *dst) {
+    vgfx3d_sanitize_draw_command(src, dst);
+}
+
+/// @brief Copy and sanitize one bounded software-light snapshot.
+static int32_t sw_sanitize_lights(const vgfx3d_light_params_t *src,
+                                  int32_t count,
+                                  vgfx3d_light_params_t dst[VGFX3D_MAX_LIGHTS]) {
+    return vgfx3d_sanitize_light_array(src, count, dst, VGFX3D_MAX_LIGHTS);
+}
+
+/// @brief Copy non-negative, bounded ambient RGB state.
+static void sw_sanitize_ambient(const float *src, float dst[3]) {
+    vgfx3d_sanitize_ambient_rgb(src, dst);
+}
+
 /// @brief Smoothly fade a finite-range emitter to zero at its authored boundary.
 static float sw_light_range_fade(float distance, float range) {
     float remaining;
@@ -250,7 +376,25 @@ static float sw_light_distance_decay(const vgfx3d_light_params_t *light, float d
         powered_distance *= distance;
     if (!isfinite(powered_distance))
         return 0.0f;
-    return 1.0f / (1.0f + attenuation * powered_distance);
+    {
+        double denominator = 1.0 + (double)attenuation * (double)powered_distance;
+        if (!isfinite(denominator) || denominator <= 0.0)
+            return 0.0f;
+        return (float)(1.0 / denominator);
+    }
+}
+
+/// @brief Overflow-safe legacy inverse-quadratic attenuation for point/spot lights.
+static float sw_punctual_attenuation(float coefficient, float distance) {
+    double denominator;
+    if (!isfinite(distance) || distance < 0.0f)
+        return 0.0f;
+    if (!isfinite(coefficient) || coefficient < 0.0f)
+        coefficient = 0.0f;
+    denominator = 1.0 + (double)coefficient * (double)distance * (double)distance;
+    if (!isfinite(denominator) || denominator <= 0.0)
+        return 0.0f;
+    return (float)(1.0 / denominator);
 }
 
 /// @brief Evaluate one analytic light at a world point.
@@ -275,7 +419,8 @@ static int sw_eval_analytic_light(const vgfx3d_light_params_t *light,
         lx = -light->direction[0];
         ly = -light->direction[1];
         lz = -light->direction[2];
-        (void)sw_normalize3(&lx, &ly, &lz, 0.0f, 0.0f, 0.0f);
+        if (!sw_normalize3(&lx, &ly, &lz, 0.0f, 0.0f, 0.0f))
+            return 0;
     } else if (light->type == 1) {
         lx = light->position[0] - wx;
         ly = light->position[1] - wy;
@@ -286,7 +431,7 @@ static int sw_eval_analytic_light(const vgfx3d_light_params_t *light,
         lx /= distance;
         ly /= distance;
         lz /= distance;
-        attenuation = 1.0f / (1.0f + light->attenuation * distance * distance);
+        attenuation = sw_punctual_attenuation(light->attenuation, distance);
     } else if (light->type == 3) {
         float sx;
         float sy;
@@ -301,11 +446,12 @@ static int sw_eval_analytic_light(const vgfx3d_light_params_t *light,
         lx /= distance;
         ly /= distance;
         lz /= distance;
-        attenuation = 1.0f / (1.0f + light->attenuation * distance * distance);
+        attenuation = sw_punctual_attenuation(light->attenuation, distance);
         sx = -light->direction[0];
         sy = -light->direction[1];
         sz = -light->direction[2];
-        (void)sw_normalize3(&sx, &sy, &sz, 0.0f, 0.0f, 0.0f);
+        if (!sw_normalize3(&sx, &sy, &sz, 0.0f, 0.0f, 0.0f))
+            return 0;
         spot_dot = lx * sx + ly * sy + lz * sz;
         if (spot_dot < light->outer_cos) {
             attenuation = 0.0f;
@@ -517,7 +663,7 @@ static float sw_sample_shadow_visibility(const sw_context_t *ctx,
 
     /* Normal-offset the receiver by ~1.5 shadow texels in world units (row 0 of the
      * row-major VP maps world X-extent onto clip x in [-1, 1]). */
-    row0_len = sqrtf(svp[0] * svp[0] + svp[1] * svp[1] + svp[2] * svp[2]);
+    row0_len = sw_length3(svp[0], svp[1], svp[2]);
     if (isfinite(row0_len) && row0_len > 1e-9f)
         texel_world = 2.0f / (row0_len * (float)shadow_w);
     wx += nx * texel_world * 1.5f;
@@ -538,27 +684,32 @@ static float sw_sample_shadow_visibility(const sw_context_t *ctx,
         sv >= 1.0f || sd < 0.0f || sd > 1.0f)
         return 1.0f;
 
-    sxi = (int)(su * (float)shadow_w);
-    syi = (int)(sv * (float)shadow_h);
+    sxi = sw_unit_coord_to_index(su, shadow_w);
+    syi = sw_unit_coord_to_index(sv, shadow_h);
     if (sxi < 0 || sxi >= shadow_w || syi < 0 || syi >= shadow_h)
         return 1.0f;
 
-    sz_map = ctx->shadow_depth[slot][syi * shadow_w + sxi];
-    slope_bias = ctx->shadow_bias;
+    sz_map = ctx->shadow_depth[slot][(size_t)syi * (size_t)shadow_w + (size_t)sxi];
+    slope_bias = vgfx3d_clamp_float_param(ctx->shadow_bias[slot], -0.05f, 0.05f, 0.0f);
     if (!isfinite(sz_map) || sz_map > FLT_MAX * 0.5f)
         sz_map = 1.0f;
     if (sxi + 1 < shadow_w) {
-        float neighbor = ctx->shadow_depth[slot][syi * shadow_w + sxi + 1];
+        float neighbor = ctx->shadow_depth[slot][(size_t)syi * (size_t)shadow_w + (size_t)sxi + 1u];
         if (isfinite(neighbor) && neighbor < FLT_MAX * 0.5f)
             dz_du = neighbor - sz_map;
     }
     if (syi + 1 < shadow_h) {
-        float neighbor = ctx->shadow_depth[slot][(syi + 1) * shadow_w + sxi];
+        float neighbor =
+            ctx->shadow_depth[slot][(size_t)(syi + 1) * (size_t)shadow_w + (size_t)sxi];
         if (isfinite(neighbor) && neighbor < FLT_MAX * 0.5f)
             dz_dv = neighbor - sz_map;
     }
-    slope = sqrtf(dz_du * dz_du + dz_dv * dz_dv);
-    slope_bias += ctx->shadow_bias * slope * 4.0f * ctx->shadow_slope_bias;
+    slope = sw_length3(dz_du, dz_dv, 0.0f);
+    if (!isfinite(slope))
+        slope = 0.0f;
+    slope_bias += slope_bias * slope * 4.0f *
+                  vgfx3d_clamp_float_param(ctx->shadow_slope_bias, 0.0f, 1000.0f, 1.0f);
+    slope_bias = vgfx3d_clamp_float_param(slope_bias, -0.05f, 0.05f, 0.0f);
 
     occluded_vis = 1.0f - (isfinite(ctx->shadow_strength)
                                ? (ctx->shadow_strength < 0.0f
@@ -589,7 +740,7 @@ static float sw_sample_shadow_visibility(const sw_context_t *ctx,
             sample_count++;
             continue;
         }
-        sample_depth = ctx->shadow_depth[slot][py * shadow_w + px];
+        sample_depth = ctx->shadow_depth[slot][(size_t)py * (size_t)shadow_w + (size_t)px];
         if (!isfinite(sample_depth) || sample_depth > FLT_MAX * 0.5f) {
             visibility_sum += 1.0f;
             sample_count++;
@@ -612,25 +763,29 @@ static int32_t sw_resolve_shadow_slot(
     if (!ctx || !light || light->shadow_index < 0)
         return -1;
     base_slot = light->shadow_index;
+    if (base_slot >= VGFX3D_MAX_SHADOW_LIGHTS || base_slot >= ctx->shadow_count)
+        return -1;
     if (light->shadow_projection_type == VGFX3D_SHADOW_PROJECTION_CUBE) {
         /* Omni shadow: pick the face slot by the dominant axis of light->fragment. */
         float dx = wx - light->position[0];
         float dy = wy - light->position[1];
         float dz = wz - light->position[2];
-        float ax = fabsf(dx);
+        float ax;
         float ay = fabsf(dy);
         float az = fabsf(dz);
         int32_t face;
+        if (!isfinite(dx) || !isfinite(dy) || !isfinite(dz) ||
+            base_slot > VGFX3D_MAX_SHADOW_LIGHTS - VGFX3D_SHADOW_CUBE_FACES ||
+            base_slot > ctx->shadow_count - VGFX3D_SHADOW_CUBE_FACES)
+            return -1;
+        ax = fabsf(dx);
         if (ax >= ay && ax >= az)
             face = dx >= 0.0f ? 0 : 1;
         else if (ay >= az)
             face = dy >= 0.0f ? 2 : 3;
         else
             face = dz >= 0.0f ? 4 : 5;
-        base_slot += face;
-        if (base_slot >= ctx->shadow_count || base_slot >= VGFX3D_MAX_SHADOW_LIGHTS)
-            return -1;
-        return base_slot;
+        return base_slot + face;
     }
     cascade_count = light->shadow_cascade_count;
     if (cascade_count <= 1)
@@ -641,9 +796,20 @@ static int32_t sw_resolve_shadow_slot(
         cascade_count = ctx->shadow_count - base_slot;
     if (cascade_count <= 1)
         return base_slot;
+    {
+        float previous_split = 0.0f;
+        for (int32_t cascade = 0; cascade < cascade_count; cascade++) {
+            float split = light->shadow_cascade_splits[cascade];
+            if (!isfinite(split) || split <= previous_split)
+                return base_slot;
+            previous_split = split;
+        }
+    }
     view_depth = (wx - ctx->cam_pos[0]) * ctx->cam_forward[0] +
                  (wy - ctx->cam_pos[1]) * ctx->cam_forward[1] +
                  (wz - ctx->cam_pos[2]) * ctx->cam_forward[2];
+    if (!isfinite(view_depth))
+        return base_slot;
     for (int32_t cascade = 0; cascade < cascade_count - 1; cascade++) {
         if (view_depth <= light->shadow_cascade_splits[cascade])
             return base_slot + cascade;
@@ -661,11 +827,24 @@ static int32_t sw_effective_cascade_count(const sw_context_t *ctx,
     if (!ctx || !light || light->shadow_index < 0)
         return 0;
     base_slot = light->shadow_index;
+    if (base_slot >= VGFX3D_MAX_SHADOW_LIGHTS || base_slot >= ctx->shadow_count)
+        return 0;
     cascade_count = light->shadow_cascade_count;
     if (cascade_count > VGFX3D_MAX_SHADOW_LIGHTS - base_slot)
         cascade_count = VGFX3D_MAX_SHADOW_LIGHTS - base_slot;
     if (cascade_count > ctx->shadow_count - base_slot)
         cascade_count = ctx->shadow_count - base_slot;
+    if (cascade_count <= 0)
+        return 0;
+    {
+        float previous_split = 0.0f;
+        for (int32_t cascade = 0; cascade < cascade_count; cascade++) {
+            float split = light->shadow_cascade_splits[cascade];
+            if (!isfinite(split) || split <= previous_split)
+                return 1;
+            previous_split = split;
+        }
+    }
     return cascade_count;
 }
 
@@ -707,8 +886,12 @@ static float sw_sample_shadow_light(const sw_context_t *ctx,
     view_depth = (wx - ctx->cam_pos[0]) * ctx->cam_forward[0] +
                  (wy - ctx->cam_pos[1]) * ctx->cam_forward[1] +
                  (wz - ctx->cam_pos[2]) * ctx->cam_forward[2];
+    if (!isfinite(view_depth))
+        return vis;
     split_far = light->shadow_cascade_splits[cascade];
     split_near = cascade > 0 ? light->shadow_cascade_splits[cascade - 1] : 0.0f;
+    if (!isfinite(split_far) || !isfinite(split_near) || split_far <= split_near)
+        return vis;
     band = fmaxf(0.5f, 0.12f * (split_far - split_near));
     if (cascade < cascade_count - 1) {
         float blend = (view_depth - (split_far - band)) / band;
@@ -721,6 +904,8 @@ static float sw_sample_shadow_light(const sw_context_t *ctx,
         }
     } else {
         float shadow_far = light->shadow_cascade_splits[cascade_count - 1];
+        if (!isfinite(shadow_far) || shadow_far <= 0.0f)
+            return vis;
         float fade_band = fmaxf(2.0f, 0.10f * shadow_far);
         float fade = (shadow_far - view_depth) / fade_band;
         if (fade < 0.0f)
@@ -730,6 +915,49 @@ static float sw_sample_shadow_light(const sw_context_t *ctx,
         vis = 1.0f + (vis - 1.0f) * fade;
     }
     return vis;
+}
+
+/// @brief Return whether a draw must defer legacy lighting to the fragment stage.
+/// @details PBR and normal maps are always per-pixel. Legacy materials also become
+///          per-pixel when at least one referenced shadow slot is complete; otherwise
+///          applying Gouraud lighting first and Phong lighting again during shadow
+///          sampling squares the light contribution.
+static int sw_draw_requires_per_pixel_lighting(const sw_context_t *ctx,
+                                               const vgfx3d_draw_cmd_t *cmd,
+                                               const vgfx3d_light_params_t *lights,
+                                               int32_t light_count) {
+    if (!cmd)
+        return 0;
+    if (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || cmd->normal_map)
+        return 1;
+    if (!ctx || ctx->shadow_count <= 0)
+        return 0;
+    light_count = sw_sanitize_light_count(lights, light_count);
+    for (int32_t i = 0; i < light_count; i++) {
+        const vgfx3d_light_params_t *light = &lights[i];
+        int32_t first = light->shadow_index;
+        int32_t slot_count = 1;
+        if (light->type != 0 && light->type != 1 && light->type != 3 && light->type != 4 &&
+            light->type != 5)
+            continue;
+        if (first < 0 || first >= ctx->shadow_count || first >= VGFX3D_MAX_SHADOW_LIGHTS)
+            continue;
+        if (light->shadow_projection_type == VGFX3D_SHADOW_PROJECTION_CUBE)
+            slot_count = VGFX3D_SHADOW_CUBE_FACES;
+        else if (light->shadow_projection_type == VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC &&
+                 light->shadow_cascade_count > 1)
+            slot_count = light->shadow_cascade_count;
+        if (slot_count > VGFX3D_MAX_SHADOW_LIGHTS - first)
+            slot_count = VGFX3D_MAX_SHADOW_LIGHTS - first;
+        if (slot_count > ctx->shadow_count - first)
+            slot_count = ctx->shadow_count - first;
+        for (int32_t offset = 0; offset < slot_count; offset++) {
+            int32_t slot = first + offset;
+            if (ctx->shadow_complete[slot] && ctx->shadow_depth[slot])
+                return 1;
+        }
+    }
+    return 0;
 }
 
 /// @brief Queue (and immediately answer) one scene-depth probe from the CPU z-buffer.
@@ -745,8 +973,14 @@ static int32_t sw_queue_depth_probe(void *ctx_ptr, float ndc_x, float ndc_y) {
         return -1;
     slot = ctx->depth_probe_count++;
     if (ctx->zbuf && ctx->width > 0 && ctx->height > 0 && isfinite(ndc_x) && isfinite(ndc_y)) {
-        int32_t px = (int32_t)((ndc_x * 0.5f + 0.5f) * (float)ctx->width);
-        int32_t py = (int32_t)((0.5f - ndc_y * 0.5f) * (float)ctx->height);
+        double bounded_x = (double)vgfx3d_clamp_float_param(ndc_x, -1.0f, 1.0f, 0.0f);
+        double bounded_y = (double)vgfx3d_clamp_float_param(ndc_y, -1.0f, 1.0f, 0.0f);
+        int32_t px = (int32_t)((bounded_x * 0.5 + 0.5) * (double)ctx->width);
+        int32_t py = (int32_t)((0.5 - bounded_y * 0.5) * (double)ctx->height);
+        if (px >= ctx->width)
+            px = ctx->width - 1;
+        if (py >= ctx->height)
+            py = ctx->height - 1;
         if (px >= 0 && px < ctx->width && py >= 0 && py < ctx->height) {
             float ndc_z = ctx->zbuf[(size_t)py * (size_t)ctx->width + (size_t)px];
             if (!isfinite(ndc_z) || ndc_z > 1.0f)
@@ -888,6 +1122,10 @@ static int sw_pixel_count_checked(int32_t width, int32_t height, size_t *out_cou
     if ((size_t)width > SIZE_MAX / (size_t)height)
         return 0;
     *out_count = (size_t)width * (size_t)height;
+    if (*out_count > SIZE_MAX / sizeof(float)) {
+        *out_count = 0;
+        return 0;
+    }
     return 1;
 }
 
@@ -899,6 +1137,44 @@ static int sw_pixel_count_checked(int32_t width, int32_t height, size_t *out_cou
 #include "vgfx3d_backend_sw_shadow.inc"
 #include "vgfx3d_backend_sw_vtable.inc"
 // clang-format on
+
+/* Test-only robustness probes. These mirror the existing worker-count probe and
+ * deliberately stay out of the script/runtime API registry. */
+float vgfx3d_software_backend_clamp01_for_test(float value) {
+    return clamp01f(value);
+}
+
+float vgfx3d_software_backend_material_pow_for_test(float value, float power) {
+    return sw_material_powf(value, power);
+}
+
+int32_t vgfx3d_software_backend_wrap_index_for_test(int64_t index, int32_t size, int32_t mode) {
+    return sw_wrap_index(index, size, mode);
+}
+
+int32_t vgfx3d_software_backend_unit_coord_index_for_test(float value, int32_t extent) {
+    return sw_unit_coord_to_index(value, extent);
+}
+
+int32_t vgfx3d_software_backend_perspective_weights_for_test(float b0,
+                                                             float b1,
+                                                             float b2,
+                                                             float inv_w0,
+                                                             float inv_w1,
+                                                             float inv_w2,
+                                                             float *out_b0,
+                                                             float *out_b1,
+                                                             float *out_b2) {
+    return sw_perspective_attribute_weights(
+        b0, b1, b2, inv_w0, inv_w1, inv_w2, out_b0, out_b1, out_b2);
+}
+
+int32_t vgfx3d_software_backend_rgba_surface_valid_for_test(const uint8_t *pixels,
+                                                            int32_t width,
+                                                            int32_t height,
+                                                            int32_t stride) {
+    return sw_rgba_surface_is_valid(pixels, width, height, stride);
+}
 
 /*==========================================================================
  * Exported backend + selection

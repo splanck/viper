@@ -67,6 +67,7 @@ typedef void GLvoid;
 typedef ptrdiff_t GLsizeiptr;
 typedef ptrdiff_t GLintptr;
 typedef unsigned int GLbitfield;
+typedef void *GLsync;
 
 #define VGFX3D_STR_IMPL(x) #x
 #define VGFX3D_STR(x) VGFX3D_STR_IMPL(x)
@@ -198,6 +199,11 @@ typedef unsigned int GLbitfield;
 #define GL_PIXEL_PACK_BUFFER 0x88EB
 #define GL_STREAM_READ 0x88E1
 #define GL_MAP_READ_BIT 0x0001
+#define GL_SYNC_GPU_COMMANDS_COMPLETE 0x9117
+#define GL_ALREADY_SIGNALED 0x911A
+#define GL_TIMEOUT_EXPIRED 0x911B
+#define GL_CONDITION_SATISFIED 0x911C
+#define GL_WAIT_FAILED 0x911D
 #define GL_ONE 1
 #define GL_SRC_ALPHA 0x0302
 #define GL_ONE_MINUS_SRC_ALPHA 0x0303
@@ -318,6 +324,9 @@ typedef void (*PFNGLFRAMEBUFFERRENDERBUFFERPROC)(GLenum, GLenum, GLenum, GLuint)
 typedef void (*PFNGLREADPIXELSPROC)(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, void *);
 typedef void *(*PFNGLMAPBUFFERRANGEPROC)(GLenum, GLintptr, GLsizeiptr, GLbitfield);
 typedef GLboolean (*PFNGLUNMAPBUFFERPROC)(GLenum);
+typedef GLsync (*PFNGLFENCESYNCPROC)(GLenum, GLbitfield);
+typedef GLenum (*PFNGLCLIENTWAITSYNCPROC)(GLsync, GLbitfield, uint64_t);
+typedef void (*PFNGLDELETESYNCPROC)(GLsync);
 typedef void (*PFNGLDRAWBUFFERPROC)(GLenum);
 typedef void (*PFNGLDRAWBUFFERSPROC)(GLsizei, const GLenum *);
 typedef void (*PFNGLREADBUFFERPROC)(GLenum);
@@ -426,6 +435,9 @@ static struct {
     PFNGLREADPIXELSPROC ReadPixels;
     PFNGLMAPBUFFERRANGEPROC MapBufferRange;
     PFNGLUNMAPBUFFERPROC UnmapBuffer;
+    PFNGLFENCESYNCPROC FenceSync;
+    PFNGLCLIENTWAITSYNCPROC ClientWaitSync;
+    PFNGLDELETESYNCPROC DeleteSync;
     PFNGLDRAWBUFFERPROC DrawBuffer;
     PFNGLDRAWBUFFERSPROC DrawBuffers;
     PFNGLREADBUFFERPROC ReadBuffer;
@@ -603,12 +615,18 @@ typedef struct {
     void *texture_asset;
     uint64_t generation;
     uint64_t pending_generation;
+    uint64_t failed_generation;
+    int64_t failed_mip_start;
+    int64_t failed_mip_count;
     GLuint tex;
     GLuint fallback_tex;
     int32_t width;
     int32_t height;
     int32_t upload_next_row;
     int32_t native_format;
+    int32_t native_block_width;
+    int32_t native_block_height;
+    int32_t native_block_bytes;
     int32_t native_next_block_row;
     int64_t native_next_mip;
     int64_t native_mip_start;
@@ -625,6 +643,7 @@ typedef struct {
     const void *cubemap;
     uint64_t generation;
     uint64_t pending_generation;
+    uint64_t failed_generation;
     GLuint tex;
     int32_t face_size;
     int32_t upload_face;
@@ -632,6 +651,9 @@ typedef struct {
     int8_t upload_in_progress;
     uint64_t last_used_frame;
     uint64_t applied_ibl_identity; /* prefiltered-mips overlay applied for this IBL payload */
+    uint64_t failed_ibl_identity;  /* invalid/failed overlay suppressed until identity changes */
+    uint64_t pending_ibl_identity; /* validated overlay waiting for the frame upload budget */
+    uint64_t pending_ibl_bytes;
 } gl_cubemap_cache_entry_t;
 
 typedef struct {
@@ -775,6 +797,7 @@ typedef struct {
     int32_t shadow_width[VGFX3D_MAX_SHADOW_LIGHTS];
     int32_t shadow_height[VGFX3D_MAX_SHADOW_LIGHTS];
     int32_t shadow_pass_slot;
+    int8_t shadow_pass_failed;
     int32_t shadow_count;
     int8_t shadow_complete[VGFX3D_MAX_SHADOW_LIGHTS];
     float shadow_bias;
@@ -797,6 +820,8 @@ typedef struct {
     gl_morph_cache_entry_t *morph_cache;
     int32_t morph_cache_count;
     int32_t morph_cache_capacity;
+    uint64_t *cache_age_scratch;
+    int32_t cache_age_scratch_capacity;
     gl_mesh_cache_entry_t mesh_cache[GL_MESH_CACHE_CAPACITY];
     uint64_t frame_serial;
     uint64_t texture_upload_bytes;
@@ -808,6 +833,7 @@ typedef struct {
     int32_t max_combined_texture_units;
     int32_t max_vertex_texture_units;
     int32_t max_texture_buffer_size;
+    int8_t zero_to_one_clip;
     int8_t supports_hdr_color_target;
     int8_t supports_depth_float_target;
     int8_t supports_bc7;
@@ -941,7 +967,9 @@ typedef struct {
     float depth_probe_requests[VGFX3D_DEPTH_PROBE_MAX][2];
     int32_t depth_probe_request_count;
     GLuint depth_probe_pbo;
+    GLsync depth_probe_fence;
     int32_t depth_probe_pending_count;
+    uint32_t depth_probe_pending_polls;
     float depth_probe_results[VGFX3D_DEPTH_PROBE_MAX];
     int32_t depth_probe_result_count;
 } gl_context_t;
@@ -1508,6 +1536,9 @@ static int load_gl(int wayland_binding) {
     LOADP(ReadPixels);
     LOADP(MapBufferRange);
     LOADP(UnmapBuffer);
+    LOADP(FenceSync);
+    LOADP(ClientWaitSync);
+    LOADP(DeleteSync);
     LOADP(DrawBuffer);
     LOADP(DrawBuffers);
     LOADP(ReadBuffer);
@@ -1551,12 +1582,6 @@ fail: {
 
 #include "vgfx3d_backend_opengl_shaders.inc"
 
-/* Set once at context init, before any shader compiles: non-zero when
- * glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE) is active for this context.
- * Injects the depth-convention macros into every GLSL compile so shader
- * bodies stay convention-agnostic (ZANNA_DEPTH_TO_NDC + the VS z remap). */
-static int gl_zero_to_one_clip = 0;
-
 /// @brief Compile a GLSL shader from one-or-more source strings.
 ///
 /// `src_count` allows splicing multiple strings (e.g., a #version
@@ -1565,17 +1590,30 @@ static int gl_zero_to_one_clip = 0;
 /// (GLSL requires #version first). On compile failure dumps the GLSL
 /// info log to stderr and deletes the shader.
 /// Returns the shader handle, or 0 on failure.
-static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei src_count) {
+static GLuint compile_shader_parts(GLenum type,
+                                   const char *const *src,
+                                   GLsizei src_count,
+                                   int zero_to_one_clip) {
     const char *spliced[24];
     GLint lengths[24];
-    const char *prologue = gl_zero_to_one_clip
-                               ? "#define ZANNA_DEPTH_ZERO_TO_ONE 1\n"
-                                 "#define ZANNA_DEPTH_TO_NDC(d) (d)\n"
-                               : "#define ZANNA_DEPTH_TO_NDC(d) ((d) * 2.0 - 1.0)\n";
+    const char *prologue = zero_to_one_clip ? "#define ZANNA_DEPTH_ZERO_TO_ONE 1\n"
+                                              "#define ZANNA_DEPTH_TO_NDC(d) (d)\n"
+                                            : "#define ZANNA_DEPTH_TO_NDC(d) ((d) * 2.0 - 1.0)\n";
+    GLsizei required_count;
+
+    if (!src || src_count <= 0)
+        return 0;
+    for (GLsizei i = 0; i < src_count; i++) {
+        if (!src[i])
+            return 0;
+    }
+    if (src_count > (GLsizei)(sizeof(spliced) / sizeof(spliced[0])) - 2)
+        return 0;
     GLuint shader = gl.CreateShader(type);
     if (!shader)
         return 0;
-    if (src_count > 0 && src_count + 2 < (GLsizei)(sizeof(spliced) / sizeof(spliced[0]))) {
+    required_count = src_count + (strncmp(src[0], "#version", 8) == 0 ? 2 : 1);
+    if (required_count <= (GLsizei)(sizeof(spliced) / sizeof(spliced[0]))) {
         GLsizei out = 0;
         if (strncmp(src[0], "#version", 8) == 0) {
             const char *newline = strchr(src[0], '\n');
@@ -1603,14 +1641,16 @@ static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei 
         }
         gl.ShaderSource(shader, out, spliced, lengths);
     } else {
-        gl.ShaderSource(shader, src_count, src, NULL);
+        gl.DeleteShader(shader);
+        return 0;
     }
     gl.CompileShader(shader);
     GLint ok = 0;
     gl.GetShaderiv(shader, GL_COMPILE_STATUS, &ok);
     if (!ok) {
-        char log[1024];
+        char log[1024] = {0};
         gl.GetShaderInfoLog(shader, (GLsizei)sizeof(log), NULL, log);
+        log[sizeof(log) - 1u] = '\0';
         {
             const char *debug = getenv("ZANNA_OPENGL_DEBUG");
             if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)
@@ -1623,9 +1663,9 @@ static GLuint compile_shader_parts(GLenum type, const char *const *src, GLsizei 
 }
 
 /// @brief Single-source convenience wrapper around `compile_shader_parts`.
-static GLuint compile_shader(GLenum type, const char *src) {
+static GLuint compile_shader(GLenum type, const char *src, int zero_to_one_clip) {
     const char *parts[] = {src};
-    return compile_shader_parts(type, parts, 1);
+    return compile_shader_parts(type, parts, 1, zero_to_one_clip);
 }
 
 /// @brief Link a vertex + fragment shader pair into a program object.
@@ -1643,8 +1683,9 @@ static GLuint link_program(GLuint vs, GLuint fs) {
     GLint ok = 0;
     gl.GetProgramiv(program, GL_LINK_STATUS, &ok);
     if (!ok) {
-        char log[1024];
+        char log[1024] = {0};
         gl.GetProgramInfoLog(program, (GLsizei)sizeof(log), NULL, log);
+        log[sizeof(log) - 1u] = '\0';
         {
             const char *debug = getenv("ZANNA_OPENGL_DEBUG");
             if (debug && debug[0] != '\0' && strcmp(debug, "0") != 0)

@@ -1045,6 +1045,7 @@ function(zanna_add_runtime_tests)
 
     zanna_add_test(test_vgfx3d_backend_d3d11_shared ${ZANNA_TESTS_DIR}/unit/test_vgfx3d_backend_d3d11_shared.c)
     target_link_libraries(test_vgfx3d_backend_d3d11_shared PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_vgfx3d_backend_d3d11_shared PRIVATE ZANNA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     zanna_add_ctest(test_vgfx3d_backend_d3d11_shared test_vgfx3d_backend_d3d11_shared)
     zanna_add_test_labels(test_vgfx3d_backend_d3d11_shared graphics3d unit)
 
@@ -1056,6 +1057,7 @@ function(zanna_add_runtime_tests)
 
     zanna_add_test(test_vgfx3d_backend_opengl_shared ${ZANNA_TESTS_DIR}/unit/test_vgfx3d_backend_opengl_shared.c)
     target_link_libraries(test_vgfx3d_backend_opengl_shared PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_vgfx3d_backend_opengl_shared PRIVATE ZANNA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     zanna_add_ctest(test_vgfx3d_backend_opengl_shared test_vgfx3d_backend_opengl_shared)
     zanna_add_test_labels(test_vgfx3d_backend_opengl_shared graphics3d unit)
 
@@ -1733,6 +1735,7 @@ function(zanna_add_runtime_tests)
 
     zanna_add_test(test_rt_gui_runtime ${ZANNA_TESTS_DIR}/runtime/RTGuiRuntimeTests.c)
     target_link_libraries(test_rt_gui_runtime PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
+    target_compile_definitions(test_rt_gui_runtime PRIVATE ZANNA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     if (TARGET zannagfx)
         target_compile_definitions(test_rt_gui_runtime PRIVATE ZANNA_ENABLE_GRAPHICS)
         target_link_libraries(test_rt_gui_runtime PRIVATE zannagfx zannagui)

@@ -851,6 +851,7 @@ int rt_cubemap3d_is_complete(void *cubemap);
 
 typedef struct vgfx3d_rendertarget vgfx3d_rendertarget_t;
 typedef int (*vgfx3d_rendertarget_sync_fn)(void *userdata, vgfx3d_rendertarget_t *target);
+typedef void (*vgfx3d_rendertarget_release_fn)(void *userdata, vgfx3d_rendertarget_t *target);
 
 /// @brief Render-target color format: 8-bit UNORM (LDR) or 16-bit float (HDR).
 typedef enum {
@@ -878,6 +879,10 @@ struct vgfx3d_rendertarget {
     uint64_t content_revision;
     vgfx3d_rendertarget_sync_fn sync_color;
     void *sync_color_userdata;
+    /* Optional native-cache owner notification. The render-target finalizer invokes this while
+     * the shell is still live, allowing a backend to discard entries that borrow `target`. */
+    vgfx3d_rendertarget_release_fn release_backend;
+    void *release_backend_userdata;
 };
 
 /// @brief True if the render target uses the HDR (16-bit float) color format.
@@ -1041,6 +1046,31 @@ static inline void vgfx3d_rendertarget_detach_sync_preserve_dirty(vgfx3d_rendert
     dirty = target->color_dirty;
     vgfx3d_rendertarget_clear_sync(target);
     target->color_dirty = dirty;
+}
+
+/// @brief Clear a backend-release hook without invoking it.
+/// @details Backend cache teardown uses this after it has already removed the corresponding
+/// native entry. The color-sync hook is independent and is intentionally left unchanged.
+static inline void vgfx3d_rendertarget_clear_backend_release(vgfx3d_rendertarget_t *target) {
+    if (!target)
+        return;
+    target->release_backend = NULL;
+    target->release_backend_userdata = NULL;
+}
+
+/// @brief Notify the backend that @p target is about to disappear or change native owners.
+/// @details Clears the hook before invoking it so callbacks may safely remove cache entries or
+/// re-enter cleanup without a double notification. The target shell remains valid for the entire
+/// callback.
+static inline void vgfx3d_rendertarget_release_backend(vgfx3d_rendertarget_t *target) {
+    vgfx3d_rendertarget_release_fn release_fn;
+    void *userdata;
+    if (!target || !target->release_backend)
+        return;
+    release_fn = target->release_backend;
+    userdata = target->release_backend_userdata;
+    vgfx3d_rendertarget_clear_backend_release(target);
+    release_fn(userdata, target);
 }
 
 /// @brief RenderTarget3D payload: a GC wrapper holding the backing render target plus

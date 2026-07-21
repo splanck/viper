@@ -14,6 +14,10 @@
 //   - MSL expects column-major matrices, so all model/normal/prev_model
 //     payloads are transposed from Zanna's row-major form before upload.
 //
+// Ownership/Lifetime:
+//   - Helpers write caller-owned POD buffers and retain no Objective-C resources.
+//   - Frame-history snapshots copy matrix/camera values rather than borrowing them.
+//
 // Links: vgfx3d_backend_metal_shared.h, vgfx3d_backend_metal.c
 //
 //===----------------------------------------------------------------------===//
@@ -48,11 +52,11 @@ static void vgfx3d_metal_store_identity4x4(float *dst) {
     dst[15] = 1.0f;
 }
 
-/// @brief Copy a bone palette into a fixed-size MTLBuffer slot (identity-pads unused bones).
-/// Matches `vgfx3d_d3d11_pack_bone_palette` semantics; oversized inputs are
-/// clamped to the largest palette this backend exposes.
+/// @brief Pack a bone palette into a fixed-size MTLBuffer slot (identity-pads unused bones).
+/// @details Valid row-major matrices are transposed for MSL's column-major layout;
+///   unusable matrices become identity. Oversized inputs are clamped to the
+///   largest palette this backend exposes.
 void vgfx3d_metal_pack_bone_palette(float *dst, const float *src, int32_t bone_count) {
-    size_t copy_count;
     int32_t first_unused = 0;
 
     if (!dst)
@@ -61,8 +65,11 @@ void vgfx3d_metal_pack_bone_palette(float *dst, const float *src, int32_t bone_c
     if (src && bone_count > 0) {
         if (bone_count > VGFX3D_METAL_MAX_BONES)
             bone_count = VGFX3D_METAL_MAX_BONES;
-        copy_count = (size_t)bone_count * 16u;
-        memcpy(dst, src, copy_count * sizeof(float));
+        for (int32_t i = 0; i < bone_count; i++) {
+            float safe_matrix[16];
+            vgfx3d_copy_mat4_finite_or_identity(safe_matrix, &src[(size_t)i * 16u]);
+            transpose4x4_local(safe_matrix, &dst[(size_t)i * 16u]);
+        }
         first_unused = bone_count;
     }
     for (int32_t i = first_unused; i < VGFX3D_METAL_MAX_BONES; i++)
@@ -82,13 +89,18 @@ void vgfx3d_metal_fill_instance_data(vgfx3d_metal_instance_data_t *dst,
 
     for (int32_t i = 0; i < instance_count; i++) {
         const float *model = &instance_matrices[(size_t)i * 16u];
+        float safe_model[16];
+        float safe_prev_model[16];
         float normal[16];
 
-        transpose4x4_local(model, dst[i].model);
-        vgfx3d_compute_normal_matrix4(model, normal);
+        vgfx3d_copy_mat4_finite_or_identity(safe_model, model);
+        transpose4x4_local(safe_model, dst[i].model);
+        vgfx3d_compute_normal_matrix4(safe_model, normal);
         transpose4x4_local(normal, dst[i].normal);
         if (has_prev_instance_matrices && prev_instance_matrices) {
-            transpose4x4_local(&prev_instance_matrices[(size_t)i * 16u], dst[i].prev_model);
+            vgfx3d_copy_mat4_finite_or(
+                safe_prev_model, &prev_instance_matrices[(size_t)i * 16u], safe_model);
+            transpose4x4_local(safe_prev_model, dst[i].prev_model);
         } else {
             memcpy(dst[i].prev_model, dst[i].model, sizeof(dst[i].prev_model));
         }
@@ -103,26 +115,31 @@ void vgfx3d_metal_update_frame_history(vgfx3d_metal_frame_history_t *history,
                                        const float *cam_pos,
                                        int8_t is_overlay_pass,
                                        int8_t uses_separate_overlay_target) {
+    float safe_vp[16];
+    float safe_inv_vp[16];
+
     if (!history || !vp || !inv_vp)
         return;
+    vgfx3d_copy_mat4_finite_or_identity(safe_vp, vp);
+    vgfx3d_copy_mat4_finite_or_identity(safe_inv_vp, inv_vp);
 
     if (!is_overlay_pass) {
         if (history->scene_history_valid) {
             memcpy(history->scene_prev_vp, history->scene_vp, sizeof(history->scene_prev_vp));
         } else {
-            memcpy(history->scene_prev_vp, vp, sizeof(history->scene_prev_vp));
+            memcpy(history->scene_prev_vp, safe_vp, sizeof(history->scene_prev_vp));
             history->scene_history_valid = 1;
         }
-        memcpy(history->scene_vp, vp, sizeof(history->scene_vp));
-        memcpy(history->scene_inv_vp, inv_vp, sizeof(history->scene_inv_vp));
+        memcpy(history->scene_vp, safe_vp, sizeof(history->scene_vp));
+        memcpy(history->scene_inv_vp, safe_inv_vp, sizeof(history->scene_inv_vp));
         memcpy(history->draw_prev_vp, history->scene_prev_vp, sizeof(history->draw_prev_vp));
         if (cam_pos)
-            memcpy(history->scene_cam_pos, cam_pos, sizeof(history->scene_cam_pos));
+            vgfx3d_copy_float_array_finite_or(history->scene_cam_pos, cam_pos, 3u, 0.0f);
         history->overlay_used_this_frame = 0;
         return;
     }
 
-    memcpy(history->draw_prev_vp, vp, sizeof(history->draw_prev_vp));
+    memcpy(history->draw_prev_vp, safe_vp, sizeof(history->draw_prev_vp));
     history->overlay_used_this_frame = uses_separate_overlay_target ? 1 : 0;
 }
 
@@ -162,8 +179,10 @@ int32_t vgfx3d_metal_next_capacity(int32_t current_capacity,
                                    int32_t minimum_capacity) {
     int32_t next_capacity;
 
-    if (needed <= 0)
-        return current_capacity > 0 ? current_capacity : minimum_capacity;
+    if (needed <= 0) {
+        next_capacity = current_capacity > 0 ? current_capacity : minimum_capacity;
+        return next_capacity > 0 ? next_capacity : 1;
+    }
     next_capacity = current_capacity > 0 ? current_capacity : minimum_capacity;
     if (next_capacity < 1)
         next_capacity = 1;
@@ -253,6 +272,8 @@ vgfx3d_metal_motion_attachment_mode_t vgfx3d_metal_choose_motion_attachment_mode
     vgfx3d_metal_target_kind_t target_kind, const vgfx3d_draw_cmd_t *cmd) {
     if (target_kind != VGFX3D_METAL_TARGET_SCENE)
         return VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_ONLY;
+    if (!cmd || cmd->disable_depth_test)
+        return VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_ONLY;
     return vgfx3d_metal_choose_blend_mode(cmd) == VGFX3D_METAL_BLEND_OPAQUE
                ? VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_AND_MOTION
                : VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_ONLY;
@@ -284,8 +305,20 @@ int vgfx3d_metal_project_shadow_coord(const float *shadow_vp,
     float ndc_y;
     float ndc_z;
 
-    if (!shadow_vp || !world_pos || !out_uv_depth)
+    if (out_uv_depth) {
+        out_uv_depth[0] = 0.0f;
+        out_uv_depth[1] = 0.0f;
+        out_uv_depth[2] = 0.0f;
+    }
+    if (!vgfx3d_shadow_matrix_is_usable(shadow_vp) || !world_pos || !out_uv_depth ||
+        !vgfx3d_float_array_is_bounded(world_pos, 3u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX)) {
         return 0;
+    }
+    if (projection_type != VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC &&
+        projection_type != VGFX3D_SHADOW_PROJECTION_PERSPECTIVE &&
+        projection_type != VGFX3D_SHADOW_PROJECTION_CUBE) {
+        return 0;
+    }
     lx = world_pos[0] * shadow_vp[0] + world_pos[1] * shadow_vp[1] + world_pos[2] * shadow_vp[2] +
          shadow_vp[3];
     ly = world_pos[0] * shadow_vp[4] + world_pos[1] * shadow_vp[5] + world_pos[2] * shadow_vp[6] +
@@ -294,8 +327,8 @@ int vgfx3d_metal_project_shadow_coord(const float *shadow_vp,
          shadow_vp[11];
     lw = world_pos[0] * shadow_vp[12] + world_pos[1] * shadow_vp[13] +
          world_pos[2] * shadow_vp[14] + shadow_vp[15];
-    if (projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) {
-        if (!isfinite(lw) || lw <= 0.0001f)
+    if (projection_type != VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC) {
+        if (!isfinite(lw) || lw <= 0.0001f || lw >= 1.0e20f)
             return 0;
         ndc_x = lx / lw;
         ndc_y = ly / lw;

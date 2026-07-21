@@ -16,6 +16,10 @@
 //   - Software path: per-pixel operations on the CPU framebuffer.
 //   - SetPostFX on Canvas3D enables automatic application in Flip().
 //
+// Ownership/Lifetime:
+//   - PostFX3D owns its dynamically grown effect array and releases it at finalization.
+//   - Exported backend chains deep-copy snapshots so no runtime object pointer escapes a frame.
+//
 // Links: plans/3d/18-post-processing.md, rt_canvas3d.h
 //
 //===----------------------------------------------------------------------===//
@@ -99,7 +103,7 @@ rt_string rt_postfx3d_get_last_error(void *obj);
  * Exported from rt_postfx3d.c — backends should NOT inspect the private rt_postfx3d struct. */
 /// @brief Compact, backend-readable snapshot of a PostFX chain's enabled effects and
 ///   their parameters — GPU backends consume this instead of the private rt_postfx3d struct.
-typedef struct {
+typedef struct vgfx3d_postfx_snapshot {
     int8_t enabled;
     int8_t bloom_enabled;
     float bloom_threshold;
@@ -159,7 +163,7 @@ typedef struct {
 
 /// @brief Backend-facing ordered effect chain: an enabled flag and a growable array of
 ///   effect descriptors in application order.
-typedef struct {
+typedef struct vgfx3d_postfx_chain {
     int8_t enabled;
     int32_t effect_count;
     int32_t effect_capacity;

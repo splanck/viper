@@ -10,11 +10,20 @@
 //   mip math, capacity growth, and policy choices for render-target,
 //   readback, and morph-cache reuse.
 //
+// Key invariants:
+//   - Helper outputs are deterministic and bounded independently of an active GL context.
+//   - Frame-history matrices and camera values are copied through finite-value guards.
+//
+// Ownership/Lifetime:
+//   - Helpers write caller-owned POD buffers and retain no GL names or source pointers.
+//
 // Links: vgfx3d_backend_opengl_shared.h, vgfx3d_backend_opengl.c
 //
 //===----------------------------------------------------------------------===//
 
 #include "vgfx3d_backend_opengl_shared.h"
+
+#include "vgfx3d_backend_utils.h"
 
 #include <limits.h>
 #include <math.h>
@@ -27,25 +36,30 @@ void vgfx3d_opengl_update_frame_history(vgfx3d_opengl_frame_history_t *history,
                                         const float *inv_vp,
                                         const float *cam_pos,
                                         int8_t is_overlay_pass) {
+    float safe_vp[16];
+    float safe_inv_vp[16];
+
     if (!history || !vp || !inv_vp)
         return;
+    vgfx3d_copy_mat4_finite_or_identity(safe_vp, vp);
+    vgfx3d_copy_mat4_finite_or_identity(safe_inv_vp, inv_vp);
 
     if (!is_overlay_pass) {
         if (history->scene_history_valid) {
             memcpy(history->scene_prev_vp, history->scene_vp, sizeof(history->scene_prev_vp));
         } else {
-            memcpy(history->scene_prev_vp, vp, sizeof(history->scene_prev_vp));
+            memcpy(history->scene_prev_vp, safe_vp, sizeof(history->scene_prev_vp));
             history->scene_history_valid = 1;
         }
-        memcpy(history->scene_vp, vp, sizeof(history->scene_vp));
-        memcpy(history->scene_inv_vp, inv_vp, sizeof(history->scene_inv_vp));
+        memcpy(history->scene_vp, safe_vp, sizeof(history->scene_vp));
+        memcpy(history->scene_inv_vp, safe_inv_vp, sizeof(history->scene_inv_vp));
         memcpy(history->draw_prev_vp, history->scene_prev_vp, sizeof(history->draw_prev_vp));
         if (cam_pos)
-            memcpy(history->scene_cam_pos, cam_pos, sizeof(history->scene_cam_pos));
+            vgfx3d_copy_float_array_finite_or(history->scene_cam_pos, cam_pos, 3u, 0.0f);
         return;
     }
 
-    memcpy(history->draw_prev_vp, vp, sizeof(history->draw_prev_vp));
+    memcpy(history->draw_prev_vp, safe_vp, sizeof(history->draw_prev_vp));
 }
 
 /// @brief Number of mipmap levels needed to reach 1×1 from (width × height).
@@ -84,8 +98,10 @@ int32_t vgfx3d_opengl_next_capacity(int32_t current_capacity,
                                     int32_t minimum_capacity) {
     int32_t next_capacity;
 
-    if (needed <= 0)
-        return current_capacity > 0 ? current_capacity : minimum_capacity;
+    if (needed <= 0) {
+        next_capacity = current_capacity > 0 ? current_capacity : minimum_capacity;
+        return next_capacity > 0 ? next_capacity : 1;
+    }
     next_capacity = current_capacity > 0 ? current_capacity : minimum_capacity;
     if (next_capacity < 1)
         next_capacity = 1;
@@ -252,6 +268,8 @@ vgfx3d_opengl_motion_attachment_mode_t vgfx3d_opengl_choose_motion_attachment_mo
     vgfx3d_opengl_target_kind_t target_kind, const vgfx3d_draw_cmd_t *cmd) {
     if (target_kind != VGFX3D_OPENGL_TARGET_SCENE)
         return VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY;
+    if (!cmd || cmd->disable_depth_test)
+        return VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY;
     return vgfx3d_opengl_choose_blend_mode(cmd) == VGFX3D_OPENGL_BLEND_OPAQUE
                ? VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_AND_MOTION
                : VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY;
@@ -283,8 +301,20 @@ int vgfx3d_opengl_project_shadow_coord(const float *shadow_vp,
     float ndc_y;
     float ndc_z;
 
-    if (!shadow_vp || !world_pos || !out_uv_depth)
+    if (out_uv_depth) {
+        out_uv_depth[0] = 0.0f;
+        out_uv_depth[1] = 0.0f;
+        out_uv_depth[2] = 0.0f;
+    }
+    if (!vgfx3d_shadow_matrix_is_usable(shadow_vp) || !world_pos || !out_uv_depth ||
+        !vgfx3d_float_array_is_bounded(world_pos, 3u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX)) {
         return 0;
+    }
+    if (projection_type != VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC &&
+        projection_type != VGFX3D_SHADOW_PROJECTION_PERSPECTIVE &&
+        projection_type != VGFX3D_SHADOW_PROJECTION_CUBE) {
+        return 0;
+    }
     lx = world_pos[0] * shadow_vp[0] + world_pos[1] * shadow_vp[1] + world_pos[2] * shadow_vp[2] +
          shadow_vp[3];
     ly = world_pos[0] * shadow_vp[4] + world_pos[1] * shadow_vp[5] + world_pos[2] * shadow_vp[6] +
@@ -293,8 +323,8 @@ int vgfx3d_opengl_project_shadow_coord(const float *shadow_vp,
          shadow_vp[11];
     lw = world_pos[0] * shadow_vp[12] + world_pos[1] * shadow_vp[13] +
          world_pos[2] * shadow_vp[14] + shadow_vp[15];
-    if (projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE) {
-        if (!isfinite(lw) || lw <= 0.0001f)
+    if (projection_type != VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC) {
+        if (!isfinite(lw) || lw <= 0.0001f || lw >= 1.0e20f)
             return 0;
         ndc_x = lx / lw;
         ndc_y = ly / lw;

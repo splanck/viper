@@ -144,6 +144,17 @@ weapons/damage/audio mapping, AI/navigation/bosses, every level and hazard,
 manifest round-trip, meta progression, rendering, the full nine-level campaign,
 menus/accessibility/checkpoints, asset fallback, and bounded smoke execution.
 
+The visual probe warms and captures the authored first campaign scene, then
+gates center-frame luminance, lit-pixel coverage, and contrast. On macOS, the
+registered CTest runs it specifically on Metal and rejects backend fallback:
+
+```sh
+ctest --test-dir build -R zia_visual_ashfall_metal --output-on-failure
+
+# Direct run on the selected platform backend; the PNG is written to the OS temp directory.
+ZANNA_3D_BACKEND=metal zanna run examples/games/ashfall/probes/visual_probe.zia
+```
+
 For real GPU timing, build the dedicated benchmark natively. It sweeps all nine
 campaign levels without presentation pacing; `--paced` additionally validates
 frame delivery at the display's actual refresh rate:

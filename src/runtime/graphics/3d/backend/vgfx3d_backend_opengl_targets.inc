@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_targets.inc  (#included from
-// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL render-target
-// lifecycle, draw-output config, and post-FX application
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_targets.inc
+// Purpose: OpenGL target lifecycle, draw-output routing, readback, and post-FX application.
+// Key invariants:
+//   - FBO completeness and exact pixel layouts are checked before a target becomes active.
+//   - Failed readback leaves a CPU render-target mirror dirty rather than publishing stale bytes.
+// Ownership/Lifetime:
+//   - GL names belong to gl_context_t and are deleted by the matching target teardown helper.
+//   - Runtime render-target shells are borrowed only while their Canvas owner retains them.
+// Links: vgfx3d_backend_opengl.c, vgfx3d_backend_opengl_frame.inc
+//
 //===----------------------------------------------------------------------===//
 
 static int gl_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *rt);
@@ -725,7 +737,9 @@ static int ensure_rtt_targets(gl_context_t *ctx, vgfx3d_rendertarget_t *rt) {
     GLenum depth_internal_format;
     GLenum color_type;
 
-    if (!ctx || !rt || rt->width <= 0 || rt->height <= 0)
+    if (!ctx || !rt || !vgfx3d_rendertarget_valid_pixels(rt, NULL) ||
+        (rt->color_format != (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_UNORM8 &&
+         rt->color_format != (int32_t)VGFX3D_RENDERTARGET_COLOR_FORMAT_HDR16F))
         return -1;
     if (ctx->rtt_fbo && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height &&
         ctx->rtt_color_format == rt->color_format) {
@@ -1054,8 +1068,13 @@ static void gl_apply_postfx_uniforms(gl_context_t *ctx,
     int32_t bloom_passes;
     int32_t ssao_samples;
     int32_t motion_samples;
+    vgfx3d_postfx_snapshot_t safe_snapshot;
     if (!ctx)
         return;
+    if (snapshot) {
+        vgfx3d_sanitize_postfx_snapshot(snapshot, &safe_snapshot);
+        snapshot = &safe_snapshot;
+    }
     gl.Uniform2f(ctx->postfx_uInvResolution,
                  source_width > 0 ? 1.0f / (float)source_width : 0.0f,
                  source_height > 0 ? 1.0f / (float)source_height : 0.0f);
@@ -1225,7 +1244,7 @@ static int gl_apply_postfx_chain_in_scene(gl_context_t *ctx,
     GLuint source_tex;
 
     if (!ctx || !ctx->scene_fbo || !ctx->scene_color_tex || !ctx->scene_motion_tex || width <= 0 ||
-        height <= 0 || !chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects) {
+        height <= 0 || !vgfx3d_postfx_chain_is_usable(chain)) {
         return 0;
     }
 
@@ -1315,7 +1334,7 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
     if (out_result_read_buffer)
         *out_result_read_buffer = ctx ? ctx->default_draw_buffer : GL_BACK;
     if (!ctx || !source_tex || width <= 0 || height <= 0 || final_width <= 0 || final_height <= 0 ||
-        !chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects) {
+        !vgfx3d_postfx_chain_is_usable(chain)) {
         return 0;
     }
     if (ensure_postfx_readback_target(ctx, width, height) != 0)
@@ -1328,34 +1347,36 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
     ctx->postfx_current_bloom_tex = 0;
     for (int32_t i = 0; i < chain->effect_count; i++) {
         if (chain->effects[i].snapshot.bloom_enabled) {
-            ctx->postfx_current_bloom_tex = gl_encode_bloom_chain(
-                ctx, width, height, chain->effects[i].snapshot.bloom_threshold);
+            vgfx3d_postfx_snapshot_t safe_snapshot;
+            vgfx3d_sanitize_postfx_snapshot(&chain->effects[i].snapshot, &safe_snapshot);
+            ctx->postfx_current_bloom_tex =
+                gl_encode_bloom_chain(ctx, width, height, safe_snapshot.bloom_threshold);
             break;
         }
     }
 
     for (int32_t i = 0; i < chain->effect_count; i++) {
+        vgfx3d_postfx_snapshot_t safe_snapshot;
         const int is_last = (i == chain->effect_count - 1) ? 1 : 0;
         GLuint dst_framebuffer;
         GLenum dst_draw_buffer;
         GLuint dst_texture;
+        vgfx3d_sanitize_postfx_snapshot(&chain->effects[i].snapshot, &safe_snapshot);
 
         /* Plan 05: a TAA entry resolves into its own history target, which then feeds
          * the remaining chain as the pass source. The final-entry case still needs a
          * regular pass below so the result lands in the caller's framebuffer. */
         if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA &&
-            chain->effects[i].snapshot.taa_enabled) {
-            GLuint resolved =
-                gl_encode_taa_pass(ctx, source_tex, width, height, &chain->effects[i].snapshot);
+            safe_snapshot.taa_enabled) {
+            GLuint resolved = gl_encode_taa_pass(ctx, source_tex, width, height, &safe_snapshot);
             if (resolved)
                 source_tex = resolved;
         }
         /* Plan 10: an SSR entry composites reflections into its own target, which
          * then feeds the remaining chain exactly like the TAA pre-resolve above. */
         if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_SSR &&
-            chain->effects[i].snapshot.ssr_enabled) {
-            GLuint reflected =
-                gl_encode_ssr_pass(ctx, source_tex, width, height, &chain->effects[i].snapshot);
+            safe_snapshot.ssr_enabled) {
+            GLuint reflected = gl_encode_ssr_pass(ctx, source_tex, width, height, &safe_snapshot);
             if (reflected)
                 source_tex = reflected;
         }
@@ -1385,7 +1406,7 @@ static int gl_apply_postfx_chain(gl_context_t *ctx,
                 (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA ||
                  chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_SSR)
                     ? NULL
-                    : &chain->effects[i].snapshot;
+                    : &safe_snapshot;
             const int32_t target_width = (is_last && !force_offscreen_final) ? final_width : width;
             const int32_t target_height =
                 (is_last && !force_offscreen_final) ? final_height : height;

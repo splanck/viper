@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_geometry.inc  (#included from rt_fbx_loader.c;
-// not a standalone translation unit) Purpose: FBX coordinate-system correction, geometry
-// extraction, and material extraction
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_geometry.inc
+// Purpose: FBX coordinate conversion plus mesh, procedural-surface, and material extraction.
+// Key invariants:
+//   - Geometry inputs are validated before node fields or type strings are inspected.
+//   - Allocation products and imported indices remain inside runtime and aggregate-load limits.
+// Ownership/Lifetime:
+//   - Temporary remap/control-net arrays are owned locally and released on every failure path.
+//   - Published Mesh3D/material objects transfer to the caller's runtime object graph.
+// Links: rt_fbx_loader.c, rt_fbx_loader_parse.inc
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Coordinate system detection + correction
@@ -1563,10 +1575,15 @@ static void *fbx_extract_procedural_geometry(fbx_node_t *geometry,
     fbx_surface_axis_samples_t axis_u = {0};
     fbx_surface_axis_samples_t axis_v = {0};
     void *mesh = NULL;
-    int rational = strcmp(geometry_type, "Patch") != 0;
-    int flip_normals = fbx_surface_child_truthy(geometry, "FlipNormals");
-    if (!geometry || !geometry_type || !context || !remap || !material_map ||
-        !fbx_surface_read_pair_i64(geometry, "Dimensions", dimensions64) || dimensions64[0] <= 0 ||
+    int rational;
+    int flip_normals;
+    if (!geometry || !geometry_type || !context || !remap || !material_map) {
+        fbx_surface_error("FBX: procedural surface arguments are invalid");
+        return NULL;
+    }
+    rational = strcmp(geometry_type, "Patch") != 0;
+    flip_normals = fbx_surface_child_truthy(geometry, "FlipNormals");
+    if (!fbx_surface_read_pair_i64(geometry, "Dimensions", dimensions64) || dimensions64[0] <= 0 ||
         dimensions64[0] > INT32_MAX || dimensions64[1] <= 0 || dimensions64[1] > INT32_MAX ||
         dimensions64[0] > INT32_MAX / dimensions64[1]) {
         fbx_surface_error("FBX: procedural surface dimensions are invalid");

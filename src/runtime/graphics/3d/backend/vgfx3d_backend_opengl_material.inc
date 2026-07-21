@@ -326,9 +326,14 @@ static void upload_light_uniforms(gl_context_t *ctx,
 /// @details The u16 offset/index arrays are little-endian, which is exactly the
 ///          std140 uvec4 lane layout the shader unpacks (two u16 per uint lane),
 ///          so the tables upload as-is with no repacking pass.
-static void gl_upload_cluster_table(gl_context_t *ctx, const vgfx3d_cluster_table_t *table) {
-    if (!table || !ctx->cluster_offsets_ubo || !ctx->cluster_indices_ubo) {
-        gl.Uniform1i(ctx->uClusterGlobalCount, -1);
+static void gl_upload_cluster_table(gl_context_t *ctx,
+                                    const vgfx3d_cluster_table_t *table,
+                                    uint32_t expected_revision,
+                                    int32_t light_count) {
+    if (!ctx || !vgfx3d_cluster_table_is_usable(table, expected_revision, light_count) ||
+        !ctx->cluster_offsets_ubo || !ctx->cluster_indices_ubo) {
+        if (ctx)
+            gl.Uniform1i(ctx->uClusterGlobalCount, -1);
         return;
     }
     gl.Uniform1i(ctx->uClusterGlobalCount, table->global_light_count);
@@ -339,23 +344,73 @@ static void gl_upload_cluster_table(gl_context_t *ctx, const vgfx3d_cluster_tabl
     gl.BindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
+/// @brief Resolve a fully resident, structurally valid IBL tail for one draw.
+/// @details The runtime metadata can become ready before a budgeted GPU overlay has completed.
+/// Enabling IBL from metadata alone makes the shader sample ordinary box-filtered base mips (or
+/// even an invalid LOD span). Require the current cubemap generation and IBL identity to be
+/// present in the native cache before publishing the tail to the shader.
+static int gl_cmd_ibl_draw(gl_context_t *ctx,
+                           const vgfx3d_draw_cmd_t *cmd,
+                           float *out_lod_base,
+                           float *out_max_lod) {
+    const rt_cubemap3d *env_cm;
+    int32_t level_base;
+    uint64_t generation;
+
+    if (out_lod_base)
+        *out_lod_base = 0.0f;
+    if (out_max_lod)
+        *out_max_lod = 0.0f;
+    if (!ctx || !cmd || !out_lod_base || !out_max_lod)
+        return 0;
+    env_cm = (const rt_cubemap3d *)cmd->env_map;
+    *out_max_lod = env_cm ? gl_cubemap_max_lod(env_cm) : 0.0f;
+    if (!ctx->ibl_enabled || !cmd->ibl_env || !env_cm || !env_cm->ibl_ready ||
+        env_cm->ibl_identity == 0 || env_cm->face_size <= 0 || env_cm->face_size > INT32_MAX ||
+        env_cm->ibl_base_size <= 0 || env_cm->ibl_base_size > INT32_MAX ||
+        env_cm->ibl_mip_count <= 0 || env_cm->ibl_mip_count > INT32_MAX ||
+        !vgfx3d_validate_cubemap_ibl_layout((int32_t)env_cm->face_size,
+                                            (int32_t)env_cm->ibl_base_size,
+                                            (int32_t)env_cm->ibl_mip_count,
+                                            RT_CUBEMAP3D_IBL_MAX_MIPS,
+                                            &level_base)) {
+        return 0;
+    }
+
+    generation = vgfx3d_get_cubemap_generation(env_cm);
+    for (int32_t i = 0; i < ctx->cubemap_cache_count; i++) {
+        const gl_cubemap_cache_entry_t *entry = &ctx->cubemap_cache[i];
+        if (entry->cubemap == env_cm && entry->generation == generation && entry->tex &&
+            !entry->upload_in_progress && entry->applied_ibl_identity == env_cm->ibl_identity) {
+            *out_lod_base = (float)level_base;
+            *out_max_lod = (float)(env_cm->ibl_mip_count - 1);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void upload_main_uniforms(gl_context_t *ctx,
                                  const vgfx3d_draw_cmd_t *cmd,
                                  const vgfx3d_light_params_t *lights,
                                  int32_t light_count,
                                  const float *ambient,
                                  int8_t instanced) {
+    float model_matrix[16];
+    float prev_model_matrix[16];
     float normal_matrix[16];
     static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
     if (!ambient)
         ambient = zero_ambient;
-    vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_matrix);
+    vgfx3d_copy_mat4_finite_or_identity(model_matrix, cmd->model_matrix);
+    vgfx3d_copy_mat4_finite_or(prev_model_matrix,
+                               cmd->has_prev_model_matrix ? cmd->prev_model_matrix
+                                                          : cmd->model_matrix,
+                               model_matrix);
+    vgfx3d_compute_normal_matrix4(model_matrix, normal_matrix);
 
-    gl.UniformMatrix4fv(ctx->uModelMatrix, 1, GL_TRUE, cmd->model_matrix);
-    gl.UniformMatrix4fv(ctx->uPrevModelMatrix,
-                        1,
-                        GL_TRUE,
-                        cmd->has_prev_model_matrix ? cmd->prev_model_matrix : cmd->model_matrix);
+    gl.UniformMatrix4fv(ctx->uModelMatrix, 1, GL_TRUE, model_matrix);
+    gl.UniformMatrix4fv(ctx->uPrevModelMatrix, 1, GL_TRUE, prev_model_matrix);
     gl.UniformMatrix4fv(ctx->uViewProjection, 1, GL_TRUE, ctx->vp);
     gl.UniformMatrix4fv(ctx->uPrevViewProjection, 1, GL_TRUE, ctx->draw_prev_vp);
     gl.UniformMatrix4fv(ctx->uNormalMatrix, 1, GL_TRUE, normal_matrix);
@@ -394,24 +449,13 @@ static void upload_main_uniforms(gl_context_t *ctx,
                  ctx->cam_zfar);
     {
         const rt_cubemap3d *env_cm = (const rt_cubemap3d *)cmd->env_map;
-        int8_t ibl_draw = (cmd->ibl_env && ctx->ibl_enabled && env_cm && env_cm->ibl_ready) ? 1 : 0;
         float env_lod_base = 0.0f;
-
-        if (ibl_draw) {
-            /* The prefiltered chain occupies the pyramid tail starting where the
-             * mip size first equals ibl_base_size. */
-            int64_t size = env_cm->face_size;
-            while (size > env_cm->ibl_base_size && size > 1) {
-                size >>= 1;
-                env_lod_base += 1.0f;
-            }
-        }
+        float env_max_lod = 0.0f;
+        int ibl_draw = gl_cmd_ibl_draw(ctx, cmd, &env_lod_base, &env_max_lod);
         gl.Uniform1i(ctx->uHasEnvMap,
                      (cmd->env_map && (cmd->reflectivity > 0.0001f || ibl_draw)) ? 1 : 0);
         gl.Uniform1f(ctx->uReflectivity, cmd->reflectivity);
-        gl.Uniform1f(ctx->uEnvMaxLod,
-                     ibl_draw ? (float)(env_cm->ibl_mip_count - 1)
-                              : (cmd->env_map ? gl_cubemap_max_lod(env_cm) : 0.0f));
+        gl.Uniform1f(ctx->uEnvMaxLod, env_max_lod);
         gl.Uniform1f(ctx->uEnvLodBase, env_lod_base);
         gl.Uniform1i(ctx->uIblEnabled, ibl_draw);
         gl.Uniform1f(ctx->uIblIntensity, ctx->ibl_intensity);
@@ -419,16 +463,19 @@ static void upload_main_uniforms(gl_context_t *ctx,
     }
     gl.Uniform1f(ctx->uAlpha, cmd->alpha);
     gl.Uniform1i(ctx->uUnlit, cmd->unlit);
-    gl.Uniform1i(ctx->uShadingModel, cmd->shading_model);
-    gl.Uniform1i(ctx->uWorkflow, cmd->workflow);
-    gl.Uniform1i(ctx->uAlphaMode, cmd->alpha_mode);
+    gl.Uniform1i(ctx->uShadingModel, vgfx3d_sanitize_shading_model(cmd->shading_model));
+    gl.Uniform1i(ctx->uWorkflow, vgfx3d_sanitize_material_workflow(cmd->workflow));
+    gl.Uniform1i(ctx->uAlphaMode, vgfx3d_sanitize_alpha_mode(cmd->alpha_mode));
     gl.Uniform4i(ctx->uTextureUvSets0,
-                 cmd->texture_slot_uv_set[0],
-                 cmd->texture_slot_uv_set[1],
-                 cmd->texture_slot_uv_set[2],
-                 cmd->texture_slot_uv_set[3]);
-    gl.Uniform4i(
-        ctx->uTextureUvSets1, cmd->texture_slot_uv_set[4], cmd->texture_slot_uv_set[5], 0, 0);
+                 vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[0]),
+                 vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[1]),
+                 vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[2]),
+                 vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[3]));
+    gl.Uniform4i(ctx->uTextureUvSets1,
+                 vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[4]),
+                 vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[5]),
+                 0,
+                 0);
     {
         float uv_transform0[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
         float uv_transform1[RT_MATERIAL3D_TEXTURE_SLOT_COUNT][4];
@@ -489,7 +536,10 @@ static void upload_main_uniforms(gl_context_t *ctx,
         ctx->uploaded_lights_revision = cmd->lights_revision;
     }
     if (cmd->lights_revision == 0 || cmd->lights_revision != ctx->uploaded_cluster_revision) {
-        gl_upload_cluster_table(ctx, (const vgfx3d_cluster_table_t *)cmd->cluster_table);
+        gl_upload_cluster_table(ctx,
+                                (const vgfx3d_cluster_table_t *)cmd->cluster_table,
+                                cmd->lights_revision,
+                                light_count);
         ctx->uploaded_cluster_revision = cmd->lights_revision;
     }
 
@@ -696,23 +746,21 @@ static int draw_scene_texture(gl_context_t *ctx, const vgfx3d_postfx_chain_t *ch
         final_framebuffer = ctx->present_fbo;
         final_draw_buffer = GL_COLOR_ATTACHMENT0;
     }
-    if (chain && chain->enabled && chain->effect_count > 0 && chain->effects &&
-        gl_apply_postfx_chain(ctx,
-                              ctx->scene_color_tex,
-                              source_width,
-                              source_height,
-                              chain,
-                              final_framebuffer,
-                              final_draw_buffer,
-                              ctx->width,
-                              ctx->height,
-                              0,
-                              NULL,
-                              NULL)) {
+    if (vgfx3d_postfx_chain_is_usable(chain) && gl_apply_postfx_chain(ctx,
+                                                                      ctx->scene_color_tex,
+                                                                      source_width,
+                                                                      source_height,
+                                                                      chain,
+                                                                      final_framebuffer,
+                                                                      final_draw_buffer,
+                                                                      ctx->width,
+                                                                      ctx->height,
+                                                                      0,
+                                                                      NULL,
+                                                                      NULL)) {
         return 1;
     }
-    if (chain && chain->enabled && chain->effect_count > 0 && chain->effects &&
-        !ctx->default_framebuffer_writable &&
+    if (vgfx3d_postfx_chain_is_usable(chain) && !ctx->default_framebuffer_writable &&
         gl_apply_postfx_chain_in_scene(ctx, source_width, source_height, chain)) {
         return gl_draw_texture_to_target(ctx,
                                          ctx->scene_color_tex,

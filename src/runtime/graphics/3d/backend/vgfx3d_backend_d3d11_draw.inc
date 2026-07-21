@@ -1136,6 +1136,8 @@ static void d3d11_prepare_skybox_data(d3d11_context_t *ctx, d3d_skybox_cb_t *sky
 static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
                                       const vgfx3d_postfx_snapshot_t *snapshot,
                                       d3d_postfx_cb_t *postfx_data) {
+    vgfx3d_postfx_snapshot_t safe_snapshot;
+
     memset(postfx_data, 0, sizeof(*postfx_data));
     vgfx3d_d3d11_copy_mat4_finite_or_identity(postfx_data->inv_vp, ctx->scene_inv_vp);
     vgfx3d_d3d11_copy_mat4_finite_or_identity(postfx_data->prev_vp, ctx->scene_prev_vp);
@@ -1158,6 +1160,8 @@ static void d3d11_prepare_postfx_data(d3d11_context_t *ctx,
         (snapshot && snapshot->bloom_enabled && ctx->postfx_current_bloom_srv) ? 1 : 0;
     if (!snapshot)
         return;
+    vgfx3d_sanitize_postfx_snapshot(snapshot, &safe_snapshot);
+    snapshot = &safe_snapshot;
     postfx_data->tonemap_explicit = snapshot->tonemap_explicit ? 1 : 0;
     postfx_data->bloom_enabled = snapshot->bloom_enabled ? 1 : 0;
     postfx_data->bloom_threshold =
@@ -1371,11 +1375,22 @@ static void d3d11_submit_draw(void *ctx_ptr,
     ID3D11Buffer *mesh_vb = NULL;
     ID3D11Buffer *mesh_ib = NULL;
     uint32_t index_count;
+    vgfx3d_draw_cmd_t safe_cmd;
+    vgfx3d_light_params_t safe_lights[VGFX3D_MAX_LIGHTS];
+    float safe_ambient[3];
 
     (void)win;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0)
         return;
+    vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
+    cmd = &safe_cmd;
+    light_count = vgfx3d_sanitize_light_array(lights, light_count, safe_lights, VGFX3D_MAX_LIGHTS);
+    for (int32_t light_index = 0; light_index < light_count; light_index++)
+        vgfx3d_sanitize_light_shadow_span(&safe_lights[light_index], ctx->shadow_count);
+    lights = light_count > 0 ? safe_lights : NULL;
+    vgfx3d_sanitize_ambient_rgb(ambient, safe_ambient);
+    ambient = safe_ambient;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
     if (index_count == 0)
         return;
@@ -1503,11 +1518,22 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
     ID3D11Buffer *mesh_vb = NULL;
     ID3D11Buffer *mesh_ib = NULL;
     uint32_t index_count;
+    vgfx3d_draw_cmd_t safe_cmd;
+    vgfx3d_light_params_t safe_lights[VGFX3D_MAX_LIGHTS];
+    float safe_ambient[3];
 
     (void)win;
     if (!ctx || !cmd || instance_count <= 0 || !cmd->vertices || !cmd->indices ||
         (!instance_matrices && !cmd->particle_instances))
         return;
+    vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
+    cmd = &safe_cmd;
+    light_count = vgfx3d_sanitize_light_array(lights, light_count, safe_lights, VGFX3D_MAX_LIGHTS);
+    for (int32_t light_index = 0; light_index < light_count; light_index++)
+        vgfx3d_sanitize_light_shadow_span(&safe_lights[light_index], ctx->shadow_count);
+    lights = light_count > 0 ? safe_lights : NULL;
+    vgfx3d_sanitize_ambient_rgb(ambient, safe_ambient);
+    ambient = safe_ambient;
     particle_mode = cmd->particle_instances != NULL;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
     if (index_count == 0)

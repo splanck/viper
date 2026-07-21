@@ -97,6 +97,7 @@ class RidgeboundWorldSim {
     expose func installOutdoorFillLight(world: World3D) {
         fillLight = Light3D.Directional(new Vec3(0.58, -0.55, 0.46), 0.50, 0.62, 0.82);
         Light3D.SetIntensity(fillLight, 0.30);
+        Light3D.set_CastsShadows(fillLight, false);
         world.AddLight(1, fillLight);
 
         skyFill = Light3D.Ambient(0.54, 0.62, 0.72);
@@ -153,6 +154,7 @@ class RidgeboundWorldSim {
 
         moonLight = Light3D.Directional(new Vec3(0.30, -0.70, 0.38), 0.55, 0.62, 0.95);
         Light3D.SetIntensity(moonLight, 0.0);
+        Light3D.set_CastsShadows(moonLight, false);
         world.AddLight(9, moonLight);
     }
 
@@ -252,8 +254,10 @@ class RidgeboundWorldSim {
             Canvas3D.SetShadowStrength(simCanvas,
                 mathutil.lerpFloat(config.SHADOW_STRENGTH_NIGHT, config.SHADOW_STRENGTH_DAY, day));
             if (iblActive) {
+                var nightIblBlend = (1.0 - day) * (1.0 - day);
                 Canvas3D.set_IblIntensity(simCanvas,
-                    mathutil.lerpFloat(config.IBL_INTENSITY_NIGHT, config.IBL_INTENSITY_DAY, day));
+                    mathutil.lerpFloat(
+                        config.IBL_INTENSITY_DAY, config.IBL_INTENSITY_NIGHT, nightIblBlend));
             }
         }
     }

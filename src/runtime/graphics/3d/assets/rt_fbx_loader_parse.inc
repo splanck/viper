@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/assets/rt_fbx_loader_parse.inc  (#included from rt_fbx_loader.c;
-// not a standalone translation unit) Purpose: FBX typed node/property graph, binary reader,
-// budgeted property/node parsing, numeric object index, and connection adjacency indexes
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/assets/rt_fbx_loader_parse.inc
+// Purpose: FBX typed-node storage, bounded binary parsing, and indexed graph queries.
+// Key invariants:
+//   - Every byte/property/node read is checked against the source and aggregate load budgets.
+//   - Query helpers accept missing parents and malformed properties without dereferencing them.
+// Ownership/Lifetime:
+//   - Parsed nodes and indexes belong to the including loader context until its teardown.
+//   - Returned child/property pointers borrow storage from that parsed node tree.
+// Links: rt_fbx_loader.c, rt_fbx_loader_geometry.inc
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Binary reader helpers
@@ -1142,6 +1154,8 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node, int depth) {
 /// @brief Linear-search `parent->children` for the first child named `name`.
 /// FBX node trees are small (few hundred nodes) so the O(n) cost is fine.
 static fbx_node_t *fbx_find_child(fbx_node_t *parent, const char *name) {
+    if (!parent || !name)
+        return NULL;
     for (int32_t i = 0; i < parent->child_count; i++)
         if (strcmp(parent->children[i].name, name) == 0)
             return &parent->children[i];

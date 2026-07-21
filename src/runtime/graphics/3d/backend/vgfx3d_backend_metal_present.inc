@@ -1,9 +1,21 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
 // File: src/runtime/graphics/3d/backend/vgfx3d_backend_metal_present.inc
-//   (#included from vgfx3d_backend_metal.m; not a standalone translation unit)
-// Purpose: Layer sizing, encoder/commit lifecycle, transient buffer ring, depth probes, drawable
-// presentation, shared/transient buffers, and geometry caching
+// Purpose: Metal layer sizing, command submission, transient rings, depth probes, and presentation.
+// Key invariants:
+//   - Each submitted frame owns a distinct transient-ring slot until its completion handler runs.
+//   - Probe results publish only from a successfully completed command buffer and exact ring
+//   buffer.
+// Ownership/Lifetime:
+//   - VGFXMetalContext owns layer, drawable, command-buffer, and transient-buffer references.
+//   - Completion handlers retain only the objects needed until GPU execution finishes.
+// Links: vgfx3d_backend_metal.m, vgfx3d_backend_metal_targets.inc
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Sync the CAMetalLayer's drawable size and scale to the current backing view.
@@ -103,30 +115,46 @@ static id<MTLCommandBuffer> metal_acquire_command_buffer(VGFXMetalContext *ctx) 
 /// @details Copies one texel per probe from the scene depth texture into the shared
 ///   probe buffer; the completed handler publishes the results. Returns the number of
 ///   probes encoded (0 when there is nothing to do or no depth texture exists).
-static int32_t metal_encode_depth_probes(VGFXMetalContext *ctx, id<MTLCommandBuffer> cmdBuf) {
+static int32_t metal_encode_depth_probes(VGFXMetalContext *ctx,
+                                         id<MTLCommandBuffer> cmdBuf,
+                                         id<MTLBuffer> *outProbeBuffer) {
     id<MTLTexture> depth;
     id<MTLBlitCommandEncoder> blit;
+    id<MTLBuffer> probe_buffer;
     int32_t encoded;
 
+    if (outProbeBuffer)
+        *outProbeBuffer = nil;
     if (!ctx || !cmdBuf || ctx->_depthProbeRequestCount <= 0)
         return 0;
-    depth = ctx.depthTexture;
+    depth = ctx.rttActive ? ctx.rttDepthTexture : ctx.depthTexture;
     if (!depth || depth.width == 0 || depth.height == 0) {
         ctx->_depthProbeRequestCount = 0;
+        @synchronized(ctx) {
+            ctx->_depthProbeResultCount = 0;
+        }
         return 0;
     }
-    if (!ctx.depthProbeBuffer) {
-        ctx.depthProbeBuffer =
-            [ctx.device newBufferWithLength:VGFX3D_DEPTH_PROBE_MAX * sizeof(float)
-                                    options:MTLResourceStorageModeShared];
-        if (!ctx.depthProbeBuffer) {
+    ctx.depthProbeBuffers = metal_transient_pool_ensure(ctx.depthProbeBuffers);
+    probe_buffer = metal_transient_pool_buffer(ctx.depthProbeBuffers, ctx.transientRingSlot);
+    if (!probe_buffer) {
+        probe_buffer = [ctx.device newBufferWithLength:VGFX3D_DEPTH_PROBE_MAX * sizeof(float)
+                                               options:MTLResourceStorageModeShared];
+        if (!probe_buffer) {
             ctx->_depthProbeRequestCount = 0;
+            @synchronized(ctx) {
+                ctx->_depthProbeResultCount = 0;
+            }
             return 0;
         }
+        ctx.depthProbeBuffers[ctx.transientRingSlot] = probe_buffer;
     }
     blit = [cmdBuf blitCommandEncoder];
     if (!blit) {
         ctx->_depthProbeRequestCount = 0;
+        @synchronized(ctx) {
+            ctx->_depthProbeResultCount = 0;
+        }
         return 0;
     }
     encoded = ctx->_depthProbeRequestCount;
@@ -150,31 +178,44 @@ static int32_t metal_encode_depth_probes(VGFXMetalContext *ctx, id<MTLCommandBuf
                          sourceLevel:0
                         sourceOrigin:MTLOriginMake(px, py, 0)
                           sourceSize:MTLSizeMake(1, 1, 1)
-                            toBuffer:ctx.depthProbeBuffer
+                            toBuffer:probe_buffer
                    destinationOffset:(NSUInteger)i * sizeof(float)
               destinationBytesPerRow:sizeof(float)
             destinationBytesPerImage:sizeof(float)];
     }
     [blit endEncoding];
     ctx->_depthProbeRequestCount = 0;
+    if (outProbeBuffer)
+        *outProbeBuffer = probe_buffer;
     return encoded;
 }
 
 /// @brief Publish completed depth-probe values from the shared buffer into the context.
 /// @details The probe hook contract is canonical window depth (larger = farther); the
 ///   scene depth buffer is reversed-Z, so values are flipped on publish.
-static void metal_publish_depth_probes(VGFXMetalContext *ctx, int32_t count) {
-    if (!ctx || count <= 0 || !ctx.depthProbeBuffer)
+static void metal_publish_depth_probes(VGFXMetalContext *ctx,
+                                       id<MTLBuffer> probe_buffer,
+                                       int32_t count) {
+    if (!ctx || count <= 0 || !probe_buffer)
         return;
     @synchronized(ctx) {
-        const float *src = (const float *)ctx.depthProbeBuffer.contents;
+        const float *src = (const float *)probe_buffer.contents;
         if (!src)
             return;
         if (count > VGFX3D_DEPTH_PROBE_MAX)
             count = VGFX3D_DEPTH_PROBE_MAX;
         for (int32_t i = 0; i < count; i++)
-            ctx->_depthProbeResults[i] = 1.0f - src[i];
+            ctx->_depthProbeResults[i] = vgfx3d_sanitize_reversed_depth_probe_result(src[i]);
         ctx->_depthProbeResultCount = count;
+    }
+}
+
+/// @brief Invalidate prior probe results after a command-buffer/encoding failure.
+static void metal_invalidate_depth_probes(VGFXMetalContext *ctx) {
+    if (!ctx)
+        return;
+    @synchronized(ctx) {
+        ctx->_depthProbeResultCount = 0;
     }
 }
 
@@ -186,16 +227,20 @@ static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted)
         id<MTLCommandBuffer> cmdBuf = ctx.cmdBuf;
         NSMutableArray *retainedFrameBuffers = ctx.frameBuffers;
         id<CAMetalDrawable> retainedDrawable = ctx.drawable;
+        id<MTLBuffer> probeBuffer = nil;
         dispatch_semaphore_t inflight = ctx.inflightSemaphore;
-        int32_t probe_count = metal_encode_depth_probes(ctx, cmdBuf);
+        int32_t probe_count = metal_encode_depth_probes(ctx, cmdBuf, &probeBuffer);
         if (!waitUntilCompleted) {
             VGFXMetalContext *probeCtx = probe_count > 0 ? ctx : nil;
             [cmdBuf addCompletedHandler:^(id<MTLCommandBuffer> buffer) {
-              (void)buffer;
               (void)retainedFrameBuffers;
               (void)retainedDrawable;
-              if (probeCtx)
-                  metal_publish_depth_probes(probeCtx, probe_count);
+              if (probeCtx) {
+                  if (buffer.status == MTLCommandBufferStatusCompleted)
+                      metal_publish_depth_probes(probeCtx, probeBuffer, probe_count);
+                  else
+                      metal_invalidate_depth_probes(probeCtx);
+              }
               if (inflight)
                   dispatch_semaphore_signal(inflight);
             }];
@@ -203,7 +248,12 @@ static void metal_commit_pending(VGFXMetalContext *ctx, BOOL waitUntilCompleted)
         [cmdBuf commit];
         if (waitUntilCompleted) {
             [cmdBuf waitUntilCompleted];
-            metal_publish_depth_probes(probe_count > 0 ? ctx : nil, probe_count);
+            if (probe_count > 0) {
+                if (cmdBuf.status == MTLCommandBufferStatusCompleted)
+                    metal_publish_depth_probes(ctx, probeBuffer, probe_count);
+                else
+                    metal_invalidate_depth_probes(ctx);
+            }
             if (inflight)
                 dispatch_semaphore_signal(inflight);
         }

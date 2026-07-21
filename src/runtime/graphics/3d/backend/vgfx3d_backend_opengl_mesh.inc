@@ -508,8 +508,11 @@ static void upload_bone_palette(gl_context_t *ctx,
         store_identity4x4(&upload[(size_t)i * 16u]);
     if (bone_count > VGFX3D_OPENGL_MAX_BONES)
         bone_count = VGFX3D_OPENGL_MAX_BONES;
-    for (int32_t i = 0; i < bone_count; i++)
-        transpose4x4(&bone_palette[i * 16], &upload[i * 16]);
+    for (int32_t i = 0; i < bone_count; i++) {
+        float safe_matrix[16];
+        vgfx3d_copy_mat4_finite_or_identity(safe_matrix, &bone_palette[(size_t)i * 16u]);
+        transpose4x4(safe_matrix, &upload[(size_t)i * 16u]);
+    }
 
     if (!orphan_stream_buffer(
             GL_UNIFORM_BUFFER, ubo, VGFX3D_OPENGL_BONE_PALETTE_BYTES, GL_DYNAMIC_DRAW)) {
@@ -668,8 +671,13 @@ static gl_morph_cache_entry_t *gl_get_cached_morph_entry(gl_context_t *ctx,
         memset(slot, 0, sizeof(*slot));
     }
     if (!slot && ctx->morph_cache_count == ctx->morph_cache_capacity) {
+        if (ctx->morph_cache_count >= INT_MAX)
+            return NULL;
         int32_t new_cap =
             vgfx3d_opengl_next_capacity(ctx->morph_cache_capacity, ctx->morph_cache_count + 1, 8);
+        if (new_cap <= ctx->morph_cache_count ||
+            (size_t)new_cap > SIZE_MAX / sizeof(gl_morph_cache_entry_t))
+            return NULL;
         gl_morph_cache_entry_t *nv = (gl_morph_cache_entry_t *)realloc(
             ctx->morph_cache, (size_t)new_cap * sizeof(gl_morph_cache_entry_t));
         if (!nv)

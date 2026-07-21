@@ -62,6 +62,604 @@ typedef struct {
     uint64_t cache_identity;
 } vgfx3d_cubemap_view_t;
 
+/// @brief Store the row-major 4x4 identity matrix.
+static void vgfx3d_store_identity4x4(float *dst) {
+    memset(dst, 0, sizeof(float) * 16u);
+    dst[0] = 1.0f;
+    dst[5] = 1.0f;
+    dst[10] = 1.0f;
+    dst[15] = 1.0f;
+}
+
+/// @brief Return non-zero only when every input lane is finite and bounded.
+int vgfx3d_float_array_is_bounded(const float *values, size_t count, float abs_max) {
+    if ((!values && count > 0) || !isfinite(abs_max) || abs_max < 0.0f)
+        return 0;
+    for (size_t i = 0; i < count; i++) {
+        if (!isfinite(values[i]) || values[i] < -abs_max || values[i] > abs_max)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Copy float constants while replacing non-finite lanes with a stable value.
+void vgfx3d_copy_float_array_finite_or(float *dst, const float *src, size_t count, float fallback) {
+    float safe_fallback = isfinite(fallback) ? fallback : 0.0f;
+    if (!dst)
+        return;
+    for (size_t i = 0; i < count; i++)
+        dst[i] = src && isfinite(src[i]) ? src[i] : safe_fallback;
+}
+
+/// @brief Copy a bounded matrix or replace it with identity.
+void vgfx3d_copy_mat4_finite_or_identity(float *dst, const float *src) {
+    if (!dst)
+        return;
+    if (vgfx3d_float_array_is_bounded(src, 16u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX)) {
+        memcpy(dst, src, sizeof(float) * 16u);
+        return;
+    }
+    vgfx3d_store_identity4x4(dst);
+}
+
+/// @brief Copy a bounded matrix, then a bounded fallback, or identity.
+void vgfx3d_copy_mat4_finite_or(float *dst, const float *src, const float *fallback) {
+    if (!dst)
+        return;
+    if (vgfx3d_float_array_is_bounded(src, 16u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX)) {
+        memcpy(dst, src, sizeof(float) * 16u);
+        return;
+    }
+    if (vgfx3d_float_array_is_bounded(fallback, 16u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX)) {
+        memcpy(dst, fallback, sizeof(float) * 16u);
+        return;
+    }
+    vgfx3d_store_identity4x4(dst);
+}
+
+/// @brief Validate a bounded shadow matrix with at least one useful component.
+int vgfx3d_shadow_matrix_is_usable(const float *matrix) {
+    float max_abs = 0.0f;
+
+    if (!vgfx3d_float_array_is_bounded(matrix, 16u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX)) {
+        return 0;
+    }
+    for (size_t i = 0; i < 16u; i++) {
+        float magnitude = fabsf(matrix[i]);
+        if (magnitude > max_abs)
+            max_abs = magnitude;
+    }
+    return max_abs > 1.0e-12f ? 1 : 0;
+}
+
+/// @brief Copy and normalize a direction with deterministic fallback semantics.
+void vgfx3d_copy_vec3_direction_or(float *dst, const float *src, const float fallback[3]) {
+    static const float kDefaultDirection[3] = {0.0f, 0.0f, -1.0f};
+    const float *chosen = NULL;
+    double length_squared;
+    double inverse_length;
+
+    if (!dst)
+        return;
+    if (vgfx3d_float_array_is_bounded(src, 3u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX)) {
+        length_squared = (double)src[0] * (double)src[0] + (double)src[1] * (double)src[1] +
+                         (double)src[2] * (double)src[2];
+        if (length_squared > 1.0e-12 && length_squared < 1.0e24)
+            chosen = src;
+    }
+    if (!chosen &&
+        vgfx3d_float_array_is_bounded(fallback, 3u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX)) {
+        length_squared = (double)fallback[0] * (double)fallback[0] +
+                         (double)fallback[1] * (double)fallback[1] +
+                         (double)fallback[2] * (double)fallback[2];
+        if (length_squared > 1.0e-12 && length_squared < 1.0e24)
+            chosen = fallback;
+    }
+    if (!chosen)
+        chosen = kDefaultDirection;
+    length_squared = (double)chosen[0] * (double)chosen[0] + (double)chosen[1] * (double)chosen[1] +
+                     (double)chosen[2] * (double)chosen[2];
+    inverse_length = 1.0 / sqrt(length_squared);
+    dst[0] = (float)((double)chosen[0] * inverse_length);
+    dst[1] = (float)((double)chosen[1] * inverse_length);
+    dst[2] = (float)((double)chosen[2] * inverse_length);
+}
+
+float vgfx3d_finite_or(float requested, float fallback) {
+    return isfinite(requested) ? requested : (isfinite(fallback) ? fallback : 0.0f);
+}
+
+float vgfx3d_clamp_float_param(float requested, float min_value, float max_value, float fallback) {
+    float safe_fallback = isfinite(fallback) ? fallback : 0.0f;
+    float temporary;
+    if (!isfinite(requested))
+        requested = safe_fallback;
+    if (!isfinite(min_value) && !isfinite(max_value)) {
+        min_value = safe_fallback;
+        max_value = safe_fallback;
+    } else if (!isfinite(min_value)) {
+        min_value = max_value;
+    } else if (!isfinite(max_value)) {
+        max_value = min_value;
+    }
+    if (min_value > max_value) {
+        temporary = min_value;
+        min_value = max_value;
+        max_value = temporary;
+    }
+    if (requested < min_value)
+        return min_value;
+    if (requested > max_value)
+        return max_value;
+    return requested;
+}
+
+/// @brief Normalize material workflow constants before backend shader dispatch.
+int32_t vgfx3d_sanitize_material_workflow(int32_t requested) {
+    return requested == RT_MATERIAL3D_WORKFLOW_PBR ? RT_MATERIAL3D_WORKFLOW_PBR
+                                                   : RT_MATERIAL3D_WORKFLOW_LEGACY;
+}
+
+/// @brief Normalize alpha-mode constants before draw-state and shader upload.
+int32_t vgfx3d_sanitize_alpha_mode(int32_t requested) {
+    if (requested < RT_MATERIAL3D_ALPHA_MODE_OPAQUE || requested > RT_MATERIAL3D_ALPHA_MODE_BLEND)
+        return RT_MATERIAL3D_ALPHA_MODE_OPAQUE;
+    return requested;
+}
+
+/// @brief Normalize Game3D shading-model constants before shader upload.
+int32_t vgfx3d_sanitize_shading_model(int32_t requested) {
+    return requested >= 0 && requested <= 5 ? requested : 0;
+}
+
+/// @brief Normalize shadow-mode constants before shadow submission decisions.
+int32_t vgfx3d_sanitize_shadow_mode(int32_t requested) {
+    if (requested < RT_MATERIAL3D_SHADOW_MODE_AUTO || requested > RT_MATERIAL3D_SHADOW_MODE_CAST)
+        return RT_MATERIAL3D_SHADOW_MODE_AUTO;
+    return requested;
+}
+
+/// @brief Normalize texture-wrap constants before sampler selection and CPU sampling.
+int32_t vgfx3d_sanitize_texture_wrap(int32_t requested) {
+    if (requested == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE ||
+        requested == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT)
+        return requested;
+    return RT_MATERIAL3D_TEXTURE_WRAP_REPEAT;
+}
+
+/// @brief Normalize texture-filter constants before sampler selection and CPU sampling.
+int32_t vgfx3d_sanitize_texture_filter(int32_t requested) {
+    return requested == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST ? RT_MATERIAL3D_TEXTURE_FILTER_NEAREST
+                                                             : RT_MATERIAL3D_TEXTURE_FILTER_LINEAR;
+}
+
+/// @brief Normalize texture mip-filter constants before sampler selection.
+int32_t vgfx3d_sanitize_texture_mip_filter(int32_t requested) {
+    if (requested == RT_MATERIAL3D_TEXTURE_MIP_FILTER_NEAREST ||
+        requested == RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR)
+        return requested;
+    return RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE;
+}
+
+/// @brief Normalize a material texture coordinate selector to uv0 or uv1.
+int32_t vgfx3d_sanitize_texture_uv_set(int32_t requested) {
+    return requested > 0 ? 1 : 0;
+}
+
+/// @brief Copy one draw command while normalizing all backend-visible material state.
+/// @details Canvas normally supplies resolved material values, but backend hooks are an
+///          internal C boundary used by tests and tools. Keeping this operation shared
+///          prevents API-specific shader behavior when a malformed command crosses it.
+void vgfx3d_sanitize_draw_command(const struct vgfx3d_draw_cmd *src, struct vgfx3d_draw_cmd *dst) {
+    static const float uv_fallback[6] = {1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
+    const float material_max = 1000000.0f;
+
+    if (!src || !dst)
+        return;
+    *dst = *src;
+    vgfx3d_copy_mat4_finite_or_identity(dst->model_matrix, src->model_matrix);
+    vgfx3d_copy_mat4_finite_or(dst->prev_model_matrix, src->prev_model_matrix, dst->model_matrix);
+    for (int32_t lane = 0; lane < 4; lane++)
+        dst->diffuse_color[lane] =
+            vgfx3d_clamp_float_param(src->diffuse_color[lane], 0.0f, 1.0f, 1.0f);
+    for (int32_t lane = 0; lane < 3; lane++) {
+        dst->specular[lane] = vgfx3d_clamp_float_param(src->specular[lane], 0.0f, 1.0f, 1.0f);
+        dst->emissive_color[lane] =
+            vgfx3d_clamp_float_param(src->emissive_color[lane], 0.0f, material_max, 0.0f);
+    }
+    dst->shininess = vgfx3d_clamp_float_param(src->shininess, 0.0f, material_max, 32.0f);
+    dst->alpha = vgfx3d_clamp_float_param(src->alpha, 0.0f, 1.0f, 1.0f);
+    dst->metallic = vgfx3d_clamp_float_param(src->metallic, 0.0f, 1.0f, 0.0f);
+    dst->roughness = vgfx3d_clamp_float_param(src->roughness, 0.0f, 1.0f, 0.5f);
+    dst->ao = vgfx3d_clamp_float_param(src->ao, 0.0f, 1.0f, 1.0f);
+    dst->emissive_intensity =
+        vgfx3d_clamp_float_param(src->emissive_intensity, 0.0f, material_max, 1.0f);
+    dst->normal_scale = vgfx3d_clamp_float_param(src->normal_scale, 0.0f, 1000.0f, 1.0f);
+    dst->alpha_cutoff = vgfx3d_clamp_float_param(src->alpha_cutoff, 0.0f, 1.0f, 0.5f);
+    dst->reflectivity = vgfx3d_clamp_float_param(src->reflectivity, 0.0f, 1.0f, 0.0f);
+    dst->soft_particle_fade =
+        vgfx3d_clamp_float_param(src->soft_particle_fade, 0.0f, material_max, 0.0f);
+    dst->depth_bias = vgfx3d_clamp_float_param(src->depth_bias, -0.05f, 0.05f, 0.0f);
+    dst->slope_scaled_depth_bias =
+        vgfx3d_clamp_float_param(src->slope_scaled_depth_bias, -material_max, material_max, 0.0f);
+    dst->workflow = vgfx3d_sanitize_material_workflow(src->workflow);
+    dst->alpha_mode = vgfx3d_sanitize_alpha_mode(src->alpha_mode);
+    dst->shading_model = vgfx3d_sanitize_shading_model(src->shading_model);
+    dst->shadow_mode = vgfx3d_sanitize_shadow_mode(src->shadow_mode);
+    dst->texture_wrap_s = vgfx3d_sanitize_texture_wrap(src->texture_wrap_s);
+    dst->texture_wrap_t = vgfx3d_sanitize_texture_wrap(src->texture_wrap_t);
+    dst->texture_filter = vgfx3d_sanitize_texture_filter(src->texture_filter);
+    dst->texture_min_filter = vgfx3d_sanitize_texture_filter(src->texture_min_filter);
+    dst->texture_mag_filter = vgfx3d_sanitize_texture_filter(src->texture_mag_filter);
+    dst->texture_mip_filter = vgfx3d_sanitize_texture_mip_filter(src->texture_mip_filter);
+    if (dst->texture_anisotropy < 1)
+        dst->texture_anisotropy = 1;
+    if (dst->texture_anisotropy > 16)
+        dst->texture_anisotropy = 16;
+    for (int32_t lane = 0; lane < 12; lane++)
+        dst->custom_params[lane] =
+            vgfx3d_clamp_float_param(src->custom_params[lane], -material_max, material_max, 0.0f);
+    for (int32_t layer = 0; layer < 4; layer++) {
+        float scale = vgfx3d_finite_or(src->splat_layer_scales[layer], 1.0f);
+        if (scale <= 0.0f)
+            scale = 1.0f;
+        if (scale > material_max)
+            scale = material_max;
+        dst->splat_layer_scales[layer] = scale;
+    }
+    for (int32_t slot = 0; slot < RT_MATERIAL3D_TEXTURE_SLOT_COUNT; slot++) {
+        dst->texture_slot_wrap_s[slot] =
+            vgfx3d_sanitize_texture_wrap(src->texture_slot_wrap_s[slot]);
+        dst->texture_slot_wrap_t[slot] =
+            vgfx3d_sanitize_texture_wrap(src->texture_slot_wrap_t[slot]);
+        dst->texture_slot_filter[slot] =
+            vgfx3d_sanitize_texture_filter(src->texture_slot_filter[slot]);
+        dst->texture_slot_min_filter[slot] =
+            vgfx3d_sanitize_texture_filter(src->texture_slot_min_filter[slot]);
+        dst->texture_slot_mag_filter[slot] =
+            vgfx3d_sanitize_texture_filter(src->texture_slot_mag_filter[slot]);
+        dst->texture_slot_mip_filter[slot] =
+            vgfx3d_sanitize_texture_mip_filter(src->texture_slot_mip_filter[slot]);
+        dst->texture_slot_uv_set[slot] =
+            vgfx3d_sanitize_texture_uv_set(src->texture_slot_uv_set[slot]);
+        if (dst->texture_slot_anisotropy[slot] < 1)
+            dst->texture_slot_anisotropy[slot] = 1;
+        if (dst->texture_slot_anisotropy[slot] > 16)
+            dst->texture_slot_anisotropy[slot] = 16;
+        for (int32_t lane = 0; lane < 6; lane++)
+            dst->texture_slot_uv_transform[slot][lane] =
+                vgfx3d_clamp_float_param(src->texture_slot_uv_transform[slot][lane],
+                                         -material_max,
+                                         material_max,
+                                         uv_fallback[lane]);
+    }
+    dst->compact_vertex_stream = src->compact_vertex_stream != 0;
+    dst->unlit = src->unlit != 0;
+    dst->disable_depth_test = src->disable_depth_test != 0;
+    dst->additive_blend = src->additive_blend != 0;
+    dst->double_sided = src->double_sided != 0;
+    dst->ibl_env = src->ibl_env != 0;
+    dst->has_splat = src->has_splat != 0;
+    dst->has_prev_model_matrix = src->has_prev_model_matrix != 0;
+    dst->has_prev_instance_matrices = src->has_prev_instance_matrices != 0;
+    dst->ssr_enabled = src->ssr_enabled != 0;
+    dst->has_alpha_texture = src->has_alpha_texture != 0;
+}
+
+/// @brief Copy camera parameters while enforcing the common shader/input contract.
+void vgfx3d_sanitize_camera_params(const struct vgfx3d_camera_params *src,
+                                   struct vgfx3d_camera_params *dst) {
+    static const float sun_direction_fallback[3] = {0.0f, 1.0f, 0.0f};
+    const float scalar_max = 1000000.0f;
+    float fog_near;
+    float fog_far;
+    float znear;
+    float zfar;
+
+    if (!src || !dst)
+        return;
+    *dst = *src;
+    vgfx3d_copy_mat4_finite_or_identity(dst->view, src->view);
+    vgfx3d_copy_mat4_finite_or_identity(dst->projection, src->projection);
+    for (int32_t lane = 0; lane < 3; lane++)
+        dst->position[lane] = vgfx3d_clamp_float_param(src->position[lane],
+                                                       -VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX,
+                                                       VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX,
+                                                       0.0f);
+    vgfx3d_copy_vec3_direction_or(dst->forward, src->forward, NULL);
+    dst->is_ortho = src->is_ortho != 0;
+    dst->fog_enabled = src->fog_enabled != 0;
+    fog_near = vgfx3d_clamp_float_param(src->fog_near, 0.0f, 1000000000.0f, 10.0f);
+    if (fog_near > 999999999.0f)
+        fog_near = 10.0f;
+    fog_far = vgfx3d_clamp_float_param(src->fog_far, fog_near + 1.0f, 1000000000.0f, 50.0f);
+    if (fog_far <= fog_near) {
+        fog_near = 10.0f;
+        fog_far = 50.0f;
+    }
+    dst->fog_near = fog_near;
+    dst->fog_far = fog_far;
+    for (int32_t lane = 0; lane < 3; lane++)
+        dst->fog_color[lane] = vgfx3d_clamp_float_param(src->fog_color[lane], 0.0f, 1.0f, 0.5f);
+    dst->height_fog_enabled = src->height_fog_enabled != 0;
+    dst->height_fog_base = vgfx3d_clamp_float_param(src->height_fog_base,
+                                                    -VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX,
+                                                    VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX,
+                                                    0.0f);
+    dst->height_fog_falloff =
+        vgfx3d_clamp_float_param(src->height_fog_falloff, 0.0f, scalar_max, 0.1f);
+    dst->height_fog_density =
+        vgfx3d_clamp_float_param(src->height_fog_density, 0.0f, scalar_max, 0.0f);
+    dst->height_fog_blend = vgfx3d_clamp_float_param(src->height_fog_blend, 0.0f, 1.0f, 0.0f);
+    for (int32_t lane = 0; lane < 3; lane++)
+        dst->height_fog_sun_color[lane] =
+            vgfx3d_clamp_float_param(src->height_fog_sun_color[lane], 0.0f, scalar_max, 1.0f);
+    vgfx3d_copy_vec3_direction_or(
+        dst->height_fog_sun_dir, src->height_fog_sun_dir, sun_direction_fallback);
+    dst->height_fog_sun_power =
+        vgfx3d_clamp_float_param(src->height_fog_sun_power, 0.0f, scalar_max, 8.0f);
+    dst->height_fog_sun_amount =
+        vgfx3d_clamp_float_param(src->height_fog_sun_amount, 0.0f, 1.0f, 0.0f);
+    dst->load_existing_color = src->load_existing_color != 0;
+    dst->load_existing_depth = src->load_existing_depth != 0;
+    dst->ibl_enabled = src->ibl_enabled != 0;
+    dst->ibl_intensity = vgfx3d_clamp_float_param(src->ibl_intensity, 0.0f, 8.0f, 1.0f);
+    for (int32_t lane = 0; lane < 27; lane++)
+        dst->ibl_sh[lane] =
+            vgfx3d_clamp_float_param(src->ibl_sh[lane], -scalar_max, scalar_max, 0.0f);
+    dst->shadow_strength = vgfx3d_clamp_float_param(src->shadow_strength, 0.0f, 1.0f, 1.0f);
+    dst->shadow_slope_bias = vgfx3d_clamp_float_param(src->shadow_slope_bias, -16.0f, 16.0f, 0.0f);
+    if (src->shadow_quality < 0)
+        dst->shadow_quality = 0;
+    else if (src->shadow_quality > 2)
+        dst->shadow_quality = 2;
+    znear = vgfx3d_clamp_float_param(src->znear, 0.0001f, 500000000.0f, 0.1f);
+    if (!isfinite(src->zfar) || src->zfar <= znear * 1.001f)
+        zfar = znear * 1000.0f;
+    else
+        zfar = src->zfar;
+    if (zfar > 1000000000.0f)
+        zfar = 1000000000.0f;
+    if (!isfinite(zfar) || zfar <= znear * 1.001f) {
+        znear = 0.1f;
+        zfar = 1000.0f;
+    }
+    dst->znear = znear;
+    dst->zfar = zfar;
+}
+
+/// @brief Copy one light payload while enforcing finite, backend-portable semantics.
+void vgfx3d_sanitize_light_params(const struct vgfx3d_light_params *src,
+                                  struct vgfx3d_light_params *dst) {
+    static const float direction_fallback[3] = {0.0f, -1.0f, 0.0f};
+    static const float basis_u_fallback[3] = {1.0f, 0.0f, 0.0f};
+    static const float basis_v_fallback[3] = {0.0f, 1.0f, 0.0f};
+    const float scalar_max = 1000000.0f;
+    int invalid_type;
+    float previous_split = 0.0f;
+
+    if (!src || !dst)
+        return;
+    *dst = *src;
+    invalid_type = src->type < 0 || src->type > 6;
+    dst->type = invalid_type ? 2 : src->type;
+    dst->casts_shadows = src->casts_shadows != 0;
+    if (src->shadow_index < 0 || src->shadow_index >= VGFX3D_MAX_SHADOW_LIGHTS)
+        dst->shadow_index = -1;
+    if (src->shadow_cascade_count < 1)
+        dst->shadow_cascade_count = 1;
+    else if (src->shadow_cascade_count > VGFX3D_CSM_SLOTS)
+        dst->shadow_cascade_count = VGFX3D_CSM_SLOTS;
+    if (src->shadow_projection_type < VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC ||
+        src->shadow_projection_type > VGFX3D_SHADOW_PROJECTION_CUBE)
+        dst->shadow_projection_type = VGFX3D_SHADOW_PROJECTION_PERSPECTIVE;
+    vgfx3d_copy_vec3_direction_or(dst->direction, src->direction, direction_fallback);
+    vgfx3d_copy_vec3_direction_or(dst->basis_u, src->basis_u, basis_u_fallback);
+    vgfx3d_copy_vec3_direction_or(dst->basis_v, src->basis_v, basis_v_fallback);
+    for (int32_t lane = 0; lane < 3; lane++) {
+        dst->position[lane] = vgfx3d_clamp_float_param(src->position[lane],
+                                                       -VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX,
+                                                       VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX,
+                                                       0.0f);
+        dst->color[lane] = vgfx3d_clamp_float_param(src->color[lane], 0.0f, 1.0f, 0.0f);
+    }
+    dst->intensity = vgfx3d_clamp_float_param(src->intensity, 0.0f, scalar_max, 0.0f);
+    if (invalid_type)
+        dst->intensity = 0.0f;
+    dst->attenuation = vgfx3d_clamp_float_param(src->attenuation, 0.0f, scalar_max, 0.0f);
+    dst->inner_cos = vgfx3d_clamp_float_param(src->inner_cos, -1.0f, 1.0f, 1.0f);
+    dst->outer_cos = vgfx3d_clamp_float_param(src->outer_cos, -1.0f, 1.0f, 0.0f);
+    if (dst->inner_cos < dst->outer_cos) {
+        float temporary = dst->inner_cos;
+        dst->inner_cos = dst->outer_cos;
+        dst->outer_cos = temporary;
+    }
+    for (int32_t cascade = 0; cascade < VGFX3D_CSM_SLOTS; cascade++) {
+        float split = vgfx3d_clamp_float_param(
+            src->shadow_cascade_splits[cascade], 0.0f, scalar_max, previous_split);
+        if (split < previous_split)
+            split = previous_split;
+        dst->shadow_cascade_splits[cascade] = split;
+        previous_split = split;
+    }
+    dst->width = vgfx3d_clamp_float_param(src->width, 0.000001f, scalar_max, 1.0f);
+    dst->height = vgfx3d_clamp_float_param(src->height, 0.000001f, scalar_max, 1.0f);
+    dst->radius = vgfx3d_clamp_float_param(src->radius, 0.000001f, scalar_max, 1.0f);
+    dst->range = vgfx3d_clamp_float_param(src->range, 0.000001f, scalar_max, 1.0f);
+    if (src->decay_type < 0)
+        dst->decay_type = 0;
+    else if (src->decay_type > 3)
+        dst->decay_type = 3;
+}
+
+/// @brief Copy up to the fixed renderer light limit into a caller-owned array.
+int32_t vgfx3d_sanitize_light_array(const struct vgfx3d_light_params *src,
+                                    int32_t count,
+                                    struct vgfx3d_light_params *dst,
+                                    int32_t dst_capacity) {
+    if (!src || !dst || count <= 0 || dst_capacity <= 0)
+        return 0;
+    if (count > VGFX3D_MAX_LIGHTS)
+        count = VGFX3D_MAX_LIGHTS;
+    if (count > dst_capacity)
+        count = dst_capacity;
+    for (int32_t index = 0; index < count; index++)
+        vgfx3d_sanitize_light_params(&src[index], &dst[index]);
+    return count;
+}
+
+/// @brief Restrict a sanitized light's shadow slots to a contiguous backend range.
+void vgfx3d_sanitize_light_shadow_span(struct vgfx3d_light_params *light, int32_t shadow_count) {
+    int32_t remaining;
+    if (!light)
+        return;
+    if (shadow_count < 0)
+        shadow_count = 0;
+    if (shadow_count > VGFX3D_MAX_SHADOW_LIGHTS)
+        shadow_count = VGFX3D_MAX_SHADOW_LIGHTS;
+    if (light->shadow_index < 0 || light->shadow_index >= shadow_count) {
+        light->shadow_index = -1;
+        light->shadow_cascade_count = 1;
+        light->shadow_projection_type = VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
+        return;
+    }
+    remaining = shadow_count - light->shadow_index;
+    if (light->shadow_projection_type == VGFX3D_SHADOW_PROJECTION_CUBE) {
+        if (remaining < VGFX3D_SHADOW_CUBE_FACES) {
+            light->shadow_index = -1;
+            light->shadow_projection_type = VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
+        }
+        light->shadow_cascade_count = 1;
+        return;
+    }
+    if (light->shadow_projection_type != VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC) {
+        light->shadow_cascade_count = 1;
+        return;
+    }
+    if (light->shadow_cascade_count > remaining)
+        light->shadow_cascade_count = remaining;
+    if (light->shadow_cascade_count < 1)
+        light->shadow_cascade_count = 1;
+}
+
+/// @brief Copy finite non-negative ambient RGB, defaulting malformed lanes to black.
+void vgfx3d_sanitize_ambient_rgb(const float *src, float dst[3]) {
+    if (!dst)
+        return;
+    for (int32_t lane = 0; lane < 3; lane++)
+        dst[lane] = vgfx3d_clamp_float_param(src ? src[lane] : 0.0f, 0.0f, 1000000.0f, 0.0f);
+}
+
+/// @brief Validate clustered-light metadata and every shader-consumed offset/index.
+int vgfx3d_cluster_table_is_usable(const struct vgfx3d_cluster_table *table,
+                                   uint32_t expected_revision,
+                                   int32_t light_count) {
+    uint16_t previous_offset;
+    uint16_t final_offset;
+
+    if (!table || expected_revision == 0 || table->lights_revision != expected_revision ||
+        light_count <= 0 || light_count > VGFX3D_MAX_LIGHTS || table->global_light_count < 0 ||
+        table->global_light_count > light_count || table->binned_light_count < 0 ||
+        table->binned_light_count != light_count - table->global_light_count ||
+        table->overflow_count < 0 || !isfinite(table->znear) || !isfinite(table->zfar) ||
+        table->znear <= 0.0f || table->zfar <= table->znear || table->offsets[0] != 0)
+        return 0;
+    previous_offset = table->offsets[0];
+    for (int32_t cluster = 1; cluster <= VGFX3D_CLUSTER_COUNT; cluster++) {
+        uint16_t offset = table->offsets[cluster];
+        if (offset < previous_offset || offset > VGFX3D_MAX_CLUSTER_LIGHT_INDICES)
+            return 0;
+        previous_offset = offset;
+    }
+    final_offset = table->offsets[VGFX3D_CLUSTER_COUNT];
+    for (uint32_t index = 0; index < (uint32_t)final_offset; index++) {
+        uint16_t light_index = table->indices[index];
+        if ((int32_t)light_index < table->global_light_count || light_index >= light_count)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Validate the pointer/count/capacity relationship of an enabled effect chain.
+int vgfx3d_postfx_chain_is_usable(const struct vgfx3d_postfx_chain *chain) {
+    if (!chain || !chain->enabled || !chain->effects || chain->effect_count <= 0 ||
+        chain->effect_capacity < chain->effect_count)
+        return 0;
+    for (int32_t index = 0; index < chain->effect_count; index++) {
+        if (chain->effects[index].type < (int32_t)VGFX3D_POSTFX_EFFECT_BLOOM ||
+            chain->effects[index].type > (int32_t)VGFX3D_POSTFX_EFFECT_SUN_SHAFTS)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Copy a post-FX snapshot into bounded shader-facing values.
+void vgfx3d_sanitize_postfx_snapshot(const struct vgfx3d_postfx_snapshot *src,
+                                     struct vgfx3d_postfx_snapshot *dst) {
+    const float scalar_max = 1000000.0f;
+    if (!dst)
+        return;
+    memset(dst, 0, sizeof(*dst));
+    if (!src)
+        return;
+    *dst = *src;
+    dst->enabled = src->enabled != 0;
+    dst->bloom_enabled = src->bloom_enabled != 0;
+    dst->bloom_threshold = vgfx3d_clamp_float_param(src->bloom_threshold, 0.0f, scalar_max, 0.8f);
+    dst->bloom_intensity = vgfx3d_clamp_float_param(src->bloom_intensity, 0.0f, scalar_max, 1.0f);
+    if (src->bloom_passes < 0)
+        dst->bloom_passes = 0;
+    else if (src->bloom_passes > 32)
+        dst->bloom_passes = 32;
+    if (src->tonemap_mode < 0 || src->tonemap_mode > 2)
+        dst->tonemap_mode = 0;
+    dst->tonemap_exposure = vgfx3d_clamp_float_param(src->tonemap_exposure, 0.0f, scalar_max, 1.0f);
+    dst->fxaa_enabled = src->fxaa_enabled != 0;
+    dst->color_grade_enabled = src->color_grade_enabled != 0;
+    dst->cg_brightness = vgfx3d_clamp_float_param(src->cg_brightness, -1.0f, 1.0f, 0.0f);
+    dst->cg_contrast = vgfx3d_clamp_float_param(src->cg_contrast, 0.0f, 4.0f, 1.0f);
+    dst->cg_saturation = vgfx3d_clamp_float_param(src->cg_saturation, 0.0f, 4.0f, 1.0f);
+    dst->vignette_enabled = src->vignette_enabled != 0;
+    dst->vignette_radius = vgfx3d_clamp_float_param(src->vignette_radius, 0.0f, 1.0f, 0.7f);
+    dst->vignette_softness = vgfx3d_clamp_float_param(src->vignette_softness, 0.001f, 1.0f, 0.3f);
+    dst->ssao_enabled = src->ssao_enabled != 0;
+    dst->ssao_radius = vgfx3d_clamp_float_param(src->ssao_radius, 0.0f, scalar_max, 0.5f);
+    dst->ssao_intensity = vgfx3d_clamp_float_param(src->ssao_intensity, 0.0f, scalar_max, 1.0f);
+    if (src->ssao_samples < 4)
+        dst->ssao_samples = 4;
+    else if (src->ssao_samples > 16)
+        dst->ssao_samples = 16;
+    dst->dof_enabled = src->dof_enabled != 0;
+    dst->dof_focus_distance =
+        vgfx3d_clamp_float_param(src->dof_focus_distance, 0.0f, scalar_max, 10.0f);
+    dst->dof_aperture = vgfx3d_clamp_float_param(src->dof_aperture, 0.0f, scalar_max, 0.0f);
+    dst->dof_max_blur = vgfx3d_clamp_float_param(src->dof_max_blur, 0.0f, 128.0f, 8.0f);
+    dst->motion_blur_enabled = src->motion_blur_enabled != 0;
+    dst->motion_blur_intensity =
+        vgfx3d_clamp_float_param(src->motion_blur_intensity, 0.0f, 1.0f, 0.0f);
+    if (src->motion_blur_samples < 2)
+        dst->motion_blur_samples = 2;
+    else if (src->motion_blur_samples > 8)
+        dst->motion_blur_samples = 8;
+    dst->taa_enabled = src->taa_enabled != 0;
+    dst->taa_blend = vgfx3d_clamp_float_param(src->taa_blend, 0.5f, 0.98f, 0.9f);
+    dst->tonemap_explicit = src->tonemap_explicit != 0;
+    dst->ssr_enabled = src->ssr_enabled != 0;
+    dst->ssr_intensity = vgfx3d_clamp_float_param(src->ssr_intensity, 0.0f, 1.0f, 0.5f);
+    dst->ssr_max_roughness = vgfx3d_clamp_float_param(src->ssr_max_roughness, 0.0f, 1.0f, 0.4f);
+    if (src->ssr_steps < 8)
+        dst->ssr_steps = 8;
+    else if (src->ssr_steps > 48)
+        dst->ssr_steps = 48;
+}
+
+/// @brief Convert one reversed-Z depth sample into the backend hook's canonical convention.
+float vgfx3d_sanitize_reversed_depth_probe_result(float reversed_depth) {
+    if (!isfinite(reversed_depth))
+        return -1.0f;
+    return vgfx3d_clamp_float_param(1.0f - reversed_depth, 0.0f, 1.0f, -1.0f);
+}
+
 /// @brief Compute a cross-backend scaled scene extent from logical output dimensions.
 /// @details Uses truncation toward zero after multiplying positive dimensions, which is exactly
 ///          `floor` for the accepted positive range. Multiplication is performed in double
@@ -98,6 +696,67 @@ int vgfx3d_compute_scaled_scene_extent(int32_t output_width,
     return 1;
 }
 
+/// @brief Compute the exact extent of one level in a square mip pyramid.
+int vgfx3d_expected_square_mip_extent(int32_t base_extent, int32_t mip_level, int32_t *out_extent) {
+    int32_t extent;
+    int32_t level = 0;
+
+    if (out_extent)
+        *out_extent = 0;
+    if (!out_extent || base_extent <= 0 || mip_level < 0)
+        return 0;
+    extent = base_extent;
+    while (level < mip_level && extent > 1) {
+        extent >>= 1;
+        level++;
+    }
+    if (level != mip_level)
+        return 0;
+    *out_extent = extent;
+    return 1;
+}
+
+/// @brief Validate a prefiltered IBL tail against a concrete cubemap mip layout.
+int vgfx3d_validate_cubemap_ibl_layout(int32_t face_size,
+                                       int32_t ibl_base_size,
+                                       int32_t ibl_mip_count,
+                                       int32_t max_ibl_mips,
+                                       int32_t *out_level_base) {
+    int32_t level_base = 0;
+    int32_t available_levels = 1;
+    int32_t size;
+
+    if (out_level_base)
+        *out_level_base = 0;
+    if (!out_level_base || face_size <= 0 || ibl_base_size <= 0 || ibl_mip_count <= 0 ||
+        max_ibl_mips <= 0 || ibl_mip_count > max_ibl_mips)
+        return 0;
+    size = face_size;
+    while (size > 1) {
+        size >>= 1;
+        available_levels++;
+    }
+    size = face_size;
+    while (size > ibl_base_size && size > 1) {
+        size >>= 1;
+        level_base++;
+    }
+    if (size != ibl_base_size || level_base >= available_levels ||
+        ibl_mip_count > available_levels - level_base)
+        return 0;
+    *out_level_base = level_base;
+    return 1;
+}
+
+/// @brief Test a whole upload against the bytes remaining in a frame budget.
+int vgfx3d_upload_budget_allows(uint64_t budget, uint64_t used, uint64_t requested) {
+    if (requested == 0 || budget == UINT64_MAX)
+        return 1;
+    if (used >= budget)
+        return 0;
+    return requested <= budget - used;
+}
+
 /// @brief Read the monotonic generation counter on a Pixels object.
 /// Returns 0 for null. Backends compare against last-seen generation to detect
 /// when a GPU texture upload is required.
@@ -118,8 +777,8 @@ uint64_t vgfx3d_get_pixels_generation(const void *pixels_ptr) {
 ///   golden-ratio increment from Boost's hash_combine so unrelated
 ///   (identity, generation) pairs distribute uniformly across the output
 ///   space. Null pointer returns 0 as a distinguishable "no Pixels"
-///   sentinel — 0 cannot otherwise appear because the mixing always
-///   XORs in the seed.
+///   sentinel. Since an arbitrary 64-bit hash can still land on zero, a
+///   populated object's zero result is remapped to one.
 uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr) {
     const vgfx3d_pixels_view_t *pv = (const vgfx3d_pixels_view_t *)pixels_ptr;
     uint64_t signature = 1469598103934665603ull;
@@ -129,7 +788,7 @@ uint64_t vgfx3d_get_pixels_cache_key(const void *pixels_ptr) {
 
     signature ^= pv->cache_identity + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
     signature ^= pv->generation + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
-    return signature;
+    return signature != 0 ? signature : 1u;
 }
 
 /// @brief Whether a texture asset's row-derived native capability is present in @p native_caps.
@@ -175,25 +834,32 @@ int vgfx3d_textureasset_get_native_snapshot_mip(void *asset,
                                                 int64_t mip_count,
                                                 int64_t relative_mip,
                                                 vgfx3d_native_texture_mip_t *out_mip) {
+    vgfx3d_native_texture_mip_t mip;
+
     if (out_mip)
         memset(out_mip, 0, sizeof(*out_mip));
     if (!asset || !out_mip || first_mip < 0 || mip_count <= 0 || relative_mip < 0 ||
         relative_mip >= mip_count || relative_mip > INT64_MAX - first_mip)
         return 0;
+    memset(&mip, 0, sizeof(mip));
     if (!rt_textureasset3d_get_native_mip_info(asset,
                                                first_mip + relative_mip,
-                                               &out_mip->data,
-                                               &out_mip->bytes,
-                                               &out_mip->width,
-                                               &out_mip->height,
-                                               &out_mip->block_width,
-                                               &out_mip->block_height,
-                                               &out_mip->block_bytes))
+                                               &mip.data,
+                                               &mip.bytes,
+                                               &mip.width,
+                                               &mip.height,
+                                               &mip.block_width,
+                                               &mip.block_height,
+                                               &mip.block_bytes))
         return 0;
-    out_mip->format_id = rt_textureasset3d_get_native_format_id(asset);
-    return out_mip->data && out_mip->bytes > 0 && out_mip->width > 0 && out_mip->height > 0 &&
-           out_mip->block_width > 0 && out_mip->block_height > 0 && out_mip->block_bytes > 0 &&
-           out_mip->format_id != RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE;
+    mip.format_id = rt_textureasset3d_get_native_format_id(asset);
+    if (!mip.data || mip.bytes == 0 || mip.width <= 0 || mip.height <= 0 || mip.block_width <= 0 ||
+        mip.block_height <= 0 || mip.block_bytes <= 0 ||
+        mip.format_id == RT_TEXTUREASSET3D_NATIVE_FORMAT_NONE) {
+        return 0;
+    }
+    *out_mip = mip;
+    return 1;
 }
 
 /// @brief Native bytes still to upload from the current mip/block-row cursor onward.
@@ -498,6 +1164,96 @@ static int vgfx3d_block_upload_shape(int32_t width,
     return 1;
 }
 
+/// @brief Verify a native format's fixed/canonical compressed-block footprint.
+int vgfx3d_native_texture_block_layout_is_valid(const vgfx3d_native_texture_mip_t *mip) {
+    int astc_shape;
+
+    if (!mip)
+        return 0;
+    switch (mip->format_id) {
+        case RT_TEXTUREASSET3D_NATIVE_FORMAT_BC1:
+        case RT_TEXTUREASSET3D_NATIVE_FORMAT_BC4:
+            return mip->block_width == 4 && mip->block_height == 4 && mip->block_bytes == 8;
+        case RT_TEXTUREASSET3D_NATIVE_FORMAT_BC3:
+        case RT_TEXTUREASSET3D_NATIVE_FORMAT_BC5:
+        case RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7:
+        case RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2:
+            return mip->block_width == 4 && mip->block_height == 4 && mip->block_bytes == 16;
+        case RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC:
+            astc_shape =
+                (mip->block_width == 4 && mip->block_height == 4) ||
+                (mip->block_width == 5 && (mip->block_height == 4 || mip->block_height == 5)) ||
+                (mip->block_width == 6 && (mip->block_height == 5 || mip->block_height == 6)) ||
+                (mip->block_width == 8 &&
+                 (mip->block_height == 5 || mip->block_height == 6 || mip->block_height == 8)) ||
+                (mip->block_width == 10 && (mip->block_height == 5 || mip->block_height == 6 ||
+                                            mip->block_height == 8 || mip->block_height == 10)) ||
+                (mip->block_width == 12 && (mip->block_height == 10 || mip->block_height == 12));
+            return astc_shape && mip->block_bytes == 16;
+        default:
+            return 0;
+    }
+}
+
+/// @brief Validate dimensions, format, block footprint, and byte span for one native mip.
+/// @details Backends capture the base mip and block layout at upload start. Every later streamed
+///          mip must halve toward 1x1, retain the same compressed format/footprint, and provide at
+///          least the complete rounded-up block payload. The optional payload ceiling lets API
+///          adapters reject values their length fields cannot represent before making a driver
+///          call.
+int vgfx3d_validate_native_texture_mip(const vgfx3d_native_texture_mip_t *mip,
+                                       int32_t base_width,
+                                       int32_t base_height,
+                                       int64_t relative_mip,
+                                       int32_t expected_format_id,
+                                       int32_t expected_block_width,
+                                       int32_t expected_block_height,
+                                       int32_t expected_block_bytes,
+                                       uint64_t max_payload_bytes,
+                                       uint64_t *out_required_bytes) {
+    int32_t expected_width;
+    int32_t expected_height;
+    uint64_t block_rows;
+    uint64_t row_bytes;
+    uint64_t required_bytes;
+
+    if (out_required_bytes)
+        *out_required_bytes = 0;
+    if (!mip || !out_required_bytes || !mip->data || mip->bytes == 0 || base_width <= 0 ||
+        base_height <= 0 || relative_mip < 0 || expected_format_id <= 0 ||
+        expected_block_width <= 0 || expected_block_height <= 0 || expected_block_bytes <= 0 ||
+        !vgfx3d_native_texture_block_layout_is_valid(mip) || mip->format_id != expected_format_id ||
+        mip->block_width != expected_block_width || mip->block_height != expected_block_height ||
+        mip->block_bytes != expected_block_bytes)
+        return 0;
+
+    expected_width = base_width;
+    expected_height = base_height;
+    while (relative_mip-- > 0) {
+        if (expected_width == 1 && expected_height == 1)
+            return 0;
+        expected_width = expected_width > 1 ? expected_width / 2 : 1;
+        expected_height = expected_height > 1 ? expected_height / 2 : 1;
+    }
+    if (mip->width != expected_width || mip->height != expected_height ||
+        !vgfx3d_block_upload_shape(mip->width,
+                                   mip->height,
+                                   mip->block_width,
+                                   mip->block_height,
+                                   mip->block_bytes,
+                                   &block_rows,
+                                   &row_bytes) ||
+        block_rows > UINT64_MAX / row_bytes)
+        return 0;
+    required_bytes = block_rows * row_bytes;
+    if (mip->bytes < required_bytes ||
+        (max_payload_bytes != 0 &&
+         (mip->bytes > max_payload_bytes || required_bytes > max_payload_bytes)))
+        return 0;
+    *out_required_bytes = required_bytes;
+    return 1;
+}
+
 /// @brief How many block-rows from @p next_block_row fit in the remaining per-frame upload budget.
 /// @details Block-compressed analogue of vgfx3d_upload_rows_for_budget; UINT64_MAX budget means all
 ///          remaining block-rows, and at least one block-row is always returned so uploads
@@ -711,34 +1467,39 @@ uint64_t vgfx3d_get_cubemap_generation(const void *cubemap_ptr) {
         signature ^= face_key + 0x9e3779b97f4a7c15ull + (signature << 6) + (signature >> 2);
     }
 
-    return signature;
+    return signature != 0 ? signature : 1u;
 }
 
 /// @brief Flip an RGBA8 image vertically in place (top<->bottom row swap).
 /// Used to convert between Pixels' top-left origin and APIs that expect
 /// bottom-left (e.g., OpenGL textures).
 void vgfx3d_flip_rgba_rows(uint8_t *rgba, int32_t w, int32_t h) {
+    uint8_t temporary[256];
+    size_t row_bytes;
+
     if (!rgba || w <= 0 || h <= 1)
         return;
 
     if ((size_t)w > SIZE_MAX / 4u)
         return;
-    size_t row_bytes = (size_t)w * 4;
+    row_bytes = (size_t)w * 4u;
     if (row_bytes != 0 && (size_t)h > SIZE_MAX / row_bytes)
-        return;
-    uint8_t *tmp = (uint8_t *)malloc(row_bytes);
-    if (!tmp)
         return;
 
     for (int32_t y = 0; y < h / 2; y++) {
         uint8_t *top = rgba + (size_t)y * row_bytes;
         uint8_t *bot = rgba + (size_t)(h - 1 - y) * row_bytes;
-        memcpy(tmp, top, row_bytes);
-        memcpy(top, bot, row_bytes);
-        memcpy(bot, tmp, row_bytes);
+        size_t offset = 0;
+        while (offset < row_bytes) {
+            size_t chunk = row_bytes - offset;
+            if (chunk > sizeof(temporary))
+                chunk = sizeof(temporary);
+            memcpy(temporary, top + offset, chunk);
+            memcpy(top + offset, bot + offset, chunk);
+            memcpy(bot + offset, temporary, chunk);
+            offset += chunk;
+        }
     }
-
-    free(tmp);
 }
 
 /// @brief Convert IEEE-754 binary16 to binary32.
@@ -784,6 +1545,8 @@ uint8_t vgfx3d_float_to_unorm8(float value) {
 uint8_t vgfx3d_hdr_to_unorm8(float value) {
     if (!(value > 0.0f))
         return 0;
+    if (!isfinite(value))
+        return 255;
     return vgfx3d_float_to_unorm8(value / (1.0f + value));
 }
 
@@ -794,16 +1557,34 @@ static int vgfx3d_copy_dims_are_valid(int32_t copy_w,
                                       int32_t dst_stride_units,
                                       int32_t src_stride_bytes,
                                       int32_t dst_units_per_pixel,
+                                      int32_t dst_unit_bytes,
                                       int32_t src_bytes_per_pixel) {
-    int64_t dst_required;
-    int64_t src_required;
+    size_t dst_offset;
+    size_t dst_required;
+    size_t src_offset;
+    size_t src_required;
     if (copy_w <= 0 || copy_h <= 0 || dst_stride_units < 0 || src_stride_bytes < 0)
         return 0;
-    dst_required = (int64_t)copy_w * (int64_t)dst_units_per_pixel;
-    src_required = (int64_t)copy_w * (int64_t)src_bytes_per_pixel;
-    if (dst_required > INT32_MAX || src_required > INT32_MAX)
+    if (dst_units_per_pixel <= 0 || dst_unit_bytes <= 0 || src_bytes_per_pixel <= 0 ||
+        (size_t)copy_w > SIZE_MAX / (size_t)dst_units_per_pixel ||
+        (size_t)copy_w > SIZE_MAX / (size_t)src_bytes_per_pixel)
         return 0;
-    return (int64_t)dst_stride_units >= dst_required && (int64_t)src_stride_bytes >= src_required;
+    dst_required = (size_t)copy_w * (size_t)dst_units_per_pixel;
+    src_required = (size_t)copy_w * (size_t)src_bytes_per_pixel;
+    if (dst_required > (size_t)INT32_MAX || src_required > (size_t)INT32_MAX ||
+        (size_t)dst_stride_units < dst_required || (size_t)src_stride_bytes < src_required ||
+        dst_required > SIZE_MAX / (size_t)dst_unit_bytes)
+        return 0;
+    dst_required *= (size_t)dst_unit_bytes;
+    if ((size_t)(copy_h - 1) > SIZE_MAX / (size_t)dst_stride_units ||
+        (size_t)(copy_h - 1) > SIZE_MAX / (size_t)src_stride_bytes)
+        return 0;
+    dst_offset = (size_t)(copy_h - 1) * (size_t)dst_stride_units;
+    src_offset = (size_t)(copy_h - 1) * (size_t)src_stride_bytes;
+    if (dst_offset > SIZE_MAX / (size_t)dst_unit_bytes)
+        return 0;
+    dst_offset *= (size_t)dst_unit_bytes;
+    return dst_offset <= SIZE_MAX - dst_required && src_offset <= SIZE_MAX - src_required;
 }
 
 /// @brief Convert linear RGBA16F rows to displayable RGBA8.
@@ -815,20 +1596,22 @@ void vgfx3d_copy_linear_rgba16f_to_rgba8(uint8_t *dst_rgba,
                                          int32_t src_stride_bytes) {
     if (!dst_rgba || !src_rgba16f ||
         !vgfx3d_copy_dims_are_valid(
-            copy_w, copy_h, dst_stride, src_stride_bytes, 4, (int32_t)(sizeof(uint16_t) * 4u))) {
+            copy_w, copy_h, dst_stride, src_stride_bytes, 4, 1, (int32_t)(sizeof(uint16_t) * 4u))) {
         return;
     }
 
     for (int32_t y = 0; y < copy_h; y++) {
         uint8_t *dst_row = dst_rgba + (size_t)y * (size_t)dst_stride;
-        const uint16_t *src_row =
-            (const uint16_t *)((const uint8_t *)src_rgba16f + (size_t)y * (size_t)src_stride_bytes);
+        const uint8_t *src_row =
+            (const uint8_t *)(const void *)src_rgba16f + (size_t)y * (size_t)src_stride_bytes;
         for (int32_t x = 0; x < copy_w; x++) {
-            dst_row[(size_t)x * 4u + 0u] = vgfx3d_hdr_to_unorm8(vgfx3d_half_to_float(src_row[0]));
-            dst_row[(size_t)x * 4u + 1u] = vgfx3d_hdr_to_unorm8(vgfx3d_half_to_float(src_row[1]));
-            dst_row[(size_t)x * 4u + 2u] = vgfx3d_hdr_to_unorm8(vgfx3d_half_to_float(src_row[2]));
-            dst_row[(size_t)x * 4u + 3u] = vgfx3d_float_to_unorm8(vgfx3d_half_to_float(src_row[3]));
-            src_row += 4;
+            uint16_t src_pixel[4];
+            memcpy(src_pixel, src_row + (size_t)x * sizeof(src_pixel), sizeof(src_pixel));
+            dst_row[(size_t)x * 4u + 0u] = vgfx3d_hdr_to_unorm8(vgfx3d_half_to_float(src_pixel[0]));
+            dst_row[(size_t)x * 4u + 1u] = vgfx3d_hdr_to_unorm8(vgfx3d_half_to_float(src_pixel[1]));
+            dst_row[(size_t)x * 4u + 2u] = vgfx3d_hdr_to_unorm8(vgfx3d_half_to_float(src_pixel[2]));
+            dst_row[(size_t)x * 4u + 3u] =
+                vgfx3d_float_to_unorm8(vgfx3d_half_to_float(src_pixel[3]));
         }
     }
 }
@@ -846,20 +1629,22 @@ void vgfx3d_copy_linear_rgba16f_to_rgba32f(float *dst_rgba32f,
                                     dst_stride_floats,
                                     src_stride_bytes,
                                     4,
+                                    (int32_t)sizeof(float),
                                     (int32_t)(sizeof(uint16_t) * 4u))) {
         return;
     }
 
     for (int32_t y = 0; y < copy_h; y++) {
         float *dst_row = dst_rgba32f + (size_t)y * (size_t)dst_stride_floats;
-        const uint16_t *src_row =
-            (const uint16_t *)((const uint8_t *)src_rgba16f + (size_t)y * (size_t)src_stride_bytes);
+        const uint8_t *src_row =
+            (const uint8_t *)(const void *)src_rgba16f + (size_t)y * (size_t)src_stride_bytes;
         for (int32_t x = 0; x < copy_w; x++) {
-            dst_row[(size_t)x * 4u + 0u] = vgfx3d_half_to_float(src_row[0]);
-            dst_row[(size_t)x * 4u + 1u] = vgfx3d_half_to_float(src_row[1]);
-            dst_row[(size_t)x * 4u + 2u] = vgfx3d_half_to_float(src_row[2]);
-            dst_row[(size_t)x * 4u + 3u] = vgfx3d_half_to_float(src_row[3]);
-            src_row += 4;
+            uint16_t src_pixel[4];
+            memcpy(src_pixel, src_row + (size_t)x * sizeof(src_pixel), sizeof(src_pixel));
+            dst_row[(size_t)x * 4u + 0u] = vgfx3d_half_to_float(src_pixel[0]);
+            dst_row[(size_t)x * 4u + 1u] = vgfx3d_half_to_float(src_pixel[1]);
+            dst_row[(size_t)x * 4u + 2u] = vgfx3d_half_to_float(src_pixel[2]);
+            dst_row[(size_t)x * 4u + 3u] = vgfx3d_half_to_float(src_pixel[3]);
         }
     }
 }
@@ -873,7 +1658,7 @@ void vgfx3d_copy_linear_rgba32f_to_rgba8(uint8_t *dst_rgba,
                                          int32_t src_stride_bytes) {
     if (!dst_rgba || !src_rgba32f ||
         !vgfx3d_copy_dims_are_valid(
-            copy_w, copy_h, dst_stride, src_stride_bytes, 4, (int32_t)(sizeof(float) * 4u))) {
+            copy_w, copy_h, dst_stride, src_stride_bytes, 4, 1, (int32_t)(sizeof(float) * 4u))) {
         return;
     }
 
@@ -976,6 +1761,7 @@ void vgfx3d_compute_normal_matrix4(const float *model_matrix, float *out_matrix)
 /// Out-buffer is unmodified on failure.
 int vgfx3d_invert_matrix4(const float *matrix, float *out_matrix) {
     float inv[16];
+    float result[16];
     float det;
 
     if (!matrix || !out_matrix)
@@ -1035,8 +1821,12 @@ int vgfx3d_invert_matrix4(const float *matrix, float *out_matrix) {
         return -1;
 
     det = 1.0f / det;
-    for (int i = 0; i < 16; i++)
-        out_matrix[i] = inv[i] * det;
+    for (int i = 0; i < 16; i++) {
+        result[i] = inv[i] * det;
+        if (!isfinite(result[i]))
+            return -1;
+    }
+    memcpy(out_matrix, result, sizeof(result));
     return 0;
 }
 

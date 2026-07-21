@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_texture.inc  (#included from
-// vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend texture
-// sampling
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_texture.inc
+// Purpose: Validated software texture views, coordinate wrapping, and filtered sampling.
+// Key invariants:
+//   - Pixels extents fit signed sampler indices and every computed texel index remains in range.
+//   - Non-finite coordinates/colors fall back to deterministic finite samples.
+// Ownership/Lifetime:
+//   - sw_pixels_view borrows Pixels storage retained by the enclosing draw snapshot.
+//   - Sampling allocates no per-fragment memory and never mutates source images.
+// Links: vgfx3d_backend_sw.c, vgfx3d_backend_sw_raster.inc
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Texture sampling
@@ -92,7 +104,7 @@ static float sw_wrap_coord(float value, int32_t mode) {
 /// @param size   Texture dimension in texels along the relevant axis (must be > 0).
 /// @param mode   One of the `RT_MATERIAL3D_TEXTURE_WRAP_*` constants.
 /// @return Clamped/wrapped index in `[0, size-1]`.
-static int sw_wrap_index(int index, int size, int32_t mode) {
+static int sw_wrap_index(int64_t index, int size, int32_t mode) {
     if (size <= 0)
         return 0;
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_CLAMP_TO_EDGE) {
@@ -103,15 +115,18 @@ static int sw_wrap_index(int index, int size, int32_t mode) {
         return index;
     }
     if (mode == RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT) {
-        if (size > INT32_MAX / 2)
-            return index < 0 ? 0 : (index >= size ? size - 1 : index);
-        int period = size * 2;
-        int wrapped = index % period;
+        int64_t period = (int64_t)size * 2;
+        int64_t wrapped = index % period;
         if (wrapped < 0)
             wrapped += period;
-        return wrapped >= size ? period - 1 - wrapped : wrapped;
+        return (int)(wrapped >= size ? period - 1 - wrapped : wrapped);
     }
-    return ((index % size) + size) % size;
+    {
+        int64_t wrapped = index % (int64_t)size;
+        if (wrapped < 0)
+            wrapped += size;
+        return (int)wrapped;
+    }
 }
 
 /// @brief Texture sampler with imported wrap/filter state.
@@ -151,8 +166,10 @@ static void sample_texture_ex(const sw_pixels_view *tex,
     v = sw_wrap_coord(v, wrap_t);
 
     if (filter == RT_MATERIAL3D_TEXTURE_FILTER_NEAREST) {
-        int x = sw_wrap_index((int)floorf(u * (float)w), w, wrap_s);
-        int y = sw_wrap_index((int)floorf(v * (float)h), h, wrap_t);
+        int64_t raw_x = (int64_t)floor((double)u * (double)w);
+        int64_t raw_y = (int64_t)floor((double)v * (double)h);
+        int x = sw_wrap_index(raw_x, w, wrap_s);
+        int y = sw_wrap_index(raw_y, h, wrap_t);
         uint32_t p = tex->data[(size_t)y * (size_t)w + (size_t)x];
         *r = (float)((p >> 24) & 0xFF) / 255.0f;
         *g = (float)((p >> 16) & 0xFF) / 255.0f;
@@ -162,20 +179,18 @@ static void sample_texture_ex(const sw_pixels_view *tex,
     }
 
     /* Bilinear: map UV to texel center, then interpolate the 4 neighbors */
-    float fx = u * (float)w - 0.5f;
-    float fy = v * (float)h - 0.5f;
-    int x0 = (int)floorf(fx);
-    int y0 = (int)floorf(fy);
-    float xf = fx - (float)x0; /* fractional part [0,1) */
-    float yf = fy - (float)y0;
+    double fx = (double)u * (double)w - 0.5;
+    double fy = (double)v * (double)h - 0.5;
+    int64_t raw_x0 = (int64_t)floor(fx);
+    int64_t raw_y0 = (int64_t)floor(fy);
+    float xf = (float)(fx - (double)raw_x0); /* fractional part [0,1) */
+    float yf = (float)(fy - (double)raw_y0);
 
     /* Wrap coordinates for the material sampler mode */
-    int x1 = x0 + 1;
-    int y1 = y0 + 1;
-    x0 = sw_wrap_index(x0, w, wrap_s);
-    y0 = sw_wrap_index(y0, h, wrap_t);
-    x1 = sw_wrap_index(x1, w, wrap_s);
-    y1 = sw_wrap_index(y1, h, wrap_t);
+    int x0 = sw_wrap_index(raw_x0, w, wrap_s);
+    int y0 = sw_wrap_index(raw_y0, h, wrap_t);
+    int x1 = sw_wrap_index(raw_x0 + 1, w, wrap_s);
+    int y1 = sw_wrap_index(raw_y0 + 1, h, wrap_t);
 
     /* Sample 4 texels */
     uint32_t p00 = tex->data[(size_t)y0 * (size_t)w + (size_t)x0];
@@ -235,10 +250,10 @@ static void sample_texture(
 ///   correctly — lighting math is linear, so we have to undo the storage gamma first.
 ///   Alpha is intentionally *not* converted, matching the sRGB spec.
 static float sw_srgb_to_linear(float value) {
-    if (value < 0.0f)
-        value = 0.0f;
-    if (value > 1.0f)
-        value = 1.0f;
+    if (!(value > 0.0f))
+        return 0.0f;
+    if (value >= 1.0f)
+        return 1.0f;
     if (value <= 0.04045f)
         return value / 12.92f;
     return powf((value + 0.055f) / 1.055f, 2.4f);
@@ -339,7 +354,7 @@ static void sw_interpolate_uv_for_slot(const vgfx3d_draw_cmd_t *cmd,
     if (!v0 || !v1 || !v2)
         return;
     iw = b0 * v0->inv_w + b1 * v1->inv_w + b2 * v2->inv_w;
-    if (fabsf(iw) <= 1e-7f)
+    if (!isfinite(iw) || fabsf(iw) <= 1e-7f)
         return;
     if (use_uv1) {
         u = (b0 * v0->u1_over_w + b1 * v1->u1_over_w + b2 * v2->u1_over_w) / iw;
@@ -356,6 +371,8 @@ static void sw_interpolate_uv_for_slot(const vgfx3d_draw_cmd_t *cmd,
         *out_u = u;
         *out_v = v;
     }
+    if (!isfinite(*out_u) || !isfinite(*out_v))
+        *out_u = *out_v = 0.0f;
 }
 
 /// @brief Sample a texture using the wrap and filter parameters from one material slot.

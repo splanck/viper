@@ -49,7 +49,12 @@
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#ifndef ZANNA_SOURCE_DIR
+#define ZANNA_SOURCE_DIR "."
+#endif
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -1614,6 +1619,10 @@ static void test_postfx_readback_policy_helpers(void) {
     chain.enabled = 0;
     EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 0,
                 "PostFX chain validator rejects disabled chains");
+    chain.enabled = 1;
+    effect.type = INT32_MAX;
+    EXPECT_TRUE(vgfx3d_d3d11_postfx_chain_is_usable(&chain) == 0,
+                "PostFX chain validator rejects unknown effect discriminators");
 
     EXPECT_TRUE(vgfx3d_d3d11_should_composite_to_swapchain(0, 1, 1, 0) == 1,
                 "D3D11 composites an unpresented GPU-postfx scene to the swapchain");
@@ -1995,6 +2004,99 @@ static void test_d3d11_shader_chunk_join_validation(void) {
     free((void *)empty_cache);
 }
 
+static char *read_text_file(const char *path) {
+    FILE *file = fopen(path, "rb");
+    long size;
+    char *text;
+
+    if (!file)
+        return NULL;
+    if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) < 0) {
+        fclose(file);
+        return NULL;
+    }
+    rewind(file);
+    text = (char *)malloc((size_t)size + 1u);
+    if (!text) {
+        fclose(file);
+        return NULL;
+    }
+    if (fread(text, 1u, (size_t)size, file) != (size_t)size) {
+        free(text);
+        fclose(file);
+        return NULL;
+    }
+    text[size] = '\0';
+    fclose(file);
+    return text;
+}
+
+static char *read_d3d11_backend_sources(void) {
+    static const char *k_parts[] = {
+        "vgfx3d_backend_d3d11.c",
+        "vgfx3d_backend_d3d11_context.inc",
+        "vgfx3d_backend_d3d11_draw.inc",
+        "vgfx3d_backend_d3d11_present.inc",
+        "vgfx3d_backend_d3d11_targets.inc",
+        "vgfx3d_backend_d3d11_texture.inc",
+    };
+    char path[1024];
+    char *combined = NULL;
+    size_t combined_length = 0;
+
+    for (size_t i = 0; i < sizeof(k_parts) / sizeof(k_parts[0]); i++) {
+        char *part;
+        char *grown;
+        size_t part_length;
+        snprintf(path,
+                 sizeof(path),
+                 "%s/src/runtime/graphics/3d/backend/%s",
+                 ZANNA_SOURCE_DIR,
+                 k_parts[i]);
+        part = read_text_file(path);
+        if (!part) {
+            free(combined);
+            return NULL;
+        }
+        part_length = strlen(part);
+        grown = (char *)realloc(combined, combined_length + part_length + 1u);
+        if (!grown) {
+            free(part);
+            free(combined);
+            return NULL;
+        }
+        combined = grown;
+        memcpy(combined + combined_length, part, part_length + 1u);
+        combined_length += part_length;
+        free(part);
+    }
+    return combined;
+}
+
+static void test_d3d11_backend_source_contracts(void) {
+    char *source = read_d3d11_backend_sources();
+
+    EXPECT_TRUE(source != NULL, "D3D11 backend source chunks are readable for contract checks");
+    if (!source)
+        return;
+    EXPECT_TRUE(strstr(source, "vgfx3d_sanitize_draw_command(cmd, &safe_cmd)") != NULL,
+                "D3D11 sanitizes draw snapshots before native upload");
+    EXPECT_TRUE(
+        strstr(source, "ctx->shadow_pass_failed = 1") != NULL &&
+            strstr(source, "ctx->shadow_slot_complete[slot] = ctx->shadow_pass_failed ? 0") != NULL,
+        "D3D11 never publishes a shadow slot after a failed shadow draw");
+    EXPECT_TRUE(strstr(source, "vgfx3d_sanitize_postfx_snapshot") != NULL,
+                "D3D11 sanitizes every post-FX snapshot before constant-buffer upload");
+    EXPECT_TRUE(strstr(source, "vgfx3d_d3d11_cluster_table_is_usable") != NULL,
+                "D3D11 clustered-light uploads validate revision and offset/index metadata");
+    EXPECT_TRUE(strstr(source, "vgfx3d_d3d11_validate_ibl_layout") != NULL &&
+                    strstr(source, "entry->applied_ibl_identity == env_cm->ibl_identity") != NULL,
+                "D3D11 enables IBL only after the exact validated overlay is resident");
+    EXPECT_TRUE(strstr(source, "target->width > INT32_MAX / 4") != NULL,
+                "D3D11 HDR readback rejects a float-stride narrowing overflow");
+    free(source);
+}
+
 int main(void) {
     test_pack_bone_palette_identity_pads_unused_bones();
     test_pack_bone_palette_identity_pads_empty_source();
@@ -2023,6 +2125,7 @@ int main(void) {
     test_shadow_projection_helper_handles_all_projection_modes();
     test_d3d11_shader_chunk_join_validation();
     test_d3d11_shader_sources_keep_numeric_guards();
+    test_d3d11_backend_source_contracts();
 
     printf("vgfx3d d3d11 shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

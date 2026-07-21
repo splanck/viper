@@ -166,6 +166,18 @@ static id<MTLRenderPipelineState> metal_create_skybox_pipeline_state(
 /// @brief Get or build the cached pipeline state matching a draw's shading model, blend, and
 /// formats.
 /// @details Keyed by the render-state config so identical draws reuse one compiled pipeline.
+static BOOL metal_target_uses_hdr_color(VGFXMetalContext *ctx) {
+    if (!ctx)
+        return NO;
+    if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE)
+        return YES;
+    return ctx.currentTargetKind == VGFX3D_METAL_TARGET_RTT && ctx.rttColorTexture &&
+                   ctx.rttColorTexture.pixelFormat == MTLPixelFormatRGBA16Float
+               ? YES
+               : NO;
+}
+
+/// @brief Select the material pipeline whose attachment formats match the current target.
 static id<MTLRenderPipelineState> metal_select_pipeline_state(VGFXMetalContext *ctx,
                                                               const vgfx3d_draw_cmd_t *cmd,
                                                               BOOL instanced) {
@@ -180,7 +192,7 @@ static id<MTLRenderPipelineState> metal_select_pipeline_state(VGFXMetalContext *
      * consults the same readiness gate, so buffer encoding and pipeline layout
      * always agree. */
     compact = (cmd && cmd->compact_vertex_stream && ctx.compactPipelinesReady) ? YES : NO;
-    if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE) {
+    if (metal_target_uses_hdr_color(ctx)) {
         if (instanced) {
             if (compact)
                 return blend_mode == VGFX3D_METAL_BLEND_ALPHA
@@ -241,7 +253,7 @@ static id<MTLRenderPipelineState> metal_select_particle_pipeline_state(
     if (!ctx)
         return nil;
     additive = vgfx3d_metal_choose_blend_mode(cmd) == VGFX3D_METAL_BLEND_ADDITIVE;
-    if (ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE)
+    if (metal_target_uses_hdr_color(ctx))
         return additive ? ctx.particlePipelineStateAdditive : ctx.particlePipelineStateAlpha;
     return additive ? ctx.particlePipelineStateColorOnlyAdditive
                     : ctx.particlePipelineStateColorOnlyAlpha;
@@ -1191,9 +1203,16 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "    float threshold;\n"
                               "    int firstPass;\n"
                               "};\n"
+                              "float3 bloom_safe_color(float3 c) {\n"
+                              "    c = select(float3(0.0), c, isfinite(c));\n"
+                              "    return clamp(c, float3(0.0), float3(65504.0));\n"
+                              "}\n"
                               "float bloom_luma(float3 c) { return dot(c, float3(0.2126, 0.7152, "
                               "0.0722)); }\n"
-                              "float3 bloom_karis(float3 c) { return c / (1.0 + bloom_luma(c)); }\n"
+                              "float3 bloom_karis(float3 c) {\n"
+                              "    c = bloom_safe_color(c);\n"
+                              "    return c / (1.0 + bloom_luma(c));\n"
+                              "}\n"
                               "fragment float4 bloom_down_fs(FullscreenVert in [[stage_in]],\n"
                               "    texture2d<float> src [[texture(0)]], sampler s [[sampler(0)]],\n"
                               "    constant BloomParams &p [[buffer(0)]]) {\n"
@@ -1224,7 +1243,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "        float lum = bloom_luma(col);\n"
                               "        float scale = (lum > p.threshold) ? (lum - p.threshold) / "
                               "(lum + 1e-6) : 0.0;\n"
-                              "        col *= scale;\n"
+                              "        col = bloom_safe_color(col * scale);\n"
                               "    } else {\n"
                               "        col = (j + k + l + m) * (0.5 * 0.25);\n"
                               "        col += (a + b + d + e) * (0.125 * 0.25);\n"
@@ -1232,7 +1251,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "        col += (d + e + g + h) * (0.125 * 0.25);\n"
                               "        col += (e + f + h + i2) * (0.125 * 0.25);\n"
                               "    }\n"
-                              "    return float4(col, 1.0);\n"
+                              "    return float4(bloom_safe_color(col), 1.0);\n"
                               "}\n"
                               "fragment float4 bloom_up_fs(FullscreenVert in [[stage_in]],\n"
                               "    texture2d<float> src [[texture(0)]], sampler s [[sampler(0)]],\n"
@@ -1248,7 +1267,7 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                               "    col += src.sample(s, uv + ts * float2(-1.0, 1.0)).rgb;\n"
                               "    col += src.sample(s, uv + ts * float2(0.0, 1.0)).rgb * 2.0;\n"
                               "    col += src.sample(s, uv + ts * float2(1.0, 1.0)).rgb;\n"
-                              "    return float4(col * (1.0 / 16.0), 1.0);\n"
+                              "    return float4(bloom_safe_color(col * (1.0 / 16.0)), 1.0);\n"
                               "}\n"],
                 [NSString
                     stringWithUTF8String:
@@ -1553,7 +1572,11 @@ static void *metal_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
                                                         options:MTLResourceStorageModeShared];
         }
 
-        metal_recreate_main_targets(ctx, w, h);
+        if (!metal_recreate_main_targets(ctx, w, h)) {
+            [ctx.metalLayer removeFromSuperlayer];
+            ctx.metalLayer = nil;
+            return NULL;
+        }
 
         /* Backend initialized successfully */
         return (__bridge_retained void *)ctx;
@@ -1579,9 +1602,11 @@ static void metal_destroy_ctx(void *ctx_ptr) {
 static void metal_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
     (void)win;
     VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-    ctx.clearR = r;
-    ctx.clearG = g;
-    ctx.clearB = b;
+    if (!ctx)
+        return;
+    ctx.clearR = vgfx3d_clamp_float_param(r, 0.0f, 1.0f, 0.0f);
+    ctx.clearG = vgfx3d_clamp_float_param(g, 0.0f, 1.0f, 0.0f);
+    ctx.clearB = vgfx3d_clamp_float_param(b, 0.0f, 1.0f, 0.0f);
 }
 
 /// @brief Begin a 3D frame: advance the frame serial, set up camera uniforms, and open the scene
@@ -1600,7 +1625,7 @@ static float metal_halton(uint32_t index, uint32_t base) {
 
 /// @brief True when the exported postfx chain contains an effect of @p type_value.
 static int metal_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t type_value) {
-    if (!chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects)
+    if (!vgfx3d_postfx_chain_is_usable(chain))
         return 0;
     for (int32_t i = 0; i < chain->effect_count; i++) {
         if (chain->effects[i].type == type_value)
@@ -1682,12 +1707,19 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         BOOL new_command_buffer = NO;
+        float safe_cam_forward[3];
+        float safe_cam_pos[3];
+        float safe_view[16];
+        float safe_projection[16];
         float inv_vp[16];
         vgfx3d_metal_frame_history_t history;
+        vgfx3d_camera_params_t safe_cam;
         int8_t load_existing_color;
         int8_t is_overlay_pass;
         if (!ctx || !cam)
             return;
+        vgfx3d_sanitize_camera_params(cam, &safe_cam);
+        cam = &safe_cam;
 
         ctx.frameSerial++;
         /* Plan 07: cluster tables are camera-dependent; a light revision that
@@ -1701,7 +1733,11 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         ctx->_camNear = cam->znear;
         ctx->_camFar = cam->zfar;
         float vp[16];
-        mat4f_mul(cam->projection, cam->view, vp);
+        vgfx3d_copy_mat4_finite_or_identity(safe_view, cam->view);
+        vgfx3d_copy_mat4_finite_or_identity(safe_projection, cam->projection);
+        vgfx3d_copy_float_array_finite_or(safe_cam_pos, cam->position, 3u, 0.0f);
+        vgfx3d_copy_vec3_direction_or(safe_cam_forward, cam->forward, NULL);
+        mat4f_mul(safe_projection, safe_view, vp);
         /* Plan 05 TAA: apply Halton(2,3) sub-pixel jitter to the scene pass VP when the
          * latched chain contains a TAA resolve. Jitter is injected before inv/prev VP
          * derivation so every consumer this frame sees one consistent (jittered) VP; the
@@ -1733,8 +1769,19 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
                 }
             }
         }
-        if (vgfx3d_invert_matrix4(vp, inv_vp) != 0)
+        if (!vgfx3d_float_array_is_bounded(vp, 16u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX) ||
+            vgfx3d_invert_matrix4(vp, inv_vp) != 0) {
+            mat4f_identity(vp);
             mat4f_identity(inv_vp);
+            ctx->_taaJitterClip[0] = 0.0f;
+            ctx->_taaJitterClip[1] = 0.0f;
+            ctx->_taaPrevJitterClip[0] = 0.0f;
+            ctx->_taaPrevJitterClip[1] = 0.0f;
+            ctx.taaHistoryValid = 0;
+            history = ctx.frameHistory;
+            history.scene_history_valid = 0;
+            ctx.frameHistory = history;
+        }
 
         ctx.currentTargetKind = vgfx3d_metal_choose_target_kind(
             ctx.rttActive ? 1 : 0, metal_window_scene_route_enabled(ctx), cam->load_existing_color);
@@ -1749,18 +1796,18 @@ static void metal_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         vgfx3d_metal_update_frame_history(&history,
                                           vp,
                                           inv_vp,
-                                          cam->position,
+                                          safe_cam_pos,
                                           is_overlay_pass,
                                           ctx.currentTargetKind == VGFX3D_METAL_TARGET_OVERLAY);
         ctx.frameHistory = history;
 
-        memcpy(ctx->_view, cam->view, sizeof(float) * 16);
-        memcpy(ctx->_projection, cam->projection, sizeof(float) * 16);
+        memcpy(ctx->_view, safe_view, sizeof(float) * 16);
+        memcpy(ctx->_projection, safe_projection, sizeof(float) * 16);
         memcpy(ctx->_vp, vp, sizeof(float) * 16);
         memcpy(ctx->_prevVP, ctx.frameHistory.draw_prev_vp, sizeof(ctx->_prevVP));
         memcpy(ctx->_invVP, inv_vp, sizeof(ctx->_invVP));
-        memcpy(ctx->_camPos, cam->position, sizeof(float) * 3);
-        memcpy(ctx->_camForward, cam->forward, sizeof(float) * 3);
+        memcpy(ctx->_camPos, safe_cam_pos, sizeof(safe_cam_pos));
+        memcpy(ctx->_camForward, safe_cam_forward, sizeof(safe_cam_forward));
         ctx->_camIsOrtho = cam->is_ortho ? YES : NO;
         ctx->_prevVPValid = ctx.frameHistory.scene_history_valid ? YES : NO;
 

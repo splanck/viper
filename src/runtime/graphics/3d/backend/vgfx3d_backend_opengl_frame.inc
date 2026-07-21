@@ -26,9 +26,9 @@ static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
         return;
-    ctx->clearR = r;
-    ctx->clearG = g;
-    ctx->clearB = b;
+    ctx->clearR = vgfx3d_clamp_float_param(r, 0.0f, 1.0f, 0.0f);
+    ctx->clearG = vgfx3d_clamp_float_param(g, 0.0f, 1.0f, 0.0f);
+    ctx->clearB = vgfx3d_clamp_float_param(b, 0.0f, 1.0f, 0.0f);
 }
 
 /// @brief Radical-inverse Halton sequence sample for TAA sub-pixel jitter (Plan 05).
@@ -45,7 +45,7 @@ static float gl_halton(uint32_t index, uint32_t base) {
 
 /// @brief True when the exported postfx chain contains an effect of @p type_value.
 static int gl_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t type_value) {
-    if (!chain || !chain->enabled || chain->effect_count <= 0 || !chain->effects)
+    if (!vgfx3d_postfx_chain_is_usable(chain))
         return 0;
     for (int32_t i = 0; i < chain->effect_count; i++) {
         if (chain->effects[i].type == type_value)
@@ -72,6 +72,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     vgfx3d_opengl_frame_history_t history;
     int32_t scene_width;
     int32_t scene_height;
+    vgfx3d_camera_params_t safe_cam;
     static const float kIdentity4x4[16] = {
         1.0f,
         0.0f,
@@ -92,6 +93,8 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     };
     if (!ctx || !cam)
         return;
+    vgfx3d_sanitize_camera_params(cam, &safe_cam);
+    cam = &safe_cam;
     if (!vgfx3d_compute_scaled_scene_extent(
             ctx->width, ctx->height, ctx->render_scale, &scene_width, &scene_height)) {
         scene_width = ctx->width;
@@ -118,25 +121,64 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     if (!ctx->current_pass_is_overlay) {
         ctx->scene_composited_to_backbuffer = 0;
         ctx->scene_postfx_pending = 0;
-        /* Harvest last frame's depth-probe PBO (a frame boundary has passed, so the
-         * map does not stall) and restart probe slot ids for the new frame. */
+        /* Poll the prior depth-probe fence before mapping its PBO. A frame boundary does not
+         * guarantee GPU completion; mapping first could stall the render thread or overwriting
+         * the same PBO could race an in-flight ReadPixels command. */
         if (ctx->depth_probe_pending_count > 0 && ctx->depth_probe_pbo) {
-            gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->depth_probe_pbo);
-            const float *mapped = (const float *)gl.MapBufferRange(
-                GL_PIXEL_PACK_BUFFER,
-                0,
-                (GLsizeiptr)((size_t)ctx->depth_probe_pending_count * sizeof(float)),
-                GL_MAP_READ_BIT);
-            if (mapped) {
-                /* Probe contract is canonical window depth (larger = farther); the
-                 * scene depth buffer is reversed-Z, so flip on publish. */
-                for (int32_t i = 0; i < ctx->depth_probe_pending_count; i++)
-                    ctx->depth_probe_results[i] = 1.0f - mapped[i];
-                ctx->depth_probe_result_count = ctx->depth_probe_pending_count;
-                gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER);
+            GLenum wait_result = ctx->depth_probe_fence
+                                     ? gl.ClientWaitSync(ctx->depth_probe_fence, 0, 0)
+                                     : GL_WAIT_FAILED;
+            if (wait_result == GL_ALREADY_SIGNALED || wait_result == GL_CONDITION_SATISFIED) {
+                float results[VGFX3D_DEPTH_PROBE_MAX];
+                int32_t result_count = ctx->depth_probe_pending_count;
+                const float *mapped;
+                gl.DeleteSync(ctx->depth_probe_fence);
+                ctx->depth_probe_fence = NULL;
+                gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->depth_probe_pbo);
+                mapped = (const float *)gl.MapBufferRange(
+                    GL_PIXEL_PACK_BUFFER,
+                    0,
+                    (GLsizeiptr)((size_t)result_count * sizeof(float)),
+                    GL_MAP_READ_BIT);
+                if (mapped) {
+                    for (int32_t i = 0; i < result_count; i++)
+                        results[i] = vgfx3d_sanitize_reversed_depth_probe_result(mapped[i]);
+                    if (gl.UnmapBuffer(GL_PIXEL_PACK_BUFFER)) {
+                        memcpy(ctx->depth_probe_results,
+                               results,
+                               (size_t)result_count * sizeof(results[0]));
+                        ctx->depth_probe_result_count = result_count;
+                    } else {
+                        ctx->depth_probe_result_count = 0;
+                    }
+                } else {
+                    ctx->depth_probe_result_count = 0;
+                }
+                gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+                ctx->depth_probe_pending_count = 0;
+                ctx->depth_probe_pending_polls = 0;
+            } else if (wait_result == GL_TIMEOUT_EXPIRED) {
+                if (ctx->depth_probe_pending_polls < UINT32_MAX)
+                    ctx->depth_probe_pending_polls++;
+                if (ctx->depth_probe_pending_polls >= 120u) {
+                    gl.DeleteSync(ctx->depth_probe_fence);
+                    ctx->depth_probe_fence = NULL;
+                    gl.DeleteBuffers(1, &ctx->depth_probe_pbo);
+                    ctx->depth_probe_pbo = 0;
+                    ctx->depth_probe_pending_count = 0;
+                    ctx->depth_probe_pending_polls = 0;
+                    ctx->depth_probe_result_count = 0;
+                }
+            } else {
+                if (ctx->depth_probe_fence)
+                    gl.DeleteSync(ctx->depth_probe_fence);
+                ctx->depth_probe_fence = NULL;
+                gl.DeleteBuffers(1, &ctx->depth_probe_pbo);
+                ctx->depth_probe_pbo = 0;
+                ctx->depth_probe_pending_count = 0;
+                ctx->depth_probe_pending_polls = 0;
+                ctx->depth_probe_result_count = 0;
             }
-            gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-            ctx->depth_probe_pending_count = 0;
         }
         ctx->depth_probe_request_count = 0;
     }
@@ -145,9 +187,9 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     morph_cache_prune(ctx);
     gl_mesh_cache_prune(ctx);
 
-    memcpy(ctx->view, cam->view, sizeof(ctx->view));
-    memcpy(ctx->projection, cam->projection, sizeof(ctx->projection));
-    mat4f_mul_gl(cam->projection, cam->view, ctx->vp);
+    vgfx3d_copy_mat4_finite_or_identity(ctx->view, cam->view);
+    vgfx3d_copy_mat4_finite_or_identity(ctx->projection, cam->projection);
+    mat4f_mul_gl(ctx->projection, ctx->view, ctx->vp);
     /* Plan 05 TAA: apply Halton(2,3) sub-pixel jitter to the scene-pass VP when the
      * latched chain contains a TAA resolve. Injected before inv/prev VP derivation so
      * every consumer this frame sees one consistent (jittered) VP; the resolve pass
@@ -174,10 +216,19 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
             }
         }
     }
-    if (mat4f_inverse_gl(ctx->vp, ctx->inv_vp) != 0)
+    if (!vgfx3d_float_array_is_bounded(ctx->vp, 16u, VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX) ||
+        mat4f_inverse_gl(ctx->vp, ctx->inv_vp) != 0) {
+        memcpy(ctx->vp, kIdentity4x4, sizeof(ctx->vp));
         memcpy(ctx->inv_vp, kIdentity4x4, sizeof(ctx->inv_vp));
-    memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
-    memcpy(ctx->cam_forward, cam->forward, sizeof(float) * 3);
+        ctx->taa_jitter_clip[0] = 0.0f;
+        ctx->taa_jitter_clip[1] = 0.0f;
+        ctx->taa_prev_jitter_clip[0] = 0.0f;
+        ctx->taa_prev_jitter_clip[1] = 0.0f;
+        ctx->taa_history_valid = 0;
+        ctx->scene_history_valid = 0;
+    }
+    vgfx3d_copy_float_array_finite_or(ctx->cam_pos, cam->position, 3u, 0.0f);
+    vgfx3d_copy_vec3_direction_or(ctx->cam_forward, cam->forward, NULL);
     ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
     ctx->fog_enabled = cam->fog_enabled;
     ctx->height_fog[0] = cam->height_fog_base;
@@ -211,7 +262,7 @@ static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     memcpy(history.scene_cam_pos, ctx->scene_cam_pos, sizeof(history.scene_cam_pos));
     history.scene_history_valid = ctx->scene_history_valid;
     vgfx3d_opengl_update_frame_history(
-        &history, ctx->vp, ctx->inv_vp, cam->position, ctx->current_pass_is_overlay);
+        &history, ctx->vp, ctx->inv_vp, ctx->cam_pos, ctx->current_pass_is_overlay);
     memcpy(ctx->scene_vp, history.scene_vp, sizeof(ctx->scene_vp));
     memcpy(ctx->scene_prev_vp, history.scene_prev_vp, sizeof(ctx->scene_prev_vp));
     memcpy(ctx->scene_inv_vp, history.scene_inv_vp, sizeof(ctx->scene_inv_vp));
@@ -331,12 +382,23 @@ static void gl_submit_draw(void *ctx_ptr,
     int specialized_program;
     int mesh_compact = 0;
     uint32_t index_count;
+    vgfx3d_draw_cmd_t safe_cmd;
+    vgfx3d_light_params_t safe_lights[VGFX3D_MAX_LIGHTS];
+    float safe_ambient[3];
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0) {
         if (ctx)
             ctx->stats.dropped_draws++;
         return;
     }
+    vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
+    cmd = &safe_cmd;
+    light_count = vgfx3d_sanitize_light_array(lights, light_count, safe_lights, VGFX3D_MAX_LIGHTS);
+    for (int32_t light_index = 0; light_index < light_count; light_index++)
+        vgfx3d_sanitize_light_shadow_span(&safe_lights[light_index], ctx->shadow_count);
+    lights = light_count > 0 ? safe_lights : NULL;
+    vgfx3d_sanitize_ambient_rgb(ambient, safe_ambient);
+    ambient = safe_ambient;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
     if (index_count == 0) {
         ctx->stats.dropped_draws++;
@@ -359,8 +421,9 @@ static void gl_submit_draw(void *ctx_ptr,
     specialized_program =
         gl_begin_material_program(ctx, cmd, saved_uniform_locations, &saved_program);
     gl.UseProgram(ctx->program);
-    upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
+    /* Resolve budgeted textures before IBL uniforms inspect native residency. */
     bind_material_textures(ctx, cmd);
+    upload_main_uniforms(ctx, cmd, lights, light_count, ambient, 0);
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
     if (gl_debug_enabled()) {
         GLint draw_buffer = 0;
@@ -429,11 +492,36 @@ static void gl_submit_draw(void *ctx_ptr,
 /// @details Reads the scene FBO's depth attachment at each probe pixel; results are
 ///   harvested at the next frame's begin so the readback never syncs the pipeline.
 static void gl_issue_depth_probes(gl_context_t *ctx) {
+    gl_framebuffer_state_t saved_state;
+    GLuint source_framebuffer;
+    int32_t source_width;
+    int32_t source_height;
+    int reads_ok;
+
     if (!ctx || ctx->depth_probe_request_count <= 0)
         return;
-    if (!ctx->scene_fbo || !ctx->scene_depth_tex || ctx->scene_width <= 0 ||
-        ctx->scene_height <= 0) {
+    if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_SCENE) {
+        source_framebuffer = ctx->scene_fbo;
+        source_width = ctx->scene_width;
+        source_height = ctx->scene_height;
+        if (!ctx->scene_depth_tex)
+            source_width = source_height = 0;
+    } else if (ctx->active_target_kind == VGFX3D_OPENGL_TARGET_RTT) {
+        source_framebuffer = ctx->rtt_fbo;
+        source_width = ctx->rtt_width;
+        source_height = ctx->rtt_height;
+        if (!ctx->rtt_depth_rbo)
+            source_width = source_height = 0;
+    } else {
+        source_framebuffer = 0;
+        source_width = ctx->width;
+        source_height = ctx->height;
+    }
+    if ((source_framebuffer == 0 && ctx->active_target_kind != VGFX3D_OPENGL_TARGET_SWAPCHAIN) ||
+        source_width <= 0 || source_height <= 0) {
         ctx->depth_probe_request_count = 0;
+        ctx->depth_probe_pending_count = 0;
+        ctx->depth_probe_result_count = 0;
         return;
     }
     if (!ctx->depth_probe_pbo) {
@@ -447,30 +535,56 @@ static void gl_issue_depth_probes(gl_context_t *ctx) {
                       (GLsizeiptr)(VGFX3D_DEPTH_PROBE_MAX * sizeof(float)),
                       NULL,
                       GL_STREAM_READ);
+        if (!gl_upload_ok()) {
+            gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+            gl.DeleteBuffers(1, &ctx->depth_probe_pbo);
+            ctx->depth_probe_pbo = 0;
+            ctx->depth_probe_request_count = 0;
+            ctx->depth_probe_pending_count = 0;
+            ctx->depth_probe_result_count = 0;
+            return;
+        }
     } else {
         gl.BindBuffer(GL_PIXEL_PACK_BUFFER, ctx->depth_probe_pbo);
     }
-    gl.BindFramebuffer(GL_READ_FRAMEBUFFER, ctx->scene_fbo);
+    gl_capture_framebuffer_state(&saved_state);
+    (void)gl_drain_errors("pre-depth-probe");
+    gl.PixelStorei(GL_PACK_ALIGNMENT, 4);
+    gl.BindFramebuffer(GL_READ_FRAMEBUFFER, source_framebuffer);
     for (int32_t i = 0; i < ctx->depth_probe_request_count; i++) {
         float ndc_x = ctx->depth_probe_requests[i][0];
         float ndc_y = ctx->depth_probe_requests[i][1];
         /* GL window origin is bottom-left, matching NDC y-up: no flip. */
-        GLint px = (GLint)((ndc_x * 0.5f + 0.5f) * (float)ctx->scene_width);
-        GLint py = (GLint)((ndc_y * 0.5f + 0.5f) * (float)ctx->scene_height);
+        GLint px = (GLint)((ndc_x * 0.5f + 0.5f) * (float)source_width);
+        GLint py = (GLint)((ndc_y * 0.5f + 0.5f) * (float)source_height);
         if (px < 0)
             px = 0;
         if (py < 0)
             py = 0;
-        if (px >= ctx->scene_width)
-            px = ctx->scene_width - 1;
-        if (py >= ctx->scene_height)
-            py = ctx->scene_height - 1;
+        if (px >= source_width)
+            px = source_width - 1;
+        if (py >= source_height)
+            py = source_height - 1;
         gl.ReadPixels(
             px, py, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, (void *)((size_t)i * sizeof(float)));
     }
-    gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    reads_ok = gl_drain_errors("depth-probe");
+    if (reads_ok) {
+        if (ctx->depth_probe_fence)
+            gl.DeleteSync(ctx->depth_probe_fence);
+        ctx->depth_probe_fence = gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        reads_ok = ctx->depth_probe_fence != NULL && gl_drain_errors("depth-probe-fence");
+    }
+    gl_restore_framebuffer_state(&saved_state);
     gl.BindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    ctx->depth_probe_pending_count = ctx->depth_probe_request_count;
+    ctx->depth_probe_pending_count = reads_ok ? ctx->depth_probe_request_count : 0;
+    ctx->depth_probe_pending_polls = 0;
+    if (!reads_ok) {
+        if (ctx->depth_probe_fence)
+            gl.DeleteSync(ctx->depth_probe_fence);
+        ctx->depth_probe_fence = NULL;
+        ctx->depth_probe_result_count = 0;
+    }
     ctx->depth_probe_request_count = 0;
 }
 
@@ -506,12 +620,16 @@ static void gl_set_vsync(void *ctx_ptr, int8_t enabled) {
 static int32_t gl_queue_depth_probe(void *ctx_ptr, float ndc_x, float ndc_y) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     int32_t slot;
-    if (!ctx || ctx->depth_probe_request_count >= VGFX3D_DEPTH_PROBE_MAX || !isfinite(ndc_x) ||
+    if (!ctx || ctx->depth_probe_pending_count > 0 ||
+        ctx->depth_probe_request_count >= VGFX3D_DEPTH_PROBE_MAX || !isfinite(ndc_x) ||
         !isfinite(ndc_y))
         return -1;
     slot = ctx->depth_probe_request_count++;
-    ctx->depth_probe_requests[slot][0] = ndc_x;
-    ctx->depth_probe_requests[slot][1] = ndc_y;
+    /* Keep the later float-to-GLint viewport conversion in range. A finite but
+     * enormous caller value would otherwise invoke undefined behavior before
+     * the issue path had a chance to clamp the integer coordinate. */
+    ctx->depth_probe_requests[slot][0] = vgfx3d_clamp_float_param(ndc_x, -1.0f, 1.0f, 0.0f);
+    ctx->depth_probe_requests[slot][1] = vgfx3d_clamp_float_param(ndc_y, -1.0f, 1.0f, 0.0f);
     return slot;
 }
 
@@ -613,8 +731,7 @@ static int gl_readback_rgba(
         ctx->scene_height > 0 && ensure_present_target(ctx, ctx->width, ctx->height) == 0) {
         int composite_ok = 0;
         if (ctx->gpu_postfx_enabled && ctx->gpu_postfx_chain_valid &&
-            ctx->gpu_postfx_chain.enabled && ctx->gpu_postfx_chain.effect_count > 0 &&
-            ctx->gpu_postfx_chain.effects) {
+            vgfx3d_postfx_chain_is_usable(&ctx->gpu_postfx_chain)) {
             composite_ok = gl_apply_postfx_chain(ctx,
                                                  ctx->scene_color_tex,
                                                  ctx->scene_width,
@@ -739,7 +856,8 @@ static int gl_present_offscreen_vgfx(gl_context_t *ctx) {
         return 0;
     }
     if (!vgfx_get_framebuffer(ctx->vgfx_win, &fb) || !fb.pixels || fb.width <= 0 ||
-        fb.height <= 0 || fb.stride < fb.width * 4 || source_w <= 0 || source_h <= 0) {
+        fb.height <= 0 || fb.stride <= 0 || (size_t)fb.stride < (size_t)fb.width * 4u ||
+        source_w <= 0 || source_h <= 0) {
         return 0;
     }
     copy_w = source_w < fb.width ? source_w : fb.width;
@@ -785,8 +903,8 @@ static void gl_present_impl(gl_context_t *ctx, const vgfx3d_postfx_chain_t *chai
         return;
     if (!gl_make_current(ctx))
         return;
-    use_postfx = (chain != NULL && chain->enabled && chain->effect_count > 0 &&
-                  ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
+    use_postfx = (vgfx3d_postfx_chain_is_usable(chain) && ctx->gpu_postfx_enabled &&
+                  ctx->scene_postfx_pending)
                      ? 1
                      : 0;
     if (gl_window_scene_route_enabled(ctx) && ctx->scene_postfx_pending &&
@@ -850,8 +968,8 @@ static void gl_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) 
         return;
     if (!gl_make_current(ctx))
         return;
-    use_postfx = (postfx && postfx->enabled && postfx->effect_count > 0 &&
-                  ctx->gpu_postfx_enabled && ctx->scene_postfx_pending)
+    use_postfx = (vgfx3d_postfx_chain_is_usable(postfx) && ctx->gpu_postfx_enabled &&
+                  ctx->scene_postfx_pending)
                      ? 1
                      : 0;
     if (gl_window_scene_route_enabled(ctx) && ctx->scene_postfx_pending &&
@@ -1061,6 +1179,19 @@ static void gl_resolve_opaque_targets(void *ctx_ptr) {
     ctx->opaque_depth_valid = gl_upload_ok() ? 1 : 0;
 }
 
+/// @brief Abort an active shadow pass and restore color writes plus the main framebuffer.
+static void gl_leave_shadow_pass(gl_context_t *ctx) {
+    if (!ctx || ctx->shadow_pass_slot < 0)
+        return;
+    ctx->shadow_pass_slot = -1;
+    ctx->shadow_pass_failed = 0;
+    gl_recompute_shadow_count(ctx);
+    gl.Disable(GL_POLYGON_OFFSET_FILL);
+    gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    bind_main_framebuffer(ctx);
+    gl.UseProgram(ctx->program);
+}
+
 /// @brief Backend `shadow_begin` — switch the pipeline to shadow-pass mode.
 ///
 /// Allocates the shadow FBO if needed, captures the light-space VP,
@@ -1072,12 +1203,13 @@ static void gl_shadow_begin(
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     if (!ctx)
         return;
-    ctx->shadow_pass_slot = -1;
+    gl_leave_shadow_pass(ctx);
     if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
     ctx->shadow_complete[slot] = 0;
+    ctx->shadow_pass_failed = 0;
     gl_recompute_shadow_count(ctx);
-    if (!light_vp || w <= 0 || h <= 0)
+    if (!vgfx3d_shadow_matrix_is_usable(light_vp) || w <= 0 || h <= 0)
         return;
     if (ensure_shadow_targets(ctx, slot, w, h) != 0) {
         ctx->shadow_complete[slot] = 0;
@@ -1085,7 +1217,7 @@ static void gl_shadow_begin(
         return;
     }
     ctx->shadow_pass_slot = slot;
-    memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
+    vgfx3d_copy_mat4_finite_or_identity(ctx->shadow_vp[slot], light_vp);
     gl.BindFramebuffer(GL_FRAMEBUFFER, ctx->shadow_fbo[slot]);
     gl.Viewport(0, 0, w, h);
     /* Shadow maps keep the standard depth convention: clear 1, compare Less. The
@@ -1111,25 +1243,39 @@ static void gl_shadow_begin(
 /// only. No materials, no lights, no fog.
 static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
+    float safe_model[16];
     GLuint mesh_vbo, mesh_ibo;
     int mesh_compact = 0;
     uint32_t index_count;
-    if (!ctx || !cmd || !cmd->vertices || !cmd->indices || ctx->shadow_pass_slot < 0 ||
+    vgfx3d_draw_cmd_t safe_cmd;
+    if (!ctx)
+        return;
+    if (!cmd || !cmd->vertices || !cmd->indices || ctx->shadow_pass_slot < 0 ||
         ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS || cmd->vertex_count == 0 ||
-        cmd->index_count == 0)
+        cmd->index_count == 0) {
+        if (ctx->shadow_pass_slot >= 0)
+            ctx->shadow_pass_failed = 1;
         return;
+    }
+    vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
+    cmd = &safe_cmd;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
-    if (index_count == 0)
+    if (index_count == 0) {
+        ctx->shadow_pass_failed = 1;
         return;
+    }
     if (cmd->double_sided)
         gl.Disable(GL_CULL_FACE);
     else
         gl.Enable(GL_CULL_FACE);
     gl_apply_depth_bias(cmd, 0);
-    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo, &mesh_compact))
+    if (!prepare_mesh_buffers(ctx, cmd, &mesh_vbo, &mesh_ibo, &mesh_compact)) {
+        ctx->shadow_pass_failed = 1;
         return;
+    }
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
-    gl.UniformMatrix4fv(ctx->shadow_uModelMatrix, 1, GL_TRUE, cmd->model_matrix);
+    vgfx3d_copy_mat4_finite_or_identity(safe_model, cmd->model_matrix);
+    gl.UniformMatrix4fv(ctx->shadow_uModelMatrix, 1, GL_TRUE, safe_model);
     gl.UniformMatrix4fv(
         ctx->shadow_uViewProjection, 1, GL_TRUE, ctx->shadow_vp[ctx->shadow_pass_slot]);
     bind_shadow_anim(ctx, cmd);
@@ -1142,7 +1288,7 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
             cmd->texture_asset_mip_start[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR],
             cmd->texture_asset_mip_count[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR]);
         gl.Uniform1i(ctx->shadow_uHasTexture, diffuse_tex ? 1 : 0);
-        gl.Uniform1i(ctx->shadow_uAlphaMode, cmd->alpha_mode);
+        gl.Uniform1i(ctx->shadow_uAlphaMode, vgfx3d_sanitize_alpha_mode(cmd->alpha_mode));
         gl.Uniform1f(ctx->shadow_uAlphaCutoff, cmd->alpha_cutoff);
         gl.Uniform1f(ctx->shadow_uAlpha, cmd->alpha);
         gl.Uniform4f(ctx->shadow_uDiffuseColor,
@@ -1151,13 +1297,13 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
                      cmd->diffuse_color[2],
                      cmd->diffuse_color[3]);
         gl.Uniform4i(ctx->shadow_uTextureUvSets0,
-                     cmd->texture_slot_uv_set[0],
-                     cmd->texture_slot_uv_set[1],
-                     cmd->texture_slot_uv_set[2],
-                     cmd->texture_slot_uv_set[3]);
+                     vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[0]),
+                     vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[1]),
+                     vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[2]),
+                     vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[3]));
         gl.Uniform4i(ctx->shadow_uTextureUvSets1,
-                     cmd->texture_slot_uv_set[4],
-                     cmd->texture_slot_uv_set[5],
+                     vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[4]),
+                     vgfx3d_sanitize_texture_uv_set(cmd->texture_slot_uv_set[5]),
                      0,
                      0);
         {
@@ -1199,21 +1345,19 @@ static void gl_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 /// subsequent draws.
 static void gl_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
-    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+    if (!ctx)
         return;
-    if (ctx->shadow_pass_slot != slot)
+    if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || ctx->shadow_pass_slot != slot) {
+        gl_leave_shadow_pass(ctx);
         return;
-    ctx->shadow_bias = bias;
-    gl.Disable(GL_POLYGON_OFFSET_FILL);
-    gl.ColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    ctx->shadow_complete[slot] = (ctx->shadow_depth_tex[slot] && ctx->shadow_fbo[slot] &&
-                                  ctx->shadow_width[slot] > 0 && ctx->shadow_height[slot] > 0)
-                                     ? 1
-                                     : 0;
-    ctx->shadow_pass_slot = -1;
-    gl_recompute_shadow_count(ctx);
-    bind_main_framebuffer(ctx);
-    gl.UseProgram(ctx->program);
+    }
+    ctx->shadow_bias = vgfx3d_clamp_float_param(bias, -1000000.0f, 1000000.0f, 0.0f);
+    ctx->shadow_complete[slot] =
+        (!ctx->shadow_pass_failed && ctx->shadow_depth_tex[slot] && ctx->shadow_fbo[slot] &&
+         ctx->shadow_width[slot] > 0 && ctx->shadow_height[slot] > 0)
+            ? 1
+            : 0;
+    gl_leave_shadow_pass(ctx);
 }
 
 /// @brief Backend `shadow_reuse` op — re-arm a slot from its previous-frame depth texture.
@@ -1225,12 +1369,13 @@ static int8_t gl_shadow_reuse(
     void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     (void)depth_buf;
-    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || !light_vp || w <= 0 || h <= 0)
+    if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS ||
+        !vgfx3d_shadow_matrix_is_usable(light_vp) || w <= 0 || h <= 0)
         return 0;
     if (!ctx->shadow_depth_tex[slot] || !ctx->shadow_fbo[slot] || ctx->shadow_width[slot] != w ||
         ctx->shadow_height[slot] != h)
         return 0;
-    memcpy(ctx->shadow_vp[slot], light_vp, sizeof(ctx->shadow_vp[slot]));
+    vgfx3d_copy_mat4_finite_or_identity(ctx->shadow_vp[slot], light_vp);
     ctx->shadow_complete[slot] = 1;
     gl_recompute_shadow_count(ctx);
     return 1;
@@ -1261,6 +1406,9 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     int mesh_compact = 0;
     int particle_mode;
     uint32_t index_count;
+    vgfx3d_draw_cmd_t safe_cmd;
+    vgfx3d_light_params_t safe_lights[VGFX3D_MAX_LIGHTS];
+    float safe_ambient[3];
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
         cmd->index_count == 0 || instance_count <= 0 ||
         (!instance_matrices && !cmd->particle_instances)) {
@@ -1268,6 +1416,14 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
             ctx->stats.dropped_draws++;
         return;
     }
+    vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
+    cmd = &safe_cmd;
+    light_count = vgfx3d_sanitize_light_array(lights, light_count, safe_lights, VGFX3D_MAX_LIGHTS);
+    for (int32_t light_index = 0; light_index < light_count; light_index++)
+        vgfx3d_sanitize_light_shadow_span(&safe_lights[light_index], ctx->shadow_count);
+    lights = light_count > 0 ? safe_lights : NULL;
+    vgfx3d_sanitize_ambient_rgb(ambient, safe_ambient);
+    ambient = safe_ambient;
     particle_mode = cmd->particle_instances != NULL;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
     if (index_count == 0) {
@@ -1291,8 +1447,9 @@ static void gl_submit_draw_instanced(void *ctx_ptr,
     specialized_program =
         gl_begin_material_program(ctx, cmd, saved_uniform_locations, &saved_program);
     gl.UseProgram(ctx->program);
-    upload_main_uniforms(ctx, cmd, lights, light_count, ambient, particle_mode ? 0 : 1);
+    /* Resolve budgeted textures before IBL uniforms inspect native residency. */
     bind_material_textures(ctx, cmd);
+    upload_main_uniforms(ctx, cmd, lights, light_count, ambient, particle_mode ? 0 : 1);
     configure_mesh_attributes(ctx, mesh_vbo, mesh_ibo, mesh_compact);
     if (!(particle_mode
               ? configure_particle_instance_attributes(ctx, cmd->particle_instances, instance_count)

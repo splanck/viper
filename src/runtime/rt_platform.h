@@ -816,7 +816,7 @@ static inline void rt_atomic_load_f64(const volatile double *ptr, double *out, i
 /// @param value Source value to publish.
 /// @param order GCC-style memory-order constant.
 static inline void rt_atomic_store_f64(volatile double *ptr, const double *value, int order) {
-    volatile double tmp = *value;
+    double tmp = *value;
     __atomic_store(ptr, &tmp, order);
 }
 

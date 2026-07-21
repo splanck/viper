@@ -240,6 +240,78 @@ static void test_compressed_block_upload_budget_and_pending_bytes(void) {
     }
 }
 
+/// @brief Native compressed mip descriptors must match their chain geometry and format layout.
+static void test_native_texture_mip_validation(void) {
+    uint8_t payload[128] = {0};
+    uint64_t required = UINT64_MAX;
+    vgfx3d_native_texture_mip_t mip = {.data = payload,
+                                       .bytes = 64,
+                                       .width = 8,
+                                       .height = 8,
+                                       .block_width = 4,
+                                       .block_height = 4,
+                                       .block_bytes = 16,
+                                       .format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_BC7};
+
+    EXPECT_TRUE(vgfx3d_native_texture_block_layout_is_valid(&mip) == 1,
+                "BC7 accepts its canonical 4x4/16-byte block footprint");
+    EXPECT_TRUE(vgfx3d_validate_native_texture_mip(
+                    &mip, 8, 8, 0, mip.format_id, 4, 4, 16, UINT64_MAX, &required) == 1 &&
+                    required == 64,
+                "Native base mip reports its rounded complete payload span");
+
+    mip.width = 4;
+    mip.height = 4;
+    mip.bytes = 32; /* trailing source padding is allowed but never passed to the driver */
+    required = UINT64_MAX;
+    EXPECT_TRUE(vgfx3d_validate_native_texture_mip(
+                    &mip, 8, 8, 1, mip.format_id, 4, 4, 16, UINT64_MAX, &required) == 1 &&
+                    required == 16,
+                "Native child mip halves dimensions and excludes trailing payload padding");
+
+    mip.width = 3;
+    required = UINT64_MAX;
+    EXPECT_TRUE(vgfx3d_validate_native_texture_mip(
+                    &mip, 8, 8, 1, mip.format_id, 4, 4, 16, UINT64_MAX, &required) == 0 &&
+                    required == 0,
+                "Native mip validation rejects a non-halving chain dimension transactionally");
+    mip.width = 4;
+    mip.bytes = 15;
+    EXPECT_TRUE(vgfx3d_validate_native_texture_mip(
+                    &mip, 8, 8, 1, mip.format_id, 4, 4, 16, UINT64_MAX, &required) == 0,
+                "Native mip validation rejects truncated compressed payloads");
+    mip.bytes = 16;
+    EXPECT_TRUE(vgfx3d_validate_native_texture_mip(
+                    &mip, 8, 8, 1, mip.format_id, 4, 4, 16, 15, &required) == 0,
+                "Native mip validation honors backend payload-length ceilings");
+
+    mip.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_ASTC;
+    mip.width = 10;
+    mip.height = 6;
+    mip.block_width = 10;
+    mip.block_height = 6;
+    mip.block_bytes = 16;
+    mip.bytes = 16;
+    EXPECT_TRUE(vgfx3d_native_texture_block_layout_is_valid(&mip) == 1,
+                "ASTC accepts a standardized rectangular footprint");
+    mip.block_width = 7;
+    mip.block_height = 7;
+    EXPECT_TRUE(vgfx3d_native_texture_block_layout_is_valid(&mip) == 0,
+                "ASTC rejects a non-standard block footprint");
+
+    mip.format_id = RT_TEXTUREASSET3D_NATIVE_FORMAT_ETC2;
+    mip.block_width = 4;
+    mip.block_height = 4;
+    mip.block_bytes = 8;
+    EXPECT_TRUE(vgfx3d_native_texture_block_layout_is_valid(&mip) == 0,
+                "ETC2 RGBA8 rejects an eight-byte block declaration");
+    required = UINT64_MAX;
+    EXPECT_TRUE(vgfx3d_validate_native_texture_mip(
+                    &mip, 1, 1, INT64_MAX, mip.format_id, 4, 4, 8, UINT64_MAX, &required) == 0 &&
+                    required == 0,
+                "Excessive relative mip indices reject without unbounded iteration");
+}
+
 static void test_unpack_cubemap_faces_rgba_success(void) {
     uint32_t face_data[6] = {
         0x11223344u,
@@ -440,6 +512,19 @@ static void test_flip_rgba_rows(void) {
                 "Row flip swaps the first row");
     EXPECT_TRUE(rgba[8] == 1 && rgba[9] == 2 && rgba[10] == 3 && rgba[11] == 4,
                 "Row flip swaps the second row");
+
+    {
+        uint8_t wide[640];
+        for (size_t i = 0; i < sizeof(wide) / 2u; i++) {
+            wide[i] = (uint8_t)(i & 0xFFu);
+            wide[sizeof(wide) / 2u + i] = (uint8_t)((i + 37u) & 0xFFu);
+        }
+        vgfx3d_flip_rgba_rows(wide, 80, 2);
+        EXPECT_TRUE(wide[0] == 37u && wide[319] == (uint8_t)((319u + 37u) & 0xFFu),
+                    "Row flip swaps rows wider than its bounded stack chunk");
+        EXPECT_TRUE(wide[320] == 0u && wide[639] == (uint8_t)(319u & 0xFFu),
+                    "Row flip preserves every byte across multiple chunks");
+    }
 }
 
 static void test_hdr_readback_helpers(void) {
@@ -471,6 +556,8 @@ static void test_hdr_readback_helpers(void) {
     EXPECT_NEAR(vgfx3d_half_to_float(0xC000u), -2.0f, 1e-6f, "Half-float helper decodes -2.0");
     EXPECT_TRUE(vgfx3d_hdr_to_unorm8(4.0f) == 204,
                 "HDR tonemap helper compresses highlights instead of hard-clamping them");
+    EXPECT_TRUE(vgfx3d_hdr_to_unorm8(INFINITY) == 255,
+                "Positive infinite HDR input saturates instead of becoming black through Inf/Inf");
 
     vgfx3d_copy_linear_rgba16f_to_rgba8(rgba8_from_16f, 8, 2, 1, rgba16f, 16);
     vgfx3d_copy_linear_rgba32f_to_rgba8(rgba8_from_32f, 8, 2, 1, rgba32f, 32);
@@ -490,6 +577,43 @@ static void test_hdr_readback_helpers(void) {
                 4.0f,
                 1e-6f,
                 "RGBA16F to RGBA32F conversion preserves HDR values before tonemapping");
+
+    {
+        union {
+            uint16_t align;
+            uint8_t bytes[18];
+        } rows = {0};
+
+        const uint16_t row0[4] = {0x3C00u, 0x0000u, 0x0000u, 0x3C00u};
+        const uint16_t row1[4] = {0x0000u, 0x3C00u, 0x0000u, 0x3C00u};
+        uint8_t rgba8_unaligned[8] = {0};
+        float rgba32f_unaligned[8] = {0};
+
+        memcpy(rows.bytes, row0, sizeof(row0));
+        memcpy(rows.bytes + 9, row1, sizeof(row1));
+        vgfx3d_copy_linear_rgba16f_to_rgba8(
+            rgba8_unaligned, 4, 1, 2, (const uint16_t *)(const void *)rows.bytes, 9);
+        vgfx3d_copy_linear_rgba16f_to_rgba32f(
+            rgba32f_unaligned, 4, 1, 2, (const uint16_t *)(const void *)rows.bytes, 9);
+        EXPECT_TRUE(rgba8_unaligned[0] == 128 && rgba8_unaligned[5] == 128,
+                    "RGBA16F-to-RGBA8 accepts byte-valid rows with odd, unaligned strides");
+        EXPECT_NEAR(rgba32f_unaligned[0],
+                    1.0f,
+                    1e-6f,
+                    "RGBA16F-to-RGBA32F reads the aligned first row safely");
+        EXPECT_NEAR(rgba32f_unaligned[5],
+                    1.0f,
+                    1e-6f,
+                    "RGBA16F-to-RGBA32F reads an unaligned later row safely");
+    }
+}
+
+static uint64_t test_hash_mix(uint64_t signature, uint64_t value) {
+    return signature ^ (value + 0x9e3779b97f4a7c15ull + (signature << 6u) + (signature >> 2u));
+}
+
+static uint64_t test_value_for_hash_result(uint64_t signature, uint64_t wanted) {
+    return (signature ^ wanted) - 0x9e3779b97f4a7c15ull - (signature << 6u) - (signature >> 2u);
 }
 
 static void test_generation_helpers(void) {
@@ -550,6 +674,46 @@ static void test_generation_helpers(void) {
     EXPECT_TRUE(vgfx3d_get_cubemap_generation(&cubemap) == 0,
                 "Cubemap generation helper rejects malformed face layouts");
     faces[2].h = 1;
+
+    {
+        const uint64_t seed = 1469598103934665603ull;
+        fake_pixels_t zero_hash_pixels = {1, 1, &data, 0, 12345};
+        uint64_t after_identity = test_hash_mix(seed, zero_hash_pixels.cache_identity);
+        zero_hash_pixels.generation = test_value_for_hash_result(after_identity, 0);
+        EXPECT_TRUE(vgfx3d_get_pixels_cache_key(&zero_hash_pixels) != 0,
+                    "Populated Pixels hashes never collide with the null cache-key sentinel");
+    }
+
+    {
+        const uint64_t seed = 1469598103934665603ull;
+        fake_pixels_t zero_faces[6];
+        fake_cubemap_t zero_hash_cube = {0};
+        uint64_t signature;
+        uint64_t wanted_last_key;
+
+        for (int i = 0; i < 6; i++) {
+            zero_faces[i].w = 1;
+            zero_faces[i].h = 1;
+            zero_faces[i].data = &data;
+            zero_faces[i].generation = (uint64_t)i + 10u;
+            zero_faces[i].cache_identity = (uint64_t)i + 100u;
+            zero_hash_cube.faces[i] = &zero_faces[i];
+        }
+        zero_hash_cube.face_size = 1;
+        zero_hash_cube.cache_identity = 700u;
+        signature = test_hash_mix(seed, zero_hash_cube.cache_identity);
+        for (int i = 0; i < 5; i++)
+            signature = test_hash_mix(signature, vgfx3d_get_pixels_cache_key(&zero_faces[i]));
+        wanted_last_key = test_value_for_hash_result(signature, 0);
+        EXPECT_TRUE(wanted_last_key != 0,
+                    "Cubemap zero-hash fixture has a representable final face key");
+        signature = test_hash_mix(seed, zero_faces[5].cache_identity);
+        zero_faces[5].generation = test_value_for_hash_result(signature, wanted_last_key);
+        EXPECT_TRUE(vgfx3d_get_pixels_cache_key(&zero_faces[5]) == wanted_last_key,
+                    "Cubemap zero-hash fixture synthesizes the requested final face key");
+        EXPECT_TRUE(vgfx3d_get_cubemap_generation(&zero_hash_cube) != 0,
+                    "Populated cubemap hashes never collide with the invalid-cubemap sentinel");
+    }
 }
 
 static void test_compute_normal_matrix_inverse_transpose(void) {
@@ -712,6 +876,34 @@ static void test_invert_matrix4_rejects_singular(void) {
 
     EXPECT_TRUE(vgfx3d_invert_matrix4(matrix, inv) != 0,
                 "Matrix inversion rejects singular matrices");
+
+    {
+        const float finite_but_unrepresentable_inverse[16] = {
+            1.0e-39f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            3.0e38f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            1.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            1.0f,
+        };
+        float unchanged[16];
+        for (int i = 0; i < 16; i++)
+            unchanged[i] = 17.0f;
+        EXPECT_TRUE(vgfx3d_invert_matrix4(finite_but_unrepresentable_inverse, unchanged) != 0,
+                    "Matrix inversion rejects a finite matrix whose inverse overflows float");
+        EXPECT_TRUE(unchanged[0] == 17.0f && unchanged[15] == 17.0f,
+                    "Matrix inversion leaves the destination untouched when the result overflows");
+    }
 }
 
 static void test_draw_cmd_alpha_blend_policy(void) {
@@ -1274,6 +1466,409 @@ static void test_scaled_scene_extent_contract(void) {
                 "Missing output pointer is rejected after clearing the available output");
 }
 
+static void test_cubemap_ibl_layout_and_upload_budget(void) {
+    int32_t extent = -1;
+    int32_t level_base = -1;
+
+    EXPECT_TRUE(vgfx3d_expected_square_mip_extent(256, 0, &extent) == 1 && extent == 256,
+                "Square mip helper preserves level zero");
+    EXPECT_TRUE(vgfx3d_expected_square_mip_extent(255, 7, &extent) == 1 && extent == 1,
+                "Square mip helper follows floor-halving for odd extents");
+    EXPECT_TRUE(vgfx3d_expected_square_mip_extent(8, 4, &extent) == 0 && extent == 0,
+                "Square mip helper rejects levels beyond one-by-one");
+    EXPECT_TRUE(vgfx3d_expected_square_mip_extent(8, -1, &extent) == 0 && extent == 0,
+                "Square mip helper rejects negative levels transactionally");
+
+    EXPECT_TRUE(vgfx3d_validate_cubemap_ibl_layout(256, 64, 3, 6, &level_base) == 1 &&
+                    level_base == 2,
+                "IBL layout accepts an exact tail of a cubemap pyramid");
+    EXPECT_TRUE(vgfx3d_validate_cubemap_ibl_layout(256, 48, 2, 6, &level_base) == 0 &&
+                    level_base == 0,
+                "IBL layout rejects a base that is not a mip extent");
+    EXPECT_TRUE(vgfx3d_validate_cubemap_ibl_layout(8, 4, 4, 6, &level_base) == 0,
+                "IBL layout rejects a chain beyond the one-by-one level");
+    EXPECT_TRUE(vgfx3d_validate_cubemap_ibl_layout(256, 64, 7, 6, &level_base) == 0,
+                "IBL layout enforces the source array capacity");
+    EXPECT_TRUE(vgfx3d_validate_cubemap_ibl_layout(256, 64, 2, 6, NULL) == 0,
+                "IBL layout requires an output level");
+
+    EXPECT_TRUE(vgfx3d_upload_budget_allows(UINT64_MAX, UINT64_MAX, UINT64_MAX) == 1,
+                "Unlimited upload budgets accept every request");
+    EXPECT_TRUE(vgfx3d_upload_budget_allows(100, 40, 60) == 1,
+                "Upload budget accepts an exact remainder");
+    EXPECT_TRUE(vgfx3d_upload_budget_allows(100, 40, 61) == 0,
+                "Upload budget rejects a request larger than the remainder");
+    EXPECT_TRUE(vgfx3d_upload_budget_allows(100, 100, 0) == 1,
+                "Zero-byte work is always budget-neutral");
+}
+
+/// @brief Verify that backend-facing material enums never escape shader-visible ranges.
+static void test_material_enum_sanitizers(void) {
+    EXPECT_TRUE(vgfx3d_sanitize_material_workflow(RT_MATERIAL3D_WORKFLOW_PBR) ==
+                    RT_MATERIAL3D_WORKFLOW_PBR,
+                "PBR workflow survives sanitization");
+    EXPECT_TRUE(vgfx3d_sanitize_material_workflow(INT32_MIN) == RT_MATERIAL3D_WORKFLOW_LEGACY,
+                "Malformed workflow defaults to legacy");
+    EXPECT_TRUE(vgfx3d_sanitize_alpha_mode(RT_MATERIAL3D_ALPHA_MODE_MASK) ==
+                    RT_MATERIAL3D_ALPHA_MODE_MASK,
+                "Alpha mask mode survives sanitization");
+    EXPECT_TRUE(vgfx3d_sanitize_alpha_mode(INT32_MAX) == RT_MATERIAL3D_ALPHA_MODE_OPAQUE,
+                "Malformed alpha mode defaults to opaque");
+    EXPECT_TRUE(vgfx3d_sanitize_shading_model(5) == 5 && vgfx3d_sanitize_shading_model(-1) == 0 &&
+                    vgfx3d_sanitize_shading_model(6) == 0,
+                "Shading models are restricted to the six shader branches");
+    EXPECT_TRUE(vgfx3d_sanitize_shadow_mode(RT_MATERIAL3D_SHADOW_MODE_CAST) ==
+                        RT_MATERIAL3D_SHADOW_MODE_CAST &&
+                    vgfx3d_sanitize_shadow_mode(INT32_MAX) == RT_MATERIAL3D_SHADOW_MODE_AUTO,
+                "Malformed shadow mode defaults to auto");
+    EXPECT_TRUE(vgfx3d_sanitize_texture_wrap(RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT) ==
+                        RT_MATERIAL3D_TEXTURE_WRAP_MIRRORED_REPEAT &&
+                    vgfx3d_sanitize_texture_wrap(-9) == RT_MATERIAL3D_TEXTURE_WRAP_REPEAT,
+                "Malformed texture wrap defaults to repeat");
+    EXPECT_TRUE(vgfx3d_sanitize_texture_filter(RT_MATERIAL3D_TEXTURE_FILTER_NEAREST) ==
+                        RT_MATERIAL3D_TEXTURE_FILTER_NEAREST &&
+                    vgfx3d_sanitize_texture_filter(99) == RT_MATERIAL3D_TEXTURE_FILTER_LINEAR,
+                "Malformed texture filter defaults to linear");
+    EXPECT_TRUE(vgfx3d_sanitize_texture_mip_filter(RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR) ==
+                        RT_MATERIAL3D_TEXTURE_MIP_FILTER_LINEAR &&
+                    vgfx3d_sanitize_texture_mip_filter(INT32_MIN) ==
+                        RT_MATERIAL3D_TEXTURE_MIP_FILTER_NONE,
+                "Malformed mip filter defaults to none");
+    EXPECT_TRUE(vgfx3d_sanitize_texture_uv_set(INT32_MIN) == 0 &&
+                    vgfx3d_sanitize_texture_uv_set(INT32_MAX) == 1,
+                "UV-set selectors collapse to uv0 or uv1");
+}
+
+/// @brief Verify the shared material copy blocks NaNs, oversized values, and invalid enums.
+static void test_draw_command_sanitizer(void) {
+    vgfx3d_draw_cmd_t src;
+    vgfx3d_draw_cmd_t dst;
+
+    memset(&src, 0, sizeof(src));
+    memset(&dst, 0xa5, sizeof(dst));
+    src.model_matrix[0] = NAN;
+    src.prev_model_matrix[0] = INFINITY;
+    src.diffuse_color[0] = NAN;
+    src.diffuse_color[1] = 4.0f;
+    src.specular[0] = -INFINITY;
+    src.shininess = INFINITY;
+    src.alpha = NAN;
+    src.roughness = NAN;
+    src.normal_scale = -4.0f;
+    src.workflow = INT32_MAX;
+    src.alpha_mode = INT32_MIN;
+    src.shading_model = 19;
+    src.shadow_mode = -8;
+    src.texture_anisotropy = INT32_MAX;
+    src.texture_slot_anisotropy[0] = INT32_MIN;
+    src.texture_slot_uv_set[0] = INT32_MAX;
+    src.texture_slot_uv_transform[0][0] = NAN;
+    src.texture_slot_uv_transform[0][3] = INFINITY;
+    src.custom_params[0] = NAN;
+    src.splat_layer_scales[0] = -1.0f;
+    src.unlit = -7;
+
+    vgfx3d_sanitize_draw_command(&src, &dst);
+    EXPECT_TRUE(dst.model_matrix[0] == 1.0f && dst.model_matrix[5] == 1.0f &&
+                    dst.model_matrix[10] == 1.0f && dst.model_matrix[15] == 1.0f,
+                "Malformed model matrix falls back to identity");
+    EXPECT_TRUE(dst.prev_model_matrix[0] == 1.0f && dst.prev_model_matrix[15] == 1.0f,
+                "Malformed previous model falls back to the safe model");
+    EXPECT_TRUE(dst.diffuse_color[0] == 1.0f && dst.diffuse_color[1] == 1.0f &&
+                    dst.specular[0] == 1.0f,
+                "Non-finite and oversized material colors are normalized");
+    EXPECT_TRUE(dst.shininess == 32.0f && dst.alpha == 1.0f && dst.roughness == 0.5f &&
+                    dst.normal_scale == 0.0f,
+                "Material scalars use finite shader-safe fallbacks");
+    EXPECT_TRUE(dst.workflow == RT_MATERIAL3D_WORKFLOW_LEGACY &&
+                    dst.alpha_mode == RT_MATERIAL3D_ALPHA_MODE_OPAQUE && dst.shading_model == 0 &&
+                    dst.shadow_mode == RT_MATERIAL3D_SHADOW_MODE_AUTO,
+                "Draw-command enum fields are normalized together");
+    EXPECT_TRUE(dst.texture_anisotropy == 16 && dst.texture_slot_anisotropy[0] == 1 &&
+                    dst.texture_slot_uv_set[0] == 1,
+                "Sampler bounds and UV selectors are normalized");
+    EXPECT_TRUE(dst.texture_slot_uv_transform[0][0] == 1.0f &&
+                    dst.texture_slot_uv_transform[0][3] == 1.0f && dst.custom_params[0] == 0.0f &&
+                    dst.splat_layer_scales[0] == 1.0f,
+                "UV transforms and extensible material arrays reject non-finite values");
+    EXPECT_TRUE(dst.unlit == 1, "Boolean draw flags are canonicalized");
+}
+
+/// @brief Verify malformed camera/fog/IBL/shadow input cannot poison a backend frame.
+static void test_camera_parameter_sanitizer(void) {
+    vgfx3d_camera_params_t src;
+    vgfx3d_camera_params_t dst;
+
+    memset(&src, 0, sizeof(src));
+    src.view[0] = NAN;
+    src.projection[0] = INFINITY;
+    src.position[0] = INFINITY;
+    src.forward[0] = src.forward[1] = src.forward[2] = 0.0f;
+    src.is_ortho = -4;
+    src.fog_enabled = 9;
+    src.fog_near = INFINITY;
+    src.fog_far = NAN;
+    src.fog_color[0] = NAN;
+    src.fog_color[1] = -1.0f;
+    src.fog_color[2] = 2.0f;
+    src.height_fog_enabled = -1;
+    src.height_fog_falloff = -INFINITY;
+    src.height_fog_density = INFINITY;
+    src.height_fog_blend = 4.0f;
+    src.height_fog_sun_dir[0] = NAN;
+    src.height_fog_sun_power = NAN;
+    src.height_fog_sun_amount = -1.0f;
+    src.load_existing_color = -1;
+    src.load_existing_depth = 2;
+    src.ibl_enabled = -8;
+    src.ibl_intensity = INFINITY;
+    src.ibl_sh[0] = NAN;
+    src.shadow_strength = NAN;
+    src.shadow_slope_bias = INFINITY;
+    src.shadow_quality = INT32_MAX;
+    src.znear = NAN;
+    src.zfar = -INFINITY;
+
+    vgfx3d_sanitize_camera_params(&src, &dst);
+    EXPECT_TRUE(dst.view[0] == 1.0f && dst.view[15] == 1.0f && dst.projection[0] == 1.0f &&
+                    dst.projection[15] == 1.0f,
+                "Malformed camera matrices fall back to identity");
+    EXPECT_TRUE(dst.position[0] == 0.0f && dst.forward[0] == 0.0f && dst.forward[1] == 0.0f &&
+                    dst.forward[2] == -1.0f,
+                "Camera vectors receive finite normalized fallbacks");
+    EXPECT_TRUE(dst.is_ortho == 1 && dst.fog_enabled == 1 && dst.height_fog_enabled == 1 &&
+                    dst.load_existing_color == 1 && dst.load_existing_depth == 1 &&
+                    dst.ibl_enabled == 1,
+                "Camera boolean flags are canonicalized");
+    EXPECT_TRUE(dst.fog_near == 10.0f && dst.fog_far == 50.0f && dst.fog_color[0] == 0.5f &&
+                    dst.fog_color[1] == 0.0f && dst.fog_color[2] == 1.0f,
+                "Distance-fog values are finite and ordered");
+    EXPECT_TRUE(dst.height_fog_falloff == 0.1f && dst.height_fog_density == 0.0f &&
+                    dst.height_fog_blend == 1.0f && dst.height_fog_sun_dir[1] == 1.0f &&
+                    dst.height_fog_sun_power == 8.0f && dst.height_fog_sun_amount == 0.0f,
+                "Height-fog values use shader-safe bounds and directions");
+    EXPECT_TRUE(dst.ibl_intensity == 1.0f && dst.ibl_sh[0] == 0.0f && dst.shadow_strength == 1.0f &&
+                    dst.shadow_slope_bias == 0.0f && dst.shadow_quality == 2,
+                "IBL and shadow parameters cannot carry non-finite or out-of-range values");
+    EXPECT_TRUE(dst.znear == 0.1f && dst.zfar == 100.0f,
+                "Invalid clip planes produce an ordered logarithmic depth range");
+}
+
+/// @brief Verify light arrays cannot upload invalid types, NaNs, or malformed shadow metadata.
+static void test_light_parameter_sanitizers(void) {
+    vgfx3d_light_params_t src[2];
+    vgfx3d_light_params_t dst[2];
+    float ambient[3];
+
+    memset(src, 0, sizeof(src));
+    memset(dst, 0xa5, sizeof(dst));
+    src[0].type = 99;
+    src[0].shadow_index = INT32_MAX;
+    src[0].shadow_cascade_count = INT32_MAX;
+    src[0].shadow_projection_type = INT32_MIN;
+    src[0].casts_shadows = -4;
+    src[0].direction[0] = NAN;
+    src[0].position[0] = INFINITY;
+    src[0].color[0] = NAN;
+    src[0].color[1] = -1.0f;
+    src[0].color[2] = 2.0f;
+    src[0].intensity = INFINITY;
+    src[0].attenuation = -INFINITY;
+    src[0].inner_cos = -0.5f;
+    src[0].outer_cos = 0.5f;
+    src[0].shadow_cascade_splits[0] = 10.0f;
+    src[0].shadow_cascade_splits[1] = 5.0f;
+    src[0].shadow_cascade_splits[2] = NAN;
+    src[0].shadow_cascade_splits[3] = 20.0f;
+    src[0].width = 0.0f;
+    src[0].height = INFINITY;
+    src[0].radius = -1.0f;
+    src[0].range = NAN;
+    src[0].decay_type = INT32_MAX;
+
+    EXPECT_TRUE(vgfx3d_sanitize_light_array(src, 2, dst, 1) == 1,
+                "Light-array copy honors destination capacity");
+    EXPECT_TRUE(dst[0].type == 2 && dst[0].intensity == 0.0f && dst[0].casts_shadows == 1,
+                "Unknown light types become inert ambient lights and flags are canonical");
+    EXPECT_TRUE(dst[0].shadow_index == -1 && dst[0].shadow_cascade_count == VGFX3D_CSM_SLOTS &&
+                    dst[0].shadow_projection_type == VGFX3D_SHADOW_PROJECTION_PERSPECTIVE,
+                "Malformed light shadow metadata is bounded");
+    EXPECT_TRUE(dst[0].direction[0] == 0.0f && dst[0].direction[1] == -1.0f &&
+                    dst[0].direction[2] == 0.0f && dst[0].position[0] == 0.0f,
+                "Malformed light vectors receive finite fallbacks");
+    EXPECT_TRUE(dst[0].color[0] == 0.0f && dst[0].color[1] == 0.0f && dst[0].color[2] == 1.0f &&
+                    dst[0].attenuation == 0.0f,
+                "Light colors and attenuation stay in finite shader ranges");
+    EXPECT_TRUE(dst[0].inner_cos == 0.5f && dst[0].outer_cos == -0.5f,
+                "Reversed spotlight cones are reordered");
+    EXPECT_TRUE(
+        dst[0].shadow_cascade_splits[0] == 10.0f && dst[0].shadow_cascade_splits[1] == 10.0f &&
+            dst[0].shadow_cascade_splits[2] == 10.0f && dst[0].shadow_cascade_splits[3] == 20.0f,
+        "Cascade splits form a finite nondecreasing sequence");
+    EXPECT_TRUE(dst[0].width > 0.0f && dst[0].height == 1.0f && dst[0].radius > 0.0f &&
+                    dst[0].range == 1.0f && dst[0].decay_type == 3,
+                "Native emitter dimensions and decay types are bounded");
+    {
+        const float bad_ambient[3] = {NAN, -1.0f, INFINITY};
+        vgfx3d_sanitize_ambient_rgb(bad_ambient, ambient);
+    }
+    EXPECT_TRUE(ambient[0] == 0.0f && ambient[1] == 0.0f && ambient[2] == 0.0f,
+                "Malformed ambient RGB defaults to black");
+    EXPECT_TRUE(vgfx3d_sanitize_light_array(NULL, 2, dst, 2) == 0 &&
+                    vgfx3d_sanitize_light_array(src, -1, dst, 2) == 0,
+                "Invalid light arrays are treated as empty");
+    memset(&dst[0], 0, sizeof(dst[0]));
+    dst[0].shadow_index = 3;
+    dst[0].shadow_projection_type = VGFX3D_SHADOW_PROJECTION_CUBE;
+    dst[0].shadow_cascade_count = 4;
+    vgfx3d_sanitize_light_shadow_span(&dst[0], 8);
+    EXPECT_TRUE(dst[0].shadow_index == -1 && dst[0].shadow_cascade_count == 1,
+                "Cube shadows are disabled unless all six consecutive slots exist");
+    dst[0].shadow_index = 3;
+    dst[0].shadow_projection_type = VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC;
+    dst[0].shadow_cascade_count = 4;
+    vgfx3d_sanitize_light_shadow_span(&dst[0], 5);
+    EXPECT_TRUE(dst[0].shadow_index == 3 && dst[0].shadow_cascade_count == 2,
+                "Cascaded shadows are clamped to remaining advertised slots");
+    dst[0].shadow_projection_type = VGFX3D_SHADOW_PROJECTION_PERSPECTIVE;
+    dst[0].shadow_cascade_count = 4;
+    vgfx3d_sanitize_light_shadow_span(&dst[0], 5);
+    EXPECT_TRUE(dst[0].shadow_cascade_count == 1, "Perspective shadows consume exactly one slot");
+}
+
+/// @brief Verify malformed froxel tables fall back to the flat light loop.
+static void test_cluster_table_validator(void) {
+    vgfx3d_cluster_table_t table;
+
+    memset(&table, 0, sizeof(table));
+    table.lights_revision = 7;
+    table.global_light_count = 1;
+    table.binned_light_count = 1;
+    table.znear = 0.1f;
+    table.zfar = 100.0f;
+    EXPECT_TRUE(vgfx3d_cluster_table_is_usable(&table, 7, 2) == 1,
+                "Empty but structurally valid cluster indices are accepted");
+    EXPECT_TRUE(vgfx3d_cluster_table_is_usable(&table, 8, 2) == 0,
+                "Stale cluster-table revisions are rejected");
+    table.offsets[VGFX3D_CLUSTER_COUNT] = 1;
+    table.indices[0] = 1;
+    EXPECT_TRUE(vgfx3d_cluster_table_is_usable(&table, 7, 2) == 1,
+                "A binned-light index in range is accepted");
+    table.indices[0] = 0;
+    EXPECT_TRUE(vgfx3d_cluster_table_is_usable(&table, 7, 2) == 0,
+                "Cluster indices cannot alias the global-light prefix");
+    table.indices[0] = 2;
+    EXPECT_TRUE(vgfx3d_cluster_table_is_usable(&table, 7, 2) == 0,
+                "Cluster indices cannot exceed the uploaded light array");
+    table.indices[0] = 1;
+    table.offsets[VGFX3D_CLUSTER_COUNT / 2] = 2;
+    EXPECT_TRUE(vgfx3d_cluster_table_is_usable(&table, 7, 2) == 0,
+                "Cluster offsets must be monotonic");
+    table.offsets[VGFX3D_CLUSTER_COUNT / 2] = 0;
+    table.zfar = NAN;
+    EXPECT_TRUE(vgfx3d_cluster_table_is_usable(&table, 7, 2) == 0,
+                "Cluster depth ranges must be finite and ordered");
+}
+
+/// @brief Verify malformed post-FX storage and parameters never reach backend loops/shaders.
+static void test_postfx_sanitizers(void) {
+    vgfx3d_postfx_effect_desc_t effect;
+    vgfx3d_postfx_chain_t chain;
+    vgfx3d_postfx_snapshot_t src;
+    vgfx3d_postfx_snapshot_t dst;
+
+    memset(&effect, 0, sizeof(effect));
+    memset(&chain, 0, sizeof(chain));
+    chain.enabled = 1;
+    chain.effects = &effect;
+    chain.effect_count = 1;
+    chain.effect_capacity = 1;
+    effect.type = (int32_t)VGFX3D_POSTFX_EFFECT_BLOOM;
+    EXPECT_TRUE(vgfx3d_postfx_chain_is_usable(&chain) == 1,
+                "Structurally valid PostFX chains are accepted");
+    chain.effect_count = 2;
+    EXPECT_TRUE(vgfx3d_postfx_chain_is_usable(&chain) == 0,
+                "PostFX traversal cannot exceed allocated descriptor capacity");
+    chain.effect_count = 1;
+    effect.type = INT32_MAX;
+    EXPECT_TRUE(vgfx3d_postfx_chain_is_usable(&chain) == 0,
+                "Unknown PostFX discriminators are rejected before backend switches");
+    effect.type = (int32_t)VGFX3D_POSTFX_EFFECT_SUN_SHAFTS;
+    EXPECT_TRUE(vgfx3d_postfx_chain_is_usable(&chain) == 1,
+                "The final public PostFX discriminator remains valid");
+    chain.effects = NULL;
+    EXPECT_TRUE(vgfx3d_postfx_chain_is_usable(&chain) == 0,
+                "PostFX chains with missing descriptor storage are rejected");
+
+    memset(&src, 0, sizeof(src));
+    memset(&dst, 0xa5, sizeof(dst));
+    src.enabled = -1;
+    src.bloom_enabled = 3;
+    src.bloom_threshold = NAN;
+    src.bloom_intensity = INFINITY;
+    src.bloom_passes = INT32_MAX;
+    src.tonemap_mode = INT8_MAX;
+    src.tonemap_exposure = -INFINITY;
+    src.fxaa_enabled = -7;
+    src.cg_brightness = INFINITY;
+    src.cg_contrast = -1.0f;
+    src.cg_saturation = 10.0f;
+    src.vignette_radius = -1.0f;
+    src.vignette_softness = NAN;
+    src.ssao_radius = INFINITY;
+    src.ssao_intensity = -1.0f;
+    src.ssao_samples = INT32_MIN;
+    src.dof_focus_distance = NAN;
+    src.dof_aperture = INFINITY;
+    src.dof_max_blur = INFINITY;
+    src.motion_blur_intensity = INFINITY;
+    src.motion_blur_samples = INT32_MAX;
+    src.taa_blend = NAN;
+    src.ssr_intensity = -INFINITY;
+    src.ssr_max_roughness = 4.0f;
+    src.ssr_steps = INT32_MAX;
+
+    vgfx3d_sanitize_postfx_snapshot(&src, &dst);
+    EXPECT_TRUE(dst.enabled == 1 && dst.bloom_enabled == 1 && dst.fxaa_enabled == 1,
+                "PostFX boolean fields are canonicalized");
+    EXPECT_TRUE(dst.bloom_threshold == 0.8f && dst.bloom_intensity == 1.0f &&
+                    dst.bloom_passes == 32,
+                "Bloom parameters are finite and loop counts are bounded");
+    EXPECT_TRUE(dst.tonemap_mode == 0 && dst.tonemap_exposure == 1.0f,
+                "Tonemap mode and exposure reject malformed values");
+    EXPECT_TRUE(dst.cg_brightness == 0.0f && dst.cg_contrast == 0.0f && dst.cg_saturation == 4.0f,
+                "Color-grade controls remain in shader-safe ranges");
+    EXPECT_TRUE(dst.vignette_radius == 0.0f && dst.vignette_softness == 0.3f,
+                "Vignette controls use finite bounded values");
+    EXPECT_TRUE(dst.ssao_radius == 0.5f && dst.ssao_intensity == 0.0f && dst.ssao_samples == 4,
+                "SSAO parameters cannot drive unbounded shader work");
+    EXPECT_TRUE(dst.dof_focus_distance == 10.0f && dst.dof_aperture == 0.0f &&
+                    dst.dof_max_blur == 8.0f,
+                "Depth-of-field controls reject non-finite values");
+    EXPECT_TRUE(dst.motion_blur_intensity == 0.0f && dst.motion_blur_samples == 8 &&
+                    dst.taa_blend == 0.9f,
+                "Temporal effect weights and sample counts are bounded");
+    EXPECT_TRUE(dst.ssr_intensity == 0.5f && dst.ssr_max_roughness == 1.0f && dst.ssr_steps == 48,
+                "SSR controls remain finite and cap ray-march iterations");
+    memset(&dst, 0xa5, sizeof(dst));
+    vgfx3d_sanitize_postfx_snapshot(NULL, &dst);
+    EXPECT_TRUE(dst.enabled == 0 && dst.bloom_passes == 0 && dst.ssr_steps == 0,
+                "A missing PostFX snapshot becomes a disabled zero snapshot");
+
+    EXPECT_NEAR(vgfx3d_sanitize_reversed_depth_probe_result(0.25f),
+                0.75f,
+                1e-6f,
+                "Reversed depth converts to canonical window depth");
+    EXPECT_NEAR(vgfx3d_sanitize_reversed_depth_probe_result(-2.0f),
+                1.0f,
+                1e-6f,
+                "Canonical depth clamps beyond the far endpoint");
+    EXPECT_NEAR(vgfx3d_sanitize_reversed_depth_probe_result(NAN),
+                -1.0f,
+                1e-6f,
+                "Non-finite depth publishes the invalid probe sentinel");
+}
+
 int main(void) {
     test_unpack_pixels_rgba_success();
     test_unpack_pixels_rgba_rejects_invalid();
@@ -1282,6 +1877,7 @@ int main(void) {
     test_upload_rows_for_budget();
     test_pending_upload_bytes_return_to_baseline();
     test_compressed_block_upload_budget_and_pending_bytes();
+    test_native_texture_mip_validation();
     test_unpack_cubemap_faces_rgba_success();
     test_unpack_cubemap_faces_rgba_rejects_invalid();
     test_estimate_cubemap_rgba_upload_bytes();
@@ -1307,6 +1903,13 @@ int main(void) {
     test_compact_vertex_stream_round_trip();
     test_compact_vertex_stream_half_edge_cases();
     test_scaled_scene_extent_contract();
+    test_cubemap_ibl_layout_and_upload_budget();
+    test_material_enum_sanitizers();
+    test_draw_command_sanitizer();
+    test_camera_parameter_sanitizer();
+    test_light_parameter_sanitizers();
+    test_cluster_table_validator();
+    test_postfx_sanitizers();
 
     printf("vgfx3d_backend_utils tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

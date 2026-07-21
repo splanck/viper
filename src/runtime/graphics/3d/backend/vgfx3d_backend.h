@@ -45,7 +45,7 @@
 ///   model/previous-model matrices, the full resolved material (colors, PBR factors,
 ///   texture slots + samplers, alpha/cull state), and optional GPU skinning, morph,
 ///   instancing, and terrain-splat payloads. Built by Canvas3D, consumed by submit_draw.
-typedef struct {
+typedef struct vgfx3d_draw_cmd {
     const vgfx3d_vertex_t *vertices;
     uint32_t vertex_count;
     const uint32_t *indices;
@@ -316,7 +316,7 @@ static inline float vgfx3d_draw_cmd_ssr_mask(const vgfx3d_draw_cmd_t *cmd) {
 /// @brief Per-frame camera state passed to begin_frame: view/projection matrices, eye
 ///   position/forward, ortho flag, optional distance fog, and load-existing color/depth
 ///   flags for overlay/secondary passes.
-typedef struct {
+typedef struct vgfx3d_camera_params {
     float view[16];       /* view matrix, row-major float */
     float projection[16]; /* projection matrix, row-major float */
     float position[3];    /* eye position (for specular) */
@@ -400,7 +400,7 @@ typedef struct {
 ///   (light-array indices) per cluster in X-major, then Y, then Z order:
 ///   cluster = x + y*DIM_X + z*DIM_X*DIM_Y. Per-cluster truncation on index
 ///   overflow is order-stable and counted in `overflow_count` (never UB).
-typedef struct {
+typedef struct vgfx3d_cluster_table {
     uint32_t lights_revision;   /* snapshot revision this table matches (0 = invalid) */
     int32_t global_light_count; /* directional/ambient prefix length in the light array */
     int32_t binned_light_count; /* point/spot lights considered for binning */
@@ -417,7 +417,7 @@ typedef struct {
 ///   mode; volume lights use radius/range and never receive a shadow slot. Rectangle U/V basis
 ///   vectors are orthonormal in render space. Keeping this as one plain finite payload lets the
 ///   software and three GPU backends evaluate identical authored light semantics.
-typedef struct {
+typedef struct vgfx3d_light_params {
     int32_t type; /* 0=directional, 1=point, 2=ambient, 3=spot, 4=rect, 5=sphere, 6=volume */
     int32_t shadow_index;           /* -1 = unshadowed, otherwise [0, VGFX3D_MAX_SHADOW_LIGHTS) */
     int32_t shadow_cascade_count;   /* >1 means shadow_index is the first cascade slot */

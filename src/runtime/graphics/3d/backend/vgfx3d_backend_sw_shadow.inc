@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_shadow.inc  (#included from
-// vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend wireframe lines
-// and shadow-map depth rasterization
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_shadow.inc
+// Purpose: Software wireframe lines and tiled shadow-map depth rasterization.
+// Key invariants:
+//   - Shadow matrices, slots, dimensions, tile bounds, and alpha-mask samples are validated.
+//   - Partial worker submission falls back synchronously so no tile remains unrendered.
+// Ownership/Lifetime:
+//   - The software context owns shadow buffers and worker scratch for the active pass.
+//   - Worker jobs borrow draw data until their completion barrier returns.
+// Links: vgfx3d_backend_sw.c, vgfx3d_backend_sw_raster.inc
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Wireframe — Bresenham line
@@ -24,27 +36,33 @@ static void draw_line(uint8_t *pixels,
                       uint8_t r,
                       uint8_t g,
                       uint8_t b) {
-    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy;
+    int64_t current_x = x0;
+    int64_t current_y = y0;
+    int64_t end_x = x1;
+    int64_t end_y = y1;
+    int64_t dx = llabs(end_x - current_x), step_x = current_x < end_x ? 1 : -1;
+    int64_t dy = -llabs(end_y - current_y), step_y = current_y < end_y ? 1 : -1;
+    int64_t err = dx + dy;
+    if (!sw_rgba_surface_is_valid(pixels, fb_w, fb_h, stride))
+        return;
     for (;;) {
-        if (x0 >= 0 && x0 < fb_w && y0 >= 0 && y0 < fb_h) {
-            uint8_t *dst = &pixels[y0 * stride + x0 * 4];
+        if (current_x >= 0 && current_x < fb_w && current_y >= 0 && current_y < fb_h) {
+            uint8_t *dst = pixels + (size_t)current_y * (size_t)stride + (size_t)current_x * 4u;
             dst[0] = r;
             dst[1] = g;
             dst[2] = b;
             dst[3] = 0xFF;
         }
-        if (x0 == x1 && y0 == y1)
+        if (current_x == end_x && current_y == end_y)
             break;
-        int e2 = 2 * err;
+        int64_t e2 = 2 * err;
         if (e2 >= dy) {
             err += dy;
-            x0 += sx;
+            current_x += step_x;
         }
         if (e2 <= dx) {
             err += dx;
-            y0 += sy;
+            current_y += step_y;
         }
     }
 }
@@ -76,17 +94,27 @@ static void shadow_raster_tri_scissored(float *depth,
                                         const float *su1,
                                         const float *sv1,
                                         const float *sa,
+                                        const float *sinv_w,
                                         const vgfx3d_draw_cmd_t *cmd,
                                         const sw_pixels_view *alpha_tex,
                                         int32_t clip_min_x,
                                         int32_t clip_min_y,
                                         int32_t clip_max_x,
                                         int32_t clip_max_y) {
+    if (!depth || !sx || !sy || !sz || sw <= 0 || sh <= 0)
+        return;
+    for (int lane = 0; lane < 3; lane++) {
+        if (!isfinite(sx[lane]) || !isfinite(sy[lane]) || !isfinite(sz[lane]) ||
+            (sinv_w && (!isfinite(sinv_w[lane]) || sinv_w[lane] <= 0.0f)))
+            return;
+    }
     float u[3] = {su ? su[0] : 0.0f, su ? su[1] : 0.0f, su ? su[2] : 0.0f};
     float vcoord[3] = {sv ? sv[0] : 0.0f, sv ? sv[1] : 0.0f, sv ? sv[2] : 0.0f};
     float u1[3] = {su1 ? su1[0] : 0.0f, su1 ? su1[1] : 0.0f, su1 ? su1[2] : 0.0f};
     float v1coord[3] = {sv1 ? sv1[0] : 0.0f, sv1 ? sv1[1] : 0.0f, sv1 ? sv1[2] : 0.0f};
     float alpha_v[3] = {sa ? sa[0] : 1.0f, sa ? sa[1] : 1.0f, sa ? sa[2] : 1.0f};
+    float inv_w[3] = {
+        sinv_w ? sinv_w[0] : 1.0f, sinv_w ? sinv_w[1] : 1.0f, sinv_w ? sinv_w[2] : 1.0f};
     /* Screen-space area (winding check) */
     float area = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);
     if (area < 0.0f) {
@@ -116,16 +144,19 @@ static void shadow_raster_tri_scissored(float *depth,
         t = alpha_v[1];
         alpha_v[1] = alpha_v[2];
         alpha_v[2] = t;
+        t = inv_w[1];
+        inv_w[1] = inv_w[2];
+        inv_w[2] = t;
         area = -area;
     }
     if (area < 1e-12f)
         return;
 
     float inv_area = 1.0f / area;
-    int min_x = (int)fmaxf(floorf(fminf(fminf(sx[0], sx[1]), sx[2])), 0.0f);
-    int max_x = (int)fminf(ceilf(fmaxf(fmaxf(sx[0], sx[1]), sx[2])), (float)(sw - 1));
-    int min_y = (int)fmaxf(floorf(fminf(fminf(sy[0], sy[1]), sy[2])), 0.0f);
-    int max_y = (int)fminf(ceilf(fmaxf(fmaxf(sy[0], sy[1]), sy[2])), (float)(sh - 1));
+    int min_x = sw_floor_pixel_coord(fminf(fminf(sx[0], sx[1]), sx[2]), sw - 1);
+    int max_x = sw_ceil_pixel_coord(fmaxf(fmaxf(sx[0], sx[1]), sx[2]), sw - 1);
+    int min_y = sw_floor_pixel_coord(fminf(fminf(sy[0], sy[1]), sy[2]), sh - 1);
+    int max_y = sw_ceil_pixel_coord(fmaxf(fmaxf(sy[0], sy[1]), sy[2]), sh - 1);
     min_x = min_x > clip_min_x ? min_x : clip_min_x;
     max_x = max_x < clip_max_x ? max_x : clip_max_x;
     min_y = min_y > clip_min_y ? min_y : clip_min_y;
@@ -136,8 +167,8 @@ static void shadow_raster_tri_scissored(float *depth,
     float e12_dx = sx[2] - sx[1], e12_dy = sy[2] - sy[1];
     float e20_dx = sx[0] - sx[2], e20_dy = sy[0] - sy[2];
     float e01_dx = sx[1] - sx[0], e01_dy = sy[1] - sy[0];
-    int full_min_x = (int)fmaxf(floorf(fminf(fminf(sx[0], sx[1]), sx[2])), 0.0f);
-    int full_min_y = (int)fmaxf(floorf(fminf(fminf(sy[0], sy[1]), sy[2])), 0.0f);
+    int full_min_x = sw_floor_pixel_coord(fminf(fminf(sx[0], sx[1]), sx[2]), sw - 1);
+    int full_min_y = sw_floor_pixel_coord(fminf(fminf(sy[0], sy[1]), sy[2]), sh - 1);
     float px0 = (float)full_min_x + 0.5f, py0 = (float)full_min_y + 0.5f;
     float row_w0 = e12_dx * (py0 - sy[1]) - e12_dy * (px0 - sx[1]);
     float row_w1 = e20_dx * (py0 - sy[2]) - e20_dy * (px0 - sx[2]);
@@ -155,21 +186,31 @@ static void shadow_raster_tri_scissored(float *depth,
             if (w0 >= edge_epsilon && w1 >= edge_epsilon && w2 >= edge_epsilon) {
                 float b0 = w0 * inv_area, b1 = w1 * inv_area, b2 = w2 * inv_area;
                 float z = b0 * sz[0] + b1 * sz[1] + b2 * sz[2];
-                int idx = y * sw + x;
+                size_t idx = (size_t)y * (size_t)sw + (size_t)x;
                 if (cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK) {
-                    float alpha = cmd->diffuse_color[3] * cmd->alpha *
-                                  (b0 * alpha_v[0] + b1 * alpha_v[1] + b2 * alpha_v[2]);
+                    float attr_b0;
+                    float attr_b1;
+                    float attr_b2;
+                    if (!sw_perspective_attribute_weights(
+                            b0, b1, b2, inv_w[0], inv_w[1], inv_w[2], &attr_b0, &attr_b1, &attr_b2))
+                        goto next_shadow_pixel;
+                    float alpha =
+                        cmd->diffuse_color[3] * cmd->alpha *
+                        (attr_b0 * alpha_v[0] + attr_b1 * alpha_v[1] + attr_b2 * alpha_v[2]);
                     if (alpha_tex) {
                         float tr, tg, tb, ta;
                         int use_uv1 =
                             cmd->texture_slot_uv_set[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR] > 0;
                         const float *m =
                             cmd->texture_slot_uv_transform[RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR];
-                        float base_u = use_uv1 ? (b0 * u1[0] + b1 * u1[1] + b2 * u1[2])
-                                               : (b0 * u[0] + b1 * u[1] + b2 * u[2]);
-                        float base_v = use_uv1
-                                           ? (b0 * v1coord[0] + b1 * v1coord[1] + b2 * v1coord[2])
-                                           : (b0 * vcoord[0] + b1 * vcoord[1] + b2 * vcoord[2]);
+                        float base_u = use_uv1
+                                           ? (attr_b0 * u1[0] + attr_b1 * u1[1] + attr_b2 * u1[2])
+                                           : (attr_b0 * u[0] + attr_b1 * u[1] + attr_b2 * u[2]);
+                        float base_v =
+                            use_uv1
+                                ? (attr_b0 * v1coord[0] + attr_b1 * v1coord[1] +
+                                   attr_b2 * v1coord[2])
+                                : (attr_b0 * vcoord[0] + attr_b1 * vcoord[1] + attr_b2 * vcoord[2]);
                         float tex_u = base_u * m[0] + base_v * m[1] + m[4];
                         float tex_v = base_u * m[2] + base_v * m[3] + m[5];
                         sample_texture_slot_ex(alpha_tex,
@@ -186,7 +227,7 @@ static void shadow_raster_tri_scissored(float *depth,
                     if (alpha < cmd->alpha_cutoff)
                         goto next_shadow_pixel;
                 }
-                if (z < depth[idx])
+                if (isfinite(z) && (!isfinite(depth[idx]) || z < depth[idx]))
                     depth[idx] = z;
             }
         next_shadow_pixel:
@@ -211,10 +252,27 @@ static void shadow_raster_tri(float *depth,
                               const float *su1,
                               const float *sv1,
                               const float *sa,
+                              const float *sinv_w,
                               const vgfx3d_draw_cmd_t *cmd,
                               const sw_pixels_view *alpha_tex) {
-    shadow_raster_tri_scissored(
-        depth, sw, sh, sx, sy, sz, su, sv, su1, sv1, sa, cmd, alpha_tex, 0, 0, sw - 1, sh - 1);
+    shadow_raster_tri_scissored(depth,
+                                sw,
+                                sh,
+                                sx,
+                                sy,
+                                sz,
+                                su,
+                                sv,
+                                su1,
+                                sv1,
+                                sa,
+                                sinv_w,
+                                cmd,
+                                alpha_tex,
+                                0,
+                                0,
+                                sw - 1,
+                                sh - 1);
 }
 
 typedef struct {
@@ -305,7 +363,7 @@ static int shadow_clip_polygon(shadow_clip_vertex_t *poly, int count) {
 
 typedef struct {
     float sx[3], sy[3], sz[3];
-    float u[3], v[3], u1[3], v1[3], alpha[3];
+    float u[3], v[3], u1[3], v1[3], alpha[3], inv_w[3];
 } sw_shadow_screen_tri_t;
 
 typedef struct {
@@ -429,6 +487,8 @@ static int sw_shadow_tile_grid_init(sw_shadow_tile_grid_t *grid, int32_t width, 
     grid->cols = cols;
     grid->rows = rows;
     grid->count = cols * rows;
+    if ((size_t)grid->count > SIZE_MAX / sizeof(*grid->bins))
+        return 0;
     grid->bins = (sw_shadow_tile_bin_t *)calloc((size_t)grid->count, sizeof(*grid->bins));
     return grid->bins ? 1 : 0;
 }
@@ -442,9 +502,12 @@ static int sw_shadow_tile_grid_mark_active(sw_shadow_tile_grid_t *grid, int32_t 
         grid->active_indices[grid->active_count++] = tile_index;
         return 1;
     }
-    new_capacity = grid->active_capacity ? grid->active_capacity * 2 : 32;
-    if (new_capacity <= grid->active_capacity)
+    if (grid->active_count == INT32_MAX)
+        return 0;
+    if (grid->active_capacity > INT32_MAX / 2)
         new_capacity = grid->active_count + 1;
+    else
+        new_capacity = grid->active_capacity ? grid->active_capacity * 2 : 32;
     if ((size_t)new_capacity > SIZE_MAX / sizeof(int32_t))
         return 0;
     new_indices =
@@ -493,16 +556,18 @@ static int sw_shadow_tri_bounds(const sw_shadow_screen_tri_t *tri,
     int32_t min_x, min_y, max_x, max_y;
     if (!tri || sw <= 0 || sh <= 0 || !out_min_x || !out_min_y || !out_max_x || !out_max_y)
         return 0;
+    for (int lane = 0; lane < 3; lane++) {
+        if (!isfinite(tri->sx[lane]) || !isfinite(tri->sy[lane]))
+            return 0;
+    }
     area = (tri->sx[1] - tri->sx[0]) * (tri->sy[2] - tri->sy[0]) -
            (tri->sx[2] - tri->sx[0]) * (tri->sy[1] - tri->sy[0]);
-    if (fabsf(area) < 1e-12f)
+    if (!isfinite(area) || fabsf(area) < 1e-12f)
         return 0;
-    min_x = (int32_t)fmaxf(floorf(fminf(fminf(tri->sx[0], tri->sx[1]), tri->sx[2])), 0.0f);
-    max_x =
-        (int32_t)fminf(ceilf(fmaxf(fmaxf(tri->sx[0], tri->sx[1]), tri->sx[2])), (float)(sw - 1));
-    min_y = (int32_t)fmaxf(floorf(fminf(fminf(tri->sy[0], tri->sy[1]), tri->sy[2])), 0.0f);
-    max_y =
-        (int32_t)fminf(ceilf(fmaxf(fmaxf(tri->sy[0], tri->sy[1]), tri->sy[2])), (float)(sh - 1));
+    min_x = sw_floor_pixel_coord(fminf(fminf(tri->sx[0], tri->sx[1]), tri->sx[2]), sw - 1);
+    max_x = sw_ceil_pixel_coord(fmaxf(fmaxf(tri->sx[0], tri->sx[1]), tri->sx[2]), sw - 1);
+    min_y = sw_floor_pixel_coord(fminf(fminf(tri->sy[0], tri->sy[1]), tri->sy[2]), sh - 1);
+    max_y = sw_ceil_pixel_coord(fmaxf(fmaxf(tri->sy[0], tri->sy[1]), tri->sy[2]), sh - 1);
     if (min_x > max_x || min_y > max_y)
         return 0;
     *out_min_x = min_x;
@@ -611,6 +676,7 @@ static int sw_shadow_collect_triangles_range(const vgfx3d_draw_cmd_t *cmd,
                 out_tri.u1[vi] = fan[vi]->uv1[0];
                 out_tri.v1[vi] = fan[vi]->uv1[1];
                 out_tri.alpha[vi] = fan[vi]->color_alpha;
+                out_tri.inv_w[vi] = iw;
             }
             if (ok && !sw_shadow_tri_list_push(out, &out_tri))
                 return 0;
@@ -728,7 +794,7 @@ static void sw_shadow_raster_task_run(void *arg) {
             max_y = task->sh - 1;
         for (uint32_t i = 0; i < bin->count; i++) {
             const sw_shadow_screen_tri_t *tri = &task->tris->items[bin->indices[i]];
-            float sx[3], sy[3], sz[3], u[3], v[3], u1[3], v1[3], alpha[3];
+            float sx[3], sy[3], sz[3], u[3], v[3], u1[3], v1[3], alpha[3], inv_w[3];
             memcpy(sx, tri->sx, sizeof(sx));
             memcpy(sy, tri->sy, sizeof(sy));
             memcpy(sz, tri->sz, sizeof(sz));
@@ -737,6 +803,7 @@ static void sw_shadow_raster_task_run(void *arg) {
             memcpy(u1, tri->u1, sizeof(u1));
             memcpy(v1, tri->v1, sizeof(v1));
             memcpy(alpha, tri->alpha, sizeof(alpha));
+            memcpy(inv_w, tri->inv_w, sizeof(inv_w));
             shadow_raster_tri_scissored(task->depth,
                                         task->sw,
                                         task->sh,
@@ -748,6 +815,7 @@ static void sw_shadow_raster_task_run(void *arg) {
                                         u1,
                                         v1,
                                         alpha,
+                                        inv_w,
                                         task->cmd,
                                         task->alpha_tex,
                                         min_x,
@@ -769,6 +837,7 @@ static int sw_shadow_raster_tiles_parallel(sw_context_t *ctx,
     sw_shadow_raster_task_t tasks[SW_MAX_TASKS];
     int32_t next_tile = 0;
     int32_t task_count;
+    int32_t submitted = 0;
     if (!ctx || !ctx->worker_pool || !grid || grid->active_count <= 0 || !tris || !depth)
         return 0;
     task_count = (int32_t)(ctx->worker_count + 1 < (int64_t)grid->active_count
@@ -787,9 +856,13 @@ static int sw_shadow_raster_tiles_parallel(sw_context_t *ctx,
     for (int32_t i = 1; i < task_count; i++) {
         if (!rt_threadpool_submit_fn(ctx->worker_pool, sw_shadow_raster_task_run, &tasks[i]))
             break;
+        submitted++;
     }
+    for (int32_t i = submitted + 1; i < task_count; i++)
+        sw_shadow_raster_task_run(&tasks[i]);
     sw_shadow_raster_task_run(&tasks[0]);
-    rt_threadpool_wait(ctx->worker_pool);
+    if (submitted > 0)
+        rt_threadpool_wait(ctx->worker_pool);
     return 1;
 }
 
@@ -821,9 +894,7 @@ static int sw_shadow_draw_parallel(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) 
         cmd->shadow_mode != RT_MATERIAL3D_SHADOW_MODE_CAST)
         return 0;
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK && cmd->texture) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
-        alpha_view = *pv;
-        if (alpha_view.width > 0 && alpha_view.height > 0 && alpha_view.data)
+        if (setup_pixels_view(cmd->texture, &alpha_view))
             alpha_tex = &alpha_view;
     }
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK && cmd->texture_asset && !alpha_tex)
@@ -879,7 +950,7 @@ static void sw_shadow_begin(
     if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return;
     ctx->shadow_complete[slot] = 0;
-    if (!depth_buf || !light_vp || w <= 0 || h <= 0) {
+    if (!depth_buf || !vgfx3d_shadow_matrix_is_usable(light_vp) || w <= 0 || h <= 0) {
         sw_recompute_shadow_count(ctx);
         return;
     }
@@ -927,9 +998,7 @@ static void sw_shadow_draw_serial(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         cmd->shadow_mode != RT_MATERIAL3D_SHADOW_MODE_CAST)
         return;
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK && cmd->texture) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
-        alpha_view = *pv;
-        if (alpha_view.width > 0 && alpha_view.height > 0 && alpha_view.data)
+        if (setup_pixels_view(cmd->texture, &alpha_view))
             alpha_tex = &alpha_view;
     }
     if (cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK && cmd->texture_asset && !alpha_tex) {
@@ -970,7 +1039,7 @@ static void sw_shadow_draw_serial(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         for (int tri = 1; tri + 1 < clipped_count; tri++) {
             const shadow_clip_vertex_t *fan[3] = {&clipped[0], &clipped[tri], &clipped[tri + 1]};
             float screen_x[3], screen_y[3], screen_z[3];
-            float tex_u[3], tex_v[3], tex_u1[3], tex_v1[3], vert_alpha[3];
+            float tex_u[3], tex_v[3], tex_u1[3], tex_v1[3], vert_alpha[3], inv_w[3];
             int ok = 1;
             for (int vi = 0; vi < 3; vi++) {
                 float w = fan[vi]->clip[3];
@@ -998,6 +1067,7 @@ static void sw_shadow_draw_serial(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
                 tex_u1[vi] = fan[vi]->uv1[0];
                 tex_v1[vi] = fan[vi]->uv1[1];
                 vert_alpha[vi] = fan[vi]->color_alpha;
+                inv_w[vi] = iw;
             }
             if (!ok)
                 continue;
@@ -1012,6 +1082,7 @@ static void sw_shadow_draw_serial(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
                               tex_u1,
                               tex_v1,
                               vert_alpha,
+                              inv_w,
                               cmd,
                               alpha_tex);
         }
@@ -1019,9 +1090,13 @@ static void sw_shadow_draw_serial(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 }
 
 static void sw_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
-    if (sw_shadow_draw_parallel(ctx_ptr, cmd))
+    vgfx3d_draw_cmd_t safe_cmd;
+    if (!cmd)
         return;
-    sw_shadow_draw_serial(ctx_ptr, cmd);
+    sw_sanitize_draw_command(cmd, &safe_cmd);
+    if (sw_shadow_draw_parallel(ctx_ptr, &safe_cmd))
+        return;
+    sw_shadow_draw_serial(ctx_ptr, &safe_cmd);
 }
 
 /// @brief Backend `shadow_end` op — mark shadow map ready and store the bias.
@@ -1031,7 +1106,7 @@ static void sw_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
         return;
     if (ctx->shadow_pass_slot != slot)
         return;
-    ctx->shadow_bias = bias;
+    ctx->shadow_bias[slot] = vgfx3d_clamp_float_param(bias, -0.05f, 0.05f, 0.0f);
     ctx->shadow_complete[slot] =
         (ctx->shadow_depth[slot] && ctx->shadow_w[slot] > 0 && ctx->shadow_h[slot] > 0) ? 1 : 0;
     ctx->shadow_pass_slot = -1;
@@ -1049,7 +1124,7 @@ static int8_t sw_shadow_reuse(
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
     if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
         return 0;
-    if (!depth_buf || !light_vp || w <= 0 || h <= 0)
+    if (!depth_buf || !vgfx3d_shadow_matrix_is_usable(light_vp) || w <= 0 || h <= 0)
         return 0;
     if ((size_t)w > SIZE_MAX / (size_t)h || (size_t)w * (size_t)h > (size_t)INT32_MAX)
         return 0;

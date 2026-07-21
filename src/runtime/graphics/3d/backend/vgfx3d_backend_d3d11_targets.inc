@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_targets.inc  (#included from
-// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 render-target
-// lifecycle: scene, overlay, post-FX, RTT, and shadow targets
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_targets.inc
+// Purpose: D3D11 scene, overlay, post-FX, render-to-texture, and shadow target lifecycle.
+// Key invariants:
+//   - Native dimensions, formats, row pitches, and subresources are validated before copies.
+//   - Target replacement publishes only complete RTV/SRV/DSV resource sets.
+// Ownership/Lifetime:
+//   - COM resources belong to d3d11_context_t and are released through SAFE_RELEASE.
+//   - RenderTarget3D shells are borrowed only while the Canvas retains their runtime owners.
+// Links: vgfx3d_backend_d3d11.c, vgfx3d_backend_d3d11_present.inc
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Allocate a render-target color texture (with optional shader-readable SRV).
@@ -765,7 +777,7 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
     if (vgfx3d_rendertarget_is_hdr(target)) {
         size_t hdr_row_bytes;
         size_t rgba_row_bytes;
-        if (mapped.RowPitch > (UINT)INT32_MAX)
+        if (mapped.RowPitch > (UINT)INT32_MAX || target->width > INT32_MAX / 4)
             goto cleanup;
         if (!vgfx3d_d3d11_compute_row_bytes(target->width, 8, &hdr_row_bytes) ||
             !vgfx3d_d3d11_compute_row_bytes(target->width, 4, &rgba_row_bytes) ||

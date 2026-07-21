@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -39,6 +40,76 @@ typedef struct {
     int32_t block_bytes;
     int32_t format_id;
 } vgfx3d_native_texture_mip_t;
+
+struct vgfx3d_draw_cmd;
+struct vgfx3d_camera_params;
+struct vgfx3d_light_params;
+struct vgfx3d_cluster_table;
+struct vgfx3d_postfx_chain;
+struct vgfx3d_postfx_snapshot;
+
+#define VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX 1000000000000.0f
+
+/// @brief Return non-zero when every float is finite and within the absolute bound.
+int vgfx3d_float_array_is_bounded(const float *values, size_t count, float abs_max);
+/// @brief Copy finite floats, substituting a finite fallback for invalid lanes.
+void vgfx3d_copy_float_array_finite_or(float *dst, const float *src, size_t count, float fallback);
+/// @brief Copy a bounded matrix, or write identity when the source is unusable.
+void vgfx3d_copy_mat4_finite_or_identity(float *dst, const float *src);
+/// @brief Copy a bounded matrix, falling back to another bounded matrix or identity.
+void vgfx3d_copy_mat4_finite_or(float *dst, const float *src, const float *fallback);
+/// @brief Validate a bounded shadow matrix with at least one useful component.
+int vgfx3d_shadow_matrix_is_usable(const float *matrix);
+/// @brief Copy and normalize a direction, using the fallback/default when unusable.
+void vgfx3d_copy_vec3_direction_or(float *dst, const float *src, const float fallback[3]);
+/// @brief Return the requested finite value, or a finite fallback (ultimately zero).
+float vgfx3d_finite_or(float requested, float fallback);
+/// @brief Clamp a finite value, substituting the fallback and tolerating inverted bounds.
+float vgfx3d_clamp_float_param(float requested, float min_value, float max_value, float fallback);
+/// @brief Normalize material workflow constants to legacy or PBR.
+int32_t vgfx3d_sanitize_material_workflow(int32_t requested);
+/// @brief Normalize alpha-mode constants to the public opaque/mask/blend range.
+int32_t vgfx3d_sanitize_alpha_mode(int32_t requested);
+/// @brief Normalize Game3D shading-model constants to the shader-visible range.
+int32_t vgfx3d_sanitize_shading_model(int32_t requested);
+/// @brief Normalize material shadow-mode constants to auto/none/cast.
+int32_t vgfx3d_sanitize_shadow_mode(int32_t requested);
+/// @brief Normalize texture-wrap constants, defaulting malformed values to repeat.
+int32_t vgfx3d_sanitize_texture_wrap(int32_t requested);
+/// @brief Normalize texture-filter constants, defaulting malformed values to linear.
+int32_t vgfx3d_sanitize_texture_filter(int32_t requested);
+/// @brief Normalize texture mip-filter constants, defaulting malformed values to none.
+int32_t vgfx3d_sanitize_texture_mip_filter(int32_t requested);
+/// @brief Normalize a texture UV-set selector to the shader-visible uv0/uv1 range.
+int32_t vgfx3d_sanitize_texture_uv_set(int32_t requested);
+/// @brief Copy a draw command while normalizing backend-visible material state.
+void vgfx3d_sanitize_draw_command(const struct vgfx3d_draw_cmd *src, struct vgfx3d_draw_cmd *dst);
+/// @brief Copy per-frame camera state while normalizing every backend-visible value.
+void vgfx3d_sanitize_camera_params(const struct vgfx3d_camera_params *src,
+                                   struct vgfx3d_camera_params *dst);
+/// @brief Copy one light while normalizing all shader-visible scalar/vector state.
+void vgfx3d_sanitize_light_params(const struct vgfx3d_light_params *src,
+                                  struct vgfx3d_light_params *dst);
+/// @brief Copy a bounded light array and return the number of initialized outputs.
+int32_t vgfx3d_sanitize_light_array(const struct vgfx3d_light_params *src,
+                                    int32_t count,
+                                    struct vgfx3d_light_params *dst,
+                                    int32_t dst_capacity);
+/// @brief Clamp one light's shadow base/span to the contiguous advertised slot range.
+void vgfx3d_sanitize_light_shadow_span(struct vgfx3d_light_params *light, int32_t shadow_count);
+/// @brief Copy non-negative bounded ambient RGB, treating a NULL source as black.
+void vgfx3d_sanitize_ambient_rgb(const float *src, float dst[3]);
+/// @brief Validate a clustered-light table before any fixed-size GPU upload/indexing.
+int vgfx3d_cluster_table_is_usable(const struct vgfx3d_cluster_table *table,
+                                   uint32_t expected_revision,
+                                   int32_t light_count);
+/// @brief Validate an enabled post-FX chain before indexed effect traversal.
+int vgfx3d_postfx_chain_is_usable(const struct vgfx3d_postfx_chain *chain);
+/// @brief Copy one post-FX snapshot while clamping shader loops and numeric parameters.
+void vgfx3d_sanitize_postfx_snapshot(const struct vgfx3d_postfx_snapshot *src,
+                                     struct vgfx3d_postfx_snapshot *dst);
+/// @brief Convert reversed-Z storage to canonical depth, returning -1 for invalid samples.
+float vgfx3d_sanitize_reversed_depth_probe_result(float reversed_depth);
 
 /// @brief Compute the normative scene-target extent for a logical output and render scale.
 /// @details Each result is `floor(output_dimension * scale)`, clamped to one pixel. A scale of
@@ -57,6 +128,17 @@ int vgfx3d_compute_scaled_scene_extent(int32_t output_width,
                                        float scale,
                                        int32_t *out_scene_width,
                                        int32_t *out_scene_height);
+
+/// @brief Compute a valid square texture mip extent from a positive base extent.
+int vgfx3d_expected_square_mip_extent(int32_t base_extent, int32_t mip_level, int32_t *out_extent);
+/// @brief Validate a prefiltered IBL chain against a cubemap's complete mip pyramid.
+int vgfx3d_validate_cubemap_ibl_layout(int32_t face_size,
+                                       int32_t ibl_base_size,
+                                       int32_t ibl_mip_count,
+                                       int32_t max_ibl_mips,
+                                       int32_t *out_level_base);
+/// @brief Check whether a whole-resource upload fits the remaining frame budget.
+int vgfx3d_upload_budget_allows(uint64_t budget, uint64_t used, uint64_t requested);
 
 /// @brief Decode a Pixels object into a freshly malloc'd RGBA8 byte array (caller frees).
 int vgfx3d_unpack_pixels_rgba(const void *pixels_ptr,
@@ -124,6 +206,19 @@ int vgfx3d_textureasset_get_native_snapshot_mip(void *asset,
                                                 int64_t mip_count,
                                                 int64_t relative_mip,
                                                 vgfx3d_native_texture_mip_t *out_mip);
+/// @brief True when a native mip declares the canonical block footprint for its format.
+int vgfx3d_native_texture_block_layout_is_valid(const vgfx3d_native_texture_mip_t *mip);
+/// @brief Validate one native compressed mip against its captured chain and block layout.
+int vgfx3d_validate_native_texture_mip(const vgfx3d_native_texture_mip_t *mip,
+                                       int32_t base_width,
+                                       int32_t base_height,
+                                       int64_t relative_mip,
+                                       int32_t expected_format_id,
+                                       int32_t expected_block_width,
+                                       int32_t expected_block_height,
+                                       int32_t expected_block_bytes,
+                                       uint64_t max_payload_bytes,
+                                       uint64_t *out_required_bytes);
 /// @brief Sum native mip payload bytes still pending from @p next_relative_mip/block-row cursor.
 uint64_t vgfx3d_textureasset_pending_native_bytes(void *asset,
                                                   int64_t next_relative_mip,

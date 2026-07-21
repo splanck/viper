@@ -29,7 +29,12 @@
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#ifndef ZANNA_SOURCE_DIR
+#define ZANNA_SOURCE_DIR "."
+#endif
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -51,6 +56,14 @@ static int tests_passed = 0;
         else                                                                                       \
             tests_passed++;                                                                        \
     } while (0)
+
+static void set_identity4x4(float *m) {
+    memset(m, 0, sizeof(float) * 16u);
+    m[0] = 1.0f;
+    m[5] = 1.0f;
+    m[10] = 1.0f;
+    m[15] = 1.0f;
+}
 
 static void test_frame_history_preserves_scene_state_across_overlay_passes(void) {
     vgfx3d_opengl_frame_history_t history;
@@ -120,6 +133,43 @@ static void test_frame_history_preserves_scene_state_across_overlay_passes(void)
                 "Overlay passes use their own VP for draw-time history");
 }
 
+static void test_frame_history_sanitizes_nonfinite_scene_inputs(void) {
+    vgfx3d_opengl_frame_history_t history;
+    float vp[16];
+    float inv_vp[16];
+    float overlay_vp[16];
+    float cam[3] = {NAN, 2.0f, INFINITY};
+
+    set_identity4x4(vp);
+    set_identity4x4(inv_vp);
+    set_identity4x4(overlay_vp);
+    vp[3] = NAN;
+    inv_vp[7] = INFINITY;
+    overlay_vp[11] = NAN;
+    memset(&history, 0, sizeof(history));
+
+    vgfx3d_opengl_update_frame_history(&history, vp, inv_vp, cam, 0);
+    EXPECT_NEAR(history.scene_vp[0], 1.0f, 0.0f, "Invalid OpenGL scene VP becomes identity");
+    EXPECT_NEAR(history.scene_vp[3], 0.0f, 0.0f, "Invalid OpenGL scene VP lane is cleared");
+    EXPECT_NEAR(history.scene_inv_vp[7],
+                0.0f,
+                0.0f,
+                "Invalid OpenGL inverse VP cannot poison post-processing");
+    EXPECT_NEAR(
+        history.scene_cam_pos[0], 0.0f, 0.0f, "Invalid OpenGL camera position lane uses zero");
+    EXPECT_NEAR(
+        history.scene_cam_pos[1], 2.0f, 0.0f, "Finite OpenGL camera position lane is preserved");
+    EXPECT_NEAR(
+        history.scene_cam_pos[2], 0.0f, 0.0f, "Infinite OpenGL camera position lane uses zero");
+
+    vgfx3d_opengl_update_frame_history(&history, overlay_vp, inv_vp, cam, 1);
+    EXPECT_NEAR(history.draw_prev_vp[0],
+                1.0f,
+                0.0f,
+                "Invalid OpenGL overlay VP falls back to identity history");
+    EXPECT_NEAR(history.draw_prev_vp[11], 0.0f, 0.0f, "Invalid OpenGL overlay VP lane is cleared");
+}
+
 static void test_target_blend_motion_and_readback_helpers(void) {
     vgfx3d_draw_cmd_t cmd;
 
@@ -153,6 +203,11 @@ static void test_target_blend_motion_and_readback_helpers(void) {
     EXPECT_TRUE(vgfx3d_opengl_choose_motion_attachment_mode(VGFX3D_OPENGL_TARGET_SCENE, &cmd) ==
                     VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_AND_MOTION,
                 "Opaque scene draws keep the motion attachment enabled");
+    cmd.disable_depth_test = 1;
+    EXPECT_TRUE(vgfx3d_opengl_choose_motion_attachment_mode(VGFX3D_OPENGL_TARGET_SCENE, &cmd) ==
+                    VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY,
+                "Depth-disabled OpenGL draws cannot publish authoritative motion");
+    cmd.disable_depth_test = 0;
     EXPECT_TRUE(vgfx3d_opengl_choose_motion_attachment_mode(VGFX3D_OPENGL_TARGET_SWAPCHAIN, &cmd) ==
                     VGFX3D_OPENGL_MOTION_ATTACHMENTS_COLOR_ONLY,
                 "Swapchain draws never target a scene-motion attachment");
@@ -198,6 +253,8 @@ static void test_capacity_and_cache_helpers(void) {
                 "Capacity helper grows beyond the old fixed cache size");
     EXPECT_TRUE(vgfx3d_opengl_next_capacity(16, 8, 16) == 16,
                 "Capacity helper keeps existing storage when it is already large enough");
+    EXPECT_TRUE(vgfx3d_opengl_next_capacity(0, 0, 0) == 1,
+                "Capacity helper never returns a non-positive allocation size");
     EXPECT_TRUE(vgfx3d_opengl_compute_buffer_capacity(0, 65, 64, &capacity) == 1 && capacity == 128,
                 "Size_t capacity helper grows without narrowing through int32_t");
     EXPECT_TRUE(vgfx3d_opengl_compute_buffer_capacity(SIZE_MAX / 2 + 1, SIZE_MAX, 64, &capacity) ==
@@ -298,13 +355,167 @@ static void test_shadow_projection_helper_handles_orthographic_and_perspective(v
     EXPECT_TRUE(vgfx3d_opengl_project_shadow_coord(
                     m, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE, world, uv_depth) == 0,
                 "OpenGL perspective shadow projection rejects non-positive W");
+
+    world[2] = 2.0f;
+    EXPECT_TRUE(
+        vgfx3d_opengl_project_shadow_coord(m, VGFX3D_SHADOW_PROJECTION_CUBE, world, uv_depth) == 1,
+        "OpenGL cube shadow projection uses perspective division");
+    EXPECT_NEAR(uv_depth[0], 0.5625f, 1e-6f, "OpenGL cube shadow UV divides by W");
+    uv_depth[0] = 9.0f;
+    uv_depth[1] = 9.0f;
+    uv_depth[2] = 9.0f;
+    EXPECT_TRUE(vgfx3d_opengl_project_shadow_coord(m, 99, world, uv_depth) == 0,
+                "OpenGL shadow projection rejects unknown projection types");
+    EXPECT_TRUE(uv_depth[0] == 0.0f && uv_depth[1] == 0.0f && uv_depth[2] == 0.0f,
+                "OpenGL shadow projection clears output on failure");
+    memset(m, 0, sizeof(m));
+    EXPECT_TRUE(vgfx3d_opengl_project_shadow_coord(
+                    m, VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC, world, uv_depth) == 0,
+                "OpenGL shadow projection rejects an all-zero matrix");
+}
+
+static char *read_text_file(const char *path) {
+    FILE *file = fopen(path, "rb");
+    long size;
+    char *text;
+
+    if (!file)
+        return NULL;
+    if (fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) < 0) {
+        fclose(file);
+        return NULL;
+    }
+    rewind(file);
+    text = (char *)malloc((size_t)size + 1u);
+    if (!text) {
+        fclose(file);
+        return NULL;
+    }
+    if (fread(text, 1u, (size_t)size, file) != (size_t)size) {
+        free(text);
+        fclose(file);
+        return NULL;
+    }
+    text[size] = '\0';
+    fclose(file);
+    return text;
+}
+
+static char *read_opengl_backend_sources(void) {
+    static const char *kParts[] = {
+        "vgfx3d_backend_opengl.c",
+        "vgfx3d_backend_opengl_context.inc",
+        "vgfx3d_backend_opengl_shaders.inc",
+        "vgfx3d_backend_opengl_mesh.inc",
+        "vgfx3d_backend_opengl_material.inc",
+        "vgfx3d_backend_opengl_frame.inc",
+        "vgfx3d_backend_opengl_targets.inc",
+        "vgfx3d_backend_opengl_texture.inc",
+    };
+    char path[1024];
+    char *combined = NULL;
+    size_t combined_length = 0;
+
+    for (size_t i = 0; i < sizeof(kParts) / sizeof(kParts[0]); i++) {
+        char *part;
+        char *grown;
+        size_t part_length;
+        snprintf(path,
+                 sizeof(path),
+                 "%s/src/runtime/graphics/3d/backend/%s",
+                 ZANNA_SOURCE_DIR,
+                 kParts[i]);
+        part = read_text_file(path);
+        if (!part) {
+            free(combined);
+            return NULL;
+        }
+        part_length = strlen(part);
+        grown = (char *)realloc(combined, combined_length + part_length + 1u);
+        if (!grown) {
+            free(part);
+            free(combined);
+            return NULL;
+        }
+        combined = grown;
+        memcpy(combined + combined_length, part, part_length + 1u);
+        combined_length += part_length;
+        free(part);
+    }
+    return combined;
+}
+
+static void test_opengl_source_contracts_are_context_safe(void) {
+    char *source = read_opengl_backend_sources();
+
+    EXPECT_TRUE(source != NULL, "OpenGL backend source chunks are readable for contract checks");
+    if (!source)
+        return;
+    EXPECT_TRUE(strstr(source, "static int gl_zero_to_one_clip") == NULL,
+                "OpenGL clip convention is not shared mutable process state");
+    EXPECT_TRUE(strstr(source, "gl_compile_context_shaders(&shaders, ctx->zero_to_one_clip)") !=
+                    NULL,
+                "OpenGL shader compilation receives the owning context's clip convention");
+    EXPECT_TRUE(strstr(source, "char log[1024] = {0};") != NULL,
+                "OpenGL shader and linker diagnostics start NUL-terminated");
+    EXPECT_TRUE(strstr(source, "vec4(mat3(model) * localTangent, aTangent.w)") != NULL,
+                "OpenGL tangents use the model linear transform under non-uniform scale");
+    EXPECT_TRUE(strstr(source, "vgfx3d_copy_mat4_finite_or_identity(safe_matrix") != NULL,
+                "OpenGL bone uploads sanitize each matrix before transposition");
+    EXPECT_TRUE(strstr(source, "vgfx3d_shadow_matrix_is_usable(light_vp)") != NULL,
+                "OpenGL shadow begin/reuse reject unusable light matrices");
+    EXPECT_TRUE(strstr(source,
+                       "return (len2 > 1e-12 && len2 < 1e20) ? v * inversesqrt(len2) : "
+                       "fallback;") != NULL,
+                "OpenGL safe normalization rejects huge and non-finite vector lengths");
+    EXPECT_TRUE(strstr(source, "skyboxSafeNormalize3") != NULL,
+                "OpenGL skybox normalization has a finite fallback path");
+    EXPECT_TRUE(strstr(source, " normalize(") == NULL,
+                "OpenGL shaders do not retain raw zero/overflow-prone normalize calls");
+    EXPECT_TRUE(
+        strstr(source, "vec3 safeHdrColor(vec3 c)") != NULL &&
+            strstr(source, "FragColor = vec4(safeHdrColor(result), safeAlpha(finalAlpha));") !=
+                NULL,
+        "OpenGL material outputs contain non-finite HDR values before post-processing");
+    EXPECT_TRUE(strstr(source, "vec3 bloomSrcAt(vec2 uv)") != NULL &&
+                    strstr(source, "bloomSafeColor(col * scale)") != NULL &&
+                    strstr(source, "bloomSafeColor(col * (1.0 / 16.0))") != NULL,
+                "OpenGL bloom contains invalid HDR samples through its complete mip chain");
+    EXPECT_TRUE(strstr(source, "vgfx3d_sanitize_reversed_depth_probe_result(mapped[i])") != NULL,
+                "OpenGL depth-probe publication rejects non-finite GPU samples");
+    EXPECT_TRUE(strstr(source, "ctx->depth_probe_result_count = 0;") != NULL,
+                "OpenGL invalidates stale probe results before mapping new PBO data");
+    EXPECT_TRUE(strstr(source, "vgfx3d_sanitize_postfx_snapshot(snapshot, &safe_snapshot)") != NULL,
+                "OpenGL post-FX uniforms sanitize malformed snapshots");
+    EXPECT_TRUE(strstr(source, "vgfx3d_cluster_table_is_usable(table, expected_revision") != NULL,
+                "OpenGL clustered-light uploads validate revision and offset/index metadata");
+    EXPECT_TRUE(strstr(source, "gl.FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0)") != NULL &&
+                    strstr(source, "gl.ClientWaitSync(ctx->depth_probe_fence, 0, 0)") != NULL &&
+                    strstr(source, "gl.DeleteSync(ctx->depth_probe_fence)") != NULL,
+                "OpenGL depth-probe PBOs use an explicit GPU fence lifecycle");
+    EXPECT_TRUE(strstr(source, "ctx->shadow_pass_failed = 1") != NULL &&
+                    strstr(source, "!ctx->shadow_pass_failed && ctx->shadow_depth_tex[slot]") !=
+                        NULL,
+                "OpenGL never publishes a shadow slot after a failed shadow draw");
+    EXPECT_TRUE(strstr(source, "GL_UPLOAD_FAILED = -1") != NULL &&
+                    strstr(source, "entry->failed_generation == generation") != NULL,
+                "OpenGL memoizes terminal texture-upload failures separately from budget pauses");
+    EXPECT_TRUE(strstr(source, "gl_cache_age_scratch(ctx, ctx->texture_cache_count)") != NULL &&
+                    strstr(source, "free(ctx->cache_age_scratch)") != NULL,
+                "OpenGL cache pruning reuses and releases context-owned age scratch storage");
+    EXPECT_TRUE(strstr(source, "vgfx3d_validate_cubemap_ibl_layout") != NULL &&
+                    strstr(source, "entry->applied_ibl_identity == env_cm->ibl_identity") != NULL,
+                "OpenGL enables IBL only after the exact validated overlay is resident");
+    free(source);
 }
 
 int main(void) {
     test_frame_history_preserves_scene_state_across_overlay_passes();
+    test_frame_history_sanitizes_nonfinite_scene_inputs();
     test_target_blend_motion_and_readback_helpers();
     test_capacity_and_cache_helpers();
     test_shadow_projection_helper_handles_orthographic_and_perspective();
+    test_opengl_source_contracts_are_context_safe();
 
     printf("vgfx3d opengl shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

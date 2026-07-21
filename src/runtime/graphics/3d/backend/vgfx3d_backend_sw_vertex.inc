@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vertex.inc  (#included from
-// vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend pipeline
-// vertex, frustum clipping, and Gouraud lighting
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vertex.inc
+// Purpose: Software vertex transformation, frustum clipping, and Gouraud-light preparation.
+// Key invariants:
+//   - Model, skinning, history, tangent, and projection inputs are finite before transformation.
+//   - Clip interpolation preserves every fragment attribute needed by the raster stage.
+// Ownership/Lifetime:
+//   - Transformed and clipped vertices live in context-owned reusable scratch storage.
+//   - Source mesh and animation streams are borrowed from the active draw snapshot.
+// Links: vgfx3d_backend_sw.c, vgfx3d_backend_sw_raster.inc
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Pipeline vertex
@@ -203,8 +215,7 @@ static void compute_lighting(pipe_vert_t *v,
         return;
     if (!ambient)
         ambient = zero_ambient;
-    if (!lights || light_count < 0)
-        light_count = 0;
+    light_count = sw_sanitize_light_count(lights, light_count);
     if (cmd->unlit) {
         v->color[0] = cmd->diffuse_color[0] * v->color[0];
         v->color[1] = cmd->diffuse_color[1] * v->color[1];
@@ -237,53 +248,7 @@ static void compute_lighting(pipe_vert_t *v,
     for (int32_t li = 0; li < light_count; li++) {
         const vgfx3d_light_params_t *light = &lights[li];
         float lx, ly, lz, atten = 1.0f;
-
-        if (light->type == 0) {
-            lx = -light->direction[0];
-            ly = -light->direction[1];
-            lz = -light->direction[2];
-            if (!sw_normalize3(&lx, &ly, &lz, 0.0f, 0.0f, 0.0f))
-                continue;
-        } else if (light->type == 1) {
-            lx = light->position[0] - v->world[0];
-            ly = light->position[1] - v->world[1];
-            lz = light->position[2] - v->world[2];
-            float dist = sqrtf(lx * lx + ly * ly + lz * lz);
-            if (!isfinite(dist) || dist <= 1e-7f)
-                continue;
-            lx /= dist;
-            ly /= dist;
-            lz /= dist;
-            atten = 1.0f / (1.0f + light->attenuation * dist * dist);
-        } else if (light->type == 3) {
-            lx = light->position[0] - v->world[0];
-            ly = light->position[1] - v->world[1];
-            lz = light->position[2] - v->world[2];
-            float dist = sqrtf(lx * lx + ly * ly + lz * lz);
-            if (!isfinite(dist) || dist <= 1e-7f)
-                continue;
-            lx /= dist;
-            ly /= dist;
-            lz /= dist;
-            atten = 1.0f / (1.0f + light->attenuation * dist * dist);
-            float sx = -light->direction[0];
-            float sy = -light->direction[1];
-            float sz = -light->direction[2];
-            if (!sw_normalize3(&sx, &sy, &sz, 0.0f, 0.0f, 0.0f))
-                continue;
-            float spot_dot = lx * sx + ly * sy + lz * sz;
-            if (spot_dot < light->outer_cos)
-                atten = 0.0f;
-            else if (spot_dot < light->inner_cos) {
-                float cone_range = light->inner_cos - light->outer_cos;
-                if (cone_range <= 1e-6f) {
-                    atten = 0.0f;
-                } else {
-                    float t = (spot_dot - light->outer_cos) / cone_range;
-                    atten *= t * t * (3.0f - 2.0f * t);
-                }
-            }
-        } else if (light->type == 2) {
+        if (light->type == 2) {
             r += light->color[0] * light->intensity * dr;
             g += light->color[1] * light->intensity * dg;
             b += light->color[2] * light->intensity * db;
@@ -317,7 +282,7 @@ static void compute_lighting(pipe_vert_t *v,
             float ndh = nx * hx + ny * hy + nz * hz;
             if (ndh < 0.0f)
                 ndh = 0.0f;
-            float spec = powf(ndh, cmd->shininess);
+            float spec = sw_material_powf(ndh, cmd->shininess);
             r += light->color[0] * intensity * spec * cmd->specular[0] * atten;
             g += light->color[1] * intensity * spec * cmd->specular[1] * atten;
             b += light->color[2] * intensity * spec * cmd->specular[2] * atten;
@@ -345,11 +310,7 @@ static void compute_lighting(pipe_vert_t *v,
                 ndv = 0.0f;
             float power = cmd->custom_params[0] > 0.1f ? cmd->custom_params[0] : 3.0f;
             float bias = cmd->custom_params[1];
-            float fresnel = powf(1.0f - ndv, power) + bias;
-            if (fresnel < 0.0f)
-                fresnel = 0.0f;
-            if (fresnel > 1.0f)
-                fresnel = 1.0f;
+            float fresnel = clamp01f(sw_material_powf(1.0f - ndv, power) + bias);
             v->color[3] *= fresnel;
             break;
         }

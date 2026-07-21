@@ -92,7 +92,7 @@ typedef struct {
     float prev_model[16];
 } vgfx3d_metal_instance_data_t;
 
-/// @brief Copy bone palette into a fixed-size MTLBuffer slot (identity-pads unused bones).
+/// @brief Sanitize and transpose a bone palette for MSL (identity-pads unused bones).
 void vgfx3d_metal_pack_bone_palette(float *dst, const float *src, int32_t bone_count);
 /// @brief Build per-instance Metal buffer entries with column-major transpose for MSL.
 void vgfx3d_metal_fill_instance_data(vgfx3d_metal_instance_data_t *dst,

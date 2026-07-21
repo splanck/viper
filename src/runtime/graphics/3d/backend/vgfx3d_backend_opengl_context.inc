@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_context.inc  (#included from
-// vgfx3d_backend_opengl.c; not a standalone translation unit) Purpose: OpenGL context creation,
-// shader/program/object init, and teardown
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_opengl_context.inc
+// Purpose: OpenGL context creation, shader/program/object initialization, and teardown.
+// Key invariants:
+//   - Shader depth conventions are derived from the context being initialized, never global state.
+//   - Context creation either publishes a complete resource set or releases every partial object.
+// Ownership/Lifetime:
+//   - This file is included by vgfx3d_backend_opengl.c and is not a standalone translation unit.
+//   - GL objects and native bindings belong to gl_context_t until gl_destroy_ctx.
+// Links: vgfx3d_backend_opengl.c, vgfx3d_backend_opengl_shaders.inc
+//
 //===----------------------------------------------------------------------===//
 typedef struct gl_shader_set_t {
     GLuint vs;
@@ -143,33 +155,41 @@ static void gl_probe_default_framebuffer_writable(gl_context_t *ctx) {
 }
 
 /// @brief Compile every shader used by the OpenGL backend context.
-static int gl_compile_context_shaders(gl_shader_set_t *shaders) {
+static int gl_compile_context_shaders(gl_shader_set_t *shaders, int zero_to_one_clip) {
     memset(shaders, 0, sizeof(*shaders));
     shaders->vs =
         compile_shader_parts(GL_VERTEX_SHADER,
                              glsl_vertex_src,
-                             (GLsizei)(sizeof(glsl_vertex_src) / sizeof(glsl_vertex_src[0])));
+                             (GLsizei)(sizeof(glsl_vertex_src) / sizeof(glsl_vertex_src[0])),
+                             zero_to_one_clip);
     shaders->fs =
         compile_shader_parts(GL_FRAGMENT_SHADER,
                              glsl_fragment_src,
-                             (GLsizei)(sizeof(glsl_fragment_src) / sizeof(glsl_fragment_src[0])));
+                             (GLsizei)(sizeof(glsl_fragment_src) / sizeof(glsl_fragment_src[0])),
+                             zero_to_one_clip);
     shaders->unlit_fs = compile_shader_parts(
         GL_FRAGMENT_SHADER,
         glsl_unlit_fragment_src,
-        (GLsizei)(sizeof(glsl_unlit_fragment_src) / sizeof(glsl_unlit_fragment_src[0])));
-    shaders->shadow_vs = compile_shader(GL_VERTEX_SHADER, glsl_shadow_vertex_src);
-    shaders->shadow_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_shadow_fragment_src);
-    shaders->postfx_vs = compile_shader(GL_VERTEX_SHADER, glsl_postfx_vertex_src);
+        (GLsizei)(sizeof(glsl_unlit_fragment_src) / sizeof(glsl_unlit_fragment_src[0])),
+        zero_to_one_clip);
+    shaders->shadow_vs = compile_shader(GL_VERTEX_SHADER, glsl_shadow_vertex_src, zero_to_one_clip);
+    shaders->shadow_fs =
+        compile_shader(GL_FRAGMENT_SHADER, glsl_shadow_fragment_src, zero_to_one_clip);
+    shaders->postfx_vs = compile_shader(GL_VERTEX_SHADER, glsl_postfx_vertex_src, zero_to_one_clip);
     shaders->postfx_fs = compile_shader_parts(
         GL_FRAGMENT_SHADER,
         glsl_postfx_fragment_src,
-        (GLsizei)(sizeof(glsl_postfx_fragment_src) / sizeof(glsl_postfx_fragment_src[0])));
-    shaders->skybox_vs = compile_shader(GL_VERTEX_SHADER, glsl_skybox_vertex_src);
-    shaders->skybox_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_skybox_fragment_src);
-    shaders->bloom_down_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_down_fragment_src);
-    shaders->bloom_up_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_up_fragment_src);
-    shaders->taa_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_taa_fragment_src);
-    shaders->ssr_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_ssr_fragment_src);
+        (GLsizei)(sizeof(glsl_postfx_fragment_src) / sizeof(glsl_postfx_fragment_src[0])),
+        zero_to_one_clip);
+    shaders->skybox_vs = compile_shader(GL_VERTEX_SHADER, glsl_skybox_vertex_src, zero_to_one_clip);
+    shaders->skybox_fs =
+        compile_shader(GL_FRAGMENT_SHADER, glsl_skybox_fragment_src, zero_to_one_clip);
+    shaders->bloom_down_fs =
+        compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_down_fragment_src, zero_to_one_clip);
+    shaders->bloom_up_fs =
+        compile_shader(GL_FRAGMENT_SHADER, glsl_bloom_up_fragment_src, zero_to_one_clip);
+    shaders->taa_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_taa_fragment_src, zero_to_one_clip);
+    shaders->ssr_fs = compile_shader(GL_FRAGMENT_SHADER, glsl_ssr_fragment_src, zero_to_one_clip);
     return shaders->vs && shaders->fs && shaders->unlit_fs && shaders->shadow_vs &&
            shaders->shadow_fs &&
            shaders->postfx_vs && shaders->postfx_fs && shaders->skybox_vs && shaders->skybox_fs &&
@@ -556,10 +576,14 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
         gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
     if (ctx->skybox_vbo)
         gl.DeleteBuffers(1, &ctx->skybox_vbo);
+    if (ctx->depth_probe_fence)
+        gl.DeleteSync(ctx->depth_probe_fence);
     if (ctx->depth_probe_pbo)
         gl.DeleteBuffers(1, &ctx->depth_probe_pbo);
     if (ctx->default_white_tex)
         gl.DeleteTextures(1, &ctx->default_white_tex);
+    if (ctx->brdf_lut_tex)
+        gl.DeleteTextures(1, &ctx->brdf_lut_tex);
     if (ctx->default_white_cubemap)
         gl.DeleteTextures(1, &ctx->default_white_cubemap);
     if (ctx->morph_normal_tbo)
@@ -597,7 +621,10 @@ static void gl_release_fixed_context_objects(gl_context_t *ctx) {
     if (ctx->vao)
         gl.DeleteVertexArrays(1, &ctx->vao);
     ctx->fullscreen_vbo = ctx->skybox_vbo = 0;
+    ctx->depth_probe_fence = NULL;
+    ctx->depth_probe_pbo = 0;
     ctx->default_white_tex = 0;
+    ctx->brdf_lut_tex = 0;
     ctx->default_white_cubemap = 0;
     ctx->morph_normal_tbo = ctx->morph_tbo = 0;
     ctx->morph_normal_buffer = ctx->bone_ubo = ctx->prev_bone_ubo = 0;
@@ -638,6 +665,9 @@ static void gl_release_host_only_context_storage(gl_context_t *ctx) {
     ctx->morph_cache = NULL;
     ctx->morph_cache_count = 0;
     ctx->morph_cache_capacity = 0;
+    free(ctx->cache_age_scratch);
+    ctx->cache_age_scratch = NULL;
+    ctx->cache_age_scratch_capacity = 0;
     free(ctx->readback_scratch_rgba);
     ctx->readback_scratch_rgba = NULL;
     ctx->readback_scratch_bytes = 0;
@@ -718,13 +748,13 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
      * ZANNA_GL_CLIP_CONTROL=1 until validated on a live Linux/GL machine
      * (this TU has no compile or run coverage on the macOS dev host); the
      * shader prologue (compile_shader_parts) and the VS z remap key off
-     * gl_zero_to_one_clip, so flipping the default is a one-line change. */
-    gl_zero_to_one_clip = 0;
+     * ctx->zero_to_one_clip, so flipping the default is a one-line change. */
+    ctx->zero_to_one_clip = 0;
     {
         const char *clip_opt = getenv("ZANNA_GL_CLIP_CONTROL");
         if (clip_opt && strcmp(clip_opt, "1") == 0 && gl.ClipControl) {
             gl.ClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
-            gl_zero_to_one_clip = 1;
+            ctx->zero_to_one_clip = 1;
         }
     }
     gl_init_context_defaults(ctx, w, h);
@@ -759,7 +789,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     }
     gl_query_anisotropy_support(ctx);
 
-    if (!gl_compile_context_shaders(&shaders)) {
+    if (!gl_compile_context_shaders(&shaders, ctx->zero_to_one_clip)) {
         gl_delete_context_shaders(&shaders);
         gl_destroy_native_binding(ctx);
         free(ctx);
@@ -855,64 +885,8 @@ static void gl_destroy_ctx(void *ctx_ptr) {
         }
     }
 
-    if (ctx->fullscreen_vbo)
-        gl.DeleteBuffers(1, &ctx->fullscreen_vbo);
-    if (ctx->skybox_vbo)
-        gl.DeleteBuffers(1, &ctx->skybox_vbo);
-    if (ctx->default_white_tex)
-        gl.DeleteTextures(1, &ctx->default_white_tex);
-    if (ctx->default_white_cubemap)
-        gl.DeleteTextures(1, &ctx->default_white_cubemap);
-    if (ctx->morph_normal_tbo)
-        gl.DeleteTextures(1, &ctx->morph_normal_tbo);
-    if (ctx->morph_tbo)
-        gl.DeleteTextures(1, &ctx->morph_tbo);
-    if (ctx->morph_normal_buffer)
-        gl.DeleteBuffers(1, &ctx->morph_normal_buffer);
-    if (ctx->bone_ubo)
-        gl.DeleteBuffers(1, &ctx->bone_ubo);
-    if (ctx->prev_bone_ubo)
-        gl.DeleteBuffers(1, &ctx->prev_bone_ubo);
-    if (ctx->cluster_offsets_ubo)
-        gl.DeleteBuffers(1, &ctx->cluster_offsets_ubo);
-    if (ctx->cluster_indices_ubo)
-        gl.DeleteBuffers(1, &ctx->cluster_indices_ubo);
-    if (ctx->opaque_depth_tex)
-        gl.DeleteTextures(1, &ctx->opaque_depth_tex);
-    if (ctx->opaque_depth_fbo)
-        gl.DeleteFramebuffers(1, &ctx->opaque_depth_fbo);
-    if (ctx->morph_buffer)
-        gl.DeleteBuffers(1, &ctx->morph_buffer);
-    if (ctx->instance_vbo)
-        gl.DeleteBuffers(1, &ctx->instance_vbo);
-    if (ctx->prev_instance_vbo)
-        gl.DeleteBuffers(1, &ctx->prev_instance_vbo);
-    if (ctx->mesh_vbo)
-        gl.DeleteBuffers(1, &ctx->mesh_vbo);
-    if (ctx->mesh_ibo)
-        gl.DeleteBuffers(1, &ctx->mesh_ibo);
-    if (ctx->skybox_vao)
-        gl.DeleteVertexArrays(1, &ctx->skybox_vao);
-    if (ctx->fullscreen_vao)
-        gl.DeleteVertexArrays(1, &ctx->fullscreen_vao);
-    if (ctx->vao)
-        gl.DeleteVertexArrays(1, &ctx->vao);
-    if (ctx->program)
-        gl.DeleteProgram(ctx->program);
-    if (ctx->shadow_program)
-        gl.DeleteProgram(ctx->shadow_program);
-    if (ctx->postfx_program)
-        gl.DeleteProgram(ctx->postfx_program);
-    if (ctx->skybox_program)
-        gl.DeleteProgram(ctx->skybox_program);
-    if (ctx->bloom_down_program)
-        gl.DeleteProgram(ctx->bloom_down_program);
-    if (ctx->bloom_up_program)
-        gl.DeleteProgram(ctx->bloom_up_program);
-    if (ctx->taa_program)
-        gl.DeleteProgram(ctx->taa_program);
-    if (ctx->ssr_program)
-        gl.DeleteProgram(ctx->ssr_program);
+    gl_release_fixed_context_objects(ctx);
+    gl_delete_context_programs(ctx);
     free(ctx->readback_scratch_rgba);
     ctx->readback_scratch_rgba = NULL;
     ctx->readback_scratch_bytes = 0;

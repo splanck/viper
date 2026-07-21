@@ -1671,6 +1671,20 @@ set_tests_properties(zia_smoke_ashfall_render PROPERTIES
         ENVIRONMENT "ZANNA_3D_BACKEND=software"
         TIMEOUT 120)
 
+# Exercise Ashfall's authored multi-light PBR scene and complete HDR post-FX chain on
+# the native Metal path. This catches CPU/MSL constant-buffer layout drift that the
+# portable software probes cannot observe.
+if (APPLE)
+    add_test(NAME zia_visual_ashfall_metal
+            COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/visual_probe.zia"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")
+    set_tests_properties(zia_visual_ashfall_metal PROPERTIES
+            PASS_REGULAR_EXPRESSION "RESULT: ok"
+            LABELS "zia;smoke;graphics3d;requires_display;metal;slow"
+            ENVIRONMENT "ZANNA_3D_BACKEND=metal;ZANNA_ASHFALL_EXPECT_BACKEND=metal"
+            TIMEOUT 180)
+endif ()
+
 add_test(NAME zia_smoke_ashfall_campaign
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/examples/games/ashfall/probes/campaign_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/examples/games/ashfall")

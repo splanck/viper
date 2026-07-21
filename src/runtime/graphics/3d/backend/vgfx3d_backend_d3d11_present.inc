@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_present.inc  (#included from
-// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 frame begin/end,
-// resize, readback, post-FX chain, present, shadow, and skybox
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_present.inc
+// Purpose: D3D11 frame lifecycle, resize, readback, post-FX, presentation, shadows, and skybox.
+// Key invariants:
+//   - Frame matrices and temporal history remain finite, bounded, and mutually coherent.
+//   - Render-target transitions restore complete D3D11 pipeline state on every path.
+// Ownership/Lifetime:
+//   - This file is included by vgfx3d_backend_d3d11.c and is not a standalone translation unit.
+//   - COM targets, staging resources, and snapshots belong to d3d11_context_t.
+// Links: vgfx3d_backend_d3d11.c, vgfx3d_backend_d3d11_draw.inc
+//
 //===----------------------------------------------------------------------===//
 
 /// @brief Backend `clear` op — stores the clear color for the next BeginFrame.
@@ -52,9 +64,12 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     HRESULT hr;
     int32_t scene_width;
     int32_t scene_height;
+    vgfx3d_camera_params_t safe_cam;
 
     if (!ctx || !cam)
         return;
+    vgfx3d_sanitize_camera_params(cam, &safe_cam);
+    cam = &safe_cam;
     ctx->frame_active = 1;
     if (!ctx->rtt_active)
         ctx->frame_pending_present = 1;
@@ -108,7 +123,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
      * can be singular. Keep VP/inverse/history as one coherent identity pair in either case;
      * mixing a bad VP with an identity inverse creates full-screen TAA/SSAO reprojection streaks.
      */
-    if (!vgfx3d_d3d11_float_array_is_finite(ctx->vp, 16u) ||
+    if (!vgfx3d_d3d11_float_array_is_bounded(ctx->vp, 16u, VGFX3D_D3D11_MATRIX_COMPONENT_ABS_MAX) ||
         vgfx3d_invert_matrix4(ctx->vp, ctx->inv_vp) != 0) {
         memcpy(ctx->vp, k_identity4x4, sizeof(ctx->vp));
         memcpy(ctx->inv_vp, k_identity4x4, sizeof(ctx->inv_vp));
@@ -1262,24 +1277,27 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
     result_tex = ctx->scene_color_tex;
     for (int32_t i = 0; i < chain->effect_count; i++) {
         const int is_last = (i == chain->effect_count - 1) ? 1 : 0;
-        const vgfx3d_postfx_snapshot_t *pass_snapshot = &chain->effects[i].snapshot;
+        vgfx3d_postfx_snapshot_t safe_snapshot;
+        const vgfx3d_postfx_snapshot_t *pass_snapshot;
+
+        vgfx3d_sanitize_postfx_snapshot(&chain->effects[i].snapshot, &safe_snapshot);
+        pass_snapshot = &safe_snapshot;
 
         ctx->postfx_current_bloom_srv = NULL;
         if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_BLOOM &&
-            vgfx3d_d3d11_postfx_effect_is_active(&chain->effects[i])) {
-            ctx->postfx_current_bloom_srv =
-                d3d11_encode_bloom_chain(ctx,
-                                         source_srv,
-                                         ctx->scene_width,
-                                         ctx->scene_height,
-                                         chain->effects[i].snapshot.bloom_threshold);
+            safe_snapshot.bloom_enabled) {
+            ctx->postfx_current_bloom_srv = d3d11_encode_bloom_chain(ctx,
+                                                                     source_srv,
+                                                                     ctx->scene_width,
+                                                                     ctx->scene_height,
+                                                                     safe_snapshot.bloom_threshold);
         }
 
         /* Plan 05: a TAA entry resolves into its own history target, which then feeds
          * the remaining chain; the regular pass below turns into a plain copy so the
          * result still lands in the caller's framebuffer. */
         if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA &&
-            chain->effects[i].snapshot.taa_enabled) {
+            safe_snapshot.taa_enabled) {
             ID3D11ShaderResourceView *resolved = d3d11_encode_taa_pass(ctx,
                                                                        source_srv,
                                                                        ctx->scene_width,
@@ -1293,9 +1311,9 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
         /* Plan 10: an SSR entry composites reflections into its own target, which
          * then feeds the remaining chain exactly like the TAA pre-resolve above. */
         if (chain->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_SSR &&
-            chain->effects[i].snapshot.ssr_enabled) {
+            safe_snapshot.ssr_enabled) {
             ID3D11ShaderResourceView *reflected = d3d11_encode_ssr_pass(
-                ctx, source_srv, ctx->scene_width, ctx->scene_height, &chain->effects[i].snapshot);
+                ctx, source_srv, ctx->scene_width, ctx->scene_height, &safe_snapshot);
             if (reflected)
                 source_srv = reflected;
             pass_snapshot = NULL;
@@ -1794,8 +1812,9 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     ID3D11Buffer *mesh_vb = NULL;
     ID3D11Buffer *mesh_ib = NULL;
     ID3D11RasterizerState *shadow_rasterizer = NULL;
-    int alpha_masked_shadow = cmd && cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK;
+    int alpha_masked_shadow;
     uint32_t index_count;
+    vgfx3d_draw_cmd_t safe_cmd;
 
     if (!ctx)
         return;
@@ -1805,6 +1824,9 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
             ctx->shadow_pass_failed = 1;
         return;
     }
+    vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
+    cmd = &safe_cmd;
+    alpha_masked_shadow = cmd->alpha_mode == RT_MATERIAL3D_ALPHA_MODE_MASK;
     index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
     if (index_count == 0) {
         ctx->shadow_pass_failed = 1;

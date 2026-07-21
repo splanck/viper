@@ -76,14 +76,32 @@ static void test_pack_bone_palette_identity_pads_unused_bones(void) {
 
     for (int i = 0; i < 16; i++) {
         char msg[96];
-        snprintf(msg, sizeof(msg), "Bone palette preserves matrix element %d", i);
-        EXPECT_NEAR(dst[i], src[i], 1e-6f, msg);
+        int row = i / 4;
+        int column = i % 4;
+        snprintf(msg, sizeof(msg), "Bone palette transposes matrix element %d for MSL", i);
+        EXPECT_NEAR(dst[i], src[column * 4 + row], 1e-6f, msg);
     }
     EXPECT_NEAR(dst[16], 1.0f, 1e-6f, "Bone palette identity-pads the second bone X scale");
     EXPECT_NEAR(dst[21], 1.0f, 1e-6f, "Bone palette identity-pads the second bone Y scale");
     EXPECT_NEAR(dst[26], 1.0f, 1e-6f, "Bone palette identity-pads the second bone Z scale");
     EXPECT_NEAR(dst[31], 1.0f, 1e-6f, "Bone palette identity-pads the second bone W scale");
     EXPECT_NEAR(dst[17], 0.0f, 1e-6f, "Bone palette clears off-diagonal identity padding");
+}
+
+static void test_pack_bone_palette_replaces_nonfinite_matrices(void) {
+    float src[16];
+    float dst[VGFX3D_METAL_MAX_BONES * 16];
+
+    set_identity4x4(src);
+    src[7] = NAN;
+    memset(dst, 0xCD, sizeof(dst));
+    vgfx3d_metal_pack_bone_palette(dst, src, 1);
+
+    EXPECT_NEAR(dst[0], 1.0f, 0.0f, "Non-finite Metal bone matrices become identity");
+    EXPECT_NEAR(dst[5], 1.0f, 0.0f, "Sanitized Metal bone retains identity Y scale");
+    EXPECT_NEAR(dst[10], 1.0f, 0.0f, "Sanitized Metal bone retains identity Z scale");
+    EXPECT_NEAR(dst[15], 1.0f, 0.0f, "Sanitized Metal bone retains identity W scale");
+    EXPECT_NEAR(dst[13], 0.0f, 0.0f, "Sanitized Metal bone clears the poisoned lane");
 }
 
 static void test_pack_bone_palette_identity_pads_empty_source(void) {
@@ -154,6 +172,32 @@ static void test_fill_instance_data_transposes_and_tracks_history(void) {
                 instances[1].model[12],
                 1e-6f,
                 "Instance staging falls back to the current matrix when no history exists");
+}
+
+static void test_fill_instance_data_sanitizes_current_and_previous_matrices(void) {
+    vgfx3d_metal_instance_data_t instance;
+    float model[16];
+    float previous[16];
+
+    set_identity4x4(model);
+    set_identity4x4(previous);
+    model[2] = INFINITY;
+    previous[6] = NAN;
+    memset(&instance, 0xCD, sizeof(instance));
+    vgfx3d_metal_fill_instance_data(&instance, 1, model, previous, 1);
+
+    EXPECT_NEAR(instance.model[0], 1.0f, 0.0f, "Invalid current instance matrix becomes identity");
+    EXPECT_NEAR(instance.model[8], 0.0f, 0.0f, "Invalid current instance lane is cleared");
+    EXPECT_NEAR(
+        instance.normal[0], 1.0f, 0.0f, "Sanitized instance gets an identity normal matrix");
+    EXPECT_NEAR(instance.prev_model[0],
+                1.0f,
+                0.0f,
+                "Invalid previous instance matrix falls back to sanitized current matrix");
+    EXPECT_NEAR(instance.prev_model[6],
+                0.0f,
+                0.0f,
+                "Invalid previous instance lane cannot reach the Metal buffer");
 }
 
 static void test_frame_history_preserves_scene_state_across_overlay_passes(void) {
@@ -229,6 +273,43 @@ static void test_frame_history_preserves_scene_state_across_overlay_passes(void)
                 "Overlay pass marks the separate overlay target as used");
 }
 
+static void test_frame_history_sanitizes_nonfinite_scene_inputs(void) {
+    vgfx3d_metal_frame_history_t history;
+    float vp[16];
+    float inv_vp[16];
+    float overlay_vp[16];
+    float cam[3] = {NAN, 2.0f, INFINITY};
+
+    set_identity4x4(vp);
+    set_identity4x4(inv_vp);
+    set_identity4x4(overlay_vp);
+    vp[3] = NAN;
+    inv_vp[7] = INFINITY;
+    overlay_vp[11] = NAN;
+    memset(&history, 0, sizeof(history));
+
+    vgfx3d_metal_update_frame_history(&history, vp, inv_vp, cam, 0, 0);
+    EXPECT_NEAR(history.scene_vp[0], 1.0f, 0.0f, "Invalid Metal scene VP falls back to identity");
+    EXPECT_NEAR(history.scene_vp[3], 0.0f, 0.0f, "Invalid Metal scene VP lane is cleared");
+    EXPECT_NEAR(history.scene_inv_vp[7],
+                0.0f,
+                0.0f,
+                "Invalid Metal inverse VP cannot poison post-processing");
+    EXPECT_NEAR(
+        history.scene_cam_pos[0], 0.0f, 0.0f, "Invalid Metal camera position lane uses zero");
+    EXPECT_NEAR(
+        history.scene_cam_pos[1], 2.0f, 0.0f, "Finite Metal camera position lane is preserved");
+    EXPECT_NEAR(
+        history.scene_cam_pos[2], 0.0f, 0.0f, "Infinite Metal camera position lane uses zero");
+
+    vgfx3d_metal_update_frame_history(&history, overlay_vp, inv_vp, cam, 1, 1);
+    EXPECT_NEAR(history.draw_prev_vp[0],
+                1.0f,
+                0.0f,
+                "Invalid Metal overlay VP falls back to identity history");
+    EXPECT_NEAR(history.draw_prev_vp[11], 0.0f, 0.0f, "Invalid Metal overlay VP lane is cleared");
+}
+
 static void test_target_kind_blend_motion_and_readback_helpers(void) {
     vgfx3d_draw_cmd_t cmd;
 
@@ -270,6 +351,11 @@ static void test_target_kind_blend_motion_and_readback_helpers(void) {
     EXPECT_TRUE(vgfx3d_metal_choose_motion_attachment_mode(VGFX3D_METAL_TARGET_SCENE, &cmd) ==
                     VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_AND_MOTION,
                 "Opaque scene draws keep the motion attachment enabled");
+    cmd.disable_depth_test = 1;
+    EXPECT_TRUE(vgfx3d_metal_choose_motion_attachment_mode(VGFX3D_METAL_TARGET_SCENE, &cmd) ==
+                    VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_ONLY,
+                "Depth-disabled Metal draws cannot publish authoritative motion");
+    cmd.disable_depth_test = 0;
     EXPECT_TRUE(vgfx3d_metal_choose_motion_attachment_mode(VGFX3D_METAL_TARGET_SWAPCHAIN, &cmd) ==
                     VGFX3D_METAL_MOTION_ATTACHMENTS_COLOR_ONLY,
                 "Swapchain draws never target a scene-motion attachment");
@@ -305,6 +391,8 @@ static void test_capacity_mip_and_morph_cache_helpers(void) {
                 "Capacity helper grows beyond the old fixed cache size");
     EXPECT_TRUE(vgfx3d_metal_next_capacity(16, 8, 16) == 16,
                 "Capacity helper keeps existing storage when it is already large enough");
+    EXPECT_TRUE(vgfx3d_metal_next_capacity(0, 0, 0) == 1,
+                "Capacity helper never returns a non-positive allocation size");
     EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count(1024u, 64) == VGFX3D_METAL_MAX_MORPH_SHAPES,
                 "Morph count helper clamps to the shader-visible shape limit");
     EXPECT_TRUE(vgfx3d_metal_clamp_morph_shape_count((uint32_t)INT_MAX, 1) == 0,
@@ -392,6 +480,23 @@ static void test_shadow_projection_helper_handles_orthographic_and_perspective(v
     EXPECT_TRUE(vgfx3d_metal_project_shadow_coord(
                     m, VGFX3D_SHADOW_PROJECTION_PERSPECTIVE, world, uv_depth) == 0,
                 "Metal perspective shadow projection rejects non-positive W");
+
+    world[2] = 2.0f;
+    EXPECT_TRUE(
+        vgfx3d_metal_project_shadow_coord(m, VGFX3D_SHADOW_PROJECTION_CUBE, world, uv_depth) == 1,
+        "Metal cube shadow projection uses perspective division");
+    EXPECT_NEAR(uv_depth[0], 0.5625f, 1e-6f, "Metal cube shadow UV divides by W");
+    uv_depth[0] = 9.0f;
+    uv_depth[1] = 9.0f;
+    uv_depth[2] = 9.0f;
+    EXPECT_TRUE(vgfx3d_metal_project_shadow_coord(m, 99, world, uv_depth) == 0,
+                "Metal shadow projection rejects unknown projection types");
+    EXPECT_TRUE(uv_depth[0] == 0.0f && uv_depth[1] == 0.0f && uv_depth[2] == 0.0f,
+                "Metal shadow projection clears output on failure");
+    memset(m, 0, sizeof(m));
+    EXPECT_TRUE(vgfx3d_metal_project_shadow_coord(
+                    m, VGFX3D_SHADOW_PROJECTION_ORTHOGRAPHIC, world, uv_depth) == 0,
+                "Metal shadow projection rejects an all-zero matrix");
 }
 
 static char *read_text_file(const char *path) {
@@ -499,8 +604,42 @@ static void test_metal_shader_source_uses_safe_normalization(void) {
                     strstr(source, "float4 basisV") != NULL &&
                     strstr(source, "float4 shape") != NULL,
                 "Metal light layout retains emitter basis and dimensions");
+    EXPECT_TRUE(strstr(source, "modelMatrix * float4(currTangent.xyz, 0.0)") != NULL,
+                "Metal tangents use the model linear transform under non-uniform scale");
+    EXPECT_TRUE(strstr(source, "vgfx3d_shadow_matrix_is_usable(light_vp)") != NULL,
+                "Metal shadow begin/reuse reject unusable light matrices");
     EXPECT_TRUE(strstr(source, " normalize(") == NULL,
                 "Metal shader source avoids raw normalize calls");
+
+    free(source);
+}
+
+static void test_metal_light_layout_and_hdr_outputs_are_guarded(void) {
+    char *source = read_metal_backend_sources();
+
+    EXPECT_TRUE(source != NULL,
+                "Metal backend source chunks are readable for light-layout regression checks");
+    if (!source)
+        return;
+    EXPECT_TRUE(strstr(source, "\"    int emitterPad0;\\n\"") != NULL &&
+                    strstr(source, "\"    int emitterPad1;\\n\"") != NULL &&
+                    strstr(source, "\"    int emitterPad2;\\n\"") != NULL,
+                "Metal MSL light records use scalar tail padding with a 160-byte array stride");
+    EXPECT_TRUE(strstr(source, "\"    int3 emitterPad;\\n\"") == NULL,
+                "Metal MSL light records never use an alignment-expanding int3 tail");
+    EXPECT_TRUE(strstr(source, "offsetof(mtl_light_t, intensity) == 64u") != NULL &&
+                    strstr(source, "offsetof(mtl_light_t, decay_type) == 144u") != NULL &&
+                    strstr(source, "sizeof(mtl_light_t) == 160u") != NULL,
+                "Metal C light records pin every shader-sensitive offset and element size");
+    EXPECT_TRUE(strstr(source, "float3 safe_hdr_color(float3 c)") != NULL &&
+                    strstr(source, "float safe_alpha(float a)") != NULL &&
+                    strstr(source, "float4(safe_hdr_color(result), safe_alpha(finalAlpha))") !=
+                        NULL,
+                "Metal material outputs contain non-finite HDR values before post-processing");
+    EXPECT_TRUE(strstr(source, "float3 bloom_safe_color(float3 c)") != NULL &&
+                    strstr(source, "bloom_safe_color(col * scale)") != NULL &&
+                    strstr(source, "bloom_safe_color(col * (1.0 / 16.0))") != NULL,
+                "Metal bloom contains invalid HDR samples at downsample and upsample boundaries");
 
     free(source);
 }
@@ -529,17 +668,68 @@ static void test_metal_mipmap_generation_never_waits_on_cpu(void) {
     free(source);
 }
 
+static void test_metal_hdr_rtt_and_depth_probe_source_contracts(void) {
+    char *source = read_metal_backend_sources();
+
+    EXPECT_TRUE(source != NULL,
+                "Metal backend source chunks are readable for target/probe regression checks");
+    if (!source)
+        return;
+    EXPECT_TRUE(strstr(source, "static BOOL metal_target_uses_hdr_color") != NULL &&
+                    strstr(source,
+                           "ctx.rttColorTexture.pixelFormat == "
+                           "MTLPixelFormatRGBA16Float") != NULL,
+                "Metal HDR RTTs select RGBA16F-compatible material pipelines");
+    EXPECT_TRUE(strstr(source, "motion_desc = [MTLTextureDescriptor") != NULL &&
+                    strstr(source, "texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm") !=
+                        NULL,
+                "Metal RTT motion attachments retain the pipeline's BGRA8 format");
+    EXPECT_TRUE(strstr(source, "ctx.depthProbeBuffers[ctx.transientRingSlot] = probe_buffer") !=
+                        NULL &&
+                    strstr(source, "metal_publish_depth_probes(probeCtx, probeBuffer") != NULL,
+                "Metal depth probes publish from the protected in-flight ring slot");
+    EXPECT_TRUE(strstr(source, "vgfx3d_sanitize_postfx_snapshot(postfx, &safe_postfx)") != NULL,
+                "Metal post-FX constants sanitize snapshots before shader upload");
+    EXPECT_TRUE(strstr(source, "vgfx3d_cluster_table_is_usable(table, expected_revision") != NULL,
+                "Metal cluster uploads validate revision and index metadata");
+    EXPECT_TRUE(strstr(source, "status != MTLCommandBufferStatusCompleted") != NULL &&
+                    strstr(source, "command_buffer.status != MTLCommandBufferStatusCompleted") !=
+                        NULL,
+                "Metal readback rejects every non-completed command-buffer state");
+    EXPECT_TRUE(strstr(source, "metal_install_render_target_release(ctx, rt)") != NULL &&
+                    strstr(source, "vgfx3d_rendertarget_release_backend(target)") != NULL,
+                "Metal cached render targets register an explicit shell-lifetime hook");
+    EXPECT_TRUE(
+        strstr(source, "static int metal_recreate_main_targets") != NULL &&
+            strstr(source, "Publish only after every attachment required by the selected route") !=
+                NULL,
+        "Metal size-dependent attachment rebuilds publish transactionally");
+    EXPECT_TRUE(strstr(source, "vgfx3d_validate_cubemap_ibl_layout") != NULL &&
+                    strstr(source, "entry.appliedIblIdentity != env_cm->ibl_identity") != NULL,
+                "Metal enables IBL only after the exact validated overlay is resident");
+    EXPECT_TRUE(strstr(source, "ctx->_shadowPassFailed = 1") != NULL &&
+                    strstr(source, "!ctx->_shadowPassFailed && metal_shadow_slot_texture_ready") !=
+                        NULL,
+                "Metal never publishes a shadow slot after a failed shadow draw");
+    free(source);
+}
+
 int main(void) {
     test_pack_bone_palette_identity_pads_unused_bones();
     test_pack_bone_palette_identity_pads_empty_source();
     test_pack_bone_palette_keeps_highest_supported_bone();
+    test_pack_bone_palette_replaces_nonfinite_matrices();
     test_fill_instance_data_transposes_and_tracks_history();
+    test_fill_instance_data_sanitizes_current_and_previous_matrices();
     test_frame_history_preserves_scene_state_across_overlay_passes();
+    test_frame_history_sanitizes_nonfinite_scene_inputs();
     test_target_kind_blend_motion_and_readback_helpers();
     test_capacity_mip_and_morph_cache_helpers();
     test_shadow_projection_helper_handles_orthographic_and_perspective();
     test_metal_shader_source_uses_safe_normalization();
+    test_metal_light_layout_and_hdr_outputs_are_guarded();
     test_metal_mipmap_generation_never_waits_on_cpu();
+    test_metal_hdr_rtt_and_depth_probe_source_contracts();
 
     printf("vgfx3d metal shared tests: %d/%d passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

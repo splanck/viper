@@ -160,11 +160,14 @@ func meanLuma(stats: FrameStats) -> Float {
 
 func reportFrameStats(label: String, stats: FrameStats) {
     var whitePercent = 0.0;
+    var litPercent = 0.0;
     if (stats.samples > 0) {
         whitePercent = (stats.whiteSamples + 0.0) * 100.0 / (stats.samples + 0.0);
+        litPercent = (stats.litSamples + 0.0) * 100.0 / (stats.samples + 0.0);
     }
     Terminal.Say("METRIC: " + label + " mean_luma=" + fmt(meanLuma(stats))
         + " range=" + toString(stats.minLuma) + ".." + toString(stats.maxLuma)
+        + " lit_percent=" + fmt(litPercent)
         + " neutral_white_percent=" + fmt(whitePercent)
         + " max_white_run_px=" + toString(stats.maxWhiteRun * 3));
 }

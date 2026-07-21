@@ -35,21 +35,29 @@ static void metal_submit_draw(void *ctx_ptr,
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
+        id<MTLTexture> env_texture = nil;
         NSUInteger vb_offset = 0;
         NSUInteger ib_offset = 0;
         uint32_t index_count;
         vgfx3d_metal_blend_mode_t blend_mode;
-        static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+        vgfx3d_draw_cmd_t safe_cmd;
+        vgfx3d_light_params_t safe_lights[VGFX3D_MAX_LIGHTS];
+        float safe_ambient[3];
         if (!ctx || !ctx.encoder || !ctx.inFrame || !cmd || !cmd->vertices || !cmd->indices ||
             cmd->vertex_count == 0 || cmd->index_count == 0)
             return;
+        vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
+        cmd = &safe_cmd;
+        light_count =
+            vgfx3d_sanitize_light_array(lights, light_count, safe_lights, VGFX3D_MAX_LIGHTS);
+        for (int32_t light_index = 0; light_index < light_count; light_index++)
+            vgfx3d_sanitize_light_shadow_span(&safe_lights[light_index], ctx->_shadowCount);
+        lights = light_count > 0 ? safe_lights : NULL;
+        vgfx3d_sanitize_ambient_rgb(ambient, safe_ambient);
+        ambient = safe_ambient;
         index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
         if (index_count == 0)
             return;
-        if (!ambient)
-            ambient = zero_ambient;
-        if (!lights || light_count < 0)
-            light_count = 0;
 
         blend_mode = vgfx3d_metal_choose_blend_mode(cmd);
         [ctx.encoder setRenderPipelineState:metal_select_pipeline_state(ctx, cmd, NO)];
@@ -90,17 +98,23 @@ static void metal_submit_draw(void *ctx_ptr,
 
         /* Per-object uniforms (includes MTL-09/10 skinning+morph flags) */
         mtl_per_object_t obj;
+        float safe_model[16];
+        float safe_prev_model[16];
         memset(&obj, 0, sizeof(obj));
-        transpose4x4(cmd->model_matrix, obj.m);
-        transpose4x4(cmd->has_prev_model_matrix ? cmd->prev_model_matrix : cmd->model_matrix,
-                     obj.prev_m);
+        vgfx3d_copy_mat4_finite_or_identity(safe_model, cmd->model_matrix);
+        vgfx3d_copy_mat4_finite_or(safe_prev_model,
+                                   cmd->has_prev_model_matrix ? cmd->prev_model_matrix
+                                                              : cmd->model_matrix,
+                                   safe_model);
+        transpose4x4(safe_model, obj.m);
+        transpose4x4(safe_prev_model, obj.prev_m);
         float vp_t[16];
         float normal_m[16];
         int prev_bone_upload_ok = 0;
         metal_morph_bind_status_t morph_status;
         transpose4x4(ctx->_vp, vp_t);
         memcpy(obj.vp, vp_t, sizeof(float) * 16);
-        vgfx3d_compute_normal_matrix4(cmd->model_matrix, normal_m);
+        vgfx3d_compute_normal_matrix4(safe_model, normal_m);
         transpose4x4(normal_m, obj.nm);
         int has_skinning = (cmd->bone_palette && cmd->bone_count > 0) ? 1 : 0;
         int has_prev_skinning = (has_skinning && cmd->prev_bone_palette) ? 1 : 0;
@@ -123,6 +137,9 @@ static void metal_submit_draw(void *ctx_ptr,
         /* Image-based lighting resolution for this draw (also used at env bind). */
         float ibl_env_lod_base = 0.0f;
         float ibl_env_max_lod = 0.0f;
+        if (cmd->env_map && (cmd->reflectivity > 0.0001f || (cmd->ibl_env && ctx->_iblEnabled))) {
+            env_texture = metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
+        }
         int ibl_draw = metal_cmd_ibl_draw(ctx, cmd, &ibl_env_lod_base, &ibl_env_max_lod);
         /* Scene + light constants persist in the encoder; re-encode only when
          * the queued light-snapshot revision changes (0 = always encode). */
@@ -159,8 +176,11 @@ static void metal_submit_draw(void *ctx_ptr,
             scene.counts[1] = ctx->_shadowCount;
             /* Plan 07: clustered forward+. counts[2] >= 0 selects the clustered loop
              * (value = global dir/ambient prefix length); -1 keeps the flat loop. */
-            clusterBuf = metal_cluster_buffer_for_table(
-                ctx, (const vgfx3d_cluster_table_t *)cmd->cluster_table);
+            clusterBuf =
+                metal_cluster_buffer_for_table(ctx,
+                                               (const vgfx3d_cluster_table_t *)cmd->cluster_table,
+                                               cmd->lights_revision,
+                                               light_count);
             scene.counts[2] =
                 clusterBuf
                     ? ((const vgfx3d_cluster_table_t *)cmd->cluster_table)->global_light_count
@@ -389,12 +409,8 @@ static void metal_submit_draw(void *ctx_ptr,
                 }
             }
         }
-        if (cmd->env_map && (cmd->reflectivity > 0.0001f || ibl_draw)) {
-            id<MTLTexture> envTex =
-                metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
-            if (envTex)
-                [ctx.encoder setFragmentTexture:envTex atIndex:13];
-        }
+        if (env_texture && (cmd->reflectivity > 0.0001f || ibl_draw))
+            [ctx.encoder setFragmentTexture:env_texture atIndex:13];
 
         /* Lights — always set buffer 2, even if empty (prevents validation warnings) */
         if (lights_dirty) {
@@ -549,13 +565,21 @@ static void metal_resize(void *ctx_ptr, int32_t w, int32_t h) {
         return;
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
+        int32_t prior_width;
+        int32_t prior_height;
         if (!ctx || (ctx.width == w && ctx.height == h))
             return;
         metal_commit_pending(ctx, YES);
+        prior_width = ctx.width;
+        prior_height = ctx.height;
+        if (!metal_recreate_main_targets(ctx, w, h)) {
+            ctx.width = prior_width;
+            ctx.height = prior_height;
+            return;
+        }
         ctx.width = w;
         ctx.height = h;
         metal_update_layer_size(ctx);
-        metal_recreate_main_targets(ctx, w, h);
     }
 }
 
@@ -629,8 +653,10 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
             metal_detach_render_target(ctx, YES);
 
         entry = metal_ensure_render_target_entry(ctx, rt);
-        if (!entry)
+        if (!entry) {
+            metal_detach_render_target(ctx, NO);
             return;
+        }
 
         ctx.rttTarget = rt;
         ctx.rttWidth = rt->width;
@@ -649,6 +675,20 @@ static void metal_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
 // MTL-12: Shadow mapping
 //=============================================================================
 
+/// @brief Abort an active shadow encoder and resume the scene pass without clearing it.
+static void metal_leave_shadow_pass(VGFXMetalContext *ctx) {
+    if (!ctx || ctx->_shadowPassSlot < 0)
+        return;
+    if (ctx.encoder) {
+        [ctx.encoder endEncoding];
+        ctx.encoder = nil;
+    }
+    ctx->_shadowPassSlot = -1;
+    ctx->_shadowPassFailed = 0;
+    metal_recompute_shadow_count(ctx);
+    metal_begin_scene_encoder(ctx, YES, YES);
+}
+
 /// @brief Backend vtable entry: begin the shadow-map depth pass for shadow-casting light @p slot,
 ///   rendering depth from the light's @p light_vp view-projection into a @p w×@p h Depth32Float
 ///   texture (created or resized as needed).
@@ -662,12 +702,14 @@ static void metal_shadow_begin(
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         if (!ctx)
             return;
-        ctx->_shadowPassSlot = -1;
+        metal_leave_shadow_pass(ctx);
         if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
             return;
         ctx->_shadowComplete[slot] = 0;
+        ctx->_shadowPassFailed = 0;
         metal_recompute_shadow_count(ctx);
-        if (!ctx.device || !ctx.shadowPipeline || !light_vp || w <= 0 || h <= 0)
+        if (!ctx.device || !ctx.shadowPipeline || !vgfx3d_shadow_matrix_is_usable(light_vp) ||
+            w <= 0 || h <= 0)
             return;
 
         int atlas_slot = slot >= VGFX3D_CSM_SLOTS;
@@ -708,7 +750,7 @@ static void metal_shadow_begin(
         }
 
         /* Store light VP for main pass uniform */
-        memcpy(ctx->_shadowLightVP[slot], light_vp, 16 * sizeof(float));
+        vgfx3d_copy_mat4_finite_or_identity(ctx->_shadowLightVP[slot], light_vp);
 
         /* Start shadow render pass */
         if (!ctx.cmdBuf)
@@ -768,13 +810,20 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         int has_skinning;
         int prev_bone_upload_ok = 0;
         metal_morph_bind_status_t morph_status;
-        if (!ctx || !ctx.encoder || !cmd || !cmd->vertices || !cmd->indices ||
-            cmd->vertex_count == 0 || cmd->index_count == 0 || ctx->_shadowPassSlot < 0 ||
-            ctx->_shadowPassSlot >= VGFX3D_MAX_SHADOW_LIGHTS)
+        if (!ctx)
             return;
+        if (!ctx.encoder || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
+            cmd->index_count == 0 || ctx->_shadowPassSlot < 0 ||
+            ctx->_shadowPassSlot >= VGFX3D_MAX_SHADOW_LIGHTS) {
+            if (ctx->_shadowPassSlot >= 0)
+                ctx->_shadowPassFailed = 1;
+            return;
+        }
         index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
-        if (index_count == 0)
+        if (index_count == 0) {
+            ctx->_shadowPassFailed = 1;
             return;
+        }
         [ctx.encoder setCullMode:cmd->double_sided ? MTLCullModeNone : MTLCullModeBack];
         if (fabsf(cmd->depth_bias) > 1e-8f || fabsf(cmd->slope_scaled_depth_bias) > 1e-8f)
             [ctx.encoder setDepthBias:vgfx3d_depth_bias_constant_units(cmd->depth_bias)
@@ -783,8 +832,10 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
         else
             [ctx.encoder setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 
-        if (!metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset))
+        if (!metal_get_geometry_buffers(ctx, cmd, &vb, &ib, &vb_offset, &ib_offset)) {
+            ctx->_shadowPassFailed = 1;
             return;
+        }
         /* R20: compact-cached geometry needs the packed-layout shadow pipeline. */
         [ctx.encoder setRenderPipelineState:(cmd->compact_vertex_stream &&
                                              ctx.compactPipelinesReady && ctx.shadowPipelineCompact)
@@ -798,9 +849,11 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 
         /* Per-object: transform by light VP */
         mtl_per_object_t obj;
+        float safe_model[16];
         memset(&obj, 0, sizeof(obj));
-        transpose4x4(cmd->model_matrix, obj.m);
-        transpose4x4(cmd->model_matrix, obj.prev_m);
+        vgfx3d_copy_mat4_finite_or_identity(safe_model, cmd->model_matrix);
+        transpose4x4(safe_model, obj.m);
+        memcpy(obj.prev_m, obj.m, sizeof(obj.prev_m));
         float lvp_t[16];
         transpose4x4(ctx->_shadowLightVP[ctx->_shadowPassSlot], lvp_t);
         memcpy(obj.vp, lvp_t, sizeof(float) * 16);
@@ -865,15 +918,24 @@ static void metal_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 static void metal_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
-        if (!ctx || !ctx.encoder || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
+        if (!ctx)
             return;
-        if (ctx->_shadowPassSlot != slot)
+        if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || ctx->_shadowPassSlot != slot) {
+            metal_leave_shadow_pass(ctx);
             return;
+        }
+        if (!ctx.encoder) {
+            ctx->_shadowComplete[slot] = 0;
+            metal_leave_shadow_pass(ctx);
+            return;
+        }
         [ctx.encoder endEncoding];
         ctx.encoder = nil;
-        ctx->_shadowComplete[slot] = metal_shadow_slot_texture_ready(ctx, slot) ? 1 : 0;
+        ctx->_shadowComplete[slot] =
+            !ctx->_shadowPassFailed && metal_shadow_slot_texture_ready(ctx, slot) ? 1 : 0;
         ctx->_shadowPassSlot = -1;
-        ctx->_shadowBias = bias;
+        ctx->_shadowPassFailed = 0;
+        ctx->_shadowBias = vgfx3d_clamp_float_param(bias, -1000000.0f, 1000000.0f, 0.0f);
         metal_recompute_shadow_count(ctx);
         metal_begin_scene_encoder(ctx, YES, YES);
     }
@@ -889,12 +951,13 @@ static int8_t metal_shadow_reuse(
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         (void)depth_buf;
-        if (!ctx || slot < 0 || slot >= VGFX3D_CSM_SLOTS || !light_vp || w <= 0 || h <= 0)
+        if (!ctx || slot < 0 || slot >= VGFX3D_CSM_SLOTS ||
+            !vgfx3d_shadow_matrix_is_usable(light_vp) || w <= 0 || h <= 0)
             return 0;
         if (!ctx->_shadowDepthTexture[slot] || (int32_t)ctx->_shadowDepthTexture[slot].width != w ||
             (int32_t)ctx->_shadowDepthTexture[slot].height != h)
             return 0;
-        memcpy(ctx->_shadowLightVP[slot], light_vp, 16 * sizeof(float));
+        vgfx3d_copy_mat4_finite_or_identity(ctx->_shadowLightVP[slot], light_vp);
         ctx->_shadowComplete[slot] = 1;
         metal_recompute_shadow_count(ctx);
         return 1;
@@ -932,23 +995,32 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         int particle_mode;
         id<MTLBuffer> vb;
         id<MTLBuffer> ib;
+        id<MTLTexture> env_texture = nil;
         NSUInteger vb_offset = 0;
         NSUInteger ib_offset = 0;
         uint32_t index_count;
         vgfx3d_metal_blend_mode_t blend_mode;
-        static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
+        vgfx3d_draw_cmd_t safe_cmd;
+        vgfx3d_light_params_t safe_lights[VGFX3D_MAX_LIGHTS];
+        float safe_ambient[3];
         particle_mode = cmd && cmd->particle_instances != NULL;
         if (!ctx || !ctx.encoder || !ctx.inFrame || !cmd || !cmd->vertices || !cmd->indices ||
             cmd->vertex_count == 0 || cmd->index_count == 0 ||
             (!particle_mode && !instance_matrices) || instance_count <= 0)
             return;
+        vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
+        cmd = &safe_cmd;
+        light_count =
+            vgfx3d_sanitize_light_array(lights, light_count, safe_lights, VGFX3D_MAX_LIGHTS);
+        for (int32_t light_index = 0; light_index < light_count; light_index++)
+            vgfx3d_sanitize_light_shadow_span(&safe_lights[light_index], ctx->_shadowCount);
+        lights = light_count > 0 ? safe_lights : NULL;
+        vgfx3d_sanitize_ambient_rgb(ambient, safe_ambient);
+        ambient = safe_ambient;
+        particle_mode = cmd->particle_instances != NULL;
         index_count = vgfx3d_draw_cmd_validated_index_count(cmd);
         if (index_count == 0)
             return;
-        if (!ambient)
-            ambient = zero_ambient;
-        if (!lights || light_count < 0)
-            light_count = 0;
 
         if (particle_mode) {
             if ((size_t)instance_count > SIZE_MAX / sizeof(vgfx3d_particle_instance_t))
@@ -1050,6 +1122,9 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
         /* Image-based lighting resolution for this draw (also used at env bind). */
         float ibl_env_lod_base = 0.0f;
         float ibl_env_max_lod = 0.0f;
+        if (cmd->env_map && (cmd->reflectivity > 0.0001f || (cmd->ibl_env && ctx->_iblEnabled))) {
+            env_texture = metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
+        }
         int ibl_draw = metal_cmd_ibl_draw(ctx, cmd, &ibl_env_lod_base, &ibl_env_max_lod);
         /* Scene + light constants persist in the encoder; re-encode only when
          * the queued light-snapshot revision changes (0 = always encode). */
@@ -1084,8 +1159,11 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
             scene.counts[1] = ctx->_shadowCount;
             /* Plan 07: clustered forward+. counts[2] >= 0 selects the clustered loop
              * (value = global dir/ambient prefix length); -1 keeps the flat loop. */
-            clusterBuf = metal_cluster_buffer_for_table(
-                ctx, (const vgfx3d_cluster_table_t *)cmd->cluster_table);
+            clusterBuf =
+                metal_cluster_buffer_for_table(ctx,
+                                               (const vgfx3d_cluster_table_t *)cmd->cluster_table,
+                                               cmd->lights_revision,
+                                               light_count);
             scene.counts[2] =
                 clusterBuf
                     ? ((const vgfx3d_cluster_table_t *)cmd->cluster_table)->global_light_count
@@ -1308,12 +1386,8 @@ static void metal_submit_draw_instanced(void *ctx_ptr,
                 }
             }
         }
-        if (cmd->env_map && (cmd->reflectivity > 0.0001f || ibl_draw)) {
-            id<MTLTexture> envTex =
-                metal_get_cached_cubemap(ctx, (const rt_cubemap3d *)cmd->env_map);
-            if (envTex)
-                [ctx.encoder setFragmentTexture:envTex atIndex:13];
-        }
+        if (env_texture && (cmd->reflectivity > 0.0001f || ibl_draw))
+            [ctx.encoder setFragmentTexture:env_texture atIndex:13];
 
         /* Lights */
         if (lights_dirty) {
@@ -1495,6 +1569,8 @@ static void metal_fill_postfx_params(VGFXMetalContext *ctx,
                                      NSUInteger source_width,
                                      NSUInteger source_height,
                                      mtl_postfx_params_t *params) {
+    vgfx3d_postfx_snapshot_t safe_postfx;
+
     if (!ctx || !params)
         return;
     memset(params, 0, sizeof(*params));
@@ -1510,6 +1586,8 @@ static void metal_fill_postfx_params(VGFXMetalContext *ctx,
     params->bloomTexEnabled = bloom_tex_enabled ? 1 : 0;
     if (!postfx)
         return;
+    vgfx3d_sanitize_postfx_snapshot(postfx, &safe_postfx);
+    postfx = &safe_postfx;
     params->tonemapExplicit = postfx->tonemap_explicit ? 1 : 0;
     params->bloomEnabled = postfx->bloom_enabled ? 1 : 0;
     params->bloomThreshold = postfx->bloom_threshold;
@@ -1781,25 +1859,28 @@ static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
 
     source_texture = ctx.offscreenColor;
     target_texture = ctx.postfxColorTexture;
-    if (postfx && postfx->enabled && postfx->effect_count > 0 && postfx->effects) {
+    if (vgfx3d_postfx_chain_is_usable(postfx)) {
         /* Plan 05: prefilter the bloom mip chain once from the HDR scene color when any
          * chain entry uses bloom; the per-effect pass then composites mip 0. */
         id<MTLTexture> bloom_texture = nil;
         for (int32_t i = 0; i < postfx->effect_count; i++) {
-            if (postfx->effects[i].snapshot.bloom_enabled) {
-                bloom_texture =
-                    metal_encode_bloom_chain(ctx, postfx->effects[i].snapshot.bloom_threshold);
+            vgfx3d_postfx_snapshot_t safe_snapshot;
+            vgfx3d_sanitize_postfx_snapshot(&postfx->effects[i].snapshot, &safe_snapshot);
+            if (safe_snapshot.bloom_enabled) {
+                bloom_texture = metal_encode_bloom_chain(ctx, safe_snapshot.bloom_threshold);
                 break;
             }
         }
         for (int32_t i = 0; i < postfx->effect_count; i++) {
             id<MTLTexture> output_texture;
+            vgfx3d_postfx_snapshot_t safe_snapshot;
+            vgfx3d_sanitize_postfx_snapshot(&postfx->effects[i].snapshot, &safe_snapshot);
             if (postfx->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_TAA &&
-                postfx->effects[i].snapshot.taa_enabled) {
+                safe_snapshot.taa_enabled) {
                 /* TAA resolves into its RGBA16F history slot, then a passthrough pass
                  * feeds the resolved frame back into the LDR ping-pong chain. */
                 id<MTLTexture> resolved =
-                    metal_encode_taa_pass(ctx, source_texture, &postfx->effects[i].snapshot);
+                    metal_encode_taa_pass(ctx, source_texture, &safe_snapshot);
                 if (resolved) {
                     output_texture =
                         metal_encode_postfx_pass(ctx, resolved, target_texture, NULL, 0, nil);
@@ -1808,19 +1889,15 @@ static id<MTLTexture> metal_encode_postfx_if_needed(VGFXMetalContext *ctx,
                         metal_encode_postfx_pass(ctx, source_texture, target_texture, NULL, 0, nil);
                 }
             } else if (postfx->effects[i].type == (int32_t)VGFX3D_POSTFX_EFFECT_SSR &&
-                       postfx->effects[i].snapshot.ssr_enabled) {
-                output_texture = metal_encode_ssr_pass(
-                    ctx, source_texture, target_texture, &postfx->effects[i].snapshot);
+                       safe_snapshot.ssr_enabled) {
+                output_texture =
+                    metal_encode_ssr_pass(ctx, source_texture, target_texture, &safe_snapshot);
                 if (!output_texture) /* prerequisites missing: pass source through */
                     output_texture =
                         metal_encode_postfx_pass(ctx, source_texture, target_texture, NULL, 0, nil);
             } else {
-                output_texture = metal_encode_postfx_pass(ctx,
-                                                          source_texture,
-                                                          target_texture,
-                                                          &postfx->effects[i].snapshot,
-                                                          0,
-                                                          bloom_texture);
+                output_texture = metal_encode_postfx_pass(
+                    ctx, source_texture, target_texture, &safe_snapshot, 0, bloom_texture);
             }
             if (!output_texture)
                 return nil;
@@ -1913,12 +1990,10 @@ static void metal_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
 
         if (!ctx || !ctx.encoder || !cubemap)
             return;
-        skybox_pipeline = ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE
-                              ? ctx.skyboxPipeline
-                              : ctx.skyboxColorPipeline;
-        default_pipeline = ctx.currentTargetKind == VGFX3D_METAL_TARGET_SCENE
-                               ? ctx.pipelineState
-                               : ctx.pipelineStateColorOnly;
+        skybox_pipeline =
+            metal_target_uses_hdr_color(ctx) ? ctx.skyboxPipeline : ctx.skyboxColorPipeline;
+        default_pipeline =
+            metal_target_uses_hdr_color(ctx) ? ctx.pipelineState : ctx.pipelineStateColorOnly;
         if (!skybox_pipeline)
             skybox_pipeline = ctx.skyboxPipeline ? ctx.skyboxPipeline : ctx.skyboxColorPipeline;
         if (!default_pipeline)
@@ -1965,22 +2040,26 @@ static void metal_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     @autoreleasepool {
         VGFXMetalContext *ctx = (__bridge VGFXMetalContext *)ctx_ptr;
         int8_t desired_enabled;
+        int8_t prior_enabled;
         if (!ctx)
             return;
         desired_enabled = (enabled && ctx.postfxPipeline) ? 1 : 0;
         if (ctx.gpuPostfxEnabled == desired_enabled)
             return;
+        prior_enabled = ctx.gpuPostfxEnabled;
+        if (ctx.cmdBuf)
+            metal_commit_pending(ctx, YES);
         ctx.gpuPostfxEnabled = desired_enabled;
+        if (ctx.width > 0 && ctx.height > 0 &&
+            !metal_recreate_main_targets(ctx, ctx.width, ctx.height)) {
+            ctx.gpuPostfxEnabled = prior_enabled;
+            return;
+        }
         ctx.postfxEncodedThisFrame = 0;
         ctx.postfxCompositedToDrawable = 0;
         ctx.displayTexture = nil;
-        if (!ctx.gpuPostfxEnabled) {
+        if (!ctx.gpuPostfxEnabled)
             metal_reset_gpu_postfx_chain(ctx);
-        }
-        if (ctx.cmdBuf)
-            metal_commit_pending(ctx, YES);
-        if (!ctx.rttActive && ctx.width > 0 && ctx.height > 0)
-            metal_recreate_main_targets(ctx, ctx.width, ctx.height);
     }
 }
 
@@ -2002,7 +2081,6 @@ static int8_t metal_set_render_scale(void *ctx_ptr, float scale) {
         float next_scale;
         int32_t expected_w;
         int32_t expected_h;
-        int route_ready;
 
         if (!ctx || !vgfx3d_compute_scaled_scene_extent(
                         ctx.width, ctx.height, scale, &expected_w, &expected_h)) {
@@ -2022,37 +2100,10 @@ static int8_t metal_set_render_scale(void *ctx_ptr, float scale) {
             return 1;
 
         ctx.renderScale = next_scale;
-        metal_recreate_main_targets(ctx, ctx.width, ctx.height);
-        if (!vgfx3d_compute_scaled_scene_extent(
-                ctx.width, ctx.height, next_scale, &expected_w, &expected_h)) {
-            route_ready = 0;
-        } else if (metal_window_scene_route_enabled(ctx)) {
-            route_ready = ctx.depthTexture && ctx.offscreenColor && ctx.offscreenMotion &&
-                          ctx.overlayColorTexture && ctx.overlayMotionTexture &&
-                          ctx.overlayDepthTexture && ctx.postfxColorTexture &&
-                          ctx.postfxScratchTexture &&
-                          (int32_t)ctx.depthTexture.width == expected_w &&
-                          (int32_t)ctx.depthTexture.height == expected_h &&
-                          (int32_t)ctx.offscreenColor.width == expected_w &&
-                          (int32_t)ctx.offscreenColor.height == expected_h &&
-                          (int32_t)ctx.offscreenMotion.width == expected_w &&
-                          (int32_t)ctx.offscreenMotion.height == expected_h &&
-                          (int32_t)ctx.overlayColorTexture.width == ctx.width &&
-                          (int32_t)ctx.overlayColorTexture.height == ctx.height &&
-                          (int32_t)ctx.postfxColorTexture.width == ctx.width &&
-                          (int32_t)ctx.postfxColorTexture.height == ctx.height;
-        } else {
-            route_ready = ctx.depthTexture && ctx.offscreenMotion &&
-                          (int32_t)ctx.depthTexture.width == ctx.width &&
-                          (int32_t)ctx.depthTexture.height == ctx.height &&
-                          (int32_t)ctx.offscreenMotion.width == ctx.width &&
-                          (int32_t)ctx.offscreenMotion.height == ctx.height;
-        }
-        if (route_ready)
+        if (metal_recreate_main_targets(ctx, ctx.width, ctx.height))
             return 1;
 
         ctx.renderScale = prior_scale;
-        metal_recreate_main_targets(ctx, ctx.width, ctx.height);
         return 0;
     }
 }
@@ -2129,8 +2180,11 @@ static int32_t metal_queue_depth_probe(void *backend_ctx, float ndc_x, float ndc
             !isfinite(ndc_y))
             return -1;
         int32_t slot = ctx->_depthProbeRequestCount++;
-        ctx->_depthProbeRequests[slot][0] = ndc_x;
-        ctx->_depthProbeRequests[slot][1] = ndc_y;
+        /* Bound coordinates before Metal's later float-to-NSUInteger conversion.
+         * Merely checking finiteness is insufficient: FLT_MAX is finite but is
+         * outside the representable integer domain and makes the cast undefined. */
+        ctx->_depthProbeRequests[slot][0] = vgfx3d_clamp_float_param(ndc_x, -1.0f, 1.0f, 0.0f);
+        ctx->_depthProbeRequests[slot][1] = vgfx3d_clamp_float_param(ndc_y, -1.0f, 1.0f, 0.0f);
         return slot;
     }
 }

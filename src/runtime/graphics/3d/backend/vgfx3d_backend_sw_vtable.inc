@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vtable.inc  (#included from
-// vgfx3d_backend_sw.c; not a standalone translation unit) Purpose: Software backend vtable
-// implementation (clear, frame, submit, present)
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_sw_vtable.inc
+// Purpose: Software backend context, frame, draw, shadow, target, readback, and present hooks.
+// Key invariants:
+//   - Backend entry points sanitize external snapshots before allocating or rasterizing.
+//   - Framebuffer and render-target replacement is overflow-checked and transactional.
+// Ownership/Lifetime:
+//   - sw_context_t owns framebuffer/depth/shadow scratch and releases it in destroy_ctx.
+//   - Runtime draw/light/camera inputs are borrowed only for each synchronous backend call.
+// Links: vgfx3d_backend_sw.c, vgfx3d_backend.h
+//
 //===----------------------------------------------------------------------===//
 /*==========================================================================
  * Backend vtable implementation
@@ -72,12 +84,7 @@ static void sw_scaled_dims(
 /// @brief Ensure the internal scaled color buffer holds at least w*h pixels.
 static int sw_ensure_scaled_color(sw_context_t *ctx, int32_t w, int32_t h) {
     size_t pixel_count;
-    if (!ctx || w <= 0 || h <= 0)
-        return 0;
-    if ((size_t)w > SIZE_MAX / (size_t)h)
-        return 0;
-    pixel_count = (size_t)w * (size_t)h;
-    if (pixel_count > SIZE_MAX / sizeof(uint32_t))
+    if (!ctx || !sw_pixel_count_checked(w, h, &pixel_count))
         return 0;
     if (ctx->scaled_color && ctx->scaled_color_capacity >= pixel_count) {
         ctx->scaled_w = w;
@@ -99,8 +106,11 @@ static int sw_ensure_scaled_color(sw_context_t *ctx, int32_t w, int32_t h) {
 ///   fixed-point step to avoid per-pixel divides. Covers every framebuffer pixel, so
 ///   no pre-clear of the framebuffer is required.
 static void sw_upscale_to_framebuffer(const sw_context_t *ctx, const vgfx_framebuffer_t *fb) {
+    size_t scaled_pixels;
     if (!ctx || !fb || !ctx->scaled_color || ctx->scaled_w <= 0 || ctx->scaled_h <= 0 ||
-        fb->width <= 0 || fb->height <= 0 || !fb->pixels)
+        !sw_rgba_surface_is_valid(fb->pixels, fb->width, fb->height, fb->stride) ||
+        !sw_pixel_count_checked(ctx->scaled_w, ctx->scaled_h, &scaled_pixels) ||
+        scaled_pixels > ctx->scaled_color_capacity)
         return;
     uint64_t x_step = ((uint64_t)ctx->scaled_w << 16) / (uint64_t)fb->width;
     uint64_t y_step = ((uint64_t)ctx->scaled_h << 16) / (uint64_t)fb->height;
@@ -110,9 +120,10 @@ static void sw_upscale_to_framebuffer(const sw_context_t *ctx, const vgfx_frameb
         if (sy >= ctx->scaled_h)
             sy = ctx->scaled_h - 1;
         const uint32_t *src_row = &ctx->scaled_color[(size_t)sy * (size_t)ctx->scaled_w];
-        uint32_t *dst_row = (uint32_t *)(fb->pixels + (size_t)y * (size_t)fb->stride);
+        uint8_t *dst_bytes = fb->pixels + (size_t)y * (size_t)fb->stride;
         uint64_t sx_fx = 0;
-        if (((uintptr_t)dst_row & 3u) == 0u) {
+        if (((uintptr_t)dst_bytes & 3u) == 0u) {
+            uint32_t *dst_row = (uint32_t *)dst_bytes;
             for (int32_t x = 0; x < fb->width; x++, sx_fx += x_step) {
                 int32_t sx = (int32_t)(sx_fx >> 16);
                 if (sx >= ctx->scaled_w)
@@ -120,7 +131,6 @@ static void sw_upscale_to_framebuffer(const sw_context_t *ctx, const vgfx_frameb
                 dst_row[x] = src_row[sx];
             }
         } else {
-            uint8_t *dst_bytes = (uint8_t *)dst_row;
             for (int32_t x = 0; x < fb->width; x++, sx_fx += x_step) {
                 int32_t sx = (int32_t)(sx_fx >> 16);
                 if (sx >= ctx->scaled_w)
@@ -150,7 +160,7 @@ static void sw_fill_rgba_rows(uint8_t *pixels,
                               uint8_t cr,
                               uint8_t cg,
                               uint8_t cb) {
-    if (!pixels || width <= 0 || height <= 0 || width > INT32_MAX / 4 || stride < width * 4)
+    if (!sw_rgba_surface_is_valid(pixels, width, height, stride))
         return;
     uint8_t *row0 = pixels;
     for (int32_t x = 0; x < width; x++) {
@@ -189,7 +199,8 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
         vgfx3d_rendertarget_clear_sync(rt);
     } else {
         vgfx_framebuffer_t fb;
-        if (vgfx_get_framebuffer(win, &fb)) {
+        if (vgfx_get_framebuffer(win, &fb) &&
+            sw_rgba_surface_is_valid(fb.pixels, fb.width, fb.height, fb.stride)) {
             if (sw_render_scale_active(ctx)) {
                 int32_t sw_w;
                 int32_t sw_h;
@@ -217,47 +228,69 @@ static void sw_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
 /// position. Doesn't touch any pixels — drawing happens in `submit_draw`.
 static void sw_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    static const float fallback_forward[3] = {0.0f, 0.0f, -1.0f};
+    float safe_view[16];
+    float safe_projection[16];
+    float candidate_vp[16];
+    vgfx3d_camera_params_t safe_cam;
     if (!ctx || !cam)
         return;
+    vgfx3d_sanitize_camera_params(cam, &safe_cam);
+    cam = &safe_cam;
     ctx->depth_probe_count = 0;
     /* VP = projection * view */
-    mat4f_mul(cam->projection, cam->view, ctx->vp);
-    ctx->cam_pos[0] = cam->position[0];
-    ctx->cam_pos[1] = cam->position[1];
-    ctx->cam_pos[2] = cam->position[2];
-    ctx->cam_forward[0] = cam->forward[0];
-    ctx->cam_forward[1] = cam->forward[1];
-    ctx->cam_forward[2] = cam->forward[2];
+    vgfx3d_copy_mat4_finite_or_identity(safe_view, cam->view);
+    vgfx3d_copy_mat4_finite_or_identity(safe_projection, cam->projection);
+    mat4f_mul(safe_projection, safe_view, candidate_vp);
+    if (vgfx3d_shadow_matrix_is_usable(candidate_vp))
+        memcpy(ctx->vp, candidate_vp, sizeof(ctx->vp));
+    else
+        vgfx3d_copy_mat4_finite_or_identity(ctx->vp, NULL);
+    for (int lane = 0; lane < 3; lane++)
+        ctx->cam_pos[lane] = vgfx3d_clamp_float_param(cam->position[lane],
+                                                      -VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX,
+                                                      VGFX3D_BACKEND_MATRIX_COMPONENT_ABS_MAX,
+                                                      0.0f);
+    vgfx3d_copy_vec3_direction_or(ctx->cam_forward, cam->forward, fallback_forward);
     ctx->cam_is_ortho = cam->is_ortho ? 1 : 0;
-    ctx->fog_enabled = cam->fog_enabled;
-    ctx->fog_near = cam->fog_near;
-    ctx->fog_far = cam->fog_far;
-    ctx->fog_color[0] = cam->fog_color[0];
-    ctx->fog_color[1] = cam->fog_color[1];
-    ctx->fog_color[2] = cam->fog_color[2];
-    ctx->height_fog_enabled = cam->height_fog_enabled;
-    ctx->height_fog_base = cam->height_fog_base;
-    ctx->height_fog_falloff = cam->height_fog_falloff;
-    ctx->height_fog_density = cam->height_fog_density;
-    ctx->height_fog_blend = cam->height_fog_blend;
-    ctx->height_fog_sun_color[0] = cam->height_fog_sun_color[0];
-    ctx->height_fog_sun_color[1] = cam->height_fog_sun_color[1];
-    ctx->height_fog_sun_color[2] = cam->height_fog_sun_color[2];
-    ctx->height_fog_sun_dir[0] = cam->height_fog_sun_dir[0];
-    ctx->height_fog_sun_dir[1] = cam->height_fog_sun_dir[1];
-    ctx->height_fog_sun_dir[2] = cam->height_fog_sun_dir[2];
-    ctx->height_fog_sun_power = cam->height_fog_sun_power;
-    ctx->height_fog_sun_amount = cam->height_fog_sun_amount;
-    ctx->ibl_enabled = cam->ibl_enabled;
+    ctx->fog_near = vgfx3d_finite_or(cam->fog_near, 0.0f);
+    ctx->fog_far = vgfx3d_finite_or(cam->fog_far, ctx->fog_near);
+    ctx->fog_enabled = cam->fog_enabled && ctx->fog_far > ctx->fog_near;
+    for (int lane = 0; lane < 3; lane++)
+        ctx->fog_color[lane] =
+            vgfx3d_clamp_float_param(cam->fog_color[lane], 0.0f, SW_MATERIAL_PARAM_ABS_MAX, 0.0f);
+    ctx->height_fog_enabled = cam->height_fog_enabled ? 1 : 0;
+    ctx->height_fog_base = vgfx3d_finite_or(cam->height_fog_base, 0.0f);
+    ctx->height_fog_falloff =
+        vgfx3d_clamp_float_param(cam->height_fog_falloff, 0.0f, SW_MATERIAL_PARAM_ABS_MAX, 0.0f);
+    ctx->height_fog_density =
+        vgfx3d_clamp_float_param(cam->height_fog_density, 0.0f, SW_MATERIAL_PARAM_ABS_MAX, 0.0f);
+    ctx->height_fog_blend = vgfx3d_clamp_float_param(cam->height_fog_blend, 0.0f, 1.0f, 0.0f);
+    for (int lane = 0; lane < 3; lane++)
+        ctx->height_fog_sun_color[lane] = vgfx3d_clamp_float_param(
+            cam->height_fog_sun_color[lane], 0.0f, SW_MATERIAL_PARAM_ABS_MAX, 0.0f);
+    vgfx3d_copy_vec3_direction_or(
+        ctx->height_fog_sun_dir, cam->height_fog_sun_dir, fallback_forward);
+    ctx->height_fog_sun_power =
+        vgfx3d_clamp_float_param(cam->height_fog_sun_power, 0.0f, 4096.0f, 1.0f);
+    ctx->height_fog_sun_amount =
+        vgfx3d_clamp_float_param(cam->height_fog_sun_amount, 0.0f, 1.0f, 0.0f);
+    ctx->ibl_enabled = cam->ibl_enabled ? 1 : 0;
     if (cam->ibl_enabled)
         vgfx3d_brdf_lut_ensure(); /* single-threaded seam before parallel raster */
-    ctx->ibl_intensity = cam->ibl_intensity;
-    memcpy(ctx->ibl_sh, cam->ibl_sh, sizeof(ctx->ibl_sh));
-    ctx->shadow_strength = cam->shadow_strength;
-    ctx->shadow_slope_bias = cam->shadow_slope_bias;
-    ctx->shadow_quality = cam->shadow_quality;
-    ctx->cam_znear = cam->znear;
-    ctx->cam_zfar = cam->zfar;
+    ctx->ibl_intensity =
+        vgfx3d_clamp_float_param(cam->ibl_intensity, 0.0f, SW_MATERIAL_PARAM_ABS_MAX, 1.0f);
+    for (int lane = 0; lane < 27; lane++)
+        ctx->ibl_sh[lane] = vgfx3d_clamp_float_param(
+            cam->ibl_sh[lane], -SW_MATERIAL_PARAM_ABS_MAX, SW_MATERIAL_PARAM_ABS_MAX, 0.0f);
+    ctx->shadow_strength = vgfx3d_clamp_float_param(cam->shadow_strength, 0.0f, 1.0f, 0.85f);
+    ctx->shadow_slope_bias = vgfx3d_clamp_float_param(cam->shadow_slope_bias, 0.0f, 1000.0f, 1.0f);
+    ctx->shadow_quality =
+        cam->shadow_quality < 0 ? 0 : (cam->shadow_quality > 2 ? 2 : cam->shadow_quality);
+    ctx->cam_znear = vgfx3d_finite_or(cam->znear, 0.0f);
+    ctx->cam_zfar = vgfx3d_finite_or(cam->zfar, 0.0f);
+    if (!(ctx->cam_znear > 0.0f) || !(ctx->cam_zfar > ctx->cam_znear))
+        ctx->cam_znear = ctx->cam_zfar = 0.0f;
     ctx->opaque_zbuf_valid = 0; /* Plan 10: snapshot is per-frame */
     ctx->debug_draw_count = 0;
     ctx->debug_tri_count = 0;
@@ -347,49 +380,20 @@ static void sw_resolve_material_views(const vgfx3d_draw_cmd_t *cmd, sw_material_
     mv->metallic_roughness_ptr = NULL;
     mv->ao_ptr = NULL;
     mv->lightmap_ptr = NULL;
-    if (cmd->texture) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->texture;
-        mv->tex_view = *pv;
-        if (mv->tex_view.width > 0 && mv->tex_view.height > 0 && mv->tex_view.data)
-            mv->tex_ptr = &mv->tex_view;
-    }
-    if (cmd->emissive_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->emissive_map;
-        mv->emissive_view = *pv;
-        if (mv->emissive_view.width > 0 && mv->emissive_view.height > 0 && mv->emissive_view.data)
-            mv->emissive_ptr = &mv->emissive_view;
-    }
-    if (cmd->normal_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->normal_map;
-        mv->normal_view = *pv;
-        if (mv->normal_view.width > 0 && mv->normal_view.height > 0 && mv->normal_view.data)
-            mv->normal_ptr = &mv->normal_view;
-    }
-    if (cmd->specular_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->specular_map;
-        mv->specular_view = *pv;
-        if (mv->specular_view.width > 0 && mv->specular_view.height > 0 && mv->specular_view.data)
-            mv->specular_ptr = &mv->specular_view;
-    }
-    if (cmd->metallic_roughness_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->metallic_roughness_map;
-        mv->metallic_roughness_view = *pv;
-        if (mv->metallic_roughness_view.width > 0 && mv->metallic_roughness_view.height > 0 &&
-            mv->metallic_roughness_view.data)
-            mv->metallic_roughness_ptr = &mv->metallic_roughness_view;
-    }
-    if (cmd->ao_map) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->ao_map;
-        mv->ao_view = *pv;
-        if (mv->ao_view.width > 0 && mv->ao_view.height > 0 && mv->ao_view.data)
-            mv->ao_ptr = &mv->ao_view;
-    }
-    if (cmd->lightmap) {
-        const sw_pixels_view *pv = (const sw_pixels_view *)cmd->lightmap;
-        mv->lightmap_view = *pv;
-        if (mv->lightmap_view.width > 0 && mv->lightmap_view.height > 0 && mv->lightmap_view.data)
-            mv->lightmap_ptr = &mv->lightmap_view;
-    }
+    if (setup_pixels_view(cmd->texture, &mv->tex_view))
+        mv->tex_ptr = &mv->tex_view;
+    if (setup_pixels_view(cmd->emissive_map, &mv->emissive_view))
+        mv->emissive_ptr = &mv->emissive_view;
+    if (setup_pixels_view(cmd->normal_map, &mv->normal_view))
+        mv->normal_ptr = &mv->normal_view;
+    if (setup_pixels_view(cmd->specular_map, &mv->specular_view))
+        mv->specular_ptr = &mv->specular_view;
+    if (setup_pixels_view(cmd->metallic_roughness_map, &mv->metallic_roughness_view))
+        mv->metallic_roughness_ptr = &mv->metallic_roughness_view;
+    if (setup_pixels_view(cmd->ao_map, &mv->ao_view))
+        mv->ao_ptr = &mv->ao_view;
+    if (setup_pixels_view(cmd->lightmap, &mv->lightmap_view))
+        mv->lightmap_ptr = &mv->lightmap_view;
 }
 
 /// @brief Backend `submit_draw` op — render one indexed mesh in software.
@@ -425,7 +429,8 @@ static int sw_resolve_output_target(sw_context_t *ctx,
         vgfx3d_rendertarget_clear_sync(rt);
     } else {
         vgfx_framebuffer_t fb;
-        if (!vgfx_get_framebuffer(win, &fb))
+        if (!vgfx_get_framebuffer(win, &fb) ||
+            !sw_rgba_surface_is_valid(fb.pixels, fb.width, fb.height, fb.stride))
             return 0;
         if (sw_render_scale_active(ctx)) {
             int32_t sw_w;
@@ -468,6 +473,8 @@ static void sw_transform_vertices_range(sw_context_t *ctx,
                                         const vgfx3d_light_params_t *lights,
                                         int32_t light_count,
                                         const float *ambient) {
+    const int per_pixel_lighting =
+        sw_draw_requires_per_pixel_lighting(ctx, cmd, lights, light_count);
     for (uint32_t i = begin; i < end; i++) {
         const vgfx3d_vertex_t *src = &cmd->vertices[i];
         pipe_vert_t *dst = &pv[i];
@@ -490,7 +497,7 @@ static void sw_transform_vertices_range(sw_context_t *ctx,
         /* Transform tangent to world space (for TBN construction with normal maps) */
         float tan4[4] = {src->tangent[0], src->tangent[1], src->tangent[2], 0.0f};
         float wtan4[4];
-        mat4f_transform4(normal_matrix, tan4, wtan4);
+        mat4f_transform4(cmd->model_matrix, tan4, wtan4);
         dst->tangent[0] = wtan4[0];
         dst->tangent[1] = wtan4[1];
         dst->tangent[2] = wtan4[2];
@@ -516,7 +523,7 @@ static void sw_transform_vertices_range(sw_context_t *ctx,
         dst->color[3] = src->color[3];
 
         /* Per-vertex lighting (Gouraud) — skipped when normal/PBR work is done per-pixel. */
-        if (!cmd->unlit && (cmd->workflow == RT_MATERIAL3D_WORKFLOW_PBR || cmd->normal_map)) {
+        if (!cmd->unlit && per_pixel_lighting) {
             /* Store raw albedo: vertex_color * diffuse (lighting computed per-pixel) */
             dst->color[0] = cmd->diffuse_color[0] * dst->color[0];
             dst->color[1] = cmd->diffuse_color[1] * dst->color[1];
@@ -647,6 +654,16 @@ static int sw_project_clip_to_screen(const pipe_vert_t *p,
 
 /// @brief Draw the three edges of a screen-space triangle as wireframe lines,
 ///   colored from the first vertex's interpolated color.
+static int sw_screen_coord_to_int(float value) {
+    if (!isfinite(value))
+        return 0;
+    if (value >= (float)INT_MAX)
+        return INT_MAX;
+    if (value <= (float)INT_MIN)
+        return INT_MIN;
+    return (int)value;
+}
+
 static void sw_draw_wireframe_tri(
     uint8_t *pixels, int32_t fb_w, int32_t fb_h, int32_t stride, const screen_vert_t *sv) {
     uint8_t wr = (uint8_t)(clamp01f(sv[0].r) * 255.0f);
@@ -656,10 +673,10 @@ static void sw_draw_wireframe_tri(
               fb_w,
               fb_h,
               stride,
-              (int)sv[0].sx,
-              (int)sv[0].sy,
-              (int)sv[1].sx,
-              (int)sv[1].sy,
+              sw_screen_coord_to_int(sv[0].sx),
+              sw_screen_coord_to_int(sv[0].sy),
+              sw_screen_coord_to_int(sv[1].sx),
+              sw_screen_coord_to_int(sv[1].sy),
               wr,
               wg,
               wb);
@@ -667,10 +684,10 @@ static void sw_draw_wireframe_tri(
               fb_w,
               fb_h,
               stride,
-              (int)sv[1].sx,
-              (int)sv[1].sy,
-              (int)sv[2].sx,
-              (int)sv[2].sy,
+              sw_screen_coord_to_int(sv[1].sx),
+              sw_screen_coord_to_int(sv[1].sy),
+              sw_screen_coord_to_int(sv[2].sx),
+              sw_screen_coord_to_int(sv[2].sy),
               wr,
               wg,
               wb);
@@ -678,10 +695,10 @@ static void sw_draw_wireframe_tri(
               fb_w,
               fb_h,
               stride,
-              (int)sv[2].sx,
-              (int)sv[2].sy,
-              (int)sv[0].sx,
-              (int)sv[0].sy,
+              sw_screen_coord_to_int(sv[2].sx),
+              sw_screen_coord_to_int(sv[2].sy),
+              sw_screen_coord_to_int(sv[0].sx),
+              sw_screen_coord_to_int(sv[0].sy),
               wr,
               wg,
               wb);
@@ -840,6 +857,8 @@ static int sw_tile_grid_init(sw_tile_grid_t *grid, int32_t width, int32_t height
     grid->count = cols * rows;
     grid->cols = cols;
     grid->rows = rows;
+    if ((size_t)grid->count > SIZE_MAX / sizeof(*grid->bins))
+        return 0;
     grid->bins = (sw_tile_bin_t *)calloc((size_t)grid->count, sizeof(*grid->bins));
     return grid->bins ? 1 : 0;
 }
@@ -853,9 +872,12 @@ static int sw_tile_grid_mark_active(sw_tile_grid_t *grid, int32_t tile_index) {
         grid->active_indices[grid->active_count++] = tile_index;
         return 1;
     }
-    new_capacity = grid->active_capacity ? grid->active_capacity * 2 : 32;
-    if (new_capacity <= grid->active_capacity)
+    if (grid->active_count == INT32_MAX)
+        return 0;
+    if (grid->active_capacity > INT32_MAX / 2)
         new_capacity = grid->active_count + 1;
+    else
+        new_capacity = grid->active_capacity ? grid->active_capacity * 2 : 32;
     if ((size_t)new_capacity > SIZE_MAX / sizeof(int32_t))
         return 0;
     new_indices =
@@ -1496,11 +1518,36 @@ static void sw_submit_draw(void *ctx_ptr,
                            const float *ambient,
                            int8_t wireframe,
                            int8_t backface_cull) {
-    if (sw_submit_draw_parallel(
-            ctx_ptr, win, cmd, lights, light_count, ambient, wireframe, backface_cull))
+    sw_context_t *ctx = (sw_context_t *)ctx_ptr;
+    vgfx3d_draw_cmd_t safe_cmd;
+    vgfx3d_light_params_t safe_lights[VGFX3D_MAX_LIGHTS];
+    float safe_ambient[3];
+    if (!cmd)
         return;
-    sw_submit_draw_serial(
-        ctx_ptr, win, cmd, lights, light_count, ambient, wireframe, backface_cull);
+    sw_sanitize_draw_command(cmd, &safe_cmd);
+    light_count = sw_sanitize_lights(lights, light_count, safe_lights);
+    if (ctx) {
+        for (int32_t light_index = 0; light_index < light_count; light_index++)
+            vgfx3d_sanitize_light_shadow_span(&safe_lights[light_index], ctx->shadow_count);
+    }
+    sw_sanitize_ambient(ambient, safe_ambient);
+    if (sw_submit_draw_parallel(ctx_ptr,
+                                win,
+                                &safe_cmd,
+                                light_count > 0 ? safe_lights : NULL,
+                                light_count,
+                                safe_ambient,
+                                wireframe,
+                                backface_cull))
+        return;
+    sw_submit_draw_serial(ctx_ptr,
+                          win,
+                          &safe_cmd,
+                          light_count > 0 ? safe_lights : NULL,
+                          light_count,
+                          safe_ambient,
+                          wireframe,
+                          backface_cull);
 }
 
 /// @brief Backend `submit_draw_instanced` op — rasterize one shared mesh N times.
@@ -1520,16 +1567,24 @@ static void sw_submit_draw_instanced(void *ctx_ptr,
                                      int8_t wireframe,
                                      int8_t backface_cull) {
     sw_context_t *ctx = (sw_context_t *)ctx_ptr;
-    static const float zero_ambient[3] = {0.0f, 0.0f, 0.0f};
     sw_serial_draw_setup_t setup;
+    vgfx3d_draw_cmd_t safe_cmd;
+    vgfx3d_light_params_t safe_lights[VGFX3D_MAX_LIGHTS];
+    float safe_ambient[3];
     if (!cmd || !instance_matrices || instance_count <= 0)
         return;
     if (!ctx)
         return;
-    if (!ambient)
-        ambient = zero_ambient;
-    if (!lights || light_count < 0)
-        light_count = 0;
+    if ((size_t)instance_count > SIZE_MAX / (16u * sizeof(float)))
+        return;
+    sw_sanitize_draw_command(cmd, &safe_cmd);
+    cmd = &safe_cmd;
+    light_count = sw_sanitize_lights(lights, light_count, safe_lights);
+    for (int32_t light_index = 0; light_index < light_count; light_index++)
+        vgfx3d_sanitize_light_shadow_span(&safe_lights[light_index], ctx->shadow_count);
+    lights = light_count > 0 ? safe_lights : NULL;
+    sw_sanitize_ambient(ambient, safe_ambient);
+    ambient = safe_ambient;
 
     /* Keep the existing parallel path for very large meshes, where worker
      * throughput matters more than per-instance setup overhead. Small instanced
@@ -1539,8 +1594,8 @@ static void sw_submit_draw_instanced(void *ctx_ptr,
         vgfx3d_draw_cmd_validated_index_count(cmd) >= SW_PARALLEL_MIN_INDICES) {
         vgfx3d_draw_cmd_t inst = *cmd;
         for (int32_t i = 0; i < instance_count; i++) {
-            memcpy(
-                inst.model_matrix, &instance_matrices[(size_t)i * 16u], sizeof(inst.model_matrix));
+            vgfx3d_copy_mat4_finite_or_identity(inst.model_matrix,
+                                                &instance_matrices[(size_t)i * 16u]);
             sw_submit_draw(
                 ctx_ptr, win, &inst, lights, light_count, ambient, wireframe, backface_cull);
         }
@@ -1550,7 +1605,7 @@ static void sw_submit_draw_instanced(void *ctx_ptr,
         return;
     vgfx3d_draw_cmd_t inst = *cmd;
     for (int32_t i = 0; i < instance_count; i++) {
-        memcpy(inst.model_matrix, &instance_matrices[(size_t)i * 16u], sizeof(inst.model_matrix));
+        vgfx3d_copy_mat4_finite_or_identity(inst.model_matrix, &instance_matrices[(size_t)i * 16u]);
         sw_submit_draw_serial_prepared(
             ctx, &inst, &setup, lights, light_count, ambient, wireframe, backface_cull);
     }
@@ -1602,10 +1657,8 @@ static void sw_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     if (!ctx)
         return;
     if (rt) {
-        if (!vgfx3d_rendertarget_ensure_color(rt) || !vgfx3d_rendertarget_ensure_depth(rt)) {
-            ctx->render_target = NULL;
+        if (!vgfx3d_rendertarget_ensure_color(rt) || !vgfx3d_rendertarget_ensure_depth(rt))
             return;
-        }
     }
     ctx->render_target = rt;
 }

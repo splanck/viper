@@ -41,6 +41,7 @@
 #include "vgfx3d_brdf_lut.h"
 
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,6 +97,7 @@
     id<MTLTexture> _shadowAtlasTexture;
     uint64_t _shadowAtlasClearedSerial;
     int32_t _shadowPassSlot;
+    int8_t _shadowPassFailed;
     int32_t _shadowCount;
     int8_t _shadowComplete[VGFX3D_MAX_SHADOW_LIGHTS];
     float _shadowBias;
@@ -118,7 +120,7 @@
      * parameter, so it participates in the lights-revision dirty check. */
     float _encoderAmbient[3];
     /* Scene-depth probes (lens flares): NDC points registered during frame
-     * building are blitted from the scene depth texture into a shared buffer at
+     * building are blitted from the scene depth texture into a frame-ring buffer at
      * commit, and the completed handler publishes them into _depthProbeResults
      * (guarded by @synchronized(self)) for reads while building the next frame.
      * Never stalls the pipeline; results carry one frame of latency. */
@@ -172,7 +174,7 @@
 @property(nonatomic, strong) id<MTLTexture> depthTexture;
 @property(nonatomic, strong) id<MTLTexture> opaqueDepthTexture;
 @property(nonatomic, strong) id<MTLTexture> opaqueDepthDummy;
-@property(nonatomic, strong) id<MTLBuffer> depthProbeBuffer;
+@property(nonatomic, strong) NSMutableArray *depthProbeBuffers;
 @property(nonatomic, strong) id<MTLLibrary> library;
 @property(nonatomic, strong) id<MTLCommandBuffer> cmdBuf;
 @property(nonatomic, strong) id<MTLRenderCommandEncoder> encoder;
@@ -284,12 +286,16 @@
 @property(nonatomic, strong) id<MTLTexture> texture;
 @property(nonatomic) uint64_t generation;
 @property(nonatomic) uint64_t pendingGeneration;
+@property(nonatomic) uint64_t failedGeneration;
 @property(nonatomic) int32_t width;
 @property(nonatomic) int32_t height;
 @property(nonatomic) int32_t uploadNextRow;
 @property(nonatomic) int8_t uploadInProgress;
 @property(nonatomic, assign) void *textureAsset;
 @property(nonatomic) int32_t nativeFormat;
+@property(nonatomic) int32_t nativeBlockWidth;
+@property(nonatomic) int32_t nativeBlockHeight;
+@property(nonatomic) int32_t nativeBlockBytes;
 @property(nonatomic) int32_t nativeNextBlockRow;
 @property(nonatomic) int64_t nativeNextMip;
 @property(nonatomic) int64_t nativeMipStart;
@@ -304,12 +310,16 @@
 @property(nonatomic, strong) id<MTLTexture> texture;
 @property(nonatomic) uint64_t generation;
 @property(nonatomic) uint64_t pendingGeneration;
+@property(nonatomic) uint64_t failedGeneration;
 @property(nonatomic) int32_t faceSize;
 @property(nonatomic) int32_t uploadFace;
 @property(nonatomic) int32_t uploadNextRow;
 @property(nonatomic) int8_t uploadInProgress;
 @property(nonatomic) uint64_t lastUsedFrame;
 @property(nonatomic) uint64_t appliedIblIdentity;
+@property(nonatomic) uint64_t failedIblIdentity;
+@property(nonatomic) uint64_t pendingIblIdentity;
+@property(nonatomic) uint64_t pendingIblBytes;
 @end
 
 @implementation VGFXMetalCubemapCacheEntry
@@ -372,6 +382,11 @@
 
 @implementation VGFXMetalRenderTargetCacheEntry
 @end
+
+/* Target setup is included before context/pipeline selection, but both need
+ * the same attachment-format predicate. Keep the declaration at the shared
+ * translation-unit boundary so the textual include order remains explicit. */
+static BOOL metal_target_uses_hdr_color(VGFXMetalContext *ctx);
 
 //=============================================================================
 // MSL Shader source (vertex + fragment in two halves for portable C string literal limits)

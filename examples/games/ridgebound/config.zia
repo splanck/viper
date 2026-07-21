@@ -265,7 +265,9 @@ var SUN_MIN_ELEV: Float = 0.03;        // cut sun light out just before it graze
 var SHADOW_STRENGTH_NIGHT: Float = 0.30;
 var SHADOW_STRENGTH_DAY: Float = 0.90;
 // Image-based lighting intensity floor/ceiling across the cycle (GPU window backends).
-var IBL_INTENSITY_NIGHT: Float = 0.38;
+// The night cubemap's deliberately dark texels produce low-energy SH coefficients,
+// so its multiplier is higher than daylight while the resulting frame stays darker.
+var IBL_INTENSITY_NIGHT: Float = 4.00;
 var IBL_INTENSITY_DAY: Float = 0.34;
 // IBL supplies sky-driven ambient, so the flat ambient term is scaled back when
 // IBL is active to avoid double-counting (which over-brightened the foreground).

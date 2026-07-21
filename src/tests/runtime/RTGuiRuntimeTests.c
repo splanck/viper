@@ -51,6 +51,10 @@
 #include <unistd.h>
 #endif
 
+#ifndef ZANNA_SOURCE_DIR
+#define ZANNA_SOURCE_DIR "."
+#endif
+
 extern void rt_gui_set_clicked_statusbar_item(void *item);
 
 typedef struct {
@@ -2421,10 +2425,8 @@ static void test_treeview_complete_node_and_lazy_event_contract(void) {
 ///          selected-index revisions, per-radio text/data, UTF-8-safe wrapped ellipsis, alignment,
 ///          and keyboard label selection. This is the recommendation-29 end-to-end regression.
 static void test_complete_tab_split_radio_label_contracts(void) {
-    vg_font_t *font =
-        vg_font_load_file("../../../src/runtime/graphics/text/fonts/JetBrainsMono-Regular.ttf");
-    if (!font)
-        font = vg_font_load_file("src/runtime/graphics/text/fonts/JetBrainsMono-Regular.ttf");
+    vg_font_t *font = vg_font_load_file(
+        ZANNA_SOURCE_DIR "/src/runtime/graphics/text/fonts/JetBrainsMono-Regular.ttf");
     assert(font);
 
     vg_tabbar_t *tabbar = (vg_tabbar_t *)rt_tabbar_new(NULL);

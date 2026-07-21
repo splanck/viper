@@ -20,6 +20,10 @@
 //   - Frame history tracks scene VP and previous-frame VP separately from
 //     overlay/draw VP so motion vectors stay correct across overlay passes.
 //
+// Ownership/Lifetime:
+//   - Helpers write only caller-owned buffers and retain no native D3D resources.
+//   - Returned policy values and validation results contain no borrowed pointers.
+//
 // Links: vgfx3d_backend_d3d11_shared.h, vgfx3d_backend_d3d11.c
 //
 //===----------------------------------------------------------------------===//
@@ -632,9 +636,7 @@ int vgfx3d_d3d11_ndc_to_pixel(float ndc, int32_t extent, int invert_axis, int32_
 
 /// @brief Convert reversed-Z storage to canonical depth while rejecting invalid samples.
 float vgfx3d_d3d11_sanitize_depth_probe_result(float reversed_depth) {
-    if (!isfinite(reversed_depth))
-        return -1.0f;
-    return vgfx3d_d3d11_clamp_float_param(1.0f - reversed_depth, 0.0f, 1.0f, -1.0f);
+    return vgfx3d_sanitize_reversed_depth_probe_result(reversed_depth);
 }
 
 /// @brief Keep the CPU-side SSR request identical to the shader's loop bounds.
@@ -702,10 +704,7 @@ float vgfx3d_d3d11_sanitize_shadow_bias(float requested) {
 
 /// @brief Validate a backend-facing post-FX chain before indexed iteration.
 int vgfx3d_d3d11_postfx_chain_is_usable(const vgfx3d_postfx_chain_t *chain) {
-    if (!chain || !chain->enabled || !chain->effects || chain->effect_count <= 0 ||
-        chain->effect_capacity < chain->effect_count)
-        return 0;
-    return 1;
+    return vgfx3d_postfx_chain_is_usable(chain);
 }
 
 /// @brief Return non-zero when one PostFX effect descriptor actually changes rendering.
@@ -867,23 +866,11 @@ int vgfx3d_d3d11_compute_rgba8_upload_pitch(int32_t width, uint32_t *out_pitch) 
 int vgfx3d_d3d11_expected_square_mip_extent(int32_t base_extent,
                                             int32_t mip_level,
                                             int32_t *out_extent) {
-    int32_t extent;
-    int32_t mip_count;
-
     if (out_extent)
         *out_extent = 0;
     if (!out_extent || !vgfx3d_d3d11_is_valid_cubemap_extent(base_extent) || mip_level < 0)
         return 0;
-    mip_count = vgfx3d_d3d11_compute_mip_count(base_extent, base_extent);
-    if (mip_level >= mip_count)
-        return 0;
-    extent = base_extent;
-    for (int32_t i = 0; i < mip_level; i++) {
-        if (extent > 1)
-            extent >>= 1;
-    }
-    *out_extent = extent > 0 ? extent : 1;
-    return 1;
+    return vgfx3d_expected_square_mip_extent(base_extent, mip_level, out_extent);
 }
 
 /// @brief Compute a bloom mip extent using the backend's bounded half-res policy.
@@ -934,40 +921,18 @@ int vgfx3d_d3d11_validate_ibl_layout(int32_t face_size,
                                      int32_t ibl_mip_count,
                                      int32_t max_ibl_mips,
                                      int32_t *out_level_base) {
-    int32_t level_base = 0;
-    int32_t size;
-    int32_t total_mips;
-
     if (out_level_base)
         *out_level_base = 0;
     if (!out_level_base || !vgfx3d_d3d11_is_valid_cubemap_extent(face_size) || ibl_base_size <= 0 ||
         ibl_mip_count <= 0 || max_ibl_mips <= 0 || ibl_mip_count > max_ibl_mips)
         return 0;
-
-    size = face_size;
-    while (size > ibl_base_size && size > 1) {
-        size >>= 1;
-        level_base++;
-    }
-    if (size != ibl_base_size)
-        return 0;
-
-    total_mips = vgfx3d_d3d11_compute_mip_count(face_size, face_size);
-    if (level_base < 0 || level_base >= total_mips || ibl_mip_count > total_mips - level_base)
-        return 0;
-    *out_level_base = level_base;
-    return 1;
+    return vgfx3d_validate_cubemap_ibl_layout(
+        face_size, ibl_base_size, ibl_mip_count, max_ibl_mips, out_level_base);
 }
 
 /// @brief Check a whole-resource upload against a saturating per-frame byte budget.
 int vgfx3d_d3d11_upload_budget_allows(uint64_t budget, uint64_t used, uint64_t requested) {
-    if (requested == 0)
-        return 1;
-    if (budget == UINT64_MAX)
-        return 1;
-    if (used >= budget)
-        return 0;
-    return requested <= budget - used;
+    return vgfx3d_upload_budget_allows(budget, used, requested);
 }
 
 /// @brief Select cache-owned native telemetry or compute pending RGBA row bytes.

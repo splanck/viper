@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-19
+last-verified: 2026-07-21
 ---
 
 # ADR 0139: Make Graphics3D State Transactional and Retain Reusable Work
@@ -74,6 +74,44 @@ therefore requires an ADR before either dependency or ABI surface changes.
   the owning module. Every new header carries the complete project source
   header and Doxygen ownership, lifetime, argument, return, and invariant
   documentation.
+
+### Backend render-target lifetime amendment
+
+The backend audit adds an implementation-only lifetime notification to
+`vgfx3d_rendertarget_t`. This closes the ownership gap created when a native
+backend cache retains textures but only borrows the GC-managed target shell.
+It does not add a registry row or supported embedding API.
+
+`rt_canvas3d_internal.h` defines:
+
+```c
+typedef void (*vgfx3d_rendertarget_release_fn)(
+    void *userdata, vgfx3d_rendertarget_t *target);
+
+struct vgfx3d_rendertarget {
+    /* existing fields */
+    vgfx3d_rendertarget_release_fn release_backend;
+    void *release_backend_userdata;
+};
+
+static inline void vgfx3d_rendertarget_clear_backend_release(
+    vgfx3d_rendertarget_t *target);
+static inline void vgfx3d_rendertarget_release_backend(
+    vgfx3d_rendertarget_t *target);
+```
+
+The runtime finalizer invokes `vgfx3d_rendertarget_release_backend` while the
+shell, cache identity, dimensions, and CPU buffers are still valid. The helper
+clears both release fields before calling the backend, making repeated or
+re-entrant cleanup idempotent. A backend that installs the hook owns the one
+native cache association for that shell; transferring the target to another
+native owner first invokes the prior hook.
+
+Backend context teardown clears its hooks from every live target before ARC or
+COM/GL state disappears. Cache eviction must synchronize a dirty color mirror
+before discarding its only native copy. If synchronization fails, the target
+remains dirty with either its retry-capable native entry or no callback, so a
+later read fails explicitly instead of returning stale bytes as current.
 
 ### Retained derived work
 

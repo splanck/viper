@@ -196,6 +196,11 @@ static vgfx3d_rendertarget_t *rt_alloc(int32_t w,
 static void rt_free(vgfx3d_rendertarget_t *rt) {
     if (!rt)
         return;
+    /* Native caches may borrow this shell as a readback/lifetime key. Notify their owner before
+     * any field or buffer becomes invalid so cache pruning cannot later dereference freed memory.
+     */
+    vgfx3d_rendertarget_release_backend(rt);
+    vgfx3d_rendertarget_clear_sync(rt);
     free(rt->color_buf);
     free(rt->hdr_color_buf);
     free(rt->depth_buf);

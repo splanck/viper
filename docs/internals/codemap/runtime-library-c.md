@@ -328,6 +328,9 @@ Last updated: 2026-07-17
 
 > **Directory:** `src/runtime/graphics/3d/` — 3D rendering engine with 4 backends, plus the Game3D code-first layer
 
+Backend correctness, ownership, and validation invariants are tracked in the
+[July 2026 Graphics3D backend audit](../graphics3d-backend-audit-2026-07.md).
+
 ### Core Rendering
 
 | File | Purpose |
