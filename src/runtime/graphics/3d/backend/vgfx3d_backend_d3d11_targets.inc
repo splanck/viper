@@ -203,10 +203,14 @@ static HRESULT d3d11_ensure_readback_staging_texture(d3d11_context_t *ctx,
         return S_OK;
     d3d11_release_readback_staging_texture(ctx);
     hr = d3d11_create_staging_texture(ctx, width, height, format, &ctx->readback_staging);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && ctx->readback_staging) {
         ctx->readback_staging_width = width;
         ctx->readback_staging_height = height;
         ctx->readback_staging_format = format;
+    } else {
+        SAFE_RELEASE(ctx->readback_staging);
+        if (SUCCEEDED(hr))
+            hr = E_POINTER;
     }
     return hr;
 }

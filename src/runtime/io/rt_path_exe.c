@@ -13,12 +13,10 @@
 // Key invariants:
 //   - Returns the directory containing the executable, not the exe path itself.
 //   - macOS: uses _NSGetExecutablePath + realpath + dirname.
-//   - Windows: uses GetModuleFileNameA + strip filename.
+//   - Windows: uses a growing GetModuleFileNameW buffer + strict UTF-8 conversion.
 //   - Linux: uses readlink("/proc/self/exe") + dirname.
-//   - Platform probes use fixed MAX_PATH/PATH_MAX buffers. Overlong paths fail;
-//     the runtime wrapper falls back to "." (macOS also does so for probe errors).
-//   - Windows uses the process ANSI code page through GetModuleFileNameA, so a
-//     path not representable there is not guaranteed to round-trip as UTF-8.
+//   - Windows and macOS grow their probe buffers; Linux uses PATH_MAX for the
+//     procfs symlink. The runtime wrapper falls back to "." after probe errors.
 //   - Returned C strings are malloc'd; caller must free.
 //   - Returned runtime strings are GC-managed.
 //
@@ -99,7 +97,8 @@ char *rt_path_exe_dir_cstr(void) {
             continue;
         }
         wbuf[len] = L'\0';
-        int u8_len = WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, NULL, 0, NULL, NULL);
+        int u8_len =
+            WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wbuf, -1, NULL, 0, NULL, NULL);
         if (u8_len <= 0) {
             free(wbuf);
             return NULL;
@@ -109,7 +108,12 @@ char *rt_path_exe_dir_cstr(void) {
             free(wbuf);
             return NULL;
         }
-        WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, u8, u8_len, NULL, NULL);
+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wbuf, -1, u8, u8_len, NULL, NULL) !=
+            u8_len) {
+            free(u8);
+            free(wbuf);
+            return NULL;
+        }
         free(wbuf);
         strip_filename(u8);
         return u8;

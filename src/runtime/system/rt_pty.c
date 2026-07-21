@@ -17,6 +17,8 @@
 //   - Read is non-blocking and incremental; output is a single merged stream.
 //   - Poll/IsRunning reap the child once and preserve the exit code.
 //   - Destroy is idempotent and releases all OS resources.
+//   - Windows command, cwd, and environment strings cross the Win32 boundary
+//     as strict UTF-16; explicit environment blocks are sorted and complete.
 //
 // Ownership/Lifetime:
 //   - Handles are rt_obj_new_i64-allocated and GC-managed; Destroy or the
@@ -26,8 +28,7 @@
 //   - POSIX: posix_openpt + fork + setsid + TIOCSCTTY + execvp (the controlling
 //     terminal cannot be set up via posix_spawn). Fully exercised on macOS/Linux.
 //   - Windows: ConPTY (CreatePseudoConsole/ResizePseudoConsole/ClosePseudoConsole)
-//     resolved dynamically (Windows 10 1809+). NOTE: this path is not buildable
-//     on non-Windows hosts and must be validated by hand on Windows.
+//     resolved dynamically and thread-safely (Windows 10 1809+).
 //
 // Links: src/runtime/system/rt_pty.h, src/runtime/system/rt_process.c
 //
@@ -381,11 +382,13 @@ static void pty_clamp_size(int64_t *cols, int64_t *rows) {
 #if defined(_WIN32)
 // --- Windows ConPTY backend (validate on a Windows host; not built on POSIX) -
 
-static int pty_conpty_loaded = 0;
+static INIT_ONCE pty_conpty_once = INIT_ONCE_STATIC_INIT;
 static int pty_conpty_available = 0;
 static pty_create_pseudoconsole_fn pty_create_pc = NULL;
 static pty_resize_pseudoconsole_fn pty_resize_pc = NULL;
 static pty_close_pseudoconsole_fn pty_close_pc = NULL;
+typedef int(WINAPI *pty_compare_string_ordinal_fn)(LPCWCH, int, LPCWCH, int, BOOL);
+static pty_compare_string_ordinal_fn pty_compare_string_ordinal = NULL;
 
 /// @brief Store a Windows GetLastError-based PTY diagnostic string.
 /// @param prefix Context prefix such as "CreateProcessW failed".
@@ -397,17 +400,34 @@ static void pty_set_last_win32_error(const char *prefix) {
              (unsigned long)GetLastError());
 }
 
-static void pty_load_conpty(void) {
-    if (pty_conpty_loaded)
-        return;
-    pty_conpty_loaded = 1;
+/// @brief Store a ConPTY HRESULT without relying on unrelated Win32 last-error state.
+static void pty_set_hresult_error(const char *prefix, HRESULT hr) {
+    snprintf(pty_last_error,
+             sizeof(pty_last_error),
+             "%s: HRESULT 0x%08lX",
+             prefix ? prefix : "PTY error",
+             (unsigned long)hr);
+}
+
+/// @brief Resolve the optional ConPTY entry points exactly once per process.
+static BOOL CALLBACK pty_load_conpty_once(PINIT_ONCE once, PVOID param, PVOID *context) {
+    (void)once;
+    (void)param;
+    (void)context;
     HMODULE k32 = GetModuleHandleW(L"kernel32.dll");
     if (!k32)
-        return;
+        return TRUE;
     pty_create_pc = (pty_create_pseudoconsole_fn)(void *)GetProcAddress(k32, "CreatePseudoConsole");
     pty_resize_pc = (pty_resize_pseudoconsole_fn)(void *)GetProcAddress(k32, "ResizePseudoConsole");
     pty_close_pc = (pty_close_pseudoconsole_fn)(void *)GetProcAddress(k32, "ClosePseudoConsole");
+    pty_compare_string_ordinal =
+        (pty_compare_string_ordinal_fn)(void *)GetProcAddress(k32, "CompareStringOrdinal");
     pty_conpty_available = (pty_create_pc && pty_resize_pc && pty_close_pc) ? 1 : 0;
+    return TRUE;
+}
+
+static void pty_load_conpty(void) {
+    (void)InitOnceExecuteOnce(&pty_conpty_once, pty_load_conpty_once, NULL, NULL);
 }
 
 static void close_handle(HANDLE *h) {
@@ -421,17 +441,114 @@ static void close_handle(HANDLE *h) {
 static wchar_t *pty_widen(const char *text) {
     if (!text)
         text = "";
-    int wlen = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+    int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
     if (wlen <= 0)
         return NULL;
     wchar_t *wide = (wchar_t *)calloc((size_t)wlen, sizeof(wchar_t));
     if (!wide)
         return NULL;
-    if (MultiByteToWideChar(CP_UTF8, 0, text, -1, wide, wlen) <= 0) {
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide, wlen) <= 0) {
         free(wide);
         return NULL;
     }
     return wide;
+}
+
+/// @brief Invoke the dynamically resolved Windows ordinal comparator.
+static int pty_compare_ordinal(const wchar_t *left,
+                               int left_len,
+                               const wchar_t *right,
+                               int right_len) {
+    pty_load_conpty();
+    if (pty_compare_string_ordinal)
+        return pty_compare_string_ordinal(left, left_len, right, right_len, TRUE);
+    if (left_len < 0 && right_len < 0)
+        return wcscmp(left, right) == 0 ? CSTR_EQUAL : 0;
+    return wcsncmp(left, right, (size_t)left_len) == 0 ? CSTR_EQUAL : 0;
+}
+
+/// @brief Compare complete UTF-16 environment entries using Win32 ordinal rules.
+static int pty_compare_env_entry_wide(const void *left, const void *right) {
+    const wchar_t *lhs = *(const wchar_t *const *)left;
+    const wchar_t *rhs = *(const wchar_t *const *)right;
+    int result = pty_compare_ordinal(lhs, -1, rhs, -1);
+    if (result == CSTR_LESS_THAN)
+        return -1;
+    if (result == CSTR_GREATER_THAN)
+        return 1;
+    return wcscmp(lhs, rhs);
+}
+
+/// @brief Test whether two UTF-16 environment entries name the same variable.
+static int pty_env_names_equal_wide(const wchar_t *lhs, const wchar_t *rhs) {
+    size_t lhs_len = 0;
+    size_t rhs_len = 0;
+    while (lhs[lhs_len] && lhs[lhs_len] != L'=')
+        lhs_len++;
+    while (rhs[rhs_len] && rhs[rhs_len] != L'=')
+        rhs_len++;
+    if (lhs_len == 0 || lhs_len != rhs_len || lhs_len > INT_MAX)
+        return 0;
+    return pty_compare_ordinal(lhs, (int)lhs_len, rhs, (int)rhs_len) == CSTR_EQUAL;
+}
+
+/// @brief Build a strict, sorted, double-NUL-terminated CreateProcessW environment block.
+static wchar_t *pty_build_env_block_wide(void *env) {
+    int64_t count;
+    size_t total_wchars = 1;
+    wchar_t **entries = NULL;
+    wchar_t *block = NULL;
+
+    if (!env)
+        return NULL;
+    count = rt_seq_len(env);
+    if (count < 0 || (uint64_t)count > SIZE_MAX / sizeof(*entries))
+        return NULL;
+    if (count > 0) {
+        entries = (wchar_t **)calloc((size_t)count, sizeof(*entries));
+        if (!entries)
+            return NULL;
+    }
+    for (int64_t i = 0; i < count; i++) {
+        rt_string item = rt_seq_get_str(env, i);
+        entries[i] = pty_widen(item ? rt_string_cstr(item) : NULL);
+        rt_str_release_maybe(item);
+        if (!entries[i])
+            goto fail;
+        size_t length = wcslen(entries[i]);
+        if (length == SIZE_MAX || total_wchars > SIZE_MAX - length - 1)
+            goto fail;
+        total_wchars += length + 1;
+    }
+    if (count > 1) {
+        qsort(entries, (size_t)count, sizeof(*entries), pty_compare_env_entry_wide);
+        for (int64_t i = 1; i < count; i++) {
+            if (pty_env_names_equal_wide(entries[i - 1], entries[i]))
+                goto fail;
+        }
+    }
+    if (total_wchars == SIZE_MAX || total_wchars + 1 > SIZE_MAX / sizeof(*block))
+        goto fail;
+    block = (wchar_t *)calloc(total_wchars + 1, sizeof(*block));
+    if (!block)
+        goto fail;
+    wchar_t *out = block;
+    for (int64_t i = 0; i < count; i++) {
+        size_t length = wcslen(entries[i]);
+        memcpy(out, entries[i], length * sizeof(*out));
+        out += length + 1;
+        free(entries[i]);
+    }
+    free(entries);
+    return block;
+
+fail:
+    if (entries) {
+        for (int64_t i = 0; i < count; i++)
+            free(entries[i]);
+    }
+    free(entries);
+    return NULL;
 }
 
 /// @brief Append @p arg to a Windows command line with standard quoting.
@@ -571,7 +688,9 @@ static rt_pty_impl *pty_open_impl(
     close_handle(&in_read);
     close_handle(&out_write);
     if (FAILED(hr) || !hpc) {
-        pty_set_last_error("CreatePseudoConsole failed");
+        pty_set_hresult_error("CreatePseudoConsole failed", FAILED(hr) ? hr : E_POINTER);
+        if (hpc)
+            pty_close_pc(hpc);
         close_handle(&in_write);
         close_handle(&out_read);
         free(cmdline);
@@ -582,20 +701,29 @@ static rt_pty_impl *pty_open_impl(
     memset(&si, 0, sizeof(si));
     si.StartupInfo.cb = sizeof(STARTUPINFOEXW);
     SIZE_T attr_size = 0;
-    InitializeProcThreadAttributeList(NULL, 1, 0, &attr_size);
-    si.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)malloc(attr_size);
+    (void)InitializeProcThreadAttributeList(NULL, 1, 0, &attr_size);
+    if (attr_size > 0)
+        si.lpAttributeList = (LPPROC_THREAD_ATTRIBUTE_LIST)malloc(attr_size);
     if (!si.lpAttributeList ||
-        !InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0, &attr_size) ||
-        !UpdateProcThreadAttribute(si.lpAttributeList,
+        !InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0, &attr_size)) {
+        pty_set_last_win32_error("ConPTY process attribute setup failed");
+        free(si.lpAttributeList);
+        pty_close_pc(hpc);
+        close_handle(&in_write);
+        close_handle(&out_read);
+        free(cmdline);
+        return NULL;
+    }
+    if (!UpdateProcThreadAttribute(si.lpAttributeList,
                                    0,
                                    PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
                                    hpc,
                                    sizeof(hpc),
                                    NULL,
                                    NULL)) {
-        if (si.lpAttributeList)
-            free(si.lpAttributeList);
         pty_set_last_win32_error("ConPTY process attribute setup failed");
+        DeleteProcThreadAttributeList(si.lpAttributeList);
+        free(si.lpAttributeList);
         pty_close_pc(hpc);
         close_handle(&in_write);
         close_handle(&out_read);
@@ -607,38 +735,18 @@ static rt_pty_impl *pty_open_impl(
     wchar_t *wcwd = cwd_text ? pty_widen(cwd_text) : NULL;
     free(cmdline);
     cmdline = NULL;
-
-    // Environment: NULL inherits; otherwise build a double-NUL wide block.
-    wchar_t *env_block = NULL;
-    if (env) {
-        int64_t env_count = rt_seq_len(env);
-        size_t total = 1;
-        wchar_t **wide_entries =
-            (wchar_t **)calloc((size_t)(env_count > 0 ? env_count : 1), sizeof(wchar_t *));
-        if (wide_entries) {
-            for (int64_t i = 0; i < env_count; i++) {
-                rt_string e = rt_seq_get_str(env, i);
-                wide_entries[i] = pty_widen(e ? rt_string_cstr(e) : "");
-                rt_str_release_maybe(e);
-                if (wide_entries[i])
-                    total += wcslen(wide_entries[i]) + 1;
-            }
-            env_block = (wchar_t *)calloc(total + 1, sizeof(wchar_t));
-            if (env_block) {
-                size_t off = 0;
-                for (int64_t i = 0; i < env_count; i++) {
-                    if (!wide_entries[i])
-                        continue;
-                    size_t l = wcslen(wide_entries[i]);
-                    memcpy(env_block + off, wide_entries[i], (l + 1) * sizeof(wchar_t));
-                    off += l + 1;
-                }
-                env_block[off] = L'\0';
-            }
-            for (int64_t i = 0; i < env_count; i++)
-                free(wide_entries[i]);
-            free(wide_entries);
-        }
+    wchar_t *env_block = pty_build_env_block_wide(env);
+    if (!wcmd || (cwd_text && !wcwd) || (env && !env_block)) {
+        pty_set_last_error("ConPTY UTF-8 conversion or environment allocation failed");
+        DeleteProcThreadAttributeList(si.lpAttributeList);
+        free(si.lpAttributeList);
+        free(wcmd);
+        free(wcwd);
+        free(env_block);
+        pty_close_pc(hpc);
+        close_handle(&in_write);
+        close_handle(&out_read);
+        return NULL;
     }
 
     PROCESS_INFORMATION pi;
@@ -669,7 +777,8 @@ static rt_pty_impl *pty_open_impl(
 
     rt_pty_impl *pty = pty_alloc();
     if (!pty) {
-        TerminateProcess(pi.hProcess, 1);
+        if (TerminateProcess(pi.hProcess, 1))
+            (void)WaitForSingleObject(pi.hProcess, INFINITE);
         close_handle(&pi.hThread);
         close_handle(&pi.hProcess);
         pty_close_pc(hpc);
@@ -717,11 +826,14 @@ static void pty_poll_internal(rt_pty_impl *pty, int wait) {
     DWORD wait_ms = wait ? INFINITE : 0;
     DWORD r = WaitForSingleObject(pty->process, wait_ms);
     if (r == WAIT_OBJECT_0) {
-        DWORD code = 1;
-        GetExitCodeProcess(pty->process, &code);
-        pty->exit_code = (int64_t)code;
+        DWORD code = 0;
+        pty->exit_code = GetExitCodeProcess(pty->process, &code) ? (int64_t)code : -1;
         pty->running = 0;
         pty_drain(pty);
+    } else if (r == WAIT_FAILED) {
+        pty_set_last_win32_error("WaitForSingleObject(ConPTY process) failed");
+        pty->exit_code = -1;
+        pty->running = 0;
     }
 }
 
@@ -733,7 +845,7 @@ static int pty_resize_impl(rt_pty_impl *pty, int64_t cols, int64_t rows) {
     size.Y = (SHORT)rows;
     HRESULT hr = pty_resize_pc(pty->hpc, size);
     if (FAILED(hr)) {
-        pty_set_last_error("ResizePseudoConsole failed"); // VDOC-214: report failure
+        pty_set_hresult_error("ResizePseudoConsole failed", hr);
         return 0;
     }
     return 1;
@@ -758,8 +870,8 @@ static void pty_close(rt_pty_impl *pty) {
     if (!pty || pty->destroyed)
         return;
     if (pty->running && pty->process) {
-        (void)TerminateProcess(pty->process, 1);
-        (void)WaitForSingleObject(pty->process, 2000);
+        if (TerminateProcess(pty->process, 1))
+            (void)WaitForSingleObject(pty->process, INFINITE);
         pty->running = 0;
         pty->exit_code = 1;
     }
@@ -1143,7 +1255,8 @@ static rt_pty_impl *pty_open_impl(
     int child_errno = 0;
     size_t status_bytes = 0;
     while (status_bytes < sizeof(child_errno)) {
-        ssize_t count = read(exec_pipe[0], (unsigned char *)&child_errno + status_bytes,
+        ssize_t count = read(exec_pipe[0],
+                             (unsigned char *)&child_errno + status_bytes,
                              sizeof(child_errno) - status_bytes);
         if (count > 0) {
             status_bytes += (size_t)count;

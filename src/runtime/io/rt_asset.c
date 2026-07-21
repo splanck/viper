@@ -45,20 +45,75 @@
 #include <wchar.h>
 #include <windows.h>
 
+typedef int(WINAPI *asset_compare_string_ordinal_fn)(LPCWCH, int, LPCWCH, int, BOOL);
+
+static INIT_ONCE g_asset_compare_once = INIT_ONCE_STATIC_INIT;
+static asset_compare_string_ordinal_fn g_asset_compare_string_ordinal = NULL;
+
+/// @brief Resolve CompareStringOrdinal without extending the native import table.
+static BOOL CALLBACK asset_resolve_compare_ordinal(PINIT_ONCE once, PVOID param, PVOID *context) {
+    (void)once;
+    (void)param;
+    (void)context;
+    HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+    if (kernel32) {
+        g_asset_compare_string_ordinal = (asset_compare_string_ordinal_fn)(void *)GetProcAddress(
+            kernel32, "CompareStringOrdinal");
+    }
+    return TRUE;
+}
+
+/// @brief Compare two NUL-terminated paths with Windows ordinal case folding.
+static int asset_compare_path_ordinal(const wchar_t *left, const wchar_t *right) {
+    (void)InitOnceExecuteOnce(&g_asset_compare_once, asset_resolve_compare_ordinal, NULL, NULL);
+    if (!g_asset_compare_string_ordinal)
+        return wcscmp(left, right) == 0 ? CSTR_EQUAL : 0;
+    return g_asset_compare_string_ordinal(left, -1, right, -1, TRUE);
+}
+
 static char *asset_wide_to_utf8_dup(const wchar_t *wide) {
     if (!wide)
         return NULL;
-    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    int needed = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, NULL, 0, NULL, NULL);
     if (needed <= 0)
         return NULL;
     char *utf8 = (char *)malloc((size_t)needed);
     if (!utf8)
         return NULL;
-    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, needed, NULL, NULL) <= 0) {
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, utf8, needed, NULL, NULL) <=
+        0) {
         free(utf8);
         return NULL;
     }
     return utf8;
+}
+
+/// @brief Resolve one UTF-16 path through the Unicode Win32 full-path API.
+/// @details Retries when the process current directory changes between the
+///          sizing and conversion calls and grows the required buffer.
+static wchar_t *asset_full_path_wide_dup(const wchar_t *path) {
+    if (!path || !*path)
+        return NULL;
+    DWORD capacity = GetFullPathNameW(path, 0, NULL, NULL);
+    while (capacity > 0) {
+        if ((size_t)capacity > SIZE_MAX / sizeof(wchar_t))
+            return NULL;
+        wchar_t *full = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!full)
+            return NULL;
+        DWORD length = GetFullPathNameW(path, capacity, full, NULL);
+        if (length == 0) {
+            free(full);
+            return NULL;
+        }
+        if (length < capacity)
+            return full;
+        free(full);
+        if (length == MAXDWORD)
+            return NULL;
+        capacity = length + 1;
+    }
+    return NULL;
 }
 
 static wchar_t *asset_win_join_wide(const wchar_t *dir, const wchar_t *leaf) {
@@ -109,17 +164,16 @@ static char *asset_canonical_path_dup(const char *path) {
     if (!path || !*path)
         return NULL;
 #if RT_PLATFORM_WINDOWS
-    DWORD needed = GetFullPathNameA(path, 0, NULL, NULL);
-    if (needed > 0) {
-        char *full = (char *)malloc((size_t)needed);
-        if (full) {
-            DWORD got = GetFullPathNameA(path, needed, full, NULL);
-            if (got > 0 && got < needed)
-                return full;
-            free(full);
-        }
-    }
-    return strdup(path);
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return NULL;
+    wchar_t *full_wide = asset_full_path_wide_dup(wide);
+    free(wide);
+    if (!full_wide)
+        return strdup(path);
+    char *full = asset_wide_to_utf8_dup(full_wide);
+    free(full_wide);
+    return full;
 #else
     char *resolved = realpath(path, NULL);
     if (resolved)
@@ -133,7 +187,17 @@ static int asset_path_equal(const char *a, const char *b) {
     if (!a || !b)
         return 0;
 #if RT_PLATFORM_WINDOWS
-    return _stricmp(a, b) == 0;
+    wchar_t *wide_a = rt_file_path_utf8_to_wide(a);
+    wchar_t *wide_b = rt_file_path_utf8_to_wide(b);
+    if (!wide_a || !wide_b) {
+        free(wide_a);
+        free(wide_b);
+        return 0;
+    }
+    int result = asset_compare_path_ordinal(wide_a, wide_b);
+    free(wide_a);
+    free(wide_b);
+    return result == CSTR_EQUAL;
 #else
     return strcmp(a, b) == 0;
 #endif

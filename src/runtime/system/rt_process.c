@@ -573,15 +573,46 @@ static int env_item_view(rt_string item, const char **text_out, size_t *len_out)
 ///          NAME=VALUE strings are ordered with the native case-insensitive
 ///          wide-string comparator. A binary comparison makes equivalent
 ///          spellings deterministic.
+typedef int(WINAPI *process_compare_string_ordinal_fn)(LPCWCH, int, LPCWCH, int, BOOL);
+
+static INIT_ONCE g_process_compare_once = INIT_ONCE_STATIC_INIT;
+static process_compare_string_ordinal_fn g_process_compare_string_ordinal = NULL;
+
+/// @brief Resolve CompareStringOrdinal without expanding the native import surface.
+static BOOL CALLBACK process_resolve_compare_ordinal(PINIT_ONCE once, PVOID param, PVOID *context) {
+    (void)once;
+    (void)param;
+    (void)context;
+    HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+    if (kernel32) {
+        g_process_compare_string_ordinal =
+            (process_compare_string_ordinal_fn)(void *)GetProcAddress(kernel32,
+                                                                      "CompareStringOrdinal");
+    }
+    return TRUE;
+}
+
+/// @brief Invoke CompareStringOrdinal after thread-safe lazy resolution.
+static int process_compare_ordinal(const wchar_t *left,
+                                   int left_len,
+                                   const wchar_t *right,
+                                   int right_len) {
+    (void)InitOnceExecuteOnce(&g_process_compare_once, process_resolve_compare_ordinal, NULL, NULL);
+    if (g_process_compare_string_ordinal)
+        return g_process_compare_string_ordinal(left, left_len, right, right_len, TRUE);
+    if (left_len < 0 && right_len < 0)
+        return wcscmp(left, right) == 0 ? CSTR_EQUAL : 0;
+    return wcsncmp(left, right, (size_t)left_len) == 0 ? CSTR_EQUAL : 0;
+}
+
 static int compare_env_entry_wide(const void *left, const void *right) {
     const wchar_t *lhs = *(const wchar_t *const *)left;
     const wchar_t *rhs = *(const wchar_t *const *)right;
-    size_t lhs_len = wcslen(lhs);
-    size_t rhs_len = wcslen(rhs);
-    size_t compare_len = lhs_len > rhs_len ? lhs_len : rhs_len;
-    int result = _wcsnicmp(lhs, rhs, compare_len);
-    if (result != 0)
-        return result;
+    int result = process_compare_ordinal(lhs, -1, rhs, -1);
+    if (result == CSTR_LESS_THAN)
+        return -1;
+    if (result == CSTR_GREATER_THAN)
+        return 1;
     return wcscmp(lhs, rhs);
 }
 
@@ -593,9 +624,9 @@ static int env_entry_names_equal_wide(const wchar_t *lhs, const wchar_t *rhs) {
         lhs_len++;
     while (rhs[rhs_len] && rhs[rhs_len] != L'=')
         rhs_len++;
-    if (lhs_len != rhs_len || lhs_len == 0)
+    if (lhs_len != rhs_len || lhs_len == 0 || lhs_len > INT_MAX)
         return 0;
-    return _wcsnicmp(lhs, rhs, lhs_len) == 0;
+    return process_compare_ordinal(lhs, (int)lhs_len, rhs, (int)rhs_len) == CSTR_EQUAL;
 }
 
 /// @brief Build a UTF-16 environment block for CreateProcessW.
@@ -609,7 +640,7 @@ static wchar_t *build_env_block_wide(void *env) {
         return NULL;
 
     int64_t count = rt_seq_len(env);
-    if (count < 0)
+    if (count < 0 || (uint64_t)count > SIZE_MAX / sizeof(wchar_t *))
         return NULL;
     size_t total_wchars = 1;
     wchar_t **entries = NULL;
@@ -632,7 +663,7 @@ static wchar_t *build_env_block_wide(void *env) {
         if (!entries[i])
             goto fail;
         size_t wide_len = wcslen(entries[i]);
-        if (wide_len > SIZE_MAX - total_wchars - 1)
+        if (wide_len == SIZE_MAX || total_wchars > SIZE_MAX - wide_len - 1)
             goto fail;
         total_wchars += wide_len + 1;
     }
@@ -645,6 +676,8 @@ static wchar_t *build_env_block_wide(void *env) {
         }
     }
 
+    if (total_wchars == SIZE_MAX || total_wchars + 1 > SIZE_MAX / sizeof(wchar_t))
+        goto fail;
     wchar_t *block = (wchar_t *)calloc(total_wchars + 1, sizeof(wchar_t));
     if (!block)
         goto fail;
@@ -773,6 +806,11 @@ static void process_poll_internal(rt_process_impl *proc, int wait) {
         }
         proc->running = 0;
         process_drain(proc);
+    } else if (wait_result == WAIT_FAILED) {
+        proc->exit_code = -1;
+        proc->running = 0;
+        process_drain(proc);
+        rt_trap("Process: child wait failed");
     }
 }
 

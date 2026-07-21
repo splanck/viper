@@ -70,8 +70,17 @@ LONG *parallel_win_remaining_new(int64_t count) {
 }
 
 void parallel_win_complete_one(LONG *remaining, HANDLE event) {
-    if (remaining && event && InterlockedDecrement(remaining) == 0)
-        SetEvent(event);
+    if (remaining && event && InterlockedDecrement(remaining) == 0 && !SetEvent(event))
+        rt_abort("Parallel: completion event signal failed");
+}
+
+/// @brief Wait until a Windows parallel batch signals completion.
+/// @details A failed wait cannot safely return to the caller: worker tasks still
+///          borrow the caller's task array and synchronization state. Abort
+///          instead of freeing those objects underneath live workers.
+void parallel_win_wait_for_completion(HANDLE event) {
+    if (!event || WaitForSingleObject(event, INFINITE) != WAIT_OBJECT_0)
+        rt_abort("Parallel: completion event wait failed");
 }
 #else
 #include <pthread.h>

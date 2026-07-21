@@ -710,15 +710,14 @@ static int64_t exec_spawn(const char *program, void *args) {
         return -1;
     }
 
-    WaitForSingleObject(pi.hProcess, INFINITE);
-
-    DWORD exit_code;
-    GetExitCodeProcess(pi.hProcess, &exit_code);
+    DWORD wait_result = WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exit_code = 0;
+    BOOL exit_ok = wait_result == WAIT_OBJECT_0 && GetExitCodeProcess(pi.hProcess, &exit_code);
 
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    return (int64_t)exit_code;
+    return exit_ok ? (int64_t)exit_code : -1;
 }
 
 /// @brief Execute program and capture stdout on Windows.
@@ -750,7 +749,14 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     }
 
     // Ensure read handle is not inherited
-    SetHandleInformation(hReadPipe, HANDLE_FLAG_INHERIT, 0);
+    if (!SetHandleInformation(hReadPipe, HANDLE_FLAG_INHERIT, 0)) {
+        free(wprogram);
+        free(wcmdline);
+        free(cmdline);
+        CloseHandle(hReadPipe);
+        CloseHandle(hWritePipe);
+        return rt_string_from_bytes("", 0);
+    }
 
     HANDLE inherited[3];
     DWORD inherited_count = 0;
@@ -829,10 +835,14 @@ static rt_string exec_capture_spawn(const char *program, void *args) {
     }
 
     CloseHandle(hReadPipe);
-    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD wait_result = WaitForSingleObject(pi.hProcess, INFINITE);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
+    if (wait_result != WAIT_OBJECT_0) {
+        free(buf);
+        return rt_string_from_bytes("", 0);
+    }
     if (!buf) {
         return rt_string_from_bytes("", 0);
     }

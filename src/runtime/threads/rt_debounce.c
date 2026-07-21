@@ -42,6 +42,7 @@
 #include "rt_object.h"
 #include "rt_threads.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -64,13 +65,14 @@ static LARGE_INTEGER g_debounce_freq;
 /// @details Run at most once per process via `InitOnceExecuteOnce`.
 ///          `QueryPerformanceFrequency` is invariant for the lifetime of the system, so we
 ///          cache it once into `g_debounce_freq` rather than calling it on every timing
-///          sample. Always returns TRUE — Win32 documents `QueryPerformanceFrequency` as
-///          infallible on every supported version (Vista+).
+///          sample. Always returns TRUE so a failed probe is cached and later samples use
+///          the monotonic `GetTickCount64` fallback.
 static BOOL CALLBACK debounce_freq_init(PINIT_ONCE once, PVOID param, PVOID *ctx) {
     (void)once;
     (void)param;
     (void)ctx;
-    QueryPerformanceFrequency(&g_debounce_freq);
+    if (!QueryPerformanceFrequency(&g_debounce_freq))
+        g_debounce_freq.QuadPart = 0;
     return TRUE;
 }
 #endif
@@ -78,15 +80,16 @@ static BOOL CALLBACK debounce_freq_init(PINIT_ONCE once, PVOID param, PVOID *ctx
 /// @brief Read the current monotonic time in milliseconds.
 /// @details Uses `QueryPerformanceCounter` on Win32 (with the cached frequency to convert
 ///          ticks → ms via a split-modulo to avoid `int64_t` overflow on long-running
-///          processes) and `CLOCK_MONOTONIC` on POSIX, falling back to `CLOCK_REALTIME` only
-///          if the monotonic clock is unavailable. Returns 0 if every clock source fails.
+///          processes), with `GetTickCount64` as a fallback. POSIX uses `CLOCK_MONOTONIC`,
+///          falling back to `CLOCK_REALTIME`; it returns 0 only if both POSIX sources fail.
 static int64_t current_time_ms(void) {
 #if defined(_WIN32)
     LARGE_INTEGER counter;
     InitOnceExecuteOnce(&g_debounce_freq_once, debounce_freq_init, NULL, NULL);
-    QueryPerformanceCounter(&counter);
-    if (g_debounce_freq.QuadPart <= 0)
-        return 0;
+    if (g_debounce_freq.QuadPart <= 0 || !QueryPerformanceCounter(&counter)) {
+        ULONGLONG ticks = GetTickCount64();
+        return ticks > (ULONGLONG)INT64_MAX ? INT64_MAX : (int64_t)ticks;
+    }
     return (int64_t)((counter.QuadPart / g_debounce_freq.QuadPart) * 1000LL +
                      ((counter.QuadPart % g_debounce_freq.QuadPart) * 1000LL) /
                          g_debounce_freq.QuadPart);

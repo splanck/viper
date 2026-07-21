@@ -64,6 +64,7 @@ extern "C" {
 #define VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS 4
 #define VGFX3D_D3D11_SHADOW_ATLAS_ROWS 2
 #define VGFX3D_D3D11_FRAME_TIMING_PENDING_POLL_LIMIT 120u
+#define VGFX3D_D3D11_DEPTH_PROBE_PENDING_POLL_LIMIT 120u
 #define VGFX3D_D3D11_SSR_STEPS_MIN 8
 #define VGFX3D_D3D11_SSR_STEPS_MAX 48
 #define VGFX3D_D3D11_SSR_STEPS_DEFAULT 24
@@ -461,6 +462,8 @@ int vgfx3d_d3d11_compute_gpu_time_us(int disjoint,
                                      uint64_t *out_microseconds);
 /// @brief Decide when a perpetually busy timestamp query should be abandoned.
 int vgfx3d_d3d11_should_abandon_frame_timing(uint32_t pending_polls);
+/// @brief Decide when a perpetually busy depth-probe staging map should be abandoned.
+int vgfx3d_d3d11_should_abandon_depth_probe(uint32_t pending_polls);
 /// @brief Pick the right render-target classification (RTT > swapchain > overlay > scene).
 vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,

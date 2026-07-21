@@ -25,6 +25,8 @@
 
 #include "rt_threads_internal.h"
 
+#include "rt_stack_safety.h"
+
 #if defined(_WIN32)
 
 //===----------------------------------------------------------------------===//
@@ -112,6 +114,7 @@ static void rt_thread_finalize_win(void *obj) {
 /// @brief Thread trampoline that sets up context and runs the entry function.
 static unsigned __stdcall rt_thread_trampoline_win(void *p) {
     RtThread *t = (RtThread *)p;
+    rt_init_stack_safety();
     int context_adopted =
         t && t->inherited_ctx && rt_context_adopt_reserved_thread_binding(t->inherited_ctx);
     if (context_adopted && t->entry)

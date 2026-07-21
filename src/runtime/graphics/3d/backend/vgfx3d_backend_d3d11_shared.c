@@ -1419,6 +1419,11 @@ int vgfx3d_d3d11_should_abandon_frame_timing(uint32_t pending_polls) {
     return pending_polls >= VGFX3D_D3D11_FRAME_TIMING_PENDING_POLL_LIMIT;
 }
 
+/// @brief Bound non-blocking probe polling so one busy staging copy cannot starve later frames.
+int vgfx3d_d3d11_should_abandon_depth_probe(uint32_t pending_polls) {
+    return pending_polls >= VGFX3D_D3D11_DEPTH_PROBE_PENDING_POLL_LIMIT;
+}
+
 /// @brief Pick the right render-target classification for the current draw context.
 /// Order of priority: explicit RTT > swapchain (no postfx) > overlay (loading existing
 /// color) > scene (HDR intermediate that postfx will tonemap).

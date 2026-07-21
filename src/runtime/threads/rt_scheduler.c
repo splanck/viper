@@ -40,8 +40,8 @@
 #include "rt_string_internal.h"
 #include "rt_threads.h"
 
-#include <setjmp.h>
 #include <limits.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,7 +78,8 @@ static BOOL CALLBACK sched_freq_init(PINIT_ONCE once, PVOID param, PVOID *ctx) {
     (void)once;
     (void)param;
     (void)ctx;
-    QueryPerformanceFrequency(&g_sched_freq);
+    if (!QueryPerformanceFrequency(&g_sched_freq))
+        g_sched_freq.QuadPart = 0;
     return TRUE;
 }
 #endif
@@ -86,17 +87,17 @@ static BOOL CALLBACK sched_freq_init(PINIT_ONCE once, PVOID param, PVOID *ctx) {
 /// @brief Read the current monotonic time in milliseconds.
 /// @details Platform-portable wrapper. Win32 path uses `QueryPerformanceCounter` divided by
 ///          the cached frequency, with a split-modulo conversion to keep `int64_t` math
-///          exact across long uptimes. POSIX path prefers `CLOCK_MONOTONIC` and falls back
-///          to `CLOCK_REALTIME` if the monotonic clock is unavailable. Returns 0 if every
-///          source fails (callers tolerate that — `due_time_from_now(0)` then yields 0,
-///          treated by the rest of the scheduler as "due immediately").
+///          exact across long uptimes and falls back to `GetTickCount64` if QPC fails.
+///          POSIX prefers `CLOCK_MONOTONIC` and falls back to `CLOCK_REALTIME`; it returns
+///          0 only if every POSIX clock source fails.
 static int64_t current_time_ms(void) {
 #if defined(_WIN32)
     LARGE_INTEGER counter;
     InitOnceExecuteOnce(&g_sched_freq_once, sched_freq_init, NULL, NULL);
-    QueryPerformanceCounter(&counter);
-    if (g_sched_freq.QuadPart <= 0)
-        return 0;
+    if (g_sched_freq.QuadPart <= 0 || !QueryPerformanceCounter(&counter)) {
+        ULONGLONG ticks = GetTickCount64();
+        return ticks > (ULONGLONG)INT64_MAX ? INT64_MAX : (int64_t)ticks;
+    }
     return (int64_t)((counter.QuadPart / g_sched_freq.QuadPart) * 1000LL +
                      ((counter.QuadPart % g_sched_freq.QuadPart) * 1000LL) / g_sched_freq.QuadPart);
 #else
@@ -277,7 +278,9 @@ void *rt_scheduler_new(void) {
 /// @param name Task name string. Ignored if NULL.
 /// @param delay_ms Delay in milliseconds from now. Negative values treated as 0.
 /// @param generation Caller-supplied identity recorded on the entry (0 for plain Schedule).
-static void scheduler_schedule_impl(void *sched, rt_string name, int64_t delay_ms,
+static void scheduler_schedule_impl(void *sched,
+                                    rt_string name,
+                                    int64_t delay_ms,
                                     int64_t generation) {
     if (!sched || !name)
         return;
@@ -292,7 +295,8 @@ static void scheduler_schedule_impl(void *sched, rt_string name, int64_t delay_m
     rt_trap_set_recovery(&recovery);
     if (setjmp(recovery) != 0) {
         char saved_error[256];
-        scheduler_save_trap_error(saved_error, sizeof(saved_error), "Scheduler.Schedule: name retain failed");
+        scheduler_save_trap_error(
+            saved_error, sizeof(saved_error), "Scheduler.Schedule: name retain failed");
         rt_trap_clear_recovery();
         scheduler_release_object(sched);
         rt_trap(saved_error);

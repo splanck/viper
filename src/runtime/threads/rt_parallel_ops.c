@@ -200,7 +200,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
 
     // Wait for completion
 #if RT_PLATFORM_WINDOWS
-    WaitForSingleObject(event, INFINITE);
+    parallel_win_wait_for_completion(event);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
     free(remaining);
@@ -397,7 +397,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
 
     // Wait for completion
 #if RT_PLATFORM_WINDOWS
-    WaitForSingleObject(event, INFINITE);
+    parallel_win_wait_for_completion(event);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
     free(remaining);
@@ -575,7 +575,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool) {
 
     // Wait for completion
 #if RT_PLATFORM_WINDOWS
-    WaitForSingleObject(event, INFINITE);
+    parallel_win_wait_for_completion(event);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
     free(remaining);
@@ -770,7 +770,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
 
     /* Wait for completion. */
 #if RT_PLATFORM_WINDOWS
-    WaitForSingleObject(event, INFINITE);
+    parallel_win_wait_for_completion(event);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
     free(remaining);
@@ -954,7 +954,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
 
     // Wait for completion
 #if RT_PLATFORM_WINDOWS
-    WaitForSingleObject(event, INFINITE);
+    parallel_win_wait_for_completion(event);
     CloseHandle(event);
     DeleteCriticalSection(&error_lock);
     free(remaining);

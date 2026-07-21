@@ -1118,6 +1118,12 @@ static void test_d3d11_limits_and_prune_helpers(void) {
     EXPECT_TRUE(
         vgfx3d_d3d11_should_abandon_frame_timing(VGFX3D_D3D11_FRAME_TIMING_PENDING_POLL_LIMIT) == 1,
         "GPU timing abandons a query that remains busy for the full poll budget");
+    EXPECT_TRUE(vgfx3d_d3d11_should_abandon_depth_probe(
+                    VGFX3D_D3D11_DEPTH_PROBE_PENDING_POLL_LIMIT - 1u) == 0,
+                "Depth probes keep polling below the bounded stale-copy threshold");
+    EXPECT_TRUE(
+        vgfx3d_d3d11_should_abandon_depth_probe(VGFX3D_D3D11_DEPTH_PROBE_PENDING_POLL_LIMIT) == 1,
+        "Depth probes abandon a staging copy that stays busy for the full poll budget");
 
     EXPECT_TRUE(vgfx3d_d3d11_clamp_morph_shape_count(1024u, 64) == VGFX3D_D3D11_MAX_MORPH_SHAPES,
                 "Morph shape helper applies the backend shape cap");

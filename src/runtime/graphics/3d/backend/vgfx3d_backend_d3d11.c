@@ -519,6 +519,7 @@ typedef struct {
     int32_t depth_probe_request_count;
     ID3D11Texture2D *depth_probe_staging;
     int32_t depth_probe_pending_count;
+    uint32_t depth_probe_pending_polls;
     float depth_probe_results[VGFX3D_DEPTH_PROBE_MAX];
     int32_t depth_probe_result_count;
 
@@ -651,6 +652,7 @@ static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx);
 static void d3d11_bind_render_targets(d3d11_context_t *ctx);
 static void d3d11_unbind_draw_resources(d3d11_context_t *ctx);
 static void d3d11_release_swapchain_main_targets(d3d11_context_t *ctx);
+static void d3d11_release_readback_staging_texture(d3d11_context_t *ctx);
 static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
                                                      int32_t width,
                                                      int32_t height,
@@ -840,6 +842,7 @@ static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
     hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_disjoint_query);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateQuery(frame timestamp disjoint)", hr);
+        d3d11_log_device_removed_reason(ctx, "CreateQuery(frame timestamp disjoint)", hr);
         SAFE_RELEASE(ctx->frame_time_disjoint_query);
         return;
     }
@@ -847,6 +850,7 @@ static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
     hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_start_query);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateQuery(frame timestamp start)", hr);
+        d3d11_log_device_removed_reason(ctx, "CreateQuery(frame timestamp start)", hr);
         SAFE_RELEASE(ctx->frame_time_start_query);
         SAFE_RELEASE(ctx->frame_time_disjoint_query);
         return;
@@ -854,6 +858,7 @@ static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
     hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_end_query);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateQuery(frame timestamp end)", hr);
+        d3d11_log_device_removed_reason(ctx, "CreateQuery(frame timestamp end)", hr);
         SAFE_RELEASE(ctx->frame_time_end_query);
         SAFE_RELEASE(ctx->frame_time_start_query);
         SAFE_RELEASE(ctx->frame_time_disjoint_query);
@@ -867,9 +872,7 @@ static void d3d11_note_pending_frame_timing_poll(d3d11_context_t *ctx) {
     if (ctx->frame_time_pending_polls < UINT32_MAX)
         ctx->frame_time_pending_polls++;
     if (vgfx3d_d3d11_should_abandon_frame_timing(ctx->frame_time_pending_polls)) {
-        ctx->frame_time_pending = 0;
-        ctx->frame_time_pending_polls = 0;
-        ctx->frame_gpu_time_us = 0;
+        d3d11_create_frame_timing_queries(ctx);
     }
 }
 
@@ -897,9 +900,7 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
     if (FAILED(hr)) {
         d3d11_log_hresult("GetData(frame timestamp disjoint)", hr);
         d3d11_log_device_removed_reason(ctx, "GetData(frame timestamp disjoint)", hr);
-        ctx->frame_time_pending = 0;
-        ctx->frame_time_pending_polls = 0;
-        ctx->frame_gpu_time_us = 0;
+        d3d11_create_frame_timing_queries(ctx);
         return 0;
     }
     hr = ID3D11DeviceContext_GetData(ctx->ctx,
@@ -914,9 +915,7 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
     if (FAILED(hr)) {
         d3d11_log_hresult("GetData(frame timestamp start)", hr);
         d3d11_log_device_removed_reason(ctx, "GetData(frame timestamp start)", hr);
-        ctx->frame_time_pending = 0;
-        ctx->frame_time_pending_polls = 0;
-        ctx->frame_gpu_time_us = 0;
+        d3d11_create_frame_timing_queries(ctx);
         return 0;
     }
     hr = ID3D11DeviceContext_GetData(ctx->ctx,
@@ -931,9 +930,7 @@ static int d3d11_harvest_frame_timing(d3d11_context_t *ctx) {
     if (FAILED(hr)) {
         d3d11_log_hresult("GetData(frame timestamp end)", hr);
         d3d11_log_device_removed_reason(ctx, "GetData(frame timestamp end)", hr);
-        ctx->frame_time_pending = 0;
-        ctx->frame_time_pending_polls = 0;
-        ctx->frame_gpu_time_us = 0;
+        d3d11_create_frame_timing_queries(ctx);
         return 0;
     }
     ctx->frame_time_pending = 0;
@@ -1341,6 +1338,7 @@ static void d3d11_reset_depth_probe_state(d3d11_context_t *ctx) {
         return;
     ctx->depth_probe_request_count = 0;
     ctx->depth_probe_pending_count = 0;
+    ctx->depth_probe_pending_polls = 0;
     ctx->depth_probe_result_count = 0;
     memset(ctx->depth_probe_requests, 0, sizeof(ctx->depth_probe_requests));
     memset(ctx->depth_probe_results, 0, sizeof(ctx->depth_probe_results));
@@ -1503,10 +1501,14 @@ static HRESULT d3d11_ensure_dynamic_buffer(d3d11_context_t *ctx,
     desc.BindFlags = bind_flags;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, &new_buffer);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && new_buffer) {
         SAFE_RELEASE(*buffer);
         *buffer = new_buffer;
         *capacity = new_capacity;
+    } else {
+        SAFE_RELEASE(new_buffer);
+        if (SUCCEEDED(hr))
+            hr = E_POINTER;
     }
     return hr;
 }
@@ -1530,6 +1532,7 @@ static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
     hr = d3d11_ensure_dynamic_buffer(ctx, buffer, capacity, bind_flags, bytes, initial_size);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateBuffer(dynamic)", hr);
+        d3d11_log_device_removed_reason(ctx, "CreateBuffer(dynamic)", hr);
         return 0;
     }
     if (!*buffer || *capacity < bytes)
@@ -1538,6 +1541,7 @@ static int d3d11_upload_dynamic_buffer(d3d11_context_t *ctx,
         ctx->ctx, (ID3D11Resource *)*buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(dynamic)", hr);
+        d3d11_log_device_removed_reason(ctx, "Map(dynamic)", hr);
         return 0;
     }
     if (!mapped.pData) {

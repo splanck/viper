@@ -21,6 +21,8 @@
 #include "rt.hpp"
 #include "rt_asset.h"
 #include "rt_bytes.h"
+#include "rt_file_path.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_trap.h"
 #include "rt_zpak_format.h"
@@ -326,6 +328,31 @@ static void test_recognized_decode_failure_returns_null() {
     unlink_p(bin_path);
 }
 
+#if RT_PLATFORM_WINDOWS
+/// @brief Verify mounted-pack identity uses Unicode ordinal case folding, not UTF-8 byte folding.
+static void test_windows_unicode_pack_path_identity() {
+    const std::vector<uint8_t> blob = make_corrupt_compressed_zpak();
+    char upper_path[512];
+    char lower_path[512];
+    snprintf(upper_path, sizeof(upper_path), "zanna_\xC3\x84_pack_%d.zpak", (int)GETPID());
+    snprintf(lower_path, sizeof(lower_path), "zanna_\xC3\xA4_pack_%d.zpak", (int)GETPID());
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(upper_path);
+    assert(wide_path != nullptr);
+    _wunlink(wide_path);
+    FILE *file = _wfopen(wide_path, L"wb");
+    assert(file != nullptr);
+    assert(fwrite(blob.data(), 1, blob.size(), file) == blob.size());
+    assert(fclose(file) == 0);
+
+    assert(rt_asset_mount(rt_const_cstr(upper_path)) == 1);
+    assert(rt_asset_unmount(rt_const_cstr(lower_path)) == 1);
+    assert(rt_asset_unmount(rt_const_cstr(upper_path)) == 0);
+
+    assert(_wunlink(wide_path) == 0);
+    free(wide_path);
+}
+#endif
+
 int main() {
     test_corrupt_pack_trap_does_not_poison_asset_manager();
     test_recognized_decode_failure_returns_null();
@@ -333,6 +360,9 @@ int main() {
     test_filesystem_directories_are_not_assets();
     test_missing_asset_size_sentinel();
     test_unsafe_asset_names_are_rejected();
+#if RT_PLATFORM_WINDOWS
+    test_windows_unicode_pack_path_identity();
+#endif
 #ifndef _WIN32
     test_loose_symlink_asset_rejected();
 #endif

@@ -15,6 +15,7 @@
 #include "rt_exec.h"
 #include "rt_internal.h"
 #include "rt_process.h"
+#include "rt_pty.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 
@@ -554,6 +555,45 @@ static void test_windows_unicode_environment_round_trip() {
     rt_process_destroy(handle);
     printf("  PASS: test_windows_unicode_environment_round_trip\n");
 }
+
+static void test_windows_conpty_unicode_environment_round_trip() {
+    if (!rt_pty_is_supported()) {
+        printf("  SKIP: test_windows_conpty_unicode_environment_round_trip (ConPTY unavailable)\n");
+        return;
+    }
+    std::string executable = windows_current_executable_utf8();
+    assert(!executable.empty());
+
+    void *args = rt_seq_new();
+    rt_seq_push(args, make_string("--verify-unicode-environment"));
+    void *env = rt_seq_new();
+    rt_seq_push(env, make_string("ZANNA_Z_LAST=ok"));
+    rt_seq_push(env,
+                make_string("ZANNA_PROCESS_TEST=Gr\xc3\xbc\xc3\x9f"
+                            "e-\xe6\x9d\xb1\xe4\xba\xac"));
+    rt_seq_push(env, make_string("ZANNA_A_FIRST=ok"));
+
+    void *handle = rt_pty_open(make_string(executable.c_str()), args, make_string(""), env, 80, 24);
+    assert(handle != nullptr);
+    assert(rt_pty_wait(handle) == 0);
+    rt_pty_destroy(handle);
+
+    void *duplicate_env = rt_seq_new();
+    rt_seq_push(duplicate_env, make_string("ZANNA_DUPLICATE=one"));
+    rt_seq_push(duplicate_env, make_string("zanna_duplicate=two"));
+    assert(rt_pty_open(
+               make_string(executable.c_str()), args, make_string(""), duplicate_env, 80, 24) ==
+           nullptr);
+
+    const char malformed_cwd_bytes[] = "\x78\xC0\xAF";
+    assert(rt_pty_open(make_string(executable.c_str()),
+                       args,
+                       make_string(malformed_cwd_bytes),
+                       nullptr,
+                       80,
+                       24) == nullptr);
+    printf("  PASS: test_windows_conpty_unicode_environment_round_trip\n");
+}
 #endif
 
 int main(int argc, char **argv) {
@@ -561,6 +601,7 @@ int main(int argc, char **argv) {
     if (argc == 2 && strcmp(argv[1], "--verify-unicode-environment") == 0)
         return verify_windows_unicode_environment_child();
     test_windows_unicode_environment_round_trip();
+    test_windows_conpty_unicode_environment_round_trip();
     return 0;
 #else
     (void)argc;

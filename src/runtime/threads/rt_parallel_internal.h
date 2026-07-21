@@ -164,6 +164,7 @@ typedef struct {
 #if RT_PLATFORM_WINDOWS
 LONG *parallel_win_remaining_new(int64_t count);
 void parallel_win_complete_one(LONG *remaining, HANDLE event);
+void parallel_win_wait_for_completion(HANDLE event);
 #endif
 
 /// @brief Convert a function pointer to void* without pedantic warnings.

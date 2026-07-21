@@ -236,7 +236,7 @@ rt_string rt_file_path_wide_to_string(const wchar_t *wide) {
     if (!wide)
         return rt_str_empty();
 
-    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    int needed = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, NULL, 0, NULL, NULL);
     if (needed <= 0)
         return rt_str_empty();
 
@@ -244,7 +244,8 @@ rt_string rt_file_path_wide_to_string(const wchar_t *wide) {
     if (!utf8)
         return rt_str_empty();
 
-    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, needed, NULL, NULL) <= 0) {
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, utf8, needed, NULL, NULL) <=
+        0) {
         free(utf8);
         return rt_str_empty();
     }

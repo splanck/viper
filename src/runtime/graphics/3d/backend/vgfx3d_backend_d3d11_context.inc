@@ -120,26 +120,8 @@ static void d3d11_disable_implicit_fullscreen(d3d11_context_t *ctx, HWND hwnd) {
 
 /// @brief Create the swapchain render-target view and matching main depth target.
 static HRESULT d3d11_create_swapchain_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
-    ID3D11Texture2D *back_buffer = NULL;
-    HRESULT hr =
-        IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("IDXGISwapChain::GetBuffer", hr);
-        return hr;
-    }
-    hr = ID3D11Device_CreateRenderTargetView(
-        ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
-    SAFE_RELEASE(back_buffer);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("CreateRenderTargetView(backbuffer)", hr);
-        return hr;
-    }
-    hr = d3d11_create_depth_target(ctx, width, height, 0, &ctx->depth_tex, &ctx->dsv, NULL);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("CreateTexture2D/DepthStencilView(main)", hr);
-        SAFE_RELEASE(ctx->rtv);
-    }
-    return hr;
+    return d3d11_recreate_swapchain_main_targets(
+        ctx, width, height, "Create initial swapchain targets");
 }
 
 /// @brief Create opaque, transparent, disabled, skybox, and shadow depth-stencil states.

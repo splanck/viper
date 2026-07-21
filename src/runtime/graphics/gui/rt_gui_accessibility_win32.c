@@ -39,6 +39,8 @@
 #include <uiautomationcore.h>
 #include <uiautomationcoreapi.h>
 
+#include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -173,10 +175,11 @@ typedef BOOL(WINAPI *rt_uia_clients_listening_fn)(void);
 typedef HRESULT(WINAPI *rt_uia_disconnect_fn)(IRawElementProviderSimple *);
 typedef HRESULT(WINAPI *rt_uia_raise_notification_fn)(
     IRawElementProviderSimple *, int, int, BSTR, BSTR);
+typedef HRESULT(WINAPI *rt_uia_safearray_destroy_fn)(SAFEARRAY *);
 
 typedef struct rt_uia_api {
-    int32_t attempted;
     HMODULE module;
+    HMODULE oleaut_module;
     rt_uia_return_raw_fn return_raw_element_provider;
     rt_uia_host_from_hwnd_fn host_provider_from_hwnd;
     rt_uia_raise_event_fn raise_automation_event;
@@ -184,33 +187,46 @@ typedef struct rt_uia_api {
     rt_uia_clients_listening_fn clients_are_listening;
     rt_uia_disconnect_fn disconnect_provider;
     rt_uia_raise_notification_fn raise_notification_event;
+    rt_uia_safearray_destroy_fn safearray_destroy;
 } rt_uia_api_t;
 
 static rt_uia_api_t g_rt_uia_api;
+static INIT_ONCE g_rt_uia_api_once = INIT_ONCE_STATIC_INIT;
+
+/// @brief Resolve UI Automation exports for the process-wide API table.
+static BOOL CALLBACK rt_uia_api_init(PINIT_ONCE once, PVOID param, PVOID *context) {
+    (void)once;
+    (void)param;
+    (void)context;
+    g_rt_uia_api.module = LoadLibraryW(L"uiautomationcore.dll");
+    if (g_rt_uia_api.module) {
+        g_rt_uia_api.return_raw_element_provider = (rt_uia_return_raw_fn)GetProcAddress(
+            g_rt_uia_api.module, "UiaReturnRawElementProvider");
+        g_rt_uia_api.host_provider_from_hwnd = (rt_uia_host_from_hwnd_fn)GetProcAddress(
+            g_rt_uia_api.module, "UiaHostProviderFromHwnd");
+        g_rt_uia_api.raise_automation_event =
+            (rt_uia_raise_event_fn)GetProcAddress(g_rt_uia_api.module, "UiaRaiseAutomationEvent");
+        g_rt_uia_api.raise_property_changed_event = (rt_uia_raise_prop_fn)GetProcAddress(
+            g_rt_uia_api.module, "UiaRaiseAutomationPropertyChangedEvent");
+        g_rt_uia_api.clients_are_listening = (rt_uia_clients_listening_fn)GetProcAddress(
+            g_rt_uia_api.module, "UiaClientsAreListening");
+        g_rt_uia_api.disconnect_provider =
+            (rt_uia_disconnect_fn)GetProcAddress(g_rt_uia_api.module, "UiaDisconnectProvider");
+        g_rt_uia_api.raise_notification_event = (rt_uia_raise_notification_fn)GetProcAddress(
+            g_rt_uia_api.module, "UiaRaiseNotificationEvent");
+    }
+    g_rt_uia_api.oleaut_module = LoadLibraryW(L"oleaut32.dll");
+    if (g_rt_uia_api.oleaut_module) {
+        g_rt_uia_api.safearray_destroy = (rt_uia_safearray_destroy_fn)GetProcAddress(
+            g_rt_uia_api.oleaut_module, "SafeArrayDestroy");
+    }
+    return TRUE;
+}
 
 /// @brief Resolve the UI Automation core exports once per process.
 /// @return Borrowed API table; entries are NULL when the DLL or export is missing.
 static rt_uia_api_t *rt_uia_api(void) {
-    if (!g_rt_uia_api.attempted) {
-        g_rt_uia_api.attempted = 1;
-        g_rt_uia_api.module = LoadLibraryW(L"uiautomationcore.dll");
-        if (g_rt_uia_api.module) {
-            g_rt_uia_api.return_raw_element_provider = (rt_uia_return_raw_fn)GetProcAddress(
-                g_rt_uia_api.module, "UiaReturnRawElementProvider");
-            g_rt_uia_api.host_provider_from_hwnd = (rt_uia_host_from_hwnd_fn)GetProcAddress(
-                g_rt_uia_api.module, "UiaHostProviderFromHwnd");
-            g_rt_uia_api.raise_automation_event = (rt_uia_raise_event_fn)GetProcAddress(
-                g_rt_uia_api.module, "UiaRaiseAutomationEvent");
-            g_rt_uia_api.raise_property_changed_event = (rt_uia_raise_prop_fn)GetProcAddress(
-                g_rt_uia_api.module, "UiaRaiseAutomationPropertyChangedEvent");
-            g_rt_uia_api.clients_are_listening = (rt_uia_clients_listening_fn)GetProcAddress(
-                g_rt_uia_api.module, "UiaClientsAreListening");
-            g_rt_uia_api.disconnect_provider =
-                (rt_uia_disconnect_fn)GetProcAddress(g_rt_uia_api.module, "UiaDisconnectProvider");
-            g_rt_uia_api.raise_notification_event = (rt_uia_raise_notification_fn)GetProcAddress(
-                g_rt_uia_api.module, "UiaRaiseNotificationEvent");
-        }
-    }
+    (void)InitOnceExecuteOnce(&g_rt_uia_api_once, rt_uia_api_init, NULL, NULL);
     return &g_rt_uia_api;
 }
 
@@ -365,13 +381,17 @@ static int32_t rt_uia_role_focusable(vg_accessible_role_t role) {
 static BSTR rt_uia_bstr(const char *text) {
     if (!text || !*text)
         return SysAllocString(L"");
-    int wide_count = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);
+    int wide_count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
     if (wide_count <= 1)
         return SysAllocString(L"");
     BSTR result = SysAllocStringLen(NULL, (UINT)(wide_count - 1));
     if (!result)
         return NULL;
-    MultiByteToWideChar(CP_UTF8, 0, text, -1, result, wide_count);
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, result, wide_count) !=
+        wide_count) {
+        SysFreeString(result);
+        return SysAllocString(L"");
+    }
     return result;
 }
 
@@ -395,6 +415,7 @@ typedef struct rt_uia_window_bridge {
     HWND hwnd;                        ///< Native window answering WM_GETOBJECT.
     vg_widget_t *root;                ///< Borrowed semantic root widget.
     uint64_t root_id;                 ///< Immutable ID guarding the root pointer.
+    uint64_t generation;              ///< Slot generation invalidating detached providers.
     rt_uia_provider_t *root_provider; ///< Bridge-owned root provider reference.
 } rt_uia_window_bridge_t;
 
@@ -429,6 +450,7 @@ struct rt_uia_provider {
     vg_widget_t *widget;
     uint64_t widget_id;
     rt_uia_window_bridge_t *bridge;
+    uint64_t bridge_generation;
     int32_t is_root;
 };
 
@@ -438,12 +460,51 @@ struct rt_uia_provider {
 static rt_uia_provider_t *rt_uia_provider_create(rt_uia_window_bridge_t *bridge,
                                                  vg_widget_t *widget);
 
+/// @brief Invalidate a bridge slot while keeping its generation monotonic.
+static void rt_uia_bridge_reset(rt_uia_window_bridge_t *bridge) {
+    if (!bridge)
+        return;
+    uint64_t generation = bridge->generation + 1U;
+    if (generation == 0)
+        generation = 1;
+    memset(bridge, 0, sizeof(*bridge));
+    bridge->generation = generation;
+}
+
+/// @brief Resolve a provider's bridge only while the slot still represents its attachment.
+static rt_uia_window_bridge_t *rt_uia_resolve_bridge(rt_uia_provider_t *provider) {
+    rt_uia_window_bridge_t *bridge = provider ? provider->bridge : NULL;
+    return bridge && bridge->window && bridge->generation == provider->bridge_generation &&
+                   vg_widget_is_live(bridge->root) && bridge->root->id == bridge->root_id
+               ? bridge
+               : NULL;
+}
+
+/// @brief Return whether a live widget belongs to this bridge's semantic tree.
+static int rt_uia_bridge_contains_widget(const rt_uia_window_bridge_t *bridge,
+                                         const vg_widget_t *widget) {
+    if (!bridge || !vg_widget_is_live(bridge->root) || bridge->root->id != bridge->root_id ||
+        !vg_widget_is_live(widget))
+        return 0;
+    for (const vg_widget_t *current = widget; current;) {
+        if (!vg_widget_is_live(current))
+            return 0;
+        if (current == bridge->root)
+            return 1;
+        current = current->parent;
+    }
+    return 0;
+}
+
 /// @brief Resolve the borrowed widget only while its immutable ID still matches.
 static vg_widget_t *rt_uia_resolve(rt_uia_provider_t *provider) {
-    if (!provider)
+    rt_uia_window_bridge_t *bridge = rt_uia_resolve_bridge(provider);
+    if (!bridge)
         return NULL;
     vg_widget_t *widget = provider->widget;
-    return vg_widget_is_live(widget) && widget->id == provider->widget_id ? widget : NULL;
+    return rt_uia_bridge_contains_widget(bridge, widget) && widget->id == provider->widget_id
+               ? widget
+               : NULL;
 }
 
 //----------------------------------------------------------------------------
@@ -624,6 +685,10 @@ static HRESULT STDMETHODCALLTYPE rt_uia_simple_GetPropertyValue(IRawElementProvi
         default:
             break;
     }
+    if (out->vt == VT_BSTR && !out->bstrVal) {
+        VariantInit(out);
+        return E_OUTOFMEMORY;
+    }
     return S_OK;
 }
 
@@ -633,12 +698,13 @@ static HRESULT STDMETHODCALLTYPE rt_uia_simple_get_HostRawElementProvider(
     if (!out)
         return E_POINTER;
     *out = NULL;
-    if (!provider->is_root || !provider->bridge)
+    rt_uia_window_bridge_t *bridge = rt_uia_resolve_bridge(provider);
+    if (!provider->is_root || !bridge)
         return S_OK;
     rt_uia_api_t *api = rt_uia_api();
     if (!api->host_provider_from_hwnd)
         return S_OK;
-    return api->host_provider_from_hwnd(provider->bridge->hwnd, out);
+    return api->host_provider_from_hwnd(bridge->hwnd, out);
 }
 
 static IRawElementProviderSimpleVtbl g_rt_uia_simple_vtbl = {
@@ -672,7 +738,8 @@ static HRESULT STDMETHODCALLTYPE rt_uia_fragment_Navigate(IRawElementProviderFra
         return E_POINTER;
     *out = NULL;
     vg_widget_t *widget = rt_uia_resolve(provider);
-    if (!widget || !provider->bridge)
+    rt_uia_window_bridge_t *bridge = rt_uia_resolve_bridge(provider);
+    if (!widget || !bridge)
         return S_OK;
 
     vg_widget_t *target = NULL;
@@ -721,8 +788,11 @@ static HRESULT STDMETHODCALLTYPE rt_uia_fragment_Navigate(IRawElementProviderFra
         default:
             break;
     }
-    if (target)
-        *out = rt_uia_fragment_for(provider->bridge, target);
+    if (target) {
+        *out = rt_uia_fragment_for(bridge, target);
+        if (!*out)
+            return E_OUTOFMEMORY;
+    }
     return S_OK;
 }
 
@@ -732,17 +802,35 @@ static HRESULT STDMETHODCALLTYPE rt_uia_fragment_GetRuntimeId(IRawElementProvide
     if (!out)
         return E_POINTER;
     *out = NULL;
-    if (provider->is_root)
+    if (provider->is_root || !rt_uia_resolve(provider))
         return S_OK; // The host HWND supplies the root identity.
-    SAFEARRAY *runtime_id = SafeArrayCreateVector(VT_I4, 0, 2);
+    SAFEARRAY *runtime_id = SafeArrayCreateVector(VT_I4, 0, 3);
     if (!runtime_id)
         return E_OUTOFMEMORY;
     LONG index = 0;
-    int value = UiaAppendRuntimeId;
-    SafeArrayPutElement(runtime_id, &index, &value);
+    LONG value = UiaAppendRuntimeId;
+    HRESULT hr = SafeArrayPutElement(runtime_id, &index, &value);
+    if (FAILED(hr)) {
+        if (rt_uia_api()->safearray_destroy)
+            (void)rt_uia_api()->safearray_destroy(runtime_id);
+        return hr;
+    }
     index = 1;
-    value = (int)(provider->widget_id & 0x7FFFFFFF);
-    SafeArrayPutElement(runtime_id, &index, &value);
+    value = (LONG)(uint32_t)(provider->widget_id & UINT32_MAX);
+    hr = SafeArrayPutElement(runtime_id, &index, &value);
+    if (FAILED(hr)) {
+        if (rt_uia_api()->safearray_destroy)
+            (void)rt_uia_api()->safearray_destroy(runtime_id);
+        return hr;
+    }
+    index = 2;
+    value = (LONG)(uint32_t)(provider->widget_id >> 32U);
+    hr = SafeArrayPutElement(runtime_id, &index, &value);
+    if (FAILED(hr)) {
+        if (rt_uia_api()->safearray_destroy)
+            (void)rt_uia_api()->safearray_destroy(runtime_id);
+        return hr;
+    }
     *out = runtime_id;
     return S_OK;
 }
@@ -754,12 +842,19 @@ rt_uia_fragment_get_BoundingRectangle(IRawElementProviderFragment *iface, struct
         return E_POINTER;
     out->left = out->top = out->width = out->height = 0.0;
     vg_widget_t *widget = rt_uia_resolve(provider);
-    if (!widget || !provider->bridge)
+    rt_uia_window_bridge_t *bridge = rt_uia_resolve_bridge(provider);
+    if (!widget || !bridge)
         return S_OK;
     float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
     vg_widget_get_screen_bounds(widget, &x, &y, &width, &height);
+    if (!isfinite(x) || !isfinite(y) || !isfinite(width) || !isfinite(height) || width < 0.0f ||
+        height < 0.0f)
+        return E_FAIL;
     POINT origin = {0, 0};
-    ClientToScreen(provider->bridge->hwnd, &origin);
+    if (bridge->hwnd && !ClientToScreen(bridge->hwnd, &origin)) {
+        DWORD error = GetLastError();
+        return HRESULT_FROM_WIN32(error ? error : ERROR_GEN_FAILURE);
+    }
     out->left = (double)origin.x + (double)x;
     out->top = (double)origin.y + (double)y;
     out->width = (double)width;
@@ -791,7 +886,7 @@ static HRESULT STDMETHODCALLTYPE rt_uia_fragment_get_FragmentRoot(
     if (!out)
         return E_POINTER;
     *out = NULL;
-    rt_uia_window_bridge_t *bridge = provider->bridge;
+    rt_uia_window_bridge_t *bridge = rt_uia_resolve_bridge(provider);
     if (!bridge || !bridge->root_provider)
         return S_OK;
     return rt_uia_provider_qi(
@@ -822,7 +917,11 @@ static vg_widget_t *rt_uia_hit_test(vg_widget_t *widget, float x, float y) {
         return NULL;
     float wx = 0.0f, wy = 0.0f, ww = 0.0f, wh = 0.0f;
     vg_widget_get_screen_bounds(widget, &wx, &wy, &ww, &wh);
-    if (x < wx || y < wy || x >= wx + ww || y >= wy + wh)
+    if (!isfinite(wx) || !isfinite(wy) || !isfinite(ww) || !isfinite(wh) || ww < 0.0f || wh < 0.0f)
+        return NULL;
+    float right = wx + ww;
+    float bottom = wy + wh;
+    if (!isfinite(right) || !isfinite(bottom) || x < wx || y < wy || x >= right || y >= bottom)
         return NULL;
     // Later siblings paint on top; prefer the last matching child.
     vg_widget_t *best = widget;
@@ -844,13 +943,23 @@ rt_uia_root_ElementProviderFromPoint(IRawElementProviderFragmentRoot *iface,
         return E_POINTER;
     *out = NULL;
     vg_widget_t *root = rt_uia_resolve(provider);
-    if (!root || !provider->bridge)
+    rt_uia_window_bridge_t *bridge = rt_uia_resolve_bridge(provider);
+    if (!root || !bridge)
         return S_OK;
+    if (!isfinite(screen_x) || !isfinite(screen_y) || screen_x < (double)LONG_MIN ||
+        screen_x > (double)LONG_MAX || screen_y < (double)LONG_MIN || screen_y > (double)LONG_MAX)
+        return E_INVALIDARG;
     POINT point = {(LONG)screen_x, (LONG)screen_y};
-    ScreenToClient(provider->bridge->hwnd, &point);
+    if (bridge->hwnd && !ScreenToClient(bridge->hwnd, &point)) {
+        DWORD error = GetLastError();
+        return HRESULT_FROM_WIN32(error ? error : ERROR_GEN_FAILURE);
+    }
     vg_widget_t *hit = rt_uia_hit_test(root, (float)point.x, (float)point.y);
-    if (hit)
-        *out = rt_uia_fragment_for(provider->bridge, hit);
+    if (hit) {
+        *out = rt_uia_fragment_for(bridge, hit);
+        if (!*out)
+            return E_OUTOFMEMORY;
+    }
     return S_OK;
 }
 
@@ -875,11 +984,15 @@ static HRESULT STDMETHODCALLTYPE rt_uia_root_GetFocus(IRawElementProviderFragmen
         return E_POINTER;
     *out = NULL;
     vg_widget_t *root = rt_uia_resolve(provider);
-    if (!root || !provider->bridge)
+    rt_uia_window_bridge_t *bridge = rt_uia_resolve_bridge(provider);
+    if (!root || !bridge)
         return S_OK;
     vg_widget_t *focused = rt_uia_find_focus(root);
-    if (focused && focused != root)
-        *out = rt_uia_fragment_for(provider->bridge, focused);
+    if (focused && focused != root) {
+        *out = rt_uia_fragment_for(bridge, focused);
+        if (!*out)
+            return E_OUTOFMEMORY;
+    }
     return S_OK;
 }
 
@@ -925,6 +1038,7 @@ static HRESULT STDMETHODCALLTYPE rt_uia_toggle_get_ToggleState(IToggleProvider *
     rt_uia_provider_t *provider = RT_UIA_FROM(iface, toggle);
     if (!out)
         return E_POINTER;
+    *out = ToggleState_Off;
     vg_widget_t *widget = rt_uia_resolve(provider);
     if (!widget)
         return E_FAIL;
@@ -962,13 +1076,18 @@ static HRESULT STDMETHODCALLTYPE rt_uia_value_SetValue(IValueProvider *iface, LP
         return E_FAIL;
     if (!value)
         value = L"";
-    int utf8_count = WideCharToMultiByte(CP_UTF8, 0, value, -1, NULL, 0, NULL, NULL);
+    int utf8_count =
+        WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, value, -1, NULL, 0, NULL, NULL);
     if (utf8_count <= 0)
-        return E_FAIL;
+        return E_INVALIDARG;
     char *utf8 = (char *)malloc((size_t)utf8_count);
     if (!utf8)
         return E_OUTOFMEMORY;
-    WideCharToMultiByte(CP_UTF8, 0, value, -1, utf8, utf8_count, NULL, NULL);
+    if (WideCharToMultiByte(
+            CP_UTF8, WC_ERR_INVALID_CHARS, value, -1, utf8, utf8_count, NULL, NULL) != utf8_count) {
+        free(utf8);
+        return E_INVALIDARG;
+    }
     vg_textinput_set_text(input, utf8);
     free(utf8);
     return S_OK;
@@ -984,12 +1103,12 @@ static HRESULT STDMETHODCALLTYPE rt_uia_value_get_Value(IValueProvider *iface, B
         return E_FAIL;
     if (widget->accessibility.value) {
         *out = rt_uia_bstr(widget->accessibility.value);
-        return S_OK;
+        return *out ? S_OK : E_OUTOFMEMORY;
     }
     switch (widget->type) {
         case VG_WIDGET_TEXTINPUT:
             *out = rt_uia_bstr(((const vg_textinput_t *)widget)->text);
-            return S_OK;
+            return *out ? S_OK : E_OUTOFMEMORY;
         case VG_WIDGET_DROPDOWN: {
             const vg_dropdown_t *dropdown = (const vg_dropdown_t *)widget;
             const char *selected = dropdown->selected_index >= 0 &&
@@ -998,17 +1117,19 @@ static HRESULT STDMETHODCALLTYPE rt_uia_value_get_Value(IValueProvider *iface, B
                                        ? dropdown->items[dropdown->selected_index]
                                        : "";
             *out = rt_uia_bstr(selected);
-            return S_OK;
+            return *out ? S_OK : E_OUTOFMEMORY;
         }
         case VG_WIDGET_CODEEDITOR: {
             char *text = vg_codeeditor_get_text((vg_codeeditor_t *)widget);
-            *out = rt_uia_bstr(text ? text : "");
+            if (!text)
+                return E_OUTOFMEMORY;
+            *out = rt_uia_bstr(text);
             free(text);
-            return S_OK;
+            return *out ? S_OK : E_OUTOFMEMORY;
         }
         default:
             *out = rt_uia_bstr("");
-            return S_OK;
+            return *out ? S_OK : E_OUTOFMEMORY;
     }
 }
 
@@ -1043,7 +1164,7 @@ static int32_t rt_uia_range_read(vg_widget_t *widget,
                                  double *value,
                                  double *minimum,
                                  double *maximum) {
-    if (!widget)
+    if (!widget || !value || !minimum || !maximum)
         return 0;
     switch (widget->type) {
         case VG_WIDGET_SLIDER: {
@@ -1051,25 +1172,42 @@ static int32_t rt_uia_range_read(vg_widget_t *widget,
             *value = slider->value;
             *minimum = slider->min_value;
             *maximum = slider->max_value;
-            return 1;
+            break;
         }
         case VG_WIDGET_PROGRESS: {
             const vg_progressbar_t *progress = (const vg_progressbar_t *)widget;
             *value = progress->value;
             *minimum = 0.0;
             *maximum = 1.0;
-            return 1;
+            break;
         }
         case VG_WIDGET_SPINNER: {
             const vg_spinner_t *spinner = (const vg_spinner_t *)widget;
             *value = spinner->value;
             *minimum = spinner->min_value;
             *maximum = spinner->max_value;
-            return 1;
+            break;
         }
         default:
             return 0;
     }
+    if (!isfinite(*minimum) || !isfinite(*maximum)) {
+        *minimum = 0.0;
+        *maximum = 0.0;
+    } else if (*maximum < *minimum) {
+        double swap = *minimum;
+        *minimum = *maximum;
+        *maximum = swap;
+    }
+    if (!isfinite(*maximum - *minimum))
+        *maximum = *minimum;
+    if (!isfinite(*value))
+        *value = *minimum;
+    if (*value < *minimum)
+        *value = *minimum;
+    if (*value > *maximum)
+        *value = *maximum;
+    return 1;
 }
 
 static HRESULT STDMETHODCALLTYPE rt_uia_range_SetValue(IRangeValueProvider *iface, double value) {
@@ -1084,6 +1222,7 @@ static HRESULT STDMETHODCALLTYPE rt_uia_range_SetValue(IRangeValueProvider *ifac
         rt_uia_provider_t *provider = RT_UIA_FROM(iface, range_value);                             \
         if (!out)                                                                                  \
             return E_POINTER;                                                                      \
+        *out = 0.0;                                                                                \
         double value = 0.0, minimum = 0.0, maximum = 0.0;                                          \
         if (!rt_uia_range_read(rt_uia_resolve(provider), &value, &minimum, &maximum))              \
             return E_FAIL;                                                                         \
@@ -1158,15 +1297,17 @@ static HRESULT STDMETHODCALLTYPE rt_uia_selitem_get_SelectionContainer(
         return E_POINTER;
     *out = NULL;
     vg_widget_t *widget = rt_uia_resolve(provider);
-    if (!widget || !provider->bridge)
+    rt_uia_window_bridge_t *bridge = rt_uia_resolve_bridge(provider);
+    if (!widget || !bridge)
         return S_OK;
     for (vg_widget_t *ancestor = widget->parent; ancestor; ancestor = ancestor->parent) {
         vg_accessible_role_t role = ancestor->accessibility.role;
         if (role == VG_ACCESSIBLE_ROLE_LIST || role == VG_ACCESSIBLE_ROLE_TREE ||
             role == VG_ACCESSIBLE_ROLE_TABLIST || role == VG_ACCESSIBLE_ROLE_TABLE) {
-            rt_uia_provider_t *container = rt_uia_provider_create(provider->bridge, ancestor);
-            if (container)
-                *out = &container->simple;
+            rt_uia_provider_t *container = rt_uia_provider_create(bridge, ancestor);
+            if (!container)
+                return E_OUTOFMEMORY;
+            *out = &container->simple;
             break;
         }
     }
@@ -1191,7 +1332,8 @@ static ISelectionItemProviderVtbl g_rt_uia_selitem_vtbl = {
 /// @brief Create a provider for one live widget with a caller-owned reference.
 static rt_uia_provider_t *rt_uia_provider_create(rt_uia_window_bridge_t *bridge,
                                                  vg_widget_t *widget) {
-    if (!bridge || !vg_widget_is_live(widget))
+    if (!bridge || !bridge->window || bridge->generation == 0 ||
+        !rt_uia_bridge_contains_widget(bridge, widget))
         return NULL;
     rt_uia_provider_t *provider = (rt_uia_provider_t *)calloc(1, sizeof(*provider));
     if (!provider)
@@ -1208,6 +1350,7 @@ static rt_uia_provider_t *rt_uia_provider_create(rt_uia_window_bridge_t *bridge,
     provider->widget = widget;
     provider->widget_id = widget->id;
     provider->bridge = bridge;
+    provider->bridge_generation = bridge->generation;
     provider->is_root = bridge->root == widget;
     return provider;
 }
@@ -1228,7 +1371,8 @@ static void rt_uia_msg_hook(void *user,
     if (!bridge || msg != WM_GETOBJECT || (LONG)lparam != UiaRootObjectId)
         return;
     rt_uia_api_t *api = rt_uia_api();
-    if (!api->return_raw_element_provider || !bridge->root_provider)
+    if (!api->return_raw_element_provider || !bridge->root_provider ||
+        rt_uia_resolve_bridge(bridge->root_provider) != bridge)
         return;
     if (!vg_widget_is_live(bridge->root) || bridge->root->id != bridge->root_id)
         return;
@@ -1328,15 +1472,20 @@ void rt_gui_accessibility_platform_attach(vgfx_window_t window, vg_widget_t *roo
     if (!bridge)
         return;
 
-    if (bridge->root_provider)
+    if (bridge->root_provider) {
+        rt_uia_api_t *api = rt_uia_api();
+        if (api->disconnect_provider)
+            api->disconnect_provider(&bridge->root_provider->simple);
         rt_uia_provider_release(bridge->root_provider);
+    }
+    rt_uia_bridge_reset(bridge);
     bridge->window = window;
     bridge->hwnd = hwnd;
     bridge->root = root;
     bridge->root_id = root->id;
     bridge->root_provider = rt_uia_provider_create(bridge, root);
     if (!bridge->root_provider) {
-        bridge->window = NULL;
+        rt_uia_bridge_reset(bridge);
         return;
     }
     vgfx_set_native_msg_hook(window, rt_uia_msg_hook, bridge);
@@ -1355,7 +1504,7 @@ void rt_gui_accessibility_platform_detach(vgfx_window_t window) {
             api->disconnect_provider(&bridge->root_provider->simple);
         rt_uia_provider_release(bridge->root_provider);
     }
-    memset(bridge, 0, sizeof(*bridge));
+    rt_uia_bridge_reset(bridge);
 }
 
 /// @brief Raise UIA change events for one live semantic node.
@@ -1406,6 +1555,11 @@ void rt_gui_accessibility_platform_announce(vgfx_window_t window,
     (void)widget;
     BSTR display = rt_uia_bstr(text);
     BSTR activity = SysAllocString(L"ZannaLiveRegion");
+    if (!display || !activity) {
+        SysFreeString(display);
+        SysFreeString(activity);
+        return;
+    }
     api->raise_notification_event(&bridge->root_provider->simple,
                                   RT_UIA_NOTIFICATION_KIND_OTHER,
                                   mode == VG_LIVE_REGION_ASSERTIVE
@@ -1449,13 +1603,14 @@ IRawElementProviderSimple *rt_gui_accessibility_win32_test_root(void *bridge_key
         return NULL;
     if (bridge->root_provider)
         rt_uia_provider_release(bridge->root_provider);
+    rt_uia_bridge_reset(bridge);
     bridge->window = (vgfx_window_t)bridge_key;
     bridge->hwnd = NULL;
     bridge->root = root;
     bridge->root_id = root->id;
     bridge->root_provider = rt_uia_provider_create(bridge, root);
     if (!bridge->root_provider) {
-        memset(bridge, 0, sizeof(*bridge));
+        rt_uia_bridge_reset(bridge);
         return NULL;
     }
     rt_uia_provider_addref(bridge->root_provider);
@@ -1470,5 +1625,5 @@ void rt_gui_accessibility_win32_test_teardown(void *bridge_key) {
         return;
     if (bridge->root_provider)
         rt_uia_provider_release(bridge->root_provider);
-    memset(bridge, 0, sizeof(*bridge));
+    rt_uia_bridge_reset(bridge);
 }

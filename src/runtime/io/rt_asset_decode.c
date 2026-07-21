@@ -101,13 +101,16 @@ static const char *asset_temp_suffix(const char *ext) {
 
 #ifdef _WIN32
 static char *asset_decode_wide_to_utf8_dup(const wchar_t *wide) {
-    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    if (!wide)
+        return NULL;
+    int needed = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, NULL, 0, NULL, NULL);
     if (needed <= 0)
         return NULL;
     char *utf8 = (char *)malloc((size_t)needed);
     if (!utf8)
         return NULL;
-    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, needed, NULL, NULL) <= 0) {
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, utf8, needed, NULL, NULL) <=
+        0) {
         free(utf8);
         return NULL;
     }

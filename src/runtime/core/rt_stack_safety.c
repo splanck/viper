@@ -62,17 +62,36 @@ static int g_stack_safety_state = RT_STACK_SAFETY_UNINITIALIZED;
 /// @brief Registration token retained for the lifetime of the process.
 static PVOID g_stack_safety_handler = NULL;
 
+typedef BOOL(WINAPI *rt_set_thread_stack_guarantee_fn)(PULONG);
+typedef UINT(WINAPI *rt_get_error_mode_fn)(void);
+
+/// @brief Reserve enough stack for the current thread's overflow handler.
+/// @details SetThreadStackGuarantee is thread-local, so this runs before the
+///          process-wide ready-state fast path on every calling thread.
+static void ensure_thread_stack_guarantee(void) {
+    ULONG guarantee = 64U * 1024U;
+    HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+    rt_set_thread_stack_guarantee_fn set_guarantee =
+        kernel32 ? (rt_set_thread_stack_guarantee_fn)(void *)GetProcAddress(
+                       kernel32, "SetThreadStackGuarantee")
+                 : NULL;
+    if (set_guarantee)
+        (void)set_guarantee(&guarantee);
+}
+
 /// @brief Vectored exception handler for stack overflow detection.
 static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep) {
-    if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW) {
+    if (ep && ep->ExceptionRecord &&
+        ep->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW) {
         // Cannot safely use fprintf here as we're out of stack space.
         // Use WriteFile to stderr directly.
         HANDLE hStderr = GetStdHandle(STD_ERROR_HANDLE);
-        const char *msg = "Zanna runtime error: stack overflow\n"
-                          "Hint: Reduce recursion depth or use iterative algorithms.\n"
-                          "      Consider using --stack-size=SIZE to increase stack.\n";
-        DWORD written;
-        WriteFile(hStderr, msg, (DWORD)strlen(msg), &written, NULL);
+        static const char msg[] = "Zanna runtime error: stack overflow\n"
+                                  "Hint: Reduce recursion depth or use iterative algorithms.\n"
+                                  "      Consider using --stack-size=SIZE to increase stack.\n";
+        DWORD written = 0;
+        if (hStderr && hStderr != INVALID_HANDLE_VALUE)
+            (void)WriteFile(hStderr, msg, (DWORD)(sizeof(msg) - 1U), &written, NULL);
 
         // Terminate immediately - cannot recover from stack overflow
         ExitProcess(1);
@@ -90,12 +109,17 @@ static int install_stack_safety_handler(void) {
         return 0;
 
     g_stack_safety_handler = handler;
-    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+    rt_get_error_mode_fn get_error_mode =
+        kernel32 ? (rt_get_error_mode_fn)(void *)GetProcAddress(kernel32, "GetErrorMode") : NULL;
+    UINT current_mode = get_error_mode ? get_error_mode() : 0;
+    SetErrorMode(current_mode | SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     return 1;
 }
 
 void rt_init_stack_safety(void) {
+    ensure_thread_stack_guarantee();
     for (;;) {
         int state = __atomic_load_n(&g_stack_safety_state, __ATOMIC_ACQUIRE);
         if (state == RT_STACK_SAFETY_READY)
@@ -121,9 +145,10 @@ void rt_init_stack_safety(void) {
 void rt_trap_stack_overflow(void) {
     // Use WriteFile for safety in low-stack conditions
     HANDLE hStderr = GetStdHandle(STD_ERROR_HANDLE);
-    const char *msg = "Zanna runtime trap: stack overflow\n";
-    DWORD written;
-    WriteFile(hStderr, msg, (DWORD)strlen(msg), &written, NULL);
+    static const char msg[] = "Zanna runtime trap: stack overflow\n";
+    DWORD written = 0;
+    if (hStderr && hStderr != INVALID_HANDLE_VALUE)
+        (void)WriteFile(hStderr, msg, (DWORD)(sizeof(msg) - 1U), &written, NULL);
     ExitProcess(1);
 }
 

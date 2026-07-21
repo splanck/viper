@@ -13,25 +13,33 @@
 //   - Concurrent WinSock initialization is idempotent.
 //   - WinSock error classifiers cover documented non-blocking states.
 //   - Entropy adapters reject invalid outputs without a fallback.
+//   - Filesystem adapters reject malformed UTF-8/UTF-16 at Win32 boundaries.
 //
 // Ownership/Lifetime:
 //   - The test owns all worker threads and joins them before exit.
 //
 // Links: src/runtime/rt_win32_wait.h,
 //        src/runtime/network/rt_socket_platform.h,
-//        src/runtime/network/rt_entropy_platform.h
+//        src/runtime/network/rt_entropy_platform.h,
+//        src/runtime/io/rt_file_path.h, src/runtime/io/rt_dir_internal.h
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_entropy_platform.h"
-#include "rt_internal.h"
+// WinSock2 must precede any adapter that includes windows.h.
 #include "rt_socket_platform.h"
+
+#include "rt_dir_internal.h"
+#include "rt_entropy_platform.h"
+#include "rt_file_path.h"
+#include "rt_internal.h"
 #include "rt_win32_wait.h"
 
 #include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <thread>
 
 extern "C" void vm_trap(const char *msg) {
@@ -82,11 +90,35 @@ static void test_entropy_argument_contracts() {
     assert(rt_entropy_platform_random_u64(&random_value) == 0);
 }
 
+static void test_strict_windows_path_transcoding() {
+    const char valid_utf8[] = "zanna-\xE6\x9D\xB1\xE4\xBA\xAC";
+    wchar_t *wide = rt_file_path_utf8_to_wide(valid_utf8);
+    assert(wide != nullptr);
+    rt_string round_trip = rt_file_path_wide_to_string(wide);
+    assert(round_trip != nullptr);
+    assert(std::strcmp(rt_string_cstr(round_trip), valid_utf8) == 0);
+    rt_str_release_maybe(round_trip);
+    std::free(wide);
+
+    const char malformed_utf8[] = "\x78\xC0\xAF";
+    assert(rt_file_path_utf8_to_wide(malformed_utf8) == nullptr);
+    assert(rt_dir_win_utf8_to_wide(malformed_utf8) == nullptr);
+
+    const wchar_t malformed_utf16[] = {(wchar_t)0xD800, L'\0'};
+    rt_string malformed_file = rt_file_path_wide_to_string(malformed_utf16);
+    rt_string malformed_dir = rt_dir_win_wide_to_string(malformed_utf16);
+    assert(rt_str_len(malformed_file) == 0);
+    assert(rt_str_len(malformed_dir) == 0);
+    rt_str_release_maybe(malformed_file);
+    rt_str_release_maybe(malformed_dir);
+}
+
 int main() {
     test_finite_wait_deadlines();
     test_concurrent_winsock_initialization();
     test_winsock_error_contracts();
     test_entropy_argument_contracts();
+    test_strict_windows_path_transcoding();
     std::puts("RTWindowsRuntimeTests passed");
     return 0;
 }

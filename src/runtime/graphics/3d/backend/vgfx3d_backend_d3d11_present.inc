@@ -351,7 +351,18 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
     }
     d3d11_restore_current_target_bindings(ctx);
     ctx->depth_probe_pending_count = ctx->depth_probe_request_count;
+    ctx->depth_probe_pending_polls = 0;
     ctx->depth_probe_request_count = 0;
+}
+
+/// @brief Drop a failed/stale probe staging strip so a later frame can recreate it.
+static void d3d11_discard_depth_probe_staging(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    SAFE_RELEASE(ctx->depth_probe_staging);
+    ctx->depth_probe_pending_count = 0;
+    ctx->depth_probe_pending_polls = 0;
+    ctx->depth_probe_result_count = 0;
 }
 
 /// @brief Harvest the previous frame's probe strip without blocking the pipeline.
@@ -359,29 +370,36 @@ static void d3d11_harvest_depth_probes(d3d11_context_t *ctx) {
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr;
 
-    if (!ctx || ctx->depth_probe_pending_count <= 0 || !ctx->depth_probe_staging || !ctx->ctx)
+    if (!ctx || ctx->depth_probe_pending_count <= 0)
         return;
+    if (!ctx->depth_probe_staging || !ctx->ctx) {
+        d3d11_discard_depth_probe_staging(ctx);
+        return;
+    }
     hr = ID3D11DeviceContext_Map(ctx->ctx,
                                  (ID3D11Resource *)ctx->depth_probe_staging,
                                  0,
                                  D3D11_MAP_READ,
                                  D3D11_MAP_FLAG_DO_NOT_WAIT,
                                  &mapped);
-    if (hr == DXGI_ERROR_WAS_STILL_DRAWING)
+    if (hr == DXGI_ERROR_WAS_STILL_DRAWING) {
+        if (ctx->depth_probe_pending_polls < UINT32_MAX)
+            ctx->depth_probe_pending_polls++;
+        if (vgfx3d_d3d11_should_abandon_depth_probe(ctx->depth_probe_pending_polls))
+            d3d11_discard_depth_probe_staging(ctx);
         return;
+    }
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(depthProbeStaging)", hr);
         d3d11_log_device_removed_reason(ctx, "Map(depthProbeStaging)", hr);
-        ctx->depth_probe_pending_count = 0;
-        ctx->depth_probe_result_count = 0;
+        d3d11_discard_depth_probe_staging(ctx);
         return;
     }
     if (!mapped.pData ||
         mapped.RowPitch < (UINT)((uint32_t)ctx->depth_probe_pending_count * sizeof(float))) {
         ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->depth_probe_staging, 0);
         d3d11_log_hresult("Map(depthProbeStaging payload)", E_POINTER);
-        ctx->depth_probe_pending_count = 0;
-        ctx->depth_probe_result_count = 0;
+        d3d11_discard_depth_probe_staging(ctx);
         return;
     }
     /* Probe contract is canonical window depth (larger = farther); the scene depth
@@ -394,6 +412,7 @@ static void d3d11_harvest_depth_probes(d3d11_context_t *ctx) {
     }
     ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->depth_probe_staging, 0);
     ctx->depth_probe_pending_count = 0;
+    ctx->depth_probe_pending_polls = 0;
 }
 
 /// @brief Backend hook: choose the swapchain present sync interval (1 = vsync, 0 = off).
@@ -479,6 +498,10 @@ static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
                                                      int32_t height,
                                                      const char *log_context) {
     ID3D11Texture2D *back_buffer = NULL;
+    ID3D11RenderTargetView *new_rtv = NULL;
+    ID3D11Texture2D *new_depth_tex = NULL;
+    ID3D11DepthStencilView *new_dsv = NULL;
+    D3D11_TEXTURE2D_DESC back_buffer_desc;
     HRESULT hr;
 
     if (!ctx || !ctx->device || !ctx->swap_chain ||
@@ -486,23 +509,54 @@ static HRESULT d3d11_recreate_swapchain_main_targets(d3d11_context_t *ctx,
         return E_INVALIDARG;
 
     hr = IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
-    if (FAILED(hr)) {
-        d3d11_log_hresult(log_context ? log_context : "IDXGISwapChain::GetBuffer", hr);
-        return hr;
+    if (FAILED(hr) || !back_buffer) {
+        HRESULT failure = FAILED(hr) ? hr : E_POINTER;
+        d3d11_log_hresult(log_context ? log_context : "IDXGISwapChain::GetBuffer", failure);
+        d3d11_log_device_removed_reason(ctx, "IDXGISwapChain::GetBuffer", failure);
+        SAFE_RELEASE(back_buffer);
+        return failure;
+    }
+    ID3D11Texture2D_GetDesc(back_buffer, &back_buffer_desc);
+    if (back_buffer_desc.Width != (UINT)width || back_buffer_desc.Height != (UINT)height ||
+        back_buffer_desc.Format != DXGI_FORMAT_R8G8B8A8_UNORM ||
+        !vgfx3d_d3d11_is_single_subresource_texture2d(back_buffer_desc.Width,
+                                                      back_buffer_desc.Height,
+                                                      back_buffer_desc.MipLevels,
+                                                      back_buffer_desc.ArraySize,
+                                                      back_buffer_desc.SampleDesc.Count,
+                                                      back_buffer_desc.SampleDesc.Quality)) {
+        SAFE_RELEASE(back_buffer);
+        d3d11_log_hresult(log_context ? log_context : "Validate swapchain backbuffer", E_FAIL);
+        return E_FAIL;
     }
     hr = ID3D11Device_CreateRenderTargetView(
-        ctx->device, (ID3D11Resource *)back_buffer, NULL, &ctx->rtv);
+        ctx->device, (ID3D11Resource *)back_buffer, NULL, &new_rtv);
     SAFE_RELEASE(back_buffer);
-    if (FAILED(hr)) {
-        d3d11_log_hresult(log_context ? log_context : "CreateRenderTargetView(backbuffer)", hr);
-        return hr;
+    if (FAILED(hr) || !new_rtv) {
+        HRESULT failure = FAILED(hr) ? hr : E_POINTER;
+        d3d11_log_hresult(log_context ? log_context : "CreateRenderTargetView(backbuffer)",
+                          failure);
+        d3d11_log_device_removed_reason(ctx, "CreateRenderTargetView(backbuffer)", failure);
+        SAFE_RELEASE(new_rtv);
+        return failure;
     }
-    hr = d3d11_create_depth_target(ctx, width, height, 0, &ctx->depth_tex, &ctx->dsv, NULL);
-    if (FAILED(hr)) {
-        d3d11_log_hresult(log_context ? log_context : "CreateTexture2D/DepthStencilView(main)", hr);
-        SAFE_RELEASE(ctx->rtv);
-        return hr;
+    hr = d3d11_create_depth_target(ctx, width, height, 0, &new_depth_tex, &new_dsv, NULL);
+    if (FAILED(hr) || !new_depth_tex || !new_dsv) {
+        HRESULT failure = FAILED(hr) ? hr : E_POINTER;
+        d3d11_log_hresult(log_context ? log_context : "CreateTexture2D/DepthStencilView(main)",
+                          failure);
+        d3d11_log_device_removed_reason(ctx, "CreateTexture2D/DepthStencilView(main)", failure);
+        SAFE_RELEASE(new_dsv);
+        SAFE_RELEASE(new_depth_tex);
+        SAFE_RELEASE(new_rtv);
+        return failure;
     }
+    SAFE_RELEASE(ctx->dsv);
+    SAFE_RELEASE(ctx->depth_tex);
+    SAFE_RELEASE(ctx->rtv);
+    ctx->rtv = new_rtv;
+    ctx->depth_tex = new_depth_tex;
+    ctx->dsv = new_dsv;
     return S_OK;
 }
 
@@ -521,8 +575,16 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
 
     if (!ctx || !ctx->swap_chain || !vgfx3d_d3d11_is_valid_texture2d_extent(w, h))
         return;
-    if (ctx->width == w && ctx->height == h)
+    if (ctx->width == w && ctx->height == h && ctx->rtv && ctx->depth_tex && ctx->dsv)
         return;
+    if (ctx->width == w && ctx->height == h) {
+        d3d11_release_swapchain_main_targets(ctx);
+        hr = d3d11_recreate_swapchain_main_targets(
+            ctx, w, h, "Recreate incomplete same-size swapchain targets");
+        if (SUCCEEDED(hr))
+            d3d11_bind_swapchain_target(ctx);
+        return;
+    }
     old_w = ctx->width;
     old_h = ctx->height;
 
@@ -624,10 +686,13 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     size_t clear_bytes;
     int restore_target = 0;
     int mapped_ok = 0;
+    int discard_staging = 0;
     int ok = 0;
 
-    if (!ctx || !ctx->ctx || !source_tex || !dst_rgba ||
-        !vgfx3d_d3d11_validate_rgba8_destination(w, h, stride, &clear_bytes))
+    if (!dst_rgba || !vgfx3d_d3d11_validate_rgba8_destination(w, h, stride, &clear_bytes))
+        return 0;
+    memset(dst_rgba, 0, clear_bytes);
+    if (!ctx || !ctx->ctx || !source_tex)
         return 0;
 
     ID3D11Texture2D_GetDesc(source_tex, &desc);
@@ -645,6 +710,7 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
         ctx, (int32_t)desc.Width, (int32_t)desc.Height, desc.Format);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D(sceneStaging)", hr);
+        d3d11_log_device_removed_reason(ctx, "CreateTexture2D(sceneStaging)", hr);
         return 0;
     }
     staging = ctx->readback_staging;
@@ -660,10 +726,11 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
         staging_desc.Width != desc.Width || staging_desc.Height != desc.Height ||
         staging_desc.Format != desc.Format || staging_desc.Usage != D3D11_USAGE_STAGING ||
         staging_desc.BindFlags != 0 || staging_desc.CPUAccessFlags != D3D11_CPU_ACCESS_READ ||
-        staging_desc.MiscFlags != 0)
+        staging_desc.MiscFlags != 0) {
+        d3d11_release_readback_staging_texture(ctx);
         return 0;
+    }
 
-    memset(dst_rgba, 0, clear_bytes);
     restore_target = (ctx->current_rtv_count > 0 || ctx->current_dsv) ? 1 : 0;
     d3d11_unbind_draw_resources(ctx);
     d3d11_unbind_output_targets(ctx);
@@ -674,21 +741,28 @@ static int d3d11_readback_texture_rgba(d3d11_context_t *ctx,
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(sceneStaging)", hr);
         d3d11_log_device_removed_reason(ctx, "Map(sceneStaging)", hr);
+        discard_staging = 1;
         goto cleanup;
     }
     mapped_ok = 1;
-    if (!mapped.pData)
+    if (!mapped.pData) {
+        discard_staging = 1;
         goto cleanup;
+    }
 
     copy_w = (int32_t)desc.Width < w ? (int32_t)desc.Width : w;
     copy_h = (int32_t)desc.Height < h ? (int32_t)desc.Height : h;
     ok = d3d11_copy_mapped_texture_to_rgba8(dst_rgba, stride, copy_w, copy_h, &mapped, desc.Format);
+    if (!ok)
+        discard_staging = 1;
 
 cleanup:
     if (mapped_ok)
         ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)staging, 0);
     if (restore_target)
         d3d11_restore_current_target_bindings(ctx);
+    if (discard_staging)
+        d3d11_release_readback_staging_texture(ctx);
     return ok;
 }
 

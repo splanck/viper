@@ -186,8 +186,8 @@ static inline int rt_dir_win_has_extended_prefix(const wchar_t *path) {
 
 /// @brief Convert a UTF-8 C string to a freshly-allocated wide-char string.
 ///
-/// Tries strict conversion first (`MB_ERR_INVALID_CHARS`), falling
-/// back to lenient mode if the first call rejects malformed input.
+/// Conversion is strict (`MB_ERR_INVALID_CHARS`): malformed UTF-8 is
+/// rejected instead of being redirected to a replacement-character path.
 /// Caller owns the returned buffer (`free`). NULL on alloc/conv failure.
 static inline wchar_t *rt_dir_win_utf8_to_wide(const char *utf8) {
     if (!utf8)
@@ -195,15 +195,13 @@ static inline wchar_t *rt_dir_win_utf8_to_wide(const char *utf8) {
 
     int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
     if (needed <= 0)
-        needed = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
-    if (needed <= 0)
         return NULL;
 
     wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
     if (!wide)
         return NULL;
 
-    if (MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide, needed) <= 0) {
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, needed) <= 0) {
         free(wide);
         return NULL;
     }
@@ -216,7 +214,7 @@ static inline rt_string rt_dir_win_wide_to_string(const wchar_t *wide) {
     if (!wide)
         return rt_str_empty();
 
-    int needed = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    int needed = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, NULL, 0, NULL, NULL);
     if (needed <= 0)
         return rt_str_empty();
 
@@ -224,7 +222,8 @@ static inline rt_string rt_dir_win_wide_to_string(const wchar_t *wide) {
     if (!utf8)
         return rt_str_empty();
 
-    if (WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, needed, NULL, NULL) <= 0) {
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, utf8, needed, NULL, NULL) <=
+        0) {
         free(utf8);
         return rt_str_empty();
     }
