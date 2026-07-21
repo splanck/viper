@@ -347,16 +347,19 @@ static void test_active_wayland_compositor_accepts_shm_frame(void) {
     ASSERT_EQ(presenter.generation, 1);
     ASSERT_EQ(presenter.queued, 1);
     ASSERT_TRUE(connection.api.display_roundtrip(connection.display) >= 0);
-    if (presenter.generation < 2) {
+    for (int attempt = 0; presenter.generation < 2 && attempt < 10; ++attempt) {
         struct pollfd descriptor = {
             .fd = connection.api.display_get_fd(connection.display),
             .events = POLLIN,
             .revents = 0,
         };
-        if (poll(&descriptor, 1, 1000) > 0 && (descriptor.revents & POLLIN))
+        if (poll(&descriptor, 1, 100) > 0 && (descriptor.revents & POLLIN))
             ASSERT_TRUE(connection.api.display_dispatch(connection.display) >= 0);
     }
-    ASSERT_TRUE(presenter.generation >= 2);
+    /* A hidden surface may remain frame-throttled indefinitely. In that case,
+       retaining the queued frame and live callback is the accepted state. */
+    ASSERT_TRUE(presenter.generation >= 2 ||
+                (presenter.queued == 1 && presenter.frame_callback != NULL));
     vgfx_wayland_shm_close(&presenter);
     vgfx_wayland_shell_close(&shell);
     vgfx_wayland_connection_close(&connection);

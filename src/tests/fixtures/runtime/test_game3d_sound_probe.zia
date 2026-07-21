@@ -72,7 +72,7 @@ func start() {
         return;
     }
 
-    var clip = Sound.Synth.Tone(440, 80, 0);
+    var clip = Sound.Synth.Tone(440, 1000, 0);
     if (clip != null) {
         var oneShot = audio.PlayAt(clip, Math.Vec3.New(1.0, 0.0, 0.0));
         if (oneShot == null) {

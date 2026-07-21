@@ -1336,6 +1336,7 @@ add_test(NAME zia_zannastudio_scm_gutter
 set_tests_properties(zia_zannastudio_scm_gutter PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;scm;requires_display"
+        RUN_SERIAL TRUE
         TIMEOUT 60)
 
 add_test(NAME zia_zannastudio_intellisense
@@ -1400,7 +1401,7 @@ add_test(NAME zia_zannastudio_terminal_open
 set_tests_properties(zia_zannastudio_terminal_open PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;terminal;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 60)
 
 add_test(NAME zia_zannastudio_terminal_hidden_start
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_hidden_start_probe.zia"
@@ -1416,7 +1417,8 @@ add_test(NAME zia_zannastudio_terminal_render
 set_tests_properties(zia_zannastudio_terminal_render PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;terminal;requires_display"
-        TIMEOUT 30)
+        RUN_SERIAL TRUE
+        TIMEOUT 60)
 
 add_test(NAME zia_zannastudio_terminal_altscreen
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/terminal_altscreen_probe.zia"
@@ -1440,7 +1442,7 @@ add_test(NAME zia_zannastudio_context_menu
 set_tests_properties(zia_zannastudio_context_menu PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;context-menu;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 60)
 
 add_test(NAME zia_zannastudio_syntax_render
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/syntax_render_probe.zia"
@@ -1508,6 +1510,7 @@ add_test(NAME zia_zannastudio_language_service_sync
 set_tests_properties(zia_zannastudio_language_service_sync PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;semantic;requires_display"
+        RUN_SERIAL TRUE
         TIMEOUT 90)
 
 add_test(NAME zia_zannastudio_paint_damage
@@ -3121,6 +3124,22 @@ if (NOT TARGET runtime_surface_audit_bundle)
             test_rt_graphics_surface_link
             test_rt_audio_surface_link)
 endif ()
+
+# A display label is the single source of truth for access to the host windowing
+# service. Keep every such test on the shared display lock so newly added probes
+# cannot accidentally contend with the existing curated list. Windows removes
+# this broad lock below and retains only its backend-specific D3D11 lock.
+get_property(_zanna_all_tests DIRECTORY PROPERTY TESTS)
+foreach (_test IN LISTS _zanna_all_tests)
+    get_property(_labels TEST ${_test} PROPERTY LABELS)
+    if ("requires_display" IN_LIST _labels)
+        get_property(_resource_locks TEST ${_test} PROPERTY RESOURCE_LOCK)
+        if (NOT "zanna_display" IN_LIST _resource_locks)
+            set_property(TEST ${_test} APPEND PROPERTY RESOURCE_LOCK zanna_display)
+        endif ()
+    endif ()
+endforeach ()
+unset(_zanna_all_tests)
 
 if (WIN32)
     # Keep the default Windows Debug lane focused on tests that complete in

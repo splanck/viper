@@ -21,7 +21,6 @@ func drawIt(canvas: Canvas3D, cam: Camera3D, box: Mesh3D, mat: Material3D) {
     Canvas3D.Begin(canvas, cam);
     Canvas3D.DrawMesh(canvas, box, Mat4.Translate(0.0, 0.0, 0.0), mat);
     Canvas3D.End(canvas);
-    Canvas3D.Flip(canvas);
 }
 
 func start() {
@@ -37,6 +36,7 @@ func start() {
                     new Vec3(0.0, 1.0, 0.0));
     var box = Mesh3D.Box(2.0, 2.0, 2.0);
     var mat = Material3D.FromColor(1.0, 0.1, 0.1);
+    Material3D.SetUnlit(mat, true);
     Canvas3D.SetAmbient(canvas, 1.0, 1.0, 1.0);
 
     drawIt(canvas, cam, box, mat);
@@ -45,6 +45,7 @@ func start() {
         Say("FAIL: native-scale frame should show the red box at screen center");
         return;
     }
+    Canvas3D.Flip(canvas);
 
     if (!Canvas3D.TrySetRenderScale(canvas, 0.5)) {
         Say("FAIL: TrySetRenderScale(0.5) should succeed when the capability is advertised");
@@ -65,6 +66,7 @@ func start() {
         Say("FAIL: half-scale frame corners should stay background-colored");
         return;
     }
+    Canvas3D.Flip(canvas);
 
     if (!Canvas3D.TrySetRenderScale(canvas, 1.0)) {
         Say("FAIL: restoring native scale should succeed between completed frames");
@@ -75,6 +77,7 @@ func start() {
         Say("FAIL: native-scale rendering should work after restoring the scale");
         return;
     }
+    Canvas3D.Flip(canvas);
 
     Say("PASS");
 }

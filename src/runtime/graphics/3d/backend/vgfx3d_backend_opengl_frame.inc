@@ -912,7 +912,7 @@ static int8_t gl_set_render_scale(void *ctx_ptr, float scale) {
         return 0;
     if (ctx->frame_active || ctx->scene_postfx_pending)
         return 0;
-    if (!glx.MakeCurrent(ctx->display, ctx->window, ctx->glxCtx))
+    if (!gl_make_current(ctx))
         return 0;
 
     prior_scale =

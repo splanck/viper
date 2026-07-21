@@ -37,6 +37,7 @@ typedef struct GDBusNodeInfo GDBusNodeInfo;
 typedef struct GDBusInterfaceInfo GDBusInterfaceInfo;
 typedef struct GMainContext GMainContext;
 typedef struct GMainLoop GMainLoop;
+typedef struct GSource GSource;
 typedef struct GVariant GVariant;
 typedef struct GVariantBuilder GVariantBuilder;
 typedef struct GError {
@@ -140,6 +141,10 @@ typedef struct rt_gui_atspi_api {
     void (*main_loop_run)(GMainLoop *);
     void (*main_loop_quit)(GMainLoop *);
     void (*main_loop_unref)(GMainLoop *);
+    GSource *(*idle_source_new)(void);
+    void (*source_set_callback)(GSource *, int (*)(void *), void *, void (*)(void *));
+    uint32_t (*source_attach)(GSource *, GMainContext *);
+    void (*source_unref)(GSource *);
     void (*object_unref)(void *);
     void (*error_free)(GError *);
 } rt_gui_atspi_api_t;
@@ -662,6 +667,10 @@ static void rt_gui_atspi_load_once(void) {
     RT_ATSPI_LOAD(main_loop_run, "g_main_loop_run");
     RT_ATSPI_LOAD(main_loop_quit, "g_main_loop_quit");
     RT_ATSPI_LOAD(main_loop_unref, "g_main_loop_unref");
+    RT_ATSPI_LOAD(idle_source_new, "g_idle_source_new");
+    RT_ATSPI_LOAD(source_set_callback, "g_source_set_callback");
+    RT_ATSPI_LOAD(source_attach, "g_source_attach");
+    RT_ATSPI_LOAD(source_unref, "g_source_unref");
     RT_ATSPI_LOAD(object_unref, "g_object_unref");
     RT_ATSPI_LOAD(error_free, "g_error_free");
 #undef RT_ATSPI_LOAD
@@ -1395,6 +1404,11 @@ static void rt_gui_atspi_signal_ready(rt_gui_atspi_bridge_t *bridge, int started
     pthread_mutex_unlock(&bridge->mutex);
 }
 
+static int rt_gui_atspi_signal_loop_running(void *data) {
+    rt_gui_atspi_signal_ready(data, 1);
+    return 0;
+}
+
 static char *rt_gui_atspi_xml(void) {
     size_t total = 1;
     for (size_t i = 0; g_rt_gui_atspi_xml_parts[i]; ++i) {
@@ -1579,9 +1593,18 @@ static void *rt_gui_atspi_worker(void *data) {
     bridge->loop = api->main_loop_new(bridge->context, 0);
     int started = bridge->loop && unique && all_nodes_registered && bridge->accessible_registration &&
                   bridge->application_registration && bridge->cache_registration && embedded_success;
-    rt_gui_atspi_signal_ready(bridge, started);
+    GSource *ready_source = started ? api->idle_source_new() : NULL;
+    if (ready_source) {
+        api->source_set_callback(ready_source, rt_gui_atspi_signal_loop_running, bridge, NULL);
+        started = api->source_attach(ready_source, bridge->context) != 0;
+        api->source_unref(ready_source);
+    } else {
+        started = 0;
+    }
     if (started)
         api->main_loop_run(bridge->loop);
+    else
+        rt_gui_atspi_signal_ready(bridge, 0);
     if (bridge->application_registration)
         api->connection_unregister_object(bridge->connection, bridge->application_registration);
     if (bridge->cache_registration)

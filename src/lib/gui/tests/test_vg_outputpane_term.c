@@ -49,7 +49,7 @@ static char *snapshot(vg_outputpane_t *pane) {
     vg_outputpane_select_all(pane);
     char *text = vg_outputpane_get_selection(pane);
     feed(pane, "\x1b" "8");
-    return text ? text : strdup("");
+    return text ? text : (char *)calloc(1, 1);
 }
 
 /// @brief True when line @p index of the snapshot equals @p expect.

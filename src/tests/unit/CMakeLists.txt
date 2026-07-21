@@ -1744,7 +1744,9 @@ function(zanna_add_runtime_tests)
         target_link_libraries(test_rt_gui_atspi_linux PRIVATE zannagfx zannagui)
         zanna_add_ctest(test_rt_gui_atspi_linux test_rt_gui_atspi_linux)
         zanna_add_test_labels(test_rt_gui_atspi_linux runtime gui requires_linux requires_display)
-        set_tests_properties(test_rt_gui_atspi_linux PROPERTIES RESOURCE_LOCK zanna_display)
+        set_tests_properties(test_rt_gui_atspi_linux PROPERTIES
+                RESOURCE_LOCK zanna_display
+                TIMEOUT 60)
     endif ()
 
     zanna_add_test(test_rt_gui_availability

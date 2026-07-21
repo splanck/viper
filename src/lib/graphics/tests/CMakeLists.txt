@@ -121,17 +121,20 @@ if (ZANNAGFX_BACKEND STREQUAL "LinuxAuto")
     add_test(NAME test_linux_auto_wayland COMMAND test_linux_auto_backend wayland)
     set_tests_properties(test_linux_auto_wayland PROPERTIES
             TIMEOUT 10
+            RESOURCE_LOCK zanna_display
             LABELS "integration;gui;wayland;requires_linux;requires_display")
     add_test(NAME test_linux_auto_wayland_csd COMMAND test_linux_auto_backend wayland)
     set_tests_properties(test_linux_auto_wayland_csd PROPERTIES
             TIMEOUT 10
             ENVIRONMENT "ZANNA_WAYLAND_FORCE_CSD=1"
+            RESOURCE_LOCK zanna_display
             LABELS "integration;gui;wayland;requires_linux;requires_display")
     if (VGFX_AUTO_HAS_X11)
         add_test(NAME test_linux_auto_x11_fallback COMMAND test_linux_auto_backend x11)
         set_tests_properties(test_linux_auto_x11_fallback PROPERTIES
                 TIMEOUT 10
                 ENVIRONMENT "WAYLAND_DISPLAY=zanna-test-missing-wayland-socket"
+                RESOURCE_LOCK zanna_display
                 LABELS "integration;gui;x11;requires_linux;requires_display")
     endif ()
 endif ()
