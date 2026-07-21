@@ -17,7 +17,10 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <cstdint>
 #include <optional>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -77,9 +80,9 @@ class ScopeTracker {
     /// @brief Bind a name to a mangled identifier in the current scope.
     /// @param name Source identifier.
     /// @param mapped Mangled IL identifier.
-    void bind(const std::string &name, const std::string &mapped) {
-        if (!stack_.empty())
-            stack_.back()[name] = mapped;
+    bool bind(const std::string &name, const std::string &mapped) {
+        requireScope();
+        return stack_.back().emplace(name, mapped).second;
     }
 
     /// @brief Check if a name is declared in the current (innermost) scope.
@@ -93,18 +96,22 @@ class ScopeTracker {
     /// @param name Source identifier.
     /// @return The generated unique mangled name.
     std::string declareLocal(const std::string &name) {
+        requireScope();
+        if (stack_.back().contains(name))
+            throw std::logic_error("duplicate local declaration");
+        if (nextId_ == std::numeric_limits<uint64_t>::max())
+            throw std::overflow_error("local name counter exhausted");
         std::string unique = name + "_" + std::to_string(nextId_++);
-        if (!stack_.empty())
-            stack_.back()[name] = unique;
+        stack_.back().emplace(name, unique);
         return unique;
     }
 
     /// @brief Declare a local with a specific mangled name.
     /// @param name Source identifier.
     /// @param mangledName The mangled name to use.
-    void declareLocalAs(const std::string &name, const std::string &mangledName) {
-        if (!stack_.empty())
-            stack_.back()[name] = mangledName;
+    bool declareLocalAs(const std::string &name, const std::string &mangledName) {
+        requireScope();
+        return stack_.back().emplace(name, mangledName).second;
     }
 
     /// @brief Resolve a name by searching from innermost to outermost scope.
@@ -133,19 +140,26 @@ class ScopeTracker {
 
     /// @brief Get the next unique ID without consuming it.
     /// @return Current value of the ID counter.
-    [[nodiscard]] unsigned peekNextId() const {
+    [[nodiscard]] uint64_t peekNextId() const {
         return nextId_;
     }
 
     /// @brief Consume and return the next unique ID.
     /// @return A unique ID that can be used for mangling.
-    unsigned nextId() {
+    uint64_t nextId() {
+        if (nextId_ == std::numeric_limits<uint64_t>::max())
+            throw std::overflow_error("local name counter exhausted");
         return nextId_++;
     }
 
   private:
     std::vector<std::unordered_map<std::string, std::string>> stack_;
-    unsigned nextId_{0};
+    void requireScope() const {
+        if (stack_.empty())
+            throw std::logic_error("scope operation requires an active scope");
+    }
+
+    uint64_t nextId_{0};
 };
 
 } // namespace il::frontends::common

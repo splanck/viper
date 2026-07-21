@@ -16,6 +16,9 @@
 //   - Block names are deterministic (based on counter)
 //   - Current block is always valid when set
 //   - Block indices are stable within a function
+// Ownership/Lifetime: Holds non-owning pointers into the bound function's
+//                     stable block storage; the function must outlive it.
+// Links: src/il/build/IRBuilder.hpp, src/il/core/Function.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -25,6 +28,7 @@
 #include "il/core/Function.hpp"
 #include <cstddef>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace il::frontends::common {
@@ -72,6 +76,7 @@ class BlockManager {
     /// @param base Base name for the block (e.g., "if_then", "loop_body").
     /// @return Index of the created block within the function.
     [[nodiscard]] std::size_t createBlock(const std::string &base) {
+        requireBound();
         std::ostringstream oss;
         oss << base << "_" << blockCounter_++;
         builder_->createBlock(*currentFunc_, oss.str());
@@ -82,6 +87,11 @@ class BlockManager {
     /// @param name Exact name for the block.
     /// @return Index of the created block.
     [[nodiscard]] std::size_t createBlockExact(const std::string &name) {
+        requireBound();
+        for (const auto &existing : currentFunc_->blocks) {
+            if (existing.label == name)
+                throw std::invalid_argument("duplicate basic block label: " + name);
+        }
         builder_->createBlock(*currentFunc_, name);
         return currentFunc_->blocks.size() - 1;
     }
@@ -93,6 +103,9 @@ class BlockManager {
     /// @brief Set the current block for instruction emission.
     /// @param blockIdx Index of the block to make current.
     void setBlock(std::size_t blockIdx) {
+        requireBound();
+        if (blockIdx >= currentFunc_->blocks.size())
+            throw std::out_of_range("basic block index out of range");
         currentBlockIdx_ = blockIdx;
         builder_->setInsertPoint(currentFunc_->blocks[blockIdx]);
     }
@@ -100,11 +113,13 @@ class BlockManager {
     /// @brief Get the current block.
     /// @return Pointer to the current basic block.
     [[nodiscard]] BasicBlock *currentBlock() {
+        requireCurrentBlock();
         return &currentFunc_->blocks[currentBlockIdx_];
     }
 
     /// @brief Get the current block (const).
     [[nodiscard]] const BasicBlock *currentBlock() const {
+        requireCurrentBlock();
         return &currentFunc_->blocks[currentBlockIdx_];
     }
 
@@ -112,7 +127,8 @@ class BlockManager {
     /// @param idx Index of the block.
     /// @return Reference to the block.
     [[nodiscard]] BasicBlock &getBlock(std::size_t idx) {
-        return currentFunc_->blocks[idx];
+        requireBound();
+        return currentFunc_->blocks.at(idx);
     }
 
     /// @brief Get the current block index.
@@ -124,7 +140,8 @@ class BlockManager {
     /// @param idx Index of the block.
     /// @return The block's label.
     [[nodiscard]] const std::string &getBlockLabel(std::size_t idx) const {
-        return currentFunc_->blocks[idx].label;
+        requireBound();
+        return currentFunc_->blocks.at(idx).label;
     }
 
     // =========================================================================
@@ -133,11 +150,13 @@ class BlockManager {
 
     /// @brief Check if the current block is terminated.
     [[nodiscard]] bool isTerminated() const {
+        requireCurrentBlock();
         return currentFunc_->blocks[currentBlockIdx_].terminated;
     }
 
     /// @brief Get the number of blocks in the current function.
     [[nodiscard]] std::size_t blockCount() const {
+        requireBound();
         return currentFunc_->blocks.size();
     }
 
@@ -163,6 +182,17 @@ class BlockManager {
     }
 
   private:
+    void requireBound() const {
+        if (!builder_ || !currentFunc_)
+            throw std::logic_error("BlockManager operation requires a bound builder and function");
+    }
+
+    void requireCurrentBlock() const {
+        requireBound();
+        if (currentBlockIdx_ >= currentFunc_->blocks.size())
+            throw std::logic_error("BlockManager has no current basic block");
+    }
+
     il::build::IRBuilder *builder_{nullptr};
     Function *currentFunc_{nullptr};
     std::size_t currentBlockIdx_{0};

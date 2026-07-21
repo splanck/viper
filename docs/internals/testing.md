@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-07-17
+last-verified: 2026-07-20
 ---
 
 # Testing Guide
@@ -166,6 +166,16 @@ Windows without changing the default lanes on Linux or macOS.
 ### Unit Tests
 
 Located in `src/tests/unit/`, `src/tests/il/`, `src/tests/vm/`. Test individual components:
+
+Shared frontend infrastructure has a dedicated `test_frontend_common` unit
+target. It covers arithmetic-folding boundaries, locale-independent literal
+parsing, cursor and escape safety, scope/loop/block invariants, deterministic
+string and keyword tables, instruction emission, and generated runtime method
+inheritance. Run it directly with:
+
+```bash
+ctest --test-dir build -R '^test_frontend_common$' --output-on-failure
+```
 
 - IL core types, parsing, serialization
 - IL optimizer passes (EHOpt, LoopRotate, Reassociate, SCCP, GVN, etc.)

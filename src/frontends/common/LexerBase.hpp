@@ -14,14 +14,18 @@
 //
 // Key Invariants:
 //   - Position tracking maintains 1-based line and column numbers
-//   - EOF is indicated by returning '\0' from peek operations
-//   - Newlines increment line and reset column to 1
+//   - Optional cursor APIs distinguish EOF from embedded NUL bytes
+//   - CR, LF, and CRLF each advance exactly one source line
+// Ownership/Lifetime: LexerState owns its source view only for the caller's
+//                     source-buffer lifetime.
+// Links: src/frontends/common/CharUtils.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -47,13 +51,22 @@ template <typename Derived> class LexerCursor {
         return pos_ < src.size() ? src[pos_] : '\0';
     }
 
+    /// @brief Peek without conflating an embedded NUL byte with end-of-input.
+    [[nodiscard]] std::optional<char> peekOptional(std::size_t offset = 0) const {
+        auto src = static_cast<const Derived *>(this)->source();
+        if (pos_ >= src.size() || offset >= src.size() - pos_)
+            return std::nullopt;
+        return src[pos_ + offset];
+    }
+
     /// @brief Peek at a character ahead of current position.
     /// @param offset Number of characters ahead to look.
     /// @return The character at offset, or '\0' if beyond end.
     [[nodiscard]] char peek(std::size_t offset) const {
         auto src = static_cast<const Derived *>(this)->source();
-        std::size_t idx = pos_ + offset;
-        return idx < src.size() ? src[idx] : '\0';
+        if (pos_ >= src.size() || offset >= src.size() - pos_)
+            return '\0';
+        return src[pos_ + offset];
     }
 
     /// @brief Consume and return the current character.
@@ -63,13 +76,25 @@ template <typename Derived> class LexerCursor {
         if (pos_ >= src.size())
             return '\0';
         char c = src[pos_++];
-        if (c == '\n') {
+        if (c == '\r') {
+            if (pos_ < src.size() && src[pos_] == '\n')
+                ++pos_;
+            line_++;
+            column_ = 1;
+        } else if (c == '\n') {
             line_++;
             column_ = 1;
         } else {
             column_++;
         }
         return c;
+    }
+
+    /// @brief Consume one byte, returning empty only at end-of-input.
+    std::optional<char> getOptional() {
+        if (eof())
+            return std::nullopt;
+        return get();
     }
 
     /// @brief Check whether the lexer has reached the end of the source.
@@ -111,7 +136,7 @@ template <typename Derived> class LexerCursor {
 template <typename Lexer> inline void skipHorizontalWhitespace(Lexer &lex) {
     while (!lex.eof()) {
         char c = lex.peek();
-        if (c == ' ' || c == '\t' || c == '\r')
+        if (c == ' ' || c == '\t')
             lex.get();
         else
             break;

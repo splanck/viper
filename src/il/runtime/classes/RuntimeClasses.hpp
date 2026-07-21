@@ -699,6 +699,7 @@ struct RuntimeMethod {
 struct RuntimeClass {
     const char *qname{nullptr};   ///< Fully-qualified name (e.g., "Zanna.String").
     const char *layout{nullptr};  ///< Layout descriptor (opaque until object model defined).
+    const char *baseQName{nullptr}; ///< Optional fully-qualified base class name.
     const char *ctor{nullptr};    ///< Optional ctor helper extern; may be nullptr.
     const char *summary{nullptr}; ///< Short authored class description.
     const char *details{nullptr}; ///< Long authored Markdown class description.

@@ -10,13 +10,18 @@
 //
 // This header provides utilities for parsing numeric literals that are shared
 // across multiple language frontends (BASIC, Zia, etc.).
+// Key invariants: Successful parses consume the complete input and produce a
+//                 finite, representable value.
+// Ownership/Lifetime: Header-only, stateless value utilities.
+// Links: src/frontends/common/ConstantFolding.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <bit>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -56,12 +61,15 @@ struct ParsedNumber {
     result.isFloat = hasDecimal || hasExponent;
 
     if (result.isFloat) {
-        // Parse as double using strtod for portability
-        std::string textStr(text);
-        char *endPtr = nullptr;
-        result.floatValue = std::strtod(textStr.c_str(), &endPtr);
-
-        if (endPtr == textStr.c_str()) {
+        auto parseResult =
+            std::from_chars(text.data(), text.data() + text.size(), result.floatValue,
+                            std::chars_format::general);
+        if (parseResult.ec == std::errc::result_out_of_range ||
+            !std::isfinite(result.floatValue)) {
+            result.overflow = true;
+            result.valid = false;
+        } else if (parseResult.ec != std::errc{} ||
+                   parseResult.ptr != text.data() + text.size()) {
             result.valid = false;
         }
     } else {
@@ -74,7 +82,8 @@ struct ParsedNumber {
         if (parseResult.ec == std::errc::result_out_of_range) {
             result.overflow = true;
             result.valid = false;
-        } else if (parseResult.ec != std::errc{}) {
+        } else if (parseResult.ec != std::errc{} ||
+                   parseResult.ptr != text.data() + text.size()) {
             result.valid = false;
         } else {
             // Check if value fits in signed int64_t
@@ -121,11 +130,11 @@ struct ParsedNumber {
     if (parseResult.ec == std::errc::result_out_of_range) {
         result.overflow = true;
         result.valid = false;
-    } else if (parseResult.ec != std::errc{}) {
+    } else if (parseResult.ec != std::errc{} || parseResult.ptr != text.data() + text.size()) {
         result.valid = false;
     } else {
         // Reinterpret unsigned bits as signed - this makes 0x8000000000000000 = INT64_MIN
-        result.intValue = static_cast<int64_t>(unsignedValue);
+        result.intValue = std::bit_cast<int64_t>(unsignedValue);
     }
 
     return result;
@@ -148,7 +157,7 @@ struct ParsedNumber {
     if (parseResult.ec == std::errc::result_out_of_range) {
         result.overflow = true;
         result.valid = false;
-    } else if (parseResult.ec != std::errc{}) {
+    } else if (parseResult.ec != std::errc{} || parseResult.ptr != text.data() + text.size()) {
         result.valid = false;
     }
 
@@ -172,7 +181,7 @@ struct ParsedNumber {
     if (parseResult.ec == std::errc::result_out_of_range) {
         result.overflow = true;
         result.valid = false;
-    } else if (parseResult.ec != std::errc{}) {
+    } else if (parseResult.ec != std::errc{} || parseResult.ptr != text.data() + text.size()) {
         result.valid = false;
     }
 

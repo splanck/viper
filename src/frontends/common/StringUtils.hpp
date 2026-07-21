@@ -15,15 +15,16 @@
 
 #pragma once
 
+#include "frontends/common/CharUtils.hpp"
+
 #include <algorithm>
-#include <cctype>
 #include <string_view>
 
 namespace il::frontends::common::string_utils {
 
 /// @brief Case-insensitive comparison of two string views.
 /// @details Performs character-by-character comparison ignoring case using
-///          std::toupper with unsigned char casts to avoid undefined behaviour
+///          ASCII-only folding for locale-independent frontend behavior
 ///          on negative char values.
 /// @param a First string to compare.
 /// @param b Second string to compare.
@@ -33,8 +34,7 @@ namespace il::frontends::common::string_utils {
         return false;
 
     return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char ca, char cb) {
-        return std::toupper(static_cast<unsigned char>(ca)) ==
-               std::toupper(static_cast<unsigned char>(cb));
+        return char_utils::toUpper(ca) == char_utils::toUpper(cb);
     });
 }
 

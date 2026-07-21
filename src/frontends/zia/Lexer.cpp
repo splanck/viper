@@ -937,7 +937,7 @@ bool Lexer::lexStringEscape(Token &tok) {
             }
         }
         if (valid) {
-            if (auto utf8 = esc::processUnicodeEscape(digits)) {
+            if (auto utf8 = esc::processUnicodeEscape(std::string_view(digits, 4))) {
                 for (char ch : *utf8)
                     tok.stringValue.push_back(ch);
             } else {

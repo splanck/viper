@@ -15,9 +15,14 @@
 //   - Sorted array with binary search for compile-time keyword tables
 //   - constexpr verification of table sorting
 //   - Case-insensitive matching support
+// Key invariants: Runtime lookup accepts string_view without allocating.
+// Ownership/Lifetime: Runtime tables own copied keyword strings and tokens.
+// Links: src/frontends/common/StringHash.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
+
+#include "frontends/common/StringHash.hpp"
 
 #include <algorithm>
 #include <array>
@@ -89,6 +94,7 @@ template <typename TokenKind> class KeywordMap {
     /// @param entries Array of keyword entries to populate the map.
     template <std::size_t N>
     explicit KeywordMap(const std::array<KeywordEntry<TokenKind>, N> &entries) {
+        map_.reserve(N);
         for (const auto &entry : entries)
             map_.emplace(std::string(entry.lexeme), entry.kind);
     }
@@ -104,7 +110,7 @@ template <typename TokenKind> class KeywordMap {
     /// @param lexeme The lexeme to look up.
     /// @return The token kind if found, std::nullopt otherwise.
     [[nodiscard]] std::optional<TokenKind> lookup(std::string_view lexeme) const {
-        auto it = map_.find(std::string(lexeme));
+        auto it = map_.find(lexeme);
         if (it != map_.end())
             return it->second;
         return std::nullopt;
@@ -115,7 +121,7 @@ template <typename TokenKind> class KeywordMap {
     /// @param defaultKind The default token kind if not found.
     /// @return The token kind if found, defaultKind otherwise.
     [[nodiscard]] TokenKind lookupOr(std::string_view lexeme, TokenKind defaultKind) const {
-        auto it = map_.find(std::string(lexeme));
+        auto it = map_.find(lexeme);
         if (it != map_.end())
             return it->second;
         return defaultKind;
@@ -123,7 +129,7 @@ template <typename TokenKind> class KeywordMap {
 
     /// @brief Check if a lexeme is a keyword.
     [[nodiscard]] bool contains(std::string_view lexeme) const {
-        return map_.find(std::string(lexeme)) != map_.end();
+        return map_.find(lexeme) != map_.end();
     }
 
     /// @brief Get the number of keywords in the map.
@@ -137,7 +143,7 @@ template <typename TokenKind> class KeywordMap {
     }
 
   private:
-    std::unordered_map<std::string, TokenKind> map_;
+    std::unordered_map<std::string, TokenKind, StringHash, std::equal_to<>> map_;
 };
 
 } // namespace il::frontends::common::keyword_table

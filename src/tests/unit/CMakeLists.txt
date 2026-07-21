@@ -108,6 +108,13 @@ if (NOT TARGET test_basic_terminal_scan)
     zanna_add_ctest(test_basic_terminal_scan test_basic_terminal_scan)
 endif ()
 
+if (NOT TARGET test_frontend_common)
+    zanna_add_test(test_frontend_common ${ZANNA_TESTS_DIR}/unit/test_frontend_common.cpp)
+    target_link_libraries(test_frontend_common PRIVATE fe_common zanna_il_core)
+    zanna_add_ctest(test_frontend_common test_frontend_common)
+    zanna_add_test_labels(test_frontend_common unit)
+endif ()
+
 if (WIN32 AND NOT TARGET test_windows_installer_version)
     zanna_add_test(test_windows_installer_version
             ${ZANNA_TESTS_DIR}/unit/test_windows_installer_version.cpp

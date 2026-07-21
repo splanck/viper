@@ -83,3 +83,11 @@ expect_rtgen_failure(orphan_docs
 expect_rtgen_failure(missing_details
      "/// @summary Missing long documentation.\nRT_CLASS_BEGIN(\"Zanna.Bad\", Bad, \"obj\", none)\nRT_CLASS_END()\n"
      "documentation is missing @details")
+
+expect_rtgen_failure(unknown_base
+     "/// @summary Child class.\n/// @details\n/// Child details.\nRT_CLASS_BEGIN(\"Zanna.Child\", Child, \"obj\", none, \"Zanna.Missing\")\nRT_CLASS_END()\n"
+     "unknown base class Zanna.Missing")
+
+expect_rtgen_failure(class_cycle
+     "/// @summary First class.\n/// @details\n/// First details.\nRT_CLASS_BEGIN(\"Zanna.First\", First, \"obj\", none, \"Zanna.Second\")\nRT_CLASS_END()\n/// @summary Second class.\n/// @details\n/// Second details.\nRT_CLASS_BEGIN(\"Zanna.Second\", Second, \"obj\", none, \"Zanna.First\")\nRT_CLASS_END()\n"
+     "cyclic base-class chain")

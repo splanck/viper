@@ -209,7 +209,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.Label` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetText`,
 /// `SetFont`, `SetColor`, `SetWordWrap`, alignment, truncation, and selectable text access.
-RT_CLASS_BEGIN("Zanna.GUI.Label", GuiLabel, "obj", GuiLabelNew)
+RT_CLASS_BEGIN("Zanna.GUI.Label", GuiLabel, "obj", GuiLabelNew, "Zanna.GUI.Widget")
     RT_METHOD("SetText", "void(str)", GuiLabelSetText)
     RT_METHOD("SetFont", "void(obj,f64)", GuiLabelSetFont)
     RT_METHOD("SetColor", "void(i64)", GuiLabelSetColor)
@@ -229,7 +229,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.Button` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetText`,
 /// `SetFont`, `SetStyle`, `SetIcon`.
-RT_CLASS_BEGIN("Zanna.GUI.Button", GuiButton, "obj", GuiButtonNew)
+RT_CLASS_BEGIN("Zanna.GUI.Button", GuiButton, "obj", GuiButtonNew, "Zanna.GUI.Widget")
     RT_METHOD("SetText", "void(str)", GuiButtonSetText)
     RT_METHOD("SetFont", "void(obj,f64)", GuiButtonSetFont)
     RT_METHOD("SetStyle", "void(i64)", GuiButtonSetStyle)
@@ -246,7 +246,7 @@ RT_CLASS_END()
 /// grapheme clusters so user-perceived characters are never split. The editor supports selection,
 /// one-step-per-edit undo/redo, password/read-only/multiline modes, independent change and submit
 /// edges, monotonic revisions, and observable native IME preedit without exposing mutable buffers.
-RT_CLASS_BEGIN("Zanna.GUI.TextInput", GuiTextInput, "obj", GuiTextInputNew)
+RT_CLASS_BEGIN("Zanna.GUI.TextInput", GuiTextInput, "obj", GuiTextInputNew, "Zanna.GUI.Widget")
     RT_PROP("Text", "str", GuiTextInputGetText, none)
     RT_METHOD("SetText", "void(str)", GuiTextInputSetText)
     RT_METHOD("SetPlaceholder", "void(str)", GuiTextInputSetPlaceholder)
@@ -287,7 +287,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.Checkbox` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `SetChecked`, `IsChecked`, `SetIndeterminate`, `IsIndeterminate`.
-RT_CLASS_BEGIN("Zanna.GUI.Checkbox", GuiCheckbox, "obj", GuiCheckboxNew)
+RT_CLASS_BEGIN("Zanna.GUI.Checkbox", GuiCheckbox, "obj", GuiCheckboxNew, "Zanna.GUI.Widget")
     RT_METHOD("SetChecked", "void(i1)", GuiCheckboxSetChecked)
     RT_METHOD("IsChecked", "i1()", GuiCheckboxIsChecked)
     RT_METHOD("SetIndeterminate", "void(i1)", GuiCheckboxSetIndeterminate)
@@ -303,7 +303,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.ScrollView` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `SetScroll`, `SetContentSize`, `GetScrollX`, `GetScrollY`.
-RT_CLASS_BEGIN("Zanna.GUI.ScrollView", GuiScrollView, "obj", GuiScrollViewNew)
+RT_CLASS_BEGIN("Zanna.GUI.ScrollView", GuiScrollView, "obj", GuiScrollViewNew, "Zanna.GUI.Widget")
     RT_METHOD("SetScroll", "void(f64,f64)", GuiScrollViewSetScroll)
     RT_METHOD("SetContentSize", "void(f64,f64)", GuiScrollViewSetContentSize)
     RT_METHOD("GetScrollX", "f64()", GuiScrollViewGetScrollX)
@@ -318,7 +318,7 @@ RT_CLASS_END()
 /// `AddNode`, `RemoveNode`, `Toggle`, `ScrollTo`, lazy-child request polling, and activation
 /// payload lookup. Node-returning event payloads use `Zanna.Option`, remain independent from their
 /// compatibility `Was*` edges, and preserve the tree-owned lifetime contract.
-RT_CLASS_BEGIN("Zanna.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew)
+RT_CLASS_BEGIN("Zanna.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew, "Zanna.GUI.Widget")
     RT_METHOD("AddNode", "obj(obj,str)", GuiTreeViewAddNode)
     RT_METHOD("RemoveNode", "void(obj)", GuiTreeViewRemoveNode)
     RT_METHOD("Clear", "void()", GuiTreeViewClear)
@@ -379,7 +379,7 @@ RT_CLASS_END()
 /// with the instance members below. Its public surface exposes properties such as `TabCount` and
 /// operations including lifecycle-safe tab access, font control, and independently observable
 /// active/close/reorder interactions.
-RT_CLASS_BEGIN("Zanna.GUI.TabBar", GuiTabBar, "obj", GuiTabBarNew)
+RT_CLASS_BEGIN("Zanna.GUI.TabBar", GuiTabBar, "obj", GuiTabBarNew, "Zanna.GUI.Widget")
     RT_PROP("TabCount", "i64", GuiTabBarGetTabCount, none)
     RT_METHOD("AddTab", "obj(str,i64)", GuiTabBarAddTab)
     RT_METHOD("RemoveTab", "void(obj)", GuiTabBarRemoveTab)
@@ -427,7 +427,7 @@ RT_CLASS_END()
 /// object with the instance members below. Its public surface exposes properties such as `First`,
 /// `Second` and operations for logical-unit minimums, orientation, divider position, and
 /// reversible first/second collapse.
-RT_CLASS_BEGIN("Zanna.GUI.SplitPane", GuiSplitPane, "obj", GuiSplitPaneNew)
+RT_CLASS_BEGIN("Zanna.GUI.SplitPane", GuiSplitPane, "obj", GuiSplitPaneNew, "Zanna.GUI.Widget")
     RT_PROP("First", "obj<Zanna.GUI.Widget>", GuiSplitPaneGetFirst, none)
     RT_PROP("Second", "obj<Zanna.GUI.Widget>", GuiSplitPaneGetSecond, none)
     RT_METHOD("SetPosition", "void(f64)", GuiSplitPaneSetPosition)
@@ -463,7 +463,7 @@ RT_CLASS_END()
 /// object with the instance members below. Its public surface exposes properties such as `Text`,
 /// `Revision`, `LineCount` and operations including `SetText`, `SetCursor`, `ScrollToLine`,
 /// `IsModified`.
-RT_CLASS_BEGIN("Zanna.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew)
+RT_CLASS_BEGIN("Zanna.GUI.CodeEditor", GuiCodeEditor, "obj", GuiCodeEditorNew, "Zanna.GUI.Widget")
     RT_PROP("Text", "str", GuiCodeEditorGetText, none)
     RT_PROP("Revision", "i64", GuiCodeEditorGetRevision, none)
     RT_PROP("LineCount", "i64", GuiCodeEditorGetLineCount, none)
@@ -575,7 +575,7 @@ RT_CLASS_END()
 /// object with the instance members below. Its public surface exposes properties such as
 /// `Selected`, `SelectedText` and operations including `AddItem`, `RemoveItem`, `Clear`,
 /// `SetSelected`.
-RT_CLASS_BEGIN("Zanna.GUI.Dropdown", GuiDropdown, "obj", GuiDropdownNew)
+RT_CLASS_BEGIN("Zanna.GUI.Dropdown", GuiDropdown, "obj", GuiDropdownNew, "Zanna.GUI.Widget")
     RT_PROP("Selected", "i64", GuiDropdownGetSelected, none)
     RT_PROP("SelectedText", "str", GuiDropdownGetSelectedText, none)
     RT_METHOD("AddItem", "i64(str)", GuiDropdownAddItem)
@@ -593,7 +593,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.Slider` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Value` and
 /// operations including `SetValue`, `SetRange`, `SetStep`.
-RT_CLASS_BEGIN("Zanna.GUI.Slider", GuiSlider, "obj", GuiSliderNew)
+RT_CLASS_BEGIN("Zanna.GUI.Slider", GuiSlider, "obj", GuiSliderNew, "Zanna.GUI.Widget")
     RT_PROP("Value", "f64", GuiSliderGetValue, none)
     RT_METHOD("SetValue", "void(f64)", GuiSliderSetValue)
     RT_METHOD("SetRange", "void(f64,f64)", GuiSliderSetRange)
@@ -608,7 +608,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.ProgressBar` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as `Value`
 /// and operations including `SetValue`, `SetStyle`, `ShowPercentage`.
-RT_CLASS_BEGIN("Zanna.GUI.ProgressBar", GuiProgressBar, "obj", GuiProgressBarNew)
+RT_CLASS_BEGIN("Zanna.GUI.ProgressBar", GuiProgressBar, "obj", GuiProgressBarNew, "Zanna.GUI.Widget")
     RT_PROP("Value", "f64", GuiProgressBarGetValue, none)
     RT_METHOD("SetValue", "void(f64)", GuiProgressBarSetValue)
     RT_METHOD("SetStyle", "void(i64)", GuiProgressBarSetStyle)
@@ -621,7 +621,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.ListBox` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Selected`,
 /// `Count`, `SelectedIndex` and operations including `AddItem`, `RemoveItem`, `Clear`, `Select`.
-RT_CLASS_BEGIN("Zanna.GUI.ListBox", GuiListBox, "obj", GuiListBoxNew)
+RT_CLASS_BEGIN("Zanna.GUI.ListBox", GuiListBox, "obj", GuiListBoxNew, "Zanna.GUI.Widget")
     RT_PROP("Selected", "obj", GuiListBoxGetSelected, none)
     RT_PROP("Count", "i64", GuiListBoxGetCount, none)
     RT_PROP("SelectedIndex", "i64", GuiListBoxGetSelectedIndex, none)
@@ -656,7 +656,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.OutputPane` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `LineCount` and operations including `Append`, `AppendLine`, `AppendStyled`, `Clear`.
-RT_CLASS_BEGIN("Zanna.GUI.OutputPane", GuiOutputPane, "obj", GuiOutputPaneNew)
+RT_CLASS_BEGIN("Zanna.GUI.OutputPane", GuiOutputPane, "obj", GuiOutputPaneNew, "Zanna.GUI.Widget")
     RT_PROP("LineCount", "i64", GuiOutputPaneGetLineCount, none)
     RT_METHOD("Append", "void(str)", GuiOutputPaneAppend)
     RT_METHOD("AppendLine", "void(str)", GuiOutputPaneAppendLine)
@@ -684,7 +684,7 @@ RT_CLASS_END()
 /// with the instance members below. Dense compatibility tables remain display-only until selection,
 /// sorting, resizing, or editing is enabled. Sparse virtual rows materialize only supplied cells,
 /// while viewport, selection, sort, resize, edit, scroll, edge, and revision state remain queryable.
-RT_CLASS_BEGIN("Zanna.GUI.Grid", GuiGrid, "obj", GuiGridNew)
+RT_CLASS_BEGIN("Zanna.GUI.Grid", GuiGrid, "obj", GuiGridNew, "Zanna.GUI.Widget")
     RT_PROP("RowCount", "i64", GuiGridGetRowCount, none)
     RT_PROP("ColumnCount", "i64", GuiGridGetColumnCount, none)
     RT_METHOD("SetColumns", "void(i64)", GuiGridSetColumns)
@@ -730,7 +730,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.PopupList` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes properties such as
 /// `VisibleCount` and operations including `AddItem`, `Clear`, `SetFilter`, `NavigateUp`.
-RT_CLASS_BEGIN("Zanna.GUI.PopupList", GuiPopupList, "obj", GuiPopupListNew)
+RT_CLASS_BEGIN("Zanna.GUI.PopupList", GuiPopupList, "obj", GuiPopupListNew, "Zanna.GUI.Widget")
     RT_PROP("VisibleCount", "i64", GuiPopupListVisibleCount, none)
     RT_METHOD("AddItem", "void(str)", GuiPopupListAddItem)
     RT_METHOD("Clear", "void()", GuiPopupListClear)
@@ -771,7 +771,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.RadioButton` values through its registered constructor and use the returned
 /// object with the instance members below. It exposes selected state, visible text, byte-exact
 /// application data, an independent change edge, and a non-consuming revision.
-RT_CLASS_BEGIN("Zanna.GUI.RadioButton", GuiRadioButton, "obj", GuiRadioButtonNew)
+RT_CLASS_BEGIN("Zanna.GUI.RadioButton", GuiRadioButton, "obj", GuiRadioButtonNew, "Zanna.GUI.Widget")
     RT_METHOD("IsSelected", "i1()", GuiRadioButtonIsSelected)
     RT_METHOD("SetSelected", "void(i1)", GuiRadioButtonSetSelected)
     RT_METHOD("SetText", "void(str)", GuiRadioButtonSetText)
@@ -788,7 +788,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.Spinner` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Value` and
 /// operations including `SetValue`, `SetRange`, `SetStep`, `SetDecimals`.
-RT_CLASS_BEGIN("Zanna.GUI.Spinner", GuiSpinner, "obj", GuiSpinnerNew)
+RT_CLASS_BEGIN("Zanna.GUI.Spinner", GuiSpinner, "obj", GuiSpinnerNew, "Zanna.GUI.Widget")
     RT_PROP("Value", "f64", GuiSpinnerGetValue, none)
     RT_METHOD("SetValue", "void(f64)", GuiSpinnerSetValue)
     RT_METHOD("SetRange", "void(f64,f64)", GuiSpinnerSetRange)
@@ -860,7 +860,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.Image` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetPixels`,
 /// `Clear`, `SetScaleMode`, `SetOpacity`.
-RT_CLASS_BEGIN("Zanna.GUI.Image", GuiImage, "obj", GuiImageNew)
+RT_CLASS_BEGIN("Zanna.GUI.Image", GuiImage, "obj", GuiImageNew, "Zanna.GUI.Widget")
     RT_METHOD("SetPixels", "void(obj,i64,i64)", GuiImageSetPixels)
     RT_METHOD("Clear", "void()", GuiImageClear)
     RT_METHOD("SetScaleMode", "void(i64)", GuiImageSetScaleMode)
@@ -913,7 +913,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.VBox` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetSpacing`,
 /// `SetPadding`.
-RT_CLASS_BEGIN("Zanna.GUI.VBox", GuiVBox, "obj", GuiVBoxNew)
+RT_CLASS_BEGIN("Zanna.GUI.VBox", GuiVBox, "obj", GuiVBoxNew, "Zanna.GUI.Widget")
     RT_METHOD("SetSpacing", "void(f64)", GuiContainerSetSpacing)
     RT_METHOD("SetPadding", "void(f64)", GuiContainerSetPadding)
     RT_METHOD("SetAlign", "void(i64)", GuiVBoxSetAlign)
@@ -928,7 +928,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.HBox` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes operations including `SetSpacing`,
 /// `SetPadding`.
-RT_CLASS_BEGIN("Zanna.GUI.HBox", GuiHBox, "obj", GuiHBoxNew)
+RT_CLASS_BEGIN("Zanna.GUI.HBox", GuiHBox, "obj", GuiHBoxNew, "Zanna.GUI.Widget")
     RT_METHOD("SetSpacing", "void(f64)", GuiContainerSetSpacing)
     RT_METHOD("SetPadding", "void(f64)", GuiContainerSetPadding)
     RT_METHOD("SetAlign", "void(i64)", GuiHBoxSetAlign)

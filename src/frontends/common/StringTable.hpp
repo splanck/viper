@@ -29,9 +29,12 @@
 #pragma once
 
 #include <functional>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace il::frontends::common {
 
@@ -74,15 +77,34 @@ class StringTable {
         if (it != stringToLabel_.end())
             return it->second;
 
-        // Generate new label
-        std::string label = generateLabel();
+        if (emitting_)
+            throw std::logic_error("StringTable emitter must not recursively intern new strings");
+        if (nextId_ == std::numeric_limits<std::size_t>::max())
+            throw std::overflow_error("string label counter exhausted");
 
-        // Register the global via callback
-        if (emitter_)
-            emitter_(label, content);
-
-        // Cache and return
-        stringToLabel_.emplace(content, label);
+        std::string label = ".L" + std::to_string(nextId_);
+        auto [inserted, didInsert] = stringToLabel_.emplace(content, label);
+        if (!didInsert)
+            return inserted->second;
+        try {
+            insertionOrder_.push_back(content);
+        } catch (...) {
+            stringToLabel_.erase(content);
+            throw;
+        }
+        ++nextId_;
+        try {
+            emitting_ = true;
+            if (emitter_)
+                emitter_(label, content);
+            emitting_ = false;
+        } catch (...) {
+            emitting_ = false;
+            --nextId_;
+            insertionOrder_.pop_back();
+            stringToLabel_.erase(content);
+            throw;
+        }
         return label;
     }
 
@@ -130,12 +152,7 @@ class StringTable {
     /// @details Call this between modules (not between procedures).
     void clear() {
         stringToLabel_.clear();
-        nextId_ = 0;
-    }
-
-    /// @brief Reset the label counter without clearing cached strings.
-    /// @note Typically not needed; use clear() for full reset.
-    void resetCounter() {
+        insertionOrder_.clear();
         nextId_ = 0;
     }
 
@@ -146,24 +163,21 @@ class StringTable {
     /// @brief Iterate over all interned strings.
     /// @param fn Callback receiving (label, content) pairs.
     template <typename Func> void forEach(Func &&fn) const {
-        for (const auto &[content, label] : stringToLabel_)
-            fn(label, content);
+        for (const auto &content : insertionOrder_)
+            fn(stringToLabel_.at(content), content);
     }
 
   private:
-    /// @brief Generate the next label.
-    [[nodiscard]] std::string generateLabel() {
-        return ".L" + std::to_string(nextId_++);
-    }
-
     /// @brief Map from string content to assigned label.
     std::unordered_map<std::string, std::string> stringToLabel_;
+    std::vector<std::string> insertionOrder_;
 
     /// @brief Counter for deterministic label generation.
     std::size_t nextId_{0};
 
     /// @brief Callback for emitting global string definitions.
     GlobalEmitter emitter_;
+    bool emitting_{false};
 };
 
 } // namespace il::frontends::common

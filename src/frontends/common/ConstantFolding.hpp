@@ -11,6 +11,10 @@
 // This header provides language-agnostic constant folding operations that can
 // be used by any language frontend. The functions operate on primitive values
 // and return optional results (empty on overflow/error).
+// Key invariants: Signed operations never execute undefined overflow; invalid
+//                 arithmetic and non-representable conversions return nullopt.
+// Ownership/Lifetime: Header-only, stateless value utilities.
+// Links: docs/il/il-guide.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -29,43 +33,38 @@ namespace il::frontends::common::const_fold {
 /// @brief Fold integer addition with overflow detection.
 /// @return Result if no overflow, empty otherwise.
 [[nodiscard]] inline std::optional<int64_t> foldIntAdd(int64_t lhs, int64_t rhs) noexcept {
-    // Check for overflow using the fact that if signs are same and result differs, overflow
-    // occurred
-    int64_t result = static_cast<int64_t>(static_cast<uint64_t>(lhs) + static_cast<uint64_t>(rhs));
-
-    // Overflow if signs of operands are same but result sign differs
-    if ((lhs > 0 && rhs > 0 && result < 0) || (lhs < 0 && rhs < 0 && result > 0))
+    if ((rhs > 0 && lhs > std::numeric_limits<int64_t>::max() - rhs) ||
+        (rhs < 0 && lhs < std::numeric_limits<int64_t>::min() - rhs))
         return std::nullopt;
-
-    return result;
+    return lhs + rhs;
 }
 
 /// @brief Fold integer subtraction with overflow detection.
 /// @return Result if no overflow, empty otherwise.
 [[nodiscard]] inline std::optional<int64_t> foldIntSub(int64_t lhs, int64_t rhs) noexcept {
-    int64_t result = static_cast<int64_t>(static_cast<uint64_t>(lhs) - static_cast<uint64_t>(rhs));
-
-    // Overflow if subtracting negative makes result smaller, or subtracting positive makes it
-    // larger
-    if ((rhs < 0 && result < lhs) || (rhs > 0 && result > lhs))
+    if ((rhs < 0 && lhs > std::numeric_limits<int64_t>::max() + rhs) ||
+        (rhs > 0 && lhs < std::numeric_limits<int64_t>::min() + rhs))
         return std::nullopt;
-
-    return result;
+    return lhs - rhs;
 }
 
 /// @brief Fold integer multiplication with overflow detection.
 /// @return Result if no overflow, empty otherwise.
 [[nodiscard]] inline std::optional<int64_t> foldIntMul(int64_t lhs, int64_t rhs) noexcept {
-    if (lhs == 0 || rhs == 0)
-        return 0;
+    if (lhs > 0) {
+        if ((rhs > 0 && lhs > std::numeric_limits<int64_t>::max() / rhs) ||
+            (rhs < 0 && rhs < std::numeric_limits<int64_t>::min() / lhs))
+            return std::nullopt;
+    } else if (lhs < 0) {
+        if ((rhs > 0 && lhs < std::numeric_limits<int64_t>::min() / rhs) ||
+            (rhs < 0 && lhs < std::numeric_limits<int64_t>::max() / rhs))
+            return std::nullopt;
+    }
 
-    int64_t result = lhs * rhs;
-
-    // Check for overflow by verifying result / rhs == lhs
-    if (rhs != 0 && result / rhs != lhs)
+    if (lhs == std::numeric_limits<int64_t>::min() && rhs == -1)
         return std::nullopt;
 
-    return result;
+    return lhs * rhs;
 }
 
 /// @brief Fold integer division with zero check.
@@ -85,6 +84,9 @@ namespace il::frontends::common::const_fold {
 /// @return Result if divisor non-zero, empty otherwise.
 [[nodiscard]] inline std::optional<int64_t> foldIntMod(int64_t lhs, int64_t rhs) noexcept {
     if (rhs == 0)
+        return std::nullopt;
+
+    if (lhs == std::numeric_limits<int64_t>::min() && rhs == -1)
         return std::nullopt;
 
     return lhs % rhs;
@@ -271,7 +273,8 @@ namespace il::frontends::common::const_fold {
     if (shift < 0 || shift >= 64)
         return std::nullopt;
 
-    return val << shift;
+    const auto bits = static_cast<uint64_t>(val) << static_cast<unsigned>(shift);
+    return static_cast<int64_t>(bits);
 }
 
 /// @brief Fold arithmetic right shift with overflow check.
@@ -280,7 +283,12 @@ namespace il::frontends::common::const_fold {
     if (shift < 0 || shift >= 64)
         return std::nullopt;
 
-    return val >> shift;
+    if (shift == 0)
+        return val;
+    auto bits = static_cast<uint64_t>(val) >> static_cast<unsigned>(shift);
+    if (val < 0)
+        bits |= ~uint64_t{0} << (64U - static_cast<unsigned>(shift));
+    return static_cast<int64_t>(bits);
 }
 
 //===----------------------------------------------------------------------===//
@@ -297,8 +305,9 @@ namespace il::frontends::common::const_fold {
     if (std::isnan(val) || std::isinf(val))
         return std::nullopt;
 
-    if (val > static_cast<double>(std::numeric_limits<int64_t>::max()) ||
-        val < static_cast<double>(std::numeric_limits<int64_t>::min()))
+    constexpr double kInt64UpperExclusive = 0x1p63;
+    constexpr double kInt64LowerInclusive = -0x1p63;
+    if (val >= kInt64UpperExclusive || val < kInt64LowerInclusive)
         return std::nullopt;
 
     return static_cast<int64_t>(val);

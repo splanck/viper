@@ -17,6 +17,8 @@
 
 #include "il/core/Type.hpp"
 
+#include <optional>
+
 namespace il::frontends::common::type_utils {
 
 /// @brief Check if an IL type is an integer type.
@@ -116,26 +118,9 @@ namespace il::frontends::common::type_utils {
 
 /// @brief Get the storage size in bytes for an IL type.
 /// @param k Type kind to check.
-/// @return Size in bytes (1, 2, 4, or 8) or 8 for unknown types.
-[[nodiscard]] constexpr std::size_t getTypeSize(il::core::Type::Kind k) noexcept {
-    using Kind = il::core::Type::Kind;
-    switch (k) {
-        case Kind::I1:
-            return 1;
-        case Kind::I16:
-            return 2;
-        case Kind::I32:
-            return 4;
-        case Kind::I64:
-        case Kind::F64:
-        case Kind::Ptr:
-        case Kind::Str:
-            return 8;
-        case Kind::Void:
-            return 0;
-        default:
-            return 8; // Default to 64-bit for safety
-    }
+/// @return Size in bytes, or empty if the type has no object representation.
+[[nodiscard]] inline std::optional<unsigned> getTypeSize(il::core::Type::Kind k) noexcept {
+    return il::core::storageSizeBytes(k);
 }
 
 /// @brief Check if two types are compatible for binary operations.
@@ -164,7 +149,10 @@ namespace il::frontends::common::type_utils {
     if (lhs == rhs)
         return lhs;
 
-    // If either is float, result is float
+    if (!isNumericType(lhs) || !isNumericType(rhs))
+        return Kind::Void;
+
+    // If either is float, result is float.
     if (isFloatType(lhs) || isFloatType(rhs))
         return Kind::F64;
 

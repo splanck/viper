@@ -10,6 +10,9 @@
 //
 // This header provides utility functions for formatting diagnostic messages
 // that are shared across multiple language frontends (BASIC, Zia, etc.).
+// Key invariants: Type names reflect the canonical IL type categories.
+// Ownership/Lifetime: Header-only utilities; returned strings own their data.
+// Links: src/il/core/Type.hpp, src/frontends/common/DiagnosticFormatter.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -87,8 +90,10 @@ constexpr size_t kMaxSuggestions = 5;
         return "Integer";
     if (typeName == "f64" || typeName == "F64")
         return "Real";
-    if (typeName == "str" || typeName == "ptr")
+    if (typeName == "str")
         return "String";
+    if (typeName == "ptr")
+        return "Pointer";
     if (typeName == "i1" || typeName == "bool")
         return "Boolean";
     if (typeName == "void")

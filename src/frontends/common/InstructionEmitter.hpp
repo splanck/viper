@@ -16,6 +16,9 @@
 //   - All emit methods produce valid IL instructions
 //   - Temp IDs are allocated via the builder's reserveTempId()
 //   - Source locations can be optionally attached to instructions
+// Ownership/Lifetime: Non-owning references target the active IR builder and
+//                     its stable function/block storage.
+// Links: src/il/build/IRBuilder.hpp, docs/il/il-guide.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -27,8 +30,10 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/Type.hpp"
 #include "il/core/Value.hpp"
-#include "il/support/SourceLoc.hpp"
+#include "support/source_location.hpp"
+#include <optional>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 namespace il::frontends::common {
@@ -226,13 +231,16 @@ class InstructionEmitter {
     /// @brief Emit an indirect call with return value.
     [[nodiscard]] Value emitCallIndirectRet(Type retTy,
                                             Value callee,
-                                            const std::vector<Value> &args) {
+                                            const std::vector<Value> &args,
+                                            std::optional<std::vector<Type>> paramTypes = std::nullopt,
+                                            bool isVarArg = false) {
         unsigned id = nextTempId();
         il::core::Instr instr;
         instr.result = id;
         instr.op = Opcode::CallIndirect;
         instr.type = retTy;
-        instr.setIndirectSignature(retTy, {}, true);
+        if (paramTypes)
+            instr.setIndirectSignature(retTy, std::move(*paramTypes), isVarArg);
         instr.operands.push_back(callee);
         for (const auto &arg : args)
             instr.operands.push_back(arg);
@@ -242,11 +250,15 @@ class InstructionEmitter {
     }
 
     /// @brief Emit a void indirect call.
-    void emitCallIndirect(Value callee, const std::vector<Value> &args) {
+    void emitCallIndirect(Value callee,
+                          const std::vector<Value> &args,
+                          std::optional<std::vector<Type>> paramTypes = std::nullopt,
+                          bool isVarArg = false) {
         il::core::Instr instr;
         instr.op = Opcode::CallIndirect;
         instr.type = Type(Type::Kind::Void);
-        instr.setIndirectSignature(Type(Type::Kind::Void), {}, true);
+        if (paramTypes)
+            instr.setIndirectSignature(Type(Type::Kind::Void), std::move(*paramTypes), isVarArg);
         instr.operands.push_back(callee);
         for (const auto &arg : args)
             instr.operands.push_back(arg);
@@ -264,7 +276,7 @@ class InstructionEmitter {
         il::core::Instr instr;
         instr.op = Opcode::Br;
         instr.type = Type(Type::Kind::Void);
-        instr.addBranchTarget(currentFunc_->blocks[targetIdx].label);
+        instr.addBranchTarget(function().blocks.at(targetIdx).label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
         block()->terminated = true;
@@ -273,6 +285,8 @@ class InstructionEmitter {
     /// @brief Emit an unconditional branch (by block pointer).
     /// @param target Pointer to the target block.
     void emitBr(BasicBlock *target) {
+        if (!target)
+            throw std::invalid_argument("branch target must not be null");
         il::core::Instr instr;
         instr.op = Opcode::Br;
         instr.type = Type(Type::Kind::Void);
@@ -291,8 +305,8 @@ class InstructionEmitter {
         instr.op = Opcode::CBr;
         instr.type = Type(Type::Kind::Void);
         instr.operands.push_back(cond);
-        instr.addBranchTarget(currentFunc_->blocks[trueIdx].label);
-        instr.addBranchTarget(currentFunc_->blocks[falseIdx].label);
+        instr.addBranchTarget(function().blocks.at(trueIdx).label);
+        instr.addBranchTarget(function().blocks.at(falseIdx).label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
         block()->terminated = true;
@@ -303,6 +317,8 @@ class InstructionEmitter {
     /// @param trueTarget Pointer to the true target block.
     /// @param falseTarget Pointer to the false target block.
     void emitCBr(Value cond, BasicBlock *trueTarget, BasicBlock *falseTarget) {
+        if (!trueTarget || !falseTarget)
+            throw std::invalid_argument("conditional branch targets must not be null");
         il::core::Instr instr;
         instr.op = Opcode::CBr;
         instr.type = Type(Type::Kind::Void);
@@ -385,7 +401,7 @@ class InstructionEmitter {
         il::core::Instr instr;
         instr.op = Opcode::EhPush;
         instr.type = Type(Type::Kind::Void);
-        instr.addBranchTarget(currentFunc_->blocks[handlerBlockIdx].label);
+        instr.addBranchTarget(function().blocks.at(handlerBlockIdx).label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
     }
@@ -393,6 +409,8 @@ class InstructionEmitter {
     /// @brief Emit an EH push instruction (by block pointer).
     /// @param handler Pointer to the handler block.
     void emitEhPush(BasicBlock *handler) {
+        if (!handler)
+            throw std::invalid_argument("exception handler block must not be null");
         il::core::Instr instr;
         instr.op = Opcode::EhPush;
         instr.type = Type(Type::Kind::Void);
@@ -430,7 +448,7 @@ class InstructionEmitter {
         instr.op = Opcode::ResumeLabel;
         instr.type = Type(Type::Kind::Void);
         instr.operands.push_back(resumeTok);
-        instr.addBranchTarget(currentFunc_->blocks[targetBlockIdx].label);
+        instr.addBranchTarget(function().blocks.at(targetBlockIdx).label);
         instr.loc = currentLoc_;
         block()->instructions.push_back(std::move(instr));
         block()->terminated = true;
@@ -466,13 +484,25 @@ class InstructionEmitter {
 
     /// @brief Reserve the next temp ID from the builder.
     [[nodiscard]] unsigned nextTempId() {
+        if (!builder_)
+            throw std::logic_error("InstructionEmitter requires a bound IR builder");
         return builder_->reserveTempId();
     }
 
   private:
     /// @brief Get the current block.
     [[nodiscard]] BasicBlock *block() const {
+        if (!currentBlock_ || !*currentBlock_)
+            throw std::logic_error("InstructionEmitter requires a current basic block");
+        if ((*currentBlock_)->terminated)
+            throw std::logic_error("cannot emit into a terminated basic block");
         return *currentBlock_;
+    }
+
+    [[nodiscard]] Function &function() const {
+        if (!currentFunc_)
+            throw std::logic_error("InstructionEmitter requires a current function");
+        return *currentFunc_;
     }
 
     il::build::IRBuilder *builder_{nullptr};

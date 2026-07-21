@@ -10,9 +10,15 @@
 //
 // This enables lookup with std::string_view keys in unordered_map/set
 // without allocating temporary std::string objects.
+// Key invariants: Equal string and string_view inputs have identical hashes;
+//                 case-insensitive hashing uses ASCII folding only.
+// Ownership/Lifetime: Header-only, stateless hash functors.
+// Links: src/frontends/common/CharUtils.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
+
+#include "frontends/common/CharUtils.hpp"
 
 #include <functional>
 #include <string>
@@ -37,7 +43,7 @@ struct StringHash {
 inline std::string toLower(const std::string &s) {
     std::string result = s;
     for (char &c : result)
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        c = char_utils::toLower(c);
     return result;
 }
 
@@ -49,8 +55,7 @@ inline bool equalsIgnoreCase(std::string_view a, std::string_view b) {
     if (a.size() != b.size())
         return false;
     for (std::size_t i = 0; i < a.size(); ++i) {
-        if (std::tolower(static_cast<unsigned char>(a[i])) !=
-            std::tolower(static_cast<unsigned char>(b[i])))
+        if (char_utils::toLower(a[i]) != char_utils::toLower(b[i]))
             return false;
     }
     return true;
@@ -64,8 +69,8 @@ struct CaseInsensitiveHash {
     [[nodiscard]] std::size_t operator()(std::string_view key) const noexcept {
         std::size_t hash = 0;
         for (char c : key) {
-            hash =
-                hash * 31 + static_cast<std::size_t>(std::tolower(static_cast<unsigned char>(c)));
+            hash = hash * 31 + static_cast<std::size_t>(
+                                   static_cast<unsigned char>(char_utils::toLower(c)));
         }
         return hash;
     }

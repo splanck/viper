@@ -20,6 +20,7 @@
 
 #include "support/diagnostics.hpp"
 #include "support/source_manager.hpp"
+#include <algorithm>
 #include <ostream>
 #include <string>
 #include <unordered_map>
@@ -63,6 +64,8 @@ namespace il::frontends::common::diag_fmt {
     size_t end = source.find('\n', start);
     if (end == std::string::npos)
         end = source.size();
+    if (end > start && source[end - 1] == '\r')
+        --end;
     return source.substr(start, end - start);
 }
 
@@ -125,9 +128,18 @@ inline void printDiagnostic(std::ostream &os,
     os << severityToString(severity) << '[' << code << "]: " << message << '\n';
     if (!sourceLine.empty()) {
         os << sourceLine << '\n';
-        uint32_t caretLen = length == 0 ? 1 : length;
-        uint32_t indent = column > 0 ? column - 1 : 0;
-        os << std::string(indent, ' ') << std::string(caretLen, '^') << '\n';
+        const auto boundedColumn = std::min<std::size_t>(column > 0 ? column - 1 : 0,
+                                                         sourceLine.size());
+        const auto available = sourceLine.size() - boundedColumn;
+        const auto requested = static_cast<std::size_t>(length == 0 ? 1 : length);
+        const auto caretLen = std::max<std::size_t>(1, std::min(requested, available));
+        const auto indent = boundedColumn;
+        std::string caretIndent(sourceLine.substr(0, indent));
+        for (char &c : caretIndent) {
+            if (c != '\t')
+                c = ' ';
+        }
+        os << caretIndent << std::string(caretLen, '^') << '\n';
     }
 }
 

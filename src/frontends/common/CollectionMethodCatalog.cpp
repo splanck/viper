@@ -17,9 +17,10 @@
 
 #include "frontends/common/CollectionMethodCatalog.hpp"
 
+#include "frontends/common/CharUtils.hpp"
 #include "frontends/common/StringUtils.hpp"
 
-#include <cctype>
+#include <array>
 #include <span>
 #include <unordered_map>
 
@@ -114,6 +115,8 @@ std::span<const CollectionMethodDescriptor> descriptorsFor(CollectionKind kind) 
 const std::unordered_map<std::string, CollectionMethodId> &dispatchTable() {
     static const auto table = [] {
         std::unordered_map<std::string, CollectionMethodId> out;
+        out.reserve(std::size(kListMethods) + std::size(kMapMethods) + std::size(kSetMethods) +
+                    std::size(kStringMethods));
         for (CollectionKind kind : {CollectionKind::List,
                                     CollectionKind::Map,
                                     CollectionKind::Set,
@@ -127,24 +130,40 @@ const std::unordered_map<std::string, CollectionMethodId> &dispatchTable() {
     return table;
 }
 
+const std::array<std::unordered_map<std::string, CollectionMethodDescriptor>, 4> &descriptorTables() {
+    static const auto tables = [] {
+        std::array<std::unordered_map<std::string, CollectionMethodDescriptor>, 4> out;
+        for (CollectionKind kind : {CollectionKind::List,
+                                    CollectionKind::Map,
+                                    CollectionKind::Set,
+                                    CollectionKind::String}) {
+            auto &table = out[static_cast<std::size_t>(kind)];
+            table.reserve(descriptorsFor(kind).size());
+            for (const auto &descriptor : descriptorsFor(kind))
+                table.emplace(normalizeCollectionMethodName(descriptor.name), descriptor);
+        }
+        return out;
+    }();
+    return tables;
+}
+
 } // namespace
 
 std::string normalizeCollectionMethodName(std::string_view name) {
     std::string lower;
     lower.reserve(name.size());
     for (char c : name) {
-        lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        lower += char_utils::toLower(c);
     }
     return lower;
 }
 
 std::optional<CollectionMethodDescriptor> findCollectionMethod(CollectionKind kind,
                                                                std::string_view methodName) {
-    for (const auto &descriptor : descriptorsFor(kind)) {
-        if (string_utils::iequals(descriptor.name, methodName)) {
-            return descriptor;
-        }
-    }
+    const auto &table = descriptorTables()[static_cast<std::size_t>(kind)];
+    auto found = table.find(normalizeCollectionMethodName(methodName));
+    if (found != table.end())
+        return found->second;
     return std::nullopt;
 }
 

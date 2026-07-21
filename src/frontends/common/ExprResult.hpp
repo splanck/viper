@@ -15,6 +15,8 @@
 // Key Invariants:
 //   - value is a valid IL Value (temp, const, or global reference)
 //   - type matches the IL type of value
+// Ownership/Lifetime: Stores IL values and types by value.
+// Links: src/il/core/Value.hpp, src/il/core/Type.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -37,11 +39,10 @@ struct ExprResult {
     /// @brief Construct with a value and type.
     ExprResult(il::core::Value v, il::core::Type t) : value(v), type(t) {}
 
-    /// @brief Check if this result is valid (has a non-void type or is a constant).
+    /// @brief Check if this result has a usable, non-error IL type.
     [[nodiscard]] bool isValid() const noexcept {
-        return type.kind != il::core::Type::Kind::Void ||
-               value.kind == il::core::Value::Kind::ConstInt ||
-               value.kind == il::core::Value::Kind::ConstFloat;
+        return type.kind != il::core::Type::Kind::Void &&
+               type.kind != il::core::Type::Kind::Error;
     }
 
     /// @brief Check if this is an integer type.

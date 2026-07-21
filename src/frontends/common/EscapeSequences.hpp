@@ -103,9 +103,11 @@ namespace il::frontends::common::escape_sequences {
 }
 
 /// @brief Parse 4 hex digit characters into a Unicode codepoint.
-/// @param digits Pointer to exactly 4 characters to parse.
+/// @param digits Exactly 4 hexadecimal characters to parse.
 /// @return The codepoint value, or nullopt if any character is not a valid hex digit.
-[[nodiscard]] inline std::optional<uint32_t> parseUnicodeHexDigits(const char *digits) noexcept {
+[[nodiscard]] inline std::optional<uint32_t> parseUnicodeHexDigits(std::string_view digits) noexcept {
+    if (digits.size() != 4)
+        return std::nullopt;
     uint32_t codepoint = 0;
     for (int i = 0; i < 4; ++i) {
         int val = char_utils::hexDigitValue(digits[i]);
@@ -117,12 +119,12 @@ namespace il::frontends::common::escape_sequences {
 }
 
 /// @brief Process a unicode escape sequence from 4 hex digit characters.
-/// @param digits Pointer to exactly 4 characters containing the hex digits.
+/// @param digits Exactly 4 characters containing the hex digits.
 /// @return The UTF-8 encoded string, or nullopt if the digits are invalid.
 ///
 /// @details Parses the 4 hex digit characters and converts the resulting
 ///          codepoint to UTF-8. Supports the full BMP range (U+0000 to U+FFFF).
-[[nodiscard]] inline std::optional<std::string> processUnicodeEscape(const char *digits) {
+[[nodiscard]] inline std::optional<std::string> processUnicodeEscape(std::string_view digits) {
     auto cp = parseUnicodeHexDigits(digits);
     if (!cp)
         return std::nullopt;

@@ -678,7 +678,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.GroupBox` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `Destroy`, `SetTitle`, `AddChild`.
-RT_CLASS_BEGIN("Zanna.GUI.GroupBox", GuiGroupBox, "obj", GuiGroupBoxNew)
+RT_CLASS_BEGIN("Zanna.GUI.GroupBox", GuiGroupBox, "obj", GuiGroupBoxNew, "Zanna.GUI.Widget")
     RT_METHOD("Destroy",     "void()",        GuiGroupBoxDestroy)
     RT_METHOD("SetTitle",    "void(str)",     GuiGroupBoxSetTitle)
     RT_METHOD("AddChild",    "void(obj)",     GuiGroupBoxAddChild)
@@ -690,7 +690,7 @@ RT_CLASS_END()
 /// Create `Zanna.GUI.FloatingPanel` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
 /// `Destroy`, `SetPosition`, `CenterInParent`, `SetSize`.
-RT_CLASS_BEGIN("Zanna.GUI.FloatingPanel", GuiFloatingPanel, "obj", GuiFloatingPanelNew)
+RT_CLASS_BEGIN("Zanna.GUI.FloatingPanel", GuiFloatingPanel, "obj", GuiFloatingPanelNew, "Zanna.GUI.Widget")
     RT_METHOD("Destroy",     "void()",        GuiFloatingPanelDestroy)
     RT_METHOD("SetPosition", "void(f64,f64)", GuiFloatingPanelSetPosition)
     RT_METHOD("CenterInParent", "void()",     GuiFloatingPanelCenterInParent)

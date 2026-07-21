@@ -150,7 +150,7 @@ RuntimeSurface load_runtime_surface() {
 #define RT_INTERNAL_FUNC(id, c_symbol, canonical, signature, ...)                                  \
     surface.add_func(#id, #c_symbol, canonical, signature, false);
 #define RT_BRIDGE(target_id, roles)
-#define RT_CLASS_BEGIN(name, type_id, layout, ctor_id)                                             \
+#define RT_CLASS_BEGIN(name, type_id, layout, ctor_id, ...)                                        \
     surface.begin_class(name, #type_id, layout, #ctor_id);
 #define RT_PROP(name, type, getter_id, setter_id)                                                  \
     surface.add_prop(name, type, #getter_id, #setter_id);

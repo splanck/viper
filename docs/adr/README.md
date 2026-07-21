@@ -93,6 +93,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0066](0066-process-pty-read-result-apis.md) — Process And PTY Read Result APIs
 - [ADR 0101](0101-modular-runtime-definitions-and-documentation.md) — Modular Runtime Definitions and Authored API Documentation
 - [ADR 0104](0104-entity3d-position-accessor-properties.md) — Normalize Entity3D Position Accessors to Properties
+- [ADR 0143](0143-generated-runtime-class-inheritance.md) — Generate Runtime Class Inheritance Metadata
 
 ## GUI & IDE
 

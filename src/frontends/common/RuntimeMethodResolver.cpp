@@ -21,7 +21,7 @@
 #include "frontends/common/StringUtils.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
-#include <array>
+#include <algorithm>
 #include <limits>
 #include <optional>
 #include <utility>
@@ -135,27 +135,23 @@ std::optional<int> scoreSignature(const std::vector<il::runtime::ILScalarType> &
     return score;
 }
 
-bool matchesGuiWidgetSubclass(std::string_view classQName) {
-    static constexpr std::array<std::string_view, 23> kGuiWidgetClasses = {
-        "Zanna.GUI.Button",     "Zanna.GUI.Checkbox",      "Zanna.GUI.CodeEditor",
-        "Zanna.GUI.Dropdown",   "Zanna.GUI.FloatingPanel", "Zanna.GUI.Grid",
-        "Zanna.GUI.GroupBox",   "Zanna.GUI.HBox",          "Zanna.GUI.Image",
-        "Zanna.GUI.Label",      "Zanna.GUI.ListBox",       "Zanna.GUI.OutputPane",
-        "Zanna.GUI.PopupList",  "Zanna.GUI.ProgressBar",   "Zanna.GUI.RadioButton",
-        "Zanna.GUI.ScrollView", "Zanna.GUI.Slider",        "Zanna.GUI.Spinner",
-        "Zanna.GUI.SplitPane",  "Zanna.GUI.TabBar",        "Zanna.GUI.TextInput",
-        "Zanna.GUI.TreeView",   "Zanna.GUI.VBox",
-    };
-
-    for (std::string_view widgetClass : kGuiWidgetClasses) {
-        if (string_utils::iequals(widgetClass, classQName)) {
-            return true;
-        }
+const il::runtime::RuntimeClass *findRuntimeClass(std::string_view classQName) {
+    const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
+    for (const auto &klass : catalog) {
+        if (klass.qname && string_utils::iequals(klass.qname, classQName))
+            return &klass;
     }
-    return false;
+    return nullptr;
 }
 
-std::optional<RuntimeMethodInfo> findTypedInClass(
+enum class TypedLookupStatus { NotFound, Found, Ambiguous };
+
+struct TypedLookupResult {
+    TypedLookupStatus status{TypedLookupStatus::NotFound};
+    std::optional<RuntimeMethodInfo> method;
+};
+
+TypedLookupResult findTypedInClass(
     const il::runtime::RuntimeClass &klass,
     std::string_view method,
     const std::vector<il::runtime::ILScalarType> &argTypes) {
@@ -191,15 +187,23 @@ std::optional<RuntimeMethodInfo> findTypedInClass(
     }
 
     if (ambiguous) {
-        return std::nullopt;
+        return {TypedLookupStatus::Ambiguous, std::nullopt};
     }
-    return best;
+    if (!best)
+        return {};
+    return {TypedLookupStatus::Found, std::move(best)};
 }
 
 } // namespace
 
 bool isGuiWidgetSubclass(std::string_view classQName) {
-    return matchesGuiWidgetSubclass(classQName);
+    const auto *klass = findRuntimeClass(classQName);
+    while (klass && klass->baseQName && *klass->baseQName) {
+        if (string_utils::iequals(klass->baseQName, "Zanna.GUI.Widget"))
+            return true;
+        klass = findRuntimeClass(klass->baseQName);
+    }
+    return false;
 }
 
 const RuntimeMethodResolver &RuntimeMethodResolver::instance() {
@@ -216,13 +220,14 @@ std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(std::string_view cl
         return makeRuntimeMethodInfo(classQName, method, *parsed);
     }
 
-    if (isGuiWidgetSubclass(classQName)) {
-        parsed = registry.findMethod("Zanna.GUI.Widget", method, arity);
+    const auto *klass = findRuntimeClass(classQName);
+    while (!parsed && klass && klass->baseQName && *klass->baseQName) {
+        parsed = registry.findMethod(klass->baseQName, method, arity);
+        if (parsed)
+            return makeRuntimeMethodInfo(klass->baseQName, method, *parsed);
+        klass = findRuntimeClass(klass->baseQName);
     }
-    if (!parsed) {
-        return std::nullopt;
-    }
-    return makeRuntimeMethodInfo("Zanna.GUI.Widget", method, *parsed);
+    return std::nullopt;
 }
 
 std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(
@@ -235,18 +240,24 @@ std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(
             continue;
         }
 
-        if (auto direct = findTypedInClass(klass, method, argTypes)) {
-            return direct;
-        }
+        auto direct = findTypedInClass(klass, method, argTypes);
+        if (direct.status == TypedLookupStatus::Found)
+            return std::move(direct.method);
+        if (direct.status == TypedLookupStatus::Ambiguous)
+            return std::nullopt;
         break;
     }
 
-    if (isGuiWidgetSubclass(classQName)) {
-        for (const auto &klass : registry.rawCatalog()) {
-            if (klass.qname && string_utils::iequals(klass.qname, "Zanna.GUI.Widget")) {
-                return findTypedInClass(klass, method, argTypes);
-            }
-        }
+    const auto *klass = findRuntimeClass(classQName);
+    while (klass && klass->baseQName && *klass->baseQName) {
+        klass = findRuntimeClass(klass->baseQName);
+        if (!klass)
+            break;
+        auto inherited = findTypedInClass(*klass, method, argTypes);
+        if (inherited.status == TypedLookupStatus::Found)
+            return std::move(inherited.method);
+        if (inherited.status == TypedLookupStatus::Ambiguous)
+            return std::nullopt;
     }
     return std::nullopt;
 }
@@ -254,11 +265,17 @@ std::optional<RuntimeMethodInfo> RuntimeMethodResolver::find(
 std::vector<std::string> RuntimeMethodResolver::candidates(std::string_view classQName,
                                                            std::string_view method) const {
     const auto &registry = il::runtime::RuntimeRegistry::instance();
-    std::vector<std::string> direct = registry.methodCandidates(classQName, method);
-    if (!direct.empty() || !isGuiWidgetSubclass(classQName)) {
-        return direct;
+    std::vector<std::string> result = registry.methodCandidates(classQName, method);
+    const auto *klass = findRuntimeClass(classQName);
+    while (klass && klass->baseQName && *klass->baseQName) {
+        auto inherited = registry.methodCandidates(klass->baseQName, method);
+        for (auto &candidate : inherited) {
+            if (std::find(result.begin(), result.end(), candidate) == result.end())
+                result.push_back(std::move(candidate));
+        }
+        klass = findRuntimeClass(klass->baseQName);
     }
-    return registry.methodCandidates("Zanna.GUI.Widget", method);
+    return result;
 }
 
 } // namespace il::frontends::common

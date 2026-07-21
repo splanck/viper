@@ -17,13 +17,21 @@
 // - Uniqueness: No name collisions between user variables, temporaries, blocks
 // - Determinism: Identical programs always produce identical IL names
 // - Readability: Generated names remain somewhat human-readable for debugging
+// Key invariants: Every generated block and temporary name is globally unique
+//                 within one mangler instance; counter overflow is diagnosed.
+// Ownership/Lifetime: Owns counters and generated-name collision state.
+// Links: src/frontends/common/BlockManager.hpp
 //
 //===----------------------------------------------------------------------===//
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
+#include <limits>
+#include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace il::frontends::common {
 
@@ -123,6 +131,8 @@ class NameMangler {
     /// @brief Return next temporary name (e.g., "%t0", "%t1", ...).
     /// @return A unique temporary name using the configured prefix.
     std::string nextTemp() {
+        if (tempCounter_ == std::numeric_limits<uint64_t>::max())
+            throw std::overflow_error("temporary name counter exhausted");
         return tempPrefix_ + std::to_string(tempCounter_++);
     }
 
@@ -132,21 +142,27 @@ class NameMangler {
     /// @return A unique block name, possibly with a numeric suffix.
     std::string block(const std::string &hint) {
         auto &count = blockCounters_[hint];
-        std::string name = hint;
-        if (count > 0)
-            name += std::to_string(count);
-        ++count;
-        return name;
+        for (;;) {
+            std::string name = hint;
+            if (count > 0)
+                name += std::to_string(count);
+            if (count == std::numeric_limits<uint64_t>::max())
+                throw std::overflow_error("block name counter exhausted");
+            ++count;
+            if (usedBlockNames_.insert(name).second)
+                return name;
+        }
     }
 
     /// @brief Reset all counters for a new compilation unit.
     void reset() {
         tempCounter_ = 0;
         blockCounters_.clear();
+        usedBlockNames_.clear();
     }
 
     /// @brief Get the current temp counter value (for debugging/testing).
-    unsigned tempCount() const {
+    uint64_t tempCount() const {
         return tempCounter_;
     }
 
@@ -155,10 +171,11 @@ class NameMangler {
     std::string tempPrefix_ = "%t";
 
     /// @brief Monotonically increasing ID for temporary names.
-    unsigned tempCounter_ = 0;
+    uint64_t tempCounter_ = 0;
 
     /// @brief Map of block name hints to the number of times they've been used.
-    std::unordered_map<std::string, unsigned> blockCounters_;
+    std::unordered_map<std::string, uint64_t> blockCounters_;
+    std::unordered_set<std::string> usedBlockNames_;
 };
 
 } // namespace il::frontends::common

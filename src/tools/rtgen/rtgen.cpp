@@ -97,6 +97,7 @@ struct RuntimeClass {
     std::string type_id;                // Type ID suffix (e.g., "String")
     std::string layout;                 // Layout type (e.g., "opaque*", "obj")
     std::string ctor_id;                // Constructor function id or empty
+    std::string base_name;              // Optional fully-qualified base class
     RuntimeDocumentation documentation; // Authored summary and long-form details
     std::vector<RuntimeProperty> props; // Properties
     std::vector<RuntimeMethod> methods; // Methods
@@ -149,6 +150,7 @@ struct ResolvedRuntimeClass {
     std::string type_id;                        ///< Type ID suffix.
     std::string layout;                         ///< Layout type.
     std::string ctorCanonical;                  ///< Canonical constructor name, or empty.
+    std::string baseName;                       ///< Fully-qualified base class, or empty.
     RuntimeDocumentation documentation;         ///< Authored class documentation.
     std::vector<ResolvedRuntimeProperty> props; ///< Resolved properties.
     std::vector<ResolvedRuntimeMethod> methods; ///< Resolved methods.
@@ -558,13 +560,14 @@ static void parseRtBridge(ParseState &state, const std::string &args) {
 /// @brief Parse RT_CLASS_BEGIN, opening a new class block in @p state.
 /// @details Rejects nested class blocks; the class is finalized by parseRtClassEnd.
 static void parseRtClassBegin(ParseState &state, const std::string &args) {
-    // RT_CLASS_BEGIN(name, type_id, layout, ctor_id)
+    // RT_CLASS_BEGIN(name, type_id, layout, ctor_id[, base_name])
     if (state.current_class.has_value())
         state.error("Nested RT_CLASS_BEGIN not allowed");
 
     auto parts = split(args, ',');
-    if (parts.size() != 4) {
-        state.error("RT_CLASS_BEGIN requires 4 arguments: name, type_id, layout, ctor_id");
+    if (parts.size() != 4 && parts.size() != 5) {
+        state.error(
+            "RT_CLASS_BEGIN requires 4 or 5 arguments: name, type_id, layout, ctor_id[, base_name]");
     }
 
     RuntimeClass cls;
@@ -572,6 +575,8 @@ static void parseRtClassBegin(ParseState &state, const std::string &args) {
     cls.type_id = parts[1];
     cls.layout = parts[2];
     cls.ctor_id = parts[3];
+    if (parts.size() == 5)
+        cls.base_name = parts[4];
 
     // Remove quotes from all string fields
     auto stripQuotes = [](std::string &s) {
@@ -581,6 +586,7 @@ static void parseRtClassBegin(ParseState &state, const std::string &args) {
     stripQuotes(cls.name);
     stripQuotes(cls.layout);
     stripQuotes(cls.ctor_id);
+    stripQuotes(cls.base_name);
 
     if (state.pendingDocumentation.active()) {
         if (!state.pendingDocumentation.sawSummary)
@@ -922,6 +928,9 @@ static ParseState parseFile(const fs::path &path) {
 ///          checks run only after the root manifest and all fragments are parsed.
 static void validateDefinitionReferences(const ParseState &state, const fs::path &inputPath) {
     std::vector<std::string> errors;
+    std::unordered_map<std::string, const RuntimeClass *> classesByName;
+    for (const auto &cls : state.classes)
+        classesByName.emplace(cls.name, &cls);
     for (const auto &cls : state.classes) {
         if (cls.documentation.summary.empty())
             errors.push_back("runtime class " + cls.name + " is missing authored @summary text");
@@ -931,6 +940,20 @@ static void validateDefinitionReferences(const ParseState &state, const fs::path
             !resolveRuntimeFunc(state, cls.ctor_id)) {
             errors.push_back("runtime class " + cls.name + " has unresolved ctor target " +
                              cls.ctor_id);
+        }
+        if (!cls.base_name.empty() && !classesByName.contains(cls.base_name)) {
+            errors.push_back("runtime class " + cls.name + " has unknown base class " +
+                             cls.base_name);
+        }
+        std::unordered_set<std::string> baseChain;
+        const RuntimeClass *cursor = &cls;
+        while (cursor && !cursor->base_name.empty()) {
+            if (!baseChain.insert(cursor->name).second) {
+                errors.push_back("runtime class " + cls.name + " has a cyclic base-class chain");
+                break;
+            }
+            auto base = classesByName.find(cursor->base_name);
+            cursor = base == classesByName.end() ? nullptr : base->second;
         }
         for (const auto &prop : cls.props) {
             if (!prop.getter_id.empty() && prop.getter_id != "none" &&
@@ -1633,6 +1656,7 @@ static std::vector<ResolvedRuntimeClass> buildResolvedClasses(const ParseState &
         outClass.name = cls.name;
         outClass.type_id = cls.type_id;
         outClass.layout = cls.layout;
+        outClass.baseName = cls.base_name;
         outClass.documentation = cls.documentation;
         if (auto ctorCanonical = resolveRuntimeCanonical(state, cls.ctor_id))
             outClass.ctorCanonical = *ctorCanonical;
@@ -1995,6 +2019,7 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
         out << "    " << cppStringLiteral(cls.name) << ",\n";
         out << "    RTCLS_" << cls.type_id << ",\n";
         out << "    " << cppStringLiteral(cls.layout) << ",\n";
+        out << "    " << cppStringLiteral(cls.baseName) << ",\n";
 
         if (cls.ctorCanonical.empty()) {
             out << "    " << cppStringLiteral("") << ",\n";
