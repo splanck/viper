@@ -1,17 +1,22 @@
-// =============================================================================
-// game.zia — the root orchestrator: boot, fixed-timestep loop, state machine
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
-// `Game` owns every subsystem. Rendering uses the manual world.Tick() loop
-// (ridgebound-proven) with a game-owned fixed-timestep accumulator: each display
-// frame accumulates world.Dt, runs `tickSim`+`stepPhysics` in whole FIXED_DT
-// increments, then renders once with an interpolation alpha. This gives an FPS
-// the camera/view-model/HUD control the auto-render RunFixed loop can't, while
-// keeping deterministic fixed-step simulation. Headless probes drive `tickSim`+
-// `stepPhysics` directly for per-tick input control with no window.
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
 //
-// This file grows phase by phase; P1 wires input/player/camera/arena/HUD.
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/ashfall/game.zia
+// Purpose: Own and orchestrate Ashfall's state, simulation, presentation, and
+//          fixed-timestep interactive loop.
+// Key invariants:
+//   - Simulation advances only in FIXED_DT increments with bounded catch-up.
+//   - Normal and measured play share one frame-loop implementation.
+// Ownership/Lifetime:
+//   - Game owns every gameplay subsystem and its World3D graph.
+//   - The interactive loop destroys World3D exactly once before returning.
+// Links: examples/games/ashfall/main.zia, examples/games/ashfall/config.zia
+//
+//===----------------------------------------------------------------------===//
 module game;
 
 bind Zanna.Game3D as Game3D;
@@ -20,6 +25,9 @@ bind Zanna.Math as Math;
 bind Zanna.Terminal as Terminal;
 bind Zanna.Collections.Map as Map;
 bind Zanna.Input.Key as Key;
+bind Zanna.Runtime.GC as GC;
+bind Zanna.Text.Fmt as Fmt;
+bind Zanna.Time.Clock as Clock;
 
 bind "./config" as config;
 bind "./core/mathutil" as M;
@@ -1559,7 +1567,16 @@ class Game {
     }
 
     // --- Render (manual scene + overlay) -------------------------------------
-    hide func render(alpha: Float) {
+    hide func render(alpha: Float, profileFrame: Integer) {
+        var measureStages = profileFrame > 0 && profileFrame <= 3;
+        var stageStartUs = 0;
+        var beginUs = 0;
+        var sceneUs = 0;
+        var effectsUs = 0;
+        var endSceneUs = 0;
+        var weaponUs = 0;
+        var overlayUs = 0;
+        if measureStages { stageStartUs = Clock.NowMicros(); }
         world.BeginFrame();
         G3D.Canvas3D.Clear(canvas, clearR, clearG, clearB);
         if state == config.ST_TITLE || state == config.ST_CREDITS {
@@ -1569,6 +1586,10 @@ class Game {
         } else {
             camRig.applyToCamera(camera, alpha);
         }
+        if measureStages {
+            beginUs = Clock.NowMicros() - stageStartUs;
+            stageStartUs = Clock.NowMicros();
+        }
         // Exterior terrain first (visual backdrop; playfield colliders are slabs).
         if levelMgr.hasTerrain() {
             G3D.Canvas3D.DrawTerrainAt(canvas, levelMgr.terrainObj(),
@@ -1576,6 +1597,10 @@ class Game {
                                        levelMgr.terrainOffZ());
         }
         world.DrawScene();
+        if measureStages {
+            sceneUs = Clock.NowMicros() - stageStartUs;
+            stageStartUs = Clock.NowMicros();
+        }
         levelMgr.drawProps();
         drawObjectiveBeacon();
         if proj.activeProjectiles() > 0 {
@@ -1586,15 +1611,37 @@ class Game {
         if levelMgr.hasWater() { G3D.Canvas3D.DrawWater(canvas, levelMgr.waterObj(), camera); }
         world.DrawEffects();
         lightRig.drawFlare();
+        if measureStages {
+            effectsUs = Clock.NowMicros() - stageStartUs;
+            stageStartUs = Clock.NowMicros();
+        }
         world.EndScene();
+        if measureStages {
+            endSceneUs = Clock.NowMicros() - stageStartUs;
+            stageStartUs = Clock.NowMicros();
+        }
         // First-person weapon (independent-FOV pass; never clips the world).
         if (state == config.ST_PLAYING || state == config.ST_PAUSED) &&
            cine.isIntroActive() == false {
             weaponVis.drawViewModel(canvas, camera, camRig, vm, weapons);
         }
+        if measureStages {
+            weaponUs = Clock.NowMicros() - stageStartUs;
+            stageStartUs = Clock.NowMicros();
+        }
         G3D.Canvas3D.BeginOverlay(canvas);
         drawHud();
         G3D.Canvas3D.EndOverlay(canvas);
+        if measureStages { overlayUs = Clock.NowMicros() - stageStartUs; }
+        if measureStages {
+            Terminal.Say("PLAY_PERF_RENDER: frame=" + Fmt.Int(profileFrame) +
+                         " begin_ms=" + Fmt.NumFixed((beginUs + 0.0) / 1000.0, 3) +
+                         " scene_ms=" + Fmt.NumFixed((sceneUs + 0.0) / 1000.0, 3) +
+                         " effects_ms=" + Fmt.NumFixed((effectsUs + 0.0) / 1000.0, 3) +
+                         " end_scene_ms=" + Fmt.NumFixed((endSceneUs + 0.0) / 1000.0, 3) +
+                         " weapon_ms=" + Fmt.NumFixed((weaponUs + 0.0) / 1000.0, 3) +
+                         " overlay_ms=" + Fmt.NumFixed((overlayUs + 0.0) / 1000.0, 3));
+        }
     }
 
     hide func drawHud() {
@@ -1694,27 +1741,156 @@ class Game {
     }
 
     // --- The interactive loop (assumes boot() already ran) -------------------
-    expose func run() {
+    // A positive profileFrames enables bounded telemetry without changing the
+    // boot, update, simulation, render, post-FX, or presentation path.
+    hide func runLoop(profileFrames: Integer) {
+        var frameLimit = profileFrames;
+        if frameLimit < 0 { frameLimit = 0; }
+        var profiling = frameLimit > 0;
         var accum = 0.0;
-        while running && world.Update() {
+        var frame = 0;
+        var intervalFrames = 120;
+        var intervalStartUs = 0;
+        var totalStartUs = 0;
+        var intervalUpdateUs = 0;
+        var intervalSimUs = 0;
+        var intervalRenderUs = 0;
+        var intervalPresentUs = 0;
+        var intervalSteps = 0;
+        var intervalWorstUs = 0;
+        var totalWorstUs = 0;
+        var totalSteps = 0;
+        var startTracked = 0;
+
+        if profiling {
+            intervalStartUs = Clock.NowMicros();
+            totalStartUs = intervalStartUs;
+            startTracked = GC.TrackedCount();
+            Terminal.Say("PLAY_PERF_START: backend=" + canvas.Backend +
+                         " frames=" + Fmt.Int(frameLimit) +
+                         " canvas=" + Fmt.Int(canvas.Width) + "x" + Fmt.Int(canvas.Height) +
+                         " window=" + Fmt.Int(canvas.WindowWidth) + "x" +
+                                      Fmt.Int(canvas.WindowHeight) +
+                         " output=" + Fmt.Int(canvas.ActiveOutputWidth) + "x" +
+                                      Fmt.Int(canvas.ActiveOutputHeight) +
+                         " scale=" + Fmt.NumFixed(canvas.RenderScale, 3));
+        }
+
+        while running {
+            var frameStartUs = 0;
+            var stageStartUs = 0;
+            var updateUs = 0;
+            var simUs = 0;
+            var renderUs = 0;
+            var presentUs = 0;
+            if profiling {
+                frameStartUs = Clock.NowMicros();
+                stageStartUs = frameStartUs;
+            }
+            if world.Update() == false { break; }
+            if profiling { updateUs = Clock.NowMicros() - stageStartUs; }
             handleMouseCapture();
             var frameDt = world.DeltaTime;
             if frameDt > 0.1 { frameDt = 0.1; }
             accum = accum + frameDt;
             var steps = 0;
+            if profiling { stageStartUs = Clock.NowMicros(); }
             while accum >= config.FIXED_DT && steps < config.MAX_SUBSTEPS {
                 tickSim(config.FIXED_DT);
                 stepPhysics(config.FIXED_DT);
                 accum = accum - config.FIXED_DT;
                 steps = steps + 1;
             }
+            if profiling { simUs = Clock.NowMicros() - stageStartUs; }
             if accum > config.FIXED_DT * (config.MAX_SUBSTEPS + 0.0) { accum = 0.0; }
             var alpha = accum / config.FIXED_DT;
-            render(alpha);
+            if profiling { stageStartUs = Clock.NowMicros(); }
+            var profileRenderFrame = 0;
+            if profiling && frame < 3 { profileRenderFrame = frame + 1; }
+            render(alpha, profileRenderFrame);
+            if profiling {
+                renderUs = Clock.NowMicros() - stageStartUs;
+                stageStartUs = Clock.NowMicros();
+            }
             world.Present();
+            if profiling { presentUs = Clock.NowMicros() - stageStartUs; }
+
+            frame = frame + 1;
+            if profiling {
+                var frameUs = Clock.NowMicros() - frameStartUs;
+                intervalUpdateUs = intervalUpdateUs + updateUs;
+                intervalSimUs = intervalSimUs + simUs;
+                intervalRenderUs = intervalRenderUs + renderUs;
+                intervalPresentUs = intervalPresentUs + presentUs;
+                intervalSteps = intervalSteps + steps;
+                totalSteps = totalSteps + steps;
+                if frameUs > intervalWorstUs { intervalWorstUs = frameUs; }
+                if frameUs > totalWorstUs { totalWorstUs = frameUs; }
+
+                if frame % intervalFrames == 0 || frame >= frameLimit {
+                    var reportFrames = frame % intervalFrames;
+                    if reportFrames == 0 { reportFrames = intervalFrames; }
+                    var nowUs = Clock.NowMicros();
+                    var elapsedUs = nowUs - intervalStartUs;
+                    Terminal.Say("PLAY_PERF_INTERVAL: frame=" + Fmt.Int(frame) +
+                                 " fps=" + Fmt.NumFixed((reportFrames * 1000000.0) /
+                                                           elapsedUs, 3) +
+                                 " canvas_fps=" + Fmt.Int(canvas.Fps) +
+                                 " avg_ms=" + Fmt.NumFixed((elapsedUs + 0.0) /
+                                                              (reportFrames * 1000.0), 3) +
+                                 " worst_ms=" + Fmt.NumFixed((intervalWorstUs + 0.0) / 1000.0, 3) +
+                                 " update_ms=" + Fmt.NumFixed((intervalUpdateUs + 0.0) /
+                                                                 (reportFrames * 1000.0), 3) +
+                                 " sim_ms=" + Fmt.NumFixed((intervalSimUs + 0.0) /
+                                                              (reportFrames * 1000.0), 3) +
+                                 " render_ms=" + Fmt.NumFixed((intervalRenderUs + 0.0) /
+                                                                 (reportFrames * 1000.0), 3) +
+                                 " present_ms=" + Fmt.NumFixed((intervalPresentUs + 0.0) /
+                                                                  (reportFrames * 1000.0), 3) +
+                                 " steps=" + Fmt.NumFixed((intervalSteps + 0.0) /
+                                                             (reportFrames + 0.0), 3) +
+                                 " dt_ms=" + Fmt.NumFixed(world.DeltaTime * 1000.0, 3) +
+                                 " gpu_ms=" + Fmt.NumFixed((canvas.FrameGpuTimeUs + 0.0) / 1000.0, 3) +
+                                 " passes_ms=" + Fmt.NumFixed(canvas.PassCpuMs(0), 3) + "/" +
+                                                    Fmt.NumFixed(canvas.PassCpuMs(1), 3) + "/" +
+                                                    Fmt.NumFixed(canvas.PassCpuMs(2), 3) + "/" +
+                                                    Fmt.NumFixed(canvas.PassCpuMs(3), 3) +
+                                 " draws=" + Fmt.Int(canvas.DrawsSubmitted) +
+                                 " tracked=" + Fmt.Int(GC.TrackedCount()) +
+                                 " output=" + Fmt.Int(canvas.ActiveOutputWidth) + "x" +
+                                              Fmt.Int(canvas.ActiveOutputHeight));
+                    intervalStartUs = Clock.NowMicros();
+                    intervalUpdateUs = 0;
+                    intervalSimUs = 0;
+                    intervalRenderUs = 0;
+                    intervalPresentUs = 0;
+                    intervalSteps = 0;
+                    intervalWorstUs = 0;
+                }
+                if frame >= frameLimit { break; }
+            }
+        }
+        if profiling {
+            var totalUs = Clock.NowMicros() - totalStartUs;
+            Terminal.Say("PLAY_PERF_SUMMARY: backend=" + canvas.Backend +
+                         " frames=" + Fmt.Int(frame) +
+                         " fps=" + Fmt.NumFixed((frame * 1000000.0) / totalUs, 3) +
+                         " avg_ms=" + Fmt.NumFixed((totalUs + 0.0) / (frame * 1000.0), 3) +
+                         " worst_ms=" + Fmt.NumFixed((totalWorstUs + 0.0) / 1000.0, 3) +
+                         " steps=" + Fmt.NumFixed((totalSteps + 0.0) / (frame + 0.0), 3) +
+                         " tracked_delta=" + Fmt.Int(GC.TrackedCount() - startTracked));
         }
         if mouseCaptured { input.ReleaseMouse(); }
         world.Destroy();
+    }
+
+    expose func run() { runLoop(0); }
+
+    // Bounded real-play profiler used by main.zia's --profile-frames option.
+    expose func runProfile(frames: Integer) {
+        var boundedFrames = frames;
+        if boundedFrames <= 0 { boundedFrames = 600; }
+        runLoop(boundedFrames);
     }
 
     // Probe helper: run one full render frame (scene + fx + HUD + present),
@@ -1724,7 +1900,7 @@ class Game {
     }
     expose func devRenderFrame() {
         if graphicsUp == false { return; }
-        render(1.0);
+        render(1.0, 0);
         world.Present();
     }
 

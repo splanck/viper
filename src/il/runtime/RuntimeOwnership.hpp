@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 
@@ -72,6 +73,322 @@ namespace detail {
 
 [[nodiscard]] constexpr bool contains(std::string_view value, std::string_view needle) noexcept {
     return value.find(needle) != std::string_view::npos;
+}
+
+template <std::size_t N>
+[[nodiscard]] constexpr bool hasOperation(std::string_view name,
+                                          std::string_view prefix,
+                                          const std::string_view (&operations)[N]) noexcept {
+    if (!startsWith(name, prefix))
+        return false;
+    const std::string_view operation = name.substr(prefix.size());
+    for (const std::string_view candidate : operations) {
+        if (operation == candidate)
+            return true;
+    }
+    return false;
+}
+
+/// @brief True for value-oriented geometry helpers that allocate their result.
+/// @details The runtime API manifest defines every object-returning operation on
+///          these immutable math types as an owned value. Keep both canonical
+///          names and C symbols here because frontend IL uses the former while
+///          generated and hand-authored IL may use the latter.
+[[nodiscard]] constexpr bool returnsFreshMathValue(std::string_view name) noexcept {
+    constexpr std::string_view vec2Operations[] = {
+        "Add",
+        "Div",
+        "Lerp",
+        "Mul",
+        "Negate",
+        "New",
+        "Norm",
+        "One",
+        "Rotate",
+        "Sub",
+        "Zero",
+    };
+    constexpr std::string_view vec2Symbols[] = {
+        "add",
+        "div",
+        "lerp",
+        "mul",
+        "neg",
+        "new",
+        "norm",
+        "one",
+        "rotate",
+        "sub",
+        "zero",
+    };
+    constexpr std::string_view vec3Operations[] = {
+        "Add",
+        "Cross",
+        "Div",
+        "Lerp",
+        "Mul",
+        "Negate",
+        "New",
+        "Norm",
+        "One",
+        "Sub",
+        "Zero",
+        "Reflect",
+        "Project",
+        "ClampLength",
+        "MoveTowards",
+        "Min",
+        "Max",
+    };
+    constexpr std::string_view vec3Symbols[] = {
+        "add",
+        "cross",
+        "div",
+        "lerp",
+        "mul",
+        "neg",
+        "new",
+        "norm",
+        "one",
+        "sub",
+        "zero",
+        "reflect",
+        "project",
+        "clamp_len",
+        "move_towards",
+        "min",
+        "max",
+    };
+    constexpr std::string_view mat3Operations[] = {
+        "New",
+        "Identity",
+        "Zero",
+        "Translate",
+        "Scale",
+        "ScaleUniform",
+        "Rotate",
+        "Shear",
+        "Row",
+        "Col",
+        "Add",
+        "Sub",
+        "Mul",
+        "MulScalar",
+        "TransformPoint",
+        "TransformVector",
+        "Transpose",
+        "Inverse",
+        "Negate",
+    };
+    constexpr std::string_view mat3Symbols[] = {
+        "new",           "identity",  "zero",    "translate",  "scale",
+        "scale_uniform", "rotate",    "shear",   "row",        "col",
+        "add",           "sub",       "mul",     "mul_scalar", "transform_point",
+        "transform_vec", "transpose", "inverse", "neg",
+    };
+    constexpr std::string_view mat4Operations[] = {
+        "New",
+        "Identity",
+        "Zero",
+        "Translate",
+        "Scale",
+        "ScaleUniform",
+        "RotateX",
+        "RotateY",
+        "RotateZ",
+        "RotateAxis",
+        "Perspective",
+        "Orthographic",
+        "LookAt",
+        "Add",
+        "Sub",
+        "Mul",
+        "MulScalar",
+        "TransformPoint",
+        "TransformVector",
+        "Transpose",
+        "Inverse",
+        "Negate",
+    };
+    constexpr std::string_view mat4Symbols[] = {
+        "new",           "identity",  "zero",     "translate",   "scale",       "scale_uniform",
+        "rotate_x",      "rotate_y",  "rotate_z", "rotate_axis", "perspective", "ortho",
+        "look_at",       "add",       "sub",      "mul",         "mul_scalar",  "transform_point",
+        "transform_vec", "transpose", "inverse",  "neg",
+    };
+    constexpr std::string_view quatOperations[] = {
+        "New",
+        "Identity",
+        "FromAxisAngle",
+        "FromEuler",
+        "Mul",
+        "Conjugate",
+        "Inverse",
+        "Normalize",
+        "Slerp",
+        "Lerp",
+        "RotateVec3",
+        "ToMat4",
+        "Axis",
+    };
+    constexpr std::string_view quatSymbols[] = {
+        "new",
+        "identity",
+        "from_axis_angle",
+        "from_euler",
+        "mul",
+        "conjugate",
+        "inverse",
+        "norm",
+        "slerp",
+        "lerp",
+        "rotate_vec3",
+        "to_mat4",
+        "axis",
+    };
+    constexpr std::string_view splineOperations[] = {
+        "CatmullRom",
+        "Bezier",
+        "Linear",
+        "Eval",
+        "Tangent",
+        "PointAt",
+        "Sample",
+    };
+    constexpr std::string_view splineSymbols[] = {
+        "catmull_rom",
+        "bezier",
+        "linear",
+        "eval",
+        "tangent",
+        "point_at",
+        "sample",
+    };
+
+    return hasOperation(name, "Zanna.Math.Vec2.", vec2Operations) ||
+           hasOperation(name, "rt_vec2_", vec2Symbols) ||
+           hasOperation(name, "Zanna.Math.Vec3.", vec3Operations) ||
+           hasOperation(name, "rt_vec3_", vec3Symbols) ||
+           hasOperation(name, "Zanna.Math.Mat3.", mat3Operations) ||
+           hasOperation(name, "rt_mat3_", mat3Symbols) ||
+           hasOperation(name, "Zanna.Math.Mat4.", mat4Operations) ||
+           hasOperation(name, "rt_mat4_", mat4Symbols) ||
+           hasOperation(name, "Zanna.Math.Quat.", quatOperations) ||
+           hasOperation(name, "rt_quat_", quatSymbols) ||
+           hasOperation(name, "Zanna.Math.Spline.", splineOperations) ||
+           hasOperation(name, "rt_spline_", splineSymbols);
+}
+
+/// @brief True for registered 3D APIs that materialize a fresh Vec3 result.
+/// @details A typed `obj<Zanna.Math.Vec3>` return is not sufficient by itself:
+///          OrbitController.Target and FollowController.Offset intentionally
+///          expose borrowed stored vectors. Keep the allocating snapshot calls
+///          explicit so those borrowed accessors remain unowned.
+[[nodiscard]] constexpr bool returnsFreshVec3(std::string_view name) noexcept {
+    return name == "Zanna.Graphics3D.Light3D.get_Color" ||
+           name == "Zanna.Graphics3D.Light3D.get_Direction" ||
+           name == "Zanna.Graphics3D.Light3D.get_Position" ||
+           name == "Zanna.Graphics3D.SceneNode.get_Position" ||
+           name == "Zanna.Graphics3D.SceneNode.get_Scale" ||
+           name == "Zanna.Graphics3D.SceneNode.get_WorldPosition" ||
+           name == "Zanna.Graphics3D.SceneNode.get_WorldScale" ||
+           name == "Zanna.Graphics3D.SceneNode.get_BoundsMin" ||
+           name == "Zanna.Graphics3D.SceneNode.get_BoundsMax" ||
+           name == "Zanna.Graphics3D.SoundListener3D.get_Position" ||
+           name == "Zanna.Graphics3D.SoundListener3D.get_Forward" ||
+           name == "Zanna.Graphics3D.SoundListener3D.get_Up" ||
+           name == "Zanna.Graphics3D.SoundListener3D.get_Velocity" ||
+           name == "Zanna.Graphics3D.SoundSource3D.get_Position" ||
+           name == "Zanna.Graphics3D.SoundSource3D.get_Velocity" ||
+           name == "Zanna.Graphics3D.PhysicsHit3D.get_Point" ||
+           name == "Zanna.Graphics3D.PhysicsHit3D.get_Normal" ||
+           name == "Zanna.Graphics3D.LedgeHit3D.get_GrabPoint" ||
+           name == "Zanna.Graphics3D.LedgeHit3D.get_SurfaceNormal" ||
+           name == "Zanna.Graphics3D.LedgeHit3D.get_WallNormal" ||
+           name == "Zanna.Graphics3D.LedgeHit3D.get_LandingPoint" ||
+           name == "Zanna.Graphics3D.PhysicsBody3D.get_Position" ||
+           name == "Zanna.Graphics3D.PhysicsBody3D.get_Scale" ||
+           name == "Zanna.Graphics3D.PhysicsBody3D.get_Velocity" ||
+           name == "Zanna.Graphics3D.PhysicsBody3D.get_AngularVelocity" ||
+           name == "Zanna.Graphics3D.PhysicsBody3D.get_GroundNormal" ||
+           name == "Zanna.Graphics3D.Character3D.get_Position" ||
+           name == "Zanna.Graphics3D.Camera3D.get_Position" ||
+           name == "Zanna.Graphics3D.Camera3D.get_Forward" ||
+           name == "Zanna.Graphics3D.Camera3D.get_Right" ||
+           name == "Zanna.Graphics3D.Material3D.get_Color" ||
+           name == "Zanna.Graphics3D.Transform3D.get_Position" ||
+           name == "Zanna.Graphics3D.Transform3D.get_Scale" ||
+           name == "Zanna.Graphics3D.LightProbeGrid3D.Sample" ||
+           name == "Zanna.Graphics3D.TimeOfDay3D.get_SunDirection" ||
+           name == "Zanna.Graphics3D.ReflectionProbe3D.get_Position" ||
+           name == "Zanna.Graphics3D.NavAgent3D.get_Position" ||
+           name == "Zanna.Graphics3D.NavAgent3D.get_Velocity" ||
+           name == "Zanna.Graphics3D.NavAgent3D.get_DesiredVelocity" ||
+           name == "Zanna.Graphics3D.AnimController3D.get_RootMotionDelta" ||
+           name == "Zanna.Graphics3D.AnimController3D.ConsumeRootMotion" ||
+           name == "Zanna.Game3D.Perception3D.LastKnownPosition" ||
+           name == "Zanna.Game3D.Perception3D.HeardPosition" ||
+           name == "Zanna.Game3D.TargetLock3D.LockedMoveBias" ||
+           name == "Zanna.Game3D.HitEvent3D.Point" || name == "Zanna.Game3D.HitEvent3D.Normal" ||
+           name == "Zanna.Game3D.World3D.get_WorldOrigin" ||
+           name == "Zanna.Game3D.WorldStream3D.GetCellCenter" ||
+           name == "Zanna.Game3D.WorldStream3D.GetTerrainTileCenter" ||
+           name == "Zanna.Game3D.Input3D.MoveAxis" ||
+           name == "Zanna.Game3D.World3D.GetPersistentPosition" ||
+           name == "Zanna.Game3D.Entity3D.get_Position" ||
+           name == "Zanna.Game3D.Entity3D.get_WorldPosition" ||
+           name == "Zanna.Graphics3D.Cloth3D.GetPoint" ||
+           name == "Zanna.Game3D.ThirdPersonController.get_ShoulderOffset" ||
+           name == "rt_light3d_get_color" || name == "rt_light3d_get_direction" ||
+           name == "rt_light3d_get_position" || name == "rt_scene_node3d_get_position" ||
+           name == "rt_scene_node3d_get_scale" || name == "rt_scene_node3d_get_world_position" ||
+           name == "rt_scene_node3d_get_world_scale" || name == "rt_scene_node3d_get_aabb_min" ||
+           name == "rt_scene_node3d_get_aabb_max" || name == "rt_soundlistener3d_get_position" ||
+           name == "rt_soundlistener3d_get_forward" || name == "rt_soundlistener3d_get_up" ||
+           name == "rt_soundlistener3d_get_velocity" || name == "rt_soundsource3d_get_position" ||
+           name == "rt_soundsource3d_get_velocity" || name == "rt_physics_hit3d_get_point" ||
+           name == "rt_physics_hit3d_get_normal" || name == "rt_ledge_hit3d_get_grab_point" ||
+           name == "rt_ledge_hit3d_get_surface_normal" ||
+           name == "rt_ledge_hit3d_get_wall_normal" || name == "rt_ledge_hit3d_get_landing_point" ||
+           name == "rt_body3d_get_position" || name == "rt_body3d_get_scale" ||
+           name == "rt_body3d_get_velocity" || name == "rt_body3d_get_angular_velocity" ||
+           name == "rt_body3d_get_ground_normal" || name == "rt_character3d_get_position" ||
+           name == "rt_camera3d_get_position" || name == "rt_camera3d_get_forward" ||
+           name == "rt_camera3d_get_right" || name == "rt_material3d_get_color" ||
+           name == "rt_transform3d_get_position" || name == "rt_transform3d_get_scale" ||
+           name == "rt_lightprobegrid3d_sample" || name == "rt_timeofday3d_get_sun_direction" ||
+           name == "rt_reflectionprobe3d_get_position" || name == "rt_navagent3d_get_position" ||
+           name == "rt_navagent3d_get_velocity" || name == "rt_navagent3d_get_desired_velocity" ||
+           name == "rt_anim_controller3d_get_root_motion_delta" ||
+           name == "rt_anim_controller3d_consume_root_motion" ||
+           name == "rt_game3d_perception_last_known_position" ||
+           name == "rt_game3d_perception_heard_position" ||
+           name == "rt_game3d_targetlock_locked_move_bias" || name == "rt_game3d_hit_event_point" ||
+           name == "rt_game3d_hit_event_normal" || name == "rt_game3d_world_get_world_origin" ||
+           name == "rt_game3d_world_stream_get_cell_center" ||
+           name == "rt_game3d_world_stream_get_terrain_tile_center" ||
+           name == "rt_game3d_input_move_axis" ||
+           name == "rt_game3d_world_get_persistent_position" ||
+           name == "rt_game3d_entity_position" || name == "rt_game3d_entity_world_position" ||
+           name == "rt_cloth3d_get_point" ||
+           name == "rt_game3d_thirdperson_controller_get_shoulder_offset";
+}
+
+/// @brief True for registered 3D APIs that materialize fresh matrix/quaternion snapshots.
+[[nodiscard]] constexpr bool returnsFresh3DMathSnapshot(std::string_view name) noexcept {
+    return name == "Zanna.Graphics3D.SceneNode.get_Rotation" ||
+           name == "Zanna.Graphics3D.SceneNode.get_WorldMatrix" ||
+           name == "Zanna.Graphics3D.SceneNode.get_WorldRotation" ||
+           name == "Zanna.Graphics3D.PhysicsBody3D.get_Orientation" ||
+           name == "Zanna.Graphics3D.Transform3D.get_Rotation" ||
+           name == "Zanna.Graphics3D.Transform3D.get_Matrix" ||
+           name == "Zanna.Graphics3D.AnimController3D.GetBoneMatrix" ||
+           name == "Zanna.Game3D.Animator3D.GetBoneMatrix" ||
+           name == "rt_scene_node3d_get_rotation" || name == "rt_scene_node3d_get_world_matrix" ||
+           name == "rt_scene_node3d_get_world_rotation" || name == "rt_body3d_get_orientation" ||
+           name == "rt_transform3d_get_rotation" || name == "rt_transform3d_get_matrix" ||
+           name == "rt_anim_controller3d_get_bone_matrix" ||
+           name == "rt_game3d_animator_get_bone_matrix";
 }
 
 } // namespace detail
@@ -230,6 +547,58 @@ namespace detail {
         name == "rt_box_i1" || name == "rt_box_i1_bool" || name == "rt_box_value_type" ||
         name == "Zanna.Core.Box.I64" || name == "Zanna.Core.Box.F64" ||
         name == "Zanna.Core.Box.I1" || name == "Zanna.Core.Box.ValueType") {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        effects.returnsKnownObject = true;
+        return effects;
+    }
+
+    // Graphics3D spatial queries allocate result objects. Keep these explicit:
+    // nearby accessors such as PhysicsHit3D.Body and PhysicsHitList3D.Get are
+    // borrowed references owned by the hit/list and must not be released as
+    // call-result temporaries.
+    if (name == "Zanna.Graphics3D.PhysicsWorld3D.Raycast" ||
+        name == "Zanna.Graphics3D.PhysicsWorld3D.RaycastAll" ||
+        name == "Zanna.Graphics3D.PhysicsWorld3D.SweepSphere" ||
+        name == "Zanna.Graphics3D.PhysicsWorld3D.SweepCapsule" ||
+        name == "Zanna.Graphics3D.PhysicsWorld3D.OverlapSphere" ||
+        name == "Zanna.Graphics3D.PhysicsWorld3D.OverlapAABB" ||
+        name == "Zanna.Graphics3D.PhysicsWorld3D.ProbeLedge" ||
+        name == "Zanna.Graphics3D.PhysicsWorld3D.ProbeVault" || name == "rt_world3d_raycast" ||
+        name == "rt_world3d_raycast_all" || name == "rt_world3d_sweep_sphere" ||
+        name == "rt_world3d_sweep_capsule" || name == "rt_world3d_overlap_sphere" ||
+        name == "rt_world3d_overlap_aabb" || name == "rt_world3d_probe_ledge" ||
+        name == "rt_world3d_probe_vault") {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        effects.returnsKnownObject = true;
+        return effects;
+    }
+
+    // Snapshot/value APIs allocate a fresh Vec3 even when their names look
+    // like ordinary getters. The caller owns that returned reference.
+    if (detail::returnsFreshVec3(name)) {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        effects.returnsKnownObject = true;
+        return effects;
+    }
+
+    // Geometry math operations and 3D value snapshots return newly allocated
+    // immutable objects. This mirrors the public runtime manifest's owned-math
+    // contract and lets the frontend release nested transform temporaries.
+    if (detail::returnsFreshMathValue(name) || detail::returnsFresh3DMathSnapshot(name)) {
+        effects.returnsOwned = true;
+        effects.mayAllocate = true;
+        effects.returnsKnownObject = true;
+        return effects;
+    }
+
+    // Game3D audio playback returns a newly created SoundSource3D in addition
+    // to retaining it in the subsystem's active-source list. The caller owns
+    // the original reference.
+    if (name == "Zanna.Game3D.Sound3D.PlayAt" || name == "Zanna.Game3D.Sound3D.PlayAttached" ||
+        name == "rt_game3d_audio_play_at" || name == "rt_game3d_audio_play_attached") {
         effects.returnsOwned = true;
         effects.mayAllocate = true;
         effects.returnsKnownObject = true;

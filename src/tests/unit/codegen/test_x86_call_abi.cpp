@@ -5,10 +5,18 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/codegen/test_x86_call_abi.cpp
+// File: src/tests/unit/codegen/test_x86_call_abi.cpp
 // Purpose: Verify x86-64 call-lowering ABI details that are easy to regress:
 //          Win64 mixed entry parameters, indirect-call bool returns, and
-//          indirect-call vararg metadata.
+//          managed-string retain elision.
+// Key invariants:
+//   - Platform ABI register/stack assignments remain deterministic.
+//   - Managed load retains are elided only with a dominating explicit owner.
+// Ownership/Lifetime:
+//   - Test modules and lowered Machine IR are scoped to each test case.
+//   - No fixture retains pointers into another case's lowering state.
+// Links: src/codegen/x86_64/LowerILToMIR.cpp,
+//        src/codegen/common/StringRetainPolicy.hpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -415,6 +423,266 @@ TEST(X64CallABI, StringLoadsRetainBeforeConsumingCalls) {
     EXPECT_EQ(lowering.callPlans()[2].callee, "rt_str_release_maybe");
     ASSERT_EQ(lowering.callPlans()[0].args.size(), 1u);
     EXPECT_FALSE(lowering.callPlans()[0].args[0].isImm);
+}
+
+TEST(X64CallABI, BorrowedStringLoadIgnoresUnrelatedReleaseBarrier) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(win64Target(), roData);
+
+    ILInstr load{};
+    load.opcode = "load";
+    load.resultId = 2;
+    load.resultKind = ILValue::Kind::STR;
+    load.ops = {makeParam(0, ILValue::Kind::PTR)};
+
+    ILInstr release{};
+    release.opcode = "call";
+    release.ops = {makeLabel("rt_str_release_maybe"), makeParam(1, ILValue::Kind::STR)};
+
+    ILInstr print{};
+    print.opcode = "call";
+    print.ops = {makeLabel("rt_print_str"), makeValue(ILValue::Kind::STR, 2)};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0, 1};
+    entry.paramKinds = {ILValue::Kind::PTR, ILValue::Kind::STR};
+    entry.instrs = {load, release, print, makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "borrow_after_unrelated_release";
+    fn.blocks = {entry};
+
+    (void)lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 2u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "rt_str_release_maybe");
+    EXPECT_EQ(lowering.callPlans()[1].callee, "rt_print_str");
+}
+
+TEST(X64CallABI, LoadedStringPassedToIlFunctionIsBorrowed) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(win64Target(), roData);
+
+    ILInstr load{};
+    load.opcode = "load";
+    load.resultId = 1;
+    load.resultKind = ILValue::Kind::STR;
+    load.ops = {makeParam(0, ILValue::Kind::PTR)};
+
+    ILInstr sink{};
+    sink.opcode = "call";
+    sink.ops = {makeLabel("sink"), makeValue(ILValue::Kind::STR, 1)};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {load, sink, makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "borrow_for_il_call";
+    fn.blocks = {entry};
+
+    (void)lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 1u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "sink");
+}
+
+TEST(X64CallABI, ExplicitlyBalancedFieldSnapshotIsNotRetainedTwice) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(win64Target(), roData);
+
+    ILInstr load{};
+    load.opcode = "load";
+    load.resultId = 1;
+    load.resultKind = ILValue::Kind::STR;
+    load.ops = {makeParam(0, ILValue::Kind::PTR)};
+
+    ILInstr retain{};
+    retain.opcode = "call";
+    retain.ops = {makeLabel("rt_str_retain_maybe"), makeValue(ILValue::Kind::STR, 1)};
+
+    ILInstr sink{};
+    sink.opcode = "call";
+    sink.ops = {makeLabel("sink"), makeValue(ILValue::Kind::STR, 1)};
+
+    ILInstr release{};
+    release.opcode = "call";
+    release.ops = {makeLabel("rt_str_release_maybe"), makeValue(ILValue::Kind::STR, 1)};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {load, retain, sink, release, makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "balanced_field_snapshot";
+    fn.blocks = {entry};
+
+    (void)lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 3u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "rt_str_retain_maybe");
+    EXPECT_EQ(lowering.callPlans()[1].callee, "sink");
+    EXPECT_EQ(lowering.callPlans()[2].callee, "rt_str_release_maybe");
+}
+
+TEST(X64CallABI, ExplicitlyBalancedSnapshotMayReleaseInSuccessor) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(win64Target(), roData);
+
+    ILInstr load{};
+    load.opcode = "load";
+    load.resultId = 1;
+    load.resultKind = ILValue::Kind::STR;
+    load.ops = {makeParam(0, ILValue::Kind::PTR)};
+
+    ILInstr retain{};
+    retain.opcode = "call";
+    retain.ops = {makeLabel("rt_str_retain_maybe"), makeValue(ILValue::Kind::STR, 1)};
+
+    ILInstr sink{};
+    sink.opcode = "call";
+    sink.ops = {makeLabel("sink"), makeValue(ILValue::Kind::STR, 1)};
+
+    ILInstr branch{};
+    branch.opcode = "br";
+    branch.ops = {makeLabel("cleanup")};
+
+    ILInstr release{};
+    release.opcode = "call";
+    release.ops = {makeLabel("rt_str_release_maybe"), makeValue(ILValue::Kind::STR, 1)};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {load, retain, sink, branch};
+    ILBlock::EdgeArg cleanupEdge{};
+    cleanupEdge.to = "cleanup";
+    entry.terminatorEdges = {cleanupEdge};
+
+    ILBlock cleanup{};
+    cleanup.name = "cleanup";
+    cleanup.instrs = {release, makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "balanced_snapshot_successor";
+    fn.blocks = {entry, cleanup};
+
+    (void)lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 3u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "rt_str_retain_maybe");
+    EXPECT_EQ(lowering.callPlans()[1].callee, "sink");
+    EXPECT_EQ(lowering.callPlans()[2].callee, "rt_str_release_maybe");
+}
+
+TEST(X64CallABI, ManagedSlotTakeDoesNotRetainTransferredReference) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(win64Target(), roData);
+
+    ILInstr load{};
+    load.opcode = "load";
+    load.resultId = 1;
+    load.resultKind = ILValue::Kind::STR;
+    load.ops = {makeParam(0, ILValue::Kind::PTR)};
+
+    ILValue nullValue{};
+    nullValue.kind = ILValue::Kind::PTR;
+    nullValue.id = -1;
+    nullValue.i64 = 0;
+    ILInstr clear{};
+    clear.opcode = "store";
+    clear.ops = {makeParam(0, ILValue::Kind::PTR), nullValue};
+
+    ILInstr release{};
+    release.opcode = "call";
+    release.ops = {makeLabel("rt_str_release_maybe"), makeValue(ILValue::Kind::STR, 1)};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0};
+    entry.paramKinds = {ILValue::Kind::PTR};
+    entry.instrs = {load, clear, release, makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "managed_slot_take";
+    fn.blocks = {entry};
+
+    (void)lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 1u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "rt_str_release_maybe");
+}
+
+TEST(X64CallABI, NonDominatingExplicitRetainKeepsDefensiveLoadRetain) {
+    AsmEmitter::RoDataPool roData;
+    LowerILToMIR lowering(win64Target(), roData);
+
+    ILInstr load{};
+    load.opcode = "load";
+    load.resultId = 2;
+    load.resultKind = ILValue::Kind::STR;
+    load.ops = {makeParam(0, ILValue::Kind::PTR)};
+
+    ILInstr branch{};
+    branch.opcode = "cbr";
+    branch.ops = {makeParam(1, ILValue::Kind::I1), makeLabel("retained"), makeLabel("borrowed")};
+
+    ILInstr retain{};
+    retain.opcode = "call";
+    retain.ops = {makeLabel("rt_str_retain_maybe"), makeValue(ILValue::Kind::STR, 2)};
+
+    ILInstr release{};
+    release.opcode = "call";
+    release.ops = {makeLabel("rt_str_release_maybe"), makeValue(ILValue::Kind::STR, 2)};
+
+    ILInstr sink{};
+    sink.opcode = "call";
+    sink.ops = {makeLabel("sink"), makeValue(ILValue::Kind::STR, 2)};
+
+    ILInstr toDone{};
+    toDone.opcode = "br";
+    toDone.ops = {makeLabel("done")};
+
+    ILBlock entry{};
+    entry.name = "entry";
+    entry.paramIds = {0, 1};
+    entry.paramKinds = {ILValue::Kind::PTR, ILValue::Kind::I1};
+    entry.instrs = {load, branch};
+    ILBlock::EdgeArg retainedEdge{};
+    retainedEdge.to = "retained";
+    ILBlock::EdgeArg borrowedEdge{};
+    borrowedEdge.to = "borrowed";
+    entry.terminatorEdges = {retainedEdge, borrowedEdge};
+
+    ILBlock retained{};
+    retained.name = "retained";
+    retained.instrs = {retain, release, toDone};
+    ILBlock::EdgeArg retainedDoneEdge{};
+    retainedDoneEdge.to = "done";
+    retained.terminatorEdges = {retainedDoneEdge};
+
+    ILBlock borrowed{};
+    borrowed.name = "borrowed";
+    borrowed.instrs = {sink, toDone};
+    ILBlock::EdgeArg borrowedDoneEdge{};
+    borrowedDoneEdge.to = "done";
+    borrowed.terminatorEdges = {borrowedDoneEdge};
+
+    ILBlock done{};
+    done.name = "done";
+    done.instrs = {makeRet(makeConstI64(0))};
+
+    ILFunction fn{};
+    fn.name = "nondominating_explicit_retain";
+    fn.blocks = {entry, retained, borrowed, done};
+
+    (void)lowering.lower(fn);
+    ASSERT_EQ(lowering.callPlans().size(), 4u);
+    EXPECT_EQ(lowering.callPlans()[0].callee, "rt_str_retain_maybe");
+    EXPECT_EQ(lowering.callPlans()[1].callee, "rt_str_retain_maybe");
+    EXPECT_EQ(lowering.callPlans()[2].callee, "rt_str_release_maybe");
+    EXPECT_EQ(lowering.callPlans()[3].callee, "sink");
 }
 
 TEST(X64CallABI, I1EntryParamsAreNormalizedInRegistersAndOnStack) {

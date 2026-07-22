@@ -1344,7 +1344,7 @@ add_test(NAME zia_zannastudio_intellisense
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
 set_tests_properties(zia_zannastudio_intellisense PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannastudio;intellisense;requires_display"
+        LABELS "zia;zannastudio;intellisense;requires_display;slow"
         TIMEOUT 180)
 
 add_test(NAME zia_zannastudio_file_tree

@@ -706,12 +706,7 @@ LowerResult Lowerer::lowerNewClass(NewExpr *expr, TypeRef type) {
                 }
             }
 
-            if (field.isWeak) {
-                emitFieldStore(&field, ptr, fieldValue);
-            } else {
-                Value fieldAddr = emitGEP(ptr, static_cast<int64_t>(field.offset));
-                emitStore(fieldAddr, fieldValue, ilFieldType);
-            }
+            emitFieldStore(&field, ptr, fieldValue);
         }
     }
 

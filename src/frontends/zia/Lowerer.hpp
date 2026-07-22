@@ -4,6 +4,19 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/frontends/zia/Lowerer.hpp
+// Purpose: Define the type-checked Zia AST to Zanna IL lowering pipeline.
+// Key invariants:
+//   - Lowered functions contain verifier-valid typed IL and terminated blocks.
+//   - Managed references have one explicit owner across slots, calls, and CFG edges.
+// Ownership/Lifetime:
+//   - Lowerer borrows semantic-analysis state and owns transient lowering state.
+//   - Produced IL is owned by the caller-provided module builder.
+// Links: src/frontends/zia/Sema.hpp, src/frontends/zia/Lowerer_Emit.cpp,
+//        docs/il/il-guide.md
+//
+//===----------------------------------------------------------------------===//
 ///
 /// @file Lowerer.hpp
 /// @brief IL code generation for the Zia programming language.
@@ -294,6 +307,12 @@ class Lowerer {
     /// @details Uses unordered_map for O(1) lookup instead of O(log n).
     std::unordered_map<std::string, Value> slots_;
 
+    /// @brief Slot snapshots at entry to each active loop.
+    /// @details Break and continue use the innermost snapshot to release
+    ///          managed locals created for the current iteration before the
+    ///          non-local branch leaves their lexical blocks.
+    std::vector<std::unordered_map<std::string, Value>> loopSlotSnapshots_;
+
     struct CatchErrorBinding {
         std::string kindSlot;
         std::string codeSlot;
@@ -426,6 +445,14 @@ class Lowerer {
     /// @brief Emit release calls for all deferred temporaries, then clear.
     void releaseDeferredTemps();
 
+    /// @brief Release deferred temporaries appended at or after @p first.
+    /// @details Expression lowerers use this at control-flow edges so owned
+    ///          values created inside one branch are reclaimed in their
+    ///          defining block instead of becoming inaccessible at the merge.
+    ///          Entries before @p first remain pending for the enclosing
+    ///          expression or statement.
+    void releaseDeferredTempsFrom(size_t first);
+
     /// @brief Emit the Zia-managed release sequence for a reference-counted value.
     /// @details Pointer values defer the decref so user `deinit` can run before
     ///          `rt_obj_free`. String values route directly to
@@ -469,6 +496,34 @@ class Lowerer {
 
     /// @brief Release the owned reference of one string slot (before removeSlot).
     void releaseOwnedStringSlot(const std::string &name);
+
+    /// @brief True when @p name is a user-declared local whose slot owns a
+    ///        managed object reference.
+    bool isOwnedObjectSlot(const std::string &name) const;
+
+    /// @brief Release every visible user-declared managed-object slot.
+    void releaseLocalObjectSlots();
+
+    /// @brief Release managed-object slots created inside the current lexical block.
+    /// @param liveBefore Slot names visible before the block was entered.
+    void releaseBlockObjectSlots(const std::unordered_map<std::string, Value> &liveBefore);
+
+    /// @brief Store a managed object into an owning local slot.
+    /// @details Owned temporaries move into the slot. Borrowed values are
+    ///          retained. Reassignment releases the displaced reference.
+    void storeOwnedObjectToSlot(const std::string &name, Value value, bool releaseDisplaced);
+
+    /// @brief Release the owned reference of one managed-object slot.
+    void releaseOwnedObjectSlot(const std::string &name);
+
+    /// @brief Enter a loop and snapshot the slots that survive its body exits.
+    void pushLoopScope(size_t breakTarget, size_t continueTarget);
+
+    /// @brief Leave the innermost loop after its body has been lowered.
+    void popLoopScope();
+
+    /// @brief Release managed slots created inside the innermost loop body.
+    void releaseCurrentLoopBodySlots();
 
     /// @brief Check if a semantic type is refcounted and needs release.
     bool needsRelease(TypeRef type) const;
@@ -1255,6 +1310,12 @@ class Lowerer {
     /// @details Aggregate values are represented by source pointers; scalar
     ///          values are stored directly with string retain/release handling.
     void emitInlineValueStore(TypeRef valueType, Value destPtr, Value value, bool destInitialized);
+
+    /// @brief Move a managed reference out of a temporary result slot.
+    /// @details Loads the owned handle, then clears the slot without releasing
+    ///          it. The returned SSA value becomes the sole owner and is
+    ///          scheduled or transferred by the caller.
+    Value takeManagedValueFromSlot(Value slot, Type type);
 
     /// @brief Zero-initialize inline semantic storage.
     void emitInlineValueZero(TypeRef valueType, Value destPtr);

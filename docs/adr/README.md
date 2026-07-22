@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-17
+last-verified: 2026-07-21
 ---
 
 # Architecture Decision Records
@@ -26,6 +26,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0063](0063-il-select-and-if-conversion.md) — IL `select` Opcode and If-Conversion
 - [ADR 0064](0064-il-version-0-3-0.md) — IL Spec Version 0.2.0 → 0.3.0
 - [ADR 0111](0111-il-text-resource-limits.md) — Bound Textual IL Parsing Resources
+- [ADR 0147](0147-managed-reference-lowering-and-native-retain-elision.md) — Make Managed Reference Ownership Explicit Across Lowering and Native Codegen
 
 ## Concurrency & Threads
 

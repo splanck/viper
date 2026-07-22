@@ -4,23 +4,19 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file Lowerer_Expr.cpp
-/// @brief Expression lowering dispatcher and simple expressions for the Zia IL lowerer.
-///
-/// @details This file implements the main expression lowering dispatcher and
-/// handles simple expression types including identifiers and ternary expressions.
-/// Complex expressions (field access, new, coalesce, optional chaining, lambda,
-/// try, block, and as expressions) are in Lowerer_Expr_Complex.cpp.
-///
-/// @see Lowerer_Expr_Complex.cpp - Complex expression lowering
-/// @see Lowerer_Expr_Call.cpp - Call expression lowering
-/// @see Lowerer_Expr_Binary.cpp - Binary operation lowering
-/// @see Lowerer_Expr_Literals.cpp - Literal expression lowering
-/// @see Lowerer_Expr_Collections.cpp - Collection expression lowering
-/// @see Lowerer_Expr_Match.cpp - Pattern matching expression lowering
-/// @see Lowerer_Expr_Method.cpp - Method call and type construction lowering
-///
+//
+// File: src/frontends/zia/Lowerer_Expr.cpp
+// Purpose: Dispatch Zia expressions and lower identifiers and ternary expressions.
+// Key invariants:
+//   - Expression lowering returns an IL value paired with its exact IL type.
+//   - Managed merge values move through an owning slot on every reachable edge.
+// Ownership/Lifetime:
+//   - Identifier loads borrow local slots unless an explicit retain establishes ownership.
+//   - Ternary result slots transfer their managed value to the enclosing expression.
+// Links: src/frontends/zia/Lowerer_Expr_Complex.cpp,
+//        src/frontends/zia/Lowerer_Expr_Call.cpp,
+//        src/frontends/zia/Lowerer_Expr_Binary.cpp
+//
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lowerer.hpp"
@@ -314,6 +310,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
 ///          branch produced a non-optional value, that branch is wrapped via
 ///          emitOptionalWrap(). Reference-typed results are scheduled for deferred release.
 LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
+    const size_t conditionReleaseMark = deferredTemps_.size();
     auto cond = lowerExpr(expr->condition.get());
     TypeRef resultType = sema_.typeOf(expr);
     Type ilResultType = mapType(resultType);
@@ -335,10 +332,12 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
     size_t elseIdx = createBlock("ternary_else");
     size_t mergeIdx = createBlock("ternary_merge");
 
+    releaseDeferredTempsFrom(conditionReleaseMark);
     emitCBr(cond.value, thenIdx, elseIdx);
 
     setBlock(thenIdx);
     {
+        const size_t branchReleaseMark = deferredTemps_.size();
         auto thenResult = lowerExpr(expr->thenExpr.get());
         Value thenValue = thenResult.value;
         if (expectsOptional) {
@@ -349,19 +348,20 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
             }
         }
         if (ilResultType.kind != Type::Kind::Void) {
-            il::core::Instr storeInstr;
-            storeInstr.op = Opcode::Store;
-            storeInstr.type = ilResultType;
-            storeInstr.operands = {resultSlot, thenValue};
-            storeInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
-            consumeDeferred(thenValue);
+            if (needsRelease(resultType))
+                emitInlineValueStore(resultType, resultSlot, thenValue, /*destInitialized=*/false);
+            else {
+                emitStore(resultSlot, thenValue, ilResultType);
+                consumeDeferred(thenValue);
+            }
         }
+        releaseDeferredTempsFrom(branchReleaseMark);
     }
     emitBr(mergeIdx);
 
     setBlock(elseIdx);
     {
+        const size_t branchReleaseMark = deferredTemps_.size();
         auto elseResult = lowerExpr(expr->elseExpr.get());
         Value elseValue = elseResult.value;
         if (expectsOptional) {
@@ -372,14 +372,14 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
             }
         }
         if (ilResultType.kind != Type::Kind::Void) {
-            il::core::Instr storeInstr;
-            storeInstr.op = Opcode::Store;
-            storeInstr.type = ilResultType;
-            storeInstr.operands = {resultSlot, elseValue};
-            storeInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
-            consumeDeferred(elseValue);
+            if (needsRelease(resultType))
+                emitInlineValueStore(resultType, resultSlot, elseValue, /*destInitialized=*/false);
+            else {
+                emitStore(resultSlot, elseValue, ilResultType);
+                consumeDeferred(elseValue);
+            }
         }
+        releaseDeferredTempsFrom(branchReleaseMark);
     }
     emitBr(mergeIdx);
 
@@ -387,16 +387,10 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
     if (ilResultType.kind == Type::Kind::Void)
         return {Value::constInt(0), Type(Type::Kind::Void)};
 
-    unsigned loadId = nextTempId();
-    il::core::Instr loadInstr;
-    loadInstr.result = loadId;
-    loadInstr.op = Opcode::Load;
-    loadInstr.type = ilResultType;
-    loadInstr.operands = {resultSlot};
-    loadInstr.loc = curLoc_;
-    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
-    Value resultValue = Value::temp(loadId);
-    if (needsRelease(resultType))
+    const bool managedResult = needsRelease(resultType);
+    Value resultValue = managedResult ? takeManagedValueFromSlot(resultSlot, ilResultType)
+                                      : emitLoad(resultSlot, ilResultType);
+    if (managedResult)
         deferRelease(resultValue, isStringType(resultType));
 
     return {resultValue, ilResultType};
@@ -413,6 +407,7 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
 ///          blocks, optional-wrapping of a non-optional branch when the result type is
 ///          optional, and deferred release for reference-typed results.
 LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
+    const size_t conditionReleaseMark = deferredTemps_.size();
     auto cond = lowerExpr(expr->condition.get());
     TypeRef resultType = sema_.typeOf(expr);
     Type ilResultType = mapType(resultType);
@@ -434,10 +429,12 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
     size_t elseIdx = createBlock("ifexpr_else");
     size_t mergeIdx = createBlock("ifexpr_merge");
 
+    releaseDeferredTempsFrom(conditionReleaseMark);
     emitCBr(cond.value, thenIdx, elseIdx);
 
     setBlock(thenIdx);
     {
+        const size_t branchReleaseMark = deferredTemps_.size();
         auto thenResult = lowerExpr(expr->thenBranch.get());
         Value thenValue = thenResult.value;
         if (expectsOptional) {
@@ -448,19 +445,20 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
             }
         }
         if (ilResultType.kind != Type::Kind::Void) {
-            il::core::Instr storeInstr;
-            storeInstr.op = Opcode::Store;
-            storeInstr.type = ilResultType;
-            storeInstr.operands = {resultSlot, thenValue};
-            storeInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
-            consumeDeferred(thenValue);
+            if (needsRelease(resultType))
+                emitInlineValueStore(resultType, resultSlot, thenValue, /*destInitialized=*/false);
+            else {
+                emitStore(resultSlot, thenValue, ilResultType);
+                consumeDeferred(thenValue);
+            }
         }
+        releaseDeferredTempsFrom(branchReleaseMark);
     }
     emitBr(mergeIdx);
 
     setBlock(elseIdx);
     {
+        const size_t branchReleaseMark = deferredTemps_.size();
         auto elseResult = lowerExpr(expr->elseBranch.get());
         Value elseValue = elseResult.value;
         if (expectsOptional) {
@@ -471,14 +469,14 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
             }
         }
         if (ilResultType.kind != Type::Kind::Void) {
-            il::core::Instr storeInstr;
-            storeInstr.op = Opcode::Store;
-            storeInstr.type = ilResultType;
-            storeInstr.operands = {resultSlot, elseValue};
-            storeInstr.loc = curLoc_;
-            blockMgr_.currentBlock()->instructions.push_back(storeInstr);
-            consumeDeferred(elseValue);
+            if (needsRelease(resultType))
+                emitInlineValueStore(resultType, resultSlot, elseValue, /*destInitialized=*/false);
+            else {
+                emitStore(resultSlot, elseValue, ilResultType);
+                consumeDeferred(elseValue);
+            }
         }
+        releaseDeferredTempsFrom(branchReleaseMark);
     }
     emitBr(mergeIdx);
 
@@ -486,16 +484,10 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
     if (ilResultType.kind == Type::Kind::Void)
         return {Value::constInt(0), Type(Type::Kind::Void)};
 
-    unsigned loadId = nextTempId();
-    il::core::Instr loadInstr;
-    loadInstr.result = loadId;
-    loadInstr.op = Opcode::Load;
-    loadInstr.type = ilResultType;
-    loadInstr.operands = {resultSlot};
-    loadInstr.loc = curLoc_;
-    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
-    Value resultValue = Value::temp(loadId);
-    if (needsRelease(resultType))
+    const bool managedResult = needsRelease(resultType);
+    Value resultValue = managedResult ? takeManagedValueFromSlot(resultSlot, ilResultType)
+                                      : emitLoad(resultSlot, ilResultType);
+    if (managedResult)
         deferRelease(resultValue, isStringType(resultType));
 
     return {resultValue, ilResultType};

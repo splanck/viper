@@ -4,10 +4,18 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file Lowerer_Expr_Binary.cpp
-/// @brief Binary and unary expression lowering for the Zia IL lowerer.
-///
+//
+// File: src/frontends/zia/Lowerer_Expr_Binary.cpp
+// Purpose: Lower Zia binary, unary, assignment, and short-circuit expressions.
+// Key invariants:
+//   - Operand coercions match semantic types before typed IL operations are emitted.
+//   - Edge-local managed temporaries are released on every short-circuit path.
+// Ownership/Lifetime:
+//   - The lowerer owns transient expression state for the current function.
+//   - Stored managed values transfer or mint one reference for the destination.
+// Links: src/frontends/zia/Lowerer.hpp,
+//        src/frontends/zia/LowererBinaryOperatorLowerer.hpp
+//
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lowerer.hpp"
@@ -204,6 +212,10 @@ LowerResult Lowerer::lowerIdentAssignment(BinaryExpr *expr,
                 // Slot-ownership discipline: owned temps move in, borrowed
                 // values are retained, and the displaced occupant is released.
                 storeOwnedStringToSlot(ident->name, assignValue, /*releaseDisplaced=*/true);
+                return {assignValue, assignType};
+            }
+            if (assignType.kind == Type::Kind::Ptr && isOwnedObjectSlot(ident->name)) {
+                storeOwnedObjectToSlot(ident->name, assignValue, /*releaseDisplaced=*/true);
                 return {assignValue, assignType};
             }
             storeToSlot(ident->name, assignValue, assignType);
@@ -700,7 +712,10 @@ LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr) {
     blockMgr_.currentBlock()->instructions.push_back(allocInstr);
     Value resultSlot = Value::temp(slotId);
 
-    // Evaluate left operand
+    // Evaluate the left operand. Any owned values used only to compute its
+    // truthiness must be released before this block branches; they cannot be
+    // named legally from the merge block at the statement boundary.
+    const size_t leftReleaseMark = deferredTemps_.size();
     auto left = lowerExpr(expr->left.get());
 
     // Extend to i64 for comparison if needed
@@ -714,6 +729,8 @@ LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr) {
     // Store left result as i1 in slot
     emitStore(resultSlot, leftBool, Type(Type::Kind::I1));
 
+    releaseDeferredTempsFrom(leftReleaseMark);
+
     // Branch based on left value
     // For 'and': if left is true, evaluate right; else short-circuit to merge
     // For 'or': if left is false, evaluate right; else short-circuit to merge
@@ -725,6 +742,7 @@ LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr) {
 
     // Evaluate right operand block
     setBlock(evalRightIdx);
+    const size_t rightReleaseMark = deferredTemps_.size();
     auto right = lowerExpr(expr->right.get());
 
     // Extend to i64 for comparison if needed
@@ -738,6 +756,8 @@ LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr) {
 
     // Store right result in slot
     emitStore(resultSlot, rightBool, Type(Type::Kind::I1));
+
+    releaseDeferredTempsFrom(rightReleaseMark);
 
     // Branch to merge
     emitBr(mergeIdx);

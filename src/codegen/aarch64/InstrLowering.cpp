@@ -484,15 +484,19 @@ uint16_t captureCallResult(const il::core::Instr &ins,
     return spends;
 }
 
-/// @brief True when @p ins is a call whose argument @p argIdx is borrowed:
-///        a registered runtime helper that neither consumes nor retains it.
-[[nodiscard]] bool isBorrowedRuntimeArg(const il::core::Instr &ins, std::size_t argIdx) {
-    if (ins.op != il::core::Opcode::Call ||
-        il::runtime::findRuntimeSignature(ins.callee) == nullptr)
+/// @brief True when @p ins borrows argument @p argIdx instead of spending it.
+/// @details Direct IL calls use borrowed parameters by default; callees retain
+///          any managed value they keep or consume. Registered runtime helpers
+///          override that convention only for arguments explicitly classified
+///          as consumed. A helper that retains an argument still borrows the
+///          caller's reference and therefore needs no defensive caller clone.
+[[nodiscard]] bool isBorrowedCallArg(const il::core::Instr &ins, std::size_t argIdx) {
+    if (ins.op != il::core::Opcode::Call)
         return false;
+    if (il::runtime::findRuntimeSignature(ins.callee) == nullptr)
+        return true;
     const auto effects = il::runtime::classifyRuntimeOwnership(ins.callee);
-    return !effects.consumesArg(static_cast<unsigned>(argIdx)) &&
-           !effects.retainsArg(static_cast<unsigned>(argIdx));
+    return !effects.consumesArg(static_cast<unsigned>(argIdx));
 }
 
 /// @brief True when the string load @p resultId needs no defensive retain.
@@ -527,7 +531,7 @@ uint16_t captureCallResult(const il::core::Instr &ins,
                 if (!(ins.op == il::core::Opcode::Call &&
                       zanna::codegen::isStringReleaseCallee(ins.callee)))
                     releaseOnly = false;
-                if (&block != &loadBlock || ii <= loadIdx || !isBorrowedRuntimeArg(ins, oi))
+                if (&block != &loadBlock || ii <= loadIdx || !isBorrowedCallArg(ins, oi))
                     borrowOnlyInBlock = false;
                 else
                     lastUseIdx = std::max(lastUseIdx, ii);
@@ -547,15 +551,48 @@ uint16_t captureCallResult(const il::core::Instr &ins,
         return false;
     if (uses == 1 && releaseOnly)
         return true;
+
+    // A managed merge slot is an ownership carrier, not an independent
+    // long-lived owner. Frontend lowering spells the take as `load str`
+    // immediately followed by a raw null store to the same address. The load
+    // receives the slot's existing +1, so adding another retain would leak it.
+    if (loadIdx + 1 < loadBlock.instructions.size()) {
+        const auto &load = loadBlock.instructions[loadIdx];
+        const auto &next = loadBlock.instructions[loadIdx + 1];
+        if (!load.operands.empty() && next.op == il::core::Opcode::Store &&
+            next.operands.size() >= 2 &&
+            il::core::valueEquals(load.operands[0], next.operands[0]) &&
+            next.operands[1].kind == il::core::Value::Kind::NullPtr) {
+            return true;
+        }
+    }
+
+    // Frontend-owned field snapshots place an explicit retain immediately
+    // after the borrowed load. That retain dominates every later use,
+    // including cleanup in successor blocks, and supplies exactly the +1 that
+    // this backend fallback would otherwise add. Keep this deliberately
+    // structural: a retain in another block might not execute on every path.
+    if (loadIdx + 1 < loadBlock.instructions.size()) {
+        const auto &next = loadBlock.instructions[loadIdx + 1];
+        if (next.op == il::core::Opcode::Call &&
+            zanna::codegen::isStringRetainCallee(next.callee)) {
+            for (const auto &op : next.operands) {
+                if (op.kind == il::core::Value::Kind::Temp && op.id == resultId)
+                    return true;
+            }
+        }
+    }
+
     if (!borrowOnlyInBlock)
         return false;
-    // Borrow window: nothing between the load and the last use may drop the
-    // slot's own reference.
+    // Borrow window: a string store can invalidate the source slot that owns
+    // the borrowed reference. Explicit releases of other SSA values are not
+    // barriers: in well-formed IL those values carry their own references,
+    // and treating every unrelated release as a possible alias leaves the
+    // load retain permanently unbalanced when the eventual use only borrows.
     for (std::size_t ii = loadIdx + 1; ii <= lastUseIdx; ++ii) {
         const auto &ins = loadBlock.instructions[ii];
         if (ins.op == il::core::Opcode::Store && ins.type.kind == il::core::Type::Kind::Str)
-            return false;
-        if (ins.op == il::core::Opcode::Call && zanna::codegen::isStringReleaseCallee(ins.callee))
             return false;
     }
     return true;

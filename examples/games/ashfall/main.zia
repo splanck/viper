@@ -1,15 +1,22 @@
-// =============================================================================
-// main.zia — ASHFALL entry point
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
-// Trivial by design: parse the launch flags, build the Game, install it as the
-// RunFixed singleton, and hand off. Everything else lives in `game.zia` and its
-// subsystems. Tests/probes build their own Game and never run this file.
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
 //
-// Flags: --smoke (headless determinism run), --level N (jump to a level),
-//        --windowed (dev: force windowed instead of fullscreen),
-//        --backend NAME (passthrough already handled by the engine env).
-// =============================================================================
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/ashfall/main.zia
+// Purpose: Parse Ashfall launch options and enter its smoke, interactive, or
+//          measured interactive loop.
+// Key invariants:
+//   - Interactive play requires a native build.
+//   - Performance measurement exercises the same boot and frame path as play.
+// Ownership/Lifetime:
+//   - The entry point owns one Game for the process lifetime.
+//   - Game.run/runProfile destroy their World3D before returning.
+// Links: examples/games/ashfall/game.zia, examples/games/ashfall/README.md
+//
+//===----------------------------------------------------------------------===//
 module main;
 
 bind Zanna.System.Environment as Env;
@@ -77,6 +84,11 @@ func start() {
     } else {
         g.boot(false, windowed == false);
         if hasArg("--level") == false { g.enterTitle(); }
-        g.run();
+        if hasArg("--profile-frames") {
+            g.devSetGod(true);
+            g.runProfile(argValue("--profile-frames", 600));
+        } else {
+            g.run();
+        }
     }
 }

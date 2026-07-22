@@ -1268,6 +1268,7 @@ function(zanna_add_runtime_tests)
     zanna_add_test(test_rt_cipher ${ZANNA_TESTS_DIR}/runtime/RTCipherTests.cpp)
     target_link_libraries(test_rt_cipher PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})
     zanna_add_ctest(test_rt_cipher test_rt_cipher)
+    zanna_add_test_labels(test_rt_cipher slow)
 
     zanna_add_test(test_rt_stream ${ZANNA_TESTS_DIR}/runtime/RTStreamTests.cpp)
     target_link_libraries(test_rt_stream PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})

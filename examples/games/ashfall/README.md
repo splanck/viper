@@ -155,15 +155,20 @@ ctest --test-dir build -R zia_visual_ashfall_metal --output-on-failure
 ZANNA_3D_BACKEND=metal zanna run examples/games/ashfall/probes/visual_probe.zia
 ```
 
-For real GPU timing, build the dedicated benchmark natively. It sweeps all nine
-campaign levels without presentation pacing; `--paced` additionally validates
-frame delivery at the display's actual refresh rate:
+For real GPU timing, build the dedicated benchmark natively. Its default mode
+sweeps all nine campaign levels. `--sustained` holds a fixed twelve-enemy combat
+load for 3,600 frames and reports simulation/render maxima, managed-object
+growth, broadphase rebuilds, and navigation retargets. Run from the game folder
+so the benchmark also loads the loose authored assets. `--fullscreen --paced`
+validates native-resolution delivery at the display's actual refresh rate:
 
 ```sh
 zanna build examples/games/ashfall/probes/gpu_perf_probe.zia \
   --build-profile release -o /tmp/ashfall_gpu_perf
-/tmp/ashfall_gpu_perf
-/tmp/ashfall_gpu_perf --paced
+(cd examples/games/ashfall && /tmp/ashfall_gpu_perf)
+(cd examples/games/ashfall && /tmp/ashfall_gpu_perf --sustained)
+(cd examples/games/ashfall && \
+  /tmp/ashfall_gpu_perf --sustained --fullscreen --paced)
 ```
 
 See `misc/plans/fps/` for the original design material and [CREDITS.md](CREDITS.md)

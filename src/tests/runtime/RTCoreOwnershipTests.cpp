@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <string_view>
 
 namespace {
 
@@ -203,6 +204,95 @@ static void test_runtime_metadata_matches_core_contracts(void) {
     assert(weakMapGet.returnsOwned);
     const auto listGet = il::runtime::classifyRuntimeOwnership("Zanna.Collections.List.Get");
     assert(listGet.returnsOwned);
+
+    const auto navPosition =
+        il::runtime::classifyRuntimeOwnership("Zanna.Graphics3D.NavAgent3D.get_Position");
+    assert(navPosition.returnsOwned);
+    assert(navPosition.mayAllocate);
+    assert(navPosition.returnsKnownObject);
+    const auto cameraPosition =
+        il::runtime::classifyRuntimeOwnership("Zanna.Graphics3D.Camera3D.get_Position");
+    const auto cameraForward = il::runtime::classifyRuntimeOwnership("rt_camera3d_get_forward");
+    const auto characterPosition =
+        il::runtime::classifyRuntimeOwnership("Zanna.Graphics3D.Character3D.get_Position");
+    assert(cameraPosition.returnsOwned && cameraPosition.mayAllocate &&
+           cameraPosition.returnsKnownObject);
+    assert(cameraForward.returnsOwned && cameraForward.mayAllocate &&
+           cameraForward.returnsKnownObject);
+    assert(characterPosition.returnsOwned && characterPosition.mayAllocate &&
+           characterPosition.returnsKnownObject);
+    const auto borrowedOrbitTarget =
+        il::runtime::classifyRuntimeOwnership("Zanna.Game3D.OrbitController.get_Target");
+    const auto borrowedFollowOffset =
+        il::runtime::classifyRuntimeOwnership("rt_game3d_follow_controller_get_offset");
+    assert(!borrowedOrbitTarget.returnsOwned);
+    assert(!borrowedFollowOffset.returnsOwned);
+
+    constexpr std::string_view typedMathReturnPrefixes[] = {
+        "obj<Zanna.Math.Vec3>",
+        "obj<Zanna.Math.Mat3>",
+        "obj<Zanna.Math.Mat4>",
+        "obj<Zanna.Math.Quat>",
+    };
+    for (const auto &descriptor : il::runtime::runtimeRegistry()) {
+        bool returnsTypedMathValue = false;
+        for (const std::string_view prefix : typedMathReturnPrefixes) {
+            if (descriptor.signatureText.size() >= prefix.size() &&
+                descriptor.signatureText.substr(0, prefix.size()) == prefix) {
+                returnsTypedMathValue = true;
+                break;
+            }
+        }
+        if (!returnsTypedMathValue)
+            continue;
+        const bool borrowed = descriptor.name == "Zanna.Game3D.OrbitController.get_Target" ||
+                              descriptor.name == "Zanna.Game3D.FollowController.get_Offset";
+        const auto canonical = il::runtime::classifyRuntimeOwnership(descriptor.name);
+        assert(canonical.returnsOwned == !borrowed);
+        assert(canonical.mayAllocate == !borrowed);
+        assert(canonical.returnsKnownObject == !borrowed);
+        if (!descriptor.cSymbol.empty()) {
+            const auto symbol = il::runtime::classifyRuntimeOwnership(descriptor.cSymbol);
+            assert(symbol.returnsOwned == !borrowed);
+            assert(symbol.mayAllocate == !borrowed);
+            assert(symbol.returnsKnownObject == !borrowed);
+        }
+    }
+
+    constexpr std::string_view geometryMathPrefixes[] = {
+        "Zanna.Math.Vec2.",
+        "Zanna.Math.Vec3.",
+        "Zanna.Math.Mat3.",
+        "Zanna.Math.Mat4.",
+        "Zanna.Math.Quat.",
+        "Zanna.Math.Spline.",
+    };
+    for (const auto &descriptor : il::runtime::runtimeRegistry()) {
+        bool geometryMath = false;
+        for (const std::string_view prefix : geometryMathPrefixes) {
+            if (descriptor.name.size() >= prefix.size() &&
+                descriptor.name.substr(0, prefix.size()) == prefix) {
+                geometryMath = true;
+                break;
+            }
+        }
+        if (!geometryMath || descriptor.signatureText.substr(0, 4) != "obj(")
+            continue;
+
+        const auto canonical = il::runtime::classifyRuntimeOwnership(descriptor.name);
+        assert(canonical.returnsOwned);
+        assert(canonical.mayAllocate);
+        assert(canonical.returnsKnownObject);
+        assert(!descriptor.cSymbol.empty());
+        const auto symbol = il::runtime::classifyRuntimeOwnership(descriptor.cSymbol);
+        assert(symbol.returnsOwned);
+        assert(symbol.mayAllocate);
+        assert(symbol.returnsKnownObject);
+    }
+    const auto playAt = il::runtime::classifyRuntimeOwnership("Zanna.Game3D.Sound3D.PlayAt");
+    assert(playAt.returnsOwned);
+    assert(playAt.mayAllocate);
+    assert(playAt.returnsKnownObject);
     const auto dequePeek =
         il::runtime::classifyRuntimeOwnership("Zanna.Collections.Deque.PeekFront");
     assert(dequePeek.returnsOwned);

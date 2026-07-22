@@ -590,12 +590,11 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     if (auto result = validateFunctionParams(fn); !result)
         return result;
 
-    if (fn.moduleInitializer &&
-        (fn.linkage == Linkage::Import || fn.isVarArg || !fn.params.empty() ||
-         fn.retType.kind != Type::Kind::Void)) {
+    if (fn.moduleInitializer && (fn.linkage == Linkage::Import || fn.isVarArg ||
+                                 !fn.params.empty() || fn.retType.kind != Type::Kind::Void)) {
         return Expected<void>{makeError(
-            {}, formatFunctionDiag(fn,
-                                   "module initializer must be a non-import () -> void function"))};
+            {},
+            formatFunctionDiag(fn, "module initializer must be a non-import () -> void function"))};
     }
 
     if (auto it = externs_.find(fn.name); it != externs_.end()) {
@@ -1216,16 +1215,10 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
                                 makeReleaseDiag(block, instr, id, "double release")};
                         released.insert(id);
                     }
-                    continue;
-                }
-
-                if (isRuntimeArrayRetain(instr) && !instr.operands.empty() &&
-                    instr.operands[0].kind == Value::Kind::Temp) {
+                } else if (isRuntimeArrayRetain(instr) && !instr.operands.empty() &&
+                           instr.operands[0].kind == Value::Kind::Temp) {
                     released.erase(instr.operands[0].id);
-                    continue;
-                }
-
-                if (!isRuntimeObjectFinalizerCall(instr)) {
+                } else if (!isRuntimeObjectFinalizerCall(instr)) {
                     auto checkUse = [&](const Value &value) -> Expected<void> {
                         if (value.kind == Value::Kind::Temp && released.contains(value.id))
                             return Expected<void>{
@@ -1239,14 +1232,16 @@ Expected<void> FunctionVerifier::verifyDominanceAndEscapes(
                         for (const Value &arg : bundle)
                             if (auto result = checkUse(arg); !result)
                                 return Expected<std::unordered_set<unsigned>>{result.error()};
-
-                    // A result temp denotes a fresh dynamic value each time the
-                    // instruction executes.  If a loop backedge carries a prior
-                    // release state for the same SSA id, the new definition
-                    // supersedes that state after its operands have been checked.
-                    if (instr.result)
-                        released.erase(*instr.result);
                 }
+
+                // A result temp denotes a fresh dynamic value each time the
+                // instruction executes. If a loop backedge carries a prior
+                // release state for the same SSA id, the new definition
+                // supersedes that state after its operands have been checked.
+                // Apply this kill to every call classification: a helper can
+                // both retain an argument and return a fresh managed object.
+                if (instr.result)
+                    released.erase(*instr.result);
 
                 if (isTerminator(instr.op))
                     break;

@@ -330,14 +330,17 @@ void LowerILToMIR::computeStrLoadRetainElidable(const ILFunction &func) {
     const auto isReleaseCall = [&](const ILInstr &ins) {
         return isDirectCall(ins) && zanna::codegen::isStringReleaseCallee(ins.ops.front().label);
     };
-    // Borrowed argument of a registered runtime helper (see StringRetainPolicy.hpp).
-    const auto isBorrowedRuntimeArg = [&](const ILInstr &ins, std::size_t opIdx) {
-        if (!isDirectCall(ins) || opIdx == 0 ||
-            il::runtime::findRuntimeSignature(ins.ops.front().label) == nullptr)
+    // Direct IL calls borrow parameters by default. Registered runtime helpers
+    // spend only arguments explicitly classified as consumed; retaining an
+    // argument does not consume the caller's reference.
+    const auto isBorrowedCallArg = [&](const ILInstr &ins, std::size_t opIdx) {
+        if (!isDirectCall(ins) || opIdx == 0)
             return false;
+        if (il::runtime::findRuntimeSignature(ins.ops.front().label) == nullptr)
+            return true;
         const auto effects = il::runtime::classifyRuntimeOwnership(ins.ops.front().label);
         const unsigned argIdx = static_cast<unsigned>(opIdx - 1);
-        return !effects.consumesArg(argIdx) && !effects.retainsArg(argIdx);
+        return !effects.consumesArg(argIdx);
     };
 
     for (const auto &block : func.blocks) {
@@ -360,7 +363,7 @@ void LowerILToMIR::computeStrLoadRetainElidable(const ILFunction &func) {
                         ++uses;
                         if (!isReleaseCall(useInstr))
                             releaseOnly = false;
-                        if (&useBlock != &block || ii <= li || !isBorrowedRuntimeArg(useInstr, oi))
+                        if (&useBlock != &block || ii <= li || !isBorrowedCallArg(useInstr, oi))
                             borrowOnlyInBlock = false;
                         else
                             lastUseIdx = std::max(lastUseIdx, ii);
@@ -382,17 +385,56 @@ void LowerILToMIR::computeStrLoadRetainElidable(const ILFunction &func) {
                 strLoadRetainElidable_.insert(instr.resultId);
                 continue;
             }
+
+            // Managed merge slots transfer their +1 into the loaded SSA value.
+            // Frontend lowering marks that move with an immediate raw null
+            // store to the same address. Retaining the load would manufacture
+            // an unbalanced second owner.
+            if (li + 1 < block.instrs.size() && !instr.ops.empty()) {
+                const auto &next = block.instrs[li + 1];
+                const bool sameAddress =
+                    instr.ops[0].id >= 0 && next.opcode == "store" && next.ops.size() >= 2 &&
+                    next.ops[0].kind == instr.ops[0].kind && next.ops[0].id == instr.ops[0].id;
+                const bool storesNull = next.ops.size() >= 2 && next.ops[1].id < 0 &&
+                                        next.ops[1].i64 == 0 && next.ops[1].str.empty();
+                if (sameAddress && storesNull) {
+                    strLoadRetainElidable_.insert(instr.resultId);
+                    continue;
+                }
+            }
+
+            // Frontend-owned field snapshots place an explicit retain
+            // immediately after the borrowed load. It dominates every later
+            // use, including cleanup in successor blocks, and supplies exactly
+            // the +1 that the backend fallback would add. A retain in another
+            // block is not sufficient because it may not execute on every path.
+            if (li + 1 < block.instrs.size()) {
+                const auto &next = block.instrs[li + 1];
+                if (isDirectCall(next) &&
+                    zanna::codegen::isStringRetainCallee(next.ops.front().label)) {
+                    for (std::size_t oi = 1; oi < next.ops.size(); ++oi) {
+                        if (next.ops[oi].id == instr.resultId &&
+                            next.ops[oi].kind != ILValue::Kind::LABEL) {
+                            strLoadRetainElidable_.insert(instr.resultId);
+                            break;
+                        }
+                    }
+                    if (strLoadRetainElidable_.count(instr.resultId) != 0)
+                        continue;
+                }
+            }
             if (!borrowOnlyInBlock)
                 continue;
-            // Borrow window: nothing between the load and the last use may
-            // drop the slot's own reference.
+            // Borrow window: a string store can invalidate the source slot
+            // that owns the borrowed reference. Explicit releases of other
+            // SSA values are not barriers: those values carry their own
+            // references, while retaining this load across a borrowed-only
+            // use would have no balancing release in native code.
             bool windowSafe = true;
             for (std::size_t ii = li + 1; ii <= lastUseIdx && windowSafe; ++ii) {
                 const auto &mid = block.instrs[ii];
                 if (mid.opcode == "store" && !mid.ops.empty() && mid.ops.size() >= 2 &&
                     mid.ops[1].kind == ILValue::Kind::STR)
-                    windowSafe = false;
-                if (isReleaseCall(mid))
                     windowSafe = false;
             }
             if (windowSafe)

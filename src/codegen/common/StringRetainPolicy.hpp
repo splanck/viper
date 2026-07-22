@@ -9,12 +9,13 @@
 // Purpose: Decide when backends may skip the defensive rt_str_retain_maybe on
 //          a string-typed call result.
 // Key invariants:
-//   - Elision is legal only when the callee is known to transfer an owned
-//     reference (classifyRuntimeOwnership returnsOwned); the transferred +1
-//     already covers the frontends' single balancing release/consume.
-//   - Unknown, indirect, and user-defined callees keep the retain.
-//   - Load-path retains are never elided here: they carry the ownership
-//     transfer for slot-resident strings (consuming callees, returns).
+//   - Elision is legal only when a direct callee transfers an owned reference:
+//     IL-defined functions do so by convention and registered runtime helpers
+//     do so when classifyRuntimeOwnership reports returnsOwned.
+//   - Unknown registered-runtime and indirect callees keep the retain.
+//   - Load-path retains carry ownership only for spending uses such as
+//     consuming callees and returns. Borrow-only loads may elide them when the
+//     backend proves the source slot remains live through the use window.
 // Ownership/Lifetime: Header-only policy; no state beyond the env hatch.
 // Links: docs/il/il-passes.md, src/il/runtime/RuntimeOwnership.hpp
 //
@@ -59,6 +60,13 @@ namespace zanna::codegen {
     return callee == "rt_str_release_maybe" || callee == "rt_str_release" ||
            callee == "rt_memory_release_str" || callee == "Zanna.String.ReleaseMaybe" ||
            callee == "Zanna.Memory.ReleaseStr" || callee == "Zanna.Runtime.Unsafe.ReleaseStr";
+}
+
+/// @brief True when @p callee explicitly creates another owned string reference.
+[[nodiscard]] inline bool isStringRetainCallee(std::string_view callee) {
+    return callee == "rt_str_retain" || callee == "rt_str_retain_maybe" ||
+           callee == "rt_memory_retain_str" || callee == "Zanna.String.RetainMaybe" ||
+           callee == "Zanna.Memory.RetainStr" || callee == "Zanna.Runtime.Unsafe.RetainStr";
 }
 
 /// @brief True when the load-path retain for a string load may be skipped.

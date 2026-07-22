@@ -5,7 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Tests for Zia bug fixes (Bugs #38-44).
+// File: src/tests/zia/test_zia_bugfixes.cpp
+// Purpose: Regress Zia frontend bugs, semantic diagnostics, and IL ownership lowering.
+// Key invariants:
+//   - Successful cases emit verifier-valid IL with the expected runtime operations.
+//   - Invalid programs fail at the documented frontend stage and diagnostic code.
+// Ownership/Lifetime:
+//   - Each case owns its source manager, compiler result, and temporary artifacts.
+//   - Generated module pointers are inspected only while their result remains alive.
+// Links: src/frontends/zia/Compiler.hpp, src/frontends/zia/Lowerer.hpp,
+//        docs/languages/zia-reference.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -73,6 +82,152 @@ size_t countCallsTo(const il::core::Module &module, const std::string &callee) {
     for (const auto &fn : module.functions)
         count += countCallsTo(fn, callee);
     return count;
+}
+
+bool callResultsArePassedTo(const il::core::Function &fn,
+                            const std::string &producer,
+                            const std::string &consumer) {
+    size_t produced = 0;
+    size_t consumed = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op != il::core::Opcode::Call || instr.callee != producer || !instr.result)
+                continue;
+            ++produced;
+            const auto producedValue = il::core::Value::temp(*instr.result);
+            bool found = false;
+            for (const auto &searchBlock : fn.blocks) {
+                for (const auto &candidate : searchBlock.instructions) {
+                    if (candidate.op != il::core::Opcode::Call || candidate.callee != consumer)
+                        continue;
+                    for (const auto &operand : candidate.operands) {
+                        if (il::core::valueEquals(operand, producedValue)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found)
+                        break;
+                }
+                if (found)
+                    break;
+            }
+            if (found)
+                ++consumed;
+        }
+    }
+    return produced > 0 && consumed == produced;
+}
+
+bool callArgumentsArePassedTo(const il::core::Function &fn,
+                              const std::string &producer,
+                              size_t argumentIndex,
+                              const std::string &consumer) {
+    size_t produced = 0;
+    size_t consumed = 0;
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op != il::core::Opcode::Call || instr.callee != producer ||
+                argumentIndex >= instr.operands.size())
+                continue;
+            ++produced;
+            const auto &argument = instr.operands[argumentIndex];
+            bool found = false;
+            for (const auto &searchBlock : fn.blocks) {
+                for (const auto &candidate : searchBlock.instructions) {
+                    if (candidate.op == il::core::Opcode::Call && candidate.callee == consumer &&
+                        !candidate.operands.empty() &&
+                        il::core::valueEquals(candidate.operands[0], argument)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (found)
+                    break;
+            }
+            if (found)
+                ++consumed;
+        }
+    }
+    return produced > 0 && consumed == produced;
+}
+
+bool branchStoreRetainsValue(const il::core::Function &fn,
+                             const std::string &labelPrefix,
+                             const std::string &retainCallee,
+                             il::core::Type::Kind storeKind) {
+    for (const auto &block : fn.blocks) {
+        if (block.label.find(labelPrefix) == std::string::npos)
+            continue;
+        for (const auto &instr : block.instructions) {
+            if (instr.op != il::core::Opcode::Store || instr.type.kind != storeKind ||
+                instr.operands.size() < 2)
+                continue;
+            const auto &storedValue = instr.operands[1];
+            for (const auto &candidate : block.instructions) {
+                if (candidate.op == il::core::Opcode::Call && candidate.callee == retainCallee &&
+                    !candidate.operands.empty() &&
+                    il::core::valueEquals(candidate.operands[0], storedValue)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool hasStringLoadMovedIntoOwningStore(const il::core::Function &fn) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op != il::core::Opcode::Load || !instr.result ||
+                instr.type.kind != il::core::Type::Kind::Str)
+                continue;
+            const auto loaded = il::core::Value::temp(*instr.result);
+            bool retained = false;
+            bool stored = false;
+            bool released = false;
+            for (const auto &searchBlock : fn.blocks) {
+                for (const auto &candidate : searchBlock.instructions) {
+                    if (candidate.op == il::core::Opcode::Store &&
+                        candidate.type.kind == il::core::Type::Kind::Str &&
+                        candidate.operands.size() >= 2 &&
+                        il::core::valueEquals(candidate.operands[1], loaded)) {
+                        stored = true;
+                    }
+                    if (candidate.op != il::core::Opcode::Call || candidate.operands.empty() ||
+                        !il::core::valueEquals(candidate.operands[0], loaded)) {
+                        continue;
+                    }
+                    if (candidate.callee == kStrRetainMaybe)
+                        retained = true;
+                    if (candidate.callee == kStrReleaseMaybe)
+                        released = true;
+                }
+            }
+            if (retained && stored && !released)
+                return true;
+        }
+    }
+    return false;
+}
+
+bool hasManagedSlotTake(const il::core::Function &fn, il::core::Type::Kind loadKind) {
+    for (const auto &block : fn.blocks) {
+        for (size_t i = 0; i + 1 < block.instructions.size(); ++i) {
+            const auto &load = block.instructions[i];
+            const auto &clear = block.instructions[i + 1];
+            if (load.op != il::core::Opcode::Load || load.type.kind != loadKind ||
+                load.operands.empty() || clear.op != il::core::Opcode::Store ||
+                clear.operands.size() < 2) {
+                continue;
+            }
+            if (il::core::valueEquals(load.operands[0], clear.operands[0]) &&
+                clear.operands[1].kind == il::core::Value::Kind::NullPtr) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 bool hasAllocaSize(const il::core::Function &fn, int64_t size) {
@@ -170,6 +325,277 @@ func start() {
     ASSERT_TRUE(result.succeeded());
     EXPECT_GE(countCallsTo(result.module, kUnboxStr), static_cast<size_t>(1));
     EXPECT_GE(countCallsTo(result.module, kStrReleaseMaybe), static_cast<size_t>(1));
+}
+
+TEST(ZiaRuntimeMemory, ListGetBoxesInShortCircuitAreReleasedOnTheirEdges) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func start() {
+    var flags: List[Boolean] = [true, false];
+    var both = flags.get(0) && flags.get(1);
+    Zanna.Terminal.SayInt(both ? 1 : 0);
+}
+)";
+    CompilerInput input{.source = source, .path = "short_circuit_owned_boxes.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_TRUE(
+        callResultsArePassedTo(*mainFn, "Zanna.Collections.List.Get", "rt_obj_release_check0"));
+}
+
+TEST(ZiaRuntimeMemory, ModuleLookupKeysAreReleasedBeforeControlFlowBranches) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+var enabled: Boolean = true;
+
+func start() {
+    if enabled && enabled {
+        Zanna.Terminal.SayInt(1);
+    }
+}
+)";
+    CompilerInput input{.source = source, .path = "module_key_branch_cleanup.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_TRUE(callArgumentsArePassedTo(*mainFn, "rt_modvar_addr_i1", 0, "rt_str_release_maybe"));
+}
+
+TEST(ZiaRuntimeMemory, BorrowedStringTernaryArmsRetainIntoResultSlot) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func choose(flag: Boolean, left: String, right: String) -> String {
+    return flag ? left : right;
+}
+
+func start() {
+    Zanna.Terminal.Say(choose(true, "left", "right"));
+}
+)";
+    CompilerInput input{.source = source, .path = "ternary_borrowed_strings.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *chooseFn = findFunction(result.module, "choose");
+    ASSERT_TRUE(chooseFn != nullptr);
+    EXPECT_TRUE(branchStoreRetainsValue(
+        *chooseFn, "ternary_then", kStrRetainMaybe, il::core::Type::Kind::Str));
+    EXPECT_TRUE(branchStoreRetainsValue(
+        *chooseFn, "ternary_else", kStrRetainMaybe, il::core::Type::Kind::Str));
+    EXPECT_TRUE(hasManagedSlotTake(*chooseFn, il::core::Type::Kind::Str));
+}
+
+TEST(ZiaRuntimeMemory, OwnedCameraSnapshotMovesIntoLocalSlot) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func sample(cam: Zanna.Graphics3D.Camera3D) -> Float {
+    var position = cam.Position;
+    return position.X;
+}
+
+func start() {}
+)";
+    CompilerInput input{.source = source, .path = "camera_snapshot_ownership.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *sampleFn = findFunction(result.module, "sample");
+    ASSERT_TRUE(sampleFn != nullptr);
+    EXPECT_EQ(countCallsTo(*sampleFn, "Zanna.Graphics3D.Camera3D.get_Position"),
+              static_cast<size_t>(1));
+    EXPECT_FALSE(callResultsArePassedTo(
+        *sampleFn, "Zanna.Graphics3D.Camera3D.get_Position", "rt_obj_retain_maybe"));
+    EXPECT_GE(countCallsTo(*sampleFn, "rt_obj_release_check0"), static_cast<size_t>(1));
+}
+
+TEST(ZiaRuntimeMemory, NestedMatrixValuesReleaseInnerTransformTemporaries) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func compose(x: Float, y: Float, z: Float, angle: Float) -> Zanna.Math.Mat4 {
+    return Zanna.Math.Mat4.Mul(
+        Zanna.Math.Mat4.Translate(x, y, z),
+        Zanna.Math.Mat4.RotateY(angle));
+}
+
+func start() {
+    compose(1.0, 2.0, 3.0, 0.5);
+}
+)";
+    CompilerInput input{.source = source, .path = "nested_matrix_ownership.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *composeFn = findFunction(result.module, "compose");
+    ASSERT_TRUE(composeFn != nullptr);
+    EXPECT_TRUE(
+        callResultsArePassedTo(*composeFn, "Zanna.Math.Mat4.Translate", "rt_obj_release_check0"));
+    EXPECT_TRUE(
+        callResultsArePassedTo(*composeFn, "Zanna.Math.Mat4.RotateY", "rt_obj_release_check0"));
+    EXPECT_FALSE(
+        callResultsArePassedTo(*composeFn, "Zanna.Math.Mat4.Mul", "rt_obj_release_check0"));
+    EXPECT_FALSE(callResultsArePassedTo(*composeFn, "Zanna.Math.Mat4.Mul", "rt_obj_retain_maybe"));
+}
+
+TEST(ZiaRuntimeMemory, ImmutableStringLocalOwnsAndReleasesItsSlot) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func hold() {
+    final name: String = "steady";
+    Zanna.Terminal.Say(name);
+}
+
+func start() {}
+)";
+    CompilerInput input{.source = source, .path = "immutable_string_slot_ownership.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *holdFn = findFunction(result.module, "hold");
+    ASSERT_TRUE(holdFn != nullptr);
+    EXPECT_GE(countCallsTo(*holdFn, kStrReleaseMaybe), static_cast<size_t>(1));
+}
+
+TEST(ZiaRuntimeMemory, ShadowedManagedSlotsReleaseEachLexicalOwner) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Token {}
+
+func shadow(value: String, token: Token) {
+    var copy = value;
+    var held = token;
+    {
+        var copy = value;
+        var held = token;
+        Zanna.Terminal.Say(copy);
+    }
+}
+
+func start() {}
+)";
+    CompilerInput input{.source = source, .path = "shadowed_managed_slot_ownership.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *shadowFn = findFunction(result.module, "shadow");
+    ASSERT_TRUE(shadowFn != nullptr);
+    EXPECT_GE(countCallsTo(*shadowFn, kStrReleaseMaybe), static_cast<size_t>(3));
+    EXPECT_GE(countCallsTo(*shadowFn, "rt_obj_release_check0"), static_cast<size_t>(3));
+}
+
+TEST(ZiaRuntimeMemory, LoopControlReleasesIterationManagedLocals) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Token {}
+
+func exits(flag: Boolean) {
+    var i = 0;
+    while i < 2 {
+        var text = "iteration";
+        var token = new Token();
+        if flag { break; }
+        continue;
+    }
+}
+
+func start() {}
+)";
+    CompilerInput input{.source = source, .path = "loop_control_managed_cleanup.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *exitsFn = findFunction(result.module, "exits");
+    ASSERT_TRUE(exitsFn != nullptr);
+    EXPECT_GE(countCallsTo(*exitsFn, kStrReleaseMaybe), static_cast<size_t>(2));
+    EXPECT_GE(countCallsTo(*exitsFn, "rt_obj_release_check0"), static_cast<size_t>(2));
+}
+
+TEST(ZiaRuntimeMemory, ObjectForInSlotsOwnElementsAndIterable) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+class Token {}
+
+func iterate(items: List[Token]) {
+    for item in items {
+        Zanna.Terminal.SayInt(1);
+    }
+}
+
+func start() {}
+)";
+    CompilerInput input{.source = source, .path = "forin_object_slot_ownership.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *iterateFn = findFunction(result.module, "iterate");
+    ASSERT_TRUE(iterateFn != nullptr);
+    EXPECT_GE(countCallsTo(*iterateFn, "rt_obj_retain_maybe"), static_cast<size_t>(2));
+    EXPECT_GE(countCallsTo(*iterateFn, "rt_obj_release_check0"), static_cast<size_t>(4));
+}
+
+TEST(ZiaRuntimeMemory, AnyLocalsOwnAndReleaseDynamicReferences) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func hold(value: Any) {
+    final copy: Any = value;
+}
+
+func start() {
+    hold(Zanna.Core.Box.I64(42));
+}
+)";
+    CompilerInput input{.source = source, .path = "any_slot_ownership.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *holdFn = findFunction(result.module, "hold");
+    ASSERT_TRUE(holdFn != nullptr);
+    EXPECT_GE(countCallsTo(*holdFn, "rt_obj_retain_maybe"), static_cast<size_t>(2));
+    EXPECT_GE(countCallsTo(*holdFn, "rt_obj_release_check0"), static_cast<size_t>(2));
 }
 
 //===----------------------------------------------------------------------===//
@@ -289,7 +715,9 @@ func maybePair() -> Pair? {
     return p;
 }
 
-func main() {}
+func main() {
+    maybePair();
+}
 )";
     CompilerInput input{.source = source, .path = "optional_struct_return.zia"};
     CompilerOptions opts{};
@@ -300,6 +728,41 @@ func main() {}
     const auto *maybeFn = findFunction(result.module, "maybePair");
     ASSERT_TRUE(maybeFn != nullptr);
     EXPECT_GE(countCallsTo(*maybeFn, kBoxValueType), static_cast<size_t>(1));
+    const auto *mainFn = findFunction(result.module, "main");
+    ASSERT_TRUE(mainFn != nullptr);
+    EXPECT_GE(countCallsTo(*mainFn, "rt_obj_release_check0"), static_cast<size_t>(1));
+}
+
+TEST(ZiaRuntimeMemory, BoxedStructMovesOwnedStringFieldIntoPayload) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+struct Label {
+    expose String text;
+
+    expose func init(value: String) {
+        text = value;
+    }
+}
+
+func maybeLabel(value: String) -> Label? {
+    var label = new Label(value);
+    return label;
+}
+
+func start() {}
+)";
+    CompilerInput input{.source = source, .path = "boxed_string_struct_ownership.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+
+    ASSERT_TRUE(result.succeeded());
+    const auto *maybeFn = findFunction(result.module, "maybeLabel");
+    ASSERT_TRUE(maybeFn != nullptr);
+    EXPECT_GE(countCallsTo(*maybeFn, kBoxValueType), static_cast<size_t>(1));
+    EXPECT_TRUE(hasStringLoadMovedIntoOwningStore(*maybeFn));
 }
 
 //===----------------------------------------------------------------------===//

@@ -4,16 +4,19 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file Lowerer_Expr_Call.cpp
-/// @brief Call expression lowering for the Zia IL lowerer.
-///
-/// @details This file handles the main call expression dispatcher, generic
-/// function call lowering, and built-in function call lowering. Method calls,
-/// collection method calls, and type construction are in Lowerer_Expr_Method.cpp.
-///
-/// @see Lowerer_Expr_Method.cpp - Method call and type construction lowering
-///
+//
+// File: src/frontends/zia/Lowerer_Expr_Call.cpp
+// Purpose: Lower direct, indirect, generic, built-in, and runtime call expressions.
+// Key invariants:
+//   - Arguments are bound and coerced in source evaluation order.
+//   - Owned call results are either transferred to a consumer or deferred for release.
+// Ownership/Lifetime:
+//   - User-function managed returns transfer one reference to the caller.
+//   - Runtime argument/result effects come from the central ownership catalog.
+// Links: src/frontends/zia/Lowerer_Expr_Method.cpp,
+//        src/frontends/zia/LowererCallArgumentLowerer.hpp,
+//        src/il/runtime/RuntimeOwnership.hpp
+//
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lowerer.hpp"
@@ -504,7 +507,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         }
 
         Value result = emitCallRet(ilReturnType, resolvedFunction, args);
-        return {result, ilReturnType};
+        return materializeCallResult(
+            result, surfaceReturnType ? surfaceReturnType : returnType, ilReturnType);
     }
 
     // Handle generic function calls that weren't detected during semantic analysis
@@ -991,8 +995,14 @@ LowerResult Lowerer::lowerCall(CallExpr *expr) {
         isIndirectCall = true;
     }
 
-    // Get return type
-    TypeRef returnType = calleeType ? calleeType->returnType() : nullptr;
+    // Prefer the call expression's fully resolved semantic type. The callee's
+    // function type can expose an unwrapped/generic declaration type (notably
+    // for Optional<Struct>), which would lose the boxed-result ownership fact.
+    TypeRef returnType = sema_.typeOf(expr);
+    if (!returnType || returnType->kind == TypeKindSem::Unknown ||
+        returnType->kind == TypeKindSem::Error) {
+        returnType = calleeType ? calleeType->returnType() : nullptr;
+    }
     Type ilReturnType = returnType ? mapType(returnType) : Type(Type::Kind::Void);
 
     // Lower arguments
@@ -1131,6 +1141,11 @@ LowerResult Lowerer::emitRuntimeCallResult(const std::string &calleeName,
 }
 
 LowerResult Lowerer::emitExplicitMemoryRelease(Value argValue, TypeRef argType) {
+    // Unsafe.Release consumes the caller's reference.  If the argument is a
+    // freshly produced owned value, transfer it to the explicit release so it
+    // is not also emitted by statement-boundary deferred cleanup.
+    consumeDeferred(argValue);
+
     if (isStringType(argType)) {
         Value releaseCount = emitCallRet(Type(Type::Kind::I64), kHeapReleaseStr, {argValue});
         return {releaseCount, Type(Type::Kind::I64)};

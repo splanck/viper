@@ -5,12 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/unit/codegen/test_codegen_arm64_string_store_refcount.cpp
-// Purpose: Verify ARM64 string lowering preserves the IL ownership contract.
-// Key invariants: Plain string stores remain plain stores, while explicit
-//                 retain/release calls in the IL are not duplicated by lowering.
-// Ownership/Lifetime: To be documented.
-// Links: docs/internals/architecture.md
+// File: src/tests/unit/codegen/test_codegen_arm64_string_store_refcount.cpp
+// Purpose: Verify AArch64 string lowering preserves the IL ownership contract.
+// Key invariants:
+//   - Plain string stores remain plain stores.
+//   - Defensive retains are elided only when the IL proves an existing owner.
+// Ownership/Lifetime:
+//   - Each case owns its temporary IL/assembly files under build/test-out.
+//   - Test fixtures leave no process-global codegen state behind.
+// Links: src/codegen/aarch64/InstrLowering.cpp,
+//        src/codegen/common/StringRetainPolicy.hpp
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
@@ -272,6 +276,161 @@ TEST(Arm64StringStore, LoadedStringRetainedBeforeConsumingConcat) {
     // reference from the consuming concat. The concat RESULT retain is elided
     // because rt_str_concat transfers ownership (StringRetainPolicy.hpp).
     EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 1u);
+}
+
+TEST(Arm64StringStore, BorrowedLoadIgnoresUnrelatedReleaseBarrier) {
+    const std::string in = outPath("arm64_str_load_borrow_after_release.il");
+    const std::string out = outPath("arm64_str_load_borrow_after_release.s");
+    const std::string il = "il 0.3.0\n"
+                           "extern @rt_print_str(str) -> void\n"
+                           "extern @rt_str_release_maybe(str) -> void\n"
+                           "global const str @.L0 = \"temporary\"\n"
+                           "func @show(%slot:ptr) -> i64 {\n"
+                           "entry(%slot:ptr):\n"
+                           "  %borrowed: str = load str, %slot\n"
+                           "  %temporary: str = const_str @.L0\n"
+                           "  call @rt_str_release_maybe(%temporary)\n"
+                           "  call @rt_print_str(%borrowed)\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 0u);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_release_maybe")), 1u);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_print_str")), 1u);
+}
+
+TEST(Arm64StringStore, LoadedStringPassedToIlFunctionIsBorrowed) {
+    const std::string in = outPath("arm64_str_load_il_call_borrow.il");
+    const std::string out = outPath("arm64_str_load_il_call_borrow.s");
+    const std::string il = "il 0.3.0\n"
+                           "func @sink(str %value) -> void {\n"
+                           "entry(%value:str):\n"
+                           "  ret\n"
+                           "}\n"
+                           "func @show(%slot:ptr) -> i64 {\n"
+                           "entry(%slot:ptr):\n"
+                           "  %borrowed: str = load str, %slot\n"
+                           "  call @sink(%borrowed)\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 0u);
+    EXPECT_EQ(countOccurrences(asmText, "\n  " + blSym("sink")), 1u);
+}
+
+TEST(Arm64StringStore, ExplicitlyBalancedFieldSnapshotIsNotRetainedTwice) {
+    const std::string in = outPath("arm64_str_load_balanced_snapshot.il");
+    const std::string out = outPath("arm64_str_load_balanced_snapshot.s");
+    const std::string il = "il 0.3.0\n"
+                           "extern @rt_str_retain_maybe(str) -> void\n"
+                           "extern @rt_str_release_maybe(str) -> void\n"
+                           "func @sink(str %value) -> void {\n"
+                           "entry(%value:str):\n"
+                           "  ret\n"
+                           "}\n"
+                           "func @show(%slot:ptr) -> i64 {\n"
+                           "entry(%slot:ptr):\n"
+                           "  %snapshot: str = load str, %slot\n"
+                           "  call @rt_str_retain_maybe(%snapshot)\n"
+                           "  call @sink(%snapshot)\n"
+                           "  call @rt_str_release_maybe(%snapshot)\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 1u);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_release_maybe")), 1u);
+}
+
+TEST(Arm64StringStore, ExplicitlyBalancedSnapshotMayReleaseInSuccessor) {
+    const std::string in = outPath("arm64_str_load_balanced_successor.il");
+    const std::string out = outPath("arm64_str_load_balanced_successor.s");
+    const std::string il = "il 0.3.0\n"
+                           "extern @rt_str_retain_maybe(str) -> void\n"
+                           "extern @rt_str_release_maybe(str) -> void\n"
+                           "func @sink(str %value) -> void {\n"
+                           "entry(%value:str):\n"
+                           "  ret\n"
+                           "}\n"
+                           "func @show(%slot:ptr) -> i64 {\n"
+                           "entry(%slot:ptr):\n"
+                           "  %snapshot: str = load str, %slot\n"
+                           "  call @rt_str_retain_maybe(%snapshot)\n"
+                           "  call @sink(%snapshot)\n"
+                           "  br cleanup\n"
+                           "cleanup:\n"
+                           "  call @rt_str_release_maybe(%snapshot)\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 1u);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_release_maybe")), 1u);
+}
+
+TEST(Arm64StringStore, ManagedSlotTakeDoesNotRetainTransferredReference) {
+    const std::string in = outPath("arm64_str_managed_slot_take.il");
+    const std::string out = outPath("arm64_str_managed_slot_take.s");
+    const std::string il = "il 0.3.0\n"
+                           "extern @rt_str_release_maybe(str) -> void\n"
+                           "func @take(%slot:ptr) -> i64 {\n"
+                           "entry(%slot:ptr):\n"
+                           "  %owned: str = load str, %slot\n"
+                           "  store ptr, %slot, null\n"
+                           "  call @rt_str_release_maybe(%owned)\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 0u);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_release_maybe")), 1u);
+}
+
+TEST(Arm64StringStore, NonDominatingExplicitRetainKeepsDefensiveLoadRetain) {
+    const std::string in = outPath("arm64_str_load_nondominating_retain.il");
+    const std::string out = outPath("arm64_str_load_nondominating_retain.s");
+    const std::string il = "il 0.3.0\n"
+                           "extern @rt_str_retain_maybe(str) -> void\n"
+                           "extern @rt_str_release_maybe(str) -> void\n"
+                           "func @sink(str %value) -> void {\n"
+                           "entry(%value:str):\n"
+                           "  ret\n"
+                           "}\n"
+                           "func @show(%slot:ptr, %flag:i1) -> i64 {\n"
+                           "entry(%slot:ptr, %flag:i1):\n"
+                           "  %snapshot: str = load str, %slot\n"
+                           "  cbr %flag, retained, borrowed\n"
+                           "retained:\n"
+                           "  call @rt_str_retain_maybe(%snapshot)\n"
+                           "  call @rt_str_release_maybe(%snapshot)\n"
+                           "  br done\n"
+                           "borrowed:\n"
+                           "  call @sink(%snapshot)\n"
+                           "  br done\n"
+                           "done:\n"
+                           "  ret 0\n"
+                           "}\n";
+    writeFile(in, il);
+    const char *argv[] = {in.c_str(), "-S", out.c_str()};
+    ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
+    const std::string asmText = readFile(out);
+    // One retain protects the load on every path; the other is explicit only
+    // on the retained branch. Static retain/release counts cannot prove the
+    // branch-local retain dominates the borrowed branch.
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_retain_maybe")), 2u);
+    EXPECT_EQ(countOccurrences(asmText, blSym("rt_str_release_maybe")), 1u);
 }
 
 TEST(Arm64StringStore, ElisionHatchRestoresCallResultRetain) {

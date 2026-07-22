@@ -75,8 +75,12 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
     blockMgr_.currentBlock()->instructions.push_back(allocaInstr);
     Value resultSlot = Value::temp(allocaId);
 
-    // Lower the left expression
+    // Lower the left expression. If it produces an owned optional, take that
+    // reference out of statement cleanup so each outgoing edge can either
+    // transfer or release it explicitly.
+    const size_t leftReleaseMark = deferredTemps_.size();
     auto left = lowerExpr(expr->left.get());
+    const bool leftOwned = consumeDeferred(left.value);
 
     // Create blocks for the coalesce
     size_t hasValueIdx = createBlock("coalesce_has");
@@ -114,52 +118,57 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
 
     Value isNotNull =
         emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), ptrAsI64, Value::constInt(0));
+    releaseDeferredTempsFrom(leftReleaseMark);
     emitCBr(isNotNull, hasValueIdx, isNullIdx);
 
     // Has value block - store left value and branch to merge
     setBlock(hasValueIdx);
     {
+        const size_t branchReleaseMark = deferredTemps_.size();
         Value unwrapped = left.value;
         if (innerType) {
             auto innerVal = emitOptionalUnwrap(left.value, innerType);
             unwrapped = innerVal.value;
         }
-        il::core::Instr storeInstr;
-        storeInstr.op = Opcode::Store;
-        storeInstr.type = ilResultType;
-        storeInstr.operands = {resultSlot, unwrapped};
-        storeInstr.loc = curLoc_;
-        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
-        consumeDeferred(unwrapped);
+        const bool transfersLeft =
+            leftOwned && needsRelease(resultType) && il::core::valueEquals(unwrapped, left.value);
+        if (transfersLeft)
+            deferRelease(unwrapped, isStringType(resultType));
+        if (needsRelease(resultType))
+            emitInlineValueStore(resultType, resultSlot, unwrapped, /*destInitialized=*/false);
+        else {
+            emitStore(resultSlot, unwrapped, ilResultType);
+            consumeDeferred(unwrapped);
+        }
+        releaseDeferredTempsFrom(branchReleaseMark);
+        if (leftOwned && !transfersLeft)
+            emitManagedRelease(left.value, isStringType(leftType));
     }
     emitBr(mergeIdx);
 
     // Is null block - evaluate right, store, and branch to merge
     setBlock(isNullIdx);
+    if (leftOwned)
+        emitManagedRelease(left.value, isStringType(leftType));
+    const size_t branchReleaseMark = deferredTemps_.size();
     auto right = lowerExpr(expr->right.get());
     {
-        il::core::Instr storeInstr;
-        storeInstr.op = Opcode::Store;
-        storeInstr.type = ilResultType;
-        storeInstr.operands = {resultSlot, right.value};
-        storeInstr.loc = curLoc_;
-        blockMgr_.currentBlock()->instructions.push_back(storeInstr);
-        consumeDeferred(right.value);
+        if (needsRelease(resultType))
+            emitInlineValueStore(resultType, resultSlot, right.value, /*destInitialized=*/false);
+        else {
+            emitStore(resultSlot, right.value, ilResultType);
+            consumeDeferred(right.value);
+        }
+        releaseDeferredTempsFrom(branchReleaseMark);
     }
     emitBr(mergeIdx);
 
     // Merge block - load the result
     setBlock(mergeIdx);
-    unsigned loadId = nextTempId();
-    il::core::Instr loadInstr;
-    loadInstr.result = loadId;
-    loadInstr.op = Opcode::Load;
-    loadInstr.type = ilResultType;
-    loadInstr.operands = {resultSlot};
-    loadInstr.loc = curLoc_;
-    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
-    Value resultValue = Value::temp(loadId);
-    if (needsRelease(resultType))
+    const bool managedResult = needsRelease(resultType);
+    Value resultValue = managedResult ? takeManagedValueFromSlot(resultSlot, ilResultType)
+                                      : emitLoad(resultSlot, ilResultType);
+    if (managedResult)
         deferRelease(resultValue, isStringType(resultType));
 
     return {resultValue, ilResultType};
@@ -177,6 +186,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
 ///          built-in count/length accessors for list/map/set/string, or runtime-class getters
 ///          — then re-wraps the loaded value as optional. Both paths merge through a slot.
 LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
+    const size_t baseReleaseMark = deferredTemps_.size();
     auto base = lowerExpr(expr->base.get());
     TypeRef baseType = sema_.typeOf(expr->base.get());
     if (!baseType || baseType->kind != TypeKindSem::Optional) {
@@ -187,6 +197,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     Type resultIlType = mapType(resultType);
     TypeRef innerType = baseType->innerType();
     TypeRef fieldType = types::unknown();
+    const bool baseOwned = consumeDeferred(base.value);
 
     // Allocate a stack slot for the result (optional pointer)
     unsigned resultSlotId = nextTempId();
@@ -232,6 +243,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     size_t hasValueIdx = createBlock("optchain_has");
     size_t isNullIdx = createBlock("optchain_null");
     size_t mergeIdx = createBlock("optchain_merge");
+    releaseDeferredTempsFrom(baseReleaseMark);
     emitCBr(isNull, isNullIdx, hasValueIdx);
 
     // Null block
@@ -242,10 +254,13 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     storeNull.operands = {resultSlot, Value::null()};
     storeNull.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(storeNull);
+    if (baseOwned)
+        emitManagedRelease(base.value, isStringType(baseType));
     emitBr(mergeIdx);
 
     // Has value block
     setBlock(hasValueIdx);
+    const size_t branchReleaseMark = deferredTemps_.size();
     Value fieldValue = Value::null();
     if (innerType) {
         if (innerType->kind == TypeKindSem::Struct || innerType->kind == TypeKindSem::Class) {
@@ -338,26 +353,22 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
         optionalValue = emitOptionalWrap(fieldValue, fieldType);
     }
 
-    il::core::Instr storeVal;
-    storeVal.op = Opcode::Store;
-    storeVal.type = resultIlType;
-    storeVal.operands = {resultSlot, optionalValue};
-    storeVal.loc = curLoc_;
-    blockMgr_.currentBlock()->instructions.push_back(storeVal);
-    consumeDeferred(optionalValue);
+    if (needsRelease(resultType))
+        emitInlineValueStore(resultType, resultSlot, optionalValue, /*destInitialized=*/false);
+    else {
+        emitStore(resultSlot, optionalValue, resultIlType);
+        consumeDeferred(optionalValue);
+    }
+    releaseDeferredTempsFrom(branchReleaseMark);
+    if (baseOwned)
+        emitManagedRelease(base.value, isStringType(baseType));
     emitBr(mergeIdx);
 
     setBlock(mergeIdx);
-    unsigned loadId = nextTempId();
-    il::core::Instr loadInstr;
-    loadInstr.result = loadId;
-    loadInstr.op = Opcode::Load;
-    loadInstr.type = resultIlType;
-    loadInstr.operands = {resultSlot};
-    loadInstr.loc = curLoc_;
-    blockMgr_.currentBlock()->instructions.push_back(loadInstr);
-    Value resultValue = Value::temp(loadId);
-    if (needsRelease(resultType))
+    const bool managedResult = needsRelease(resultType);
+    Value resultValue = managedResult ? takeManagedValueFromSlot(resultSlot, resultIlType)
+                                      : emitLoad(resultSlot, resultIlType);
+    if (managedResult)
         deferRelease(resultValue, isStringType(resultType));
 
     return {resultValue, resultIlType};
@@ -372,6 +383,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
 ///          appropriate path — interface itable, class virtual dispatch, or a direct method
 ///          call — then wraps a non-void result as optional. Paths merge through a slot.
 LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr *expr) {
+    const size_t baseReleaseMark = deferredTemps_.size();
     auto base = lowerExpr(callee->base.get());
     TypeRef baseType = sema_.typeOf(callee->base.get());
     if (!baseType || baseType->kind != TypeKindSem::Optional || !baseType->innerType()) {
@@ -392,6 +404,7 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
     TypeRef resultType = sema_.typeOf(expr);
     Type resultIlType = resultType ? mapType(resultType) : mapType(methodReturnType);
     bool returnsVoid = methodReturnType && methodReturnType->kind == TypeKindSem::Void;
+    const bool baseOwned = consumeDeferred(base.value);
 
     Value resultSlot;
     if (!returnsVoid) {
@@ -423,6 +436,7 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
     size_t hasValueIdx = createBlock("optmethod_has");
     size_t isNullIdx = createBlock("optmethod_null");
     size_t mergeIdx = createBlock("optmethod_merge");
+    releaseDeferredTempsFrom(baseReleaseMark);
     emitCBr(isNull, isNullIdx, hasValueIdx);
 
     setBlock(isNullIdx);
@@ -431,9 +445,12 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
             resultIlType.kind == Type::Kind::Str ? Type(Type::Kind::Ptr) : resultIlType;
         emitStore(resultSlot, Value::null(), nullStoreType);
     }
+    if (baseOwned)
+        emitManagedRelease(base.value, isStringType(baseType));
     emitBr(mergeIdx);
 
     setBlock(hasValueIdx);
+    const size_t branchReleaseMark = deferredTemps_.size();
     Value receiver = base.value;
     if (receiverType && receiverType->kind == TypeKindSem::Struct)
         receiver = emitOptionalUnwrap(base.value, receiverType).value;
@@ -459,17 +476,26 @@ LowerResult Lowerer::lowerOptionalMethodCall(OptionalChainExpr *callee, CallExpr
         Value optionalValue = methodReturnType && methodReturnType->kind == TypeKindSem::Optional
                                   ? callResult.value
                                   : emitOptionalWrap(callResult.value, methodReturnType);
-        emitStore(resultSlot, optionalValue, resultIlType);
-        consumeDeferred(optionalValue);
+        if (needsRelease(resultType))
+            emitInlineValueStore(resultType, resultSlot, optionalValue, /*destInitialized=*/false);
+        else {
+            emitStore(resultSlot, optionalValue, resultIlType);
+            consumeDeferred(optionalValue);
+        }
     }
+    releaseDeferredTempsFrom(branchReleaseMark);
+    if (baseOwned)
+        emitManagedRelease(base.value, isStringType(baseType));
     emitBr(mergeIdx);
 
     setBlock(mergeIdx);
     if (returnsVoid)
         return {Value::constInt(0), Type(Type::Kind::Void)};
 
-    Value resultValue = emitLoad(resultSlot, resultIlType);
-    if (needsRelease(resultType))
+    const bool managedResult = needsRelease(resultType);
+    Value resultValue = managedResult ? takeManagedValueFromSlot(resultSlot, resultIlType)
+                                      : emitLoad(resultSlot, resultIlType);
+    if (managedResult)
         deferRelease(resultValue, isStringType(resultType));
     return {resultValue, resultIlType};
 }

@@ -27,13 +27,15 @@
 
 #ifdef ZANNA_ENABLE_GRAPHICS
 
+#include "rt_asset.h"
 #include "rt_canvas3d.h"
 #include "rt_canvas3d_internal.h"
 #include "rt_g3d_ref_slots.h"
+#include "rt_parallel.h"
 #include "rt_pixels.h"
 #include "rt_pixels_internal.h"
 #include "rt_platform.h"
-#include "rt_asset.h"
+#include "rt_threadpool.h"
 
 #include <limits.h>
 #include <math.h>
@@ -536,8 +538,7 @@ static size_t cubemap_hdr_parse_header(const uint8_t *data, size_t size, int *ou
             break;
         }
         if (line_len >= 7 && memcmp(data + line_start, "FORMAT=", 7) == 0) {
-            if (line_len >= 22 &&
-                memcmp(data + line_start + 7, "32-bit_rle_rgbe", 15) == 0)
+            if (line_len >= 22 && memcmp(data + line_start + 7, "32-bit_rle_rgbe", 15) == 0)
                 saw_format = 1;
             else
                 return 0;
@@ -1183,6 +1184,167 @@ void rt_cubemap_sample_roughness(const rt_cubemap3d *cm,
 // Image-based lighting: SH-9 irradiance + GGX-prefiltered specular chain
 //=============================================================================
 
+/// @brief Prevalidated source-face view used by synchronous IBL preparation.
+/// @details `rt_cubemap3d_ensure_ibl` validates and pins the owning cubemap for the
+///   entire bake. Caching the six Pixels implementations here keeps the millions
+///   of GGX samples off the public sampler's defensive GC/class-validation path.
+typedef struct cubemap_ibl_source {
+    rt_pixels_impl *faces[6];
+} cubemap_ibl_source;
+
+/// @brief Cache all six already-validated source faces for one IBL bake.
+static int cubemap_ibl_source_init(const rt_cubemap3d *cm, cubemap_ibl_source *out) {
+    if (!cm || !out)
+        return 0;
+    for (int face = 0; face < 6; face++) {
+        out->faces[face] = cubemap_face_pixels_impl(cm->faces[face]);
+        if (!out->faces[face])
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Convert a bounded face coordinate into an unnormalised direction.
+/// @details Cubemap face selection depends only on component ratios, so the
+///   cross-face bilinear taps do not need the square root performed by the
+///   public face-to-unit-direction helper.
+static void cubemap_ibl_face_uv_to_vector(
+    int face, float u, float v, float *out_dx, float *out_dy, float *out_dz) {
+    float uu = u * 2.0f - 1.0f;
+    float vv = v * 2.0f - 1.0f;
+
+    switch (face) {
+        case 0:
+            *out_dx = 1.0f;
+            *out_dy = -vv;
+            *out_dz = -uu;
+            break;
+        case 1:
+            *out_dx = -1.0f;
+            *out_dy = -vv;
+            *out_dz = uu;
+            break;
+        case 2:
+            *out_dx = uu;
+            *out_dy = 1.0f;
+            *out_dz = vv;
+            break;
+        case 3:
+            *out_dx = uu;
+            *out_dy = -1.0f;
+            *out_dz = -vv;
+            break;
+        case 4:
+            *out_dx = uu;
+            *out_dy = -vv;
+            *out_dz = 1.0f;
+            break;
+        default:
+            *out_dx = -uu;
+            *out_dy = -vv;
+            *out_dz = -1.0f;
+            break;
+    }
+}
+
+/// @brief Trusted nearest fetch from a prevalidated IBL source.
+static uint32_t cubemap_ibl_nearest_rgba(const cubemap_ibl_source *source,
+                                         float dx,
+                                         float dy,
+                                         float dz) {
+    int face = 0;
+    float u = 0.5f;
+    float v = 0.5f;
+    rt_pixels_impl *pv;
+    int xi;
+    int yi;
+
+    cubemap_unit_direction_to_face_uv(dx, dy, dz, &face, &u, &v);
+    pv = source->faces[face];
+    if (u < 0.0f)
+        u = 0.0f;
+    else if (u > 1.0f)
+        u = 1.0f;
+    if (v < 0.0f)
+        v = 0.0f;
+    else if (v > 1.0f)
+        v = 1.0f;
+    xi = (int)(u * (float)pv->width);
+    yi = (int)(v * (float)pv->height);
+    if (xi >= (int)pv->width)
+        xi = (int)pv->width - 1;
+    if (yi >= (int)pv->height)
+        yi = (int)pv->height - 1;
+    return pv->data[(int64_t)yi * pv->width + xi];
+}
+
+/// @brief Cross-face bilinear sample from a prevalidated IBL source.
+/// @details This matches `rt_cubemap_sample`'s topology-aware four-tap filter,
+///   while omitting redundant object validation and direction normalisation.
+static void cubemap_ibl_sample(const cubemap_ibl_source *source,
+                               float dx,
+                               float dy,
+                               float dz,
+                               float *out_r,
+                               float *out_g,
+                               float *out_b) {
+    int face = 0;
+    float u = 0.5f;
+    float v = 0.5f;
+    rt_pixels_impl *pv;
+    float fx;
+    float fy;
+    int x0;
+    int y0;
+    float sx;
+    float sy;
+    float tap_u[2];
+    float tap_v[2];
+    float direction[4][3];
+    uint32_t rgba[4];
+
+    cubemap_unit_direction_to_face_uv(dx, dy, dz, &face, &u, &v);
+    pv = source->faces[face];
+    fx = u * (float)pv->width - 0.5f;
+    fy = v * (float)pv->height - 0.5f;
+    x0 = (int)floorf(fx);
+    y0 = (int)floorf(fy);
+    sx = fx - (float)x0;
+    sy = fy - (float)y0;
+    tap_u[0] = ((float)x0 + 0.5f) / (float)pv->width;
+    tap_u[1] = ((float)(x0 + 1) + 0.5f) / (float)pv->width;
+    tap_v[0] = ((float)y0 + 0.5f) / (float)pv->height;
+    tap_v[1] = ((float)(y0 + 1) + 0.5f) / (float)pv->height;
+
+    cubemap_ibl_face_uv_to_vector(
+        face, tap_u[0], tap_v[0], &direction[0][0], &direction[0][1], &direction[0][2]);
+    cubemap_ibl_face_uv_to_vector(
+        face, tap_u[1], tap_v[0], &direction[1][0], &direction[1][1], &direction[1][2]);
+    cubemap_ibl_face_uv_to_vector(
+        face, tap_u[0], tap_v[1], &direction[2][0], &direction[2][1], &direction[2][2]);
+    cubemap_ibl_face_uv_to_vector(
+        face, tap_u[1], tap_v[1], &direction[3][0], &direction[3][1], &direction[3][2]);
+    for (int tap = 0; tap < 4; tap++) {
+        rgba[tap] = cubemap_ibl_nearest_rgba(
+            source, direction[tap][0], direction[tap][1], direction[tap][2]);
+    }
+
+#define ZANNA_CUBEMAP_IBL_BLEND(channel, shift)                                                    \
+    do {                                                                                           \
+        float c00 = (float)((rgba[0] >> (shift)) & 0xFF);                                          \
+        float c10 = (float)((rgba[1] >> (shift)) & 0xFF);                                          \
+        float c01 = (float)((rgba[2] >> (shift)) & 0xFF);                                          \
+        float c11 = (float)((rgba[3] >> (shift)) & 0xFF);                                          \
+        *(channel) =                                                                               \
+            ((c00 * (1.0f - sx) + c10 * sx) * (1.0f - sy) + (c01 * (1.0f - sx) + c11 * sx) * sy) / \
+            255.0f;                                                                                \
+    } while (0)
+    ZANNA_CUBEMAP_IBL_BLEND(out_r, 24);
+    ZANNA_CUBEMAP_IBL_BLEND(out_g, 16);
+    ZANNA_CUBEMAP_IBL_BLEND(out_b, 8);
+#undef ZANNA_CUBEMAP_IBL_BLEND
+}
+
 /// @brief Nearest RGBA fetch from an arbitrary six-face Pixels array (no
 ///   whole-cubemap validation — used by the prefiltered IBL chain whose faces
 ///   are internally constructed and guaranteed square).
@@ -1306,7 +1468,7 @@ static void cubemap_sh9_basis(float x, float y, float z, float out_basis[9]) {
 ///   an exact DC term), then fold the cosine-lobe convolution factors A_l and
 ///   the Lambertian 1/pi so the stored coefficients evaluate directly to
 ///   "reflected color per unit albedo".
-static void cubemap_project_sh9(const rt_cubemap3d *cm, float out_sh[27]) {
+static void cubemap_project_sh9(const cubemap_ibl_source *source, float out_sh[27]) {
     /* A_l / pi: l=0 -> 1, l=1 -> 2/3, l=2 -> 1/4 */
     static const float k_al_over_pi[9] = {
         1.0f, 2.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f};
@@ -1334,7 +1496,7 @@ static void cubemap_project_sh9(const rt_cubemap3d *cm, float out_sh[27]) {
                 float b;
 
                 cubemap_face_uv_to_direction(face, u, v, &dx, &dy, &dz);
-                rt_cubemap_sample(cm, dx, dy, dz, &r, &g, &b);
+                cubemap_ibl_sample(source, dx, dy, dz, &r, &g, &b);
                 cubemap_sh9_basis(dx, dy, dz, basis);
                 for (int k = 0; k < 9; k++) {
                     float wb = basis[k] * weight;
@@ -1396,6 +1558,130 @@ static float cubemap_radical_inverse(uint32_t bits) {
     return (float)bits * 2.3283064365386963e-10f; /* 1 / 2^32 */
 }
 
+typedef struct cubemap_prefilter_face_task {
+    const cubemap_ibl_source *source;
+    rt_pixels_impl *output;
+    const float *sample_hx;
+    const float *sample_hy;
+    const float *sample_hz;
+    float roughness;
+    int sample_count;
+    int face;
+    int out_size;
+} cubemap_prefilter_face_task;
+
+/// @brief Bake one destination face of one GGX-prefiltered mip.
+/// @details Tasks read only the pinned source faces and write disjoint output
+///   faces, so six faces may execute concurrently without locks while retaining
+///   bit-identical per-texel sampling order.
+static void cubemap_prefilter_face(void *arg) {
+    cubemap_prefilter_face_task *task = (cubemap_prefilter_face_task *)arg;
+    const cubemap_ibl_source *source;
+    rt_pixels_impl *pv;
+    float roughness;
+    int sample_count;
+    int face;
+    int out_size;
+
+    if (!task || !task->source || !task->output)
+        return;
+    source = task->source;
+    pv = task->output;
+    roughness = task->roughness;
+    sample_count = task->sample_count;
+    face = task->face;
+    out_size = task->out_size;
+
+    for (int y = 0; y < out_size; y++) {
+        for (int x = 0; x < out_size; x++) {
+            float u = ((float)x + 0.5f) / (float)out_size;
+            float v = ((float)y + 0.5f) / (float)out_size;
+            float nx;
+            float ny;
+            float nz;
+            float acc_r = 0.0f;
+            float acc_g = 0.0f;
+            float acc_b = 0.0f;
+
+            cubemap_face_uv_to_direction(face, u, v, &nx, &ny, &nz);
+            if (roughness <= 0.001f) {
+                cubemap_ibl_sample(source, nx, ny, nz, &acc_r, &acc_g, &acc_b);
+            } else {
+                float tx;
+                float ty;
+                float tz;
+                float bx;
+                float by;
+                float bz;
+                float total = 0.0f;
+
+                if (fabsf(nz) < 0.999f) {
+                    tx = -ny;
+                    ty = nx;
+                    tz = 0.0f;
+                } else {
+                    tx = 0.0f;
+                    ty = -nz;
+                    tz = ny;
+                }
+                {
+                    float tlen = sqrtf(tx * tx + ty * ty + tz * tz);
+                    if (tlen <= 1e-8f) {
+                        tx = 1.0f;
+                        ty = 0.0f;
+                        tz = 0.0f;
+                        tlen = 1.0f;
+                    }
+                    tx /= tlen;
+                    ty /= tlen;
+                    tz /= tlen;
+                }
+                bx = ny * tz - nz * ty;
+                by = nz * tx - nx * tz;
+                bz = nx * ty - ny * tx;
+
+                for (int s = 0; s < sample_count; s++) {
+                    float hx_t = task->sample_hx[s];
+                    float hy_t = task->sample_hy[s];
+                    float hz_t = task->sample_hz[s];
+                    float hx = tx * hx_t + bx * hy_t + nx * hz_t;
+                    float hy = ty * hx_t + by * hy_t + ny * hz_t;
+                    float hz = tz * hx_t + bz * hy_t + nz * hz_t;
+                    float ndh = nx * hx + ny * hy + nz * hz;
+                    float lx = 2.0f * ndh * hx - nx;
+                    float ly = 2.0f * ndh * hy - ny;
+                    float lz = 2.0f * ndh * hz - nz;
+                    float ndl = nx * lx + ny * ly + nz * lz;
+
+                    if (ndl > 0.0f) {
+                        float sr;
+                        float sg;
+                        float sb;
+                        cubemap_ibl_sample(source, lx, ly, lz, &sr, &sg, &sb);
+                        acc_r += sr * ndl;
+                        acc_g += sg * ndl;
+                        acc_b += sb * ndl;
+                        total += ndl;
+                    }
+                }
+                if (total > 1e-6f) {
+                    acc_r /= total;
+                    acc_g /= total;
+                    acc_b /= total;
+                } else {
+                    cubemap_ibl_sample(source, nx, ny, nz, &acc_r, &acc_g, &acc_b);
+                }
+            }
+            {
+                uint32_t rr = (uint32_t)(fminf(fmaxf(acc_r, 0.0f), 1.0f) * 255.0f + 0.5f);
+                uint32_t gg = (uint32_t)(fminf(fmaxf(acc_g, 0.0f), 1.0f) * 255.0f + 0.5f);
+                uint32_t bb = (uint32_t)(fminf(fmaxf(acc_b, 0.0f), 1.0f) * 255.0f + 0.5f);
+                pv->data[(int64_t)y * pv->width + x] = (rr << 24) | (gg << 16) | (bb << 8) | 0xFFu;
+            }
+        }
+    }
+}
+
 /// @brief GGX-prefilter one specular mip level into six freshly allocated Pixels
 ///   faces (owned creation references written into @p out_faces).
 /// @details Split-sum first term: for every output texel the reflection
@@ -1404,11 +1690,33 @@ static float cubemap_radical_inverse(uint32_t bits) {
 ///   half vectors from a deterministic Hammersley sequence. Roughness 0 is a
 ///   plain bilinear resample (perfect mirror). Returns 1 on success; on
 ///   failure all allocated faces are released and 0 is returned.
-static int cubemap_prefilter_level(const rt_cubemap3d *cm,
+static int cubemap_prefilter_level(const cubemap_ibl_source *source,
                                    float roughness,
                                    int out_size,
-                                   void *out_faces[6]) {
+                                   void *out_faces[6],
+                                   void *worker_pool) {
     int sample_count = roughness <= 0.35f ? 64 : 128;
+    cubemap_prefilter_face_task tasks[6];
+    float sample_hx[128];
+    float sample_hy[128];
+    float sample_hz[128];
+
+    /* The Hammersley half-vector set depends only on this mip's roughness and
+     * sample count. Compute its trigonometry once instead of once per output
+     * texel (millions of duplicate sin/cos/sqrt calls at a 128-pixel base). */
+    if (roughness > 0.001f) {
+        float a = roughness * roughness;
+        for (int sample = 0; sample < sample_count; sample++) {
+            float xi1 = ((float)sample + 0.5f) / (float)sample_count;
+            float xi2 = cubemap_radical_inverse((uint32_t)sample);
+            float phi = 2.0f * 3.14159265358979323846f * xi1;
+            float cos_theta = sqrtf((1.0f - xi2) / (1.0f + (a * a - 1.0f) * xi2));
+            float sin_theta = sqrtf(fmaxf(1.0f - cos_theta * cos_theta, 0.0f));
+            sample_hx[sample] = cosf(phi) * sin_theta;
+            sample_hy[sample] = sinf(phi) * sin_theta;
+            sample_hz[sample] = cos_theta;
+        }
+    }
 
     for (int f = 0; f < 6; f++)
         out_faces[f] = NULL;
@@ -1422,107 +1730,24 @@ static int cubemap_prefilter_level(const rt_cubemap3d *cm,
             return 0;
         }
         out_faces[f] = pixels;
-        for (int y = 0; y < out_size; y++) {
-            for (int x = 0; x < out_size; x++) {
-                float u = ((float)x + 0.5f) / (float)out_size;
-                float v = ((float)y + 0.5f) / (float)out_size;
-                float nx;
-                float ny;
-                float nz;
-                float acc_r = 0.0f;
-                float acc_g = 0.0f;
-                float acc_b = 0.0f;
-
-                cubemap_face_uv_to_direction(f, u, v, &nx, &ny, &nz);
-                if (roughness <= 0.001f) {
-                    rt_cubemap_sample(cm, nx, ny, nz, &acc_r, &acc_g, &acc_b);
-                } else {
-                    /* Tangent frame around N. */
-                    float tx;
-                    float ty;
-                    float tz;
-                    float bx;
-                    float by;
-                    float bz;
-                    float total = 0.0f;
-                    float a = roughness * roughness;
-
-                    if (fabsf(nz) < 0.999f) {
-                        tx = -ny;
-                        ty = nx;
-                        tz = 0.0f;
-                    } else {
-                        tx = 0.0f;
-                        ty = -nz;
-                        tz = ny;
-                    }
-                    {
-                        float tlen = sqrtf(tx * tx + ty * ty + tz * tz);
-                        if (tlen <= 1e-8f) {
-                            tx = 1.0f;
-                            ty = 0.0f;
-                            tz = 0.0f;
-                            tlen = 1.0f;
-                        }
-                        tx /= tlen;
-                        ty /= tlen;
-                        tz /= tlen;
-                    }
-                    bx = ny * tz - nz * ty;
-                    by = nz * tx - nx * tz;
-                    bz = nx * ty - ny * tx;
-
-                    for (int s = 0; s < sample_count; s++) {
-                        float xi1 = ((float)s + 0.5f) / (float)sample_count;
-                        float xi2 = cubemap_radical_inverse((uint32_t)s);
-                        float phi = 2.0f * 3.14159265358979323846f * xi1;
-                        float cos_theta = sqrtf((1.0f - xi2) / (1.0f + (a * a - 1.0f) * xi2));
-                        float sin_theta = sqrtf(fmaxf(1.0f - cos_theta * cos_theta, 0.0f));
-                        float hx_t = cosf(phi) * sin_theta;
-                        float hy_t = sinf(phi) * sin_theta;
-                        float hz_t = cos_theta;
-                        /* Half vector to world space. */
-                        float hx = tx * hx_t + bx * hy_t + nx * hz_t;
-                        float hy = ty * hx_t + by * hy_t + ny * hz_t;
-                        float hz = tz * hx_t + bz * hy_t + nz * hz_t;
-                        /* L = 2 (N.H) H - N  (V = N). */
-                        float ndh = nx * hx + ny * hy + nz * hz;
-                        float lx = 2.0f * ndh * hx - nx;
-                        float ly = 2.0f * ndh * hy - ny;
-                        float lz = 2.0f * ndh * hz - nz;
-                        float ndl = nx * lx + ny * ly + nz * lz;
-
-                        if (ndl <= 0.0f)
-                            continue;
-                        {
-                            float sr;
-                            float sg;
-                            float sb;
-                            rt_cubemap_sample(cm, lx, ly, lz, &sr, &sg, &sb);
-                            acc_r += sr * ndl;
-                            acc_g += sg * ndl;
-                            acc_b += sb * ndl;
-                            total += ndl;
-                        }
-                    }
-                    if (total > 1e-6f) {
-                        acc_r /= total;
-                        acc_g /= total;
-                        acc_b /= total;
-                    } else {
-                        rt_cubemap_sample(cm, nx, ny, nz, &acc_r, &acc_g, &acc_b);
-                    }
-                }
-                {
-                    uint32_t rr = (uint32_t)(fminf(fmaxf(acc_r, 0.0f), 1.0f) * 255.0f + 0.5f);
-                    uint32_t gg = (uint32_t)(fminf(fmaxf(acc_g, 0.0f), 1.0f) * 255.0f + 0.5f);
-                    uint32_t bb = (uint32_t)(fminf(fmaxf(acc_b, 0.0f), 1.0f) * 255.0f + 0.5f);
-                    pv->data[(int64_t)y * pv->width + x] =
-                        (rr << 24) | (gg << 16) | (bb << 8) | 0xFFu;
-                }
-            }
+        tasks[f].source = source;
+        tasks[f].output = pv;
+        tasks[f].sample_hx = sample_hx;
+        tasks[f].sample_hy = sample_hy;
+        tasks[f].sample_hz = sample_hz;
+        tasks[f].roughness = roughness;
+        tasks[f].sample_count = sample_count;
+        tasks[f].face = f;
+        tasks[f].out_size = out_size;
+    }
+    for (int f = 0; f < 6; f++) {
+        if (!worker_pool ||
+            !rt_threadpool_submit_fn(worker_pool, cubemap_prefilter_face, &tasks[f])) {
+            cubemap_prefilter_face(&tasks[f]);
         }
     }
+    if (worker_pool)
+        rt_threadpool_wait(worker_pool);
     return 1;
 }
 
@@ -1534,6 +1759,8 @@ static int cubemap_prefilter_level(const rt_cubemap3d *cm,
 ///   independent of the source face size.
 int rt_cubemap3d_ensure_ibl(void *cubemap) {
     rt_cubemap3d *cm = (rt_cubemap3d *)cubemap;
+    cubemap_ibl_source source;
+    void *worker_pool = NULL;
     int base;
     int mips;
 
@@ -1541,6 +1768,8 @@ int rt_cubemap3d_ensure_ibl(void *cubemap) {
         return 0;
     if (cm->ibl_ready)
         return 1;
+    if (!cubemap_ibl_source_init(cm, &source))
+        return 0;
 
     base = cm->face_size < 128 ? (int)cm->face_size : 128;
     if (base < 4)
@@ -1549,20 +1778,27 @@ int rt_cubemap3d_ensure_ibl(void *cubemap) {
     while (mips < RT_CUBEMAP3D_IBL_MAX_MIPS && (base >> mips) >= 4)
         mips++;
 
-    cubemap_project_sh9(cm, cm->ibl_sh);
+    if (base >= 64 && !rt_threadpool_current_worker_pool() && rt_parallel_default_workers() > 1)
+        worker_pool = rt_parallel_default_pool();
+
+    cubemap_project_sh9(&source, cm->ibl_sh);
     for (int m = 0; m < mips; m++) {
         float roughness = mips > 1 ? (float)m / (float)(mips - 1) : 0.0f;
         int size = base >> m;
 
-        if (!cubemap_prefilter_level(cm, roughness, size, cm->ibl_mips[m])) {
+        if (!cubemap_prefilter_level(&source, roughness, size, cm->ibl_mips[m], worker_pool)) {
             for (int mm = 0; mm <= m; mm++)
                 for (int f = 0; f < 6; f++)
                     cubemap_release_face_slot(&cm->ibl_mips[mm][f]);
             for (int i = 0; i < 27; i++)
                 cm->ibl_sh[i] = 0.0f;
+            if (worker_pool && rt_obj_release_check0(worker_pool))
+                rt_obj_free(worker_pool);
             return 0;
         }
     }
+    if (worker_pool && rt_obj_release_check0(worker_pool))
+        rt_obj_free(worker_pool);
     cm->ibl_mip_count = mips;
     cm->ibl_base_size = base;
     cm->ibl_identity = cubemap_next_cache_identity();

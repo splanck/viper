@@ -1,17 +1,23 @@
-// =============================================================================
-// probes/stress_combat_probe.zia — sustained-combat degradation gate (headless)
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
-// Runs ~1000 fixed ticks of escalating combat — waves of mixed enemies kept
-// topped up, the player strafing and holding fire the whole time — and asserts
-// the physics query-broadphase cache stays healthy under that load. The bound
-// is deterministic (a counter, not wall clock): with fat-AABB reuse, rebuilds
-// track escapes/spawns (roughly one per few ticks), while the pre-fix behavior
-// (every SetPosition invalidating the cache, one rebuild per interleaved AI
-// raycast) produced 15-30+ rebuilds per tick and grew frame cost as waves
-// ramped. This is the regime the render/combat/perf probes never sustained,
-// which is how the ~15-second in-game lag ramp shipped unnoticed.
-// =============================================================================
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/ashfall/probes/stress_combat_probe.zia
+// Purpose: Gate sustained Ashfall combat against broadphase and navigation
+//          work amplification over roughly one thousand fixed simulation ticks.
+// Key invariants:
+//   - The workload reaches the full mixed-enemy active cap.
+//   - Broadphase rebuilds and synchronous path retargets remain O(ticks), with
+//     a small deterministic constant independent of frame wall time.
+// Ownership/Lifetime:
+//   - The probe owns one transient Game and its baked navigation mesh.
+//   - Game owns all spawned combat and runtime objects through process exit.
+// Links: examples/games/ashfall/ai/ai_core.zia, examples/games/ashfall/game.zia
+//
+//===----------------------------------------------------------------------===//
 module stress_combat_probe;
 
 bind Zanna.Terminal as Terminal;
@@ -28,6 +34,9 @@ func start() {
     g.initCore(0x57E55EED);
     g.setScripted(true);
     g.boot(true, false);
+    g.getEnemies().setNavigation(g.getWorld().BakeNavMesh(
+        config.NAV_AGENT_RADIUS, config.NAV_AGENT_HEIGHT,
+        config.NAV_MAX_SLOPE, config.NAV_CELL_SIZE));
     g.devSpawnPlayer(0.0, 0.2, 0.0);
 
     // Warmup: settle spawn/boot transients before snapshotting the counter.
@@ -41,6 +50,7 @@ func start() {
 
     var phys = g.getPhys();
     var rebuildStart = phys.QueryBroadphaseRebuildCount;
+    var retargetStart = g.getEnemies().navigationRetargetCount();
 
     // Sustained combat: top the field up with a mixed wave every 1.5 seconds,
     // strafe continuously, and hold fire at a target dummy so every tick runs
@@ -75,12 +85,14 @@ func start() {
 
     var rebuilds = phys.QueryBroadphaseRebuildCount - rebuildStart;
     var fallbacks = phys.BroadphaseFallbackCount;
+    var retargets = g.getEnemies().navigationRetargetCount() - retargetStart;
     var alive = g.getEnemies().aliveCount();
 
     Terminal.Say("stress ticks=" + S.intStr(ticks) +
                  " spawned=" + S.intStr(spawned) +
                  " alive=" + S.intStr(alive) +
                  " rebuilds=" + S.intStr(rebuilds) +
+                 " retargets=" + S.intStr(retargets) +
                  " fallbacks=" + S.intStr(fallbacks));
 
     if spawned < 12 {
@@ -95,6 +107,16 @@ func start() {
     if fallbacks > 0 {
         fail("broadphase fell back to brute-force scans " + S.intStr(fallbacks) +
              " times"); return;
+    }
+    if retargets <= 0 {
+        fail("navigation retarget path was not exercised"); return;
+    }
+    // Twelve SetTarget calls every tick was the native 5-10 FPS regression.
+    // The staggered 4 Hz policy stays below two queries per simulation tick,
+    // including spawn and discontinuous-goal transients.
+    if retargets > ticks * 2 {
+        fail("navigation rebuilt " + S.intStr(retargets) + " paths in " +
+             S.intStr(ticks) + " ticks — retarget work is not bounded"); return;
     }
     var diag = g.getDiag();
     if diag.hasFailed() {

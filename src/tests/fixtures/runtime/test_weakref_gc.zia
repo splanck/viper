@@ -1,4 +1,22 @@
-// Test: WeakMap and GC cycle collection
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/tests/fixtures/runtime/test_weakref_gc.zia
+// Purpose: Exercise WeakMap behavior, explicit GC collection, and managed
+//          object cleanup through the Zia runtime surface.
+// Key invariants:
+//   - GC statistics remain monotonic and explicit collection is safe.
+//   - WeakMap operations and managed temporaries do not trap or retain garbage.
+// Ownership/Lifetime:
+//   - The fixture owns its local runtime objects until lexical cleanup.
+//   - The runtime owns weak-map bookkeeping and cycle-collection state.
+// Links: src/runtime/core/rt_context.c, src/il/runtime/RuntimeOwnership.hpp
+//
+//===----------------------------------------------------------------------===//
 module TestWeakRefGc;
 
 bind Zanna.Terminal;
@@ -52,8 +70,12 @@ func start() {
     if (kLen != 1) { Say("FAIL: WeakMap Keys should have 1 entry"); return; }
 
     // === Test 6: Multiple entries ===
-    Zanna.Collections.WeakMap.Set(wmap, "key2", Zanna.Collections.Seq.New());
-    Zanna.Collections.WeakMap.Set(wmap, "key3", Zanna.Collections.Seq.New());
+    // WeakMap does not retain its values. Keep strong locals alive while the
+    // following count/remove assertions exercise the map operations.
+    var val2 = Zanna.Collections.Seq.New();
+    var val3 = Zanna.Collections.Seq.New();
+    Zanna.Collections.WeakMap.Set(wmap, "key2", val2);
+    Zanna.Collections.WeakMap.Set(wmap, "key3", val3);
     wmLen = Zanna.Collections.WeakMap.get_Count(wmap);
     if (wmLen != 3) { Say("FAIL: WeakMap Len should be 3"); return; }
 

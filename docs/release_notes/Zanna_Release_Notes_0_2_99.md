@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-20
+last-verified: 2026-07-21
 ---
 
 # Zanna Compiler Platform — Release Notes
@@ -48,14 +48,14 @@ Zanna Studio and the GUI toolkit each take a top-to-bottom modernization pass, p
 
 | Metric | v0.2.7 | v0.2.99 | Delta |
 |---|---|---|---|
-| Commits | — | 137 | +137 |
+| Commits | — | 142 | +142 |
 | Source files | 3,402 | 3,634 | +232 |
-| Production SLOC | 762K | 921K | +159K |
-| Test SLOC | 304K | 349K | +45K |
+| Production SLOC | 762K | 934K | +172K |
+| Test SLOC | 304K | 355K | +51K |
 | Zanna Studio SLOC | 28K | 40K | +12K |
 | Demo SLOC | 197K | 239K | +42K |
 
-Counts via `scripts/count_sloc.sh` (production 920,604 / test 349,289 / demo 239,212 / zannastudio 39,733 / source files 3,634); commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which the SLOC figures exclude.
+Counts via `scripts/count_sloc.sh` (production 934,247 / test 354,988 / demo 239,335 / zannastudio 39,733 / source files 3,634); commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which the SLOC figures exclude.
 
 ---
 
@@ -78,12 +78,12 @@ Counts via `scripts/count_sloc.sh` (production 920,604 / test 349,289 / demo 239
 ### 3D assets, animation, and the asset pipeline
 
 - The in-tree importer decodes Draco, meshopt, and Basis Universal compressed glTF, quantized attributes, and KTX2 textures, so assets exported from standard DCC tools load directly; malformed streams fail with named diagnostics instead of crashing.
-- FBX import is now complete. Alongside polygon meshes, skeletons, and skinning, it tessellates NURBS and patch surfaces; composes animation layers; evaluates position, rotation, scale, parent, aim, and IK constraints; couples animated projection-aware cameras to their nodes; emits native rectangle/sphere/volume lights; and preserves progressive blend shapes. Binary and ASCII files use the same typed evaluator and stable numeric identity.
-- Tiled maps import directly: `SceneDocument` and `TiledMapLoader` read finite or chunked infinite Tiled JSON (`.tmj`/`.json`) and TMX (`.tmx`) into an editable scene or a render-ready orthogonal, isometric, staggered, hexagonal, or oblique tilemap. Mixed atlas/image-collection tilesets, map-wide GIDs and transforms, oversized artwork, offsets/parallax/tint/opacity, typed metadata, collision, and variable-duration animation survive save/reload.
-- `zanna asset bake` now preserves the whole scene. VSCN v5 keeps multiple scenes, camera-node attachments and camera animation, native lights, node and skeletal animation, morph targets, material variants, and exact KTX2/PNG/JPEG/GIF/BMP source bytes through bake/reload. Its per-slot fidelity report distinguishes preserved source containers, preserved decoded texels, and textures changed after import.
+- FBX import is now complete: a file authored in a DCC tool arrives with its meshes, skeletons and skinning, NURBS and patch surfaces, layered and constraint-driven animation, node-coupled cameras, native lights, and blend shapes intact — binary or ASCII, through one evaluator. You import the scene, not just its geometry.
+- Tiled maps import directly: `SceneDocument` and `TiledMapLoader` read finite or infinite Tiled JSON (`.tmj`) and TMX (`.tmx`) into an editable scene or a render-ready orthogonal, isometric, staggered, hexagonal, or oblique tilemap. Tilesets, transforms, parallax, tint, collision, typed metadata, and animation all survive save and reload, so a map round-trips without losing authored detail.
+- `zanna asset bake` now preserves the whole scene, not just its geometry: VSCN v5 keeps every scene, camera and its animation, native light, skeletal and morph animation, and material variant — and the exact source bytes of your KTX2/PNG/JPEG/GIF/BMP textures — across bake and reload. A per-slot fidelity report tells you which textures were preserved untouched and which the pipeline had to re-encode.
 - Materials extend to the full PBR set — clearcoat, sheen, anisotropy, transmission, volume — plus signed/unsigned BC6H HDR textures, across all four backends.
 - Animation scales up: skeletons to 1,024 bones, up to eight influences per vertex with GPU skinning, cubic-spline tangents, and tolerance-based clip compression. `GenerateLODs` builds bounded LOD chains automatically, and `AssetDiagnostics3D.GetImportReport` reports what an import skipped or truncated, as structured JSON.
-- A 48-item Graphics3D hardening pass (ADR 0139) makes glTF/GLB, KTX2, and FBX parsing strict and transactional, caches immutable mesh/tangent/ray data, and makes rendering, physics, navigation, terrain, and particle work bounded, failure-atomic, and observable.
+- A Graphics3D hardening pass makes asset parsing strict and transactional and keeps rendering, physics, navigation, terrain, and particle work bounded and recoverable — so a malformed asset or an overloaded scene degrades in a defined way instead of crashing, and immutable mesh and ray data is cached rather than rebuilt each frame.
 
 ### First- and third-person game runtimes
 
@@ -156,7 +156,7 @@ Counts via `scripts/count_sloc.sh` (production 920,604 / test 349,289 / demo 239
 
 ### Tests
 
-Test code grows by ~45K SLOC, tracking the work above:
+Test code grows by ~51K SLOC, tracking the work above:
 
 - The third-person suite's subsystems each ship a VM-versus-native probe, and the codegen round adds jump-table, narrow-arithmetic, and range-demotion coverage.
 - The runtime API and registry work is locked by contract-fingerprint and name-uniqueness guards, so the surface can't drift silently. The asset pipeline adds end-to-end VSCN v5 bake-fidelity gates for complete scenes, exact source textures, and decoded-only textures.

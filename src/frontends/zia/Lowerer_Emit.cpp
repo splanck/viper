@@ -4,14 +4,23 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file Lowerer_Emit.cpp
-/// @brief Instruction emission and helpers for the Zia IL lowerer.
-///
+//
+// File: src/frontends/zia/Lowerer_Emit.cpp
+// Purpose: Emit typed IL instructions and implement Zia value/ownership helpers.
+// Key invariants:
+//   - Managed temporaries are released exactly once or transferred to an owner.
+//   - Inline aggregate copies retain managed fields and release displaced fields.
+// Ownership/Lifetime:
+//   - Emitted values live in the current function owned by the module builder.
+//   - Deferred-release entries remain valid only within their originating CFG edge.
+// Links: src/frontends/zia/Lowerer.hpp, src/frontends/zia/Lowerer_Stmt.cpp,
+//        src/il/runtime/RuntimeOwnership.hpp
+//
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
+#include "il/runtime/RuntimeSignatures.hpp"
 #include "support/alignment.hpp"
 #include <algorithm>
 #include <cctype>
@@ -329,12 +338,36 @@ Lowerer::Value Lowerer::emitCallRet(Type retTy,
     instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
 
+    if (const auto *descriptor = il::runtime::findRuntimeDescriptor(callee)) {
+        for (std::size_t i = 0; i < args.size() && i < 64; ++i) {
+            if ((descriptor->signature.consumedArgMask & (std::uint64_t{1} << i)) != 0)
+                consumeDeferred(args[i]);
+        }
+    }
+
     Value result = Value::temp(id);
 
-    // Auto-track string-returning calls for deferred release at statement
-    // boundary. Excludes borrowed-reference calls (getters/unboxers).
+    // Auto-track owned call results for deferred release at statement
+    // boundary. Object results are tracked only when the runtime ownership
+    // catalog explicitly marks the return as owned; unmarked object accessors
+    // may be borrowed references into another runtime object.
     if (retTy.kind == Type::Kind::Str && !isBorrowedStringCall(callee))
         deferRelease(result, /*isString=*/true);
+    else if (retTy.kind == Type::Kind::Ptr) {
+        const auto *descriptor = il::runtime::findRuntimeDescriptor(callee);
+        const bool returnsOwned = descriptor && descriptor->signature.returnsOwned;
+        if (returnsOwned)
+            deferRelease(result, /*isString=*/false);
+    }
+
+    // Zia automatically reclaims boxed temporaries after each statement, so
+    // language-visible Queue and Stack instances must retain inserted values.
+    // Their C runtime constructors intentionally default to borrowing mode for
+    // low-level callers; opt only Zia-created instances into owning mode.
+    if (callee == kCollectionsQueueNew)
+        emitCall(kCollectionsQueueSetOwnsElements, {result, Value::constBool(true)});
+    else if (callee == kCollectionsStackNew)
+        emitCall(kCollectionsStackSetOwnsElements, {result, Value::constBool(true)});
 
     return result;
 }
@@ -348,6 +381,13 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
     instr.operands = args;
     instr.loc = curLoc_;
     blockMgr_.currentBlock()->instructions.push_back(instr);
+
+    if (const auto *descriptor = il::runtime::findRuntimeDescriptor(callee)) {
+        for (std::size_t i = 0; i < args.size() && i < 64; ++i) {
+            if ((descriptor->signature.consumedArgMask & (std::uint64_t{1} << i)) != 0)
+                consumeDeferred(args[i]);
+        }
+    }
 }
 
 void Lowerer::emitCallIndirect(Value funcPtr, const std::vector<Value> &args) {
@@ -460,7 +500,13 @@ void Lowerer::emitRetVoid() {
 }
 
 Lowerer::Value Lowerer::emitConstStr(const std::string &globalName) {
-    return builder_->emitConstStr(globalName, curLoc_);
+    Value result = builder_->emitConstStr(globalName, curLoc_);
+    // Native const_str materialisation currently returns a fresh runtime
+    // string handle.  Treat it exactly like any other owned string result so
+    // statement cleanup, slot stores, and returns transfer or release that
+    // reference instead of leaking every literal evaluation.
+    deferRelease(result, /*isString=*/true);
+    return result;
 }
 
 Lowerer::Value Lowerer::emitEmptyString() {
@@ -528,7 +574,6 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
             struct ManagedValueField {
                 size_t offset;
                 int64_t kind;
-                int8_t retainNow;
             };
 
             std::vector<ManagedValueField> managedFields;
@@ -559,8 +604,7 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
                 }
 
                 if (isStringType(type)) {
-                    managedFields.push_back(
-                        {baseOffset, /*RT_VALUE_FIELD_STR=*/2, /*retainNow=*/1});
+                    managedFields.push_back({baseOffset, /*RT_VALUE_FIELD_STR=*/2});
                     return;
                 }
 
@@ -569,8 +613,7 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
                     type->kind == TypeKindSem::Any)
                     objectLike = true;
                 if (objectLike && mapType(type).kind == Type::Kind::Ptr) {
-                    managedFields.push_back(
-                        {baseOffset, /*RT_VALUE_FIELD_OBJ=*/1, /*retainNow=*/1});
+                    managedFields.push_back({baseOffset, /*RT_VALUE_FIELD_OBJ=*/1});
                 }
             };
             collectManagedFields(semanticType, 0);
@@ -601,12 +644,7 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
                          {heapPtr,
                           Value::constInt(static_cast<int64_t>(field.offset)),
                           Value::constInt(field.kind),
-                          Value::constBool(field.retainNow != 0)});
-            }
-
-            for (size_t i = 0; i < info->fields.size(); ++i) {
-                if (isStringType(info->fields[i].type))
-                    emitCall(kStrReleaseMaybe, {fieldValues[i]});
+                          Value::constBool(false)});
             }
 
             return heapPtr;
@@ -743,8 +781,10 @@ Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr) {
     // BUG-ADV-001: Retain loaded string fields to prevent use-after-free.
     // Load gives a borrowed reference; callers may consume the string in
     // concatenation or pass it cross-module, making the borrow dangling.
-    if (fieldType.kind == Type::Kind::Str)
+    if (fieldType.kind == Type::Kind::Str) {
         emitCall(runtime::kStrRetainMaybe, {loaded});
+        deferRelease(loaded, /*isString=*/true);
+    }
     return loaded;
 }
 
@@ -753,6 +793,10 @@ void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
     if (field->isWeak) {
         Value oldHandle = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
         Value newHandle = emitCallRet(Type(Type::Kind::Ptr), runtime::kMemoryWeakRefNew, {val});
+        // The field takes the weak-handle creation reference. Without this
+        // transfer, statement cleanup frees the handle while the field still
+        // points at it.
+        consumeDeferred(newHandle);
         emitStore(fieldAddr, newHandle, Type(Type::Kind::Ptr));
         emitCall(runtime::kMemoryWeakRefFree, {oldHandle});
         return;
@@ -771,19 +815,43 @@ void Lowerer::emitInlineValueStore(TypeRef valueType,
 
     Type ilType = mapType(valueType);
     if (ilType.kind == Type::Kind::Str) {
+        const bool owned = consumeDeferred(value);
         if (destInitialized) {
             Value oldValue = emitLoad(destPtr, ilType);
-            emitCall(runtime::kStrRetainMaybe, {value});
+            if (!owned)
+                emitCall(runtime::kStrRetainMaybe, {value});
             emitStore(destPtr, value, ilType);
             emitCall(runtime::kStrReleaseMaybe, {oldValue});
         } else {
-            emitCall(runtime::kStrRetainMaybe, {value});
+            if (!owned)
+                emitCall(runtime::kStrRetainMaybe, {value});
             emitStore(destPtr, value, ilType);
         }
         return;
     }
 
+    if (ilType.kind == Type::Kind::Ptr && needsRelease(valueType)) {
+        const bool owned = consumeDeferred(value);
+        if (!owned)
+            emitCall("rt_obj_retain_maybe", {value});
+        Value oldValue = Value::null();
+        if (destInitialized)
+            oldValue = emitLoad(destPtr, ilType);
+        emitStore(destPtr, value, ilType);
+        if (destInitialized)
+            emitManagedRelease(oldValue, /*isString=*/false);
+        return;
+    }
+
     emitStore(destPtr, value, ilType);
+}
+
+Lowerer::Value Lowerer::takeManagedValueFromSlot(Value slot, Type type) {
+    Value value = emitLoad(slot, type);
+    // Managed String and object handles share the pointer representation. A
+    // raw null store records an ownership move without decrementing the handle.
+    emitStore(slot, Value::null(), Type(Type::Kind::Ptr));
+    return value;
 }
 
 void Lowerer::emitInlineValueCopy(TypeRef valueType,
@@ -959,8 +1027,15 @@ Lowerer::Value Lowerer::emitStructTypeAlloc(const StructTypeInfo &info) {
 LowerResult Lowerer::materializeCallResult(Value result, TypeRef semanticType, Type ilType) {
     if (semanticType && semanticType->kind == TypeKindSem::Struct &&
         ilType.kind == Type::Kind::Ptr) {
-        return emitUnboxValue(result, ilType, semanticType);
+        LowerResult materialized = emitUnboxValue(result, ilType, semanticType);
+        // User functions and methods return value structs in an owned heap box.
+        // The stack copy retains any managed fields, so the transferred box can
+        // be reclaimed at the statement boundary after materialization.
+        deferRelease(result, /*isString=*/false);
+        return materialized;
     }
+    if (ilType.kind == Type::Kind::Ptr && needsRelease(semanticType))
+        deferRelease(result, /*isString=*/false);
     return {result, ilType};
 }
 
@@ -1305,7 +1380,7 @@ bool Lowerer::needsRelease(TypeRef type) const {
                 return false;
             switch (inner->kind) {
                 case TypeKindSem::Struct:
-                    return false;
+                    return true; // Optional structs carry an owned boxed payload.
                 case TypeKindSem::Integer:
                 case TypeKindSem::Number:
                 case TypeKindSem::Boolean:
@@ -1317,9 +1392,12 @@ bool Lowerer::needsRelease(TypeRef type) const {
         }
         case TypeKindSem::String:
         case TypeKindSem::Class:
+        case TypeKindSem::Interface:
         case TypeKindSem::List:
         case TypeKindSem::Map:
         case TypeKindSem::Set:
+        case TypeKindSem::Any:
+        case TypeKindSem::TypeParam:
             return true;
         // Ptr with a non-empty name is likely a runtime class (Seq, etc.)
         case TypeKindSem::Ptr:
@@ -1372,10 +1450,36 @@ Lowerer::Value Lowerer::emitManagedReleaseRet(Value value, bool isString) {
 }
 
 void Lowerer::emitManagedRelease(Value value, bool isString) {
-    (void)emitManagedReleaseRet(value, isString);
+    if (isString) {
+        emitCall(kStrReleaseMaybe, {value});
+        return;
+    }
+
+    // A semantic object can dynamically contain a heap object, a string
+    // handle (for Any/collection values), or an opaque runtime handle such as
+    // a GUI widget. The checked object helper releases the first two and is a
+    // no-op for opaque handles; branching on its result preserves Zia class
+    // destructor dispatch only for a heap object whose count reached zero.
+    Value shouldDestroy = emitCallRet(Type(Type::Kind::I1), "rt_obj_release_check0", {value});
+    size_t destroyIdx = createBlock("release_destroy");
+    size_t contIdx = createBlock("release_cont");
+    emitCBr(shouldDestroy, destroyIdx, contIdx);
+
+    setBlock(destroyIdx);
+    emitCall("__zia_dtor_dispatch", {value});
+    emitCall("rt_obj_free", {value});
+    emitBr(contIdx);
+
+    setBlock(contIdx);
 }
 
 void Lowerer::deferRelease(Value v, bool isString) {
+    if (v.kind == Value::Kind::Temp) {
+        for (const auto &pending : deferredTemps_) {
+            if (pending.value.kind == Value::Kind::Temp && pending.value.id == v.id)
+                return;
+        }
+    }
     deferredTemps_.push_back({v, isString, blockMgr_.currentBlockIndex()});
 }
 
@@ -1445,7 +1549,10 @@ void Lowerer::releaseBlockStringSlots(const std::unordered_map<std::string, Valu
         return;
     std::vector<std::string> names;
     for (const auto &[name, slot] : slots_) {
-        if (liveBefore.find(name) == liveBefore.end() && isOwnedStringSlot(name))
+        const auto previous = liveBefore.find(name);
+        const bool introducedHere =
+            previous == liveBefore.end() || !il::core::valueEquals(previous->second, slot);
+        if (introducedHere && isOwnedStringSlot(name))
             names.push_back(name);
     }
     std::sort(names.begin(), names.end());
@@ -1455,22 +1562,121 @@ void Lowerer::releaseBlockStringSlots(const std::unordered_map<std::string, Valu
     }
 }
 
+bool Lowerer::isOwnedObjectSlot(const std::string &name) const {
+    if (slots_.find(name) == slots_.end())
+        return false;
+    auto typeIt = localTypes_.find(name);
+    if (typeIt == localTypes_.end() || !typeIt->second)
+        return false;
+    auto *self = const_cast<Lowerer *>(this);
+    return self->mapType(typeIt->second).kind == Type::Kind::Ptr &&
+           self->needsRelease(typeIt->second);
+}
+
+void Lowerer::releaseLocalObjectSlots() {
+    if (isTerminated())
+        return;
+    std::vector<std::string> names;
+    for (const auto &[name, slot] : slots_) {
+        if (isOwnedObjectSlot(name))
+            names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());
+    for (const auto &name : names) {
+        Value handle = loadFromSlot(name, Type(Type::Kind::Ptr));
+        emitManagedRelease(handle, /*isString=*/false);
+    }
+}
+
+void Lowerer::releaseOwnedObjectSlot(const std::string &name) {
+    if (isTerminated() || !isOwnedObjectSlot(name))
+        return;
+    Value handle = loadFromSlot(name, Type(Type::Kind::Ptr));
+    emitManagedRelease(handle, /*isString=*/false);
+}
+
+void Lowerer::pushLoopScope(size_t breakTarget, size_t continueTarget) {
+    loopStack_.push(breakTarget, continueTarget);
+    loopSlotSnapshots_.push_back(slots_);
+}
+
+void Lowerer::popLoopScope() {
+    loopStack_.pop();
+    if (!loopSlotSnapshots_.empty())
+        loopSlotSnapshots_.pop_back();
+}
+
+void Lowerer::releaseCurrentLoopBodySlots() {
+    if (loopSlotSnapshots_.empty() || isTerminated())
+        return;
+    releaseBlockStringSlots(loopSlotSnapshots_.back());
+    releaseBlockObjectSlots(loopSlotSnapshots_.back());
+}
+
+void Lowerer::storeOwnedObjectToSlot(const std::string &name, Value value, bool releaseDisplaced) {
+    const bool owned = consumeDeferred(value);
+    if (!owned)
+        emitCall("rt_obj_retain_maybe", {value});
+    if (releaseDisplaced) {
+        Value displaced = loadFromSlot(name, Type(Type::Kind::Ptr));
+        emitManagedRelease(displaced, /*isString=*/false);
+    }
+    storeToSlot(name, value, Type(Type::Kind::Ptr));
+}
+
+void Lowerer::releaseBlockObjectSlots(const std::unordered_map<std::string, Value> &liveBefore) {
+    if (isTerminated())
+        return;
+    std::vector<std::string> names;
+    for (const auto &[name, slot] : slots_) {
+        const auto previous = liveBefore.find(name);
+        const bool introducedHere =
+            previous == liveBefore.end() || !il::core::valueEquals(previous->second, slot);
+        if (introducedHere && isOwnedObjectSlot(name))
+            names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());
+    for (const auto &name : names) {
+        Value handle = loadFromSlot(name, Type(Type::Kind::Ptr));
+        emitManagedRelease(handle, /*isString=*/false);
+    }
+}
+
 void Lowerer::releaseDeferredTemps() {
     if (deferredTemps_.empty() || isTerminated()) {
         deferredTemps_.clear();
         return;
     }
 
+    releaseDeferredTempsFrom(0);
+}
+
+void Lowerer::releaseDeferredTempsFrom(size_t first) {
+    if (first >= deferredTemps_.size())
+        return;
+    if (isTerminated()) {
+        deferredTemps_.erase(deferredTemps_.begin() + static_cast<std::ptrdiff_t>(first),
+                             deferredTemps_.end());
+        return;
+    }
+
     // Only release temps defined in the current block (SSA scoping).
-    // Temps from other blocks cannot be referenced here without violating SSA;
-    // they are dropped (accepted leak — the proper fix is spilling to alloca).
+    // Control-flow expression lowerers call this before leaving each defining
+    // block. A different-block entry here belongs to a nested expression path
+    // that cannot execute on the current edge and must not be referenced.
     size_t curBlock = blockMgr_.currentBlockIndex();
-    for (auto &t : deferredTemps_) {
+    std::vector<DeferredRelease> pending;
+    pending.reserve(deferredTemps_.size() - first);
+    std::move(deferredTemps_.begin() + static_cast<std::ptrdiff_t>(first),
+              deferredTemps_.end(),
+              std::back_inserter(pending));
+    deferredTemps_.erase(deferredTemps_.begin() + static_cast<std::ptrdiff_t>(first),
+                         deferredTemps_.end());
+    for (const auto &t : pending) {
         if (t.blockIdx != curBlock)
             continue;
         emitManagedRelease(t.value, t.isString);
     }
-    deferredTemps_.clear();
 }
 
 void Lowerer::emitDestructorDispatch() {

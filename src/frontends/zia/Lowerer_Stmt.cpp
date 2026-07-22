@@ -4,10 +4,18 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
-/// @file Lowerer_Stmt.cpp
-/// @brief Statement lowering for the Zia IL lowerer.
-///
+//
+// File: src/frontends/zia/Lowerer_Stmt.cpp
+// Purpose: Lower Zia statements, lexical scopes, loops, cleanup, and returns.
+// Key invariants:
+//   - Every emitted control-flow path ends in a valid terminator.
+//   - Lexical and per-iteration managed slots are released on all exits.
+// Ownership/Lifetime:
+//   - Slots created by a lexical scope own their managed contents until exit.
+//   - Return statements transfer exactly one managed reference to the caller.
+// Links: src/frontends/zia/Lowerer.hpp, src/frontends/zia/Lowerer_Emit.cpp,
+//        src/frontends/zia/Lowerer_Expr.cpp
+//
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Lowerer.hpp"
@@ -149,6 +157,7 @@ void Lowerer::lowerBlockStmt(BlockStmt *stmt) {
         // as the variables go out of scope (runs once per loop iteration for
         // loop-body declarations, since their allocas are re-executed).
         releaseBlockStringSlots(slotsBackup);
+        releaseBlockObjectSlots(slotsBackup);
     }
     cleanupStack_.resize(cleanupStart);
 
@@ -205,14 +214,20 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
             auto coerced =
                 coerceValueToType(element.value, mapType(elements[i]), elements[i], bindingType);
 
-            if (!stmt->isFinal) {
-                createSlot(names[i], mapType(bindingType));
+            const Type bindingIlType = mapType(bindingType);
+            const bool managedString = bindingIlType.kind == Type::Kind::Str;
+            const bool managedObject =
+                bindingIlType.kind == Type::Kind::Ptr && needsRelease(bindingType);
+            if (!stmt->isFinal || managedString || managedObject) {
+                createSlot(names[i], bindingIlType);
                 localTypes_[names[i]] = bindingType;
-                if (mapType(bindingType).kind == Type::Kind::Str) {
+                if (managedString) {
                     // Slot-ownership discipline: fresh slot, no displaced value.
                     storeOwnedStringToSlot(names[i], coerced.value, /*releaseDisplaced=*/false);
+                } else if (managedObject) {
+                    storeOwnedObjectToSlot(names[i], coerced.value, /*releaseDisplaced=*/false);
                 } else {
-                    storeToSlot(names[i], coerced.value, mapType(bindingType));
+                    storeToSlot(names[i], coerced.value, bindingIlType);
                     consumeDeferred(coerced.value);
                 }
                 continue;
@@ -287,13 +302,21 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
         }
     }
 
-    // Use slot-based storage for all mutable variables (enables cross-block SSA)
-    if (!stmt->isFinal) {
+    const bool managedString = ilType.kind == Type::Kind::Str;
+    const bool managedObject = ilType.kind == Type::Kind::Ptr && needsRelease(varType);
+    if (varType)
+        localTypes_[stmt->name] = varType;
+
+    // Use slot-based storage for all mutable variables (enables cross-block
+    // SSA) and for managed references whose lexical owner must release them.
+    if (!stmt->isFinal || managedString || managedObject) {
         createSlot(stmt->name, ilType);
         if (ilType.kind == Type::Kind::Str) {
             // Slot-ownership discipline: the slot owns one reference. The
             // alloca is freshly zeroed, so there is no displaced value.
             storeOwnedStringToSlot(stmt->name, initValue, /*releaseDisplaced=*/false);
+        } else if (managedObject) {
+            storeOwnedObjectToSlot(stmt->name, initValue, /*releaseDisplaced=*/false);
         } else {
             storeToSlot(stmt->name, initValue, ilType);
             // The init value is consumed by the slot — don't release it at statement boundary
@@ -304,10 +327,6 @@ void Lowerer::lowerVarStmt(VarStmt *stmt) {
         defineLocal(stmt->name, initValue);
         // The init value is consumed by the local — don't release it at statement boundary
         consumeDeferred(initValue);
-    }
-
-    if (varType) {
-        localTypes_[stmt->name] = varType;
     }
 }
 
@@ -365,7 +384,7 @@ void Lowerer::lowerWhileStmt(WhileStmt *stmt) {
     size_t endIdx = createBlock("while_end");
 
     // Push loop context
-    loopStack_.push(endIdx, condIdx);
+    pushLoopScope(endIdx, condIdx);
 
     // Branch to condition
     emitBr(condIdx);
@@ -384,7 +403,7 @@ void Lowerer::lowerWhileStmt(WhileStmt *stmt) {
     }
 
     // Pop loop context
-    loopStack_.pop();
+    popLoopScope();
 
     setBlock(endIdx);
 }
@@ -395,13 +414,14 @@ void Lowerer::lowerForStmt(ForStmt *stmt) {
     size_t updateIdx = createBlock("for_update");
     size_t endIdx = createBlock("for_end");
 
-    // Push loop context
-    loopStack_.push(endIdx, updateIdx);
-
     // Lower init
     if (stmt->init) {
         lowerStmt(stmt->init.get());
     }
+
+    // The initializer survives continue/break edges for the lifetime of the
+    // loop, so snapshot ownership only after it has been lowered.
+    pushLoopScope(endIdx, updateIdx);
 
     // Branch to condition
     emitBr(condIdx);
@@ -428,10 +448,11 @@ void Lowerer::lowerForStmt(ForStmt *stmt) {
     if (stmt->update) {
         lowerExpr(stmt->update.get());
     }
+    releaseDeferredTemps();
     emitBr(condIdx);
 
     // Pop loop context
-    loopStack_.pop();
+    popLoopScope();
 
     setBlock(endIdx);
 }
@@ -467,6 +488,8 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt) {
             auto collectionValue = lowerExpr(stmt->iterable.get());
             Value seqValue =
                 emitCallRet(Type(Type::Kind::Ptr), toSeqCallee, {collectionValue.value});
+            if (consumeDeferred(collectionValue.value))
+                emitManagedRelease(collectionValue.value, isStringType(iterableType));
             lowerForInSeq({seqValue, Type(Type::Kind::Ptr)},
                           stmt,
                           iterableType->elementType(),
@@ -489,7 +512,7 @@ void Lowerer::lowerForInRange(ForInStmt *stmt,
     size_t updateDoIdx = createBlock("forin_update_do");
     size_t endIdx = createBlock("forin_end");
 
-    loopStack_.push(endIdx, updateIdx);
+    pushLoopScope(endIdx, updateIdx);
 
     auto startResult = lowerExpr(rangeExpr->start.get());
     auto endResult = lowerExpr(rangeExpr->end.get());
@@ -590,7 +613,7 @@ void Lowerer::lowerForInRange(ForInStmt *stmt,
     storeToSlot(cursorVar, nextVal, Type(Type::Kind::I64));
     emitBr(condIdx);
 
-    loopStack_.pop();
+    popLoopScope();
     setBlock(endIdx);
 
     removeSlot(stmt->variable);
@@ -613,6 +636,8 @@ void Lowerer::lowerForInTuple(ForInStmt *stmt, TypeRef iterableType) {
 
     Type firstIl = mapType(firstType);
     Type secondIl = mapType(secondType);
+    const bool managedFirstObject = firstIl.kind == Type::Kind::Ptr && needsRelease(firstType);
+    const bool managedSecondObject = secondIl.kind == Type::Kind::Ptr && needsRelease(secondType);
 
     createSlot(stmt->variable, firstIl);
     createSlot(stmt->secondVariable, secondIl);
@@ -621,37 +646,51 @@ void Lowerer::lowerForInTuple(ForInStmt *stmt, TypeRef iterableType) {
 
     // Null-init string slots so the first store's releaseDisplaced frees null
     // (safe) instead of the uninitialized slot — native codegen leaves it garbage.
-    if (firstIl.kind == Type::Kind::Str)
+    if (firstIl.kind == Type::Kind::Str || managedFirstObject)
         storeToSlot(stmt->variable, Value::null(), Type(Type::Kind::Ptr));
-    if (secondIl.kind == Type::Kind::Str)
+    if (secondIl.kind == Type::Kind::Str || managedSecondObject)
         storeToSlot(stmt->secondVariable, Value::null(), Type(Type::Kind::Ptr));
 
     size_t bodyIdx = createBlock("forin_tuple_body");
     size_t endIdx = createBlock("forin_tuple_end");
 
-    loopStack_.push(endIdx, endIdx);
+    pushLoopScope(endIdx, endIdx);
     emitBr(bodyIdx);
     setBlock(bodyIdx);
 
+    const size_t elementReleaseMark = deferredTemps_.size();
     PatternValue tupleValue{lowerExpr(stmt->iterable.get()).value, iterableType};
     PatternValue firstVal = emitTupleElement(tupleValue, 0, firstType);
     PatternValue secondVal = emitTupleElement(tupleValue, 1, secondType);
 
     if (firstIl.kind == Type::Kind::Str)
         storeOwnedStringToSlot(stmt->variable, firstVal.value, /*releaseDisplaced=*/true);
+    else if (managedFirstObject)
+        storeOwnedObjectToSlot(stmt->variable, firstVal.value, /*releaseDisplaced=*/true);
     else
         storeToSlot(stmt->variable, firstVal.value, firstIl);
     if (secondIl.kind == Type::Kind::Str)
         storeOwnedStringToSlot(stmt->secondVariable, secondVal.value, /*releaseDisplaced=*/true);
+    else if (managedSecondObject)
+        storeOwnedObjectToSlot(stmt->secondVariable, secondVal.value, /*releaseDisplaced=*/true);
     else
         storeToSlot(stmt->secondVariable, secondVal.value, secondIl);
+
+    releaseDeferredTempsFrom(elementReleaseMark);
 
     lowerStmt(stmt->body.get());
     if (!isTerminated())
         emitBr(endIdx);
 
-    loopStack_.pop();
+    popLoopScope();
     setBlock(endIdx);
+
+    releaseOwnedStringSlot(stmt->variable);
+    releaseOwnedStringSlot(stmt->secondVariable);
+    releaseOwnedObjectSlot(stmt->variable);
+    releaseOwnedObjectSlot(stmt->secondVariable);
+    removeSlot(stmt->variable);
+    removeSlot(stmt->secondVariable);
 }
 
 void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
@@ -660,6 +699,7 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
         elemType = sema_.resolveType(stmt->variableType.get());
 
     Type elemIlType = mapType(elemType);
+    const bool managedElemObject = elemIlType.kind == Type::Kind::Ptr && needsRelease(elemType);
 
     // For tuple binding (for idx, val in list), first var is index, second is element;
     // for single binding (for val in list), the variable is the element.
@@ -677,7 +717,7 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
 
     // Null-init a string element slot (see lowerForInSeq): the per-iteration
     // store releases the displaced value, which is uninitialized on iteration 1.
-    if (elemIlType.kind == Type::Kind::Str) {
+    if (elemIlType.kind == Type::Kind::Str || managedElemObject) {
         const std::string &elemSlot = hasTupleBinding ? stmt->secondVariable : stmt->variable;
         storeToSlot(elemSlot, Value::null(), Type(Type::Kind::Ptr));
     }
@@ -691,8 +731,9 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
     createSlot(indexVar, Type(Type::Kind::I64));
     createSlot(lenVar, Type(Type::Kind::I64));
     createSlot(listVar, Type(Type::Kind::Ptr));
+    localTypes_[listVar] = iterableType;
     storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
-    storeToSlot(listVar, listValue.value, Type(Type::Kind::Ptr));
+    storeOwnedObjectToSlot(listVar, listValue.value, /*releaseDisplaced=*/false);
     Value lenVal = emitCallRet(Type(Type::Kind::I64), kListCount, {listValue.value});
     storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
 
@@ -701,7 +742,7 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
     size_t updateIdx = createBlock("forin_list_update");
     size_t endIdx = createBlock("forin_list_end");
 
-    loopStack_.push(endIdx, updateIdx);
+    pushLoopScope(endIdx, updateIdx);
     emitBr(condIdx);
 
     setBlock(condIdx);
@@ -713,6 +754,7 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
     setBlock(bodyIdx);
     Value listLoaded = loadFromSlot(listVar, Type(Type::Kind::Ptr));
     Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    const size_t elementReleaseMark = deferredTemps_.size();
 
     if (hasTupleBinding) {
         storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
@@ -721,6 +763,9 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
         if (elemIlType.kind == Type::Kind::Str)
             storeOwnedStringToSlot(
                 stmt->secondVariable, elemValue.value, /*releaseDisplaced=*/true);
+        else if (managedElemObject)
+            storeOwnedObjectToSlot(
+                stmt->secondVariable, elemValue.value, /*releaseDisplaced=*/true);
         else
             storeToSlot(stmt->secondVariable, elemValue.value, elemIlType);
     } else {
@@ -728,9 +773,13 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
         auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
         if (elemIlType.kind == Type::Kind::Str)
             storeOwnedStringToSlot(stmt->variable, elemValue.value, /*releaseDisplaced=*/true);
+        else if (managedElemObject)
+            storeOwnedObjectToSlot(stmt->variable, elemValue.value, /*releaseDisplaced=*/true);
         else
             storeToSlot(stmt->variable, elemValue.value, elemIlType);
     }
+
+    releaseDeferredTempsFrom(elementReleaseMark);
 
     lowerStmt(stmt->body.get());
     if (!isTerminated())
@@ -743,12 +792,14 @@ void Lowerer::lowerForInList(ForInStmt *stmt, TypeRef iterableType) {
     storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
     emitBr(condIdx);
 
-    loopStack_.pop();
+    popLoopScope();
     setBlock(endIdx);
 
     releaseOwnedStringSlot(stmt->variable);
     if (hasTupleBinding)
         releaseOwnedStringSlot(stmt->secondVariable);
+    releaseOwnedObjectSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable);
+    releaseOwnedObjectSlot(listVar);
     removeSlot(stmt->variable);
     if (hasTupleBinding)
         removeSlot(stmt->secondVariable);
@@ -789,6 +840,7 @@ void Lowerer::lowerForInString(ForInStmt *stmt) {
     createSlot(indexVar, Type(Type::Kind::I64));
     createSlot(lenVar, Type(Type::Kind::I64));
     createSlot(strVar, Type(Type::Kind::Str));
+    localTypes_[strVar] = types::string();
     storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
     storeOwnedStringToSlot(strVar, strValue.value, /*releaseDisplaced=*/false);
     Value lenVal = emitCallRet(Type(Type::Kind::I64), kStringLength, {strValue.value});
@@ -799,7 +851,7 @@ void Lowerer::lowerForInString(ForInStmt *stmt) {
     size_t updateIdx = createBlock("forin_str_update");
     size_t endIdx = createBlock("forin_str_end");
 
-    loopStack_.push(endIdx, updateIdx);
+    pushLoopScope(endIdx, updateIdx);
     emitBr(condIdx);
 
     setBlock(condIdx);
@@ -813,8 +865,8 @@ void Lowerer::lowerForInString(ForInStmt *stmt) {
     Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
     if (hasTupleBinding)
         storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
-    Value ch =
-        emitCallRet(Type(Type::Kind::Str), kStringSubstring, {strLoaded, idxInBody, Value::constInt(1)});
+    Value ch = emitCallRet(
+        Type(Type::Kind::Str), kStringSubstring, {strLoaded, idxInBody, Value::constInt(1)});
     storeOwnedStringToSlot(charSlot, ch, /*releaseDisplaced=*/true);
 
     lowerStmt(stmt->body.get());
@@ -828,7 +880,7 @@ void Lowerer::lowerForInString(ForInStmt *stmt) {
     storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
     emitBr(condIdx);
 
-    loopStack_.pop();
+    popLoopScope();
     setBlock(endIdx);
 
     releaseOwnedStringSlot(charSlot);
@@ -852,6 +904,8 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
 
     Type keyIlType = mapType(keyType);
     Type valueIlType = mapType(valueType);
+    const bool managedKeyObject = keyIlType.kind == Type::Kind::Ptr && needsRelease(keyType);
+    const bool managedValueObject = valueIlType.kind == Type::Kind::Ptr && needsRelease(valueType);
 
     createSlot(stmt->variable, keyIlType);
     localTypes_[stmt->variable] = keyType;
@@ -863,9 +917,9 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
 
     // Null-init string key/value slots (see lowerForInSeq): the per-iteration
     // store releases the displaced value, uninitialized on the first iteration.
-    if (keyIlType.kind == Type::Kind::Str)
+    if (keyIlType.kind == Type::Kind::Str || managedKeyObject)
         storeToSlot(stmt->variable, Value::null(), Type(Type::Kind::Ptr));
-    if (stmt->isTuple && valueIlType.kind == Type::Kind::Str)
+    if (stmt->isTuple && (valueIlType.kind == Type::Kind::Str || managedValueObject))
         storeToSlot(stmt->secondVariable, Value::null(), Type(Type::Kind::Ptr));
 
     auto mapValue = lowerExpr(stmt->iterable.get());
@@ -881,9 +935,11 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
     createSlot(lenVar, Type(Type::Kind::I64));
     createSlot(keysVar, Type(Type::Kind::Ptr));
     createSlot(mapVar, Type(Type::Kind::Ptr));
+    localTypes_[keysVar] = types::runtimeClass(kRuntimeClassCollectionsSeq);
+    localTypes_[mapVar] = iterableType;
     storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
-    storeToSlot(keysVar, keysSeq, Type(Type::Kind::Ptr));
-    storeToSlot(mapVar, mapValue.value, Type(Type::Kind::Ptr));
+    storeOwnedObjectToSlot(keysVar, keysSeq, /*releaseDisplaced=*/false);
+    storeOwnedObjectToSlot(mapVar, mapValue.value, /*releaseDisplaced=*/false);
     Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {keysSeq});
     storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
 
@@ -892,7 +948,7 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
     size_t updateIdx = createBlock("forin_map_update");
     size_t endIdx = createBlock("forin_map_end");
 
-    loopStack_.push(endIdx, updateIdx);
+    pushLoopScope(endIdx, updateIdx);
     emitBr(condIdx);
 
     setBlock(condIdx);
@@ -904,6 +960,7 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
     setBlock(bodyIdx);
     Value keysLoaded = loadFromSlot(keysVar, Type(Type::Kind::Ptr));
     Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    const size_t elementReleaseMark = deferredTemps_.size();
     LowerResult keyVal;
     if (integerKeyed) {
         Value boxedKey = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {keysLoaded, idxInBody});
@@ -915,6 +972,8 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
     }
     if (keyIlType.kind == Type::Kind::Str)
         storeOwnedStringToSlot(stmt->variable, keyVal.value, /*releaseDisplaced=*/true);
+    else if (managedKeyObject)
+        storeOwnedObjectToSlot(stmt->variable, keyVal.value, /*releaseDisplaced=*/true);
     else
         storeToSlot(stmt->variable, keyVal.value, keyIlType);
 
@@ -926,9 +985,13 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
         auto unboxed = emitUnboxValue(boxed, valueIlType, valueType);
         if (valueIlType.kind == Type::Kind::Str)
             storeOwnedStringToSlot(stmt->secondVariable, unboxed.value, /*releaseDisplaced=*/true);
+        else if (managedValueObject)
+            storeOwnedObjectToSlot(stmt->secondVariable, unboxed.value, /*releaseDisplaced=*/true);
         else
             storeToSlot(stmt->secondVariable, unboxed.value, valueIlType);
     }
+
+    releaseDeferredTempsFrom(elementReleaseMark);
 
     lowerStmt(stmt->body.get());
     if (!isTerminated())
@@ -941,12 +1004,17 @@ void Lowerer::lowerForInMap(ForInStmt *stmt, TypeRef iterableType) {
     storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
     emitBr(condIdx);
 
-    loopStack_.pop();
+    popLoopScope();
     setBlock(endIdx);
 
     releaseOwnedStringSlot(stmt->variable);
     if (stmt->isTuple)
         releaseOwnedStringSlot(stmt->secondVariable);
+    releaseOwnedObjectSlot(stmt->variable);
+    if (stmt->isTuple)
+        releaseOwnedObjectSlot(stmt->secondVariable);
+    releaseOwnedObjectSlot(keysVar);
+    releaseOwnedObjectSlot(mapVar);
     removeSlot(stmt->variable);
     if (stmt->isTuple)
         removeSlot(stmt->secondVariable);
@@ -965,6 +1033,7 @@ void Lowerer::lowerForInSeq(LowerResult seqValue,
         elemType = sema_.resolveType(stmt->variableType.get());
 
     Type elemIlType = mapType(elemType);
+    const bool managedElemObject = elemIlType.kind == Type::Kind::Ptr && needsRelease(elemType);
     bool hasTupleBinding = stmt->isTuple && !stmt->secondVariable.empty();
 
     if (hasTupleBinding) {
@@ -984,7 +1053,7 @@ void Lowerer::lowerForInSeq(LowerResult seqValue,
     // rt_str_release_maybe(null) is a safe no-op, but native codegen leaves stack
     // garbage there — releasing it traps "invalid string handle". A null init
     // makes the first release safe on every backend.
-    if (elemIlType.kind == Type::Kind::Str) {
+    if (elemIlType.kind == Type::Kind::Str || managedElemObject) {
         // A str slot is a pointer; zero it with a null Ptr store (the same shape
         // emitInlineValueZero uses for Str), which the verifier accepts for a str
         // alloca while a str-typed null operand would not.
@@ -999,8 +1068,9 @@ void Lowerer::lowerForInSeq(LowerResult seqValue,
     createSlot(indexVar, Type(Type::Kind::I64));
     createSlot(lenVar, Type(Type::Kind::I64));
     createSlot(seqVar, Type(Type::Kind::Ptr));
+    localTypes_[seqVar] = types::runtimeClass(kRuntimeClassCollectionsSeq);
     storeToSlot(indexVar, Value::constInt(0), Type(Type::Kind::I64));
-    storeToSlot(seqVar, seqValue.value, Type(Type::Kind::Ptr));
+    storeOwnedObjectToSlot(seqVar, seqValue.value, /*releaseDisplaced=*/false);
     Value lenVal = emitCallRet(Type(Type::Kind::I64), kSeqLen, {seqValue.value});
     storeToSlot(lenVar, lenVal, Type(Type::Kind::I64));
 
@@ -1009,7 +1079,7 @@ void Lowerer::lowerForInSeq(LowerResult seqValue,
     size_t updateIdx = createBlock(labelPrefix + "_update");
     size_t endIdx = createBlock(labelPrefix + "_end");
 
-    loopStack_.push(endIdx, updateIdx);
+    pushLoopScope(endIdx, updateIdx);
     emitBr(condIdx);
 
     setBlock(condIdx);
@@ -1021,6 +1091,7 @@ void Lowerer::lowerForInSeq(LowerResult seqValue,
     setBlock(bodyIdx);
     Value seqLoaded = loadFromSlot(seqVar, Type(Type::Kind::Ptr));
     Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
+    const size_t elementReleaseMark = deferredTemps_.size();
 
     if (hasTupleBinding)
         storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
@@ -1037,11 +1108,17 @@ void Lowerer::lowerForInSeq(LowerResult seqValue,
             storeOwnedStringToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
                                    elemValue.value,
                                    /*releaseDisplaced=*/true);
+        else if (managedElemObject)
+            storeOwnedObjectToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
+                                   elemValue.value,
+                                   /*releaseDisplaced=*/true);
         else
             storeToSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable,
                         elemValue.value,
                         elemIlType);
     }
+
+    releaseDeferredTempsFrom(elementReleaseMark);
 
     lowerStmt(stmt->body.get());
     if (!isTerminated())
@@ -1054,12 +1131,14 @@ void Lowerer::lowerForInSeq(LowerResult seqValue,
     storeToSlot(indexVar, idxNext, Type(Type::Kind::I64));
     emitBr(condIdx);
 
-    loopStack_.pop();
+    popLoopScope();
     setBlock(endIdx);
 
     releaseOwnedStringSlot(stmt->variable);
     if (hasTupleBinding)
         releaseOwnedStringSlot(stmt->secondVariable);
+    releaseOwnedObjectSlot(hasTupleBinding ? stmt->secondVariable : stmt->variable);
+    releaseOwnedObjectSlot(seqVar);
     removeSlot(stmt->variable);
     if (hasTupleBinding)
         removeSlot(stmt->secondVariable);
@@ -1081,6 +1160,7 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
                     return;
             }
             releaseLocalStringSlots();
+            releaseLocalObjectSlots();
             emitRetVoid();
             return;
         }
@@ -1101,6 +1181,10 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
                 // caller's reference either way.
                 if (!consumeDeferred(returnValue))
                     emitCall(runtime::kStrRetainMaybe, {returnValue});
+                returnValueOwned = true;
+            } else if (returnIlType.kind == Type::Kind::Ptr && needsRelease(valueType)) {
+                if (!consumeDeferred(returnValue))
+                    emitCall("rt_obj_retain_maybe", {returnValue});
                 returnValueOwned = true;
             } else {
                 consumeDeferred(returnValue);
@@ -1147,11 +1231,16 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
         if (returnIlType.kind == Type::Kind::Str && !returnValueOwned) {
             if (!consumeDeferred(returnValue))
                 emitCall(runtime::kStrRetainMaybe, {returnValue});
+        } else if (returnIlType.kind == Type::Kind::Ptr && needsRelease(valueType) &&
+                   !returnValueOwned) {
+            if (!consumeDeferred(returnValue))
+                emitCall("rt_obj_retain_maybe", {returnValue});
         } else {
             consumeDeferred(returnValue);
         }
         releaseDeferredTemps();
         releaseLocalStringSlots();
+        releaseLocalObjectSlots();
         emitRet(returnValue);
     } else {
         if (!cleanupStack_.empty()) {
@@ -1172,6 +1261,7 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
 
         releaseDeferredTemps();
         releaseLocalStringSlots();
+        releaseLocalObjectSlots();
         emitRetVoid();
     }
 }
@@ -1184,6 +1274,7 @@ void Lowerer::lowerBreakStmt(BreakStmt * /*stmt*/) {
             if (isTerminated())
                 return;
         }
+        releaseCurrentLoopBodySlots();
         emitBr(loopStack_.breakTarget());
     } else {
         // Defensive: semantic analysis should reject this; emit trap for safety.
@@ -1204,6 +1295,7 @@ void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/) {
             if (isTerminated())
                 return;
         }
+        releaseCurrentLoopBodySlots();
         emitBr(loopStack_.continueTarget());
     } else {
         // Defensive: semantic analysis should reject this; emit trap for safety.

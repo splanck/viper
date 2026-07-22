@@ -1,18 +1,23 @@
-// =============================================================================
-// ai/ai_core.zia — the enemy manager: pool, perception, FSM, behavior, director
-// =============================================================================
+//===----------------------------------------------------------------------===//
 //
-// One data-oriented pool (parallel Lists, config.POOL_AI slots) runs all 11
-// archetypes + 3 bosses on a shared substrate: perception (sight cone + LOS
-// raycast + hearing off the event bus + an awareness meter), an int FSM
-// (IDLE/PATROL/SUSPICIOUS/SEARCHING/COMBAT/STAGGER/DISABLED/DEAD), per-behavior
-// steering + telegraphed attacks, and a squad director that caps engaged AIs and
-// hands out attack tokens. Enemies are shootable via LAYER_ENEMY colliders
-// (query-only, collision mask 0 so they never shove the player), take damage by
-// draining EV_DAMAGE(TGT_ENEMY), and hurt the player by posting EV_DAMAGE(
-// TGT_PLAYER). Movement is kinematic steering (the arena is open); NavAgent
-// replaces it once levels carry a navmesh.
-// =============================================================================
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/ashfall/ai/ai_core.zia
+// Purpose: Manage pooled enemy state, perception, behavior, combat, movement,
+//          navigation, collision bodies, and encounter direction.
+// Key invariants:
+//   - Every enemy occupies one stable data-oriented pool slot.
+//   - Moving nav agents steer every tick but rebuild paths at a staggered,
+//     bounded cadence instead of synchronously rebuilding for every target tick.
+// Ownership/Lifetime:
+//   - EnemyManager owns its pooled bodies, models, projectiles, and nav agents.
+//   - World, physics, definitions, registries, and event services are borrowed.
+// Links: examples/games/ashfall/game.zia, docs/graphics3d-guide.md#navagent3d
+//
+//===----------------------------------------------------------------------===//
 module ai_core;
 
 bind Zanna.Game3D as Game3D;
@@ -38,6 +43,13 @@ var AI_STAGGER: Integer = 5;
 var AI_DISABLED: Integer = 6;
 var AI_DEAD: Integer = 7;
 
+// Path queries are synchronous and materially more expensive than steering.
+// Keep moving targets fresh at the runtime's normal 4 Hz repath cadence, but
+// distribute agents across that interval so a crowd never rebuilds in one tick.
+var NAV_RETARGET_INTERVAL: Float = 0.25;
+var NAV_RETARGET_JUMP_DISTANCE_SQ: Float = 16.0;
+var NAV_RETARGET_JUMP_WINDOW: Float = 0.06;
+
 class EnemyManager {
     hide Game3D.World3D world;
     hide G3D.PhysicsWorld3D phys;
@@ -50,7 +62,11 @@ class EnemyManager {
     hide G3D.NavMesh3D navMesh;
     hide List[G3D.NavAgent3D] navAgent;
     hide List[Integer] navReady;
+    hide List[Integer] navTargetSet;
+    hide List[Float] navTargetX; hide List[Float] navTargetZ;
+    hide List[Float] navRetargetT;
     hide Boolean navigationEnabled;
+    hide Integer navRetargetCount;
     hide Integer lastShotLanded;
 
     hide List[Integer] arch;
@@ -103,8 +119,10 @@ class EnemyManager {
         meleeTokenCap = 2;
         rangedTokenCap = 4;
         hostileShots = new enemy_projectiles.EnemyProjectiles();
-        navAgent = []; navReady = [];
+        navAgent = []; navReady = []; navTargetSet = [];
+        navTargetX = []; navTargetZ = []; navRetargetT = [];
         navigationEnabled = false;
+        navRetargetCount = 0;
         lastShotLanded = 0;
         arch = []; x = []; y = []; z = []; yaw = []; health = [];
         platesLeft = []; plateHp = []; shield = []; state = []; awareness = [];
@@ -160,7 +178,8 @@ class EnemyManager {
             G3D.PhysicsBody3D.SetPosition(wk, 0.0, -100.0, 0.0);
             G3D.PhysicsWorld3D.Add(phys, wk);
             torso.Add(t); head.Add(hd); weakBody.Add(wk);
-            navAgent.Add(null); navReady.Add(0);
+            navAgent.Add(null); navReady.Add(0); navTargetSet.Add(0);
+            navTargetX.Add(0.0); navTargetZ.Add(0.0); navRetargetT.Add(0.0);
             i = i + 1;
         }
     }
@@ -173,6 +192,8 @@ class EnemyManager {
         while i < cap {
             navAgent[i] = null;
             navReady[i] = 0;
+            navTargetSet[i] = 0;
+            navRetargetT[i] = 0.0;
             if navigationEnabled && alive[i] == 1 && defs.isFlyer(arch[i]) == false {
                 setupNavAgent(i);
             }
@@ -190,11 +211,21 @@ class EnemyManager {
         var agent = G3D.NavAgent3D.New(navMesh, radius, height);
         G3D.NavAgent3D.set_DesiredSpeed(agent, defs.speedOf(arch[s]));
         G3D.NavAgent3D.set_StoppingDistance(agent, 0.18);
+        // Ashfall supplies moving goals itself. AutoRepath would duplicate the
+        // same synchronous query performed by the staggered SetTarget below.
+        G3D.NavAgent3D.set_AutoRepath(agent, false);
         G3D.NavAgent3D.set_AvoidanceEnabled(agent, true);
         G3D.NavAgent3D.set_AvoidanceRadius(agent, radius * 1.35);
         G3D.NavAgent3D.Warp(agent, Math.Vec3.New(x[s], 0.0, z[s]));
         navAgent[s] = agent;
         navReady[s] = 1;
+        navTargetSet[s] = 0;
+        navTargetX[s] = x[s];
+        navTargetZ[s] = z[s];
+        // Seven is coprime with the 24-slot pool, so even the common initial
+        // contiguous slots cover the whole interval instead of bunching early.
+        var phaseSlot = (s * 7) % cap;
+        navRetargetT[s] = (phaseSlot + 0.0) * NAV_RETARGET_INTERVAL / (cap + 0.0);
     }
 
     /// Remove authored cover hints before loading a new level.
@@ -359,6 +390,7 @@ class EnemyManager {
         models.onDespawn(s);
         if navReady[s] == 1 { G3D.NavAgent3D.ClearTarget(navAgent[s]); }
         navReady[s] = 0;
+        navTargetSet[s] = 0;
     }
 
     expose func clearAll() {
@@ -448,6 +480,7 @@ class EnemyManager {
     }
     expose func killCountTotal() -> Integer { return killCount; }
     expose func attacksLandedTotal() -> Integer { return attacksLanded; }
+    expose func navigationRetargetCount() -> Integer { return navRetargetCount; }
     expose func alertLevelNow() -> Integer { return alertLevel; }
     expose func stateOf(s: Integer) -> Integer { return state[s]; }
     expose func awarenessOf(s: Integer) -> Float { return awareness[s]; }
@@ -713,16 +746,43 @@ class EnemyManager {
         if navReady[s] == 1 {
             var agent = navAgent[s];
             G3D.NavAgent3D.set_DesiredSpeed(agent, speed);
-            G3D.NavAgent3D.SetTarget(agent, Math.Vec3.New(gx, 0.0, gz));
-            G3D.NavAgent3D.Update(agent, dt);
-            var np = G3D.NavAgent3D.get_Position(agent);
-            var nx = Math.Vec3.get_X(np); var ny = Math.Vec3.get_Y(np);
-            var nz = Math.Vec3.get_Z(np);
-            if M.distXZ(x[s], z[s], nx, nz) > 0.0001 {
-                yaw[s] = M.toDeg(Math.Atan2(nx - x[s], 0.0 - (nz - z[s])));
-                x[s] = nx; y[s] = ny; z[s] = nz;
-                return;
+            navRetargetT[s] = navRetargetT[s] - dt;
+
+            // A teleport or behavior switch may move the goal a long way. Cap
+            // that response at 60 ms while preserving slot-based staggering.
+            if navTargetSet[s] == 1 {
+                var goalDx = gx - navTargetX[s];
+                var goalDz = gz - navTargetZ[s];
+                if goalDx * goalDx + goalDz * goalDz > NAV_RETARGET_JUMP_DISTANCE_SQ {
+                    var jumpPhaseSlot = (s * 7) % cap;
+                    var jumpDelay = (jumpPhaseSlot + 0.0) * NAV_RETARGET_JUMP_WINDOW / (cap + 0.0);
+                    if navRetargetT[s] > jumpDelay { navRetargetT[s] = jumpDelay; }
+                }
             }
+            if navRetargetT[s] <= 0.0 {
+                G3D.NavAgent3D.SetTarget(agent, Math.Vec3.New(gx, 0.0, gz));
+                navTargetX[s] = gx;
+                navTargetZ[s] = gz;
+                navTargetSet[s] = 1;
+                navRetargetT[s] = NAV_RETARGET_INTERVAL;
+                navRetargetCount = navRetargetCount + 1;
+            }
+
+            if navTargetSet[s] == 1 {
+                G3D.NavAgent3D.Update(agent, dt);
+                var np = G3D.NavAgent3D.get_Position(agent);
+                var nx = Math.Vec3.get_X(np); var ny = Math.Vec3.get_Y(np);
+                var nz = Math.Vec3.get_Z(np);
+                if M.distXZ(x[s], z[s], nx, nz) > 0.0001 {
+                    yaw[s] = M.toDeg(Math.Atan2(nx - x[s], 0.0 - (nz - z[s])));
+                    x[s] = nx; y[s] = ny; z[s] = nz;
+                    return;
+                }
+            }
+            // Once navigation owns this slot, do not advance the parallel game
+            // position with fallback steering: that would desynchronize it
+            // from the agent between retargets and cause a later position snap.
+            return;
         }
         moveCollisionAware(s, dt, dx, dz, d, speed);
     }
