@@ -342,24 +342,39 @@ RegKey openKey(HKEY root, std::wstring_view subkey, REGSAM access, bool create) 
 }
 
 std::optional<std::wstring> queryRegistryString(HKEY key, std::wstring_view name) {
-    DWORD type = 0;
-    DWORD size = 0;
-    LONG result = RegQueryValueExW(
-        key, name.empty() ? nullptr : std::wstring(name).c_str(), nullptr, &type, nullptr, &size);
-    if (result == ERROR_FILE_NOT_FOUND)
-        return std::nullopt;
-    if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ))
-        return std::nullopt;
-    std::vector<wchar_t> buffer(size / sizeof(wchar_t) + 1U, L'\0');
-    result = RegQueryValueExW(key,
-                              name.empty() ? nullptr : std::wstring(name).c_str(),
-                              nullptr,
-                              &type,
-                              reinterpret_cast<BYTE *>(buffer.data()),
-                              &size);
-    if (result != ERROR_SUCCESS)
-        return std::nullopt;
-    return std::wstring(buffer.data());
+    const std::wstring valueName(name);
+    const wchar_t *nativeName = name.empty() ? nullptr : valueName.c_str();
+    for (unsigned attempt = 0; attempt < 8U; ++attempt) {
+        DWORD type = 0;
+        DWORD size = 0;
+        LONG result = RegQueryValueExW(key, nativeName, nullptr, &type, nullptr, &size);
+        if (result == ERROR_FILE_NOT_FOUND)
+            return std::nullopt;
+        if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) ||
+            size > 32U * 1024U * 1024U || size % sizeof(wchar_t) != 0U) {
+            return std::nullopt;
+        }
+        std::vector<wchar_t> buffer(size / sizeof(wchar_t) + 1U, L'\0');
+        DWORD readSize = size;
+        DWORD readType = 0;
+        result = RegQueryValueExW(key,
+                                  nativeName,
+                                  nullptr,
+                                  &readType,
+                                  reinterpret_cast<BYTE *>(buffer.data()),
+                                  &readSize);
+        if (result == ERROR_MORE_DATA)
+            continue;
+        if (result != ERROR_SUCCESS || (readType != REG_SZ && readType != REG_EXPAND_SZ) ||
+            readSize > size || readSize % sizeof(wchar_t) != 0U) {
+            return std::nullopt;
+        }
+        const size_t length =
+            std::find(buffer.begin(), buffer.begin() + readSize / sizeof(wchar_t), L'\0') -
+            buffer.begin();
+        return std::wstring(buffer.data(), length);
+    }
+    return std::nullopt;
 }
 
 void setRegistryString(HKEY key,
@@ -582,8 +597,12 @@ int relaunchElevated(const HostPackage &package,
         throw std::runtime_error("cannot start elevated installer: " +
                                  wideToUtf8(formatWindowsError(error)));
     }
+    if (!execute.hProcess)
+        throw std::runtime_error("elevated installer returned no process handle");
     UniqueHandle process(execute.hProcess);
-    WaitForSingleObject(process.get(), INFINITE);
+    const DWORD wait = WaitForSingleObject(process.get(), INFINITE);
+    if (wait != WAIT_OBJECT_0)
+        throw std::runtime_error("cannot wait for the elevated installer");
     DWORD exitCode = kExitFatalError;
     if (!GetExitCodeProcess(process.get(), &exitCode))
         throw std::runtime_error("cannot read elevated installer exit code");
@@ -1918,22 +1937,37 @@ PathBackup readCurrentPath(InstallScope scope) {
                 scope == InstallScope::User ? kUserEnvironment : kMachineEnvironment,
                 KEY_QUERY_VALUE,
                 true);
-    DWORD type = 0;
-    DWORD bytes = 0;
-    LONG result = RegQueryValueExW(environment.get(), L"Path", nullptr, &type, nullptr, &bytes);
-    if (result == ERROR_FILE_NOT_FOUND)
-        return {};
-    if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) ||
-        bytes > 32U * 1024U * 1024U) {
-        throw std::runtime_error("cannot snapshot the environment PATH value");
+    for (unsigned attempt = 0; attempt < 8U; ++attempt) {
+        DWORD type = 0;
+        DWORD bytes = 0;
+        LONG result = RegQueryValueExW(environment.get(), L"Path", nullptr, &type, nullptr, &bytes);
+        if (result == ERROR_FILE_NOT_FOUND)
+            return {};
+        if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) ||
+            bytes > 32U * 1024U * 1024U || bytes % sizeof(wchar_t) != 0U) {
+            throw std::runtime_error("cannot snapshot the environment PATH value");
+        }
+        std::vector<wchar_t> value(static_cast<size_t>(bytes) / sizeof(wchar_t) + 1U, L'\0');
+        DWORD readBytes = bytes;
+        DWORD readType = 0;
+        result = RegQueryValueExW(environment.get(),
+                                  L"Path",
+                                  nullptr,
+                                  &readType,
+                                  reinterpret_cast<BYTE *>(value.data()),
+                                  &readBytes);
+        if (result == ERROR_MORE_DATA)
+            continue;
+        if (result != ERROR_SUCCESS || (readType != REG_SZ && readType != REG_EXPAND_SZ) ||
+            readBytes > bytes || readBytes % sizeof(wchar_t) != 0U) {
+            throw std::runtime_error("cannot read the environment PATH value for rollback");
+        }
+        const size_t length =
+            std::find(value.begin(), value.begin() + readBytes / sizeof(wchar_t), L'\0') -
+            value.begin();
+        return {true, readType, std::wstring(value.data(), length)};
     }
-    std::vector<wchar_t> value(static_cast<size_t>(bytes) / sizeof(wchar_t) + 1U, L'\0');
-    result = RegQueryValueExW(
-        environment.get(), L"Path", nullptr, &type, reinterpret_cast<BYTE *>(value.data()), &bytes);
-    if (result != ERROR_SUCCESS)
-        throw std::runtime_error("cannot read the environment PATH value for rollback");
-    value.back() = L'\0';
-    return {true, type, std::wstring(value.data())};
+    throw std::runtime_error("the environment PATH changed repeatedly while being read");
 }
 
 void writePathBackup(const TransactionPaths &paths, InstallScope scope) {
@@ -2664,15 +2698,23 @@ bool launchDetachedCleanup(const HostPackage &package,
                     break;
                 }
             }
-            if (WaitForSingleObject(processHandle.get(), 0) == WAIT_OBJECT_0) {
-                GetExitCodeProcess(processHandle.get(), &helperExit);
+            const DWORD wait = WaitForSingleObject(processHandle.get(), 0);
+            if (wait == WAIT_FAILED) {
+                helperExit = GetLastError();
+                break;
+            }
+            if (wait == WAIT_OBJECT_0) {
+                if (!GetExitCodeProcess(processHandle.get(), &helperExit))
+                    helperExit = GetLastError();
                 break;
             }
             Sleep(20);
         }
         if (!unlinked) {
-            TerminateProcess(processHandle.get(), ERROR_ACCESS_DENIED);
-            WaitForSingleObject(processHandle.get(), 5000);
+            if (!TerminateProcess(processHandle.get(), ERROR_ACCESS_DENIED))
+                throw std::runtime_error("cannot terminate the detached cleanup helper");
+            if (WaitForSingleObject(processHandle.get(), 5000) != WAIT_OBJECT_0)
+                throw std::runtime_error("the detached cleanup helper did not terminate");
             throw std::runtime_error("detached cleanup helper could not self-delete (exit " +
                                      std::to_string(helperExit) + ")");
         }

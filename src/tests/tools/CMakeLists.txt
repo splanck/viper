@@ -195,6 +195,17 @@ function(zanna_add_tools_tests)
                 TIMEOUT 120)
         zanna_add_test_labels(windows_update_manifest_authoring installer tools requires_windows)
 
+        zanna_add_ctest(windows_automation_script_contracts
+                powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
+                -File ${_ZANNA_TOOLS_DIR}/WindowsAutomationScriptTests.ps1
+                -SignScript ${CMAKE_SOURCE_DIR}/scripts/sign-windows-installer.ps1
+                -DemoScript ${CMAKE_SOURCE_DIR}/scripts/build_demos_win.ps1
+                -WorkDir ${CMAKE_CURRENT_BINARY_DIR}/windows_automation_script_contracts)
+        set_tests_properties(windows_automation_script_contracts PROPERTIES
+                RUN_SERIAL TRUE
+                TIMEOUT 60)
+        zanna_add_test_labels(windows_automation_script_contracts installer tools requires_windows)
+
         zanna_add_ctest(windows_installer_user_smoke
                 ${CMAKE_COMMAND}
                 -DZANNA_BIN=$<TARGET_FILE:zanna>

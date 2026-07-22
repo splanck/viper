@@ -56,17 +56,20 @@ static HRESULT d3d11_create_color_target(d3d11_context_t *ctx,
     desc.BindFlags = D3D11_BIND_RENDER_TARGET | (out_srv ? D3D11_BIND_SHADER_RESOURCE : 0);
 
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
-    if (FAILED(hr))
-        return hr;
+    if (FAILED(hr) || !*out_tex) {
+        SAFE_RELEASE(*out_tex);
+        return FAILED(hr) ? hr : E_POINTER;
+    }
 
     memset(&rtv_desc, 0, sizeof(rtv_desc));
     rtv_desc.Format = desc.Format;
     rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
     hr = ID3D11Device_CreateRenderTargetView(
         ctx->device, (ID3D11Resource *)*out_tex, &rtv_desc, out_rtv);
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !*out_rtv) {
+        SAFE_RELEASE(*out_rtv);
         SAFE_RELEASE(*out_tex);
-        return hr;
+        return FAILED(hr) ? hr : E_POINTER;
     }
 
     if (out_srv) {
@@ -76,10 +79,11 @@ static HRESULT d3d11_create_color_target(d3d11_context_t *ctx,
         srv_desc.Texture2D.MipLevels = 1;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
-        if (FAILED(hr)) {
+        if (FAILED(hr) || !*out_srv) {
+            SAFE_RELEASE(*out_srv);
             SAFE_RELEASE(*out_rtv);
             SAFE_RELEASE(*out_tex);
-            return hr;
+            return FAILED(hr) ? hr : E_POINTER;
         }
     }
 
@@ -125,17 +129,20 @@ static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
         D3D11_BIND_DEPTH_STENCIL | (shader_readable && out_srv ? D3D11_BIND_SHADER_RESOURCE : 0);
 
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
-    if (FAILED(hr))
-        return hr;
+    if (FAILED(hr) || !*out_tex) {
+        SAFE_RELEASE(*out_tex);
+        return FAILED(hr) ? hr : E_POINTER;
+    }
 
     memset(&dsv_desc, 0, sizeof(dsv_desc));
     dsv_desc.Format = DXGI_FORMAT_D32_FLOAT;
     dsv_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
     hr = ID3D11Device_CreateDepthStencilView(
         ctx->device, (ID3D11Resource *)*out_tex, &dsv_desc, out_dsv);
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !*out_dsv) {
+        SAFE_RELEASE(*out_dsv);
         SAFE_RELEASE(*out_tex);
-        return hr;
+        return FAILED(hr) ? hr : E_POINTER;
     }
 
     if (shader_readable && out_srv) {
@@ -145,10 +152,11 @@ static HRESULT d3d11_create_depth_target(d3d11_context_t *ctx,
         srv_desc.Texture2D.MipLevels = 1;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
-        if (FAILED(hr)) {
+        if (FAILED(hr) || !*out_srv) {
+            SAFE_RELEASE(*out_srv);
             SAFE_RELEASE(*out_dsv);
             SAFE_RELEASE(*out_tex);
-            return hr;
+            return FAILED(hr) ? hr : E_POINTER;
         }
     }
 
@@ -182,7 +190,14 @@ static HRESULT d3d11_create_staging_texture(d3d11_context_t *ctx,
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_STAGING;
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    return ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
+    {
+        HRESULT hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
+        if (FAILED(hr) || !*out_tex) {
+            SAFE_RELEASE(*out_tex);
+            return FAILED(hr) ? hr : E_POINTER;
+        }
+        return S_OK;
+    }
 }
 
 /// @brief Release the reusable window/post-FX readback staging texture.
@@ -272,8 +287,11 @@ static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx) {
         return 0;
     ctx->presented_color_valid = 0;
     hr = IDXGISwapChain_GetBuffer(ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)&back_buffer);
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !back_buffer) {
+        if (SUCCEEDED(hr))
+            hr = E_POINTER;
         d3d11_log_hresult("IDXGISwapChain::GetBuffer(presentedSnapshot)", hr);
+        SAFE_RELEASE(back_buffer);
         return 0;
     }
     ID3D11Texture2D_GetDesc(back_buffer, &back_buffer_desc);
@@ -932,6 +950,11 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     HRESULT hr;
     vgfx3d_d3d11_color_format_t color_format;
     DXGI_FORMAT staging_format;
+    ID3D11Texture2D *new_color_tex = NULL;
+    ID3D11RenderTargetView *new_rtv = NULL;
+    ID3D11Texture2D *new_depth_tex = NULL;
+    ID3D11DepthStencilView *new_dsv = NULL;
+    ID3D11Texture2D *new_staging = NULL;
 
     if (!ctx || !rt || !vgfx3d_d3d11_is_valid_texture2d_extent(rt->width, rt->height) ||
         !vgfx3d_d3d11_is_valid_rtt_color_format(rt->color_format))
@@ -939,9 +962,7 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     if (ctx->rtt_color_tex && ctx->rtt_rtv && ctx->rtt_depth_tex && ctx->rtt_dsv &&
         ctx->rtt_staging && ctx->rtt_width == rt->width && ctx->rtt_height == rt->height &&
         ctx->rtt_color_format == rt->color_format) {
-        if (ctx->rtt_target && ctx->rtt_target != rt) {
-            d3d11_destroy_rtt_targets(ctx);
-        } else {
+        if (!ctx->rtt_target || ctx->rtt_target == rt) {
             ctx->rtt_active = 1;
             ctx->rtt_target = rt;
             ctx->current_pass_is_overlay = 0;
@@ -953,29 +974,31 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
         }
     }
 
-    d3d11_destroy_rtt_targets(ctx);
     color_format = vgfx3d_rendertarget_is_hdr(rt) ? VGFX3D_D3D11_COLOR_FORMAT_HDR16F
                                                   : VGFX3D_D3D11_COLOR_FORMAT_UNORM8;
     staging_format = vgfx3d_rendertarget_is_hdr(rt) ? DXGI_FORMAT_R16G16B16A16_FLOAT
                                                     : DXGI_FORMAT_R8G8B8A8_UNORM;
 
     hr = d3d11_create_color_target(
-        ctx, rt->width, rt->height, color_format, &ctx->rtt_color_tex, &ctx->rtt_rtv, NULL);
+        ctx, rt->width, rt->height, color_format, &new_color_tex, &new_rtv, NULL);
     if (FAILED(hr))
-        return hr;
-    hr = d3d11_create_depth_target(
-        ctx, rt->width, rt->height, 1, &ctx->rtt_depth_tex, &ctx->rtt_dsv, NULL);
-    if (FAILED(hr)) {
-        d3d11_destroy_rtt_targets(ctx);
-        return hr;
-    }
-    hr =
-        d3d11_create_staging_texture(ctx, rt->width, rt->height, staging_format, &ctx->rtt_staging);
-    if (FAILED(hr)) {
-        d3d11_destroy_rtt_targets(ctx);
-        return hr;
+        goto fail;
+    hr = d3d11_create_depth_target(ctx, rt->width, rt->height, 1, &new_depth_tex, &new_dsv, NULL);
+    if (FAILED(hr))
+        goto fail;
+    hr = d3d11_create_staging_texture(ctx, rt->width, rt->height, staging_format, &new_staging);
+    if (FAILED(hr) || !new_staging) {
+        if (SUCCEEDED(hr))
+            hr = E_POINTER;
+        goto fail;
     }
 
+    d3d11_destroy_rtt_targets(ctx);
+    ctx->rtt_color_tex = new_color_tex;
+    ctx->rtt_rtv = new_rtv;
+    ctx->rtt_depth_tex = new_depth_tex;
+    ctx->rtt_dsv = new_dsv;
+    ctx->rtt_staging = new_staging;
     ctx->rtt_width = rt->width;
     ctx->rtt_height = rt->height;
     ctx->rtt_color_format = rt->color_format;
@@ -988,6 +1011,14 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
     rt->sync_color = d3d11_sync_render_target_color;
     rt->sync_color_userdata = ctx;
     return S_OK;
+
+fail:
+    SAFE_RELEASE(new_staging);
+    SAFE_RELEASE(new_dsv);
+    SAFE_RELEASE(new_depth_tex);
+    SAFE_RELEASE(new_rtv);
+    SAFE_RELEASE(new_color_tex);
+    return hr;
 }
 
 /// @brief Release shadow-map depth target resources.
@@ -1071,6 +1102,9 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
                                            int32_t width,
                                            int32_t height) {
     HRESULT hr;
+    ID3D11Texture2D *new_tex = NULL;
+    ID3D11DepthStencilView *new_dsv = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
 
     if (!ctx || slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS ||
         !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
@@ -1079,16 +1113,13 @@ static HRESULT d3d11_ensure_shadow_targets(d3d11_context_t *ctx,
         ctx->shadow_width[slot] == width && ctx->shadow_height[slot] == height)
         return S_OK;
 
-    d3d11_release_shadow_slot(ctx, slot);
-    hr = d3d11_create_depth_target(ctx,
-                                   width,
-                                   height,
-                                   1,
-                                   &ctx->shadow_depth_tex[slot],
-                                   &ctx->shadow_dsv[slot],
-                                   &ctx->shadow_srv[slot]);
+    hr = d3d11_create_depth_target(ctx, width, height, 1, &new_tex, &new_dsv, &new_srv);
     if (FAILED(hr))
         return hr;
+    d3d11_release_shadow_slot(ctx, slot);
+    ctx->shadow_depth_tex[slot] = new_tex;
+    ctx->shadow_dsv[slot] = new_dsv;
+    ctx->shadow_srv[slot] = new_srv;
     ctx->shadow_width[slot] = width;
     ctx->shadow_height[slot] = height;
     /* Allocation alone is not completeness: shadow_end advertises the slot only
@@ -1104,6 +1135,9 @@ static HRESULT d3d11_ensure_shadow_atlas(d3d11_context_t *ctx, int32_t tile_w, i
     HRESULT hr;
     int32_t atlas_w;
     int32_t atlas_h;
+    ID3D11Texture2D *new_tex = NULL;
+    ID3D11DepthStencilView *new_dsv = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
 
     if (!ctx || tile_w <= 0 || tile_h <= 0 ||
         tile_w > INT32_MAX / VGFX3D_D3D11_SHADOW_ATLAS_COLUMNS ||
@@ -1117,26 +1151,25 @@ static HRESULT d3d11_ensure_shadow_atlas(d3d11_context_t *ctx, int32_t tile_w, i
         ctx->shadow_atlas_w == atlas_w && ctx->shadow_atlas_h == atlas_h)
         return S_OK;
 
+    hr = d3d11_create_depth_target(ctx, atlas_w, atlas_h, 1, &new_tex, &new_dsv, &new_srv);
+    if (FAILED(hr))
+        return hr;
     d3d11_unbind_shadow_resources(ctx);
+    if (ctx->shadow_pass_slot >= VGFX3D_CSM_SLOTS) {
+        d3d11_unbind_output_targets(ctx);
+        ctx->shadow_pass_slot = -1;
+    }
     SAFE_RELEASE(ctx->shadow_atlas_srv);
     SAFE_RELEASE(ctx->shadow_atlas_dsv);
     SAFE_RELEASE(ctx->shadow_atlas_tex);
-    ctx->shadow_atlas_w = 0;
-    ctx->shadow_atlas_h = 0;
+    ctx->shadow_atlas_tex = new_tex;
+    ctx->shadow_atlas_dsv = new_dsv;
+    ctx->shadow_atlas_srv = new_srv;
+    ctx->shadow_atlas_w = atlas_w;
+    ctx->shadow_atlas_h = atlas_h;
     ctx->shadow_atlas_cleared = 0;
     for (int32_t slot = VGFX3D_CSM_SLOTS; slot < VGFX3D_MAX_SHADOW_LIGHTS; slot++)
         ctx->shadow_slot_complete[slot] = 0;
     d3d11_recompute_shadow_count(ctx);
-    hr = d3d11_create_depth_target(ctx,
-                                   atlas_w,
-                                   atlas_h,
-                                   1,
-                                   &ctx->shadow_atlas_tex,
-                                   &ctx->shadow_atlas_dsv,
-                                   &ctx->shadow_atlas_srv);
-    if (FAILED(hr))
-        return hr;
-    ctx->shadow_atlas_w = atlas_w;
-    ctx->shadow_atlas_h = atlas_h;
     return S_OK;
 }

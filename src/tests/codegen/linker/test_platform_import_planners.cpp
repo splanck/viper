@@ -437,13 +437,15 @@ TEST(PlatformImportPlanners, WindowsPlannerMapsCertificateKeyImportToCrypt32) {
     EXPECT_FALSE(importPlanDllHasFunction(plan, "advapi32.dll", "CryptImportPublicKeyInfo"));
 }
 
-TEST(PlatformImportPlanners, WindowsPlannerRejectsStaticOnlyMsvcStdHelperImports) {
-    WindowsImportPlan plan;
-    std::ostringstream err;
-    EXPECT_FALSE(
-        generateWindowsImports(LinkArch::X86_64, {"__std_find_trivial_1"}, false, plan, err));
-    EXPECT_NE(std::string::npos, err.str().find("__std_find_trivial_1"));
-    EXPECT_NE(std::string::npos, err.str().find("no DLL mapping"));
+TEST(PlatformImportPlanners, WindowsPlannerRejectsUnavailableMsvcRuntimeImports) {
+    for (const char *symbol : {"__std_find_trivial_1", "_Avx2WmemEnabled"}) {
+        WindowsImportPlan plan;
+        std::ostringstream err;
+        EXPECT_FALSE(generateWindowsImports(LinkArch::X86_64, {symbol}, false, plan, err));
+        EXPECT_NE(std::string::npos, err.str().find(symbol));
+        EXPECT_NE(std::string::npos, err.str().find("no DLL mapping"));
+    }
+    EXPECT_FALSE(isKnownDynamicSymbol("_Avx2WmemEnabled", LinkPlatform::Windows));
 }
 
 // F10: the dynamic-symbol allow-list is platform-scoped for names exclusive to
@@ -602,6 +604,23 @@ TEST(PlatformImportPlanners, WindowsGuiRuntimeSymbolsResolveToSystemDlls) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "advapi32.dll", "RegGetValueW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "strpbrk"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "lround"));
+}
+
+TEST(PlatformImportPlanners, WindowsReliabilityApisResolveToKernel32) {
+    const std::unordered_set<std::string> syms = {
+        "GetActiveProcessorCount", "GetWindowsDirectoryW", "GlobalSize"};
+
+    for (const auto &sym : syms) {
+        EXPECT_TRUE(isKnownDynamicSymbol(sym, LinkPlatform::Windows));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::Linux));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::macOS));
+    }
+
+    WindowsImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64, syms, false, plan, err));
+    for (const auto &sym : syms)
+        EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", sym));
 }
 
 int main(int argc, char **argv) {

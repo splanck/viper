@@ -12,15 +12,14 @@
 //          platform-specific APIs.
 //
 // Key invariants:
-//   - CPU count queries use GetSystemInfo (Win32), sysctl/sysconf (POSIX).
-//     Linux/generic POSIX fall back to 1; the macOS sysconf fallback can return -1.
+//   - CPU-count queries return at least one and include every Windows processor group.
+//   - Windows environment and temporary-directory reads use retrying UTF-16 snapshots.
 //   - OS name strings are statically determined at compile time from predefined
 //     platform macros and never change at runtime.
 //   - Hostname is queried fresh on each call; it is not cached.
 //   - Memory queries use GlobalMemoryStatusEx (Win32) or sysinfo (Linux) or
 //     host_statistics64 (macOS).
-//   - Query failures use API-specific fallbacks such as 0, 1, 4096, empty, or
-//     "unknown"; the macOS core-count fallback currently leaks sysconf's -1.
+//   - Query failures use API-specific fallbacks such as 0, 1, 4096, empty, or "unknown".
 //
 // Ownership/Lifetime:
 //   - All returned rt_string values are fresh allocations owned by the caller.
@@ -51,11 +50,81 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 #ifdef _WIN32
 #include <windows.h>
 
 #include "rt_file_path.h" // rt_file_path_wide_to_string for UTF-8 conversion (VDOC-217)
+
+static wchar_t *machine_win32_environment(const wchar_t *name) {
+    DWORD capacity;
+    if (!name || !*name)
+        return NULL;
+    capacity = GetEnvironmentVariableW(name, NULL, 0);
+    if (capacity == 0)
+        return NULL;
+    for (int attempt = 0; attempt < 8; attempt++) {
+        if ((size_t)capacity > SIZE_MAX / sizeof(wchar_t))
+            return NULL;
+        wchar_t *value = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!value)
+            return NULL;
+        DWORD length = GetEnvironmentVariableW(name, value, capacity);
+        if (length > 0 && length < capacity) {
+            value[length] = L'\0';
+            return value;
+        }
+        free(value);
+        if (length == 0 || length == UINT32_MAX)
+            return NULL;
+        capacity = length + 1u;
+    }
+    return NULL;
+}
+
+static wchar_t *machine_win32_user_name(void) {
+    DWORD capacity = 256;
+    for (int attempt = 0; attempt < 8; attempt++) {
+        if ((size_t)capacity > SIZE_MAX / sizeof(wchar_t))
+            return NULL;
+        wchar_t *value = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!value)
+            return NULL;
+        DWORD length = capacity;
+        if (GetUserNameW(value, &length) && length > 0) {
+            value[length - 1u] = L'\0';
+            return value;
+        }
+        DWORD error = GetLastError();
+        free(value);
+        if (error != ERROR_INSUFFICIENT_BUFFER || length <= capacity)
+            return NULL;
+        capacity = length;
+    }
+    return NULL;
+}
+
+static wchar_t *machine_win32_temp_path(void) {
+    DWORD capacity = 512;
+    for (int attempt = 0; attempt < 8; attempt++) {
+        if ((size_t)capacity > SIZE_MAX / sizeof(wchar_t))
+            return NULL;
+        wchar_t *value = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!value)
+            return NULL;
+        DWORD length = GetTempPathW(capacity, value);
+        if (length > 0 && length < capacity) {
+            value[length] = L'\0';
+            return value;
+        }
+        free(value);
+        if (length == 0 || length == UINT32_MAX)
+            return NULL;
+        capacity = length + 1u;
+    }
+    return NULL;
+}
 #else
 #include <pwd.h>
 #include <sys/stat.h>
@@ -151,23 +220,20 @@ static int64_t linux_read_control_u64(const char *path) {
     if (!linux_read_control_line(path, line, sizeof(line)) || strcmp(line, "max") == 0)
         return 0;
     unsigned long long value = 0;
-    return linux_parse_u64(line, &value) && value <= (unsigned long long)INT64_MAX
-               ? (int64_t)value
-               : 0;
+    return linux_parse_u64(line, &value) && value <= (unsigned long long)INT64_MAX ? (int64_t)value
+                                                                                   : 0;
 }
 
 static int64_t linux_cgroup_memory_value(const char *name) {
     if (strcmp(name, "memory.max") == 0) {
         int64_t value = linux_read_control_u64("/sys/fs/cgroup/memory.max");
         return value > 0 ? value
-                         : linux_read_control_u64(
-                               "/sys/fs/cgroup/memory/memory.limit_in_bytes");
+                         : linux_read_control_u64("/sys/fs/cgroup/memory/memory.limit_in_bytes");
     }
     if (strcmp(name, "memory.current") == 0) {
         int64_t value = linux_read_control_u64("/sys/fs/cgroup/memory.current");
-        return value > 0
-                   ? value
-                   : linux_read_control_u64("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+        return value > 0 ? value
+                         : linux_read_control_u64("/sys/fs/cgroup/memory/memory.usage_in_bytes");
     }
     return 0;
 }
@@ -221,20 +287,16 @@ static int64_t linux_cgroup_cpu_limit(void) {
         }
     }
     if (limit == 0) {
-        int64_t quota =
-            linux_read_control_u64("/sys/fs/cgroup/cpu/cpu.cfs_quota_us");
-        int64_t period =
-            linux_read_control_u64("/sys/fs/cgroup/cpu/cpu.cfs_period_us");
+        int64_t quota = linux_read_control_u64("/sys/fs/cgroup/cpu/cpu.cfs_quota_us");
+        int64_t period = linux_read_control_u64("/sys/fs/cgroup/cpu/cpu.cfs_period_us");
         if (quota > 0 && period > 0)
             limit = quota / period + (quota % period != 0);
     }
-    if (linux_read_control_line(
-            "/sys/fs/cgroup/cpuset.cpus.effective", line, sizeof(line))) {
+    if (linux_read_control_line("/sys/fs/cgroup/cpuset.cpus.effective", line, sizeof(line))) {
         int64_t cpuset = linux_count_cpuset(line);
         if (cpuset > 0 && (limit == 0 || cpuset < limit))
             limit = cpuset;
-    } else if (linux_read_control_line(
-                   "/sys/fs/cgroup/cpuset/cpuset.cpus", line, sizeof(line))) {
+    } else if (linux_read_control_line("/sys/fs/cgroup/cpuset/cpuset.cpus", line, sizeof(line))) {
         int64_t cpuset = linux_count_cpuset(line);
         if (cpuset > 0 && (limit == 0 || cpuset < limit))
             limit = cpuset;
@@ -431,16 +493,14 @@ rt_string rt_machine_host(void) {
 /// POSIX uses `getpwuid(getuid())` (then `$USER` / `$LOGNAME`). "unknown" if all probes fail.
 rt_string rt_machine_user(void) {
 #ifdef _WIN32
-    // Wide API + validated UTF-8 conversion so non-ASCII user names survive
-    // (VDOC-217).
-    wchar_t buf[256];
-    DWORD len = (DWORD)(sizeof(buf) / sizeof(buf[0]));
-    if (GetUserNameW(buf, &len))
-        return rt_file_path_wide_to_string(buf);
-    // Fallback to the wide environment variable.
-    const wchar_t *user = _wgetenv(L"USERNAME");
-    if (user)
-        return rt_file_path_wide_to_string(user);
+    wchar_t *user = machine_win32_user_name();
+    if (!user)
+        user = machine_win32_environment(L"USERNAME");
+    if (user) {
+        rt_string result = rt_file_path_wide_to_string(user);
+        free(user);
+        return result;
+    }
     return make_str("unknown");
 #else
     rt_string account = machine_passwd_field(0);
@@ -466,20 +526,34 @@ rt_string rt_machine_user(void) {
 /// entry. Empty string if no probe succeeds (rare on a properly configured system).
 rt_string rt_machine_home(void) {
 #ifdef _WIN32
-    // Wide environment variables + validated UTF-8 conversion so non-ASCII home
-    // paths survive (VDOC-217).
-    const wchar_t *home = _wgetenv(L"USERPROFILE");
-    if (home)
-        return rt_file_path_wide_to_string(home);
-    // Try HOMEDRIVE + HOMEPATH.
-    const wchar_t *drive = _wgetenv(L"HOMEDRIVE");
-    const wchar_t *path = _wgetenv(L"HOMEPATH");
-    if (drive && path) {
-        wchar_t buf[512];
-        _snwprintf(buf, sizeof(buf) / sizeof(buf[0]), L"%ls%ls", drive, path);
-        buf[(sizeof(buf) / sizeof(buf[0])) - 1] = L'\0';
-        return rt_file_path_wide_to_string(buf);
+    wchar_t *home = machine_win32_environment(L"USERPROFILE");
+    if (home) {
+        rt_string result = rt_file_path_wide_to_string(home);
+        free(home);
+        return result;
     }
+    wchar_t *drive = machine_win32_environment(L"HOMEDRIVE");
+    wchar_t *path = machine_win32_environment(L"HOMEPATH");
+    if (drive && path) {
+        size_t drive_length = wcslen(drive);
+        size_t path_length = wcslen(path);
+        if (drive_length <= SIZE_MAX - path_length - 1u &&
+            drive_length + path_length + 1u <= SIZE_MAX / sizeof(wchar_t)) {
+            wchar_t *combined =
+                (wchar_t *)malloc((drive_length + path_length + 1u) * sizeof(wchar_t));
+            if (combined) {
+                memcpy(combined, drive, drive_length * sizeof(wchar_t));
+                memcpy(combined + drive_length, path, (path_length + 1u) * sizeof(wchar_t));
+                rt_string result = rt_file_path_wide_to_string(combined);
+                free(combined);
+                free(drive);
+                free(path);
+                return result;
+            }
+        }
+    }
+    free(drive);
+    free(path);
     return make_str("");
 #else
     const char *home = nonempty_env("HOME");
@@ -493,16 +567,15 @@ rt_string rt_machine_home(void) {
 /// POSIX checks `$TMPDIR` → `$TMP` → `$TEMP` → fixed `/tmp` fallback.
 rt_string rt_machine_temp(void) {
 #ifdef _WIN32
-    // Wide API + validated UTF-8 conversion so non-ASCII temp paths survive
-    // (VDOC-217).
-    wchar_t buf[512];
-    DWORD cap = (DWORD)(sizeof(buf) / sizeof(buf[0]));
-    DWORD len = GetTempPathW(cap, buf);
-    if (len > 0 && len < cap) {
-        // Remove trailing backslash if present.
-        if (len > 1 && buf[len - 1] == L'\\')
-            buf[len - 1] = L'\0';
-        return rt_file_path_wide_to_string(buf);
+    wchar_t *path = machine_win32_temp_path();
+    if (path) {
+        size_t length = wcslen(path);
+        int drive_root = length == 3 && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/');
+        if (length > 1 && !drive_root && (path[length - 1] == L'\\' || path[length - 1] == L'/'))
+            path[length - 1] = L'\0';
+        rt_string result = rt_file_path_wide_to_string(path);
+        free(path);
+        return result;
     }
     return make_str("C:\\Temp");
 #else
@@ -529,10 +602,9 @@ rt_string rt_machine_temp(void) {
 /// Every platform returns at least 1 (VDOC-219).
 int64_t rt_machine_cores(void) {
 #ifdef _WIN32
-    SYSTEM_INFO sysinfo;
-    GetSystemInfo(&sysinfo);
-    if (sysinfo.dwNumberOfProcessors > 0)
-        return (int64_t)sysinfo.dwNumberOfProcessors;
+    DWORD count = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+    if (count > 0)
+        return (int64_t)count;
     return 1;
 
 #elif defined(__APPLE__)
@@ -626,8 +698,8 @@ int64_t rt_machine_mem_total(void) {
 #elif defined(__linux__)
     struct sysinfo si;
     if (sysinfo(&si) == 0) {
-        int64_t host = checked_u64_bytes((unsigned long long)si.totalram,
-                                         (unsigned long long)si.mem_unit);
+        int64_t host =
+            checked_u64_bytes((unsigned long long)si.totalram, (unsigned long long)si.mem_unit);
         int64_t constrained = linux_cgroup_memory_value("memory.max");
         return constrained > 0 && constrained < host ? constrained : host;
     }

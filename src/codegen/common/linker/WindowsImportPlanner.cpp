@@ -105,6 +105,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GetCurrentThreadId",
         "GetEnvironmentVariableA",
         "GetEnvironmentVariableW",
+        "GetActiveProcessorCount",
         "GetLastError",
         "GetCommandLineW",
         "GetComputerNameA",
@@ -121,6 +122,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GetSystemInfo",
         "GetSystemTimeAsFileTime",
         "GetTempPathA",
+        "GetWindowsDirectoryW",
         "HeapAlloc",
         "HeapFree",
         "IsDebuggerPresent",
@@ -152,6 +154,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GlobalAlloc",
         "GlobalFree",
         "GlobalLock",
+        "GlobalSize",
         "GlobalUnlock",
         "InitializeSRWLock",
         "AcquireSRWLockExclusive",
@@ -756,8 +759,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         return true;
     }
 
-    if (name == "_Avx2WmemEnabled" || stripped == "Avx2WmemEnabled" ||
-        hasPrefixEither(name, stripped, "_Cnd_") || hasPrefixEither(name, stripped, "Cnd_") ||
+    if (hasPrefixEither(name, stripped, "_Cnd_") || hasPrefixEither(name, stripped, "Cnd_") ||
         hasPrefixEither(name, stripped, "_Mtx_") || hasPrefixEither(name, stripped, "Mtx_") ||
         hasPrefixEither(name, stripped, "_Query_perf_") ||
         hasPrefixEither(name, stripped, "Query_perf_") ||

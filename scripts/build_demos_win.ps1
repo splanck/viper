@@ -87,6 +87,23 @@ function Get-FullPath {
     return [IO.Path]::GetFullPath((Join-Path $Base $Path))
 }
 
+function Test-PathWithin {
+    param(
+        [Parameter(Mandatory = $true)][string]$Base,
+        [Parameter(Mandatory = $true)][string]$Candidate,
+        [switch]$AllowBase
+    )
+
+    $baseFull = [IO.Path]::GetFullPath($Base).TrimEnd('\', '/')
+    $candidateFull = [IO.Path]::GetFullPath($Candidate).TrimEnd('\', '/')
+    if ($AllowBase -and
+        [string]::Equals($baseFull, $candidateFull, [StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+    $prefix = $baseFull + [IO.Path]::DirectorySeparatorChar
+    return $candidateFull.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+}
+
 function Invoke-CheckedNative {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -165,6 +182,9 @@ if (-not $toolBuildDirExplicit) {
 }
 
 $buildType = Get-EnvironmentValue -Name "ZANNA_BUILD_TYPE" -Default "Debug"
+if ($buildType -notin @("Debug", "Release", "RelWithDebInfo", "MinSizeRel")) {
+    throw "ZANNA_BUILD_TYPE must be Debug, Release, RelWithDebInfo, or MinSizeRel; received '$buildType'."
+}
 $jobsValue = Get-EnvironmentValue -Name "JOBS" `
     -Default (Get-EnvironmentValue -Name "NUMBER_OF_PROCESSORS" -Default "8")
 $jobs = 0
@@ -172,8 +192,11 @@ if (-not [int]::TryParse($jobsValue, [ref]$jobs) -or $jobs -lt 1) {
     throw "JOBS must be a positive integer; received '$jobsValue'."
 }
 
-$hostArch = if ([Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", "Process") -ieq
-                   "ARM64") {
+$nativeArchitecture = [Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITEW6432", "Process")
+if ([string]::IsNullOrWhiteSpace($nativeArchitecture)) {
+    $nativeArchitecture = [Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", "Process")
+}
+$hostArch = if ($nativeArchitecture -ieq "ARM64") {
     "arm64"
 } else {
     "x64"
@@ -226,21 +249,82 @@ $buildDir = Get-FullPath -Path $buildDirSetting -Base $repoRoot
 $toolBuildDir = Get-FullPath -Path $toolBuildDirSetting -Base $repoRoot
 $binDir = Join-Path $repoRoot "examples\bin"
 $manifest = Join-Path $scriptRoot "demo_projects.list"
-$zanna = Join-Path $toolBuildDir "src\tools\zanna\$buildType\zanna.exe"
-$targetZanna = Join-Path $buildDir "src\tools\zanna\$buildType\zanna.exe"
+
+function Resolve-ZannaExecutable {
+    param([Parameter(Mandatory = $true)][string]$Tree)
+
+    $configured = Join-Path $Tree "src\tools\zanna\$buildType\zanna.exe"
+    $singleConfig = Join-Path $Tree "src\tools\zanna\zanna.exe"
+    if (Test-Path -LiteralPath $configured -PathType Leaf) {
+        return $configured
+    }
+    if (Test-Path -LiteralPath $singleConfig -PathType Leaf) {
+        return $singleConfig
+    }
+    return $configured
+}
+
+function Get-CMakeCacheValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Cache,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    $prefix = "${Name}:"
+    foreach ($line in Get-Content -LiteralPath $Cache) {
+        if ($line.StartsWith($prefix, [StringComparison]::Ordinal)) {
+            $separator = $line.IndexOf('=')
+            if ($separator -ge 0) {
+                return $line.Substring($separator + 1).Trim()
+            }
+        }
+    }
+    return ""
+}
+
+function Assert-CMakeTreeArchitecture {
+    param(
+        [Parameter(Mandatory = $true)][string]$Cache,
+        [Parameter(Mandatory = $true)][string]$Architecture,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    $reported = Get-CMakeCacheValue -Cache $Cache -Name "CMAKE_GENERATOR_PLATFORM"
+    if ([string]::IsNullOrWhiteSpace($reported)) {
+        $reported = Get-CMakeCacheValue -Cache $Cache -Name "CMAKE_SYSTEM_PROCESSOR"
+    }
+    if ([string]::IsNullOrWhiteSpace($reported)) {
+        return
+    }
+    $normalized = switch ($reported.ToLowerInvariant()) {
+        "arm64" { "arm64" }
+        "aarch64" { "arm64" }
+        "x64" { "x64" }
+        "amd64" { "x64" }
+        "x86_64" { "x64" }
+        default { "" }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($normalized) -and $normalized -ne $Architecture) {
+        throw "$Description CMake tree targets $reported, not requested architecture $Architecture`: $Cache"
+    }
+}
+
+$zanna = Resolve-ZannaExecutable -Tree $toolBuildDir
+$targetZanna = Resolve-ZannaExecutable -Tree $buildDir
 
 function Ensure-ZannaBuild {
     param(
         [Parameter(Mandatory = $true)][string]$Tree,
         [Parameter(Mandatory = $true)][string]$Architecture,
         [Parameter(Mandatory = $true)][bool]$TreeIsExplicit,
-        [Parameter(Mandatory = $true)][string]$ExpectedExecutable,
         [Parameter(Mandatory = $true)][string]$Description
     )
 
-    Write-Host "$Description not found at $ExpectedExecutable"
+    Write-Host "$Description not found in $Tree"
     $cache = Join-Path $Tree "CMakeCache.txt"
     if (Test-Path -LiteralPath $cache -PathType Leaf) {
+        Assert-CMakeTreeArchitecture -Cache $cache -Architecture $Architecture `
+            -Description $Description
         Write-Host "Reusing the existing CMake configuration for $Description."
     } else {
         Write-Host "Configuring $Description..."
@@ -262,9 +346,11 @@ function Ensure-ZannaBuild {
     Invoke-CheckedNative -FilePath "cmake" `
         -Arguments @("--build", $Tree, "--config", $buildType, "--target", "zanna", "-j", [string]$jobs) `
         -FailureMessage "$Description build failed"
-    if (-not (Test-Path -LiteralPath $ExpectedExecutable -PathType Leaf)) {
-        throw "$Description still not found at $ExpectedExecutable"
+    $resolvedExecutable = Resolve-ZannaExecutable -Tree $Tree
+    if (-not (Test-Path -LiteralPath $resolvedExecutable -PathType Leaf)) {
+        throw "$Description still not found in $Tree"
     }
+    return $resolvedExecutable
 }
 
 function Copy-DemoAsset {
@@ -274,14 +360,23 @@ function Copy-DemoAsset {
         [Parameter(Mandatory = $true)][string]$TargetRelative
     )
 
-    $source = Join-Path $ProjectDir $SourceRelative
+    if ([IO.Path]::IsPathRooted($SourceRelative) -or [IO.Path]::IsPathRooted($TargetRelative)) {
+        throw "Demo asset paths must be relative to their project and examples/bin."
+    }
+    $source = [IO.Path]::GetFullPath((Join-Path $ProjectDir $SourceRelative))
+    if (-not (Test-PathWithin -Base $ProjectDir -Candidate $source -AllowBase)) {
+        throw "Asset source escapes the demo project: $SourceRelative"
+    }
     if (-not (Test-Path -LiteralPath $source)) {
         throw "Asset not found: $SourceRelative"
     }
     $destination = if ($TargetRelative -eq ".") {
-        $binDir
+        [IO.Path]::GetFullPath($binDir)
     } else {
-        Join-Path $binDir $TargetRelative
+        [IO.Path]::GetFullPath((Join-Path $binDir $TargetRelative))
+    }
+    if (-not (Test-PathWithin -Base $binDir -Candidate $destination -AllowBase)) {
+        throw "Asset target escapes the demo output directory: $TargetRelative"
     }
     [void](New-Item -ItemType Directory -Path $destination -Force)
     if (Test-Path -LiteralPath $source -PathType Container) {
@@ -534,16 +629,24 @@ try {
     if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
         throw "Demo manifest not found: $manifest"
     }
-    if (-not (Test-Path -LiteralPath $zanna -PathType Leaf)) {
-        Ensure-ZannaBuild -Tree $toolBuildDir -Architecture $hostArch `
-            -TreeIsExplicit $toolBuildDirExplicit -ExpectedExecutable $zanna `
+    $toolCache = Join-Path $toolBuildDir "CMakeCache.txt"
+    if (Test-Path -LiteralPath $toolCache -PathType Leaf) {
+        Assert-CMakeTreeArchitecture -Cache $toolCache -Architecture $hostArch `
             -Description "host Zanna tool"
+    }
+    $targetCache = Join-Path $buildDir "CMakeCache.txt"
+    if (Test-Path -LiteralPath $targetCache -PathType Leaf) {
+        Assert-CMakeTreeArchitecture -Cache $targetCache -Architecture $demoArch `
+            -Description "target-architecture Zanna runtime"
+    }
+    if (-not (Test-Path -LiteralPath $zanna -PathType Leaf)) {
+        $zanna = Ensure-ZannaBuild -Tree $toolBuildDir -Architecture $hostArch `
+            -TreeIsExplicit $toolBuildDirExplicit -Description "host Zanna tool"
     }
     if ($toolBuildDir -ine $buildDir -and
         -not (Test-Path -LiteralPath $targetZanna -PathType Leaf)) {
-        Ensure-ZannaBuild -Tree $buildDir -Architecture $demoArch `
-            -TreeIsExplicit $buildDirExplicit -ExpectedExecutable $targetZanna `
-            -Description "target-architecture Zanna runtime"
+        $targetZanna = Ensure-ZannaBuild -Tree $buildDir -Architecture $demoArch `
+            -TreeIsExplicit $buildDirExplicit -Description "target-architecture Zanna runtime"
     }
 
     [void](New-Item -ItemType Directory -Path $binDir -Force)
@@ -563,6 +666,7 @@ try {
     $failed = 0
     $succeeded = 0
     $entries = 0
+    $seenNames = @{}
     foreach ($line in Get-Content -LiteralPath $manifest) {
         $trimmed = $line.Trim()
         if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#")) {
@@ -578,12 +682,31 @@ try {
         $name = $fields[0].Trim()
         $category = $fields[1].Trim()
         $directory = $fields[2].Trim()
+        if ($name -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or
+            $directory -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') {
+            Write-Host "ERROR: unsafe demo name or directory in manifest entry: $trimmed"
+            ++$failed
+            continue
+        }
+        $nameKey = $name.ToLowerInvariant()
+        if ($seenNames.ContainsKey($nameKey)) {
+            Write-Host "ERROR: duplicate demo executable name '$name'"
+            ++$failed
+            continue
+        }
+        $seenNames[$nameKey] = $true
         if ($category -ieq "games") {
-            $projectDir = Join-Path $repoRoot "examples\games\$directory"
+            $categoryRoot = Join-Path $repoRoot "examples\games"
         } elseif ($category -ieq "apps") {
-            $projectDir = Join-Path $repoRoot "examples\apps\$directory"
+            $categoryRoot = Join-Path $repoRoot "examples\apps"
         } else {
             Write-Host "ERROR: invalid demo category '$category' for '$name'"
+            ++$failed
+            continue
+        }
+        $projectDir = [IO.Path]::GetFullPath((Join-Path $categoryRoot $directory))
+        if (-not (Test-PathWithin -Base $categoryRoot -Candidate $projectDir)) {
+            Write-Host "ERROR: demo directory escapes its category for '$name'"
             ++$failed
             continue
         }

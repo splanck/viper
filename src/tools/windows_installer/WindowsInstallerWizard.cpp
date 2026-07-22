@@ -102,8 +102,12 @@ std::wstring formatBytes(uint64_t bytes) {
 
 std::wstring knownFolder(REFKNOWNFOLDERID id) {
     PWSTR value = nullptr;
-    if (FAILED(SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &value)) || !value)
+    const HRESULT folderResult = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &value);
+    if (FAILED(folderResult) || !value) {
+        if (value)
+            CoTaskMemFree(value);
         throw std::runtime_error("cannot resolve a Windows known folder for setup");
+    }
     std::wstring result(value);
     CoTaskMemFree(value);
     return result;
@@ -117,15 +121,21 @@ fs::path defaultDestination(const HostPackage &package, InstallScope scope) {
 }
 
 std::optional<fs::path> environmentFolder(const wchar_t *name) {
-    const DWORD required = GetEnvironmentVariableW(name, nullptr, 0);
-    if (required == 0U)
+    DWORD capacity = GetEnvironmentVariableW(name, nullptr, 0);
+    if (capacity == 0U)
         return std::nullopt;
-    std::wstring value(required, L'\0');
-    const DWORD length = GetEnvironmentVariableW(name, value.data(), required);
-    if (length == 0U || length >= required)
-        return std::nullopt;
-    value.resize(length);
-    return fs::path(value);
+    for (unsigned attempt = 0; attempt < 8U; ++attempt) {
+        std::wstring value(capacity, L'\0');
+        const DWORD length = GetEnvironmentVariableW(name, value.data(), capacity);
+        if (length > 0U && length < capacity) {
+            value.resize(length);
+            return fs::path(value);
+        }
+        if (length == 0U || length == std::numeric_limits<DWORD>::max())
+            return std::nullopt;
+        capacity = length + 1U;
+    }
+    return std::nullopt;
 }
 
 bool ordinaryFile(const fs::path &path) {
@@ -341,17 +351,8 @@ int showTaskDialog(HINSTANCE instance,
 }
 
 void copyTextToClipboard(std::wstring_view text) {
-    if (!OpenClipboard(nullptr))
-        throw std::runtime_error("cannot open the Windows clipboard");
-
-    struct ClipboardGuard {
-        ~ClipboardGuard() {
-            CloseClipboard();
-        }
-    } guard;
-
-    if (!EmptyClipboard())
-        throw std::runtime_error("cannot clear the Windows clipboard");
+    if (text.size() > std::numeric_limits<size_t>::max() / sizeof(wchar_t) - 1U)
+        throw std::runtime_error("clipboard text is too large");
     const size_t bytes = (text.size() + 1U) * sizeof(wchar_t);
     HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes);
     if (!memory)
@@ -363,6 +364,22 @@ void copyTextToClipboard(std::wstring_view text) {
     }
     std::memcpy(destination, text.data(), text.size() * sizeof(wchar_t));
     GlobalUnlock(memory);
+
+    if (!OpenClipboard(nullptr)) {
+        GlobalFree(memory);
+        throw std::runtime_error("cannot open the Windows clipboard");
+    }
+
+    struct ClipboardGuard {
+        ~ClipboardGuard() {
+            CloseClipboard();
+        }
+    } guard;
+
+    if (!EmptyClipboard()) {
+        GlobalFree(memory);
+        throw std::runtime_error("cannot clear the Windows clipboard");
+    }
     if (!SetClipboardData(CF_UNICODETEXT, memory)) {
         GlobalFree(memory);
         throw std::runtime_error("cannot publish clipboard text");
@@ -444,14 +461,38 @@ HWND createControl(CustomDialogContext &context,
     return control;
 }
 
+std::wstring readWindowTextExact(HWND window) {
+    for (unsigned attempt = 0; attempt < 8U; ++attempt) {
+        SetLastError(ERROR_SUCCESS);
+        const int length = GetWindowTextLengthW(window);
+        if (length < 0 || (length == 0 && GetLastError() != ERROR_SUCCESS))
+            break;
+        std::wstring text(static_cast<size_t>(length) + 1U, L'\0');
+        SetLastError(ERROR_SUCCESS);
+        const int copied = GetWindowTextW(window, text.data(), static_cast<int>(text.size()));
+        if (copied < 0 || (copied == 0 && (length > 0 || GetLastError() != ERROR_SUCCESS)))
+            break;
+        SetLastError(ERROR_SUCCESS);
+        const int verifiedLength = GetWindowTextLengthW(window);
+        if (verifiedLength < 0 || (verifiedLength == 0 && GetLastError() != ERROR_SUCCESS)) {
+            break;
+        }
+        if (verifiedLength <= copied) {
+            text.resize(static_cast<size_t>(copied));
+            return text;
+        }
+    }
+    throw std::runtime_error("cannot read the current installation folder");
+}
+
 void browseForDestination(CustomDialogContext &context) {
-    std::wstring current(static_cast<size_t>(GetWindowTextLengthW(context.destination)) + 1U,
-                         L'\0');
-    GetWindowTextW(context.destination, current.data(), static_cast<int>(current.size()));
-    current.resize(std::wcslen(current.c_str()));
+    const std::wstring current = readWindowTextExact(context.destination);
     IFileOpenDialog *dialog = nullptr;
-    if (FAILED(CoCreateInstance(
-            CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
+    const HRESULT createResult = CoCreateInstance(
+        CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+    if (FAILED(createResult) || !dialog) {
+        if (dialog)
+            dialog->Release();
         throw std::runtime_error("cannot create the Windows folder picker");
     }
 
@@ -459,7 +500,8 @@ void browseForDestination(CustomDialogContext &context) {
         IFileOpenDialog *value;
 
         ~DialogRelease() {
-            value->Release();
+            if (value)
+                value->Release();
         }
     } release{dialog};
 
@@ -478,9 +520,14 @@ void browseForDestination(CustomDialogContext &context) {
     }
     if (!initial.empty()) {
         IShellItem *folder = nullptr;
-        if (SUCCEEDED(
-                SHCreateItemFromParsingName(initial.c_str(), nullptr, IID_PPV_ARGS(&folder)))) {
-            dialog->SetFolder(folder);
+        const HRESULT folderResult =
+            SHCreateItemFromParsingName(initial.c_str(), nullptr, IID_PPV_ARGS(&folder));
+        if (SUCCEEDED(folderResult) && folder) {
+            const HRESULT setResult = dialog->SetFolder(folder);
+            folder->Release();
+            if (FAILED(setResult))
+                throw std::runtime_error("cannot set the initial installation folder");
+        } else if (folder) {
             folder->Release();
         }
     }
@@ -490,21 +537,33 @@ void browseForDestination(CustomDialogContext &context) {
     if (FAILED(shown))
         throw std::runtime_error("the Windows folder picker failed");
     IShellItem *selected = nullptr;
-    if (FAILED(dialog->GetResult(&selected)))
+    const HRESULT result = dialog->GetResult(&selected);
+    if (FAILED(result) || !selected) {
+        if (selected)
+            selected->Release();
         throw std::runtime_error("cannot read the selected installation folder");
+    }
 
     struct ItemRelease {
         IShellItem *value;
 
         ~ItemRelease() {
-            value->Release();
+            if (value)
+                value->Release();
         }
     } itemRelease{selected};
 
     PWSTR path = nullptr;
-    if (FAILED(selected->GetDisplayName(SIGDN_FILESYSPATH, &path)) || !path)
+    const HRESULT pathResult = selected->GetDisplayName(SIGDN_FILESYSPATH, &path);
+    if (FAILED(pathResult) || !path) {
+        if (path)
+            CoTaskMemFree(path);
         throw std::runtime_error("the selected item is not a local filesystem folder");
-    SetWindowTextW(context.destination, path);
+    }
+    if (!SetWindowTextW(context.destination, path)) {
+        CoTaskMemFree(path);
+        throw std::runtime_error("cannot update the selected installation folder");
+    }
     CoTaskMemFree(path);
 }
 
@@ -549,10 +608,7 @@ void selectPreset(CustomDialogContext &context, ComponentPreset preset) {
 }
 
 void acceptCustomDialog(CustomDialogContext &context) {
-    const int length = GetWindowTextLengthW(context.destination);
-    std::wstring destination(static_cast<size_t>(length) + 1U, L'\0');
-    GetWindowTextW(context.destination, destination.data(), length + 1);
-    destination.resize(static_cast<size_t>(length));
+    const std::wstring destination = readWindowTextExact(context.destination);
     if (destination.empty()) {
         MessageBoxW(context.window,
                     L"Choose an installation folder.",
@@ -700,7 +756,14 @@ LRESULT CALLBACK customWindowProcedure(HWND window, UINT message, WPARAM wParam,
                 revealFocusedControl(*context, reinterpret_cast<HWND>(lParam));
             switch (LOWORD(wParam)) {
                 case kIdBrowse:
-                    browseForDestination(*context);
+                    try {
+                        browseForDestination(*context);
+                    } catch (const std::exception &) {
+                        MessageBoxW(window,
+                                    L"Setup could not open or update the installation folder.",
+                                    L"Zanna Tools Setup",
+                                    MB_OK | MB_ICONWARNING);
+                    }
                     return 0;
                 case kIdMinimal:
                     selectPreset(*context, ComponentPreset::Minimal);
@@ -728,7 +791,14 @@ LRESULT CALLBACK customWindowProcedure(HWND window, UINT message, WPARAM wParam,
                     return 0;
                 }
                 case kIdAccept:
-                    acceptCustomDialog(*context);
+                    try {
+                        acceptCustomDialog(*context);
+                    } catch (const std::exception &) {
+                        MessageBoxW(window,
+                                    L"Setup could not read the installation folder.",
+                                    L"Zanna Tools Setup",
+                                    MB_OK | MB_ICONWARNING);
+                    }
                     return 0;
                 case IDCANCEL:
                     DestroyWindow(window);

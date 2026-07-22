@@ -45,30 +45,42 @@ bool isAbsoluteSafePath(const std::wstring &path) {
            path.rfind(L"\\\\?\\", 0) == 0;
 }
 
-bool waitForParent(DWORD processId) {
+DWORD waitForParent(DWORD processId) {
     if (processId == 0)
-        return false;
+        return ERROR_INVALID_PARAMETER;
     HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, processId);
-    if (!process)
-        return GetLastError() == ERROR_INVALID_PARAMETER;
+    if (!process) {
+        const DWORD error = GetLastError();
+        return error == ERROR_INVALID_PARAMETER ? ERROR_SUCCESS : error;
+    }
     const DWORD result = WaitForSingleObject(process, 5U * 60U * 1000U);
+    const DWORD error = result == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
     CloseHandle(process);
-    return result == WAIT_OBJECT_0;
+    if (result == WAIT_OBJECT_0)
+        return ERROR_SUCCESS;
+    if (result == WAIT_TIMEOUT)
+        return WAIT_TIMEOUT;
+    return error ? error : ERROR_INVALID_FUNCTION;
 }
 
 DWORD markSelfForDeletion() {
     std::vector<wchar_t> path(512);
-    for (;;) {
+    while (path.size() <= 32768U) {
         const DWORD length =
             GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
         if (length == 0)
             return GetLastError();
-        if (length < path.size() - 1U) {
+        if (length < path.size()) {
             path.resize(length + 1U);
             break;
         }
-        path.resize(path.size() * 2U);
+        const size_t next = path.size() * 2U;
+        if (next <= path.size() || next > 32768U)
+            return ERROR_BUFFER_OVERFLOW;
+        path.resize(next);
     }
+    if (path.empty() || path.back() != L'\0')
+        return ERROR_BUFFER_OVERFLOW;
 
     HANDLE file = CreateFileW(path.data(),
                               DELETE | SYNCHRONIZE,
@@ -216,8 +228,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         return ERROR_INVALID_PARAMETER;
     if (const DWORD selfDeleteError = markSelfForDeletion(); selfDeleteError != ERROR_SUCCESS)
         return static_cast<int>(selfDeleteError);
-    if (!waitForParent(parentId))
-        return WAIT_TIMEOUT;
+    if (const DWORD waitError = waitForParent(parentId); waitError != ERROR_SUCCESS)
+        return static_cast<int>(waitError);
 
     bool success = true;
     for (const std::wstring &file : files)

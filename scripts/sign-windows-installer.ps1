@@ -1,3 +1,21 @@
+#===----------------------------------------------------------------------===#
+#
+# Part of the Zanna project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: scripts/sign-windows-installer.ps1
+# Purpose: Authenticode-sign a staged Windows installer and emit hash metadata.
+# Key invariants:
+#   - Failed signing or verification never replaces the requested output.
+#   - Timestamp endpoints are credential-free absolute HTTPS URLs.
+#   - Hash metadata is committed only after the signed artifact is published.
+# Ownership/Lifetime: Same-directory temporary files are removed on every exit path.
+# Links: docs/installer-release.md, scripts/build_installer.ps1
+#
+#===----------------------------------------------------------------------===#
+
 param(
     [Parameter(Mandatory = $true)]
     [string]$InputPath,
@@ -51,8 +69,10 @@ if ($useThumbprint) {
 $timestampUri = $null
 if (-not [System.Uri]::TryCreate($TimestampUrl, [System.UriKind]::Absolute, [ref]$timestampUri) -or
     -not [string]::Equals($timestampUri.Scheme, "https", [System.StringComparison]::OrdinalIgnoreCase) -or
-    [string]::IsNullOrWhiteSpace($timestampUri.Host)) {
-    throw "TimestampUrl must be an absolute HTTPS URL with a host: $TimestampUrl"
+    [string]::IsNullOrWhiteSpace($timestampUri.Host) -or
+    -not [string]::IsNullOrEmpty($timestampUri.UserInfo) -or
+    -not [string]::IsNullOrEmpty($timestampUri.Fragment)) {
+    throw "TimestampUrl must be a credential-free absolute HTTPS URL without a fragment: $TimestampUrl"
 }
 
 $inputFull = Resolve-FullPath $InputPath
@@ -63,43 +83,56 @@ $outputFull = Resolve-FullPath $OutputPath
 
 $unsignedHash = (Get-FileHash -LiteralPath $inputFull -Algorithm SHA256).Hash.ToLowerInvariant()
 
-if (-not [string]::Equals($outputFull, $inputFull, [System.StringComparison]::OrdinalIgnoreCase)) {
-    $parent = Split-Path -Parent $outputFull
-    if (-not [string]::IsNullOrWhiteSpace($parent)) {
-        New-Item -ItemType Directory -Force -Path $parent | Out-Null
-    }
-    Copy-Item -LiteralPath $inputFull -Destination $outputFull -Force
-}
-
-$signArgs = @("sign", "/fd", "SHA256", "/tr", $TimestampUrl, "/td", "SHA256")
-if ($useThumbprint) {
-    $signArgs += @("/sha1", $normalizedThumbprint)
+$parent = Split-Path -Parent $outputFull
+if ([string]::IsNullOrWhiteSpace($parent)) {
+    $parent = (Get-Location).Path
 } else {
-    $pfxFull = Resolve-FullPath $PfxPath
-    $signArgs += @("/f", $pfxFull, "/p", $PfxPassword)
+    New-Item -ItemType Directory -Force -Path $parent | Out-Null
 }
-$signArgs += $outputFull
-
-& $SignToolPath @signArgs
-if ($LASTEXITCODE -ne 0) {
-    throw "signtool sign failed with exit code $LASTEXITCODE"
-}
-
-if (-not $NoVerify) {
-    & $SignToolPath verify /pa /all /tw /v $outputFull
-    if ($LASTEXITCODE -ne 0) {
-        throw "signtool verify failed with exit code $LASTEXITCODE"
-    }
-}
-
-$signedHash = (Get-FileHash -LiteralPath $outputFull -Algorithm SHA256).Hash.ToLowerInvariant()
+$temporaryArtifact = Join-Path $parent `
+    (".{0}.signing-{1}-{2}.tmp" -f [IO.Path]::GetFileName($outputFull), $PID, [Guid]::NewGuid().ToString("N"))
 $metadataPath = "$outputFull.sha256.txt"
-@(
-    "unsigned_sha256 $unsignedHash"
-    "signed_sha256 $signedHash"
-    "timestamp_url $TimestampUrl"
-    "artifact $([System.IO.Path]::GetFileName($outputFull))"
-) | Set-Content -LiteralPath $metadataPath -Encoding ASCII
+$temporaryMetadata = Join-Path $parent `
+    (".{0}.metadata-{1}-{2}.tmp" -f [IO.Path]::GetFileName($outputFull), $PID, [Guid]::NewGuid().ToString("N"))
+
+try {
+    Copy-Item -LiteralPath $inputFull -Destination $temporaryArtifact
+
+    $signArgs = @("sign", "/fd", "SHA256", "/tr", $TimestampUrl, "/td", "SHA256")
+    if ($useThumbprint) {
+        $signArgs += @("/sha1", $normalizedThumbprint)
+    } else {
+        $pfxFull = Resolve-FullPath $PfxPath
+        $signArgs += @("/f", $pfxFull, "/p", $PfxPassword)
+    }
+    $signArgs += $temporaryArtifact
+
+    & $SignToolPath @signArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "signtool sign failed with exit code $LASTEXITCODE"
+    }
+
+    if (-not $NoVerify) {
+        & $SignToolPath verify /pa /all /tw /v $temporaryArtifact
+        if ($LASTEXITCODE -ne 0) {
+            throw "signtool verify failed with exit code $LASTEXITCODE"
+        }
+    }
+
+    $signedHash = (Get-FileHash -LiteralPath $temporaryArtifact -Algorithm SHA256).Hash.ToLowerInvariant()
+    Move-Item -LiteralPath $temporaryArtifact -Destination $outputFull -Force
+
+    $metadataLines = @(
+        "unsigned_sha256 $unsignedHash"
+        "signed_sha256 $signedHash"
+        "timestamp_url $TimestampUrl"
+        "artifact $([System.IO.Path]::GetFileName($outputFull))"
+    )
+    [IO.File]::WriteAllLines($temporaryMetadata, $metadataLines, [Text.Encoding]::ASCII)
+    Move-Item -LiteralPath $temporaryMetadata -Destination $metadataPath -Force
+} finally {
+    Remove-Item -LiteralPath $temporaryArtifact, $temporaryMetadata -Force -ErrorAction SilentlyContinue
+}
 
 Write-Output $outputFull
 Write-Output $metadataPath

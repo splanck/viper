@@ -2170,6 +2170,39 @@ static void test_d3d11_backend_source_contracts(void) {
                                             "&new_tex, &new_srv);",
                                             "d3d11_release_cubemap_cache_entry(entry);"),
                 "Cubemap uploads allocate before evicting a good cache entry");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_acquire_mesh_buffers",
+                                            "&new_ib);",
+                                            "d3d11_release_mesh_cache_entry(slot);"),
+                "Static meshes stage both immutable buffers before cache eviction");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_prepare_anim_resources",
+                                            "&replacement.normal_element_count",
+                                            "d3d11_release_morph_cache_entry(slot);"),
+                "Morph caches stage position and normal resources before publication");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_resolve_opaque_targets",
+                                            "&new_srv);",
+                                            "d3d11_destroy_opaque_depth_target(ctx);"),
+                "Opaque-depth replacement preserves the previous complete target on failure");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_rtt_targets",
+                                            "&new_staging);",
+                                            "d3d11_destroy_rtt_targets(ctx);"),
+                "RTT replacement stages color, depth, and readback resources together");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_shadow_targets",
+                                            "&new_srv);",
+                                            "d3d11_release_shadow_slot(ctx, slot);"),
+                "Shadow-slot resizing preserves the previous complete target on failure");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_shadow_atlas",
+                                            "&new_srv);",
+                                            "SAFE_RELEASE(ctx->shadow_atlas_srv);"),
+                "Shadow-atlas resizing stages a complete replacement before release");
+    EXPECT_TRUE(strstr(source, "FAILED(hr) || !*out_tex") != NULL &&
+                    strstr(source, "FAILED(hr) || !back_buffer") != NULL,
+                "D3D11 target helpers reject successful calls with missing COM outputs");
     free(source);
 }
 

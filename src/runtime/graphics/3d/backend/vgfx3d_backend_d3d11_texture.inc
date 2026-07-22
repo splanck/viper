@@ -712,13 +712,17 @@ static HRESULT d3d11_allocate_texture_srv(d3d11_context_t *ctx,
     desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && *out_tex) {
         memset(&srv_desc, 0, sizeof(srv_desc));
         srv_desc.Format = desc.Format;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         srv_desc.Texture2D.MipLevels = desc.MipLevels;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
+        if (SUCCEEDED(hr) && !*out_srv)
+            hr = E_POINTER;
+    } else if (SUCCEEDED(hr)) {
+        hr = E_POINTER;
     }
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D/ShaderResourceView(texture)", hr);
@@ -770,13 +774,17 @@ static HRESULT d3d11_allocate_native_texture_srv(d3d11_context_t *ctx,
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && *out_tex) {
         memset(&srv_desc, 0, sizeof(srv_desc));
         srv_desc.Format = desc.Format;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         srv_desc.Texture2D.MipLevels = desc.MipLevels;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
+        if (SUCCEEDED(hr) && !*out_srv)
+            hr = E_POINTER;
+    } else if (SUCCEEDED(hr)) {
+        hr = E_POINTER;
     }
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D/ShaderResourceView(native texture)", hr);
@@ -1338,13 +1346,17 @@ static HRESULT d3d11_allocate_cubemap_srv(d3d11_context_t *ctx,
     desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE | D3D11_RESOURCE_MISC_GENERATE_MIPS;
 
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && *out_tex) {
         memset(&srv_desc, 0, sizeof(srv_desc));
         srv_desc.Format = desc.Format;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
         srv_desc.TextureCube.MipLevels = desc.MipLevels;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
+        if (SUCCEEDED(hr) && !*out_srv)
+            hr = E_POINTER;
+    } else if (SUCCEEDED(hr)) {
+        hr = E_POINTER;
     }
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D/ShaderResourceView(cubemap)", hr);

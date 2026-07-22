@@ -1648,7 +1648,14 @@ static HRESULT d3d11_create_static_buffer(d3d11_context_t *ctx,
     desc.ByteWidth = (UINT)byte_width;
     desc.BindFlags = bind_flags;
     init.pSysMem = data;
-    return ID3D11Device_CreateBuffer(ctx->device, &desc, &init, out_buffer);
+    {
+        HRESULT hr = ID3D11Device_CreateBuffer(ctx->device, &desc, &init, out_buffer);
+        if (FAILED(hr) || !*out_buffer) {
+            SAFE_RELEASE(*out_buffer);
+            return FAILED(hr) ? hr : E_POINTER;
+        }
+        return S_OK;
+    }
 }
 
 /// @brief Get VB+IB for a draw command, using the cache for static meshes.
@@ -1715,6 +1722,8 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
         d3d11_mesh_cache_entry_t *slot = NULL;
         d3d11_mesh_cache_entry_t *oldest = NULL;
         int8_t wants_compact = d3d11_cmd_uses_compact_stream(ctx, cmd) ? 1 : 0;
+        ID3D11Buffer *new_vb = NULL;
+        ID3D11Buffer *new_ib = NULL;
         HRESULT hr;
 
         for (int32_t i = 0; i < D3D11_MESH_CACHE_CAPACITY; i++) {
@@ -1736,7 +1745,6 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
         if (slot->key != cmd->geometry_key || slot->revision != cmd->geometry_revision ||
             slot->vertex_count != cmd->vertex_count || slot->index_count != index_count ||
             slot->compact != wants_compact || !slot->vb || !slot->ib) {
-            d3d11_release_mesh_cache_entry(slot);
             if (wants_compact) {
                 /* R20: encode into the packed 48-byte layout; the compact input
                  * layouts decode it via input-assembler format conversion. */
@@ -1752,24 +1760,28 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
                     return 0;
                 vgfx3d_encode_compact_vertices(cmd->vertices, cmd->vertex_count, packed);
                 hr = d3d11_create_static_buffer(
-                    ctx, D3D11_BIND_VERTEX_BUFFER, packed, compact_bytes, &slot->vb);
+                    ctx, D3D11_BIND_VERTEX_BUFFER, packed, compact_bytes, &new_vb);
                 free(packed);
             } else {
                 hr = d3d11_create_static_buffer(
-                    ctx, D3D11_BIND_VERTEX_BUFFER, cmd->vertices, vertex_bytes, &slot->vb);
+                    ctx, D3D11_BIND_VERTEX_BUFFER, cmd->vertices, vertex_bytes, &new_vb);
             }
-            if (FAILED(hr)) {
+            if (FAILED(hr) || !new_vb) {
                 d3d11_log_hresult("CreateBuffer(static vertex)", hr);
-                d3d11_release_mesh_cache_entry(slot);
+                SAFE_RELEASE(new_vb);
                 return 0;
             }
             hr = d3d11_create_static_buffer(
-                ctx, D3D11_BIND_INDEX_BUFFER, cmd->indices, index_bytes, &slot->ib);
-            if (FAILED(hr)) {
+                ctx, D3D11_BIND_INDEX_BUFFER, cmd->indices, index_bytes, &new_ib);
+            if (FAILED(hr) || !new_ib) {
                 d3d11_log_hresult("CreateBuffer(static index)", hr);
-                d3d11_release_mesh_cache_entry(slot);
+                SAFE_RELEASE(new_ib);
+                SAFE_RELEASE(new_vb);
                 return 0;
             }
+            d3d11_release_mesh_cache_entry(slot);
+            slot->vb = new_vb;
+            slot->ib = new_ib;
             slot->key = cmd->geometry_key;
             slot->revision = cmd->geometry_revision;
             slot->vertex_count = cmd->vertex_count;
@@ -1820,8 +1832,10 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, &new_buffer);
-    if (FAILED(hr))
-        return hr;
+    if (FAILED(hr) || !new_buffer) {
+        SAFE_RELEASE(new_buffer);
+        return FAILED(hr) ? hr : E_POINTER;
+    }
 
     memset(&srv_desc, 0, sizeof(srv_desc));
     srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
@@ -1830,9 +1844,10 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     srv_desc.Buffer.NumElements = (UINT)allocation_capacity;
     hr = ID3D11Device_CreateShaderResourceView(
         ctx->device, (ID3D11Resource *)new_buffer, &srv_desc, &new_srv);
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !new_srv) {
+        SAFE_RELEASE(new_srv);
         SAFE_RELEASE(new_buffer);
-        return hr;
+        return FAILED(hr) ? hr : E_POINTER;
     }
     d3d11_unbind_draw_resources(ctx);
     SAFE_RELEASE(*srv);

@@ -101,8 +101,37 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
 static INIT_ONCE g_vgfx_win32_dpi_awareness_once = INIT_ONCE_STATIC_INIT;
 static INIT_ONCE g_vgfx_win32_window_class_once = INIT_ONCE_STATIC_INIT;
+static INIT_ONCE g_vgfx_win32_dwm_once = INIT_ONCE_STATIC_INIT;
+static INIT_ONCE g_vgfx_win32_qpc_once = INIT_ONCE_STATIC_INIT;
+static SRWLOCK g_vgfx_win32_clipboard_lock = SRWLOCK_INIT;
 static HWND g_vgfx_win32_clipboard_owner = NULL;
 static char *g_vgfx_win32_clipboard_text = NULL;
+typedef HRESULT(WINAPI *vgfx_win32_dwm_flush_fn)(void);
+static vgfx_win32_dwm_flush_fn g_vgfx_win32_dwm_flush = NULL;
+static LARGE_INTEGER g_vgfx_win32_qpc_frequency = {0};
+
+static BOOL CALLBACK win32_resolve_dwm_once(PINIT_ONCE once, PVOID parameter, PVOID *context) {
+    HMODULE module;
+    (void)once;
+    (void)parameter;
+    (void)context;
+    module = LoadLibraryW(L"dwmapi.dll");
+    if (module)
+        g_vgfx_win32_dwm_flush =
+            (vgfx_win32_dwm_flush_fn)(void *)GetProcAddress(module, "DwmFlush");
+    return TRUE;
+}
+
+static BOOL CALLBACK win32_initialize_qpc_once(PINIT_ONCE once, PVOID parameter, PVOID *context) {
+    (void)once;
+    (void)parameter;
+    (void)context;
+    if (!QueryPerformanceFrequency(&g_vgfx_win32_qpc_frequency) ||
+        g_vgfx_win32_qpc_frequency.QuadPart <= 0) {
+        g_vgfx_win32_qpc_frequency.QuadPart = 0;
+    }
+    return TRUE;
+}
 
 /// @brief Allocate an aligned framebuffer buffer with the Win32 CRT allocator.
 /// @details Windows requires `_aligned_malloc` so that the matching
@@ -112,7 +141,7 @@ static char *g_vgfx_win32_clipboard_text = NULL;
 /// @param size Number of bytes requested.
 /// @return Aligned allocation on success, or NULL for invalid input/OOM.
 void *vgfx_platform_aligned_alloc(size_t alignment, size_t size) {
-    if (size == 0)
+    if (size == 0 || alignment == 0 || (alignment & (alignment - 1u)) != 0)
         return NULL;
     if (alignment < sizeof(void *))
         alignment = sizeof(void *);
@@ -181,9 +210,12 @@ static int utf16_to_utf8_buffer(const WCHAR *wstr, char *out, size_t out_size) {
 ///          copy/paste operations more reliable without blocking indefinitely.
 /// @return Non-zero when OpenClipboard succeeded.
 static int win32_open_clipboard_retry(void) {
-    HWND owner = (g_vgfx_win32_clipboard_owner && IsWindow(g_vgfx_win32_clipboard_owner))
-                     ? g_vgfx_win32_clipboard_owner
-                     : NULL;
+    HWND owner;
+    AcquireSRWLockShared(&g_vgfx_win32_clipboard_lock);
+    owner = g_vgfx_win32_clipboard_owner;
+    ReleaseSRWLockShared(&g_vgfx_win32_clipboard_lock);
+    if (owner && !IsWindow(owner))
+        owner = NULL;
     for (int attempt = 0; attempt < 8; attempt++) {
         if (OpenClipboard(owner))
             return 1;
@@ -206,25 +238,41 @@ static void win32_store_clipboard_text(const char *text) {
             if (copy)
                 memcpy(copy, text, len + 1u);
         }
+        if (!copy)
+            return;
     }
 
-    free(g_vgfx_win32_clipboard_text);
-    g_vgfx_win32_clipboard_text = copy;
+    AcquireSRWLockExclusive(&g_vgfx_win32_clipboard_lock);
+    {
+        char *old = g_vgfx_win32_clipboard_text;
+        g_vgfx_win32_clipboard_text = copy;
+        free(old);
+    }
+    ReleaseSRWLockExclusive(&g_vgfx_win32_clipboard_lock);
 }
 
 /// @brief Return a caller-owned copy of the process-local clipboard fallback.
 static char *win32_dup_clipboard_text(void) {
-    if (!g_vgfx_win32_clipboard_text)
-        return NULL;
-
-    size_t len = strlen(g_vgfx_win32_clipboard_text);
-    if (len >= SIZE_MAX)
-        return NULL;
-    char *copy = (char *)malloc(len + 1u);
-    if (!copy)
-        return NULL;
-    memcpy(copy, g_vgfx_win32_clipboard_text, len + 1u);
+    char *copy = NULL;
+    AcquireSRWLockShared(&g_vgfx_win32_clipboard_lock);
+    if (g_vgfx_win32_clipboard_text) {
+        size_t len = strlen(g_vgfx_win32_clipboard_text);
+        if (len < SIZE_MAX) {
+            copy = (char *)malloc(len + 1u);
+            if (copy)
+                memcpy(copy, g_vgfx_win32_clipboard_text, len + 1u);
+        }
+    }
+    ReleaseSRWLockShared(&g_vgfx_win32_clipboard_lock);
     return copy;
+}
+
+static int win32_has_clipboard_text(void) {
+    int present;
+    AcquireSRWLockShared(&g_vgfx_win32_clipboard_lock);
+    present = g_vgfx_win32_clipboard_text && g_vgfx_win32_clipboard_text[0] != '\0';
+    ReleaseSRWLockShared(&g_vgfx_win32_clipboard_lock);
+    return present;
 }
 
 static void win32_client_to_physical_mouse(
@@ -319,8 +367,8 @@ static BOOL CALLBACK win32_set_dpi_awareness_once(PINIT_ONCE init_once,
 /// @brief Load an application icon placed beside the running executable.
 /// @details The convention `<executable-basename>.ico` lets packaged Zanna applications carry
 ///          their own identity without adding icon concerns to the runtime C ABI.  Zanna Studio is
-///          installed as `zannastudio.exe` plus `zannastudio.ico`; other applications fall back to the
-///          standard Windows application icon when no adjacent icon is present.
+///          installed as `zannastudio.exe` plus `zannastudio.ico`; other applications fall back to
+///          the standard Windows application icon when no adjacent icon is present.
 static HICON win32_load_adjacent_application_icon(int width, int height) {
     WCHAR path[32768];
     DWORD length = GetModuleFileNameW(NULL, path, (DWORD)(sizeof(path) / sizeof(path[0])));
@@ -395,16 +443,6 @@ static int win32_recreate_dib(struct vgfx_window *win) {
     if (!w32->memdc)
         return 0;
 
-    if (w32->hbmp) {
-        if (w32->old_bitmap)
-            SelectObject(w32->memdc, w32->old_bitmap);
-        DeleteObject(w32->hbmp);
-        w32->hbmp = NULL;
-        w32->dib_pixels = NULL;
-        w32->dib_width = 0;
-        w32->dib_height = 0;
-    }
-
     BITMAPINFO bmi = {0};
     bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bmi.bmiHeader.biWidth = win->width;
@@ -413,19 +451,27 @@ static int win32_recreate_dib(struct vgfx_window *win) {
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
-    w32->hbmp = CreateDIBSection(w32->memdc, &bmi, DIB_RGB_COLORS, &w32->dib_pixels, NULL, 0);
-    if (!w32->hbmp || !w32->dib_pixels) {
-        w32->hbmp = NULL;
-        w32->dib_pixels = NULL;
-        w32->dib_width = 0;
-        w32->dib_height = 0;
+    void *new_pixels = NULL;
+    HBITMAP new_hbmp = CreateDIBSection(w32->memdc, &bmi, DIB_RGB_COLORS, &new_pixels, NULL, 0);
+    if (!new_hbmp || !new_pixels) {
+        if (new_hbmp)
+            DeleteObject(new_hbmp);
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to create Win32 DIB section");
         return 0;
     }
 
-    HGDIOBJ previous = SelectObject(w32->memdc, w32->hbmp);
+    HGDIOBJ previous = SelectObject(w32->memdc, new_hbmp);
+    if (!previous || previous == HGDI_ERROR) {
+        DeleteObject(new_hbmp);
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to select Win32 DIB section");
+        return 0;
+    }
     if (!w32->old_bitmap)
         w32->old_bitmap = previous;
+    if (w32->hbmp)
+        DeleteObject(w32->hbmp);
+    w32->hbmp = new_hbmp;
+    w32->dib_pixels = new_pixels;
     w32->dib_width = win->width;
     w32->dib_height = win->height;
     return 1;
@@ -963,11 +1009,12 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             if (!win->relative_mouse_enabled || !win->relative_mouse_native)
                 return DefWindowProcW(hwnd, msg, wparam, lparam);
 
-            RAWINPUT raw;
+            RAWINPUT raw = {0};
             UINT raw_size = sizeof(raw);
             UINT copied = GetRawInputData(
                 (HRAWINPUT)lparam, RID_INPUT, &raw, &raw_size, sizeof(RAWINPUTHEADER));
-            if (copied != (UINT)-1 && raw.header.dwType == RIM_TYPEMOUSE &&
+            if (copied == raw_size && raw_size >= sizeof(RAWINPUTHEADER) + sizeof(RAWMOUSE) &&
+                raw.header.dwSize == raw_size && raw.header.dwType == RIM_TYPEMOUSE &&
                 (raw.data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) == 0) {
                 double cs = (double)vgfx_internal_coord_scale(win);
                 if (cs <= 0.0)
@@ -1286,8 +1333,10 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                     continue;
                 }
                 WCHAR *wpath = (WCHAR *)malloc(((size_t)wlen + 1u) * sizeof(WCHAR));
-                if (!wpath)
+                if (!wpath) {
+                    vgfx_internal_note_event_overflow(win);
                     continue;
+                }
                 if (DragQueryFileW(hDrop, i, wpath, wlen + 1u) == wlen &&
                     utf16_to_utf8_buffer(
                         wpath, event.data.file_drop.path, sizeof(event.data.file_drop.path))) {
@@ -1465,7 +1514,15 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     }
 
     /* Store vgfx_window pointer in window user data for WndProc access */
-    SetWindowLongPtrW(w32->hwnd, GWLP_USERDATA, (LONG_PTR)win);
+    SetLastError(ERROR_SUCCESS);
+    if (SetWindowLongPtrW(w32->hwnd, GWLP_USERDATA, (LONG_PTR)win) == 0 &&
+        GetLastError() != ERROR_SUCCESS) {
+        DestroyWindow(w32->hwnd);
+        free(w32);
+        win->platform_data = NULL;
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to attach Win32 window state");
+        return 0;
+    }
 
     /* Accept file drops */
     DragAcceptFiles(w32->hwnd, TRUE);
@@ -1503,7 +1560,9 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     /* Show and update window */
     ShowWindow(w32->hwnd, SW_SHOW);
     UpdateWindow(w32->hwnd);
+    AcquireSRWLockExclusive(&g_vgfx_win32_clipboard_lock);
     g_vgfx_win32_clipboard_owner = w32->hwnd;
+    ReleaseSRWLockExclusive(&g_vgfx_win32_clipboard_lock);
 
     return 1;
 }
@@ -1522,6 +1581,20 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
         return;
 
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+
+    if (win->relative_mouse_enabled || win->relative_mouse_native) {
+        if (win->relative_mouse_native) {
+            RAWINPUTDEVICE rid = {0};
+            rid.usUsagePage = 0x01;
+            rid.usUsage = 0x02;
+            rid.dwFlags = RIDEV_REMOVE;
+            rid.hwndTarget = NULL;
+            (void)RegisterRawInputDevices(&rid, 1, sizeof(rid));
+        }
+        ClipCursor(NULL);
+    }
+    win->relative_mouse_native = 0;
+    win->relative_mouse_enabled = 0;
 
     /* Delete DIB section */
     if (w32->hbmp) {
@@ -1548,8 +1621,11 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
 
     /* Destroy window */
     if (w32->hwnd) {
-        if (g_vgfx_win32_clipboard_owner == w32->hwnd)
+        AcquireSRWLockExclusive(&g_vgfx_win32_clipboard_lock);
+        if (g_vgfx_win32_clipboard_owner == w32->hwnd) {
             g_vgfx_win32_clipboard_owner = NULL;
+        }
+        ReleaseSRWLockExclusive(&g_vgfx_win32_clipboard_lock);
         DestroyWindow(w32->hwnd);
         w32->hwnd = NULL;
     }
@@ -1591,7 +1667,11 @@ int vgfx_platform_wait_events(struct vgfx_window *win, int32_t timeout_ms) {
        Messages are left queued for vgfx_platform_process_events. */
     DWORD result =
         MsgWaitForMultipleObjectsEx(0, NULL, (DWORD)timeout_ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-    return result != WAIT_TIMEOUT ? 1 : 0;
+    if (result == WAIT_FAILED) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Win32 message wait failed");
+        return 0;
+    }
+    return result == WAIT_OBJECT_0 ? 1 : 0;
 }
 
 int vgfx_platform_process_events(struct vgfx_window *win) {
@@ -1693,19 +1773,9 @@ int vgfx_platform_present(struct vgfx_window *win) {
      * animated frames pace against the display instead of only the sleep
      * limiter (Zanna Studio plan 05). DwmFlush is resolved dynamically once;
      * absence (or composition off / remote sessions) leaves sleep pacing. */
-    {
-        typedef HRESULT(WINAPI * dwm_flush_fn)(void);
-        static dwm_flush_fn s_dwm_flush;
-        static int s_dwm_resolved;
-        if (!s_dwm_resolved) {
-            s_dwm_resolved = 1;
-            HMODULE dwm = LoadLibraryW(L"dwmapi.dll");
-            if (dwm)
-                s_dwm_flush = (dwm_flush_fn)GetProcAddress(dwm, "DwmFlush");
-        }
-        if (s_dwm_flush)
-            (void)s_dwm_flush();
-    }
+    (void)InitOnceExecuteOnce(&g_vgfx_win32_dwm_once, win32_resolve_dwm_once, NULL, NULL);
+    if (g_vgfx_win32_dwm_flush)
+        (void)g_vgfx_win32_dwm_flush();
 
     return 1;
 }
@@ -1718,12 +1788,12 @@ int vgfx_platform_present(struct vgfx_window *win) {
 ///
 /// @post Return value >= previous calls within the same process
 int64_t vgfx_platform_now_ms(void) {
-    LARGE_INTEGER freq, counter;
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&counter);
-    if (freq.QuadPart <= 0)
-        return 0;
-    long double millis = ((long double)counter.QuadPart * 1000.0L) / (long double)freq.QuadPart;
+    LARGE_INTEGER counter;
+    (void)InitOnceExecuteOnce(&g_vgfx_win32_qpc_once, win32_initialize_qpc_once, NULL, NULL);
+    if (g_vgfx_win32_qpc_frequency.QuadPart <= 0 || !QueryPerformanceCounter(&counter))
+        return (int64_t)GetTickCount64();
+    long double millis = ((long double)counter.QuadPart * 1000.0L) /
+                         (long double)g_vgfx_win32_qpc_frequency.QuadPart;
     if (millis > (long double)INT64_MAX)
         return INT64_MAX;
     return (int64_t)millis;
@@ -1759,11 +1829,13 @@ void vgfx_platform_sleep_ms(int32_t ms) {
         LARGE_INTEGER due_time;
         due_time.QuadPart = -(LONGLONG)ms * 10000LL;
         if (SetWaitableTimer(timer, &due_time, 0, NULL, NULL, FALSE)) {
-            WaitForSingleObject(timer, INFINITE);
+            DWORD wait_result = WaitForSingleObject(timer, INFINITE);
             CloseHandle(timer);
-            return;
+            if (wait_result == WAIT_OBJECT_0)
+                return;
+        } else {
+            CloseHandle(timer);
         }
-        CloseHandle(timer);
     }
 
     Sleep((DWORD)ms);
@@ -1787,8 +1859,7 @@ int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
     switch (format) {
         case VGFX_CLIPBOARD_TEXT:
             return IsClipboardFormatAvailable(CF_UNICODETEXT) ||
-                   IsClipboardFormatAvailable(CF_TEXT) ||
-                   (g_vgfx_win32_clipboard_text && g_vgfx_win32_clipboard_text[0] != '\0');
+                   IsClipboardFormatAvailable(CF_TEXT) || win32_has_clipboard_text();
         case VGFX_CLIPBOARD_HTML:
             // HTML format is registered dynamically
             {
@@ -1818,17 +1889,40 @@ char *vgfx_clipboard_get_text(void) {
     if (hData) {
         WCHAR *wstr = (WCHAR *)GlobalLock(hData);
         if (wstr) {
-            /* Convert UTF-16 to UTF-8 */
-            int len =
-                WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wstr, -1, NULL, 0, NULL, NULL);
-            if (len > 0) {
-                result = (char *)malloc(len);
-                if (result) {
-                    if (WideCharToMultiByte(
-                            CP_UTF8, WC_ERR_INVALID_CHARS, wstr, -1, result, len, NULL, NULL) ==
-                        0) {
-                        free(result);
-                        result = NULL;
+            SIZE_T bytes = GlobalSize(hData);
+            if (bytes >= sizeof(WCHAR) && bytes % sizeof(WCHAR) == 0) {
+                size_t capacity = (size_t)(bytes / sizeof(WCHAR));
+                size_t bounded_length = 0;
+                while (bounded_length < capacity && wstr[bounded_length] != L'\0')
+                    bounded_length++;
+                if (bounded_length < capacity && bounded_length <= (size_t)INT_MAX) {
+                    int wide_len = (int)bounded_length;
+                    int len = wide_len == 0 ? 0
+                                            : WideCharToMultiByte(CP_UTF8,
+                                                                  WC_ERR_INVALID_CHARS,
+                                                                  wstr,
+                                                                  wide_len,
+                                                                  NULL,
+                                                                  0,
+                                                                  NULL,
+                                                                  NULL);
+                    if (len >= 0 && (wide_len == 0 || len > 0)) {
+                        result = (char *)malloc((size_t)len + 1u);
+                        if (result) {
+                            if (wide_len > 0 && WideCharToMultiByte(CP_UTF8,
+                                                                    WC_ERR_INVALID_CHARS,
+                                                                    wstr,
+                                                                    wide_len,
+                                                                    result,
+                                                                    len,
+                                                                    NULL,
+                                                                    NULL) != len) {
+                                free(result);
+                                result = NULL;
+                            } else {
+                                result[len] = '\0';
+                            }
+                        }
                     }
                 }
             }
@@ -1844,32 +1938,42 @@ char *vgfx_clipboard_get_text(void) {
 /// @details Copies the specified UTF-8 string to the system clipboard.
 /// @param text Text to copy (NULL clears text from clipboard)
 void vgfx_clipboard_set_text(const char *text) {
-    win32_store_clipboard_text(text ? text : "");
-
-    if (!win32_open_clipboard_retry())
-        return;
-
-    EmptyClipboard();
+    HGLOBAL memory = NULL;
 
     if (text) {
-        /* Convert UTF-8 to UTF-16 */
-        int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
-        if (wlen > 0) {
-            HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, wlen * sizeof(WCHAR));
-            if (hMem) {
-                WCHAR *wstr = (WCHAR *)GlobalLock(hMem);
-                if (wstr) {
-                    int converted =
-                        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wstr, wlen);
-                    GlobalUnlock(hMem);
-                    if (converted == 0 || !SetClipboardData(CF_UNICODETEXT, hMem))
-                        GlobalFree(hMem);
-                } else {
-                    GlobalFree(hMem);
-                }
-            }
+        int wide_len = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
+        if (wide_len <= 0)
+            return;
+        memory = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)wide_len * sizeof(WCHAR));
+        if (!memory)
+            return;
+        WCHAR *wide = (WCHAR *)GlobalLock(memory);
+        if (!wide || MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide, wide_len) !=
+                         wide_len) {
+            if (wide)
+                GlobalUnlock(memory);
+            GlobalFree(memory);
+            return;
         }
+        GlobalUnlock(memory);
     }
+
+    win32_store_clipboard_text(text ? text : "");
+
+    if (!win32_open_clipboard_retry()) {
+        if (memory)
+            GlobalFree(memory);
+        return;
+    }
+
+    if (!EmptyClipboard()) {
+        CloseClipboard();
+        if (memory)
+            GlobalFree(memory);
+        return;
+    }
+    if (memory && !SetClipboardData(CF_UNICODETEXT, memory))
+        GlobalFree(memory);
 
     CloseClipboard();
 }
@@ -2208,9 +2312,8 @@ vgfx_window_capabilities_t vgfx_get_window_capabilities(vgfx_window_t window) {
     if (!window || !window->platform_data)
         return 0;
     return VGFX_CAP_WINDOW_POSITION | VGFX_CAP_FOCUS_REQUEST | VGFX_CAP_CURSOR_WARP |
-           VGFX_CAP_RELATIVE_MOUSE | VGFX_CAP_TEXT_COMPOSITION |
-           VGFX_CAP_SERVER_DECORATIONS | VGFX_CAP_ACTIVATION | VGFX_CAP_CLIPBOARD_TEXT |
-           VGFX_CAP_FILE_DROP;
+           VGFX_CAP_RELATIVE_MOUSE | VGFX_CAP_TEXT_COMPOSITION | VGFX_CAP_SERVER_DECORATIONS |
+           VGFX_CAP_ACTIVATION | VGFX_CAP_CLIPBOARD_TEXT | VGFX_CAP_FILE_DROP;
 }
 
 void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {

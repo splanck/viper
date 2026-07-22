@@ -1,16 +1,16 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-07-21
+last-verified: 2026-07-22
 ---
 
 # Windows Runtime Reliability Audit
 
 This audit covers the Direct3D 11 backend and the Windows-specific runtime adapters for sockets,
 entropy, TLS verification, process/ConPTY launch, paths and assets, locale detection, file watching,
-large-file I/O, environment access, concurrency, stack safety, native builds, and UI Automation. It
-is a robustness pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer
-dependency changed.
+large-file I/O, environment access, concurrency, stack safety, graphics, audio, native dialogs,
+native builds, UI Automation, installer lifecycle, signing, and demo automation. It is a robustness
+pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer dependency changed.
 
 ## Repaired findings
 
@@ -133,12 +133,53 @@ dependency changed.
 | WR-115 | Windows demo processes | Windows PowerShell could return a blank `Process.ExitCode` for a fast redirected child because its native process handle was not materialized before the wait. The launch driver now acquires and validates the handle immediately, preserving exact failure codes. |
 | WR-116 | Windows native demos | Four more curated demos exposed the known Windows checked-integer optimizer miscompile during launch validation: invalid string handles in 3dbowling/Crackman, invalid pixels in Chess, and early Ridgebound termination. The Windows driver now uses its existing conservative `-O0` policy for every affected demo until that separately tracked compiler defect is resolved. |
 | WR-117 | Windows demo cleanup | Launch cleanup snapshotted only top-level names, so a new run artifact nested beneath an existing staged asset directory could survive. Snapshots now track validated relative paths recursively and remove new entries from deepest to shallowest. |
+| WR-118 | D3D11 mesh cache | Replacing a static mesh evicted its usable vertex/index pair before both immutable buffers existed. Both buffers now stage locally and commit together. |
+| WR-119 | D3D11 morph cache | Position deltas were published before optional normal deltas, so a late allocation failure destroyed a complete morph entry. A full replacement entry now stages and publishes as one transaction. |
+| WR-120 | D3D11 opaque depth | Opaque-depth resize released the old texture/SRV before replacement allocation. The pair now stages locally and preserves the previous target on failure. |
+| WR-121 | D3D11 RTT | Render-to-texture replacement destroyed color, depth, and readback resources before the new set was complete. All five resources now stage before one commit. |
+| WR-122 | D3D11 shadow slots | Per-light shadow resize discarded a valid depth texture/DSV/SRV before replacement creation. The complete slot now stages before eviction. |
+| WR-123 | D3D11 shadow atlas | Atlas resize released its usable texture and views before the replacement was complete. The new atlas now stages transactionally and resets completeness only at commit. |
+| WR-124 | D3D11 shadow binding | Atlas replacement could release a DSV still bound as the active output-merger target. Active atlas passes now unbind output targets before release. |
+| WR-125 | D3D11 target factories | Color, depth, and staging helpers trusted successful HRESULTs with null COM outputs and leaked partial outputs. Every required resource/view is now validated and partial state is released. |
+| WR-126 | D3D11 snapshots | Presented-backbuffer capture trusted a successful `GetBuffer` with a null texture. The path now normalizes this broken COM contract to `E_POINTER` and cleans up. |
+| WR-127 | D3D11 resource factories | Static buffers, float SRV buffers, RGBA textures, native compressed textures, and cubemaps could accept missing successful outputs. The shared allocation boundaries now reject null resources/views without disturbing live cache entries. |
+| WR-128 | Win32 allocation | The aligned allocator accepted non-power-of-two alignments after silently clamping small values. Invalid zero/non-power-of-two requests are now rejected before normalization. |
+| WR-129 | Win32 framebuffer | DIB recreation destroyed the current bitmap before replacement creation and ignored partial handles or `SelectObject` failure. It now stages and selects a complete DIB before retiring the old one. |
+| WR-130 | Win32 input | Raw-input parsing accepted short packets, and file-drop path allocation failure silently lost an event. Packet size/header framing is exact and allocation failure now emits the overflow contract. |
+| WR-131 | Win32 window state | `SetWindowLongPtrW` failure while attaching runtime state was ignored, leaving a live HWND with no safe WndProc context. Creation now checks the zero-result/last-error contract and tears down on failure. |
+| WR-132 | Win32 relative input | Destroying a relative-mouse window left raw-input registration and cursor clipping active. Teardown now unregisters the mouse device, releases the clip, and clears both mode flags. |
+| WR-133 | Win32 event dispatch | A failed message wait was reported as an available event, while lazy DWM resolution raced between presentation threads. Wait failures are explicit and `DwmFlush` resolution now uses `INIT_ONCE`. |
+| WR-134 | Win32 graphics timing | QPF/QPC and waitable-timer wait failures were unchecked. Frequency is initialized once, clock failure falls back to `GetTickCount64`, and failed timer waits fall back to `Sleep`. |
+| WR-135 | Win32 clipboard | The fallback text and owner HWND were unsynchronized, and fallback allocation failure erased the last usable text. An SRW lock protects shared state and replacement publishes only after allocation. |
+| WR-136 | Win32 clipboard | External `CF_UNICODETEXT` was treated as unbounded NUL-terminated memory. Reads now honor `GlobalSize`, use an in-tree bounded terminator scan, and convert only the validated UTF-16 span; this also avoids the unavailable MSVC `_Avx2WmemEnabled` dependency, which the native planner now rejects. |
+| WR-137 | Win32 clipboard | Clipboard contents were cleared before UTF-8 validation, conversion, or allocation succeeded. The complete HGLOBAL is now prepared first and `EmptyClipboard` failure is checked. |
+| WR-138 | WASAPI rendering | Format conversion wrote only logical samples, leaving channel padding or unsupported channel bytes stale; size arithmetic was also unchecked. The complete acquired frame span is overflow-checked and zeroed before mixing. |
+| WR-139 | WASAPI worker | Unexpected wait results, impossible padding, and successful null render buffers could underflow counts or publish garbage. Each native contract is validated and failures become deterministic silent/error paths. |
+| WR-140 | WASAPI startup | Initialization returned success before the worker established COM, successful COM calls could return null interfaces, a zero buffer size was accepted, and timer calls were unchecked. A readiness handshake, output validation, and monotonic fallback close those gaps. |
+| WR-141 | native file dialogs | Win32 dialog paths and labels used lenient UTF conversion and ignored the second conversion result. Both directions now reject malformed text and require exact conversion. |
+| WR-142 | native file dialogs | A process-global unsynchronized availability/COM latch was reused across apartments, while option and result HRESULTs or partial outputs were ignored. Every public call now owns a balanced thread-local COM scope and cleans every partial interface/string. |
+| WR-143 | drawn file dialog | Narrow borrowed environment pointers, first-logical-drive fallback, and pre-epoch FILETIME subtraction produced races, floppy-drive roots, or timestamp underflow. Retrying UTF-16 snapshots, once-only system-drive discovery, saturation, and the matching `GetWindowsDirectoryW` native import now define the behavior. |
+| WR-144 | machine runtime | Fixed buffers and borrowed `_wgetenv` pointers truncated/raced user, home, and temp values; root `C:\\` became drive-relative `C:`, and processor counts ignored other groups. Growing UTF-16 snapshots preserve roots, `GetActiveProcessorCount(ALL_PROCESSOR_GROUPS)` reports the host, and its Kernel32 import is available to native output. |
+| WR-145 | installer defaults | Environment-folder reads raced size changes and failed known-folder calls could leak a partial COM allocation. Reads now retry boundedly and every returned `PWSTR` is released. |
+| WR-146 | installer clipboard | Diagnostic-copy size arithmetic could overflow and the current clipboard was cleared before allocation succeeded. The payload is overflow-checked and fully prepared before opening/emptying the clipboard. |
+| WR-147 | installer folder picker | Destination text reads and folder-picker mutations/results were incompletely checked, including successful null or failed partial outputs. Exact text results, HRESULTs, and every COM/PWSTR lifetime are now validated. |
+| WR-148 | installer registry | General string queries trusted a stale size/type and an external NUL, so concurrent changes or malformed values could truncate or overread. Reads now retry `ERROR_MORE_DATA`, cap and align bytes, revalidate type, and bound the terminator. |
+| WR-149 | installer PATH rollback | PATH snapshots had the same size race and could restore the wrong registry type. Snapshot reads now retry and preserve the type returned with the successful payload. |
+| WR-150 | installer elevation | Elevated launch assumed a process handle and ignored wait failure. The lifecycle now requires the handle and accepts only a signaled wait before reading the exact exit code. |
+| WR-151 | installer cleanup launch | Detached-helper inspection ignored wait/exit failures and unchecked termination, which could let a helper outlive cleanup state. Inspection records exact errors and unsuccessful self-delete requires confirmed termination. |
+| WR-152 | cleanup helper | Parent-open failure was conflated with an already-exited parent, timeout hid other wait errors, and executable-path growth mishandled exact-fit buffers. Exact Win32 status is returned and path discovery is bounded with correct truncation rules in both helper and host. |
+| WR-153 | installer signing | Timestamp URLs accepted embedded credentials or fragments. Signing now permits only credential-free absolute HTTPS endpoints with a host. |
+| WR-154 | installer signing | In-place signing and direct metadata writes could corrupt or replace a known-good release after signer/verifier failure. Artifact and metadata are staged in the destination directory, verified, published in order, and always cleaned. |
+| WR-155 | Windows demo architecture | Build type was unchecked and host detection missed native ARM64 when invoked from an emulated shell. The driver validates configurations and honors `PROCESSOR_ARCHITEW6432`. |
+| WR-156 | Windows demo tool discovery | The driver assumed a multi-config executable path and reused CMake trees without checking declared architecture. It now resolves multi- and single-config layouts and rejects incompatible caches before reuse. |
+| WR-157 | Windows demo manifests | Asset/project paths could escape their roots and duplicate or unsafe manifest names could overwrite outputs. Lexical confinement, safe-name rules, and case-insensitive duplicate rejection now protect staging. |
 
 ## Regression coverage
 
 - `test_rt_windows_runtime` exercises finite wait slicing, concurrent WinSock initialization,
   deterministic WinSock error/output contracts, entropy argument handling, strict Windows path
-  transcoding, checked directory conversion, ordinal comparison, and fail-closed deletion guards.
+  transcoding, checked directory conversion, ordinal comparison, fail-closed deletion guards,
+  processor-count validity, drive-root temp preservation, and long environment-backed home paths.
 - `test_rt_file_ext` creates a 3 GiB sparse file and verifies 64-bit seek, stat, visibility, and
   modification-time behavior without allocating the file's logical size.
 - `test_rt_args` races small and 16 KiB environment values across the Win32 size/read boundary.
@@ -152,15 +193,20 @@ dependency changed.
 - `test_rt_watcher`, `test_rt_future`, `test_rt_concqueue`, `test_rt_threads_monitor`,
   `test_rt_threads_thread`, and `test_rt_threads_primitives` cover the affected runtime contracts.
 - `test_vgfx3d_backend_d3d11_shared` covers timestamp/depth-probe poll budgets and source contracts
-  requiring stage-before-publish ordering for all twelve repaired D3D11 replacement paths and the
-  shader helpers' initialized single-result control flow; `zia_smoke_d3d11_rtt_readback`,
+  requiring stage-before-publish ordering for all eighteen repaired D3D11 replacement paths,
+  successful-null COM output rejection, and the shader helpers' initialized single-result control
+  flow; `zia_smoke_d3d11_rtt_readback`,
   `g3d_test_canvas3d_viewmodel_sprite`, `g3d_test_canvas3d_point_shadows_d3d11`, and the Ridgebound
   D3D11 smoke exercise the hardware backend.
 - `test_linker_platform_import_planners` verifies that the 64-bit stat and floating-remainder
-  exports map to UCRT while the Windows-only stat names stay excluded from Linux and macOS.
+  exports map to UCRT, the new reliability APIs map to Kernel32, and Windows-only names stay
+  excluded from Linux and macOS.
 - `test_rt_scene_editor` preserves the full boxed signed-64-bit range in tiled properties;
   `test_basic_lexer` covers CRLF and lone-CR EOL normalization; and `test_rt_model3d` supplies its
   own strict-decoded JPEG fixture.
+- `windows_automation_script_contracts` exercises failure-atomic signing, timestamp-URL rejection,
+  staging cleanup, single-config tool discovery, architecture checks, path confinement, and
+  duplicate demo-output rejection.
 
 The required end-to-end gates are `scripts/build_zanna_win.ps1` and
 `scripts/build_demos_win.ps1 --run`; repository-owned `.cmd` wrappers are intentionally absent under
@@ -169,15 +215,20 @@ mandatory for future changes in these adapters.
 
 ## Validation record
 
-Revalidated on Windows x64/MSVC on 2026-07-21:
+Revalidated on Windows x64/MSVC on 2026-07-22:
 
-- The canonical `scripts/build_zanna_win.ps1` pipeline completed its warning-as-error build, native
-  Studio link, 1,839/1,839-test suite, runtime/API audits, platform lint, host smoke checks, and
-  install stage.
-- The focused nine-test regression slice passed, including real D3D11 RTT-readback and
-  viewmodel-sprite execution, large-file metadata, environment races, WinSock contracts, exact
-  tiled `i64` import, BASIC CRLF lexing, and the hermetic model-loader fixture.
-- `scripts/lint_platform_policy.sh --strict --changed-only` and `git diff --check` passed.
-- A clean `scripts/build_demos_win.ps1 --run` invocation built and launched all nine curated x64
-  demos successfully: Ashfall, 3dbowling, Ridgebound, Xenoscape, Crackman, Chess, Baseball, Paint,
-  and ZannaSQL.
+- The canonical `scripts/build_zanna_win.ps1` pipeline completed its clean warning-as-error build,
+  native Studio link, 1,804-test non-slow selection, runtime/API audits, platform lint, host smoke
+  checks, and install stage. A final incremental pass re-exercised those stages after the native
+  import correction.
+- The focused installer, automation, D3D11, machine-runtime, and native-import planner regressions
+  passed. The opt-in IntelliSense slow test also passes in 340.79 seconds under its measured
+  420-second timeout.
+- An exploratory all-slow-label pass found only `source_health_audit` failing four stale baseline
+  limits. A detached clean-HEAD audit produced the identical four metrics, proving this change did
+  not add that debt; its baseline was deliberately not weakened here.
+- `scripts/lint_platform_policy.sh --strict --changed-only`, the PowerShell parser checks, the
+  source-header audit, and `git diff --check` passed.
+- A `scripts/build_demos_win.ps1 --clean --run` invocation built and launch-smoked all nine curated
+  x64 demos successfully: Ashfall, 3dbowling, Ridgebound, Xenoscape, Crackman, Chess, Baseball,
+  Paint, and ZannaSQL.

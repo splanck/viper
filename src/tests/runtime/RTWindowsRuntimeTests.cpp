@@ -16,6 +16,7 @@
 //   - Entropy adapters reject invalid outputs without a fallback.
 //   - Filesystem adapters reject malformed UTF-8/UTF-16 at Win32 boundaries
 //     and recursive-delete protection fails closed.
+//   - Machine queries preserve drive roots and long environment-backed paths.
 //
 // Ownership/Lifetime:
 //   - The test owns all worker threads and joins them before exit.
@@ -34,6 +35,7 @@
 #include "rt_entropy_platform.h"
 #include "rt_file_path.h"
 #include "rt_internal.h"
+#include "rt_machine.h"
 #include "rt_win32_wait.h"
 
 #include <array>
@@ -42,7 +44,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <thread>
+#include <vector>
 
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
@@ -148,6 +152,58 @@ static void test_recursive_delete_path_guards() {
     assert(rt_dir_win_path_matches_cwd_or_ancestor(malformed_utf8) == 1);
 }
 
+class ScopedEnvironmentVariable {
+  public:
+    explicit ScopedEnvironmentVariable(const wchar_t *name) : name_(name) {
+        DWORD required = GetEnvironmentVariableW(name_.c_str(), nullptr, 0);
+        if (required == 0)
+            return;
+        value_.resize(required);
+        DWORD length = GetEnvironmentVariableW(name_.c_str(), value_.data(), required);
+        if (length > 0 && length < required) {
+            value_.resize(length);
+            present_ = true;
+        } else {
+            value_.clear();
+        }
+    }
+
+    ~ScopedEnvironmentVariable() {
+        SetEnvironmentVariableW(name_.c_str(), present_ ? value_.c_str() : nullptr);
+    }
+
+    ScopedEnvironmentVariable(const ScopedEnvironmentVariable &) = delete;
+    ScopedEnvironmentVariable &operator=(const ScopedEnvironmentVariable &) = delete;
+
+  private:
+    std::wstring name_;
+    std::wstring value_;
+    bool present_{false};
+};
+
+static void test_machine_windows_snapshots() {
+    assert(rt_machine_cores() >= 1);
+
+    ScopedEnvironmentVariable savedTmp(L"TMP");
+    ScopedEnvironmentVariable savedTemp(L"TEMP");
+    assert(SetEnvironmentVariableW(L"TMP", L"C:\\"));
+    assert(SetEnvironmentVariableW(L"TEMP", L"C:\\"));
+    rt_string temp = rt_machine_temp();
+    assert(temp != nullptr);
+    assert(std::strcmp(rt_string_cstr(temp), "C:\\") == 0);
+    rt_str_release_maybe(temp);
+
+    ScopedEnvironmentVariable savedProfile(L"USERPROFILE");
+    std::wstring longProfile = L"C:\\";
+    longProfile.append(700, L'x');
+    assert(SetEnvironmentVariableW(L"USERPROFILE", longProfile.c_str()));
+    rt_string home = rt_machine_home();
+    assert(home != nullptr);
+    assert(rt_str_len(home) == longProfile.size());
+    assert(std::strncmp(rt_string_cstr(home), "C:\\", 3) == 0);
+    rt_str_release_maybe(home);
+}
+
 int main() {
     test_finite_wait_deadlines();
     test_concurrent_winsock_initialization();
@@ -155,6 +211,7 @@ int main() {
     test_entropy_argument_contracts();
     test_strict_windows_path_transcoding();
     test_recursive_delete_path_guards();
+    test_machine_windows_snapshots();
     std::puts("RTWindowsRuntimeTests passed");
     return 0;
 }
