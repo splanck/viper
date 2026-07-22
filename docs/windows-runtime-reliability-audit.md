@@ -1,15 +1,16 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-07-20
+last-verified: 2026-07-21
 ---
 
 # Windows Runtime Reliability Audit
 
 This audit covers the Direct3D 11 backend and the Windows-specific runtime adapters for sockets,
 entropy, TLS verification, process/ConPTY launch, paths and assets, locale detection, file watching,
-concurrency, stack safety, and UI Automation. It is a robustness pass only: no IL opcode, grammar,
-verifier rule, runtime C ABI, or cross-layer dependency changed.
+large-file I/O, environment access, concurrency, stack safety, native builds, and UI Automation. It
+is a robustness pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer
+dependency changed.
 
 ## Repaired findings
 
@@ -92,11 +93,55 @@ verifier rule, runtime C ABI, or cross-layer dependency changed.
 | WR-75 | UI Automation ranges | Corrupt non-finite, inverted, or out-of-range slider/progress/spinner state leaked through RangeValue. Published ranges are now finite, ordered, and clamped. |
 | WR-76 | UI Automation outputs | Toggle and RangeValue getters could leave caller output unchanged on stale-provider failure. Outputs are initialized to deterministic safe values before resolution. |
 | WR-77 | UI Automation events | Live-region announcement allocation failure could pass null BSTRs into UIA. Both strings must now exist before an event is raised. |
+| WR-78 | Windows compile | FBX camera-channel locals named `NEAR` and `FAR` collided with Win32 header macros and stopped the MSVC build. Backend-private prefixed names now avoid the global macro namespace. |
+| WR-79 | Windows native link | The software wireframe rasterizer called CRT `llabs`, which is absent from the fixed CRT-less native import surface. Its already-widened 32-bit coordinate deltas now use in-tree signed magnitude arithmetic. |
+| WR-80 | MSVC portability | Tiled artwork bounds and software texture indexes relied on implicit narrowing/conversion that produced C4244 diagnostics under the Windows warning policy. Range checks now precede explicit conversions at the exact assignment boundaries. |
+| WR-81 | D3D11 readback | Resizing the reusable readback staging texture released the last usable surface before allocation. A replacement now stages locally and is published only after a non-null successful creation. |
+| WR-82 | D3D11 snapshots | Presented-backbuffer snapshot replacement also destroyed the cached texture before `CreateTexture2D` succeeded. Creation now preserves the old snapshot resource and metadata on failure. |
+| WR-83 | D3D11 scene targets | Scene color, motion, and depth attachments were rebuilt directly in the live context; a late depth/view failure discarded the previous complete scene. All nine COM resources now stage and publish as one transaction. |
+| WR-84 | D3D11 overlay | Overlay resize evicted its prior texture/RTV/SRV before replacement allocation. The complete replacement is now created before bound state is retired and the old set released. |
+| WR-85 | D3D11 post-FX | Primary and scratch post-processing targets had the same release-before-create failure mode. Each target set now stages independently and keeps the last complete resource authoritative on allocation failure. |
+| WR-86 | D3D11 bloom | Bloom resize published mip resources one at a time and destroyed both the old chain and a partial new chain after a later allocation failure. The complete mip chain and dimensions now stage in local arrays before one commit. |
+| WR-87 | D3D11 TAA | TAA history resize could leave no usable history pair after the second target failed. Both history textures/RTVs/SRVs now stage before the previous pair is replaced. |
+| WR-88 | D3D11 SSR | SSR resize released its cached target before replacement creation. Texture, RTV, and SRV now stage as a complete set before publication. |
+| WR-89 | D3D11 RGBA cache | Starting a changed RGBA texture upload evicted a known-good cache entry before texture/SRV allocation. Allocation now stages locally, so allocation failure preserves the resident generation. |
+| WR-90 | D3D11 native texture cache | Compressed native-texture replacement had the same early eviction window. The replacement texture/SRV must now both exist before cache metadata and ownership change. |
+| WR-91 | D3D11 cubemap cache | Cubemap replacement likewise discarded a usable cube before allocation. Cube texture/SRV creation is now staged before entry release. |
+| WR-92 | Windows file metadata | High-level file APIs used `_stat64i32`, whose name means 64-bit time but only a 32-bit file size. They now use `_stat64`/`_fstat64`/`_wstat64`, preserving sizes and metadata beyond 2 GiB. |
+| WR-93 | Windows file seek | Low-level seek called `_lseeki64` but rejected offsets using Windows' unrelated 32-bit `off_t` range first. Windows now accepts the full `int64_t` offset contract of the actual adapter. |
+| WR-94 | Windows IDE files | Workspace modification-time lookup used `_wstat64i32`, which can fail solely because an otherwise valid file exceeds its 32-bit size field. It now uses `_wstat64`. |
+| WR-95 | Windows environment | A variable that grew between `GetEnvironmentVariableW`'s size probe and read returned a new required capacity that was misused as the undersized buffer's string length, enabling an out-of-bounds read. The adapter now retries boundedly until one snapshot fits. |
+| WR-96 | Windows environment | UTF-8/UTF-16 conversion allocation and output-size arithmetic were unchecked. Both conversion directions now reject `size_t` overflow before allocating or accumulating encoded bytes. |
+| WR-97 | Windows environment | `HasVariable` treated every query error except `ERROR_ENVVAR_NOT_FOUND` as proof that the variable existed. Unexpected Win32 errors now trap and return a deterministic false fallback. |
+| WR-98 | argument initialization | The Windows legacy-argument once wait ignored a failed `SwitchToThread`, unlike the Threads adapter. It now falls back to `Sleep(0)` so a contended initializer yields deterministically. |
+| WR-99 | recursive directory removal | A malformed UTF-16 child name or allocation failure became the canonical empty runtime string; recursion could then resolve `""` as the process cwd. Recursive deletion now requires an explicit successful conversion and rejects empty child paths. |
+| WR-100 | directory enumeration | Windows list/files/dirs/entries silently inserted empty names after UTF-16 conversion failure. Non-trapping enumerators now clear the partial result; the trapping `Entries` API reports the read failure. |
+| WR-101 | current directory | `Dir.Current` had a size/read race when another thread changed cwd and silently returned empty after UTF-16 conversion failure. A growing snapshot helper retries the Win32 call and conversion failure now traps. |
+| WR-102 | deletion protection | Full-path/cwd sizing races could produce an unchecked buffer or make the recursive-delete guard fail open after resolution/allocation failure. Both paths now use growing buffers and every inability to prove safety refuses deletion. |
+| WR-103 | deletion identity | Recursive-delete protection compared Windows paths with locale-sensitive `_wcsnicmp`. It now uses dynamically resolved `CompareStringOrdinal` case folding, matching Windows path identity. |
+| WR-104 | WinSock shutdown | Shutting down the invalid-socket sentinel returned `SOCKET_ERROR` while preserving an unrelated thread-local error. It now sets `WSAENOTSOCK`. |
+| WR-105 | WinSock pending error | `SO_ERROR` was read directly into caller storage, so a failed or short `getsockopt` could partially modify the output. The adapter now stages locally and publishes only an exact successful result. |
+| WR-106 | WinSock startup wait | Startup waiters used only `Sleep(0)` while the rest of the runtime prefers `SwitchToThread` with a zero-sleep fallback. The once wait now follows the shared scheduling policy. |
+| WR-107 | Windows native imports | The fixed PE import planner recognized only the old 32-bit-size stat variants, so native programs using the corrected `_stat64`, `_fstat64`, or `_wstat64` calls failed to link. The exact Windows-only exports now map to UCRT and remain rejected on other targets. |
+| WR-108 | Windows native math | `remainder` was accepted by the shared dynamic-symbol policy but missing from the Windows UCRT planner, breaking the complete native Studio link. Both double and float UCRT exports are now planned and regression-tested. |
+| WR-109 | Windows demo validation | The Windows demo driver could build and stage demos but had no launch-smoke mode, unlike its Unix counterparts. `--run` now launches each host-architecture binary with bounded diagnostics and removes only newly created run artifacts. |
+| WR-110 | D3D11 shaders | FXC's DXBC validator rejected the shared shadow/light pixel shader because early-return control flow left a temporary component apparently uninitialized. The helpers now initialize one result and return it after structured control flow; real D3D11 probes verify hardware initialization. |
+| WR-111 | D3D11 diagnostics | Shader initialization failures shared the short success-warning diagnostic cap, which truncated the validator's actionable error and obscured software fallback. Failures now retain a bounded extended diagnostic while successful compilation keeps the smaller cap. |
+| WR-112 | tiled runtime import | Boxed `INT64_MAX` values were converted through `double`, rounded to the exclusive positive limit, and then cast back to `int64_t`. Exact boxed integers now bypass floating-point conversion, and floating values use an exclusive `2^63` upper bound. |
+| WR-113 | BASIC Windows input | Horizontal-whitespace skipping consumed carriage returns before the cursor could atomically normalize CRLF. Windows-authored examples consequently lost end-of-line tokens; CR/LF pairs and lone CR characters now each produce one EOL. |
+| WR-114 | model-loader tests | A runtime test depended on an untracked website JPEG, making a clean Windows checkout fail independently of product behavior. The test now decodes a tiny known-good embedded JPEG fixture and removes the external tree dependency. |
+| WR-115 | Windows demo processes | Windows PowerShell could return a blank `Process.ExitCode` for a fast redirected child because its native process handle was not materialized before the wait. The launch driver now acquires and validates the handle immediately, preserving exact failure codes. |
+| WR-116 | Windows native demos | Four more curated demos exposed the known Windows checked-integer optimizer miscompile during launch validation: invalid string handles in 3dbowling/Crackman, invalid pixels in Chess, and early Ridgebound termination. The Windows driver now uses its existing conservative `-O0` policy for every affected demo until that separately tracked compiler defect is resolved. |
+| WR-117 | Windows demo cleanup | Launch cleanup snapshotted only top-level names, so a new run artifact nested beneath an existing staged asset directory could survive. Snapshots now track validated relative paths recursively and remove new entries from deepest to shallowest. |
 
 ## Regression coverage
 
 - `test_rt_windows_runtime` exercises finite wait slicing, concurrent WinSock initialization,
-  WinSock error contracts, entropy argument handling, and strict Windows path transcoding.
+  deterministic WinSock error/output contracts, entropy argument handling, strict Windows path
+  transcoding, checked directory conversion, ordinal comparison, and fail-closed deletion guards.
+- `test_rt_file_ext` creates a 3 GiB sparse file and verifies 64-bit seek, stat, visibility, and
+  modification-time behavior without allocating the file's logical size.
+- `test_rt_args` races small and 16 KiB environment values across the Win32 size/read boundary.
 - `test_rt_locale` exercises sentinel, malformed-tag, normalization, and cleared-output behavior.
 - `test_rt_tls_cert` exercises exact CertificateVerify framing and null-session rejection.
 - `test_rt_exec` relaunches itself through both Process and ConPTY with intentionally unsorted,
@@ -106,10 +151,33 @@ verifier rule, runtime C ABI, or cross-layer dependency changed.
   stale bridge generations, deterministic failure outputs, and normalized range values.
 - `test_rt_watcher`, `test_rt_future`, `test_rt_concqueue`, `test_rt_threads_monitor`,
   `test_rt_threads_thread`, and `test_rt_threads_primitives` cover the affected runtime contracts.
-- `test_vgfx3d_backend_d3d11_shared` covers both timestamp and depth-probe poll budgets;
-  `zia_smoke_d3d11_rtt_readback`,
-  `g3d_test_canvas3d_point_shadows_d3d11`, and the Ridgebound D3D11 smoke exercise the backend.
+- `test_vgfx3d_backend_d3d11_shared` covers timestamp/depth-probe poll budgets and source contracts
+  requiring stage-before-publish ordering for all twelve repaired D3D11 replacement paths and the
+  shader helpers' initialized single-result control flow; `zia_smoke_d3d11_rtt_readback`,
+  `g3d_test_canvas3d_viewmodel_sprite`, `g3d_test_canvas3d_point_shadows_d3d11`, and the Ridgebound
+  D3D11 smoke exercise the hardware backend.
+- `test_linker_platform_import_planners` verifies that the 64-bit stat and floating-remainder
+  exports map to UCRT while the Windows-only stat names stay excluded from Linux and macOS.
+- `test_rt_scene_editor` preserves the full boxed signed-64-bit range in tiled properties;
+  `test_basic_lexer` covers CRLF and lone-CR EOL normalization; and `test_rt_model3d` supplies its
+  own strict-decoded JPEG fixture.
 
 The required end-to-end gates are `scripts/build_zanna_win.ps1` and
-`scripts/build_demos_win.ps1`; the platform-policy lint remains mandatory for future changes in
-these adapters.
+`scripts/build_demos_win.ps1 --run`; repository-owned `.cmd` wrappers are intentionally absent under
+[ADR 0113](adr/0113-windows-automation-powershell-entry-points.md). The platform-policy lint remains
+mandatory for future changes in these adapters.
+
+## Validation record
+
+Revalidated on Windows x64/MSVC on 2026-07-21:
+
+- The canonical `scripts/build_zanna_win.ps1` pipeline completed its warning-as-error build, native
+  Studio link, 1,839/1,839-test suite, runtime/API audits, platform lint, host smoke checks, and
+  install stage.
+- The focused nine-test regression slice passed, including real D3D11 RTT-readback and
+  viewmodel-sprite execution, large-file metadata, environment races, WinSock contracts, exact
+  tiled `i64` import, BASIC CRLF lexing, and the hermetic model-loader fixture.
+- `scripts/lint_platform_policy.sh --strict --changed-only` and `git diff --check` passed.
+- A clean `scripts/build_demos_win.ps1 --run` invocation built and launched all nine curated x64
+  demos successfully: Ashfall, 3dbowling, Ridgebound, Xenoscape, Crackman, Chess, Baseball, Paint,
+  and ZannaSQL.

@@ -12,8 +12,10 @@
 //   - Finite Win32 deadlines never become the INFINITE sentinel.
 //   - Concurrent WinSock initialization is idempotent.
 //   - WinSock error classifiers cover documented non-blocking states.
+//   - WinSock failure helpers publish deterministic errors and outputs.
 //   - Entropy adapters reject invalid outputs without a fallback.
-//   - Filesystem adapters reject malformed UTF-8/UTF-16 at Win32 boundaries.
+//   - Filesystem adapters reject malformed UTF-8/UTF-16 at Win32 boundaries
+//     and recursive-delete protection fails closed.
 //
 // Ownership/Lifetime:
 //   - The test owns all worker threads and joins them before exit.
@@ -80,6 +82,15 @@ static void test_winsock_error_contracts() {
     assert(WSAGetLastError() == WSAENOTSOCK);
     assert(wait_socket(0, -1, false) == -1);
     assert(WSAGetLastError() == WSAEINVAL);
+
+    WSASetLastError(0);
+    assert(rt_socket_shutdown_both(INVALID_SOCK) == SOCKET_ERROR);
+    assert(WSAGetLastError() == WSAENOTSOCK);
+
+    int pending_error = 12345;
+    assert(!rt_socket_pending_error(INVALID_SOCK, &pending_error));
+    assert(pending_error == 0);
+    assert(!rt_socket_pending_error(INVALID_SOCK, nullptr));
 }
 
 static void test_entropy_argument_contracts() {
@@ -105,12 +116,36 @@ static void test_strict_windows_path_transcoding() {
     assert(rt_dir_win_utf8_to_wide(malformed_utf8) == nullptr);
 
     const wchar_t malformed_utf16[] = {(wchar_t)0xD800, L'\0'};
+    rt_string checked_dir = nullptr;
+    assert(!rt_dir_win_wide_to_string_checked(malformed_utf16, &checked_dir));
+    assert(checked_dir == nullptr);
     rt_string malformed_file = rt_file_path_wide_to_string(malformed_utf16);
     rt_string malformed_dir = rt_dir_win_wide_to_string(malformed_utf16);
     assert(rt_str_len(malformed_file) == 0);
     assert(rt_str_len(malformed_dir) == 0);
     rt_str_release_maybe(malformed_file);
     rt_str_release_maybe(malformed_dir);
+
+    rt_string checked_valid = nullptr;
+    assert(rt_dir_win_wide_to_string_checked(L"zanna-\x6771\x4EAC", &checked_valid));
+    assert(std::strcmp(rt_string_cstr(checked_valid), valid_utf8) == 0);
+    rt_str_release_maybe(checked_valid);
+}
+
+static void test_recursive_delete_path_guards() {
+    assert(rt_dir_win_path_span_equal(L"C:\\Zanna\\Runtime", L"c:\\zANNA\\runtime", 16));
+    assert(!rt_dir_win_path_span_equal(L"C:\\Zanna\\Runtime", L"C:\\Zanna\\Otherxx", 16));
+
+    wchar_t *cwd = rt_dir_win_current_directory_alloc();
+    assert(cwd != nullptr);
+    rt_string cwd_utf8 = nullptr;
+    assert(rt_dir_win_wide_to_string_checked(cwd, &cwd_utf8));
+    assert(rt_dir_win_path_matches_cwd_or_ancestor(rt_string_cstr(cwd_utf8)) == 1);
+    rt_str_release_maybe(cwd_utf8);
+    std::free(cwd);
+
+    const char malformed_utf8[] = "\x78\xC0\xAF";
+    assert(rt_dir_win_path_matches_cwd_or_ancestor(malformed_utf8) == 1);
 }
 
 int main() {
@@ -119,6 +154,7 @@ int main() {
     test_winsock_error_contracts();
     test_entropy_argument_contracts();
     test_strict_windows_path_transcoding();
+    test_recursive_delete_path_guards();
     std::puts("RTWindowsRuntimeTests passed");
     return 0;
 }

@@ -14,7 +14,7 @@ Direct3D 11, Metal, and software implementations. It supplements the broader
 The review combined line-by-line ownership and arithmetic analysis, backend
 parity comparisons, shader review, whole-tree cppcheck analysis, targeted unit
 tests, source-contract tests for platform-excluded translation units, and
-headless production renders. The 88 findings below are fixed; none changes a
+headless production renders. The 102 findings below are fixed; none changes a
 registered scripting API.
 
 ## Regression suites
@@ -124,6 +124,20 @@ The evidence column uses these abbreviations:
 | G3D-086 | Metal | Bug | MSL aligned a trailing `int3` in each light record to 16 bytes, producing a 176-byte shader array stride for the C uploader's 160-byte elements. Multi-light scenes consequently read shifted or out-of-bounds colors and generated non-finite lighting. The shader tail now uses three scalar integers, while C static assertions pin the sensitive offsets and complete element size. | `MTL`, `ASH` |
 | G3D-087 | GPU shaders | Correctness | A non-finite material result could escape into an HDR attachment and poison every downstream full-screen pass. OpenGL and Metal now replace invalid fragment outputs with bounded finite HDR colors and valid alpha, matching the existing D3D11 containment policy. | `GL`, `MTL`, `ASH` |
 | G3D-088 | OpenGL/Metal | Correctness | Bloom mip downsampling and additive upsampling allowed one invalid HDR texel to contaminate most of the frame. Both backends now sanitize and half-float-bound bloom values throughout the mip chain. | `GL`, `MTL`, `ASH` |
+| G3D-089 | D3D11 | Resource | Readback staging resize released the cached texture before its replacement existed. The new staging texture is now created and validated before publication. | `D3` |
+| G3D-090 | D3D11 | Resource | Presented-backbuffer snapshot resize had the same release-before-create window. Allocation failure now leaves the prior snapshot resource and dimensions intact. | `D3` |
+| G3D-091 | D3D11 | Bug | Scene color, motion, and depth targets were published piecemeal, so a late view failure discarded the last complete scene set. All nine COM resources now stage and commit together. | `D3` |
+| G3D-092 | D3D11 | Resource | Overlay resize destroyed the live texture/RTV/SRV before allocating its replacement. A complete local set now precedes unbind and publication. | `D3` |
+| G3D-093 | D3D11 | Resource | The primary post-FX target released its prior complete set before replacement creation. It now follows the backend's stage-then-publish rule. | `D3` |
+| G3D-094 | D3D11 | Resource | The secondary post-FX scratch target independently had the same failure mode. Its texture/RTV/SRV now stage before the previous set is retired. | `D3` |
+| G3D-095 | D3D11 | Bug | Bloom resize exposed a partial mip chain and then destroyed both generations after a late allocation failure. Every mip resource and extent now stages in local arrays before one commit. | `D3` |
+| G3D-096 | D3D11 | Bug | TAA history resize could lose the usable pair when allocation of the second history target failed. Both complete targets now stage before replacement. | `D3` |
+| G3D-097 | D3D11 | Resource | SSR resize released the prior output target before allocation. Texture, RTV, and SRV now publish only as a complete replacement. | `D3` |
+| G3D-098 | D3D11 | Resource | A changed RGBA texture generation evicted its known-good cache entry before replacement allocation. Texture/SRV allocation failure now preserves the resident generation. | `D3` |
+| G3D-099 | D3D11 | Resource | Compressed native textures also evicted their previous generation before allocation. Both replacement COM resources must now exist before the cache entry changes. | `D3` |
+| G3D-100 | D3D11 | Resource | Cubemap replacement had the same early-eviction window. Cube texture/SRV allocation is now staged before releasing the old entry. | `D3` |
+| G3D-101 | D3D11 shaders | Bug | FXC's DXBC validator rejected the shared shadow/light pixel shader because early-return control flow left a temporary component apparently uninitialized on one path. Both helpers now initialize one result and return it after structured control flow; real D3D11 RTT and viewmodel probes confirm hardware-backend initialization. | `D3` |
+| G3D-102 | D3D11 diagnostics | Diagnostics | Shader compilation diagnostics were truncated to the same short warning budget on failure, hiding the validator error that caused software fallback. Failed initialization now retains a bounded 7,936-byte diagnostic while successful warning output keeps the prior 768-byte cap. | `D3` |
 
 ## Compatibility and maintenance rules
 
@@ -156,8 +170,9 @@ Revalidated on 2026-07-21:
   wrapper.
 - Cppcheck completed all 105 Graphics3D translation units with warning, performance, and
   portability diagnostics enabled and no findings.
-- The actual D3D11 translation unit passed an x86_64 MinGW-w64 `-Werror` syntax compile. Native
-  Windows and Linux backend execution was unavailable on the macOS validation host, so D3D11 and
-  OpenGL behavior additionally rely on their source-contract/helper suites.
+- The actual D3D11 translation unit passed an x86_64 MinGW-w64 `-Werror` syntax compile. A
+  subsequent native Windows x64/MSVC run passed all 1,839 registered tests; the RTT-readback and
+  viewmodel-sprite probes both initialized and exercised the D3D11 backend instead of falling back
+  to software. Linux OpenGL behavior additionally relies on its source-contract/helper suites.
 - Ridgebound's structured project check and all four topology, traversal, lifecycle, and
   visual/performance probes passed against the isolated build.

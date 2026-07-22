@@ -807,7 +807,7 @@ static void d3d11_log_shader_diagnostics(const char *stage, ID3DBlob *diagnostic
     const char *text;
     SIZE_T text_len;
     int print_len;
-    char buffer[1024];
+    char buffer[8192];
 
     if (!diagnostics)
         return;
@@ -815,7 +815,7 @@ static void d3d11_log_shader_diagnostics(const char *stage, ID3DBlob *diagnostic
     text_len = ID3D10Blob_GetBufferSize(diagnostics);
     while (text && text_len > 0 && text[text_len - 1] == '\0')
         text_len--;
-    print_len = text_len > 768 ? 768 : (int)text_len;
+    print_len = text_len > (failed ? 7936 : 768) ? (failed ? 7936 : 768) : (int)text_len;
     snprintf(buffer,
              sizeof(buffer),
              "[vgfx3d_d3d11] %s compile %s: %.*s%s\n",

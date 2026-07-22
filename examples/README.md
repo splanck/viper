@@ -11,6 +11,7 @@ zanna run examples/games/chess/       # Run a project directory
 zanna build examples/apps/paint/ -o paint  # Compile to native binary
 ./scripts/build_demos.sh              # Build all demos (outputs to examples/bin/)
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_demos_win.ps1 # Windows equivalent
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_demos_win.ps1 --run # Build and smoke-run on Windows
 ```
 
 ---
@@ -175,9 +176,15 @@ zanna run examples/apps/paint/           # Zia app
 # Windows
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_demos_win.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_demos_win.ps1 --clean
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_demos_win.ps1 --clean --run
 ```
 
-Native binaries are output to `examples/bin/`.
+Native binaries are output to `examples/bin/`. `--run` launches each Windows
+binary from that directory, accepts a clean exit or a healthy timeout, and
+removes artifacts created only by the smoke run. Set `ZANNA_DEMO_TIMEOUT` to a
+positive number of seconds to change the default five-second launch window. The
+Windows driver uses `-O0` for demos affected by the tracked native
+checked-integer optimizer issue so its published binaries remain runnable.
 
 ### Build a single demo
 

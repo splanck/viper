@@ -329,6 +329,11 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "cos",
                                         "exp2f",
                                         "log2f",
+                                        "remainder",
+                                        "remainderf",
+                                        "_stat64",
+                                        "_fstat64",
+                                        "_wstat64",
                                         "__RTDynamicCast",
                                         "_Init_thread_header",
                                         "_Smtx_lock_exclusive",
@@ -385,6 +390,11 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "SetConsoleCtrlHandler"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "UnlockFileEx"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "log2f"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "remainder"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "remainderf"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_stat64"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_fstat64"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_wstat64"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "__stdio_common_vswprintf"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_get_osfhandle"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_chmod"));
@@ -394,6 +404,14 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(objHasSymbol(plan.obj, "__imp_ExitProcess"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "ExitProcess"));
     EXPECT_TRUE(plan.obj.sections.size() >= 2);
+}
+
+TEST(PlatformImportPlanners, Windows64BitStatSymbolsStayWindowsOnly) {
+    for (const char *symbol : {"_stat64", "_fstat64", "_wstat64"}) {
+        EXPECT_TRUE(isKnownDynamicSymbol(symbol, LinkPlatform::Windows));
+        EXPECT_FALSE(isKnownDynamicSymbol(symbol, LinkPlatform::Linux));
+        EXPECT_FALSE(isKnownDynamicSymbol(symbol, LinkPlatform::macOS));
+    }
 }
 
 TEST(PlatformImportPlanners, WindowsPlannerMapsDebugOnlyUcrtImports) {

@@ -77,6 +77,16 @@ static size_t count_text(const char *haystack, const char *needle) {
     return count;
 }
 
+static int text_appears_in_order_after(const char *source,
+                                       const char *anchor,
+                                       const char *first,
+                                       const char *second) {
+    const char *anchor_pos = source ? strstr(source, anchor) : NULL;
+    const char *first_pos = anchor_pos ? strstr(anchor_pos, first) : NULL;
+    const char *second_pos = first_pos ? strstr(first_pos, second) : NULL;
+    return second_pos != NULL;
+}
+
 #define EXPECT_TRUE(cond, msg)                                                                     \
     do {                                                                                           \
         tests_run++;                                                                               \
@@ -1818,11 +1828,19 @@ static void test_d3d11_shader_sources_keep_numeric_guards(void) {
     EXPECT_TRUE(contains_text(d3d11_shader_source, "int tile = shadowIndex - kShadowCsmSlots;") &&
                     contains_text(d3d11_shader_source, "tile % kShadowAtlasColumns"),
                 "Shadow HLSL consumes the shared CSM and atlas-grid constants");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "float sampleShadowAt(int shadowIndex, float2 uv, float depth, "
+                              "float bias) {\n    float result = 1.0;"),
+                "Shadow sampling initializes one result across every texture branch");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "PS_OUTPUT PSMain(PS_INPUT input)"),
                 "Main D3D11 shader source remains available to the compile path");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "evalNativeLight") &&
                     contains_text(d3d11_shader_source, "nativeLightDecay"),
                 "D3D11 shader retains native area/volume evaluation and FBX decay");
+    EXPECT_TRUE(contains_text(d3d11_shader_source,
+                              "int evalNativeLight(Light light, float3 worldPos, out float3 L, "
+                              "out float atten) {\n    int result = 0;"),
+                "Native-light evaluation initializes its return value on every path");
     EXPECT_TRUE(contains_text(d3d11_shader_source, "float4 basisU") &&
                     contains_text(d3d11_shader_source, "float4 basisV") &&
                     contains_text(d3d11_shader_source, "float4 shape"),
@@ -2094,6 +2112,64 @@ static void test_d3d11_backend_source_contracts(void) {
                 "D3D11 enables IBL only after the exact validated overlay is resident");
     EXPECT_TRUE(strstr(source, "target->width > INT32_MAX / 4") != NULL,
                 "D3D11 HDR readback rejects a float-stride narrowing overflow");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_readback_staging_texture",
+                                            "&new_staging);",
+                                            "d3d11_release_readback_staging_texture(ctx);"),
+                "Readback staging allocates before releasing the cached surface");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_presented_snapshot_texture",
+                                            "&new_texture);",
+                                            "SAFE_RELEASE(ctx->presented_color_tex);"),
+                "Presented snapshots allocate before replacing the cached texture");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_scene_targets",
+                                            "&new_depth_srv);",
+                                            "d3d11_destroy_scene_targets(ctx);"),
+                "Scene targets stage every color/depth view before publication");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_overlay_target",
+                                            "&new_srv);",
+                                            "SAFE_RELEASE(ctx->overlay_color_srv);"),
+                "Overlay replacement preserves the old target until allocation succeeds");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_postfx_target",
+                                            "&new_srv);",
+                                            "SAFE_RELEASE(ctx->postfx_color_srv);"),
+                "PostFX replacement stages a complete target first");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_postfx_scratch_target",
+                                            "&new_srv);",
+                                            "SAFE_RELEASE(ctx->postfx_scratch_srv);"),
+                "PostFX scratch replacement stages a complete target first");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_ensure_bloom_targets",
+                                            "&new_srv[i]);",
+                                            "d3d11_destroy_bloom_targets(ctx);"),
+                "Bloom builds its complete mip chain before publishing it");
+    EXPECT_TRUE(
+        text_appears_in_order_after(
+            source, "d3d11_ensure_taa_targets", "&new_srv[i]);", "d3d11_destroy_taa_targets(ctx);"),
+        "TAA builds both history targets before publishing them");
+    EXPECT_TRUE(
+        text_appears_in_order_after(
+            source, "d3d11_ensure_ssr_target", "&new_srv);", "d3d11_destroy_ssr_target(ctx);"),
+        "SSR stages its replacement before releasing the cached target");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_start_native_texture_upload",
+                                            "&new_tex, &new_srv);",
+                                            "d3d11_release_texture_cache_entry(entry);"),
+                "Native texture uploads allocate before evicting a good cache entry");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_start_texture_upload",
+                                            "&new_tex, &new_srv);",
+                                            "d3d11_release_texture_cache_entry(entry);"),
+                "RGBA texture uploads allocate before evicting a good cache entry");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "d3d11_start_cubemap_upload",
+                                            "&new_tex, &new_srv);",
+                                            "d3d11_release_cubemap_cache_entry(entry);"),
+                "Cubemap uploads allocate before evicting a good cache entry");
     free(source);
 }
 

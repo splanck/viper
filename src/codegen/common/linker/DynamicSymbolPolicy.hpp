@@ -234,6 +234,9 @@ inline const std::vector<const char *> &windowsExclusiveDynamicSymbols() {
         "_wchmod",
         "_wsplitpath_s",
         "_wmakepath_s",
+        "_stat64",
+        "_fstat64",
+        "_wstat64",
         "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
         "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9"};
     return kSyms;
@@ -1068,6 +1071,9 @@ inline bool isKnownDynamicSymbol(const std::string &name, LinkPlatform platform)
         "_wchmod",
         "_wsplitpath_s",
         "_wmakepath_s",
+        "_stat64",
+        "_fstat64",
+        "_wstat64",
         "wcscpy_s",
         "?_OptionsStorage@?1??__local_stdio_printf_options@@9@9",
         "?_OptionsStorage@?1??__local_stdio_scanf_options@@9@9",

@@ -202,29 +202,29 @@ static void d3d11_release_readback_staging_texture(d3d11_context_t *ctx) {
 ///
 /// @details Reuses the existing staging texture when dimensions and format match, avoiding a
 ///          CreateTexture2D/Release pair for every screenshot or readback. Size/format changes
-///          release the old staging surface and allocate a new one.
+///          stage a replacement before releasing the last usable surface.
 static HRESULT d3d11_ensure_readback_staging_texture(d3d11_context_t *ctx,
                                                      int32_t width,
                                                      int32_t height,
                                                      DXGI_FORMAT format) {
+    ID3D11Texture2D *new_staging = NULL;
     HRESULT hr;
     if (!ctx)
         return E_INVALIDARG;
     if (ctx->readback_staging && ctx->readback_staging_width == width &&
         ctx->readback_staging_height == height && ctx->readback_staging_format == format)
         return S_OK;
-    d3d11_release_readback_staging_texture(ctx);
-    hr = d3d11_create_staging_texture(ctx, width, height, format, &ctx->readback_staging);
-    if (SUCCEEDED(hr) && ctx->readback_staging) {
-        ctx->readback_staging_width = width;
-        ctx->readback_staging_height = height;
-        ctx->readback_staging_format = format;
-    } else {
-        SAFE_RELEASE(ctx->readback_staging);
-        if (SUCCEEDED(hr))
-            hr = E_POINTER;
+    hr = d3d11_create_staging_texture(ctx, width, height, format, &new_staging);
+    if (FAILED(hr) || !new_staging) {
+        SAFE_RELEASE(new_staging);
+        return FAILED(hr) ? hr : E_POINTER;
     }
-    return hr;
+    d3d11_release_readback_staging_texture(ctx);
+    ctx->readback_staging = new_staging;
+    ctx->readback_staging_width = width;
+    ctx->readback_staging_height = height;
+    ctx->readback_staging_format = format;
+    return S_OK;
 }
 
 /// @brief Allocate/reuse the default-usage texture that snapshots the final swapchain image.
@@ -232,6 +232,7 @@ static HRESULT d3d11_ensure_presented_snapshot_texture(d3d11_context_t *ctx,
                                                        int32_t width,
                                                        int32_t height) {
     D3D11_TEXTURE2D_DESC desc;
+    ID3D11Texture2D *new_texture = NULL;
     HRESULT hr;
 
     if (!ctx || !ctx->device || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
@@ -239,11 +240,6 @@ static HRESULT d3d11_ensure_presented_snapshot_texture(d3d11_context_t *ctx,
     if (ctx->presented_color_tex && ctx->presented_width == width &&
         ctx->presented_height == height)
         return S_OK;
-
-    SAFE_RELEASE(ctx->presented_color_tex);
-    ctx->presented_width = 0;
-    ctx->presented_height = 0;
-    ctx->presented_color_valid = 0;
 
     memset(&desc, 0, sizeof(desc));
     desc.Width = (UINT)width;
@@ -253,12 +249,17 @@ static HRESULT d3d11_ensure_presented_snapshot_texture(d3d11_context_t *ctx,
     desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     desc.SampleDesc.Count = 1;
     desc.Usage = D3D11_USAGE_DEFAULT;
-    hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, &ctx->presented_color_tex);
-    if (SUCCEEDED(hr)) {
-        ctx->presented_width = width;
-        ctx->presented_height = height;
+    hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, &new_texture);
+    if (FAILED(hr) || !new_texture) {
+        SAFE_RELEASE(new_texture);
+        return FAILED(hr) ? hr : E_POINTER;
     }
-    return hr;
+    SAFE_RELEASE(ctx->presented_color_tex);
+    ctx->presented_color_tex = new_texture;
+    ctx->presented_width = width;
+    ctx->presented_height = height;
+    ctx->presented_color_valid = 0;
+    return S_OK;
 }
 
 /// @brief Capture the current swapchain backbuffer before Present invalidates it.
@@ -360,9 +361,18 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
 /// @brief Allocate scene render targets at the requested size, idempotent on size match.
 ///
 /// Builds three targets: scene color (HDR-capable), motion vectors
-/// (LDR), and depth (R32). On any failure the partially-built set is
-/// torn back down so the next call can retry from a clean state.
+/// (LDR), and depth (R32). A complete replacement is staged before the
+/// live scene/dependent targets are retired; allocation failure preserves them.
 static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    ID3D11Texture2D *new_color_tex = NULL;
+    ID3D11RenderTargetView *new_color_rtv = NULL;
+    ID3D11ShaderResourceView *new_color_srv = NULL;
+    ID3D11Texture2D *new_motion_tex = NULL;
+    ID3D11RenderTargetView *new_motion_rtv = NULL;
+    ID3D11ShaderResourceView *new_motion_srv = NULL;
+    ID3D11Texture2D *new_depth_tex = NULL;
+    ID3D11DepthStencilView *new_dsv = NULL;
+    ID3D11ShaderResourceView *new_depth_srv = NULL;
     HRESULT hr;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
@@ -373,38 +383,53 @@ static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, i
         ctx->scene_width == width && ctx->scene_height == height)
         return S_OK;
 
-    d3d11_destroy_scene_targets(ctx);
-
     hr = d3d11_create_color_target(ctx,
                                    width,
                                    height,
                                    vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
-                                   &ctx->scene_color_tex,
-                                   &ctx->scene_color_rtv,
-                                   &ctx->scene_color_srv);
+                                   &new_color_tex,
+                                   &new_color_rtv,
+                                   &new_color_srv);
     if (FAILED(hr))
-        return hr;
+        goto fail;
     hr = d3d11_create_color_target(ctx,
                                    width,
                                    height,
                                    vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SWAPCHAIN),
-                                   &ctx->scene_motion_tex,
-                                   &ctx->scene_motion_rtv,
-                                   &ctx->scene_motion_srv);
-    if (FAILED(hr)) {
-        d3d11_destroy_scene_targets(ctx);
-        return hr;
-    }
-    hr = d3d11_create_depth_target(
-        ctx, width, height, 1, &ctx->scene_depth_tex, &ctx->scene_dsv, &ctx->scene_depth_srv);
-    if (FAILED(hr)) {
-        d3d11_destroy_scene_targets(ctx);
-        return hr;
-    }
+                                   &new_motion_tex,
+                                   &new_motion_rtv,
+                                   &new_motion_srv);
+    if (FAILED(hr))
+        goto fail;
+    hr = d3d11_create_depth_target(ctx, width, height, 1, &new_depth_tex, &new_dsv, &new_depth_srv);
+    if (FAILED(hr))
+        goto fail;
 
+    d3d11_destroy_scene_targets(ctx);
+    ctx->scene_color_tex = new_color_tex;
+    ctx->scene_color_rtv = new_color_rtv;
+    ctx->scene_color_srv = new_color_srv;
+    ctx->scene_motion_tex = new_motion_tex;
+    ctx->scene_motion_rtv = new_motion_rtv;
+    ctx->scene_motion_srv = new_motion_srv;
+    ctx->scene_depth_tex = new_depth_tex;
+    ctx->scene_dsv = new_dsv;
+    ctx->scene_depth_srv = new_depth_srv;
     ctx->scene_width = width;
     ctx->scene_height = height;
     return S_OK;
+
+fail:
+    SAFE_RELEASE(new_depth_srv);
+    SAFE_RELEASE(new_dsv);
+    SAFE_RELEASE(new_depth_tex);
+    SAFE_RELEASE(new_motion_srv);
+    SAFE_RELEASE(new_motion_rtv);
+    SAFE_RELEASE(new_motion_tex);
+    SAFE_RELEASE(new_color_srv);
+    SAFE_RELEASE(new_color_rtv);
+    SAFE_RELEASE(new_color_tex);
+    return hr;
 }
 
 /// @brief Allocate the overlay render target (HUD layer above 3D scene).
@@ -412,6 +437,9 @@ static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, i
 /// Single color target — overlay doesn't need its own depth (it's
 /// drawn 2D on top of the composited scene).
 static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    ID3D11Texture2D *new_tex = NULL;
+    ID3D11RenderTargetView *new_rtv = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
     HRESULT hr;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
@@ -419,6 +447,15 @@ static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, 
     if (ctx->overlay_color_tex && ctx->overlay_color_rtv && ctx->overlay_color_srv &&
         ctx->overlay_width == width && ctx->overlay_height == height)
         return S_OK;
+    hr = d3d11_create_color_target(ctx,
+                                   width,
+                                   height,
+                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_OVERLAY),
+                                   &new_tex,
+                                   &new_rtv,
+                                   &new_srv);
+    if (FAILED(hr))
+        return hr;
     if (ctx->overlay_color_tex || ctx->overlay_color_rtv || ctx->overlay_color_srv) {
         d3d11_unbind_postfx_resources(ctx);
         if (ctx->current_target_kind == VGFX3D_D3D11_TARGET_OVERLAY) {
@@ -432,32 +469,24 @@ static HRESULT d3d11_ensure_overlay_target(d3d11_context_t *ctx, int32_t width, 
         ctx->overlay_height = 0;
         ctx->overlay_used_this_frame = 0;
     }
-    hr = d3d11_create_color_target(ctx,
-                                   width,
-                                   height,
-                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_OVERLAY),
-                                   &ctx->overlay_color_tex,
-                                   &ctx->overlay_color_rtv,
-                                   &ctx->overlay_color_srv);
-    if (FAILED(hr)) {
-        SAFE_RELEASE(ctx->overlay_color_srv);
-        SAFE_RELEASE(ctx->overlay_color_rtv);
-        SAFE_RELEASE(ctx->overlay_color_tex);
-    } else {
-        ctx->overlay_width = width;
-        ctx->overlay_height = height;
-    }
-    return hr;
+    ctx->overlay_color_tex = new_tex;
+    ctx->overlay_color_rtv = new_rtv;
+    ctx->overlay_color_srv = new_srv;
+    ctx->overlay_width = width;
+    ctx->overlay_height = height;
+    return S_OK;
 }
 
 /// @brief Ensure the post-processing render target is allocated at the requested dimensions.
 /// @details Skips reallocation when an existing target already matches @p width × @p height.
-///          On a size change (or first call) releases the old color SRV/RTV/texture, then
-///          calls d3d11_create_color_target to allocate a new scene-format texture. Cleans up
-///          all three D3D11 objects and returns the failure HRESULT if allocation fails.
+///          On a size change (or first call), creates a complete scene-format replacement before
+///          unbinding and releasing the prior color SRV/RTV/texture.
 /// @return S_OK on success; E_INVALIDARG for a null context or non-positive dimensions;
 ///         the D3D11 HRESULT from d3d11_create_color_target on allocation failure.
 static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    ID3D11Texture2D *new_tex = NULL;
+    ID3D11RenderTargetView *new_rtv = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
     HRESULT hr;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
@@ -466,26 +495,23 @@ static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, i
         ctx->postfx_width == width && ctx->postfx_height == height)
         return S_OK;
 
+    hr = d3d11_create_color_target(ctx,
+                                   width,
+                                   height,
+                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
+                                   &new_tex,
+                                   &new_rtv,
+                                   &new_srv);
+    if (FAILED(hr))
+        return hr;
     d3d11_unbind_postfx_resources(ctx);
     d3d11_unbind_output_targets(ctx);
     SAFE_RELEASE(ctx->postfx_color_srv);
     SAFE_RELEASE(ctx->postfx_color_rtv);
     SAFE_RELEASE(ctx->postfx_color_tex);
-    ctx->postfx_width = 0;
-    ctx->postfx_height = 0;
-    hr = d3d11_create_color_target(ctx,
-                                   width,
-                                   height,
-                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
-                                   &ctx->postfx_color_tex,
-                                   &ctx->postfx_color_rtv,
-                                   &ctx->postfx_color_srv);
-    if (FAILED(hr)) {
-        SAFE_RELEASE(ctx->postfx_color_srv);
-        SAFE_RELEASE(ctx->postfx_color_rtv);
-        SAFE_RELEASE(ctx->postfx_color_tex);
-        return hr;
-    }
+    ctx->postfx_color_tex = new_tex;
+    ctx->postfx_color_rtv = new_rtv;
+    ctx->postfx_color_srv = new_srv;
     ctx->postfx_width = width;
     ctx->postfx_height = height;
     return S_OK;
@@ -495,6 +521,9 @@ static HRESULT d3d11_ensure_postfx_target(d3d11_context_t *ctx, int32_t width, i
 static HRESULT d3d11_ensure_postfx_scratch_target(d3d11_context_t *ctx,
                                                   int32_t width,
                                                   int32_t height) {
+    ID3D11Texture2D *new_tex = NULL;
+    ID3D11RenderTargetView *new_rtv = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
     HRESULT hr;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height))
@@ -503,26 +532,23 @@ static HRESULT d3d11_ensure_postfx_scratch_target(d3d11_context_t *ctx,
         ctx->postfx_scratch_width == width && ctx->postfx_scratch_height == height)
         return S_OK;
 
+    hr = d3d11_create_color_target(ctx,
+                                   width,
+                                   height,
+                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
+                                   &new_tex,
+                                   &new_rtv,
+                                   &new_srv);
+    if (FAILED(hr))
+        return hr;
     d3d11_unbind_postfx_resources(ctx);
     d3d11_unbind_output_targets(ctx);
     SAFE_RELEASE(ctx->postfx_scratch_srv);
     SAFE_RELEASE(ctx->postfx_scratch_rtv);
     SAFE_RELEASE(ctx->postfx_scratch_tex);
-    ctx->postfx_scratch_width = 0;
-    ctx->postfx_scratch_height = 0;
-    hr = d3d11_create_color_target(ctx,
-                                   width,
-                                   height,
-                                   vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
-                                   &ctx->postfx_scratch_tex,
-                                   &ctx->postfx_scratch_rtv,
-                                   &ctx->postfx_scratch_srv);
-    if (FAILED(hr)) {
-        SAFE_RELEASE(ctx->postfx_scratch_srv);
-        SAFE_RELEASE(ctx->postfx_scratch_rtv);
-        SAFE_RELEASE(ctx->postfx_scratch_tex);
-        return hr;
-    }
+    ctx->postfx_scratch_tex = new_tex;
+    ctx->postfx_scratch_rtv = new_rtv;
+    ctx->postfx_scratch_srv = new_srv;
     ctx->postfx_scratch_width = width;
     ctx->postfx_scratch_height = height;
     return S_OK;
@@ -564,9 +590,15 @@ static int d3d11_bloom_targets_complete(const d3d11_context_t *ctx, int32_t widt
 ///          until the next level would drop below 8px on either axis (at most 6 levels).
 ///          Rebuilt only when the scene size changes.
 static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    ID3D11Texture2D *new_tex[VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX] = {NULL};
+    ID3D11RenderTargetView *new_rtv[VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX] = {NULL};
+    ID3D11ShaderResourceView *new_srv[VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX] = {NULL};
+    int32_t new_w[VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX] = {0};
+    int32_t new_h[VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX] = {0};
+    int32_t new_count = 0;
     int32_t mw;
     int32_t mh;
-    HRESULT hr;
+    HRESULT hr = E_FAIL;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !ctx->ps_bloom_down ||
         !ctx->ps_bloom_up)
@@ -574,7 +606,6 @@ static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, i
     if (d3d11_bloom_targets_complete(ctx, width, height))
         return S_OK;
 
-    d3d11_destroy_bloom_targets(ctx);
     for (int32_t i = 0; i < VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX; i++) {
         if (!vgfx3d_d3d11_compute_bloom_mip_extent(width, height, i, &mw, &mh))
             break;
@@ -582,22 +613,37 @@ static HRESULT d3d11_ensure_bloom_targets(d3d11_context_t *ctx, int32_t width, i
                                        mw,
                                        mh,
                                        vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
-                                       &ctx->bloom_mip_tex[i],
-                                       &ctx->bloom_mip_rtv[i],
-                                       &ctx->bloom_mip_srv[i]);
-        if (FAILED(hr)) {
-            d3d11_destroy_bloom_targets(ctx);
-            return hr;
-        }
-        ctx->bloom_mip_w[i] = mw;
-        ctx->bloom_mip_h[i] = mh;
-        ctx->bloom_mip_count = i + 1;
+                                       &new_tex[i],
+                                       &new_rtv[i],
+                                       &new_srv[i]);
+        if (FAILED(hr))
+            goto fail;
+        new_w[i] = mw;
+        new_h[i] = mh;
+        new_count = i + 1;
     }
-    if (ctx->bloom_mip_count <= 0)
-        return E_FAIL;
+    if (new_count <= 0)
+        goto fail;
+    d3d11_destroy_bloom_targets(ctx);
+    for (int32_t i = 0; i < new_count; i++) {
+        ctx->bloom_mip_tex[i] = new_tex[i];
+        ctx->bloom_mip_rtv[i] = new_rtv[i];
+        ctx->bloom_mip_srv[i] = new_srv[i];
+        ctx->bloom_mip_w[i] = new_w[i];
+        ctx->bloom_mip_h[i] = new_h[i];
+    }
+    ctx->bloom_mip_count = new_count;
     ctx->bloom_base_width = width;
     ctx->bloom_base_height = height;
     return S_OK;
+
+fail:
+    for (int32_t i = 0; i < VGFX3D_D3D11_BLOOM_MIP_COUNT_MAX; i++) {
+        SAFE_RELEASE(new_srv[i]);
+        SAFE_RELEASE(new_rtv[i]);
+        SAFE_RELEASE(new_tex[i]);
+    }
+    return hr;
 }
 
 /// @brief Release the Plan 05 TAA ping-pong history textures/RTVs/SRVs.
@@ -629,6 +675,9 @@ static int d3d11_taa_targets_complete(const d3d11_context_t *ctx, int32_t width,
 
 /// @brief Build the Plan 05 TAA ping-pong history pair (RGBA16F, scene-sized).
 static HRESULT d3d11_ensure_taa_targets(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    ID3D11Texture2D *new_tex[2] = {NULL, NULL};
+    ID3D11RenderTargetView *new_rtv[2] = {NULL, NULL};
+    ID3D11ShaderResourceView *new_srv[2] = {NULL, NULL};
     HRESULT hr;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !ctx->ps_taa)
@@ -636,25 +685,36 @@ static HRESULT d3d11_ensure_taa_targets(d3d11_context_t *ctx, int32_t width, int
     if (d3d11_taa_targets_complete(ctx, width, height))
         return S_OK;
 
-    d3d11_destroy_taa_targets(ctx);
     for (int32_t i = 0; i < 2; i++) {
         hr = d3d11_create_color_target(ctx,
                                        width,
                                        height,
                                        vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
-                                       &ctx->taa_history_tex[i],
-                                       &ctx->taa_history_rtv[i],
-                                       &ctx->taa_history_srv[i]);
-        if (FAILED(hr)) {
-            d3d11_destroy_taa_targets(ctx);
-            return hr;
-        }
+                                       &new_tex[i],
+                                       &new_rtv[i],
+                                       &new_srv[i]);
+        if (FAILED(hr))
+            goto fail;
+    }
+    d3d11_destroy_taa_targets(ctx);
+    for (int32_t i = 0; i < 2; i++) {
+        ctx->taa_history_tex[i] = new_tex[i];
+        ctx->taa_history_rtv[i] = new_rtv[i];
+        ctx->taa_history_srv[i] = new_srv[i];
     }
     ctx->taa_history_width = width;
     ctx->taa_history_height = height;
     ctx->taa_history_parity = 0;
     ctx->taa_history_valid = 0;
     return S_OK;
+
+fail:
+    for (int32_t i = 0; i < 2; i++) {
+        SAFE_RELEASE(new_srv[i]);
+        SAFE_RELEASE(new_rtv[i]);
+        SAFE_RELEASE(new_tex[i]);
+    }
+    return hr;
 }
 
 /// @brief Release the Plan 10 SSR output target.
@@ -677,6 +737,9 @@ static int d3d11_ssr_target_complete(const d3d11_context_t *ctx, int32_t width, 
 
 /// @brief Build the Plan 10 SSR output target (scene color format, scene-sized).
 static HRESULT d3d11_ensure_ssr_target(d3d11_context_t *ctx, int32_t width, int32_t height) {
+    ID3D11Texture2D *new_tex = NULL;
+    ID3D11RenderTargetView *new_rtv = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
     HRESULT hr;
 
     if (!ctx || !vgfx3d_d3d11_is_valid_texture2d_extent(width, height) || !ctx->ps_ssr)
@@ -684,18 +747,19 @@ static HRESULT d3d11_ensure_ssr_target(d3d11_context_t *ctx, int32_t width, int3
     if (d3d11_ssr_target_complete(ctx, width, height))
         return S_OK;
 
-    d3d11_destroy_ssr_target(ctx);
     hr = d3d11_create_color_target(ctx,
                                    width,
                                    height,
                                    vgfx3d_d3d11_choose_color_format(VGFX3D_D3D11_TARGET_SCENE),
-                                   &ctx->ssr_tex,
-                                   &ctx->ssr_rtv,
-                                   &ctx->ssr_srv);
-    if (FAILED(hr)) {
-        d3d11_destroy_ssr_target(ctx);
+                                   &new_tex,
+                                   &new_rtv,
+                                   &new_srv);
+    if (FAILED(hr))
         return hr;
-    }
+    d3d11_destroy_ssr_target(ctx);
+    ctx->ssr_tex = new_tex;
+    ctx->ssr_rtv = new_rtv;
+    ctx->ssr_srv = new_srv;
     ctx->ssr_width = width;
     ctx->ssr_height = height;
     return S_OK;

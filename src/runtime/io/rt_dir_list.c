@@ -9,7 +9,12 @@
 // Purpose: Directory enumeration: list names/paths, full entries, and files-only or
 //   directories-only variants, in both array and lazy-seq forms. Platform path
 //   helpers live in rt_dir_internal.h.
-//
+// Key invariants:
+//   - Synthetic dot entries are excluded and conversion failures never fabricate names.
+//   - A failed platform scan does not expose a partially populated result.
+// Ownership/Lifetime:
+//   - Returned sequences own their retained runtime-string elements.
+//   - Native directory handles and path buffers are released on every exit.
 // Links: rt_dir.h (public API), rt_dir_internal.h (platform helpers),
 //        rt_dir.c (directory operations)
 //
@@ -19,7 +24,20 @@
 #include "rt_dir_internal.h"
 #include "rt_file_path.h"
 #include "rt_path.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
+
+#if RT_PLATFORM_WINDOWS
+/// @brief Convert and append one Win32 directory name without fabricating an empty entry.
+static int rt_dir_win_push_name(void *result, const wchar_t *wide_name) {
+    rt_string name = NULL;
+    if (!result || !rt_dir_win_wide_to_string_checked(wide_name, &name))
+        return 0;
+    rt_seq_push(result, (void *)name);
+    rt_string_unref(name);
+    return 1;
+}
+#endif
 
 /// @brief List all entries (files and subdirectories) in a directory.
 ///
@@ -82,7 +100,7 @@ void *rt_dir_list(rt_string path) {
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return result;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     wchar_t *pattern = rt_dir_win_make_pattern(cpath);
     if (!pattern)
         return result;
@@ -94,15 +112,22 @@ void *rt_dir_list(rt_string path) {
         return result;
     }
 
-    do {
+    int scan_ok = 1;
+    for (;;) {
         if (!rt_dir_win_is_dot_name(fd.cFileName)) {
-            rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
-            rt_seq_push(result, (void *)name);
-            rt_string_unref(name);
+            if (!rt_dir_win_push_name(result, fd.cFileName)) {
+                scan_ok = 0;
+                break;
+            }
         }
-    } while (FindNextFileW(h, &fd));
+        if (!FindNextFileW(h, &fd)) {
+            if (GetLastError() != ERROR_NO_MORE_FILES)
+                scan_ok = 0;
+            break;
+        }
+    }
 
-    if (GetLastError() != ERROR_NO_MORE_FILES)
+    if (!scan_ok)
         rt_seq_clear(result);
     FindClose(h);
     free(pattern);
@@ -206,7 +231,7 @@ void *rt_dir_entries_seq(rt_string path) {
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         rt_dir_trap_domain("Zanna.IO.Dir.Entries: invalid directory path");
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     if (!rt_dir_win_exists_dir(cpath))
         rt_dir_trap_not_found("Zanna.IO.Dir.Entries: directory not found");
 #else
@@ -222,7 +247,7 @@ void *rt_dir_entries_seq(rt_string path) {
         return NULL;
     rt_seq_set_owns_elements(result, 1);
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     wchar_t *pattern = rt_dir_win_make_pattern(cpath);
     if (!pattern) {
         rt_dir_trap_io("Zanna.IO.Dir.Entries: failed to open directory");
@@ -242,17 +267,25 @@ void *rt_dir_entries_seq(rt_string path) {
         return result;
     }
 
-    do {
+    int scan_ok = 1;
+    for (;;) {
         if (!rt_dir_win_is_dot_name(fd.cFileName)) {
-            rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
-            rt_seq_push(result, (void *)name);
-            rt_string_unref(name);
+            if (!rt_dir_win_push_name(result, fd.cFileName)) {
+                scan_ok = 0;
+                break;
+            }
         }
-    } while (FindNextFileW(h, &fd));
+        if (!FindNextFileW(h, &fd)) {
+            if (GetLastError() != ERROR_NO_MORE_FILES)
+                scan_ok = 0;
+            break;
+        }
+    }
 
-    if (GetLastError() != ERROR_NO_MORE_FILES) {
+    if (!scan_ok) {
         FindClose(h);
         free(pattern);
+        rt_seq_clear(result);
         rt_dir_trap_io("Zanna.IO.Dir.Entries: failed to read directory");
         return result;
     }
@@ -346,7 +379,7 @@ void *rt_dir_files(rt_string path) {
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return result;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     wchar_t *pattern = rt_dir_win_make_pattern(cpath);
     if (!pattern)
         return result;
@@ -358,15 +391,22 @@ void *rt_dir_files(rt_string path) {
         return result;
     }
 
-    do {
+    int scan_ok = 1;
+    for (;;) {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-            rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
-            rt_seq_push(result, (void *)name);
-            rt_string_unref(name);
+            if (!rt_dir_win_push_name(result, fd.cFileName)) {
+                scan_ok = 0;
+                break;
+            }
         }
-    } while (FindNextFileW(h, &fd));
+        if (!FindNextFileW(h, &fd)) {
+            if (GetLastError() != ERROR_NO_MORE_FILES)
+                scan_ok = 0;
+            break;
+        }
+    }
 
-    if (GetLastError() != ERROR_NO_MORE_FILES)
+    if (!scan_ok)
         rt_seq_clear(result);
     FindClose(h);
     free(pattern);
@@ -497,7 +537,7 @@ void *rt_dir_dirs(rt_string path) {
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return result;
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     wchar_t *pattern = rt_dir_win_make_pattern(cpath);
     if (!pattern)
         return result;
@@ -509,16 +549,23 @@ void *rt_dir_dirs(rt_string path) {
         return result;
     }
 
-    do {
+    int scan_ok = 1;
+    for (;;) {
         if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
             !rt_dir_win_is_dot_name(fd.cFileName)) {
-            rt_string name = rt_dir_win_wide_to_string(fd.cFileName);
-            rt_seq_push(result, (void *)name);
-            rt_string_unref(name);
+            if (!rt_dir_win_push_name(result, fd.cFileName)) {
+                scan_ok = 0;
+                break;
+            }
         }
-    } while (FindNextFileW(h, &fd));
+        if (!FindNextFileW(h, &fd)) {
+            if (GetLastError() != ERROR_NO_MORE_FILES)
+                scan_ok = 0;
+            break;
+        }
+    }
 
-    if (GetLastError() != ERROR_NO_MORE_FILES)
+    if (!scan_ok)
         rt_seq_clear(result);
     FindClose(h);
     free(pattern);

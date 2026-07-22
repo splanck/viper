@@ -445,9 +445,9 @@ static void pruneGitignoreCacheLocked() {
 /// @details Used for the human-facing `modified` field in enumeration maps.
 int64_t fileTimeSeconds(const fs::path &path) {
 #if RT_PLATFORM_WINDOWS
-    struct _stat64i32 st{};
+    struct _stat64 st{};
     const std::wstring wide = path.wstring();
-    if (_wstat64i32(wide.c_str(), &st) != 0)
+    if (_wstat64(wide.c_str(), &st) != 0)
         return -1;
 #else
     struct stat st{};
@@ -2010,10 +2010,9 @@ static fs::path workspaceEditTempPath(const fs::path &file, const char *suffix) 
     if (dir.empty())
         dir = ".";
     char nonce[17];
-    std::snprintf(nonce, sizeof(nonce), "%016llx",
-                  static_cast<unsigned long long>(workspaceEditNonce()));
-    std::string leaf =
-        "." + file.filename().generic_string() + ".zanna-edit-" + nonce + suffix;
+    std::snprintf(
+        nonce, sizeof(nonce), "%016llx", static_cast<unsigned long long>(workspaceEditNonce()));
+    std::string leaf = "." + file.filename().generic_string() + ".zanna-edit-" + nonce + suffix;
     return dir / leaf;
 }
 

@@ -31,6 +31,8 @@
 
 static volatile LONG g_wsa_init_state = 0; // 0=uninit, 1=in-progress, 2=done
 
+static void rt_socket_set_last_error(int error);
+
 /// @brief atexit handler that releases the process WinSock startup reference.
 /// @details Registered only after a successful WSAStartup call.
 static void rt_net_cleanup_wsa(void) {
@@ -47,7 +49,8 @@ void rt_net_init_wsa(void) {
         if (state == 2)
             return;
         if (state == 1) {
-            Sleep(0);
+            if (!SwitchToThread())
+                Sleep(0);
             continue;
         }
         if (InterlockedCompareExchange(&g_wsa_init_state, 1, 0) != 0)
@@ -89,8 +92,10 @@ int rt_socket_close(socket_t sock) {
 /// @param sock Connected WinSock socket handle.
 /// @return Result from `shutdown(SD_BOTH)`, or `SOCKET_ERROR` for an invalid handle.
 int rt_socket_shutdown_both(socket_t sock) {
-    if (sock == INVALID_SOCK)
+    if (sock == INVALID_SOCK) {
+        rt_socket_set_last_error(WSAENOTSOCK);
         return SOCKET_ERROR;
+    }
     return shutdown(sock, SD_BOTH);
 }
 
@@ -197,9 +202,13 @@ bool rt_socket_pending_error(socket_t sock, int *error_out) {
     if (!error_out)
         return false;
     *error_out = 0;
-    int error_len = (int)sizeof(*error_out);
-    return getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)error_out, &error_len) == 0 &&
-           error_len == (int)sizeof(*error_out);
+    int pending_error = 0;
+    int error_len = (int)sizeof(pending_error);
+    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&pending_error, &error_len) != 0 ||
+        error_len != (int)sizeof(pending_error))
+        return false;
+    *error_out = pending_error;
+    return true;
 }
 
 /// @brief Apply SO_RCVTIMEO or SO_SNDTIMEO to a WinSock socket.

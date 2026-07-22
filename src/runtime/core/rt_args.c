@@ -43,6 +43,7 @@
 #include "rt_internal.h"
 #include "rt_string_builder.h"
 
+#include <limits.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,7 +76,8 @@ static atomic_int g_legacy_args_host_init_state; // zero-initialized = 0
 /// @brief Yield the CPU while spin-waiting for another thread's import.
 static void rt_args_spin_yield(void) {
 #ifdef _WIN32
-    SwitchToThread();
+    if (!SwitchToThread())
+        Sleep(0);
 #else
     sched_yield();
 #endif
@@ -330,6 +332,10 @@ static wchar_t *rt_env_utf8_span_to_wide_or_trap(const char *utf8,
                                                  const char *context) {
     if (!utf8)
         return NULL;
+    if (utf8_len > SIZE_MAX / sizeof(wchar_t) - 1u) {
+        rt_trap("Environment: allocation size overflow");
+        return NULL;
+    }
     wchar_t *wide = (wchar_t *)malloc((utf8_len + 1u) * sizeof(wchar_t));
     if (!wide) {
         rt_trap("Environment: allocation failed");
@@ -422,7 +428,12 @@ static rt_string rt_env_wide_to_string_or_trap(const wchar_t *wide,
             rt_trap(context ? context : "Environment: unpaired UTF-16 surrogate");
             return rt_str_empty();
         }
-        needed += (cp < 0x80u) ? 1u : (cp < 0x800u) ? 2u : (cp < 0x10000u) ? 3u : 4u;
+        size_t encoded_bytes = (cp < 0x80u) ? 1u : (cp < 0x800u) ? 2u : (cp < 0x10000u) ? 3u : 4u;
+        if (needed > SIZE_MAX - encoded_bytes) {
+            rt_trap("Environment: UTF-8 size overflow");
+            return rt_str_empty();
+        }
+        needed += encoded_bytes;
     }
 
     char *buffer = (char *)malloc(needed ? needed : 1u);
@@ -741,6 +752,8 @@ rt_string rt_env_get_var(rt_string name) {
         cname,
         (size_t)rt_str_len(name),
         "Zanna.System.Environment.GetVariable: invalid UTF-8 variable name");
+    if (!wname)
+        return rt_str_empty();
     SetLastError(ERROR_SUCCESS);
     DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
     if (required == 0) {
@@ -753,35 +766,46 @@ rt_string rt_env_get_var(rt_string name) {
         return rt_str_empty();
     }
 
-    if (required <= 1) {
-        free(wname);
-        return rt_str_empty();
-    }
-
-    wchar_t *buffer = (wchar_t *)malloc((size_t)required * sizeof(wchar_t));
-    if (!buffer) {
-        free(wname);
-        rt_trap("Zanna.System.Environment.GetVariable: allocation failed");
-        return rt_str_empty();
-    }
-
-    SetLastError(ERROR_SUCCESS);
-    DWORD written = GetEnvironmentVariableW(wname, buffer, required);
-    free(wname);
-    if (written == 0) {
-        DWORD err = GetLastError();
-        free(buffer);
-        if (err == ERROR_ENVVAR_NOT_FOUND || err == ERROR_SUCCESS) {
+    // The environment can change between the size probe and the read. Win32
+    // reports the new required capacity when the supplied buffer became too
+    // small; retry against that value instead of treating it as a string length.
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        if (required > INT_MAX || (size_t)required > SIZE_MAX / sizeof(wchar_t)) {
+            free(wname);
+            rt_trap("Zanna.System.Environment.GetVariable: value is too large");
             return rt_str_empty();
         }
-        rt_trap("Zanna.System.Environment.GetVariable: failed to read variable");
-        return rt_str_empty();
-    }
+        wchar_t *buffer = (wchar_t *)malloc((size_t)required * sizeof(wchar_t));
+        if (!buffer) {
+            free(wname);
+            rt_trap("Zanna.System.Environment.GetVariable: allocation failed");
+            return rt_str_empty();
+        }
 
-    rt_string out = rt_env_wide_to_string_or_trap(
-        buffer, (int)written, "Zanna.System.Environment.GetVariable: invalid UTF-16 value");
-    free(buffer);
-    return out;
+        SetLastError(ERROR_SUCCESS);
+        DWORD written = GetEnvironmentVariableW(wname, buffer, required);
+        if (written == 0) {
+            DWORD err = GetLastError();
+            free(buffer);
+            free(wname);
+            if (err == ERROR_ENVVAR_NOT_FOUND || err == ERROR_SUCCESS)
+                return rt_str_empty();
+            rt_trap("Zanna.System.Environment.GetVariable: failed to read variable");
+            return rt_str_empty();
+        }
+        if (written < required) {
+            rt_string out = rt_env_wide_to_string_or_trap(
+                buffer, (int)written, "Zanna.System.Environment.GetVariable: invalid UTF-16 value");
+            free(buffer);
+            free(wname);
+            return out;
+        }
+        free(buffer);
+        required = written;
+    }
+    free(wname);
+    rt_trap("Zanna.System.Environment.GetVariable: variable changed too frequently");
+    return rt_str_empty();
 #else
     const char *value = getenv(cname);
     if (!value) {
@@ -805,11 +829,16 @@ int64_t rt_env_has_var(rt_string name) {
         cname,
         (size_t)rt_str_len(name),
         "Zanna.System.Environment.HasVariable: invalid UTF-8 variable name");
+    if (!wname)
+        return 0;
     SetLastError(ERROR_SUCCESS);
     DWORD required = GetEnvironmentVariableW(wname, NULL, 0);
     DWORD err = GetLastError();
     free(wname);
-    if (required == 0 && err == ERROR_ENVVAR_NOT_FOUND) {
+    if (required == 0 && err == ERROR_ENVVAR_NOT_FOUND)
+        return 0;
+    if (required == 0 && err != ERROR_SUCCESS) {
+        rt_trap("Zanna.System.Environment.HasVariable: failed to query variable");
         return 0;
     }
     return 1;

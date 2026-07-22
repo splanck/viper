@@ -184,7 +184,13 @@ static void rt_file_set_ok(RtError *out_err) {
 /// @param offset Proposed byte offset for @ref lseek.
 /// @return `true` when @p offset is representable as @ref off_t; otherwise `false`.
 static bool rt_file_offset_in_range(int64_t offset) {
-#if defined(OFF_MAX) && defined(OFF_MIN)
+#if RT_PLATFORM_WINDOWS
+    // The adapter calls _lseeki64 directly. Windows' off_t remains 32-bit even
+    // in 64-bit builds, so using its range here would incorrectly reject every
+    // valid sparse/large-file offset above 2 GiB.
+    (void)offset;
+    return true;
+#elif defined(OFF_MAX) && defined(OFF_MIN)
     if (sizeof(off_t) > sizeof(int64_t))
         return true;
     if (offset < (int64_t)OFF_MIN || offset > (int64_t)OFF_MAX)

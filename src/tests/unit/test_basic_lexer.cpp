@@ -44,6 +44,24 @@ int main() {
                                            TokenKind::EndOfLine};
         assert(kinds == expected);
     }
+    // CRLF and bare CR are logical line endings too. LexerCursor consumes a
+    // CRLF pair atomically, so BASIC must recognize the CR before horizontal
+    // whitespace skipping can discard the complete boundary.
+    for (const char *lineEnding : {"\r\n", "\r"}) {
+        std::string src = std::string("10 PRINT \"A\"") + lineEnding + "20 PRINT \"B\"";
+        Lexer lex(src, fid);
+        std::vector<TokenKind> kinds;
+        for (Token t = lex.next(); t.kind != TokenKind::EndOfFile; t = lex.next())
+            kinds.push_back(t.kind);
+        const std::vector<TokenKind> expected = {TokenKind::Number,
+                                                 TokenKind::KeywordPrint,
+                                                 TokenKind::String,
+                                                 TokenKind::EndOfLine,
+                                                 TokenKind::Number,
+                                                 TokenKind::KeywordPrint,
+                                                 TokenKind::String};
+        assert(kinds == expected);
+    }
     // Verify recognition of a LET assignment with identifier and numeric literal.
     {
         std::string src = "LET X=1\n";

@@ -6,13 +6,14 @@
 #===----------------------------------------------------------------------===#
 #
 # File: scripts/build_demos_win.ps1
-# Purpose: Build and stage every curated Zia showcase demo on Windows.
+# Purpose: Build, stage, and optionally smoke-run every curated Zia showcase demo on Windows.
 # Key invariants:
 #   - The shared demo manifest is the single project inventory.
 #   - Host and target tool trees remain distinct for cross-architecture builds.
 #   - Existing CMake trees are built without mutating their generator platform.
-#   - An asset-stage or native-link failure contributes to the final exit code.
-# Ownership/Lifetime: Native binaries and declared assets are owned by examples/bin.
+#   - Build, asset-stage, and requested launch failures contribute to the final exit code.
+# Ownership/Lifetime: Native binaries and declared assets are owned by examples/bin;
+#                     launch logs are temporary and run-created artifacts are removed.
 # Links: scripts/demo_projects.list, scripts/build_demos.sh
 # Cross-platform touchpoints: Architecture aliases match the Unix demo driver;
 #                             CMake's Windows generator selects x64 or ARM64.
@@ -99,12 +100,15 @@ function Invoke-CheckedNative {
 }
 
 function Show-Usage {
-    Write-Host "Usage: build_demos_win.ps1 [--clean] [--arch arm64|x64]"
-    Write-Host "  --clean    Remove existing binaries before building"
-    Write-Host "  --arch     Target architecture (default: host, or ZANNA_DEMO_ARCH)"
+    Write-Host "Usage: build_demos_win.ps1 [--clean] [--run|--skip-run] [--arch arm64|x64]"
+    Write-Host "  --clean      Remove existing binaries before building"
+    Write-Host "  --run        Launch each built demo for smoke validation"
+    Write-Host "  --skip-run   Build only; skip launch validation (default)"
+    Write-Host "  --arch       Target architecture (default: host, or ZANNA_DEMO_ARCH)"
 }
 
 $clean = $false
+$run = $false
 $requestedArch = [Environment]::GetEnvironmentVariable("ZANNA_DEMO_ARCH", "Process")
 $argumentIndex = 0
 while ($argumentIndex -lt $args.Count) {
@@ -112,6 +116,14 @@ while ($argumentIndex -lt $args.Count) {
     switch -CaseSensitive ($argument) {
         "--clean" {
             $clean = $true
+            ++$argumentIndex
+        }
+        "--run" {
+            $run = $true
+            ++$argumentIndex
+        }
+        "--skip-run" {
+            $run = $false
             ++$argumentIndex
         }
         "--arch" {
@@ -180,6 +192,28 @@ switch ($requestedArch.ToLowerInvariant()) {
         exit 1
     }
 }
+
+if ($run -and $demoArch -ne $hostArch) {
+    throw "Cannot smoke-run $demoArch demos on the $hostArch host. Omit --run for cross-architecture builds."
+}
+
+$runTimeoutSeconds = 5
+if ($run) {
+    $runTimeoutValue = Get-EnvironmentValue -Name "ZANNA_DEMO_TIMEOUT" -Default "5"
+    if (-not [int]::TryParse($runTimeoutValue, [ref]$runTimeoutSeconds) -or
+        $runTimeoutSeconds -lt 1 -or $runTimeoutSeconds -gt 2147483) {
+        throw "ZANNA_DEMO_TIMEOUT must be an integer from 1 through 2147483; received '$runTimeoutValue'."
+    }
+}
+
+$windowsO0Demos = @(
+    "3dbowling",
+    "ridgebound",
+    "xenoscape",
+    "crackman",
+    "chess",
+    "zannasql"
+)
 
 if (-not $buildDirExplicit -and $demoArch -ne $hostArch) {
     $buildDirSetting = Join-Path $repoRoot "build-$demoArch"
@@ -279,6 +313,132 @@ function Stage-DemoAssets {
     }
 }
 
+function Get-DemoBinRelativePath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $binPrefix = [IO.Path]::GetFullPath($binDir)
+    $separator = [string][IO.Path]::DirectorySeparatorChar
+    if (-not $binPrefix.EndsWith($separator, [StringComparison]::Ordinal)) {
+        $binPrefix += $separator
+    }
+    $candidate = [IO.Path]::GetFullPath($Path)
+    if (-not $candidate.StartsWith($binPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside the demo directory: $candidate"
+    }
+    return $candidate.Substring($binPrefix.Length)
+}
+
+function Get-DemoBinSnapshot {
+    $snapshot = @{}
+    foreach ($entry in Get-ChildItem -LiteralPath $binDir -Force -Recurse) {
+        $relative = Get-DemoBinRelativePath -Path $entry.FullName
+        $snapshot[$relative] = $true
+    }
+    return $snapshot
+}
+
+function Remove-NewDemoArtifacts {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Before,
+        [Parameter(Mandatory = $true)][string]$KeepName
+    )
+
+    $entries = @(Get-ChildItem -LiteralPath $binDir -Force -Recurse) |
+        Sort-Object { $_.FullName.Length } -Descending
+    foreach ($entry in $entries) {
+        $relative = Get-DemoBinRelativePath -Path $entry.FullName
+        if ($Before.ContainsKey($relative) -or
+            [string]::Equals($relative, $KeepName, [StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+        Remove-Item -LiteralPath $entry.FullName -Recurse -Force
+    }
+}
+
+function Write-DemoRunOutput {
+    param(
+        [Parameter(Mandatory = $true)][string]$Label,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf) -or
+        (Get-Item -LiteralPath $Path).Length -eq 0) {
+        return
+    }
+    Write-Host "  ${Label}:"
+    foreach ($line in Get-Content -LiteralPath $Path -TotalCount 20) {
+        Write-Host "    $line"
+    }
+}
+
+function Test-DemoRun {
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Executable
+    )
+
+    $timeoutSeconds = $runTimeoutSeconds
+    if ($Name -iin @("3dbowling", "ridgebound", "zannasql", "xenoscape")) {
+        $timeoutSeconds = [Math]::Max($timeoutSeconds, 10)
+    }
+
+    $before = Get-DemoBinSnapshot
+    $temporaryBase = Join-Path ([IO.Path]::GetTempPath()) `
+        ("zanna_demo_run_{0}_{1}" -f $Name, [Guid]::NewGuid().ToString("N"))
+    $stdoutPath = "$temporaryBase.out"
+    $stderrPath = "$temporaryBase.err"
+    $process = $null
+    $succeeded = $false
+    try {
+        Write-Host "  Launching for up to $timeoutSeconds second(s)..."
+        $process = Start-Process -FilePath $Executable -WorkingDirectory $binDir -PassThru `
+            -WindowStyle Hidden -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath
+        # Windows PowerShell can lose ExitCode for a redirected process that exits
+        # quickly unless the native process handle is materialized before waiting.
+        $processHandle = $process.Handle
+        if ($processHandle -eq [IntPtr]::Zero) {
+            throw "Failed to acquire the demo process handle."
+        }
+        $exited = $process.WaitForExit($timeoutSeconds * 1000)
+        if (-not $exited) {
+            if (-not $process.HasExited) {
+                try {
+                    $process.Kill()
+                } catch {
+                    if (-not $process.HasExited) {
+                        throw
+                    }
+                }
+            }
+            $process.WaitForExit()
+            Write-Host "  Run smoke: OK (remained active until timeout)"
+            $succeeded = $true
+        } else {
+            $process.WaitForExit()
+            if ($process.ExitCode -eq 0) {
+                Write-Host "  Run smoke: OK (exit 0)"
+                $succeeded = $true
+            } else {
+                Write-Host "  Run smoke: FAILED (exit $($process.ExitCode))"
+                Write-DemoRunOutput -Label "stdout" -Path $stdoutPath
+                Write-DemoRunOutput -Label "stderr" -Path $stderrPath
+            }
+        }
+    } catch {
+        Write-Host "  Run smoke: FAILED ($($_.Exception.Message))"
+        Write-DemoRunOutput -Label "stdout" -Path $stdoutPath
+        Write-DemoRunOutput -Label "stderr" -Path $stderrPath
+    } finally {
+        if ($null -ne $process) {
+            $process.Dispose()
+        }
+        Remove-NewDemoArtifacts -Before $before -KeepName ([IO.Path]::GetFileName($Executable))
+        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+    }
+    return $succeeded
+}
+
 function Build-Demo {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
@@ -299,11 +459,12 @@ function Build-Demo {
 
     $output = Join-Path $binDir "$Name.exe"
     $buildArguments = @("build", $ProjectDir, "--arch", $demoArch)
-    if ($Name -ieq "zannasql") {
-        Write-Host "  Using -O0 to avoid pathological optimizer/codegen time for this large demo."
-        $buildArguments += "-O0"
-    } elseif ($Name -ieq "xenoscape") {
-        Write-Host "  Using -O0 to avoid the Windows x64 checked-integer optimizer miscompile."
+    if ($windowsO0Demos -icontains $Name) {
+        if ($Name -ieq "zannasql") {
+            Write-Host "  Using -O0 to avoid pathological optimizer/codegen time for this large demo."
+        } else {
+            Write-Host "  Using -O0 to avoid the Windows native checked-integer optimizer miscompile."
+        }
         $buildArguments += "-O0"
     }
     $buildArguments += @("-o", $output)
@@ -334,6 +495,12 @@ function Build-Demo {
     }
     try {
         Stage-DemoAssets -ProjectDir $ProjectDir
+        if ($run -and -not (Test-DemoRun -Name $Name -Executable $output)) {
+            Write-Host "  FAILED"
+            Write-Host "  Finished: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')"
+            Write-Host ""
+            return $false
+        }
     } catch {
         Write-Host "  ERROR: $($_.Exception.Message)"
         Write-Host "  FAILED"
@@ -359,6 +526,9 @@ try {
     Write-Host "Note: larger demos can stay quiet for several minutes while codegen runs."
     Write-Host "Using Zanna tool: $toolBuildDir"
     Write-Host "Using target runtime build: $buildDir"
+    if ($run) {
+        Write-Host "Run validation: launch from examples/bin with timeout=$runTimeoutSeconds second(s)"
+    }
     Write-Host ""
 
     if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
@@ -429,7 +599,11 @@ try {
 
     Write-Host "=============================================="
     if ($failed -eq 0) {
-        Write-Host "All $succeeded demos built successfully."
+        if ($run) {
+            Write-Host "All $succeeded demos built and passed launch smoke validation."
+        } else {
+            Write-Host "All $succeeded demos built successfully."
+        }
         Write-Host ""
         Write-Host "Binaries are in: $binDir"
         Get-ChildItem -LiteralPath $binDir | Format-Table Mode, LastWriteTime, Length, Name
