@@ -162,8 +162,9 @@ When responding to a task:
 # Build and test Zanna on Windows (PowerShell)
 .\scripts\build_zanna_win.ps1
 
-# Build all demos on Windows (PowerShell)
+# Build all demos on Windows (PowerShell is canonical; cmd shim is supported)
 .\scripts\build_demos_win.ps1
+.\scripts\build_demos_win.cmd
 
 # Format
 clang-format -i <files>

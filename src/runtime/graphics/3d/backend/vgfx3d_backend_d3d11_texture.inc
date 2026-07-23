@@ -252,11 +252,13 @@ static int d3d11_ensure_tex_cache_capacity(d3d11_context_t *ctx, int32_t needed)
     int32_t new_capacity;
     d3d_tex_cache_entry_t *new_entries;
 
-    if (!ctx || needed <= 0)
+    if (!ctx || needed <= 0 || needed > D3D11_TEXTURE_CACHE_MAX_ENTRIES)
         return 0;
     if (ctx->tex_cache_capacity >= needed)
         return 1;
     new_capacity = vgfx3d_d3d11_next_capacity(ctx->tex_cache_capacity, needed, 64);
+    if (new_capacity > D3D11_TEXTURE_CACHE_MAX_ENTRIES)
+        new_capacity = D3D11_TEXTURE_CACHE_MAX_ENTRIES;
     if (new_capacity <= ctx->tex_cache_capacity ||
         (size_t)new_capacity > SIZE_MAX / sizeof(*new_entries))
         return 0;
@@ -277,11 +279,13 @@ static int d3d11_ensure_cubemap_cache_capacity(d3d11_context_t *ctx, int32_t nee
     int32_t new_capacity;
     d3d_cubemap_cache_entry_t *new_entries;
 
-    if (!ctx || needed <= 0)
+    if (!ctx || needed <= 0 || needed > D3D11_CUBEMAP_CACHE_MAX_ENTRIES)
         return 0;
     if (ctx->cubemap_cache_capacity >= needed)
         return 1;
     new_capacity = vgfx3d_d3d11_next_capacity(ctx->cubemap_cache_capacity, needed, 16);
+    if (new_capacity > D3D11_CUBEMAP_CACHE_MAX_ENTRIES)
+        new_capacity = D3D11_CUBEMAP_CACHE_MAX_ENTRIES;
     if (new_capacity <= ctx->cubemap_cache_capacity ||
         (size_t)new_capacity > SIZE_MAX / sizeof(*new_entries))
         return 0;

@@ -6,19 +6,23 @@
 #===----------------------------------------------------------------------===#
 #
 # File: src/tests/tools/WindowsAutomationScriptTests.ps1
-# Purpose: Verify failure-atomic signing and Windows demo-driver safety contracts.
+# Purpose: Verify failure-atomic signing and Windows installer/demo-driver safety contracts.
 # Key invariants:
 #   - A failed signer cannot replace an existing artifact or its metadata.
 #   - Successful signing publishes both the artifact and canonical hash metadata.
 #   - Demo automation retains single-config lookup and path-confinement guards.
+#   - The cmd.exe demo compatibility entry point remains a logic-free forwarding shim.
+#   - Installer automation recognizes every existing-input spelling and requires Studio by default.
 # Ownership/Lifetime: The caller-owned work directory contains all temporary fixtures.
-# Links: scripts/sign-windows-installer.ps1, scripts/build_demos_win.ps1
+# Links: scripts/sign-windows-installer.ps1, scripts/build_demos_win.ps1,
+#        scripts/build_installer.ps1
 #
 #===----------------------------------------------------------------------===#
 
 param(
     [Parameter(Mandatory = $true)][string]$SignScript,
     [Parameter(Mandatory = $true)][string]$DemoScript,
+    [Parameter(Mandatory = $true)][string]$InstallerScript,
     [Parameter(Mandatory = $true)][string]$WorkDir
 )
 
@@ -115,5 +119,38 @@ Assert-True ($demoSource.Contains('Test-PathWithin')) `
     "The demo driver lacks asset and project path confinement."
 Assert-True ($demoSource.Contains('duplicate demo executable name')) `
     "The demo driver lacks duplicate-output rejection."
+
+$demoCmd = [IO.Path]::ChangeExtension($DemoScript, ".cmd")
+Assert-True (Test-Path -LiteralPath $demoCmd -PathType Leaf) `
+    "The cmd.exe demo compatibility entry point is missing."
+$savedPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = "Continue"
+    & $env:ComSpec /d /c "`"$demoCmd`" --help" 2>$null | Out-Null
+    $status = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $savedPreference
+}
+Assert-True ($status -eq 0) "The cmd.exe demo compatibility help path failed."
+$cmdSource = [IO.File]::ReadAllText($demoCmd)
+Assert-True ($cmdSource.Contains("build_demos_win.ps1") -and
+             $cmdSource.Contains("%*") -and
+             $cmdSource.Contains("%ERRORLEVEL%")) `
+    "The cmd.exe demo shim does not forward arguments and status."
+Assert-True (-not $cmdSource.Contains("cmake") -and -not $cmdSource.Contains("zanna build")) `
+    "The cmd.exe demo shim duplicates build logic."
+
+$status = Invoke-PowerShellScript -Path $InstallerScript -Arguments @("--help")
+Assert-True ($status -eq 0) "The Windows installer wrapper help path failed."
+$installerSource = [IO.File]::ReadAllText($InstallerScript)
+Assert-True ($installerSource.Contains('StartsWith("--build-dir="') -and
+             $installerSource.Contains('StartsWith("--stage-dir="') -and
+             $installerSource.Contains('StartsWith("--verify-only="')) `
+    "The installer wrapper does not recognize equals-form existing inputs."
+Assert-True ($installerSource.Contains("ZANNA_INSTALL_ZANNASTUDIO") -and
+             $installerSource.Contains("zannastudio.buildinfo")) `
+    "The installer wrapper does not verify the default Zanna Studio build."
+Assert-True ($installerSource.Contains("[IO.Path]::GetFullPath(`$buildDir)")) `
+    "The installer wrapper does not normalize an absolute build directory."
 
 Write-Host "Windows automation script tests passed."

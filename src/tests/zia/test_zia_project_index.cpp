@@ -18,7 +18,9 @@
 
 #include "tests/common/PosixCompat.h"
 #include <atomic>
+#include <condition_variable>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -370,19 +372,30 @@ TEST(ZiaProjectIndex, QueriesUseThreadSafeSnapshotsDuringMutationAndDestroy) {
     std::atomic<bool> stop{false};
     std::atomic<bool> failed{false};
     std::atomic<int> completedQueries{0};
+    std::mutex progressMutex;
+    std::condition_variable progress;
     std::thread reader([&] {
         while (!stop.load(std::memory_order_acquire)) {
             void *definition =
                 fx.definition(mainPath, mainSource, 3, columnOf(mainSource, 3, "value"));
             if (!definition) {
                 failed.store(true, std::memory_order_release);
+                progress.notify_one();
                 break;
             }
             releaseObj(definition);
             completedQueries.fetch_add(1, std::memory_order_relaxed);
+            progress.notify_one();
         }
     });
 
+    {
+        std::unique_lock lock(progressMutex);
+        progress.wait(lock, [&] {
+            return completedQueries.load(std::memory_order_relaxed) > 0 ||
+                   failed.load(std::memory_order_acquire);
+        });
+    }
     for (int i = 0; i < 100; ++i) {
         fx.update(libPath, (i % 2 == 0) ? firstLib : secondLib);
         if (i % 7 == 0) {

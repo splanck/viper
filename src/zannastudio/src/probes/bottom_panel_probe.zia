@@ -152,6 +152,7 @@ func main() {
     shell.toolPanels.PumpToolTabs();
     shell.Render();
     shell.toolPanels.PumpToolTabs();
+    shell.Render();
     if shell.toolPanels.searchListBox.GetHeight() < 48 {
         fail(shell, "compact search has no usable results viewport: "
               + shell.toolPanels.searchListBox.GetHeight()
@@ -213,15 +214,21 @@ func main() {
 
     // GetLogicalWidth already removes both backing scale and whole-UI zoom.
     // A second zoom division incorrectly keeps abbreviations on a genuinely
-    // wide workbench. Collapse the sidebar so this scenario remains bounded.
+    // wide workbench. Use 150% so a high-DPI Windows monitor's native maximum
+    // tracking width can still provide a wide effective viewport.
     shell.workbench.ToggleSidebar();
-    shell.app.SetUiScale(2.0);
-    shell.app.SetSize(1600, 1040);
+    shell.app.SetUiScale(1.5);
+    shell.app.SetSize(1800, 1040);
     shell.Poll();
     shell.Render();
     shell.toolPanels.PumpToolTabs();
     if shell.toolPanels.toolTabBar.GetLogicalWidth() <= 720.0 {
-        fail(shell, "zoomed wide tool-tab fixture did not reach wide layout");
+        fail(shell, "zoomed wide tool-tab fixture did not reach wide layout: "
+            + shell.toolPanels.toolTabBar.GetLogicalWidth()
+            + " window=" + shell.app.GetWidth()
+            + " logical=" + shell.app.GetLogicalWidth()
+            + " effective=" + shell.app.GetEffectiveScale()
+            + " split=" + shell.workbench.splitPane.GetLogicalWidth());
         return;
     }
     if shell.toolPanels.toolReferencesTab.GetTitle() != "References"

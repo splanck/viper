@@ -24,21 +24,33 @@ $ErrorActionPreference = "Stop"
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $scriptRoot ".."))
 $forwardArguments = @($args | ForEach-Object { [string]$_ })
+if (@($forwardArguments | Where-Object { $_ -ieq "--help" -or $_ -eq "-h" }).Count -gt 0) {
+    Write-Host "Usage: build_installer.ps1 [zanna install-package options]"
+    Write-Host "Builds a Release toolchain package with Zanna Studio unless an existing input is supplied."
+    Write-Host "Use --stage-dir, --build-dir, or --verify-only to reuse caller-owned input."
+    exit 0
+}
 
 $buildDir = [Environment]::GetEnvironmentVariable("ZANNA_BUILD_DIR", "Process")
 if ([string]::IsNullOrWhiteSpace($buildDir)) {
     $buildDir = Join-Path $repoRoot "build"
-    $env:ZANNA_BUILD_DIR = $buildDir
 } elseif (-not [IO.Path]::IsPathRooted($buildDir)) {
     $buildDir = [IO.Path]::GetFullPath((Join-Path $repoRoot $buildDir))
-    $env:ZANNA_BUILD_DIR = $buildDir
+} else {
+    $buildDir = [IO.Path]::GetFullPath($buildDir)
 }
+$env:ZANNA_BUILD_DIR = $buildDir
 
 $buildType = [Environment]::GetEnvironmentVariable("ZANNA_BUILD_TYPE", "Process")
 if ([string]::IsNullOrWhiteSpace($buildType)) {
     $buildType = "Release"
-    $env:ZANNA_BUILD_TYPE = $buildType
 }
+switch ($buildType.ToLowerInvariant()) {
+    "release" { $buildType = "Release" }
+    "relwithdebinfo" { $buildType = "RelWithDebInfo" }
+    default { throw "Windows installer builds require ZANNA_BUILD_TYPE=Release or RelWithDebInfo." }
+}
+$env:ZANNA_BUILD_TYPE = $buildType
 if ([string]::IsNullOrWhiteSpace(
         [Environment]::GetEnvironmentVariable("ZANNA_SKIP_INSTALL", "Process"))) {
     $env:ZANNA_SKIP_INSTALL = "1"
@@ -47,20 +59,37 @@ if ([string]::IsNullOrWhiteSpace(
 $usesExistingInput = $false
 $hasExplicitBuildDir = $false
 foreach ($argument in $forwardArguments) {
-    if ($argument -ieq "--build-dir") {
+    if ($argument -ieq "--build-dir" -or
+        $argument.StartsWith("--build-dir=", [StringComparison]::OrdinalIgnoreCase)) {
         $hasExplicitBuildDir = $true
-    } elseif ($argument -ieq "--stage-dir" -or $argument -ieq "--verify-only") {
+        $usesExistingInput = $true
+    } elseif ($argument -ieq "--stage-dir" -or $argument -ieq "--verify-only" -or
+              $argument.StartsWith("--stage-dir=", [StringComparison]::OrdinalIgnoreCase) -or
+              $argument.StartsWith("--verify-only=", [StringComparison]::OrdinalIgnoreCase)) {
         $usesExistingInput = $true
     }
 }
 
 if (-not $usesExistingInput) {
     $extraArguments = [Environment]::GetEnvironmentVariable("ZANNA_EXTRA_CMAKE_ARGS", "Process")
-    if ($extraArguments -notmatch '(?i)(?:^|\s)-DZANNA_INSTALL_ZANNASTUDIO=') {
+    $requireZannaStudio = $false
+    $studioSettings = [regex]::Matches(
+        [string]$extraArguments,
+        '(?i)(?:^|\s)["'']?-DZANNA_INSTALL_ZANNASTUDIO=([^"''\s]+)["'']?(?=\s|$)'
+    )
+    if ($studioSettings.Count -eq 0) {
         if ([string]::IsNullOrWhiteSpace($extraArguments)) {
             $env:ZANNA_EXTRA_CMAKE_ARGS = "-DZANNA_INSTALL_ZANNASTUDIO=ON"
         } else {
             $env:ZANNA_EXTRA_CMAKE_ARGS = "$extraArguments -DZANNA_INSTALL_ZANNASTUDIO=ON"
+        }
+        $requireZannaStudio = $true
+    } else {
+        $studioSetting = $studioSettings[$studioSettings.Count - 1].Groups[1].Value
+        if ($studioSetting -match '^(?i:ON|1|TRUE|YES)$') {
+            $requireZannaStudio = $true
+        } elseif ($studioSetting -notmatch '^(?i:OFF|0|FALSE|NO)$') {
+            throw "Unsupported ZANNA_INSTALL_ZANNASTUDIO value '$studioSetting'."
         }
     }
 
@@ -78,6 +107,14 @@ if (-not $usesExistingInput) {
     & $powerShellHost -NoProfile -ExecutionPolicy Bypass -File $buildScript
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
+    }
+    if ($requireZannaStudio) {
+        $studio = Join-Path $buildDir "zannastudio\zannastudio.exe"
+        $studioBuildInfo = Join-Path $buildDir "zannastudio\zannastudio.buildinfo"
+        if (-not (Test-Path -LiteralPath $studio -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $studioBuildInfo -PathType Leaf)) {
+            throw "The Windows toolchain build did not produce the required Zanna Studio executable and build metadata."
+        }
     }
 }
 

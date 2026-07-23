@@ -230,16 +230,17 @@ func AddDiskCandidate(state: ProjectBindScanState,
                       path: String,
                       identifier: String) {
     if path == "" or state.stop { return; }
-    if HasSeenPath(state, path) { return; }
+    var canonicalPath = PathKey(path);
+    if canonicalPath == "" or HasSeenPath(state, canonicalPath) { return; }
     if state.consideredFiles >= MAX_BIND_FILES {
         state.incomplete = true;
         state.stop = true;
         return;
     }
-    var size = safe_io.SizeBytes(path);
+    var size = safe_io.SizeBytes(canonicalPath);
     if size < 0 or size > MAX_BIND_FILE_CHARS
        or state.totalChars + size > MAX_BIND_TOTAL_CHARS {
-        MarkSeenPath(state, path);
+        MarkSeenPath(state, canonicalPath);
         state.consideredFiles = state.consideredFiles + 1;
         state.incomplete = true;
         if state.totalChars + size > MAX_BIND_TOTAL_CHARS {
@@ -247,16 +248,16 @@ func AddDiskCandidate(state: ProjectBindScanState,
         }
         return;
     }
-    var beforeMtime = safe_io.Modified(path);
-    var read = safe_io.ReadAllTextBounded(path, MAX_BIND_FILE_CHARS);
-    var afterMtime = safe_io.Modified(path);
+    var beforeMtime = safe_io.Modified(canonicalPath);
+    var read = safe_io.ReadAllTextBounded(canonicalPath, MAX_BIND_FILE_CHARS);
+    var afterMtime = safe_io.Modified(canonicalPath);
     if read.ok == false or beforeMtime < 0 or afterMtime != beforeMtime {
-        MarkSeenPath(state, path);
+        MarkSeenPath(state, canonicalPath);
         state.consideredFiles = state.consideredFiles + 1;
         state.incomplete = true;
         return;
     }
-    AddSourceCandidate(state, path, read.text, afterMtime, identifier);
+    AddSourceCandidate(state, canonicalPath, read.text, afterMtime, identifier);
 }
 
 /// @brief Inspect one open/disk source after de-duplication and shape checks.
@@ -266,11 +267,12 @@ func AddSourceCandidate(state: ProjectBindScanState,
                         mtime: Integer,
                         identifier: String) {
     if path == "" or state.stop { return; }
-    if HasSeenPath(state, path) {
+    var canonicalPath = PathKey(path);
+    if canonicalPath == "" or HasSeenPath(state, canonicalPath) {
         // Importing paths and earlier open snapshots intentionally shadow disk.
         return;
     }
-    MarkSeenPath(state, path);
+    MarkSeenPath(state, canonicalPath);
     state.consideredFiles = state.consideredFiles + 1;
     var chars = Str.get_Length(source);
     if state.consideredFiles > MAX_BIND_FILES
@@ -290,7 +292,7 @@ func AddSourceCandidate(state: ProjectBindScanState,
     }
     state.matches = state.matches + 1;
     if state.matches == 1 {
-        state.candidatePath = path;
+        state.candidatePath = canonicalPath;
         state.candidateMtime = mtime;
         if mtime < 0 { state.candidateOpenSource = source; }
     } else {

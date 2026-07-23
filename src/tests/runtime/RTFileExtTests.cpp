@@ -34,6 +34,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <filesystem>
 #include <thread>
 #include <vector>
 
@@ -190,12 +191,9 @@ static void test_same_file() {
     test_result("missing path is not same file",
                 rt_file_same(source, rt_const_cstr(get_missing_path())) == 0);
 
-#if ZANNA_HOST_WINDOWS
-    int link_result = _link(source_path, alias_path);
-#else
-    int link_result = link(source_path, alias_path);
-#endif
-    if (link_result == 0) {
+    std::error_code linkError;
+    std::filesystem::create_hard_link(source_path, alias_path, linkError);
+    if (!linkError) {
         test_result("hard-link spelling resolves to same file",
                     rt_file_same(source, rt_const_cstr(alias_path)) == 1);
     } else {

@@ -358,6 +358,8 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "_get_osfhandle",
                                         "_chmod",
                                         "_wgetenv",
+                                        "_fdclass",
+                                        "_fdtest",
                                         "_rotl",
                                         "_beginthreadex",
                                         "__intrinsic_setjmp",
@@ -399,6 +401,8 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_get_osfhandle"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_chmod"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_wgetenv"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_fdclass"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_fdtest"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "terminate"));
     EXPECT_FALSE(importPlanDllHasFunction(plan, "VCRUNTIME140.dll", "terminate"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "__imp_ExitProcess"));
@@ -408,6 +412,14 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
 
 TEST(PlatformImportPlanners, Windows64BitStatSymbolsStayWindowsOnly) {
     for (const char *symbol : {"_stat64", "_fstat64", "_wstat64"}) {
+        EXPECT_TRUE(isKnownDynamicSymbol(symbol, LinkPlatform::Windows));
+        EXPECT_FALSE(isKnownDynamicSymbol(symbol, LinkPlatform::Linux));
+        EXPECT_FALSE(isKnownDynamicSymbol(symbol, LinkPlatform::macOS));
+    }
+}
+
+TEST(PlatformImportPlanners, WindowsFloatClassificationHelpersStayWindowsOnly) {
+    for (const char *symbol : {"_fdclass", "_fdtest"}) {
         EXPECT_TRUE(isKnownDynamicSymbol(symbol, LinkPlatform::Windows));
         EXPECT_FALSE(isKnownDynamicSymbol(symbol, LinkPlatform::Linux));
         EXPECT_FALSE(isKnownDynamicSymbol(symbol, LinkPlatform::macOS));

@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-06-03
+last-verified: 2026-07-23
 ---
 
 # CLI Tools Reference
@@ -670,6 +670,10 @@ Zanna Studio binary through the freshly built `zanna` tool and stages
 unset, CMake selects the host architecture. `ZANNA_INSTALL_ZANNASTUDIO` defaults
 to `ON` so `cmake --install` and `zanna install-package --build-dir` produce a
 complete installer payload by default.
+The Windows wrapper rejects Debug-like build configurations, treats explicit
+stage/build/verification inputs as caller-owned, and verifies both
+`zannastudio.exe` and `zannastudio.buildinfo` whenever Studio is enabled before
+it invokes packaging.
 
 Staged toolchain packaging accepts `x64` and `arm64` architecture names, and also accepts `universal` only for a detected macOS fat32/fat64 Mach-O whose bounded slices actually contain both supported architectures. It requires a package version from `lib/cmake/Zanna/ZannaConfigVersion.cmake` or `include/zanna/version.hpp`; CMake package path validation is case-insensitive for staged filesystems that vary directory casing. Linux `.deb` output maps architectures to `amd64` and `arm64`; RPM output maps them to `x86_64` and `aarch64`. RPM generation requires `rpmbuild`; Linux `--target all` includes `.deb`, `.rpm`, the FUSE-less `.run` bundle, and a portable tarball, and fails with an actionable diagnostic if `rpmbuild` is missing. `--target all-available` skips only unavailable RPM output. For Windows and macOS stages, the meta-targets emit the staged platform's native package plus a portable tarball. A target incompatible with the detected staged PE, Mach-O, or ELF binary fails before writing output.
 

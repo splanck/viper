@@ -346,12 +346,12 @@ void vgfx3d_d3d11_resolve_morph_upload_status(vgfx3d_d3d11_per_object_t *object_
 }
 
 /// @brief Compute the number of mipmap levels required to reach 1×1 from (width × height).
-/// Returns 1 for invalid dimensions. Used when creating textures with full mip chains.
+/// Returns 0 for invalid dimensions. Used when creating textures with full mip chains.
 int32_t vgfx3d_d3d11_compute_mip_count(int32_t width, int32_t height) {
     int32_t mip_count = 1;
 
     if (width <= 0 || height <= 0)
-        return 1;
+        return 0;
     while (width > 1 || height > 1) {
         if (width > 1)
             width >>= 1;

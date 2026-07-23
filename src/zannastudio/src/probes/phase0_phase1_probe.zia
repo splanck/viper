@@ -69,7 +69,10 @@ bind Map = Zanna.Collections.Map;
 bind Str = Zanna.String;
 bind Bytes = Zanna.Collections.Bytes;
 
+var probeFailed = false;
+
 func fail(msg: String) {
+    probeFailed = true;
     Terminal.Say("RESULT: fail " + msg);
 }
 
@@ -98,7 +101,7 @@ func AddEdit(edits: Any,
     Seq.Push(edits, edit);
 }
 
-func main() {
+func TestSafeIo() {
     if assertTrue(file_utils.DetectKind("LEVEL.Scene") == file_utils.DOC_KIND_SCENE,
                   "scene kind case-insensitive") == false { return; }
     if assertTrue(file_utils.DetectLanguage("game.BAS") == "basic",
@@ -186,6 +189,9 @@ func main() {
         return;
     }
 
+}
+
+func TestCommandsAndModels() {
     var registry = new command_registry.CommandRegistry();
     if assertTrue(registry.NormalizeId("sidebar") == "togglesidebar",
                   "sidebar command normalized") == false { return; }
@@ -407,6 +413,9 @@ func main() {
     if assertTrue(closeMgr.activeIndex == 1 and stillActive != null and stillActive!.fileName == "c.zia",
                   "closing tab left of active keeps same document active") == false { return; }
 
+}
+
+func TestDocumentsAndSettings() {
     var root = TempFile.CreateDirWithPrefix("zannastudio_phase_probe_");
     var filePath = Path.Join(root, "main.zia");
     File.WriteAllText(filePath, "module Main;\nfunc start() {\n    var oldName = 1;\n    var useName = oldName;\n}\n");
@@ -579,6 +588,14 @@ func main() {
     if assertTrue(file_commands.ApplySaveTextRules("one  \n\t\nthree\t") == "one\n\nthree\n",
                   "save formatting trims trailing whitespace and final newline") == false { return; }
 
+    Dir.RemoveAll(root);
+}
+
+func TestSessionPersistence() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_phase_session_");
+    var filePath = Path.Join(root, "main.zia");
+    File.WriteAllText(filePath,
+        "module Main;\nfunc start() {\n    var oldName = 1;\n    var useName = oldName;\n}\n");
     var settingsPath = Path.Join(root, "settings.ini");
     var oldProjectRoot = Path.Join(root, "OldProject");
     var olderProjectRoot = Path.Join(root, "OlderProject");
@@ -686,6 +703,34 @@ func main() {
                   "aggregate recovery cap reserves the active draft within state limit") == false {
         return;
     }
+
+    Dir.RemoveAll(root);
+}
+
+func TestSessionRestoreHardening() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_phase_restore_");
+    var filePath = Path.Join(root, "main.zia");
+    File.WriteAllText(filePath,
+        "module Main;\nfunc start() {\n    var oldName = 1;\n    var useName = oldName;\n}\n");
+    var aliasDir = Path.Join(root, "path-alias");
+    Dir.MakeAll(aliasDir);
+    var equivalentFilePath = Path.Join(Path.Join(aliasDir, ".."), "main.zia");
+    var binaryPath = Path.Join(root, "zannastudio");
+    var binaryBytes = Bytes.New(8);
+    Bytes.Set(binaryBytes, 0, 0xCF);
+    Bytes.Set(binaryBytes, 1, 0xFA);
+    Bytes.Set(binaryBytes, 2, 0xED);
+    Bytes.Set(binaryBytes, 3, 0xFE);
+    Bytes.Set(binaryBytes, 4, 0);
+    Bytes.Set(binaryBytes, 5, 1);
+    Bytes.Set(binaryBytes, 6, 2);
+    Bytes.Set(binaryBytes, 7, 3);
+    File.WriteAllBytes(binaryPath, binaryBytes);
+    var oldProjectRoot = Path.Join(root, "OldProject");
+    Dir.MakeAll(oldProjectRoot);
+    var sessionDocMgr = new document_manager.DocumentManager();
+    sessionDocMgr.OpenFile(filePath);
+    var sessionProjMgr = new project_manager.ProjectManager();
 
     // A hostile or corrupt shared state file is rejected from metadata alone.
     // Save paths must also decline to clobber it because preserving unknown
@@ -897,6 +942,14 @@ func main() {
     if assertTrue(emptyRestoreCount == 0,
                   "session restore tolerates settings file without session section") == false { return; }
 
+    Dir.RemoveAll(root);
+}
+
+func TestWorkspaceEdits() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_phase_edits_");
+    var filePath = Path.Join(root, "main.zia");
+    File.WriteAllText(filePath,
+        "module Main;\nfunc start() {\n    var oldName = 1;\n    var useName = oldName;\n}\n");
     var docMgr = new document_manager.DocumentManager();
     var doc = docMgr.OpenFile(filePath);
     var workspaceRoots = new List();
@@ -978,5 +1031,20 @@ func main() {
     indexer.Destroy();
 
     Dir.RemoveAll(root);
+}
+
+func main() {
+    TestSafeIo();
+    if probeFailed { return; }
+    TestCommandsAndModels();
+    if probeFailed { return; }
+    TestDocumentsAndSettings();
+    if probeFailed { return; }
+    TestSessionPersistence();
+    if probeFailed { return; }
+    TestSessionRestoreHardening();
+    if probeFailed { return; }
+    TestWorkspaceEdits();
+    if probeFailed { return; }
     Terminal.Say("RESULT: ok");
 }

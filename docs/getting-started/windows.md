@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-15
+last-verified: 2026-07-23
 ---
 
 # Getting Started on Windows
@@ -188,7 +188,11 @@ Build a local developer installer with:
 ```
 
 Debug CRT payloads are rejected by default. Use Release or RelWithDebInfo for a
-package intended for another developer. See the
+package intended for another developer. The wrapper enables Zanna Studio when
+the setting is absent and verifies both `zannastudio.exe` and
+`zannastudio.buildinfo` before packaging. Supplying `--stage-dir`,
+`--build-dir`, or `--verify-only` reuses caller-owned input and skips the
+automatic build. See the
 [installer release guide](../installer-release.md) for signing, reproducible
 release metadata, recursive verification, update manifests, and the complete
 validation matrix.

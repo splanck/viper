@@ -88,6 +88,21 @@ int main() {
            "Destination protection fails closed when Windows roots cannot be resolved");
     expect(source.find("cannot verify an installation path ancestor") != std::string::npos,
            "Unexpected ancestor attribute errors cannot bypass reparse-point checks");
+    expect(source.find("reserved Windows device name") != std::string::npos &&
+               source.find("unsafe trailing character") != std::string::npos,
+           "Lifecycle paths reject Windows device aliases and trailing dot/space names");
+    expect(source.find("Windows installer registry value has an invalid type or size") !=
+                   std::string::npos &&
+               source.find("cannot query installer elevation state") != std::string::npos,
+           "Malformed settings and elevation-query failures cannot become safe defaults");
+    expect(source.find("if (known.find(normalized) != known.end())") != std::string::npos &&
+               source.find("plan.createShortcuts = plan.createShortcuts &&") != std::string::npos,
+           "Upgrades discard retired components and unavailable integration settings");
+    expect(source.find("ERROR_ALREADY_EXISTS") != std::string::npos &&
+               source.find("attempt < 64U") != std::string::npos,
+           "Writable-parent probes retry bounded name collisions");
+    expect(source.find("cannot inspect an existing installation entry") != std::string::npos,
+           "Disk preflight fails closed when existing entry attributes are unreadable");
 
     expect(source.find("kMaximumTextFileBytes") != std::string::npos &&
                source.find("metadata text file grew while being read") != std::string::npos,

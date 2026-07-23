@@ -1,7 +1,7 @@
 ---
 status: active
 audience: developers
-last-verified: 2026-07-22
+last-verified: 2026-07-23
 ---
 
 # Windows Runtime Reliability Audit
@@ -10,9 +10,13 @@ This audit covers the Direct3D 11 backend and the Windows-specific runtime adapt
 entropy, TLS verification, process/ConPTY launch, paths and assets, locale detection, file watching,
 large-file I/O, environment access, concurrency, stack safety, graphics, audio, native dialogs,
 native builds, UI Automation, installer lifecycle, signing, and demo automation. It is a robustness
-pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer dependency changed.
+pass only: no IL opcode, grammar, verifier rule, or runtime C ABI changed. ADR 0155 records the one
+native-link cross-layer dependency added for current MSVC object code.
 
 ## Repaired findings
+
+The 2026-07-23 pass added WR-199 through WR-258: 60 concrete repairs, with installer and
+Zanna Studio packaging intentionally receiving the largest share.
 
 | ID | Area | Finding and repair |
 |----|------|--------------------|
@@ -214,6 +218,66 @@ pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer d
 | WR-196 | installer PATH updates | PATH mutation used a lossy optional query, overwrote malformed reads with an empty value, forced `REG_EXPAND_SZ`, and compared entries with locale folding. It now uses the exact snapshot reader, preserves the existing type, and compares ordinally. |
 | WR-197 | installer Shell Links | Successful-null Shell Link/persistence interfaces could be dereferenced, and getter buffers were assumed to contain a terminator. Required COM outputs and bounded NUL termination are now verified before ownership matching. |
 | WR-198 | installer shortcut cleanup | Missing shortcut records still triggered parent cleanup, directories/reparse points could be removed as links, and a desktop shortcut could cause the Desktop root itself to be removed if empty. Cleanup now skips absent links, requires plain files, and protects all shell roots. |
+| WR-199 | installer metadata text | Unbounded or malformed UTF-8 product, component, and UI strings could reach native conversion and allocation. Metadata now requires canonical UTF-8 and practical byte limits at the public package boundary. |
+| WR-200 | installer metadata identity | Identifier, channel, and path folding depended on the process C locale. The schema now uses explicit ASCII classification and folding for its ASCII-defined fields. |
+| WR-201 | installer metadata paths | Backslash/slash aliases bypassed duplicate detection, while reserved devices, invalid leaf characters, and trailing dots/spaces were accepted below the first segment. Every segment now follows Windows leaf rules and duplicate keys normalize separators. |
+| WR-202 | installer metadata cardinality | The generic record ceiling still allowed impractical component, payload, outer-file, shortcut, and association counts to drive UI/native work. Each typed collection now has a purpose-sized ceiling. |
+| WR-203 | installer metadata sizing | Per-component installed-size accumulation could wrap before comparison with the declared total. Every addition is now checked before committing the sum. |
+| WR-204 | installer metadata URLs | Public/update URLs accepted credentials, fragments, XML-breaking characters, backslashes, whitespace, and ambiguous non-ASCII authority text after a prefix-only HTTPS test. A bounded credential-free absolute HTTPS shape is now required. |
+| WR-205 | installer update key metadata | A nominally 2,048-bit modulus could have its high bit clear or be even, yielding a shorter or invalid RSA key. Metadata now requires the declared bit width and an odd modulus. |
+| WR-206 | installer integration metadata | PATH or shortcut defaults could be enabled without the records needed to implement them. Enabled integrations now require their matching path or shortcut inventory. |
+| WR-207 | installer payload ownership | Main, association, display-icon, shortcut-target, and shortcut-icon paths could name files absent from the signed payload. Every executable/icon integration reference must now resolve to a payload record. |
+| WR-208 | installer lifecycle metadata | State and ownership-manifest paths could collide with each other or a payload file. These installer-owned control files now require distinct, unowned destinations. |
+| WR-209 | installer shortcut metadata | Shortcut records allowed non-`.lnk` destinations, unowned targets/icons, and oversized UI text. The schema now constrains the link suffix, payload ownership, and display fields. |
+| WR-210 | installer association metadata | Extensions and ProgIDs could inject registry separators, while MIME/description/argument strings were effectively unbounded and shell metacharacters were accepted. Registry names and command arguments now use strict bounded grammars. |
+| WR-211 | installer host snapshot | The setup executable was read without a practical package ceiling or a final growth check. Loading now caps the executable at 2 GiB and proves the read consumed one exact snapshot. |
+| WR-212 | installer ZIP boundary | EOCD search accepted a valid-looking record before trailing appended bytes. The selected EOCD must now terminate the embedded archive exactly. |
+| WR-213 | installer ZIP structure | Multi-disk, ZIP64-sentinel, contradictory entry-count, or central-directory ranges were not rejected at the outer package boundary. The host now requires one supported disk and an exact bounded central directory. |
+| WR-214 | installer outer inventory | Archive iteration stopped once required hashes were found, so extra files or missing late control files could escape the inventory contract. The complete archive is now consumed; only declared files, their ancestors, and the writer-owned empty `app/` marker are allowed, while every mandatory record must appear. |
+| WR-215 | installer host narrowing | UTF conversion sizes and command-line quote expansion could overflow native `int`/`size_t` fields. Both boundaries now reject unrepresentable lengths before allocation or conversion. |
+| WR-216 | installer logging | Existing-log size, BOM writes, UTF-8 write widths, and presentation callbacks were incompletely checked; a log failure could also suppress wizard progress. Logging now validates exact native results and progress remains best-effort and exception-contained. |
+| WR-217 | installer startup | COM and common-controls initialization failures were ignored before the wizard used them. Operational modes now fail closed while help and the launch self-test remain available for diagnostics. |
+| WR-218 | installer automation paths | `/output` and `/log` could alias each other or the running installer through normalization or hard links, risking self-overwrite and corrupt mixed output. Lexical and existing-file identity checks now reject those collisions. |
+| WR-219 | installer fatal reporting | Fatal UTF conversion, dialog display, or stderr writes could throw or accept impossible native byte counts while already handling an exception. Diagnostics now have a noexcept fallback and exact bounded write semantics. |
+| WR-220 | installer update startup | A partial update URL/key tuple was validated only after networking began. The complete pinned configuration is now proven before any request is opened. |
+| WR-221 | installer update CNG | Runtime key import repeated the metadata modulus weakness, trusted successful-null CNG outputs, and reusable wrappers could overwrite live handles. Full-width odd keys and reset-before-output RAII are now enforced. |
+| WR-222 | installer update manifest | Manifest text fields did not all pass strict UTF-8 conversion, HTTP status-query failure was conflated with a bad status, and JSON inspection omitted the signed release-notes URL. These outputs are now distinct, strict, and complete. |
+| WR-223 | installer wizard actions | Failed hyperlink launches were silent and button-vector size narrowed unchecked to `UINT`. The wizard reports shell launch failure and bounds native action counts. |
+| WR-224 | installer wizard commit | Custom choices were published before `DestroyWindow` succeeded, and a failed default-folder scope switch left radio, path, and elevation shield inconsistent. Choices now stage until close succeeds and scope changes roll back visibly. |
+| WR-225 | installer wizard lifetime | User-data publication, DPI window adjustment, control construction, and the message loop ignored native failures and could leak the custom window/font on exceptions. Exact API checks and a scope guard now own the entire dialog. |
+| WR-226 | installer wizard integrations | Disabled PATH, association, or shortcut controls could retain a checked value and be committed through stale options. Capability-disabled integrations are now forcibly unchecked. |
+| WR-227 | installer wizard progress | Thread construction/callback setup exceptions could escape a native callback, and unchecked posted completion messages could leave the modal progress dialog hung forever. Failures are captured and synchronous completion closes the dialog deterministically. |
+| WR-228 | installer wizard finish | Throwing filesystem status checks could turn an already successful installation into a fatal finish-page error. Optional launch/sample actions now use non-throwing status queries. |
+| WR-229 | installer registry settings | Missing, unreadable, and malformed `REG_DWORD` values all became the same default, potentially enabling a destructive maintenance plan from corrupt state. Only a genuinely absent value is optional; type, size, and query errors fail closed. |
+| WR-230 | installer elevation query | Token API failure was reported as “not elevated,” causing an unnecessary or misleading relaunch. Elevation inspection now distinguishes native failure from a confirmed non-elevated token. |
+| WR-231 | installer destination probe | The writable-parent probe used one predictable name, so a coincidental/stale file falsely made a writable destination fail. A bounded high-resolution nonce loop now retries only name collisions. |
+| WR-232 | installer component upgrades | Retired component IDs in an older install record made every later upgrade fail, while explicit component casing was not normalized consistently. Stored selections are intersected with the new package; explicit unknown choices still fail. |
+| WR-233 | installer integration upgrades | Persisted PATH/association/shortcut settings could remain enabled after the new package removed the corresponding capability or selected executable component. Plans now clamp settings to the actual selected payload and metadata. |
+| WR-234 | installer lifecycle paths | Recovery-owned paths did not reject trailing dots/spaces or device names, and semantic-version identifiers used locale-sensitive alphanumeric classification. Lifecycle validation now mirrors Windows path rules and ASCII SemVer grammar. |
+| WR-235 | installer disk preflight | Failure to read an existing entry's attributes was treated like a non-reparse file, so disk preflight could proceed without proving tree safety. Attribute failure now aborts before traversal or sizing. |
+| WR-236 | installer build wrapper | `--help` triggered a build, and equals-form or explicit `--build-dir`/existing-input options could accidentally build/package the default tree too. Argument classification now occurs before build work and recognizes both supported spellings. |
+| WR-237 | installer build configuration | Rooted build directories retained ambiguous `..` forms and unsupported Debug-like configurations failed only after expensive packaging work. Paths are canonicalized and the wrapper accepts only Release or RelWithDebInfo. |
+| WR-238 | Zanna Studio packaging | Quoted Studio CMake settings could be misdetected and a supposedly Studio-enabled build was not checked for its executable/build identity. The wrapper parses the last explicit setting and requires both outputs when Studio is enabled by default. |
+| WR-239 | Windows demo entry point | The established `build_demos_win.cmd` contract was absent. A tested logic-free shim now forwards every argument and exact exit status to canonical PowerShell; ADR 0113 records the narrow compatibility exception. |
+| WR-240 | D3D11 mip validation | Invalid texture dimensions returned one mip, allowing bad callers to look superficially valid. The D3D11 helper now returns zero so invalid dimensions fail closed. |
+| WR-241 | D3D11 cache growth | One frame with unique texture/cubemap identities could grow CPU cache tables toward `INT_MAX` before age pruning ran. Hard entry ceilings now divert excess one-frame entries through existing temporary/fallback resources. |
+| WR-242 | D3D11 frame protocol | Nested begin, duplicate end, and depth probes outside an active frame could corrupt timing, history, or probe batches. Begin/end/probe hooks now enforce the active-frame state machine. |
+| WR-243 | D3D11 presentation protocol | Present or split post-FX could run during drawing, replay an already-presented frame, or consume stale targets. Both paths now require an ended frame with one pending presentation. |
+| WR-244 | D3D11 resize | Scene/overlay targets were destroyed before `ResizeBuffers`, so a rejected DXGI resize discarded a valid independent route; resize could also run mid-frame. Scene teardown now follows successful resize and active frames reject mutation. |
+| WR-245 | D3D11 post-FX planning | A bad final target was discovered only after intermediate passes, and single-effect offscreen capture allocated an unnecessary scratch texture. Destination validation is upfront and scratch allocation follows the actual ping-pong count. |
+| WR-246 | D3D11 mutable state | Post-FX routing, render-target changes, and shadow operations could mutate the pipeline mid-frame or outside a frame, while frame-serial wrap broke age ordering. Hooks now honor frame ownership and serials saturate instead of wrapping. |
+| WR-247 | Win32 fullscreen | Style/rect/monitor calls and both `SetWindowLong`/`SetWindowPos` phases were unchecked, and fullscreen state was published before success. Entry/exit now snapshot exactly, validate monitor bounds, roll back partial writes, and commit state last. |
+| WR-248 | Win32 window/input | Older hosts had no DPI-awareness fallback, while unchecked size/coordinate transforms, drifting cursor visibility, and non-transactional raw-input clipping produced virtualized geometry or stuck-pointer states. A legacy system-DPI fallback, bounded dimensions, checked transforms, convergent visibility, and clip rollback now define the adapter. |
+| WR-249 | Windows native link | Current MSVC toolsets can emit the UCRT `_fdtest` helper for Studio float classification, but the fixed import planner had no owner mapping and rejected the native link. The helper now maps to the selected system UCRT under ADR 0155 and remains excluded from non-Windows planners. |
+| WR-250 | Windows runtime test portability | The stable-file-identity regression called the retired `_link` CRT spelling, which current MSVC headers do not declare and which blocked the warning-as-error suite before exercising the runtime. The fixture now uses the portable non-throwing `std::filesystem::create_hard_link` contract on every host. |
+| WR-251 | Studio asynchronous paths | Windows `FileIndex` pages publish forward-slash paths while open documents use native separators, so completed bind/reference queries could no longer match their originating files. Both workers now canonicalize every stored and published path before identity checks, reads, and UI handoff. |
+| WR-252 | Studio high-DPI welcome | Responsive welcome breakpoints compared framebuffer widget dimensions with logical layout thresholds, leaving compact secondary content clipped on a 200% Windows display. Width and height policy now use the widgets' effective logical dimensions. |
+| WR-253 | Studio panel regression | The compact Search probe asserted immediately after its controller changed the splitter, before a layout frame could arrange the reserved results viewport. It now renders the controller-authored split before inspecting geometry. |
+| WR-254 | Studio zoom regression | The wide-at-200%-zoom fixture required a window wider than Win32's native maximum tracking width on a 200%-DPI monitor, so it could never reach the layout it purported to test. A 150% fixture still detects double scaling while remaining achievable on high-DPI Windows. |
+| WR-255 | Studio index concurrency test | The snapshot reader could remain unscheduled until after the mutator destroyed its index, making a concurrency regression fail without executing one query. A condition-variable handoff proves reader progress before mutation and destruction. |
+| WR-256 | Studio phase regression | One 880-line probe function generated a verifier workload that exceeded 270 CPU-seconds in Debug and timed out before `main` ran. Focused helper functions preserve every assertion while reducing the same test to about 15 seconds. |
+| WR-257 | Studio file-tree regression | The comprehensive file-tree probe creates hundreds of files and exercises paging, mutation, trash, and multi-root behavior under a display lock, but its 30-second budget was shorter than its full-suite runtime under CPU and filesystem contention. Its normal-suite timeout is now 90 seconds while retaining the same assertions and coverage. |
+| WR-258 | Windows Release native link | Release optimization can emit UCRT's `_fdclass` helper even when a Debug Studio link only needs `_fdtest`. The exact helper is now accepted only on Windows, mapped to the selected UCRT, and covered beside `_fdtest` by platform import tests and ADR 0155. |
 
 ## Regression coverage
 
@@ -236,55 +300,62 @@ pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer d
   `test_rt_threads_thread`, and `test_rt_threads_primitives` cover the affected runtime contracts.
 - `test_vgfx3d_backend_d3d11_shared` covers timestamp/depth-probe poll budgets and source contracts
   requiring stage-before-publish ordering for all repaired D3D11 replacement paths, required
-  startup-object validation, exact presentation status, overlay-preserving scene replacement, and
-  the shader helpers' initialized single-result control flow; `zia_smoke_d3d11_rtt_readback`,
+  startup-object validation, exact presentation status, bounded texture caches, frame-protocol
+  guards, resize ordering, post-FX target planning, overlay-preserving scene replacement, and the
+  shader helpers' initialized single-result control flow; `zia_smoke_d3d11_rtt_readback`,
   `g3d_test_canvas3d_viewmodel_sprite`, `g3d_test_canvas3d_point_shadows_d3d11`, and the Ridgebound
   D3D11 smoke exercise the hardware backend.
 - `test_linker_platform_import_planners` verifies that the 64-bit stat and floating-remainder
-  exports map to UCRT, the new reliability APIs map to Kernel32, and Windows-only names stay
-  excluded from Linux and macOS.
+  exports plus `_fdclass`/`_fdtest` map to UCRT, the reliability APIs map to Kernel32, and
+  Windows-only names stay excluded from Linux and macOS.
 - `test_rt_scene_editor` preserves the full boxed signed-64-bit range in tiled properties;
   `test_basic_lexer` covers CRLF and lone-CR EOL normalization; and `test_rt_model3d` supplies its
   own strict-decoded JPEG fixture.
 - `windows_automation_script_contracts` exercises failure-atomic signing, timestamp-URL rejection,
   staging cleanup, single-config tool discovery, architecture checks, path confinement, and
-  duplicate demo-output rejection.
+  duplicate demo-output rejection. It also launches the logic-free `.cmd` compatibility shim and
+  pins installer-wrapper help, equals-form input detection, and required Studio output checks.
+- `test_packaging_WindowsInstallerMetadata_all` covers strict UTF-8 and bounded collections,
+  Windows path aliases/devices, control-entry collisions, payload ownership, URL/key structure,
+  shortcut and association grammars, integration consistency, and checked size accounting.
 - `test_windows_installer_update` covers partial pinned configurations, key/digest/signature bounds,
-  ambiguous URLs, and ordinal origin matching. `test_windows_installer_lifecycle_contract` protects
-  exact recovery schemas, durable staging, validated PATH mutation, required Shell Link outputs,
-  and fail-closed destination/shortcut cleanup.
+  strict signed result fields, ambiguous URLs, and ordinal origin matching.
+  `test_windows_installer_lifecycle_contract` protects exact recovery schemas, durable staging,
+  validated PATH mutation, required Shell Link outputs, typed registry/elevation handling, bounded
+  destination probes, upgrade filtering, and fail-closed destination/shortcut cleanup.
+- The Studio phase, welcome, bottom-panel, diagnostic-action, BASIC workspace-query, file-tree, and
+  project-index regressions cover bounded verifier work, high-DPI logical layouts, canonical
+  Windows query paths, monitor-feasible zoom, and deterministic concurrent snapshot startup.
 
 The required end-to-end gates are `scripts/build_zanna_win.ps1` and
-`scripts/build_demos_win.ps1 --run`; repository-owned `.cmd` wrappers are intentionally absent under
-[ADR 0113](adr/0113-windows-automation-powershell-entry-points.md). The platform-policy lint remains
-mandatory for future changes in these adapters.
+`scripts/build_demos_win.cmd --run`. The demo shim delegates to the canonical PowerShell
+implementation under [ADR 0113](adr/0113-windows-automation-powershell-entry-points.md). The
+platform-policy lint remains mandatory for future changes in these adapters.
 
 ## Validation record
 
-Revalidated on Windows x64/MSVC on 2026-07-22:
+Revalidated on Windows x64/MSVC on 2026-07-23:
 
-- The canonical `scripts/build_zanna_win.ps1` pipeline completed its clean warning-as-error build,
-  native Studio link, 1,804-test non-slow selection, runtime/API audits, platform lint, host smoke
-  checks, and install stage. A final incremental pass re-exercised those stages after the native
-  import correction.
-- A later clean revalidation exposed one contention-only failure in the editor hot-path timing
-  probe; the probe passed immediately in isolation. After serializing that absolute-timing sample,
-  the canonical eight-worker pipeline completed all build, non-slow CTest, audit, smoke, policy,
-  and install stages successfully.
-- The WR-159 through WR-198 pass then completed a fresh warning-as-error rebuild; its clean-tree
-  1,805-test non-slow CTest log reported all tests passed. An immediate canonical incremental run
-  returned exit 0 across build, the same complete test selection, audits, platform policy, host
-  smoke checks, and the install stage.
-- The focused installer, automation, D3D11, machine-runtime, and native-import planner regressions
-  passed. The user-scope native installer lifecycle smoke also completed install, integration,
-  uninstall, and cleanup. The opt-in IntelliSense slow test also passes in 340.79 seconds under its
-  measured 420-second timeout.
-- An exploratory all-slow-label pass found only `source_health_audit` failing four stale baseline
-  limits. A detached clean-HEAD audit produced the identical four metrics, proving this change did
-  not add that debt; its baseline was deliberately not weakened here.
+- The canonical `scripts/build_zanna_win.ps1` pipeline completed its warning-as-error Debug build,
+  standalone native Studio link, normal 1,817-test selection, runtime/API audits, platform lint,
+  cross-platform host smokes, and install stage. CTest reported 1,817/1,817 passed in 354.29
+  seconds; the contention-sensitive file-tree probe remained in that normal selection and passed
+  in 50.64 seconds.
+- The focused installer selection passed 16/16. Native user-scope toolchain and Xenoscape
+  lifecycle smokes completed their install, integration, uninstall, and cleanup paths. Focused
+  update, lifecycle, metadata, automation, and native-import planner tests also passed.
+- Hardware D3D11 coverage passed for Ridgebound, render-to-texture readback, viewmodel sprites,
+  point shadows, and render scaling. Shared backend contract tests cover the bounded caches,
+  frame/present protocol, resize ordering, post-FX route validation, and active-frame mutation
+  guards added by this audit.
+- `scripts/build_installer.ps1 --target windows` produced the Release
+  `zanna-0.2.99-win-x64.exe` toolchain installer with SHA-256
+  `387fc0d66c2cecc1e9eddc16c2f9e30052f9aecf33920d1b4ae0c6c0708156f5`.
+  Checksum-required verification and the waited installer-host self-test returned zero. Verified
+  inspection reports 1,870 payload files, 623,450,298 installed bytes, and the `core`,
+  `zannastudio`, `sdk`, and `samples` components.
+- `scripts/build_demos_win.cmd --clean --run` built and launch-smoked all nine curated native x64
+  demos successfully: Ashfall, 3dbowling, Ridgebound, Xenoscape, Crackman, Chess, Baseball, Paint,
+  and ZannaSQL.
 - `scripts/lint_platform_policy.sh --strict --changed-only`, the PowerShell parser checks, the
-  source-header audit, and `git diff --check` passed; the new TLS regression uses the shared
-  `ZANNA_HOST_WINDOWS` capability rather than a raw host macro.
-- A `scripts/build_demos_win.ps1 --clean --run` invocation built and launch-smoked all nine curated
-  x64 demos successfully: Ashfall, 3dbowling, Ridgebound, Xenoscape, Crackman, Chess, Baseball,
-  Paint, and ZannaSQL.
+  source-header audit, formatting, and `git diff --check` passed.

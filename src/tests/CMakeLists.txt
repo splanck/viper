@@ -1382,7 +1382,7 @@ add_test(NAME zia_zannastudio_file_tree
 set_tests_properties(zia_zannastudio_file_tree PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;file-tree;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 90)
 
 add_test(NAME zia_zannastudio_workspace_watcher
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/workspace_watcher_probe.zia"

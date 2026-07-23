@@ -173,7 +173,16 @@ func main() {
        or crossResult!.reason != ""
        or crossResult!.candidatePath != crossHelperPath
        or crossResult!.candidateMtime < 0 {
-        fail(null, null, "multi-root unique candidate");
+        var crossReason = "<null>";
+        var crossPath = "<null>";
+        var crossMtime = -2;
+        if crossResult != null {
+            crossReason = crossResult!.reason;
+            crossPath = crossResult!.candidatePath;
+            crossMtime = crossResult!.candidateMtime;
+        }
+        fail(null, null, "multi-root unique candidate reason=" + crossReason
+            + " path=" + crossPath + " mtime=" + crossMtime);
         return;
     }
 

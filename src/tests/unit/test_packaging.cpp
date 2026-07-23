@@ -121,6 +121,9 @@ static WindowsInstallerMetadata sampleWindowsInstallerMetadata() {
         {"ide", "Zanna Studio", "Editor, debugger, and language services", false, true, 70});
     metadata.payloadFiles.push_back({"bin/zanna.exe", std::string(64, 'a'), 30, std::string{}});
     metadata.payloadFiles.push_back({"bin/zannastudio.exe", std::string(64, 'b'), 70, "ide"});
+    metadata.payloadFiles.push_back(
+        {"share/zanna/zanna.ico", std::string(64, 'c'), 0, std::string{}});
+    metadata.payloadFiles.push_back({"bin/zannastudio.ico", std::string(64, 'd'), 0, "ide"});
     metadata.outerFiles.push_back(
         {"meta/uninstall.exe", "uninstall.exe", std::string(64, 'e'), 40, std::string{}});
     metadata.shortcuts.push_back({"start-menu",
@@ -921,7 +924,7 @@ TEST(WindowsInstallerMetadata, RoundTripsCanonicalSchemaWithUnicode) {
     ASSERT_EQ(parsed.components.size(), 2U);
     EXPECT_EQ(parsed.components[0].id, "core");
     EXPECT_EQ(parsed.components[1].id, "ide");
-    ASSERT_EQ(parsed.payloadFiles.size(), 2U);
+    ASSERT_EQ(parsed.payloadFiles.size(), 4U);
     EXPECT_EQ(parsed.payloadFiles[1].componentId, "ide");
     ASSERT_EQ(parsed.shortcuts.size(), 1U);
     EXPECT_EQ(parsed.shortcuts[0].root, "start-menu");
@@ -952,6 +955,18 @@ TEST(WindowsInstallerMetadata, RejectsTraversalDuplicatesAndSizeMismatch) {
     metadata = sampleWindowsInstallerMetadata();
     metadata.payloadFiles.push_back(metadata.payloadFiles.front());
     metadata.installedSizeBytes += metadata.payloadFiles.back().sizeBytes;
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.payloadFiles[1].path = "bin\\zanna.exe";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.payloadFiles[0].path = "bin/CON.exe";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.payloadFiles[0].path = "bin/zanna.exe.";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
 
     metadata = sampleWindowsInstallerMetadata();
@@ -1002,7 +1017,7 @@ TEST(WindowsInstallerMetadata, RequiresEveryScalarAndSafeExecutablePaths) {
 TEST(WindowsInstallerMetadata, RequiresCompletePinnedUpdateIdentity) {
     WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
     metadata.updateManifestUrl = "https://updates.example.test/zanna.txt";
-    metadata.updateRsaModulus = "a1" + std::string(510, '0');
+    metadata.updateRsaModulus = "a1" + std::string(509, '0') + "1";
     metadata.updateRsaExponent = "010001";
     EXPECT_NO_THROW(serializeWindowsInstallerMetadata(metadata));
 
@@ -1010,15 +1025,24 @@ TEST(WindowsInstallerMetadata, RequiresCompletePinnedUpdateIdentity) {
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
     metadata.updateManifestUrl = "https://updates.example.test/zanna.txt";
-    metadata.updateRsaModulus = "a1" + std::string(510, '0');
+    metadata.updateRsaModulus = "a1" + std::string(509, '0') + "1";
     metadata.updateRsaExponent = "010000";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata.updateRsaExponent = "0003";
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
     metadata.updateManifestUrl = "http://updates.example.test/zanna.txt";
-    metadata.updateRsaModulus = "a1" + std::string(510, '0');
+    metadata.updateRsaModulus = "a1" + std::string(509, '0') + "1";
     metadata.updateRsaExponent = "010001";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.updateManifestUrl = "https://updates.example.test/zanna.txt";
+    metadata.updateRsaModulus = "71" + std::string(509, '0') + "1";
+    metadata.updateRsaExponent = "010001";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+
+    metadata.updateRsaModulus = "a1" + std::string(510, '0');
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
 }
 
@@ -1031,6 +1055,65 @@ TEST(WindowsInstallerMetadata, RejectsUnsafeShortcutContracts) {
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
     metadata = sampleWindowsInstallerMetadata();
     metadata.shortcuts.front().iconPath = "../icon.ico";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.shortcuts.front().relativePath = "Zanna Studio.url";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.shortcuts.front().targetPath = "bin/missing.exe";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+}
+
+TEST(WindowsInstallerMetadata, RejectsUnsafeUrlsAndAssociationRegistryNames) {
+    WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
+    metadata.homepage = "https://example.invalid/\"><broken";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.documentationUrl = "https://user@example.invalid/docs";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.documentationUrl = "https://example..invalid/docs";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.documentationUrl = "https://example.invalid:99999/docs";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.associations.front().extension = ".zia\\Injected";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.associations.front().progId = "org.zanna\\Injected";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.associations.front().arguments = "/safe & calc";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+}
+
+TEST(WindowsInstallerMetadata, RequiresRealIntegrationPayloadsAndBoundsUiRecords) {
+    WindowsInstallerMetadata metadata = sampleWindowsInstallerMetadata();
+    metadata.addToPath = true;
+    metadata.pathRelativePath.clear();
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.createShortcuts = true;
+    metadata.shortcuts.clear();
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.executableName = "bin/missing.exe";
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.installedManifestRelativePath = metadata.payloadFiles.front().path;
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.payloadEntry = metadata.outerFiles.front().overlayPath;
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.components.front().label.assign(257U, 'x');
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.components.resize(65U, metadata.components.back());
+    EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
+    metadata = sampleWindowsInstallerMetadata();
+    metadata.displayName = std::string("\xF0\x28\x8C\x28", 4);
     EXPECT_THROWS(serializeWindowsInstallerMetadata(metadata), std::runtime_error);
 }
 

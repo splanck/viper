@@ -247,6 +247,11 @@ TEST(WindowsInstallerUpdate, AcceptsAuthenticSameOriginUpgrade) {
         zanna::installer::verifyUpdateManifest(packageFor(signer), signedManifest(signer, "1.3.0"));
     EXPECT_TRUE(result.status == zanna::installer::UpdateStatus::Available);
     EXPECT_EQ(result.availableVersion, "1.3.0");
+    EXPECT_EQ(result.releaseNotesUrl, "https://updates.example.test/zanna/notes.html");
+    const std::wstring json = zanna::installer::updateResultJson(result);
+    EXPECT_TRUE(json.find(L"\"release_notes_url\": "
+                          L"\"https://updates.example.test/zanna/notes.html\"") !=
+                std::wstring::npos);
 }
 
 TEST(WindowsInstallerUpdate, DetectsCurrentVersion) {
@@ -320,6 +325,13 @@ TEST(WindowsInstallerUpdate, RejectsPartialOrMalformedPinnedKeys) {
     package.metadata.updateRsaExponent = "04";
     EXPECT_THROWS(zanna::installer::verifyUpdateManifest(package, signedManifest(signer, "1.3.0")),
                   std::runtime_error);
+}
+
+TEST(WindowsInstallerUpdate, RejectsPartialConfigurationBeforeNetworkAccess) {
+    const TestSigner signer;
+    auto package = packageFor(signer);
+    package.metadata.updateRsaExponent.clear();
+    EXPECT_THROWS(zanna::installer::checkForUpdates(package), std::runtime_error);
 }
 
 TEST(WindowsInstallerUpdate, BoundsDigestAndSignatureBeforeDecoding) {

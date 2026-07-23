@@ -168,6 +168,7 @@ if (NOT TARGET test_packaging)
                 "Lnk.*"
                 "InstallerStubGen.*"
                 "InstallerStub.*"
+                "WindowsInstallerMetadata.*"
                 "WindowsPackageBuilder.*"
                 "ToolchainWindowsPackageBuilder.*")
             string(REPLACE "*" "all" _zaps_filter_name "${_zaps_filter}")

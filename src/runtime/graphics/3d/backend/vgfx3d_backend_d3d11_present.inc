@@ -66,7 +66,7 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
     int32_t scene_height;
     vgfx3d_camera_params_t safe_cam;
 
-    if (!ctx || !cam)
+    if (!ctx || !cam || ctx->frame_active)
         return;
     vgfx3d_sanitize_camera_params(cam, &safe_cam);
     cam = &safe_cam;
@@ -79,7 +79,8 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         scene_height = ctx->height;
     }
 
-    ctx->frame_serial++;
+    if (ctx->frame_serial < UINT64_MAX)
+        ctx->frame_serial++;
     ctx->presented_color_valid = 0;
     ctx->shadow_pass_slot = -1;
     /* Shadow atlas re-clears on its first tile pass each frame. */
@@ -442,7 +443,7 @@ static void d3d11_set_vsync(void *ctx_ptr, int8_t enabled) {
 static int32_t d3d11_queue_depth_probe(void *ctx_ptr, float ndc_x, float ndc_y) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     int32_t slot;
-    if (!ctx || ctx->depth_probe_pending_count > 0 ||
+    if (!ctx || !ctx->frame_active || ctx->depth_probe_pending_count > 0 ||
         ctx->depth_probe_request_count >= VGFX3D_DEPTH_PROBE_MAX || !isfinite(ndc_x) ||
         !isfinite(ndc_y))
         return -1;
@@ -468,7 +469,7 @@ static float d3d11_read_depth_probe(void *ctx_ptr, int32_t slot) {
 static void d3d11_end_frame(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
 
-    if (!ctx)
+    if (!ctx || !ctx->frame_active)
         return;
     ctx->frame_active = 0;
     d3d11_issue_depth_probes(ctx);
@@ -588,7 +589,8 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     int32_t old_h;
     HRESULT hr;
 
-    if (!ctx || !ctx->swap_chain || !vgfx3d_d3d11_is_valid_texture2d_extent(w, h))
+    if (!ctx || !ctx->swap_chain || ctx->frame_active ||
+        !vgfx3d_d3d11_is_valid_texture2d_extent(w, h))
         return;
     if (ctx->width == w && ctx->height == h && ctx->rtv && ctx->depth_tex && ctx->dsv)
         return;
@@ -604,7 +606,6 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     old_h = ctx->height;
 
     d3d11_unbind_draw_resources(ctx);
-    d3d11_destroy_scene_targets(ctx);
     d3d11_release_swapchain_main_targets(ctx);
     d3d11_clear_current_target_bindings(ctx);
 
@@ -619,6 +620,7 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
         return;
     }
 
+    d3d11_destroy_scene_targets(ctx);
     ctx->width = w;
     ctx->height = h;
     d3d11_reset_temporal_scene_state(ctx);
@@ -1257,13 +1259,14 @@ static int d3d11_apply_postfx_chain(d3d11_context_t *ctx,
         *out_result_tex = NULL;
     if (!ctx || !vgfx3d_d3d11_postfx_chain_is_usable(chain) || !ctx->scene_color_srv ||
         !ctx->scene_color_rtv || !ctx->scene_color_tex || !ctx->scene_depth_srv ||
-        !ctx->scene_motion_srv) {
+        !ctx->scene_motion_srv ||
+        (!force_offscreen_final &&
+         (!final_rtv || !vgfx3d_d3d11_is_valid_texture2d_extent(final_width, final_height)))) {
         return 0;
     }
 
     need_postfx_target = force_offscreen_final || chain->effect_count > 1;
-    need_scratch_target =
-        force_offscreen_final || (!force_offscreen_final && chain->effect_count > 2);
+    need_scratch_target = force_offscreen_final ? chain->effect_count > 1 : chain->effect_count > 2;
     if (need_postfx_target &&
         FAILED(d3d11_ensure_postfx_target(ctx, ctx->scene_width, ctx->scene_height))) {
         return 0;
@@ -1454,7 +1457,7 @@ static int d3d11_readback_rgba(
 static void d3d11_present_internal(d3d11_context_t *ctx, const vgfx3d_postfx_chain_t *chain) {
     int use_postfx;
 
-    if (!ctx || ctx->rtt_active)
+    if (!ctx || ctx->rtt_active || ctx->frame_active || !ctx->frame_pending_present)
         return;
     ctx->frame_pending_present = 0;
     if (ctx->scene_composited_to_swapchain) {
@@ -1497,7 +1500,7 @@ static void d3d11_apply_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *postf
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     int use_postfx;
 
-    if (!ctx || ctx->rtt_active)
+    if (!ctx || ctx->rtt_active || ctx->frame_active || !ctx->frame_pending_present)
         return;
     ctx->presented_color_valid = 0;
     if (ctx->scene_composited_to_swapchain)
@@ -1542,7 +1545,7 @@ static void d3d11_present_postfx(void *ctx_ptr, const vgfx3d_postfx_chain_t *pos
 static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     int8_t next_enabled = enabled ? 1 : 0;
-    if (!ctx)
+    if (!ctx || ctx->frame_active)
         return;
     if (vgfx3d_d3d11_should_reset_composited_swapchain_for_postfx_update(ctx->gpu_postfx_enabled,
                                                                          next_enabled)) {
@@ -1669,7 +1672,7 @@ static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     HRESULT hr;
 
-    if (!ctx)
+    if (!ctx || ctx->frame_active)
         return;
     ctx->scene_composited_to_swapchain = 0;
     ctx->presented_color_valid = 0;
@@ -1713,7 +1716,7 @@ static void d3d11_shadow_begin(void *ctx_ptr,
     HRESULT hr;
 
     (void)depth_buf;
-    if (!ctx)
+    if (!ctx || !ctx->frame_active)
         return;
     d3d11_leave_shadow_pass(ctx);
     if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS)
@@ -1816,7 +1819,7 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
     uint32_t index_count;
     vgfx3d_draw_cmd_t safe_cmd;
 
-    if (!ctx)
+    if (!ctx || !ctx->frame_active)
         return;
     if (!cmd || ctx->shadow_pass_slot < 0 || ctx->shadow_pass_slot >= VGFX3D_MAX_SHADOW_LIGHTS ||
         !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 || cmd->index_count == 0) {
@@ -1945,7 +1948,7 @@ static void d3d11_shadow_draw(void *ctx_ptr, const vgfx3d_draw_cmd_t *cmd) {
 /// targets so subsequent draws hit the right buffers.
 static void d3d11_shadow_end(void *ctx_ptr, int32_t slot, float bias) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
-    if (!ctx)
+    if (!ctx || !ctx->frame_active)
         return;
     if (slot < 0 || slot >= VGFX3D_MAX_SHADOW_LIGHTS || ctx->shadow_pass_slot != slot) {
         d3d11_leave_shadow_pass(ctx);
@@ -1969,7 +1972,8 @@ static int8_t d3d11_shadow_reuse(
     void *ctx_ptr, int32_t slot, float *depth_buf, int32_t w, int32_t h, const float *light_vp) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     (void)depth_buf;
-    if (!ctx || slot < 0 || slot >= VGFX3D_CSM_SLOTS || !light_vp || w <= 0 || h <= 0)
+    if (!ctx || !ctx->frame_active || slot < 0 || slot >= VGFX3D_CSM_SLOTS || !light_vp || w <= 0 ||
+        h <= 0)
         return 0;
     if (!vgfx3d_d3d11_shadow_matrix_is_usable(light_vp))
         return 0;

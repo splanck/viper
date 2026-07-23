@@ -156,7 +156,18 @@ func main() {
        or Map.GetStr(activeRef, "preview") != "Shared()"
        or Map.GetInt(activeRef, "expectedMtime") != -1
        or Map.GetInt(libraryRef, "expectedMtime") < 0 {
-        fail("reference preview or snapshot metadata");
+        var activePreview = "<missing>";
+        var activeMtime = -2;
+        var libraryMtime = -2;
+        if activeRef != null {
+            activePreview = Map.GetStr(activeRef, "preview");
+            activeMtime = Map.GetInt(activeRef, "expectedMtime");
+        }
+        if libraryRef != null {
+            libraryMtime = Map.GetInt(libraryRef, "expectedMtime");
+        }
+        fail("reference preview or snapshot metadata preview=" + activePreview
+            + " activeMtime=" + activeMtime + " libraryMtime=" + libraryMtime);
         return;
     }
 

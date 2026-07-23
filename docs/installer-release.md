@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-16
+last-verified: 2026-07-23
 ---
 
 # Installer and Package Release Guide
@@ -31,6 +31,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 
 ./scripts/build_installer.sh --target macos --macos-dmg --output-dir artifacts
 ./scripts/build_installer.sh --target all --output-dir artifacts
 ```
+
+On Windows, the wrapper accepts only `Release` or `RelWithDebInfo`, enables
+Zanna Studio when no explicit CMake setting is present, and requires the
+Studio executable plus its build-identity file before packaging. Passing
+`--stage-dir`, `--build-dir`, or `--verify-only` (including `--name=value`
+forms) selects caller-owned input and suppresses the automatic canonical
+build. `--help` is side-effect free.
 
 For repeatable package work, stage once and package that immutable tree:
 

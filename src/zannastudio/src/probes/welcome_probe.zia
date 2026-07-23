@@ -272,7 +272,8 @@ func main() {
     }
     var recentBottom = wv.emptyRecentLabel.GetLogicalY()
         + wv.emptyRecentLabel.GetLogicalHeight();
-    if recentBottom > wv.hintLabel.GetLogicalY() {
+    if wv.hintLabel.IsVisible()
+       and recentBottom > wv.hintLabel.GetLogicalY() {
         fail(shell, "recent empty state overlaps command hint");
         return;
     }
@@ -477,8 +478,8 @@ func main() {
     wv.SetShown(true);
     shell.Poll();
     shell.Render();
-    if welcome_view.UsesCompactLayout(shell.workbench.welcomeHost.GetHeight()) == false
-        or welcome_view.CanShowCompactRecents(shell.workbench.welcomeHost.GetHeight())
+    if welcome_view.UsesCompactLayout(shell.workbench.welcomeHost.GetLogicalHeight()) == false
+        or welcome_view.CanShowCompactRecents(shell.workbench.welcomeHost.GetLogicalHeight())
         or wv.recentHeader.IsVisible() or wv.recentList.IsVisible()
         or wv.emptyRecentLabel.IsVisible() or wv.hintLabel.IsVisible() {
         fail(shell, "compact welcome leaves clipped secondary content");
@@ -491,7 +492,7 @@ func main() {
     wv.SetShown(true);
     shell.Poll();
     shell.Render();
-    if welcome_view.UsesCompactLayout(shell.workbench.welcomeHost.GetHeight())
+    if welcome_view.UsesCompactLayout(shell.workbench.welcomeHost.GetLogicalHeight())
         or wv.recentHeader.IsVisible() == false or wv.hintLabel.IsVisible() == false {
         fail(shell, "welcome secondary content did not restore after resize");
         return;

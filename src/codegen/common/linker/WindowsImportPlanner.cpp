@@ -459,6 +459,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "fabs",
         "fabsf",
         "fdclass",
+        "_fdtest",
         "fclose",
         "fcntl",
         "ferror",

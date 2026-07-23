@@ -98,6 +98,10 @@ class AlgorithmHandle {
     }
 
     BCRYPT_ALG_HANDLE *put() {
+        if (value_) {
+            BCryptCloseAlgorithmProvider(value_, 0);
+            value_ = nullptr;
+        }
         return &value_;
     }
 
@@ -117,6 +121,10 @@ class KeyHandle {
     }
 
     BCRYPT_KEY_HANDLE *put() {
+        if (value_) {
+            BCryptDestroyKey(value_);
+            value_ = nullptr;
+        }
         return &value_;
     }
 
@@ -196,11 +204,17 @@ bool isLowerHex(std::string_view value) {
     });
 }
 
+bool isOddLowerHexDigit(char ch) {
+    return ch == '1' || ch == '3' || ch == '5' || ch == '7' || ch == '9' || ch == 'b' ||
+           ch == 'd' || ch == 'f';
+}
+
 void validatePinnedKey(const zanna::pkg::WindowsInstallerMetadata &metadata) {
     if (metadata.updateRsaModulus.size() < kMinimumRsaModulusBytes * 2U ||
         metadata.updateRsaModulus.size() > kMaximumRsaModulusBytes * 2U ||
         metadata.updateRsaModulus.size() % 2U != 0U || !isLowerHex(metadata.updateRsaModulus) ||
-        metadata.updateRsaModulus.front() == '0') {
+        metadata.updateRsaModulus.front() < '8' ||
+        !isOddLowerHexDigit(metadata.updateRsaModulus.back())) {
         throw std::runtime_error("invalid pinned update RSA modulus");
     }
     if (metadata.updateRsaExponent.size() < 2U ||
@@ -228,6 +242,7 @@ void validateManifestValue(std::string_view value,
         })) {
         throw std::runtime_error("invalid update manifest " + std::string(field));
     }
+    (void)utf8ToWide(value);
 }
 
 ParsedUrl parseHttpsUrl(std::string_view utf8, std::string_view field) {
@@ -340,8 +355,10 @@ std::string downloadManifest(std::string_view manifestUrl, std::string_view vers
                              WINHTTP_HEADER_NAME_BY_INDEX,
                              &status,
                              &statusBytes,
-                             WINHTTP_NO_HEADER_INDEX) ||
-        status != 200U) {
+                             WINHTTP_NO_HEADER_INDEX)) {
+        throw std::runtime_error("cannot read the update service HTTP status");
+    }
+    if (status != 200U) {
         throw std::runtime_error("the update service returned HTTP status " +
                                  std::to_string(status));
     }
@@ -412,8 +429,10 @@ void verifySignature(const zanna::pkg::WindowsInstallerMetadata &metadata,
     std::memcpy(blob.data() + sizeof(header) + exponent.size(), modulus.data(), modulus.size());
 
     AlgorithmHandle algorithm;
-    if (BCryptOpenAlgorithmProvider(algorithm.put(), BCRYPT_RSA_ALGORITHM, nullptr, 0) != 0)
+    if (BCryptOpenAlgorithmProvider(algorithm.put(), BCRYPT_RSA_ALGORITHM, nullptr, 0) != 0 ||
+        !algorithm.get()) {
         throw std::runtime_error("cannot initialize update signature verification");
+    }
     KeyHandle key;
     if (BCryptImportKeyPair(algorithm.get(),
                             nullptr,
@@ -421,7 +440,8 @@ void verifySignature(const zanna::pkg::WindowsInstallerMetadata &metadata,
                             key.put(),
                             blob.data(),
                             static_cast<ULONG>(blob.size()),
-                            0) != 0) {
+                            0) != 0 ||
+        !key.get()) {
         throw std::runtime_error("cannot import the pinned update public key");
     }
     BCRYPT_PKCS1_PADDING_INFO padding{BCRYPT_SHA256_ALGORITHM};
@@ -513,8 +533,14 @@ UpdateCheckResult verifyUpdateManifest(const HostPackage &package, std::string_v
 }
 
 UpdateCheckResult checkForUpdates(const HostPackage &package) {
-    if (package.metadata.updateManifestUrl.empty())
+    const bool hasUrl = !package.metadata.updateManifestUrl.empty();
+    const bool hasModulus = !package.metadata.updateRsaModulus.empty();
+    const bool hasExponent = !package.metadata.updateRsaExponent.empty();
+    if (!hasUrl && !hasModulus && !hasExponent)
         return verifyUpdateManifest(package, {});
+    if (!hasUrl || !hasModulus || !hasExponent)
+        throw std::runtime_error("incomplete pinned update configuration");
+    validatePinnedKey(package.metadata);
     return verifyUpdateManifest(
         package, downloadManifest(package.metadata.updateManifestUrl, package.metadata.version));
 }
@@ -532,7 +558,8 @@ std::wstring updateResultJson(const UpdateCheckResult &result) {
         << "  \"channel\": \"" << jsonEscape(result.channel) << "\",\n"
         << "  \"architecture\": \"" << jsonEscape(result.architecture) << "\",\n"
         << "  \"download_url\": \"" << jsonEscape(result.downloadUrl) << "\",\n"
-        << "  \"sha256\": \"" << jsonEscape(result.downloadSha256) << "\"\n"
+        << "  \"sha256\": \"" << jsonEscape(result.downloadSha256) << "\",\n"
+        << "  \"release_notes_url\": \"" << jsonEscape(result.releaseNotesUrl) << "\"\n"
         << "}\n";
     return utf8ToWide(out.str());
 }

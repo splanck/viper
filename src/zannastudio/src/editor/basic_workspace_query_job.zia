@@ -345,7 +345,11 @@ func AddOpenSource(corpus: BasicWorkspaceCorpus,
         }
         return;
     }
-    corpus.paths.Push(path);
+    if path == "" {
+        corpus.paths.Push(path);
+    } else {
+        corpus.paths.Push(key);
+    }
     corpus.sources.Push(source);
     corpus.mtimes.Push(-1);
     corpus.totalChars = corpus.totalChars + Str.get_Length(source);
@@ -418,7 +422,7 @@ func AddDiskSource(corpus: BasicWorkspaceCorpus,
         return;
     }
 
-    var size = safe_io.SizeBytes(path);
+    var size = safe_io.SizeBytes(key);
     if size < 0 or size > MAX_FILE_SOURCE_CHARS {
         corpus.truncated = true;
         return;
@@ -429,9 +433,9 @@ func AddDiskSource(corpus: BasicWorkspaceCorpus,
         return;
     }
 
-    var beforeMtime = safe_io.Modified(path);
-    var read = safe_io.ReadAllTextBounded(path, MAX_FILE_SOURCE_CHARS);
-    var afterMtime = safe_io.Modified(path);
+    var beforeMtime = safe_io.Modified(key);
+    var read = safe_io.ReadAllTextBounded(key, MAX_FILE_SOURCE_CHARS);
+    var afterMtime = safe_io.Modified(key);
     if read.ok == false or beforeMtime < 0 or afterMtime != beforeMtime {
         corpus.truncated = true;
         return;
@@ -445,7 +449,7 @@ func AddDiskSource(corpus: BasicWorkspaceCorpus,
         corpus.budgetExhausted = true;
         return;
     }
-    corpus.paths.Push(path);
+    corpus.paths.Push(key);
     corpus.sources.Push(read.text);
     corpus.mtimes.Push(afterMtime);
     corpus.totalChars = corpus.totalChars + Str.get_Length(read.text);

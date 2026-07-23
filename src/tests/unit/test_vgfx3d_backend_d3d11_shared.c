@@ -564,8 +564,8 @@ static void test_capacity_and_mip_helpers(void) {
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(1, 1) == 1, "1x1 textures use a single mip level");
     EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(4, 2) == 3,
                 "Mip-count helper follows the full downsample chain");
-    EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(0, 2) == 1,
-                "Invalid texture dimensions still produce a safe single mip");
+    EXPECT_TRUE(vgfx3d_d3d11_compute_mip_count(0, 2) == 0,
+                "Invalid texture dimensions fail closed instead of publishing a mip");
     EXPECT_TRUE(vgfx3d_d3d11_next_capacity(0, 65, 64) == 128,
                 "Capacity helper grows fixed caches beyond the old hard cap");
     EXPECT_TRUE(vgfx3d_d3d11_next_capacity(16, 8, 16) == 16,
@@ -2213,6 +2213,25 @@ static void test_d3d11_backend_source_contracts(void) {
                 "Device creation rejects a successful HRESULT with any missing core interface");
     EXPECT_TRUE(strstr(source, "if (hr != S_OK)") != NULL,
                 "Present status codes do not publish an unconfirmed displayed-frame snapshot");
+    EXPECT_TRUE(strstr(source, "D3D11_TEXTURE_CACHE_MAX_ENTRIES 4096") != NULL &&
+                    strstr(source, "D3D11_CUBEMAP_CACHE_MAX_ENTRIES 256") != NULL,
+                "D3D11 bounds one-frame texture and cubemap cache-table growth");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "static void d3d11_resize(",
+                                            "IDXGISwapChain_ResizeBuffers",
+                                            "d3d11_destroy_scene_targets(ctx);"),
+                "D3D11 preserves independent scene targets until DXGI accepts a resize");
+    EXPECT_TRUE(strstr(source, "!ctx->frame_pending_present") != NULL &&
+                    strstr(source, "!ctx || !cam || ctx->frame_active") != NULL &&
+                    strstr(source, "!ctx || !ctx->frame_active") != NULL,
+                "D3D11 rejects duplicate or out-of-order frame operations");
+    EXPECT_TRUE(
+        strstr(source, "need_scratch_target = force_offscreen_final ? chain->effect_count > 1") !=
+                NULL &&
+            strstr(source,
+                   "!final_rtv || "
+                   "!vgfx3d_d3d11_is_valid_texture2d_extent(final_width,") != NULL,
+        "D3D11 validates post-FX output first and allocates only required ping-pong targets");
     EXPECT_TRUE(text_appears_in_order_after(source,
                                             "static int8_t d3d11_set_render_scale(",
                                             "d3d11_ensure_overlay_target",

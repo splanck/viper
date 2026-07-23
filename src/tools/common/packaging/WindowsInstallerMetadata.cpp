@@ -39,12 +39,165 @@ namespace {
 constexpr std::string_view kHeader = "ZANNA-WINDOWS-INSTALLER\t3";
 constexpr size_t kMaximumMetadataBytes = 16U * 1024U * 1024U;
 constexpr size_t kMaximumRecords = 200000U;
+constexpr size_t kMaximumComponents = 64U;
+constexpr size_t kMaximumPayloadFiles = 100000U;
+constexpr size_t kMaximumOuterFiles = 16U;
+constexpr size_t kMaximumShortcuts = 256U;
+constexpr size_t kMaximumAssociations = 256U;
 
 std::string lowerAscii(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
+        return static_cast<char>(ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch);
     });
     return value;
+}
+
+bool isAsciiAlpha(unsigned char ch) {
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+bool isAsciiDigit(unsigned char ch) {
+    return ch >= '0' && ch <= '9';
+}
+
+bool isAsciiAlnum(unsigned char ch) {
+    return isAsciiAlpha(ch) || isAsciiDigit(ch);
+}
+
+bool isValidUtf8(std::string_view value) {
+    size_t index = 0;
+    while (index < value.size()) {
+        const uint8_t lead = static_cast<uint8_t>(value[index++]);
+        if (lead <= 0x7FU)
+            continue;
+        unsigned trailing = 0;
+        uint32_t codepoint = 0;
+        uint32_t minimum = 0;
+        if (lead >= 0xC2U && lead <= 0xDFU) {
+            trailing = 1;
+            codepoint = lead & 0x1FU;
+            minimum = 0x80U;
+        } else if (lead >= 0xE0U && lead <= 0xEFU) {
+            trailing = 2;
+            codepoint = lead & 0x0FU;
+            minimum = 0x800U;
+        } else if (lead >= 0xF0U && lead <= 0xF4U) {
+            trailing = 3;
+            codepoint = lead & 0x07U;
+            minimum = 0x10000U;
+        } else {
+            return false;
+        }
+        if (trailing > value.size() - index)
+            return false;
+        for (unsigned offset = 0; offset < trailing; ++offset) {
+            const uint8_t continuation = static_cast<uint8_t>(value[index++]);
+            if ((continuation & 0xC0U) != 0x80U)
+                return false;
+            codepoint = (codepoint << 6U) | (continuation & 0x3FU);
+        }
+        if (codepoint < minimum || codepoint > 0x10FFFFU ||
+            (codepoint >= 0xD800U && codepoint <= 0xDFFFU)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void validateText(std::string_view value,
+                  std::string_view fieldName,
+                  size_t maximumBytes,
+                  bool allowEmpty = true) {
+    if ((!allowEmpty && value.empty()) || value.size() > maximumBytes || !isValidUtf8(value))
+        throw std::runtime_error("invalid installer metadata " + std::string(fieldName));
+}
+
+void validateHttpsUrl(std::string_view value, std::string_view fieldName) {
+    if (value.empty())
+        return;
+    validateText(value, fieldName, 2048U, false);
+    const auto invalid = [&]() {
+        throw std::runtime_error("invalid Windows installer " + std::string(fieldName));
+    };
+    if (value.rfind("https://", 0) != 0)
+        throw std::runtime_error("Windows installer " + std::string(fieldName) + " must use HTTPS");
+    const size_t authorityStart = 8U;
+    const size_t authorityEnd = value.find_first_of("/?", authorityStart);
+    const std::string_view authority =
+        value.substr(authorityStart,
+                     authorityEnd == std::string_view::npos ? value.size() - authorityStart
+                                                            : authorityEnd - authorityStart);
+    if (authority.empty() || authority.find('@') != std::string_view::npos ||
+        value.find('#') != std::string_view::npos ||
+        std::any_of(value.begin(), value.end(), [](unsigned char ch) {
+            return ch <= 0x20U || ch >= 0x7FU || ch == '\\' || ch == '"' || ch == '<' || ch == '>';
+        })) {
+        invalid();
+    }
+
+    std::string_view host = authority;
+    std::string_view port;
+    if (authority.front() == '[') {
+        const size_t close = authority.find(']');
+        if (close == std::string_view::npos || close <= 1U)
+            invalid();
+        host = authority.substr(1U, close - 1U);
+        const std::string_view suffix = authority.substr(close + 1U);
+        if (!suffix.empty()) {
+            if (suffix.front() != ':' || suffix.size() == 1U)
+                invalid();
+            port = suffix.substr(1U);
+        }
+        if (host.find(':') == std::string_view::npos ||
+            std::any_of(host.begin(), host.end(), [](unsigned char ch) {
+                return !(isAsciiDigit(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') ||
+                         ch == ':' || ch == '.');
+            })) {
+            invalid();
+        }
+    } else {
+        const size_t colon = authority.rfind(':');
+        if (colon != std::string_view::npos) {
+            if (authority.find(':') != colon || colon == 0U || colon + 1U == authority.size())
+                invalid();
+            host = authority.substr(0U, colon);
+            port = authority.substr(colon + 1U);
+        }
+        if (host.empty() || host.size() > 253U || host.front() == '.' || host.back() == '.' ||
+            host.front() == '-' || host.back() == '-' ||
+            std::any_of(host.begin(), host.end(), [](unsigned char ch) {
+                return !(isAsciiAlnum(ch) || ch == '.' || ch == '-');
+            })) {
+            invalid();
+        }
+        size_t labelStart = 0U;
+        while (labelStart < host.size()) {
+            const size_t dot = host.find('.', labelStart);
+            const std::string_view label = host.substr(
+                labelStart,
+                dot == std::string_view::npos ? host.size() - labelStart : dot - labelStart);
+            if (label.empty() || label.size() > 63U || label.front() == '-' || label.back() == '-')
+                invalid();
+            if (dot == std::string_view::npos)
+                break;
+            labelStart = dot + 1U;
+        }
+    }
+    if (!port.empty()) {
+        uint32_t number = 0U;
+        for (const unsigned char ch : port) {
+            if (!isAsciiDigit(ch) || number > (65535U - (ch - '0')) / 10U)
+                invalid();
+            number = number * 10U + (ch - '0');
+        }
+        if (number == 0U)
+            invalid();
+    }
+}
+
+std::string normalizedPathKey(std::string value) {
+    std::replace(value.begin(), value.end(), '\\', '/');
+    return lowerAscii(std::move(value));
 }
 
 bool isHexUpper(char ch) {
@@ -142,15 +295,14 @@ void validateIdentifier(std::string_view value, std::string_view fieldName) {
     if (value.empty() || value.size() > 128)
         throw std::runtime_error("invalid installer metadata " + std::string(fieldName));
     for (const unsigned char ch : value) {
-        if (!(std::isalnum(ch) || ch == '.' || ch == '-' || ch == '_'))
+        if (!(isAsciiAlnum(ch) || ch == '.' || ch == '-' || ch == '_'))
             throw std::runtime_error("invalid installer metadata " + std::string(fieldName));
     }
 }
 
 void validateChannel(std::string_view value) {
-    if (value.empty() || value.size() > 24U ||
-        !std::isalnum(static_cast<unsigned char>(value.front())) ||
-        !std::isalnum(static_cast<unsigned char>(value.back()))) {
+    if (value.empty() || value.size() > 24U || !isAsciiAlnum(value.front()) ||
+        !isAsciiAlnum(value.back())) {
         throw std::runtime_error("invalid Windows installer release channel");
     }
     for (const unsigned char ch : value) {
@@ -160,10 +312,12 @@ void validateChannel(std::string_view value) {
 }
 
 void validateWindowsLeafName(std::string_view value, std::string_view fieldName) {
-    if (value.empty() || value.size() > 255U || value == "." || value == ".." ||
-        value.back() == '.' || value.back() == ' ' ||
+    if (value.empty() || value.size() > 255U || !isValidUtf8(value) || value == "." ||
+        value == ".." || value.back() == '.' || value.back() == ' ' ||
         value.find_first_of("<>:\"/\\|?*") != std::string_view::npos ||
-        std::any_of(value.begin(), value.end(), [](unsigned char ch) { return ch < 0x20U; })) {
+        std::any_of(value.begin(), value.end(), [](unsigned char ch) {
+            return ch < 0x20U || ch == 0x7FU;
+        })) {
         throw std::runtime_error("invalid installer metadata " + std::string(fieldName));
     }
     std::string base(value.substr(0, value.find('.')));
@@ -198,8 +352,9 @@ void validateDottedVersion(std::string_view value) {
 }
 
 void validateRelativePath(std::string_view value, std::string_view fieldName) {
-    if (value.empty() || value.size() > 32760 || value.front() == '/' || value.front() == '\\' ||
-        (value.size() >= 2 && std::isalpha(static_cast<unsigned char>(value[0])) &&
+    if (value.empty() || value.size() > 32760 || !isValidUtf8(value) || value.front() == '/' ||
+        value.front() == '\\' ||
+        (value.size() >= 2 && isAsciiAlpha(static_cast<unsigned char>(value[0])) &&
          value[1] == ':')) {
         throw std::runtime_error("invalid installer metadata " + std::string(fieldName));
     }
@@ -208,8 +363,7 @@ void validateRelativePath(std::string_view value, std::string_view fieldName) {
         const size_t end = value.find_first_of("/\\", start);
         const std::string_view segment =
             value.substr(start, end == std::string_view::npos ? value.size() - start : end - start);
-        if (segment.empty() || segment == "." || segment == "..")
-            throw std::runtime_error("unsafe installer metadata " + std::string(fieldName));
+        validateWindowsLeafName(segment, fieldName);
         if (end == std::string_view::npos)
             break;
         start = end + 1;
@@ -231,6 +385,11 @@ bool isLowerHex(std::string_view value) {
     });
 }
 
+bool isOddLowerHexDigit(char ch) {
+    return ch == '1' || ch == '3' || ch == '5' || ch == '7' || ch == '9' || ch == 'b' ||
+           ch == 'd' || ch == 'f';
+}
+
 void validateMetadata(const WindowsInstallerMetadata &m) {
     if (m.schemaVersion != kWindowsInstallerMetadataSchema)
         throw std::runtime_error("unsupported Windows installer metadata schema");
@@ -239,8 +398,11 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
     if (m.productKind != "application" && m.productKind != "toolchain")
         throw std::runtime_error("invalid Windows installer product kind");
     validateIdentifier(m.identifier, "identifier");
-    if (m.displayName.empty() || m.version.empty() || m.publisher.empty())
-        throw std::runtime_error("Windows installer metadata is missing product identity");
+    validateText(m.displayName, "display name", 256U, false);
+    validateText(m.version, "version", 128U, false);
+    validateText(m.publisher, "publisher", 256U, false);
+    validateText(m.description, "description", 4096U);
+    validateText(m.contact, "contact", 512U);
     if (m.architecture != "x64" && m.architecture != "arm64")
         throw std::runtime_error("invalid Windows installer metadata architecture");
     validateChannel(m.channel);
@@ -252,21 +414,18 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
             throw std::runtime_error("invalid Windows installer source commit");
         }
     }
-    if ((!m.homepage.empty() && m.homepage.rfind("https://", 0) != 0) ||
-        (!m.documentationUrl.empty() && m.documentationUrl.rfind("https://", 0) != 0)) {
-        throw std::runtime_error("Windows installer public URLs must use HTTPS");
-    }
+    validateHttpsUrl(m.homepage, "homepage URL");
+    validateHttpsUrl(m.documentationUrl, "documentation URL");
     const bool hasUpdateUrl = !m.updateManifestUrl.empty();
     const bool hasUpdateKey = !m.updateRsaModulus.empty() || !m.updateRsaExponent.empty();
     if (hasUpdateUrl != hasUpdateKey)
         throw std::runtime_error(
             "Windows installer update metadata requires both an HTTPS URL and RSA public key");
     if (hasUpdateUrl) {
-        if (m.updateManifestUrl.rfind("https://", 0) != 0)
-            throw std::runtime_error("Windows installer update manifest URL must use HTTPS");
+        validateHttpsUrl(m.updateManifestUrl, "update manifest URL");
         if (m.updateRsaModulus.size() < 512U || m.updateRsaModulus.size() > 1024U ||
             m.updateRsaModulus.size() % 2U != 0U || !isLowerHex(m.updateRsaModulus) ||
-            m.updateRsaModulus.front() == '0') {
+            m.updateRsaModulus.front() < '8' || !isOddLowerHexDigit(m.updateRsaModulus.back())) {
             throw std::runtime_error(
                 "Windows installer update RSA modulus must be 2048-4096-bit lowercase hex");
         }
@@ -299,6 +458,14 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
     validateSha256(m.cleanupSha256);
     validateRelativePath(m.licenseEntry, "license entry");
     validateRelativePath(m.readmeEntry, "readme entry");
+    std::set<std::string> controlEntries = {"meta/installer-v2.txt"};
+    for (const std::string_view entry : {std::string_view(m.payloadEntry),
+                                         std::string_view(m.cleanupEntry),
+                                         std::string_view(m.licenseEntry),
+                                         std::string_view(m.readmeEntry)}) {
+        if (!controlEntries.insert(normalizedPathKey(std::string(entry))).second)
+            throw std::runtime_error("Windows installer control archive entries collide");
+    }
     validateRelativePath(m.installedManifestRelativePath, "installed manifest path");
     validateRelativePath(m.stateRelativePath, "state path");
     validateRelativePath(m.uninstallerRelativePath, "uninstaller path");
@@ -307,12 +474,23 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
         validateRelativePath(m.associationExecutable, "association executable");
     if (!m.pathRelativePath.empty())
         validateRelativePath(m.pathRelativePath, "PATH relative path");
+    if (m.addToPath && m.pathRelativePath.empty())
+        throw std::runtime_error("Windows installer PATH integration lacks a relative path");
+    if (m.createShortcuts && m.shortcuts.empty())
+        throw std::runtime_error("Windows installer shortcut integration lacks shortcuts");
+    if (m.components.size() > kMaximumComponents || m.payloadFiles.size() > kMaximumPayloadFiles ||
+        m.outerFiles.size() > kMaximumOuterFiles || m.shortcuts.size() > kMaximumShortcuts ||
+        m.associations.size() > kMaximumAssociations) {
+        throw std::runtime_error("Windows installer metadata contains too many typed records");
+    }
 
     std::set<std::string> components;
     bool hasCore = false;
     for (const auto &component : m.components) {
         validateIdentifier(component.id, "component id");
-        if (component.label.empty() || !components.insert(lowerAscii(component.id)).second)
+        validateText(component.label, "component label", 256U, false);
+        validateText(component.description, "component description", 2048U);
+        if (!components.insert(lowerAscii(component.id)).second)
             throw std::runtime_error("duplicate or unnamed Windows installer component");
         if (lowerAscii(component.id) == "core") {
             if (!component.required || !component.defaultSelected)
@@ -329,7 +507,7 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
     for (const auto &file : m.payloadFiles) {
         validateRelativePath(file.path, "payload path");
         validateSha256(file.sha256);
-        const std::string folded = lowerAscii(file.path);
+        const std::string folded = normalizedPathKey(file.path);
         if (!paths.insert(folded).second)
             throw std::runtime_error("duplicate Windows installer payload path");
         if (!file.componentId.empty() &&
@@ -339,16 +517,21 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
         if (file.sizeBytes > std::numeric_limits<uint64_t>::max() - summedSize)
             throw std::runtime_error("Windows installer payload size overflow");
         summedSize += file.sizeBytes;
-        componentSizes[file.componentId.empty() ? "core" : lowerAscii(file.componentId)] +=
-            file.sizeBytes;
+        uint64_t &componentSize =
+            componentSizes[file.componentId.empty() ? "core" : lowerAscii(file.componentId)];
+        if (file.sizeBytes > std::numeric_limits<uint64_t>::max() - componentSize)
+            throw std::runtime_error("Windows installer component size overflow");
+        componentSize += file.sizeBytes;
     }
     std::set<std::string> outerEntries;
     for (const auto &file : m.outerFiles) {
         validateRelativePath(file.overlayPath, "outer-file overlay path");
         validateRelativePath(file.path, "outer-file destination path");
         validateSha256(file.sha256);
-        if (!outerEntries.insert(lowerAscii(file.overlayPath)).second ||
-            !paths.insert(lowerAscii(file.path)).second) {
+        const std::string overlayKey = normalizedPathKey(file.overlayPath);
+        if (controlEntries.find(overlayKey) != controlEntries.end() ||
+            !outerEntries.insert(overlayKey).second ||
+            !paths.insert(normalizedPathKey(file.path)).second) {
             throw std::runtime_error("duplicate Windows installer outer-file record");
         }
         if (!file.componentId.empty() &&
@@ -359,13 +542,17 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
         if (file.sizeBytes > std::numeric_limits<uint64_t>::max() - summedSize)
             throw std::runtime_error("Windows installer payload size overflow");
         summedSize += file.sizeBytes;
-        componentSizes[file.componentId.empty() ? "core" : lowerAscii(file.componentId)] +=
-            file.sizeBytes;
+        uint64_t &componentSize =
+            componentSizes[file.componentId.empty() ? "core" : lowerAscii(file.componentId)];
+        if (file.sizeBytes > std::numeric_limits<uint64_t>::max() - componentSize)
+            throw std::runtime_error("Windows installer component size overflow");
+        componentSize += file.sizeBytes;
     }
     if (m.packageMode == "setup") {
         if (m.outerFiles.size() != 1U ||
-            lowerAscii(m.outerFiles.front().overlayPath) != "meta/uninstall.exe" ||
-            lowerAscii(m.outerFiles.front().path) != lowerAscii(m.uninstallerRelativePath) ||
+            normalizedPathKey(m.outerFiles.front().overlayPath) != "meta/uninstall.exe" ||
+            normalizedPathKey(m.outerFiles.front().path) !=
+                normalizedPathKey(m.uninstallerRelativePath) ||
             !m.outerFiles.front().componentId.empty()) {
             throw std::runtime_error(
                 "Windows setup metadata must contain one core maintenance executable");
@@ -381,13 +568,34 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
         if (component.sizeBytes != componentSizes[lowerAscii(component.id)])
             throw std::runtime_error("Windows installer component size does not match its payload");
     }
+    const auto requirePayload = [&](std::string_view relative, std::string_view field) {
+        if (!relative.empty() &&
+            paths.find(normalizedPathKey(std::string(relative))) == paths.end()) {
+            throw std::runtime_error("Windows installer " + std::string(field) +
+                                     " is absent from its payload inventory");
+        }
+    };
+    requirePayload(m.executableName, "primary executable");
+    requirePayload(m.associationExecutable, "association executable");
+    requirePayload(m.displayIconRelativePath, "display icon");
+    std::set<std::string> lifecyclePaths;
+    for (const auto relative : {std::string_view(m.installedManifestRelativePath),
+                                std::string_view(m.stateRelativePath)}) {
+        const std::string key = normalizedPathKey(std::string(relative));
+        if (!lifecyclePaths.insert(key).second || paths.find(key) != paths.end())
+            throw std::runtime_error("Windows installer lifecycle metadata path collides");
+    }
 
     std::set<std::string> shortcutPaths;
     for (const auto &shortcut : m.shortcuts) {
         validateRelativePath(shortcut.relativePath, "shortcut destination path");
+        if (shortcut.relativePath.size() < 4U ||
+            lowerAscii(shortcut.relativePath.substr(shortcut.relativePath.size() - 4U)) != ".lnk") {
+            throw std::runtime_error("Windows installer shortcut destination must end in .lnk");
+        }
         if (shortcut.root != "desktop" && shortcut.root != "start-menu")
             throw std::runtime_error("invalid Windows installer shortcut root");
-        const std::string key = shortcut.root + ":" + lowerAscii(shortcut.relativePath);
+        const std::string key = shortcut.root + ":" + normalizedPathKey(shortcut.relativePath);
         if (!shortcutPaths.insert(key).second)
             throw std::runtime_error("duplicate Windows installer shortcut destination");
         if (shortcut.targetRoot != "install" && shortcut.targetRoot != "windows")
@@ -409,8 +617,9 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
             if (ch < 0x21U || ch > 0x7EU || ch == '"' || ch == '\\')
                 throw std::runtime_error("unsafe Windows installer shortcut argument prefix");
         }
-        if (shortcut.description.empty())
-            throw std::runtime_error("Windows installer shortcut description is empty");
+        if (shortcut.argumentPrefix.size() > 128U)
+            throw std::runtime_error("Windows installer shortcut argument prefix is too long");
+        validateText(shortcut.description, "shortcut description", 1024U, false);
         if (shortcut.iconRoot.empty() != shortcut.iconPath.empty())
             throw std::runtime_error("incomplete Windows installer shortcut icon metadata");
         if (!shortcut.iconRoot.empty() && shortcut.iconRoot != "install" &&
@@ -419,6 +628,10 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
         }
         if (!shortcut.iconPath.empty())
             validateRelativePath(shortcut.iconPath, "shortcut icon path");
+        if (shortcut.targetRoot == "install")
+            requirePayload(shortcut.targetPath, "shortcut target");
+        if (shortcut.iconRoot == "install")
+            requirePayload(shortcut.iconPath, "shortcut icon");
         if (!shortcut.componentId.empty() &&
             components.find(lowerAscii(shortcut.componentId)) == components.end()) {
             throw std::runtime_error("shortcut references an unknown Windows installer component");
@@ -428,8 +641,35 @@ void validateMetadata(const WindowsInstallerMetadata &m) {
     std::set<std::string> extensions;
     std::set<std::string> progIds;
     for (const auto &assoc : m.associations) {
-        if (assoc.extension.size() < 2 || assoc.extension.front() != '.' || assoc.progId.empty())
+        if (assoc.extension.size() < 2U || assoc.extension.size() > 64U ||
+            assoc.extension.front() != '.' || assoc.extension.back() == '.' ||
+            !std::all_of(assoc.extension.begin() + 1, assoc.extension.end(), [](unsigned char ch) {
+                return isAsciiAlnum(ch) || ch == '.' || ch == '+' || ch == '-' || ch == '_';
+            })) {
             throw std::runtime_error("invalid Windows installer file association");
+        }
+        validateIdentifier(assoc.progId, "file association ProgID");
+        validateText(assoc.description, "file association description", 1024U, false);
+        validateText(assoc.mimeType, "file association MIME type", 256U);
+        if (!assoc.mimeType.empty()) {
+            const size_t slash = assoc.mimeType.find('/');
+            if (slash == std::string::npos || slash == 0U || slash + 1U == assoc.mimeType.size() ||
+                assoc.mimeType.find('/', slash + 1U) != std::string::npos ||
+                std::any_of(assoc.mimeType.begin(), assoc.mimeType.end(), [](unsigned char ch) {
+                    return !(isAsciiAlnum(ch) || ch == '/' || ch == '-' || ch == '+' || ch == '.' ||
+                             ch == '_' || ch == '!' || ch == '#' || ch == '$' || ch == '&' ||
+                             ch == '^');
+                })) {
+                throw std::runtime_error("invalid Windows installer file association MIME type");
+            }
+        }
+        if (assoc.arguments.size() > 512U ||
+            std::any_of(assoc.arguments.begin(), assoc.arguments.end(), [](unsigned char ch) {
+                return ch < 0x20U || ch >= 0x7FU || ch == '"' || ch == '&' || ch == '|' ||
+                       ch == '<' || ch == '>' || ch == '^' || ch == '%';
+            })) {
+            throw std::runtime_error("unsafe Windows installer file association arguments");
+        }
         if (!extensions.insert(lowerAscii(assoc.extension)).second ||
             !progIds.insert(lowerAscii(assoc.progId)).second) {
             throw std::runtime_error("duplicate Windows installer file association");
@@ -544,7 +784,7 @@ WindowsInstallerMetadata parseWindowsInstallerMetadata(std::string_view text) {
             const auto fields = splitTabs(line);
             const std::string key(fields.front());
             if (key == "component") {
-                if (fields.size() != 7)
+                if (fields.size() != 7 || result.components.size() >= kMaximumComponents)
                     throw std::runtime_error("malformed Windows installer component record");
                 result.components.push_back({decodeField(fields[1]),
                                              decodeField(fields[2]),
@@ -553,14 +793,14 @@ WindowsInstallerMetadata parseWindowsInstallerMetadata(std::string_view text) {
                                              parseBool(fields[5], key),
                                              parseUint64(fields[6], key)});
             } else if (key == "payload") {
-                if (fields.size() != 5)
+                if (fields.size() != 5 || result.payloadFiles.size() >= kMaximumPayloadFiles)
                     throw std::runtime_error("malformed Windows installer payload record");
                 result.payloadFiles.push_back({decodeField(fields[1]),
                                                std::string(fields[2]),
                                                parseUint64(fields[3], key),
                                                decodeField(fields[4])});
             } else if (key == "outer-file") {
-                if (fields.size() != 6)
+                if (fields.size() != 6 || result.outerFiles.size() >= kMaximumOuterFiles)
                     throw std::runtime_error("malformed Windows installer outer-file record");
                 result.outerFiles.push_back({decodeField(fields[1]),
                                              decodeField(fields[2]),
@@ -568,7 +808,7 @@ WindowsInstallerMetadata parseWindowsInstallerMetadata(std::string_view text) {
                                              parseUint64(fields[4], key),
                                              decodeField(fields[5])});
             } else if (key == "shortcut") {
-                if (fields.size() != 14)
+                if (fields.size() != 14 || result.shortcuts.size() >= kMaximumShortcuts)
                     throw std::runtime_error("malformed Windows installer shortcut record");
                 result.shortcuts.push_back({decodeField(fields[1]),
                                             decodeField(fields[2]),
@@ -584,7 +824,7 @@ WindowsInstallerMetadata parseWindowsInstallerMetadata(std::string_view text) {
                                             parseInt32(fields[12], key),
                                             decodeField(fields[13])});
             } else if (key == "association") {
-                if (fields.size() != 6)
+                if (fields.size() != 6 || result.associations.size() >= kMaximumAssociations)
                     throw std::runtime_error("malformed Windows installer association record");
                 result.associations.push_back({decodeField(fields[1]),
                                                decodeField(fields[2]),

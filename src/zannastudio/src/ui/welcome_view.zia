@@ -253,7 +253,7 @@ class WelcomeView {
     expose func SetShown(shown: Boolean) {
         if shown and host != null and content != null {
             ApplyResponsiveLayout();
-            var desiredWidth = ContentWidthForHost(host.GetWidth());
+            var desiredWidth = ContentWidthForHost(host.GetLogicalWidth());
             if desiredWidth < contentWidth - 0.5 or desiredWidth > contentWidth + 0.5 {
                 content.SetPreferredSize(desiredWidth, 0.0);
                 contentWidth = desiredWidth;
@@ -278,7 +278,7 @@ class WelcomeView {
     ///          720-by-520 workbench minimum.
     hide func ApplyResponsiveLayout() {
         if host == null { return; }
-        var hostHeight = host.GetHeight();
+        var hostHeight = host.GetLogicalHeight();
         // The first pre-layout frame reports no useful geometry. Preserve the
         // full default until the shell has arranged the workbench once.
         if hostHeight < 100.0 { return; }

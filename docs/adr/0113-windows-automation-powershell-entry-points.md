@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-18
+last-verified: 2026-07-23
 ---
 
 # ADR 0113: Use PowerShell for Windows Automation Entry Points
@@ -36,6 +36,12 @@ Existing environment-variable contracts and GNU-style arguments such as
 Windows release workflow uses `shell: pwsh` and invokes
 `scripts/build_zanna_win.ps1` as its canonical build entry point.
 
+`scripts/build_demos_win.cmd` is the one repository-owned compatibility entry
+point. It contains no build logic: it invokes `build_demos_win.ps1`, forwards
+the caller's complete argument list, and returns the exact PowerShell exit
+status. This preserves the established `cmd.exe` demo command while keeping
+PowerShell authoritative.
+
 Generated `.cmd` launchers inside an installer payload are outside this
 decision. They are product artifacts authored by the native packager and remain
 PowerShell-independent, as required by ADR 0103.
@@ -45,17 +51,19 @@ PowerShell-independent, as required by ADR 0103.
 - Windows automation gets native arrays, exception handling, structured path
   validation, and deterministic cleanup without command-shell quoting layers.
 - Contributor documentation and CI must reference the `.ps1` paths.
-- Callers running from `cmd.exe` must use `powershell -NoProfile
-  -ExecutionPolicy Bypass -File <script>`; PowerShell callers can invoke the
-  scripts directly.
+- Callers running other automation from `cmd.exe` must use `powershell
+  -NoProfile -ExecutionPolicy Bypass -File <script>`; the demo build may use
+  the tested compatibility shim. PowerShell callers can invoke the scripts
+  directly.
 - IL, verifier, runtime C ABI, package format, and installed launcher contracts
   do not change.
 
 ## Alternatives Considered
 
-- **Keep batch wrappers around PowerShell implementations.** Rejected because it
-  preserves duplicate public entry points and leaves repository-owned `.cmd`
-  files behind.
+- **Keep batch wrappers around every PowerShell implementation.** Rejected
+  because it preserves duplicate public entry points. The single demo shim is
+  retained only for its established command contract and is tested to remain a
+  logic-free forwarder.
 - **Open-code Windows commands in CI.** Rejected because local and release builds
   must share the same canonical validation script.
 - **Require PowerShell 7 only.** Rejected because supported Windows developer

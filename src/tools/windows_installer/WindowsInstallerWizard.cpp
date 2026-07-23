@@ -40,6 +40,7 @@
 #include <cwchar>
 #include <exception>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
@@ -284,14 +285,21 @@ std::wstring dependencySummary() {
     return result;
 }
 
-HRESULT CALLBACK hyperlinkCallback(HWND, UINT notification, WPARAM, LPARAM parameter, LONG_PTR) {
+HRESULT CALLBACK
+hyperlinkCallback(HWND window, UINT notification, WPARAM, LPARAM parameter, LONG_PTR) {
     if (notification == TDN_HYPERLINK_CLICKED && parameter) {
-        ShellExecuteW(nullptr,
-                      L"open",
-                      reinterpret_cast<const wchar_t *>(parameter),
-                      nullptr,
-                      nullptr,
-                      SW_SHOWNORMAL);
+        const HINSTANCE result = ShellExecuteW(nullptr,
+                                               L"open",
+                                               reinterpret_cast<const wchar_t *>(parameter),
+                                               nullptr,
+                                               nullptr,
+                                               SW_SHOWNORMAL);
+        if (reinterpret_cast<INT_PTR>(result) <= 32) {
+            MessageBoxW(window,
+                        L"Windows could not open that link.",
+                        L"Zanna Tools Setup",
+                        MB_OK | MB_ICONWARNING);
+        }
     }
     return S_OK;
 }
@@ -307,6 +315,8 @@ int showTaskDialog(HINSTANCE instance,
                    std::wstring_view expanded = {},
                    std::wstring_view verification = {},
                    bool *verificationChecked = nullptr) {
+    if (buttons.size() > std::numeric_limits<UINT>::max())
+        throw std::runtime_error("too many native setup dialog actions");
     TASKDIALOGCONFIG config{sizeof(config)};
     config.hInstance = instance;
     config.dwFlags =
@@ -420,6 +430,7 @@ struct CustomDialogContext {
     HFONT font{nullptr};
     bool scopeLocked{false};
     bool accepted{false};
+    InstallScope displayedScope{InstallScope::User};
     int virtualWidth{0};
     int virtualHeight{0};
 };
@@ -616,26 +627,29 @@ void acceptCustomDialog(CustomDialogContext &context) {
                     MB_OK | MB_ICONWARNING);
         return;
     }
-    context.options->scope =
+    HostOptions staged = *context.options;
+    staged.scope =
         SendDlgItemMessageW(context.window, kIdMachineScope, BM_GETCHECK, 0, 0) == BST_CHECKED
             ? InstallScope::Machine
             : InstallScope::User;
-    context.options->destination = destination;
-    context.options->selectedComponents.clear();
+    staged.destination = destination;
+    staged.selectedComponents.clear();
     for (const ComponentControl &component : context.components) {
         if (SendMessageW(component.checkbox, BM_GETCHECK, 0, 0) == BST_CHECKED)
-            context.options->selectedComponents.insert(component.metadata->id);
+            staged.selectedComponents.insert(component.metadata->id);
     }
-    context.options->componentsSpecified = true;
-    context.options->componentPreset = ComponentPreset::Unspecified;
-    context.options->addToPath =
+    staged.componentsSpecified = true;
+    staged.componentPreset = ComponentPreset::Unspecified;
+    staged.addToPath =
         SendDlgItemMessageW(context.window, kIdPath, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    context.options->registerAssociations =
+    staged.registerAssociations =
         SendDlgItemMessageW(context.window, kIdAssociations, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    context.options->createShortcuts =
+    staged.createShortcuts =
         SendDlgItemMessageW(context.window, kIdShortcuts, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    if (!DestroyWindow(context.window))
+        throw std::runtime_error("cannot close the native setup options window");
+    *context.options = std::move(staged);
     context.accepted = true;
-    DestroyWindow(context.window);
 }
 
 void scrollOptionsWindow(CustomDialogContext &context, int bar, int requestedPosition) {
@@ -746,7 +760,11 @@ LRESULT CALLBACK customWindowProcedure(HWND window, UINT message, WPARAM wParam,
     if (message == WM_NCCREATE) {
         const auto *create = reinterpret_cast<const CREATESTRUCTW *>(lParam);
         context = static_cast<CustomDialogContext *>(create->lpCreateParams);
-        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(context));
+        SetLastError(ERROR_SUCCESS);
+        if (SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(context)) == 0 &&
+            GetLastError() != ERROR_SUCCESS) {
+            return FALSE;
+        }
     }
     if (!context)
         return DefWindowProcW(window, message, wParam, lParam);
@@ -781,13 +799,29 @@ LRESULT CALLBACK customWindowProcedure(HWND window, UINT message, WPARAM wParam,
                 case kIdMachineScope: {
                     const InstallScope scope =
                         LOWORD(wParam) == kIdUserScope ? InstallScope::User : InstallScope::Machine;
-                    SetWindowTextW(context->destination,
-                                   defaultDestination(*context->package, scope).c_str());
-                    if (context->acceptButton)
-                        SendMessageW(context->acceptButton,
-                                     BCM_SETSHIELD,
-                                     0,
-                                     scope == InstallScope::Machine ? TRUE : FALSE);
+                    try {
+                        const std::wstring destination =
+                            defaultDestination(*context->package, scope).wstring();
+                        if (!SetWindowTextW(context->destination, destination.c_str()))
+                            throw std::runtime_error("cannot update the installation folder");
+                        context->displayedScope = scope;
+                        if (context->acceptButton)
+                            SendMessageW(context->acceptButton,
+                                         BCM_SETSHIELD,
+                                         0,
+                                         scope == InstallScope::Machine ? TRUE : FALSE);
+                    } catch (...) {
+                        CheckRadioButton(window,
+                                         kIdUserScope,
+                                         kIdMachineScope,
+                                         context->displayedScope == InstallScope::User
+                                             ? kIdUserScope
+                                             : kIdMachineScope);
+                        MessageBoxW(window,
+                                    L"Setup could not select the default installation folder.",
+                                    L"Zanna Tools Setup",
+                                    MB_OK | MB_ICONWARNING);
+                    }
                     return 0;
                 }
                 case kIdAccept:
@@ -833,6 +867,10 @@ LRESULT CALLBACK customWindowProcedure(HWND window, UINT message, WPARAM wParam,
         case WM_CLOSE:
             DestroyWindow(window);
             return 0;
+        case WM_NCDESTROY:
+            SetWindowLongPtrW(window, GWLP_USERDATA, 0);
+            context->window = nullptr;
+            break;
         default:
             break;
     }
@@ -880,6 +918,7 @@ bool showCustomDialog(HINSTANCE instance,
     context.initialScope = initialScope;
     context.initialComponents = initialComponents;
     context.scopeLocked = scopeLocked;
+    context.displayedScope = initialScope;
 
     NONCLIENTMETRICSW metrics{sizeof(metrics)};
     if (!SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(metrics), &metrics, 0))
@@ -888,18 +927,31 @@ bool showCustomDialog(HINSTANCE instance,
     if (!context.font)
         throw std::runtime_error("cannot create the Windows interface font");
 
+    struct DialogResources {
+        CustomDialogContext &context;
+
+        ~DialogResources() {
+            if (context.window && IsWindow(context.window))
+                DestroyWindow(context.window);
+            if (context.font)
+                DeleteObject(context.font);
+        }
+    } resources{context};
+
     const UINT dpi = GetDpiForSystem();
     const int componentHeight = static_cast<int>(package.metadata.components.size()) * 31;
     const int clientHeight = 460 + componentHeight;
     context.virtualWidth = scaled(680, dpi);
     context.virtualHeight = scaled(clientHeight, dpi);
     RECT bounds{0, 0, scaled(680, dpi), scaled(clientHeight, dpi)};
-    AdjustWindowRectExForDpi(&bounds,
-                             WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX | WS_MAXIMIZEBOX |
-                                 WS_VSCROLL | WS_HSCROLL,
-                             FALSE,
-                             WS_EX_DLGMODALFRAME,
-                             dpi);
+    if (!AdjustWindowRectExForDpi(&bounds,
+                                  WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX |
+                                      WS_MAXIMIZEBOX | WS_VSCROLL | WS_HSCROLL,
+                                  FALSE,
+                                  WS_EX_DLGMODALFRAME,
+                                  dpi)) {
+        throw std::runtime_error("cannot calculate the native setup window size");
+    }
     RECT workArea{};
     if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0)) {
         workArea = {0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
@@ -925,10 +977,8 @@ bool showCustomDialog(HINSTANCE instance,
                                      nullptr,
                                      instance,
                                      &context);
-    if (!context.window) {
-        DeleteObject(context.font);
+    if (!context.window)
         throw std::runtime_error("cannot create the native setup options window");
-    }
     SetWindowTheme(context.window, L"Explorer", nullptr);
     setControlFont(context.window, context.font);
 
@@ -1105,17 +1155,23 @@ bool showCustomDialog(HINSTANCE instance,
                                         25,
                                         kIdShortcuts,
                                         dpi);
-    const bool pathChecked = options.addToPath.value_or(package.metadata.addToPath);
+    const bool pathAvailable = !package.metadata.pathRelativePath.empty();
+    const bool associationAvailable = !package.metadata.associations.empty();
+    const bool shortcutAvailable = !package.metadata.shortcuts.empty();
+    const bool pathChecked =
+        pathAvailable && options.addToPath.value_or(package.metadata.addToPath);
     const bool associationChecked =
+        associationAvailable &&
         options.registerAssociations.value_or(package.metadata.registerFileAssociations);
-    const bool shortcutChecked = options.createShortcuts.value_or(package.metadata.createShortcuts);
+    const bool shortcutChecked =
+        shortcutAvailable && options.createShortcuts.value_or(package.metadata.createShortcuts);
     SendMessageW(pathOption, BM_SETCHECK, pathChecked ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(
         associationOption, BM_SETCHECK, associationChecked ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(shortcutOption, BM_SETCHECK, shortcutChecked ? BST_CHECKED : BST_UNCHECKED, 0);
-    EnableWindow(pathOption, !package.metadata.pathRelativePath.empty());
-    EnableWindow(associationOption, !package.metadata.associations.empty());
-    EnableWindow(shortcutOption, !package.metadata.shortcuts.empty());
+    EnableWindow(pathOption, pathAvailable);
+    EnableWindow(associationOption, associationAvailable);
+    EnableWindow(shortcutOption, shortcutAvailable);
 
     const int bottom = integrationY + 95;
     std::wstring note = L"Setup is self-contained and will not download dependencies. "
@@ -1163,13 +1219,17 @@ bool showCustomDialog(HINSTANCE instance,
     SetFocus(context.destination);
 
     MSG message{};
-    while (IsWindow(context.window) && GetMessageW(&message, nullptr, 0, 0) > 0) {
+    while (context.window && IsWindow(context.window)) {
+        const BOOL result = GetMessageW(&message, nullptr, 0, 0);
+        if (result == -1)
+            throw std::runtime_error("cannot read the native setup message queue");
+        if (result == 0)
+            break;
         if (!IsDialogMessageW(context.window, &message)) {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
     }
-    DeleteObject(context.font);
     return context.accepted;
 }
 
@@ -1196,6 +1256,8 @@ std::wstring selectedComponentSummary(const HostPackage &package,
         if (!result.empty())
             result += L", ";
         result += utf8ToWide(component.label);
+        if (component.sizeBytes > std::numeric_limits<uint64_t>::max() - bytes)
+            throw std::runtime_error("selected component size exceeds the supported range");
         bytes += component.sizeBytes;
     }
     result += L" (" + formatBytes(bytes) + L")";
@@ -1216,27 +1278,36 @@ HRESULT CALLBACK
 progressCallback(HWND window, UINT notification, WPARAM wParam, LPARAM, LONG_PTR data) {
     auto &context = *reinterpret_cast<ProgressContext *>(data);
     if (notification == TDN_CREATED) {
-        context.logger->setProgressCallback([window](std::wstring_view message) {
-            const std::wstring text(message);
-            SendMessageW(
-                window, TDM_SET_ELEMENT_TEXT, TDE_CONTENT, reinterpret_cast<LPARAM>(text.c_str()));
-        });
-        context.logger->setCancellationCallback(
-            [&context] { return context.cancellationRequested.load(); });
-        SendMessageW(window, TDM_ENABLE_BUTTON, IDOK, FALSE);
-        SendMessageW(window, TDM_SET_MARQUEE_PROGRESS_BAR, TRUE, 0);
-        SendMessageW(window, TDM_SET_PROGRESS_BAR_MARQUEE, TRUE, 35);
-        context.worker = std::thread([window, &context] {
-            try {
-                context.result = context.work();
-            } catch (...) {
-                context.failure = std::current_exception();
-            }
+        try {
+            context.logger->setProgressCallback([window](std::wstring_view message) {
+                const std::wstring text(message);
+                SendMessageW(window,
+                             TDM_SET_ELEMENT_TEXT,
+                             TDE_CONTENT,
+                             reinterpret_cast<LPARAM>(text.c_str()));
+            });
+            context.logger->setCancellationCallback(
+                [&context] { return context.cancellationRequested.load(); });
+            SendMessageW(window, TDM_ENABLE_BUTTON, IDOK, FALSE);
+            SendMessageW(window, TDM_SET_MARQUEE_PROGRESS_BAR, TRUE, 0);
+            SendMessageW(window, TDM_SET_PROGRESS_BAR_MARQUEE, TRUE, 35);
+            context.worker = std::thread([window, &context] {
+                try {
+                    context.result = context.work();
+                } catch (...) {
+                    context.failure = std::current_exception();
+                }
+                context.completed.store(true);
+                SendMessageW(window, TDM_ENABLE_BUTTON, IDCANCEL, FALSE);
+                SendMessageW(window, TDM_ENABLE_BUTTON, IDOK, TRUE);
+                SendMessageW(window, TDM_CLICK_BUTTON, IDOK, 0);
+            });
+        } catch (...) {
+            context.failure = std::current_exception();
             context.completed.store(true);
-            PostMessageW(window, TDM_ENABLE_BUTTON, IDCANCEL, FALSE);
-            PostMessageW(window, TDM_ENABLE_BUTTON, IDOK, TRUE);
-            PostMessageW(window, TDM_CLICK_BUTTON, IDOK, 0);
-        });
+            if (!PostMessageW(window, TDM_CLICK_BUTTON, IDOK, 0))
+                EndDialog(window, IDOK);
+        }
     } else if (notification == TDN_BUTTON_CLICKED && static_cast<int>(wParam) == IDCANCEL &&
                !context.completed.load()) {
         context.cancellationRequested.store(true);
@@ -1500,7 +1571,8 @@ void showInstallerFinish(HINSTANCE instance,
                                            ? package.metadata.associationExecutable
                                            : package.metadata.executableName;
     const fs::path primary = installRoot / utf8ToWide(launchRelative);
-    if (fs::is_regular_file(primary)) {
+    std::error_code fileError;
+    if (fs::is_regular_file(primary, fileError) && !fileError) {
         actionLabels.push_back(package.metadata.productKind == "toolchain"
                                    ? L"Launch Zanna Studio"
                                    : L"Launch " + utf8ToWide(package.metadata.displayName));
@@ -1509,8 +1581,11 @@ void showInstallerFinish(HINSTANCE instance,
     if (package.metadata.productKind == "toolchain") {
         actions.push_back({kFinishPrompt, L"Open Zanna Developer Prompt"});
         actions.push_back({kFinishQuickstart, L"Open the Windows quick start"});
-        if (fs::is_directory(installRoot / L"share" / L"zanna" / L"samples"))
+        fileError.clear();
+        if (fs::is_directory(installRoot / L"share" / L"zanna" / L"samples", fileError) &&
+            !fileError) {
             actions.push_back({kFinishSamples, L"Explore installed samples"});
+        }
         actions.push_back(
             {kFinishCopyVerification, L"Copy verification command\nUse it in any new terminal."});
     }

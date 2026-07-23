@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-22
+last-verified: 2026-07-23
 ---
 
 # Architecture Decision Records
@@ -180,6 +180,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 
 ## Release & Packaging
 
+- [ADR 0155](0155-map-msvc-float-classification-to-ucrt.md) — Map MSVC Float Classification to UCRT
 - [ADR 0113](0113-windows-automation-powershell-entry-points.md) — Use PowerShell for Windows Automation Entry Points
 - [ADR 0025](0025-windows-release-installer-workflow.md) — Windows Release Installer Workflow
 - [ADR 0073](0073-cross-platform-installer-release-pipeline.md) — Cross-Platform Installer Release Pipeline

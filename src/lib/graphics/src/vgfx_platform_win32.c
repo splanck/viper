@@ -109,6 +109,7 @@ static char *g_vgfx_win32_clipboard_text = NULL;
 typedef HRESULT(WINAPI *vgfx_win32_dwm_flush_fn)(void);
 static vgfx_win32_dwm_flush_fn g_vgfx_win32_dwm_flush = NULL;
 static LARGE_INTEGER g_vgfx_win32_qpc_frequency = {0};
+static volatile LONG g_vgfx_win32_cursor_visible = 1;
 
 static BOOL CALLBACK win32_resolve_dwm_once(PINIT_ONCE once, PVOID parameter, PVOID *context) {
     HMODULE module;
@@ -312,6 +313,29 @@ static BOOL win32_adjust_window_rect_for_scale(
     return AdjustWindowRectEx(rect, style, has_menu, exstyle);
 }
 
+/// @brief Read a 32-bit window style field without confusing a valid zero with API failure.
+static int win32_get_window_style(HWND hwnd, int index, LONG *out_value) {
+    LONG value;
+    if (!hwnd || !out_value)
+        return 0;
+    SetLastError(ERROR_SUCCESS);
+    value = GetWindowLongA(hwnd, index);
+    if (value == 0 && GetLastError() != ERROR_SUCCESS)
+        return 0;
+    *out_value = value;
+    return 1;
+}
+
+/// @brief Write a 32-bit window style field without confusing a zero previous value with failure.
+static int win32_set_window_style(HWND hwnd, int index, LONG value) {
+    LONG previous;
+    if (!hwnd)
+        return 0;
+    SetLastError(ERROR_SUCCESS);
+    previous = SetWindowLongA(hwnd, index, value);
+    return previous != 0 || GetLastError() == ERROR_SUCCESS;
+}
+
 static HCURSOR win32_cursor_handle(int32_t type) {
     static LPCTSTR const s_cursor_ids[] = {
         IDC_ARROW,    /* 0: default */
@@ -358,8 +382,17 @@ static BOOL CALLBACK win32_set_dpi_awareness_once(PINIT_ONCE init_once,
     if (user32) {
         typedef BOOL(WINAPI * SPDA_fn)(HANDLE);
         SPDA_fn fn = (SPDA_fn)(void *)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
-        if (fn)
-            fn((HANDLE)(intptr_t)(-2)); /* DPI_AWARENESS_CONTEXT_SYSTEM_AWARE */
+        if (fn) {
+            /* This adapter exposes one process-wide display scale and converts public
+             * coordinates against it, so opt into the matching system-aware model. */
+            (void)fn((HANDLE)(intptr_t)(-2));
+        } else {
+            typedef BOOL(WINAPI * SetProcessDPIAwareFn)(void);
+            SetProcessDPIAwareFn legacy =
+                (SetProcessDPIAwareFn)(void *)GetProcAddress(user32, "SetProcessDPIAware");
+            if (legacy)
+                (void)legacy();
+        }
     }
     return TRUE;
 }
@@ -882,7 +915,7 @@ static void win32_enqueue_ime_boundary(struct vgfx_window *win,
 ///            - WM_KEYDOWN/WM_KEYUP: Keyboard input
 ///            - WM_MOUSEMOVE: Mouse movement
 ///            - WM_LBUTTONDOWN/UP, WM_RBUTTONDOWN/UP, WM_MBUTTONDOWN/UP: Mouse buttons
-static void win32_apply_cursor_clip(struct vgfx_window *win, int enable);
+static int win32_apply_cursor_clip(struct vgfx_window *win, int enable);
 
 static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
     /* Retrieve vgfx_window pointer stored in GWLP_USERDATA */
@@ -968,13 +1001,18 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
 
             RECT *suggested = (RECT *)lparam;
             if (suggested) {
-                SetWindowPos(hwnd,
-                             NULL,
-                             suggested->left,
-                             suggested->top,
-                             suggested->right - suggested->left,
-                             suggested->bottom - suggested->top,
-                             SWP_NOZORDER | SWP_NOACTIVATE);
+                int64_t suggested_width = (int64_t)suggested->right - suggested->left;
+                int64_t suggested_height = (int64_t)suggested->bottom - suggested->top;
+                if (suggested_width > 0 && suggested_width <= INT_MAX && suggested_height > 0 &&
+                    suggested_height <= INT_MAX) {
+                    (void)SetWindowPos(hwnd,
+                                       NULL,
+                                       suggested->left,
+                                       suggested->top,
+                                       (int)suggested_width,
+                                       (int)suggested_height,
+                                       SWP_NOZORDER | SWP_NOACTIVATE);
+                }
             }
             if (w32 && w32->hwnd) {
                 RECT client = {0};
@@ -992,7 +1030,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             vgfx_internal_set_focus_state(win, 1);
             /* Re-confine the cursor while relative (raw) mouse mode is on. */
             if (win->relative_mouse_enabled)
-                win32_apply_cursor_clip(win, 1);
+                (void)win32_apply_cursor_clip(win, 1);
             vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
@@ -1012,7 +1050,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             /* Release the cursor clip so the rest of the desktop is usable
              * while unfocused (re-applied on WM_SETFOCUS). */
             if (win->relative_mouse_enabled)
-                win32_apply_cursor_clip(win, 0);
+                (void)win32_apply_cursor_clip(win, 0);
             vgfx_event_t event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
             vgfx_internal_enqueue_event(win, &event);
             return 0;
@@ -1293,7 +1331,8 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_MOUSEWHEEL:
         case WM_MOUSEHWHEEL: {
             POINT pt = {GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-            ScreenToClient(hwnd, &pt);
+            if (!ScreenToClient(hwnd, &pt))
+                return 0;
             int32_t x = 0;
             int32_t y = 0;
             win32_client_to_physical_mouse(win, (int32_t)pt.x, (int32_t)pt.y, &x, &y);
@@ -2044,52 +2083,103 @@ void vgfx_platform_set_title(struct vgfx_window *win, const char *title) {
 /// @param fullscreen 1 for fullscreen, 0 for windowed
 /// @return 1 on success, 0 on failure
 int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
+    vgfx_win32_data *w32;
+    LONG current_style;
+    LONG current_exstyle;
+    RECT current_rect;
+    int64_t current_width;
+    int64_t current_height;
+
     if (!win || !win->platform_data)
         return 0;
 
-    vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+    w32 = (vgfx_win32_data *)win->platform_data;
     if (!w32->hwnd)
         return 0;
+    fullscreen = fullscreen ? 1 : 0;
+    if (fullscreen == w32->is_fullscreen)
+        return 1;
+    if (!win32_get_window_style(w32->hwnd, GWL_STYLE, &current_style) ||
+        !win32_get_window_style(w32->hwnd, GWL_EXSTYLE, &current_exstyle) ||
+        !GetWindowRect(w32->hwnd, &current_rect)) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to snapshot Win32 window state");
+        return 0;
+    }
+    current_width = (int64_t)current_rect.right - current_rect.left;
+    current_height = (int64_t)current_rect.bottom - current_rect.top;
+    if (current_width <= 0 || current_width > INT_MAX || current_height <= 0 ||
+        current_height > INT_MAX) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Win32 window bounds are invalid");
+        return 0;
+    }
 
-    if (fullscreen && !w32->is_fullscreen) {
-        /* Save current window state */
-        w32->saved_style = (DWORD)GetWindowLong(w32->hwnd, GWL_STYLE);
-        w32->saved_exstyle = (DWORD)GetWindowLong(w32->hwnd, GWL_EXSTYLE);
-        GetWindowRect(w32->hwnd, &w32->saved_rect);
-        w32->is_fullscreen = 1;
-
-        /* Get monitor info for the monitor containing this window */
+    if (fullscreen) {
         HMONITOR hMonitor = MonitorFromWindow(w32->hwnd, MONITOR_DEFAULTTONEAREST);
         MONITORINFO mi = {sizeof(mi)};
-        GetMonitorInfo(hMonitor, &mi);
-
-        /* Remove window decorations and maximize to monitor size */
-        SetWindowLong(w32->hwnd, GWL_STYLE, w32->saved_style & ~(WS_CAPTION | WS_THICKFRAME));
-        SetWindowLong(w32->hwnd,
-                      GWL_EXSTYLE,
-                      w32->saved_exstyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE |
-                                             WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
-
-        SetWindowPos(w32->hwnd,
-                     HWND_TOP,
-                     mi.rcMonitor.left,
-                     mi.rcMonitor.top,
-                     mi.rcMonitor.right - mi.rcMonitor.left,
-                     mi.rcMonitor.bottom - mi.rcMonitor.top,
-                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-    } else if (!fullscreen && w32->is_fullscreen) {
-        /* Restore previous window state */
-        SetWindowLong(w32->hwnd, GWL_STYLE, w32->saved_style);
-        SetWindowLong(w32->hwnd, GWL_EXSTYLE, w32->saved_exstyle);
-
-        SetWindowPos(w32->hwnd,
-                     NULL,
-                     w32->saved_rect.left,
-                     w32->saved_rect.top,
-                     w32->saved_rect.right - w32->saved_rect.left,
-                     w32->saved_rect.bottom - w32->saved_rect.top,
-                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-
+        LONG fullscreen_style = current_style & ~(WS_CAPTION | WS_THICKFRAME);
+        LONG fullscreen_exstyle = current_exstyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE |
+                                                      WS_EX_CLIENTEDGE | WS_EX_STATICEDGE);
+        int64_t monitor_width;
+        int64_t monitor_height;
+        if (!hMonitor || !GetMonitorInfo(hMonitor, &mi)) {
+            vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to query the Win32 monitor");
+            return 0;
+        }
+        monitor_width = (int64_t)mi.rcMonitor.right - mi.rcMonitor.left;
+        monitor_height = (int64_t)mi.rcMonitor.bottom - mi.rcMonitor.top;
+        if (monitor_width <= 0 || monitor_width > INT_MAX || monitor_height <= 0 ||
+            monitor_height > INT_MAX ||
+            !win32_set_window_style(w32->hwnd, GWL_STYLE, fullscreen_style) ||
+            !win32_set_window_style(w32->hwnd, GWL_EXSTYLE, fullscreen_exstyle) ||
+            !SetWindowPos(w32->hwnd,
+                          HWND_TOP,
+                          mi.rcMonitor.left,
+                          mi.rcMonitor.top,
+                          (int)monitor_width,
+                          (int)monitor_height,
+                          SWP_NOOWNERZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)) {
+            (void)win32_set_window_style(w32->hwnd, GWL_STYLE, current_style);
+            (void)win32_set_window_style(w32->hwnd, GWL_EXSTYLE, current_exstyle);
+            (void)SetWindowPos(w32->hwnd,
+                               NULL,
+                               current_rect.left,
+                               current_rect.top,
+                               (int)current_width,
+                               (int)current_height,
+                               SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to enter Win32 fullscreen mode");
+            return 0;
+        }
+        w32->saved_style = (DWORD)current_style;
+        w32->saved_exstyle = (DWORD)current_exstyle;
+        w32->saved_rect = current_rect;
+        w32->is_fullscreen = 1;
+    } else {
+        int64_t saved_width = (int64_t)w32->saved_rect.right - w32->saved_rect.left;
+        int64_t saved_height = (int64_t)w32->saved_rect.bottom - w32->saved_rect.top;
+        if (saved_width <= 0 || saved_width > INT_MAX || saved_height <= 0 ||
+            saved_height > INT_MAX ||
+            !win32_set_window_style(w32->hwnd, GWL_STYLE, (LONG)w32->saved_style) ||
+            !win32_set_window_style(w32->hwnd, GWL_EXSTYLE, (LONG)w32->saved_exstyle) ||
+            !SetWindowPos(w32->hwnd,
+                          NULL,
+                          w32->saved_rect.left,
+                          w32->saved_rect.top,
+                          (int)saved_width,
+                          (int)saved_height,
+                          SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED)) {
+            (void)win32_set_window_style(w32->hwnd, GWL_STYLE, current_style);
+            (void)win32_set_window_style(w32->hwnd, GWL_EXSTYLE, current_exstyle);
+            (void)SetWindowPos(w32->hwnd,
+                               NULL,
+                               current_rect.left,
+                               current_rect.top,
+                               (int)current_width,
+                               (int)current_height,
+                               SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to leave Win32 fullscreen mode");
+            return 0;
+        }
         w32->is_fullscreen = 0;
     }
 
@@ -2174,8 +2264,9 @@ void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y) {
     if (!win || !win->platform_data)
         return;
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
-    if (w32->hwnd)
-        SetWindowPos(w32->hwnd, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+    if (w32->hwnd && !SetWindowPos(w32->hwnd, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER)) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to move the Win32 window");
+    }
 }
 
 /// @brief Bring the window to the foreground and give it focus.
@@ -2227,17 +2318,22 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t type) {
 
 /// @brief Show or hide the mouse cursor.
 void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) {
+    LONG previous;
+    int count;
     (void)win;
-    /* ShowCursor is reference-counted; track the state manually to avoid drift */
-    static int32_t s_cursor_visible = 1;
-    int want = visible ? 1 : 0;
-    if (want == s_cursor_visible)
+    visible = visible ? 1 : 0;
+    previous = InterlockedExchange(&g_vgfx_win32_cursor_visible, visible);
+    if (previous == visible)
         return;
-    s_cursor_visible = want;
-    if (want)
-        ShowCursor(TRUE);
-    else
-        ShowCursor(FALSE);
+    /* ShowCursor owns a reference count. Converge on the requested sign while bounding the loop
+     * in case unrelated host code has moved the counter an unreasonable distance. */
+    for (int attempt = 0; attempt < 128; attempt++) {
+        count = ShowCursor(visible ? TRUE : FALSE);
+        if ((visible && count >= 0) || (!visible && count < 0))
+            return;
+    }
+    (void)InterlockedExchange(&g_vgfx_win32_cursor_visible, previous);
+    vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Win32 cursor visibility counter did not converge");
 }
 
 void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h) {
@@ -2270,27 +2366,36 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     if (!win || !win->platform_data)
         return;
     vgfx_win32_data *data = (vgfx_win32_data *)win->platform_data;
-    if (!data->hwnd)
+    if (!data->hwnd || data->is_fullscreen)
         return;
     int32_t client_w = win32_logical_window_to_client_coord(win, w);
     int32_t client_h = win32_logical_window_to_client_coord(win, h);
     if (client_w <= 0 || client_h <= 0 || client_w > VGFX_MAX_WIDTH || client_h > VGFX_MAX_HEIGHT)
         return;
     RECT rect = {0, 0, client_w, client_h};
-    DWORD style = (DWORD)GetWindowLong(data->hwnd, GWL_STYLE);
-    DWORD exstyle = (DWORD)GetWindowLong(data->hwnd, GWL_EXSTYLE);
-    win32_adjust_window_rect_for_scale(win, &rect, style, FALSE, exstyle);
+    LONG style_value;
+    LONG exstyle_value;
+    if (!win32_get_window_style(data->hwnd, GWL_STYLE, &style_value) ||
+        !win32_get_window_style(data->hwnd, GWL_EXSTYLE, &exstyle_value) ||
+        !win32_adjust_window_rect_for_scale(
+            win, &rect, (DWORD)style_value, FALSE, (DWORD)exstyle_value)) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to calculate Win32 window bounds");
+        return;
+    }
     int64_t window_w = (int64_t)rect.right - (int64_t)rect.left;
     int64_t window_h = (int64_t)rect.bottom - (int64_t)rect.top;
     if (window_w <= 0 || window_h <= 0 || window_w > INT_MAX || window_h > INT_MAX)
         return;
-    SetWindowPos(data->hwnd,
-                 NULL,
-                 0,
-                 0,
-                 (int)window_w,
-                 (int)window_h,
-                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    if (!SetWindowPos(data->hwnd,
+                      NULL,
+                      0,
+                      0,
+                      (int)window_w,
+                      (int)window_h,
+                      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE)) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to resize the Win32 window");
+        return;
+    }
     RECT client = {0};
     if (GetClientRect(data->hwnd, &client)) {
         int client_w = (int)(client.right - client.left);
@@ -2351,37 +2456,40 @@ void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
     if (!window || !window->platform_data)
         return;
     vgfx_win32_data *w32 = (vgfx_win32_data *)window->platform_data;
+    if (!w32->hwnd)
+        return;
     POINT pt = {(LONG)win32_public_to_client_coord(window, x),
                 (LONG)win32_public_to_client_coord(window, y)};
-    ClientToScreen(w32->hwnd, &pt);
-    SetCursorPos(pt.x, pt.y);
+    if (!ClientToScreen(w32->hwnd, &pt) || !SetCursorPos(pt.x, pt.y))
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to warp the Win32 cursor");
 }
 
 /// @brief Confine or release the OS cursor to the window's client rect.
 /// @details Used by relative mouse mode: raw WM_INPUT deltas drive look
 ///          motion, while the (hidden) system cursor is clipped so stray
 ///          movement can't click a different window or monitor.
-static void win32_apply_cursor_clip(struct vgfx_window *win, int enable) {
+static int win32_apply_cursor_clip(struct vgfx_window *win, int enable) {
     if (!win || !win->platform_data) {
-        ClipCursor(NULL);
-        return;
+        return ClipCursor(NULL) ? 1 : 0;
     }
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
     if (!enable || !w32->hwnd) {
-        ClipCursor(NULL);
-        return;
+        return ClipCursor(NULL) ? 1 : 0;
     }
     RECT client = {0};
     if (!GetClientRect(w32->hwnd, &client)) {
-        ClipCursor(NULL);
-        return;
+        (void)ClipCursor(NULL);
+        return 0;
     }
     POINT tl = {client.left, client.top};
     POINT br = {client.right, client.bottom};
-    ClientToScreen(w32->hwnd, &tl);
-    ClientToScreen(w32->hwnd, &br);
+    if (!ClientToScreen(w32->hwnd, &tl) || !ClientToScreen(w32->hwnd, &br) || br.x <= tl.x ||
+        br.y <= tl.y) {
+        (void)ClipCursor(NULL);
+        return 0;
+    }
     RECT screen_rect = {tl.x, tl.y, br.x, br.y};
-    ClipCursor(&screen_rect);
+    return ClipCursor(&screen_rect) ? 1 : 0;
 }
 
 int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
@@ -2408,7 +2516,14 @@ int vgfx_platform_set_relative_mouse(struct vgfx_window *win, int enabled) {
         ClipCursor(NULL);
         return 0;
     }
-    win32_apply_cursor_clip(win, enabled);
+    if (!win32_apply_cursor_clip(win, enabled)) {
+        if (enabled) {
+            rid.dwFlags = RIDEV_REMOVE;
+            rid.hwndTarget = NULL;
+            (void)RegisterRawInputDevices(&rid, 1, sizeof(rid));
+        }
+        return 0;
+    }
     return 1;
 }
 

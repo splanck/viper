@@ -309,10 +309,18 @@ std::optional<std::wstring_view> terminatedWideView(const std::array<wchar_t, Si
 }
 
 std::string lowerAscii(std::string value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) -> char {
+        return static_cast<char>(ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch);
     });
     return value;
+}
+
+bool isAsciiAlpha(unsigned char ch) {
+    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+}
+
+bool isAsciiAlnum(unsigned char ch) {
+    return isAsciiAlpha(ch) || (ch >= '0' && ch <= '9');
 }
 
 std::string slashPath(std::string value) {
@@ -333,7 +341,7 @@ std::string normalizedPathKey(std::string value) {
 
 void validateRelativePath(std::string_view path) {
     if (path.empty() || path.size() >= 32760 || path.front() == '/' || path.front() == '\\' ||
-        (path.size() >= 2 && std::isalpha(static_cast<unsigned char>(path[0])) && path[1] == ':')) {
+        (path.size() >= 2 && isAsciiAlpha(static_cast<unsigned char>(path[0])) && path[1] == ':')) {
         throw std::runtime_error("unsafe install-relative path");
     }
     size_t start = 0;
@@ -343,11 +351,22 @@ void validateRelativePath(std::string_view path) {
             path.substr(start, end == std::string_view::npos ? path.size() - start : end - start);
         if (segment.empty() || segment == "." || segment == "..")
             throw std::runtime_error("unsafe install-relative path");
+        if (segment.back() == '.' || segment.back() == ' ')
+            throw std::runtime_error("install-relative path has an unsafe trailing character");
         for (unsigned char ch : segment) {
             if (ch < 0x20U || ch == 0x7FU || ch == ':' || ch == '*' || ch == '?' || ch == '"' ||
                 ch == '<' || ch == '>' || ch == '|') {
                 throw std::runtime_error("unsafe character in install-relative path");
             }
+        }
+        const size_t dot = segment.find('.');
+        const std::string base = lowerAscii(
+            std::string(segment.substr(0, dot == std::string_view::npos ? segment.size() : dot)));
+        const bool numberedDevice = base.size() == 4U &&
+                                    (base.rfind("com", 0) == 0 || base.rfind("lpt", 0) == 0) &&
+                                    base[3] >= '1' && base[3] <= '9';
+        if (base == "con" || base == "prn" || base == "aux" || base == "nul" || numberedDevice) {
+            throw std::runtime_error("install-relative path uses a reserved Windows device name");
         }
         if (end == std::string_view::npos)
             break;
@@ -494,8 +513,14 @@ std::optional<DWORD> queryRegistryDword(HKEY key, std::wstring_view name) {
     DWORD size = sizeof(value);
     const LONG result = RegQueryValueExW(
         key, std::wstring(name).c_str(), nullptr, &type, reinterpret_cast<BYTE *>(&value), &size);
-    if (result != ERROR_SUCCESS || type != REG_DWORD || size != sizeof(value))
+    if (result == ERROR_FILE_NOT_FOUND)
         return std::nullopt;
+    if (result != ERROR_SUCCESS) {
+        throw std::runtime_error("cannot read Windows registry value: " +
+                                 wideToUtf8(formatWindowsError(static_cast<DWORD>(result))));
+    }
+    if (type != REG_DWORD || size != sizeof(value))
+        throw std::runtime_error("Windows installer registry value has an invalid type or size");
     return value;
 }
 
@@ -606,12 +631,18 @@ fs::path cacheExecutablePath(InstallScope scope, std::string_view identifier) {
 bool isProcessElevated() {
     HANDLE rawToken = nullptr;
     if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &rawToken))
-        return false;
+        throw std::runtime_error("cannot query the installer process token: " +
+                                 wideToUtf8(formatWindowsError(GetLastError())));
     UniqueHandle token(rawToken);
     TOKEN_ELEVATION elevation{};
     DWORD size = 0;
-    return GetTokenInformation(token.get(), TokenElevation, &elevation, sizeof(elevation), &size) &&
-           elevation.TokenIsElevated != 0;
+    if (!GetTokenInformation(token.get(), TokenElevation, &elevation, sizeof(elevation), &size)) {
+        throw std::runtime_error("cannot query installer elevation state: " +
+                                 wideToUtf8(formatWindowsError(GetLastError())));
+    }
+    if (size != sizeof(elevation))
+        throw std::runtime_error("Windows returned an invalid installer elevation record");
+    return elevation.TokenIsElevated != 0;
 }
 
 std::wstring operationSwitch(Operation operation) {
@@ -701,7 +732,7 @@ std::vector<int> parseVersion(std::string_view version, std::string &prerelease)
             std::any_of(build.begin(),
                         build.end(),
                         [](char ch) {
-                            return !(std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' ||
+                            return !(isAsciiAlnum(static_cast<unsigned char>(ch)) || ch == '-' ||
                                      ch == '.');
                         }) ||
             build.front() == '.' || build.back() == '.' || build.find("..") != std::string::npos) {
@@ -716,7 +747,7 @@ std::vector<int> parseVersion(std::string_view version, std::string &prerelease)
         if (prerelease.empty() || prerelease.front() == '.' || prerelease.back() == '.' ||
             prerelease.find("..") != std::string::npos ||
             std::any_of(prerelease.begin(), prerelease.end(), [](char ch) {
-                return !(std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '.');
+                return !(isAsciiAlnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '.');
             })) {
             throw std::runtime_error("package version has an invalid prerelease identifier");
         }
@@ -890,19 +921,30 @@ void ensureParentWritable(const fs::path &path) {
         existing = existing.parent_path();
     if (existing.empty())
         throw std::runtime_error("installation destination has no existing parent directory");
-    const fs::path probe =
-        existing / (L".zanna-write-probe-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
-                    hashHex(GetTickCount64()));
-    UniqueHandle file(CreateFileW(probe.c_str(),
-                                  GENERIC_WRITE,
-                                  0,
-                                  nullptr,
-                                  CREATE_NEW,
-                                  FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE,
-                                  nullptr));
-    if (!file)
-        throw std::runtime_error("installation destination is not writable: " +
-                                 wideToUtf8(formatWindowsError(GetLastError())));
+    DWORD lastError = ERROR_FILE_EXISTS;
+    for (unsigned attempt = 0; attempt < 64U; ++attempt) {
+        LARGE_INTEGER counter{};
+        QueryPerformanceCounter(&counter);
+        const uint64_t nonce = static_cast<uint64_t>(counter.QuadPart) ^ (GetTickCount64() << 1U) ^
+                               (static_cast<uint64_t>(GetCurrentThreadId()) << 32U) ^ attempt;
+        const fs::path probe =
+            existing / (L".zanna-write-probe-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+                        hashHex(nonce));
+        UniqueHandle file(CreateFileW(probe.c_str(),
+                                      GENERIC_WRITE,
+                                      0,
+                                      nullptr,
+                                      CREATE_NEW,
+                                      FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE,
+                                      nullptr));
+        if (file)
+            return;
+        lastError = GetLastError();
+        if (lastError != ERROR_FILE_EXISTS && lastError != ERROR_ALREADY_EXISTS)
+            break;
+    }
+    throw std::runtime_error("installation destination is not writable: " +
+                             wideToUtf8(formatWindowsError(lastError)));
 }
 
 std::set<std::string> selectComponents(const HostPackage &package,
@@ -922,10 +964,18 @@ std::set<std::string> selectComponents(const HostPackage &package,
         result = known;
     } else if (existing.present && !existing.components.empty() &&
                options.componentPreset == ComponentPreset::Unspecified) {
-        result = existing.components;
+        result.clear();
+        for (const std::string &component : existing.components) {
+            const std::string normalized = lowerAscii(component);
+            if (known.find(normalized) != known.end())
+                result.insert(normalized);
+        }
     }
-    if (options.componentsSpecified)
-        result = options.selectedComponents;
+    if (options.componentsSpecified) {
+        result.clear();
+        for (const std::string &component : options.selectedComponents)
+            result.insert(lowerAscii(component));
+    }
     for (const std::string &component : result) {
         if (known.find(component) == known.end())
             throw std::runtime_error("unknown installer component: " + component);
@@ -1029,6 +1079,11 @@ InstallationPlan makePlan(const HostPackage &package,
                          : package.metadata.registerFileAssociations);
     plan.createShortcuts = options.createShortcuts.value_or(
         existingSettings ? plan.existing.createShortcuts : package.metadata.createShortcuts);
+    plan.addToPath = plan.addToPath && !package.metadata.pathRelativePath.empty();
+    plan.registerAssociations = plan.registerAssociations &&
+                                !package.metadata.associations.empty() &&
+                                !package.metadata.associationExecutable.empty();
+    plan.createShortcuts = plan.createShortcuts && !package.metadata.shortcuts.empty();
     if (plan.registerAssociations && !package.metadata.associationExecutable.empty()) {
         const std::string associationPath =
             normalizedPathKey(package.metadata.associationExecutable);
@@ -1102,8 +1157,11 @@ uint64_t preservedDirectoryBytes(const fs::path &root, const std::set<std::strin
         if (error)
             throw std::runtime_error("cannot enumerate existing installation for disk preflight");
         const DWORD attributes = GetFileAttributesW(it->path().c_str());
-        if (attributes != INVALID_FILE_ATTRIBUTES &&
-            (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+        if (attributes == INVALID_FILE_ATTRIBUTES) {
+            throw std::runtime_error("cannot inspect an existing installation entry: " +
+                                     wideToUtf8(formatWindowsError(GetLastError())));
+        }
+        if ((attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
             throw std::runtime_error("existing installation contains a reparse point");
         }
         if (it->is_regular_file(error)) {

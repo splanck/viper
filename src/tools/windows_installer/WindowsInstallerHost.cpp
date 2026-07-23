@@ -48,6 +48,8 @@ namespace fs = std::filesystem;
 namespace zanna::installer {
 namespace {
 
+constexpr uint64_t kMaximumInstallerExecutableBytes = 2ULL * 1024ULL * 1024ULL * 1024ULL;
+
 uint16_t readLe16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8U);
 }
@@ -58,17 +60,21 @@ uint32_t readLe32(const uint8_t *p) {
 }
 
 std::wstring lowerWide(std::wstring value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
-        return static_cast<wchar_t>(towlower(ch));
+    std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) -> wchar_t {
+        return ch >= L'A' && ch <= L'Z' ? static_cast<wchar_t>(ch + (L'a' - L'A')) : ch;
     });
     return value;
 }
 
 std::string lowerAscii(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-        return static_cast<char>(std::tolower(ch));
+        return static_cast<char>(ch >= 'A' && ch <= 'Z' ? ch + ('a' - 'A') : ch);
     });
     return value;
+}
+
+bool isAsciiAlnum(unsigned char ch) {
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9');
 }
 
 std::vector<uint8_t> readWholeFile(const fs::path &path) {
@@ -76,7 +82,7 @@ std::vector<uint8_t> readWholeFile(const fs::path &path) {
     if (!input)
         throw std::runtime_error("cannot open installer executable");
     const std::streamoff end = input.tellg();
-    if (end < 0 ||
+    if (end < 0 || static_cast<uint64_t>(end) > kMaximumInstallerExecutableBytes ||
         static_cast<uint64_t>(end) > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
         throw std::runtime_error("installer executable is too large");
     }
@@ -84,6 +90,8 @@ std::vector<uint8_t> readWholeFile(const fs::path &path) {
     input.seekg(0, std::ios::beg);
     if (!bytes.empty() && !input.read(reinterpret_cast<char *>(bytes.data()), end))
         throw std::runtime_error("cannot read installer executable");
+    if (input.peek() != std::ifstream::traits_type::eof())
+        throw std::runtime_error("installer executable changed while it was being read");
     return bytes;
 }
 
@@ -105,14 +113,21 @@ OverlayRange locateZipOverlay(const std::vector<uint8_t> &bytes) {
         if (readLe32(bytes.data() + pos) == kEocdSignature) {
             const uint16_t commentLength = readLe16(bytes.data() + pos + 20);
             const size_t eocdEnd = pos + 22U + commentLength;
-            if (eocdEnd <= bytes.size()) {
+            if (eocdEnd == bytes.size()) {
+                const uint16_t diskNumber = readLe16(bytes.data() + pos + 4U);
+                const uint16_t centralDisk = readLe16(bytes.data() + pos + 6U);
+                const uint16_t entriesOnDisk = readLe16(bytes.data() + pos + 8U);
+                const uint16_t totalEntries = readLe16(bytes.data() + pos + 10U);
                 const uint32_t centralSize = readLe32(bytes.data() + pos + 12);
                 const uint32_t centralOffset = readLe32(bytes.data() + pos + 16);
                 const uint64_t prefixDistance = static_cast<uint64_t>(centralSize) + centralOffset;
-                if (prefixDistance <= pos) {
+                if (diskNumber == 0U && centralDisk == 0U && entriesOnDisk != 0U &&
+                    entriesOnDisk == totalEntries && totalEntries != UINT16_MAX &&
+                    centralSize != 0U && centralOffset != UINT32_MAX && centralSize != UINT32_MAX &&
+                    prefixDistance <= pos) {
                     const size_t start = pos - static_cast<size_t>(prefixDistance);
                     const uint64_t centralAbsolute = static_cast<uint64_t>(start) + centralOffset;
-                    if (centralAbsolute + 4U <= pos &&
+                    if (centralAbsolute + centralSize == pos && centralAbsolute + 4U <= pos &&
                         readLe32(bytes.data() + static_cast<size_t>(centralAbsolute)) ==
                             kCentralSignature) {
                         return {start, eocdEnd - start};
@@ -146,19 +161,39 @@ void requirePeArchitecture(const std::vector<uint8_t> &bytes,
 
 void requireOuterInventory(const zanna::pkg::ZipReader &outer,
                            const zanna::pkg::WindowsInstallerMetadata &metadata) {
-    std::set<std::string> allowed = {
+    std::set<std::string> required = {
         "meta/installer-v2.txt", metadata.payloadEntry, metadata.cleanupEntry};
+    std::set<std::string> allowed = required;
     if (!metadata.licenseEntry.empty())
         allowed.insert(metadata.licenseEntry);
     if (!metadata.readmeEntry.empty())
         allowed.insert(metadata.readmeEntry);
-    for (const auto &file : metadata.outerFiles)
+    for (const auto &file : metadata.outerFiles) {
+        required.insert(file.overlayPath);
         allowed.insert(file.overlayPath);
+    }
+    std::set<std::string> allowedDirectories = {"app/"};
+    for (const std::string &path : allowed) {
+        size_t separator = path.find('/');
+        while (separator != std::string::npos) {
+            allowedDirectories.insert(path.substr(0, separator + 1U));
+            separator = path.find('/', separator + 1U);
+        }
+    }
+    std::set<std::string> found;
     for (const zanna::pkg::ZipEntry &entry : outer.entries()) {
-        if (!entry.name.empty() && entry.name.back() == '/')
+        if (!entry.name.empty() && entry.name.back() == '/') {
+            if (allowedDirectories.find(entry.name) == allowedDirectories.end())
+                throw std::runtime_error("installer contains an unowned outer directory");
             continue;
+        }
         if (allowed.find(entry.name) == allowed.end())
             throw std::runtime_error("installer contains an unowned outer entry");
+        found.insert(entry.name);
+    }
+    for (const std::string &path : required) {
+        if (found.find(path) == found.end())
+            throw std::runtime_error("installer outer inventory is incomplete");
     }
 }
 
@@ -219,7 +254,7 @@ std::set<std::string> parseComponents(std::wstring_view text) {
             throw std::runtime_error("/components contains an empty component id");
         const std::string utf8 = wideToUtf8(item);
         for (unsigned char ch : utf8) {
-            if (!(std::isalnum(ch) || ch == '-' || ch == '_' || ch == '.'))
+            if (!(isAsciiAlnum(ch) || ch == '-' || ch == '_' || ch == '.'))
                 throw std::runtime_error("/components contains an invalid component id");
         }
         if (!result.insert(utf8).second)
@@ -266,6 +301,8 @@ std::wstring sanitizeLogLine(std::wstring_view message) {
 std::wstring utf8ToWide(std::string_view text) {
     if (text.empty())
         return {};
+    if (text.size() > static_cast<size_t>(INT_MAX))
+        throw std::runtime_error("package metadata is too large for Windows text conversion");
     const int required = MultiByteToWideChar(
         CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
     if (required <= 0)
@@ -285,6 +322,8 @@ std::wstring utf8ToWide(std::string_view text) {
 std::string wideToUtf8(std::wstring_view text) {
     if (text.empty())
         return {};
+    if (text.size() > static_cast<size_t>(INT_MAX))
+        throw std::runtime_error("Windows text is too large for UTF-8 conversion");
     const int required = WideCharToMultiByte(CP_UTF8,
                                              WC_ERR_INVALID_CHARS,
                                              text.data(),
@@ -341,6 +380,8 @@ std::wstring quoteCommandLineArgument(std::wstring_view argument) {
         if (ch == L'\\') {
             ++slashes;
         } else if (ch == L'\"') {
+            if (slashes > (std::numeric_limits<size_t>::max() - 1U) / 2U)
+                throw std::runtime_error("Windows command-line argument is too large");
             out.append(slashes * 2U + 1U, L'\\');
             out.push_back(L'\"');
             slashes = 0;
@@ -350,6 +391,8 @@ std::wstring quoteCommandLineArgument(std::wstring_view argument) {
             out.push_back(ch);
         }
     }
+    if (slashes > std::numeric_limits<size_t>::max() / 2U)
+        throw std::runtime_error("Windows command-line argument is too large");
     out.append(slashes * 2U, L'\\');
     out.push_back(L'\"');
     return out;
@@ -428,33 +471,52 @@ void Logger::open(const fs::path &path) {
     if (handle_ == INVALID_HANDLE_VALUE)
         throw std::runtime_error("cannot create the installer log");
     LARGE_INTEGER size{};
-    if (GetFileSizeEx(handle_, &size) && size.QuadPart == 0) {
+    if (!GetFileSizeEx(handle_, &size) || size.QuadPart < 0) {
+        const DWORD error = GetLastError();
+        CloseHandle(handle_);
+        handle_ = INVALID_HANDLE_VALUE;
+        throw std::runtime_error("cannot inspect the installer log: " +
+                                 wideToUtf8(formatWindowsError(error)));
+    }
+    if (size.QuadPart == 0) {
         static constexpr uint8_t kUtf8Bom[] = {0xEF, 0xBB, 0xBF};
         DWORD written = 0;
-        WriteFile(handle_, kUtf8Bom, sizeof(kUtf8Bom), &written, nullptr);
+        if (!WriteFile(handle_, kUtf8Bom, sizeof(kUtf8Bom), &written, nullptr) ||
+            written != sizeof(kUtf8Bom)) {
+            const DWORD error = GetLastError();
+            CloseHandle(handle_);
+            handle_ = INVALID_HANDLE_VALUE;
+            throw std::runtime_error("cannot initialize the installer log: " +
+                                     wideToUtf8(formatWindowsError(error)));
+        }
     }
 }
 
 void Logger::write(std::wstring_view level, std::wstring_view message) {
-    if (handle_ == INVALID_HANDLE_VALUE)
-        return;
-    SYSTEMTIME now{};
-    GetSystemTime(&now);
-    std::wostringstream line;
-    line << std::setfill(L'0') << std::setw(4) << now.wYear << L'-' << std::setw(2) << now.wMonth
-         << L'-' << std::setw(2) << now.wDay << L'T' << std::setw(2) << now.wHour << L':'
-         << std::setw(2) << now.wMinute << L':' << std::setw(2) << now.wSecond << L'.'
-         << std::setw(3) << now.wMilliseconds << L"Z [" << level << L"] "
-         << sanitizeLogLine(message) << L"\r\n";
-    const std::string utf8 = wideToUtf8(line.str());
-    DWORD written = 0;
-    if (!WriteFile(handle_, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr) ||
-        written != utf8.size()) {
-        return;
+    if (handle_ != INVALID_HANDLE_VALUE) {
+        SYSTEMTIME now{};
+        GetSystemTime(&now);
+        std::wostringstream line;
+        line << std::setfill(L'0') << std::setw(4) << now.wYear << L'-' << std::setw(2)
+             << now.wMonth << L'-' << std::setw(2) << now.wDay << L'T' << std::setw(2) << now.wHour
+             << L':' << std::setw(2) << now.wMinute << L':' << std::setw(2) << now.wSecond << L'.'
+             << std::setw(3) << now.wMilliseconds << L"Z [" << level << L"] "
+             << sanitizeLogLine(message) << L"\r\n";
+        const std::string utf8 = wideToUtf8(line.str());
+        DWORD written = 0;
+        if (utf8.size() <= MAXDWORD &&
+            WriteFile(handle_, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr) &&
+            written == utf8.size()) {
+            (void)FlushFileBuffers(handle_);
+        }
     }
-    FlushFileBuffers(handle_);
-    if (progressCallback_ && level != L"ERROR")
-        progressCallback_(message);
+    if (progressCallback_ && level != L"ERROR") {
+        try {
+            progressCallback_(message);
+        } catch (...) {
+            // Logging and lifecycle progress must survive a failed presentation callback.
+        }
+    }
 }
 
 void Logger::info(std::wstring_view message) {
