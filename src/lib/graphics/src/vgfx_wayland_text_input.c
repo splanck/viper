@@ -386,8 +386,18 @@ int vgfx_wayland_text_input_set_state(vgfx_wayland_text_input_t *text_input,
         return 0;
     const char *source = state->surrounding_text ? state->surrounding_text : "";
     size_t length = strlen(source);
-    size_t cursor = (size_t)state->cursor_byte;
-    size_t anchor = (size_t)state->anchor_byte;
+    size_t cursor = state->cursor_byte < 0 ? 0 : (size_t)state->cursor_byte;
+    size_t anchor = state->anchor_byte < 0 ? 0 : (size_t)state->anchor_byte;
+    if (cursor > length)
+        cursor = length;
+    if (anchor > length)
+        anchor = length;
+    while (cursor > 0 && cursor < length &&
+           ((unsigned char)source[cursor] & 0xC0u) == 0x80u)
+        cursor--;
+    while (anchor > 0 && anchor < length &&
+           ((unsigned char)source[anchor] & 0xC0u) == 0x80u)
+        anchor--;
     size_t start = 0;
     size_t end = length;
     if (length > VGFX_TEXT_SURROUNDING_LIMIT) {

@@ -74,6 +74,10 @@ static void test_public_wayland_window_lifecycle(void) {
     ASSERT_EQ(vgfx_relative_mouse_native(window), 0);
     vgfx_focus(window);
     vgfx_request_foreground(window);
+    vgfx_maximize(window);
+    ASSERT_EQ(vgfx_pump_events(window), 1);
+    vgfx_restore(window);
+    ASSERT_EQ(vgfx_pump_events(window), 1);
 
     vgfx_framebuffer_t framebuffer;
     ASSERT_EQ(vgfx_get_framebuffer(window, &framebuffer), 1);

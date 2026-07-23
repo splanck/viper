@@ -116,5 +116,9 @@ int32_t vgfx_wayland_input_clamp_timeout(const vgfx_wayland_input_t *input,
 /// @details Exposed to the backend test target; unknown and modifier-only codes return UNKNOWN.
 vgfx_key_t vgfx_wayland_translate_evdev_key(uint32_t key);
 
+/// @brief Replace the public key-state snapshot from a wl_keyboard.enter key array.
+void vgfx_wayland_input_sync_pressed(vgfx_wayland_input_t *input,
+                                     const struct wl_array *keys);
+
 /// @brief Round one signed 24.8 Wayland fixed coordinate to the nearest integer pixel.
 int32_t vgfx_wayland_fixed_to_pixel(wl_fixed_t value);

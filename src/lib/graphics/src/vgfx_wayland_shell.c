@@ -203,9 +203,10 @@ static void vgfx_wayland_surface_leave(void *data,
 static void vgfx_wayland_surface_preferred_scale(void *data,
                                                  struct wl_surface *surface,
                                                  int32_t factor) {
-    (void)data;
     (void)surface;
-    (void)factor;
+    vgfx_wayland_shell_t *shell = data;
+    if (shell && shell->preferred_scale_observer)
+        shell->preferred_scale_observer(shell->preferred_scale_observer_data, factor);
 }
 
 static void vgfx_wayland_surface_preferred_transform(void *data,

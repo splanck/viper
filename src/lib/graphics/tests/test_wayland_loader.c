@@ -17,6 +17,7 @@
 
 #include "test_harness.h"
 #include "vgfx_wayland_activation.h"
+#include "vgfx_wayland_cursor.h"
 #include "vgfx_wayland_loader.h"
 #include "vgfx_wayland_connection.h"
 #include "vgfx_wayland_data.h"
@@ -169,6 +170,51 @@ static void test_wayland_input_translation_is_stable(void) {
     TEST_END();
 }
 
+static void test_wayland_cursor_types_have_native_theme_names(void) {
+    TEST_BEGIN("Wayland cursor: every public cursor type has a native theme name");
+    const char *expected[] = {"default",
+                              "pointer",
+                              "text",
+                              "ew-resize",
+                              "ns-resize",
+                              "wait",
+                              "nwse-resize",
+                              "nesw-resize",
+                              "grab",
+                              "grabbing",
+                              "crosshair",
+                              "help",
+                              "not-allowed"};
+    for (int32_t type = VGFX_CURSOR_DEFAULT; type <= VGFX_CURSOR_NOT_ALLOWED; ++type)
+        ASSERT_TRUE(strcmp(vgfx_wayland_cursor_name(type), expected[type]) == 0);
+    TEST_END();
+}
+
+static void test_wayland_keyboard_enter_synchronizes_pressed_keys(void) {
+    TEST_BEGIN("Wayland input: keyboard enter synchronizes pressed-key snapshot");
+    vgfx_window_params_t params = vgfx_window_params_default();
+    vgfx_window_t window = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(window);
+
+    uint32_t pressed[] = {30, 42, 103};
+    struct wl_array keys = {
+        .size = sizeof(pressed),
+        .alloc = sizeof(pressed),
+        .data = pressed,
+    };
+    vgfx_wayland_input_t input = {.window = window};
+    vgfx_wayland_input_sync_pressed(&input, &keys);
+    ASSERT_EQ(vgfx_key_down(window, VGFX_KEY_A), 1);
+    ASSERT_EQ(vgfx_key_down(window, VGFX_KEY_UP), 1);
+    ASSERT_EQ(vgfx_key_down(window, VGFX_KEY_B), 0);
+
+    vgfx_wayland_input_sync_pressed(&input, NULL);
+    ASSERT_EQ(vgfx_key_down(window, VGFX_KEY_A), 0);
+    ASSERT_EQ(vgfx_key_down(window, VGFX_KEY_UP), 0);
+    vgfx_destroy_window(window);
+    TEST_END();
+}
+
 static void test_wayland_uri_list_transfer_emits_file_drop(void) {
     TEST_BEGIN("Wayland data: URI-list pipe emits decoded file drops");
     vgfx_window_params_t params = vgfx_window_params_default();
@@ -179,7 +225,10 @@ static void test_wayland_uri_list_transfer_emits_file_drop(void) {
 
     int descriptors[2];
     ASSERT_EQ(pipe(descriptors), 0);
-    const char *payload = "# ignored\r\nfile:///tmp/Hello%20Wayland.zia\r\n";
+    const char *payload = "# ignored\r\n"
+                          "file://remote.example/tmp/not-local.zia\r\n"
+                          "file:///tmp/hidden%00suffix.zia\r\n"
+                          "file:///tmp/Hello%20Wayland.zia\r\n";
     ASSERT_EQ(write(descriptors[1], payload, strlen(payload)), (ssize_t)strlen(payload));
     close(descriptors[1]);
 
@@ -196,6 +245,7 @@ static void test_wayland_uri_list_transfer_emits_file_drop(void) {
     ASSERT_EQ(vgfx_poll_event(window, &event), 1);
     ASSERT_EQ(event.type, VGFX_EVENT_FILE_DROP);
     ASSERT_TRUE(strcmp(event.data.file_drop.path, "/tmp/Hello Wayland.zia") == 0);
+    ASSERT_EQ(vgfx_poll_event(window, &event), 0);
     vgfx_destroy_window(window);
     TEST_END();
 }
@@ -219,6 +269,20 @@ static void test_wayland_text_input_bounds_surrounding_text(void) {
     ASSERT_TRUE(strlen(text_input.surrounding) <= 4000);
     ASSERT_EQ(text_input.cursor_byte, 2000);
     ASSERT_EQ(text_input.anchor_byte, text_input.cursor_byte);
+    vgfx_wayland_text_input_close(&text_input);
+
+    state.surrounding_text = "A\xE2\x82\xAC"
+                             "B";
+    state.cursor_byte = 2;
+    state.anchor_byte = INT32_MAX;
+    ASSERT_EQ(vgfx_wayland_text_input_set_state(&text_input, &state), 1);
+    ASSERT_EQ(text_input.cursor_byte, 1);
+    ASSERT_EQ(text_input.anchor_byte, 5);
+    state.cursor_byte = -1;
+    state.anchor_byte = -100;
+    ASSERT_EQ(vgfx_wayland_text_input_set_state(&text_input, &state), 1);
+    ASSERT_EQ(text_input.cursor_byte, 0);
+    ASSERT_EQ(text_input.anchor_byte, 0);
     vgfx_wayland_text_input_close(&text_input);
     TEST_END();
 }
@@ -372,6 +436,8 @@ int main(void) {
     test_protocol_object_metadata_is_complete();
     test_wayland_connection_rejects_missing_library();
     test_wayland_input_translation_is_stable();
+    test_wayland_cursor_types_have_native_theme_names();
+    test_wayland_keyboard_enter_synchronizes_pressed_keys();
     test_wayland_uri_list_transfer_emits_file_drop();
     test_wayland_text_input_bounds_surrounding_text();
     test_wayland_output_scale_policy();

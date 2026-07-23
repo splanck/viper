@@ -117,11 +117,13 @@ static void *vgfx3d_egl_open(const char *primary, const char *fallback) {
 }
 
 static int vgfx3d_egl_load(void) {
-    if (g_egl_state != 0)
-        return g_egl_state > 0;
+    int32_t state = __atomic_load_n(&g_egl_state, __ATOMIC_ACQUIRE);
+    if (state != 0)
+        return state > 0;
     vgfx3d_egl_lock();
-    if (g_egl_state != 0) {
-        int result = g_egl_state > 0;
+    state = __atomic_load_n(&g_egl_state, __ATOMIC_RELAXED);
+    if (state != 0) {
+        int result = state > 0;
         vgfx3d_egl_unlock();
         return result;
     }
@@ -161,7 +163,7 @@ static int vgfx3d_egl_load(void) {
     if (!g_egl.get_platform_display)
         g_egl.get_platform_display = (egl_get_platform_display_fn)g_egl.get_proc_address(
             "eglGetPlatformDisplayEXT");
-    g_egl_state = 1;
+    __atomic_store_n(&g_egl_state, 1, __ATOMIC_RELEASE);
     vgfx3d_egl_unlock();
     return 1;
 fail:
@@ -170,7 +172,7 @@ fail:
     if (g_egl.egl_library)
         dlclose(g_egl.egl_library);
     memset(&g_egl, 0, sizeof(g_egl));
-    g_egl_state = -1;
+    __atomic_store_n(&g_egl_state, -1, __ATOMIC_RELEASE);
     vgfx3d_egl_unlock();
     return 0;
 }

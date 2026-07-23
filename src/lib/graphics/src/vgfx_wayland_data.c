@@ -36,9 +36,11 @@ enum {
     WL_DATA_OFFER_RECEIVE = 1,
     WL_DATA_OFFER_DESTROY = 2,
     WL_DATA_OFFER_FINISH = 3,
+    WL_DATA_OFFER_SET_ACTIONS = 4,
     WL_DATA_DEVICE_RELEASE = 2,
     WL_DATA_SOURCE_DESTROY = 1,
     WL_MARSHAL_FLAG_DESTROY = 1,
+    WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY = 1,
     VGFX_WAYLAND_TRANSFER_LIMIT = 8 * 1024 * 1024,
 };
 
@@ -163,28 +165,37 @@ static void vgfx_data_emit_uris(vgfx_wayland_data_t *data, char *text) {
         if (end) *end = '\0';
         if (line[0] != '#' && strncmp(line, "file://", 7) == 0) {
             const char *source = line + 7;
-            if (strncmp(source, "localhost/", 10) == 0) source += 9;
+            if (strncmp(source, "localhost/", 10) == 0)
+                source += 9;
+            else if (source[0] != '/')
+                source = "";
             char path[260];
             size_t out = 0;
+            int valid = source[0] != '\0';
             while (*source && out + 1 < sizeof(path)) {
                 if (*source == '%' && source[1] && source[2]) {
                     int hi = vgfx_hex(source[1]);
                     int lo = vgfx_hex(source[2]);
                     if (hi >= 0 && lo >= 0) {
-                        path[out++] = (char)((hi << 4) | lo);
+                        int decoded = (hi << 4) | lo;
+                        if (decoded == 0) {
+                            valid = 0;
+                            break;
+                        }
+                        path[out++] = (char)decoded;
                         source += 3;
                         continue;
                     }
                 }
                 path[out++] = *source++;
             }
-            if (!*source && out > 0) {
+            if (valid && !*source && out > 0) {
                 path[out] = '\0';
                 vgfx_event_t event = {.type = VGFX_EVENT_FILE_DROP,
                                       .time_ms = vgfx_platform_now_ms()};
                 memcpy(event.data.file_drop.path, path, out + 1);
                 vgfx_internal_enqueue_event(data->window, &event);
-            } else {
+            } else if (valid) {
                 vgfx_internal_note_event_overflow(data->window);
             }
         }
@@ -271,9 +282,19 @@ static void vgfx_offer_mime(void *opaque, struct wl_proxy *proxy, const char *mi
     else if (strcmp(mime, VGFX_MIME_URI) == 0)
         offer->uri_list = 1;
 }
-static void vgfx_offer_actions(void *d, struct wl_proxy *p, uint32_t a) { (void)d; (void)p; (void)a; }
+static void vgfx_offer_source_actions(void *d, struct wl_proxy *p, uint32_t a) {
+    (void)d;
+    (void)p;
+    (void)a;
+}
+static void vgfx_offer_action(void *opaque, struct wl_proxy *proxy, uint32_t action) {
+    vgfx_wayland_data_t *data = opaque;
+    vgfx_wayland_offer_t *offer = vgfx_data_find_offer(data, proxy);
+    if (offer)
+        offer->action = action;
+}
 static const vgfx_wl_data_offer_listener_t g_offer_listener = {
-    vgfx_offer_mime, vgfx_offer_actions, vgfx_offer_actions};
+    vgfx_offer_mime, vgfx_offer_source_actions, vgfx_offer_action};
 
 static void vgfx_source_target(void *d, struct wl_proxy *p, const char *m) { (void)d; (void)p; (void)m; }
 static void vgfx_source_send(void *opaque, struct wl_proxy *proxy, const char *mime, int32_t fd) {
@@ -322,10 +343,21 @@ static void vgfx_device_enter(void *opaque, struct wl_proxy *device, uint32_t se
     data->drag_x = vgfx_wayland_fixed_to_pixel(x);
     data->drag_y = vgfx_wayland_fixed_to_pixel(y);
     const char *mime = data->drag && data->drag->uri_list ? VGFX_MIME_URI : NULL;
-    if (data->drag)
+    if (data->drag) {
+        uint32_t version = data->connection->api.proxy_get_version(data->drag->proxy);
+        if (version >= 3)
+            (void)data->connection->api.proxy_marshal_flags(
+                data->drag->proxy,
+                WL_DATA_OFFER_SET_ACTIONS,
+                NULL,
+                version,
+                0,
+                WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY,
+                WL_DATA_DEVICE_MANAGER_DND_ACTION_COPY);
         (void)data->connection->api.proxy_marshal_flags(data->drag->proxy,
             WL_DATA_OFFER_ACCEPT, NULL,
-            data->connection->api.proxy_get_version(data->drag->proxy), 0, serial, mime);
+            version, 0, serial, mime);
+    }
 }
 static void vgfx_device_leave(void *opaque, struct wl_proxy *device) {
     (void)device;
@@ -343,7 +375,8 @@ static void vgfx_device_drop(void *opaque, struct wl_proxy *device) {
     vgfx_wayland_data_t *data = opaque;
     if (data && data->drag && data->drag->uri_list) {
         (void)vgfx_data_receive(data, data->drag, VGFX_MIME_URI, 1);
-        if (data->connection->api.proxy_get_version(data->drag->proxy) >= 3)
+        if (data->connection->api.proxy_get_version(data->drag->proxy) >= 3 &&
+            data->drag->action != 0)
             (void)data->connection->api.proxy_marshal_flags(data->drag->proxy,
                 WL_DATA_OFFER_FINISH, NULL,
                 data->connection->api.proxy_get_version(data->drag->proxy), 0);
