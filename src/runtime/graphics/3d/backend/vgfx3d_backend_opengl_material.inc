@@ -448,7 +448,6 @@ static void upload_main_uniforms(gl_context_t *ctx,
                  ctx->cam_znear,
                  ctx->cam_zfar);
     {
-        const rt_cubemap3d *env_cm = (const rt_cubemap3d *)cmd->env_map;
         float env_lod_base = 0.0f;
         float env_max_lod = 0.0f;
         int ibl_draw = gl_cmd_ibl_draw(ctx, cmd, &env_lod_base, &env_max_lod);

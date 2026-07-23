@@ -362,7 +362,7 @@ fs::path currentExecutablePath() {
             GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
         if (length == 0)
             throw std::runtime_error("cannot determine installer executable path");
-        if (length < buffer.size() - 1) {
+        if (length < buffer.size()) {
             buffer.resize(length);
             return fs::path(buffer);
         }

@@ -40,8 +40,12 @@ static void draw_line(uint8_t *pixels,
     int64_t current_y = y0;
     int64_t end_x = x1;
     int64_t end_y = y1;
-    int64_t dx = llabs(end_x - current_x), step_x = current_x < end_x ? 1 : -1;
-    int64_t dy = -llabs(end_y - current_y), step_y = current_y < end_y ? 1 : -1;
+    int64_t delta_x = end_x - current_x;
+    int64_t delta_y = end_y - current_y;
+    int64_t dx = delta_x < 0 ? -delta_x : delta_x;
+    int64_t dy = -(delta_y < 0 ? -delta_y : delta_y);
+    int64_t step_x = current_x < end_x ? 1 : -1;
+    int64_t step_y = current_y < end_y ? 1 : -1;
     int64_t err = dx + dy;
     if (!sw_rgba_surface_is_valid(pixels, fb_w, fb_h, stride))
         return;

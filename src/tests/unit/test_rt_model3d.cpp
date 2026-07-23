@@ -320,6 +320,52 @@ static std::string base64_encode(const uint8_t *data, size_t len) {
     return out;
 }
 
+static int base64_fixture_value(char ch) {
+    if (ch >= 'A' && ch <= 'Z')
+        return ch - 'A';
+    if (ch >= 'a' && ch <= 'z')
+        return ch - 'a' + 26;
+    if (ch >= '0' && ch <= '9')
+        return ch - '0' + 52;
+    if (ch == '+')
+        return 62;
+    if (ch == '/')
+        return 63;
+    return -1;
+}
+
+static bool base64_decode_fixture(const char *text, std::vector<uint8_t> &out) {
+    if (!text)
+        return false;
+    const size_t length = std::strlen(text);
+    if ((length & 3u) != 0u)
+        return false;
+    out.clear();
+    out.reserve((length / 4u) * 3u);
+    for (size_t offset = 0; offset < length; offset += 4u) {
+        const bool third_padding = text[offset + 2u] == '=';
+        const bool fourth_padding = text[offset + 3u] == '=';
+        const int a = base64_fixture_value(text[offset]);
+        const int b = base64_fixture_value(text[offset + 1u]);
+        const int c = third_padding ? 0 : base64_fixture_value(text[offset + 2u]);
+        const int d = fourth_padding ? 0 : base64_fixture_value(text[offset + 3u]);
+        if (a < 0 || b < 0 || c < 0 || d < 0 || (third_padding && !fourth_padding) ||
+            ((third_padding || fourth_padding) && offset + 4u != length)) {
+            out.clear();
+            return false;
+        }
+        const uint32_t packed = (static_cast<uint32_t>(a) << 18u) |
+                                (static_cast<uint32_t>(b) << 12u) |
+                                (static_cast<uint32_t>(c) << 6u) | static_cast<uint32_t>(d);
+        out.push_back(static_cast<uint8_t>(packed >> 16u));
+        if (!third_padding)
+            out.push_back(static_cast<uint8_t>(packed >> 8u));
+        if (!fourth_padding)
+            out.push_back(static_cast<uint8_t>(packed));
+    }
+    return true;
+}
+
 struct FbxPropFixture {
     char type;
     std::vector<uint8_t> payload;
@@ -6660,12 +6706,6 @@ static void test_scene3d_vscn_v5_source_texture_roundtrip() {
                             ZANNA_SOURCE_DIR "/src/tests/fixtures/runtime/test_sprite_load.bmp"
 #endif
         });
-    const char *jpeg_path = find_existing_path({"zannaweb/legacy/zanna.jpg",
-                                                "../zannaweb/legacy/zanna.jpg",
-#ifdef ZANNA_SOURCE_DIR
-                                                ZANNA_SOURCE_DIR "/zannaweb/legacy/zanna.jpg"
-#endif
-    });
     const char *ktx2_path = find_existing_path(
         {"examples/3d/openworld_slice/assets/textures/checker_rgba8.ktx2",
          "../examples/3d/openworld_slice/assets/textures/checker_rgba8.ktx2",
@@ -6673,13 +6713,28 @@ static void test_scene3d_vscn_v5_source_texture_roundtrip() {
          ZANNA_SOURCE_DIR "/examples/3d/openworld_slice/assets/textures/checker_rgba8.ktx2"
 #endif
         });
+    static const char jpeg_base64[] =
+        "/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAA"
+        "A6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD/7QA4UGhvdG9zaG9w"
+        "IDMuMAA4QklNBAQAAAAAAAA4QklNBCUAAAAAABDUHYzZjwCyBOmACZjs+EJ+/8AAEQgAAQAB"
+        "AwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMC"
+        "BAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBka"
+        "JSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqS"
+        "k5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq"
+        "8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQE"
+        "AwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEX"
+        "GBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhIWGh4iJ"
+        "ipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp"
+        "6vLz9PX29/j5+v/bAEMAAgICAgICAwICAwUDAwMFBgUFBQUGCAYGBgYGCAoICAgICAgKCgoK"
+        "CgoKCgwMDAwMDA4ODg4ODw8PDw8PDw8PD//bAEMBAgICBAQEBwQEBxALCQsQEBAQEBAQEBAQ"
+        "EBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEP/dAAQAAf/aAAwDAQAC"
+        "EQMRAD8A9Uooor+Sz+oD/9k=";
     static const uint8_t gif_bytes[] = {'G',  'I',  'F',  '8',  '7',  'a',  0x01, 0x00, 0x01,
                                         0x00, 0x80, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00,
                                         0x00, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01,
                                         0x00, 0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3B};
-    EXPECT_TRUE(png_path && bmp_path && jpeg_path && ktx2_path,
-                "VSCN v5 source-container fixtures are present");
-    if (!png_path || !bmp_path || !jpeg_path || !ktx2_path)
+    EXPECT_TRUE(png_path && bmp_path && ktx2_path, "VSCN v5 source-container fixtures are present");
+    if (!png_path || !bmp_path || !ktx2_path)
         return;
     std::vector<SourceCase> cases = {{"png", "source.png", {}},
                                      {"jpeg", "source.jpg", {}},
@@ -6687,7 +6742,8 @@ static void test_scene3d_vscn_v5_source_texture_roundtrip() {
                                      {"bmp", "source.bmp", {}},
                                      {"ktx2", "source.ktx2", {}}};
     EXPECT_TRUE(read_binary_file(png_path, cases[0].bytes), "VSCN v5 PNG fixture is readable");
-    EXPECT_TRUE(read_binary_file(jpeg_path, cases[1].bytes), "VSCN v5 JPEG fixture is readable");
+    EXPECT_TRUE(base64_decode_fixture(jpeg_base64, cases[1].bytes),
+                "VSCN v5 embedded JPEG fixture is decodable");
     cases[2].bytes.assign(gif_bytes, gif_bytes + sizeof(gif_bytes));
     EXPECT_TRUE(read_binary_file(bmp_path, cases[3].bytes), "VSCN v5 BMP fixture is readable");
     EXPECT_TRUE(read_binary_file(ktx2_path, cases[4].bytes), "VSCN v5 KTX2 fixture is readable");

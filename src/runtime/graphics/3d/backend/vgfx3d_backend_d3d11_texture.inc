@@ -1,8 +1,20 @@
 //===----------------------------------------------------------------------===//
-// Part of the Zanna project, under the GNU GPL v3. See LICENSE.
-// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_texture.inc  (#included from
-// vgfx3d_backend_d3d11.c; not a standalone translation unit) Purpose: D3D11 texture/cubemap cache
-// lifecycle and streamed upload + SRV creation
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: src/runtime/graphics/3d/backend/vgfx3d_backend_d3d11_texture.inc
+// Purpose: Implement D3D11 texture/cubemap caches, streamed uploads, and SRV creation.
+// Key invariants:
+//   - Replacement resources are complete before a live cache entry is evicted.
+//   - Pending uploads publish their generation only after every row/face is resident.
+// Ownership/Lifetime:
+//   - Cache entries own their COM texture and view references until explicit release.
+//   - This file is included by vgfx3d_backend_d3d11.c and is not a translation unit.
+// Links: vgfx3d_backend_d3d11.c, vgfx3d_backend_d3d11_targets.inc
+//
 //===----------------------------------------------------------------------===//
 
 // Texture and cubemap caches — keyed by stable host identity + generation so
@@ -700,13 +712,17 @@ static HRESULT d3d11_allocate_texture_srv(d3d11_context_t *ctx,
     desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && *out_tex) {
         memset(&srv_desc, 0, sizeof(srv_desc));
         srv_desc.Format = desc.Format;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         srv_desc.Texture2D.MipLevels = desc.MipLevels;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
+        if (SUCCEEDED(hr) && !*out_srv)
+            hr = E_POINTER;
+    } else if (SUCCEEDED(hr)) {
+        hr = E_POINTER;
     }
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D/ShaderResourceView(texture)", hr);
@@ -758,13 +774,17 @@ static HRESULT d3d11_allocate_native_texture_srv(d3d11_context_t *ctx,
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && *out_tex) {
         memset(&srv_desc, 0, sizeof(srv_desc));
         srv_desc.Format = desc.Format;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         srv_desc.Texture2D.MipLevels = desc.MipLevels;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
+        if (SUCCEEDED(hr) && !*out_srv)
+            hr = E_POINTER;
+    } else if (SUCCEEDED(hr)) {
+        hr = E_POINTER;
     }
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D/ShaderResourceView(native texture)", hr);
@@ -906,19 +926,25 @@ static int d3d11_start_native_texture_upload(d3d11_context_t *ctx,
                                              uint64_t cache_key,
                                              int64_t mip_start,
                                              int64_t mip_count) {
+    ID3D11Texture2D *new_tex = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
     vgfx3d_native_texture_mip_t first_mip;
+    HRESULT hr;
 
     if (!ctx || !entry || !asset ||
         !vgfx3d_textureasset_native_supported(asset, d3d11_get_native_texture_caps(ctx)) ||
         !d3d11_validate_native_texture_snapshot(asset, mip_start, mip_count, &first_mip))
         return 0;
-    d3d11_unbind_draw_resources(ctx);
-    d3d11_release_texture_cache_entry(entry);
-    if (FAILED(d3d11_allocate_native_texture_srv(
-            ctx, &first_mip, mip_count, &entry->tex, &entry->srv))) {
-        d3d11_release_texture_cache_entry(entry);
+    hr = d3d11_allocate_native_texture_srv(ctx, &first_mip, mip_count, &new_tex, &new_srv);
+    if (FAILED(hr) || !new_tex || !new_srv) {
+        SAFE_RELEASE(new_srv);
+        SAFE_RELEASE(new_tex);
         return 0;
     }
+    d3d11_unbind_draw_resources(ctx);
+    d3d11_release_texture_cache_entry(entry);
+    entry->tex = new_tex;
+    entry->srv = new_srv;
 
     entry->pixels_ptr = NULL;
     entry->texture_asset = asset;
@@ -1029,17 +1055,24 @@ static int d3d11_start_texture_upload(d3d11_context_t *ctx,
                                       d3d_tex_cache_entry_t *entry,
                                       const void *pixels,
                                       uint64_t cache_key) {
+    ID3D11Texture2D *new_tex = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
     int32_t w = 0;
     int32_t h = 0;
+    HRESULT hr;
 
     if (!ctx || !entry || !pixels || !vgfx3d_get_pixels_extent(pixels, &w, &h))
         return 0;
-    d3d11_unbind_draw_resources(ctx);
-    d3d11_release_texture_cache_entry(entry);
-    if (FAILED(d3d11_allocate_texture_srv(ctx, w, h, &entry->tex, &entry->srv))) {
-        d3d11_release_texture_cache_entry(entry);
+    hr = d3d11_allocate_texture_srv(ctx, w, h, &new_tex, &new_srv);
+    if (FAILED(hr) || !new_tex || !new_srv) {
+        SAFE_RELEASE(new_srv);
+        SAFE_RELEASE(new_tex);
         return 0;
     }
+    d3d11_unbind_draw_resources(ctx);
+    d3d11_release_texture_cache_entry(entry);
+    entry->tex = new_tex;
+    entry->srv = new_srv;
 
     entry->pixels_ptr = pixels;
     entry->texture_asset = NULL;
@@ -1313,13 +1346,17 @@ static HRESULT d3d11_allocate_cubemap_srv(d3d11_context_t *ctx,
     desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE | D3D11_RESOURCE_MISC_GENERATE_MIPS;
 
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, out_tex);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && *out_tex) {
         memset(&srv_desc, 0, sizeof(srv_desc));
         srv_desc.Format = desc.Format;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
         srv_desc.TextureCube.MipLevels = desc.MipLevels;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)*out_tex, &srv_desc, out_srv);
+        if (SUCCEEDED(hr) && !*out_srv)
+            hr = E_POINTER;
+    } else if (SUCCEEDED(hr)) {
+        hr = E_POINTER;
     }
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D/ShaderResourceView(cubemap)", hr);
@@ -1511,16 +1548,23 @@ static int d3d11_start_cubemap_upload(d3d11_context_t *ctx,
                                       d3d_cubemap_cache_entry_t *entry,
                                       const rt_cubemap3d *cubemap,
                                       uint64_t generation) {
+    ID3D11Texture2D *new_tex = NULL;
+    ID3D11ShaderResourceView *new_srv = NULL;
     int32_t face_size = 0;
+    HRESULT hr;
 
     if (!ctx || !entry || !cubemap || !vgfx3d_get_cubemap_face_size(cubemap, &face_size))
         return 0;
-    d3d11_unbind_draw_resources(ctx);
-    d3d11_release_cubemap_cache_entry(entry);
-    if (FAILED(d3d11_allocate_cubemap_srv(ctx, face_size, &entry->tex, &entry->srv))) {
-        d3d11_release_cubemap_cache_entry(entry);
+    hr = d3d11_allocate_cubemap_srv(ctx, face_size, &new_tex, &new_srv);
+    if (FAILED(hr) || !new_tex || !new_srv) {
+        SAFE_RELEASE(new_srv);
+        SAFE_RELEASE(new_tex);
         return 0;
     }
+    d3d11_unbind_draw_resources(ctx);
+    d3d11_release_cubemap_cache_entry(entry);
+    entry->tex = new_tex;
+    entry->srv = new_srv;
 
     entry->cubemap_ptr = cubemap;
     entry->pending_generation = generation;

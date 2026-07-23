@@ -226,15 +226,16 @@ std::string signedManifest(
     const TestSigner &signer,
     std::string_view version,
     std::string_view architecture = "x64",
-    std::string_view downloadUrl = "https://updates.example.test/zanna/zanna-setup.exe") {
-    std::string canonical =
-        "ZANNA-WINDOWS-UPDATE\t1\n"
-        "channel\tstable\n"
-        "architecture\t" +
-        std::string(architecture) + "\nversion\t" + std::string(version) + "\ndownload-url\t" +
-        std::string(downloadUrl) +
-        "\nsha256\t0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
-        "release-notes-url\thttps://updates.example.test/zanna/notes.html\n";
+    std::string_view downloadUrl = "https://updates.example.test/zanna/zanna-setup.exe",
+    std::string_view sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    std::string_view releaseNotesUrl = "https://updates.example.test/zanna/notes.html") {
+    std::string canonical = "ZANNA-WINDOWS-UPDATE\t1\n"
+                            "channel\tstable\n"
+                            "architecture\t" +
+                            std::string(architecture) + "\nversion\t" + std::string(version) +
+                            "\ndownload-url\t" + std::string(downloadUrl) + "\nsha256\t" +
+                            std::string(sha256) + "\nrelease-notes-url\t" +
+                            std::string(releaseNotesUrl) + "\n";
     return canonical + "signature\t" + signer.sign(canonical) + "\n";
 }
 
@@ -272,6 +273,68 @@ TEST(WindowsInstallerUpdate, RejectsCrossOriginAndWrongArchitecture) {
                   std::runtime_error);
     EXPECT_THROWS(zanna::installer::verifyUpdateManifest(packageFor(signer),
                                                          signedManifest(signer, "1.3.0", "arm64")),
+                  std::runtime_error);
+}
+
+TEST(WindowsInstallerUpdate, ComparesOriginsWithWindowsOrdinalCaseRules) {
+    const TestSigner signer;
+    auto package = packageFor(signer);
+    package.metadata.updateManifestUrl = "https://UPDATES.EXAMPLE.TEST/zanna/windows.txt";
+    const auto result =
+        zanna::installer::verifyUpdateManifest(package, signedManifest(signer, "1.3.0"));
+    EXPECT_TRUE(result.status == zanna::installer::UpdateStatus::Available);
+}
+
+TEST(WindowsInstallerUpdate, RejectsAmbiguousUrlCharacters) {
+    const TestSigner signer;
+    EXPECT_THROWS(zanna::installer::verifyUpdateManifest(
+                      packageFor(signer),
+                      signedManifest(
+                          signer, "1.3.0", "x64", "https://updates.example.test/zanna\\setup.exe")),
+                  std::runtime_error);
+    EXPECT_THROWS(
+        zanna::installer::verifyUpdateManifest(
+            packageFor(signer),
+            signedManifest(signer,
+                           "1.3.0",
+                           "x64",
+                           "https://updates.example.test/zanna/setup.exe",
+                           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                           "https://updates.example.test/release notes.html")),
+        std::runtime_error);
+}
+
+TEST(WindowsInstallerUpdate, RejectsPartialOrMalformedPinnedKeys) {
+    const TestSigner signer;
+    auto package = packageFor(signer);
+    package.metadata.updateRsaExponent.clear();
+    EXPECT_THROWS(zanna::installer::verifyUpdateManifest(package, signedManifest(signer, "1.3.0")),
+                  std::runtime_error);
+
+    package = packageFor(signer);
+    package.metadata.updateRsaModulus = "01";
+    EXPECT_THROWS(zanna::installer::verifyUpdateManifest(package, signedManifest(signer, "1.3.0")),
+                  std::runtime_error);
+
+    package = packageFor(signer);
+    package.metadata.updateRsaExponent = "04";
+    EXPECT_THROWS(zanna::installer::verifyUpdateManifest(package, signedManifest(signer, "1.3.0")),
+                  std::runtime_error);
+}
+
+TEST(WindowsInstallerUpdate, BoundsDigestAndSignatureBeforeDecoding) {
+    const TestSigner signer;
+    EXPECT_THROWS(
+        zanna::installer::verifyUpdateManifest(
+            packageFor(signer),
+            signedManifest(
+                signer, "1.3.0", "x64", "https://updates.example.test/zanna/setup.exe", "00")),
+        std::runtime_error);
+
+    std::string manifest = signedManifest(signer, "1.3.0");
+    const std::size_t signature = manifest.find("signature\t");
+    manifest.replace(signature + std::strlen("signature\t"), signer.modulus.size(), "00");
+    EXPECT_THROWS(zanna::installer::verifyUpdateManifest(packageFor(signer), manifest),
                   std::runtime_error);
 }
 

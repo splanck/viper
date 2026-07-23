@@ -10,13 +10,11 @@
 //          IFileOpenDialog/IFileSaveDialog implementations of the shared
 //          vg_native_* dialog surface, mirroring the macOS panel semantics.
 // Key invariants:
-//   - COM is initialized lazily once (apartment-threaded; RPC_E_CHANGED_MODE
-//     tolerated); every interface acquired is released on all paths.
+//   - Every public call establishes and balances COM on its calling thread.
 //   - Returned paths are heap UTF-8 strings owned by the caller (free()).
-//   - Any hard COM failure surfaces through vg_native_dialogs_available()
-//     so callers can route to the drawn fallback dialog.
+//   - Text crossing the Win32 boundary is converted strictly in both directions.
 // Ownership/Lifetime:
-//   - No global state beyond the one-shot COM/availability latch.
+//   - COM interfaces and conversion buffers are local to one dialog invocation.
 // Links: lib/gui/src/dialogs/vg_filedialog_native.h,
 //        lib/gui/src/dialogs/vg_filedialog_native.m (macOS counterpart)
 //
@@ -58,13 +56,16 @@ static const GUID VGFD_IID_IShellItem = {
 static wchar_t *vgfd_wide(const char *utf8) {
     if (!utf8 || !*utf8)
         return NULL;
-    int count = MultiByteToWideChar(CP_UTF8, 0, utf8, -1, NULL, 0);
+    int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
     if (count <= 0)
         return NULL;
     wchar_t *wide = (wchar_t *)malloc((size_t)count * sizeof(wchar_t));
     if (!wide)
         return NULL;
-    MultiByteToWideChar(CP_UTF8, 0, utf8, -1, wide, count);
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, count) != count) {
+        free(wide);
+        return NULL;
+    }
     return wide;
 }
 
@@ -72,13 +73,17 @@ static wchar_t *vgfd_wide(const char *utf8) {
 static char *vgfd_utf8(const wchar_t *wide) {
     if (!wide)
         return NULL;
-    int count = WideCharToMultiByte(CP_UTF8, 0, wide, -1, NULL, 0, NULL, NULL);
+    int count = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, NULL, 0, NULL, NULL);
     if (count <= 0)
         return NULL;
     char *utf8 = (char *)malloc((size_t)count);
     if (!utf8)
         return NULL;
-    WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8, count, NULL, NULL);
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, utf8, count, NULL, NULL) !=
+        count) {
+        free(utf8);
+        return NULL;
+    }
     return utf8;
 }
 
@@ -86,75 +91,109 @@ static char *vgfd_utf8(const wchar_t *wide) {
 // COM lifecycle
 //=============================================================================
 
-/// @brief Initialize COM once and probe dialog availability.
-/// @return 1 when IFileOpenDialog can be created in this session.
-int vg_native_dialogs_available(void) {
-    static int s_state = -1;
-    if (s_state >= 0)
-        return s_state;
-    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
-        s_state = 0;
+typedef struct {
+    int uninitialize;
+} vgfd_com_scope;
+
+static int vgfd_com_enter(vgfd_com_scope *scope) {
+    if (!scope)
         return 0;
-    }
+    scope->uninitialize = 0;
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
+        return 0;
+    scope->uninitialize = SUCCEEDED(hr) ? 1 : 0;
+    return 1;
+}
+
+static void vgfd_com_leave(vgfd_com_scope *scope) {
+    if (scope && scope->uninitialize)
+        CoUninitialize();
+}
+
+/// @brief Probe native-dialog availability on the calling thread.
+/// @return 1 when IFileOpenDialog can be created in this apartment.
+int vg_native_dialogs_available(void) {
+    vgfd_com_scope scope;
+    if (!vgfd_com_enter(&scope))
+        return 0;
     IFileOpenDialog *probe = NULL;
-    hr = CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
-                          NULL,
-                          CLSCTX_INPROC_SERVER,
-                          &VGFD_IID_IFileOpenDialog,
-                          (void **)&probe);
-    if (SUCCEEDED(hr) && probe) {
+    HRESULT hr = CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
+                                  NULL,
+                                  CLSCTX_INPROC_SERVER,
+                                  &VGFD_IID_IFileOpenDialog,
+                                  (void **)&probe);
+    int available = SUCCEEDED(hr) && probe;
+    if (probe)
         probe->lpVtbl->Release(probe);
-        s_state = 1;
-    } else {
-        s_state = 0;
-    }
-    return s_state;
+    vgfd_com_leave(&scope);
+    return available;
 }
 
 /// @brief Apply title/initial-folder/filter options to a common dialog.
-static void vgfd_apply_common(IFileDialog *dialog,
-                              const char *title,
-                              const char *initial_path,
-                              const char *filter_name,
-                              const char *filter_pattern,
-                              wchar_t **filter_name_w,
-                              wchar_t **filter_spec_w) {
+static int vgfd_apply_common(IFileDialog *dialog,
+                             const char *title,
+                             const char *initial_path,
+                             const char *filter_name,
+                             const char *filter_pattern,
+                             wchar_t **filter_name_w,
+                             wchar_t **filter_spec_w) {
+    if (!dialog || !filter_name_w || !filter_spec_w)
+        return 0;
     wchar_t *title_w = vgfd_wide(title);
+    if (title && *title && !title_w)
+        return 0;
     if (title_w) {
-        dialog->lpVtbl->SetTitle(dialog, title_w);
+        HRESULT hr = dialog->lpVtbl->SetTitle(dialog, title_w);
         free(title_w);
+        if (FAILED(hr))
+            return 0;
     }
     if (filter_name && filter_pattern && *filter_pattern) {
         *filter_name_w = vgfd_wide(filter_name);
         *filter_spec_w = vgfd_wide(filter_pattern);
-        if (*filter_name_w && *filter_spec_w) {
-            COMDLG_FILTERSPEC specs[2];
-            specs[0].pszName = *filter_name_w;
-            specs[0].pszSpec = *filter_spec_w;
-            specs[1].pszName = L"All Files";
-            specs[1].pszSpec = L"*.*";
-            dialog->lpVtbl->SetFileTypes(dialog, 2, specs);
-        }
+        if (!*filter_name_w || !*filter_spec_w)
+            return 0;
+        COMDLG_FILTERSPEC specs[2];
+        specs[0].pszName = *filter_name_w;
+        specs[0].pszSpec = *filter_spec_w;
+        specs[1].pszName = L"All Files";
+        specs[1].pszSpec = L"*.*";
+        if (FAILED(dialog->lpVtbl->SetFileTypes(dialog, 2, specs)))
+            return 0;
     }
     wchar_t *initial_w = vgfd_wide(initial_path);
+    if (initial_path && *initial_path && !initial_w)
+        return 0;
     if (initial_w) {
         IShellItem *folder = NULL;
-        if (SUCCEEDED(SHCreateItemFromParsingName(
-                initial_w, NULL, &VGFD_IID_IShellItem, (void **)&folder)) &&
-            folder) {
-            dialog->lpVtbl->SetDefaultFolder(dialog, folder);
+        HRESULT hr =
+            SHCreateItemFromParsingName(initial_w, NULL, &VGFD_IID_IShellItem, (void **)&folder);
+        if (SUCCEEDED(hr) && folder) {
+            hr = dialog->lpVtbl->SetDefaultFolder(dialog, folder);
+            folder->lpVtbl->Release(folder);
+            if (FAILED(hr)) {
+                free(initial_w);
+                return 0;
+            }
+        } else if (folder) {
             folder->lpVtbl->Release(folder);
         }
         free(initial_w);
     }
+    return 1;
 }
 
 /// @brief Extract a caller-owned UTF-8 filesystem path from a shell item.
 static char *vgfd_item_path(IShellItem *item) {
     PWSTR wide = NULL;
-    if (FAILED(item->lpVtbl->GetDisplayName(item, SIGDN_FILESYSPATH, &wide)) || !wide)
+    if (!item)
         return NULL;
+    if (FAILED(item->lpVtbl->GetDisplayName(item, SIGDN_FILESYSPATH, &wide)) || !wide) {
+        if (wide)
+            CoTaskMemFree(wide);
+        return NULL;
+    }
     char *path = vgfd_utf8(wide);
     CoTaskMemFree(wide);
     return path;
@@ -168,30 +207,41 @@ char *vg_native_open_file(const char *title,
                           const char *initial_path,
                           const char *filter_name,
                           const char *filter_pattern) {
-    if (!vg_native_dialogs_available())
+    vgfd_com_scope scope;
+    if (!vgfd_com_enter(&scope))
         return NULL;
     IFileOpenDialog *dialog = NULL;
-    if (FAILED(CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
-                                NULL,
-                                CLSCTX_INPROC_SERVER,
-                                &VGFD_IID_IFileOpenDialog,
-                                (void **)&dialog)) ||
-        !dialog)
-        return NULL;
+    HRESULT hr = CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
+                                  NULL,
+                                  CLSCTX_INPROC_SERVER,
+                                  &VGFD_IID_IFileOpenDialog,
+                                  (void **)&dialog);
     wchar_t *fname = NULL, *fspec = NULL;
-    vgfd_apply_common(
-        (IFileDialog *)dialog, title, initial_path, filter_name, filter_pattern, &fname, &fspec);
     char *result = NULL;
+    if (FAILED(hr) || !dialog)
+        goto cleanup;
+    if (!vgfd_apply_common((IFileDialog *)dialog,
+                           title,
+                           initial_path,
+                           filter_name,
+                           filter_pattern,
+                           &fname,
+                           &fspec))
+        goto cleanup;
     if (SUCCEEDED(dialog->lpVtbl->Show(dialog, NULL))) {
         IShellItem *item = NULL;
-        if (SUCCEEDED(dialog->lpVtbl->GetResult(dialog, &item)) && item) {
+        hr = dialog->lpVtbl->GetResult(dialog, &item);
+        if (SUCCEEDED(hr) && item)
             result = vgfd_item_path(item);
+        if (item)
             item->lpVtbl->Release(item);
-        }
     }
-    dialog->lpVtbl->Release(dialog);
+cleanup:
+    if (dialog)
+        dialog->lpVtbl->Release(dialog);
     free(fname);
     free(fspec);
+    vgfd_com_leave(&scope);
     return result;
 }
 
@@ -202,26 +252,37 @@ char **vg_native_open_files(const char *title,
                             size_t *out_count) {
     if (out_count)
         *out_count = 0;
-    if (!vg_native_dialogs_available() || !out_count)
+    if (!out_count)
+        return NULL;
+    vgfd_com_scope scope;
+    if (!vgfd_com_enter(&scope))
         return NULL;
     IFileOpenDialog *dialog = NULL;
-    if (FAILED(CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
-                                NULL,
-                                CLSCTX_INPROC_SERVER,
-                                &VGFD_IID_IFileOpenDialog,
-                                (void **)&dialog)) ||
-        !dialog)
-        return NULL;
-    FILEOPENDIALOGOPTIONS options = 0;
-    if (SUCCEEDED(dialog->lpVtbl->GetOptions(dialog, &options)))
-        dialog->lpVtbl->SetOptions(dialog, options | FOS_ALLOWMULTISELECT);
+    HRESULT hr = CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
+                                  NULL,
+                                  CLSCTX_INPROC_SERVER,
+                                  &VGFD_IID_IFileOpenDialog,
+                                  (void **)&dialog);
     wchar_t *fname = NULL, *fspec = NULL;
-    vgfd_apply_common(
-        (IFileDialog *)dialog, title, initial_path, filter_name, filter_pattern, &fname, &fspec);
     char **paths = NULL;
+    if (FAILED(hr) || !dialog)
+        goto cleanup;
+    FILEOPENDIALOGOPTIONS options = 0;
+    if (FAILED(dialog->lpVtbl->GetOptions(dialog, &options)) ||
+        FAILED(dialog->lpVtbl->SetOptions(dialog, options | FOS_ALLOWMULTISELECT)))
+        goto cleanup;
+    if (!vgfd_apply_common((IFileDialog *)dialog,
+                           title,
+                           initial_path,
+                           filter_name,
+                           filter_pattern,
+                           &fname,
+                           &fspec))
+        goto cleanup;
     if (SUCCEEDED(dialog->lpVtbl->Show(dialog, NULL))) {
         IShellItemArray *items = NULL;
-        if (SUCCEEDED(dialog->lpVtbl->GetResults(dialog, &items)) && items) {
+        hr = dialog->lpVtbl->GetResults(dialog, &items);
+        if (SUCCEEDED(hr) && items) {
             DWORD count = 0;
             if (SUCCEEDED(items->lpVtbl->GetCount(items, &count)) && count > 0) {
                 paths = (char **)calloc(count, sizeof(char *));
@@ -229,12 +290,14 @@ char **vg_native_open_files(const char *title,
                     size_t written = 0;
                     for (DWORD i = 0; i < count; ++i) {
                         IShellItem *item = NULL;
-                        if (SUCCEEDED(items->lpVtbl->GetItemAt(items, i, &item)) && item) {
+                        hr = items->lpVtbl->GetItemAt(items, i, &item);
+                        if (SUCCEEDED(hr) && item) {
                             char *path = vgfd_item_path(item);
                             if (path)
                                 paths[written++] = path;
-                            item->lpVtbl->Release(item);
                         }
+                        if (item)
+                            item->lpVtbl->Release(item);
                     }
                     *out_count = written;
                     if (written == 0) {
@@ -243,12 +306,16 @@ char **vg_native_open_files(const char *title,
                     }
                 }
             }
-            items->lpVtbl->Release(items);
         }
+        if (items)
+            items->lpVtbl->Release(items);
     }
-    dialog->lpVtbl->Release(dialog);
+cleanup:
+    if (dialog)
+        dialog->lpVtbl->Release(dialog);
     free(fname);
     free(fspec);
+    vgfd_com_leave(&scope);
     return paths;
 }
 
@@ -265,64 +332,87 @@ char *vg_native_save_file(const char *title,
                           const char *default_name,
                           const char *filter_name,
                           const char *filter_pattern) {
-    if (!vg_native_dialogs_available())
+    vgfd_com_scope scope;
+    if (!vgfd_com_enter(&scope))
         return NULL;
     IFileSaveDialog *dialog = NULL;
-    if (FAILED(CoCreateInstance(&VGFD_CLSID_FileSaveDialog,
-                                NULL,
-                                CLSCTX_INPROC_SERVER,
-                                &VGFD_IID_IFileSaveDialog,
-                                (void **)&dialog)) ||
-        !dialog)
-        return NULL;
+    HRESULT hr = CoCreateInstance(&VGFD_CLSID_FileSaveDialog,
+                                  NULL,
+                                  CLSCTX_INPROC_SERVER,
+                                  &VGFD_IID_IFileSaveDialog,
+                                  (void **)&dialog);
     wchar_t *fname = NULL, *fspec = NULL;
-    vgfd_apply_common(
-        (IFileDialog *)dialog, title, initial_path, filter_name, filter_pattern, &fname, &fspec);
-    wchar_t *name_w = vgfd_wide(default_name);
-    if (name_w) {
-        dialog->lpVtbl->SetFileName(dialog, name_w);
-        free(name_w);
-    }
+    wchar_t *name_w = NULL;
     char *result = NULL;
+    if (FAILED(hr) || !dialog)
+        goto cleanup;
+    if (!vgfd_apply_common((IFileDialog *)dialog,
+                           title,
+                           initial_path,
+                           filter_name,
+                           filter_pattern,
+                           &fname,
+                           &fspec))
+        goto cleanup;
+    name_w = vgfd_wide(default_name);
+    if (default_name && *default_name && !name_w)
+        goto cleanup;
+    if (name_w) {
+        hr = dialog->lpVtbl->SetFileName(dialog, name_w);
+        if (FAILED(hr))
+            goto cleanup;
+    }
     if (SUCCEEDED(dialog->lpVtbl->Show(dialog, NULL))) {
         IShellItem *item = NULL;
-        if (SUCCEEDED(dialog->lpVtbl->GetResult(dialog, &item)) && item) {
+        hr = dialog->lpVtbl->GetResult(dialog, &item);
+        if (SUCCEEDED(hr) && item)
             result = vgfd_item_path(item);
+        if (item)
             item->lpVtbl->Release(item);
-        }
     }
-    dialog->lpVtbl->Release(dialog);
+cleanup:
+    if (dialog)
+        dialog->lpVtbl->Release(dialog);
+    free(name_w);
     free(fname);
     free(fspec);
+    vgfd_com_leave(&scope);
     return result;
 }
 
 char *vg_native_select_folder(const char *title, const char *initial_path) {
-    if (!vg_native_dialogs_available())
+    vgfd_com_scope scope;
+    if (!vgfd_com_enter(&scope))
         return NULL;
     IFileOpenDialog *dialog = NULL;
-    if (FAILED(CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
-                                NULL,
-                                CLSCTX_INPROC_SERVER,
-                                &VGFD_IID_IFileOpenDialog,
-                                (void **)&dialog)) ||
-        !dialog)
-        return NULL;
-    FILEOPENDIALOGOPTIONS options = 0;
-    if (SUCCEEDED(dialog->lpVtbl->GetOptions(dialog, &options)))
-        dialog->lpVtbl->SetOptions(dialog, options | FOS_PICKFOLDERS);
+    HRESULT hr = CoCreateInstance(&VGFD_CLSID_FileOpenDialog,
+                                  NULL,
+                                  CLSCTX_INPROC_SERVER,
+                                  &VGFD_IID_IFileOpenDialog,
+                                  (void **)&dialog);
     wchar_t *fname = NULL, *fspec = NULL;
-    vgfd_apply_common((IFileDialog *)dialog, title, initial_path, NULL, NULL, &fname, &fspec);
     char *result = NULL;
+    if (FAILED(hr) || !dialog)
+        goto cleanup;
+    FILEOPENDIALOGOPTIONS options = 0;
+    if (FAILED(dialog->lpVtbl->GetOptions(dialog, &options)) ||
+        FAILED(dialog->lpVtbl->SetOptions(dialog, options | FOS_PICKFOLDERS)))
+        goto cleanup;
+    if (!vgfd_apply_common((IFileDialog *)dialog, title, initial_path, NULL, NULL, &fname, &fspec))
+        goto cleanup;
     if (SUCCEEDED(dialog->lpVtbl->Show(dialog, NULL))) {
         IShellItem *item = NULL;
-        if (SUCCEEDED(dialog->lpVtbl->GetResult(dialog, &item)) && item) {
+        hr = dialog->lpVtbl->GetResult(dialog, &item);
+        if (SUCCEEDED(hr) && item)
             result = vgfd_item_path(item);
+        if (item)
             item->lpVtbl->Release(item);
-        }
     }
-    dialog->lpVtbl->Release(dialog);
+cleanup:
+    if (dialog)
+        dialog->lpVtbl->Release(dialog);
     free(fname);
     free(fspec);
+    vgfd_com_leave(&scope);
     return result;
 }

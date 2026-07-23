@@ -645,6 +645,16 @@ typedef struct {
         }                                                                                          \
     } while (0)
 
+/// @brief Normalize a COM factory result that promises a required output interface.
+/// @details A successful HRESULT with a null output is not usable by the backend and must not be
+///   published as success. Keeping this check in one helper makes every required D3D11 creation
+///   path follow the same output contract, including defensive handling of faulty proxy drivers.
+static HRESULT d3d11_required_output_result(HRESULT hr, const void *output) {
+    if (FAILED(hr))
+        return hr;
+    return output ? S_OK : E_POINTER;
+}
+
 #define D3D11_INITIAL_DYNAMIC_VB_SIZE (4u * 1024u * 1024u)
 #define D3D11_INITIAL_DYNAMIC_IB_SIZE (1u * 1024u * 1024u)
 #define D3D11_INITIAL_INSTANCE_BUFFER_SIZE (256u * 1024u)
@@ -807,7 +817,7 @@ static void d3d11_log_shader_diagnostics(const char *stage, ID3DBlob *diagnostic
     const char *text;
     SIZE_T text_len;
     int print_len;
-    char buffer[1024];
+    char buffer[8192];
 
     if (!diagnostics)
         return;
@@ -815,7 +825,7 @@ static void d3d11_log_shader_diagnostics(const char *stage, ID3DBlob *diagnostic
     text_len = ID3D10Blob_GetBufferSize(diagnostics);
     while (text && text_len > 0 && text[text_len - 1] == '\0')
         text_len--;
-    print_len = text_len > 768 ? 768 : (int)text_len;
+    print_len = text_len > (failed ? 7936 : 768) ? (failed ? 7936 : 768) : (int)text_len;
     snprintf(buffer,
              sizeof(buffer),
              "[vgfx3d_d3d11] %s compile %s: %.*s%s\n",
@@ -845,6 +855,7 @@ static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
     memset(&desc, 0, sizeof(desc));
     desc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
     hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_disjoint_query);
+    hr = d3d11_required_output_result(hr, ctx->frame_time_disjoint_query);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateQuery(frame timestamp disjoint)", hr);
         d3d11_log_device_removed_reason(ctx, "CreateQuery(frame timestamp disjoint)", hr);
@@ -853,6 +864,7 @@ static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
     }
     desc.Query = D3D11_QUERY_TIMESTAMP;
     hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_start_query);
+    hr = d3d11_required_output_result(hr, ctx->frame_time_start_query);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateQuery(frame timestamp start)", hr);
         d3d11_log_device_removed_reason(ctx, "CreateQuery(frame timestamp start)", hr);
@@ -861,6 +873,7 @@ static void d3d11_create_frame_timing_queries(d3d11_context_t *ctx) {
         return;
     }
     hr = ID3D11Device_CreateQuery(ctx->device, &desc, &ctx->frame_time_end_query);
+    hr = d3d11_required_output_result(hr, ctx->frame_time_end_query);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateQuery(frame timestamp end)", hr);
         d3d11_log_device_removed_reason(ctx, "CreateQuery(frame timestamp end)", hr);
@@ -997,9 +1010,13 @@ static void d3d11_present_swapchain(d3d11_context_t *ctx) {
         return;
     snapshot_ok = d3d11_snapshot_backbuffer_for_readback(ctx);
     hr = IDXGISwapChain_Present(ctx->swap_chain, ctx->present_sync_interval, 0);
-    if (FAILED(hr)) {
-        d3d11_log_hresult("IDXGISwapChain::Present", hr);
-        d3d11_log_device_removed_reason(ctx, "IDXGISwapChain::Present", hr);
+    if (hr != S_OK) {
+        if (FAILED(hr)) {
+            d3d11_log_hresult("IDXGISwapChain::Present", hr);
+            d3d11_log_device_removed_reason(ctx, "IDXGISwapChain::Present", hr);
+        }
+        /* Success-status codes such as DXGI_STATUS_OCCLUDED do not confirm that the captured
+         * backbuffer reached the display. Do not expose that copy as a presented-frame snapshot. */
         ctx->presented_color_valid = 0;
         return;
     }
@@ -1068,6 +1085,7 @@ static HRESULT d3d11_create_rasterizer_state(d3d11_context_t *ctx,
                                              D3D11_CULL_MODE cull_mode,
                                              ID3D11RasterizerState **out_state) {
     D3D11_RASTERIZER_DESC desc;
+    HRESULT hr;
 
     if (out_state)
         *out_state = NULL;
@@ -1078,7 +1096,8 @@ static HRESULT d3d11_create_rasterizer_state(d3d11_context_t *ctx,
     desc.CullMode = cull_mode;
     desc.FrontCounterClockwise = TRUE;
     desc.DepthClipEnable = TRUE;
-    return ID3D11Device_CreateRasterizerState(ctx->device, &desc, out_state);
+    hr = ID3D11Device_CreateRasterizerState(ctx->device, &desc, out_state);
+    return d3d11_required_output_result(hr, *out_state);
 }
 
 /// @brief Pick the right pre-built rasterizer state for the given draw flags.
@@ -1130,6 +1149,7 @@ static HRESULT d3d11_create_depth_biased_rasterizer(d3d11_context_t *ctx,
                                                     int reversed_z,
                                                     ID3D11RasterizerState **out_state) {
     D3D11_RASTERIZER_DESC desc;
+    HRESULT hr;
 
     if (out_state)
         *out_state = NULL;
@@ -1143,7 +1163,8 @@ static HRESULT d3d11_create_depth_biased_rasterizer(d3d11_context_t *ctx,
     desc.DepthBias = d3d11_depth_bias_to_int(cmd->depth_bias, reversed_z);
     desc.SlopeScaledDepthBias = d3d11_slope_bias(cmd->slope_scaled_depth_bias, reversed_z);
     desc.DepthBiasClamp = 0.0f;
-    return ID3D11Device_CreateRasterizerState(ctx->device, &desc, out_state);
+    hr = ID3D11Device_CreateRasterizerState(ctx->device, &desc, out_state);
+    return d3d11_required_output_result(hr, *out_state);
 }
 
 /// @brief Return a cached rasterizer state matching a biased draw.
@@ -1216,6 +1237,7 @@ static HRESULT d3d11_create_constant_buffer(d3d11_context_t *ctx,
                                             ID3D11Buffer **out_buffer) {
     D3D11_BUFFER_DESC desc;
     uint32_t byte_width;
+    HRESULT hr;
 
     if (out_buffer)
         *out_buffer = NULL;
@@ -1228,7 +1250,8 @@ static HRESULT d3d11_create_constant_buffer(d3d11_context_t *ctx,
     if (!vgfx3d_d3d11_compute_constant_buffer_byte_width(size, &byte_width))
         return E_OUTOFMEMORY;
     desc.ByteWidth = (UINT)byte_width;
-    return ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, out_buffer);
+    hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, out_buffer);
+    return d3d11_required_output_result(hr, *out_buffer);
 }
 
 /// @brief Initialize common non-comparison sampler fields to D3D11-valid defaults.
@@ -1648,7 +1671,14 @@ static HRESULT d3d11_create_static_buffer(d3d11_context_t *ctx,
     desc.ByteWidth = (UINT)byte_width;
     desc.BindFlags = bind_flags;
     init.pSysMem = data;
-    return ID3D11Device_CreateBuffer(ctx->device, &desc, &init, out_buffer);
+    {
+        HRESULT hr = ID3D11Device_CreateBuffer(ctx->device, &desc, &init, out_buffer);
+        if (FAILED(hr) || !*out_buffer) {
+            SAFE_RELEASE(*out_buffer);
+            return FAILED(hr) ? hr : E_POINTER;
+        }
+        return S_OK;
+    }
 }
 
 /// @brief Get VB+IB for a draw command, using the cache for static meshes.
@@ -1715,6 +1745,8 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
         d3d11_mesh_cache_entry_t *slot = NULL;
         d3d11_mesh_cache_entry_t *oldest = NULL;
         int8_t wants_compact = d3d11_cmd_uses_compact_stream(ctx, cmd) ? 1 : 0;
+        ID3D11Buffer *new_vb = NULL;
+        ID3D11Buffer *new_ib = NULL;
         HRESULT hr;
 
         for (int32_t i = 0; i < D3D11_MESH_CACHE_CAPACITY; i++) {
@@ -1736,7 +1768,6 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
         if (slot->key != cmd->geometry_key || slot->revision != cmd->geometry_revision ||
             slot->vertex_count != cmd->vertex_count || slot->index_count != index_count ||
             slot->compact != wants_compact || !slot->vb || !slot->ib) {
-            d3d11_release_mesh_cache_entry(slot);
             if (wants_compact) {
                 /* R20: encode into the packed 48-byte layout; the compact input
                  * layouts decode it via input-assembler format conversion. */
@@ -1752,24 +1783,28 @@ static int d3d11_acquire_mesh_buffers(d3d11_context_t *ctx,
                     return 0;
                 vgfx3d_encode_compact_vertices(cmd->vertices, cmd->vertex_count, packed);
                 hr = d3d11_create_static_buffer(
-                    ctx, D3D11_BIND_VERTEX_BUFFER, packed, compact_bytes, &slot->vb);
+                    ctx, D3D11_BIND_VERTEX_BUFFER, packed, compact_bytes, &new_vb);
                 free(packed);
             } else {
                 hr = d3d11_create_static_buffer(
-                    ctx, D3D11_BIND_VERTEX_BUFFER, cmd->vertices, vertex_bytes, &slot->vb);
+                    ctx, D3D11_BIND_VERTEX_BUFFER, cmd->vertices, vertex_bytes, &new_vb);
             }
-            if (FAILED(hr)) {
+            if (FAILED(hr) || !new_vb) {
                 d3d11_log_hresult("CreateBuffer(static vertex)", hr);
-                d3d11_release_mesh_cache_entry(slot);
+                SAFE_RELEASE(new_vb);
                 return 0;
             }
             hr = d3d11_create_static_buffer(
-                ctx, D3D11_BIND_INDEX_BUFFER, cmd->indices, index_bytes, &slot->ib);
-            if (FAILED(hr)) {
+                ctx, D3D11_BIND_INDEX_BUFFER, cmd->indices, index_bytes, &new_ib);
+            if (FAILED(hr) || !new_ib) {
                 d3d11_log_hresult("CreateBuffer(static index)", hr);
-                d3d11_release_mesh_cache_entry(slot);
+                SAFE_RELEASE(new_ib);
+                SAFE_RELEASE(new_vb);
                 return 0;
             }
+            d3d11_release_mesh_cache_entry(slot);
+            slot->vb = new_vb;
+            slot->ib = new_ib;
             slot->key = cmd->geometry_key;
             slot->revision = cmd->geometry_revision;
             slot->vertex_count = cmd->vertex_count;
@@ -1820,8 +1855,10 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     hr = ID3D11Device_CreateBuffer(ctx->device, &desc, NULL, &new_buffer);
-    if (FAILED(hr))
-        return hr;
+    if (FAILED(hr) || !new_buffer) {
+        SAFE_RELEASE(new_buffer);
+        return FAILED(hr) ? hr : E_POINTER;
+    }
 
     memset(&srv_desc, 0, sizeof(srv_desc));
     srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
@@ -1830,9 +1867,10 @@ static HRESULT d3d11_ensure_float_srv_buffer(d3d11_context_t *ctx,
     srv_desc.Buffer.NumElements = (UINT)allocation_capacity;
     hr = ID3D11Device_CreateShaderResourceView(
         ctx->device, (ID3D11Resource *)new_buffer, &srv_desc, &new_srv);
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !new_srv) {
+        SAFE_RELEASE(new_srv);
         SAFE_RELEASE(new_buffer);
-        return hr;
+        return FAILED(hr) ? hr : E_POINTER;
     }
     d3d11_unbind_draw_resources(ctx);
     SAFE_RELEASE(*srv);
@@ -1912,6 +1950,7 @@ static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
     init_data.SysMemPitch = sizeof(kWhitePixel);
     init_data.SysMemSlicePitch = sizeof(kWhitePixel);
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, &init_data, &ctx->fallback_white_tex);
+    hr = d3d11_required_output_result(hr, ctx->fallback_white_tex);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D(fallbackWhite2D)", hr);
         return hr;
@@ -1925,6 +1964,7 @@ static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
                                                (ID3D11Resource *)ctx->fallback_white_tex,
                                                &srv_desc,
                                                &ctx->fallback_white_srv);
+    hr = d3d11_required_output_result(hr, ctx->fallback_white_srv);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateShaderResourceView(fallbackWhite2D)", hr);
         SAFE_RELEASE(ctx->fallback_white_tex);
@@ -1937,6 +1977,7 @@ static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
         cube_init[face] = init_data;
     }
     hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, cube_init, &ctx->fallback_white_cube_tex);
+    hr = d3d11_required_output_result(hr, ctx->fallback_white_cube_tex);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateTexture2D(fallbackWhiteCube)", hr);
         SAFE_RELEASE(ctx->fallback_white_srv);
@@ -1952,6 +1993,7 @@ static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
                                                (ID3D11Resource *)ctx->fallback_white_cube_tex,
                                                &srv_desc,
                                                &ctx->fallback_white_cube_srv);
+    hr = d3d11_required_output_result(hr, ctx->fallback_white_cube_srv);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateShaderResourceView(fallbackWhiteCube)", hr);
         SAFE_RELEASE(ctx->fallback_white_cube_tex);
@@ -1976,6 +2018,7 @@ static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
         init_data.SysMemPitch = (UINT)(VGFX3D_BRDF_LUT_SIZE * 2u * sizeof(float));
         init_data.SysMemSlicePitch = 0;
         hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, &init_data, &ctx->brdf_lut_tex);
+        hr = d3d11_required_output_result(hr, ctx->brdf_lut_tex);
         if (FAILED(hr)) {
             d3d11_log_hresult("CreateTexture2D(brdfLut)", hr);
             return hr;
@@ -1986,6 +2029,7 @@ static HRESULT d3d11_create_white_fallback_resources(d3d11_context_t *ctx) {
         srv_desc.Texture2D.MipLevels = 1;
         hr = ID3D11Device_CreateShaderResourceView(
             ctx->device, (ID3D11Resource *)ctx->brdf_lut_tex, &srv_desc, &ctx->brdf_lut_srv);
+        hr = d3d11_required_output_result(hr, ctx->brdf_lut_srv);
         if (FAILED(hr)) {
             d3d11_log_hresult("CreateShaderResourceView(brdfLut)", hr);
             SAFE_RELEASE(ctx->brdf_lut_tex);

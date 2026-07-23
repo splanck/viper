@@ -806,7 +806,7 @@ static const char *const
             "d);\n"
             "                } else {\n"
             "                    atten = 1.0 / (1.0 + uLightAtten[i] * d * d);\n"
-            "                }\n"
+            "                }\n",
             "            } else if (uLightType[i] == 4) {\n"
             "                vec4 emitter = uLightShadowCascadeSplits[i];\n"
             "                vec3 D = safeNormalize3(uLightDir[i], vec3(0.0, -1.0, 0.0));\n"
@@ -825,11 +825,11 @@ static const char *const
             "                float decayDistance = d;\n"
             "                if (uLightShadowCascadeCount[i] >= 2) decayDistance *= d;\n"
             "                if (uLightShadowCascadeCount[i] >= 3) decayDistance *= d;\n"
-            "                float decay = (uLightShadowCascadeCount[i] == 0) ? 1.0 :\n"
+            "                float decay = (uLightShadowCascadeCount[i] == 0) ? 1.0 :\n",
             "                    1.0 / (1.0 + max(uLightAtten[i], 0.001) * decayDistance);\n"
             "                float rangeT = clamp(1.0 - d / max(uLightOuterCos[i], 0.000001),\n"
             "                                     0.0, 1.0);\n"
-            "                atten = emitterCos * solidAngle * decay *\n"
+            "                atten = emitterCos * solidAngle * decay *\n",
             "                        rangeT * rangeT * (3.0 - 2.0 * rangeT);\n"
             "            } else if (uLightType[i] == 5) {\n"
             "                vec3 toLight = uLightPos[i] - vWorldPos;\n"
@@ -841,7 +841,7 @@ static const char *const
             "                float decayDistance = d;\n"
             "                if (uLightShadowCascadeCount[i] >= 2) decayDistance *= d;\n"
             "                if (uLightShadowCascadeCount[i] >= 3) decayDistance *= d;\n"
-            "                float decay = (uLightShadowCascadeCount[i] == 0) ? 1.0 :\n"
+            "                float decay = (uLightShadowCascadeCount[i] == 0) ? 1.0 :\n",
             "                    1.0 / (1.0 + max(uLightAtten[i], 0.001) * decayDistance);\n"
             "                float rangeT = clamp(1.0 - d / max(uLightOuterCos[i], 0.000001),\n"
             "                                     0.0, 1.0);\n"
@@ -963,7 +963,7 @@ static const char *const
             "uLightOuterCos[i]) / coneRange, 0.0, 1.0) : (spotDot >= uLightInnerCos[i] ? 1.0 : "
             "0.0);\n"
             "                cone = cone * cone * (3.0 - 2.0 * cone);\n"
-            "                atten = cone / (1.0 + uLightAtten[i] * d * d);\n"
+            "                atten = cone / (1.0 + uLightAtten[i] * d * d);\n",
             "            } else if (uLightType[i] == 4) {\n"
             "                vec4 emitter = uLightShadowCascadeSplits[i];\n"
             "                vec3 D = safeNormalize3(uLightDir[i], vec3(0.0, -1.0, 0.0));\n"
@@ -982,7 +982,7 @@ static const char *const
             "                float decayDistance = d;\n"
             "                if (uLightShadowCascadeCount[i] >= 2) decayDistance *= d;\n"
             "                if (uLightShadowCascadeCount[i] >= 3) decayDistance *= d;\n"
-            "                float decay = (uLightShadowCascadeCount[i] == 0) ? 1.0 :\n"
+            "                float decay = (uLightShadowCascadeCount[i] == 0) ? 1.0 :\n",
             "                    1.0 / (1.0 + max(uLightAtten[i], 0.001) * decayDistance);\n"
             "                float rangeT = clamp(1.0 - d / max(uLightOuterCos[i], 0.000001),\n"
             "                                     0.0, 1.0);\n"

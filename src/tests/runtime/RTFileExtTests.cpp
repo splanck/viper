@@ -10,7 +10,8 @@
 // Key invariants: File operations work correctly across platforms,
 //                 ReadBytes/WriteBytes handle binary data correctly,
 //                 ReadLines/WriteLines preserve line structure, and atomic
-//                 overwrites preserve existing file permissions.
+//                 overwrites preserve existing file permissions, and Windows
+//                 sparse files retain 64-bit seek/stat behavior beyond 2 GiB.
 // Ownership/Lifetime: Uses runtime library; tests return newly allocated
 //                     strings and objects that must be released.
 // Links: src/runtime/io/rt_file_ext.c, docs/zannalib/io/files.md
@@ -20,8 +21,10 @@
 #include "common/PlatformCapabilities.hpp"
 #include "rt.hpp"
 #include "rt_bytes.h"
+#include "rt_file.h"
 #include "rt_file_ext.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "tests/common/PlatformSkip.h"
 
@@ -35,7 +38,7 @@
 #include <vector>
 
 #include "tests/common/PosixCompat.h"
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <direct.h>
 #define mkdir_p(path) _mkdir(path)
 #define rmdir_p(path) _rmdir(path)
@@ -79,7 +82,7 @@ static void test_result(const char *name, bool passed) {
 
 /// @brief Get a unique temp directory path for testing.
 static const char *get_test_base() {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     static char buf[256];
     const char *tmp = getenv("TEMP");
     if (!tmp)
@@ -117,7 +120,7 @@ static void create_test_file_bin(const char *path, const void *data, size_t len)
 
 /// @brief Helper to remove a file.
 static void remove_file(const char *path) {
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     _unlink(path);
 #else
     unlink(path);
@@ -126,7 +129,7 @@ static void remove_file(const char *path) {
 
 static const char *get_missing_path() {
     static char buf[512];
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     snprintf(buf, sizeof(buf), "%s\\missing_dir\\missing_file.txt", get_test_base());
 #else
     snprintf(buf, sizeof(buf), "%s/missing_dir/missing_file.txt", get_test_base());
@@ -945,7 +948,39 @@ static void test_nonexistent() {
     printf("\n");
 }
 
-#ifndef _WIN32
+#if RT_PLATFORM_WINDOWS
+/// @brief Verify the Windows file adapters use 64-bit offsets and sizes end to end.
+/// @details Writing one byte after a 3 GiB seek creates a sparse file, so the test
+///          exercises `_lseeki64`, `_fstat64`, and `_wstat64` without consuming
+///          gigabytes of disk space or memory.
+static void test_windows_large_file_offsets() {
+    printf("Testing Windows large-file offsets:\n");
+
+    const char *base = get_test_base();
+    char path[512];
+    snprintf(path, sizeof(path), "%s_large_sparse.bin", base);
+    remove_file(path);
+
+    RtFile file;
+    RtError error = RT_ERROR_NONE;
+    rt_file_init(&file);
+    assert(rt_file_open(&file, path, "wb+", RT_F_BINARY, &error));
+    const int64_t offset = INT64_C(3) * 1024 * 1024 * 1024;
+    assert(rt_file_seek(&file, offset, SEEK_SET, &error));
+    const uint8_t marker = 0xA5;
+    assert(rt_file_write(&file, &marker, sizeof(marker), &error));
+    assert(rt_file_close(&file, &error));
+
+    test_result("3 GiB sparse size preserved", rt_file_size(rt_const_cstr(path)) == offset + 1);
+    test_result("large sparse file remains visible", rt_io_file_exists(rt_const_cstr(path)) == 1);
+    test_result("large sparse file timestamp readable", rt_file_modified(rt_const_cstr(path)) >= 0);
+
+    remove_file(path);
+    printf("\n");
+}
+#endif
+
+#if !RT_PLATFORM_WINDOWS
 static void test_copy_preserves_posix_metadata() {
     printf("Testing copy metadata preservation:\n");
 
@@ -1038,7 +1073,10 @@ int main() {
     test_invalid_string_writes_trap();
     test_empty_file();
     test_nonexistent();
-#ifndef _WIN32
+#if RT_PLATFORM_WINDOWS
+    test_windows_large_file_offsets();
+#endif
+#if !RT_PLATFORM_WINDOWS
     test_copy_preserves_posix_metadata();
     test_atomic_overwrite_preserves_posix_mode();
 #endif

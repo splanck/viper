@@ -5,22 +5,16 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// ZannaAUD Windows Platform Backend
-//
-// Implements audio output using WASAPI (Windows Audio Session API).
-// WASAPI is the modern low-level audio API on Windows (Vista and later),
-// providing low-latency audio output with exclusive or shared mode.
-//
-// Key concepts:
-// - IMMDevice: Audio endpoint device (speakers)
-// - IAudioClient: Audio stream management
-// - IAudioRenderClient: Buffer access for writing audio data
-// - Event-driven: We wait on an event signaled when buffer space is available
-//
-// Thread model:
-// - We create a dedicated audio thread that waits for buffer events
-// - When signaled, we fill available buffer space with mixed audio
-// - The mixer is thread-safe, called from the audio thread
+// File: src/lib/audio/src/vaud_platform_win32.c
+// Purpose: Implement event-driven WASAPI audio output and Windows timing.
+// Key invariants:
+//   - Negotiated formats are validated before any render-buffer writes.
+//   - The worker owns its COM apartment and never outlives backend state.
+//   - Every successful WASAPI buffer acquisition is paired with a release.
+// Ownership/Lifetime:
+//   - vaud_win32_data owns all COM interfaces, handles, and conversion buffers.
+//   - The creating thread balances its COM reference during shutdown.
+// Links: src/lib/audio/src/vaud_internal.h, src/lib/audio/CMakeLists.txt
 //
 //===----------------------------------------------------------------------===//
 
@@ -94,6 +88,7 @@ typedef struct {
     HANDLE thread;              ///< Audio thread handle
     HANDLE event;               ///< Buffer event
     HANDLE stop_event;          ///< Stop signal event
+    HANDLE ready_event;         ///< Worker COM-initialization handshake
     WAVEFORMATEX *format;       ///< Negotiated WASAPI render format
     int16_t *mix_buffer;        ///< Internal stereo mix buffer for format conversion
     UINT32 buffer_frames;       ///< Total buffer size in frames
@@ -104,6 +99,7 @@ typedef struct {
     vaud_win32_sample_format render_sample_format; ///< Sample representation
     volatile LONG running;                         ///< Thread running flag
     volatile LONG paused;                          ///< Pause state
+    volatile LONG thread_start_status;             ///< -1 failed, 0 pending, 1 ready
     int com_initialized;                           ///< This backend owns a COM apartment reference.
     CRITICAL_SECTION pause_cs;                     ///< Protects pause state
 } vaud_win32_data;
@@ -305,23 +301,25 @@ static void vaud_win32_store_sample(vaud_win32_data *plat, BYTE *dst, int32_t sa
     }
 }
 
-static void vaud_win32_render_to_buffer(vaud_context_t ctx,
-                                        vaud_win32_data *plat,
-                                        BYTE *buffer,
-                                        UINT32 frames) {
+static int vaud_win32_render_to_buffer(vaud_context_t ctx,
+                                       vaud_win32_data *plat,
+                                       BYTE *buffer,
+                                       UINT32 frames) {
     if (!ctx || !plat || !buffer || frames == 0)
-        return;
+        return 0;
+
+    if (plat->render_block_align == 0 || (size_t)frames > SIZE_MAX / plat->render_block_align)
+        return 0;
 
     if (plat->render_channels == VAUD_CHANNELS && plat->render_sample_rate == VAUD_SAMPLE_RATE &&
         plat->render_sample_format == VAUD_WIN32_SAMPLE_S16 && plat->render_block_align == 4) {
         vaud_mixer_render_device(ctx, (int16_t *)buffer, (int32_t)frames);
-        return;
+        return 1;
     }
 
-    if (!plat->mix_buffer) {
-        memset(buffer, 0, (size_t)frames * plat->render_block_align);
-        return;
-    }
+    memset(buffer, 0, (size_t)frames * plat->render_block_align);
+    if (!plat->mix_buffer)
+        return 1;
 
     UINT32 internal_frames = frames;
     if (plat->render_sample_rate != VAUD_SAMPLE_RATE) {
@@ -354,6 +352,7 @@ static void vaud_win32_render_to_buffer(vaud_context_t ctx,
             vaud_win32_store_sample(plat, dst, sample);
         }
     }
+    return 1;
 }
 
 static void vaud_win32_free_render_buffers(vaud_win32_data *plat) {
@@ -400,8 +399,24 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
     vaud_win32_data *plat = (vaud_win32_data *)ctx->platform_data;
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     int com_initialized = SUCCEEDED(hr) ? 1 : 0;
-    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
+        InterlockedExchange(&plat->thread_start_status, -1);
+        InterlockedExchange(&plat->running, 0);
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to initialize COM on WASAPI audio thread");
+        (void)SetEvent(plat->ready_event);
         return 0;
+    }
+    InterlockedExchange(&plat->thread_start_status, 1);
+    if (!SetEvent(plat->ready_event)) {
+        InterlockedExchange(&plat->thread_start_status, -1);
+        InterlockedExchange(&plat->running, 0);
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to signal WASAPI audio thread readiness");
+        if (com_initialized)
+            CoUninitialize();
+        return 0;
+    }
 
     /* Events to wait on */
     HANDLE events[2] = {plat->event, plat->stop_event};
@@ -418,6 +433,12 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
         if (wait_result == WAIT_TIMEOUT) {
             continue;
         }
+        if (wait_result != WAIT_OBJECT_0) {
+            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+            vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI event wait failed");
+            InterlockedExchange(&plat->running, 0);
+            break;
+        }
 
         /* Check pause state */
         EnterCriticalSection(&plat->pause_cs);
@@ -433,6 +454,12 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
         hr = IAudioClient_GetCurrentPadding(plat->client, &padding);
         if (FAILED(hr)) {
             continue;
+        }
+        if (padding > plat->buffer_frames) {
+            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+            vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI reported invalid buffer padding");
+            InterlockedExchange(&plat->running, 0);
+            break;
         }
 
         UINT32 available = plat->buffer_frames - padding;
@@ -451,12 +478,21 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
         if (FAILED(hr)) {
             continue;
         }
+        if (!buffer) {
+            (void)IAudioRenderClient_ReleaseBuffer(
+                plat->render, available, AUDCLNT_BUFFERFLAGS_SILENT);
+            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+            vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI returned a null render buffer");
+            continue;
+        }
 
         /* Render mixed audio in the negotiated WASAPI format. */
-        vaud_win32_render_to_buffer(ctx, plat, buffer, available);
+        DWORD release_flags = vaud_win32_render_to_buffer(ctx, plat, buffer, available)
+                                  ? 0
+                                  : AUDCLNT_BUFFERFLAGS_SILENT;
 
         /* Release buffer */
-        hr = IAudioRenderClient_ReleaseBuffer(plat->render, available, 0);
+        hr = IAudioRenderClient_ReleaseBuffer(plat->render, available, release_flags);
         if (FAILED(hr)) {
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
         }
@@ -487,6 +523,7 @@ int vaud_platform_init(vaud_context_t ctx) {
     ctx->platform_data = plat;
     InterlockedExchange(&plat->running, 0);
     InterlockedExchange(&plat->paused, 0);
+    InterlockedExchange(&plat->thread_start_status, 0);
 
     InitializeCriticalSection(&plat->pause_cs);
 
@@ -509,7 +546,9 @@ int vaud_platform_init(vaud_context_t ctx) {
                           &VAUD_IID_IMMDeviceEnumerator,
                           (void **)&enumerator);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !enumerator) {
+        if (enumerator)
+            IMMDeviceEnumerator_Release(enumerator);
         DeleteCriticalSection(&plat->pause_cs);
         if (plat->com_initialized)
             CoUninitialize();
@@ -524,7 +563,9 @@ int vaud_platform_init(vaud_context_t ctx) {
 
     IMMDeviceEnumerator_Release(enumerator);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !plat->device) {
+        if (plat->device)
+            IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
         if (plat->com_initialized)
             CoUninitialize();
@@ -538,7 +579,9 @@ int vaud_platform_init(vaud_context_t ctx) {
     hr = IMMDevice_Activate(
         plat->device, &VAUD_IID_IAudioClient, CLSCTX_ALL, NULL, (void **)&plat->client);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !plat->client) {
+        if (plat->client)
+            IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         DeleteCriticalSection(&plat->pause_cs);
         if (plat->com_initialized)
@@ -605,7 +648,7 @@ int vaud_platform_init(vaud_context_t ctx) {
 
     /* Get actual buffer size */
     hr = IAudioClient_GetBufferSize(plat->client, &plat->buffer_frames);
-    if (FAILED(hr)) {
+    if (FAILED(hr) || plat->buffer_frames == 0) {
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         vaud_win32_free_render_buffers(plat);
@@ -621,12 +664,15 @@ int vaud_platform_init(vaud_context_t ctx) {
     /* Create events */
     plat->event = CreateEvent(NULL, FALSE, FALSE, NULL);
     plat->stop_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+    plat->ready_event = CreateEvent(NULL, TRUE, FALSE, NULL);
 
-    if (!plat->event || !plat->stop_event) {
+    if (!plat->event || !plat->stop_event || !plat->ready_event) {
         if (plat->event)
             CloseHandle(plat->event);
         if (plat->stop_event)
             CloseHandle(plat->stop_event);
+        if (plat->ready_event)
+            CloseHandle(plat->ready_event);
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         vaud_win32_free_render_buffers(plat);
@@ -644,6 +690,7 @@ int vaud_platform_init(vaud_context_t ctx) {
     if (FAILED(hr)) {
         CloseHandle(plat->event);
         CloseHandle(plat->stop_event);
+        CloseHandle(plat->ready_event);
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         vaud_win32_free_render_buffers(plat);
@@ -660,9 +707,12 @@ int vaud_platform_init(vaud_context_t ctx) {
     hr =
         IAudioClient_GetService(plat->client, &VAUD_IID_IAudioRenderClient, (void **)&plat->render);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr) || !plat->render) {
+        if (plat->render)
+            IAudioRenderClient_Release(plat->render);
         CloseHandle(plat->event);
         CloseHandle(plat->stop_event);
+        CloseHandle(plat->ready_event);
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         vaud_win32_free_render_buffers(plat);
@@ -684,6 +734,7 @@ int vaud_platform_init(vaud_context_t ctx) {
         IAudioRenderClient_Release(plat->render);
         CloseHandle(plat->event);
         CloseHandle(plat->stop_event);
+        CloseHandle(plat->ready_event);
         IAudioClient_Release(plat->client);
         IMMDevice_Release(plat->device);
         vaud_win32_free_render_buffers(plat);
@@ -695,6 +746,30 @@ int vaud_platform_init(vaud_context_t ctx) {
         vaud_set_error(VAUD_ERR_PLATFORM, "Failed to create audio thread");
         return 0;
     }
+
+    DWORD ready_wait = WaitForSingleObject(plat->ready_event, 5000);
+    LONG start_status = InterlockedCompareExchange(&plat->thread_start_status, 0, 0);
+    if (ready_wait != WAIT_OBJECT_0 || start_status != 1) {
+        InterlockedExchange(&plat->running, 0);
+        (void)SetEvent(plat->stop_event);
+        vaud_win32_join_thread(ctx, plat, 5000);
+        IAudioRenderClient_Release(plat->render);
+        CloseHandle(plat->event);
+        CloseHandle(plat->stop_event);
+        CloseHandle(plat->ready_event);
+        IAudioClient_Release(plat->client);
+        IMMDevice_Release(plat->device);
+        vaud_win32_free_render_buffers(plat);
+        DeleteCriticalSection(&plat->pause_cs);
+        if (plat->com_initialized)
+            CoUninitialize();
+        free(plat);
+        ctx->platform_data = NULL;
+        vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI audio thread failed to initialize");
+        return 0;
+    }
+    CloseHandle(plat->ready_event);
+    plat->ready_event = NULL;
 
     /* Start audio client */
     hr = IAudioClient_Start(plat->client);
@@ -751,6 +826,8 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
         CloseHandle(plat->event);
     if (plat->stop_event)
         CloseHandle(plat->stop_event);
+    if (plat->ready_event)
+        CloseHandle(plat->ready_event);
 
     int com_initialized = plat->com_initialized;
     vaud_win32_free_render_buffers(plat);
@@ -813,19 +890,19 @@ static BOOL CALLBACK vaud_qpc_init_once(PINIT_ONCE init_once, PVOID parameter, P
     (void)parameter;
     (void)context;
     if (!QueryPerformanceFrequency(&g_vaud_qpc_frequency) || g_vaud_qpc_frequency.QuadPart <= 0) {
-        g_vaud_qpc_frequency.QuadPart = 1000;
-        return FALSE;
+        g_vaud_qpc_frequency.QuadPart = 0;
     }
     return TRUE;
 }
 
 int64_t vaud_platform_now_ms(void) {
-    if (!InitOnceExecuteOnce(&g_vaud_qpc_init_once, vaud_qpc_init_once, NULL, NULL) ||
-        g_vaud_qpc_frequency.QuadPart <= 0)
-        return 0;
+    (void)InitOnceExecuteOnce(&g_vaud_qpc_init_once, vaud_qpc_init_once, NULL, NULL);
+    if (g_vaud_qpc_frequency.QuadPart <= 0)
+        return (int64_t)GetTickCount64();
 
     LARGE_INTEGER counter;
-    QueryPerformanceCounter(&counter);
+    if (!QueryPerformanceCounter(&counter))
+        return (int64_t)GetTickCount64();
 
     long double millis =
         ((long double)counter.QuadPart * 1000.0L) / (long double)g_vaud_qpc_frequency.QuadPart;

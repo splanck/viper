@@ -4,6 +4,18 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: src/frontends/basic/Lexer.cpp
+// Purpose: Tokenize BASIC source into location-aware parser tokens.
+// Key invariants:
+//   - The source view is borrowed and never modified.
+//   - CRLF, lone CR, and LF each produce exactly one logical end-of-line token.
+// Ownership/Lifetime:
+//   - The caller-owned source buffer outlives the lexer.
+//   - Returned token lexemes own their copied text.
+// Links: src/frontends/basic/Lexer.hpp, src/frontends/common/LexerBase.hpp
+//
+//===----------------------------------------------------------------------===//
 ///
 /// @file Lexer.cpp
 /// @brief Lexical analyzer for the BASIC frontend.
@@ -269,7 +281,7 @@ bool startsBasedLiteral(std::string_view src, size_t pos) {
 /// @param file_id Identifier used when emitting diagnostic locations.
 Lexer::Lexer(std::string_view src, uint32_t file_id) : Base(file_id), src_(src) {}
 
-/// @brief Skip spaces, tabs, and carriage returns but stop at newlines.
+/// @brief Skip spaces and tabs but stop at every supported line ending.
 ///
 /// @details Whitespace between statements is ignored by BASIC except for
 ///          newline boundaries that influence statement grouping.  This helper
@@ -278,7 +290,7 @@ Lexer::Lexer(std::string_view src, uint32_t file_id) : Base(file_id), src_(src) 
 void Lexer::skipWhitespaceExceptNewline() {
     while (!eof()) {
         char c = peek();
-        if (c == ' ' || c == '\t' || c == '\r') {
+        if (c == ' ' || c == '\t') {
             get();
         } else {
             break;
@@ -514,7 +526,7 @@ Token Lexer::next() {
 
         char c = peek();
 
-        if (c == '\n') {
+        if (c == '\r' || c == '\n') {
             il::support::SourceLoc loc{fileId_, line_, column_};
             get();
             return {TokenKind::EndOfLine, "\n", loc};

@@ -183,10 +183,18 @@ bool jsonNumberValue(void *value, double &out) {
 }
 
 bool jsonIntValue(void *value, int64_t &out) {
-    double number = 0.0;
-    if (!jsonNumberValue(value, number) || std::trunc(number) != number ||
-        number < static_cast<double>(std::numeric_limits<int64_t>::min()) ||
-        number > static_cast<double>(std::numeric_limits<int64_t>::max()))
+    if (!value || rt_obj_class_id(value) != RT_BOX_CLASS_ID)
+        return false;
+    if (rt_box_type(value) == RT_BOX_I64) {
+        out = rt_unbox_i64(value);
+        return true;
+    }
+    if (rt_box_type(value) != RT_BOX_F64)
+        return false;
+    const double number = rt_unbox_f64(value);
+    constexpr double kInt64Limit = 9223372036854775808.0;
+    if (!std::isfinite(number) || std::trunc(number) != number || number < -kInt64Limit ||
+        number >= kInt64Limit)
         return false;
     out = static_cast<int64_t>(number);
     return true;
@@ -3896,9 +3904,12 @@ class ImportParser {
                 }
             }
             long double relativeX = static_cast<long double>(tileset.tileOffsetX) +
-                                    (sourceWidth - transformedWidth) / 2;
-            long double relativeY = static_cast<long double>(document.tileHeight) - sourceHeight +
-                                    tileset.tileOffsetY + (sourceHeight - transformedHeight) / 2;
+                                    static_cast<long double>(sourceWidth - transformedWidth) / 2.0L;
+            long double relativeY =
+                static_cast<long double>(document.tileHeight) -
+                static_cast<long double>(sourceHeight) +
+                static_cast<long double>(tileset.tileOffsetY) +
+                static_cast<long double>(sourceHeight - transformedHeight) / 2.0L;
             long double endX = relativeX + transformedWidth;
             long double endY = relativeY + transformedHeight;
             if (!haveBounds) {
@@ -3917,8 +3928,8 @@ class ImportParser {
         if (!haveBounds) {
             minimumX = 0.0L;
             minimumY = 0.0L;
-            maximumX = document.tileWidth;
-            maximumY = document.tileHeight;
+            maximumX = static_cast<long double>(document.tileWidth);
+            maximumY = static_cast<long double>(document.tileHeight);
         }
         long double frameWidth = maximumX - minimumX;
         long double frameHeight = maximumY - minimumY;

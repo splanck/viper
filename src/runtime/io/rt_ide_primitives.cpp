@@ -462,9 +462,9 @@ static void pruneGitignoreCacheLocked() {
 /// @details Used for the human-facing `modified` field in enumeration maps.
 int64_t fileTimeSeconds(const fs::path &path) {
 #if RT_PLATFORM_WINDOWS
-    struct _stat64i32 st{};
+    struct _stat64 st{};
     const std::wstring wide = path.wstring();
-    if (_wstat64i32(wide.c_str(), &st) != 0)
+    if (_wstat64(wide.c_str(), &st) != 0)
         return -1;
 #else
     struct stat st{};

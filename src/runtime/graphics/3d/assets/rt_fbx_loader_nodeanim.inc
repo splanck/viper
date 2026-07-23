@@ -873,14 +873,22 @@ static int fbx_node_anim_emit_camera_channels(void *clip,
                                               const fbx_anim_layer_stack_t *stack,
                                               int64_t clip_start,
                                               fbx_load_context_t *context) {
-    enum { PROJECTION = 0, ASPECT = 1, FOV = 2, NEAR = 3, FAR = 4, ORTHO = 5, VALUE_LANES = 6 };
+    enum {
+        FBX_CAMERA_VALUE_PROJECTION = 0,
+        FBX_CAMERA_VALUE_ASPECT = 1,
+        FBX_CAMERA_VALUE_FOV = 2,
+        FBX_CAMERA_VALUE_NEAR = 3,
+        FBX_CAMERA_VALUE_FAR = 4,
+        FBX_CAMERA_VALUE_ORTHO = 5,
+        FBX_CAMERA_VALUE_LANES = 6
+    };
 
-    static const int64_t paths[VALUE_LANES] = {RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE,
-                                               RT_NODE_ANIM_PATH_CAMERA_ASPECT,
-                                               RT_NODE_ANIM_PATH_CAMERA_FOV,
-                                               RT_NODE_ANIM_PATH_CAMERA_NEAR,
-                                               RT_NODE_ANIM_PATH_CAMERA_FAR,
-                                               RT_NODE_ANIM_PATH_CAMERA_ORTHO_SIZE};
+    static const int64_t paths[FBX_CAMERA_VALUE_LANES] = {RT_NODE_ANIM_PATH_CAMERA_PROJECTION_MODE,
+                                                          RT_NODE_ANIM_PATH_CAMERA_ASPECT,
+                                                          RT_NODE_ANIM_PATH_CAMERA_FOV,
+                                                          RT_NODE_ANIM_PATH_CAMERA_NEAR,
+                                                          RT_NODE_ANIM_PATH_CAMERA_FAR,
+                                                          RT_NODE_ANIM_PATH_CAMERA_ORTHO_SIZE};
     fbx_node_t *attribute;
     fbx_camera_property_state_t base;
     int64_t attribute_id;
@@ -918,27 +926,28 @@ static int fbx_node_anim_emit_camera_channels(void *clip,
     if (!fbx_camera_state_validate_enums(&base))
         goto fail;
     if (raw_flags & FBX_CAMERA_ANIM_PROJECTION)
-        output_flags |= 1u << PROJECTION;
+        output_flags |= 1u << FBX_CAMERA_VALUE_PROJECTION;
     if (raw_flags & (FBX_CAMERA_ANIM_ASPECT_WIDTH | FBX_CAMERA_ANIM_ASPECT_HEIGHT))
-        output_flags |= 1u << ASPECT;
+        output_flags |= 1u << FBX_CAMERA_VALUE_ASPECT;
     if (raw_flags & (FBX_CAMERA_ANIM_APERTURE_MODE | FBX_CAMERA_ANIM_FOV | FBX_CAMERA_ANIM_FOV_X |
                      FBX_CAMERA_ANIM_FOV_Y | FBX_CAMERA_ANIM_FOCAL_LENGTH |
                      FBX_CAMERA_ANIM_FILM_WIDTH | FBX_CAMERA_ANIM_FILM_HEIGHT |
                      FBX_CAMERA_ANIM_ASPECT_WIDTH | FBX_CAMERA_ANIM_ASPECT_HEIGHT))
-        output_flags |= 1u << FOV;
+        output_flags |= 1u << FBX_CAMERA_VALUE_FOV;
     if (raw_flags & FBX_CAMERA_ANIM_NEAR)
-        output_flags |= 1u << NEAR;
+        output_flags |= 1u << FBX_CAMERA_VALUE_NEAR;
     if (raw_flags & FBX_CAMERA_ANIM_FAR)
-        output_flags |= 1u << FAR;
+        output_flags |= 1u << FBX_CAMERA_VALUE_FAR;
     if (raw_flags & FBX_CAMERA_ANIM_ORTHO_ZOOM)
-        output_flags |= 1u << ORTHO;
+        output_flags |= 1u << FBX_CAMERA_VALUE_ORTHO;
     if ((size_t)source_count > SIZE_MAX / sizeof(*times) ||
-        (size_t)source_count > SIZE_MAX / (VALUE_LANES * sizeof(*values)) ||
+        (size_t)source_count > SIZE_MAX / (FBX_CAMERA_VALUE_LANES * sizeof(*values)) ||
         !fbx_budget_charge(context, (uint64_t)source_count, sizeof(*times)) ||
-        !fbx_budget_charge(context, (uint64_t)source_count * VALUE_LANES, sizeof(*values)))
+        !fbx_budget_charge(
+            context, (uint64_t)source_count * FBX_CAMERA_VALUE_LANES, sizeof(*values)))
         goto fail;
     times = (double *)malloc((size_t)source_count * sizeof(*times));
-    values = (float *)calloc((size_t)source_count * VALUE_LANES, sizeof(*values));
+    values = (float *)calloc((size_t)source_count * FBX_CAMERA_VALUE_LANES, sizeof(*values));
     if (!times || !values)
         goto fail;
     for (int32_t key = 0; key < source_count; ++key) {
@@ -947,14 +956,20 @@ static int fbx_node_anim_emit_camera_channels(void *clip,
                 stack, attribute_id, model->id, raw_flags, &base, source_times[key], &sampled))
             goto fail;
         times[key] = ((double)source_times[key] - (double)clip_start) / (double)FBX_TIME_SECOND;
-        values[(size_t)key * VALUE_LANES + PROJECTION] = (float)sampled.projection_type;
-        values[(size_t)key * VALUE_LANES + ASPECT] = (float)fbx_camera_state_aspect(&sampled);
-        values[(size_t)key * VALUE_LANES + FOV] = (float)fbx_camera_state_vertical_fov(&sampled);
-        values[(size_t)key * VALUE_LANES + NEAR] = (float)sampled.near_plane;
-        values[(size_t)key * VALUE_LANES + FAR] = (float)sampled.far_plane;
-        values[(size_t)key * VALUE_LANES + ORTHO] = (float)fabs(sampled.ortho_zoom);
-        for (int lane = 0; lane < VALUE_LANES; ++lane)
-            if (!isfinite(values[(size_t)key * VALUE_LANES + (size_t)lane]))
+        values[(size_t)key * FBX_CAMERA_VALUE_LANES + FBX_CAMERA_VALUE_PROJECTION] =
+            (float)sampled.projection_type;
+        values[(size_t)key * FBX_CAMERA_VALUE_LANES + FBX_CAMERA_VALUE_ASPECT] =
+            (float)fbx_camera_state_aspect(&sampled);
+        values[(size_t)key * FBX_CAMERA_VALUE_LANES + FBX_CAMERA_VALUE_FOV] =
+            (float)fbx_camera_state_vertical_fov(&sampled);
+        values[(size_t)key * FBX_CAMERA_VALUE_LANES + FBX_CAMERA_VALUE_NEAR] =
+            (float)sampled.near_plane;
+        values[(size_t)key * FBX_CAMERA_VALUE_LANES + FBX_CAMERA_VALUE_FAR] =
+            (float)sampled.far_plane;
+        values[(size_t)key * FBX_CAMERA_VALUE_LANES + FBX_CAMERA_VALUE_ORTHO] =
+            (float)fabs(sampled.ortho_zoom);
+        for (int lane = 0; lane < FBX_CAMERA_VALUE_LANES; ++lane)
+            if (!isfinite(values[(size_t)key * FBX_CAMERA_VALUE_LANES + (size_t)lane]))
                 goto fail;
     }
     target_name = fbx_object_name_string(model->source, 1);
@@ -964,11 +979,11 @@ static int fbx_node_anim_emit_camera_channels(void *clip,
         snprintf(generated, sizeof(generated), "Model_%d", model->import_index);
         target_name = rt_const_cstr(generated);
     }
-    for (int lane = 0; lane < VALUE_LANES; ++lane) {
+    for (int lane = 0; lane < FBX_CAMERA_VALUE_LANES; ++lane) {
         float *lane_values;
         int64_t channel_index;
-        int interpolation =
-            lane == PROJECTION ? RT_NODE_ANIM_INTERP_STEP : RT_NODE_ANIM_INTERP_LINEAR;
+        int interpolation = lane == FBX_CAMERA_VALUE_PROJECTION ? RT_NODE_ANIM_INTERP_STEP
+                                                                : RT_NODE_ANIM_INTERP_LINEAR;
         if ((output_flags & (1u << lane)) == 0)
             continue;
         if (!fbx_budget_charge(context, 1u, sizeof(rt_node_anim_channel3d)) ||
@@ -979,7 +994,7 @@ static int fbx_node_anim_emit_camera_channels(void *clip,
         if (!lane_values)
             goto fail;
         for (int32_t key = 0; key < source_count; ++key)
-            lane_values[key] = values[(size_t)key * VALUE_LANES + (size_t)lane];
+            lane_values[key] = values[(size_t)key * FBX_CAMERA_VALUE_LANES + (size_t)lane];
         channel_index = rt_node_animation3d_add_channel(
             clip, target_name, paths[lane], interpolation, source_count, 1, times, lane_values);
         free(lane_values);

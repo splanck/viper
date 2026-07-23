@@ -32,6 +32,7 @@
 #include "rt_string.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -208,48 +209,93 @@ static inline wchar_t *rt_dir_win_utf8_to_wide(const char *utf8) {
     return wide;
 }
 
-/// @brief Convert a wide-char string to a Zanna rt_string (UTF-8).
-/// Returns the empty string on conversion / allocation failure.
-static inline rt_string rt_dir_win_wide_to_string(const wchar_t *wide) {
-    if (!wide)
-        return rt_str_empty();
+/// @brief Strictly convert a wide-char string to a Zanna UTF-8 string.
+/// @param wide NUL-terminated UTF-16 input.
+/// @param out Receives an owned runtime string on success and NULL on failure.
+/// @return 1 on success, 0 for malformed UTF-16, invalid arguments, or allocation failure.
+static inline int rt_dir_win_wide_to_string_checked(const wchar_t *wide, rt_string *out) {
+    if (out)
+        *out = NULL;
+    if (!wide || !out)
+        return 0;
 
     int needed = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, NULL, 0, NULL, NULL);
     if (needed <= 0)
-        return rt_str_empty();
+        return 0;
 
     char *utf8 = (char *)malloc((size_t)needed);
     if (!utf8)
-        return rt_str_empty();
+        return 0;
 
     if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, utf8, needed, NULL, NULL) <=
         0) {
         free(utf8);
-        return rt_str_empty();
+        return 0;
     }
 
     rt_string s = rt_string_from_bytes(utf8, strlen(utf8));
     free(utf8);
-    return s ? s : rt_str_empty();
+    if (!s)
+        return 0;
+    *out = s;
+    return 1;
+}
+
+/// @brief Compatibility wrapper returning the canonical empty string on conversion failure.
+static inline rt_string rt_dir_win_wide_to_string(const wchar_t *wide) {
+    rt_string result = NULL;
+    return rt_dir_win_wide_to_string_checked(wide, &result) ? result : rt_str_empty();
 }
 
 /// @brief Resolve a wide path to an absolute form via `GetFullPathNameW`.
 /// Caller owns the returned wide-char buffer (`free`). NULL on failure.
 static inline wchar_t *rt_dir_win_absolute_path(const wchar_t *wide) {
-    DWORD needed = GetFullPathNameW(wide, 0, NULL, NULL);
-    if (needed == 0)
+    if (!wide)
         return NULL;
-
-    wchar_t *full = (wchar_t *)malloc(((size_t)needed + 1) * sizeof(wchar_t));
-    if (!full)
-        return NULL;
-
-    DWORD got = GetFullPathNameW(wide, needed + 1, full, NULL);
-    if (got == 0 || got > needed) {
+    DWORD capacity = GetFullPathNameW(wide, 0, NULL, NULL);
+    while (capacity > 0) {
+        if ((size_t)capacity > SIZE_MAX / sizeof(wchar_t))
+            return NULL;
+        wchar_t *full = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!full)
+            return NULL;
+        DWORD got = GetFullPathNameW(wide, capacity, full, NULL);
+        if (got == 0) {
+            free(full);
+            return NULL;
+        }
+        if (got < capacity)
+            return full;
         free(full);
-        return NULL;
+        if (got == MAXDWORD)
+            return NULL;
+        capacity = got + 1;
     }
-    return full;
+    return NULL;
+}
+
+/// @brief Snapshot the process current directory despite concurrent cwd changes.
+static inline wchar_t *rt_dir_win_current_directory_alloc(void) {
+    DWORD capacity = GetCurrentDirectoryW(0, NULL);
+    while (capacity > 0) {
+        if ((size_t)capacity > SIZE_MAX / sizeof(wchar_t))
+            return NULL;
+        wchar_t *cwd = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!cwd)
+            return NULL;
+        DWORD got = GetCurrentDirectoryW(capacity, cwd);
+        if (got == 0) {
+            free(cwd);
+            return NULL;
+        }
+        if (got < capacity)
+            return cwd;
+        free(cwd);
+        if (got == MAXDWORD)
+            return NULL;
+        capacity = got + 1;
+    }
+    return NULL;
 }
 
 /// @brief Convert a UTF-8 path to wide form, made absolute and `\\?\`-prefixed.
@@ -377,40 +423,66 @@ static inline int rt_dir_win_move_dir(const char *src, const char *dst) {
     return ok ? 1 : 0;
 }
 
-/// @brief Return 1 if the UTF-8 `utf8` path resolves to the current working directory (Windows).
+typedef int(WINAPI *rt_dir_compare_string_ordinal_fn)(LPCWCH, int, LPCWCH, int, BOOL);
+
+static INIT_ONCE g_rt_dir_compare_ordinal_once = INIT_ONCE_STATIC_INIT;
+static rt_dir_compare_string_ordinal_fn g_rt_dir_compare_ordinal = NULL;
+
+/// @brief Resolve CompareStringOrdinal without extending the native import table.
+static BOOL CALLBACK rt_dir_win_resolve_compare_ordinal(PINIT_ONCE once,
+                                                        PVOID param,
+                                                        PVOID *context) {
+    (void)once;
+    (void)param;
+    (void)context;
+    HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+    if (kernel32) {
+        g_rt_dir_compare_ordinal = (rt_dir_compare_string_ordinal_fn)(void *)GetProcAddress(
+            kernel32, "CompareStringOrdinal");
+    }
+    return TRUE;
+}
+
+/// @brief Compare equal-length path spans with Windows ordinal case folding.
+static inline int rt_dir_win_path_span_equal(const wchar_t *left,
+                                             const wchar_t *right,
+                                             size_t length) {
+    if (!left || !right || length > INT_MAX)
+        return 0;
+    (void)InitOnceExecuteOnce(
+        &g_rt_dir_compare_ordinal_once, rt_dir_win_resolve_compare_ordinal, NULL, NULL);
+    if (g_rt_dir_compare_ordinal)
+        return g_rt_dir_compare_ordinal(left, (int)length, right, (int)length, TRUE) == CSTR_EQUAL;
+    return _wcsnicmp(left, right, length) == 0;
+}
+
+/// @brief Return 1 if a UTF-8 path is the cwd/ancestor or cannot be checked safely (Windows).
 ///
-/// Used by the RemoveAll protection guard to block deletion of the cwd.
+/// Used by the RemoveAll protection guard. Resolution failures deliberately
+/// fail closed so an allocation error or concurrent cwd change can never turn
+/// into permission to recursively delete an unchecked path.
 static inline int rt_dir_win_path_matches_cwd_or_ancestor(const char *utf8) {
     wchar_t *wide = rt_dir_win_utf8_to_wide(utf8);
     wchar_t *full = wide ? rt_dir_win_absolute_path(wide) : NULL;
     free(wide);
     if (!full)
-        return 0;
+        return 1;
 
-    DWORD need = GetCurrentDirectoryW(0, NULL);
-    if (need == 0) {
-        free(full);
-        return 0;
-    }
-    wchar_t *cwd = (wchar_t *)malloc(((size_t)need + 1) * sizeof(wchar_t));
+    wchar_t *cwd = rt_dir_win_current_directory_alloc();
     if (!cwd) {
         free(full);
-        return 0;
+        return 1;
     }
-    DWORD got = GetCurrentDirectoryW(need + 1, cwd);
-    int matches = 0;
-    if (got > 0) {
-        size_t full_len = wcslen(full);
-        size_t cwd_len = wcslen(cwd);
-        while (full_len > 0 && rt_dir_win_is_sep(full[full_len - 1]))
-            --full_len;
-        while (cwd_len > 0 && rt_dir_win_is_sep(cwd[cwd_len - 1]))
-            --cwd_len;
-        matches = full_len == cwd_len && _wcsnicmp(full, cwd, full_len) == 0;
-        if (!matches && full_len < cwd_len && _wcsnicmp(full, cwd, full_len) == 0 &&
-            rt_dir_win_is_sep(cwd[full_len]))
-            matches = 1;
-    }
+    size_t full_len = wcslen(full);
+    size_t cwd_len = wcslen(cwd);
+    while (full_len > 0 && rt_dir_win_is_sep(full[full_len - 1]))
+        --full_len;
+    while (cwd_len > 0 && rt_dir_win_is_sep(cwd[cwd_len - 1]))
+        --cwd_len;
+    int matches = full_len == cwd_len && rt_dir_win_path_span_equal(full, cwd, full_len);
+    if (!matches && full_len < cwd_len && rt_dir_win_path_span_equal(full, cwd, full_len) &&
+        rt_dir_win_is_sep(cwd[full_len]))
+        matches = 1;
     free(cwd);
     free(full);
     return matches;

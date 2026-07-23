@@ -35,7 +35,6 @@
 #include <array>
 #include <cctype>
 #include <cstring>
-#include <cwctype>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -46,6 +45,9 @@ namespace zanna::installer {
 namespace {
 
 constexpr std::size_t kMaximumManifestBytes = 64U * 1024U;
+constexpr std::size_t kMinimumRsaModulusBytes = 256U;
+constexpr std::size_t kMaximumRsaModulusBytes = 512U;
+constexpr std::size_t kMaximumRsaExponentBytes = sizeof(uint32_t);
 constexpr int kOpenUpdate = 2401;
 
 class InternetHandle {
@@ -188,6 +190,35 @@ std::vector<uint8_t> decodeHex(std::string_view value, std::string_view field) {
     return result;
 }
 
+bool isLowerHex(std::string_view value) {
+    return std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+        return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+    });
+}
+
+void validatePinnedKey(const zanna::pkg::WindowsInstallerMetadata &metadata) {
+    if (metadata.updateRsaModulus.size() < kMinimumRsaModulusBytes * 2U ||
+        metadata.updateRsaModulus.size() > kMaximumRsaModulusBytes * 2U ||
+        metadata.updateRsaModulus.size() % 2U != 0U || !isLowerHex(metadata.updateRsaModulus) ||
+        metadata.updateRsaModulus.front() == '0') {
+        throw std::runtime_error("invalid pinned update RSA modulus");
+    }
+    if (metadata.updateRsaExponent.size() < 2U ||
+        metadata.updateRsaExponent.size() > kMaximumRsaExponentBytes * 2U ||
+        metadata.updateRsaExponent.size() % 2U != 0U || !isLowerHex(metadata.updateRsaExponent) ||
+        metadata.updateRsaExponent.rfind("00", 0) == 0) {
+        throw std::runtime_error("invalid pinned update RSA exponent");
+    }
+    uint32_t exponent = 0;
+    for (std::size_t offset = 0; offset < metadata.updateRsaExponent.size(); offset += 2U) {
+        const std::vector<uint8_t> byte =
+            decodeHex(metadata.updateRsaExponent.substr(offset, 2U), "update RSA exponent");
+        exponent = (exponent << 8U) | byte.front();
+    }
+    if (exponent < 3U || exponent % 2U == 0U)
+        throw std::runtime_error("invalid pinned update RSA exponent");
+}
+
 void validateManifestValue(std::string_view value,
                            std::string_view field,
                            bool allowEmpty = false) {
@@ -201,8 +232,11 @@ void validateManifestValue(std::string_view value,
 
 ParsedUrl parseHttpsUrl(std::string_view utf8, std::string_view field) {
     validateManifestValue(utf8, field);
-    if (utf8.find('#') != std::string_view::npos)
-        throw std::runtime_error("update " + std::string(field) + " must not contain a fragment");
+    if (utf8.find('#') != std::string_view::npos || utf8.find('\\') != std::string_view::npos ||
+        utf8.find(' ') != std::string_view::npos) {
+        throw std::runtime_error("update " + std::string(field) +
+                                 " contains an ambiguous URL character");
+    }
     const std::wstring url = utf8ToWide(utf8);
     URL_COMPONENTSW components{};
     components.dwStructSize = sizeof(components);
@@ -220,9 +254,6 @@ ParsedUrl parseHttpsUrl(std::string_view utf8, std::string_view field) {
     ParsedUrl result;
     result.scheme = components.nScheme;
     result.host.assign(components.lpszHostName, components.dwHostNameLength);
-    std::transform(result.host.begin(), result.host.end(), result.host.begin(), [](wchar_t ch) {
-        return static_cast<wchar_t>(::towlower(ch));
-    });
     result.port = components.nPort;
     if (components.dwUrlPathLength != 0U)
         result.resource.assign(components.lpszUrlPath, components.dwUrlPathLength);
@@ -234,7 +265,15 @@ ParsedUrl parseHttpsUrl(std::string_view utf8, std::string_view field) {
 }
 
 bool sameOrigin(const ParsedUrl &left, const ParsedUrl &right) {
-    return left.scheme == right.scheme && left.port == right.port && left.host == right.host;
+    if (left.scheme != right.scheme || left.port != right.port || left.host.size() > INT_MAX ||
+        right.host.size() > INT_MAX) {
+        return false;
+    }
+    return CompareStringOrdinal(left.host.data(),
+                                static_cast<int>(left.host.size()),
+                                right.host.data(),
+                                static_cast<int>(right.host.size()),
+                                TRUE) == CSTR_EQUAL;
 }
 
 std::string downloadManifest(std::string_view manifestUrl, std::string_view version) {
@@ -248,6 +287,13 @@ std::string downloadManifest(std::string_view manifestUrl, std::string_view vers
     }
     if (!session)
         throw std::runtime_error("cannot initialize secure update networking");
+    DWORD secureProtocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+    if (!WinHttpSetOption(session.get(),
+                          WINHTTP_OPTION_SECURE_PROTOCOLS,
+                          &secureProtocols,
+                          sizeof(secureProtocols))) {
+        throw std::runtime_error("cannot require TLS 1.2 for update networking");
+    }
     if (!WinHttpSetTimeouts(session.get(), 5000, 5000, 10000, 10000))
         throw std::runtime_error("cannot configure update network timeouts");
     InternetHandle connection(WinHttpConnect(session.get(), url.host.c_str(), url.port, 0));
@@ -263,6 +309,13 @@ std::string downloadManifest(std::string_view manifestUrl, std::string_view vers
                                               WINHTTP_FLAG_SECURE));
     if (!request)
         throw std::runtime_error("cannot create the secure update request");
+    DWORD secureFeatures = WINHTTP_ENABLE_SSL_REVOCATION;
+    if (!WinHttpSetOption(request.get(),
+                          WINHTTP_OPTION_ENABLE_FEATURE,
+                          &secureFeatures,
+                          sizeof(secureFeatures))) {
+        throw std::runtime_error("cannot enable update certificate revocation checks");
+    }
     DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
     if (!WinHttpSetOption(request.get(),
                           WINHTTP_OPTION_REDIRECT_POLICY,
@@ -314,7 +367,7 @@ std::string downloadManifest(std::string_view manifestUrl, std::string_view vers
             throw std::runtime_error("cannot read the update manifest");
         if (read == 0U)
             break;
-        if (read > kMaximumManifestBytes - body.size())
+        if (read > buffer.size() || read > kMaximumManifestBytes - body.size())
             throw std::runtime_error("the update manifest exceeds the 64 KiB safety limit");
         body.append(buffer.data(), read);
     }
@@ -335,6 +388,9 @@ std::string fieldValue(const std::string &line, std::string_view name, bool allo
 void verifySignature(const zanna::pkg::WindowsInstallerMetadata &metadata,
                      std::string_view canonical,
                      std::string_view signatureHex) {
+    validatePinnedKey(metadata);
+    if (signatureHex.size() != metadata.updateRsaModulus.size() || !isLowerHex(signatureHex))
+        throw std::runtime_error("update manifest signature size does not match its pinned key");
     const std::vector<uint8_t> modulus = decodeHex(metadata.updateRsaModulus, "update RSA modulus");
     const std::vector<uint8_t> exponent =
         decodeHex(metadata.updateRsaExponent, "update RSA exponent");
@@ -383,8 +439,10 @@ void verifySignature(const zanna::pkg::WindowsInstallerMetadata &metadata,
 } // namespace
 
 UpdateCheckResult verifyUpdateManifest(const HostPackage &package, std::string_view manifestText) {
-    if (package.metadata.updateManifestUrl.empty() || package.metadata.updateRsaModulus.empty() ||
-        package.metadata.updateRsaExponent.empty()) {
+    const bool hasUpdateUrl = !package.metadata.updateManifestUrl.empty();
+    const bool hasUpdateModulus = !package.metadata.updateRsaModulus.empty();
+    const bool hasUpdateExponent = !package.metadata.updateRsaExponent.empty();
+    if (!hasUpdateUrl && !hasUpdateModulus && !hasUpdateExponent) {
         return {UpdateStatus::Unconfigured,
                 package.metadata.version,
                 {},
@@ -394,6 +452,9 @@ UpdateCheckResult verifyUpdateManifest(const HostPackage &package, std::string_v
                 {},
                 {}};
     }
+    if (!hasUpdateUrl || !hasUpdateModulus || !hasUpdateExponent)
+        throw std::runtime_error("incomplete pinned update configuration");
+    validatePinnedKey(package.metadata);
     if (manifestText.empty() || manifestText.size() > kMaximumManifestBytes ||
         manifestText.find('\0') != std::string_view::npos) {
         throw std::runtime_error("invalid update manifest size or encoding");
@@ -422,6 +483,8 @@ UpdateCheckResult verifyUpdateManifest(const HostPackage &package, std::string_v
         throw std::runtime_error("update manifest channel does not match this installer");
     if (result.architecture != package.metadata.architecture)
         throw std::runtime_error("update manifest architecture does not match this installer");
+    if (result.downloadSha256.size() != 64U || !isLowerHex(result.downloadSha256))
+        throw std::runtime_error("update manifest download SHA-256 must contain 32 bytes");
     const std::vector<uint8_t> digest = decodeHex(result.downloadSha256, "download SHA-256");
     if (digest.size() != 32U)
         throw std::runtime_error("update manifest download SHA-256 must contain 32 bytes");

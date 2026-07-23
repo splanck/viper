@@ -9,7 +9,12 @@
 // Purpose: Directory operations: existence test, create (incl. make-all), remove,
 //   recursive remove (with protected-path guard), current-directory get/set,
 //   and move/rename. Platform path helpers live in rt_dir_internal.h.
-//
+// Key invariants:
+//   - Recursive deletion never traverses reparse points and fails closed for protected paths.
+//   - Platform-native paths are converted strictly at the runtime boundary.
+// Ownership/Lifetime:
+//   - Temporary native path buffers and returned runtime strings have explicit ownership.
+//   - Recursive helpers release every search handle and child path on all exits.
 // Links: rt_dir.h (public API), rt_dir_internal.h (platform helpers),
 //        rt_dir_list.c (enumeration)
 //
@@ -20,7 +25,6 @@
 #include "rt_file_path.h"
 #include "rt_path.h"
 #include "rt_seq.h"
-
 
 /// @brief Return 1 if `cpath` is a protected target that must not be deleted.
 ///
@@ -613,12 +617,15 @@ static int rt_dir_remove_all_cpath(const char *cpath) {
                 if (!rt_dir_win_remove_directory_w(full_path))
                     ok = 0;
             } else {
-                rt_string sub = rt_dir_win_wide_to_string(full_path);
-                const char *sub_cpath = sub ? rt_string_cstr(sub) : NULL;
-                if (!sub_cpath || !rt_dir_remove_all_cpath(sub_cpath))
+                rt_string sub = NULL;
+                if (!rt_dir_win_wide_to_string_checked(full_path, &sub)) {
                     ok = 0;
-                if (sub)
+                } else {
+                    const char *sub_cpath = rt_string_cstr(sub);
+                    if (!sub_cpath || !sub_cpath[0] || !rt_dir_remove_all_cpath(sub_cpath))
+                        ok = 0;
                     rt_string_unref(sub);
+                }
             }
         } else {
             if (!rt_dir_win_delete_file_w(full_path) && GetLastError() != ERROR_FILE_NOT_FOUND)
@@ -711,7 +718,6 @@ void rt_dir_remove_all(rt_string path) {
         rt_dir_trap_io("Dir.RemoveAll: failed to remove directory tree");
 }
 
-
 /// @brief Get the current working directory path.
 ///
 /// Returns the absolute path of the process's current working directory.
@@ -753,26 +759,18 @@ void rt_dir_remove_all(rt_string path) {
 /// @see rt_path_absolute For converting relative paths to absolute
 rt_string rt_dir_current(void) {
 #ifdef _WIN32
-    DWORD needed = GetCurrentDirectoryW(0, NULL);
-    if (needed == 0) {
-        rt_dir_trap_io("Dir.Current: failed to get current directory");
-        return rt_str_empty();
-    }
-
-    wchar_t *wide = (wchar_t *)malloc((size_t)needed * sizeof(wchar_t));
+    wchar_t *wide = rt_dir_win_current_directory_alloc();
     if (!wide) {
-        rt_dir_trap_runtime("Dir.Current: out of memory");
-        return rt_str_empty();
-    }
-
-    DWORD got = GetCurrentDirectoryW(needed, wide);
-    if (got == 0 || got >= needed) {
-        free(wide);
         rt_dir_trap_io("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
 
-    rt_string result = rt_dir_win_wide_to_string(wide);
+    rt_string result = NULL;
+    if (!rt_dir_win_wide_to_string_checked(wide, &result)) {
+        free(wide);
+        rt_dir_trap_io("Dir.Current: failed to convert current directory");
+        return rt_str_empty();
+    }
     free(wide);
     return result;
 #else

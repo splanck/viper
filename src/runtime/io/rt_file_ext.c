@@ -75,8 +75,8 @@
 #endif
 
 #if RT_PLATFORM_WINDOWS
-typedef struct _stat64i32 rt_fileext_stat_t;
-#define rt_fileext_fstat _fstat64i32
+typedef struct _stat64 rt_fileext_stat_t;
+#define rt_fileext_fstat _fstat64
 #else
 typedef struct stat rt_fileext_stat_t;
 #define rt_fileext_fstat fstat
@@ -231,12 +231,12 @@ static int rt_fileext_unlock_append(int fd, OVERLAPPED *lock_state) {
     return UnlockFileEx((HANDLE)raw_handle, 0, MAXDWORD, MAXDWORD, lock_state) ? 1 : 0;
 }
 
-/// @brief Stat a file at a UTF-8 path via `_wstat` (Windows), converting through wide-char.
+/// @brief Stat a file at a UTF-8 path via the 64-bit-size `_wstat64` variant (Windows).
 static int rt_fileext_stat_path(const char *path, rt_fileext_stat_t *st) {
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
         return -1;
-    int rc = _wstat64i32(wide, st);
+    int rc = _wstat64(wide, st);
     free(wide);
     return rc;
 }

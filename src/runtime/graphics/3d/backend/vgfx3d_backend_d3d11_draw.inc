@@ -525,9 +525,9 @@ static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
     if (!ctx->opaque_depth_tex || ctx->opaque_depth_w != w || ctx->opaque_depth_h != h) {
         D3D11_TEXTURE2D_DESC desc;
         D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc;
+        ID3D11Texture2D *new_tex = NULL;
+        ID3D11ShaderResourceView *new_srv = NULL;
         HRESULT hr;
-        SAFE_RELEASE(ctx->opaque_depth_srv);
-        SAFE_RELEASE(ctx->opaque_depth_tex);
         memset(&desc, 0, sizeof(desc));
         desc.Width = (UINT)w;
         desc.Height = (UINT)h;
@@ -537,25 +537,31 @@ static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
         desc.SampleDesc.Count = 1;
         desc.Usage = D3D11_USAGE_DEFAULT;
         desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, &ctx->opaque_depth_tex);
-        if (FAILED(hr)) {
+        hr = ID3D11Device_CreateTexture2D(ctx->device, &desc, NULL, &new_tex);
+        if (FAILED(hr) || !new_tex) {
+            if (SUCCEEDED(hr))
+                hr = E_POINTER;
             d3d11_log_hresult("CreateTexture2D(opaqueDepth)", hr);
-            d3d11_destroy_opaque_depth_target(ctx);
+            SAFE_RELEASE(new_tex);
             return;
         }
         memset(&srv_desc, 0, sizeof(srv_desc));
         srv_desc.Format = DXGI_FORMAT_R32_FLOAT;
         srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
         srv_desc.Texture2D.MipLevels = 1;
-        hr = ID3D11Device_CreateShaderResourceView(ctx->device,
-                                                   (ID3D11Resource *)ctx->opaque_depth_tex,
-                                                   &srv_desc,
-                                                   &ctx->opaque_depth_srv);
-        if (FAILED(hr)) {
+        hr = ID3D11Device_CreateShaderResourceView(
+            ctx->device, (ID3D11Resource *)new_tex, &srv_desc, &new_srv);
+        if (FAILED(hr) || !new_srv) {
+            if (SUCCEEDED(hr))
+                hr = E_POINTER;
             d3d11_log_hresult("CreateSRV(opaqueDepth)", hr);
-            d3d11_destroy_opaque_depth_target(ctx);
+            SAFE_RELEASE(new_srv);
+            SAFE_RELEASE(new_tex);
             return;
         }
+        d3d11_destroy_opaque_depth_target(ctx);
+        ctx->opaque_depth_tex = new_tex;
+        ctx->opaque_depth_srv = new_srv;
         ctx->opaque_depth_w = w;
         ctx->opaque_depth_h = h;
     }
@@ -927,37 +933,45 @@ static int d3d11_prepare_anim_resources(d3d11_context_t *ctx,
                                                       (int8_t)slot->has_normal_deltas,
                                                       cmd);
             if (!cache_reusable) {
-                d3d11_unbind_draw_resources(ctx);
-                d3d11_release_morph_cache_entry(slot);
+                d3d11_morph_cache_entry_t replacement;
+                memset(&replacement, 0, sizeof(replacement));
                 hr = d3d11_update_float_srv_buffer(ctx,
-                                                   &slot->buffer,
-                                                   &slot->srv,
-                                                   &slot->element_count,
+                                                   &replacement.buffer,
+                                                   &replacement.srv,
+                                                   &replacement.element_count,
                                                    cmd->morph_deltas,
                                                    morph_count);
                 if (FAILED(hr)) {
                     d3d11_log_hresult("Create/UpdateBuffer(morphDeltas cache)", hr);
                 } else {
-                    slot->key = cmd->morph_key;
-                    slot->generation = cmd->morph_revision;
-                    slot->vertex_count = (uint32_t)cmd->vertex_count;
-                    slot->shape_count = (uint32_t)object_data->morph_shape_count;
-                    slot->has_normal_deltas = object_data->has_morph_normal_deltas ? 1 : 0;
-                    morph_upload_ok = 1;
                     if (object_data->has_morph_normal_deltas) {
                         hr = d3d11_update_float_srv_buffer(ctx,
-                                                           &slot->normal_buffer,
-                                                           &slot->normal_srv,
-                                                           &slot->normal_element_count,
+                                                           &replacement.normal_buffer,
+                                                           &replacement.normal_srv,
+                                                           &replacement.normal_element_count,
                                                            cmd->morph_normal_deltas,
                                                            morph_count);
                         if (FAILED(hr)) {
                             d3d11_log_hresult("Create/UpdateBuffer(morphNormalDeltas cache)", hr);
-                        } else {
-                            morph_normal_upload_ok = 1;
                         }
                     }
+                    if (SUCCEEDED(hr)) {
+                        replacement.key = cmd->morph_key;
+                        replacement.generation = cmd->morph_revision;
+                        replacement.vertex_count = (uint32_t)cmd->vertex_count;
+                        replacement.shape_count = (uint32_t)object_data->morph_shape_count;
+                        replacement.has_normal_deltas =
+                            object_data->has_morph_normal_deltas ? 1 : 0;
+                        replacement.last_used_frame = ctx->frame_serial;
+                        d3d11_unbind_draw_resources(ctx);
+                        d3d11_release_morph_cache_entry(slot);
+                        *slot = replacement;
+                        memset(&replacement, 0, sizeof(replacement));
+                        morph_upload_ok = 1;
+                        morph_normal_upload_ok = 1;
+                    }
                 }
+                d3d11_release_morph_cache_entry(&replacement);
             } else {
                 morph_upload_ok = 1;
                 morph_normal_upload_ok =

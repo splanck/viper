@@ -80,17 +80,44 @@ static wchar_t *vg_filedialog_platform_utf8_to_wide(const char *text) {
 static char *vg_filedialog_platform_wide_to_utf8(const wchar_t *text) {
     if (!text)
         return NULL;
-    int needed = WideCharToMultiByte(CP_UTF8, 0, text, -1, NULL, 0, NULL, NULL);
+    int needed = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, NULL, 0, NULL, NULL);
     if (needed <= 0)
         return NULL;
     char *utf8 = (char *)malloc((size_t)needed);
     if (!utf8)
         return NULL;
-    if (WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8, needed, NULL, NULL) != needed) {
+    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, -1, utf8, needed, NULL, NULL) !=
+        needed) {
         free(utf8);
         return NULL;
     }
     return utf8;
+}
+
+static wchar_t *vg_filedialog_platform_environment_wide(const wchar_t *name) {
+    DWORD capacity;
+    if (!name || !*name)
+        return NULL;
+    capacity = GetEnvironmentVariableW(name, NULL, 0);
+    if (capacity == 0)
+        return NULL;
+    for (int attempt = 0; attempt < 8; attempt++) {
+        if ((size_t)capacity > SIZE_MAX / sizeof(wchar_t))
+            return NULL;
+        wchar_t *value = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!value)
+            return NULL;
+        DWORD length = GetEnvironmentVariableW(name, value, capacity);
+        if (length > 0 && length < capacity) {
+            value[length] = L'\0';
+            return value;
+        }
+        free(value);
+        if (length == 0 || length == UINT32_MAX)
+            return NULL;
+        capacity = length + 1u;
+    }
+    return NULL;
 }
 
 /// @brief Append one entry to a growing directory-entry array.
@@ -120,20 +147,36 @@ static bool vg_filedialog_platform_append_entry(vg_filedialog_platform_entry_t *
     return true;
 }
 
-/// @brief Return the default Windows root used as the file dialog fallback.
-/// @return Static "C:\\" string; caller must not free it.
-const char *vg_filedialog_platform_root_path(void) {
-    static char root[] = "C:\\";
-    DWORD drives = GetLogicalDrives();
-    if (drives != 0) {
-        for (char drive = 'A'; drive <= 'Z'; drive++) {
-            if (drives & (1u << (drive - 'A'))) {
-                root[0] = drive;
-                break;
-            }
-        }
+static INIT_ONCE g_vg_filedialog_root_once = INIT_ONCE_STATIC_INIT;
+static char g_vg_filedialog_root[] = "C:\\";
+
+static BOOL CALLBACK vg_filedialog_platform_initialize_root(PINIT_ONCE once,
+                                                            PVOID parameter,
+                                                            PVOID *context) {
+    wchar_t windows_path[MAX_PATH];
+    (void)once;
+    (void)parameter;
+    (void)context;
+    DWORD length =
+        GetWindowsDirectoryW(windows_path, (UINT)(sizeof(windows_path) / sizeof(wchar_t)));
+    if (length >= 2 && length < (DWORD)(sizeof(windows_path) / sizeof(wchar_t)) &&
+        windows_path[1] == L':' &&
+        ((windows_path[0] >= L'A' && windows_path[0] <= L'Z') ||
+         (windows_path[0] >= L'a' && windows_path[0] <= L'z'))) {
+        wchar_t drive = windows_path[0];
+        if (drive >= L'a' && drive <= L'z')
+            drive -= L'a' - L'A';
+        g_vg_filedialog_root[0] = (char)drive;
     }
-    return root;
+    return TRUE;
+}
+
+/// @brief Return the Windows system-drive root used as the dialog fallback.
+/// @return Process-lifetime static root string; caller must not free it.
+const char *vg_filedialog_platform_root_path(void) {
+    (void)InitOnceExecuteOnce(
+        &g_vg_filedialog_root_once, vg_filedialog_platform_initialize_root, NULL, NULL);
+    return g_vg_filedialog_root;
 }
 
 /// @brief Test whether a character is a Windows path separator.
@@ -177,12 +220,20 @@ char *vg_filedialog_platform_join_path(const char *dir, const char *file) {
 ///          falls back to "C:\\".
 /// @return Newly allocated path string, or NULL on allocation failure.
 char *vg_filedialog_platform_home_dir(void) {
-    const char *userprofile = getenv("USERPROFILE");
-    if (userprofile)
-        return vg_filedialog_platform_strdup(userprofile);
+    wchar_t *userprofile_w = vg_filedialog_platform_environment_wide(L"USERPROFILE");
+    if (userprofile_w) {
+        char *userprofile = vg_filedialog_platform_wide_to_utf8(userprofile_w);
+        free(userprofile_w);
+        if (userprofile)
+            return userprofile;
+    }
 
-    const char *homedrive = getenv("HOMEDRIVE");
-    const char *homepath = getenv("HOMEPATH");
+    wchar_t *homedrive_w = vg_filedialog_platform_environment_wide(L"HOMEDRIVE");
+    wchar_t *homepath_w = vg_filedialog_platform_environment_wide(L"HOMEPATH");
+    char *homedrive = vg_filedialog_platform_wide_to_utf8(homedrive_w);
+    char *homepath = vg_filedialog_platform_wide_to_utf8(homepath_w);
+    free(homedrive_w);
+    free(homepath_w);
     if (homedrive && homepath) {
         size_t drive_len = strlen(homedrive);
         size_t path_len = strlen(homepath);
@@ -191,12 +242,16 @@ char *vg_filedialog_platform_home_dir(void) {
             if (result) {
                 memcpy(result, homedrive, drive_len);
                 memcpy(result + drive_len, homepath, path_len + 1u);
+                free(homedrive);
+                free(homepath);
                 return result;
             }
         }
     }
+    free(homedrive);
+    free(homepath);
 
-    return vg_filedialog_platform_strdup("C:\\");
+    return vg_filedialog_platform_strdup(vg_filedialog_platform_root_path());
 }
 
 /// @brief Return a newly allocated parent directory path.
@@ -322,7 +377,9 @@ bool vg_filedialog_platform_list_directory(const char *path,
         ULARGE_INTEGER ull;
         ull.LowPart = find_data.ftLastWriteTime.dwLowDateTime;
         ull.HighPart = find_data.ftLastWriteTime.dwHighDateTime;
-        out.modified_time = (int64_t)((ull.QuadPart - 116444736000000000ULL) / 10000000ULL);
+        out.modified_time = ull.QuadPart >= 116444736000000000ULL
+                                ? (int64_t)((ull.QuadPart - 116444736000000000ULL) / 10000000ULL)
+                                : 0;
 
         if (!out.name || !out.full_path ||
             !vg_filedialog_platform_append_entry(&entries, &count, &capacity, out)) {

@@ -57,19 +57,19 @@ std::string stripLeadingUnderscores(const std::string &name) {
     return (i > 0) ? name.substr(i) : name;
 }
 
-/// @brief Identify libm-style symbols that should not be imported from Windows DLLs.
-/// @details The native linker shares some dynamic-symbol planning paths across
-///          platforms. These names are handled by Unix libm and must be filtered
-///          out of the Windows import planner.
-bool isLinuxMathSymbol(const std::string &name) {
+/// @brief Identify libm-style symbols exported by the Windows Universal CRT.
+/// @details The same names resolve through libm on Unix, but Windows native
+///          binaries must place them in the UCRT import table.
+bool isUcrtMathSymbol(const std::string &name) {
     static const std::unordered_set<std::string> kMath = {
-        "acos",  "acosf", "asin", "asinf", "atan",     "atan2",     "atan2f", "atanf",
-        "cbrt",  "cbrtf", "ceil", "ceilf", "copysign", "copysignf", "cos",    "cosf",
-        "cosh",  "exp",   "expf", "exp2f", "fabs",     "fabsf",     "floor",  "floorf",
-        "fmax",  "fmaxf", "fmin", "fmaxl", "fminf",    "fminl",     "fmod",   "fmodf",
-        "hypot", "ldexp", "log",  "log10", "log2",     "logf",      "lrint",  "lrintf",
-        "nan",   "pow",   "powf", "round", "roundf",   "sin",       "sinf",   "sinh",
-        "sqrt",  "sqrtf", "tan",  "tanf",  "tanh",     "trunc",     "truncf",
+        "acos",      "acosf",      "asin", "asinf", "atan",     "atan2",     "atan2f", "atanf",
+        "cbrt",      "cbrtf",      "ceil", "ceilf", "copysign", "copysignf", "cos",    "cosf",
+        "cosh",      "exp",        "expf", "exp2f", "fabs",     "fabsf",     "floor",  "floorf",
+        "fmax",      "fmaxf",      "fmin", "fmaxl", "fminf",    "fminl",     "fmod",   "fmodf",
+        "hypot",     "ldexp",      "log",  "log10", "log2",     "logf",      "lrint",  "lrintf",
+        "nan",       "pow",        "powf", "round", "roundf",   "sin",       "sinf",   "sinh",
+        "remainder", "remainderf", "sqrt", "sqrtf", "tan",      "tanf",      "tanh",   "trunc",
+        "truncf",
     };
     return kMath.count(name) != 0;
 }
@@ -105,6 +105,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GetCurrentThreadId",
         "GetEnvironmentVariableA",
         "GetEnvironmentVariableW",
+        "GetActiveProcessorCount",
         "GetLastError",
         "GetCommandLineW",
         "GetComputerNameA",
@@ -121,6 +122,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GetSystemInfo",
         "GetSystemTimeAsFileTime",
         "GetTempPathA",
+        "GetWindowsDirectoryW",
         "HeapAlloc",
         "HeapFree",
         "IsDebuggerPresent",
@@ -152,6 +154,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "GlobalAlloc",
         "GlobalFree",
         "GlobalLock",
+        "GlobalSize",
         "GlobalUnlock",
         "InitializeSRWLock",
         "AcquireSRWLockExclusive",
@@ -488,6 +491,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "fseek",
         "fsetpos",
         "fstat64i32",
+        "_fstat64",
         "ftell",
         "fwrite",
         "getc",
@@ -639,8 +643,10 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         "set_abort_behavior",
         "stat64i32",
         "_stat64i32",
+        "_stat64",
         "wstat64i32",
         "_wstat64i32",
+        "_wstat64",
         "wassert",
         "_byteswap_uint64",
         "byteswap_uint64",
@@ -753,8 +759,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         return true;
     }
 
-    if (name == "_Avx2WmemEnabled" || stripped == "Avx2WmemEnabled" ||
-        hasPrefixEither(name, stripped, "_Cnd_") || hasPrefixEither(name, stripped, "Cnd_") ||
+    if (hasPrefixEither(name, stripped, "_Cnd_") || hasPrefixEither(name, stripped, "Cnd_") ||
         hasPrefixEither(name, stripped, "_Mtx_") || hasPrefixEither(name, stripped, "Mtx_") ||
         hasPrefixEither(name, stripped, "_Query_perf_") ||
         hasPrefixEither(name, stripped, "Query_perf_") ||
@@ -795,7 +800,7 @@ bool dllForImport(const std::string &name, bool debugRuntime, std::string &dllNa
         return true;
     }
 
-    if (isLinuxMathSymbol(name) || isLinuxMathSymbol(stripped) || ucrt.count(name) ||
+    if (isUcrtMathSymbol(name) || isUcrtMathSymbol(stripped) || ucrt.count(name) ||
         ucrt.count(stripped)) {
         dllName = debugRuntime ? "ucrtbased.dll" : "ucrtbase.dll";
         return true;

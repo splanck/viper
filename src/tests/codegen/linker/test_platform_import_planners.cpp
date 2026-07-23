@@ -329,6 +329,11 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "cos",
                                         "exp2f",
                                         "log2f",
+                                        "remainder",
+                                        "remainderf",
+                                        "_stat64",
+                                        "_fstat64",
+                                        "_wstat64",
                                         "__RTDynamicCast",
                                         "_Init_thread_header",
                                         "_Smtx_lock_exclusive",
@@ -385,6 +390,11 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "SetConsoleCtrlHandler"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "UnlockFileEx"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "log2f"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "remainder"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "remainderf"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_stat64"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_fstat64"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_wstat64"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "__stdio_common_vswprintf"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_get_osfhandle"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "_chmod"));
@@ -394,6 +404,14 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(objHasSymbol(plan.obj, "__imp_ExitProcess"));
     EXPECT_TRUE(objHasSymbol(plan.obj, "ExitProcess"));
     EXPECT_TRUE(plan.obj.sections.size() >= 2);
+}
+
+TEST(PlatformImportPlanners, Windows64BitStatSymbolsStayWindowsOnly) {
+    for (const char *symbol : {"_stat64", "_fstat64", "_wstat64"}) {
+        EXPECT_TRUE(isKnownDynamicSymbol(symbol, LinkPlatform::Windows));
+        EXPECT_FALSE(isKnownDynamicSymbol(symbol, LinkPlatform::Linux));
+        EXPECT_FALSE(isKnownDynamicSymbol(symbol, LinkPlatform::macOS));
+    }
 }
 
 TEST(PlatformImportPlanners, WindowsPlannerMapsDebugOnlyUcrtImports) {
@@ -419,13 +437,15 @@ TEST(PlatformImportPlanners, WindowsPlannerMapsCertificateKeyImportToCrypt32) {
     EXPECT_FALSE(importPlanDllHasFunction(plan, "advapi32.dll", "CryptImportPublicKeyInfo"));
 }
 
-TEST(PlatformImportPlanners, WindowsPlannerRejectsStaticOnlyMsvcStdHelperImports) {
-    WindowsImportPlan plan;
-    std::ostringstream err;
-    EXPECT_FALSE(
-        generateWindowsImports(LinkArch::X86_64, {"__std_find_trivial_1"}, false, plan, err));
-    EXPECT_NE(std::string::npos, err.str().find("__std_find_trivial_1"));
-    EXPECT_NE(std::string::npos, err.str().find("no DLL mapping"));
+TEST(PlatformImportPlanners, WindowsPlannerRejectsUnavailableMsvcRuntimeImports) {
+    for (const char *symbol : {"__std_find_trivial_1", "_Avx2WmemEnabled"}) {
+        WindowsImportPlan plan;
+        std::ostringstream err;
+        EXPECT_FALSE(generateWindowsImports(LinkArch::X86_64, {symbol}, false, plan, err));
+        EXPECT_NE(std::string::npos, err.str().find(symbol));
+        EXPECT_NE(std::string::npos, err.str().find("no DLL mapping"));
+    }
+    EXPECT_FALSE(isKnownDynamicSymbol("_Avx2WmemEnabled", LinkPlatform::Windows));
 }
 
 // F10: the dynamic-symbol allow-list is platform-scoped for names exclusive to
@@ -584,6 +604,23 @@ TEST(PlatformImportPlanners, WindowsGuiRuntimeSymbolsResolveToSystemDlls) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "advapi32.dll", "RegGetValueW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "strpbrk"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "ucrtbase.dll", "lround"));
+}
+
+TEST(PlatformImportPlanners, WindowsReliabilityApisResolveToKernel32) {
+    const std::unordered_set<std::string> syms = {
+        "GetActiveProcessorCount", "GetWindowsDirectoryW", "GlobalSize"};
+
+    for (const auto &sym : syms) {
+        EXPECT_TRUE(isKnownDynamicSymbol(sym, LinkPlatform::Windows));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::Linux));
+        EXPECT_FALSE(isKnownDynamicSymbol(sym, LinkPlatform::macOS));
+    }
+
+    WindowsImportPlan plan;
+    std::ostringstream err;
+    ASSERT_TRUE(generateWindowsImports(LinkArch::X86_64, syms, false, plan, err));
+    for (const auto &sym : syms)
+        EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", sym));
 }
 
 int main(int argc, char **argv) {

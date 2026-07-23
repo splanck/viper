@@ -1378,8 +1378,10 @@ static int d3d11_acquire_backbuffer_for_readback(d3d11_context_t *ctx,
         return 0;
     hr = IDXGISwapChain_GetBuffer(
         ctx->swap_chain, 0, &IID_ID3D11Texture2D, (void **)out_back_buffer);
+    hr = d3d11_required_output_result(hr, *out_back_buffer);
     if (FAILED(hr)) {
         d3d11_log_hresult("IDXGISwapChain::GetBuffer(readback)", hr);
+        SAFE_RELEASE(*out_back_buffer);
         return 0;
     }
     return 1;
@@ -1560,9 +1562,9 @@ static void d3d11_set_gpu_postfx_enabled(void *ctx_ptr, int8_t enabled) {
 /// @details Rebuilds the offscreen HDR scene at the shared scaled extent and keeps the overlay at
 ///          logical output size. Presentation then resolves through the existing full-screen
 ///          post-FX shader into the swapchain viewport, whether or not user effects are enabled.
-///          Allocation is transactional with respect to the stored scale: a failed scene/overlay
-///          build restores the prior scale and reconstructs its route for a later retry. Explicit
-///          render-target dimensions are never changed.
+///          Allocation is transactional with respect to both the stored scale and live targets:
+///          the native overlay is made ready first, then a complete replacement scene is staged
+///          before the old scene is retired. Explicit render-target dimensions are never changed.
 /// @param ctx_ptr Borrowed `d3d11_context_t` backend handle.
 /// @param scale Finite requested scale in `[0.25, 1]`; values at least `0.999` normalize to 1.
 /// @return 1 when the requested/native route is ready, or 0 for invalid input, missing composite
@@ -1571,10 +1573,10 @@ static int8_t d3d11_set_render_scale(void *ctx_ptr, float scale) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     float prior_scale;
     float next_scale;
+    int route_required;
     int32_t scene_width;
     int32_t scene_height;
-    HRESULT scene_hr = S_OK;
-    HRESULT overlay_hr = S_OK;
+    HRESULT hr;
 
     if (!ctx || !vgfx3d_compute_scaled_scene_extent(
                     ctx->width, ctx->height, scale, &scene_width, &scene_height)) {
@@ -1589,39 +1591,37 @@ static int8_t d3d11_set_render_scale(void *ctx_ptr, float scale) {
         (isfinite(ctx->render_scale) && ctx->render_scale >= 0.25f && ctx->render_scale <= 1.0f)
             ? ctx->render_scale
             : 1.0f;
-    if (fabsf(prior_scale - next_scale) <= 1.0e-6f)
-        return 1;
-
-    d3d11_unbind_draw_resources(ctx);
-    d3d11_destroy_scene_targets(ctx);
-    ctx->render_scale = next_scale;
-    if (d3d11_window_scene_route_enabled(ctx)) {
+    route_required = ctx->gpu_postfx_enabled || next_scale < 1.0f;
+    if (route_required) {
         if (!vgfx3d_compute_scaled_scene_extent(
-                ctx->width, ctx->height, next_scale, &scene_width, &scene_height)) {
-            scene_hr = E_INVALIDARG;
-        } else {
-            scene_hr = d3d11_ensure_scene_targets(ctx, scene_width, scene_height);
-            if (SUCCEEDED(scene_hr))
-                overlay_hr = d3d11_ensure_overlay_target(ctx, ctx->width, ctx->height);
+                ctx->width, ctx->height, next_scale, &scene_width, &scene_height))
+            return 0;
+        /* The overlay stays at native size. Make it ready before publishing a scaled scene so a
+         * later allocation failure leaves the previous complete scene route intact. */
+        hr = d3d11_ensure_overlay_target(ctx, ctx->width, ctx->height);
+        if (FAILED(hr)) {
+            if (!ctx->rtt_active)
+                d3d11_bind_swapchain_target(ctx);
+            return 0;
+        }
+        hr = d3d11_ensure_scene_targets(ctx, scene_width, scene_height);
+        if (FAILED(hr)) {
+            if (!ctx->rtt_active)
+                d3d11_bind_swapchain_target(ctx);
+            return 0;
         }
     }
-    if (SUCCEEDED(scene_hr) && SUCCEEDED(overlay_hr)) {
-        if (!ctx->rtt_active)
-            d3d11_bind_swapchain_target(ctx);
-        return 1;
-    }
 
-    d3d11_destroy_scene_targets(ctx);
-    ctx->render_scale = prior_scale;
-    if (d3d11_window_scene_route_enabled(ctx) &&
-        vgfx3d_compute_scaled_scene_extent(
-            ctx->width, ctx->height, prior_scale, &scene_width, &scene_height)) {
-        if (SUCCEEDED(d3d11_ensure_scene_targets(ctx, scene_width, scene_height)))
-            (void)d3d11_ensure_overlay_target(ctx, ctx->width, ctx->height);
-    }
+    if (fabsf(prior_scale - next_scale) > 1.0e-6f)
+        d3d11_reset_temporal_scene_state(ctx);
+    ctx->render_scale = next_scale;
+    ctx->scene_composited_to_swapchain = 0;
+    ctx->presented_color_valid = 0;
+    if (!route_required)
+        d3d11_destroy_scene_targets(ctx);
     if (!ctx->rtt_active)
         d3d11_bind_swapchain_target(ctx);
-    return 0;
+    return 1;
 }
 
 /// @brief Invalidate stale presented snapshots when a new post-FX latch starts a frame.
