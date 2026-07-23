@@ -46,14 +46,14 @@ Zanna Studio and the GUI toolkit were both rebuilt underneath. Packaging picked 
 
 | Metric | v0.2.7 | v0.2.99 | Delta |
 |---|---|---|---|
-| Commits | — | 143 | +143 |
-| Source files | 3,402 | 3,634 | +232 |
-| Production SLOC | 762K | 936K | +174K |
-| Test SLOC | 304K | 356K | +52K |
-| Zanna Studio SLOC | 28K | 42K | +14K |
+| Commits | — | 149 | +149 |
+| Source files | 3,402 | 3,636 | +234 |
+| Production SLOC | 762K | 938K | +176K |
+| Test SLOC | 304K | 357K | +53K |
+| Zanna Studio SLOC | 28K | 56K | +28K |
 | Demo SLOC | 197K | 240K | +43K |
 
-Counts via `scripts/count_sloc.sh` (production 935,635 / test 356,265 / demo 239,751 / zannastudio 42,088 / source files 3,634); commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which these SLOC figures leave out.
+Counts via `scripts/count_sloc.sh` (production 938,180 / test 357,369 / demo 239,797 / zannastudio 55,934 / source files 3,636); commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which these SLOC figures leave out.
 
 ---
 
@@ -154,7 +154,7 @@ Counts via `scripts/count_sloc.sh` (production 935,635 / test 356,265 / demo 239
 
 ### Tests
 
-Test code grew by about 52K SLOC alongside the work above:
+Test code grew by about 53K SLOC alongside the work above:
 
 - Each third-person subsystem ships a VM-versus-native probe, and the codegen work adds jump-table, narrow-arithmetic, and range-demotion coverage.
 - Contract-fingerprint and name-uniqueness guards lock the runtime API and registry so the surface can't drift quietly. The asset pipeline adds end-to-end bake-fidelity checks for whole scenes, exact source textures, and decoded-only textures.
