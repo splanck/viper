@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/edit_commands.zia
+// Purpose: Implement core editing, navigation, selection, and refactor commands.
+// Key invariants:
+//   - Commands operate on the focused editor and active document together.
+//   - Failed cross-file navigation is never presented as successful.
+// Ownership/Lifetime:
+//   - Command handlers borrow shell, editor, document, and index controllers.
+// Links: zannastudio/src/editor/editor_engine.zia,
+//        zannastudio/src/services/locations.zia
+//
+//===----------------------------------------------------------------------===//
+
 module edit_commands;
 
 bind "../ui/app_shell";
@@ -7,6 +26,7 @@ bind "../core/project_manager";
 bind "../editor/editor_tabs";
 bind "../editor/project_index";
 bind "../services/locations";
+bind "../services/safe_io";
 bind "../services/workspace_edits";
 bind "../services/text_utils";
 bind "../services/workspace_file_index";
@@ -213,7 +233,7 @@ func handleGoToDefinition(shell: app_shell.AppShell,
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        handleBasicGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore, activeDoc);
+        GUI.Toast.Info("BASIC go to definition is handled in the background");
         return;
     }
     if activeDoc.language != "zia" {
@@ -236,8 +256,9 @@ func handleGoToDefinition(shell: app_shell.AppShell,
         var endCol = Map.GetIntOr(def, "endColumn", col + 1);
         var id = locStore.Add(file, line, col, endLine, endCol,
                               locations.KIND_DEFINITION, Map.GetStr(def, "name"));
-        locStore.OpenLocation(shell, docMgr, engine, tabs, id);
-        shell.SetStatusLeft("Definition: " + Map.GetStr(def, "name"));
+        if locStore.OpenLocation(shell, docMgr, engine, tabs, id) {
+            shell.SetStatusLeft("Definition: " + Map.GetStr(def, "name"));
+        }
         return;
     }
 
@@ -257,7 +278,7 @@ func handleFindReferences(shell: app_shell.AppShell,
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        handleBasicFindReferences(shell, docMgr, engine, indexer, locStore, activeDoc);
+        GUI.Toast.Info("BASIC references are handled in the background");
         return;
     }
     if activeDoc.language != "zia" {
@@ -321,7 +342,7 @@ func handleIncomingCalls(shell: app_shell.AppShell,
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        handleBasicIncomingCalls(shell, docMgr, engine, indexer, locStore, activeDoc);
+        GUI.Toast.Info("BASIC call hierarchy is handled in the background");
         return;
     }
     if activeDoc.language != "zia" {
@@ -402,7 +423,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        handleBasicOutgoingCalls(shell, docMgr, engine, indexer, locStore, activeDoc);
+        GUI.Toast.Info("BASIC call hierarchy is handled in the background");
         return;
     }
     if activeDoc.language != "zia" {
@@ -500,7 +521,8 @@ func SourceForPath(docMgr: document_manager.DocumentManager,
         }
     }
     if IO.File.Exists(filePath) {
-        return IO.File.ReadAllText(filePath);
+        var readResult = safe_io.ReadAllText(filePath);
+        if readResult.ok { return readResult.text; }
     }
     return "";
 }
@@ -562,8 +584,9 @@ func handleBasicGoToDefinition(shell: app_shell.AppShell,
         var endCol = Map.GetIntOr(def, "endColumn", col + Str.get_Length(token));
         var id = locStore.Add(file, line, col, endLine, endCol,
                               locations.KIND_DEFINITION, Map.GetStr(def, "name"));
-        locStore.OpenLocation(shell, docMgr, engine, tabs, id);
-        shell.SetStatusLeft("Definition: " + Map.GetStr(def, "name"));
+        if locStore.OpenLocation(shell, docMgr, engine, tabs, id) {
+            shell.SetStatusLeft("Definition: " + Map.GetStr(def, "name"));
+        }
         return;
     }
     GUI.Toast.Info("Definition not found");
@@ -880,8 +903,8 @@ func handleRenameSymbolText(shell: app_shell.AppShell,
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        return handleBasicRenameSymbolText(shell, docMgr, engine, tabs, indexer,
-                                           activeDoc, newNameText);
+        GUI.Toast.Info("BASIC rename is handled in the background");
+        return false;
     }
     if activeDoc.language != "zia" {
         GUI.Toast.Info("Rename is unavailable for this file");
@@ -913,7 +936,8 @@ func handleRenameSymbolText(shell: app_shell.AppShell,
     if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
         return false;
     }
-    var result = workspace_edits.ApplyRenameEdits(edits, docMgr);
+    var result = workspace_edits.ApplyRenameEdits(edits, docMgr,
+                                                  indexer.rootPaths);
     if result.success == false {
         GUI.Toast.Error(result.message);
         return false;
@@ -988,7 +1012,8 @@ func handleBasicRenameSymbolText(shell: app_shell.AppShell,
     if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
         return false;
     }
-    var result = workspace_edits.ApplyRenameEdits(edits, docMgr);
+    var result = workspace_edits.ApplyRenameEdits(edits, docMgr,
+                                                  indexer.rootPaths);
     if result.success == false {
         GUI.Toast.Error(result.message);
         return false;

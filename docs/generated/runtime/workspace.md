@@ -44,7 +44,7 @@ Provides Edit constants and static operations for workspace tooling.
 
 `Zanna.Workspace.Edit` is a static runtime surface and does not require an instance. Its public
 Its public surface exposes operations including `Validate`, `Apply`, `ValidateInRoot`,
-`ApplyInRoot`.
+`ApplyInRoot`, `ValidateInRoots`, and `ApplyInRoots`.
 
 #### Methods
 
@@ -54,6 +54,8 @@ Its public surface exposes operations including `Validate`, `Apply`, `ValidateIn
 | <a id="zanna-workspace-edit-apply"></a>`Apply` | `obj<Zanna.Collections.Map>(obj)` | `Zanna.Workspace.Edit.Apply` |
 | <a id="zanna-workspace-edit-validateinroot"></a>`ValidateInRoot` | `obj<Zanna.Collections.Map>(obj,str)` | `Zanna.Workspace.Edit.ValidateInRoot` |
 | <a id="zanna-workspace-edit-applyinroot"></a>`ApplyInRoot` | `obj<Zanna.Collections.Map>(obj,str)` | `Zanna.Workspace.Edit.ApplyInRoot` |
+| <a id="zanna-workspace-edit-validateinroots"></a>`ValidateInRoots` | `obj<Zanna.Collections.Map>(obj,obj)` | `Zanna.Workspace.Edit.ValidateInRoots` |
+| <a id="zanna-workspace-edit-applyinroots"></a>`ApplyInRoots` | `obj<Zanna.Collections.Map>(obj,obj)` | `Zanna.Workspace.Edit.ApplyInRoots` |
 
 ## Functions
 
@@ -68,4 +70,6 @@ Its public surface exposes operations including `Validate`, `Apply`, `ValidateIn
 | `Zanna.Workspace.Edit.Apply` | `obj<Zanna.Collections.Map>(obj)` | `rt_workspace_edit_apply` |
 | `Zanna.Workspace.Edit.ValidateInRoot` | `obj<Zanna.Collections.Map>(obj,str)` | `rt_workspace_edit_validate_in_root` |
 | `Zanna.Workspace.Edit.ApplyInRoot` | `obj<Zanna.Collections.Map>(obj,str)` | `rt_workspace_edit_apply_in_root` |
+| `Zanna.Workspace.Edit.ValidateInRoots` | `obj<Zanna.Collections.Map>(obj,obj)` | `rt_workspace_edit_validate_in_roots` |
+| `Zanna.Workspace.Edit.ApplyInRoots` | `obj<Zanna.Collections.Map>(obj,obj)` | `rt_workspace_edit_apply_in_roots` |
 

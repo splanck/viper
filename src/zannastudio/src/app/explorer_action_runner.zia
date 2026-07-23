@@ -1,9 +1,30 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/app/explorer_action_runner.zia
+// Purpose: Execute Explorer mutations and shared file-open/session workflows.
+// Key invariants:
+//   - Rejected files never enter session history.
+//   - Explorer mutations refresh every dependent document/project model.
+//   - Path-only mutations never rebuild an already-focused editor buffer.
+//   - Deleted documents release any live split-pane owner after disk commit.
+// Ownership/Lifetime: Stateless coordinator borrowing application controllers.
+// Links: zannastudio/src/commands/file_commands.zia,
+//        zannastudio/src/core/project_manager.zia
+//
+//===----------------------------------------------------------------------===//
+
 module explorer_action_runner;
 
 bind "../app/context_menus";
 bind "../app/workspace_watcher";
 bind "../ui/app_shell";
 bind "../ui/explorer_actions";
+bind "../core/document";
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../core/session";
@@ -11,6 +32,7 @@ bind "../editor/editor_engine";
 bind "../editor/editor_tabs";
 bind "../editor/project_index";
 bind "../services/locations";
+bind "../services/safe_io";
 bind "../commands/file_commands";
 
 bind Zanna.GUI;
@@ -61,9 +83,13 @@ expose func OpenFileAndRecord(shell: app_shell.AppShell,
                        engine: editor_engine.EditorEngine,
                        tabs: editor_tabs.EditorTabs,
                        sessionMgr: session.SessionManager,
-                       path: String) {
-    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path);
-    sessionMgr.RecordRecentFile(path);
+                       path: String) -> Boolean {
+    if file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path) == false {
+        if sessionMgr != null { sessionMgr.PruneRecentFiles(); }
+        return false;
+    }
+    if sessionMgr != null { sessionMgr.RecordRecentFile(path); }
+    return true;
 }
 
 /// @brief Apply a completed non-modal explorer action.
@@ -82,8 +108,8 @@ expose func OpenFileAndRecord(shell: app_shell.AppShell,
 /// @param sessionMgr Session manager used to record opened files.
 /// @param indexer Semantic project indexer.
 /// @param locStore Stored locations invalidated by tree moves.
-/// @return True when the action opened a file and the caller should suppress a
-///         pending reload prompt for that frame.
+/// @return True when the action changed the active file lifecycle and the
+///         caller should suppress an IDE-authored file-watch notification.
 expose func ApplyExplorerAction(shell: app_shell.AppShell,
                          overlay: explorer_actions.ExplorerActionOverlay,
                          action: Integer,
@@ -106,12 +132,12 @@ expose func ApplyExplorerAction(shell: app_shell.AppShell,
         return false;
     }
     if action == explorer_actions.EXPLORER_ACTION_RENAME {
-        ApplyExplorerRename(shell, overlay, projMgr, docMgr, engine, tabs, indexer, locStore);
-        return false;
+        return ApplyExplorerRename(shell, overlay, projMgr, docMgr, engine,
+                                   tabs, indexer, locStore);
     }
     if action == explorer_actions.EXPLORER_ACTION_DELETE {
-        ApplyExplorerDelete(shell, overlay, projMgr, docMgr, engine, tabs, indexer, locStore);
-        return false;
+        return ApplyExplorerDelete(shell, overlay, projMgr, docMgr, engine,
+                                   tabs, indexer, locStore);
     }
     return false;
 }
@@ -129,8 +155,8 @@ func ApplyExplorerNewFile(shell: app_shell.AppShell,
     var name = overlay.ReadValue();
     var dir = overlay.TargetDir();
     if ValidateExplorerChildName(shell, overlay, name) == false { return false; }
-    if dir == "" or Dir.Exists(dir) == false {
-        overlay.Reject(shell, "Choose an existing folder.");
+    if projMgr.CanCreateInDirectory(dir) == false {
+        overlay.Reject(shell, "Choose a folder inside the workspace.");
         return false;
     }
     var newPath = Path.Join(dir, name);
@@ -138,13 +164,20 @@ func ApplyExplorerNewFile(shell: app_shell.AppShell,
         overlay.Reject(shell, "Target already exists.");
         return false;
     }
-    IO.File.Touch(newPath);
+    if safe_io.CreateTextFile(newPath, "") == false {
+        overlay.Reject(shell, "Could not create the file. Check folder permissions and try again.");
+        return false;
+    }
     projMgr.RefreshTree();
     indexer.UpdateFile(newPath);
-    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, newPath);
-    GUI.Toast.Success("Created: " + name);
+    var opened = OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, newPath);
+    if opened {
+        GUI.Toast.Success("Created: " + name);
+    } else {
+        shell.SetStatusLeft("Created but cannot open in the text editor: " + name);
+    }
     overlay.Finish();
-    return true;
+    return opened;
 }
 
 /// @brief Create a new folder from the explorer overlay.
@@ -154,8 +187,8 @@ func ApplyExplorerNewFolder(shell: app_shell.AppShell,
     var name = overlay.ReadValue();
     var dir = overlay.TargetDir();
     if ValidateExplorerChildName(shell, overlay, name) == false { return; }
-    if dir == "" or Dir.Exists(dir) == false {
-        overlay.Reject(shell, "Choose an existing folder.");
+    if projMgr.CanCreateInDirectory(dir) == false {
+        overlay.Reject(shell, "Choose a folder inside the workspace.");
         return;
     }
     var newPath = Path.Join(dir, name);
@@ -163,7 +196,10 @@ func ApplyExplorerNewFolder(shell: app_shell.AppShell,
         overlay.Reject(shell, "Target already exists.");
         return;
     }
-    Dir.Make(newPath);
+    if safe_io.MakeAll(newPath) == false {
+        overlay.Reject(shell, "Could not create the folder. Check folder permissions and try again.");
+        return;
+    }
     projMgr.RefreshTree();
     shell.SetStatusLeft("Created folder: " + name);
     GUI.Toast.Success("Created folder: " + name);
@@ -178,7 +214,7 @@ func ApplyExplorerDuplicate(shell: app_shell.AppShell,
     var name = overlay.ReadValue();
     var sourcePath = overlay.TargetPath();
     if ValidateExplorerChildName(shell, overlay, name) == false { return; }
-    if sourcePath == "" or IO.File.Exists(sourcePath) == false {
+    if projMgr.CanMutatePath(sourcePath) == false or IO.File.Exists(sourcePath) == false {
         overlay.Reject(shell, "Duplicate is available for files.");
         return;
     }
@@ -187,7 +223,10 @@ func ApplyExplorerDuplicate(shell: app_shell.AppShell,
         overlay.Reject(shell, "Target already exists.");
         return;
     }
-    IO.File.Copy(sourcePath, targetPath);
+    if safe_io.CopyFile(sourcePath, targetPath) == false {
+        overlay.Reject(shell, "Could not duplicate the file. The target may have changed.");
+        return;
+    }
     projMgr.RefreshTree();
     indexer.UpdateFile(targetPath);
     shell.SetStatusLeft("Duplicated: " + name);
@@ -203,26 +242,19 @@ func ApplyExplorerRename(shell: app_shell.AppShell,
                          engine: editor_engine.EditorEngine,
                          tabs: editor_tabs.EditorTabs,
                          indexer: project_index.ProjectIndexer,
-                         locStore: locations.LocationStore) {
+                         locStore: locations.LocationStore) -> Boolean {
     var name = overlay.ReadValue();
     var selectedPath = overlay.TargetPath();
-    if ValidateExplorerChildName(shell, overlay, name) == false { return; }
+    if ValidateExplorerChildName(shell, overlay, name) == false { return false; }
     if selectedPath == "" {
         overlay.Reject(shell, "Choose a file or folder to rename.");
-        return;
+        return false;
     }
     var targetPath = Path.Join(Path.Directory(selectedPath), name);
     if IO.File.Exists(targetPath) or Dir.Exists(targetPath) {
         overlay.Reject(shell, "Target already exists.");
-        return;
+        return false;
     }
-    if file_commands.ConfirmCloseDocumentsUnderPath(shell, docMgr, engine, "Rename",
-                                                    selectedPath) == false {
-        shell.SetStatusLeft("Rename canceled");
-        overlay.Finish();
-        return;
-    }
-
     var rewritePreview = projMgr.PreviewBindRewriteCount(selectedPath, name, docMgr);
     if rewritePreview > 0 {
         var previewMsg = "Rename will update " + rewritePreview + " Zia bind path";
@@ -230,22 +262,20 @@ func ApplyExplorerRename(shell: app_shell.AppShell,
         previewMsg = previewMsg + " for " + name + ". Press Rename again to continue.";
         if overlay.validationMessage != previewMsg {
             overlay.Reject(shell, previewMsg);
-            return;
+            return false;
         }
     }
 
     file_commands.SaveEditorState(docMgr, engine);
     var renamedPath = projMgr.RenamePath(selectedPath, name, docMgr);
     if renamedPath == "" {
-        overlay.Reject(shell, "Rename failed.");
-        return;
+        var reason = projMgr.lastOperationError;
+        if reason == "" { reason = "Rename failed."; }
+        overlay.Reject(shell, reason);
+        return false;
     }
-    tabs.RefreshFromDocuments(docMgr);
-    var activeAfterRename = docMgr.GetActive();
-    if activeAfterRename != null {
-        engine.LoadDocument(activeAfterRename);
-        shell.SetBreadcrumbPath(activeAfterRename.filePath);
-    }
+    SynchronizeDocumentMutationUI(shell, docMgr, engine, tabs);
+    file_commands.SyncRecoverySwaps(docMgr, engine);
     indexer.RemoveFile(selectedPath);
     workspace_watcher.ReindexAfterTreeMove(projMgr, indexer, docMgr);
     workspace_watcher.InvalidateWorkspaceLocations(shell, locStore, engine);
@@ -253,9 +283,16 @@ func ApplyExplorerRename(shell: app_shell.AppShell,
     if projMgr.lastBindRewriteCount > 0 {
         status = status + " (" + projMgr.lastBindRewriteCount + " bind updates)";
     }
-    shell.SetStatusLeft(status);
-    GUI.Toast.Success(status);
+    if projMgr.lastOperationError != "" {
+        status = status + ". " + projMgr.lastOperationError;
+        shell.SetStatusLeft(status);
+        GUI.Toast.Warning(projMgr.lastOperationError);
+    } else {
+        shell.SetStatusLeft(status);
+        GUI.Toast.Success(status);
+    }
     overlay.Finish();
+    return true;
 }
 
 /// @brief Move a file or folder to project trash from the explorer overlay.
@@ -266,33 +303,29 @@ func ApplyExplorerDelete(shell: app_shell.AppShell,
                          engine: editor_engine.EditorEngine,
                          tabs: editor_tabs.EditorTabs,
                          indexer: project_index.ProjectIndexer,
-                         locStore: locations.LocationStore) {
+                         locStore: locations.LocationStore) -> Boolean {
     var deletePath = overlay.TargetPath();
     if deletePath == "" {
         overlay.Reject(shell, "Choose a file or folder to move to trash.");
-        return;
+        return false;
     }
     if file_commands.ConfirmCloseDocumentsUnderPath(shell, docMgr, engine, "Move to Trash",
                                                     deletePath) == false {
         shell.SetStatusLeft("Move to trash canceled");
         overlay.Finish();
-        return;
+        return false;
     }
-    if projMgr.DeletePath(deletePath, docMgr) == false {
-        overlay.Reject(shell, "Move to trash failed.");
-        return;
+    if DeletePathAndReleaseDocuments(projMgr, docMgr, engine, deletePath) == false {
+        var reason = projMgr.lastOperationError;
+        if reason == "" { reason = "Move to trash failed."; }
+        overlay.Reject(shell, reason);
+        return false;
     }
     indexer.RemoveFile(deletePath);
     workspace_watcher.ReindexAfterTreeMove(projMgr, indexer, docMgr);
     workspace_watcher.InvalidateWorkspaceLocations(shell, locStore, engine);
-    tabs.RefreshFromDocuments(docMgr);
-    var activeAfterDelete = docMgr.GetActive();
-    if activeAfterDelete != null {
-        engine.LoadDocument(activeAfterDelete);
-    } else {
-        engine.SetText("");
-        engine.ClearModified();
-    }
+    SynchronizeDocumentMutationUI(shell, docMgr, engine, tabs);
+    file_commands.SyncRecoverySwaps(docMgr, engine);
     if projMgr.lastTrashPath != "" {
         shell.SetStatusLeft("Moved to trash: " + Path.Name(deletePath)
                             + " -> " + projMgr.RelativePath(projMgr.lastTrashPath));
@@ -300,6 +333,65 @@ func ApplyExplorerDelete(shell: app_shell.AppShell,
         shell.SetStatusLeft("Moved to trash: " + Path.Name(deletePath));
     }
     overlay.Finish();
+    return true;
+}
+
+/// @brief Move one Explorer path to trash and release every removed live buffer.
+/// @details ProjectManager owns the filesystem transaction and removes matching
+///          DocumentManager entries after it commits. Capture object references
+///          first so a document displayed in either split pane can be detached
+///          after success; releasing before the move would collapse the user's
+///          split even when the filesystem operation fails.
+/// @return True only when the path moved and all removed buffers were released.
+func DeletePathAndReleaseDocuments(projMgr: project_manager.ProjectManager,
+                                   docMgr: document_manager.DocumentManager,
+                                   engine: editor_engine.EditorEngine,
+                                   path: String) -> Boolean {
+    var closingDocs: List[document.Document] = [];
+    var i = 0;
+    while i < docMgr.GetCount() {
+        var maybeDoc = docMgr.GetDocument(i);
+        if maybeDoc != null and file_commands.DocumentIsUnderPath(maybeDoc!, path) {
+            closingDocs.Push(maybeDoc!);
+        }
+        i = i + 1;
+    }
+
+    if projMgr.DeletePath(path, docMgr) == false { return false; }
+
+    i = 0;
+    while i < closingDocs.count() {
+        engine.ReleaseDocument(closingDocs.get(i));
+        i = i + 1;
+    }
+    return true;
+}
+
+/// @brief Reconcile tabs and active-document chrome after an Explorer mutation.
+/// @details Path-only changes must not call LoadDocument on the already-focused
+///          document: that API intentionally creates a fresh buffer for reloads
+///          and would erase undo, selection, folds, and scroll. A different
+///          surviving active document is loaded only after delete released the
+///          old owner.
+func SynchronizeDocumentMutationUI(shell: app_shell.AppShell,
+                                   docMgr: document_manager.DocumentManager,
+                                   engine: editor_engine.EditorEngine,
+                                   tabs: editor_tabs.EditorTabs) {
+    tabs.RefreshFromDocuments(docMgr);
+    var active = docMgr.GetActive();
+    if active != null {
+        var doc = active!;
+        if engine.currentDoc != doc { engine.LoadDocument(doc); }
+        shell.SelectSurface(doc.kind);
+        shell.SetBreadcrumbPath(doc.filePath);
+        shell.SetStatusRight(file_commands.DocStatusLabel(doc));
+        return;
+    }
+
+    engine.SetText("");
+    engine.ClearModified();
+    shell.SetBreadcrumbPath("");
+    shell.SetStatusRight("No file");
 }
 
 /// @brief Validate a user-entered explorer child name and keep the overlay open on failure.
@@ -331,7 +423,10 @@ expose func ReopenClosedFile(shell: app_shell.AppShell,
         shell.SetStatusLeft("No recently closed file");
         return;
     }
-    OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, path);
+    if OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, path) == false {
+        shell.SetStatusLeft("Could not reopen: " + Path.Name(path));
+        return;
+    }
     shell.SetStatusLeft("Reopened: " + Path.Name(path));
 }
 
@@ -372,8 +467,8 @@ expose func TreeRename(shell: app_shell.AppShell,
                 overlay: explorer_actions.ExplorerActionOverlay,
                 projMgr: project_manager.ProjectManager) {
     var selectedPath = projMgr.SelectedPath();
-    if selectedPath == "" {
-        shell.SetStatusLeft("Choose a file or folder to rename");
+    if projMgr.CanMutatePath(selectedPath) == false {
+        shell.SetStatusLeft("Choose a file or folder inside the project to rename");
         return;
     }
     overlay.OpenRename(shell, selectedPath);
@@ -386,8 +481,8 @@ expose func TreeDelete(shell: app_shell.AppShell,
                 overlay: explorer_actions.ExplorerActionOverlay,
                 projMgr: project_manager.ProjectManager) {
     var deletePath = projMgr.SelectedPath();
-    if deletePath == "" {
-        shell.SetStatusLeft("Choose a file or folder to move to trash");
+    if projMgr.CanMutatePath(deletePath) == false {
+        shell.SetStatusLeft("Choose a file or folder inside the project to move to trash");
         return;
     }
     overlay.OpenDelete(shell, deletePath);
@@ -403,28 +498,38 @@ expose func PumpTreeDrops(shell: app_shell.AppShell,
                           projMgr: project_manager.ProjectManager,
                           docMgr: document_manager.DocumentManager,
                           engine: editor_engine.EditorEngine,
-                          indexer: project_index.ProjectIndexer) {
+                          tabs: editor_tabs.EditorTabs,
+                          indexer: project_index.ProjectIndexer,
+                          locStore: locations.LocationStore) -> Boolean {
     var tree = shell.workbench.sidebarTree;
-    if tree == null { return; }
-    if tree.WasDropReceived() == false { return; }
+    if tree == null { return false; }
+    if tree.WasDropReceived() == false { return false; }
     var src = tree.GetDropSourceData();
     var dst = tree.GetDropTargetData();
     tree.ClearDrop();
-    if src == "" or dst == "" { return; }
+    if src == "" or dst == "" { return false; }
 
+    file_commands.SaveEditorState(docMgr, engine);
     var movedPath = projMgr.MovePathInto(src, dst, docMgr);
     if movedPath == "" {
-        shell.SetStatusLeft("Move canceled (invalid drop target)");
-        return;
+        var reason = projMgr.lastOperationError;
+        if reason == "" { reason = "Move canceled (invalid drop target)"; }
+        shell.SetStatusLeft(reason);
+        return false;
     }
 
-    var activeAfter = docMgr.GetActive();
-    if activeAfter != null {
-        engine.LoadDocument(activeAfter!);
-        if activeAfter!.isNew == false {
-            shell.SetBreadcrumbPath(activeAfter!.filePath);
-        }
-    }
+    SynchronizeDocumentMutationUI(shell, docMgr, engine, tabs);
+    file_commands.SyncRecoverySwaps(docMgr, engine);
     workspace_watcher.ReindexAfterTreeMove(projMgr, indexer, docMgr);
-    shell.SetStatusLeft("Moved " + Path.Name(movedPath) + " to folder");
+    workspace_watcher.InvalidateWorkspaceLocations(shell, locStore, engine);
+    var status = "Moved " + Path.Name(movedPath) + " to folder";
+    if projMgr.lastBindRewriteCount > 0 {
+        status = status + " (" + projMgr.lastBindRewriteCount + " bind updates)";
+    }
+    if projMgr.lastOperationError != "" {
+        status = status + ". " + projMgr.lastOperationError;
+        GUI.Toast.Warning(projMgr.lastOperationError);
+    }
+    shell.SetStatusLeft(status);
+    return true;
 }

@@ -6,6 +6,14 @@
 // File: zannastudio/src/app/build_info.zia
 // Purpose: Resolve Zanna Studio standalone build metadata for user-visible
 //          diagnostics and stale-binary detection.
+// Key invariants:
+//   - BuildSummary preserves complete diagnostic metadata for the About panel.
+//   - Every summary starts with a truthful Zanna Studio product identity.
+//   - CompactSummary returns exactly one trimmed display line for constrained UI.
+// Ownership/Lifetime:
+//   - Returned strings are managed runtime values; this module owns no handles.
+// Links: zannastudio/src/ui/welcome_view.zia,
+//        zannastudio/src/ui/ide_overlays.zia
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,6 +23,7 @@ bind File = Zanna.IO.File;
 bind Path = Zanna.IO.Path;
 bind Env = Zanna.System.Environment;
 bind Str = Zanna.String;
+bind "../services/safe_io";
 
 // ============================================================================
 // MODULE: build_info
@@ -29,6 +38,23 @@ bind Str = Zanna.String;
 // ============================================================================
 
 final BUILD_INFO_FILENAME = "zannastudio.buildinfo";
+final MAX_BUILD_INFO_BYTES = 65536;
+
+/// @brief Reduce complete build metadata to one user-facing line.
+/// @details Standalone sidecars include source, output, and compiler paths for
+///          diagnostics. Those paths belong in About, not in the constrained
+///          welcome hero. The first physical line is the stable build identity.
+/// @param summary Complete build metadata from an environment value or sidecar.
+/// @return The trimmed first line, or the standard unstamped-build fallback.
+expose func CompactSummary(summary: String) -> String {
+    var text = Str.Trim(summary);
+    if text == "" { return "Build: source run or unstamped executable"; }
+    var newline = Str.IndexOf(text, "\n");
+    if newline > 0 {
+        text = Str.Left(text, newline - 1);
+    }
+    return Str.Trim(text);
+}
 
 /// @brief Return the expected standalone-build metadata sidecar path.
 /// @details Standalone Zanna Studio builds write `zannastudio.buildinfo` beside the
@@ -51,13 +77,33 @@ expose func SidecarPath() -> String {
 /// @return Human-readable build metadata suitable for the About panel.
 expose func BuildSummary() -> String {
     var envInfo = Str.Trim(Env.GetVariable("ZANNA_IDE_BUILD_INFO"));
-    if envInfo != "" { return envInfo; }
+    if envInfo != "" { return EnsureProductIdentity(envInfo); }
 
     var sidecar = SidecarPath();
     if sidecar != "" and File.Exists(sidecar) {
-        var text = Str.Trim(File.ReadAllText(sidecar));
-        if text != "" { return text; }
+        var readResult = safe_io.ReadAllTextBounded(sidecar, MAX_BUILD_INFO_BYTES);
+        if readResult.ok {
+            var text = Str.Trim(readResult.text);
+            if text != "" { return EnsureProductIdentity(text); }
+        }
     }
 
-    return "Build: source run or unstamped executable";
+    return "Zanna Studio (version unavailable)\n"
+        + "Build: source run or unstamped executable";
+}
+
+/// @brief Prefix legacy/override metadata that has no product-version line.
+/// @details Older sidecars began with `Build:` and cannot truthfully identify a
+///          release. Reporting the version as unavailable is preferable to the
+///          stale hard-coded `0.1.0` previously printed by `--version`.
+hide func EnsureProductIdentity(summary: String) -> String {
+    var text = Str.Trim(summary);
+    if Str.StartsWith(text, "Zanna Studio ") { return text; }
+    return "Zanna Studio (version unavailable)\n" + text;
+}
+
+/// @brief Return compact build identity suitable for the welcome screen.
+/// @return A single trimmed line with no source/output path spillover.
+expose func WelcomeSummary() -> String {
+    return CompactSummary(BuildSummary());
 }

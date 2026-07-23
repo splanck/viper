@@ -1,28 +1,48 @@
-// translated-app.zia
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/localization/translated-app.zia
+// Purpose: Demonstrate localized message formatting and plural selection.
+// Key invariants: Message data is loaded for the same locale made current.
+// Ownership/Lifetime: Locale and message-bundle values are managed runtime objects.
+// Links: examples/localization/README.md, docs/zannalib/localization/data-files.md
+//
+//===----------------------------------------------------------------------===//
+
 // Small interactive program driven by a MessageBundle. Loads messages
 // from locales/messages-<tag>.json and uses Plural() for item-count text.
 
-bind Locale        : Zanna.Localization.Locale
-bind LocaleManager : Zanna.Localization.LocaleManager
-bind MessageBundle : Zanna.Localization.MessageBundle
+bind Locale = Zanna.Localization.Locale;
+bind LocaleManager = Zanna.Localization.LocaleManager;
+bind MessageBundle = Zanna.Localization.MessageBundle;
+bind Zanna.Collections.Map as Map;
+bind Zanna.Terminal as Terminal;
 
-func main()
-    LocaleManager.AddSearchPath("./locales")
+func main() {
+    LocaleManager.AddSearchPath("./locales");
 
-    var loc = Locale.Parse("en-US")
-    LocaleManager.SetCurrent(loc)
+    var loc = Locale.Parse("en-US");
+    LocaleManager.SetCurrent(loc);
 
-    var msgs = MessageBundle.LoadFromJson(loc, "./locales/messages-en-US.json")
+    var msgs = MessageBundle.LoadFromJson(loc, "./locales/messages-en-US.json");
 
-    Say(msgs.Format("greet", { "name": "Alice" }))
-    Say(msgs.Plural("cart.items", 1, {}))
-    Say(msgs.Plural("cart.items", 3, {}))
-    Say(msgs.Plural("cart.items", 0, {}))
+    // MessageBundle consumes runtime maps whose entries are raw strings.
+    var vars = Map.New();
+    Map.SetStr(vars, "name", "Alice");
+    var empty = Map.New();
+    Terminal.Say(msgs.Format("greet", vars));
+    Terminal.Say(msgs.Plural("cart.items", 1, empty));
+    Terminal.Say(msgs.Plural("cart.items", 3, empty));
+    Terminal.Say(msgs.Plural("cart.items", 0, empty));
 
     // Attach a French fallback so unknown English keys cascade to fr-FR.
     // (Uncomment once a messages-fr-FR.json file exists alongside.)
-    // var fr = Locale.Parse("fr-FR")
-    // LocaleManager.LoadFromJson("./locales/fr-FR.json")
-    // var frmsgs = MessageBundle.LoadFromJson(fr, "./locales/messages-fr-FR.json")
-    // msgs.Fallback(frmsgs)
-end func
+    // var fr = Locale.Parse("fr-FR");
+    // LocaleManager.LoadFromJson("./locales/fr-FR.json");
+    // var frmsgs = MessageBundle.LoadFromJson(fr, "./locales/messages-fr-FR.json");
+    // msgs.Fallback(frmsgs);
+}

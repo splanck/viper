@@ -1,3 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/completion.zia
+// Purpose: Provide stale-safe Zia and BASIC completion UI, filtering, insertion,
+//          and bounded workspace-symbol augmentation.
+// Key invariants:
+//   - Compiler-backed completion never blocks the interactive UI frame.
+//   - A result applies only to its original path, revision, and cursor.
+//   - Workspace-symbol rows never survive a project file-cache replacement.
+//   - A visible popup follows the caret without escaping the app viewport.
+// Ownership/Lifetime:
+//   - One CompletionController owns its popup, candidate cache, and BASIC worker.
+//   - Background requests own immutable text snapshots only.
+// Links: zannastudio/src/editor/basic_query_job.zia,
+//        zannastudio/src/app/language_tool_frame.zia
+//
+//===----------------------------------------------------------------------===//
+
 module completion;
 
 bind Zanna.GUI as GUI;
@@ -7,8 +30,8 @@ bind Zanna.Collections.Seq as Seq;
 bind Zanna.Core.Object as Obj;
 bind Zanna.Collections.Map as Map;
 bind Zanna.Zia.Completion as ZiaCompletion;
-bind Zanna.Basic.LanguageService as BasicCompletion;
 bind Zanna.Zia.SemanticJob as SemanticJob;
+bind "../editor/basic_query_job";
 bind "../editor/zia_query";
 bind "../editor/completion_filter";
 bind "../editor/completion_items";
@@ -18,6 +41,7 @@ bind "../editor/editor_engine";
 bind "../editor/scheduler";
 bind "../core/project_manager";
 bind "../core/document_manager";
+bind "../ui/app_shell";
 bind Path = Zanna.IO.Path;
 
 final COMPLETION_DEBOUNCE_MS = 180;
@@ -89,7 +113,7 @@ class CompletionController {
     expose Integer itemCount;
     expose String sourcePath;
     expose Boolean enabled;
-    expose Boolean isBasic;   // route to Zanna.Basic.LanguageService (sync) instead of Zia
+    hide Boolean isBasic;     // changed only through SetBasicMode
 
     // Track cursor position to detect line changes (auto-dismiss)
     expose Integer lastLine;
@@ -98,6 +122,8 @@ class CompletionController {
     expose Boolean pendingQuery;
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
+    expose basic_query_job.BasicQueryJob basicJob;
+    expose Integer pendingBasicGeneration;
     expose Integer pendingJobRevision;
     expose String pendingJobPath;
     expose Integer pendingJobLineOffset;
@@ -130,6 +156,7 @@ class CompletionController {
     expose document_manager.DocumentManager workspaceDocs;
     expose String workspaceRoot;
     expose Integer workspaceFileCount;
+    expose Integer workspaceCacheGeneration;
     expose Integer workspaceFileIndex;
     expose Boolean workspaceCacheReady;
     expose List workspaceLabels;
@@ -159,6 +186,8 @@ class CompletionController {
         pendingQuery   = false;
         workScheduler  = null;
         pendingJob     = null;
+        basicJob = new basic_query_job.BasicQueryJob();
+        pendingBasicGeneration = 0;
         pendingJobRevision = -1;
         pendingJobPath = "";
         pendingJobLineOffset = 0;
@@ -190,6 +219,7 @@ class CompletionController {
         workspaceDocs = null;
         workspaceRoot = "";
         workspaceFileCount = -1;
+        workspaceCacheGeneration = -1;
         workspaceFileIndex = 0;
         workspaceCacheReady = false;
         workspaceLabels = new List();
@@ -241,6 +271,18 @@ class CompletionController {
         workScheduler = value;
     }
 
+    /// @brief Switch completion backends without allowing the previous
+    ///        language's request or popup contents to survive the transition.
+    expose func SetBasicMode(value: Boolean) {
+        if isBasic == value { return; }
+        CancelPendingJob();
+        isBasic = value;
+        pendingQuery = false;
+        isVisible = false;
+        visibleRevision = -1;
+        if popup != null { popup.SetVisible(false); }
+    }
+
     expose func SetWorkspaceContext(project: project_manager.ProjectManager,
                                     docs: document_manager.DocumentManager) {
         workspaceProject = project;
@@ -250,6 +292,11 @@ class CompletionController {
     /// @brief Set the active file's path so CompleteForFile can resolve
     ///        relative `bind` paths correctly.
     expose func SetSourcePath(path: String) {
+        if path == sourcePath { return; }
+        CancelPendingJob();
+        pendingQuery = false;
+        isVisible = false;
+        if popup != null { popup.SetVisible(false); }
         sourcePath = path;
     }
 
@@ -321,12 +368,28 @@ class CompletionController {
         if engine != null {
             text = engine.GetTextSnapshot();
         }
-        // BASIC: synchronous in-process completion (no Zia module-wrapping/offset).
+        // BASIC uses raw source and no Zia line offset. Queueing is latest-wins:
+        // rapid edits never create more than one active worker plus one replacement.
         if isBasic {
             var bLine = editor.CursorLine + 1; // 1-based
             var bCol = editor.CursorCol;       // 0-based
-            ApplyCompletionItems(BasicCompletion.ItemsForFile(text, sourcePath, bLine, bCol),
-                                 0, bLine, bCol);
+            if pendingJob != null {
+                SemanticJob.Cancel(pendingJob);
+                pendingJob = null;
+            }
+            pendingBasicGeneration = basicJob.Queue(
+                basic_query_job.QUERY_COMPLETION, text, sourcePath, bLine, bCol);
+            if engine != null {
+                pendingJobRevision = engine.GetRevision();
+            } else {
+                pendingJobRevision = editor.Revision;
+            }
+            pendingJobPath = sourcePath;
+            pendingJobLineOffset = 0;
+            pendingJobQueryLine = bLine;
+            pendingJobQueryCol = bCol;
+            pendingJobCursorLine = editor.CursorLine;
+            pendingJobCursorCol = editor.CursorCol;
             return;
         }
         // A buffer with no `module` line yields null Sema; query a synthetic-
@@ -353,10 +416,9 @@ class CompletionController {
             return;
         }
 
-        // Non-graphics/stub runtimes do not provide async jobs; keep the old
-        // structured query as a fallback for probes and tools linked that way.
-        ApplyCompletionItems(ZiaCompletion.ItemsForFile(qtext, sourcePath, curLine, curCol),
-                             off, curLine, curCol);
+        // Stub runtimes may omit semantic jobs. Do not turn that into a
+        // foreground compile; completion simply remains hidden.
+        Hide();
     }
 
     hide func ApplyCompletionItems(items: Any,
@@ -459,11 +521,43 @@ class CompletionController {
         return true;
     }
 
+    /// @brief Publish a completed BASIC completion only for its original caret.
+    hide func PollPendingBasicJob() -> Boolean {
+        basicJob.Pump();
+        var request = basicJob.TakeCompleted();
+        if request == null { return false; }
+        if request!.generation != pendingBasicGeneration { return false; }
+        pendingBasicGeneration = 0;
+        if request!.succeeded == false or editor == null {
+            Hide();
+            return true;
+        }
+        if engine != null and engine.GetRevision() != pendingJobRevision {
+            Hide();
+            return true;
+        }
+        if engine == null and editor.Revision != pendingJobRevision {
+            Hide();
+            return true;
+        }
+        if sourcePath != pendingJobPath
+           or editor.CursorLine != pendingJobCursorLine
+           or editor.CursorCol != pendingJobCursorCol {
+            Hide();
+            return true;
+        }
+        ApplyCompletionItems(request!.result, 0,
+                             pendingJobQueryLine, pendingJobQueryCol);
+        return true;
+    }
+
     hide func CancelPendingJob() {
         if pendingJob != null {
             SemanticJob.Cancel(pendingJob);
             pendingJob = null;
         }
+        basicJob.Cancel();
+        pendingBasicGeneration = 0;
     }
 
     expose func RebuildVisibleItems(prefix: String) {
@@ -773,6 +867,7 @@ class CompletionController {
         } else if editor != null {
             visibleRevision = editor.Revision;
         }
+        PositionPopupNearCursor();
         popup.SetVisible(true);
         editor.Focus();
     }
@@ -806,6 +901,9 @@ class CompletionController {
             tabAcceptKeyDown = false;
         }
 
+        if PollPendingBasicJob() {
+            return true;
+        }
         if PollPendingJob() {
             return true;
         }
@@ -832,6 +930,7 @@ class CompletionController {
         }
 
         EnsureFocus();
+        PositionPopupNearCursor();
         if typed != "" {
             RebuildVisibleItems(CurrentPrefix());
             if engine != null {
@@ -869,12 +968,15 @@ class CompletionController {
 
         var root = workspaceProject.project.rootPath;
         var fileCount = workspaceProject.PeekCachedFileCount();
+        var cacheGeneration = workspaceProject.FileCacheGeneration();
         if completion_workspace_source.NeedsReset(root,
                                                   fileCount,
                                                   workspaceRoot,
-                                                  workspaceFileCount) {
+                                                  workspaceFileCount)
+           or cacheGeneration != workspaceCacheGeneration {
             workspaceRoot = root;
             workspaceFileCount = fileCount;
+            workspaceCacheGeneration = cacheGeneration;
             workspaceFileIndex = 0;
             workspaceCacheReady = false;
             workspaceLabels = new List();
@@ -941,9 +1043,8 @@ class CompletionController {
                 return processed;
             }
 
-            AddRawWorkspaceSymbolsToCache(filePath,
-                                          ZiaCompletion.SymbolsForFile(qcontent, filePath),
-                                          lineOff);
+            // A runtime without semantic jobs cannot populate this cache. Skip
+            // the file instead of compiling it synchronously on the UI frame.
         }
 
         if workspacePendingJob == null {
@@ -960,6 +1061,7 @@ class CompletionController {
         CancelWorkspaceSymbolJob();
         workspaceRoot = "";
         workspaceFileCount = -1;
+        workspaceCacheGeneration = -1;
         workspaceFileIndex = 0;
         workspaceCacheReady = false;
         workspaceLabels = new List();
@@ -1062,49 +1164,6 @@ class CompletionController {
         }
     }
 
-    hide func AddOpenWorkspaceSymbolCompletions(prefix: String,
-                                                actualLine: Integer,
-                                                startCol: Integer,
-                                                curCol: Integer,
-                                                limit: Integer) -> Integer {
-        if workspaceDocs == null { return 0; }
-        var added = 0;
-        var i = 0;
-        while i < workspaceDocs.GetCount() and added < limit {
-            var doc = workspaceDocs.documents.get(i);
-            i = i + 1;
-            if doc.language != "zia" or doc.filePath == "" or doc.filePath == sourcePath { continue; }
-
-            var raw = ZiaCompletion.SymbolsForFile(zia_query.WrapForQuery(doc.content), doc.filePath);
-            var rows = Str.Split(raw, "\n");
-            var lineOff = zia_query.LineOffset(doc.content);
-            var r = 0;
-            while r < Seq.get_Count(rows) and added < limit {
-                var row = Obj.ToString(Seq.Get(rows, r));
-                r = r + 1;
-                if row == "" { continue; }
-                var parts = Str.Split(row, "\t");
-                if Seq.get_Count(parts) < 4 { continue; }
-                var label = Obj.ToString(Seq.Get(parts, 0));
-                var lineText = Obj.ToString(Seq.Get(parts, 3));
-                if label == "" or lineText == "0" { continue; }
-                var symbolLine = Zanna.Core.Convert.ToInt64(lineText) - lineOff;
-                if symbolLine < 1 { continue; }
-                if WorkspaceSymbolMatchesPrefix(label, prefix) and LabelAlreadyListed(label) == false {
-                    AddWorkspaceCompletion(label,
-                                           Obj.ToString(Seq.Get(parts, 1)),
-                                           Obj.ToString(Seq.Get(parts, 2)),
-                                           doc.filePath,
-                                           actualLine,
-                                           startCol,
-                                           curCol);
-                    added = added + 1;
-                }
-            }
-        }
-        return added;
-    }
-
     hide func AddWorkspaceCompletion(label: String,
                                      kind: String,
                                      typeText: String,
@@ -1180,13 +1239,21 @@ class CompletionController {
     ///          below the caret, moves above near the bottom edge, and clamps left
     ///          and right so long symbol names do not render off-screen.
     hide func PositionPopupNearCursor() {
-        var px = editor.GetCursorPixelX() + 0.0;
-        var py = editor.GetCursorPixelY() + 20.0;
+        var cursorX = app_shell.PhysicalToUi(appRoot, editor.GetCursorPixelX());
+        var cursorY = app_shell.PhysicalToUi(appRoot, editor.GetCursorPixelY());
+        var px = cursorX;
+        var py = cursorY + 20.0;
         var width = COMPLETION_POPUP_WIDTH;
         var height = COMPLETION_POPUP_HEIGHT;
         if appRoot != null {
-            var winW = appRoot.GetWidth();
-            var winH = appRoot.GetHeight();
+            var winW = app_shell.UiViewportWidth(appRoot);
+            var winH = app_shell.UiViewportHeight(appRoot);
+            var maxW = winW - (COMPLETION_POPUP_MARGIN * 2.0);
+            var maxH = winH - (COMPLETION_POPUP_MARGIN * 2.0);
+            if width > maxW { width = maxW; }
+            if height > maxH { height = maxH; }
+            if width < 1.0 { width = 1.0; }
+            if height < 1.0 { height = 1.0; }
             if px + width + COMPLETION_POPUP_MARGIN > winW {
                 px = winW - width - COMPLETION_POPUP_MARGIN;
             }
@@ -1194,12 +1261,13 @@ class CompletionController {
                 px = COMPLETION_POPUP_MARGIN;
             }
             if py + height + COMPLETION_POPUP_MARGIN > winH {
-                py = editor.GetCursorPixelY() - height - 8.0;
+                py = cursorY - height - 8.0;
             }
             if py < COMPLETION_POPUP_MARGIN {
                 py = COMPLETION_POPUP_MARGIN;
             }
         }
+        popup.SetSize(width, height);
         popup.SetPosition(px, py);
     }
 

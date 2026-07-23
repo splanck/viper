@@ -354,9 +354,13 @@ typedef struct vg_treeview {
     uint32_t hover_bg;    ///< Hover background
 
     // Scrolling
-    float scroll_y;    ///< Vertical scroll position
-    int visible_start; ///< First visible row index
-    int visible_count; ///< Number of visible rows
+    float scroll_y;                ///< Vertical scroll position
+    int visible_start;             ///< First visible row index
+    int visible_count;             ///< Number of visible rows
+    bool scrollbar_hovered;        ///< Pointer is over the vertical scrollbar gutter
+    bool scrollbar_dragging;       ///< Vertical scrollbar thumb owns input capture
+    bool scrollbar_suppress_click; ///< Swallow the synthetic click after scrollbar input
+    float scrollbar_drag_offset;   ///< Pointer offset inside the thumb while dragging
 
     // External virtual model. The model and TreeView hold non-owning pointers to each other.
     bool virtual_mode;        ///< Render flattened rows through the external provider when true.

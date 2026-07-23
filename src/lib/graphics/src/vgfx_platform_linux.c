@@ -206,8 +206,8 @@ static void x11_load_glx_library(void) {
         g_vgfx_glx_libgl_handle = dlopen("libGL.so", RTLD_NOW | RTLD_LOCAL);
     if (!g_vgfx_glx_libgl_handle)
         return;
-    g_vgfx_glx_choose_fb_config = (vgfx_glx_choose_fb_config_fn)dlsym(
-        g_vgfx_glx_libgl_handle, "glXChooseFBConfig");
+    g_vgfx_glx_choose_fb_config =
+        (vgfx_glx_choose_fb_config_fn)dlsym(g_vgfx_glx_libgl_handle, "glXChooseFBConfig");
     g_vgfx_glx_get_visual_from_fb_config = (vgfx_glx_get_visual_from_fb_config_fn)dlsym(
         g_vgfx_glx_libgl_handle, "glXGetVisualFromFBConfig");
 }
@@ -2972,6 +2972,30 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     XFlush(x11->display);
 }
 
+void vgfx_platform_set_window_min_size(struct vgfx_window *win, int32_t w, int32_t h) {
+    if (!win || !win->platform_data || w <= 0 || h <= 0)
+        return;
+    vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
+    if (!x11->display || !x11->window)
+        return;
+    int32_t physical_w = x11_logical_to_physical(win, w);
+    int32_t physical_h = x11_logical_to_physical(win, h);
+    if (physical_w <= 0 || physical_h <= 0)
+        return;
+    XSizeHints *hints = XAllocSizeHints();
+    if (!hints)
+        return;
+    long supplied = 0;
+    if (!XGetWMNormalHints(x11->display, x11->window, hints, &supplied))
+        hints->flags = 0;
+    hints->flags |= PMinSize;
+    hints->min_width = win->resizable ? physical_w : win->width;
+    hints->min_height = win->resizable ? physical_h : win->height;
+    XSetWMNormalHints(x11->display, x11->window, hints);
+    XFree(hints);
+    XFlush(x11->display);
+}
+
 // ============================================================================
 // Clipboard (ICCCM CLIPBOARD selection)
 // ============================================================================
@@ -3123,9 +3147,8 @@ vgfx_window_capabilities_t vgfx_get_window_capabilities(vgfx_window_t window) {
     if (!window || !window->platform_data)
         return 0;
     return VGFX_CAP_WINDOW_POSITION | VGFX_CAP_FOCUS_REQUEST | VGFX_CAP_CURSOR_WARP |
-           VGFX_CAP_RELATIVE_MOUSE | VGFX_CAP_TEXT_COMPOSITION |
-           VGFX_CAP_SERVER_DECORATIONS | VGFX_CAP_ACTIVATION | VGFX_CAP_CLIPBOARD_TEXT |
-           VGFX_CAP_FILE_DROP;
+           VGFX_CAP_RELATIVE_MOUSE | VGFX_CAP_TEXT_COMPOSITION | VGFX_CAP_SERVER_DECORATIONS |
+           VGFX_CAP_ACTIVATION | VGFX_CAP_CLIPBOARD_TEXT | VGFX_CAP_FILE_DROP;
 }
 
 void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {
@@ -3202,10 +3225,8 @@ static void x11_xi2_load_library(void) {
         g_vgfx_xi_handle = dlopen("libXi.so", RTLD_NOW | RTLD_LOCAL);
     if (!g_vgfx_xi_handle)
         return;
-    g_vgfx_xi_query_version =
-        (vgfx_xi_query_version_fn)dlsym(g_vgfx_xi_handle, "XIQueryVersion");
-    g_vgfx_xi_select_events =
-        (vgfx_xi_select_events_fn)dlsym(g_vgfx_xi_handle, "XISelectEvents");
+    g_vgfx_xi_query_version = (vgfx_xi_query_version_fn)dlsym(g_vgfx_xi_handle, "XIQueryVersion");
+    g_vgfx_xi_select_events = (vgfx_xi_select_events_fn)dlsym(g_vgfx_xi_handle, "XISelectEvents");
 }
 
 /// @brief Lazily load libXi and resolve the XInput2 entry points we use.

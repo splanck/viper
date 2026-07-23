@@ -20,6 +20,7 @@
 module menu_chrome;
 
 bind "../commands/command_registry";
+bind "../commands/command_catalog";
 bind "../editor/language_service";
 bind "../ui/status_bar_model";
 
@@ -41,6 +42,9 @@ class MenuChrome {
     expose GUI.MenuItem miNew;
     expose GUI.MenuItem miOpen;
     expose GUI.MenuItem miOpenFolder;
+    expose GUI.MenuItem miAddFolder;
+    expose GUI.MenuItem miRemoveFolder;
+    expose GUI.MenuItem miCloseWorkspace;
     expose GUI.MenuItem miQuickOpen;
     expose GUI.MenuItem miSave;
     expose GUI.MenuItem miSaveAs;
@@ -126,6 +130,7 @@ class MenuChrome {
     expose GUI.MenuItem ctxRunFile;
     expose GUI.MenuItem ctxSetEntry;
     expose GUI.MenuItem ctxRefresh;
+    expose GUI.MenuItem ctxRemoveFolder;
 
     expose GUI.ContextMenu editorContextMenu;
     expose GUI.MenuItem ecCut;
@@ -148,8 +153,38 @@ class MenuChrome {
     expose GUI.MenuItem tcCopyRelativePath;
     expose GUI.MenuItem tcReveal;
 
+    // Command availability is the product of UI context and asynchronous
+    // execution state. Keep both here so a job/debug refresh cannot
+    // accidentally re-enable commands on the empty welcome surface.
+    expose Boolean commandContextInitialized;
+    expose Boolean documentContextAvailable;
+    expose Boolean projectContextAvailable;
+    expose Boolean buildTargetAvailable;
+    expose Boolean debugTargetAvailable;
+    hide Boolean languageSymbolsAvailable;
+    hide Boolean jobActiveState;
+    hide String activeJobName;
+    hide Boolean debugSessionActive;
+    hide Boolean debugSessionStopped;
+    hide Boolean executionStateInitialized;
+    expose Integer executionStateApplyCount;
+    hide command_registry.CommandRegistry appliedShortcutRegistry;
+
     /// @brief Create an empty menu chrome controller.
     expose func init() {
+        commandContextInitialized = false;
+        documentContextAvailable = false;
+        projectContextAvailable = false;
+        buildTargetAvailable = false;
+        debugTargetAvailable = false;
+        languageSymbolsAvailable = false;
+        jobActiveState = false;
+        activeJobName = "";
+        debugSessionActive = false;
+        debugSessionStopped = false;
+        executionStateInitialized = false;
+        executionStateApplyCount = 0;
+        appliedShortcutRegistry = null;
     }
 
     /// @brief Build the top menu bar and all command menu items.
@@ -173,6 +208,10 @@ class MenuChrome {
         miOpen.SetShortcut("Ctrl+O");
         miOpenFolder = fileMenu.AddItem("Open Folder...");
         miOpenFolder.SetShortcut("Ctrl+Alt+O");
+        miAddFolder = fileMenu.AddItem("Add Folder to Workspace...");
+        miRemoveFolder = fileMenu.AddItem("Remove Folder from Workspace");
+        miCloseWorkspace = fileMenu.AddItem("Close Workspace");
+        fileMenu.AddSeparator();
         miQuickOpen = fileMenu.AddItem("Quick Open File");
         miQuickOpen.SetShortcut("Ctrl+P");
         fileMenu.AddSeparator();
@@ -371,6 +410,8 @@ class MenuChrome {
         treeContextMenu.AddSeparator();
         ctxRefresh = treeContextMenu.AddItem("Refresh");
         ctxRefresh.SetShortcut("Ctrl+Alt+Shift+R");
+        treeContextMenu.AddSeparator();
+        ctxRemoveFolder = treeContextMenu.AddItem("Remove Folder from Workspace");
     }
 
     /// @brief Build the code editor context menu.
@@ -417,9 +458,13 @@ class MenuChrome {
     /// @param registry Runtime command registry populated from command_catalog.
     expose func ApplyCommandShortcuts(registry: command_registry.CommandRegistry) {
         if registry == null { return; }
+        appliedShortcutRegistry = registry;
         ApplyShortcut(miNew, "new", registry);
         ApplyShortcut(miOpen, "open", registry);
         ApplyShortcut(miOpenFolder, "openfolder", registry);
+        ApplyShortcut(miAddFolder, "addfolder", registry);
+        ApplyShortcut(miRemoveFolder, "removefolder", registry);
+        ApplyShortcut(miCloseWorkspace, "closeworkspace", registry);
         ApplyShortcut(miQuickOpen, "quickopen", registry);
         ApplyShortcut(miSave, "save", registry);
         ApplyShortcut(miSaveAs, "saveas", registry);
@@ -486,6 +531,17 @@ class MenuChrome {
         ApplyShortcut(ecFormat, "formatdocument", registry);
         ApplyShortcut(ecToggleBreakpoint, "togglebreakpoint", registry);
         ApplyShortcut(ecPalette, "palette", registry);
+
+        // Shortcut edits happen while the command context is otherwise
+        // unchanged. Force one state refresh so toolbar hover text switches to
+        // the same binding immediately instead of retaining a stale default.
+        if commandContextInitialized {
+            commandContextInitialized = false;
+            SetCommandContextAvailable(documentContextAvailable,
+                                       projectContextAvailable,
+                                       buildTargetAvailable,
+                                       debugTargetAvailable);
+        }
     }
 
     /// @brief Apply one command shortcut to one menu item.
@@ -497,43 +553,98 @@ class MenuChrome {
                             registry: command_registry.CommandRegistry) {
         if item == null or registry == null { return; }
         var shortcut = registry.ShortcutFor(commandId);
-        if shortcut == "" { return; }
         item.SetShortcut(shortcut);
+    }
+
+    /// @brief Apply whether document and build commands have valid targets.
+    /// @param hasDocument True when at least one editor document is open.
+    /// @param hasProject True when a workspace root is open.
+    /// @param hasBuildTarget True when a project or document can be built.
+    /// @param hasDebugTarget True when a saved document can be debugged.
+    expose func SetCommandContextAvailable(hasDocument: Boolean,
+                                           hasProject: Boolean,
+                                           hasBuildTarget: Boolean,
+                                           hasDebugTarget: Boolean) {
+        if commandContextInitialized
+           and documentContextAvailable == hasDocument
+           and projectContextAvailable == hasProject
+           and buildTargetAvailable == hasBuildTarget
+           and debugTargetAvailable == hasDebugTarget {
+            return;
+        }
+        commandContextInitialized = true;
+        documentContextAvailable = hasDocument;
+        projectContextAvailable = hasProject;
+        buildTargetAvailable = hasBuildTarget;
+        debugTargetAvailable = hasDebugTarget;
+
+        SetMenuEnabled(miSave, hasDocument);
+        SetMenuEnabled(miSaveAs, hasDocument);
+        SetMenuEnabled(miSaveAll, hasDocument);
+        SetMenuEnabled(miClose, hasDocument);
+        SetMenuEnabled(miReload, hasDocument);
+        SetMenuEnabled(miUndo, hasDocument);
+        SetMenuEnabled(miRedo, hasDocument);
+        SetMenuEnabled(miCut, hasDocument);
+        SetMenuEnabled(miCopy, hasDocument);
+        SetMenuEnabled(miPaste, hasDocument);
+        SetMenuEnabled(miSelectAll, hasDocument);
+        SetMenuEnabled(miFind, hasDocument);
+        SetMenuEnabled(miGoToLine, hasDocument);
+        SetMenuEnabled(miToggleMinimap, hasDocument);
+        SetMenuEnabled(miToggleBreakpoint, hasDocument);
+        SetMenuEnabled(miRemoveFolder, hasProject);
+        SetMenuEnabled(miCloseWorkspace, hasProject);
+        SetMenuEnabled(miQuickOpen, hasProject);
+        SetMenuEnabled(miSearchProject, hasProject);
+        SetMenuEnabled(miWorkspaceSymbols,
+                       hasProject and languageSymbolsAvailable);
+
+        SetMenuEnabled(ecCut, hasDocument);
+        SetMenuEnabled(ecCopy, hasDocument);
+        SetMenuEnabled(ecPaste, hasDocument);
+        SetMenuEnabled(ecFormat, hasDocument);
+        SetMenuEnabled(ecToggleBreakpoint, hasDocument);
+        SetMenuEnabled(ecEvaluate, hasDocument);
+
+        SetToolbarItemState(tbSave, hasDocument,
+                            CommandTooltip("Save File", "save", "Ctrl+S"),
+                            "Open a document to save");
+        SetToolbarItemState(tbSaveAll, hasDocument,
+                            CommandTooltip("Save All Files", "saveall", "Ctrl+Alt+Shift+S"),
+                            "Open a document to save");
+        SetToolbarItemState(tbFind, hasDocument,
+                            CommandTooltip("Find", "find", "Ctrl+F"),
+                            "Open a document to find text");
+
+        if hasDocument == false {
+            SetMenuEnabled(miGoToDefinition, false);
+            SetMenuEnabled(miFindReferences, false);
+            SetMenuEnabled(miIncomingCalls, false);
+            SetMenuEnabled(miOutgoingCalls, false);
+            SetMenuEnabled(miRenameSymbol, false);
+            SetMenuEnabled(miSymbolOutline, false);
+            SetMenuEnabled(miSignatureHelp, false);
+            SetMenuEnabled(ecGotoDef, false);
+            SetMenuEnabled(ecFindRefs, false);
+            SetMenuEnabled(ecRename, false);
+        }
+
+        ApplyExecutionCommandState();
     }
 
     /// @brief Apply build/run job state to toolbar and menu controls.
     /// @param active True while a build/run job is active.
     /// @param name Human-readable job name.
     expose func SetBuildJobActive(active: Boolean, name: String) {
-        var enabled = true;
-        var stopEnabled = false;
-        var jobName = status_bar_model.JobDisplayName(name);
-        if active {
-            enabled = false;
-            stopEnabled = true;
+        if executionStateInitialized and jobActiveState == active
+           and activeJobName == name {
+            return;
         }
-        SetToolbarItemState(tbBuild, enabled,
-                            "Build (Ctrl+Shift+B)",
-                            "Build disabled while " + jobName + " is running");
-        SetToolbarItemState(tbRun, enabled,
-                            "Build & Run (F5)",
-                            "Run disabled while " + jobName + " is running");
-        SetToolbarItemState(tbDebug, enabled,
-                            "Start Debugging (F6)",
-                            "Debug disabled while " + jobName + " is running");
-        if tbStop != null {
-            tbStop.SetEnabled(stopEnabled);
-            if active {
-                tbStop.SetTooltip("Stop " + jobName + " (Shift+F5)");
-            } else {
-                tbStop.SetTooltip("No running job");
-            }
-        }
-        SetMenuEnabled(miBuild, enabled);
-        SetMenuEnabled(miBuildAndRun, enabled);
-        SetMenuEnabled(miRun, enabled);
-        SetMenuEnabled(miDebugStart, enabled);
-        SetMenuEnabled(miStop, stopEnabled);
+        jobActiveState = active;
+        activeJobName = name;
+        executionStateInitialized = true;
+        ApplyExecutionCommandState();
     }
 
     /// @brief Apply running/paused debug-session state to visible controls.
@@ -543,46 +654,67 @@ class MenuChrome {
     expose func SetDebugSessionState(active: Boolean,
                                      stopped: Boolean,
                                      buildJobActive: Boolean) {
-        var startEnabled = true;
-        if active or buildJobActive { startEnabled = false; }
-        var pausedEnabled = false;
-        if active and stopped { pausedEnabled = true; }
-        var runningEnabled = false;
-        if active and stopped == false { runningEnabled = true; }
-        var activeEnabled = false;
-        if active { activeEnabled = true; }
-
-        if active {
-            SetToolbarItemState(tbBuild, false,
-                                "Build (Ctrl+Shift+B)",
-                                "Build disabled while debugging");
-            SetToolbarItemState(tbRun, false,
-                                "Build & Run (F5)",
-                                "Run disabled while debugging");
-            SetMenuEnabled(miBuild, false);
-            SetMenuEnabled(miBuildAndRun, false);
-            SetMenuEnabled(miRun, false);
-        } else if buildJobActive == false {
-            SetToolbarItemState(tbBuild, true,
-                                "Build (Ctrl+Shift+B)",
-                                "Build disabled while another job is running");
-            SetToolbarItemState(tbRun, true,
-                                "Build & Run (F5)",
-                                "Run disabled while another job is running");
-            SetMenuEnabled(miBuild, true);
-            SetMenuEnabled(miBuildAndRun, true);
-            SetMenuEnabled(miRun, true);
+        if executionStateInitialized and debugSessionActive == active
+           and debugSessionStopped == stopped
+           and jobActiveState == buildJobActive {
+            return;
         }
+        debugSessionActive = active;
+        debugSessionStopped = stopped;
+        jobActiveState = buildJobActive;
+        executionStateInitialized = true;
+        ApplyExecutionCommandState();
+    }
 
-        var startDisabled = "Debug disabled while another job is running";
-        if active { startDisabled = "Debug session already running"; }
+    /// @brief Reconcile target, build-job, and debugger state in one place.
+    hide func ApplyExecutionCommandState() {
+        executionStateApplyCount = executionStateApplyCount + 1;
+        SetMenuEnabled(miRemoveFolder,
+                       projectContextAvailable and jobActiveState == false
+                       and debugSessionActive == false);
+        SetMenuEnabled(miCloseWorkspace,
+                       projectContextAvailable and jobActiveState == false
+                       and debugSessionActive == false);
+        var buildEnabled = buildTargetAvailable;
+        if jobActiveState or debugSessionActive { buildEnabled = false; }
+
+        var startEnabled = debugTargetAvailable;
+        if debugSessionActive or jobActiveState { startEnabled = false; }
+        var pausedEnabled = false;
+        if debugSessionActive and debugSessionStopped { pausedEnabled = true; }
+        var runningEnabled = false;
+        if debugSessionActive and debugSessionStopped == false { runningEnabled = true; }
+        var activeEnabled = false;
+        if debugSessionActive { activeEnabled = true; }
+
+        var buildDisabled = "Open a project or document to build";
+        var runDisabled = "Open a project or document to run";
+        if jobActiveState {
+            var jobName = status_bar_model.JobDisplayName(activeJobName);
+            buildDisabled = "Build disabled while " + jobName + " is running";
+            runDisabled = "Run disabled while " + jobName + " is running";
+        } else if debugSessionActive {
+            buildDisabled = "Build disabled while debugging";
+            runDisabled = "Run disabled while debugging";
+        }
+        SetToolbarItemState(tbBuild, buildEnabled,
+                            CommandTooltip("Build", "build", "Ctrl+Shift+B"), buildDisabled);
+        SetToolbarItemState(tbRun, buildEnabled,
+                            CommandTooltip("Build & Run", "buildrun", "F5"), runDisabled);
+        SetMenuEnabled(miBuild, buildEnabled);
+        SetMenuEnabled(miBuildAndRun, buildEnabled);
+        SetMenuEnabled(miRun, buildEnabled);
+
+        var startDisabled = "Open or save a document to debug";
+        if jobActiveState { startDisabled = "Debug disabled while another job is running"; }
+        if debugSessionActive { startDisabled = "Debug session already running"; }
         SetToolbarItemState(tbDebug, startEnabled,
-                            "Start Debugging (F6)", startDisabled);
+                            CommandTooltip("Start Debugging", "debugstart", "F6"), startDisabled);
         SetToolbarItemState(tbDebugContinue, pausedEnabled,
-                            "Continue Debugging (F7)",
+                            CommandTooltip("Continue Debugging", "debugcontinue", "F7"),
                             "Continue is available while paused at a breakpoint");
         SetToolbarItemState(tbDebugStep, pausedEnabled,
-                            "Step Over (F10)",
+                            CommandTooltip("Step Over", "debugstepover", "F10"),
                             "Step is available while paused at a breakpoint");
 
         SetMenuEnabled(miDebugStart, startEnabled);
@@ -593,6 +725,17 @@ class MenuChrome {
         SetMenuEnabled(miDebugPause, runningEnabled);
         SetMenuEnabled(miDebugRestart, activeEnabled);
         SetMenuEnabled(miDebugStop, activeEnabled);
+
+        if tbStop != null {
+            tbStop.SetEnabled(jobActiveState);
+            if jobActiveState {
+                tbStop.SetTooltip("Stop " + status_bar_model.JobDisplayName(activeJobName)
+                                  + ShortcutSuffix("stopjob", "Shift+F5"));
+            } else {
+                tbStop.SetTooltip("No running job");
+            }
+        }
+        SetMenuEnabled(miStop, jobActiveState);
     }
 
     /// @brief Apply active-language capability state to semantic menu actions.
@@ -603,19 +746,20 @@ class MenuChrome {
         var canRename = false;
         var canSymbols = false;
         var canSignature = false;
-        if service != null {
+        if service != null and documentContextAvailable {
             canDefinition = service.canGoToDefinition;
             canReferences = service.canFindReferences;
             canRename = service.canRename;
             canSymbols = service.canDocumentSymbols;
             canSignature = service.canSignatureHelp;
         }
+        languageSymbolsAvailable = canSymbols;
         SetMenuEnabled(miGoToDefinition, canDefinition);
         SetMenuEnabled(miFindReferences, canReferences);
         SetMenuEnabled(miIncomingCalls, canReferences);
         SetMenuEnabled(miOutgoingCalls, canDefinition);
         SetMenuEnabled(miRenameSymbol, canRename);
-        SetMenuEnabled(miWorkspaceSymbols, canSymbols);
+        SetMenuEnabled(miWorkspaceSymbols, canSymbols and projectContextAvailable);
         SetMenuEnabled(miSymbolOutline, canSymbols);
         SetMenuEnabled(miSignatureHelp, canSignature);
         SetMenuEnabled(ecGotoDef, canDefinition);
@@ -629,6 +773,28 @@ class MenuChrome {
     expose func SetMenuEnabled(item: GUI.MenuItem, enabled: Boolean) {
         if item == null { return; }
         item.SetEnabled(enabled);
+    }
+
+    /// @brief Format one active command shortcut for toolbar hover text.
+    hide func CommandTooltip(label: String,
+                             commandId: String,
+                             canonicalDefault: String) -> String {
+        var shortcut = command_catalog.PlatformShortcut(canonicalDefault);
+        if appliedShortcutRegistry != null {
+            shortcut = appliedShortcutRegistry.ShortcutFor(commandId);
+        }
+        if shortcut == "" { return label; }
+        return label + " (" + shortcut + ")";
+    }
+
+    /// @brief Return a parenthesized shortcut suffix, or empty when unbound.
+    hide func ShortcutSuffix(commandId: String, canonicalDefault: String) -> String {
+        var shortcut = command_catalog.PlatformShortcut(canonicalDefault);
+        if appliedShortcutRegistry != null {
+            shortcut = appliedShortcutRegistry.ShortcutFor(commandId);
+        }
+        if shortcut == "" { return ""; }
+        return " (" + shortcut + ")";
     }
 
     /// @brief Apply enabled state and matching hover text to one toolbar item.

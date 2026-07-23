@@ -1,6 +1,6 @@
 # Zanna Studio Current Status
 
-Last reviewed against source: 2026-07-18.
+Last reviewed against source: 2026-07-22.
 
 This file is the current-state reference for Zanna Studio. It intentionally avoids
 future-phase language and records limitations in the same place as shipped
@@ -91,21 +91,21 @@ panel virtualization for very large result sets.
 | Area | Status | Notes |
 | --- | --- | --- |
 | Text editing | Implemented | Multi-tab CodeEditor, undo/redo, selections, comments, formatting, folding, minimap option. |
-| Split editor | Implemented (v1) | Two side-by-side panes ("Split Editor Right", "Focus Other Editor Pane", "Close Editor Split", click-to-focus). The focused pane drives typing, IntelliSense, find, minimap, and status. Two different files are fully independent, and the split-active state is restored across sessions. v1 limits: exactly two panes; the same document opened in both panes uses independent buffers (edits do not live-sync — shared multi-view needs runtime support). |
+| Split editor | Implemented (v1) | Two side-by-side panes ("Split Editor Right", "Focus Other Editor Pane", "Close Editor Split", click-to-focus). Each pane owns a distinct document and the focused pane drives the active tab, typing, IntelliSense, find, minimap, status, save, and recovery state. Opening a document already visible in the other pane focuses its existing owner, preventing divergent buffers and stale overwrites. Split-active state is restored when at least two documents are open. v1 limits: exactly two panes; open a second document before splitting; same-document multi-view awaits shared-buffer runtime support. |
 | Zia IntelliSense | Implemented with limits | Completion, diagnostics, hover, signature help, symbols, definition, references, rename, workspace symbols. |
 | BASIC IntelliSense | Implemented with limits | Completion, diagnostics, hover, document symbols, scanner-backed definition, references, rename, workspace symbols, call hierarchy, and signature help. |
 | Plain text | Implemented | Opens unknown/text-like files as text without semantic features. |
 | Scene files | Partial | `.scene` and `.level` are detected, saved, restored, and filtered, but display as text. |
-| Project explorer | Implemented with limits | Demand-loaded tree, multi-root support, Quick Open cache, file actions, ignores. |
-| Search | Implemented | Docked project/folder search panel, runtime-paged file discovery, literal/regex, case/word filters, include/exclude filters, grouped results. |
+| Project explorer | Implemented with limits | Demand-loaded, scrollable tree; multi-root support; Quick Open cache; file actions; ignores. Rename/move preserve live editor buffers and undo state, while delete releases any removed split-pane owner. |
+| Search | Implemented | Docked project/folder search panel with a compact-window minimum results viewport, runtime-paged file discovery, per-frame file/byte budgets, literal/regex, case/word filters, include/exclude filters, grouped results, and generation-scoped frame-sliced Replace All with bounded atomic closed-file writes. |
 | Build/run | Implemented | Argument-vector jobs, project manifest overrides, streamed bounded output, JSON diagnostics. |
 | Debugging | Implemented with UX gaps | External VM debug adapter, breakpoints, stepping, pause, async restart, run to cursor, locals, call stack, evaluate, watches, conditions, logpoints; structured expansion of lists/seqs/maps and class-instance fields with value previews. |
 | Terminal | Implemented with limits | PTY-backed shell in OutputPane terminal mode: alternate screen, DECSTBM scroll regions, IL/DL/ICH/DCH/ECH, tab stops, cursor visibility, bracketed paste, application cursor keys, DSR/DA replies, SGR 16/256/truecolor + reverse. Coverage is pinned to the vim/less/htop sequence table, not full VT. |
-| Source Control | Implemented with limits | Async Git status, stage/unstage, commit, per-path diff, side-by-side diffs, paged commit history with per-commit files and diffs, queued serialized jobs, PTY-backed push/pull with live output and in-app credential prompts. No merge/rebase/conflict workflows. |
-| Settings | Implemented | Platform config path, theme, editor behavior, auto-save, save-before-build, session options, settings search, and rebindable keyboard shortcuts persisted as overrides. |
-| Session restore | Implemented | Project, tabs, cursor/scroll, recent files/projects, bounded recovery text. |
+| Source Control | Implemented with limits | Async Git status, stage/unstage, commit, per-path diff, worker-computed/incrementally rendered side-by-side diffs, paged commit history with per-commit files and diffs, queued serialized jobs, PTY-backed push/pull with live output and in-app credential prompts. No merge/rebase/conflict workflows. |
+| Settings | Implemented | Platform config path, theme, editor behavior, auto-save, save-before-build, session options, settings search, rebindable keyboard shortcuts, and debounced bottom-panel drag sizing. The body is vertically scrollable with a fixed action footer; compact windows give Preferences the full workbench lane and stack descriptions above controls without horizontal overflow. |
+| Session restore | Implemented | Project, tabs, cursor/scroll, recent files/projects, bounded recovery text, and painted caller-budgeted startup restoration. |
 | File watching | Implemented with limits | Active file watcher, inactive document polling, missing/deleted/moved-file conflict state, and capped recursive workspace watcher set with fallback scans. |
-| Visual polish | Implemented with limits | Zanna-brand palettes (WCAG-gated), scalable vector icons across toolbar/tree/tabs/status, smooth scrolling, gamma-correct text with ligatures, welcome/About brand surfaces. Remaining density work is tracked per panel. |
+| Visual polish | Implemented with limits | Zanna-brand palettes (WCAG-gated), scalable vector icons across toolbar/tree/tabs/status, smooth scrolling, gamma-correct text with ligatures, and viewport-bounded welcome/About/Preferences/diff, command, and semantic popup surfaces. Focus-taking Settings, About, explorer, breakpoint, command-input, and diff surfaces are mutually exclusive with popup menus, preventing stacked panels and ambiguous Enter/Escape routing. Chrome text, floating overlays, wrapped output, and responsive tool tabs share one effective-scale coordinate space without applying user zoom twice. Long list rows—including compact Recent paths—use explicit ellipsis and expose their complete unmodified text on hover instead of ending at a hard clip. The native workbench minimum starts at 720 by 520 and grows with whole-UI zoom, contracting against a desktop-chrome safety margin when the display cannot fit that floor. A requested minimap is temporarily suppressed below a useful editor-lane width and restored automatically when the lane expands, without overwriting the user's preference. Remaining density work is tracked per panel. |
 | Cross-platform | Intended | Runtime adapters exist for process, PTY, GUI; display/runtime behavior still needs regular platform smoke. |
 
 ## Language Support
@@ -120,12 +120,16 @@ Zia is the primary supported language. Current Zia features include:
 - Hover, signature help, and overload navigation.
 - Live diagnostics and explicit "Run Check Now".
 - Problems panel integration with diagnostic navigation.
-- Fix-it application for supported structured diagnostics.
+- Non-blocking, revision/caret-gated fix-it application for supported
+  structured diagnostics.
 - Create Missing Bind for known runtime aliases and unambiguous project-file
-  binds.
-- Suppress Warning insertion for supported warnings.
+  binds. Project discovery is bounded and asynchronous, and refuses ambiguous,
+  incomplete, or changed candidate snapshots.
+- Non-blocking Suppress Warning insertion for supported warnings.
 - Definition, references, incoming calls, outgoing calls, and rename through
-  `Zanna.Zia.ProjectIndex`.
+  `Zanna.Zia.ProjectIndex`. Project queries run on an owned background worker;
+  delayed results require the same tab, revision, caret, workspace, and index
+  generation, and large result sets render over multiple frames.
 - Organize Binds.
 - Extract Local Variable, Extract Function, and Inline Local Variable for
   deliberately conservative cases.
@@ -133,9 +137,12 @@ Zia is the primary supported language. Current Zia features include:
 
 Known Zia limits:
 
-- Workspace indexing is lazy and bounded by file size and per-frame budgets.
-- Some project-wide semantic results can be incomplete while indexing is still
-  warming up.
+- Workspace indexing is lazy and cooperative. A semantic command waits without
+  blocking while the index warms up, then refuses the query if any source was
+  unreadable/oversized or the 20,000-file/64 MB workspace ceilings were reached.
+- Reference and call publication retains at most 2,000 results; rename refuses
+  to apply when the reference ceiling is exceeded. Closed-file edits carry the
+  expected symbol text so delayed content changes cancel the refactor.
 - Refactors are intentionally conservative and reject many legal programs.
 - Some UI panels use string display rows even when the underlying location data
   is structured.
@@ -154,6 +161,10 @@ BASIC support is implemented through a mixed runtime/IDE path:
 - Scanner-backed Workspace Symbols.
 - Scanner-backed Signature Help.
 - Scanner-backed incoming/outgoing call hierarchy.
+- Project-wide definition, references, call hierarchy, and rename scans run on
+  an owned background worker; unsaved open BASIC buffers override disk.
+- Delayed results are rejected after a tab, caret, revision, or workspace-root
+  change, and large References rows are painted over multiple frames.
 - Formatting for supported line forms.
 - Build/run through the same `zanna` toolchain path.
 
@@ -161,8 +172,11 @@ BASIC still has important limits:
 
 - Semantic results come from `src/basic/semantic_scan.zia`, a lightweight
   scanner, rather than the compiler's full semantic model.
-- Workspace scans are cooperative in the IDE but not backed by the Zia project
-  index data structure.
+- Workspace scans are asynchronous and bounded, but are not backed by the Zia
+  project index data structure. File/source/declaration ceilings can limit a
+  navigation result; reference/call results cap at 1,000 rows.
+- Rename refuses to apply when any workspace or reference limit was reached,
+  and validates the scanned token text plus closed-file mtime before mutation.
 - Ambiguous BASIC syntax and dynamic dispatch can still produce conservative or
   incomplete navigation results.
 
@@ -192,7 +206,8 @@ The explorer supports:
 
 - Open folder.
 - Add folder to workspace.
-- Demand-loaded folder expansion.
+- Demand-loaded folder expansion with bounded directory pages, incremental
+  natural sorting, and bounded tree-row publication.
 - Open selected files.
 - Create file/folder.
 - Rename.
@@ -211,7 +226,8 @@ Known limits:
   confirmation-heavy workflows still use dialogs.
 - Ignore behavior is whatever `Zanna.Workspace.FileIndex` supports; do not
   assume full Git ignore semantics beyond what the runtime implements.
-- Very large workspaces depend on cooperative cache/index pumping.
+- Very large workspaces depend on cooperative tree/cache/index pumping; slow
+  network filesystems can still delay an individual native directory operation.
 - Quick Open and completion file discovery use runtime `FileIndex.Page` instead
   of treating the visible tree as a complete workspace snapshot.
 
@@ -261,9 +277,11 @@ Supported behavior:
 - Variables panel rows are grouped through a `VirtualTree` model for Watches and
   Locals before being rendered into the current ListBox UI.
 - Composite locals (lists, seqs, maps) are expandable: clicking a `▸` row loads
-  its children lazily through the adapter's `variables` request and shows them
-  indented; nested containers expand one level at a time. Expansion state is kept
-  by variable name-path, so stepping re-opens the same nodes automatically.
+  its children asynchronously through the adapter's `variables` request, shows
+  an immediate loading row, and publishes the reply on a later frame; nested
+  containers expand one level at a time. Timed-out rows remain retryable.
+  Expansion state is kept by variable name-path, so stepping re-opens the same
+  nodes automatically.
 - Class instances expand field-by-field with `{field=value}` previews on the
   locals row. Field layouts come from the module's own compile (the ADR 0138
   class-layout sidecar), so display types are the semantic Zia types; objects
@@ -326,6 +344,11 @@ It supports:
 - Stage all.
 - Commit staged changes with a message.
 - Diff selected path (unified in the panel, or side-by-side via the diff view).
+- Editor gutter change bars are produced by cancellable, frame-pumped Git jobs.
+  Tab switches coalesce to the newest path, secondary workspace folders use
+  their owning repository, configured external diff/textconv commands are
+  disabled for this passive decoration, and a five-second/4,096-marker safety
+  budget prevents a slow child or pathological hunk from freezing the editor.
 - Commit history: lazily paged log, per-commit file lists, and side-by-side
   parent-vs-commit diffs for any file in a commit.
 - Push and pull on a PTY with live output streaming into the panel; detected
@@ -358,13 +381,24 @@ Implemented protections:
   saves after a missing-file conflict require confirmation before recreating the
   original path.
 - Session restore persists unsaved small text buffers as bounded base64 recovery
-  data.
+  data. Session/settings reads reject oversized state before parsing; writers
+  cap tabs, roots, breakpoints, and aggregate embedded recovery, retain the
+  active tab when truncating, and atomically replace the shared INI file.
+- Continuous crash swaps snapshot modified editable buffers after a two-second
+  debounce and perform large writes on a coalescing background worker. Atomic
+  staged commits are cancellation-safe across save, close, reload, rename, and
+  delete transitions, so an old worker cannot resurrect discarded text.
+- Explorer path-only rename and drag-move operations retain the live editor
+  buffer, including undo, selection, folds, and scroll. Moving an open path to
+  project trash closes its documents and releases either split-pane owner before
+  the surviving tab is activated.
 - Build/debug preflight can save all modified files before launching.
 
 Known data-safety gaps:
 
 - Scene files do not have a scene-specific document model yet.
-- Recovery is intentionally capped and only applies to editable text buffers.
+- Recovery applies only to editable text buffers; a hard crash can still lose
+  edits made after the most recent two-second debounce snapshot.
 - Source Control write operations depend on Git command success and basic
   stderr reporting.
 
@@ -376,10 +410,10 @@ These gaps are current documentation, not a plan commitment:
 - Move remaining prompt-style workflows into non-modal workbench overlays.
 - The editor and bottom tool panels share one vertical splitter: every panel tab
   has the same height (no editor jump on switch), the boundary is drag-resizable
-  with a persisted default height, and the bottom area collapses when no panel is
-  open. Remaining: fully virtualize panel content beyond the bounded stable-row
-  model, and persist the exact dragged height (a configured percentage is stored
-  today; live drags persist within the session).
+  with a debounced persisted height, Search temporarily reserves a useful result
+  viewport in compact windows without overwriting that preference, and the bottom
+  area collapses when no panel is open. Remaining: fully virtualize panel content
+  beyond the bounded stable-row model.
 - Add a dedicated in-panel watch toolbar and struct-payload expansion in the
   debugger.
 - Add Source Control merge/rebase/conflict workflows.

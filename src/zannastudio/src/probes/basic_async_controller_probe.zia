@@ -1,0 +1,278 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/basic_async_controller_probe.zia
+// Purpose: Exercise Studio's BASIC completion, diagnostics, symbols/folding,
+//          and signature controllers through their asynchronous UI contracts.
+// Key invariants:
+//   - Public trigger/update methods return with a pending generation, not a
+//     synchronously computed compiler result.
+//   - A tab/path switch cannot publish the previous document's result.
+//   - Same-path language switches cancel the previous backend's request.
+//   - Manual diagnostics run when auto-check is disabled and report honest
+//     running, completion, and cancellation status.
+// Ownership/Lifetime:
+//   - The probe owns its shell, editor, controllers, and worker jobs to idle.
+//   - Background requests contain immutable text and no GUI references.
+// Links: zannastudio/src/editor/basic_query_job.zia,
+//        zannastudio/src/app/language_tool_frame.zia
+//
+//===----------------------------------------------------------------------===//
+
+module basic_async_controller_probe;
+
+bind "../ui/app_shell";
+bind "../editor/completion";
+bind "../editor/diagnostics";
+bind "../editor/editor_engine";
+bind "../editor/signature";
+bind "../editor/symbols";
+bind "../services/locations";
+
+bind Clock = Zanna.Time.Clock;
+bind GUI = Zanna.GUI;
+bind Map = Zanna.Collections.Map;
+bind Obj = Zanna.Core.Object;
+bind Terminal = Zanna.Terminal;
+
+final CONTROLLER_WAIT_TICKS = 8000;
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func listContains(items: List, label: String) -> Boolean {
+    var i = 0;
+    while i < items.count() {
+        if Obj.ToString(items.get(i)) == label { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    var engine = new editor_engine.EditorEngine();
+    shell.Build("Zanna Studio BASIC Async Controller Probe", 840, 560);
+    engine.Setup(shell.workbench.editorRow);
+    shell.workbench.minimap = GUI.Minimap.New(shell.workbench.editorRow);
+    shell.workbench.minimap.SetWidth(80);
+    shell.workbench.minimap.BindEditor(engine.editor);
+    shell.Poll();
+    shell.Render();
+
+    // Completion: switch the source/path before the first worker is pumped.
+    // The old synchronous implementation has no pending generation here and
+    // therefore fails this structural responsiveness oracle immediately.
+    var completer = new completion.CompletionController();
+    completer.Setup(engine.editor, shell.app);
+    completer.SetEngine(engine);
+    completer.SetBasicMode(true);
+    var oldCompletion = "DIM oldOnly AS INTEGER\noldOnly = 1\nPRINT ol";
+    engine.SetText(oldCompletion);
+    engine.editor.SetCursor(2, 8);
+    completer.SetSourcePath("old_completion.bas");
+    completer.TriggerCompletion();
+    var oldCompletionGeneration = completer.pendingBasicGeneration;
+    if oldCompletionGeneration <= 0 or completer.basicJob.startedCount != 1 {
+        fail(shell, "completion ran synchronously");
+        return;
+    }
+
+    var newCompletion = "DIM newOnly AS INTEGER\nnewOnly = 1\nPRINT ne";
+    engine.SetText(newCompletion);
+    engine.editor.SetCursor(2, 8);
+    completer.SetSourcePath("new_completion.bas");
+    completer.TriggerCompletion();
+    if completer.pendingBasicGeneration <= oldCompletionGeneration
+       or completer.basicJob.startedCount != 1 {
+        fail(shell, "completion tab switch was not coalesced");
+        return;
+    }
+
+    var completionTicks = 0;
+    while completer.isVisible == false and completionTicks < CONTROLLER_WAIT_TICKS {
+        completer.Update("");
+        Clock.Sleep(1);
+        completionTicks = completionTicks + 1;
+    }
+    if completer.isVisible == false
+       or listContains(completer.allLabels, "NEWONLY") == false
+       or listContains(completer.allLabels, "OLDONLY") {
+        fail(shell, "completion published a stale tab result");
+        return;
+    }
+    completer.Hide();
+
+    // A language change on the same path must be as stale-safe as a tab switch.
+    engine.SetText("DIM modeOnly AS INTEGER\nPRINT mo\n");
+    engine.editor.SetCursor(1, 8);
+    completer.SetSourcePath("same_mode.bas");
+    completer.TriggerCompletion();
+    if completer.pendingBasicGeneration <= 0 {
+        fail(shell, "same-path completion mode switch had no pending work");
+        return;
+    }
+    completer.SetBasicMode(false);
+    if completer.pendingBasicGeneration != 0 or completer.isVisible {
+        fail(shell, "completion mode switch retained stale state");
+        return;
+    }
+    var modeDrainTicks = 0;
+    while completer.basicJob.IsBusy() and modeDrainTicks < CONTROLLER_WAIT_TICKS {
+        completer.Update("");
+        Clock.Sleep(1);
+        modeDrainTicks = modeDrainTicks + 1;
+    }
+    if completer.basicJob.IsBusy() or completer.isVisible {
+        fail(shell, "cancelled completion mode did not drain invisibly");
+        return;
+    }
+    completer.SetBasicMode(true);
+
+    // Diagnostics: an invalid old tab is replaced by a clean new tab before
+    // publication. The clean result must own the rendered counts and cache.
+    var liveDiag = new diagnostics.LiveDiagnostics();
+    var locStore = new locations.LocationStore();
+    liveDiag.SetEnabled(false);
+    liveDiag.SetBasicMode(true);
+    engine.SetText("DIM oldValue AS INTEGER\noldValue = \"bad\"\n");
+    liveDiag.setSourcePath("old_diagnostics.bas");
+    liveDiag.runNow(engine, shell);
+    var oldDiagnosticGeneration = liveDiag.pendingBasicGeneration;
+    if oldDiagnosticGeneration <= 0
+       or liveDiag.manualCheckPending == false
+       or shell.statusShell.lastLeftStatus != "Diagnostics running..." {
+        fail(shell, "manual diagnostics did not queue honestly with auto-check disabled");
+        return;
+    }
+
+    liveDiag.setSourcePath("new_diagnostics.bas");
+    engine.SetText("DIM newValue AS INTEGER\nnewValue = 1\n");
+    liveDiag.runNow(engine, shell);
+    if liveDiag.pendingBasicGeneration <= oldDiagnosticGeneration {
+        fail(shell, "diagnostic tab switch did not queue a newer generation");
+        return;
+    }
+    var diagnosticTicks = 0;
+    while liveDiag.lastCheckedPath != "new_diagnostics.bas"
+          and diagnosticTicks < CONTROLLER_WAIT_TICKS {
+        liveDiag.update(engine, shell, locStore);
+        Clock.Sleep(1);
+        diagnosticTicks = diagnosticTicks + 1;
+    }
+    if liveDiag.lastCheckedPath != "new_diagnostics.bas"
+       or liveDiag.lastCheckedRevision != engine.GetRevision()
+       or liveDiag.lastErrorCount != 0
+       or liveDiag.manualCheckPending
+       or shell.statusShell.lastLeftStatus != "Diagnostics complete" {
+        fail(shell, "diagnostics published a stale tab result");
+        return;
+    }
+
+    // Cancelling an explicit check through a same-path language transition
+    // must not leave a permanent "running" status behind.
+    engine.SetText("DIM cancelledValue AS INTEGER\ncancelledValue = 1\n");
+    liveDiag.runNow(engine, shell);
+    if liveDiag.pendingBasicGeneration <= 0 or liveDiag.manualCheckPending == false {
+        fail(shell, "manual cancellation setup did not start");
+        return;
+    }
+    liveDiag.SetBasicMode(false);
+    liveDiag.update(engine, shell, locStore);
+    if liveDiag.pendingBasicGeneration != 0
+       or liveDiag.manualCheckPending
+       or shell.statusShell.lastLeftStatus != "Diagnostics cancelled" {
+        fail(shell, "diagnostic mode switch did not publish cancellation");
+        return;
+    }
+    liveDiag.SetBasicMode(true);
+
+    engine.SetText("DIM badValue AS INTEGER\nbadValue = \"bad\"\n");
+    liveDiag.runNow(engine, shell);
+    var errorDiagnosticTicks = 0;
+    while liveDiag.manualCheckPending
+          and errorDiagnosticTicks < CONTROLLER_WAIT_TICKS {
+        liveDiag.update(engine, shell, locStore);
+        Clock.Sleep(1);
+        errorDiagnosticTicks = errorDiagnosticTicks + 1;
+    }
+    if liveDiag.manualCheckPending
+       or liveDiag.lastErrorCount <= 0
+       or shell.statusShell.lastLeftStatus
+          != shell.FormatDiagnosticsSummary(liveDiag.lastErrorCount,
+                                            liveDiag.lastWarningCount,
+                                            liveDiag.lastNoteCount) {
+        fail(shell, "manual diagnostic error status was inaccurate");
+        return;
+    }
+
+    // Hidden BASIC semantic folding must also use a worker; it is enabled on
+    // every ordinary editing frame even when the outline list itself is hidden.
+    var outline = new symbols.SymbolOutline();
+    outline.SetBasicMode(true, engine);
+    outline.setSourcePath("folding.bas");
+    outline.setSemanticFoldingEnabled(true, engine);
+    engine.SetText("SUB FoldMe()\n  PRINT \"inside\"\nEND SUB\n");
+    outline.update(engine);
+    if outline.pendingBasicGeneration <= 0 or outline.foldedPath != "" {
+        fail(shell, "hidden BASIC folding ran synchronously");
+        return;
+    }
+    var symbolTicks = 0;
+    while outline.foldedPath == "" and symbolTicks < CONTROLLER_WAIT_TICKS {
+        outline.update(engine);
+        Clock.Sleep(1);
+        symbolTicks = symbolTicks + 1;
+    }
+    if outline.foldedPath != "folding.bas"
+       or outline.foldedRevision != engine.GetRevision() {
+        fail(shell, "hidden BASIC folding did not publish");
+        return;
+    }
+
+    // Signature help uses the same stale-safe path/caret contract.
+    var sigCtrl = new signature.SignatureController();
+    sigCtrl.setup(shell.app);
+    sigCtrl.SetBasicMode(true);
+    var oldSignature = "SUB OldCall(name$)\n  PRINT name$\nEND SUB\nOldCall(\"Ada\")\n";
+    engine.SetText(oldSignature);
+    engine.editor.SetCursor(3, 8);
+    sigCtrl.setSourcePath("old_signature.bas");
+    sigCtrl.trigger(engine);
+    var oldSignatureGeneration = sigCtrl.pendingBasicGeneration;
+    if oldSignatureGeneration <= 0 {
+        fail(shell, "signature help ran synchronously");
+        return;
+    }
+
+    var newSignature = "SUB NewCall(name$)\n  PRINT name$\nEND SUB\nNewCall(\"Ada\")\n";
+    engine.SetText(newSignature);
+    engine.editor.SetCursor(3, 8);
+    sigCtrl.setSourcePath("new_signature.bas");
+    sigCtrl.trigger(engine);
+    if sigCtrl.pendingBasicGeneration <= oldSignatureGeneration {
+        fail(shell, "signature tab switch did not queue a newer generation");
+        return;
+    }
+    var signatureTicks = 0;
+    while sigCtrl.visible == false and signatureTicks < CONTROLLER_WAIT_TICKS {
+        sigCtrl.update(engine);
+        Clock.Sleep(1);
+        signatureTicks = signatureTicks + 1;
+    }
+    if sigCtrl.visible == false
+       or Map.GetStr(sigCtrl.currentSignatureInfo, "name") != "NewCall" {
+        fail(shell, "signature help published a stale tab result");
+        return;
+    }
+    sigCtrl.Hide();
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

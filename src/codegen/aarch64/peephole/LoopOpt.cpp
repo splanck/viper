@@ -53,6 +53,18 @@ namespace {
            phys <= static_cast<uint32_t>(PhysReg::X28);
 }
 
+/// @brief Record a physical register made live across @p block's exit by a
+///        post-RA loop rewrite while preserving the sorted metadata invariant.
+void markCarriedExitReg(MBasicBlock &block, const MOperand &reg) {
+    if (!isPhysReg(reg))
+        return;
+    const uint16_t phys = reg.reg.idOrPhys;
+    const auto insertion =
+        std::lower_bound(block.carriedExitRegs.begin(), block.carriedExitRegs.end(), phys);
+    if (insertion == block.carriedExitRegs.end() || *insertion != phys)
+        block.carriedExitRegs.insert(insertion, phys);
+}
+
 /// @brief A single register-to-register copy to be inserted on a loop back-edge
 ///        in place of a removed phi-slot store+load round-trip.
 struct EdgeMove {
@@ -454,6 +466,13 @@ std::size_t hoistLoopConstants(MFunction &fn) {
             preInstrs.insert(preInstrs.begin() + static_cast<std::ptrdiff_t>(insertIdx),
                              hoistedMov);
             ++insertIdx;
+
+            const MOperand hoistedReg = MOperand::regOp(static_cast<PhysReg>(phys));
+            markCarriedExitReg(preBlock, hoistedReg);
+            for (std::size_t blockIndex : loop.body) {
+                if (blockIndex < fn.blocks.size())
+                    markCarriedExitReg(fn.blocks[blockIndex], hoistedReg);
+            }
 
             for (std::size_t bi : loop.body) {
                 if (bi >= fn.blocks.size())
@@ -916,6 +935,9 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         // Build the body block with instructions after the phi loads.
         MBasicBlock bodyBlock;
         bodyBlock.name = bodyName;
+        // The new body owns the original header's outgoing edges, so it also
+        // inherits allocator-published live-out metadata for those edges.
+        bodyBlock.carriedExitRegs = header.carriedExitRegs;
         if (edge.latchIdx == edge.headerIdx) {
             bodyBlock.instrs = std::move(selfBodyInstrs);
         } else {
@@ -927,6 +949,8 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         // Trim the header to just the phi loads + unconditional branch to body.
         header.instrs.resize(firstNonPhiIdx);
         header.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp(bodyName)}});
+        for (const auto &load : phiLoads)
+            markCarriedExitReg(header, load.dstReg);
 
         auto removeStores = [](MBasicBlock &bb, const std::unordered_set<std::size_t> &indices) {
             if (indices.empty())
@@ -962,11 +986,15 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn) {
         if (edge.latchIdx == edge.headerIdx) {
             // Self-loops carry the phi stores in the split body block itself.
             applyEdgeMoves(bodyBlock, edgePlan);
+            for (const auto &load : phiLoads)
+                markCarriedExitReg(bodyBlock, load.dstReg);
         } else {
             // Multi-block loops carry phi values in the latch block. If we redirect the
             // latch to the hot body, we must translate the phi-slot stores into register
             // edge moves there instead of relying on the cold reload header.
             applyEdgeMoves(latch, edgePlan);
+            for (const auto &load : phiLoads)
+                markCarriedExitReg(latch, load.dstReg);
         }
         eliminated += edgePlan.eliminatedCount;
 

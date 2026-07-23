@@ -427,7 +427,12 @@ static void tabbar_ensure_tab_visible(vg_tabbar_t *tabbar, vg_tab_t *tab) {
 
     float tab_x = get_tab_x(tabbar, tab);
     float tab_w = get_tab_width(tabbar, tab);
-    float viewport_w = tabbar->base.width > 0.0f ? tabbar->base.width : tabbar->base.measured_width;
+    // Measurement is the freshest width during a resize or hidden-to-visible
+    // transition; arranged width can still describe the previous frame (or a
+    // collapsed pane). Programmatic activation outside layout falls back to the
+    // arranged width when no measured viewport exists yet.
+    float viewport_w =
+        tabbar->base.measured_width > 0.0f ? tabbar->base.measured_width : tabbar->base.width;
     if (viewport_w <= 0.0f)
         return;
 
@@ -583,6 +588,12 @@ static void tabbar_measure(vg_widget_t *widget, float available_width, float ava
         tabbar->scroll_x = max_scroll;
     if (tabbar->scroll_x < 0.0f)
         tabbar->scroll_x = 0.0f;
+
+    // The active tab can be selected while this bar belongs to a collapsed or
+    // hidden container, when there is no viewport to scroll against. Reveal it
+    // as soon as measurement supplies a real width; otherwise an opened panel
+    // can present a tab strip that does not contain its own active tab.
+    tabbar_ensure_tab_visible(tabbar, tabbar->active_tab);
 }
 
 /// @brief VTable paint: renders the bar background, clips tabs, draws each tab with background,

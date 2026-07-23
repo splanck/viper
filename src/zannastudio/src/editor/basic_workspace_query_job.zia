@@ -1,0 +1,772 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/basic_workspace_query_job.zia
+// Purpose: Run bounded, project-wide BASIC navigation and rename scans away
+//          from Zanna Studio's interactive UI thread.
+// Key invariants:
+//   - Workers receive immutable roots, open-document text, and editor anchors.
+//   - At most one request runs and one latest replacement waits to run.
+//   - File, byte, declaration, token, and result ceilings bound every query.
+// Ownership/Lifetime:
+//   - BasicWorkspaceQueryJob owns requests until Async.RunOwned completes.
+//   - Published results contain plain maps/sequences and no GUI/model objects.
+// Links: zannastudio/src/commands/basic_workspace_commands.zia,
+//        zannastudio/src/basic/semantic_scan.zia
+//
+//===----------------------------------------------------------------------===//
+
+module basic_workspace_query_job;
+
+bind "../basic/semantic_scan";
+bind "../services/safe_io";
+
+bind Async = Zanna.Threads.Async;
+bind Convert = Zanna.Core.Convert;
+bind FileIndex = Zanna.Workspace.FileIndex;
+bind Future = Zanna.Threads.Future;
+bind Map = Zanna.Collections.Map;
+bind Monitor = Zanna.Threads.Monitor;
+bind Obj = Zanna.Core.Object;
+bind Path = Zanna.IO.Path;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+
+final QUERY_DEFINITION = 1;
+final QUERY_REFERENCES = 2;
+final QUERY_INCOMING_CALLS = 3;
+final QUERY_OUTGOING_CALLS = 4;
+final QUERY_RENAME = 5;
+
+final MAX_WORKSPACE_FILES = 20000;
+final MAX_FILE_SOURCE_CHARS = 4000000;
+final MAX_TOTAL_SOURCE_CHARS = 64000000;
+final MAX_SOURCE_LINES = 5000;
+final MAX_SOURCE_LINE_CHARS = 200000;
+final MAX_DECLARATIONS = 100000;
+final MAX_NAVIGATION_RESULTS = 1000;
+final FILE_INDEX_PAGE_SIZE = 256;
+final SHUTDOWN_WAIT_MS = 5000;
+
+/// @brief Immutable workspace query input plus worker-published result state.
+/// @details List fields are built by the UI controller and never mutated after
+///          Queue takes ownership of the request snapshot.
+class BasicWorkspaceQueryRequest {
+    expose Integer kind;
+    expose Integer generation;
+    expose String label;
+    expose String newName;
+    expose String activePath;
+    expose String activeSource;
+    expose Integer activeLine;
+    expose Integer activeCol;
+    expose Integer activeRevision;
+    expose String workspaceSignature;
+    expose List rootPaths;
+    expose List rootIgnorePatterns;
+    expose List openPaths;
+    expose List openSources;
+    expose Boolean cancelled;
+    expose Boolean succeeded;
+    expose Any result;
+    expose String error;
+
+    expose func init() {
+        kind = 0;
+        generation = 0;
+        label = "";
+        newName = "";
+        activePath = "";
+        activeSource = "";
+        activeLine = 1;
+        activeCol = 0;
+        activeRevision = -1;
+        workspaceSignature = "";
+        rootPaths = new List();
+        rootIgnorePatterns = new List();
+        openPaths = new List();
+        openSources = new List();
+        cancelled = false;
+        succeeded = false;
+        result = null;
+        error = "";
+    }
+}
+
+/// @brief Worker-owned collection of bounded source snapshots.
+class BasicWorkspaceCorpus {
+    expose List paths;
+    expose List sources;
+    expose List mtimes;
+    expose Any seen;
+    expose Integer totalChars;
+    expose Integer consideredFiles;
+    expose Boolean truncated;
+    expose Boolean budgetExhausted;
+    expose Boolean failed;
+    expose String error;
+
+    expose func init() {
+        paths = new List();
+        sources = new List();
+        mtimes = new List();
+        seen = Map.New();
+        totalChars = 0;
+        consideredFiles = 0;
+        truncated = false;
+        budgetExhausted = false;
+        failed = false;
+        error = "";
+    }
+}
+
+/// @brief Read a request cancellation flag under its monitor.
+func RequestIsCancelled(request: BasicWorkspaceQueryRequest) -> Boolean {
+    if request == null { return true; }
+    Monitor.Enter(request);
+    var cancelled = request.cancelled;
+    Monitor.Exit(request);
+    return cancelled;
+}
+
+/// @brief Execute one bounded workspace query from immutable snapshots.
+func RunBasicWorkspaceQuery(request: BasicWorkspaceQueryRequest) -> Any {
+    if request == null or RequestIsCancelled(request) { return request; }
+
+    // Async.RunOwned converts an unexpected trap into a Future error. Keeping
+    // the worker body outside a local catch also avoids publishing a partially
+    // initialized result after an ownership/allocator failure.
+    var result = ExecuteWorkspaceQuery(request);
+
+    Monitor.Enter(request);
+    if request.cancelled == false {
+        request.result = result;
+        request.succeeded = true;
+        request.error = "";
+    }
+    Monitor.Exit(request);
+    return request;
+}
+
+/// @brief Resolve and execute the requested semantic operation.
+func ExecuteWorkspaceQuery(request: BasicWorkspaceQueryRequest) -> Any {
+    var result = NewQueryResult();
+    var token = "";
+    if request.kind != QUERY_OUTGOING_CALLS {
+        token = semantic_scan.IdentifierAt(request.activeSource,
+                                           request.activeLine,
+                                           request.activeCol);
+        if token == "" {
+            return FailResult(result, "no_symbol");
+        }
+    }
+    if request.kind == QUERY_RENAME {
+        if request.activePath == "" {
+            return FailResult(result, "save_before_rename");
+        }
+        if semantic_scan.IsValidBasicIdentifier(request.newName) == false {
+            return FailResult(result, "invalid_name");
+        }
+    }
+
+    var outgoingTokens: Any = null;
+    var callerName = "";
+    if request.kind == QUERY_OUTGOING_CALLS {
+        var startLine = semantic_scan.EnclosingBasicProcedureStartLine(
+            request.activeSource, request.activeLine);
+        if startLine <= 0 {
+            return FailResult(result, "no_enclosing_procedure");
+        }
+        var endLine = semantic_scan.BasicProcedureEndLine(request.activeSource,
+                                                          startLine);
+        callerName = semantic_scan.EnclosingBasicProcedureName(
+            request.activeSource, request.activeLine);
+        if callerName == "" { callerName = "<procedure>"; }
+        outgoingTokens = semantic_scan.OutgoingBasicCallTokensCapped(
+            request.activeSource, startLine, endLine,
+            MAX_NAVIGATION_RESULTS);
+        if outgoingTokens == null or Seq.get_Count(outgoingTokens) == 0 {
+            return FailResult(result, "no_outgoing_calls");
+        }
+        if Seq.get_Count(outgoingTokens) >= MAX_NAVIGATION_RESULTS {
+            Map.SetBool(result, "truncated", true);
+        }
+    }
+
+    var corpus = CollectWorkspaceCorpus(request);
+    if corpus.failed {
+        return FailResult(result, corpus.error);
+    }
+    if RequestIsCancelled(request) { return result; }
+
+    var decls = Seq.New();
+    var declarationsComplete = true;
+    var sourceIndex = 0;
+    while sourceIndex < corpus.paths.count() and declarationsComplete {
+        if RequestIsCancelled(request) { return result; }
+        declarationsComplete = semantic_scan.AddDeclarationsCapped(
+            decls,
+            Obj.ToString(corpus.paths.get(sourceIndex)),
+            Obj.ToString(corpus.sources.get(sourceIndex)),
+            MAX_DECLARATIONS);
+        sourceIndex = sourceIndex + 1;
+    }
+    var truncated = corpus.truncated or declarationsComplete == false;
+    if Map.GetBool(result, "truncated") { truncated = true; }
+    Map.SetBool(result, "truncated", truncated);
+    Map.SetInt(result, "fileCount", corpus.paths.count());
+    Map.SetInt(result, "sourceChars", corpus.totalChars);
+    Map.SetInt(result, "declarationCount", Seq.get_Count(decls));
+
+    if request.kind == QUERY_OUTGOING_CALLS {
+        return BuildOutgoingResult(result, request, decls, outgoingTokens,
+                                   callerName);
+    }
+
+    var def = semantic_scan.BestDefinition(decls, request.activePath,
+                                           request.activeLine, token);
+    if def == null or Map.GetBool(def, "found") == false {
+        if truncated { return FailResult(result, "workspace_limit"); }
+        return FailResult(result, "definition_not_found");
+    }
+    Map.Set(result, "definition", def);
+    Map.SetStr(result, "symbol", Map.GetStr(def, "name"));
+
+    if request.kind == QUERY_DEFINITION {
+        Map.SetBool(result, "success", true);
+        return result;
+    }
+
+    var refs = CollectReferences(request, corpus, def, result);
+    if RequestIsCancelled(request) { return result; }
+    truncated = Map.GetBool(result, "truncated");
+    if request.kind == QUERY_RENAME {
+        if truncated {
+            return FailResult(result, "workspace_limit");
+        }
+        if refs == null or Seq.get_Count(refs) == 0 {
+            return FailResult(result, "no_references");
+        }
+        var edits = semantic_scan.RenameEditsFromReferences(refs,
+                                                            request.newName);
+        Map.Set(result, "edits", edits);
+        Map.SetInt(result, "resultCount", Seq.get_Count(edits));
+        Map.SetBool(result, "success", true);
+        return result;
+    }
+
+    var items = refs;
+    if request.kind == QUERY_INCOMING_CALLS {
+        items = Seq.New();
+        var incomingIndex = 0;
+        while incomingIndex < Seq.get_Count(refs) {
+            var incomingRef = Seq.Get(refs, incomingIndex);
+            if Map.GetBool(incomingRef, "isDefinition") == false {
+                Seq.Push(items, incomingRef);
+            }
+            incomingIndex = incomingIndex + 1;
+        }
+    }
+    if items == null or Seq.get_Count(items) == 0 {
+        if request.kind == QUERY_INCOMING_CALLS {
+            return FailResult(result, "no_incoming_calls");
+        }
+        return FailResult(result, "no_references");
+    }
+    Map.Set(result, "items", items);
+    Map.SetInt(result, "resultCount", Seq.get_Count(items));
+    Map.SetBool(result, "success", true);
+    return result;
+}
+
+/// @brief Gather active/open snapshots first, then page roots off the UI thread.
+func CollectWorkspaceCorpus(request: BasicWorkspaceQueryRequest)
+    -> BasicWorkspaceCorpus {
+    var corpus = new BasicWorkspaceCorpus();
+    if Str.get_Length(request.activeSource) > MAX_FILE_SOURCE_CHARS {
+        corpus.failed = true;
+        corpus.error = "active_file_too_large";
+        return corpus;
+    }
+    if SourceShapeIsBounded(request.activeSource) == false {
+        corpus.failed = true;
+        corpus.error = "active_file_too_complex";
+        return corpus;
+    }
+
+    AddOpenSource(corpus, request.activePath, request.activeSource);
+    var openIndex = 0;
+    while openIndex < request.openPaths.count()
+          and openIndex < request.openSources.count() {
+        if RequestIsCancelled(request) { return corpus; }
+        var openPath = Obj.ToString(request.openPaths.get(openIndex));
+        var openSource = Obj.ToString(request.openSources.get(openIndex));
+        if openPath != request.activePath {
+            AddOpenSource(corpus, openPath, openSource);
+        }
+        openIndex = openIndex + 1;
+    }
+
+    var rootIndex = 0;
+    while rootIndex < request.rootPaths.count()
+          and corpus.budgetExhausted == false {
+        if RequestIsCancelled(request) { return corpus; }
+        var rootPath = Obj.ToString(request.rootPaths.get(rootIndex));
+        var ignores = "";
+        if rootIndex < request.rootIgnorePatterns.count() {
+            ignores = Obj.ToString(request.rootIgnorePatterns.get(rootIndex));
+        }
+        AddRootSources(request, corpus, rootPath, ignores);
+        rootIndex = rootIndex + 1;
+    }
+    return corpus;
+}
+
+/// @brief Add an open document snapshot and prevent fallback to stale disk text.
+func AddOpenSource(corpus: BasicWorkspaceCorpus,
+                   path: String,
+                   source: String) {
+    if path == "" and corpus.paths.count() > 0 { return; }
+    var key = CorpusPathKey(path);
+    if Map.Has(corpus.seen, key) { return; }
+    corpus.consideredFiles = corpus.consideredFiles + 1;
+    Map.SetBool(corpus.seen, key, true);
+    if corpus.paths.count() >= MAX_WORKSPACE_FILES
+       or Str.get_Length(source) > MAX_FILE_SOURCE_CHARS
+       or SourceShapeIsBounded(source) == false
+       or corpus.totalChars + Str.get_Length(source) > MAX_TOTAL_SOURCE_CHARS {
+        corpus.truncated = true;
+        if corpus.totalChars + Str.get_Length(source) > MAX_TOTAL_SOURCE_CHARS {
+            corpus.budgetExhausted = true;
+        }
+        return;
+    }
+    corpus.paths.Push(path);
+    corpus.sources.Push(source);
+    corpus.mtimes.Push(-1);
+    corpus.totalChars = corpus.totalChars + Str.get_Length(source);
+}
+
+/// @brief Consume bounded FileIndex pages for one workspace root.
+func AddRootSources(request: BasicWorkspaceQueryRequest,
+                    corpus: BasicWorkspaceCorpus,
+                    rootPath: String,
+                    ignorePatterns: String) {
+    if rootPath == "" { return; }
+    var offset = 0;
+    var done = false;
+    while done == false and corpus.budgetExhausted == false {
+        if RequestIsCancelled(request) { return; }
+        var page = ReadFileIndexPage(rootPath, ignorePatterns, offset);
+        if page == null or Map.GetBool(page, "valid") == false {
+            corpus.failed = true;
+            corpus.error = "workspace_unavailable";
+            return;
+        }
+        var entries = Map.Get(page, "entries");
+        var emitted = 0;
+        if entries != null {
+            var entryIndex = 0;
+            while entryIndex < Seq.get_Count(entries)
+                  and corpus.budgetExhausted == false {
+                var entry = Seq.Get(entries, entryIndex);
+                emitted = emitted + 1;
+                if Map.GetBool(entry, "isDirectory") == false {
+                    AddDiskSource(corpus, Map.GetStr(entry, "path"));
+                }
+                entryIndex = entryIndex + 1;
+            }
+        }
+        offset = Map.GetInt(page, "nextOffset");
+        done = Map.GetBool(page, "done");
+        if emitted == 0 and done == false {
+            corpus.failed = true;
+            corpus.error = "workspace_unavailable";
+            return;
+        }
+    }
+}
+
+/// @brief Convert runtime FileIndex traps into an unavailable page.
+func ReadFileIndexPage(rootPath: String,
+                       ignorePatterns: String,
+                       offset: Integer) -> Any {
+    try {
+        return FileIndex.Page(rootPath, ".bas,.vb", ignorePatterns,
+                              false, offset, FILE_INDEX_PAGE_SIZE);
+    } catch {
+        return null;
+    }
+    return null;
+}
+
+/// @brief Read one closed file under per-file and aggregate limits.
+func AddDiskSource(corpus: BasicWorkspaceCorpus,
+                   path: String) {
+    if path == "" { return; }
+    var key = CorpusPathKey(path);
+    if Map.Has(corpus.seen, key) { return; }
+    Map.SetBool(corpus.seen, key, true);
+    corpus.consideredFiles = corpus.consideredFiles + 1;
+    if corpus.consideredFiles > MAX_WORKSPACE_FILES {
+        corpus.truncated = true;
+        corpus.budgetExhausted = true;
+        return;
+    }
+
+    var size = safe_io.SizeBytes(path);
+    if size < 0 or size > MAX_FILE_SOURCE_CHARS {
+        corpus.truncated = true;
+        return;
+    }
+    if corpus.totalChars + size > MAX_TOTAL_SOURCE_CHARS {
+        corpus.truncated = true;
+        corpus.budgetExhausted = true;
+        return;
+    }
+
+    var beforeMtime = safe_io.Modified(path);
+    var read = safe_io.ReadAllTextBounded(path, MAX_FILE_SOURCE_CHARS);
+    var afterMtime = safe_io.Modified(path);
+    if read.ok == false or beforeMtime < 0 or afterMtime != beforeMtime {
+        corpus.truncated = true;
+        return;
+    }
+    if SourceShapeIsBounded(read.text) == false {
+        corpus.truncated = true;
+        return;
+    }
+    if corpus.totalChars + Str.get_Length(read.text) > MAX_TOTAL_SOURCE_CHARS {
+        corpus.truncated = true;
+        corpus.budgetExhausted = true;
+        return;
+    }
+    corpus.paths.Push(path);
+    corpus.sources.Push(read.text);
+    corpus.mtimes.Push(afterMtime);
+    corpus.totalChars = corpus.totalChars + Str.get_Length(read.text);
+}
+
+/// @brief Reject source shapes that make the lightweight scanner pathological.
+/// @details semantic_scan intentionally favors simple line-oriented logic. A
+///          generated file with millions of tiny lines or one enormous logical
+///          line can otherwise spend too long in repeated scope/token walks even
+///          though its byte size is allowed by the editor.
+func SourceShapeIsBounded(source: String) -> Boolean {
+    var lines = Str.Split(source, "\n");
+    if Seq.get_Count(lines) > MAX_SOURCE_LINES { return false; }
+    var index = 0;
+    while index < Seq.get_Count(lines) {
+        if Str.get_Length(Obj.ToString(Seq.Get(lines, index)))
+           > MAX_SOURCE_LINE_CHARS {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+/// @brief Scan references and enrich them with worker-owned preview metadata.
+func CollectReferences(request: BasicWorkspaceQueryRequest,
+                       corpus: BasicWorkspaceCorpus,
+                       def: Any,
+                       result: Any) -> Any {
+    var refs = Seq.New();
+    var complete = true;
+    var sourceIndex = 0;
+    while sourceIndex < corpus.paths.count() and complete {
+        if RequestIsCancelled(request) { return refs; }
+        var path = Obj.ToString(corpus.paths.get(sourceIndex));
+        var source = Obj.ToString(corpus.sources.get(sourceIndex));
+        var mtime = Convert.ToInt64(Obj.ToString(corpus.mtimes.get(sourceIndex)));
+        var beforeCount = Seq.get_Count(refs);
+        complete = semantic_scan.AddReferencesForFileCapped(
+            refs, path, source, def, MAX_NAVIGATION_RESULTS);
+        var sourceLines = Str.Split(source, "\n");
+        var refIndex = beforeCount;
+        while refIndex < Seq.get_Count(refs) {
+            var ref = Seq.Get(refs, refIndex);
+            var line = Map.GetInt(ref, "line");
+            Map.SetStr(ref, "preview", PreviewFromLines(sourceLines, line));
+            Map.SetInt(ref, "expectedMtime", mtime);
+            if request.kind == QUERY_INCOMING_CALLS {
+                var caller = semantic_scan.EnclosingBasicProcedureName(source,
+                                                                        line);
+                if caller == "" { caller = "<top-level>"; }
+                Map.SetStr(ref, "caller", caller);
+            }
+            refIndex = refIndex + 1;
+        }
+        sourceIndex = sourceIndex + 1;
+    }
+    if complete == false or sourceIndex < corpus.paths.count() {
+        Map.SetBool(result, "truncated", true);
+    }
+    return refs;
+}
+
+/// @brief Resolve call tokens against declarations and build display-neutral rows.
+func BuildOutgoingResult(result: Any,
+                         request: BasicWorkspaceQueryRequest,
+                         decls: Any,
+                         tokens: Any,
+                         callerName: String) -> Any {
+    var items = Seq.New();
+    var sourceLines = Str.Split(request.activeSource, "\n");
+    var tokenIndex = 0;
+    while tokenIndex < Seq.get_Count(tokens)
+          and Seq.get_Count(items) < MAX_NAVIGATION_RESULTS {
+        if RequestIsCancelled(request) { return result; }
+        var token = Seq.Get(tokens, tokenIndex);
+        var tokenLine = Map.GetInt(token, "line");
+        var tokenCol = Map.GetInt(token, "column");
+        var def = semantic_scan.BestDefinition(
+            decls, request.activePath, tokenLine, Map.GetStr(token, "name"));
+        if def != null and Map.GetBool(def, "found") {
+            var item = Map.New();
+            Map.SetStr(item, "file", Map.GetStr(def, "file"));
+            Map.SetStr(item, "name", Map.GetStr(def, "name"));
+            Map.SetInt(item, "line", Map.GetInt(def, "line"));
+            Map.SetInt(item, "column", Map.GetInt(def, "column"));
+            Map.SetInt(item, "endLine",
+                       Map.GetIntOr(def, "endLine", Map.GetInt(def, "line")));
+            Map.SetInt(item, "endColumn",
+                       Map.GetIntOr(def, "endColumn", Map.GetInt(def, "column") + 1));
+            Map.SetInt(item, "rowLine", tokenLine);
+            Map.SetInt(item, "rowColumn", tokenCol);
+            Map.SetStr(item, "preview", PreviewFromLines(sourceLines, tokenLine));
+            Map.SetStr(item, "caller", callerName);
+            Seq.Push(items, item);
+        }
+        tokenIndex = tokenIndex + 1;
+    }
+    if tokenIndex < Seq.get_Count(tokens) {
+        Map.SetBool(result, "truncated", true);
+    }
+    if Seq.get_Count(items) == 0 {
+        return FailResult(result, "no_outgoing_calls");
+    }
+    Map.Set(result, "items", items);
+    Map.SetInt(result, "resultCount", Seq.get_Count(items));
+    Map.SetBool(result, "success", true);
+    return result;
+}
+
+/// @brief Return one trimmed one-based line from a pre-split source.
+func PreviewFromLines(lines: Any,
+                      lineNumber: Integer) -> String {
+    if lines == null or lineNumber < 1 or lineNumber > Seq.get_Count(lines) {
+        return "";
+    }
+    return Str.Trim(Obj.ToString(Seq.Get(lines, lineNumber - 1)));
+}
+
+/// @brief Normalize durable paths while preserving one active untitled key.
+func CorpusPathKey(path: String) -> String {
+    if path == "" { return "<active-untitled>"; }
+    return Path.Normalize(Path.Absolute(path));
+}
+
+/// @brief Create the stable result envelope consumed by the UI controller.
+func NewQueryResult() -> Any {
+    var result = Map.New();
+    Map.SetBool(result, "success", false);
+    Map.SetBool(result, "truncated", false);
+    Map.SetStr(result, "reason", "");
+    Map.SetInt(result, "fileCount", 0);
+    Map.SetInt(result, "sourceChars", 0);
+    Map.SetInt(result, "declarationCount", 0);
+    Map.SetInt(result, "resultCount", 0);
+    return result;
+}
+
+/// @brief Mark a logical query failure without treating it as a worker fault.
+func FailResult(result: Any,
+                reason: String) -> Any {
+    Map.SetBool(result, "success", false);
+    Map.SetStr(result, "reason", reason);
+    return result;
+}
+
+/// @brief Serial latest-wins worker for project-wide BASIC semantic commands.
+class BasicWorkspaceQueryJob {
+    expose BasicWorkspaceQueryRequest activeRequest;
+    expose BasicWorkspaceQueryRequest pendingRequest;
+    expose BasicWorkspaceQueryRequest completedRequest;
+    expose BasicWorkspaceQueryRequest latestRequest;
+    expose Any activeFuture;
+    expose Integer nextGeneration;
+    expose Integer queuedCount;
+    expose Integer startedCount;
+    expose Integer completedCount;
+    expose Integer cancelledCount;
+    expose Integer coalescedCount;
+    expose String lastError;
+
+    expose func init() {
+        activeRequest = null;
+        pendingRequest = null;
+        completedRequest = null;
+        latestRequest = null;
+        activeFuture = null;
+        nextGeneration = 1;
+        queuedCount = 0;
+        startedCount = 0;
+        completedCount = 0;
+        cancelledCount = 0;
+        coalescedCount = 0;
+        lastError = "";
+    }
+
+    /// @brief Queue an immutable snapshot, replacing obsolete queued work.
+    expose func Queue(kind: Integer,
+                      label: String,
+                      newName: String,
+                      activePath: String,
+                      activeSource: String,
+                      activeLine: Integer,
+                      activeCol: Integer,
+                      activeRevision: Integer,
+                      workspaceSignature: String,
+                      rootPaths: List,
+                      rootIgnorePatterns: List,
+                      openPaths: List,
+                      openSources: List) -> Integer {
+        var request = new BasicWorkspaceQueryRequest();
+        request.kind = kind;
+        request.generation = nextGeneration;
+        request.label = label;
+        request.newName = newName;
+        request.activePath = activePath;
+        request.activeSource = activeSource;
+        request.activeLine = activeLine;
+        request.activeCol = activeCol;
+        request.activeRevision = activeRevision;
+        request.workspaceSignature = workspaceSignature;
+        request.rootPaths = rootPaths;
+        request.rootIgnorePatterns = rootIgnorePatterns;
+        request.openPaths = openPaths;
+        request.openSources = openSources;
+        nextGeneration = nextGeneration + 1;
+        queuedCount = queuedCount + 1;
+        completedRequest = null;
+        latestRequest = request;
+
+        if activeFuture == null {
+            StartRequest(request);
+        } else {
+            MarkCancelled(activeRequest);
+            if pendingRequest != null {
+                pendingRequest.cancelled = true;
+                coalescedCount = coalescedCount + 1;
+            }
+            pendingRequest = request;
+        }
+        return request.generation;
+    }
+
+    /// @brief Publish finished work and start the newest replacement.
+    expose func Pump() -> Boolean {
+        if activeFuture != null and Future.get_IsDone(activeFuture) {
+            var finished = activeRequest;
+            if Future.get_IsError(activeFuture) {
+                finished.succeeded = false;
+                finished.error = Future.get_Error(activeFuture);
+            }
+            if finished.cancelled == false {
+                completedRequest = finished;
+                completedCount = completedCount + 1;
+                lastError = finished.error;
+            }
+            activeFuture = null;
+            activeRequest = null;
+        }
+        if activeFuture == null and pendingRequest != null {
+            var next = pendingRequest;
+            pendingRequest = null;
+            StartRequest(next);
+        }
+        return completedRequest != null;
+    }
+
+    expose func TakeCompleted() -> BasicWorkspaceQueryRequest {
+        var request = completedRequest;
+        completedRequest = null;
+        return request;
+    }
+
+    /// @brief Discard pending/published work while an active scan drains.
+    expose func Cancel() {
+        completedRequest = null;
+        latestRequest = null;
+        if pendingRequest != null {
+            pendingRequest.cancelled = true;
+            pendingRequest = null;
+            coalescedCount = coalescedCount + 1;
+        }
+        MarkCancelled(activeRequest);
+    }
+
+    /// @brief Cancel and synchronously drain the owned callback during shutdown.
+    /// @details Normal command cancellation remains non-blocking. Application
+    ///          teardown is different: releasing the Future while RunOwned is
+    ///          still publishing can race runtime promise destruction. The scan
+    ///          is bounded and cancellation-aware between files/pages, so a
+    ///          short wait normally observes completion.
+    /// @return True when no active callback remains after the bounded wait.
+    expose func CancelAndWait() -> Boolean {
+        Cancel();
+        if activeFuture == null { return true; }
+        var finished = false;
+        try {
+            finished = Future.WaitFor(activeFuture, SHUTDOWN_WAIT_MS);
+        } catch {
+            return false;
+        }
+        if finished == false { return false; }
+        Pump();
+        return activeFuture == null;
+    }
+
+    expose func IsBusy() -> Boolean {
+        return activeFuture != null or pendingRequest != null;
+    }
+
+    expose func HasCompleted() -> Boolean {
+        return completedRequest != null;
+    }
+
+    hide func StartRequest(request: BasicWorkspaceQueryRequest) -> Boolean {
+        if request == null { return false; }
+        activeRequest = request;
+        try {
+            activeFuture = Async.RunOwned(&RunBasicWorkspaceQuery, request);
+        } catch {
+            activeFuture = null;
+        }
+        if activeFuture == null {
+            request.succeeded = false;
+            request.error = "Could not start BASIC workspace worker";
+            completedRequest = request;
+            activeRequest = null;
+            lastError = request.error;
+            return false;
+        }
+        startedCount = startedCount + 1;
+        return true;
+    }
+
+    hide func MarkCancelled(request: BasicWorkspaceQueryRequest) {
+        if request == null { return; }
+        Monitor.Enter(request);
+        if request.cancelled == false {
+            request.cancelled = true;
+            cancelledCount = cancelledCount + 1;
+        }
+        Monitor.Exit(request);
+    }
+}

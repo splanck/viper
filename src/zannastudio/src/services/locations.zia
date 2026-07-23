@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/services/locations.zia
+// Purpose: Store and safely resolve structured source-navigation targets.
+// Key invariants:
+//   - Display text is never parsed to recover a source location.
+//   - A failed target open never moves the caret in an unrelated document.
+// Ownership/Lifetime:
+//   - Callers own each LocationStore and clear it with the related result rows.
+// Links: zannastudio/src/commands/file_commands.zia,
+//        zannastudio/src/commands/search_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module locations;
 
 bind "../core/document_manager";
@@ -117,12 +136,21 @@ func OpenResolvedLocation(shell: app_shell.AppShell,
                           engine: editor_engine.EditorEngine,
                           tabs: editor_tabs.EditorTabs,
                           loc: Location) -> Boolean {
-    if loc == null { return false; }
+    if loc == null or shell == null or docMgr == null or engine == null
+       or engine.editor == null or tabs == null {
+        return false;
+    }
     if loc.filePath != "" {
         var activeDoc = docMgr.GetActive();
         if activeDoc == null or SameLocationPath(activeDoc.filePath, loc.filePath) == false {
-            file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, loc.filePath);
+            if file_commands.OpenFileAtPath(shell, docMgr, engine, tabs,
+                                            loc.filePath) == false {
+                return false;
+            }
         }
+    } else if docMgr.GetActive() == null {
+        shell.SetStatusLeft("Location unavailable");
+        return false;
     }
     if loc.line > 0 {
         engine.GoToLine(loc.line);

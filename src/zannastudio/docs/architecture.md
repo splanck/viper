@@ -65,7 +65,11 @@ The larger feature areas are intentionally split into small teaching modules:
 - `commands/source_transform_commands.zia` owns UI command orchestration for
   format/refactor source transforms.
 - `commands/diagnostic_edit_commands.zia` owns warning suppression, diagnostic
-  fix-it, and missing-bind source edit flows.
+  fix-it, and missing-bind source edit flows; its controller keeps compiler and
+  project-wide discovery work out of command callbacks.
+- `commands/zia_workspace_commands.zia` owns Zia definition, references, call
+  hierarchy, and rename publication; project-index queries run on its owned
+  latest-wins worker instead of menu or frame callbacks.
 - `ui/tool_panel_model.zia` names bottom-panel ids and tab indexes.
 - `ui/output_cache.zia` owns pure build-output cache and wrapping policy.
 - `editor/completion_items.zia` defines typed completion candidates while
@@ -150,8 +154,10 @@ Document kinds:
 
 `core/project_manager.zia` owns the file tree, primary project root, additional
 workspace roots, incremental tree population, Quick Open cache, and project
-exclusion checks. It delegates ignore matching to `Zanna.Workspace.FileIndex`
-and uses absolute paths as tree-node data.
+exclusion checks. Immediate children arrive through bounded `Zanna.IO.Dir.Page`
+calls; natural sorting and tree-row publication are also frame-budgeted. It
+delegates ignore matching to `Zanna.Workspace.FileIndex` and uses absolute paths
+as tree-node data.
 
 `core/project.zia` parses the small `zanna.project` manifest: project name,
 language, entry, run/build overrides, working directory, problem matcher, and
@@ -161,11 +167,28 @@ ignore patterns.
 
 `core/settings.zia` reads and writes platform-native settings paths and keeps
 legacy `~/.zannastudio/settings.ini` compatibility. Settings are loaded once on
-startup and updated by workbench commands.
+startup and updated by workbench commands. The shared settings/session file is
+size-checked before parsing and replaced through a same-directory atomic staging
+write; an oversized or interrupted state file therefore cannot monopolize
+startup or destroy the previous complete snapshot.
 
 `core/session.zia` stores the last project, open tabs, active tab, cursor/scroll
 state, recent projects, recent files, and bounded base64 crash-recovery text for
-modified editable buffers.
+modified editable buffers. Startup advances its resumable restore job one
+workspace root or tab per painted frame, so large valid sessions preserve
+progress feedback and native event polling while their files are loaded. The
+writer mirrors the restore caps (256 tabs, 64 roots), bounds aggregate embedded
+recovery text, and reserves a retained slot/payload budget for the active tab.
+
+`core/recovery_store.zia` supplies the continuous crash-recovery layer. The UI
+thread snapshots immutable buffer strings after the edit debounce; an owned
+background request stages and atomically commits the filesystem payloads.
+Requests coalesce, and save/close cancellation is serialized only around the
+short same-directory rename so an old worker cannot recreate a retired swap.
+Explicit document transitions synchronously prune stale names, then queue any
+remaining dirty buffers instead of rewriting them on the command frame.
+Recovery discovery itself is startup-paged, bounded by record count and total
+retained bytes, and interleaved with native event polling and progress paints.
 
 ### Language Services
 
@@ -181,7 +204,23 @@ modified editable buffers.
 Commands with missing capabilities remain visible in the command palette when
 that is useful, but are marked unavailable and report a status/toast reason.
 BASIC semantic commands are scanner-backed rather than project-index-backed, so
-large workspaces can produce incomplete results while cooperative scans warm up.
+definition, references, call hierarchy, and rename run through one owned
+latest-wins background worker. Requests contain immutable roots, open-document
+snapshots, and an editor anchor; completions apply only if the path, revision,
+caret, and workspace roots still match. File/source/declaration/result ceilings
+bound the scan, large reference sets render across multiple frames, and rename
+refuses any partial result set.
+
+Zia definition, references, call hierarchy, and rename use a separate owned
+latest-wins worker over `Zanna.Zia.ProjectIndex`. The runtime takes a shallow,
+immutable source snapshot under a short handle lock, then performs all parsing
+after releasing that lock, so typing, file watches, and workspace teardown can
+continue concurrently. The UI controller waits for cooperative indexing,
+captures path/revision/caret/workspace/index generations, rejects stale or
+incomplete results, and paints at most 100 result items per frame. Workspace
+indexing refuses partial queries after a 20,000-file, 200 KB per-file, or 64 MB
+aggregate-source ceiling; navigation retains at most 2,000 references and
+rename refuses a larger edit set.
 
 ### Editor Controllers
 
@@ -197,7 +236,15 @@ Controllers under `editor/` own focused features:
 - `hover.zia`: dwell-triggered hover requests.
 - `signature.zia`: signature help and overload navigation.
 - `symbols.zia`: document symbol outline.
-- `project_index.zia`: lazy Zia workspace indexing for navigation/refactors.
+- `basic_query_job.zia`: serial compiler-backed BASIC editor queries.
+- `basic_workspace_query_job.zia`: bounded project-wide BASIC navigation and
+  refactor scans over immutable multi-root/open-document snapshots.
+- `zia_workspace_query_job.zia`: serial project-index definition/reference/call
+  and rename queries over immutable editor anchors.
+- `project_bind_query_job.zia`: bounded latest-wins discovery of one unique Zia
+  file for Create Missing Bind.
+- `project_index.zia`: lazy, multi-root Zia workspace indexing with explicit
+  completeness, file-count, per-file, aggregate-source, and frame budgets.
 - `semantic_tokens.zia`: semantic highlighting.
 - `inlay_hints.zia`: conservative Zia hints.
 - `scheduler.zia`: priority model for editor background work.
@@ -244,6 +291,13 @@ v2 unmerged rows. Active Git jobs expose cancellation, and stdout/stderr capture
 uses the process read-result API so excessive output is reported as truncated
 rather than trapping the workbench.
 
+`scm/scm_gutter_controller.zia` separately owns one coalescing read-only diff
+job for editor change bars. The main loop drains it every frame, rejects output
+when the active document or owning multi-root repository changed, kills a job
+after five seconds, and caps marker publication. Gutter diffs explicitly disable
+external diff and text-conversion drivers because passive editor decoration must
+never execute arbitrary configured helpers or wait for interactive input.
+
 The Source Control view is intentionally lightweight. Push and pull are
 long-running operations with basic progress/error text rather than rich
 credential, conflict, and recovery workflows. Treat it as useful local Git
@@ -256,6 +310,18 @@ activity bar, editor area, bottom tool panels, preferences, overlays, status bar
 debug panels, terminal, and Source Control view. Other subsystems receive
 references to widgets owned by `AppShell`.
 
+`AppShell` also owns one transient-surface token. Settings, About, explorer
+actions, breakpoint editing, command input, and the side-by-side diff claim that
+token before taking focus. A claim hides the previous surface and popup menus;
+the superseded controller observes the lost token on its next pump and clears
+its logical state. Releases are owner-checked so a late close from an older
+surface cannot dismiss the newer one.
+
+`WorkbenchShell` separates the saved minimap preference from effective chrome
+visibility. `AppShell.Render` reconciles that state after layout: editor lanes
+below 620 effective UI units reclaim the minimap's width, while a later resize
+restores it automatically when the user preference remains enabled.
+
 `ui/command_input.zia` owns reusable non-modal single-value command input for
 Go To Line, Add Watch, output filtering, Workspace Symbols, Rename Symbol, and
 source-extract names. Command modules still perform validation and effects.
@@ -266,6 +332,27 @@ Console, Variables, and Call Stack share a bounded stable-row model; Output has
 its own bounded row/raw-pane model. The concrete widgets are still
 ListBox/OutputPane surfaces, so this is not yet a fully virtualized dockable
 workbench, but rows now have a consistent data boundary and memory cap.
+
+Search also owns a cooperative replacement state machine. The Search button
+callback records an exact location-id generation; Replace All copies only that
+generation into file/line plans and returns without filesystem work. Later
+frames process at most two plans, with bounded/stable reads before atomic disk
+writes. This keeps the event loop paintable and prevents old global location
+records from broadening a replacement transaction.
+
+The shared side-by-side diff overlay follows the same ownership rule. `Open`
+shows a pending surface and queues immutable texts to `services/diff_job.zia`;
+the worker applies byte, line, Myers-depth, trace-cell, and retained-row limits.
+`DiffView.Pump` publishes at most 100 formatted rows per frame, and application
+teardown drains the owned future before destroying GUI/runtime state.
+
+Diagnostic edit commands also use staged ownership. Their click callback
+captures the active path/revision/caret and queues a semantic job. Suppression,
+fix-it, and runtime-bind edits apply only after that anchor is revalidated.
+Project binds add a bounded `project_bind_query_job.zia` scan across immutable
+root and open-buffer snapshots; the scan must finish completely and find exactly
+one definition. Disk mtimes and open-buffer contents are checked again before
+the UI thread inserts the bind.
 
 ## File Size Budget
 

@@ -1,0 +1,453 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/diagnostic_action_probe.zia
+// Purpose: Regress bounded asynchronous diagnostic edits and project-bind scans.
+// Key invariants:
+//   - Compiler-backed commands never edit inside their start callback.
+//   - Project binds publish only after a complete, unique workspace scan.
+//   - Changed editor anchors and changed candidate snapshots reject stale edits.
+//   - Case-sensitive sibling files remain distinct query candidates.
+// Ownership/Lifetime: The probe owns and drains all workers before GUI teardown.
+// Links: zannastudio/src/commands/diagnostic_edit_commands.zia,
+//        zannastudio/src/editor/project_bind_query_job.zia
+//
+//===----------------------------------------------------------------------===//
+
+module diagnostic_action_probe;
+
+bind "../commands/diagnostic_edit_commands";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../editor/project_bind_query_job";
+bind "../ui/app_shell";
+
+bind Clock = Zanna.Time.Clock;
+bind Dir = Zanna.IO.Dir;
+bind File = Zanna.IO.File;
+bind GUI = Zanna.GUI;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+bind TempFile = Zanna.IO.TempFile;
+bind Terminal = Zanna.Terminal;
+
+final WAIT_TICKS = 12000;
+
+func fail(shell: app_shell.AppShell,
+          controller: diagnostic_edit_commands.DiagnosticActionController,
+          reason: String) {
+    if controller != null { controller.Shutdown(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func waitForBind(job: project_bind_query_job.ProjectBindQueryJob)
+    -> project_bind_query_job.ProjectBindQueryRequest {
+    var tick = 0;
+    while tick < WAIT_TICKS {
+        job.Pump();
+        var request = job.TakeCompleted();
+        if request != null { return request; }
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    return null;
+}
+
+func waitForAction(
+    controller: diagnostic_edit_commands.DiagnosticActionController,
+    shell: app_shell.AppShell,
+    docMgr: document_manager.DocumentManager,
+    engine: editor_engine.EditorEngine,
+    projMgr: project_manager.ProjectManager) -> Boolean {
+    var tick = 0;
+    while controller.IsBusy() and tick < WAIT_TICKS {
+        controller.Pump(shell, docMgr, engine, projMgr);
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    return controller.IsBusy() == false;
+}
+
+func loadActiveSource(docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      path: String,
+                      source: String) {
+    File.WriteAllText(path, source);
+    var doc = docMgr.OpenFile(path);
+    doc.language = "zia";
+    doc.content = source;
+    doc.isModified = false;
+    engine.LoadDocument(doc);
+}
+
+func main() {
+    var rootA = TempFile.CreateDirWithPrefix("zannastudio_bind_query_a_");
+    var rootB = TempFile.CreateDirWithPrefix("zannastudio_bind_query_b_");
+    var mainPath = Path.Join(rootA, "main.zia");
+    var openHelperPath = Path.Join(rootA, "open_helper.zia");
+    var ambiguousAPath = Path.Join(rootA, "ambiguous_a.zia");
+    var ambiguousCPath = Path.Join(rootA, "ambiguous_c.zia");
+    var crossHelperPath = Path.Join(rootB, "cross_helper.zia");
+    var ambiguousBPath = Path.Join(rootB, "ambiguous_b.zia");
+    var caseUpperPath = Path.Join(rootB, "CasePair.zia");
+    var caseLowerPath = Path.Join(rootB, "casepair.zia");
+
+    File.WriteAllText(mainPath,
+        "module Main;\nfunc main() -> Integer { return 0; }\n");
+    File.WriteAllText(openHelperPath,
+        "module OpenHelper;\nexpose func staleOnly() -> Integer { return 1; }\n");
+    File.WriteAllText(crossHelperPath,
+        "module CrossHelper;\nexpose func crossThing() -> Integer { return 2; }\n");
+    File.WriteAllText(ambiguousAPath,
+        "module AmbiguousA;\nexpose func sharedThing() -> Integer { return 1; }\n");
+    File.WriteAllText(ambiguousCPath,
+        "module AmbiguousC;\nexpose func sharedThing() -> Integer { return 3; }\n");
+    File.WriteAllText(ambiguousBPath,
+        "module AmbiguousB;\nexpose func sharedThing() -> Integer { return 2; }\n");
+    File.WriteAllText(caseUpperPath,
+        "module CaseUpper;\nexpose func caseTwin() -> Integer { return 1; }\n");
+    File.WriteAllText(caseLowerPath,
+        "module CaseLower;\nexpose func caseTwin() -> Integer { return 2; }\n");
+
+    if project_bind_query_job.PathKey(caseUpperPath)
+           == project_bind_query_job.PathKey(caseLowerPath) {
+        fail(null, null, "path key folded case-sensitive names");
+        return;
+    }
+
+    var rootsA = new List();
+    rootsA.Push(rootA);
+    var ignoresA = new List();
+    ignoresA.Push("");
+    var rootsBoth = new List();
+    rootsBoth.Push(rootA);
+    rootsBoth.Push(rootB);
+    var ignoresBoth = new List();
+    ignoresBoth.Push("");
+    ignoresBoth.Push("");
+    var openPaths = new List();
+    openPaths.Push(openHelperPath);
+    var liveHelperSource =
+        "module OpenHelper;\nexpose func liveOnly() -> Integer { return 3; }\n";
+    var openSources = new List();
+    openSources.Push(liveHelperSource);
+
+    // An unsaved open source shadows stale disk content and carries the exact
+    // snapshot that the UI must validate before applying a delayed bind.
+    var openJob = new project_bind_query_job.ProjectBindQueryJob();
+    openJob.Queue("liveOnly", mainPath, "roots-a", rootsA, ignoresA,
+                  openPaths, openSources);
+    var openResult = waitForBind(openJob);
+    if openResult == null or openResult!.succeeded == false
+       or openResult!.reason != ""
+       or openResult!.candidatePath != openHelperPath
+       or openResult!.candidateMtime != -1
+       or openResult!.candidateOpenSource != liveHelperSource {
+        fail(null, null, "open snapshot candidate");
+        return;
+    }
+
+    var staleDiskJob = new project_bind_query_job.ProjectBindQueryJob();
+    staleDiskJob.Queue("staleOnly", mainPath, "roots-a", rootsA, ignoresA,
+                       openPaths, openSources);
+    var staleDiskResult = waitForBind(staleDiskJob);
+    if staleDiskResult == null or staleDiskResult!.succeeded == false
+       or staleDiskResult!.reason != "not_found"
+       or staleDiskResult!.candidatePath != "" {
+        fail(null, null, "open snapshot did not shadow disk");
+        return;
+    }
+
+    // A unique definition may come from any workspace root.
+    var crossJob = new project_bind_query_job.ProjectBindQueryJob();
+    crossJob.Queue("crossThing", mainPath, "roots-both", rootsBoth,
+                   ignoresBoth, openPaths, openSources);
+    var crossResult = waitForBind(crossJob);
+    if crossResult == null or crossResult!.succeeded == false
+       or crossResult!.reason != ""
+       or crossResult!.candidatePath != crossHelperPath
+       or crossResult!.candidateMtime < 0 {
+        fail(null, null, "multi-root unique candidate");
+        return;
+    }
+
+    var ambiguousJob = new project_bind_query_job.ProjectBindQueryJob();
+    ambiguousJob.Queue("sharedThing", mainPath, "roots-both", rootsBoth,
+                       ignoresBoth, openPaths, openSources);
+    var ambiguousResult = waitForBind(ambiguousJob);
+    if ambiguousResult == null or ambiguousResult!.succeeded == false
+       or ambiguousResult!.reason != "ambiguous"
+       or ambiguousResult!.candidatePath != "" {
+        fail(null, null, "ambiguous candidate published");
+        return;
+    }
+
+    // On case-sensitive volumes these are two independent candidates. On
+    // case-insensitive volumes the second spelling addresses the first file,
+    // and stable identity must keep the query unique rather than scanning the
+    // same file twice.
+    var caseJob = new project_bind_query_job.ProjectBindQueryJob();
+    caseJob.Queue("caseTwin", mainPath, "roots-both", rootsBoth,
+                  ignoresBoth, openPaths, openSources);
+    var caseResult = waitForBind(caseJob);
+    if caseResult == null or caseResult!.succeeded == false {
+        fail(null, null, "case-sensitive candidate scan failed");
+        return;
+    }
+    if File.SameFile(caseUpperPath, caseLowerPath) {
+        if caseResult!.reason != "" {
+            fail(null, null, "case-only alias scanned twice");
+            return;
+        }
+    } else if caseResult!.reason != "ambiguous" {
+        fail(null, null, "case-sensitive candidates were merged");
+        return;
+    }
+
+    // One skipped source makes uniqueness unknowable, even when another file
+    // contains exactly one visible match.
+    var oversizedPaths = new List();
+    oversizedPaths.Push(Path.Join(rootA, "oversized_unsaved.zia"));
+    var oversizedSources = new List();
+    oversizedSources.Push(Str.Repeat(" ",
+        project_bind_query_job.MAX_BIND_FILE_CHARS + 1));
+    var incompleteJob = new project_bind_query_job.ProjectBindQueryJob();
+    incompleteJob.Queue("crossThing", mainPath, "roots-both", rootsBoth,
+                        ignoresBoth, oversizedPaths, oversizedSources);
+    var incompleteResult = waitForBind(incompleteJob);
+    if incompleteResult == null or incompleteResult!.succeeded == false
+       or incompleteResult!.reason != "workspace_limit"
+       or incompleteResult!.candidatePath != "" {
+        fail(null, null, "incomplete uniqueness scan published");
+        return;
+    }
+
+    // Queue replacement is latest-wins even if the first worker finishes before
+    // the UI has observed it.
+    var coalescedJob = new project_bind_query_job.ProjectBindQueryJob();
+    var oldGeneration = coalescedJob.Queue(
+        "sharedThing", mainPath, "roots-both", rootsBoth, ignoresBoth,
+        openPaths, openSources);
+    var newGeneration = coalescedJob.Queue(
+        "crossThing", mainPath, "roots-both", rootsBoth, ignoresBoth,
+        openPaths, openSources);
+    var latestResult = waitForBind(coalescedJob);
+    if newGeneration <= oldGeneration or coalescedJob.cancelledCount != 1
+       or latestResult == null or latestResult!.generation != newGeneration
+       or latestResult!.candidatePath != crossHelperPath {
+        fail(null, null, "latest-wins bind query");
+        return;
+    }
+
+    var shutdownJob = new project_bind_query_job.ProjectBindQueryJob();
+    shutdownJob.Queue("crossThing", mainPath, "roots-both", rootsBoth,
+                      ignoresBoth, openPaths, openSources);
+    if shutdownJob.CancelAndWait() == false or shutdownJob.IsBusy()
+       or shutdownJob.TakeCompleted() != null {
+        fail(null, null, "bind worker did not drain at shutdown");
+        return;
+    }
+
+    // Exercise the actual Studio controller against a live editor. Every Start
+    // call must return before semantic work can alter the buffer.
+    var shell = new app_shell.AppShell();
+    var engine = new editor_engine.EditorEngine();
+    shell.Build("Zanna Studio Diagnostic Action Probe", 840, 560);
+    engine.Setup(shell.workbench.editorRow);
+    shell.workbench.minimap = GUI.Minimap.New(shell.workbench.editorRow);
+    shell.workbench.minimap.SetWidth(80);
+    shell.workbench.minimap.BindEditor(engine.editor);
+    shell.Poll();
+    shell.Render();
+
+    var docMgr = new document_manager.DocumentManager();
+    var projMgr = new project_manager.ProjectManager();
+    if projMgr.OpenFolder(rootA) == false {
+        fail(shell, null, "controller workspace open");
+        return;
+    }
+    var controller =
+        new diagnostic_edit_commands.DiagnosticActionController();
+
+    var suppressSource = "module SuppressProbe;\n"
+        + "func main() {\n"
+        + "    var unusedValue = 1;\n"
+        + "}\n";
+    loadActiveSource(docMgr, engine, mainPath, suppressSource);
+    engine.editor.SetCursor(2, 8);
+    if controller.Start(
+           diagnostic_edit_commands.ACTION_SUPPRESS_DIAGNOSTIC,
+           "Suppress Warning", shell, docMgr, engine, projMgr) == false
+       or engine.GetTextSnapshot() != suppressSource
+       or controller.pendingSemanticJob == null {
+        fail(shell, controller, "suppression did not start asynchronously");
+        return;
+    }
+    if waitForAction(controller, shell, docMgr, engine, projMgr) == false
+       or Str.IndexOf(engine.GetTextSnapshot(), "// @suppress(W") == 0 {
+        fail(shell, controller, "asynchronous suppression did not apply");
+        return;
+    }
+
+    var fixSource = "module FixProbe;\n"
+        + "func greet() -> Integer { return 1; }\n"
+        + "func main() {\n"
+        + "    grete();\n"
+        + "}\n";
+    loadActiveSource(docMgr, engine, mainPath, fixSource);
+    engine.editor.SetCursor(3, 6);
+    if controller.Start(diagnostic_edit_commands.ACTION_APPLY_FIX,
+                        "Apply Fix-It", shell, docMgr, engine, projMgr) == false
+       or engine.GetTextSnapshot() != fixSource {
+        fail(shell, controller, "fix-it did not start asynchronously");
+        return;
+    }
+    if waitForAction(controller, shell, docMgr, engine, projMgr) == false
+       or Str.IndexOf(engine.GetTextSnapshot(), "greet();") == 0 {
+        fail(shell, controller, "asynchronous fix-it did not apply");
+        return;
+    }
+
+    // A cursor move invalidates the captured edit anchor before a result can
+    // mutate the document.
+    loadActiveSource(docMgr, engine, mainPath, fixSource);
+    engine.editor.SetCursor(3, 6);
+    if controller.Start(diagnostic_edit_commands.ACTION_APPLY_FIX,
+                        "Apply Fix-It", shell, docMgr, engine, projMgr) == false {
+        fail(shell, controller, "stale-anchor setup");
+        return;
+    }
+    engine.editor.SetCursor(0, 0);
+    controller.Pump(shell, docMgr, engine, projMgr);
+    if controller.IsBusy() or engine.GetTextSnapshot() != fixSource {
+        fail(shell, controller, "changed cursor accepted stale fix-it");
+        return;
+    }
+
+    var runtimeSource = "module MissingRuntimeBind;\n"
+        + "func main() {\n"
+        + "    Terminal.Say(\"hi\");\n"
+        + "}\n";
+    var runtimeExpected = "module MissingRuntimeBind;\n"
+        + "bind Terminal = Zanna.Terminal;\n"
+        + "func main() {\n"
+        + "    Terminal.Say(\"hi\");\n"
+        + "}\n";
+    loadActiveSource(docMgr, engine, mainPath, runtimeSource);
+    engine.editor.SetCursor(2, 8);
+    if controller.Start(
+           diagnostic_edit_commands.ACTION_CREATE_MISSING_BIND,
+           "Create Missing Bind", shell, docMgr, engine, projMgr) == false
+       or engine.GetTextSnapshot() != runtimeSource
+       or waitForAction(controller, shell, docMgr, engine, projMgr) == false
+       or engine.GetTextSnapshot() != runtimeExpected {
+        fail(shell, controller, "asynchronous runtime bind");
+        return;
+    }
+
+    var projectHelperPath = Path.Join(rootA, "project_helper.zia");
+    File.WriteAllText(projectHelperPath,
+        "module ProjectHelper;\n"
+        + "expose func helperValue() -> Integer { return 7; }\n");
+    var projectSource = "module MissingProjectBind;\n"
+        + "func main() -> Integer {\n"
+        + "    return helperValue();\n"
+        + "}\n";
+    var projectExpected = "module MissingProjectBind;\n"
+        + "bind \"./project_helper\";\n"
+        + "func main() -> Integer {\n"
+        + "    return helperValue();\n"
+        + "}\n";
+    loadActiveSource(docMgr, engine, mainPath, projectSource);
+    engine.editor.SetCursor(2, 12);
+    if controller.Start(
+           diagnostic_edit_commands.ACTION_CREATE_MISSING_BIND,
+           "Create Missing Bind", shell, docMgr, engine, projMgr) == false
+       or engine.GetTextSnapshot() != projectSource
+       or waitForAction(controller, shell, docMgr, engine, projMgr) == false
+       or engine.GetTextSnapshot() != projectExpected {
+        fail(shell, controller, "asynchronous unique project bind");
+        return;
+    }
+
+    var ambiguousSource = "module AmbiguousProjectBind;\n"
+        + "func main() -> Integer {\n"
+        + "    return sharedThing();\n"
+        + "}\n";
+    loadActiveSource(docMgr, engine, mainPath, ambiguousSource);
+    engine.editor.SetCursor(2, 12);
+    if controller.Start(
+           diagnostic_edit_commands.ACTION_CREATE_MISSING_BIND,
+           "Create Missing Bind", shell, docMgr, engine, projMgr) == false
+       or waitForAction(controller, shell, docMgr, engine, projMgr) == false
+       or engine.GetTextSnapshot() != ambiguousSource {
+        fail(shell, controller, "ambiguous controller bind edited source");
+        return;
+    }
+
+    // Hold a completed open-snapshot result outside the controller for one
+    // frame, mutate the inactive candidate, then prove final validation rejects
+    // the stale selection.
+    var openCandidateDoc = docMgr.OpenFile(openHelperPath);
+    openCandidateDoc.language = "zia";
+    openCandidateDoc.content =
+        "module OpenHelper;\nexpose func openValue() -> Integer { return 4; }\n";
+    openCandidateDoc.isModified = true;
+    var openProjectSource = "module OpenProjectBind;\n"
+        + "func main() -> Integer {\n"
+        + "    return openValue();\n"
+        + "}\n";
+    loadActiveSource(docMgr, engine, mainPath, openProjectSource);
+    engine.editor.SetCursor(2, 12);
+    if controller.Start(
+           diagnostic_edit_commands.ACTION_CREATE_MISSING_BIND,
+           "Create Missing Bind", shell, docMgr, engine, projMgr) == false {
+        fail(shell, controller, "open-candidate stale setup");
+        return;
+    }
+    var semanticTick = 0;
+    while controller.pendingBindGeneration <= 0
+          and controller.IsBusy() and semanticTick < WAIT_TICKS {
+        controller.Pump(shell, docMgr, engine, projMgr);
+        Clock.Sleep(1);
+        semanticTick = semanticTick + 1;
+    }
+    if controller.pendingBindGeneration <= 0 {
+        fail(shell, controller, "open-candidate bind scan did not start");
+        return;
+    }
+    var bindTick = 0;
+    while controller.bindJob.completedRequest == null
+          and bindTick < WAIT_TICKS {
+        controller.bindJob.Pump();
+        Clock.Sleep(1);
+        bindTick = bindTick + 1;
+    }
+    if controller.bindJob.completedRequest == null {
+        fail(shell, controller, "open-candidate bind scan did not finish");
+        return;
+    }
+    openCandidateDoc.content =
+        "module OpenHelper;\nexpose func changedValue() -> Integer { return 5; }\n";
+    controller.Pump(shell, docMgr, engine, projMgr);
+    if controller.IsBusy() or engine.GetTextSnapshot() != openProjectSource {
+        fail(shell, controller, "changed open candidate accepted stale bind");
+        return;
+    }
+
+    if controller.Shutdown() == false {
+        fail(shell, controller, "diagnostic controller shutdown");
+        return;
+    }
+    projMgr.CloseProject();
+    shell.Destroy();
+    Dir.RemoveAll(rootA);
+    Dir.RemoveAll(rootB);
+    Terminal.Say("RESULT: ok");
+}

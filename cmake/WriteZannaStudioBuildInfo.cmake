@@ -19,6 +19,13 @@ endif()
 if(NOT DEFINED ZANNA_PATH)
   set(ZANNA_PATH "")
 endif()
+if(NOT DEFINED ZANNA_VERSION OR "${ZANNA_VERSION}" STREQUAL "")
+  file(READ "${ROOT_DIR}/src/buildmeta/VERSION" ZANNA_VERSION)
+  string(STRIP "${ZANNA_VERSION}" ZANNA_VERSION)
+endif()
+if("${ZANNA_VERSION}" STREQUAL "")
+  set(ZANNA_VERSION "unknown")
+endif()
 
 get_filename_component(_output_dir "${OUTPUT_FILE}" DIRECTORY)
 file(MAKE_DIRECTORY "${_output_dir}")
@@ -49,6 +56,7 @@ if(_git_executable)
 endif()
 
 file(WRITE "${_info_path}"
+  "Zanna Studio ${ZANNA_VERSION}\n"
   "Build: ${_timestamp}\n"
   "Source: ${_revision}\n"
   "Output: ${OUTPUT_FILE}\n"

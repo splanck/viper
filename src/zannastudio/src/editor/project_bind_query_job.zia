@@ -1,0 +1,462 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/project_bind_query_job.zia
+// Purpose: Resolve one unique missing-project-bind candidate off the UI thread.
+// Key invariants:
+//   - Open unsaved Zia snapshots override disk content.
+//   - A candidate publishes only after a complete bounded uniqueness scan.
+//   - File, source-byte, line, and aggregate-byte ceilings bound all work.
+//   - Path de-duplication preserves case-sensitive names while recognizing
+//     case-equivalent spellings of the same existing file.
+// Ownership/Lifetime:
+//   - ProjectBindQueryJob owns immutable requests until RunOwned completes.
+//   - Published requests contain no GUI, editor, or project-manager objects.
+// Links: zannastudio/src/commands/diagnostic_edit_commands.zia,
+//        zannastudio/src/zia/bind_utils.zia
+//
+//===----------------------------------------------------------------------===//
+
+module project_bind_query_job;
+
+bind "../services/safe_io";
+bind "../zia/bind_utils";
+
+bind Async = Zanna.Threads.Async;
+bind File = Zanna.IO.File;
+bind FileIndex = Zanna.Workspace.FileIndex;
+bind Future = Zanna.Threads.Future;
+bind Map = Zanna.Collections.Map;
+bind Monitor = Zanna.Threads.Monitor;
+bind Obj = Zanna.Core.Object;
+bind Path = Zanna.IO.Path;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+
+final MAX_BIND_FILES = 20000;
+final MAX_BIND_FILE_CHARS = 200000;
+final MAX_BIND_TOTAL_CHARS = 64000000;
+final MAX_BIND_FILE_LINES = 5000;
+final BIND_FILE_INDEX_PAGE_SIZE = 256;
+final BIND_SHUTDOWN_WAIT_MS = 5000;
+
+/// @brief Immutable workspace snapshot and worker-published resolution.
+class ProjectBindQueryRequest {
+    expose Integer generation;
+    expose String identifier;
+    expose String importingPath;
+    expose String workspaceSignature;
+    expose List rootPaths;
+    expose List rootIgnorePatterns;
+    expose List openPaths;
+    expose List openSources;
+    expose Boolean cancelled;
+    expose Boolean succeeded;
+    expose String candidatePath;
+    expose Integer candidateMtime;
+    expose String candidateOpenSource;
+    expose String reason;
+    expose String error;
+
+    expose func init() {
+        generation = 0;
+        identifier = "";
+        importingPath = "";
+        workspaceSignature = "";
+        rootPaths = new List();
+        rootIgnorePatterns = new List();
+        openPaths = new List();
+        openSources = new List();
+        cancelled = false;
+        succeeded = false;
+        candidatePath = "";
+        candidateMtime = -1;
+        candidateOpenSource = "";
+        reason = "";
+        error = "";
+    }
+}
+
+/// @brief Mutable worker-local scan state.
+class ProjectBindScanState {
+    expose Any seen;
+    expose Any foldedSeen;
+    expose Integer consideredFiles;
+    expose Integer totalChars;
+    expose Integer matches;
+    expose String candidatePath;
+    expose Integer candidateMtime;
+    expose String candidateOpenSource;
+    expose Boolean incomplete;
+    expose Boolean stop;
+    expose String error;
+
+    expose func init() {
+        seen = Map.New();
+        foldedSeen = Map.New();
+        consideredFiles = 0;
+        totalChars = 0;
+        matches = 0;
+        candidatePath = "";
+        candidateMtime = -1;
+        candidateOpenSource = "";
+        incomplete = false;
+        stop = false;
+        error = "";
+    }
+}
+
+func RequestIsCancelled(request: ProjectBindQueryRequest) -> Boolean {
+    if request == null { return true; }
+    Monitor.Enter(request);
+    var cancelled = request.cancelled;
+    Monitor.Exit(request);
+    return cancelled;
+}
+
+/// @brief Execute a complete bounded uniqueness scan.
+func RunProjectBindQuery(request: ProjectBindQueryRequest) -> Any {
+    if request == null or RequestIsCancelled(request) { return request; }
+    var state = new ProjectBindScanState();
+    MarkSeenPath(state, request.importingPath);
+
+    var openIndex = 0;
+    while openIndex < request.openPaths.count()
+          and openIndex < request.openSources.count() and state.stop == false {
+        if RequestIsCancelled(request) { return request; }
+        AddSourceCandidate(state,
+                           Obj.ToString(request.openPaths.get(openIndex)),
+                           Obj.ToString(request.openSources.get(openIndex)),
+                           -1, request.identifier);
+        openIndex = openIndex + 1;
+    }
+
+    var rootIndex = 0;
+    while rootIndex < request.rootPaths.count() and state.stop == false {
+        if RequestIsCancelled(request) { return request; }
+        var ignores = "";
+        if rootIndex < request.rootIgnorePatterns.count() {
+            ignores = Obj.ToString(request.rootIgnorePatterns.get(rootIndex));
+        }
+        ScanRoot(request, state,
+                 Obj.ToString(request.rootPaths.get(rootIndex)), ignores);
+        rootIndex = rootIndex + 1;
+    }
+
+    var reason = "";
+    if state.error != "" {
+        reason = state.error;
+    } else if state.matches > 1 {
+        reason = "ambiguous";
+    } else if state.incomplete {
+        reason = "workspace_limit";
+    } else if state.matches == 0 {
+        reason = "not_found";
+    }
+
+    Monitor.Enter(request);
+    if request.cancelled == false {
+        request.succeeded = true;
+        request.reason = reason;
+        if reason == "" {
+            request.candidatePath = state.candidatePath;
+            request.candidateMtime = state.candidateMtime;
+            request.candidateOpenSource = state.candidateOpenSource;
+        }
+    }
+    Monitor.Exit(request);
+    return request;
+}
+
+/// @brief Page one workspace root and read stable closed sources.
+func ScanRoot(request: ProjectBindQueryRequest,
+              state: ProjectBindScanState,
+              rootPath: String,
+              ignorePatterns: String) {
+    if rootPath == "" { return; }
+    var offset = 0;
+    var done = false;
+    while done == false and state.stop == false {
+        if RequestIsCancelled(request) { return; }
+        var page = ReadFileIndexPage(rootPath, ignorePatterns, offset);
+        if page == null or Map.GetBool(page, "valid") == false {
+            state.error = "workspace_unavailable";
+            state.stop = true;
+            return;
+        }
+        var entries = Map.Get(page, "entries");
+        var emitted = 0;
+        if entries != null {
+            var entryIndex = 0;
+            while entryIndex < Seq.get_Count(entries) and state.stop == false {
+                var entry = Seq.Get(entries, entryIndex);
+                entryIndex = entryIndex + 1;
+                emitted = emitted + 1;
+                if Map.GetBool(entry, "isDirectory") == false {
+                    AddDiskCandidate(state, Map.GetStr(entry, "path"),
+                                     request.identifier);
+                }
+            }
+        }
+        offset = Map.GetInt(page, "nextOffset");
+        done = Map.GetBool(page, "done");
+        if emitted == 0 and done == false {
+            state.error = "workspace_unavailable";
+            state.stop = true;
+            return;
+        }
+    }
+}
+
+/// @brief Convert a runtime file-index trap into an unavailable page.
+func ReadFileIndexPage(rootPath: String,
+                       ignorePatterns: String,
+                       offset: Integer) -> Any {
+    try {
+        return FileIndex.Page(rootPath, ".zia", ignorePatterns, false,
+                              offset, BIND_FILE_INDEX_PAGE_SIZE);
+    } catch {
+        return null;
+    }
+    return null;
+}
+
+/// @brief Add one stable bounded closed file to the uniqueness scan.
+func AddDiskCandidate(state: ProjectBindScanState,
+                      path: String,
+                      identifier: String) {
+    if path == "" or state.stop { return; }
+    if HasSeenPath(state, path) { return; }
+    if state.consideredFiles >= MAX_BIND_FILES {
+        state.incomplete = true;
+        state.stop = true;
+        return;
+    }
+    var size = safe_io.SizeBytes(path);
+    if size < 0 or size > MAX_BIND_FILE_CHARS
+       or state.totalChars + size > MAX_BIND_TOTAL_CHARS {
+        MarkSeenPath(state, path);
+        state.consideredFiles = state.consideredFiles + 1;
+        state.incomplete = true;
+        if state.totalChars + size > MAX_BIND_TOTAL_CHARS {
+            state.stop = true;
+        }
+        return;
+    }
+    var beforeMtime = safe_io.Modified(path);
+    var read = safe_io.ReadAllTextBounded(path, MAX_BIND_FILE_CHARS);
+    var afterMtime = safe_io.Modified(path);
+    if read.ok == false or beforeMtime < 0 or afterMtime != beforeMtime {
+        MarkSeenPath(state, path);
+        state.consideredFiles = state.consideredFiles + 1;
+        state.incomplete = true;
+        return;
+    }
+    AddSourceCandidate(state, path, read.text, afterMtime, identifier);
+}
+
+/// @brief Inspect one open/disk source after de-duplication and shape checks.
+func AddSourceCandidate(state: ProjectBindScanState,
+                        path: String,
+                        source: String,
+                        mtime: Integer,
+                        identifier: String) {
+    if path == "" or state.stop { return; }
+    if HasSeenPath(state, path) {
+        // Importing paths and earlier open snapshots intentionally shadow disk.
+        return;
+    }
+    MarkSeenPath(state, path);
+    state.consideredFiles = state.consideredFiles + 1;
+    var chars = Str.get_Length(source);
+    if state.consideredFiles > MAX_BIND_FILES
+       or chars > MAX_BIND_FILE_CHARS
+       or Str.Count(source, "\n") + 1 > MAX_BIND_FILE_LINES
+       or state.totalChars + chars > MAX_BIND_TOTAL_CHARS {
+        state.incomplete = true;
+        if state.consideredFiles > MAX_BIND_FILES
+           or state.totalChars + chars > MAX_BIND_TOTAL_CHARS {
+            state.stop = true;
+        }
+        return;
+    }
+    state.totalChars = state.totalChars + chars;
+    if bind_utils.ProjectFileDefinesIdentifier(source, identifier) == false {
+        return;
+    }
+    state.matches = state.matches + 1;
+    if state.matches == 1 {
+        state.candidatePath = path;
+        state.candidateMtime = mtime;
+        if mtime < 0 { state.candidateOpenSource = source; }
+    } else {
+        state.stop = true;
+    }
+}
+
+func PathKey(path: String) -> String {
+    if path == "" { return ""; }
+    return Path.Normalize(Path.Absolute(path));
+}
+
+/// @brief Test whether an exact path or case-only alias was already scanned.
+/// @details The folded map narrows stable-identity checks to the rare paths
+///          whose spellings differ only by case. This preserves distinct files
+///          on case-sensitive volumes without an O(n^2) filesystem scan.
+func HasSeenPath(state: ProjectBindScanState,
+                 path: String) -> Boolean {
+    var key = PathKey(path);
+    if key == "" { return false; }
+    if Map.Has(state.seen, key) { return true; }
+    var folded = Str.ToLower(key);
+    if Map.Has(state.foldedSeen, folded) == false { return false; }
+    return File.SameFile(key, Map.GetStr(state.foldedSeen, folded));
+}
+
+/// @brief Remember a case-preserving key and its first folded spelling.
+func MarkSeenPath(state: ProjectBindScanState,
+                  path: String) {
+    var key = PathKey(path);
+    if key == "" { return; }
+    Map.SetBool(state.seen, key, true);
+    var folded = Str.ToLower(key);
+    if Map.Has(state.foldedSeen, folded) == false {
+        Map.SetStr(state.foldedSeen, folded, key);
+    }
+}
+
+/// @brief Serial latest-wins worker for missing-project-bind resolution.
+class ProjectBindQueryJob {
+    expose ProjectBindQueryRequest activeRequest;
+    expose ProjectBindQueryRequest pendingRequest;
+    expose ProjectBindQueryRequest completedRequest;
+    expose Any activeFuture;
+    expose Integer nextGeneration;
+    expose Integer cancelledCount;
+    expose Integer coalescedCount;
+
+    expose func init() {
+        activeRequest = null;
+        pendingRequest = null;
+        completedRequest = null;
+        activeFuture = null;
+        nextGeneration = 1;
+        cancelledCount = 0;
+        coalescedCount = 0;
+    }
+
+    expose func Queue(identifier: String,
+                      importingPath: String,
+                      workspaceSignature: String,
+                      rootPaths: List,
+                      rootIgnorePatterns: List,
+                      openPaths: List,
+                      openSources: List) -> Integer {
+        var request = new ProjectBindQueryRequest();
+        request.generation = nextGeneration;
+        request.identifier = identifier;
+        request.importingPath = importingPath;
+        request.workspaceSignature = workspaceSignature;
+        request.rootPaths = rootPaths;
+        request.rootIgnorePatterns = rootIgnorePatterns;
+        request.openPaths = openPaths;
+        request.openSources = openSources;
+        nextGeneration = nextGeneration + 1;
+        completedRequest = null;
+        if activeFuture == null {
+            StartRequest(request);
+        } else {
+            MarkCancelled(activeRequest);
+            if pendingRequest != null {
+                pendingRequest.cancelled = true;
+                coalescedCount = coalescedCount + 1;
+            }
+            pendingRequest = request;
+        }
+        return request.generation;
+    }
+
+    expose func Pump() -> Boolean {
+        if activeFuture != null and Future.get_IsDone(activeFuture) {
+            var finished = activeRequest;
+            if Future.get_IsError(activeFuture) {
+                finished.succeeded = false;
+                finished.error = Future.get_Error(activeFuture);
+            }
+            if finished.cancelled == false { completedRequest = finished; }
+            activeFuture = null;
+            activeRequest = null;
+        }
+        if activeFuture == null and pendingRequest != null {
+            var next = pendingRequest;
+            pendingRequest = null;
+            StartRequest(next);
+        }
+        return completedRequest != null;
+    }
+
+    expose func TakeCompleted() -> ProjectBindQueryRequest {
+        var request = completedRequest;
+        completedRequest = null;
+        return request;
+    }
+
+    expose func Cancel() {
+        completedRequest = null;
+        if pendingRequest != null {
+            pendingRequest.cancelled = true;
+            pendingRequest = null;
+            coalescedCount = coalescedCount + 1;
+        }
+        MarkCancelled(activeRequest);
+    }
+
+    expose func CancelAndWait() -> Boolean {
+        Cancel();
+        if activeFuture == null { return true; }
+        var finished = false;
+        try {
+            finished = Future.WaitFor(activeFuture, BIND_SHUTDOWN_WAIT_MS);
+        } catch {
+            return false;
+        }
+        if finished == false { return false; }
+        Pump();
+        return activeFuture == null;
+    }
+
+    expose func IsBusy() -> Boolean {
+        return activeFuture != null or pendingRequest != null;
+    }
+
+    hide func StartRequest(request: ProjectBindQueryRequest) -> Boolean {
+        activeRequest = request;
+        try {
+            activeFuture = Async.RunOwned(&RunProjectBindQuery, request);
+        } catch {
+            activeFuture = null;
+        }
+        if activeFuture == null {
+            request.succeeded = false;
+            request.error = "Could not start project-bind worker";
+            completedRequest = request;
+            activeRequest = null;
+            return false;
+        }
+        return true;
+    }
+
+    hide func MarkCancelled(request: ProjectBindQueryRequest) {
+        if request == null { return; }
+        Monitor.Enter(request);
+        if request.cancelled == false {
+            request.cancelled = true;
+            cancelledCount = cancelledCount + 1;
+        }
+        Monitor.Exit(request);
+    }
+}

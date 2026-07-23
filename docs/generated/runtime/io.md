@@ -45,6 +45,7 @@ the class directly. Its public surface exposes operations including `Current`, `
 | <a id="zanna-io-dir-entries"></a>`Entries` | `seq<str>(str)` | `Zanna.IO.Dir.Entries` |
 | <a id="zanna-io-dir-files"></a>`Files` | `seq<str>(str)` | `Zanna.IO.Dir.Files` |
 | <a id="zanna-io-dir-list"></a>`List` | `seq<str>(str)` | `Zanna.IO.Dir.List` |
+| <a id="zanna-io-dir-page"></a>`Page` | `obj<Zanna.Collections.Map>(str,i64,i64)` | `Zanna.IO.Dir.Page` |
 | <a id="zanna-io-dir-make"></a>`Make` | `void(str)` | `Zanna.IO.Dir.Make` |
 | <a id="zanna-io-dir-makeall"></a>`MakeAll` | `void(str)` | `Zanna.IO.Dir.MakeAll` |
 | <a id="zanna-io-dir-move"></a>`Move` | `void(str,str)` | `Zanna.IO.Dir.Move` |
@@ -110,6 +111,7 @@ the class directly. Its public surface exposes operations including `Append`, `A
 | <a id="zanna-io-file-copy"></a>`Copy` | `void(str,str)` | `Zanna.IO.File.Copy` |
 | <a id="zanna-io-file-delete"></a>`Delete` | `void(str)` | `Zanna.IO.File.Delete` |
 | <a id="zanna-io-file-exists"></a>`Exists` | `i1(str)` | `Zanna.IO.File.Exists` |
+| <a id="zanna-io-file-samefile"></a>`SameFile` | `i1(str,str)` | `Zanna.IO.File.SameFile` |
 | <a id="zanna-io-file-modified"></a>`Modified` | `i64(str)` | `Zanna.IO.File.Modified` |
 | <a id="zanna-io-file-move"></a>`Move` | `void(str,str)` | `Zanna.IO.File.Move` |
 | <a id="zanna-io-file-readallbytes"></a>`ReadAllBytes` | `obj<Zanna.Collections.Bytes>(str)` | `Zanna.IO.File.ReadAllBytes` |
@@ -141,6 +143,7 @@ the class directly. Its public surface exposes operations including `Absolute`, 
 | <a id="zanna-io-path-exedir"></a>`ExeDir` | `str()` | `Zanna.IO.Path.ExeDir` |
 | <a id="zanna-io-path-datadir"></a>`DataDir` | `str(str)` | `Zanna.IO.Path.DataDir` |
 | <a id="zanna-io-path-isabsolute"></a>`IsAbsolute` | `i1(str)` | `Zanna.IO.Path.IsAbsolute` |
+| <a id="zanna-io-path-islink"></a>`IsLink` | `i1(str)` | `Zanna.IO.Path.IsLink` |
 | <a id="zanna-io-path-join"></a>`Join` | `str(str,str)` | `Zanna.IO.Path.Join` |
 | <a id="zanna-io-path-name"></a>`Name` | `str(str)` | `Zanna.IO.Path.Name` |
 | <a id="zanna-io-path-normalize"></a>`Normalize` | `str(str)` | `Zanna.IO.Path.Normalize` |
@@ -521,6 +524,7 @@ construct the class directly. Its public surface exposes properties such as `Pat
 | `Zanna.IO.Dir.Entries` | `seq<str>(str)` | `rt_dir_entries_seq` |
 | `Zanna.IO.Dir.Files` | `seq<str>(str)` | `rt_dir_files` |
 | `Zanna.IO.Dir.List` | `seq<str>(str)` | `rt_dir_list` |
+| `Zanna.IO.Dir.Page` | `obj<Zanna.Collections.Map>(str,i64,i64)` | `rt_dir_page` |
 | `Zanna.IO.Dir.Make` | `void(str)` | `rt_dir_make` |
 | `Zanna.IO.Dir.MakeAll` | `void(str)` | `rt_dir_make_all` |
 | `Zanna.IO.Dir.Move` | `void(str,str)` | `rt_dir_move` |
@@ -544,6 +548,7 @@ construct the class directly. Its public surface exposes properties such as `Pat
 | `Zanna.IO.File.Copy` | `void(str,str)` | `rt_file_copy` |
 | `Zanna.IO.File.Delete` | `void(str)` | `rt_io_file_delete` |
 | `Zanna.IO.File.Exists` | `i1(str)` | `rt_io_file_exists` |
+| `Zanna.IO.File.SameFile` | `i1(str,str)` | `rt_file_same` |
 | `Zanna.IO.File.Modified` | `i64(str)` | `rt_file_modified` |
 | `Zanna.IO.File.Move` | `void(str,str)` | `rt_file_move` |
 | `Zanna.IO.File.MoveOver` | `void(str,str)` | `rt_file_move_over` |
@@ -559,6 +564,7 @@ construct the class directly. Its public surface exposes properties such as `Pat
 | `Zanna.IO.Path.Directory` | `str(str)` | `rt_path_dir` |
 | `Zanna.IO.Path.Extension` | `str(str)` | `rt_path_ext` |
 | `Zanna.IO.Path.IsAbsolute` | `i1(str)` | `rt_path_is_abs` |
+| `Zanna.IO.Path.IsLink` | `i1(str)` | `rt_path_is_link` |
 | `Zanna.IO.Path.Join` | `str(str,str)` | `rt_path_join` |
 | `Zanna.IO.Path.Name` | `str(str)` | `rt_path_name` |
 | `Zanna.IO.Path.Normalize` | `str(str)` | `rt_path_norm` |

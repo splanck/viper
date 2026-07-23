@@ -13,6 +13,7 @@
 //   - Mirrors rt_gui_widgets_complex.c's ZANNA_ENABLE_GRAPHICS guard: real
 //     widgets when graphics is enabled, no-op stubs otherwise.
 //   - Image handles are validated via rt_image_checked before use.
+//   - FloatingPanel public geometry crosses effective UI scale exactly once.
 //
 // Ownership/Lifetime:
 //   - Widgets are owned by the GUI widget tree; this layer borrows them.
@@ -328,14 +329,14 @@ void rt_floatingpanel_destroy(void *panel) {
         rt_widget_destroy(&fp->base);
 }
 
-/// @brief Set the position of the floatingpanel.
+/// @brief Set the floating panel position from public logical coordinates.
 void rt_floatingpanel_set_position(void *panel, double x, double y) {
     RT_ASSERT_MAIN_THREAD();
     vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
     if (fp)
         vg_floatingpanel_set_position(fp,
-                                      rt_gui_sanitize_signed_float(x, RT_GUI_MAX_LAYOUT_VALUE),
-                                      rt_gui_sanitize_signed_float(y, RT_GUI_MAX_LAYOUT_VALUE));
+                                      rt_gui_logical_coordinate_to_physical(&fp->base, x),
+                                      rt_gui_logical_coordinate_to_physical(&fp->base, y));
 }
 
 /// @brief Center a floating panel within its parent (root) bounds.
@@ -346,14 +347,14 @@ void rt_floatingpanel_center_in_parent(void *panel) {
         vg_floatingpanel_center_in_parent(fp);
 }
 
-/// @brief Set the width and height of a floating panel.
+/// @brief Set floating panel dimensions from public logical lengths.
 void rt_floatingpanel_set_size(void *panel, double w, double h) {
     RT_ASSERT_MAIN_THREAD();
     vg_floatingpanel_t *fp = rt_floatingpanel_checked(panel);
     if (fp)
         vg_floatingpanel_set_size(fp,
-                                  rt_gui_sanitize_nonnegative_float(w, RT_GUI_MAX_LAYOUT_VALUE),
-                                  rt_gui_sanitize_nonnegative_float(h, RT_GUI_MAX_LAYOUT_VALUE));
+                                  rt_gui_logical_length_to_physical(&fp->base, w),
+                                  rt_gui_logical_length_to_physical(&fp->base, h));
 }
 
 /// @brief Show or hide a floating panel overlay.

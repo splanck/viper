@@ -1,0 +1,313 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: src/runtime/io/rt_dir_page.cpp
+// Purpose: Provide bounded, resumable immediate-directory enumeration for
+//          Zanna.IO.Dir.Page.
+// Key invariants:
+//   - One call emits at most 4096 immediate children and never recurses.
+//   - Public paging is offset-based; native iterators remain private and bounded.
+//   - Runtime maps and sequences retain every object returned to the caller.
+// Ownership/Lifetime:
+//   - Page result maps are caller-owned runtime objects.
+//   - Cached directory iterators are process-local and evicted by LRU policy.
+// Links: src/runtime/io/rt_dir.h,
+//        docs/adr/0148-bounded-directory-paging.md
+//
+//===----------------------------------------------------------------------===//
+
+#include "rt_dir.h"
+
+#include "rt_map.h"
+#include "rt_object.h"
+#include "rt_seq.h"
+#include "rt_string.h"
+
+#include <atomic>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <new>
+#include <string>
+#include <system_error>
+
+namespace fs = std::filesystem;
+
+namespace {
+
+constexpr int64_t kDefaultDirectoryPageSize = 128;
+constexpr int64_t kMaximumDirectoryPageSize = 4096;
+constexpr size_t kDirectoryPageCursorCacheSize = 8;
+
+struct DirectoryPageCursor {
+    std::string key;
+    fs::directory_iterator iterator;
+    fs::directory_iterator end;
+    std::error_code error;
+    int64_t offset{0};
+    bool done{false};
+    uint64_t lastUsed{0};
+    DirectoryPageCursor *next{nullptr};
+};
+
+DirectoryPageCursor *g_directoryPageCursorHead = nullptr;
+std::atomic_flag g_directoryPageCursorLock = ATOMIC_FLAG_INIT;
+std::atomic<uint64_t> g_directoryPageCursorClock{0};
+
+struct DirectoryPageCursorLockGuard {
+    DirectoryPageCursorLockGuard() {
+        while (g_directoryPageCursorLock.test_and_set(std::memory_order_acquire)) {
+        }
+    }
+
+    ~DirectoryPageCursorLockGuard() {
+        g_directoryPageCursorLock.clear(std::memory_order_release);
+    }
+
+    DirectoryPageCursorLockGuard(const DirectoryPageCursorLockGuard &) = delete;
+    DirectoryPageCursorLockGuard &operator=(const DirectoryPageCursorLockGuard &) = delete;
+};
+
+std::string toStdString(rt_string value) {
+    if (!value)
+        return {};
+    const char *bytes = rt_string_cstr(value);
+    const int64_t length = rt_str_len(value);
+    if (!bytes || length <= 0)
+        return {};
+    return std::string(bytes, static_cast<size_t>(length));
+}
+
+void releaseObject(void *object) {
+    if (object && rt_obj_release_check0(object))
+        rt_obj_free(object);
+}
+
+void mapSetString(void *map, const char *key, const std::string &value) {
+    rt_string managed = rt_string_from_bytes(value.data(), value.size());
+    rt_map_set_str(map, rt_const_cstr(key), managed);
+    rt_string_unref(managed);
+}
+
+void sequencePushOwned(void *sequence, void *value) {
+    rt_seq_push(sequence, value);
+    releaseObject(value);
+}
+
+void pushDiagnostic(void *diagnostics, const std::string &message, const std::string &path) {
+    void *diagnostic = rt_map_new();
+    mapSetString(diagnostic, "message", message);
+    mapSetString(diagnostic, "file", path);
+    mapSetString(diagnostic, "code", "dir.page");
+    sequencePushOwned(diagnostics, diagnostic);
+}
+
+void unlinkCursor(DirectoryPageCursor *cursor) {
+    if (!cursor)
+        return;
+    DirectoryPageCursor **slot = &g_directoryPageCursorHead;
+    while (*slot) {
+        if (*slot == cursor) {
+            *slot = cursor->next;
+            cursor->next = nullptr;
+            return;
+        }
+        slot = &(*slot)->next;
+    }
+}
+
+void linkCursor(DirectoryPageCursor *cursor) {
+    if (!cursor)
+        return;
+    cursor->next = g_directoryPageCursorHead;
+    g_directoryPageCursorHead = cursor;
+}
+
+DirectoryPageCursor *findCursor(const std::string &key, int64_t offset) {
+    for (DirectoryPageCursor *cursor = g_directoryPageCursorHead; cursor; cursor = cursor->next) {
+        if (!cursor->done && cursor->key == key && cursor->offset == offset)
+            return cursor;
+    }
+    return nullptr;
+}
+
+size_t cursorCount() {
+    size_t count = 0;
+    for (DirectoryPageCursor *cursor = g_directoryPageCursorHead; cursor; cursor = cursor->next) {
+        count++;
+    }
+    return count;
+}
+
+void evictCursorsIfNeeded() {
+    while (cursorCount() > kDirectoryPageCursorCacheSize) {
+        DirectoryPageCursor *oldest = nullptr;
+        for (DirectoryPageCursor *cursor = g_directoryPageCursorHead; cursor;
+             cursor = cursor->next) {
+            if (!oldest || cursor->lastUsed < oldest->lastUsed)
+                oldest = cursor;
+        }
+        if (!oldest)
+            return;
+        unlinkCursor(oldest);
+        delete oldest;
+    }
+}
+
+DirectoryPageCursor *startCursor(const std::string &key, const fs::path &path, void *diagnostics) {
+    auto *cursor = new (std::nothrow) DirectoryPageCursor();
+    if (!cursor) {
+        pushDiagnostic(diagnostics, "directory page cursor allocation failed", key);
+        return nullptr;
+    }
+    cursor->key = key;
+    cursor->lastUsed = g_directoryPageCursorClock.fetch_add(1, std::memory_order_relaxed) + 1;
+    cursor->iterator = fs::directory_iterator(path, cursor->error);
+    if (cursor->error) {
+        pushDiagnostic(diagnostics, "directory traversal failed: " + cursor->error.message(), key);
+        delete cursor;
+        return nullptr;
+    }
+    cursor->done = cursor->iterator == cursor->end;
+    return cursor;
+}
+
+void emitEntry(void *entries,
+               const fs::directory_entry &directoryEntry,
+               const fs::path &absolutePath) {
+    std::error_code statusError;
+    const bool isDirectory = directoryEntry.is_directory(statusError);
+    statusError.clear();
+    const bool isFile = !isDirectory && directoryEntry.is_regular_file(statusError);
+
+    void *entry = rt_map_new();
+    mapSetString(entry, "name", directoryEntry.path().filename().generic_string());
+    mapSetString(entry, "path", absolutePath.generic_string());
+    mapSetString(entry, "kind", isDirectory ? "directory" : (isFile ? "file" : "other"));
+    rt_map_set_bool(entry, rt_const_cstr("isDirectory"), isDirectory ? 1 : 0);
+    sequencePushOwned(entries, entry);
+}
+
+int64_t scanCursor(DirectoryPageCursor *cursor,
+                   const fs::path &root,
+                   void *entries,
+                   int64_t requestedOffset,
+                   int64_t limit) {
+    if (!cursor || cursor->done)
+        return 0;
+
+    int64_t emitted = 0;
+    while (!cursor->error && cursor->iterator != cursor->end) {
+        const fs::directory_entry current = *cursor->iterator;
+        if (cursor->offset >= requestedOffset && emitted < limit) {
+            emitEntry(entries, current, (root / current.path().filename()).lexically_normal());
+            emitted++;
+        }
+        cursor->offset++;
+        cursor->iterator.increment(cursor->error);
+        if (emitted >= limit)
+            break;
+    }
+    cursor->done = cursor->error || cursor->iterator == cursor->end;
+    return emitted;
+}
+
+} // namespace
+
+extern "C" {
+
+void *rt_dir_page(rt_string pathString, int64_t offset, int64_t limit) {
+    void *result = rt_map_new();
+    void *entries = rt_seq_new_owned();
+    void *diagnostics = rt_seq_new_owned();
+    if (offset < 0)
+        offset = 0;
+    if (limit <= 0)
+        limit = kDefaultDirectoryPageSize;
+    if (limit > kMaximumDirectoryPageSize)
+        limit = kMaximumDirectoryPageSize;
+
+    rt_map_set_bool(result, rt_const_cstr("valid"), 1);
+    mapSetString(result, "path", "");
+    rt_map_set_int(result, rt_const_cstr("offset"), offset);
+    rt_map_set_int(result, rt_const_cstr("limit"), limit);
+    rt_map_set_int(result, rt_const_cstr("emitted"), 0);
+    rt_map_set_int(result, rt_const_cstr("nextOffset"), offset);
+    rt_map_set_bool(result, rt_const_cstr("done"), 1);
+    rt_map_set(result, rt_const_cstr("entries"), entries);
+    rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+
+    try {
+        const std::string input = toStdString(pathString);
+        std::error_code error;
+        fs::path root = fs::absolute(fs::path(input), error).lexically_normal();
+        if (input.empty() || error || !fs::is_directory(root, error)) {
+            rt_map_set_bool(result, rt_const_cstr("valid"), 0);
+            pushDiagnostic(diagnostics, "directory page root is not a directory", input);
+            releaseObject(entries);
+            releaseObject(diagnostics);
+            return result;
+        }
+
+        const std::string key = root.generic_string();
+        mapSetString(result, "path", key);
+        DirectoryPageCursor *cursor = nullptr;
+        {
+            DirectoryPageCursorLockGuard lock;
+            cursor = findCursor(key, offset);
+            if (cursor)
+                unlinkCursor(cursor);
+        }
+        if (!cursor) {
+            cursor = startCursor(key, root, diagnostics);
+            if (!cursor) {
+                rt_map_set_bool(result, rt_const_cstr("valid"), 0);
+                releaseObject(entries);
+                releaseObject(diagnostics);
+                return result;
+            }
+        }
+        std::unique_ptr<DirectoryPageCursor> cursorOwner(cursor);
+
+        while (!cursor->done && cursor->offset < offset) {
+            cursor->iterator.increment(cursor->error);
+            cursor->offset++;
+            if (cursor->error || cursor->iterator == cursor->end)
+                cursor->done = true;
+        }
+
+        const int64_t emitted = scanCursor(cursor, root, entries, offset, limit);
+        const bool done = cursor->done;
+        const std::error_code traversalError = cursor->error;
+        const int64_t nextOffset = cursor->offset;
+        cursor->lastUsed = g_directoryPageCursorClock.fetch_add(1, std::memory_order_relaxed) + 1;
+        {
+            DirectoryPageCursorLockGuard lock;
+            if (!done) {
+                linkCursor(cursor);
+                (void)cursorOwner.release();
+                evictCursorsIfNeeded();
+            }
+        }
+
+        if (traversalError) {
+            pushDiagnostic(
+                diagnostics, "directory traversal stopped early: " + traversalError.message(), key);
+        }
+        rt_map_set_int(result, rt_const_cstr("emitted"), emitted);
+        rt_map_set_int(result, rt_const_cstr("nextOffset"), nextOffset);
+        rt_map_set_bool(result, rt_const_cstr("done"), done ? 1 : 0);
+    } catch (...) {
+        rt_map_set_bool(result, rt_const_cstr("valid"), 0);
+        rt_seq_clear(entries);
+        pushDiagnostic(diagnostics, "directory page failed", toStdString(pathString));
+    }
+
+    releaseObject(entries);
+    releaseObject(diagnostics);
+    return result;
+}
+
+} // extern "C"

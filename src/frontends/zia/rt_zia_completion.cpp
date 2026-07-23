@@ -266,8 +266,7 @@ bool mirrorApplyDeltasJson(std::string &text,
                 } else if (key == "ec") {
                     ec = static_cast<int>(v);
                     haveEc = true;
-                }
-                else if (key == "r") {
+                } else if (key == "r") {
                     rev = v;
                 }
             }
@@ -611,6 +610,7 @@ void *diagnosticRecordsToSeq(const std::vector<DiagnosticRecord> &diagnostics) {
 
 constexpr int64_t kProjectIndexClassId = INT64_C(-0x460101);
 constexpr int64_t kSemanticJobClassId = INT64_C(-0x460102);
+constexpr int64_t kMaxProjectQueryReferences = 2000;
 
 enum class SemanticJobKind : int64_t {
     Unknown = 0,
@@ -624,7 +624,7 @@ enum class SemanticJobKind : int64_t {
 
 struct IndexedSource {
     std::string path;
-    std::string source;
+    std::shared_ptr<const std::string> source;
 };
 
 struct ProjectIndex {
@@ -636,7 +636,13 @@ struct ProjectIndex {
 
 struct ProjectIndexHandle {
     ProjectIndex *index{nullptr};
+    std::mutex *mutex{nullptr};
 };
+
+const std::string &indexedSourceText(const IndexedSource &source) {
+    static const std::string kEmpty;
+    return source.source ? *source.source : kEmpty;
+}
 
 struct SemanticJob {
     explicit SemanticJob(SemanticJobKind kind) : kind(kind) {}
@@ -788,9 +794,14 @@ ProjectIndexHandle *asProjectIndexHandle(void *handle) {
     return static_cast<ProjectIndexHandle *>(handle);
 }
 
-ProjectIndex *asProjectIndex(void *handle) {
+std::unique_ptr<ProjectIndex> snapshotProjectIndex(void *handle) {
     ProjectIndexHandle *typed = asProjectIndexHandle(handle);
-    return typed ? typed->index : nullptr;
+    if (!typed || !typed->mutex)
+        return {};
+    std::lock_guard<std::mutex> lock(*typed->mutex);
+    if (!typed->index)
+        return {};
+    return std::make_unique<ProjectIndex>(*typed->index);
 }
 
 SemanticJobHandle *asSemanticJobHandle(void *handle) {
@@ -810,8 +821,18 @@ void projectIndexFinalize(void *obj) {
     ProjectIndexHandle *handle = asProjectIndexHandle(obj);
     if (!handle)
         return;
-    delete handle->index;
-    handle->index = nullptr;
+    if (handle->mutex) {
+        {
+            std::lock_guard<std::mutex> lock(*handle->mutex);
+            delete handle->index;
+            handle->index = nullptr;
+        }
+        delete handle->mutex;
+        handle->mutex = nullptr;
+    } else {
+        delete handle->index;
+        handle->index = nullptr;
+    }
 }
 
 void semanticJobFinalize(void *obj) {
@@ -949,7 +970,7 @@ std::unique_ptr<AnalysisResult> analyzeIndexedSource(ProjectIndex &index,
         auto it = index.sources.find(indexedPath);
         if (it == index.sources.end())
             return std::nullopt;
-        return it->second.source;
+        return indexedSourceText(it->second);
     };
     CompilerOptions opts{};
     return parseAndAnalyze(input, opts, sm);
@@ -1018,8 +1039,9 @@ SymbolRange definitionRangeForKey(const ProjectIndex &index, const SymbolKey &ke
 
     il::support::SourceManager sm;
     uint32_t fileId = sm.addFile(range.file);
-    sm.setSource(fileId, sourceIt->second.source);
-    for (const auto &token : lexIdentifierTokens(sourceIt->second.source, fileId)) {
+    const std::string &definitionSource = indexedSourceText(sourceIt->second);
+    sm.setSource(fileId, definitionSource);
+    for (const auto &token : lexIdentifierTokens(definitionSource, fileId)) {
         if (token.loc.line != key.line)
             continue;
         if (token.text != key.displayName)
@@ -1031,7 +1053,7 @@ SymbolRange definitionRangeForKey(const ProjectIndex &index, const SymbolKey &ke
         return range;
     }
 
-    for (const auto &token : lexIdentifierTokens(sourceIt->second.source, fileId)) {
+    for (const auto &token : lexIdentifierTokens(definitionSource, fileId)) {
         if (token.loc.line != key.line)
             continue;
         if (token.text != key.displayName)
@@ -1111,7 +1133,7 @@ std::vector<std::string> sortedIndexPaths(const ProjectIndex &index) {
     return paths;
 }
 
-void *referencesForKey(ProjectIndex &index, const SymbolKey &targetKey) {
+void *referencesForKey(ProjectIndex &index, const SymbolKey &targetKey, int64_t maxReferences) {
     void *seq = rt_seq_new_owned();
     if (!targetKey.valid)
         return seq;
@@ -1123,11 +1145,12 @@ void *referencesForKey(ProjectIndex &index, const SymbolKey &targetKey) {
             continue;
 
         il::support::SourceManager sm;
-        auto analysis = analyzeIndexedSource(index, path, sourceIt->second.source, sm);
+        const std::string &indexedSource = indexedSourceText(sourceIt->second);
+        auto analysis = analyzeIndexedSource(index, path, indexedSource, sm);
         if (!analysis || !analysis->sema)
             continue;
 
-        for (const auto &token : lexIdentifierTokens(sourceIt->second.source, analysis->fileId)) {
+        for (const auto &token : lexIdentifierTokens(indexedSource, analysis->fileId)) {
             if (token.text != targetKey.displayName)
                 continue;
 
@@ -1147,6 +1170,8 @@ void *referencesForKey(ProjectIndex &index, const SymbolKey &targetKey) {
             void *map = referenceMapForToken(token, path, definitionRange, targetKey);
             rt_seq_push(seq, map);
             releaseRuntimeObject(map);
+            if (maxReferences > 0 && rt_seq_len(seq) >= maxReferences)
+                return seq;
         }
     }
     return seq;
@@ -1197,7 +1222,7 @@ bool renameWouldCollide(ProjectIndex &index,
         probe.endColumn = static_cast<uint32_t>(column + newName.size());
 
         il::support::SourceManager sm;
-        auto analysis = analyzeIndexedSource(index, path, sourceIt->second.source, sm);
+        auto analysis = analyzeIndexedSource(index, path, indexedSourceText(sourceIt->second), sm);
         if (!analysis || !analysis->sema)
             continue;
         probe.loc.file_id = analysis->fileId;
@@ -2742,26 +2767,40 @@ void *rt_zia_project_index_new(rt_string root) {
         rt_obj_new_i64(kProjectIndexClassId, sizeof(ProjectIndexHandle)));
     if (!handle)
         return nullptr;
+    handle->mutex = new std::mutex();
     handle->index = new ProjectIndex(std::move(rootPath));
     rt_obj_set_finalizer(handle, projectIndexFinalize);
     return handle;
 }
 
 int8_t rt_zia_project_index_is_valid(void *handle) {
-    return asProjectIndex(handle) ? 1 : 0;
+    ProjectIndexHandle *typed = asProjectIndexHandle(handle);
+    if (!typed || !typed->mutex)
+        return 0;
+    std::lock_guard<std::mutex> lock(*typed->mutex);
+    return typed->index ? 1 : 0;
 }
 
 int8_t rt_zia_project_index_update_file(void *handle, rt_string file_path, rt_string source) {
-    ProjectIndex *index = asProjectIndex(handle);
+    ProjectIndexHandle *typed = asProjectIndexHandle(handle);
+    if (!typed || !typed->mutex)
+        return 0;
+    std::lock_guard<std::mutex> lock(*typed->mutex);
+    ProjectIndex *index = typed->index;
     if (!index)
         return 0;
     std::string normalizedPath = normalizeProjectPath(*index, editorPathOrDefault(file_path));
-    index->sources[normalizedPath] = IndexedSource{normalizedPath, toStdString(source)};
+    index->sources[normalizedPath] =
+        IndexedSource{normalizedPath, std::make_shared<const std::string>(toStdString(source))};
     return 1;
 }
 
 int8_t rt_zia_project_index_remove_file(void *handle, rt_string file_path) {
-    ProjectIndex *index = asProjectIndex(handle);
+    ProjectIndexHandle *typed = asProjectIndexHandle(handle);
+    if (!typed || !typed->mutex)
+        return 0;
+    std::lock_guard<std::mutex> lock(*typed->mutex);
+    ProjectIndex *index = typed->index;
     if (!index)
         return 0;
     std::string normalizedPath = normalizeProjectPath(*index, editorPathOrDefault(file_path));
@@ -2769,7 +2808,11 @@ int8_t rt_zia_project_index_remove_file(void *handle, rt_string file_path) {
 }
 
 void rt_zia_project_index_clear(void *handle) {
-    ProjectIndex *index = asProjectIndex(handle);
+    ProjectIndexHandle *typed = asProjectIndexHandle(handle);
+    if (!typed || !typed->mutex)
+        return;
+    std::lock_guard<std::mutex> lock(*typed->mutex);
+    ProjectIndex *index = typed->index;
     if (!index)
         return;
     index->sources.clear();
@@ -2777,21 +2820,22 @@ void rt_zia_project_index_clear(void *handle) {
 
 void rt_zia_project_index_destroy(void *handle) {
     ProjectIndexHandle *typed = asProjectIndexHandle(handle);
-    if (!typed)
+    if (!typed || !typed->mutex)
         return;
+    std::lock_guard<std::mutex> lock(*typed->mutex);
     delete typed->index;
     typed->index = nullptr;
 }
 
 void *rt_zia_project_index_definition(
     void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col) {
-    ProjectIndex *index = asProjectIndex(handle);
+    std::unique_ptr<ProjectIndex> index = snapshotProjectIndex(handle);
     if (!index)
         return notFoundMap("invalid_index");
 
     std::string path = normalizeProjectPath(*index, editorPathOrDefault(file_path));
     std::string sourceStr = toStdString(source);
-    index->sources[path] = IndexedSource{path, sourceStr};
+    index->sources[path] = IndexedSource{path, std::make_shared<const std::string>(sourceStr)};
 
     auto key = resolveAtPosition(*index, path, sourceStr, line, col);
     if (!key)
@@ -2801,18 +2845,18 @@ void *rt_zia_project_index_definition(
 
 void *rt_zia_project_index_references(
     void *handle, rt_string file_path, rt_string source, int64_t line, int64_t col) {
-    ProjectIndex *index = asProjectIndex(handle);
+    std::unique_ptr<ProjectIndex> index = snapshotProjectIndex(handle);
     if (!index)
         return rt_seq_new_owned();
 
     std::string path = normalizeProjectPath(*index, editorPathOrDefault(file_path));
     std::string sourceStr = toStdString(source);
-    index->sources[path] = IndexedSource{path, sourceStr};
+    index->sources[path] = IndexedSource{path, std::make_shared<const std::string>(sourceStr)};
 
     auto key = resolveAtPosition(*index, path, sourceStr, line, col);
     if (!key)
         return rt_seq_new_owned();
-    return referencesForKey(*index, *key);
+    return referencesForKey(*index, *key, kMaxProjectQueryReferences + 1);
 }
 
 void *rt_zia_project_index_rename_edits(void *handle,
@@ -2821,7 +2865,7 @@ void *rt_zia_project_index_rename_edits(void *handle,
                                         int64_t line,
                                         int64_t col,
                                         rt_string new_name) {
-    ProjectIndex *index = asProjectIndex(handle);
+    std::unique_ptr<ProjectIndex> index = snapshotProjectIndex(handle);
     if (!index)
         return renameFailureMap("invalid_index");
 
@@ -2831,13 +2875,17 @@ void *rt_zia_project_index_rename_edits(void *handle,
 
     std::string path = normalizeProjectPath(*index, editorPathOrDefault(file_path));
     std::string sourceStr = toStdString(source);
-    index->sources[path] = IndexedSource{path, sourceStr};
+    index->sources[path] = IndexedSource{path, std::make_shared<const std::string>(sourceStr)};
 
     auto key = resolveAtPosition(*index, path, sourceStr, line, col);
     if (!key)
         return renameFailureMap("not_found");
 
-    void *references = referencesForKey(*index, *key);
+    void *references = referencesForKey(*index, *key, kMaxProjectQueryReferences + 1);
+    if (rt_seq_len(references) > kMaxProjectQueryReferences) {
+        releaseRuntimeObject(references);
+        return renameFailureMap("reference_limit");
+    }
     if (renameWouldCollide(*index, *key, references, newName)) {
         releaseRuntimeObject(references);
         return renameFailureMap("collision");
@@ -2869,6 +2917,7 @@ void *rt_zia_project_index_rename_edits(void *handle,
         mapSetInt(edit, "editorStartColumn", startColumn > 0 ? startColumn - 1 : 0);
         mapSetInt(edit, "editorEndLine", endLine > 0 ? endLine - 1 : 0);
         mapSetInt(edit, "editorEndColumn", endColumn > 0 ? endColumn - 1 : 0);
+        mapSetStr(edit, "expectedText", key->displayName);
         mapSetStr(edit, "newText", newName);
         rt_seq_push(edits, edit);
         releaseRuntimeObject(edit);

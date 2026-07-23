@@ -1,9 +1,29 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/project_index.zia
+// Purpose: Incrementally maintain the semantic index for open workspaces.
+// Key invariants:
+//   - Indexing is bounded per frame by file count and source bytes.
+//   - Partial indexes are reported honestly and never serve workspace queries.
+//   - Missing, growing, oversized, or unreadable files are skipped safely.
+// Ownership/Lifetime: Owns the runtime index handle and borrowed source snapshots.
+// Links: zannastudio/src/editor/scheduler.zia,
+//        zannastudio/src/services/workspace_file_index.zia
+//
+//===----------------------------------------------------------------------===//
+
 module project_index;
 
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../editor/editor_engine";
 bind "../editor/scheduler";
+bind "../services/safe_io";
 
 bind ProjectIndex = Zanna.Zia.ProjectIndex;
 bind FileIndex = Zanna.Workspace.FileIndex;
@@ -19,6 +39,8 @@ final INDEX_MAX_SOURCE_BYTES = 200000;
 final INDEX_MAX_BYTES_PER_FRAME = 500000;
 final INDEX_ENUM_CAP = 100000;
 final INDEX_FILE_PAGE_SIZE = 512;
+final INDEX_MAX_WORKSPACE_FILES = 20000;
+final INDEX_MAX_WORKSPACE_SOURCE_BYTES = 64000000;
 
 // ============================================================================
 // MODULE: project_index
@@ -57,13 +79,17 @@ class ProjectIndexer {
     expose Boolean workspaceIndexComplete;
     expose Integer indexedFileCount;
     expose Integer workspaceIndexEntryCount;
+    expose Integer workspaceIndexConsideredCount;
+    expose Integer workspaceIndexSourceBytes;
     expose Boolean workspaceIndexTruncated;
     expose String workspaceIndexStatusMessage;
+    expose Any pendingIndexSeenPaths;
     expose scheduler.EditorScheduler workScheduler;
     expose List syncedOpenPaths;
     expose List syncedOpenContents;
     expose Integer updateCount;
     expose Integer updateBytes;
+    expose Integer contentGeneration;
 
     expose func init() {
         handle = null;
@@ -87,12 +113,16 @@ class ProjectIndexer {
         workspaceIndexComplete = false;
         indexedFileCount = 0;
         workspaceIndexEntryCount = 0;
+        workspaceIndexConsideredCount = 0;
+        workspaceIndexSourceBytes = 0;
         workspaceIndexTruncated = false;
         workspaceIndexStatusMessage = "";
+        pendingIndexSeenPaths = Map.New();
         syncedOpenPaths = new List();
         syncedOpenContents = new List();
         updateCount = 0;
         updateBytes = 0;
+        contentGeneration = 0;
     }
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
@@ -190,10 +220,14 @@ class ProjectIndexer {
         workspaceIndexComplete = false;
         indexedFileCount = 0;
         workspaceIndexEntryCount = 0;
+        workspaceIndexConsideredCount = 0;
+        workspaceIndexSourceBytes = 0;
         workspaceIndexTruncated = false;
         workspaceIndexStatusMessage = "";
+        pendingIndexSeenPaths = Map.New();
         syncedOpenPaths = new List();
         syncedOpenContents = new List();
+        contentGeneration = 0;
     }
 
     expose func ResetPerfStats() {
@@ -205,13 +239,22 @@ class ProjectIndexer {
         if valid == false { return; }
         if indexing { return; }
         workspaceIndexEntryCount = 0;
+        workspaceIndexConsideredCount = 0;
+        workspaceIndexSourceBytes = 0;
         workspaceIndexTruncated = false;
         workspaceIndexStatusMessage = "";
+        pendingIndexSeenPaths = Map.New();
         pendingIndexOffset = 0;
         pendingIndexRootIndex = 0;
         pendingIndexDone = false;
         pendingIndexPos = 0;
         pendingIndexFiles = null;
+        indexedFileCount = 0;
+        if SeedOpenDocumentBudget() == false {
+            indexing = false;
+            workspaceIndexComplete = true;
+            return;
+        }
         FetchNextIndexPage();
         if pendingIndexFiles == null {
             pendingIndexPos = 0;
@@ -221,7 +264,6 @@ class ProjectIndexer {
         }
         indexing = true;
         workspaceIndexComplete = false;
-        indexedFileCount = 0;
     }
 
     expose func PumpIndex(maxFiles: Integer) -> Integer {
@@ -257,7 +299,36 @@ class ProjectIndexer {
             var entry = Seq.Get(pendingIndexFiles, pendingIndexPos);
             var path = Map.GetStr(entry, "path");
             var size = Map.GetInt(entry, "size");
+            var pathKey = NormalizePath(path);
+            if Map.Has(pendingIndexSeenPaths, pathKey) {
+                pendingIndexPos = pendingIndexPos + 1;
+                processed = processed + 1;
+                continue;
+            }
+            Map.SetBool(pendingIndexSeenPaths, pathKey, true);
+            workspaceIndexConsideredCount = workspaceIndexConsideredCount + 1;
+            if workspaceIndexConsideredCount > INDEX_MAX_WORKSPACE_FILES {
+                MarkWorkspaceIndexIncomplete(
+                    "Workspace index exceeds " + INDEX_MAX_WORKSPACE_FILES
+                    + " Zia files");
+                StopWorkspaceEnumeration();
+                break;
+            }
+            if size < 0 {
+                MarkWorkspaceIndexIncomplete(
+                    "Workspace index could not inspect " + IO.Path.Name(path));
+                ProjectIndex.RemoveFile(handle, path);
+                contentGeneration = contentGeneration + 1;
+                pendingIndexPos = pendingIndexPos + 1;
+                processed = processed + 1;
+                continue;
+            }
             if size > INDEX_MAX_SOURCE_BYTES {
+                MarkWorkspaceIndexIncomplete(
+                    "Workspace index skipped oversized file "
+                    + IO.Path.Name(path));
+                ProjectIndex.RemoveFile(handle, path);
+                contentGeneration = contentGeneration + 1;
                 pendingIndexPos = pendingIndexPos + 1;
                 processed = processed + 1;
                 continue;
@@ -269,15 +340,49 @@ class ProjectIndexer {
             pendingIndexPos = pendingIndexPos + 1;
             processed = processed + 1;
             if size > 0 { bytesThisFrame = bytesThisFrame + size; }
-            if FindSyncedOpenPath(path) >= 0 {
+            var syncedOpenIndex = FindSyncedOpenPath(path);
+            if syncedOpenIndex >= 0 {
+                var openContent = Obj.ToString(
+                    syncedOpenContents.get(syncedOpenIndex));
+                var openBytes = Str.get_Length(openContent);
+                if openBytes > INDEX_MAX_SOURCE_BYTES {
+                    MarkWorkspaceIndexIncomplete(
+                        "Workspace index skipped oversized open file "
+                        + IO.Path.Name(path));
+                } else if workspaceIndexSourceBytes + openBytes
+                          > INDEX_MAX_WORKSPACE_SOURCE_BYTES {
+                    MarkWorkspaceIndexIncomplete(
+                        "Workspace index exceeds the 64 MB source budget");
+                    StopWorkspaceEnumeration();
+                    break;
+                } else {
+                    workspaceIndexSourceBytes = workspaceIndexSourceBytes
+                                                + openBytes;
+                    indexedFileCount = indexedFileCount + 1;
+                }
                 continue;
             }
             if IO.File.Exists(path) {
-                var content = IO.File.ReadAllText(path);
-                if ShouldIndexContent(content) {
-                    ProjectIndex.UpdateFile(handle, path, content);
-                    TrackUpdate(content);
+                var readResult = safe_io.ReadAllTextBounded(path, INDEX_MAX_SOURCE_BYTES);
+                if readResult.ok and ShouldIndexContent(readResult.text) {
+                    var sourceBytes = Str.get_Length(readResult.text);
+                    if workspaceIndexSourceBytes + sourceBytes
+                       > INDEX_MAX_WORKSPACE_SOURCE_BYTES {
+                        MarkWorkspaceIndexIncomplete(
+                            "Workspace index exceeds the 64 MB source budget");
+                        StopWorkspaceEnumeration();
+                        break;
+                    }
+                    ProjectIndex.UpdateFile(handle, path, readResult.text);
+                    TrackUpdate(readResult.text);
+                    workspaceIndexSourceBytes = workspaceIndexSourceBytes
+                                                + sourceBytes;
                     indexedFileCount = indexedFileCount + 1;
+                } else {
+                    MarkWorkspaceIndexIncomplete(
+                        "Workspace index could not read " + IO.Path.Name(path));
+                    ProjectIndex.RemoveFile(handle, path);
+                    contentGeneration = contentGeneration + 1;
                 }
             }
         }
@@ -332,7 +437,15 @@ class ProjectIndexer {
     /// @return Progress text such as "Workspace index 24/120".
     expose func WorkspaceIndexProgressText() -> String {
         if valid == false { return "Workspace index unavailable"; }
-        if workspaceIndexComplete { return "Workspace index ready"; }
+        if workspaceIndexComplete {
+            if workspaceIndexTruncated {
+                if workspaceIndexStatusMessage != "" {
+                    return workspaceIndexStatusMessage;
+                }
+                return "Workspace index incomplete";
+            }
+            return "Workspace index ready";
+        }
         var total = workspaceIndexEntryCount;
         if total <= 0 and pendingIndexFiles != null {
             total = Seq.get_Count(pendingIndexFiles);
@@ -366,6 +479,12 @@ class ProjectIndexer {
                     if ShouldIndexContent(doc.content) {
                         ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
                         TrackUpdate(doc.content);
+                    } else {
+                        ProjectIndex.RemoveFile(handle, doc.filePath);
+                        contentGeneration = contentGeneration + 1;
+                        MarkWorkspaceIndexIncomplete(
+                            "Workspace index skipped oversized open file "
+                            + IO.Path.Name(doc.filePath));
                     }
                     if syncedIdx >= 0 {
                         syncedOpenPaths.removeAt(syncedIdx);
@@ -407,6 +526,12 @@ class ProjectIndexer {
         if ShouldIndexContent(doc.content) {
             ProjectIndex.UpdateFile(handle, doc.filePath, doc.content);
             TrackUpdate(doc.content);
+        } else {
+            ProjectIndex.RemoveFile(handle, doc.filePath);
+            contentGeneration = contentGeneration + 1;
+            MarkWorkspaceIndexIncomplete(
+                "Workspace index skipped oversized open file "
+                + IO.Path.Name(doc.filePath));
         }
         var syncedIdx = FindSyncedOpenPath(doc.filePath);
         if syncedIdx >= 0 {
@@ -464,17 +589,24 @@ class ProjectIndexer {
     expose func RemoveFile(path: String) {
         if valid == false { return; }
         ProjectIndex.RemoveFile(handle, path);
+        contentGeneration = contentGeneration + 1;
         workspaceIndexComplete = false;
     }
 
     expose func UpdateFile(path: String) {
         if valid == false or path == "" { return; }
         if IO.File.Exists(path) {
-            var content = IO.File.ReadAllText(path);
-            if ShouldIndexContent(content) {
-                ProjectIndex.UpdateFile(handle, path, content);
-                TrackUpdate(content);
+            var readResult = safe_io.ReadAllTextBounded(path, INDEX_MAX_SOURCE_BYTES);
+            if readResult.ok and ShouldIndexContent(readResult.text) {
+                ProjectIndex.UpdateFile(handle, path, readResult.text);
+                TrackUpdate(readResult.text);
                 workspaceIndexComplete = false;
+            } else {
+                ProjectIndex.RemoveFile(handle, path);
+                contentGeneration = contentGeneration + 1;
+                workspaceIndexComplete = false;
+                MarkWorkspaceIndexIncomplete(
+                    "Workspace index could not read " + IO.Path.Name(path));
             }
         }
     }
@@ -496,6 +628,7 @@ class ProjectIndexer {
     hide func TrackUpdate(content: String) {
         updateCount = updateCount + 1;
         updateBytes = updateBytes + Str.get_Length(content);
+        contentGeneration = contentGeneration + 1;
     }
 
     /// @brief Fetch the next bounded runtime file-index page.
@@ -518,6 +651,9 @@ class ProjectIndexer {
             var page = FileIndex.Page(currentRoot, ".zia", CurrentIndexIgnores(), false,
                                       pendingIndexOffset, INDEX_FILE_PAGE_SIZE);
             if Map.GetBool(page, "valid") == false {
+                MarkWorkspaceIndexIncomplete(
+                    "Workspace index could not enumerate "
+                    + IO.Path.Name(currentRoot));
                 AdvanceIndexRoot();
                 continue;
             }
@@ -526,10 +662,10 @@ class ProjectIndexer {
             pendingIndexOffset = Map.GetInt(page, "nextOffset");
             pendingIndexDone = false;
             workspaceIndexEntryCount = workspaceIndexEntryCount + PageEntryCount(pendingIndexFiles);
-            workspaceIndexTruncated = workspaceIndexTruncated or Map.GetBool(page, "truncated");
-            if workspaceIndexTruncated {
-                workspaceIndexStatusMessage = "Workspace index truncated at "
-                    + INDEX_ENUM_CAP + " file(s)";
+            if Map.GetBool(page, "truncated") {
+                MarkWorkspaceIndexIncomplete(
+                    "Workspace index truncated at " + INDEX_ENUM_CAP
+                    + " file(s)");
             }
             if Map.GetBool(page, "done") {
                 AdvanceIndexRoot();
@@ -571,6 +707,65 @@ class ProjectIndexer {
     hide func PageEntryCount(entries: Any) -> Integer {
         if entries == null { return 0; }
         return Seq.get_Count(entries);
+    }
+
+    /// @brief Account for live open-document overlays before disk paging.
+    /// @return False when open buffers alone exhaust a hard workspace budget.
+    hide func SeedOpenDocumentBudget() -> Boolean {
+        var i = 0;
+        while i < syncedOpenPaths.count() {
+            var path = Obj.ToString(syncedOpenPaths.get(i));
+            var key = NormalizePath(path);
+            if Map.Has(pendingIndexSeenPaths, key) == false {
+                Map.SetBool(pendingIndexSeenPaths, key, true);
+                workspaceIndexConsideredCount = workspaceIndexConsideredCount + 1;
+                if workspaceIndexConsideredCount > INDEX_MAX_WORKSPACE_FILES {
+                    MarkWorkspaceIndexIncomplete(
+                        "Workspace index exceeds " + INDEX_MAX_WORKSPACE_FILES
+                        + " Zia files");
+                    return false;
+                }
+                var content = Obj.ToString(syncedOpenContents.get(i));
+                var sourceBytes = Str.get_Length(content);
+                if sourceBytes > INDEX_MAX_SOURCE_BYTES {
+                    MarkWorkspaceIndexIncomplete(
+                        "Workspace index skipped oversized open file "
+                        + IO.Path.Name(path));
+                } else {
+                    if workspaceIndexSourceBytes + sourceBytes
+                       > INDEX_MAX_WORKSPACE_SOURCE_BYTES {
+                        MarkWorkspaceIndexIncomplete(
+                            "Workspace index exceeds the 64 MB source budget");
+                        return false;
+                    }
+                    workspaceIndexSourceBytes = workspaceIndexSourceBytes
+                                                + sourceBytes;
+                    indexedFileCount = indexedFileCount + 1;
+                }
+            }
+            i = i + 1;
+        }
+        return true;
+    }
+
+    /// @brief Mark the current workspace index partial while preserving its
+    ///        first actionable status message.
+    hide func MarkWorkspaceIndexIncomplete(message: String) {
+        workspaceIndexTruncated = true;
+        if workspaceIndexStatusMessage == "" {
+            workspaceIndexStatusMessage = message;
+        }
+    }
+
+    /// @brief End paging after a hard file or aggregate source limit.
+    hide func StopWorkspaceEnumeration() {
+        pendingIndexFiles = null;
+        pendingIndexPos = 0;
+        pendingIndexRootIndex = rootPaths.count();
+        pendingIndexOffset = 0;
+        pendingIndexDone = true;
+        indexing = false;
+        workspaceIndexComplete = true;
     }
 
     expose func Definition(path: String,

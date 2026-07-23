@@ -93,12 +93,6 @@ InitArraySortKey elfInitArraySortKey(const std::string &name) {
     return key;
 }
 
-/// @brief Detect Mach-O __mod_init_func / __mod_term_func sections.
-bool isMachOModInitTermSection(const std::string &name) {
-    return name.find("__mod_init_func") != std::string::npos ||
-           name.find("__mod_term_func") != std::string::npos;
-}
-
 /// @brief Detect Mach-O sections whose original segment is data-like.
 /// @details Some synthetic inputs carry Mach-O section names but not all reader
 ///          metadata flags. The preserved name is still enough to keep them in

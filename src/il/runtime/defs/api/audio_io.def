@@ -119,6 +119,7 @@ RT_FUNC(DirExists,     rt_dir_exists,      "Zanna.IO.Dir.Exists",     "i1(str)")
 RT_FUNC(DirEntries,    rt_dir_entries_seq, "Zanna.IO.Dir.Entries",    "seq<str>(str)")
 RT_FUNC(DirFiles,      rt_dir_files,       "Zanna.IO.Dir.Files",      "seq<str>(str)")
 RT_FUNC(DirList,       rt_dir_list,        "Zanna.IO.Dir.List",       "seq<str>(str)")
+RT_FUNC(DirPage,       rt_dir_page,        "Zanna.IO.Dir.Page",       "obj<Zanna.Collections.Map>(str,i64,i64)")
 RT_FUNC(DirMake,       rt_dir_make,        "Zanna.IO.Dir.Make",       "void(str)")
 RT_FUNC(DirMakeAll,    rt_dir_make_all,    "Zanna.IO.Dir.MakeAll",    "void(str)")
 RT_FUNC(DirMove,       rt_dir_move,        "Zanna.IO.Dir.Move",       "void(str,str)")
@@ -157,6 +158,7 @@ RT_FUNC(FileAppendLine,   rt_io_file_append_line,    "Zanna.IO.File.AppendLine",
 RT_FUNC(FileCopy,         rt_file_copy,              "Zanna.IO.File.Copy",         "void(str,str)")
 RT_FUNC(FileDelete,       rt_io_file_delete,         "Zanna.IO.File.Delete",       "void(str)")
 RT_FUNC(FileExists,       rt_io_file_exists,         "Zanna.IO.File.Exists",       "i1(str)")
+RT_FUNC(FileSame,         rt_file_same,              "Zanna.IO.File.SameFile",     "i1(str,str)")
 RT_FUNC(FileModified,     rt_file_modified,          "Zanna.IO.File.Modified",     "i64(str)")
 RT_FUNC(FileMove,         rt_file_move,              "Zanna.IO.File.Move",         "void(str,str)")
 RT_FUNC(FileMoveOver,     rt_file_move_over,         "Zanna.IO.File.MoveOver",     "void(str,str)")
@@ -177,6 +179,7 @@ RT_FUNC(PathAbs,     rt_path_abs,      "Zanna.IO.Path.Absolute",     "str(str)")
 RT_FUNC(PathDir,     rt_path_dir,      "Zanna.IO.Path.Directory",     "str(str)")
 RT_FUNC(PathExt,     rt_path_ext,      "Zanna.IO.Path.Extension",     "str(str)")
 RT_FUNC(PathIsAbs,   rt_path_is_abs,   "Zanna.IO.Path.IsAbsolute",   "i1(str)")
+RT_FUNC(PathIsLink,  rt_path_is_link,  "Zanna.IO.Path.IsLink",       "i1(str)")
 RT_FUNC(PathJoin,    rt_path_join,     "Zanna.IO.Path.Join",    "str(str,str)")
 RT_FUNC(PathName,    rt_path_name,     "Zanna.IO.Path.Name",    "str(str)")
 RT_FUNC(PathNorm,    rt_path_norm,     "Zanna.IO.Path.Normalize",    "str(str)")
@@ -208,6 +211,8 @@ RT_FUNC(WorkspaceEditValidate, rt_workspace_edit_validate, "Zanna.Workspace.Edit
 RT_FUNC(WorkspaceEditApply, rt_workspace_edit_apply, "Zanna.Workspace.Edit.Apply", "obj<Zanna.Collections.Map>(obj)")
 RT_FUNC(WorkspaceEditValidateInRoot, rt_workspace_edit_validate_in_root, "Zanna.Workspace.Edit.ValidateInRoot", "obj<Zanna.Collections.Map>(obj,str)")
 RT_FUNC(WorkspaceEditApplyInRoot, rt_workspace_edit_apply_in_root, "Zanna.Workspace.Edit.ApplyInRoot", "obj<Zanna.Collections.Map>(obj,str)")
+RT_FUNC(WorkspaceEditValidateInRoots, rt_workspace_edit_validate_in_roots, "Zanna.Workspace.Edit.ValidateInRoots", "obj<Zanna.Collections.Map>(obj,obj)")
+RT_FUNC(WorkspaceEditApplyInRoots, rt_workspace_edit_apply_in_roots, "Zanna.Workspace.Edit.ApplyInRoots", "obj<Zanna.Collections.Map>(obj,obj)")
 
 //=============================================================================
 // IO - ASSETS
@@ -267,12 +272,14 @@ RT_CLASS_END()
 /// @details
 /// `Zanna.Workspace.Edit` is a static runtime surface and does not require an instance. Its public
 /// Its public surface exposes operations including `Validate`, `Apply`, `ValidateInRoot`,
-/// `ApplyInRoot`.
+/// `ApplyInRoot`, `ValidateInRoots`, and `ApplyInRoots`.
 RT_CLASS_BEGIN("Zanna.Workspace.Edit", WorkspaceEdit, "none", none)
-    RT_METHOD("Validate",       "obj<Zanna.Collections.Map>(obj)",     WorkspaceEditValidate)
-    RT_METHOD("Apply",          "obj<Zanna.Collections.Map>(obj)",     WorkspaceEditApply)
-    RT_METHOD("ValidateInRoot", "obj<Zanna.Collections.Map>(obj,str)", WorkspaceEditValidateInRoot)
-    RT_METHOD("ApplyInRoot",    "obj<Zanna.Collections.Map>(obj,str)", WorkspaceEditApplyInRoot)
+    RT_METHOD("Validate",        "obj<Zanna.Collections.Map>(obj)",     WorkspaceEditValidate)
+    RT_METHOD("Apply",           "obj<Zanna.Collections.Map>(obj)",     WorkspaceEditApply)
+    RT_METHOD("ValidateInRoot",  "obj<Zanna.Collections.Map>(obj,str)", WorkspaceEditValidateInRoot)
+    RT_METHOD("ApplyInRoot",     "obj<Zanna.Collections.Map>(obj,str)", WorkspaceEditApplyInRoot)
+    RT_METHOD("ValidateInRoots", "obj<Zanna.Collections.Map>(obj,obj)", WorkspaceEditValidateInRoots)
+    RT_METHOD("ApplyInRoots",    "obj<Zanna.Collections.Map>(obj,obj)", WorkspaceEditApplyInRoots)
 RT_CLASS_END()
 
 //=============================================================================

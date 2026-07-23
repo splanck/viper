@@ -1,0 +1,100 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/breadcrumb_index_probe.zia
+// Purpose: Verify bounded, revision-safe breadcrumb function indexing.
+// Key invariants:
+//   - A caller-selected line budget is never expanded by hidden whole-buffer
+//     work inside the index.
+//   - Names become observable only after the caret line has been scanned.
+//   - Path, revision, and line-count changes discard every stale marker.
+// Ownership/Lifetime: The probe owns one in-memory index and no GUI resources.
+// Links: zannastudio/src/editor/breadcrumb_index.zia,
+//        zannastudio/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
+module breadcrumb_index_probe;
+
+bind "../editor/breadcrumb_index";
+
+bind Terminal = Zanna.Terminal;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var index = new breadcrumb_index.IncrementalBreadcrumbIndex();
+    if index.EnsureSource("large.zia", 10, 100000) == false {
+        fail("initial source did not reset");
+        return;
+    }
+
+    // Simulate one frame with a strict 32-line budget. A 100,000-line source
+    // must retain exactly 32 consumed lines; the index never owns the source.
+    var budget = 0;
+    while budget < 32 {
+        var line = "var value = 0;";
+        if index.nextLine == 1 { line = "func First() {"; }
+        index.PumpLine(line);
+        budget = budget + 1;
+    }
+    if index.scannedLineCount != 32 or index.nextLine != 33 {
+        fail("line budget was not exact");
+        return;
+    }
+    if index.IsReadyForLine(32) == false or index.IsReadyForLine(33) {
+        fail("readiness crossed an unscanned line");
+        return;
+    }
+    if index.EnclosingName(32) != "First" or index.EnclosingName(33) != "" {
+        fail("partial index exposed an incorrect function");
+        return;
+    }
+
+    while index.nextLine <= 80 {
+        var laterLine = "var later = 1;";
+        if index.nextLine == 70 { laterLine = "expose func Later() {"; }
+        index.PumpLine(laterLine);
+    }
+    if index.EnclosingName(69) != "First" or index.EnclosingName(70) != "Later"
+       or index.EnclosingName(80) != "Later" {
+        fail("nearest declaration lookup was incorrect");
+        return;
+    }
+
+    var resetCount = index.resetCount;
+    if index.EnsureSource("large.zia", 10, 100000)
+       or index.resetCount != resetCount
+       or index.scannedLineCount != 80 {
+        fail("stable source identity discarded the cache");
+        return;
+    }
+
+    if index.EnsureSource("large.zia", 11, 100000) == false
+       or index.scannedLineCount != 0
+       or index.markers.count() != 0
+       or index.EnclosingName(1) != "" {
+        fail("revision change retained stale markers");
+        return;
+    }
+    index.PumpLine("hide func Revised() {");
+    if index.EnclosingName(1) != "Revised" {
+        fail("revised declaration was not indexed");
+        return;
+    }
+
+    if index.EnsureSource("other.zia", 11, 1) == false
+       or index.scannedLineCount != 0
+       or index.markers.count() != 0 {
+        fail("path change retained stale markers");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

@@ -1,0 +1,250 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/services/diff_job.zia
+// Purpose: Compute bounded side-by-side diffs away from Studio's UI thread.
+// Key invariants:
+//   - Workers own immutable text/title requests and never borrow GUI objects.
+//   - At most one request runs and one latest replacement waits to run.
+//   - Source bytes, combined lines, edit trace, and retained rows are bounded.
+// Ownership/Lifetime:
+//   - DiffJob owns requests until Async.RunOwned completes.
+//   - The UI owner must call CancelAndWait before runtime teardown.
+// Links: zannastudio/src/services/diff_engine.zia,
+//        zannastudio/src/ui/diff_view.zia
+//
+//===----------------------------------------------------------------------===//
+
+module diff_job;
+
+bind "diff_engine";
+
+bind Async = Zanna.Threads.Async;
+bind Future = Zanna.Threads.Future;
+bind Monitor = Zanna.Threads.Monitor;
+bind Str = Zanna.String;
+
+final MAX_DIFF_SOURCE_CHARS = 4000000;
+final MAX_DIFF_TOTAL_CHARS = 8000000;
+final MAX_DIFF_TOTAL_LINES = 20000;
+final MAX_DIFF_ROWS = 4000;
+final DIFF_SHUTDOWN_WAIT_MS = 5000;
+
+/// @brief Immutable diff input plus worker-published result state.
+class DiffRequest {
+    expose Integer generation;
+    expose String title;
+    expose String leftText;
+    expose String rightText;
+    expose Boolean cancelled;
+    expose Boolean succeeded;
+    expose diff_engine.DiffBuildResult result;
+    expose String reason;
+    expose String error;
+
+    expose func init() {
+        generation = 0;
+        title = "";
+        leftText = "";
+        rightText = "";
+        cancelled = false;
+        succeeded = false;
+        result = null;
+        reason = "";
+        error = "";
+    }
+}
+
+/// @brief Read a request's cooperative cancellation flag safely.
+func RequestIsCancelled(request: DiffRequest) -> Boolean {
+    if request == null { return true; }
+    Monitor.Enter(request);
+    var cancelled = request.cancelled;
+    Monitor.Exit(request);
+    return cancelled;
+}
+
+/// @brief Execute one bounded diff request on an owned worker.
+func RunDiff(request: DiffRequest) -> Any {
+    if request == null or RequestIsCancelled(request) { return request; }
+    var leftChars = Str.get_Length(request.leftText);
+    var rightChars = Str.get_Length(request.rightText);
+    var reason = "";
+    if leftChars > MAX_DIFF_SOURCE_CHARS
+       or rightChars > MAX_DIFF_SOURCE_CHARS
+       or leftChars + rightChars > MAX_DIFF_TOTAL_CHARS {
+        reason = "source_too_large";
+    } else {
+        var lineCount = Str.Count(request.leftText, "\n")
+                        + Str.Count(request.rightText, "\n") + 2;
+        if lineCount > MAX_DIFF_TOTAL_LINES {
+            reason = "too_many_lines";
+        }
+    }
+
+    var result: diff_engine.DiffBuildResult = null;
+    if reason == "" and RequestIsCancelled(request) == false {
+        result = diff_engine.BuildRowsCapped(request.leftText,
+                                             request.rightText,
+                                             MAX_DIFF_ROWS);
+    }
+
+    Monitor.Enter(request);
+    if request.cancelled == false {
+        request.result = result;
+        request.reason = reason;
+        request.succeeded = true;
+        request.error = "";
+    }
+    Monitor.Exit(request);
+    return request;
+}
+
+/// @brief Serial latest-wins worker for reusable diff overlays.
+class DiffJob {
+    expose DiffRequest activeRequest;
+    expose DiffRequest pendingRequest;
+    expose DiffRequest completedRequest;
+    expose Any activeFuture;
+    expose Integer nextGeneration;
+    expose Integer queuedCount;
+    expose Integer startedCount;
+    expose Integer completedCount;
+    expose Integer cancelledCount;
+    expose Integer coalescedCount;
+    expose String lastError;
+
+    expose func init() {
+        activeRequest = null;
+        pendingRequest = null;
+        completedRequest = null;
+        activeFuture = null;
+        nextGeneration = 1;
+        queuedCount = 0;
+        startedCount = 0;
+        completedCount = 0;
+        cancelledCount = 0;
+        coalescedCount = 0;
+        lastError = "";
+    }
+
+    /// @brief Queue immutable texts, replacing obsolete queued work.
+    expose func Queue(title: String,
+                      leftText: String,
+                      rightText: String) -> Integer {
+        var request = new DiffRequest();
+        request.generation = nextGeneration;
+        request.title = title;
+        request.leftText = leftText;
+        request.rightText = rightText;
+        nextGeneration = nextGeneration + 1;
+        queuedCount = queuedCount + 1;
+        completedRequest = null;
+
+        if activeFuture == null {
+            StartRequest(request);
+        } else {
+            MarkCancelled(activeRequest);
+            if pendingRequest != null {
+                pendingRequest.cancelled = true;
+                coalescedCount = coalescedCount + 1;
+            }
+            pendingRequest = request;
+        }
+        return request.generation;
+    }
+
+    /// @brief Publish finished work and start the newest replacement request.
+    expose func Pump() -> Boolean {
+        if activeFuture != null and Future.get_IsDone(activeFuture) {
+            var finished = activeRequest;
+            if Future.get_IsError(activeFuture) {
+                finished.succeeded = false;
+                finished.error = Future.get_Error(activeFuture);
+            }
+            if finished.cancelled == false {
+                completedRequest = finished;
+                completedCount = completedCount + 1;
+                lastError = finished.error;
+            }
+            activeFuture = null;
+            activeRequest = null;
+        }
+        if activeFuture == null and pendingRequest != null {
+            var next = pendingRequest;
+            pendingRequest = null;
+            StartRequest(next);
+        }
+        return completedRequest != null;
+    }
+
+    expose func TakeCompleted() -> DiffRequest {
+        var request = completedRequest;
+        completedRequest = null;
+        return request;
+    }
+
+    /// @brief Discard pending/published work while an active calculation drains.
+    expose func Cancel() {
+        completedRequest = null;
+        if pendingRequest != null {
+            pendingRequest.cancelled = true;
+            pendingRequest = null;
+            coalescedCount = coalescedCount + 1;
+        }
+        MarkCancelled(activeRequest);
+    }
+
+    /// @brief Drain the owned callback before runtime teardown.
+    expose func CancelAndWait() -> Boolean {
+        Cancel();
+        if activeFuture == null { return true; }
+        var finished = false;
+        try {
+            finished = Future.WaitFor(activeFuture, DIFF_SHUTDOWN_WAIT_MS);
+        } catch {
+            return false;
+        }
+        if finished == false { return false; }
+        Pump();
+        return activeFuture == null;
+    }
+
+    expose func IsBusy() -> Boolean {
+        return activeFuture != null or pendingRequest != null;
+    }
+
+    hide func StartRequest(request: DiffRequest) -> Boolean {
+        if request == null { return false; }
+        activeRequest = request;
+        try {
+            activeFuture = Async.RunOwned(&RunDiff, request);
+        } catch {
+            activeFuture = null;
+        }
+        if activeFuture == null {
+            request.succeeded = false;
+            request.error = "Could not start diff worker";
+            completedRequest = request;
+            activeRequest = null;
+            lastError = request.error;
+            return false;
+        }
+        startedCount = startedCount + 1;
+        return true;
+    }
+
+    hide func MarkCancelled(request: DiffRequest) {
+        if request == null { return; }
+        Monitor.Enter(request);
+        if request.cancelled == false {
+            request.cancelled = true;
+            cancelledCount = cancelledCount + 1;
+        }
+        Monitor.Exit(request);
+    }
+}

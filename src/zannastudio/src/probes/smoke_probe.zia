@@ -11,6 +11,10 @@
 // Key invariants:
 //   - Probe exits with RESULT: ok on successful startup/render coverage.
 //   - Hidden/no-activate graphics modes remain usable for automated tests.
+//   - Compact editor lanes suppress the minimap and wider lanes restore it.
+// Ownership/Lifetime: The probe owns and destroys its shell and editor models.
+// Links: zannastudio/src/ui/app_shell.zia,
+//        zannastudio/src/ui/workbench_shell.zia
 //
 //===----------------------------------------------------------------------===//
 
@@ -114,6 +118,36 @@ func main() {
     shell.SetStatusLeft("Smoke");
     shell.SetStatusCenter("Ln 1, Col 1");
     shell.SetStatusRight(doc.fileName);
+
+    // The supported window minimum is still too narrow for the sidebar,
+    // editor, and a permanently reserved minimap. Keep the user's enabled
+    // preference, but reclaim the minimap width until the editor lane grows.
+    shell.ApplyWorkbenchWindowConstraints();
+    shell.app.SetWindowSize(720, 520);
+    shell.Poll();
+    shell.Render();
+    shell.Poll();
+    shell.Render();
+    if shell.workbench.minimap.IsVisible()
+       or shell.workbench.minimapRequestedVisible == false {
+        failed = "compact editor retained minimap";
+    } else {
+        shell.app.SetWindowSize(1100, 700);
+        shell.Poll();
+        shell.Render();
+        shell.Poll();
+        shell.Render();
+        if shell.workbench.minimap.IsVisible() == false {
+            failed = "wide editor did not restore minimap";
+        } else {
+            shell.workbench.SetMinimapRequestedVisible(false);
+            shell.Render();
+            if shell.workbench.minimap.IsVisible() {
+                failed = "disabled minimap preference was ignored";
+            }
+            shell.workbench.SetMinimapRequestedVisible(true);
+        }
+    }
 
     if failed != "" {
         shell.Destroy();

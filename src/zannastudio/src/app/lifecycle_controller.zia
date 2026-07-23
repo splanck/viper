@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/app/lifecycle_controller.zia
+// Purpose: Centralize clean Studio shutdown and debugger-overlay lifecycle work.
+// Key invariants:
+//   - Every confirmed exit persists one recovery-free clean session.
+//   - Crash markers are cleared only after services have stopped successfully.
+// Ownership/Lifetime:
+//   - Borrows application-owned controllers for the duration of each operation.
+// Links: zannastudio/src/main.zia, zannastudio/src/core/recovery_store.zia
+//
+//===----------------------------------------------------------------------===//
+
 module lifecycle_controller;
 
 bind "../app/file_watch_controller";
@@ -7,6 +25,7 @@ bind "../build/breakpoints";
 bind "../build/debug_session";
 bind "../core/document_manager";
 bind "../core/project_manager";
+bind "../core/recovery_store";
 bind "../core/session";
 bind "../commands/file_commands";
 bind "../editor/editor_engine";
@@ -50,6 +69,7 @@ bind Zanna.GUI;
 /// @param indexer Semantic workspace indexer to destroy.
 /// @param breakpointStore Breakpoint persistence store.
 /// @param sessionMgr Session persistence store.
+/// @param recoveryStore Crash-recovery store whose lock is retired last.
 expose func CleanupIde(shell: app_shell.AppShell,
                        docMgr: document_manager.DocumentManager,
                        projMgr: project_manager.ProjectManager,
@@ -61,15 +81,22 @@ expose func CleanupIde(shell: app_shell.AppShell,
                        workspaceWatcherState: workspace_watcher.WorkspaceWatcherState,
                        indexer: project_index.ProjectIndexer,
                        breakpointStore: breakpoints.BreakpointStore,
-                       sessionMgr: session.SessionManager) {
-    if shell != null {
-        file_commands.SaveEditorState(docMgr, engine);
-    }
+                       sessionMgr: session.SessionManager,
+                       recoveryStore: recovery_store.RecoveryStore) {
+    file_commands.SaveEditorState(docMgr, engine);
     if breakpointStore != null {
-        breakpointStore.Save();
+        if breakpointStore.Save() == false and shell != null {
+            shell.SetStatusLeft("Could not save breakpoints");
+            GUI.Toast.Error("Could not save breakpoints");
+        }
     }
+    var sessionSaved = true;
     if sessionMgr != null {
-        sessionMgr.Save(docMgr, projMgr);
+        sessionSaved = sessionMgr.SaveCleanExit(docMgr, projMgr);
+        if sessionSaved == false and shell != null {
+            shell.SetStatusLeft("Could not save session; recovery data retained");
+            GUI.Toast.Error("Could not save Studio session");
+        }
     }
     if buildSys != null and buildSys.IsActive() {
         buildSys.Stop();
@@ -86,6 +113,12 @@ expose func CleanupIde(shell: app_shell.AppShell,
     workspace_watcher.StopWorkspaceWatcher(workspaceWatcherState);
     if indexer != null {
         indexer.Destroy();
+    }
+    // Keep the lock until all persistent state is written and background
+    // services are stopped. A process failure before this point must remain
+    // recoverable on the next launch.
+    if recoveryStore != null and sessionSaved {
+        recoveryStore.MarkCleanExit();
     }
     if shell != null {
         shell.Destroy();
@@ -150,7 +183,7 @@ expose func ApplyDebugBreakpointOverlay(shell: app_shell.AppShell,
     } else if action == debug_breakpoint_overlay.DEBUG_BP_ACTION_LOGPOINT {
         store.SetLogMessage(path, line, value);
     }
-    store.Save();
+    var breakpointSaved = store.Save();
     var doc = docMgr.GetActive();
     if doc != null {
         store.ApplyToEditor(engine, doc!);
@@ -170,6 +203,10 @@ expose func ApplyDebugBreakpointOverlay(shell: app_shell.AppShell,
         } else {
             shell.SetStatusLeft("Logpoint set at line " + line);
         }
+    }
+    if breakpointSaved == false {
+        shell.SetStatusLeft("Breakpoint changed, but could not be saved");
+        GUI.Toast.Error("Could not save breakpoints");
     }
     overlay.Finish();
 }

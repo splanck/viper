@@ -3179,6 +3179,15 @@ int64_t rt_app_get_monitor_height(void *app);
 /// @brief Resize the OS window to the given dimensions.
 void rt_app_set_window_size(void *app, int64_t w, int64_t h);
 
+/// @brief Set the minimum native client/content size of the app window.
+/// @details Dimensions are logical pixels, matching SetWindowSize. Requests
+///          below one are clamped to one. The constraint applies to both future
+///          programmatic resizes and interactive desktop-window resizing.
+/// @param app GUI application handle.
+/// @param w Minimum logical window width.
+/// @param h Minimum logical window height.
+void rt_app_set_minimum_size(void *app, int64_t w, int64_t h);
+
 /// @brief Get the current default font size for the application.
 /// @details Compatibility alias for @ref rt_app_get_logical_font_size; the returned value is in
 ///          logical points and does not include window DPI or user UI zoom.
@@ -5610,13 +5619,15 @@ void *rt_floatingpanel_new(void *root);
 /// @brief Destroy a floating panel and its overlay children.
 void rt_floatingpanel_destroy(void *panel);
 
-/// @brief Set absolute screen position.
+/// @brief Set absolute root-relative position in logical units.
+/// @details Coordinates cross the owning app's effective UI scale exactly once.
 void rt_floatingpanel_set_position(void *panel, double x, double y);
 
 /// @brief Center the panel within its parent (root) bounds, clamped to the top-left.
 void rt_floatingpanel_center_in_parent(void *panel);
 
-/// @brief Set panel dimensions.
+/// @brief Set panel dimensions in logical units.
+/// @details Lengths cross the owning app's effective UI scale exactly once.
 void rt_floatingpanel_set_size(void *panel, double w, double h);
 
 /// @brief Show or hide the panel (1 = show, 0 = hide).

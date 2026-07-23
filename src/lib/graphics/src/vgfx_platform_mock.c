@@ -931,6 +931,12 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     mock_pending_enqueue(platform, &event);
 }
 
+void vgfx_platform_set_window_min_size(struct vgfx_window *win, int32_t w, int32_t h) {
+    (void)win;
+    (void)w;
+    (void)h;
+}
+
 //===----------------------------------------------------------------------===//
 // End of Mock Backend
 //===----------------------------------------------------------------------===//

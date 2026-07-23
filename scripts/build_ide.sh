@@ -7,15 +7,18 @@
 #===----------------------------------------------------------------------===#
 #
 # File: scripts/build_ide.sh
-# Purpose: Build Zanna Studio as a standalone native binary on Unix hosts.
+# Purpose: Build and stage Zanna Studio native outputs on Unix hosts.
 # Key invariants:
 #   - Uses an existing Zanna compiler from the configured build tree.
 #   - Writes build metadata beside both primary and compatibility outputs.
+#   - macOS keeps the `zannastudio` command while executing a sibling native
+#     payload named `Zanna Studio` for the authored Cocoa application identity.
 # Ownership/Lifetime:
 #   - Temporary diagnostics are removed on exit; built outputs remain caller-owned.
 # Cross-platform touchpoints:
 #   - Handles Unix and Windows-form paths when an .exe compiler is selected.
-# Links: build_ide_win.ps1, src/zannastudio/README.md
+# Links: build_ide_win.ps1, src/zannastudio/README.md,
+#        docs/adr/0149-macos-zanna-studio-application-identity.md
 #
 #===----------------------------------------------------------------------===#
 
@@ -32,6 +35,9 @@ SKIP_COMPAT_COPY="${ZANNA_IDE_SKIP_COMPAT_COPY:-0}"
 ZANNA_BUILD_TYPE="${ZANNA_BUILD_TYPE:-Debug}"
 ZANNA=""
 ZANNA_IS_WINDOWS=0
+HOST_SYSTEM="$(uname -s 2>/dev/null || printf 'unknown')"
+NATIVE_OUTPUT_FILE=""
+COMPAT_NATIVE_OUTPUT_FILE=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -134,6 +140,18 @@ if [[ $ZANNA_IS_WINDOWS -eq 1 ]]; then
     fi
 fi
 
+NATIVE_OUTPUT_FILE="$OUTPUT_FILE"
+COMPAT_NATIVE_OUTPUT_FILE="$COMPAT_OUTPUT_FILE"
+if [[ "$HOST_SYSTEM" == "Darwin" ]]; then
+    NATIVE_OUTPUT_FILE="$(dirname "$OUTPUT_FILE")/Zanna Studio"
+    COMPAT_NATIVE_OUTPUT_FILE="$(dirname "$COMPAT_OUTPUT_FILE")/Zanna Studio"
+    if [[ "$NATIVE_OUTPUT_FILE" == "$OUTPUT_FILE" ||
+          "$COMPAT_NATIVE_OUTPUT_FILE" == "$COMPAT_OUTPUT_FILE" ]]; then
+        echo -e "${RED}Error: the macOS launcher path must not be named 'Zanna Studio'${NC}"
+        exit 1
+    fi
+fi
+
 if [[ ! -x "$ZANNA" ]]; then
     echo -e "${RED}Error: zanna tool not found at $ZANNA${NC}"
     echo "Run './scripts/build_zanna_mac.sh' or './scripts/build_zanna_linux.sh' first"
@@ -144,9 +162,15 @@ mkdir -p "$(dirname "$OUTPUT_FILE")"
 
 if [[ $CLEAN -eq 1 ]]; then
     rm -f "$OUTPUT_FILE"
+    if [[ "$NATIVE_OUTPUT_FILE" != "$OUTPUT_FILE" ]]; then
+        rm -f "$NATIVE_OUTPUT_FILE"
+    fi
     rm -f "$(dirname "$OUTPUT_FILE")/zannastudio.buildinfo"
     if [[ "$OUTPUT_FILE" != "$COMPAT_OUTPUT_FILE" ]]; then
         rm -f "$COMPAT_OUTPUT_FILE"
+        if [[ "$COMPAT_NATIVE_OUTPUT_FILE" != "$COMPAT_OUTPUT_FILE" ]]; then
+            rm -f "$COMPAT_NATIVE_OUTPUT_FILE"
+        fi
         rm -f "$(dirname "$COMPAT_OUTPUT_FILE")/zannastudio.buildinfo"
     fi
 fi
@@ -174,6 +198,7 @@ build_macos() {
             ;;
     esac
     build_native "$target_arch"
+    stage_macos_launcher "$OUTPUT_FILE"
 }
 
 build_linux() {
@@ -197,7 +222,7 @@ build_native() {
     local target_arch="$1"
     local ide_arg output_arg build_dir_arg
     ide_arg="$(path_for_zanna "$IDE_DIR")"
-    output_arg="$(path_for_zanna "$OUTPUT_FILE")"
+    output_arg="$(path_for_zanna "$NATIVE_OUTPUT_FILE")"
     build_dir_arg="$(path_for_zanna "$BUILD_DIR")"
     echo -n "  Zanna build (--arch $target_arch)... "
     if ! ZANNA_BUILD_DIR="$build_dir_arg" "$ZANNA" build "$ide_arg" --arch "$target_arch" -o "$output_arg" 2>"$FRONTEND_ERR"; then
@@ -208,8 +233,23 @@ build_native() {
     echo -e "${GREEN}OK${NC}"
 }
 
+stage_macos_launcher() {
+    local launcher_path="$1"
+    local launcher_template="$ROOT_DIR/cmake/ZannaStudioMacLauncher.sh"
+    mkdir -p "$(dirname "$launcher_path")"
+    cp "$launcher_template" "$launcher_path"
+    chmod 0755 "$launcher_path"
+}
+
 build_info_text() {
     local binary_path="$1"
+    local version="unknown"
+    if [[ -f "$ROOT_DIR/src/buildmeta/VERSION" ]]; then
+        IFS= read -r version <"$ROOT_DIR/src/buildmeta/VERSION" || true
+        if [[ -z "$version" ]]; then
+            version="unknown"
+        fi
+    fi
     local timestamp
     timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     local revision
@@ -224,8 +264,8 @@ build_info_text() {
     else
         dirty=" dirty"
     fi
-    printf 'Build: %s\nSource: %s%s\nOutput: %s\nZanna: %s\n' \
-        "$timestamp" "$revision" "$dirty" "$binary_path" "$ZANNA"
+    printf 'Zanna Studio %s\nBuild: %s\nSource: %s%s\nOutput: %s\nZanna: %s\n' \
+        "$version" "$timestamp" "$revision" "$dirty" "$binary_path" "$ZANNA"
 }
 
 write_build_info() {
@@ -244,10 +284,17 @@ mirror_compat_output() {
         return 0
     fi
     mkdir -p "$(dirname "$COMPAT_OUTPUT_FILE")"
-    cp -p "$OUTPUT_FILE" "$COMPAT_OUTPUT_FILE"
-    write_build_info "$COMPAT_OUTPUT_FILE"
+    if [[ "$HOST_SYSTEM" == "Darwin" ]]; then
+        if [[ "$NATIVE_OUTPUT_FILE" != "$COMPAT_NATIVE_OUTPUT_FILE" ]]; then
+            cp -p "$NATIVE_OUTPUT_FILE" "$COMPAT_NATIVE_OUTPUT_FILE"
+        fi
+        stage_macos_launcher "$COMPAT_OUTPUT_FILE"
+    else
+        cp -p "$OUTPUT_FILE" "$COMPAT_OUTPUT_FILE"
+    fi
+    write_build_info "$COMPAT_NATIVE_OUTPUT_FILE"
     local compat_size
-    compat_size=$(ls -lh "$COMPAT_OUTPUT_FILE" | awk '{print $5}')
+    compat_size=$(ls -lh "$COMPAT_NATIVE_OUTPUT_FILE" | awk '{print $5}')
     echo -e "${GREEN}Compatibility copy: $COMPAT_OUTPUT_FILE ($compat_size)${NC}"
 }
 
@@ -256,7 +303,7 @@ echo "Source: $IDE_DIR"
 echo "Output: $OUTPUT_FILE"
 echo "=============================================="
 
-case "$(uname -s 2>/dev/null)" in
+case "$HOST_SYSTEM" in
     Darwin)
         build_macos
         ;;
@@ -269,8 +316,11 @@ case "$(uname -s 2>/dev/null)" in
         ;;
 esac
 
-size=$(ls -lh "$OUTPUT_FILE" | awk '{print $5}')
-write_build_info "$OUTPUT_FILE"
+size=$(ls -lh "$NATIVE_OUTPUT_FILE" | awk '{print $5}')
+write_build_info "$NATIVE_OUTPUT_FILE"
 mirror_compat_output
 echo -e "${GREEN}Built: $OUTPUT_FILE ($size)${NC}"
+if [[ "$NATIVE_OUTPUT_FILE" != "$OUTPUT_FILE" ]]; then
+    echo "Native payload: $NATIVE_OUTPUT_FILE"
+fi
 echo "Build info: $(dirname "$OUTPUT_FILE")/zannastudio.buildinfo"

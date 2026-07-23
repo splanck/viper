@@ -1,6 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/command_catalog.zia
+// Purpose: Declare Studio commands and platform-native default shortcuts.
+// Key invariants:
+//   - One catalog supplies menu, palette, toolbar, and global-shortcut metadata.
+//   - Canonical Ctrl defaults materialize as Command on macOS.
+//   - Explicit user overrides are preserved verbatim by CommandRegistry.
+// Ownership/Lifetime: Returns fresh command specifications to each registry.
+// Links: zannastudio/src/commands/command_registry.zia,
+//        zannastudio/src/ui/menu_chrome.zia
+//
+//===----------------------------------------------------------------------===//
+
 module command_catalog;
 
 bind Str = Zanna.String;
+bind Machine = Zanna.System.Machine;
 
 // ============================================================================
 // MODULE: command_catalog
@@ -56,6 +76,8 @@ expose func DefaultCommandSpecs() -> List[CommandSpec] {
     AddSpec(specs, "open", "Open File...", "Open a file from disk", "Ctrl+O", "", true);
     AddSpec(specs, "openfolder", "Open Folder...", "Open a project folder", "Ctrl+Alt+O", "", true);
     AddSpec(specs, "addfolder", "Add Folder to Workspace...", "Add another folder as a workspace root", "", "", true);
+    AddSpec(specs, "removefolder", "Remove Folder from Workspace", "Detach the selected folder without deleting its files", "", "", true);
+    AddSpec(specs, "closeworkspace", "Close Workspace", "Detach every open project folder while keeping editor tabs open", "", "", true);
     AddSpec(specs, "comparewithsaved", "Compare with Saved", "Side-by-side diff of the active document against its saved file", "", "", true);
     AddSpec(specs, "newprojectconsole", "New Project: Console App", "Scaffold a console application and open it", "", "", true);
     AddSpec(specs, "newprojectgui", "New Project: GUI App", "Scaffold a windowed application and open it", "", "", true);
@@ -188,10 +210,26 @@ func AddSpec(specs: List[CommandSpec],
     spec.label = label;
     spec.description = description;
     spec.category = CategoryForCommand(id);
-    spec.shortcut = shortcut;
+    spec.shortcut = PlatformShortcut(shortcut);
     spec.capability = capability;
     spec.showInPalette = showInPalette;
     specs.add(spec);
+}
+
+/// @brief Materialize a canonical shortcut for the current desktop platform.
+/// @details Studio's catalog uses Ctrl as its platform-primary modifier. Cocoa
+///          menus have always translated that token to Command, but global
+///          shortcuts and custom-drawn palette/context labels did not. Keeping
+///          the conversion here makes behavior and presentation agree. User
+///          overrides bypass this helper so a deliberately physical Ctrl chord
+///          remains possible on macOS.
+/// @param shortcut Canonical catalog shortcut, possibly a two-part chord.
+/// @return Command-based spelling on macOS; unchanged elsewhere.
+expose func PlatformShortcut(shortcut: String) -> String {
+    if Machine.Os == "macos" {
+        return Str.Replace(shortcut, "Ctrl+", "Cmd+");
+    }
+    return shortcut;
 }
 
 /// @brief Return the command-palette category for a command id.
@@ -203,6 +241,7 @@ func AddSpec(specs: List[CommandSpec],
 /// @return Palette category name such as File, Edit, Build, or Debug.
 expose func CategoryForCommand(id: String) -> String {
     if id == "new" or id == "open" or id == "openfolder"
+       or id == "addfolder" or id == "removefolder" or id == "closeworkspace"
        or id == "save" or id == "saveas" or id == "saveall"
        or id == "close" or id == "reload" or id == "recentfiles"
        or id == "reopenclosed" {

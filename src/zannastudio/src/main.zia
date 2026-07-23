@@ -13,6 +13,9 @@
 //   - Non-essential background work is throttled while the window is unfocused.
 //   - App-level activation is requested after startup paints so native menu
 //     ownership is available on macOS.
+//   - Native resizing cannot collapse the workbench below a usable viewport.
+//   - Split panes own distinct documents and pane focus drives tab selection.
+//   - User-authored bottom-panel sizing is persisted only after drag input settles.
 //
 //===----------------------------------------------------------------------===//
 
@@ -36,6 +39,7 @@ bind "app/explorer_action_runner";
 bind "app/lifecycle_controller";
 bind "app/language_tool_frame";
 bind "app/settings_applier";
+bind "app/startup_arguments";
 bind "scm/scm_view";
 bind "scm/scm_gutter_controller";
 bind "terminal/terminal_controller";
@@ -48,6 +52,7 @@ bind "core/session";
 bind "core/recovery_store";
 bind "editor/editor_engine";
 bind "editor/editor_tabs";
+bind "editor/breadcrumb_index";
 bind "editor/zia_query";
 bind "editor/language_service";
 bind "editor/workbench_state";
@@ -63,12 +68,16 @@ bind "editor/semantic_tokens";
 bind "editor/inlay_hints";
 bind "services/file_utils";
 bind "services/locations";
+bind "services/safe_io";
 bind "build/build_system";
 bind "build/breakpoints";
 bind "build/debug_session";
 bind "build/diagnostic";
 bind "commands/command_registry";
 bind "commands/command_context";
+bind "commands/basic_workspace_commands";
+bind "commands/diagnostic_edit_commands";
+bind "commands/zia_workspace_commands";
 bind "commands/main_command_dispatcher";
 bind "commands/file_commands";
 bind "commands/edit_commands";
@@ -76,7 +85,7 @@ bind "commands/view_commands";
 bind "app/dispatch_helpers";
 bind "commands/debug_commands";
 bind "commands/search_commands";
-bind "zia/function_scan";
+bind "commands/quick_open_commands";
 bind "services/project_templates";
 bind "ui/diff_view";
 
@@ -133,10 +142,30 @@ final WIN_HEIGHT = 800;
 final WINDOW_SIZE_PERCENT = 72;  // % of monitor size on first launch.
 final AUTO_SAVE_IDLE_MS = 1500;
 final OPEN_DOC_EXTERNAL_POLL_MS = 1000;
-final ZANNASTUDIO_VERSION = "0.1.0";
 final POLL_WAIT_BACKGROUND_MS = 8;
 final POLL_WAIT_IDLE_FOCUSED_MS = 50;
 final POLL_WAIT_IDLE_UNFOCUSED_MS = 150;
+final BREADCRUMB_SCAN_LINES_PER_FRAME = 256;
+final SESSION_RESTORE_ENTRIES_PER_PAINT = 1;
+final RECOVERY_SCAN_ENTRIES_PER_PAINT = 1;
+final PANEL_SPLIT_SAVE_IDLE_MS = 600;
+
+/// @brief Flush an unsettled bottom-panel drag before application shutdown.
+/// @details Normal frames debounce writes; shutdown consumes one last live
+///          splitter value and commits whenever either that value or an earlier
+///          debounced update is still pending.
+func FlushBottomPanelSplit(shell: app_shell.AppShell,
+                           appSettings: settings.SettingsManager,
+                           savePending: Boolean) {
+    if shell == null or appSettings == null { return; }
+    var shouldSave = savePending;
+    var changedPct = shell.toolPanels.TakeChangedSplitPercent();
+    if changedPct >= 0 {
+        appSettings.bottomPanelSplitPct = changedPct;
+        shouldSave = true;
+    }
+    if shouldSave { appSettings.Save(); }
+}
 
 /// @brief Re-point the focused-pane controllers at engine.editor after a split
 ///        or focus change. Minimap and find bar bind the widget directly; the
@@ -151,6 +180,77 @@ func RebindFocusedPane(shell: app_shell.AppShell,
     if completer != null { completer.SetEngine(engine); }
 }
 
+/// @brief Select a distinct open document for a new secondary pane.
+func SplitCompanionDocument(docMgr: document_manager.DocumentManager,
+                            primary: document.Document) -> document.Document? {
+    if docMgr == null or primary == null { return null; }
+    var i = 0;
+    while i < docMgr.GetCount() {
+        var candidate = docMgr.GetDocument(i);
+        if candidate != null and candidate! != primary { return candidate; }
+        i = i + 1;
+    }
+    return null;
+}
+
+/// @brief Open a safe two-document split, optionally explaining rejection.
+func OpenSplitWithCompanion(shell: app_shell.AppShell,
+                            docMgr: document_manager.DocumentManager,
+                            engine: editor_engine.EditorEngine,
+                            notifyOnFailure: Boolean) -> Boolean {
+    var companion = SplitCompanionDocument(docMgr, engine.currentDoc);
+    if companion == null {
+        if notifyOnFailure {
+            var reason = "Open a second file before splitting the editor";
+            shell.SetStatusLeft(reason);
+            GUI.Toast.Info(reason);
+        }
+        return false;
+    }
+    return engine.SplitRight(shell.workbench.editorRow, companion!);
+}
+
+/// @brief Align the global document/tab model with the physically focused pane.
+func SyncFocusedPaneSelection(shell: app_shell.AppShell,
+                              docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine,
+                              tabs: editor_tabs.EditorTabs) -> Boolean {
+    if shell == null or docMgr == null or engine == null or tabs == null
+       or engine.currentDoc == null {
+        return false;
+    }
+    var focused = engine.currentDoc;
+    var focusedIndex = docMgr.SetActiveDocument(focused);
+    if focusedIndex < 0 { return false; }
+    tabs.SetActive(focusedIndex);
+
+    // FocusOtherPane captures the pane it leaves. Reflect that dirty state even
+    // when typing and native focus movement arrived in the same frame.
+    var i = 0;
+    while i < docMgr.GetCount() {
+        var doc = docMgr.GetDocument(i);
+        if doc != null { tabs.SetModified(i, doc!.isModified); }
+        i = i + 1;
+    }
+
+    shell.SelectSurface(focused.kind);
+    if focused.isNew { shell.SetBreadcrumbPath(""); }
+    else { shell.SetBreadcrumbPath(focused.filePath); }
+    shell.SetStatusRight(file_commands.DocStatusLabel(focused));
+    return true;
+}
+
+/// @brief Consume and publish an engine-level pane focus transition.
+func ReconcilePaneFocus(shell: app_shell.AppShell,
+                        docMgr: document_manager.DocumentManager,
+                        engine: editor_engine.EditorEngine,
+                        tabs: editor_tabs.EditorTabs,
+                        completer: completion.CompletionController) {
+    if engine == null or engine.ConsumePaneFocusChanged() == false { return; }
+    SyncFocusedPaneSelection(shell, docMgr, engine, tabs);
+    RebindFocusedPane(shell, engine, completer);
+}
+
 func hasArg(name: String) -> Boolean {
     var i = 0;
     while i < Env.GetArgumentCount() {
@@ -160,21 +260,8 @@ func hasArg(name: String) -> Boolean {
     return false;
 }
 
-/// @brief Return the first existing file passed as a positional command-line argument.
-/// @details Windows Open With registrations pass a quoted source path directly to Zanna Studio.
-func commandLineFile() -> String {
-    var i = 0;
-    while i < Env.GetArgumentCount() {
-        var arg = Env.GetArgument(i);
-        if Str.StartsWith(arg, "-") == false and IO.File.Exists(arg) { return arg; }
-        i = i + 1;
-    }
-    return "";
-}
-
 func handleCommandLine() -> Boolean {
     if hasArg("--version") {
-        Terminal.Say("Zanna Studio " + ZANNASTUDIO_VERSION);
         Terminal.Say(build_info.BuildSummary());
         return true;
     }
@@ -254,17 +341,21 @@ func main() {
     var paletteCtrl = new command_palette_controller.CommandPaletteController();
     var fileWatchCtrl = new file_watch_controller.FileWatchController();
     var focusThrottle = new focus_throttle.FocusThrottle();
+    var basicWorkspaceCommands =
+        new basic_workspace_commands.BasicWorkspaceCommandController();
+    var diagnosticActions =
+        new diagnostic_edit_commands.DiagnosticActionController();
+    var ziaWorkspaceCommands =
+        new zia_workspace_commands.ZiaWorkspaceCommandController();
     indexer.SetScheduler(editorScheduler);
 
     shell.Build("Zanna Studio", WIN_WIDTH, WIN_HEIGHT);
     view_commands.applyShellFont(shell);
+    shell.ApplyWorkbenchWindowConstraints();
     shell.CenterAndSize(WINDOW_SIZE_PERCENT);
     shell.SetStatusLeft("Starting...");
     shell.SetStatusCenter("");
     shell.SetStatusRight("");
-    shell.Activate();
-    shell.Render();
-    shell.Activate();
 
     var overlays = new ide_overlays.IdeOverlays();
     overlays.Setup(shell);
@@ -277,6 +368,21 @@ func main() {
 
     var welcomeView = new welcome_view.WelcomeView();
     welcomeView.Setup(shell.workbench.welcomeHost, shell.workbench.editorRow);
+    // Paint a complete, truthful startup surface before synchronous settings,
+    // session, recovery, and project restoration can occupy the UI thread.
+    // This replaces the former blank split-pane frame that looked like a hung
+    // or mangled editor on larger workspaces.
+    shell.SetSidebarVisible(false);
+    welcomeView.SetStartupMode(true);
+    welcomeView.SetShown(true);
+    shell.SetWelcomeStatusMode(true);
+    // Let the platform deliver its initial show/resize events before the first
+    // paint. Activating the window earlier exposes a blank workbench while the
+    // startup widgets are still being constructed; rendering without this
+    // poll can also paint against the pre-show window extent on some backends.
+    shell.Activate();
+    shell.Poll();
+    shell.Render();
 
     engine.Setup(shell.workbench.editorRow);
     engine.editor.Focus();
@@ -321,13 +427,11 @@ func main() {
     projMgr.Setup(shell.workbench.sidebarTree);
     activityBarCtrl.Setup(shell.workbench.explorerView, shell.workbench.scmViewHost, shell.workbench.abExplorer, shell.workbench.abSourceControl);
     scmView.Setup(shell.workbench.scmViewHost);
-    diffOverlay.Setup(shell.app);
+    diffOverlay.Setup(shell);
     scmView.diffOverlay = diffOverlay;
-    if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
     terminalCtrl.Setup(shell.toolPanels.terminalPanel, shell.toolPanels.terminalPane,
                        shell.toolPanels.terminalKill, shell.toolPanels.terminalRestart);
     terminalCtrl.SetupButtons(shell.toolPanels.terminalNew, shell.toolPanels.terminalNext);
-    if projMgr.IsOpen() { terminalCtrl.SetCwd(projMgr.RootPath()); }
 
     shell.ApplyCommandShortcuts(commandRegistry);
     commandRegistry.InstallShortcuts();
@@ -341,6 +445,7 @@ func main() {
     if appSettings.keybindingOverrides != "" {
         commandRegistry.ApplyOverrides(appSettings.keybindingOverrides);
         commandRegistry.InstallShortcuts();
+        shell.ApplyCommandShortcuts(commandRegistry);
     }
     breakpointStore.Setup(appSettings.settingsPath);
     breakpointStore.Load();
@@ -354,53 +459,98 @@ func main() {
     sessionMgr.Setup(appSettings.settingsPath);
     var recoveryStore = new recovery_store.RecoveryStore();
     recoveryStore.Setup(appSettings.settingsDir);
+    file_commands.SetRecoveryStore(recoveryStore);
     var restoredCount = 0;
+    var restoreSplitRequested = false;
     if appSettings.restoreSession {
-        restoredCount = sessionMgr.Restore(docMgr, projMgr, tabs);
-        if sessionMgr.splitActive and engine.PaneCount() < 2 {
-            engine.SplitRight(shell.workbench.editorRow);
+        // Restore one durable root/tab per painted startup frame. Individual
+        // text files are already size-bounded; this outer budget prevents a
+        // large 256-tab session from making the native window look hung while
+        // all of them are validated, read, hashed, and added to the tab bar.
+        var restoreJob = sessionMgr.BeginRestore(docMgr, projMgr, tabs);
+        while restoreJob.active {
+            sessionMgr.PumpRestore(restoreJob, SESSION_RESTORE_ENTRIES_PER_PAINT);
+            var restoreProgress = sessionMgr.RestoreProgressText(restoreJob);
+            welcomeView.SetStartupProgress(restoreProgress);
+            shell.SetStatusLeft(restoreProgress);
+            shell.Poll();
+            shell.Render();
         }
+        restoredCount = restoreJob.restoredCount;
+        restoreSplitRequested = sessionMgr.splitActive;
     }
 
-    // After an unclean exit, re-open documents captured in swap files with their
-    // recovered (unsaved) content, marked modified so the user can save or
-    // discard. Then clear the swaps.
+    // Page the flat recovery directory even after a clean exit so abandoned
+    // worker staging files are retired without an unbounded Setup enumeration.
+    // On an unclean exit the same pass validates and retains bounded swap pairs.
+    var recoveryScan = recoveryStore.BeginRecoveryScan(recoveryStore.uncleanExit);
+    while recoveryScan.active {
+        recoveryStore.PumpRecoveryScan(recoveryScan, RECOVERY_SCAN_ENTRIES_PER_PAINT);
+        var recoveryScanStatus = "Cleaning recovery data: "
+            + recoveryScan.entriesScanned + " entries";
+        if recoveryStore.uncleanExit {
+            recoveryScanStatus = "Checking crash recovery: "
+                + recoveryScan.entriesScanned + " entries";
+        }
+        welcomeView.SetStartupProgress(recoveryScanStatus);
+        shell.SetStatusLeft(recoveryScanStatus);
+        shell.Poll();
+        shell.Render();
+    }
+
+    // After an unclean exit, re-open captured documents one painted item at a
+    // time. Keep swaps durable until a later save or clean shutdown so a second
+    // immediate crash cannot lose the recovered buffer.
     if recoveryStore.uncleanExit {
-        var recovered = recoveryStore.CollectRecovered();
+        var recovered = recoveryScan.records;
         var rc = recovered.count();
         var ri = 0;
         var recoveredOpened = 0;
+        var lastRecoveredIndex = -1;
         while ri < rc {
             var rec = recovered.get(ri) as recovery_store.RecoveryRecord;
-            var rdoc = docMgr.NewDocument();
-            rdoc.content = rec.content;
-            rdoc.isModified = true;
-            if rec.path != "" {
-                rdoc.filePath = rec.path;
-                rdoc.fileName = IO.Path.Name(rec.path);
-                rdoc.isNew = false;
+            var countBeforeRecovery = docMgr.GetCount();
+            var rdoc = docMgr.ApplyRecoveredText(rec.path, rec.content);
+            if docMgr.GetCount() > countBeforeRecovery {
+                tabs.AddTab(rdoc.fileName, 1);
+                tabs.SetTooltip(docMgr.activeIndex, rdoc.filePath);
             }
-            tabs.AddTab(rdoc.fileName, 1);
+            tabs.SetModified(docMgr.activeIndex, true);
+            lastRecoveredIndex = docMgr.activeIndex;
             recoveredOpened = recoveredOpened + 1;
             ri = ri + 1;
+            var recoveryApplyStatus = "Recovering unsaved files: " + ri + "/" + rc;
+            welcomeView.SetStartupProgress(recoveryApplyStatus);
+            shell.SetStatusLeft(recoveryApplyStatus);
+            shell.Poll();
+            shell.Render();
         }
-        recoveryStore.ClearAll();
         if recoveredOpened > 0 {
-            docMgr.SetActive(docMgr.GetCount() - 1);
-            tabs.SetActive(docMgr.GetCount() - 1);
+            docMgr.SetActive(lastRecoveredIndex);
+            tabs.SetActive(lastRecoveredIndex);
             restoredCount = restoredCount + recoveredOpened;
             GUI.Toast.Info("Recovered " + recoveredOpened + " unsaved file(s) from a previous session");
+        }
+        if recoveryScan.truncated {
+            GUI.Toast.Warning("Some crash-recovery entries exceeded Studio safety limits");
         }
     }
 
     // Shell/Open With launches provide one positional source path. Open it
     // after session recovery so the explicitly requested document wins focus.
-    var startupFile = commandLineFile();
+    var startupFile = startup_arguments.CommandLineFile();
     if startupFile != "" {
-        explorer_action_runner.OpenFileAndRecord(
-            shell, docMgr, engine, tabs, sessionMgr, startupFile);
-        restoredCount = restoredCount + 1;
+        if explorer_action_runner.OpenFileAndRecord(
+               shell, docMgr, engine, tabs, sessionMgr, startupFile) {
+            restoredCount = restoredCount + 1;
+        }
     }
+
+    // A blank Explorer pane makes the no-project opening surface look broken
+    // and pushes the welcome card visibly off-center. Restore the pane only
+    // when session loading actually produced a workspace.
+    shell.SetSidebarVisible(projMgr.IsOpen());
+    welcomeView.SetStartupMode(false);
 
     // ========================================================================
     // Show the welcome surface if no session was restored, otherwise load the
@@ -409,9 +559,11 @@ func main() {
     if restoredCount == 0 {
         welcomeView.Refresh(sessionMgr);
         welcomeView.SetShown(true);
+        shell.SetWelcomeStatusMode(true);
         shell.SetStatusRight("");
     } else {
         welcomeView.SetShown(false);
+        shell.SetWelcomeStatusMode(false);
         var restoredDoc = docMgr.GetActive();
         if restoredDoc != null {
             engine.LoadDocument(restoredDoc);
@@ -422,11 +574,24 @@ func main() {
             } else {
                 shell.SetBreadcrumbPath(restoredDoc.filePath);
             }
+            if restoreSplitRequested {
+                OpenSplitWithCompanion(shell, docMgr, engine, false);
+            }
         }
     }
 
     shell.SetStatusLeft("Ready");
-    shell.SetStatusCenter("Ln 1, Col 1  |  Lines: " + engine.GetLineCount());
+    if restoredCount == 0 {
+        shell.SetStatusCenter("");
+    } else {
+        shell.SetStatusCenter("Ln 1, Col 1  |  Lines: " + engine.GetLineCount());
+    }
+
+    // Present the resolved welcome/document state before the event loop's
+    // first idle wait. Without this frame, a fast restore can replace the
+    // startup card in memory but leave the native window showing only its
+    // empty shell until an unrelated event wakes the renderer.
+    shell.Render();
 
     shell.workbench.findBar.BindEditor(engine.editor);
 
@@ -444,6 +609,7 @@ func main() {
     commandContext.buildSys = buildSys;
     commandContext.dbgSession = dbgSession;
     commandContext.terminalCtrl = terminalCtrl;
+    commandContext.scmView = scmView;
     commandContext.diffOverlay = diffOverlay;
     commandContext.fileWatchCtrl = fileWatchCtrl;
     commandContext.workspaceWatcherState = workspaceWatcherState;
@@ -461,7 +627,15 @@ func main() {
     commandContext.symbolOutline = symbolOutline;
     commandContext.sigCtrl = sigCtrl;
     commandContext.searcher = searcher;
+    commandContext.basicWorkspaceCommands = basicWorkspaceCommands;
+    commandContext.diagnosticActions = diagnosticActions;
+    commandContext.ziaWorkspaceCommands = ziaWorkspaceCommands;
     commandContext.appSettings = appSettings;
+    // Session restore happens after the view controllers are constructed.
+    // Apply its workspace through the same transition used by every live
+    // folder-open route so SCM, terminal, Explorer, and indexing agree before
+    // the first interactive frame.
+    main_command_dispatcher.ActivateOpenWorkspace(commandContext, true);
 
     // Welcome-surface visibility tracking (refresh recents on transition to shown).
     var prevDocCount = -1;
@@ -476,11 +650,15 @@ func main() {
     var autoSaveRevision = engine.GetRevision();
     var autoSaveDebounce = Threads.Debouncer.New(AUTO_SAVE_IDLE_MS);
     var recoveryRevision = engine.GetRevision();
+    var recoveryActiveIndex = docMgr.activeIndex;
     var recoveryDebounce = Threads.Debouncer.New(2000);
     var scmGutter = new scm_gutter_controller.ScmGutterController();
     var scmGutterRevision = engine.GetRevision();
     var scmGutterDebounce = Threads.Debouncer.New(700);
     var scmGutterActiveIndex = -1;
+    var breadcrumbFunctions = new breadcrumb_index.IncrementalBreadcrumbIndex();
+    var panelSplitSaveDebounce = Threads.Debouncer.New(PANEL_SPLIT_SAVE_IDLE_MS);
+    var panelSplitSavePending = false;
 
     // ========================================================================
     // Main event loop
@@ -498,9 +676,13 @@ func main() {
         var allowBackground = focusThrottle.AllowBackgroundWork();
 
         // Activity bar — switch the left view (Explorer / Source Control).
-        if shell.workbench.abExplorer.WasClicked() { activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER); }
+        if shell.workbench.abExplorer.WasClicked() {
+            activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER);
+            shell.SetSidebarVisible(true);
+        }
         if shell.workbench.abSourceControl.WasClicked() {
             activityBarCtrl.ShowView(activity_bar.VIEW_SCM);
+            shell.SetSidebarVisible(true);
             if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
         }
         scmView.HandleEvents();
@@ -509,37 +691,65 @@ func main() {
 
         // Welcome / start surface: shown only when no documents are open.
         var curDocCount = docMgr.GetCount();
+        var hasBuildTarget = build_commands.HasExecutionTarget(docMgr, projMgr);
+        var hasDebugTarget = debug_commands.HasDebugTarget(docMgr);
+        shell.SetCommandContextAvailable(curDocCount > 0,
+                                         projMgr.IsOpen(),
+                                         hasBuildTarget,
+                                         hasDebugTarget);
         if curDocCount == 0 {
-            if prevDocCount != 0 { welcomeView.Refresh(sessionMgr); }
+            if prevDocCount != 0 {
+                welcomeView.Refresh(sessionMgr);
+                shell.SetStatusCenter("");
+                shell.SetStatusRight("");
+            }
+            shell.SetWelcomeStatusMode(true);
             welcomeView.SetShown(true);
             if welcomeView.newFileButton.WasClicked() {
                 file_commands.handleNew(shell, docMgr, engine, tabs);
             }
             if welcomeView.openFolderButton.WasClicked() {
-                file_commands.handleOpenFolder(shell, projMgr);
+                if file_commands.handleOpenFolder(shell, projMgr) {
+                    main_command_dispatcher.ActivateOpenWorkspace(commandContext, true);
+                    sessionMgr.RecordRecentProject(projMgr.RootPath());
+                    welcomeView.Refresh(sessionMgr);
+                }
             }
             var recentSel = welcomeView.TakeRecentSelection();
-            if Str.StartsWith(recentSel, "file:") {
+            if Str.StartsWith(recentSel, "folder:") {
+                var recentFolder = Str.Mid(recentSel, 8);
+                if projMgr.OpenFolder(recentFolder) {
+                    main_command_dispatcher.ActivateOpenWorkspace(commandContext, true);
+                    sessionMgr.RecordRecentProject(recentFolder);
+                } else {
+                    sessionMgr.PruneRecentProjects();
+                }
+                welcomeView.Refresh(sessionMgr);
+            } else if Str.StartsWith(recentSel, "file:") {
                 var recentPath = Str.Mid(recentSel, 6);
-                if IO.File.Exists(recentPath) != false {
-                    explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, recentPath);
+                if explorer_action_runner.OpenFileAndRecord(
+                       shell, docMgr, engine, tabs, sessionMgr, recentPath) {
                     fileWatchCtrl.ResetPendingReload();
+                } else {
+                    welcomeView.Refresh(sessionMgr);
                 }
             }
         } else {
+            shell.SetWelcomeStatusMode(false);
             welcomeView.SetShown(false);
         }
         prevDocCount = curDocCount;
         if shell.WasCloseRequested() {
-            file_commands.SaveEditorState(docMgr, engine);
-            breakpointStore.Save();
-            sessionMgr.splitActive = engine.PaneCount() >= 2;
-            sessionMgr.Save(docMgr, projMgr);
             if file_commands.handleExit(shell, docMgr, engine) {
-                recoveryStore.MarkCleanExit();
+                sessionMgr.splitActive = engine.PaneCount() >= 2;
+                FlushBottomPanelSplit(shell, appSettings, panelSplitSavePending);
+                diffOverlay.Shutdown();
+                basicWorkspaceCommands.Shutdown();
+                diagnosticActions.Shutdown();
+                ziaWorkspaceCommands.Shutdown();
                 lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession,
                                                 terminalCtrl, fileWatchCtrl, workspaceWatcherState,
-                                                indexer, breakpointStore, sessionMgr);
+                                                indexer, breakpointStore, sessionMgr, recoveryStore);
                 return;
             }
         }
@@ -560,6 +770,19 @@ func main() {
         languageFrame.RouteCompletionKeys();
         languageFrame.PumpForegroundTools(shell, docMgr, engine, tabs, locStore,
                                           buildSys, dbgSession, breakpointStore);
+        diagnosticActions.Pump(shell, docMgr, engine, projMgr);
+        ziaWorkspaceCommands.Pump(shell, docMgr, projMgr, engine, tabs,
+                                  indexer, locStore);
+        // Keep keyboard shortcuts and command-palette selections under the
+        // same target/job/debug policy as the visible menu and toolbar.
+        commandRegistry.ApplyCommandContext(curDocCount > 0,
+                                            projMgr.IsOpen(),
+                                            hasBuildTarget,
+                                            hasDebugTarget,
+                                            buildSys.IsActive(),
+                                            dbgSession.IsActive(),
+                                            dbgSession.stopped,
+                                            activeService);
         if allowBackground {
             languageFrame.PumpBudgetedTools(shell, docMgr, engine, locStore,
                                             searcher, projMgr);
@@ -574,6 +797,7 @@ func main() {
         // ====================================================================
         // Live palette prefix modes (":" go to line) update rows per keystroke.
         paletteCtrl.PumpLiveQuery(shell, commandRegistry, activeService);
+        quick_open_commands.PumpQuickOpenPalette(shell, projMgr, paletteCtrl);
 
         var cpSelected = "";
         if shell.commandPalette.WasSelected() {
@@ -605,10 +829,14 @@ func main() {
             shell, engine, projMgr, docMgr, tabs, sessionMgr, fileWatchCtrl,
             buildSys, locStore, searcher, explorerOverlay, paletteCtrl,
             commandRegistry, indexer, activeService, dbgSession, breakpointStore,
-            commandInputOverlay, appSettings);
+            commandInputOverlay, basicWorkspaceCommands, ziaWorkspaceCommands,
+            appSettings);
 
         // Apply any completed file-tree drag-and-drop as a file move.
-        explorer_action_runner.PumpTreeDrops(shell, projMgr, docMgr, engine, indexer);
+        if explorer_action_runner.PumpTreeDrops(shell, projMgr, docMgr, engine,
+                                                tabs, indexer, locStore) {
+            fileWatchCtrl.ResetPendingReload();
+        }
 
         // ====================================================================
         // Dispatch commands via trigger helper
@@ -617,6 +845,15 @@ func main() {
         if main_command_dispatcher.DispatchCommandContext(commandContext,
                                                           cpSelected,
                                                           suppressTreeOpen) {
+            sessionMgr.splitActive = engine.PaneCount() >= 2;
+            FlushBottomPanelSplit(shell, appSettings, panelSplitSavePending);
+            diffOverlay.Shutdown();
+            basicWorkspaceCommands.Shutdown();
+            diagnosticActions.Shutdown();
+            ziaWorkspaceCommands.Shutdown();
+            lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession,
+                                            terminalCtrl, fileWatchCtrl, workspaceWatcherState,
+                                            indexer, breakpointStore, sessionMgr, recoveryStore);
             return;
         }
 
@@ -624,23 +861,21 @@ func main() {
         // focused-pane controllers can be re-bound with `completer` in scope.
         if dispatch_helpers.TriggeredNoMenu("spliteditorright", cpSelected) {
             if engine.PaneCount() < 2 {
-                engine.SplitRight(shell.workbench.editorRow);
-                RebindFocusedPane(shell, engine, completer);
+                if OpenSplitWithCompanion(shell, docMgr, engine, true) {
+                    RebindFocusedPane(shell, engine, completer);
+                }
             }
         }
         if dispatch_helpers.TriggeredNoMenu("focusotherpane", cpSelected) {
             engine.FocusOtherPane();
-            RebindFocusedPane(shell, engine, completer);
         }
         if dispatch_helpers.TriggeredNoMenu("closesplit", cpSelected) {
             engine.CloseSplit();
-            RebindFocusedPane(shell, engine, completer);
         }
         // Click-to-focus: when the other pane gains keyboard focus, retarget the
         // focused-pane controllers to it.
-        if engine.SyncFocusFromWidgets() {
-            RebindFocusedPane(shell, engine, completer);
-        }
+        engine.SyncFocusFromWidgets();
+        ReconcilePaneFocus(shell, docMgr, engine, tabs, completer);
 
         // FindBar per-frame updates
         if shell.workbench.findBar.IsVisible() {
@@ -671,8 +906,8 @@ func main() {
                     locStore.OpenLocation(shell, docMgr, engine, tabs, data);
                 } else if Str.StartsWith(data, "file:") {
                     var recentPath = Str.Mid(data, 6);
-                    if IO.File.Exists(recentPath) != false {
-                        explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, recentPath);
+                    if explorer_action_runner.OpenFileAndRecord(
+                           shell, docMgr, engine, tabs, sessionMgr, recentPath) {
                         fileWatchCtrl.ResetPendingReload();
                     }
                 }
@@ -703,6 +938,16 @@ func main() {
             debug_commands.HandleVariableActivate(shell, dbgSession);
         }
         shell.toolPanels.PumpToolTabs();
+        var changedPanelSplitPct = shell.toolPanels.TakeChangedSplitPercent();
+        if changedPanelSplitPct >= 0 {
+            appSettings.bottomPanelSplitPct = changedPanelSplitPct;
+            panelSplitSavePending = true;
+            panelSplitSaveDebounce.Signal();
+        } else if panelSplitSavePending and panelSplitSaveDebounce.get_IsReady() {
+            view_commands.PersistSettings(shell, appSettings);
+            panelSplitSavePending = false;
+            panelSplitSaveDebounce.Reset();
+        }
 
         // Inline overlay actions
         // Keybindings card + settings filter (plan 08). Populated lazily the
@@ -723,17 +968,31 @@ func main() {
                and overlays.keybindingSetButton.WasClicked() {
                 var keyId = overlays.SelectedKeybindingId();
                 if keyId != "" {
-                    var newShortcut = Str.Trim(overlays.keybindingShortcutInput.get_Text());
-                    appSettings.keybindingOverrides = commandRegistry.UpsertOverride(
-                        appSettings.keybindingOverrides, keyId, newShortcut);
-                    var keyEntry = commandRegistry.Find(keyId);
-                    if keyEntry != null { keyEntry.shortcut = newShortcut; }
-                    commandRegistry.InstallShortcuts();
-                    appSettings.Save();
-                    overlays.PopulateKeybindings(commandRegistry,
-                                                 overlays.settingsFilterInput.get_Text());
-                    overlays.keybindingStatusLabel.SetText(
-                        commandRegistry.ShortcutConflictSummary());
+                    var newShortcut = commandRegistry.NormalizeShortcut(
+                        overlays.keybindingShortcutInput.get_Text());
+                    if commandRegistry.IsValidShortcut(newShortcut) == false {
+                        overlays.keybindingStatusLabel.SetText(
+                            "Invalid shortcut. Join modifiers with + and separate chord strokes with a space.");
+                        shell.SetStatusLeft("Keybinding was not changed");
+                        GUI.Toast.Warning("Invalid keyboard shortcut");
+                    } else {
+                        appSettings.keybindingOverrides = commandRegistry.UpsertOverride(
+                            appSettings.keybindingOverrides, keyId, newShortcut);
+                        var keyEntry = commandRegistry.Find(keyId);
+                        if keyEntry != null { keyEntry.shortcut = newShortcut; }
+                        commandRegistry.InstallShortcuts();
+                        shell.ApplyCommandShortcuts(commandRegistry);
+                        var keybindingSaved = appSettings.Save();
+                        overlays.PopulateKeybindings(commandRegistry,
+                                                     overlays.settingsFilterInput.get_Text());
+                        var keybindingStatus = commandRegistry.ShortcutConflictSummary();
+                        if keybindingSaved == false {
+                            keybindingStatus = "Could not save keybinding changes. " + keybindingStatus;
+                            shell.SetStatusLeft("Keybinding changed, but could not be saved");
+                            GUI.Toast.Error("Could not save keybinding changes");
+                        }
+                        overlays.keybindingStatusLabel.SetText(keybindingStatus);
+                    }
                 }
             }
             if overlays.keybindingClearButton != null
@@ -747,11 +1006,17 @@ func main() {
                         resetEntry.shortcut = commandRegistry.DefaultShortcutFor(resetId);
                     }
                     commandRegistry.InstallShortcuts();
-                    appSettings.Save();
+                    shell.ApplyCommandShortcuts(commandRegistry);
+                    var resetSaved = appSettings.Save();
                     overlays.PopulateKeybindings(commandRegistry,
                                                  overlays.settingsFilterInput.get_Text());
-                    overlays.keybindingStatusLabel.SetText(
-                        commandRegistry.ShortcutConflictSummary());
+                    var resetStatus = commandRegistry.ShortcutConflictSummary();
+                    if resetSaved == false {
+                        resetStatus = "Could not save keybinding changes. " + resetStatus;
+                        shell.SetStatusLeft("Keybinding changed, but could not be saved");
+                        GUI.Toast.Error("Could not save keybinding changes");
+                    }
+                    overlays.keybindingStatusLabel.SetText(resetStatus);
                 }
             }
         }
@@ -805,17 +1070,24 @@ func main() {
                 templateKind = project_templates.KIND_LIBRARY;
             }
             var projectName = Str.Trim(commandInputOverlay.ReadValue());
-            var homeDir = Env.GetVariable("HOME");
-            if homeDir == "" { homeDir = "."; }
-            var projectsBase = Path.Join(homeDir, "ZannaProjects");
-            Dir.MakeAll(projectsBase);
+            var projectsBase = project_templates.DefaultProjectsBase();
+            if projectsBase == "" {
+                GUI.Toast.Error("Could not resolve the user projects folder");
+                commandInputOverlay.Finish();
+                continue;
+            }
+            if safe_io.MakeAll(projectsBase) == false {
+                GUI.Toast.Error("Could not create the user projects folder");
+                commandInputOverlay.Finish();
+                continue;
+            }
             var newProjectPath = project_templates.Scaffold(projectsBase, projectName, templateKind);
             if newProjectPath == "" {
                 GUI.Toast.Info("Could not create project (name invalid or folder exists)");
             } else {
                 projMgr.OpenFolder(newProjectPath);
-                scmView.SetRepo(projMgr.RootPath());
-                terminalCtrl.SetCwd(projMgr.RootPath());
+                main_command_dispatcher.ActivateOpenWorkspace(commandContext, true);
+                sessionMgr.RecordRecentProject(newProjectPath);
                 var mainPath = Path.Join(Path.Join(newProjectPath, "src"), "main.zia");
                 file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, mainPath);
                 GUI.Toast.Info("Created " + projectName);
@@ -835,15 +1107,22 @@ func main() {
             commandInputOverlay.Finish();
         }
         if commandInputAction == command_input.COMMAND_INPUT_WORKSPACE_SYMBOLS {
-            search_commands.handleWorkspaceSymbolsText(shell, projMgr, docMgr,
-                                                       engine, locStore,
-                                                       commandInputOverlay.ReadValue());
+            search_commands.handleWorkspaceSymbolsTextAsync(
+                shell, projMgr, docMgr, engine, locStore, searcher,
+                commandInputOverlay.ReadValue());
             commandInputOverlay.Finish();
         }
         if commandInputAction == command_input.COMMAND_INPUT_RENAME_SYMBOL {
-            edit_commands.handleRenameSymbolText(shell, docMgr, engine, tabs,
-                                                 indexer,
-                                                 commandInputOverlay.ReadValue());
+            var renameDoc = docMgr.GetActive();
+            if renameDoc != null and renameDoc!.language == "basic" {
+                basicWorkspaceCommands.StartRename(
+                    commandInputOverlay.ReadValue(), shell, docMgr, projMgr,
+                    engine);
+            } else {
+                ziaWorkspaceCommands.StartRename(
+                    commandInputOverlay.ReadValue(), shell, docMgr, projMgr,
+                    engine, indexer);
+            }
             commandInputOverlay.Finish();
         }
         if commandInputAction == command_input.COMMAND_INPUT_EXTRACT_LOCAL {
@@ -890,6 +1169,11 @@ func main() {
             }
         }
 
+        // A tab/open/navigation request may have targeted the document already
+        // owned by the other pane. LoadDocument focuses that owner; publish the
+        // transition before dirty tracking, auto-save, recovery, and watchers.
+        ReconcilePaneFocus(shell, docMgr, engine, tabs, completer);
+
         // ====================================================================
         // Track modified state
         // ====================================================================
@@ -927,20 +1211,27 @@ func main() {
             autoSaveDebounce.Reset();
         }
 
-        // Crash-recovery swaps: write modified documents to swap files a short
-        // time after edits settle, independent of the autosave setting, so a
-        // crash never loses more than the last ~2s of unsaved work.
-        if currentRevisionForSave != recoveryRevision {
+        // Crash-recovery swaps: immutable editor snapshots are queued after
+        // edits settle, then all filesystem work runs on a coalescing worker.
+        // Pump every frame even while unfocused so completed worker state and a
+        // newer pending snapshot cannot remain stranded. Track the active tab
+        // separately because two swapped editor buffers may share a revision.
+        recoveryStore.PumpAsync();
+        if currentRevisionForSave != recoveryRevision
+           or docMgr.activeIndex != recoveryActiveIndex {
             recoveryRevision = currentRevisionForSave;
+            recoveryActiveIndex = docMgr.activeIndex;
             recoveryDebounce.Signal();
         } else if recoveryDebounce.get_IsReady() {
-            recoveryStore.WriteSwaps(docMgr, engine);
+            recoveryStore.QueueSwaps(docMgr, engine);
             recoveryDebounce.Reset();
         }
 
-        // SCM gutter change bars: refresh immediately on a tab switch and a
-        // short time after edits settle. Gated to the unfocused throttle so it
-        // never runs git while the window is in the background.
+        // SCM gutter change bars: the child is drained every frame so pipe
+        // buffers cannot back up while focus changes. New diffs are requested
+        // on a tab switch or shortly after edits settle; requests coalesce and
+        // never wait for Git on the UI thread.
+        scmGutter.Pump(engine, docMgr, projMgr);
         if allowBackground {
             if docMgr.activeIndex != scmGutterActiveIndex {
                 scmGutterActiveIndex = docMgr.activeIndex;
@@ -982,23 +1273,52 @@ func main() {
             }
             shell.SetStatusCenter(cursorText);
         }
-        // Breadcrumb symbol segment (plan 07): on caret line changes in a Zia
-        // document, append the enclosing function to the file path.
-        if curCursorLine != prevCursorLine {
-            var crumbDocOpt = docMgr.GetActive();
-            if crumbDocOpt != null {
-                var crumbDoc = crumbDocOpt!;
-                if crumbDoc.isNew == false and crumbDoc.filePath != ""
-                   and file_utils.KindName(crumbDoc.kind) == "zia" {
-                    var enclosing = function_scan.EnclosingZiaFunctionName(
-                        engine.editor.Text, curCursorLine);
+        // Breadcrumb symbol segment: incrementally scan only as far as the
+        // current caret, with a strict per-frame line budget. The former path
+        // materialized and split the entire editor buffer twice on every caret
+        // line change, which made navigation through large files visibly stall.
+        var crumbDocOpt = docMgr.GetActive();
+        var crumbReset = false;
+        var crumbReadyBefore = false;
+        var crumbReadyAfter = false;
+        if crumbDocOpt != null {
+            var crumbDoc = crumbDocOpt!;
+            if crumbDoc.isNew == false and crumbDoc.filePath != ""
+               and crumbDoc.language == "zia" {
+                crumbReset = breadcrumbFunctions.EnsureSource(
+                    crumbDoc.filePath, statusRevision, statusLineCount);
+                crumbReadyBefore = breadcrumbFunctions.IsReadyForLine(curCursorLine);
+                var crumbLinesPumped = 0;
+                while crumbLinesPumped < BREADCRUMB_SCAN_LINES_PER_FRAME
+                      and breadcrumbFunctions.HasRemaining()
+                      and breadcrumbFunctions.IsReadyForLine(curCursorLine) == false {
+                    breadcrumbFunctions.PumpLine(
+                        engine.editor.GetLine(breadcrumbFunctions.nextLine - 1));
+                    crumbLinesPumped = crumbLinesPumped + 1;
+                }
+                crumbReadyAfter = breadcrumbFunctions.IsReadyForLine(curCursorLine);
+                if curCursorLine != prevCursorLine or crumbReset
+                   or (crumbReadyBefore == false and crumbReadyAfter) {
+                    var enclosing = breadcrumbFunctions.EnclosingName(curCursorLine);
                     if enclosing != "" {
                         shell.SetBreadcrumbPath(crumbDoc.filePath + "  ›  " + enclosing);
                     } else {
                         shell.SetBreadcrumbPath(crumbDoc.filePath);
                     }
                 }
+            } else {
+                crumbReset = breadcrumbFunctions.EnsureSource("", statusRevision, 0);
+                if curCursorLine != prevCursorLine or crumbReset {
+                    if crumbDoc.isNew or crumbDoc.filePath == "" {
+                        shell.SetBreadcrumbPath("");
+                    } else {
+                        shell.SetBreadcrumbPath(crumbDoc.filePath);
+                    }
+                }
             }
+        } else {
+            crumbReset = breadcrumbFunctions.EnsureSource("", statusRevision, 0);
+            if crumbReset { shell.SetBreadcrumbPath(""); }
         }
         prevCursorLine = curCursorLine;
         prevCursorCol  = curCursorCol;
@@ -1025,8 +1345,15 @@ func main() {
     // ========================================================================
     // Cleanup
     // ========================================================================
-    recoveryStore.MarkCleanExit();
+    scmGutter.Cancel();
+    recoveryStore.CancelAsync();
+    diffOverlay.Shutdown();
+    basicWorkspaceCommands.Shutdown();
+    diagnosticActions.Shutdown();
+    ziaWorkspaceCommands.Shutdown();
+    sessionMgr.splitActive = engine.PaneCount() >= 2;
+    FlushBottomPanelSplit(shell, appSettings, panelSplitSavePending);
     lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession,
                                     terminalCtrl, fileWatchCtrl, workspaceWatcherState,
-                                    indexer, breakpointStore, sessionMgr);
+                                    indexer, breakpointStore, sessionMgr, recoveryStore);
 }

@@ -38,6 +38,13 @@ extern "C" {
 /// @return 1 if file exists, 0 otherwise.
 int64_t rt_io_file_exists(rt_string path);
 
+/// @brief Test whether two paths name the same existing regular file.
+/// @details Compares stable filesystem identity rather than path spelling.
+/// @param left First candidate path.
+/// @param right Second candidate path.
+/// @return 1 when both paths resolve to the same file, otherwise 0.
+int64_t rt_file_same(rt_string left, rt_string right);
+
 /// @brief Read entire file contents as a string.
 /// @param path File path to read.
 /// @return File contents as string, or empty string on error.

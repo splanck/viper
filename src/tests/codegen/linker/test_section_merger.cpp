@@ -429,7 +429,7 @@ int main() {
         CHECK(sawNote);
     }
 
-    // --- Mach-O mod-init functions preserve source order instead of alignment order ---
+    // --- Mach-O mod-init functions keep their loader-visible name and source order ---
     {
         auto obj = makeObj("modinit.o",
                            ObjFileFormat::MachO,
@@ -443,7 +443,8 @@ int main() {
         bool ok = mergeSections(objs, LinkPlatform::macOS, LinkArch::AArch64, layout, err);
         CHECK(ok);
         CHECK(layout.sections.size() == 1);
-        CHECK(layout.sections[0].name == ".data");
+        CHECK(layout.sections[0].name == "__DATA,__mod_init_func");
+        CHECK(layout.sections[0].dataSegment);
         CHECK(layout.sections[0].chunks.size() == 2);
         CHECK(layout.sections[0].chunks[0].inputSecIndex == 1);
         CHECK(layout.sections[0].chunks[1].inputSecIndex == 2);

@@ -1024,8 +1024,29 @@ void vgfx_get_monitor_size(vgfx_window_t window, int32_t *out_w, int32_t *out_h)
 }
 
 void vgfx_set_window_size(vgfx_window_t window, int32_t w, int32_t h) {
-    if (window && w > 0 && h > 0)
+    if (window && w > 0 && h > 0) {
+        if (w < window->min_width)
+            w = window->min_width;
+        if (h < window->min_height)
+            h = window->min_height;
         vgfx_platform_set_window_size(window, w, h);
+    }
+}
+
+void vgfx_set_window_min_size(vgfx_window_t window, int32_t w, int32_t h) {
+    if (!window)
+        return;
+    if (w < 1)
+        w = 1;
+    if (h < 1)
+        h = 1;
+    if (w > VGFX_MAX_WIDTH)
+        w = VGFX_MAX_WIDTH;
+    if (h > VGFX_MAX_HEIGHT)
+        h = VGFX_MAX_HEIGHT;
+    window->min_width = w;
+    window->min_height = h;
+    vgfx_platform_set_window_min_size(window, w, h);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1131,6 +1152,8 @@ vgfx_window_t vgfx_create_window(const vgfx_window_params_t *params) {
 
     /* Initialize window properties */
     win->resizable = actual_params.resizable;
+    win->min_width = 1;
+    win->min_height = 1;
 
     /* Query HiDPI scale once and store it.  Scale up the requested logical
      * dimensions to physical pixels so the framebuffer is allocated at the

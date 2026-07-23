@@ -1,3 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/file_tree_probe.zia
+// Purpose: Exercise paged project loading, bounded scrolling, and document-
+//          close model integration against an isolated temporary workspace.
+// Key invariants:
+//   - Overflowing trees remain bounded by and scroll within the sidebar.
+//   - Explorer mutations keep paths, recents, and source binds synchronized.
+//   - `--visual-hold` leaves the overflow state open for screenshot QA.
+// Ownership/Lifetime:
+//   - The probe owns its temporary shell, workspace roots, and fixture files.
+//   - All widget and filesystem resources are destroyed before successful exit.
+// Links: zannastudio/src/core/project_manager.zia,
+//        zannastudio/src/ui/workbench_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
 module file_tree_probe;
 
 // ============================================================================
@@ -13,7 +35,9 @@ module file_tree_probe;
 // ============================================================================
 
 bind "../ui/app_shell";
+bind "../app/context_menus";
 bind "../core/project_manager";
+bind "../core/project_file_ops";
 bind "../core/document_manager";
 
 bind Zanna.GUI as GUI;
@@ -23,6 +47,32 @@ bind File = Zanna.IO.File;
 bind Path = Zanna.IO.Path;
 bind TempFile = Zanna.IO.TempFile;
 bind Str = Zanna.String;
+bind Obj = Zanna.Core.Object;
+bind Env = Zanna.System.Environment;
+
+func HasArg(name: String) -> Boolean {
+    var i = 0;
+    while i < Env.GetArgumentCount() {
+        if Env.GetArgument(i) == name { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func FindVisibleNodeByData(tree: GUI.TreeView,
+                           path: String) -> Any {
+    var x = tree.GetX() + 20;
+    var y = tree.GetY() + 2;
+    var bottom = tree.GetY() + tree.GetHeight();
+    while y < bottom {
+        var node = tree.GetNodeAt(x, y);
+        if node != null and GUI.TreeView.Node.GetData(node) == path {
+            return node;
+        }
+        y = y + 3;
+    }
+    return null;
+}
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
@@ -40,22 +90,138 @@ func RecentContains(docMgr: document_manager.DocumentManager, path: String) -> B
     return false;
 }
 
+func DirectoryHasExactFileName(path: String,
+                               name: String) -> Boolean {
+    for candidate in Dir.Files(path) {
+        if candidate == name { return true; }
+    }
+    return false;
+}
+
+func DirectoryHasExactFolderName(path: String,
+                                 name: String) -> Boolean {
+    for candidate in Dir.Dirs(path) {
+        if candidate == name { return true; }
+    }
+    return false;
+}
+
+func PumpTreeUntilIdle(projMgr: project_manager.ProjectManager,
+                       maxPumps: Integer) -> Boolean {
+    var pumps = 0;
+    while projMgr.TreeLoadsPending() and pumps < maxPumps {
+        projMgr.PumpTreeLoads(512);
+        pumps = pumps + 1;
+    }
+    return projMgr.TreeLoadsPending() == false;
+}
+
 func main() {
     var shell = new app_shell.AppShell();
     shell.Build("Zanna Studio File Tree Probe", 960, 640);
 
+    var naturalNames = new List();
+    naturalNames.Push("file10.zia");
+    naturalNames.Push("File2.zia");
+    naturalNames.Push("file01.zia");
+    naturalNames.Push("file1.zia");
+    naturalNames.Push("file20.zia");
+    var naturallySorted = project_manager.NaturalSortNames(naturalNames);
+    if naturallySorted.count() != 5
+       or Obj.ToString(naturallySorted.get(0)) != "file1.zia"
+       or Obj.ToString(naturallySorted.get(1)) != "file01.zia"
+       or Obj.ToString(naturallySorted.get(2)) != "File2.zia"
+       or Obj.ToString(naturallySorted.get(3)) != "file10.zia"
+       or Obj.ToString(naturallySorted.get(4)) != "file20.zia" {
+        fail(shell, "natural explorer ordering");
+        return;
+    }
+
     var root = TempFile.CreateDirWithPrefix("zannastudio_file_tree_");
     var subdir = Path.Join(root, "folder with spaces");
+    var largeDir = Path.Join(root, "large flat folder");
     var ignoredDir = Path.Join(root, "skipme");
     Dir.MakeAll(subdir);
+    Dir.MakeAll(largeDir);
     Dir.MakeAll(ignoredDir);
     File.WriteAllText(Path.Join(subdir, "main.zia"), "module TreeProbe;\n");
     File.WriteAllText(Path.Join(ignoredDir, "ignored.zia"), "module Ignored;\n");
     File.WriteAllText(Path.Join(root, "zanna.project"), "project TreeProbe\nignore skipme/\n");
+    // Force the explorer content beyond the sidebar viewport. The TreeView
+    // must remain bounded by its flex pane; otherwise its own height grows to
+    // the content height and wheel scrolling is permanently clamped to zero.
+    var bulkIndex = 0;
+    while bulkIndex < 48 {
+        File.WriteAllText(Path.Join(root, "bulk_" + Obj.ToString(bulkIndex) + ".zia"),
+                          "module BulkProbe;\n");
+        bulkIndex = bulkIndex + 1;
+    }
+    var largeIndex = 0;
+    while largeIndex < 300 {
+        File.WriteAllText(Path.Join(largeDir, "entry_" + Obj.ToString(largeIndex) + ".zia"),
+                          "module LargeFlatProbe;\n");
+        largeIndex = largeIndex + 1;
+    }
 
     var projMgr = new project_manager.ProjectManager();
     projMgr.Setup(shell.workbench.sidebarTree);
     projMgr.OpenFolder(root);
+
+    // Workspace roots are structural tree nodes, not mutable children. Keep
+    // both the menu policy and core operation boundary defensive so keyboard,
+    // stale-context, or future command routes cannot move a root into itself.
+    if projMgr.CanMutatePath(root)
+       or project_file_ops.TrashPathFor(root, root) != ""
+       or projMgr.CanCreateInDirectory(root) == false {
+        fail(shell, "workspace root reported mutable");
+        return;
+    }
+    context_menus.ConfigureTreeContextMenuForPath(shell, projMgr, root, root);
+    if shell.menuChrome.ctxRename.IsEnabled() or shell.menuChrome.ctxDelete.IsEnabled()
+       or shell.menuChrome.ctxRemoveFolder.IsEnabled() == false {
+        fail(shell, "workspace root destructive menu enabled");
+        return;
+    }
+    if projMgr.RenamePath(root, "renamed-root", null) != ""
+       or projMgr.DeletePath(root, null)
+       or projMgr.MovePathInto(root, subdir, null) != ""
+       or Dir.Exists(root) == false {
+        fail(shell, "workspace root mutation was not rejected");
+        return;
+    }
+
+    var mainPath = Path.Join(subdir, "main.zia");
+    context_menus.ConfigureTreeContextMenuForPath(shell, projMgr, mainPath, subdir);
+    if shell.menuChrome.ctxRename.IsEnabled() == false
+       or shell.menuChrome.ctxDelete.IsEnabled() == false
+       or shell.menuChrome.ctxRemoveFolder.IsEnabled() {
+        fail(shell, "workspace child destructive menu disabled");
+        return;
+    }
+
+    // Paths outside all roots, including lexical `..` escapes, must never be
+    // accepted by Explorer mutation APIs.
+    var outsideRoot = TempFile.CreateDirWithPrefix("zannastudio_file_tree_outside_");
+    var outsideFile = Path.Join(outsideRoot, "outside.zia");
+    File.WriteAllText(outsideFile, "module Outside;\n");
+    var escapedPath = Path.Join(Path.Join(root, ".."), "outside.zia");
+    if project_file_ops.IsWithinRoot(outsideFile, root)
+       or project_file_ops.IsWithinRoot(escapedPath, root)
+       or projMgr.CanCreateInDirectory(outsideRoot)
+       or projMgr.RenamePath(outsideFile, "renamed.zia", null) != ""
+       or projMgr.DeletePath(outsideFile, null)
+       or projMgr.MovePathInto(outsideFile, subdir, null) != ""
+       or File.Exists(outsideFile) == false {
+        fail(shell, "outside-workspace mutation was not rejected");
+        return;
+    }
+    var guardedMove = Path.Join(subdir, "guarded_move.zia");
+    File.WriteAllText(guardedMove, "module GuardedMove;\n");
+    if projMgr.MovePathInto(guardedMove, outsideRoot, null) != ""
+       or File.Exists(guardedMove) == false {
+        fail(shell, "move escaped workspace root");
+        return;
+    }
     if projMgr.project.ignorePatterns != "skipme/" {
         fail(shell, "project ignore patterns");
         return;
@@ -71,6 +237,11 @@ func main() {
 
     shell.Poll();
     shell.Render();
+
+    if shell.workbench.sidebarTree.GetHeight() > shell.workbench.explorerView.GetHeight() + 2 {
+        fail(shell, "tree escaped sidebar viewport");
+        return;
+    }
 
     var x = shell.workbench.sidebarTree.GetX() + 12;
     var y = shell.workbench.sidebarTree.GetY() + 12;
@@ -93,6 +264,69 @@ func main() {
     }
 
     var entryPath = Path.Join(subdir, "main.zia");
+    var folderNode = FindVisibleNodeByData(shell.workbench.sidebarTree, subdir);
+    if folderNode == null {
+        fail(shell, "folder node not visible");
+        return;
+    }
+    shell.workbench.sidebarTree.Select(folderNode);
+    projMgr.HandleTreeClicks();
+    if PumpTreeUntilIdle(projMgr, 20) == false {
+        fail(shell, "small folder load did not settle");
+        return;
+    }
+    shell.Render();
+    var entryNode = FindVisibleNodeByData(shell.workbench.sidebarTree, entryPath);
+    if entryNode == null or GUI.TreeView.Node.IsExpanded(folderNode) == false {
+        fail(shell, "folder did not expand");
+        return;
+    }
+    shell.workbench.sidebarTree.Select(entryNode);
+    projMgr.RefreshTree();
+    if PumpTreeUntilIdle(projMgr, 20) == false {
+        fail(shell, "tree refresh restoration did not settle");
+        return;
+    }
+    shell.Render();
+    var restoredFolder = FindVisibleNodeByData(shell.workbench.sidebarTree, subdir);
+    var restoredSelection = shell.workbench.sidebarTree.GetSelected();
+    if restoredFolder == null or GUI.TreeView.Node.IsExpanded(restoredFolder) == false
+       or restoredSelection == null
+       or GUI.TreeView.Node.GetData(restoredSelection) != entryPath
+       or shell.workbench.sidebarTree.WasSelectionChanged() {
+        fail(shell, "tree refresh lost expansion or selection context");
+        return;
+    }
+
+    // A flat directory larger than one runtime page must remain pending after
+    // one pump, then finish without omitting entries. Enumeration, sorting, and
+    // publication are each frame-budgeted by ProjectManager.
+    var largeNode = FindVisibleNodeByData(shell.workbench.sidebarTree, largeDir);
+    if largeNode == null {
+        fail(shell, "large folder node not visible");
+        return;
+    }
+    shell.workbench.sidebarTree.Select(largeNode);
+    projMgr.HandleTreeClicks();
+    projMgr.PumpTreeLoads(4096);
+    if projMgr.TreeLoadsPending() == false
+       or projMgr.IsTreeDirectoryLoaded(largeDir)
+       or projMgr.lastTreePumpEntries != 128 {
+        fail(shell, "large directory was not page bounded");
+        return;
+    }
+    if PumpTreeUntilIdle(projMgr, 100) == false
+       or projMgr.IsTreeDirectoryLoaded(largeDir) == false {
+        fail(shell, "large directory load did not complete");
+        return;
+    }
+    shell.workbench.sidebarTree.Collapse(largeNode);
+    projMgr.RefreshTree();
+    if PumpTreeUntilIdle(projMgr, 20) == false {
+        fail(shell, "collapsed large folder refresh did not settle");
+        return;
+    }
+
     if projMgr.SetEntryFile(entryPath) == false {
         fail(shell, "set project entry");
         return;
@@ -121,11 +355,116 @@ func main() {
         return;
     }
 
+    // Case-only renames require an intermediate sibling on case-insensitive
+    // filesystems. The rebuilt tree must follow the new spelling instead of
+    // dropping selection because it captured the old node path.
+    var caseFileSource = Path.Join(subdir, "CaseOnlyFile.zia");
+    var caseFileTarget = Path.Join(subdir, "caseonlyfile.zia");
+    File.WriteAllText(caseFileSource, "module CaseOnlyFile;\n");
+    var caseFileDoc = docMgr.OpenFile(caseFileSource);
+    projMgr.RefreshTree();
+    if PumpTreeUntilIdle(projMgr, 40) == false {
+        fail(shell, "case-only file setup did not settle");
+        return;
+    }
+    shell.Render();
+    var caseFileNode = FindVisibleNodeByData(shell.workbench.sidebarTree,
+                                             caseFileSource);
+    if caseFileNode == null {
+        fail(shell, "case-only file node missing");
+        return;
+    }
+    shell.workbench.sidebarTree.Select(caseFileNode);
+    projMgr.HandleTreeClicks();
+    if projMgr.RenamePath(caseFileSource, "caseonlyfile.zia", docMgr)
+       != caseFileTarget {
+        fail(shell, "case-only file rename rejected");
+        return;
+    }
+    if PumpTreeUntilIdle(projMgr, 40) == false {
+        fail(shell, "case-only file refresh did not settle");
+        return;
+    }
+    shell.Render();
+    var caseFileSelection = shell.workbench.sidebarTree.GetSelected();
+    if caseFileDoc.filePath != caseFileTarget
+       or Path.Name(caseFileDoc.filePath) != "caseonlyfile.zia"
+       or DirectoryHasExactFileName(subdir, "caseonlyfile.zia") == false
+       or DirectoryHasExactFileName(subdir, "CaseOnlyFile.zia")
+       or caseFileSelection == null
+       or GUI.TreeView.Node.GetData(caseFileSelection) != caseFileTarget {
+        fail(shell, "case-only file state did not retarget");
+        return;
+    }
+
+    // Renaming a directory must retarget selected descendants and expanded
+    // directory paths so the child is still visible after the tree rebuild.
+    var caseFolderSource = Path.Join(subdir, "CaseOnlyFolder");
+    var caseFolderTarget = Path.Join(subdir, "caseonlyfolder");
+    var caseFolderChildSource = Path.Join(caseFolderSource, "child.zia");
+    var caseFolderChildTarget = Path.Join(caseFolderTarget, "child.zia");
+    Dir.MakeAll(caseFolderSource);
+    File.WriteAllText(caseFolderChildSource, "module CaseOnlyChild;\n");
+    var caseFolderDoc = docMgr.OpenFile(caseFolderChildSource);
+    projMgr.RefreshTree();
+    if PumpTreeUntilIdle(projMgr, 40) == false {
+        fail(shell, "case-only folder setup did not settle");
+        return;
+    }
+    shell.Render();
+    var caseFolderNode = FindVisibleNodeByData(shell.workbench.sidebarTree,
+                                               caseFolderSource);
+    if caseFolderNode == null {
+        fail(shell, "case-only folder node missing");
+        return;
+    }
+    shell.workbench.sidebarTree.Select(caseFolderNode);
+    projMgr.HandleTreeClicks();
+    if PumpTreeUntilIdle(projMgr, 20) == false {
+        fail(shell, "case-only folder expansion did not settle");
+        return;
+    }
+    shell.Render();
+    var caseFolderChildNode = FindVisibleNodeByData(shell.workbench.sidebarTree,
+                                                    caseFolderChildSource);
+    if caseFolderChildNode == null {
+        fail(shell, "case-only folder child missing");
+        return;
+    }
+    shell.workbench.sidebarTree.Select(caseFolderChildNode);
+    projMgr.HandleTreeClicks();
+    if projMgr.RenamePath(caseFolderSource, "caseonlyfolder", docMgr)
+       != caseFolderTarget {
+        fail(shell, "case-only folder rename rejected");
+        return;
+    }
+    if PumpTreeUntilIdle(projMgr, 60) == false {
+        fail(shell, "case-only folder refresh did not settle");
+        return;
+    }
+    shell.Render();
+    var caseFolderSelection = shell.workbench.sidebarTree.GetSelected();
+    var renamedCaseFolderNode = FindVisibleNodeByData(shell.workbench.sidebarTree,
+                                                      caseFolderTarget);
+    if caseFolderDoc.filePath != caseFolderChildTarget
+       or DirectoryHasExactFolderName(subdir, "caseonlyfolder") == false
+       or DirectoryHasExactFolderName(subdir, "CaseOnlyFolder")
+       or renamedCaseFolderNode == null
+       or GUI.TreeView.Node.IsExpanded(renamedCaseFolderNode) == false
+       or caseFolderSelection == null
+       or GUI.TreeView.Node.GetData(caseFolderSelection) != caseFolderChildTarget {
+        fail(shell, "case-only folder state did not retarget");
+        return;
+    }
+
     var openImporter = Path.Join(subdir, "open_importer.zia");
     var closedImporter = Path.Join(subdir, "closed_importer.zia");
     File.WriteAllText(openImporter, "module OpenImporter;\nbind \"./main\";\n");
     File.WriteAllText(closedImporter, "module ClosedImporter;\nbind \"./main\";\n");
-    docMgr.OpenFile(openImporter);
+    var openImporterDoc = docMgr.OpenFile(openImporter);
+    var openEntry = docMgr.OpenFile(entryPath);
+    openEntry.content = "module UnsavedEntry;\n";
+    openEntry.isModified = true;
     if projMgr.PreviewBindRewriteCount(entryPath, "renamed.zia", docMgr) != 2 {
         fail(shell, "file rename bind preview count");
         return;
@@ -133,6 +472,11 @@ func main() {
     var renamedEntry = projMgr.RenamePath(entryPath, "renamed.zia", docMgr);
     if renamedEntry != Path.Join(subdir, "renamed.zia") {
         fail(shell, "file rename path");
+        return;
+    }
+    if openEntry.filePath != renamedEntry or openEntry.isModified == false
+       or openEntry.content != "module UnsavedEntry;\n" {
+        fail(shell, "file rename did not preserve unsaved open buffer");
         return;
     }
     if projMgr.lastBindRewriteCount != 2 {
@@ -143,7 +487,33 @@ func main() {
         fail(shell, "entry file follows rename");
         return;
     }
-    if Str.IndexOf(docMgr.documents.get(0).content, "bind \"./renamed\";") == 0 {
+
+    // An open editable buffer must not be stranded behind a binary-only
+    // extension, and a missing-file tab still owns its canonical destination.
+    var binaryRenameSource = Path.Join(subdir, "binary_rename.zia");
+    var binaryRenameTarget = Path.Join(subdir, "binary_rename.png");
+    File.WriteAllText(binaryRenameSource, "module BinaryRename;\n");
+    docMgr.OpenFile(binaryRenameSource);
+    if projMgr.RenamePath(binaryRenameSource, "binary_rename.png", docMgr) != ""
+       or File.Exists(binaryRenameSource) == false or File.Exists(binaryRenameTarget)
+       or projMgr.lastOperationError == "" {
+        fail(shell, "open file renamed to unsupported binary extension");
+        return;
+    }
+
+    var claimedPath = Path.Join(subdir, "claimed.zia");
+    File.WriteAllText(claimedPath, "module Claimed;\n");
+    docMgr.OpenFile(claimedPath);
+    File.Delete(claimedPath);
+    var collisionSource = Path.Join(subdir, "collision_source.zia");
+    File.WriteAllText(collisionSource, "module CollisionSource;\n");
+    if projMgr.RenamePath(collisionSource, "claimed.zia", docMgr) != ""
+       or File.Exists(collisionSource) == false or File.Exists(claimedPath)
+       or projMgr.lastOperationError == "" {
+        fail(shell, "rename stole path owned by missing-file tab");
+        return;
+    }
+    if Str.IndexOf(openImporterDoc.content, "bind \"./renamed\";") == 0 {
         fail(shell, "open importer bind rewritten");
         return;
     }
@@ -187,6 +557,55 @@ func main() {
         fail(shell, "folder importer bind rewritten");
         return;
     }
+
+    var moveSource = Path.Join(subdir, "move_selected.zia");
+    var moveTarget = Path.Join(renamedLibAgain, "move_selected.zia");
+    File.WriteAllText(moveSource, "module MoveSelected;\n");
+    var moveDoc = docMgr.OpenFile(moveSource);
+    projMgr.RefreshTree();
+    if PumpTreeUntilIdle(projMgr, 60) == false {
+        fail(shell, "move selection setup did not settle");
+        return;
+    }
+    shell.Render();
+    var moveTargetFolderNode = FindVisibleNodeByData(shell.workbench.sidebarTree,
+                                                     renamedLibAgain);
+    if moveTargetFolderNode == null {
+        fail(shell, "move target folder missing");
+        return;
+    }
+    shell.workbench.sidebarTree.Select(moveTargetFolderNode);
+    projMgr.HandleTreeClicks();
+    if PumpTreeUntilIdle(projMgr, 20) == false {
+        fail(shell, "move target expansion did not settle");
+        return;
+    }
+    shell.Render();
+    var moveSourceNode = FindVisibleNodeByData(shell.workbench.sidebarTree,
+                                               moveSource);
+    if moveSourceNode == null {
+        fail(shell, "move source node missing");
+        return;
+    }
+    shell.workbench.sidebarTree.Select(moveSourceNode);
+    projMgr.HandleTreeClicks();
+    if projMgr.MovePathInto(moveSource, renamedLibAgain, docMgr) != moveTarget {
+        fail(shell, "selected file move rejected");
+        return;
+    }
+    if PumpTreeUntilIdle(projMgr, 60) == false {
+        fail(shell, "move selection refresh did not settle");
+        return;
+    }
+    shell.Render();
+    var moveSelection = shell.workbench.sidebarTree.GetSelected();
+    if moveDoc.filePath != moveTarget or File.Exists(moveTarget) == false
+       or File.Exists(moveSource) or moveSelection == null
+       or GUI.TreeView.Node.GetData(moveSelection) != moveTarget {
+        fail(shell, "move did not retarget document and tree selection");
+        return;
+    }
+
     var deleteRecent = Path.Join(subdir, "delete_recent.zia");
     File.WriteAllText(deleteRecent, "module DeleteRecent;\n");
     docMgr.OpenFile(deleteRecent);
@@ -195,8 +614,34 @@ func main() {
         fail(shell, "delete recent recorded");
         return;
     }
+    projMgr.RefreshTree();
+    if PumpTreeUntilIdle(projMgr, 60) == false {
+        fail(shell, "delete selection setup did not settle");
+        return;
+    }
+    shell.Render();
+    var deleteNode = FindVisibleNodeByData(shell.workbench.sidebarTree,
+                                           deleteRecent);
+    if deleteNode == null {
+        fail(shell, "delete selection node missing");
+        return;
+    }
+    shell.workbench.sidebarTree.Select(deleteNode);
+    projMgr.HandleTreeClicks();
     if projMgr.DeletePath(deleteRecent, docMgr) == false {
         fail(shell, "delete recent path");
+        return;
+    }
+    if PumpTreeUntilIdle(projMgr, 60) == false {
+        fail(shell, "delete selection refresh did not settle");
+        return;
+    }
+    shell.Render();
+    var deleteSelection = shell.workbench.sidebarTree.GetSelected();
+    if projMgr.selectedFilePath != ""
+       or (deleteSelection != null
+           and GUI.TreeView.Node.GetData(deleteSelection) == deleteRecent) {
+        fail(shell, "delete left stale explorer selection");
         return;
     }
     if projMgr.lastTrashPath == "" or File.Exists(projMgr.lastTrashPath) == false {
@@ -206,6 +651,48 @@ func main() {
     if RecentContains(docMgr, deleteRecent) {
         fail(shell, "deleted recent path removed");
         return;
+    }
+
+    // Multi-root deletes belong in the owning root's private trash. Moving an
+    // extra-root file through the primary root can cross volumes and breaks the
+    // user's expectation that each workspace folder remains self-contained.
+    var extraRoot = TempFile.CreateDirWithPrefix("zannastudio_file_tree_extra_");
+    var extraFile = Path.Join(extraRoot, "extra.zia");
+    File.WriteAllText(extraFile, "module Extra;\n");
+    projMgr.AddFolderToWorkspace(extraRoot);
+    if projMgr.DeletePath(extraFile, docMgr) == false {
+        fail(shell, "extra-root delete rejected");
+        return;
+    }
+    var extraTrashRoot = Path.Join(extraRoot, ".zannastudio-trash");
+    if project_file_ops.IsWithinRoot(projMgr.lastTrashPath, extraTrashRoot) == false
+       or File.Exists(projMgr.lastTrashPath) == false {
+        fail(shell, "extra-root delete used wrong trash");
+        return;
+    }
+
+    // The last row of an overflowing tree must be reachable inside the same
+    // viewport. ScrollTo exercises the same bounded scroll state used by wheel
+    // and trackpad input while retaining a node handle for a precise hit-test.
+    var scrollSentinel = shell.workbench.sidebarTree.AddNode(null, "scroll sentinel");
+    GUI.TreeView.Node.SetData(scrollSentinel, "scroll-sentinel");
+    shell.workbench.sidebarTree.ScrollTo(scrollSentinel);
+    shell.Poll();
+    shell.Render();
+    var bottomHit = shell.workbench.sidebarTree.GetNodeAt(
+        shell.workbench.sidebarTree.GetX() + 12,
+        shell.workbench.sidebarTree.GetY() + shell.workbench.sidebarTree.GetHeight() - 12);
+    if bottomHit == null or GUI.TreeView.Node.GetData(bottomHit) != "scroll-sentinel" {
+        fail(shell, "overflowing tree could not reach final row");
+        return;
+    }
+
+    if HasArg("--visual-hold") {
+        while true {
+            shell.PollWait(16);
+            if shell.WasCloseRequested() { break; }
+            shell.Render();
+        }
     }
 
     shell.Destroy();

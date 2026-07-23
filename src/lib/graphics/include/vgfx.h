@@ -103,6 +103,7 @@ typedef struct {
 /// @details Capability bits describe native behavior, not portable emulation. They may differ
 ///          between Wayland compositors because optional protocols are advertised at runtime.
 typedef uint64_t vgfx_window_capabilities_t;
+
 enum {
     VGFX_CAP_WINDOW_POSITION = UINT64_C(1) << 0,
     VGFX_CAP_FOCUS_REQUEST = UINT64_C(1) << 1,
@@ -292,13 +293,13 @@ typedef enum {
 ///          byte offsets into surrounding_text. The cursor rectangle is in physical window
 ///          coordinates and should cover the visible caret; zero width/height are accepted.
 typedef struct {
-    const char *surrounding_text; ///< NUL-terminated committed UTF-8, or NULL for unavailable
-    int32_t cursor_byte;          ///< Active selection endpoint byte offset
-    int32_t anchor_byte;          ///< Fixed selection endpoint byte offset
-    int32_t cursor_x;             ///< Caret rectangle X
-    int32_t cursor_y;             ///< Caret rectangle Y
-    int32_t cursor_width;         ///< Caret rectangle width
-    int32_t cursor_height;        ///< Caret rectangle height
+    const char *surrounding_text;      ///< NUL-terminated committed UTF-8, or NULL for unavailable
+    int32_t cursor_byte;               ///< Active selection endpoint byte offset
+    int32_t anchor_byte;               ///< Fixed selection endpoint byte offset
+    int32_t cursor_x;                  ///< Caret rectangle X
+    int32_t cursor_y;                  ///< Caret rectangle Y
+    int32_t cursor_width;              ///< Caret rectangle width
+    int32_t cursor_height;             ///< Caret rectangle height
     vgfx_text_input_purpose_t purpose; ///< Native keyboard/input specialization
 } vgfx_text_input_state_t;
 
@@ -405,12 +406,12 @@ typedef struct {
         ///          orientation are supplied when the compositor supports wl_touch version 6;
         ///          otherwise major/minor are zero and orientation is unspecified as zero.
         struct {
-            int32_t id;          ///< Compositor-assigned contact identifier
-            int32_t x;           ///< Contact X in physical framebuffer pixels
-            int32_t y;           ///< Contact Y in physical framebuffer pixels
-            float major;         ///< Major-axis diameter in surface coordinates, or zero
-            float minor;         ///< Minor-axis diameter in surface coordinates, or zero
-            float orientation;   ///< Ellipse orientation in degrees, or zero
+            int32_t id;        ///< Compositor-assigned contact identifier
+            int32_t x;         ///< Contact X in physical framebuffer pixels
+            int32_t y;         ///< Contact Y in physical framebuffer pixels
+            float major;       ///< Major-axis diameter in surface coordinates, or zero
+            float minor;       ///< Minor-axis diameter in surface coordinates, or zero
+            float orientation; ///< Ellipse orientation in degrees, or zero
         } touch;
     } data;
 } vgfx_event_t;
@@ -651,11 +652,11 @@ void vgfx_set_prevent_close(vgfx_window_t window, int32_t prevent);
 /// @brief Cursor type constants for vgfx_set_cursor().
 /// DEFAULT=0, POINTER=1, TEXT=2, RESIZE_H=3, RESIZE_V=4, WAIT=5
 typedef enum {
-    VGFX_CURSOR_DEFAULT = 0,  ///< Standard arrow cursor
-    VGFX_CURSOR_POINTER = 1,  ///< Hand/pointer cursor (links, buttons)
-    VGFX_CURSOR_TEXT = 2,     ///< I-beam text cursor
-    VGFX_CURSOR_RESIZE_H = 3, ///< Horizontal resize cursor
-    VGFX_CURSOR_RESIZE_V = 4, ///< Vertical resize cursor
+    VGFX_CURSOR_DEFAULT = 0,     ///< Standard arrow cursor
+    VGFX_CURSOR_POINTER = 1,     ///< Hand/pointer cursor (links, buttons)
+    VGFX_CURSOR_TEXT = 2,        ///< I-beam text cursor
+    VGFX_CURSOR_RESIZE_H = 3,    ///< Horizontal resize cursor
+    VGFX_CURSOR_RESIZE_V = 4,    ///< Vertical resize cursor
     VGFX_CURSOR_WAIT = 5,        ///< Busy/spinner cursor
     VGFX_CURSOR_RESIZE_NWSE = 6, ///< Diagonal resize (top-left/bottom-right)
     VGFX_CURSOR_RESIZE_NESW = 7, ///< Diagonal resize (top-right/bottom-left)
@@ -694,6 +695,18 @@ void vgfx_get_monitor_size(vgfx_window_t window, int32_t *out_w, int32_t *out_h)
 /// @param w New logical window width in pixels (must be > 0)
 /// @param h New logical window height in pixels (must be > 0)
 void vgfx_set_window_size(vgfx_window_t window, int32_t w, int32_t h);
+
+/// @brief Set the minimum native client/content size for a resizable window.
+/// @details The dimensions use the same logical coordinate space as
+///          @ref vgfx_set_window_size. Future programmatic resize requests are
+///          clamped to this floor, and supported desktop window managers are
+///          told to enforce it during interactive resizing. Values below one
+///          are normalized to one, which restores the effectively unconstrained
+///          default.
+/// @param window Window handle.
+/// @param w Minimum logical client/content width.
+/// @param h Minimum logical client/content height.
+void vgfx_set_window_min_size(vgfx_window_t window, int32_t w, int32_t h);
 
 /// @brief Query the HiDPI backing scale factor for a window.
 /// @details Returns the current ratio of physical pixels to logical points.

@@ -94,8 +94,9 @@ static BOOL rt_gui_macos_item_is_live(vg_menu_item_t *item) {
 ///          menu always has a non-empty title.
 /// @return Autoreleased `NSString` (non-null).
 static NSString *rt_gui_macos_app_name(void) {
-    if (s_current_app && s_current_app->title && s_current_app->title[0] != '\0') {
-        return [NSString stringWithUTF8String:s_current_app->title];
+    if (s_current_app && s_current_app->application_name &&
+        s_current_app->application_name[0] != '\0') {
+        return [NSString stringWithUTF8String:s_current_app->application_name];
     }
 
     NSString *bundle_name = [[NSBundle mainBundle] objectForInfoDictionaryKey:@ "CFBundleName"];
@@ -604,8 +605,14 @@ static NSMenu *rt_gui_macos_build_main_menu(void) {
     NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@ ""];
     [main_menu setAutoenablesItems:NO];
 
-    NSMenuItem *app_root = [[NSMenuItem alloc] initWithTitle:@ "" action:nil keyEquivalent:@ ""];
-    [app_root setSubmenu:rt_gui_macos_build_app_menu(&specials)];
+    NSMenu *app_menu = rt_gui_macos_build_app_menu(&specials);
+    // Preserve the authored name in the Cocoa menu model and submenu. The
+    // system-rendered application label follows process identity for raw
+    // executables, which product staging supplies through the executable name.
+    NSMenuItem *app_root = [[NSMenuItem alloc] initWithTitle:[app_menu title]
+                                                      action:nil
+                                               keyEquivalent:@ ""];
+    [app_root setSubmenu:app_menu];
     [main_menu addItem:app_root];
 
     if (!(g_main_menubar && g_main_menubar->native_main_menu && g_main_menubar->base.visible)) {
@@ -650,10 +657,10 @@ static NSMenu *rt_gui_macos_build_main_menu(void) {
 static void rt_gui_macos_rebuild_main_menu(void) {
     [NSApplication sharedApplication];
     if (!(g_main_menubar && g_main_menubar->native_main_menu && g_main_menubar->base.visible)) {
-        const char *preferred_title =
-            (s_current_app && s_current_app->title && s_current_app->title[0] != '\0')
-                ? s_current_app->title
-                : NULL;
+        const char *preferred_title = (s_current_app && s_current_app->application_name &&
+                                       s_current_app->application_name[0] != '\0')
+                                          ? s_current_app->application_name
+                                          : NULL;
         vgfx_platform_macos_install_default_main_menu(preferred_title);
         return;
     }

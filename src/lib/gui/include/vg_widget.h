@@ -16,6 +16,8 @@
 //   - The GUI widget tree is single-thread-affine. Create, destroy, layout,
 //     paint, and event dispatch operations for a tree must run on the same UI
 //     thread unless the embedder provides external serialization.
+//   - Generic widget metadata such as names and tooltips is copied and owned by
+//     the base widget rather than by individual control implementations.
 // Ownership/Lifetime:
 //   - vg_widget_remove_child detaches without destroying; caller takes ownership.
 //   - The `name` string and `impl_data` are owned by the base widget by default.
@@ -801,6 +803,11 @@ void vg_widget_set_name(vg_widget_t *widget, const char *name);
 /// @param widget The widget to query.
 /// @return The name string (read-only), or NULL if no name has been set.
 const char *vg_widget_get_name(vg_widget_t *widget);
+
+/// @brief Attach tooltip text consumed by the shared hover manager.
+/// @param widget Widget to annotate; NULL is ignored.
+/// @param text Tooltip text copied by the widget, or NULL/empty to clear it.
+void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text);
 
 //=============================================================================
 // Layout & Rendering

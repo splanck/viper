@@ -164,22 +164,53 @@ static int rt_shortcuts_record_triggered(rt_gui_app_t *app, const char *id) {
     return 1;
 }
 
-/// @brief Parse a `+`-separated shortcut string (e.g. `"Ctrl+Shift+S"`) into modifier flags + key
-/// code.
-///
-/// Recognises `Ctrl`/`Control`, `Shift`, `Alt`, `Cmd`/`Command`
-/// (`Cmd` is distinct on macOS and maps to Ctrl/Super-compatible shortcuts elsewhere),
-/// `F1`-`F12`, named keys (`Enter`, `Escape`, arrows, etc.), and
-/// any single character. Case-insensitive.
-/// @return 1 on success, 0 on invalid syntax or alloc failure.
-static int parse_shortcut_keys(
-    const char *keys, int *ctrl, int *shift, int *alt, int *super, int *key) {
-    *ctrl = 0;
-    *shift = 0;
-    *alt = 0;
-    *super = 0;
-    *key = 0;
+enum { RT_SHORTCUT_CHORD_TIMEOUT_MS = 1500 };
 
+/// @brief Clear a partially entered shortcut chord for one app.
+static void rt_shortcuts_cancel_chord(rt_gui_app_t *app) {
+    if (!app)
+        return;
+    app->shortcut_chord_pending = 0;
+    memset(&app->shortcut_chord_prefix, 0, sizeof(app->shortcut_chord_prefix));
+    app->shortcut_chord_started_ms = 0;
+}
+
+typedef struct {
+    const char *name;
+    int key;
+} rt_shortcut_named_key_t;
+
+static const rt_shortcut_named_key_t RT_SHORTCUT_NAMED_KEYS[] = {
+    {"Enter", VG_KEY_ENTER},
+    {"Return", VG_KEY_ENTER},
+    {"Escape", VG_KEY_ESCAPE},
+    {"Esc", VG_KEY_ESCAPE},
+    {"Space", VG_KEY_SPACE},
+    {"Tab", VG_KEY_TAB},
+    {"Backspace", VG_KEY_BACKSPACE},
+    {"Delete", VG_KEY_DELETE},
+    {"Del", VG_KEY_DELETE},
+    {"Home", VG_KEY_HOME},
+    {"End", VG_KEY_END},
+    {"PageUp", VG_KEY_PAGE_UP},
+    {"PgUp", VG_KEY_PAGE_UP},
+    {"PageDown", VG_KEY_PAGE_DOWN},
+    {"PgDn", VG_KEY_PAGE_DOWN},
+    {"Left", VG_KEY_LEFT},
+    {"Right", VG_KEY_RIGHT},
+    {"Up", VG_KEY_UP},
+    {"Down", VG_KEY_DOWN},
+    {NULL, 0},
+};
+
+/// @brief Parse one `+`-separated keystroke into normalized modifier/key fields.
+/// @param keys One stroke such as `Ctrl+Shift+S`.
+/// @param stroke Destination, cleared before parsing.
+/// @return 1 on success, 0 on invalid syntax or allocation failure.
+static int parse_shortcut_stroke(const char *keys, rt_gui_shortcut_stroke_t *stroke) {
+    if (!stroke)
+        return 0;
+    memset(stroke, 0, sizeof(*stroke));
     if (!keys)
         return 0;
 
@@ -191,11 +222,10 @@ static int parse_shortcut_keys(
     char *token = rt_strtok_r(copy, "+", &saveptr);
     while (token) {
         int recognized = 0;
-        // Trim whitespace
-        while (*token == ' ')
+        while (isspace((unsigned char)*token))
             token++;
         char *end = token + strlen(token);
-        while (end > token && end[-1] == ' ')
+        while (end > token && isspace((unsigned char)end[-1]))
             *--end = '\0';
 
         if (*token == '\0') {
@@ -205,142 +235,42 @@ static int parse_shortcut_keys(
 
         if (rt_gui_ascii_casecmp(token, "Ctrl") == 0 ||
             rt_gui_ascii_casecmp(token, "Control") == 0) {
-            *ctrl = 1;
+            stroke->ctrl = 1;
             recognized = 1;
         } else if (rt_gui_ascii_casecmp(token, "Shift") == 0) {
-            *shift = 1;
+            stroke->shift = 1;
             recognized = 1;
         } else if (rt_gui_ascii_casecmp(token, "Alt") == 0) {
-            *alt = 1;
+            stroke->alt = 1;
             recognized = 1;
         } else if (rt_gui_ascii_casecmp(token, "Cmd") == 0 ||
                    rt_gui_ascii_casecmp(token, "Command") == 0) {
-            *super = 1;
+            stroke->super = 1;
             recognized = 1;
-        } else if (strlen(token) == 1) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            // Single character key
-            *key = toupper((unsigned char)token[0]);
-            recognized = 1;
-        } else if ((token[0] == 'F' || token[0] == 'f') && strlen(token) <= 3) {
-            // Function key (F1-F12)
-            char *parse_end = NULL;
-            long fnum = strtol(token + 1, &parse_end, 10);
-            if (parse_end && *parse_end == '\0' && fnum >= 1 && fnum <= 12) {
-                if (*key != 0) {
-                    free(copy);
-                    return 0;
+        } else {
+            int parsed_key = 0;
+            if (strlen(token) == 1) {
+                parsed_key = toupper((unsigned char)token[0]);
+            } else if ((token[0] == 'F' || token[0] == 'f') && strlen(token) <= 3) {
+                char *parse_end = NULL;
+                long fnum = strtol(token + 1, &parse_end, 10);
+                if (parse_end && *parse_end == '\0' && fnum >= 1 && fnum <= 12)
+                    parsed_key = VG_KEY_F1 + ((int)fnum - 1);
+            } else {
+                for (const rt_shortcut_named_key_t *named = RT_SHORTCUT_NAMED_KEYS; named->name;
+                     named++) {
+                    if (rt_gui_ascii_casecmp(token, named->name) == 0) {
+                        parsed_key = named->key;
+                        break;
+                    }
                 }
-                *key = VG_KEY_F1 + ((int)fnum - 1);
+            }
+            if (parsed_key != 0 && stroke->key == 0) {
+                stroke->key = parsed_key;
                 recognized = 1;
             }
-        } else if (rt_gui_ascii_casecmp(token, "Enter") == 0 ||
-                   rt_gui_ascii_casecmp(token, "Return") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_ENTER;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Escape") == 0 ||
-                   rt_gui_ascii_casecmp(token, "Esc") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_ESCAPE;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Space") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_SPACE;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Tab") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_TAB;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Backspace") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_BACKSPACE;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Delete") == 0 ||
-                   rt_gui_ascii_casecmp(token, "Del") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_DELETE;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Home") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_HOME;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "End") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_END;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "PageUp") == 0 ||
-                   rt_gui_ascii_casecmp(token, "PgUp") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_PAGE_UP;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "PageDown") == 0 ||
-                   rt_gui_ascii_casecmp(token, "PgDn") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_PAGE_DOWN;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Left") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_LEFT;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Right") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_RIGHT;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Up") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_UP;
-            recognized = 1;
-        } else if (rt_gui_ascii_casecmp(token, "Down") == 0) {
-            if (*key != 0) {
-                free(copy);
-                return 0;
-            }
-            *key = VG_KEY_DOWN;
-            recognized = 1;
         }
+
         if (!recognized) {
             free(copy);
             return 0;
@@ -349,7 +279,70 @@ static int parse_shortcut_keys(
     }
 
     free(copy);
-    return (*key != 0);
+    return stroke->key != 0;
+}
+
+/// @brief Find the whitespace separator between two shortcut strokes.
+/// @details Whitespace immediately beside `+` remains part of a single stroke,
+///          so user spellings such as `Ctrl + Shift + S` are still accepted.
+/// @param text Mutable, trimmed shortcut text.
+/// @return Start of the second stroke after terminating the first, or NULL.
+static char *split_shortcut_chord(char *text) {
+    for (char *cursor = text; cursor && *cursor;) {
+        if (!isspace((unsigned char)*cursor)) {
+            cursor++;
+            continue;
+        }
+        char *run = cursor;
+        while (isspace((unsigned char)*cursor))
+            cursor++;
+        if (run > text && run[-1] != '+' && *cursor != '\0' && *cursor != '+') {
+            *run = '\0';
+            return cursor;
+        }
+    }
+    return NULL;
+}
+
+/// @brief Parse a one- or two-stroke shortcut binding.
+/// @details Chord strokes are separated by whitespace, for example
+///          `Ctrl+K Ctrl+S`. More than two strokes are rejected rather than
+///          silently registering a partial binding.
+/// @param keys Human-readable binding text.
+/// @param first Parsed first stroke.
+/// @param second Parsed second stroke, with key zero for a single-stroke binding.
+/// @return 1 on success, 0 on invalid syntax or allocation failure.
+static int parse_shortcut_keys(const char *keys,
+                               rt_gui_shortcut_stroke_t *first,
+                               rt_gui_shortcut_stroke_t *second) {
+    if (!first || !second)
+        return 0;
+    memset(first, 0, sizeof(*first));
+    memset(second, 0, sizeof(*second));
+    if (!keys)
+        return 0;
+
+    char *copy = rt_gui_system_strdup(keys);
+    if (!copy)
+        return 0;
+    char *start = copy;
+    while (isspace((unsigned char)*start))
+        start++;
+    char *end = start + strlen(start);
+    while (end > start && isspace((unsigned char)end[-1]))
+        *--end = '\0';
+
+    char *second_text = split_shortcut_chord(start);
+    if (second_text && split_shortcut_chord(second_text)) {
+        free(copy);
+        return 0;
+    }
+
+    int valid = parse_shortcut_stroke(start, first);
+    if (valid && second_text)
+        valid = parse_shortcut_stroke(second_text, second);
+    free(copy);
+    return valid;
 }
 
 /// @brief Register (or update) a named keyboard shortcut on the active GUI app.
@@ -381,13 +374,9 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
         return;
     }
 
-    int parsed_ctrl = 0;
-    int parsed_shift = 0;
-    int parsed_alt = 0;
-    int parsed_super = 0;
-    int parsed_key = 0;
-    if (!parse_shortcut_keys(
-            ckeys, &parsed_ctrl, &parsed_shift, &parsed_alt, &parsed_super, &parsed_key)) {
+    rt_gui_shortcut_stroke_t first;
+    rt_gui_shortcut_stroke_t second;
+    if (!parse_shortcut_keys(ckeys, &first, &second)) {
         free(cid);
         free(ckeys);
         free(cdesc);
@@ -401,11 +390,9 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
             free(app->shortcuts[i].description);
             app->shortcuts[i].keys = ckeys;
             app->shortcuts[i].description = cdesc;
-            app->shortcuts[i].parsed_ctrl = parsed_ctrl;
-            app->shortcuts[i].parsed_shift = parsed_shift;
-            app->shortcuts[i].parsed_alt = parsed_alt;
-            app->shortcuts[i].parsed_super = parsed_super;
-            app->shortcuts[i].parsed_key = parsed_key;
+            app->shortcuts[i].first = first;
+            app->shortcuts[i].second = second;
+            rt_shortcuts_cancel_chord(app);
             free(cid);
             return;
         }
@@ -425,12 +412,10 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) 
     sc->description = cdesc;
     sc->enabled = 1;
     sc->triggered = 0;
-    sc->parsed_ctrl = parsed_ctrl;
-    sc->parsed_shift = parsed_shift;
-    sc->parsed_alt = parsed_alt;
-    sc->parsed_super = parsed_super;
-    sc->parsed_key = parsed_key;
+    sc->first = first;
+    sc->second = second;
     app->shortcut_count++;
+    rt_shortcuts_cancel_chord(app);
 }
 
 /// @brief Remove a registered shortcut by id, freeing its stored strings.
@@ -459,6 +444,7 @@ void rt_shortcuts_unregister(rt_string id) {
                     &app->shortcuts[i + 1],
                     (size_t)(app->shortcut_count - i - 1) * sizeof(*app->shortcuts));
             app->shortcut_count--;
+            rt_shortcuts_cancel_chord(app);
             break;
         }
     }
@@ -481,6 +467,7 @@ void rt_shortcuts_clear(void) {
     app->shortcuts = NULL;
     app->shortcut_count = 0;
     app->shortcut_cap = 0;
+    rt_shortcuts_cancel_chord(app);
     rt_shortcuts_free_triggered_queue(app);
 }
 
@@ -533,16 +520,43 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
     rt_shortcuts_free_triggered_queue(app);
 }
 
+/// @brief Compare two parsed strokes for exact key/modifier identity.
+static int rt_shortcut_strokes_equal(const rt_gui_shortcut_stroke_t *left,
+                                     const rt_gui_shortcut_stroke_t *right) {
+    return left && right && left->ctrl == right->ctrl && left->shift == right->shift &&
+           left->alt == right->alt && left->super == right->super && left->key == right->key;
+}
+
+/// @brief Test one parsed stroke against a normalized input event.
+static int rt_shortcut_stroke_matches(
+    const rt_gui_shortcut_stroke_t *stroke, int key, int ctrl, int shift, int alt, int super) {
+    return stroke && stroke->key != 0 && stroke->key == key && stroke->ctrl == ctrl &&
+           stroke->shift == shift && stroke->alt == alt && stroke->super == super;
+}
+
+/// @brief Return whether an app's pending chord exceeded its input window.
+static int rt_shortcuts_chord_timed_out(const rt_gui_app_t *app) {
+    if (!app || !app->shortcut_chord_pending || app->shortcut_chord_started_ms == 0 ||
+        app->last_event_time_ms == 0)
+        return 0;
+    if (app->last_event_time_ms < app->shortcut_chord_started_ms)
+        return 1;
+    return app->last_event_time_ms - app->shortcut_chord_started_ms > RT_SHORTCUT_CHORD_TIMEOUT_MS;
+}
+
 /// @brief Match a key event against registered global shortcuts; trigger on hit.
-/// @details Walks the shortcut table and returns 1 if any enabled shortcut's
-///          (ctrl, shift, alt, key) tuple matches the incoming event. Several
+/// @details Walks the shortcut table and handles both single strokes and one
+///          pending two-stroke chord per app. A chord prefix is consumed without
+///          triggering a command; one of its enabled suffixes must arrive within
+///          1.5 seconds. An expired or mismatched suffix cancels the pending chord
+///          before the current key is considered as a fresh shortcut. Several
 ///          normalisations apply before comparison:
 ///          - **Cmd/Ctrl identity.** Ctrl and Super/Cmd are compared as separate
 ///            modifiers on every platform so `Ctrl+X` and `Super+X` can coexist.
-///          - **Modifier requirement.** Plain keys (no Ctrl, no Alt) are
-///            rejected up front *unless* they're function keys F1–F12, which
-///            are valid shortcuts on their own. This prevents typing `S` in a
-///            text field from accidentally firing the `S` half of `Ctrl+S`.
+///          - **Modifier requirement.** Plain printable keys (no Ctrl, Super,
+///            or Alt) are rejected, while non-text keys such as Escape and F1
+///            remain valid. This prevents typing `S` in a text field from
+///            accidentally firing a global command.
 ///          - **Case folding.** Lowercase letters are upper-cased for
 ///            comparison so the parsed-shortcut table and incoming events
 ///            match regardless of the user's caps-lock state.
@@ -554,7 +568,7 @@ void rt_shortcuts_clear_triggered(rt_gui_app_t *app) {
 /// @param app App owning the shortcut table.
 /// @param key Key code from the event.
 /// @param mods Modifier bitmask (`VG_MOD_*`).
-/// @return 1 if a shortcut was triggered, 0 otherwise.
+/// @return 1 if a shortcut fired or a chord prefix was consumed; 0 otherwise.
 int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     RT_ASSERT_MAIN_THREAD();
     if (!app || !app->shortcuts_global_enabled)
@@ -564,30 +578,60 @@ int8_t rt_shortcuts_check_key(rt_gui_app_t *app, int key, int mods) {
     int has_super = (mods & VG_MOD_SUPER) ? 1 : 0;
     int has_shift = (mods & VG_MOD_SHIFT) ? 1 : 0;
     int has_alt = (mods & VG_MOD_ALT) ? 1 : 0;
-    int event_ctrl = has_ctrl;
-    int event_super = has_super;
-
-    // Only check if at least one modifier is held (plain keys aren't shortcuts)
-    if (!event_ctrl && !event_super && !has_alt && !(key >= VG_KEY_F1 && key <= VG_KEY_F12))
-        return 0;
-
     int upper_key = (key >= 'a' && key <= 'z') ? key - ('a' - 'A') : key;
 
-    for (int i = 0; i < app->shortcut_count; i++) {
-        if (!app->shortcuts[i].enabled || !app->shortcuts[i].parsed_key)
-            continue;
+    if (app->shortcut_chord_pending) {
+        if (!rt_shortcuts_chord_timed_out(app)) {
+            for (int i = 0; i < app->shortcut_count; i++) {
+                rt_gui_shortcut_t *shortcut = &app->shortcuts[i];
+                if (!shortcut->enabled || shortcut->second.key == 0 ||
+                    !rt_shortcut_strokes_equal(&shortcut->first, &app->shortcut_chord_prefix) ||
+                    !rt_shortcut_stroke_matches(
+                        &shortcut->second, upper_key, has_ctrl, has_shift, has_alt, has_super))
+                    continue;
 
-        int expected_ctrl = app->shortcuts[i].parsed_ctrl;
-        int expected_super = app->shortcuts[i].parsed_super;
-
-        if (expected_ctrl == event_ctrl && expected_super == event_super &&
-            app->shortcuts[i].parsed_shift == has_shift &&
-            app->shortcuts[i].parsed_alt == has_alt && app->shortcuts[i].parsed_key == upper_key) {
-            if (!rt_shortcuts_record_triggered(app, app->shortcuts[i].id))
-                return 0;
-            app->shortcuts[i].triggered = 1;
-            return 1;
+                rt_shortcuts_cancel_chord(app);
+                if (!rt_shortcuts_record_triggered(app, shortcut->id))
+                    return 0;
+                shortcut->triggered = 1;
+                return 1;
+            }
         }
+        rt_shortcuts_cancel_chord(app);
+    }
+
+    // Plain printable keys are intentionally excluded from global first
+    // strokes so ordinary typing can never invoke a command. Non-text keys
+    // such as Escape and function keys remain valid without modifiers.
+    if (!has_ctrl && !has_super && !has_alt && upper_key >= VG_KEY_SPACE &&
+        upper_key <= VG_KEY_GRAVE)
+        return 0;
+
+    // Chord prefixes win over an otherwise identical single-stroke binding.
+    // This keeps shared prefixes deterministic instead of depending on catalog
+    // registration order.
+    for (int i = 0; i < app->shortcut_count; i++) {
+        rt_gui_shortcut_t *shortcut = &app->shortcuts[i];
+        if (!shortcut->enabled || shortcut->second.key == 0 ||
+            !rt_shortcut_stroke_matches(
+                &shortcut->first, upper_key, has_ctrl, has_shift, has_alt, has_super))
+            continue;
+        app->shortcut_chord_pending = 1;
+        app->shortcut_chord_prefix = shortcut->first;
+        app->shortcut_chord_started_ms = app->last_event_time_ms;
+        return 1;
+    }
+
+    for (int i = 0; i < app->shortcut_count; i++) {
+        rt_gui_shortcut_t *shortcut = &app->shortcuts[i];
+        if (!shortcut->enabled || shortcut->second.key != 0 ||
+            !rt_shortcut_stroke_matches(
+                &shortcut->first, upper_key, has_ctrl, has_shift, has_alt, has_super))
+            continue;
+        if (!rt_shortcuts_record_triggered(app, shortcut->id))
+            return 0;
+        shortcut->triggered = 1;
+        return 1;
     }
     return 0;
 }
@@ -663,8 +707,11 @@ int64_t rt_shortcuts_is_enabled(rt_string id) {
 void rt_shortcuts_set_global_enabled(int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = rt_shortcuts_app();
-    if (app)
+    if (app) {
         app->shortcuts_global_enabled = enabled != 0;
+        if (!app->shortcuts_global_enabled)
+            rt_shortcuts_cancel_chord(app);
+    }
 }
 
 /// @brief Return whether global shortcut processing is currently active for the app.
@@ -719,6 +766,26 @@ static void rt_app_set_window_size_checked(rt_gui_app_t *app, int64_t w, int64_t
     vgfx_set_window_size(app->window, clamped_w, clamped_h);
     // Root sizing is handled by vg_widget_layout(root, phys_w, phys_h) in
     // rt_gui_app_render; setting a root fixed size here would corrupt layout.
+}
+
+/// @brief Publish a logical native-window minimum after clamping to vgfx limits.
+static void rt_app_set_minimum_size_checked(rt_gui_app_t *app, int64_t w, int64_t h) {
+    if (!app || !app->window)
+        return;
+
+    float scale = rt_app_window_scale(app);
+    double max_w_d = (double)VGFX_MAX_WIDTH / (double)scale;
+    double max_h_d = (double)VGFX_MAX_HEIGHT / (double)scale;
+    int32_t max_w = max_w_d > (double)INT32_MAX ? INT32_MAX : (int32_t)max_w_d;
+    int32_t max_h = max_h_d > (double)INT32_MAX ? INT32_MAX : (int32_t)max_h_d;
+    if (max_w < 1)
+        max_w = 1;
+    if (max_h < 1)
+        max_h = 1;
+
+    int32_t clamped_w = rt_gui_clamp_i64_to_i32(w, 1, max_w);
+    int32_t clamped_h = rt_gui_clamp_i64_to_i32(h, 1, max_h);
+    vgfx_set_window_min_size(app->window, clamped_w, clamped_h);
 }
 
 /// @brief Set the title of the app.
@@ -1145,6 +1212,12 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     rt_app_set_window_size_checked(rt_app_checked(app), w, h);
 }
 
+/// @brief Set the app window's persistent minimum logical dimensions.
+void rt_app_set_minimum_size(void *app, int64_t w, int64_t h) {
+    RT_ASSERT_MAIN_THREAD();
+    rt_app_set_minimum_size_checked(rt_app_checked(app), w, h);
+}
+
 /// @brief Return the default font size for the app window in logical points.
 /// @return Font size in logical points, defaulting to 14.0 if the app is invalid.
 double rt_app_get_font_size(void *app) {
@@ -1533,6 +1606,13 @@ int64_t rt_app_get_monitor_height(void *app) {
 
 /// @brief Stub: graphics disabled — no-op; no window exists to resize.
 void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
+    (void)app;
+    (void)w;
+    (void)h;
+}
+
+/// @brief Stub: graphics disabled — no-op; there is no native window to constrain.
+void rt_app_set_minimum_size(void *app, int64_t w, int64_t h) {
     (void)app;
     (void)w;
     (void)h;

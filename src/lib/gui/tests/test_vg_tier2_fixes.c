@@ -2440,6 +2440,55 @@ TEST(listbox_large_measure_uses_available_width) {
     vg_widget_destroy(&lb->base);
 }
 
+TEST(listbox_overflow_row_promotes_full_text_tooltip) {
+    vg_font_t *font = vg_font_load_file(ZANNA_TEST_FONT_PATH);
+    ASSERT_NOT_NULL(font);
+    vg_listbox_t *lb = vg_listbox_create(NULL);
+    ASSERT_NOT_NULL(lb);
+    lb->font = font;
+    lb->font_size = 14.0f;
+    vg_widget_set_tooltip_text(&lb->base, "Recent work");
+
+    const char *long_path =
+        "ai_delivery_probe.zia    /Users/stephen/git/zanna/examples/games/ashfall";
+    vg_listbox_item_t *long_item = vg_listbox_add_item(lb, long_path, NULL);
+    vg_listbox_item_t *short_item = vg_listbox_add_item(lb, "main.zia", NULL);
+    ASSERT_NOT_NULL(long_item);
+    ASSERT_NOT_NULL(short_item);
+    vg_widget_arrange(&lb->base, 0.0f, 0.0f, 120.0f, lb->item_height * 2.0f);
+
+    vg_event_t hover_long =
+        vg_event_mouse(VG_EVENT_MOUSE_MOVE, 10.0f, lb->item_height * 0.5f, VG_MOUSE_LEFT, 0);
+    ASSERT_FALSE(vg_event_send(&lb->base, &hover_long));
+    ASSERT_EQ(lb->hovered, long_item);
+    ASSERT_NOT_NULL(lb->base.tooltip_text);
+    ASSERT_EQ(strcmp(lb->base.tooltip_text, long_path), 0);
+
+    vg_event_t hover_short =
+        vg_event_mouse(VG_EVENT_MOUSE_MOVE, 10.0f, lb->item_height * 1.5f, VG_MOUSE_LEFT, 0);
+    ASSERT_FALSE(vg_event_send(&lb->base, &hover_short));
+    ASSERT_EQ(lb->hovered, short_item);
+    ASSERT_NOT_NULL(lb->base.tooltip_text);
+    ASSERT_EQ(strcmp(lb->base.tooltip_text, "Recent work"), 0);
+
+    vgfx_window_params_t params = {
+        .width = 160, .height = 100, .title = "listbox ellipsis", .fps = 0, .resizable = 0};
+    vgfx_window_t win = vgfx_create_window(&params);
+    ASSERT_NOT_NULL(win);
+    vg_widget_paint(&lb->base, win);
+    ASSERT_NOT_NULL(lb->ellipsis_scratch);
+    size_t fitted_length = strlen(lb->ellipsis_scratch);
+    ASSERT_TRUE(fitted_length >= 3u);
+    ASSERT_TRUE(fitted_length < strlen(long_path));
+    ASSERT_EQ(strcmp(lb->ellipsis_scratch + fitted_length - 3u, "..."), 0);
+
+    ASSERT_FALSE(vg_event_send(&lb->base, &hover_long));
+    ASSERT_EQ(strcmp(lb->base.tooltip_text, long_path), 0);
+    vg_widget_destroy(&lb->base);
+    vgfx_destroy_window(win);
+    vg_font_destroy(font);
+}
+
 TEST(listbox_scroll_helpers_do_not_change_selection) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
@@ -2644,6 +2693,7 @@ int main(void) {
     RUN(listbox_virtual_paint_clips_to_viewport);
     RUN(listbox_measure_uses_small_item_count);
     RUN(listbox_large_measure_uses_available_width);
+    RUN(listbox_overflow_row_promotes_full_text_tooltip);
     RUN(listbox_scroll_helpers_do_not_change_selection);
     RUN(listbox_multi_select_respects_ctrl_and_shift_modifiers);
     RUN(codeeditor_fold_gutter_click_toggles_region);

@@ -1,3 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/bottom_panel_probe.zia
+// Purpose: Verify bottom-panel collapse, restore, sizing, and tab stability.
+// Key invariants:
+//   - A hidden bottom panel consumes no editor viewport height.
+//   - Showing or switching tool panels preserves the configured split.
+//   - Responsive tool tabs use effective logical width exactly once.
+// Ownership/Lifetime:
+//   - The probe owns and destroys its isolated AppShell window.
+// Links: zannastudio/src/ui/tool_panel_shell.zia,
+//        zannastudio/src/ui/workbench_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
 module bottom_panel_probe;
 
 // ============================================================================
@@ -30,9 +50,39 @@ func main() {
     var split = shell.workbench.editorSplit;
     if split == null { fail(shell, "editorSplit missing"); return; }
 
-    // No panel yet: the bottom area is collapsed (editor takes ~all height).
-    if split.GetPosition() < 0.98 {
-        fail(shell, "bottom not collapsed initially: " + split.GetPosition());
+    // No panel yet: use the explicit collapsed-side state. Merely moving the
+    // divider to 1.0 still leaves the second child's minimum-height strip in
+    // the layout, which looks like a permanently empty bottom panel.
+    if split.GetCollapsedSide() != 2 {
+        fail(shell, "bottom has no explicit collapsed state: " + split.GetCollapsedSide());
+        return;
+    }
+    if shell.workbench.bottomPanelHost.GetHeight() > 1 {
+        fail(shell, "hidden bottom still consumes height: "
+              + shell.workbench.bottomPanelHost.GetHeight());
+        return;
+    }
+
+    // Sidebar collapse uses the same explicit splitter contract. The vertical
+    // activity bar sits outside this split and remains available while the
+    // explorer/source-control pane itself must shrink all the way to zero.
+    var sidebarPosition = shell.workbench.splitPane.GetPosition();
+    shell.workbench.ToggleSidebar();
+    shell.Render();
+    if shell.workbench.splitPane.GetCollapsedSide() != 1
+       or shell.workbench.leftViewStack.GetWidth() > 1 {
+        fail(shell, "hidden sidebar still consumes width");
+        return;
+    }
+    shell.workbench.ToggleSidebar();
+    shell.Render();
+    var restoredSidebarPosition = shell.workbench.splitPane.GetPosition();
+    var sidebarDelta = restoredSidebarPosition - sidebarPosition;
+    if sidebarDelta < 0.0 { sidebarDelta = 0.0 - sidebarDelta; }
+    if shell.workbench.splitPane.GetCollapsedSide() != 0
+       or sidebarDelta > 0.01
+       or shell.workbench.leftViewStack.GetWidth() <= 1 {
+        fail(shell, "sidebar restore lost its previous width");
         return;
     }
 
@@ -40,6 +90,10 @@ func main() {
     // editor). Terminal needs no content to display.
     shell.toolPanels.ShowTerminalPanel();
     shell.Render();
+    if split.GetCollapsedSide() != 0 {
+        fail(shell, "terminal show did not restore second pane");
+        return;
+    }
     var p1 = split.GetPosition();
     if p1 < 0.6 or p1 > 0.8 {
         fail(shell, "terminal show did not restore split (~0.70): " + p1);
@@ -83,6 +137,113 @@ func main() {
     var p5 = split.GetPosition();
     if p5 < 0.28 or p5 > 0.32 {
         fail(shell, "SetBottomSplitPct(5) did not clamp to 30: " + p5);
+        return;
+    }
+
+    // The Search panel has four rows of controls above its result list. At the
+    // native minimum window size it must temporarily claim enough height for a
+    // useful results viewport, without overwriting the user's normal split.
+    shell.toolPanels.SetBottomSplitPct(70);
+    shell.toolPanels.splitFractionDirty = false;
+    shell.toolPanels.ShowSearchPanel();
+    shell.Render();
+    shell.app.SetSize(720, 520);
+    shell.Poll();
+    shell.toolPanels.PumpToolTabs();
+    shell.Render();
+    shell.toolPanels.PumpToolTabs();
+    if shell.toolPanels.searchListBox.GetHeight() < 48 {
+        fail(shell, "compact search has no usable results viewport: "
+              + shell.toolPanels.searchListBox.GetHeight()
+              + " split=" + split.GetHeight()
+              + " host=" + shell.workbench.bottomPanelHost.GetHeight());
+        return;
+    }
+    if shell.workbench.editorRow.GetHeight() < 120 {
+        fail(shell, "compact search consumed the editor viewport: "
+              + shell.workbench.editorRow.GetHeight());
+        return;
+    }
+    if shell.toolPanels.bottomSplitFraction < 0.68
+       or shell.toolPanels.bottomSplitFraction > 0.72
+       or shell.toolPanels.splitFractionDirty {
+        fail(shell, "compact search overwrote the configured split");
+        return;
+    }
+    if shell.toolPanels.toolReferencesTab.GetTitle() != "Refs"
+       or shell.toolPanels.toolDebugTab.GetTitle() != "Debug"
+       or shell.toolPanels.toolTerminalTab.GetTitle() != "Term" {
+        fail(shell, "compact tool tabs still hide late panels");
+        return;
+    }
+    shell.toolPanels.ShowTerminalPanel();
+    shell.Render();
+    var restoredCompactSplit = split.GetPosition();
+    if restoredCompactSplit < 0.68 or restoredCompactSplit > 0.72 {
+        fail(shell, "leaving compact search changed the configured split: "
+              + restoredCompactSplit);
+        return;
+    }
+
+    // A real user drag publishes one rounded percentage for debounced durable
+    // storage. Reading it is edge-triggered; controller-authored positioning
+    // above must never masquerade as a user preference.
+    shell.toolPanels.PumpToolTabs();
+    split.SetPosition(0.553);
+    shell.toolPanels.PumpToolTabs();
+    if shell.toolPanels.TakeChangedSplitPercent() != 55
+       or shell.toolPanels.TakeChangedSplitPercent() != -1 {
+        fail(shell, "split drag did not publish one rounded persistence value");
+        return;
+    }
+    shell.toolPanels.SetBottomSplitPct(70);
+
+    // Growing the window restores descriptive labels instead of leaving the
+    // compact abbreviations stuck for the rest of the session.
+    shell.app.SetSize(1100, 760);
+    shell.Poll();
+    shell.Render();
+    shell.toolPanels.PumpToolTabs();
+    if shell.toolPanels.toolReferencesTab.GetTitle() != "References"
+       or shell.toolPanels.toolDebugTab.GetTitle() != "Debug Console"
+       or shell.toolPanels.toolTerminalTab.GetTitle() != "Terminal" {
+        fail(shell, "wide tool tabs did not restore full labels");
+        return;
+    }
+
+    // GetLogicalWidth already removes both backing scale and whole-UI zoom.
+    // A second zoom division incorrectly keeps abbreviations on a genuinely
+    // wide workbench. Collapse the sidebar so this scenario remains bounded.
+    shell.workbench.ToggleSidebar();
+    shell.app.SetUiScale(2.0);
+    shell.app.SetSize(1600, 1040);
+    shell.Poll();
+    shell.Render();
+    shell.toolPanels.PumpToolTabs();
+    if shell.toolPanels.toolTabBar.GetLogicalWidth() <= 720.0 {
+        fail(shell, "zoomed wide tool-tab fixture did not reach wide layout");
+        return;
+    }
+    if shell.toolPanels.toolReferencesTab.GetTitle() != "References"
+       or shell.toolPanels.toolDebugTab.GetTitle() != "Debug Console"
+       or shell.toolPanels.toolTerminalTab.GetTitle() != "Terminal" {
+        fail(shell, "zoom was applied twice to responsive tool-tab width");
+        return;
+    }
+    shell.app.SetUiScale(1.0);
+    shell.app.SetSize(1100, 760);
+    shell.workbench.ToggleSidebar();
+    shell.Poll();
+    shell.Render();
+    shell.toolPanels.PumpToolTabs();
+
+    // Hiding the last visible panel must reclaim the entire bottom area again.
+    shell.toolPanels.ShowTerminalPanel();
+    shell.toolPanels.HideTerminalPanel();
+    shell.Render();
+    if split.GetCollapsedSide() != 2
+       or shell.workbench.bottomPanelHost.GetHeight() > 1 {
+        fail(shell, "last panel hide did not fully collapse bottom area");
         return;
     }
 

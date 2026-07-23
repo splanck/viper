@@ -135,18 +135,23 @@ On Windows:
 The IDE build scripts write `src/zannastudio/bin/zannastudio` or
 `src\zannastudio\bin\zannastudio.exe` by default. They also write
 `zannastudio.buildinfo` beside the generated binary and refresh a compatibility
-copy under `build/zannastudio/` unless `ZANNA_IDE_SKIP_COMPAT_COPY=1` is set.
+copy under `build/zannastudio/` unless `ZANNA_IDE_SKIP_COMPAT_COPY=1` is set. On
+macOS the lowercase file is a compatibility launcher for the sibling native
+payload `Zanna Studio`; the authored payload name is what Cocoa exposes in the
+system application menu.
 
 Full repository builds also build and install Zanna Studio when
 `ZANNA_INSTALL_ZANNASTUDIO=ON` (the default). `cmake --install` stages the IDE as
 `bin/zannastudio` or `bin\zannastudio.exe`, and the toolchain installer wrappers keep
-that option enabled so macOS, Windows, and Linux installers include the IDE.
+that option enabled so macOS, Windows, and Linux installers include the IDE. A
+macOS install also stages the sibling `bin/Zanna Studio` native payload required
+by the launcher.
 
 Useful IDE build variables:
 
 | Variable | Effect |
 | --- | --- |
-| `ZANNA_IDE_OUTPUT` | Override the output binary path. |
+| `ZANNA_IDE_OUTPUT` | Override the output entry-point path (the macOS payload remains a sibling named `Zanna Studio`). |
 | `ZANNA_IDE_COMPAT_OUTPUT` | Override the compatibility-copy path. |
 | `ZANNA_IDE_SKIP_COMPAT_COPY=1` | Skip the compatibility copy. |
 | `ZANNA_BINARY` | Force Zanna Studio build/run jobs to use a specific `zanna` binary. |

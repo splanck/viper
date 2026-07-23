@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/intellisense_probe.zia
+// Purpose: Regress Studio completion, diagnostics, navigation, and semantic UI.
+// Key invariants:
+//   - Language jobs publish only results for their original editor state.
+//   - Workspace completion resets when the project file-cache identity changes.
+//   - IntelliSense overlays remain inside the effective viewport at UI zoom.
+// Ownership/Lifetime: The probe owns and destroys its shell and temporary data.
+// Links: zannastudio/src/editor/completion.zia,
+//        zannastudio/src/editor/project_index.zia
+//
+//===----------------------------------------------------------------------===//
+
 module intellisense_probe;
 
 // ============================================================================
@@ -82,6 +101,16 @@ func pumpSignature(sigCtrl: signature.SignatureController,
         Clock.Sleep(1);
         i = i + 1;
     }
+}
+
+func panelFitsUiViewport(app: GUI.App, panel: GUI.FloatingPanel) -> Boolean {
+    if app == null or panel == null { return false; }
+    return panel.GetScreenX() >= 0.0
+        and panel.GetScreenY() >= 0.0
+        and panel.GetScreenX() + panel.GetScreenWidth()
+            <= app_shell.UiViewportWidth(app) + 1.0
+        and panel.GetScreenY() + panel.GetScreenHeight()
+            <= app_shell.UiViewportHeight(app) + 1.0;
 }
 
 func waitSemanticJob(job: Any, maxTicks: Integer) -> Boolean {
@@ -177,6 +206,31 @@ func main() {
         fail(shell, "completion did not open");
         return;
     }
+    shell.app.SetWindowSize(400, 360);
+    shell.Poll();
+    completer.Update("");
+    shell.Render();
+    if panelFitsUiViewport(shell.app, completer.popup) == false {
+        fail(shell, "completion popup escaped a compact viewport");
+        return;
+    }
+
+    // UI zoom participates in widget geometry. The popup must use the
+    // effective viewport rather than the backing-scale-only App logical size.
+    shell.app.SetUiScale(2.0);
+    shell.app.SetWindowSize(720, 520);
+    shell.Poll();
+    completer.Update("");
+    shell.Render();
+    if panelFitsUiViewport(shell.app, completer.popup) == false {
+        fail(shell, "completion popup escaped the zoomed viewport");
+        return;
+    }
+    shell.app.SetUiScale(1.0);
+    shell.app.SetWindowSize(820, 520);
+    shell.Poll();
+    completer.Update("");
+    shell.Render();
     if !engine.editor.IsFocused() {
         fail(shell, "completion stole editor focus");
         return;
@@ -319,6 +373,23 @@ func main() {
         return;
     }
     completer.Hide();
+
+    // A same-root refresh can produce the same file count while replacing
+    // every cached path. Completion must use cache identity, not count alone,
+    // or deleted symbols remain offered indefinitely.
+    completer.workspaceLabels.Push("staleWorkspaceCompletion");
+    var symbolCacheGeneration = projMgr.FileCacheGeneration();
+    projMgr.RefreshTree();
+    completer.PumpWorkspaceSymbolCache(1);
+    if projMgr.FileCacheGeneration() == symbolCacheGeneration
+       or completer.workspaceCacheGeneration != projMgr.FileCacheGeneration()
+       or listContains(completer.workspaceLabels, "staleWorkspaceCompletion") {
+        fail(shell, "workspace completion retained refreshed cache results");
+        return;
+    }
+    projMgr.CloseProject();
+    completer.PumpWorkspaceSymbolCache(1);
+
     var idleWorkspaceRoot = TempFile.CreateDirWithPrefix("zannastudio_completion_idle_workspace_");
     File.WriteAllText(Path.Join(idleWorkspaceRoot, "idle.zia"),
         "module IdleWorkspace;\nfunc idleWorkspaceSymbol() -> Integer { return 1; }\n");
@@ -753,6 +824,29 @@ func main() {
         fail(shell, "signature controller overload metadata");
         return;
     }
+    shell.app.SetWindowSize(720, 520);
+    shell.Poll();
+    sigCtrl.update(engine);
+    shell.Render();
+    if panelFitsUiViewport(shell.app, sigCtrl.panel) == false {
+        fail(shell, "signature help escaped the compact viewport");
+        return;
+    }
+
+    shell.app.SetUiScale(2.0);
+    shell.app.SetWindowSize(720, 520);
+    shell.Poll();
+    sigCtrl.update(engine);
+    shell.Render();
+    if panelFitsUiViewport(shell.app, sigCtrl.panel) == false {
+        fail(shell, "signature help escaped the zoomed viewport");
+        return;
+    }
+    shell.app.SetUiScale(1.0);
+    shell.app.SetWindowSize(820, 520);
+    shell.Poll();
+    sigCtrl.update(engine);
+    shell.Render();
     if sigCtrl.NextOverload() == false or sigCtrl.activeOverloadIndex != 1 {
         fail(shell, "signature controller next overload");
         return;
@@ -1053,7 +1147,11 @@ func main() {
     Map.SetInt(editB, "endColumn", 4);
     Map.SetStr(editB, "newText", "new");
     Seq.Push(renameEdits, editB);
-    var renameUndoResult = workspace_edits.ApplyRenameEdits(renameEdits, undoDocMgr);
+    var undoRoots = new List();
+    undoRoots.Push(undoRoot);
+    var renameUndoResult = workspace_edits.ApplyRenameEdits(renameEdits,
+                                                            undoDocMgr,
+                                                            undoRoots);
     if renameUndoResult.success == false
        or undoDocMgr.documents.get(1).hasPendingWorkspaceUndo == false
        or undoDocMgr.documents.get(1).content != "new\n" {

@@ -17,6 +17,7 @@
 //   - Norm removes redundant '.' and '..' components without filesystem access.
 //   - Join always produces a path using the native platform separator.
 //   - Ext returns the final '.' suffix including the dot, or "" if absent.
+//   - IsLink inspects the final component without following it and never traps.
 //   - All returned strings are newly allocated runtime strings; none borrow.
 //   - All functions are thread-safe and reentrant (no global mutable state).
 //
@@ -49,10 +50,28 @@
 #include <windows.h>
 #define PATH_SEP '\\'
 #define PATH_SEP_STR "\\"
+
+/// @brief Inspect one validated native path for a Windows reparse point.
+static int rt_path_is_link_cstr(const char *cpath) {
+    wchar_t *wide = rt_file_path_utf8_to_wide(cpath);
+    if (!wide)
+        return 0;
+    DWORD attributes = GetFileAttributesW(wide);
+    free(wide);
+    return attributes != INVALID_FILE_ATTRIBUTES &&
+           (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+}
 #else
+#include <sys/stat.h>
 #include <unistd.h>
 #define PATH_SEP '/'
 #define PATH_SEP_STR "/"
+
+/// @brief Inspect one validated native path without following its final component.
+static int rt_path_is_link_cstr(const char *cpath) {
+    struct stat st;
+    return lstat(cpath, &st) == 0 && S_ISLNK(st.st_mode);
+}
 #endif
 
 /// @brief Check if a character is a path separator on the host filesystem.
@@ -765,6 +784,18 @@ int64_t rt_path_is_abs(rt_string path) {
 #endif
 
     return 0;
+}
+
+/// @brief Return whether the final component is a symbolic link or reparse point.
+/// @details Invalid strings, missing paths, permission failures, and ordinary
+///          files/directories return false. POSIX uses lstat so the final link
+///          is not followed; Windows treats every reparse point (including
+///          directory junctions) as a link boundary for workspace safety.
+int64_t rt_path_is_link(rt_string path) {
+    const char *cpath = NULL;
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath || cpath[0] == '\0')
+        return 0;
+    return rt_path_is_link_cstr(cpath);
 }
 
 /// @brief Convert a relative path to an absolute path.

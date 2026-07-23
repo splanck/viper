@@ -7,29 +7,37 @@
 //
 // File: zannastudio/src/scm/scm_gutter_controller.zia
 // Purpose: Paint per-line SCM change bars (added/modified/deleted) in the editor
-//          gutter for the active document, by running `git diff --unified=0` and
-//          feeding the hunks to scm_diff.
+//          gutter from cancellable, frame-pumped `git diff --unified=0` jobs.
 // Key invariants:
 //   - Uses gutter slot 4 exclusively, so bars coexist with breakpoint and
 //     diagnostic disc icons.
 //   - Markers reflect the last saved file; while a buffer is dirty they may lag
 //     by the unsaved delta.
-// Links: zannastudio/src/scm/scm_diff.zia, zannastudio/src/main.zia
+//   - Git never runs synchronously on the UI frame, stale tab results are
+//     discarded, and one response can paint only a bounded marker count.
+// Ownership/Lifetime:
+//   - ScmGutterController owns at most one GitJob plus one coalesced request.
+//     Main pumps it every frame and cancels it before shell teardown.
+// Links: zannastudio/src/scm/scm_diff.zia,
+//        zannastudio/src/scm/scm_git.zia,
+//        zannastudio/src/main.zia
 //
 //===----------------------------------------------------------------------===//
 
 module scm_gutter_controller;
 
 bind "../scm/scm_diff";
+bind "../scm/scm_git";
 bind "../editor/editor_engine";
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../services/theme_colors";
 
-bind Exec = Zanna.System.Exec;
-bind Seq = Zanna.Collections.Seq;
+bind Time = Zanna.Time;
 
 final SCM_GUTTER_SLOT = 4;
+final SCM_GUTTER_JOB_TIMEOUT_MS = 5000;
+final MAX_SCM_GUTTER_MARKERS = 4096;
 /// @brief Gutter change-bar colors from the live theme palette.
 func ColorAdded() -> Integer { return theme_colors.Argb("accentSuccess"); }
 func ColorModified() -> Integer { return theme_colors.Argb("accentInfo"); }
@@ -37,16 +45,58 @@ func ColorDeleted() -> Integer { return theme_colors.Argb("accentDanger"); }
 
 /// @brief Applies diff hunks as gutter change bars on the active editor.
 class ScmGutterController {
+    expose scm_git.Git git;
+    expose scm_git.GitJob activeJob;
+    expose Time.Countdown jobTimeout;
+
+    expose String activeRootPath;
+    expose String activeDocumentPath;
+    expose String pendingRootPath;
+    expose String pendingDocumentPath;
+    expose String pendingRelativePath;
+
+    expose String lastAppliedRootPath;
+    expose String lastAppliedPath;
+    expose String lastError;
+    expose Integer startedRequests;
+    expose Integer appliedRequests;
+    expose Integer timedOutRequests;
+    expose Integer lastMarkerCount;
+    expose Boolean markerLimitReached;
+
+    expose func init() {
+        git = new scm_git.Git();
+        activeJob = null;
+        jobTimeout = Time.Countdown.New(SCM_GUTTER_JOB_TIMEOUT_MS);
+        activeRootPath = "";
+        activeDocumentPath = "";
+        pendingRootPath = "";
+        pendingDocumentPath = "";
+        pendingRelativePath = "";
+        lastAppliedRootPath = "";
+        lastAppliedPath = "";
+        lastError = "";
+        startedRequests = 0;
+        appliedRequests = 0;
+        timedOutRequests = 0;
+        lastMarkerCount = 0;
+        markerLimitReached = false;
+    }
+
     /// @brief Clear SCM bars then paint bars for a unified=0 diff text.
     /// @param engine   Editor engine (active document).
     /// @param diffText Output of `git diff --unified=0`.
     expose func ApplyMarkers(engine: editor_engine.EditorEngine, diffText: String) {
         if engine == null or engine.editor == null { return; }
         engine.editor.ClearGutterIcons(SCM_GUTTER_SLOT);
+        lastMarkerCount = 0;
+        markerLimitReached = false;
+        var editorLineCount = engine.GetLineCount();
+        if editorLineCount <= 0 { return; }
         var hunks = scm_diff.ParseHunks(diffText);
         var n = hunks.count();
         var hi = 0;
-        while hi < n {
+        while hi < n and lastMarkerCount < MAX_SCM_GUTTER_MARKERS {
             var h = hunks.get(hi) as scm_diff.DiffHunk;
             var color = ColorModified();
             if h.kind == scm_diff.KIND_ADDED {
@@ -55,37 +105,194 @@ class ScmGutterController {
                 color = ColorDeleted();
             }
             var line = h.startLine;
-            while line <= h.endLine {
+            if line < 1 { line = 1; }
+            var endLine = h.endLine;
+            if endLine > editorLineCount { endLine = editorLineCount; }
+            while line <= endLine and lastMarkerCount < MAX_SCM_GUTTER_MARKERS {
                 engine.editor.SetGutterBar(line - 1, color, SCM_GUTTER_SLOT);
+                lastMarkerCount = lastMarkerCount + 1;
+                if line >= endLine or lastMarkerCount >= MAX_SCM_GUTTER_MARKERS {
+                    break;
+                }
                 line = line + 1;
             }
             hi = hi + 1;
         }
+        markerLimitReached = lastMarkerCount >= MAX_SCM_GUTTER_MARKERS;
     }
 
-    /// @brief Run git diff for the active document and repaint gutter bars.
+    /// @brief Queue an asynchronous diff for the active durable workspace file.
+    /// @details Repeated requests coalesce to the newest document. If another
+    ///          Git job is active its output is drained normally, then discarded
+    ///          instead of painting stale markers into a newly selected tab.
+    /// @return True when a job started or the newest request was queued.
     expose func RefreshActive(engine: editor_engine.EditorEngine,
                               docMgr: document_manager.DocumentManager,
-                              projMgr: project_manager.ProjectManager) {
-        if engine == null or docMgr == null or projMgr == null { return; }
-        if projMgr.IsOpen() == false { return; }
+                              projMgr: project_manager.ProjectManager) -> Boolean {
+        if engine == null or docMgr == null or projMgr == null {
+            Cancel();
+            return false;
+        }
+        if projMgr.IsOpen() == false {
+            Cancel();
+            Clear(engine);
+            return false;
+        }
         var doc = docMgr.GetActive();
         if doc == null or doc!.filePath == "" or doc!.isNew {
+            Cancel();
             Clear(engine);
-            return;
+            return false;
         }
-        var root = projMgr.RootPath();
-        if root == "" { return; }
-        var args = Seq.New();
-        Seq.Push(args, "-C");
-        Seq.Push(args, root);
-        Seq.Push(args, "diff");
-        Seq.Push(args, "--unified=0");
-        Seq.Push(args, "--no-color");
-        Seq.Push(args, "--");
-        Seq.Push(args, doc!.filePath);
-        var diffText = Exec.CaptureArgs("git", args);
-        ApplyMarkers(engine, diffText);
+        var root = projMgr.WorkspaceRootPathForPath(doc!.filePath);
+        if root == "" {
+            Cancel();
+            Clear(engine);
+            return false;
+        }
+
+        pendingRootPath = root;
+        pendingDocumentPath = doc!.filePath;
+        pendingRelativePath = projMgr.RelativePath(doc!.filePath);
+        if activeJob != null { return true; }
+        if StartPending() == false {
+            Clear(engine);
+            return false;
+        }
+        return true;
+    }
+
+    /// @brief Drain the active diff process and apply a current successful result.
+    /// @return True while a job or coalesced follow-up request remains active.
+    /// @details This method performs only non-blocking process reads. Jobs that
+    ///          exceed the safety timeout are killed and never paint output.
+    expose func Pump(engine: editor_engine.EditorEngine,
+                     docMgr: document_manager.DocumentManager,
+                     projMgr: project_manager.ProjectManager) -> Boolean {
+        if activeJob == null {
+            if pendingDocumentPath != "" and StartPending() == false {
+                Clear(engine);
+            }
+            return IsBusy();
+        }
+
+        if activeJob.running and jobTimeout.get_IsExpired() {
+            activeJob.Kill();
+            timedOutRequests = timedOutRequests + 1;
+            lastError = "Git gutter diff timed out";
+            FinishActive(engine, docMgr, projMgr, false, "");
+            return IsBusy();
+        }
+
+        if activeJob.Pump() { return true; }
+        var succeeded = activeJob.Success();
+        var diffText = activeJob.stdoutText;
+        if succeeded == false {
+            lastError = activeJob.CombinedOutput();
+            if lastError == "" {
+                lastError = "Git gutter diff failed with exit code " + activeJob.exitCode;
+            }
+        }
+        FinishActive(engine, docMgr, projMgr, succeeded, diffText);
+        return IsBusy();
+    }
+
+    /// @brief True while a child or a coalesced follow-up request exists.
+    expose func IsBusy() -> Boolean {
+        return activeJob != null or pendingDocumentPath != "";
+    }
+
+    /// @brief Kill the owned process and discard all pending work.
+    expose func Cancel() {
+        if activeJob != null {
+            activeJob.Kill();
+            activeJob = null;
+        }
+        jobTimeout.Reset();
+        activeRootPath = "";
+        activeDocumentPath = "";
+        pendingRootPath = "";
+        pendingDocumentPath = "";
+        pendingRelativePath = "";
+    }
+
+    /// @brief Start and consume the newest coalesced request.
+    hide func StartPending() -> Boolean {
+        if pendingRootPath == "" or pendingDocumentPath == ""
+           or pendingRelativePath == "" { return false; }
+        activeRootPath = pendingRootPath;
+        activeDocumentPath = pendingDocumentPath;
+        var relativePath = pendingRelativePath;
+        pendingRootPath = "";
+        pendingDocumentPath = "";
+        pendingRelativePath = "";
+
+        git.SetRepo(activeRootPath);
+        var job = git.StartGutterDiff(relativePath);
+        if job == null or job.started == false {
+            activeJob = null;
+            lastError = "Could not start Git gutter diff";
+            if job != null and job.CombinedOutput() != "" {
+                lastError = job.CombinedOutput();
+            }
+            activeRootPath = "";
+            activeDocumentPath = "";
+            return false;
+        }
+        activeJob = job;
+        startedRequests = startedRequests + 1;
+        lastError = "";
+        jobTimeout.Reset();
+        jobTimeout.Start();
+        return true;
+    }
+
+    /// @brief Retire one result, reject staleness, and start the latest request.
+    hide func FinishActive(engine: editor_engine.EditorEngine,
+                           docMgr: document_manager.DocumentManager,
+                           projMgr: project_manager.ProjectManager,
+                           succeeded: Boolean,
+                           diffText: String) {
+        var completedRoot = activeRootPath;
+        var completedPath = activeDocumentPath;
+        activeJob = null;
+        activeRootPath = "";
+        activeDocumentPath = "";
+        jobTimeout.Reset();
+
+        // A queued request is newer by definition. Never flash the old tab's
+        // markers for one frame before starting its replacement.
+        if pendingDocumentPath == "" {
+            if RequestIsCurrent(docMgr, projMgr, completedRoot, completedPath) {
+                if succeeded {
+                    ApplyMarkers(engine, diffText);
+                    lastAppliedRootPath = completedRoot;
+                    lastAppliedPath = completedPath;
+                    appliedRequests = appliedRequests + 1;
+                } else {
+                    Clear(engine);
+                }
+            } else {
+                Clear(engine);
+            }
+        }
+
+        if pendingDocumentPath != "" and StartPending() == false {
+            Clear(engine);
+        }
+    }
+
+    /// @brief Verify that a completed request still belongs to the active tab.
+    hide func RequestIsCurrent(docMgr: document_manager.DocumentManager,
+                               projMgr: project_manager.ProjectManager,
+                               root: String,
+                               path: String) -> Boolean {
+        if docMgr == null or projMgr == null or root == "" or path == "" {
+            return false;
+        }
+        var doc = docMgr.GetActive();
+        if doc == null or doc!.filePath != path { return false; }
+        return projMgr.WorkspaceRootPathForPath(path) == root;
     }
 
     /// @brief Clear all SCM gutter bars from the active editor.
@@ -93,5 +300,7 @@ class ScmGutterController {
         if engine != null and engine.editor != null {
             engine.editor.ClearGutterIcons(SCM_GUTTER_SLOT);
         }
+        lastMarkerCount = 0;
+        markerLimitReached = false;
     }
 }

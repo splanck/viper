@@ -1,17 +1,72 @@
-module scm_gutter_probe;
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scm_gutter_probe.zia
+// Purpose: Verify bounded SCM gutter painting and asynchronous, stale-safe Git
+//          diff integration against a temporary multi-root workspace.
+// Key invariants:
+//   - Pathological hunks cannot enqueue unbounded per-line marker work.
+//   - RefreshActive starts work without waiting for Git in the caller frame.
+//   - A tab switch coalesces to the newest request and rejects stale output.
+//   - Files in secondary workspace roots run Git from their owning root.
+// Ownership/Lifetime:
+//   - The probe owns its shell, controller, temporary roots, documents, and Git
+//     repository; every failure path cancels the child before shell teardown.
+// Links: zannastudio/src/scm/scm_gutter_controller.zia,
+//        zannastudio/src/scm/scm_git.zia
+//
+//===----------------------------------------------------------------------===//
 
-// ============================================================================
-// MODULE: scm_gutter_probe
-// PURPOSE: Integration smoke for plan 16 — applying diff hunks as editor gutter
-//          change bars renders without trapping (parser correctness is covered
-//          by scm_diff_probe).
-// ============================================================================
+module scm_gutter_probe;
 
 bind "../ui/app_shell";
 bind "../editor/editor_engine";
+bind "../core/document_manager";
+bind "../core/project_manager";
 bind "../scm/scm_gutter_controller";
 
 bind Terminal = Zanna.Terminal;
+bind Exec = Zanna.System.Exec;
+bind Seq = Zanna.Collections.Seq;
+bind Dir = Zanna.IO.Dir;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Str = Zanna.String;
+bind Time = Zanna.Time;
+
+func fail(shell: app_shell.AppShell,
+          ctrl: scm_gutter_controller.ScmGutterController,
+          reason: String) {
+    if ctrl != null { ctrl.Cancel(); }
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Run a Git argv tail inside @p root.
+func runGit(root: String, tail: Any) -> Boolean {
+    var args = Seq.New();
+    Seq.Push(args, "-C");
+    Seq.Push(args, root);
+    var i = 0;
+    while i < Seq.get_Count(tail) {
+        Seq.Push(args, Seq.Get(tail, i));
+        i = i + 1;
+    }
+    return Exec.RunArgs("git", args) == 0;
+}
+
+func gitConfig(root: String, key: String, value: String) -> Boolean {
+    var tail = Seq.New();
+    Seq.Push(tail, "config");
+    Seq.Push(tail, key);
+    Seq.Push(tail, value);
+    return runGit(root, tail);
+}
 
 func main() {
     var shell = new app_shell.AppShell();
@@ -19,21 +74,132 @@ func main() {
 
     var engine = new editor_engine.EditorEngine();
     engine.Setup(shell.workbench.editorRow);
-    engine.SetText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\n");
     engine.SetSize(600, 400);
 
     var ctrl = new scm_gutter_controller.ScmGutterController();
-    // Added lines 3-4, modified line 6.
+
+    // A malicious or truncated diff can advertise an enormous changed range in
+    // a tiny header. Painting must remain capped even when the editor is large.
+    engine.SetText(Str.Repeat("line\n", 5000));
+    ctrl.ApplyMarkers(engine, "@@ -0,0 +1,999999999 @@\n");
+    if ctrl.lastMarkerCount != 4096 or ctrl.markerLimitReached == false {
+        fail(shell, ctrl, "pathological hunk escaped marker budget");
+        return;
+    }
+
+    // Keep the rendering-only coverage from the original probe.
+    engine.SetText("l0\nl1\nl2\nl3\nl4\nl5\nl6\nl7\n");
     ctrl.ApplyMarkers(engine, "@@ -2,0 +3,2 @@\n+a\n+b\n@@ -6 +6 @@\n-x\n+y\n");
+    if ctrl.lastMarkerCount != 3 or ctrl.markerLimitReached {
+        fail(shell, ctrl, "normal diff marker count");
+        return;
+    }
     shell.Poll();
     shell.Render();
 
-    // Re-apply (idempotent clear+repaint) then clear.
-    ctrl.ApplyMarkers(engine, "@@ -1,0 +1,1 @@\n+top\n");
-    shell.Render();
+    // Git is optional for a packaged Studio runtime. The bounded renderer above
+    // remains mandatory; skip only the real-process portion when unavailable.
+    var versionArgs = Seq.New();
+    Seq.Push(versionArgs, "--version");
+    if Exec.RunArgs("git", versionArgs) != 0 {
+        ctrl.Cancel();
+        shell.Destroy();
+        Terminal.Say("RESULT: ok (git unavailable, async portion skipped)");
+        return;
+    }
+
+    var primaryRoot = TempFile.CreateDirWithPrefix("zannastudio_gutter_primary_");
+    var repoRoot = TempFile.CreateDirWithPrefix("zannastudio_gutter_repo_");
+    Dir.MakeAll(primaryRoot);
+    Dir.MakeAll(repoRoot);
+    var firstPath = Path.Join(repoRoot, "first.zia");
+    var secondPath = Path.Join(repoRoot, "second file.zia");
+    File.WriteAllText(firstPath, "module First;\nfunc Value() -> Integer { return 1; }\n");
+    File.WriteAllText(secondPath, "module Second;\nfunc Value() -> Integer { return 2; }\n");
+
+    var initTail = Seq.New();
+    Seq.Push(initTail, "init");
+    Seq.Push(initTail, "--quiet");
+    if runGit(repoRoot, initTail) == false
+       or gitConfig(repoRoot, "user.email", "probe@example.com") == false
+       or gitConfig(repoRoot, "user.name", "Probe") == false
+       or gitConfig(repoRoot, "commit.gpgsign", "false") == false {
+        fail(shell, ctrl, "temporary Git repository setup");
+        return;
+    }
+    var addTail = Seq.New();
+    Seq.Push(addTail, "add");
+    Seq.Push(addTail, "--");
+    Seq.Push(addTail, "first.zia");
+    Seq.Push(addTail, "second file.zia");
+    var commitTail = Seq.New();
+    Seq.Push(commitTail, "commit");
+    Seq.Push(commitTail, "--quiet");
+    Seq.Push(commitTail, "--no-gpg-sign");
+    Seq.Push(commitTail, "-m");
+    Seq.Push(commitTail, "gutter probe baseline");
+    if runGit(repoRoot, addTail) == false or runGit(repoRoot, commitTail) == false {
+        fail(shell, ctrl, "temporary Git baseline commit");
+        return;
+    }
+
+    // Both tracked files now differ from HEAD.
+    File.WriteAllText(firstPath,
+                      "module First;\nfunc Value() -> Integer { return 11; }\n");
+    File.WriteAllText(secondPath,
+                      "module Second;\nfunc Value() -> Integer { return 22; }\n");
+
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.workbench.sidebarTree);
+    if projMgr.OpenFolder(primaryRoot) == false
+       or projMgr.AddFolderToWorkspace(repoRoot) == false {
+        fail(shell, ctrl, "multi-root workspace setup");
+        return;
+    }
+
+    var docMgr = new document_manager.DocumentManager();
+    var firstDoc = docMgr.OpenFile(firstPath);
+    var secondDoc = docMgr.OpenFile(secondPath);
+    if firstDoc == null or secondDoc == null {
+        fail(shell, ctrl, "tracked documents did not open");
+        return;
+    }
+
+    // Start the first request, then switch tabs before pumping it. The second
+    // request must be coalesced rather than waiting or painting the first path.
+    docMgr.SetActive(0);
+    engine.LoadDocument(firstDoc);
+    if ctrl.RefreshActive(engine, docMgr, projMgr) == false or ctrl.IsBusy() == false {
+        fail(shell, ctrl, "first async gutter request did not start");
+        return;
+    }
+    docMgr.SetActive(1);
+    engine.LoadDocument(secondDoc);
+    if ctrl.RefreshActive(engine, docMgr, projMgr) == false
+       or ctrl.pendingDocumentPath != secondPath or ctrl.startedRequests != 1 {
+        fail(shell, ctrl, "tab switch did not coalesce newest gutter request");
+        return;
+    }
+
+    var waited = 0;
+    while ctrl.IsBusy() and waited < 12000 {
+        ctrl.Pump(engine, docMgr, projMgr);
+        if ctrl.IsBusy() {
+            Time.Clock.Sleep(2);
+            waited = waited + 2;
+        }
+    }
+    ctrl.Pump(engine, docMgr, projMgr);
+    if ctrl.IsBusy() or ctrl.startedRequests != 2 or ctrl.appliedRequests != 1
+       or ctrl.lastAppliedPath != secondPath or ctrl.lastAppliedRootPath != repoRoot
+       or ctrl.lastMarkerCount < 1 or ctrl.lastError != "" {
+        fail(shell, ctrl, "async gutter completion was stale, failed, or used wrong root");
+        return;
+    }
+
+    ctrl.Cancel();
     ctrl.Clear(engine);
     shell.Render();
-
     shell.Destroy();
     Terminal.Say("RESULT: ok");
 }

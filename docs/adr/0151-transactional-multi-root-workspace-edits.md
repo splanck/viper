@@ -1,0 +1,54 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-22
+---
+
+# ADR 0151: Bound Transactional Workspace Edits to Explicit Multiple Roots
+
+Date: 2026-07-22
+
+Status: Accepted
+
+## Context
+
+Zanna Studio applies semantic rename results to open buffers and closed files.
+The closed-file path previously derived one runtime safety root from the process
+working directory. A workspace opened from Finder, a launcher, or an unrelated
+terminal commonly lives outside that directory, so a valid rename could fail
+only because Studio was launched elsewhere. The fallback also lowercased path
+comparisons on every platform, which is incorrect on case-sensitive filesystems.
+
+A multi-root workspace can legitimately produce one rename batch spanning
+unrelated folders. Applying each root separately would weaken the existing
+all-files validation and rollback contract, while using their common filesystem
+ancestor would broaden the trust boundary beyond folders the user opened.
+
+## Decision
+
+Add `Zanna.Workspace.Edit.ValidateInRoots(edits, roots)` and
+`Zanna.Workspace.Edit.ApplyInRoots(edits, roots)`, backed by the new runtime C
+entry points `rt_workspace_edit_validate_in_roots` and
+`rt_workspace_edit_apply_in_roots`.
+
+The runtime canonicalizes every supplied root and every edit target. Each target
+must be equal to or below at least one explicit root. Relative targets are
+accepted only when exactly one root is supplied; multi-root batches require
+absolute targets so resolution is unambiguous. The complete batch is still
+validated, staged, committed, and rolled back as one transaction even when its
+files belong to unrelated roots.
+
+Zanna Studio passes the root snapshot already owned by its project index or
+background BASIC request. Open-buffer-only edits need no disk trust boundary,
+but any closed-file edit is rejected when no workspace root is available.
+
+## Consequences
+
+- Closed-file rename works regardless of Studio's launch directory.
+- Multi-root semantic rename retains atomic validation and rollback semantics.
+- Files outside every opened workspace folder are rejected after canonical
+  path resolution, including path traversal and symlink spellings.
+- Filesystem case behavior is left to canonical native paths rather than
+  unconditional text lowercasing.
+- The runtime registry, C header, generated API reference, Studio call sites,
+  and runtime/Studio regression coverage must evolve together.

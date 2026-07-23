@@ -1,3 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/app/file_watch_controller.zia
+// Purpose: Track external changes to open documents without allowing watcher
+//          races or OS resource exhaustion to terminate the Studio process.
+// Key invariants:
+//   - hasWatcher is true only while a native watcher actually reports active.
+//   - A path disappearing between validation and Watcher.New degrades to polling.
+//   - Steady-state frames never stat the active file merely to poll a watcher.
+//   - Open-document metadata polling visits only a fixed number of tabs per frame.
+// Ownership/Lifetime:
+//   - Main owns one controller and destroys its watcher during IDE cleanup.
+// Links: zannastudio/src/main.zia,
+//        zannastudio/src/core/document_manager.zia
+//
+//===----------------------------------------------------------------------===//
+
 module file_watch_controller;
 
 bind "../core/document_manager";
@@ -7,6 +29,9 @@ bind "../ui/app_shell";
 bind Zanna.GUI;
 bind IO = Zanna.IO;
 bind Time = Zanna.Time;
+
+final OPEN_DOCUMENT_STATS_PER_FRAME = 4;
+final WATCHER_RETRY_MIN_MS = 1000;
 
 // ============================================================================
 // MODULE: file_watch_controller
@@ -28,16 +53,28 @@ class FileWatchController {
     expose IO.Watcher fileWatcher;
     expose Boolean pendingReload;
     expose Integer lastOpenDocPollMs;
+    expose Integer lastWatcherAttemptMs;
+    expose Boolean openDocPollActive;
+    expose Integer openDocPollIndex;
+    expose Integer openDocPollChangedCount;
+    expose String openDocPollFirstName;
+    expose Integer lastOpenDocPollCount;
 
     /// @brief Initialize with no active watched path.
-    /// @details A placeholder watcher keeps the field non-null until the first
-    ///          real file is opened. It is not started until StartWatching().
+    /// @details The watcher stays null until the first valid named file becomes
+    ///          active, avoiding a pointless watcher construction for the CWD.
     expose func init() {
         watchedPath = "";
         hasWatcher = false;
-        fileWatcher = IO.Watcher.New(".");
+        fileWatcher = null;
         pendingReload = false;
         lastOpenDocPollMs = 0;
+        lastWatcherAttemptMs = 0;
+        openDocPollActive = false;
+        openDocPollIndex = 0;
+        openDocPollChangedCount = 0;
+        openDocPollFirstName = "";
+        lastOpenDocPollCount = 0;
     }
 
     /// @brief Clear the pending reload flag after a user action resolved it.
@@ -52,7 +89,14 @@ class FileWatchController {
         }
         hasWatcher = false;
         watchedPath = "";
+        fileWatcher = null;
         pendingReload = false;
+        lastWatcherAttemptMs = 0;
+        openDocPollActive = false;
+        openDocPollIndex = 0;
+        openDocPollChangedCount = 0;
+        openDocPollFirstName = "";
+        lastOpenDocPollCount = 0;
     }
 
     /// @brief Pump active-file watch events and inactive-tab timestamp checks.
@@ -63,7 +107,8 @@ class FileWatchController {
     expose func Pump(shell: app_shell.AppShell,
                      docMgr: document_manager.DocumentManager,
                      openDocPollMs: Integer) -> Boolean {
-        PumpActiveDocument(shell, docMgr);
+        lastOpenDocPollCount = 0;
+        PumpActiveDocument(shell, docMgr, openDocPollMs);
         PumpOpenDocumentTimestamps(shell, docMgr, openDocPollMs);
         return pendingReload;
     }
@@ -72,7 +117,8 @@ class FileWatchController {
     /// @param shell Workbench shell used for warning toasts and status text.
     /// @param docMgr Open document manager to inspect.
     hide func PumpActiveDocument(shell: app_shell.AppShell,
-                                 docMgr: document_manager.DocumentManager) {
+                                 docMgr: document_manager.DocumentManager,
+                                 openDocPollMs: Integer) {
         if docMgr == null {
             StopWatching();
             return;
@@ -87,17 +133,20 @@ class FileWatchController {
             StopWatching();
             return;
         }
-        if IO.File.Exists(doc.filePath) == false {
-            StopWatching();
-            NotifyExternalState(shell, docMgr, docMgr.activeIndex,
-                                document.EXTERNAL_STATE_MISSING,
-                                doc.fileName + " is missing on disk");
-            return;
-        }
         if doc.filePath != watchedPath {
             StartWatching(doc.filePath);
+        } else if hasWatcher == false {
+            // A missing file or exhausted watcher resource must not trigger an
+            // Exists/Watcher.New retry on every frame. Retry slowly so a file
+            // recreated by another process can regain native notifications.
+            var retryMs = openDocPollMs;
+            if retryMs < WATCHER_RETRY_MIN_MS { retryMs = WATCHER_RETRY_MIN_MS; }
+            var now = Time.Clock.NowMs();
+            if now - lastWatcherAttemptMs >= retryMs {
+                StartWatching(doc.filePath);
+            }
         }
-        if docMgr.HasExternalChange(docMgr.activeIndex) {
+        if doc.externalState != document.EXTERNAL_STATE_CLEAN {
             pendingReload = true;
         }
         if hasWatcher == false { return; }
@@ -129,17 +178,33 @@ class FileWatchController {
         if hasWatcher {
             fileWatcher.Stop();
         }
-        if path == "" or IO.File.Exists(path) == false {
-            hasWatcher = false;
-            watchedPath = "";
-            pendingReload = false;
+        hasWatcher = false;
+        watchedPath = "";
+        fileWatcher = null;
+        pendingReload = false;
+        lastWatcherAttemptMs = Time.Clock.NowMs();
+        if path == "" {
             return;
         }
+        // Remember an attempted path even if the OS refuses a native watcher;
+        // otherwise the frame loop would retry allocation every idle tick.
         watchedPath = path;
-        fileWatcher = IO.Watcher.New(watchedPath);
-        fileWatcher.Start();
-        hasWatcher = true;
-        pendingReload = false;
+        if IO.File.Exists(path) == false { return; }
+        try {
+            var candidate = IO.Watcher.New(path);
+            candidate.Start();
+            if candidate.IsWatching {
+                fileWatcher = candidate;
+                watchedPath = path;
+                hasWatcher = true;
+            }
+        } catch {
+            // The file can disappear after Exists, and the OS can refuse a
+            // watcher under descriptor pressure. Metadata polling remains live.
+            fileWatcher = null;
+            watchedPath = path;
+            hasWatcher = false;
+        }
     }
 
     /// @brief Stop the active file watcher and clear watcher state.
@@ -149,6 +214,7 @@ class FileWatchController {
         }
         hasWatcher = false;
         watchedPath = "";
+        fileWatcher = null;
         pendingReload = false;
     }
 
@@ -159,48 +225,81 @@ class FileWatchController {
     hide func PumpOpenDocumentTimestamps(shell: app_shell.AppShell,
                                          docMgr: document_manager.DocumentManager,
                                          openDocPollMs: Integer) {
-        if docMgr == null { return; }
-        var now = Zanna.Time.Clock.NowMs();
-        if now - lastOpenDocPollMs < openDocPollMs { return; }
-        lastOpenDocPollMs = now;
-        var changedOpenDocs = PollOpenDocumentExternalChanges(shell, docMgr);
-        if changedOpenDocs > 0 {
-            if docMgr.HasExternalChange(docMgr.activeIndex) {
-                pendingReload = true;
+        if docMgr == null {
+            CancelOpenDocumentPoll();
+            return;
+        }
+        if openDocPollActive == false {
+            var now = Time.Clock.NowMs();
+            if openDocPollMs > 0 and now - lastOpenDocPollMs < openDocPollMs { return; }
+            BeginOpenDocumentPoll();
+        }
+        PumpOpenDocumentPollPage(shell, docMgr);
+    }
+
+    /// @brief Start a resumable metadata pass over all open documents.
+    hide func BeginOpenDocumentPoll() {
+        openDocPollActive = true;
+        openDocPollIndex = 0;
+        openDocPollChangedCount = 0;
+        openDocPollFirstName = "";
+    }
+
+    /// @brief Visit at most OPEN_DOCUMENT_STATS_PER_FRAME documents.
+    /// @details Each document may require several metadata syscalls, so the
+    ///          budget is intentionally small and independent of tab count.
+    hide func PumpOpenDocumentPollPage(shell: app_shell.AppShell,
+                                       docMgr: document_manager.DocumentManager) {
+        if openDocPollActive == false or docMgr == null { return; }
+        var visited = 0;
+        while openDocPollIndex < docMgr.GetCount()
+              and visited < OPEN_DOCUMENT_STATS_PER_FRAME {
+            var index = openDocPollIndex;
+            openDocPollIndex = openDocPollIndex + 1;
+            visited = visited + 1;
+            var doc = docMgr.GetDocument(index);
+            if doc != null {
+                var state = docMgr.ExternalState(index);
+                if state != document.EXTERNAL_STATE_CLEAN and doc!.externalChangeNotified == false {
+                    docMgr.MarkExternalState(index, state, ExternalStateMessageForDoc(doc!, state));
+                    openDocPollChangedCount = openDocPollChangedCount + 1;
+                    if openDocPollFirstName == "" { openDocPollFirstName = doc!.fileName; }
+                }
+                if index == docMgr.activeIndex and state != document.EXTERNAL_STATE_CLEAN {
+                    pendingReload = true;
+                }
             }
+        }
+        lastOpenDocPollCount = visited;
+        if openDocPollIndex >= docMgr.GetCount() {
+            CompleteOpenDocumentPoll(shell);
         }
     }
 
-    /// @brief Poll all open named documents for external timestamp changes.
-    /// @param shell Workbench shell used for status/toast feedback.
-    /// @param docMgr Open document manager to scan.
-    /// @return Number of newly detected external changes.
-    hide func PollOpenDocumentExternalChanges(shell: app_shell.AppShell,
-                                              docMgr: document_manager.DocumentManager) -> Integer {
-        if shell == null or docMgr == null { return 0; }
-        var changed = 0;
-        var firstName = "";
-        var i = 0;
-        while i < docMgr.GetCount() {
-            var doc = docMgr.GetDocument(i);
-            if doc != null {
-                var state = docMgr.ExternalState(i);
-                if state != document.EXTERNAL_STATE_CLEAN and doc!.externalChangeNotified == false {
-                    docMgr.MarkExternalState(i, state, ExternalStateMessageForDoc(doc!, state));
-                    changed = changed + 1;
-                    if firstName == "" { firstName = doc!.fileName; }
-                }
-            }
-            i = i + 1;
+    /// @brief Publish one completed metadata pass and restart its interval.
+    hide func CompleteOpenDocumentPoll(shell: app_shell.AppShell) {
+        if shell != null and openDocPollChangedCount == 1 {
+            GUI.Toast.Warning("File changed on disk: " + openDocPollFirstName);
+            shell.SetStatusLeft("Warning: external change - " + openDocPollFirstName);
+        } else if shell != null and openDocPollChangedCount > 1 {
+            GUI.Toast.Warning("" + openDocPollChangedCount + " open files changed on disk");
+            shell.SetStatusLeft("Warning: " + openDocPollChangedCount
+                                + " open files changed on disk");
         }
-        if changed == 1 {
-            GUI.Toast.Warning("File changed on disk: " + firstName);
-            shell.SetStatusLeft("Warning: external change - " + firstName);
-        } else if changed > 1 {
-            GUI.Toast.Warning("" + changed + " open files changed on disk");
-            shell.SetStatusLeft("Warning: " + changed + " open files changed on disk");
-        }
-        return changed;
+        openDocPollActive = false;
+        openDocPollIndex = 0;
+        openDocPollChangedCount = 0;
+        openDocPollFirstName = "";
+        lastOpenDocPollMs = Time.Clock.NowMs();
+    }
+
+    /// @brief Discard a partial pass when no document manager is available.
+    hide func CancelOpenDocumentPoll() {
+        openDocPollActive = false;
+        openDocPollIndex = 0;
+        openDocPollChangedCount = 0;
+        openDocPollFirstName = "";
+        lastOpenDocPollCount = 0;
     }
 
     /// @brief Mark a document state and emit one concise user notification.

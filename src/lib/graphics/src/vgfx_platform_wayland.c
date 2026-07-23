@@ -23,12 +23,12 @@
 #include "vgfx_internal.h"
 #include "vgfx_wayland_activation.h"
 #include "vgfx_wayland_csd.h"
-#include "vgfx_wayland_data.h"
 #include "vgfx_wayland_cursor.h"
+#include "vgfx_wayland_data.h"
 #include "vgfx_wayland_input.h"
 #include "vgfx_wayland_relative.h"
-#include "vgfx_wayland_shm.h"
 #include "vgfx_wayland_scale.h"
+#include "vgfx_wayland_shm.h"
 #include "vgfx_wayland_text_input.h"
 
 #include <errno.h>
@@ -154,12 +154,10 @@ static int vgfx_wayland_sync_state(struct vgfx_window *win) {
     if (!platform)
         return 0;
     float scale = vgfx_wayland_scale_factor(&platform->scale);
-    int32_t logical_width = platform->shell.width > 0
-                                ? platform->shell.width
-                                : platform->reported_logical_width;
-    int32_t logical_height = platform->shell.height > 0
-                                 ? platform->shell.height
-                                 : platform->reported_logical_height;
+    int32_t logical_width =
+        platform->shell.width > 0 ? platform->shell.width : platform->reported_logical_width;
+    int32_t logical_height =
+        platform->shell.height > 0 ? platform->shell.height : platform->reported_logical_height;
     if (logical_width <= 0)
         logical_width = (int32_t)((float)win->width / (scale > 0.0f ? scale : 1.0f));
     if (logical_height <= 0)
@@ -172,11 +170,12 @@ static int vgfx_wayland_sync_state(struct vgfx_window *win) {
     }
     int32_t width = (int32_t)scaled_width;
     int32_t height = (int32_t)scaled_height;
-    if ((double)width < scaled_width) width++;
-    if ((double)height < scaled_height) height++;
+    if ((double)width < scaled_width)
+        width++;
+    if ((double)height < scaled_height)
+        height++;
     vgfx_wayland_scale_set_logical_size(&platform->scale, logical_width, logical_height);
-    if (scale < platform->reported_scale - 0.001f ||
-        scale > platform->reported_scale + 0.001f) {
+    if (scale < platform->reported_scale - 0.001f || scale > platform->reported_scale + 0.001f) {
         vgfx_internal_refresh_scale_factor(win, scale);
         platform->reported_scale = scale;
     }
@@ -207,9 +206,9 @@ static int vgfx_wayland_sync_state(struct vgfx_window *win) {
             vgfx_internal_clear_input_state(win);
         else
             g_vgfx_wayland_active_data = &platform->data;
-        vgfx_event_t event = {
-            .type = platform->reported_focus ? VGFX_EVENT_FOCUS_GAINED : VGFX_EVENT_FOCUS_LOST,
-            .time_ms = vgfx_platform_now_ms()};
+        vgfx_event_t event = {.type = platform->reported_focus ? VGFX_EVENT_FOCUS_GAINED
+                                                               : VGFX_EVENT_FOCUS_LOST,
+                              .time_ms = vgfx_platform_now_ms()};
         vgfx_internal_enqueue_event(win, &event);
     }
     if (platform->shell.close_requested && !platform->reported_close) {
@@ -255,8 +254,12 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
                                params->height,
                                error,
                                sizeof(error)) ||
-        !vgfx_wayland_shm_open(
-            &platform->presenter, &platform->shell, win->width, win->height, error, sizeof(error))) {
+        !vgfx_wayland_shm_open(&platform->presenter,
+                               &platform->shell,
+                               win->width,
+                               win->height,
+                               error,
+                               sizeof(error))) {
         vgfx_wayland_set_error(error);
         vgfx_platform_destroy_window(win);
         return 0;
@@ -267,8 +270,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
     platform->reported_logical_height = params->height;
     platform->reported_scale = vgfx_wayland_scale_factor(&platform->scale);
     vgfx_internal_refresh_scale_factor(win, platform->reported_scale);
-    (void)vgfx_wayland_data_open(
-        &platform->data, &platform->connection, &platform->input, win);
+    (void)vgfx_wayland_data_open(&platform->data, &platform->connection, &platform->input, win);
     (void)vgfx_wayland_text_input_open(
         &platform->text_input, &platform->connection, &platform->input, win);
     (void)vgfx_wayland_cursor_open(&platform->cursor, &platform->connection, &platform->input);
@@ -365,15 +367,14 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
     if (!win || !win->platform_data)
         return 0;
     vgfx_wayland_platform_t *platform = (vgfx_wayland_platform_t *)win->platform_data;
-    uint32_t opcode = fullscreen ? VGFX_XDG_TOPLEVEL_SET_FULLSCREEN
-                                 : VGFX_XDG_TOPLEVEL_UNSET_FULLSCREEN;
+    uint32_t opcode =
+        fullscreen ? VGFX_XDG_TOPLEVEL_SET_FULLSCREEN : VGFX_XDG_TOPLEVEL_UNSET_FULLSCREEN;
     if (fullscreen) {
         (void)platform->connection.api.proxy_marshal_flags(
             (struct wl_proxy *)platform->shell.toplevel,
             opcode,
             NULL,
-            platform->connection.api.proxy_get_version(
-                (struct wl_proxy *)platform->shell.toplevel),
+            platform->connection.api.proxy_get_version((struct wl_proxy *)platform->shell.toplevel),
             0,
             NULL);
     } else {
@@ -381,8 +382,7 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
             (struct wl_proxy *)platform->shell.toplevel,
             opcode,
             NULL,
-            platform->connection.api.proxy_get_version(
-                (struct wl_proxy *)platform->shell.toplevel),
+            platform->connection.api.proxy_get_version((struct wl_proxy *)platform->shell.toplevel),
             0);
     }
     return platform->connection.api.display_flush(platform->connection.display) >= 0 ||
@@ -436,12 +436,14 @@ void vgfx_platform_restore(struct vgfx_window *win) {
 }
 
 int32_t vgfx_platform_is_minimized(struct vgfx_window *win) {
-    return win && win->platform_data ? ((vgfx_wayland_platform_t *)win->platform_data)->minimized : 0;
+    return win && win->platform_data ? ((vgfx_wayland_platform_t *)win->platform_data)->minimized
+                                     : 0;
 }
 
 int32_t vgfx_platform_is_maximized(struct vgfx_window *win) {
-    return win && win->platform_data ? ((vgfx_wayland_platform_t *)win->platform_data)->shell.maximized
-                                     : 0;
+    return win && win->platform_data
+               ? ((vgfx_wayland_platform_t *)win->platform_data)->shell.maximized
+               : 0;
 }
 
 void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y) {
@@ -469,8 +471,9 @@ void vgfx_platform_request_foreground(struct vgfx_window *win) {
 }
 
 int32_t vgfx_platform_is_focused(struct vgfx_window *win) {
-    return win && win->platform_data ? ((vgfx_wayland_platform_t *)win->platform_data)->shell.activated
-                                     : 0;
+    return win && win->platform_data
+               ? ((vgfx_wayland_platform_t *)win->platform_data)->shell.activated
+               : 0;
 }
 
 void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
@@ -490,8 +493,7 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) 
     if (win && win->platform_data) {
         vgfx_wayland_platform_t *platform = (vgfx_wayland_platform_t *)win->platform_data;
         platform->cursor_visible = visible ? 1 : 0;
-        vgfx_wayland_cursor_set(
-            &platform->cursor, platform->cursor_type, platform->cursor_visible);
+        vgfx_wayland_cursor_set(&platform->cursor, platform->cursor_type, platform->cursor_visible);
     }
 }
 
@@ -500,6 +502,7 @@ void vgfx_platform_hide_cursor(void) {
         vgfx_wayland_cursor_set(
             g_vgfx_wayland_active_cursor, g_vgfx_wayland_active_cursor->type, 0);
 }
+
 void vgfx_platform_show_cursor(void) {
     if (g_vgfx_wayland_active_cursor)
         vgfx_wayland_cursor_set(
@@ -535,9 +538,31 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     (void)vgfx_wayland_sync_state(win);
 }
 
+void vgfx_platform_set_window_min_size(struct vgfx_window *win, int32_t w, int32_t h) {
+    if (!win || !win->platform_data || w <= 0 || h <= 0)
+        return;
+    vgfx_wayland_platform_t *platform = (vgfx_wayland_platform_t *)win->platform_data;
+    if (!platform->shell.toplevel)
+        return;
+    (void)platform->connection.api.proxy_marshal_flags(
+        (struct wl_proxy *)platform->shell.toplevel,
+        VGFX_XDG_TOPLEVEL_SET_MIN_SIZE,
+        NULL,
+        platform->connection.api.proxy_get_version((struct wl_proxy *)platform->shell.toplevel),
+        0,
+        w,
+        h);
+    (void)platform->connection.api.proxy_marshal_flags(
+        (struct wl_proxy *)platform->shell.surface,
+        VGFX_WL_SURFACE_COMMIT,
+        NULL,
+        platform->connection.api.proxy_get_version((struct wl_proxy *)platform->shell.surface),
+        0);
+    (void)platform->connection.api.display_flush(platform->connection.display);
+}
+
 int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
-    return format == VGFX_CLIPBOARD_TEXT &&
-           vgfx_wayland_data_has_text(g_vgfx_wayland_active_data);
+    return format == VGFX_CLIPBOARD_TEXT && vgfx_wayland_data_has_text(g_vgfx_wayland_active_data);
 }
 
 char *vgfx_clipboard_get_text(void) {
@@ -582,10 +607,9 @@ vgfx_window_capabilities_t vgfx_get_window_capabilities(vgfx_window_t window) {
         (const vgfx_wayland_platform_t *)window->platform_data;
     const uint32_t globals = platform->connection.globals;
     vgfx_window_capabilities_t result = VGFX_CAP_CLIPBOARD_TEXT | VGFX_CAP_FILE_DROP;
-    if ((globals & (VGFX_WAYLAND_GLOBAL_RELATIVE_POINTER_V1 |
-                    VGFX_WAYLAND_GLOBAL_POINTER_CONSTRAINTS_V1)) ==
-        (VGFX_WAYLAND_GLOBAL_RELATIVE_POINTER_V1 |
-         VGFX_WAYLAND_GLOBAL_POINTER_CONSTRAINTS_V1))
+    if ((globals &
+         (VGFX_WAYLAND_GLOBAL_RELATIVE_POINTER_V1 | VGFX_WAYLAND_GLOBAL_POINTER_CONSTRAINTS_V1)) ==
+        (VGFX_WAYLAND_GLOBAL_RELATIVE_POINTER_V1 | VGFX_WAYLAND_GLOBAL_POINTER_CONSTRAINTS_V1))
         result |= VGFX_CAP_RELATIVE_MOUSE;
     if (globals & VGFX_WAYLAND_GLOBAL_TEXT_INPUT_MANAGER_V3)
         result |= VGFX_CAP_TEXT_COMPOSITION;

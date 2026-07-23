@@ -1,3 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/phase0_phase1_probe.zia
+// Purpose: Exercise core Studio documents, settings, sessions, commands, and
+//          workspace-edit behavior without depending on the native shell.
+// Key invariants:
+//   - Session persistence restores editable text and rejects preview payloads.
+//   - Session/settings reads and writes obey global record/payload size caps.
+//   - Core model helpers remain deterministic and filesystem-isolated.
+// Ownership/Lifetime:
+//   - The probe owns all temporary files and model instances it creates.
+// Links: zannastudio/src/core/session.zia,
+//        zannastudio/src/core/document_manager.zia
+//
+//===----------------------------------------------------------------------===//
+
 module phase0_phase1_probe;
 
 // ============================================================================
@@ -13,9 +34,11 @@ module phase0_phase1_probe;
 // ============================================================================
 
 bind "../commands/command_registry";
+bind "../commands/command_catalog";
 bind "../commands/edit_commands";
 bind "../commands/file_commands";
 bind "../commands/search_commands";
+bind "../app/startup_arguments";
 bind "../core/document";
 bind "../core/document_manager";
 bind "../core/project";
@@ -25,6 +48,8 @@ bind "../editor/scheduler";
 bind "../editor/signature";
 bind "../services/file_utils";
 bind "../services/locations";
+bind "../services/project_templates";
+bind "../services/safe_io";
 bind "../services/workspace_edits";
 bind "../core/project_manager";
 bind "../core/session";
@@ -42,6 +67,7 @@ bind Codec = Zanna.Text.Codec;
 bind Seq = Zanna.Collections.Seq;
 bind Map = Zanna.Collections.Map;
 bind Str = Zanna.String;
+bind Bytes = Zanna.Collections.Bytes;
 
 func fail(msg: String) {
     Terminal.Say("RESULT: fail " + msg);
@@ -79,6 +105,86 @@ func main() {
                   "basic language case-insensitive") == false { return; }
     if assertTrue(file_utils.DetectLanguage("level.scene") == "scene",
                   "scene language routed explicitly") == false { return; }
+    var defaultProjectsBase = project_templates.DefaultProjectsBase();
+    if assertTrue(defaultProjectsBase != ""
+                  and Path.Name(defaultProjectsBase) == "ZannaProjects",
+                  "new projects use the native user home") == false { return; }
+
+    // Runtime file moves trap on ordinary user-facing failures. Studio's safe
+    // boundary must turn a destination collision into false while preserving
+    // both files, then still permit an ordinary no-overwrite move.
+    var safeIoRoot = TempFile.CreateDirWithPrefix("zannastudio_safe_io_");
+    var safeIoSource = Path.Join(safeIoRoot, "source.txt");
+    var safeIoCollision = Path.Join(safeIoRoot, "collision.txt");
+    var safeIoMoved = Path.Join(safeIoRoot, "moved.txt");
+    File.WriteAllText(safeIoSource, "source");
+    File.WriteAllText(safeIoCollision, "collision");
+    if assertTrue(safe_io.MoveFile(safeIoSource, safeIoCollision) == false
+                  and File.ReadAllText(safeIoSource) == "source"
+                  and File.ReadAllText(safeIoCollision) == "collision",
+                  "safe file move contains destination traps") == false { return; }
+    if assertTrue(safe_io.MoveFile(safeIoSource, safeIoMoved)
+                  and File.Exists(safeIoSource) == false
+                  and File.ReadAllText(safeIoMoved) == "source",
+                  "safe file move succeeds without overwrite") == false { return; }
+    var safeIoCopied = Path.Join(safeIoRoot, "copied.txt");
+    if assertTrue(safe_io.CopyFile(safeIoMoved, safeIoCollision) == false
+                  and safe_io.CopyFile(safeIoMoved, safeIoCopied)
+                  and File.ReadAllText(safeIoCopied) == "source"
+                  and File.ReadAllText(safeIoCollision) == "collision",
+                  "safe file copy succeeds without overwriting collisions") == false { return; }
+    var longStagingName = "";
+    var longNameIndex = 0;
+    while longNameIndex < 230 {
+        longStagingName = longStagingName + "n";
+        longNameIndex = longNameIndex + 1;
+    }
+    var longStagingTarget = Path.Join(safeIoRoot, longStagingName + ".txt");
+    var shortStagingPath = safe_io.SiblingTempPath(longStagingTarget, "probe");
+    if assertTrue(shortStagingPath != ""
+                  and Path.Directory(shortStagingPath) == safeIoRoot
+                  and Str.StartsWith(Path.Name(shortStagingPath),
+                                     ".zannastudio-probe-")
+                  and Str.get_Length(Path.Name(shortStagingPath)) < 96
+                  and safe_io.SiblingTempPath(longStagingTarget, "../escape") == "",
+                  "atomic staging names stay short and reject unsafe labels") == false { return; }
+    var safeCreated = Path.Join(safeIoRoot, "created.txt");
+    if assertTrue(safe_io.CreateTextFile(safeCreated, "created")
+                  and File.ReadAllText(safeCreated) == "created"
+                  and safe_io.CreateTextFile(safeCreated, "replacement") == false
+                  and File.ReadAllText(safeCreated) == "created",
+                  "atomic text creation preserves no-overwrite behavior") == false { return; }
+    var missingSafeRead = safe_io.ReadAllText(Path.Join(safeIoRoot, "missing.txt"));
+    if assertTrue(missingSafeRead.ok == false
+                  and safe_io.SizeBytes(Path.Join(safeIoRoot, "missing.txt")) == -1
+                  and safe_io.Modified(Path.Join(safeIoRoot, "missing.txt")) == -1,
+                  "safe metadata and text reads contain missing-file traps") == false { return; }
+    var missingSafeList = safe_io.ListFiles(Path.Join(safeIoRoot, "missing-dir"));
+    var missingProject = new project.Project();
+    missingProject.Open(Path.Join(safeIoRoot, "missing-dir"));
+    if assertTrue(missingSafeList.items.count() == 0 and missingProject.isOpen == false,
+                  "missing folders fail without opening or trapping") == false { return; }
+
+    var entryRoot = Path.Join(safeIoRoot, "entry-project");
+    var entrySrc = Path.Join(entryRoot, "src");
+    Dir.MakeAll(entrySrc);
+    var entryFile = Path.Join(entrySrc, "main.zia");
+    File.WriteAllText(entryFile, "module Entry;\n");
+    var entryProject = new project.Project();
+    entryProject.Open(entryRoot);
+    var detachedProjectManager = new project_manager.ProjectManager();
+    if assertTrue(detachedProjectManager.OpenFolder(entryRoot)
+                  and detachedProjectManager.IsOpen(),
+                  "folder open is safe before Explorer widget setup") == false { return; }
+    var entryManager = new project_manager.ProjectManager();
+    entryManager.project = entryProject;
+    Dir.MakeAll(Path.Join(entryRoot, "zanna.project"));
+    if assertTrue(entryManager.SetEntryFile(entryFile) == false
+                  and entryProject.entryFile == "main.zia"
+                  and entryProject.hasProjectFile == false,
+                  "failed entry persistence leaves the in-memory project unchanged") == false {
+        return;
+    }
 
     var registry = new command_registry.CommandRegistry();
     if assertTrue(registry.NormalizeId("sidebar") == "togglesidebar",
@@ -93,9 +199,12 @@ func main() {
                   and registry.Find("signature_trigger").category == "Navigate"
                   and registry.Find("signaturenextoverload").category == "Navigate",
                   "command palette categories assigned") == false { return; }
-    if assertTrue(registry.Find("saveas").shortcut == "Ctrl+Shift+S"
-                  and registry.Find("saveall").shortcut == "Ctrl+Alt+Shift+S"
-                  and registry.Find("openfolder").shortcut == "Ctrl+Alt+O",
+    if assertTrue(registry.Find("saveas").shortcut
+                      == command_catalog.PlatformShortcut("Ctrl+Shift+S")
+                  and registry.Find("saveall").shortcut
+                      == command_catalog.PlatformShortcut("Ctrl+Alt+Shift+S")
+                  and registry.Find("openfolder").shortcut
+                      == command_catalog.PlatformShortcut("Ctrl+Alt+O"),
                   "file command shortcuts are discoverable and conflict-free") == false { return; }
 
     var langMgr = new language_service.LanguageServiceManager();
@@ -128,6 +237,70 @@ func main() {
     var disabledReason = registry.DisabledReason("extractlocal", basicService);
     if assertTrue(Str.IndexOf(disabledReason, "Zia source syntax") != 0,
                   "disabled command reason labels Zia-only transform") == false { return; }
+
+    registry.ApplyCommandContext(false, false, false, false,
+                                 false, false, false, ziaService);
+    if assertTrue(registry.IsExecutable("new", ziaService)
+                  and registry.IsExecutable("open", ziaService)
+                  and registry.IsExecutable("toggletheme", ziaService)
+                  and registry.IsExecutable("save", ziaService) == false
+                  and registry.IsExecutable("find", ziaService) == false
+                  and registry.IsExecutable("build", ziaService) == false
+                  and registry.IsExecutable("debugstart", ziaService) == false
+                  and registry.IsExecutable("quickopen", ziaService) == false
+                  and registry.IsExecutable("stopjob", ziaService) == false,
+                  "empty welcome gates shortcuts and palette commands") == false { return; }
+    if assertTrue(Str.IndexOf(registry.DisabledReason("save", ziaService),
+                              "Open a document") != 0
+                  and Str.IndexOf(registry.DisabledReason("quickopen", ziaService),
+                                  "Open a project") != 0,
+                  "context-disabled commands explain how to enable them") == false { return; }
+
+    registry.ApplyCommandContext(true, true, true, true,
+                                 false, false, false, ziaService);
+    if assertTrue(registry.IsExecutable("save", ziaService)
+                  and registry.IsExecutable("find", ziaService)
+                  and registry.IsExecutable("build", ziaService)
+                  and registry.IsExecutable("debugstart", ziaService)
+                  and registry.IsExecutable("quickopen", ziaService)
+                  and registry.IsExecutable("stopjob", ziaService) == false
+                  and registry.IsExecutable("debugcontinue", ziaService) == false,
+                  "document and project context enables target commands") == false { return; }
+
+    registry.ApplyCommandContext(true, true, true, true,
+                                 true, false, false, ziaService);
+    if assertTrue(registry.IsExecutable("build", ziaService) == false
+                  and registry.IsExecutable("debugstart", ziaService) == false
+                  and registry.IsExecutable("stopjob", ziaService),
+                  "active jobs gate competing shortcut and palette commands") == false { return; }
+
+    registry.ApplyCommandContext(true, true, true, true,
+                                 false, true, true, ziaService);
+    if assertTrue(registry.IsExecutable("build", ziaService) == false
+                  and registry.IsExecutable("debugstart", ziaService) == false
+                  and registry.IsExecutable("debugcontinue", ziaService)
+                  and registry.IsExecutable("debugstepover", ziaService)
+                  and registry.IsExecutable("debugpause", ziaService) == false
+                  and registry.IsExecutable("debugrestart", ziaService)
+                  and registry.IsExecutable("debugstop", ziaService),
+                  "paused debug sessions expose only valid controls") == false { return; }
+
+    registry.ApplyCommandContext(false, true, true, false,
+                                 false, false, false, ziaService);
+    if assertTrue(registry.IsExecutable("build", ziaService)
+                  and registry.IsExecutable("run", ziaService)
+                  and registry.IsExecutable("quickopen", ziaService)
+                  and registry.IsExecutable("debugstart", ziaService) == false,
+                  "project-only context builds without advertising file debugging") == false {
+        return;
+    }
+    var shortcutRefreshes = registry.shortcutStateRefreshCount;
+    registry.ApplyCommandContext(false, true, true, false,
+                                 false, false, false, ziaService);
+    if assertTrue(registry.shortcutStateRefreshCount == shortcutRefreshes,
+                  "stable frame context avoids redundant shortcut refresh") == false {
+        return;
+    }
 
     var basicSource = "SUB Greet(name$)\n  PRINT name$\nEND SUB\nGreet(\"Ada\")\n";
     var basicDecls = semantic_scan.DeclarationsForFile("probe.bas", basicSource);
@@ -173,9 +346,11 @@ func main() {
     var shortcutRegistry = new command_registry.CommandRegistry();
     if assertTrue(shortcutRegistry.ShortcutConflictCount() == 0,
                   "default keybindings have no conflicts") == false { return; }
-    shortcutRegistry.Add("probe.conflict", "Probe Conflict", "Intentional conflict", "Ctrl+S", "", true);
+    var saveShortcut = shortcutRegistry.ShortcutFor("save");
+    shortcutRegistry.Add("probe.conflict", "Probe Conflict", "Intentional conflict",
+                         saveShortcut, "", true);
     if assertTrue(shortcutRegistry.ShortcutConflictCount() == 1
-                  and shortcutRegistry.ShortcutHasConflict("Ctrl+S")
+                  and shortcutRegistry.ShortcutHasConflict(saveShortcut)
                   and Str.IndexOf(shortcutRegistry.ShortcutConflictSummary(), "save") != 0,
                   "keybinding conflict detection reports duplicates") == false { return; }
 
@@ -235,6 +410,112 @@ func main() {
     var root = TempFile.CreateDirWithPrefix("zannastudio_phase_probe_");
     var filePath = Path.Join(root, "main.zia");
     File.WriteAllText(filePath, "module Main;\nfunc start() {\n    var oldName = 1;\n    var useName = oldName;\n}\n");
+    var aliasDir = Path.Join(root, "path-alias");
+    Dir.MakeAll(aliasDir);
+    var equivalentFilePath = Path.Join(Path.Join(aliasDir, ".."), "main.zia");
+    var canonicalDocs = new document_manager.DocumentManager();
+    var canonicalDoc = canonicalDocs.OpenFile(equivalentFilePath);
+    canonicalDocs.OpenFile(filePath);
+    if assertTrue(canonicalDoc.filePath == Path.Normalize(Path.Absolute(filePath))
+                  and canonicalDocs.GetCount() == 1,
+                  "document paths are canonicalized before storage and de-duplication") == false {
+        return;
+    }
+    if assertTrue(File.SameFile(filePath, equivalentFilePath),
+                  "runtime file identity recognizes equivalent path spellings") == false {
+        return;
+    }
+    var caseEquivalentFilePath = Path.Join(root, "MAIN.ZIA");
+    if File.Exists(caseEquivalentFilePath)
+       and File.SameFile(filePath, caseEquivalentFilePath) {
+        canonicalDocs.OpenFile(caseEquivalentFilePath);
+        if assertTrue(canonicalDocs.GetCount() == 1,
+                      "case-equivalent file identity cannot create duplicate tabs") == false {
+            return;
+        }
+    }
+    canonicalDocs.ApplyRecoveredText(equivalentFilePath, "module RecoveredExisting;\n");
+    if assertTrue(canonicalDocs.GetCount() == 1 and canonicalDoc.isModified
+                  and canonicalDoc.content == "module RecoveredExisting;\n",
+                  "crash recovery reuses an existing canonical document") == false { return; }
+    var missingRecoveredDoc = canonicalDocs.ApplyRecoveredText(
+        Path.Join(root, "missing-swap-origin.zia"), "module RecoveredDraft;\n");
+    if assertTrue(canonicalDocs.GetCount() == 2 and missingRecoveredDoc.isNew
+                  and missingRecoveredDoc.filePath == ""
+                  and Str.IndexOf(missingRecoveredDoc.fileName, "Recovered") != 0,
+                  "crash recovery detaches missing origins into safe drafts") == false { return; }
+    var binaryPath = Path.Join(root, "zannastudio");
+    var binaryBytes = Bytes.New(8);
+    Bytes.Set(binaryBytes, 0, 0xCF);
+    Bytes.Set(binaryBytes, 1, 0xFA);
+    Bytes.Set(binaryBytes, 2, 0xED);
+    Bytes.Set(binaryBytes, 3, 0xFE);
+    Bytes.Set(binaryBytes, 4, 0);
+    Bytes.Set(binaryBytes, 5, 1);
+    Bytes.Set(binaryBytes, 6, 2);
+    Bytes.Set(binaryBytes, 7, 3);
+    File.WriteAllBytes(binaryPath, binaryBytes);
+    if assertTrue(document_manager.IsEditableTextFile(filePath)
+                  and !document_manager.IsEditableTextFile(binaryPath),
+                  "editable-file gate detects extensionless binary payloads") == false { return; }
+    if assertTrue(startup_arguments.IsUserFileArgument(0, binaryPath) == false
+                  and startup_arguments.IsUserFileArgument(0, filePath)
+                  and startup_arguments.IsUserFileArgument(1, filePath),
+                  "startup arguments reject executable payloads and accept source files") == false { return; }
+
+    var saveCollisionPath = Path.Join(root, "already-open.zia");
+    File.WriteAllText(saveCollisionPath, "module AlreadyOpen;\n");
+    var saveCollisionMgr = new document_manager.DocumentManager();
+    var saveSource = saveCollisionMgr.OpenFile(filePath);
+    saveCollisionMgr.OpenFile(saveCollisionPath);
+    saveCollisionMgr.SetActive(0);
+    saveSource.content = "module Replacement;\n";
+    if assertTrue(saveCollisionMgr.SaveAs(saveCollisionPath) == false
+                  and saveCollisionMgr.GetCount() == 2
+                  and saveCollisionMgr.FindByPath(filePath) == 0
+                  and saveCollisionMgr.FindByPath(saveCollisionPath) == 1
+                  and File.ReadAllText(saveCollisionPath) == "module AlreadyOpen;\n",
+                  "Save As rejects a path owned by another open document") == false { return; }
+
+    // Save-time conflict checks include a content hash, so a same-size rewrite
+    // is protected even on filesystems with coarse or preserved timestamps.
+    var conflictPath = Path.Join(root, "save-conflict.zia");
+    File.WriteAllText(conflictPath, "module Alpha;\n");
+    var conflictMgr = new document_manager.DocumentManager();
+    var conflictDoc = conflictMgr.OpenFile(conflictPath);
+    File.WriteAllText(conflictPath, "module Bravo;\n");
+    conflictDoc.content = "module Saved;\n";
+    conflictDoc.isModified = true;
+    var conflictState = conflictMgr.ExternalStateForSave(0);
+    if assertTrue(conflictState == document.EXTERNAL_STATE_CHANGED
+                  and conflictMgr.SaveDocument(0) == false
+                  and File.ReadAllText(conflictPath) == "module Bravo;\n"
+                  and conflictDoc.isModified,
+                  "ordinary save rejects a same-size external rewrite") == false { return; }
+    if assertTrue(conflictMgr.SaveDocumentAfterExternalConfirmation(0, conflictState)
+                  and File.ReadAllText(conflictPath) == "module Saved;\n"
+                  and conflictDoc.isModified == false,
+                  "confirmed external overwrite commits one stable replacement") == false { return; }
+
+    File.Delete(conflictPath);
+    conflictDoc.content = "module Recreated;\n";
+    conflictDoc.isModified = true;
+    var missingState = conflictMgr.ExternalStateForSave(0);
+    if assertTrue(missingState == document.EXTERNAL_STATE_MISSING
+                  and conflictMgr.SaveDocument(0) == false
+                  and conflictMgr.SaveDocumentAfterExternalConfirmation(0, missingState)
+                  and File.ReadAllText(conflictPath) == "module Recreated;\n",
+                  "missing file is recreated only after explicit confirmation") == false { return; }
+
+    var binarySaveMgr = new document_manager.DocumentManager();
+    var binarySaveDoc = binarySaveMgr.NewDocument();
+    binarySaveDoc.content = "module NotAnImage;\n";
+    var binarySavePath = Path.Join(root, "not-an-image.png");
+    if assertTrue(binarySaveMgr.SaveAs(binarySavePath) == false
+                  and File.Exists(binarySavePath) == false
+                  and binarySaveDoc.isNew
+                  and binarySaveDoc.filePath == "",
+                  "Save As rejects known binary extensions without mutating the document") == false { return; }
 
     var tinySettingsPath = Path.Join(root, "tiny-settings.ini");
     File.WriteAllText(tinySettingsPath, "[settings]\nfontSize=8\n");
@@ -273,7 +554,14 @@ func main() {
     clampSettings.Load();
     if assertTrue(clampSettings.uiZoomPercent == 100,
                   "out-of-range persisted UI zoom is rejected to the default") == false { return; }
-    viewSettings.Save();
+    var invalidSettingsTarget = new settings.SettingsManager();
+    invalidSettingsTarget.settingsDir = root;
+    invalidSettingsTarget.settingsPath = root;
+    invalidSettingsTarget.Load();
+    if assertTrue(invalidSettingsTarget.Save() == false,
+                  "settings I/O failures return false without trapping") == false { return; }
+    if assertTrue(viewSettings.Save(),
+                  "ordinary settings save reports success") == false { return; }
     var viewSettingsIni = Ini.Parse(File.ReadAllText(viewSettingsPath));
     if assertTrue(Ini.Get(viewSettingsIni, "settings", "wordWrap") == "1"
                   and Ini.Get(viewSettingsIni, "settings", "lineNumbers") == "0",
@@ -292,9 +580,14 @@ func main() {
                   "save formatting trims trailing whitespace and final newline") == false { return; }
 
     var settingsPath = Path.Join(root, "settings.ini");
+    var oldProjectRoot = Path.Join(root, "OldProject");
+    var olderProjectRoot = Path.Join(root, "OlderProject");
+    Dir.MakeAll(oldProjectRoot);
+    Dir.MakeAll(olderProjectRoot);
     File.WriteAllText(settingsPath,
         "[settings]\nrestoreSession=0\nrestoreLastProject=0\nconfirmOnExitWithUnsavedChanges=0\n"
-        + "[recent]\ncount=2\npath.0=/old/project\npath.1=/older/project\n");
+        + "[recent]\ncount=2\npath.0=" + oldProjectRoot
+        + "\npath.1=" + olderProjectRoot + "\n");
     var projectRoot = Path.Join(root, "ProjectA");
     Dir.MakeAll(projectRoot);
     var sessMgr = new session.SessionManager();
@@ -309,7 +602,8 @@ func main() {
     var sessionProjMgr = new project_manager.ProjectManager();
     sessionProjMgr.project = new project.Project();
     sessionProjMgr.project.Open(projectRoot);
-    sessMgr.Save(sessionDocMgr, sessionProjMgr);
+    if assertTrue(sessMgr.Save(sessionDocMgr, sessionProjMgr),
+                  "ordinary session save reports success") == false { return; }
     var savedIni = Ini.Parse(File.ReadAllText(settingsPath));
     if assertTrue(Ini.Get(savedIni, "settings", "restoreSession") == "0",
                   "session save preserves disabled restoreSession") == false { return; }
@@ -319,7 +613,7 @@ func main() {
                   "session save preserves close confirmation setting") == false { return; }
     if assertTrue(Ini.Get(savedIni, "recent", "count") == "3"
                   and Ini.Get(savedIni, "recent", "path.0") == projectRoot
-                  and Ini.Get(savedIni, "recent", "path.1") == "/old/project",
+                  and Ini.Get(savedIni, "recent", "path.1") == oldProjectRoot,
                   "session save prepends recent project history") == false { return; }
     if assertTrue(Ini.Get(savedIni, "recentFiles", "count") == "1"
                   and Ini.Get(savedIni, "recentFiles", "path.0") == filePath,
@@ -329,6 +623,265 @@ func main() {
                   and Str.IndexOf(Codec.Base64Decode(Ini.Get(savedIni, "session.file.0", "recovery")),
                                   "unsaved recovery edit") != 0,
                   "session save snapshots dirty existing files") == false { return; }
+
+    // Writer limits must mirror restore limits. A large live tab set used to
+    // serialize every document even though startup would read only 256, causing
+    // long close stalls and leaving the active tab outside the restorable set.
+    var cappedSessionPath = Path.Join(root, "capped-session.ini");
+    File.WriteAllText(cappedSessionPath, "[settings]\nrestoreSession=1\n");
+    var cappedDocs = new document_manager.DocumentManager();
+    var capIndex = 0;
+    var cappedActivePath = "";
+    while capIndex < 260 {
+        var cappedDoc = cappedDocs.NewDocument();
+        cappedDoc.fileName = "cap-" + capIndex + ".zia";
+        cappedDoc.filePath = Path.Join(root, cappedDoc.fileName);
+        File.WriteAllText(cappedDoc.filePath, "module Cap" + capIndex + ";\n");
+        cappedDoc.isNew = false;
+        cappedDoc.isModified = false;
+        cappedActivePath = cappedDoc.filePath;
+        capIndex = capIndex + 1;
+    }
+    var cappedSession = new session.SessionManager();
+    cappedSession.Setup(cappedSessionPath);
+    if assertTrue(cappedSession.SaveCleanExit(
+                      cappedDocs, new project_manager.ProjectManager()),
+                  "capped session save succeeds") == false { return; }
+    var cappedIni = Ini.Parse(File.ReadAllText(cappedSessionPath));
+    if assertTrue(Ini.Get(cappedIni, "session", "count") == "256"
+                  and Ini.Get(cappedIni, "session", "activeIndex") == "255"
+                  and Ini.Get(cappedIni, "session", "activePath") == cappedActivePath
+                  and Ini.Get(cappedIni, "session.file.254", "name") == "cap-254.zia"
+                  and Ini.Get(cappedIni, "session.file.255", "name") == "cap-259.zia"
+                  and Ini.Get(cappedIni, "session.file.256", "path") == "",
+                  "session writer caps tabs and retains the active tail tab") == false {
+        return;
+    }
+
+    // Embedded legacy recovery is aggregate-bounded as well as per-document
+    // bounded. Reserve capacity for the active draft and omit an untitled tab
+    // entirely when its only durable content cannot fit.
+    var recoveryCapPath = Path.Join(root, "capped-session-recovery.ini");
+    File.WriteAllText(recoveryCapPath, "[settings]\nrestoreSession=1\n");
+    var recoveryCapDocs = new document_manager.DocumentManager();
+    var recoveryCapIndex = 0;
+    var recoveryChunk = Str.Repeat("x", session.MAX_SESSION_RECOVERY_CHARS);
+    while recoveryCapIndex < 21 {
+        var recoveryCapDoc = recoveryCapDocs.NewDocument();
+        recoveryCapDoc.fileName = "recovery-" + recoveryCapIndex;
+        recoveryCapDoc.content = recoveryChunk;
+        recoveryCapDoc.isModified = true;
+        recoveryCapIndex = recoveryCapIndex + 1;
+    }
+    var recoveryCapSession = new session.SessionManager();
+    recoveryCapSession.Setup(recoveryCapPath);
+    if assertTrue(recoveryCapSession.Save(
+                      recoveryCapDocs, new project_manager.ProjectManager()),
+                  "aggregate recovery-capped session save succeeds") == false { return; }
+    var recoveryCapIni = Ini.Parse(File.ReadAllText(recoveryCapPath));
+    if assertTrue(Ini.Get(recoveryCapIni, "session", "count") == "20"
+                  and Ini.Get(recoveryCapIni, "session", "activeIndex") == "19"
+                  and Ini.Get(recoveryCapIni, "session.file.19", "name") == "recovery-20"
+                  and File.SizeBytes(recoveryCapPath) <= safe_io.MAX_STUDIO_STATE_BYTES,
+                  "aggregate recovery cap reserves the active draft within state limit") == false {
+        return;
+    }
+
+    // A hostile or corrupt shared state file is rejected from metadata alone.
+    // Save paths must also decline to clobber it because preserving unknown
+    // sections is impossible without first reading a complete bounded snapshot.
+    var oversizedSettingsPath = Path.Join(root, "oversized-settings.ini");
+    var oversizedSettingsText = "[settings]\ntheme=light\n"
+        + Str.Repeat("x", safe_io.MAX_STUDIO_STATE_BYTES + 1);
+    File.WriteAllText(oversizedSettingsPath, oversizedSettingsText);
+    var oversizedSettingsBytes = File.SizeBytes(oversizedSettingsPath);
+    var oversizedSettings = new settings.SettingsManager();
+    oversizedSettings.settingsDir = root;
+    oversizedSettings.settingsPath = oversizedSettingsPath;
+    oversizedSettings.Load();
+    if assertTrue(oversizedSettings.theme == "dark"
+                  and oversizedSettings.Save() == false
+                  and File.SizeBytes(oversizedSettingsPath) == oversizedSettingsBytes,
+                  "oversized shared state keeps defaults and is not overwritten") == false {
+        return;
+    }
+
+    var invalidSessionTarget = new session.SessionManager();
+    invalidSessionTarget.Setup(root);
+    if assertTrue(invalidSessionTarget.Save(sessionDocMgr, sessionProjMgr) == false
+                  and invalidSessionTarget.RecordRecentFile(filePath) == false
+                  and invalidSessionTarget.RecentFileCount() == 0,
+                  "session I/O failures return safely without corrupting history") == false {
+        return;
+    }
+
+    var corruptRecoveryPath = Path.Join(root, "corrupt-recovery.ini");
+    File.WriteAllText(corruptRecoveryPath,
+        "[settings]\nrestoreSession=1\nrestoreLastProject=0\n"
+        + "[session]\ncount=1\nactiveIndex=0\n"
+        + "[session.file.0]\npath=\nname=corrupt-recovery\n"
+        + "recovery=%%%not-base64%%%\nrecoveryEncoding=base64\nrecoveryModified=1\n"
+        + "[recentFiles]\ncount=999999999\n");
+    var corruptSession = new session.SessionManager();
+    corruptSession.Setup(corruptRecoveryPath);
+    var corruptDocs = new document_manager.DocumentManager();
+    if assertTrue(corruptSession.Restore(corruptDocs,
+                                         new project_manager.ProjectManager(), null) == 0
+                  and corruptDocs.GetCount() == 0
+                  and corruptSession.RecentFileCount() == 0,
+                  "corrupt recovery payloads and counts are bounded at startup") == false {
+        return;
+    }
+
+    var binarySettingsPath = Path.Join(root, "binary-session.ini");
+    File.WriteAllText(binarySettingsPath,
+        "[settings]\nrestoreSession=1\nrestoreLastProject=0\n"
+        + "[session]\ncount=1\nactivePath=" + binaryPath + "\nactiveIndex=0\n"
+        + "[session.file.0]\npath=" + binaryPath + "\nname=zannastudio\n"
+        + "recovery=\nrecoveryEncoding=\nrecoveryModified=0\n"
+        + "[recentFiles]\ncount=2\npath.0=" + binaryPath + "\npath.1=" + filePath + "\n");
+    var binarySession = new session.SessionManager();
+    binarySession.Setup(binarySettingsPath);
+    var prunedHistoryIni = Ini.Parse(File.ReadAllText(binarySettingsPath));
+    if assertTrue(binarySession.RecentFileCount() == 1
+                  and binarySession.RecentFileAt(0) == filePath
+                  and Ini.Get(prunedHistoryIni, "recentFiles", "path.1") == "",
+                  "session setup purges binary recent-file entries") == false { return; }
+    var binaryRestoreDocs = new document_manager.DocumentManager();
+    var binaryRestored = binarySession.Restore(binaryRestoreDocs,
+                                               new project_manager.ProjectManager(), null);
+    if assertTrue(binaryRestored == 0 and binaryRestoreDocs.GetCount() == 0,
+                  "session restore does not reopen a binary preview") == false { return; }
+    var binaryRestoreIni = Ini.Parse(File.ReadAllText(binarySettingsPath));
+    if assertTrue(Ini.Get(binaryRestoreIni, "session.file.0", "path") == ""
+                  and Ini.Get(binaryRestoreIni, "session", "activePath") == "",
+                  "session restore removes rejected persisted paths") == false { return; }
+
+    var duplicateRecentPath = Path.Join(root, "duplicate-recents.ini");
+    File.WriteAllText(duplicateRecentPath,
+        "[recentFiles]\ncount=2\npath.0=" + equivalentFilePath
+        + "\npath.1=" + filePath + "\n");
+    var duplicateRecentSession = new session.SessionManager();
+    duplicateRecentSession.Setup(duplicateRecentPath);
+    if assertTrue(duplicateRecentSession.RecentFileCount() == 1
+                  and duplicateRecentSession.RecentFileAt(0)
+                      == Path.Normalize(Path.Absolute(filePath)),
+                  "recent files canonicalize equivalent path spellings") == false { return; }
+
+    var duplicateProjectRecentPath = Path.Join(root, "duplicate-project-recents.ini");
+    File.WriteAllText(duplicateProjectRecentPath,
+        "[recent]\ncount=3\npath.0=" + Path.Join(oldProjectRoot, ".")
+        + "\npath.1=" + oldProjectRoot
+        + "\npath.2=" + Path.Join(root, "missing-project") + "\n");
+    var duplicateProjectRecentSession = new session.SessionManager();
+    duplicateProjectRecentSession.Setup(duplicateProjectRecentPath);
+    var prunedProjectRecentIni = Ini.Parse(File.ReadAllText(duplicateProjectRecentPath));
+    if assertTrue(duplicateProjectRecentSession.RecentProjectCount() == 1
+                  and duplicateProjectRecentSession.RecentProjectAt(0)
+                      == Path.Normalize(Path.Absolute(oldProjectRoot))
+                  and Ini.Get(prunedProjectRecentIni, "recent", "path.1") == "",
+                  "recent projects prune missing and equivalent paths") == false { return; }
+
+    var duplicateRestorePath = Path.Join(root, "duplicate-restore.ini");
+    File.WriteAllText(duplicateRestorePath,
+        "[settings]\nrestoreSession=1\nrestoreLastProject=0\n"
+        + "[session]\ncount=2\nactivePath=" + filePath + "\nactiveIndex=1\n"
+        + "[session.file.0]\npath=" + equivalentFilePath + "\n"
+        + "[session.file.1]\npath=" + filePath + "\n");
+    var duplicateRestoreSession = new session.SessionManager();
+    duplicateRestoreSession.Setup(duplicateRestorePath);
+    var duplicateRestoreDocs = new document_manager.DocumentManager();
+    var duplicateRestored = duplicateRestoreSession.Restore(
+        duplicateRestoreDocs, new project_manager.ProjectManager(), null);
+    var duplicateRestoreIni = Ini.Parse(File.ReadAllText(duplicateRestorePath));
+    if assertTrue(duplicateRestored == 1 and duplicateRestoreDocs.GetCount() == 1
+                  and Ini.Get(duplicateRestoreIni, "session.file.1", "path") == "",
+                  "session restore removes canonically duplicate document slots") == false {
+        return;
+    }
+
+    // The startup-facing restore API must honor its caller's root/file budget;
+    // otherwise a valid 256-tab session monopolizes the UI before main can
+    // poll or repaint the already-visible welcome surface.
+    var stagedRestorePath = Path.Join(root, "staged-restore.ini");
+    var stagedRestoreText = "[settings]\nrestoreSession=1\nrestoreLastProject=0\n"
+        + "[session]\ncount=5\nactiveIndex=4\n";
+    var stagedIndex = 0;
+    var stagedActivePath = "";
+    while stagedIndex < 5 {
+        var stagedFile = Path.Join(root, "staged-" + stagedIndex + ".zia");
+        File.WriteAllText(stagedFile, "module Staged" + stagedIndex + ";\n");
+        stagedRestoreText = stagedRestoreText
+            + "[session.file." + stagedIndex + "]\npath=" + stagedFile + "\n";
+        stagedActivePath = stagedFile;
+        stagedIndex = stagedIndex + 1;
+    }
+    stagedRestoreText = stagedRestoreText
+        + "[session]\nactivePath=" + stagedActivePath + "\n";
+    File.WriteAllText(stagedRestorePath, stagedRestoreText);
+    var stagedSession = new session.SessionManager();
+    stagedSession.Setup(stagedRestorePath);
+    var stagedDocs = new document_manager.DocumentManager();
+    var stagedJob = stagedSession.BeginRestore(
+        stagedDocs, new project_manager.ProjectManager(), null);
+    var firstRestorePump = stagedSession.PumpRestore(stagedJob, 2);
+    if assertTrue(firstRestorePump == 2 and stagedJob.active
+                  and stagedJob.completedWork == 2 and stagedDocs.GetCount() == 2,
+                  "session restore yields after its first bounded page") == false {
+        return;
+    }
+    var stagedPumpSafe = true;
+    var stagedPumpCount = 0;
+    while stagedJob.active and stagedPumpCount < 10 {
+        var restoredThisPump = stagedSession.PumpRestore(stagedJob, 2);
+        if restoredThisPump <= 0 or restoredThisPump > 2 {
+            stagedPumpSafe = false;
+        }
+        stagedPumpCount = stagedPumpCount + 1;
+    }
+    var stagedActive = stagedDocs.GetActive();
+    if assertTrue(stagedPumpSafe and stagedJob.active == false
+                  and stagedJob.restoredCount == 5 and stagedDocs.GetCount() == 5
+                  and stagedJob.completedWork == 5
+                  and stagedSession.RestoreProgressText(stagedJob)
+                      == "Restoring your workspace: 5/5"
+                  and stagedActive != null and stagedActive!.filePath == stagedActivePath,
+                  "session restore completes bounded pages and restores active tab") == false {
+        return;
+    }
+
+    var missingRecoveryPath = Path.Join(root, "missing-recovery.ini");
+    var missingSourcePath = Path.Join(root, "deleted-before-restore.zia");
+    File.WriteAllText(missingRecoveryPath,
+        "[settings]\nrestoreSession=1\nrestoreLastProject=0\n"
+        + "[session]\ncount=1\nactivePath=" + missingSourcePath + "\nactiveIndex=0\n"
+        + "[session.file.0]\npath=" + missingSourcePath + "\nname=deleted-before-restore.zia\n"
+        + "recovery=" + Codec.Base64Encode("module Recovered;\n// unsaved\n") + "\n"
+        + "recoveryEncoding=base64\nrecoveryModified=1\n");
+    var missingRecoverySession = new session.SessionManager();
+    missingRecoverySession.Setup(missingRecoveryPath);
+    var missingRecoveryDocs = new document_manager.DocumentManager();
+    var missingRecovered = missingRecoverySession.Restore(
+        missingRecoveryDocs, new project_manager.ProjectManager(), null);
+    var recoveredDraft = missingRecoveryDocs.GetActive();
+    var missingRecoveryIni = Ini.Parse(File.ReadAllText(missingRecoveryPath));
+    if assertTrue(missingRecovered == 1 and recoveredDraft != null
+                  and recoveredDraft!.isNew and recoveredDraft!.isModified
+                  and recoveredDraft!.filePath == ""
+                  and Str.IndexOf(recoveredDraft!.content, "unsaved") != 0
+                  and Ini.Get(missingRecoveryIni, "session.file.0", "path") == ""
+                  and Ini.Get(missingRecoveryIni, "session.file.0", "recovery") != "",
+                  "missing named files retain unsaved recovery as a draft") == false {
+        return;
+    }
+    var previewOnlyDocs = new document_manager.DocumentManager();
+    previewOnlyDocs.OpenFile(binaryPath);
+    binarySession.Save(previewOnlyDocs, new project_manager.ProjectManager());
+    var previewSaveIni = Ini.Parse(File.ReadAllText(binarySettingsPath));
+    if assertTrue(Ini.Get(previewSaveIni, "session", "count") == "0"
+                  and Ini.Get(previewSaveIni, "recentFiles", "count") == "1",
+                  "session save excludes binary preview documents") == false { return; }
+
     sessionDocMgr.CloseDocument(0);
     if assertTrue(sessionDocMgr.RecentlyClosedCount() == 1
                   and sessionDocMgr.PopRecentlyClosedPath() == filePath,
@@ -346,6 +899,8 @@ func main() {
 
     var docMgr = new document_manager.DocumentManager();
     var doc = docMgr.OpenFile(filePath);
+    var workspaceRoots = new List();
+    workspaceRoots.Push(root);
 
     var edits = Seq.New();
     AddEdit(edits, filePath, 4, 19, 4, 26, "newName");
@@ -353,9 +908,22 @@ func main() {
     if assertTrue(Str.IndexOf(preview, "Apply 1 rename edits?") != 0
                   and Str.IndexOf(preview, "newName") != 0,
                   "workspace edit preview summarizes rename edits") == false { return; }
-    var applyResult = workspace_edits.ApplyRenameEdits(edits, docMgr);
+    var applyResult = workspace_edits.ApplyRenameEdits(edits, docMgr,
+                                                       workspaceRoots);
     if assertTrue(applyResult.success and doc.content != File.ReadAllText(filePath),
                   "workspace edit updates open dirty document only") == false { return; }
+
+    var closedEditPath = Path.Join(root, "closed_workspace_edit.zia");
+    File.WriteAllText(closedEditPath, "oldName\n");
+    var closedEdits = Seq.New();
+    AddEdit(closedEdits, closedEditPath, 1, 1, 1, 8, "newName");
+    var closedResult = workspace_edits.ApplyRenameEdits(
+        closedEdits, new document_manager.DocumentManager(), workspaceRoots);
+    if assertTrue(closedResult.success
+                  and File.ReadAllText(closedEditPath) == "newName\n",
+                  "closed workspace edits use opened roots instead of process cwd") == false {
+        return;
+    }
 
     var unsortedPath = Path.Join(root, "unsorted_open_edits.zia");
     File.WriteAllText(unsortedPath, "aa bb cc\n");
@@ -364,7 +932,9 @@ func main() {
     var unsortedEdits = Seq.New();
     AddEdit(unsortedEdits, unsortedPath, 1, 7, 1, 9, "CCCC");
     AddEdit(unsortedEdits, unsortedPath, 1, 1, 1, 3, "AAAA");
-    var unsortedResult = workspace_edits.ApplyRenameEdits(unsortedEdits, unsortedMgr);
+    var unsortedResult = workspace_edits.ApplyRenameEdits(unsortedEdits,
+                                                          unsortedMgr,
+                                                          workspaceRoots);
     if assertTrue(unsortedResult.success
                   and unsortedDoc.content == "AAAA bb CCCC\n",
                   "workspace edits sort open-buffer edits by descending range") == false { return; }
@@ -377,7 +947,8 @@ func main() {
     var badEdits = Seq.New();
     AddEdit(badEdits, rollbackPath, 3, 9, 3, 16, "newName");
     AddEdit(badEdits, Path.Join(root, "missing.zia"), 1, 1, 1, 2, "x");
-    var badResult = workspace_edits.ApplyRenameEdits(badEdits, rollbackMgr);
+    var badResult = workspace_edits.ApplyRenameEdits(badEdits, rollbackMgr,
+                                                     workspaceRoots);
     if assertTrue(badResult.success == false
                   and rollbackDoc.content == beforeRollback
                   and rollbackDoc.isModified == false,
@@ -386,7 +957,9 @@ func main() {
     var overlapEdits = Seq.New();
     AddEdit(overlapEdits, rollbackPath, 3, 9, 3, 16, "firstName");
     AddEdit(overlapEdits, rollbackPath, 3, 12, 3, 16, "secondName");
-    var overlapResult = workspace_edits.ApplyRenameEdits(overlapEdits, rollbackMgr);
+    var overlapResult = workspace_edits.ApplyRenameEdits(overlapEdits,
+                                                         rollbackMgr,
+                                                         workspaceRoots);
     if assertTrue(overlapResult.success == false
                   and rollbackDoc.content == beforeRollback
                   and rollbackDoc.isModified == false

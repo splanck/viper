@@ -10,6 +10,7 @@
 // Key invariants:
 //   - This module owns the persistent editor/sidebar layout only.
 //   - Tool-panel behavior remains delegated to ToolPanelShell.
+//   - A requested minimap is suppressed while its editor lane is too narrow.
 // Ownership/Lifetime:
 //   - AppShell owns one WorkbenchShell for the lifetime of the IDE window.
 //   - EditorEngine, ProjectManager, and other controllers attach to exposed
@@ -23,6 +24,11 @@ module workbench_shell;
 bind "../ui/tool_panel_shell";
 
 bind Zanna.GUI as GUI;
+
+// Preserve a genuinely useful code viewport after the 100-pixel minimap and
+// editor gutters are accounted for. The editor row is measured in effective
+// UI-layout units, so this threshold remains stable under HiDPI and UI zoom.
+final MINIMAP_EDITOR_LANE_THRESHOLD: Number = 620.0;
 
 /// @brief Owns the IDE's sidebar/editor layout widgets.
 class WorkbenchShell {
@@ -46,6 +52,7 @@ class WorkbenchShell {
     expose GUI.FindBar findBar;
     expose GUI.Minimap minimap;
     expose Boolean sidebarVisible;
+    expose Boolean minimapRequestedVisible;
     expose Integer activeSurfaceKind;
     expose Integer activeDocumentSurfaceKind;
 
@@ -71,6 +78,7 @@ class WorkbenchShell {
         findBar = null;
         minimap = null;
         sidebarVisible = true;
+        minimapRequestedVisible = true;
         activeSurfaceKind = 0;
         activeDocumentSurfaceKind = 0;
     }
@@ -109,6 +117,7 @@ class WorkbenchShell {
         explorerView.SetFlex(1.0);
         leftViewStack.AddChild(explorerView);
         sidebarTree = GUI.TreeView.New(explorerView);
+        sidebarTree.SetFlex(1.0);
 
         scmViewHost = GUI.VBox.New();
         scmViewHost.SetSpacing(0.0);
@@ -138,6 +147,10 @@ class WorkbenchShell {
         workbenchRow.AddChild(preferencesPanel);
 
         tabBar = GUI.TabBar.New(editorArea);
+        // An empty strip reads as a broken editor above the welcome card and
+        // wastes vertical space at startup. EditorTabs makes it visible when
+        // the first real document is admitted.
+        tabBar.SetVisible(false);
         breadcrumb = GUI.Breadcrumb.New(editorArea);
         breadcrumb.SetSeparator(" / ");
         breadcrumb.SetMaxItems(6);
@@ -152,7 +165,6 @@ class WorkbenchShell {
         // switched panel tabs). 0 = vertical (top/bottom) split.
         editorSplit = GUI.SplitPane.New(editorArea, 0);
         editorSplit.SetFlex(1.0);
-        editorSplit.SetPosition(1.0); // bottom collapsed until a panel is shown
 
         var editorHost: GUI.Widget = editorSplit.First;
 
@@ -180,17 +192,59 @@ class WorkbenchShell {
         if toolPanels != null {
             toolPanels.Build(bottomPanelHost, app, editorSplit);
         }
+        // A divider position of 1.0 is still subject to the second pane's
+        // measured minimum height. Use the splitter's explicit collapsed state
+        // so a hidden tool area consumes no editor viewport space or divider.
+        editorSplit.CollapseSecond();
     }
 
     /// @brief Toggle the sidebar by collapsing or restoring the split position.
     expose func ToggleSidebar() {
+        SetSidebarVisible(sidebarVisible == false);
+    }
+
+    /// @brief Explicitly show or fully collapse the sidebar content pane.
+    /// @details The activity bar remains outside the split and therefore stays
+    ///          available when an empty startup sidebar is collapsed. Restore()
+    ///          preserves the user's last non-collapsed divider position.
+    /// @param visible True to restore the pane, false to reclaim its full width.
+    expose func SetSidebarVisible(visible: Boolean) {
+        if visible == sidebarVisible { return; }
+        sidebarVisible = visible;
         if sidebarVisible {
-            sidebarVisible = false;
-            splitPane.SetPosition(0.0);
+            splitPane.Restore();
         } else {
-            sidebarVisible = true;
-            splitPane.SetPosition(0.20);
+            splitPane.CollapseFirst();
         }
+    }
+
+    /// @brief Store the user's minimap preference and apply the current lane policy.
+    /// @details Compact suppression is deliberately not written back to Settings;
+    ///          widening the editor therefore restores a requested minimap.
+    /// @param visible True when the user wants the minimap where space permits.
+    expose func SetMinimapRequestedVisible(visible: Boolean) {
+        minimapRequestedVisible = visible;
+        RefreshResponsiveMinimap();
+    }
+
+    /// @brief Reconcile effective minimap visibility with current editor width.
+    /// @return True when effective visibility changed and layout needs repainting.
+    expose func RefreshResponsiveMinimap() -> Boolean {
+        if minimap == null { return false; }
+
+        var shouldShow = minimapRequestedVisible;
+        if shouldShow and editorRow != null {
+            var laneWidth = editorRow.GetLogicalWidth();
+            // A zero width means the row has not completed its first layout or
+            // is temporarily replaced by the welcome surface. Preserve the
+            // preference until a real editor-lane measurement is available.
+            if laneWidth > 0.0 and laneWidth < MINIMAP_EDITOR_LANE_THRESHOLD {
+                shouldShow = false;
+            }
+        }
+        if minimap.IsVisible() == shouldShow { return false; }
+        minimap.SetVisible(shouldShow);
+        return true;
     }
 
     /// @brief Record the active document surface and keep the editor row shown.

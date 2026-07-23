@@ -8,6 +8,7 @@
 // Key invariants:
 //   - The overlay captures command intent only; command modules perform effects.
 //   - Completed actions retain their value until the main loop consumes them.
+//   - Command input owns the shell's sole focus-taking transient-surface slot.
 // Ownership/Lifetime:
 //   - GUI widgets are owned by the AppShell application root.
 //   - Entered values are copied into Zia strings before the panel hides.
@@ -72,6 +73,7 @@ class CommandInputOverlay {
     expose Integer completedAction;
     expose String value;
     expose String applyLabel;
+    hide app_shell.AppShell ownerShell;
 
     /// @brief Initialize the overlay with no pending command.
     expose func init() {
@@ -80,11 +82,13 @@ class CommandInputOverlay {
         completedAction = COMMAND_INPUT_NONE;
         value = "";
         applyLabel = "Apply";
+        ownerShell = null;
     }
 
     /// @brief Construct the floating panel and child controls.
     /// @param shell Workbench shell whose app root owns floating overlays.
     expose func Setup(shell: app_shell.AppShell) {
+        ownerShell = shell;
         panel = GUI.FloatingPanel.New(shell.app);
         panel.SetSize(COMMAND_INPUT_WIDTH, COMMAND_INPUT_HEIGHT);
         panel.SetVisible(false);
@@ -237,6 +241,10 @@ class CommandInputOverlay {
         visible = false;
         pendingAction = COMMAND_INPUT_NONE;
         panel.SetVisible(false);
+        if ownerShell != null {
+            ownerShell.ReleaseTransientSurface(
+                app_shell.TRANSIENT_SURFACE_COMMAND_INPUT);
+        }
     }
 
     /// @brief Clear the completed action after the caller has consumed it.
@@ -253,6 +261,14 @@ class CommandInputOverlay {
     expose func Pump(shell: app_shell.AppShell) -> Integer {
         completedAction = COMMAND_INPUT_NONE;
         if visible == false { return COMMAND_INPUT_NONE; }
+        if ownerShell == null
+           or ownerShell.OwnsTransientSurface(
+               app_shell.TRANSIENT_SURFACE_COMMAND_INPUT) == false {
+            visible = false;
+            pendingAction = COMMAND_INPUT_NONE;
+            panel.SetVisible(false);
+            return COMMAND_INPUT_NONE;
+        }
         Layout(shell);
         if Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
             Cancel();
@@ -305,8 +321,10 @@ class CommandInputOverlay {
         input.SetPlaceholder(placeholder);
         input.SetText(initialValue);
         applyButton.SetText(applyLabel);
+        ownerShell = shell;
+        shell.ClaimTransientSurface(app_shell.TRANSIENT_SURFACE_COMMAND_INPUT,
+                                    panel);
         visible = true;
-        panel.SetVisible(true);
         Layout(shell);
         input.Focus();
     }
@@ -325,6 +343,10 @@ class CommandInputOverlay {
         pendingAction = COMMAND_INPUT_NONE;
         completedAction = action;
         panel.SetVisible(false);
+        if ownerShell != null {
+            ownerShell.ReleaseTransientSurface(
+                app_shell.TRANSIENT_SURFACE_COMMAND_INPUT);
+        }
         return action;
     }
 
@@ -332,8 +354,8 @@ class CommandInputOverlay {
     /// @param shell Workbench shell used for viewport dimensions.
     hide func Layout(shell: app_shell.AppShell) {
         if panel == null or shell == null or shell.app == null { return; }
-        var rootW = shell.app.GetLogicalWidth();
-        var rootH = shell.app.GetLogicalHeight();
+        var rootW = app_shell.UiViewportWidth(shell.app);
+        var rootH = app_shell.UiViewportHeight(shell.app);
         if rootW <= 0 { rootW = 1280; }
         if rootH <= 0 { rootH = 800; }
         var panelW = COMMAND_INPUT_WIDTH;

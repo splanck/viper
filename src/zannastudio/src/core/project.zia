@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/core/project.zia
+// Purpose: Model one open workspace root and its optional project manifest.
+// Key invariants:
+//   - A missing/unreadable directory never becomes an open project.
+//   - Malformed or unreadable optional metadata cannot crash folder opening.
+// Ownership/Lifetime: Project owns value metadata only, never filesystem handles.
+// Links: zannastudio/src/core/project_manager.zia,
+//        zannastudio/src/build/build_system.zia
+//
+//===----------------------------------------------------------------------===//
+
 module project;
 
 bind Path = Zanna.IO.Path;
@@ -7,6 +25,7 @@ bind Seq = Zanna.Collections.Seq;
 bind Map = Zanna.Collections.Map;
 bind Obj = Zanna.Core.Object;
 bind Manifest = Zanna.Project.Manifest;
+bind "../services/safe_io";
 
 // ============================================================================
 // MODULE: project
@@ -19,9 +38,9 @@ bind Manifest = Zanna.Project.Manifest;
 //          itself just holds metadata and the open/close lifecycle.
 //
 // KEY-DESIGN-CHOICES:
-//   * SINGLE-PROJECT MODEL. The IDE has at most one open project at a
-//     time. Multi-project workspaces are deferred — most Zia projects
-//     are small enough that a single root suffices.
+//   * ONE MODEL PER ROOT. ProjectManager owns the primary Project plus any
+//     additional workspace-root models. Root-local manifests and entry points
+//     therefore never leak across a multi-root workspace.
 //   * ZANNA.PROJECT IS OPTIONAL. If the file is absent the project is
 //     still "open" with the folder name as its display name and
 //     defaults for entryFile/lang/version. `hasProjectFile` is the
@@ -96,6 +115,8 @@ class Project {
     ///       a zanna.project file at the root, parses it and lets
     ///       `package-name` override the display name.
     expose func Open(path: String) {
+        Close();
+        if path == "" or IO.Dir.Exists(path) == false { return; }
         rootPath = path;
         // Folder name from path; handle trailing-slash by trimming first.
         name = Path.Name(path);
@@ -108,7 +129,13 @@ class Project {
         // zanna.project is optional. If present, parse and override.
         var projFile = Path.Join(path, "zanna.project");
         if IO.File.Exists(projFile) {
-            parseProjectFile(projFile);
+            try {
+                parseProjectFile(projFile);
+            } catch {
+                // Opening the folder remains useful even if an optional
+                // manifest becomes unreadable between Exists and ParseFile.
+                hasProjectFile = false;
+            }
         }
     }
 
@@ -209,8 +236,9 @@ class Project {
     ///          double-quoted, and unrecognized keys are ignored. This is kept
     ///          only for compatibility with pre-manifest-parser projects.
     hide func parseLegacyProjectFile(path: String) {
-        var content = IO.File.ReadAllText(path);
-        var lines = Str.Split(content, "\n");
+        var readResult = safe_io.ReadAllText(path);
+        if readResult.ok == false { return; }
+        var lines = Str.Split(readResult.text, "\n");
         var i = 0;
         while i < Seq.get_Count(lines) {
             var line = Str.Trim(Obj.ToString(Seq.Get(lines, i)));

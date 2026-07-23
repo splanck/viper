@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-17
+last-verified: 2026-07-22
 ---
 
 # ADR 0106: Make GUI Lifetimes, Contracts, and Coordinates Explicit
@@ -91,6 +91,10 @@ metadata changes, so an ADR is required.
   toolkit continues to arrange in physical framebuffer units, with conversion
   exactly once at the app boundary using effective scale
   `windowScale * userScale`.
+- Public logical font sizes remain independent of backing scale and user zoom.
+  The runtime applies the same effective scale exactly once when propagating
+  fonts. Responsive layout code consumes `Widget.GetLogical*` results directly
+  rather than dividing by user zoom a second time.
 - Existing physical getters remain unchanged for compatibility. New
   `Widget.GetLogical*` and `GetScreen*` methods make unit choice explicit.
 - `App.MakeCurrent` explicitly installs widget, theme, focus, capture, cursor,

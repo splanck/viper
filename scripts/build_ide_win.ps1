@@ -269,6 +269,15 @@ function Write-BuildInfo {
     param([Parameter(Mandatory = $true)][string]$Binary)
 
     $infoPath = Join-Path (Split-Path -Parent $Binary) "zannastudio.buildinfo"
+    $versionPath = Join-Path $repoRoot "src\buildmeta\VERSION"
+    $version = if (Test-Path -LiteralPath $versionPath -PathType Leaf) {
+        ([string](Get-Content -LiteralPath $versionPath -TotalCount 1)).Trim()
+    } else {
+        "unknown"
+    }
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        $version = "unknown"
+    }
     $savedErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
@@ -283,6 +292,7 @@ function Write-BuildInfo {
     }
     $dirty = if ($diffStatus -eq 0) { "" } else { " dirty" }
     $lines = @(
+        "Zanna Studio $version",
         "Build: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')",
         "Source: $revision$dirty",
         "Output: $Binary",

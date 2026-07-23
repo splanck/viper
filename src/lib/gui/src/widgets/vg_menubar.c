@@ -1460,8 +1460,9 @@ static int lookup_key(const char *name) {
 /// @brief Parse a "Ctrl+Shift+S"-style shortcut string into a vg_accelerator_t.
 ///
 /// @details Tokenises on '+', recognises Ctrl/Control, Cmd/Command/Meta/Super,
-///          Shift, and Alt/Option as modifier tokens, and looks up the final token
-///          as a key name. Returns false if no valid key is found.
+///          Shift, and Alt/Option as modifier tokens, and requires exactly one
+///          recognised key token. Multi-stroke chords are intentionally rejected:
+///          menus may display them, but the app-level chord engine executes them.
 ///
 /// @param shortcut Shortcut string (e.g., "Ctrl+S", "Cmd+Shift+Z"); may not be NULL.
 /// @param accel    Out-parameter receiving the parsed key and modifier mask; may not be NULL.
@@ -1500,8 +1501,14 @@ bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel) {
         } else if (strcasecmp(token, "Alt") == 0 || strcasecmp(token, "Option") == 0) {
             accel->modifiers |= VG_MOD_ALT;
         } else {
-            // Must be the key
-            accel->key = lookup_key(token);
+            int parsed_key = lookup_key(token);
+            if (parsed_key == VG_KEY_UNKNOWN || accel->key != VG_KEY_UNKNOWN) {
+                accel->key = VG_KEY_UNKNOWN;
+                accel->modifiers = 0;
+                free(str);
+                return false;
+            }
+            accel->key = parsed_key;
         }
 
         token = strtok_r(NULL, "+", &saveptr);

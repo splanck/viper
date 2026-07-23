@@ -24,6 +24,8 @@
 
 #include "PeepholeCommon.hpp"
 
+#include <algorithm>
+
 namespace zanna::codegen::aarch64::peephole {
 
 /// @brief Test whether @p instr is a `MOV Xd, Xs` whose destination equals its source.
@@ -52,6 +54,25 @@ bool isIdentityFMovRR(const MInstr &instr) noexcept {
     return samePhysReg(instr.ops[0], instr.ops[1]);
 }
 
+/// @brief Return whether @p reg remains live after an adjacent-move pair.
+/// @details An in-block use keeps the value live, while an intervening
+///          redefinition kills it. If neither occurs, allocator-provided
+///          carried-exit metadata accounts for uses in successor blocks that
+///          have no local instruction marking the live-out value.
+static bool usedAfterMovePairOrCarried(const std::vector<MInstr> &instrs,
+                                       std::size_t secondMoveIndex,
+                                       const MOperand &reg,
+                                       const std::vector<uint16_t> *carriedExitRegs) noexcept {
+    for (std::size_t i = secondMoveIndex + 1; i < instrs.size(); ++i) {
+        if (usesReg(instrs[i], reg))
+            return true;
+        if (definesReg(instrs[i], reg))
+            return false;
+    }
+    return carriedExitRegs != nullptr && reg.kind == MOperand::Kind::Reg && reg.reg.isPhys &&
+           std::binary_search(carriedExitRegs->begin(), carriedExitRegs->end(), reg.reg.idOrPhys);
+}
+
 /// @brief Fold `MOV r1, r0` followed by `MOV r2, r1` into `MOV r2, r0` and a kill of r1.
 /// @details The fold is only safe when `r1` is dead after the second move (no subsequent
 ///          use before redefinition) and when `r1` is not an ABI arg register whose value
@@ -61,8 +82,12 @@ bool isIdentityFMovRR(const MInstr &instr) noexcept {
 /// @param instrs Instruction list being scanned (mutated in place).
 /// @param idx    Index of the first move to consider.
 /// @param stats  Peephole statistics counter (incremented on success).
+/// @param carriedExitRegs Sorted physical registers live into successor blocks.
 /// @return True if the fold was applied at @p idx.
-bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
+bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs,
+                             std::size_t idx,
+                             PeepholeStats &stats,
+                             const std::vector<uint16_t> *carriedExitRegs) {
     if (idx + 1 >= instrs.size())
         return false;
 
@@ -88,12 +113,8 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
         }
     }
 
-    for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
-        if (usesReg(instrs[i], r1))
-            return false;
-        if (definesReg(instrs[i], r1))
-            break;
-    }
+    if (usedAfterMovePairOrCarried(instrs, idx + 1, r1, carriedExitRegs))
+        return false;
 
     const MOperand originalSrc = first.ops[1];
     second.ops[1] = originalSrc;
@@ -111,8 +132,12 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
 /// @param instrs Instruction list being scanned (mutated in place).
 /// @param idx    Index of the first move (the `MOVri`) to consider.
 /// @param stats  Peephole statistics counter (incremented on success).
+/// @param carriedExitRegs Sorted physical registers live into successor blocks.
 /// @return True if the fold was applied at @p idx.
-bool tryFoldImmThenMove(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
+bool tryFoldImmThenMove(std::vector<MInstr> &instrs,
+                        std::size_t idx,
+                        PeepholeStats &stats,
+                        const std::vector<uint16_t> *carriedExitRegs) {
     if (idx + 1 >= instrs.size())
         return false;
 
@@ -136,12 +161,8 @@ bool tryFoldImmThenMove(std::vector<MInstr> &instrs, std::size_t idx, PeepholeSt
         }
     }
 
-    for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
-        if (usesReg(instrs[i], rd))
-            return false;
-        if (definesReg(instrs[i], rd))
-            break;
-    }
+    if (usedAfterMovePairOrCarried(instrs, idx + 1, rd, carriedExitRegs))
+        return false;
 
     const MOperand imm = first.ops[1];
     first.opc = MOpcode::MovRR;

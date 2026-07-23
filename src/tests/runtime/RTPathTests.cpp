@@ -5,21 +5,29 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: tests/runtime/RTPathTests.cpp
+// File: src/tests/runtime/RTPathTests.cpp
 // Purpose: Validate runtime path manipulation functions in rt_path.c.
 // Key invariants: Path operations handle both Unix and Windows separators,
 //                 normalize removes redundant components, and absolute detection
-//                 considers platform conventions.
-// Ownership/Lifetime: Uses runtime library; tests return newly allocated strings.
-// Links: docs/zannalib.md
+//                 considers platform conventions. Link inspection does not
+//                 follow the final filesystem component.
+// Ownership/Lifetime: Uses runtime library; tests release newly allocated strings
+//                     and remove their temporary filesystem fixtures.
+// Links: src/runtime/io/rt_path.c, docs/zannalib/io/files.md
+//
+//===----------------------------------------------------------------------===//
 
 #include "rt.hpp"
 #include "rt_path.h"
 #include "tests/common/PlatformSkip.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <string>
 
 /// @brief Helper to print test result.
 static void test_result(const char *name, bool passed) {
@@ -326,6 +334,37 @@ static void test_sep() {
     printf("\n");
 }
 
+/// @brief Test non-trapping final-component link inspection.
+static void test_is_link() {
+    printf("Testing rt_path_is_link:\n");
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    fs::path root = fs::temp_directory_path(ec) / ("zanna_path_link_" + std::to_string(nonce));
+    test_result("temporary path available", !ec && fs::create_directories(root, ec));
+    fs::path target = root / "target.txt";
+    fs::path link = root / "target-link";
+    std::ofstream(target.string()) << "target";
+    const std::string targetText = target.string();
+    const std::string linkText = link.string();
+    const std::string missingText = (root / "missing").string();
+
+    test_result("ordinary file is not link",
+                rt_path_is_link(rt_const_cstr(targetText.c_str())) == 0);
+    test_result("missing path is not link",
+                rt_path_is_link(rt_const_cstr(missingText.c_str())) == 0);
+    fs::create_symlink(target, link, ec);
+    if (!ec) {
+        test_result("symbolic link detected",
+                    rt_path_is_link(rt_const_cstr(linkText.c_str())) == 1);
+    } else {
+        printf("  symbolic link detected: SKIP (%s)\n", ec.message().c_str());
+    }
+    ec.clear();
+    fs::remove_all(root, ec);
+    printf("\n");
+}
+
 /// @brief Entry point for path tests.
 /// @brief Path.Absolute makes a relative path absolute and normalized (POSIX
 ///        path — the Windows GetFullPathNameW resolution is covered by a
@@ -342,8 +381,7 @@ static void test_abs() {
     // An already-absolute path round-trips (normalized).
     rt_string already = rt_const_cstr("/tmp/x/../y");
     rt_string abs2 = rt_path_abs(already);
-    test_result("absolute normalizes in place",
-                strcmp(rt_string_cstr(abs2), "/tmp/y") == 0);
+    test_result("absolute normalizes in place", strcmp(rt_string_cstr(abs2), "/tmp/y") == 0);
     rt_string_unref(abs);
     rt_string_unref(abs2);
 }
@@ -366,6 +404,7 @@ int main() {
     test_abs();
     test_norm();
     test_sep();
+    test_is_link();
 
     printf("All path tests passed!\n");
     return 0;

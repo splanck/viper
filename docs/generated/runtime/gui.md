@@ -889,6 +889,7 @@ Constructor: `Zanna.GUI.App.New`
 | <a id="zanna-gui-app-getmonitorwidth"></a>`GetMonitorWidth` | `i64()` | `Zanna.GUI.App.GetMonitorWidth` |
 | <a id="zanna-gui-app-getmonitorheight"></a>`GetMonitorHeight` | `i64()` | `Zanna.GUI.App.GetMonitorHeight` |
 | <a id="zanna-gui-app-setwindowsize"></a>`SetWindowSize` | `void(i64,i64)` | `Zanna.GUI.App.SetWindowSize` |
+| <a id="zanna-gui-app-setminimumsize"></a>`SetMinimumSize` | `void(i64,i64)` | `Zanna.GUI.App.SetMinimumSize` |
 | <a id="zanna-gui-app-getfontsize"></a>`GetFontSize` | `f64()` | `Zanna.GUI.App.GetFontSize` |
 | <a id="zanna-gui-app-getlogicalfontsize"></a>`GetLogicalFontSize` | `f64()` | `Zanna.GUI.App.GetLogicalFontSize` |
 | <a id="zanna-gui-app-setfontsize"></a>`SetFontSize` | `void(f64)` | `Zanna.GUI.App.SetFontSize` |
@@ -2465,6 +2466,7 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.App.GetMonitorWidth` | `i64(obj)` | `rt_app_get_monitor_width` |
 | `Zanna.GUI.App.GetMonitorHeight` | `i64(obj)` | `rt_app_get_monitor_height` |
 | `Zanna.GUI.App.SetWindowSize` | `void(obj,i64,i64)` | `rt_app_set_window_size` |
+| `Zanna.GUI.App.SetMinimumSize` | `void(obj,i64,i64)` | `rt_app_set_minimum_size` |
 | `Zanna.GUI.App.GetFontSize` | `f64(obj)` | `rt_app_get_font_size` |
 | `Zanna.GUI.App.GetLogicalFontSize` | `f64(obj)` | `rt_app_get_logical_font_size` |
 | `Zanna.GUI.App.SetFontSize` | `void(obj,f64)` | `rt_app_set_font_size` |

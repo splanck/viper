@@ -242,6 +242,29 @@ static void test_gui_capability_and_try_new_success(void) {
     printf("test_gui_capability_and_try_new_success: PASSED\n");
 }
 
+/// @brief Verify native and programmatic resize paths honor an app minimum.
+/// @details The desktop adapter receives the constraint, while the vgfx core
+///          independently clamps explicit SetWindowSize calls. Using logical
+///          dimensions here also guards Retina/DPI conversion from applying the
+///          floor twice or treating it as physical pixels.
+static void test_app_minimum_window_size(void) {
+    void *result = rt_gui_app_try_new(rt_const_cstr("Minimum Window Contract"), 160, 100);
+    assert(result && rt_result_is_ok(result) == 1);
+    void *app = rt_result_ok_value(result);
+    assert(app);
+
+    rt_app_set_minimum_size(app, 320, 240);
+    rt_app_set_window_size(app, 32, 24);
+    rt_gui_app_poll(app);
+    assert(rt_app_get_logical_width(app) >= 320);
+    assert(rt_app_get_logical_height(app) >= 240);
+
+    rt_app_set_minimum_size(app, 1, 1);
+    rt_gui_app_destroy(app);
+    release_test_runtime_object(result);
+    printf("test_app_minimum_window_size: PASSED\n");
+}
+
 /// @brief Verify every typed GUI constant getter returns its documented stable public ordinal.
 /// @details This exhaustive list prevents internal toolkit enum reordering, graphics capability,
 ///          or registry refactoring from silently changing values persisted by applications.
@@ -566,6 +589,8 @@ static void test_shortcuts_are_app_scoped(void) {
 
     s_current_app = &app_a;
     rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+S"), rt_const_cstr(""));
+    rt_shortcuts_register(
+        rt_const_cstr("palette"), rt_const_cstr("Cmd+Shift+P"), rt_const_cstr(""));
     s_current_app = &app_b;
     rt_shortcuts_register(rt_const_cstr("help"), rt_const_cstr("F5"), rt_const_cstr(""));
 
@@ -578,6 +603,11 @@ static void test_shortcuts_are_app_scoped(void) {
     assert(rt_shortcuts_was_triggered(rt_const_cstr("save")) == 1);
     assert(rt_shortcuts_was_triggered(rt_const_cstr("help")) == 0);
 
+    rt_shortcuts_clear_triggered(&app_a);
+    assert(rt_shortcuts_check_key(&app_a, 'P', VG_MOD_SUPER | VG_MOD_SHIFT) == 1);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("palette")) == 1);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("save")) == 0);
+
     s_current_app = &app_b;
     assert(rt_shortcuts_check_key(&app_b, VG_KEY_F5, 0) == 1);
     assert(rt_shortcuts_was_triggered(rt_const_cstr("help")) == 1);
@@ -589,6 +619,69 @@ static void test_shortcuts_are_app_scoped(void) {
     rt_shortcuts_clear();
 
     printf("test_shortcuts_are_app_scoped: PASSED\n");
+}
+
+static void test_shortcut_chords_trigger_and_expire(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    s_current_app = &app;
+
+    rt_shortcuts_register(
+        rt_const_cstr("recent"), rt_const_cstr("Ctrl + K Ctrl + R"), rt_const_cstr(""));
+    rt_shortcuts_register(
+        rt_const_cstr("keybindings"), rt_const_cstr("Ctrl+K Ctrl+S"), rt_const_cstr(""));
+    rt_shortcuts_register(rt_const_cstr("quickopen"), rt_const_cstr("Ctrl+P"), rt_const_cstr(""));
+    rt_shortcuts_register(
+        rt_const_cstr("invalid"), rt_const_cstr("Ctrl+K Ctrl+S Ctrl+X"), rt_const_cstr(""));
+    assert(app.shortcut_count == 3);
+    assert(app.shortcuts[0].first.key == 'K');
+    assert(app.shortcuts[0].second.key == 'R');
+
+    app.last_event_time_ms = 100;
+    assert(rt_shortcuts_check_key(&app, 'K', VG_MOD_CTRL) == 1);
+    assert(app.shortcut_chord_pending == 1);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("recent")) == 0);
+    // Studio reconciles every command's enabled state once per frame. Those
+    // idempotent writes must not discard a prefix entered in the prior frame.
+    rt_shortcuts_set_enabled(rt_const_cstr("recent"), 1);
+    rt_shortcuts_set_enabled(rt_const_cstr("keybindings"), 1);
+    rt_shortcuts_set_enabled(rt_const_cstr("quickopen"), 1);
+    assert(app.shortcut_chord_pending == 1);
+    rt_shortcuts_clear_triggered(&app);
+
+    app.last_event_time_ms = 200;
+    assert(rt_shortcuts_check_key(&app, 'R', VG_MOD_CTRL) == 1);
+    assert(app.shortcut_chord_pending == 0);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("recent")) == 1);
+    rt_shortcuts_clear_triggered(&app);
+
+    app.last_event_time_ms = 300;
+    assert(rt_shortcuts_check_key(&app, 'K', VG_MOD_CTRL) == 1);
+    rt_shortcuts_clear_triggered(&app);
+    app.last_event_time_ms = 350;
+    assert(rt_shortcuts_check_key(&app, 'S', VG_MOD_CTRL) == 1);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("keybindings")) == 1);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("recent")) == 0);
+    rt_shortcuts_clear_triggered(&app);
+
+    app.last_event_time_ms = 500;
+    assert(rt_shortcuts_check_key(&app, 'K', VG_MOD_CTRL) == 1);
+    rt_shortcuts_clear_triggered(&app);
+    app.last_event_time_ms = 2001;
+    assert(rt_shortcuts_check_key(&app, 'R', VG_MOD_CTRL) == 0);
+    assert(app.shortcut_chord_pending == 0);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("recent")) == 0);
+
+    app.last_event_time_ms = 2100;
+    assert(rt_shortcuts_check_key(&app, 'K', VG_MOD_CTRL) == 1);
+    rt_shortcuts_clear_triggered(&app);
+    app.last_event_time_ms = 2200;
+    assert(rt_shortcuts_check_key(&app, 'P', VG_MOD_CTRL) == 1);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("quickopen")) == 1);
+
+    rt_shortcuts_clear();
+    s_current_app = NULL;
+    printf("test_shortcut_chords_trigger_and_expire: PASSED\n");
 }
 
 static void test_file_drop_is_app_scoped(void) {
@@ -857,6 +950,43 @@ static void test_ui_scale_invalidates_and_scales_complete_theme(void) {
 
     cleanup_fake_app(&app);
     printf("test_ui_scale_invalidates_and_scales_complete_theme: PASSED\n");
+}
+
+/// @brief Verify floating-panel public geometry follows the logical-unit boundary.
+/// @details ADR 0106 requires public layout setters to cross effective scale exactly once. A
+///          panel that keeps raw 1x dimensions while its children and theme grow at 2x clips every
+///          Studio input overlay and positions centered panels outside the visible viewport.
+static void test_floatingpanel_geometry_uses_effective_scale(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.root = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(app.root);
+    app.root->user_data = &app;
+    rt_gui_activate_app(&app);
+    rt_app_set_ui_scale(&app, 2.0);
+
+    vg_floatingpanel_t *panel = (vg_floatingpanel_t *)rt_floatingpanel_new(&app);
+    assert(panel);
+    rt_floatingpanel_set_position(panel, 40.0, 50.0);
+    rt_floatingpanel_set_size(panel, 320.0, 180.0);
+
+    assert(panel->abs_x == 80.0f);
+    assert(panel->abs_y == 100.0f);
+    assert(panel->abs_w == 640.0f);
+    assert(panel->abs_h == 360.0f);
+    rt_floatingpanel_set_visible(panel, 1);
+    vg_widget_arrange(&panel->base, 0.0f, 0.0f, 0.0f, 0.0f);
+    assert(panel->base.x == 80.0f);
+    assert(panel->base.y == 100.0f);
+    assert(panel->base.width == 640.0f);
+    assert(panel->base.height == 360.0f);
+    assert(rt_widget_get_screen_x(panel) == 40.0);
+    assert(rt_widget_get_screen_y(panel) == 50.0);
+    assert(rt_widget_get_screen_width(panel) == 320.0);
+    assert(rt_widget_get_screen_height(panel) == 180.0);
+
+    cleanup_fake_app(&app);
+    printf("test_floatingpanel_geometry_uses_effective_scale: PASSED\n");
 }
 
 /// @brief Verify the central deadline query covers retained dirtiness and specialized timers.
@@ -1185,7 +1315,10 @@ static void test_platform_scroll_events_keep_screen_coordinates_separate(void) {
     vg_event_t gui_event = vg_event_from_platform(&platform_event);
     assert(gui_event.type == VG_EVENT_MOUSE_WHEEL);
     assert(gui_event.wheel.delta_x == 1.25f);
-    assert(gui_event.wheel.delta_y == -2.5f);
+    // ZannaGFX expresses positive Y as down; GUI wheel events express it as
+    // up. Coordinates remain untouched while only the vertical direction is
+    // translated at the subsystem boundary.
+    assert(gui_event.wheel.delta_y == 2.5f);
     assert(gui_event.wheel.screen_x == 42.0f);
     assert(gui_event.wheel.screen_y == 84.0f);
 
@@ -3278,7 +3411,7 @@ static void test_shortcuts_reject_invalid_bindings_atomically(void) {
 
     rt_shortcuts_register(rt_const_cstr("save"), rt_const_cstr("Ctrl+S"), rt_const_cstr("save"));
     assert(app.shortcut_count == 1);
-    assert(app.shortcuts[0].parsed_key == 'S');
+    assert(app.shortcuts[0].first.key == 'S');
     rt_shortcuts_unregister(rt_string_from_bytes(bad_id, sizeof(bad_id)));
     assert(app.shortcut_count == 1);
 
@@ -3286,14 +3419,23 @@ static void test_shortcuts_reject_invalid_bindings_atomically(void) {
         rt_const_cstr("save"), rt_const_cstr("Ctrl+NotAKey"), rt_const_cstr("bad"));
     assert(app.shortcut_count == 1);
     assert(strcmp(app.shortcuts[0].keys, "Ctrl+S") == 0);
-    assert(app.shortcuts[0].parsed_key == 'S');
+    assert(app.shortcuts[0].first.key == 'S');
 
     rt_shortcuts_register(rt_const_cstr("help"), rt_const_cstr("f5"), rt_const_cstr("help"));
-    assert(app.shortcut_count == 2);
-    assert(app.shortcuts[1].parsed_key == VG_KEY_F5);
+    rt_shortcuts_register(
+        rt_const_cstr("clearcursors"), rt_const_cstr("Escape"), rt_const_cstr("clear"));
+    rt_shortcuts_register(
+        rt_const_cstr("unsafe_plain"), rt_const_cstr("S"), rt_const_cstr("plain"));
+    assert(app.shortcut_count == 4);
+    assert(app.shortcuts[1].first.key == VG_KEY_F5);
     assert(rt_shortcuts_check_key(&app, VG_KEY_F5, 0) == 1);
+    rt_shortcuts_clear_triggered(&app);
+    assert(rt_shortcuts_check_key(&app, VG_KEY_ESCAPE, 0) == 1);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("clearcursors")) == 1);
+    rt_shortcuts_clear_triggered(&app);
+    assert(rt_shortcuts_check_key(&app, 'S', 0) == 0);
+    assert(rt_shortcuts_was_triggered(rt_const_cstr("unsafe_plain")) == 0);
     app.shortcuts_global_enabled = 0;
-    assert(rt_shortcuts_was_triggered(rt_const_cstr("help")) == 1);
     assert(rt_shortcuts_check_key(&app, 'S', VG_MOD_CTRL) == 0);
 
     rt_shortcuts_clear();
@@ -5040,18 +5182,21 @@ int main(void) {
     printf("=== GUI Runtime Regression Tests ===\n\n");
 
     test_gui_capability_and_try_new_success();
+    test_app_minimum_window_size();
     test_gui_typed_constant_ordinals();
     test_app_bound_test_harness_uses_real_runtime_paths();
     test_detached_tooltip_uses_retained_overlay_damage();
     test_deterministic_scheduler_drives_notification_deadlines();
     test_indexed_subhandles_reclaim_after_last_wrapper();
     test_shortcuts_are_app_scoped();
+    test_shortcut_chords_trigger_and_expire();
     test_file_drop_is_app_scoped();
     test_statusbar_click_is_edge_triggered();
     test_statusbar_runtime_button_wires_click_polling();
     test_default_font_is_applied_to_text_widgets();
     test_textinput_runtime_exposes_complete_grapheme_editor();
     test_ui_scale_invalidates_and_scales_complete_theme();
+    test_floatingpanel_geometry_uses_effective_scale();
     test_gui_scheduler_reports_nearest_widget_deadline();
     test_default_font_is_applied_to_complex_text_widgets();
     test_statusbar_runtime_applies_font_with_container_parent();

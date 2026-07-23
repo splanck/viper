@@ -1,9 +1,36 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/core/project_manager.zia
+// Purpose: Own workspace roots, Explorer tree state, and safe file mutations.
+// Key invariants:
+//   - Tree nodes store canonical absolute paths rather than display labels.
+//   - Rename, move, and trash operations never mutate a workspace root or an
+//     out-of-workspace path.
+//   - Explorer mutations never follow a linked descendant outside a root.
+//   - Linked descendant directories remain visible but cannot be expanded.
+//   - Successful mutations retarget or clear Explorer selection and expansion.
+//   - Explorer scan, natural sort, and node publication work are frame-bounded.
+//   - Published children use deterministic, case-insensitive natural ordering.
+// Ownership/Lifetime:
+//   - ProjectManager owns workspace models, caches, and path bookkeeping.
+//   - AppShell owns the injected TreeView for the complete manager lifetime.
+// Links: zannastudio/src/core/project_file_ops.zia,
+//        zannastudio/src/core/document_manager.zia
+//
+//===----------------------------------------------------------------------===//
+
 module project_manager;
 
 bind "project";
 bind "project_file_ops";
 bind "project_bind_rewriter";
 bind "../services/workspace_file_index";
+bind "../services/safe_io";
 bind Zanna.GUI as GUI;
 bind Obj = Zanna.Core.Object;
 bind Seq = Zanna.Collections.Seq;
@@ -13,6 +40,7 @@ bind Zanna.IO.Path as Path;
 bind Zanna.IO.Dir as Dir;
 bind Zanna.String as Str;
 bind FileIndex = Zanna.Workspace.FileIndex;
+bind Option = Zanna.Option;
 bind "../core/document_manager";
 bind "../zia/bind_utils";
 
@@ -22,6 +50,230 @@ bind "../zia/bind_utils";
 final TREE_ROOT_PREFIX = "";
 final TREE_FOLDER_PREFIX = "";
 final TREE_FILE_PREFIX = "";
+final MAX_TREE_REFRESH_EXPANDED_DIRS = 128;
+final TREE_DIRECTORY_PAGE_SIZE = 128;
+final TREE_INITIAL_WORK_BUDGET = 2048;
+final TREE_FRAME_WORK_BUDGET = 512;
+final TREE_LOAD_SCAN = 0;
+final TREE_LOAD_SORT_DIRECTORIES = 1;
+final TREE_LOAD_SORT_FILES = 2;
+final TREE_LOAD_PUBLISH_DIRECTORIES = 3;
+final TREE_LOAD_PUBLISH_FILES = 4;
+
+/// @brief Return whether a one-character string is an ASCII decimal digit.
+/// @param ch Candidate character extracted from a filename.
+/// @return True only for `0` through `9`.
+func IsNaturalSortDigit(ch: String) -> Boolean {
+    return Str.get_Length(ch) == 1 and Str.IndexOf("0123456789", ch) > 0;
+}
+
+/// @brief Compare two Explorer names using case-insensitive natural ordering.
+/// @details Consecutive digit runs compare by numeric magnitude without parsing
+///          into a bounded integer, so arbitrarily long filenames stay safe.
+///          Equal numeric values prefer fewer leading zeroes, followed by an
+///          ordinal case-sensitive tie-break for deterministic output.
+/// @param left First filename.
+/// @param right Second filename.
+/// @return Negative, zero, or positive according to natural display order.
+expose func NaturalNameCompare(left: String, right: String) -> Integer {
+    var leftKey = Str.ToLower(left);
+    var rightKey = Str.ToLower(right);
+    var leftLength = Str.get_Length(leftKey);
+    var rightLength = Str.get_Length(rightKey);
+    var leftIndex = 0;
+    var rightIndex = 0;
+
+    while leftIndex < leftLength and rightIndex < rightLength {
+        var leftChar = Str.Substring(leftKey, leftIndex, 1);
+        var rightChar = Str.Substring(rightKey, rightIndex, 1);
+        var leftDigit = IsNaturalSortDigit(leftChar);
+        var rightDigit = IsNaturalSortDigit(rightChar);
+
+        if leftDigit and rightDigit {
+            var leftEnd = leftIndex;
+            while leftEnd < leftLength
+                  and IsNaturalSortDigit(Str.Substring(leftKey, leftEnd, 1)) {
+                leftEnd = leftEnd + 1;
+            }
+            var rightEnd = rightIndex;
+            while rightEnd < rightLength
+                  and IsNaturalSortDigit(Str.Substring(rightKey, rightEnd, 1)) {
+                rightEnd = rightEnd + 1;
+            }
+
+            var leftSignificant = leftIndex;
+            while leftSignificant + 1 < leftEnd
+                  and Str.Substring(leftKey, leftSignificant, 1) == "0" {
+                leftSignificant = leftSignificant + 1;
+            }
+            var rightSignificant = rightIndex;
+            while rightSignificant + 1 < rightEnd
+                  and Str.Substring(rightKey, rightSignificant, 1) == "0" {
+                rightSignificant = rightSignificant + 1;
+            }
+
+            var leftDigits = leftEnd - leftSignificant;
+            var rightDigits = rightEnd - rightSignificant;
+            if leftDigits != rightDigits {
+                return leftDigits - rightDigits;
+            }
+
+            var numberCompare = Str.Compare(
+                Str.Substring(leftKey, leftSignificant, leftDigits),
+                Str.Substring(rightKey, rightSignificant, rightDigits));
+            if numberCompare != 0 { return numberCompare; }
+
+            var leftRunLength = leftEnd - leftIndex;
+            var rightRunLength = rightEnd - rightIndex;
+            if leftRunLength != rightRunLength {
+                return leftRunLength - rightRunLength;
+            }
+
+            leftIndex = leftEnd;
+            rightIndex = rightEnd;
+            continue;
+        }
+
+        var charCompare = Str.Compare(leftChar, rightChar);
+        if charCompare != 0 { return charCompare; }
+        leftIndex = leftIndex + 1;
+        rightIndex = rightIndex + 1;
+    }
+
+    if leftIndex < leftLength { return 1; }
+    if rightIndex < rightLength { return 0 - 1; }
+    return Str.Compare(left, right);
+}
+
+/// @brief Return a stable naturally sorted copy of an Explorer name list.
+/// @details Uses an iterative merge sort to keep large directories O(n log n)
+///          while avoiding recursion depth and leaving the runtime-owned input
+///          list untouched.
+/// @param items String-like filename entries to order.
+/// @return New list ordered with @ref NaturalNameCompare.
+expose func NaturalSortNames(items: List) -> List {
+    var state = BeginIncrementalNameSort(items);
+    while state.done == false {
+        PumpIncrementalNameSort(state, 4096);
+    }
+    return state.source;
+}
+
+/// @brief Mutable bottom-up merge-sort state for frame-budgeted Explorer work.
+/// @details One pump moves a bounded number of names. This keeps sorting a very
+///          large flat directory from becoming a second UI stall after bounded
+///          filesystem enumeration completes.
+class IncrementalNameSort {
+    expose List source;
+    expose List merged;
+    expose Integer width;
+    expose Integer start;
+    expose Integer middle;
+    expose Integer finish;
+    expose Integer left;
+    expose Integer right;
+    expose Boolean runActive;
+    expose Boolean done;
+
+    expose func init() {
+        source = new List();
+        merged = new List();
+        width = 1;
+        start = 0;
+        middle = 0;
+        finish = 0;
+        left = 0;
+        right = 0;
+        runActive = false;
+        done = true;
+    }
+}
+
+/// @brief Begin an incremental natural-name sort over a private list copy.
+func BeginIncrementalNameSort(items: List) -> IncrementalNameSort {
+    var state = new IncrementalNameSort();
+    for item in items { state.source.Push(item); }
+    state.done = state.source.count() <= 1;
+    return state;
+}
+
+/// @brief Advance a natural-name merge sort by at most @p maxMoves items.
+/// @param state Sort state returned by BeginIncrementalNameSort.
+/// @param maxMoves Maximum list elements to merge in this call.
+/// @return Number of elements moved during this call.
+func PumpIncrementalNameSort(state: IncrementalNameSort,
+                             maxMoves: Integer) -> Integer {
+    if state == null or state.done or maxMoves <= 0 { return 0; }
+    var moved = 0;
+    while state.done == false and moved < maxMoves {
+        var count = state.source.count();
+        if state.runActive == false {
+            if state.start >= count {
+                state.source = state.merged;
+                state.merged = new List();
+                state.width = state.width * 2;
+                state.start = 0;
+                count = state.source.count();
+                if state.width >= count {
+                    state.done = true;
+                    break;
+                }
+            }
+            state.middle = state.start + state.width;
+            if state.middle > count { state.middle = count; }
+            state.finish = state.middle + state.width;
+            if state.finish > count { state.finish = count; }
+            state.left = state.start;
+            state.right = state.middle;
+            state.runActive = true;
+        }
+
+        if state.left >= state.middle and state.right >= state.finish {
+            state.start = state.finish;
+            state.runActive = false;
+            continue;
+        }
+        if state.right >= state.finish
+           or (state.left < state.middle
+               and NaturalNameCompare(Obj.ToString(state.source.get(state.left)),
+                                      Obj.ToString(state.source.get(state.right))) <= 0) {
+            state.merged.Push(state.source.get(state.left));
+            state.left = state.left + 1;
+        } else {
+            state.merged.Push(state.source.get(state.right));
+            state.right = state.right + 1;
+        }
+        moved = moved + 1;
+    }
+    return moved;
+}
+
+/// @brief One queued immediate-directory scan/sort/publication job.
+class ExplorerTreeLoad {
+    expose String dirPath;
+    expose String normalizedDir;
+    expose Any parentNode;
+    expose Integer offset;
+    expose Integer stage;
+    expose Integer publishIndex;
+    expose List directories;
+    expose List files;
+    expose IncrementalNameSort directorySort;
+    expose IncrementalNameSort fileSort;
+
+    expose func init() {
+        dirPath = "";
+        normalizedDir = "";
+        parentNode = null;
+        offset = 0;
+        stage = TREE_LOAD_SCAN;
+        publishIndex = 0;
+        directories = new List();
+        files = new List();
+        directorySort = new IncrementalNameSort();
+        fileSort = new IncrementalNameSort();
+    }
+}
 
 // ============================================================================
 // MODULE: project_manager
@@ -52,8 +304,8 @@ final TREE_FILE_PREFIX = "";
 //     on first use, so project open stays responsive on large workspaces.
 //
 // HOW-TO-READ: Setup (wire up the widget) -> OpenFolder (entry point) ->
-//   PopulateTree -> PopulateTreeChildren -> HandleTreeClicks (poll
-//   for selection) -> ShouldExclude / ShouldExcludeFile (filters).
+//   PopulateTree -> RequestTreeChildren/PumpTreeLoads -> HandleTreeClicks
+//   (poll for selection) -> ShouldExcludePath (filters).
 // ============================================================================
 
 /// @brief Sidebar TreeView controller plus the open Project.
@@ -74,6 +326,8 @@ class ProjectManager {
     expose Any fileCacheSeen;
     /// True after `fileCache` has been populated by the full workspace index.
     expose Boolean fileCacheComplete;
+    /// Monotonic identity for a file-cache snapshot; changes whenever paths reset.
+    expose Integer fileCacheGeneration;
     /// Directories waiting for incremental project-file cache discovery.
     expose List pendingFileCacheDirs;
     /// True while the full project-file cache is being discovered cooperatively.
@@ -90,8 +344,26 @@ class ProjectManager {
     expose String lastTrashPath;
     /// Absolute directory paths whose TreeView children have been populated.
     expose List loadedTreeDirs;
+    /// FIFO of bounded immediate-directory Explorer jobs.
+    expose List[ExplorerTreeLoad] treeLoadJobs;
+    /// Total raw directory entries consumed by the current Explorer generation.
+    expose Integer treeEntriesScanned;
+    /// Raw directory entries consumed by the most recent tree pump.
+    expose Integer lastTreePumpEntries;
+    /// Directory paths currently known to be expanded in the Explorer.
+    expose List expandedTreeDirs;
+    /// Snapshot used only while rebuilding the tree after a refresh.
+    expose List treeRestoreExpandedDirs;
+    /// Selected path to restore after a refresh rebuild.
+    expose String treeRestoreSelectedPath;
+    /// Remaining expanded directories allowed across one cooperative refresh.
+    expose Integer treeRestoreBudget;
+    /// True after the selected node was restored during the current rebuild.
+    expose Boolean treeRestoredSelection;
     /// Number of Zia file-bind paths rewritten by the most recent rename.
     expose Integer lastBindRewriteCount;
+    /// User-facing reason the most recent Explorer mutation was rejected.
+    expose String lastOperationError;
 
     /// @brief Initialize with no selection. Call `Setup` next.
     expose func init() {
@@ -101,6 +373,7 @@ class ProjectManager {
         fileCache = new List();
         fileCacheSeen = Map.New();
         fileCacheComplete = false;
+        fileCacheGeneration = 0;
         pendingFileCacheDirs = new List();
         fileCacheRefreshing = false;
         fileCacheDirsScanned = 0;
@@ -109,7 +382,16 @@ class ProjectManager {
         fileCacheTruncated = false;
         lastTrashPath = "";
         loadedTreeDirs = new List();
+        treeLoadJobs = [];
+        treeEntriesScanned = 0;
+        lastTreePumpEntries = 0;
+        expandedTreeDirs = new List();
+        treeRestoreExpandedDirs = new List();
+        treeRestoreSelectedPath = "";
+        treeRestoreBudget = 0;
+        treeRestoredSelection = false;
         lastBindRewriteCount = 0;
+        lastOperationError = "";
     }
 
     /// @brief Inject the TreeView widget and construct the empty Project.
@@ -125,48 +407,127 @@ class ProjectManager {
 
     /// @brief Open a folder as a project. Closes any previously-open project.
     /// @param path Absolute folder path.
-    expose func OpenFolder(path: String) {
-        // Defensive: ensure project exists even if Setup wasn't called.
-        if project == null {
-            project = new project.Project();
+    /// @return True when the folder still exists and became the primary root.
+    expose func OpenFolder(path: String) -> Boolean {
+        lastOperationError = "";
+        if path == "" {
+            lastOperationError = "No folder was selected.";
+            return false;
         }
-
-        if project.isOpen {
-            CloseProject();
+        // Validate the replacement before tearing down the current workspace.
+        // Folder pickers race with external deletes and unmounts; a failed open
+        // must leave the user's existing tree and multi-root state intact.
+        var candidate = new project.Project();
+        candidate.Open(path);
+        if candidate.isOpen == false {
+            lastOperationError = "The selected folder is no longer available.";
+            return false;
         }
-
-        project.Open(path);
+        if project != null and project.isOpen { CloseProject(); }
+        project = candidate;
         PopulateTree();
+        return true;
     }
 
     /// @brief Add an additional folder as a workspace root, keeping existing roots.
-    /// @param path Absolute folder path; no-op if it duplicates an open root.
+    /// @param path Absolute folder path; rejected if it duplicates an open root.
     /// @note When no project is open yet, this behaves like OpenFolder (the
     ///       folder becomes the primary root).
-    expose func AddFolderToWorkspace(path: String) {
-        if path == "" { return; }
+    /// @return True only when a new root was opened and added.
+    expose func AddFolderToWorkspace(path: String) -> Boolean {
+        lastOperationError = "";
+        if path == "" {
+            lastOperationError = "No folder was selected.";
+            return false;
+        }
         if project == null or project.isOpen == false {
-            OpenFolder(path);
-            return;
+            return OpenFolder(path);
         }
         var normalized = NormalizeAbsPath(path);
-        if NormalizeAbsPath(project.rootPath) == normalized { return; }
+        if NormalizeAbsPath(project.rootPath) == normalized {
+            lastOperationError = "That folder is already in the workspace.";
+            return false;
+        }
         var i = 0;
         while i < extraRoots.count() {
             var existing = extraRoots.get(i);
-            if existing != null and NormalizeAbsPath(existing.rootPath) == normalized { return; }
+            if existing != null and NormalizeAbsPath(existing.rootPath) == normalized {
+                lastOperationError = "That folder is already in the workspace.";
+                return false;
+            }
             i = i + 1;
         }
         var added = new project.Project();
         added.Open(path);
+        if added.isOpen == false {
+            lastOperationError = "The selected folder is no longer available.";
+            return false;
+        }
         extraRoots.Push(added);
-        // Rebuild so every root (primary + extras) shows; resets the aggregate cache.
-        PopulateTree();
+        // Rebuild so every root (primary + extras) shows while preserving the
+        // existing Explorer expansion and selection context.
+        RefreshTree();
+        return true;
+    }
+
+    /// @brief Remove one folder from a multi-root workspace without touching disk.
+    /// @details The final root is deliberately rejected here because removing it
+    ///          is a whole-workspace transition that must also detach watchers,
+    ///          indexing, SCM, and terminal state. The command dispatcher routes
+    ///          that case through CloseOpenWorkspace. When the primary root is
+    ///          removed, the oldest extra root is promoted deterministically.
+    /// @param path The exact workspace-root path to remove.
+    /// @return True when one root was detached and the Explorer was rebuilt.
+    expose func RemoveFolderFromWorkspace(path: String) -> Boolean {
+        lastOperationError = "";
+        if path == "" {
+            lastOperationError = "Select a workspace folder to remove.";
+            return false;
+        }
+        if RootCount() <= 1 {
+            lastOperationError = "Close the workspace to remove its only folder.";
+            return false;
+        }
+
+        var normalized = NormalizeAbsPath(path);
+        var removedRoot = "";
+        if project != null and project.isOpen
+           and NormalizeAbsPath(project.rootPath) == normalized {
+            removedRoot = project.rootPath;
+            project.Close();
+            project = extraRoots.get(0);
+            extraRoots.RemoveAt(0);
+        } else {
+            var i = 0;
+            while i < extraRoots.count() {
+                var candidate = extraRoots.get(i);
+                if candidate != null and candidate.isOpen
+                   and NormalizeAbsPath(candidate.rootPath) == normalized {
+                    removedRoot = candidate.rootPath;
+                    candidate.Close();
+                    extraRoots.RemoveAt(i);
+                    break;
+                }
+                i = i + 1;
+            }
+        }
+
+        if removedRoot == "" {
+            lastOperationError = "The selected path is not a workspace root.";
+            return false;
+        }
+        if selectedFilePath != ""
+           and project_file_ops.IsWithinRoot(selectedFilePath, removedRoot) {
+            selectedFilePath = "";
+            fileWasSelected = false;
+        }
+        RefreshTree();
+        return true;
     }
 
     /// @brief Close the current project and clear the tree.
     expose func CloseProject() {
-        project.Close();
+        if project != null { project.Close(); }
         var ri = 0;
         while ri < extraRoots.count() {
             var r = extraRoots.get(ri);
@@ -174,18 +535,18 @@ class ProjectManager {
             ri = ri + 1;
         }
         extraRoots = [];
-        treeView.Clear();
-        fileCache = new List();
-        fileCacheSeen = Map.New();
-        fileCacheComplete = false;
-        pendingFileCacheDirs = new List();
-        fileCacheRefreshing = false;
-        fileCacheDirsScanned = 0;
-        fileCacheRootIndex = 0;
-        fileCachePageOffset = 0;
-        fileCacheTruncated = false;
+        if treeView != null { treeView.Clear(); }
+        ResetFileCacheDiscovery();
         lastTrashPath = "";
         loadedTreeDirs = new List();
+        treeLoadJobs = [];
+        treeEntriesScanned = 0;
+        lastTreePumpEntries = 0;
+        expandedTreeDirs = new List();
+        treeRestoreExpandedDirs = new List();
+        treeRestoreSelectedPath = "";
+        treeRestoreBudget = 0;
+        treeRestoredSelection = false;
         selectedFilePath = "";
     }
 
@@ -270,18 +631,18 @@ class ProjectManager {
         return result;
     }
 
-    /// @brief The workspace root owning @p path (longest rootPath prefix),
-    ///        defaulting to the primary project when nothing matches.
-    func OwningProject(path: String) -> project.Project {
-        var best = project;
+    /// @brief The workspace root owning @p path (longest rootPath prefix).
+    /// @return Owning project, or null when the path is outside every root.
+    func WorkspaceProjectForPath(path: String) -> project.Project {
+        if path == "" { return null; }
+        var best: project.Project = null;
         var bestLen = -1;
         var all = AllRoots();
         var i = 0;
         while i < all.count() {
             var r = all.get(i);
-            var rp = r.rootPath;
-            var prefix = rp + Path.Separator();
-            if (path == rp or Str.StartsWith(path, prefix)) and Str.get_Length(rp) > bestLen {
+            var rp = NormalizeAbsPath(r.rootPath);
+            if project_file_ops.IsWithinRoot(path, rp) and Str.get_Length(rp) > bestLen {
                 best = r;
                 bestLen = Str.get_Length(rp);
             }
@@ -290,26 +651,124 @@ class ProjectManager {
         return best;
     }
 
+    /// @brief The workspace root owning @p path, with primary-root fallback.
+    /// @details Presentation helpers historically accept paths outside the
+    ///          workspace. Mutation methods use WorkspaceProjectForPath instead.
+    func OwningProject(path: String) -> project.Project {
+        var owner = WorkspaceProjectForPath(path);
+        if owner != null { return owner; }
+        return project;
+    }
+
+    /// @brief Return whether a path equals or is nested below an open root.
+    expose func IsWorkspacePath(path: String) -> Boolean {
+        return WorkspaceProjectForPath(path) != null;
+    }
+
+    /// @brief Return the open workspace root that owns a path.
+    /// @details Exact root paths resolve to themselves; descendants resolve by
+    ///          longest matching root so nested multi-root folders stay
+    ///          unambiguous. This is presentation-safe and performs no mutation.
+    /// @param path Root or descendant path selected in the Explorer.
+    /// @return Owning root path, or empty when the path is outside the workspace.
+    expose func WorkspaceRootPathForPath(path: String) -> String {
+        var owner = WorkspaceProjectForPath(path);
+        if owner == null { return ""; }
+        return owner.rootPath;
+    }
+
+    /// @brief Return whether a path is one of the open workspace roots.
+    expose func IsWorkspaceRootPath(path: String) -> Boolean {
+        var owner = WorkspaceProjectForPath(path);
+        if owner == null { return false; }
+        return NormalizeAbsPath(path) == NormalizeAbsPath(owner.rootPath);
+    }
+
+    /// @brief Return whether Explorer may rename, move, or trash a path.
+    /// @details Roots and Studio's private trash are immutable through Explorer.
+    expose func CanMutatePath(path: String) -> Boolean {
+        var owner = WorkspaceProjectForPath(path);
+        if owner == null { return false; }
+        var normalized = NormalizeAbsPath(path);
+        var root = NormalizeAbsPath(owner.rootPath);
+        if normalized == root { return false; }
+        var trashRoot = NormalizeAbsPath(Path.Join(root, ".zannastudio-trash"));
+        if project_file_ops.IsWithinRoot(normalized, trashRoot) { return false; }
+        if PathHasLinkedComponent(normalized, root, false) { return false; }
+        return IO.File.Exists(path) or Dir.Exists(path);
+    }
+
+    /// @brief Return whether Explorer may create children in a directory.
+    /// @details Open roots are valid creation targets, but out-of-workspace
+    ///          directories and Studio's private trash are never writable
+    ///          through an Explorer overlay.
+    expose func CanCreateInDirectory(path: String) -> Boolean {
+        if path == "" or Dir.Exists(path) == false { return false; }
+        var owner = WorkspaceProjectForPath(path);
+        if owner == null { return false; }
+        var trashRoot = Path.Join(owner.rootPath, ".zannastudio-trash");
+        if project_file_ops.IsWithinRoot(path, trashRoot) { return false; }
+        return PathHasLinkedComponent(path, owner.rootPath, true) == false;
+    }
+
+    /// @brief Return whether Explorer may enumerate children below a directory.
+    /// @details A workspace root intentionally opened through a link remains
+    ///          traversable, but a linked descendant is an inert boundary so
+    ///          external target content cannot appear inside the project tree.
+    expose func CanTraverseTreeDirectory(path: String) -> Boolean {
+        if path == "" or Dir.Exists(path) == false { return false; }
+        var owner = WorkspaceProjectForPath(path);
+        if owner == null { return false; }
+        return PathHasLinkedComponent(path, owner.rootPath, true) == false;
+    }
+
+    /// @brief Detect a linked/reparse component below an opened workspace root.
+    /// @details The root itself is trusted because users may intentionally open
+    ///          a workspace through a symlink. Descendant links are not valid
+    ///          mutation parents: following one could create or move content
+    ///          outside the folder presented by Explorer.
+    func PathHasLinkedComponent(path: String,
+                                rootPath: String,
+                                includeLeaf: Boolean) -> Boolean {
+        var normalized = NormalizeAbsPath(path);
+        var root = NormalizeAbsPath(rootPath);
+        if project_file_ops.IsWithinRoot(normalized, root) == false { return true; }
+        var current = normalized;
+        if includeLeaf == false { current = NormalizeAbsPath(Path.Directory(current)); }
+        while current != root {
+            if Path.IsLink(current) { return true; }
+            var parent = NormalizeAbsPath(Path.Directory(current));
+            if parent == current
+               or project_file_ops.IsWithinRoot(parent, root) == false {
+                return true;
+            }
+            current = parent;
+        }
+        return false;
+    }
+
     /// @brief Wipe the tree and rebuild it from `project.rootPath`.
     /// @note Adds a root node labelled with the project name, builds the
     ///       directory tree under it, then expands the root.
     expose func PopulateTree() {
+        // The project model is also used by headless probes and lifecycle code
+        // before AppShell injects Explorer widgets. Opening a valid workspace
+        // must not depend on a live presentation handle. Reset model caches
+        // before checking the widget so headless workspace refreshes are just as
+        // coherent as visible Explorer refreshes.
+        ResetFileCacheDiscovery();
+        if treeView == null { return; }
         treeView.Clear();
 
-        if project.isOpen == false {
+        if project == null or project.isOpen == false {
             return;
         }
 
-        fileCache = new List();
-        fileCacheSeen = Map.New();
-        fileCacheComplete = false;
-        pendingFileCacheDirs = new List();
-        fileCacheRefreshing = false;
-        fileCacheDirsScanned = 0;
-        fileCacheRootIndex = 0;
-        fileCachePageOffset = 0;
-        fileCacheTruncated = false;
         loadedTreeDirs = new List();
+        treeLoadJobs = [];
+        treeEntriesScanned = 0;
+        lastTreePumpEntries = 0;
+        expandedTreeDirs = new List();
 
         // One top-level node per workspace root (primary first, then extras).
         var all = AllRoots();
@@ -319,62 +778,255 @@ class ProjectManager {
             var rootNode = treeView.AddNode(null, TreeRootLabel(root.name));
             GUI.TreeView.Node.SetData(rootNode, root.rootPath);
             GUI.TreeView.Node.SetIcon(rootNode, "vector:zanna-mark");
-            PopulateTreeChildren(root.rootPath, rootNode);
+            GUI.TreeView.Node.SetHasChildren(rootNode, true);
+            MaybeRestoreTreeSelection(rootNode, root.rootPath);
+            RequestTreeChildren(root.rootPath, rootNode);
             treeView.Expand(rootNode);
+            RememberExpandedTreeDir(root.rootPath);
             i = i + 1;
+        }
+        // Small roots still appear immediately. Large roots consume only one
+        // bounded page here and continue from the frame loop.
+        PumpTreeLoads(TREE_INITIAL_WORK_BUDGET);
+        FinishTreeRestoreIfIdle();
+    }
+
+    /// @brief Restore selection for a newly rebuilt node when its path matches.
+    func MaybeRestoreTreeSelection(node: Any,
+                                   path: String) {
+        if node == null or path == "" or treeRestoreSelectedPath == "" { return; }
+        if NormalizeAbsPath(path) != NormalizeAbsPath(treeRestoreSelectedPath) { return; }
+        treeView.Select(node);
+        treeView.ScrollTo(node);
+        // Programmatic restoration must not masquerade as a fresh user click
+        // while other directory jobs are still pending.
+        treeView.WasSelectionChanged();
+        treeRestoredSelection = true;
+    }
+
+    /// @brief Record one normalized directory as expanded without duplicates.
+    func RememberExpandedTreeDir(path: String) {
+        if path == "" { return; }
+        if CanTraverseTreeDirectory(path) == false { return; }
+        var normalized = NormalizeAbsPath(path);
+        if ListContains(expandedTreeDirs, normalized) == false {
+            expandedTreeDirs.Push(normalized);
         }
     }
 
-    /// @brief Populate one TreeView directory node with its immediate children.
-    /// @details Directories are added first, then files. The method records each
-    ///          loaded directory so repeated clicks do not duplicate child nodes.
-    ///          Full Quick Open population is handled separately by
-    ///          `BuildProjectFileCache`, so this work stays bounded to one
-    ///          directory at a time.
-    /// @param dirPath Absolute directory path represented by @p parentNode.
-    /// @param parentNode Tree node object that receives child nodes.
-    /// @return true when children were added during this call.
-    func PopulateTreeChildren(dirPath: String,
-                              parentNode: Any) -> Boolean {
-        if dirPath == "" or parentNode == null { return false; }
-        if Dir.Exists(dirPath) == false { return false; }
-        var normalizedDir = NormalizeAbsPath(dirPath);
-        if ListContains(loadedTreeDirs, normalizedDir) {
+    /// @brief Forget one normalized expanded-directory path.
+    func ForgetExpandedTreeDir(path: String) {
+        if path == "" { return; }
+        var normalized = NormalizeAbsPath(path);
+        var i = expandedTreeDirs.count() - 1;
+        while i >= 0 {
+            if Obj.ToString(expandedTreeDirs.get(i)) == normalized {
+                expandedTreeDirs.RemoveAt(i);
+            }
+            i = i - 1;
+        }
+    }
+
+    /// @brief Queue one immediate-directory Explorer load if not already known.
+    /// @details Every directory starts with a lazy-child affordance. The native
+    ///          page cursor, natural sort, and node publication are all advanced
+    ///          later by PumpTreeLoads under a frame-owned work budget.
+    /// @param dirPath Absolute directory represented by @p parentNode.
+    /// @param parentNode Tree node that will receive the completed child list.
+    /// @return True when a new job was queued.
+    func RequestTreeChildren(dirPath: String,
+                             parentNode: Any) -> Boolean {
+        if treeView == null or dirPath == "" or parentNode == null { return false; }
+        if CanTraverseTreeDirectory(dirPath) == false {
+            GUI.TreeView.Node.SetLoading(parentNode, false);
+            GUI.TreeView.Node.SetHasChildren(parentNode, false);
             return false;
         }
-        loadedTreeDirs.Push(normalizedDir);
-
-        var dirs = new List();
-        for dirName in Dir.Dirs(dirPath) {
-            dirs.Push(dirName);
+        var normalizedDir = NormalizeAbsPath(dirPath);
+        if ListContains(loadedTreeDirs, normalizedDir) { return false; }
+        var i = 0;
+        while i < treeLoadJobs.count() {
+            if treeLoadJobs.get(i).normalizedDir == normalizedDir { return false; }
+            i = i + 1;
         }
-        dirs.Sort();
-        for dirName in dirs {
-            var dirNameText = Obj.ToString(dirName);
-            var fullPath = Path.Join(dirPath, dirNameText);
-            if ShouldExcludePath(fullPath, true) == false {
-                var folderNode = treeView.AddNode(parentNode, TreeFolderLabel(dirNameText));
+
+        var job = new ExplorerTreeLoad();
+        job.dirPath = dirPath;
+        job.normalizedDir = normalizedDir;
+        job.parentNode = parentNode;
+        treeLoadJobs.Push(job);
+        GUI.TreeView.Node.SetHasChildren(parentNode, true);
+        GUI.TreeView.Node.SetLoading(parentNode, true);
+        return true;
+    }
+
+    /// @brief Advance at most one directory job under a bounded work budget.
+    /// @details A scan performs no more than one Dir.Page call per pump. Sorting
+    ///          and publication count each moved or inserted item against the
+    ///          same budget, preventing a completed large scan from causing a
+    ///          later one-frame sort or widget-allocation stall.
+    /// @param maxWork Maximum page entries, sort moves, and node insertions.
+    /// @return Work units consumed by this pump.
+    expose func PumpTreeLoads(maxWork: Integer) -> Integer {
+        lastTreePumpEntries = 0;
+        if treeView == null or treeLoadJobs.count() == 0 { return 0; }
+        var budget = maxWork;
+        if budget <= 0 { budget = TREE_FRAME_WORK_BUDGET; }
+        var work = 0;
+        var job = treeLoadJobs.get(0);
+
+        if job.stage == TREE_LOAD_SCAN {
+            var pageLimit = TREE_DIRECTORY_PAGE_SIZE;
+            if pageLimit > budget { pageLimit = budget; }
+            var page = safe_io.ListDirectoryPage(job.dirPath, job.offset, pageLimit);
+            if page.ok == false {
+                FailTreeLoad(job);
+                return work;
+            }
+            lastTreePumpEntries = page.entries.count();
+            treeEntriesScanned = treeEntriesScanned + lastTreePumpEntries;
+            work = work + lastTreePumpEntries;
+            for entry in page.entries {
+                var name = Map.GetStr(entry, "name");
+                var kind = Map.GetStr(entry, "kind");
+                var fullPath = Map.GetStr(entry, "path");
+                if name == "" or fullPath == "" { continue; }
+                if kind == "directory" {
+                    if ShouldExcludePath(fullPath, true) == false {
+                        job.directories.Push(name);
+                    }
+                } else if kind == "file" {
+                    if ShouldExcludePath(fullPath, false) == false {
+                        job.files.Push(name);
+                    }
+                }
+            }
+            job.offset = page.nextOffset;
+            if page.done == false {
+                // Exactly one native page per frame, even when maxWork is large.
+                return work;
+            }
+            job.directorySort = BeginIncrementalNameSort(job.directories);
+            job.stage = TREE_LOAD_SORT_DIRECTORIES;
+        }
+
+        if job.stage == TREE_LOAD_SORT_DIRECTORIES and work < budget {
+            work = work + PumpIncrementalNameSort(job.directorySort, budget - work);
+            if job.directorySort.done == false { return work; }
+            job.directories = job.directorySort.source;
+            job.fileSort = BeginIncrementalNameSort(job.files);
+            job.stage = TREE_LOAD_SORT_FILES;
+        }
+
+        if job.stage == TREE_LOAD_SORT_FILES and work < budget {
+            work = work + PumpIncrementalNameSort(job.fileSort, budget - work);
+            if job.fileSort.done == false { return work; }
+            job.files = job.fileSort.source;
+            job.publishIndex = 0;
+            job.stage = TREE_LOAD_PUBLISH_DIRECTORIES;
+        }
+
+        if job.stage == TREE_LOAD_PUBLISH_DIRECTORIES and work < budget {
+            while job.publishIndex < job.directories.count() and work < budget {
+                var dirNameText = Obj.ToString(job.directories.get(job.publishIndex));
+                var fullPath = Path.Join(job.dirPath, dirNameText);
+                var folderNode = treeView.AddNode(job.parentNode,
+                                                  TreeFolderLabel(dirNameText));
                 GUI.TreeView.Node.SetData(folderNode, fullPath);
                 GUI.TreeView.Node.SetIcon(folderNode, "vector:folder|folder-open");
+                var canTraverse = CanTraverseTreeDirectory(fullPath);
+                GUI.TreeView.Node.SetHasChildren(folderNode, canTraverse);
+                MaybeRestoreTreeSelection(folderNode, fullPath);
+                if canTraverse and treeRestoreBudget > 0
+                   and ListContains(treeRestoreExpandedDirs, NormalizeAbsPath(fullPath)) {
+                    treeRestoreBudget = treeRestoreBudget - 1;
+                    RequestTreeChildren(fullPath, folderNode);
+                    treeView.Expand(folderNode);
+                    RememberExpandedTreeDir(fullPath);
+                }
+                job.publishIndex = job.publishIndex + 1;
+                work = work + 1;
             }
+            if job.publishIndex < job.directories.count() { return work; }
+            job.publishIndex = 0;
+            job.stage = TREE_LOAD_PUBLISH_FILES;
         }
 
-        var files = new List();
-        for fileName in Dir.Files(dirPath) {
-            files.Push(fileName);
-        }
-        files.Sort();
-        for fileName in files {
-            var fileNameText = Obj.ToString(fileName);
-            var fullPath = Path.Join(dirPath, fileNameText);
-            if ShouldExcludePath(fullPath, false) == false {
-                var fileNode = treeView.AddNode(parentNode, TreeFileLabel(fileNameText));
+        if job.stage == TREE_LOAD_PUBLISH_FILES and work < budget {
+            while job.publishIndex < job.files.count() and work < budget {
+                var fileNameText = Obj.ToString(job.files.get(job.publishIndex));
+                var fullPath = Path.Join(job.dirPath, fileNameText);
+                var fileNode = treeView.AddNode(job.parentNode,
+                                                TreeFileLabel(fileNameText));
                 GUI.TreeView.Node.SetData(fileNode, fullPath);
                 GUI.TreeView.Node.SetIcon(fileNode, FileIconName(fileNameText));
+                MaybeRestoreTreeSelection(fileNode, fullPath);
                 AddCachedFile(fullPath);
+                job.publishIndex = job.publishIndex + 1;
+                work = work + 1;
             }
+            if job.publishIndex < job.files.count() { return work; }
+            CompleteTreeLoad(job);
         }
-        return true;
+        return work;
+    }
+
+    /// @brief Mark one directory job complete and release its loading affordance.
+    func CompleteTreeLoad(job: ExplorerTreeLoad) {
+        if job == null { return; }
+        GUI.TreeView.Node.SetLoading(job.parentNode, false);
+        GUI.TreeView.Node.SetHasChildren(job.parentNode, false);
+        if ListContains(loadedTreeDirs, job.normalizedDir) == false {
+            loadedTreeDirs.Push(job.normalizedDir);
+        }
+        if treeLoadJobs.count() > 0 { treeLoadJobs.RemoveAt(0); }
+        FinishTreeRestoreIfIdle();
+    }
+
+    /// @brief End one failed directory job without propagating a filesystem trap.
+    func FailTreeLoad(job: ExplorerTreeLoad) {
+        if job != null {
+            GUI.TreeView.Node.SetLoading(job.parentNode, false);
+            GUI.TreeView.Node.SetHasChildren(job.parentNode, false);
+        }
+        if treeLoadJobs.count() > 0 { treeLoadJobs.RemoveAt(0); }
+        FinishTreeRestoreIfIdle();
+    }
+
+    /// @brief Release refresh-only restoration snapshots after all jobs settle.
+    func FinishTreeRestoreIfIdle() {
+        if treeLoadJobs.count() > 0 { return; }
+        treeRestoreExpandedDirs = new List();
+        treeRestoreSelectedPath = "";
+        treeRestoreBudget = 0;
+        treeRestoredSelection = false;
+    }
+
+    /// @brief Consume a TreeView arrow expansion request for an unloaded node.
+    func PumpLazyTreeRequest() {
+        if treeView == null or treeView.WasLoadChildrenRequested() == false { return; }
+        var requested = treeView.GetLoadRequestedNodeOption();
+        if requested == null or requested.IsSome == false { return; }
+        var node = Option.Unwrap(requested);
+        if node == null { return; }
+        var path = GUI.TreeView.Node.GetData(node);
+        if path != "" and CanTraverseTreeDirectory(path) {
+            RequestTreeChildren(path, node);
+            RememberExpandedTreeDir(path);
+        } else if node != null {
+            GUI.TreeView.Node.SetHasChildren(node, false);
+        }
+    }
+
+    /// @brief True while one or more Explorer directories are still loading.
+    expose func TreeLoadsPending() -> Boolean {
+        return treeLoadJobs.count() > 0;
+    }
+
+    /// @brief True after one directory's children were completely published.
+    expose func IsTreeDirectoryLoaded(path: String) -> Boolean {
+        if path == "" { return false; }
+        return ListContains(loadedTreeDirs, NormalizeAbsPath(path));
     }
 
     /// @brief Map a file basename to its explorer vector-icon selector.
@@ -426,20 +1078,30 @@ class ProjectManager {
     ///          complete recursive traversal before showing partial results.
     expose func StartFileCacheRefresh() {
         if project == null or project.isOpen == false { return; }
-        fileCache = new List();
-        fileCacheSeen = Map.New();
-        pendingFileCacheDirs = new List();
+        ResetFileCacheDiscovery();
         var all = AllRoots();
-        fileCacheRootIndex = 0;
-        fileCachePageOffset = 0;
         fileCacheRefreshing = true;
-        fileCacheComplete = false;
-        fileCacheDirsScanned = 0;
-        fileCacheTruncated = false;
         if all.count() == 0 {
             fileCacheRefreshing = false;
             fileCacheComplete = true;
         }
+    }
+
+    /// @brief Begin a new empty project-file cache snapshot.
+    /// @details Consumers keep cursors into `fileCache`; the generation lets
+    ///          them distinguish ordinary append-only discovery from a refresh
+    ///          that reused the same root and happened to produce the same size.
+    hide func ResetFileCacheDiscovery() {
+        fileCache = new List();
+        fileCacheSeen = Map.New();
+        fileCacheComplete = false;
+        fileCacheGeneration = fileCacheGeneration + 1;
+        pendingFileCacheDirs = new List();
+        fileCacheRefreshing = false;
+        fileCacheDirsScanned = 0;
+        fileCacheRootIndex = 0;
+        fileCachePageOffset = 0;
+        fileCacheTruncated = false;
     }
 
     /// @brief Pump a bounded file-index page for project file discovery.
@@ -549,6 +1211,12 @@ class ProjectManager {
         return fileCache.count();
     }
 
+    /// @brief Identity of the current append-only file-cache snapshot.
+    /// @return Monotonic generation incremented whenever cached paths reset.
+    expose func FileCacheGeneration() -> Integer {
+        return fileCacheGeneration;
+    }
+
     /// @brief True when the cooperative file cache reached every workspace root.
     expose func IsFileCacheComplete() -> Boolean {
         return fileCacheComplete;
@@ -597,6 +1265,9 @@ class ProjectManager {
         if treeView == null {
             return "";
         }
+        PumpTreeLoads(TREE_FRAME_WORK_BUDGET);
+        PumpLazyTreeRequest();
+        SyncSelectedTreeExpansion();
 
         if treeView.WasSelectionChanged() {
             var selected = treeView.GetSelected();
@@ -608,8 +1279,14 @@ class ProjectManager {
                     return path;
                 }
                 if Dir.Exists(path) != false {
-                    PopulateTreeChildren(path, selected);
-                    treeView.Expand(selected);
+                    if CanTraverseTreeDirectory(path) {
+                        RequestTreeChildren(path, selected);
+                        treeView.Expand(selected);
+                        RememberExpandedTreeDir(path);
+                    } else {
+                        treeView.Collapse(selected);
+                        ForgetExpandedTreeDir(path);
+                    }
                     selectedFilePath = "";
                     return "";
                 }
@@ -617,6 +1294,28 @@ class ProjectManager {
         }
 
         return "";
+    }
+
+    /// @brief Mirror the selected directory's arrow state into refresh state.
+    /// @details TreeView arrow clicks do not emit a separate expansion payload.
+    ///          Polling the selected node captures the common expand/collapse
+    ///          path without coupling ProjectManager to lower widget internals.
+    func SyncSelectedTreeExpansion() {
+        if treeView == null { return; }
+        var selected = treeView.GetSelected();
+        if selected == null { return; }
+        var path = GUI.TreeView.Node.GetData(selected);
+        if path == "" or Dir.Exists(path) == false { return; }
+        if CanTraverseTreeDirectory(path) == false {
+            treeView.Collapse(selected);
+            ForgetExpandedTreeDir(path);
+            return;
+        }
+        if GUI.TreeView.Node.IsExpanded(selected) {
+            RememberExpandedTreeDir(path);
+        } else {
+            ForgetExpandedTreeDir(path);
+        }
     }
 
     /// @brief Directory-name exclusion filter.
@@ -693,22 +1392,48 @@ class ProjectManager {
                            newName: String,
                            docMgr: document_manager.DocumentManager) -> String {
         lastBindRewriteCount = 0;
+        lastOperationError = "";
         if oldPath == "" or newName == "" { return ""; }
+        if CanMutatePath(oldPath) == false { return ""; }
         if IsPlainChildName(newName) == false {
             return "";
         }
+        var oldName = Path.Name(oldPath);
+        if oldName == newName {
+            lastOperationError = "The name is unchanged.";
+            return "";
+        }
+        var caseOnlyRename = Str.ToLower(oldName) == Str.ToLower(newName);
         var newPath = Path.Join(Path.Directory(oldPath), newName);
-        if IO.File.Exists(newPath) or Dir.Exists(newPath) {
+        if (IO.File.Exists(newPath) or Dir.Exists(newPath)) and caseOnlyRename == false {
+            lastOperationError = "Target already exists.";
             return "";
         }
         var oldWasDir = Dir.Exists(oldPath);
+        if docMgr != null {
+            var retargetReason = docMgr.RetargetBlockReason(oldPath, newPath, oldWasDir);
+            if retargetReason != "" {
+                lastOperationError = retargetReason;
+                return "";
+            }
+        }
         if IO.File.Exists(oldPath) {
-            IO.File.Move(oldPath, newPath);
+            if MovePathForRename(oldPath, newPath, false, caseOnlyRename) == false {
+                if lastOperationError == "" {
+                    lastOperationError = "The file could not be renamed.";
+                }
+                return "";
+            }
             if docMgr != null {
                 docMgr.UpdatePath(oldPath, newPath);
             }
         } else if Dir.Exists(oldPath) {
-            Dir.Move(oldPath, newPath);
+            if MovePathForRename(oldPath, newPath, true, caseOnlyRename) == false {
+                if lastOperationError == "" {
+                    lastOperationError = "The folder could not be renamed.";
+                }
+                return "";
+            }
             if docMgr != null {
                 docMgr.UpdatePathPrefix(oldPath, newPath);
             }
@@ -717,8 +1442,223 @@ class ProjectManager {
         }
         UpdateEntryAfterRename(oldPath, newPath, oldWasDir);
         lastBindRewriteCount = RewriteProjectBindsAfterRename(oldPath, newPath, oldWasDir, docMgr);
+        RetargetTreePathState(oldPath, newPath, oldWasDir);
         RefreshTree();
         return newPath;
+    }
+
+    /// @brief Rename a file or directory, including case-only name changes.
+    /// @details Case-insensitive filesystems report the destination of `Foo` to
+    ///          `foo` as the source itself. Moving through a unique sibling
+    ///          makes the spelling change portable. After the first move, a
+    ///          still-existing destination proves that a distinct entry owns
+    ///          the target on a case-sensitive filesystem, so the source is
+    ///          restored without overwriting it.
+    /// @param sourcePath Existing file or directory.
+    /// @param destinationPath Requested sibling destination.
+    /// @param isDirectory True for a directory move.
+    /// @param caseOnly True when only the basename's case differs.
+    /// @return True when the final destination owns the original entry.
+    func MovePathForRename(sourcePath: String,
+                           destinationPath: String,
+                           isDirectory: Boolean,
+                           caseOnly: Boolean) -> Boolean {
+        if caseOnly == false {
+            if isDirectory {
+                return safe_io.MoveDirectory(sourcePath, destinationPath);
+            }
+            return safe_io.MoveFile(sourcePath, destinationPath);
+        }
+
+        var tempPath = CaseRenameTempPath(sourcePath);
+        if tempPath == "" {
+            lastOperationError = "A temporary rename path could not be reserved.";
+            return false;
+        }
+        var staged = false;
+        if isDirectory {
+            staged = safe_io.MoveDirectory(sourcePath, tempPath);
+        } else {
+            staged = safe_io.MoveFile(sourcePath, tempPath);
+        }
+        if staged == false { return false; }
+
+        if IO.File.Exists(destinationPath) or Dir.Exists(destinationPath) {
+            if RestoreCaseRenameTemp(tempPath, sourcePath, isDirectory) == false {
+                lastOperationError = "Target already exists; the original remains at " + tempPath;
+            } else {
+                lastOperationError = "Target already exists.";
+            }
+            return false;
+        }
+
+        var committed = false;
+        if isDirectory {
+            committed = safe_io.MoveDirectory(tempPath, destinationPath);
+        } else {
+            committed = safe_io.MoveFile(tempPath, destinationPath);
+        }
+        if committed { return true; }
+        if RestoreCaseRenameTemp(tempPath, sourcePath, isDirectory) == false {
+            lastOperationError = "Rename failed; the original remains at " + tempPath;
+        }
+        return false;
+    }
+
+    /// @brief Reserve a unique sibling name for a case-only rename transaction.
+    func CaseRenameTempPath(sourcePath: String) -> String {
+        var parent = Path.Directory(sourcePath);
+        var base = ".zannastudio-case-" + Zanna.Time.Clock.NowMs();
+        var attempt = 0;
+        while attempt < 128 {
+            var candidate = Path.Join(parent, base + "-" + attempt);
+            if IO.File.Exists(candidate) == false and Dir.Exists(candidate) == false {
+                return candidate;
+            }
+            attempt = attempt + 1;
+        }
+        return "";
+    }
+
+    /// @brief Restore a staged case-only rename after collision or commit failure.
+    func RestoreCaseRenameTemp(tempPath: String,
+                               sourcePath: String,
+                               isDirectory: Boolean) -> Boolean {
+        if isDirectory {
+            return safe_io.MoveDirectory(tempPath, sourcePath);
+        }
+        return safe_io.MoveFile(tempPath, sourcePath);
+    }
+
+    /// @brief Retarget Explorer selection and expansion paths after a move.
+    /// @details RefreshTree snapshots state from the existing widget immediately
+    ///          before rebuilding it. Updating that state first lets the new
+    ///          node regain selection and keeps renamed directory descendants
+    ///          expanded instead of attempting to restore paths that no longer
+    ///          exist.
+    func RetargetTreePathState(oldPath: String,
+                               newPath: String,
+                               oldWasDirectory: Boolean) {
+        selectedFilePath = RetargetMovedTreePath(selectedFilePath,
+                                                 oldPath,
+                                                 newPath,
+                                                 oldWasDirectory);
+        treeRestoreSelectedPath = RetargetMovedTreePath(treeRestoreSelectedPath,
+                                                        oldPath,
+                                                        newPath,
+                                                        oldWasDirectory);
+        expandedTreeDirs = RetargetMovedTreePaths(expandedTreeDirs,
+                                                  oldPath,
+                                                  newPath,
+                                                  oldWasDirectory);
+        treeRestoreExpandedDirs = RetargetMovedTreePaths(treeRestoreExpandedDirs,
+                                                         oldPath,
+                                                         newPath,
+                                                         oldWasDirectory);
+        if treeView != null {
+            var selected = treeView.GetSelected();
+            if selected != null {
+                var selectedPath = GUI.TreeView.Node.GetData(selected);
+                var updatedPath = RetargetMovedTreePath(selectedPath,
+                                                        oldPath,
+                                                        newPath,
+                                                        oldWasDirectory);
+                if updatedPath != selectedPath {
+                    GUI.TreeView.Node.SetData(selected, updatedPath);
+                }
+            }
+        }
+    }
+
+    /// @brief Retarget one exact path or descendant through a tree move.
+    func RetargetMovedTreePath(path: String,
+                               oldPath: String,
+                               newPath: String,
+                               oldWasDirectory: Boolean) -> String {
+        if path == "" { return ""; }
+        var normalized = NormalizeAbsPath(path);
+        var oldNormalized = NormalizeAbsPath(oldPath);
+        var newNormalized = NormalizeAbsPath(newPath);
+        if normalized == oldNormalized { return newNormalized; }
+        if oldWasDirectory {
+            var prefix = oldNormalized + Path.Separator();
+            if Str.StartsWith(normalized, prefix) {
+                return Path.Join(newNormalized,
+                                 Str.Mid(normalized, Str.get_Length(prefix) + 1));
+            }
+        }
+        return path;
+    }
+
+    /// @brief Retarget every stored Explorer path without introducing duplicates.
+    func RetargetMovedTreePaths(paths: List,
+                                oldPath: String,
+                                newPath: String,
+                                oldWasDirectory: Boolean) -> List {
+        var result = new List();
+        var i = 0;
+        while i < paths.count() {
+            var updated = RetargetMovedTreePath(Obj.ToString(paths.get(i)),
+                                                oldPath,
+                                                newPath,
+                                                oldWasDirectory);
+            if updated != "" and ListContains(result, updated) == false {
+                result.Push(updated);
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+
+    /// @brief Clear Explorer state that points at a trashed path or descendant.
+    func RemoveTreePathState(path: String,
+                             includeDescendants: Boolean) {
+        if TreePathMatches(selectedFilePath, path, includeDescendants) {
+            selectedFilePath = "";
+        }
+        if TreePathMatches(treeRestoreSelectedPath, path, includeDescendants) {
+            treeRestoreSelectedPath = "";
+        }
+        expandedTreeDirs = RemoveMatchingTreePaths(expandedTreeDirs,
+                                                   path,
+                                                   includeDescendants);
+        treeRestoreExpandedDirs = RemoveMatchingTreePaths(treeRestoreExpandedDirs,
+                                                          path,
+                                                          includeDescendants);
+        if treeView != null {
+            var selected = treeView.GetSelected();
+            if selected != null
+               and TreePathMatches(GUI.TreeView.Node.GetData(selected),
+                                   path,
+                                   includeDescendants) {
+                GUI.TreeView.Node.SetData(selected, "");
+            }
+        }
+    }
+
+    /// @brief Filter removed paths out of one Explorer state list.
+    func RemoveMatchingTreePaths(paths: List,
+                                 path: String,
+                                 includeDescendants: Boolean) -> List {
+        var result = new List();
+        var i = 0;
+        while i < paths.count() {
+            var candidate = Obj.ToString(paths.get(i));
+            if TreePathMatches(candidate, path, includeDescendants) == false {
+                result.Push(candidate);
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+
+    /// @brief Return whether one stored tree path is the mutation target.
+    func TreePathMatches(candidate: String,
+                         path: String,
+                         includeDescendants: Boolean) -> Boolean {
+        if candidate == "" or path == "" { return false; }
+        if NormalizeAbsPath(candidate) == NormalizeAbsPath(path) { return true; }
+        return includeDescendants and project_file_ops.IsWithinRoot(candidate, path);
     }
 
     /// @brief Move a file or folder into another directory (drag-and-drop).
@@ -731,30 +1671,59 @@ class ProjectManager {
                              targetDir: String,
                              docMgr: document_manager.DocumentManager) -> String {
         lastBindRewriteCount = 0;
+        lastOperationError = "";
         if sourcePath == "" or targetDir == "" { return ""; }
-        if Dir.Exists(targetDir) == false { return ""; }
+        if CanMutatePath(sourcePath) == false { return ""; }
+        if CanCreateInDirectory(targetDir) == false { return ""; }
+        var sourceOwner = WorkspaceProjectForPath(sourcePath);
+        var targetOwner = WorkspaceProjectForPath(targetDir);
+        if sourceOwner == null or targetOwner == null
+           or NormalizeAbsPath(sourceOwner.rootPath) != NormalizeAbsPath(targetOwner.rootPath) {
+            return "";
+        }
+        var targetTrash = Path.Join(targetOwner.rootPath, ".zannastudio-trash");
+        if project_file_ops.IsWithinRoot(targetDir, targetTrash) { return ""; }
         // Reject moving a folder into itself or one of its descendants.
-        if targetDir == sourcePath or Str.StartsWith(targetDir, sourcePath + Path.Separator()) {
+        if Dir.Exists(sourcePath) and project_file_ops.IsWithinRoot(targetDir, sourcePath) {
             return "";
         }
         var baseName = Path.Name(sourcePath);
         if baseName == "" { return ""; }
         var newPath = Path.Join(targetDir, baseName);
-        if newPath == sourcePath { return ""; } // already in this folder
-        if IO.File.Exists(newPath) or Dir.Exists(newPath) { return ""; } // don't overwrite
+        if NormalizeAbsPath(newPath) == NormalizeAbsPath(sourcePath) {
+            return ""; // already in this folder
+        }
+        if IO.File.Exists(newPath) or Dir.Exists(newPath) {
+            lastOperationError = "A file or folder with that name already exists there.";
+            return ""; // don't overwrite
+        }
 
         var oldWasDir = Dir.Exists(sourcePath);
+        if docMgr != null {
+            var retargetReason = docMgr.RetargetBlockReason(sourcePath, newPath, oldWasDir);
+            if retargetReason != "" {
+                lastOperationError = retargetReason;
+                return "";
+            }
+        }
         if IO.File.Exists(sourcePath) {
-            IO.File.Move(sourcePath, newPath);
+            if safe_io.MoveFile(sourcePath, newPath) == false {
+                lastOperationError = "The file could not be moved.";
+                return "";
+            }
             if docMgr != null { docMgr.UpdatePath(sourcePath, newPath); }
         } else if Dir.Exists(sourcePath) {
-            Dir.Move(sourcePath, newPath);
+            if safe_io.MoveDirectory(sourcePath, newPath) == false {
+                lastOperationError = "The folder could not be moved.";
+                return "";
+            }
             if docMgr != null { docMgr.UpdatePathPrefix(sourcePath, newPath); }
         } else {
             return "";
         }
         UpdateEntryAfterRename(sourcePath, newPath, oldWasDir);
         lastBindRewriteCount = RewriteProjectBindsAfterRename(sourcePath, newPath, oldWasDir, docMgr);
+        RetargetTreePathState(sourcePath, newPath, oldWasDir);
         RefreshTree();
         return newPath;
     }
@@ -779,15 +1748,37 @@ class ProjectManager {
     expose func DeletePath(path: String,
                            docMgr: document_manager.DocumentManager) -> Boolean {
         lastTrashPath = "";
+        lastOperationError = "";
         if path == "" { return false; }
+        if CanMutatePath(path) == false { return false; }
         var trashPath = TrashPathFor(path);
         if trashPath == "" { return false; }
-        Dir.MakeAll(Path.Directory(trashPath));
+        var owner = WorkspaceProjectForPath(path);
+        if owner == null { return false; }
+        var trashDir = Path.Directory(trashPath);
+        if PathHasLinkedComponent(trashDir, owner.rootPath, true) {
+            lastOperationError = "The project trash path crosses a linked folder.";
+            return false;
+        }
+        if safe_io.MakeAll(trashDir) == false {
+            lastOperationError = "The project trash folder could not be created.";
+            return false;
+        }
+        if PathHasLinkedComponent(trashDir, owner.rootPath, true) {
+            lastOperationError = "The project trash path changed to a linked folder.";
+            return false;
+        }
         if IO.File.Exists(path) {
-            IO.File.Move(path, trashPath);
+            if safe_io.MoveFile(path, trashPath) == false {
+                lastOperationError = "The file could not be moved to project trash.";
+                return false;
+            }
             CloseOpenDocumentsUnder(path, docMgr);
         } else if Dir.Exists(path) {
-            Dir.Move(path, trashPath);
+            if safe_io.MoveDirectory(path, trashPath) == false {
+                lastOperationError = "The folder could not be moved to project trash.";
+                return false;
+            }
             CloseOpenDocumentsUnder(path, docMgr);
         } else {
             return false;
@@ -795,6 +1786,7 @@ class ProjectManager {
         if docMgr != null {
             docMgr.ForgetPathsUnder(path);
         }
+        RemoveTreePathState(path, true);
         lastTrashPath = trashPath;
         RefreshTree();
         return true;
@@ -808,25 +1800,25 @@ class ProjectManager {
     /// @param sourcePath Absolute file or directory selected in the explorer.
     /// @return Absolute destination path, or empty string if no project trash is available.
     hide func TrashPathFor(sourcePath: String) -> String {
-        if project == null or project.rootPath == "" or sourcePath == "" { return ""; }
-        return project_file_ops.TrashPathFor(project.rootPath, sourcePath);
+        var owner = WorkspaceProjectForPath(sourcePath);
+        if owner == null or owner.rootPath == "" or sourcePath == "" { return ""; }
+        return project_file_ops.TrashPathFor(owner.rootPath, sourcePath);
     }
 
     expose func SetEntryFile(filePath: String) -> Boolean {
-        if project == null or project.isOpen == false { return false; }
         if filePath == "" or IO.File.Exists(filePath) == false { return false; }
-        if project_file_ops.IsWithinRoot(filePath, project.rootPath) == false {
-            return false;
-        }
+        var owner = WorkspaceProjectForPath(filePath);
+        if owner == null or owner.isOpen == false { return false; }
 
-        var rel = RelativePath(filePath);
-        project.entryFile = rel;
-        var manifestPath = Path.Join(project.rootPath, "zanna.project");
+        var rel = RelativePathIn(owner, filePath);
+        var manifestPath = Path.Join(owner.rootPath, "zanna.project");
         var content = "";
         var replaced = false;
 
         if IO.File.Exists(manifestPath) {
-            var lines = Str.Split(IO.File.ReadAllText(manifestPath), "\n");
+            var manifestRead = safe_io.ReadAllText(manifestPath);
+            if manifestRead.ok == false { return false; }
+            var lines = Str.Split(manifestRead.text, "\n");
             var i = 0;
             while i < Seq.get_Count(lines) {
                 var line = Obj.ToString(Seq.Get(lines, i));
@@ -841,7 +1833,7 @@ class ProjectManager {
         }
 
         if content == "" {
-            content = "project " + project.name + "\nentry " + rel + "\nlang " + project.lang + "\n";
+            content = "project " + owner.name + "\nentry " + rel + "\nlang " + owner.lang + "\n";
         } else if replaced == false {
             if Str.EndsWith(content, "\n") == false {
                 content = content + "\n";
@@ -849,8 +1841,9 @@ class ProjectManager {
             content = content + "entry " + rel + "\n";
         }
 
-        IO.File.WriteAllText(manifestPath, content);
-        project.hasProjectFile = true;
+        if safe_io.WriteAllText(manifestPath, content) == false { return false; }
+        owner.entryFile = rel;
+        owner.hasProjectFile = true;
         return true;
     }
 
@@ -883,8 +1876,9 @@ class ProjectManager {
     }
 
     func UpdateEntryAfterRename(oldPath: String, newPath: String, oldWasDir: Boolean) {
-        if project == null or project.entryFile == "" { return; }
-        var entryAbs = NormalizeAbsPath(Path.Join(project.rootPath, project.entryFile));
+        var owner = WorkspaceProjectForPath(oldPath);
+        if owner == null or owner.entryFile == "" { return; }
+        var entryAbs = NormalizeAbsPath(Path.Join(owner.rootPath, owner.entryFile));
         var oldNorm = NormalizeAbsPath(oldPath);
         var newNorm = NormalizeAbsPath(newPath);
         var replacement = "";
@@ -898,7 +1892,9 @@ class ProjectManager {
             replacement = newNorm;
         }
         if replacement != "" {
-            SetEntryFile(replacement);
+            if SetEntryFile(replacement) == false {
+                AddOperationWarning("The project entry file could not be updated.");
+            }
         }
     }
 
@@ -950,23 +1946,38 @@ class ProjectManager {
             if docIndex >= 0 {
                 content = docMgr.documents.get(docIndex).content;
             } else if IO.File.Exists(filePath) {
-                content = IO.File.ReadAllText(filePath);
+                var sourceRead = safe_io.ReadAllText(filePath);
+                if sourceRead.ok { content = sourceRead.text; }
             }
 
             var rewrite = RewriteZiaBindContent(content, filePath, oldNorm, newNorm, oldWasDir);
-            total = total + rewrite.count;
-            if applyChanges and rewrite.count > 0 {
-                if docIndex >= 0 {
+            if rewrite.count > 0 {
+                if applyChanges == false {
+                    total = total + rewrite.count;
+                } else if docIndex >= 0 {
                     var openDoc = docMgr.documents.get(docIndex);
                     openDoc.content = rewrite.text;
                     openDoc.isModified = true;
+                    total = total + rewrite.count;
+                } else if safe_io.WriteAllText(filePath, rewrite.text) {
+                    total = total + rewrite.count;
                 } else {
-                    IO.File.WriteAllText(filePath, rewrite.text);
+                    AddOperationWarning("One or more Zia bind paths could not be updated.");
                 }
             }
             i = i + 1;
         }
         return total;
+    }
+
+    /// @brief Accumulate a non-fatal warning after a physical tree move succeeds.
+    func AddOperationWarning(message: String) {
+        if message == "" { return; }
+        if lastOperationError == "" {
+            lastOperationError = message;
+        } else if Str.IndexOf(lastOperationError, message) == 0 {
+            lastOperationError = lastOperationError + " " + message;
+        }
     }
 
     /// @brief Add project Zia files from the runtime workspace index.
@@ -976,11 +1987,18 @@ class ProjectManager {
     ///          Open, project cache, and workspace indexing.
     /// @param files Mutable List receiving absolute `.zia` file paths.
     func AddIndexedZiaFiles(files: List) {
-        if project == null or project.rootPath == "" { return; }
-        workspace_file_index.AddEnumeratedFiles(files,
-                                                project.rootPath,
-                                                ".zia",
-                                                project.ignorePatterns);
+        var roots = AllRoots();
+        var i = 0;
+        while i < roots.count() {
+            var root = roots.get(i);
+            if root != null and root.rootPath != "" {
+                workspace_file_index.AddEnumeratedFiles(files,
+                                                        root.rootPath,
+                                                        ".zia",
+                                                        root.ignorePatterns);
+            }
+            i = i + 1;
+        }
     }
 
     /// @brief Return true when a name is a safe single filesystem component.
@@ -993,23 +2011,6 @@ class ProjectManager {
         return project_file_ops.IsPlainChildName(name);
     }
 
-    func CollectZiaFiles(dirPath: String, files: List) {
-        for dirName in Dir.Dirs(dirPath) {
-            var fullDir = Path.Join(dirPath, dirName);
-            if ShouldExcludePath(fullDir, true) == false {
-                CollectZiaFiles(fullDir, files);
-            }
-        }
-        for fileName in Dir.Files(dirPath) {
-            var fullPath = Path.Join(dirPath, fileName);
-            if ShouldExcludePath(fullPath, false) == false and IsZiaFile(fullPath) {
-                if ListContains(files, fullPath) == false {
-                    files.Push(fullPath);
-                }
-            }
-        }
-    }
-
     func IsZiaFile(path: String) -> Boolean {
         return project_file_ops.IsZiaFile(path);
     }
@@ -1018,9 +2019,18 @@ class ProjectManager {
     /// @note Called by the user (or after an external file watcher fires)
     ///       to pick up new files added outside the IDE.
     expose func RefreshTree() {
-        if project.isOpen {
-            PopulateTree();
+        if project == null or project.isOpen == false { return; }
+        if treeView != null {
+            SyncSelectedTreeExpansion();
+            treeRestoreExpandedDirs = expandedTreeDirs;
+            treeRestoreSelectedPath = SelectedPath();
+            treeRestoreBudget = treeRestoreExpandedDirs.count();
+            if treeRestoreBudget > MAX_TREE_REFRESH_EXPANDED_DIRS {
+                treeRestoreBudget = MAX_TREE_REFRESH_EXPANDED_DIRS;
+            }
+            treeRestoredSelection = false;
         }
+        PopulateTree();
     }
 }
 

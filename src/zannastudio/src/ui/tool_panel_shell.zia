@@ -10,6 +10,9 @@
 // Key invariants:
 //   - This module owns bottom-panel behavior, not top-level workbench layout.
 //   - ListBox-backed panels remain bounded and keep stable row metadata.
+//   - Wrapped output derives columns from effective logical panel width.
+//   - Search retains a useful results viewport without replacing the user's
+//     configured split fraction.
 // Ownership/Lifetime:
 //   - AppShell owns the concrete GUI widgets and injects them during Setup.
 //   - ToolPanelShell owns panel state for the lifetime of AppShell.
@@ -27,6 +30,7 @@ bind "../services/theme_colors";
 bind Zanna.GUI as GUI;
 bind Zanna.Collections.Seq as Seq;
 bind Obj = Zanna.Core.Object;
+bind Convert = Zanna.Core.Convert;
 bind Str = Zanna.String;
 
 /// @brief Semantic tool-panel row colors from the live theme palette.
@@ -41,6 +45,8 @@ final TOOL_LOCATION_COL = 24;
 final TOOL_CODE_COL = 10;
 final TOOL_ACTION_COL = 18;
 final MAX_OUTPUT_ROW_COUNT = 5000;
+final SEARCH_PANEL_MIN_LOGICAL_HEIGHT = 220.0;
+final TOOL_TABS_COMPACT_MAX_WIDTH = 720.0;
 
 /// @brief Owns bottom tool-panel state and rendering behavior.
 /// @details AppShell still constructs widgets and exposes them for polling, but
@@ -90,6 +96,8 @@ class ToolPanelShell {
     expose GUI.SplitPane editorSplit;
     expose Number bottomSplitFraction; // editor's fraction while a panel is open
     expose Boolean splitFractionDirty; // set on user drag; consumed for persistence
+    hide Number appliedSplitFraction;  // last controller-authored splitter position
+    hide Boolean compactToolTabs;
     expose Integer activeToolPanelKind;
     expose String lastBuildOutput;
     expose String outputPartialLine;
@@ -151,6 +159,8 @@ class ToolPanelShell {
         editorSplit = null;
         bottomSplitFraction = 0.7;
         splitFractionDirty = false;
+        appliedSplitFraction = 0.7;
+        compactToolTabs = false;
         activeToolPanelKind = tool_panel_model.PANEL_NONE;
         lastBuildOutput = "";
         outputPartialLine = "";
@@ -765,11 +775,16 @@ class ToolPanelShell {
             return null;
         }
         EnsureOutputRowCapacity();
-        var windowWidth = 0;
-        if app != null {
-            windowWidth = app.GetWidth();
+        var layoutWidth = 0;
+        if outputListBox != null {
+            layoutWidth = Convert.NumToInt(outputListBox.GetLogicalWidth());
         }
-        var wrapColumn = output_cache.WrapColumn(windowWidth);
+        if layoutWidth <= 0 and app != null {
+            var scale = app.GetEffectiveScale();
+            if scale <= 0.0 { scale = 1.0; }
+            layoutWidth = Convert.NumToInt(app.GetWidth() / scale);
+        }
+        var wrapColumn = output_cache.WrapColumn(layoutWidth);
         if outputWrapLines == false or Str.get_Length(line) <= wrapColumn {
             var item = outputListBox.AddItem(line);
             RegisterOutputRow(item, line);
@@ -1028,19 +1043,54 @@ class ToolPanelShell {
         AddToolSuccessRow(diagListBox, "build", "No diagnostics from the latest check");
     }
 
-    /// @brief Hide every bottom tool surface.
-    /// @brief Restore the bottom panel area to its current height fraction.
-    /// @details Called whenever a panel is shown. The splitter position is the
-    ///          editor's fraction, so a smaller number gives the panel more room.
+    /// @brief Restore the bottom panel area to its configured height fraction.
     hide func ExpandBottomPanel() {
+        ApplyBottomPanelSplit(0.0);
+    }
+
+    /// @brief Return Search's minimum height in physical layout units.
+    /// @details Tool-panel widgets grow with both HiDPI backing scale and user
+    ///          UI zoom, so the reserved results viewport must follow the same
+    ///          effective scale instead of remaining a fixed pixel count.
+    hide func SearchPanelMinimumHeight() -> Number {
+        var scale = 1.0;
+        if app != null {
+            scale = app.GetScale() * app.GetUiScale();
+            if scale <= 0.0 { scale = 1.0; }
+        }
+        return SEARCH_PANEL_MIN_LOGICAL_HEIGHT * scale;
+    }
+
+    /// @brief Apply the configured split while reserving optional panel height.
+    /// @details The splitter position is the editor's fraction. Search uses a
+    ///          temporary cap derived from the live splitter height, so compact
+    ///          windows retain result rows without overwriting the persisted
+    ///          fraction used by every other tool panel.
+    /// @param minimumPanelHeight Minimum requested height for the second pane.
+    hide func ApplyBottomPanelSplit(minimumPanelHeight: Number) {
         if editorSplit == null { return; }
-        editorSplit.SetPosition(bottomSplitFraction);
+        if editorSplit.GetCollapsedSide() != 0 {
+            editorSplit.Restore();
+        }
+        var desired = bottomSplitFraction;
+        var splitHeight = editorSplit.GetHeight();
+        if minimumPanelHeight > 0.0 and splitHeight > 0.0 {
+            var maximumEditorFraction = 1.0 - minimumPanelHeight / splitHeight;
+            if maximumEditorFraction < 0.3 { maximumEditorFraction = 0.3; }
+            if desired > maximumEditorFraction { desired = maximumEditorFraction; }
+        }
+        var delta = editorSplit.GetPosition() - desired;
+        if delta < 0.0 { delta = 0.0 - delta; }
+        if delta > 0.001 {
+            editorSplit.SetPosition(desired);
+        }
+        appliedSplitFraction = desired;
     }
 
     /// @brief Collapse the bottom area so the editor uses the full height.
     hide func CollapseBottomPanel() {
         if editorSplit == null { return; }
-        editorSplit.SetPosition(1.0);
+        editorSplit.CollapseSecond();
     }
 
     /// @brief Capture a live splitter drag into the height fraction so the size
@@ -1049,12 +1099,14 @@ class ToolPanelShell {
     hide func CaptureSplitDrag() {
         if editorSplit == null { return; }
         if activeToolPanelKind == tool_panel_model.PANEL_NONE { return; }
+        if editorSplit.GetCollapsedSide() != 0 { return; }
         var pos = editorSplit.GetPosition();
         if pos < 0.3 or pos > 0.985 { return; } // keep editor 30%+, panel 1.5%+
-        var delta = pos - bottomSplitFraction;
+        var delta = pos - appliedSplitFraction;
         if delta < 0.0 { delta = 0.0 - delta; }
         if delta > 0.004 {
             bottomSplitFraction = pos;
+            appliedSplitFraction = pos;
             splitFractionDirty = true;
         }
     }
@@ -1067,10 +1119,64 @@ class ToolPanelShell {
         if clamped > 95 { clamped = 95; }
         bottomSplitFraction = clamped / 100.0; // int/float promotes to Number
         if editorSplit != null and activeToolPanelKind != tool_panel_model.PANEL_NONE {
-            editorSplit.SetPosition(bottomSplitFraction);
+            if activeToolPanelKind == tool_panel_model.PANEL_SEARCH {
+                ApplyBottomPanelSplit(SearchPanelMinimumHeight());
+            } else {
+                ExpandBottomPanel();
+            }
         }
     }
 
+    /// @brief Consume a user-authored split change as a persisted percentage.
+    /// @details Controller-authored Search expansion never sets the dirty bit.
+    ///          Live drag values round to the nearest percent and clamp to the
+    ///          same [30, 95] range accepted by SettingsManager.
+    /// @return Changed percentage, or -1 when there is nothing to persist.
+    expose func TakeChangedSplitPercent() -> Integer {
+        if splitFractionDirty == false { return -1; }
+        splitFractionDirty = false;
+        var scaled = bottomSplitFraction * 100.0;
+        var pct = 30;
+        while pct < 95 and scaled >= pct + 0.5 {
+            pct = pct + 1;
+        }
+        return pct;
+    }
+
+    /// @brief Switch long tool-tab labels to discoverable compact names.
+    /// @details The tab bar remains horizontally scrollable, but at the native
+    ///          minimum the full labels hid Debug and Terminal completely. The
+    ///          compact set fits common narrow workbench widths while explicit
+    ///          tooltips retain every unabbreviated name. GetLogicalWidth has
+    ///          already removed both backing scale and user zoom.
+    hide func ApplyResponsiveToolTabLabels() {
+        if toolTabBar == null { return; }
+        var width = toolTabBar.GetLogicalWidth();
+        if width <= 0.0 { return; }
+        var compact = width <= TOOL_TABS_COMPACT_MAX_WIDTH;
+        if compact == compactToolTabs { return; }
+        compactToolTabs = compact;
+        if compactToolTabs {
+            toolReferencesTab.SetTitle("Refs");
+            toolVariablesTab.SetTitle("Vars");
+            toolCallStackTab.SetTitle("Stack");
+            toolDebugTab.SetTitle("Debug");
+            toolTerminalTab.SetTitle("Term");
+        } else {
+            toolReferencesTab.SetTitle("References");
+            toolVariablesTab.SetTitle("Variables");
+            toolCallStackTab.SetTitle("Call Stack");
+            toolDebugTab.SetTitle("Debug Console");
+            toolTerminalTab.SetTitle("Terminal");
+        }
+        toolReferencesTab.SetTooltip("References");
+        toolVariablesTab.SetTooltip("Variables");
+        toolCallStackTab.SetTooltip("Call Stack");
+        toolDebugTab.SetTooltip("Debug Console");
+        toolTerminalTab.SetTooltip("Terminal");
+    }
+
+    /// @brief Hide every bottom tool surface.
     hide func HideAllToolPanels() {
         diagListBox.SetVisible(false);
         outputPane.SetVisible(false);
@@ -1124,7 +1230,7 @@ class ToolPanelShell {
     /// @brief Show the Search panel and select its tab.
     expose func ShowSearchPanel() {
         toolTabBar.SetVisible(true);
-        ExpandBottomPanel();
+        ApplyBottomPanelSplit(SearchPanelMinimumHeight());
         toolTabBar.SetActive(toolSearchTab);
         activeToolPanelKind = tool_panel_model.PANEL_SEARCH;
         HideAllToolPanels();
@@ -1280,6 +1386,12 @@ class ToolPanelShell {
     expose func PumpToolTabs() {
         if toolTabBar == null { return; }
         CaptureSplitDrag(); // every frame: keep a live splitter drag remembered
+        ApplyResponsiveToolTabLabels();
+        if activeToolPanelKind == tool_panel_model.PANEL_SEARCH {
+            // Recompute after a window resize; the configured fraction remains
+            // untouched and is restored automatically on a roomier viewport.
+            ApplyBottomPanelSplit(SearchPanelMinimumHeight());
+        }
         if !toolTabBar.WasChanged() { return; }
         var idx = toolTabBar.GetActiveIndex();
         if idx == tool_panel_model.TAB_PROBLEMS {

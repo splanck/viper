@@ -375,12 +375,20 @@ void collectNativeLinkArchives(const common::LinkContext &ctx,
         appendIfExists(audLib);
     }
 
-    // Embedding the Zia frontend pulls in il_runtime's RuntimeRegistry, which
+    // Embedding either language-service frontend pulls in RuntimeRegistry, which
     // references the entire rt_* catalog regardless of what the program itself
     // uses. Link every runtime component so those references resolve.
-    if (ctx.needsZiaFrontend) {
+    if (ctx.needsZiaFrontend || ctx.needsBasicFrontend) {
         for (int i = 0; i < static_cast<int>(RtComponent::Count); ++i)
             appendComponent(static_cast<RtComponent>(i));
+    }
+    if (ctx.needsZiaFrontend) {
+        for (const auto &lib : common::ziaFrontendClosureLibs())
+            appendIfExists(common::supportLibraryPath(ctx.buildDir, lib));
+    }
+    if (ctx.needsBasicFrontend) {
+        for (const auto &lib : common::basicFrontendClosureLibs())
+            appendIfExists(common::supportLibraryPath(ctx.buildDir, lib));
     }
 
     if constexpr (zanna::platform::kHostWindows) {
@@ -429,15 +437,12 @@ int linkObjectWithNativeLinker(const std::filesystem::path &objPath,
         if (common::fileExists(ziaEditorLib))
             linkOpts.forceLoadArchivePaths.push_back(
                 common::pathToUtf8(ziaEditorLib.lexically_normal()));
-        // zia_editor_services' static-link closure (fe_zia plus IL
-        // build/verify/transform/runtime/core/support). Demand-driven: only
-        // members the force-loaded editor-service objects reference are
-        // extracted.
-        for (const auto &lib : common::ziaFrontendClosureLibs()) {
-            const auto p = common::supportLibraryPath(ctx.buildDir, lib);
-            if (common::fileExists(p))
-                linkOpts.archivePaths.push_back(common::pathToUtf8(p.lexically_normal()));
-        }
+    }
+    if (ctx.needsBasicFrontend) {
+        const auto basicLib = common::supportLibraryPath(ctx.buildDir, "fe_basic");
+        if (common::fileExists(basicLib))
+            linkOpts.forceLoadArchivePaths.push_back(
+                common::pathToUtf8(basicLib.lexically_normal()));
     }
     linkOpts.extraObjPaths = extraObjects;
     return linker::nativeLink(linkOpts, out, err);

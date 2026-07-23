@@ -17,6 +17,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/PlatformCapabilities.hpp"
 #include "rt.hpp"
 #include "rt_bytes.h"
 #include "rt_file_ext.h"
@@ -161,6 +162,46 @@ static void test_exists() {
     rmdir_p(dir_path);
     test_result("file not exists after remove", rt_io_file_exists(path) == 0);
 
+    printf("\n");
+}
+
+/// @brief Test stable file identity across distinct path spellings.
+static void test_same_file() {
+    printf("Testing rt_file_same:\n");
+
+    const char *base = get_test_base();
+    char source_path[512], alias_path[512], other_path[512];
+    snprintf(source_path, sizeof(source_path), "%s_same_source.txt", base);
+    snprintf(alias_path, sizeof(alias_path), "%s_same_alias.txt", base);
+    snprintf(other_path, sizeof(other_path), "%s_same_other.txt", base);
+    remove_file(source_path);
+    remove_file(alias_path);
+    remove_file(other_path);
+    create_test_file(source_path, "same identity");
+    create_test_file(other_path, "same contents, different identity");
+
+    rt_string source = rt_const_cstr(source_path);
+    test_result("identical path is same file", rt_file_same(source, source) == 1);
+    test_result("different inode is not same file",
+                rt_file_same(source, rt_const_cstr(other_path)) == 0);
+    test_result("missing path is not same file",
+                rt_file_same(source, rt_const_cstr(get_missing_path())) == 0);
+
+#if ZANNA_HOST_WINDOWS
+    int link_result = _link(source_path, alias_path);
+#else
+    int link_result = link(source_path, alias_path);
+#endif
+    if (link_result == 0) {
+        test_result("hard-link spelling resolves to same file",
+                    rt_file_same(source, rt_const_cstr(alias_path)) == 1);
+    } else {
+        printf("  hard-link identity: SKIP (filesystem rejected link)\n");
+    }
+
+    remove_file(source_path);
+    remove_file(alias_path);
+    remove_file(other_path);
     printf("\n");
 }
 
@@ -972,6 +1013,7 @@ int main() {
     printf("=== RT File Extension Tests ===\n\n");
 
     test_exists();
+    test_same_file();
     test_copy();
     test_copy_same_file_traps();
     test_copy_existing_destination_traps();

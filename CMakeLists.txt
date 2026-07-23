@@ -8,9 +8,11 @@
 # File: CMakeLists.txt
 # Purpose: Configure Zanna's cross-platform build, generated metadata, and tests.
 #
-# Key invariants: Build identity is canonical and platform capabilities are explicit.
+# Key invariants: Build identity is canonical, platform capabilities are explicit,
+# and every documented Zanna Studio launch path resolves to the current build.
 #
-# Ownership/Lifetime: CMake owns generated files under the selected build tree.
+# Ownership/Lifetime: CMake owns generated build-tree files and the ignored
+# Zanna Studio compatibility copy under src/zannastudio/bin.
 #
 # Links: AGENTS.md, docs/internals/architecture.md, docs/internals/testing.md
 #
@@ -844,26 +846,104 @@ if(ZANNA_INSTALL_ZANNASTUDIO)
   set(_ZANNASTUDIO_OUTPUT_DIR "${CMAKE_BINARY_DIR}/zannastudio")
   set(_ZANNASTUDIO_BINARY "${_ZANNASTUDIO_OUTPUT_DIR}/zannastudio${CMAKE_EXECUTABLE_SUFFIX}")
   set(_ZANNASTUDIO_BUILDINFO "${_ZANNASTUDIO_OUTPUT_DIR}/zannastudio.buildinfo")
+  # scripts/build_ide.{sh,ps1} historically placed the runnable IDE under the
+  # source tree, while the ordinary CMake build placed it under build/. Keep
+  # both documented launch paths synchronized. Otherwise a successful full
+  # build can leave developers repeatedly launching an obsolete IDE that still
+  # exhibits already-fixed startup, navigation, and layout bugs.
+  set(_ZANNASTUDIO_COMPAT_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/src/zannastudio/bin")
+  set(_ZANNASTUDIO_COMPAT_BINARY
+      "${_ZANNASTUDIO_COMPAT_OUTPUT_DIR}/zannastudio${CMAKE_EXECUTABLE_SUFFIX}")
+  set(_ZANNASTUDIO_COMPAT_BUILDINFO
+      "${_ZANNASTUDIO_COMPAT_OUTPUT_DIR}/zannastudio.buildinfo")
   file(GLOB_RECURSE _ZANNASTUDIO_SOURCE_FILES CONFIGURE_DEPENDS
        "${CMAKE_SOURCE_DIR}/src/zannastudio/src/*.zia"
        "${CMAKE_SOURCE_DIR}/src/zannastudio/zanna.project")
-  add_custom_command(
-    OUTPUT "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_BUILDINFO}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${_ZANNASTUDIO_OUTPUT_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E env "ZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}"
-            "$<TARGET_FILE:zanna>" build "${CMAKE_SOURCE_DIR}/src/zannastudio"
-            --arch "${_ZANNA_IDE_ARCH}" -o "${_ZANNASTUDIO_BINARY}"
-    COMMAND ${CMAKE_COMMAND}
-            "-DOUTPUT_FILE=${_ZANNASTUDIO_BINARY}"
-            "-DZANNA_PATH=$<TARGET_FILE:zanna>"
-            "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
-            -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
-    DEPENDS zanna ${_ZANNASTUDIO_SOURCE_FILES}
-    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    COMMENT "Building Zanna Studio native binary"
-    VERBATIM)
-  add_custom_target(zannastudio_native ALL DEPENDS "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_BUILDINFO}")
-  install(PROGRAMS "${_ZANNASTUDIO_BINARY}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+  if(APPLE)
+    # Cocoa exposes the executable leaf name in the system application menu for
+    # an unbundled process. Keep the stable `zannastudio` CLI as a tiny launcher
+    # and give the native payload its authored product name.
+    set(_ZANNASTUDIO_NATIVE_BINARY "${_ZANNASTUDIO_OUTPUT_DIR}/Zanna Studio")
+    set(_ZANNASTUDIO_COMPAT_NATIVE_BINARY
+        "${_ZANNASTUDIO_COMPAT_OUTPUT_DIR}/Zanna Studio")
+    set(_ZANNASTUDIO_MAC_LAUNCHER
+        "${CMAKE_SOURCE_DIR}/cmake/ZannaStudioMacLauncher.sh")
+    set(_ZANNASTUDIO_MAC_STAGER
+        "${CMAKE_SOURCE_DIR}/cmake/StageZannaStudioMac.cmake")
+    add_custom_command(
+      OUTPUT "${_ZANNASTUDIO_NATIVE_BINARY}" "${_ZANNASTUDIO_BINARY}"
+             "${_ZANNASTUDIO_BUILDINFO}"
+             "${_ZANNASTUDIO_COMPAT_NATIVE_BINARY}" "${_ZANNASTUDIO_COMPAT_BINARY}"
+             "${_ZANNASTUDIO_COMPAT_BUILDINFO}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${_ZANNASTUDIO_OUTPUT_DIR}"
+      COMMAND ${CMAKE_COMMAND} -E env "ZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}"
+              "$<TARGET_FILE:zanna>" build "${CMAKE_SOURCE_DIR}/src/zannastudio"
+              --arch "${_ZANNA_IDE_ARCH}" -o "${_ZANNASTUDIO_NATIVE_BINARY}"
+      COMMAND ${CMAKE_COMMAND}
+              "-DNATIVE_BINARY=${_ZANNASTUDIO_NATIVE_BINARY}"
+              "-DLAUNCHER=${_ZANNASTUDIO_BINARY}"
+              "-DLAUNCHER_TEMPLATE=${_ZANNASTUDIO_MAC_LAUNCHER}"
+              "-DCOMPAT_NATIVE_BINARY=${_ZANNASTUDIO_COMPAT_NATIVE_BINARY}"
+              "-DCOMPAT_LAUNCHER=${_ZANNASTUDIO_COMPAT_BINARY}"
+              -P "${_ZANNASTUDIO_MAC_STAGER}"
+      COMMAND ${CMAKE_COMMAND}
+              "-DOUTPUT_FILE=${_ZANNASTUDIO_NATIVE_BINARY}"
+              "-DZANNA_PATH=$<TARGET_FILE:zanna>"
+              "-DZANNA_VERSION=${ZANNA_VERSION_STR}"
+              "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
+              -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
+      COMMAND ${CMAKE_COMMAND}
+              "-DOUTPUT_FILE=${_ZANNASTUDIO_COMPAT_NATIVE_BINARY}"
+              "-DZANNA_PATH=$<TARGET_FILE:zanna>"
+              "-DZANNA_VERSION=${ZANNA_VERSION_STR}"
+              "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
+              -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
+      DEPENDS zanna ${_ZANNASTUDIO_SOURCE_FILES}
+              "${CMAKE_SOURCE_DIR}/src/buildmeta/VERSION"
+              "${_ZANNASTUDIO_MAC_LAUNCHER}" "${_ZANNASTUDIO_MAC_STAGER}"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      COMMENT "Building Zanna Studio macOS payload and launcher"
+      VERBATIM)
+    add_custom_target(zannastudio_native ALL
+      DEPENDS "${_ZANNASTUDIO_NATIVE_BINARY}" "${_ZANNASTUDIO_BINARY}"
+              "${_ZANNASTUDIO_BUILDINFO}"
+              "${_ZANNASTUDIO_COMPAT_NATIVE_BINARY}" "${_ZANNASTUDIO_COMPAT_BINARY}"
+              "${_ZANNASTUDIO_COMPAT_BUILDINFO}")
+    install(PROGRAMS "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_NATIVE_BINARY}"
+            DESTINATION ${CMAKE_INSTALL_BINDIR})
+  else()
+    add_custom_command(
+      OUTPUT "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_BUILDINFO}"
+             "${_ZANNASTUDIO_COMPAT_BINARY}" "${_ZANNASTUDIO_COMPAT_BUILDINFO}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${_ZANNASTUDIO_OUTPUT_DIR}"
+      COMMAND ${CMAKE_COMMAND} -E make_directory "${_ZANNASTUDIO_COMPAT_OUTPUT_DIR}"
+      COMMAND ${CMAKE_COMMAND} -E env "ZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}"
+              "$<TARGET_FILE:zanna>" build "${CMAKE_SOURCE_DIR}/src/zannastudio"
+              --arch "${_ZANNA_IDE_ARCH}" -o "${_ZANNASTUDIO_BINARY}"
+      COMMAND ${CMAKE_COMMAND}
+              "-DOUTPUT_FILE=${_ZANNASTUDIO_BINARY}"
+              "-DZANNA_PATH=$<TARGET_FILE:zanna>"
+              "-DZANNA_VERSION=${ZANNA_VERSION_STR}"
+              "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
+              -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_COMPAT_BINARY}"
+      COMMAND ${CMAKE_COMMAND}
+              "-DOUTPUT_FILE=${_ZANNASTUDIO_COMPAT_BINARY}"
+              "-DZANNA_PATH=$<TARGET_FILE:zanna>"
+              "-DZANNA_VERSION=${ZANNA_VERSION_STR}"
+              "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
+              -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
+      DEPENDS zanna ${_ZANNASTUDIO_SOURCE_FILES}
+              "${CMAKE_SOURCE_DIR}/src/buildmeta/VERSION"
+      WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+      COMMENT "Building Zanna Studio native binary"
+      VERBATIM)
+    add_custom_target(zannastudio_native ALL
+      DEPENDS "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_BUILDINFO}"
+              "${_ZANNASTUDIO_COMPAT_BINARY}" "${_ZANNASTUDIO_COMPAT_BUILDINFO}")
+    install(PROGRAMS "${_ZANNASTUDIO_BINARY}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
   install(FILES "${_ZANNASTUDIO_BUILDINFO}" DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 

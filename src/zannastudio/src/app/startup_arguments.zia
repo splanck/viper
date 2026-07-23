@@ -1,0 +1,53 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/app/startup_arguments.zia
+// Purpose: Identify an explicitly supplied startup document without treating
+//          a native process executable as a document argument.
+// Key invariants:
+//   - Binary process identity is never admitted as a user document.
+//   - Argument zero remains usable by runners that expose only user arguments.
+//   - Options and nonexistent paths are ignored.
+// Ownership/Lifetime: Stateless startup helper.
+// Links: zannastudio/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
+module startup_arguments;
+
+bind "../core/document_manager";
+
+bind Env = Zanna.System.Environment;
+bind File = Zanna.IO.File;
+bind Str = Zanna.String;
+
+/// @brief Whether one argv entry is an explicit file supplied by the user.
+/// @details Native programs expose their executable path at argv[0], while the
+///          VM runner exposes its first user argument there. Rejecting binary
+///          payloads handles the native identity safely without discarding a
+///          valid runner-supplied source path.
+expose func IsUserFileArgument(index: Integer, value: String) -> Boolean {
+    if index < 0 or value == "" or Str.StartsWith(value, "-")
+        or File.Exists(value) == false {
+        return false;
+    }
+    if index == 0 and document_manager.IsEditableTextFile(value) == false {
+        return false;
+    }
+    return true;
+}
+
+/// @brief Return the first existing positional user file.
+expose func CommandLineFile() -> String {
+    var i = 0;
+    while i < Env.GetArgumentCount() {
+        var arg = Env.GetArgument(i);
+        if IsUserFileArgument(i, arg) { return arg; }
+        i = i + 1;
+    }
+    return "";
+}

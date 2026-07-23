@@ -1745,6 +1745,28 @@ function(zanna_add_runtime_tests)
     zanna_add_test_labels(test_rt_gui_runtime requires_display)
     set_tests_properties(test_rt_gui_runtime PROPERTIES RESOURCE_LOCK zanna_display)
 
+    if (APPLE AND TARGET zannagfx)
+        zanna_add_test(test_rt_gui_macos_menu
+                ${ZANNA_TESTS_DIR}/runtime/RTGuiMacMenuTests.mm)
+        target_compile_definitions(test_rt_gui_macos_menu PRIVATE
+                ZANNA_ENABLE_GRAPHICS
+                _DARWIN_C_SOURCE)
+        target_link_libraries(test_rt_gui_macos_menu PRIVATE
+                ${ZANNA_RUNTIME_TEST_LIBS}
+                zannagfx
+                zannagui)
+        # Cocoa exposes an unbundled executable's leaf name as the application
+        # identity in the system menu bar. Match the shipping macOS payload so
+        # this test exercises the actual product-name contract.
+        set_target_properties(test_rt_gui_macos_menu PROPERTIES
+                OUTPUT_NAME "Zanna Studio")
+        zanna_add_ctest(test_rt_gui_macos_menu test_rt_gui_macos_menu)
+        zanna_add_test_labels(test_rt_gui_macos_menu
+                runtime gui requires_macos requires_display)
+        set_tests_properties(test_rt_gui_macos_menu PROPERTIES
+                RESOURCE_LOCK zanna_display)
+    endif ()
+
     if (UNIX AND NOT APPLE AND
         (ZANNAGFX_BACKEND STREQUAL "Wayland" OR ZANNAGFX_BACKEND STREQUAL "LinuxAuto" OR
          ZANNAGFX_BACKEND STREQUAL "X11"))

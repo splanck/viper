@@ -319,8 +319,8 @@ static BOOL CALLBACK win32_set_dpi_awareness_once(PINIT_ONCE init_once,
 /// @brief Load an application icon placed beside the running executable.
 /// @details The convention `<executable-basename>.ico` lets packaged Zanna applications carry
 ///          their own identity without adding icon concerns to the runtime C ABI.  Zanna Studio is
-///          installed as `zannastudio.exe` plus `zannastudio.ico`; other applications fall back to the
-///          standard Windows application icon when no adjacent icon is present.
+///          installed as `zannastudio.exe` plus `zannastudio.ico`; other applications fall back to
+///          the standard Windows application icon when no adjacent icon is present.
 static HICON win32_load_adjacent_application_icon(int width, int height) {
     WCHAR path[32768];
     DWORD length = GetModuleFileNameW(NULL, path, (DWORD)(sizeof(path) / sizeof(path[0])));
@@ -868,6 +868,22 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
     }
 
     switch (msg) {
+        case WM_GETMINMAXINFO: {
+            MINMAXINFO *limits = (MINMAXINFO *)lparam;
+            if (!limits || win->min_width <= 0 || win->min_height <= 0)
+                break;
+            int32_t client_w = win32_logical_window_to_client_coord(win, win->min_width);
+            int32_t client_h = win32_logical_window_to_client_coord(win, win->min_height);
+            RECT rect = {0, 0, client_w, client_h};
+            DWORD style = (DWORD)GetWindowLong(hwnd, GWL_STYLE);
+            DWORD exstyle = (DWORD)GetWindowLong(hwnd, GWL_EXSTYLE);
+            if (win32_adjust_window_rect_for_scale(win, &rect, style, FALSE, exstyle)) {
+                limits->ptMinTrackSize.x = rect.right - rect.left;
+                limits->ptMinTrackSize.y = rect.bottom - rect.top;
+            }
+            return 0;
+        }
+
         case WM_CLOSE: {
             /* User clicked close button - enqueue CLOSE event but don't destroy window */
             vgfx_internal_event_lock(win);
@@ -2179,6 +2195,21 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     }
 }
 
+void vgfx_platform_set_window_min_size(struct vgfx_window *win, int32_t w, int32_t h) {
+    if (!win || !win->platform_data || w <= 0 || h <= 0)
+        return;
+    vgfx_win32_data *data = (vgfx_win32_data *)win->platform_data;
+    if (!data->hwnd)
+        return;
+    SetWindowPos(data->hwnd,
+                 NULL,
+                 0,
+                 0,
+                 0,
+                 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
+
 void *vgfx_get_native_display(vgfx_window_t window) {
     (void)window;
     return NULL; /* Windows doesn't have a separate display connection */
@@ -2208,9 +2239,8 @@ vgfx_window_capabilities_t vgfx_get_window_capabilities(vgfx_window_t window) {
     if (!window || !window->platform_data)
         return 0;
     return VGFX_CAP_WINDOW_POSITION | VGFX_CAP_FOCUS_REQUEST | VGFX_CAP_CURSOR_WARP |
-           VGFX_CAP_RELATIVE_MOUSE | VGFX_CAP_TEXT_COMPOSITION |
-           VGFX_CAP_SERVER_DECORATIONS | VGFX_CAP_ACTIVATION | VGFX_CAP_CLIPBOARD_TEXT |
-           VGFX_CAP_FILE_DROP;
+           VGFX_CAP_RELATIVE_MOUSE | VGFX_CAP_TEXT_COMPOSITION | VGFX_CAP_SERVER_DECORATIONS |
+           VGFX_CAP_ACTIVATION | VGFX_CAP_CLIPBOARD_TEXT | VGFX_CAP_FILE_DROP;
 }
 
 void vgfx_platform_warp_cursor(vgfx_window_t window, int32_t x, int32_t y) {

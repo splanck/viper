@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-21
+last-verified: 2026-07-22
 ---
 
 # Architecture Decision Records
@@ -121,6 +121,12 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0107](0107-gui-theme-accessibility-input-and-render-policy.md) — Unify GUI Theme, Accessibility, Input, and Rendering State
 - [ADR 0108](0108-gui-control-layout-and-model-completeness.md) — Complete the GUI Control, Layout, and Virtual Model Surface
 - [ADR 0109](0109-gui-dialog-media-scheduling-and-automation.md) — Make GUI Dialogs, Media, and Automation Frame-Driven
+- [ADR 0148](0148-bounded-directory-paging.md) — Page Immediate Directory Entries Without Blocking GUI Work Loops
+- [ADR 0150](0150-gui-native-minimum-window-size.md) — Enforce GUI Minimum Window Sizes Through Native Adapters
+- [ADR 0151](0151-transactional-multi-root-workspace-edits.md) — Bound Transactional Workspace Edits to Explicit Multiple Roots
+- [ADR 0152](0152-stable-file-identity-for-editor-documents.md) — Use Stable File Identity for Editor Document De-duplication
+- [ADR 0153](0153-non-following-path-link-inspection.md) — Reject Linked Descendants at Explorer Boundaries
+- [ADR 0154](0154-single-owner-split-editor-documents.md) — Give Split-Editor Documents One Live Buffer Owner
 
 ## Graphics3D & Game Systems
 
@@ -178,3 +184,4 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0025](0025-windows-release-installer-workflow.md) — Windows Release Installer Workflow
 - [ADR 0073](0073-cross-platform-installer-release-pipeline.md) — Cross-Platform Installer Release Pipeline
 - [ADR 0103](0103-windows-developer-installer-v2.md) — Windows Developer Installer v2
+- [ADR 0149](0149-macos-zanna-studio-application-identity.md) — Preserve Zanna Studio Identity in the macOS Application Menu

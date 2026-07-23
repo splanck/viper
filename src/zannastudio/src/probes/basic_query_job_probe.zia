@@ -1,0 +1,196 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/basic_query_job_probe.zia
+// Purpose: Verify asynchronous BASIC editor-query ownership, coalescing,
+//          cancellation, failure reporting, and result shapes.
+// Key invariants:
+//   - Rapid replacement starts only the active and newest queued request.
+//   - Cancelled generations never become observable completions.
+// Ownership/Lifetime:
+//   - The probe owns each BasicQueryJob until all active callbacks drain.
+//   - Returned BasicQueryRequest objects remain valid after Future completion.
+// Links: zannastudio/src/editor/basic_query_job.zia
+//
+//===----------------------------------------------------------------------===//
+
+module basic_query_job_probe;
+
+bind "../editor/basic_query_job";
+
+bind Clock = Zanna.Time.Clock;
+bind Map = Zanna.Collections.Map;
+bind Obj = Zanna.Core.Object;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind Terminal = Zanna.Terminal;
+
+final BASIC_QUERY_WAIT_TICKS = 8000;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func waitForCompletion(job: basic_query_job.BasicQueryJob)
+    -> basic_query_job.BasicQueryRequest {
+    var tick = 0;
+    while tick < BASIC_QUERY_WAIT_TICKS {
+        job.Pump();
+        if job.HasCompleted() {
+            return job.TakeCompleted();
+        }
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    return null;
+}
+
+func waitForIdle(job: basic_query_job.BasicQueryJob) -> Boolean {
+    var tick = 0;
+    while tick < BASIC_QUERY_WAIT_TICKS {
+        job.Pump();
+        if job.IsBusy() == false { return true; }
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    return false;
+}
+
+func main() {
+    // Queue three requests without pumping. The first may finish in the
+    // background, but it remains the single active Future until Pump observes
+    // it; the middle request must be replaced before it ever starts.
+    var coalesced = new basic_query_job.BasicQueryJob();
+    var completionSource = "DIM total AS INTEGER\ntotal = 1\nPRINT to";
+    var gen1 = coalesced.Queue(basic_query_job.QUERY_COMPLETION,
+                               completionSource, "first.bas", 3, 9);
+    var gen2 = coalesced.Queue(basic_query_job.QUERY_HOVER,
+                               completionSource, "middle.bas", 2, 0);
+    var symbolSource = "SUB Greet()\n  PRINT \"hi\"\nEND SUB\n";
+    var gen3 = coalesced.Queue(basic_query_job.QUERY_SYMBOLS,
+                               symbolSource, "latest.bas", 0, 0);
+    if gen1 <= 0 or gen2 <= gen1 or gen3 <= gen2 {
+        fail("request generations are not monotonic");
+        return;
+    }
+    if coalesced.startedCount != 1 or coalesced.queuedCount != 3
+       or coalesced.coalescedCount != 1 or coalesced.cancelledCount != 1 {
+        fail("rapid requests were not bounded before pump");
+        return;
+    }
+
+    var symbols = waitForCompletion(coalesced);
+    if symbols == null or symbols!.generation != gen3 or symbols!.succeeded == false {
+        fail("latest coalesced request did not complete");
+        return;
+    }
+    if coalesced.startedCount != 2 or coalesced.completedCount != 1 {
+        fail("coalesced request started an obsolete worker");
+        return;
+    }
+    if Str.IndexOf(Obj.ToString(symbols!.result), "GREET") == 0 {
+        fail("symbol result shape");
+        return;
+    }
+
+    // A large snapshot must not change the one-active/one-latest contract.
+    // Queue a small clean replacement before Pump; the large parse drains in
+    // the background and can never publish over the newer document.
+    var sourceBuilder = new Zanna.Text.StringBuilder();
+    var largeLine = 0;
+    while largeLine < 10000 {
+        sourceBuilder.AppendLine("DIM value AS INTEGER");
+        largeLine = largeLine + 1;
+    }
+    var largeJob = new basic_query_job.BasicQueryJob();
+    var largeGeneration = largeJob.Queue(
+        basic_query_job.QUERY_DIAGNOSTICS,
+        sourceBuilder.ToString(), "large_old.bas", 0, 0);
+    var latestLargeGeneration = largeJob.Queue(
+        basic_query_job.QUERY_DIAGNOSTICS,
+        "DIM latest AS INTEGER\nlatest = 1\n", "large_latest.bas", 0, 0);
+    if largeGeneration <= 0 or latestLargeGeneration <= largeGeneration
+       or largeJob.startedCount != 1 or largeJob.cancelledCount != 1 {
+        fail("large-file request was not coalesced");
+        return;
+    }
+    var largeLatest = waitForCompletion(largeJob);
+    if largeLatest == null or largeLatest!.generation != latestLargeGeneration
+       or largeLatest!.path != "large_latest.bas" or largeLatest!.succeeded == false
+       or Seq.get_Count(largeLatest!.result) != 0 or largeJob.startedCount != 2 {
+        fail("large-file stale result contract");
+        return;
+    }
+
+    var diagnostics = new basic_query_job.BasicQueryJob();
+    diagnostics.Queue(basic_query_job.QUERY_DIAGNOSTICS,
+                      "DIM x AS INTEGER\nx = \"hello\"\n", "diagnostics.bas", 0, 0);
+    var diagnosticRequest = waitForCompletion(diagnostics);
+    if diagnosticRequest == null or diagnosticRequest!.succeeded == false
+       or diagnosticRequest!.result == null
+       or Seq.get_Count(diagnosticRequest!.result) == 0 {
+        fail("diagnostic result shape");
+        return;
+    }
+
+    var completion = new basic_query_job.BasicQueryJob();
+    completion.Queue(basic_query_job.QUERY_COMPLETION,
+                     completionSource, "completion.bas", 3, 9);
+    var completionRequest = waitForCompletion(completion);
+    if completionRequest == null or completionRequest!.succeeded == false
+       or completionRequest!.result == null
+       or Seq.get_Count(completionRequest!.result) == 0 {
+        fail("completion result shape");
+        return;
+    }
+
+    var hover = new basic_query_job.BasicQueryJob();
+    hover.Queue(basic_query_job.QUERY_HOVER,
+                completionSource, "hover.bas", 2, 0);
+    var hoverRequest = waitForCompletion(hover);
+    if hoverRequest == null or hoverRequest!.succeeded == false
+       or Map.GetBool(hoverRequest!.result, "available") == false {
+        fail("hover result shape");
+        return;
+    }
+
+    var signature = new basic_query_job.BasicQueryJob();
+    var signatureSource = "SUB Greet(name$)\n  PRINT name$\nEND SUB\nGreet(\"Ada\")\n";
+    signature.Queue(basic_query_job.QUERY_SIGNATURE,
+                    signatureSource, "signature.bas", 4, 8);
+    var signatureRequest = waitForCompletion(signature);
+    if signatureRequest == null or signatureRequest!.succeeded == false
+       or Map.GetBool(signatureRequest!.result, "available") == false
+       or Map.GetStr(signatureRequest!.result, "name") != "Greet" {
+        fail("signature result shape");
+        return;
+    }
+
+    var cancelled = new basic_query_job.BasicQueryJob();
+    cancelled.Queue(basic_query_job.QUERY_DIAGNOSTICS,
+                    "DIM value AS INTEGER\n", "cancelled.bas", 0, 0);
+    cancelled.Cancel();
+    if waitForIdle(cancelled) == false {
+        fail("cancelled request did not drain");
+        return;
+    }
+    if cancelled.HasCompleted() or cancelled.TakeCompleted() != null {
+        fail("cancelled request became observable");
+        return;
+    }
+
+    var invalid = new basic_query_job.BasicQueryJob();
+    invalid.Queue(999, "", "invalid.bas", 0, 0);
+    var invalidRequest = waitForCompletion(invalid);
+    if invalidRequest == null or invalidRequest!.succeeded
+       or invalidRequest!.error != "Unsupported BASIC language query" {
+        fail("invalid query failure contract");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

@@ -1,3 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/build_commands.zia
+// Purpose: Save execution inputs, launch build/run jobs, and present their
+//          streamed output and diagnostics in Zanna Studio.
+// Key invariants:
+//   - Project roots remain valid build/run targets without an open editor tab.
+//   - Current-file targets must be saved, editable documents.
+//   - At most one build/run job is active at a time.
+// Ownership/Lifetime:
+//   - This stateless module borrows shell, document, project, and job models.
+// Links: zannastudio/src/build/build_system.zia,
+//        zannastudio/src/build/run_config.zia
+//
+//===----------------------------------------------------------------------===//
+
 module build_commands;
 
 bind "../ui/app_shell";
@@ -19,10 +40,10 @@ bind Obj = Zanna.Core.Object;
 
 // ============================================================================
 // MODULE: build_commands
-// PURPOSE: Build / BuildAndRun / Run / Stop command handlers. Saves the
-//          active document, starts argument-vector Process jobs through
-//          BuildSystem, and routes streamed output + diagnostics to the
-//          output panel, diagnostics panel, minimap, and status bar.
+// PURPOSE: Build / BuildAndRun / Run / Stop command handlers. Saves active
+//          documents when present, starts argument-vector Process jobs through
+//          BuildSystem, and routes streamed output + diagnostics to the output
+//          panel, diagnostics panel, minimap, and status bar.
 //
 // WHERE-THIS-FITS: Command handlers wired into main.zia's command
 //          dispatcher. Each handler receives the AppShell, document
@@ -30,10 +51,11 @@ bind Obj = Zanna.Core.Object;
 //          every relevant surface.
 //
 // KEY-DESIGN-CHOICES:
-//   * SAVE-BEFORE-BUILD. Every handler calls SaveEditorState +
-//     docMgr.SaveActive so the on-disk file matches what the user sees.
-//     Untitled documents bail with "Save file before building" — we
-//     don't want to silently invent a filename.
+//   * PROJECT-ONLY BUILDS. An open project remains executable with no editor
+//     tabs; RunConfig targets the workspace root and its manifest entry.
+//   * SAVE-BEFORE-BUILD. When a document is active, every handler calls
+//     SaveEditorState + the execution-save workflow so disk matches the editor.
+//     Untitled documents bail rather than silently inventing a filename.
 //   * TOAST + STATUS BAR. Every result reports through both the toast
 //     popup AND the status bar. Toast is for ephemeral notification;
 //     the status bar persists so the user can re-read the result later.
@@ -51,6 +73,55 @@ func ErrorMarkerColor() -> Integer { return theme_colors.Rgb("accentDanger"); }
 func WarningMarkerColor() -> Integer { return theme_colors.Rgb("accentWarning"); }
 func InfoMarkerColor() -> Integer { return theme_colors.Rgb("fgTertiary"); }
 
+/// @brief Return whether Build/Run has a truthful current target.
+/// @details An open project targets its root even when no editor tab is open.
+///          Outside a project, execution requires a saved editable document.
+/// @param docMgr Current document manager, if available.
+/// @param projMgr Current project manager, if available.
+/// @return True when a project or saved document can produce a RunConfig.
+expose func HasExecutionTarget(docMgr: document_manager.DocumentManager,
+                               projMgr: project_manager.ProjectManager) -> Boolean {
+    if projMgr != null and projMgr.IsOpen() { return true; }
+    if docMgr == null { return false; }
+    var doc = docMgr.GetActive();
+    return doc != null and doc!.isNew == false and doc!.filePath != ""
+           and doc!.isReadOnlyPreview == false;
+}
+
+/// @brief Report a canceled save preflight using consistent Build/Run wording.
+func ReportCanceledExecution(shell: app_shell.AppShell,
+                             actionLabel: String,
+                             result: file_commands.SaveAllResult) {
+    if result != null and result.message != "" {
+        shell.SetStatusLeft(actionLabel + " canceled: " + result.message);
+    } else {
+        shell.SetStatusLeft(actionLabel + " canceled: files were not saved");
+    }
+}
+
+/// @brief Start a prepared build/run config and synchronize visible job state.
+func StartExecutionConfig(shell: app_shell.AppShell,
+                          buildSys: build_system.BuildSystem,
+                          locStore: locations.LocationStore,
+                          cfg: run_config.RunConfig) {
+    var actionLabel = "Build";
+    var progressLabel = "Building";
+    if cfg != null and cfg.action == run_config.ACTION_RUN {
+        actionLabel = "Run";
+        progressLabel = "Running";
+    }
+    if buildSys.StartConfig(cfg) {
+        shell.SetBuildJobActive(true, buildSys.activeName);
+        shell.SetStatusLeft(progressLabel + ": " + cfg.targetPath);
+        shell.toolPanels.SetBuildOutput("Started: " + FormatCommand(cfg));
+    } else {
+        shell.SetBuildJobActive(false, "");
+        shell.SetStatusLeft(actionLabel + " failed to start");
+        GUI.Toast.Error(actionLabel + " did not start");
+        PopulateBuildOutput(shell, buildSys, locStore);
+    }
+}
+
 /// @brief Build the active file, refresh diagnostics, report status.
 func handleBuild(shell: app_shell.AppShell,
                  docMgr: document_manager.DocumentManager,
@@ -63,34 +134,26 @@ func handleBuild(shell: app_shell.AppShell,
     if EnsureNoActiveJob(shell, buildSys, "start a new build") == false { return; }
     file_commands.SaveEditorState(docMgr, engine);
     var buildDoc = docMgr.GetActive();
-    if buildDoc != null {
-        if buildDoc.isNew == false {
-            var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
-                                                                  saveAllBeforeBuild);
-            if saveResult.success == false {
-                if saveResult.message != "" {
-                    shell.SetStatusLeft("Build canceled: " + saveResult.message);
-                } else {
-                    shell.SetStatusLeft("Build canceled: files were not saved");
-                }
-                return;
-            }
-            file_commands.SaveEditorState(docMgr, engine);
-            var cfg = run_config.ForDocument(run_config.ACTION_BUILD, buildDoc, projMgr);
-            if buildSys.StartConfig(cfg) {
-                shell.SetBuildJobActive(true, buildSys.activeName);
-                shell.SetStatusLeft("Building: " + cfg.targetPath);
-                shell.toolPanels.SetBuildOutput("Started: " + FormatCommand(cfg));
-            } else {
-                shell.SetBuildJobActive(false, "");
-                shell.SetStatusLeft("Build failed to start");
-                GUI.Toast.Error("Build did not start");
-                PopulateBuildOutput(shell, buildSys, locStore);
-            }
-        } else {
-            shell.SetStatusLeft("Save file before building");
-        }
+    var projectTarget = projMgr != null and projMgr.IsOpen();
+    if projectTarget == false
+       and (buildDoc == null or buildDoc!.isNew or buildDoc!.isReadOnlyPreview) {
+        shell.SetStatusLeft("Open a project or saved file before building");
+        return;
     }
+
+    var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
+                                                          saveAllBeforeBuild);
+    if saveResult.success == false {
+        ReportCanceledExecution(shell, "Build", saveResult);
+        return;
+    }
+    file_commands.SaveEditorState(docMgr, engine);
+    buildDoc = docMgr.GetActive();
+    var cfg = run_config.ForDocument(run_config.ACTION_BUILD, null, projMgr);
+    if buildDoc != null {
+        cfg = run_config.ForDocument(run_config.ACTION_BUILD, buildDoc!, projMgr);
+    }
+    StartExecutionConfig(shell, buildSys, locStore, cfg);
 }
 
 /// @brief Build and run in one step; refresh diagnostics; report status.
@@ -105,34 +168,26 @@ func handleBuildAndRun(shell: app_shell.AppShell,
     if EnsureNoActiveJob(shell, buildSys, "start a new run") == false { return; }
     file_commands.SaveEditorState(docMgr, engine);
     var runDoc = docMgr.GetActive();
-    if runDoc != null {
-        if runDoc.isNew == false {
-            var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
-                                                                  saveAllBeforeBuild);
-            if saveResult.success == false {
-                if saveResult.message != "" {
-                    shell.SetStatusLeft("Run canceled: " + saveResult.message);
-                } else {
-                    shell.SetStatusLeft("Run canceled: files were not saved");
-                }
-                return;
-            }
-            file_commands.SaveEditorState(docMgr, engine);
-            var cfg = run_config.ForDocument(run_config.ACTION_RUN, runDoc, projMgr);
-            if buildSys.StartConfig(cfg) {
-                shell.SetBuildJobActive(true, buildSys.activeName);
-                shell.SetStatusLeft("Running: " + cfg.targetPath);
-                shell.toolPanels.SetBuildOutput("Started: " + FormatCommand(cfg));
-            } else {
-                shell.SetBuildJobActive(false, "");
-                shell.SetStatusLeft("Run failed to start");
-                GUI.Toast.Error("Run did not start");
-                PopulateBuildOutput(shell, buildSys, locStore);
-            }
-        } else {
-            shell.SetStatusLeft("Save file before running");
-        }
+    var projectTarget = projMgr != null and projMgr.IsOpen();
+    if projectTarget == false
+       and (runDoc == null or runDoc!.isNew or runDoc!.isReadOnlyPreview) {
+        shell.SetStatusLeft("Open a project or saved file before running");
+        return;
     }
+
+    var saveResult = file_commands.handleSaveForExecution(shell, docMgr, engine, tabs,
+                                                          saveAllBeforeBuild);
+    if saveResult.success == false {
+        ReportCanceledExecution(shell, "Run", saveResult);
+        return;
+    }
+    file_commands.SaveEditorState(docMgr, engine);
+    runDoc = docMgr.GetActive();
+    var cfg = run_config.ForDocument(run_config.ACTION_RUN, null, projMgr);
+    if runDoc != null {
+        cfg = run_config.ForDocument(run_config.ACTION_RUN, runDoc!, projMgr);
+    }
+    StartExecutionConfig(shell, buildSys, locStore, cfg);
 }
 
 /// @brief Run the active file through the configured Zanna run pipeline.

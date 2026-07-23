@@ -1,17 +1,101 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/core/document_manager.zia
+// Purpose: Own open Studio documents and provide safe text-file load/save
+//          operations, including binary and oversized-file rejection.
+// Key invariants:
+//   - One editable document exists per underlying filesystem file identity.
+//   - Non-text payloads never flow into editable buffers or session restore.
+// Ownership/Lifetime:
+//   - DocumentManager owns every Document in its ordered documents list.
+// Links: zannastudio/src/core/session.zia,
+//        zannastudio/src/commands/file_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module document_manager;
 
 bind "document";
 bind "../services/file_utils";
+bind "../services/safe_io";
 
 bind Obj = Zanna.Core.Object;
 bind IO = Zanna.IO;
+bind BinFile = Zanna.IO.BinFile;
 bind Path = Zanna.IO.Path;
 bind Str = Zanna.String;
 bind Map = Zanna.Collections.Map;
 bind Seq = Zanna.Collections.Seq;
 bind WorkspaceEdit = Zanna.Workspace.Edit;
+bind Hash = Zanna.Crypto.Hash;
 
 final MAX_TEXT_OPEN_BYTES = 4000000;
+final TEXT_SNIFF_BYTES = 4096;
+
+/// @brief Explain why a path cannot enter the Studio text editor.
+/// @details File extensions catch known binary formats, while a bounded prefix
+///          scan catches extensionless executables and other binary payloads.
+///          NUL bytes also reject unsupported UTF-16 input rather than silently
+///          corrupting it through the UTF-8 text pipeline.
+/// @param path Candidate file path.
+/// @return Empty string for editable text, otherwise a user-facing reason.
+expose func TextOpenBlockReason(path: String) -> String {
+    if path == "" or !IO.File.Exists(path) {
+        return "The file no longer exists.";
+    }
+    if file_utils.DetectKind(path) == file_utils.DOC_KIND_BINARY_UNSUPPORTED {
+        return "Binary files cannot be opened in the text editor.";
+    }
+    var size = safe_io.SizeBytes(path);
+    if size < 0 {
+        return "The file could not be read.";
+    }
+    if size > MAX_TEXT_OPEN_BYTES {
+        return "Files larger than 4 MB cannot be opened in the text editor.";
+    }
+    if HasNulByteInPrefix(path) {
+        return "Binary or unreadable files cannot be opened in the text editor.";
+    }
+    return "";
+}
+
+/// @brief Return whether a durable path is safe to edit and restore as text.
+/// @param path Candidate file path.
+/// @return True only for existing, bounded, non-binary files.
+expose func IsEditableTextFile(path: String) -> Boolean {
+    return TextOpenBlockReason(path) == "";
+}
+
+/// @brief Detect binary content without loading an entire file.
+/// @param path Existing regular file path.
+/// @return True when the first 4 KiB contains a NUL byte.
+hide func HasNulByteInPrefix(path: String) -> Boolean {
+    if path == "" or IO.File.Exists(path) == false { return false; }
+    try {
+        var stream = BinFile.Open(path, "rb");
+        defer stream.Close();
+        var remaining = safe_io.SizeBytes(path);
+        if remaining < 0 { return true; }
+        if remaining > TEXT_SNIFF_BYTES { remaining = TEXT_SNIFF_BYTES; }
+        var found = false;
+        var i = 0;
+        while i < remaining and !found {
+            if stream.ReadByte() == 0 { found = true; }
+            i = i + 1;
+        }
+        return found;
+    } catch {
+        // A path that vanished or became unreadable during the bounded sniff is
+        // not safe to admit into an editable buffer.
+        return true;
+    }
+    return true;
+}
 
 // ============================================================================
 // MODULE: document_manager
@@ -98,29 +182,64 @@ class DocumentManager {
     /// @note Dedupes by path: identical paths share a Document so edits
     ///       in one place don't fork the buffer.
     expose func OpenFile(path: String) -> document.Document {
-        var existing = FindByPath(path);
+        var canonicalPath = NormalizeDocumentPath(path);
+        var existing = FindByPath(canonicalPath);
         if existing >= 0 {
             activeIndex = existing;
             return documents.get(existing);
         }
 
         var doc = new document.Document();
-        doc.filePath = path;
-        doc.fileName = Path.Name(path);
-        doc.language = file_utils.DetectLanguage(path);
-        doc.kind = file_utils.DetectKind(path);
-        doc.isReadOnlyPreview = IsReadOnlyPreviewPath(path, doc.kind);
-        doc.content = OpenableTextForPath(path, doc.kind);
+        doc.filePath = canonicalPath;
+        doc.fileName = Path.Name(canonicalPath);
+        doc.language = file_utils.DetectLanguage(canonicalPath);
+        doc.kind = file_utils.DetectKind(canonicalPath);
+        var blockReason = TextOpenBlockReason(canonicalPath);
+        doc.isReadOnlyPreview = blockReason != "";
+        if doc.isReadOnlyPreview {
+            doc.content = BlockedPreviewText(canonicalPath, blockReason);
+        } else {
+            var readResult = safe_io.ReadAllTextBounded(canonicalPath,
+                                                        MAX_TEXT_OPEN_BYTES);
+            if readResult.ok {
+                doc.content = readResult.text;
+            } else {
+                doc.isReadOnlyPreview = true;
+                doc.content = BlockedPreviewText(canonicalPath, "The file could not be read.");
+            }
+        }
         doc.isNew = false;
         doc.isModified = false;
-        if IO.File.Exists(path) {
-            doc.lastModifiedOnDisk = IO.File.Modified(path);
-            doc.lastSizeOnDisk = IO.File.SizeBytes(path);
-        }
+        RefreshDiskMetadataFromKnownText(doc, doc.content);
         ClearExternalState(doc);
 
         documents.add(doc);
         activeIndex = documents.count() - 1;
+        return doc;
+    }
+
+    /// @brief Apply crash-recovered text without creating duplicate path owners.
+    /// @details Existing editable files reuse their canonical document/tab. If
+    ///          the origin disappeared or became unsupported, recovery becomes
+    ///          an untitled draft so no unsafe path is read or overwritten.
+    /// @param path Original named-file path, or empty for an untitled swap.
+    /// @param content Last crash-safe buffer text.
+    /// @return Existing/new named document or a fresh recovered draft.
+    expose func ApplyRecoveredText(path: String, content: String) -> document.Document {
+        var doc: document.Document = null;
+        if path != "" and IsEditableTextFile(path) {
+            doc = OpenFile(path);
+        } else {
+            doc = NewDocument();
+            if path != "" {
+                var recoveredName = Path.Name(path);
+                if recoveredName != "" {
+                    doc.fileName = recoveredName + " (Recovered)";
+                }
+            }
+        }
+        doc.content = content;
+        doc.isModified = true;
         return doc;
     }
 
@@ -132,22 +251,58 @@ class DocumentManager {
         return SaveDocument(activeIndex);
     }
 
+    /// @brief Save after the user explicitly accepted a known external state.
+    /// @param observedState Strong disk state shown by the confirmation prompt.
+    /// @return True only when that state can be resolved without a new conflict.
+    expose func SaveActiveAfterExternalConfirmation(observedState: Integer) -> Boolean {
+        if activeIndex < 0 { return false; }
+        return SaveDocumentAfterExternalConfirmation(activeIndex, observedState);
+    }
+
     expose func SaveDocument(index: Integer) -> Boolean {
         if index < 0 or index >= documents.count() { return false; }
         var doc = documents.get(index);
         if doc.isNew { return false; }
         if doc.isReadOnlyPreview { return false; }
-        if IO.File.Exists(doc.filePath) {
-            if WriteExistingTextAtomically(doc.filePath, doc.content) == false {
-                return false;
-            }
-        } else {
-            if WriteTextForSaveAs(doc.filePath, doc.content) == false {
-                return false;
-            }
+        if IO.File.Exists(doc.filePath) == false { return false; }
+        if WriteExistingTextAtomically(doc.filePath, doc.content,
+                                       doc.lastModifiedOnDisk,
+                                       doc.lastSizeOnDisk,
+                                       doc.lastContentHashOnDisk) == false {
+            return false;
         }
         doc.isModified = false;
-        RefreshDiskMetadata(doc);
+        RefreshDiskMetadataFromKnownText(doc, doc.content);
+        ClearExternalState(doc);
+        return true;
+    }
+
+    /// @brief Resolve a save after an explicit external-change confirmation.
+    /// @details Changed files are replaced from one stable current snapshot.
+    ///          Missing/deleted/renamed paths are recreated only while still
+    ///          absent; a file that appeared after the prompt is never clobbered.
+    expose func SaveDocumentAfterExternalConfirmation(index: Integer,
+                                                       observedState: Integer) -> Boolean {
+        if observedState == document.EXTERNAL_STATE_CLEAN {
+            return SaveDocument(index);
+        }
+        if index < 0 or index >= documents.count() { return false; }
+        var doc = documents.get(index);
+        if doc.isNew or doc.isReadOnlyPreview or doc.filePath == "" { return false; }
+
+        var saved = false;
+        if observedState == document.EXTERNAL_STATE_CHANGED {
+            if IO.File.Exists(doc.filePath) == false { return false; }
+            saved = WriteExistingTextAtomically(doc.filePath, doc.content, -1, -1, "");
+        } else if observedState == document.EXTERNAL_STATE_MISSING
+                  or observedState == document.EXTERNAL_STATE_DELETED
+                  or observedState == document.EXTERNAL_STATE_RENAMED {
+            if IO.File.Exists(doc.filePath) { return false; }
+            saved = WriteNewTextAtomically(doc.filePath, doc.content);
+        }
+        if saved == false { return false; }
+        doc.isModified = false;
+        RefreshDiskMetadataFromKnownText(doc, doc.content);
         ClearExternalState(doc);
         return true;
     }
@@ -161,19 +316,45 @@ class DocumentManager {
         if activeIndex < 0 { return false; }
         var doc = documents.get(activeIndex);
         if doc.isReadOnlyPreview { return false; }
-        if WriteTextForSaveAs(path, doc.content) == false {
+        var canonicalPath = NormalizeDocumentPath(path);
+        if SaveAsBlockReason(activeIndex, canonicalPath) != "" { return false; }
+        if WriteTextForSaveAs(canonicalPath, doc.content) == false {
             return false;
         }
-        doc.filePath = path;
-        doc.fileName = Path.Name(path);
-        doc.language = file_utils.DetectLanguage(path);
-        doc.kind = file_utils.DetectKind(path);
+        doc.filePath = canonicalPath;
+        doc.fileName = Path.Name(canonicalPath);
+        doc.language = file_utils.DetectLanguage(canonicalPath);
+        doc.kind = file_utils.DetectKind(canonicalPath);
         doc.isReadOnlyPreview = false;
         doc.isNew = false;
         doc.isModified = false;
-        RefreshDiskMetadata(doc);
+        RefreshDiskMetadataFromKnownText(doc, doc.content);
         ClearExternalState(doc);
         return true;
+    }
+
+    /// @brief Explain why a document cannot be retargeted to a Save As path.
+    /// @details One path must continue to map to one open Document. Rejecting a
+    ///          destination already owned by another tab prevents divergent
+    ///          buffers and an invisible overwrite of that tab's disk content.
+    ///          Known binary extensions are also rejected because the resulting
+    ///          document could not be reopened by Studio's text editor.
+    /// @param index Document that would receive the new path.
+    /// @param path Proposed destination path.
+    /// @return Empty when allowed, otherwise a user-facing reason.
+    expose func SaveAsBlockReason(index: Integer, path: String) -> String {
+        if index < 0 or index >= documents.count() {
+            return "There is no document to save.";
+        }
+        if path == "" { return "Choose a destination path."; }
+        if file_utils.DetectKind(path) == file_utils.DOC_KIND_BINARY_UNSUPPORTED {
+            return "Choose a text or source-code file extension.";
+        }
+        var existing = FindByPath(path);
+        if existing >= 0 and existing != index {
+            return "That file is already open in another tab.";
+        }
+        return "";
     }
 
     expose func SaveDocumentAs(index: Integer, path: String) -> Boolean {
@@ -194,9 +375,13 @@ class DocumentManager {
         while i < documents.count() {
             var doc = documents.get(i);
             if doc.isModified and doc.isNew == false and doc.isReadOnlyPreview == false {
-                if HasExternalChange(i) == false and WriteExistingTextAtomically(doc.filePath, doc.content) {
+                if HasExternalChangeForSave(i) == false
+                   and WriteExistingTextAtomically(doc.filePath, doc.content,
+                                                   doc.lastModifiedOnDisk,
+                                                   doc.lastSizeOnDisk,
+                                                   doc.lastContentHashOnDisk) {
                     doc.isModified = false;
-                    RefreshDiskMetadata(doc);
+                    RefreshDiskMetadataFromKnownText(doc, doc.content);
                     ClearExternalState(doc);
                     count = count + 1;
                 }
@@ -214,11 +399,31 @@ class DocumentManager {
     /// @param path Existing file to replace.
     /// @param content Complete new file contents.
     /// @return true when the runtime reports a successful replacement.
-    hide func WriteExistingTextAtomically(path: String, content: String) -> Boolean {
+    hide func WriteExistingTextAtomically(path: String,
+                                          content: String,
+                                          expectedMtime: Integer,
+                                          expectedSize: Integer,
+                                          expectedHash: String) -> Boolean {
         if path == "" or IO.File.Exists(path) == false { return false; }
         var root = Path.Directory(path);
         if root == "" { return false; }
-        var existingText = IO.File.ReadAllText(path);
+        var beforeMtime = safe_io.Modified(path);
+        var beforeSize = safe_io.SizeBytes(path);
+        if beforeMtime < 0 or beforeSize < 0 { return false; }
+        if expectedMtime >= 0 and beforeMtime != expectedMtime { return false; }
+        if expectedSize >= 0 and beforeSize != expectedSize { return false; }
+        var readResult = safe_io.ReadAllTextBounded(path,
+                                                    MAX_TEXT_OPEN_BYTES);
+        if readResult.ok == false { return false; }
+        var existingText = readResult.text;
+        if IO.File.Exists(path) == false
+           or safe_io.Modified(path) != beforeMtime
+           or safe_io.SizeBytes(path) != beforeSize {
+            return false;
+        }
+        if expectedHash != "" and Hash.Sha256(existingText) != expectedHash {
+            return false;
+        }
 
         var edit = Map.New();
         Map.SetStr(edit, "file", Path.Name(path));
@@ -227,8 +432,8 @@ class DocumentManager {
         Map.SetInt(edit, "endLine", EndLineForText(existingText));
         Map.SetInt(edit, "endColumn", EndColumnForText(existingText));
         Map.SetStr(edit, "newText", content);
-        Map.SetInt(edit, "expectedMtime", IO.File.Modified(path));
-        Map.SetInt(edit, "expectedSize", IO.File.SizeBytes(path));
+        Map.SetInt(edit, "expectedMtime", beforeMtime);
+        Map.SetInt(edit, "expectedSize", beforeSize);
 
         var edits = Seq.New();
         Seq.Push(edits, edit);
@@ -247,49 +452,34 @@ class DocumentManager {
     hide func WriteTextForSaveAs(path: String, content: String) -> Boolean {
         if path == "" { return false; }
         if IO.File.Exists(path) {
-            return WriteExistingTextAtomically(path, content);
+            return WriteExistingTextAtomically(path, content, -1, -1, "");
         }
+        return WriteNewTextAtomically(path, content);
+    }
+
+    /// @brief Atomically create a destination that is still absent.
+    /// @details A final existence check avoids turning a Save As/create race
+    ///          into an overwrite. `File.Move` itself is no-replace on every
+    ///          supported platform.
+    hide func WriteNewTextAtomically(path: String, content: String) -> Boolean {
+        if path == "" or IO.File.Exists(path) { return false; }
         var dir = Path.Directory(path);
         if dir == "" { return false; }
-        var tempPath = SaveAsTempPath(dir, Path.Name(path));
+        var tempPath = safe_io.SiblingTempPath(path, "save");
         if tempPath == "" { return false; }
-        IO.File.WriteAllText(tempPath, content);
-        if IO.File.Exists(tempPath) == false {
+        if safe_io.WriteAllText(tempPath, content) == false {
+            safe_io.DeleteFile(tempPath);
             return false;
         }
-        IO.File.Move(tempPath, path);
-        if IO.File.Exists(path) == false {
-            if IO.File.Exists(tempPath) {
-                IO.File.Delete(tempPath);
-            }
+        if IO.File.Exists(path) {
+            safe_io.DeleteFile(tempPath);
+            return false;
+        }
+        if safe_io.MoveFile(tempPath, path) == false or IO.File.Exists(path) == false {
+            safe_io.DeleteFile(tempPath);
             return false;
         }
         return true;
-    }
-
-    /// @brief Choose an unused same-directory temporary path for Save As.
-    /// @details The path includes the target basename, current tick, and a
-    ///          bounded numeric suffix. Same-directory placement preserves the
-    ///          eventual move/rename behavior while avoiding deterministic temp
-    ///          collisions when multiple saves start during the same clock tick.
-    /// @param dir Existing destination directory.
-    /// @param name Basename of the user-selected target file.
-    /// @return Temporary path, or an empty string when no free candidate exists.
-    hide func SaveAsTempPath(dir: String, name: String) -> String {
-        if dir == "" or name == "" { return ""; }
-        var base = Path.Join(dir, "." + name + ".zannastudio-tmp-" + Zanna.Time.Clock.NowMs());
-        var attempt = 0;
-        while attempt < 128 {
-            var candidate = base;
-            if attempt > 0 {
-                candidate = base + "-" + attempt;
-            }
-            if IO.File.Exists(candidate) == false {
-                return candidate;
-            }
-            attempt = attempt + 1;
-        }
-        return "";
     }
 
     /// @brief Refresh a document's saved on-disk metadata after load/save.
@@ -300,8 +490,35 @@ class DocumentManager {
         if doc == null or doc.filePath == "" or IO.File.Exists(doc.filePath) == false {
             return;
         }
-        doc.lastModifiedOnDisk = IO.File.Modified(doc.filePath);
-        doc.lastSizeOnDisk = IO.File.SizeBytes(doc.filePath);
+        var diskText = "";
+        if doc.isReadOnlyPreview == false and IsEditableTextFile(doc.filePath) {
+            var readResult = safe_io.ReadAllTextBounded(doc.filePath,
+                                                        MAX_TEXT_OPEN_BYTES);
+            if readResult.ok { diskText = readResult.text; }
+        }
+        RefreshDiskMetadataFromKnownText(doc, diskText);
+    }
+
+    /// @brief Refresh metadata from text already known to match the disk file.
+    hide func RefreshDiskMetadataFromKnownText(doc: document.Document,
+                                               diskText: String) {
+        if doc == null or doc.filePath == "" or IO.File.Exists(doc.filePath) == false {
+            return;
+        }
+        var modified = safe_io.Modified(doc.filePath);
+        var size = safe_io.SizeBytes(doc.filePath);
+        if modified < 0 or size < 0 {
+            doc.lastModifiedOnDisk = 0;
+            doc.lastSizeOnDisk = 0;
+            doc.lastContentHashOnDisk = "";
+            return;
+        }
+        doc.lastModifiedOnDisk = modified;
+        doc.lastSizeOnDisk = size;
+        doc.lastContentHashOnDisk = "";
+        if doc.isReadOnlyPreview == false {
+            doc.lastContentHashOnDisk = Hash.Sha256(diskText);
+        }
     }
 
     /// @brief Clear all remembered external-disk conflict state for @p doc.
@@ -311,14 +528,6 @@ class DocumentManager {
         doc.externalChangeNotified = false;
         doc.externalState = document.EXTERNAL_STATE_CLEAN;
         doc.externalMessage = "";
-    }
-
-    /// @brief Compute the last line number of an existing file for full-file replacement.
-    /// @details The runtime workspace edit range is expressed in 1-based line and
-    ///          column coordinates. This helper reads the current on-disk file so
-    ///          external changes are caught by expected size/mtime validation.
-    hide func EndLineForWholeFile(path: String) -> Integer {
-        return EndLineForText(IO.File.ReadAllText(path));
     }
 
     /// @brief Compute the last 1-based line number for a full-file edit range.
@@ -331,13 +540,6 @@ class DocumentManager {
         var count = Seq.get_Count(lines);
         if count <= 0 { return 1; }
         return count;
-    }
-
-    /// @brief Compute the exclusive end column of the last line in an existing file.
-    /// @details CRLF files keep the carriage return in the split line, matching
-    ///          the runtime's byte/character scan and preserving correct EOF ranges.
-    hide func EndColumnForWholeFile(path: String) -> Integer {
-        return EndColumnForText(IO.File.ReadAllText(path));
     }
 
     /// @brief Compute the exclusive end column for a full-file edit range.
@@ -357,6 +559,36 @@ class DocumentManager {
         return ExternalState(index) != document.EXTERNAL_STATE_CLEAN;
     }
 
+    /// @brief Strong save-time external-change check including content identity.
+    /// @details Polling uses timestamp/size for responsiveness. A manual or
+    ///          automatic save also hashes the current bounded text so same-size,
+    ///          same-timestamp rewrites cannot be silently overwritten.
+    expose func HasExternalChangeForSave(index: Integer) -> Boolean {
+        return ExternalStateForSave(index) != document.EXTERNAL_STATE_CLEAN;
+    }
+
+    /// @brief Return the strong disk state used immediately before saving.
+    expose func ExternalStateForSave(index: Integer) -> Integer {
+        var state = ExternalState(index);
+        if state != document.EXTERNAL_STATE_CLEAN { return state; }
+        if index < 0 or index >= documents.count() { return state; }
+        var doc = documents.get(index);
+        if doc == null or doc.isNew or doc.filePath == ""
+           or doc.lastContentHashOnDisk == "" {
+            return state;
+        }
+        if IsEditableTextFile(doc.filePath) == false {
+            return document.EXTERNAL_STATE_CHANGED;
+        }
+        var readResult = safe_io.ReadAllTextBounded(doc.filePath,
+                                                    MAX_TEXT_OPEN_BYTES);
+        if readResult.ok == false
+           or Hash.Sha256(readResult.text) != doc.lastContentHashOnDisk {
+            return document.EXTERNAL_STATE_CHANGED;
+        }
+        return state;
+    }
+
     /// @brief Return the current disk state for an open document.
     /// @details The probe considers explicit watcher hints first, then verifies
     ///          whether the path exists and whether its timestamp or size changed.
@@ -371,8 +603,11 @@ class DocumentManager {
             return document.EXTERNAL_STATE_MISSING;
         }
         if doc.lastModifiedOnDisk > 0 {
-            var current = IO.File.Modified(doc.filePath);
-            var currentSize = IO.File.SizeBytes(doc.filePath);
+            var current = safe_io.Modified(doc.filePath);
+            var currentSize = safe_io.SizeBytes(doc.filePath);
+            if current < 0 or currentSize < 0 {
+                return document.EXTERNAL_STATE_CHANGED;
+            }
             if current != doc.lastModifiedOnDisk or currentSize != doc.lastSizeOnDisk {
                 return document.EXTERNAL_STATE_CHANGED;
             }
@@ -447,53 +682,44 @@ class DocumentManager {
         if IO.File.Exists(doc.filePath) == false { return false; }
         doc.language = file_utils.DetectLanguage(doc.filePath);
         doc.kind = file_utils.DetectKind(doc.filePath);
-        doc.isReadOnlyPreview = IsReadOnlyPreviewPath(doc.filePath, doc.kind);
-        doc.content = OpenableTextForPath(doc.filePath, doc.kind);
-        RefreshDiskMetadata(doc);
+        var blockReason = TextOpenBlockReason(doc.filePath);
+        if blockReason != "" {
+            doc.isReadOnlyPreview = true;
+            doc.content = BlockedPreviewText(doc.filePath, blockReason);
+        } else {
+            var readResult = safe_io.ReadAllTextBounded(doc.filePath,
+                                                        MAX_TEXT_OPEN_BYTES);
+            if readResult.ok == false { return false; }
+            doc.isReadOnlyPreview = false;
+            doc.content = readResult.text;
+        }
+        RefreshDiskMetadataFromKnownText(doc, doc.content);
         doc.isModified = false;
         ClearExternalState(doc);
         return true;
     }
 
-    /// @brief Decide whether a file should open as a non-saving preview.
-    /// @details This intentionally checks extension-derived binary kinds and file
-    ///          size before any text load, keeping the editor responsive for
-    ///          unsupported images and unusually large text files.
-    /// @param path Absolute path requested by the file tree or open dialog.
-    /// @param kind Document kind detected from the extension.
-    /// @return true when the editor should show preview text and block saves.
-    hide func IsReadOnlyPreviewPath(path: String, kind: Integer) -> Boolean {
-        if kind == file_utils.DOC_KIND_BINARY_UNSUPPORTED { return true; }
-        return IO.File.SizeBytes(path) > MAX_TEXT_OPEN_BYTES;
-    }
-
-    /// @brief Return editor-safe text for a file path without loading unsupported payloads.
-    /// @details Binary image kinds and very large files are represented by a short
-    ///          preview document instead of pushing raw bytes or multi-megabyte
-    ///          text through the CodeEditor. This keeps tree clicks responsive while
-    ///          preserving the open tab, breadcrumb, and file path.
-    /// @param path Absolute path requested by the file tree or open dialog.
-    /// @param kind Document kind detected from the extension.
-    /// @return File text for ordinary files, or a preview explanation for
-    ///         unsupported/oversized files.
-    hide func OpenableTextForPath(path: String, kind: Integer) -> String {
-        if kind == file_utils.DOC_KIND_BINARY_UNSUPPORTED {
-            return "Binary preview is not available for this file.\n\n"
-                + "Path: " + path + "\n";
+    /// @brief Format a non-editable tab without embedding untrusted file bytes.
+    hide func BlockedPreviewText(path: String, reason: String) -> String {
+        var message = reason;
+        if message == "" { message = "This file is not available in the text editor."; }
+        if Str.StartsWith(reason, "Binary") {
+            message = "Binary preview is not available for this file.";
         }
-
-        var size = IO.File.SizeBytes(path);
+        if Str.StartsWith(reason, "Files larger") {
+            message = "This file is too large to open in the text editor.";
+        }
+        var size = safe_io.SizeBytes(path);
+        var details = message + "\n\nPath: " + path + "\n";
         if size > MAX_TEXT_OPEN_BYTES {
-            return "This file is too large to open in the text editor.\n\n"
-                + "Path: " + path + "\n"
-                + "Size: " + size + " bytes\n"
+            details = details + "Size: " + size + " bytes\n"
                 + "Limit: " + MAX_TEXT_OPEN_BYTES + " bytes\n";
         }
-
-        return IO.File.ReadAllText(path);
+        return details;
     }
 
     expose func UpdatePath(oldPath: String, newPath: String) -> Boolean {
+        if RetargetBlockReason(oldPath, newPath, false) != "" { return false; }
         var idx = FindByPath(oldPath);
         if idx >= 0 {
             RetargetDocument(documents.get(idx), newPath);
@@ -504,32 +730,91 @@ class DocumentManager {
 
     expose func UpdatePathPrefix(oldPrefix: String, newPrefix: String) -> Integer {
         if oldPrefix == "" or newPrefix == "" { return 0; }
+        if RetargetBlockReason(oldPrefix, newPrefix, true) != "" { return 0; }
+        var normalizedOldPrefix = NormalizeDocumentPath(oldPrefix);
+        var normalizedNewPrefix = NormalizeDocumentPath(newPrefix);
         var changed = 0;
-        var prefix = oldPrefix + Path.Separator();
+        var prefix = normalizedOldPrefix + Path.Separator();
         var i = 0;
         while i < documents.count() {
             var doc = documents.get(i);
-            if doc.filePath == oldPrefix {
-                RetargetDocument(doc, newPrefix);
+            if doc.filePath == normalizedOldPrefix {
+                RetargetDocument(doc, normalizedNewPrefix);
                 changed = changed + 1;
             } else if Str.StartsWith(doc.filePath, prefix) {
                 var suffix = Str.Mid(doc.filePath, Str.get_Length(prefix) + 1);
-                RetargetDocument(doc, Path.Join(newPrefix, suffix));
+                RetargetDocument(doc, Path.Join(normalizedNewPrefix, suffix));
                 changed = changed + 1;
             }
             i = i + 1;
         }
-        return changed + UpdateRecentlyClosedPrefix(oldPrefix, newPrefix);
+        return changed + UpdateRecentlyClosedPrefix(normalizedOldPrefix, normalizedNewPrefix);
+    }
+
+    /// @brief Explain why an Explorer move/rename cannot safely retarget tabs.
+    /// @details Physical destination checks are insufficient when another open
+    ///          tab owns a path whose file is temporarily missing. File renames
+    ///          to a known binary-only extension are also rejected while open so
+    ///          an unsaved editable buffer cannot become stranded.
+    /// @param oldPath Existing file or directory prefix being moved.
+    /// @param newPath Proposed replacement path/prefix.
+    /// @param isDirectory True when every open descendant would be retargeted.
+    /// @return Empty when safe, otherwise a user-facing rejection reason.
+    expose func RetargetBlockReason(oldPath: String,
+                                    newPath: String,
+                                    isDirectory: Boolean) -> String {
+        if oldPath == "" or newPath == "" { return "Invalid rename path."; }
+        var normalizedOld = NormalizeDocumentPath(oldPath);
+        var normalizedNew = NormalizeDocumentPath(newPath);
+
+        if isDirectory == false {
+            var sourceIndex = FindByPath(normalizedOld);
+            var destinationIndex = FindByPath(normalizedNew);
+            if destinationIndex >= 0 and destinationIndex != sourceIndex {
+                return "The destination is already open in another tab.";
+            }
+            if sourceIndex >= 0
+               and file_utils.DetectKind(normalizedNew)
+                   == file_utils.DOC_KIND_BINARY_UNSUPPORTED {
+                return "Close the open file before renaming it to a binary extension.";
+            }
+            return "";
+        }
+
+        var oldPrefix = normalizedOld + Path.Separator();
+        var i = 0;
+        while i < documents.count() {
+            var sourceDoc = documents.get(i);
+            if sourceDoc.filePath == normalizedOld
+               or Str.StartsWith(sourceDoc.filePath, oldPrefix) {
+                var mappedPath = normalizedNew;
+                if sourceDoc.filePath != normalizedOld {
+                    var suffix = Str.Mid(sourceDoc.filePath, Str.get_Length(oldPrefix) + 1);
+                    mappedPath = Path.Join(normalizedNew, suffix);
+                }
+                var destinationIndex = FindByPath(mappedPath);
+                if destinationIndex >= 0 and destinationIndex != i {
+                    var destinationDoc = documents.get(destinationIndex);
+                    if destinationDoc.filePath != normalizedOld
+                       and Str.StartsWith(destinationDoc.filePath, oldPrefix) == false {
+                        return "A destination path is already open in another tab.";
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        return "";
     }
 
     expose func ForgetPathsUnder(path: String) -> Integer {
         if path == "" { return 0; }
+        var normalizedPath = NormalizeDocumentPath(path);
         var removed = 0;
-        var prefix = path + Path.Separator();
+        var prefix = normalizedPath + Path.Separator();
         var i = 0;
         while i < recentlyClosedPaths.count() {
             var recent = Obj.ToString(recentlyClosedPaths.get(i));
-            if recent == path or Str.StartsWith(recent, prefix) {
+            if recent == normalizedPath or Str.StartsWith(recent, prefix) {
                 recentlyClosedPaths.removeAt(i);
                 removed = removed + 1;
             } else {
@@ -614,6 +899,28 @@ class DocumentManager {
         }
     }
 
+    /// @brief Return the tab index that owns `doc`, using object identity.
+    /// @return Index in `documents`, or -1 when the document is not open.
+    expose func IndexOfDocument(doc: document.Document) -> Integer {
+        if doc == null { return -1; }
+        var i = 0;
+        while i < documents.count() {
+            if documents.get(i) == doc { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+
+    /// @brief Make an owned Document active without relying on a path.
+    /// @details Object identity also supports untitled documents, whose empty
+    ///          paths cannot be resolved through FindByPath.
+    /// @return Activated index, or -1 when `doc` is not owned by this manager.
+    expose func SetActiveDocument(doc: document.Document) -> Integer {
+        var index = IndexOfDocument(doc);
+        if index >= 0 { activeIndex = index; }
+        return index;
+    }
+
     /// @brief Linear search for a document by filePath.
     /// @return Index, or -1 if not found.
     expose func FindByPath(path: String) -> Integer {
@@ -622,10 +929,23 @@ class DocumentManager {
         var i = 0;
         while i < documents.count() {
             var doc = documents.get(i);
-            if NormalizeDocumentPath(doc.filePath) == target { return i; }
+            if PathsReferToSameFile(doc.filePath, target) { return i; }
             i = i + 1;
         }
         return -1;
+    }
+
+    /// @brief Compare lexical paths first, then stable identity for existing files.
+    /// @details The identity fallback de-duplicates case-equivalent paths,
+    ///          symlinks, and hard links without case-folding distinct files on
+    ///          case-sensitive filesystems. Missing files retain lexical
+    ///          behavior so externally deleted documents remain addressable.
+    hide func PathsReferToSameFile(left: String, right: String) -> Boolean {
+        if left == "" or right == "" { return false; }
+        var normalizedLeft = NormalizeDocumentPath(left);
+        var normalizedRight = NormalizeDocumentPath(right);
+        if normalizedLeft == normalizedRight { return true; }
+        return IO.File.SameFile(normalizedLeft, normalizedRight);
     }
 
     /// @brief Normalize document paths for tab de-duplication and lookup.
@@ -666,37 +986,43 @@ class DocumentManager {
 
     hide func RecordRecentlyClosed(path: String) {
         if path == "" { return; }
+        var normalizedPath = NormalizeDocumentPath(path);
         var i = 0;
         while i < recentlyClosedPaths.count() {
-            if Obj.ToString(recentlyClosedPaths.get(i)) == path {
+            if PathsReferToSameFile(
+                   Obj.ToString(recentlyClosedPaths.get(i)), normalizedPath) {
                 recentlyClosedPaths.removeAt(i);
             } else {
                 i = i + 1;
             }
         }
-        recentlyClosedPaths.insert(0, path);
+        recentlyClosedPaths.insert(0, normalizedPath);
         while recentlyClosedPaths.count() > 20 {
             recentlyClosedPaths.removeAt(recentlyClosedPaths.count() - 1);
         }
     }
 
     hide func RetargetDocument(doc: document.Document, newPath: String) {
-        doc.filePath = newPath;
-        doc.fileName = Path.Name(newPath);
-        doc.language = file_utils.DetectLanguage(newPath);
-        doc.kind = file_utils.DetectKind(newPath);
+        var canonicalPath = NormalizeDocumentPath(newPath);
+        doc.filePath = canonicalPath;
+        doc.fileName = Path.Name(canonicalPath);
+        doc.language = file_utils.DetectLanguage(canonicalPath);
+        doc.kind = file_utils.DetectKind(canonicalPath);
         RefreshDiskMetadata(doc);
         ClearExternalState(doc);
     }
 
     hide func UpdateRecentlyClosedPath(oldPath: String, newPath: String) -> Boolean {
         if oldPath == "" or newPath == "" { return false; }
+        var normalizedOldPath = NormalizeDocumentPath(oldPath);
+        var normalizedNewPath = NormalizeDocumentPath(newPath);
         var changed = false;
         var i = 0;
         while i < recentlyClosedPaths.count() {
-            if Obj.ToString(recentlyClosedPaths.get(i)) == oldPath {
+            if PathsReferToSameFile(
+                   Obj.ToString(recentlyClosedPaths.get(i)), normalizedOldPath) {
                 recentlyClosedPaths.removeAt(i);
-                recentlyClosedPaths.insert(i, newPath);
+                recentlyClosedPaths.insert(i, normalizedNewPath);
                 changed = true;
             }
             i = i + 1;
@@ -705,19 +1031,21 @@ class DocumentManager {
     }
 
     hide func UpdateRecentlyClosedPrefix(oldPrefix: String, newPrefix: String) -> Integer {
+        var normalizedOldPrefix = NormalizeDocumentPath(oldPrefix);
+        var normalizedNewPrefix = NormalizeDocumentPath(newPrefix);
         var changed = 0;
-        var prefix = oldPrefix + Path.Separator();
+        var prefix = normalizedOldPrefix + Path.Separator();
         var i = 0;
         while i < recentlyClosedPaths.count() {
             var recent = Obj.ToString(recentlyClosedPaths.get(i));
-            if recent == oldPrefix {
+            if recent == normalizedOldPrefix {
                 recentlyClosedPaths.removeAt(i);
-                recentlyClosedPaths.insert(i, newPrefix);
+                recentlyClosedPaths.insert(i, normalizedNewPrefix);
                 changed = changed + 1;
             } else if Str.StartsWith(recent, prefix) {
                 var suffix = Str.Mid(recent, Str.get_Length(prefix) + 1);
                 recentlyClosedPaths.removeAt(i);
-                recentlyClosedPaths.insert(i, Path.Join(newPrefix, suffix));
+                recentlyClosedPaths.insert(i, Path.Join(normalizedNewPrefix, suffix));
                 changed = changed + 1;
             }
             i = i + 1;

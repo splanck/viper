@@ -39,11 +39,13 @@ namespace zanna::codegen::aarch64::peephole {
 /// @brief Try to fold consecutive moves: mov r1, r2; mov r3, r1 -> mov r3, r2
 [[nodiscard]] bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs,
                                            std::size_t idx,
-                                           PeepholeStats &stats);
+                                           PeepholeStats &stats,
+                                           const std::vector<uint16_t> *carriedExitRegs = nullptr);
 
 /// @brief Try to fold immediate-then-move: mov Rd, #imm; mov Rt, Rd -> mov Rt, #imm
 [[nodiscard]] bool tryFoldImmThenMove(std::vector<MInstr> &instrs,
                                       std::size_t idx,
-                                      PeepholeStats &stats);
+                                      PeepholeStats &stats,
+                                      const std::vector<uint16_t> *carriedExitRegs = nullptr);
 
 } // namespace zanna::codegen::aarch64::peephole

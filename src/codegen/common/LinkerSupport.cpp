@@ -128,6 +128,8 @@ std::filesystem::path supportLibBuildSubdir(std::string_view libBaseName) {
         return std::filesystem::path("src") / "frontends" / "common";
     if (libBaseName == "fe_zia" || libBaseName == "zia_editor_services")
         return std::filesystem::path("src") / "frontends" / "zia";
+    if (libBaseName == "fe_basic")
+        return std::filesystem::path("src") / "frontends" / "basic";
     if (libBaseName == "zanna_support")
         return std::filesystem::path("src") / "support";
     if (libBaseName == "zanna_il_io")
@@ -386,6 +388,14 @@ bool ensureRequiredTargetsBuilt(const LinkContext &ctx, std::ostream &out, std::
         if (!fileExists(supportLibraryPath(ctx.buildDir, "zia_editor_services")))
             missingTargets.push_back("zia_editor_services");
         for (const auto &lib : ziaFrontendClosureLibs()) {
+            if (!fileExists(supportLibraryPath(ctx.buildDir, lib)))
+                missingTargets.push_back(lib);
+        }
+    }
+    if (ctx.needsBasicFrontend) {
+        if (!fileExists(supportLibraryPath(ctx.buildDir, "fe_basic")))
+            missingTargets.push_back("fe_basic");
+        for (const auto &lib : basicFrontendClosureLibs()) {
             if (!fileExists(supportLibraryPath(ctx.buildDir, lib)))
                 missingTargets.push_back(lib);
         }
@@ -918,6 +928,24 @@ const std::vector<std::string> &ziaFrontendClosureLibs() {
     return kLibs;
 }
 
+const std::vector<std::string> &basicFrontendClosureLibs() {
+    static const std::vector<std::string> kLibs = {
+        "fe_common",
+        "il_build",
+        "il_transform",
+        "il_runtime",
+        "il_analysis",
+        "il_utils",
+        "il_api",
+        "zanna_pass",
+        "zanna_il_core",
+        "zanna_il_verify",
+        "zanna_il_io",
+        "zanna_support",
+    };
+    return kLibs;
+}
+
 // =========================================================================
 // Link context
 // =========================================================================
@@ -978,6 +1006,21 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
             return sym.rfind("rt_zia_", 0) == 0 || sym.rfind("_rt_zia_", 0) == 0 ||
                    sym.rfind("Zanna.Zia.", 0) == 0 || sym.rfind("_Zanna.Zia.", 0) == 0;
         });
+    ctx.needsBasicFrontend =
+        std::any_of(closureSymbols.begin(), closureSymbols.end(), [](const std::string &sym) {
+            return sym.rfind("rt_basic_toolchain_", 0) == 0 ||
+                   sym.rfind("_rt_basic_toolchain_", 0) == 0 ||
+                   sym.rfind("rt_basic_completion_", 0) == 0 ||
+                   sym.rfind("_rt_basic_completion_", 0) == 0 ||
+                   sym.rfind("Zanna.Basic.LanguageService.", 0) == 0 ||
+                   sym.rfind("_Zanna.Basic.LanguageService.", 0) == 0;
+        });
+
+    // Frontend bridge requirements are known only after archive-closure
+    // expansion. Re-run the missing-target gate so a clean or partial build
+    // cannot silently fall back to weak language-service stubs.
+    if (!ensureRequiredTargetsBuilt(ctx, out, err))
+        return 1;
 
     {
         std::lock_guard<std::mutex> lock(cacheMutex);

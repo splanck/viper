@@ -8,6 +8,7 @@
 ' COVER: Zanna.IO.Dir.Files
 ' COVER: Zanna.IO.Dir.List
 ' COVER: Zanna.IO.Dir.List
+' COVER: Zanna.IO.Dir.Page
 ' COVER: Zanna.IO.Dir.Make
 ' COVER: Zanna.IO.Dir.MakeAll
 ' COVER: Zanna.IO.Dir.Move
@@ -129,10 +130,14 @@ DIM dirs1 AS Zanna.Collections.Seq
 dirs1 = Zanna.IO.Dir.Dirs(base)
 DIM dirs2 AS Zanna.Collections.Seq
 dirs2 = Zanna.IO.Dir.Dirs(base)
+DIM dirPage AS Zanna.Collections.Map
+dirPage = Zanna.IO.Dir.Page(base, 0, 1)
 Zanna.Core.Diagnostics.Assert(entries.Count >= 2, "dir.entries")
 Zanna.Core.Diagnostics.Assert(list1.Count = list2.Count, "dir.list")
 Zanna.Core.Diagnostics.Assert(files1.Count = files2.Count, "dir.files")
 Zanna.Core.Diagnostics.Assert(dirs1.Count = dirs2.Count, "dir.dirs")
+Zanna.Core.Diagnostics.Assert(Zanna.Collections.Map.GetBool(dirPage, "valid"), "dir.page.valid")
+Zanna.Core.Diagnostics.Assert(Zanna.Collections.Map.GetInt(dirPage, "emitted") = 1, "dir.page.emitted")
 
 DIM baseMoved AS STRING
 baseMoved = Zanna.IO.Path.Join(cwd, "tests/runtime_sweep/tmp_io_moved")

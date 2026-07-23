@@ -1,21 +1,38 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/debug_tree_probe.zia
+// Purpose: Exercise asynchronous debugger variable expansion and stable cache state.
+// Key invariants:
+//   - Child requests return before their adapter reply and settle through Poll.
+//   - Resume invalidates varRef-backed caches while preserving expanded paths.
+// Ownership/Lifetime: The probe owns its temporary program and debug session.
+// Links: zannastudio/src/build/debug_session.zia,
+//        zannastudio/src/commands/debug_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module debug_tree_probe;
 
 // ============================================================================
 // MODULE: debug_tree_probe
 // PURPOSE: Validate plan 13's Variables-tree model against real adapter data:
-//          the session's varTree expand/collapse state, the synchronous child
-//          fetch + cache, and resume-invalidation that keeps expansion but drops
-//          the (now dead) child cache.
+//          the session's varTree expand/collapse state, asynchronous child
+//          request/cache publication, and resume invalidation that keeps
+//          expansion but drops the (now dead) child cache.
 //
 // WHERE-THIS-FITS: debug_commands renders GUI.VirtualTree rows from
 //          DebugSession.varTree (a var_model.VarTreeState) and lazily fills the
-//          cache via DebugSession.FetchChildren. This probe drives that model
+//          cache via DebugSession.RequestVariableChildren. This probe drives that model
 //          layer headlessly. Requires `--zanna-bin <path>`.
 // ============================================================================
 
 bind "../build/debug_session";
 bind "../build/breakpoints";
-bind "../build/var_model";
 
 bind Env = Zanna.System.Environment;
 bind Time = Zanna.Time;
@@ -58,25 +75,21 @@ func findLocal(session: debug_session.DebugSession, name: String) -> Integer {
     return -1;
 }
 
-/// @brief Replicate debug_commands.FetchAndCacheChildren against the session so
-///        the probe exercises the same fetch → VarChildRec → cache path.
+/// @brief Request children and cooperatively poll until the stable cache arrives.
 func fetchAndCache(session: debug_session.DebugSession, path: String, varRef: Integer) -> Boolean {
-    if session.FetchChildren(varRef, 0, 100) == false { return false; }
-    var wrap = new var_model.VarChildList();
-    var n = session.VarChildCount();
-    var i = 0;
-    while i < n {
-        var rec = new var_model.VarChildRec();
-        rec.name = session.VarChildName(i);
-        rec.value = session.VarChildValue(i);
-        rec.typeName = session.VarChildType(i);
-        rec.varRef = session.VarChildVarRef(i);
-        rec.childCount = session.VarChildChildCount(i);
-        wrap.items.add(rec);
-        i = i + 1;
+    if session.RequestVariableChildren(path, varRef) == false { return false; }
+    if session.varTree.HasCache(path) { return false; }
+    var waited = 0;
+    while session.IsActive() and session.stopped
+          and session.varTree.HasCache(path) == false
+          and session.VariableChildrenRequestFailed(path) == false
+          and waited < 4000 {
+        session.Poll();
+        if session.varTree.HasCache(path) { break; }
+        Time.Clock.Sleep(2);
+        waited = waited + 2;
     }
-    session.varTree.PutCache(path, wrap);
-    return true;
+    return session.varTree.HasCache(path);
 }
 
 func main() {
@@ -128,7 +141,7 @@ func main() {
     var numsRef = session.LocalVarRef(numsIdx);
     if numsRef <= 0 { fail("nums has no varRef"); return; }
 
-    // Expand → fetch → cache, mirroring the render path.
+    // Expand → request → later Poll cache, mirroring the non-blocking render path.
     if session.varTree.Toggle("nums") == false {
         fail("Toggle('nums') did not expand");
         return;

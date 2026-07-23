@@ -170,9 +170,21 @@ inline bool isMachOConstDataSection(const std::string &name) {
     return name.rfind("__DATA_CONST,", 0) == 0 || name.rfind("__AUTH_CONST,", 0) == 0;
 }
 
+/// Check whether a Mach-O section contains dyld-discovered module initializer
+/// or terminator pointers. These names and their section-type flags must
+/// survive section merging so dyld invokes C/C++ global lifetime functions.
+inline bool isMachOModInitTermSection(const std::string &name) {
+    const auto comma = name.find(',');
+    if (comma == std::string::npos)
+        return false;
+    const size_t sectionOffset = comma + 1;
+    return name.compare(sectionOffset, std::string::npos, "__mod_init_func") == 0 ||
+           name.compare(sectionOffset, std::string::npos, "__mod_term_func") == 0;
+}
+
 inline bool isPreservedNamedSection(const std::string &name) {
     return isObjCSection(name) || isWindowsMetadataSection(name) || isElfMetadataSection(name) ||
-           isMachOConstDataSection(name);
+           isMachOConstDataSection(name) || isMachOModInitTermSection(name);
 }
 
 /// Symbols synthesized by the Windows native linker rather than imported from
@@ -222,7 +234,7 @@ inline SectionClass classifySection(
     // Platform metadata must be preserved with its original name because
     // runtimes/loaders locate it by name or dedicated data-directory ranges.
     if (isWindowsMetadataSection(name) || isElfMetadataSection(name) ||
-        isMachOConstDataSection(name))
+        isMachOConstDataSection(name) || isMachOModInitTermSection(name))
         return SectionClass::Preserved;
     if (executable)
         return SectionClass::Text;

@@ -150,6 +150,23 @@ std::string toStd(rt_string s) {
     return std::string(data, static_cast<size_t>(len));
 }
 
+/// @brief Copy a runtime string or boxed-string object into a native string.
+/// @param value Runtime collection element to inspect.
+/// @param out Receives the copied bytes on success.
+/// @return True only when @p value represents a string.
+bool objectToStdString(void *value, std::string &out) {
+    rt_string text = nullptr;
+    if (rt_string_is_handle(value))
+        text = rt_string_ref(static_cast<rt_string>(value));
+    else if (rt_box_type(value) == RT_BOX_STR)
+        text = rt_unbox_str(value);
+    else
+        return false;
+    out = toStd(text);
+    rt_string_unref(text);
+    return true;
+}
+
 rt_string makeString(const std::string &value) {
     return rt_string_from_bytes(value.data(), value.size());
 }
@@ -1134,35 +1151,58 @@ struct EditRecord {
     size_t endOffset{0};
 };
 
-/// @brief Resolve an edit target and optionally constrain it to a workspace root.
-/// @details The existing edit API accepts paths directly. Rooted callers pass a
-///          canonical root so this helper can reject traversal outside the
-///          workspace before any file is read or written. Accepted paths are
-///          returned as absolute, lexically normalized strings so later grouping
-///          treats equivalent paths as one file.
+/// @brief Return whether a canonical path is equal to or below a canonical root.
+/// @param candidate Canonical absolute edit target.
+/// @param root Canonical absolute workspace root.
+/// @return True when the relative path contains no parent traversal.
+bool editTargetIsInRoot(const fs::path &candidate, const fs::path &root) {
+    std::error_code ec;
+    fs::path relative = fs::relative(candidate, root, ec);
+    if (ec || relative.is_absolute())
+        return false;
+    for (const auto &part : relative) {
+        if (part == "..")
+            return false;
+    }
+    return true;
+}
+
+/// @brief Resolve an edit target and optionally constrain it to workspace roots.
+/// @details The existing edit API accepts paths directly. Rooted callers pass
+///          canonical roots so this helper can reject traversal outside every
+///          opened workspace before any file is read or written. Accepted paths
+///          are returned as canonical absolute strings so equivalent and
+///          symlinked spellings group as one file.
 /// @param file User-supplied edit target path.
-/// @param root Optional canonical root; NULL keeps the legacy unrooted behavior.
+/// @param roots Optional canonical roots; NULL keeps the legacy unrooted behavior.
 /// @param out Receives the normalized absolute path on success.
 /// @return `true` when the target is usable for validation/apply.
-bool resolveEditTarget(const std::string &file, const fs::path *root, std::string &out) {
+bool resolveEditTarget(const std::string &file,
+                       const std::vector<fs::path> *roots,
+                       std::string &out) {
     std::error_code ec;
     fs::path candidate(file);
-    if (root && candidate.is_relative())
-        candidate = *root / candidate;
+    if (roots && candidate.is_relative()) {
+        if (roots->size() != 1)
+            return false;
+        candidate = roots->front() / candidate;
+    }
     candidate = fs::absolute(candidate, ec).lexically_normal();
     if (ec)
         return false;
-    if (root) {
+    if (roots) {
         candidate = fs::weakly_canonical(candidate, ec);
         if (ec)
             return false;
-        fs::path relative = fs::relative(candidate, *root, ec);
-        if (ec || relative.empty())
-            return false;
-        for (const auto &part : relative) {
-            if (part == "..")
-                return false;
+        bool contained = false;
+        for (const auto &root : *roots) {
+            if (editTargetIsInRoot(candidate, root)) {
+                contained = true;
+                break;
+            }
         }
+        if (!contained)
+            return false;
     }
     out = candidate.string();
     return true;
@@ -1196,11 +1236,11 @@ bool loadEditRecord(void *obj, EditRecord &out, void *diagnostics, int64_t index
 bool validateEditRecords(std::vector<EditRecord> &records,
                          std::unordered_map<std::string, std::string> &contents,
                          void *diagnostics,
-                         const fs::path *root) {
+                         const std::vector<fs::path> *roots) {
     bool ok = true;
     for (auto &record : records) {
         std::string resolvedFile;
-        if (!resolveEditTarget(record.file, root, resolvedFile)) {
+        if (!resolveEditTarget(record.file, roots, resolvedFile)) {
             pushDiagnostic(diagnostics,
                            "workspace edit target is outside the workspace",
                            record.file,
@@ -1277,31 +1317,82 @@ bool validateEditRecords(std::vector<EditRecord> &records,
     return ok;
 }
 
-/// @brief Convert a runtime root string into a canonical filesystem path.
+/// @brief Convert root text into a canonical filesystem path.
 /// @details Rooted edit APIs use this to define the trust boundary for every
 ///          target file. The root must name an existing directory so symlinks
 ///          and relative segments can be resolved before target comparison.
+/// @param rootText Runtime root string copied into native storage.
+/// @param diagnostics Diagnostic sequence that receives root validation errors.
+/// @param index Root index reported with diagnostics.
+/// @param out Receives the canonical root on success.
+/// @return `true` when @p rootText names a usable directory.
+bool workspaceEditRootFromText(const std::string &rootText,
+                               void *diagnostics,
+                               int64_t index,
+                               fs::path &out) {
+    if (rootText.empty()) {
+        pushDiagnostic(diagnostics, "workspace edit root is empty", "", index, "edit.root");
+        return false;
+    }
+    std::error_code ec;
+    fs::path root = fs::absolute(fs::path(rootText), ec);
+    if (!ec)
+        root = fs::weakly_canonical(root, ec);
+    if (ec || !fs::is_directory(root, ec)) {
+        pushDiagnostic(
+            diagnostics, "workspace edit root is not a directory", rootText, index, "edit.root");
+        return false;
+    }
+    out = root;
+    return true;
+}
+
+/// @brief Convert a runtime root string into a canonical filesystem path.
 /// @param root_s Runtime string provided by the caller.
 /// @param diagnostics Diagnostic sequence that receives root validation errors.
 /// @param out Receives the canonical root on success.
 /// @return `true` when @p root_s names a usable directory.
 bool workspaceEditRootFromString(rt_string root_s, void *diagnostics, fs::path &out) {
-    std::string root_text = toStd(root_s);
-    if (root_text.empty()) {
-        pushDiagnostic(diagnostics, "workspace edit root is empty", "", 0, "edit.root");
+    return workspaceEditRootFromText(toStd(root_s), diagnostics, 0, out);
+}
+
+/// @brief Convert a runtime Seq of root strings into canonical directories.
+/// @details Duplicate canonical roots are collapsed. A malformed or empty
+///          sequence fails before any edit target is inspected.
+/// @param rootValues Runtime Seq containing string or boxed-string elements.
+/// @param diagnostics Diagnostic sequence that receives root errors.
+/// @param out Receives at least one canonical root on success.
+/// @return True when every supplied root is a usable directory.
+bool workspaceEditRootsFromSequence(void *rootValues,
+                                    void *diagnostics,
+                                    std::vector<fs::path> &out) {
+    if (!rootValues || rt_obj_class_id(rootValues) != RT_SEQ_CLASS_ID) {
+        pushDiagnostic(diagnostics, "workspace edit roots must be a sequence", "", 0, "edit.root");
         return false;
     }
-    std::error_code ec;
-    fs::path root = fs::absolute(fs::path(root_text), ec);
-    if (!ec)
-        root = fs::weakly_canonical(root, ec);
-    if (ec || !fs::is_directory(root, ec)) {
-        pushDiagnostic(
-            diagnostics, "workspace edit root is not a directory", root_text, 0, "edit.root");
+    const int64_t count = rt_seq_len(rootValues);
+    if (count <= 0) {
+        pushDiagnostic(diagnostics, "workspace edit roots are empty", "", 0, "edit.root");
         return false;
     }
-    out = root;
-    return true;
+    bool ok = true;
+    for (int64_t index = 0; index < count; ++index) {
+        std::string rootText;
+        if (!objectToStdString(rt_seq_get(rootValues, index), rootText)) {
+            pushDiagnostic(
+                diagnostics, "workspace edit root is not a string", "", index, "edit.root");
+            ok = false;
+            continue;
+        }
+        fs::path root;
+        if (!workspaceEditRootFromText(rootText, diagnostics, index, root)) {
+            ok = false;
+            continue;
+        }
+        if (std::find(out.begin(), out.end(), root) == out.end())
+            out.push_back(std::move(root));
+    }
+    return ok && !out.empty();
 }
 
 } // namespace
@@ -1943,9 +2034,9 @@ namespace {
 ///          and rejects overlapping edits before returning the stable result-map
 ///          shape consumed by editor tooling.
 /// @param edits Runtime Seq of edit maps.
-/// @param root Optional canonical workspace root that bounds every edit target.
+/// @param roots Optional canonical workspace roots that bound every edit target.
 /// @return Result map containing `success`, `editCount`, and `diagnostics`.
-static void *workspace_edit_validate_impl(void *edits, const fs::path *root) {
+static void *workspace_edit_validate_impl(void *edits, const std::vector<fs::path> *roots) {
     void *result = rt_map_new();
     void *diagnostics = rt_seq_new_owned();
     std::vector<EditRecord> records;
@@ -1962,7 +2053,7 @@ static void *workspace_edit_validate_impl(void *edits, const fs::path *root) {
             else
                 ok = false;
         }
-        if (!validateEditRecords(records, contents, diagnostics, root))
+        if (!validateEditRecords(records, contents, diagnostics, roots))
             ok = false;
     }
     rt_map_set_bool(result, rt_const_cstr("success"), ok ? 1 : 0);
@@ -2010,10 +2101,9 @@ static fs::path workspaceEditTempPath(const fs::path &file, const char *suffix) 
     if (dir.empty())
         dir = ".";
     char nonce[17];
-    std::snprintf(nonce, sizeof(nonce), "%016llx",
-                  static_cast<unsigned long long>(workspaceEditNonce()));
-    std::string leaf =
-        "." + file.filename().generic_string() + ".zanna-edit-" + nonce + suffix;
+    std::snprintf(
+        nonce, sizeof(nonce), "%016llx", static_cast<unsigned long long>(workspaceEditNonce()));
+    std::string leaf = "." + file.filename().generic_string() + ".zanna-edit-" + nonce + suffix;
     return dir / leaf;
 }
 
@@ -2206,10 +2296,10 @@ static void rollbackWorkspaceWrites(const std::vector<PendingWorkspaceWrite> &wr
 ///          If any backup or replacement fails, earlier replacements are
 ///          restored from their backups and staged temps are removed.
 /// @param edits Runtime Seq of edit maps.
-/// @param root Optional canonical workspace root that bounds every edit target.
+/// @param roots Optional canonical workspace roots that bound every edit target.
 /// @return Result map containing validation fields plus `appliedFiles`.
-static void *workspace_edit_apply_impl(void *edits, const fs::path *root) {
-    void *result = workspace_edit_validate_impl(edits, root);
+static void *workspace_edit_apply_impl(void *edits, const std::vector<fs::path> *roots) {
+    void *result = workspace_edit_validate_impl(edits, roots);
     if (!rt_map_get_bool(result, rt_const_cstr("success"))) {
         rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
         return result;
@@ -2224,7 +2314,7 @@ static void *workspace_edit_apply_impl(void *edits, const fs::path *root) {
         if (loadEditRecord(rt_seq_get(edits, i), record, diagnostics, i))
             records.push_back(std::move(record));
     }
-    if (!validateEditRecords(records, contents, diagnostics, root)) {
+    if (!validateEditRecords(records, contents, diagnostics, roots)) {
         rt_map_set_bool(result, rt_const_cstr("success"), 0);
         rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
         return result;
@@ -2370,7 +2460,9 @@ void *rt_workspace_edit_validate_in_root(void *edits, rt_string root) {
             return result;
         }
         releaseObject(diagnostics);
-        return workspace_edit_validate_impl(edits, &resolvedRoot);
+        std::vector<fs::path> resolvedRoots;
+        resolvedRoots.push_back(std::move(resolvedRoot));
+        return workspace_edit_validate_impl(edits, &resolvedRoots);
     } catch (...) {
         void *result = rt_map_new();
         void *diagnostics = rt_seq_new_owned();
@@ -2413,7 +2505,63 @@ void *rt_workspace_edit_apply_in_root(void *edits, rt_string root) {
             return result;
         }
         releaseObject(diagnostics);
-        return workspace_edit_apply_impl(edits, &resolvedRoot);
+        std::vector<fs::path> resolvedRoots;
+        resolvedRoots.push_back(std::move(resolvedRoot));
+        return workspace_edit_apply_impl(edits, &resolvedRoots);
+    } catch (...) {
+        void *result = rt_map_new();
+        void *diagnostics = rt_seq_new_owned();
+        pushDiagnostic(diagnostics, "workspace edit apply failed", "", 0, "edit.exception");
+        rt_map_set_bool(result, rt_const_cstr("success"), 0);
+        rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+        rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+        rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+        releaseObject(diagnostics);
+        return result;
+    }
+}
+
+void *rt_workspace_edit_validate_in_roots(void *edits, void *roots) {
+    try {
+        void *diagnostics = rt_seq_new_owned();
+        std::vector<fs::path> resolvedRoots;
+        if (!workspaceEditRootsFromSequence(roots, diagnostics, resolvedRoots)) {
+            void *result = rt_map_new();
+            rt_map_set_bool(result, rt_const_cstr("success"), 0);
+            rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+            rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+            releaseObject(diagnostics);
+            return result;
+        }
+        releaseObject(diagnostics);
+        return workspace_edit_validate_impl(edits, &resolvedRoots);
+    } catch (...) {
+        void *result = rt_map_new();
+        void *diagnostics = rt_seq_new_owned();
+        pushDiagnostic(diagnostics, "workspace edit validation failed", "", 0, "edit.exception");
+        rt_map_set_bool(result, rt_const_cstr("success"), 0);
+        rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+        rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+        releaseObject(diagnostics);
+        return result;
+    }
+}
+
+void *rt_workspace_edit_apply_in_roots(void *edits, void *roots) {
+    try {
+        void *diagnostics = rt_seq_new_owned();
+        std::vector<fs::path> resolvedRoots;
+        if (!workspaceEditRootsFromSequence(roots, diagnostics, resolvedRoots)) {
+            void *result = rt_map_new();
+            rt_map_set_bool(result, rt_const_cstr("success"), 0);
+            rt_map_set_int(result, rt_const_cstr("editCount"), 0);
+            rt_map_set_int(result, rt_const_cstr("appliedFiles"), 0);
+            rt_map_set(result, rt_const_cstr("diagnostics"), diagnostics);
+            releaseObject(diagnostics);
+            return result;
+        }
+        releaseObject(diagnostics);
+        return workspace_edit_apply_impl(edits, &resolvedRoots);
     } catch (...) {
         void *result = rt_map_new();
         void *diagnostics = rt_seq_new_owned();

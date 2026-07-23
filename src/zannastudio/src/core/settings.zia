@@ -1,3 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/core/settings.zia
+// Purpose: Persist and migrate user-facing Studio settings in the native
+//          per-user configuration directory.
+// Key invariants:
+//   - Defaults remain valid when settings are missing or malformed.
+//   - Platform paths come from the runtime Machine capability, not Unix-only
+//     environment assumptions.
+//   - Oversized shared state is rejected before parsing, and successful saves
+//     replace the prior complete file atomically.
+// Ownership/Lifetime: SettingsManager owns only value state, never OS handles.
+// Links: zannastudio/src/app/settings_applier.zia,
+//        zannastudio/src/core/session.zia
+//
+//===----------------------------------------------------------------------===//
+
 module settings;
 
 bind Zanna.Data.Ini as Ini;
@@ -7,7 +29,9 @@ bind Zanna.IO.Path as Path;
 bind Zanna.System.Environment as Env;
 bind Machine = Zanna.System.Machine;
 bind Parse = Zanna.Core.Parse;
+bind Obj = Zanna.Core.Object;
 bind Zanna.GUI as GUI;
+bind "../services/safe_io";
 
 // ============================================================================
 // MODULE: settings
@@ -131,10 +155,10 @@ class SettingsManager {
     ///          intact so an older build can still find it. When the copy
     ///          cannot produce a usable settings file, the legacy directory is
     ///          adopted in place, matching the pre-rename fallback behaviour.
-    /// @note Falls back to "." if HOME is unset (rare; happens in some
-    ///       containerised environments). Idempotent.
+    /// @note Falls back to "." if the runtime cannot resolve a native user home
+    ///       (rare; happens in some containerised environments). Idempotent.
     expose func SetupPath() {
-        var home = Env.GetVariable("HOME");
+        var home = Machine.Home;
         if home == "" {
             home = ".";
         }
@@ -166,8 +190,9 @@ class SettingsManager {
         if IO.File.Exists(settingsPath) == false {
             return;
         }
-        var content = IO.File.ReadAllText(settingsPath);
-        var ini = Ini.Parse(content);
+        var readResult = safe_io.ReadStudioState(settingsPath);
+        if readResult.ok == false { return; }
+        var ini = Ini.Parse(readResult.text);
 
         // fontSize: migrate old tiny values to the current comfortable default.
         var sizeStr = Ini.Get(ini, "settings", "fontSize");
@@ -314,18 +339,22 @@ class SettingsManager {
         }
     }
 
-    /// @brief Persist settings to disk. Creates `~/.zannastudio/` if needed.
+    /// @brief Persist settings to disk in the native configuration directory.
     /// @note Updates the settings section while preserving session and
     ///       recent-project sections owned by SessionManager.
-    expose func Save() {
+    /// @return True when the complete settings file was written successfully.
+    expose func Save() -> Boolean {
         if settingsPath == "" {
             SetupPath();
         }
-        Dir.MakeAll(settingsDir);
+        if settingsDir == "" or settingsPath == "" { return false; }
+        if safe_io.MakeAll(settingsDir) == false { return false; }
 
         var content = "";
         if IO.File.Exists(settingsPath) {
-            content = IO.File.ReadAllText(settingsPath);
+            var readResult = safe_io.ReadStudioState(settingsPath);
+            if readResult.ok == false { return false; }
+            content = readResult.text;
         }
         var ini = Ini.Parse(content);
         Ini.Set(ini, "settings", "fontSize", "" + fontSize);
@@ -415,7 +444,7 @@ class SettingsManager {
         Ini.Set(ini, "settings", "completionDelayMs", "" + completionDelayMs);
         Ini.Set(ini, "settings", "uiZoomPercent", "" + uiZoomPercent);
         var formattedContent = Ini.Format(ini);
-        IO.File.WriteAllText(settingsPath, formattedContent);
+        return safe_io.WriteStudioState(settingsPath, formattedContent);
     }
 
     /// @brief Apply the loaded theme via Zanna.GUI.Theme.SetDark/SetLight.
@@ -502,27 +531,29 @@ func LegacySettingsDir(home: String) -> String {
 /// @param fromDir Legacy configuration directory (must exist).
 /// @param toDir New configuration directory (created if needed).
 func MigrateLegacyState(fromDir: String, toDir: String) {
-    Dir.MakeAll(toDir);
-    if Dir.Exists(toDir) == false {
-        return;
-    }
-    for name in Dir.Files(fromDir) {
-        var src = Path.Join(fromDir, name);
-        var dst = Path.Join(toDir, name);
+    if safe_io.MakeAll(toDir) == false { return; }
+    var legacyFiles = safe_io.ListFiles(fromDir);
+    if legacyFiles.ok == false { return; }
+    for name in legacyFiles.items {
+        var nameText = Obj.ToString(name);
+        var src = Path.Join(fromDir, nameText);
+        var dst = Path.Join(toDir, nameText);
         if IO.File.Exists(src) and IO.File.Exists(dst) == false {
-            IO.File.Copy(src, dst);
+            safe_io.CopyFile(src, dst);
         }
     }
     var fromRecovery = Path.Join(fromDir, "recovery");
     if Dir.Exists(fromRecovery) {
         var toRecovery = Path.Join(toDir, "recovery");
-        Dir.MakeAll(toRecovery);
-        if Dir.Exists(toRecovery) {
-            for name in Dir.Files(fromRecovery) {
-                var src = Path.Join(fromRecovery, name);
-                var dst = Path.Join(toRecovery, name);
+        if safe_io.MakeAll(toRecovery) {
+            var recoveryFiles = safe_io.ListFiles(fromRecovery);
+            if recoveryFiles.ok == false { return; }
+            for name in recoveryFiles.items {
+                var nameText = Obj.ToString(name);
+                var src = Path.Join(fromRecovery, nameText);
+                var dst = Path.Join(toRecovery, nameText);
                 if IO.File.Exists(src) and IO.File.Exists(dst) == false {
-                    IO.File.Copy(src, dst);
+                    safe_io.CopyFile(src, dst);
                 }
             }
         }

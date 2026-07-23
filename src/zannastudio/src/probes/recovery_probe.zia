@@ -1,3 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/recovery_probe.zia
+// Purpose: Exercise synchronous and asynchronous crash swaps, cancellation-safe
+//          recovery pruning, and clean shutdown state.
+// Key invariants:
+//   - Modified buffers survive an unclean exit.
+//   - Coalesced workers publish the newest immutable snapshot without blocking
+//     the caller or recreating a swap after save/close reconciliation.
+//   - Saved, discarded, or closed buffers cannot resurrect stale swap text.
+//   - Clean exit persists tabs without discarded recovery payloads.
+// Ownership/Lifetime: The probe owns its temporary recovery directory.
+// Links: zannastudio/src/core/recovery_store.zia
+//
+//===----------------------------------------------------------------------===//
+
 module recovery_probe;
 
 // ============================================================================
@@ -9,21 +30,54 @@ module recovery_probe;
 
 bind "../core/recovery_store";
 bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../core/session";
+bind "../app/lifecycle_controller";
 
 bind File = Zanna.IO.File;
 bind Path = Zanna.IO.Path;
 bind TempFile = Zanna.IO.TempFile;
+bind Ini = Zanna.Data.Ini;
 bind Terminal = Zanna.Terminal;
+bind Str = Zanna.String;
+bind Time = Zanna.Time;
 
 func fail(reason: String) {
     Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Pump recovery futures without blocking on their filesystem work.
+func drainAsync(store: recovery_store.RecoveryStore, maxMs: Integer) -> Boolean {
+    var waited = 0;
+    while store.IsAsyncBusy() and waited < maxMs {
+        store.PumpAsync();
+        if store.IsAsyncBusy() {
+            Time.Clock.Sleep(1);
+            waited = waited + 1;
+        }
+    }
+    store.PumpAsync();
+    return store.IsAsyncBusy() == false;
+}
+
+/// @brief Return whether a terminated worker left staging files behind.
+func hasRecoveryTempFiles(path: String) -> Boolean {
+    for name in Zanna.IO.Dir.Files(path) {
+        if Str.EndsWith(name, ".tmp") or Str.Contains(name, ".zanna-tmp.") {
+            return true;
+        }
+    }
+    return false;
 }
 
 func main() {
     var settingsDir = TempFile.CreateDirWithPrefix("zannastudio_recovery_");
 
     var store = new recovery_store.RecoveryStore();
-    store.Setup(settingsDir);
+    if store.Setup(settingsDir) == false {
+        fail("first recovery setup failed");
+        return;
+    }
     if store.uncleanExit {
         fail("first setup should be clean");
         return;
@@ -34,11 +88,17 @@ func main() {
     var doc = docMgr.NewDocument();
     doc.content = "recovered text\nsecond line";
     doc.isModified = true;
-    store.WriteSwaps(docMgr, null);
+    if store.WriteSwaps(docMgr, null) == false {
+        fail("modified swap write failed");
+        return;
+    }
 
     // Simulate a crash: a fresh store over the same dir sees the leftover lock.
     var store2 = new recovery_store.RecoveryStore();
-    store2.Setup(settingsDir);
+    if store2.Setup(settingsDir) == false {
+        fail("second recovery setup failed");
+        return;
+    }
     if store2.uncleanExit == false {
         fail("unclean exit not detected");
         return;
@@ -54,16 +114,260 @@ func main() {
         return;
     }
 
-    // A clean exit clears the lock and swaps.
-    store2.MarkCleanExit();
-    var store3 = new recovery_store.RecoveryStore();
-    store3.Setup(settingsDir);
-    if store3.uncleanExit {
-        fail("clean exit was not honored");
+    // Startup discovery must page a cluttered recovery directory and retire
+    // abandoned worker staging files without one unbounded enumeration.
+    var pagedDir = TempFile.CreateDirWithPrefix("zannastudio_recovery_paged_");
+    var pagedStore = new recovery_store.RecoveryStore();
+    if pagedStore.Setup(pagedDir) == false {
+        fail("paged recovery setup failed");
         return;
     }
-    if store3.CollectRecovered().count() != 0 {
+    File.WriteAllText(Path.Join(pagedStore.recoveryDir, "swap-page.path"), "");
+    File.WriteAllText(Path.Join(pagedStore.recoveryDir, "swap-page.swp"),
+                      "paged recovered text");
+    File.WriteAllText(Path.Join(pagedStore.recoveryDir, "orphan.zanna-tmp.17"),
+                      "abandoned staging data");
+    var pagedJunk = 0;
+    while pagedJunk < 8 {
+        File.WriteAllText(Path.Join(pagedStore.recoveryDir,
+                                    "junk-" + pagedJunk + ".txt"), "junk");
+        pagedJunk = pagedJunk + 1;
+    }
+    var scanJob = pagedStore.BeginRecoveryScan(true);
+    var scanPumps = 0;
+    var scanBounded = true;
+    while scanJob.active and scanPumps < 20 {
+        var scanned = pagedStore.PumpRecoveryScan(scanJob, 2);
+        if scanned <= 0 or scanned > 2 or scanJob.lastPumpCount > 2 {
+            scanBounded = false;
+        }
+        scanPumps = scanPumps + 1;
+    }
+    if scanBounded == false or scanJob.active or scanPumps <= 1
+       or scanJob.records.count() != 1
+       or (scanJob.records.get(0) as recovery_store.RecoveryRecord).content
+          != "paged recovered text"
+       or hasRecoveryTempFiles(pagedStore.recoveryDir) {
+        fail("recovery discovery did not remain paged and cleanup-safe");
+        return;
+    }
+    if pagedStore.MarkCleanExit() == false {
+        fail("paged recovery clean exit failed");
+        return;
+    }
+
+    // A successful save/reload transition clears isModified. Its older swap
+    // must be retired immediately or a later crash could resurrect stale text.
+    doc.isModified = false;
+    if store2.PruneStaleSwaps(docMgr) == false {
+        fail("stale swap pruning failed");
+        return;
+    }
+    if store2.CollectRecovered().count() != 0 {
+        fail("stale swap survived saved document pruning");
+        return;
+    }
+
+    // A clean lifecycle exit clears the lock/swaps and persists only the
+    // on-disk form of a discarded named edit. Dirty untitled content must not
+    // survive in either an active or stale INI slot.
+    if store2.MarkCleanExit() == false {
+        fail("initial clean marker removal failed");
+        return;
+    }
+
+    // Interactive recovery uses owned background callbacks. A second request
+    // coalesces behind the active worker and must eventually replace the older
+    // snapshot without sharing editor/document objects across threads.
+    var asyncDir = TempFile.CreateDirWithPrefix("zannastudio_recovery_async_");
+    var asyncStore = new recovery_store.RecoveryStore();
+    if asyncStore.Setup(asyncDir) == false {
+        fail("async recovery setup failed");
+        return;
+    }
+    var asyncDocs = new document_manager.DocumentManager();
+    var asyncDoc = asyncDocs.NewDocument();
+    asyncDoc.content = "first async snapshot";
+    asyncDoc.isModified = true;
+    if asyncStore.QueueSwaps(asyncDocs, null) == false {
+        fail("first async recovery request did not start");
+        return;
+    }
+    asyncDoc.content = "newest coalesced snapshot";
+    if asyncStore.QueueSwaps(asyncDocs, null) == false
+       or asyncStore.asyncQueuedRequests != 2 {
+        fail("newest async recovery request did not coalesce");
+        return;
+    }
+    if drainAsync(asyncStore, 12000) == false
+       or asyncStore.asyncCompletedRequests != 2
+       or asyncStore.asyncCommittedDocuments != 2
+       or asyncStore.lastAsyncError != "" {
+        fail("async recovery requests did not complete cleanly");
+        return;
+    }
+    var asyncRecovered = asyncStore.CollectRecovered();
+    if asyncRecovered.count() != 1
+       or (asyncRecovered.get(0) as recovery_store.RecoveryRecord).content
+          != "newest coalesced snapshot" {
+        fail("coalesced recovery did not retain the newest content");
+        return;
+    }
+
+    // Save/close command reconciliation must queue remaining dirty content
+    // instead of synchronously rewriting its payload on the command frame.
+    asyncDoc.content = "dirty content queued by reconciliation";
+    if asyncStore.ReconcileDocuments(asyncDocs, null) == false
+       or asyncStore.IsAsyncBusy() == false
+       or drainAsync(asyncStore, 12000) == false {
+        fail("command reconciliation did not queue recovery work");
+        return;
+    }
+    asyncRecovered = asyncStore.CollectRecovered();
+    if asyncRecovered.count() != 1
+       or (asyncRecovered.get(0) as recovery_store.RecoveryRecord).content
+          != "dirty content queued by reconciliation" {
+        fail("command reconciliation persisted the wrong content");
+        return;
+    }
+
+    // A save/close transition may race a large staged write. Authoritative
+    // reconciliation cancels its commit and prunes the canonical pair; after
+    // retirement neither a swap nor a staging file may reappear.
+    asyncDoc.content = Str.Repeat("large recovery payload\n", 100000);
+    asyncDoc.isModified = true;
+    if asyncStore.QueueSwaps(asyncDocs, null) == false {
+        fail("cancellation recovery request did not start");
+        return;
+    }
+    asyncDoc.isModified = false;
+    if asyncStore.WriteSwaps(asyncDocs, null) == false {
+        fail("authoritative recovery reconciliation failed");
+        return;
+    }
+    if drainAsync(asyncStore, 12000) == false
+       or asyncStore.asyncCancelledRequests < 1
+       or asyncStore.CollectRecovered().count() != 0
+       or hasRecoveryTempFiles(asyncStore.recoveryDir) {
+        fail("cancelled worker recreated stale recovery data");
+        return;
+    }
+    if asyncStore.MarkCleanExit() == false {
+        fail("async recovery clean exit failed");
+        return;
+    }
+
+    var sessionPath = Path.Join(settingsDir, "settings.ini");
+    File.WriteAllText(sessionPath, "[settings]\nrestoreSession=1\n");
+    var diskPath = Path.Join(settingsDir, "clean-exit.zia");
+    File.WriteAllText(diskPath, "module DiskVersion;\n");
+    var exitDocs = new document_manager.DocumentManager();
+    var namedDoc = exitDocs.OpenFile(diskPath);
+    namedDoc.content = "module DiscardedBuffer;\n";
+    namedDoc.isModified = true;
+    var untitledDoc = exitDocs.NewDocument();
+    untitledDoc.content = "discarded untitled secret";
+    untitledDoc.isModified = true;
+
+    var exitSession = new session.SessionManager();
+    exitSession.Setup(sessionPath);
+    var exitProject = new project_manager.ProjectManager();
+    exitSession.Save(exitDocs, exitProject);
+    var crashIni = Ini.Parse(File.ReadAllText(sessionPath));
+    if Ini.Get(crashIni, "session", "count") != "2"
+       or Ini.Get(crashIni, "session.file.0", "recoveryModified") != "1"
+       or Ini.Get(crashIni, "session.file.1", "recoveryModified") != "1" {
+        fail("live session snapshot did not retain dirty recovery");
+        return;
+    }
+
+    var store3 = new recovery_store.RecoveryStore();
+    store3.Setup(settingsDir);
+    store3.WriteSwaps(exitDocs, null);
+    lifecycle_controller.CleanupIde(null, exitDocs, exitProject, null,
+                                    null, null, null, null, null, null,
+                                    null, exitSession, store3);
+
+    var cleanIni = Ini.Parse(File.ReadAllText(sessionPath));
+    if Ini.Get(cleanIni, "session", "count") != "1"
+       or Ini.Get(cleanIni, "session.file.0", "path") != diskPath
+       or Ini.Get(cleanIni, "session.file.0", "recovery") != ""
+       or Ini.Get(cleanIni, "session.file.0", "recoveryModified") != "0"
+       or Ini.Get(cleanIni, "session.file.1", "path") != ""
+       or Ini.Get(cleanIni, "session.file.1", "name") != ""
+       or Ini.Get(cleanIni, "session.file.1", "recovery") != "" {
+        fail("clean exit retained discarded session content");
+        return;
+    }
+
+    var store4 = new recovery_store.RecoveryStore();
+    store4.Setup(settingsDir);
+    if store4.uncleanExit {
+        fail("central clean exit left the recovery lock");
+        return;
+    }
+    if store4.CollectRecovered().count() != 0 {
         fail("swaps not cleared after clean exit");
+        return;
+    }
+
+    var restoredDocs = new document_manager.DocumentManager();
+    var restoredSession = new session.SessionManager();
+    restoredSession.Setup(sessionPath);
+    if restoredSession.Restore(restoredDocs, new project_manager.ProjectManager(), null) != 1
+       or restoredDocs.GetCount() != 1
+       or restoredDocs.GetActive() == null
+       or restoredDocs.GetActive()!.content != "module DiskVersion;\n"
+       or restoredDocs.GetActive()!.isModified {
+        fail("discarded buffer returned after clean session restore");
+        return;
+    }
+    if store4.MarkCleanExit() == false {
+        fail("final clean marker removal failed");
+        return;
+    }
+
+    // Recovery setup and shutdown are filesystem boundaries too. An invalid
+    // settings directory must fail without a runtime trap, and a failed session
+    // write must retain the crash marker and swaps instead of committing a
+    // falsely clean exit.
+    var invalidSettingsDir = Path.Join(settingsDir, "not-a-directory");
+    File.WriteAllText(invalidSettingsDir, "file");
+    var invalidStore = new recovery_store.RecoveryStore();
+    if invalidStore.Setup(invalidSettingsDir) {
+        fail("recovery setup accepted a regular file as its settings directory");
+        return;
+    }
+
+    var retainedDir = TempFile.CreateDirWithPrefix("zannastudio_recovery_retained_");
+    var retainedStore = new recovery_store.RecoveryStore();
+    if retainedStore.Setup(retainedDir) == false {
+        fail("retained recovery setup failed");
+        return;
+    }
+    var retainedDocs = new document_manager.DocumentManager();
+    var retainedDoc = retainedDocs.NewDocument();
+    retainedDoc.content = "must survive failed session persistence";
+    retainedDoc.isModified = true;
+    if retainedStore.WriteSwaps(retainedDocs, null) == false {
+        fail("retained swap write failed");
+        return;
+    }
+    var failingSession = new session.SessionManager();
+    failingSession.Setup(retainedDir);
+    lifecycle_controller.CleanupIde(null, retainedDocs,
+                                    new project_manager.ProjectManager(), null,
+                                    null, null, null, null, null, null,
+                                    null, failingSession, retainedStore);
+    var retainedCheck = new recovery_store.RecoveryStore();
+    if retainedCheck.Setup(retainedDir) == false
+       or retainedCheck.uncleanExit == false
+       or retainedCheck.CollectRecovered().count() != 1 {
+        fail("failed session persistence cleared recoverable crash state");
+        return;
+    }
+    if retainedCheck.MarkCleanExit() == false {
+        fail("retained recovery cleanup failed");
         return;
     }
 

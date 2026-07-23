@@ -1,0 +1,129 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/breadcrumb_index.zia
+// Purpose: Incrementally index Zia function declarations for breadcrumb text.
+// Key invariants:
+//   - Callers choose a strict per-frame line budget; this class never reads a
+//     whole editor buffer or performs hidden unbounded work.
+//   - A path, revision, or line-count change invalidates every cached marker.
+//   - A name is returned only after all lines through the requested caret line
+//     have been scanned for the current document revision.
+// Ownership/Lifetime:
+//   - The Studio frame loop owns one index for the active editor lifetime.
+//   - Function markers own only a line number and short declaration name.
+// Links: zannastudio/src/main.zia, zannastudio/src/zia/function_scan.zia
+//
+//===----------------------------------------------------------------------===//
+
+module breadcrumb_index;
+
+bind "../zia/function_scan";
+
+/// @brief One function declaration discovered in the active Zia buffer.
+class BreadcrumbFunctionMarker {
+    expose Integer line;
+    expose String name;
+
+    expose func init() {
+        line = 0;
+        name = "";
+    }
+}
+
+/// @brief Revision-aware, sequential function-declaration index.
+/// @details The frame loop feeds at most its explicit line budget through
+///          `PumpLine`. This preserves immediate cursor and render service even
+///          for very large buffers while converging on an exact breadcrumb.
+class IncrementalBreadcrumbIndex {
+    expose String sourcePath;
+    expose Integer sourceRevision;
+    expose Integer sourceLineCount;
+    expose Integer nextLine;
+    expose Integer scannedLineCount;
+    expose Integer resetCount;
+    expose List markers;
+
+    expose func init() {
+        sourcePath = "";
+        sourceRevision = -1;
+        sourceLineCount = 0;
+        nextLine = 1;
+        scannedLineCount = 0;
+        resetCount = 0;
+        markers = new List();
+    }
+
+    /// @brief Reset the index when the active source identity changes.
+    /// @return True when cached markers were invalidated.
+    expose func EnsureSource(path: String,
+                             revision: Integer,
+                             lineCount: Integer) -> Boolean {
+        var count = lineCount;
+        if count < 0 { count = 0; }
+        if path == sourcePath
+           and revision == sourceRevision
+           and count == sourceLineCount {
+            return false;
+        }
+        sourcePath = path;
+        sourceRevision = revision;
+        sourceLineCount = count;
+        nextLine = 1;
+        scannedLineCount = 0;
+        resetCount = resetCount + 1;
+        markers = new List();
+        return true;
+    }
+
+    /// @brief Return whether another source line remains to be scanned.
+    expose func HasRemaining() -> Boolean {
+        return nextLine >= 1 and nextLine <= sourceLineCount;
+    }
+
+    /// @brief Consume exactly the next 1-based source line.
+    /// @param lineText Text returned by CodeEditor.GetLine(nextLine - 1).
+    /// @return True when the line declared a recognized Zia function.
+    expose func PumpLine(lineText: String) -> Boolean {
+        if HasRemaining() == false { return false; }
+        var lineNumber = nextLine;
+        var name = function_scan.ZiaFunctionNameFromLine(lineText);
+        if name != "" {
+            var marker = new BreadcrumbFunctionMarker();
+            marker.line = lineNumber;
+            marker.name = name;
+            markers.add(marker);
+        }
+        nextLine = nextLine + 1;
+        scannedLineCount = scannedLineCount + 1;
+        return name != "";
+    }
+
+    /// @brief Return whether every declaration through a line is indexed.
+    expose func IsReadyForLine(lineNumber: Integer) -> Boolean {
+        if sourceLineCount <= 0 { return true; }
+        var target = lineNumber;
+        if target < 1 { target = 1; }
+        if target > sourceLineCount { target = sourceLineCount; }
+        return nextLine > target;
+    }
+
+    /// @brief Return the nearest indexed function at or above a source line.
+    /// @return Empty until all source lines through lineNumber are indexed.
+    expose func EnclosingName(lineNumber: Integer) -> String {
+        if IsReadyForLine(lineNumber) == false { return ""; }
+        var i = markers.count() - 1;
+        while i >= 0 {
+            var marker = markers.get(i) as BreadcrumbFunctionMarker;
+            if marker != null and marker.line <= lineNumber {
+                return marker.name;
+            }
+            i = i - 1;
+        }
+        return "";
+    }
+}

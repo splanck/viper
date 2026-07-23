@@ -1,3 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/command_registry.zia
+// Purpose: Own Studio command metadata and reconcile language, document,
+//          workspace, build-job, and debugger availability.
+// Key invariants:
+//   - Menu, palette, and shortcut entry points share the same availability.
+//   - Invalid persisted or live shortcut spellings never replace a working binding.
+//   - Runtime context is permissive until the application explicitly supplies
+//     its first snapshot, preserving standalone registry use in tooling/tests.
+// Ownership/Lifetime:
+//   - Main owns one registry and refreshes its runtime context once per frame.
+// Links: zannastudio/src/commands/command_catalog.zia,
+//        zannastudio/src/ui/menu_chrome.zia
+//
+//===----------------------------------------------------------------------===//
+
 module command_registry;
 
 bind "../commands/command_catalog";
@@ -5,6 +27,7 @@ bind "../editor/language_service";
 
 bind Zanna.GUI;
 bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
 
 // ============================================================================
 // MODULE: command_registry
@@ -44,9 +67,31 @@ class CommandEntry {
 
 class CommandRegistry {
     expose List[CommandEntry] commands;
+    expose Boolean runtimeContextInitialized;
+    expose Boolean documentAvailable;
+    expose Boolean projectAvailable;
+    expose Boolean buildTargetAvailable;
+    expose Boolean debugTargetAvailable;
+    expose Boolean buildJobActive;
+    expose Boolean debugSessionActive;
+    expose Boolean debugSessionStopped;
+    hide Boolean shortcutContextInitialized;
+    hide language_service.LanguageService shortcutContextService;
+    expose Integer shortcutStateRefreshCount;
 
     expose func init() {
         commands = [];
+        runtimeContextInitialized = false;
+        documentAvailable = false;
+        projectAvailable = false;
+        buildTargetAvailable = false;
+        debugTargetAvailable = false;
+        buildJobActive = false;
+        debugSessionActive = false;
+        debugSessionStopped = false;
+        shortcutContextInitialized = false;
+        shortcutContextService = null;
+        shortcutStateRefreshCount = 0;
         RegisterDefaults();
     }
 
@@ -122,14 +167,98 @@ class CommandRegistry {
             var eq = Str.IndexOf(pair, "=");
             if eq > 0 {
                 var id = Str.Left(pair, eq - 1);
-                var shortcut = Str.Mid(pair, eq + 1);
+                var shortcut = NormalizeShortcut(Str.Mid(pair, eq + 1));
                 var entry = Find(id);
-                if entry != null {
+                if entry != null and IsValidShortcut(shortcut) {
                     entry.shortcut = shortcut;
                 }
             }
             i = i + 1;
         }
+    }
+
+    /// @brief Normalize harmless whitespace in user-entered shortcut text.
+    /// @details Spaces surrounding `+` are removed and runs between chord
+    ///          strokes collapse to one. Modifier spelling/case remains under
+    ///          the user's control, including a deliberate physical Ctrl on macOS.
+    /// @param shortcut Raw Settings or persisted shortcut text.
+    /// @return Trimmed single- or two-stroke spelling.
+    expose func NormalizeShortcut(shortcut: String) -> String {
+        var normalized = Str.Trim(Str.Replace(shortcut, "\t", " "));
+        while Str.Contains(normalized, "  ") {
+            normalized = Str.Replace(normalized, "  ", " ");
+        }
+        normalized = Str.Replace(normalized, " +", "+");
+        normalized = Str.Replace(normalized, "+ ", "+");
+        return normalized;
+    }
+
+    /// @brief Validate a shortcut against the runtime's supported grammar.
+    /// @details Empty means intentionally unbound. Non-empty bindings contain
+    ///          one or two whitespace-separated strokes, each with exactly one
+    ///          key. Plain printable keys are rejected because global shortcut
+    ///          dispatch deliberately leaves ordinary typing alone.
+    /// @param shortcut Raw or normalized shortcut text.
+    /// @return True when InstallShortcuts can register the binding faithfully.
+    expose func IsValidShortcut(shortcut: String) -> Boolean {
+        var normalized = NormalizeShortcut(shortcut);
+        if normalized == "" { return true; }
+        var strokes = Str.Split(normalized, " ");
+        var count = Seq.get_Count(strokes);
+        if count < 1 or count > 2 { return false; }
+        var i = 0;
+        while i < count {
+            if ValidShortcutStroke(Seq.GetStr(strokes, i)) == false { return false; }
+            i = i + 1;
+        }
+        return true;
+    }
+
+    /// @brief Validate one `+`-separated shortcut stroke.
+    hide func ValidShortcutStroke(stroke: String) -> Boolean {
+        if stroke == "" { return false; }
+        var tokens = Str.Split(stroke, "+");
+        var count = Seq.get_Count(tokens);
+        var keyCount = 0;
+        var printableKey = false;
+        var dispatchModifier = false;
+        var i = 0;
+        while i < count {
+            var token = Str.ToLower(Str.Trim(Seq.GetStr(tokens, i)));
+            if token == "" { return false; }
+            if token == "ctrl" or token == "control"
+               or token == "alt" or token == "cmd" or token == "command" {
+                dispatchModifier = true;
+            } else if token == "shift" {
+                // Shift modifies a key but intentionally does not make a plain
+                // printable key safe as an application-global shortcut.
+            } else {
+                if keyCount != 0 or IsShortcutKeyToken(token) == false { return false; }
+                keyCount = 1;
+                printableKey = Str.get_Length(token) == 1 or token == "space";
+            }
+            i = i + 1;
+        }
+        return keyCount == 1 and (printableKey == false or dispatchModifier);
+    }
+
+    /// @brief Return whether a non-modifier token maps to a runtime key.
+    hide func IsShortcutKeyToken(token: String) -> Boolean {
+        if Str.get_Length(token) == 1 { return true; }
+        if token == "f1" or token == "f2" or token == "f3" or token == "f4"
+           or token == "f5" or token == "f6" or token == "f7" or token == "f8"
+           or token == "f9" or token == "f10" or token == "f11" or token == "f12" {
+            return true;
+        }
+        return token == "enter" or token == "return"
+               or token == "escape" or token == "esc"
+               or token == "space" or token == "tab" or token == "backspace"
+               or token == "delete" or token == "del"
+               or token == "home" or token == "end"
+               or token == "pageup" or token == "pgup"
+               or token == "pagedown" or token == "pgdn"
+               or token == "left" or token == "right"
+               or token == "up" or token == "down";
     }
 
     /// @brief Return the catalog-default shortcut for a command id.
@@ -189,6 +318,14 @@ class CommandRegistry {
             }
             i = i + 1;
         }
+        // A reinstall resets native enabled state. Reapply the last complete
+        // runtime snapshot immediately when one exists; otherwise the first
+        // ApplyCommandContext call will initialize it.
+        shortcutContextInitialized = false;
+        if runtimeContextInitialized {
+            ApplyShortcutStates(shortcutContextService);
+            shortcutContextInitialized = true;
+        }
     }
 
     expose func PopulatePalette(palette: GUI.CommandPalette,
@@ -213,6 +350,59 @@ class CommandRegistry {
     }
 
     expose func ApplyCapabilities(service: language_service.LanguageService) {
+        ApplyShortcutStates(service);
+        shortcutContextService = service;
+        shortcutContextInitialized = true;
+    }
+
+    /// @brief Apply the current document/workspace/execution context.
+    /// @details This is the non-visual counterpart to MenuChrome's command
+    ///          state. It prevents shortcuts and palette selections from
+    ///          bypassing disabled toolbar/menu controls.
+    /// @param hasDocument True when an editor document is open.
+    /// @param hasProject True when a workspace root is open.
+    /// @param hasBuildTarget True when a project or document can be built.
+    /// @param hasDebugTarget True when a saved document can be debugged.
+    /// @param jobActive True while a build/run process is active.
+    /// @param debugActive True while a debug adapter session exists.
+    /// @param debugStopped True while that session is paused.
+    /// @param service Active language service for capability checks.
+    expose func ApplyCommandContext(hasDocument: Boolean,
+                                    hasProject: Boolean,
+                                    hasBuildTarget: Boolean,
+                                    hasDebugTarget: Boolean,
+                                    jobActive: Boolean,
+                                    debugActive: Boolean,
+                                    debugStopped: Boolean,
+                                    service: language_service.LanguageService) {
+        var changed = runtimeContextInitialized == false
+            or shortcutContextInitialized == false
+            or documentAvailable != hasDocument
+            or projectAvailable != hasProject
+            or buildTargetAvailable != hasBuildTarget
+            or debugTargetAvailable != hasDebugTarget
+            or buildJobActive != jobActive
+            or debugSessionActive != debugActive
+            or debugSessionStopped != debugStopped
+            or shortcutContextService != service;
+        runtimeContextInitialized = true;
+        documentAvailable = hasDocument;
+        projectAvailable = hasProject;
+        buildTargetAvailable = hasBuildTarget;
+        debugTargetAvailable = hasDebugTarget;
+        buildJobActive = jobActive;
+        debugSessionActive = debugActive;
+        debugSessionStopped = debugStopped;
+        shortcutContextService = service;
+        shortcutContextInitialized = true;
+        if changed == false { return; }
+        ApplyShortcutStates(service);
+    }
+
+    /// @brief Reconcile all registered shortcuts against current availability.
+    /// @param service Active language service for capability checks.
+    hide func ApplyShortcutStates(service: language_service.LanguageService) {
+        shortcutStateRefreshCount = shortcutStateRefreshCount + 1;
         var i = 0;
         while i < commands.count() {
             var cmd = commands.get(i);
@@ -344,6 +534,13 @@ class CommandRegistry {
 
     expose func IsSupported(cmd: CommandEntry,
                             service: language_service.LanguageService) -> Boolean {
+        if IsContextSupported(cmd) == false { return false; }
+        return IsLanguageSupported(cmd, service);
+    }
+
+    /// @brief Test only language-service capability for one command.
+    hide func IsLanguageSupported(cmd: CommandEntry,
+                                  service: language_service.LanguageService) -> Boolean {
         if cmd.capability == "" { return true; }
         if service == null { return false; }
         if service.name == language_service.LANGUAGE_BASIC and IsZiaOnlyCommand(cmd.id) {
@@ -357,6 +554,85 @@ class CommandRegistry {
         if cmd.capability == "signature" { return service.canSignatureHelp; }
         if cmd.capability == "symbols" { return service.canDocumentSymbols; }
         return true;
+    }
+
+    /// @brief Test document/workspace/job/debug availability for one command.
+    hide func IsContextSupported(cmd: CommandEntry) -> Boolean {
+        if runtimeContextInitialized == false { return true; }
+        if RequiresDocument(cmd) and documentAvailable == false { return false; }
+        if RequiresProject(cmd.id) and projectAvailable == false { return false; }
+
+        if IsBuildCommand(cmd.id) {
+            return buildTargetAvailable
+                   and buildJobActive == false
+                   and debugSessionActive == false;
+        }
+        if cmd.id == "debugstart" {
+            return debugTargetAvailable
+                   and buildJobActive == false
+                   and debugSessionActive == false;
+        }
+        if cmd.id == "closeworkspace" or cmd.id == "removefolder" {
+            return buildJobActive == false and debugSessionActive == false;
+        }
+        if cmd.id == "stopjob" { return buildJobActive; }
+        if IsPausedDebugCommand(cmd.id) {
+            return debugSessionActive and debugSessionStopped;
+        }
+        if cmd.id == "debugpause" {
+            return debugSessionActive and debugSessionStopped == false;
+        }
+        if IsActiveDebugCommand(cmd.id) { return debugSessionActive; }
+        return true;
+    }
+
+    /// @brief Whether a command needs an editor document.
+    hide func RequiresDocument(cmd: CommandEntry) -> Boolean {
+        if cmd.capability != "" { return true; }
+        var id = cmd.id;
+        return id == "comparewithsaved"
+               or id == "save" or id == "saveas" or id == "saveall"
+               or id == "close" or id == "reload"
+               or id == "find" or id == "goto" or id == "minimap"
+               or id == "spliteditorright"
+               or id == "undo" or id == "redo" or id == "selectall"
+               or id == "addnextoccurrence" or id == "skipoccurrence"
+               or id == "selectalloccurrences" or id == "clearcursors"
+               or id == "expandselection" or id == "shrinkselection"
+               or id == "togglelinecomment" or id == "toggleblockcomment"
+               or id == "duplicateline" or id == "movelineup"
+               or id == "movelinedown" or id == "trimtrailingwhitespace"
+               or id == "togglerenderwhitespace"
+               or id == "formatdocument" or id == "formatselection"
+               or id == "togglebreakpoint" or id == "debugcondition"
+               or id == "debuglogpoint" or id == "debugruntocursor";
+    }
+
+    /// @brief Whether a command needs an open workspace root.
+    hide func RequiresProject(id: String) -> Boolean {
+        return id == "closeworkspace" or id == "removefolder"
+               or id == "quickopen" or id == "searchproject"
+               or id == "workspacesymbols"
+               or Str.StartsWith(id, "tree");
+    }
+
+    /// @brief Whether a command starts build/run work.
+    hide func IsBuildCommand(id: String) -> Boolean {
+        return id == "build" or id == "buildrun" or id == "run";
+    }
+
+    /// @brief Whether a command requires a paused debug session.
+    hide func IsPausedDebugCommand(id: String) -> Boolean {
+        return id == "debugcontinue" or id == "debugstepover"
+               or id == "debugstepin" or id == "debugstepout"
+               or id == "debugruntocursor";
+    }
+
+    /// @brief Whether a command requires any active debug session.
+    hide func IsActiveDebugCommand(id: String) -> Boolean {
+        return id == "debugrestart" or id == "debugstop"
+               or id == "debugaddwatch" or id == "debugremovewatch"
+               or id == "debugrefreshwatches" or id == "debugclearwatches";
     }
 
     expose func ServerSupportsCapability(capability: String,
@@ -376,6 +652,8 @@ class CommandRegistry {
     expose func DisabledReasonFor(cmd: CommandEntry,
                                   service: language_service.LanguageService) -> String {
         if cmd == null { return "Command is not registered"; }
+        var contextReason = ContextDisabledReason(cmd);
+        if contextReason != "" { return contextReason; }
         var language = "this file";
         if service != null and service.name != "" {
             language = Str.ToUpper(service.name);
@@ -395,6 +673,59 @@ class CommandRegistry {
         }
         return cmd.label + " is unavailable: " + language
                + " does not support " + CapabilityLabel(cmd.capability) + ".";
+    }
+
+    /// @brief Explain the first unmet non-language command requirement.
+    hide func ContextDisabledReason(cmd: CommandEntry) -> String {
+        if runtimeContextInitialized == false { return ""; }
+        if RequiresDocument(cmd) and documentAvailable == false {
+            return "Open a document to use " + cmd.label + ".";
+        }
+        if RequiresProject(cmd.id) and projectAvailable == false {
+            return "Open a project folder to use " + cmd.label + ".";
+        }
+        if IsBuildCommand(cmd.id) and buildTargetAvailable == false {
+            return "Open a project or document to use " + cmd.label + ".";
+        }
+        if cmd.id == "debugstart" and debugTargetAvailable == false {
+            return "Open or save a document before starting the debugger.";
+        }
+        if cmd.id == "closeworkspace" and buildJobActive {
+            return "Stop the running build or run job before closing the workspace.";
+        }
+        if cmd.id == "closeworkspace" and debugSessionActive {
+            return "Stop debugging before closing the workspace.";
+        }
+        if cmd.id == "removefolder" and buildJobActive {
+            return "Stop the running build or run job before removing a workspace folder.";
+        }
+        if cmd.id == "removefolder" and debugSessionActive {
+            return "Stop debugging before removing a workspace folder.";
+        }
+        if IsBuildCommand(cmd.id) and debugSessionActive {
+            return cmd.label + " is unavailable while debugging.";
+        }
+        if (IsBuildCommand(cmd.id) or cmd.id == "debugstart") and buildJobActive {
+            return cmd.label + " is unavailable while another job is running.";
+        }
+        if cmd.id == "debugstart" and debugSessionActive {
+            return "A debug session is already running.";
+        }
+        if cmd.id == "stopjob" and buildJobActive == false {
+            return "There is no running build or run job to stop.";
+        }
+        if IsPausedDebugCommand(cmd.id)
+           and (debugSessionActive == false or debugSessionStopped == false) {
+            return cmd.label + " is available while debugging is paused.";
+        }
+        if cmd.id == "debugpause"
+           and (debugSessionActive == false or debugSessionStopped) {
+            return "Pause is available while a debuggee is running.";
+        }
+        if IsActiveDebugCommand(cmd.id) and debugSessionActive == false {
+            return "Start debugging before using " + cmd.label + ".";
+        }
+        return "";
     }
 
     expose func IsZiaOnlyCommand(id: String) -> Boolean {

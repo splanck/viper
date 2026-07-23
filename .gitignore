@@ -22,7 +22,8 @@ Thumbs.db
 /build-*/
 /build_*/
 /out/
-/artifacts-final/
+/artifacts/
+/artifacts-*/
 cmake-build*/
 cmake-build-*/
 CMakeFiles/

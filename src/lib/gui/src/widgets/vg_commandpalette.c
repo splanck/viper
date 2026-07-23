@@ -15,8 +15,9 @@
 //     into commands[], not a copy (pointers only).
 //   - filtered_count <= command_count always; filtered_capacity grows separately.
 //   - selected_index is reset to 0 (or -1 when empty) after each filter pass.
-//   - first_visible_index is clamped by commandpalette_ensure_selection_visible
-//     so the selected row is always within the visible window.
+//   - first_visible_index is clamped to the filtered results; keyboard and
+//     wheel navigation keep the selected row within the visible window.
+//   - Logical palette metrics follow UI scale and clamp to the live viewport.
 //   - is_visible and base.visible are kept in sync; both are cleared on hide.
 // Ownership/Lifetime:
 //   - commands[] are heap-allocated inside add_command and freed in destroy.
@@ -48,6 +49,9 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas);
 static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event);
 static void commandpalette_ensure_selection_visible(vg_commandpalette_t *palette);
 
+static const float COMMANDPALETTE_SEARCH_HEIGHT = 36.0f;
+static const float COMMANDPALETTE_VIEWPORT_MARGIN = 16.0f;
+
 //=============================================================================
 // CommandPalette VTable
 //=============================================================================
@@ -59,6 +63,47 @@ static vg_widget_vtable_t g_commandpalette_vtable = {.destroy = commandpalette_d
                                                      .handle_event = commandpalette_handle_event,
                                                      .can_focus = NULL,
                                                      .on_focus = NULL};
+
+/// @brief Return the current logical-to-framebuffer UI scale.
+/// @return Positive theme scale, or one when no valid scale is active.
+static float commandpalette_ui_scale(void) {
+    vg_theme_t *theme = vg_theme_get_current();
+    return theme && theme->ui_scale > 0.0f ? theme->ui_scale : 1.0f;
+}
+
+/// @brief Return the physical search-row height for the active UI scale.
+static float commandpalette_search_height(void) {
+    return COMMANDPALETTE_SEARCH_HEIGHT * commandpalette_ui_scale();
+}
+
+/// @brief Return the physical result-row height for the active UI scale.
+static float commandpalette_item_height(const vg_commandpalette_t *palette) {
+    if (!palette)
+        return 1.0f;
+    float height = (float)palette->item_height * commandpalette_ui_scale();
+    return height > 0.0f ? height : 1.0f;
+}
+
+/// @brief Return how many rows fit in the palette's current arranged height.
+/// @details Before first layout, fall back to the configured maximum so keyboard
+///          state remains well-defined. Once arranged, viewport-constrained row
+///          capacity drives paint, hit testing, scrolling, and selection reveal.
+static int commandpalette_visible_capacity(const vg_commandpalette_t *palette) {
+    if (!palette || palette->max_visible == 0)
+        return 0;
+    float height = palette->base.height;
+    if (height <= 0.0f)
+        return (int)palette->max_visible;
+    float available = height - commandpalette_search_height();
+    if (available <= 0.0f)
+        return 0;
+    int capacity = (int)(available / commandpalette_item_height(palette));
+    if (capacity < 0)
+        capacity = 0;
+    if (capacity > (int)palette->max_visible)
+        capacity = (int)palette->max_visible;
+    return capacity;
+}
 
 //=============================================================================
 // Fuzzy Matching
@@ -233,12 +278,14 @@ static void filter_commands(vg_commandpalette_t *palette) {
 
 /// @brief Clamp first_visible_index so that selected_index is within the visible window.
 static void commandpalette_ensure_selection_visible(vg_commandpalette_t *palette) {
-    int max_visible = 0;
-
     if (!palette || palette->max_visible == 0)
         return;
 
-    max_visible = (int)palette->max_visible;
+    int max_visible = commandpalette_visible_capacity(palette);
+    if (max_visible <= 0) {
+        palette->first_visible_index = 0;
+        return;
+    }
     if (palette->selected_index < 0) {
         palette->first_visible_index = 0;
         return;
@@ -445,23 +492,54 @@ void vg_commandpalette_destroy(vg_commandpalette_t *palette) {
     vg_widget_destroy(&palette->base);
 }
 
-/// @brief vtable measure — compute desired size as fixed width × (search bar + visible_count ×
-/// item_height).
+/// @brief Measure a scale-aware palette that remains inside the current viewport.
+/// @details Width, search height, and row height are stored in logical units.
+///          The scaled width clamps to 16-point side margins. Row capacity
+///          shrinks when needed so the palette's 15%-from-top runtime placement
+///          retains the same bottom margin.
 static void commandpalette_measure(vg_widget_t *widget,
                                    float available_width,
                                    float available_height) {
     vg_commandpalette_t *palette = (vg_commandpalette_t *)widget;
-    (void)available_width;
-    (void)available_height;
+    float scale = commandpalette_ui_scale();
+    float margin = COMMANDPALETTE_VIEWPORT_MARGIN * scale;
+    float search_height = COMMANDPALETTE_SEARCH_HEIGHT * scale;
+    float item_height = commandpalette_item_height(palette);
 
-    // Search input height + visible items
-    float search_height = 36;
+    float width = palette->width * scale;
+    if (available_width > 0.0f) {
+        float max_width = available_width - margin * 2.0f;
+        if (max_width < 1.0f)
+            max_width = available_width > 1.0f ? available_width : 1.0f;
+        if (width > max_width)
+            width = max_width;
+    }
+    if (width < 1.0f)
+        width = 1.0f;
+
     size_t visible = palette->filtered_count;
     if (visible > palette->max_visible)
         visible = palette->max_visible;
 
-    widget->measured_width = palette->width;
-    widget->measured_height = search_height + visible * palette->item_height;
+    float max_height = available_height * 0.85f - margin;
+    if (available_height <= 0.0f)
+        max_height = search_height + (float)visible * item_height;
+    if (max_height < 1.0f)
+        max_height = available_height > 1.0f ? available_height : 1.0f;
+    size_t height_capacity = 0;
+    if (max_height > search_height)
+        height_capacity = (size_t)((max_height - search_height) / item_height);
+    if (visible > height_capacity)
+        visible = height_capacity;
+
+    float height = search_height + (float)visible * item_height;
+    if (height > max_height)
+        height = max_height;
+    if (height < 1.0f)
+        height = 1.0f;
+
+    widget->measured_width = width;
+    widget->measured_height = height;
 }
 
 /// @brief vtable paint — draw the search bar (query or placeholder) and the visible filtered result
@@ -473,17 +551,30 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
     if (!palette->is_visible)
         return;
 
-    float search_height = 36.0f;
+    float scale = commandpalette_ui_scale();
+    float search_height = COMMANDPALETTE_SEARCH_HEIGHT * scale;
+    float item_height = commandpalette_item_height(palette);
+    float text_inset = 12.0f * scale;
+    float shortcut_inset = 16.0f * scale;
+    float shortcut_gap = 12.0f * scale;
     float x = widget->x;
     float y = widget->y;
-    float w = widget->width > 0.0f ? widget->width : palette->width;
+    float w = widget->width > 0.0f ? widget->width : palette->width * scale;
     float h = widget->height;
 
     vgfx_fill_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, palette->bg_color);
     vgfx_rect(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, 0xFF3C3C3C);
     vgfx_fill_rect(win, (int32_t)x, (int32_t)(y + search_height - 1.0f), (int32_t)w, 1, 0xFF3C3C3C);
 
-    if (palette->font) {
+    int32_t prior_clip_x = 0;
+    int32_t prior_clip_y = 0;
+    int32_t prior_clip_w = 0;
+    int32_t prior_clip_h = 0;
+    int had_prior_clip =
+        vgfx_get_clip(win, &prior_clip_x, &prior_clip_y, &prior_clip_w, &prior_clip_h);
+    vgfx_set_clip(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h);
+
+    if (palette->font && w > text_inset * 2.0f) {
         const char *query =
             (palette->current_query && palette->current_query[0])
                 ? palette->current_query
@@ -491,15 +582,21 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
         uint32_t query_color = (palette->current_query && palette->current_query[0])
                                    ? palette->text_color
                                    : palette->shortcut_color;
-        vg_font_draw_text(
-            canvas, palette->font, palette->font_size, x + 12.0f, y + 24.0f, query, query_color);
+        vg_font_draw_text(canvas,
+                          palette->font,
+                          palette->font_size,
+                          x + text_inset,
+                          y + 24.0f * scale,
+                          query,
+                          query_color);
     }
 
     // Draw filtered results
     float item_y = widget->y + search_height;
     size_t visible = palette->filtered_count;
-    if (visible > palette->max_visible)
-        visible = palette->max_visible;
+    int visible_capacity = commandpalette_visible_capacity(palette);
+    if (visible > (size_t)visible_capacity)
+        visible = (size_t)visible_capacity;
 
     commandpalette_ensure_selection_visible(palette);
 
@@ -516,36 +613,60 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
                            (int32_t)(x + 1.0f),
                            (int32_t)item_y,
                            (int32_t)(w - 2.0f),
-                           (int32_t)palette->item_height,
+                           (int32_t)item_height,
                            palette->selected_bg);
         }
 
         // Draw label and shortcut
         if (palette->font && cmd->label) {
-            vg_font_draw_text(canvas,
-                              palette->font,
-                              palette->font_size,
-                              x + 12.0f,
-                              item_y + 22.0f,
-                              cmd->label,
-                              palette->text_color);
-
+            float shortcut_x = x + w - shortcut_inset;
+            float label_right = x + w - text_inset;
+            bool draw_shortcut = false;
+            vg_text_metrics_t shortcut_metrics = {0};
             if (cmd->shortcut) {
-                vg_text_metrics_t shortcut_metrics;
                 vg_font_measure_text(
                     palette->font, palette->font_size, cmd->shortcut, &shortcut_metrics);
+                shortcut_x -= shortcut_metrics.width;
+                if (shortcut_x > x + text_inset) {
+                    draw_shortcut = true;
+                    label_right = shortcut_x - shortcut_gap;
+                }
+            }
+            int32_t label_clip_width = (int32_t)(label_right - (x + text_inset));
+            if (label_clip_width > 0) {
+                vgfx_set_clip(win,
+                              (int32_t)(x + text_inset),
+                              (int32_t)item_y,
+                              label_clip_width,
+                              (int32_t)item_height);
                 vg_font_draw_text(canvas,
                                   palette->font,
                                   palette->font_size,
-                                  x + w - 16.0f - shortcut_metrics.width,
-                                  item_y + 22.0f,
+                                  x + text_inset,
+                                  item_y + 22.0f * scale,
+                                  cmd->label,
+                                  palette->text_color);
+                vgfx_set_clip(win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h);
+            }
+
+            if (draw_shortcut) {
+                vg_font_draw_text(canvas,
+                                  palette->font,
+                                  palette->font_size,
+                                  shortcut_x,
+                                  item_y + 22.0f * scale,
                                   cmd->shortcut,
                                   palette->shortcut_color);
             }
         }
 
-        item_y += palette->item_height;
+        item_y += item_height;
     }
+
+    if (had_prior_clip)
+        vgfx_set_clip(win, prior_clip_x, prior_clip_y, prior_clip_w, prior_clip_h);
+    else
+        vgfx_clear_clip(win);
 }
 
 /// @brief vtable handle_event — dispatch key input (typing, backspace, arrows, Enter, Escape) and
@@ -596,6 +717,10 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
         return true;
     }
 
+    int visible_capacity = commandpalette_visible_capacity(palette);
+    float search_height = commandpalette_search_height();
+    float item_height = commandpalette_item_height(palette);
+
     if (event->type == VG_EVENT_MOUSE_WHEEL) {
         int direction = 0;
         if (event->wheel.delta_y > 0.0f)
@@ -603,28 +728,31 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
         else if (event->wheel.delta_y < 0.0f)
             direction = 1;
 
-        if (direction != 0 && palette->filtered_count > palette->max_visible) {
+        if (direction != 0 && visible_capacity > 0 &&
+            palette->filtered_count > (size_t)visible_capacity) {
+            int max_first = (int)palette->filtered_count - visible_capacity;
             palette->first_visible_index += direction;
-            commandpalette_ensure_selection_visible(palette);
+            if (palette->first_visible_index < 0)
+                palette->first_visible_index = 0;
+            if (palette->first_visible_index > max_first)
+                palette->first_visible_index = max_first;
             if (palette->selected_index < palette->first_visible_index)
                 palette->selected_index = palette->first_visible_index;
-            if (palette->selected_index >=
-                palette->first_visible_index + (int)palette->max_visible) {
-                palette->selected_index =
-                    palette->first_visible_index + (int)palette->max_visible - 1;
+            if (palette->selected_index >= palette->first_visible_index + visible_capacity) {
+                palette->selected_index = palette->first_visible_index + visible_capacity - 1;
             }
+            palette->hovered_index = -1;
             palette->base.needs_paint = true;
             return true;
         }
     }
 
     if (event->type == VG_EVENT_MOUSE_MOVE) {
-        float local_y = event->mouse.y - 36.0f;
+        float local_y = event->mouse.y - search_height;
         if (local_y >= 0.0f) {
-            int hovered =
-                palette->first_visible_index + (int)(local_y / (float)palette->item_height);
+            int hovered = palette->first_visible_index + (int)(local_y / item_height);
             if (hovered >= 0 && hovered < (int)palette->filtered_count &&
-                hovered < palette->first_visible_index + (int)palette->max_visible) {
+                hovered < palette->first_visible_index + visible_capacity) {
                 if (palette->hovered_index != hovered) {
                     palette->hovered_index = hovered;
                     palette->selected_index = hovered;
@@ -637,12 +765,11 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) 
     }
 
     if (event->type == VG_EVENT_MOUSE_DOWN || event->type == VG_EVENT_CLICK) {
-        float local_y = event->mouse.y - 36.0f;
+        float local_y = event->mouse.y - search_height;
         if (local_y >= 0.0f) {
-            int clicked =
-                palette->first_visible_index + (int)(local_y / (float)palette->item_height);
+            int clicked = palette->first_visible_index + (int)(local_y / item_height);
             if (clicked >= 0 && clicked < (int)palette->filtered_count &&
-                clicked < palette->first_visible_index + (int)palette->max_visible) {
+                clicked < palette->first_visible_index + visible_capacity) {
                 palette->selected_index = clicked;
                 commandpalette_ensure_selection_visible(palette);
                 palette->base.needs_paint = true;

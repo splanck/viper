@@ -71,6 +71,8 @@ static constexpr uint32_t S_REGULAR = 0x00;
 static constexpr uint32_t S_ZEROFILL = 0x01;
 static constexpr uint32_t S_CSTRING_LITERALS = 0x02;
 static constexpr uint32_t S_LITERAL_POINTERS = 0x05;
+static constexpr uint32_t S_MOD_INIT_FUNC_POINTERS = 0x09;
+static constexpr uint32_t S_MOD_TERM_FUNC_POINTERS = 0x0A;
 static constexpr uint32_t S_THREAD_LOCAL_REGULAR = 0x11;
 static constexpr uint32_t S_THREAD_LOCAL_ZEROFILL = 0x12;
 static constexpr uint32_t S_THREAD_LOCAL_VARIABLES = 0x13;
@@ -115,10 +117,10 @@ static uint32_t machoSectionAlignLog2(uint32_t alignment) {
 
 /// @brief Choose the Mach-O section name for an OutputSection.
 /// @details Most outputs collapse to __text (executable) or __const (rodata);
-///          ObjC metadata sections preserve their original "__SEG,__sect" name
-///          because the ObjC runtime locates them by name.
+///          loader/runtime-discovered sections preserve their original
+///          "__SEG,__sect" name.
 static std::string machoSectionNameForOutput(const OutputSection &sec) {
-    if (!isObjCSection(sec.name))
+    if (!isObjCSection(sec.name) && !isMachOModInitTermSection(sec.name))
         return sec.executable ? "__text" : "__const";
     const auto comma = sec.name.find(',');
     return (comma != std::string::npos) ? sec.name.substr(comma + 1) : sec.name;
@@ -224,6 +226,15 @@ static uint32_t objcSectionFlags(const std::string &machoSecName) {
         return S_ATTR_NO_DEAD_STRIP;
     if (machoSecName == "__objc_protolist")
         return S_COALESCED | S_ATTR_NO_DEAD_STRIP;
+    return S_REGULAR;
+}
+
+/// @brief Return dyld's required section type for module lifetime pointers.
+static uint32_t moduleLifetimeSectionFlags(const std::string &machoSecName) {
+    if (machoSecName == "__mod_init_func")
+        return S_MOD_INIT_FUNC_POINTERS;
+    if (machoSecName == "__mod_term_func")
+        return S_MOD_TERM_FUNC_POINTERS;
     return S_REGULAR;
 }
 
@@ -796,7 +807,12 @@ bool writeMachOExe(const std::string &path,
             std::string machoSecName = "__data";
             uint32_t secFlags = S_REGULAR;
             bool isZerofill = false;
-            if (isObjCSection(sec.name)) {
+            if (isMachOModInitTermSection(sec.name)) {
+                // dyld discovers global constructors/destructors by both the
+                // section name and S_MOD_* section type.
+                machoSecName = machoSectionNameForOutput(sec);
+                secFlags = moduleLifetimeSectionFlags(machoSecName);
+            } else if (isObjCSection(sec.name)) {
                 // ObjC metadata: preserve original section name (e.g., __objc_classlist).
                 machoSecName = machoSectionNameForOutput(sec);
                 secFlags = objcSectionFlags(machoSecName);

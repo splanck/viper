@@ -1,10 +1,32 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/hover.zia
+// Purpose: Debounce and display stale-safe Zia and BASIC symbol hover details.
+// Key invariants:
+//   - Compiler-backed hover work never blocks mouse handling or painting.
+//   - A tooltip applies only while path, revision, pointer, and text position
+//     still match the originating request.
+// Ownership/Lifetime:
+//   - HoverController owns its floating tooltip and one coalescing BASIC worker.
+//   - Worker requests retain immutable source snapshots, never editor widgets.
+// Links: zannastudio/src/editor/basic_query_job.zia,
+//        zannastudio/src/app/language_tool_frame.zia
+//
+//===----------------------------------------------------------------------===//
+
 module hover;
 
 bind "../editor/editor_engine";
 bind "../editor/scheduler";
+bind "../editor/basic_query_job";
+bind "../ui/app_shell";
 
 bind ZiaCompletion = Zanna.Zia.Completion;
-bind BasicCompletion = Zanna.Basic.LanguageService;
 bind SemanticJob = Zanna.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Zanna.GUI;
@@ -61,9 +83,11 @@ class HoverController {
     expose Boolean waiting;
     expose String sourcePath;
     expose Boolean enabled;
-    expose Boolean isBasic;   // route to Zanna.Basic.LanguageService (sync) instead of Zia
+    hide Boolean isBasic;     // changed only through SetBasicMode
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
+    expose basic_query_job.BasicQueryJob basicJob;
+    expose Integer pendingBasicGeneration;
     expose Integer pendingRevision;
     expose String pendingPath;
     expose Integer pendingLine;
@@ -86,6 +110,8 @@ class HoverController {
         isBasic = false;
         workScheduler = null;
         pendingJob = null;
+        basicJob = new basic_query_job.BasicQueryJob();
+        pendingBasicGeneration = 0;
         pendingRevision = -1;
         pendingPath = "";
         pendingLine = -1;
@@ -98,6 +124,16 @@ class HoverController {
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
         workScheduler = value;
+    }
+
+    /// @brief Switch hover backends and discard any request from the old mode.
+    expose func SetBasicMode(value: Boolean) {
+        if isBasic == value { return; }
+        CancelPendingJob();
+        isBasic = value;
+        waiting = false;
+        if isVisible and tooltip != null { tooltip.SetVisible(false); }
+        isVisible = false;
     }
 
     /// @brief Build the FloatingPanel + Label that render the tooltip.
@@ -118,6 +154,11 @@ class HoverController {
 
     /// @brief Set the active file's path for HoverForFile lookups.
     expose func setSourcePath(path: String) {
+        if path == sourcePath { return; }
+        CancelPendingJob();
+        if isVisible and tooltip != null { tooltip.SetVisible(false); }
+        isVisible = false;
+        waiting = false;
         sourcePath = path;
     }
 
@@ -133,7 +174,10 @@ class HoverController {
 
     /// @brief Per-frame mouse-hover state machine (see module header).
     expose func update(engine: editor_engine.EditorEngine) {
-        if enabled == false { return; }
+        if enabled == false {
+            DrainCancelledBasicJob();
+            return;
+        }
         if engine == null or engine.editor == null { return; }
 
         var mx = Zanna.Input.Mouse.X();
@@ -157,6 +201,9 @@ class HoverController {
             return;
         }
 
+        if PollPendingBasicJob(engine, mx, my) {
+            return;
+        }
         if PollPendingJob(engine, mx, my) {
             return;
         }
@@ -194,11 +241,19 @@ class HoverController {
         var hoverCol = engine.editor.GetColAtPixel(mx, my);
         if hoverLine < 0 or hoverCol < 0 { return; }
 
-        // BASIC: synchronous in-process hover (raw source, 1-based line, no offset).
+        // BASIC uses raw source, a 1-based line, and no Zia offset. The worker
+        // lets pointer movement and paint continue while parsing is in flight.
         if isBasic {
             CancelPendingJob();
-            var binfo = BasicCompletion.HoverInfoForFile(source, sourcePath, hoverLine + 1, hoverCol);
-            ApplyHoverInfo(binfo, mx, my);
+            pendingBasicGeneration = basicJob.Queue(
+                basic_query_job.QUERY_HOVER, source, sourcePath,
+                hoverLine + 1, hoverCol);
+            pendingRevision = engine.GetRevision();
+            pendingPath = sourcePath;
+            pendingLine = hoverLine;
+            pendingCol = hoverCol;
+            pendingMouseX = mx;
+            pendingMouseY = my;
             return;
         }
 
@@ -221,8 +276,8 @@ class HoverController {
             return;
         }
 
-        var info = ZiaCompletion.HoverInfoForFile(qsource, sourcePath, curLine, curCol);
-        ApplyHoverInfo(info, mx, my);
+        // Stub runtimes may omit semantic jobs. Never replace the missing
+        // worker with a foreground compiler call.
     }
 
     hide func ApplyHoverInfo(info: Any, mx: Integer, my: Integer) {
@@ -247,7 +302,7 @@ class HoverController {
     hide func ApplyTooltipSize(display: String) {
         tooltipWidth = HOVER_TOOLTIP_DEFAULT_WIDTH;
         if appRoot != null {
-            var maxWidth = appRoot.GetWidth() - 16;
+            var maxWidth = app_shell.UiViewportWidth(appRoot) - 16;
             if maxWidth < HOVER_TOOLTIP_MIN_WIDTH {
                 maxWidth = HOVER_TOOLTIP_MIN_WIDTH;
             }
@@ -276,11 +331,11 @@ class HoverController {
         var width = tooltipWidth;
         var height = tooltipHeight;
         var margin = 8.0;
-        var x = mx + 10.0;
-        var y = my - 25.0;
+        var x = app_shell.PhysicalToUi(appRoot, mx) + 10.0;
+        var y = app_shell.PhysicalToUi(appRoot, my) - 25.0;
         if appRoot != null {
-            var winW = appRoot.GetWidth();
-            var winH = appRoot.GetHeight();
+            var winW = app_shell.UiViewportWidth(appRoot);
+            var winH = app_shell.UiViewportHeight(appRoot);
             if x + width + margin > winW {
                 x = winW - width - margin;
             }
@@ -317,6 +372,31 @@ class HoverController {
         return true;
     }
 
+    /// @brief Publish a BASIC hover only while its pointer target is unchanged.
+    hide func PollPendingBasicJob(engine: editor_engine.EditorEngine,
+                                  mx: Integer,
+                                  my: Integer) -> Boolean {
+        basicJob.Pump();
+        var request = basicJob.TakeCompleted();
+        if request == null { return false; }
+        if request!.generation != pendingBasicGeneration { return false; }
+        pendingBasicGeneration = 0;
+        if request!.succeeded == false { return true; }
+        if engine == null or engine.editor == null { return true; }
+        if engine.GetRevision() != pendingRevision or sourcePath != pendingPath {
+            return true;
+        }
+        if mx != pendingMouseX or my != pendingMouseY {
+            return true;
+        }
+        if engine.editor.GetLineAtPixel(my) != pendingLine
+           or engine.editor.GetColAtPixel(mx, my) != pendingCol {
+            return true;
+        }
+        ApplyHoverInfo(request!.result, mx, my);
+        return true;
+    }
+
     /// @brief Hide the tooltip and reset the dwell state.
     expose func hideTooltip() {
         CancelPendingJob();
@@ -332,6 +412,15 @@ class HoverController {
             SemanticJob.Cancel(pendingJob);
             pendingJob = null;
         }
+        basicJob.Cancel();
+        pendingBasicGeneration = 0;
+        DrainCancelledBasicJob();
+    }
+
+    hide func DrainCancelledBasicJob() {
+        if pendingBasicGeneration != 0 { return; }
+        basicJob.Pump();
+        basicJob.TakeCompleted();
     }
 }
 

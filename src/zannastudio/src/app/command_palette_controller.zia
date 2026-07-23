@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/app/command_palette_controller.zia
+// Purpose: Own command/goto/Quick Open palette mode and incremental query state.
+// Key invariants:
+//   - Temporary palette modes restore ordinary command filtering when closed.
+//   - Quick Open scans only a bounded cache slice and publishes a bounded list.
+//   - Opening the palette dismisses any focus-taking Studio surface first.
+// Ownership/Lifetime: Main owns one controller for the application lifetime.
+// Links: zannastudio/src/commands/quick_open_commands.zia,
+//        zannastudio/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
 module command_palette_controller;
 
 bind "../commands/command_registry";
@@ -29,11 +48,22 @@ final GOTO_ID_PREFIX = "goto:";
 class CommandPaletteController {
     expose String mode;
     hide Integer lastQueryGen; // Last observed palette query generation (live-mode dispatch).
+    expose Integer quickOpenQueryGeneration;
+    expose Integer quickOpenCacheGeneration;
+    expose String quickOpenQuery;
+    expose Integer quickOpenScanIndex;
+    expose List quickOpenResultPaths;
+    expose List quickOpenResultScores;
+    expose Integer quickOpenPublishedCount;
+    expose Integer quickOpenLastPumpScanCount;
+    expose Boolean quickOpenNeedsPublish;
+    expose Boolean quickOpenScanComplete;
 
     /// @brief Initialize the palette controller in normal command mode.
     expose func init() {
         mode = MODE_COMMANDS;
         lastQueryGen = -1;
+        ResetQuickOpenState();
     }
 
     /// @brief Whether the palette is showing a live "go to line" row.
@@ -111,8 +141,10 @@ class CommandPaletteController {
                                 registry: command_registry.CommandRegistry,
                                 service: language_service.LanguageService) {
         mode = MODE_COMMANDS;
+        ResetQuickOpenState();
         if shell == null or shell.commandPalette == null { return; }
         shell.commandPalette.SetPlaceholder("Type a command...");
+        shell.commandPalette.SetClientFiltered(false);
         if registry != null {
             registry.PopulatePalette(shell.commandPalette, service);
         }
@@ -127,15 +159,31 @@ class CommandPaletteController {
                              service: language_service.LanguageService) {
         ResetToCommands(shell, registry, service);
         if shell != null and shell.commandPalette != null {
+            shell.DismissTransientSurface();
             shell.commandPalette.Show();
         }
     }
 
     /// @brief Mark that the palette now contains quick-open file rows.
-    /// @details search_commands.ShowQuickOpenPalette builds the actual rows; this
-    ///          method records the mode so selection dispatch can interpret ids.
+    /// @details Quick Open's frame pump builds ranked rows incrementally; this
+    ///          method records the mode and resets its query cursor.
     expose func BeginQuickOpen() {
         mode = MODE_QUICK_OPEN;
+        ResetQuickOpenState();
+    }
+
+    /// @brief Reset query-scan state without changing the active palette mode.
+    expose func ResetQuickOpenState() {
+        quickOpenQueryGeneration = -1;
+        quickOpenCacheGeneration = -1;
+        quickOpenQuery = "";
+        quickOpenScanIndex = 0;
+        quickOpenResultPaths = new List();
+        quickOpenResultScores = new List();
+        quickOpenPublishedCount = 0;
+        quickOpenLastPumpScanCount = 0;
+        quickOpenNeedsPublish = false;
+        quickOpenScanComplete = false;
     }
 
     /// @brief Restore command mode if a temporary palette closes without selection.

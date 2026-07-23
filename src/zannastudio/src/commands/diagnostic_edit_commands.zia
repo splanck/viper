@@ -1,12 +1,34 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/diagnostic_edit_commands.zia
+// Purpose: Apply diagnostic-driven fixes and missing-bind source edits.
+// Key invariants:
+//   - Diagnostic edits target validated source ranges and workspace files.
+//   - Unavailable candidate files are skipped without terminating Studio.
+// Ownership/Lifetime: DiagnosticActionController owns its semantic and project
+//                     workers; compatibility handlers borrow editor state.
+// Links: zannastudio/src/editor/quick_fixes.zia,
+//        zannastudio/src/commands/edit_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module diagnostic_edit_commands;
 
 bind "../commands/editor_document_edit";
 bind "../commands/file_commands";
 bind "../core/document_manager";
 bind "../core/project_manager";
+bind "../editor/project_bind_query_job";
 bind "../editor/editor_engine";
 bind "../editor/quick_fixes";
+bind "../editor/zia_query";
 bind "../services/text_utils";
+bind "../services/safe_io";
 bind "../ui/app_shell";
 bind "../zia/bind_utils";
 
@@ -16,7 +38,404 @@ bind Path = Zanna.IO.Path;
 bind Map = Zanna.Collections.Map;
 bind Seq = Zanna.Collections.Seq;
 bind Str = Zanna.String;
+bind SemanticJob = Zanna.Zia.SemanticJob;
 bind ZiaToolchain = Zanna.Zia.Toolchain;
+
+final ACTION_SUPPRESS_DIAGNOSTIC = 1;
+final ACTION_APPLY_FIX = 2;
+final ACTION_CREATE_MISSING_BIND = 3;
+final MAX_DIAGNOSTIC_ACTION_CHARS = 4000000;
+
+/// @brief Non-blocking owner for compiler-backed diagnostic edit commands.
+/// @details The semantic stage uses the runtime's existing background job API.
+///          Missing project binds then use a second bounded owned worker to
+///          prove that exactly one workspace file defines the identifier.
+class DiagnosticActionController {
+    expose Integer pendingKind;
+    expose String pendingLabel;
+    expose String pendingPath;
+    expose Integer pendingRevision;
+    expose Integer pendingLine;
+    expose Integer pendingCol;
+    expose Integer pendingLineOffset;
+    expose String pendingWorkspaceSignature;
+    expose Any pendingSemanticJob;
+    expose project_bind_query_job.ProjectBindQueryJob bindJob;
+    expose Integer pendingBindGeneration;
+
+    expose func init() {
+        pendingKind = 0;
+        pendingLabel = "";
+        pendingPath = "";
+        pendingRevision = -1;
+        pendingLine = 1;
+        pendingCol = 0;
+        pendingLineOffset = 0;
+        pendingWorkspaceSignature = "";
+        pendingSemanticJob = null;
+        bindJob = new project_bind_query_job.ProjectBindQueryJob();
+        pendingBindGeneration = 0;
+    }
+
+    /// @brief Start one semantic diagnostic action and return immediately.
+    expose func Start(kind: Integer,
+                      label: String,
+                      shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      engine: editor_engine.EditorEngine,
+                      projMgr: project_manager.ProjectManager) -> Boolean {
+        if shell == null or docMgr == null or engine == null
+           or engine.editor == null {
+            return false;
+        }
+        var doc = docMgr.GetActive();
+        if doc == null or doc!.language != "zia" {
+            GUI.Toast.Info(label + " is only available for Zia files");
+            shell.SetStatusLeft(label + " unavailable");
+            return false;
+        }
+
+        Cancel();
+        file_commands.SaveEditorState(docMgr, engine);
+        var source = engine.GetTextSnapshot();
+        if Str.get_Length(source) > MAX_DIAGNOSTIC_ACTION_CHARS {
+            shell.SetStatusLeft(label + " supports files up to 4 MB");
+            GUI.Toast.Warning(label + " input is too large");
+            return false;
+        }
+        doc!.content = source;
+        pendingKind = kind;
+        pendingLabel = label;
+        pendingPath = doc!.filePath;
+        pendingRevision = engine.GetRevision();
+        pendingLine = engine.editor.CursorLine + 1;
+        pendingCol = engine.editor.CursorCol;
+        pendingLineOffset = zia_query.LineOffset(source);
+        pendingWorkspaceSignature = WorkspaceSignature(projMgr);
+
+        var querySource = zia_query.WrapForQuery(source);
+        pendingSemanticJob = ZiaToolchain.BeginCheckForFile(querySource,
+                                                            pendingPath);
+        if pendingSemanticJob == null {
+            Fail(shell, label + " diagnostics are unavailable", true);
+            return false;
+        }
+        shell.SetStatusLeft(label + " checking diagnostics...");
+        return true;
+    }
+
+    /// @brief Poll semantic/project stages and apply only a current anchor.
+    expose func Pump(shell: app_shell.AppShell,
+                     docMgr: document_manager.DocumentManager,
+                     engine: editor_engine.EditorEngine,
+                     projMgr: project_manager.ProjectManager) {
+        bindJob.Pump();
+        if pendingKind == 0 {
+            bindJob.TakeCompleted();
+            return;
+        }
+        if AnchorMatches(docMgr, engine) == false {
+            var label = pendingLabel;
+            Cancel();
+            if shell != null {
+                shell.SetStatusLeft(label + " canceled because the editor changed");
+            }
+            return;
+        }
+
+        if pendingSemanticJob != null {
+            if SemanticJob.IsDone(pendingSemanticJob) == false { return; }
+            var semantic = pendingSemanticJob;
+            pendingSemanticJob = null;
+            if SemanticJob.IsError(semantic) {
+                Fail(shell, pendingLabel + " diagnostics failed", true);
+                return;
+            }
+            var records = SemanticJob.Diagnostics(semantic);
+            if records == null {
+                Fail(shell, pendingLabel + " diagnostics failed", true);
+                return;
+            }
+            HandleDiagnosticRecords(records, shell, docMgr, engine, projMgr);
+            return;
+        }
+
+        if pendingBindGeneration > 0 {
+            var request = bindJob.TakeCompleted();
+            if request == null { return; }
+            if request!.generation != pendingBindGeneration { return; }
+            pendingBindGeneration = 0;
+            FinishProjectBind(request!, shell, docMgr, engine, projMgr);
+        }
+    }
+
+    expose func Cancel() {
+        if pendingSemanticJob != null {
+            SemanticJob.Cancel(pendingSemanticJob);
+            pendingSemanticJob = null;
+        }
+        bindJob.Cancel();
+        ResetPending();
+    }
+
+    expose func Shutdown() -> Boolean {
+        if pendingSemanticJob != null {
+            SemanticJob.Cancel(pendingSemanticJob);
+            pendingSemanticJob = null;
+        }
+        ResetPending();
+        return bindJob.CancelAndWait();
+    }
+
+    expose func IsBusy() -> Boolean {
+        return pendingKind != 0 or pendingSemanticJob != null
+               or bindJob.IsBusy();
+    }
+
+    hide func HandleDiagnosticRecords(records: Any,
+                                      shell: app_shell.AppShell,
+                                      docMgr: document_manager.DocumentManager,
+                                      engine: editor_engine.EditorEngine,
+                                      projMgr: project_manager.ProjectManager) {
+        var rawTargetLine = pendingLine + pendingLineOffset;
+        if pendingKind == ACTION_SUPPRESS_DIAGNOSTIC {
+            var code = SuppressibleDiagnosticCodeAt(records, rawTargetLine);
+            if code == "" {
+                Fail(shell, "No suppressible warning at cursor", false);
+                return;
+            }
+            ApplySuppression(code, shell, docMgr, engine);
+            return;
+        }
+        if pendingKind == ACTION_APPLY_FIX {
+            var fix = DiagnosticFixItAt(records, rawTargetLine);
+            if fix == null {
+                Fail(shell, "No diagnostic fix-it at cursor", false);
+                return;
+            }
+            ApplyFix(fix, shell, docMgr, engine);
+            return;
+        }
+
+        var name = MissingRuntimeBindIdentifierAt(records, rawTargetLine);
+        if name != "" {
+            ApplyRuntimeBind(name, shell, docMgr, engine);
+            return;
+        }
+        name = MissingUndefinedIdentifierAt(records, rawTargetLine);
+        if name == "" or pendingPath == "" or projMgr == null
+           or projMgr.IsOpen() == false {
+            Fail(shell, "No safe missing bind at cursor", false);
+            return;
+        }
+
+        var roots = new List();
+        var ignores = new List();
+        var rootIndex = 0;
+        while rootIndex < projMgr.RootCount() {
+            roots.Push(projMgr.RootPathAt(rootIndex));
+            ignores.Push(projMgr.RootIgnorePatternsAt(rootIndex));
+            rootIndex = rootIndex + 1;
+        }
+        var openPaths = new List();
+        var openSources = new List();
+        var docIndex = 0;
+        while docIndex < docMgr.GetCount() {
+            var openDoc = docMgr.documents.get(docIndex);
+            if openDoc.language == "zia" and openDoc.filePath != "" {
+                openPaths.Push(openDoc.filePath);
+                openSources.Push(openDoc.content);
+            }
+            docIndex = docIndex + 1;
+        }
+        pendingBindGeneration = bindJob.Queue(
+            name, pendingPath, pendingWorkspaceSignature,
+            roots, ignores, openPaths, openSources);
+        if pendingBindGeneration <= 0 {
+            Fail(shell, "Project bind search could not start", true);
+            return;
+        }
+        shell.SetStatusLeft("Finding a unique project bind for " + name + "...");
+    }
+
+    hide func ApplySuppression(code: String,
+                               shell: app_shell.AppShell,
+                               docMgr: document_manager.DocumentManager,
+                               engine: editor_engine.EditorEngine) {
+        var lineText = engine.editor.GetLine(pendingLine - 1);
+        var indentLen = text_utils.LeadingWhitespaceLength(lineText);
+        var indent = "";
+        if indentLen > 0 { indent = Str.Left(lineText, indentLen); }
+        engine.editor.SetCursor(pendingLine - 1, 0);
+        engine.editor.InsertAtCursor(indent + "// @suppress(" + code + ")\n");
+        engine.editor.SetCursor(pendingLine, pendingCol);
+        file_commands.SaveEditorState(docMgr, engine);
+        var doc = docMgr.GetActive();
+        if doc != null { doc!.isModified = true; }
+        Complete(shell, "Suppressed warning " + code);
+    }
+
+    hide func ApplyFix(fix: Any,
+                       shell: app_shell.AppShell,
+                       docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine) {
+        var startLine = Map.GetInt(fix, "fixitStartLine")
+                        - pendingLineOffset - 1;
+        var startCol = Map.GetInt(fix, "fixitStartColumn") - 1;
+        var endLine = Map.GetInt(fix, "fixitEndLine")
+                      - pendingLineOffset - 1;
+        var endCol = Map.GetInt(fix, "fixitEndColumn") - 1;
+        if startLine < 0 { startLine = pendingLine - 1; }
+        if endLine < startLine { endLine = startLine; }
+        if startCol < 0 { startCol = 0; }
+        if endCol < startCol { endCol = startCol; }
+        engine.editor.SetCursorSelection(0, startLine, startCol,
+                                         endLine, endCol);
+        engine.editor.InsertAtCursor(Map.GetStr(fix, "fixitReplacement"));
+        file_commands.SaveEditorState(docMgr, engine);
+        var doc = docMgr.GetActive();
+        if doc != null { doc!.isModified = true; }
+        var label = Map.GetStr(fix, "fixitMessage");
+        if label == "" { label = "Applied diagnostic fix-it"; }
+        Complete(shell, label);
+    }
+
+    hide func ApplyRuntimeBind(name: String,
+                               shell: app_shell.AppShell,
+                               docMgr: document_manager.DocumentManager,
+                               engine: editor_engine.EditorEngine) {
+        var source = engine.GetTextSnapshot();
+        var updated = CreateMissingRuntimeBindText(source, name);
+        if updated == source {
+            Fail(shell, "Runtime bind already exists", false);
+            return;
+        }
+        ApplyInsertedBind(updated,
+                          "Added " + quick_fixes.RuntimeBindLineForIdentifier(name),
+                          shell, docMgr, engine);
+    }
+
+    hide func FinishProjectBind(
+        request: project_bind_query_job.ProjectBindQueryRequest,
+        shell: app_shell.AppShell,
+        docMgr: document_manager.DocumentManager,
+        engine: editor_engine.EditorEngine,
+        projMgr: project_manager.ProjectManager) {
+        if request.succeeded == false {
+            var error = request.error;
+            if error == "" { error = "Project bind search failed"; }
+            Fail(shell, error, true);
+            return;
+        }
+        if WorkspaceSignature(projMgr) != pendingWorkspaceSignature {
+            Fail(shell, "Create Missing Bind canceled because the workspace changed",
+                 false);
+            return;
+        }
+        if request.reason != "" {
+            var message = "No project file uniquely defines the identifier";
+            if request.reason == "ambiguous" {
+                message = "Multiple project files define the identifier";
+            } else if request.reason == "workspace_limit" {
+                message = "Project bind scan reached its safety limit";
+            } else if request.reason == "workspace_unavailable" {
+                message = "Project bind scan could not read the workspace";
+            }
+            Fail(shell, message, request.reason != "not_found");
+            return;
+        }
+        if request.candidatePath == "" {
+            Fail(shell, "No project bind candidate found", false);
+            return;
+        }
+        if request.candidateMtime >= 0
+           and safe_io.Modified(request.candidatePath)
+               != request.candidateMtime {
+            Fail(shell, "Project bind candidate changed during the scan", true);
+            return;
+        }
+        if request.candidateMtime < 0 {
+            var candidateIndex = docMgr.FindByPath(request.candidatePath);
+            if candidateIndex < 0
+               or docMgr.documents.get(candidateIndex).content
+                  != request.candidateOpenSource {
+                Fail(shell, "Open project bind candidate changed during the scan",
+                     true);
+                return;
+            }
+        }
+        var bindPath = RelativeProjectBindPath(Path.Directory(pendingPath),
+                                               request.candidatePath);
+        var source = engine.GetTextSnapshot();
+        var updated = CreateMissingProjectBindText(source, bindPath);
+        if bindPath == "" or updated == source {
+            Fail(shell, "Project bind is unavailable or already exists", false);
+            return;
+        }
+        ApplyInsertedBind(updated, "Added bind \"" + bindPath + "\";",
+                          shell, docMgr, engine);
+    }
+
+    hide func ApplyInsertedBind(updated: String,
+                                status: String,
+                                shell: app_shell.AppShell,
+                                docMgr: document_manager.DocumentManager,
+                                engine: editor_engine.EditorEngine) {
+        if editor_document_edit.ReplaceWholeDocument(engine, updated) == false {
+            Fail(shell, "Could not apply missing bind", true);
+            return;
+        }
+        engine.editor.SetCursor(pendingLine, pendingCol);
+        file_commands.SaveEditorState(docMgr, engine);
+        var doc = docMgr.GetActive();
+        if doc != null { doc!.isModified = true; }
+        Complete(shell, status);
+    }
+
+    hide func AnchorMatches(docMgr: document_manager.DocumentManager,
+                            engine: editor_engine.EditorEngine) -> Boolean {
+        if docMgr == null or engine == null or engine.editor == null {
+            return false;
+        }
+        var doc = docMgr.GetActive();
+        return doc != null and doc!.language == "zia"
+               and doc!.filePath == pendingPath
+               and engine.GetRevision() == pendingRevision
+               and engine.editor.CursorLine + 1 == pendingLine
+               and engine.editor.CursorCol == pendingCol;
+    }
+
+    hide func Complete(shell: app_shell.AppShell,
+                       status: String) {
+        ResetPending();
+        if shell != null { shell.SetStatusLeft(status); }
+    }
+
+    hide func Fail(shell: app_shell.AppShell,
+                   status: String,
+                   warning: Boolean) {
+        ResetPending();
+        if shell != null { shell.SetStatusLeft(status); }
+        if warning { GUI.Toast.Warning(status); }
+    }
+
+    hide func ResetPending() {
+        pendingKind = 0;
+        pendingLabel = "";
+        pendingPath = "";
+        pendingRevision = -1;
+        pendingLine = 1;
+        pendingCol = 0;
+        pendingLineOffset = 0;
+        pendingWorkspaceSignature = "";
+        pendingBindGeneration = 0;
+    }
+}
+
+func WorkspaceSignature(projMgr: project_manager.ProjectManager) -> String {
+    if projMgr == null or projMgr.IsOpen() == false { return ""; }
+    return projMgr.WorkspaceSignature();
+}
 
 // ============================================================================
 // MODULE: diagnostic_edit_commands
@@ -329,7 +748,9 @@ func IsProjectBindCandidate(filePath: String,
         }
     }
     if content == "" and IO.File.Exists(filePath) {
-        content = IO.File.ReadAllText(filePath);
+        var readResult = safe_io.ReadAllTextBounded(
+            filePath, project_bind_query_job.MAX_BIND_FILE_CHARS);
+        if readResult.ok { content = readResult.text; }
     }
     if content == "" { return false; }
     return ProjectFileDefinesIdentifier(content, identifier);

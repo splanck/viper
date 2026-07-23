@@ -537,6 +537,92 @@ TEST(AArch64PeepholeSubpasses, LoopConstHoistRejectsBackwardJoinEdge) {
 
 // ─── Carried exit registers: invisible cross-block liveness ─────────────────
 
+TEST(AArch64PeepholeSubpasses, CrossBlockForwardingPublishesCarriedSource) {
+    MFunction fn{};
+    fn.name = "cross_block_carried_source";
+    fn.frame.spills.push_back(MFunction::SpillSlot{1, 8, 8, -8});
+    fn.blocks.push_back(MBasicBlock{"producer", {}, {}});
+    fn.blocks.push_back(MBasicBlock{"consumer", {}, {}});
+
+    auto &producer = fn.blocks[0];
+    producer.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X24), MOperand::regOp(PhysReg::X0)}});
+    producer.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X24)}});
+    producer.instrs.push_back(
+        MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(PhysReg::X24), MOperand::immOp(-8)}});
+    producer.instrs.push_back(MInstr{MOpcode::Br, {MOperand::labelOp("consumer")}});
+
+    auto &consumer = fn.blocks[1];
+    consumer.instrs.push_back(
+        MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(PhysReg::X7), MOperand::immOp(-8)}});
+    consumer.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X7)}});
+    consumer.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    (void)runPeephole(fn);
+
+    ASSERT_TRUE(std::binary_search(fn.blocks[0].carriedExitRegs.begin(),
+                                   fn.blocks[0].carriedExitRegs.end(),
+                                   static_cast<uint16_t>(PhysReg::X24)));
+    const bool spillStoreRemoved =
+        std::none_of(fn.blocks[0].instrs.begin(),
+                     fn.blocks[0].instrs.end(),
+                     [](const MInstr &instr) { return instr.opc == MOpcode::StrRegFpImm; });
+    ASSERT_TRUE(spillStoreRemoved);
+
+    (void)runPostSchedulePeephole(fn);
+    const bool producerStillDefinesX24 = std::any_of(
+        fn.blocks[0].instrs.begin(), fn.blocks[0].instrs.end(), [](const MInstr &instr) {
+            return instr.opc == MOpcode::MovRR && instr.ops.size() == 2 &&
+                   instr.ops[0].kind == MOperand::Kind::Reg &&
+                   instr.ops[0].reg.idOrPhys == static_cast<uint16_t>(PhysReg::X24);
+        });
+    EXPECT_TRUE(producerStillDefinesX24);
+}
+
+TEST(AArch64PeepholeSubpasses, PostScheduleMoveFoldPreservesCarriedAbiRegister) {
+    MFunction fn{};
+    fn.name = "carried_move_pair";
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    auto &bb = fn.blocks.back();
+    bb.carriedExitRegs = {static_cast<uint16_t>(PhysReg::X0)};
+
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X19)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X20), MOperand::regOp(PhysReg::X0)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    const auto stats = runPostSchedulePeephole(fn);
+    EXPECT_EQ(stats.consecutiveMovsFolded, 0);
+    ASSERT_FALSE(fn.blocks[0].instrs.empty());
+    EXPECT_EQ(fn.blocks[0].instrs[0].opc, MOpcode::MovRR);
+    EXPECT_EQ(fn.blocks[0].instrs[0].ops[0].reg.idOrPhys, static_cast<uint16_t>(PhysReg::X0));
+    EXPECT_EQ(fn.blocks[0].instrs[0].ops[1].reg.idOrPhys, static_cast<uint16_t>(PhysReg::X19));
+}
+
+TEST(AArch64PeepholeSubpasses, PostScheduleImmediateMovePreservesCarriedAbiRegister) {
+    MFunction fn{};
+    fn.name = "carried_immediate_pair";
+    fn.blocks.push_back(MBasicBlock{"entry", {}, {}});
+    auto &bb = fn.blocks.back();
+    bb.carriedExitRegs = {static_cast<uint16_t>(PhysReg::X0)};
+
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRI, {MOperand::regOp(PhysReg::X0), MOperand::immOp(42)}});
+    bb.instrs.push_back(
+        MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X19), MOperand::regOp(PhysReg::X0)}});
+    bb.instrs.push_back(MInstr{MOpcode::Ret, {}});
+
+    const auto stats = runPostSchedulePeephole(fn);
+    EXPECT_EQ(stats.consecutiveMovsFolded, 0);
+    ASSERT_FALSE(fn.blocks[0].instrs.empty());
+    EXPECT_EQ(fn.blocks[0].instrs[0].opc, MOpcode::MovRI);
+    EXPECT_EQ(fn.blocks[0].instrs[0].ops[0].reg.idOrPhys, static_cast<uint16_t>(PhysReg::X0));
+    EXPECT_EQ(fn.blocks[0].instrs[0].ops[1].imm, 42);
+}
+
 TEST(AArch64PeepholeSubpasses, StrengthReductionRespectsCarriedDivisorRegister) {
     // The allocator may carry x1 (the divisor) live into a single-predecessor
     // successor without any in-block use marking the carry. Reusing it as a
@@ -559,9 +645,9 @@ TEST(AArch64PeepholeSubpasses, StrengthReductionRespectsCarriedDivisorRegister) 
     (void)stats;
 
     const bool divSurvives =
-        std::any_of(fn.blocks[0].instrs.begin(),
-                    fn.blocks[0].instrs.end(),
-                    [](const MInstr &mi) { return mi.opc == MOpcode::UDivRRR; });
+        std::any_of(fn.blocks[0].instrs.begin(), fn.blocks[0].instrs.end(), [](const MInstr &mi) {
+            return mi.opc == MOpcode::UDivRRR;
+        });
     EXPECT_TRUE(divSurvives);
 }
 
@@ -581,10 +667,9 @@ TEST(AArch64PeepholeSubpasses, BlockLocalDceKeepsCarriedRegisterDef) {
     PeepholeStats stats{};
     peephole::removeDeadInstructions(fn.blocks[0].instrs, stats, &fn.blocks[0].carriedExitRegs);
 
-    const bool defSurvives =
-        std::any_of(fn.blocks[0].instrs.begin(),
-                    fn.blocks[0].instrs.end(),
-                    [](const MInstr &mi) { return mi.opc == MOpcode::MovRI; });
+    const bool defSurvives = std::any_of(fn.blocks[0].instrs.begin(),
+                                         fn.blocks[0].instrs.end(),
+                                         [](const MInstr &mi) { return mi.opc == MOpcode::MovRI; });
     EXPECT_TRUE(defSurvives);
 
     // Sanity: without the carried set, the same def is removable.

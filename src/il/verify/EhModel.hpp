@@ -3,25 +3,18 @@
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/il/verify/EhModel.hpp
+//===----------------------------------------------------------------------===//
 //
-// Purpose:
-//   Declare the canonical exception-handling (EH) model used by verifier
-//   components. The model captures the layout of basic blocks, handler entry
-//   points, and successor relationships required to analyse EH invariants.
-//
+// File: il/verify/EhModel.hpp
+// Purpose: Declare the verifier's canonical exception-handling CFG model.
 // Key invariants:
-//   * The model borrows IR nodes from the owning function without taking
-//     ownership.
-//   * Successor queries are resolved through a deterministic label map built
-//     during construction.
-//
+//   - Successor queries resolve through a deterministic function-local label map.
+//   - Resume-token parameters are identified without mutating the borrowed IR.
 // Ownership/Lifetime:
-//   The EhModel references IL structures owned by the caller. The caller must
-//   guarantee the function outlives the model.
-//
-// Links:
-//   docs/il/il-guide.md#reference
+//   - EhModel borrows all functions, blocks, and instructions from its caller.
+//   - The source function must outlive the model and every returned pointer or view.
+// Links: il/verify/EhChecks.hpp, il/verify/ExceptionHandlerAnalysis.hpp,
+//        docs/adr/0005-resume-token-provenance.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -129,6 +122,15 @@ class EhModel {
     /// @return Parameter id for `%tok`, or no value when the block is not a
     ///         canonical handler block.
     [[nodiscard]] std::optional<unsigned> handlerResumeTokenParam(
+        const il::core::BasicBlock &block) const noexcept;
+
+    /// @brief Return the unique resume-token parameter id for any continuation block.
+    /// @details ADR 0005 permits an active token to flow through ordinary block
+    ///          parameters as well as canonical handler entries. Blocks with no
+    ///          token parameter, or more than one token parameter, return no value.
+    /// @param block Block whose parameters should be inspected.
+    /// @return The unique `ResumeTok` parameter id, or no value when unavailable.
+    [[nodiscard]] std::optional<unsigned> resumeTokenParam(
         const il::core::BasicBlock &block) const noexcept;
 
     /// @brief Enumerate resolved successor edges for a terminator.

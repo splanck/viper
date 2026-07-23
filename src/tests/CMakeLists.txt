@@ -1192,6 +1192,7 @@ add_test(NAME zia_zannastudio_editor_hot_path
 set_tests_properties(zia_zannastudio_editor_hot_path PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;editor;requires_display;perf"
+        RUN_SERIAL TRUE
         TIMEOUT 60)
 
 add_test(NAME zia_zannastudio_palette_query
@@ -1258,6 +1259,22 @@ set_tests_properties(zia_zannastudio_bottom_panel PROPERTIES
         LABELS "zia;zannastudio;shell;requires_display"
         TIMEOUT 60)
 
+add_test(NAME zia_zannastudio_navigation_safety
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/navigation_safety_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_navigation_safety PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;navigation;requires_display"
+        TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_safe_io
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/safe_io_native_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_safe_io PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;persistence"
+        TIMEOUT 60)
+
 add_test(NAME zia_zannastudio_tree_move
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/tree_move_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
@@ -1304,6 +1321,14 @@ add_test(NAME zia_zannastudio_editor_depth
 set_tests_properties(zia_zannastudio_editor_depth PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;editor"
+        TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_breadcrumb_index
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/breadcrumb_index_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_breadcrumb_index PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;editor;perf"
         TIMEOUT 60)
 
 add_test(NAME zia_zannastudio_shell_config
@@ -1354,6 +1379,26 @@ set_tests_properties(zia_zannastudio_file_tree PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;file-tree;requires_display"
         TIMEOUT 30)
+
+add_test(NAME zia_zannastudio_workspace_watcher
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/workspace_watcher_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_workspace_watcher PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;workspace-watcher;perf"
+        TIMEOUT 30)
+
+add_test(NAME zia_zannastudio_linked_workspace
+        COMMAND ${CMAKE_COMMAND}
+                -DZIA_EXECUTABLE=$<TARGET_FILE:zia>
+                -DPROBE_SOURCE=${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/linked_workspace_probe.zia
+                -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/zannastudio-linked-workspace
+                -P ${CMAKE_SOURCE_DIR}/src/tests/tools/ZannaStudioLinkedWorkspaceTests.cmake)
+set_tests_properties(zia_zannastudio_linked_workspace PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;file-tree;workspace-watcher;requires_display"
+        RUN_SERIAL TRUE
+        TIMEOUT 45)
 
 add_test(NAME zia_zannastudio_activity_bar
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/activity_bar_probe.zia"
@@ -1512,6 +1557,58 @@ set_tests_properties(zia_zannastudio_language_service_sync PROPERTIES
         LABELS "zia;zannastudio;semantic;requires_display"
         RUN_SERIAL TRUE
         TIMEOUT 90)
+
+add_test(NAME zia_zannastudio_basic_query_job
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/basic_query_job_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_basic_query_job PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;semantic;threads"
+        TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_basic_async_controllers
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/basic_async_controller_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_basic_async_controllers PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;semantic;threads;requires_display"
+        RUN_SERIAL TRUE
+        TIMEOUT 90)
+
+add_test(NAME zia_zannastudio_diagnostic_actions
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/diagnostic_action_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_diagnostic_actions PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;semantic;threads;requires_display"
+        RUN_SERIAL TRUE
+        TIMEOUT 90)
+
+add_test(NAME zia_zannastudio_basic_workspace_query
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/basic_workspace_query_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_basic_workspace_query PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;semantic;threads"
+        TIMEOUT 90)
+
+add_test(NAME zia_zannastudio_basic_workspace_commands
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/basic_workspace_command_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_basic_workspace_commands PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;semantic;threads;requires_display"
+        RUN_SERIAL TRUE
+        TIMEOUT 90)
+
+add_test(NAME zia_zannastudio_zia_workspace_commands
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/zia_workspace_command_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_zia_workspace_commands PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;semantic;threads;requires_display"
+        RUN_SERIAL TRUE
+        TIMEOUT 120)
 
 add_test(NAME zia_zannastudio_paint_damage
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/paint_damage_probe.zia"
@@ -2320,6 +2417,22 @@ if (APPLE AND ZANNA_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
             TIMEOUT 180)
+
+    add_test(NAME native_smoke_zannastudio_safe_io_arm64
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannastudio_safe_io_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}" arm64)
+    set_tests_properties(native_smoke_zannastudio_safe_io_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;zannastudio;smoke;native-link;slow"
+            TIMEOUT 180)
+
+    add_test(NAME native_smoke_zannastudio_basic_query_arm64
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannastudio_basic_query_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}" arm64)
+    set_tests_properties(native_smoke_zannastudio_basic_query_arm64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;zannastudio;semantic;threads;native-link;slow"
+            TIMEOUT 180)
 endif ()
 
 if (ZANNA_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
@@ -2330,6 +2443,22 @@ if (ZANNA_BASH_EXECUTABLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
     set_tests_properties(native_smoke_zannastudio_completion_x64 PROPERTIES
             PASS_REGULAR_EXPRESSION "PASS"
             LABELS "zia;smoke;native-link;slow"
+            TIMEOUT 180)
+
+    add_test(NAME native_smoke_zannastudio_safe_io_x64
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannastudio_safe_io_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}" x64)
+    set_tests_properties(native_smoke_zannastudio_safe_io_x64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;zannastudio;smoke;native-link;slow"
+            TIMEOUT 180)
+
+    add_test(NAME native_smoke_zannastudio_basic_query_x64
+            COMMAND ${ZANNA_BASH_COMMAND} "${CMAKE_SOURCE_DIR}/src/tests/e2e/test_zannastudio_basic_query_native.sh"
+            $<TARGET_FILE:zanna> "${CMAKE_SOURCE_DIR}" x64)
+    set_tests_properties(native_smoke_zannastudio_basic_query_x64 PROPERTIES
+            PASS_REGULAR_EXPRESSION "PASS"
+            LABELS "zia;zannastudio;semantic;threads;native-link;slow"
             TIMEOUT 180)
 endif ()
 

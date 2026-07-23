@@ -116,6 +116,11 @@ bool windowsArchivePathsUseDebugRuntime(const std::vector<std::string> &archiveP
 ///        `supportLibraryPath` base names.
 const std::vector<std::string> &ziaFrontendClosureLibs();
 
+/// @brief Static-archive closure pulled in with the BASIC language-service bridge.
+/// @details fe_basic itself is force-loaded so its strong runtime entry points
+///          override weak stubs; these dependency archives remain demand-driven.
+const std::vector<std::string> &basicFrontendClosureLibs();
+
 // =========================================================================
 // Link context — shared linker preamble
 // =========================================================================
@@ -133,6 +138,9 @@ struct LinkContext {
     /// (rt_zia_* / Zanna.Zia.*). The editor-service archive must then be
     /// force-loaded so its strong symbols override the weak runtime stubs.
     bool needsZiaFrontend = false;
+    /// True when the program references the BASIC language-service bridge.
+    /// fe_basic must be force-loaded so its strong bridge wins over weak stubs.
+    bool needsBasicFrontend = false;
 };
 
 /// @brief Check if a specific runtime component is required by the link context.

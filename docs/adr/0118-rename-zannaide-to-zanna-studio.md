@@ -41,7 +41,9 @@ aliases, plus a one-time configuration migration:
   `bin/zannastudio.ico`; file associations launch `bin\zannastudio.exe`.
 - Linux packaging `zannastudio.desktop` (`Name=Zanna Studio`), executable
   `/usr/bin/zannastudio`. macOS continues to stage the binary inside
-  `Zanna Toolchain.app` (no separate IDE bundle), now named `zannastudio`.
+  `Zanna Toolchain.app` (no separate IDE bundle), with the stable command named
+  `zannastudio`. ADR 0149 refines the macOS payload layout so that command
+  launches a sibling executable named `Zanna Studio` for correct Cocoa identity.
 - Project/bundle id `org.zanna-lang.zannaide` → `org.zanna-lang.zannastudio`.
 - Per-user configuration moves to `%APPDATA%\ZannaStudio`,
   `~/Library/Application Support/ZannaStudio`, and
