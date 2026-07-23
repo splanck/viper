@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/phase2_phase3_probe.zia
+// Purpose: Exercise Studio build, run, debug, manifest, and scene boundaries.
+// Key invariants:
+//   - Process and debugger lifecycle contracts remain deterministic headlessly.
+//   - Persistent debug state fails safely under malformed filesystem state.
+// Ownership/Lifetime: Owns all temporary projects, processes, and model values.
+// Links: zannastudio/src/build/build_system.zia,
+//        zannastudio/src/build/breakpoints.zia
+//
+//===----------------------------------------------------------------------===//
+
 module phase2_phase3_probe;
 
 // ============================================================================
@@ -17,7 +35,10 @@ bind "../build/build_system";
 bind "../build/breakpoints";
 bind "../build/debug_session";
 bind "../build/run_config";
+bind "../commands/build_commands";
+bind "../commands/debug_commands";
 bind "../core/document";
+bind "../core/document_manager";
 bind "../core/project";
 bind "../core/project_manager";
 bind "../services/file_utils";
@@ -182,6 +203,24 @@ func main() {
     var entryProj = new project_manager.ProjectManager();
     entryProj.project = new project.Project();
     entryProj.project.Open(projectRoot);
+    var emptyProjectDocs = new document_manager.DocumentManager();
+    if assertTrue(build_commands.HasExecutionTarget(emptyProjectDocs, entryProj)
+                  and build_commands.HasExecutionTarget(emptyProjectDocs, null) == false
+                  and debug_commands.HasDebugTarget(emptyProjectDocs) == false,
+                  "open projects are executable without an editor document") == false { return; }
+    var untitledDocs = new document_manager.DocumentManager();
+    untitledDocs.NewDocument();
+    if assertTrue(build_commands.HasExecutionTarget(untitledDocs, null) == false
+                  and debug_commands.HasDebugTarget(untitledDocs) == false,
+                  "untitled buffers are not advertised as execution targets") == false { return; }
+    emptyProjectDocs.OpenFile(entryPath);
+    if assertTrue(build_commands.HasExecutionTarget(emptyProjectDocs, null)
+                  and debug_commands.HasDebugTarget(emptyProjectDocs),
+                  "saved source files are build and debug targets") == false { return; }
+    var projectOnlyCfg = run_config.ForDocument(run_config.ACTION_BUILD, null, entryProj);
+    if assertTrue(projectOnlyCfg.kind == run_config.KIND_PROJECT_ENTRY
+                  and projectOnlyCfg.targetPath == projectRoot,
+                  "project-only build config targets the workspace root") == false { return; }
     var entryCfg = run_config.ForDocument(run_config.ACTION_RUN, entryDoc, entryProj);
     entryCfg.program = zannaBin;
     if assertTrue(entryCfg.kind == run_config.KIND_PROJECT_ENTRY
@@ -236,15 +275,15 @@ func main() {
     bpStore.Setup(bpPath);
     bpStore.Toggle(sourcePath, 2);
     bpStore.Toggle(sourcePath, 3);
-    bpStore.Save();
+    if assertTrue(bpStore.Save(), "breakpoint store saves ordinary state") == false { return; }
     bpStore.Toggle(sourcePath, 3);
-    bpStore.Save();
+    if assertTrue(bpStore.Save(), "breakpoint store saves compacted state") == false { return; }
     var bpText = File.ReadAllText(bpPath);
     if assertTrue(Str.IndexOf(bpText, "[breakpoint.1]") == 0,
                   "breakpoint save removes stale higher-numbered sections") == false { return; }
     var loadedBps = new breakpoints.BreakpointStore();
     loadedBps.Setup(bpPath);
-    loadedBps.Load();
+    if assertTrue(loadedBps.Load(), "breakpoint store reload succeeds") == false { return; }
     if assertTrue(loadedBps.Count() == 1
                   and loadedBps.GetPath(0) == sourcePath
                   and loadedBps.GetLine(0) == 2,
@@ -257,6 +296,33 @@ func main() {
     emptyBps.Load();
     if assertTrue(emptyBps.Count() == 0,
                   "breakpoint load tolerates settings file without breakpoint section") == false { return; }
+
+    // The writer must obey the same count cap as the loader. Otherwise a
+    // generated/debug-heavy session can create a settings file that startup
+    // deliberately refuses to reconstruct in full.
+    var cappedBpPath = Path.Join(root, "capped-breakpoints.ini");
+    var cappedBps = new breakpoints.BreakpointStore();
+    cappedBps.Setup(cappedBpPath);
+    var cappedBpIndex = 0;
+    while cappedBpIndex < breakpoints.MAX_PERSISTED_BREAKPOINTS + 1 {
+        var cappedBp = new breakpoints.Breakpoint();
+        cappedBp.path = sourcePath;
+        cappedBp.line = cappedBpIndex + 1;
+        cappedBps.items.add(cappedBp);
+        cappedBpIndex = cappedBpIndex + 1;
+    }
+    if assertTrue(cappedBps.Save(), "bounded breakpoint store saves") == false { return; }
+    var cappedBpIni = Ini.Parse(File.ReadAllText(cappedBpPath));
+    if assertTrue(Ini.Get(cappedBpIni, "breakpoints", "count") == "4096"
+                  and Ini.Get(cappedBpIni, "breakpoint.4095", "line") == "4096"
+                  and Ini.Get(cappedBpIni, "breakpoint.4096", "line") == "",
+                  "breakpoint writer caps records at the restore limit") == false { return; }
+
+    var invalidBps = new breakpoints.BreakpointStore();
+    invalidBps.Setup(root);
+    invalidBps.Toggle(sourcePath, 9);
+    if assertTrue(invalidBps.Save() == false,
+                  "breakpoint persistence failure returns without trapping") == false { return; }
 
     // Real VM debug adapter: launch a program, stop at a breakpoint with a call
     // stack and locals, then continue to exit. Drives the same DebugSession the IDE

@@ -1,7 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/completion_workspace_source.zia
+// Purpose: Load bounded workspace source and format completion provenance.
+// Key invariants:
+//   - Unsaved open buffers take precedence over disk content.
+//   - Background completion never propagates filesystem traps.
+// Ownership/Lifetime: Stateless helpers borrow document/project managers.
+// Links: zannastudio/src/editor/completion.zia,
+//        zannastudio/src/services/safe_io.zia
+//
+//===----------------------------------------------------------------------===//
+
 module completion_workspace_source;
 
 bind "../core/document_manager";
 bind "../core/project_manager";
+bind "../services/safe_io";
 
 bind IO = Zanna.IO;
 
@@ -63,10 +82,13 @@ expose func ContentFor(docs: document_manager.DocumentManager,
         }
     }
     if IO.File.Exists(filePath) {
-        if maxBytes > 0 and IO.File.SizeBytes(filePath) > maxBytes {
-            return "";
+        if maxBytes > 0 {
+            var boundedRead = safe_io.ReadAllTextBounded(filePath, maxBytes);
+            if boundedRead.ok { return boundedRead.text; }
+        } else {
+            var readResult = safe_io.ReadAllText(filePath);
+            if readResult.ok { return readResult.text; }
         }
-        return IO.File.ReadAllText(filePath);
     }
     return "";
 }

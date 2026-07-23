@@ -34,6 +34,7 @@ class StatusShell {
     expose GUI.StatusBarItem jobItem;
     expose GUI.StatusBarItem taskItem;
     expose GUI.StatusBarItem diagnosticsItem;
+    expose String lastLeftStatus;
     expose String lastDiagnosticsStatus;
     expose Integer lastDiagnosticsColor;
     expose String lastProjectStatus;
@@ -41,6 +42,10 @@ class StatusShell {
     expose String lastLanguageStatus;
     expose String lastBuildJobStatus;
     expose String lastTaskStatus;
+    expose Boolean indexStatusVisible;
+    expose Boolean jobStatusVisible;
+    expose Boolean taskStatusVisible;
+    expose Boolean welcomeMode;
 
     /// @brief Initialize cached status values before widgets exist.
     expose func init() {
@@ -52,6 +57,7 @@ class StatusShell {
         jobItem = null;
         taskItem = null;
         diagnosticsItem = null;
+        lastLeftStatus = "Ready";
         lastDiagnosticsStatus = "Diagnostics: clean";
         lastDiagnosticsColor = tool_panel_text.SuccessColor();
         lastProjectStatus = "No project";
@@ -59,13 +65,17 @@ class StatusShell {
         lastLanguageStatus = "Lang: text";
         lastBuildJobStatus = "Job: idle";
         lastTaskStatus = "Tasks: idle";
+        indexStatusVisible = false;
+        jobStatusVisible = false;
+        taskStatusVisible = false;
+        welcomeMode = false;
     }
 
     /// @brief Build the status bar and its persistent right-zone items.
     /// @param parent Main vertical container that receives the status bar.
     expose func Build(parent: GUI.VBox) {
         statusBar = GUI.StatusBar.New(parent);
-        statusBar.SetLeftText("Ready");
+        statusBar.SetLeftText(lastLeftStatus);
         cursorItem = statusBar.AddText("Ln 1, Col 1", 1);
         projectItem = statusBar.AddText("No project", 2);
         projectItem.SetTooltip("Active project");
@@ -82,11 +92,25 @@ class StatusShell {
         diagnosticsItem.SetIconName("check");
         diagnosticsItem.SetTooltip("Live diagnostics summary");
         statusBar.SetRightText("Zanna Studio");
+        ApplyItemVisibility();
+    }
+
+    /// @brief Remove empty editor context from the no-document welcome surface.
+    /// @details Diagnostics remain visible. Project/index, job, and task items
+    ///          stay available only when they carry useful non-idle context;
+    ///          leaving welcome mode restores the complete editor status bar.
+    /// @param active True while the welcome surface replaces the editor.
+    expose func SetWelcomeMode(active: Boolean) {
+        if welcomeMode == active { return; }
+        welcomeMode = active;
+        ApplyItemVisibility();
     }
 
     /// @brief Set the status bar's left message text.
     /// @param text Message to display in the left status zone.
     expose func SetStatusLeft(text: String) {
+        if text == lastLeftStatus { return; }
+        lastLeftStatus = text;
         if statusBar != null { statusBar.SetLeftText(text); }
     }
 
@@ -122,6 +146,7 @@ class StatusShell {
             languageItem.SetText(languageText);
             languageItem.SetTooltip(languageText);
         }
+        ApplyItemVisibility();
     }
 
     /// @brief Update the workspace-index status-bar item.
@@ -131,9 +156,10 @@ class StatusShell {
         if text == lastIndexStatus { return; }
         lastIndexStatus = text;
         if indexItem != null {
-            indexItem.SetText(text);
+            indexItem.SetText(status_bar_model.IndexStatusDisplayText(text));
             indexItem.SetTooltip(text);
         }
+        ApplyItemVisibility();
     }
 
     /// @brief Update diagnostics summary text and severity color.
@@ -178,6 +204,7 @@ class StatusShell {
             jobItem.SetText(lastBuildJobStatus);
             jobItem.SetTooltip(lastBuildJobStatus);
         }
+        ApplyItemVisibility();
     }
 
     /// @brief Update the background editor-task status item.
@@ -190,6 +217,29 @@ class StatusShell {
             taskItem.SetText(text);
             taskItem.SetTooltip(text);
         }
+        ApplyItemVisibility();
+    }
+
+    /// @brief Apply visibility policy for editor and welcome status contexts.
+    /// @details Idle/ready index and idle job/task placeholders carry no
+    ///          actionable information and steal enough width to reduce useful
+    ///          project names to ellipses. Those items appear only while work is
+    ///          active or the index reports a non-ready state; document, project,
+    ///          language, and diagnostics state retain priority.
+    hide func ApplyItemVisibility() {
+        if cursorItem != null { cursorItem.SetVisible(welcomeMode == false); }
+        if languageItem != null { languageItem.SetVisible(welcomeMode == false); }
+        if projectItem != null {
+            projectItem.SetVisible(welcomeMode == false or lastProjectStatus != "No project");
+        }
+        indexStatusVisible = lastIndexStatus != "Workspace index idle"
+            and lastIndexStatus != "Workspace index ready";
+        if indexItem != null { indexItem.SetVisible(indexStatusVisible); }
+        jobStatusVisible = lastBuildJobStatus != "Job: idle";
+        taskStatusVisible = lastTaskStatus != "Tasks: idle";
+        if jobItem != null { jobItem.SetVisible(jobStatusVisible); }
+        if taskItem != null { taskItem.SetVisible(taskStatusVisible); }
+        if diagnosticsItem != null { diagnosticsItem.SetVisible(true); }
     }
 
     /// @brief Format diagnostics summary text.

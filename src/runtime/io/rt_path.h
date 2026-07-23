@@ -14,6 +14,7 @@
 //   - Path separators are normalized to platform-native on all operations.
 //   - rt_path_join handles absolute and relative path combination correctly.
 //   - rt_path_normalize resolves . and .. components and removes redundant separators.
+//   - Link inspection never follows the final path component and never traps.
 //
 // Ownership/Lifetime:
 //   - Caller must release all returned strings.
@@ -79,6 +80,13 @@ rt_string rt_path_with_ext(rt_string path, rt_string new_ext);
 /// @details On Unix: starts with "/".
 ///          On Windows: starts with drive letter (C:\) or UNC path (\\server).
 int64_t rt_path_is_abs(rt_string path);
+
+/// @brief Check whether the final path component is a symbolic link or reparse point.
+/// @param path Existing or missing filesystem path to inspect.
+/// @return 1 for a POSIX symbolic link or Windows reparse point; otherwise 0.
+/// @details Does not follow the final component and returns 0 for invalid,
+///          missing, inaccessible, or ordinary paths without trapping.
+int64_t rt_path_is_link(rt_string path);
 
 /// @brief Convert a relative path to absolute.
 /// @param path Path to convert.

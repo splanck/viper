@@ -10,6 +10,9 @@
 // Key invariants:
 //   - AppShell owns the application window and persistent UI controllers.
 //   - Construction details live in focused shell modules, not in this facade.
+//   - The production workbench publishes a zoom-aware native minimum window size.
+//   - Responsive editor chrome is reconciled whenever layout dimensions change.
+//   - At most one focus-taking transient surface owns the workbench at a time.
 // Ownership/Lifetime:
 //   - Constructed once by main.zia and destroyed during IDE shutdown.
 //   - MenuChrome, WorkbenchShell, ToolPanelShell, and StatusShell live for the
@@ -28,6 +31,77 @@ bind "../ui/tool_panel_shell";
 bind "../ui/workbench_shell";
 
 bind Zanna.GUI as GUI;
+bind Convert = Zanna.Core.Convert;
+
+final WORKBENCH_MIN_WIDTH = 720;
+final WORKBENCH_MIN_HEIGHT = 520;
+final TRANSIENT_SURFACE_NONE: Integer = 0;
+final TRANSIENT_SURFACE_SETTINGS: Integer = 1;
+final TRANSIENT_SURFACE_ABOUT: Integer = 2;
+final TRANSIENT_SURFACE_EXPLORER_ACTION: Integer = 3;
+final TRANSIENT_SURFACE_DEBUG_BREAKPOINT: Integer = 4;
+final TRANSIENT_SURFACE_COMMAND_INPUT: Integer = 5;
+final TRANSIENT_SURFACE_DIFF: Integer = 6;
+// Reserve desktop chrome as well as a visible resize margin. Monitor metrics
+// describe the full display, not the platform work area; 32 pixels was smaller
+// than the macOS menu bar plus title bar and could strand the status bar below
+// the screen at high UI zoom.
+final WORKBENCH_SCREEN_GAP = 96;
+
+/// @brief Preserve a window's center while keeping primary-monitor growth visible.
+/// @details The runtime currently exposes the containing monitor's size but not
+///          its global origin. Clamp only when the previous window center is in
+///          the primary-origin coordinate range; secondary-monitor coordinates
+///          retain their center instead of being pulled onto the primary screen.
+func ExpandedWindowPosition(position: Integer,
+                            previousExtent: Integer,
+                            targetExtent: Integer,
+                            monitorExtent: Integer) -> Integer {
+    var next = position - (targetExtent - previousExtent) / 2;
+    var previousCenter = position + previousExtent / 2;
+    if monitorExtent <= 0 or previousCenter < 0
+       or previousCenter > monitorExtent {
+        return next;
+    }
+    var edge = WORKBENCH_SCREEN_GAP / 2;
+    var minimum = edge;
+    var maximum = monitorExtent - targetExtent - edge;
+    if maximum < minimum {
+        minimum = 0;
+        maximum = monitorExtent - targetExtent;
+    }
+    if maximum < minimum { return next; }
+    if next < minimum { next = minimum; }
+    if next > maximum { next = maximum; }
+    return next;
+}
+
+/// @brief Return the window width in effective UI-layout units.
+/// @details App.GetLogicalWidth removes only the backing scale. Widget geometry
+///          also includes user zoom, so overlay placement must divide the raw
+///          framebuffer width by the complete effective scale.
+expose func UiViewportWidth(app: GUI.App) -> Integer {
+    if app == null { return 0; }
+    var scale = app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(app.GetWidth() / scale);
+}
+
+/// @brief Return the window height in effective UI-layout units.
+expose func UiViewportHeight(app: GUI.App) -> Integer {
+    if app == null { return 0; }
+    var scale = app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(app.GetHeight() / scale);
+}
+
+/// @brief Convert one framebuffer-space coordinate into effective UI units.
+expose func PhysicalToUi(app: GUI.App, value: Number) -> Number {
+    if app == null { return value; }
+    var scale = app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return value / scale;
+}
 
 /// @brief Coordinates the IDE window and focused persistent UI shell modules.
 class AppShell {
@@ -41,6 +115,8 @@ class AppShell {
     expose String contextPath;
     expose String contextDir;
     expose Integer tabContextIndex;
+    hide Integer activeTransientOwner;
+    hide GUI.Widget activeTransientSurface;
 
     /// @brief Initialize detached UI controllers.
     expose func init() {
@@ -51,6 +127,8 @@ class AppShell {
         contextPath = "";
         contextDir = "";
         tabContextIndex = -1;
+        activeTransientOwner = TRANSIENT_SURFACE_NONE;
+        activeTransientSurface = null;
     }
 
     /// @brief Construct the IDE window and persistent UI bands.
@@ -80,6 +158,70 @@ class AppShell {
 
         SetBuildJobActive(false, "");
         SetDebugSessionState(false, false, false);
+        SetCommandContextAvailable(false, false, false, false);
+    }
+
+    /// @brief Give one focus-taking transient surface exclusive ownership.
+    /// @details Claiming hides the prior surface plus popup menus immediately.
+    ///          Its old controller observes the lost token during its next Pump
+    ///          and clears stale logical state without disturbing the new owner.
+    /// @param owner Stable TRANSIENT_SURFACE_* identity for the controller.
+    /// @param surface Widget to show, including docked Settings or a floating panel.
+    expose func ClaimTransientSurface(owner: Integer, surface: GUI.Widget) {
+        if owner == TRANSIENT_SURFACE_NONE {
+            DismissTransientSurface();
+            return;
+        }
+        if activeTransientOwner != owner and activeTransientSurface != null {
+            activeTransientSurface.SetVisible(false);
+        }
+        activeTransientOwner = owner;
+        activeTransientSurface = surface;
+        if surface != null { surface.SetVisible(true); }
+
+        if commandPalette != null and commandPalette.IsVisible() {
+            commandPalette.Hide();
+        }
+        if menuChrome != null {
+            if menuChrome.treeContextMenu != null
+               and menuChrome.treeContextMenu.IsVisible() {
+                menuChrome.treeContextMenu.Hide();
+            }
+            if menuChrome.editorContextMenu != null
+               and menuChrome.editorContextMenu.IsVisible() {
+                menuChrome.editorContextMenu.Hide();
+            }
+            if menuChrome.tabContextMenu != null
+               and menuChrome.tabContextMenu.IsVisible() {
+                menuChrome.tabContextMenu.Hide();
+            }
+        }
+    }
+
+    /// @brief Return whether a controller still owns the transient surface slot.
+    expose func OwnsTransientSurface(owner: Integer) -> Boolean {
+        return owner != TRANSIENT_SURFACE_NONE and activeTransientOwner == owner;
+    }
+
+    /// @brief Release ownership only when it still belongs to the caller.
+    /// @details A superseded controller may close a frame later; owner matching
+    ///          prevents that stale close from hiding a newer surface.
+    expose func ReleaseTransientSurface(owner: Integer) {
+        if OwnsTransientSurface(owner) == false { return; }
+        if activeTransientSurface != null {
+            activeTransientSurface.SetVisible(false);
+        }
+        activeTransientSurface = null;
+        activeTransientOwner = TRANSIENT_SURFACE_NONE;
+    }
+
+    /// @brief Hide and forget whichever focus-taking surface is currently active.
+    expose func DismissTransientSurface() {
+        if activeTransientSurface != null {
+            activeTransientSurface.SetVisible(false);
+        }
+        activeTransientSurface = null;
+        activeTransientOwner = TRANSIENT_SURFACE_NONE;
     }
 
     /// @brief Apply command-catalog shortcuts to visible menu/context items.
@@ -116,13 +258,77 @@ class AppShell {
         app.Activate();
     }
 
+    /// @brief Publish Studio's minimum usable native-window dimensions.
+    /// @details The normal floor leaves room for activity/sidebar chrome and a
+    ///          useful editor surface. Whole-UI zoom raises that floor so larger
+    ///          controls do not consume the effective workspace. On an unusually
+    ///          small display, the floor contracts to the available logical work
+    ///          area so the window does not become larger than the screen.
+    expose func ApplyWorkbenchWindowConstraints() {
+        var zoomPct = Convert.NumToInt(app.GetUiScale() * 100.0 + 0.5);
+        if zoomPct < 100 { zoomPct = 100; }
+        if zoomPct > 300 { zoomPct = 300; }
+        var minW = (WORKBENCH_MIN_WIDTH * zoomPct + 99) / 100;
+        var minH = (WORKBENCH_MIN_HEIGHT * zoomPct + 99) / 100;
+        var monitorW = app.GetMonitorWidth();
+        var monitorH = app.GetMonitorHeight();
+        if monitorW > WORKBENCH_SCREEN_GAP
+           and minW > monitorW - WORKBENCH_SCREEN_GAP {
+            minW = monitorW - WORKBENCH_SCREEN_GAP;
+        }
+        if monitorH > WORKBENCH_SCREEN_GAP
+           and minH > monitorH - WORKBENCH_SCREEN_GAP {
+            minH = monitorH - WORKBENCH_SCREEN_GAP;
+        }
+        if minW < 1 { minW = 1; }
+        if minH < 1 { minH = 1; }
+        app.SetMinimumSize(minW, minH);
+
+        // Raising a native constraint does not consistently resize an already
+        // smaller window across platform adapters. Expand ordinary windows now;
+        // fullscreen/maximized/minimized windows will inherit the native floor
+        // when the platform restores their normal frame.
+        if app.IsFullscreen() == false
+           and app.IsMaximized() == false
+           and app.IsMinimized() == false {
+            var previousW = app.GetLogicalWidth();
+            var previousH = app.GetLogicalHeight();
+            var previousX = app.GetX();
+            var previousY = app.GetY();
+            var targetW = previousW;
+            var targetH = previousH;
+            if targetW < minW { targetW = minW; }
+            if targetH < minH { targetH = minH; }
+            if targetW != previousW or targetH != previousH {
+                app.SetWindowSize(targetW, targetH);
+                // Grow around the existing window center. Leaving the old
+                // top-left untouched can push the newly enlarged bottom edge
+                // below the desktop; preserving the center also avoids jumping
+                // a window from its current monitor to the primary display.
+                app.SetPosition(ExpandedWindowPosition(previousX, previousW,
+                                                       targetW, monitorW),
+                                ExpandedWindowPosition(previousY, previousH,
+                                                       targetH, monitorH));
+            }
+        }
+    }
+
     /// @brief Paint the current frame.
     expose func Render() {
+        // A resize updates widget geometry during layout. Reconcile once with
+        // the previous geometry, render that layout, then immediately repaint
+        // if the new lane width crossed the minimap threshold. This prevents a
+        // compact workbench from remaining crowded until some later input.
+        workbench.RefreshResponsiveMinimap();
         app.Render();
+        if workbench.RefreshResponsiveMinimap() {
+            app.Render();
+        }
     }
 
     /// @brief Destroy the GUI application window.
     expose func Destroy() {
+        DismissTransientSurface();
         app.Destroy();
     }
 
@@ -142,6 +348,27 @@ class AppShell {
     /// @param text Right status display text.
     expose func SetStatusRight(text: String) {
         statusShell.SetStatusRight(text);
+    }
+
+    /// @brief Switch status chrome between welcome and document contexts.
+    /// @param active True while no document editor is visible.
+    expose func SetWelcomeStatusMode(active: Boolean) {
+        statusShell.SetWelcomeMode(active);
+    }
+
+    /// @brief Enable commands that require an open document or build target.
+    /// @param hasDocument True when at least one editor document is open.
+    /// @param hasProject True when a workspace root is open.
+    /// @param hasBuildTarget True when a project or document can be built.
+    /// @param hasDebugTarget True when a saved document can be debugged.
+    expose func SetCommandContextAvailable(hasDocument: Boolean,
+                                           hasProject: Boolean,
+                                           hasBuildTarget: Boolean,
+                                           hasDebugTarget: Boolean) {
+        menuChrome.SetCommandContextAvailable(hasDocument,
+                                              hasProject,
+                                              hasBuildTarget,
+                                              hasDebugTarget);
     }
 
     /// @brief Update active project and language status items.
@@ -223,6 +450,11 @@ class AppShell {
     /// @brief Toggle sidebar visibility.
     expose func ToggleSidebar() {
         workbench.ToggleSidebar();
+    }
+
+    /// @brief Explicitly show or fully collapse the sidebar content pane.
+    expose func SetSidebarVisible(visible: Boolean) {
+        workbench.SetSidebarVisible(visible);
     }
 
     /// @brief Select the active document surface.

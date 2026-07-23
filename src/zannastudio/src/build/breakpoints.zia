@@ -1,8 +1,28 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/build/breakpoints.zia
+// Purpose: Store, persist, and project source breakpoints into editor gutters.
+// Key invariants:
+//   - Corrupt or inaccessible settings never terminate Studio startup/shutdown.
+//   - Persisted breakpoint counts are bounded on both reads and writes.
+//   - Shared settings state is size-bounded and atomically replaced.
+// Ownership/Lifetime: Owns breakpoint value models and borrows editor surfaces.
+// Links: zannastudio/src/build/debug_session.zia,
+//        zannastudio/src/app/lifecycle_controller.zia
+//
+//===----------------------------------------------------------------------===//
+
 module breakpoints;
 
 bind "../core/document";
 bind "../editor/editor_engine";
 bind "../services/theme_colors";
+bind "../services/safe_io";
 
 bind Ini = Zanna.Data.Ini;
 bind IO = Zanna.IO;
@@ -13,6 +33,7 @@ bind Map = Zanna.Collections.Map;
 bind Pixels = Zanna.Graphics.Pixels;
 
 final BREAKPOINT_SLOT = 0;
+final MAX_PERSISTED_BREAKPOINTS = 4096;
 
 // ============================================================================
 // MODULE: breakpoints
@@ -161,10 +182,18 @@ class BreakpointStore {
         version = version + 1;
     }
 
-    expose func Load() {
-        if settingsPath == "" or IO.File.Exists(settingsPath) == false { return; }
-        var ini = Ini.Parse(IO.File.ReadAllText(settingsPath));
+    expose func Load() -> Boolean {
+        if settingsPath == "" { return false; }
+        if IO.File.Exists(settingsPath) == false {
+            items = [];
+            return true;
+        }
+        var readResult = safe_io.ReadStudioState(settingsPath);
+        if readResult.ok == false { return false; }
+        var ini = Ini.Parse(readResult.text);
         var count = Parse.IntOr(Ini.Get(ini, "breakpoints", "count"), 0);
+        if count < 0 { count = 0; }
+        if count > MAX_PERSISTED_BREAKPOINTS { count = MAX_PERSISTED_BREAKPOINTS; }
         items = [];
         var i = 0;
         while i < count {
@@ -182,20 +211,29 @@ class BreakpointStore {
             i = i + 1;
         }
         version = version + 1;
+        return true;
     }
 
-    expose func Save() {
-        if settingsPath == "" { return; }
-        Dir.MakeAll(Path.Directory(settingsPath));
+    expose func Save() -> Boolean {
+        if settingsPath == "" { return false; }
+        if safe_io.MakeAll(Path.Directory(settingsPath)) == false { return false; }
         var content = "";
         if IO.File.Exists(settingsPath) {
-            content = IO.File.ReadAllText(settingsPath);
+            var readResult = safe_io.ReadStudioState(settingsPath);
+            if readResult.ok == false { return false; }
+            content = readResult.text;
         }
         var ini = Ini.Parse(content);
         var oldCount = Parse.IntOr(Ini.Get(ini, "breakpoints", "count"), 0);
-        Ini.Set(ini, "breakpoints", "count", "" + items.count());
+        if oldCount < 0 { oldCount = 0; }
+        if oldCount > MAX_PERSISTED_BREAKPOINTS { oldCount = MAX_PERSISTED_BREAKPOINTS; }
+        var writeCount = items.count();
+        if writeCount > MAX_PERSISTED_BREAKPOINTS {
+            writeCount = MAX_PERSISTED_BREAKPOINTS;
+        }
+        Ini.Set(ini, "breakpoints", "count", "" + writeCount);
         var i = 0;
-        while i < items.count() {
+        while i < writeCount {
             var bp = items.get(i);
             var section = "breakpoint." + i;
             Ini.Set(ini, section, "path", bp.path);
@@ -208,7 +246,7 @@ class BreakpointStore {
             Map.Remove(ini, "breakpoint." + i);
             i = i + 1;
         }
-        IO.File.WriteAllText(settingsPath, Ini.Format(ini));
+        return safe_io.WriteStudioState(settingsPath, Ini.Format(ini));
     }
 
     expose func ApplyToEditor(engine: editor_engine.EditorEngine,

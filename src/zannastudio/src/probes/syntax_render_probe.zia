@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/syntax_render_probe.zia
+// Purpose: Exercise editor syntax rendering and optionally hold the asserted
+//          surface open for screenshot-based layout review.
+// Key invariants:
+//   - Supported language modes render tokens without trapping.
+//   - `--visual-hold` displays the same state that automated assertions cover.
+// Ownership/Lifetime: The probe owns and destroys one AppShell and EditorEngine.
+// Links: zannastudio/src/editor/editor_engine.zia,
+//        zannastudio/src/ui/workbench_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
 module syntax_render_probe;
 
 // ============================================================================
@@ -14,9 +33,20 @@ module syntax_render_probe;
 
 bind "../ui/app_shell";
 bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
 
 bind Zanna.GUI as GUI;
 bind Terminal = Zanna.Terminal;
+bind Env = Zanna.System.Environment;
+
+func HasArg(name: String) -> Boolean {
+    var i = 0;
+    while i < Env.GetArgumentCount() {
+        if Env.GetArgument(i) == name { return true; }
+        i = i + 1;
+    }
+    return false;
+}
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
@@ -96,8 +126,12 @@ func main() {
     }
 
     // --- Test D: TabBar point->index hit-test -------------------------------
-    shell.workbench.tabBar.AddTab("alpha.zia", 1);
-    shell.workbench.tabBar.AddTab("beta.zia", 1);
+    // Use the same controller as Studio so adding the first document also
+    // restores the strip hidden by the empty welcome-screen policy.
+    var tabs = new editor_tabs.EditorTabs();
+    tabs.Setup(shell.workbench.tabBar);
+    tabs.AddTab("alpha.zia", 1);
+    tabs.AddTab("beta.zia", 1);
     shell.Poll();
     shell.Render();
     if shell.workbench.tabBar.GetTabIndexAt(-100, -100) != -1 {
@@ -136,6 +170,22 @@ func main() {
     if engine.editor.GetWhitespaceMode() != 0 {
         fail(shell, "out-of-range whitespace mode did not clamp to none");
         return;
+    }
+
+    if HasArg("--visual-hold") {
+        engine.SetText(ziaText
+                       + "\nfunc main() {\n"
+                       + "    var answer = add(20, 22);\n"
+                       + "    Zanna.Terminal.Say(answer);\n"
+                       + "}\n");
+        engine.editor.SetLanguage("zia");
+        shell.SetCommandContextAvailable(true, false, true, true);
+        shell.SetSidebarVisible(false);
+        while true {
+            shell.PollWait(16);
+            if shell.WasCloseRequested() { break; }
+            shell.Render();
+        }
     }
 
     shell.Destroy();

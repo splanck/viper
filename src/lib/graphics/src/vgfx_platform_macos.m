@@ -503,7 +503,11 @@ static NSMenu *vgfx_macos_build_default_main_menu(const char *preferred_title) {
     NSMenu *main_menu = [[NSMenu alloc] initWithTitle:@ ""];
     [main_menu setAutoenablesItems:NO];
 
-    NSMenuItem *app_root = [[NSMenuItem alloc] initWithTitle:@ "" action:nil keyEquivalent:@ ""];
+    // Preserve the authored name in the Cocoa menu model and submenu. macOS
+    // renders the system application-menu label from process identity for raw
+    // executables; product builds provide that identity through their staged
+    // executable leaf name.
+    NSMenuItem *app_root = [[NSMenuItem alloc] initWithTitle:app_name action:nil keyEquivalent:@ ""];
     [app_root setSubmenu:vgfx_macos_build_default_app_menu(app_name)];
     [main_menu addItem:app_root];
 
@@ -2293,6 +2297,17 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     }
 }
 
+void vgfx_platform_set_window_min_size(struct vgfx_window *win, int32_t w, int32_t h) {
+    if (!win || !win->platform_data || w <= 0 || h <= 0)
+        return;
+    @autoreleasepool {
+        vgfx_macos_platform *platform = (vgfx_macos_platform *)win->platform_data;
+        if (!platform->window)
+            return;
+        [platform->window setContentMinSize:NSMakeSize((CGFloat)w, (CGFloat)h)];
+    }
+}
+
 void *vgfx_get_native_display(vgfx_window_t window) {
     (void)window;
     return NULL; /* macOS doesn't have a separate display connection */
@@ -2322,9 +2337,8 @@ vgfx_window_capabilities_t vgfx_get_window_capabilities(vgfx_window_t window) {
     if (!window || !window->platform_data)
         return 0;
     return VGFX_CAP_WINDOW_POSITION | VGFX_CAP_FOCUS_REQUEST | VGFX_CAP_CURSOR_WARP |
-           VGFX_CAP_RELATIVE_MOUSE | VGFX_CAP_TEXT_COMPOSITION |
-           VGFX_CAP_SERVER_DECORATIONS | VGFX_CAP_ACTIVATION | VGFX_CAP_CLIPBOARD_TEXT |
-           VGFX_CAP_FILE_DROP;
+           VGFX_CAP_RELATIVE_MOUSE | VGFX_CAP_TEXT_COMPOSITION | VGFX_CAP_SERVER_DECORATIONS |
+           VGFX_CAP_ACTIVATION | VGFX_CAP_CLIPBOARD_TEXT | VGFX_CAP_FILE_DROP;
 }
 
 void vgfx_platform_warp_cursor(struct vgfx_window *win, int32_t x, int32_t y) {

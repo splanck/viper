@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/core/project_file_ops.zia
+// Purpose: Define safe, cross-platform filesystem policy for Explorer actions.
+// Key invariants:
+//   - Mutable paths must remain below an open workspace root.
+//   - Workspace roots and Studio's internal trash cannot trash themselves.
+// Ownership/Lifetime: Pure helpers; callers own all paths and filesystem state.
+// Links: zannastudio/src/core/project_manager.zia
+//
+//===----------------------------------------------------------------------===//
+
 module project_file_ops;
 
 bind IO = Zanna.IO;
@@ -44,12 +61,14 @@ expose func IsZiaFile(path: String) -> Boolean {
 /// @return True when `fullPath` equals the root or is below it.
 expose func IsWithinRoot(fullPath: String, rootPath: String) -> Boolean {
     if fullPath == "" or rootPath == "" { return false; }
-    if fullPath == rootPath { return true; }
-    var prefix = rootPath;
-    if Str.EndsWith(prefix, Path.Separator()) == false {
-        prefix = prefix + Path.Separator();
+    var normalizedPath = NormalizedPathKey(fullPath);
+    var normalizedRoot = NormalizedPathKey(rootPath);
+    if normalizedPath == normalizedRoot { return true; }
+    var prefix = normalizedRoot;
+    if Str.EndsWith(prefix, "/") == false {
+        prefix = prefix + "/";
     }
-    return Str.StartsWith(fullPath, prefix);
+    return Str.StartsWith(normalizedPath, prefix);
 }
 
 /// @brief Return a collision-free project-local trash path for explorer delete.
@@ -62,7 +81,14 @@ expose func IsWithinRoot(fullPath: String, rootPath: String) -> Boolean {
 /// @return Absolute destination path, or empty string if no project trash is available.
 expose func TrashPathFor(projectRoot: String, sourcePath: String) -> String {
     if projectRoot == "" or sourcePath == "" { return ""; }
-    var trashRoot = Path.Join(projectRoot, ".zannastudio-trash");
+    var normalizedRoot = NormalizedPathKey(projectRoot);
+    var normalizedSource = NormalizedPathKey(sourcePath);
+    if IsWithinRoot(normalizedSource, normalizedRoot) == false
+       or normalizedSource == normalizedRoot {
+        return "";
+    }
+    var trashRoot = Path.Join(normalizedRoot, ".zannastudio-trash");
+    if IsWithinRoot(normalizedSource, trashRoot) { return ""; }
     var base = Path.Name(sourcePath);
     if base == "" { return ""; }
     var stem = base + "." + Zanna.Time.Clock.NowMs();
@@ -79,4 +105,15 @@ expose func TrashPathFor(projectRoot: String, sourcePath: String) -> String {
         attempt = attempt + 1;
     }
     return "";
+}
+
+/// @brief Normalize a path into an absolute separator-independent comparison key.
+/// @param path Absolute or relative path spelling.
+/// @return Absolute normalized path using forward slashes.
+/// @details Normalizing before containment checks closes lexical `..` escapes.
+///          Comparisons intentionally retain case because case sensitivity is a
+///          filesystem property; Explorer paths use the root's runtime spelling.
+func NormalizedPathKey(path: String) -> String {
+    var normalized = Path.Normalize(Path.Absolute(path));
+    return Str.Replace(normalized, "\\", "/");
 }

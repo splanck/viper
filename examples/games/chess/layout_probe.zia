@@ -64,6 +64,38 @@ func overlaps(a: Rect, b: Rect) -> Boolean {
     return true;
 }
 
+/// @brief True when controls sharing vertical space have a horizontal gap.
+/// @param a First rectangle.
+/// @param b Second rectangle.
+/// @param gap Minimum horizontal separation for vertically aligned controls.
+/// @return True when the rectangles occupy different rows or have @p gap
+///         pixels between their nearest horizontal edges.
+func separatedByGap(a: Rect, b: Rect, gap: Integer) -> Boolean {
+    if a.y + a.h <= b.y { return true; }
+    if b.y + b.h <= a.y { return true; }
+    if a.x + a.w + gap <= b.x { return true; }
+    if b.x + b.w + gap <= a.x { return true; }
+    return false;
+}
+
+/// @brief Check one match-setup control against every release-menu control.
+/// @param control Match-setup rectangle in the left menu column.
+/// @return True when all vertically adjacent release controls retain enough
+///         horizontal space for button shadows and borders.
+func clearsReleaseColumn(control: Rect) -> Boolean {
+    final visualGap = 16;
+    if !separatedByGap(control, layout.continueButtonRect(), visualGap) { return false; }
+    for slot in 0..3 {
+        if !separatedByGap(control, layout.slotLabelRect(slot), visualGap) { return false; }
+        if !separatedByGap(control, layout.slotLoadButtonRect(slot), visualGap) { return false; }
+        if !separatedByGap(control, layout.slotSaveButtonRect(slot), visualGap) { return false; }
+    }
+    if !separatedByGap(control, layout.puzzleButtonRect(), visualGap) { return false; }
+    if !separatedByGap(control, layout.analysisButtonRect(), visualGap) { return false; }
+    if !separatedByGap(control, layout.settingsButtonRect(), visualGap) { return false; }
+    return true;
+}
+
 /// @brief Validate the main-menu layout and slot-row controls.
 /// @return True when every menu invariant holds.
 func checkMenu() -> Boolean {
@@ -91,6 +123,16 @@ func checkMenu() -> Boolean {
         if !expect(!overlaps(label, load), "slot label/load overlap") { return false; }
         if !expect(!overlaps(load, save), "slot load/save overlap") { return false; }
     }
+    for mode in 0..3 {
+        if !expect(clearsReleaseColumn(layout.modeButtonRect(mode)), "mode/release spacing") { return false; }
+    }
+    for side in 0..2 {
+        if !expect(clearsReleaseColumn(layout.sideButtonRect(side)), "side/release spacing") { return false; }
+    }
+    for difficulty in 0..4 {
+        if !expect(clearsReleaseColumn(layout.difficultyButtonRect(difficulty)), "difficulty/release spacing") { return false; }
+    }
+    if !expect(clearsReleaseColumn(layout.startButtonRect()), "start/release spacing") { return false; }
     return true;
 }
 

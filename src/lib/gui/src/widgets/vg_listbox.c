@@ -16,6 +16,8 @@
 //     non-virtual mode uses a doubly-linked item list.
 //   - Retired items are pooled (up to VG_LISTBOX_RETIRE_POOL_SIZE) to reduce
 //     malloc/free churn during rapid updates.
+//   - Overflowing row text paints with an ellipsis and temporarily becomes the
+//     widget tooltip while hovered; the caller's original tooltip is restored.
 // Ownership/Lifetime:
 //   - Items are owned by the listbox; freed on remove, clear, or destroy.
 // Links: lib/gui/include/vg_widgets.h,
@@ -49,6 +51,8 @@ static bool listbox_can_focus(vg_widget_t *widget);
 static void listbox_destroy(vg_widget_t *widget);
 static float listbox_default_item_height(vg_listbox_t *lb);
 static float listbox_text_baseline(vg_listbox_t *lb, float item_y, float item_h);
+static const char *listbox_fit_text(vg_listbox_t *lb, const char *text, float max_width);
+static void listbox_sync_hover_tooltip(vg_listbox_t *lb);
 static vg_listbox_item_t *listbox_item_at_index_nonvirtual(vg_listbox_t *lb, size_t index);
 static size_t listbox_index_of_item(vg_listbox_t *lb, vg_listbox_item_t *target);
 static bool listbox_clear_nonvirtual_selection(vg_listbox_t *lb);
@@ -643,6 +647,12 @@ static void listbox_destroy(vg_widget_t *widget) {
     lb->selection_bitmap_size = 0;
     lb->selection_bitmap_capacity = 0;
     listbox_free_retired_items(lb);
+    free(lb->saved_tooltip_text);
+    lb->saved_tooltip_text = NULL;
+    lb->hover_tooltip_active = false;
+    free(lb->ellipsis_scratch);
+    lb->ellipsis_scratch = NULL;
+    lb->ellipsis_scratch_capacity = 0;
 }
 
 /// @brief Computes the default row height from the theme input height and font metrics, taking the
@@ -671,6 +681,136 @@ static float listbox_text_baseline(vg_listbox_t *lb, float item_y, float item_h)
     vg_font_metrics_t metrics = {0};
     vg_font_get_metrics(lb->font, lb->font_size, &metrics);
     return item_y + (item_h + (float)metrics.ascent + (float)metrics.descent) / 2.0f;
+}
+
+/// @brief Back a byte length up to a UTF-8 codepoint boundary.
+static size_t listbox_utf8_previous_boundary(const char *text, size_t length) {
+    if (!text)
+        return 0;
+    while (length > 0 && (((unsigned char)text[length] & 0xC0u) == 0x80u))
+        length--;
+    return length;
+}
+
+/// @brief Return paint text fitted to @p max_width, reusing listbox-owned scratch storage.
+/// @details The original item text is never mutated. A failed scratch allocation falls back to
+///          the clipped original, preserving content even under memory pressure.
+static const char *listbox_fit_text(vg_listbox_t *lb, const char *text, float max_width) {
+    if (!text)
+        return "";
+    if (!lb || !lb->font || max_width <= 0.0f)
+        return "";
+
+    vg_text_metrics_t metrics = {0};
+    vg_font_measure_text(lb->font, lb->font_size, text, &metrics);
+    if (metrics.width <= max_width)
+        return text;
+
+    vg_text_metrics_t ellipsis_metrics = {0};
+    vg_font_measure_text(lb->font, lb->font_size, "...", &ellipsis_metrics);
+    if (ellipsis_metrics.width > max_width)
+        return "";
+
+    size_t length = strlen(text);
+    if (length > SIZE_MAX - 4u)
+        return text;
+    size_t needed = length + 4u;
+    if (needed > lb->ellipsis_scratch_capacity) {
+        char *next = (char *)realloc(lb->ellipsis_scratch, needed);
+        if (!next)
+            return text;
+        lb->ellipsis_scratch = next;
+        lb->ellipsis_scratch_capacity = needed;
+    }
+
+    size_t low = 0;
+    size_t high = length;
+    while (low < high) {
+        size_t candidate = low + (high - low + 1u) / 2u;
+        candidate = listbox_utf8_previous_boundary(text, candidate);
+        if (candidate <= low) {
+            candidate = low + 1u;
+            while (candidate < length && (((unsigned char)text[candidate] & 0xC0u) == 0x80u))
+                candidate++;
+            if (candidate > high)
+                break;
+        }
+
+        memcpy(lb->ellipsis_scratch, text, candidate);
+        memcpy(lb->ellipsis_scratch + candidate, "...", 4u);
+        vg_font_measure_text(lb->font, lb->font_size, lb->ellipsis_scratch, &metrics);
+        if (metrics.width <= max_width) {
+            low = candidate;
+        } else {
+            high = listbox_utf8_previous_boundary(text, candidate - 1u);
+        }
+    }
+
+    memcpy(lb->ellipsis_scratch, text, low);
+    memcpy(lb->ellipsis_scratch + low, "...", 4u);
+    return lb->ellipsis_scratch;
+}
+
+/// @brief Return the text under the pointer in normal or virtual mode.
+static const char *listbox_hovered_text(vg_listbox_t *lb) {
+    if (!lb)
+        return NULL;
+    if (!lb->virtual_mode)
+        return lb->hovered ? lb->hovered->text : NULL;
+    if (lb->hovered_index == SIZE_MAX || lb->hovered_index < lb->visible_start ||
+        lb->hovered_index - lb->visible_start >= lb->visible_count)
+        return NULL;
+    size_t cache_index = lb->hovered_index - lb->visible_start;
+    if (!lb->visible_cache || cache_index >= lb->cache_capacity)
+        return NULL;
+    return lb->visible_cache[cache_index].text;
+}
+
+/// @brief Promote clipped hovered-row text to the widget tooltip and restore caller text on exit.
+static void listbox_sync_hover_tooltip(vg_listbox_t *lb) {
+    if (!lb)
+        return;
+
+    const char *hover_text = listbox_hovered_text(lb);
+    bool overflow = false;
+    if (hover_text && hover_text[0] != '\0') {
+        vg_theme_t *theme = vg_theme_get_current();
+        float padding = theme ? theme->input.padding_h : 0.0f;
+        float available = lb->base.width - padding - 6.0f;
+        float text_width = 0.0f;
+        if (lb->font) {
+            vg_text_metrics_t metrics = {0};
+            vg_font_measure_text(lb->font, lb->font_size, hover_text, &metrics);
+            text_width = metrics.width;
+        } else {
+            // Headless controls may not have a raster font yet. A conservative
+            // half-em estimate still makes otherwise undiscoverable text
+            // available without treating every short row as overflow.
+            text_width = (float)strlen(hover_text) * lb->font_size * 0.5f;
+        }
+        overflow = available <= 0.0f || text_width > available;
+    }
+
+    if (overflow) {
+        if (!lb->hover_tooltip_active) {
+            char *saved = lb->base.tooltip_text ? vg_strdup(lb->base.tooltip_text) : NULL;
+            if (lb->base.tooltip_text && !saved)
+                return;
+            free(lb->saved_tooltip_text);
+            lb->saved_tooltip_text = saved;
+            lb->hover_tooltip_active = true;
+        }
+        if (!lb->base.tooltip_text || strcmp(lb->base.tooltip_text, hover_text) != 0)
+            vg_widget_set_tooltip_text(&lb->base, hover_text);
+        return;
+    }
+
+    if (lb->hover_tooltip_active) {
+        vg_widget_set_tooltip_text(&lb->base, lb->saved_tooltip_text);
+        free(lb->saved_tooltip_text);
+        lb->saved_tooltip_text = NULL;
+        lb->hover_tooltip_active = false;
+    }
 }
 
 /// @brief VTable measure: sizes to the widest item text (up to avail_w) and up to 5 visible rows
@@ -709,6 +849,7 @@ static void listbox_arrange(vg_widget_t *widget, float x, float y, float w, floa
     widget->y = y;
     widget->width = w;
     widget->height = h;
+    listbox_sync_hover_tooltip((vg_listbox_t *)widget);
 }
 
 /// @brief VTable paint: draws background, selection highlights, row text, scrollbar thumb, and
@@ -782,6 +923,8 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             }
 
             if (lb->visible_cache[i].text && lb->font) {
+                const char *paint_text =
+                    listbox_fit_text(lb, lb->visible_cache[i].text, (float)text_clip_w);
                 if (text_clip_w > 0 && text_clip_h > 0)
                     vgfx_set_clip(win, text_clip_x, text_clip_y, text_clip_w, text_clip_h);
                 vg_font_draw_text(canvas,
@@ -789,7 +932,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
                                   lb->font_size,
                                   widget->x + text_padding,
                                   listbox_text_baseline(lb, item_y, ih),
-                                  lb->visible_cache[i].text,
+                                  paint_text,
                                   lb->text_color);
                 if (text_clip_w > 0 && text_clip_h > 0)
                     vgfx_set_clip(win, x, y, w, h);
@@ -841,6 +984,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
             }
 
             if (item->text && lb->font) {
+                const char *paint_text = listbox_fit_text(lb, item->text, (float)text_clip_w);
                 if (text_clip_w > 0 && text_clip_h > 0)
                     vgfx_set_clip(win, text_clip_x, text_clip_y, text_clip_w, text_clip_h);
                 vg_font_draw_text(canvas,
@@ -848,7 +992,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas) {
                                   lb->font_size,
                                   widget->x + text_padding,
                                   listbox_text_baseline(lb, item_y, ih),
-                                  item->text,
+                                  paint_text,
                                   item->has_text_color ? item->text_color : lb->text_color);
                 if (text_clip_w > 0 && text_clip_h > 0)
                     vgfx_set_clip(win, x, y, w, h);
@@ -909,6 +1053,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
 
         case VG_EVENT_MOUSE_MOVE: {
             if (lb->virtual_mode) {
+                listbox_sync_virtual_cache(lb, widget->height);
                 size_t idx = 0;
                 size_t old_hover = lb->hovered_index;
                 lb->hovered_index = SIZE_MAX;
@@ -930,6 +1075,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
                 if (old_hover != lb->hovered)
                     widget->needs_paint = true;
             }
+            listbox_sync_hover_tooltip(lb);
             break;
         }
 
@@ -937,6 +1083,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
             bool changed = lb->hovered != NULL || lb->hovered_index != SIZE_MAX;
             lb->hovered = NULL;
             lb->hovered_index = SIZE_MAX;
+            listbox_sync_hover_tooltip(lb);
             if (changed)
                 widget->needs_paint = true;
             break;
@@ -1168,8 +1315,10 @@ void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item) {
         listbox->selected = NULL;
         listbox_note_selection_changed(listbox);
     }
-    if (listbox->hovered == item)
+    if (listbox->hovered == item) {
         listbox->hovered = NULL;
+        listbox_sync_hover_tooltip(listbox);
+    }
     if (listbox->anchor_selected == item)
         listbox->anchor_selected = listbox->selected;
     if (listbox->prev_selected == item)
@@ -1225,6 +1374,7 @@ void vg_listbox_clear(vg_listbox_t *listbox) {
         listbox->visible_count = 0;
         listbox->scroll_y = 0.0f;
     }
+    listbox_sync_hover_tooltip(listbox);
     if (had_selection || had_virtual_selection)
         listbox_note_selection_changed(listbox);
     listbox->base.needs_layout = true;

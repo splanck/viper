@@ -1,9 +1,30 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/file_commands.zia
+// Purpose: Coordinate Studio file creation, opening, saving, closing, reload,
+//          and exit commands across the shell, document model, and editor.
+// Key invariants:
+//   - Destructive transitions honor dirty-buffer confirmation.
+//   - Only validated editable text paths enter the editor through UI commands.
+// Ownership/Lifetime:
+//   - This stateless command module borrows all shell and model objects.
+// Links: zannastudio/src/core/document_manager.zia,
+//        zannastudio/src/editor/editor_engine.zia
+//
+//===----------------------------------------------------------------------===//
+
 module file_commands;
 
 bind "../ui/app_shell";
 bind "../core/document";
 bind "../core/document_manager";
 bind "../core/project_manager";
+bind "../core/recovery_store";
 bind "../editor/editor_engine";
 bind "../editor/editor_tabs";
 bind "../services/file_utils";
@@ -20,6 +41,7 @@ bind Obj = Zanna.Core.Object;
 var confirmDirtyClose = true;
 var trimTrailingWhitespaceOnSave = false;
 var ensureFinalNewlineOnSave = true;
+var activeRecoveryStore: recovery_store.RecoveryStore = null;
 
 final CLOSE_CHOICE_CANCEL = 0;
 final CLOSE_CHOICE_SAVE = 1;
@@ -97,33 +119,44 @@ func handleNew(shell: app_shell.AppShell,
 func handleOpen(shell: app_shell.AppShell,
                 docMgr: document_manager.DocumentManager,
                 engine: editor_engine.EditorEngine,
-                tabs: editor_tabs.EditorTabs) {
+                tabs: editor_tabs.EditorTabs) -> Boolean {
     var path = FileDialog.Open("Open File", "", file_utils.OpenDialogFilter());
-    if path != "" {
-        OpenFileAtPath(shell, docMgr, engine, tabs, path);
-    }
+    if path == "" { return false; }
+    return OpenFileAtPath(shell, docMgr, engine, tabs, path);
 }
 
 /// @brief Folder-picker dialog -> ProjectManager.OpenFolder for the
 ///        chosen path. Updates the file-tree sidebar.
 func handleOpenFolder(shell: app_shell.AppShell,
-                      projMgr: project_manager.ProjectManager) {
+                      projMgr: project_manager.ProjectManager) -> Boolean {
     var folderPath = FileDialog.SelectFolder("Open Folder", "");
-    if folderPath != "" {
-        projMgr.OpenFolder(folderPath);
-        shell.SetStatusLeft("Opened project: " + projMgr.project.name);
+    if folderPath == "" { return false; }
+    if projMgr.OpenFolder(folderPath) == false {
+        var reason = projMgr.lastOperationError;
+        if reason == "" { reason = "The selected folder is no longer available."; }
+        shell.SetStatusLeft("Could not open folder: " + folderPath);
+        GUI.Toast.Error(reason);
+        return false;
     }
+    shell.SetStatusLeft("Opened project: " + projMgr.project.name);
+    return true;
 }
 
 /// @brief Folder-picker dialog -> ProjectManager.AddFolderToWorkspace, adding
 ///        another root to the tree without closing the current project/docs.
 func handleAddFolderToWorkspace(shell: app_shell.AppShell,
-                                projMgr: project_manager.ProjectManager) {
+                                projMgr: project_manager.ProjectManager) -> Boolean {
     var folderPath = FileDialog.SelectFolder("Add Folder to Workspace", "");
-    if folderPath != "" {
-        projMgr.AddFolderToWorkspace(folderPath);
-        shell.SetStatusLeft("Added folder to workspace: " + folderPath);
+    if folderPath == "" { return false; }
+    if projMgr.AddFolderToWorkspace(folderPath) == false {
+        var reason = projMgr.lastOperationError;
+        if reason == "" { reason = "Could not add folder to the workspace."; }
+        shell.SetStatusLeft(reason);
+        GUI.Toast.Warning(reason);
+        return false;
     }
+    shell.SetStatusLeft("Added folder to workspace: " + folderPath);
+    return true;
 }
 
 /// @brief Save active document. Untitled docs route to a Save As prompt.
@@ -157,14 +190,16 @@ func handleSave(shell: app_shell.AppShell,
                 shell.SetStatusLeft("Saved: " + saveDoc.fileName);
                 shell.SetStatusRight(DocStatusLabel(saveDoc));
                 GUI.Toast.Success("Saved: " + saveDoc.fileName);
+                SyncRecoverySwaps(docMgr, engine);
                 return true;
             }
             shell.SetStatusLeft("Save canceled");
             return false;
         } else {
-            if confirmOverwriteExternal(shell, docMgr, docMgr.activeIndex) {
+            var externalState = docMgr.ExternalStateForSave(docMgr.activeIndex);
+            if confirmOverwriteExternal(shell, docMgr, docMgr.activeIndex, externalState) {
                 NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
-                if docMgr.SaveActive() == false {
+                if docMgr.SaveActiveAfterExternalConfirmation(externalState) == false {
                     shell.SetStatusLeft("Save failed: " + saveDoc.fileName);
                     GUI.Toast.Error("Save failed");
                     return false;
@@ -173,6 +208,7 @@ func handleSave(shell: app_shell.AppShell,
                 engine.ClearModified();
                 shell.SetStatusLeft("Saved: " + saveDoc.fileName);
                 GUI.Toast.Success("Saved: " + saveDoc.fileName);
+                SyncRecoverySwaps(docMgr, engine);
                 return true;
             }
             return false;
@@ -197,6 +233,12 @@ func handleSaveAs(shell: app_shell.AppShell,
         var saveAsPath = FileDialog.Save(
             "Save As", "", file_utils.SaveDialogFilter(saveAsDoc.kind, saveAsDoc.language), saveAsDoc.fileName);
         if saveAsPath != "" {
+            var blocked = docMgr.SaveAsBlockReason(docMgr.activeIndex, saveAsPath);
+            if blocked != "" {
+                shell.SetStatusLeft("Save As rejected: " + saveAsDoc.fileName);
+                GUI.Toast.Warning(blocked);
+                return false;
+            }
             NormalizeDocumentForSave(docMgr, engine, docMgr.activeIndex);
             if docMgr.SaveAs(saveAsPath) == false {
                 shell.SetStatusLeft("Save As failed: " + saveAsDoc.fileName);
@@ -210,6 +252,7 @@ func handleSaveAs(shell: app_shell.AppShell,
             shell.SetBreadcrumbPath(saveAsDoc.filePath);
             shell.SetStatusLeft("Saved as: " + saveAsDoc.fileName);
             shell.SetStatusRight(DocStatusLabel(saveAsDoc));
+            SyncRecoverySwaps(docMgr, engine);
             return true;
         }
         shell.SetStatusLeft("Save As canceled");
@@ -217,7 +260,11 @@ func handleSaveAs(shell: app_shell.AppShell,
     return false;
 }
 
-/// @brief Save every modified non-untitled doc; clear their tab markers.
+/// @brief Save every modified document; clear successful tab markers.
+/// @details The sweep stops at the first cancel, rejected destination, or
+///          failed write. Callers must never receive `success = true` while a
+///          dirty document remains because build/run/close actions rely on
+///          this result as their disk-synchronization precondition.
 func handleSaveAll(shell: app_shell.AppShell,
                    docMgr: document_manager.DocumentManager,
                    engine: editor_engine.EditorEngine,
@@ -239,35 +286,58 @@ func handleSaveAll(shell: app_shell.AppShell,
                 var savePath = FileDialog.Save(
                     "Save " + doc.fileName, "", file_utils.SaveDialogFilter(doc.kind, doc.language), doc.fileName);
                 if savePath != "" {
+                    var blocked = docMgr.SaveAsBlockReason(i, savePath);
+                    if blocked != "" {
+                        result.savedCount = savedCount;
+                        result.message = "Could not save " + doc.fileName + ": " + blocked;
+                        shell.SetStatusLeft(result.message);
+                        GUI.Toast.Warning(blocked);
+                        return result;
+                    }
                     NormalizeDocumentForSave(docMgr, engine, i);
                     if docMgr.SaveDocumentAs(i, savePath) {
                         tabs.SetTitle(i, doc.fileName);
                         tabs.SetTooltip(i, doc.filePath);
                         tabs.SetModified(i, false);
+                        engine.ClearDocumentModified(doc);
                         savedCount = savedCount + 1;
+                        SyncRecoverySwaps(docMgr, engine);
+                    } else {
+                        result.savedCount = savedCount;
+                        result.message = "Save failed: " + doc.fileName;
+                        shell.SetStatusLeft(result.message);
+                        GUI.Toast.Error(result.message);
+                        return result;
                     }
                 } else {
                     result.canceled = true;
+                    result.savedCount = savedCount;
                     result.message = "Save All canceled";
                     shell.SetStatusLeft(result.message);
                     return result;
                 }
-            } else if confirmOverwriteExternal(shell, docMgr, i) {
+            } else {
+                var externalState = docMgr.ExternalStateForSave(i);
+                if confirmOverwriteExternal(shell, docMgr, i, externalState) == false {
+                    result.canceled = true;
+                    result.savedCount = savedCount;
+                    result.message = "Save All canceled";
+                    shell.SetStatusLeft(result.message);
+                    return result;
+                }
                 NormalizeDocumentForSave(docMgr, engine, i);
-                if docMgr.SaveDocument(i) {
+                if docMgr.SaveDocumentAfterExternalConfirmation(i, externalState) {
                     tabs.SetModified(i, false);
+                    engine.ClearDocumentModified(doc);
                     savedCount = savedCount + 1;
+                    SyncRecoverySwaps(docMgr, engine);
                 } else {
+                    result.savedCount = savedCount;
                     result.message = "Save failed: " + doc.fileName;
                     shell.SetStatusLeft(result.message);
                     GUI.Toast.Error("Save failed");
                     return result;
                 }
-            } else {
-                result.canceled = true;
-                result.message = "Save All canceled";
-                shell.SetStatusLeft(result.message);
-                return result;
             }
         }
         i = i + 1;
@@ -347,6 +417,7 @@ func handleReload(shell: app_shell.AppShell,
             tabs.SetModified(docMgr.activeIndex, false);
             shell.SetStatusLeft("Reloaded: " + doc.fileName);
             GUI.Toast.Success("File reloaded from disk");
+            SyncRecoverySwaps(docMgr, engine);
         }
     }
 }
@@ -368,13 +439,15 @@ func handleClose(shell: app_shell.AppShell,
         return false;
     }
 
+    var closingDoc = docMgr.GetDocument(closeIdx);
+    if closingDoc != null { engine.ReleaseDocument(closingDoc!); }
     docMgr.CloseDocument(closeIdx);
     tabs.RemoveTab(closeIdx);
 
     var nextDoc = docMgr.GetActive();
     if nextDoc != null {
         tabs.SetActive(docMgr.activeIndex);
-        engine.LoadDocument(nextDoc);
+        if engine.currentDoc != nextDoc { engine.LoadDocument(nextDoc); }
         shell.SelectSurface(nextDoc.kind);
         shell.SetBreadcrumbPath(nextDoc.filePath);
         shell.SetStatusRight(DocStatusLabel(nextDoc));
@@ -384,6 +457,7 @@ func handleClose(shell: app_shell.AppShell,
         shell.SetBreadcrumbPath("");
         shell.SetStatusRight("No file");
     }
+    SyncRecoverySwaps(docMgr, engine);
     shell.SetStatusLeft("File closed");
     return true;
 }
@@ -403,9 +477,12 @@ func handleCloseAll(shell: app_shell.AppShell,
 
     while docMgr.GetCount() > 0 {
         var idx = docMgr.GetCount() - 1;
+        var closingDoc = docMgr.GetDocument(idx);
+        if closingDoc != null { engine.ReleaseDocument(closingDoc!); }
         docMgr.CloseDocument(idx);
         tabs.RemoveTab(idx);
     }
+    SyncRecoverySwaps(docMgr, engine);
 
     engine.SetText("");
     engine.ClearModified();
@@ -430,6 +507,8 @@ func handleCloseOthers(shell: app_shell.AppShell,
     var i = docMgr.GetCount() - 1;
     while i >= 0 {
         if i != activeKeepIdx {
+            var closingDoc = docMgr.GetDocument(i);
+            if closingDoc != null { engine.ReleaseDocument(closingDoc!); }
             docMgr.CloseDocument(i);
             tabs.RemoveTab(i);
         }
@@ -443,12 +522,13 @@ func handleCloseOthers(shell: app_shell.AppShell,
         tabs.SetActive(docMgr.activeIndex);
         var keptDoc = docMgr.GetActive();
         if keptDoc != null {
-            engine.LoadDocument(keptDoc);
+            if engine.currentDoc != keptDoc { engine.LoadDocument(keptDoc); }
             shell.SelectSurface(keptDoc.kind);
             shell.SetBreadcrumbPath(keptDoc.filePath);
             shell.SetStatusRight(DocStatusLabel(keptDoc));
         }
     }
+    SyncRecoverySwaps(docMgr, engine);
     shell.SetStatusLeft("Closed other files");
 }
 
@@ -497,6 +577,20 @@ func SetSaveFormatOptions(trimWhitespace: Boolean,
     ensureFinalNewlineOnSave = finalNewline;
 }
 
+/// @brief Attach the app-owned crash-recovery store to file command lifecycles.
+/// @details File commands are the authority for save/reload/close transitions;
+///          synchronizing here retires stale swaps immediately after success.
+func SetRecoveryStore(store: recovery_store.RecoveryStore) {
+    activeRecoveryStore = store;
+}
+
+/// @brief Retire stale swaps and queue current dirty buffers after a file transition.
+func SyncRecoverySwaps(docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine) {
+    if activeRecoveryStore == null or docMgr == null { return; }
+    activeRecoveryStore.ReconcileDocuments(docMgr, engine);
+}
+
 func AutoSaveActive(shell: app_shell.AppShell,
                     docMgr: document_manager.DocumentManager,
                     engine: editor_engine.EditorEngine,
@@ -507,7 +601,7 @@ func AutoSaveActive(shell: app_shell.AppShell,
     if doc == null { return false; }
     if doc.isNew or doc.isModified == false { return false; }
     if doc.isReadOnlyPreview { return false; }
-    if docMgr.HasExternalChange(docMgr.activeIndex) {
+    if docMgr.HasExternalChangeForSave(docMgr.activeIndex) {
         shell.SetStatusLeft("Auto-save paused: " + docMgr.ExternalStateMessage(docMgr.activeIndex));
         return false;
     }
@@ -516,6 +610,7 @@ func AutoSaveActive(shell: app_shell.AppShell,
         tabs.SetModified(docMgr.activeIndex, false);
         engine.ClearModified();
         shell.SetStatusLeft("Auto-saved: " + doc.fileName);
+        SyncRecoverySwaps(docMgr, engine);
         return true;
     }
     return false;
@@ -591,7 +686,13 @@ func OpenFileAtPath(shell: app_shell.AppShell,
                     docMgr: document_manager.DocumentManager,
                     engine: editor_engine.EditorEngine,
                     tabs: editor_tabs.EditorTabs,
-                    path: String) {
+                    path: String) -> Boolean {
+    var blocked = document_manager.TextOpenBlockReason(path);
+    if blocked != "" {
+        shell.SetStatusLeft("Not opened: " + Path.Name(path));
+        GUI.Toast.Warning(blocked);
+        return false;
+    }
     SaveEditorState(docMgr, engine);
 
     var prevCount = docMgr.GetCount();
@@ -602,7 +703,7 @@ func OpenFileAtPath(shell: app_shell.AppShell,
         tabs.SetTooltip(docMgr.activeIndex, openDoc.filePath);
     }
     tabs.SetActive(docMgr.activeIndex);
-    engine.LoadDocument(openDoc);
+    if engine.currentDoc != openDoc { engine.LoadDocument(openDoc); }
     shell.SelectSurface(openDoc.kind);
 
     shell.SetBreadcrumbPath(openDoc.filePath);
@@ -613,6 +714,7 @@ func OpenFileAtPath(shell: app_shell.AppShell,
         shell.SetStatusLeft("Opened: " + openDoc.fileName);
     }
     shell.SetStatusRight(DocStatusLabel(openDoc));
+    return true;
 }
 
 func ConfirmCloseDocuments(shell: app_shell.AppShell,
@@ -794,17 +896,19 @@ func SaveDirtyDocumentsForClose(shell: app_shell.AppShell,
                         return false;
                     }
                 } else {
-                    if confirmOverwriteExternal(shell, docMgr, i) == false {
+                    var externalState = docMgr.ExternalStateForSave(i);
+                    if confirmOverwriteExternal(shell, docMgr, i, externalState) == false {
                         return false;
                     }
                     NormalizeDocumentForSave(docMgr, engine, i);
-                    if docMgr.SaveDocument(i) == false {
+                    if docMgr.SaveDocumentAfterExternalConfirmation(i, externalState) == false {
                         shell.SetStatusLeft("Save failed: " + doc.fileName);
                         GUI.Toast.Error("Save failed");
                         return false;
                     }
                 }
                 doc.isModified = false;
+                engine.ClearDocumentModified(doc);
             }
         }
         i = i + 1;
@@ -834,11 +938,13 @@ func SaveDirtyDocumentsUnderPath(shell: app_shell.AppShell,
                 NormalizeDocumentForSave(docMgr, engine, i);
                 if docMgr.SaveDocumentAs(i, savePath) == false { return false; }
             } else {
-                if confirmOverwriteExternal(shell, docMgr, i) == false { return false; }
+                var externalState = docMgr.ExternalStateForSave(i);
+                if confirmOverwriteExternal(shell, docMgr, i, externalState) == false { return false; }
                 NormalizeDocumentForSave(docMgr, engine, i);
-                if docMgr.SaveDocument(i) == false { return false; }
+                if docMgr.SaveDocumentAfterExternalConfirmation(i, externalState) == false { return false; }
             }
             doc.isModified = false;
+            engine.ClearDocumentModified(doc);
         }
         i = i + 1;
     }
@@ -854,8 +960,8 @@ func DocumentIsUnderPath(doc: document.Document, path: String) -> Boolean {
 
 func confirmOverwriteExternal(shell: app_shell.AppShell,
                               docMgr: document_manager.DocumentManager,
-                              index: Integer) -> Boolean {
-    var state = docMgr.ExternalState(index);
+                              index: Integer,
+                              state: Integer) -> Boolean {
     if state == document.EXTERNAL_STATE_CLEAN {
         return true;
     }
@@ -882,17 +988,19 @@ func confirmOverwriteExternal(shell: app_shell.AppShell,
     return true;
 }
 
-/// @brief Flush editor state (cursor, scroll, text) into the active
-///        Document. Called at the start of every command to keep the
-///        document model in sync with what the user sees.
+/// @brief Flush the focused pane into its owning Document and activate it.
+/// @details Pane focus is authoritative. Repairing DocumentManager selection
+///          here makes every command preflight safe even if a native focus
+///          event and the app-level tab synchronization occur in one frame.
 func SaveEditorState(docMgr: document_manager.DocumentManager,
                      engine: editor_engine.EditorEngine) {
     if docMgr == null or engine == null {
         return;
     }
-    var doc = docMgr.GetActive();
+    var doc = engine.currentDoc;
     if doc != null {
         engine.SaveToDocument(doc);
+        docMgr.SetActiveDocument(doc);
     }
 }
 

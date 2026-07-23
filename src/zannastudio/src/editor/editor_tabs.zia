@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/editor_tabs.zia
+// Purpose: Keep the editor tab strip synchronized with open documents.
+// Key invariants:
+//   - Tab indices mirror DocumentManager indices.
+//   - The strip consumes no welcome-screen space when it has no tabs.
+// Ownership/Lifetime: Borrows the WorkbenchShell-owned TabBar.
+// Links: zannastudio/src/core/document_manager.zia,
+//        zannastudio/src/ui/workbench_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
 module editor_tabs;
 
 bind "../core/document";
@@ -45,12 +63,14 @@ class EditorTabs {
     expose func Setup(tabBarWidget: GUI.TabBar) {
         tabBar = tabBarWidget;
         tabBar.SetAutoClose(false);
+        tabBar.SetVisible(tabBar.TabCount > 0);
     }
 
     /// @brief Append a new tab.
     /// @param closeable 1 to show the close button, 0 to hide it.
     expose func AddTab(name: String, closeable: Integer) {
         tabBar.AddTab(name, closeable);
+        tabBar.SetVisible(true);
     }
 
     /// @brief Remove the tab at `index`. Out-of-range no-ops.
@@ -60,6 +80,7 @@ class EditorTabs {
         }
         var tab: GUI.Tab = tabBar.GetTabAt(index);
         tabBar.RemoveTab(tab);
+        if tabBar.TabCount == 0 { tabBar.SetVisible(false); }
     }
 
     /// @brief Activate the tab at `index`. Updates `lastActiveIndex`.
@@ -128,5 +149,6 @@ class EditorTabs {
         if docMgr.activeIndex >= 0 {
             SetActive(docMgr.activeIndex);
         }
+        tabBar.SetVisible(tabBar.TabCount > 0);
     }
 }

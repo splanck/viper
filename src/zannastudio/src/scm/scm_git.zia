@@ -1,3 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/scm/scm_git.zia
+// Purpose: Run Git commands through bounded, cancellable asynchronous process
+//          jobs and parse their structured output for Studio source control.
+// Key invariants:
+//   - UI callers start and pump GitJob instances; they never wait in-frame.
+//   - Child environments disable terminal prompts, editors, and pagers.
+//   - Captured stdout and stderr remain bounded for hostile or noisy commands.
+// Ownership/Lifetime:
+//   - Git owns repository/tool resolution; each returned GitJob owns one child
+//     process until completion, cancellation, or explicit destruction.
+// Links: zannastudio/src/scm/scm_view.zia,
+//        zannastudio/src/scm/scm_gutter_controller.zia
+//
+//===----------------------------------------------------------------------===//
+
 module scm_git;
 
 bind "../build/bounded_output";
@@ -476,6 +498,25 @@ class Git {
         Seq.Push(args, "--");
         Seq.Push(args, path);
         return StartCommand("diff", args, path, staged);
+    }
+
+    /// @brief Start the bounded worktree diff used by editor gutter markers.
+    /// @details External diff commands and text-conversion drivers are disabled:
+    ///          they are unnecessary for source-line markers and can prompt,
+    ///          recurse, or block on arbitrary user configuration. Zero context
+    ///          keeps parsing and retained output proportional to changed hunks.
+    /// @param path Repository-relative source path.
+    /// @return Asynchronous job tagged `gutterDiff`.
+    expose func StartGutterDiff(path: String) -> GitJob {
+        var args = Seq.New();
+        Seq.Push(args, "diff");
+        Seq.Push(args, "--no-ext-diff");
+        Seq.Push(args, "--no-textconv");
+        Seq.Push(args, "--unified=0");
+        Seq.Push(args, "--no-color");
+        Seq.Push(args, "--");
+        Seq.Push(args, path);
+        return StartCommand("gutterDiff", args, path, false);
     }
 
     expose func StartStage(path: String) -> GitJob {

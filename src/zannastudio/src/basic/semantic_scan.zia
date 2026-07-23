@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/basic/semantic_scan.zia
+// Purpose: Provide bounded lightweight BASIC semantic scans for Studio-only
+//          navigation, refactoring, call hierarchy, and signature features.
+// Key invariants:
+//   - Identifiers are matched case-insensitively outside strings/comments.
+//   - Capped entry points never append beyond their caller-owned result limit.
+// Ownership/Lifetime: Stateless; callers own every source and result sequence.
+// Links: zannastudio/src/editor/basic_workspace_query_job.zia,
+//        zannastudio/src/commands/edit_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module semantic_scan;
 
 bind Map = Zanna.Collections.Map;
@@ -94,28 +113,51 @@ expose func DeclarationsForFile(path: String,
 expose func AddDeclarations(decls: Any,
                             path: String,
                             source: String) {
-    if decls == null or source == "" { return; }
+    AddDeclarationsCapped(decls, path, source, 0);
+}
+
+/// @brief Append declarations without exceeding an aggregate result ceiling.
+/// @param decls Caller-owned declaration sequence.
+/// @param path Source path attached to declarations.
+/// @param source BASIC source text.
+/// @param maxCount Maximum aggregate sequence size, or zero for unlimited.
+/// @return True when the complete source was scanned; false when capped.
+expose func AddDeclarationsCapped(decls: Any,
+                                  path: String,
+                                  source: String,
+                                  maxCount: Integer) -> Boolean {
+    if decls == null or source == "" { return true; }
     var lines = Str.Split(source, "\n");
     var lineCount = Seq.get_Count(lines);
     var i = 1;
-    while i <= lineCount {
+    while i <= lineCount and HasResultCapacity(decls, maxCount) {
         var rawLine = Obj.ToString(Seq.Get(lines, i - 1));
         var code = StripLineComment(rawLine);
-        AddBlockDeclaration(decls, path, source, code, i, lineCount, "FUNCTION", "function");
-        AddBlockDeclaration(decls, path, source, code, i, lineCount, "SUB", "function");
-        AddBlockDeclaration(decls, path, source, code, i, lineCount, "PROPERTY", "property");
-        AddDestructorDeclaration(decls, path, source, code, i);
-        AddBlockDeclaration(decls, path, source, code, i, lineCount, "CLASS", "type");
-        AddBlockDeclaration(decls, path, source, code, i, lineCount, "INTERFACE", "interface");
-        AddBlockDeclaration(decls, path, source, code, i, lineCount, "TYPE", "type");
-        AddBlockDeclaration(decls, path, source, code, i, lineCount, "ENUM", "enum");
-        AddBlockDeclaration(decls, path, source, code, i, lineCount, "NAMESPACE", "module");
-        AddLabelDeclaration(decls, path, code, i, lineCount);
-        AddDimDeclarations(decls, path, source, code, i, lineCount);
-        AddConstDeclaration(decls, path, source, code, i, lineCount);
-        AddClassFieldDeclaration(decls, path, source, code, i, lineCount);
+        AddBlockDeclaration(decls, path, source, code, i, lineCount,
+                            "FUNCTION", "function", maxCount);
+        AddBlockDeclaration(decls, path, source, code, i, lineCount,
+                            "SUB", "function", maxCount);
+        AddBlockDeclaration(decls, path, source, code, i, lineCount,
+                            "PROPERTY", "property", maxCount);
+        AddDestructorDeclaration(decls, path, source, code, i, maxCount);
+        AddBlockDeclaration(decls, path, source, code, i, lineCount,
+                            "CLASS", "type", maxCount);
+        AddBlockDeclaration(decls, path, source, code, i, lineCount,
+                            "INTERFACE", "interface", maxCount);
+        AddBlockDeclaration(decls, path, source, code, i, lineCount,
+                            "TYPE", "type", maxCount);
+        AddBlockDeclaration(decls, path, source, code, i, lineCount,
+                            "ENUM", "enum", maxCount);
+        AddBlockDeclaration(decls, path, source, code, i, lineCount,
+                            "NAMESPACE", "module", maxCount);
+        AddLabelDeclaration(decls, path, code, i, lineCount, maxCount);
+        AddDimDeclarations(decls, path, source, code, i, lineCount, maxCount);
+        AddConstDeclaration(decls, path, source, code, i, lineCount, maxCount);
+        AddClassFieldDeclaration(decls, path, source, code, i, lineCount, maxCount);
         i = i + 1;
     }
+    return i > lineCount
+       and (maxCount <= 0 or Seq.get_Count(decls) < maxCount);
 }
 
 expose func BestDefinition(decls: Any,
@@ -149,25 +191,44 @@ expose func AddReferencesForFile(refs: Any,
                                  path: String,
                                  source: String,
                                  def: Any) {
-    if refs == null or def == null or source == "" { return; }
+    AddReferencesForFileCapped(refs, path, source, def, 0);
+}
+
+/// @brief Append references without exceeding an aggregate result ceiling.
+/// @param refs Caller-owned reference sequence.
+/// @param path Source path attached to references.
+/// @param source BASIC source text.
+/// @param def Resolved declaration record.
+/// @param maxCount Maximum aggregate sequence size, or zero for unlimited.
+/// @return True when the relevant source range was completely scanned.
+expose func AddReferencesForFileCapped(refs: Any,
+                                       path: String,
+                                       source: String,
+                                       def: Any,
+                                       maxCount: Integer) -> Boolean {
+    if refs == null or def == null or source == "" { return true; }
     var canon = Map.GetStr(def, "canon");
-    if canon == "" { return; }
+    if canon == "" { return true; }
 
     var localOnly = Map.GetBool(def, "local") or Map.GetStr(def, "kind") == "label";
     var fromLine = 1;
     var toLine = LineCount(source);
     if localOnly {
-        if path != Map.GetStr(def, "file") { return; }
+        if path != Map.GetStr(def, "file") { return true; }
         fromLine = Map.GetIntOr(def, "scopeStart", 1);
         toLine = Map.GetIntOr(def, "scopeEnd", toLine);
     }
 
     var lines = Str.Split(source, "\n");
     var i = fromLine;
-    while i <= toLine and i <= Seq.get_Count(lines) {
-        AddLineReferences(refs, path, Obj.ToString(Seq.Get(lines, i - 1)), i, def, canon);
+    while i <= toLine and i <= Seq.get_Count(lines)
+          and HasResultCapacity(refs, maxCount) {
+        AddLineReferences(refs, path, Obj.ToString(Seq.Get(lines, i - 1)),
+                          i, def, canon, maxCount);
         i = i + 1;
     }
+    return (i > toLine or i > Seq.get_Count(lines))
+       and (maxCount <= 0 or Seq.get_Count(refs) < maxCount);
 }
 
 expose func RenameEditsFromReferences(refs: Any,
@@ -185,6 +246,8 @@ expose func RenameEditsFromReferences(refs: Any,
         Map.SetInt(edit, "endColumn", Map.GetInt(ref, "endColumn"));
         Map.SetStr(edit, "newText",
                    ReplacementForOccurrence(Map.GetStr(ref, "text"), newName));
+        Map.SetStr(edit, "expectedText", Map.GetStr(ref, "text"));
+        Map.SetInt(edit, "expectedMtime", Map.GetIntOr(ref, "expectedMtime", -1));
         Seq.Push(edits, edit);
         i = i + 1;
     }
@@ -232,6 +295,19 @@ expose func BasicProcedureEndLine(source: String,
 expose func OutgoingBasicCallTokens(source: String,
                                     startLine: Integer,
                                     endLine: Integer) -> Any {
+    return OutgoingBasicCallTokensCapped(source, startLine, endLine, 0);
+}
+
+/// @brief Return call-like tokens without exceeding a result ceiling.
+/// @param source BASIC source text.
+/// @param startLine Inclusive procedure start line.
+/// @param endLine Inclusive procedure end line.
+/// @param maxCount Maximum token count, or zero for unlimited.
+/// @return Sequence of call-token maps.
+expose func OutgoingBasicCallTokensCapped(source: String,
+                                          startLine: Integer,
+                                          endLine: Integer,
+                                          maxCount: Integer) -> Any {
     var tokens = Seq.New();
     if source == "" { return tokens; }
     var lines = Str.Split(source, "\n");
@@ -242,8 +318,9 @@ expose func OutgoingBasicCallTokens(source: String,
     if toLine > Seq.get_Count(lines) { toLine = Seq.get_Count(lines); }
 
     var i = fromLine;
-    while i <= toLine {
-        AddOutgoingCallsFromLine(tokens, Obj.ToString(Seq.Get(lines, i - 1)), i);
+    while i <= toLine and HasResultCapacity(tokens, maxCount) {
+        AddOutgoingCallsFromLine(tokens, Obj.ToString(Seq.Get(lines, i - 1)),
+                                 i, maxCount);
         i = i + 1;
     }
     return tokens;
@@ -323,13 +400,15 @@ func AddBlockDeclaration(decls: Any,
                          lineNumber: Integer,
                          lineCount: Integer,
                          keyword: String,
-                         kind: String) {
+                         kind: String,
+                         maxCount: Integer) {
+    if HasResultCapacity(decls, maxCount) == false { return; }
     var decl = ProcedureOrBlockDeclaration(path, source, line, lineNumber,
                                            lineCount, keyword, kind);
     if Map.GetBool(decl, "found") == false { return; }
     Seq.Push(decls, decl);
     if keyword == "FUNCTION" or keyword == "SUB" or keyword == "PROPERTY" {
-        AddParameterDeclarations(decls, path, decl);
+        AddParameterDeclarations(decls, path, decl, maxCount);
     }
 }
 
@@ -393,7 +472,9 @@ func AddDestructorDeclaration(decls: Any,
                               path: String,
                               source: String,
                               line: String,
-                              lineNumber: Integer) {
+                              lineNumber: Integer,
+                              maxCount: Integer) {
+    if HasResultCapacity(decls, maxCount) == false { return; }
     var keywordCol = KeywordColumn(line, "DESTRUCTOR");
     if keywordCol <= 0 { return; }
     if EndsWithToken(Str.Trim(Str.Left(line, keywordCol - 1)), "END") { return; }
@@ -408,7 +489,9 @@ func AddLabelDeclaration(decls: Any,
                          path: String,
                          line: String,
                          lineNumber: Integer,
-                         lineCount: Integer) {
+                         lineCount: Integer,
+                         maxCount: Integer) {
+    if HasResultCapacity(decls, maxCount) == false { return; }
     var code = Str.Trim(line);
     if code == "" { return; }
     var offset = LeadingWhitespaceLength(line) + 1;
@@ -428,7 +511,9 @@ func AddDimDeclarations(decls: Any,
                         source: String,
                         line: String,
                         lineNumber: Integer,
-                        lineCount: Integer) {
+                        lineCount: Integer,
+                        maxCount: Integer) {
+    if HasResultCapacity(decls, maxCount) == false { return; }
     var dimCol = KeywordColumn(line, "DIM");
     if dimCol <= 0 { return; }
     var scopeStart = EnclosingBasicProcedureStartLine(source, lineNumber);
@@ -440,7 +525,8 @@ func AddDimDeclarations(decls: Any,
     }
     AddVariableDeclarationsFromList(decls, path, line, lineNumber,
                                     dimCol + Str.get_Length("DIM"),
-                                    scopeStart, scopeEnd, local, "variable");
+                                    scopeStart, scopeEnd, local, "variable",
+                                    maxCount);
 }
 
 func AddConstDeclaration(decls: Any,
@@ -448,7 +534,9 @@ func AddConstDeclaration(decls: Any,
                          source: String,
                          line: String,
                          lineNumber: Integer,
-                         lineCount: Integer) {
+                         lineCount: Integer,
+                         maxCount: Integer) {
+    if HasResultCapacity(decls, maxCount) == false { return; }
     var constCol = KeywordColumn(line, "CONST");
     if constCol <= 0 { return; }
     var scopeStart = EnclosingBasicProcedureStartLine(source, lineNumber);
@@ -460,7 +548,8 @@ func AddConstDeclaration(decls: Any,
     }
     AddVariableDeclarationsFromList(decls, path, line, lineNumber,
                                     constCol + Str.get_Length("CONST"),
-                                    scopeStart, scopeEnd, local, "constant");
+                                    scopeStart, scopeEnd, local, "constant",
+                                    maxCount);
 }
 
 func AddClassFieldDeclaration(decls: Any,
@@ -468,7 +557,9 @@ func AddClassFieldDeclaration(decls: Any,
                               source: String,
                               line: String,
                               lineNumber: Integer,
-                              lineCount: Integer) {
+                              lineCount: Integer,
+                              maxCount: Integer) {
+    if HasResultCapacity(decls, maxCount) == false { return; }
     if EnclosingBasicProcedureStartLine(source, lineNumber) > 0 { return; }
     var code = Str.Trim(line);
     if code == "" { return; }
@@ -492,11 +583,12 @@ func AddVariableDeclarationsFromList(decls: Any,
                                      scopeStart: Integer,
                                      scopeEnd: Integer,
                                      local: Boolean,
-                                     kind: String) {
+                                     kind: String,
+                                     maxCount: Integer) {
     var pos = startPos;
     var actualScopeStart = scopeStart;
     if actualScopeStart <= 0 { actualScopeStart = 1; }
-    while pos <= Str.get_Length(line) {
+    while pos <= Str.get_Length(line) and HasResultCapacity(decls, maxCount) {
         pos = SkipWhitespaceAndCommas(line, pos);
         if pos > Str.get_Length(line) { break; }
         var name = ReadBasicIdentifierAt(line, pos);
@@ -518,7 +610,8 @@ func AddVariableDeclarationsFromList(decls: Any,
 
 func AddParameterDeclarations(decls: Any,
                               path: String,
-                              procDecl: Any) {
+                              procDecl: Any,
+                              maxCount: Integer) {
     var paramsText = Map.GetStr(procDecl, "paramsText");
     if paramsText == "" { return; }
     var procLine = Map.GetInt(procDecl, "line");
@@ -529,7 +622,7 @@ func AddParameterDeclarations(decls: Any,
     if openParen == 0 { return; }
 
     var pos = openParen + 1;
-    while pos <= Str.get_Length(line) {
+    while pos <= Str.get_Length(line) and HasResultCapacity(decls, maxCount) {
         pos = SkipWhitespaceAndCommas(line, pos);
         pos = SkipParameterModifier(line, pos);
         var name = ReadBasicIdentifierAt(line, pos);
@@ -590,11 +683,12 @@ func AddLineReferences(refs: Any,
                        line: String,
                        lineNumber: Integer,
                        def: Any,
-                       canon: String) {
+                       canon: String,
+                       maxCount: Integer) {
     var pos = 1;
     var inString = false;
     var n = Str.get_Length(line);
-    while pos <= n {
+    while pos <= n and HasResultCapacity(refs, maxCount) {
         var ch = Str.MidLen(line, pos, 1);
         if inString {
             if ch == "\"" {
@@ -643,11 +737,12 @@ func AddLineReferences(refs: Any,
 
 func AddOutgoingCallsFromLine(tokens: Any,
                               line: String,
-                              lineNumber: Integer) {
+                              lineNumber: Integer,
+                              maxCount: Integer) {
     var pos = 1;
     var inString = false;
     var n = Str.get_Length(line);
-    while pos <= n {
+    while pos <= n and HasResultCapacity(tokens, maxCount) {
         var ch = Str.MidLen(line, pos, 1);
         if inString {
             if ch == "\"" {
@@ -686,6 +781,16 @@ func AddOutgoingCallsFromLine(tokens: Any,
         }
         pos = pos + 1;
     }
+}
+
+/// @brief Return whether an append-oriented semantic result has capacity.
+/// @param items Runtime sequence receiving result maps.
+/// @param maxCount Maximum aggregate count, or zero for unlimited.
+/// @return True when another item may be appended.
+func HasResultCapacity(items: Any,
+                       maxCount: Integer) -> Boolean {
+    if items == null { return false; }
+    return maxCount <= 0 or Seq.get_Count(items) < maxCount;
 }
 
 func ActiveCallAt(source: String,

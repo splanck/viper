@@ -1,7 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: tests/e2e/zannastudio_completion_native_probe.zia
+// Purpose: Verify native Studio language services, document mirrors, and C++
+//          global initialization through the in-tree native linker.
+// Key invariants:
+//   - Document mirror storage is constructed before the first source sync.
+//   - Strong Zia editor services replace weak unavailable stubs.
+// Ownership/Lifetime: Standalone native smoke process.
+// Links: tests/e2e/test_zannastudio_completion_native.sh
+//
+//===----------------------------------------------------------------------===//
+
 module zannastudio_completion_native_probe;
 
 bind Zanna.Zia.Completion as ZiaCompletion;
 bind Zanna.Zia.Toolchain as ZiaToolchain;
+bind Zanna.Zia.Document as ZiaDocument;
 bind Zanna.Collections.Map as Map;
 bind Zanna.Collections.Seq as Seq;
 bind Zanna.String as Str;
@@ -29,6 +48,20 @@ func looksLikeStub(s: String) -> Boolean {
 }
 
 func start() {
+    // (0) The native linker must retain Mach-O module initializer sections.
+    //     rt_zia_doc_sync_full inserts into a process-global std::unordered_map;
+    //     before this regression was fixed, dyld never ran that map's C++
+    //     constructor and the first source-file sync aborted with
+    //     `std::__next_prime overflow`.
+    var mirrorPath = "native_mirror_probe.zia";
+    var mirrorText = "module MirrorProbe;\nfunc value() -> Integer { return 7; }\n";
+    ZiaDocument.SyncFull(mirrorPath, mirrorText, 1);
+    if ZiaDocument.Has(mirrorPath) == false or ZiaDocument.Text(mirrorPath) != mirrorText {
+        Terminal.Say("RESULT: fail document mirror initialization");
+        return;
+    }
+    ZiaDocument.Close(mirrorPath);
+
     // (1) Completion on a valid module must return real, non-stub items.
     var goodSrc = "module Probe;\nfunc greet() -> Integer { return 1; }\n";
     var r1 = ZiaCompletion.CompleteForFile(goodSrc, "probe.zia", 2, 30);

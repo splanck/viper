@@ -73,6 +73,22 @@ static std::uint32_t regKey(const MOperand &op) {
            static_cast<std::uint32_t>(op.reg.idOrPhys);
 }
 
+/// @brief Record a physical register that a post-RA rewrite makes live across
+///        @p block's exit.
+/// @details Register allocation publishes this sorted metadata before the
+///          peephole pipeline runs. Cross-block rewrites that replace stack
+///          transfers with register transfers must extend it so later local
+///          rewrites do not erase the newly live value.
+static void markCarriedExitReg(MBasicBlock &block, const MOperand &reg) {
+    if (!ph::isPhysReg(reg))
+        return;
+    const uint16_t phys = reg.reg.idOrPhys;
+    const auto insertion =
+        std::lower_bound(block.carriedExitRegs.begin(), block.carriedExitRegs.end(), phys);
+    if (insertion == block.carriedExitRegs.end() || *insertion != phys)
+        block.carriedExitRegs.insert(insertion, phys);
+}
+
 /// @brief Return true if block @p blockIndex can fall through to @p succName without a branch.
 static bool blockFallsThroughTo(const MFunction &fn,
                                 std::size_t blockIndex,
@@ -517,6 +533,12 @@ static bool forwardSinglePredPhiLoads(MFunction &fn, PeepholeStats &stats) {
         if (!orderJoinCopies(copies, ordered))
             continue;
 
+        // Removing the successor loads makes every stored source register a
+        // live-in to this block, including identity copies omitted by the move
+        // ordering helper.
+        for (const auto &copy : copies)
+            markCarriedExitReg(fn.blocks[predIndex], copy.srcReg);
+
         std::vector<bool> removeLoadInstr(block.instrs.size(), false);
         for (const auto &load : loads)
             removeLoadInstr[load.instrIndex] = true;
@@ -694,6 +716,12 @@ static bool coalesceJoinPhiLoads(MFunction &fn, PeepholeStats &stats) {
                 }
             }
             predBlock.instrs.swap(rewritten);
+
+            // The join now consumes each load destination directly from this
+            // edge. Preserve the copy (or an identity-carried value) through
+            // post-schedule block-local cleanup.
+            for (std::size_t loadIndex : selectedLoads)
+                markCarriedExitReg(predBlock, loads[loadIndex].dstReg);
         }
 
         const std::unordered_set<std::size_t> forwardedLoadSet(selectedLoads.begin(),
@@ -856,6 +884,12 @@ static void forwardLayoutSuccessorStoreLoad(MFunction &fn, PeepholeStats &stats)
         if (ordered.empty())
             continue;
 
+        // The replacement moves execute in the successor, so their source
+        // registers are newly live across the predecessor's exit. This also
+        // covers identity pairs, for which no explicit move is emitted.
+        for (const auto &pair : ordered)
+            markCarriedExitReg(fn.blocks[bi], pair.srcReg);
+
         std::vector<MInstr> newPrefix;
         newPrefix.reserve(prefixLoads.size());
         for (const auto &pair : ordered) {
@@ -898,8 +932,8 @@ static void runPerBlockRewrites(MFunction &fn, PeepholeStats &stats, const Targe
                 changed = false;
                 ph::RegConstMap divConsts;
                 for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
-                    if (ph::tryRemainderFusion(instrs, i, divConsts, stats,
-                                               &block.carriedExitRegs)) {
+                    if (ph::tryRemainderFusion(
+                            instrs, i, divConsts, stats, &block.carriedExitRegs)) {
                         changed = true;
                         break;
                     }
@@ -914,11 +948,11 @@ static void runPerBlockRewrites(MFunction &fn, PeepholeStats &stats, const Targe
                 for (std::size_t i = 0; i < instrs.size(); ++i) {
                     bool localChange = false;
                     if (instrs[i].opc == MOpcode::UDivRRR)
-                        localChange = ph::tryUDivStrengthReduction(instrs, i, divConsts, stats,
-                                                                   &block.carriedExitRegs);
+                        localChange = ph::tryUDivStrengthReduction(
+                            instrs, i, divConsts, stats, &block.carriedExitRegs);
                     else if (instrs[i].opc == MOpcode::SDivRRR)
-                        localChange = ph::trySDivStrengthReduction(instrs, i, divConsts, stats,
-                                                                   &block.carriedExitRegs);
+                        localChange = ph::trySDivStrengthReduction(
+                            instrs, i, divConsts, stats, &block.carriedExitRegs);
 
                     if (localChange) {
                         changed = true;
@@ -974,8 +1008,8 @@ static void runPerBlockRewrites(MFunction &fn, PeepholeStats &stats, const Targe
 
         // Pass 2: Fold consecutive moves.
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
-            if (!ph::tryFoldImmThenMove(instrs, i, stats))
-                (void)ph::tryFoldConsecutiveMoves(instrs, i, stats);
+            if (!ph::tryFoldImmThenMove(instrs, i, stats, &block.carriedExitRegs))
+                (void)ph::tryFoldConsecutiveMoves(instrs, i, stats, &block.carriedExitRegs);
         }
 
         // Pass 3+4: Mark and remove identity moves.
@@ -1127,8 +1161,8 @@ PeepholeStats runPostSchedulePeephole(MFunction &fn, const TargetInfo *target) {
         ph::propagateCopies(instrs, stats);
 
         for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
-            if (!ph::tryFoldImmThenMove(instrs, i, stats))
-                (void)ph::tryFoldConsecutiveMoves(instrs, i, stats);
+            if (!ph::tryFoldImmThenMove(instrs, i, stats, &block.carriedExitRegs))
+                (void)ph::tryFoldConsecutiveMoves(instrs, i, stats, &block.carriedExitRegs);
         }
 
         std::vector<bool> toRemove(instrs.size(), false);

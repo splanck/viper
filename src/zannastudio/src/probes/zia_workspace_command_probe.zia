@@ -1,0 +1,377 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/zia_workspace_command_probe.zia
+// Purpose: Regress asynchronous, bounded Zia workspace navigation and rename.
+// Key invariants:
+//   - Index parsing and project queries never complete inside command callbacks.
+//   - Results publish only for their captured editor and index generations.
+//   - Reference retention and per-frame UI publication have hard ceilings.
+// Ownership/Lifetime: The probe drains workers before destroying runtime/UI state.
+// Links: zannastudio/src/commands/zia_workspace_commands.zia,
+//        zannastudio/src/editor/zia_workspace_query_job.zia
+//
+//===----------------------------------------------------------------------===//
+
+module zia_workspace_command_probe;
+
+bind "../commands/file_commands";
+bind "../commands/zia_workspace_commands";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../editor/project_index";
+bind "../editor/zia_workspace_query_job";
+bind "../services/locations";
+bind "../ui/app_shell";
+
+bind Clock = Zanna.Time.Clock;
+bind File = Zanna.IO.File;
+bind Map = Zanna.Collections.Map;
+bind Path = Zanna.IO.Path;
+bind ProjectIndex = Zanna.Zia.ProjectIndex;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind TempFile = Zanna.IO.TempFile;
+bind Terminal = Zanna.Terminal;
+
+final ZIA_WORKSPACE_PROBE_WAIT_TICKS = 12000;
+
+func fail(shell: app_shell.AppShell,
+          controller: zia_workspace_commands.ZiaWorkspaceCommandController,
+          indexer: project_index.ProjectIndexer,
+          reason: String) {
+    if controller != null { controller.Shutdown(); }
+    if indexer != null { indexer.Destroy(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func waitForJob(job: zia_workspace_query_job.ZiaWorkspaceQueryJob)
+    -> zia_workspace_query_job.ZiaWorkspaceQueryRequest {
+    var tick = 0;
+    while tick < ZIA_WORKSPACE_PROBE_WAIT_TICKS {
+        job.Pump();
+        var request = job.TakeCompleted();
+        if request != null { return request; }
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    return null;
+}
+
+func drainController(
+    controller: zia_workspace_commands.ZiaWorkspaceCommandController,
+    shell: app_shell.AppShell,
+    docMgr: document_manager.DocumentManager,
+    projMgr: project_manager.ProjectManager,
+    engine: editor_engine.EditorEngine,
+    tabs: editor_tabs.EditorTabs,
+    indexer: project_index.ProjectIndexer,
+    locStore: locations.LocationStore) -> Boolean {
+    var tick = 0;
+    while controller.IsBusy() and tick < ZIA_WORKSPACE_PROBE_WAIT_TICKS {
+        controller.Pump(shell, docMgr, projMgr, engine, tabs, indexer,
+                        locStore);
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    return controller.IsBusy() == false;
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_zia_workspace_");
+    var mainPath = Path.Join(root, "main.zia");
+    var targetPath = Path.Join(root, "target.zia");
+    var targetSource = "module Target;\n"
+        + "expose func greet() -> Integer { return 7; }\n";
+    var directSource = "module Main;\n"
+        + "bind \"target.zia\";\n"
+        + "func start() -> Integer { return greet(); }\n";
+    File.WriteAllText(mainPath, directSource);
+    File.WriteAllText(targetPath, targetSource);
+
+    // Exercise the worker without GUI state first. The runtime index snapshot
+    // must remain valid while the UI-owned handle continues to accept updates.
+    var handle = ProjectIndex.New(root);
+    if ProjectIndex.IsValid(handle) == false
+       or ProjectIndex.UpdateFile(handle, mainPath, directSource) == false
+       or ProjectIndex.UpdateFile(handle, targetPath, targetSource) == false {
+        Terminal.Say("RESULT: fail direct index setup");
+        return;
+    }
+
+    var definitionJob = new zia_workspace_query_job.ZiaWorkspaceQueryJob();
+    var definitionGeneration = definitionJob.Queue(
+        zia_workspace_query_job.ZIA_QUERY_DEFINITION,
+        "Go to definition", handle, mainPath, directSource, 3, 33, "", 1,
+        root, 2);
+    if definitionGeneration <= 0 or definitionJob.activeFuture == null
+       or definitionJob.TakeCompleted() != null {
+        ProjectIndex.Destroy(handle);
+        Terminal.Say("RESULT: fail definition did not start asynchronously");
+        return;
+    }
+    var definition = waitForJob(definitionJob);
+    if definition == null or definition!.succeeded == false
+       or Map.GetBool(definition!.result, "found") == false
+       or Map.GetStr(definition!.result, "file") != targetPath {
+        ProjectIndex.Destroy(handle);
+        Terminal.Say("RESULT: fail asynchronous definition result");
+        return;
+    }
+
+    // A 2,001-item raw result gives the controller an exact truncation signal.
+    // The native ProjectIndex suite separately pins rename's matching refusal.
+    var largeBuilder = new Zanna.Text.StringBuilder();
+    largeBuilder.AppendLine("module Large;");
+    largeBuilder.AppendLine("func start() {");
+    largeBuilder.AppendLine("    var target = 1;");
+    var largeIndex = 0;
+    while largeIndex < 2000 {
+        largeBuilder.Append("    var use");
+        largeBuilder.Append("" + largeIndex);
+        largeBuilder.AppendLine(" = target;");
+        largeIndex = largeIndex + 1;
+    }
+    largeBuilder.AppendLine("}");
+    var largeSource = largeBuilder.ToString();
+    var largePath = Path.Join(root, "large.zia");
+    ProjectIndex.UpdateFile(handle, largePath, largeSource);
+
+    var boundedJob = new zia_workspace_query_job.ZiaWorkspaceQueryJob();
+    boundedJob.Queue(zia_workspace_query_job.ZIA_QUERY_REFERENCES,
+                     "Find references", handle, largePath, largeSource,
+                     3, 8, "", 1, root, 3);
+    var bounded = waitForJob(boundedJob);
+    if bounded == null or bounded!.succeeded == false
+       or bounded!.truncated == false
+       or bounded!.resultCount
+          != zia_workspace_query_job.ZIA_MAX_NAVIGATION_RESULTS
+       or Seq.get_Count(bounded!.result)
+          != zia_workspace_query_job.ZIA_MAX_NAVIGATION_RESULTS + 1 {
+        ProjectIndex.Destroy(handle);
+        Terminal.Say("RESULT: fail bounded reference result");
+        return;
+    }
+
+    var renameJob = new zia_workspace_query_job.ZiaWorkspaceQueryJob();
+    renameJob.Queue(zia_workspace_query_job.ZIA_QUERY_RENAME,
+                    "Rename", handle, mainPath, directSource, 3, 33,
+                    "welcome", 1, root, 3);
+    var rename = waitForJob(renameJob);
+    var renameEdits: Any = null;
+    if rename != null and rename!.result != null {
+        renameEdits = Map.Get(rename!.result, "edits");
+    }
+    if rename == null or rename!.succeeded == false
+       or Map.GetBool(rename!.result, "success") == false
+       or renameEdits == null or Seq.get_Count(renameEdits) != 2
+       or Map.GetStr(Seq.Get(renameEdits, 0), "expectedText") != "greet"
+       or Map.GetStr(Seq.Get(renameEdits, 1), "expectedText") != "greet" {
+        if rename == null {
+            Terminal.Say("DETAIL: rename request timed out");
+        } else {
+            var editCount = 0;
+            if renameEdits != null { editCount = Seq.get_Count(renameEdits); }
+            Terminal.Say("DETAIL: succeeded=" + rename!.succeeded
+                         + " success=" + Map.GetBool(rename!.result, "success")
+                         + " reason=" + Map.GetStr(rename!.result, "reason")
+                         + " edits=" + editCount);
+        }
+        ProjectIndex.Destroy(handle);
+        Terminal.Say("RESULT: fail stale-safe rename edits");
+        return;
+    }
+
+    // Replacing a live request is latest-wins. The canceled generation may run
+    // to its next cancellation boundary, but it must never publish.
+    var coalescedJob = new zia_workspace_query_job.ZiaWorkspaceQueryJob();
+    var oldGeneration = coalescedJob.Queue(
+        zia_workspace_query_job.ZIA_QUERY_REFERENCES,
+        "Old references", handle, largePath, largeSource, 3, 8, "", 1,
+        root, 3);
+    var newGeneration = coalescedJob.Queue(
+        zia_workspace_query_job.ZIA_QUERY_DEFINITION,
+        "Latest definition", handle, mainPath, directSource, 3, 33, "", 1,
+        root, 3);
+    var latest = waitForJob(coalescedJob);
+    if newGeneration <= oldGeneration or coalescedJob.cancelledCount != 1
+       or latest == null or latest!.generation != newGeneration
+       or latest!.kind != zia_workspace_query_job.ZIA_QUERY_DEFINITION {
+        ProjectIndex.Destroy(handle);
+        Terminal.Say("RESULT: fail latest-wins query");
+        return;
+    }
+
+    var shutdownJob = new zia_workspace_query_job.ZiaWorkspaceQueryJob();
+    shutdownJob.Queue(zia_workspace_query_job.ZIA_QUERY_REFERENCES,
+                      "Shutdown references", handle, largePath, largeSource,
+                      3, 8, "", 1, root, 3);
+    if shutdownJob.CancelAndWait() == false or shutdownJob.IsBusy()
+       or shutdownJob.TakeCompleted() != null {
+        ProjectIndex.Destroy(handle);
+        Terminal.Say("RESULT: fail worker shutdown drain");
+        return;
+    }
+    ProjectIndex.Destroy(handle);
+
+    // Exercise Studio's real controller, including cooperative initial indexing
+    // and bounded publication into the References panel.
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Zia Workspace Command Probe", 900, 620);
+    var engine = new editor_engine.EditorEngine();
+    engine.Setup(shell.workbench.editorRow);
+    var tabs = new editor_tabs.EditorTabs();
+    tabs.Setup(shell.workbench.tabBar);
+    var docMgr = new document_manager.DocumentManager();
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.workbench.sidebarTree);
+    var locStore = new locations.LocationStore();
+    var indexer = new project_index.ProjectIndexer();
+    var controller =
+        new zia_workspace_commands.ZiaWorkspaceCommandController();
+
+    var uiBuilder = new Zanna.Text.StringBuilder();
+    uiBuilder.AppendLine("module Main;");
+    uiBuilder.AppendLine("func start() {");
+    uiBuilder.AppendLine("    var target = 1;");
+    var uiIndex = 0;
+    while uiIndex < 220 {
+        uiBuilder.Append("    var use");
+        uiBuilder.Append("" + uiIndex);
+        uiBuilder.AppendLine(" = target;");
+        uiIndex = uiIndex + 1;
+    }
+    uiBuilder.AppendLine("}");
+    var uiSource = uiBuilder.ToString();
+    File.WriteAllText(mainPath, uiSource);
+
+    if projMgr.OpenFolder(root) == false
+       or file_commands.OpenFileAtPath(shell, docMgr, engine, tabs,
+                                       mainPath) == false {
+        fail(shell, controller, indexer, "controller fixture setup");
+        return;
+    }
+    engine.SetText(uiSource);
+    engine.editor.SetCursor(2, 8);
+    indexer.OpenProject(projMgr, docMgr);
+
+    if controller.Start(zia_workspace_query_job.ZIA_QUERY_REFERENCES,
+                        "Find references", shell, docMgr, projMgr, engine,
+                        indexer) == false
+       or controller.waitingKind
+          != zia_workspace_query_job.ZIA_QUERY_REFERENCES
+       or controller.job.startedCount != 0
+       or shell.toolPanels.referencesListBox.Count != 0 {
+        fail(shell, controller, indexer,
+             "command blocked instead of waiting for index");
+        return;
+    }
+
+    var tick = 0;
+    while controller.renderItems == null
+          and tick < ZIA_WORKSPACE_PROBE_WAIT_TICKS {
+        controller.Pump(shell, docMgr, projMgr, engine, tabs, indexer,
+                        locStore);
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    if controller.renderItems == null
+       or controller.renderIndex
+          != zia_workspace_commands.RESULT_ITEMS_PER_FRAME
+       or controller.lastPumpItems
+          > zia_workspace_commands.RESULT_ITEMS_PER_FRAME
+       or shell.toolPanels.referencesListBox.Count
+          > zia_workspace_commands.RESULT_ITEMS_PER_FRAME + 1 {
+        fail(shell, controller, indexer,
+             "reference publication was not frame-bounded");
+        return;
+    }
+    if drainController(controller, shell, docMgr, projMgr, engine, tabs,
+                       indexer, locStore) == false
+       or locStore.items.count() != 221
+       or shell.toolPanels.referencesListBox.Count != 222
+       or Str.IndexOf(shell.statusShell.lastLeftStatus,
+                      "Found 221 references") == 0 {
+        fail(shell, controller, indexer,
+             "incremental reference publication");
+        return;
+    }
+
+    // Moving the caret or changing index content invalidates the immutable
+    // request anchor before navigation can apply.
+    engine.editor.SetCursor(3, 15);
+    if controller.Start(zia_workspace_query_job.ZIA_QUERY_DEFINITION,
+                        "Go to definition", shell, docMgr, projMgr, engine,
+                        indexer) == false {
+        fail(shell, controller, indexer, "caret cancellation setup");
+        return;
+    }
+    engine.editor.SetCursor(0, 0);
+    controller.Pump(shell, docMgr, projMgr, engine, tabs, indexer, locStore);
+    if controller.pendingGeneration != 0
+       or controller.job.latestRequest != null
+       or Str.IndexOf(shell.statusShell.lastLeftStatus, "canceled") == 0 {
+        fail(shell, controller, indexer, "changed caret accepted stale query");
+        return;
+    }
+    if drainController(controller, shell, docMgr, projMgr, engine, tabs,
+                       indexer, locStore) == false {
+        fail(shell, controller, indexer, "caret cancellation drain");
+        return;
+    }
+
+    engine.editor.SetCursor(3, 15);
+    if controller.Start(zia_workspace_query_job.ZIA_QUERY_DEFINITION,
+                        "Go to definition", shell, docMgr, projMgr, engine,
+                        indexer) == false {
+        fail(shell, controller, indexer, "index cancellation setup");
+        return;
+    }
+    indexer.contentGeneration = indexer.contentGeneration + 1;
+    controller.Pump(shell, docMgr, projMgr, engine, tabs, indexer, locStore);
+    if controller.pendingGeneration != 0
+       or controller.job.latestRequest != null
+       or Str.IndexOf(shell.statusShell.lastLeftStatus, "canceled") == 0 {
+        fail(shell, controller, indexer,
+             "changed index accepted stale query");
+        return;
+    }
+    if drainController(controller, shell, docMgr, projMgr, engine, tabs,
+                       indexer, locStore) == false {
+        fail(shell, controller, indexer, "index cancellation drain");
+        return;
+    }
+
+    // Oversized files make the workspace index explicitly incomplete. The
+    // controller must refuse a partial semantic result immediately.
+    var oversizedPath = Path.Join(root, "oversized.zia");
+    File.WriteAllText(
+        oversizedPath,
+        Str.Repeat(" ", project_index.INDEX_MAX_SOURCE_BYTES + 1));
+    indexer.StartIndexWorkspace();
+    indexer.FinishPendingIndex();
+    if indexer.workspaceIndexTruncated == false
+       or indexer.workspaceIndexStatusMessage == ""
+       or controller.Start(zia_workspace_query_job.ZIA_QUERY_REFERENCES,
+                           "Find references", shell, docMgr, projMgr, engine,
+                           indexer) {
+        fail(shell, controller, indexer,
+             "incomplete workspace index served a query");
+        return;
+    }
+
+    if controller.Shutdown() == false {
+        fail(shell, controller, indexer, "controller shutdown drain");
+        return;
+    }
+    indexer.Destroy();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

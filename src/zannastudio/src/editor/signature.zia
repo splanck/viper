@@ -1,9 +1,32 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/signature.zia
+// Purpose: Provide cursor-sensitive, stale-safe Zia and BASIC signature help.
+// Key invariants:
+//   - Semantic signature discovery never blocks the interactive UI frame.
+//   - Results apply only to their originating path, revision, line, and column.
+//   - Visible signature help stays inside the app viewport after caret moves
+//     and window resizes.
+// Ownership/Lifetime:
+//   - SignatureController owns its floating panel and coalescing BASIC worker.
+//   - Background requests retain immutable source snapshots only.
+// Links: zannastudio/src/editor/basic_query_job.zia,
+//        zannastudio/src/app/language_tool_frame.zia
+//
+//===----------------------------------------------------------------------===//
+
 module signature;
 
 bind "../editor/editor_engine";
 bind "../editor/zia_query";
 bind "../editor/scheduler";
-bind "../basic/semantic_scan";
+bind "../editor/basic_query_job";
+bind "../ui/app_shell";
 
 bind Zanna.GUI;
 bind ZiaCompletion = Zanna.Zia.Completion;
@@ -15,6 +38,11 @@ bind Obj = Zanna.Core.Object;
 bind Map = Zanna.Collections.Map;
 
 final SIGNATURE_MAX_BACKWARD_LINES = 200;
+final SIGNATURE_PANEL_WIDTH = 680.0;
+final SIGNATURE_PANEL_HEIGHT = 120.0;
+final SIGNATURE_PANEL_MARGIN = 12.0;
+final SIGNATURE_CURSOR_GAP = 8.0;
+final SIGNATURE_CURSOR_LINE_HEIGHT = 24.0;
 
 // ============================================================================
 // MODULE: signature
@@ -40,13 +68,16 @@ class SignatureController {
     expose Integer lastCursorCol;
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
+    expose basic_query_job.BasicQueryJob basicJob;
+    expose Integer pendingBasicGeneration;
     expose Integer pendingRevision;
     expose String pendingPath;
     expose Integer pendingLine;
     expose Integer pendingCol;
     expose Any currentSignatureInfo;
     expose Integer activeOverloadIndex;
-    expose Boolean isBasic;
+    hide Boolean isBasic;     // changed only through SetBasicMode
+    hide GUI.App appRoot;
 
     expose func init() {
         visible = false;
@@ -56,6 +87,8 @@ class SignatureController {
         lastCursorCol = -1;
         workScheduler = null;
         pendingJob = null;
+        basicJob = new basic_query_job.BasicQueryJob();
+        pendingBasicGeneration = 0;
         pendingRevision = -1;
         pendingPath = "";
         pendingLine = -1;
@@ -63,22 +96,42 @@ class SignatureController {
         currentSignatureInfo = null;
         activeOverloadIndex = 0;
         isBasic = false;
+        appRoot = null;
     }
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
         workScheduler = value;
     }
 
+    /// @brief Switch signature backends and clear stale overload state.
+    expose func SetBasicMode(value: Boolean) {
+        if isBasic == value { return; }
+        CancelPendingJob();
+        isBasic = value;
+        visible = false;
+        currentSignatureInfo = null;
+        activeOverloadIndex = 0;
+        if panel != null { panel.SetVisible(false); }
+    }
+
     expose func setup(appRoot: GUI.App) {
+        self.appRoot = appRoot;
         panel = GUI.FloatingPanel.New(appRoot);
-        panel.SetSize(680.0, 92.0);
+        panel.SetSize(SIGNATURE_PANEL_WIDTH, SIGNATURE_PANEL_HEIGHT);
         panel.SetVisible(false);
-        label = GUI.Label.New(null, "");
+        var root = GUI.VBox.New();
+        root.SetPadding(12.0);
+        panel.AddChild(root);
+        label = GUI.Label.New(root, "");
         label.SetWordWrap(true);
-        panel.AddChild(label);
     }
 
     expose func setSourcePath(path: String) {
+        if path == sourcePath { return; }
+        CancelPendingJob();
+        if visible and panel != null { panel.SetVisible(false); }
+        visible = false;
+        currentSignatureInfo = null;
         sourcePath = path;
     }
 
@@ -111,8 +164,12 @@ class SignatureController {
         var source = engine.GetTextSnapshot();
         if isBasic {
             CancelPendingJob();
-            var basicSig = semantic_scan.SignatureInfoForFile(sourcePath, source, line, col0);
-            ApplySignatureInfo(basicSig, engine, revision, line, col0);
+            pendingBasicGeneration = basicJob.Queue(
+                basic_query_job.QUERY_SIGNATURE, source, sourcePath, line, col0);
+            pendingRevision = revision;
+            pendingPath = sourcePath;
+            pendingLine = line;
+            pendingCol = col0;
             return;
         }
         if IsInsideCall(source, line, col0) == false {
@@ -131,8 +188,9 @@ class SignatureController {
             return;
         }
 
-        var sigInfo = ZiaCompletion.SignatureInfoForFile(qsource, sourcePath, qline, col0);
-        ApplySignatureInfo(sigInfo, engine, revision, line, col0);
+        // Stub runtimes may omit semantic jobs. Do not turn that into a
+        // foreground compile; simply leave signature help hidden.
+        Hide();
     }
 
     hide func ApplySignatureInfo(sigInfo: Any,
@@ -151,7 +209,7 @@ class SignatureController {
         currentSignatureInfo = sigInfo;
         activeOverloadIndex = Map.GetInt(sigInfo, "activeSignature");
         label.SetText(FormatSignatureDisplayAt(sigInfo, activeOverloadIndex));
-        panel.SetPosition(engine.editor.GetCursorPixelX(), engine.editor.GetCursorPixelY() - 28);
+        PositionPanel(engine);
         panel.SetVisible(true);
         visible = true;
         lastRevision = revision;
@@ -160,6 +218,7 @@ class SignatureController {
     }
 
     expose func update(engine: editor_engine.EditorEngine) {
+        PollPendingBasicJob(engine);
         PollPendingJob(engine);
         if visible == false { return; }
         if engine == null or engine.editor == null {
@@ -170,6 +229,7 @@ class SignatureController {
             Hide();
             return;
         }
+        PositionPanel(engine);
         if Input.Keyboard.IsDown(Zanna.Input.Key.LeftControl) and Input.Keyboard.WasPressed(Zanna.Input.Key.Down) {
             if NextOverload() { return; }
         }
@@ -224,6 +284,33 @@ class SignatureController {
         return true;
     }
 
+    /// @brief Publish BASIC signature data only for its original caret.
+    hide func PollPendingBasicJob(engine: editor_engine.EditorEngine) -> Boolean {
+        basicJob.Pump();
+        var request = basicJob.TakeCompleted();
+        if request == null { return false; }
+        if request!.generation != pendingBasicGeneration { return false; }
+        pendingBasicGeneration = 0;
+        if request!.succeeded == false {
+            Hide();
+            return true;
+        }
+        if engine == null or engine.editor == null { return true; }
+        if engine.GetRevision() != pendingRevision or sourcePath != pendingPath {
+            Hide();
+            return true;
+        }
+        var line = engine.GetCursorLine();
+        var col0 = engine.editor.CursorCol;
+        if line != pendingLine or col0 != pendingCol {
+            Hide();
+            return true;
+        }
+        ApplySignatureInfo(request!.result, engine,
+                           pendingRevision, pendingLine, pendingCol);
+        return true;
+    }
+
     expose func Hide() {
         CancelPendingJob();
         if visible {
@@ -258,11 +345,54 @@ class SignatureController {
         return true;
     }
 
+    /// @brief Place signature help near the caret without escaping the viewport.
+    hide func PositionPanel(engine: editor_engine.EditorEngine) {
+        if panel == null or appRoot == null or engine == null
+           or engine.editor == null { return; }
+        var winW = app_shell.UiViewportWidth(appRoot) + 0.0;
+        var winH = app_shell.UiViewportHeight(appRoot) + 0.0;
+        if winW <= 0.0 { winW = 1280.0; }
+        if winH <= 0.0 { winH = 800.0; }
+        var panelW = SIGNATURE_PANEL_WIDTH;
+        var panelH = SIGNATURE_PANEL_HEIGHT;
+        var maxW = winW - (SIGNATURE_PANEL_MARGIN * 2.0);
+        var maxH = winH - (SIGNATURE_PANEL_MARGIN * 2.0);
+        if panelW > maxW { panelW = maxW; }
+        if panelH > maxH { panelH = maxH; }
+        if panelW < 1.0 { panelW = 1.0; }
+        if panelH < 1.0 { panelH = 1.0; }
+        panel.SetSize(panelW, panelH);
+
+        var cursorX = app_shell.PhysicalToUi(
+            appRoot, engine.editor.GetCursorPixelX());
+        var cursorY = app_shell.PhysicalToUi(
+            appRoot, engine.editor.GetCursorPixelY());
+        var x = cursorX;
+        if x + panelW + SIGNATURE_PANEL_MARGIN > winW {
+            x = winW - panelW - SIGNATURE_PANEL_MARGIN;
+        }
+        if x < SIGNATURE_PANEL_MARGIN { x = SIGNATURE_PANEL_MARGIN; }
+
+        var y = cursorY - panelH - SIGNATURE_CURSOR_GAP;
+        if y < SIGNATURE_PANEL_MARGIN {
+            y = cursorY + SIGNATURE_CURSOR_LINE_HEIGHT;
+        }
+        if y + panelH + SIGNATURE_PANEL_MARGIN > winH {
+            y = winH - panelH - SIGNATURE_PANEL_MARGIN;
+        }
+        if y < SIGNATURE_PANEL_MARGIN { y = SIGNATURE_PANEL_MARGIN; }
+        panel.SetPosition(x, y);
+    }
+
     hide func CancelPendingJob() {
         if pendingJob != null {
             SemanticJob.Cancel(pendingJob);
             pendingJob = null;
         }
+        basicJob.Cancel();
+        pendingBasicGeneration = 0;
+        basicJob.Pump();
+        basicJob.TakeCompleted();
     }
 }
 

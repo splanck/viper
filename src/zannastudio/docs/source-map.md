@@ -212,6 +212,24 @@ line, and move line.
 Transform-heavy edit flows delegate to `source_transform_commands.zia` so the
 basic editor command surface does not keep growing.
 
+### `commands/basic_workspace_commands.zia`
+
+UI-side owner for project-wide BASIC definition, references, incoming/outgoing
+calls, and rename. It snapshots roots and open BASIC buffers, schedules the
+owned background job, rejects stale editor/workspace anchors, navigates or
+applies edits on the UI thread, and publishes large result sets in bounded
+per-frame batches. Keep GUI/document mutation here and scanner/file work in the
+worker module below.
+
+### `commands/zia_workspace_commands.zia`
+
+UI-side owner for Zia definition, references, incoming/outgoing calls, and
+rename. It waits for cooperative project indexing without blocking the event
+loop, submits immutable editor/index anchors to the owned worker, rejects stale
+or incomplete results, navigates and applies edits on the UI thread, and
+publishes at most 100 result items per frame. Keep project parsing in
+`editor/zia_workspace_query_job.zia` and GUI/document mutation here.
+
 ### `commands/source_transform_commands.zia`
 
 User-facing orchestration for source transforms: organize binds, inline local,
@@ -222,9 +240,13 @@ format selection. It collects document/editor context, calls pure transforms in
 ### `commands/diagnostic_edit_commands.zia`
 
 Diagnostic-driven source edits: suppress warning, apply diagnostic fix-it, and
-create missing runtime/project binds. It owns diagnostic record interpretation
-and bind-target resolution while `edit_commands.zia` keeps compatibility
-wrappers for probes.
+create missing runtime/project binds. `DiagnosticActionController` starts the
+compiler query without editing, validates the captured path/revision/caret on
+later frames, and delegates project-wide candidate discovery to the bounded
+worker in `editor/project_bind_query_job.zia`. Disk candidates are mtime-checked
+and unsaved candidates are content-checked immediately before insertion.
+`edit_commands.zia` keeps synchronous compatibility wrappers for probes and
+older callers; the product dispatcher uses the controller.
 
 ### `commands/editor_document_edit.zia`
 
@@ -245,6 +267,21 @@ The interactive path is the docked Search panel owned by `ui/app_shell.zia` and
 started from `SearchController`. `commands/search_prompt.zia` remains as a
 legacy request helper; direct, cached, and panel paths should converge on
 `services/search_request.zia`.
+
+Text search is bounded by both file count and aggregate source bytes per frame.
+The controller records the first/last `LocationStore` ids published by each run;
+Replace All must use that interval rather than every historical `KIND_SEARCH`
+record in the shared location store.
+
+### `commands/replace_commands.zia`
+
+Pure line replacement helpers plus `ProjectReplaceController`, the cooperative
+owner for Search-panel Replace All. It groups the current search generation in
+one linear pass, performs no file I/O in the button callback, and applies no
+more than two file plans per later frame. Closed-file reads are bounded and
+revalidated before atomic writes; open buffers are modified in memory with an
+inactive-tab workspace undo snapshot. Dense lines that exceed the match ceiling
+cancel the entire file rather than writing a partial transform.
 
 `commands/quick_open_commands.zia` owns Quick Open palette rows, command id
 encoding, deterministic file scoring, and opening the selected file. Keep Quick
@@ -270,6 +307,27 @@ diagnostics to the shell.
 
 Process mechanics belong in `build/build_system.zia`; command workflow and
 status messages belong here.
+
+### `services/diff_engine.zia`
+
+Pure line alignment and summary counting for side-by-side diffs. The Myers
+search has explicit combined-line, edit-depth, and trace-cell ceilings;
+`BuildRowsCapped` counts the complete aligned result while allocating only a
+caller-sized row prefix. Keep GUI widgets and async ownership out of this
+module.
+
+### `services/diff_job.zia`
+
+Latest-wins owned worker for bounded diff computation. Requests contain only
+immutable title/text values, reject sources above 4 MB each or 20,000 combined
+lines, retain at most 4,000 aligned rows, and support a bounded shutdown drain.
+
+### `ui/diff_view.zia`
+
+Reusable side-by-side overlay shared by Compare with Saved and Source Control.
+It queues `DiffJob` in `Open`, shows pending state immediately, and turns worker
+rows into at most 100 colored list items per frame. `Shutdown` is mandatory
+before application teardown so no promise outlives the runtime.
 
 ### `commands/debug_commands.zia`
 
@@ -330,8 +388,10 @@ path data, Quick Open cache, incremental directory loading, ignore checks, and
 project file cache refresh.
 
 It uses `Zanna.Workspace.FileIndex` for exclusion rules and paged project-file
-cache refresh. Do not duplicate ignore logic or recursive enumeration elsewhere
-unless the runtime surface cannot answer the question.
+cache refresh. Immediate Explorer children use `Zanna.IO.Dir.Page`; collection,
+natural sorting, and node publication remain separate cooperative stages. Do not
+duplicate ignore logic or recursive enumeration elsewhere unless the runtime
+surface cannot answer the question.
 
 ### `core/project_file_ops.zia`
 
@@ -343,7 +403,9 @@ delete trash destinations.
 
 Persistent settings manager. It handles defaults, platform-native settings
 paths, legacy settings-path compatibility, validation on load, and read-modify-
-write persistence so unrelated INI sections survive.
+write persistence so unrelated INI sections survive. Shared state reads are
+size-bounded and successful writes use the atomic persistence helper in
+`services/safe_io.zia`.
 
 Settings are parsed here but applied elsewhere. Keep widget calls out of this
 file except for theme routing that is explicitly part of settings behavior.
@@ -352,11 +414,37 @@ file except for theme routing that is explicitly part of settings behavior.
 
 Session and recent history persistence. It stores project root, open files,
 active file, active index, cursor/scroll, bounded recovery text for modified
-text buffers, recent projects, and recent files.
+text buffers, recent projects, and recent files. `BeginRestore` / `PumpRestore`
+provide caller-budgeted root and tab restoration; main polls and repaints the
+startup card between entries instead of opening an entire large session on one
+unresponsive UI frame. `Restore` remains the blocking compatibility wrapper.
+Save mirrors the restore record limits, caps aggregate embedded recovery, and
+prioritizes the active document when a large tab set must be truncated.
 
 Recovery text is intentionally capped and base64 encoded. This module should
 remain conservative because it runs during startup/shutdown and protects user
 work.
+
+### `services/safe_io.zia`
+
+Non-trapping filesystem boundary helpers. Shared Studio INI state has a global
+size ceiling and is committed through a same-directory staging file plus atomic
+replace, so settings, sessions, and breakpoints share one corruption-resistant
+policy.
+
+### `core/recovery_store.zia`
+
+Continuous per-document crash swaps and the unclean-session lock. Interactive
+requests contain immutable path/text snapshots and run through one owned async
+worker plus one coalesced latest request. Large writes use ignored staging names;
+only cancellation-serialized atomic renames publish canonical `.path`/`.swp`
+pairs. Save, reload, close, rename, and delete reconciliation cancels older
+commits, prunes stale pairs, and queues remaining dirty buffers.
+
+Startup discovery uses `BeginRecoveryScan` / `PumpRecoveryScan` to page the flat
+recovery directory, remove abandoned staging files, and retain recovered text
+under fixed record and aggregate-byte caps. Main polls and paints between scan
+entries and between recovered tabs.
 
 ## `editor/`
 
@@ -390,6 +478,39 @@ This file is the first place to update when adding a language capability.
 Priority and debounce model for editor background work. It names semantic job
 kinds, default delays, and scheduling state. Use it to keep typing responsive
 when adding more background work.
+
+### `editor/basic_query_job.zia`
+
+Serial latest-wins worker used by compiler-backed BASIC completion,
+diagnostics, hover, symbols/folding, and signature queries. Requests retain an
+immutable active-buffer snapshot and cancelled generations never publish.
+
+### `editor/basic_workspace_query_job.zia`
+
+Bounded project-wide BASIC semantic worker. It pages every captured workspace
+root, lets captured open-buffer text override disk, limits files/per-file and
+aggregate source/declarations/results, checks cancellation between units, and
+returns plain navigation or rename records. It never borrows GUI,
+`ProjectManager`, `DocumentManager`, or editor objects from its worker thread.
+
+### `editor/project_bind_query_job.zia`
+
+Serial latest-wins worker for Create Missing Bind. It pages every captured
+workspace root, lets captured open Zia buffers shadow disk, and requires a
+complete scan with exactly one defining file before publishing. File-count,
+per-file size, line-count, and aggregate-source ceilings turn uncertain
+uniqueness into an explicit refusal; the request retains the candidate mtime or
+open-source snapshot for final UI-thread stale validation.
+
+### `editor/zia_workspace_query_job.zia`
+
+Serial latest-wins worker for Zia project-index navigation and rename. Requests
+retain the index handle, active-source snapshot, caret, document revision,
+workspace signature, and index content generation. Definition, references,
+incoming calls, and rename use the runtime index snapshot; outgoing calls scan
+a bounded token set and resolve each target on the worker. Results cap at 2,000
+references, superseded generations cannot publish, and shutdown drains the
+owned future before controller teardown.
 
 ### `editor/completion.zia`
 
@@ -455,7 +576,11 @@ outline panel and derives fold regions for Zia symbols when appropriate.
 
 Lazy Zia project index integration. It owns the `Zanna.Zia.ProjectIndex` handle,
 syncs open documents, indexes workspace files cooperatively, enforces size and
-per-frame byte limits, and exposes definition/reference/rename/call queries.
+per-frame byte limits, deduplicates overlapping roots, and exposes an explicit
+complete/incomplete state. Workspace queries are refused after unreadable or
+oversized input, more than 20,000 Zia files, more than 64 MB of source, or a
+truncated runtime file enumeration. The runtime handle supports concurrent
+updates and immutable query snapshots.
 
 Changes here can affect responsiveness and semantic correctness. Keep file-size
 caps, stale-data handling, and dirty-open-document behavior explicit.
@@ -531,7 +656,18 @@ recursive directory or map-unpacking rules in command/core modules.
 
 Preview, validation, conflict detection, application, and diagnostics formatting
 for workspace edit sequences. Rename and refactor commands depend on this to
-avoid partial or conflicting application.
+avoid partial or conflicting application. Scanner-backed edits may attach the
+source text and disk mtime observed during the background scan; validation
+rejects changed buffers/files before applying any edit.
+
+## `basic/`
+
+### `basic/semantic_scan.zia`
+
+Lightweight IDE-only BASIC declaration/reference/call/signature scanner. The
+capped declaration, reference, and call-token entry points are the worker-safe
+boundary for large projects. This scanner is deliberately not presented as the
+compiler's full semantic model.
 
 ## `terminal/`
 
@@ -574,6 +710,13 @@ Source Control view model and UI action state. It owns the current Git snapshot,
 selected path, diff text, commit message, active job, and refresh/operation
 behavior needed by AppShell.
 
+### `scm/scm_gutter_controller.zia`
+
+Owns the editor's asynchronous Git diff job and change-bar projection. Requests
+coalesce across edits/tab switches, resolve the repository from the document's
+owning workspace root, reject stale completions, time out slow children, and
+bound marker publication.
+
 ## `ui/`
 
 The `ui/` directory owns persistent widgets, overlays, and display helpers.
@@ -583,7 +726,11 @@ The `ui/` directory owns persistent widgets, overlays, and display helpers.
 Constructs the workbench: window, menu bar, toolbar, sidebar, explorer,
 activity bar, editor container, tab bar, breadcrumb, find bar, bottom panels,
 debug panels, terminal, Source Control widgets, preferences, overlays, status
-bar, and helper methods for showing/hiding/updating those widgets.
+bar, and helper methods for showing/hiding/updating those widgets. It arbitrates
+the single focus-taking transient-surface slot used by Settings, About, explorer
+actions, breakpoint input, command input, and diff views. Frame rendering also
+reconciles the requested minimap with the measured editor-lane width so compact
+windows reclaim its space without losing the persisted preference.
 
 This file is also too large. Add new UI state here only when it truly belongs to
 the persistent shell. For complex new surfaces, prefer a dedicated controller or
@@ -705,6 +852,8 @@ Important probe groups:
 - `debug_probe.zia`: VM debug adapter integration.
 - `terminal_*`: PTY terminal behavior and rendering.
 - `scm_probe.zia`: Git Source Control behavior.
+- `scm_gutter_probe.zia`: bounded rendering plus asynchronous/stale-safe gutter
+  diffs in a real temporary multi-root Git workspace.
 
 When adding a feature, add or extend a focused probe near the smallest surface
 that can verify it. Do not rely only on a full IDE smoke test.
@@ -729,6 +878,8 @@ Use this practical decision table:
 | Explorer tree/cache behavior | `core/project_manager.zia` |
 | Editor widget synchronization | `editor/editor_engine.zia` |
 | Zia semantic query scheduling | appropriate `editor/*` controller |
+| Zia project navigation/refactor commands | `commands/zia_workspace_commands.zia` + `editor/zia_workspace_query_job.zia` |
+| BASIC project semantic commands | `commands/basic_workspace_commands.zia` + `editor/basic_workspace_query_job.zia` |
 | Pure source scanning | focused `zia/*_scan.zia` module; keep `zia/source_scan.zia` as facade |
 | Search matching/path/file discovery rules | `services/search_matcher.zia`, `services/search_paths.zia`, `services/workspace_file_index.zia` |
 | Quick Open palette/scoring | `commands/quick_open_commands.zia` |

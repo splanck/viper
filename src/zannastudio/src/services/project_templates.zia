@@ -20,14 +20,28 @@
 
 module project_templates;
 
+bind "safe_io";
+
 bind Dir = Zanna.IO.Dir;
 bind File = Zanna.IO.File;
 bind Path = Zanna.IO.Path;
 bind Str = Zanna.String;
+bind Machine = Zanna.System.Machine;
 
 final KIND_CONSOLE = "console";
 final KIND_GUI = "gui";
 final KIND_LIBRARY = "library";
+
+/// @brief Return the cross-platform default parent for newly scaffolded projects.
+/// @details Machine.Home uses USERPROFILE/HOMEDRIVE on Windows and HOME/passwd
+///          resolution on POSIX, avoiding accidental project creation in the
+///          Studio process working directory when a Unix-style HOME is absent.
+/// @return `<native user home>/ZannaProjects`, or an empty string if unavailable.
+expose func DefaultProjectsBase() -> String {
+    var home = Machine.Home;
+    if home == "" { return ""; }
+    return Path.Join(home, "ZannaProjects");
+}
 
 /// @brief Return the manifest text for a new project.
 func ManifestText(name: String) -> String {
@@ -97,12 +111,44 @@ expose func ValidName(name: String) -> Boolean {
 /// @return Absolute project path, or "" on failure/existing target.
 expose func Scaffold(baseDir: String, name: String, kind: String) -> String {
     if baseDir == "" or ValidName(name) == false { return ""; }
+    if kind != KIND_CONSOLE and kind != KIND_GUI and kind != KIND_LIBRARY { return ""; }
     var projectDir = Path.Join(baseDir, name);
     if Dir.Exists(projectDir) or File.Exists(projectDir) { return ""; }
-    var srcDir = Path.Join(projectDir, "src");
-    Dir.MakeAll(srcDir);
-    if Dir.Exists(srcDir) == false { return ""; }
-    File.WriteAllText(Path.Join(projectDir, "zanna.project"), ManifestText(name));
-    File.WriteAllText(Path.Join(srcDir, "main.zia"), StarterSource(name, kind));
+
+    // Build out of sight, then commit with the runtime's no-overwrite directory
+    // move. A failed manifest/source write can never strand a half-created
+    // project at the user-visible destination or prevent an immediate retry.
+    var stagingBase = Path.Join(baseDir, "." + name + ".zannastudio-create-"
+                                         + Zanna.Time.Clock.NowMs());
+    var stagingDir = "";
+    var attempt = 0;
+    while attempt < 128 and stagingDir == "" {
+        var candidate = stagingBase;
+        if attempt > 0 { candidate = stagingBase + "-" + attempt; }
+        if Dir.Exists(candidate) == false and File.Exists(candidate) == false {
+            stagingDir = candidate;
+        }
+        attempt = attempt + 1;
+    }
+    if stagingDir == "" { return ""; }
+
+    var srcDir = Path.Join(stagingDir, "src");
+    if safe_io.MakeAll(srcDir) == false {
+        safe_io.DeleteDirectoryTree(stagingDir);
+        return "";
+    }
+    if safe_io.WriteAllText(Path.Join(stagingDir, "zanna.project"), ManifestText(name)) == false {
+        safe_io.DeleteDirectoryTree(stagingDir);
+        return "";
+    }
+    if safe_io.WriteAllText(Path.Join(srcDir, "main.zia"), StarterSource(name, kind)) == false {
+        safe_io.DeleteDirectoryTree(stagingDir);
+        return "";
+    }
+    if Dir.Exists(projectDir) or File.Exists(projectDir)
+       or safe_io.MoveDirectory(stagingDir, projectDir) == false {
+        safe_io.DeleteDirectoryTree(stagingDir);
+        return "";
+    }
     return projectDir;
 }

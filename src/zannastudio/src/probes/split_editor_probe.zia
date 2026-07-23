@@ -1,20 +1,41 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/split_editor_probe.zia
+// Purpose: Regress split-pane document ownership, focus, and buffer teardown.
+// Key invariants:
+//   - A split contains two distinct Documents, never cloned independent copies.
+//   - Opening the other pane's Document focuses its existing buffer owner.
+//   - Focused text cannot be saved into a mismatched Document.
+//   - Explorer path mutations preserve live undo and release removed pane owners.
+// Ownership/Lifetime: The probe owns and destroys one AppShell.
+// Links: zannastudio/src/editor/editor_engine.zia,
+//        zannastudio/src/core/document_manager.zia,
+//        zannastudio/src/app/explorer_action_runner.zia
+//
+//===----------------------------------------------------------------------===//
+
 module split_editor_probe;
 
-// ============================================================================
-// MODULE: split_editor_probe
-// PURPOSE: Validate plan 17 — the two-pane split editor. Covers pane creation,
-//          the `editor` alias tracking the focused pane, focus switching, and
-//          independent per-pane buffers, then closing back to a single pane.
-//
-// WHERE-THIS-FITS: EditorEngine keeps `editor` aliased to the focused pane's
-//          widget (left/right); every existing engine.editor consumer therefore
-//          operates on the focused pane. This probe drives that engine directly.
-// ============================================================================
-
 bind "../ui/app_shell";
+bind "../ui/explorer_actions";
+bind "../app/explorer_action_runner";
+bind "../core/document_manager";
+bind "../core/project_manager";
 bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../editor/project_index";
+bind "../services/locations";
+bind "../commands/file_commands";
 
 bind Terminal = Zanna.Terminal;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
@@ -25,64 +46,231 @@ func main() {
     var shell = new app_shell.AppShell();
     shell.Build("Zanna Studio Split Editor Probe", 1200, 760);
 
+    var docs = new document_manager.DocumentManager();
+    var primary = docs.NewDocument();
+    primary.fileName = "primary.zia";
+    primary.content = "PRIMARY\nline two\n";
+    var secondary = docs.NewDocument();
+    secondary.fileName = "secondary.zia";
+    secondary.content = "SECONDARY\nline two\n";
+    docs.SetActiveDocument(primary);
+
     var engine = new editor_engine.EditorEngine();
     engine.Setup(shell.workbench.editorRow);
-    engine.SetText("PRIMARY\nline two\n");
+    engine.LoadDocument(primary);
     shell.Poll();
     shell.Render();
 
-    // Single pane initially: editor aliases the left widget.
     if engine.PaneCount() != 1 { fail(shell, "expected 1 pane initially"); return; }
-    if engine.splitActive { fail(shell, "splitActive true before split"); return; }
     if engine.editor != engine.leftWidget { fail(shell, "editor not aliased to left"); return; }
 
-    // Split: a second pane appears showing a copy of the focused content; focus
-    // stays on the primary (left) pane.
-    engine.SplitRight(shell.workbench.editorRow);
+    // A single Document cannot be cloned into two independent live buffers.
+    if engine.SplitRight(shell.workbench.editorRow, primary) {
+        fail(shell, "same-document split was accepted");
+        return;
+    }
+    if engine.PaneCount() != 1 { fail(shell, "rejected split changed layout"); return; }
+
+    if engine.SplitRight(shell.workbench.editorRow, secondary) == false {
+        fail(shell, "distinct-document split was rejected");
+        return;
+    }
     shell.Render();
     if engine.PaneCount() != 2 { fail(shell, "expected 2 panes after split"); return; }
-    if engine.splitActive == false { fail(shell, "splitActive false after split"); return; }
-    if engine.rightWidget == null { fail(shell, "rightWidget null after split"); return; }
     if engine.secondaryFocused { fail(shell, "focus should stay on primary after split"); return; }
-    if engine.editor != engine.leftWidget { fail(shell, "editor moved off left after split"); return; }
-    if engine.rightWidget.Text != "PRIMARY\nline two\n" {
-        fail(shell, "right pane did not copy content: [" + engine.rightWidget.Text + "]");
+    if engine.currentDoc != primary { fail(shell, "primary document ownership changed"); return; }
+    if engine.shadow == null or engine.shadow.currentDoc != secondary {
+        fail(shell, "secondary document not owned by shadow pane");
+        return;
+    }
+    if engine.rightWidget.Text != "SECONDARY\nline two\n" {
+        fail(shell, "right pane cloned primary or lost secondary text");
         return;
     }
 
-    // Focus the other (right) pane: the alias and flat state follow it.
+    // Focus and the manager's global selection can be synchronized by object
+    // identity, including untitled documents with no usable path.
     engine.FocusOtherPane();
-    if engine.secondaryFocused == false { fail(shell, "secondaryFocused false after switch"); return; }
-    if engine.editor != engine.rightWidget { fail(shell, "editor not aliased to right after switch"); return; }
+    if engine.secondaryFocused == false or engine.currentDoc != secondary {
+        fail(shell, "secondary focus did not select its document");
+        return;
+    }
+    if docs.SetActiveDocument(engine.currentDoc) != 1 or docs.GetActive() != secondary {
+        fail(shell, "document manager did not follow pane focus");
+        return;
+    }
+    engine.SetText("");
+    engine.editor.SetCursor(0, 0);
+    engine.editor.InsertAtCursor("RIGHT-EDIT\n");
 
-    // Editing the focused (right) pane must NOT change the left pane (independent
-    // buffers in v1).
-    engine.SetText("RIGHT-ONLY\n");
-    if engine.GetText() != "RIGHT-ONLY\n" { fail(shell, "focused edit not reflected"); return; }
-    if engine.leftWidget.Text != "PRIMARY\nline two\n" {
-        fail(shell, "left pane changed by right edit: [" + engine.leftWidget.Text + "]");
+    // Command preflights repair a stale global selection before any caller
+    // asks DocumentManager to save, build, close, or recover the active file.
+    docs.SetActiveDocument(primary);
+    file_commands.SaveEditorState(docs, engine);
+    if docs.GetActive() != secondary or secondary.content != "RIGHT-EDIT\n" {
+        fail(shell, "command preflight did not repair pane selection");
         return;
     }
 
-    // Switch back: the alias and content return to the left pane, unchanged.
+    // Returning left captures the right model. Editing left, then requesting
+    // the already-visible secondary Document must focus right instead of
+    // replacing the left buffer or constructing a duplicate.
     engine.FocusOtherPane();
-    if engine.editor != engine.leftWidget { fail(shell, "editor not back on left"); return; }
-    if engine.GetText() != "PRIMARY\nline two\n" {
-        fail(shell, "left content wrong after switch back: [" + engine.GetText() + "]");
+    if secondary.content != "RIGHT-EDIT\n" or secondary.isModified == false {
+        fail(shell, "right edits were not captured on focus change");
+        return;
+    }
+    engine.SetText("");
+    engine.editor.SetCursor(0, 0);
+    engine.editor.InsertAtCursor("LEFT-EDIT\n");
+    engine.LoadDocument(secondary);
+    if engine.secondaryFocused == false or engine.currentDoc != secondary {
+        fail(shell, "opening visible document did not focus its owner");
+        return;
+    }
+    if primary.content != "LEFT-EDIT\n" or engine.leftWidget.Text != "LEFT-EDIT\n" {
+        fail(shell, "left edits were lost while focusing owner");
+        return;
+    }
+    if engine.GetText() != "RIGHT-EDIT\n" {
+        fail(shell, "secondary owner buffer was replaced");
         return;
     }
 
-    // Close the split: back to one pane on the primary widget.
-    engine.CloseSplit();
-    if engine.PaneCount() != 1 { fail(shell, "expected 1 pane after close"); return; }
-    if engine.splitActive { fail(shell, "splitActive true after close"); return; }
-    if engine.editor != engine.leftWidget { fail(shell, "editor not on left after close"); return; }
-    if engine.rightWidget.IsVisible() { fail(shell, "right pane still visible after close"); return; }
+    // The last line of defense: even a stale caller cannot write focused right
+    // text into the primary Document.
+    var primaryBeforeWrongSave = primary.content;
+    engine.SaveToDocument(primary);
+    if primary.content != primaryBeforeWrongSave {
+        fail(shell, "mismatched SaveToDocument overwrote primary");
+        return;
+    }
 
-    // Re-splitting after a close works (widget reused).
-    engine.SplitRight(shell.workbench.editorRow);
-    if engine.PaneCount() != 2 { fail(shell, "re-split failed"); return; }
+    // Save All may clear a non-focused pane. Its widget flag must stay clear
+    // when that pane is focused again.
+    engine.ClearDocumentModified(primary);
+    if engine.leftWidget.IsModified() {
+        fail(shell, "non-focused pane modified flag was not cleared");
+        return;
+    }
+
+    // Closing from the secondary pane returns to primary and detaches the
+    // right buffer back into its Document for a lossless later re-split.
     engine.CloseSplit();
+    if engine.PaneCount() != 1 or engine.secondaryFocused {
+        fail(shell, "close did not return to one primary pane");
+        return;
+    }
+    if engine.currentDoc != primary or engine.editor != engine.leftWidget {
+        fail(shell, "close did not restore primary ownership");
+        return;
+    }
+    if secondary.buffer == null or secondary.buffer.Text != "RIGHT-EDIT\n" {
+        fail(shell, "secondary buffer was not detached on close");
+        return;
+    }
+
+    if engine.SplitRight(shell.workbench.editorRow, secondary) == false
+       or engine.rightWidget.Text != "RIGHT-EDIT\n" {
+        fail(shell, "re-split did not restore secondary buffer");
+        return;
+    }
+    engine.CloseSplit();
+
+    // Explorer rename is a path retarget, not a content reload. It must keep
+    // the active EditorBuffer (including undo) alive, and report the transition
+    // so the caller can suppress an IDE-authored file-watch notification.
+    var mutationRoot = TempFile.CreateDirWithPrefix("zannastudio_split_mutation_");
+    var keepPath = Path.Join(mutationRoot, "keep.zia");
+    var renamePath = Path.Join(mutationRoot, "rename-me.zia");
+    var renamedPath = Path.Join(mutationRoot, "renamed.zia");
+    File.WriteAllText(keepPath, "module Keep;\n");
+    File.WriteAllText(renamePath, "module RenameMe;\n");
+
+    var mutationProject = new project_manager.ProjectManager();
+    mutationProject.Setup(shell.workbench.sidebarTree);
+    if mutationProject.OpenFolder(mutationRoot) == false {
+        fail(shell, "mutation project did not open");
+        return;
+    }
+    var mutationDocs = new document_manager.DocumentManager();
+    var keepDoc = mutationDocs.OpenFile(keepPath);
+    var renamedDoc = mutationDocs.OpenFile(renamePath);
+    var mutationTabs = new editor_tabs.EditorTabs();
+    mutationTabs.Setup(shell.workbench.tabBar);
+    mutationTabs.AddTab(keepDoc.fileName, 1);
+    mutationTabs.AddTab(renamedDoc.fileName, 1);
+    mutationTabs.RefreshFromDocuments(mutationDocs);
+    engine.LoadDocument(renamedDoc);
+    engine.editor.SetCursor(0, 0);
+    engine.editor.InsertAtCursor("// live edit\n");
+    if engine.editor.CanUndo() == false {
+        fail(shell, "rename undo setup failed");
+        return;
+    }
+
+    var indexer = new project_index.ProjectIndexer();
+    var locStore = new locations.LocationStore();
+    var renameOverlay = new explorer_actions.ExplorerActionOverlay();
+    renameOverlay.targetPath = renamePath;
+    renameOverlay.targetDir = mutationRoot;
+    renameOverlay.value = "renamed.zia";
+    if explorer_action_runner.ApplyExplorerAction(
+            shell, renameOverlay, explorer_actions.EXPLORER_ACTION_RENAME,
+            mutationProject, mutationDocs, engine, mutationTabs, null,
+            indexer, locStore) == false {
+        fail(shell, "explorer rename did not report success");
+        return;
+    }
+    if renamedDoc.filePath != renamedPath or File.Exists(renamedPath) == false
+       or File.Exists(renamePath) or engine.currentDoc != renamedDoc
+       or engine.GetText() != "// live edit\nmodule RenameMe;\n"
+       or engine.editor.CanUndo() == false {
+        fail(shell, "explorer rename reloaded or lost the live buffer");
+        return;
+    }
+
+    // Save the renamed pane, then delete it while it is visible but unfocused.
+    // The surviving dirty pane must retain its undo stack and the split must
+    // collapse instead of retaining a DocumentManager-orphaned owner.
+    file_commands.SaveEditorState(mutationDocs, engine);
+    if mutationDocs.SaveActive() == false {
+        fail(shell, "renamed mutation document did not save");
+        return;
+    }
+    engine.ClearDocumentModified(renamedDoc);
+    mutationTabs.SetModified(mutationDocs.activeIndex, false);
+    mutationDocs.SetActiveDocument(keepDoc);
+    engine.LoadDocument(keepDoc);
+    engine.editor.SetCursor(0, 0);
+    engine.editor.InsertAtCursor("// keep edit\n");
+    if engine.editor.CanUndo() == false
+       or engine.SplitRight(shell.workbench.editorRow, renamedDoc) == false {
+        fail(shell, "delete split setup failed");
+        return;
+    }
+
+    var deleteOverlay = new explorer_actions.ExplorerActionOverlay();
+    deleteOverlay.targetPath = renamedPath;
+    deleteOverlay.targetDir = mutationRoot;
+    if explorer_action_runner.ApplyExplorerAction(
+            shell, deleteOverlay, explorer_actions.EXPLORER_ACTION_DELETE,
+            mutationProject, mutationDocs, engine, mutationTabs, null,
+            indexer, locStore) == false {
+        fail(shell, "explorer delete did not report success");
+        return;
+    }
+    if mutationDocs.GetCount() != 1 or mutationDocs.GetActive() != keepDoc
+       or mutationDocs.FindByPath(renamedPath) >= 0 or File.Exists(renamedPath)
+       or mutationProject.lastTrashPath == ""
+       or File.Exists(mutationProject.lastTrashPath) == false
+       or engine.PaneCount() != 1 or engine.currentDoc != keepDoc
+       or renamedDoc.buffer != null or engine.editor.CanUndo() == false
+       or engine.GetText() != "// keep edit\nmodule Keep;\n"
+       or mutationTabs.GetCount() != 1 {
+        fail(shell, "explorer delete left stale split or lost survivor state");
+        return;
+    }
 
     shell.Destroy();
     Terminal.Say("RESULT: ok");

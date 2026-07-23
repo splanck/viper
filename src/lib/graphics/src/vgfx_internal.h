@@ -166,6 +166,15 @@ struct vgfx_window {
     ///          allowed at the native window level.
     int32_t resizable;
 
+    /// @brief Minimum logical client/content width accepted by resize requests.
+    /// @details Defaults to one. Native adapters publish this floor to their
+    ///          window manager while the core also clamps programmatic resizes.
+    int32_t min_width;
+
+    /// @brief Minimum logical client/content height accepted by resize requests.
+    /// @copydetails min_width
+    int32_t min_height;
+
     //===------------------------------------------------------------------===//
     // Framebuffer
     //===------------------------------------------------------------------===//
@@ -620,6 +629,9 @@ void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int
 
 /// @brief Resize the native OS window.
 void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h);
+
+/// @brief Publish the minimum logical client/content size to the native window manager.
+void vgfx_platform_set_window_min_size(struct vgfx_window *win, int32_t w, int32_t h);
 
 //===----------------------------------------------------------------------===//
 // Internal Helper Functions

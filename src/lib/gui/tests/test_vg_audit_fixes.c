@@ -345,6 +345,42 @@ TEST(tabbar_measure_clamps_scroll_after_tabs_removed) {
     vg_widget_destroy(&tb->base);
 }
 
+/// @brief An active tab selected while its bar is hidden must be revealed once a
+/// narrow viewport is measured. This models a bottom panel activated while its
+/// SplitPane side is still collapsed and prevents the selected panel tab from
+/// opening entirely offscreen.
+TEST(tabbar_measure_reveals_active_tab_selected_while_hidden) {
+    vg_tabbar_t *tb = vg_tabbar_create(NULL);
+    ASSERT_NOT_NULL(tb);
+
+    vg_tabbar_add_tab(tb, "Problems", false);
+    vg_tabbar_add_tab(tb, "Output", false);
+    vg_tabbar_add_tab(tb, "Search", false);
+    vg_tabbar_add_tab(tb, "References", false);
+    vg_tabbar_add_tab(tb, "Variables", false);
+    vg_tabbar_add_tab(tb, "Call Stack", false);
+    vg_tabbar_add_tab(tb, "Debug Console", false);
+    vg_tab_t *terminal = vg_tabbar_add_tab(tb, "Terminal", false);
+    ASSERT_NOT_NULL(terminal);
+
+    // The bottom pane has not been laid out yet, so activation cannot derive a
+    // viewport and leaves scroll_x at the start of the strip.
+    tb->base.width = 0.0f;
+    tb->base.measured_width = 0.0f;
+    tb->total_width = 0.0f;
+    vg_tabbar_set_active(tb, terminal);
+    ASSERT_EQ(tb->scroll_x, 0.0f);
+
+    // Once the pane opens, measurement knows the real viewport and must bring
+    // the already-active last tab into view without requiring another click.
+    vg_widget_measure(&tb->base, 240.0f, 50.0f);
+    ASSERT(tb->total_width > 240.0f);
+    ASSERT(tb->scroll_x > 0.0f);
+    ASSERT(tb->scroll_x <= tb->total_width - 240.0f);
+
+    vg_widget_destroy(&tb->base);
+}
+
 //=============================================================================
 // Fix #6: contextmenu_show_at no longer requires impl_data
 //=============================================================================
@@ -697,6 +733,27 @@ TEST(wheel_delta_survives_localize_call) {
     ASSERT_EQ(ev.wheel.delta_y, before_dy);
 
     vg_widget_destroy(w);
+}
+
+/// @brief R2 — the ZannaGFX positive-down Y convention is translated to the GUI positive-up
+/// wheel convention exactly once at the platform boundary.
+TEST(platform_scroll_direction_is_translated_for_gui_widgets) {
+    vgfx_event_t platform_event;
+    memset(&platform_event, 0, sizeof(platform_event));
+    platform_event.type = VGFX_EVENT_SCROLL;
+    platform_event.time_ms = 9182;
+    platform_event.data.scroll.delta_x = 2.5f;
+    platform_event.data.scroll.delta_y = 3.0f; // Native/content direction: down.
+    platform_event.data.scroll.x = 140;
+    platform_event.data.scroll.y = 220;
+
+    vg_event_t event = vg_event_from_platform(&platform_event);
+    ASSERT_EQ(event.type, VG_EVENT_MOUSE_WHEEL);
+    ASSERT_EQ(event.timestamp, (uint64_t)9182);
+    ASSERT_EQ(event.wheel.delta_x, 2.5f);
+    ASSERT_EQ(event.wheel.delta_y, -3.0f); // GUI wheel direction: down.
+    ASSERT_EQ(event.wheel.screen_x, 140.0f);
+    ASSERT_EQ(event.wheel.screen_y, 220.0f);
 }
 
 /// @brief R2 — Enter key on a button reports a click with the event timestamp; key repeat does not.
@@ -1947,6 +2004,100 @@ TEST(treeview_keyboard_navigation_scrolls_selected_node_into_view) {
     ASSERT_EQ(selected_index, 5);
 
     vg_widget_destroy(&tree->base);
+}
+
+/// @brief Explorer-sized retained trees consume wheel input only while their viewport can move.
+TEST(treeview_wheel_scrolls_overflowing_rows_and_bubbles_at_limits) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    vg_treeview_t *tree = vg_treeview_create(root);
+    ASSERT_NOT_NULL(tree);
+    tree->row_height = 18.0f;
+    vg_widget_arrange(root, 0.0f, 0.0f, 260.0f, 160.0f);
+    vg_widget_arrange(&tree->base, 30.0f, 24.0f, 180.0f, 72.0f);
+
+    for (int i = 0; i < 20; i++) {
+        char label[24];
+        snprintf(label, sizeof(label), "project-file-%d", i);
+        ASSERT_NOT_NULL(vg_treeview_add_node(tree, NULL, label));
+    }
+
+    // Exercise the real hit-test/dispatch route used by the app, including
+    // screen coordinates over a non-origin Explorer pane.
+    vgfx_event_t native_wheel_down;
+    memset(&native_wheel_down, 0, sizeof(native_wheel_down));
+    native_wheel_down.type = VGFX_EVENT_SCROLL;
+    native_wheel_down.data.scroll.delta_y = 1.0f;
+    native_wheel_down.data.scroll.x = 60;
+    native_wheel_down.data.scroll.y = 50;
+    vg_event_t wheel_down = vg_event_from_platform(&native_wheel_down);
+    ASSERT_TRUE(vg_event_dispatch(root, &wheel_down));
+    ASSERT_EQ(wheel_down.target, &tree->base);
+    ASSERT(tree->scroll_y > 0.0f);
+
+    // Overflow is also discoverable and operable without a wheel. Hovering the
+    // right gutter highlights the thumb, a track click scrolls, and gutter
+    // clicks never leak through to row selection.
+    vg_event_t gutter_hover = {0};
+    gutter_hover.type = VG_EVENT_MOUSE_MOVE;
+    gutter_hover.mouse.x = 179.0f;
+    gutter_hover.mouse.y = 10.0f;
+    ASSERT_TRUE(tree->base.vtable->handle_event(&tree->base, &gutter_hover));
+    ASSERT_TRUE(tree->scrollbar_hovered);
+
+    tree->scroll_y = 0.0f;
+    vg_event_t track_down = {0};
+    track_down.type = VG_EVENT_MOUSE_DOWN;
+    track_down.mouse.button = VG_MOUSE_LEFT;
+    track_down.mouse.x = 179.0f;
+    track_down.mouse.y = 70.0f;
+    ASSERT_TRUE(tree->base.vtable->handle_event(&tree->base, &track_down));
+    ASSERT(tree->scroll_y > 0.0f);
+    ASSERT_NULL(tree->selected);
+
+    vg_event_t gutter_click = {0};
+    gutter_click.type = VG_EVENT_CLICK;
+    gutter_click.mouse.button = VG_MOUSE_LEFT;
+    gutter_click.mouse.x = 179.0f;
+    gutter_click.mouse.y = 70.0f;
+    ASSERT_TRUE(tree->base.vtable->handle_event(&tree->base, &gutter_click));
+    ASSERT_NULL(tree->selected);
+
+    // Drag the thumb from the top toward the middle and release capture.
+    tree->scroll_y = 0.0f;
+    vg_event_t thumb_down = {0};
+    thumb_down.type = VG_EVENT_MOUSE_DOWN;
+    thumb_down.mouse.button = VG_MOUSE_LEFT;
+    thumb_down.mouse.x = 179.0f;
+    thumb_down.mouse.y = 5.0f;
+    ASSERT_TRUE(tree->base.vtable->handle_event(&tree->base, &thumb_down));
+    ASSERT_TRUE(tree->scrollbar_dragging);
+    ASSERT_EQ(vg_widget_get_input_capture(), &tree->base);
+
+    vg_event_t thumb_drag = {0};
+    thumb_drag.type = VG_EVENT_MOUSE_MOVE;
+    thumb_drag.mouse.x = 179.0f;
+    thumb_drag.mouse.y = 42.0f;
+    ASSERT_TRUE(tree->base.vtable->handle_event(&tree->base, &thumb_drag));
+    ASSERT(tree->scroll_y > 0.0f);
+
+    vg_event_t thumb_up = {0};
+    thumb_up.type = VG_EVENT_MOUSE_UP;
+    thumb_up.mouse.button = VG_MOUSE_LEFT;
+    thumb_up.mouse.x = 179.0f;
+    thumb_up.mouse.y = 42.0f;
+    ASSERT_TRUE(tree->base.vtable->handle_event(&tree->base, &thumb_up));
+    ASSERT_FALSE(tree->scrollbar_dragging);
+    ASSERT_NULL(vg_widget_get_input_capture());
+
+    tree->scroll_y = 0.0f;
+    vg_event_t wheel_up = {0};
+    wheel_up.type = VG_EVENT_MOUSE_WHEEL;
+    wheel_up.wheel.delta_y = 1.0f;
+    ASSERT_FALSE(tree->base.vtable->handle_event(&tree->base, &wheel_up));
+    ASSERT_EQ(tree->scroll_y, 0.0f);
+
+    vg_widget_destroy(root);
 }
 
 /// @brief R4 — remove_child clears focus, input-capture, modal-root, and reported-click for the
@@ -4264,11 +4415,22 @@ TEST(menubar_key_event_dispatches_accelerator) {
     ASSERT_NOT_NULL(menu);
     vg_menu_item_t *item = vg_menu_add_item(menu, "New", "Ctrl+N", round8_menu_accel_action, NULL);
     ASSERT_NOT_NULL(item);
+    vg_menu_item_t *chord = vg_menu_add_item(
+        menu, "Keyboard Shortcuts", "Ctrl+K Ctrl+S", round8_menu_accel_action, NULL);
+    ASSERT_NOT_NULL(chord);
     vg_menubar_rebuild_accelerators(menubar);
+
+    vg_accelerator_t parsed_chord;
+    ASSERT_FALSE(vg_parse_accelerator("Ctrl+K Ctrl+S", &parsed_chord));
+    ASSERT_EQ(parsed_chord.key, VG_KEY_UNKNOWN);
 
     g_round8_menu_accel_calls = 0;
     vg_event_t event = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_N, 0, VG_MOD_CTRL);
     ASSERT_TRUE(vg_event_send(&menubar->base, &event));
+    ASSERT_EQ(g_round8_menu_accel_calls, 1);
+
+    event = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_S, 0, VG_MOD_CTRL);
+    ASSERT_FALSE(vg_event_send(&menubar->base, &event));
     ASSERT_EQ(g_round8_menu_accel_calls, 1);
 
     vg_widget_destroy(&menubar->base);
@@ -5053,6 +5215,7 @@ int main(void) {
 
     printf("\nFix #5: TabBar scroll_x clamp\n");
     RUN(tabbar_measure_clamps_scroll_after_tabs_removed);
+    RUN(tabbar_measure_reveals_active_tab_selected_while_hidden);
 
     printf("\nFix #6: ContextMenu impl_data independence\n");
     RUN(contextmenu_show_at_does_not_dereference_impl_data);
@@ -5078,6 +5241,7 @@ int main(void) {
 
     printf("\nRound 2 — Critical regressions + audit findings\n");
     RUN(wheel_delta_survives_localize_call);
+    RUN(platform_scroll_direction_is_translated_for_gui_widgets);
     RUN(button_keyboard_activation_reports_actual_click);
     RUN(mouseup_outside_pressed_widget_does_not_report_click);
     RUN(mouseup_handler_runs_before_synthesized_click);
@@ -5124,6 +5288,7 @@ int main(void) {
     RUN(listbox_select_index_out_of_range_keeps_selection);
     RUN(findreplacebar_regex_search_finds_variable_length_matches);
     RUN(treeview_keyboard_navigation_scrolls_selected_node_into_view);
+    RUN(treeview_wheel_scrolls_overflowing_rows_and_bubbles_at_limits);
     RUN(widget_remove_child_clears_runtime_references_to_subtree);
     RUN(widget_clear_children_clears_runtime_references_to_subtrees);
     RUN(widget_runtime_restore_and_focus_reject_invalid_handles);

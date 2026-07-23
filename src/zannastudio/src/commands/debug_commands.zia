@@ -1,3 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/debug_commands.zia
+// Purpose: Coordinate debugger commands, panels, breakpoints, and navigation.
+// Key invariants:
+//   - Debugger state changes are validated before adapter requests are sent.
+//   - Unavailable frame sources never move or decorate an unrelated editor.
+//   - Variable expansion requests render loading state and never wait in-frame.
+// Ownership/Lifetime:
+//   - DebugSession owns adapter state; AppShell and EditorEngine own UI state.
+// Links: zannastudio/src/build/debug_session.zia,
+//        zannastudio/src/commands/file_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module debug_commands;
 
 bind "../ui/app_shell";
@@ -23,6 +43,18 @@ bind Convert = Zanna.Core.Convert;
 bind Pixels = Zanna.Graphics.Pixels;
 
 final DEBUG_STOP_SLOT = 1;
+
+/// @brief Return whether the active document can be launched by the debugger.
+/// @details The debug adapter launches a concrete source path, so an untitled
+///          buffer or read-only preview is not yet a valid target.
+/// @param docMgr Current document manager, if available.
+/// @return True only for a saved editable active document.
+expose func HasDebugTarget(docMgr: document_manager.DocumentManager) -> Boolean {
+    if docMgr == null { return false; }
+    var doc = docMgr.GetActive();
+    return doc != null and doc!.isNew == false and doc!.filePath != ""
+           and doc!.isReadOnlyPreview == false;
+}
 
 // ============================================================================
 // MODULE: debug_commands
@@ -55,9 +87,12 @@ func handleToggleBreakpoint(shell: app_shell.AppShell,
     }
     var line = engine.GetCursorLine();
     var added = store.Toggle(doc.filePath, line);
-    store.Save();
+    var saved = store.Save();
     store.ApplyToEditor(engine, doc);
-    if added {
+    if saved == false {
+        shell.SetStatusLeft("Breakpoint changed, but could not be saved");
+        GUI.Toast.Error("Could not save breakpoints");
+    } else if added {
         shell.SetStatusLeft("Breakpoint set at line " + line);
     } else {
         shell.SetStatusLeft("Breakpoint cleared at line " + line);
@@ -122,8 +157,12 @@ func handleCallStackSelect(shell: app_shell.AppShell,
     if maybeActive != null and SamePath(maybeActive!.filePath, path) == false {
         needsOpen = true;
     }
-    if needsOpen and IO.File.Exists(path) {
-        file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path);
+    if needsOpen {
+        if IO.File.Exists(path) == false
+           or file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path) == false {
+            shell.SetStatusLeft("Frame source unavailable: " + path);
+            return;
+        }
     }
     engine.GoToLine(line);
     shell.SetStatusLeft("Frame: " + session.FrameLabel(idx));
@@ -152,9 +191,12 @@ func PumpGutter(shell: app_shell.AppShell,
 
     var line = clickedLine0 + 1;
     var added = store.Toggle(doc.filePath, line);
-    store.Save();
+    var saved = store.Save();
     store.ApplyToEditor(engine, doc);
-    if added {
+    if saved == false {
+        shell.SetStatusLeft("Breakpoint changed, but could not be saved");
+        GUI.Toast.Error("Could not save breakpoints");
+    } else if added {
         shell.SetStatusLeft("Breakpoint set at line " + line);
     } else {
         shell.SetStatusLeft("Breakpoint cleared at line " + line);
@@ -747,7 +789,19 @@ hide func AddVarNode(session: debug_session.DebugSession, tree: GUI.VirtualTree,
     if expanded == false { return; }
 
     if session.varTree.HasCache(path) == false {
-        FetchAndCacheChildren(session, path, varRef);
+        var statusLabel = "   Loading children...";
+        if session.VariableChildrenRequestFailed(path) {
+            statusLabel = "   Children unavailable — collapse and expand to retry";
+        } else if session.VariableChildrenRequestPending(path) {
+            statusLabel = "   Loading children...";
+        } else if session.VariableChildrenRequestActive() {
+            statusLabel = "   Waiting to load children...";
+        } else if session.RequestVariableChildren(path, varRef) == false {
+            statusLabel = "   Children unavailable";
+        }
+        tree.AddNode(path, "variable-status:" + path, statusLabel);
+        tree.Expand(path);
+        return;
     }
     var kids = session.varTree.GetCache(path);
     if kids == null { return; }
@@ -761,32 +815,11 @@ hide func AddVarNode(session: debug_session.DebugSession, tree: GUI.VirtualTree,
     }
 }
 
-/// @brief Synchronously fetch and cache one level of children for @p path.
-/// @details Copies the adapter reply into owned VarChildRec records before it can
-///          be overwritten by a deeper fetch, then caches them under the path.
-hide func FetchAndCacheChildren(session: debug_session.DebugSession, path: String,
-                                varRef: Integer) {
-    if session.FetchChildren(varRef, 0, 100) == false { return; }
-    var wrap = new var_model.VarChildList();
-    var n = session.VarChildCount();
-    var i = 0;
-    while i < n {
-        var rec = new var_model.VarChildRec();
-        rec.name = session.VarChildName(i);
-        rec.value = session.VarChildValue(i);
-        rec.typeName = session.VarChildType(i);
-        rec.varRef = session.VarChildVarRef(i);
-        rec.childCount = session.VarChildChildCount(i);
-        wrap.items.add(rec);
-        i = i + 1;
-    }
-    session.varTree.PutCache(path, wrap);
-}
-
 /// @brief Toggle expand/collapse of the selected Variables row. Returns true when
 ///        a variable row was activated (so the caller re-renders).
 /// @details Bound to the Variables list selection change. Expanding an unloaded
-///          composite triggers a synchronous child fetch on the next render.
+///          composite queues an adapter request and immediately renders a
+///          loading row; a later DebugUpdate publishes the cached children.
 func HandleVariableActivate(shell: app_shell.AppShell,
                             session: debug_session.DebugSession) -> Boolean {
     if shell == null or session == null or session.stopped == false { return false; }
@@ -796,9 +829,11 @@ func HandleVariableActivate(shell: app_shell.AppShell,
     var id = GUI.ListBox.ItemGetData(item);
     // Local variable rows use their name-path as the id; watch/section rows use
     // their own prefixes and are handled elsewhere.
-    if id == "" or Str.StartsWith(id, "watch:") or id == "locals"
+    if id == "" or Str.StartsWith(id, "watch:")
+        or Str.StartsWith(id, "variable-status:") or id == "locals"
         or id == "watches" or id == "locals-empty" { return false; }
-    session.varTree.Toggle(id);
+    var expanded = session.varTree.Toggle(id);
+    if expanded { session.ClearVariableChildrenFailure(id); }
     PopulateDebugPanels(shell, session);
     return true;
 }
@@ -844,8 +879,12 @@ func OpenStopLocation(shell: app_shell.AppShell,
         }
     }
     if needsOpen {
-        if IO.File.Exists(session.activePath) {
-            file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, session.activePath);
+        if IO.File.Exists(session.activePath) == false
+           or file_commands.OpenFileAtPath(shell, docMgr, engine, tabs,
+                                           session.activePath) == false {
+            ClearDebugStopMarker(engine);
+            shell.SetStatusLeft("Stopped source unavailable: " + session.activePath);
+            return;
         }
     }
     engine.GoToLine(session.lastLine);

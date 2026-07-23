@@ -4,17 +4,20 @@
 // See LICENSE for license information.
 //
 // File: src/tests/runtime/RTIdeWorkspaceTests.cpp
-// Purpose: Tests for IDE workspace, asset resolver, manifest, and edit helpers.
+// Purpose: Tests for paged directory I/O plus IDE workspace, asset resolver,
+//          manifest, and edit helpers.
 // Key invariants:
 //   - Runtime workspace helpers return structured maps/sequences with stable keys.
 //   - Temporary files are isolated under per-test directories and removed on success.
 // Ownership/Lifetime:
 //   - Runtime strings created by tests are unref'd by the creating test.
 //   - Runtime map/sequence objects are owned by the runtime test process.
-// Links: src/runtime/io/rt_ide_primitives.cpp, src/runtime/io/rt_ide_primitives.h
+// Links: src/runtime/io/rt_dir_page.cpp,
+//        src/runtime/io/rt_ide_primitives.cpp
 //
 //===----------------------------------------------------------------------===//
 
+#include "rt_dir.h"
 #include "rt_ide_primitives.h"
 #include "rt_watcher.h"
 
@@ -27,6 +30,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -75,6 +79,63 @@ static bool seq_contains_relative(void *seq, const std::string &rel) {
             return true;
     }
     return false;
+}
+
+static void test_directory_page() {
+    fs::path root = temp_root();
+    fs::create_directories(root / "folder");
+    write_file(root / "alpha.zia", "alpha");
+    write_file(root / "beta.zia", "beta");
+    write_file(root / "gamma.zia", "gamma");
+    write_file(root / "delta.zia", "delta");
+
+    rt_string rootString = s(root.string());
+    std::set<std::string> names;
+    int64_t offset = 0;
+    bool done = false;
+    int pageCount = 0;
+    while (!done) {
+        void *page = rt_dir_page(rootString, offset, 2);
+        assert(rt_map_get_bool(page, rt_const_cstr("valid")) == 1);
+        assert(rt_map_get_int(page, rt_const_cstr("offset")) == offset);
+        assert(rt_map_get_int(page, rt_const_cstr("limit")) == 2);
+        assert(get_str(page, "path") == fs::absolute(root).lexically_normal().generic_string());
+        assert(rt_seq_len(rt_map_get(page, rt_const_cstr("diagnostics"))) == 0);
+
+        void *entries = rt_map_get(page, rt_const_cstr("entries"));
+        assert(rt_seq_len(entries) <= 2);
+        for (int64_t i = 0; i < rt_seq_len(entries); i++) {
+            void *entry = rt_seq_get(entries, i);
+            const std::string name = get_str(entry, "name");
+            const std::string kind = get_str(entry, "kind");
+            assert(!name.empty());
+            assert(kind == "file" || kind == "directory" || kind == "other");
+            assert(!get_str(entry, "path").empty());
+            names.insert(name);
+        }
+        const int64_t nextOffset = rt_map_get_int(page, rt_const_cstr("nextOffset"));
+        assert(nextOffset > offset || rt_map_get_bool(page, rt_const_cstr("done")) == 1);
+        offset = nextOffset;
+        done = rt_map_get_bool(page, rt_const_cstr("done")) == 1;
+        pageCount++;
+        assert(pageCount < 10);
+    }
+    assert(pageCount >= 3);
+    assert(names.size() == 5);
+    assert(names.count("folder") == 1);
+    assert(names.count("delta.zia") == 1);
+
+    void *clamped = rt_dir_page(rootString, 0, 100000);
+    assert(rt_map_get_int(clamped, rt_const_cstr("limit")) == 4096);
+
+    rt_string missing = s((root / "missing").string());
+    void *invalid = rt_dir_page(missing, 0, 2);
+    assert(rt_map_get_bool(invalid, rt_const_cstr("valid")) == 0);
+    assert(rt_seq_len(rt_map_get(invalid, rt_const_cstr("diagnostics"))) > 0);
+
+    rt_string_unref(missing);
+    rt_string_unref(rootString);
+    fs::remove_all(root);
 }
 
 static void test_file_index_and_ignore() {
@@ -131,8 +192,8 @@ static void test_file_index_and_ignore() {
     rt_string_unref(invalid_root);
 
     rt_string missing_root = s((root / "missing").string());
-    void *missing_status = rt_workspace_file_index_status(
-        missing_root, rt_const_cstr(".zia"), rt_const_cstr(""), 0);
+    void *missing_status =
+        rt_workspace_file_index_status(missing_root, rt_const_cstr(".zia"), rt_const_cstr(""), 0);
     assert(rt_map_get_bool(missing_status, rt_const_cstr("valid")) == 0);
     assert(rt_seq_len(rt_map_get(missing_status, rt_const_cstr("diagnostics"))) > 0);
     rt_string_unref(missing_root);
@@ -203,8 +264,8 @@ static void test_asset_resolver_and_manifest() {
 
     // VDOC-197: an empty asset name must not resolve to the project directory
     // itself — it is rejected as not found with an explicit diagnostic.
-    void *empty_asset = rt_asset_resolver_resolve(
-        scene, project, rt_const_cstr("assets"), rt_const_cstr(""));
+    void *empty_asset =
+        rt_asset_resolver_resolve(scene, project, rt_const_cstr("assets"), rt_const_cstr(""));
     assert(rt_map_get_bool(empty_asset, rt_const_cstr("found")) == 0);
     assert(rt_map_get_bool(empty_asset, rt_const_cstr("exists")) == 0);
     assert(get_str(empty_asset, "diagnostic").find("empty asset name") != std::string::npos);
@@ -213,9 +274,10 @@ static void test_asset_resolver_and_manifest() {
     // the process CWD, so scene-relative resolution is CWD-independent. Passing
     // the project-relative scene path resolves the scene-local asset the same
     // way the absolute scene path did above.
-    void *scene_relative_project = rt_asset_resolver_resolve(
-        rt_const_cstr("scenes/level.json"), project, rt_const_cstr("assets"),
-        rt_const_cstr("local.png"));
+    void *scene_relative_project = rt_asset_resolver_resolve(rt_const_cstr("scenes/level.json"),
+                                                             project,
+                                                             rt_const_cstr("assets"),
+                                                             rt_const_cstr("local.png"));
     assert(rt_map_get_bool(scene_relative_project, rt_const_cstr("found")) == 1);
     assert(get_str(scene_relative_project, "source") == "scene");
 
@@ -312,6 +374,12 @@ static void add_edit(void *seq,
     rt_string_unref(text_s);
 }
 
+static void add_workspace_root(void *seq, const fs::path &root) {
+    rt_string root_s = s(root.string());
+    rt_seq_push(seq, root_s);
+    rt_string_unref(root_s);
+}
+
 static void test_workspace_edits() {
     fs::path root = temp_root();
     fs::path a = root / "a.zia";
@@ -367,8 +435,40 @@ static void test_workspace_edits() {
     assert(rt_map_get_bool(escaping_rejected, rt_const_cstr("success")) == 0);
     assert(read_file(outside) == "outside\n");
 
+    // Multi-root validation keeps one transactional batch even when workspace
+    // folders are unrelated. Every target must still belong to an explicit
+    // root, and one escaping target prevents all allowed writes as well.
+    fs::path second_root = temp_root();
+    fs::path second_file = second_root / "second.zia";
+    write_file(a, "left\n");
+    write_file(second_file, "right\n");
+    void *roots = rt_seq_new_owned();
+    add_workspace_root(roots, root);
+    add_workspace_root(roots, second_root);
+    void *multi = rt_seq_new_owned();
+    add_edit(multi, a, 1, 1, 1, 5, "LEFT");
+    add_edit(multi, second_file, 1, 1, 1, 6, "RIGHT");
+    void *multi_valid = rt_workspace_edit_validate_in_roots(multi, roots);
+    assert(rt_map_get_bool(multi_valid, rt_const_cstr("success")) == 1);
+    void *multi_applied = rt_workspace_edit_apply_in_roots(multi, roots);
+    assert(rt_map_get_bool(multi_applied, rt_const_cstr("success")) == 1);
+    assert(rt_map_get_int(multi_applied, rt_const_cstr("appliedFiles")) == 2);
+    assert(read_file(a) == "LEFT\n");
+    assert(read_file(second_file) == "RIGHT\n");
+
+    write_file(a, "allowed\n");
+    void *multi_escape = rt_seq_new_owned();
+    add_edit(multi_escape, a, 1, 1, 1, 8, "MUTATED");
+    add_edit(multi_escape, outside, 1, 1, 1, 8, "ESCAPE");
+    void *multi_escape_rejected = rt_workspace_edit_apply_in_roots(multi_escape, roots);
+    assert(rt_map_get_bool(multi_escape_rejected, rt_const_cstr("success")) == 0);
+    assert(rt_map_get_int(multi_escape_rejected, rt_const_cstr("appliedFiles")) == 0);
+    assert(read_file(a) == "allowed\n");
+    assert(read_file(outside) == "outside\n");
+
     rt_string_unref(root_s);
     fs::remove(outside);
+    fs::remove_all(second_root);
     fs::remove_all(root);
 }
 
@@ -382,10 +482,10 @@ static void test_gitignore_same_second_rewrite() {
     rt_string root_s = s(root.string());
 
     // Prime the cache: *.tmp ignored, *.log not.
-    assert(rt_workspace_file_index_should_ignore(root_s, rt_const_cstr("a.tmp"),
-                                                 rt_const_cstr("")) == 1);
-    assert(rt_workspace_file_index_should_ignore(root_s, rt_const_cstr("a.log"),
-                                                 rt_const_cstr("")) == 0);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("a.tmp"), rt_const_cstr("")) == 1);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("a.log"), rt_const_cstr("")) == 0);
 
     // Rewrite with different patterns, then force the ORIGINAL mtime back so the
     // whole-second timestamp is identical to the primed version.
@@ -396,15 +496,16 @@ static void test_gitignore_same_second_rewrite() {
 
     // Despite the unchanged mtime, the content-derived cache identity changed,
     // so the new patterns are honored: *.log now ignored, *.tmp no longer.
-    assert(rt_workspace_file_index_should_ignore(root_s, rt_const_cstr("a.log"),
-                                                 rt_const_cstr("")) == 1);
-    assert(rt_workspace_file_index_should_ignore(root_s, rt_const_cstr("a.tmp"),
-                                                 rt_const_cstr("")) == 0);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("a.log"), rt_const_cstr("")) == 1);
+    assert(rt_workspace_file_index_should_ignore(
+               root_s, rt_const_cstr("a.tmp"), rt_const_cstr("")) == 0);
     rt_string_unref(root_s);
     fs::remove_all(root);
 }
 
 int main() {
+    test_directory_page();
     test_file_index_and_ignore();
     test_asset_resolver_and_manifest();
     test_workspace_watcher_batch();

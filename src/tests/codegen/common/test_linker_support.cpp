@@ -4,6 +4,17 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
+//
+// File: tests/codegen/common/test_linker_support.cpp
+// Purpose: Verify linker archive discovery, dependency closure, and frontend
+//          bridge selection across build-tree and installed layouts.
+// Key invariants:
+//   - Runtime component closure includes every archive dependency.
+//   - Language-service symbols select their strong frontend bridge archives.
+// Ownership/Lifetime: Tests own all temporary directories and environment edits.
+// Links: codegen/common/LinkerSupport.hpp
+//
+//===----------------------------------------------------------------------===//
 
 #include "codegen/common/LinkerSupport.hpp"
 #include "tests/TestHarness.hpp"
@@ -208,6 +219,20 @@ TEST(LinkerSupport, ArchiveClosureFollowsInternalCanvas3DGameUiAdapter) {
     EXPECT_TRUE(containsComponent(ctx, zanna::codegen::RtComponent::Base));
     EXPECT_TRUE(containsComponent(ctx, zanna::codegen::RtComponent::Graphics));
     EXPECT_TRUE(containsComponent(ctx, zanna::codegen::RtComponent::Game));
+}
+
+TEST(LinkerSupport, BasicLanguageServiceSelectsStrongFrontendBridge) {
+    LinkContext ctx;
+    std::ostringstream out;
+    std::ostringstream err;
+    ASSERT_EQ(
+        0, prepareLinkContextFromSymbols({"rt_basic_completion_symbols_for_file"}, ctx, out, err));
+    ASSERT_TRUE(err.str().empty());
+
+    EXPECT_TRUE(ctx.needsBasicFrontend);
+    EXPECT_FALSE(ctx.needsZiaFrontend);
+    EXPECT_TRUE(fileExists(supportLibraryPath(ctx.buildDir, "fe_basic")));
+    EXPECT_FALSE(basicFrontendClosureLibs().empty());
 }
 
 int main(int argc, char **argv) {

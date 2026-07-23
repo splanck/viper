@@ -1,3 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/build/debug_session.zia
+// Purpose: Own the asynchronous VM debug-adapter process and paused-state data.
+// Key invariants:
+//   - Adapter I/O and variable expansion never block the Studio frame loop.
+//   - Variable references and child caches are invalidated whenever execution resumes.
+// Ownership/Lifetime:
+//   - DebugSession owns the child process handle and all parsed adapter snapshots.
+//   - VarTreeState owns copied child records; adapter event maps remain transient.
+// Links: zannastudio/src/commands/debug_commands.zia,
+//        zannastudio/src/build/var_model.zia
+//
+//===----------------------------------------------------------------------===//
+
 module debug_session;
 
 bind "bounded_output";
@@ -30,6 +50,7 @@ bind Time = Zanna.Time;
 final SENTINEL = "@@VDBG@@ ";
 final MAX_DEBUG_OUTPUT_CHARS = 250000;
 final TERMINATE_GRACE_MS = 750;
+final VARIABLE_REQUEST_TIMEOUT_MS = 2000;
 
 class DebugSession {
     expose Process.ProcessHandle processHandle;
@@ -56,6 +77,10 @@ class DebugSession {
     // are scoped to the current stop; the adapter's refs die on resume.
     expose Any lastVarChildren;
     expose Integer lastVarRef;
+    expose String pendingVarPath;
+    expose Integer pendingVarRef;
+    expose String failedVarPath;
+    expose Time.Countdown variableRequestCountdown;
 
     // Persistent expand/collapse state + per-stop child cache for the Variables
     // panel tree (plan 13). Keyed by stable name-paths so expansion survives steps.
@@ -105,6 +130,10 @@ class DebugSession {
         stopLocals = null;
         lastVarChildren = null;
         lastVarRef = 0;
+        pendingVarPath = "";
+        pendingVarRef = 0;
+        failedVarPath = "";
+        variableRequestCountdown = Time.Countdown.New(VARIABLE_REQUEST_TIMEOUT_MS);
         lastEvalExpr = "";
         lastEvalValue = "";
         lastEvalType = "";
@@ -313,6 +342,50 @@ class DebugSession {
         return true;
     }
 
+    /// @brief Start one non-blocking Variables-panel child request.
+    /// @details Requests are serialized because adapter replies identify only a
+    ///          varRef, while the UI cache is keyed by a stable name path. A
+    ///          later Poll copies the matching reply into VarTreeState.
+    /// @param path Stable Variables-panel name path for the composite row.
+    /// @param varRef Adapter reference valid at the current stop.
+    /// @return True when sent or already pending for the same row.
+    expose func RequestVariableChildren(path: String,
+                                        varRef: Integer) -> Boolean {
+        if path == "" or varRef <= 0 { return false; }
+        if pendingVarPath != "" {
+            return pendingVarPath == path and pendingVarRef == varRef;
+        }
+        lastVarChildren = null;
+        lastVarRef = 0;
+        if RequestVariables(varRef, 0, 100) == false { return false; }
+        pendingVarPath = path;
+        pendingVarRef = varRef;
+        if failedVarPath == path { failedVarPath = ""; }
+        variableRequestCountdown.Start();
+        dirty = true;
+        return true;
+    }
+
+    /// @brief True while any Variables-panel child request awaits a reply.
+    expose func VariableChildrenRequestActive() -> Boolean {
+        return pendingVarPath != "";
+    }
+
+    /// @brief True when @p path owns the active child request.
+    expose func VariableChildrenRequestPending(path: String) -> Boolean {
+        return path != "" and pendingVarPath == path;
+    }
+
+    /// @brief True when the latest request for @p path timed out.
+    expose func VariableChildrenRequestFailed(path: String) -> Boolean {
+        return path != "" and failedVarPath == path;
+    }
+
+    /// @brief Allow a collapsed/expanded failed row to retry once.
+    expose func ClearVariableChildrenFailure(path: String) {
+        if path != "" and failedVarPath == path { failedVarPath = ""; }
+    }
+
     /// @brief Add a persistent watch expression for this debug session.
     /// @details Duplicate and blank expressions are ignored. When execution is
     ///          currently stopped, adding the watch immediately starts a refresh
@@ -449,6 +522,10 @@ class DebugSession {
         stopLocals = null;
         lastVarChildren = null;
         lastVarRef = 0;
+        pendingVarPath = "";
+        pendingVarRef = 0;
+        failedVarPath = "";
+        variableRequestCountdown.Reset();
         // Child data is bound to the (now dead) stop's varRefs; drop it but keep
         // the expanded set so the same nodes re-open at the next stop.
         if varTree != null { varTree.InvalidateRefs(); }
@@ -556,6 +633,13 @@ class DebugSession {
         dirty = false;
 
         drainProcessOutput();
+        if pendingVarPath != "" and variableRequestCountdown.get_IsExpired() {
+            failedVarPath = pendingVarPath;
+            pendingVarPath = "";
+            pendingVarRef = 0;
+            variableRequestCountdown.Reset();
+            dirty = true;
+        }
         if terminateRequested and terminated == false and processHandle.IsRunning()
            and terminateCountdown.get_IsExpired() {
             processHandle.Kill();
@@ -658,6 +742,30 @@ class DebugSession {
                                      MAX_DEBUG_OUTPUT_CHARS);
     }
 
+    /// @brief Copy a matching asynchronous variables reply into the stable path cache.
+    hide func CachePendingVariableChildren() {
+        if pendingVarPath == "" or pendingVarRef <= 0
+           or lastVarRef != pendingVarRef or lastVarChildren == null { return; }
+        var children = new var_model.VarChildList();
+        var i = 0;
+        while i < Seq.get_Count(lastVarChildren) {
+            var child = Seq.Get(lastVarChildren, i);
+            var record = new var_model.VarChildRec();
+            record.name = Map.GetStr(child, "name");
+            record.value = Map.GetStr(child, "value");
+            record.typeName = Map.GetStr(child, "type");
+            record.varRef = Map.GetInt(child, "varRef");
+            record.childCount = Map.GetInt(child, "childCount");
+            children.items.add(record);
+            i = i + 1;
+        }
+        if varTree != null { varTree.PutCache(pendingVarPath, children); }
+        if failedVarPath == pendingVarPath { failedVarPath = ""; }
+        pendingVarPath = "";
+        pendingVarRef = 0;
+        variableRequestCountdown.Reset();
+    }
+
     hide func handleEvent(jsonText: String) {
         if Json.IsValid(jsonText) == false { return; }
         var ev = Json.Parse(jsonText);
@@ -719,10 +827,11 @@ class DebugSession {
             }
             dirty = true;
         } else if evType == "variables" {
-            // Lazy expansion result for a composite local/child (plan 25). The
-            // Variables panel (plan 13) merges these under the requested varRef.
+            // Lazy expansion result for a composite local/child. Copy matching
+            // UI requests into the stable name-path cache before publishing.
             lastVarRef = Zanna.Collections.Map.GetInt(ev, "varRef");
             lastVarChildren = Map.Get(ev, "vars");
+            CachePendingVariableChildren();
             dirty = true;
         } else if evType == "log" {
             // Logpoint: surfaced in the debug console; execution never paused.
@@ -858,13 +967,14 @@ class DebugSession {
         return Zanna.Collections.Map.GetStr(Seq.Get(stopLocals, i), "type");
     }
 
-    /// @brief Synchronously fetch one level of children of @p varRef, blocking the
-    ///        caller until the reply arrives or a short budget elapses.
-    /// @details Only valid while stopped; the VM is paused so the adapter answers
-    ///          within milliseconds. On success the children are readable through
-    ///          VarChildCount / VarChild*(i) until the next fetch. Returns false if
-    ///          not stopped, the ref is invalid, or the reply did not arrive.
+    /// @brief Compatibility helper that synchronously fetches one child level.
+    /// @details Headless probes may use this helper; Studio UI code must use
+    ///          RequestVariableChildren so adapter latency never blocks a frame.
+    ///          On success children remain readable through VarChild* accessors.
     expose func FetchChildren(varRef: Integer, start: Integer, count: Integer) -> Boolean {
+        if pendingVarPath != "" { return false; }
+        lastVarChildren = null;
+        lastVarRef = 0;
         if RequestVariables(varRef, start, count) == false { return false; }
         var waited = 0;
         while waited < 2000 and lastVarRef != varRef {

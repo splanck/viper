@@ -8,8 +8,11 @@
 // File: zannastudio/src/ui/welcome_view.zia
 // Purpose: Start / welcome surface shown in place of the editor when no
 //          documents are open. Offers New File / Open Folder actions, a recent
-//          files list, and version info — replacing the old fake "welcome
+//          workspace/file history, and version info — replacing the old fake "welcome
 //          document" that used to occupy a real editable tab.
+// Key invariants:
+//   - The normal workbench minimum keeps recent work reachable in a compact card.
+//   - Only genuinely short hosts collapse to the hero and primary actions.
 // Ownership/Lifetime:
 //   - Content is built into the WorkbenchShell-owned welcomeHost VBox.
 // Links: zannastudio/src/ui/workbench_shell.zia, zannastudio/src/main.zia
@@ -19,25 +22,69 @@
 module welcome_view;
 
 bind "../app/build_info";
+bind "../commands/command_catalog";
 bind "../core/session";
 bind "../services/theme_colors";
 
 bind Zanna.GUI as GUI;
 
+final WELCOME_FULL_LAYOUT_HEIGHT = 500.0;
+final WELCOME_COMPACT_RECENTS_HEIGHT = 380.0;
+final WELCOME_RECENT_FULL_HEIGHT = 176.0;
+final WELCOME_RECENT_COMPACT_HEIGHT = 112.0;
+final WELCOME_EMPTY_FULL_HEIGHT = 96.0;
+final WELCOME_EMPTY_COMPACT_HEIGHT = 72.0;
+
 /// @brief Controller for the welcome/start surface.
 class WelcomeView {
     expose GUI.VBox host;
+    expose GUI.VBox content;
+    expose GUI.Label titleLabel;
+    expose GUI.Label buildLabel;
+    expose GUI.HBox actionRow;
     expose GUI.Button newFileButton;
     expose GUI.Button openFolderButton;
+    expose GUI.Label recentHeader;
     expose GUI.ListBox recentList;
+    expose GUI.Label emptyRecentLabel;
+    expose GUI.Label hintLabel;
     hide GUI.HBox editorRow;
+    hide GUI.Font headingFont;
+    hide Integer headingStyleRevision;
+    hide Number contentWidth;
+    hide Integer recentCount;
+    hide Boolean compactLayout;
+    hide Boolean compactRecentsVisible;
+    hide String completeBuildSummary;
+    hide String compactBuildSummary;
+    expose Boolean startupMode;
+    expose String startupProgressText;
+    expose String commandPaletteShortcut;
 
     expose func init() {
         host = null;
+        content = null;
+        titleLabel = null;
+        buildLabel = null;
+        actionRow = null;
         newFileButton = null;
         openFolderButton = null;
+        recentHeader = null;
         recentList = null;
+        emptyRecentLabel = null;
+        hintLabel = null;
         editorRow = null;
+        headingFont = null;
+        headingStyleRevision = 0;
+        contentWidth = 720.0;
+        recentCount = 0;
+        compactLayout = false;
+        compactRecentsVisible = false;
+        completeBuildSummary = "";
+        compactBuildSummary = "";
+        startupMode = false;
+        startupProgressText = "";
+        commandPaletteShortcut = command_catalog.PlatformShortcut("Ctrl+Shift+P");
     }
 
     /// @brief Build the welcome content into the shell-owned host container.
@@ -47,68 +94,301 @@ class WelcomeView {
         host = hostArg;
         editorRow = editorRowArg;
 
-        host.SetSpacing(8.0);
+        // Keep the start content compact, centered, and bounded instead of
+        // stretching every label/list edge-to-edge across the editor pane.
+        host.SetSpacing(0.0);
+        host.SetPaddingEdges(36.0, 28.0, 36.0, 28.0);
+        host.SetAlign(GUI.Align.Center);
+        host.SetJustify(GUI.Justify.Center);
+
+        content = GUI.VBox.New();
+        content.SetPreferredSize(720.0, 0.0);
+        content.SetMaxSize(760.0, 0.0);
+        content.SetSpacing(8.0);
+        content.SetName("welcome-content");
+        content.SetAccessibleName("Zanna Studio welcome");
+        host.AddChild(content);
 
         // Brand hero: the Zanna mark before the product name, tagline in the
-        // accent green, and the build line in muted steel so the hierarchy
-        // reads at a glance.
-        var title = GUI.Label.New(host, "Zanna Studio");
-        title.SetColor(theme_colors.Rgb("fgPrimary"));
-        title.SetIconName("zanna-mark");
-        var tagline = GUI.Label.New(host, "Code. Create. Compile. Conquer.");
-        tagline.SetColor(theme_colors.Rgb("accentPrimary"));
-        var buildLine = GUI.Label.New(host, build_info.BuildSummary());
-        buildLine.SetColor(theme_colors.Rgb("fgTertiary"));
+        // accent green, and one compact build identity. Full diagnostic paths
+        // remain available from the build-line tooltip and About panel.
+        titleLabel = GUI.Label.New(content, "Zanna Studio");
+        titleLabel.SetColor(theme_colors.Rgb("fgPrimary"));
+        titleLabel.SetIconName("zanna-mark");
+        titleLabel.SetMarginEdges(0.0, 0.0, 0.0, 2.0);
 
-        var startRow = GUI.HBox.New();
-        startRow.SetSpacing(8.0);
-        host.AddChild(startRow);
-        newFileButton = GUI.Button.New(startRow, "New File");
+        var fontResult = GUI.Font.LoadSystemUiBold(28.0);
+        if fontResult.IsOk {
+            headingFont = fontResult.Unwrap();
+            titleLabel.SetFont(headingFont, 28.0);
+        }
+
+        var tagline = GUI.Label.New(content, "Code. Create. Compile. Conquer.");
+        tagline.SetColor(theme_colors.Rgb("accentPrimary"));
+        tagline.SetMarginEdges(0.0, 0.0, 0.0, 4.0);
+
+        completeBuildSummary = build_info.BuildSummary();
+        compactBuildSummary = build_info.CompactSummary(completeBuildSummary);
+        buildLabel = GUI.Label.New(content, compactBuildSummary);
+        buildLabel.SetColor(theme_colors.Rgb("fgTertiary"));
+        buildLabel.SetEllipsis(true);
+        buildLabel.SetMaxLines(1);
+        buildLabel.SetTooltip(completeBuildSummary);
+        buildLabel.SetAccessibleDescription("Full build details are available in About Zanna Studio");
+        buildLabel.SetMarginEdges(0.0, 0.0, 0.0, 14.0);
+
+        actionRow = GUI.HBox.New();
+        actionRow.SetSpacing(10.0);
+        actionRow.SetAlign(GUI.Align.Center);
+        actionRow.SetMarginEdges(0.0, 0.0, 0.0, 18.0);
+        actionRow.SetName("welcome-actions");
+        content.AddChild(actionRow);
+        newFileButton = GUI.Button.New(actionRow, "New File");
         newFileButton.SetIconName("new-file");
-        openFolderButton = GUI.Button.New(startRow, "Open Folder...");
+        newFileButton.SetMinSize(138.0, 38.0);
+        openFolderButton = GUI.Button.New(actionRow, "Open Folder...");
         openFolderButton.SetStyle(1);
         openFolderButton.SetIconName("folder-open");
+        openFolderButton.SetMinSize(160.0, 38.0);
 
-        var recentHeader = GUI.Label.New(host, "Recent Files");
+        recentHeader = GUI.Label.New(content, "Recent");
         recentHeader.SetColor(theme_colors.Rgb("fgSecondary"));
-        recentList = GUI.ListBox.New(host);
-        recentList.SetFlex(1.0);
+        recentHeader.SetMarginEdges(0.0, 0.0, 0.0, 2.0);
+        ApplyHeadingTypography();
 
-        var hint = GUI.Label.New(host, "Press Ctrl+Shift+P for all commands");
-        hint.SetColor(theme_colors.Rgb("fgTertiary"));
+        recentList = GUI.ListBox.New(content);
+        recentList.SetPreferredSize(0.0, WELCOME_RECENT_FULL_HEIGHT);
+        recentList.SetName("welcome-recent-work");
+        recentList.SetAccessibleName("Recent workspace folders and files");
+
+        emptyRecentLabel = GUI.Label.New(
+            content,
+            "No recent work yet. Create a file or open a folder to get started.");
+        emptyRecentLabel.SetColor(theme_colors.Rgb("fgTertiary"));
+        emptyRecentLabel.SetWordWrap(true);
+        emptyRecentLabel.SetPreferredSize(0.0, WELCOME_EMPTY_FULL_HEIGHT);
+        emptyRecentLabel.SetPadding(16.0);
+        emptyRecentLabel.SetVisible(false);
+
+        hintLabel = GUI.Label.New(
+            content, "Tip: " + commandPaletteShortcut + " opens every command");
+        hintLabel.SetColor(theme_colors.Rgb("fgTertiary"));
+        hintLabel.SetMarginEdges(0.0, 8.0, 0.0, 0.0);
+        ApplyContentVisibility();
     }
 
-    /// @brief Repopulate the recent-files list from the session (up to 8 entries).
-    /// @param sessionMgr Session manager holding recent-file history.
+    /// @brief Repopulate recent workspace folders and files (up to six rows).
+    /// @details Up to three folders lead the list so reopening a project is a
+    ///          first-class start action; recent files fill the remaining rows.
+    /// @param sessionMgr Session manager holding durable recent history.
     expose func Refresh(sessionMgr: session.SessionManager) {
         if recentList == null or sessionMgr == null { return; }
         recentList.Clear();
-        var n = sessionMgr.RecentFileCount();
+        var projectCount = sessionMgr.RecentProjectCount();
         var i = 0;
-        while i < n and i < 8 {
-            var path = sessionMgr.RecentFileAt(i);
-            if path != "" {
-                var item = recentList.AddItem(path);
-                GUI.ListBox.ItemSetData(item, "file:" + path);
+        var added = 0;
+        while i < projectCount and added < 3 {
+            var projectPath = sessionMgr.RecentProjectAt(i);
+            if projectPath != "" {
+                var projectItem = recentList.AddItem(
+                    GUIRecentProjectDisplayText(projectPath));
+                GUI.ListBox.ItemSetData(projectItem, "folder:" + projectPath);
+                added = added + 1;
             }
             i = i + 1;
         }
+
+        var fileCount = sessionMgr.RecentFileCount();
+        i = 0;
+        while i < fileCount and added < 6 {
+            var path = sessionMgr.RecentFileAt(i);
+            if path != "" {
+                var display = GUIRecentDisplayText(path);
+                var item = recentList.AddItem(display);
+                GUI.ListBox.ItemSetData(item, "file:" + path);
+                added = added + 1;
+            }
+            i = i + 1;
+        }
+        recentCount = added;
+        ApplyContentVisibility();
+    }
+
+    /// @brief Switch the welcome card into a truthful non-interactive startup state.
+    /// @details Session/project restore is synchronous today. Keeping the brand
+    ///          visible with an explicit progress message prevents the first
+    ///          window paint from looking like a broken empty editor while that
+    ///          work completes.
+    /// @param active True while startup restoration is still in progress.
+    expose func SetStartupMode(active: Boolean) {
+        if startupMode == active { return; }
+        startupMode = active;
+        if buildLabel != null {
+            if startupMode {
+                startupProgressText = "Restoring your workspace...";
+                buildLabel.SetText(startupProgressText);
+                buildLabel.SetTooltip("Zanna Studio is loading settings, files, and project state");
+            } else {
+                startupProgressText = "";
+                buildLabel.SetText(compactBuildSummary);
+                buildLabel.SetTooltip(completeBuildSummary);
+            }
+        }
+        ApplyContentVisibility();
+    }
+
+    /// @brief Replace the startup build line with bounded restore progress.
+    /// @param message Concise caller-owned progress text.
+    /// @details Ignored outside startup mode so a late job update cannot replace
+    ///          the normal build identity after the workbench becomes interactive.
+    expose func SetStartupProgress(message: String) {
+        if startupMode == false or buildLabel == null or message == "" { return; }
+        startupProgressText = message;
+        buildLabel.SetText(message);
+        buildLabel.SetTooltip(message);
     }
 
     /// @brief Show/hide the welcome surface, toggling the editor row inversely.
     /// @param shown True to show the welcome view (and hide the editor).
     expose func SetShown(shown: Boolean) {
+        if shown and host != null and content != null {
+            ApplyResponsiveLayout();
+            var desiredWidth = ContentWidthForHost(host.GetWidth());
+            if desiredWidth < contentWidth - 0.5 or desiredWidth > contentWidth + 0.5 {
+                content.SetPreferredSize(desiredWidth, 0.0);
+                contentWidth = desiredWidth;
+            }
+        }
+        // App-wide font/theme/zoom application intentionally updates every
+        // widget. Restore this surface's hierarchy only when that pass changed
+        // the title, keeping ordinary frames allocation- and revision-free.
+        if shown and titleLabel != null and headingFont != null
+            and titleLabel.GetRevision() != headingStyleRevision {
+            ApplyHeadingTypography();
+        }
         if host != null { host.SetVisible(shown); }
-        if editorRow != null { editorRow.SetVisible(shown == false); }
+        if editorRow != null { editorRow.SetVisible(!shown); }
     }
 
-    /// @brief Return the selected recent-file path (with "file:" prefix) if the
-    ///        recent list selection changed this frame, else empty string.
+    /// @brief Switch among full, compact-recent, and hero-only layouts.
+    /// @details The normal Studio minimum has enough height for a shortened,
+    ///          scrollable recent-work card. Only a genuinely short host hides
+    ///          secondary content; that fallback protects unusually small
+    ///          displays without making recents disappear at the supported
+    ///          720-by-520 workbench minimum.
+    hide func ApplyResponsiveLayout() {
+        if host == null { return; }
+        var hostHeight = host.GetHeight();
+        // The first pre-layout frame reports no useful geometry. Preserve the
+        // full default until the shell has arranged the workbench once.
+        if hostHeight < 100.0 { return; }
+        var useCompact = UsesCompactLayout(hostHeight);
+        var showCompactRecents = useCompact and CanShowCompactRecents(hostHeight);
+        if useCompact != compactLayout
+           or showCompactRecents != compactRecentsVisible {
+            compactLayout = useCompact;
+            compactRecentsVisible = showCompactRecents;
+            if compactLayout {
+                host.SetPaddingEdges(36.0, 16.0, 36.0, 16.0);
+            } else {
+                host.SetPaddingEdges(36.0, 28.0, 36.0, 28.0);
+            }
+            if compactRecentsVisible {
+                recentList.SetPreferredSize(0.0, WELCOME_RECENT_COMPACT_HEIGHT);
+                emptyRecentLabel.SetPreferredSize(0.0, WELCOME_EMPTY_COMPACT_HEIGHT);
+            } else {
+                recentList.SetPreferredSize(0.0, WELCOME_RECENT_FULL_HEIGHT);
+                emptyRecentLabel.SetPreferredSize(0.0, WELCOME_EMPTY_FULL_HEIGHT);
+            }
+        }
+        ApplyContentVisibility();
+    }
+
+    /// @brief Apply startup/compact/recent-state visibility as one policy.
+    hide func ApplyContentVisibility() {
+        if actionRow != null { actionRow.SetVisible(startupMode == false); }
+        if recentHeader == null or recentList == null or emptyRecentLabel == null
+            or hintLabel == null {
+            return;
+        }
+        var showSecondary = startupMode == false
+            and (compactLayout == false or compactRecentsVisible);
+        recentHeader.SetVisible(showSecondary);
+        recentList.SetVisible(showSecondary and recentCount > 0);
+        emptyRecentLabel.SetVisible(showSecondary and recentCount == 0);
+        hintLabel.SetVisible(startupMode == false and compactLayout == false);
+    }
+
+    /// @brief Return selected `folder:` or `file:` data for this frame.
     expose func TakeRecentSelection() -> String {
         if recentList == null { return ""; }
-        if recentList.WasSelectionChanged() == false { return ""; }
+        if !recentList.WasSelectionChanged() { return ""; }
         var item = recentList.Selected;
         if item == null { return ""; }
         return GUI.ListBox.ItemGetData(item);
     }
+
+    /// @brief Reapply the welcome-specific display hierarchy after a global
+    ///        chrome font, theme, or UI-zoom refresh.
+    hide func ApplyHeadingTypography() {
+        if headingFont == null or titleLabel == null { return; }
+        titleLabel.SetFont(headingFont, 28.0);
+        if recentHeader != null {
+            recentHeader.SetFont(headingFont, 16.0);
+        }
+        headingStyleRevision = titleLabel.GetRevision();
+    }
+}
+
+/// @brief Choose a centered welcome-card width that remains inside its host.
+/// @details The 72 logical pixels reserve the host's 36-pixel side padding.
+///          The floor fits both primary actions at their minimum sizes; the cap
+///          prevents the recent list from becoming an unreadably wide strip.
+/// @param hostWidth Current logical width of the welcome host.
+/// @return Preferred content width clamped to the supported compact/wide range.
+expose func ContentWidthForHost(hostWidth: Number) -> Number {
+    var width = hostWidth - 72.0;
+    if width > 720.0 { return 720.0; }
+    if width < 318.0 { return 318.0; }
+    return width;
+}
+
+/// @brief Return whether the welcome host is too short for its recent-file card.
+/// @param hostHeight Current logical height of the welcome host.
+/// @return True when the compact hero/actions-only presentation should be used.
+expose func UsesCompactLayout(hostHeight: Number) -> Boolean {
+    return hostHeight < WELCOME_FULL_LAYOUT_HEIGHT;
+}
+
+/// @brief Return whether compact mode still has room for recent work.
+/// @param hostHeight Current logical height of the welcome host.
+/// @return True when a shortened recent card fits without clipping actions.
+expose func CanShowCompactRecents(hostHeight: Number) -> Boolean {
+    return hostHeight >= WELCOME_COMPACT_RECENTS_HEIGHT;
+}
+
+/// @brief Format one recent path for fast visual scanning.
+/// @details The filename leads the row while its parent directory remains as
+///          disambiguating context. The full original path stays in item data.
+/// @param path Absolute or relative recent-file path.
+/// @return Filename-first display text.
+func GUIRecentDisplayText(path: String) -> String {
+    var name = Zanna.IO.Path.Name(path);
+    var directory = Zanna.IO.Path.Directory(path);
+    if name == "" { return path; }
+    if directory == "" { return name; }
+    return name + "    " + directory;
+}
+
+/// @brief Format a recent workspace folder distinctly from a file row.
+/// @details A trailing slash on the leading basename is compact, familiar, and
+///          remains legible without adding another header or shrinking the list.
+/// @param path Absolute or relative workspace folder path.
+/// @return Folder-name-first display text with parent context.
+expose func GUIRecentProjectDisplayText(path: String) -> String {
+    var name = Zanna.IO.Path.Name(path);
+    var directory = Zanna.IO.Path.Directory(path);
+    if name == "" { return path; }
+    if directory == "" { return name + "/"; }
+    return name + "/    " + directory;
 }

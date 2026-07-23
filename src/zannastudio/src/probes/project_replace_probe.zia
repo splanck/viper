@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/project_replace_probe.zia
+// Purpose: Regress safe, generation-scoped, cooperative project replacement.
+// Key invariants:
+//   - Interactive replacement never performs file I/O in its start callback.
+//   - Each pump changes at most the documented bounded file batch.
+//   - Old/future search generations and pathological lines are never changed.
+// Ownership/Lifetime: The probe owns all temporary files and controllers.
+// Links: zannastudio/src/commands/replace_commands.zia,
+//        zannastudio/src/commands/search_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module project_replace_probe;
 
 // ============================================================================
@@ -78,6 +97,12 @@ func main() {
         fail("open buffer should be marked modified");
         return;
     }
+    if doc.hasPendingWorkspaceUndo == false
+       or doc.pendingWorkspaceUndoContent != "open old buffer\n"
+       or doc.pendingWorkspaceUndoLabel != "Replace All" {
+        fail("inactive open buffer should retain one-step workspace undo");
+        return;
+    }
     if Str.Contains(File.ReadAllText(gamma), "open old buffer") == false {
         fail("disk copy of an open doc must not be rewritten");
         return;
@@ -92,6 +117,121 @@ func main() {
         locStore3, docMgr, null, "old", "new", true, true, false);
     if File.ReadAllText(delta) != "scold new\n" {
         fail("whole-word replace wrong: " + File.ReadAllText(delta));
+        return;
+    }
+
+    // Interactive replacement snapshots only the completed search id range,
+    // returns before touching disk, and applies no more than two files/pump.
+    var slicedLocations = new locations.LocationStore();
+    var oldGeneration = Path.Join(root, "old_generation.zia");
+    File.WriteAllText(oldGeneration, "old\n");
+    slicedLocations.Add(oldGeneration, 1, 1, 1, 4,
+                        locations.KIND_SEARCH, "old");
+    var firstCurrentId = slicedLocations.nextId;
+    var slicePaths = new List();
+    var sliceIndex = 0;
+    while sliceIndex < 5 {
+        var slicePath = Path.Join(root, "slice_" + sliceIndex + ".zia");
+        File.WriteAllText(slicePath, "old\n");
+        slicePaths.Push(slicePath);
+        slicedLocations.Add(slicePath, 1, 1, 1, 4,
+                            locations.KIND_SEARCH, "old");
+        sliceIndex = sliceIndex + 1;
+    }
+    var lastCurrentId = slicedLocations.nextId - 1;
+    var futureGeneration = Path.Join(root, "future_generation.zia");
+    File.WriteAllText(futureGeneration, "old\n");
+    slicedLocations.Add(futureGeneration, 1, 1, 1, 4,
+                        locations.KIND_SEARCH, "old");
+
+    var controller = new replace_commands.ProjectReplaceController();
+    if controller.StartFromResults(slicedLocations, firstCurrentId,
+                                   lastCurrentId, "old", "new",
+                                   true, false, false) == false {
+        fail("cooperative replace did not start: " + controller.lastSummary);
+        return;
+    }
+    if File.ReadAllText(slicePaths.get(0) as String) != "old\n" {
+        fail("replace start callback performed disk I/O");
+        return;
+    }
+    controller.Pump(docMgr, null);
+    if controller.active == false or controller.lastPumpFileCount <= 0
+       or controller.lastPumpFileCount > 2 or controller.fileIndex > 2 {
+        fail("cooperative replace exceeded one-frame file budget");
+        return;
+    }
+    while controller.active {
+        controller.Pump(docMgr, null);
+        if controller.lastPumpFileCount > 2 {
+            fail("cooperative replace exceeded later file budget");
+            return;
+        }
+    }
+    sliceIndex = 0;
+    while sliceIndex < slicePaths.count() {
+        if File.ReadAllText(slicePaths.get(sliceIndex) as String) != "new\n" {
+            fail("cooperative replace missed a current result file");
+            return;
+        }
+        sliceIndex = sliceIndex + 1;
+    }
+    if File.ReadAllText(oldGeneration) != "old\n"
+       or File.ReadAllText(futureGeneration) != "old\n" {
+        fail("replace crossed its completed search id range");
+        return;
+    }
+    var slicedSummary = controller.TakeSummary();
+    if Str.Contains(slicedSummary, "5 match(es)") == false {
+        fail("cooperative replace summary wrong: " + slicedSummary);
+        return;
+    }
+
+    // Stop is cooperative too: completed files remain explicit, while later
+    // plans are never touched after cancellation.
+    var cancelLocations = new locations.LocationStore();
+    var cancelPaths = new List();
+    sliceIndex = 0;
+    while sliceIndex < 5 {
+        var cancelPath = Path.Join(root, "cancel_" + sliceIndex + ".zia");
+        File.WriteAllText(cancelPath, "old\n");
+        cancelPaths.Push(cancelPath);
+        cancelLocations.Add(cancelPath, 1, 1, 1, 4,
+                            locations.KIND_SEARCH, "old");
+        sliceIndex = sliceIndex + 1;
+    }
+    var cancelController = new replace_commands.ProjectReplaceController();
+    cancelController.StartFromResults(cancelLocations, 1,
+                                      cancelLocations.nextId - 1,
+                                      "old", "new", true, false, false);
+    cancelController.Pump(docMgr, null);
+    var cancelSummary = cancelController.Cancel();
+    cancelController.Pump(docMgr, null);
+    if cancelController.active or Str.Contains(cancelSummary, "stopped") == false
+       or File.ReadAllText(cancelPaths.get(4) as String) != "old\n" {
+        fail("cooperative replacement cancellation did not stop later files");
+        return;
+    }
+
+    // More than the per-line replacement ceiling cancels that whole file,
+    // instead of silently writing a partially transformed line.
+    var denseBuilder = new Zanna.Text.StringBuilder();
+    sliceIndex = 0;
+    while sliceIndex < 1001 {
+        denseBuilder.Append("old ");
+        sliceIndex = sliceIndex + 1;
+    }
+    var densePath = Path.Join(root, "dense.zia");
+    var denseText = denseBuilder.ToString() + "\n";
+    File.WriteAllText(densePath, denseText);
+    var denseLocations = new locations.LocationStore();
+    denseLocations.Add(densePath, 1, 1, 1, 4,
+                       locations.KIND_SEARCH, "old");
+    var denseSummary = replace_commands.ReplaceAllFromResults(
+        denseLocations, docMgr, null, "old", "new", true, false, false);
+    if File.ReadAllText(densePath) != denseText
+       or Str.Contains(denseSummary, "1 unavailable") == false {
+        fail("dense line should be skipped as one atomic file");
         return;
     }
 

@@ -1,11 +1,30 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/services/workspace_edits.zia
+// Purpose: Validate and atomically apply multi-file semantic workspace edits.
+// Key invariants:
+//   - Every edit is validated before any open or closed file is mutated.
+//   - Unreadable or concurrently changed files abort the operation safely.
+//   - Closed-file targets must remain inside explicitly opened workspace roots.
+// Ownership/Lifetime: Stateless helpers borrow document models and runtime edits.
+// Links: zannastudio/src/editor/project_index.zia,
+//        zannastudio/src/commands/edit_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module workspace_edits;
 
 bind "../core/document_manager";
 bind "../core/document";
+bind "safe_io";
 
 bind WorkspaceEdit = Zanna.Workspace.Edit;
 bind File = Zanna.IO.File;
-bind Path = Zanna.IO.Path;
 bind Seq = Zanna.Collections.Seq;
 bind Map = Zanna.Collections.Map;
 bind Str = Zanna.String;
@@ -59,7 +78,8 @@ func PreviewRenameEdits(edits: Any, maxRows: Integer) -> String {
 }
 
 func ApplyRenameEdits(edits: Any,
-                      docMgr: document_manager.DocumentManager) -> ApplyResult {
+                      docMgr: document_manager.DocumentManager,
+                      allowedRoots: List) -> ApplyResult {
     var result = new ApplyResult();
     if edits == null {
         result.message = "No edits returned";
@@ -88,7 +108,19 @@ func ApplyRenameEdits(edits: Any,
             }
         } else {
             if File.Exists(path) {
-                Map.SetInt(edit, "expectedMtime", File.Modified(path));
+                var modified = safe_io.Modified(path);
+                if modified < 0 {
+                    result.message = "Workspace edit file is unavailable: " + path;
+                    return result;
+                }
+                var scannedMtime = Map.GetIntOr(edit, "expectedMtime", -1);
+                if scannedMtime >= 0 and scannedMtime != modified {
+                    result.message = "Workspace edit file changed during the operation: " + path;
+                    return result;
+                }
+                if scannedMtime < 0 {
+                    Map.SetInt(edit, "expectedMtime", modified);
+                }
             }
             Seq.Push(closedEdits, edit);
         }
@@ -109,14 +141,18 @@ func ApplyRenameEdits(edits: Any,
     }
 
     if Seq.get_Count(closedEdits) > 0 {
-        var editRoot = WorkspaceEditRoot(closedEdits);
-        var diskValidation = WorkspaceEdit.ValidateInRoot(closedEdits, editRoot);
+        var editRoots = CopyWorkspaceRoots(allowedRoots);
+        if Seq.get_Count(editRoots) == 0 {
+            result.message = "Rename canceled because no workspace root is available";
+            return result;
+        }
+        var diskValidation = WorkspaceEdit.ValidateInRoots(closedEdits, editRoots);
         if Map.GetBool(diskValidation, "success") == false {
             result.message = FormatWorkspaceEditDiagnostics(
                 Map.Get(diskValidation, "diagnostics"), "Workspace edit validation failed");
             return result;
         }
-        var diskResult = WorkspaceEdit.ApplyInRoot(closedEdits, editRoot);
+        var diskResult = WorkspaceEdit.ApplyInRoots(closedEdits, editRoots);
         if Map.GetBool(diskResult, "success") == false {
             result.message = FormatWorkspaceEditDiagnostics(
                 Map.Get(diskResult, "diagnostics"), "Workspace edit failed");
@@ -150,53 +186,23 @@ func ApplyRenameEdits(edits: Any,
     return result;
 }
 
-/// @brief Compute the narrowest existing directory that contains closed edits.
-/// @details The runtime rooted workspace edit API requires a directory root.
-///          Rename edits can span sibling folders, so this walks upward from the
-///          first target's directory until every edit file is contained.
-/// @param edits Sequence of workspace edit maps.
-/// @return Absolute normalized directory path used as rooted validation/apply scope.
-func WorkspaceEditRoot(edits: Any) -> String {
-    var safetyRoot = Path.Normalize(Path.Absolute("."));
-    if edits == null or Seq.get_Count(edits) == 0 {
-        return safetyRoot;
-    }
-    var first = Seq.Get(edits, 0);
-    var root = Path.Directory(Path.Normalize(Path.Absolute(Map.GetStr(first, "file"))));
-    var i = 1;
-    while i < Seq.get_Count(edits) {
-        var edit = Seq.Get(edits, i);
-        var editDir = Path.Directory(Path.Normalize(Path.Absolute(Map.GetStr(edit, "file"))));
-        while root != "" and PathIsInRoot(root, editDir) == false {
-            if root == safetyRoot or PathIsInRoot(safetyRoot, root) == false {
-                return safetyRoot;
-            }
-            var parent = Path.Directory(root);
-            if parent == "" or parent == root { break; }
-            root = parent;
+/// @brief Copy authored workspace roots into the runtime Seq ABI.
+/// @details ProjectIndexer and background BASIC requests store roots in a typed
+///          List. The transactional runtime accepts a plain Seq so it can
+///          validate every canonical target against the complete trust set.
+/// @param allowedRoots Open workspace roots captured for this rename operation.
+/// @return New sequence containing non-empty root strings without duplicates.
+func CopyWorkspaceRoots(allowedRoots: List) -> Any {
+    var roots = Seq.New();
+    var i = 0;
+    while i < allowedRoots.count() {
+        var root = Obj.ToString(allowedRoots.get(i));
+        if root != "" and SeqContainsString(roots, root) == false {
+            Seq.Push(roots, root);
         }
         i = i + 1;
     }
-    if root == "" { return safetyRoot; }
-    if PathIsInRoot(safetyRoot, root) == false {
-        return safetyRoot;
-    }
-    return root;
-}
-
-/// @brief Return whether a path is equal to or nested under a root directory.
-/// @param root Candidate root directory.
-/// @param path Candidate child path.
-/// @return True when @p path is exactly @p root or begins below it.
-func PathIsInRoot(root: String,
-                  path: String) -> Boolean {
-    var nr = Str.ToLower(Path.Normalize(Path.Absolute(root)));
-    var np = Str.ToLower(Path.Normalize(Path.Absolute(path)));
-    if nr == np { return true; }
-    if Str.EndsWith(nr, "/") or Str.EndsWith(nr, "\\") {
-        return Str.StartsWith(np, nr);
-    }
-    return Str.StartsWith(np, nr + "/") or Str.StartsWith(np, nr + "\\");
+    return roots;
 }
 
 /// @brief Format runtime workspace-edit diagnostics into a user-facing message.
@@ -261,10 +267,27 @@ func ValidateRenameEdits(edits: Any,
             if File.Exists(path) == false {
                 return "Workspace edit file not found: " + path;
             }
-            content = File.ReadAllText(path);
+            var expectedMtime = Map.GetIntOr(edit, "expectedMtime", -1);
+            var currentMtime = safe_io.Modified(path);
+            if currentMtime < 0 {
+                return "Workspace edit file is unavailable: " + path;
+            }
+            if expectedMtime >= 0 and expectedMtime != currentMtime {
+                return "Workspace edit file changed during the operation: " + path;
+            }
+            var readResult = safe_io.ReadAllTextBounded(
+                path, document_manager.MAX_TEXT_OPEN_BYTES);
+            if readResult.ok == false {
+                return "Workspace edit file is unavailable: " + path;
+            }
+            content = readResult.text;
         }
         if CanApplyEditToText(content, edit) == false {
             return "Invalid workspace edit range in " + path;
+        }
+        var expectedText = Map.GetStr(edit, "expectedText");
+        if expectedText != "" and TextAtEditRange(content, edit) != expectedText {
+            return "Workspace edit source changed during the operation: " + path;
         }
 
         var j = i + 1;
@@ -278,6 +301,30 @@ func ValidateRenameEdits(edits: Any,
         i = i + 1;
     }
     return "";
+}
+
+/// @brief Return the exact source text covered by a single-line edit range.
+/// @details Scanner-backed BASIC renames attach expectedText to every edit.
+///          Comparing it during validation prevents a delayed background result
+///          from replacing unrelated text after an open or closed file changes.
+/// @param content Current source content.
+/// @param edit Workspace edit map with one-based, end-exclusive coordinates.
+/// @return Covered text, or empty for an unsupported/invalid multi-line range.
+func TextAtEditRange(content: String,
+                     edit: Any) -> String {
+    var startLine = Map.GetInt(edit, "startLine");
+    var endLine = Map.GetInt(edit, "endLine");
+    var startCol = Map.GetInt(edit, "startColumn");
+    var endCol = Map.GetInt(edit, "endColumn");
+    if startLine != endLine or startLine < 1 or startCol < 1
+       or endCol < startCol {
+        return "";
+    }
+    var lines = Str.Split(content, "\n");
+    if startLine > Seq.get_Count(lines) { return ""; }
+    var line = Obj.ToString(Seq.Get(lines, startLine - 1));
+    if endCol > Str.get_Length(line) + 1 { return ""; }
+    return Str.MidLen(line, startCol, endCol - startCol);
 }
 
 func RenameConflictMessage(edit: Any,

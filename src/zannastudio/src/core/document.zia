@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/core/document.zia
+// Purpose: Store one Studio editor document and its synchronized disk baseline.
+// Key invariants:
+//   - Named documents retain metadata and a content hash from one disk version.
+//   - Untitled documents never claim an on-disk baseline.
+// Ownership/Lifetime:
+//   - DocumentManager owns instances for the lifetime of their editor tabs.
+// Links: zannastudio/src/core/document_manager.zia
+//
+//===----------------------------------------------------------------------===//
+
 module document;
 
 bind "../services/file_utils";
@@ -36,10 +54,9 @@ final EXTERNAL_STATE_MISSING = 4;
 //         filePath="", isNew=false  -> impossible (would be a bug)
 //         filePath=X,  isNew=true   -> impossible (would be a bug)
 //         filePath=X,  isNew=false  -> opened from disk
-//   * lastModifiedOnDisk / lastSizeOnDisk FOR EXTERNAL CHANGE DETECTION.
-//     Stored from `Zanna.IO.File.Modified` / `Zanna.IO.File.Size` at load
-//     and save time. The IDE polls and compares both values so a checkout,
-//     fast rewrite, or timestamp-preserving tool can still be detected.
+//   * DISK VERSION BASELINE FOR EXTERNAL CHANGE DETECTION. Timestamp and size
+//     keep polling cheap; a SHA-256 of synchronized text protects save-time
+//     conflict checks when a filesystem timestamp is coarse or preserved.
 //   * REMEMBERED CURSOR. `cursorLine`, `cursorCol`, `scrollLine` let the
 //     editor restore the user's view when switching back to a tab. Saved
 //     when leaving a tab; restored when activating it.
@@ -62,6 +79,7 @@ class Document {
     expose Integer scrollLine;         // Last known top-of-viewport line.
     expose Integer lastModifiedOnDisk; // Timestamp from Zanna.IO.File.Modified.
     expose Integer lastSizeOnDisk;     // Size from Zanna.IO.File.Size.
+    expose String lastContentHashOnDisk; // SHA-256 of the synchronized disk text.
     expose Boolean externalChangeNotified; // True after surfacing an on-disk change.
     expose Integer externalState;      // EXTERNAL_STATE_* disk state.
     expose String externalMessage;     // Last user-facing disk-state detail.
@@ -85,6 +103,7 @@ class Document {
         scrollLine = 1;
         lastModifiedOnDisk = 0;
         lastSizeOnDisk = 0;
+        lastContentHashOnDisk = "";
         externalChangeNotified = false;
         externalState = EXTERNAL_STATE_CLEAN;
         externalMessage = "";

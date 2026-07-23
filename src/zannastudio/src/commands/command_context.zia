@@ -1,3 +1,19 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/command_context.zia
+// Purpose: Bundle the long-lived controllers used by Studio command routing.
+// Key invariants: Missing optional services never make unrelated commands trap.
+// Ownership/Lifetime: Borrows controllers owned by the main application entry point.
+// Links: zannastudio/src/commands/main_command_dispatcher.zia,
+//        zannastudio/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
 module command_context;
 
 bind "../app/command_palette_controller";
@@ -7,7 +23,10 @@ bind "../build/breakpoints";
 bind "../build/build_system";
 bind "../build/debug_session";
 bind "../commands/command_registry";
+bind "../commands/basic_workspace_commands";
+bind "../commands/diagnostic_edit_commands";
 bind "../commands/search_commands";
+bind "../commands/zia_workspace_commands";
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../core/session";
@@ -19,6 +38,7 @@ bind "../editor/project_index";
 bind "../editor/signature";
 bind "../editor/symbols";
 bind "../services/locations";
+bind "../scm/scm_view";
 bind "../terminal/terminal_controller";
 bind "../ui/diff_view";
 bind "../ui/app_shell";
@@ -58,6 +78,7 @@ class CommandContext {
     expose build_system.BuildSystem buildSys;
     expose debug_session.DebugSession dbgSession;
     expose terminal_controller.TerminalController terminalCtrl;
+    expose scm_view.ScmView scmView;
     expose diff_view.DiffView diffOverlay;
     expose file_watch_controller.FileWatchController fileWatchCtrl;
     expose workspace_watcher.WorkspaceWatcherState workspaceWatcherState;
@@ -80,6 +101,9 @@ class CommandContext {
     expose symbols.SymbolOutline symbolOutline;
     expose signature.SignatureController sigCtrl;
     expose search_commands.SearchController searcher;
+    expose basic_workspace_commands.BasicWorkspaceCommandController basicWorkspaceCommands;
+    expose diagnostic_edit_commands.DiagnosticActionController diagnosticActions;
+    expose zia_workspace_commands.ZiaWorkspaceCommandController ziaWorkspaceCommands;
 
     /// @brief Initialize the context with empty references.
     /// @details main.zia assigns each field after constructing the matching
@@ -94,6 +118,7 @@ class CommandContext {
         buildSys = null;
         dbgSession = null;
         terminalCtrl = null;
+        scmView = null;
         fileWatchCtrl = null;
         workspaceWatcherState = null;
         indexer = null;
@@ -111,6 +136,9 @@ class CommandContext {
         symbolOutline = null;
         sigCtrl = null;
         searcher = null;
+        basicWorkspaceCommands = null;
+        diagnosticActions = null;
+        ziaWorkspaceCommands = null;
     }
 }
 

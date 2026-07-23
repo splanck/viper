@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/app/context_menus.zia
+// Purpose: Resolve context-menu targets and enforce command enablement policy.
+// Key invariants:
+//   - Menu commands operate on the right-click target, not stale selection.
+//   - Destructive Explorer actions remain disabled for workspace roots.
+//   - Opening a context menu cannot leave a focus-taking overlay active behind it.
+// Ownership/Lifetime: Stateless helpers; AppShell owns all menu widgets.
+// Links: zannastudio/src/core/project_manager.zia,
+//        zannastudio/src/app/context_menu_dispatcher.zia
+//
+//===----------------------------------------------------------------------===//
+
 module context_menus;
 
 bind "../ui/app_shell";
@@ -34,6 +53,7 @@ bind Str = Zanna.String;
 /// @details The runtime tracks one active menu overlay. Dismissing first keeps a
 ///          newly opened context menu from competing with an existing one.
 expose func DismissContextMenus(shell: app_shell.AppShell) {
+    shell.DismissTransientSurface();
     if shell.commandPalette.IsVisible() {
         shell.commandPalette.Hide();
     }
@@ -182,23 +202,27 @@ expose func ConfigureTreeContextMenuForPath(shell: app_shell.AppShell,
                                             contextDir: String) {
     var hasPath = path != "";
     var isFile = hasPath and IO.File.Exists(path) != false;
-    var hasDir = contextDir != "" and Dir.Exists(contextDir) != false;
     var hasProject = projMgr != null and projMgr.project != null and projMgr.project.isOpen;
+    var hasDir = hasProject and projMgr.CanCreateInDirectory(contextDir);
+    var isWorkspacePath = hasProject and projMgr.IsWorkspacePath(path);
+    var isWorkspaceRoot = hasProject and projMgr.IsWorkspaceRootPath(path);
+    var canMutate = hasProject and projMgr.CanMutatePath(path);
 
     SetContextMenuItemEnabled(shell.menuChrome.ctxOpen, isFile);
     SetContextMenuItemEnabled(shell.menuChrome.ctxOpenText, isFile);
     SetContextMenuItemEnabled(shell.menuChrome.ctxReveal, hasPath);
     SetContextMenuItemEnabled(shell.menuChrome.ctxCopyPath, hasPath);
-    SetContextMenuItemEnabled(shell.menuChrome.ctxCopyRelativePath, hasPath and hasProject);
-    SetContextMenuItemEnabled(shell.menuChrome.ctxDuplicate, isFile);
-    SetContextMenuItemEnabled(shell.menuChrome.ctxRename, hasPath);
-    SetContextMenuItemEnabled(shell.menuChrome.ctxDelete, hasPath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxCopyRelativePath, isWorkspacePath);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxDuplicate, isFile and canMutate);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxRename, canMutate);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxDelete, canMutate);
     SetContextMenuItemEnabled(shell.menuChrome.ctxNewFile, hasDir);
     SetContextMenuItemEnabled(shell.menuChrome.ctxNewFolder, hasDir);
     SetContextMenuItemEnabled(shell.menuChrome.ctxSearchFolder, hasDir);
     SetContextMenuItemEnabled(shell.menuChrome.ctxRunFile, isFile);
     SetContextMenuItemEnabled(shell.menuChrome.ctxSetEntry, isFile and hasProject);
     SetContextMenuItemEnabled(shell.menuChrome.ctxRefresh, hasProject);
+    SetContextMenuItemEnabled(shell.menuChrome.ctxRemoveFolder, isWorkspaceRoot);
 }
 
 /// @brief Set a context-menu item enabled flag when the item exists.

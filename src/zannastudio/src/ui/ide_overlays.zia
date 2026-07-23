@@ -1,3 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/ide_overlays.zia
+// Purpose: Build and coordinate Studio Settings and About overlays.
+// Key invariants:
+//   - Settings controls remain scrollable and bounded at supported window sizes.
+//   - Compact Preferences uses the full workbench lane instead of leaving an
+//     unusable editor sliver beside fixed-width controls.
+//   - About content scrolls independently while its title and Close action stay
+//     inside the floating panel at every supported window size.
+//   - Keybinding guidance reflects the current desktop platform.
+//   - Settings and About participate in the shell's exclusive focus surface.
+// Ownership/Lifetime: AppShell owns widgets; one IdeOverlays controls their state.
+// Links: zannastudio/src/ui/app_shell.zia,
+//        zannastudio/src/commands/command_registry.zia
+//
+//===----------------------------------------------------------------------===//
+
 module ide_overlays;
 
 bind "../ui/app_shell";
@@ -5,6 +28,7 @@ bind "../core/settings";
 bind "../app/build_info";
 bind "../services/theme_colors";
 bind "../commands/command_registry";
+bind "../commands/command_catalog";
 
 bind Zanna.GUI as GUI;
 bind Str = Zanna.String;
@@ -26,9 +50,9 @@ final SETTINGS_DOCK_WIDTH = 560;
 final SETTINGS_DOCK_MAX_WIDTH = 720;
 final SETTINGS_DOCK_MIN_WIDTH = 420;
 final SETTINGS_DOCK_SCREEN_PERCENT = 85;
+final SETTINGS_DEDICATED_SURFACE_MAX_WIDTH = 1100;
 final ABOUT_PANEL_WIDTH = 520;
-final ABOUT_PANEL_HEIGHT = 310;
-final PREFERENCE_CONTROL_WIDTH = 240;
+final ABOUT_PANEL_HEIGHT = 420;
 final PANEL_SCREEN_MARGIN = 28;
 
 // ============================================================================
@@ -46,11 +70,13 @@ final PANEL_SCREEN_MARGIN = 28;
 // ============================================================================
 
 /// @brief Docked Preferences surface plus the floating About panel.
-/// @details Preferences live in the workbench side panel so they can stay open
-///          while the editor remains visible.
+/// @details Preferences lives beside the editor when there is useful room for
+///          both, and takes the right workbench lane at compact widths.
 class IdeOverlays {
     expose GUI.VBox settingsPanel;
+    expose GUI.ScrollView settingsBodyScroll;
     expose GUI.FloatingPanel aboutPanel;
+    expose GUI.ScrollView aboutBodyScroll;
     expose GUI.Label aboutBuildInfo;
 
     expose GUI.TextInput fontPathInput;
@@ -100,15 +126,22 @@ class IdeOverlays {
 
     expose Boolean settingsVisible;
     expose Boolean aboutVisible;
+    expose Boolean settingsUsesDedicatedSurface;
     expose Integer settingsDockWidth;
+    hide GUI.VBox settingsEditorArea;
+    hide app_shell.AppShell ownerShell;
 
     expose func init() {
         settingsVisible = false;
         aboutVisible = false;
+        settingsUsesDedicatedSurface = false;
         settingsDockWidth = 0;
+        settingsEditorArea = null;
+        ownerShell = null;
     }
 
     expose func Setup(shell: app_shell.AppShell) {
+        ownerShell = shell;
         setupSettingsPanel(shell);
         setupAboutPanel(shell);
     }
@@ -116,7 +149,12 @@ class IdeOverlays {
     expose func OpenSettings(shell: app_shell.AppShell,
                              appSettings: settings.SettingsManager) {
         SyncSettings(appSettings);
-        settingsPanel.SetVisible(true);
+        if settingsBodyScroll != null {
+            settingsBodyScroll.SetScroll(0.0, 0.0);
+        }
+        ownerShell = shell;
+        shell.ClaimTransientSurface(app_shell.TRANSIENT_SURFACE_SETTINGS,
+                                    settingsPanel);
         // Force the dock to re-measure/arrange now that it is visible so the
         // body scrolls and the footer (Cancel / Save Changes) lands within the
         // workbench height instead of below it.
@@ -131,19 +169,32 @@ class IdeOverlays {
     expose func CloseSettings() {
         if settingsPanel != null {
             settingsPanel.SetVisible(false);
+            settingsPanel.SetFlex(0.0);
         }
+        if settingsEditorArea != null {
+            settingsEditorArea.SetVisible(true);
+        }
+        settingsUsesDedicatedSurface = false;
         settingsVisible = false;
+        if ownerShell != null {
+            ownerShell.ReleaseTransientSurface(
+                app_shell.TRANSIENT_SURFACE_SETTINGS);
+        }
     }
 
     expose func OpenAbout(shell: app_shell.AppShell) {
+        CloseSettings();
         if aboutBuildInfo != null {
             aboutBuildInfo.SetText(build_info.BuildSummary());
         }
+        if aboutBodyScroll != null {
+            aboutBodyScroll.SetScroll(0.0, 0.0);
+        }
         layoutAboutPanel(shell);
-        aboutPanel.SetVisible(true);
-        settingsPanel.SetVisible(false);
+        ownerShell = shell;
+        shell.ClaimTransientSurface(app_shell.TRANSIENT_SURFACE_ABOUT,
+                                    aboutPanel);
         aboutVisible = true;
-        settingsVisible = false;
     }
 
     expose func CloseAbout() {
@@ -151,6 +202,9 @@ class IdeOverlays {
             aboutPanel.SetVisible(false);
         }
         aboutVisible = false;
+        if ownerShell != null {
+            ownerShell.ReleaseTransientSurface(app_shell.TRANSIENT_SURFACE_ABOUT);
+        }
     }
 
     /// @brief Fill the keybinding list from the live registry (plan 08).
@@ -338,6 +392,16 @@ class IdeOverlays {
     }
 
     expose func Pump(shell: app_shell.AppShell) -> Integer {
+        if settingsVisible
+           and shell.OwnsTransientSurface(
+               app_shell.TRANSIENT_SURFACE_SETTINGS) == false {
+            CloseSettings();
+        }
+        if aboutVisible
+           and shell.OwnsTransientSurface(
+               app_shell.TRANSIENT_SURFACE_ABOUT) == false {
+            CloseAbout();
+        }
         if settingsVisible {
             layoutSettingsPanel(shell);
             if browseFontButton.WasClicked() { return ACTION_BROWSE_FONT; }
@@ -517,6 +581,7 @@ class IdeOverlays {
 
     hide func setupSettingsPanel(shell: app_shell.AppShell) {
         settingsPanel = shell.workbench.preferencesPanel;
+        settingsEditorArea = shell.workbench.editorArea;
         settingsPanel.SetSize(SETTINGS_DOCK_WIDTH, 0);
         settingsPanel.SetVisible(false);
 
@@ -533,14 +598,15 @@ class IdeOverlays {
             root,
             "Appearance, editing, and diagnostics preferences for this workspace.");
         intro.SetMargin(1);
+        intro.SetWordWrap(true);
 
-        var bodyScroll = GUI.ScrollView.New(root);
-        bodyScroll.SetFlex(1.0);
+        settingsBodyScroll = GUI.ScrollView.New(root);
+        settingsBodyScroll.SetFlex(1.0);
 
         var body = GUI.VBox.New();
         body.SetPadding(4.0);
         body.SetSpacing(20.0);
-        bodyScroll.AddChild(body);
+        settingsBodyScroll.AddChild(body);
 
         var filterRow = GUI.HBox.New();
         filterRow.SetSpacing(6.0);
@@ -550,7 +616,6 @@ class IdeOverlays {
         settingsFilterInput.SetPlaceholder("Filter settings sections...");
 
         var appCard = GUI.GroupBox.New(body, "Appearance");
-        appCard.SetMargin(2);
         appCardRef = appCard;
 
         var fontPathControls =
@@ -614,7 +679,6 @@ class IdeOverlays {
 
         var editCard = GUI.GroupBox.New(body, "Editing");
         editCardRef = editCard;
-        editCard.SetMargin(2);
 
         autoCheckCheck = GUI.Checkbox.New(editCard, "Run diagnostics while typing");
         codeFoldingCheck = GUI.Checkbox.New(editCard, "Enable code folding");
@@ -630,7 +694,6 @@ class IdeOverlays {
 
         var intelliCard = GUI.GroupBox.New(body, "IntelliSense");
         intelliCardRef = intelliCard;
-        intelliCard.SetMargin(2);
 
         var diagnosticsDelayBox =
             AddPreferenceRow(intelliCard, "Diagnostics delay", "Idle time before live checks.");
@@ -657,7 +720,6 @@ class IdeOverlays {
         resetIntelliSenseButton.SetStyle(2);
 
         var startupCard = GUI.GroupBox.New(body, "Startup and safety");
-        startupCard.SetMargin(2);
         startupCardRef = startupCard;
 
         restoreSessionCheck = GUI.Checkbox.New(startupCard, "Restore open files on launch");
@@ -675,21 +737,26 @@ class IdeOverlays {
         closeSettingsButton = GUI.Button.New(footer, "Cancel");
         closeSettingsButton.SetStyle(2);
         var keyCard = GUI.GroupBox.New(body, "Keybindings");
-        keyCard.SetMargin(2);
         keybindingCardRef = keyCard;
-        var keyHint = GUI.Label.New(keyCard,
-            "Select a command, type a shortcut (e.g. Ctrl+Shift+K), then Set. Empty + Set clears.");
+        var keyHint = GUI.Label.New(
+            keyCard,
+            "Select a command, type a shortcut (for example "
+            + command_catalog.PlatformShortcut("Ctrl+Shift+K") + " or "
+            + command_catalog.PlatformShortcut("Ctrl+K Ctrl+S")
+            + "), then choose Set. Leave it empty and choose Set to unbind.");
         keyHint.SetWordWrap(true);
         keybindingList = GUI.ListBox.New(keyCard);
         keybindingList.SetSize(0, 180);
-        var keyEditRow = GUI.HBox.New();
+        var keyEditRow = GUI.VBox.New();
         keyEditRow.SetSpacing(6.0);
         keyCard.AddChild(keyEditRow);
         keybindingShortcutInput = GUI.TextInput.New(keyEditRow);
-        keybindingShortcutInput.SetFlex(1.0);
         keybindingShortcutInput.SetPlaceholder("Shortcut");
-        keybindingSetButton = GUI.Button.New(keyEditRow, "Set");
-        keybindingClearButton = GUI.Button.New(keyEditRow, "Reset");
+        var keyEditButtons = GUI.HBox.New();
+        keyEditButtons.SetSpacing(6.0);
+        keyEditRow.AddChild(keyEditButtons);
+        keybindingSetButton = GUI.Button.New(keyEditButtons, "Set");
+        keybindingClearButton = GUI.Button.New(keyEditButtons, "Reset");
         keybindingStatusLabel = GUI.Label.New(keyCard, "");
         keybindingStatusLabel.SetWordWrap(true);
 
@@ -697,16 +764,16 @@ class IdeOverlays {
         applySettingsButton.SetStyle(1);
     }
 
-    /// @brief Add a preference row with a flexible text lane and fixed control lane.
+    /// @brief Add a preference row with a descriptive header and full-width controls.
     /// @details The settings dock uses this helper for every label/control pair so
-    ///          long descriptions wrap in their lane instead of colliding with
-    ///          spinners, dropdowns, or buttons. The returned VBox is the control
-    ///          lane; callers attach the actual input widgets to it.
+    ///          long descriptions and controls stack instead of colliding in a
+    ///          narrow dock. The returned VBox is the control lane; callers attach
+    ///          the actual input widgets to it.
     hide func AddPreferenceRow(card: GUI.GroupBox,
                                titleText: String,
                                descriptionText: String) -> GUI.VBox {
-        var row = GUI.HBox.New();
-        row.SetSpacing(14.0);
+        var row = GUI.VBox.New();
+        row.SetSpacing(8.0);
         row.SetPadding(0.0);
         card.AddChild(row);
 
@@ -727,7 +794,6 @@ class IdeOverlays {
         var controls = GUI.VBox.New();
         controls.SetSpacing(8.0);
         controls.SetPadding(0.0);
-        controls.SetSize(PREFERENCE_CONTROL_WIDTH, 0);
         row.AddChild(controls);
         return controls;
     }
@@ -746,22 +812,35 @@ class IdeOverlays {
         title.SetMargin(1);
         title.SetIconName("zanna-mark");
 
-        var aboutTagline = GUI.Label.New(root, "Code. Create. Compile. Conquer.");
+        // Build metadata may contain several long source/output/compiler paths.
+        // Keep that variable-height material in a clipped, wheel-scrollable body
+        // so it can never push the footer outside the fixed panel surface.
+        aboutBodyScroll = GUI.ScrollView.New(root);
+        aboutBodyScroll.SetFlex(1.0);
+        var body = GUI.VBox.New();
+        body.SetPadding(4.0);
+        body.SetSpacing(12.0);
+        aboutBodyScroll.AddChild(body);
+
+        var aboutTagline = GUI.Label.New(body, "Code. Create. Compile. Conquer.");
         aboutTagline.SetColor(theme_colors.Rgb("accentPrimary"));
 
         var aboutLine1 = GUI.Label.New(
-            root,
+            body,
             "A native IDE for Zia and Zanna BASIC with live diagnostics, hover info, semantic navigation, project search, and an integrated editor.");
         aboutLine1.SetWordWrap(true);
         var aboutLine2 = GUI.Label.New(
-            root,
+            body,
             "Both languages support build, run, debug, completion, references, rename, workspace symbols, and signature help.");
         aboutLine2.SetWordWrap(true);
         var aboutLine3 = GUI.Label.New(
-            root,
-            "Shortcuts: Ctrl+B sidebar, Ctrl+Shift+P palette, Ctrl+, settings, F5 build and run.");
+            body,
+            "Shortcuts: " + command_catalog.PlatformShortcut("Ctrl+B")
+            + " sidebar, " + command_catalog.PlatformShortcut("Ctrl+Shift+P")
+            + " palette, " + command_catalog.PlatformShortcut("Ctrl+,")
+            + " settings, F5 build and run.");
         aboutLine3.SetWordWrap(true);
-        aboutBuildInfo = GUI.Label.New(root, build_info.BuildSummary());
+        aboutBuildInfo = GUI.Label.New(body, build_info.BuildSummary());
         aboutBuildInfo.SetWordWrap(true);
         aboutBuildInfo.SetColor(theme_colors.Rgb("fgTertiary"));
 
@@ -778,6 +857,7 @@ class IdeOverlays {
         if settingsPanel == null { return; }
         var rootW = logicalAppWidth(shell);
         if rootW <= 0 { rootW = 1280; }
+        var dedicated = rootW <= SETTINGS_DEDICATED_SURFACE_MAX_WIDTH;
         var panelW = SETTINGS_DOCK_WIDTH;
         if rootW < 760 { panelW = SETTINGS_DOCK_MIN_WIDTH; }
         if rootW > 1320 { panelW = SETTINGS_DOCK_MAX_WIDTH; }
@@ -787,8 +867,20 @@ class IdeOverlays {
             panelW = SETTINGS_DOCK_MIN_WIDTH;
         }
         if panelW < 240 { panelW = 240; }
-        if settingsDockWidth == panelW { return; }
+        if settingsDockWidth == panelW
+           and settingsUsesDedicatedSurface == dedicated { return; }
         settingsDockWidth = panelW;
+        settingsUsesDedicatedSurface = dedicated;
+        if settingsUsesDedicatedSurface {
+            // At compact widths, a fixed dock plus the editor produces two
+            // unusable slivers. Give Preferences the entire right workbench
+            // lane; closing or widening restores the editor in place.
+            settingsEditorArea.SetVisible(false);
+            settingsPanel.SetFlex(1.0);
+        } else {
+            settingsEditorArea.SetVisible(true);
+            settingsPanel.SetFlex(0.0);
+        }
         settingsPanel.SetSize(panelW, 0);
     }
 
@@ -811,10 +903,10 @@ class IdeOverlays {
     }
 
     hide func logicalAppWidth(shell: app_shell.AppShell) -> Integer {
-        return shell.app.GetLogicalWidth();
+        return app_shell.UiViewportWidth(shell.app);
     }
 
     hide func logicalAppHeight(shell: app_shell.AppShell) -> Integer {
-        return shell.app.GetLogicalHeight();
+        return app_shell.UiViewportHeight(shell.app);
     }
 }

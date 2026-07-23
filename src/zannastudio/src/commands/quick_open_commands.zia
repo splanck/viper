@@ -1,6 +1,27 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/quick_open_commands.zia
+// Purpose: Populate and dispatch fuzzy Quick Open workspace navigation.
+// Key invariants:
+//   - Cached paths are revalidated when selected.
+//   - Rejected or stale files are never reported as successfully opened.
+//   - Opening Quick Open dismisses any focus-taking Studio surface first.
+// Ownership/Lifetime:
+//   - The project cache owns paths; command-palette ids carry copied strings.
+// Links: zannastudio/src/core/project_manager.zia,
+//        zannastudio/src/commands/file_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module quick_open_commands;
 
 bind "../commands/file_commands";
+bind "../app/command_palette_controller";
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../editor/editor_engine";
@@ -8,6 +29,7 @@ bind "../editor/editor_tabs";
 bind "../ui/app_shell";
 
 bind Zanna.GUI;
+bind Obj = Zanna.Core.Object;
 bind Str = Zanna.String;
 bind Text = Zanna.Text;
 
@@ -73,8 +95,9 @@ func handleQuickOpen(shell: app_shell.AppShell,
         return;
     }
 
-    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, bestPath);
-    shell.SetStatusLeft("Opened: " + projMgr.RelativePath(bestPath));
+    if file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, bestPath) {
+        shell.SetStatusLeft("Opened: " + projMgr.RelativePath(bestPath));
+    }
 }
 
 /// @brief Populate and show the command palette with project file rows.
@@ -88,31 +111,133 @@ expose func ShowQuickOpenPalette(shell: app_shell.AppShell,
         GUI.Toast.Warning("Open a project folder first");
         return false;
     }
-    projMgr.WarmFileCache(256);
-    var cachedCount = projMgr.CachedFileCount();
-    if cachedCount == 0 {
+    projMgr.WarmFileCache(128);
+    var cachedCount = projMgr.PeekCachedFileCount();
+    if cachedCount == 0 and projMgr.IsFileCacheComplete() {
         GUI.Toast.Info(projMgr.FileCacheStatusText());
         return false;
     }
 
     shell.commandPalette.Clear();
     shell.commandPalette.SetPlaceholder("Open file by name or path...");
+    // Quick Open owns filtering while visible. Its per-frame pump scans the
+    // growing project cache and publishes only the best bounded result set,
+    // avoiding both a bulk widget build and native O(all-files) key filtering.
+    shell.commandPalette.SetClientFiltered(true);
+    shell.DismissTransientSurface();
+    shell.commandPalette.Show();
+    shell.SetStatusLeft("Quick Open: type a file name or path");
+    return true;
+}
 
-    var i = 0;
-    while i < cachedCount {
-        var filePath = projMgr.CachedFileAt(i);
-        shell.commandPalette.AddCommandWithShortcut(QuickOpenCommandId(filePath),
-                                                    projMgr.RelativePath(filePath),
-                                                    "Files",
-                                                    "");
-        i = i + 1;
+/// @brief Advance query-driven Quick Open ranking under a fixed frame budget.
+/// @details At most 512 cached paths are scored and at most 100 commands are
+///          republished per call. Project discovery also advances by a bounded
+///          page, so opening the palette remains responsive before or after a
+///          very large workspace cache has warmed.
+/// @param shell Workbench shell owning the command palette.
+/// @param projMgr Project manager whose incremental cache supplies paths.
+/// @param controller Palette mode and ranking state owned by main.
+expose func PumpQuickOpenPalette(
+    shell: app_shell.AppShell,
+    projMgr: project_manager.ProjectManager,
+    controller: command_palette_controller.CommandPaletteController) {
+    if shell == null or shell.commandPalette == null or projMgr == null
+       or controller == null or controller.IsQuickOpen() == false
+       or shell.commandPalette.IsVisible() == false {
+        return;
     }
 
-    shell.commandPalette.Show();
-    if projMgr.fileCacheComplete {
-        shell.SetStatusLeft("Quick Open: type a file name or path");
+    controller.quickOpenLastPumpScanCount = 0;
+    if projMgr.IsFileCacheComplete() == false {
+        projMgr.PumpFileCacheRefresh(128);
+    }
+
+    var generation = shell.commandPalette.GetQueryGeneration();
+    var cacheGeneration = projMgr.FileCacheGeneration();
+    var query = Str.Trim(shell.commandPalette.GetQuery());
+    if generation != controller.quickOpenQueryGeneration
+       or cacheGeneration != controller.quickOpenCacheGeneration {
+        controller.quickOpenQueryGeneration = generation;
+        controller.quickOpenCacheGeneration = cacheGeneration;
+        controller.quickOpenQuery = query;
+        controller.quickOpenScanIndex = 0;
+        controller.quickOpenResultPaths = new List();
+        controller.quickOpenResultScores = new List();
+        controller.quickOpenPublishedCount = 0;
+        controller.quickOpenNeedsPublish = true;
+        controller.quickOpenScanComplete = false;
+    }
+
+    var knownCount = projMgr.PeekCachedFileCount();
+    var scanned = 0;
+    var changed = false;
+    while controller.quickOpenScanIndex < knownCount and scanned < 512 {
+        var cacheIndex = controller.quickOpenScanIndex;
+        controller.quickOpenScanIndex = controller.quickOpenScanIndex + 1;
+        scanned = scanned + 1;
+        var filePath = projMgr.CachedFileAt(cacheIndex);
+        var score = cacheIndex;
+        if controller.quickOpenQuery != "" {
+            score = QuickOpenScore(projMgr.RelativePath(filePath),
+                                   controller.quickOpenQuery);
+        }
+        if score >= 0 and InsertQuickOpenResult(controller, filePath, score) {
+            changed = true;
+        }
+    }
+    controller.quickOpenLastPumpScanCount = scanned;
+    if changed { controller.quickOpenNeedsPublish = true; }
+
+    if controller.quickOpenNeedsPublish {
+        shell.commandPalette.Clear();
+        var i = 0;
+        while i < controller.quickOpenResultPaths.count() {
+            var path = Obj.ToString(controller.quickOpenResultPaths.get(i));
+            shell.commandPalette.AddCommandWithShortcut(QuickOpenCommandId(path),
+                                                        projMgr.RelativePath(path),
+                                                        "Files", "");
+            i = i + 1;
+        }
+        controller.quickOpenPublishedCount = controller.quickOpenResultPaths.count();
+        controller.quickOpenNeedsPublish = false;
+    }
+
+    knownCount = projMgr.PeekCachedFileCount();
+    controller.quickOpenScanComplete = projMgr.IsFileCacheComplete()
+        and controller.quickOpenScanIndex >= knownCount;
+    if controller.quickOpenScanComplete {
+        shell.SetStatusLeft("Quick Open: " + knownCount + " project files searched");
     } else {
-        shell.SetStatusLeft("Quick Open: partial results while project files index");
+        shell.SetStatusLeft("Quick Open: " + controller.quickOpenScanIndex + "/"
+                            + knownCount + "+ project files searched");
+    }
+}
+
+/// @brief Insert one candidate into the sorted top-100 Quick Open result set.
+/// @return True when the visible result set changed.
+func InsertQuickOpenResult(
+    controller: command_palette_controller.CommandPaletteController,
+    path: String,
+    score: Integer) -> Boolean {
+    if controller == null or path == "" or score < 0 { return false; }
+    var count = controller.quickOpenResultPaths.count();
+    if count >= 100 {
+        var worst = controller.quickOpenResultScores.get(count - 1) as Integer;
+        if score >= worst { return false; }
+    }
+
+    var insertAt = 0;
+    while insertAt < count {
+        var existingScore = controller.quickOpenResultScores.get(insertAt) as Integer;
+        if score < existingScore { break; }
+        insertAt = insertAt + 1;
+    }
+    controller.quickOpenResultPaths.insert(insertAt, path);
+    controller.quickOpenResultScores.insert(insertAt, score);
+    if controller.quickOpenResultPaths.count() > 100 {
+        controller.quickOpenResultPaths.removeAt(100);
+        controller.quickOpenResultScores.removeAt(100);
     }
     return true;
 }
@@ -133,7 +258,9 @@ expose func HandleQuickOpenPaletteSelection(shell: app_shell.AppShell,
                                             selected: String) -> Boolean {
     var path = QuickOpenPathFromCommandId(selected);
     if path == "" { return false; }
-    file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path);
+    if file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path) == false {
+        return false;
+    }
     shell.SetStatusLeft("Opened: " + projMgr.RelativePath(path));
     return true;
 }

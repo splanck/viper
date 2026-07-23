@@ -1,6 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/status_bar_model.zia
+// Purpose: Format compact, stable status-bar labels for Studio workbench state.
+// Key invariants:
+//   - Persistent labels remain useful at the native minimum window width.
+//   - Full actionable index failures remain available through item tooltips.
+// Ownership/Lifetime: Stateless text-policy helpers; no retained GUI objects.
+// Links: zannastudio/src/ui/status_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
 module status_bar_model;
 
 bind "../ui/tool_panel_text";
+
+bind Str = Zanna.String;
 
 // ============================================================================
 // MODULE: status_bar_model
@@ -35,6 +54,23 @@ expose func LanguageStatusText(languageName: String) -> String {
 /// @return Nonempty status-bar text for the index item.
 expose func IndexStatusText(status: String) -> String {
     if status == "" { return "Workspace index idle"; }
+    return status;
+}
+
+/// @brief Compact a persistent index label without losing its full tooltip.
+/// @details Failure messages can include a long filename and are already shown
+///          once in a toast. A stable short label prevents that durable state
+///          from consuming the minimum-width status bar.
+/// @param status Normalized index state from IndexStatusText.
+/// @return Text suitable for the visible status-bar item.
+expose func IndexStatusDisplayText(status: String) -> String {
+    if status == "Workspace index unavailable" { return "Index: unavailable"; }
+    if Str.Contains(status, "skipped")
+       or Str.Contains(status, "exceeds")
+       or Str.Contains(status, "could not")
+       or Str.Contains(status, "incomplete") {
+        return "Index: incomplete";
+    }
     return status;
 }
 

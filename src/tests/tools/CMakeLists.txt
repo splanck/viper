@@ -110,6 +110,17 @@ function(zanna_add_tools_tests)
     zanna_add_test_labels(package_cli tools installer)
 
     if (APPLE)
+        if (ZANNA_INSTALL_ZANNASTUDIO)
+            zanna_add_ctest(zannastudio_macos_staging
+                    ${CMAKE_COMMAND}
+                    -DZANNASTUDIO_LAUNCHER=${CMAKE_BINARY_DIR}/zannastudio/zannastudio
+                    "-DZANNASTUDIO_NATIVE=${CMAKE_BINARY_DIR}/zannastudio/Zanna Studio"
+                    -DTEST_WORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/zannastudio_macos_staging
+                    -P ${_ZANNA_TOOLS_DIR}/ZannaStudioMacStagingTests.cmake)
+            zanna_add_test_labels(zannastudio_macos_staging
+                    tools installer requires_macos)
+        endif ()
+
         zanna_add_ctest(package_crackman_macos_signed
                 ${CMAKE_COMMAND}
                 -DZANNA_BIN=$<TARGET_FILE:zanna>

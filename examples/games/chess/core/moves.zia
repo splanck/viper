@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/core/moves.zia
+// Purpose: Legal full-move and capture-only generation for Chess positions.
+// Key invariants:
+//   - Returned moves never leave the moving side's king in check.
+//   - Capture-only generation returns exactly the capture subset of legalMoves.
+// Ownership/Lifetime:
+//   - MoveGen owns immutable direction lists; callers own returned move lists.
+// Links: examples/games/chess/core/board.zia,
+//        examples/games/chess/engine/ai.zia
+//
+//===----------------------------------------------------------------------===//
+
 module moves;
 
 bind "./config";
@@ -104,10 +123,23 @@ class MoveGen {
     /// @brief All legal moves for the side to move.
     /// @details Generates pseudo-legal then filters via isLegal.
     expose func legalMoves(b: Board) -> List[Move] {
-        var pseudo = self.pseudoLegal(b, b.whiteToMove);
+        return self.legalMovesFiltered(b, false);
+    }
+
+    /// @brief Legal captures for the side to move.
+    /// @details Filters quiet pseudo-moves before the make/unmake legality
+    ///          check, avoiding needless work in quiescence search.
+    expose func legalCaptures(b: Board) -> List[Move] {
+        return self.legalMovesFiltered(b, true);
+    }
+
+    /// @brief Shared legality filter for full move and capture-only queries.
+    hide func legalMovesFiltered(b: Board, capturesOnly: Boolean) -> List[Move] {
+        var pseudo = self.pseudoLegal(b, b.whiteToMove, capturesOnly);
         var legal = [];
         for i in 0..pseudo.length() {
             var m = pseudo.get(i);
+            if capturesOnly && m.captured == 0 && !m.enPassant { continue; }
             if m.from < 0 || m.from >= 64 || m.to < 0 || m.to >= 64 { continue; }
 
             var piece = b.get(m.from);
@@ -234,28 +266,45 @@ class MoveGen {
     // -----------------------------------------------------------------------
     // Internal: generate all pseudo-legal moves for side `white`
     // -----------------------------------------------------------------------
-    hide func pseudoLegal(b: Board, white: Boolean) -> List[Move] {
+    hide func pseudoLegal(b: Board, white: Boolean,
+                          capturesOnly: Boolean) -> List[Move] {
         var out = [];
         for sq in 0..64 {
             var piece = b.get(sq);
             if piece == 0 { continue; }
             if (piece > 0) != white { continue; }
             var t = b.pieceType(piece);
-            if t == config.PAWN   { self.addPawnMoves(b, sq, white, out); }
-            if t == config.KNIGHT { self.addKnightMoves(b, sq, white, out); }
-            if t == config.BISHOP { self.addSlidingMoves(b, sq, white, true, false, out); }
-            if t == config.ROOK   { self.addSlidingMoves(b, sq, white, false, true, out); }
-            if t == config.QUEEN  { self.addSlidingMoves(b, sq, white, true, true, out); }
-            if t == config.KING   { self.addKingMoves(b, sq, white, out); }
+            if t == config.PAWN {
+                self.addPawnMoves(b, sq, white, capturesOnly, out);
+            }
+            if t == config.KNIGHT {
+                self.addKnightMoves(b, sq, white, capturesOnly, out);
+            }
+            if t == config.BISHOP {
+                self.addSlidingMoves(b, sq, white, true, false,
+                                     capturesOnly, out);
+            }
+            if t == config.ROOK {
+                self.addSlidingMoves(b, sq, white, false, true,
+                                     capturesOnly, out);
+            }
+            if t == config.QUEEN {
+                self.addSlidingMoves(b, sq, white, true, true,
+                                     capturesOnly, out);
+            }
+            if t == config.KING {
+                self.addKingMoves(b, sq, white, capturesOnly, out);
+            }
         }
-        self.addCastlingMoves(b, white, out);
+        if !capturesOnly { self.addCastlingMoves(b, white, out); }
         return out;
     }
 
     // -----------------------------------------------------------------------
     // Pawn moves
     // -----------------------------------------------------------------------
-    hide func addPawnMoves(b: Board, sq: Integer, white: Boolean, out: List[Move]) {
+    hide func addPawnMoves(b: Board, sq: Integer, white: Boolean,
+                           capturesOnly: Boolean, out: List[Move]) {
         var rank = sq / 8;
         var file = sq % 8;
         var dir = 1;
@@ -265,19 +314,21 @@ class MoveGen {
         var promRank = 7;
         if white { promRank = 0; }
 
-        // Single push
-        var to1 = sq + dir * 8;
-        if to1 >= 0 && to1 < 64 && b.get(to1) == 0 {
-            if (to1 / 8) == promRank {
-                self.addPromo(sq, to1, 0, out);
-            } else {
-                out.add(self.qMove(sq, to1));
-            }
-            // Double push from starting rank
-            if rank == startRank {
-                var to2 = sq + dir * 16;
-                if b.get(to2) == 0 {
-                    out.add(self.qMove(sq, to2));
+        if !capturesOnly {
+            // Single push
+            var to1 = sq + dir * 8;
+            if to1 >= 0 && to1 < 64 && b.get(to1) == 0 {
+                if (to1 / 8) == promRank {
+                    self.addPromo(sq, to1, 0, out);
+                } else {
+                    out.add(self.qMove(sq, to1));
+                }
+                // Double push from starting rank
+                if rank == startRank {
+                    var to2 = sq + dir * 16;
+                    if b.get(to2) == 0 {
+                        out.add(self.qMove(sq, to2));
+                    }
                 }
             }
         }
@@ -320,7 +371,8 @@ class MoveGen {
     // -----------------------------------------------------------------------
     // Knight moves
     // -----------------------------------------------------------------------
-    hide func addKnightMoves(b: Board, sq: Integer, white: Boolean, out: List[Move]) {
+    hide func addKnightMoves(b: Board, sq: Integer, white: Boolean,
+                             capturesOnly: Boolean, out: List[Move]) {
         var rank = sq / 8;
         var file = sq % 8;
         for i in 0..8 {
@@ -329,6 +381,7 @@ class MoveGen {
             if nr < 0 || nr > 7 || nf < 0 || nf > 7 { continue; }
             var target = b.get(nr * 8 + nf);
             if target != 0 && (target > 0) == white { continue; }
+            if capturesOnly && target == 0 { continue; }
             var capType = 0;
             if target != 0 { capType = b.pieceType(target); }
             out.add(self.cMove(sq, nr*8+nf, capType));
@@ -341,7 +394,8 @@ class MoveGen {
     // (Zia: only literal-initialized lists have element type inference)
     // -----------------------------------------------------------------------
     hide func slidingDir(b: Board, sq: Integer, white: Boolean,
-                          dr: Integer, df: Integer, out: List[Move]) {
+                          dr: Integer, df: Integer, capturesOnly: Boolean,
+                          out: List[Move]) {
         var rank = sq / 8;
         var file = sq % 8;
         var r = rank + dr;
@@ -354,32 +408,34 @@ class MoveGen {
                 }
                 break;
             }
-            out.add(self.qMove(sq, r*8+f));
+            if !capturesOnly { out.add(self.qMove(sq, r*8+f)); }
             r = r + dr;
             f = f + df;
         }
     }
 
     hide func addSlidingMoves(b: Board, sq: Integer, white: Boolean,
-                               diag: Boolean, straight: Boolean, out: List[Move]) {
+                               diag: Boolean, straight: Boolean,
+                               capturesOnly: Boolean, out: List[Move]) {
         if diag {
-            self.slidingDir(b, sq, white, -1, -1, out);
-            self.slidingDir(b, sq, white, -1,  1, out);
-            self.slidingDir(b, sq, white,  1, -1, out);
-            self.slidingDir(b, sq, white,  1,  1, out);
+            self.slidingDir(b, sq, white, -1, -1, capturesOnly, out);
+            self.slidingDir(b, sq, white, -1,  1, capturesOnly, out);
+            self.slidingDir(b, sq, white,  1, -1, capturesOnly, out);
+            self.slidingDir(b, sq, white,  1,  1, capturesOnly, out);
         }
         if straight {
-            self.slidingDir(b, sq, white, -1, 0, out);
-            self.slidingDir(b, sq, white,  1, 0, out);
-            self.slidingDir(b, sq, white,  0, -1, out);
-            self.slidingDir(b, sq, white,  0,  1, out);
+            self.slidingDir(b, sq, white, -1, 0, capturesOnly, out);
+            self.slidingDir(b, sq, white,  1, 0, capturesOnly, out);
+            self.slidingDir(b, sq, white,  0, -1, capturesOnly, out);
+            self.slidingDir(b, sq, white,  0,  1, capturesOnly, out);
         }
     }
 
     // -----------------------------------------------------------------------
     // King moves (normal — castling handled separately)
     // -----------------------------------------------------------------------
-    hide func addKingMoves(b: Board, sq: Integer, white: Boolean, out: List[Move]) {
+    hide func addKingMoves(b: Board, sq: Integer, white: Boolean,
+                           capturesOnly: Boolean, out: List[Move]) {
         var rank = sq / 8;
         var file = sq % 8;
         for d in 0..8 {
@@ -388,6 +444,7 @@ class MoveGen {
             if nr < 0 || nr > 7 || nf < 0 || nf > 7 { continue; }
             var target = b.get(nr * 8 + nf);
             if target != 0 && (target > 0) == white { continue; }
+            if capturesOnly && target == 0 { continue; }
             var capType = 0;
             if target != 0 { capType = b.pieceType(target); }
             out.add(self.cMove(sq, nr*8+nf, capType));
@@ -432,7 +489,7 @@ class MoveGen {
     // -----------------------------------------------------------------------
     /// @brief Quick check used by checkmate / stalemate detection.
     expose func hasLegalMoves(b: Board, white: Boolean) -> Boolean {
-        var pseudo = self.pseudoLegal(b, white);
+        var pseudo = self.pseudoLegal(b, white, false);
         for i in 0..pseudo.length() {
             var m = pseudo.get(i);
             if m.from < 0 || m.from >= 64 || m.to < 0 || m.to >= 64 { continue; }

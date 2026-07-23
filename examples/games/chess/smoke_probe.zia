@@ -1,3 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/smoke_probe.zia
+// Purpose: Headless correctness probe for Chess board and move generation.
+// Key invariants:
+//   - Standard-position move counts and perft values remain canonical.
+//   - Make/unmake restores both board squares and the exact Zobrist hash.
+//   - Capture-only generation excludes quiet moves without losing captures.
+// Ownership/Lifetime:
+//   - The probe owns one Board and MoveGen for the duration of main.
+// Links: examples/games/chess/core/board.zia,
+//        examples/games/chess/core/moves.zia
+//
+//===----------------------------------------------------------------------===//
+
 module smoke_probe;
 
 bind Zanna.Terminal as Terminal;
@@ -15,8 +35,8 @@ bind "./core/moves";
 //
 // KEY-DESIGN-CHOICES:
 //   * SUITE OF KNOWN-VALUE CHECKS. Starting position has exactly 20
-//     legal moves; perft(2) is exactly 400. Both are well-known
-//     results from chess-programming literature; deviations
+//     legal moves; perft(2) is 400 and perft(3) is 8,902. These are
+//     canonical results; deviations
 //     immediately localize the bug.
 //   * MAKE/UNMAKE PROOF. Apply e2e4, ensure replies exist, then
 //     unmake and verify the board returned to its original state.
@@ -64,6 +84,7 @@ func hasMove(moves: List[Move], target: Move) -> Boolean {
 func main() {
     var board = new Board();
     var moveGen = new MoveGen();
+    var startHash = board.getHash();
 
     var startMoves = moveGen.legalMoves(board);
     if startMoves.length() != 20 {
@@ -71,8 +92,21 @@ func main() {
         return;
     }
 
+    if moveGen.legalCaptures(board).length() != 0 {
+        fail("start position capture list");
+        return;
+    }
+
     if moveGen.perft(board, 2) != 400 {
         fail("perft depth 2");
+        return;
+    }
+    if moveGen.perft(board, 3) != 8902 {
+        fail("perft depth 3");
+        return;
+    }
+    if board.getHash() != startHash {
+        fail("perft did not restore starting hash");
         return;
     }
 
@@ -83,6 +117,7 @@ func main() {
     }
 
     var undo = board.makeMove(e2e4!);
+    var hashAfterE2E4 = board.getHash();
     var replyMoves = moveGen.legalMoves(board);
     if replyMoves.length() == 0 {
         board.unmakeMove(e2e4!, undo);
@@ -90,10 +125,35 @@ func main() {
         return;
     }
 
+    var d7d5 = findMove(replyMoves, 11, 27);
+    if d7d5 == null {
+        board.unmakeMove(e2e4!, undo);
+        fail("missing d7d5");
+        return;
+    }
+    var replyUndo = board.makeMove(d7d5!);
+    var whiteCaptures = moveGen.legalCaptures(board);
+    if findMove(whiteCaptures, 36, 27) == null {
+        board.unmakeMove(d7d5!, replyUndo);
+        board.unmakeMove(e2e4!, undo);
+        fail("capture-only generator missing e4xd5");
+        return;
+    }
+    board.unmakeMove(d7d5!, replyUndo);
+    if board.getHash() != hashAfterE2E4 {
+        board.unmakeMove(e2e4!, undo);
+        fail("reply unmake did not restore hash");
+        return;
+    }
+
     var beforeUnmake = board.get(36);
     board.unmakeMove(e2e4!, undo);
     if beforeUnmake == 0 || board.get(52) == 0 || board.get(36) != 0 {
         fail("make/unmake validation failed");
+        return;
+    }
+    if board.getHash() != startHash {
+        fail("opening unmake did not restore starting hash");
         return;
     }
 

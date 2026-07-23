@@ -1,6 +1,26 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/main_command_dispatcher.zia
+// Purpose: Route menu, toolbar, shortcut, palette, explorer, and overlay work
+//          through shared Studio command workflows.
+// Key invariants:
+//   - Canceled/rejected commands do not mutate dependent controller state.
+//   - Workspace changes keep indexing and terminal context synchronized.
+// Ownership/Lifetime: Stateless dispatcher borrowing one CommandContext.
+// Links: zannastudio/src/commands/command_context.zia,
+//        zannastudio/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
 module main_command_dispatcher;
 
 bind "../app/command_palette_controller";
+bind "../app/context_menus";
 bind "../app/dispatch_helpers";
 bind "../app/explorer_action_runner";
 bind "../app/file_watch_controller";
@@ -10,13 +30,16 @@ bind "../build/breakpoints";
 bind "../build/build_system";
 bind "../build/debug_session";
 bind "../commands/build_commands";
+bind "../commands/basic_workspace_commands";
 bind "../commands/command_context";
 bind "../ui/command_input";
 bind "../commands/command_registry";
 bind "../commands/debug_commands";
+bind "../commands/diagnostic_edit_commands";
 bind "../commands/edit_commands";
 bind "../commands/file_commands";
 bind "../commands/search_commands";
+bind "../commands/zia_workspace_commands";
 bind "../commands/view_commands";
 bind "../core/document_manager";
 bind "../core/project_manager";
@@ -25,10 +48,13 @@ bind "../core/settings";
 bind "../editor/diagnostics";
 bind "../editor/editor_engine";
 bind "../editor/editor_tabs";
+bind "../editor/basic_workspace_query_job";
 bind "../editor/project_index";
+bind "../editor/zia_workspace_query_job";
 bind "../editor/signature";
 bind "../editor/symbols";
 bind "../services/locations";
+bind "../services/safe_io";
 bind "../terminal/terminal_controller";
 bind "../ui/app_shell";
 bind "../ui/debug_breakpoint_overlay";
@@ -149,12 +175,13 @@ expose func DispatchCommands(shell: app_shell.AppShell,
 }
 
 /// @brief Dispatch all command triggers for one frame.
-/// @details Returns true only when the command path completed application
-///          cleanup and the caller should immediately leave main().
+/// @details Returns true only when the user confirmed application exit. The
+///          entry point owns the one shared cleanup path so menu and native
+///          window-close requests cannot diverge.
 /// @param ctx Named dependency bundle assembled by main.zia.
 /// @param cpSelected Normalized command-palette selection id for this frame.
 /// @param suppressTreeOpen True when a tree right-click should not open a file.
-/// @return True when cleanup has already run and the application should exit.
+/// @return True when clean shutdown should run and the application should exit.
 expose func DispatchCommandContext(ctx: command_context.CommandContext,
                                    cpSelected: String,
                                    suppressTreeOpen: Boolean) -> Boolean {
@@ -166,27 +193,204 @@ expose func DispatchCommandContext(ctx: command_context.CommandContext,
 
     PumpFileTreeOpen(ctx, suppressTreeOpen);
     PumpPendingSemanticCommand(ctx);
+    if ctx.basicWorkspaceCommands != null {
+        ctx.basicWorkspaceCommands.Pump(ctx.shell, ctx.docMgr, ctx.projMgr,
+                                        ctx.engine, ctx.tabs, ctx.locStore);
+    }
     DispatchEditCommands(ctx, cpSelected);
     DispatchViewSearchCommands(ctx, cpSelected);
     DispatchBuildDebugCommands(ctx, cpSelected);
     return false;
 }
 
+/// @brief Synchronize every workspace consumer after a folder-set change.
+/// @details Folder opening is reachable from the welcome card, File menu,
+///          command palette, multi-root command, session restore, and project
+///          scaffolding. Keeping the fan-out here prevents one route from
+///          leaving source control or the terminal attached to the old root.
+/// @param ctx Application controllers to update.
+/// @param rebuildIndex True after replacement; false may reuse an unchanged index.
+/// @return True when an open workspace was applied.
+expose func ActivateOpenWorkspace(ctx: command_context.CommandContext,
+                                  rebuildIndex: Boolean) -> Boolean {
+    if ctx == null or ctx.projMgr == null or ctx.projMgr.IsOpen() == false {
+        return false;
+    }
+    var root = ctx.projMgr.RootPath();
+    if root == "" { return false; }
+    if ctx.basicWorkspaceCommands != null {
+        ctx.basicWorkspaceCommands.Cancel();
+    }
+    if ctx.diagnosticActions != null {
+        ctx.diagnosticActions.Cancel();
+    }
+    if ctx.ziaWorkspaceCommands != null {
+        ctx.ziaWorkspaceCommands.Cancel();
+    }
+    // Workspace-derived work must never cross a root-set boundary. Explorer
+    // mutation has already committed by this point; cancel the old cooperative
+    // search, release old native watcher handles, and retire clickable rows
+    // before any new-root service can publish state.
+    if ctx.searcher != null and ctx.searcher.HasActiveWork() {
+        ctx.searcher.CancelForWorkspaceChange();
+    }
+    workspace_watcher.StopWorkspaceWatcher(ctx.workspaceWatcherState);
+    workspace_watcher.InvalidateWorkspaceLocations(ctx.shell, ctx.locStore, ctx.engine);
+    if ctx.shell != null { ctx.shell.SetSidebarVisible(true); }
+    if ctx.indexer != null {
+        if rebuildIndex {
+            ctx.indexer.OpenProject(ctx.projMgr, ctx.docMgr);
+        } else {
+            ctx.indexer.EnsureProject(ctx.projMgr, ctx.docMgr);
+        }
+    }
+    if ctx.scmView != null { ctx.scmView.SetRepo(root); }
+    if ctx.terminalCtrl != null { ctx.terminalCtrl.SetCwd(root); }
+    return true;
+}
+
+/// @brief Detach every workspace-owned service without closing editor tabs.
+/// @details A workspace is broader than ProjectManager's tree. Closing it must
+///          also release native directory watchers, cancel project search,
+///          destroy the semantic project index, clear stale locations, and
+///          detach SCM/terminal roots. Open documents remain available and the
+///          next language frame may build a lightweight single-file index for
+///          the active tab.
+/// @param ctx Application controllers to detach.
+/// @return True when an open workspace was closed.
+expose func CloseOpenWorkspace(ctx: command_context.CommandContext) -> Boolean {
+    if ctx == null or ctx.projMgr == null or ctx.projMgr.IsOpen() == false {
+        return false;
+    }
+    if ctx.searcher != null and ctx.searcher.HasActiveWork() {
+        ctx.searcher.Cancel(ctx.shell);
+    }
+    if ctx.basicWorkspaceCommands != null {
+        ctx.basicWorkspaceCommands.Cancel();
+    }
+    if ctx.diagnosticActions != null {
+        ctx.diagnosticActions.Cancel();
+    }
+    if ctx.ziaWorkspaceCommands != null {
+        ctx.ziaWorkspaceCommands.Cancel();
+    }
+    workspace_watcher.StopWorkspaceWatcher(ctx.workspaceWatcherState);
+    if ctx.indexer != null { ctx.indexer.Destroy(); }
+    if ctx.scmView != null { ctx.scmView.SetRepo(""); }
+    if ctx.terminalCtrl != null { ctx.terminalCtrl.SetCwd(""); }
+    ctx.projMgr.CloseProject();
+    workspace_watcher.InvalidateWorkspaceLocations(ctx.shell, ctx.locStore, ctx.engine);
+    if ctx.shell != null {
+        ctx.shell.SetSidebarVisible(false);
+        ctx.shell.SetIndexStatus("");
+        ctx.shell.SetStatusLeft("Workspace closed");
+    }
+    return true;
+}
+
+/// @brief Detach one selected root, promoting another root when necessary.
+/// @details This is the service-aware counterpart to ProjectManager's model
+///          mutation. It cancels root-scoped work, releases old watchers,
+///          rebuilds the semantic index, retargets SCM/terminal if the primary
+///          root changed, and clears derived navigation rows. Open editor tabs
+///          and every file on disk remain untouched.
+/// @param ctx Application controllers to synchronize.
+/// @param selectedPath Exact root or descendant used to identify its owner.
+/// @return True when a workspace folder was detached.
+expose func RemoveWorkspaceFolder(ctx: command_context.CommandContext,
+                                  selectedPath: String) -> Boolean {
+    if ctx == null or ctx.projMgr == null or ctx.projMgr.IsOpen() == false {
+        return false;
+    }
+    if ctx.buildSys != null and ctx.buildSys.IsActive() {
+        if ctx.shell != null {
+            ctx.shell.SetStatusLeft("Stop the running job before changing workspace folders");
+            GUI.Toast.Info("Stop the running job before removing a workspace folder");
+        }
+        return false;
+    }
+    if ctx.dbgSession != null and ctx.dbgSession.IsActive() {
+        if ctx.shell != null {
+            ctx.shell.SetStatusLeft("Stop debugging before changing workspace folders");
+            GUI.Toast.Info("Stop debugging before removing a workspace folder");
+        }
+        return false;
+    }
+
+    var rootPath = ctx.projMgr.WorkspaceRootPathForPath(selectedPath);
+    if rootPath == "" {
+        if ctx.shell != null {
+            ctx.shell.SetStatusLeft("Select a workspace folder to remove");
+            GUI.Toast.Info("Select a workspace folder in Explorer first");
+        }
+        return false;
+    }
+    var rootName = Path.Name(rootPath);
+    if rootName == "" { rootName = rootPath; }
+
+    // Removing the final root is exactly Close Workspace, including teardown
+    // of services that ProjectManager intentionally does not own.
+    if ctx.projMgr.RootCount() == 1 {
+        if CloseOpenWorkspace(ctx) == false { return false; }
+        if ctx.shell != null {
+            ctx.shell.SetStatusLeft("Removed workspace folder: " + rootName);
+            GUI.Toast.Success("Workspace folder removed");
+        }
+        return true;
+    }
+
+    if ctx.searcher != null and ctx.searcher.HasActiveWork() {
+        ctx.searcher.Cancel(ctx.shell);
+    }
+    if ctx.basicWorkspaceCommands != null {
+        ctx.basicWorkspaceCommands.Cancel();
+    }
+    if ctx.diagnosticActions != null {
+        ctx.diagnosticActions.Cancel();
+    }
+    if ctx.ziaWorkspaceCommands != null {
+        ctx.ziaWorkspaceCommands.Cancel();
+    }
+    workspace_watcher.StopWorkspaceWatcher(ctx.workspaceWatcherState);
+    if ctx.projMgr.RemoveFolderFromWorkspace(rootPath) == false {
+        if ctx.shell != null {
+            var reason = ctx.projMgr.lastOperationError;
+            if reason == "" { reason = "The workspace folder could not be removed."; }
+            ctx.shell.SetStatusLeft(reason);
+            GUI.Toast.Warning(reason);
+        }
+        return false;
+    }
+
+    workspace_watcher.InvalidateWorkspaceLocations(ctx.shell, ctx.locStore, ctx.engine);
+    ActivateOpenWorkspace(ctx, true);
+    if ctx.shell != null {
+        ctx.shell.SetStatusLeft("Removed workspace folder: " + rootName);
+        GUI.Toast.Success("Workspace folder removed");
+    }
+    return true;
+}
+
 /// @brief Dispatch file, project, terminal, close, and exit commands.
 /// @param ctx Named dependency bundle assembled by main.zia.
 /// @param cpSelected Normalized command-palette selection id for this frame.
-/// @return True when the command path ran application cleanup and should exit.
+/// @return True when the user confirmed exit and the caller should clean up.
 hide func DispatchFileCommands(ctx: command_context.CommandContext,
                                cpSelected: String) -> Boolean {
     if dispatch_helpers.Triggered("new", ctx.shell.menuChrome.miNew, ctx.shell.menuChrome.tbNew, cpSelected)      { file_commands.handleNew(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
-    if dispatch_helpers.Triggered("open", ctx.shell.menuChrome.miOpen, ctx.shell.menuChrome.tbOpen, cpSelected)    { file_commands.handleOpen(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); explorer_action_runner.RecordActiveFile(ctx.sessionMgr, ctx.docMgr); ctx.fileWatchCtrl.ResetPendingReload(); }
+    if dispatch_helpers.Triggered("open", ctx.shell.menuChrome.miOpen, ctx.shell.menuChrome.tbOpen, cpSelected) {
+        if file_commands.handleOpen(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs) {
+            explorer_action_runner.RecordActiveFile(ctx.sessionMgr, ctx.docMgr);
+            ctx.fileWatchCtrl.ResetPendingReload();
+        }
+    }
     if dispatch_helpers.Triggered("openfolder", ctx.shell.menuChrome.miOpenFolder, null, cpSelected) {
-        if file_commands.ConfirmCloseDocuments(ctx.shell, ctx.docMgr, ctx.engine, "Open Folder", -1) {
-            ctx.tabs.RefreshFromDocuments(ctx.docMgr);
-            file_commands.handleOpenFolder(ctx.shell, ctx.projMgr);
-            ctx.indexer.Open(ctx.projMgr.RootPath(), ctx.docMgr);
-            if ctx.projMgr.IsOpen() {
-                ctx.terminalCtrl.SetCwd(ctx.projMgr.RootPath());
+        // Replacing the workspace does not close editor tabs, so it must not
+        // show a misleading dirty-document close prompt.
+        if file_commands.handleOpenFolder(ctx.shell, ctx.projMgr) {
+            ActivateOpenWorkspace(ctx, true);
+            if ctx.sessionMgr != null {
+                ctx.sessionMgr.RecordRecentProject(ctx.projMgr.RootPath());
             }
         }
     }
@@ -208,20 +412,50 @@ hide func DispatchFileCommands(ctx: command_context.CommandContext,
            and ctx.engine != null and ctx.engine.editor != null {
             var activeDoc = activeDocOpt!;
             if activeDoc.filePath != "" {
-                var savedText = "";
-                if IO.File.Exists(activeDoc.filePath) {
-                    savedText = IO.File.ReadAllText(activeDoc.filePath);
+                if IO.File.Exists(activeDoc.filePath) == false {
+                    ctx.shell.SetStatusLeft("Saved file no longer exists");
+                    GUI.Toast.Warning("Cannot compare: the saved file no longer exists");
+                } else {
+                    var readResult = safe_io.ReadAllTextBounded(
+                        activeDoc.filePath,
+                        document_manager.MAX_TEXT_OPEN_BYTES);
+                    if readResult.ok == false {
+                        ctx.shell.SetStatusLeft("Could not read saved file");
+                        GUI.Toast.Error("Cannot compare: the saved file could not be read");
+                    } else {
+                        ctx.diffOverlay.Open(activeDoc.filePath + "  (saved → buffer)",
+                                             readResult.text, ctx.engine.editor.Text);
+                    }
                 }
-                ctx.diffOverlay.Open(activeDoc.filePath + "  (saved → buffer)",
-                                     savedText, ctx.engine.editor.Text);
             }
         }
     }
-    if dispatch_helpers.TriggeredNoMenu("addfolder", cpSelected) {
-        file_commands.handleAddFolderToWorkspace(ctx.shell, ctx.projMgr);
-        if ctx.projMgr.IsOpen() {
-            ctx.terminalCtrl.SetCwd(ctx.projMgr.RootPath());
+    if dispatch_helpers.Triggered("addfolder", ctx.shell.menuChrome.miAddFolder, null, cpSelected) {
+        if file_commands.handleAddFolderToWorkspace(ctx.shell, ctx.projMgr)
+           and ctx.projMgr.IsOpen() {
+            ActivateOpenWorkspace(ctx, false);
+            if ctx.sessionMgr != null {
+                var addedRootIndex = ctx.projMgr.RootCount() - 1;
+                ctx.sessionMgr.RecordRecentProject(
+                    ctx.projMgr.RootPathAt(addedRootIndex));
+            }
         }
+    }
+    var removeFromContext = ctx.shell.menuChrome.ctxRemoveFolder != null
+                            and ctx.shell.menuChrome.ctxRemoveFolder.WasClicked();
+    if removeFromContext
+       or dispatch_helpers.Triggered("removefolder", ctx.shell.menuChrome.miRemoveFolder,
+                                    null, cpSelected) {
+        var removePath = ctx.projMgr.SelectedPath();
+        if removeFromContext {
+            removePath = context_menus.CurrentContextPath(ctx.projMgr, ctx.shell);
+        }
+        if removePath == "" { removePath = ctx.projMgr.RootPath(); }
+        RemoveWorkspaceFolder(ctx, removePath);
+    }
+    if dispatch_helpers.Triggered("closeworkspace", ctx.shell.menuChrome.miCloseWorkspace,
+                                  null, cpSelected) {
+        CloseOpenWorkspace(ctx);
     }
     if dispatch_helpers.Triggered("terminal", ctx.shell.menuChrome.miTerminal, null, cpSelected) {
         if ctx.projMgr.IsOpen() { ctx.terminalCtrl.SetCwd(ctx.projMgr.RootPath()); }
@@ -247,15 +481,7 @@ hide func DispatchFileCommands(ctx: command_context.CommandContext,
     }
 
     if ctx.shell.menuChrome.miExit.WasClicked() {
-        file_commands.SaveEditorState(ctx.docMgr, ctx.engine);
-        ctx.breakpointStore.Save();
-        ctx.sessionMgr.Save(ctx.docMgr, ctx.projMgr);
         if file_commands.handleExit(ctx.shell, ctx.docMgr, ctx.engine) {
-            lifecycle_controller.CleanupIde(ctx.shell, ctx.docMgr, ctx.projMgr,
-                                            ctx.engine, ctx.buildSys, ctx.dbgSession,
-                                            ctx.terminalCtrl, ctx.fileWatchCtrl,
-                                            ctx.workspaceWatcherState, ctx.indexer,
-                                            ctx.breakpointStore, ctx.sessionMgr);
             return true;
         }
     }
@@ -272,10 +498,12 @@ hide func PumpFileTreeOpen(ctx: command_context.CommandContext,
         treeSelectedPath = "";
     }
     if treeSelectedPath != "" {
-        explorer_action_runner.OpenFileAndRecord(ctx.shell, ctx.docMgr, ctx.engine,
-                                                 ctx.tabs, ctx.sessionMgr,
-                                                 treeSelectedPath);
-        ctx.fileWatchCtrl.ResetPendingReload();
+        if explorer_action_runner.OpenFileAndRecord(ctx.shell, ctx.docMgr,
+                                                    ctx.engine, ctx.tabs,
+                                                    ctx.sessionMgr,
+                                                    treeSelectedPath) {
+            ctx.fileWatchCtrl.ResetPendingReload();
+        }
     }
 }
 
@@ -336,9 +564,39 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
         }
     }
     if dispatch_helpers.TriggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(ctx.shell, ctx.docMgr, ctx.engine); }
-    if dispatch_helpers.TriggeredNoMenu("suppressdiagnostic", cpSelected)             { edit_commands.handleSuppressDiagnostic(ctx.shell, ctx.docMgr, ctx.engine); }
-    if dispatch_helpers.TriggeredNoMenu("applydiagnosticfix", cpSelected)             { edit_commands.handleApplyDiagnosticFix(ctx.shell, ctx.docMgr, ctx.engine); }
-    if dispatch_helpers.TriggeredNoMenu("createmissingbind", cpSelected)              { edit_commands.handleCreateMissingBind(ctx.shell, ctx.docMgr, ctx.engine, ctx.projMgr); }
+    if dispatch_helpers.TriggeredNoMenu("suppressdiagnostic", cpSelected) {
+        if ctx.diagnosticActions != null {
+            ctx.diagnosticActions.Start(
+                diagnostic_edit_commands.ACTION_SUPPRESS_DIAGNOSTIC,
+                "Suppress Warning", ctx.shell, ctx.docMgr, ctx.engine,
+                ctx.projMgr);
+        } else {
+            edit_commands.handleSuppressDiagnostic(ctx.shell, ctx.docMgr,
+                                                   ctx.engine);
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("applydiagnosticfix", cpSelected) {
+        if ctx.diagnosticActions != null {
+            ctx.diagnosticActions.Start(
+                diagnostic_edit_commands.ACTION_APPLY_FIX,
+                "Apply Fix-It", ctx.shell, ctx.docMgr, ctx.engine,
+                ctx.projMgr);
+        } else {
+            edit_commands.handleApplyDiagnosticFix(ctx.shell, ctx.docMgr,
+                                                   ctx.engine);
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("createmissingbind", cpSelected) {
+        if ctx.diagnosticActions != null {
+            ctx.diagnosticActions.Start(
+                diagnostic_edit_commands.ACTION_CREATE_MISSING_BIND,
+                "Create Missing Bind", ctx.shell, ctx.docMgr, ctx.engine,
+                ctx.projMgr);
+        } else {
+            edit_commands.handleCreateMissingBind(ctx.shell, ctx.docMgr,
+                                                  ctx.engine, ctx.projMgr);
+        }
+    }
     if dispatch_helpers.TriggeredNoMenu("trimtrailingwhitespace", cpSelected)          { edit_commands.handleTrimTrailingWhitespace(ctx.shell, ctx.docMgr, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("formatdocument", cpSelected)                 { edit_commands.handleFormatDocument(ctx.shell, ctx.docMgr, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("formatselection", cpSelected)                { edit_commands.handleFormatSelection(ctx.shell, ctx.docMgr, ctx.engine); }
@@ -351,12 +609,7 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
     }
     if dispatch_helpers.TriggeredNoMenu("checknow", cpSelected) {
         file_commands.SaveEditorState(ctx.docMgr, ctx.engine);
-        var checkErrors = ctx.liveDiag.runNow(ctx.engine, ctx.shell, ctx.locStore);
-        if checkErrors > 0 {
-            ctx.shell.SetStatusLeft("Diagnostics: " + checkErrors + " errors");
-        } else {
-            ctx.shell.SetStatusLeft("Diagnostics complete");
-        }
+        ctx.liveDiag.runNow(ctx.engine, ctx.shell);
     }
     if (ctx.shell.menuChrome.miSignatureHelp != null and ctx.shell.menuChrome.miSignatureHelp.WasClicked())
        or cpSelected == "signature_trigger" {
@@ -410,12 +663,10 @@ hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
         if overlayNewFolderDir != "" { ctx.explorerOverlay.OpenNewFolder(ctx.shell, overlayNewFolderDir); }
     }
     if dispatch_helpers.TriggeredNoMenu("treerename", cpSelected) {
-        var overlayRenamePath = ctx.projMgr.SelectedPath();
-        if overlayRenamePath != "" { ctx.explorerOverlay.OpenRename(ctx.shell, overlayRenamePath); }
+        explorer_action_runner.TreeRename(ctx.shell, ctx.explorerOverlay, ctx.projMgr);
     }
     if dispatch_helpers.TriggeredNoMenu("treedelete", cpSelected) {
-        var overlayDeletePath = ctx.projMgr.SelectedPath();
-        if overlayDeletePath != "" { ctx.explorerOverlay.OpenDelete(ctx.shell, overlayDeletePath); }
+        explorer_action_runner.TreeDelete(ctx.shell, ctx.explorerOverlay, ctx.projMgr);
     }
     if dispatch_helpers.TriggeredNoMenu("treerefresh", cpSelected)                          { ctx.projMgr.RefreshTree(); ctx.indexer.EnsureProject(ctx.projMgr, ctx.docMgr); ctx.shell.SetStatusLeft("Project tree refreshed"); }
     if ctx.shell.menuChrome.miKeyboardShortcuts.WasClicked()                          { view_commands.handleKeybindings(ctx.shell, ctx.commandRegistry); }
@@ -430,7 +681,9 @@ hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
         if ctx.commandInputOverlay != null {
             ctx.commandInputOverlay.OpenWorkspaceSymbols(ctx.shell, "");
         } else {
-            search_commands.handleWorkspaceSymbols(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore);
+            search_commands.handleWorkspaceSymbolsAsync(ctx.shell, ctx.projMgr,
+                                                        ctx.docMgr, ctx.engine,
+                                                        ctx.locStore, ctx.searcher);
         }
     }
     if dispatch_helpers.TriggeredMenu("symboloutline", ctx.shell.menuChrome.miSymbolOutline, cpSelected) { ctx.symbolOutline.toggle(); }
@@ -555,9 +808,9 @@ hide func DispatchBuildDebugCommands(ctx: command_context.CommandContext,
 ///          trustworthy results. Instead of showing a "retry later" toast, this
 ///          helper records the command and cursor anchor, advances the index
 ///          cooperatively, and lets PumpPendingSemanticCommand execute the same
-///          command automatically once the index reports ready. Non-Zia documents
-///          still run immediately so BASIC scanner-backed commands and plain
-///          unavailable-state toasts preserve their existing behavior.
+///          command automatically once the index reports ready. BASIC commands
+///          use their owned background workspace controller; other languages run
+///          immediately to preserve their unavailable-state feedback.
 /// @param ctx Named dependency bundle assembled by main.zia.
 /// @param commandId Semantic command id handled by ExecuteSemanticCommand.
 /// @param label User-facing command label for status text.
@@ -568,6 +821,36 @@ hide func RunOrQueueSemanticCommand(ctx: command_context.CommandContext,
         return;
     }
     var doc = ctx.docMgr.GetActive();
+    if doc != null and doc!.language == "basic" {
+        StartBasicSemanticCommand(ctx, commandId, label);
+        return;
+    }
+    if doc != null and doc!.language == "zia"
+       and ctx.ziaWorkspaceCommands != null {
+        if commandId == "rename" {
+            var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
+            ctx.ziaWorkspaceCommands.StartRename(
+                newName, ctx.shell, ctx.docMgr, ctx.projMgr, ctx.engine,
+                ctx.indexer);
+            return;
+        }
+        var kind = 0;
+        if commandId == "gotodef" {
+            kind = zia_workspace_query_job.ZIA_QUERY_DEFINITION;
+        } else if commandId == "findrefs" {
+            kind = zia_workspace_query_job.ZIA_QUERY_REFERENCES;
+        } else if commandId == "incomingcalls" {
+            kind = zia_workspace_query_job.ZIA_QUERY_INCOMING_CALLS;
+        } else if commandId == "outgoingcalls" {
+            kind = zia_workspace_query_job.ZIA_QUERY_OUTGOING_CALLS;
+        }
+        if kind > 0 {
+            ctx.ziaWorkspaceCommands.Start(
+                kind, label, ctx.shell, ctx.docMgr, ctx.projMgr, ctx.engine,
+                ctx.indexer);
+        }
+        return;
+    }
     if doc == null or doc!.language != "zia" or ctx.indexer == null {
         ExecuteSemanticCommand(ctx, commandId);
         return;
@@ -583,6 +866,36 @@ hide func RunOrQueueSemanticCommand(ctx: command_context.CommandContext,
     }
 
     QueuePendingSemanticCommand(ctx, commandId, label);
+}
+
+/// @brief Translate a semantic command id into an asynchronous BASIC query.
+hide func StartBasicSemanticCommand(ctx: command_context.CommandContext,
+                                    commandId: String,
+                                    label: String) {
+    if ctx.basicWorkspaceCommands == null {
+        ctx.shell.SetStatusLeft(label + " is unavailable");
+        GUI.Toast.Info(label + " is unavailable");
+        return;
+    }
+    if commandId == "rename" {
+        var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
+        ctx.basicWorkspaceCommands.StartRename(newName, ctx.shell, ctx.docMgr,
+                                               ctx.projMgr, ctx.engine);
+        return;
+    }
+    var kind = 0;
+    if commandId == "gotodef" {
+        kind = basic_workspace_query_job.QUERY_DEFINITION;
+    } else if commandId == "findrefs" {
+        kind = basic_workspace_query_job.QUERY_REFERENCES;
+    } else if commandId == "incomingcalls" {
+        kind = basic_workspace_query_job.QUERY_INCOMING_CALLS;
+    } else if commandId == "outgoingcalls" {
+        kind = basic_workspace_query_job.QUERY_OUTGOING_CALLS;
+    }
+    if kind <= 0 { return; }
+    ctx.basicWorkspaceCommands.Start(kind, label, ctx.shell, ctx.docMgr,
+                                     ctx.projMgr, ctx.engine);
 }
 
 /// @brief Store a pending semantic command at the active document/cursor anchor.
@@ -651,6 +964,7 @@ hide func PumpPendingSemanticCommand(ctx: command_context.CommandContext) {
 hide func PendingSemanticAnchorMatches(ctx: command_context.CommandContext) -> Boolean {
     var doc = ctx.docMgr.GetActive();
     if doc == null { return false; }
+    if doc!.language != "zia" { return false; }
     if doc!.filePath != pendingSemanticPath { return false; }
     if ctx.engine.editor.CursorLine != pendingSemanticLine { return false; }
     if ctx.engine.editor.CursorCol != pendingSemanticCol { return false; }

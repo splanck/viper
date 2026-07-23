@@ -3,23 +3,18 @@
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/il/verify/EhModel.cpp
+//===----------------------------------------------------------------------===//
 //
-// Purpose:
-//   Provide the concrete implementation of the EhModel helper which captures
-//   a function's exception-handling structure for downstream verification
-//   passes.
-//
+// File: il/verify/EhModel.cpp
+// Purpose: Implement the verifier's exception-handling CFG model.
 // Key invariants:
-//   * The model does not mutate the underlying function.
-//   * Successor queries rely on the label map populated during construction.
-//
+//   - The model never mutates the function it describes.
+//   - Handler and continuation token parameters retain distinct classifications.
 // Ownership/Lifetime:
-//   The EhModel stores raw pointers to IR nodes owned by the caller and expects
-//   them to remain valid for the model's lifetime.
-//
-// Links:
-//   docs/il/il-guide.md#reference
+//   - Stored pointers and string views borrow storage from the source function.
+//   - The caller keeps that function alive for the complete model lifetime.
+// Links: il/verify/EhModel.hpp, il/verify/EhChecks.cpp,
+//        docs/adr/0005-resume-token-provenance.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -186,6 +181,23 @@ std::optional<unsigned> EhModel::handlerResumeTokenParam(const BasicBlock &block
         block.params[1].type.kind != Type::Kind::ResumeTok)
         return std::nullopt;
     return block.params[1].id;
+}
+
+/// @brief Find the unique resume-token parameter accepted by a CFG continuation.
+/// @details Ordinary continuation blocks can carry the active capability under
+///          ADR 0005. Returning no value for multiple token parameters keeps
+///          malformed or ambiguous blocks from changing provenance state here;
+///          structural verification reports their independent diagnostics.
+std::optional<unsigned> EhModel::resumeTokenParam(const BasicBlock &block) const noexcept {
+    std::optional<unsigned> tokenId;
+    for (const Param &param : block.params) {
+        if (param.type.kind != Type::Kind::ResumeTok)
+            continue;
+        if (tokenId)
+            return std::nullopt;
+        tokenId = param.id;
+    }
+    return tokenId;
 }
 
 /// @brief Look up push-site metadata for a known instruction address.

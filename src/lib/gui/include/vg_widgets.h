@@ -17,6 +17,8 @@
 //     widget; the application owns the pointed-to data.
 //   - Every widget struct's first member is vg_widget_t base, enabling safe
 //     pointer up-casts for generic tree operations.
+//   - ListBox overflow is visibly ellipsized while its full row text remains
+//     available through the shared hover-tooltip manager.
 // Ownership/Lifetime:
 //   - Created widgets are owned by their parent once added; destroying the
 //     parent destroys all children.
@@ -851,6 +853,10 @@ typedef struct vg_listbox {
     vg_listbox_item_t *anchor_selected; ///< Range-selection anchor (non-virtual mode)
     vg_listbox_item_t *hovered;         ///< Currently hovered item
     vg_listbox_item_t *retired_items;   ///< Detached stale handles freed when listbox is destroyed
+    char *saved_tooltip_text;           ///< Original widget tooltip during row hover
+    char *ellipsis_scratch;             ///< Reusable fitted-row paint buffer
+    size_t ellipsis_scratch_capacity;   ///< Allocated bytes in ellipsis_scratch
+    bool hover_tooltip_active;          ///< Whether row text currently replaces base tooltip
     uint64_t selection_revision;        ///< Incremented whenever logical selection changes
     uint64_t reported_selection_revision; ///< Last selection revision reported to runtime callers
 

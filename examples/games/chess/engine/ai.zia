@@ -1,9 +1,34 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/engine/ai.zia
+// Purpose: Responsive iterative-deepening alpha-beta Chess opponent.
+// Key invariants:
+//   - Search returns a legal root move from the last fully completed depth.
+//   - A deterministic node budget bounds work without wall-clock dependence.
+// Ownership/Lifetime:
+//   - Each ChessAI owns its heuristics and tables; searched Boards are borrowed.
+// Links: examples/games/chess/core/board.zia,
+//        examples/games/chess/core/moves.zia
+//
+//===----------------------------------------------------------------------===//
+
 module ai;
 
 bind "../core/config";
 bind "../core/board";
 bind "../core/moves";
 bind "../core/eval";
+
+// Deterministic work caps keep every platform responsive without making move
+// choice depend on wall-clock speed. Iterative deepening returns the last
+// fully-completed depth when the node budget is exhausted.
+final AI_SEARCH_NODE_BUDGET = 20000;
+final AI_QUIESCENCE_MAX_DEPTH = 8;
 
 // ============================================================================
 // MODULE: ai
@@ -37,13 +62,15 @@ bind "../core/eval";
 //     so future searches at the same ply try it early. Cheap and
 //     effective.
 //   * TRANSPOSITION TABLE. Direct-mapped hash table keyed by Zobrist
-//     hash; stores score, depth, and a flag (EXACT / ALPHA / BETA)
-//     so we can reuse results from previously-searched positions even
-//     when alpha/beta windows differ.
+//     hash; stores score, depth, a flag (EXACT / ALPHA / BETA), and
+//     the best move so we can reuse results and improve ordering.
 //   * QUIESCENCE SEARCH. At depth 0, we don't just call `evaluate` —
-//     we keep extending captures only until the position is "quiet."
-//     This prevents the horizon effect ("Hey, I'm up a queen!" —
-//     because the engine stopped before noticing the recapture).
+//     we keep extending captures until the position is "quiet" or the
+//     fixed extension cap is reached. This prevents both horizon-effect
+//     blunders and pathological capture-tree growth.
+//   * DETERMINISTIC WORK BUDGET. Search stops after a fixed node count
+//     and returns the last fully-completed iteration. Unlike a timer,
+//     this produces the same move on fast and slow machines.
 //   * MATE-DISTANCE SCORE. `MATE_SCORE - ply` makes the engine prefer
 //     faster mates. Returning early when `bestScore >= MATE_SCORE -
 //     50` aborts further iterative deepening once a forced mate is
@@ -52,7 +79,7 @@ bind "../core/eval";
 // HOW-TO-READ: Field declarations -> init / setDepth / resetTables ->
 //   findBestMove (iterative deepening loop) -> negamax (the recursive
 //   search) -> quiescence -> staticEval -> orderMoves / orderCaptures
-//   / mvvLva -> probeTable / storeTable -> storeKiller -> absInt.
+//   / mvvLva -> probeTable / storeTable -> storeKiller.
 // ============================================================================
 
 /// @brief Iterative-deepening alpha-beta chess search engine.
@@ -61,12 +88,12 @@ class ChessAI {
     hide Evaluator evaluator;
     hide Integer maxDepth;
 
-    // Transposition table: List[Integer] of (hash, score, depth, flag) tuples
-    // Stored as pairs of lists for simplicity (Zia has no tuples)
+    // Transposition table: parallel lists of hash, score, depth, flag, move.
     hide List[Integer] ttHash;
     hide List[Integer] ttScore;
     hide List[Integer] ttDepth;
     hide List[Integer] ttFlag;
+    hide List[Integer] ttMoveKey;
     hide Integer ttSize;
 
     // Killer moves: 2 per ply (quiet moves that caused beta cutoffs)
@@ -76,6 +103,9 @@ class ChessAI {
 
     // Statistics
     hide Integer nodesSearched;
+    hide Integer quiescenceNodes;
+    hide Integer completedDepth;
+    hide Boolean searchAborted;
 
     /// @brief Initialize with default depth = HARD; call setDepth to override.
     expose func init() {
@@ -86,31 +116,37 @@ class ChessAI {
 
         maxPly  = 32;
         nodesSearched = 0;
+        quiescenceNodes = 0;
+        completedDepth = 0;
+        searchAborted = false;
 
         resetTables();
     }
 
-    /// @brief Configure the search depth and reset the TT/killers.
+    /// @brief Change search depth, resetting tables only when it changes.
     expose func setDepth(depth: Integer) {
         var newDepth = depth;
         if newDepth < 1 { newDepth = 1; }
         if newDepth > 8 { newDepth = 8; }
+        if newDepth == maxDepth { return; }
         maxDepth = newDepth;
         maxPly = maxDepth + 28;
         resetTables();
     }
 
-    /// @brief Wipe the transposition table, killer slots, and node counter.
+    /// @brief Wipe search tables, statistics, and budget state.
     hide func resetTables() {
         ttHash  = [];
         ttScore = [];
         ttDepth = [];
         ttFlag  = [];
+        ttMoveKey = [];
         for _ in 0..ttSize {
             ttHash.add(0);
             ttScore.add(0);
             ttDepth.add(-1);
             ttFlag.add(TT_EXACT);
+            ttMoveKey.add(-1);
         }
 
         killerA = [];
@@ -121,6 +157,9 @@ class ChessAI {
         }
 
         nodesSearched = 0;
+        quiescenceNodes = 0;
+        completedDepth = 0;
+        searchAborted = false;
     }
 
     // -------------------------------------------------------------------------
@@ -132,6 +171,9 @@ class ChessAI {
     ///         moves exist (caller treats as game-over).
     expose func findBestMove(b: Board) -> Move {
         nodesSearched = 0;
+        quiescenceNodes = 0;
+        completedDepth = 0;
+        searchAborted = false;
         // Reset killer table for clean search
         resetKillers();
 
@@ -154,15 +196,18 @@ class ChessAI {
             var alpha = -INF;
             var beta  = INF;
 
-            // Move ordering for this iteration: try TT move first
-            var ordered = orderMoves(legal, b, 0);
+            // Search the prior iteration's principal move first. Iterative
+            // deepening only improves pruning when its best move is reused.
+            var ordered = orderMoves(legal, b, 0, -1);
             if ordered.length() == 0 { ordered = legal; }
+            if depth > 1 { ordered = preferMove(ordered, bestMove); }
 
             for i in 0..ordered.length() {
                 var m = ordered.get(i);
                 var undo = b.makeMove(m);
                 var score = -negamax(b, depth - 1, 1, -beta, -alpha);
                 b.unmakeMove(m, undo);
+                if searchAborted { break; }
 
                 if score > iterScore {
                     iterScore = score;
@@ -171,8 +216,11 @@ class ChessAI {
                 if score > alpha { alpha = score; }
             }
 
+            if searchAborted { break; }
+
             bestMove  = iterBest;
             bestScore = iterScore;
+            completedDepth = depth;
 
             // Early termination: found forced mate
             if bestScore >= MATE_SCORE - 50 { break; }
@@ -191,7 +239,7 @@ class ChessAI {
     ///        and mate-distance scoring).
     hide func negamax(b: Board, depth: Integer, ply: Integer,
                       alpha: Integer, beta: Integer) -> Integer {
-        nodesSearched = nodesSearched + 1;
+        if !consumeNode() { return 0; }
 
         // Transposition table probe
         var hash    = b.getHash();
@@ -200,7 +248,7 @@ class ChessAI {
 
         // Leaf node: quiescence search
         if depth == 0 {
-            return quiescence(b, ply, alpha, beta);
+            return quiescence(b, 0, alpha, beta);
         }
 
         var legal = moveGen.legalMoves(b);
@@ -213,7 +261,7 @@ class ChessAI {
             return 0;                          // stalemate
         }
 
-        var ordered = orderMoves(legal, b, ply);
+        var ordered = orderMoves(legal, b, ply, probeMoveKey(hash));
         if ordered.length() == 0 { ordered = legal; }
         var bestScore = -INF - 1;
         var bestMove  = ordered.get(0);
@@ -225,6 +273,7 @@ class ChessAI {
             var undo = b.makeMove(m);
             var score = -negamax(b, depth - 1, ply + 1, -beta, -alphaBound);
             b.unmakeMove(m, undo);
+            if searchAborted { return 0; }
 
             if score > bestScore {
                 bestScore = score;
@@ -237,12 +286,12 @@ class ChessAI {
             if alphaBound >= beta {
                 // Beta cutoff — store killer move
                 storeKiller(m, ply);
-                storeTable(hash, beta, depth, TT_BETA);
+                storeTable(hash, beta, depth, TT_BETA, moveKey(m));
                 return beta;
             }
         }
 
-        storeTable(hash, bestScore, depth, ttBound);
+        storeTable(hash, bestScore, depth, ttBound, moveKey(bestMove));
         return bestScore;
     }
 
@@ -254,8 +303,10 @@ class ChessAI {
     /// @details "Stand-pat" baseline (= static eval) is the lower
     ///          bound — we can always choose NOT to capture. Each
     ///          recursion explores one capture and updates the bound.
-    hide func quiescence(b: Board, ply: Integer, alpha: Integer, beta: Integer) -> Integer {
-        nodesSearched = nodesSearched + 1;
+    hide func quiescence(b: Board, qDepth: Integer,
+                         alpha: Integer, beta: Integer) -> Integer {
+        if !consumeNode() { return 0; }
+        quiescenceNodes = quiescenceNodes + 1;
         var alphaBound = alpha;
 
         // Stand-pat evaluation (lower bound — can choose not to capture)
@@ -263,22 +314,35 @@ class ChessAI {
 
         if standPat >= beta { return beta; }
         if standPat > alphaBound { alphaBound = standPat; }
+        if qDepth >= AI_QUIESCENCE_MAX_DEPTH { return alphaBound; }
 
         // Generate and search captures only
-        var captures = captureMovesOnly(b);
+        var captures = moveGen.legalCaptures(b);
         var ordered  = orderCaptures(captures, b);
 
         for i in 0..ordered.length() {
             var m    = ordered.get(i);
             var undo = b.makeMove(m);
-            var score = -quiescence(b, ply + 1, -beta, -alphaBound);
+            var score = -quiescence(b, qDepth + 1, -beta, -alphaBound);
             b.unmakeMove(m, undo);
+            if searchAborted { return 0; }
 
             if score >= beta { return beta; }
             if score > alphaBound { alphaBound = score; }
         }
 
         return alphaBound;
+    }
+
+    /// @brief Consume one deterministic search work unit.
+    /// @return False once the fixed per-move budget has been exhausted.
+    hide func consumeNode() -> Boolean {
+        if nodesSearched >= AI_SEARCH_NODE_BUDGET {
+            searchAborted = true;
+            return false;
+        }
+        nodesSearched = nodesSearched + 1;
+        return true;
     }
 
     // -------------------------------------------------------------------------
@@ -301,7 +365,8 @@ class ChessAI {
     /// @details Captures (MVV-LVA) -> killers -> quiet. Putting likely-
     ///          best moves first maximises beta cutoffs, which is what
     ///          makes alpha-beta dramatically faster than plain minimax.
-    hide func orderMoves(moves: List[Move], b: Board, ply: Integer) -> List[Move] {
+    hide func orderMoves(moves: List[Move], b: Board, ply: Integer,
+                         preferredKey: Integer) -> List[Move] {
         var captures = [];
         var killers  = [];
         var quiet    = [];
@@ -315,7 +380,7 @@ class ChessAI {
 
         for i in 0..moves.length() {
             var m    = moves.get(i);
-            var mkey = m.from * 64 + m.to;
+            var mkey = moveKey(m);
             if m.captured != 0 || m.enPassant {
                 captures.add(m);
             } else if mkey == ka || mkey == kb {
@@ -328,7 +393,75 @@ class ChessAI {
         var ordered = orderCaptures(captures, b);
         for i in 0..killers.length() { ordered.add(killers.get(i)); }
         for i in 0..quiet.length()   { ordered.add(quiet.get(i)); }
+        if preferredKey >= 0 {
+            ordered = preferMoveKey(ordered, preferredKey);
+        }
         return ordered;
+    }
+
+    /// @brief Move one exact preferred move to the front of an ordered list.
+    /// @details Used at the root to carry the previous completed iteration's
+    ///          principal move into the next iteration.
+    hide func preferMove(moves: List[Move], preferred: Move) -> List[Move] {
+        var ordered = [];
+        var found = false;
+
+        for i in 0..moves.length() {
+            var move = moves.get(i);
+            if sameMove(move, preferred) {
+                ordered.add(move);
+                found = true;
+                break;
+            }
+        }
+        if !found { return moves; }
+
+        for i in 0..moves.length() {
+            var move = moves.get(i);
+            if !sameMove(move, preferred) { ordered.add(move); }
+        }
+        return ordered;
+    }
+
+    /// @brief Structural move equality, including special-move metadata.
+    hide func sameMove(a: Move, b: Move) -> Boolean {
+        return a.from == b.from &&
+               a.to == b.to &&
+               a.captured == b.captured &&
+               a.enPassant == b.enPassant &&
+               a.castleKing == b.castleKing &&
+               a.castleQueen == b.castleQueen &&
+               a.promotion == b.promotion &&
+               a.promotePiece == b.promotePiece;
+    }
+
+    /// @brief Move a transposition-table move key to the front when present.
+    hide func preferMoveKey(moves: List[Move], preferredKey: Integer) -> List[Move] {
+        var ordered = [];
+        var found = false;
+
+        for i in 0..moves.length() {
+            var move = moves.get(i);
+            if moveKey(move) == preferredKey {
+                ordered.add(move);
+                found = true;
+                break;
+            }
+        }
+        if !found { return moves; }
+
+        for i in 0..moves.length() {
+            var move = moves.get(i);
+            if moveKey(move) != preferredKey { ordered.add(move); }
+        }
+        return ordered;
+    }
+
+    /// @brief Compact move identity used by killers and the TT.
+    /// @details Promotion piece is included so ordering never collapses the
+    ///          four legal promotions that share one from/to pair.
+    hide func moveKey(move: Move) -> Integer {
+        return (move.from * 64 + move.to) * 8 + move.promotePiece;
     }
 
     /// @brief Sort captures by MVV-LVA score (best capture first).
@@ -359,17 +492,6 @@ class ChessAI {
         return evaluator.materialValue(victim) * 10 - evaluator.materialValue(attacker);
     }
 
-    /// @brief Filter the full legal-move list down to captures only.
-    hide func captureMovesOnly(b: Board) -> List[Move] {
-        var all = moveGen.legalMoves(b);
-        var caps = [];
-        for i in 0..all.length() {
-            var m = all.get(i);
-            if m.captured != 0 || m.enPassant { caps.add(m); }
-        }
-        return caps;
-    }
-
     // -------------------------------------------------------------------------
     // Transposition table (simple direct-mapped hash table)
     // -------------------------------------------------------------------------
@@ -397,13 +519,23 @@ class ChessAI {
     }
 
     /// @brief Write a TT entry, overwriting any previous slot occupant.
-    hide func storeTable(hash: Integer, score: Integer, depth: Integer, flag: Integer) {
+    hide func storeTable(hash: Integer, score: Integer, depth: Integer,
+                         flag: Integer, bestMoveKey: Integer) {
         var idx = ttIndex(hash);
         if idx < 0 { return; }
         ttHash.set(idx, hash);
         ttScore.set(idx, score);
         ttDepth.set(idx, depth);
         ttFlag.set(idx, flag);
+        ttMoveKey.set(idx, bestMoveKey);
+    }
+
+    /// @brief Return a matching TT entry's best-move key for move ordering.
+    hide func probeMoveKey(hash: Integer) -> Integer {
+        var idx = ttIndex(hash);
+        if idx < 0 { return -1; }
+        if ttHash.get(idx) != hash { return -1; }
+        return ttMoveKey.get(idx);
     }
 
     // -------------------------------------------------------------------------
@@ -416,7 +548,7 @@ class ChessAI {
         if ply < 0 { return; }
         if ply >= killerA.length() || ply >= killerB.length() { return; }
         // Use from*64+to as the killer key for precise move identity
-        var key = m.from * 64 + m.to;
+        var key = moveKey(m);
         if killerA.get(ply) != key {
             killerB.set(ply, killerA.get(ply));
             killerA.set(ply, key);
@@ -446,20 +578,22 @@ class ChessAI {
         if ttScore.length() != ttSize { return -1; }
         if ttDepth.length() != ttSize { return -1; }
         if ttFlag.length() != ttSize { return -1; }
+        if ttMoveKey.length() != ttSize { return -1; }
 
         var idx = hash % ttSize;
         if idx < 0 { idx = idx + ttSize; }
         return idx;
     }
 
-    // -------------------------------------------------------------------------
-    /// @brief Integer absolute value. Local helper because the runtime
-    ///        only provides f64 Math.Abs.
-    hide func absInt(x: Integer) -> Integer {
-        if x < 0 { return -x; }
-        return x;
-    }
-
     /// @brief Statistics: total nodes searched in the most recent findBestMove.
     expose func getNodesSearched() -> Integer { return nodesSearched; }
+
+    /// @brief Statistics: quiescence nodes in the most recent search.
+    expose func getQuiescenceNodes() -> Integer { return quiescenceNodes; }
+
+    /// @brief Deepest fully-completed iterative-deepening depth.
+    expose func getCompletedDepth() -> Integer { return completedDepth; }
+
+    /// @brief True when the most recent search used its full node budget.
+    expose func reachedNodeBudget() -> Boolean { return searchAborted; }
 }

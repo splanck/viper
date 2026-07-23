@@ -24,6 +24,10 @@ module diff_engine;
 bind Str = Zanna.String;
 bind Seq = Zanna.Collections.Seq;
 
+final DIFF_MAX_TOTAL_LINES = 20000;
+final DIFF_MAX_EDIT_DEPTH = 512;
+final DIFF_MAX_TRACE_CELLS = 2000000;
+
 /// Row kinds for the aligned side-by-side view.
 final ROW_SAME = 0;
 final ROW_CHANGED = 1;
@@ -47,6 +51,27 @@ class DiffRow {
     }
 }
 
+/// @brief Bounded aligned-row result with full summary counts.
+class DiffBuildResult {
+    expose List rows;
+    expose Integer totalRows;
+    expose Integer sameCount;
+    expose Integer changedCount;
+    expose Integer addedCount;
+    expose Integer removedCount;
+    expose Boolean truncated;
+
+    expose func init() {
+        rows = new List();
+        totalRows = 0;
+        sameCount = 0;
+        changedCount = 0;
+        addedCount = 0;
+        removedCount = 0;
+        truncated = false;
+    }
+}
+
 /// @brief Longest-common-subsequence length table row walker (Myers greedy).
 /// @details Returns a List of Integer pairs encoded as (aIndex * 1000000 +
 ///          bIndex) marking matched line pairs, in order. Inputs beyond the
@@ -58,7 +83,7 @@ func MatchedPairs(aLines: Any, bLines: Any) -> List {
     if aCount == 0 or bCount == 0 {
         return pairs;
     }
-    if aCount + bCount > 20000 {
+    if aCount + bCount > DIFF_MAX_TOTAL_LINES {
         return pairs; // Bounded: degrade to replace-everything.
     }
 
@@ -76,6 +101,10 @@ func MatchedPairs(aLines: Any, bLines: Any) -> List {
     var d = 0;
     var solved = false;
     while d <= maxD and solved == false {
+        if d > DIFF_MAX_EDIT_DEPTH
+           or (d + 1) * vSize > DIFF_MAX_TRACE_CELLS {
+            return pairs;
+        }
         // Snapshot v for backtracking.
         var snapshot: List = [];
         var s = 0;
@@ -161,15 +190,55 @@ func MatchedPairs(aLines: Any, bLines: Any) -> List {
     return pairs;
 }
 
+/// @brief Count and optionally retain one aligned row.
+/// @details Summary counts cover the full diff even when the caller retains
+///          only a display-sized prefix. Row objects beyond the cap are never
+///          allocated.
+func AddBuildRow(result: DiffBuildResult,
+                 kind: Integer,
+                 leftLine: Integer,
+                 rightLine: Integer,
+                 leftText: String,
+                 rightText: String,
+                 maxRows: Integer) {
+    result.totalRows = result.totalRows + 1;
+    if kind == ROW_SAME { result.sameCount = result.sameCount + 1; }
+    if kind == ROW_CHANGED { result.changedCount = result.changedCount + 1; }
+    if kind == ROW_ADDED { result.addedCount = result.addedCount + 1; }
+    if kind == ROW_REMOVED { result.removedCount = result.removedCount + 1; }
+    if maxRows > 0 and result.rows.count() >= maxRows {
+        result.truncated = true;
+        return;
+    }
+    var row = new DiffRow();
+    row.kind = kind;
+    row.leftLine = leftLine;
+    row.rightLine = rightLine;
+    row.leftText = leftText;
+    row.rightText = rightText;
+    result.rows.add(row);
+}
+
 /// @brief Build aligned side-by-side rows for two documents.
 /// @param leftText Full "before" text.
 /// @param rightText Full "after" text.
 /// @return Caller-owned List of DiffRow.
 expose func BuildRows(leftText: String, rightText: String) -> List {
+    return BuildRowsCapped(leftText, rightText, 0).rows;
+}
+
+/// @brief Build aligned rows while retaining at most @p maxRows row objects.
+/// @param leftText Full "before" text.
+/// @param rightText Full "after" text.
+/// @param maxRows Maximum retained row objects; zero retains every row.
+/// @return Capped rows plus counts for the complete aligned result.
+expose func BuildRowsCapped(leftText: String,
+                            rightText: String,
+                            maxRows: Integer) -> DiffBuildResult {
     var aLines = Str.Split(leftText, "\n");
     var bLines = Str.Split(rightText, "\n");
     var pairs = MatchedPairs(aLines, bLines);
-    var rows: List = [];
+    var result = new DiffBuildResult();
 
     var aIndex = 0;
     var bIndex = 0;
@@ -185,46 +254,32 @@ expose func BuildRows(leftText: String, rightText: String) -> List {
         // Unmatched block before this pair: pair removed/added lines into
         // CHANGED rows while both sides have content, then emit the tail.
         while aIndex < pairA and bIndex < pairB {
-            var row = new DiffRow();
-            row.kind = ROW_CHANGED;
-            row.leftLine = aIndex + 1;
-            row.rightLine = bIndex + 1;
-            row.leftText = Seq.GetStr(aLines, aIndex);
-            row.rightText = Seq.GetStr(bLines, bIndex);
-            rows.add(row);
+            AddBuildRow(result, ROW_CHANGED, aIndex + 1, bIndex + 1,
+                        Seq.GetStr(aLines, aIndex),
+                        Seq.GetStr(bLines, bIndex), maxRows);
             aIndex = aIndex + 1;
             bIndex = bIndex + 1;
         }
         while aIndex < pairA {
-            var removed = new DiffRow();
-            removed.kind = ROW_REMOVED;
-            removed.leftLine = aIndex + 1;
-            removed.leftText = Seq.GetStr(aLines, aIndex);
-            rows.add(removed);
+            AddBuildRow(result, ROW_REMOVED, aIndex + 1, 0,
+                        Seq.GetStr(aLines, aIndex), "", maxRows);
             aIndex = aIndex + 1;
         }
         while bIndex < pairB {
-            var added = new DiffRow();
-            added.kind = ROW_ADDED;
-            added.rightLine = bIndex + 1;
-            added.rightText = Seq.GetStr(bLines, bIndex);
-            rows.add(added);
+            AddBuildRow(result, ROW_ADDED, 0, bIndex + 1, "",
+                        Seq.GetStr(bLines, bIndex), maxRows);
             bIndex = bIndex + 1;
         }
         if p < pairs.count() {
-            var same = new DiffRow();
-            same.kind = ROW_SAME;
-            same.leftLine = aIndex + 1;
-            same.rightLine = bIndex + 1;
-            same.leftText = Seq.GetStr(aLines, aIndex);
-            same.rightText = Seq.GetStr(bLines, bIndex);
-            rows.add(same);
+            AddBuildRow(result, ROW_SAME, aIndex + 1, bIndex + 1,
+                        Seq.GetStr(aLines, aIndex),
+                        Seq.GetStr(bLines, bIndex), maxRows);
             aIndex = aIndex + 1;
             bIndex = bIndex + 1;
         }
         p = p + 1;
     }
-    return rows;
+    return result;
 }
 
 /// @brief Count rows of one kind (summary + probe helper).

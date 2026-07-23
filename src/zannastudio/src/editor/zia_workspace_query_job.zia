@@ -1,0 +1,349 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/zia_workspace_query_job.zia
+// Purpose: Run Zia project-index navigation and rename queries off the UI thread.
+// Key invariants:
+//   - Requests contain immutable editor anchors and borrow no GUI objects.
+//   - Latest-wins cancellation prevents superseded results from publishing.
+//   - Reference and outgoing-call results have explicit retention ceilings.
+// Ownership/Lifetime: ZiaWorkspaceQueryJob owns requests until worker shutdown.
+// Links: zannastudio/src/editor/project_index.zia,
+//        zannastudio/src/commands/zia_workspace_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module zia_workspace_query_job;
+
+bind "../zia/source_scan";
+
+bind Async = Zanna.Threads.Async;
+bind Future = Zanna.Threads.Future;
+bind Map = Zanna.Collections.Map;
+bind Monitor = Zanna.Threads.Monitor;
+bind ProjectIndex = Zanna.Zia.ProjectIndex;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+
+final ZIA_QUERY_DEFINITION = 1;
+final ZIA_QUERY_REFERENCES = 2;
+final ZIA_QUERY_INCOMING_CALLS = 3;
+final ZIA_QUERY_OUTGOING_CALLS = 4;
+final ZIA_QUERY_RENAME = 5;
+
+final ZIA_MAX_QUERY_SOURCE_CHARS = 200000;
+final ZIA_MAX_NAVIGATION_RESULTS = 2000;
+final ZIA_MAX_OUTGOING_TOKENS = 1000;
+final ZIA_QUERY_SHUTDOWN_WAIT_MS = 30000;
+
+/// @brief Immutable query input plus worker-published result state.
+class ZiaWorkspaceQueryRequest {
+    expose Integer generation;
+    expose Integer kind;
+    expose String label;
+    expose Any indexHandle;
+    expose String path;
+    expose String source;
+    expose Integer line;
+    expose Integer col;
+    expose String newName;
+    expose Integer revision;
+    expose String workspaceSignature;
+    expose Integer indexGeneration;
+    expose Boolean cancelled;
+    expose Boolean succeeded;
+    expose Boolean truncated;
+    expose Integer resultCount;
+    expose Any result;
+    expose String reason;
+    expose String error;
+
+    expose func init() {
+        generation = 0;
+        kind = 0;
+        label = "";
+        indexHandle = null;
+        path = "";
+        source = "";
+        line = 1;
+        col = 0;
+        newName = "";
+        revision = -1;
+        workspaceSignature = "";
+        indexGeneration = -1;
+        cancelled = false;
+        succeeded = false;
+        truncated = false;
+        resultCount = 0;
+        result = null;
+        reason = "";
+        error = "";
+    }
+}
+
+func RequestIsCancelled(request: ZiaWorkspaceQueryRequest) -> Boolean {
+    if request == null { return true; }
+    Monitor.Enter(request);
+    var cancelled = request.cancelled;
+    Monitor.Exit(request);
+    return cancelled;
+}
+
+/// @brief Execute one project-index query on an immutable runtime snapshot.
+func RunZiaWorkspaceQuery(request: ZiaWorkspaceQueryRequest) -> Any {
+    if request == null or RequestIsCancelled(request) { return request; }
+    var result: Any = null;
+    var reason = "";
+    var truncated = false;
+    var resultCount = 0;
+
+    if request.kind == ZIA_QUERY_DEFINITION {
+        result = ProjectIndex.Definition(request.indexHandle, request.path,
+                                         request.source, request.line,
+                                         request.col);
+    } else if request.kind == ZIA_QUERY_REFERENCES
+              or request.kind == ZIA_QUERY_INCOMING_CALLS {
+        result = ProjectIndex.References(request.indexHandle, request.path,
+                                         request.source, request.line,
+                                         request.col);
+        if result != null {
+            resultCount = Seq.get_Count(result);
+            if resultCount > ZIA_MAX_NAVIGATION_RESULTS {
+                resultCount = ZIA_MAX_NAVIGATION_RESULTS;
+                truncated = true;
+            }
+        }
+    } else if request.kind == ZIA_QUERY_OUTGOING_CALLS {
+        result = CollectOutgoingDefinitions(request);
+        reason = request.reason;
+        if result != null { resultCount = Seq.get_Count(result); }
+        if resultCount > ZIA_MAX_NAVIGATION_RESULTS {
+            resultCount = ZIA_MAX_NAVIGATION_RESULTS;
+            truncated = true;
+        }
+        if reason == "token_limit" { truncated = true; }
+    } else if request.kind == ZIA_QUERY_RENAME {
+        result = ProjectIndex.RenameEdits(request.indexHandle, request.path,
+                                         request.source, request.line,
+                                         request.col, request.newName);
+        if result != null {
+            reason = Map.GetStr(result, "reason");
+            var edits = Map.Get(result, "edits");
+            if edits != null { resultCount = Seq.get_Count(edits); }
+        }
+    } else {
+        reason = "unsupported_query";
+    }
+
+    if RequestIsCancelled(request) { return request; }
+    Monitor.Enter(request);
+    if request.cancelled == false {
+        request.result = result;
+        request.reason = reason;
+        request.truncated = truncated;
+        request.resultCount = resultCount;
+        request.succeeded = true;
+    }
+    Monitor.Exit(request);
+    return request;
+}
+
+/// @brief Resolve bounded call tokens in the active function through the index.
+func CollectOutgoingDefinitions(request: ZiaWorkspaceQueryRequest) -> Any {
+    var result = Seq.New();
+    var startLine = source_scan.EnclosingZiaFunctionStartLine(request.source,
+                                                              request.line);
+    if startLine <= 0 {
+        request.reason = "no_enclosing_function";
+        return result;
+    }
+    var endLine = source_scan.ZiaFunctionEndLine(request.source, startLine);
+    var caller = source_scan.ZiaFunctionNameFromLine(
+        source_scan.SourceLine(request.source, startLine));
+    var tokens = source_scan.OutgoingZiaCallTokens(request.source, startLine,
+                                                   endLine);
+    if tokens == null { return result; }
+    var count = Seq.get_Count(tokens);
+    if count > ZIA_MAX_OUTGOING_TOKENS {
+        count = ZIA_MAX_OUTGOING_TOKENS;
+    }
+    var index = 0;
+    while index < count
+          and Seq.get_Count(result) <= ZIA_MAX_NAVIGATION_RESULTS {
+        if RequestIsCancelled(request) { return result; }
+        var token = Seq.Get(tokens, index);
+        var tokenLine = Map.GetInt(token, "line");
+        var tokenCol = Map.GetInt(token, "column");
+        var definition = ProjectIndex.Definition(
+            request.indexHandle, request.path, request.source,
+            tokenLine, tokenCol);
+        if Map.GetBool(definition, "found") {
+            Map.SetInt(definition, "callLine", tokenLine);
+            Map.SetInt(definition, "callColumn", tokenCol);
+            Map.SetStr(definition, "callName", Map.GetStr(token, "name"));
+            Map.SetStr(definition, "callerName", caller);
+            Seq.Push(result, definition);
+        }
+        index = index + 1;
+    }
+    if Seq.get_Count(tokens) > ZIA_MAX_OUTGOING_TOKENS {
+        request.reason = "token_limit";
+    }
+    return result;
+}
+
+/// @brief Serial latest-wins owner for Zia project-index queries.
+class ZiaWorkspaceQueryJob {
+    expose ZiaWorkspaceQueryRequest activeRequest;
+    expose ZiaWorkspaceQueryRequest pendingRequest;
+    expose ZiaWorkspaceQueryRequest completedRequest;
+    expose ZiaWorkspaceQueryRequest latestRequest;
+    expose Any activeFuture;
+    expose Integer nextGeneration;
+    expose Integer startedCount;
+    expose Integer cancelledCount;
+    expose Integer coalescedCount;
+
+    expose func init() {
+        activeRequest = null;
+        pendingRequest = null;
+        completedRequest = null;
+        latestRequest = null;
+        activeFuture = null;
+        nextGeneration = 1;
+        startedCount = 0;
+        cancelledCount = 0;
+        coalescedCount = 0;
+    }
+
+    expose func Queue(kind: Integer,
+                      label: String,
+                      indexHandle: Any,
+                      path: String,
+                      source: String,
+                      line: Integer,
+                      col: Integer,
+                      newName: String,
+                      revision: Integer,
+                      workspaceSignature: String,
+                      indexGeneration: Integer) -> Integer {
+        var request = new ZiaWorkspaceQueryRequest();
+        request.generation = nextGeneration;
+        request.kind = kind;
+        request.label = label;
+        request.indexHandle = indexHandle;
+        request.path = path;
+        request.source = source;
+        request.line = line;
+        request.col = col;
+        request.newName = newName;
+        request.revision = revision;
+        request.workspaceSignature = workspaceSignature;
+        request.indexGeneration = indexGeneration;
+        nextGeneration = nextGeneration + 1;
+        completedRequest = null;
+        latestRequest = request;
+        if activeFuture == null {
+            StartRequest(request);
+        } else {
+            MarkCancelled(activeRequest);
+            if pendingRequest != null {
+                pendingRequest.cancelled = true;
+                coalescedCount = coalescedCount + 1;
+            }
+            pendingRequest = request;
+        }
+        return request.generation;
+    }
+
+    expose func Pump() -> Boolean {
+        if activeFuture != null and Future.get_IsDone(activeFuture) {
+            var finished = activeRequest;
+            if Future.get_IsError(activeFuture) {
+                finished.succeeded = false;
+                finished.error = Future.get_Error(activeFuture);
+            }
+            if finished.cancelled == false { completedRequest = finished; }
+            activeFuture = null;
+            activeRequest = null;
+        }
+        if activeFuture == null and pendingRequest != null {
+            var next = pendingRequest;
+            pendingRequest = null;
+            StartRequest(next);
+        }
+        return completedRequest != null;
+    }
+
+    expose func HasCompleted() -> Boolean {
+        return completedRequest != null;
+    }
+
+    expose func TakeCompleted() -> ZiaWorkspaceQueryRequest {
+        var request = completedRequest;
+        completedRequest = null;
+        return request;
+    }
+
+    expose func Cancel() {
+        completedRequest = null;
+        latestRequest = null;
+        if pendingRequest != null {
+            pendingRequest.cancelled = true;
+            pendingRequest = null;
+            coalescedCount = coalescedCount + 1;
+        }
+        MarkCancelled(activeRequest);
+    }
+
+    expose func CancelAndWait() -> Boolean {
+        Cancel();
+        if activeFuture == null { return true; }
+        var finished = false;
+        try {
+            finished = Future.WaitFor(activeFuture,
+                                      ZIA_QUERY_SHUTDOWN_WAIT_MS);
+        } catch {
+            return false;
+        }
+        if finished == false { return false; }
+        Pump();
+        return activeFuture == null;
+    }
+
+    expose func IsBusy() -> Boolean {
+        return activeFuture != null or pendingRequest != null;
+    }
+
+    hide func StartRequest(request: ZiaWorkspaceQueryRequest) -> Boolean {
+        activeRequest = request;
+        startedCount = startedCount + 1;
+        try {
+            activeFuture = Async.RunOwned(&RunZiaWorkspaceQuery, request);
+        } catch {
+            activeFuture = null;
+        }
+        if activeFuture == null {
+            request.succeeded = false;
+            request.error = "Could not start Zia workspace query";
+            completedRequest = request;
+            activeRequest = null;
+            return false;
+        }
+        return true;
+    }
+
+    hide func MarkCancelled(request: ZiaWorkspaceQueryRequest) {
+        if request == null { return; }
+        Monitor.Enter(request);
+        if request.cancelled == false {
+            request.cancelled = true;
+            cancelledCount = cancelledCount + 1;
+        }
+        Monitor.Exit(request);
+    }
+}

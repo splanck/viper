@@ -689,7 +689,13 @@ vg_event_t vg_event_from_platform(void *platform_event) {
         case VGFX_EVENT_SCROLL:
             event.type = VG_EVENT_MOUSE_WHEEL;
             event.wheel.delta_x = pe->data.scroll.delta_x;
-            event.wheel.delta_y = pe->data.scroll.delta_y;
+            // ZannaGFX uses screen-space direction (positive Y is down), while
+            // the GUI event contract follows conventional wheel direction
+            // (positive Y is up / away from the user). Keep that conversion at
+            // the subsystem boundary so every scrollable widget sees the same
+            // cross-platform direction. Copying the value made a native
+            // scroll-down at the top of a TreeView clamp back to zero.
+            event.wheel.delta_y = -pe->data.scroll.delta_y;
             event.wheel.screen_x = (float)pe->data.scroll.x;
             event.wheel.screen_y = (float)pe->data.scroll.y;
             event.modifiers = translate_vgfx_modifiers(pe->data.scroll.modifiers);

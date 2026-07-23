@@ -3,22 +3,18 @@
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/il/verify/EhChecks.cpp
+//===----------------------------------------------------------------------===//
 //
-// Purpose:
-//   Implement reusable exception-handling verification predicates operating on
-//   the EhModel abstraction. The checks mirror historical verifier behaviour so
-//   diagnostics remain stable while allowing multiple passes to share logic.
-//
+// File: il/verify/EhChecks.cpp
+// Purpose: Verify exception-stack balance and resume-token provenance across CFG edges.
 // Key invariants:
-//   * Diagnostics preserve existing wording and codes.
-//   * Traversals avoid mutating the underlying IL.
-//
+//   - Diagnostics preserve stable wording and codes across verifier entry points.
+//   - Active resume tokens only flow through matching typed block parameters.
 // Ownership/Lifetime:
-//   All routines borrow IR nodes through EhModel and never assume ownership.
-//
-// Links:
-//   docs/il/il-guide.md#reference
+//   - All routines borrow IR nodes through EhModel and never take ownership.
+//   - Traversal state owns only indices, stacks, and non-owning IR pointers.
+// Links: il/verify/EhChecks.hpp, il/verify/EhModel.hpp,
+//        docs/adr/0005-resume-token-provenance.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -388,7 +384,7 @@ std::optional<ResumeTokenState> transitionResumeTokenForEdge(
         return nextToken;
     }
 
-    const auto tokenParam = model.handlerResumeTokenParam(*edge.target);
+    const auto tokenParam = model.resumeTokenParam(*edge.target);
     if (!targetIsHandler && !tokenParam)
         return nextToken;
 
@@ -465,7 +461,8 @@ class EhStackTraversal {
         while (!worklist.empty()) {
             if (budget-- == 0) {
                 diags.fail(makeVerifierError(
-                    VerifyDiagCode::EhHandlerInvalidEntry, {},
+                    VerifyDiagCode::EhHandlerInvalidEntry,
+                    {},
                     "exception-handling analysis exceeded its state budget; handler nesting "
                     "is too deep or complex to verify"));
                 return false;
@@ -814,7 +811,7 @@ class HandlerCoverageTraversal {
             if (edge.kind == EhEdgeKind::Resume) {
                 nextState.resumeToken = {};
             } else if (edge.target) {
-                if (auto tokenParam = model.handlerResumeTokenParam(*edge.target);
+                if (auto tokenParam = model.resumeTokenParam(*edge.target);
                     tokenParam && state.resumeToken.active) {
                     if (const std::vector<Value> *args = branchArgsForEdge(terminator, edge)) {
                         for (std::size_t i = 0; i < edge.target->params.size() && i < args->size();
@@ -938,11 +935,13 @@ DomInfo computeDominators(const EhModel &model) {
     // exhaust the native call stack.
     std::vector<const BasicBlock *> rpo;
     std::unordered_set<const BasicBlock *> visited;
+
     struct DFSFrame {
         const BasicBlock *block;
         std::vector<const BasicBlock *> successors;
         std::size_t successorIndex{0};
     };
+
     auto successorsOf = [&](const BasicBlock &block) {
         if (const Instr *terminator = model.findTerminator(block))
             return model.gatherSuccessors(*terminator);

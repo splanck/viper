@@ -201,6 +201,7 @@ set(RT_IO_FS_SOURCES
         io/rt_path.c
         io/rt_dir.c
         io/rt_dir_list.c
+        io/rt_dir_page.cpp
         io/rt_glob.c
         io/rt_tempfile.c
         io/rt_watcher.c

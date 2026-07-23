@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/diff_view_probe.zia
+// Purpose: Regress exact, capped, and asynchronously owned Studio diff work.
+// Key invariants:
+//   - Uncapped rows reconstruct both inputs exactly.
+//   - Capped rows retain a bounded prefix but count the complete result.
+//   - Latest-wins worker jobs publish no canceled request.
+// Ownership/Lifetime: The probe owns and drains every DiffJob it starts.
+// Links: zannastudio/src/services/diff_engine.zia,
+//        zannastudio/src/services/diff_job.zia
+//
+//===----------------------------------------------------------------------===//
+
 module diff_view_probe;
 
 // ============================================================================
@@ -9,8 +28,11 @@ module diff_view_probe;
 // ============================================================================
 
 bind "../services/diff_engine";
+bind "../services/diff_job";
 
 bind Terminal = Zanna.Terminal;
+bind Clock = Zanna.Time.Clock;
+bind Str = Zanna.String;
 
 func fail(reason: String) {
     Terminal.Say("RESULT: fail " + reason);
@@ -125,6 +147,86 @@ func main() {
     var addAll = diff_engine.BuildRows("", "x\ny");
     if diff_engine.CountKind(addAll, diff_engine.ROW_ADDED) < 1 {
         fail("empty-to-content should classify additions");
+        return;
+    }
+
+    // Display-sized row retention must not lose full summary counts.
+    var capped = diff_engine.BuildRowsCapped(
+        "a\nb\nc\nd\ne", "A\nB\nC\nD\nE", 3);
+    if capped.rows.count() != 3 or capped.totalRows != 5
+       or capped.changedCount != 5 or capped.truncated == false {
+        fail("capped diff rows or summary counts");
+        return;
+    }
+
+    // The owned worker returns immediately, publishes a typed bounded result,
+    // and can be drained safely during teardown.
+    var job = new diff_job.DiffJob();
+    var generation = job.Queue("small", leftDoc, rightDoc);
+    if generation <= 0 or job.IsBusy() == false {
+        fail("diff worker did not start asynchronously");
+        return;
+    }
+    var attempts = 0;
+    while job.IsBusy() and attempts < 5000 {
+        job.Pump();
+        Clock.Sleep(1);
+        attempts = attempts + 1;
+    }
+    job.Pump();
+    var completed = job.TakeCompleted();
+    if completed == null or completed!.generation != generation
+       or completed!.succeeded == false or completed!.result == null
+       or completed!.result.totalRows != rows.count() {
+        job.CancelAndWait();
+        fail("diff worker result");
+        return;
+    }
+
+    // A later request supersedes a live calculation; only the latest title may
+    // publish after the serial worker drains.
+    var heavyLeft = new Zanna.Text.StringBuilder();
+    var heavyRight = new Zanna.Text.StringBuilder();
+    i = 0;
+    while i < 1200 {
+        if i > 0 {
+            heavyLeft.Append("\n");
+            heavyRight.Append("\n");
+        }
+        heavyLeft.Append("left-" + i);
+        heavyRight.Append("right-" + i);
+        i = i + 1;
+    }
+    job.Queue("obsolete", heavyLeft.ToString(), heavyRight.ToString());
+    var latestGeneration = job.Queue("latest", "one\ntwo", "one\nthree");
+    attempts = 0;
+    while job.IsBusy() and attempts < 5000 {
+        job.Pump();
+        Clock.Sleep(1);
+        attempts = attempts + 1;
+    }
+    job.Pump();
+    completed = job.TakeCompleted();
+    if completed == null or completed!.generation != latestGeneration
+       or completed!.title != "latest" or job.cancelledCount <= 0 {
+        job.CancelAndWait();
+        fail("diff worker latest-wins cancellation");
+        return;
+    }
+
+    // Line-shape limits fail logically without entering the diff engine.
+    var limited = new diff_job.DiffRequest();
+    limited.leftText = Str.Repeat("\n", 20000);
+    limited.rightText = "";
+    diff_job.RunDiff(limited);
+    if limited.succeeded == false or limited.reason != "too_many_lines"
+       or limited.result != null {
+        job.CancelAndWait();
+        fail("diff worker line limit");
+        return;
+    }
+    if job.CancelAndWait() == false {
+        fail("diff worker shutdown drain");
         return;
     }
 

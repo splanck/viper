@@ -584,11 +584,6 @@ void vg_tooltip_manager_widget_destroyed(vg_widget_t *widget);
 /// subtree being hidden. Safe to call from visibility/enabled-state setters.
 void vg_tooltip_manager_widget_hidden(vg_widget_t *widget);
 
-/// @brief Attach a tooltip text string to a widget (shown by the global tooltip manager).
-/// @param widget Widget to annotate.
-/// @param text   Tooltip text (copied internally; NULL removes the tooltip).
-void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text);
-
 //=============================================================================
 // CommandPalette Widget
 //=============================================================================
@@ -623,9 +618,11 @@ typedef struct vg_commandpalette {
     // Search state
     char *placeholder_text; ///< Placeholder shown when query is empty
     char *current_query;    ///< Current search query (UTF-8)
-    uint64_t query_generation; ///< Bumped whenever current_query changes (poll key for the runtime).
-    bool client_filtered;   ///< When true, the widget skips its own fuzzy filter and shows
-                            ///< commands[] in insertion order (the app ranks/repopulates per keystroke).
+    uint64_t
+        query_generation; ///< Bumped whenever current_query changes (poll key for the runtime).
+    bool client_filtered; ///< When true, the widget skips its own fuzzy filter and shows
+                          ///< commands[] in insertion order (the app ranks/repopulates per
+                          ///< keystroke).
 
     // State
     bool is_visible;         ///< Is palette visible
@@ -634,9 +631,9 @@ typedef struct vg_commandpalette {
     int first_visible_index; ///< First filtered result currently visible
 
     // Appearance
-    uint32_t item_height; ///< Height of each result item
+    uint32_t item_height; ///< Logical height of each result item
     uint32_t max_visible; ///< Max visible results
-    float width;          ///< Palette width
+    float width;          ///< Logical palette width before viewport clamping
     uint32_t bg_color;
     uint32_t selected_bg;
     uint32_t text_color;

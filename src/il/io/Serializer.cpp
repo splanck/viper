@@ -5,18 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Implements the textual serializer for IL modules.  The serializer prints
-// deterministic output that mirrors the parser grammar so modules can round
-// trip through the textual form for diagnostics and tooling.
+// File: il/io/Serializer.cpp
+// Purpose: Render IL modules, functions, and instructions into deterministic
+//          textual IL accepted by the parser and verifier.
+// Key invariants:
+//   - Canonical output round-trips without losing value identity or EH ABI names.
+//   - Malformed programmatic IR fails fast outside best-effort debug mode.
+// Ownership/Lifetime:
+//   - Serialization borrows the module and owns only call-local naming state.
+// Links: il/io/Serializer.hpp, il/io/Parser.hpp, docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
-//
-/// @file
-/// @brief Renders IL modules, functions, and instructions to textual form.
-/// @details Helper routines convert operands, types, and instruction-specific
-///          payloads into the canonical syntax accepted by the parser.  The
-///          resulting string is used by human-facing tools and golden tests to
-///          verify lowering behaviour.
 
 #include "il/io/Serializer.hpp"
 #include "il/core/BasicBlock.hpp"
@@ -61,6 +60,9 @@ struct SerializeContext {
     /// @brief Names owned by more than one SSA temp and therefore unsafe to print directly.
     std::unordered_set<std::string> ambiguousValueNames;
 
+    /// @brief Handler ABI parameter IDs whose `%err`/`%tok` names are block-scoped.
+    std::unordered_set<unsigned> handlerParameterIds;
+
     /// @brief Look up a name for the given temp ID.
     /// @param id Temp ID to resolve.
     /// @return The declared name when it is unique and cannot collide with `%tN` fallback syntax.
@@ -70,7 +72,7 @@ struct SerializeContext {
         const auto &name = valueNames[id];
         if (name.empty() || !isValidILIdentifier(name))
             return {};
-        if (ambiguousValueNames.count(name) != 0)
+        if (ambiguousValueNames.count(name) != 0 && handlerParameterIds.count(id) == 0)
             return {};
         if (auto explicitId = parseExplicitTempName(name); explicitId && *explicitId != id)
             return {};
@@ -700,6 +702,13 @@ void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx) 
         for (const auto &param : block.params) {
             if (param.id < ctx.valueNames.size())
                 ctx.valueNames[param.id] = param.name;
+        }
+        // Handler parameters are intentionally named `%err` and `%tok` in
+        // every handler block. Those declarations are block-scoped even though
+        // ordinary SSA names must be unique across the textual function.
+        if (isHandlerBlock(block)) {
+            ctx.handlerParameterIds.insert(block.params[0].id);
+            ctx.handlerParameterIds.insert(block.params[1].id);
         }
     }
 

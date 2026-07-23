@@ -79,16 +79,21 @@ static inline int rt_gui_ascii_casecmp(const char *a, const char *b) {
 /// @details Holds the graphics window, root widget, default font, mouse state,
 ///          and close flag. Defined in rt_gui_app.c and shared across split GUI modules.
 typedef struct {
+    int ctrl;
+    int shift;
+    int alt;
+    int super;
+    int key;
+} rt_gui_shortcut_stroke_t;
+
+typedef struct {
     char *id;
     char *keys;
     char *description;
     int enabled;
     int triggered;
-    int parsed_ctrl;
-    int parsed_shift;
-    int parsed_alt;
-    int parsed_super;
-    int parsed_key;
+    rt_gui_shortcut_stroke_t first;
+    rt_gui_shortcut_stroke_t second; ///< Empty key for a single-stroke shortcut.
 } rt_gui_shortcut_t;
 
 typedef struct {
@@ -149,7 +154,8 @@ typedef struct {
     int32_t accessibility_high_contrast;  ///< Explicit per-app high-contrast preference.
     int32_t accessibility_reduced_motion; ///< Explicit per-app reduced-motion preference.
     uint64_t accessibility_revision;      ///< Monotonic preference/announcement revision.
-    char *title;                          ///< Window title (owned, heap-allocated).
+    char *title;            ///< Mutable window/document title (owned, heap-allocated).
+    char *application_name; ///< Stable App.New product name (owned, heap-allocated).
     vg_dialog_t **dialog_stack;
     int dialog_count;
     int dialog_cap;
@@ -162,6 +168,9 @@ typedef struct {
     int shortcut_count;
     int shortcut_cap;
     int shortcuts_global_enabled;
+    int shortcut_chord_pending;
+    rt_gui_shortcut_stroke_t shortcut_chord_prefix;
+    uint64_t shortcut_chord_started_ms;
     char *triggered_shortcut_id;
     char **triggered_shortcut_ids;
     int triggered_shortcut_count;

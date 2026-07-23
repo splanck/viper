@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/shell_config_probe.zia
+// Purpose: Exercise keybinding overrides and transactional project scaffolding.
+// Key invariants:
+//   - Override edits round-trip without discarding unrelated commands.
+//   - New-project templates never overwrite or leave staging directories.
+// Ownership/Lifetime: Owns temporary scaffold directories and registry models.
+// Links: zannastudio/src/commands/command_registry.zia,
+//        zannastudio/src/services/project_templates.zia
+//
+//===----------------------------------------------------------------------===//
+
 module shell_config_probe;
 
 // ============================================================================
@@ -39,7 +57,27 @@ func ArgValue(name: String) -> String {
 func main() {
     // Keybinding overrides: upsert/replace/remove + application.
     var registry = new command_registry.CommandRegistry();
-    registry.RegisterDefaults();
+
+    if registry.NormalizeShortcut("  Ctrl + K   Ctrl + S  ") != "Ctrl+K Ctrl+S"
+       or registry.IsValidShortcut("Ctrl+K Ctrl+S") == false
+       or registry.IsValidShortcut("Cmd+K Cmd+S") == false
+       or registry.IsValidShortcut("Escape") == false
+       or registry.IsValidShortcut("") == false
+       or registry.IsValidShortcut("Ctrl+NotAKey")
+       or registry.IsValidShortcut("Ctrl+K Ctrl+S Ctrl+X")
+       or registry.IsValidShortcut("S")
+       or registry.IsValidShortcut("Shift+Space") {
+        fail("shortcut grammar validation");
+        return;
+    }
+
+    var rejectedRegistry = new command_registry.CommandRegistry();
+    var rejectedDefault = rejectedRegistry.ShortcutFor("save");
+    rejectedRegistry.ApplyOverrides("save=Ctrl+NotAKey");
+    if rejectedRegistry.ShortcutFor("save") != rejectedDefault {
+        fail("invalid persisted override replaced a working default");
+        return;
+    }
 
     var encoded = registry.UpsertOverride("", "save", "Ctrl+Alt+S");
     encoded = registry.UpsertOverride(encoded, "build", "F9");
@@ -93,11 +131,22 @@ func main() {
         fail("scaffold must refuse to overwrite an existing project");
         return;
     }
+    if project_templates.Scaffold(base, "invalidkind", "unknown") != ""
+       or Dir.Exists(Path.Join(base, "invalidkind")) {
+        fail("scaffold accepted an unknown template kind");
+        return;
+    }
     var libDir = project_templates.Scaffold(base, "probelib", "library");
     var guiDir = project_templates.Scaffold(base, "probegui", "gui");
     if libDir == "" or guiDir == "" {
         fail("library/gui scaffolds failed");
         return;
+    }
+    for directoryName in Dir.Dirs(base) {
+        if Str.StartsWith(directoryName, ".") {
+            fail("successful scaffold left a staging directory: " + directoryName);
+            return;
+        }
     }
 
     // Compile-the-result: the console starter must type-check cleanly.

@@ -1,0 +1,533 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/basic_workspace_commands.zia
+// Purpose: Snapshot, schedule, validate, and incrementally publish project-wide
+//          BASIC navigation and rename commands without blocking the UI frame.
+// Key invariants:
+//   - Only results matching the active path, revision, caret, and roots apply.
+//   - Background workers never borrow GUI, project, or document-model objects.
+//   - Large reference lists are rendered in bounded batches across frames.
+// Ownership/Lifetime:
+//   - Main owns one BasicWorkspaceCommandController for the application lifetime.
+//   - The controller owns its worker and transient plain-data render sequence.
+// Links: zannastudio/src/editor/basic_workspace_query_job.zia,
+//        zannastudio/src/commands/main_command_dispatcher.zia
+//
+//===----------------------------------------------------------------------===//
+
+module basic_workspace_commands;
+
+bind "../basic/semantic_scan";
+bind "../commands/edit_commands";
+bind "../commands/file_commands";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../editor/basic_workspace_query_job";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../services/locations";
+bind "../services/workspace_edits";
+bind "../ui/app_shell";
+
+bind GUI = Zanna.GUI;
+bind Map = Zanna.Collections.Map;
+bind Obj = Zanna.Core.Object;
+bind Path = Zanna.IO.Path;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+
+final RESULT_ROWS_PER_FRAME = 100;
+
+/// @brief UI-side owner for asynchronous BASIC workspace semantic commands.
+class BasicWorkspaceCommandController {
+    expose basic_workspace_query_job.BasicWorkspaceQueryJob job;
+    expose Integer pendingGeneration;
+    expose Any renderItems;
+    expose Integer renderIndex;
+    expose Integer renderKind;
+    expose String renderLabel;
+    expose String renderLastGroup;
+    expose Boolean renderTruncated;
+
+    expose func init() {
+        job = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+        pendingGeneration = 0;
+        renderItems = null;
+        renderIndex = 0;
+        renderKind = 0;
+        renderLabel = "";
+        renderLastGroup = "";
+        renderTruncated = false;
+    }
+
+    /// @brief Queue a navigation/call-hierarchy query from the active snapshot.
+    expose func Start(kind: Integer,
+                      label: String,
+                      shell: app_shell.AppShell,
+                      docMgr: document_manager.DocumentManager,
+                      projMgr: project_manager.ProjectManager,
+                      engine: editor_engine.EditorEngine) -> Boolean {
+        return StartWithText(kind, label, "", shell, docMgr, projMgr, engine);
+    }
+
+    /// @brief Queue a rename query with a non-modal input value.
+    expose func StartRename(newNameText: String,
+                            shell: app_shell.AppShell,
+                            docMgr: document_manager.DocumentManager,
+                            projMgr: project_manager.ProjectManager,
+                            engine: editor_engine.EditorEngine) -> Boolean {
+        var newName = Str.Trim(newNameText);
+        if newName == "" { return false; }
+        if semanticNameIsValid(newName) == false {
+            GUI.Toast.Warning("Invalid BASIC identifier");
+            return false;
+        }
+        return StartWithText(basic_workspace_query_job.QUERY_RENAME,
+                             "Rename", newName, shell, docMgr, projMgr,
+                             engine);
+    }
+
+    /// @brief Poll the worker, reject stale results, and render one bounded batch.
+    expose func Pump(shell: app_shell.AppShell,
+                     docMgr: document_manager.DocumentManager,
+                     projMgr: project_manager.ProjectManager,
+                     engine: editor_engine.EditorEngine,
+                     tabs: editor_tabs.EditorTabs,
+                     locStore: locations.LocationStore) {
+        if pendingGeneration > 0 and job.latestRequest != null
+           and AnchorMatches(job.latestRequest, docMgr, projMgr, engine) == false {
+            var cancelledLabel = job.latestRequest.label;
+            job.Cancel();
+            pendingGeneration = 0;
+            if shell != null {
+                shell.SetStatusLeft(cancelledLabel
+                                    + " canceled because the editor changed");
+            }
+        }
+
+        job.Pump();
+        var request = job.TakeCompleted();
+        if request != null {
+            FinishRequest(request!, shell, docMgr, projMgr, engine, tabs,
+                          locStore);
+        }
+        PumpRenderRows(shell, locStore);
+    }
+
+    /// @brief Cancel queued work and discard partially rendered results.
+    expose func Cancel() {
+        job.Cancel();
+        pendingGeneration = 0;
+        ResetRendering();
+    }
+
+    /// @brief Cancel and drain worker ownership before runtime teardown.
+    /// @return True when the bounded worker-shutdown wait completed.
+    expose func Shutdown() -> Boolean {
+        pendingGeneration = 0;
+        ResetRendering();
+        return job.CancelAndWait();
+    }
+
+    expose func IsBusy() -> Boolean {
+        return pendingGeneration > 0 or job.IsBusy() or renderItems != null;
+    }
+
+    /// @brief Construct immutable roots/open-document lists on the UI thread.
+    hide func StartWithText(kind: Integer,
+                            label: String,
+                            newName: String,
+                            shell: app_shell.AppShell,
+                            docMgr: document_manager.DocumentManager,
+                            projMgr: project_manager.ProjectManager,
+                            engine: editor_engine.EditorEngine) -> Boolean {
+        if shell == null or docMgr == null or engine == null
+           or engine.editor == null {
+            return false;
+        }
+        var doc = docMgr.GetActive();
+        if doc == null or doc!.language != "basic" {
+            return false;
+        }
+        if kind == basic_workspace_query_job.QUERY_RENAME
+           and doc!.filePath == "" {
+            GUI.Toast.Info("Save the BASIC file before renaming across the workspace");
+            return false;
+        }
+
+        file_commands.SaveEditorState(docMgr, engine);
+        var activeSource = engine.GetTextSnapshot();
+        doc!.content = activeSource;
+        var roots = new List();
+        var ignores = new List();
+        CaptureRoots(projMgr, doc!.filePath, roots, ignores);
+        var openPaths = new List();
+        var openSources = new List();
+        CaptureOpenBasicDocuments(docMgr, openPaths, openSources);
+        ResetRendering();
+        if kind != basic_workspace_query_job.QUERY_RENAME {
+            shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
+            shell.toolPanels.HideReferencesPanel();
+        }
+
+        pendingGeneration = job.Queue(
+            kind, label, newName, doc!.filePath, activeSource,
+            engine.editor.CursorLine + 1, engine.editor.CursorCol,
+            engine.GetRevision(), WorkspaceSignature(projMgr, roots),
+            roots, ignores, openPaths, openSources);
+        if pendingGeneration <= 0 {
+            GUI.Toast.Error(label + " could not start");
+            return false;
+        }
+        shell.SetStatusLeft(label + " running in background...");
+        return true;
+    }
+
+    /// @brief Validate and apply one completed worker request.
+    hide func FinishRequest(request: basic_workspace_query_job.BasicWorkspaceQueryRequest,
+                            shell: app_shell.AppShell,
+                            docMgr: document_manager.DocumentManager,
+                            projMgr: project_manager.ProjectManager,
+                            engine: editor_engine.EditorEngine,
+                            tabs: editor_tabs.EditorTabs,
+                            locStore: locations.LocationStore) {
+        if request.generation != pendingGeneration { return; }
+        pendingGeneration = 0;
+        if AnchorMatches(request, docMgr, projMgr, engine) == false {
+            shell.SetStatusLeft(request.label
+                                + " canceled because the editor changed");
+            return;
+        }
+        if request.succeeded == false or request.result == null {
+            var message = request.label + " failed";
+            if request.error != "" { message = message + ": " + request.error; }
+            shell.SetStatusLeft(message);
+            GUI.Toast.Error(message);
+            return;
+        }
+
+        var result = request.result;
+        if Map.GetBool(result, "success") == false {
+            ReportLogicalFailure(shell, request.kind, request.label,
+                                 Map.GetStr(result, "reason"));
+            return;
+        }
+        if request.kind == basic_workspace_query_job.QUERY_DEFINITION {
+            ApplyDefinition(shell, docMgr, engine, tabs, locStore, result);
+            return;
+        }
+        if request.kind == basic_workspace_query_job.QUERY_RENAME {
+            ApplyRename(shell, docMgr, engine, tabs, request, result);
+            return;
+        }
+        BeginRendering(shell, request.kind, request.label, result);
+    }
+
+    /// @brief Navigate through LocationStore so cross-file safety stays centralized.
+    hide func ApplyDefinition(shell: app_shell.AppShell,
+                              docMgr: document_manager.DocumentManager,
+                              engine: editor_engine.EditorEngine,
+                              tabs: editor_tabs.EditorTabs,
+                              locStore: locations.LocationStore,
+                              result: Any) {
+        var def = Map.Get(result, "definition");
+        if def == null or Map.GetBool(def, "found") == false {
+            GUI.Toast.Info("Definition not found");
+            return;
+        }
+        var line = Map.GetInt(def, "line");
+        var col = Map.GetInt(def, "column");
+        var id = locStore.Add(Map.GetStr(def, "file"), line, col,
+                              Map.GetIntOr(def, "endLine", line),
+                              Map.GetIntOr(def, "endColumn", col + 1),
+                              locations.KIND_DEFINITION,
+                              Map.GetStr(def, "name"));
+        if locStore.OpenLocation(shell, docMgr, engine, tabs, id) {
+            var status = "Definition: " + Map.GetStr(def, "name");
+            if Map.GetBool(result, "truncated") {
+                status = status + " (workspace scan limited)";
+            }
+            shell.SetStatusLeft(status);
+        }
+    }
+
+    /// @brief Preview and apply a complete, stale-safe rename edit set.
+    hide func ApplyRename(shell: app_shell.AppShell,
+                          docMgr: document_manager.DocumentManager,
+                          engine: editor_engine.EditorEngine,
+                          tabs: editor_tabs.EditorTabs,
+                          request: basic_workspace_query_job.BasicWorkspaceQueryRequest,
+                          result: Any) {
+        var edits = Map.Get(result, "edits");
+        if edits == null or Seq.get_Count(edits) == 0 {
+            GUI.Toast.Warning("Rename failed: no references found");
+            return;
+        }
+        var preview = workspace_edits.PreviewRenameEdits(edits, 20);
+        if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
+            shell.SetStatusLeft("Rename canceled");
+            return;
+        }
+        var applyResult = workspace_edits.ApplyRenameEdits(edits, docMgr,
+                                                           request.rootPaths);
+        if applyResult.success == false {
+            shell.SetStatusLeft("Rename canceled: " + applyResult.message);
+            GUI.Toast.Error(applyResult.message);
+            return;
+        }
+        edit_commands.ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
+        shell.SetStatusLeft("Renamed to " + request.newName);
+        GUI.Toast.Success("Rename complete");
+    }
+
+    /// @brief Start incremental publication of reference/call rows.
+    hide func BeginRendering(shell: app_shell.AppShell,
+                             kind: Integer,
+                             label: String,
+                             result: Any) {
+        renderItems = Map.Get(result, "items");
+        renderIndex = 0;
+        renderKind = kind;
+        renderLabel = label;
+        renderLastGroup = "";
+        renderTruncated = Map.GetBool(result, "truncated");
+        shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
+        shell.toolPanels.HideReferencesPanel();
+        if renderItems == null or Seq.get_Count(renderItems) == 0 {
+            ResetRendering();
+            ReportLogicalFailure(shell, kind, label, "no_references");
+            return;
+        }
+        shell.SetStatusLeft("Rendering " + Seq.get_Count(renderItems)
+                            + " BASIC results...");
+    }
+
+    /// @brief Add at most RESULT_ROWS_PER_FRAME list rows.
+    hide func PumpRenderRows(shell: app_shell.AppShell,
+                             locStore: locations.LocationStore) {
+        if renderItems == null or shell == null or locStore == null { return; }
+        var total = Seq.get_Count(renderItems);
+        var stop = renderIndex + RESULT_ROWS_PER_FRAME;
+        if stop > total { stop = total; }
+        while renderIndex < stop {
+            AddRenderRow(shell, locStore, Seq.Get(renderItems, renderIndex));
+            renderIndex = renderIndex + 1;
+        }
+        if renderIndex < total {
+            shell.SetStatusLeft("Rendering BASIC results: " + renderIndex
+                                + "/" + total);
+            return;
+        }
+
+        shell.toolPanels.referencesListBox.SetVisible(true);
+        shell.toolPanels.ShowReferencesPanel();
+        var status = "Found " + total + " " + ResultNoun(renderKind);
+        if renderTruncated { status = status + " (limited)"; }
+        shell.SetStatusLeft(status);
+        ResetRendering();
+    }
+
+    /// @brief Convert one worker item into a grouped clickable UI row.
+    hide func AddRenderRow(shell: app_shell.AppShell,
+                           locStore: locations.LocationStore,
+                           item: Any) {
+        var file = Map.GetStr(item, "file");
+        var line = Map.GetInt(item, "line");
+        var col = Map.GetInt(item, "column");
+        var groupTitle = Path.Name(file);
+        var groupDetail = file;
+        var groupKey = file;
+        var rowKind = "ref";
+        var marker = "";
+        if renderKind == basic_workspace_query_job.QUERY_INCOMING_CALLS {
+            groupTitle = Map.GetStr(item, "caller");
+            if groupTitle == "" { groupTitle = "<top-level>"; }
+            groupDetail = Path.Name(file);
+            groupKey = file + "|" + groupTitle;
+            rowKind = "call";
+        } else if renderKind == basic_workspace_query_job.QUERY_OUTGOING_CALLS {
+            var caller = Map.GetStr(item, "caller");
+            groupTitle = caller + " -> " + Map.GetStr(item, "name");
+            groupDetail = Path.Name(file);
+            groupKey = file + "|" + groupTitle + "|" + line + "|" + col;
+            rowKind = "call";
+            marker = "definition";
+        } else if Map.GetBool(item, "isDefinition") {
+            marker = "definition";
+        }
+        if groupKey != renderLastGroup {
+            shell.toolPanels.AddToolGroupHeader(
+                shell.toolPanels.referencesListBox, groupTitle, groupDetail);
+            renderLastGroup = groupKey;
+        }
+
+        var locationKind = locations.KIND_REFERENCE;
+        if renderKind == basic_workspace_query_job.QUERY_OUTGOING_CALLS {
+            locationKind = locations.KIND_DEFINITION;
+        }
+        var id = locStore.Add(file, line, col,
+                              Map.GetIntOr(item, "endLine", line),
+                              Map.GetIntOr(item, "endColumn", col + 1),
+                              locationKind,
+                              Map.GetStr(item, "name"));
+        var rowLine = Map.GetIntOr(item, "rowLine", line);
+        var rowCol = Map.GetIntOr(item, "rowColumn", col);
+        var row = shell.toolPanels.AddToolLocationRow(
+            shell.toolPanels.referencesListBox, rowKind, "basic",
+            "" + rowLine + ":" + rowCol, marker,
+            Map.GetStr(item, "preview"), "");
+        GUI.ListBox.ItemSetData(row, id);
+    }
+
+    hide func ResetRendering() {
+        renderItems = null;
+        renderIndex = 0;
+        renderKind = 0;
+        renderLabel = "";
+        renderLastGroup = "";
+        renderTruncated = false;
+    }
+}
+
+/// @brief Capture all workspace roots and root-local ignore patterns.
+func CaptureRoots(projMgr: project_manager.ProjectManager,
+                  activePath: String,
+                  roots: List,
+                  ignores: List) {
+    if projMgr != null {
+        var rootIndex = 0;
+        while rootIndex < projMgr.RootCount() {
+            var root = projMgr.RootPathAt(rootIndex);
+            if root != "" {
+                roots.Push(root);
+                ignores.Push(projMgr.RootIgnorePatternsAt(rootIndex));
+            }
+            rootIndex = rootIndex + 1;
+        }
+    }
+    if roots.count() == 0 and activePath != "" {
+        var fallback = Path.Directory(activePath);
+        if fallback != "" {
+            roots.Push(fallback);
+            ignores.Push("");
+        }
+    }
+}
+
+/// @brief Capture immutable content for every named open BASIC document.
+func CaptureOpenBasicDocuments(docMgr: document_manager.DocumentManager,
+                               paths: List,
+                               sources: List) {
+    if docMgr == null { return; }
+    var index = 0;
+    while index < docMgr.GetCount() {
+        var doc = docMgr.documents.get(index);
+        if doc.language == "basic" and doc.filePath != "" {
+            paths.Push(doc.filePath);
+            sources.Push(doc.content);
+        }
+        index = index + 1;
+    }
+}
+
+/// @brief Compute the root identity stored on a request anchor.
+func WorkspaceSignature(projMgr: project_manager.ProjectManager,
+                        roots: List) -> String {
+    if projMgr != null and projMgr.RootCount() > 0 {
+        return projMgr.WorkspaceSignature();
+    }
+    var signature = "single-file-roots";
+    var index = 0;
+    while index < roots.count() {
+        signature = signature + "|" + Obj.ToString(roots.get(index));
+        index = index + 1;
+    }
+    return signature;
+}
+
+/// @brief Validate that delayed results still target the initiating editor state.
+func AnchorMatches(request: basic_workspace_query_job.BasicWorkspaceQueryRequest,
+                   docMgr: document_manager.DocumentManager,
+                   projMgr: project_manager.ProjectManager,
+                   engine: editor_engine.EditorEngine) -> Boolean {
+    if request == null or docMgr == null or engine == null
+       or engine.editor == null {
+        return false;
+    }
+    var doc = docMgr.GetActive();
+    if doc == null or doc!.language != "basic" { return false; }
+    if doc!.filePath != request.activePath { return false; }
+    if engine.GetRevision() != request.activeRevision { return false; }
+    if engine.editor.CursorLine + 1 != request.activeLine { return false; }
+    if engine.editor.CursorCol != request.activeCol { return false; }
+    var roots = new List();
+    var ignores = new List();
+    CaptureRoots(projMgr, doc!.filePath, roots, ignores);
+    return WorkspaceSignature(projMgr, roots) == request.workspaceSignature;
+}
+
+/// @brief Keep identifier validation in the scanner without exposing it to UI code.
+func semanticNameIsValid(name: String) -> Boolean {
+    return semantic_scan.IsValidBasicIdentifier(name);
+}
+
+/// @brief Translate worker reasons into concise user-facing feedback.
+func ReportLogicalFailure(shell: app_shell.AppShell,
+                          kind: Integer,
+                          label: String,
+                          reason: String) {
+    var message = label + " is unavailable";
+    var warning = false;
+    if reason == "no_symbol" {
+        message = "No BASIC symbol at cursor";
+    } else if reason == "definition_not_found" {
+        message = "Definition not found";
+    } else if reason == "no_references" {
+        message = "No references found";
+    } else if reason == "no_incoming_calls" {
+        message = "No incoming calls found";
+    } else if reason == "no_outgoing_calls" {
+        message = "No outgoing calls found";
+    } else if reason == "no_enclosing_procedure" {
+        message = "No enclosing BASIC procedure found";
+    } else if reason == "save_before_rename" {
+        message = "Save the BASIC file before renaming across the workspace";
+    } else if reason == "invalid_name" {
+        message = "Invalid BASIC identifier";
+        warning = true;
+    } else if reason == "active_file_too_large" {
+        message = "BASIC workspace commands support active files up to 4 MB";
+        warning = true;
+    } else if reason == "active_file_too_complex" {
+        message = "The active BASIC file exceeds workspace scan complexity limits";
+        warning = true;
+    } else if reason == "workspace_limit" {
+        message = "BASIC workspace scan reached its safety limit";
+        if kind == basic_workspace_query_job.QUERY_RENAME {
+            message = message + "; rename was canceled before changing files";
+        }
+        warning = true;
+    } else if reason == "workspace_unavailable" {
+        message = "The BASIC workspace changed or could not be read";
+        warning = true;
+    }
+    if shell != null { shell.SetStatusLeft(message); }
+    if warning { GUI.Toast.Warning(message); }
+    else { GUI.Toast.Info(message); }
+}
+
+/// @brief Return the plural noun used in completed result status text.
+func ResultNoun(kind: Integer) -> String {
+    if kind == basic_workspace_query_job.QUERY_INCOMING_CALLS {
+        return "incoming calls";
+    }
+    if kind == basic_workspace_query_job.QUERY_OUTGOING_CALLS {
+        return "outgoing calls";
+    }
+    return "references";
+}

@@ -65,6 +65,7 @@ RT_FUNC(GuiAppSetPreventClose, rt_app_set_prevent_close, "Zanna.GUI.App.SetPreve
 RT_FUNC(GuiAppGetMonitorWidth, rt_app_get_monitor_width, "Zanna.GUI.App.GetMonitorWidth", "i64(obj)")
 RT_FUNC(GuiAppGetMonitorHeight, rt_app_get_monitor_height, "Zanna.GUI.App.GetMonitorHeight", "i64(obj)")
 RT_FUNC(GuiAppSetWindowSize, rt_app_set_window_size, "Zanna.GUI.App.SetWindowSize", "void(obj,i64,i64)")
+RT_FUNC(GuiAppSetMinimumSize, rt_app_set_minimum_size, "Zanna.GUI.App.SetMinimumSize", "void(obj,i64,i64)")
 RT_FUNC(GuiAppGetFontSize, rt_app_get_font_size, "Zanna.GUI.App.GetFontSize", "f64(obj)")
 RT_FUNC(GuiAppGetLogicalFontSize, rt_app_get_logical_font_size, "Zanna.GUI.App.GetLogicalFontSize", "f64(obj)")
 RT_FUNC(GuiAppSetFontSize, rt_app_set_font_size, "Zanna.GUI.App.SetFontSize", "void(obj,f64)")

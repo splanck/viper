@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-15
+last-verified: 2026-07-22
 ---
 
 # Files & Directories
@@ -22,6 +22,7 @@ File system operations.
 | Method                        | Signature              | Description                                                                               |
 |-------------------------------|------------------------|-------------------------------------------------------------------------------------------|
 | `Exists(path)`                | `Boolean(String)`      | Returns true only if the path exists and is a regular file                               |
+| `SameFile(left, right)`       | `Boolean(String, String)` | Returns true when both paths resolve to the same existing regular file identity       |
 | `ReadAllText(path)`           | `String(String)`       | Reads the entire file contents as a string; traps on I/O errors                           |
 | `WriteAllText(path, content)` | `Void(String, String)` | Atomically replaces a text file with new contents                                          |
 | `Delete(path)`                | `Void(String)`         | Deletes a file; missing files are ignored, other failures trap                            |
@@ -50,6 +51,10 @@ File system operations.
   fits in one OS write. Lines large enough to require a partial write can still interleave;
   synchronize externally when arbitrarily large records must remain indivisible.
 - `Exists` returns false for directories; use `Dir.Exists` for directory checks.
+- `SameFile` follows ordinary filesystem resolution and compares volume/file IDs on Windows
+  or device/inode pairs on POSIX. Missing, inaccessible, malformed, and non-file paths return
+  false rather than trapping. It therefore handles hard links, symlinks, and case-equivalent
+  spellings without incorrectly folding distinct files on a case-sensitive filesystem.
 - Path strings with embedded NUL bytes are rejected before reaching platform file APIs.
 - `ReadAllText`, `ReadAllBytes`, and `ReadAllLines` require a regular file and trap on directories, special files, I/O errors, or unexpected short reads if the file changes while being read.
 - `WriteAllText`, `WriteAllBytes`, `WriteBytes`, and `WriteLines` write to an exclusive temporary file in the destination directory and then replace the live file. Failed writes trap instead of silently leaving a partial overwrite behind. Temporary sidecar names are unpredictable and do not include process memory addresses.
@@ -460,6 +465,7 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 | `RemoveAll(path)`  | `Void(String)`         | Recursively removes a directory and all its contents without following symlinks into targets |
 | `Entries(path)`    | `Seq(String)`          | Returns directory entries (files + subdirectories); traps if the directory does not exist |
 | `List(path)`       | `Seq(String)`          | Returns all entries in a directory (excluding `.` and `..`)                               |
+| `Page(path, offset, limit)` | `Map(String, Integer, Integer)` | Returns one bounded page of immediate entries with kind metadata              |
 | `ListSeq(path)`    | `Seq(String)`          | Seq-returning alias of `List(path)` (same semantics)                                      |
 | `Files(path)`      | `Seq(String)`          | Returns only files in a directory (no subdirectories)                                     |
 | `FilesSeq(path)`   | `Seq(String)`          | Seq-returning alias of `Files(path)` (same semantics)                                     |
@@ -471,6 +477,12 @@ Cross-platform directory operations for creating, removing, listing, and navigat
 
 **Note:** `Entries()`, `List()`, `Files()`, and `Dirs()` return entry names (not full paths). Use
 `Zanna.IO.Path.Join(dir, name)` to build full paths when needed.
+
+`Page()` is the bounded alternative for frame-driven tools. Its result map contains
+`valid`, `path`, `entries`, `offset`, `limit`, `emitted`, `nextOffset`, `done`, and
+`diagnostics`. Each entry map contains `name`, `path`, `kind` (`directory`, `file`, or
+`other`), and `isDirectory`. Pass `nextOffset` to the next call until `done` is true;
+pages preserve filesystem enumeration order and are not sorted.
 
 `Make()` and `MakeAll()` are idempotent for existing directories, but they trap if the target path or any intermediate path component already exists as a non-directory. `MakeAll()` follows host path semantics: `/` is the separator on POSIX, while both `/` and `\` are accepted on Windows.
 `Files()` excludes symbolic links to files on POSIX, while `Dirs()` can include a symlink whose target is a directory. `RemoveAll()` removes a top-level symlink itself and does not recurse into the linked directory. On POSIX, recursive removal uses file-descriptor-relative traversal so a concurrently swapped symlink component cannot redirect deletion outside the requested tree.
@@ -525,6 +537,10 @@ NEXT i
 ' List directory entries (files + subdirectories); traps if the directory is missing
 DIM all_entries AS Zanna.Collections.Seq
 all_entries = Zanna.IO.Dir.Entries("/home/user")
+
+' Consume one bounded immediate-directory page
+DIM page AS Zanna.Collections.Map
+page = Zanna.IO.Dir.Page("/home/user", 0, 128)
 
 ' List only files (no subdirectories)
 DIM files AS Zanna.Collections.Seq
@@ -619,6 +635,7 @@ Cross-platform path manipulation utilities. On Windows, both `/` and `\` are tre
 | `Ext(path)`          | `String(String)`         | Returns the file extension (including the dot)              |
 | `WithExt(path, ext)` | `String(String, String)` | Replaces the extension of a path                            |
 | `IsAbs(path)`        | `Boolean(String)`        | Returns true if the path is absolute                        |
+| `IsLink(path)`       | `Boolean(String)`        | Returns true if the final component is a symlink/reparse point |
 | `Abs(path)`          | `String(String)`         | Converts a relative path to absolute                        |
 | `ExeDir()`           | `String()`               | Returns the directory containing the running executable     |
 | `DataDir(app)`       | `String(String)`         | Per-user writable data directory for `app` (created on demand) |
@@ -639,6 +656,10 @@ else traps. Validation covers the runtime String's full stored byte length, so a
 alias one directory. With an unchanged environment, repeated calls return the same absolute path.
 `Abs()` and `Norm()` are lexical operations: they do not require the path to
 exist and do not resolve symbolic links.
+
+`IsLink()` inspects the final component without following it. It recognizes POSIX symbolic
+links and Windows reparse points (including directory junctions), and returns false rather than
+trapping for invalid, missing, inaccessible, or ordinary paths.
 
 ### Zia Example
 

@@ -1,15 +1,37 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/diagnostics.zia
+// Purpose: Debounce, run, and render stale-safe diagnostics for the active
+//          Zia or BASIC editor document.
+// Key invariants:
+//   - Compiler work never runs synchronously on an interactive UI frame.
+//   - Results apply only to the path, revision, and scheduler generation that
+//     originally requested them.
+// Ownership/Lifetime:
+//   - One LiveDiagnostics instance is owned by the Studio language-tool frame.
+//   - The embedded BasicQueryJob retains only immutable source snapshots.
+// Links: zannastudio/src/app/language_tool_frame.zia,
+//        zannastudio/src/editor/basic_query_job.zia
+//
+//===----------------------------------------------------------------------===//
+
 module diagnostics;
 
 bind "../ui/app_shell";
 bind "../editor/editor_engine";
 bind "../editor/scheduler";
+bind "../editor/basic_query_job";
 bind "../build/diagnostic";
 bind "../services/locations";
 bind "../editor/quick_fixes";
 bind "../services/theme_colors";
 
 bind ZiaToolchain = Zanna.Zia.Toolchain;
-bind BasicToolchain = Zanna.Basic.LanguageService;
 bind Doc = Zanna.Zia.Document;
 bind SemanticJob = Zanna.Zia.SemanticJob;
 bind "../editor/zia_query";
@@ -62,7 +84,7 @@ func InfoColor() -> Integer { return theme_colors.Rgb("fgTertiary"); }
 /// @brief Live error/warning checker for the active document.
 class LiveDiagnostics {
     expose Boolean enabled;
-    expose Boolean isBasic;          // route to Zanna.Basic.* (sync) instead of Zia
+    hide Boolean isBasic;            // changed only through SetBasicMode
     expose Integer lastEditMs;       // tick of last detected edit
     expose Boolean pending;          // true if a check is scheduled
     expose String  lastCheckedSource; // retained for debugging/inspection; revision gates checks
@@ -74,6 +96,8 @@ class LiveDiagnostics {
     expose Integer lastCheckedRevision;
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
+    expose basic_query_job.BasicQueryJob basicJob;
+    expose Integer pendingBasicGeneration;
     expose Integer pendingJobRevision;
     expose String pendingJobPath;
     expose Integer pendingJobGeneration;
@@ -81,6 +105,8 @@ class LiveDiagnostics {
     expose Integer lastErrorCount;
     expose Integer lastWarningCount;
     expose Integer lastNoteCount;
+    expose Boolean manualCheckPending;
+    expose Boolean manualCancellationPending;
 
     /// @brief Initialize as enabled, with no pending work and empty caches.
     expose func init() {
@@ -97,6 +123,8 @@ class LiveDiagnostics {
         lastCheckedRevision = -1;
         workScheduler = null;
         pendingJob = null;
+        basicJob = new basic_query_job.BasicQueryJob();
+        pendingBasicGeneration = 0;
         pendingJobRevision = -1;
         pendingJobPath = "";
         pendingJobGeneration = 0;
@@ -104,10 +132,42 @@ class LiveDiagnostics {
         lastErrorCount = 0;
         lastWarningCount = 0;
         lastNoteCount = 0;
+        manualCheckPending = false;
+        manualCancellationPending = false;
     }
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
         workScheduler = value;
+    }
+
+    /// @brief Enable or disable automatic diagnostics.
+    /// @details Manual `runNow` requests intentionally bypass this setting.
+    ///          Disabling automatic checks cancels an already queued automatic
+    ///          request so it cannot repaint diagnostics after the user turns
+    ///          the feature off.
+    expose func SetEnabled(value: Boolean) {
+        if enabled == value { return; }
+        enabled = value;
+        if enabled == false {
+            CancelPendingJob();
+        }
+    }
+
+    /// @brief Select the BASIC or Zia query backend for the active document.
+    /// @details A language change can occur without a path change (for example,
+    ///          after Save As or test-driven mode reassignment). Canceling here
+    ///          prevents a completed request from the previous backend from
+    ///          publishing into the new language mode.
+    expose func SetBasicMode(value: Boolean) {
+        if isBasic == value { return; }
+        CancelPendingJob();
+        isBasic = value;
+        lastCheckedPath = "";
+        lastCheckedRevision = -1;
+        pending = false;
+        pendingRevision = -1;
+        pendingPath = "";
+        pendingGeneration = 0;
     }
 
     /// @brief Set the active file's path; invalidates the path cache so
@@ -137,16 +197,46 @@ class LiveDiagnostics {
     expose func update(engine: editor_engine.EditorEngine,
                        shell: app_shell.AppShell,
                        locStore: locations.LocationStore) -> Integer {
-        if enabled == false { return 0; }
-        if engine == null or engine.editor == null { return 0; }
+        PublishManualCancellation(shell);
+        if engine == null or engine.editor == null {
+            CancelPendingJob();
+            PublishManualCancellation(shell);
+            return 0;
+        }
 
         var revision = engine.GetRevision();
+        if pendingBasicGeneration > 0 {
+            if revision != pendingJobRevision or sourcePath != pendingJobPath {
+                CancelPendingJob();
+                PublishManualCancellation(shell);
+            } else {
+                var basicResult = PollPendingBasicJob(engine, shell, locStore);
+                if pendingBasicGeneration > 0 { return basicResult; }
+                if revision == lastCheckedRevision and sourcePath == lastCheckedPath {
+                    return basicResult;
+                }
+            }
+        } else {
+            // Let a cancelled non-preemptible compiler call drain and release
+            // its retained snapshot even when the active language has changed.
+            basicJob.Pump();
+            basicJob.TakeCompleted();
+        }
         if pendingJob != null {
             if revision != pendingJobRevision or sourcePath != pendingJobPath {
                 CancelPendingJob();
+                PublishManualCancellation(shell);
             } else {
                 return PollPendingJob(engine, shell, locStore);
             }
+        }
+
+        // Automatic diagnostics may be disabled while a manual check is still
+        // active. Existing work is polled above; only new automatic scheduling
+        // is gated here.
+        if enabled == false {
+            DrainCancelledBasicJob();
+            return 0;
         }
 
         if revision == lastCheckedRevision and sourcePath == lastCheckedPath { return 0; }
@@ -181,12 +271,11 @@ class LiveDiagnostics {
             }
         }
 
-        return StartDiagnosticsJob(engine, shell, locStore, revision, pendingGeneration);
+        return StartDiagnosticsJob(engine, shell, revision, pendingGeneration);
     }
 
     hide func StartDiagnosticsJob(engine: editor_engine.EditorEngine,
                                   shell: app_shell.AppShell,
-                                  locStore: locations.LocationStore,
                                   revision: Integer,
                                   generation: Integer) -> Integer {
         var source = engine.GetTextSnapshot();
@@ -194,14 +283,24 @@ class LiveDiagnostics {
         pendingGeneration = 0;
         lastCheckedSource = source;
 
-        // BASIC: synchronous in-process check (no Zia module-wrapping, no line
-        // offset). Fast enough per-keystroke; results share the Zia record shape.
+        // BASIC uses the raw source and no line offset. The query worker keeps
+        // compiler work off the UI frame and coalesces later edits while an
+        // older non-preemptible parse drains.
         if isBasic {
-            CancelPendingJob();
-            var brecords = BasicToolchain.CheckForFile(source, sourcePath);
-            lastCheckedPath = sourcePath;
-            lastCheckedRevision = revision;
-            return ApplyDiagnostics(brecords, 0, shell, locStore, engine);
+            if pendingJob != null {
+                SemanticJob.Cancel(pendingJob);
+                pendingJob = null;
+            }
+            pendingBasicGeneration = basicJob.Queue(
+                basic_query_job.QUERY_DIAGNOSTICS, source, sourcePath, 0, 0);
+            pendingJobRevision = revision;
+            pendingJobPath = sourcePath;
+            pendingJobGeneration = generation;
+            pendingJobLineOffset = 0;
+            if pendingBasicGeneration <= 0 {
+                FinishManualCheckFailure(shell, "Diagnostics unavailable");
+            }
+            return 0;
         }
 
         // Synthetic-module prefix for buffers lacking a `module` line;
@@ -233,10 +332,12 @@ class LiveDiagnostics {
             return 0;
         }
 
-        var records = ZiaToolchain.CheckForFile(qsource, sourcePath);
+        // Stub runtimes may omit semantic jobs. Mark this snapshot observed so
+        // the UI does not spin, but never compile synchronously on the frame.
         lastCheckedPath = sourcePath;
         lastCheckedRevision = revision;
-        return ApplyDiagnostics(records, lineOff, shell, locStore, engine);
+        FinishManualCheckFailure(shell, "Diagnostics unavailable");
+        return 0;
     }
 
     hide func PollPendingJob(engine: editor_engine.EditorEngine,
@@ -248,20 +349,66 @@ class LiveDiagnostics {
         var job = pendingJob;
         pendingJob = null;
         if SemanticJob.IsError(job) {
+            FinishManualCheckFailure(shell, "Diagnostics failed");
             return 0;
         }
         if engine.GetRevision() != pendingJobRevision or sourcePath != pendingJobPath {
+            CancelManualCheck();
+            PublishManualCancellation(shell);
             return 0;
         }
         if workScheduler != null and pendingJobGeneration > 0
            and workScheduler.IsCurrent(scheduler.JOB_DIAGNOSTICS, pendingJobGeneration) == false {
+            CancelManualCheck();
+            PublishManualCancellation(shell);
             return 0;
         }
 
         var records = SemanticJob.Diagnostics(job);
+        if records == null {
+            FinishManualCheckFailure(shell, "Diagnostics failed");
+            return 0;
+        }
         lastCheckedPath = pendingJobPath;
         lastCheckedRevision = pendingJobRevision;
-        return ApplyDiagnostics(records, pendingJobLineOffset, shell, locStore, engine);
+        var errorCount = ApplyDiagnostics(records, pendingJobLineOffset, shell, locStore, engine);
+        FinishManualCheck(shell);
+        return errorCount;
+    }
+
+    /// @brief Publish a completed BASIC diagnostic request when it is current.
+    hide func PollPendingBasicJob(engine: editor_engine.EditorEngine,
+                                  shell: app_shell.AppShell,
+                                  locStore: locations.LocationStore) -> Integer {
+        basicJob.Pump();
+        var request = basicJob.TakeCompleted();
+        if request == null { return 0; }
+        if request!.generation != pendingBasicGeneration { return 0; }
+        pendingBasicGeneration = 0;
+        if request!.succeeded == false {
+            FinishManualCheckFailure(shell, "Diagnostics failed");
+            return 0;
+        }
+        if engine.GetRevision() != pendingJobRevision or sourcePath != pendingJobPath {
+            CancelManualCheck();
+            PublishManualCancellation(shell);
+            return 0;
+        }
+        if workScheduler != null and pendingJobGeneration > 0
+           and workScheduler.IsCurrent(scheduler.JOB_DIAGNOSTICS, pendingJobGeneration) == false {
+            CancelManualCheck();
+            PublishManualCancellation(shell);
+            return 0;
+        }
+        lastCheckedPath = pendingJobPath;
+        lastCheckedRevision = pendingJobRevision;
+        if request!.result == null {
+            FinishManualCheckFailure(shell, "Diagnostics failed");
+            return 0;
+        }
+        var errorCount = ApplyDiagnostics(request!.result, 0, shell, locStore, engine);
+        FinishManualCheck(shell);
+        return errorCount;
     }
 
     hide func ApplyDiagnostics(records: Any,
@@ -406,28 +553,96 @@ class LiveDiagnostics {
     }
 
     expose func runNow(engine: editor_engine.EditorEngine,
-                       shell: app_shell.AppShell,
-                       locStore: locations.LocationStore) -> Integer {
-        if enabled == false { return 0; }
-        if engine == null or engine.editor == null { return 0; }
+                       shell: app_shell.AppShell) -> Integer {
+        if engine == null or engine.editor == null {
+            if shell != null { shell.SetStatusLeft("No active file to check"); }
+            return 0;
+        }
+
+        // A manual request supersedes any debounced/active request and bypasses
+        // the automatic-diagnostics preference. The compiler still runs on the
+        // regular background job path; only the debounce is skipped.
+        manualCheckPending = false;
+        manualCancellationPending = false;
+        CancelPendingJob();
         lastCheckedRevision = -1;
-        pending = true;
-        pendingRevision = engine.GetRevision();
+        pending = false;
+        var revision = engine.GetRevision();
+        pendingRevision = revision;
         pendingPath = sourcePath;
         pendingGeneration = 0;
-        lastEditMs = Zanna.Time.Clock.NowMs() - DEBOUNCE_MS;
         if workScheduler != null {
-            pendingGeneration = workScheduler.Queue(scheduler.JOB_DIAGNOSTICS, sourcePath, pendingRevision, 0);
+            pendingGeneration = workScheduler.Queue(
+                scheduler.JOB_DIAGNOSTICS, sourcePath, revision, 0);
+            workScheduler.Complete(scheduler.JOB_DIAGNOSTICS);
         }
-        return update(engine, shell, locStore);
+        manualCheckPending = true;
+        if shell != null { shell.SetStatusLeft("Diagnostics running..."); }
+        return StartDiagnosticsJob(engine, shell, revision, pendingGeneration);
     }
 
     hide func CancelPendingJob() {
+        var hadManualWork = manualCheckPending
+            and (pendingJob != null or pendingBasicGeneration > 0 or pending);
         if pendingJob != null {
             SemanticJob.Cancel(pendingJob);
             pendingJob = null;
         }
+        CancelPendingBasicJob();
         pendingJobGeneration = 0;
+        if hadManualWork {
+            CancelManualCheck();
+        }
+    }
+
+    hide func CancelPendingBasicJob() {
+        basicJob.Cancel();
+        pendingBasicGeneration = 0;
+        DrainCancelledBasicJob();
+    }
+
+    hide func DrainCancelledBasicJob() {
+        if pendingBasicGeneration != 0 { return; }
+        basicJob.Pump();
+        basicJob.TakeCompleted();
+    }
+
+    /// @brief Mark an explicit check cancelled and defer its status update until
+    ///        the next frame supplies the current shell.
+    hide func CancelManualCheck() {
+        if manualCheckPending == false { return; }
+        manualCheckPending = false;
+        manualCancellationPending = true;
+    }
+
+    /// @brief Publish a deferred manual-cancellation status exactly once.
+    hide func PublishManualCancellation(shell: app_shell.AppShell) {
+        if manualCancellationPending == false { return; }
+        manualCancellationPending = false;
+        if shell != null { shell.SetStatusLeft("Diagnostics cancelled"); }
+    }
+
+    /// @brief Publish the final result of a successful explicit check.
+    hide func FinishManualCheck(shell: app_shell.AppShell) {
+        if manualCheckPending == false { return; }
+        manualCheckPending = false;
+        manualCancellationPending = false;
+        if shell == null { return; }
+        if lastErrorCount == 0 and lastWarningCount == 0 and lastNoteCount == 0 {
+            shell.SetStatusLeft("Diagnostics complete");
+            return;
+        }
+        shell.SetStatusLeft(shell.FormatDiagnosticsSummary(
+            lastErrorCount, lastWarningCount, lastNoteCount));
+    }
+
+    /// @brief End an explicit check that could not produce a result.
+    hide func FinishManualCheckFailure(shell: app_shell.AppShell,
+                                       status: String) {
+        if manualCheckPending == false { return; }
+        manualCheckPending = false;
+        manualCancellationPending = false;
+        if shell != null { shell.SetStatusLeft(status); }
     }
 }
 

@@ -187,8 +187,8 @@ func heroBoardRect() -> Rect {
 func modeButtonRect(idx: Integer) -> Rect {
     var card = menuCardRect();
     var y = card.y + 176;
-    var x = card.x + 42 + idx * 182;
-    return rect(x, y, 158, 42);
+    var x = card.x + 42 + idx * 172;
+    return rect(x, y, 150, 42);
 }
 
 /// @brief Player-side segmented control rectangle by zero-based index.
@@ -203,8 +203,8 @@ func sideButtonRect(idx: Integer) -> Rect {
 func difficultyButtonRect(idx: Integer) -> Rect {
     var card = menuCardRect();
     var y = card.y + 332;
-    var x = card.x + 42 + idx * 138;
-    return rect(x, y, 118, 40);
+    var x = card.x + 42 + idx * 128;
+    return rect(x, y, 110, 40);
 }
 
 /// @brief Primary new-game button rectangle.

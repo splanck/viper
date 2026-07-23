@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/editor_engine.zia
+// Purpose: Own Studio editor widgets, document buffers, and split-pane focus.
+// Key invariants:
+//   - One Document has at most one live CodeEditor/EditorBuffer owner.
+//   - Flat editor state always describes the physically focused pane.
+//   - A mismatched document can never receive the focused pane's text.
+// Ownership/Lifetime: Main owns one engine; Documents retain detached buffers.
+// Links: zannastudio/src/core/document.zia,
+//        zannastudio/src/main.zia
+//
+//===----------------------------------------------------------------------===//
+
 module editor_engine;
 
 bind "../core/document";
@@ -74,6 +93,7 @@ class EditorEngine {
     expose Boolean splitActive;         // Whether a second pane is shown.
     expose Boolean secondaryFocused;    // Whether the right pane is focused.
     expose PaneState shadow;            // Non-focused pane's metadata (null when unsplit).
+    expose Boolean paneFocusChanged;    // Consumed by main to sync tabs/controllers.
 
     // Incremental language-service sync (plan 08). Tracks what the focused pane
     // last pushed to the service's document mirror so the next sync sends only
@@ -94,6 +114,7 @@ class EditorEngine {
         splitActive = false;
         secondaryFocused = false;
         shadow = null;
+        paneFocusChanged = false;
         syncedRevision = -1;
         syncedPath = "";
     }
@@ -116,6 +137,21 @@ class EditorEngine {
     expose func LoadDocument(doc: document.Document) {
         if doc == null {
             return;
+        }
+
+        // A document already displayed in the other pane owns that pane's live
+        // buffer. Move focus to its owner instead of attaching a second,
+        // divergent buffer for the same Document.
+        if splitActive and shadow != null and shadow.currentDoc == doc
+           and currentDoc != doc {
+            FocusOtherPane();
+            return;
+        }
+
+        // Keep the departing model current even if a caller omitted its normal
+        // command-level SaveEditorState preflight.
+        if currentDoc != null and currentDoc != doc {
+            SaveToDocument(currentDoc);
         }
 
         // Three cases:
@@ -202,6 +238,12 @@ class EditorEngine {
         if doc == null {
             return;
         }
+        // A visible document owns a widget buffer. Collapse the split before
+        // releasing either visible owner so no pane retains a closed Document.
+        if splitActive and (doc == currentDoc
+           or (shadow != null and doc == shadow.currentDoc)) {
+            CloseSplit();
+        }
         doc.buffer = null;
         if doc == currentDoc {
             currentDoc = null;
@@ -212,13 +254,16 @@ class EditorEngine {
     /// @note Reads the live widget state so command handlers, tab switching,
     ///       and session persistence cannot depend on stale cached cursor fields.
     expose func SaveToDocument(doc: document.Document) {
-        if doc == null {
+        if doc == null or doc != currentDoc {
             return;
         }
         doc.content = GetTextSnapshot();
         doc.cursorLine = GetCursorLine();
         doc.cursorCol = GetCursorCol();
         doc.scrollLine = GetScrollLine();
+        if editor != null and editor.IsModified() {
+            doc.isModified = true;
+        }
     }
 
     /// @brief Move cursor and scroll to the given 1-based line.
@@ -243,6 +288,27 @@ class EditorEngine {
             return;
         }
         editor.ClearModified();
+    }
+
+    /// @brief Clear the modified bit on whichever live or detached buffer owns doc.
+    /// @details Save All can persist a document displayed in the non-focused
+    ///          pane. Clearing only `editor` would make that pane mark the file
+    ///          dirty again the next time it receives focus.
+    expose func ClearDocumentModified(doc: document.Document) {
+        if doc == null { return; }
+        if doc == currentDoc {
+            if editor != null { editor.ClearModified(); }
+            return;
+        }
+        if splitActive and shadow != null and shadow.currentDoc == doc {
+            if secondaryFocused {
+                if leftWidget != null { leftWidget.ClearModified(); }
+            } else {
+                if rightWidget != null { rightWidget.ClearModified(); }
+            }
+            return;
+        }
+        if doc.buffer != null { doc.buffer.ClearModified(); }
     }
 
     /// @brief Number of lines in the buffer.
@@ -407,15 +473,18 @@ class EditorEngine {
         cachedTextRevision = s.cachedTextRevision;
     }
 
-    /// @brief Open a second pane to the right showing a copy of the focused
-    ///        document's current text.
-    /// @details v1: at most two panes. The second pane holds an INDEPENDENT
-    ///          buffer — editing the same document in both panes does not
-    ///          live-sync, because the runtime's EditorBuffer is single-owner
-    ///          (a shared multi-view buffer is future runtime work). The common
-    ///          case, two DIFFERENT files side by side, is fully independent.
-    expose func SplitRight(parent: GUI.HBox) {
-        if splitActive { return; }
+    /// @brief Open a second pane containing a distinct document.
+    /// @details EditorBuffer is single-owner, so cloning the focused document
+    ///          would create two divergent sources of truth. The caller must
+    ///          provide another open document; invalid requests leave the
+    ///          one-pane layout unchanged.
+    /// @return True only when the split was opened.
+    expose func SplitRight(parent: GUI.HBox,
+                           secondaryDoc: document.Document) -> Boolean {
+        if splitActive or currentDoc == null or secondaryDoc == null
+           or secondaryDoc == currentDoc {
+            return false;
+        }
         if rightWidget == null {
             rightWidget = GUI.CodeEditor.New(parent);
             rightWidget.SetShowLineNumbers(true);
@@ -424,21 +493,18 @@ class EditorEngine {
         } else {
             rightWidget.SetVisible(true);
         }
-        var buf = GUI.EditorBuffer.New(GetText());
-        rightWidget.AttachBuffer(buf);
+        rightWidget.AttachBuffer(GUI.EditorBuffer.New(""));
         rightWidget.SetReadOnly(false);
-        if currentLanguage != "" {
-            rightWidget.SetLanguage(currentLanguage);
-        }
         shadow = new PaneState();
-        shadow.currentDoc = currentDoc;
-        shadow.currentLanguage = currentLanguage;
-        shadow.lastCursorLine = 1;
-        shadow.lastCursorCol = 1;
-        shadow.cachedTextSnapshot = "";
-        shadow.cachedTextRevision = -1;
         splitActive = true;
         secondaryFocused = false; // focus stays on the primary pane
+        FocusOtherPane();
+        LoadDocument(secondaryDoc);
+        FocusOtherPane();
+        // The internal setup round trip ends on the original pane, so there is
+        // no externally observable focus transition for main to reconcile.
+        paneFocusChanged = false;
+        return true;
     }
 
     /// @brief Move focus to the other pane. Swaps which widget `editor` aliases
@@ -447,6 +513,7 @@ class EditorEngine {
     ///        retargets automatically.
     expose func FocusOtherPane() {
         if splitActive == false or shadow == null { return; }
+        if currentDoc != null { SaveToDocument(currentDoc); }
         var tmp = captureFlat();
         loadFlat(shadow);
         shadow = tmp;
@@ -456,6 +523,8 @@ class EditorEngine {
         } else {
             editor = leftWidget;
         }
+        paneFocusChanged = true;
+        InvalidateDocumentSync();
         if editor != null { editor.Focus(); }
     }
 
@@ -463,11 +532,29 @@ class EditorEngine {
     expose func CloseSplit() {
         if splitActive == false { return; }
         if secondaryFocused { FocusOtherPane(); } // ensure the primary is focused
+        // Detach the right pane's buffer back into its Document before hiding
+        // the widget. This preserves text, undo, cursor, and folds for a later
+        // tab activation or re-split.
+        if shadow != null and rightWidget != null {
+            var rightDoc = shadow.currentDoc;
+            var detached = rightWidget.AttachBuffer(GUI.EditorBuffer.New(""));
+            if rightDoc != null and rightDoc != currentDoc {
+                rightDoc.buffer = detached;
+            }
+            rightWidget.SetReadOnly(false);
+        }
         if rightWidget != null { rightWidget.SetVisible(false); }
         shadow = null;
         splitActive = false;
         secondaryFocused = false;
         editor = leftWidget;
+    }
+
+    /// @brief Consume one pane-focus transition for app-level synchronization.
+    expose func ConsumePaneFocusChanged() -> Boolean {
+        var changed = paneFocusChanged;
+        paneFocusChanged = false;
+        return changed;
     }
 
     /// @brief Reconcile the focused pane with real keyboard focus (click-to-focus).

@@ -12,6 +12,7 @@
 //   - A completed drop in app-directed mode latches source/target/position and
 //     does NOT self-reorder or fire the on_drop callback.
 //   - The default (callback) mode is unaffected when app-directed mode is off.
+//   - Scrollbar cleanup never steals a retained-tree drag's input capture.
 // Links: src/lib/gui/src/widgets/vg_treeview.c
 //
 //===----------------------------------------------------------------------===//
@@ -40,6 +41,10 @@ static vg_event_t mouse_up_left(void) {
     ev.type = VG_EVENT_MOUSE_UP;
     ev.mouse.button = VG_MOUSE_LEFT;
     return ev;
+}
+
+static vg_event_t mouse_event(vg_event_type_t type, float x, float y) {
+    return vg_event_mouse(type, x, y, VG_MOUSE_LEFT, 0);
 }
 
 static void test_app_directed_drop_latches(void) {
@@ -108,11 +113,38 @@ static void test_disabling_clears_latch(void) {
     vg_widget_destroy(&tv->base);
 }
 
+static void test_app_directed_drag_survives_without_scrollbar(void) {
+    vg_treeview_t *tv = vg_treeview_create(NULL);
+    vg_tree_node_t *file = vg_treeview_add_node(tv, NULL, "file.zia");
+    vg_tree_node_t *folder = vg_treeview_add_node(tv, NULL, "src");
+    vg_tree_node_set_has_children(folder, true);
+    tv->base.width = 240.0f;
+    tv->base.height = 120.0f; // Two rows fit, so no scrollbar exists.
+    vg_treeview_set_app_directed_dnd(tv, true);
+
+    vg_event_t down = mouse_event(VG_EVENT_MOUSE_DOWN, 24.0f, tv->row_height * 0.5f);
+    check("press captures tree for app-directed drag",
+          !vg_event_send(&tv->base, &down) && vg_widget_get_input_capture() == &tv->base);
+
+    vg_event_t move = mouse_event(VG_EVENT_MOUSE_MOVE, 24.0f, tv->row_height * 1.5f);
+    check("no-scrollbar move promotes retained-tree drag", vg_event_send(&tv->base, &move));
+    check("drag still owns capture", vg_widget_get_input_capture() == &tv->base);
+
+    vg_event_t up = mouse_event(VG_EVENT_MOUSE_UP, 24.0f, tv->row_height * 1.5f);
+    check("app-directed drop completes", vg_event_send(&tv->base, &up));
+    check("actual event sequence latches source", vg_treeview_drop_source(tv) == file);
+    check("actual event sequence latches folder", vg_treeview_drop_target_node(tv) == folder);
+    check("completed drag releases capture", vg_widget_get_input_capture() == NULL);
+
+    vg_widget_destroy(&tv->base);
+}
+
 int main(void) {
     printf("test_vg_treeview_dnd\n");
     test_app_directed_drop_latches();
     test_default_mode_does_not_latch();
     test_disabling_clears_latch();
+    test_app_directed_drag_survives_without_scrollbar();
     if (g_failures == 0) {
         printf("ALL PASSED\n");
         return 0;

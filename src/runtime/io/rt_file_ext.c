@@ -698,6 +698,20 @@ int64_t rt_io_file_exists(rt_string path) {
     return 0;
 }
 
+/// @brief Test whether two runtime paths resolve to the same existing file.
+/// @details The predicate is intentionally non-trapping: missing, malformed,
+///          inaccessible, and non-regular paths simply compare unequal. The
+///          underlying identity comparison follows symlinks and compares
+///          volume/file IDs on Windows or device/inode pairs on POSIX.
+int64_t rt_file_same(rt_string left, rt_string right) {
+    const char *left_path = NULL;
+    const char *right_path = NULL;
+    if (!rt_file_path_from_vstr(left, &left_path) || !left_path || *left_path == '\0' ||
+        !rt_file_path_from_vstr(right, &right_path) || !right_path || *right_path == '\0')
+        return 0;
+    return rt_fileext_same_existing_file(left_path, right_path) ? 1 : 0;
+}
+
 /// What: Read entire file into a runtime string. Return empty on error.
 /// Why:  Provide a convenience API for small text files in examples/tests.
 /// How:  Opens the file, reads all bytes, returns an rt_string view of them.

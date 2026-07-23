@@ -1,0 +1,253 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/workspace_watcher_probe.zia
+// Purpose: Prove workspace watcher startup and degraded rescans remain bounded
+//          across frames instead of recursively blocking Open Folder.
+// Key invariants:
+//   - The first watcher pump installs at most one bounded directory page.
+//   - Ordinary directory modification events preserve live watcher handles.
+//   - Degraded fingerprints advance one bounded FileIndex page per pump.
+// Ownership/Lifetime:
+//   - The probe owns and removes one temporary workspace and all its watchers.
+// Links: zannastudio/src/app/workspace_watcher.zia
+//
+//===----------------------------------------------------------------------===//
+
+module workspace_watcher_probe;
+
+bind "../app/workspace_watcher";
+bind "../app/file_watch_controller";
+bind "../core/document";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../services/safe_io";
+
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Map = Zanna.Collections.Map;
+bind Seq = Zanna.Collections.Seq;
+bind Terminal = Zanna.Terminal;
+
+func fail(state: workspace_watcher.WorkspaceWatcherState,
+          root: String,
+          reason: String) {
+    workspace_watcher.StopWorkspaceWatcher(state);
+    safe_io.DeleteDirectoryTree(root);
+    Terminal.Say("RESULT: fail - " + reason);
+}
+
+func watcherEvent(path: String,
+                  typeName: String,
+                  requiresRescan: Boolean) -> Any {
+    var event = Map.New();
+    Map.SetStr(event, "path", path);
+    Map.SetStr(event, "typeName", typeName);
+    Map.SetBool(event, "requiresRescan", requiresRescan);
+    return event;
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_workspace_watcher_");
+    var i = 0;
+    while i < 100 {
+        safe_io.MakeAll(Path.Join(root, "folder_" + i));
+        i = i + 1;
+    }
+    i = 0;
+    while i < 300 {
+        File.WriteAllText(Path.Join(root, "file_" + i + ".zia"), "module WatchProbe;\n");
+        i = i + 1;
+    }
+
+    var projMgr = new project_manager.ProjectManager();
+    if projMgr.OpenFolder(root) == false {
+        safe_io.DeleteDirectoryTree(root);
+        Terminal.Say("RESULT: fail - temporary workspace did not open");
+        return;
+    }
+    var fileWatch = new file_watch_controller.FileWatchController();
+    if fileWatch.hasWatcher or fileWatch.fileWatcher != null {
+        safe_io.DeleteDirectoryTree(root);
+        Terminal.Say("RESULT: fail - active-file watcher created a CWD placeholder");
+        return;
+    }
+    var fileDocs = new document_manager.DocumentManager();
+    var watchedFilePath = Path.Join(root, "file_0.zia");
+    fileDocs.OpenFile(watchedFilePath);
+    fileWatch.Pump(null, fileDocs, 0);
+    if fileWatch.watchedPath != watchedFilePath {
+        fileWatch.Destroy();
+        safe_io.DeleteDirectoryTree(root);
+        Terminal.Say("RESULT: fail - active-file watcher did not remember its path");
+        return;
+    }
+    fileWatch.Destroy();
+    if fileWatch.hasWatcher or fileWatch.fileWatcher != null or fileWatch.watchedPath != "" {
+        safe_io.DeleteDirectoryTree(root);
+        Terminal.Say("RESULT: fail - active-file watcher cleanup retained state");
+        return;
+    }
+
+    // Inactive-tab metadata checks are a resumable pass, not an O(open tabs)
+    // filesystem burst. Modify a late tab so detection also proves the cursor
+    // eventually reaches beyond the first frame's four-document budget.
+    var manyDocs = new document_manager.DocumentManager();
+    i = 0;
+    while i < 24 {
+        manyDocs.OpenFile(Path.Join(root, "file_" + i + ".zia"));
+        i = i + 1;
+    }
+    File.WriteAllText(Path.Join(root, "file_17.zia"),
+                      "module WatchProbeChangedAcrossFrames;\n");
+    var manyFileWatch = new file_watch_controller.FileWatchController();
+    manyFileWatch.Pump(null, manyDocs, 0);
+    if manyFileWatch.lastOpenDocPollCount != 4
+       or manyFileWatch.openDocPollActive == false
+       or manyFileWatch.openDocPollIndex != 4 {
+        manyFileWatch.Destroy();
+        safe_io.DeleteDirectoryTree(root);
+        Terminal.Say("RESULT: fail - open-document metadata poll was not frame-bounded");
+        return;
+    }
+    var metadataFrames = 1;
+    while manyFileWatch.openDocPollActive and metadataFrames < 20 {
+        manyFileWatch.Pump(null, manyDocs, 0);
+        if manyFileWatch.lastOpenDocPollCount > 4 {
+            manyFileWatch.Destroy();
+            safe_io.DeleteDirectoryTree(root);
+            Terminal.Say("RESULT: fail - open-document metadata budget was exceeded");
+            return;
+        }
+        metadataFrames = metadataFrames + 1;
+    }
+    var changedDoc = manyDocs.GetDocument(17);
+    if manyFileWatch.openDocPollActive or metadataFrames != 6
+       or changedDoc == null
+       or changedDoc!.externalState != document.EXTERNAL_STATE_CHANGED
+       or changedDoc!.externalChangeNotified == false {
+        manyFileWatch.Destroy();
+        safe_io.DeleteDirectoryTree(root);
+        Terminal.Say("RESULT: fail - resumable metadata poll missed a late changed tab");
+        return;
+    }
+    manyFileWatch.Destroy();
+
+    // A missing active path is remembered after the first failed watcher
+    // attempt. The next frame must not repeat an Exists/Watcher.New cycle.
+    var missingPath = Path.Join(root, "transient_missing.zia");
+    File.WriteAllText(missingPath, "module TransientMissing;\n");
+    var missingDocs = new document_manager.DocumentManager();
+    missingDocs.OpenFile(missingPath);
+    File.Delete(missingPath);
+    var missingWatch = new file_watch_controller.FileWatchController();
+    missingWatch.Pump(null, missingDocs, 0);
+    var firstAttemptMs = missingWatch.lastWatcherAttemptMs;
+    missingWatch.Pump(null, missingDocs, 0);
+    if missingWatch.watchedPath != missingPath or missingWatch.hasWatcher
+       or missingWatch.lastWatcherAttemptMs != firstAttemptMs {
+        missingWatch.Destroy();
+        safe_io.DeleteDirectoryTree(root);
+        Terminal.Say("RESULT: fail - missing active file retried its watcher every frame");
+        return;
+    }
+    missingWatch.Destroy();
+
+    var state = new workspace_watcher.WorkspaceWatcherState();
+    workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+    if state.watchers.count() <= 0 or state.watchers.count() > 65
+       or state.discoveryActive == false {
+        fail(state, root, "watcher startup was not frame-bounded");
+        return;
+    }
+
+    var rounds = 0;
+    while state.discoveryActive and rounds < 16 {
+        workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+        rounds = rounds + 1;
+    }
+    if state.discoveryActive or state.watchers.count() != 101 or state.watching == false {
+        fail(state, root, "cooperative watcher discovery did not complete");
+        return;
+    }
+    workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+    if state.lastWatcherPollCount <= 0 or state.lastWatcherPollCount > 32 {
+        fail(state, root, "quiet watcher rotation exceeded its frame budget");
+        return;
+    }
+
+    var modificationEvents = Seq.New();
+    Seq.Push(modificationEvents, watcherEvent(root, "modified", false));
+    var watcherCount = state.watchers.count();
+    if workspace_watcher.ObserveWorkspaceTopologyEvents(state, modificationEvents)
+       or state.watchers.count() != watcherCount or state.discoveryActive == false {
+        fail(state, root, "ordinary directory modification rebuilt live watchers");
+        return;
+    }
+    rounds = 0;
+    while state.discoveryActive and rounds < 16 {
+        workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+        rounds = rounds + 1;
+    }
+    if state.discoveryActive or state.watchers.count() != watcherCount {
+        fail(state, root, "additive topology discovery did not preserve watchers");
+        return;
+    }
+    var overflowEvents = Seq.New();
+    Seq.Push(overflowEvents, watcherEvent(root, "overflow", true));
+    if workspace_watcher.ObserveWorkspaceTopologyEvents(state, overflowEvents) == false {
+        fail(state, root, "overflow did not request cooperative rediscovery");
+        return;
+    }
+
+    state.degraded = true;
+    state.rescanThrottle.Reset();
+    workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+    if state.fallbackScanActive == false or state.fallbackPageOffset <= 0
+       or state.fallbackPageOffset > 256 {
+        fail(state, root, "fallback scan was not page-bounded");
+        return;
+    }
+    rounds = 0;
+    while state.fallbackScanActive and rounds < 16 {
+        workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+        rounds = rounds + 1;
+    }
+    if state.fallbackScanActive or state.fallbackBaselineReady == false
+       or state.lastEntryCount != 400 {
+        fail(state, root, "fallback baseline did not complete");
+        return;
+    }
+
+    var firstFingerprint = state.lastFingerprint;
+    File.WriteAllText(Path.Join(root, "file_0.zia"), "module WatchProbeChanged;\n");
+    state.rescanThrottle.Reset();
+    workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+    rounds = 0;
+    while state.discoveryActive and rounds < 16 {
+        workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+        rounds = rounds + 1;
+    }
+    if state.fallbackScanActive == false {
+        state.rescanThrottle.Reset();
+        workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+    }
+    rounds = 0;
+    while state.fallbackScanActive and rounds < 16 {
+        workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+        rounds = rounds + 1;
+    }
+    if state.fallbackScanActive or state.lastFingerprint == firstFingerprint {
+        fail(state, root, "fallback fingerprint missed a file modification");
+        return;
+    }
+
+    workspace_watcher.StopWorkspaceWatcher(state);
+    safe_io.DeleteDirectoryTree(root);
+    Terminal.Say("RESULT: ok");
+}

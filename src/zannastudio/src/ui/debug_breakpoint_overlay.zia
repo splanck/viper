@@ -8,6 +8,7 @@
 // Key invariants:
 //   - The overlay captures breakpoint metadata only; persistence stays in main.zia.
 //   - Condition/logpoint editing remains non-modal and uses IDE-styled controls.
+//   - Breakpoint prompts own the shell's sole focus-taking transient-surface slot.
 // Ownership/Lifetime:
 //   - GUI widgets are owned by the AppShell application root.
 //   - Source paths and entered metadata are copied as Zia strings.
@@ -65,6 +66,7 @@ class DebugBreakpointOverlay {
     expose String targetPath;
     expose Integer targetLine;
     expose String value;
+    hide app_shell.AppShell ownerShell;
 
     /// @brief Initialize as hidden with no target line.
     expose func init() {
@@ -73,11 +75,13 @@ class DebugBreakpointOverlay {
         targetPath = "";
         targetLine = 0;
         value = "";
+        ownerShell = null;
     }
 
     /// @brief Construct the floating panel controls.
     /// @param shell Workbench shell whose app root owns the overlay.
     expose func Setup(shell: app_shell.AppShell) {
+        ownerShell = shell;
         panel = GUI.FloatingPanel.New(shell.app);
         panel.SetSize(DEBUG_BP_PANEL_WIDTH, DEBUG_BP_PANEL_HEIGHT);
         panel.SetVisible(false);
@@ -145,6 +149,14 @@ class DebugBreakpointOverlay {
     /// @return Completed action code, or DEBUG_BP_ACTION_NONE while editing continues.
     expose func Pump(shell: app_shell.AppShell) -> Integer {
         if visible == false { return DEBUG_BP_ACTION_NONE; }
+        if ownerShell == null
+           or ownerShell.OwnsTransientSurface(
+               app_shell.TRANSIENT_SURFACE_DEBUG_BREAKPOINT) == false {
+            visible = false;
+            pendingAction = DEBUG_BP_ACTION_NONE;
+            panel.SetVisible(false);
+            return DEBUG_BP_ACTION_NONE;
+        }
         Layout(shell);
         if Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
             Cancel();
@@ -159,6 +171,10 @@ class DebugBreakpointOverlay {
             value = Str.Trim(input.Text);
             visible = false;
             panel.SetVisible(false);
+            if ownerShell != null {
+                ownerShell.ReleaseTransientSurface(
+                    app_shell.TRANSIENT_SURFACE_DEBUG_BREAKPOINT);
+            }
             return pendingAction;
         }
         return DEBUG_BP_ACTION_NONE;
@@ -177,6 +193,10 @@ class DebugBreakpointOverlay {
         visible = false;
         pendingAction = DEBUG_BP_ACTION_NONE;
         panel.SetVisible(false);
+        if ownerShell != null {
+            ownerShell.ReleaseTransientSurface(
+                app_shell.TRANSIENT_SURFACE_DEBUG_BREAKPOINT);
+        }
     }
 
     /// @brief Return the edited condition/logpoint text.
@@ -223,8 +243,10 @@ class DebugBreakpointOverlay {
         input.SetPlaceholder(placeholder);
         input.SetText(existing);
         applyButton.SetText(buttonLabel);
+        ownerShell = shell;
+        shell.ClaimTransientSurface(
+            app_shell.TRANSIENT_SURFACE_DEBUG_BREAKPOINT, panel);
         visible = true;
-        panel.SetVisible(true);
         Layout(shell);
         input.Focus();
     }
@@ -233,8 +255,8 @@ class DebugBreakpointOverlay {
     /// @param shell Workbench shell used for current viewport size.
     hide func Layout(shell: app_shell.AppShell) {
         if panel == null or shell == null or shell.app == null { return; }
-        var rootW = shell.app.GetLogicalWidth();
-        var rootH = shell.app.GetLogicalHeight();
+        var rootW = app_shell.UiViewportWidth(shell.app);
+        var rootH = app_shell.UiViewportHeight(shell.app);
         if rootW <= 0 { rootW = 1280; }
         if rootH <= 0 { rootH = 800; }
         var panelW = DEBUG_BP_PANEL_WIDTH;

@@ -1,3 +1,25 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/view_commands.zia
+// Purpose: Apply and persist Studio appearance, layout, and view commands.
+// Key invariants:
+//   - View changes take effect immediately in the live workbench.
+//   - Minimap preference remains distinct from compact-width suppression.
+//   - Logical font sizes do not pre-apply whole-UI zoom; the runtime applies
+//     the effective scale exactly once.
+//   - Failed preference persistence is visible instead of being reported as a
+//     successful durable change.
+// Ownership/Lifetime: Stateless command handlers borrow live UI/editor models.
+// Links: zannastudio/src/core/settings.zia,
+//        zannastudio/src/commands/main_command_dispatcher.zia
+//
+//===----------------------------------------------------------------------===//
+
 module view_commands;
 
 bind "../ui/app_shell";
@@ -54,14 +76,22 @@ func clampFontSize(size: Integer) -> Integer {
     return size;
 }
 
-/// @brief Base chrome font size (15pt) scaled by the current whole-UI zoom so the
-///        menus, toolbar, and panels grow together with View > UI Zoom. The theme
-///        typography and control metrics are scaled by the same factor in the GUI
-///        runtime, so the chrome stays proportional.
-func chromeFontSize(shell: app_shell.AppShell) -> Number {
-    var zoom = shell.app.GetUiScale();
-    if zoom <= 0.0 { zoom = 1.0; }
-    return 15.0 * zoom;
+/// @brief Persist a live view change and surface non-fatal storage failures.
+/// @return True when the settings file was updated.
+func PersistSettings(shell: app_shell.AppShell,
+                     appSettings: settings.SettingsManager) -> Boolean {
+    if appSettings.Save() { return true; }
+    shell.SetStatusLeft("Setting changed, but could not be saved");
+    GUI.Toast.Error("Could not save settings");
+    return false;
+}
+
+/// @brief Return Studio's base chrome font size in logical points.
+/// @details The GUI runtime multiplies logical font sizes by the complete
+///          HiDPI-plus-user effective scale. Folding UI zoom into this value as
+///          well would square the user multiplier and make text outgrow controls.
+func chromeFontSize() -> Number {
+    return 15.0;
 }
 
 /// @brief Set the shell's chrome font from the OS-conventional UI font.
@@ -88,7 +118,7 @@ func applyShellFont(shell: app_shell.AppShell) {
         if font == null { font = GUI.Font.Load("/usr/share/fonts/TTF/DejaVuSans.ttf"); }
     }
 
-    var chromeSize = chromeFontSize(shell);
+    var chromeSize = chromeFontSize();
     if font != null {
         shell.app.SetFont(font, chromeSize);
         return;
@@ -181,7 +211,7 @@ func applyPersistentSettings(shell: app_shell.AppShell,
         engine.editor.ClearFoldRegions();
     }
 
-    liveDiag.enabled = appSettings.autoCheckOnSave;
+    liveDiag.SetEnabled(appSettings.autoCheckOnSave);
     if appSettings.autoCheckOnSave {
         liveDiag.invalidate();
     } else {
@@ -190,11 +220,7 @@ func applyPersistentSettings(shell: app_shell.AppShell,
         engine.editor.ClearHighlights();
     }
 
-    if appSettings.minimapVisible {
-        shell.workbench.minimap.SetVisible(true);
-    } else {
-        shell.workbench.minimap.SetVisible(false);
-    }
+    shell.workbench.SetMinimapRequestedVisible(appSettings.minimapVisible);
     if appSettings.statusBarVisible {
         shell.statusShell.statusBar.SetVisible(true);
     } else {
@@ -222,7 +248,7 @@ func handleToggleStatusBar(shell: app_shell.AppShell,
         appSettings.statusBarVisible = true;
         shell.SetStatusLeft("Status bar shown");
     }
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
 }
 
 /// @brief Increase editor font size by 1pt; persist setting.
@@ -231,7 +257,7 @@ func handleZoomIn(shell: app_shell.AppShell,
                   appSettings: settings.SettingsManager) {
     appSettings.fontSize = clampFontSize(appSettings.fontSize + 1);
     applyEditorFont(engine, appSettings);
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
     shell.SetStatusLeft("Font size: " + appSettings.fontSize);
 }
 
@@ -241,7 +267,7 @@ func handleZoomOut(shell: app_shell.AppShell,
                    appSettings: settings.SettingsManager) {
     appSettings.fontSize = clampFontSize(appSettings.fontSize - 1);
     applyEditorFont(engine, appSettings);
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
     shell.SetStatusLeft("Font size: " + appSettings.fontSize);
 }
 
@@ -251,7 +277,7 @@ func handleZoomReset(shell: app_shell.AppShell,
                      appSettings: settings.SettingsManager) {
     appSettings.fontSize = settings.DEFAULT_FONT_SIZE;
     applyEditorFont(engine, appSettings);
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
     shell.SetStatusLeft("Font size reset to " + settings.DEFAULT_FONT_SIZE);
 }
 
@@ -265,11 +291,13 @@ func clampUiZoom(percent: Integer) -> Integer {
 /// @brief Apply the persisted whole-UI zoom to the GUI runtime and chrome font.
 /// @details SetUiScale folds the zoom into the HiDPI scale so typography, spacing,
 ///          and control metrics all grow together; re-applying the shell font picks
-///          up the matching chrome size.
+///          up the matching chrome size. The native window floor follows zoom so
+///          larger controls do not collapse the effective workbench viewport.
 func applyUiZoom(shell: app_shell.AppShell,
                  appSettings: settings.SettingsManager) {
     appSettings.uiZoomPercent = clampUiZoom(appSettings.uiZoomPercent);
     shell.app.SetUiScale(appSettings.uiZoomPercent / 100.0);
+    shell.ApplyWorkbenchWindowConstraints();
     applyShellFont(shell);
 }
 
@@ -278,7 +306,7 @@ func handleUiZoomIn(shell: app_shell.AppShell,
                     appSettings: settings.SettingsManager) {
     appSettings.uiZoomPercent = clampUiZoom(appSettings.uiZoomPercent + 10);
     applyUiZoom(shell, appSettings);
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
     shell.SetStatusLeft("UI zoom: " + appSettings.uiZoomPercent + "%");
 }
 
@@ -287,7 +315,7 @@ func handleUiZoomOut(shell: app_shell.AppShell,
                      appSettings: settings.SettingsManager) {
     appSettings.uiZoomPercent = clampUiZoom(appSettings.uiZoomPercent - 10);
     applyUiZoom(shell, appSettings);
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
     shell.SetStatusLeft("UI zoom: " + appSettings.uiZoomPercent + "%");
 }
 
@@ -296,7 +324,7 @@ func handleUiZoomReset(shell: app_shell.AppShell,
                        appSettings: settings.SettingsManager) {
     appSettings.uiZoomPercent = 100;
     applyUiZoom(shell, appSettings);
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
     shell.SetStatusLeft("UI zoom reset to 100%");
 }
 
@@ -320,7 +348,7 @@ func handleToggleTheme(shell: app_shell.AppShell,
     }
     applyShellFont(shell);
     applyPersistentSettings(shell, engine, liveDiag, appSettings);
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
 }
 
 /// @brief Cycle whitespace-marker rendering (off -> boundary -> all -> off) on
@@ -340,7 +368,7 @@ func handleToggleRenderWhitespace(shell: app_shell.AppShell,
     } else {
         shell.SetStatusLeft("Whitespace markers: all");
     }
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
 }
 
 func handleKeybindings(shell: app_shell.AppShell,
@@ -459,7 +487,7 @@ func handleFullscreen(shell: app_shell.AppShell,
         appSettings.fullscreen = true;
         shell.SetStatusLeft("Fullscreen enabled");
     }
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
 }
 
 /// @brief Toggle minimap visibility; persist; return new visibility.
@@ -467,12 +495,15 @@ func handleToggleMinimap(shell: app_shell.AppShell,
                          appSettings: settings.SettingsManager) -> Boolean {
     var nowVisible = appSettings.minimapVisible == false;
     appSettings.minimapVisible = nowVisible;
-    if nowVisible {
-        shell.workbench.minimap.SetVisible(true);
+    shell.workbench.SetMinimapRequestedVisible(nowVisible);
+    if nowVisible and shell.workbench.minimap.IsVisible() == false {
+        shell.SetStatusLeft("Minimap enabled; widen the editor to show it");
+    } else if nowVisible {
+        shell.SetStatusLeft("Minimap shown");
     } else {
-        shell.workbench.minimap.SetVisible(false);
+        shell.SetStatusLeft("Minimap hidden");
     }
-    appSettings.Save();
+    PersistSettings(shell, appSettings);
     return nowVisible;
 }
 
@@ -519,7 +550,7 @@ func handleSettings(shell: app_shell.AppShell,
         if requestedSize >= 6 and requestedSize <= 72 {
             appSettings.fontSize = requestedSize;
             applyEditorFont(engine, appSettings);
-            appSettings.Save();
+            PersistSettings(shell, appSettings);
             shell.SetStatusLeft("Font size: " + appSettings.fontSize);
         } else {
             GUI.Toast.Warning("Font size must be between 6 and 72");
@@ -534,12 +565,12 @@ func handleSettings(shell: app_shell.AppShell,
     if fontText == "default" {
         appSettings.fontPath = "";
         applyEditorFont(engine, appSettings);
-        appSettings.Save();
+        PersistSettings(shell, appSettings);
         shell.SetStatusLeft("Using default editor font");
     } else if fontText != "" {
         appSettings.fontPath = fontText;
         applyEditorFont(engine, appSettings);
-        appSettings.Save();
+        PersistSettings(shell, appSettings);
         shell.SetStatusLeft("Using custom editor font");
     }
 }

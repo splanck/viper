@@ -22,6 +22,9 @@
 #include "frontends/zia/RuntimeNames.hpp"
 #include "il/core/Opcode.hpp"
 #include "il/core/Value.hpp"
+#include "il/io/Parser.hpp"
+#include "il/io/Serializer.hpp"
+#include "il/verify/Verifier.hpp"
 #include "support/source_manager.hpp"
 #include "tests/TestHarness.hpp"
 #include "tests/common/PosixCompat.h"
@@ -29,6 +32,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <sstream>
 #include <string>
 
 using namespace il::frontends::zia;
@@ -268,6 +272,41 @@ bool hasDiagnosticCode(const CompilerResult &result, const std::string &code) {
             return true;
     }
     return false;
+}
+
+TEST(ZiaExceptionHandling, SerializedHandlersRetainCanonicalAbiNames) {
+    SourceManager sm;
+    const std::string source = R"(
+module Test;
+
+func guarded(flag: Boolean) -> String {
+    try {
+        if flag { return "ok"; }
+        return "fallback";
+    } catch {
+        return "caught";
+    }
+    return "unreachable";
+}
+
+func start() {
+    Zanna.Terminal.Say(guarded(true));
+}
+)";
+    CompilerInput input{.source = source, .path = "serialized_handlers.zia"};
+    CompilerOptions opts{};
+
+    auto result = compile(input, opts, sm);
+    ASSERT_TRUE(result.succeeded());
+
+    const std::string serialized = il::io::Serializer::toString(result.module);
+    EXPECT_TRUE(serialized.find("(%err:Error, %tok:ResumeTok)") != std::string::npos);
+
+    std::istringstream inputStream(serialized);
+    il::core::Module roundTripped;
+    auto parsed = il::io::Parser::parse(inputStream, roundTripped);
+    ASSERT_TRUE(parsed);
+    EXPECT_TRUE(il::verify::Verifier::verify(roundTripped).hasValue());
 }
 
 TEST(ZiaRuntimeMemory, ExplicitReleaseUsesPublicRuntimeSurface) {

@@ -4,7 +4,20 @@
 // See LICENSE for license information.
 //
 //===----------------------------------------------------------------------===//
-///
+//
+// File: frontends/zia/Lowerer_Stmt_EH.cpp
+// Purpose: Lower Zia try, catch, finally, and throw statements into verified IL.
+// Key invariants:
+//   - Every handler entry uses the canonical `%err`/`%tok` ABI.
+//   - Catch bodies forward active tokens through uniquely named continuation parameters.
+// Ownership/Lifetime:
+//   - The lowerer appends blocks and instructions to its currently owned function.
+//   - AST nodes and semantic types are borrowed only for the active lowering call.
+// Links: frontends/zia/Lowerer.hpp, il/verify/EhChecks.cpp,
+//        docs/adr/0005-resume-token-provenance.md
+//
+//===----------------------------------------------------------------------===//
+
 /// @file Lowerer_Stmt_EH.cpp
 /// @brief Exception handling statement lowering for the Zia IL lowerer.
 ///
@@ -21,8 +34,15 @@
 ///
 /// ^handler(%err: error, %tok: resumetok):
 ///   eh.entry
-///   [catch body with %err bound]
-///   [finally body — duplicated]
+///   [capture error metadata]
+///   br ^catch_cont(%err, %tok)
+///
+/// ^catch_cont(%caught_err: error, %caught_tok: resumetok):
+///   [catch body and finally body — duplicated]
+///   br ^catch_resume(%caught_err, %caught_tok)
+///
+/// ^catch_resume(%err: error, %tok: resumetok):
+///   eh.entry
 ///   resume.label %tok, ^after
 ///
 /// ^finally_normal:
@@ -53,7 +73,13 @@
 ///
 /// ^catch_body(%err: error, %tok: resumetok):
 ///   eh.entry                             // required: makes block a handler
-///   [catch body with %err bound]
+///   [capture error metadata]
+///   br ^catch_cont(%err, %tok)
+/// ^catch_cont(%caught_err: error, %caught_tok: resumetok):
+///   [catch body with captured error bound]
+///   br ^catch_resume(%caught_err, %caught_tok)
+/// ^catch_resume(%err: error, %tok: resumetok):
+///   eh.entry
 ///   resume.label %tok, ^after
 /// ```
 ///
@@ -178,6 +204,17 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         return currentFunc_->blocks.size() - 1;
     };
 
+    auto createCatchContinuationBlock = [&](const std::string &base) -> size_t {
+        const unsigned blockId = blockMgr_.nextBlockId();
+        blockMgr_.setNextBlockId(blockId + 1);
+        const std::string suffix = std::to_string(blockId);
+        std::vector<il::core::Param> params;
+        params.push_back({"catch_err_" + suffix, Type(Type::Kind::Error)});
+        params.push_back({"catch_tok_" + suffix, Type(Type::Kind::ResumeTok)});
+        builder_->createBlock(*currentFunc_, makeSuffixedName(base, blockId), params);
+        return currentFunc_->blocks.size() - 1;
+    };
+
     auto emitEhEntry = [&]() {
         il::core::Instr ehEntryInstr;
         ehEntryInstr.op = Opcode::EhEntry;
@@ -276,13 +313,13 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
     };
 
     auto bindCatchPayload = [&](const TryStmt::CatchClause &catchClause,
-                                size_t paramBlockIdx) -> CatchErrorBinding {
+                                size_t paramBlockIdx,
+                                const CatchErrorBinding &captured) -> CatchErrorBinding {
         const auto &bp = currentFunc_->blocks[paramBlockIdx].params;
         if (bp.empty())
             return {};
 
         Value errVal = Value::temp(bp[0].id);
-        CatchErrorBinding captured = captureErrorFields(errVal, "catch");
         if (catchClause.var.empty())
             return captured;
 
@@ -292,10 +329,9 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
         return captured;
     };
 
-    // Create all blocks upfront to avoid stale indices after vector reallocation.
-    // The handler block needs special params: %err (error type) and %tok (resumetok).
-    // Create handler block with parameters via the builder directly
-    // Handler receives: %err (error) and %tok (resumetok) per IL spec
+    // Handler entries keep the canonical ABI names. Catch implementations use
+    // unique ordinary block parameters so serialized IL cannot confuse values
+    // from different `%err`/`%tok` scopes after cleanup CFG expansion.
     size_t handlerIdx = createHandlerBlock("handler");
 
     // Optional: finally_normal block (only if we have a finally clause)
@@ -306,14 +342,18 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
 
     std::vector<size_t> catchCheckBlocks;
     std::vector<size_t> catchBodyBlocks;
+    std::vector<size_t> catchContinuationBlocks;
     catchCheckBlocks.reserve(stmt->catches.size());
     catchBodyBlocks.reserve(stmt->catches.size());
+    catchContinuationBlocks.reserve(stmt->catches.size());
     if (hasCatch) {
         catchCheckBlocks.push_back(handlerIdx);
         for (size_t i = 1; i < stmt->catches.size(); ++i)
             catchCheckBlocks.push_back(createHandlerBlock("catch_check"));
-        for (size_t i = 0; i < stmt->catches.size(); ++i)
+        for (size_t i = 0; i < stmt->catches.size(); ++i) {
             catchBodyBlocks.push_back(createHandlerBlock("catch_body"));
+            catchContinuationBlocks.push_back(createCatchContinuationBlock("catch_cont"));
+        }
     }
     size_t rethrowIdx = 0;
     if (hasCatch)
@@ -392,7 +432,15 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
 
             setBlock(catchBodyBlocks[i]);
             emitEhEntry();
-            CatchErrorBinding activeError = bindCatchPayload(catchClause, catchBodyBlocks[i]);
+            const auto &handlerParams = currentFunc_->blocks[catchBodyBlocks[i]].params;
+            CatchErrorBinding capturedError =
+                captureErrorFields(Value::temp(handlerParams[0].id), "catch");
+            emitBrWithArgs(catchContinuationBlocks[i],
+                           {Value::temp(handlerParams[0].id), Value::temp(handlerParams[1].id)});
+
+            setBlock(catchContinuationBlocks[i]);
+            CatchErrorBinding activeError =
+                bindCatchPayload(catchClause, catchContinuationBlocks[i], capturedError);
 
             if (hasFinally)
                 cleanupStack_.push_back({stmt->finallyBody.get(), false});
@@ -415,7 +463,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt) {
                 lowerStmt(stmt->finallyBody.get());
 
             if (!isTerminated()) {
-                const auto &bp = currentFunc_->blocks[catchBodyBlocks[i]].params;
+                const auto &bp = currentFunc_->blocks[catchContinuationBlocks[i]].params;
                 emitResumeToAfter(Value::temp(bp[0].id), Value::temp(bp[1].id), "catch_resume");
             }
         }

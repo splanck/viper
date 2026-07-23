@@ -1,3 +1,24 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/console_search_probe.zia
+// Purpose: Regress Studio output, search, command chrome, and navigation.
+// Key invariants:
+//   - Visible menu shortcuts match the active platform command registry.
+//   - Tool-panel state and structured search locations remain coherent.
+//   - Workspace-symbol parsing remains bounded and honors dirty live buffers.
+//   - Floating workbench forms stay inside the effective viewport at UI zoom.
+//   - Focus-taking forms replace one another without stale-owner interference.
+// Ownership/Lifetime: The probe owns and destroys its shell and temporary data.
+// Links: zannastudio/src/ui/app_shell.zia,
+//        zannastudio/src/commands/command_registry.zia
+//
+//===----------------------------------------------------------------------===//
+
 module console_search_probe;
 
 // ============================================================================
@@ -14,7 +35,15 @@ module console_search_probe;
 // ============================================================================
 
 bind "../ui/app_shell";
+bind "../ui/command_input";
+bind "../ui/debug_breakpoint_overlay";
+bind "../ui/diff_view";
+bind "../ui/explorer_actions";
 bind "../ui/ide_overlays";
+bind "../ui/output_cache";
+bind "../app/command_palette_controller";
+bind "../commands/command_registry";
+bind "../commands/quick_open_commands";
 bind "../commands/search_commands";
 bind "../core/document_manager";
 bind "../core/project_manager";
@@ -23,6 +52,8 @@ bind "../editor/diagnostics";
 bind "../services/locations";
 
 bind GUI = Zanna.GUI;
+bind Obj = Zanna.Core.Object;
+bind Convert = Zanna.Core.Convert;
 bind Terminal = Zanna.Terminal;
 bind File = Zanna.IO.File;
 bind Path = Zanna.IO.Path;
@@ -30,12 +61,34 @@ bind TempFile = Zanna.IO.TempFile;
 bind Str = Zanna.String;
 bind Clock = Zanna.Time.Clock;
 bind Env = Zanna.System.Environment;
+bind Machine = Zanna.System.Machine;
 
 final CLIPBOARD_RETRY_ATTEMPTS = 50;
+
+func UiViewportWidth(app: GUI.App) -> Number {
+    return app_shell.UiViewportWidth(app);
+}
+
+func UiViewportHeight(app: GUI.App) -> Number {
+    return app_shell.UiViewportHeight(app);
+}
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
     Terminal.Say("RESULT: fail " + reason);
+}
+
+func OverlayContainsAction(app: GUI.App,
+                           panel: GUI.FloatingPanel,
+                           action: GUI.Button) -> Boolean {
+    if app == null or panel == null or action == null { return false; }
+    var panelRight = panel.GetScreenX() + panel.GetScreenWidth();
+    var panelBottom = panel.GetScreenY() + panel.GetScreenHeight();
+    return panel.GetScreenX() >= 0.0 and panel.GetScreenY() >= 0.0
+        and panelRight <= UiViewportWidth(app) + 1.0
+        and panelBottom <= UiViewportHeight(app) + 1.0
+        and action.GetScreenX() + action.GetScreenWidth() <= panelRight
+        and action.GetScreenY() + action.GetScreenHeight() <= panelBottom;
 }
 
 func copySelectedClipboardContains(shell: app_shell.AppShell, needle: String) -> Boolean {
@@ -98,23 +151,120 @@ func main() {
     var shell = new app_shell.AppShell();
     shell.Build("Zanna Studio Console Search Probe", 800, 520);
 
-    if shell.menuChrome.miOpenFolder.GetShortcut() != "Ctrl+Alt+O"
-       or shell.menuChrome.miQuickOpen.GetShortcut() != "Ctrl+P"
-       or shell.menuChrome.miSaveAs.GetShortcut() != "Ctrl+Shift+S"
-       or shell.menuChrome.miSaveAll.GetShortcut() != "Ctrl+Alt+Shift+S"
-       or shell.menuChrome.miSearchProject.GetShortcut() != "Ctrl+Shift+F"
-       or shell.menuChrome.miGoToDefinition.GetShortcut() != "F12"
-       or shell.menuChrome.miWorkspaceSymbols.GetShortcut() != "Ctrl+T"
-       or shell.menuChrome.miSymbolOutline.GetShortcut() != "Ctrl+Shift+O"
-       or shell.menuChrome.ctxRename.GetShortcut() != "Ctrl+Alt+R"
-       or shell.menuChrome.ctxRefresh.GetShortcut() != "Ctrl+Alt+Shift+R" {
+    var chromeRegistry = new command_registry.CommandRegistry();
+    shell.ApplyCommandShortcuts(chromeRegistry);
+    var closeWorkspaceEntry = chromeRegistry.Find("closeworkspace");
+    var addFolderEntry = chromeRegistry.Find("addfolder");
+    var removeFolderEntry = chromeRegistry.Find("removefolder");
+    if closeWorkspaceEntry == null or closeWorkspaceEntry.category != "File"
+       or addFolderEntry == null or addFolderEntry.category != "File"
+       or removeFolderEntry == null or removeFolderEntry.category != "File" {
+        fail(shell, "workspace commands missing from the File catalog");
+        return;
+    }
+    if shell.menuChrome.miOpenFolder.GetShortcut() != chromeRegistry.ShortcutFor("openfolder")
+       or shell.menuChrome.miAddFolder == null
+       or shell.menuChrome.miRemoveFolder == null
+       or shell.menuChrome.miCloseWorkspace == null
+       or shell.menuChrome.miQuickOpen.GetShortcut() != chromeRegistry.ShortcutFor("quickopen")
+       or shell.menuChrome.miSaveAs.GetShortcut() != chromeRegistry.ShortcutFor("saveas")
+       or shell.menuChrome.miSaveAll.GetShortcut() != chromeRegistry.ShortcutFor("saveall")
+       or shell.menuChrome.miSearchProject.GetShortcut() != chromeRegistry.ShortcutFor("searchproject")
+       or shell.menuChrome.miGoToDefinition.GetShortcut() != chromeRegistry.ShortcutFor("gotodef")
+       or shell.menuChrome.miWorkspaceSymbols.GetShortcut() != chromeRegistry.ShortcutFor("workspacesymbols")
+       or shell.menuChrome.miSymbolOutline.GetShortcut() != chromeRegistry.ShortcutFor("symboloutline")
+       or shell.menuChrome.ctxRename.GetShortcut() != chromeRegistry.ShortcutFor("treerename")
+       or shell.menuChrome.ctxRefresh.GetShortcut() != chromeRegistry.ShortcutFor("treerefresh") {
         fail(shell, "menu shortcut discoverability");
         return;
     }
+    shell.SetCommandContextAvailable(false, false, false, false);
+    if shell.menuChrome.miAddFolder.IsEnabled() == false
+       or shell.menuChrome.miRemoveFolder.IsEnabled()
+       or shell.menuChrome.miCloseWorkspace.IsEnabled() {
+        fail(shell, "closed-workspace menu state");
+        return;
+    }
+    shell.SetCommandContextAvailable(false, true, true, false);
+    if shell.menuChrome.miRemoveFolder.IsEnabled() == false
+       or shell.menuChrome.miCloseWorkspace.IsEnabled() == false {
+        fail(shell, "open-workspace close command state");
+        return;
+    }
+    shell.SetCommandContextAvailable(false, false, false, false);
+
+    // Palette and shortcut dispatch must honor the same workspace/job/debug
+    // policy as visible menu items.
+    chromeRegistry.ApplyCommandContext(false, false, false, false,
+                                       false, false, false, null);
+    if chromeRegistry.IsExecutable("removefolder", null)
+       or chromeRegistry.DisabledReason("removefolder", null) == "" {
+        fail(shell, "closed-workspace remove command registry state");
+        return;
+    }
+    chromeRegistry.ApplyCommandContext(false, true, true, false,
+                                       true, false, false, null);
+    if chromeRegistry.IsExecutable("removefolder", null)
+       or chromeRegistry.DisabledReason("removefolder", null) == "" {
+        fail(shell, "running-job remove command registry state");
+        return;
+    }
+    chromeRegistry.ApplyCommandContext(false, true, true, false,
+                                       false, false, false, null);
+    if chromeRegistry.IsExecutable("removefolder", null) == false {
+        fail(shell, "idle remove command registry state");
+        return;
+    }
+
+    // Applying an override must replace visible chrome, including clearing a
+    // binding altogether. Otherwise Settings reports the new keymap while the
+    // menu continues advertising a stale shortcut until restart.
+    var quickOpenEntry = chromeRegistry.Find("quickopen");
+    quickOpenEntry.shortcut = "Alt+Q";
+    shell.ApplyCommandShortcuts(chromeRegistry);
+    if shell.menuChrome.miQuickOpen.GetShortcut() != "Alt+Q" {
+        fail(shell, "live menu shortcut refresh");
+        return;
+    }
+    quickOpenEntry.shortcut = "";
+    shell.ApplyCommandShortcuts(chromeRegistry);
+    if shell.menuChrome.miQuickOpen.GetShortcut() != "" {
+        fail(shell, "live menu shortcut clearing");
+        return;
+    }
+    quickOpenEntry.shortcut = chromeRegistry.DefaultShortcutFor("quickopen");
+    shell.ApplyCommandShortcuts(chromeRegistry);
+
+    // Exercise an actual catalog chord through the native event queue. The
+    // capability pass between strokes mirrors main's per-frame reconciliation
+    // and guards against accidentally clearing the runtime's pending prefix.
+    chromeRegistry.InstallShortcuts();
+    var shortcutHarness = GUI.TestHarness.New();
+    if shortcutHarness.BindApp(shell.app) == false {
+        fail(shell, "shortcut harness app binding");
+        return;
+    }
+    var primaryModifier = 2; // VGFX_MOD_CTRL
+    if Machine.Os == "macos" { primaryModifier = 8; } // VGFX_MOD_CMD
+    shortcutHarness.SendKey("K", primaryModifier);
+    shortcutHarness.DispatchPending();
+    chromeRegistry.ApplyCapabilities(null);
+    shortcutHarness.SendKey("R", primaryModifier);
+    shortcutHarness.DispatchPending();
+    if Shortcuts.WasTriggered("recentfiles") == false {
+        shortcutHarness.UnbindApp();
+        fail(shell, "two-stroke catalog shortcut dispatch");
+        return;
+    }
+    shortcutHarness.UnbindApp();
+    Shortcuts.Clear();
 
     if shell.statusShell.lastProjectStatus != "No project"
        or shell.statusShell.lastLanguageStatus != "Lang: text"
-       or shell.statusShell.jobItem.GetText() != "Job: idle" {
+       or shell.statusShell.jobItem.GetText() != "Job: idle"
+       or shell.statusShell.indexStatusVisible
+       or shell.statusShell.jobStatusVisible
+       or shell.statusShell.taskStatusVisible {
         fail(shell, "initial status chrome");
         return;
     }
@@ -130,6 +280,42 @@ func main() {
     if shell.statusShell.lastProjectStatus != "No project"
        or shell.statusShell.lastLanguageStatus != "Lang: BASIC" {
         fail(shell, "workspace status fallback");
+        return;
+    }
+    shell.SetIndexStatus("Workspace index ready");
+    if shell.statusShell.indexStatusVisible {
+        fail(shell, "ready index status visibility");
+        return;
+    }
+    shell.SetIndexStatus("Workspace index 12/40");
+    if shell.statusShell.indexStatusVisible == false
+       or shell.statusShell.indexItem.GetText() != "Workspace index 12/40" {
+        fail(shell, "active index status visibility");
+        return;
+    }
+    var incompleteIndex = "Workspace index skipped oversized file executor.zia";
+    shell.SetIndexStatus(incompleteIndex);
+    if shell.statusShell.indexStatusVisible == false
+       or shell.statusShell.lastIndexStatus != incompleteIndex
+       or shell.statusShell.indexItem.GetText() != "Index: incomplete" {
+        fail(shell, "incomplete index status was not compacted");
+        return;
+    }
+    shell.SetIndexStatus("");
+    if shell.statusShell.indexStatusVisible {
+        fail(shell, "idle index status visibility");
+        return;
+    }
+    shell.SetSchedulerStatus("Tasks: diagnostics");
+    if shell.statusShell.lastTaskStatus != "Tasks: diagnostics"
+       or shell.statusShell.taskStatusVisible == false {
+        fail(shell, "active task status visibility");
+        return;
+    }
+    shell.SetSchedulerStatus("");
+    if shell.statusShell.lastTaskStatus != "Tasks: idle"
+       or shell.statusShell.taskStatusVisible {
+        fail(shell, "idle task status visibility");
         return;
     }
 
@@ -217,6 +403,35 @@ func main() {
         fail(shell, "copy full output text");
         return;
     }
+
+    // Wrapped output uses the panel's effective logical width. Framebuffer
+    // width would make rows wrap two to four times too late on Retina or when
+    // whole-UI zoom is active, leaving long build messages clipped.
+    shell.app.SetUiScale(2.0);
+    shell.app.SetWindowSize(720, 520);
+    shell.Poll();
+    shell.Render();
+    var zoomWrapLine = new Zanna.Text.StringBuilder();
+    var zoomWrapIndex = 0;
+    while zoomWrapIndex < 401 {
+        zoomWrapLine.Append("x");
+        zoomWrapIndex = zoomWrapIndex + 1;
+    }
+    shell.toolPanels.SetBuildOutput(zoomWrapLine.ToString() + "\n");
+    shell.Render();
+    var outputLogicalWidth = Convert.NumToInt(
+        shell.toolPanels.outputListBox.GetLogicalWidth());
+    var expectedWrapColumn = output_cache.WrapColumn(outputLogicalWidth);
+    var expectedWrapRows = (401 + expectedWrapColumn - 1) / expectedWrapColumn;
+    if shell.toolPanels.outputListBox.Count != expectedWrapRows {
+        fail(shell, "output wrapping ignored the zoomed panel width");
+        return;
+    }
+    shell.app.SetUiScale(1.0);
+    shell.app.SetWindowSize(800, 520);
+    shell.Poll();
+    shell.Render();
+
     shell.toolPanels.SetOutputAutoScroll(false);
     if shell.toolPanels.ToggleOutputAutoScroll() == false {
         fail(shell, "output auto-scroll enable");
@@ -244,6 +459,9 @@ func main() {
         fail(shell, "clear output helper");
         return;
     }
+    // This focused probe has no DocumentManager-driven frame loop. Supply a
+    // valid synthetic command target before exercising job-state transitions.
+    shell.SetCommandContextAvailable(true, true, true, true);
     if shell.menuChrome.tbStop.IsEnabled() or !shell.menuChrome.tbBuild.IsEnabled() {
         fail(shell, "initial build toolbar state");
         return;
@@ -251,17 +469,35 @@ func main() {
     shell.SetBuildJobActive(true, "Build");
     if shell.menuChrome.tbBuild.IsEnabled() or shell.menuChrome.tbRun.IsEnabled()
        or !shell.menuChrome.tbStop.IsEnabled() or shell.menuChrome.miBuild.IsEnabled()
+       or shell.menuChrome.miRemoveFolder.IsEnabled()
+       or shell.menuChrome.miCloseWorkspace.IsEnabled()
        or !shell.menuChrome.miStop.IsEnabled() or shell.statusShell.lastBuildJobStatus != "Job: Build"
-       or shell.statusShell.jobItem.GetText() != "Job: Build" {
+       or shell.statusShell.jobItem.GetText() != "Job: Build"
+       or shell.statusShell.jobStatusVisible == false {
         fail(shell, "active build toolbar state");
         return;
     }
     shell.SetBuildJobActive(false, "");
     if !shell.menuChrome.tbBuild.IsEnabled() or !shell.menuChrome.tbRun.IsEnabled()
        or shell.menuChrome.tbStop.IsEnabled() or !shell.menuChrome.miBuild.IsEnabled()
+       or shell.menuChrome.miRemoveFolder.IsEnabled() == false
+       or shell.menuChrome.miCloseWorkspace.IsEnabled() == false
        or shell.menuChrome.miStop.IsEnabled() or shell.statusShell.lastBuildJobStatus != "Job: idle"
-       or shell.statusShell.jobItem.GetText() != "Job: idle" {
+       or shell.statusShell.jobItem.GetText() != "Job: idle"
+       or shell.statusShell.jobStatusVisible {
         fail(shell, "idle build toolbar state");
+        return;
+    }
+    shell.SetDebugSessionState(true, false, false);
+    if shell.menuChrome.miRemoveFolder.IsEnabled()
+       or shell.menuChrome.miCloseWorkspace.IsEnabled() {
+        fail(shell, "debug session allowed workspace close");
+        return;
+    }
+    shell.SetDebugSessionState(false, false, false);
+    if shell.menuChrome.miRemoveFolder.IsEnabled() == false
+       or shell.menuChrome.miCloseWorkspace.IsEnabled() == false {
+        fail(shell, "stopped debug session left workspace close disabled");
         return;
     }
 
@@ -352,24 +588,191 @@ func main() {
     shell.app.SetWindowSize(620, 460);
     overlays.OpenSettings(shell, prefs);
     overlays.Pump(shell);
+    shell.Render();
     if !overlays.settingsPanel.IsVisible()
-       or overlays.settingsDockWidth != 420 {
+       or overlays.settingsDockWidth != 420
+       or overlays.settingsUsesDedicatedSurface == false
+       or shell.workbench.editorArea.IsVisible()
+       or overlays.settingsPanel.GetFlex() <= 0.0 {
         fail(shell, "preferences compact side panel");
         return;
     }
-    shell.app.SetWindowSize(1000, 720);
+    var settingsRight = overlays.settingsPanel.GetScreenX()
+        + overlays.settingsPanel.GetScreenWidth();
+    if overlays.fontPathInput.GetScreenX() + overlays.fontPathInput.GetScreenWidth()
+          > settingsRight + 1.0
+       or overlays.applySettingsButton.GetScreenY()
+              + overlays.applySettingsButton.GetScreenHeight()
+          > overlays.settingsPanel.GetScreenY()
+              + overlays.settingsPanel.GetScreenHeight() + 1.0 {
+        fail(shell, "preferences compact controls escaped their surface: panel="
+            + overlays.settingsPanel.GetScreenX() + "/"
+            + overlays.settingsPanel.GetScreenWidth() + " input="
+            + overlays.fontPathInput.GetScreenX() + "/"
+            + overlays.fontPathInput.GetScreenWidth() + " scroll="
+            + overlays.settingsBodyScroll.GetScreenX() + "/"
+            + overlays.settingsBodyScroll.GetScreenWidth() + " inputRight="
+            + (overlays.fontPathInput.GetScreenX()
+                + overlays.fontPathInput.GetScreenWidth())
+            + " panelRight=" + settingsRight
+            + " footerBottom=" + (overlays.applySettingsButton.GetScreenY()
+                + overlays.applySettingsButton.GetScreenHeight())
+            + " panelBottom=" + (overlays.settingsPanel.GetScreenY()
+                + overlays.settingsPanel.GetScreenHeight()));
+        return;
+    }
+    overlays.settingsBodyScroll.SetScroll(100000.0, 100000.0);
+    shell.Render();
+    if overlays.settingsBodyScroll.GetScrollY() <= 0.0
+       or overlays.settingsBodyScroll.GetScrollX() > 0.5 {
+        fail(shell, "preferences body must scroll vertically without horizontal overflow");
+        return;
+    }
+    shell.app.SetWindowSize(1280, 720);
     overlays.OpenSettings(shell, prefs);
     overlays.Pump(shell);
     if !overlays.settingsPanel.IsVisible()
-       or overlays.settingsDockWidth != 560 {
+       or overlays.settingsDockWidth != 560
+       or overlays.settingsUsesDedicatedSurface
+       or shell.workbench.editorArea.IsVisible() == false
+       or overlays.settingsPanel.GetFlex() > 0.0 {
         fail(shell, "preferences wide side panel");
         return;
     }
     overlays.CloseSettings();
-    if overlays.settingsPanel.IsVisible() {
+    if overlays.settingsPanel.IsVisible()
+       or shell.workbench.editorArea.IsVisible() == false {
         fail(shell, "preferences side panel close");
         return;
     }
+
+    // Short command forms must remain usable at the production workbench
+    // minimum even when wrapped validation text is visible.
+    shell.app.SetWindowSize(720, 520);
+    shell.Poll();
+    var commandOverlay = new command_input.CommandInputOverlay();
+    commandOverlay.Setup(shell);
+    commandOverlay.OpenGoToLine(shell, 12);
+    commandOverlay.detailLabel.SetText(
+        "Enter a valid line number from the active document before continuing.");
+    shell.Render();
+    if OverlayContainsAction(shell.app, commandOverlay.panel,
+                             commandOverlay.applyButton) == false
+       or commandOverlay.detailLabel.GetScreenY()
+              + commandOverlay.detailLabel.GetScreenHeight()
+          > commandOverlay.applyButton.GetScreenY() {
+        fail(shell, "command input overlay overflowed at minimum size");
+        return;
+    }
+    commandOverlay.Cancel();
+
+    var explorerOverlay = new explorer_actions.ExplorerActionOverlay();
+    explorerOverlay.Setup(shell);
+    explorerOverlay.OpenRename(shell, "/workspace/example/old-name.zia");
+    explorerOverlay.Reject(
+        shell,
+        "That destination already exists and cannot replace an open workspace item.");
+    shell.Render();
+    if OverlayContainsAction(shell.app, explorerOverlay.panel,
+                             explorerOverlay.applyButton) == false
+       or explorerOverlay.detailLabel.GetScreenY()
+              + explorerOverlay.detailLabel.GetScreenHeight()
+          > explorerOverlay.applyButton.GetScreenY() {
+        fail(shell, "explorer action overlay overflowed at minimum size");
+        return;
+    }
+    explorerOverlay.Cancel();
+
+    var breakpointOverlay = new debug_breakpoint_overlay.DebugBreakpointOverlay();
+    breakpointOverlay.Setup(shell);
+    breakpointOverlay.OpenCondition(
+        shell, "/workspace/example/main.zia", 42, "index > 3");
+    breakpointOverlay.detailLabel.SetText(
+        "The debugger will validate this expression when the session starts.");
+    shell.Render();
+    if OverlayContainsAction(shell.app, breakpointOverlay.panel,
+                             breakpointOverlay.applyButton) == false
+       or breakpointOverlay.detailLabel.GetScreenY()
+              + breakpointOverlay.detailLabel.GetScreenHeight()
+          > breakpointOverlay.applyButton.GetScreenY() {
+        fail(shell, "breakpoint overlay overflowed at minimum size");
+        return;
+    }
+    breakpointOverlay.Cancel();
+
+    // All focus-taking workbench forms share one ownership slot. Exercise the
+    // replacement chain as well as a late close from a superseded controller.
+    commandOverlay.OpenGoToLine(shell, 18);
+    explorerOverlay.OpenRename(shell, "/workspace/example/replacement.zia");
+    commandOverlay.Pump(shell);
+    commandOverlay.Cancel();
+    if commandOverlay.IsVisible() or commandOverlay.panel.IsVisible()
+       or explorerOverlay.IsVisible() == false
+       or explorerOverlay.panel.IsVisible() == false
+       or shell.OwnsTransientSurface(
+           app_shell.TRANSIENT_SURFACE_EXPLORER_ACTION) == false {
+        fail(shell, "explorer prompt did not replace command input");
+        return;
+    }
+    breakpointOverlay.OpenCondition(
+        shell, "/workspace/example/main.zia", 43, "ready");
+    explorerOverlay.Pump(shell);
+    if explorerOverlay.IsVisible() or explorerOverlay.panel.IsVisible()
+       or breakpointOverlay.visible == false
+       or breakpointOverlay.panel.IsVisible() == false {
+        fail(shell, "breakpoint prompt did not replace explorer prompt");
+        return;
+    }
+    overlays.OpenSettings(shell, prefs);
+    breakpointOverlay.Pump(shell);
+    overlays.Pump(shell);
+    if breakpointOverlay.visible or breakpointOverlay.panel.IsVisible()
+       or overlays.settingsVisible == false
+       or overlays.settingsPanel.IsVisible() == false {
+        fail(shell, "Preferences did not replace breakpoint prompt");
+        return;
+    }
+    overlays.CloseSettings();
+
+    // Floating panels and their children share effective UI units. At 200%
+    // zoom the backing-scale-only App logical size is twice the usable layout
+    // viewport; positioning against it sends otherwise centered forms offscreen.
+    shell.app.SetUiScale(2.0);
+    shell.app.SetWindowSize(720, 520);
+    shell.Poll();
+    commandOverlay.OpenGoToLine(shell, 24);
+    commandOverlay.detailLabel.SetText("Enter a line from the active document.");
+    shell.Render();
+    if OverlayContainsAction(shell.app, commandOverlay.panel,
+                             commandOverlay.applyButton) == false {
+        fail(shell, "command input overlay escaped the zoomed viewport");
+        return;
+    }
+    commandOverlay.Cancel();
+
+    explorerOverlay.OpenRename(shell, "/workspace/example/zoomed-name.zia");
+    explorerOverlay.Reject(shell, "Choose a different name.");
+    shell.Render();
+    if OverlayContainsAction(shell.app, explorerOverlay.panel,
+                             explorerOverlay.applyButton) == false {
+        fail(shell, "explorer action overlay escaped the zoomed viewport");
+        return;
+    }
+    explorerOverlay.Cancel();
+
+    breakpointOverlay.OpenCondition(
+        shell, "/workspace/example/main.zia", 42, "index > 3");
+    breakpointOverlay.detailLabel.SetText("Condition validation is deferred.");
+    shell.Render();
+    if OverlayContainsAction(shell.app, breakpointOverlay.panel,
+                             breakpointOverlay.applyButton) == false {
+        fail(shell, "breakpoint overlay escaped the zoomed viewport");
+        return;
+    }
+    breakpointOverlay.Cancel();
+    shell.app.SetUiScale(1.0);
+    shell.app.SetWindowSize(1280, 720);
+    shell.Poll();
 
     if search_commands.LineMatches("Alpha beta", "alpha", false, false) == false {
         fail(shell, "case-insensitive search");
@@ -435,6 +838,56 @@ func main() {
 
     var docMgr = new document_manager.DocumentManager();
     var locStore = new locations.LocationStore();
+
+    // An unsaved open buffer is not exempt from the same size ceiling used
+    // for disk sources. Otherwise one generated paste can monopolize search.
+    var oversizedOpenPath = Path.Join(root, "oversized-open.txt");
+    File.WriteAllText(oversizedOpenPath, "small on disk\n");
+    var oversizedOpenDoc = docMgr.OpenFile(oversizedOpenPath);
+    oversizedOpenDoc.content = Str.Repeat("x", 2000001);
+    if search_commands.SearchDiskFileTooLarge(docMgr, oversizedOpenPath) == false {
+        fail(shell, "oversized open search buffer was not bounded");
+        return;
+    }
+    oversizedOpenDoc.content = "small on disk\n";
+
+    // File-count slicing is insufficient when each candidate is large. The
+    // aggregate source budget must yield before scanning all three in one pump.
+    var byteBudgetRoot = TempFile.CreateDirWithPrefix("zannastudio_search_bytes_");
+    var budgetSource = "needle\n" + Str.Repeat("x", 700000);
+    i = 0;
+    while i < 3 {
+        File.WriteAllText(Path.Join(byteBudgetRoot, "budget" + i + ".txt"),
+                          budgetSource);
+        i = i + 1;
+    }
+    var byteBudgetSearch = new search_commands.SearchController();
+    var byteBudgetLocs = new locations.LocationStore();
+    if byteBudgetSearch.StartDirect(shell, byteBudgetRoot, "needle", ".txt",
+                                    false, false) == false {
+        fail(shell, "byte-budget search did not start");
+        return;
+    }
+    byteBudgetSearch.Pump(shell, docMgr, byteBudgetLocs);
+    if byteBudgetSearch.active == false
+       or byteBudgetSearch.lastPumpFileCount <= 0
+       or byteBudgetSearch.lastPumpFileCount >= 3
+       or byteBudgetSearch.lastPumpByteCount > 2000000 {
+        fail(shell, "search exceeded one-frame aggregate byte budget");
+        return;
+    }
+    while byteBudgetSearch.active {
+        byteBudgetSearch.Pump(shell, docMgr, byteBudgetLocs);
+        if byteBudgetSearch.lastPumpByteCount > 2000000 {
+            fail(shell, "search exceeded later aggregate byte budget");
+            return;
+        }
+    }
+    if byteBudgetSearch.resultCount != 3 {
+        fail(shell, "byte-budget search lost results");
+        return;
+    }
+
     var searcher = new search_commands.SearchController();
     if searcher.StartDirect(shell, root, "needle", ".zia", false, false) == false {
         fail(shell, "start direct search");
@@ -503,6 +956,87 @@ func main() {
     var projMgr = new project_manager.ProjectManager();
     projMgr.Setup(shell.workbench.sidebarTree);
     projMgr.OpenFolder(root);
+
+    // Quick Open must rank a warmed large cache over multiple frames instead
+    // of allocating one command row per project file on the invoking frame.
+    var quickProjMgr = new project_manager.ProjectManager();
+    quickProjMgr.Setup(null);
+    quickProjMgr.OpenFolder(root);
+    quickProjMgr.fileCache = new List();
+    quickProjMgr.fileCacheComplete = true;
+    quickProjMgr.fileCacheRefreshing = false;
+    i = 0;
+    while i < 2048 {
+        var quickName = "boring_entry_" + i + ".zia";
+        if i == 2047 { quickName = "needle_target.zia"; }
+        quickProjMgr.fileCache.Push(Path.Join(root, quickName));
+        i = i + 1;
+    }
+    var quickPalette = new command_palette_controller.CommandPaletteController();
+    if search_commands.ShowQuickOpenPalette(shell, quickProjMgr) == false {
+        fail(shell, "large-cache quick open did not show");
+        return;
+    }
+    quickPalette.BeginQuickOpen();
+    shell.commandPalette.SetQuery("needle");
+    quick_open_commands.PumpQuickOpenPalette(shell, quickProjMgr, quickPalette);
+    if quickPalette.quickOpenLastPumpScanCount <= 0
+       or quickPalette.quickOpenLastPumpScanCount > 512
+       or quickPalette.quickOpenScanIndex > 512
+       or quickPalette.quickOpenScanComplete
+       or quickPalette.quickOpenPublishedCount > 100 {
+        fail(shell, "quick open exceeded one-frame cache budget");
+        return;
+    }
+    var quickPumps = 1;
+    while quickPalette.quickOpenScanComplete == false and quickPumps < 10 {
+        quick_open_commands.PumpQuickOpenPalette(shell, quickProjMgr, quickPalette);
+        if quickPalette.quickOpenLastPumpScanCount > 512 {
+            fail(shell, "quick open exceeded later cache budget");
+            return;
+        }
+        quickPumps = quickPumps + 1;
+    }
+    if quickPalette.quickOpenScanComplete == false
+       or quickPalette.quickOpenResultPaths.count() != 1
+       or Obj.ToString(quickPalette.quickOpenResultPaths.get(0))
+          != Path.Join(root, "needle_target.zia") {
+        fail(shell, "quick open incremental ranking missed late cache result");
+        return;
+    }
+
+    // A workspace refresh can replace the cache with the same number of files.
+    // Query generation and count are therefore insufficient identities: the
+    // old result must disappear and scanning must restart at entry zero.
+    var quickCacheGeneration = quickProjMgr.FileCacheGeneration();
+    quickProjMgr.RefreshTree();
+    if quickProjMgr.FileCacheGeneration() == quickCacheGeneration {
+        fail(shell, "headless project refresh retained file-cache identity");
+        return;
+    }
+    quickProjMgr.fileCache = new List();
+    quickProjMgr.fileCacheComplete = true;
+    quickProjMgr.fileCacheRefreshing = false;
+    i = 0;
+    while i < 2048 {
+        var refreshedName = "refreshed_entry_" + i + ".zia";
+        if i == 0 { refreshedName = "refreshed_needle_target.zia"; }
+        quickProjMgr.fileCache.Push(Path.Join(root, refreshedName));
+        i = i + 1;
+    }
+    quick_open_commands.PumpQuickOpenPalette(shell, quickProjMgr, quickPalette);
+    if quickPalette.quickOpenCacheGeneration != quickProjMgr.FileCacheGeneration()
+       or quickPalette.quickOpenScanIndex <= 0
+       or quickPalette.quickOpenScanIndex > 512
+       or quickPalette.quickOpenResultPaths.count() != 1
+       or Obj.ToString(quickPalette.quickOpenResultPaths.get(0))
+          != Path.Join(root, "refreshed_needle_target.zia") {
+        fail(shell, "quick open retained same-size stale cache results");
+        return;
+    }
+    shell.commandPalette.Hide();
+    quickPalette.ResetToCommands(shell, chromeRegistry, null);
+
     var panelSearcher = new search_commands.SearchController();
     panelSearcher.OpenPanel(shell, root, "");
     shell.toolPanels.searchQueryInput.SetText("needle");
@@ -522,6 +1056,12 @@ func main() {
     }
     if panelSearcher.resultCount != 10 {
         fail(shell, "search panel input filters");
+        return;
+    }
+    if panelSearcher.resultLocationFirstId <= 1
+       or panelSearcher.resultLocationLastId
+          - panelSearcher.resultLocationFirstId + 1 != 10 {
+        fail(shell, "search result generation range");
         return;
     }
     docMgr.OpenFile(symbolPath);
@@ -550,6 +1090,39 @@ func main() {
                                                                "uncachedSymbolProbe");
     if uncachedCount != 1 {
         fail(shell, "workspace symbols enumerate uncached files");
+        return;
+    }
+
+    // The user-facing workspace-symbol route must not enumerate and parse the
+    // whole project in one UI frame. It shares FileIndex discovery with text
+    // search, processes at most four source files per pump, and still prefers
+    // the dirty open buffer when that file's turn arrives.
+    var asyncSymbolLocs = new locations.LocationStore();
+    var asyncSymbols = new search_commands.SearchController();
+    if asyncSymbols.StartWorkspaceSymbols(shell, projMgr, docMgr, null, "beta") == false {
+        fail(shell, "start cooperative workspace symbols");
+        return;
+    }
+    asyncSymbols.Pump(shell, docMgr, asyncSymbolLocs);
+    if asyncSymbols.active == false
+       or asyncSymbols.lastPumpFileCount <= 0
+       or asyncSymbols.lastPumpFileCount > 4
+       or asyncSymbols.fileIndex > 4 {
+        fail(shell, "workspace symbols exceeded one-frame file budget");
+        return;
+    }
+    var symbolPumps = 1;
+    while asyncSymbols.active and symbolPumps < 1000 {
+        asyncSymbols.Pump(shell, docMgr, asyncSymbolLocs);
+        if asyncSymbols.lastPumpFileCount > 4 {
+            fail(shell, "workspace symbols exceeded later frame budget");
+            return;
+        }
+        symbolPumps = symbolPumps + 1;
+    }
+    if asyncSymbols.active or asyncSymbols.resultCount != 1
+       or asyncSymbolLocs.items.count() != 1 {
+        fail(shell, "cooperative workspace symbols lost dirty-buffer result");
         return;
     }
     var cachedSearcher = new search_commands.SearchController();
@@ -599,6 +1172,97 @@ func main() {
     shell.toolPanels.ShowReferencesPanel();
     if !shell.toolPanels.referencesListBox.IsVisible() or shell.toolPanels.toolTabBar.GetActiveIndex() != 3 {
         fail(shell, "references panel rows");
+        return;
+    }
+
+    // Opening a diff shows a loading row immediately; worker completion and
+    // widget creation are both pumped later in batches of at most 100 rows.
+    var asyncDiff = new diff_view.DiffView();
+    asyncDiff.Setup(shell);
+    var diffLeft = new Zanna.Text.StringBuilder();
+    var diffRight = new Zanna.Text.StringBuilder();
+    i = 0;
+    while i < 250 {
+        if i > 0 {
+            diffLeft.Append("\n");
+            diffRight.Append("\n");
+        }
+        diffLeft.Append("before-" + i);
+        diffRight.Append("after-" + i);
+        i = i + 1;
+    }
+    shell.app.SetWindowSize(620, 460);
+    shell.Poll();
+    overlays.OpenAbout(shell);
+    asyncDiff.Open(
+        "/a/long/workspace/path/whose/title/must/not/collide/with/the/close/action/sample.zia",
+        diffLeft.ToString(),
+        diffRight.ToString());
+    overlays.Pump(shell);
+    if overlays.aboutVisible or overlays.aboutPanel.IsVisible()
+       or asyncDiff.visible == false or asyncDiff.panel.IsVisible() == false {
+        asyncDiff.Shutdown();
+        fail(shell, "diff did not replace About");
+        return;
+    }
+    shell.Render();
+    var diffPanelRight = asyncDiff.panel.GetScreenX()
+        + asyncDiff.panel.GetScreenWidth();
+    var diffPanelBottom = asyncDiff.panel.GetScreenY()
+        + asyncDiff.panel.GetScreenHeight();
+    if asyncDiff.panel.GetScreenX() < 0.0
+       or asyncDiff.panel.GetScreenY() < 0.0
+       or diffPanelRight > UiViewportWidth(shell.app) + 1.0
+       or diffPanelBottom > UiViewportHeight(shell.app) + 1.0
+       or asyncDiff.closeButton.GetScreenX()
+              + asyncDiff.closeButton.GetScreenWidth() > diffPanelRight
+       or asyncDiff.closeButton.GetScreenY()
+              + asyncDiff.closeButton.GetScreenHeight() > diffPanelBottom {
+        asyncDiff.Shutdown();
+        fail(shell, "diff overlay escaped the compact viewport");
+        return;
+    }
+    if asyncDiff.rowsList.Count != 1 or asyncDiff.IsBusy() == false {
+        asyncDiff.Shutdown();
+        fail(shell, "diff open blocked instead of showing pending state");
+        return;
+    }
+
+    shell.app.SetUiScale(2.0);
+    shell.app.SetWindowSize(720, 520);
+    shell.Poll();
+    asyncDiff.Pump();
+    shell.Render();
+    if OverlayContainsAction(shell.app, asyncDiff.panel,
+                             asyncDiff.closeButton) == false {
+        asyncDiff.Shutdown();
+        fail(shell, "diff overlay escaped the zoomed viewport");
+        return;
+    }
+    shell.app.SetUiScale(1.0);
+    shell.app.SetWindowSize(620, 460);
+    shell.Poll();
+    asyncDiff.Pump();
+    shell.Render();
+    var diffPumps = 0;
+    while asyncDiff.IsBusy() and diffPumps < 5000 {
+        asyncDiff.Pump();
+        if asyncDiff.lastPumpRenderCount > 100 {
+            asyncDiff.Shutdown();
+            fail(shell, "diff renderer exceeded one-frame row budget");
+            return;
+        }
+        Clock.Sleep(1);
+        diffPumps = diffPumps + 1;
+    }
+    if asyncDiff.IsBusy() or asyncDiff.rowsList.Count != 250 {
+        asyncDiff.Shutdown();
+        fail(shell, "async diff did not finish bounded rendering");
+        return;
+    }
+    asyncDiff.Close();
+    if asyncDiff.Shutdown() == false {
+        fail(shell, "diff worker did not drain at shutdown");
         return;
     }
 

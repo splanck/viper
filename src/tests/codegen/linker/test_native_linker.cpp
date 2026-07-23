@@ -387,6 +387,53 @@ int main() {
     {
         LinkLayout layout;
         layout.pageSize = 0x4000;
+        layout.entryAddr = 0x100004000ULL;
+
+        OutputSection text;
+        text.name = ".text";
+        text.data = {0xC0, 0x03, 0x5F, 0xD6}; // ret
+        text.virtualAddr = 0x100004000ULL;
+        text.alignment = 4;
+        text.executable = true;
+
+        OutputSection modInit;
+        modInit.name = "__DATA,__mod_init_func";
+        modInit.data.resize(8, 0);
+        modInit.virtualAddr = 0x100008000ULL;
+        modInit.alignment = 8;
+        modInit.writable = true;
+        modInit.dataSegment = true;
+
+        OutputSection modTerm;
+        modTerm.name = "__DATA,__mod_term_func";
+        modTerm.data.resize(8, 0);
+        modTerm.virtualAddr = 0x100008008ULL;
+        modTerm.alignment = 8;
+        modTerm.writable = true;
+        modTerm.dataSegment = true;
+
+        layout.sections = {text, modInit, modTerm};
+
+        const std::string exePath = tmpPath("macho_module_initializers");
+        std::ostringstream err;
+        CHECK(writeMachOExe(
+            exePath, layout, LinkArch::AArch64, {{"/usr/lib/libSystem.B.dylib"}}, {}, {}, err));
+        CHECK(err.str().empty());
+
+        const std::vector<uint8_t> exe = readFile(exePath);
+        uint32_t alignLog2 = 0;
+        uint32_t flags = 0;
+        CHECK(findMachOSection(exe, "__DATA", "__mod_init_func", alignLog2, flags));
+        CHECK(alignLog2 == 3);
+        CHECK((flags & 0xFFU) == 0x09U); // S_MOD_INIT_FUNC_POINTERS
+        CHECK(findMachOSection(exe, "__DATA", "__mod_term_func", alignLog2, flags));
+        CHECK(alignLog2 == 3);
+        CHECK((flags & 0xFFU) == 0x0AU); // S_MOD_TERM_FUNC_POINTERS
+    }
+
+    {
+        LinkLayout layout;
+        layout.pageSize = 0x4000;
 
         OutputSection text;
         text.name = ".text";

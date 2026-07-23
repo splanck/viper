@@ -7,8 +7,12 @@
 //
 // File: tests/unit/test_il_verify_eh_table.cpp
 // Purpose: Validate verifier diagnostics for exception handler table instructions.
-// Key invariants: EH stack operations enforce successor arity and resume token typing.
-// Ownership/Lifetime: Constructs IL modules locally for verification and discards after use.
+// Key invariants:
+//   - EH stack operations enforce successor arity and resume-token typing.
+//   - Active resume tokens may be forwarded only through matching block parameters.
+// Ownership/Lifetime:
+//   - Each test owns its parsed or constructed module for the duration of verification.
+//   - Verifier diagnostics never outlive the module that produced them.
 // Links: docs/il/il-guide.md#reference
 //
 //===----------------------------------------------------------------------===//
@@ -190,6 +194,30 @@ int main() {
                                          "}\n");
         auto result = il::verify::Verifier::verify(module);
         assert(result && "forwarding the active token to a handler continuation should verify");
+    }
+
+    {
+        Module module = parseModuleOrDie("il 0.3.0\n"
+                                         "func @ordinary_catch_continuation() -> void {\n"
+                                         "entry:\n"
+                                         "  eh.push ^dispatch\n"
+                                         "  trap\n"
+                                         "handler ^dispatch(%err:Error, %tok:ResumeTok):\n"
+                                         "  eh.entry\n"
+                                         "  br ^catch_body(%err, %tok)\n"
+                                         "catch_body(%caught_err:Error, %caught_tok:ResumeTok):\n"
+                                         "  br ^resume(%caught_err, %caught_tok)\n"
+                                         "handler ^resume(%err:Error, %tok:ResumeTok):\n"
+                                         "  eh.entry\n"
+                                         "  resume.label %tok, ^done\n"
+                                         "done:\n"
+                                         "  ret\n"
+                                         "}\n");
+        auto result = il::verify::Verifier::verify(module);
+        if (!result)
+            std::fprintf(stderr, "%s\n", result.error().message.c_str());
+        assert(result && "forwarding the active token through an ordinary continuation into a "
+                         "resume handler should verify");
     }
 
     {

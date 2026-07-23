@@ -1,0 +1,262 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/basic_query_job.zia
+// Purpose: Run compiler-backed BASIC editor queries away from the UI thread
+//          while coalescing rapid edits to the newest immutable snapshot.
+// Key invariants:
+//   - A job owns at most one active worker and one not-yet-started replacement.
+//   - Replaced or cancelled requests never become observable completions.
+//   - UI controllers validate generation, path, revision, and cursor metadata
+//     before applying a completed result.
+// Ownership/Lifetime:
+//   - Each editor feature owns one long-lived BasicQueryJob instance.
+//   - Async.RunOwned retains the active request until its worker has finished.
+// Links: zannastudio/src/editor/diagnostics.zia,
+//        zannastudio/src/editor/completion.zia,
+//        zannastudio/src/editor/hover.zia,
+//        zannastudio/src/editor/signature.zia,
+//        zannastudio/src/editor/symbols.zia
+//
+//===----------------------------------------------------------------------===//
+
+module basic_query_job;
+
+bind "../basic/semantic_scan";
+
+bind BasicLanguageService = Zanna.Basic.LanguageService;
+bind Async = Zanna.Threads.Async;
+bind Future = Zanna.Threads.Future;
+bind Monitor = Zanna.Threads.Monitor;
+
+final QUERY_DIAGNOSTICS = 1;
+final QUERY_COMPLETION = 2;
+final QUERY_HOVER = 3;
+final QUERY_SYMBOLS = 4;
+final QUERY_SIGNATURE = 5;
+
+/// @brief Immutable query input plus worker-published result state.
+/// @invariant Input fields do not change after Queue constructs the request.
+/// @ownership Owned by BasicQueryJob and retained by Async.RunOwned while active.
+class BasicQueryRequest {
+    expose Integer kind;
+    expose Integer generation;
+    expose String source;
+    expose String path;
+    expose Integer line;
+    expose Integer col;
+    expose Boolean cancelled;
+    expose Boolean succeeded;
+    expose Any result;
+    expose String error;
+
+    expose func init() {
+        kind = 0;
+        generation = 0;
+        source = "";
+        path = "";
+        line = 0;
+        col = 0;
+        cancelled = false;
+        succeeded = false;
+        result = null;
+        error = "";
+    }
+}
+
+/// @brief Read a request's cancellation flag under its monitor.
+func RequestIsCancelled(request: BasicQueryRequest) -> Boolean {
+    if request == null { return true; }
+    Monitor.Enter(request);
+    var cancelled = request.cancelled;
+    Monitor.Exit(request);
+    return cancelled;
+}
+
+/// @brief Execute one BASIC query from an immutable editor snapshot.
+/// @details Cancellation is cooperative at the query boundary. Compiler calls
+///          are not preempted; a cancelled request finishes in the background
+///          and its result is discarded before publication.
+func RunBasicQuery(request: BasicQueryRequest) -> Any {
+    if request == null or RequestIsCancelled(request) { return request; }
+
+    var result: Any = null;
+    var succeeded = true;
+    var error = "";
+    if request.kind == QUERY_DIAGNOSTICS {
+        result = BasicLanguageService.CheckForFile(request.source, request.path);
+    } else if request.kind == QUERY_COMPLETION {
+        result = BasicLanguageService.ItemsForFile(request.source, request.path,
+                                                   request.line, request.col);
+    } else if request.kind == QUERY_HOVER {
+        result = BasicLanguageService.HoverInfoForFile(request.source, request.path,
+                                                       request.line, request.col);
+    } else if request.kind == QUERY_SYMBOLS {
+        result = BasicLanguageService.SymbolsForFile(request.source, request.path);
+    } else if request.kind == QUERY_SIGNATURE {
+        result = semantic_scan.SignatureInfoForFile(request.path, request.source,
+                                                    request.line, request.col);
+    } else {
+        succeeded = false;
+        error = "Unsupported BASIC language query";
+    }
+
+    Monitor.Enter(request);
+    if request.cancelled == false {
+        request.result = result;
+        request.succeeded = succeeded;
+        request.error = error;
+    }
+    Monitor.Exit(request);
+    return request;
+}
+
+/// @brief Serial, latest-wins worker for one BASIC editor feature.
+/// @invariant activeFuture and activeRequest are either both null or both set.
+/// @ownership The owning controller retains this object for its full lifetime.
+class BasicQueryJob {
+    expose BasicQueryRequest activeRequest;
+    expose BasicQueryRequest pendingRequest;
+    expose BasicQueryRequest completedRequest;
+    expose Any activeFuture;
+    expose Integer nextGeneration;
+    expose Integer queuedCount;
+    expose Integer startedCount;
+    expose Integer completedCount;
+    expose Integer cancelledCount;
+    expose Integer coalescedCount;
+    expose String lastError;
+
+    expose func init() {
+        activeRequest = null;
+        pendingRequest = null;
+        completedRequest = null;
+        activeFuture = null;
+        nextGeneration = 1;
+        queuedCount = 0;
+        startedCount = 0;
+        completedCount = 0;
+        cancelledCount = 0;
+        coalescedCount = 0;
+        lastError = "";
+    }
+
+    /// @brief Queue the newest snapshot without starting a second worker.
+    /// @return Monotonically increasing request generation.
+    expose func Queue(kind: Integer,
+                      source: String,
+                      path: String,
+                      line: Integer,
+                      col: Integer) -> Integer {
+        var request = new BasicQueryRequest();
+        request.kind = kind;
+        request.generation = nextGeneration;
+        request.source = source;
+        request.path = path;
+        request.line = line;
+        request.col = col;
+        nextGeneration = nextGeneration + 1;
+        queuedCount = queuedCount + 1;
+        completedRequest = null;
+
+        if activeFuture == null {
+            StartRequest(request);
+        } else {
+            MarkCancelled(activeRequest);
+            if pendingRequest != null {
+                pendingRequest.cancelled = true;
+                coalescedCount = coalescedCount + 1;
+            }
+            pendingRequest = request;
+        }
+        return request.generation;
+    }
+
+    /// @brief Publish a finished request and start its latest replacement.
+    /// @return True when a non-cancelled completion is available to take.
+    expose func Pump() -> Boolean {
+        if activeFuture != null and Future.get_IsDone(activeFuture) {
+            var finished = activeRequest;
+            if Future.get_IsError(activeFuture) {
+                finished.succeeded = false;
+                finished.error = Future.get_Error(activeFuture);
+            }
+            if finished.cancelled == false {
+                completedRequest = finished;
+                completedCount = completedCount + 1;
+                lastError = finished.error;
+            }
+            activeFuture = null;
+            activeRequest = null;
+        }
+
+        if activeFuture == null and pendingRequest != null {
+            var next = pendingRequest;
+            pendingRequest = null;
+            StartRequest(next);
+        }
+        return completedRequest != null;
+    }
+
+    /// @brief Take and clear the most recently published completion.
+    expose func TakeCompleted() -> BasicQueryRequest {
+        var request = completedRequest;
+        completedRequest = null;
+        return request;
+    }
+
+    /// @brief Discard queued and completed work; an active compiler call drains.
+    expose func Cancel() {
+        completedRequest = null;
+        if pendingRequest != null {
+            pendingRequest.cancelled = true;
+            pendingRequest = null;
+            coalescedCount = coalescedCount + 1;
+        }
+        MarkCancelled(activeRequest);
+    }
+
+    expose func IsBusy() -> Boolean {
+        return activeFuture != null or pendingRequest != null;
+    }
+
+    expose func HasCompleted() -> Boolean {
+        return completedRequest != null;
+    }
+
+    /// @brief Start one owned callback or publish a start failure.
+    hide func StartRequest(request: BasicQueryRequest) -> Boolean {
+        if request == null { return false; }
+        activeRequest = request;
+        try {
+            activeFuture = Async.RunOwned(&RunBasicQuery, request);
+        } catch {
+            activeFuture = null;
+        }
+        if activeFuture == null {
+            request.succeeded = false;
+            request.error = "Could not start BASIC language worker";
+            completedRequest = request;
+            activeRequest = null;
+            lastError = request.error;
+            return false;
+        }
+        startedCount = startedCount + 1;
+        return true;
+    }
+
+    /// @brief Mark an active request stale exactly once.
+    hide func MarkCancelled(request: BasicQueryRequest) {
+        if request == null { return; }
+        Monitor.Enter(request);
+        if request.cancelled == false {
+            request.cancelled = true;
+            cancelledCount = cancelledCount + 1;
+        }
+        Monitor.Exit(request);
+    }
+}

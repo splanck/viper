@@ -136,13 +136,32 @@ Zia semantic results are revision-gated. Stale completion, diagnostics, hover,
 signature, and symbol work is rejected when the buffer changes before a result
 lands.
 
-Zia workspace navigation and rename depend on `Zanna.Zia.ProjectIndex`. The
-index is built lazily and skips oversized source files. If a query happens while
-the workspace index is warming up, results may be unavailable or incomplete.
+Suppress Warning, Apply Diagnostic Fix-It, and Create Missing Bind also return
+to the event loop before compiler work finishes. Keep the originating tab and
+caret stable while they run. Project-bind discovery scans captured workspace
+roots on a bounded worker and inserts only when exactly one candidate remains;
+ambiguous, unreadable, oversized, or subsequently changed candidates are left
+untouched with a status explanation.
 
-BASIC workspace navigation uses Zanna Studio's in-process semantic scanner. It scans
-project BASIC files and open BASIC buffers using the same workspace file-index
-policy as search.
+Zia workspace navigation and rename depend on `Zanna.Zia.ProjectIndex`, but the
+commands return to the event loop before project parsing begins. While the lazy
+index warms up, the status bar shows queued progress; the command starts only
+after a complete index exists. Moving the caret, editing, switching tabs or
+roots, or changing indexed content cancels the delayed result. References and
+call rows render in batches of at most 100 per frame.
+
+The Zia index accepts at most 20,000 files, 200 KB per file, and 64 MB of source.
+Unreadable/oversized files or truncated discovery make it explicitly incomplete,
+and project navigation/refactor commands refuse instead of returning partial
+answers. Reference results cap at 2,000; rename refuses above that limit and
+validates expected symbol text again when edits are applied.
+
+BASIC workspace navigation uses Zanna Studio's in-process semantic scanner on
+an owned background worker. It pages every workspace root, lets unsaved open
+BASIC buffers override disk, and rejects results when the active path, revision,
+caret, or root set changes before completion. File/source/declaration ceilings
+bound the scan; reference and call results are limited to 1,000 rows and render
+incrementally. Rename is canceled rather than applying a partial result set.
 
 ## BASIC Coding Workflow
 
@@ -164,7 +183,31 @@ Supported options include:
 - Folder-scoped search from the explorer.
 
 Search results are grouped by file and navigate through structured location ids
-instead of parsing displayed `path:line` strings.
+instead of parsing displayed `path:line` strings. Search processes at most 16
+files and 2 MB of source per frame; the same 2 MB per-file ceiling applies to
+unsaved open buffers as well as disk files.
+
+Replace All is tied to the exact completed text-search location-id range and
+the query/options that produced it. It is disabled while search is running,
+after cancellation, when discovery/results were truncated, or after panel
+options change without a new search. Starting replacement only snapshots file
+paths and line numbers; subsequent frames apply at most two files each. Closed
+files are reread under the search size ceiling and atomically replaced only if
+their content and modification time remain stable. Open buffers remain unsaved,
+receive a workspace-undo snapshot, and never overwrite their disk copies.
+Stopping a running replacement preserves the explicitly reported files already
+changed and leaves every later file untouched. Results are cleared afterward so
+a stale row cannot be applied twice; run Search again to refresh them.
+
+## Compare And Diff
+
+Compare with Saved and Source Control history/worktree comparisons share one
+side-by-side overlay. Opening it is non-blocking: a latest-wins worker computes
+the alignment under 4 MB-per-side, 20,000-combined-line, edit-depth, and trace
+allocation ceilings. The overlay then adds at most 100 of its maximum 4,000
+retained rows per frame. Closing the overlay cancels unpublished work; opening a
+new comparison supersedes the old request. Very large inputs show a concise
+limit message instead of attempting a potentially unbounded diff.
 
 ## Build And Run
 
@@ -388,9 +431,10 @@ project navigation, allow workspace indexing to finish or narrow the workspace.
 ### BASIC semantic commands feel incomplete
 
 BASIC definition, references, rename, workspace symbol, call hierarchy, and
-signature help are scanner-backed. Results can be incomplete while cooperative
-workspace scans are still warming up or when code needs compiler-only semantic
-context.
+signature help are scanner-backed. Project navigation now runs in the background,
+but ambiguous/dynamic code can still need compiler-only semantic context. A
+status ending in `(limited)` means the explicit workspace/result safety budget
+was reached; narrow the workspace. Rename never applies in that state.
 
 ### Scene file opens as text
 

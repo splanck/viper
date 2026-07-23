@@ -1,0 +1,312 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/basic_workspace_query_probe.zia
+// Purpose: Verify bounded asynchronous BASIC workspace navigation/refactor scans.
+// Key invariants:
+//   - Unsaved open snapshots override disk and multiple roots contribute source.
+//   - Coalesced/cancelled requests never publish stale results.
+//   - Reference limits are explicit and partial rename edits are never returned.
+// Ownership/Lifetime: The probe owns temporary roots and drains every worker.
+// Links: zannastudio/src/editor/basic_workspace_query_job.zia
+//
+//===----------------------------------------------------------------------===//
+
+module basic_workspace_query_probe;
+
+bind "../editor/basic_workspace_query_job";
+bind "../core/document_manager";
+bind "../services/workspace_edits";
+
+bind Clock = Zanna.Time.Clock;
+bind File = Zanna.IO.File;
+bind Map = Zanna.Collections.Map;
+bind Obj = Zanna.Core.Object;
+bind Path = Zanna.IO.Path;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind TempFile = Zanna.IO.TempFile;
+bind Terminal = Zanna.Terminal;
+
+final WAIT_TICKS = 20000;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func waitForCompletion(job: basic_workspace_query_job.BasicWorkspaceQueryJob)
+    -> basic_workspace_query_job.BasicWorkspaceQueryRequest {
+    var tick = 0;
+    while tick < WAIT_TICKS {
+        job.Pump();
+        if job.HasCompleted() { return job.TakeCompleted(); }
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    return null;
+}
+
+func queue(job: basic_workspace_query_job.BasicWorkspaceQueryJob,
+           kind: Integer,
+           newName: String,
+           activePath: String,
+           activeSource: String,
+           line: Integer,
+           col: Integer,
+           roots: List,
+           ignores: List,
+           openPaths: List,
+           openSources: List) -> Integer {
+    return job.Queue(kind, "Probe", newName, activePath, activeSource,
+                     line, col, 7, "probe-roots", roots, ignores,
+                     openPaths, openSources);
+}
+
+func refForFile(items: Any,
+                path: String) -> Any {
+    if items == null { return null; }
+    var index = 0;
+    while index < Seq.get_Count(items) {
+        var item = Seq.Get(items, index);
+        if Map.GetStr(item, "file") == path { return item; }
+        index = index + 1;
+    }
+    return null;
+}
+
+func editForFile(edits: Any,
+                 path: String) -> Any {
+    if edits == null { return null; }
+    var index = 0;
+    while index < Seq.get_Count(edits) {
+        var edit = Seq.Get(edits, index);
+        if Map.GetStr(edit, "file") == path { return edit; }
+        index = index + 1;
+    }
+    return null;
+}
+
+func main() {
+    var rootA = TempFile.CreateDirWithPrefix("zannastudio_basic_ws_a_");
+    var rootB = TempFile.CreateDirWithPrefix("zannastudio_basic_ws_b_");
+    var activePath = Path.Join(rootA, "main.bas");
+    var overridePath = Path.Join(rootA, "override.bas");
+    var libraryPath = Path.Join(rootB, "library.bas");
+    File.WriteAllText(activePath, "PRINT \"stale disk\"\n");
+    File.WriteAllText(overridePath, "SUB OldDiskName()\nEND SUB\n");
+    File.WriteAllText(libraryPath, "SUB Shared()\nEND SUB\n");
+
+    var activeSource = "SUB Caller()\n  LiveName()\n  Shared()\nEND SUB\n";
+    var overrideSource = "SUB LiveName()\nEND SUB\n";
+    var roots = new List();
+    roots.Push(rootA);
+    roots.Push(rootB);
+    var ignores = new List();
+    ignores.Push("");
+    ignores.Push("");
+    var openPaths = new List();
+    openPaths.Push(activePath);
+    openPaths.Push(overridePath);
+    var openSources = new List();
+    openSources.Push(activeSource);
+    openSources.Push(overrideSource);
+
+    // Definition must resolve from the unsaved override, not stale disk.
+    var definitionJob = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+    var definitionGeneration = queue(
+        definitionJob, basic_workspace_query_job.QUERY_DEFINITION, "",
+        activePath, activeSource, 2, 3, roots, ignores, openPaths,
+        openSources);
+    if definitionGeneration <= 0 or definitionJob.startedCount != 1
+       or definitionJob.HasCompleted() {
+        fail("definition did not start asynchronously");
+        return;
+    }
+    var definition = waitForCompletion(definitionJob);
+    if definition == null or definition!.succeeded == false
+       or Map.GetBool(definition!.result, "success") == false
+       or Map.GetStr(Map.Get(definition!.result, "definition"), "file")
+          != overridePath
+       or Map.GetInt(definition!.result, "fileCount") != 3 {
+        fail("unsaved multi-root definition result");
+        return;
+    }
+
+    // References cross from the active snapshot into the second root and carry
+    // previews/mtime metadata so the UI and rename path never reread blindly.
+    var referencesJob = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+    queue(referencesJob, basic_workspace_query_job.QUERY_REFERENCES, "",
+          activePath, activeSource, 3, 3, roots, ignores, openPaths,
+          openSources);
+    var references = waitForCompletion(referencesJob);
+    if references == null or references!.succeeded == false
+       or Map.GetBool(references!.result, "success") == false
+       or Map.GetInt(references!.result, "resultCount") != 2 {
+        fail("cross-root references result");
+        return;
+    }
+    var referenceItems = Map.Get(references!.result, "items");
+    var activeRef = refForFile(referenceItems, activePath);
+    var libraryRef = refForFile(referenceItems, libraryPath);
+    if activeRef == null or libraryRef == null
+       or Map.GetStr(activeRef, "preview") != "Shared()"
+       or Map.GetInt(activeRef, "expectedMtime") != -1
+       or Map.GetInt(libraryRef, "expectedMtime") < 0 {
+        fail("reference preview or snapshot metadata");
+        return;
+    }
+
+    var incomingJob = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+    queue(incomingJob, basic_workspace_query_job.QUERY_INCOMING_CALLS, "",
+          activePath, activeSource, 3, 3, roots, ignores, openPaths,
+          openSources);
+    var incoming = waitForCompletion(incomingJob);
+    var incomingItems: Any = null;
+    if incoming != null { incomingItems = Map.Get(incoming!.result, "items"); }
+    if incoming == null or incoming!.succeeded == false
+       or Map.GetBool(incoming!.result, "success") == false
+       or Seq.get_Count(incomingItems) != 1
+       or Map.GetStr(Seq.Get(incomingItems, 0), "caller") != "Caller" {
+        fail("incoming caller metadata");
+        return;
+    }
+
+    var outgoingJob = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+    queue(outgoingJob, basic_workspace_query_job.QUERY_OUTGOING_CALLS, "",
+          activePath, activeSource, 2, 3, roots, ignores, openPaths,
+          openSources);
+    var outgoing = waitForCompletion(outgoingJob);
+    if outgoing == null or outgoing!.succeeded == false
+       or Map.GetBool(outgoing!.result, "success") == false
+       or Map.GetInt(outgoing!.result, "resultCount") != 2 {
+        fail("outgoing call result");
+        return;
+    }
+
+    var renameJob = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+    queue(renameJob, basic_workspace_query_job.QUERY_RENAME, "RenamedShared",
+          activePath, activeSource, 3, 3, roots, ignores, openPaths,
+          openSources);
+    var rename = waitForCompletion(renameJob);
+    var edits: Any = null;
+    if rename != null { edits = Map.Get(rename!.result, "edits"); }
+    if rename == null or rename!.succeeded == false
+       or Map.GetBool(rename!.result, "success") == false
+       or Seq.get_Count(edits) != 2
+       or Map.GetStr(Seq.Get(edits, 0), "expectedText") == "" {
+        fail("rename edit snapshot contract");
+        return;
+    }
+
+    // Delayed rename edits must validate both open-buffer text and the closed
+    // file mtime captured by the worker before changing anything.
+    var activeEdit = editForFile(edits, activePath);
+    var activeOnly = Seq.New();
+    Seq.Push(activeOnly, activeEdit);
+    var changedOpenDocs = new document_manager.DocumentManager();
+    var changedOpen = changedOpenDocs.OpenFile(activePath);
+    changedOpen.content = "SUB Caller()\n  LiveName()\n  OtherX()\nEND SUB\n";
+    var changedOpenResult = workspace_edits.ApplyRenameEdits(activeOnly,
+                                                              changedOpenDocs,
+                                                              roots);
+    if changedOpenResult.success
+       or Str.IndexOf(changedOpenResult.message, "source changed") == 0
+       or changedOpen.content != "SUB Caller()\n  LiveName()\n  OtherX()\nEND SUB\n" {
+        fail("open rename snapshot changed under worker");
+        return;
+    }
+
+    var libraryEdit = editForFile(edits, libraryPath);
+    var libraryOnly = Seq.New();
+    Seq.Push(libraryOnly, libraryEdit);
+    File.WriteAllText(libraryPath, "SUB ChangedAfterScan()\nEND SUB\n");
+    var changedDiskResult = workspace_edits.ApplyRenameEdits(
+        libraryOnly, new document_manager.DocumentManager(), roots);
+    if changedDiskResult.success
+       or Str.IndexOf(changedDiskResult.message, "changed during") == 0
+       or File.ReadAllText(libraryPath) != "SUB ChangedAfterScan()\nEND SUB\n" {
+        fail("closed rename snapshot changed under worker");
+        return;
+    }
+
+    // Latest-wins coalescing: only the replacement request may publish.
+    var coalesced = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+    var firstGeneration = queue(
+        coalesced, basic_workspace_query_job.QUERY_REFERENCES, "",
+        activePath, activeSource, 3, 3, roots, ignores, openPaths,
+        openSources);
+    var secondGeneration = queue(
+        coalesced, basic_workspace_query_job.QUERY_DEFINITION, "",
+        activePath, activeSource, 2, 3, roots, ignores, openPaths,
+        openSources);
+    if secondGeneration <= firstGeneration or coalesced.cancelledCount != 1 {
+        fail("workspace request did not coalesce");
+        return;
+    }
+    var latest = waitForCompletion(coalesced);
+    if latest == null or latest!.generation != secondGeneration
+       or latest!.succeeded == false
+       or Map.GetBool(latest!.result, "success") == false {
+        fail("stale workspace request published");
+        return;
+    }
+
+    // A pathological single line cannot allocate more than the public result
+    // ceiling, and rename must reject that deliberately partial reference set.
+    var builder = new Zanna.Text.StringBuilder();
+    builder.AppendLine("SUB Hot()");
+    builder.AppendLine("END SUB");
+    var occurrence = 0;
+    while occurrence < basic_workspace_query_job.MAX_NAVIGATION_RESULTS + 20 {
+        builder.Append("Hot():");
+        occurrence = occurrence + 1;
+    }
+    builder.AppendLine("");
+    var cappedSource = builder.ToString();
+    var empty = new List();
+    var cappedRefsJob = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+    queue(cappedRefsJob, basic_workspace_query_job.QUERY_REFERENCES, "",
+          "limit.bas", cappedSource, 3, 1, empty, empty, empty, empty);
+    var cappedRefs = waitForCompletion(cappedRefsJob);
+    if cappedRefs == null or cappedRefs!.succeeded == false
+       or Map.GetBool(cappedRefs!.result, "success") == false
+       or Map.GetBool(cappedRefs!.result, "truncated") == false
+       or Map.GetInt(cappedRefs!.result, "resultCount")
+          != basic_workspace_query_job.MAX_NAVIGATION_RESULTS {
+        if cappedRefs != null and cappedRefs!.result != null {
+            Terminal.Say("CAP: success=" + Map.GetBool(cappedRefs!.result, "success")
+                         + " truncated=" + Map.GetBool(cappedRefs!.result, "truncated")
+                         + " count=" + Map.GetInt(cappedRefs!.result, "resultCount")
+                         + " reason=" + Map.GetStr(cappedRefs!.result, "reason"));
+        }
+        fail("reference cap contract");
+        return;
+    }
+
+    var cappedRenameJob = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+    queue(cappedRenameJob, basic_workspace_query_job.QUERY_RENAME, "Cool",
+          "limit.bas", cappedSource, 3, 1, empty, empty, empty, empty);
+    var cappedRename = waitForCompletion(cappedRenameJob);
+    if cappedRename == null or cappedRename!.succeeded == false
+       or Map.GetBool(cappedRename!.result, "success")
+       or Map.GetStr(cappedRename!.result, "reason") != "workspace_limit"
+       or Map.Get(cappedRename!.result, "edits") != null {
+        fail("partial rename was not rejected");
+        return;
+    }
+
+    var shutdownJob = new basic_workspace_query_job.BasicWorkspaceQueryJob();
+    queue(shutdownJob, basic_workspace_query_job.QUERY_REFERENCES, "",
+          "shutdown.bas", cappedSource, 3, 1, empty, empty, empty, empty);
+    if shutdownJob.CancelAndWait() == false or shutdownJob.IsBusy()
+       or shutdownJob.HasCompleted() {
+        fail("cancelled worker did not drain before shutdown");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

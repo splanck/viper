@@ -1,0 +1,431 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/services/safe_io.zia
+// Purpose: Convert expected user-filesystem traps into ordinary failure values
+//          at Zanna Studio command boundaries.
+// Key invariants:
+//   - A permission error, destination race, or missing source never escapes as
+//     an application-terminating runtime trap.
+//   - These helpers preserve the runtime primitives' no-overwrite semantics.
+//   - Atomic staging names stay short regardless of the user filename.
+//   - Shared Studio state is size-bounded before reads and atomically replaced
+//     so malformed files cannot stall startup and interrupted writes keep the
+//     previous complete settings/session snapshot.
+// Ownership/Lifetime: Stateless; all paths and content remain caller-owned.
+// Links: zannastudio/src/core/project_manager.zia,
+//        zannastudio/src/core/document_manager.zia,
+//        zannastudio/src/core/settings.zia,
+//        zannastudio/src/core/recovery_store.zia
+//
+//===----------------------------------------------------------------------===//
+
+module safe_io;
+
+bind File = Zanna.IO.File;
+bind Dir = Zanna.IO.Dir;
+bind Path = Zanna.IO.Path;
+bind Map = Zanna.Collections.Map;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind Uuid = Zanna.Text.Uuid;
+
+/// @brief Maximum serialized size of Studio's shared settings/session state.
+/// @details Session recovery has a lower aggregate payload cap; this ceiling
+///          leaves room for settings, recents, roots, and breakpoint metadata.
+final MAX_STUDIO_STATE_BYTES = 8000000;
+final MAX_STAGING_PURPOSE_LENGTH = 24;
+
+/// @brief Result of a non-trapping complete-text read.
+class TextReadResult {
+    expose Boolean ok;
+    expose String text;
+
+    expose func init() {
+        ok = false;
+        text = "";
+    }
+}
+
+/// @brief Result of a non-trapping directory enumeration.
+class PathListResult {
+    expose Boolean ok;
+    expose List items;
+
+    expose func init() {
+        ok = false;
+        items = new List();
+    }
+}
+
+/// @brief Result of one non-trapping immediate-directory page.
+class DirectoryPageResult {
+    expose Boolean ok;
+    expose List entries;
+    expose Integer nextOffset;
+    expose Boolean done;
+
+    expose func init() {
+        ok = false;
+        entries = new List();
+        nextOffset = 0;
+        done = true;
+    }
+}
+
+/// @brief Read complete text without propagating access/race traps.
+expose func ReadAllText(path: String) -> TextReadResult {
+    var result = new TextReadResult();
+    if path == "" { return result; }
+    try {
+        result.text = File.ReadAllText(path);
+        result.ok = true;
+    } catch {
+        result.ok = false;
+        result.text = "";
+    }
+    return result;
+}
+
+/// @brief Read complete text only when the file fits within a caller-owned cap.
+/// @details Metadata is checked before and after the read so a growing file is
+///          rejected instead of unexpectedly consuming unbounded memory.
+expose func ReadAllTextBounded(path: String, maxBytes: Integer) -> TextReadResult {
+    var result = new TextReadResult();
+    if path == "" or maxBytes < 0 { return result; }
+    try {
+        var beforeSize = File.SizeBytes(path);
+        if beforeSize < 0 or beforeSize > maxBytes { return result; }
+        var text = File.ReadAllText(path);
+        var afterSize = File.SizeBytes(path);
+        if afterSize >= 0 and afterSize <= maxBytes and afterSize == beforeSize {
+            result.text = text;
+            result.ok = true;
+        }
+    } catch {
+        result.ok = false;
+        result.text = "";
+    }
+    return result;
+}
+
+/// @brief Read Studio's shared settings/session state under its global cap.
+/// @details A corrupt or legacy file beyond the cap is treated as unavailable;
+///          callers keep defaults and must not overwrite it implicitly.
+expose func ReadStudioState(path: String) -> TextReadResult {
+    return ReadAllTextBounded(path, MAX_STUDIO_STATE_BYTES);
+}
+
+/// @brief Return file size, or -1 when metadata cannot be read safely.
+expose func SizeBytes(path: String) -> Integer {
+    if path == "" { return -1; }
+    try {
+        return File.SizeBytes(path);
+    } catch {
+        return -1;
+    }
+    return -1;
+}
+
+/// @brief Return modification timestamp, or -1 when metadata is unavailable.
+expose func Modified(path: String) -> Integer {
+    if path == "" { return -1; }
+    try {
+        return File.Modified(path);
+    } catch {
+        return -1;
+    }
+    return -1;
+}
+
+/// @brief Enumerate immediate child directory names without propagating traps.
+expose func ListDirectories(path: String) -> PathListResult {
+    var result = new PathListResult();
+    if path == "" { return result; }
+    try {
+        for name in Dir.Dirs(path) {
+            result.items.Push(name);
+        }
+        result.ok = true;
+    } catch {
+        result.items = new List();
+        result.ok = false;
+    }
+    return result;
+}
+
+/// @brief Enumerate immediate child file names without propagating traps.
+expose func ListFiles(path: String) -> PathListResult {
+    var result = new PathListResult();
+    if path == "" { return result; }
+    try {
+        for name in Dir.Files(path) {
+            result.items.Push(name);
+        }
+        result.ok = true;
+    } catch {
+        result.items = new List();
+        result.ok = false;
+    }
+    return result;
+}
+
+/// @brief Enumerate one bounded page of immediate children without propagating traps.
+/// @details Entries are maps with `name`, `path`, `kind`, and `isDirectory`.
+///          Callers pass `nextOffset` back into the next call until `done`.
+/// @param path Directory to enumerate.
+/// @param offset Logical entry offset, normally zero or a previous nextOffset.
+/// @param limit Maximum number of entries requested from the runtime.
+/// @return Ordinary failure result when the directory disappears or is unreadable.
+expose func ListDirectoryPage(path: String,
+                              offset: Integer,
+                              limit: Integer) -> DirectoryPageResult {
+    var result = new DirectoryPageResult();
+    result.nextOffset = offset;
+    if path == "" { return result; }
+    try {
+        var page = Dir.Page(path, offset, limit);
+        if Map.GetBool(page, "valid") == false { return result; }
+        var pageEntries = Map.Get(page, "entries");
+        var i = 0;
+        while pageEntries != null and i < Seq.get_Count(pageEntries) {
+            result.entries.Push(Seq.Get(pageEntries, i));
+            i = i + 1;
+        }
+        var diagnostics = Map.Get(page, "diagnostics");
+        if diagnostics != null and Seq.get_Count(diagnostics) > 0 {
+            result.entries = new List();
+            return result;
+        }
+        result.nextOffset = Map.GetInt(page, "nextOffset");
+        result.done = Map.GetBool(page, "done");
+        result.ok = true;
+    } catch {
+        result.ok = false;
+        result.entries = new List();
+        result.nextOffset = offset;
+        result.done = true;
+    }
+    return result;
+}
+
+/// @brief Create a directory tree without propagating filesystem traps.
+/// @return True when the directory exists after the operation.
+expose func MakeAll(path: String) -> Boolean {
+    if path == "" { return false; }
+    try {
+        Dir.MakeAll(path);
+    } catch {
+        return false;
+    }
+    return Dir.Exists(path);
+}
+
+/// @brief Move one regular file without replacing an existing destination.
+/// @return True only when the runtime move completed.
+expose func MoveFile(source: String, destination: String) -> Boolean {
+    if source == "" or destination == "" { return false; }
+    try {
+        File.Move(source, destination);
+    } catch {
+        return false;
+    }
+    return true;
+}
+
+/// @brief Atomically replace a destination with a staged regular file.
+/// @details Recovery and persistence workers stage potentially large payloads
+///          away from their canonical names, then use this short commit step so
+///          readers observe either the old complete file or the new one.
+/// @return True only when the staged source replaced the destination.
+expose func MoveFileOver(source: String, destination: String) -> Boolean {
+    if source == "" or destination == "" { return false; }
+    try {
+        File.MoveOver(source, destination);
+    } catch {
+        return false;
+    }
+    return File.Exists(destination) and File.Exists(source) == false;
+}
+
+/// @brief Copy one regular file without replacing an existing destination.
+/// @return True only when the source was copied and the destination exists.
+expose func CopyFile(source: String, destination: String) -> Boolean {
+    if source == "" or destination == "" { return false; }
+    if File.Exists(source) == false or File.Exists(destination) { return false; }
+    try {
+        File.Copy(source, destination);
+    } catch {
+        return false;
+    }
+    return File.Exists(destination);
+}
+
+/// @brief Choose a short unused staging path beside a destination.
+/// @details Atomic writes must remain on the destination filesystem, but
+///          repeating a near-limit user filename in the temporary basename can
+///          exceed the filesystem's component limit. A UUID keeps the staging
+///          component fixed-size and also makes concurrent writers extremely
+///          unlikely to choose the same unreserved candidate.
+/// @param targetPath Destination path whose directory will own the staging entry.
+/// @param purpose Short ASCII label such as `save`, `create`, or `write`.
+/// @return Unused sibling path, or empty when no safe candidate can be made.
+expose func SiblingTempPath(targetPath: String, purpose: String) -> String {
+    if targetPath == "" or Path.Name(targetPath) == ""
+       or IsSafeStagingPurpose(purpose) == false {
+        return "";
+    }
+    var directory = Path.Directory(targetPath);
+    if directory == "" or Dir.Exists(directory) == false { return ""; }
+    var attempt = 0;
+    while attempt < 16 {
+        var token = NewStagingToken();
+        if token == "" {
+            token = "" + Zanna.Time.Clock.NowMs() + "-" + attempt;
+        }
+        var candidate = Path.Join(
+            directory, ".zannastudio-" + purpose + "-" + token);
+        if File.Exists(candidate) == false and Dir.Exists(candidate) == false {
+            return candidate;
+        }
+        attempt = attempt + 1;
+    }
+    return "";
+}
+
+/// @brief Generate one staging token without leaking runtime failures.
+hide func NewStagingToken() -> String {
+    try {
+        return Uuid.Generate();
+    } catch {
+        return "";
+    }
+    return "";
+}
+
+/// @brief Validate the caller-controlled label embedded in a staging basename.
+hide func IsSafeStagingPurpose(purpose: String) -> Boolean {
+    if purpose == "" or Str.get_Length(purpose) > MAX_STAGING_PURPOSE_LENGTH {
+        return false;
+    }
+    var i = 0;
+    while i < Str.get_Length(purpose) {
+        var ch = Str.MidLen(purpose, i + 1, 1);
+        var valid = (ch >= "a" and ch <= "z")
+            or (ch >= "0" and ch <= "9") or ch == "-";
+        if valid == false { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+/// @brief Atomically create a new text file without replacing a destination.
+/// @details Content is staged beside the destination and committed through the
+///          runtime's cross-platform no-overwrite move.
+expose func CreateTextFile(path: String, content: String) -> Boolean {
+    if path == "" or File.Exists(path) { return false; }
+    var dir = Path.Directory(path);
+    if dir == "" or Dir.Exists(dir) == false { return false; }
+    var tempPath = SiblingTempPath(path, "create");
+    if tempPath == "" { return false; }
+    if WriteAllText(tempPath, content) == false {
+        DeleteFile(tempPath);
+        return false;
+    }
+    if File.Exists(path) or MoveFile(tempPath, path) == false {
+        DeleteFile(tempPath);
+        return false;
+    }
+    return File.Exists(path);
+}
+
+/// @brief Move one directory without replacing an existing destination.
+/// @return True only when the runtime move completed.
+expose func MoveDirectory(source: String, destination: String) -> Boolean {
+    if source == "" or destination == "" { return false; }
+    try {
+        Dir.Move(source, destination);
+    } catch {
+        return false;
+    }
+    return true;
+}
+
+/// @brief Recursively delete one explicit directory tree without propagating traps.
+/// @details The runtime rejects roots, current directories, and ancestors of the
+///          process working directory; this wrapper preserves those protections.
+/// @return True when the directory is absent after the operation.
+expose func DeleteDirectoryTree(path: String) -> Boolean {
+    if path == "" { return false; }
+    if Dir.Exists(path) == false { return true; }
+    try {
+        Dir.RemoveAll(path);
+    } catch {
+        return false;
+    }
+    return Dir.Exists(path) == false;
+}
+
+/// @brief Write complete text without propagating permission/I/O traps.
+/// @details This has the same replace behavior as File.WriteAllText; callers
+///          remain responsible for no-overwrite checks where required.
+expose func WriteAllText(path: String, content: String) -> Boolean {
+    if path == "" { return false; }
+    try {
+        File.WriteAllText(path, content);
+    } catch {
+        return false;
+    }
+    return File.Exists(path);
+}
+
+/// @brief Atomically replace one text file through a same-directory staging file.
+/// @details Staging beside the destination keeps the commit on one filesystem.
+///          A failed write/move removes its explicit staging file and leaves the
+///          previous destination untouched.
+expose func WriteAllTextAtomic(path: String, content: String) -> Boolean {
+    if path == "" { return false; }
+    var directory = Path.Directory(path);
+    if directory == "" or Dir.Exists(directory) == false { return false; }
+
+    if Path.Name(path) == "" { return false; }
+    var stagingPath = SiblingTempPath(path, "write");
+    if stagingPath == "" { return false; }
+    if WriteAllText(stagingPath, content) == false {
+        DeleteFile(stagingPath);
+        return false;
+    }
+
+    var committed = false;
+    if File.Exists(path) {
+        committed = MoveFileOver(stagingPath, path);
+    } else {
+        committed = MoveFile(stagingPath, path);
+    }
+    if committed == false { DeleteFile(stagingPath); }
+    return committed and File.Exists(path);
+}
+
+/// @brief Atomically persist shared Studio state when it fits the global cap.
+/// @return False without touching the destination when content is oversized.
+expose func WriteStudioState(path: String, content: String) -> Boolean {
+    if Str.get_Length(content) > MAX_STUDIO_STATE_BYTES { return false; }
+    return WriteAllTextAtomic(path, content);
+}
+
+/// @brief Delete an existing regular file without propagating cleanup traps.
+/// @return True when the path is absent after the operation.
+expose func DeleteFile(path: String) -> Boolean {
+    if path == "" { return false; }
+    if File.Exists(path) == false { return true; }
+    try {
+        File.Delete(path);
+    } catch {
+        return false;
+    }
+    return File.Exists(path) == false;
+}

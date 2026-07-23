@@ -785,6 +785,53 @@ TEST(commandpalette_show_hide_toggle) {
     vg_commandpalette_destroy(p);
 }
 
+TEST(commandpalette_scale_and_viewport_bounds) {
+    vg_theme_t *theme = vg_theme_get_current();
+    ASSERT_NOT_NULL(theme);
+    float previous_scale = theme->ui_scale;
+
+    vg_commandpalette_t *p = vg_commandpalette_create();
+    ASSERT_NOT_NULL(p);
+    for (int i = 0; i < 20; i++) {
+        char id[24];
+        char label[32];
+        snprintf(id, sizeof(id), "command.%d", i);
+        snprintf(label, sizeof(label), "Command number %d", i);
+        ASSERT_NOT_NULL(vg_commandpalette_add_command(p, id, label, "Ctrl+Shift+P", NULL, NULL));
+    }
+    vg_commandpalette_show(p);
+    theme->ui_scale = 2.0f;
+    vg_widget_measure(&p->base, 600.0f, 400.0f);
+    vg_widget_arrange(&p->base, 0.0f, 0.0f, p->base.measured_width, p->base.measured_height);
+
+    vg_event_t wheel_down = {0};
+    wheel_down.type = VG_EVENT_MOUSE_WHEEL;
+    wheel_down.wheel.delta_y = -1.0f;
+    bool handled_wheel = p->base.vtable->handle_event(&p->base, &wheel_down);
+    int first_visible_after_wheel = p->first_visible_index;
+    int selected_after_wheel = p->selected_index;
+
+    vg_event_t third_row = vg_event_mouse(VG_EVENT_MOUSE_MOVE, 20.0f, 210.0f, VG_MOUSE_LEFT, 0);
+    bool handled_third_row = p->base.vtable->handle_event(&p->base, &third_row);
+    float measured_width = p->base.measured_width;
+    float measured_height = p->base.measured_height;
+    int selected_index = p->selected_index;
+    theme->ui_scale = previous_scale;
+    vg_commandpalette_destroy(p);
+
+    // A 500-point palette should scale up, then clamp to 16-point viewport
+    // margins. Its row count must also shrink so the bottom stays visible.
+    ASSERT(measured_width >= 535.0f);
+    ASSERT(measured_width <= 536.0f);
+    ASSERT(measured_height <= 308.0f);
+    ASSERT(measured_height >= 200.0f);
+    ASSERT(handled_wheel);
+    ASSERT_EQ(first_visible_after_wheel, 1);
+    ASSERT_EQ(selected_after_wheel, 1);
+    ASSERT(handled_third_row);
+    ASSERT_EQ(selected_index, 3);
+}
+
 //=============================================================================
 // Group D-menu — menu management (new functions)
 //=============================================================================
@@ -979,6 +1026,7 @@ int main(void) {
     RUN(commandpalette_remove_command);
     RUN(commandpalette_clear_all);
     RUN(commandpalette_show_hide_toggle);
+    RUN(commandpalette_scale_and_viewport_bounds);
 
     printf("\nGroup D-menu — Menu management:\n");
     RUN(menu_remove_item_updates_count);

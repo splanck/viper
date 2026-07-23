@@ -19,6 +19,8 @@
 //     retain removed node handles; destroy always drains the retired list.
 //   - scroll_y is always re-clamped after collapse and selection changes to
 //     prevent blank space at the bottom of the visible area.
+//   - Scrollbar cleanup releases input capture only when the scrollbar owned
+//     it; retained-tree drag-and-drop uses the same widget capture independently.
 //   - drag-and-drop: drop position is classified as BEFORE/INTO/AFTER based on
 //     where in the target row's height (< 30% → BEFORE, > 70% → AFTER, else
 //     INTO); drops are vetoed by treeview_drop_is_valid.
@@ -65,6 +67,14 @@ static vg_tree_node_t *get_node_at_index(vg_tree_node_t *root, int index, int *c
 static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *current);
 static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *candidate);
 static void treeview_clamp_scroll(vg_treeview_t *tree);
+static float treeview_content_height(const vg_treeview_t *tree);
+static float treeview_max_scroll(const vg_treeview_t *tree);
+static bool treeview_scrollbar_geometry(const vg_treeview_t *tree,
+                                        float *out_width,
+                                        float *out_thumb_y,
+                                        float *out_thumb_height);
+static bool treeview_handle_scrollbar_event(vg_treeview_t *tree, vg_event_t *event);
+static void treeview_paint_scrollbar(vg_treeview_t *tree, void *canvas);
 static float treeview_scale(void);
 static float treeview_outer_padding(void);
 static void treeview_sync_metrics(vg_treeview_t *tree);
@@ -394,24 +404,201 @@ static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *ca
     return false;
 }
 
-/// @brief Clamp tree->scroll_y to [0, max_scroll] where max_scroll = visible_rows * row_height -
-/// height.
-static void treeview_clamp_scroll(vg_treeview_t *tree) {
+/// @brief Return the flattened visible-row height without overflowing float arithmetic.
+static float treeview_content_height(const vg_treeview_t *tree) {
     if (!tree)
-        return;
-
-    if (tree->scroll_y < 0.0f)
-        tree->scroll_y = 0.0f;
-
+        return 0.0f;
     size_t visible =
         tree->virtual_mode ? tree->virtual_row_count : (size_t)count_visible_nodes(tree->root);
     double content_height = (double)visible * (double)tree->row_height;
-    double max_scroll_double = content_height - (double)tree->base.height;
+    if (!isfinite(content_height) || content_height > (double)FLT_MAX)
+        return FLT_MAX;
+    if (content_height < 0.0)
+        return 0.0f;
+    return (float)content_height;
+}
+
+/// @brief Return the largest valid vertical scroll offset for the current viewport.
+static float treeview_max_scroll(const vg_treeview_t *tree) {
+    if (!tree)
+        return 0.0f;
+    double max_scroll_double = (double)treeview_content_height(tree) - (double)tree->base.height;
     float max_scroll = max_scroll_double > (double)FLT_MAX ? FLT_MAX : (float)max_scroll_double;
     if (max_scroll < 0.0f)
         max_scroll = 0.0f;
+    return max_scroll;
+}
+
+/// @brief Clamp tree->scroll_y to [0, content_height - viewport_height].
+static void treeview_clamp_scroll(vg_treeview_t *tree) {
+    if (!tree)
+        return;
+    if (!isfinite(tree->scroll_y) || tree->scroll_y < 0.0f)
+        tree->scroll_y = 0.0f;
+    float max_scroll = treeview_max_scroll(tree);
     if (tree->scroll_y > max_scroll)
         tree->scroll_y = max_scroll;
+}
+
+/// @brief Compute the visible vertical scrollbar and thumb geometry.
+/// @return true only when content overflows the current TreeView viewport.
+static bool treeview_scrollbar_geometry(const vg_treeview_t *tree,
+                                        float *out_width,
+                                        float *out_thumb_y,
+                                        float *out_thumb_height) {
+    if (!tree || tree->base.width <= 0.0f || tree->base.height <= 0.0f)
+        return false;
+    float content_height = treeview_content_height(tree);
+    float viewport_height = tree->base.height;
+    if (content_height <= viewport_height)
+        return false;
+
+    vg_theme_t *theme = vg_theme_get_current();
+    float width = theme ? theme->scrollbar.width : 10.0f;
+    if (!isfinite(width) || width <= 0.0f)
+        width = 10.0f;
+    if (width > tree->base.width)
+        width = tree->base.width;
+
+    float thumb_height = viewport_height * (viewport_height / content_height);
+    float min_thumb = theme ? theme->scrollbar.min_thumb_size : 24.0f;
+    if (!isfinite(min_thumb) || min_thumb < 1.0f)
+        min_thumb = 1.0f;
+    if (thumb_height < min_thumb)
+        thumb_height = min_thumb;
+    if (thumb_height > viewport_height)
+        thumb_height = viewport_height;
+
+    float travel = viewport_height - thumb_height;
+    float max_scroll = treeview_max_scroll(tree);
+    float thumb_y =
+        (travel > 0.0f && max_scroll > 0.0f) ? (tree->scroll_y / max_scroll) * travel : 0.0f;
+    if (thumb_y < 0.0f)
+        thumb_y = 0.0f;
+    if (thumb_y > travel)
+        thumb_y = travel;
+
+    if (out_width)
+        *out_width = width;
+    if (out_thumb_y)
+        *out_thumb_y = thumb_y;
+    if (out_thumb_height)
+        *out_thumb_height = thumb_height;
+    return true;
+}
+
+/// @brief Handle scrollbar hover, track clicks, thumb dragging, and click suppression.
+/// @details Mouse coordinates are widget-local on the event path. This handler runs before
+/// retained/virtual row handling so the scrollbar gutter never selects or activates a file row.
+static bool treeview_handle_scrollbar_event(vg_treeview_t *tree, vg_event_t *event) {
+    if (!tree || !event)
+        return false;
+    if (event->type != VG_EVENT_MOUSE_DOWN && event->type != VG_EVENT_MOUSE_UP &&
+        event->type != VG_EVENT_MOUSE_MOVE && event->type != VG_EVENT_MOUSE_LEAVE &&
+        event->type != VG_EVENT_CLICK && event->type != VG_EVENT_DOUBLE_CLICK) {
+        return false;
+    }
+
+    float width = 0.0f;
+    float thumb_y = 0.0f;
+    float thumb_height = 0.0f;
+    bool visible = treeview_scrollbar_geometry(tree, &width, &thumb_y, &thumb_height);
+    float gutter_left = tree->base.width - width;
+    bool in_gutter = visible && event->mouse.x >= gutter_left &&
+                     event->mouse.x < tree->base.width && event->mouse.y >= 0.0f &&
+                     event->mouse.y < tree->base.height;
+
+    if (!visible) {
+        bool was_scrollbar_dragging = tree->scrollbar_dragging;
+        bool changed = tree->scrollbar_hovered || tree->scrollbar_dragging;
+        tree->scrollbar_hovered = false;
+        tree->scrollbar_dragging = false;
+        tree->scrollbar_suppress_click = false;
+        // TreeView drag-and-drop and the scrollbar both capture through the
+        // widget handle. Only tear capture down when an active thumb drag lost
+        // its scrollbar (for example after content collapsed). Otherwise this
+        // move event is the one that must promote a pressed file into a drag.
+        if (was_scrollbar_dragging && vg_widget_get_input_capture() == &tree->base)
+            vg_widget_release_input_capture();
+        if (changed)
+            tree->base.needs_paint = true;
+        return false;
+    }
+
+    if (event->type == VG_EVENT_MOUSE_DOWN) {
+        if (!in_gutter || event->mouse.button != VG_MOUSE_LEFT) {
+            tree->scrollbar_suppress_click = false;
+            return false;
+        }
+        tree->scrollbar_suppress_click = true;
+        if (event->mouse.y >= thumb_y && event->mouse.y < thumb_y + thumb_height) {
+            tree->scrollbar_dragging = true;
+            tree->scrollbar_drag_offset = event->mouse.y - thumb_y;
+            vg_widget_set_input_capture(&tree->base);
+        } else {
+            float travel = tree->base.height - thumb_height;
+            float target = event->mouse.y - thumb_height * 0.5f;
+            if (target < 0.0f)
+                target = 0.0f;
+            if (target > travel)
+                target = travel;
+            tree->scroll_y = travel > 0.0f ? (target / travel) * treeview_max_scroll(tree) : 0.0f;
+            treeview_clamp_scroll(tree);
+        }
+        tree->base.needs_paint = true;
+        return true;
+    }
+
+    if (event->type == VG_EVENT_MOUSE_MOVE) {
+        if (tree->scrollbar_dragging) {
+            float travel = tree->base.height - thumb_height;
+            float target = event->mouse.y - tree->scrollbar_drag_offset;
+            if (target < 0.0f)
+                target = 0.0f;
+            if (target > travel)
+                target = travel;
+            tree->scroll_y = travel > 0.0f ? (target / travel) * treeview_max_scroll(tree) : 0.0f;
+            treeview_clamp_scroll(tree);
+            tree->base.needs_paint = true;
+            return true;
+        }
+        if (tree->scrollbar_hovered != in_gutter) {
+            tree->scrollbar_hovered = in_gutter;
+            tree->base.needs_paint = true;
+        }
+        if (in_gutter) {
+            tree->hovered = NULL;
+            tree->virtual_hovered_index = SIZE_MAX;
+            return true;
+        }
+        return false;
+    }
+
+    if (event->type == VG_EVENT_MOUSE_UP && tree->scrollbar_dragging) {
+        tree->scrollbar_dragging = false;
+        if (vg_widget_get_input_capture() == &tree->base)
+            vg_widget_release_input_capture();
+        tree->base.needs_paint = true;
+        return true;
+    }
+
+    if (event->type == VG_EVENT_CLICK) {
+        if (tree->scrollbar_suppress_click || in_gutter) {
+            tree->scrollbar_suppress_click = false;
+            return true;
+        }
+        return false;
+    }
+
+    if (event->type == VG_EVENT_DOUBLE_CLICK && in_gutter)
+        return true;
+
+    if (event->type == VG_EVENT_MOUSE_LEAVE && !tree->scrollbar_dragging &&
+        tree->scrollbar_hovered) {
+        tree->scrollbar_hovered = false;
+        tree->base.needs_paint = true;
+    }
+    return false;
 }
 
 /// @brief Compute the flattened virtual rows needed by the current viewport without callbacks.
@@ -696,6 +883,10 @@ vg_treeview_t *vg_treeview_create(vg_widget_t *parent) {
     tree->scroll_y = 0;
     tree->visible_start = 0;
     tree->visible_count = 0;
+    tree->scrollbar_hovered = false;
+    tree->scrollbar_dragging = false;
+    tree->scrollbar_suppress_click = false;
+    tree->scrollbar_drag_offset = 0.0f;
     tree->virtual_selected_index = SIZE_MAX;
     tree->virtual_hovered_index = SIZE_MAX;
 
@@ -930,6 +1121,12 @@ static void treeview_paint_virtual(vg_treeview_t *tree, void *canvas) {
     treeview_compute_virtual_range(tree, &start, &count);
     tree->visible_start = start > (size_t)INT_MAX ? INT_MAX : (int)start;
     tree->visible_count = count > (size_t)INT_MAX ? INT_MAX : (int)count;
+    float scrollbar_width = 0.0f;
+    float content_width = tree->base.width;
+    if (treeview_scrollbar_geometry(tree, &scrollbar_width, NULL, NULL))
+        content_width -= scrollbar_width;
+    if (content_width < 0.0f)
+        content_width = 0.0f;
 
     for (size_t offset = 0; offset < count; offset++) {
         size_t index = start + offset;
@@ -955,7 +1152,7 @@ static void treeview_paint_virtual(vg_treeview_t *tree, void *canvas) {
         vgfx_fill_rect((vgfx_window_t)canvas,
                        (int32_t)tree->base.x,
                        (int32_t)display_y,
-                       (int32_t)tree->base.width,
+                       (int32_t)content_width,
                        (int32_t)tree->row_height,
                        zebra);
         if (selected || hovered) {
@@ -965,7 +1162,7 @@ static void treeview_paint_virtual(vg_treeview_t *tree, void *canvas) {
             vg_draw_round_rect_fill((vgfx_window_t)canvas,
                                     tree->base.x + 8.0f,
                                     display_y + 2.0f,
-                                    tree->base.width - 16.0f,
+                                    content_width - 16.0f,
                                     tree->row_height - 4.0f,
                                     theme->radius.lg,
                                     pill);
@@ -1032,7 +1229,9 @@ static void treeview_paint_virtual(vg_treeview_t *tree, void *canvas) {
         }
 
         if (tree->font && row.text) {
-            float max_width = tree->base.width - (text_x - tree->base.x) - treeview_outer_padding();
+            float max_width = content_width - (text_x - tree->base.x) - treeview_outer_padding();
+            if (max_width < 0.0f)
+                max_width = 0.0f;
             char *fitted = treeview_fit_text(tree, row.text, max_width);
             vg_font_draw_text(canvas,
                               tree->font,
@@ -1044,6 +1243,49 @@ static void treeview_paint_virtual(vg_treeview_t *tree, void *canvas) {
             free(fitted);
         }
     }
+}
+
+/// @brief Paint a theme-consistent vertical scrollbar over the TreeView's right gutter.
+static void treeview_paint_scrollbar(vg_treeview_t *tree, void *canvas) {
+    float width = 0.0f;
+    float thumb_y = 0.0f;
+    float thumb_height = 0.0f;
+    if (!treeview_scrollbar_geometry(tree, &width, &thumb_y, &thumb_height))
+        return;
+
+    vg_theme_t *theme = vg_theme_get_current();
+    vgfx_window_t win = (vgfx_window_t)canvas;
+    float track_x = tree->base.x + tree->base.width - width;
+    float track_y = tree->base.y;
+    uint32_t track_color =
+        vg_color_blend(theme->colors.bg_secondary, theme->colors.bg_primary, 0.5f);
+    uint32_t thumb_color =
+        tree->scrollbar_hovered || tree->scrollbar_dragging
+            ? vg_color_blend(theme->colors.bg_hover, theme->colors.accent_primary, 0.2f)
+            : vg_color_blend(theme->colors.bg_tertiary, theme->colors.border_primary, 0.35f);
+    vgfx_fill_rect(win,
+                   (int32_t)track_x,
+                   (int32_t)track_y,
+                   (int32_t)width,
+                   (int32_t)tree->base.height,
+                   track_color);
+    vgfx_rect(win,
+              (int32_t)track_x,
+              (int32_t)track_y,
+              (int32_t)width,
+              (int32_t)tree->base.height,
+              theme->colors.border_secondary);
+    float inset = width > 9.0f ? 2.0f : 1.0f;
+    float thumb_width = width - inset * 2.0f;
+    if (thumb_width < 1.0f)
+        thumb_width = 1.0f;
+    vg_draw_round_rect_fill(win,
+                            track_x + inset,
+                            track_y + thumb_y,
+                            thumb_width,
+                            thumb_height,
+                            theme->scrollbar.border_radius,
+                            thumb_color);
 }
 
 /// @brief vtable paint — fills background, clips, then recursively paints all nodes.
@@ -1059,20 +1301,29 @@ static void treeview_paint(vg_widget_t *widget, void *canvas) {
                    (int32_t)widget->height,
                    theme->colors.bg_secondary);
 
-    // Paint nodes
+    // Paint rows inside the content area. Reserve the right gutter when a
+    // scrollbar is visible so text ellipsis and selection pills remain clear.
     float y = 0;
-    if (widget->width > 2.0f && widget->height > 2.0f)
+    float scrollbar_width = 0.0f;
+    float content_width = widget->width;
+    if (treeview_scrollbar_geometry(tree, &scrollbar_width, NULL, NULL))
+        content_width -= scrollbar_width;
+    if (content_width < 0.0f)
+        content_width = 0.0f;
+    if (content_width > 2.0f && widget->height > 2.0f)
         vgfx_set_clip((vgfx_window_t)canvas,
                       (int32_t)widget->x + 1,
                       (int32_t)widget->y + 1,
-                      (int32_t)widget->width - 2,
+                      (int32_t)content_width - 2,
                       (int32_t)widget->height - 2);
     if (tree->virtual_mode)
         treeview_paint_virtual(tree, canvas);
     else
-        paint_node(tree, canvas, tree->root, widget->x, &y, widget->width);
-    if (widget->width > 2.0f && widget->height > 2.0f)
+        paint_node(tree, canvas, tree->root, widget->x, &y, content_width);
+    if (content_width > 2.0f && widget->height > 2.0f)
         vgfx_clear_clip((vgfx_window_t)canvas);
+
+    treeview_paint_scrollbar(tree, canvas);
 
     vgfx_rect((vgfx_window_t)canvas,
               (int32_t)widget->x,
@@ -1114,6 +1365,11 @@ vg_tree_node_t *vg_treeview_node_at(vg_treeview_t *tree, float x, float y) {
     vg_widget_t *widget = &tree->base;
     if (x < widget->x || y < widget->y || x >= widget->x + widget->width ||
         y >= widget->y + widget->height) {
+        return NULL;
+    }
+    float scrollbar_width = 0.0f;
+    if (treeview_scrollbar_geometry(tree, &scrollbar_width, NULL, NULL) &&
+        x >= widget->x + widget->width - scrollbar_width) {
         return NULL;
     }
 
@@ -1357,7 +1613,7 @@ static bool treeview_handle_virtual_event(vg_treeview_t *tree, vg_event_t *event
             if (!isfinite(event->wheel.delta_y) || event->wheel.delta_y == 0.0f)
                 return false;
             float old_scroll = tree->scroll_y;
-            tree->scroll_y -= event->wheel.delta_y * tree->row_height;
+            tree->scroll_y -= event->wheel.delta_y * tree->row_height * vg_get_wheel_speed();
             treeview_clamp_scroll(tree);
             if (tree->scroll_y == old_scroll)
                 return false;
@@ -1376,6 +1632,9 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     if (widget->state & VG_STATE_DISABLED) {
         return false;
     }
+
+    if (treeview_handle_scrollbar_event(tree, event))
+        return true;
 
     if (tree->virtual_mode)
         return treeview_handle_virtual_event(tree, event);
@@ -1534,11 +1793,17 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             }
             return false;
 
-        case VG_EVENT_MOUSE_WHEEL:
-            tree->scroll_y -= event->wheel.delta_y * tree->row_height;
+        case VG_EVENT_MOUSE_WHEEL: {
+            if (!isfinite(event->wheel.delta_y) || event->wheel.delta_y == 0.0f)
+                return false;
+            float old_scroll = tree->scroll_y;
+            tree->scroll_y -= event->wheel.delta_y * tree->row_height * vg_get_wheel_speed();
             treeview_clamp_scroll(tree);
+            if (tree->scroll_y == old_scroll)
+                return false;
             widget->needs_paint = true;
             return true;
+        }
 
         case VG_EVENT_MOUSE_UP: {
             bool was_dragging = tree->is_dragging;

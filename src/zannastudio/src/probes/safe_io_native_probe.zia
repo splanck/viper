@@ -1,0 +1,136 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/safe_io_native_probe.zia
+// Purpose: Exercise checked Studio text I/O under both VM and native codegen.
+// Key invariants:
+//   - Successful reads preserve exact string ownership and contents.
+//   - Missing and oversized inputs return failure values rather than traps.
+//   - Atomic replacement publishes only the complete new value and removes its
+//     same-directory staging file.
+// Ownership/Lifetime: Owns its temporary directory and test files.
+// Links: zannastudio/src/services/safe_io.zia
+//
+//===----------------------------------------------------------------------===//
+
+module safe_io_native_probe;
+
+bind "../services/safe_io";
+
+bind File = Zanna.IO.File;
+bind Dir = Zanna.IO.Dir;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Terminal = Zanna.Terminal;
+bind Str = Zanna.String;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func ReadStringInsideTry(path: String) -> String {
+    try {
+        return File.ReadAllText(path);
+    } catch {
+        return "try failed";
+    }
+    return "try fell through";
+}
+
+func ConcatInsideTry(left: String, right: String) -> String {
+    try {
+        return left + right;
+    } catch {
+        return "concat failed";
+    }
+    return "concat fell through";
+}
+
+class ProbeHolder {
+    expose String text;
+    expose func init() { text = ""; }
+}
+
+func ReadIntoHolder(path: String) -> ProbeHolder {
+    var holder = new ProbeHolder();
+    holder.text = File.ReadAllText(path);
+    return holder;
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_safe_io_native_");
+    var path = Path.Join(root, "state.txt");
+    var expected = "first line\nsecond line\n";
+    File.WriteAllText(path, expected);
+
+    var direct = File.ReadAllText(path);
+    if direct != expected {
+        fail("direct runtime read mismatch");
+        return;
+    }
+    if ConcatInsideTry("first ", "line") != "first line" {
+        fail("string concatenation inside try mismatch");
+        return;
+    }
+    if ReadStringInsideTry(path) != expected {
+        fail("string return inside try mismatch");
+        return;
+    }
+    if ReadIntoHolder(path).text != expected {
+        fail("class text field return mismatch");
+        return;
+    }
+
+    var readResult = safe_io.ReadAllText(path);
+    if readResult.ok == false {
+        fail("checked read reported failure");
+        return;
+    }
+    if readResult.text != expected {
+        fail("checked read lost text ownership: [" + readResult.text + "]");
+        return;
+    }
+
+    var boundedResult = safe_io.ReadAllTextBounded(path, 4096);
+    if boundedResult.ok == false or boundedResult.text != expected {
+        fail("bounded read lost text ownership: [" + boundedResult.text + "]");
+        return;
+    }
+
+    var oversizedResult = safe_io.ReadAllTextBounded(path, 4);
+    var missingResult = safe_io.ReadAllText(Path.Join(root, "missing.txt"));
+    if oversizedResult.ok or missingResult.ok {
+        fail("checked read accepted missing or oversized input");
+        return;
+    }
+
+    var replacement = "complete replacement\n";
+    if safe_io.WriteAllTextAtomic(path, replacement) == false
+       or File.ReadAllText(path) != replacement {
+        fail("atomic replacement did not publish complete text");
+        return;
+    }
+    for name in Dir.Files(root) {
+        if Str.IndexOf(name, ".zannastudio-write-") != 0 {
+            fail("atomic replacement left a staging file");
+            return;
+        }
+    }
+
+    var sharedStatePath = Path.Join(root, "settings.ini");
+    if safe_io.WriteStudioState(sharedStatePath, "[settings]\ntheme=dark\n") == false {
+        fail("bounded Studio state write failed");
+        return;
+    }
+    var sharedState = safe_io.ReadStudioState(sharedStatePath);
+    if sharedState.ok == false or sharedState.text != "[settings]\ntheme=dark\n" {
+        fail("bounded Studio state did not round-trip");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

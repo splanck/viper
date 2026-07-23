@@ -1,11 +1,32 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/editor/symbols.zia
+// Purpose: Populate document symbols and semantic fold regions without running
+//          compiler-backed queries on the Studio UI frame.
+// Key invariants:
+//   - Symbol results apply only to the originating path and editor revision.
+//   - Hidden semantic folding uses the same asynchronous path as the outline.
+// Ownership/Lifetime:
+//   - SymbolOutline owns its listbox state and one coalescing BASIC worker.
+//   - Background requests retain immutable source snapshots only.
+// Links: zannastudio/src/editor/basic_query_job.zia,
+//        zannastudio/src/app/language_tool_frame.zia
+//
+//===----------------------------------------------------------------------===//
+
 module symbols;
 
 bind "../editor/editor_engine";
 bind "../editor/scheduler";
+bind "../editor/basic_query_job";
 bind "../ui/app_shell";
 
 bind ZiaCompletion = Zanna.Zia.Completion;
-bind BasicCompletion = Zanna.Basic.LanguageService;
 bind SemanticJob = Zanna.Zia.SemanticJob;
 bind "../editor/zia_query";
 bind Zanna.GUI;
@@ -56,9 +77,11 @@ class SymbolOutline {
     expose Integer lastRevision;
     expose Boolean visible;
     expose Boolean enabled;
-    expose Boolean isBasic;   // route to Zanna.Basic.LanguageService (sync) instead of Zia
+    hide Boolean isBasic;     // changed only through SetBasicMode
     expose scheduler.EditorScheduler workScheduler;
     expose Any pendingJob;
+    expose basic_query_job.BasicQueryJob basicJob;
+    expose Integer pendingBasicGeneration;
     expose Integer pendingRevision;
     expose String pendingPath;
     expose String pendingSource;
@@ -78,6 +101,8 @@ class SymbolOutline {
         isBasic = false;
         workScheduler = null;
         pendingJob = null;
+        basicJob = new basic_query_job.BasicQueryJob();
+        pendingBasicGeneration = 0;
         pendingRevision = -1;
         pendingPath = "";
         pendingSource = "";
@@ -89,6 +114,24 @@ class SymbolOutline {
 
     expose func SetScheduler(value: scheduler.EditorScheduler) {
         workScheduler = value;
+    }
+
+    /// @brief Switch symbol/folding backends and invalidate the old mode's
+    ///        outline and fold regions even when the document path is unchanged.
+    expose func SetBasicMode(value: Boolean,
+                             engine: editor_engine.EditorEngine) {
+        if isBasic == value { return; }
+        CancelPendingJob();
+        isBasic = value;
+        lastSource = "";
+        lastPath = "";
+        lastRevision = -1;
+        foldedPath = "";
+        foldedRevision = -1;
+        if symbolList != null { symbolList.Clear(); }
+        if engine != null and engine.editor != null {
+            engine.editor.ClearFoldRegions();
+        }
     }
 
     /// @brief Construct the listbox inside `parent`. Hidden by default.
@@ -155,11 +198,27 @@ class SymbolOutline {
     /// @brief Per-frame refresh. Re-queries `SymbolsForFile` when the
     ///        buffer revision or active path changes; otherwise no-op.
     expose func update(engine: editor_engine.EditorEngine) {
-        if enabled == false { return; }
-        if visible == false and semanticFoldingEnabled == false { return; }
+        if enabled == false {
+            DrainCancelledBasicJob();
+            return;
+        }
+        if visible == false and semanticFoldingEnabled == false {
+            DrainCancelledBasicJob();
+            return;
+        }
         if engine == null or engine.editor == null { return; }
 
         var revision = engine.GetRevision();
+        if pendingBasicGeneration > 0 {
+            if revision != pendingRevision or sourcePath != pendingPath {
+                CancelPendingBasicJob();
+            } else {
+                PollPendingBasicJob(engine);
+                if pendingBasicGeneration > 0 { return; }
+            }
+        } else {
+            DrainCancelledBasicJob();
+        }
         if pendingJob != null {
             if revision != pendingRevision or sourcePath != pendingPath {
                 CancelPendingJob();
@@ -191,11 +250,19 @@ class SymbolOutline {
     hide func StartSymbolJob(engine: editor_engine.EditorEngine, revision: Integer) {
         var source = engine.GetTextSnapshot();
 
-        // BASIC: synchronous in-process symbols (raw source, no Zia module-wrap).
+        // BASIC uses raw source with no Zia module wrapper. Parsing runs on the
+        // coalescing feature worker so folding cannot freeze typing.
         if isBasic {
-            CancelPendingJob();
-            var braw = BasicCompletion.SymbolsForFile(source, sourcePath);
-            ApplySymbols(engine, braw, 0, source, sourcePath, revision);
+            if pendingJob != null {
+                SemanticJob.Cancel(pendingJob);
+                pendingJob = null;
+            }
+            pendingBasicGeneration = basicJob.Queue(
+                basic_query_job.QUERY_SYMBOLS, source, sourcePath, 0, 0);
+            pendingRevision = revision;
+            pendingPath = sourcePath;
+            pendingSource = source;
+            pendingLineOffset = 0;
             return;
         }
 
@@ -204,11 +271,6 @@ class SymbolOutline {
         var qsource = zia_query.WrapForQuery(source);
         var lineOff = zia_query.LineOffset(source);
         CancelPendingJob();
-        if visible == false and semanticFoldingEnabled {
-            var rawSync = ZiaCompletion.SymbolsForFile(qsource, sourcePath);
-            ApplySymbols(engine, rawSync, lineOff, source, sourcePath, revision);
-            return;
-        }
 
         var job = ZiaCompletion.BeginSymbolsForFile(qsource, sourcePath);
         if job != null {
@@ -220,8 +282,9 @@ class SymbolOutline {
             return;
         }
 
-        var raw = ZiaCompletion.SymbolsForFile(qsource, sourcePath);
-        ApplySymbols(engine, raw, lineOff, source, sourcePath, revision);
+        // A stub runtime may omit semantic jobs. Mark the snapshot checked and
+        // clear stale fold regions without falling back to a UI-thread compile.
+        ApplySymbols(engine, "", lineOff, source, sourcePath, revision);
     }
 
     hide func PollPendingJob(engine: editor_engine.EditorEngine) -> Boolean {
@@ -237,6 +300,22 @@ class SymbolOutline {
             return true;
         }
         ApplySymbols(engine, SemanticJob.Symbols(job), pendingLineOffset,
+                     pendingSource, pendingPath, pendingRevision);
+        return true;
+    }
+
+    /// @brief Publish BASIC symbols only for their originating editor snapshot.
+    hide func PollPendingBasicJob(engine: editor_engine.EditorEngine) -> Boolean {
+        basicJob.Pump();
+        var request = basicJob.TakeCompleted();
+        if request == null { return false; }
+        if request!.generation != pendingBasicGeneration { return false; }
+        pendingBasicGeneration = 0;
+        if request!.succeeded == false { return true; }
+        if sourcePath != pendingPath or engine.GetRevision() != pendingRevision {
+            return true;
+        }
+        ApplySymbols(engine, Obj.ToString(request!.result), 0,
                      pendingSource, pendingPath, pendingRevision);
         return true;
     }
@@ -312,6 +391,19 @@ class SymbolOutline {
             SemanticJob.Cancel(pendingJob);
             pendingJob = null;
         }
+        CancelPendingBasicJob();
+    }
+
+    hide func CancelPendingBasicJob() {
+        basicJob.Cancel();
+        pendingBasicGeneration = 0;
+        DrainCancelledBasicJob();
+    }
+
+    hide func DrainCancelledBasicJob() {
+        if pendingBasicGeneration != 0 { return; }
+        basicJob.Pump();
+        basicJob.TakeCompleted();
     }
 }
 

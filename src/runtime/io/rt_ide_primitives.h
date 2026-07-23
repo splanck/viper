@@ -102,6 +102,27 @@ void *rt_workspace_edit_validate_in_root(void *edits, rt_string root);
 /// @return Result map owned by the caller.
 void *rt_workspace_edit_apply_in_root(void *edits, rt_string root);
 
+/// @brief Validate a workspace edit batch against explicit workspace roots.
+/// @details Every edit target is canonicalized and must be contained by at
+///          least one directory in @p roots. Absolute paths are required when
+///          more than one root is supplied so relative targets are never
+///          resolved ambiguously. The full batch is validated together, which
+///          preserves overlap and version checks across root boundaries.
+/// @param edits Seq of edit maps with file/range/newText fields.
+/// @param roots Seq of workspace-root strings that bound every edit target.
+/// @return Validation result map owned by the caller.
+void *rt_workspace_edit_validate_in_roots(void *edits, void *roots);
+
+/// @brief Apply one transactional edit batch constrained to workspace roots.
+/// @details This is the multi-root counterpart to
+///          @ref rt_workspace_edit_apply_in_root. Validation, staging, commit,
+///          and rollback cover the complete batch, including edits spanning
+///          unrelated workspace folders.
+/// @param edits Seq of edit maps with file/range/newText fields.
+/// @param roots Seq of workspace-root strings that bound every edit target.
+/// @return Result map owned by the caller.
+void *rt_workspace_edit_apply_in_roots(void *edits, void *roots);
+
 #ifdef __cplusplus
 }
 #endif

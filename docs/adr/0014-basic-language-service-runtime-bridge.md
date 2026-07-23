@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-06-26
+last-verified: 2026-07-22
 ---
 
 # ADR 0014: Zanna BASIC Language-Service Runtime Bridge
@@ -28,10 +28,10 @@ symbols for BASIC. Exposing a new `Zanna.Basic.*` runtime surface is a cross-lay
 
 ## Decision
 
-Add a single `Zanna.Basic.LanguageService` runtime class, **synchronous and in-process**. (One
-class, not the two-class Completion/Toolchain split the Zia bridge uses: `Zanna.*` class leaf
-names must be globally unique — enforced by `test_runtime_class_qualified_surface` — and BASIC's
-completion and toolchain are backed by the same sync `parseAndAnalyzeBasic` engine.)
+Add a single synchronous, in-process `Zanna.Basic.LanguageService` runtime class. (One class,
+not the two-class Completion/Toolchain split the Zia bridge uses: `Zanna.*` class leaf names must
+be globally unique — enforced by `test_runtime_class_qualified_surface` — and BASIC's completion
+and toolchain are backed by the same `parseAndAnalyzeBasic` engine.)
 
 - `Zanna.Basic.LanguageService.CheckForFile(str,str) -> obj<Seq>` — diagnostics.
 - `Zanna.Basic.LanguageService.ItemsForFile(str,str,i64,i64) -> obj<Seq>` — completion items.
@@ -42,11 +42,21 @@ Each emits the **same record shapes** the IDE already consumes from the Zia brid
 keys / the `name\tkind\ttype\tline` symbol string), so the IDE controllers reuse their existing
 result-application code and only branch on the active language to pick the namespace.
 
-**Sync, not async.** The Zia bridge runs analysis on a threaded `SemanticJob` because Zia
-analysis is heavy. `parseAndAnalyzeBasic()` is cheap, synchronous, error-tolerant, and holds no
-global state, so the BASIC surface is sync-only — no job/thread machinery. (The unused
-`vbasic-server` external-server scaffolding in `language_service.zia` is not pursued; in-process
-matches Zia.)
+**The runtime surface stays synchronous; Studio dispatches it asynchronously.** Keeping the four
+runtime methods synchronous avoids a second public semantic-job ABI and lets non-GUI tools call
+them directly. Studio must not call them on its frame thread, however: large or malformed BASIC
+buffers can make parse/sema latency visible, and diagnostics plus semantic folding can overlap.
+`zannastudio/src/editor/basic_query_job.zia` therefore invokes the synchronous surface through
+`Zanna.Threads.Async.RunOwned`. Each feature owns at most one active callback and one latest-wins
+replacement. Cancellation does not preempt the compiler; it prevents stale publication, lets the
+active call drain, and starts only the newest queued snapshot. Controllers additionally validate
+path, revision, scheduler generation, and cursor/pointer coordinates before applying results.
+This is an IDE scheduling policy, not a runtime ABI change.
+
+Native codegen that sees `rt_basic_toolchain_*`, `rt_basic_completion_*`, or
+`Zanna.Basic.LanguageService.*` references force-loads `fe_basic`. This mirrors the `zia`
+interpreter link and ensures the strong bridge overrides `zanna_runtime`'s weak unavailable stubs
+on macOS, Windows, and Linux. The frontend's IL/support dependencies remain demand-loaded.
 
 **No VM / semantic change.** This wraps existing frontend engines. The diagnostic conversion is
 frontend-agnostic — both frontends produce `il::support::DiagnosticEngine`, so the BASIC bridge
@@ -61,10 +71,9 @@ false editor warnings); header `src/runtime/graphics/common/rt_basic_completion.
 
 ## Consequences
 
-`language_service.zia` flips `basicService` `canComplete/canDiagnose/canHover/canDocumentSymbols`
-on; go-to-def / find-refs / rename / signature-help stay off (no project-index / signature engine
-for BASIC). Each controller gains a `LANGUAGE_BASIC` branch calling the sync `Zanna.Basic.*`
-function. Hover is identifier-based (extract the token at the cursor, look it up via the analyzer)
-— the same surface as Zia hover; unresolved → `available=false`. The IDE-side `basicService` gate
-in `phase0_phase1_probe.zia` is updated and `intellisense_probe.zia` gains BASIC cases. A future
-external `vbasic-server` could supersede the in-process bridge without changing the IDE contract.
+`language_service.zia` enables completion, diagnostics, hover, document symbols, and scanner-backed
+navigation/signature help for BASIC. Hover is identifier-based (extract the token at the cursor,
+look it up via the analyzer); unresolved symbols return `available=false`. Compiler-backed editor
+features remain responsive under large-file edits and tab switches, at the cost of retaining one
+immutable source snapshot per active feature until a non-preemptible call drains. A future external
+`vbasic-server` could supersede the in-process bridge without changing the runtime contract.

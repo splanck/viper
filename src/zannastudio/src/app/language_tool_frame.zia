@@ -353,7 +353,8 @@ class LanguageToolFrameController {
         }
         if searcher != null {
             searcher.HandlePanel(shell, projMgr, docMgr, engine, locStore);
-            if searcher.active and Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
+            if searcher.HasActiveWork()
+               and Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
                 searcher.Cancel(shell);
             }
         }
@@ -466,35 +467,36 @@ class LanguageToolFrameController {
                                      engine: editor_engine.EditorEngine) {
         if service == null { return; }
         if completer != null {
+            completer.SetBasicMode(service.name == language_service.LANGUAGE_BASIC);
             completer.SetSourcePath(activePath);
             completer.SetEnabled(service.canComplete);
-            completer.isBasic = service.name == language_service.LANGUAGE_BASIC;
         }
         if liveDiag != null {
+            liveDiag.SetBasicMode(service.name == language_service.LANGUAGE_BASIC);
             liveDiag.setSourcePath(activePath);
-            liveDiag.enabled = appSettings.autoCheckOnSave and service.canDiagnose;
-            liveDiag.isBasic = service.name == language_service.LANGUAGE_BASIC;
+            liveDiag.SetEnabled(appSettings.autoCheckOnSave and service.canDiagnose);
         }
         if semHighlighter != null {
             semHighlighter.setSourcePath(activePath);
             semHighlighter.enabled = service.name == language_service.LANGUAGE_ZIA;
         }
         if hoverCtrl != null {
+            hoverCtrl.SetBasicMode(service.name == language_service.LANGUAGE_BASIC);
             hoverCtrl.setSourcePath(activePath);
             hoverCtrl.setEnabled(service.canHover);
-            hoverCtrl.isBasic = service.name == language_service.LANGUAGE_BASIC;
         }
         if sigCtrl != null {
+            sigCtrl.SetBasicMode(service.name == language_service.LANGUAGE_BASIC);
             sigCtrl.setSourcePath(activePath);
-            sigCtrl.isBasic = service.name == language_service.LANGUAGE_BASIC;
         }
         if inlayCtrl != null {
             inlayCtrl.SetEnabled(service.name == language_service.LANGUAGE_ZIA);
         }
         if symbolOutline != null {
+            symbolOutline.SetBasicMode(service.name == language_service.LANGUAGE_BASIC,
+                                       engine);
             symbolOutline.setSourcePath(activePath);
             symbolOutline.setEnabled(service.canDocumentSymbols);
-            symbolOutline.isBasic = service.name == language_service.LANGUAGE_BASIC;
             symbolOutline.setSemanticFoldingEnabled(appSettings.codeFolding
                                                     and service.canDocumentSymbols,
                                                     engine);
@@ -507,10 +509,6 @@ class LanguageToolFrameController {
         if shell == null or indexer == null { return; }
         if indexer.workspaceIndexStatusMessage != lastWorkspaceIndexStatus {
             lastWorkspaceIndexStatus = indexer.workspaceIndexStatusMessage;
-            if lastWorkspaceIndexStatus != "" {
-                shell.SetStatusLeft(lastWorkspaceIndexStatus);
-                GUI.Toast.Warning(lastWorkspaceIndexStatus);
-            }
         }
         if indexer.valid {
             shell.SetIndexStatus(indexer.WorkspaceIndexProgressText());

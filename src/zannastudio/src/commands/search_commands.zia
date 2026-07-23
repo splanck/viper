@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/commands/search_commands.zia
+// Purpose: Drive bounded text/workspace-symbol search, result navigation, and replace.
+// Key invariants:
+//   - Project search never reads an unavailable or oversized disk file unchecked.
+//   - Workspace symbols discover incrementally and parse at most four files/frame.
+//   - Results retain structured locations instead of parsing display labels.
+// Ownership/Lifetime: Main owns one SearchController; handlers borrow UI/models.
+// Links: zannastudio/src/services/search_matcher.zia,
+//        zannastudio/src/commands/replace_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module search_commands;
 
 bind "../ui/app_shell";
@@ -13,6 +32,7 @@ bind "../services/locations";
 bind "../services/search_matcher";
 bind "../services/search_paths";
 bind "../services/search_request";
+bind "../services/safe_io";
 bind "../services/workspace_file_index";
 bind "../commands/search_prompt";
 bind "../editor/zia_query";
@@ -53,13 +73,18 @@ bind Input = Zanna.Input;
 // ============================================================================
 
 final SEARCH_FILES_PER_FRAME = 16;
+final SEARCH_BYTES_PER_FRAME = 2000000;
 final SEARCH_DISCOVERY_PAGE_SIZE = 256;
 final MAX_SEARCH_FILE_BYTES = 2000000;
 final MAX_SEARCH_RESULTS = 5000;
+final SEARCH_MODE_TEXT: Integer = 1;
+final SEARCH_MODE_WORKSPACE_SYMBOLS: Integer = 2;
 
 class SearchController {
     expose Boolean active;
     expose Boolean canceled;
+    expose replace_commands.ProjectReplaceController replacer;
+    expose Integer mode;
     expose String root;
     expose String query;
     expose String fileKinds;
@@ -88,10 +113,17 @@ class SearchController {
     expose List rootPaths;
     expose List rootIgnorePatterns;
     expose Integer rootSearchIndex;
+    expose Integer lastPumpFileCount;
+    expose Integer lastPumpByteCount;
+    expose Integer resultLocationFirstId;
+    expose Integer resultLocationLastId;
+    expose Boolean resultLocationRangePending;
 
     expose func init() {
         active = false;
         canceled = false;
+        replacer = new replace_commands.ProjectReplaceController();
+        mode = SEARCH_MODE_TEXT;
         root = "";
         query = "";
         fileKinds = "";
@@ -120,6 +152,11 @@ class SearchController {
         rootPaths = new List();
         rootIgnorePatterns = new List();
         rootSearchIndex = 0;
+        lastPumpFileCount = 0;
+        lastPumpByteCount = 0;
+        resultLocationFirstId = 0;
+        resultLocationLastId = 0;
+        resultLocationRangePending = false;
     }
 
     expose func Start(shell: app_shell.AppShell,
@@ -127,6 +164,7 @@ class SearchController {
                       searchTitle: String,
                       docMgr: document_manager.DocumentManager,
                       engine: editor_engine.EditorEngine) -> Boolean {
+        if replacer.IsBusy() { return false; }
         if active {
             var confirmed = GUI.MessageBox.Confirm(
                 "Search Already Running",
@@ -148,6 +186,7 @@ class SearchController {
                              searchTitle: String,
                              docMgr: document_manager.DocumentManager,
                              engine: editor_engine.EditorEngine) -> Boolean {
+        if replacer.IsBusy() { return false; }
         if projMgr == null or projMgr.IsOpen() == false {
             return false;
         }
@@ -159,12 +198,72 @@ class SearchController {
         return true;
     }
 
+    /// @brief Start a cooperative workspace-symbol search.
+    /// @details File discovery uses the same paged FileIndex cursor as project
+    ///          text search, while symbol extraction is limited to a small
+    ///          number of source files per frame. Starting a symbol search
+    ///          replaces any older root-scoped search using the shared Search
+    ///          panel and cancel action.
+    /// @param shell App shell that owns result rows and status feedback.
+    /// @param projMgr Project manager providing every workspace root.
+    /// @param docMgr Open documents whose unsaved text takes precedence.
+    /// @param engine Active editor whose current buffer must be saved first.
+    /// @param queryText User-entered symbol filter.
+    /// @return True when bounded discovery was initialized.
+    expose func StartWorkspaceSymbols(shell: app_shell.AppShell,
+                                      projMgr: project_manager.ProjectManager,
+                                      docMgr: document_manager.DocumentManager,
+                                      engine: editor_engine.EditorEngine,
+                                      queryText: String) -> Boolean {
+        if replacer.IsBusy() { return false; }
+        if shell == null or projMgr == null or projMgr.IsOpen() == false {
+            return false;
+        }
+        var symbolQuery = Str.Trim(queryText);
+        if symbolQuery == "" { return false; }
+        if active { Cancel(shell); }
+
+        file_commands.SaveEditorState(docMgr, engine);
+        var request = search_request.Create(projMgr.RootPath(), symbolQuery,
+                                            ".zia,.bas,.vb", false, false,
+                                            false, "", "",
+                                            projMgr.IgnorePatterns());
+        if StartWorkspaceRequest(shell, projMgr, request) == false {
+            return false;
+        }
+        mode = SEARCH_MODE_WORKSPACE_SYMBOLS;
+        // Seed live named buffers before disk discovery. This preserves
+        // unsaved/ignored-file visibility and makes the active edit available
+        // without waiting for its FileIndex page; later discovery de-duplicates
+        // the same canonical path through filesSeen.
+        if docMgr != null {
+            var i = 0;
+            while i < docMgr.GetCount() {
+                var doc = docMgr.documents.get(i);
+                if (doc.language == "zia" or doc.language == "basic")
+                   and doc.filePath != "" {
+                    workspace_file_index.AddUniquePath(files, filesSeen, doc.filePath);
+                }
+                i = i + 1;
+            }
+            totalFiles = files.count();
+        }
+        if projMgr.RootCount() > 1 {
+            shell.SetStatusLeft("Discovering workspace symbols across "
+                                + projMgr.RootCount() + " roots...");
+        } else {
+            shell.SetStatusLeft("Discovering workspace symbols...");
+        }
+        return true;
+    }
+
     expose func StartFolder(shell: app_shell.AppShell,
                             projMgr: project_manager.ProjectManager,
                             folderPath: String,
                             searchTitle: String,
                             docMgr: document_manager.DocumentManager,
                             engine: editor_engine.EditorEngine) -> Boolean {
+        if replacer.IsBusy() { return false; }
         if folderPath == "" or Dir.Exists(folderPath) == false {
             return false;
         }
@@ -183,7 +282,7 @@ class SearchController {
     expose func OpenPanel(shell: app_shell.AppShell,
                           rootPath: String,
                           ignorePatternsText: String) {
-        if shell == null or rootPath == "" { return; }
+        if shell == null or rootPath == "" or replacer.IsBusy() { return; }
         panelRoot = rootPath;
         panelIgnorePatterns = ignorePatternsText;
         panelUseWorkspace = false;
@@ -203,7 +302,8 @@ class SearchController {
     ///          searching only panelRoot.
     expose func OpenWorkspacePanel(shell: app_shell.AppShell,
                                    projMgr: project_manager.ProjectManager) {
-        if shell == null or projMgr == null or projMgr.IsOpen() == false { return; }
+        if shell == null or projMgr == null or projMgr.IsOpen() == false
+           or replacer.IsBusy() { return; }
         panelRoot = projMgr.RootPath();
         panelIgnorePatterns = projMgr.IgnorePatterns();
         panelUseWorkspace = true;
@@ -220,22 +320,70 @@ class SearchController {
                             engine: editor_engine.EditorEngine,
                             locStore: locations.LocationStore) {
         if shell == null { return; }
+        if replacer.IsBusy() {
+            if shell.toolPanels.searchCancelButton != null
+               and shell.toolPanels.searchCancelButton.WasClicked() {
+                Cancel(shell);
+                UpdatePanelCommandState(shell);
+                return;
+            }
+            if replacer.Pump(docMgr, engine) {
+                var summary = replacer.TakeSummary();
+                resultCount = 0;
+                canceled = true;
+                resultLocationFirstId = 0;
+                resultLocationLastId = 0;
+                shell.toolPanels.ClearToolRows(shell.toolPanels.searchListBox);
+                shell.toolPanels.AddToolInfoRow(
+                    shell.toolPanels.searchListBox, "replace",
+                    summary + ". Run Search to refresh results.");
+                shell.toolPanels.ShowSearchPanel();
+                shell.SetStatusLeft(summary);
+                if replacer.outcome.filesFailed > 0 {
+                    GUI.Toast.Warning(summary);
+                } else {
+                    GUI.Toast.Success(summary);
+                }
+                UpdatePanelCommandState(shell);
+                return;
+            }
+            shell.SetStatusLeft("Replacing files: " + replacer.fileIndex + "/"
+                                + replacer.plans.count() + "...");
+            UpdatePanelCommandState(shell);
+            return;
+        }
         if shell.toolPanels.searchCancelButton != null and shell.toolPanels.searchCancelButton.WasClicked() {
             Cancel(shell);
         }
         if shell.toolPanels.searchReplaceButton != null
-           and shell.toolPanels.searchReplaceButton.WasClicked() and active == false {
-            var replaceQuery = Str.Trim(shell.toolPanels.searchQueryInput.get_Text());
-            if replaceQuery != "" and locStore != null {
-                var summary = replace_commands.ReplaceAllFromResults(
-                    locStore, docMgr, engine, replaceQuery,
-                    shell.toolPanels.searchReplaceInput.get_Text(),
-                    shell.toolPanels.searchCaseCheck.IsChecked(),
-                    shell.toolPanels.searchWholeWordCheck.IsChecked(),
-                    shell.toolPanels.searchRegexCheck.IsChecked());
-                GUI.Toast.Info(summary);
-                RunPanel(shell, projMgr, docMgr, engine);
+           and shell.toolPanels.searchReplaceButton.WasClicked()
+           and active == false and mode == SEARCH_MODE_TEXT {
+            if SearchResultsAreReplaceable() == false {
+                var unavailable = "Run a complete text search before replacing";
+                if resultLimitReached or discoveryTruncated {
+                    unavailable = "Replace All is unavailable because search results are incomplete";
+                }
+                shell.SetStatusLeft(unavailable);
+                GUI.Toast.Warning(unavailable);
+            } else if PanelMatchesCurrentSearch(shell) == false {
+                var changed = "Search text or options changed; run Search before replacing";
+                shell.SetStatusLeft(changed);
+                GUI.Toast.Info(changed);
+            } else if replacer.StartFromResults(
+                          locStore, resultLocationFirstId,
+                          resultLocationLastId, query,
+                          shell.toolPanels.searchReplaceInput.get_Text(),
+                          caseSensitive, wholeWord, regexMode) {
+                shell.SetStatusLeft("Preparing replacement across "
+                                    + replacer.plans.count() + " file(s)...");
+            } else {
+                var startError = replacer.lastSummary;
+                if startError == "" { startError = "Replace could not start"; }
+                shell.SetStatusLeft(startError);
+                GUI.Toast.Warning(startError);
             }
+            UpdatePanelCommandState(shell);
+            return;
         }
         var runRequested = false;
         if shell.toolPanels.searchRunButton != null and shell.toolPanels.searchRunButton.WasClicked() {
@@ -247,9 +395,11 @@ class SearchController {
             runRequested = true;
         }
         if runRequested == false {
+            UpdatePanelCommandState(shell);
             return;
         }
         RunPanel(shell, projMgr, docMgr, engine);
+        UpdatePanelCommandState(shell);
     }
 
     expose func RunPanel(shell: app_shell.AppShell,
@@ -257,6 +407,10 @@ class SearchController {
                          docMgr: document_manager.DocumentManager,
                          engine: editor_engine.EditorEngine) -> Boolean {
         if shell == null { return false; }
+        if replacer.IsBusy() {
+            shell.SetStatusLeft("Wait for Replace All to finish or stop it first");
+            return false;
+        }
         var rootPath = panelRoot;
         if rootPath == "" and projMgr != null and projMgr.IsOpen() {
             rootPath = projMgr.RootPath();
@@ -424,6 +578,7 @@ class SearchController {
                                     request: search_request.SearchRequest,
                                     paths: List,
                                     ignores: List) -> Boolean {
+        if replacer.IsBusy() { return false; }
         if search_request.IsRunnable(request) == false { return false; }
         if paths.count() == 0 { return false; }
 
@@ -445,7 +600,11 @@ class SearchController {
         skippedLargeFiles = 0;
         resultLimitReached = false;
         canceled = false;
+        mode = SEARCH_MODE_TEXT;
         active = true;
+        resultLocationFirstId = 0;
+        resultLocationLastId = 0;
+        resultLocationRangePending = true;
 
         shell.toolPanels.ClearToolRows(shell.toolPanels.searchListBox);
         shell.toolPanels.ShowSearchPanel();
@@ -569,19 +728,71 @@ class SearchController {
     }
 
     expose func Cancel(shell: app_shell.AppShell) {
-        if active == false { return; }
+        if replacer.IsBusy() {
+            var replaceSummary = replacer.Cancel();
+            if shell != null and replaceSummary != "" {
+                resultCount = 0;
+                canceled = true;
+                resultLocationFirstId = 0;
+                resultLocationLastId = 0;
+                shell.toolPanels.ClearToolRows(shell.toolPanels.searchListBox);
+                shell.toolPanels.AddToolInfoRow(
+                    shell.toolPanels.searchListBox, "replace", replaceSummary);
+                shell.toolPanels.ShowSearchPanel();
+                shell.SetStatusLeft(replaceSummary);
+                GUI.Toast.Info(replaceSummary);
+            }
+            return;
+        }
+        if ResetActiveSearch() == false { return; }
+        if shell == null { return; }
+        var cancelLabel = "Search canceled after " + resultCount + " matches";
+        if mode == SEARCH_MODE_WORKSPACE_SYMBOLS {
+            cancelLabel = "Workspace symbol search canceled after "
+                + resultCount + " results";
+        }
+        shell.SetStatusLeft(cancelLabel);
+        if resultCount == 0 {
+            shell.toolPanels.ClearToolRows(shell.toolPanels.searchListBox);
+            var emptyLabel = "Search canceled before any matches were found";
+            if mode == SEARCH_MODE_WORKSPACE_SYMBOLS {
+                emptyLabel = "Workspace symbol search canceled before any results were found";
+            }
+            shell.toolPanels.AddToolInfoRow(shell.toolPanels.searchListBox,
+                                            "search", emptyLabel);
+            shell.toolPanels.ShowSearchPanel();
+        }
+    }
+
+    /// @brief Cancel root-scoped search work during a workspace transition.
+    /// @details Workspace activation owns panel/location invalidation and the
+    ///          final status message, so this form deliberately changes only
+    ///          controller state and emits no stale old-scope feedback.
+    expose func CancelForWorkspaceChange() {
+        ResetActiveSearch();
+        replacer.Discard();
+        resultLocationFirstId = 0;
+        resultLocationLastId = 0;
+        resultLocationRangePending = false;
+    }
+
+    /// @brief Return whether search or replacement owns workspace work.
+    expose func HasActiveWork() -> Boolean {
+        return active or replacer.IsBusy();
+    }
+
+    /// @brief Reset one live search without assuming UI handles are available.
+    /// @return True when active state was actually canceled.
+    hide func ResetActiveSearch() -> Boolean {
+        if active == false { return false; }
         active = false;
         canceled = true;
         discovering = false;
         pendingDirs = new List();
         discoveryError = "";
-        shell.SetStatusLeft("Search canceled after " + resultCount + " matches");
-        if resultCount == 0 {
-            shell.toolPanels.ClearToolRows(shell.toolPanels.searchListBox);
-            shell.toolPanels.AddToolInfoRow(shell.toolPanels.searchListBox, "search",
-                                 "Search canceled before any matches were found");
-            shell.toolPanels.ShowSearchPanel();
-        }
+        lastPumpFileCount = 0;
+        lastPumpByteCount = 0;
+        return true;
     }
 
     expose func PumpDiscovery(maxDirs: Integer) -> Integer {
@@ -641,22 +852,41 @@ class SearchController {
     expose func Pump(shell: app_shell.AppShell,
                      docMgr: document_manager.DocumentManager,
                      locStore: locations.LocationStore) {
+        lastPumpFileCount = 0;
+        lastPumpByteCount = 0;
         if active == false { return; }
+        BeginResultLocationRange(locStore);
 
         PumpDiscovery(SEARCH_DISCOVERY_PAGE_SIZE);
         totalFiles = files.count();
+        if mode == SEARCH_MODE_WORKSPACE_SYMBOLS {
+            PumpWorkspaceSymbols(shell, docMgr, locStore);
+            UpdateResultLocationRange(locStore);
+            return;
+        }
 
         var scanned = 0;
+        var scannedBytes = 0;
         while active and scanned < SEARCH_FILES_PER_FRAME and fileIndex < files.count() {
             var filePath = Obj.ToString(files.get(fileIndex));
-            fileIndex = fileIndex + 1;
-            scanned = scanned + 1;
-
-            if IO.File.Exists(filePath) == false { continue; }
-            if SearchDiskFileTooLarge(docMgr, filePath) {
+            if IO.File.Exists(filePath) == false {
+                fileIndex = fileIndex + 1;
+                scanned = scanned + 1;
+                continue;
+            }
+            var contentBytes = SearchContentSize(docMgr, filePath);
+            if contentBytes < 0 or contentBytes > MAX_SEARCH_FILE_BYTES {
+                fileIndex = fileIndex + 1;
+                scanned = scanned + 1;
                 skippedLargeFiles = skippedLargeFiles + 1;
                 continue;
             }
+            if scanned > 0 and scannedBytes + contentBytes > SEARCH_BYTES_PER_FRAME {
+                break;
+            }
+            fileIndex = fileIndex + 1;
+            scanned = scanned + 1;
+            scannedBytes = scannedBytes + contentBytes;
             resultCount = resultCount + searchOneFile(shell, filePath, query, caseSensitive, wholeWord,
                                                       regexMode, docMgr, locStore,
                                                       MAX_SEARCH_RESULTS - resultCount);
@@ -666,6 +896,9 @@ class SearchController {
                 active = false;
             }
         }
+        lastPumpFileCount = scanned;
+        lastPumpByteCount = scannedBytes;
+        UpdateResultLocationRange(locStore);
 
         if resultLimitReached or (discovering == false and fileIndex >= files.count()) {
             active = false;
@@ -712,6 +945,177 @@ class SearchController {
             } else {
                 shell.SetStatusLeft("Searching " + fileIndex + "/" + totalFiles + " files...");
             }
+        }
+    }
+
+    /// @brief Capture the id interval owned by the current search result rows.
+    hide func BeginResultLocationRange(locStore: locations.LocationStore) {
+        if resultLocationRangePending == false or locStore == null { return; }
+        resultLocationFirstId = locStore.nextId;
+        resultLocationLastId = resultLocationFirstId - 1;
+        resultLocationRangePending = false;
+    }
+
+    /// @brief Extend the current result interval after one publication slice.
+    hide func UpdateResultLocationRange(locStore: locations.LocationStore) {
+        if resultLocationFirstId <= 0 or locStore == null { return; }
+        resultLocationLastId = locStore.nextId - 1;
+    }
+
+    /// @brief Return whether current rows form a complete replaceable text run.
+    hide func SearchResultsAreReplaceable() -> Boolean {
+        return active == false and canceled == false
+               and mode == SEARCH_MODE_TEXT and resultCount > 0
+               and resultLocationFirstId > 0
+               and resultLocationLastId >= resultLocationFirstId
+               and resultLimitReached == false
+               and discoveryTruncated == false
+               and discoveryError == "";
+    }
+
+    /// @brief Reject panel edits that no longer describe the rendered results.
+    hide func PanelMatchesCurrentSearch(shell: app_shell.AppShell) -> Boolean {
+        if shell == null { return false; }
+        var panelRequest = search_request.Create(
+            root, Str.Trim(shell.toolPanels.searchQueryInput.get_Text()),
+            shell.toolPanels.searchKindsInput.get_Text(),
+            shell.toolPanels.searchCaseCheck.IsChecked(),
+            shell.toolPanels.searchWholeWordCheck.IsChecked(),
+            shell.toolPanels.searchRegexCheck.IsChecked(),
+            shell.toolPanels.searchIncludeInput.get_Text(),
+            shell.toolPanels.searchExcludeInput.get_Text(),
+            ignorePatterns);
+        return panelRequest.query == query
+               and panelRequest.fileKinds == fileKinds
+               and panelRequest.includeGlobs == includeGlobs
+               and panelRequest.excludeGlobs == excludeGlobs
+               and panelRequest.caseSensitive == caseSensitive
+               and panelRequest.wholeWord == wholeWord
+               and panelRequest.regexMode == regexMode;
+    }
+
+    /// @brief Keep Search/Replace/Stop affordances aligned with controller state.
+    hide func UpdatePanelCommandState(shell: app_shell.AppShell) {
+        if shell == null { return; }
+        if shell.toolPanels.searchRunButton != null {
+            shell.toolPanels.searchRunButton.SetEnabled(replacer.IsBusy() == false);
+        }
+        if shell.toolPanels.searchCancelButton != null {
+            shell.toolPanels.searchCancelButton.SetEnabled(HasActiveWork());
+        }
+        if shell.toolPanels.searchReplaceButton != null {
+            shell.toolPanels.searchReplaceButton.SetEnabled(
+                replacer.IsBusy() == false and SearchResultsAreReplaceable()
+                and PanelMatchesCurrentSearch(shell));
+        }
+    }
+
+    /// @brief Advance workspace-symbol parsing without monopolizing one frame.
+    /// @details Discovery and parsing overlap, but no more than four source
+    ///          files are parsed in one call. Large or unreadable sources are
+    ///          skipped before compiler/scanner entry, and result publication
+    ///          shares the ordinary search result cap.
+    hide func PumpWorkspaceSymbols(shell: app_shell.AppShell,
+                                   docMgr: document_manager.DocumentManager,
+                                   locStore: locations.LocationStore) {
+        if shell == null or locStore == null {
+            active = false;
+            discovering = false;
+            return;
+        }
+
+        var scanned = 0;
+        var scannedBytes = 0;
+        // Four compiler/scanner entries per frame keeps symbol lookup
+        // responsive even when the workspace contains thousands of sources.
+        while active and scanned < 4
+              and fileIndex < files.count() {
+            var filePath = Obj.ToString(files.get(fileIndex));
+            var language = file_utils.DetectLanguage(filePath);
+            if language != "zia" and language != "basic" {
+                fileIndex = fileIndex + 1;
+                scanned = scanned + 1;
+                continue;
+            }
+            var contentBytes = SearchContentSize(docMgr, filePath);
+            if contentBytes < 0 or contentBytes > MAX_SEARCH_FILE_BYTES {
+                fileIndex = fileIndex + 1;
+                scanned = scanned + 1;
+                skippedLargeFiles = skippedLargeFiles + 1;
+                continue;
+            }
+            if scanned > 0 and scannedBytes + contentBytes > SEARCH_BYTES_PER_FRAME {
+                break;
+            }
+            fileIndex = fileIndex + 1;
+            scanned = scanned + 1;
+            scannedBytes = scannedBytes + contentBytes;
+            var content = WorkspaceSymbolContentForPath(docMgr, filePath);
+            if content == "" { continue; }
+
+            var remaining = MAX_SEARCH_RESULTS - resultCount;
+            if remaining <= 0 {
+                resultLimitReached = true;
+                discovering = false;
+                active = false;
+                break;
+            }
+            if language == "basic" {
+                resultCount = resultCount + AddBasicWorkspaceSymbols(
+                    shell, locStore, filePath, content, Str.ToLower(query), remaining);
+            } else {
+                resultCount = resultCount + AddZiaWorkspaceSymbols(
+                    shell, locStore, filePath, content, Str.ToLower(query), remaining);
+            }
+            if resultCount >= MAX_SEARCH_RESULTS {
+                resultLimitReached = true;
+                discovering = false;
+                active = false;
+            }
+        }
+        lastPumpFileCount = scanned;
+        lastPumpByteCount = scannedBytes;
+
+        if resultLimitReached or (discovering == false and fileIndex >= files.count()) {
+            active = false;
+            if resultCount > 0 {
+                shell.toolPanels.ShowSearchPanel();
+                var doneText = "Found " + resultCount
+                    + " workspace symbols for '" + query + "'";
+                if resultLimitReached {
+                    doneText = doneText + " (showing first " + MAX_SEARCH_RESULTS + ")";
+                    GUI.Toast.Warning("Workspace symbol search stopped at "
+                                      + MAX_SEARCH_RESULTS + " results");
+                }
+                if skippedLargeFiles > 0 {
+                    doneText = doneText + " (" + skippedLargeFiles
+                        + " large or unreadable file(s) skipped)";
+                }
+                if discoveryTruncated {
+                    doneText = doneText + " (file discovery truncated)";
+                }
+                shell.SetStatusLeft(doneText);
+            } else {
+                shell.toolPanels.ClearToolRows(shell.toolPanels.searchListBox);
+                var noMatch = "No workspace symbols matched '" + query + "'";
+                if skippedLargeFiles > 0 {
+                    noMatch = noMatch + " (" + skippedLargeFiles
+                        + " large or unreadable file(s) skipped)";
+                }
+                shell.toolPanels.AddToolInfoRow(shell.toolPanels.searchListBox,
+                                                "symbol", noMatch);
+                shell.toolPanels.ShowSearchPanel();
+                GUI.Toast.Info(noMatch);
+            }
+            return;
+        }
+
+        if discovering {
+            shell.SetStatusLeft("Finding workspace symbols: " + fileIndex + "/"
+                                + totalFiles + " files checked; discovering...");
+        } else {
+            shell.SetStatusLeft("Finding workspace symbols: " + fileIndex + "/"
+                                + totalFiles + " files checked...");
         }
     }
 }
@@ -911,6 +1315,43 @@ func handleWorkspaceSymbols(shell: app_shell.AppShell,
     handleWorkspaceSymbolsText(shell, projMgr, docMgr, engine, locStore, query);
 }
 
+/// @brief Prompt for workspace symbols and start bounded background work.
+/// @details The synchronous fallback keeps small headless/tooling callers
+///          functional when no shared SearchController was supplied.
+func handleWorkspaceSymbolsAsync(shell: app_shell.AppShell,
+                                 projMgr: project_manager.ProjectManager,
+                                 docMgr: document_manager.DocumentManager,
+                                 engine: editor_engine.EditorEngine,
+                                 locStore: locations.LocationStore,
+                                 searcher: SearchController) {
+    var query = Str.Trim(GUI.MessageBox.Prompt("Workspace Symbols", "Symbol name:"));
+    handleWorkspaceSymbolsTextAsync(shell, projMgr, docMgr, engine,
+                                    locStore, searcher, query);
+}
+
+/// @brief Start a cooperative workspace-symbol run for pre-entered text.
+/// @return True when a controller accepted the query or synchronous fallback
+///         produced at least one result.
+func handleWorkspaceSymbolsTextAsync(shell: app_shell.AppShell,
+                                     projMgr: project_manager.ProjectManager,
+                                     docMgr: document_manager.DocumentManager,
+                                     engine: editor_engine.EditorEngine,
+                                     locStore: locations.LocationStore,
+                                     searcher: SearchController,
+                                     queryText: String) -> Boolean {
+    if projMgr == null or projMgr.IsOpen() == false {
+        GUI.Toast.Warning("Open a project folder first");
+        return false;
+    }
+    var query = Str.Trim(queryText);
+    if query == "" { return false; }
+    if searcher == null {
+        return handleWorkspaceSymbolsText(shell, projMgr, docMgr, engine,
+                                          locStore, query);
+    }
+    return searcher.StartWorkspaceSymbols(shell, projMgr, docMgr, engine, query);
+}
+
 /// @brief Collect and display workspace symbols for an already-entered query.
 /// @param shell Workbench shell that owns the Search panel and status bar.
 /// @param projMgr Project manager providing workspace root and file cache.
@@ -970,60 +1411,28 @@ func CollectWorkspaceSymbols(shell: app_shell.AppShell,
         var language = file_utils.DetectLanguage(filePath);
         if language != "zia" and language != "basic" { continue; }
 
-        var content = contentForPath(docMgr, filePath);
+        if SearchDiskFileTooLarge(docMgr, filePath) { continue; }
+        var content = WorkspaceSymbolContentForPath(docMgr, filePath);
         if content == "" { continue; }
 
+        var remaining = MAX_SEARCH_RESULTS - resultCount;
+        if remaining <= 0 { break; }
         if language == "basic" {
             resultCount = resultCount + AddBasicWorkspaceSymbols(shell,
                                                                  locStore,
                                                                  filePath,
                                                                  content,
-                                                                 needle);
-            continue;
+                                                                 needle,
+                                                                 remaining);
+        } else {
+            resultCount = resultCount + AddZiaWorkspaceSymbols(shell,
+                                                               locStore,
+                                                               filePath,
+                                                               content,
+                                                               needle,
+                                                               remaining);
         }
-
-        var qsource = zia_query.WrapForQuery(content);
-        var lineOff = zia_query.LineOffset(content);
-        var raw = ZiaCompletion.SymbolsForFile(qsource, filePath);
-        if raw == "" { continue; }
-
-        var addedHeader = false;
-        var rows = Str.Split(raw, "\n");
-        var r = 0;
-        while r < Seq.get_Count(rows) {
-            var row = Obj.ToString(Seq.Get(rows, r));
-            r = r + 1;
-            if row == "" { continue; }
-
-            var parts = Str.Split(row, "\t");
-            if Seq.get_Count(parts) < 4 { continue; }
-
-            var name = Obj.ToString(Seq.Get(parts, 0));
-            var kind = Obj.ToString(Seq.Get(parts, 1));
-            var typeText = Obj.ToString(Seq.Get(parts, 2));
-            var lineText = Obj.ToString(Seq.Get(parts, 3));
-            if lineText == "0" { continue; }
-
-            var symbolLine = Convert.ToInt64(lineText) - lineOff;
-            if symbolLine < 1 { continue; }
-            if WorkspaceSymbolMatches(name, kind, filePath, needle) == false { continue; }
-
-            if addedHeader == false {
-                shell.toolPanels.AddToolGroupHeader(shell.toolPanels.searchListBox, Path.Name(filePath), filePath);
-                addedHeader = true;
-            }
-
-            var detail = "";
-            if typeText != "" { detail = " : " + typeText; }
-            var item = shell.toolPanels.AddToolLocationRow(shell.toolPanels.searchListBox, kind, "symbol",
-                                                "line " + symbolLine, typeText,
-                                                name + detail, "");
-            var locId = locStore.Add(filePath, symbolLine, 1,
-                                     symbolLine, 1 + Str.get_Length(name),
-                                     locations.KIND_SYMBOL, name);
-            GUI.ListBox.ItemSetData(item, locId);
-            resultCount = resultCount + 1;
-        }
+        if resultCount >= MAX_SEARCH_RESULTS { break; }
     }
 
     if resultCount > 0 {
@@ -1067,16 +1476,85 @@ func WorkspaceSymbolFiles(projMgr: project_manager.ProjectManager,
     return files;
 }
 
+/// @brief Return bounded live source for one workspace-symbol candidate.
+/// @details Open unsaved buffers still win over disk, but unlike ordinary text
+///          search a pathological live buffer is not handed to a whole-file
+///          compiler query on the UI thread.
+func WorkspaceSymbolContentForPath(docMgr: document_manager.DocumentManager,
+                                   filePath: String) -> String {
+    var content = contentForPath(docMgr, filePath);
+    if Str.get_Length(content) > MAX_SEARCH_FILE_BYTES { return ""; }
+    return content;
+}
+
+/// @brief Add matching Zia declarations for one bounded source file.
+/// @param maxResults Maximum rows to publish from this file.
+/// @return Number of structured symbol rows added.
+func AddZiaWorkspaceSymbols(shell: app_shell.AppShell,
+                            locStore: locations.LocationStore,
+                            filePath: String,
+                            content: String,
+                            needle: String,
+                            maxResults: Integer) -> Integer {
+    if shell == null or locStore == null or maxResults <= 0 { return 0; }
+    var qsource = zia_query.WrapForQuery(content);
+    var lineOff = zia_query.LineOffset(content);
+    var raw = ZiaCompletion.SymbolsForFile(qsource, filePath);
+    if raw == "" { return 0; }
+
+    var count = 0;
+    var addedHeader = false;
+    var rows = Str.Split(raw, "\n");
+    var r = 0;
+    while r < Seq.get_Count(rows) and count < maxResults {
+        var row = Obj.ToString(Seq.Get(rows, r));
+        r = r + 1;
+        if row == "" { continue; }
+
+        var parts = Str.Split(row, "\t");
+        if Seq.get_Count(parts) < 4 { continue; }
+
+        var name = Obj.ToString(Seq.Get(parts, 0));
+        var kind = Obj.ToString(Seq.Get(parts, 1));
+        var typeText = Obj.ToString(Seq.Get(parts, 2));
+        var lineText = Obj.ToString(Seq.Get(parts, 3));
+        if lineText == "0" { continue; }
+
+        var symbolLine = Convert.ToInt64(lineText) - lineOff;
+        if symbolLine < 1 { continue; }
+        if WorkspaceSymbolMatches(name, kind, filePath, needle) == false { continue; }
+
+        if addedHeader == false {
+            shell.toolPanels.AddToolGroupHeader(shell.toolPanels.searchListBox,
+                                                Path.Name(filePath), filePath);
+            addedHeader = true;
+        }
+        var detail = "";
+        if typeText != "" { detail = " : " + typeText; }
+        var item = shell.toolPanels.AddToolLocationRow(
+            shell.toolPanels.searchListBox, kind, "symbol",
+            "line " + symbolLine, typeText, name + detail, "");
+        var locId = locStore.Add(filePath, symbolLine, 1,
+                                 symbolLine, 1 + Str.get_Length(name),
+                                 locations.KIND_SYMBOL, name);
+        GUI.ListBox.ItemSetData(item, locId);
+        count = count + 1;
+    }
+    return count;
+}
+
 func AddBasicWorkspaceSymbols(shell: app_shell.AppShell,
                               locStore: locations.LocationStore,
                               filePath: String,
                               content: String,
-                              needle: String) -> Integer {
+                              needle: String,
+                              maxResults: Integer) -> Integer {
+    if shell == null or locStore == null or maxResults <= 0 { return 0; }
     var decls = semantic_scan.DeclarationsForFile(filePath, content);
     var count = 0;
     var addedHeader = false;
     var i = 0;
-    while i < Seq.get_Count(decls) {
+    while i < Seq.get_Count(decls) and count < maxResults {
         var decl = Seq.Get(decls, i);
         i = i + 1;
         var kind = Map.GetStr(decl, "kind");
@@ -1194,20 +1672,31 @@ func searchFiles(shell: app_shell.AppShell,
     return count;
 }
 
-/// @brief Return true when a disk-backed file should be skipped by project search.
-/// @param docMgr Open document manager used to detect edited in-memory buffers.
+/// @brief Return true when a file source should be skipped by project search.
+/// @param docMgr Open document manager used to measure edited in-memory buffers.
 /// @param filePath Absolute candidate path.
-/// @return True when the file is not open in the editor and exceeds the search
-///         size guard.
-/// @details Open documents are searched from their current buffer even when the
-///          backing file is large, because that is the text the user is editing.
-///          Closed disk files are capped before ReadAllText so a workspace search
-///          cannot freeze the IDE by copying very large generated files.
+/// @return True when the live buffer or closed file exceeds the search guard.
+/// @details Open buffers still take precedence over disk, but they are not
+///          exempt from the ceiling: splitting a pathological unsaved buffer on
+///          the UI thread is just as expensive as reading a generated disk file.
 func SearchDiskFileTooLarge(docMgr: document_manager.DocumentManager,
                             filePath: String) -> Boolean {
-    if filePath == "" or IO.File.Exists(filePath) == false { return false; }
-    if docMgr != null and docMgr.FindByPath(filePath) >= 0 { return false; }
-    return IO.File.SizeBytes(filePath) > MAX_SEARCH_FILE_BYTES;
+    if filePath == "" { return false; }
+    var size = SearchContentSize(docMgr, filePath);
+    return size < 0 or size > MAX_SEARCH_FILE_BYTES;
+}
+
+/// @brief Estimate the source size search will materialize for one path.
+func SearchContentSize(docMgr: document_manager.DocumentManager,
+                       filePath: String) -> Integer {
+    if docMgr != null {
+        var docIndex = docMgr.FindByPath(filePath);
+        if docIndex >= 0 {
+            return Str.get_Length(docMgr.documents.get(docIndex).content);
+        }
+    }
+    if IO.File.Exists(filePath) == false { return -1; }
+    return safe_io.SizeBytes(filePath);
 }
 
 func searchOneFile(shell: app_shell.AppShell,
@@ -1225,7 +1714,7 @@ func searchOneFile(shell: app_shell.AppShell,
     var contentLines = Str.Split(content, "\n");
     var lineNum = 0;
     var addedHeader = false;
-    while lineNum < Seq.get_Count(contentLines) {
+    while lineNum < Seq.get_Count(contentLines) and count < maxResults {
         var line = Obj.ToString(Seq.Get(contentLines, lineNum));
         lineNum = lineNum + 1;
         var match = FindLineMatch(line, query, caseSensitive, wholeWord, regexMode);
@@ -1254,13 +1743,17 @@ func QuickOpenScore(relativePath: String, query: String) -> Integer {
 
 func contentForPath(docMgr: document_manager.DocumentManager, filePath: String) -> String {
     if docMgr == null {
-        return IO.File.ReadAllText(filePath);
+        var readResult = safe_io.ReadAllTextBounded(filePath, MAX_SEARCH_FILE_BYTES);
+        if readResult.ok { return readResult.text; }
+        return "";
     }
     var idx = docMgr.FindByPath(filePath);
     if idx >= 0 {
         return docMgr.documents.get(idx).content;
     }
-    return IO.File.ReadAllText(filePath);
+    var readResult = safe_io.ReadAllTextBounded(filePath, MAX_SEARCH_FILE_BYTES);
+    if readResult.ok { return readResult.text; }
+    return "";
 }
 
 func LineMatches(line: String,

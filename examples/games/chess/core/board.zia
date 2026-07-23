@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/core/board.zia
+// Purpose: Chess position state, reversible moves, and Zobrist hashing.
+// Key invariants:
+//   - makeMove/unmakeMove restore every position field and the exact hash.
+//   - Zobrist keys are deterministic and immutable after Board initialization.
+// Ownership/Lifetime:
+//   - Each Board owns its squares; copied boards share immutable hash-key lists.
+// Links: examples/games/chess/core/moves.zia,
+//        examples/games/chess/engine/ai.zia
+//
+//===----------------------------------------------------------------------===//
+
 module board;
 
 bind "./config";
@@ -22,12 +41,12 @@ bind "./config";
 //     visualisers.
 //   * INCREMENTAL ZOBRIST. Every set/unset XORs into `hashVal`. This
 //     gives O(1) hash maintenance for makeMove and lets the AI use the
-//     hash as a transposition-table key. unmakeMove recomputes from
-//     scratch (simpler than reverse-XORing every change).
+//     hash as a transposition-table key. UndoInfo snapshots the exact
+//     pre-move hash so unmakeMove restores it in O(1).
 //   * UNDOINFO PATTERN. `makeMove` returns an UndoInfo capturing the
 //     pre-move state (en-passant file, castle rights, half-move
-//     counter, captured-square). `unmakeMove` consumes the UndoInfo to
-//     restore. This is the standard "make/unmake" pattern for
+//     counter, captured-square, hash). `unmakeMove` consumes the
+//     UndoInfo to restore. This is the standard "make/unmake" pattern for
 //     branch-and-bound search engines — avoids cloning the board per
 //     node.
 //   * EN PASSANT SQUARE STORED AS FILE. `enPassantFile` is -1 (none)
@@ -72,10 +91,11 @@ struct UndoInfo {
     expose Boolean castleBQ;
     expose Integer halfMoveClock;
     expose Integer capturedSq;     // actual square where captured piece was (differs from to for en passant)
+    expose Integer hashVal;        // exact pre-move Zobrist hash
 
     expose func init(epFile: Integer, cwk: Boolean, cwq: Boolean,
                      cbk: Boolean, cbq: Boolean,
-                     hmc: Integer, capSq: Integer) {
+                     hmc: Integer, capSq: Integer, hash: Integer) {
         enPassantFile = epFile;
         castleWK = cwk;
         castleWQ = cwq;
@@ -83,6 +103,7 @@ struct UndoInfo {
         castleBQ = cbq;
         halfMoveClock = hmc;
         capturedSq = capSq;
+        hashVal = hash;
     }
 }
 
@@ -282,7 +303,8 @@ class Board {
     ///      flip side-to-move, and re-XOR the new hash bits.
     expose func makeMove(move: Move) -> UndoInfo {
         var undo = new UndoInfo(self.enPassantFile, self.castleWK, self.castleWQ,
-                               self.castleBK, self.castleBQ, self.halfMoveClock, move.to);
+                               self.castleBK, self.castleBQ, self.halfMoveClock,
+                               move.to, self.hashVal);
 
         var piece = self.get(move.from);
         var pieceType = self.pieceType(piece);
@@ -306,7 +328,8 @@ class Board {
             var capRank = move.from / 8;  // same rank as capturing pawn
             var capSq = capRank * 8 + capFile;
             undo = new UndoInfo(undo.enPassantFile, undo.castleWK, undo.castleWQ,
-                               undo.castleBK, undo.castleBQ, undo.halfMoveClock, capSq);
+                               undo.castleBK, undo.castleBQ, undo.halfMoveClock,
+                               capSq, undo.hashVal);
             self.set(capSq, 0);
         }
 
@@ -380,8 +403,7 @@ class Board {
     // Undo a move using saved UndoInfo
     // -----------------------------------------------------------------------
     /// @brief Reverse a move using its UndoInfo. Restores all per-move
-    ///        state and the Zobrist hash (recomputed from scratch for
-    ///        simplicity).
+    ///        state and the exact pre-move Zobrist hash.
     expose func unmakeMove(move: Move, undo: UndoInfo) {
         // Flip side back
         self.whiteToMove = !self.whiteToMove;
@@ -429,18 +451,18 @@ class Board {
         self.halfMoveClock = undo.halfMoveClock;
         if isWhite { self.fullMoveNumber = self.fullMoveNumber - 1; }
 
-        // Recompute hash from scratch (simpler than tracking all changes in reverse)
-        self.recomputeHash();
+        // set() maintained a temporary hash while restoring pieces. Replace it
+        // with the exact pre-move snapshot in O(1); this is a search hot path.
+        self.hashVal = undo.hashVal;
     }
 
     // -----------------------------------------------------------------------
     // Recompute Zobrist hash from current board state
-    // Used after unmakeMove for correctness
+    // Used after manually configuring a position.
     // -----------------------------------------------------------------------
     /// @brief Rebuild Zobrist hash from current board state.
-    /// @note Called by unmakeMove instead of trying to reverse-XOR
-    ///       every change. O(64) but simpler — and unmake is far less
-    ///       hot than make.
+    /// @note Search undo restores UndoInfo.hashVal directly; this O(64)
+    ///       rebuild is reserved for manual position setup.
     hide func recomputeHash() {
         self.hashVal = 0;
         for i in 0..64 {

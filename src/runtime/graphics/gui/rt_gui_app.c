@@ -1453,6 +1453,7 @@ static void *rt_gui_app_create(rt_string title,
 
     app->window = vgfx_create_window(&params);
     app->title = rt_gui_app_strdup(window_title);
+    app->application_name = rt_gui_app_strdup(window_title);
     free(ctitle);
 
     if (!app->window) {
@@ -1460,13 +1461,19 @@ static void *rt_gui_app_create(rt_string title,
         // collector. Zero the struct so the GC finalizer (if any) sees clean state.
         free(app->title);
         app->title = NULL;
+        free(app->application_name);
+        app->application_name = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
         rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_WINDOW);
         return NULL;
     }
-    if (!app->title) {
+    if (!app->title || !app->application_name) {
         vgfx_destroy_window(app->window);
         app->window = NULL;
+        free(app->title);
+        app->title = NULL;
+        free(app->application_name);
+        app->application_name = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
         rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_STATE);
         return NULL;
@@ -1487,6 +1494,8 @@ static void *rt_gui_app_create(rt_string title,
         vgfx_destroy_window(app->window);
         free(app->title);
         app->title = NULL;
+        free(app->application_name);
+        app->application_name = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
         rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_ROOT);
         return NULL;
@@ -1515,6 +1524,8 @@ static void *rt_gui_app_create(rt_string title,
         vgfx_destroy_window(app->window);
         free(app->title);
         app->title = NULL;
+        free(app->application_name);
+        app->application_name = NULL;
         memset(app, 0, sizeof(rt_gui_app_t));
         rt_gui_app_set_create_error(out_error, RT_GUI_APP_CREATE_STATE);
         return NULL;
@@ -1701,6 +1712,8 @@ void rt_gui_app_destroy(void *app_ptr) {
 
     free(app->title);
     app->title = NULL;
+    free(app->application_name);
+    app->application_name = NULL;
     rt_gui_accessibility_platform_detach(app->window);
     if (app->root) {
         rt_widget_forget_runtime_refs(app, app->root);

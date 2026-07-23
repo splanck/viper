@@ -8,6 +8,7 @@
 // Key invariants:
 //   - The overlay captures intent only; filesystem mutations stay in app/explorer_action_runner.zia.
 //   - File-tree actions remain non-modal and styled with IDE chrome.
+//   - Explorer prompts own the shell's sole focus-taking transient-surface slot.
 // Ownership/Lifetime:
 //   - GUI widgets are owned by the AppShell application root.
 //   - Target paths and entered names are copied as Zia strings.
@@ -75,6 +76,7 @@ class ExplorerActionOverlay {
     expose String value;
     expose String validationMessage;
     expose String applyLabel;
+    hide app_shell.AppShell ownerShell;
 
     /// @brief Initialize as hidden with no pending action.
     expose func init() {
@@ -86,11 +88,13 @@ class ExplorerActionOverlay {
         value = "";
         validationMessage = "";
         applyLabel = "Apply";
+        ownerShell = null;
     }
 
     /// @brief Construct the floating panel and child controls.
     /// @param shell Workbench shell whose app root owns floating overlays.
     expose func Setup(shell: app_shell.AppShell) {
+        ownerShell = shell;
         panel = GUI.FloatingPanel.New(shell.app);
         panel.SetSize(EXPLORER_PANEL_WIDTH, EXPLORER_PANEL_HEIGHT);
         panel.SetVisible(false);
@@ -212,8 +216,10 @@ class ExplorerActionOverlay {
                        message: String) {
         validationMessage = message;
         detailLabel.SetText(message);
+        ownerShell = shell;
+        shell.ClaimTransientSurface(
+            app_shell.TRANSIENT_SURFACE_EXPLORER_ACTION, panel);
         visible = true;
-        panel.SetVisible(true);
         Layout(shell);
         if pendingAction != EXPLORER_ACTION_DELETE {
             nameInput.SetVisible(true);
@@ -227,6 +233,14 @@ class ExplorerActionOverlay {
     expose func Pump(shell: app_shell.AppShell) -> Integer {
         completedAction = EXPLORER_ACTION_NONE;
         if visible == false { return EXPLORER_ACTION_NONE; }
+        if ownerShell == null
+           or ownerShell.OwnsTransientSurface(
+               app_shell.TRANSIENT_SURFACE_EXPLORER_ACTION) == false {
+            visible = false;
+            pendingAction = EXPLORER_ACTION_NONE;
+            panel.SetVisible(false);
+            return EXPLORER_ACTION_NONE;
+        }
         Layout(shell);
         if Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
             Cancel();
@@ -302,8 +316,10 @@ class ExplorerActionOverlay {
     /// @brief Make the overlay visible and position it in the workbench.
     /// @param shell Workbench shell used for current viewport size.
     hide func Show(shell: app_shell.AppShell) {
+        ownerShell = shell;
+        shell.ClaimTransientSurface(
+            app_shell.TRANSIENT_SURFACE_EXPLORER_ACTION, panel);
         visible = true;
-        panel.SetVisible(true);
         Layout(shell);
     }
 
@@ -312,6 +328,10 @@ class ExplorerActionOverlay {
         visible = false;
         pendingAction = EXPLORER_ACTION_NONE;
         panel.SetVisible(false);
+        if ownerShell != null {
+            ownerShell.ReleaseTransientSurface(
+                app_shell.TRANSIENT_SURFACE_EXPLORER_ACTION);
+        }
     }
 
     /// @brief Complete the current action and return its action code.
@@ -322,6 +342,10 @@ class ExplorerActionOverlay {
             value = "";
             visible = false;
             panel.SetVisible(false);
+            if ownerShell != null {
+                ownerShell.ReleaseTransientSurface(
+                    app_shell.TRANSIENT_SURFACE_EXPLORER_ACTION);
+            }
             completedAction = deleteAction;
             return deleteAction;
         }
@@ -335,6 +359,10 @@ class ExplorerActionOverlay {
         var action = pendingAction;
         visible = false;
         panel.SetVisible(false);
+        if ownerShell != null {
+            ownerShell.ReleaseTransientSurface(
+                app_shell.TRANSIENT_SURFACE_EXPLORER_ACTION);
+        }
         completedAction = action;
         return action;
     }
@@ -343,8 +371,8 @@ class ExplorerActionOverlay {
     /// @param shell Workbench shell used for current viewport size.
     hide func Layout(shell: app_shell.AppShell) {
         if panel == null or shell == null or shell.app == null { return; }
-        var rootW = shell.app.GetLogicalWidth();
-        var rootH = shell.app.GetLogicalHeight();
+        var rootW = app_shell.UiViewportWidth(shell.app);
+        var rootH = app_shell.UiViewportHeight(shell.app);
         if rootW <= 0 { rootW = 1280; }
         if rootH <= 0 { rootH = 800; }
         var panelW = EXPLORER_PANEL_WIDTH;

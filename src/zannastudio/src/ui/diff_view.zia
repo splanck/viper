@@ -6,17 +6,17 @@
 //===----------------------------------------------------------------------===//
 //
 // File: zannastudio/src/ui/diff_view.zia
-// Purpose: Side-by-side diff overlay (plan 07) — aligned rows from the diff
-//          engine rendered into a floating panel with per-kind colors and a
-//          single synced scroll surface.
+// Purpose: Async side-by-side diff overlay with incrementally rendered rows.
 // Key invariants:
-//   - Rows come from diff_engine.BuildRows, so both documents reconstruct
-//     exactly and the two columns stay aligned by construction.
+//   - Diff computation never runs on the interactive UI thread.
+//   - At most a fixed row batch is materialized into widgets per frame.
+//   - The overlay stays inside the current logical viewport after every resize.
 //   - Colors derive from the live theme palette (never hardcoded).
+//   - A visible diff owns the shell's sole focus-taking transient-surface slot.
 // Ownership/Lifetime:
 //   - The floating panel and its children are created once per AppShell and
-//     reused for every diff.
-// Links: zannastudio/src/services/diff_engine.zia,
+//     reused for every diff; DiffView owns and drains its DiffJob.
+// Links: zannastudio/src/services/diff_job.zia,
 //        zannastudio/src/scm/scm_view.zia
 //
 //===----------------------------------------------------------------------===//
@@ -24,13 +24,18 @@
 module diff_view;
 
 bind "../services/diff_engine";
+bind "../services/diff_job";
 bind "../services/theme_colors";
+bind "../ui/app_shell";
 
 bind Zanna.GUI as GUI;
 bind Str = Zanna.String;
 
 final DIFF_COLUMN_WIDTH = 56;
-final DIFF_MAX_ROWS = 4000;
+final DIFF_ROWS_PER_FRAME = 100;
+final DIFF_PANEL_WIDTH = 980;
+final DIFF_PANEL_HEIGHT = 560;
+final DIFF_PANEL_MARGIN = 28;
 
 /// @brief Reusable side-by-side diff overlay.
 class DiffView {
@@ -39,6 +44,15 @@ class DiffView {
     expose GUI.ListBox rowsList;
     expose GUI.Button closeButton;
     expose Boolean visible;
+    expose diff_job.DiffJob job;
+    expose Integer pendingGeneration;
+    expose diff_engine.DiffBuildResult renderResult;
+    expose Integer renderIndex;
+    expose Integer lastPumpRenderCount;
+    expose String activeTitle;
+    expose String lastError;
+    hide GUI.App rootApp;
+    hide app_shell.AppShell rootShell;
 
     expose func init() {
         panel = null;
@@ -46,17 +60,29 @@ class DiffView {
         rowsList = null;
         closeButton = null;
         visible = false;
+        job = new diff_job.DiffJob();
+        pendingGeneration = 0;
+        renderResult = null;
+        renderIndex = 0;
+        lastPumpRenderCount = 0;
+        activeTitle = "";
+        lastError = "";
+        rootApp = null;
+        rootShell = null;
     }
 
     /// @brief Build the reusable overlay into the app root.
-    /// @param rootApp Application root the floating panel attaches to.
-    expose func Setup(rootApp: GUI.App) {
-        if rootApp == null or panel != null { return; }
+    /// @param shell Workbench shell whose app owns the floating panel.
+    expose func Setup(shell: app_shell.AppShell) {
+        if shell == null or shell.app == null or panel != null { return; }
+        rootShell = shell;
+        rootApp = shell.app;
         panel = GUI.FloatingPanel.New(rootApp);
-        panel.SetSize(980.0, 560.0);
+        panel.SetSize(DIFF_PANEL_WIDTH, DIFF_PANEL_HEIGHT);
 
         var column = GUI.VBox.New();
-        column.SetSpacing(6.0);
+        column.SetPadding(16.0);
+        column.SetSpacing(10.0);
         panel.AddChild(column);
 
         var headerRow = GUI.HBox.New();
@@ -64,6 +90,7 @@ class DiffView {
         column.AddChild(headerRow);
         titleLabel = GUI.Label.New(headerRow, "Diff");
         titleLabel.SetFlex(1.0);
+        titleLabel.SetEllipsis(true);
         closeButton = GUI.Button.New(headerRow, "Close");
 
         rowsList = GUI.ListBox.New(null);
@@ -101,61 +128,183 @@ class DiffView {
     /// @param rightText "After" document text.
     expose func Open(title: String, leftText: String, rightText: String) {
         if panel == null or rowsList == null { return; }
-        titleLabel.SetText(title);
+        ResetRendering();
+        activeTitle = title;
+        lastError = "";
+        titleLabel.SetText(title + "  (computing...)");
         rowsList.Clear();
+        rowsList.AddItem("Computing bounded diff...");
+        pendingGeneration = job.Queue(title, leftText, rightText);
 
-        var rows = diff_engine.BuildRows(leftText, rightText);
-        var shown = 0;
-        var i = 0;
-        while i < rows.count() and shown < DIFF_MAX_ROWS {
-            var row = rows.get(i) as diff_engine.DiffRow;
-            var marker = "  ";
-            if row.kind == diff_engine.ROW_ADDED { marker = "+ "; }
-            if row.kind == diff_engine.ROW_REMOVED { marker = "- "; }
-            if row.kind == diff_engine.ROW_CHANGED { marker = "~ "; }
-            var text = marker + LineCell(row.leftLine) + " " + Cell(row.leftText) +
-                       " │ " + LineCell(row.rightLine) + " " + row.rightText;
-            var item = rowsList.AddItem(text);
-            if row.kind == diff_engine.ROW_ADDED {
-                GUI.ListBox.ItemSetTextColor(item, theme_colors.Rgb("accentSuccess"));
-            }
-            if row.kind == diff_engine.ROW_REMOVED {
-                GUI.ListBox.ItemSetTextColor(item, theme_colors.Rgb("accentDanger"));
-            }
-            if row.kind == diff_engine.ROW_CHANGED {
-                GUI.ListBox.ItemSetTextColor(item, theme_colors.Rgb("accentWarning"));
-            }
-            shown = shown + 1;
-            i = i + 1;
-        }
-        if rows.count() > DIFF_MAX_ROWS {
-            rowsList.AddItem("… " + (rows.count() - DIFF_MAX_ROWS) + " more rows truncated");
-        }
-        var changed = diff_engine.CountKind(rows, diff_engine.ROW_CHANGED);
-        var added = diff_engine.CountKind(rows, diff_engine.ROW_ADDED);
-        var removed = diff_engine.CountKind(rows, diff_engine.ROW_REMOVED);
-        titleLabel.SetText(title + "  (~" + changed + "  +" + added + "  -" + removed + ")");
-
-        panel.CenterInParent();
-        panel.SetVisible(true);
+        Layout();
+        rootShell.ClaimTransientSurface(app_shell.TRANSIENT_SURFACE_DIFF, panel);
         visible = true;
     }
 
     /// @brief Hide the overlay.
     expose func Close() {
+        job.Cancel();
+        pendingGeneration = 0;
+        ResetRendering();
         if panel != null { panel.SetVisible(false); }
         visible = false;
+        if rootShell != null {
+            rootShell.ReleaseTransientSurface(app_shell.TRANSIENT_SURFACE_DIFF);
+        }
     }
 
-    /// @brief Per-frame pump: close on button click or Escape.
+    /// @brief Poll worker completion, render one row batch, and handle close.
     expose func Pump() {
-        if visible == false { return; }
+        lastPumpRenderCount = 0;
+        job.Pump();
+        if visible == false {
+            job.TakeCompleted();
+            return;
+        }
+        if rootShell == null
+           or rootShell.OwnsTransientSurface(
+               app_shell.TRANSIENT_SURFACE_DIFF) == false {
+            Close();
+            return;
+        }
+        Layout();
         if closeButton != null and closeButton.WasClicked() {
             Close();
             return;
         }
         if Zanna.Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
             Close();
+            return;
         }
+
+        var request = job.TakeCompleted();
+        if request != null and request!.generation == pendingGeneration {
+            FinishRequest(request!);
+        }
+        PumpRenderRows();
+    }
+
+    /// @brief Cancel and drain worker ownership before runtime teardown.
+    expose func Shutdown() -> Boolean {
+        pendingGeneration = 0;
+        ResetRendering();
+        if panel != null { panel.SetVisible(false); }
+        visible = false;
+        if rootShell != null {
+            rootShell.ReleaseTransientSurface(app_shell.TRANSIENT_SURFACE_DIFF);
+        }
+        return job.CancelAndWait();
+    }
+
+    expose func IsBusy() -> Boolean {
+        return pendingGeneration > 0 or job.IsBusy() or renderResult != null;
+    }
+
+    /// @brief Validate one worker result and begin incremental publication.
+    hide func FinishRequest(request: diff_job.DiffRequest) {
+        pendingGeneration = 0;
+        rowsList.Clear();
+        if request.succeeded == false or request.error != "" {
+            lastError = request.error;
+            if lastError == "" { lastError = "Diff computation failed"; }
+            rowsList.AddItem(lastError);
+            titleLabel.SetText(activeTitle + "  (unavailable)");
+            return;
+        }
+        if request.reason != "" {
+            if request.reason == "source_too_large" {
+                lastError = "Diff supports files up to 4 MB each";
+            } else if request.reason == "too_many_lines" {
+                lastError = "Diff supports up to 20,000 combined lines";
+            } else {
+                lastError = "Diff input exceeds safety limits";
+            }
+            rowsList.AddItem(lastError);
+            titleLabel.SetText(activeTitle + "  (limited)");
+            return;
+        }
+        if request.result == null {
+            lastError = "Diff computation returned no result";
+            rowsList.AddItem(lastError);
+            titleLabel.SetText(activeTitle + "  (unavailable)");
+            return;
+        }
+        renderResult = request.result;
+        renderIndex = 0;
+        titleLabel.SetText(activeTitle + "  (rendering 0/"
+                           + renderResult.rows.count() + ")");
+    }
+
+    /// @brief Add no more than DIFF_ROWS_PER_FRAME formatted list rows.
+    hide func PumpRenderRows() {
+        if renderResult == null or rowsList == null { return; }
+        var stop = renderIndex + DIFF_ROWS_PER_FRAME;
+        if stop > renderResult.rows.count() { stop = renderResult.rows.count(); }
+        while renderIndex < stop {
+            AddDisplayRow(renderResult.rows.get(renderIndex) as diff_engine.DiffRow);
+            renderIndex = renderIndex + 1;
+            lastPumpRenderCount = lastPumpRenderCount + 1;
+        }
+        if renderIndex < renderResult.rows.count() {
+            titleLabel.SetText(activeTitle + "  (rendering " + renderIndex + "/"
+                               + renderResult.rows.count() + ")");
+            return;
+        }
+
+        if renderResult.truncated {
+            rowsList.AddItem("… " + (renderResult.totalRows - renderResult.rows.count())
+                             + " more rows truncated");
+        }
+        titleLabel.SetText(activeTitle + "  (~" + renderResult.changedCount
+                           + "  +" + renderResult.addedCount
+                           + "  -" + renderResult.removedCount + ")");
+        renderResult = null;
+        renderIndex = 0;
+    }
+
+    /// @brief Format and color one aligned worker-produced row.
+    hide func AddDisplayRow(row: diff_engine.DiffRow) {
+        if row == null or rowsList == null { return; }
+        var marker = "  ";
+        if row.kind == diff_engine.ROW_ADDED { marker = "+ "; }
+        if row.kind == diff_engine.ROW_REMOVED { marker = "- "; }
+        if row.kind == diff_engine.ROW_CHANGED { marker = "~ "; }
+        var text = marker + LineCell(row.leftLine) + " " + Cell(row.leftText)
+                   + " │ " + LineCell(row.rightLine) + " " + row.rightText;
+        var item = rowsList.AddItem(text);
+        if row.kind == diff_engine.ROW_ADDED {
+            GUI.ListBox.ItemSetTextColor(item, theme_colors.Rgb("accentSuccess"));
+        }
+        if row.kind == diff_engine.ROW_REMOVED {
+            GUI.ListBox.ItemSetTextColor(item, theme_colors.Rgb("accentDanger"));
+        }
+        if row.kind == diff_engine.ROW_CHANGED {
+            GUI.ListBox.ItemSetTextColor(item, theme_colors.Rgb("accentWarning"));
+        }
+    }
+
+    hide func ResetRendering() {
+        renderResult = null;
+        renderIndex = 0;
+        lastPumpRenderCount = 0;
+    }
+
+    /// @brief Fit and center the overlay in the current logical app viewport.
+    hide func Layout() {
+        if panel == null or rootApp == null { return; }
+        var rootW = app_shell.UiViewportWidth(rootApp);
+        var rootH = app_shell.UiViewportHeight(rootApp);
+        if rootW <= 0 { rootW = 1280; }
+        if rootH <= 0 { rootH = 800; }
+        var panelW = DIFF_PANEL_WIDTH;
+        var panelH = DIFF_PANEL_HEIGHT;
+        var maxW = rootW - (DIFF_PANEL_MARGIN * 2);
+        var maxH = rootH - (DIFF_PANEL_MARGIN * 2);
+        if panelW > maxW { panelW = maxW; }
+        if panelH > maxH { panelH = maxH; }
+        if panelW < 1 { panelW = 1; }
+        if panelH < 1 { panelH = 1; }
+        panel.SetSize(panelW, panelH);
+        panel.CenterInParent();
     }
 }

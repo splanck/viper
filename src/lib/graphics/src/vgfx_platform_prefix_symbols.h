@@ -52,6 +52,7 @@
 #define vgfx_platform_set_text_input_state VGFX_PREFIXED(vgfx_platform_set_text_input_state)
 #define vgfx_platform_set_title VGFX_PREFIXED(vgfx_platform_set_title)
 #define vgfx_platform_set_window_size VGFX_PREFIXED(vgfx_platform_set_window_size)
+#define vgfx_platform_set_window_min_size VGFX_PREFIXED(vgfx_platform_set_window_min_size)
 #define vgfx_platform_show_cursor VGFX_PREFIXED(vgfx_platform_show_cursor)
 #define vgfx_platform_sleep_ms VGFX_PREFIXED(vgfx_platform_sleep_ms)
 #define vgfx_platform_wait_events VGFX_PREFIXED(vgfx_platform_wait_events)

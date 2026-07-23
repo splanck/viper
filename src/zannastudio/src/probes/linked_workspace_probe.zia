@@ -1,0 +1,141 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/linked_workspace_probe.zia
+// Purpose: Verify linked workspace descendants stay visible but inert.
+// Key invariants:
+//   - Explorer never queues or restores children below a linked descendant.
+//   - Workspace watcher discovery never attaches to a linked descendant.
+//   - A root explicitly opened through a link remains a valid traversal root.
+// Ownership/Lifetime:
+//   - The CMake harness owns the filesystem fixture.
+//   - This probe owns and destroys its shell and native watcher handles.
+// Links: zannastudio/src/core/project_manager.zia,
+//        zannastudio/src/app/workspace_watcher.zia,
+//        docs/adr/0153-non-following-path-link-inspection.md
+//
+//===----------------------------------------------------------------------===//
+
+module linked_workspace_probe;
+
+bind "../app/workspace_watcher";
+bind "../core/project_manager";
+bind "../ui/app_shell";
+
+bind Env = Zanna.System.Environment;
+bind GUI = Zanna.GUI;
+bind Path = Zanna.IO.Path;
+bind Terminal = Zanna.Terminal;
+
+func fail(shell: app_shell.AppShell,
+          state: workspace_watcher.WorkspaceWatcherState,
+          reason: String) {
+    if state != null { workspace_watcher.StopWorkspaceWatcher(state); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func FindVisibleNodeByData(tree: GUI.TreeView,
+                           path: String) -> Any {
+    var x = tree.GetX() + 20;
+    var y = tree.GetY() + 2;
+    var bottom = tree.GetY() + tree.GetHeight();
+    while y < bottom {
+        var node = tree.GetNodeAt(x, y);
+        if node != null and GUI.TreeView.Node.GetData(node) == path {
+            return node;
+        }
+        y = y + 3;
+    }
+    return null;
+}
+
+func ContainsPath(paths: List[String],
+                  path: String) -> Boolean {
+    var i = 0;
+    while i < paths.count() {
+        if paths.get(i) == path { return true; }
+        i = i + 1;
+    }
+    return false;
+}
+
+func PumpTreeUntilIdle(projMgr: project_manager.ProjectManager) -> Boolean {
+    var pumps = 0;
+    while projMgr.TreeLoadsPending() and pumps < 32 {
+        projMgr.PumpTreeLoads(512);
+        pumps = pumps + 1;
+    }
+    return projMgr.TreeLoadsPending() == false;
+}
+
+func main() {
+    if Env.GetArgumentCount() < 3 {
+        Terminal.Say("RESULT: fail missing linked-workspace fixture arguments");
+        return;
+    }
+    var root = Env.GetArgument(0);
+    var linkedDir = Env.GetArgument(1);
+    var linkedFile = Env.GetArgument(2);
+
+    if Path.IsLink(linkedDir) == false {
+        Terminal.Say("RESULT: fail fixture is not a link");
+        return;
+    }
+
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Linked Workspace Probe", 840, 560);
+    var projMgr = new project_manager.ProjectManager();
+    projMgr.Setup(shell.workbench.sidebarTree);
+    if projMgr.OpenFolder(root) == false or PumpTreeUntilIdle(projMgr) == false {
+        fail(shell, null, "workspace tree did not load");
+        return;
+    }
+    shell.Poll();
+    shell.Render();
+
+    var linkedNode = FindVisibleNodeByData(shell.workbench.sidebarTree, linkedDir);
+    if linkedNode == null
+       or GUI.TreeView.Node.HasChildren(linkedNode)
+       or projMgr.CanTraverseTreeDirectory(linkedDir)
+       or projMgr.CanCreateInDirectory(linkedDir) {
+        fail(shell, null, "linked descendant retained traversal affordance");
+        return;
+    }
+
+    shell.workbench.sidebarTree.Select(linkedNode);
+    projMgr.HandleTreeClicks();
+    projMgr.PumpTreeLoads(512);
+    shell.Poll();
+    shell.Render();
+    if projMgr.TreeLoadsPending()
+       or projMgr.IsTreeDirectoryLoaded(linkedDir)
+       or GUI.TreeView.Node.IsExpanded(linkedNode)
+       or FindVisibleNodeByData(shell.workbench.sidebarTree, linkedFile) != null {
+        fail(shell, null, "linked descendant exposed target content");
+        return;
+    }
+
+    var state = new workspace_watcher.WorkspaceWatcherState();
+    workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+    var rounds = 0;
+    while state.discoveryActive and rounds < 32 {
+        workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
+        rounds = rounds + 1;
+    }
+    if state.discoveryActive
+       or workspace_watcher.WorkspaceWatcherCanWatchDirectory(state, root) == false
+       or workspace_watcher.WorkspaceWatcherCanWatchDirectory(state, linkedDir)
+       or ContainsPath(state.watcherPaths, linkedDir) {
+        fail(shell, state, "watcher discovery crossed linked descendant");
+        return;
+    }
+
+    workspace_watcher.StopWorkspaceWatcher(state);
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

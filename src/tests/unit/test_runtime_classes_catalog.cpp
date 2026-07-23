@@ -7,9 +7,11 @@
 //
 // File: tests/unit/test_runtime_classes_catalog.cpp
 // Purpose: Smoke test for runtime class catalog exposing Zanna.String.
-// Key invariants: To be documented.
-// Ownership/Lifetime: To be documented.
-// Links: docs/il/il-guide.md#reference
+// Key invariants:
+//   - Public runtime classes expose authored documentation and canonical method
+//     signatures through the generated registry catalog.
+// Ownership/Lifetime: Catalog descriptors are process-lifetime immutable data.
+// Links: docs/il/il-guide.md#reference, src/il/runtime/defs/classes/
 //
 //===----------------------------------------------------------------------===//
 
@@ -110,6 +112,14 @@ int main() {
     assert(hasLength && "Zanna.String should have Length property");
     assert(hasIsEmpty && "Zanna.String should have IsEmpty property");
 
+    const il::runtime::RuntimeClass *fileCls = findClass("Zanna.IO.File");
+    assert(fileCls != nullptr && "Zanna.IO.File not found in catalog");
+    assert(hasMethod(*fileCls, "SameFile", "i1(str,str)"));
+
+    const il::runtime::RuntimeClass *pathCls = findClass("Zanna.IO.Path");
+    assert(pathCls != nullptr && "Zanna.IO.Path not found in catalog");
+    assert(hasMethod(*pathCls, "IsLink", "i1(str)"));
+
     const il::runtime::RuntimeClass *weakRefCls = findClass("Zanna.Memory.WeakRef");
     assert(weakRefCls != nullptr && "Zanna.Memory.WeakRef not found in catalog");
     assert(hasMethod(*weakRefCls, "New", "obj<Zanna.Memory.WeakRef>(obj)"));
@@ -127,6 +137,11 @@ int main() {
     assert(hasMethod(*systemClipboardCls, "Get", "str()"));
     assert(hasMethod(*systemClipboardCls, "Set", "void(str)"));
     assert(hasMethod(*systemClipboardCls, "HasText", "i1()"));
+
+    const il::runtime::RuntimeClass *workspaceEditCls = findClass("Zanna.Workspace.Edit");
+    assert(workspaceEditCls != nullptr && "Zanna.Workspace.Edit not found in catalog");
+    assert(hasMethod(*workspaceEditCls, "ValidateInRoots", "obj<Zanna.Collections.Map>(obj,obj)"));
+    assert(hasMethod(*workspaceEditCls, "ApplyInRoots", "obj<Zanna.Collections.Map>(obj,obj)"));
 
     const il::runtime::RuntimeClass *cameraCls = findClass("Zanna.Graphics.Camera");
     assert(cameraCls != nullptr && "Zanna.Graphics.Camera not found in catalog");
@@ -146,6 +161,7 @@ int main() {
     const il::runtime::RuntimeClass *guiAppCls = findClass("Zanna.GUI.App");
     assert(guiAppCls != nullptr && "Zanna.GUI.App not found in catalog");
     assert(hasMethod(*guiAppCls, "TryNew", "obj<Zanna.Result>(str,i64,i64)"));
+    assert(hasMethod(*guiAppCls, "SetMinimumSize", "void(i64,i64)"));
     assert(hasMethod(*guiAppCls, "WasFileDropped", "i1()"));
     assert(hasMethod(*guiAppCls, "GetDroppedFileCount", "i64()"));
     assert(hasMethod(*guiAppCls, "GetDroppedFile", "str(i64)"));

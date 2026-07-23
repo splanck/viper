@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/app/context_menu_dispatcher.zia
+// Purpose: Route editor, tab, and explorer context-menu interactions.
+// Key invariants:
+//   - Follow-up work runs only after its prerequisite action succeeds.
+//   - Context paths are revalidated at dispatch time.
+// Ownership/Lifetime:
+//   - The main loop owns all borrowed controllers passed into dispatch helpers.
+// Links: zannastudio/src/app/context_menus.zia,
+//        zannastudio/src/app/explorer_action_runner.zia
+//
+//===----------------------------------------------------------------------===//
+
 module context_menu_dispatcher;
 
 bind "../app/context_menus";
@@ -8,19 +27,23 @@ bind "../build/breakpoints";
 bind "../build/build_system";
 bind "../build/debug_session";
 bind "../commands/build_commands";
+bind "../commands/basic_workspace_commands";
 bind "../commands/command_registry";
 bind "../commands/debug_commands";
 bind "../commands/edit_commands";
 bind "../commands/file_commands";
 bind "../commands/search_commands";
+bind "../commands/zia_workspace_commands";
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../core/session";
 bind "../core/settings";
 bind "../editor/editor_engine";
 bind "../editor/editor_tabs";
+bind "../editor/basic_workspace_query_job";
 bind "../editor/language_service";
 bind "../editor/project_index";
+bind "../editor/zia_workspace_query_job";
 bind "../services/locations";
 bind "../ui/app_shell";
 bind "../ui/command_input";
@@ -68,6 +91,8 @@ bind Input = Zanna.Input;
 /// @param dbgSession Active debug session, if any.
 /// @param breakpointStore Persistent breakpoint store for editor context menu.
 /// @param commandInputOverlay Shared non-modal input overlay for short commands.
+/// @param basicWorkspaceCommands Async BASIC navigation/refactor controller.
+/// @param ziaWorkspaceCommands Async Zia navigation/refactor controller.
 /// @param appSettings Current settings used by build/run preflight.
 /// @return True when the frame's tree selection should not also open a file.
 expose func PumpContextMenus(shell: app_shell.AppShell,
@@ -88,12 +113,15 @@ expose func PumpContextMenus(shell: app_shell.AppShell,
                              dbgSession: debug_session.DebugSession,
                              breakpointStore: breakpoints.BreakpointStore,
                              commandInputOverlay: command_input.CommandInputOverlay,
+                             basicWorkspaceCommands: basic_workspace_commands.BasicWorkspaceCommandController,
+                             ziaWorkspaceCommands: zia_workspace_commands.ZiaWorkspaceCommandController,
                              appSettings: settings.SettingsManager) -> Boolean {
     var suppressTreeOpen = false;
 
     if Input.Mouse.WasClicked(1) {
         suppressTreeOpen = ShowContextMenuForPointer(shell, engine, projMgr,
-                                                     activeService, dbgSession);
+                                                     activeService, buildSys,
+                                                     dbgSession);
     }
 
     PumpTreeContextMenu(shell, projMgr, docMgr, engine, tabs, sessionMgr,
@@ -101,9 +129,10 @@ expose func PumpContextMenus(shell: app_shell.AppShell,
                         explorerOverlay, indexer, appSettings);
     PumpExplorerOverlay(shell, explorerOverlay, projMgr, docMgr, engine, tabs,
                         sessionMgr, indexer, locStore, fileWatchCtrl);
-    PumpEditorContextMenu(shell, docMgr, engine, tabs, indexer, locStore,
+    PumpEditorContextMenu(shell, projMgr, docMgr, engine, tabs, indexer, locStore,
                           breakpointStore, dbgSession, paletteCtrl,
-                          commandRegistry, activeService, commandInputOverlay);
+                          commandRegistry, activeService, commandInputOverlay,
+                          basicWorkspaceCommands, ziaWorkspaceCommands);
     PumpTabContextMenu(shell, projMgr, docMgr, engine, tabs, fileWatchCtrl);
 
     return suppressTreeOpen;
@@ -114,12 +143,14 @@ expose func PumpContextMenus(shell: app_shell.AppShell,
 /// @param engine Active editor engine.
 /// @param projMgr Project/tree manager used to derive context paths.
 /// @param activeService Current language capability record.
+/// @param buildSys Build/run controller used to guard workspace mutations.
 /// @param dbgSession Active debug session used to enable evaluate/debug actions.
 /// @return True when a tree right-click selected a node and should suppress open.
 hide func ShowContextMenuForPointer(shell: app_shell.AppShell,
                                     engine: editor_engine.EditorEngine,
                                     projMgr: project_manager.ProjectManager,
                                     activeService: language_service.LanguageService,
+                                    buildSys: build_system.BuildSystem,
                                     dbgSession: debug_session.DebugSession) -> Boolean {
     var suppressTreeOpen = false;
     var ctxX = Input.Mouse.X;
@@ -136,6 +167,11 @@ hide func ShowContextMenuForPointer(shell: app_shell.AppShell,
         }
         shell.contextDir = context_menus.ContextDirForPath(projMgr, shell.contextPath);
         context_menus.ConfigureTreeContextMenuForPath(shell, projMgr, shell.contextPath, shell.contextDir);
+        if shell.menuChrome.ctxRemoveFolder != null
+           and ((buildSys != null and buildSys.IsActive())
+                or (dbgSession != null and dbgSession.IsActive())) {
+            shell.menuChrome.ctxRemoveFolder.SetEnabled(false);
+        }
         shell.menuChrome.treeContextMenu.Show(ctxX, ctxY);
     } else if shell.workbench.tabBar.IsHovered() {
         context_menus.DismissContextMenus(shell);
@@ -169,15 +205,18 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
                               appSettings: settings.SettingsManager) {
     if shell.menuChrome.ctxOpen.WasClicked() {
         var ctxPath = context_menus.CurrentContextPath(projMgr, shell);
-        if IO.File.Exists(ctxPath) != false {
-            explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, ctxPath);
+        if ctxPath != ""
+           and explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine,
+                                                        tabs, sessionMgr, ctxPath) {
             fileWatchCtrl.ResetPendingReload();
         }
     }
     if shell.menuChrome.ctxOpenText.WasClicked() {
         var ctxTextPath = context_menus.CurrentContextPath(projMgr, shell);
-        if IO.File.Exists(ctxTextPath) != false {
-            explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, ctxTextPath);
+        if ctxTextPath != ""
+           and explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine,
+                                                        tabs, sessionMgr,
+                                                        ctxTextPath) {
             fileWatchCtrl.ResetPendingReload();
         }
     }
@@ -203,7 +242,7 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
     }
     if shell.menuChrome.ctxDuplicate.WasClicked() {
         var dupPath = context_menus.CurrentContextPath(projMgr, shell);
-        if IO.File.Exists(dupPath) != false {
+        if IO.File.Exists(dupPath) != false and projMgr.CanMutatePath(dupPath) {
             explorerOverlay.OpenDuplicate(shell, dupPath);
         } else if dupPath != "" {
             GUI.Toast.Info("Duplicate is available for files");
@@ -211,13 +250,13 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
     }
     if shell.menuChrome.ctxRename.WasClicked() {
         var selectedPath = context_menus.CurrentContextPath(projMgr, shell);
-        if selectedPath != "" {
+        if projMgr.CanMutatePath(selectedPath) {
             explorerOverlay.OpenRename(shell, selectedPath);
         }
     }
     if shell.menuChrome.ctxDelete.WasClicked() {
         var deletePath = context_menus.CurrentContextPath(projMgr, shell);
-        if deletePath != "" {
+        if projMgr.CanMutatePath(deletePath) {
             explorerOverlay.OpenDelete(shell, deletePath);
         }
     }
@@ -239,8 +278,10 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
     }
     if shell.menuChrome.ctxRunFile.WasClicked() {
         var runPath = context_menus.CurrentContextPath(projMgr, shell);
-        if IO.File.Exists(runPath) != false {
-            explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, runPath);
+        if runPath != ""
+           and explorer_action_runner.OpenFileAndRecord(shell, docMgr, engine,
+                                                        tabs, sessionMgr,
+                                                        runPath) {
             fileWatchCtrl.ResetPendingReload();
             build_commands.handleRun(shell, docMgr, projMgr, engine, tabs, buildSys, locStore,
                                      appSettings.saveAllBeforeBuild);
@@ -295,6 +336,7 @@ hide func PumpExplorerOverlay(shell: app_shell.AppShell,
 
 /// @brief Dispatch editor context menu item clicks through normal command handlers.
 /// @param shell Workbench shell.
+/// @param projMgr Project manager used to capture BASIC workspace roots.
 /// @param docMgr Open document manager.
 /// @param engine Active editor engine.
 /// @param tabs Tab controller.
@@ -303,7 +345,10 @@ hide func PumpExplorerOverlay(shell: app_shell.AppShell,
 /// @param breakpointStore Persistent breakpoint store.
 /// @param dbgSession Active debug session.
 /// @param commandInputOverlay Shared non-modal input overlay for rename.
+/// @param basicWorkspaceCommands Async BASIC navigation/refactor controller.
+/// @param ziaWorkspaceCommands Async Zia navigation/refactor controller.
 hide func PumpEditorContextMenu(shell: app_shell.AppShell,
+                                projMgr: project_manager.ProjectManager,
                                 docMgr: document_manager.DocumentManager,
                                 engine: editor_engine.EditorEngine,
                                 tabs: editor_tabs.EditorTabs,
@@ -314,15 +359,66 @@ hide func PumpEditorContextMenu(shell: app_shell.AppShell,
                                 paletteCtrl: command_palette_controller.CommandPaletteController,
                                 commandRegistry: command_registry.CommandRegistry,
                                 activeService: language_service.LanguageService,
-                                commandInputOverlay: command_input.CommandInputOverlay) {
+                                commandInputOverlay: command_input.CommandInputOverlay,
+                                basicWorkspaceCommands: basic_workspace_commands.BasicWorkspaceCommandController,
+                                ziaWorkspaceCommands: zia_workspace_commands.ZiaWorkspaceCommandController) {
     if shell.menuChrome.ecCut.WasClicked()        { edit_commands.handleCut(engine); }
     if shell.menuChrome.ecCopy.WasClicked()       { edit_commands.handleCopy(engine); }
     if shell.menuChrome.ecPaste.WasClicked()      { edit_commands.handlePaste(engine); }
-    if shell.menuChrome.ecGotoDef.WasClicked()    { edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs, indexer, locStore); }
-    if shell.menuChrome.ecFindRefs.WasClicked()   { edit_commands.handleFindReferences(shell, docMgr, engine, indexer, locStore); }
+    if shell.menuChrome.ecGotoDef.WasClicked() {
+        if IsActiveBasicDocument(docMgr) {
+            if basicWorkspaceCommands != null {
+                basicWorkspaceCommands.Start(
+                    basic_workspace_query_job.QUERY_DEFINITION,
+                    "Go to definition", shell, docMgr, projMgr, engine);
+            } else {
+                GUI.Toast.Info("Go to definition is unavailable");
+            }
+        } else if IsActiveZiaDocument(docMgr)
+                  and ziaWorkspaceCommands != null {
+            ziaWorkspaceCommands.Start(
+                zia_workspace_query_job.ZIA_QUERY_DEFINITION,
+                "Go to definition", shell, docMgr, projMgr, engine, indexer);
+        } else {
+            edit_commands.handleGoToDefinition(shell, docMgr, engine, tabs,
+                                               indexer, locStore);
+        }
+    }
+    if shell.menuChrome.ecFindRefs.WasClicked() {
+        if IsActiveBasicDocument(docMgr) {
+            if basicWorkspaceCommands != null {
+                basicWorkspaceCommands.Start(
+                    basic_workspace_query_job.QUERY_REFERENCES,
+                    "Find references", shell, docMgr, projMgr, engine);
+            } else {
+                GUI.Toast.Info("Find references is unavailable");
+            }
+        } else if IsActiveZiaDocument(docMgr)
+                  and ziaWorkspaceCommands != null {
+            ziaWorkspaceCommands.Start(
+                zia_workspace_query_job.ZIA_QUERY_REFERENCES,
+                "Find references", shell, docMgr, projMgr, engine, indexer);
+        } else {
+            edit_commands.handleFindReferences(shell, docMgr, engine, indexer,
+                                               locStore);
+        }
+    }
     if shell.menuChrome.ecRename.WasClicked() {
         if commandInputOverlay != null {
             commandInputOverlay.OpenRenameSymbol(shell, edit_commands.IdentifierAtCursor(engine));
+        } else if IsActiveBasicDocument(docMgr) {
+            if basicWorkspaceCommands != null {
+                var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
+                basicWorkspaceCommands.StartRename(newName, shell, docMgr,
+                                                   projMgr, engine);
+            } else {
+                GUI.Toast.Info("Rename is unavailable");
+            }
+        } else if IsActiveZiaDocument(docMgr)
+                  and ziaWorkspaceCommands != null {
+            var ziaNewName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
+            ziaWorkspaceCommands.StartRename(ziaNewName, shell, docMgr,
+                                             projMgr, engine, indexer);
         } else {
             edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer);
         }
@@ -333,6 +429,20 @@ hide func PumpEditorContextMenu(shell: app_shell.AppShell,
     if shell.menuChrome.ecPalette.WasClicked() {
         paletteCtrl.OpenCommands(shell, commandRegistry, activeService);
     }
+}
+
+/// @brief Return whether the active editor document uses the BASIC backend.
+func IsActiveBasicDocument(docMgr: document_manager.DocumentManager) -> Boolean {
+    if docMgr == null { return false; }
+    var doc = docMgr.GetActive();
+    return doc != null and doc!.language == "basic";
+}
+
+/// @brief Return whether the active editor document uses the Zia backend.
+func IsActiveZiaDocument(docMgr: document_manager.DocumentManager) -> Boolean {
+    if docMgr == null { return false; }
+    var doc = docMgr.GetActive();
+    return doc != null and doc!.language == "zia";
 }
 
 /// @brief Dispatch tab context menu item clicks and update tab/file-watch state.

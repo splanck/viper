@@ -6,12 +6,13 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/runtime/io/rt_dir.h
-// Purpose: Cross-platform directory operations for Zanna.IO.Dir, providing listing, creation,
-// deletion, existence checks, and current/home directory queries.
+// Purpose: Cross-platform directory operations for Zanna.IO.Dir, providing complete and bounded
+// listing, creation, deletion, existence checks, and current/home directory queries.
 //
 // Key invariants:
 //   - Directory listing returns Seq objects containing string paths.
 //   - rt_dir_files and rt_dir_dirs filter to files and directories respectively.
+//   - rt_dir_page emits a bounded immediate-child page with file-kind metadata.
 //   - Paths use platform-native separators in all returned values.
 //   - Operations that modify the filesystem return an RtError out-parameter.
 //
@@ -79,6 +80,16 @@ void *rt_dir_list_seq(rt_string path);
 /// @return Zanna.Collections.Seq containing runtime strings for each entry name.
 /// @note Traps when the directory does not exist or cannot be enumerated.
 void *rt_dir_entries_seq(rt_string path);
+
+/// @brief Return one bounded page of immediate directory entries.
+/// @details The result map contains `valid`, `path`, `entries`, `offset`, `limit`, `emitted`,
+///          `nextOffset`, `done`, and `diagnostics`. Each entry map contains `name`, `path`,
+///          `kind`, and `isDirectory`. Sequential calls should pass the returned `nextOffset`.
+/// @param path Directory path to enumerate.
+/// @param offset Zero-based logical entry offset.
+/// @param limit Maximum entries to emit; values outside 1..4096 are clamped.
+/// @return Runtime-owned page result map. Invalid or unreadable roots set `valid` false.
+void *rt_dir_page(rt_string path, int64_t offset, int64_t limit);
 
 /// @brief List only files in a directory.
 /// @param path Directory path to list.

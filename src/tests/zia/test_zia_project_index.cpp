@@ -17,9 +17,11 @@
 #include "tests/TestHarness.hpp"
 
 #include "tests/common/PosixCompat.h"
+#include <atomic>
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <thread>
 
 namespace {
 
@@ -45,6 +47,13 @@ std::string mapStr(void *map, std::string_view keyText) {
     rt_string value = rt_map_get_str(map, key);
     std::string result = toString(value);
     rt_string_unref(value);
+    rt_string_unref(key);
+    return result;
+}
+
+void *mapValue(void *map, std::string_view keyText) {
+    rt_string key = str(keyText);
+    void *result = rt_map_get(map, key);
     rt_string_unref(key);
     return result;
 }
@@ -301,6 +310,95 @@ TEST(ZiaProjectIndex, DirtyBufferUpdateReplacesIndexedSource) {
     EXPECT_EQ(mapStr(def, "name"), "newName");
     EXPECT_EQ(mapInt(def, "line"), 3);
     releaseObj(def);
+}
+
+TEST(ZiaProjectIndex, RenameEditsCarryExpectedTextAndRejectExcessiveReferences) {
+    IndexFixture fx("bounded_rename");
+    const fs::path mainPath = fx.path("main.zia");
+    const std::string smallSource = "module Main;\n"
+                                    "func start() {\n"
+                                    "    var target = 1;\n"
+                                    "    var useTarget = target;\n"
+                                    "}\n";
+    fx.update(mainPath, smallSource);
+
+    void *smallRename =
+        fx.rename(mainPath, smallSource, 4, columnOf(smallSource, 4, "target"), "renamed");
+    ASSERT_TRUE(smallRename != nullptr);
+    ASSERT_TRUE(mapBool(smallRename, "success"));
+    void *smallEdits = mapValue(smallRename, "edits");
+    ASSERT_TRUE(smallEdits != nullptr);
+    ASSERT_EQ(rt_seq_len(smallEdits), 2);
+    for (int64_t i = 0; i < rt_seq_len(smallEdits); ++i)
+        EXPECT_EQ(mapStr(rt_seq_get(smallEdits, i), "expectedText"), "target");
+    releaseObj(smallRename);
+
+    std::string largeSource = "module Main;\nfunc start() {\n    var target = 1;\n";
+    for (int i = 0; i < 2000; ++i) {
+        largeSource += "    var use" + std::to_string(i) + " = target;\n";
+    }
+    largeSource += "}\n";
+    fx.update(mainPath, largeSource);
+
+    void *refs = fx.references(mainPath, largeSource, 3, columnOf(largeSource, 3, "target"));
+    ASSERT_TRUE(refs != nullptr);
+    EXPECT_EQ(rt_seq_len(refs), 2001);
+    releaseObj(refs);
+
+    void *largeRename =
+        fx.rename(mainPath, largeSource, 3, columnOf(largeSource, 3, "target"), "renamed");
+    ASSERT_TRUE(largeRename != nullptr);
+    EXPECT_FALSE(mapBool(largeRename, "success"));
+    EXPECT_EQ(mapStr(largeRename, "reason"), "reference_limit");
+    releaseObj(largeRename);
+}
+
+TEST(ZiaProjectIndex, QueriesUseThreadSafeSnapshotsDuringMutationAndDestroy) {
+    IndexFixture fx("concurrent_snapshot");
+    const fs::path libPath = fx.path("lib.zia");
+    const fs::path mainPath = fx.path("main.zia");
+    const std::string firstLib = "module Lib;\n"
+                                 "expose func value() -> Integer { return 1; }\n";
+    const std::string secondLib = "module Lib;\n"
+                                  "expose func value() -> Integer { return 2; }\n";
+    const std::string mainSource = "module Main;\n"
+                                   "bind \"lib.zia\";\n"
+                                   "func start() -> Integer { return value(); }\n";
+    fx.update(libPath, firstLib);
+    fx.update(mainPath, mainSource);
+
+    std::atomic<bool> stop{false};
+    std::atomic<bool> failed{false};
+    std::atomic<int> completedQueries{0};
+    std::thread reader([&] {
+        while (!stop.load(std::memory_order_acquire)) {
+            void *definition =
+                fx.definition(mainPath, mainSource, 3, columnOf(mainSource, 3, "value"));
+            if (!definition) {
+                failed.store(true, std::memory_order_release);
+                break;
+            }
+            releaseObj(definition);
+            completedQueries.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    for (int i = 0; i < 100; ++i) {
+        fx.update(libPath, (i % 2 == 0) ? firstLib : secondLib);
+        if (i % 7 == 0) {
+            rt_string libPathStr = str(libPath.string());
+            EXPECT_TRUE(rt_zia_project_index_remove_file(fx.handle, libPathStr) != 0);
+            rt_string_unref(libPathStr);
+            fx.update(libPath, firstLib);
+        }
+    }
+    rt_zia_project_index_destroy(fx.handle);
+    stop.store(true, std::memory_order_release);
+    reader.join();
+
+    EXPECT_FALSE(failed.load(std::memory_order_acquire));
+    EXPECT_TRUE(completedQueries.load(std::memory_order_relaxed) > 0);
+    EXPECT_FALSE(rt_zia_project_index_is_valid(fx.handle) != 0);
 }
 
 TEST(ZiaRuntimeBridge, HoverOnQualifiedRuntimeClassIncludesAuthoredDocumentation) {

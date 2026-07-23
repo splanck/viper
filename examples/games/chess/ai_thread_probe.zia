@@ -1,13 +1,35 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: examples/games/chess/ai_thread_probe.zia
+// Purpose: Native worker-thread legality and responsiveness probe for Chess AI.
+// Key invariants:
+//   - Every worker result is legal in the position that was searched.
+//   - Search timing and node counts are reported per ply for regression triage.
+// Ownership/Lifetime:
+//   - The main thread owns each board snapshot and joins its worker before reuse.
+// Links: examples/games/chess/engine/ai.zia,
+//        src/tests/e2e/test_chess_ai_native.sh
+//
+//===----------------------------------------------------------------------===//
+
 module ai_thread_probe;
 
 bind Zanna.Terminal as Terminal;
 bind Zanna.Time;
 bind Thread = Zanna.Threads.Thread;
 bind Monitor = Zanna.Threads.Monitor;
+bind Fmt = Zanna.Text.Fmt;
 bind "./core/config";
 bind "./core/board";
 bind "./core/moves";
 bind "./engine/ai";
+
+final MAX_SEARCH_MS = 5000;
 
 var workerLock: List[Integer] = [];
 var workerThread: Thread? = null;
@@ -22,6 +44,10 @@ var moveCastleKing: Boolean = false;
 var moveCastleQueen: Boolean = false;
 var movePromotion: Boolean = false;
 var movePromotePiece: Integer = 0;
+var workerNodes: Integer = 0;
+var workerQuiescenceNodes: Integer = 0;
+var workerCompletedDepth: Integer = 0;
+var workerReachedNodeBudget: Boolean = false;
 
 func fail(msg: String) {
     Terminal.Say("RESULT: fail " + msg);
@@ -50,9 +76,17 @@ func aiWorker() {
     var ai = new ChessAI();
     ai.setDepth(workerDepth);
     var best = ai.findBestMove(workerBoard!);
+    var nodes = ai.getNodesSearched();
+    var quiescenceNodes = ai.getQuiescenceNodes();
+    var completedDepth = ai.getCompletedDepth();
+    var reachedNodeBudget = ai.reachedNodeBudget();
 
     Monitor.Enter(workerLock);
     storeResult(best);
+    workerNodes = nodes;
+    workerQuiescenceNodes = quiescenceNodes;
+    workerCompletedDepth = completedDepth;
+    workerReachedNodeBudget = reachedNodeBudget;
     workerHasResult = true;
     Monitor.Exit(workerLock);
 }
@@ -83,6 +117,9 @@ func main() {
 
     var ply = 0;
     while ply < 6 {
+        workerDepth = DIFF_HARD;
+        if ply == 5 { workerDepth = DIFF_EXPERT; }
+
         var legal = moveGen.legalMoves(board);
         if legal.length() == 0 {
             Terminal.Say("RESULT: ok");
@@ -91,6 +128,11 @@ func main() {
 
         workerBoard = board.copy();
         workerHasResult = false;
+        workerNodes = 0;
+        workerQuiescenceNodes = 0;
+        workerCompletedDepth = 0;
+        workerReachedNodeBudget = false;
+        var searchStartMs = Zanna.Time.Clock.NowMs();
         workerThread = Thread.StartSafe(&aiWorker, 0);
         while workerThread!.SafeIsAlive() {
             Zanna.Time.Clock.Sleep(1);
@@ -102,14 +144,29 @@ func main() {
         }
         workerThread = null;
         workerBoard = null;
+        var elapsedMs = Zanna.Time.Clock.NowMs() - searchStartMs;
 
         var best = new Move(-1, -1, 0, false, false, false, false, 0);
+        var nodes = 0;
+        var quiescenceNodes = 0;
+        var completedDepth = 0;
+        var reachedNodeBudget = false;
         Monitor.Enter(workerLock);
         if workerHasResult {
             best = loadResult();
+            nodes = workerNodes;
+            quiescenceNodes = workerQuiescenceNodes;
+            completedDepth = workerCompletedDepth;
+            reachedNodeBudget = workerReachedNodeBudget;
         }
         workerHasResult = false;
         Monitor.Exit(workerLock);
+
+        Terminal.Say("SEARCH: ply=" + Fmt.Int(ply + 1) +
+                     " elapsed_ms=" + Fmt.Int(elapsedMs) +
+                     " nodes=" + Fmt.Int(nodes) +
+                     " qnodes=" + Fmt.Int(quiescenceNodes) +
+                     " completed_depth=" + Fmt.Int(completedDepth));
 
         if best.from < 0 {
             fail("worker returned no move");
@@ -117,6 +174,20 @@ func main() {
         }
         if !containsMove(legal, best) {
             fail("worker returned illegal move");
+            return;
+        }
+        if elapsedMs > MAX_SEARCH_MS {
+            fail("search exceeded " + Fmt.Int(MAX_SEARCH_MS) +
+                 "ms at ply " + Fmt.Int(ply + 1) +
+                 " (elapsed " + Fmt.Int(elapsedMs) + "ms)");
+            return;
+        }
+        if nodes > AI_SEARCH_NODE_BUDGET {
+            fail("search exceeded node budget at ply " + Fmt.Int(ply + 1));
+            return;
+        }
+        if workerDepth == DIFF_EXPERT && !reachedNodeBudget {
+            fail("expert stress position did not exercise node budget");
             return;
         }
 
